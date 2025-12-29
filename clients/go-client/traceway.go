@@ -73,31 +73,31 @@ func FormatErrorWithStack(err error, frames []runtime.Frame) string {
 }
 
 type ExceptionStackTrace struct {
-	transactionId *string
-	stackTrace    string
-	recordedAt    time.Time
+	TransactionId *string   `json:"transactionId"`
+	StackTrace    string    `json:"stackTrace"`
+	RecordedAt    time.Time `json:"recordedAt"`
 }
 
 type MetricsRecord struct {
-	name       string
-	value      float32
-	recordedAt time.Time
+	Name       string    `json:"name"`
+	Value      float32   `json:"value"`
+	RecordedAt time.Time `json:"recordedAt"`
 }
 
 type Transaction struct {
-	id         string
-	endpoint   string
-	duration   time.Duration
-	recordedAt time.Time
-	statusCode int
-	bodySize   int
-	clientIP   string
+	Id         string        `json:"id"`
+	Endpoint   string        `json:"endpoint"`
+	Duration   time.Duration `json:"duration"`
+	RecordedAt time.Time     `json:"recordedAt"`
+	StatusCode int           `json:"statusCode"`
+	BodySize   int           `json:"bodySize"`
+	ClientIP   string        `json:"clientIP"`
 }
 
 type CollectionFrame struct {
-	stackTraces  []*ExceptionStackTrace
-	metrics      []*MetricsRecord
-	transactions []*Transaction
+	StackTraces  []*ExceptionStackTrace `json:"stackTraces"`
+	Metrics      []*MetricsRecord       `json:"metrics"`
+	Transactions []*Transaction         `json:"transactions"`
 }
 
 type collectionFrameMessageType int
@@ -119,7 +119,6 @@ type CollectionFrameStore struct {
 	current      *CollectionFrame
 	currentSetAt time.Time
 	sendQueue    TypedRing[*CollectionFrame, CollectionFrame]
-	droppedCount int64
 
 	mu sync.RWMutex
 
@@ -180,12 +179,15 @@ func (s *CollectionFrameStore) process() {
 		case <-s.stopCh:
 			return
 		case <-rotationTicker.C:
+			fmt.Println("TRIGGERING THE rotationTicker.C")
 			if s.current != nil {
 				if s.currentSetAt.Before(time.Now().Add(-s.collectionInterval)) {
+					fmt.Println("ROTATING AND PROCESSING")
 					s.rotateCurrentCollectionFrame()
 					s.processSendQueue()
 				}
 			} else if s.sendQueue.len > 0 {
+				fmt.Println("PROCESSING SEND QUEUE")
 				s.processSendQueue()
 			}
 		case msg := <-s.messageQueue:
@@ -197,11 +199,11 @@ func (s *CollectionFrameStore) process() {
 
 			switch msg.msgType {
 			case CollectionFrameMessageTypeException:
-				s.current.stackTraces = append(s.current.stackTraces, msg.exceptionStackTrace)
+				s.current.StackTraces = append(s.current.StackTraces, msg.exceptionStackTrace)
 			case CollectionFrameMessageTypeMetric:
-				s.current.metrics = append(s.current.metrics, msg.metric)
+				s.current.Metrics = append(s.current.Metrics, msg.metric)
 			case CollectionFrameMessageTypeTransaction:
-				s.current.transactions = append(s.current.transactions, msg.transaction)
+				s.current.Transactions = append(s.current.Transactions, msg.transaction)
 			}
 		}
 	}
@@ -211,8 +213,10 @@ func (s *CollectionFrameStore) rotateCurrentCollectionFrame() {
 	s.current = nil
 }
 func (s *CollectionFrameStore) processSendQueue() {
+	fmt.Println("processSendQueue")
 	// we are triggering an upload - we need to make sure no other uploads are going on
 	if s.lastUploadStarted == nil || s.lastUploadStarted.Before(time.Now().Add(s.uploadTimeout)) {
+		fmt.Println("ABOUT TO TRIGGER THE UPLOAD")
 		now := time.Now()
 		s.lastUploadStarted = &now
 		go s.triggerUpload(s.sendQueue.ReadAll())
@@ -221,6 +225,7 @@ func (s *CollectionFrameStore) processSendQueue() {
 
 // Report adds an exception event to the current envelope
 func (s *CollectionFrameStore) triggerUpload(framesToSend []*CollectionFrame) {
+	fmt.Println("TRIGGER UPLOAD STARTED")
 	defer func() {
 		if r := recover(); s.debug && r != nil {
 			log.Print("Traceway: failed to upload the CollectionFrame")
@@ -236,6 +241,7 @@ func (s *CollectionFrameStore) triggerUpload(framesToSend []*CollectionFrame) {
 		}
 		return
 	}
+	fmt.Println("SENDING POST TO ", s.apiUrl, string(jsonData))
 
 	req, err := http.NewRequest("POST", s.apiUrl, bytes.NewBuffer(jsonData))
 	if err != nil {
@@ -257,9 +263,26 @@ func (s *CollectionFrameStore) triggerUpload(framesToSend []*CollectionFrame) {
 		return
 	}
 	defer resp.Body.Close()
+
+	fmt.Println("RESPONDED WITH", resp.StatusCode)
 }
 
 var collectionFrameStore *CollectionFrameStore
+
+func PrintCollectionFrameMetrics() {
+	val, _ := json.Marshal(collectionFrameStore.current)
+	fmt.Println("current", string(val))
+
+	fmt.Println("currentSetAt", collectionFrameStore.currentSetAt)
+	fmt.Println("sendQueue", collectionFrameStore.sendQueue)
+	fmt.Println("lastUploadStarted", collectionFrameStore.lastUploadStarted)
+	fmt.Println("apiUrl", collectionFrameStore.apiUrl)
+	fmt.Println("token", collectionFrameStore.token)
+	fmt.Println("debug", collectionFrameStore.debug)
+	fmt.Println("maxCollectionFrames", collectionFrameStore.maxCollectionFrames)
+	fmt.Println("collectionInterval", collectionFrameStore.collectionInterval)
+	fmt.Println("uploadTimeout", collectionFrameStore.uploadTimeout)
+}
 
 type TracewayOptions struct {
 	debug               bool
@@ -271,7 +294,7 @@ type TracewayOptions struct {
 func NewTracewayOptions(options ...func(*TracewayOptions)) *TracewayOptions {
 	svr := &TracewayOptions{
 		maxCollectionFrames: 5,
-		collectionInterval:  time.Minute,
+		collectionInterval:  5 * time.Second,
 		uploadTimeout:       2 * time.Second,
 	}
 	for _, o := range options {
@@ -326,9 +349,9 @@ func CaptureMetric(name string, value float32) {
 	collectionFrameStore.messageQueue <- CollectionFrameMessage{
 		msgType: CollectionFrameMessageTypeMetric,
 		metric: &MetricsRecord{
-			name:       name,
-			value:      value,
-			recordedAt: time.Now(),
+			Name:       name,
+			Value:      value,
+			RecordedAt: time.Now(),
 		},
 	}
 }
@@ -344,13 +367,13 @@ func CaptureTransaction(
 	collectionFrameStore.messageQueue <- CollectionFrameMessage{
 		msgType: CollectionFrameMessageTypeTransaction,
 		transaction: &Transaction{
-			id:         transactionId, // for regular recover we don't need a transaction
-			endpoint:   endpoint,
-			duration:   d,
-			recordedAt: startedAt,
-			statusCode: statusCode,
-			bodySize:   bodySize,
-			clientIP:   clientIP,
+			Id:         transactionId, // for regular recover we don't need a transaction
+			Endpoint:   endpoint,
+			Duration:   d,
+			RecordedAt: startedAt,
+			StatusCode: statusCode,
+			BodySize:   bodySize,
+			ClientIP:   clientIP,
 		},
 	}
 }
@@ -358,9 +381,9 @@ func CaptureTransactionException(transactionId string, stacktrace string) {
 	collectionFrameStore.messageQueue <- CollectionFrameMessage{
 		msgType: CollectionFrameMessageTypeException,
 		exceptionStackTrace: &ExceptionStackTrace{
-			transactionId: &transactionId,
-			stackTrace:    stacktrace,
-			recordedAt:    time.Now(),
+			TransactionId: &transactionId,
+			StackTrace:    stacktrace,
+			RecordedAt:    time.Now(),
 		},
 	}
 }
@@ -368,9 +391,9 @@ func CaptureException(err error) {
 	collectionFrameStore.messageQueue <- CollectionFrameMessage{
 		msgType: CollectionFrameMessageTypeException,
 		exceptionStackTrace: &ExceptionStackTrace{
-			transactionId: nil, // for regular recover we don't need a transaction
-			stackTrace:    FormatErrorWithStack(err, CaptureStack(2)),
-			recordedAt:    time.Now(),
+			TransactionId: nil, // for regular recover we don't need a transaction
+			StackTrace:    FormatErrorWithStack(err, CaptureStack(2)),
+			RecordedAt:    time.Now(),
 		},
 	}
 }
@@ -382,9 +405,9 @@ func Recover() {
 		collectionFrameStore.messageQueue <- CollectionFrameMessage{
 			msgType: CollectionFrameMessageTypeException,
 			exceptionStackTrace: &ExceptionStackTrace{
-				transactionId: nil, // for regular recover we don't need a transaction
-				stackTrace:    FormatRWithStack(r, CaptureStack(2)),
-				recordedAt:    time.Now(),
+				TransactionId: nil, // for regular recover we don't need a transaction
+				StackTrace:    FormatRWithStack(r, CaptureStack(2)),
+				RecordedAt:    time.Now(),
 			},
 		}
 	}

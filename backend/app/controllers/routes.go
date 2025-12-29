@@ -7,5 +7,5 @@ import (
 )
 
 func RegisterControllers(router *gin.RouterGroup) {
-	router.GET("/exceptions", middleware.UseTransaction, ExceptionController.FindAll)
+	router.POST("/report", middleware.UseAuth, middleware.UseGzip, middleware.UseTransaction, ClientController.Report)
 }

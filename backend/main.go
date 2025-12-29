@@ -2,7 +2,7 @@ package main
 
 import (
 	"backend/app/controllers"
-	"backend/app/db"
+	"backend/app/middleware"
 	"log"
 
 	"github.com/gin-gonic/gin"
@@ -16,7 +16,12 @@ func main() {
 		log.Fatal("Error loading .env file")
 	}
 
-	db.Init()
+	// db.Init()
+	// datawarehouse.Init()
+
+	// migrations.Run()
+
+	middleware.InitUseAuth()
 
 	router := gin.Default()
 

@@ -1,6 +1,7 @@
 package tracewaygin
 
 import (
+	"fmt"
 	"time"
 	"traceway"
 
@@ -11,11 +12,14 @@ import (
 func wrapAndExecute(c *gin.Context) (s *string) {
 	defer func() {
 		if r := recover(); r != nil {
+			fmt.Println("RECOVERING")
 			m := traceway.FormatRWithStack(r, traceway.CaptureStack(2))
 			s = &m
 		}
 	}()
+	fmt.Println("A1")
 	c.Next()
+	fmt.Println("A2")
 	return nil
 }
 
@@ -23,6 +27,7 @@ func New(connectionString string, options ...func(*traceway.TracewayOptions)) gi
 	traceway.Init(connectionString, options...)
 
 	return func(c *gin.Context) {
+		fmt.Println("INTERCEPTED")
 		start := time.Now()
 
 		path := c.Request.URL.Path
@@ -46,9 +51,12 @@ func New(connectionString string, options ...func(*traceway.TracewayOptions)) gi
 
 		defer recover()
 
+		fmt.Println("HERE")
 		traceway.CaptureTransaction(transactionId, transactionEndpoint, duration, start, statusCode, bodySize, clientIP)
 
+		fmt.Println("HERE2")
 		if stackTraceFormatted != nil {
+			fmt.Println("HERE3")
 			traceway.CaptureTransactionException(transactionId, *stackTraceFormatted)
 		}
 	}

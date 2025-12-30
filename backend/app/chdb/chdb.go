@@ -1,4 +1,4 @@
-package datawarehouse
+package chdb
 
 import (
 	"crypto/tls"
@@ -21,8 +21,9 @@ func Init() error {
 	clickhouseDatabase := os.Getenv("CLICKHOUSE_DATABASE")
 	clickhouseUsername := os.Getenv("CLICKHOUSE_USERNAME")
 	clickhousePassword := os.Getenv("CLICKHOUSE_PASSWORD")
+	clickhouseTls := os.Getenv("CLICKHOUSE_TLS")
 
-	if strings.HasSuffix(clickhouseServer, "9000") {
+	if clickhouseTls == "false" {
 		tlsConfig = nil
 	}
 

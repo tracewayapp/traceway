@@ -1,6 +1,9 @@
 package clientmodels
 
-import "time"
+import (
+	"backend/app/models"
+	"time"
+)
 
 type ClientExceptionStackTrace struct {
 	TransactionId *string   `json:"transactionId"`
@@ -8,10 +11,27 @@ type ClientExceptionStackTrace struct {
 	RecordedAt    time.Time `json:"recordedAt"`
 }
 
-type ClientMetricsRecord struct {
+func (c *ClientExceptionStackTrace) ToExceptionStackTrace(exceptionHash string) models.ExceptionStackTrace {
+	return models.ExceptionStackTrace{
+		ExceptionHash: exceptionHash,
+		TransactionId: c.TransactionId,
+		StackTrace:    c.StackTrace,
+		RecordedAt:    c.RecordedAt,
+	}
+}
+
+type ClientMetricRecord struct {
 	Name       string    `json:"name"`
 	Value      float32   `json:"value"`
 	RecordedAt time.Time `json:"recordedAt"`
+}
+
+func (c *ClientMetricRecord) ToMetricRecord() models.MetricRecord {
+	return models.MetricRecord{
+		Name:       c.Name,
+		Value:      c.Value,
+		RecordedAt: c.RecordedAt,
+	}
 }
 
 type ClientTransaction struct {
@@ -24,8 +44,20 @@ type ClientTransaction struct {
 	ClientIP   string        `json:"clientIP"`
 }
 
+func (c *ClientTransaction) ToTransaction() models.Transaction {
+	return models.Transaction{
+		Id:         c.Id,
+		Endpoint:   c.Endpoint,
+		Duration:   c.Duration,
+		RecordedAt: c.RecordedAt,
+		StatusCode: c.StatusCode,
+		BodySize:   c.BodySize,
+		ClientIP:   c.ClientIP,
+	}
+}
+
 type CollectionFrame struct {
 	StackTraces  []*ClientExceptionStackTrace `json:"stackTraces"`
-	Metrics      []*ClientMetricsRecord       `json:"metrics"`
+	Metrics      []*ClientMetricRecord        `json:"metrics"`
 	Transactions []*ClientTransaction         `json:"transactions"`
 }

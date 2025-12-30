@@ -2,6 +2,7 @@ package traceway
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 func CaptureStack(skip int) []runtime.Frame {
@@ -130,6 +133,7 @@ type CollectionFrameStore struct {
 	lastUploadStarted *time.Time
 
 	// Config fields
+	app                 string
 	apiUrl              string
 	token               string
 	debug               bool
@@ -139,6 +143,7 @@ type CollectionFrameStore struct {
 }
 
 func InitCollectionFrameStore(
+	app string,
 	apiUrl string,
 	token string,
 	debug bool,
@@ -153,6 +158,7 @@ func InitCollectionFrameStore(
 		stopCh:       make(chan struct{}),
 		messageQueue: make(chan CollectionFrameMessage),
 
+		app:    app,
 		apiUrl: apiUrl,
 		token:  token,
 		debug:  debug,
@@ -234,16 +240,35 @@ func (s *CollectionFrameStore) triggerUpload(framesToSend []*CollectionFrame) {
 		}
 	}()
 
-	jsonData, err := json.Marshal(framesToSend)
+	jsonData, err := json.Marshal(gin.H{
+		"app":    s.app,
+		"frames": framesToSend,
+	})
 	if err != nil {
 		if s.debug {
 			log.Printf("Traceway: failed to marshal frames: %v", err)
 		}
 		return
 	}
+
 	fmt.Println("SENDING POST TO ", s.apiUrl, string(jsonData))
 
-	req, err := http.NewRequest("POST", s.apiUrl, bytes.NewBuffer(jsonData))
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(jsonData); err != nil {
+		if s.debug {
+			log.Printf("Traceway: gz write failed: %v", err)
+		}
+		return
+	}
+	if err := gz.Close(); err != nil { // Close flushes the compressed data
+		if s.debug {
+			log.Printf("Traceway: gz write failed: %v", err)
+		}
+		return
+	}
+
+	req, err := http.NewRequest("POST", s.apiUrl, &buf)
 	if err != nil {
 		if s.debug {
 			log.Printf("Traceway: failed to create request: %v", err)
@@ -253,6 +278,7 @@ func (s *CollectionFrameStore) triggerUpload(framesToSend []*CollectionFrame) {
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+s.token)
+	req.Header.Set("Content-Encoding", "gzip")
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -293,7 +319,7 @@ type TracewayOptions struct {
 
 func NewTracewayOptions(options ...func(*TracewayOptions)) *TracewayOptions {
 	svr := &TracewayOptions{
-		maxCollectionFrames: 5,
+		maxCollectionFrames: 12,
 		collectionInterval:  5 * time.Second,
 		uploadTimeout:       2 * time.Second,
 	}
@@ -323,7 +349,7 @@ func WithUploadTimeout(val time.Duration) func(*TracewayOptions) {
 	}
 }
 
-func Init(connectionString string, options ...func(*TracewayOptions)) error {
+func Init(app, connectionString string, options ...func(*TracewayOptions)) error {
 	if collectionFrameStore != nil {
 		return fmt.Errorf("Second Traceway initialization detected")
 	}
@@ -335,6 +361,7 @@ func Init(connectionString string, options ...func(*TracewayOptions)) error {
 	tracewayOptions := NewTracewayOptions(options...)
 
 	collectionFrameStore = InitCollectionFrameStore(
+		app,
 		apiUrl,
 		token,
 		tracewayOptions.debug,

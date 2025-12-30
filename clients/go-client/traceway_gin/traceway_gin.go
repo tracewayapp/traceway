@@ -23,8 +23,8 @@ func wrapAndExecute(c *gin.Context) (s *string) {
 	return nil
 }
 
-func New(connectionString string, options ...func(*traceway.TracewayOptions)) gin.HandlerFunc {
-	traceway.Init(connectionString, options...)
+func New(app, connectionString string, options ...func(*traceway.TracewayOptions)) gin.HandlerFunc {
+	traceway.Init(app, connectionString, options...)
 
 	return func(c *gin.Context) {
 		fmt.Println("INTERCEPTED")

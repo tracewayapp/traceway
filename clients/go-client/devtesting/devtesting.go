@@ -14,7 +14,11 @@ func main() {
 func testGin() {
 	router := gin.Default()
 
-	router.Use(tracewaygin.New("demotoken@localhost:8081/report"))
+	router.Use(tracewaygin.New(
+		"tracewaydemo",
+		"demotoken@http://localhost:8082/api/report",
+		traceway.WithDebug(true),
+	))
 
 	router.GET("/test-exception", func(ctx *gin.Context) {
 		panic("Cool")

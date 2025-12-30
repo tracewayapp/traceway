@@ -7,12 +7,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var UseAuth func(c *gin.Context)
+var UseClientAuth func(c *gin.Context)
 
-func InitUseAuth() {
+func InitUseClientAuth() {
 	authHeader := "Bearer " + os.Getenv("TOKEN")
 
-	UseAuth = func(c *gin.Context) {
+	UseClientAuth = func(c *gin.Context) {
 		if authHeader != c.GetHeader("Authorization") {
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return

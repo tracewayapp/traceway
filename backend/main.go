@@ -1,12 +1,12 @@
 package main
 
 import (
+	"backend/app/chdb"
 	"backend/app/controllers"
 	"backend/app/middleware"
 	"log"
 
 	"github.com/gin-gonic/gin"
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
 )
 
@@ -16,12 +16,9 @@ func main() {
 		log.Fatal("Error loading .env file")
 	}
 
-	// db.Init()
-	// datawarehouse.Init()
+	chdb.Init()
 
-	// migrations.Run()
-
-	middleware.InitUseAuth()
+	middleware.InitUseClientAuth()
 
 	router := gin.Default()
 

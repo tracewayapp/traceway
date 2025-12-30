@@ -1,20 +1,24 @@
 package repositories
 
 import (
+	"backend/app/chdb"
 	"backend/app/models"
-	"database/sql"
-
-	"github.com/tracewayapp/go-lightning/lpg"
+	"context"
 )
 
 type transactionRepository struct{}
 
-func (e transactionRepository) FindAll(tx *sql.Tx) ([]*models.Transaction, error) {
-	return lpg.SelectGeneric[models.Transaction](tx, "SELECT * FROM transactions")
+func (e *transactionRepository) InsertAsync(ctx context.Context, lines []models.Transaction) error {
+	batch, err := (*chdb.Conn).PrepareBatch(ctx, "INSERT INTO transactions (id, endpoint, duration, recorded_at, status_code, body_size, client_ip)")
+	if err != nil {
+		return err
+	}
+	for _, e := range lines {
+		if err := batch.Append(e.Id, e.Endpoint, e.Duration, e.RecordedAt, e.StatusCode, e.BodySize, e.ClientIP); err != nil {
+			return err
+		}
+	}
+	return batch.Send()
 }
-
-// func (e transactionRepository) Create(tx *sql.Tx, transaction *models.Transaction) error {
-// 	return lpg.Create[models.Transaction](tx, "SELECT * FROM transactions")
-// }
 
 var TransactionRepository = transactionRepository{}

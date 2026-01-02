@@ -1,6 +1,5 @@
 <script lang="ts">
 	import './layout.css';
-	import favicon from '$lib/assets/favicon.svg';
 	import { goto } from '$app/navigation';
 	import { authState } from '$lib/state/auth.svelte';
 	import { themeState, initTheme, toggleTheme } from '$lib/state/theme.svelte';
@@ -9,6 +8,8 @@
 	import { Button } from "$lib/components/ui/button";
 	import { Sun, Moon, LogOut } from "@lucide/svelte";
 	import { onMount } from "svelte";
+	import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+	import { ChevronDown } from 'lucide-svelte';
 
 	let { children } = $props();
 
@@ -22,7 +23,7 @@
 	}
 </script>
 
-<svelte:head><link rel="icon" href={favicon} /></svelte:head>
+<svelte:head><link rel="icon" href="/favicon.ico" /></svelte:head>
 
 {#if authState.isAuthenticated}
 	<Sidebar.SidebarProvider>
@@ -31,7 +32,25 @@
 			<header class="flex h-16 shrink-0 items-center gap-2 border-b px-4">
 				<Sidebar.SidebarTrigger />
 				<div class="h-4 w-px bg-border"></div>
-				<h1 class="text-lg font-semibold">Traceway</h1>
+				<h1 class="text-lg font-semibold">
+					<DropdownMenu.Root>
+						<DropdownMenu.Trigger class="flex flex-row items-center">
+							<div>Project 1</div> <ChevronDown size=16 />
+						</DropdownMenu.Trigger>
+						<DropdownMenu.Content>
+							<DropdownMenu.Group>
+								<DropdownMenu.Label>Projects</DropdownMenu.Label>
+								<DropdownMenu.Separator />
+								<DropdownMenu.Item>CT gin-backend</DropdownMenu.Item>
+								<DropdownMenu.Item>CT eldapp</DropdownMenu.Item>
+								<DropdownMenu.Item>CT frontend</DropdownMenu.Item>
+								<DropdownMenu.Item>Traceway BE</DropdownMenu.Item>
+								<DropdownMenu.Separator />
+								<DropdownMenu.Item>+ Add Project</DropdownMenu.Item>
+							</DropdownMenu.Group>
+						</DropdownMenu.Content>
+					</DropdownMenu.Root>
+				</h1>
 				<div class="ml-auto flex items-center gap-2">
 					<Button variant="ghost" size="icon" onclick={toggleTheme} title={themeState.isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}>
 						{#if themeState.isDark}

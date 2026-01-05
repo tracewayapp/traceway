@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
+    import { goto } from '$app/navigation';
     import { api } from '$lib/api';
     import * as Table from "$lib/components/ui/table";
     import { Input } from "$lib/components/ui/input";
@@ -8,8 +9,10 @@
     import { Skeleton } from "$lib/components/ui/skeleton";
 
     type ExceptionGroup = {
-        issue: string;
+        exceptionHash: string;
+        stackTrace: string;
         lastSeen: string;
+        firstSeen: string;
         count: number;
     };
 
@@ -26,13 +29,12 @@
 
     // Filters
     let searchQuery = $state('');
-    let daysBack = $state("1");
+    let daysBack = $state("7");
 
     // Select options for days back
     const daysOptions = [
         { value: "1", label: "24 Hours" },
-        { value: "7", label: "7 Days" },
-        { value: "30", label: "30 Days" }
+        { value: "7", label: "7 Days" }
     ];
 
     // Page size options
@@ -42,6 +44,10 @@
         { value: "50", label: "50" },
         { value: "100", label: "100" }
     ];
+
+    // Derived labels for select displays
+    const daysBackLabel = $derived(daysOptions.find(o => o.value === daysBack)?.label ?? "Select period");
+    const pageSizeLabel = $derived(pageSizeOptions.find(o => o.value === pageSize.toString())?.label ?? pageSize.toString());
 
     async function loadData() {
         loading = true;
@@ -125,24 +131,25 @@
             oninput={handleSearchInput}
         />
 
-        <!-- <Select.Root
-            onOpenChangeComplete={(v) => {
+        <Select.Root
+            type="single"
+            bind:value={daysBack}
+            onValueChange={(v) => {
                 if (v) {
-                    daysBack = v.value;
-                    page = 1; // Reset to page 1 on filter change
+                    page = 1;
+                    loadData();
                 }
             }}
-            selected={{ value: daysBack, label: daysOptions.find(o => o.value === daysBack)?.label }}
         >
-            <Select.Trigger class="h-8 w-[180px]">
-                <Select.Value placeholder="Select period" />
+            <Select.Trigger class="h-8 w-[120px]">
+                {daysBackLabel}
             </Select.Trigger>
             <Select.Content>
                 {#each daysOptions as option}
-                    <Select.Item value={option.value}>{option.label}</Select.Item>
+                    <Select.Item value={option.value} label={option.label}>{option.label}</Select.Item>
                 {/each}
             </Select.Content>
-        </Select.Root> -->
+        </Select.Root>
 
         <div class="ml-auto">
              <Button variant="outline" size="sm" onclick={loadData} class="h-8">Refresh</Button>
@@ -183,10 +190,13 @@
                     </Table.Row>
                 {:else}
                     {#each exceptions as exception}
-                        <Table.Row>
+                        <Table.Row
+                            class="cursor-pointer hover:bg-muted/50"
+                            onclick={() => goto(`/issues/${exception.exceptionHash}`)}
+                        >
                             <Table.Cell class="font-medium truncate max-w-[30px]"></Table.Cell>
-                            <Table.Cell class="truncate" title={exception.issue}>
-                                {exception.issue.substring(0, 100)}...
+                            <Table.Cell class="truncate" title={exception.stackTrace}>
+                                {exception.stackTrace.split('\n')[0]}
                             </Table.Cell>
                             <Table.Cell>{exception.count}</Table.Cell>
                             <Table.Cell>{new Date(exception.lastSeen).toLocaleString()}</Table.Cell>
@@ -206,19 +216,20 @@
             <div class="flex items-center space-x-2">
                 <p class="text-sm font-medium">Rows per page</p>
                 <Select.Root
-                    selected={{ value: pageSize.toString(), label: pageSize.toString() }}
-                    onSelectedChange={(v) => {
+                    type="single"
+                    value={pageSize.toString()}
+                    onValueChange={(v) => {
                         if (v) {
-                            handlePageSizeChange(v.value);
+                            handlePageSizeChange(v);
                         }
                     }}
                 >
                     <Select.Trigger class="h-8 w-[70px]">
-                        <Select.Value placeholder={pageSize.toString()} />
+                        {pageSizeLabel}
                     </Select.Trigger>
                     <Select.Content side="top">
                         {#each pageSizeOptions as option}
-                            <Select.Item value={option.value}>{option.label}</Select.Item>
+                            <Select.Item value={option.value} label={option.label}>{option.label}</Select.Item>
                         {/each}
                     </Select.Content>
                 </Select.Root>

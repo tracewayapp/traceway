@@ -28,4 +28,32 @@ func (e *metricRecordRepository) GetAverageBetween(ctx context.Context, name str
 	return avg, err
 }
 
+// GetAverageByHour returns metric averages grouped by hour
+func (e *metricRecordRepository) GetAverageByHour(ctx context.Context, name string, start, end time.Time) ([]models.TimeSeriesPoint, error) {
+	query := `SELECT
+		toStartOfHour(recorded_at) as hour,
+		avg(value) as avg_value
+	FROM metric_records
+	WHERE name = ? AND recorded_at >= ? AND recorded_at <= ?
+	GROUP BY hour
+	ORDER BY hour ASC`
+
+	rows, err := (*chdb.Conn).Query(ctx, query, name, start, end)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var points []models.TimeSeriesPoint
+	for rows.Next() {
+		var p models.TimeSeriesPoint
+		if err := rows.Scan(&p.Timestamp, &p.Value); err != nil {
+			return nil, err
+		}
+		points = append(points, p)
+	}
+
+	return points, nil
+}
+
 var MetricRecordRepository = metricRecordRepository{}

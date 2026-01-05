@@ -37,8 +37,8 @@
     value: { label: "Value", color: "var(--chart-1)" },
   } satisfies Chart.ChartConfig;
 
-	const yMin = $derived(min(metric.trend, (d: MetricTrendPoint)  => d.value));
-  const yMax = $derived(max(metric.trend, (d: MetricTrendPoint) => d.value));
+	const yMin = $derived(min(metric.trend, (d: MetricTrendPoint)  => d.value) ?? 0);
+  const yMax = $derived(max(metric.trend, (d: MetricTrendPoint) => d.value) ?? 0);
   const padding = $derived((yMax - yMin) * 0.1);
 </script>
 

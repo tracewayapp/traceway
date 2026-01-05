@@ -4,27 +4,45 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { RefreshCw } from 'lucide-svelte';
 	import MetricCard from '$lib/components/dashboard/metric-card.svelte';
-	import { generateMockDashboardData } from '$lib/utils/mock-dashboard-data';
-	import type { DashboardData } from '$lib/types/dashboard';
+	import type { DashboardData, DashboardMetric } from '$lib/types/dashboard';
 	import { Card, CardContent } from '$lib/components/ui/card';
+	import { api } from '$lib/api';
+	import { ErrorDisplay } from '$lib/components/ui/error-display';
 
 	let dashboardData = $state<DashboardData | null>(null);
 	let loading = $state(true);
 	let error = $state('');
+	let errorStatus = $state<number>(0);
 
 	async function loadDashboard() {
 		loading = true;
 		error = '';
+		errorStatus = 0;
 
 		try {
-			// Simulate API delay
-			await new Promise((resolve) => setTimeout(resolve, 500));
+			const response = await api.get('/dashboard');
 
-			// Mock data - TODO: Replace with real API call
-			// const response = await api.get('/metrics/dashboard');
-			// dashboardData = response;
-			dashboardData = generateMockDashboardData();
+			// Transform the API response to match the DashboardData type
+			// Convert timestamp strings to Date objects
+			const metrics: DashboardMetric[] = response.metrics.map((m: any) => ({
+				id: m.id,
+				name: m.name,
+				value: m.value,
+				unit: m.unit,
+				trend: m.trend.map((t: any) => ({
+					timestamp: new Date(t.timestamp),
+					value: t.value
+				})),
+				change24h: m.change24h,
+				status: m.status
+			}));
+
+			dashboardData = {
+				metrics,
+				lastUpdated: new Date(response.lastUpdated)
+			};
 		} catch (e: any) {
+			errorStatus = e.status || 0;
 			error = e.message || 'Failed to load dashboard data';
 			console.error(e);
 		} finally {
@@ -63,16 +81,20 @@
 		</Button>
 	</div>
 
-	{#if error}
-		<div class="rounded-md border border-destructive bg-destructive/10 p-4">
-			<p class="text-sm text-destructive">{error}</p>
-		</div>
+	{#if error && !loading}
+		<ErrorDisplay
+			status={errorStatus === 404 ? 404 : errorStatus === 400 ? 400 : errorStatus === 422 ? 422 : 400}
+			title="Failed to Load Dashboard"
+			description={error}
+			onRetry={() => loadDashboard()}
+		/>
 	{/if}
 
 	<!-- Metrics Grid -->
-	<div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+	{#if !error}
+	<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
 		{#if loading}
-			{#each Array(8) as _}
+			{#each Array(6) as _}
 				<Card>
 					<CardContent class="flex gap-3 flex-col">
 						<div class="flex items-center justify-between">
@@ -91,4 +113,5 @@
 			{/each}
 		{/if}
 	</div>
+	{/if}
 </div>

@@ -30,7 +30,9 @@ async function request(method: string, endpoint: string, data?: any) {
     }
 
     if (!response.ok) {
-        throw new Error(`API Error: ${response.statusText}`);
+        const error = new Error(`API Error: ${response.statusText}`) as Error & { status: number };
+        error.status = response.status;
+        throw error;
     }
 
     return response.json();

@@ -9,9 +9,7 @@
   const sidebarItems = [
     {Icon: LayoutDashboard, href: "/", title: "Dashboard"},
     {Icon: Bug, href: "/issues", title: "Issues"},
-    {Icon: List, href: "/issues", title: "Transactions"},
-    {Icon: Gauge, href: "/issues", title: "Issues"},
-
+    {Icon: List, href: "/transactions", title: "Transactions"},
   ]
 
 </script>

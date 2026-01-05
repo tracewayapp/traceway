@@ -4,8 +4,11 @@ import (
 	"backend/app/chdb"
 	"backend/app/models"
 	"context"
+	"errors"
 	"time"
 )
+
+var ErrExceptionNotFound = errors.New("exception not found")
 
 type exceptionStackTraceRepository struct{}
 
@@ -78,6 +81,68 @@ func (e *exceptionStackTraceRepository) FindGrouped(ctx context.Context, fromDat
 	}
 
 	return groups, int64(count), nil
+}
+
+func (e *exceptionStackTraceRepository) FindByHash(ctx context.Context, exceptionHash string, page, pageSize int) (*models.ExceptionGroup, []models.ExceptionStackTrace, int64, error) {
+	offset := (page - 1) * pageSize
+
+	// Get grouped info
+	var group models.ExceptionGroup
+	err := (*chdb.Conn).QueryRow(ctx,
+		"SELECT exception_hash, any(stack_trace), max(recorded_at) as last_seen, min(recorded_at) as first_seen, count() as count FROM exception_stack_traces WHERE exception_hash = ? GROUP BY exception_hash",
+		exceptionHash).Scan(&group.ExceptionHash, &group.StackTrace, &group.LastSeen, &group.FirstSeen, &group.Count)
+	if err != nil {
+		// ClickHouse returns error when no rows found in QueryRow
+		return nil, nil, 0, ErrExceptionNotFound
+	}
+
+	// Get individual occurrences with pagination
+	rows, err := (*chdb.Conn).Query(ctx,
+		"SELECT transaction_id, exception_hash, stack_trace, recorded_at FROM exception_stack_traces WHERE exception_hash = ? ORDER BY recorded_at DESC LIMIT ? OFFSET ?",
+		exceptionHash, pageSize, offset)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	defer rows.Close()
+
+	var occurrences []models.ExceptionStackTrace
+	for rows.Next() {
+		var o models.ExceptionStackTrace
+		if err := rows.Scan(&o.TransactionId, &o.ExceptionHash, &o.StackTrace, &o.RecordedAt); err != nil {
+			return nil, nil, 0, err
+		}
+		occurrences = append(occurrences, o)
+	}
+
+	return &group, occurrences, int64(group.Count), nil
+}
+
+// CountByHour returns exception counts grouped by hour
+func (e *exceptionStackTraceRepository) CountByHour(ctx context.Context, start, end time.Time) ([]models.TimeSeriesPoint, error) {
+	query := `SELECT
+		toStartOfHour(recorded_at) as hour,
+		count() as count
+	FROM exception_stack_traces
+	WHERE recorded_at >= ? AND recorded_at <= ?
+	GROUP BY hour
+	ORDER BY hour ASC`
+
+	rows, err := (*chdb.Conn).Query(ctx, query, start, end)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var points []models.TimeSeriesPoint
+	for rows.Next() {
+		var p models.TimeSeriesPoint
+		if err := rows.Scan(&p.Timestamp, &p.Value); err != nil {
+			return nil, err
+		}
+		points = append(points, p)
+	}
+
+	return points, nil
 }
 
 var ExceptionStackTraceRepository = exceptionStackTraceRepository{}

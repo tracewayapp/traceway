@@ -28,9 +28,13 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/report", middleware.UseClientAuth, middleware.UseGzip, clientcontrollers.ClientController.Report)
 
 	router.POST("/stats", middleware.UseAppAuth, MetricRecordController.FindHomepageStats)
+	router.GET("/dashboard", middleware.UseAppAuth, DashboardController.GetDashboard)
 
 	router.POST("/transactions", middleware.UseAppAuth, TransactionController.FindAllTransactions)
+	router.POST("/transactions/grouped", middleware.UseAppAuth, TransactionController.FindGroupedByEndpoint)
+	router.POST("/transactions/endpoint", middleware.UseAppAuth, TransactionController.FindByEndpoint)
 	router.POST("/exception-stack-traces", middleware.UseAppAuth, ExceptionStackTraceController.FindGrouppedExceptionStackTraces)
+	router.POST("/exception-stack-traces/:hash", middleware.UseAppAuth, ExceptionStackTraceController.FindByHash)
 
 	// Auth
 	router.POST("/login", AuthController.Login)

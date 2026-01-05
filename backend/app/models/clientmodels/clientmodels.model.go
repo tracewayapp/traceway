@@ -50,8 +50,8 @@ func (c *ClientTransaction) ToTransaction() models.Transaction {
 		Endpoint:   c.Endpoint,
 		Duration:   c.Duration,
 		RecordedAt: c.RecordedAt,
-		StatusCode: c.StatusCode,
-		BodySize:   c.BodySize,
+		StatusCode: int32(c.StatusCode),
+		BodySize:   int32(c.BodySize),
 		ClientIP:   c.ClientIP,
 	}
 }

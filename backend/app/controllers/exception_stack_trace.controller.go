@@ -13,6 +13,7 @@ import (
 type exceptionStackTraceController struct{}
 
 type ExceptionSearchRequest struct {
+	ProjectId  string           `json:"projectId"`
 	FromDate   time.Time        `json:"fromDate"`
 	ToDate     time.Time        `json:"toDate"`
 	OrderBy    string           `json:"orderBy"`
@@ -21,6 +22,7 @@ type ExceptionSearchRequest struct {
 }
 
 type ExceptionDetailRequest struct {
+	ProjectId  string           `json:"projectId"`
 	Pagination PaginationParams `json:"pagination"`
 }
 
@@ -37,7 +39,7 @@ func (e exceptionStackTraceController) FindGrouppedExceptionStackTraces(c *gin.C
 		return
 	}
 
-	exceptions, total, err := repositories.ExceptionStackTraceRepository.FindGrouped(c, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.Search)
+	exceptions, total, err := repositories.ExceptionStackTraceRepository.FindGrouped(c, request.ProjectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.Search)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -67,7 +69,7 @@ func (e exceptionStackTraceController) FindByHash(c *gin.Context) {
 		request.Pagination = PaginationParams{Page: 1, PageSize: 20}
 	}
 
-	group, occurrences, total, err := repositories.ExceptionStackTraceRepository.FindByHash(c, exceptionHash, request.Pagination.Page, request.Pagination.PageSize)
+	group, occurrences, total, err := repositories.ExceptionStackTraceRepository.FindByHash(c, request.ProjectId, exceptionHash, request.Pagination.Page, request.Pagination.PageSize)
 	if err != nil {
 		if errors.Is(err, repositories.ErrExceptionNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Exception not found"})

@@ -8,6 +8,7 @@
 	import { Card, CardContent } from '$lib/components/ui/card';
 	import { api } from '$lib/api';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
+	import { projectsState } from '$lib/state/projects.svelte';
 
 	let dashboardData = $state<DashboardData | null>(null);
 	let loading = $state(true);
@@ -20,7 +21,7 @@
 		errorStatus = 0;
 
 		try {
-			const response = await api.get('/dashboard');
+			const response = await api.get('/dashboard', { projectId: projectsState.currentProjectId ?? undefined });
 
 			// Transform the API response to match the DashboardData type
 			// Convert timestamp strings to Date objects

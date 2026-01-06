@@ -11,55 +11,67 @@ import (
 
 type metricRecordController struct{}
 
+type HomepageStatsRequest struct {
+	ProjectId string `json:"projectId"`
+}
+
 func (e metricRecordController) FindHomepageStats(c *gin.Context) {
+	var request HomepageStatsRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	projectId := request.ProjectId
+
 	// requests in last 24h vs previous 24h
 	now := time.Now()
 	oneDayAgo := now.Add(-24 * time.Hour)
 	twoDaysAgo := now.Add(-48 * time.Hour)
 
 	// requests
-	requestsNow, err := repositories.TransactionRepository.CountBetween(c, oneDayAgo, now)
+	requestsNow, err := repositories.TransactionRepository.CountBetween(c, projectId, oneDayAgo, now)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	requestsPrev, err := repositories.TransactionRepository.CountBetween(c, twoDaysAgo, oneDayAgo)
+	requestsPrev, err := repositories.TransactionRepository.CountBetween(c, projectId, twoDaysAgo, oneDayAgo)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	// exceptions
-	exceptionsNow, err := repositories.ExceptionStackTraceRepository.CountBetween(c, oneDayAgo, now)
+	exceptionsNow, err := repositories.ExceptionStackTraceRepository.CountBetween(c, projectId, oneDayAgo, now)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	exceptionsPrev, err := repositories.ExceptionStackTraceRepository.CountBetween(c, twoDaysAgo, oneDayAgo)
+	exceptionsPrev, err := repositories.ExceptionStackTraceRepository.CountBetween(c, projectId, twoDaysAgo, oneDayAgo)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	// ram usage last 24h vs previous 24h
-	ramNow, err := repositories.MetricRecordRepository.GetAverageBetween(c, models.MetricNameMemoryUsage, oneDayAgo, now)
+	ramNow, err := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameMemoryUsage, oneDayAgo, now)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	ramPrev, err := repositories.MetricRecordRepository.GetAverageBetween(c, models.MetricNameMemoryUsage, twoDaysAgo, oneDayAgo)
+	ramPrev, err := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameMemoryUsage, twoDaysAgo, oneDayAgo)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	// memory usage last 24h vs previous 24h
-	cpuNow, err := repositories.MetricRecordRepository.GetAverageBetween(c, models.MetricNameCpuUsage, oneDayAgo, now)
+	cpuNow, err := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameCpuUsage, oneDayAgo, now)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	cpuPrev, err := repositories.MetricRecordRepository.GetAverageBetween(c, models.MetricNameCpuUsage, twoDaysAgo, oneDayAgo)
+	cpuPrev, err := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameCpuUsage, twoDaysAgo, oneDayAgo)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

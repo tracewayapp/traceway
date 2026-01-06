@@ -9,6 +9,7 @@
     import { Label } from "$lib/components/ui/label";
     import { ArrowLeft, ArrowUpDown, ArrowDown } from "@lucide/svelte";
     import { ErrorDisplay } from "$lib/components/ui/error-display";
+    import { projectsState } from '$lib/state/projects.svelte';
 
     type Transaction = {
         id: string;
@@ -116,7 +117,7 @@
                 }
             };
 
-            const response = await api.post(`/transactions/endpoint?endpoint=${encodeURIComponent(data.endpoint)}`, requestBody);
+            const response = await api.post(`/transactions/endpoint?endpoint=${encodeURIComponent(data.endpoint)}`, requestBody, { projectId: projectsState.currentProjectId ?? undefined });
 
             transactions = response.data || [];
             total = response.pagination.total;
@@ -210,7 +211,7 @@
             <Input
                 id="from-date"
                 type="date"
-                class="h-9 w-[140px]"
+                class="h-9 w-[150px]"
                 bind:value={fromDateValue}
             />
         </div>
@@ -219,7 +220,7 @@
             <Input
                 id="from-time"
                 type="time"
-                class="h-9 w-[110px]"
+                class="h-9 w-[120px]"
                 bind:value={fromTimeValue}
             />
         </div>
@@ -228,7 +229,7 @@
             <Input
                 id="to-date"
                 type="date"
-                class="h-9 w-[140px]"
+                class="h-9 w-[150px]"
                 bind:value={toDateValue}
             />
         </div>
@@ -237,7 +238,7 @@
             <Input
                 id="to-time"
                 type="time"
-                class="h-9 w-[110px]"
+                class="h-9 w-[120px]"
                 bind:value={toTimeValue}
             />
         </div>

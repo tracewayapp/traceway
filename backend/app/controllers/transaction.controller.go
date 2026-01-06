@@ -13,6 +13,7 @@ import (
 type transactionController struct{}
 
 type TransactionSearchRequest struct {
+	ProjectId  string           `json:"projectId"`
 	FromDate   time.Time        `json:"fromDate"`
 	ToDate     time.Time        `json:"toDate"`
 	OrderBy    string           `json:"orderBy"`
@@ -20,6 +21,7 @@ type TransactionSearchRequest struct {
 }
 
 type EndpointTransactionsRequest struct {
+	ProjectId  string           `json:"projectId"`
 	FromDate   time.Time        `json:"fromDate"`
 	ToDate     time.Time        `json:"toDate"`
 	OrderBy    string           `json:"orderBy"`
@@ -33,7 +35,7 @@ func (e transactionController) FindAllTransactions(c *gin.Context) {
 		return
 	}
 
-	transactions, total, err := repositories.TransactionRepository.FindAll(c, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy)
+	transactions, total, err := repositories.TransactionRepository.FindAll(c, request.ProjectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -57,7 +59,7 @@ func (e transactionController) FindGroupedByEndpoint(c *gin.Context) {
 		return
 	}
 
-	stats, total, err := repositories.TransactionRepository.FindGroupedByEndpoint(c, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy)
+	stats, total, err := repositories.TransactionRepository.FindGroupedByEndpoint(c, request.ProjectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -93,7 +95,7 @@ func (e transactionController) FindByEndpoint(c *gin.Context) {
 		return
 	}
 
-	transactions, total, err := repositories.TransactionRepository.FindByEndpoint(c, endpoint, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy)
+	transactions, total, err := repositories.TransactionRepository.FindByEndpoint(c, request.ProjectId, endpoint, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

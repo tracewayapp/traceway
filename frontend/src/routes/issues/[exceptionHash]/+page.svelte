@@ -8,6 +8,7 @@
     import * as Table from "$lib/components/ui/table";
     import { Skeleton } from "$lib/components/ui/skeleton";
     import { ErrorDisplay } from "$lib/components/ui/error-display";
+    import { projectsState } from '$lib/state/projects.svelte';
 
     type ExceptionGroup = {
         exceptionHash: string;
@@ -48,7 +49,7 @@
                     page: currentPage,
                     pageSize: pageSize
                 }
-            });
+            }, { projectId: projectsState.currentProjectId ?? undefined });
 
             group = response.group;
             occurrences = response.occurrences || [];

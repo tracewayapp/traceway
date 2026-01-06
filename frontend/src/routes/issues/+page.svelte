@@ -7,6 +7,7 @@
     import { Button } from "$lib/components/ui/button";
     import * as Select from "$lib/components/ui/select";
     import { Skeleton } from "$lib/components/ui/skeleton";
+    import { projectsState } from '$lib/state/projects.svelte';
 
     type ExceptionGroup = {
         exceptionHash: string;
@@ -69,7 +70,7 @@
                 search: searchQuery.trim()
             };
 
-            const response = await api.post('/exception-stack-traces', requestBody);
+            const response = await api.post('/exception-stack-traces', requestBody, { projectId: projectsState.currentProjectId ?? undefined });
 
             exceptions = response.data || [];
             total = response.pagination.total;
@@ -118,45 +119,40 @@
     });
 </script>
 
-<div class="space-y-4">
-    <div class="flex items-center justify-between">
+<div class="space-y-6">
+    <!-- Header with Title and Search + Period Filter -->
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h2 class="text-3xl font-bold tracking-tight">Issues</h2>
-    </div>
-
-    <div class="flex items-center space-x-2">
-        <Input
-            placeholder="Search exceptions..."
-            class="h-8 w-[150px] lg:w-[250px]"
-            bind:value={searchQuery}
-            oninput={handleSearchInput}
-        />
-
-        <Select.Root
-            type="single"
-            bind:value={daysBack}
-            onValueChange={(v) => {
-                if (v) {
-                    page = 1;
-                    loadData();
-                }
-            }}
-        >
-            <Select.Trigger class="h-8 w-[120px]">
-                {daysBackLabel}
-            </Select.Trigger>
-            <Select.Content>
-                {#each daysOptions as option}
-                    <Select.Item value={option.value} label={option.label}>{option.label}</Select.Item>
-                {/each}
-            </Select.Content>
-        </Select.Root>
-
-        <div class="ml-auto">
-             <Button variant="outline" size="sm" onclick={loadData} class="h-8">Refresh</Button>
+        <div class="flex">
+            <Input
+                placeholder="Search exceptions..."
+                class="h-9 w-[250px] lg:w-[320px] rounded-r-none border-r-0 focus:relative focus:z-10"
+                bind:value={searchQuery}
+                oninput={handleSearchInput}
+            />
+            <Select.Root
+                type="single"
+                bind:value={daysBack}
+                onValueChange={(v) => {
+                    if (v) {
+                        page = 1;
+                        loadData();
+                    }
+                }}
+            >
+                <Select.Trigger class="h-9 w-[110px] rounded-l-none -ml-px focus:relative focus:z-10">
+                    {daysBackLabel}
+                </Select.Trigger>
+                <Select.Content>
+                    {#each daysOptions as option}
+                        <Select.Item value={option.value} label={option.label}>{option.label}</Select.Item>
+                    {/each}
+                </Select.Content>
+            </Select.Root>
         </div>
     </div>
 
-    <div class="rounded-md border">
+    <div class="rounded-md border overflow-hidden">
         <Table.Root>
             <Table.Header>
                 <Table.Row>

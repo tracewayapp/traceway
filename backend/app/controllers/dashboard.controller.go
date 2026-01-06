@@ -12,6 +12,8 @@ import (
 type dashboardController struct{}
 
 func (d dashboardController) GetDashboard(c *gin.Context) {
+	projectId := c.Query("projectId")
+
 	now := time.Now()
 	start := now.Add(-24 * time.Hour)
 	prevStart := now.Add(-48 * time.Hour)
@@ -20,65 +22,65 @@ func (d dashboardController) GetDashboard(c *gin.Context) {
 	metrics := make([]models.DashboardMetric, 0, 6)
 
 	// 1. Requests count
-	requestsTrend, err := repositories.TransactionRepository.CountByHour(c, start, now)
+	requestsTrend, err := repositories.TransactionRepository.CountByHour(c, projectId, start, now)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	requestsCurrent, _ := repositories.TransactionRepository.CountBetween(c, start, now)
-	requestsPrev, _ := repositories.TransactionRepository.CountBetween(c, prevStart, prevEnd)
+	requestsCurrent, _ := repositories.TransactionRepository.CountBetween(c, projectId, start, now)
+	requestsPrev, _ := repositories.TransactionRepository.CountBetween(c, projectId, prevStart, prevEnd)
 	metrics = append(metrics, buildMetric("requests", "Requests", float64(requestsCurrent), "count", requestsTrend, float64(requestsPrev), "requests"))
 
 	// 2. Exceptions count
-	exceptionsTrend, err := repositories.ExceptionStackTraceRepository.CountByHour(c, start, now)
+	exceptionsTrend, err := repositories.ExceptionStackTraceRepository.CountByHour(c, projectId, start, now)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	exceptionsCurrent, _ := repositories.ExceptionStackTraceRepository.CountBetween(c, start, now)
-	exceptionsPrev, _ := repositories.ExceptionStackTraceRepository.CountBetween(c, prevStart, prevEnd)
+	exceptionsCurrent, _ := repositories.ExceptionStackTraceRepository.CountBetween(c, projectId, start, now)
+	exceptionsPrev, _ := repositories.ExceptionStackTraceRepository.CountBetween(c, projectId, prevStart, prevEnd)
 	metrics = append(metrics, buildMetric("exceptions", "Exceptions", float64(exceptionsCurrent), "count", exceptionsTrend, float64(exceptionsPrev), "exceptions"))
 
 	// 3. Average Response Time
-	avgDurationTrend, err := repositories.TransactionRepository.AvgDurationByHour(c, start, now)
+	avgDurationTrend, err := repositories.TransactionRepository.AvgDurationByHour(c, projectId, start, now)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	avgDurationCurrent := getLastValue(avgDurationTrend)
-	avgDurationPrevTrend, _ := repositories.TransactionRepository.AvgDurationByHour(c, prevStart, prevEnd)
+	avgDurationPrevTrend, _ := repositories.TransactionRepository.AvgDurationByHour(c, projectId, prevStart, prevEnd)
 	avgDurationPrev := getAverageValue(avgDurationPrevTrend)
 	metrics = append(metrics, buildMetric("avg_response_time", "Avg Response Time", avgDurationCurrent, "ms", avgDurationTrend, avgDurationPrev, "response_time"))
 
 	// 4. Error Rate
-	errorRateTrend, err := repositories.TransactionRepository.ErrorRateByHour(c, start, now)
+	errorRateTrend, err := repositories.TransactionRepository.ErrorRateByHour(c, projectId, start, now)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	errorRateCurrent := getLastValue(errorRateTrend)
-	errorRatePrevTrend, _ := repositories.TransactionRepository.ErrorRateByHour(c, prevStart, prevEnd)
+	errorRatePrevTrend, _ := repositories.TransactionRepository.ErrorRateByHour(c, projectId, prevStart, prevEnd)
 	errorRatePrev := getAverageValue(errorRatePrevTrend)
 	metrics = append(metrics, buildMetric("error_rate", "Error Rate", errorRateCurrent, "%", errorRateTrend, errorRatePrev, "error_rate"))
 
 	// 5. CPU Usage
-	cpuTrend, err := repositories.MetricRecordRepository.GetAverageByHour(c, "cpu", start, now)
+	cpuTrend, err := repositories.MetricRecordRepository.GetAverageByHour(c, projectId, "cpu", start, now)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	cpuCurrent := getLastValue(cpuTrend)
-	cpuPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, "cpu", prevStart, prevEnd)
+	cpuPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, "cpu", prevStart, prevEnd)
 	metrics = append(metrics, buildMetric("cpu_usage", "CPU Usage", cpuCurrent, "%", cpuTrend, cpuPrev, "cpu"))
 
 	// 6. Memory Usage
-	memTrend, err := repositories.MetricRecordRepository.GetAverageByHour(c, "ram", start, now)
+	memTrend, err := repositories.MetricRecordRepository.GetAverageByHour(c, projectId, "ram", start, now)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	memCurrent := getLastValue(memTrend)
-	memPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, "ram", prevStart, prevEnd)
+	memPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, "ram", prevStart, prevEnd)
 	metrics = append(metrics, buildMetric("memory_usage", "Memory Usage", memCurrent, "MB", memTrend, memPrev, "memory"))
 
 	c.JSON(http.StatusOK, models.DashboardResponse{

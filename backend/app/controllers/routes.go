@@ -27,6 +27,11 @@ type Pagination struct {
 func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/report", middleware.UseClientAuth, middleware.UseGzip, clientcontrollers.ClientController.Report)
 
+	// Project management
+	router.GET("/projects", middleware.UseAppAuth, ProjectController.ListProjects)
+	router.POST("/projects", middleware.UseAppAuth, ProjectController.CreateProject)
+	router.GET("/projects/:id", middleware.UseAppAuth, ProjectController.GetProject)
+
 	router.POST("/stats", middleware.UseAppAuth, MetricRecordController.FindHomepageStats)
 	router.GET("/dashboard", middleware.UseAppAuth, DashboardController.GetDashboard)
 

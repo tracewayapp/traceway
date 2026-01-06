@@ -1,10 +1,12 @@
 package main
 
 import (
+	"backend/app/cache"
 	"backend/app/chdb"
 	"backend/app/controllers"
 	"backend/app/middleware"
 	"backend/app/migrations"
+	"context"
 	"log"
 
 	"github.com/gin-gonic/gin"
@@ -24,6 +26,12 @@ func main() {
 
 	err = migrations.Run()
 	if err != nil {
+		panic(err)
+	}
+
+	// Initialize project cache
+	ctx := context.Background()
+	if err := cache.ProjectCache.Init(ctx); err != nil {
 		panic(err)
 	}
 

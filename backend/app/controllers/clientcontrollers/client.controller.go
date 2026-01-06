@@ -1,6 +1,7 @@
 package clientcontrollers
 
 import (
+	"backend/app/middleware"
 	"backend/app/models"
 	"backend/app/models/clientmodels"
 	"backend/app/repositories"
@@ -21,6 +22,9 @@ type ReportRequest struct {
 }
 
 func (e clientController) Report(c *gin.Context) {
+	// Get project ID from context (set by middleware)
+	projectId := middleware.GetProjectId(c)
+
 	// we need to parse the request
 	var request ReportRequest
 	if err := c.ShouldBindBodyWithJSON(&request); err != nil {
@@ -33,15 +37,21 @@ func (e clientController) Report(c *gin.Context) {
 	metricRecordsToInsert := []models.MetricRecord{}
 	for _, cf := range request.CollectionFrames {
 		for _, ct := range cf.Transactions {
-			transactionsToInsert = append(transactionsToInsert, ct.ToTransaction())
+			t := ct.ToTransaction()
+			t.ProjectId = projectId
+			transactionsToInsert = append(transactionsToInsert, t)
 		}
 
 		for _, cst := range cf.StackTraces {
-			exceptionStackTraceToInsert = append(exceptionStackTraceToInsert, cst.ToExceptionStackTrace(computeExceptionHash(cst.StackTrace)))
+			est := cst.ToExceptionStackTrace(computeExceptionHash(cst.StackTrace))
+			est.ProjectId = projectId
+			exceptionStackTraceToInsert = append(exceptionStackTraceToInsert, est)
 		}
 
 		for _, cm := range cf.Metrics {
-			metricRecordsToInsert = append(metricRecordsToInsert, cm.ToMetricRecord())
+			mr := cm.ToMetricRecord()
+			mr.ProjectId = projectId
+			metricRecordsToInsert = append(metricRecordsToInsert, mr)
 		}
 	}
 

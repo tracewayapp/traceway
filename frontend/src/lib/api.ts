@@ -2,7 +2,12 @@ import { authState } from './state/auth.svelte';
 
 const BASE_URL = '/api';
 
-async function request(method: string, endpoint: string, data?: any) {
+interface RequestOptions {
+    projectId?: string;
+    skipProjectId?: boolean;
+}
+
+async function request(method: string, endpoint: string, data?: unknown, options?: RequestOptions) {
     const currentToken = authState.token;
     const headers: Record<string, string> = {
         'Content-Type': 'application/json'
@@ -17,11 +22,23 @@ async function request(method: string, endpoint: string, data?: any) {
         headers,
     };
 
+    // For POST/PUT requests, add projectId to the body if provided
+    if (data && options?.projectId && !options?.skipProjectId) {
+        data = { ...data as object, projectId: options.projectId };
+    }
+
     if (data) {
         config.body = JSON.stringify(data);
     }
 
-    const response = await fetch(`${BASE_URL}${endpoint}`, config);
+    // For GET requests, add projectId as query parameter if provided
+    let url = `${BASE_URL}${endpoint}`;
+    if (method === 'GET' && options?.projectId && !options?.skipProjectId) {
+        const separator = endpoint.includes('?') ? '&' : '?';
+        url = `${url}${separator}projectId=${options.projectId}`;
+    }
+
+    const response = await fetch(url, config);
 
     if (response.status === 401) {
         authState.logout();
@@ -39,8 +56,8 @@ async function request(method: string, endpoint: string, data?: any) {
 }
 
 export const api = {
-    get: (endpoint: string) => request('GET', endpoint),
-    post: (endpoint: string, data: any) => request('POST', endpoint, data),
-    put: (endpoint: string, data: any) => request('PUT', endpoint, data),
-    delete: (endpoint: string) => request('DELETE', endpoint)
+    get: (endpoint: string, options?: RequestOptions) => request('GET', endpoint, undefined, options),
+    post: (endpoint: string, data: unknown, options?: RequestOptions) => request('POST', endpoint, data, options),
+    put: (endpoint: string, data: unknown, options?: RequestOptions) => request('PUT', endpoint, data, options),
+    delete: (endpoint: string, options?: RequestOptions) => request('DELETE', endpoint, undefined, options)
 };

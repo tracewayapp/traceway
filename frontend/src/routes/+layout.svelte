@@ -2,24 +2,49 @@
 	import './layout.css';
 	import { goto } from '$app/navigation';
 	import { authState } from '$lib/state/auth.svelte';
+	import { projectsState } from '$lib/state/projects.svelte';
 	import { themeState, initTheme, toggleTheme } from '$lib/state/theme.svelte';
 	import AppSidebar from '$lib/components/app-sidebar.svelte';
+	import AddProjectModal from '$lib/components/add-project-modal.svelte';
+	import FrameworkIcon from '$lib/components/framework-icon.svelte';
 	import * as Sidebar from "$lib/components/ui/sidebar";
 	import { Button } from "$lib/components/ui/button";
-	import { Sun, Moon, LogOut } from "@lucide/svelte";
+	import { Sun, Moon, LogOut, Plus, Check } from "@lucide/svelte";
 	import { onMount } from "svelte";
 	import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
 	import { ChevronDown } from 'lucide-svelte';
 
 	let { children } = $props();
+	let showAddProjectModal = $state(false);
 
 	onMount(() => {
-		return initTheme();
+		initTheme();
+
+		// Load projects after auth check
+		if (authState.isAuthenticated) {
+			projectsState.initFromCache();
+			projectsState.loadProjects();
+		}
 	});
 
 	function handleLogout() {
 		authState.logout();
 		goto('/login');
+	}
+
+	function handleProjectSelect(projectId: string) {
+		projectsState.selectProject(projectId);
+		goto('/');
+	}
+
+	function handleAddProjectClick() {
+		showAddProjectModal = true;
+	}
+
+	function handleProjectCreated() {
+		showAddProjectModal = false;
+		// Optionally navigate to connection page to show token
+		goto('/connection');
 	}
 </script>
 
@@ -34,19 +59,39 @@
 				<div class="h-4 w-px bg-border"></div>
 				<h1 class="text-lg font-semibold">
 					<DropdownMenu.Root>
-						<DropdownMenu.Trigger class="flex flex-row items-center">
-							<div>Project 1</div> <ChevronDown size=16 />
+						<DropdownMenu.Trigger class="flex flex-row items-center gap-2 hover:bg-accent hover:text-accent-foreground rounded-md px-2 py-1 transition-colors">
+							{#if projectsState.currentProject}
+								<FrameworkIcon framework={projectsState.currentProject.framework} />
+							{/if}
+							<span>{projectsState.currentProject?.name || 'Select Project'}</span>
+							<ChevronDown size={16} />
 						</DropdownMenu.Trigger>
-						<DropdownMenu.Content>
+						<DropdownMenu.Content align="start" class="w-56">
 							<DropdownMenu.Group>
 								<DropdownMenu.Label>Projects</DropdownMenu.Label>
 								<DropdownMenu.Separator />
-								<DropdownMenu.Item>CT gin-backend</DropdownMenu.Item>
-								<DropdownMenu.Item>CT eldapp</DropdownMenu.Item>
-								<DropdownMenu.Item>CT frontend</DropdownMenu.Item>
-								<DropdownMenu.Item>Traceway BE</DropdownMenu.Item>
+								{#each projectsState.projects as project}
+									<DropdownMenu.Item
+										onclick={() => handleProjectSelect(project.id)}
+										class="flex items-center justify-between cursor-pointer"
+									>
+										<div class="flex items-center gap-2">
+											<FrameworkIcon framework={project.framework} />
+											<span>{project.name}</span>
+										</div>
+										{#if project.id === projectsState.currentProjectId}
+											<Check class="h-4 w-4" />
+										{/if}
+									</DropdownMenu.Item>
+								{/each}
+								{#if projectsState.projects.length === 0}
+									<DropdownMenu.Item disabled>No projects yet</DropdownMenu.Item>
+								{/if}
 								<DropdownMenu.Separator />
-								<DropdownMenu.Item>+ Add Project</DropdownMenu.Item>
+								<DropdownMenu.Item onclick={handleAddProjectClick} class="cursor-pointer">
+									<Plus class="mr-2 h-4 w-4" />
+									Add Project
+								</DropdownMenu.Item>
 							</DropdownMenu.Group>
 						</DropdownMenu.Content>
 					</DropdownMenu.Root>
@@ -69,6 +114,12 @@
 			</main>
 		</Sidebar.SidebarInset>
 	</Sidebar.SidebarProvider>
+
+	<AddProjectModal
+		open={showAddProjectModal}
+		onOpenChange={(open) => showAddProjectModal = open}
+		onProjectCreated={handleProjectCreated}
+	/>
 {:else}
 	<main class="h-screen w-screen">
 		{@render children()}

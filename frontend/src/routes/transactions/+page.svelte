@@ -5,9 +5,11 @@
     import * as Table from "$lib/components/ui/table";
     import { Button } from "$lib/components/ui/button";
     import { Skeleton } from "$lib/components/ui/skeleton";
-    import { Input } from "$lib/components/ui/input";
-    import { Label } from "$lib/components/ui/label";
+    import * as Select from "$lib/components/ui/select";
     import { ArrowUpDown, ArrowDown } from "@lucide/svelte";
+    import { TimeRangePicker } from "$lib/components/ui/time-range-picker";
+    import { CalendarDate, getLocalTimeZone, today } from "@internationalized/date";
+    import { projectsState } from '$lib/state/projects.svelte';
 
     type EndpointStats = {
         endpoint: string;
@@ -30,35 +32,43 @@
     let total = $state(0);
     let totalPages = $state(0);
 
-    // Date Range State (separate date and time)
-    let fromDateValue = $state('');
-    let fromTimeValue = $state('');
-    let toDateValue = $state('');
-    let toTimeValue = $state('');
+    // Date Range State
+    let fromDate = $state<CalendarDate>(today(getLocalTimeZone()).subtract({ days: 7 }));
+    let toDate = $state<CalendarDate>(today(getLocalTimeZone()));
+    let fromTime = $state('00:00');
+    let toTime = $state('23:59');
 
     // Sorting
     let orderBy = $state<SortField>('count');
 
-    // Initialize dates to last 7 days
-    function initDates() {
-        const now = new Date();
-        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    // Page size options
+    const pageSizeOptions = [
+        { value: "10", label: "10" },
+        { value: "20", label: "20" },
+        { value: "50", label: "50" },
+        { value: "100", label: "100" }
+    ];
 
-        toDateValue = now.toISOString().slice(0, 10);
-        toTimeValue = now.toTimeString().slice(0, 5);
-        fromDateValue = sevenDaysAgo.toISOString().slice(0, 10);
-        fromTimeValue = sevenDaysAgo.toTimeString().slice(0, 5);
-    }
+    const pageSizeLabel = $derived(pageSizeOptions.find(o => o.value === pageSize.toString())?.label ?? pageSize.toString());
 
     // Combine date and time into ISO datetime string
     function getFromDateTime(): string {
-        if (!fromDateValue) return '';
-        return `${fromDateValue}T${fromTimeValue || '00:00'}`;
+        const dateStr = `${fromDate.year}-${String(fromDate.month).padStart(2, '0')}-${String(fromDate.day).padStart(2, '0')}`;
+        return `${dateStr}T${fromTime || '00:00'}`;
     }
 
     function getToDateTime(): string {
-        if (!toDateValue) return '';
-        return `${toDateValue}T${toTimeValue || '23:59'}`;
+        const dateStr = `${toDate.year}-${String(toDate.month).padStart(2, '0')}-${String(toDate.day).padStart(2, '0')}`;
+        return `${dateStr}T${toTime || '23:59'}`;
+    }
+
+    function handleTimeRangeChange(from: { date: CalendarDate; time: string }, to: { date: CalendarDate; time: string }) {
+        fromDate = from.date;
+        fromTime = from.time;
+        toDate = to.date;
+        toTime = to.time;
+        page = 1;
+        loadData();
     }
 
     function formatDuration(nanoseconds: number): string {
@@ -87,7 +97,7 @@
                 }
             };
 
-            const response = await api.post('/transactions/grouped', requestBody);
+            const response = await api.post('/transactions/grouped', requestBody, { projectId: projectsState.currentProjectId ?? undefined });
 
             endpoints = response.data || [];
             total = response.pagination.total;
@@ -107,6 +117,12 @@
         }
     }
 
+    function handlePageSizeChange(newPageSize: string) {
+        pageSize = parseInt(newPageSize);
+        page = 1;
+        loadData();
+    }
+
     function handleSort(field: SortField) {
         orderBy = field;
         page = 1;
@@ -122,61 +138,25 @@
     }
 
     onMount(() => {
-        initDates();
         loadData();
     });
 </script>
 
 <div class="space-y-6">
-    <div class="flex items-center justify-between">
+    <!-- Header with Title and Time Range Filter -->
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h2 class="text-3xl font-bold tracking-tight">Transactions</h2>
-    </div>
-
-    <!-- Filters Bar -->
-    <div class="flex flex-wrap items-end gap-4 p-4 rounded-lg border bg-card">
-        <div class="flex flex-col gap-1.5">
-            <Label for="from-date" class="text-xs text-muted-foreground">From Date</Label>
-            <Input
-                id="from-date"
-                type="date"
-                class="h-9 w-[140px]"
-                bind:value={fromDateValue}
-            />
-        </div>
-        <div class="flex flex-col gap-1.5">
-            <Label for="from-time" class="text-xs text-muted-foreground">From Time</Label>
-            <Input
-                id="from-time"
-                type="time"
-                class="h-9 w-[110px]"
-                bind:value={fromTimeValue}
-            />
-        </div>
-        <div class="flex flex-col gap-1.5">
-            <Label for="to-date" class="text-xs text-muted-foreground">To Date</Label>
-            <Input
-                id="to-date"
-                type="date"
-                class="h-9 w-[140px]"
-                bind:value={toDateValue}
-            />
-        </div>
-        <div class="flex flex-col gap-1.5">
-            <Label for="to-time" class="text-xs text-muted-foreground">To Time</Label>
-            <Input
-                id="to-time"
-                type="time"
-                class="h-9 w-[110px]"
-                bind:value={toTimeValue}
-            />
-        </div>
-        <Button variant="default" size="sm" onclick={loadData} class="h-9">
-            Go
-        </Button>
+        <TimeRangePicker
+            bind:fromDate
+            bind:toDate
+            bind:fromTime
+            bind:toTime
+            onApply={handleTimeRangeChange}
+        />
     </div>
 
     <!-- Endpoints Table -->
-    <div class="rounded-md border">
+    <div class="rounded-md border overflow-hidden">
         <Table.Root>
             <Table.Header>
                 <Table.Row>
@@ -300,6 +280,27 @@
             {total} endpoint(s) found.
         </div>
         <div class="flex items-center space-x-6 lg:space-x-8">
+            <div class="flex items-center space-x-2">
+                <p class="text-sm font-medium">Rows per page</p>
+                <Select.Root
+                    type="single"
+                    value={pageSize.toString()}
+                    onValueChange={(v) => {
+                        if (v) {
+                            handlePageSizeChange(v);
+                        }
+                    }}
+                >
+                    <Select.Trigger class="h-8 w-[70px]">
+                        {pageSizeLabel}
+                    </Select.Trigger>
+                    <Select.Content side="top">
+                        {#each pageSizeOptions as option}
+                            <Select.Item value={option.value} label={option.label}>{option.label}</Select.Item>
+                        {/each}
+                    </Select.Content>
+                </Select.Root>
+            </div>
             <div class="flex w-[100px] items-center justify-center text-sm font-medium">
                 Page {page} of {totalPages || 1}
             </div>

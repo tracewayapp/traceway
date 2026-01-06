@@ -7,6 +7,7 @@
     import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
     import { CircleAlert } from "@lucide/svelte";
     import { authState } from '$lib/state/auth.svelte';
+    import { projectsState } from '$lib/state/projects.svelte';
     import { themeState } from '$lib/state/theme.svelte';
 
     let appToken = $state('');
@@ -32,6 +33,10 @@
 
             // If successful, store token (store handles localStorage)
             authState.setToken(appToken);
+
+            // Load projects after successful login
+            await projectsState.loadProjects();
+
             goto('/');
         } catch (e) {
             error = 'Invalid APP_TOKEN';

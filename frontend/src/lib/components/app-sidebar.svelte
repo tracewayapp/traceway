@@ -1,6 +1,6 @@
 <script lang="ts">
   import * as Sidebar from "$lib/components/ui/sidebar";
-  import { List, Bug, Gauge } from "@lucide/svelte";
+  import { List, Bug, Link2 } from "@lucide/svelte";
   import { themeState } from '$lib/state/theme.svelte';
 	import { LayoutDashboard } from "@lucide/svelte";
   import { page } from '$app/state';
@@ -10,6 +10,7 @@
     {Icon: LayoutDashboard, href: "/", title: "Dashboard"},
     {Icon: Bug, href: "/issues", title: "Issues"},
     {Icon: List, href: "/transactions", title: "Transactions"},
+    {Icon: Link2, href: "/connection", title: "Connection"},
   ]
 
 </script>

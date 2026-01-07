@@ -48,7 +48,7 @@ func (d dashboardController) GetDashboard(c *gin.Context) {
 	prevStart := now.Add(-48 * time.Hour)
 	prevEnd := start
 
-	metrics := make([]models.DashboardMetric, 0, 6)
+	metrics := make([]models.DashboardMetric, 0, 11)
 
 	// 1. Requests count
 	requestsTrend, err := repositories.TransactionRepository.CountByHour(c, projectId, start, now)
@@ -89,22 +89,72 @@ func (d dashboardController) GetDashboard(c *gin.Context) {
 	metrics = append(metrics, buildMetric("error_rate", "Error Rate", errorRateCurrent, "%", errorRateTrend, errorRatePrev, "error_rate"))
 
 	// 5. CPU Usage
-	cpuTrend, err := repositories.MetricRecordRepository.GetAverageByHour(c, projectId, "cpu", start, now)
+	cpuTrend, err := repositories.MetricRecordRepository.GetAverageByHour(c, projectId, models.MetricNameCpuUsage, start, now)
 	if err != nil {
 		panic(err)
 	}
 	cpuCurrent := getLastValue(cpuTrend)
-	cpuPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, "cpu", prevStart, prevEnd)
+	cpuPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameCpuUsage, prevStart, prevEnd)
 	metrics = append(metrics, buildMetric("cpu_usage", "CPU Usage", cpuCurrent, "%", cpuTrend, cpuPrev, "cpu"))
 
-	// 6. Memory Usage
-	memTrend, err := repositories.MetricRecordRepository.GetAverageByHour(c, projectId, "ram", start, now)
+	// 6. Memory Usage (MB)
+	memTrend, err := repositories.MetricRecordRepository.GetAverageByHour(c, projectId, models.MetricNameMemoryUsage, start, now)
 	if err != nil {
 		panic(err)
 	}
 	memCurrent := getLastValue(memTrend)
-	memPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, "ram", prevStart, prevEnd)
+	memPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameMemoryUsage, prevStart, prevEnd)
 	metrics = append(metrics, buildMetric("memory_usage", "Memory Usage", memCurrent, "MB", memTrend, memPrev, "memory"))
+
+	// 7. Memory Usage Percentage
+	memPcntTrend, err := repositories.MetricRecordRepository.GetAverageByHour(c, projectId, models.MetricNameMemoryUsagePcnt, start, now)
+	if err != nil {
+		panic(err)
+	}
+	memPcntCurrent := getLastValue(memPcntTrend)
+	memPcntPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameMemoryUsagePcnt, prevStart, prevEnd)
+	metrics = append(metrics, buildMetric("memory_usage_pcnt", "Memory %", memPcntCurrent, "%", memPcntTrend, memPcntPrev, "memory_pcnt"))
+
+	// 8. Go Routines
+	goRoutinesTrend, err := repositories.MetricRecordRepository.GetAverageByHour(c, projectId, models.MetricNameGoRoutines, start, now)
+	if err != nil {
+		panic(err)
+	}
+	goRoutinesCurrent := getLastValue(goRoutinesTrend)
+	goRoutinesPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameGoRoutines, prevStart, prevEnd)
+	metrics = append(metrics, buildMetric("go_routines", "Go Routines", goRoutinesCurrent, "", goRoutinesTrend, goRoutinesPrev, "go_routines"))
+
+	// 9. Heap Objects
+	heapObjectsTrend, err := repositories.MetricRecordRepository.GetAverageByHour(c, projectId, models.MetricNameHeapObjects, start, now)
+	if err != nil {
+		panic(err)
+	}
+	heapObjectsCurrent := getLastValue(heapObjectsTrend)
+	heapObjectsPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameHeapObjects, prevStart, prevEnd)
+	metrics = append(metrics, buildMetric("heap_objects", "Heap Objects", heapObjectsCurrent, "", heapObjectsTrend, heapObjectsPrev, "heap_objects"))
+
+	// 10. Num GC
+	numGCTrend, err := repositories.MetricRecordRepository.GetAverageByHour(c, projectId, models.MetricNameNumGC, start, now)
+	if err != nil {
+		panic(err)
+	}
+	numGCCurrent := getLastValue(numGCTrend)
+	numGCPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameNumGC, prevStart, prevEnd)
+	metrics = append(metrics, buildMetric("num_gc", "GC Cycles", numGCCurrent, "", numGCTrend, numGCPrev, "num_gc"))
+
+	// 11. GC Pause Total (convert from nanoseconds to milliseconds)
+	gcPauseTrend, err := repositories.MetricRecordRepository.GetAverageByHour(c, projectId, models.MetricNameGCPauseTotal, start, now)
+	if err != nil {
+		panic(err)
+	}
+	// Convert nanoseconds to milliseconds for display
+	for i := range gcPauseTrend {
+		gcPauseTrend[i].Value = gcPauseTrend[i].Value / 1_000_000
+	}
+	gcPauseCurrent := getLastValue(gcPauseTrend)
+	gcPausePrevRaw, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameGCPauseTotal, prevStart, prevEnd)
+	gcPausePrev := gcPausePrevRaw / 1_000_000
+	metrics = append(metrics, buildMetric("gc_pause", "GC Pause", gcPauseCurrent, "ms", gcPauseTrend, gcPausePrev, "gc_pause"))
 
 	c.JSON(http.StatusOK, models.DashboardResponse{
 		Metrics:     metrics,
@@ -185,12 +235,39 @@ func calculateStatus(value float64, metricType string) string {
 		}
 		return "healthy"
 	case "memory":
-		// Higher is worse for memory
+		// Higher is worse for memory (MB)
 		if value > 900 {
 			return "critical"
 		} else if value > 700 {
 			return "warning"
 		}
+		return "healthy"
+	case "memory_pcnt":
+		// Higher is worse for memory percentage
+		if value > 90 {
+			return "critical"
+		} else if value > 70 {
+			return "warning"
+		}
+		return "healthy"
+	case "go_routines":
+		// Higher may indicate goroutine leaks
+		if value > 10000 {
+			return "critical"
+		} else if value > 5000 {
+			return "warning"
+		}
+		return "healthy"
+	case "heap_objects":
+		// Higher may indicate memory pressure
+		if value > 1000000 {
+			return "critical"
+		} else if value > 500000 {
+			return "warning"
+		}
+		return "healthy"
+	case "num_gc", "gc_pause":
+		// These are informational, always healthy
 		return "healthy"
 	}
 	return "healthy"

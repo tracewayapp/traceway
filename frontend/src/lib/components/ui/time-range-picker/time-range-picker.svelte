@@ -215,7 +215,7 @@
 
 <Popover.Root bind:open={isOpen} onOpenChange={handleOpenChange}>
     <Popover.Trigger>
-        <Button variant="outline" class="h-9 min-w-[340px] justify-between gap-2 font-normal">
+        <Button variant="outline" class="h-9 justify-between gap-2 font-normal">
             <span class="flex items-center gap-2">
                 <Clock class="h-4 w-4 text-muted-foreground" />
                 <span class="truncate">{displayLabel()}</span>

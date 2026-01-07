@@ -9,11 +9,39 @@
 	import { api } from '$lib/api';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import { projectsState } from '$lib/state/projects.svelte';
+	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
+	import { CalendarDate, getLocalTimeZone, today } from '@internationalized/date';
 
 	let dashboardData = $state<DashboardData | null>(null);
 	let loading = $state(true);
 	let error = $state('');
 	let errorStatus = $state<number>(0);
+
+	// Date Range State - default to last 24 hours
+	let fromDate = $state<CalendarDate>(today(getLocalTimeZone()).subtract({ days: 1 }));
+	let toDate = $state<CalendarDate>(today(getLocalTimeZone()));
+	let fromTime = $state('00:00');
+	let toTime = $state('23:59');
+	let sharedTimeDomain = $state<[Date, Date] | null>(null);
+
+	// Combine date and time into ISO datetime string
+	function getFromDateTime(): string {
+		const dateStr = `${fromDate.year}-${String(fromDate.month).padStart(2, '0')}-${String(fromDate.day).padStart(2, '0')}`;
+		return `${dateStr}T${fromTime || '00:00'}`;
+	}
+
+	function getToDateTime(): string {
+		const dateStr = `${toDate.year}-${String(toDate.month).padStart(2, '0')}-${String(toDate.day).padStart(2, '0')}`;
+		return `${dateStr}T${toTime || '23:59'}`;
+	}
+
+	function handleTimeRangeChange(from: { date: CalendarDate; time: string }, to: { date: CalendarDate; time: string }) {
+		fromDate = from.date;
+		fromTime = from.time;
+		toDate = to.date;
+		toTime = to.time;
+		loadDashboard();
+	}
 
 	async function loadDashboard() {
 		loading = true;
@@ -21,7 +49,17 @@
 		errorStatus = 0;
 
 		try {
-			const response = await api.get('/dashboard', { projectId: projectsState.currentProjectId ?? undefined });
+			const fromDateTime = new Date(getFromDateTime());
+			const toDateTime = new Date(getToDateTime());
+
+			// Store shared time domain for charts
+			sharedTimeDomain = [fromDateTime, toDateTime];
+
+			// Build query params for date range
+			const dateParams = `fromDate=${fromDateTime.toISOString()}&toDate=${toDateTime.toISOString()}`;
+			const response = await api.get(`/dashboard?${dateParams}`, {
+				projectId: projectsState.currentProjectId ?? undefined
+			});
 
 			// Transform the API response to match the DashboardData type
 			// Convert timestamp strings to Date objects
@@ -69,17 +107,25 @@
 
 <div class="space-y-4">
 	<!-- Header -->
-	<div class="flex items-center justify-between">
+	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 		<div>
 			<h2 class="text-3xl font-bold tracking-tight">Metrics</h2>
 			{#if dashboardData}
 				<p class="mt-1 text-sm text-muted-foreground">Last updated: {lastUpdatedFormatted}</p>
 			{/if}
 		</div>
-		<Button variant="outline" size="sm" onclick={loadDashboard} disabled={loading}>
-			<RefreshCw class="mr-2 h-4 w-4 {loading ? 'animate-spin' : ''}" />
-			Refresh
-		</Button>
+		<div class="flex items-center gap-2">
+			<TimeRangePicker
+				bind:fromDate
+				bind:toDate
+				bind:fromTime
+				bind:toTime
+				onApply={handleTimeRangeChange}
+			/>
+			<Button variant="outline" size="sm" onclick={loadDashboard} disabled={loading}>
+				<RefreshCw class="h-4 w-4 {loading ? 'animate-spin' : ''}" />
+			</Button>
+		</div>
 	</div>
 
 	{#if error && !loading}
@@ -93,9 +139,9 @@
 
 	<!-- Metrics Grid -->
 	{#if !error}
-	<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
 		{#if loading}
-			{#each Array(6) as _}
+			{#each Array(11) as _}
 				<Card>
 					<CardContent class="flex gap-3 flex-col">
 						<div class="flex items-center justify-between">
@@ -110,7 +156,7 @@
 			{/each}
 		{:else if dashboardData}
 			{#each dashboardData.metrics as metric (metric.id)}
-				<MetricCard {metric} />
+				<MetricCard {metric} timeDomain={sharedTimeDomain} />
 			{/each}
 		{/if}
 	</div>

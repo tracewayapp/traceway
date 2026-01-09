@@ -64,9 +64,10 @@ func New(app, connectionString string, options ...func(*traceway.TracewayOptions
 
 		// Create request-scoped scope with defaults
 		scope := traceway.NewScope()
-		scope.SetTag("server_name", cachedHostname)
-		scope.SetTag("user_agent", c.Request.UserAgent())
-		scope.SetTag("environment", cachedEnvironment)
+
+		// We won't store tags by default for now
+		// scope.SetTag("server_name", cachedHostname)
+		// scope.SetTag("environment", cachedEnvironment)
 
 		// Store scope in both gin.Context and request context
 		ctx := context.WithValue(c.Request.Context(), string(traceway.CtxScopeKey), scope)
@@ -100,7 +101,9 @@ func New(app, connectionString string, options ...func(*traceway.TracewayOptions
 		traceway.CaptureTransactionWithScope(transactionId, transactionEndpoint, duration, start, statusCode, bodySize, clientIP, scope.GetTags())
 
 		if stackTraceFormatted != nil {
-			traceway.CaptureTransactionExceptionWithScope(transactionId, *stackTraceFormatted, scope.GetTags())
+			exceptionTags := scope.GetTags()
+			exceptionTags["user_agent"] = c.Request.UserAgent() // we'll only store the user agent IF an exception happens
+			traceway.CaptureTransactionExceptionWithScope(transactionId, *stackTraceFormatted, exceptionTags)
 		}
 	}
 }

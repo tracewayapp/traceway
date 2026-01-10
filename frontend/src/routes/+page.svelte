@@ -150,6 +150,7 @@
 			</div>
 			<div class="rounded-md border overflow-hidden">
 				<Table.Root>
+					{#if loading || (data?.worstEndpoints && data.worstEndpoints.length > 0)}
 					<Table.Header>
 						<Table.Row class="hover:bg-transparent">
 							<Table.Head class="h-10 text-sm">
@@ -219,6 +220,7 @@
 							</Table.Head>
 						</Table.Row>
 					</Table.Header>
+					{/if}
 					<Table.Body>
 						{#if loading}
 							{#each Array(4) as _}
@@ -292,6 +294,7 @@
 			</div>
 			<div class="rounded-md border overflow-hidden">
 				<Table.Root>
+					{#if loading || (data?.recentIssues && data.recentIssues.length > 0)}
 					<Table.Header>
 						<Table.Row class="hover:bg-transparent">
 							<Table.Head class="h-10 text-sm">
@@ -335,6 +338,7 @@
 							</Table.Head>
 						</Table.Row>
 					</Table.Header>
+					{/if}
 					<Table.Body>
 						{#if loading}
 							{#each Array(4) as _}

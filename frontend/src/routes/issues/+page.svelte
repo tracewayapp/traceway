@@ -237,6 +237,7 @@
 
     <div class="rounded-md border overflow-hidden">
         <Table.Root>
+            {#if loading || exceptions.length > 0}
             <Table.Header>
                 <Table.Row>
                     <Table.Head class="w-[40px] pl-4">
@@ -252,6 +253,7 @@
                     <Table.Head class="w-[180px]">Last Seen</Table.Head>
                 </Table.Row>
             </Table.Header>
+            {/if}
             <Table.Body>
                 {#if loading}
                      {#each Array(5) as _}

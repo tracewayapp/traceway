@@ -13,19 +13,21 @@ import (
 type transactionController struct{}
 
 type TransactionSearchRequest struct {
-	ProjectId  string           `json:"projectId"`
-	FromDate   time.Time        `json:"fromDate"`
-	ToDate     time.Time        `json:"toDate"`
-	OrderBy    string           `json:"orderBy"`
-	Pagination PaginationParams `json:"pagination"`
+	ProjectId     string           `json:"projectId"`
+	FromDate      time.Time        `json:"fromDate"`
+	ToDate        time.Time        `json:"toDate"`
+	OrderBy       string           `json:"orderBy"`
+	SortDirection string           `json:"sortDirection"`
+	Pagination    PaginationParams `json:"pagination"`
 }
 
 type EndpointTransactionsRequest struct {
-	ProjectId  string           `json:"projectId"`
-	FromDate   time.Time        `json:"fromDate"`
-	ToDate     time.Time        `json:"toDate"`
-	OrderBy    string           `json:"orderBy"`
-	Pagination PaginationParams `json:"pagination"`
+	ProjectId     string           `json:"projectId"`
+	FromDate      time.Time        `json:"fromDate"`
+	ToDate        time.Time        `json:"toDate"`
+	OrderBy       string           `json:"orderBy"`
+	SortDirection string           `json:"sortDirection"`
+	Pagination    PaginationParams `json:"pagination"`
 }
 
 func (e transactionController) FindAllTransactions(c *gin.Context) {
@@ -58,7 +60,7 @@ func (e transactionController) FindGroupedByEndpoint(c *gin.Context) {
 		return
 	}
 
-	stats, total, err := repositories.TransactionRepository.FindGroupedByEndpoint(c, request.ProjectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy)
+	stats, total, err := repositories.TransactionRepository.FindGroupedByEndpoint(c, request.ProjectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
 	if err != nil {
 		panic(err)
 	}
@@ -93,7 +95,7 @@ func (e transactionController) FindByEndpoint(c *gin.Context) {
 		return
 	}
 
-	transactions, total, err := repositories.TransactionRepository.FindByEndpoint(c, request.ProjectId, endpoint, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy)
+	transactions, total, err := repositories.TransactionRepository.FindByEndpoint(c, request.ProjectId, endpoint, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
 	if err != nil {
 		panic(err)
 	}

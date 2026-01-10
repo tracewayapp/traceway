@@ -6,7 +6,7 @@
     import { Button } from "$lib/components/ui/button";
     import { Skeleton } from "$lib/components/ui/skeleton";
     import * as Select from "$lib/components/ui/select";
-    import { ArrowUpDown, ArrowDown } from "@lucide/svelte";
+    import { ArrowUpDown, ArrowDown, ArrowUp } from "@lucide/svelte";
     import { TimeRangePicker } from "$lib/components/ui/time-range-picker";
     import { CalendarDate, getLocalTimeZone, today } from "@internationalized/date";
     import { projectsState } from '$lib/state/projects.svelte';
@@ -21,6 +21,7 @@
     };
 
     type SortField = 'count' | 'p50_duration' | 'p95_duration' | 'last_seen' | 'impact';
+    type SortDirection = 'asc' | 'desc';
 
     let endpoints = $state<EndpointStats[]>([]);
     let loading = $state(true);
@@ -38,8 +39,9 @@
     let fromTime = $state('00:00');
     let toTime = $state('23:59');
 
-    // Sorting - default to impact
+    // Sorting - default to impact descending
     let orderBy = $state<SortField>('impact');
+    let sortDirection = $state<SortDirection>('desc');
 
     // Page size options
     const pageSizeOptions = [
@@ -82,6 +84,16 @@
         }
     }
 
+    // Format count with k/m suffixes
+    function formatCount(count: number): string {
+        if (count >= 1_000_000) {
+            return `${(count / 1_000_000).toFixed(1)}m`;
+        } else if (count >= 1_000) {
+            return `${(count / 1_000).toFixed(1)}k`;
+        }
+        return count.toLocaleString();
+    }
+
     // Calculate impact score based on call volume and response time variance
     function calculateImpact(count: number, p50: number, p95: number): { score: number; level: 'critical' | 'high' | 'medium' | 'low' } {
         const varianceMs = (p95 - p50) / 1_000_000;
@@ -111,6 +123,7 @@
                 fromDate: new Date(getFromDateTime()).toISOString(),
                 toDate: new Date(getToDateTime()).toISOString(),
                 orderBy: orderBy,
+                sortDirection: sortDirection,
                 pagination: {
                     page: page,
                     pageSize: pageSize
@@ -144,7 +157,14 @@
     }
 
     function handleSort(field: SortField) {
-        orderBy = field;
+        if (orderBy === field) {
+            // Toggle direction if clicking the same field
+            sortDirection = sortDirection === 'desc' ? 'asc' : 'desc';
+        } else {
+            // New field, default to descending
+            orderBy = field;
+            sortDirection = 'desc';
+        }
         page = 1;
         loadData();
     }
@@ -178,6 +198,7 @@
     <!-- Endpoints Table -->
     <div class="rounded-md border overflow-hidden">
         <Table.Root>
+            {#if loading || endpoints.length > 0}
             <Table.Header>
                 <Table.Row>
                     <Table.Head>Endpoint</Table.Head>
@@ -190,7 +211,11 @@
                         >
                             Calls
                             {#if orderBy === 'count'}
-                                <ArrowDown class="ml-2 h-4 w-4" />
+                                {#if sortDirection === 'desc'}
+                                    <ArrowDown class="ml-2 h-4 w-4" />
+                                {:else}
+                                    <ArrowUp class="ml-2 h-4 w-4" />
+                                {/if}
                             {:else}
                                 <ArrowUpDown class="ml-2 h-4 w-4" />
                             {/if}
@@ -205,7 +230,11 @@
                         >
                             Typical
                             {#if orderBy === 'p50_duration'}
-                                <ArrowDown class="ml-2 h-4 w-4" />
+                                {#if sortDirection === 'desc'}
+                                    <ArrowDown class="ml-2 h-4 w-4" />
+                                {:else}
+                                    <ArrowUp class="ml-2 h-4 w-4" />
+                                {/if}
                             {:else}
                                 <ArrowUpDown class="ml-2 h-4 w-4" />
                             {/if}
@@ -220,7 +249,11 @@
                         >
                             Slow
                             {#if orderBy === 'p95_duration'}
-                                <ArrowDown class="ml-2 h-4 w-4" />
+                                {#if sortDirection === 'desc'}
+                                    <ArrowDown class="ml-2 h-4 w-4" />
+                                {:else}
+                                    <ArrowUp class="ml-2 h-4 w-4" />
+                                {/if}
                             {:else}
                                 <ArrowUpDown class="ml-2 h-4 w-4" />
                             {/if}
@@ -235,7 +268,11 @@
                         >
                             Impact
                             {#if orderBy === 'impact'}
-                                <ArrowDown class="ml-2 h-4 w-4" />
+                                {#if sortDirection === 'desc'}
+                                    <ArrowDown class="ml-2 h-4 w-4" />
+                                {:else}
+                                    <ArrowUp class="ml-2 h-4 w-4" />
+                                {/if}
                             {:else}
                                 <ArrowUpDown class="ml-2 h-4 w-4" />
                             {/if}
@@ -243,6 +280,7 @@
                     </Table.Head>
                 </Table.Row>
             </Table.Header>
+            {/if}
             <Table.Body>
                 {#if loading}
                     {#each Array(5) as _}
@@ -277,7 +315,7 @@
                                 {endpoint.endpoint}
                             </Table.Cell>
                             <Table.Cell class="tabular-nums">
-                                {endpoint.count.toLocaleString()}
+                                {formatCount(endpoint.count)}
                             </Table.Cell>
                             <Table.Cell class="font-mono text-sm tabular-nums">
                                 {formatDuration(endpoint.p50Duration)}

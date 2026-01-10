@@ -81,7 +81,7 @@ func (e *transactionRepository) FindAll(ctx context.Context, projectId string, f
 	return transactions, int64(count), nil
 }
 
-func (e *transactionRepository) FindGroupedByEndpoint(ctx context.Context, projectId string, fromDate, toDate time.Time, page, pageSize int, orderBy string) ([]models.EndpointStats, int64, error) {
+func (e *transactionRepository) FindGroupedByEndpoint(ctx context.Context, projectId string, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.EndpointStats, int64, error) {
 	// Count unique endpoints
 	var count uint64
 	err := (*chdb.Conn).QueryRow(ctx, "SELECT uniq(endpoint) FROM transactions WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, fromDate, toDate).Scan(&count)
@@ -103,7 +103,13 @@ func (e *transactionRepository) FindGroupedByEndpoint(ctx context.Context, proje
 
 	orderExpr, ok := orderByMap[orderBy]
 	if !ok {
-		orderExpr = "impact" // Default to impact
+		orderExpr = orderByMap["impact"] // Default to impact expression
+	}
+
+	// Validate sort direction
+	sortDir := "DESC"
+	if sortDirection == "asc" {
+		sortDir = "ASC"
 	}
 
 	query := `SELECT
@@ -116,7 +122,7 @@ func (e *transactionRepository) FindGroupedByEndpoint(ctx context.Context, proje
 	FROM transactions
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY endpoint
-	ORDER BY ` + orderExpr + ` DESC
+	ORDER BY ` + orderExpr + ` ` + sortDir + `
 	LIMIT ? OFFSET ?`
 
 	rows, err := (*chdb.Conn).Query(ctx, query, projectId, fromDate, toDate, pageSize, offset)
@@ -141,7 +147,7 @@ func (e *transactionRepository) FindGroupedByEndpoint(ctx context.Context, proje
 	return stats, int64(count), nil
 }
 
-func (e *transactionRepository) FindByEndpoint(ctx context.Context, projectId string, endpoint string, fromDate, toDate time.Time, page, pageSize int, orderBy string) ([]models.Transaction, int64, error) {
+func (e *transactionRepository) FindByEndpoint(ctx context.Context, projectId string, endpoint string, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.Transaction, int64, error) {
 	var count uint64
 	err := (*chdb.Conn).QueryRow(ctx, "SELECT count() FROM transactions WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, endpoint, fromDate, toDate).Scan(&count)
 	if err != nil {
@@ -161,7 +167,13 @@ func (e *transactionRepository) FindByEndpoint(ctx context.Context, projectId st
 		orderBy = "recorded_at"
 	}
 
-	query := "SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, scope FROM transactions WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " DESC LIMIT ? OFFSET ?"
+	// Validate sort direction
+	sortDir := "DESC"
+	if sortDirection == "asc" {
+		sortDir = "ASC"
+	}
+
+	query := "SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, scope FROM transactions WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " " + sortDir + " LIMIT ? OFFSET ?"
 	rows, err := (*chdb.Conn).Query(ctx, query, projectId, endpoint, fromDate, toDate, pageSize, offset)
 	if err != nil {
 		return nil, 0, err

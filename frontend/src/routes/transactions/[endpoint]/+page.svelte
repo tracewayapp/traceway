@@ -6,7 +6,7 @@
     import { Button } from "$lib/components/ui/button";
     import { Skeleton } from "$lib/components/ui/skeleton";
     import { TimeRangePicker } from "$lib/components/ui/time-range-picker";
-    import { ArrowLeft, ArrowUpDown, ArrowDown } from "@lucide/svelte";
+    import { ArrowLeft, ArrowUpDown, ArrowDown, ArrowUp } from "@lucide/svelte";
     import { CalendarDate, getLocalTimeZone, today } from "@internationalized/date";
     import { ErrorDisplay } from "$lib/components/ui/error-display";
     import { projectsState } from '$lib/state/projects.svelte';
@@ -24,6 +24,7 @@
     };
 
     type SortField = 'recorded_at' | 'duration' | 'status_code' | 'body_size';
+    type SortDirection = 'asc' | 'desc';
 
     let { data } = $props();
 
@@ -47,6 +48,7 @@
 
     // Sorting State
     let orderBy = $state<SortField>('recorded_at');
+    let sortDirection = $state<SortDirection>('desc');
 
     // Combine date and time into ISO datetime string
     function getFromDateTime(): string {
@@ -112,6 +114,7 @@
                 fromDate: new Date(getFromDateTime()).toISOString(),
                 toDate: new Date(getToDateTime()).toISOString(),
                 orderBy: orderBy,
+                sortDirection: sortDirection,
                 pagination: {
                     page: page,
                     pageSize: pageSize
@@ -144,7 +147,14 @@
     }
 
     function handleSort(field: SortField) {
-        orderBy = field;
+        if (orderBy === field) {
+            // Toggle direction if clicking the same field
+            sortDirection = sortDirection === 'desc' ? 'asc' : 'desc';
+        } else {
+            // New field, default to descending
+            orderBy = field;
+            sortDirection = 'desc';
+        }
         page = 1;
         loadData();
     }
@@ -218,8 +228,9 @@
     </div>
 
     <!-- Transactions Table -->
-    <div class="rounded-md border">
+    <div class="rounded-md border overflow-hidden">
         <Table.Root>
+            {#if loading || transactions.length > 0}
             <Table.Header>
                 <Table.Row>
                     <Table.Head class="w-[180px]">
@@ -231,7 +242,11 @@
                         >
                             Recorded At
                             {#if orderBy === 'recorded_at'}
-                                <ArrowDown class="ml-2 h-4 w-4" />
+                                {#if sortDirection === 'desc'}
+                                    <ArrowDown class="ml-2 h-4 w-4" />
+                                {:else}
+                                    <ArrowUp class="ml-2 h-4 w-4" />
+                                {/if}
                             {:else}
                                 <ArrowUpDown class="ml-2 h-4 w-4" />
                             {/if}
@@ -246,7 +261,11 @@
                         >
                             Duration
                             {#if orderBy === 'duration'}
-                                <ArrowDown class="ml-2 h-4 w-4" />
+                                {#if sortDirection === 'desc'}
+                                    <ArrowDown class="ml-2 h-4 w-4" />
+                                {:else}
+                                    <ArrowUp class="ml-2 h-4 w-4" />
+                                {/if}
                             {:else}
                                 <ArrowUpDown class="ml-2 h-4 w-4" />
                             {/if}
@@ -261,7 +280,11 @@
                         >
                             Status
                             {#if orderBy === 'status_code'}
-                                <ArrowDown class="ml-2 h-4 w-4" />
+                                {#if sortDirection === 'desc'}
+                                    <ArrowDown class="ml-2 h-4 w-4" />
+                                {:else}
+                                    <ArrowUp class="ml-2 h-4 w-4" />
+                                {/if}
                             {:else}
                                 <ArrowUpDown class="ml-2 h-4 w-4" />
                             {/if}
@@ -276,7 +299,11 @@
                         >
                             Body Size
                             {#if orderBy === 'body_size'}
-                                <ArrowDown class="ml-2 h-4 w-4" />
+                                {#if sortDirection === 'desc'}
+                                    <ArrowDown class="ml-2 h-4 w-4" />
+                                {:else}
+                                    <ArrowUp class="ml-2 h-4 w-4" />
+                                {/if}
                             {:else}
                                 <ArrowUpDown class="ml-2 h-4 w-4" />
                             {/if}
@@ -286,6 +313,7 @@
                     <Table.Head>Context</Table.Head>
                 </Table.Row>
             </Table.Header>
+            {/if}
             <Table.Body>
                 {#if loading}
                     {#each Array(5) as _}

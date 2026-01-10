@@ -173,14 +173,16 @@
                 <Card.Description>When this exception happened ({total} total)</Card.Description>
             </Card.Header>
             <Card.Content>
-                <div class="rounded-md border">
+                <div class="rounded-md border overflow-hidden">
                     <Table.Root>
+                        {#if occurrences.length > 0}
                         <Table.Header>
                             <Table.Row>
                                 <Table.Head>Recorded At</Table.Head>
                                 <Table.Head>Transaction ID</Table.Head>
                             </Table.Row>
                         </Table.Header>
+                        {/if}
                         <Table.Body>
                             {#if occurrences.length === 0}
                                 <Table.Row>

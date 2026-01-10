@@ -40,6 +40,8 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/transactions/grouped", middleware.UseAppAuth, TransactionController.FindGroupedByEndpoint)
 	router.POST("/transactions/endpoint", middleware.UseAppAuth, TransactionController.FindByEndpoint)
 	router.POST("/exception-stack-traces", middleware.UseAppAuth, ExceptionStackTraceController.FindGrouppedExceptionStackTraces)
+	router.POST("/exception-stack-traces/archive", middleware.UseAppAuth, ExceptionStackTraceController.ArchiveExceptions)
+	router.POST("/exception-stack-traces/unarchive", middleware.UseAppAuth, ExceptionStackTraceController.UnarchiveExceptions)
 	router.POST("/exception-stack-traces/:hash", middleware.UseAppAuth, ExceptionStackTraceController.FindByHash)
 
 	// Auth

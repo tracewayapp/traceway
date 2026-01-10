@@ -7,7 +7,15 @@
     import { Button } from "$lib/components/ui/button";
     import * as Select from "$lib/components/ui/select";
     import { Skeleton } from "$lib/components/ui/skeleton";
+    import { Checkbox } from "$lib/components/ui/checkbox";
     import { projectsState } from '$lib/state/projects.svelte';
+    import IssueTrendChart from '$lib/components/issue-trend-chart.svelte';
+    import Archive from "@lucide/svelte/icons/archive";
+
+    type ExceptionTrendPoint = {
+        timestamp: string;
+        count: number;
+    };
 
     type ExceptionGroup = {
         exceptionHash: string;
@@ -15,18 +23,27 @@
         lastSeen: string;
         firstSeen: string;
         count: number;
+        hourlyTrend: ExceptionTrendPoint[];
     };
 
     let exceptions = $state<ExceptionGroup[]>([]);
     let loading = $state(true);
     let error = $state('');
+    let archiving = $state(false);
 
     // Pagination State
     let page = $state(1);
     let pageSize = $state(10);
     let total = $state(0);
     let totalPages = $state(0);
-    let selectedCount = $state(0); // For row selection tracking
+
+    // Selection State
+    let selectedHashes = $state<Set<string>>(new Set());
+
+    // Derived selection states
+    const selectedCount = $derived(selectedHashes.size);
+    const allSelected = $derived(exceptions.length > 0 && selectedHashes.size === exceptions.length);
+    const someSelected = $derived(selectedHashes.size > 0 && selectedHashes.size < exceptions.length);
 
     // Filters
     let searchQuery = $state('');
@@ -50,6 +67,7 @@
     const daysBackLabel = $derived(daysOptions.find(o => o.value === daysBack)?.label ?? "Select period");
     const pageSizeLabel = $derived(pageSizeOptions.find(o => o.value === pageSize.toString())?.label ?? pageSize.toString());
 
+    
     async function loadData() {
         loading = true;
         error = '';
@@ -67,7 +85,8 @@
                     page: page,
                     pageSize: pageSize
                 },
-                search: searchQuery.trim()
+                search: searchQuery.trim(),
+                includeArchived: false
             };
 
             const response = await api.post('/exception-stack-traces', requestBody, { projectId: projectsState.currentProjectId ?? undefined });
@@ -76,6 +95,9 @@
             total = response.pagination.total;
             totalPages = response.pagination.totalPages;
 
+            // Clear selection when data changes
+            selectedHashes = new Set();
+
         } catch (e: any) {
             console.error(e);
             error = e.message || 'Failed to load data';
@@ -83,12 +105,6 @@
             loading = false;
         }
     }
-
-    // $effect(() => {
-    //     if (page || daysBack) {
-    //         loadData();
-    //     }
-    // });
 
     function handlePageChange(newPage: number) {
         if (newPage >= 1 && newPage <= totalPages) {
@@ -99,7 +115,7 @@
 
     function handlePageSizeChange(newPageSize: string) {
         pageSize = parseInt(newPageSize);
-        page = 1; // Reset to first page when changing page size
+        page = 1;
         loadData();
     }
 
@@ -109,9 +125,52 @@
     function handleSearchInput() {
         if (searchTimeout) clearTimeout(searchTimeout);
         searchTimeout = setTimeout(() => {
-            page = 1; // Reset to page 1 on new search
+            page = 1;
             loadData();
         }, 300);
+    }
+
+    // Selection handlers
+    function toggleSelectAll() {
+        if (allSelected) {
+            selectedHashes = new Set();
+        } else {
+            selectedHashes = new Set(exceptions.map(e => e.exceptionHash));
+        }
+    }
+
+    function toggleSelect(hash: string) {
+        const newSet = new Set(selectedHashes);
+        if (newSet.has(hash)) {
+            newSet.delete(hash);
+        } else {
+            newSet.add(hash);
+        }
+        selectedHashes = newSet;
+    }
+
+    function isSelected(hash: string): boolean {
+        return selectedHashes.has(hash);
+    }
+
+    // Archive handler
+    async function archiveSelected() {
+        if (selectedHashes.size === 0) return;
+
+        archiving = true;
+        try {
+            await api.post('/exception-stack-traces/archive', {
+                hashes: Array.from(selectedHashes)
+            }, { projectId: projectsState.currentProjectId ?? undefined });
+
+            selectedHashes = new Set();
+            await loadData();
+        } catch (e: any) {
+            console.error('Archive failed:', e);
+            error = e.message || 'Failed to archive issues';
+        } finally {
+            archiving = false;
+        }
     }
 
     onMount(() => {
@@ -152,50 +211,105 @@
         </div>
     </div>
 
+    <!-- Archive Toolbar - shown when items selected -->
+    {#if selectedCount > 0}
+        <div class="flex items-center gap-3 p-3 bg-muted/50 border rounded-lg animate-in fade-in slide-in-from-top-1 duration-200">
+            <span class="text-sm font-medium">{selectedCount} issue{selectedCount === 1 ? '' : 's'} selected</span>
+            <Button
+                variant="outline"
+                size="sm"
+                onclick={archiveSelected}
+                disabled={archiving}
+                class="gap-1.5"
+            >
+                <Archive class="h-4 w-4" />
+                {archiving ? 'Archiving...' : 'Archive'}
+            </Button>
+            <Button
+                variant="ghost"
+                size="sm"
+                onclick={() => selectedHashes = new Set()}
+            >
+                Clear selection
+            </Button>
+        </div>
+    {/if}
+
     <div class="rounded-md border overflow-hidden">
         <Table.Root>
             <Table.Header>
                 <Table.Row>
-                    <Table.Head class="w-[30px]"></Table.Head>
+                    <Table.Head class="w-[40px] pl-4">
+                        <Checkbox
+                            checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                            onCheckedChange={toggleSelectAll}
+                            aria-label="Select all"
+                        />
+                    </Table.Head>
                     <Table.Head>Issue</Table.Head>
-                    <Table.Head class="w-[100px]">Count</Table.Head>
-                    <Table.Head class="w-[200px]">Last Seen</Table.Head>
+                    <Table.Head class="w-[190px]">Trend</Table.Head>
+                    <Table.Head class="w-[80px] text-right">Events</Table.Head>
+                    <Table.Head class="w-[180px]">Last Seen</Table.Head>
                 </Table.Row>
             </Table.Header>
             <Table.Body>
                 {#if loading}
                      {#each Array(5) as _}
                         <Table.Row>
-                            <Table.Cell><Skeleton class="h-4 w-[30px]" /></Table.Cell>
+                            <Table.Cell class="pl-4"><Skeleton class="h-4 w-4" /></Table.Cell>
                             <Table.Cell><Skeleton class="h-4 w-[250px]" /></Table.Cell>
-                            <Table.Cell><Skeleton class="h-4 w-[40px]" /></Table.Cell>
-                            <Table.Cell><Skeleton class="h-4 w-[150px]" /></Table.Cell>
+                            <Table.Cell><Skeleton class="h-7 w-[176px]" /></Table.Cell>
+                            <Table.Cell><Skeleton class="h-4 w-[40px] ml-auto" /></Table.Cell>
+                            <Table.Cell><Skeleton class="h-4 w-[120px]" /></Table.Cell>
                         </Table.Row>
                      {/each}
                 {:else if error}
                     <Table.Row>
-                        <Table.Cell colspan={4} class="h-24 text-center text-red-500">
+                        <Table.Cell colspan={5} class="h-24 text-center text-red-500">
                             {error}
                         </Table.Cell>
                     </Table.Row>
                 {:else if exceptions.length === 0}
                     <Table.Row>
-                        <Table.Cell colspan={4} class="h-24 text-center">
+                        <Table.Cell colspan={5} class="h-24 text-center text-muted-foreground">
                             No issues found.
                         </Table.Cell>
                     </Table.Row>
                 {:else}
-                    {#each exceptions as exception}
+                    {#each exceptions as exception (exception.exceptionHash)}
                         <Table.Row
-                            class="cursor-pointer hover:bg-muted/50"
-                            onclick={() => goto(`/issues/${exception.exceptionHash}`)}
+                            class="cursor-pointer hover:bg-muted/50 group"
+                            data-state={isSelected(exception.exceptionHash) ? "selected" : undefined}
                         >
-                            <Table.Cell class="font-medium truncate max-w-[30px]"></Table.Cell>
-                            <Table.Cell class="truncate" title={exception.stackTrace}>
-                                {exception.stackTrace.split('\n')[0]}
+                            <Table.Cell class="pl-4" onclick={(e) => e.stopPropagation()}>
+                                <Checkbox
+                                    checked={isSelected(exception.exceptionHash)}
+                                    onCheckedChange={() => toggleSelect(exception.exceptionHash)}
+                                    aria-label="Select row"
+                                />
                             </Table.Cell>
-                            <Table.Cell>{exception.count}</Table.Cell>
-                            <Table.Cell>{new Date(exception.lastSeen).toLocaleString()}</Table.Cell>
+                            <Table.Cell
+                                class="font-mono text-sm truncate max-w-[400px]"
+                                title={exception.stackTrace}
+                                onclick={() => goto(`/issues/${exception.exceptionHash}`)}
+                            >
+                                <span class="text-foreground">{exception.stackTrace.split('\n')[0]}</span>
+                            </Table.Cell>
+                            <Table.Cell onclick={() => goto(`/issues/${exception.exceptionHash}`)}>
+                                <IssueTrendChart trend={exception.hourlyTrend || []} />
+                            </Table.Cell>
+                            <Table.Cell
+                                class="text-right tabular-nums font-medium"
+                                onclick={() => goto(`/issues/${exception.exceptionHash}`)}
+                            >
+                                {exception.count.toLocaleString()}
+                            </Table.Cell>
+                            <Table.Cell
+                                class="text-muted-foreground"
+                                onclick={() => goto(`/issues/${exception.exceptionHash}`)}
+                            >
+                                {new Date(exception.lastSeen).toLocaleString()}
+                            </Table.Cell>
                         </Table.Row>
                     {/each}
                 {/if}
@@ -206,7 +320,11 @@
     <!-- Pagination Footer -->
     <div class="flex items-center justify-between px-2">
         <div class="flex-1 text-sm text-muted-foreground">
-            {selectedCount} of {total} row(s) selected.
+            {#if selectedCount > 0}
+                {selectedCount} of {total} row(s) selected.
+            {:else}
+                {total} issue{total === 1 ? '' : 's'} total
+            {/if}
         </div>
         <div class="flex items-center space-x-6 lg:space-x-8">
             <div class="flex items-center space-x-2">

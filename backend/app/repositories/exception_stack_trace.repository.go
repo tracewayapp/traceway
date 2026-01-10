@@ -38,7 +38,7 @@ func (e *exceptionStackTraceRepository) CountBetween(ctx context.Context, projec
 	return int64(count), err
 }
 
-func (e *exceptionStackTraceRepository) FindGrouped(ctx context.Context, projectId string, fromDate, toDate time.Time, page, pageSize int, orderBy string, search string) ([]models.ExceptionGroup, int64, error) {
+func (e *exceptionStackTraceRepository) FindGrouped(ctx context.Context, projectId string, fromDate, toDate time.Time, page, pageSize int, orderBy string, search string, includeArchived bool) ([]models.ExceptionGroup, int64, error) {
 	offset := (page - 1) * pageSize
 
 	allowedOrderBy := map[string]bool{
@@ -51,13 +51,19 @@ func (e *exceptionStackTraceRepository) FindGrouped(ctx context.Context, project
 		orderBy = "count"
 	}
 
-	// Build WHERE clause dynamically based on search
+	// Build WHERE clause dynamically based on search and archive filter
 	whereClause := "project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
 	args := []interface{}{projectId, fromDate, toDate}
 
 	if search != "" {
 		whereClause += " AND positionCaseInsensitive(stack_trace, ?) > 0"
 		args = append(args, search)
+	}
+
+	// Filter out archived exceptions unless includeArchived is true
+	if !includeArchived {
+		whereClause += " AND exception_hash NOT IN (SELECT exception_hash FROM archived_exceptions FINAL WHERE project_id = ?)"
+		args = append(args, projectId)
 	}
 
 	// Count unique hashes with search filter
@@ -157,6 +163,83 @@ func (e *exceptionStackTraceRepository) CountByHour(ctx context.Context, project
 	}
 
 	return points, nil
+}
+
+// GetHourlyTrendForHashes returns hourly counts for specific exception hashes
+func (e *exceptionStackTraceRepository) GetHourlyTrendForHashes(ctx context.Context, projectId string, hashes []string, start, end time.Time) (map[string][]models.ExceptionTrendPoint, error) {
+	if len(hashes) == 0 {
+		return make(map[string][]models.ExceptionTrendPoint), nil
+	}
+
+	query := `SELECT
+		exception_hash,
+		toStartOfHour(recorded_at) as hour,
+		count() as count
+	FROM exception_stack_traces
+	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? AND exception_hash IN (?)
+	GROUP BY exception_hash, hour
+	ORDER BY exception_hash, hour ASC`
+
+	rows, err := (*chdb.Conn).Query(ctx, query, projectId, start, end, hashes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string][]models.ExceptionTrendPoint)
+	for rows.Next() {
+		var hash string
+		var point models.ExceptionTrendPoint
+		if err := rows.Scan(&hash, &point.Timestamp, &point.Count); err != nil {
+			return nil, err
+		}
+		result[hash] = append(result[hash], point)
+	}
+
+	return result, nil
+}
+
+// ArchiveByHashes archives exceptions by their hashes
+func (e *exceptionStackTraceRepository) ArchiveByHashes(ctx context.Context, projectId string, hashes []string) error {
+	if len(hashes) == 0 {
+		return nil
+	}
+
+	batch, err := (*chdb.Conn).PrepareBatch(ctx, "INSERT INTO archived_exceptions (project_id, exception_hash)")
+	if err != nil {
+		return err
+	}
+
+	for _, hash := range hashes {
+		if err := batch.Append(projectId, hash); err != nil {
+			return err
+		}
+	}
+
+	return batch.Send()
+}
+
+// UnarchiveByHashes removes exceptions from the archive
+func (e *exceptionStackTraceRepository) UnarchiveByHashes(ctx context.Context, projectId string, hashes []string) error {
+	if len(hashes) == 0 {
+		return nil
+	}
+
+	// In ClickHouse, we use ALTER TABLE DELETE for removing rows
+	query := "ALTER TABLE archived_exceptions DELETE WHERE project_id = ? AND exception_hash IN (?)"
+	return (*chdb.Conn).Exec(ctx, query, projectId, hashes)
+}
+
+// IsArchived checks if a specific exception hash is archived
+func (e *exceptionStackTraceRepository) IsArchived(ctx context.Context, projectId string, hash string) (bool, error) {
+	var count uint64
+	err := (*chdb.Conn).QueryRow(ctx,
+		"SELECT count() FROM archived_exceptions FINAL WHERE project_id = ? AND exception_hash = ?",
+		projectId, hash).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 var ExceptionStackTraceRepository = exceptionStackTraceRepository{}

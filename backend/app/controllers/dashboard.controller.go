@@ -23,7 +23,7 @@ func (d dashboardController) GetDashboardOverview(c *gin.Context) {
 	start := now.Add(-24 * time.Hour)
 
 	// Get last 10 issues in the last 24 hours
-	recentIssues, _, err := repositories.ExceptionStackTraceRepository.FindGrouped(c, projectId, start, now, 1, 10, "last_seen", "")
+	recentIssues, _, err := repositories.ExceptionStackTraceRepository.FindGrouped(c, projectId, start, now, 1, 10, "last_seen", "", false)
 	if err != nil {
 		panic(err)
 	}

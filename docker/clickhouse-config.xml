@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<clickhouse>
+    <!-- Listen on localhost only for security -->
+    <listen_host>127.0.0.1</listen_host>
+
+    <!-- Native protocol port -->
+    <tcp_port>9000</tcp_port>
+
+    <!-- HTTP interface (for debugging) -->
+    <http_port>8123</http_port>
+
+    <!-- Data and log directories -->
+    <path>/var/lib/clickhouse/</path>
+    <tmp_path>/var/lib/clickhouse/tmp/</tmp_path>
+    <user_files_path>/var/lib/clickhouse/user_files/</user_files_path>
+    <format_schema_path>/var/lib/clickhouse/format_schemas/</format_schema_path>
+
+    <!-- Logging -->
+    <logger>
+        <level>information</level>
+        <log>/var/log/clickhouse-server/clickhouse-server.log</log>
+        <errorlog>/var/log/clickhouse-server/clickhouse-server.err.log</errorlog>
+        <size>100M</size>
+        <count>3</count>
+    </logger>
+
+    <!-- Memory limits for container -->
+    <max_server_memory_usage_to_ram_ratio>0.8</max_server_memory_usage_to_ram_ratio>
+
+    <!-- Mark cache size (5GB) -->
+    <mark_cache_size>5368709120</mark_cache_size>
+
+    <!-- Disable distributed DDL for single-node -->
+    <distributed_ddl>
+        <path>/clickhouse/task_queue/ddl</path>
+    </distributed_ddl>
+</clickhouse>

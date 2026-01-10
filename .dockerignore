@@ -1,0 +1,40 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Node
+frontend/node_modules
+frontend/.svelte-kit
+
+# Go
+backend/vendor
+
+# Build artifacts (will be rebuilt in Docker)
+frontend/build
+
+# Documentation
+*.md
+
+# Environment files (use .env.docker instead)
+backend/.env
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+
+# Claude plans
+.claude/

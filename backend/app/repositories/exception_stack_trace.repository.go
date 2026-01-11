@@ -55,33 +55,56 @@ func (e *exceptionStackTraceRepository) FindGrouped(ctx context.Context, project
 		orderBy = "count"
 	}
 
-	// Build WHERE clause dynamically based on search and archive filter
-	whereClause := "project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
+	// Build WHERE clause dynamically based on search filter
+	whereClause := "e.project_id = ? AND e.recorded_at >= ? AND e.recorded_at <= ?"
 	args := []interface{}{projectId, fromDate, toDate}
 
 	if search != "" {
-		whereClause += " AND positionCaseInsensitive(stack_trace, ?) > 0"
+		whereClause += " AND positionCaseInsensitive(e.stack_trace, ?) > 0"
 		args = append(args, search)
 	}
 
-	// Filter out archived exceptions unless includeArchived is true
+	// Build HAVING clause for archive filtering
+	// Show exceptions if: not archived OR last occurrence is after archive time
+	havingClause := ""
 	if !includeArchived {
-		whereClause += " AND exception_hash NOT IN (SELECT exception_hash FROM archived_exceptions FINAL WHERE project_id = ?)"
-		args = append(args, projectId)
+		havingClause = " HAVING any(a.archived_at) IS NULL OR max(e.recorded_at) > any(a.archived_at)"
 	}
 
-	// Count unique hashes with search filter
-	countQuery := "SELECT uniq(exception_hash) FROM exception_stack_traces WHERE " + whereClause
+	// Subquery to get max archived_at per exception hash
+	archiveSubquery := `LEFT JOIN (
+		SELECT exception_hash, max(archived_at) as archived_at
+		FROM archived_exceptions FINAL
+		WHERE project_id = ?
+		GROUP BY exception_hash
+	) a ON e.exception_hash = a.exception_hash`
+
+	// Count query needs to wrap the grouped query to apply HAVING filter correctly
+	countQuery := `SELECT count() FROM (
+		SELECT e.exception_hash
+		FROM exception_stack_traces e
+		` + archiveSubquery + `
+		WHERE ` + whereClause + `
+		GROUP BY e.exception_hash` + havingClause + `
+	)`
+
+	countArgs := append([]interface{}{projectId}, args...)
 	var count uint64
-	err := (*chdb.Conn).QueryRow(ctx, countQuery, args...).Scan(&count)
+	err := (*chdb.Conn).QueryRow(ctx, countQuery, countArgs...).Scan(&count)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	// Main query with search filter
-	fullQuery := "SELECT exception_hash, any(stack_trace), max(recorded_at) as last_seen, min(recorded_at) as first_seen, count() as count FROM exception_stack_traces WHERE " + whereClause + " GROUP BY exception_hash ORDER BY " + orderBy + " DESC LIMIT ? OFFSET ?"
+	// Main query with archive-aware filtering
+	fullQuery := `SELECT e.exception_hash, any(e.stack_trace), max(e.recorded_at) as last_seen, min(e.recorded_at) as first_seen, count() as count
+		FROM exception_stack_traces e
+		` + archiveSubquery + `
+		WHERE ` + whereClause + `
+		GROUP BY e.exception_hash` + havingClause + `
+		ORDER BY ` + orderBy + ` DESC LIMIT ? OFFSET ?`
 
-	queryArgs := append(args, pageSize, offset)
+	queryArgs := append([]interface{}{projectId}, args...)
+	queryArgs = append(queryArgs, pageSize, offset)
 	rows, err := (*chdb.Conn).Query(ctx, fullQuery, queryArgs...)
 	if err != nil {
 		return nil, 0, err

@@ -109,7 +109,7 @@
 					</Button>
 				</div>
 			</header>
-			<main class="flex-1 p-4">
+			<main class="flex-1 min-w-0 p-4">
 				{@render children()}
 			</main>
 		</Sidebar.SidebarInset>

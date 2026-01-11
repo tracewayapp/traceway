@@ -111,7 +111,7 @@ func main() {
         const base = 'go get github.com/traceway-io/go-client';
         switch (framework) {
             case 'gin':
-                return `${base}\ngo get github.com/gin-gonic/gin`;
+                return `${base}`;
             case 'fiber':
             case 'chi':
             case 'fasthttp':
@@ -184,7 +184,7 @@ func main() {
             </CardContent>
         </Card>
     {:else if projectWithToken}
-        <Card>
+        <!-- <Card>
             <CardHeader>
                 <CardTitle>Project Token</CardTitle>
                 <CardDescription>
@@ -231,7 +231,7 @@ func main() {
                     </div>
                 </div>
             </CardContent>
-        </Card>
+        </Card> -->
 
         <Card>
             <CardHeader>
@@ -260,7 +260,7 @@ func main() {
                             {/if}
                         </Button>
                     </div>
-                    <div class="rounded-lg overflow-hidden text-sm {themeState.isDark ? 'dark-code' : 'light-code'}">
+                    <div class="rounded-lg overflow-x-auto text-sm {themeState.isDark ? 'dark-code' : 'light-code'}">
                         <Highlight language={go} code={sdkCode} />
                     </div>
                 </div>
@@ -291,7 +291,7 @@ func main() {
                             {/if}
                         </Button>
                     </div>
-                    <div class="rounded-lg overflow-hidden text-sm {themeState.isDark ? 'dark-code' : 'light-code'}">
+                    <div class="rounded-lg overflow-x-auto text-sm {themeState.isDark ? 'dark-code' : 'light-code'}">
                         <Highlight language={bash} code={installCommand} />
                     </div>
                 </div>

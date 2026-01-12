@@ -11,7 +11,7 @@
     import { Skeleton } from "$lib/components/ui/skeleton";
     import { ErrorDisplay } from "$lib/components/ui/error-display";
     import { projectsState } from '$lib/state/projects.svelte';
-    import { CircleHelp } from "lucide-svelte";
+    import { CircleQuestionMark } from "lucide-svelte";
     import * as Tooltip from "$lib/components/ui/tooltip";
 
     type ExceptionGroup = {
@@ -173,7 +173,7 @@
                                 Recorded At
                                 <Tooltip.Root>
                                     <Tooltip.Trigger>
-                                        <CircleHelp class="h-3.5 w-3.5 text-muted-foreground/60" />
+                                        <CircleQuestionMark class="h-3.5 w-3.5 text-muted-foreground/60" />
                                     </Tooltip.Trigger>
                                     <Tooltip.Content>
                                         <p class="text-xs">When this occurrence was recorded</p>
@@ -186,7 +186,7 @@
                                 Server
                                 <Tooltip.Root>
                                     <Tooltip.Trigger>
-                                        <CircleHelp class="h-3.5 w-3.5 text-muted-foreground/60" />
+                                        <CircleQuestionMark class="h-3.5 w-3.5 text-muted-foreground/60" />
                                     </Tooltip.Trigger>
                                     <Tooltip.Content>
                                         <p class="text-xs">Server instance where error occurred</p>
@@ -199,7 +199,7 @@
                                 Transaction
                                 <Tooltip.Root>
                                     <Tooltip.Trigger>
-                                        <CircleHelp class="h-3.5 w-3.5 text-muted-foreground/60" />
+                                        <CircleQuestionMark class="h-3.5 w-3.5 text-muted-foreground/60" />
                                     </Tooltip.Trigger>
                                     <Tooltip.Content>
                                         <p class="text-xs">Transaction ID if this occurred during a request</p>

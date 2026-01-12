@@ -6,7 +6,7 @@
     import { Button } from "$lib/components/ui/button";
     import { LoadingCircle } from "$lib/components/ui/loading-circle";
     import * as Select from "$lib/components/ui/select";
-    import { ArrowUpDown, ArrowDown, ArrowUp, TriangleAlert, CircleHelp } from "@lucide/svelte";
+    import { ArrowUpDown, ArrowDown, ArrowUp, TriangleAlert, CircleQuestionMark } from "@lucide/svelte";
     import * as Tooltip from "$lib/components/ui/tooltip";
     import { TimeRangePicker } from "$lib/components/ui/time-range-picker";
     import { CalendarDate, getLocalTimeZone, today } from "@internationalized/date";
@@ -310,10 +310,10 @@
     });
 </script>
 
-<div class="space-y-6">
+<div class="space-y-4">
     <!-- Header with Title and Time Range Filter -->
     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h2 class="text-3xl font-bold tracking-tight">Transactions</h2>
+        <h2 class="text-2xl font-bold tracking-tight">Transactions</h2>
         <TimeRangePicker
             bind:fromDate
             bind:toDate
@@ -361,7 +361,7 @@
                             Endpoint
                             <Tooltip.Root>
                                 <Tooltip.Trigger>
-                                    <CircleHelp class="h-3.5 w-3.5 text-muted-foreground/60" />
+                                    <CircleQuestionMark class="h-3.5 w-3.5 text-muted-foreground/60" />
                                 </Tooltip.Trigger>
                                 <Tooltip.Content>
                                     <p class="text-xs">The API route or page being accessed</p>
@@ -390,7 +390,7 @@
                             </Button>
                             <Tooltip.Root>
                                 <Tooltip.Trigger>
-                                    <CircleHelp class="h-3.5 w-3.5 text-muted-foreground/60" />
+                                    <CircleQuestionMark class="h-3.5 w-3.5 text-muted-foreground/60" />
                                 </Tooltip.Trigger>
                                 <Tooltip.Content>
                                     <p class="text-xs">Total number of requests</p>
@@ -419,7 +419,7 @@
                             </Button>
                             <Tooltip.Root>
                                 <Tooltip.Trigger>
-                                    <CircleHelp class="h-3.5 w-3.5 text-muted-foreground/60" />
+                                    <CircleQuestionMark class="h-3.5 w-3.5 text-muted-foreground/60" />
                                 </Tooltip.Trigger>
                                 <Tooltip.Content>
                                     <p class="text-xs">Median response time (P50)</p>
@@ -448,7 +448,7 @@
                             </Button>
                             <Tooltip.Root>
                                 <Tooltip.Trigger>
-                                    <CircleHelp class="h-3.5 w-3.5 text-muted-foreground/60" />
+                                    <CircleQuestionMark class="h-3.5 w-3.5 text-muted-foreground/60" />
                                 </Tooltip.Trigger>
                                 <Tooltip.Content>
                                     <p class="text-xs">95th percentile - slowest 5% of requests</p>
@@ -477,7 +477,7 @@
                             </Button>
                             <Tooltip.Root>
                                 <Tooltip.Trigger>
-                                    <CircleHelp class="h-3.5 w-3.5 text-muted-foreground/60" />
+                                    <CircleQuestionMark class="h-3.5 w-3.5 text-muted-foreground/60" />
                                 </Tooltip.Trigger>
                                 <Tooltip.Content>
                                     <p class="text-xs">Priority based on traffic × response time variance</p>

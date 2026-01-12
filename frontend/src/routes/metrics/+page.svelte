@@ -6,7 +6,12 @@
 	import { RefreshCw } from 'lucide-svelte';
 	import MetricCard from '$lib/components/dashboard/metric-card.svelte';
 	import ServerFilter from '$lib/components/dashboard/server-filter.svelte';
-	import type { DashboardData, DashboardMetric, ServerMetricTrend, MetricTrendPoint } from '$lib/types/dashboard';
+	import type {
+		DashboardData,
+		DashboardMetric,
+		ServerMetricTrend,
+		MetricTrendPoint
+	} from '$lib/types/dashboard';
 	import { Card, CardContent } from '$lib/components/ui/card';
 	import { api } from '$lib/api';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
@@ -38,7 +43,7 @@
 		'3d': 4320,
 		'7d': 10080,
 		'1M': 43200,
-		'3M': 129600,
+		'3M': 129600
 	};
 
 	// Calculate time range from preset
@@ -50,7 +55,12 @@
 	}
 
 	// Parse URL params
-	function parseUrlParams(): { preset: string | null; from: Date | null; to: Date | null; servers: string[] } {
+	function parseUrlParams(): {
+		preset: string | null;
+		from: Date | null;
+		to: Date | null;
+		servers: string[];
+	} {
 		if (!browser) return { preset: '6h', from: null, to: null, servers: [] };
 		const params = new URLSearchParams(window.location.search);
 		const presetParam = params.get('preset');
@@ -59,7 +69,7 @@
 		const serversParam = params.get('servers');
 
 		// Parse servers from URL
-		const servers = serversParam ? serversParam.split(',').filter(s => s.length > 0) : [];
+		const servers = serversParam ? serversParam.split(',').filter((s) => s.length > 0) : [];
 
 		// If preset is specified, use it
 		if (presetParam && presetMinutes[presetParam]) {
@@ -167,7 +177,11 @@
 		return `${dateStr}T${toTime || '23:59'}`;
 	}
 
-	function handleTimeRangeChange(from: { date: CalendarDate; time: string }, to: { date: CalendarDate; time: string }, preset: string | null) {
+	function handleTimeRangeChange(
+		from: { date: CalendarDate; time: string },
+		to: { date: CalendarDate; time: string },
+		preset: string | null
+	) {
 		fromDate = from.date;
 		fromTime = from.time;
 		toDate = to.date;
@@ -224,29 +238,34 @@
 			// Transform the API response to match the DashboardData type
 			// Convert timestamp strings to Date objects
 			// Handle case where metrics might be null/undefined (no data)
-			const metrics: DashboardMetric[] = (response.metrics && Array.isArray(response.metrics))
-				? response.metrics.map((m: any) => ({
-					id: m.id,
-					name: m.name,
-					value: m.value,
-					unit: m.unit,
-					trend: (m.trend || []).map((t: any) => ({
-						timestamp: new Date(t.timestamp),
-						value: t.value
-					})),
-					change24h: m.change24h,
-					status: m.status,
-					// Include per-server data if available
-					servers: m.servers?.map((s: any): ServerMetricTrend => ({
-						serverName: s.serverName,
-						value: s.value,
-						trend: (s.trend || []).map((t: any): MetricTrendPoint => ({
-							timestamp: new Date(t.timestamp),
-							value: t.value
+			const metrics: DashboardMetric[] =
+				response.metrics && Array.isArray(response.metrics)
+					? response.metrics.map((m: any) => ({
+							id: m.id,
+							name: m.name,
+							value: m.value,
+							unit: m.unit,
+							trend: (m.trend || []).map((t: any) => ({
+								timestamp: new Date(t.timestamp),
+								value: t.value
+							})),
+							change24h: m.change24h,
+							status: m.status,
+							// Include per-server data if available
+							servers: m.servers?.map(
+								(s: any): ServerMetricTrend => ({
+									serverName: s.serverName,
+									value: s.value,
+									trend: (s.trend || []).map(
+										(t: any): MetricTrendPoint => ({
+											timestamp: new Date(t.timestamp),
+											value: t.value
+										})
+									)
+								})
+							)
 						}))
-					}))
-				}))
-				: [];
+					: [];
 
 			dashboardData = {
 				metrics,
@@ -290,7 +309,7 @@
 	<!-- Header -->
 	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 		<div>
-			<h2 class="text-3xl font-bold tracking-tight">Metrics</h2>
+			<h2 class="text-2xl font-bold tracking-tight">Metrics</h2>
 			{#if dashboardData}
 				<p class="mt-1 text-sm text-muted-foreground">Last updated: {lastUpdatedFormatted}</p>
 			{/if}
@@ -319,7 +338,13 @@
 
 	{#if error && !loading}
 		<ErrorDisplay
-			status={errorStatus === 404 ? 404 : errorStatus === 400 ? 400 : errorStatus === 422 ? 422 : 400}
+			status={errorStatus === 404
+				? 404
+				: errorStatus === 400
+					? 400
+					: errorStatus === 422
+						? 422
+						: 400}
 			title="Failed to Load Metrics"
 			description={error}
 			onRetry={() => loadDashboard()}
@@ -328,16 +353,21 @@
 
 	<!-- Metrics Grid -->
 	{#if !error}
-	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-		{#if loading}
-			<div class="col-span-full flex justify-center items-center py-20">
-				<LoadingCircle size="xlg" />
-			</div>
-		{:else if dashboardData}
-			{#each dashboardData.metrics as metric (metric.id)}
-				<MetricCard {metric} timeDomain={sharedTimeDomain} onRangeSelect={handleChartRangeSelect} {serverColorMap} />
-			{/each}
-		{/if}
-	</div>
+		<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+			{#if loading}
+				<div class="col-span-full flex items-center justify-center py-20">
+					<LoadingCircle size="xlg" />
+				</div>
+			{:else if dashboardData}
+				{#each dashboardData.metrics as metric (metric.id)}
+					<MetricCard
+						{metric}
+						timeDomain={sharedTimeDomain}
+						onRangeSelect={handleChartRangeSelect}
+						{serverColorMap}
+					/>
+				{/each}
+			{/if}
+		</div>
 	{/if}
 </div>

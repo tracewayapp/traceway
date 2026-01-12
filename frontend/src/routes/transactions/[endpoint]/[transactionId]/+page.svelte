@@ -105,7 +105,7 @@
 			<h2 class="font-mono text-2xl font-bold tracking-tight">
 				{decodeURIComponent(data.endpoint)}
 			</h2>
-			<p class="text-muted-foreground text-sm">Transaction ID: {data.transactionId}</p>
+			<p class="text-sm text-muted-foreground">Transaction ID: {data.transactionId}</p>
 		</div>
 	</div>
 
@@ -125,7 +125,7 @@
 			status={404}
 			title="Transaction Not Found"
 			description="The transaction you're looking for doesn't exist or may have expired."
-			backHref={backHref}
+			{backHref}
 			backLabel="Back to Endpoint"
 			onRetry={loadData}
 			identifier={data.transactionId}
@@ -135,48 +135,73 @@
 			status={400}
 			title="Failed to Load Transaction"
 			description={error}
-			backHref={backHref}
+			{backHref}
 			backLabel="Back to Endpoint"
 			onRetry={loadData}
 		/>
 	{:else if response}
-		<!-- Transaction Summary Card -->
+		<!-- Transaction Details Card -->
 		<Card.Root>
 			<Card.Header>
 				<Card.Title>Transaction Details</Card.Title>
-				<Card.Description>
-					Recorded: {new Date(response.transaction.recordedAt).toLocaleString()}
-				</Card.Description>
+				<Card.Description>Details of this specific transaction occurrence</Card.Description>
 			</Card.Header>
-			<Card.Content>
+			<Card.Content class="space-y-6">
 				<div class="grid grid-cols-2 gap-4 md:grid-cols-4">
 					<div class="space-y-1">
-						<p class="text-muted-foreground text-sm">Duration</p>
-						<p class="font-mono text-lg">{formatDuration(response.transaction.duration)}</p>
+						<p class="text-sm text-muted-foreground">Endpoint</p>
+						<p class="truncate font-mono text-sm" title={decodeURIComponent(data.endpoint)}>
+							{decodeURIComponent(data.endpoint)}
+						</p>
 					</div>
 					<div class="space-y-1">
-						<p class="text-muted-foreground text-sm">Status</p>
-						<p class="font-mono text-lg {getStatusColor(response.transaction.statusCode)}">
+						<p class="text-sm text-muted-foreground">Status</p>
+						<p class="font-mono {getStatusColor(response.transaction.statusCode)}">
 							{response.transaction.statusCode}
 						</p>
 					</div>
 					<div class="space-y-1">
-						<p class="text-muted-foreground text-sm">Body Size</p>
-						<p class="font-mono">{formatBytes(response.transaction.bodySize)}</p>
+						<p class="text-sm text-muted-foreground">Duration</p>
+						<p class="font-mono">{formatDuration(response.transaction.duration)}</p>
 					</div>
 					<div class="space-y-1">
-						<p class="text-muted-foreground text-sm">Client IP</p>
-						<p class="font-mono">{response.transaction.clientIP || '-'}</p>
+						<p class="text-sm text-muted-foreground">Recorded At</p>
+						<p class="font-mono text-sm">
+							{new Date(response.transaction.recordedAt).toLocaleString()}
+						</p>
 					</div>
 					<div class="space-y-1">
-						<p class="text-muted-foreground text-sm">Server</p>
-						<p class="font-mono">{response.transaction.serverName || '-'}</p>
+						<p class="text-sm text-muted-foreground">Server</p>
+						<p class="font-mono text-sm">{response.transaction.serverName || '-'}</p>
 					</div>
 					<div class="space-y-1">
-						<p class="text-muted-foreground text-sm">Version</p>
-						<p class="font-mono">{response.transaction.appVersion || '-'}</p>
+						<p class="text-sm text-muted-foreground">Version</p>
+						<p class="font-mono text-sm">{response.transaction.appVersion || '-'}</p>
+					</div>
+					<div class="space-y-1">
+						<p class="text-sm text-muted-foreground">Client IP</p>
+						<p class="font-mono text-sm">{response.transaction.clientIP || '-'}</p>
+					</div>
+					<div class="space-y-1">
+						<p class="text-sm text-muted-foreground">Body Size</p>
+						<p class="font-mono text-sm">{formatBytes(response.transaction.bodySize)}</p>
 					</div>
 				</div>
+
+				{#if response.transaction.scope && Object.keys(response.transaction.scope).length > 0}
+					<hr class="border-border" />
+					<div>
+						<p class="mb-3 text-sm font-medium">Context</p>
+						<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+							{#each Object.entries(response.transaction.scope).sort( (a, b) => a[0].localeCompare(b[0]) ) as [key, value]}
+								<div class="flex flex-col gap-1 rounded-md bg-muted p-3">
+									<span class="text-xs font-medium text-muted-foreground">{key}</span>
+									<span class="font-mono text-sm break-all">{value}</span>
+								</div>
+							{/each}
+						</div>
+					</div>
+				{/if}
 			</Card.Content>
 		</Card.Root>
 
@@ -191,10 +216,19 @@
 					<Card.Description>This transaction resulted in an exception</Card.Description>
 				</Card.Header>
 				<Card.Content>
-					<div class="bg-muted rounded-md p-3 overflow-x-auto max-h-32 mb-4">
-						<pre class="text-sm font-mono whitespace-pre-wrap">{response.exception.stackTrace.split('\n').slice(0, 4).join('\n')}{response.exception.stackTrace.split('\n').length > 4 ? '\n...' : ''}</pre>
+					<div class="mb-4 max-h-32 overflow-x-auto rounded-md bg-muted p-3">
+						<pre class="font-mono text-sm whitespace-pre-wrap">{response.exception.stackTrace
+								.split('\n')
+								.slice(0, 4)
+								.join('\n')}{response.exception.stackTrace.split('\n').length > 4
+								? '\n...'
+								: ''}</pre>
 					</div>
-					<Button variant="outline" size="sm" onclick={() => goto(`/issues/${response!.exception!.exceptionHash}`)}>
+					<Button
+						variant="outline"
+						size="sm"
+						onclick={() => goto(`/issues/${response!.exception!.exceptionHash}`)}
+					>
 						View Full Exception
 						<ArrowRight class="ml-2 h-4 w-4" />
 					</Button>
@@ -226,25 +260,5 @@
 				{/if}
 			</Card.Content>
 		</Card.Root>
-
-		<!-- Context Card (if scope exists) -->
-		{#if response.transaction.scope && Object.keys(response.transaction.scope).length > 0}
-			<Card.Root>
-				<Card.Header>
-					<Card.Title>Context</Card.Title>
-					<Card.Description>Additional context captured with this transaction</Card.Description>
-				</Card.Header>
-				<Card.Content>
-					<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
-						{#each Object.entries(response.transaction.scope).sort((a, b) => a[0].localeCompare(b[0])) as [key, value]}
-							<div class="bg-muted flex flex-col gap-1 rounded-md p-3">
-								<span class="text-muted-foreground text-xs font-medium">{key}</span>
-								<span class="break-all font-mono text-sm">{value}</span>
-							</div>
-						{/each}
-					</div>
-				</Card.Content>
-			</Card.Root>
-		{/if}
 	{/if}
 </div>

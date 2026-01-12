@@ -39,6 +39,7 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/transactions", middleware.UseAppAuth, TransactionController.FindAllTransactions)
 	router.POST("/transactions/grouped", middleware.UseAppAuth, TransactionController.FindGroupedByEndpoint)
 	router.POST("/transactions/endpoint", middleware.UseAppAuth, TransactionController.FindByEndpoint)
+	router.POST("/transactions/:transactionId", middleware.UseAppAuth, TransactionDetailController.GetTransactionDetail)
 	router.POST("/exception-stack-traces", middleware.UseAppAuth, ExceptionStackTraceController.FindGrouppedExceptionStackTraces)
 	router.POST("/exception-stack-traces/archive", middleware.UseAppAuth, ExceptionStackTraceController.ArchiveExceptions)
 	router.POST("/exception-stack-traces/unarchive", middleware.UseAppAuth, ExceptionStackTraceController.UnarchiveExceptions)

@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { createRowClickHandler } from '$lib/utils/navigation';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import * as Table from '$lib/components/ui/table';
 	import * as Tooltip from '$lib/components/ui/tooltip';
-	import { ArrowRight, Info, Gauge, Bug, CircleQuestionMark } from 'lucide-svelte';
+	import { ArrowRight, Info, Gauge, Bug, CircleQuestionMark, TriangleAlert } from 'lucide-svelte';
 	import { api } from '$lib/api';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import { projectsState } from '$lib/state/projects.svelte';
@@ -84,31 +84,15 @@
 		}
 	}
 
-	// Calculate impact score based on call volume and response time variance
-	// Returns: { score: number, level: 'critical' | 'high' | 'medium' | 'low' }
-	function calculateImpact(count: number, p50: number, p95: number): { score: number; level: 'critical' | 'high' | 'medium' | 'low' } {
-		const varianceMs = (p95 - p50) / 1_000_000; // Convert to ms
+	// Calculate impact level based on call volume and response time variance
+	// Returns: 'critical' | 'high' | 'medium' | null (null = not significant)
+	function getImpactLevel(count: number, p50: number, p95: number): 'critical' | 'high' | 'medium' | null {
+		const varianceMs = (p95 - p50) / 1_000_000;
 		const score = count * varianceMs;
-
-		// Thresholds based on score (calls * variance_ms)
-		// Critical: >100 (e.g., 10 calls * 10ms variance)
-		// High: >10 (e.g., 10 calls * 1ms variance)
-		// Medium: >1 (e.g., 1 call * 1ms variance)
-		// Low: no meaningful variance
-		if (score > 100) return { score, level: 'critical' };
-		if (score > 10) return { score, level: 'high' };
-		if (score > 1) return { score, level: 'medium' };
-		return { score, level: 'low' };
-	}
-
-	function getImpactIndicator(count: number, p50: number, p95: number): { text: string; class: string } {
-		const { level } = calculateImpact(count, p50, p95);
-		switch (level) {
-			case 'critical': return { text: '!!!', class: 'text-red-500 font-bold' };
-			case 'high': return { text: '!!', class: 'text-orange-500 font-bold' };
-			case 'medium': return { text: '!', class: 'text-yellow-500 font-bold' };
-			default: return { text: '-', class: 'text-muted-foreground' };
-		}
+		if (score > 100) return 'critical';
+		if (score > 10) return 'high';
+		if (score > 1) return 'medium';
+		return null;
 	}
 
 	function truncateStackTrace(stackTrace: string): string {
@@ -132,7 +116,7 @@
 
 	{#if loading}
 		<div class="flex justify-center items-center py-20">
-			<LoadingCircle size="lg" />
+			<LoadingCircle size="xlg" />
 		</div>
 	{:else if !error}
 	<div class="space-y-8">
@@ -226,9 +210,10 @@
 					</Table.Header>
 					<Table.Body>
 						{#each data.worstEndpoints as endpoint}
+							{@const impactLevel = getImpactLevel(endpoint.count, endpoint.p50Duration, endpoint.p95Duration)}
 							<Table.Row
 								class="cursor-pointer hover:bg-muted/50"
-								onclick={() => goto(`/transactions/${encodeURIComponent(endpoint.endpoint)}`)}
+								onclick={createRowClickHandler(`/transactions/${encodeURIComponent(endpoint.endpoint)}`)}
 							>
 								<Table.Cell class="py-3 font-mono text-sm truncate max-w-[300px]" title={endpoint.endpoint}>
 									{endpoint.endpoint}
@@ -242,15 +227,28 @@
 								<Table.Cell class="py-3 text-right font-mono text-sm tabular-nums">
 									{formatDuration(endpoint.p95Duration)}
 								</Table.Cell>
-								{@const impact = getImpactIndicator(endpoint.count, endpoint.p50Duration, endpoint.p95Duration)}
-								<Table.Cell class="py-3 text-right font-mono text-sm tabular-nums">
-									<span class={impact.class}>{impact.text}</span>
+								<Table.Cell class="py-3 text-right">
+									{#if impactLevel === 'critical'}
+										<span class="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-600 dark:text-red-400">
+											<TriangleAlert class="h-3 w-3" />
+											Critical
+										</span>
+									{:else if impactLevel === 'high'}
+										<span class="inline-flex items-center gap-1 rounded-full bg-orange-500/15 px-2 py-0.5 text-xs font-medium text-orange-600 dark:text-orange-400">
+											<TriangleAlert class="h-3 w-3" />
+											High
+										</span>
+									{:else if impactLevel === 'medium'}
+										<span class="inline-flex items-center gap-1 rounded-full bg-yellow-500/15 px-2 py-0.5 text-xs font-medium text-yellow-600 dark:text-yellow-500">
+											Medium
+										</span>
+									{/if}
 								</Table.Cell>
 							</Table.Row>
 						{/each}
 						<Table.Row
 							class="cursor-pointer bg-muted/50 hover:bg-muted"
-							onclick={() => goto('/transactions')}
+							onclick={createRowClickHandler('/transactions')}
 						>
 							<Table.Cell colspan={5} class="py-2 text-center text-sm text-muted-foreground">
 								View all transactions <ArrowRight class="inline h-3.5 w-3.5" />
@@ -336,7 +334,7 @@
 						{#each data.recentIssues as issue}
 							<Table.Row
 								class="cursor-pointer hover:bg-muted/50"
-								onclick={() => goto(`/issues/${issue.exceptionHash}`)}
+								onclick={createRowClickHandler(`/issues/${issue.exceptionHash}`)}
 							>
 								<Table.Cell class="py-3 font-mono text-sm" title={issue.stackTrace}>
 									{truncateStackTrace(issue.stackTrace)}
@@ -351,7 +349,7 @@
 						{/each}
 						<Table.Row
 							class="cursor-pointer bg-muted/50 hover:bg-muted"
-							onclick={() => goto('/issues')}
+							onclick={createRowClickHandler('/issues')}
 						>
 							<Table.Cell colspan={3} class="py-2 text-center text-sm text-muted-foreground">
 								View all issues <ArrowRight class="inline h-3.5 w-3.5" />

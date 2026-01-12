@@ -32,11 +32,12 @@ type ClientMetricRecord struct {
 	RecordedAt time.Time `json:"recordedAt"`
 }
 
-func (c *ClientMetricRecord) ToMetricRecord() models.MetricRecord {
+func (c *ClientMetricRecord) ToMetricRecord(serverName string) models.MetricRecord {
 	return models.MetricRecord{
 		Name:       c.Name,
 		Value:      c.Value,
 		RecordedAt: c.RecordedAt,
+		ServerName: serverName,
 	}
 }
 
@@ -49,6 +50,7 @@ type ClientTransaction struct {
 	BodySize   int               `json:"bodySize"`
 	ClientIP   string            `json:"clientIP"`
 	Scope      map[string]string `json:"scope"`
+	Segments   []*ClientSegment  `json:"segments"`
 }
 
 func (c *ClientTransaction) ToTransaction(appVersion, serverName string) models.Transaction {
@@ -63,6 +65,24 @@ func (c *ClientTransaction) ToTransaction(appVersion, serverName string) models.
 		Scope:      c.Scope,
 		AppVersion: appVersion,
 		ServerName: serverName,
+	}
+}
+
+type ClientSegment struct {
+	Id        string        `json:"id"`
+	Name      string        `json:"name"`
+	StartTime time.Time     `json:"startTime"`
+	Duration  time.Duration `json:"duration"`
+}
+
+func (c *ClientSegment) ToSegment(transactionId string) models.Segment {
+	return models.Segment{
+		Id:            c.Id,
+		TransactionId: transactionId,
+		Name:          c.Name,
+		StartTime:     c.StartTime,
+		Duration:      c.Duration,
+		RecordedAt:    time.Now(),
 	}
 }
 

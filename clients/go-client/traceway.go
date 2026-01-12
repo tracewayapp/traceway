@@ -19,13 +19,14 @@ import (
 	"traceway/metrics/mem"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // Context key for scope
 type tracewayContextKey string
 
 const CtxScopeKey tracewayContextKey = "TRACEWAY_SCOPE"
-const CtxTransactionIdKey tracewayContextKey = "TRACEWAY_TRANSACTION_ID"
+const CtxTransactionKey tracewayContextKey = "TRACEWAY_TRANSACTION"
 
 // Scope holds contextual data for exceptions and transactions
 type Scope struct {
@@ -79,6 +80,27 @@ func (s *Scope) Clear() {
 // Global default scope
 var defaultScope = NewScope()
 
+// TransactionContext holds transaction data including segments
+type TransactionContext struct {
+	Id       string
+	Segments []Segment
+	mu       sync.Mutex
+}
+
+// AddSegment adds a segment to the transaction context
+func (t *TransactionContext) AddSegment(seg Segment) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.Segments = append(t.Segments, seg)
+}
+
+// GetSegments returns a copy of segments
+func (t *TransactionContext) GetSegments() []Segment {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.Segments
+}
+
 // ConfigureScope modifies the global default scope (persistent changes)
 func ConfigureScope(fn func(*Scope)) {
 	fn(defaultScope)
@@ -113,9 +135,17 @@ func GetScopeFromGin(c *gin.Context) *Scope {
 	return GetScopeFromContext(c.Request.Context())
 }
 
-func GetTransactionIdFromContext(ctx context.Context) *string {
-	if val, ok := ctx.Value(string(CtxTransactionIdKey)).(*string); ok {
+// GetTransactionFromContext retrieves the transaction context
+func GetTransactionFromContext(ctx context.Context) *TransactionContext {
+	if val, ok := ctx.Value(string(CtxTransactionKey)).(*TransactionContext); ok {
 		return val
+	}
+	return nil
+}
+
+func GetTransactionIdFromContext(ctx context.Context) *string {
+	if txn := GetTransactionFromContext(ctx); txn != nil {
+		return &txn.Id
 	}
 	return nil
 }
@@ -234,6 +264,41 @@ type Transaction struct {
 	BodySize   int               `json:"bodySize"`
 	ClientIP   string            `json:"clientIP"`
 	Scope      map[string]string `json:"scope,omitempty"`
+	Segments   []Segment         `json:"segments,omitempty"`
+}
+
+// Segment represents a timed slice within a transaction
+type Segment struct {
+	Id        string        `json:"id"`
+	Name      string        `json:"name"`
+	StartTime time.Time     `json:"startTime"`
+	Duration  time.Duration `json:"duration"`
+}
+
+// ActiveSegment is a running segment that can be ended
+type ActiveSegment struct {
+	segment   Segment
+	txn       *TransactionContext
+	startedAt time.Time
+	ended     bool
+	mu        sync.Mutex
+}
+
+// End completes the segment and records its duration
+func (s *ActiveSegment) End() {
+	if s == nil || s.txn == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.ended {
+		return // Already ended
+	}
+
+	s.ended = true
+	s.segment.Duration = time.Since(s.startedAt)
+	s.txn.AddSegment(s.segment)
 }
 
 type CollectionFrame struct {
@@ -617,19 +682,19 @@ func CaptureMetric(name string, value float64) {
 
 // CaptureTransaction captures a transaction without scope (backward compatible)
 func CaptureTransaction(
-	transactionId string,
+	txn *TransactionContext,
 	endpoint string,
 	d time.Duration,
 	startedAt time.Time,
 	statusCode, bodySize int,
 	clientIP string,
 ) {
-	CaptureTransactionWithScope(transactionId, endpoint, d, startedAt, statusCode, bodySize, clientIP, nil)
+	CaptureTransactionWithScope(txn, endpoint, d, startedAt, statusCode, bodySize, clientIP, nil)
 }
 
 // CaptureTransactionWithScope captures a transaction with scope
 func CaptureTransactionWithScope(
-	transactionId string,
+	txn *TransactionContext,
 	endpoint string,
 	d time.Duration,
 	startedAt time.Time,
@@ -637,10 +702,13 @@ func CaptureTransactionWithScope(
 	clientIP string,
 	scope map[string]string,
 ) {
+	if txn == nil {
+		return
+	}
 	collectionFrameStore.messageQueue <- CollectionFrameMessage{
 		msgType: CollectionFrameMessageTypeTransaction,
 		transaction: &Transaction{
-			Id:         transactionId,
+			Id:         txn.Id,
 			Endpoint:   endpoint,
 			Duration:   d,
 			RecordedAt: startedAt,
@@ -648,7 +716,26 @@ func CaptureTransactionWithScope(
 			BodySize:   bodySize,
 			ClientIP:   clientIP,
 			Scope:      scope,
+			Segments:   txn.GetSegments(),
 		},
+	}
+}
+
+// StartSegment starts a segment using transaction ID from context
+func StartSegment(ctx context.Context, name string) *ActiveSegment {
+	txn := GetTransactionFromContext(ctx)
+	if txn == nil {
+		return nil
+	}
+	now := time.Now()
+	return &ActiveSegment{
+		segment: Segment{
+			Id:        uuid.NewString(),
+			Name:      name,
+			StartTime: now,
+		},
+		txn:       txn,
+		startedAt: now,
 	}
 }
 

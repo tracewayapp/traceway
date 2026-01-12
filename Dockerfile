@@ -18,6 +18,10 @@ RUN npm ci
 
 # Copy source and build
 COPY frontend/ ./
+
+# Set the API URL for the frontend build (baked in at build time)
+ENV VITE_API_URL=https://tracewayapp.com
+
 RUN npm run build
 
 # ==============================================================================

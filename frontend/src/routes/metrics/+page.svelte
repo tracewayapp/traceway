@@ -5,18 +5,27 @@
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { RefreshCw } from 'lucide-svelte';
 	import MetricCard from '$lib/components/dashboard/metric-card.svelte';
-	import type { DashboardData, DashboardMetric } from '$lib/types/dashboard';
+	import ServerFilter from '$lib/components/dashboard/server-filter.svelte';
+	import type { DashboardData, DashboardMetric, ServerMetricTrend, MetricTrendPoint } from '$lib/types/dashboard';
 	import { Card, CardContent } from '$lib/components/ui/card';
 	import { api } from '$lib/api';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
 	import { CalendarDate } from '@internationalized/date';
+	import { getServerColorMap } from '$lib/utils/server-colors';
 
 	let dashboardData = $state<DashboardData | null>(null);
 	let loading = $state(true);
 	let error = $state('');
 	let errorStatus = $state<number>(0);
+
+	// Server filtering state
+	let availableServers = $state<string[]>([]);
+	let selectedServers = $state<string[]>([]);
+
+	// Compute server color map for consistent colors across all charts
+	const serverColorMap = $derived(getServerColorMap(availableServers));
 
 	// Preset definitions (must match TimeRangePicker)
 	const presetMinutes: Record<string, number> = {
@@ -41,16 +50,20 @@
 	}
 
 	// Parse URL params
-	function parseUrlParams(): { preset: string | null; from: Date | null; to: Date | null } {
-		if (!browser) return { preset: '6h', from: null, to: null };
+	function parseUrlParams(): { preset: string | null; from: Date | null; to: Date | null; servers: string[] } {
+		if (!browser) return { preset: '6h', from: null, to: null, servers: [] };
 		const params = new URLSearchParams(window.location.search);
 		const presetParam = params.get('preset');
 		const fromParam = params.get('from');
 		const toParam = params.get('to');
+		const serversParam = params.get('servers');
+
+		// Parse servers from URL
+		const servers = serversParam ? serversParam.split(',').filter(s => s.length > 0) : [];
 
 		// If preset is specified, use it
 		if (presetParam && presetMinutes[presetParam]) {
-			return { preset: presetParam, from: null, to: null };
+			return { preset: presetParam, from: null, to: null, servers };
 		}
 
 		// If custom from/to specified
@@ -58,12 +71,12 @@
 			const from = new Date(fromParam);
 			const to = new Date(toParam);
 			if (!isNaN(from.getTime()) && !isNaN(to.getTime())) {
-				return { preset: null, from, to };
+				return { preset: null, from, to, servers };
 			}
 		}
 
 		// Default to 6h preset
-		return { preset: '6h', from: null, to: null };
+		return { preset: '6h', from: null, to: null, servers };
 	}
 
 	function dateToCalendarDate(date: Date): CalendarDate {
@@ -87,7 +100,7 @@
 	let toTime = $state(dateToTimeString(initialRange.to));
 	let sharedTimeDomain = $state<[Date, Date] | null>(null);
 
-	// Update URL with current time range
+	// Update URL with current time range and server selection
 	function updateUrl(pushState = true) {
 		if (!browser) return;
 
@@ -102,6 +115,11 @@
 			const toDateTime = new Date(getToDateTime());
 			params.set('from', fromDateTime.toISOString());
 			params.set('to', toDateTime.toISOString());
+		}
+
+		// Store server selection in URL (only if not all servers selected)
+		if (selectedServers.length > 0 && selectedServers.length < availableServers.length) {
+			params.set('servers', selectedServers.join(','));
 		}
 
 		const newUrl = `${window.location.pathname}?${params.toString()}`;
@@ -132,6 +150,9 @@
 			toTime = dateToTimeString(urlParams.to);
 		}
 
+		// Update selected servers from URL
+		selectedServers = urlParams.servers;
+
 		loadDashboard(false); // Don't push to history on popstate
 	}
 
@@ -152,6 +173,11 @@
 		toDate = to.date;
 		toTime = to.time;
 		selectedPreset = preset;
+		loadDashboard();
+	}
+
+	function handleServerSelectionChange(servers: string[]) {
+		selectedServers = servers;
 		loadDashboard();
 	}
 
@@ -180,11 +206,20 @@
 			// Store shared time domain for charts
 			sharedTimeDomain = [fromDateTime, toDateTime];
 
-			// Build query params for date range
-			const dateParams = `fromDate=${fromDateTime.toISOString()}&toDate=${toDateTime.toISOString()}`;
-			const response = await api.get(`/dashboard?${dateParams}`, {
+			// Build query params for date range and server selection
+			let queryParams = `fromDate=${fromDateTime.toISOString()}&toDate=${toDateTime.toISOString()}`;
+			if (selectedServers.length > 0 && selectedServers.length < availableServers.length) {
+				queryParams += `&servers=${selectedServers.join(',')}`;
+			}
+
+			const response = await api.get(`/dashboard?${queryParams}`, {
 				projectId: projectsState.currentProjectId ?? undefined
 			});
+
+			// Update available servers from API response
+			if (response.availableServers) {
+				availableServers = response.availableServers;
+			}
 
 			// Transform the API response to match the DashboardData type
 			// Convert timestamp strings to Date objects
@@ -198,12 +233,22 @@
 					value: t.value
 				})),
 				change24h: m.change24h,
-				status: m.status
+				status: m.status,
+				// Include per-server data if available
+				servers: m.servers?.map((s: any): ServerMetricTrend => ({
+					serverName: s.serverName,
+					value: s.value,
+					trend: s.trend.map((t: any): MetricTrendPoint => ({
+						timestamp: new Date(t.timestamp),
+						value: t.value
+					}))
+				}))
 			}));
 
 			dashboardData = {
 				metrics,
-				lastUpdated: new Date(response.lastUpdated)
+				lastUpdated: new Date(response.lastUpdated),
+				availableServers: response.availableServers
 			};
 		} catch (e: any) {
 			errorStatus = e.status || 0;
@@ -248,6 +293,13 @@
 			{/if}
 		</div>
 		<div class="flex items-center gap-2">
+			{#if availableServers.length > 1}
+				<ServerFilter
+					{availableServers}
+					bind:selectedServers
+					onSelectionChange={handleServerSelectionChange}
+				/>
+			{/if}
 			<TimeRangePicker
 				bind:fromDate
 				bind:toDate
@@ -276,11 +328,11 @@
 	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
 		{#if loading}
 			<div class="col-span-full flex justify-center items-center py-20">
-				<LoadingCircle size="lg" />
+				<LoadingCircle size="xlg" />
 			</div>
 		{:else if dashboardData}
 			{#each dashboardData.metrics as metric (metric.id)}
-				<MetricCard {metric} timeDomain={sharedTimeDomain} onRangeSelect={handleChartRangeSelect} />
+				<MetricCard {metric} timeDomain={sharedTimeDomain} onRangeSelect={handleChartRangeSelect} {serverColorMap} />
 			{/each}
 		{/if}
 	</div>

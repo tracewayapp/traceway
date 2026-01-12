@@ -55,7 +55,8 @@
 
     // Framework-specific code snippets
     function getFrameworkCode(framework: Framework, token: string): string {
-        const connectionString = token ? `${token}@http://localhost:8082/api/client/report` : 'YOUR_TOKEN@http://localhost:8082/api/client/report';
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8082';
+        const connectionString = token ? `${token}@${apiUrl}/api/client/report` : `YOUR_TOKEN@${apiUrl}/api/client/report`;
 
         switch (framework) {
             case 'gin':

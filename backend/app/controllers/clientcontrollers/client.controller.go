@@ -36,11 +36,19 @@ func (e clientController) Report(c *gin.Context) {
 	transactionsToInsert := []models.Transaction{}
 	exceptionStackTraceToInsert := []models.ExceptionStackTrace{}
 	metricRecordsToInsert := []models.MetricRecord{}
+	segmentsToInsert := []models.Segment{}
 	for _, cf := range request.CollectionFrames {
 		for _, ct := range cf.Transactions {
 			t := ct.ToTransaction(request.AppVersion, request.ServerName)
 			t.ProjectId = projectId
 			transactionsToInsert = append(transactionsToInsert, t)
+
+			// Extract segments from transaction
+			for _, cs := range ct.Segments {
+				seg := cs.ToSegment(ct.Id)
+				seg.ProjectId = projectId
+				segmentsToInsert = append(segmentsToInsert, seg)
+			}
 		}
 
 		for _, cst := range cf.StackTraces {
@@ -50,7 +58,7 @@ func (e clientController) Report(c *gin.Context) {
 		}
 
 		for _, cm := range cf.Metrics {
-			mr := cm.ToMetricRecord()
+			mr := cm.ToMetricRecord(request.ServerName)
 			mr.ProjectId = projectId
 			metricRecordsToInsert = append(metricRecordsToInsert, mr)
 		}
@@ -69,6 +77,12 @@ func (e clientController) Report(c *gin.Context) {
 	}
 
 	err = repositories.MetricRecordRepository.InsertAsync(c, metricRecordsToInsert)
+
+	if err != nil {
+		panic(err)
+	}
+
+	err = repositories.SegmentRepository.InsertAsync(c, segmentsToInsert)
 
 	if err != nil {
 		panic(err)

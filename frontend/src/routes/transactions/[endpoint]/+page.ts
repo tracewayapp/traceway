@@ -11,7 +11,8 @@ export const load: PageLoad = ({ params, url }) => {
 
 	return {
 		endpoint: params.endpoint,
-		from: url.searchParams.get('from') || '',
-		to: url.searchParams.get('to') || ''
+		preset: url.searchParams.get('preset') || null,
+		from: url.searchParams.get('from') || null,
+		to: url.searchParams.get('to') || null
 	};
 };

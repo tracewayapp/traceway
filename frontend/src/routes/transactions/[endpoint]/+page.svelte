@@ -11,6 +11,7 @@
     import { ErrorDisplay } from "$lib/components/ui/error-display";
     import { projectsState } from '$lib/state/projects.svelte';
     import ScopeDisplay from '$lib/components/scope-display.svelte';
+    import { createRowClickHandler } from '$lib/utils/navigation';
 
     type Transaction = {
         id: string;
@@ -21,6 +22,8 @@
         bodySize: number;
         clientIP: string;
         scope: Record<string, string> | null;
+        serverName: string;
+        appVersion: string;
     };
 
     type SortField = 'recorded_at' | 'duration' | 'status_code' | 'body_size';
@@ -40,11 +43,66 @@
     let total = $state(0);
     let totalPages = $state(0);
 
+    // Preset definitions (must match TimeRangePicker)
+    const presetMinutes: Record<string, number> = {
+        '30m': 30,
+        '60m': 60,
+        '3h': 180,
+        '6h': 360,
+        '12h': 720,
+        '24h': 1440,
+        '3d': 4320,
+        '7d': 10080,
+        '1M': 43200,
+        '3M': 129600,
+    };
+
+    // Helper functions
+    function getTimeRangeFromPreset(presetValue: string): { from: Date; to: Date } {
+        const minutes = presetMinutes[presetValue] || 360;
+        const now = new Date();
+        const from = new Date(now.getTime() - minutes * 60 * 1000);
+        return { from, to: now };
+    }
+
+    function dateToCalendarDate(date: Date): CalendarDate {
+        return new CalendarDate(date.getFullYear(), date.getMonth() + 1, date.getDate());
+    }
+
+    function dateToTimeString(date: Date): string {
+        return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    }
+
+    // Initialize from URL params
+    function getInitialRange(): { preset: string | null; from: Date; to: Date } {
+        // If preset is provided, use it
+        if (data.preset && presetMinutes[data.preset]) {
+            const range = getTimeRangeFromPreset(data.preset);
+            return { preset: data.preset, from: range.from, to: range.to };
+        }
+
+        // If custom from/to provided
+        if (data.from && data.to) {
+            const from = new Date(data.from);
+            const to = new Date(data.to);
+            if (!isNaN(from.getTime()) && !isNaN(to.getTime())) {
+                return { preset: null, from, to };
+            }
+        }
+
+        // Default to 6h preset
+        const range = getTimeRangeFromPreset('6h');
+        return { preset: '6h', from: range.from, to: range.to };
+    }
+
+    const initialRange = getInitialRange();
+
     // Date Range State
-    let fromDate = $state<CalendarDate>(today(getLocalTimeZone()).subtract({ days: 7 }));
-    let toDate = $state<CalendarDate>(today(getLocalTimeZone()));
-    let fromTime = $state('00:00');
-    let toTime = $state('23:59');
+    let selectedPreset = $state<string | null>(initialRange.preset);
+    let fromDate = $state<CalendarDate>(dateToCalendarDate(initialRange.from));
+    let toDate = $state<CalendarDate>(dateToCalendarDate(initialRange.to));
+    let fromTime = $state(dateToTimeString(initialRange.from));
+    let toTime = $state(dateToTimeString(initialRange.to));
 
     // Sorting State
     let orderBy = $state<SortField>('recorded_at');
@@ -61,11 +119,12 @@
         return `${dateStr}T${toTime || '23:59'}`;
     }
 
-    function handleTimeRangeChange(from: { date: CalendarDate; time: string }, to: { date: CalendarDate; time: string }) {
+    function handleTimeRangeChange(from: { date: CalendarDate; time: string }, to: { date: CalendarDate; time: string }, preset: string | null) {
         fromDate = from.date;
         fromTime = from.time;
         toDate = to.date;
         toTime = to.time;
+        selectedPreset = preset;
         page = 1;
         loadData();
     }
@@ -160,28 +219,29 @@
     }
 
     function goBack() {
-        goto('/transactions');
+        const params = new URLSearchParams();
+        if (selectedPreset) {
+            params.set('preset', selectedPreset);
+        } else {
+            params.set('from', new Date(getFromDateTime()).toISOString());
+            params.set('to', new Date(getToDateTime()).toISOString());
+        }
+        goto(`/transactions?${params.toString()}`);
+    }
+
+    // Build URL for transaction detail with current time range
+    function getTransactionDetailUrl(transactionId: string): string {
+        const params = new URLSearchParams();
+        if (selectedPreset) {
+            params.set('preset', selectedPreset);
+        } else {
+            params.set('from', new Date(getFromDateTime()).toISOString());
+            params.set('to', new Date(getToDateTime()).toISOString());
+        }
+        return `/transactions/${encodeURIComponent(data.endpoint)}/${transactionId}?${params.toString()}`;
     }
 
     onMount(() => {
-        // Initialize dates from URL params or use defaults (already set in state)
-        if (data.from && data.to) {
-            // Parse from URL params: "YYYY-MM-DDTHH:MM"
-            const fromParts = data.from.split('T');
-            const toParts = data.to.split('T');
-
-            if (fromParts[0]) {
-                const [year, month, day] = fromParts[0].split('-').map(Number);
-                fromDate = new CalendarDate(year, month, day);
-                fromTime = fromParts[1] || '00:00';
-            }
-
-            if (toParts[0]) {
-                const [year, month, day] = toParts[0].split('-').map(Number);
-                toDate = new CalendarDate(year, month, day);
-                toTime = toParts[1] || '23:59';
-            }
-        }
         loadData();
     });
 </script>
@@ -223,6 +283,7 @@
             bind:toDate
             bind:fromTime
             bind:toTime
+            bind:preset={selectedPreset}
             onApply={handleTimeRangeChange}
         />
     </div>
@@ -310,6 +371,8 @@
                         </Button>
                     </Table.Head>
                     <Table.Head class="w-[140px]">Client IP</Table.Head>
+                    <Table.Head class="w-[120px]">Server</Table.Head>
+                    <Table.Head class="w-[100px]">Version</Table.Head>
                     <Table.Head>Context</Table.Head>
                 </Table.Row>
             </Table.Header>
@@ -323,18 +386,23 @@
                             <Table.Cell><Skeleton class="h-4 w-[50px]" /></Table.Cell>
                             <Table.Cell><Skeleton class="h-4 w-[60px]" /></Table.Cell>
                             <Table.Cell><Skeleton class="h-4 w-[100px]" /></Table.Cell>
+                            <Table.Cell><Skeleton class="h-4 w-[100px]" /></Table.Cell>
+                            <Table.Cell><Skeleton class="h-4 w-[80px]" /></Table.Cell>
                             <Table.Cell><Skeleton class="h-4 w-[150px]" /></Table.Cell>
                         </Table.Row>
                     {/each}
                 {:else if transactions.length === 0}
                     <Table.Row>
-                        <Table.Cell colspan={6} class="h-24 text-center">
+                        <Table.Cell colspan={8} class="h-24 text-center">
                             No transactions found in this time range.
                         </Table.Cell>
                     </Table.Row>
                 {:else}
                     {#each transactions as transaction}
-                        <Table.Row>
+                        <Table.Row
+                            class="cursor-pointer hover:bg-muted/50"
+                            onclick={createRowClickHandler(getTransactionDetailUrl(transaction.id))}
+                        >
                             <Table.Cell class="text-muted-foreground">
                                 {new Date(transaction.recordedAt).toLocaleString()}
                             </Table.Cell>
@@ -349,6 +417,12 @@
                             </Table.Cell>
                             <Table.Cell class="font-mono text-sm text-muted-foreground">
                                 {transaction.clientIP}
+                            </Table.Cell>
+                            <Table.Cell class="font-mono text-sm text-muted-foreground">
+                                {transaction.serverName || '-'}
+                            </Table.Cell>
+                            <Table.Cell class="font-mono text-sm text-muted-foreground">
+                                {transaction.appVersion || '-'}
                             </Table.Cell>
                             <Table.Cell>
                                 <ScopeDisplay scope={transaction.scope} />

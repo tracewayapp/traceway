@@ -4,6 +4,8 @@ import (
 	"backend/app/models"
 	"backend/app/repositories"
 	"net/http"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -42,6 +44,13 @@ func (d dashboardController) GetDashboardOverview(c *gin.Context) {
 
 func (d dashboardController) GetDashboard(c *gin.Context) {
 	projectId := c.Query("projectId")
+	serversParam := c.Query("servers")
+
+	// Parse selected servers
+	var selectedServers []string
+	if serversParam != "" {
+		selectedServers = strings.Split(serversParam, ",")
+	}
 
 	now := time.Now()
 	var start, end time.Time
@@ -75,6 +84,12 @@ func (d dashboardController) GetDashboard(c *gin.Context) {
 
 	// Calculate aggregation interval based on time range
 	intervalMinutes := calculateIntervalMinutes(duration)
+
+	// Get available servers in the time range
+	availableServers, err := repositories.MetricRecordRepository.GetDistinctServers(c, projectId, start, end)
+	if err != nil {
+		availableServers = []string{}
+	}
 
 	metrics := make([]models.DashboardMetric, 0, 11)
 
@@ -117,76 +132,72 @@ func (d dashboardController) GetDashboard(c *gin.Context) {
 	metrics = append(metrics, buildMetric("error_rate", "Error Rate", errorRateCurrent, "%", errorRateTrend, errorRatePrev, "error_rate"))
 
 	// 5. CPU Usage
-	cpuTrend, err := repositories.MetricRecordRepository.GetAverageByInterval(c, projectId, models.MetricNameCpuUsage, start, end, intervalMinutes)
+	cpuPerServer, err := repositories.MetricRecordRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameCpuUsage, start, end, intervalMinutes, selectedServers)
 	if err != nil {
 		panic(err)
 	}
-	cpuCurrent := getLastValue(cpuTrend)
 	cpuPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameCpuUsage, prevStart, prevEnd)
-	metrics = append(metrics, buildMetric("cpu_usage", "CPU Usage", cpuCurrent, "%", cpuTrend, cpuPrev, "cpu"))
+	metrics = append(metrics, buildMetricWithServers("cpu_usage", "CPU Usage", "%", cpuPerServer, cpuPrev, "cpu"))
 
 	// 6. Memory Usage (MB)
-	memTrend, err := repositories.MetricRecordRepository.GetAverageByInterval(c, projectId, models.MetricNameMemoryUsage, start, end, intervalMinutes)
+	memPerServer, err := repositories.MetricRecordRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameMemoryUsage, start, end, intervalMinutes, selectedServers)
 	if err != nil {
 		panic(err)
 	}
-	memCurrent := getLastValue(memTrend)
 	memPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameMemoryUsage, prevStart, prevEnd)
-	metrics = append(metrics, buildMetric("memory_usage", "Memory Usage", memCurrent, "MB", memTrend, memPrev, "memory"))
+	metrics = append(metrics, buildMetricWithServers("memory_usage", "Memory Usage", "MB", memPerServer, memPrev, "memory"))
 
 	// 7. Total System Memory (MB)
-	memTotalTrend, err := repositories.MetricRecordRepository.GetAverageByInterval(c, projectId, models.MetricNameMemoryTotal, start, end, intervalMinutes)
+	memTotalPerServer, err := repositories.MetricRecordRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameMemoryTotal, start, end, intervalMinutes, selectedServers)
 	if err != nil {
 		panic(err)
 	}
-	memTotalCurrent := getLastValue(memTotalTrend)
 	memTotalPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameMemoryTotal, prevStart, prevEnd)
-	metrics = append(metrics, buildMetric("memory_total", "Total Memory", memTotalCurrent, "MB", memTotalTrend, memTotalPrev, "memory_total"))
+	metrics = append(metrics, buildMetricWithServers("memory_total", "Total Memory", "MB", memTotalPerServer, memTotalPrev, "memory_total"))
 
 	// 8. Go Routines
-	goRoutinesTrend, err := repositories.MetricRecordRepository.GetAverageByInterval(c, projectId, models.MetricNameGoRoutines, start, end, intervalMinutes)
+	goRoutinesPerServer, err := repositories.MetricRecordRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameGoRoutines, start, end, intervalMinutes, selectedServers)
 	if err != nil {
 		panic(err)
 	}
-	goRoutinesCurrent := getLastValue(goRoutinesTrend)
 	goRoutinesPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameGoRoutines, prevStart, prevEnd)
-	metrics = append(metrics, buildMetric("go_routines", "Go Routines", goRoutinesCurrent, "", goRoutinesTrend, goRoutinesPrev, "go_routines"))
+	metrics = append(metrics, buildMetricWithServers("go_routines", "Go Routines", "", goRoutinesPerServer, goRoutinesPrev, "go_routines"))
 
 	// 9. Heap Objects
-	heapObjectsTrend, err := repositories.MetricRecordRepository.GetAverageByInterval(c, projectId, models.MetricNameHeapObjects, start, end, intervalMinutes)
+	heapObjectsPerServer, err := repositories.MetricRecordRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameHeapObjects, start, end, intervalMinutes, selectedServers)
 	if err != nil {
 		panic(err)
 	}
-	heapObjectsCurrent := getLastValue(heapObjectsTrend)
 	heapObjectsPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameHeapObjects, prevStart, prevEnd)
-	metrics = append(metrics, buildMetric("heap_objects", "Heap Objects", heapObjectsCurrent, "", heapObjectsTrend, heapObjectsPrev, "heap_objects"))
+	metrics = append(metrics, buildMetricWithServers("heap_objects", "Heap Objects", "", heapObjectsPerServer, heapObjectsPrev, "heap_objects"))
 
 	// 10. Num GC
-	numGCTrend, err := repositories.MetricRecordRepository.GetAverageByInterval(c, projectId, models.MetricNameNumGC, start, end, intervalMinutes)
+	numGCPerServer, err := repositories.MetricRecordRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameNumGC, start, end, intervalMinutes, selectedServers)
 	if err != nil {
 		panic(err)
 	}
-	numGCCurrent := getLastValue(numGCTrend)
 	numGCPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameNumGC, prevStart, prevEnd)
-	metrics = append(metrics, buildMetric("num_gc", "GC Cycles", numGCCurrent, "", numGCTrend, numGCPrev, "num_gc"))
+	metrics = append(metrics, buildMetricWithServers("num_gc", "GC Cycles", "", numGCPerServer, numGCPrev, "num_gc"))
 
 	// 11. GC Pause Total (convert from nanoseconds to milliseconds)
-	gcPauseTrend, err := repositories.MetricRecordRepository.GetAverageByInterval(c, projectId, models.MetricNameGCPauseTotal, start, end, intervalMinutes)
+	gcPausePerServer, err := repositories.MetricRecordRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameGCPauseTotal, start, end, intervalMinutes, selectedServers)
 	if err != nil {
 		panic(err)
 	}
-	// Convert nanoseconds to milliseconds for display
-	for i := range gcPauseTrend {
-		gcPauseTrend[i].Value = gcPauseTrend[i].Value / 1_000_000
+	// Convert nanoseconds to milliseconds for each server's data
+	for serverName, points := range gcPausePerServer {
+		for i := range points {
+			gcPausePerServer[serverName][i].Value = points[i].Value / 1_000_000
+		}
 	}
-	gcPauseCurrent := getLastValue(gcPauseTrend)
 	gcPausePrevRaw, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameGCPauseTotal, prevStart, prevEnd)
 	gcPausePrev := gcPausePrevRaw / 1_000_000
-	metrics = append(metrics, buildMetric("gc_pause", "GC Pause", gcPauseCurrent, "ms", gcPauseTrend, gcPausePrev, "gc_pause"))
+	metrics = append(metrics, buildMetricWithServers("gc_pause", "GC Pause", "ms", gcPausePerServer, gcPausePrev, "gc_pause"))
 
 	c.JSON(http.StatusOK, models.DashboardResponse{
-		Metrics:     metrics,
-		LastUpdated: now,
+		Metrics:          metrics,
+		AvailableServers: availableServers,
+		LastUpdated:      now,
 	})
 }
 
@@ -215,6 +226,92 @@ func buildMetric(id, name string, current float64, unit string, trend []models.T
 		Value:     current,
 		Unit:      unit,
 		Trend:     trendPoints,
+		Change24h: change24h,
+		Status:    status,
+	}
+}
+
+func buildMetricWithServers(id, name, unit string, serverData map[string][]models.TimeSeriesPoint, prev float64, metricType string) models.DashboardMetric {
+	servers := make([]models.ServerMetricTrend, 0, len(serverData))
+	var aggregateValue float64
+	var aggregateTrend []models.DashboardTrendPoint
+
+	// Build server-level data
+	serverNames := make([]string, 0, len(serverData))
+	for serverName := range serverData {
+		serverNames = append(serverNames, serverName)
+	}
+	sort.Strings(serverNames)
+
+	// Merge all timestamps for aggregate trend
+	timestampValues := make(map[time.Time][]float64)
+
+	for _, serverName := range serverNames {
+		trend := serverData[serverName]
+		trendPoints := make([]models.DashboardTrendPoint, len(trend))
+		var lastValue float64
+
+		for i, p := range trend {
+			trendPoints[i] = models.DashboardTrendPoint{
+				Timestamp: p.Timestamp,
+				Value:     p.Value,
+			}
+			lastValue = p.Value
+			timestampValues[p.Timestamp] = append(timestampValues[p.Timestamp], p.Value)
+		}
+
+		servers = append(servers, models.ServerMetricTrend{
+			ServerName: serverName,
+			Value:      lastValue,
+			Trend:      trendPoints,
+		})
+	}
+
+	// Calculate aggregate value (average of last values across servers)
+	if len(servers) > 0 {
+		for _, s := range servers {
+			aggregateValue += s.Value
+		}
+		aggregateValue /= float64(len(servers))
+	}
+
+	// Build aggregate trend (average at each timestamp)
+	timestamps := make([]time.Time, 0, len(timestampValues))
+	for ts := range timestampValues {
+		timestamps = append(timestamps, ts)
+	}
+	sort.Slice(timestamps, func(i, j int) bool {
+		return timestamps[i].Before(timestamps[j])
+	})
+
+	for _, ts := range timestamps {
+		values := timestampValues[ts]
+		var sum float64
+		for _, v := range values {
+			sum += v
+		}
+		aggregateTrend = append(aggregateTrend, models.DashboardTrendPoint{
+			Timestamp: ts,
+			Value:     sum / float64(len(values)),
+		})
+	}
+
+	// Calculate percentage change
+	var change24h float64
+	if prev > 0 {
+		change24h = ((aggregateValue - prev) / prev) * 100
+	}
+
+	// Determine status based on metric type
+	status := calculateStatus(aggregateValue, metricType)
+
+	return models.DashboardMetric{
+		ID:        id,
+		Name:      name,
+		Value:     aggregateValue,
+		Unit:      unit,
+		Trend:     aggregateTrend,
+		Servers:   servers,
 		Change24h: change24h,
 		Status:    status,
 	}

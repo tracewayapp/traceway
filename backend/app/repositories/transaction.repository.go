@@ -199,6 +199,34 @@ func (e *transactionRepository) FindByEndpoint(ctx context.Context, projectId st
 	return transactions, int64(count), nil
 }
 
+// FindById returns a single transaction by ID
+func (e *transactionRepository) FindById(ctx context.Context, projectId, transactionId string) (*models.Transaction, error) {
+	query := `SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, scope, app_version, server_name
+		FROM transactions
+		WHERE project_id = ? AND id = ?
+		LIMIT 1`
+
+	var t models.Transaction
+	var scopeJSON string
+
+	err := (*chdb.Conn).QueryRow(ctx, query, projectId, transactionId).Scan(
+		&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt,
+		&t.StatusCode, &t.BodySize, &t.ClientIP, &scopeJSON, &t.AppVersion, &t.ServerName)
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse scope JSON
+	if scopeJSON != "" && scopeJSON != "{}" {
+		if err := json.Unmarshal([]byte(scopeJSON), &t.Scope); err != nil {
+			t.Scope = nil
+		}
+	}
+
+	return &t, nil
+}
+
 // CountByHour returns transaction counts grouped by hour
 func (e *transactionRepository) CountByHour(ctx context.Context, projectId string, start, end time.Time) ([]models.TimeSeriesPoint, error) {
 	query := `SELECT

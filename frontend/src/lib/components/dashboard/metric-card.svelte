@@ -4,15 +4,21 @@
 	import { TrendingUp, TrendingDown, Minus } from 'lucide-svelte';
 	import { LineChart, Points } from 'layerchart';
 	import { scaleUtc } from 'd3-scale';
-	import type { DashboardMetric, MetricTrendPoint } from '$lib/types/dashboard';
+	import type { DashboardMetric, MetricTrendPoint, ServerMetricTrend } from '$lib/types/dashboard';
 	import { min, max } from 'd3-array';
 	import MetricChartOverlay from './metric-chart-overlay.svelte';
 
-	let { metric, timeDomain = null, onRangeSelect } = $props<{
+	let { metric, timeDomain = null, onRangeSelect, serverColorMap = {} } = $props<{
 		metric: DashboardMetric;
 		timeDomain?: [Date, Date] | null;
 		onRangeSelect?: (from: Date, to: Date) => void;
+		serverColorMap?: Record<string, string>;
 	}>();
+
+	// Check if we have multi-server data
+	const hasMultiServerData = $derived(
+		metric.servers && metric.servers.length > 1
+	);
 
 	const statusColors: Record<string, string> = {
 		healthy: 'bg-green-500',
@@ -74,13 +80,43 @@
 				: 'text-muted-foreground'
 	);
 
-	const chartConfig = {
-		value: { label: "Value", color: "var(--chart-1)" },
-	} satisfies Chart.ChartConfig;
+	// Generate chart config based on servers or single value
+	const chartConfig = $derived(() => {
+		if (hasMultiServerData && metric.servers) {
+			const config: Chart.ChartConfig = {};
+			for (const server of metric.servers) {
+				config[server.serverName] = {
+					label: server.serverName,
+					color: serverColorMap[server.serverName] || 'var(--chart-1)'
+				};
+			}
+			return config;
+		}
+		return {
+			value: { label: "Value", color: "var(--chart-1)" }
+		} satisfies Chart.ChartConfig;
+	});
 
-	const yMin = $derived(min(metric.trend, (d: MetricTrendPoint) => d.value) ?? 0);
-	const yMax = $derived(max(metric.trend, (d: MetricTrendPoint) => d.value) ?? 0);
-	const padding = $derived((yMax - yMin) * 0.1 || 1);
+	// Calculate yMin/yMax considering multi-server data
+	const yMin = $derived((): number => {
+		if (hasMultiServerData && metric.servers) {
+			const allValues = metric.servers.flatMap((s: ServerMetricTrend) => s.trend.map((t: MetricTrendPoint) => t.value));
+			const minVal = min(allValues);
+			return typeof minVal === 'number' ? minVal : 0;
+		}
+		const minVal = min(metric.trend, (d: MetricTrendPoint) => d.value);
+		return typeof minVal === 'number' ? minVal : 0;
+	});
+	const yMax = $derived((): number => {
+		if (hasMultiServerData && metric.servers) {
+			const allValues = metric.servers.flatMap((s: ServerMetricTrend) => s.trend.map((t: MetricTrendPoint) => t.value));
+			const maxVal = max(allValues);
+			return typeof maxVal === 'number' ? maxVal : 0;
+		}
+		const maxVal = max(metric.trend, (d: MetricTrendPoint) => d.value);
+		return typeof maxVal === 'number' ? maxVal : 0;
+	});
+	const padding = $derived((yMax() - yMin()) * 0.1 || 1);
 
 	// Calculate X domain from timeDomain or data
 	const xDomainValue = $derived(() => {
@@ -153,7 +189,47 @@
 		return isolated;
 	});
 
-	const hasData = $derived(metric.trend.length > 0 && metric.trend.some((d: MetricTrendPoint) => d.value !== 0));
+	const hasData = $derived(() => {
+		if (hasMultiServerData && metric.servers) {
+			return metric.servers.some((s: ServerMetricTrend) => s.trend.length > 0 && s.trend.some((t: MetricTrendPoint) => t.value !== 0));
+		}
+		return metric.trend.length > 0 && metric.trend.some((d: MetricTrendPoint) => d.value !== 0);
+	});
+
+	// Build merged data and series for multi-server charts
+	const multiServerChartData = $derived(() => {
+		if (!hasMultiServerData || !metric.servers) return [];
+
+		// Merge all server data by timestamp
+		const timeMap = new Map<number, Record<string, number>>();
+
+		for (const server of metric.servers) {
+			for (const point of server.trend) {
+				const timestamp = point.timestamp.getTime();
+				if (!timeMap.has(timestamp)) {
+					timeMap.set(timestamp, { timestamp } as any);
+				}
+				timeMap.get(timestamp)![server.serverName] = point.value;
+			}
+		}
+
+		// Convert to sorted array
+		return Array.from(timeMap.values())
+			.map(entry => ({
+				timestamp: new Date(entry.timestamp as unknown as number),
+				...entry
+			}))
+			.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+	});
+
+	const multiServerSeries = $derived(() => {
+		if (!hasMultiServerData || !metric.servers) return [];
+		return metric.servers.map((server: ServerMetricTrend) => ({
+			key: server.serverName,
+			label: server.serverName,
+			color: serverColorMap[server.serverName] || 'var(--chart-1)'
+		}));
+	});
 </script>
 
 <Card.Root class="gap-3">
@@ -198,48 +274,71 @@
 				unit={metric.unit}
 				formatValue={(v) => metric.formatValue ? metric.formatValue(v) : formatMetricValue(v, metric.unit)}
 			>
-				<Chart.Container config={chartConfig}>
-					{#if hasData}
-						<LineChart
-							data={metric.trend}
-							x="timestamp"
-							xScale={scaleUtc()}
-							xDomain={xDomainValue()}
-							series={[
-								{
-									key: "value",
-									label: "Value",
-									color: chartConfig.value.color,
-								},
-							]}
-							yDomain={[Math.max(0, yMin - padding), yMax + padding]}
-							seriesLayout="stack"
-							props={{
-								xAxis: {
-									format: () => ""
-								},
-								yAxis: {
-									format: (a: number) => a > 999 ? (a/1000).toFixed(0) + "k" : `${a}`,
-								},
-								spline: {
-									defined: isDefined
-								}
-							}}
-							tooltip={false}
-						>
-							{#snippet aboveMarks()}
-								<!-- Isolated points (dots only where no line) -->
-								{#if isolatedPoints().length > 0}
-									<Points
-										data={isolatedPoints()}
-										x="timestamp"
-										y="value"
-										r={2}
-										fill={chartConfig.value.color}
-									/>
-								{/if}
-							{/snippet}
-						</LineChart>
+				<Chart.Container config={chartConfig()}>
+					{#if hasData()}
+						{#if hasMultiServerData}
+							<!-- Multi-server chart with separate lines per server -->
+							<LineChart
+								data={multiServerChartData()}
+								x="timestamp"
+								xScale={scaleUtc()}
+								xDomain={xDomainValue()}
+								series={multiServerSeries()}
+								yDomain={[Math.max(0, yMin() - padding), yMax() + padding]}
+								seriesLayout="overlap"
+								props={{
+									xAxis: {
+										format: () => ""
+									},
+									yAxis: {
+										format: (a: number) => a > 999 ? (a/1000).toFixed(0) + "k" : `${a}`,
+									}
+								}}
+								tooltip={false}
+							/>
+						{:else}
+							<!-- Single series chart (original behavior) -->
+							<LineChart
+								data={metric.trend}
+								x="timestamp"
+								xScale={scaleUtc()}
+								xDomain={xDomainValue()}
+								series={[
+									{
+										key: "value",
+										label: "Value",
+										color: "var(--chart-1)",
+									},
+								]}
+								yDomain={[Math.max(0, yMin() - padding), yMax() + padding]}
+								seriesLayout="stack"
+								props={{
+									xAxis: {
+										format: () => ""
+									},
+									yAxis: {
+										format: (a: number) => a > 999 ? (a/1000).toFixed(0) + "k" : `${a}`,
+									},
+									spline: {
+										defined: isDefined
+									}
+								}}
+								tooltip={false}
+							>
+								{#snippet aboveMarks()}
+									<!-- Isolated points (dots only where no line) -->
+									{#if isolatedPoints().length > 0}
+										<Points
+											data={isolatedPoints()}
+											x="timestamp"
+											y="value"
+											r={2}
+											fill="var(--chart-1)"
+										/>
+									{/if}
+								{/snippet}
+							</LineChart>
+						{/if}
 					{:else}
 						<div class="flex h-[100px] items-center justify-center text-sm text-muted-foreground">
 							No data in this period

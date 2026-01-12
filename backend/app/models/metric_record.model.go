@@ -7,6 +7,7 @@ type MetricRecord struct {
 	Name       string    `json:"name" ch:"name"`
 	Value      float64   `json:"value" ch:"value"`
 	RecordedAt time.Time `json:"recordedAt" ch:"recorded_at"`
+	ServerName string    `json:"serverName" ch:"server_name"`
 }
 
 const (

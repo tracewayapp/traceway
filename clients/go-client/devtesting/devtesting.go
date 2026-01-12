@@ -56,6 +56,33 @@ func testGin() {
 		})
 	})
 
+	// Example: Capturing segments within a transaction
+	router.GET("/test-segments", func(ctx *gin.Context) {
+		dbAndCacheSeg := traceway.StartSegment(ctx, "db.and.cache")
+
+		// Start a segment for database operation
+		seg := traceway.StartSegment(ctx, "db.query")
+		time.Sleep(time.Duration(50+rand.IntN(100)) * time.Millisecond)
+		seg.End()
+
+		// Start a segment for cache operation
+		seg = traceway.StartSegment(ctx, "cache.set")
+		time.Sleep(time.Duration(10+rand.IntN(30)) * time.Millisecond)
+		seg.End()
+
+		// Start a segment for an HTTP call
+		seg = traceway.StartSegment(ctx, "http.external_api")
+		time.Sleep(time.Duration(100+rand.IntN(200)) * time.Millisecond)
+		seg.End()
+
+		dbAndCacheSeg.End()
+
+		ctx.JSON(200, gin.H{
+			"status":  "ok",
+			"message": "Segments captured",
+		})
+	})
+
 	router.GET("/metrics", func(ctx *gin.Context) {
 		traceway.PrintCollectionFrameMetrics()
 	})

@@ -60,20 +60,21 @@ func New(connectionString string, options ...func(*traceway.TracewayOptions)) gi
 
 		method := c.Request.Method
 		clientIP := c.ClientIP()
-		transactionId := uuid.NewString()
+
+		// Create transaction context
+		txn := &traceway.TransactionContext{
+			Id: uuid.NewString(),
+		}
 
 		// Create request-scoped scope with defaults
 		scope := traceway.NewScope()
 
-		// We won't store tags by default for now
-		// scope.SetTag("server_name", cachedHostname)
-		// scope.SetTag("environment", cachedEnvironment)
-
-		// Store scope in both gin.Context and request context
+		// Store scope and transaction in both gin.Context and request context
 		ctx := context.WithValue(c.Request.Context(), string(traceway.CtxScopeKey), scope)
+		ctx = context.WithValue(ctx, string(traceway.CtxTransactionKey), txn)
 		c.Request = c.Request.WithContext(ctx)
 		c.Set(string(traceway.CtxScopeKey), scope)
-		c.Set(string(traceway.CtxTransactionIdKey), &transactionId)
+		c.Set(string(traceway.CtxTransactionKey), txn)
 
 		stackTraceFormatted := wrapAndExecute(c)
 
@@ -98,12 +99,12 @@ func New(connectionString string, options ...func(*traceway.TracewayOptions)) gi
 		defer recover()
 
 		// Capture transaction with scope
-		traceway.CaptureTransactionWithScope(transactionId, transactionEndpoint, duration, start, statusCode, bodySize, clientIP, scope.GetTags())
+		traceway.CaptureTransactionWithScope(txn, transactionEndpoint, duration, start, statusCode, bodySize, clientIP, scope.GetTags())
 
 		if stackTraceFormatted != nil {
 			exceptionTags := scope.GetTags()
 			exceptionTags["user_agent"] = c.Request.UserAgent() // we'll only store the user agent IF an exception happens
-			traceway.CaptureTransactionExceptionWithScope(transactionId, *stackTraceFormatted, exceptionTags)
+			traceway.CaptureTransactionExceptionWithScope(txn.Id, *stackTraceFormatted, exceptionTags)
 		}
 	}
 }

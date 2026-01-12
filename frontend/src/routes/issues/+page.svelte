@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { goto } from '$app/navigation';
+    import { createRowClickHandler } from '$lib/utils/navigation';
     import { api } from '$lib/api';
     import * as Table from "$lib/components/ui/table";
     import { Input } from "$lib/components/ui/input";
@@ -11,6 +11,8 @@
     import { projectsState } from '$lib/state/projects.svelte';
     import IssueTrendChart from '$lib/components/issue-trend-chart.svelte';
     import Archive from "@lucide/svelte/icons/archive";
+    import { CircleHelp } from "@lucide/svelte";
+    import * as Tooltip from "$lib/components/ui/tooltip";
 
     type ExceptionTrendPoint = {
         timestamp: string;
@@ -242,7 +244,7 @@
                 <Table.Row>
                     <Table.Cell colspan={5} class="h-48">
                         <div class="flex justify-center items-center h-full">
-                            <LoadingCircle size="lg" />
+                            <LoadingCircle size="xlg" />
                         </div>
                     </Table.Cell>
                 </Table.Row>
@@ -273,10 +275,58 @@
                             aria-label="Select all"
                         />
                     </Table.Head>
-                    <Table.Head>Issue</Table.Head>
-                    <Table.Head class="w-[190px]">Trend</Table.Head>
-                    <Table.Head class="w-[80px] text-right">Events</Table.Head>
-                    <Table.Head class="w-[180px]">Last Seen</Table.Head>
+                    <Table.Head>
+                        <span class="flex items-center gap-1.5">
+                            Issue
+                            <Tooltip.Root>
+                                <Tooltip.Trigger>
+                                    <CircleHelp class="h-3.5 w-3.5 text-muted-foreground/60" />
+                                </Tooltip.Trigger>
+                                <Tooltip.Content>
+                                    <p class="text-xs">The error message or exception that occurred</p>
+                                </Tooltip.Content>
+                            </Tooltip.Root>
+                        </span>
+                    </Table.Head>
+                    <Table.Head class="w-[190px]">
+                        <span class="flex items-center gap-1.5">
+                            Trend
+                            <Tooltip.Root>
+                                <Tooltip.Trigger>
+                                    <CircleHelp class="h-3.5 w-3.5 text-muted-foreground/60" />
+                                </Tooltip.Trigger>
+                                <Tooltip.Content>
+                                    <p class="text-xs">Hourly occurrence pattern over the last 24h</p>
+                                </Tooltip.Content>
+                            </Tooltip.Root>
+                        </span>
+                    </Table.Head>
+                    <Table.Head class="w-[80px] text-right">
+                        <span class="flex items-center justify-end gap-1.5">
+                            Events
+                            <Tooltip.Root>
+                                <Tooltip.Trigger>
+                                    <CircleHelp class="h-3.5 w-3.5 text-muted-foreground/60" />
+                                </Tooltip.Trigger>
+                                <Tooltip.Content>
+                                    <p class="text-xs">Total number of times this issue occurred in the selected range</p>
+                                </Tooltip.Content>
+                            </Tooltip.Root>
+                        </span>
+                    </Table.Head>
+                    <Table.Head class="w-[180px]">
+                        <span class="flex items-center gap-1.5">
+                            Last Seen
+                            <Tooltip.Root>
+                                <Tooltip.Trigger>
+                                    <CircleHelp class="h-3.5 w-3.5 text-muted-foreground/60" />
+                                </Tooltip.Trigger>
+                                <Tooltip.Content>
+                                    <p class="text-xs">When this issue last occurred</p>
+                                </Tooltip.Content>
+                            </Tooltip.Root>
+                        </span>
+                    </Table.Head>
                 </Table.Row>
             </Table.Header>
             <Table.Body>
@@ -295,22 +345,22 @@
                         <Table.Cell
                             class="font-mono text-sm truncate max-w-[400px]"
                             title={exception.stackTrace}
-                            onclick={() => goto(`/issues/${exception.exceptionHash}`)}
+                            onclick={createRowClickHandler(`/issues/${exception.exceptionHash}`)}
                         >
                             <span class="text-foreground">{exception.stackTrace.split('\n')[0]}</span>
                         </Table.Cell>
-                        <Table.Cell onclick={() => goto(`/issues/${exception.exceptionHash}`)}>
+                        <Table.Cell onclick={createRowClickHandler(`/issues/${exception.exceptionHash}`)}>
                             <IssueTrendChart trend={exception.hourlyTrend || []} />
                         </Table.Cell>
                         <Table.Cell
                             class="text-right tabular-nums font-medium"
-                            onclick={() => goto(`/issues/${exception.exceptionHash}`)}
+                            onclick={createRowClickHandler(`/issues/${exception.exceptionHash}`)}
                         >
                             {exception.count.toLocaleString()}
                         </Table.Cell>
                         <Table.Cell
                             class="text-muted-foreground"
-                            onclick={() => goto(`/issues/${exception.exceptionHash}`)}
+                            onclick={createRowClickHandler(`/issues/${exception.exceptionHash}`)}
                         >
                             {new Date(exception.lastSeen).toLocaleString()}
                         </Table.Cell>

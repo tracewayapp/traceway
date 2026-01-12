@@ -2,6 +2,7 @@
     import { onMount } from 'svelte';
     import { page } from '$app/state';
     import { goto } from '$app/navigation';
+    import { createRowClickHandler } from '$lib/utils/navigation';
     import { api } from '$lib/api';
     import { Button } from "$lib/components/ui/button";
     import * as Card from "$lib/components/ui/card";
@@ -10,6 +11,8 @@
     import { Skeleton } from "$lib/components/ui/skeleton";
     import { ErrorDisplay } from "$lib/components/ui/error-display";
     import { projectsState } from '$lib/state/projects.svelte';
+    import { CircleHelp } from "lucide-svelte";
+    import * as Tooltip from "$lib/components/ui/tooltip";
 
     type ExceptionGroup = {
         exceptionHash: string;
@@ -24,6 +27,9 @@
         exceptionHash: string;
         stackTrace: string;
         recordedAt: string;
+        serverName: string;
+        appVersion: string;
+        endpoint: string;
     };
 
     let group = $state<ExceptionGroup | null>(null);
@@ -162,8 +168,58 @@
                 {#if loading || occurrences.length > 0}
                 <Table.Header>
                     <Table.Row>
-                        <Table.Head>Recorded At</Table.Head>
-                        <Table.Head>Transaction ID</Table.Head>
+                        <Table.Head>
+                            <span class="flex items-center gap-1.5">
+                                Recorded At
+                                <Tooltip.Root>
+                                    <Tooltip.Trigger>
+                                        <CircleHelp class="h-3.5 w-3.5 text-muted-foreground/60" />
+                                    </Tooltip.Trigger>
+                                    <Tooltip.Content>
+                                        <p class="text-xs">When this occurrence was recorded</p>
+                                    </Tooltip.Content>
+                                </Tooltip.Root>
+                            </span>
+                        </Table.Head>
+                        <Table.Head>
+                            <span class="flex items-center gap-1.5">
+                                Server
+                                <Tooltip.Root>
+                                    <Tooltip.Trigger>
+                                        <CircleHelp class="h-3.5 w-3.5 text-muted-foreground/60" />
+                                    </Tooltip.Trigger>
+                                    <Tooltip.Content>
+                                        <p class="text-xs">Server instance where error occurred</p>
+                                    </Tooltip.Content>
+                                </Tooltip.Root>
+                            </span>
+                        </Table.Head>
+                        <Table.Head>
+                            <span class="flex items-center gap-1.5">
+                                Version
+                                <Tooltip.Root>
+                                    <Tooltip.Trigger>
+                                        <CircleHelp class="h-3.5 w-3.5 text-muted-foreground/60" />
+                                    </Tooltip.Trigger>
+                                    <Tooltip.Content>
+                                        <p class="text-xs">Application version when error occurred</p>
+                                    </Tooltip.Content>
+                                </Tooltip.Root>
+                            </span>
+                        </Table.Head>
+                        <Table.Head>
+                            <span class="flex items-center gap-1.5">
+                                Endpoint
+                                <Tooltip.Root>
+                                    <Tooltip.Trigger>
+                                        <CircleHelp class="h-3.5 w-3.5 text-muted-foreground/60" />
+                                    </Tooltip.Trigger>
+                                    <Tooltip.Content>
+                                        <p class="text-xs">The API route where this error occurred</p>
+                                    </Tooltip.Content>
+                                </Tooltip.Root>
+                            </span>
+                        </Table.Head>
                     </Table.Row>
                 </Table.Header>
                 {/if}
@@ -172,24 +228,32 @@
                         {#each Array(5) as _}
                             <Table.Row>
                                 <Table.Cell><Skeleton class="h-4 w-[150px]" /></Table.Cell>
+                                <Table.Cell><Skeleton class="h-4 w-[100px]" /></Table.Cell>
+                                <Table.Cell><Skeleton class="h-4 w-[80px]" /></Table.Cell>
                                 <Table.Cell><Skeleton class="h-4 w-[200px]" /></Table.Cell>
                             </Table.Row>
                         {/each}
                     {:else if occurrences.length === 0}
                         <Table.Row>
-                            <Table.Cell colspan={2} class="h-24 text-center">
+                            <Table.Cell colspan={4} class="h-24 text-center">
                                 No events found.
                             </Table.Cell>
                         </Table.Row>
                     {:else}
                         {#each occurrences as occurrence}
                             <Table.Row
-                                class="cursor-pointer hover:bg-muted/50"
-                                onclick={() => goto(`/issues/${page.params.exceptionHash}`)}
+                                class={occurrence.endpoint ? "cursor-pointer hover:bg-muted/50" : ""}
+                                onclick={occurrence.endpoint ? createRowClickHandler(`/transactions/${encodeURIComponent(occurrence.endpoint)}`) : undefined}
                             >
                                 <Table.Cell>{new Date(occurrence.recordedAt).toLocaleString()}</Table.Cell>
+                                <Table.Cell class="font-mono text-sm text-muted-foreground">
+                                    {occurrence.serverName || '-'}
+                                </Table.Cell>
+                                <Table.Cell class="font-mono text-sm text-muted-foreground">
+                                    {occurrence.appVersion || '-'}
+                                </Table.Cell>
                                 <Table.Cell class="font-mono text-sm">
-                                    {occurrence.transactionId || '-'}
+                                    {occurrence.endpoint || '-'}
                                 </Table.Cell>
                             </Table.Row>
                         {/each}

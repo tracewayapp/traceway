@@ -223,32 +223,35 @@
 
 			// Transform the API response to match the DashboardData type
 			// Convert timestamp strings to Date objects
-			const metrics: DashboardMetric[] = response.metrics.map((m: any) => ({
-				id: m.id,
-				name: m.name,
-				value: m.value,
-				unit: m.unit,
-				trend: m.trend.map((t: any) => ({
-					timestamp: new Date(t.timestamp),
-					value: t.value
-				})),
-				change24h: m.change24h,
-				status: m.status,
-				// Include per-server data if available
-				servers: m.servers?.map((s: any): ServerMetricTrend => ({
-					serverName: s.serverName,
-					value: s.value,
-					trend: s.trend.map((t: any): MetricTrendPoint => ({
+			// Handle case where metrics might be null/undefined (no data)
+			const metrics: DashboardMetric[] = (response.metrics && Array.isArray(response.metrics))
+				? response.metrics.map((m: any) => ({
+					id: m.id,
+					name: m.name,
+					value: m.value,
+					unit: m.unit,
+					trend: (m.trend || []).map((t: any) => ({
 						timestamp: new Date(t.timestamp),
 						value: t.value
+					})),
+					change24h: m.change24h,
+					status: m.status,
+					// Include per-server data if available
+					servers: m.servers?.map((s: any): ServerMetricTrend => ({
+						serverName: s.serverName,
+						value: s.value,
+						trend: (s.trend || []).map((t: any): MetricTrendPoint => ({
+							timestamp: new Date(t.timestamp),
+							value: t.value
+						}))
 					}))
 				}))
-			}));
+				: [];
 
 			dashboardData = {
 				metrics,
-				lastUpdated: new Date(response.lastUpdated),
-				availableServers: response.availableServers
+				lastUpdated: response.lastUpdated ? new Date(response.lastUpdated) : new Date(),
+				availableServers: response.availableServers || []
 			};
 		} catch (e: any) {
 			errorStatus = e.status || 0;

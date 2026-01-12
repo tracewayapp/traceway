@@ -7,7 +7,7 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import { projectsState } from '$lib/state/projects.svelte';
-	import { ArrowLeft } from 'lucide-svelte';
+	import { ArrowLeft, ArrowRight, TriangleAlert } from 'lucide-svelte';
 	import SegmentWaterfall from '$lib/components/segments/segment-waterfall.svelte';
 	import SegmentEmptyState from '$lib/components/segments/segment-empty-state.svelte';
 	import type { TransactionDetailResponse } from '$lib/types/segments';
@@ -179,6 +179,28 @@
 				</div>
 			</Card.Content>
 		</Card.Root>
+
+		<!-- Exception Card (if exception exists) -->
+		{#if response.exception}
+			<Card.Root class="border-red-500/30 bg-red-500/5">
+				<Card.Header>
+					<div class="flex items-center gap-2">
+						<TriangleAlert class="h-5 w-5 text-red-500" />
+						<Card.Title class="text-red-600 dark:text-red-400">Exception Occurred</Card.Title>
+					</div>
+					<Card.Description>This transaction resulted in an exception</Card.Description>
+				</Card.Header>
+				<Card.Content>
+					<div class="bg-muted rounded-md p-3 overflow-x-auto max-h-32 mb-4">
+						<pre class="text-sm font-mono whitespace-pre-wrap">{response.exception.stackTrace.split('\n').slice(0, 4).join('\n')}{response.exception.stackTrace.split('\n').length > 4 ? '\n...' : ''}</pre>
+					</div>
+					<Button variant="outline" size="sm" onclick={() => goto(`/issues/${response!.exception!.exceptionHash}`)}>
+						View Full Exception
+						<ArrowRight class="ml-2 h-4 w-4" />
+					</Button>
+				</Card.Content>
+			</Card.Root>
+		{/if}
 
 		<!-- Segments Section -->
 		<Card.Root>

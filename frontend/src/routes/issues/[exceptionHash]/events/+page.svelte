@@ -196,26 +196,13 @@
                         </Table.Head>
                         <Table.Head>
                             <span class="flex items-center gap-1.5">
-                                Version
+                                Transaction
                                 <Tooltip.Root>
                                     <Tooltip.Trigger>
                                         <CircleHelp class="h-3.5 w-3.5 text-muted-foreground/60" />
                                     </Tooltip.Trigger>
                                     <Tooltip.Content>
-                                        <p class="text-xs">Application version when error occurred</p>
-                                    </Tooltip.Content>
-                                </Tooltip.Root>
-                            </span>
-                        </Table.Head>
-                        <Table.Head>
-                            <span class="flex items-center gap-1.5">
-                                Endpoint
-                                <Tooltip.Root>
-                                    <Tooltip.Trigger>
-                                        <CircleHelp class="h-3.5 w-3.5 text-muted-foreground/60" />
-                                    </Tooltip.Trigger>
-                                    <Tooltip.Content>
-                                        <p class="text-xs">The API route where this error occurred</p>
+                                        <p class="text-xs">Transaction ID if this occurred during a request</p>
                                     </Tooltip.Content>
                                 </Tooltip.Root>
                             </span>
@@ -229,31 +216,27 @@
                             <Table.Row>
                                 <Table.Cell><Skeleton class="h-4 w-[150px]" /></Table.Cell>
                                 <Table.Cell><Skeleton class="h-4 w-[100px]" /></Table.Cell>
-                                <Table.Cell><Skeleton class="h-4 w-[80px]" /></Table.Cell>
-                                <Table.Cell><Skeleton class="h-4 w-[200px]" /></Table.Cell>
+                                <Table.Cell><Skeleton class="h-4 w-[280px]" /></Table.Cell>
                             </Table.Row>
                         {/each}
                     {:else if occurrences.length === 0}
                         <Table.Row>
-                            <Table.Cell colspan={4} class="h-24 text-center">
+                            <Table.Cell colspan={3} class="h-24 text-center">
                                 No events found.
                             </Table.Cell>
                         </Table.Row>
                     {:else}
                         {#each occurrences as occurrence}
                             <Table.Row
-                                class={occurrence.endpoint ? "cursor-pointer hover:bg-muted/50" : ""}
-                                onclick={occurrence.endpoint ? createRowClickHandler(`/transactions/${encodeURIComponent(occurrence.endpoint)}`) : undefined}
+                                class="cursor-pointer hover:bg-muted/50"
+                                onclick={createRowClickHandler(`/issues/${page.params.exceptionHash}/${encodeURIComponent(occurrence.recordedAt)}`)}
                             >
                                 <Table.Cell>{new Date(occurrence.recordedAt).toLocaleString()}</Table.Cell>
                                 <Table.Cell class="font-mono text-sm text-muted-foreground">
                                     {occurrence.serverName || '-'}
                                 </Table.Cell>
-                                <Table.Cell class="font-mono text-sm text-muted-foreground">
-                                    {occurrence.appVersion || '-'}
-                                </Table.Cell>
                                 <Table.Cell class="font-mono text-sm">
-                                    {occurrence.endpoint || '-'}
+                                    {occurrence.transactionId || '-'}
                                 </Table.Cell>
                             </Table.Row>
                         {/each}

@@ -1,6 +1,5 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { page } from '$app/state';
     import { api } from '$lib/api';
     import { Skeleton } from "$lib/components/ui/skeleton";
     import { ErrorDisplay } from "$lib/components/ui/error-display";
@@ -8,19 +7,20 @@
     import { StackTraceCard, EventCard, EventsTable, PageHeader } from '$lib/components/issues';
     import type { ExceptionGroup, ExceptionOccurrence, LinkedTransaction } from '$lib/types/exceptions';
 
+    let { data } = $props();
+
     let group = $state<ExceptionGroup | null>(null);
-    let occurrences = $state<ExceptionOccurrence[]>([]);
+    let occurrence = $state<ExceptionOccurrence | null>(null);
+    let allOccurrences = $state<ExceptionOccurrence[]>([]);
     let loading = $state(true);
     let error = $state('');
     let notFound = $state(false);
     let total = $state(0);
     let linkedTransaction = $state<LinkedTransaction | null>(null);
 
-    const exceptionHash = $derived(page.params.exceptionHash ?? '');
-    const latestOccurrence = $derived(occurrences[0]);
-    const isMessage = $derived(latestOccurrence?.isMessage ?? false);
-    const hasMoreOccurrences = $derived(total > 10);
+    const isMessage = $derived(occurrence?.isMessage ?? false);
     const firstLineOfStackTrace = $derived(group?.stackTrace.split('\n')[0] || 'Exception');
+    const hasMoreOccurrences = $derived(total > 10);
 
     async function loadData() {
         loading = true;
@@ -29,8 +29,8 @@
         linkedTransaction = null;
 
         try {
-            const exceptionHash = page.params.exceptionHash;
-            const response = await api.post(`/exception-stack-traces/${exceptionHash}`, {
+            // Load all occurrences for this hash
+            const response = await api.post(`/exception-stack-traces/${data.exceptionHash}`, {
                 pagination: {
                     page: 1,
                     pageSize: 10
@@ -38,15 +38,22 @@
             }, { projectId: projectsState.currentProjectId ?? undefined });
 
             group = response.group;
-            occurrences = response.occurrences || [];
+            allOccurrences = response.occurrences || [];
             total = response.pagination.total;
 
-            // Load linked transaction if the latest occurrence has a transactionId
-            const firstOccurrence = occurrences[0];
-            if (firstOccurrence?.transactionId) {
+            // Find the specific occurrence by recordedAt
+            occurrence = allOccurrences.find(o => o.recordedAt === data.recordedAt) || null;
+
+            if (!occurrence) {
+                notFound = true;
+                return;
+            }
+
+            // Load linked transaction if this occurrence has a transactionId
+            if (occurrence.transactionId) {
                 try {
                     const txResponse = await api.post(
-                        `/transactions/${firstOccurrence.transactionId}`,
+                        `/transactions/${occurrence.transactionId}`,
                         {},
                         { projectId: projectsState.currentProjectId ?? undefined }
                     );
@@ -83,8 +90,8 @@
 <div class="space-y-6">
     <PageHeader
         title={firstLineOfStackTrace}
-        subtitle="Exception Hash: {exceptionHash}"
-        backHref="/issues"
+        subtitle="Event from {new Date(data.recordedAt).toLocaleString()}"
+        backHref="/issues/{data.exceptionHash}"
     />
 
     {#if loading && !group}
@@ -96,46 +103,41 @@
     {:else if notFound}
         <ErrorDisplay
             status={404}
-            title="Exception Not Found"
-            description="The exception you're looking for doesn't exist or may have been removed. It's possible the data has expired or the link is incorrect."
-            backHref="/issues"
-            backLabel="Back to Issues"
+            title="Event Not Found"
+            description="The specific event you're looking for doesn't exist or may have been removed."
+            backHref="/issues/{data.exceptionHash}"
+            backLabel="Back to Exception"
             onRetry={() => loadData()}
-            identifier={exceptionHash}
         />
     {:else if error}
         <ErrorDisplay
             status={400}
             title="Something Went Wrong"
             description={error}
-            backHref="/issues"
-            backLabel="Back to Issues"
+            backHref="/issues/{data.exceptionHash}"
+            backLabel="Back to Exception"
             onRetry={() => loadData()}
         />
-    {:else if group}
+    {:else if group && occurrence}
         <StackTraceCard
             stackTrace={group.stackTrace}
             {isMessage}
-            firstSeen={group.firstSeen}
-            lastSeen={group.lastSeen}
-            totalCount={group.count}
         />
 
-        {#if latestOccurrence}
-            <EventCard
-                occurrence={latestOccurrence}
-                {linkedTransaction}
-                title="Last Event"
-                description="Details from the most recent occurrence of this exception"
-            />
-        {/if}
+        <EventCard
+            {occurrence}
+            {linkedTransaction}
+            title="Event"
+            description="Details for this specific occurrence"
+        />
 
         <EventsTable
-            {occurrences}
-            {exceptionHash}
+            occurrences={allOccurrences}
+            exceptionHash={data.exceptionHash}
             {total}
             hasMore={hasMoreOccurrences}
             showViewAll={true}
+            currentRecordedAt={data.recordedAt}
         />
     {/if}
 </div>

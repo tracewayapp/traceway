@@ -14,10 +14,17 @@ type TransactionDetailRequest struct {
 	ProjectId string `json:"projectId"`
 }
 
+type ExceptionInfo struct {
+	ExceptionHash string `json:"exceptionHash"`
+	StackTrace    string `json:"stackTrace"`
+	RecordedAt    string `json:"recordedAt"`
+}
+
 type TransactionDetailResponse struct {
 	Transaction *models.Transaction `json:"transaction"`
 	Segments    []models.Segment    `json:"segments"`
 	HasSegments bool                `json:"hasSegments"`
+	Exception   *ExceptionInfo      `json:"exception,omitempty"`
 }
 
 func (c transactionDetailController) GetTransactionDetail(ctx *gin.Context) {
@@ -46,10 +53,25 @@ func (c transactionDetailController) GetTransactionDetail(ctx *gin.Context) {
 		panic(err)
 	}
 
+	// Get linked exception if any
+	var exceptionInfo *ExceptionInfo
+	exception, err := repositories.ExceptionStackTraceRepository.FindByTransactionId(ctx, request.ProjectId, transactionId)
+	if err != nil {
+		panic(err)
+	}
+	if exception != nil {
+		exceptionInfo = &ExceptionInfo{
+			ExceptionHash: exception.ExceptionHash,
+			StackTrace:    exception.StackTrace,
+			RecordedAt:    exception.RecordedAt.Format("2006-01-02T15:04:05Z07:00"),
+		}
+	}
+
 	ctx.JSON(http.StatusOK, TransactionDetailResponse{
 		Transaction: transaction,
 		Segments:    segments,
 		HasSegments: len(segments) > 0,
+		Exception:   exceptionInfo,
 	})
 }
 

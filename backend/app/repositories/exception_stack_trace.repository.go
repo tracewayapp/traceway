@@ -299,4 +299,35 @@ func (e *exceptionStackTraceRepository) IsArchived(ctx context.Context, projectI
 	return count > 0, nil
 }
 
+// FindByTransactionId returns the exception associated with a specific transaction
+func (e *exceptionStackTraceRepository) FindByTransactionId(ctx context.Context, projectId string, transactionId string) (*models.ExceptionStackTrace, error) {
+	var est models.ExceptionStackTrace
+	var scopeJSON string
+	var isMessage uint8
+
+	err := (*chdb.Conn).QueryRow(ctx,
+		`SELECT project_id, transaction_id, exception_hash, stack_trace, recorded_at, scope, app_version, server_name, is_message
+		FROM exception_stack_traces
+		WHERE project_id = ? AND transaction_id = ?
+		LIMIT 1`,
+		projectId, transactionId).Scan(
+		&est.ProjectId, &est.TransactionId, &est.ExceptionHash, &est.StackTrace,
+		&est.RecordedAt, &scopeJSON, &est.AppVersion, &est.ServerName, &isMessage)
+
+	if err != nil {
+		// No exception found for this transaction
+		return nil, nil
+	}
+
+	est.IsMessage = isMessage == 1
+	// Parse scope JSON
+	if scopeJSON != "" && scopeJSON != "{}" {
+		if err := json.Unmarshal([]byte(scopeJSON), &est.Scope); err != nil {
+			est.Scope = nil
+		}
+	}
+
+	return &est, nil
+}
+
 var ExceptionStackTraceRepository = exceptionStackTraceRepository{}

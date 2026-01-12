@@ -22,8 +22,15 @@ export type TransactionDetail = {
 	serverName: string;
 };
 
+export type ExceptionInfo = {
+	exceptionHash: string;
+	stackTrace: string;
+	recordedAt: string;
+};
+
 export type TransactionDetailResponse = {
 	transaction: TransactionDetail;
 	segments: Segment[];
 	hasSegments: boolean;
+	exception?: ExceptionInfo;
 };

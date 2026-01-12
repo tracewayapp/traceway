@@ -213,7 +213,7 @@
 							{@const impactLevel = getImpactLevel(endpoint.count, endpoint.p50Duration, endpoint.p95Duration)}
 							<Table.Row
 								class="cursor-pointer hover:bg-muted/50"
-								onclick={createRowClickHandler(`/transactions/${encodeURIComponent(endpoint.endpoint)}`)}
+								onclick={createRowClickHandler(`/transactions/${encodeURIComponent(endpoint.endpoint)}?preset=24h`)}
 							>
 								<Table.Cell class="py-3 font-mono text-sm truncate max-w-[300px]" title={endpoint.endpoint}>
 									{endpoint.endpoint}

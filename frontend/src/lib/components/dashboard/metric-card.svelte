@@ -7,11 +7,22 @@
 	import { min, max } from 'd3-array';
 	import MetricChartOverlay from './metric-chart-overlay.svelte';
 
-	let { metric, timeDomain = null, onRangeSelect, serverColorMap = {} } = $props<{
+	let {
+		metric,
+		timeDomain = null,
+		onRangeSelect,
+		serverColorMap = {},
+		sharedHoverTime = null,
+		isSourceChart = false,
+		onHoverTimeChange
+	} = $props<{
 		metric: DashboardMetric;
 		timeDomain?: [Date, Date] | null;
 		onRangeSelect?: (from: Date, to: Date) => void;
 		serverColorMap?: Record<string, string>;
+		sharedHoverTime?: Date | null;
+		isSourceChart?: boolean;
+		onHoverTimeChange?: (time: Date | null) => void;
 	}>();
 
 	// Check if we have multi-server data
@@ -312,6 +323,10 @@
 				{serverColorMap}
 				unit={metric.unit}
 				formatValue={(v) => metric.formatValue ? metric.formatValue(v) : formatMetricValue(v, metric.unit)}
+				chartId={metric.id}
+				{sharedHoverTime}
+				{isSourceChart}
+				{onHoverTimeChange}
 			>
 				<Chart.Container config={chartConfig()}>
 					{#if hasData()}

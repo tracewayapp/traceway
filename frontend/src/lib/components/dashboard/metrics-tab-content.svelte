@@ -94,6 +94,21 @@
 	const filteredMetrics = $derived(
 		metrics ? filterMetricsByServer(metrics) : []
 	);
+
+	// Hover state coordination for shadow tooltip lines across charts
+	let currentHoverTime = $state<Date | null>(null);
+	let currentHoverChartId = $state<string | null>(null);
+
+	function handleChartHoverChange(chartId: string, time: Date | null) {
+		if (time !== null) {
+			currentHoverTime = time;
+			currentHoverChartId = chartId;
+		} else if (currentHoverChartId === chartId) {
+			// Only clear if the chart that's leaving is the current source
+			currentHoverTime = null;
+			currentHoverChartId = null;
+		}
+	}
 </script>
 
 {#if error && !loading}
@@ -115,6 +130,9 @@
 				{timeDomain}
 				{onRangeSelect}
 				{serverColorMap}
+				sharedHoverTime={currentHoverTime}
+				isSourceChart={currentHoverChartId === metric.id}
+				onHoverTimeChange={(time) => handleChartHoverChange(metric.id, time)}
 			/>
 		{/each}
 	</div>

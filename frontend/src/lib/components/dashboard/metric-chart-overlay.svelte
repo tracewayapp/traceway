@@ -24,7 +24,11 @@
 		serverColorMap = {},
 		unit = '',
 		formatValue,
-		timezone
+		timezone,
+		chartId = '',
+		sharedHoverTime = null,
+		isSourceChart = false,
+		onHoverTimeChange
 	} = $props<{
 		fromTime: Date;
 		toTime: Date;
@@ -37,6 +41,10 @@
 		unit?: string;
 		formatValue?: (value: number) => string;
 		timezone?: string;
+		chartId?: string;
+		sharedHoverTime?: Date | null;
+		isSourceChart?: boolean;
+		onHoverTimeChange?: (time: Date | null) => void;
 	}>();
 
 	// Check if we have multi-server data
@@ -91,6 +99,17 @@
 		const percentage = Math.max(0, Math.min(1, chartX / chartAreaWidth));
 		const timeDiff = toTime.getTime() - fromTime.getTime();
 		return new Date(fromTime.getTime() + timeDiff * percentage);
+	}
+
+	// Calculate X position based on time (inverse of getTimeAtPosition)
+	function getPositionAtTime(time: Date): number {
+		if (!containerRef) return chartPadding.left;
+		const chartAreaWidth = getChartAreaWidth();
+		if (chartAreaWidth <= 0) return chartPadding.left;
+		const timeDiff = toTime.getTime() - fromTime.getTime();
+		if (timeDiff <= 0) return chartPadding.left;
+		const percentage = (time.getTime() - fromTime.getTime()) / timeDiff;
+		return chartPadding.left + (percentage * chartAreaWidth);
 	}
 
 	// Find the value at a given time, interpolating for line sections
@@ -257,6 +276,16 @@
 		return results;
 	});
 
+	// Shadow line: show when another chart is being hovered
+	const shouldShowShadowLine = $derived(
+		sharedHoverTime !== null && !isSourceChart && !isDragging && !isHovering
+	);
+
+	const shadowLineX = $derived(() => {
+		if (!shouldShowShadowLine || !sharedHoverTime) return 0;
+		return getPositionAtTime(sharedHoverTime);
+	});
+
 	// Format value for display
 	function formatDisplayValue(value: number): string {
 		if (formatValue) {
@@ -287,6 +316,8 @@
 
 		if (isDragging) {
 			dragEndX = mouseX;
+		} else if (isInChartArea()) {
+			onHoverTimeChange?.(getTimeAtPosition(mouseX));
 		}
 	}
 
@@ -300,6 +331,7 @@
 		if (isDragging) {
 			isDragging = false;
 		}
+		onHoverTimeChange?.(null);
 	}
 
 	function handleMouseDown(e: MouseEvent) {
@@ -336,6 +368,25 @@
 		if (!date) return '';
 		return formatDateTime(date, { timezone: tz, format: 'time' });
 	}
+
+	// Handle ESC key to cancel drag selection
+	function handleKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape' && isDragging) {
+			isDragging = false;
+			dragStartX = 0;
+			dragEndX = 0;
+		}
+	}
+
+	// Register/cleanup keyboard listener when dragging
+	$effect(() => {
+		if (isDragging) {
+			window.addEventListener('keydown', handleKeydown);
+			return () => {
+				window.removeEventListener('keydown', handleKeydown);
+			};
+		}
+	});
 </script>
 
 <div
@@ -424,5 +475,16 @@
 				{formatTime(calculatedTime())}
 			</div>
 		</div>
+	{/if}
+
+	<!-- Shadow tooltip line: shows when another chart is being hovered -->
+	{#if shouldShowShadowLine}
+		{@const shadowX = shadowLineX()}
+		{#if shadowX >= chartPadding.left && shadowX <= getContainerWidth() - chartPadding.right}
+			<div
+				class="absolute top-0 bottom-0 w-px bg-muted-foreground/25 pointer-events-none"
+				style="left: {shadowX}px;"
+			></div>
+		{/if}
 	{/if}
 </div>

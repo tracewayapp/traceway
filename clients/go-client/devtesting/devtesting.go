@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"math/rand/v2"
+	"os"
 	"time"
 	"traceway"
 	tracewaygin "traceway/traceway_gin"
@@ -15,11 +16,15 @@ func main() {
 }
 
 func testGin() {
+	endpoint := os.Getenv("TRACEWAY_ENDPOINT")
+	if endpoint == "" {
+		endpoint = "default_token_change_me@http://localhost:8082/api/report"
+	}
 
 	router := gin.Default()
 
 	router.Use(tracewaygin.New(
-		"default_token_change_me@http://localhost:8082/api/report",
+		endpoint,
 		traceway.WithDebug(true),
 	))
 

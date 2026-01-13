@@ -17,7 +17,6 @@ export type DashboardMetric = {
 	value: number;
 	unit: string;
 	trend: MetricTrendPoint[];
-	change24h: number; // Percentage change (e.g., 5.2 or -3.1)
 	status: MetricStatus;
 	formatValue?: (value: number) => string;
 	servers?: ServerMetricTrend[]; // Per-server breakdown for multi-server metrics
@@ -27,4 +26,27 @@ export type DashboardData = {
 	metrics: DashboardMetric[];
 	lastUpdated: Date;
 	availableServers?: string[]; // List of servers with data in the time range
+};
+
+// Tab types for split metrics endpoints
+export type MetricsTab = 'application' | 'stats' | 'server';
+
+// Response type for /api/metrics/application
+export type ApplicationMetricsData = {
+	metrics: DashboardMetric[];
+	availableServers: string[];
+	lastUpdated: Date;
+};
+
+// Response type for /api/metrics/stats
+export type StatsMetricsData = {
+	metrics: DashboardMetric[];
+	lastUpdated: Date;
+};
+
+// Response type for /api/metrics/server
+export type ServerMetricsData = {
+	metrics: DashboardMetric[];
+	availableServers: string[];
+	lastUpdated: Date;
 };

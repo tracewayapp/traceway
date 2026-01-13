@@ -2,19 +2,20 @@
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
 	import { Button } from '$lib/components/ui/button';
-	import { LoadingCircle } from '$lib/components/ui/loading-circle';
-	import { RefreshCw } from 'lucide-svelte';
-	import MetricCard from '$lib/components/dashboard/metric-card.svelte';
+	import { RefreshCw, Code } from 'lucide-svelte';
 	import ServerFilter from '$lib/components/dashboard/server-filter.svelte';
+	import MetricsTabContent from '$lib/components/dashboard/metrics-tab-content.svelte';
+	import * as Tabs from '$lib/components/ui/tabs';
 	import type {
-		DashboardData,
 		DashboardMetric,
 		ServerMetricTrend,
-		MetricTrendPoint
+		MetricTrendPoint,
+		MetricsTab,
+		ApplicationMetricsData,
+		StatsMetricsData,
+		ServerMetricsData
 	} from '$lib/types/dashboard';
-	import { Card, CardContent } from '$lib/components/ui/card';
 	import { api } from '$lib/api';
-	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import { getNow, parseISO, toUTCISO, calendarDateTimeToLuxon, formatDateTime } from '$lib/utils/formatters';
@@ -24,17 +25,37 @@
 
 	const timezone = $derived(getTimezone());
 
-	let dashboardData = $state<DashboardData | null>(null);
-	let loading = $state(true);
-	let error = $state('');
-	let errorStatus = $state<number>(0);
+	// Tab state
+	let activeTab = $state<MetricsTab>('application');
 
-	// Server filtering state
-	let availableServers = $state<string[]>([]);
+	// Per-tab data (null = not loaded yet)
+	let applicationData = $state<ApplicationMetricsData | null>(null);
+	let statsData = $state<StatsMetricsData | null>(null);
+	let serverData = $state<ServerMetricsData | null>(null);
+
+	// Per-tab loading states
+	let loadingApplication = $state(false);
+	let loadingStats = $state(false);
+	let loadingServer = $state(false);
+
+	// Per-tab error states
+	let errorApplication = $state('');
+	let errorStats = $state('');
+	let errorServer = $state('');
+
+	// Server filtering state (client-side only)
 	let selectedServers = $state<string[]>([]);
 
+	// Merge available servers from all endpoints
+	const availableServers = $derived(() => {
+		const servers = new Set<string>();
+		applicationData?.availableServers?.forEach(s => servers.add(s));
+		serverData?.availableServers?.forEach(s => servers.add(s));
+		return Array.from(servers).sort();
+	});
+
 	// Compute server color map for consistent colors across all charts
-	const serverColorMap = $derived(getServerColorMap(availableServers));
+	const serverColorMap = $derived(getServerColorMap(availableServers()));
 
 	// Preset definitions (must match TimeRangePicker)
 	const presetMinutes: Record<string, number> = {
@@ -52,7 +73,7 @@
 
 	// Calculate time range from preset
 	function getTimeRangeFromPresetLocal(presetValue: string): { from: Date; to: Date } {
-		const minutes = presetMinutes[presetValue] || 360; // Default to 6h
+		const minutes = presetMinutes[presetValue] || 360;
 		const now = getNow(timezone);
 		const from = now.minus({ minutes });
 		return { from: from.toJSDate(), to: now.toJSDate() };
@@ -64,33 +85,34 @@
 		from: Date | null;
 		to: Date | null;
 		servers: string[];
+		tab: MetricsTab;
 	} {
-		if (!browser) return { preset: '6h', from: null, to: null, servers: [] };
+		if (!browser) return { preset: '6h', from: null, to: null, servers: [], tab: 'application' };
 		const params = new URLSearchParams(window.location.search);
 		const presetParam = params.get('preset');
 		const fromParam = params.get('from');
 		const toParam = params.get('to');
 		const serversParam = params.get('servers');
+		const tabParam = params.get('tab') as MetricsTab | null;
 
-		// Parse servers from URL
 		const servers = serversParam ? serversParam.split(',').filter((s) => s.length > 0) : [];
+		const tab: MetricsTab = tabParam && ['application', 'stats', 'server'].includes(tabParam)
+			? tabParam
+			: 'application';
 
-		// If preset is specified, use it
 		if (presetParam && presetMinutes[presetParam]) {
-			return { preset: presetParam, from: null, to: null, servers };
+			return { preset: presetParam, from: null, to: null, servers, tab };
 		}
 
-		// If custom from/to specified
 		if (fromParam && toParam) {
 			const fromDt = parseISO(fromParam, timezone);
 			const toDt = parseISO(toParam, timezone);
 			if (fromDt.isValid && toDt.isValid) {
-				return { preset: null, from: fromDt.toJSDate(), to: toDt.toJSDate(), servers };
+				return { preset: null, from: fromDt.toJSDate(), to: toDt.toJSDate(), servers, tab };
 			}
 		}
 
-		// Default to 6h preset
-		return { preset: '6h', from: null, to: null, servers };
+		return { preset: '6h', from: null, to: null, servers, tab };
 	}
 
 	function dateToCalendarDate(date: Date): CalendarDate {
@@ -114,23 +136,24 @@
 	let toTime = $state(dateToTimeString(initialRange.to));
 	let sharedTimeDomain = $state<[Date, Date] | null>(null);
 
-	// Update URL with current time range and server selection
+	// Initialize tab from URL
+	activeTab = initialUrlParams.tab;
+
+	// Update URL with current state
 	function updateUrl(pushState = true) {
 		if (!browser) return;
 
 		const params = new URLSearchParams();
+		params.set('tab', activeTab);
 
 		if (selectedPreset) {
-			// Store preset in URL
 			params.set('preset', selectedPreset);
 		} else {
-			// Store custom from/to in URL
 			params.set('from', getFromDateTimeUTC());
 			params.set('to', getToDateTimeUTC());
 		}
 
-		// Store server selection in URL (only if not all servers selected)
-		if (selectedServers.length > 0 && selectedServers.length < availableServers.length) {
+		if (selectedServers.length > 0 && selectedServers.length < availableServers().length) {
 			params.set('servers', selectedServers.join(','));
 		}
 
@@ -162,13 +185,14 @@
 			toTime = dateToTimeString(urlParams.to);
 		}
 
-		// Update selected servers from URL
 		selectedServers = urlParams.servers;
+		activeTab = urlParams.tab;
 
-		loadDashboard(false); // Don't push to history on popstate
+		// Clear cached data and reload active tab
+		clearAllData();
+		loadActiveTab(false);
 	}
 
-	// Combine date and time into UTC ISO datetime string
 	function getFromDateTimeUTC(): string {
 		const [hour, minute] = (fromTime || '00:00').split(':').map(Number);
 		const dt = calendarDateTimeToLuxon({ year: fromDate.year, month: fromDate.month, day: fromDate.day, hour, minute }, timezone);
@@ -181,6 +205,149 @@
 		return toUTCISO(dt);
 	}
 
+	// Clear all cached data
+	function clearAllData() {
+		applicationData = null;
+		statsData = null;
+		serverData = null;
+	}
+
+	// Transform API response timestamps to Date objects
+	function transformMetrics(metrics: any[]): DashboardMetric[] {
+		if (!metrics || !Array.isArray(metrics)) return [];
+		return metrics.map((m: any) => ({
+			id: m.id,
+			name: m.name,
+			value: m.value,
+			unit: m.unit,
+			trend: (m.trend || []).map((t: any) => ({
+				timestamp: new Date(t.timestamp),
+				value: t.value
+			})),
+			status: m.status,
+			servers: m.servers?.map(
+				(s: any): ServerMetricTrend => ({
+					serverName: s.serverName,
+					value: s.value,
+					trend: (s.trend || []).map(
+						(t: any): MetricTrendPoint => ({
+							timestamp: new Date(t.timestamp),
+							value: t.value
+						})
+					)
+				})
+			)
+		}));
+	}
+
+	// Load Application metrics
+	async function loadApplicationMetrics() {
+		loadingApplication = true;
+		errorApplication = '';
+
+		try {
+			const queryParams = `fromDate=${getFromDateTimeUTC()}&toDate=${getToDateTimeUTC()}`;
+			const response = await api.get(`/metrics/application?${queryParams}`, {
+				projectId: projectsState.currentProjectId ?? undefined
+			});
+
+			applicationData = {
+				metrics: transformMetrics(response.metrics),
+				availableServers: response.availableServers || [],
+				lastUpdated: response.lastUpdated ? new Date(response.lastUpdated) : new Date()
+			};
+		} catch (e: any) {
+			errorApplication = e.message || 'Failed to load application metrics';
+			console.error(e);
+		} finally {
+			loadingApplication = false;
+		}
+	}
+
+	// Load Stats metrics
+	async function loadStatsMetrics() {
+		loadingStats = true;
+		errorStats = '';
+
+		try {
+			const queryParams = `fromDate=${getFromDateTimeUTC()}&toDate=${getToDateTimeUTC()}`;
+			const response = await api.get(`/metrics/stats?${queryParams}`, {
+				projectId: projectsState.currentProjectId ?? undefined
+			});
+
+			statsData = {
+				metrics: transformMetrics(response.metrics),
+				lastUpdated: response.lastUpdated ? new Date(response.lastUpdated) : new Date()
+			};
+		} catch (e: any) {
+			errorStats = e.message || 'Failed to load stats metrics';
+			console.error(e);
+		} finally {
+			loadingStats = false;
+		}
+	}
+
+	// Load Server metrics
+	async function loadServerMetrics() {
+		loadingServer = true;
+		errorServer = '';
+
+		try {
+			const queryParams = `fromDate=${getFromDateTimeUTC()}&toDate=${getToDateTimeUTC()}`;
+			const response = await api.get(`/metrics/server?${queryParams}`, {
+				projectId: projectsState.currentProjectId ?? undefined
+			});
+
+			serverData = {
+				metrics: transformMetrics(response.metrics),
+				availableServers: response.availableServers || [],
+				lastUpdated: response.lastUpdated ? new Date(response.lastUpdated) : new Date()
+			};
+		} catch (e: any) {
+			errorServer = e.message || 'Failed to load server metrics';
+			console.error(e);
+		} finally {
+			loadingServer = false;
+		}
+	}
+
+	// Load only the active tab's data (lazy loading)
+	function loadActiveTab(pushToHistory = true) {
+		if (pushToHistory) updateUrl(true);
+
+		// Update shared time domain
+		sharedTimeDomain = [new Date(getFromDateTimeUTC()), new Date(getToDateTimeUTC())];
+
+		switch (activeTab) {
+			case 'application':
+				if (!applicationData) loadApplicationMetrics();
+				break;
+			case 'stats':
+				if (!statsData) loadStatsMetrics();
+				break;
+			case 'server':
+				if (!serverData) loadServerMetrics();
+				break;
+		}
+	}
+
+	// Force reload (for refresh button & time range change)
+	function reloadActiveTab() {
+		updateUrl(true);
+		sharedTimeDomain = [new Date(getFromDateTimeUTC()), new Date(getToDateTimeUTC())];
+
+		// Clear all cached data when time range changes
+		clearAllData();
+
+		// Load the active tab
+		switch (activeTab) {
+			case 'application': loadApplicationMetrics(); break;
+			case 'stats': loadStatsMetrics(); break;
+			case 'server': loadServerMetrics(); break;
+		}
+	}
+
+	// Handle time range change
 	function handleTimeRangeChange(
 		from: { date: CalendarDate; time: string },
 		to: { date: CalendarDate; time: string },
@@ -191,137 +358,72 @@
 		toDate = to.date;
 		toTime = to.time;
 		selectedPreset = preset;
-		loadDashboard();
+		reloadActiveTab();
 	}
 
+	// Handle tab change - lazy load if data not loaded
+	function handleTabChange(tab: string) {
+		activeTab = tab as MetricsTab;
+		loadActiveTab(false);
+		updateUrl(false);
+	}
+
+	// Client-side server filtering - NO API call needed
 	function handleServerSelectionChange(servers: string[]) {
 		selectedServers = servers;
-		loadDashboard();
+		updateUrl(false);
 	}
 
 	// Handle drag-to-zoom selection from chart overlay
 	function handleChartRangeSelect(from: Date, to: Date) {
-		selectedPreset = null; // Chart selection is always custom
+		selectedPreset = null;
 		fromDate = new CalendarDate(from.getFullYear(), from.getMonth() + 1, from.getDate());
 		fromTime = `${String(from.getHours()).padStart(2, '0')}:${String(from.getMinutes()).padStart(2, '0')}`;
 		toDate = new CalendarDate(to.getFullYear(), to.getMonth() + 1, to.getDate());
 		toTime = `${String(to.getHours()).padStart(2, '0')}:${String(to.getMinutes()).padStart(2, '0')}`;
-		loadDashboard();
+		reloadActiveTab();
 	}
 
-	async function loadDashboard(pushToHistory = true) {
-		loading = true;
-		error = '';
-		errorStatus = 0;
-
-		// Update URL with current time range
-		updateUrl(pushToHistory);
-
-		try {
-			const fromDateTimeUTC = getFromDateTimeUTC();
-			const toDateTimeUTC = getToDateTimeUTC();
-
-			// Store shared time domain for charts
-			sharedTimeDomain = [new Date(fromDateTimeUTC), new Date(toDateTimeUTC)];
-
-			// Build query params for date range and server selection
-			let queryParams = `fromDate=${fromDateTimeUTC}&toDate=${toDateTimeUTC}`;
-			if (selectedServers.length > 0 && selectedServers.length < availableServers.length) {
-				queryParams += `&servers=${selectedServers.join(',')}`;
-			}
-
-			const response = await api.get(`/dashboard?${queryParams}`, {
-				projectId: projectsState.currentProjectId ?? undefined
-			});
-
-			// Update available servers from API response
-			if (response.availableServers) {
-				availableServers = response.availableServers;
-			}
-
-			// Transform the API response to match the DashboardData type
-			// Convert timestamp strings to Date objects
-			// Handle case where metrics might be null/undefined (no data)
-			const metrics: DashboardMetric[] =
-				response.metrics && Array.isArray(response.metrics)
-					? response.metrics.map((m: any) => ({
-							id: m.id,
-							name: m.name,
-							value: m.value,
-							unit: m.unit,
-							trend: (m.trend || []).map((t: any) => ({
-								timestamp: new Date(t.timestamp),
-								value: t.value
-							})),
-							change24h: m.change24h,
-							status: m.status,
-							// Include per-server data if available
-							servers: m.servers?.map(
-								(s: any): ServerMetricTrend => ({
-									serverName: s.serverName,
-									value: s.value,
-									trend: (s.trend || []).map(
-										(t: any): MetricTrendPoint => ({
-											timestamp: new Date(t.timestamp),
-											value: t.value
-										})
-									)
-								})
-							)
-						}))
-					: [];
-
-			dashboardData = {
-				metrics,
-				lastUpdated: response.lastUpdated ? new Date(response.lastUpdated) : new Date(),
-				availableServers: response.availableServers || []
-			};
-		} catch (e: any) {
-			errorStatus = e.status || 0;
-			error = e.message || 'Failed to load dashboard data';
-			console.error(e);
-		} finally {
-			loading = false;
+	// Get last updated time for current tab
+	const lastUpdated = $derived(() => {
+		switch (activeTab) {
+			case 'application': return applicationData?.lastUpdated;
+			case 'stats': return statsData?.lastUpdated;
+			case 'server': return serverData?.lastUpdated;
+			default: return undefined;
 		}
-	}
-
-	onMount(() => {
-		// On initial load, use replaceState to set URL without creating history entry
-		loadDashboard(false);
-
-		// Listen for browser back/forward navigation
-		window.addEventListener('popstate', handlePopState);
-
-		return () => {
-			window.removeEventListener('popstate', handlePopState);
-		};
 	});
 
 	const lastUpdatedFormatted = $derived(
-		dashboardData?.lastUpdated
-			? formatDateTime(dashboardData.lastUpdated, { timezone, format: 'time' })
+		lastUpdated()
+			? formatDateTime(lastUpdated()!, { timezone, format: 'time' })
 			: ''
 	);
+
+	// Check if current tab is loading
+	const isCurrentTabLoading = $derived(() => {
+		switch (activeTab) {
+			case 'application': return loadingApplication;
+			case 'stats': return loadingStats;
+			case 'server': return loadingServer;
+			default: return false;
+		}
+	});
+
+	onMount(() => {
+		// Only load the active tab on mount (lazy loading)
+		loadActiveTab(false);
+
+		window.addEventListener('popstate', handlePopState);
+		return () => window.removeEventListener('popstate', handlePopState);
+	});
 </script>
 
 <div class="space-y-4">
 	<!-- Header -->
 	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-		<div>
-			<h2 class="text-2xl font-bold tracking-tight">Metrics</h2>
-			{#if dashboardData}
-				<p class="mt-1 text-sm text-muted-foreground">Last updated: {lastUpdatedFormatted}</p>
-			{/if}
-		</div>
+		<h2 class="text-2xl font-bold tracking-tight">Metrics</h2>
 		<div class="flex items-center gap-2">
-			{#if availableServers.length > 1}
-				<ServerFilter
-					{availableServers}
-					bind:selectedServers
-					onSelectionChange={handleServerSelectionChange}
-					{serverColorMap}
-				/>
-			{/if}
 			<TimeRangePicker
 				bind:fromDate
 				bind:toDate
@@ -330,44 +432,99 @@
 				bind:preset={selectedPreset}
 				onApply={handleTimeRangeChange}
 			/>
-			<Button variant="outline" size="sm" onclick={() => loadDashboard()} disabled={loading}>
-				<RefreshCw class="h-4 w-4 {loading ? 'animate-spin' : ''}" />
+			<Button variant="outline" size="sm" onclick={() => reloadActiveTab()} disabled={isCurrentTabLoading()}>
+				<RefreshCw class="h-4 w-4 {isCurrentTabLoading() ? 'animate-spin' : ''}" />
 			</Button>
 		</div>
 	</div>
 
-	{#if error && !loading}
-		<ErrorDisplay
-			status={errorStatus === 404
-				? 404
-				: errorStatus === 400
-					? 400
-					: errorStatus === 422
-						? 422
-						: 400}
-			title="Failed to Load Metrics"
-			description={error}
-			onRetry={() => loadDashboard()}
-		/>
-	{/if}
+	<!-- Tabs -->
+	<Tabs.Root bind:value={activeTab} onValueChange={handleTabChange}>
+		<div class="flex flex-wrap items-center justify-between gap-2">
+			<div class="flex flex-wrap items-center gap-2">
+				<Tabs.List>
+					<Tabs.Trigger value="application">Application</Tabs.Trigger>
+					<Tabs.Trigger value="stats">Stats</Tabs.Trigger>
+					<Tabs.Trigger value="server">CPU / Mem</Tabs.Trigger>
+					<Tabs.Trigger value="custom">Custom</Tabs.Trigger>
+				</Tabs.List>
 
-	<!-- Metrics Grid -->
-	{#if !error}
-		<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-			{#if loading}
-				<div class="col-span-full flex items-center justify-center py-20">
-					<LoadingCircle size="xlg" />
-				</div>
-			{:else if dashboardData}
-				{#each dashboardData.metrics as metric (metric.id)}
-					<MetricCard
-						{metric}
-						timeDomain={sharedTimeDomain}
-						onRangeSelect={handleChartRangeSelect}
+				{#if availableServers().length > 1}
+					<ServerFilter
+						availableServers={availableServers()}
+						bind:selectedServers
+						onSelectionChange={handleServerSelectionChange}
 						{serverColorMap}
 					/>
-				{/each}
+				{/if}
+			</div>
+
+			{#if lastUpdated()}
+				<span class="text-sm text-muted-foreground whitespace-nowrap">
+					Updated: {lastUpdatedFormatted}
+				</span>
 			{/if}
 		</div>
-	{/if}
+
+		<!-- Application Tab -->
+		<Tabs.Content value="application">
+			<MetricsTabContent
+				metrics={applicationData?.metrics ?? null}
+				loading={loadingApplication}
+				error={errorApplication}
+				errorTitle="Failed to Load Application Metrics"
+				onRetry={() => loadApplicationMetrics()}
+				timeDomain={sharedTimeDomain}
+				onRangeSelect={handleChartRangeSelect}
+				{serverColorMap}
+				{selectedServers}
+				availableServers={availableServers()}
+			/>
+		</Tabs.Content>
+
+		<!-- Stats Tab -->
+		<Tabs.Content value="stats">
+			<MetricsTabContent
+				metrics={statsData?.metrics ?? null}
+				loading={loadingStats}
+				error={errorStats}
+				errorTitle="Failed to Load Stats Metrics"
+				onRetry={() => loadStatsMetrics()}
+				timeDomain={sharedTimeDomain}
+				onRangeSelect={handleChartRangeSelect}
+				{serverColorMap}
+				{selectedServers}
+				availableServers={availableServers()}
+			/>
+		</Tabs.Content>
+
+		<!-- Server Tab -->
+		<Tabs.Content value="server">
+			<MetricsTabContent
+				metrics={serverData?.metrics ?? null}
+				loading={loadingServer}
+				error={errorServer}
+				errorTitle="Failed to Load Server Metrics"
+				onRetry={() => loadServerMetrics()}
+				timeDomain={sharedTimeDomain}
+				onRangeSelect={handleChartRangeSelect}
+				{serverColorMap}
+				{selectedServers}
+				availableServers={availableServers()}
+			/>
+		</Tabs.Content>
+
+		<!-- Custom Tab -->
+		<Tabs.Content value="custom">
+			<div class="flex flex-col items-center justify-center py-8 text-center">
+				<div class="bg-muted mb-4 rounded-full p-3">
+					<Code class="text-muted-foreground h-6 w-6" />
+				</div>
+				<h3 class="mb-2 text-lg font-semibold">Custom Metrics not supported</h3>
+				<p class="text-muted-foreground mb-4 max-w-md text-sm">
+					Custom Metrics are not currently supported, but we're working on it and hope to have them supported soon.
+				</p>
+			</div>
+		</Tabs.Content>
+	</Tabs.Root>
 </div>

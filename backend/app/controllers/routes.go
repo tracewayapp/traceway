@@ -36,6 +36,11 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.GET("/dashboard", middleware.UseAppAuth, DashboardController.GetDashboard)
 	router.GET("/dashboard/overview", middleware.UseAppAuth, DashboardController.GetDashboardOverview)
 
+	// Metrics endpoints (split by category)
+	router.GET("/metrics/application", middleware.UseAppAuth, MetricsController.GetApplicationMetrics)
+	router.GET("/metrics/stats", middleware.UseAppAuth, MetricsController.GetStatsMetrics)
+	router.GET("/metrics/server", middleware.UseAppAuth, MetricsController.GetServerMetrics)
+
 	router.POST("/transactions", middleware.UseAppAuth, TransactionController.FindAllTransactions)
 	router.POST("/transactions/grouped", middleware.UseAppAuth, TransactionController.FindGroupedByEndpoint)
 	router.POST("/transactions/endpoint", middleware.UseAppAuth, TransactionController.FindByEndpoint)

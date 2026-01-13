@@ -208,13 +208,13 @@
 	});
 </script>
 
-<Card.Root class="gap-3">
+<Card.Root class="gap-3 pb-0">
 	<Card.Header class="pb-2">
 		<Card.Title class="text-sm font-medium">
 			{metric.name}
 		</Card.Title>
 	</Card.Header>
-	<Card.Content class="pt-0">
+	<Card.Content class="p-1 pt-0 pl-3">
 
 			<!-- Large Value Display -->
 
@@ -284,7 +284,7 @@
 								seriesLayout="stack"
 								props={{
 									xAxis: {
-										format: () => ""
+										format: () => "",
 									},
 									yAxis: {
 										format: (a: number) => a > 999 ? (a/1000).toFixed(0) + "k" : `${a}`,

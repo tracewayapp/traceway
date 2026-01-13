@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	import * as Popover from '$lib/components/ui/popover';
-	import { Checkbox } from '$lib/components/ui/checkbox';
-	import { Server, ChevronDown } from 'lucide-svelte';
+	import { Input } from '$lib/components/ui/input';
+	import { Separator } from '$lib/components/ui/separator';
+	import { Badge } from '$lib/components/ui/badge';
+	import { CirclePlus, Check } from 'lucide-svelte';
 
 	interface Props {
 		availableServers: string[];
@@ -19,135 +21,192 @@
 	}: Props = $props();
 
 	let isOpen = $state(false);
-	let tempSelectedServers = $state<Set<string>>(new Set(selectedServers));
+	let searchQuery = $state('');
 
-	// Sync temp state when popover opens
-	$effect(() => {
-		if (isOpen) {
-			tempSelectedServers = new Set(selectedServers);
-		}
-	});
+	// Filter servers based on search
+	const filteredServers = $derived(
+		[...availableServers]
+			.sort()
+			.filter(s => s.toLowerCase().includes(searchQuery.toLowerCase()))
+	);
 
-	// Computed states
-	const allSelected = $derived(tempSelectedServers.size === availableServers.length);
-	const noneSelected = $derived(tempSelectedServers.size === 0);
+	// Marker for "none selected" state
+	const NONE_SELECTED = '__none__';
 
-	// Display label for the trigger button
-	const displayLabel = $derived(() => {
+	// Check if in "none selected" state
+	const isNoneSelected = $derived(
+		selectedServers.length === 1 && selectedServers[0] === NONE_SELECTED
+	);
+
+	// Get the list of servers to display in the legend
+	const displayServers = $derived(() => {
+		if (isNoneSelected) return [];
+		// If empty (all selected) or all explicitly selected, show all available servers
 		if (selectedServers.length === 0 || selectedServers.length === availableServers.length) {
-			return 'All servers';
+			return [...availableServers].sort();
 		}
-		if (selectedServers.length === 1) {
-			return selectedServers[0];
-		}
-		return `${selectedServers.length} servers`;
+		// Otherwise show the selected ones
+		return [...selectedServers].sort();
 	});
 
-	function toggleServer(serverName: string) {
-		const newSet = new Set(tempSelectedServers);
-		if (newSet.has(serverName)) {
-			newSet.delete(serverName);
-		} else {
-			newSet.add(serverName);
-		}
-		tempSelectedServers = newSet;
+	// Has active filters (some but not all selected, or none selected)
+	const hasActiveFilters = $derived(
+		isNoneSelected || (selectedServers.length > 0 && selectedServers.length < availableServers.length)
+	);
+
+	function isSelected(serverName: string): boolean {
+		// None selected state
+		if (isNoneSelected) return false;
+		// If no servers selected, treat as "all selected"
+		if (selectedServers.length === 0) return true;
+		return selectedServers.includes(serverName);
 	}
 
 	function selectAll() {
-		tempSelectedServers = new Set(availableServers);
+		selectedServers = [];
+		onSelectionChange?.([]);
 	}
 
-	function clearAll() {
-		tempSelectedServers = new Set();
+	function selectNone() {
+		selectedServers = [NONE_SELECTED];
+		onSelectionChange?.([NONE_SELECTED]);
 	}
 
-	function arraysEqual(a: string[], b: string[]): boolean {
-		if (a.length !== b.length) return false;
-		const sortedA = [...a].sort();
-		const sortedB = [...b].sort();
-		return sortedA.every((v, i) => v === sortedB[i]);
-	}
+	function toggleServer(serverName: string) {
+		let newSelection: string[];
 
-	function applySelection() {
-		const newSelection = Array.from(tempSelectedServers);
-		if (!arraysEqual(newSelection, selectedServers)) {
-			selectedServers = newSelection;
-			onSelectionChange?.(newSelection);
+		if (isNoneSelected) {
+			// None selected - clicking one selects just that one
+			newSelection = [serverName];
+		} else if (selectedServers.length === 0) {
+			// Currently "all selected" - clicking one deselects it (select all except this one)
+			newSelection = availableServers.filter(s => s !== serverName);
+		} else if (selectedServers.includes(serverName)) {
+			// Remove from selection
+			newSelection = selectedServers.filter(s => s !== serverName);
+			// If removing last one, go to none selected state
+			if (newSelection.length === 0) {
+				newSelection = [NONE_SELECTED];
+			}
+		} else {
+			// Add to selection
+			newSelection = [...selectedServers, serverName];
+			// If all are now selected, reset to empty (all selected state)
+			if (newSelection.length === availableServers.length) {
+				newSelection = [];
+			}
 		}
+
+		selectedServers = newSelection;
+		onSelectionChange?.(newSelection);
 	}
 
+	function clearFilters() {
+		selectedServers = [];
+		onSelectionChange?.([]);
+	}
+
+	// Reset search when popover closes
 	function handleOpenChange(open: boolean) {
 		if (!open) {
-			// Apply selection when closing (only if changed)
-			applySelection();
+			searchQuery = '';
 		}
 		isOpen = open;
-	}
-
-	function isSelected(serverName: string): boolean {
-		return tempSelectedServers.has(serverName);
 	}
 </script>
 
 <Popover.Root bind:open={isOpen} onOpenChange={handleOpenChange}>
 	<Popover.Trigger>
-		<Button variant="outline" class="h-9 justify-between gap-2 font-normal">
-			<span class="flex items-center gap-2">
-				<Server class="h-4 w-4 text-muted-foreground" />
-				<span class="truncate">{displayLabel()}</span>
-			</span>
-			<ChevronDown class="h-4 w-4 text-muted-foreground" />
+		<Button variant="outline" size="sm" class="h-auto min-h-8 border-dashed py-1.5">
+			<CirclePlus class="mr-2 h-4 w-4 flex-shrink-0" />
+			<span class="flex-shrink-0">Servers</span>
+			{#if displayServers().length > 0}
+				<Separator orientation="vertical" class="mx-2 h-4" />
+				<div class="flex flex-wrap gap-1">
+					{#each displayServers() as server}
+						{@const color = serverColorMap[server] || '#888888'}
+						<Badge variant="secondary" class="rounded-sm px-1.5 py-0 font-normal flex items-center gap-1">
+							<span
+								class="h-2 w-2 rounded-full flex-shrink-0"
+								style="background-color: {color};"
+							></span>
+							<span class="truncate max-w-[80px]">{server}</span>
+						</Badge>
+					{/each}
+				</div>
+			{:else if isNoneSelected}
+				<Separator orientation="vertical" class="mx-2 h-4" />
+				<span class="text-muted-foreground text-xs">None selected</span>
+			{/if}
 		</Button>
 	</Popover.Trigger>
-	<Popover.Content class="w-[220px] p-0" align="start">
-		<div class="p-3 border-b">
-			<div class="flex items-center justify-between">
-				<span class="text-sm font-medium">Servers</span>
-				<div class="flex items-center gap-2">
-					<button
-						class="text-xs text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
-						onclick={selectAll}
-						disabled={allSelected}
-					>
-						All
-					</button>
-					<span class="text-muted-foreground">|</span>
-					<button
-						class="text-xs text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
-						onclick={clearAll}
-						disabled={noneSelected}
-					>
-						Clear
-					</button>
-				</div>
-			</div>
+
+	<Popover.Content class="w-[200px] p-0" align="start">
+		<!-- Search Input -->
+		<div class="p-2">
+			<Input
+				placeholder="Servers"
+				bind:value={searchQuery}
+				class="h-8"
+			/>
 		</div>
-		<div class="max-h-[280px] overflow-y-auto py-2">
-			{#each [...availableServers].sort() as serverName}
-				{@const color = serverColorMap[serverName] || '#888888'}
+
+		<!-- Quick Actions -->
+		{#if availableServers.length > 0}
+			<div class="flex items-center justify-between border-t px-2 py-1.5">
 				<button
-					class="w-full px-3 py-1.5 text-left text-sm hover:bg-muted/50 flex items-center gap-3 transition-colors"
+					class="text-xs text-muted-foreground hover:text-foreground"
+					onclick={selectAll}
+				>
+					Select all
+				</button>
+				<button
+					class="text-xs text-muted-foreground hover:text-foreground"
+					onclick={selectNone}
+				>
+					Deselect all
+				</button>
+			</div>
+		{/if}
+
+		<!-- Server List -->
+		<div class="max-h-[200px] overflow-y-auto">
+			{#each filteredServers as serverName}
+				{@const color = serverColorMap[serverName] || '#888888'}
+				{@const selected = isSelected(serverName)}
+				<button
+					class="relative flex w-full cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground"
 					onclick={() => toggleServer(serverName)}
 				>
-					<Checkbox
-						checked={isSelected(serverName)}
-						aria-label={`Select ${serverName}`}
-					/>
+					<div class="flex h-4 w-4 items-center justify-center rounded-sm border border-primary {selected ? 'bg-primary text-primary-foreground' : 'opacity-50'}">
+						{#if selected}
+							<Check class="h-3 w-3" />
+						{/if}
+					</div>
 					<span
-						class="w-3 h-3 rounded-full flex-shrink-0"
+						class="h-2 w-2 rounded-full flex-shrink-0"
 						style="background-color: {color};"
 					></span>
-					<span class="truncate">{serverName}</span>
+					<span class="flex-1 truncate text-left">{serverName}</span>
 				</button>
 			{/each}
+
+			{#if filteredServers.length === 0}
+				<div class="py-6 text-center text-sm text-muted-foreground">
+					No servers found.
+				</div>
+			{/if}
 		</div>
-		<div class="p-3 border-t">
-			<Button size="sm" class="w-full" onclick={() => {
-				applySelection();
-				isOpen = false;
-			}}>
-				Apply
-			</Button>
-		</div>
+
+		<!-- Clear Filters -->
+		{#if hasActiveFilters}
+			<Separator />
+			<button
+				class="w-full py-2 text-center text-sm hover:bg-accent"
+				onclick={clearFilters}
+			>
+				Clear filters
+			</button>
+		{/if}
 	</Popover.Content>
 </Popover.Root>

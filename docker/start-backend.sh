@@ -1,8 +1,10 @@
 #!/bin/bash
 set -e
 
-echo "Waiting for ClickHouse to be ready..."
-/usr/local/bin/wait-for-clickhouse.sh
+if [[ "$CLICKHOUSE_SERVER" == localhost* ]]; then
+    echo "Waiting for ClickHouse to be ready..."
+    /usr/local/bin/wait-for-clickhouse.sh
+fi
 
 echo "Starting Traceway backend..."
 exec /usr/local/bin/traceway-backend

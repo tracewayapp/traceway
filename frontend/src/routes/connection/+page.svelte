@@ -64,8 +64,8 @@
 	function getFrameworkCode(framework: Framework, token: string): string {
 		const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8082';
 		const connectionString = token
-			? `${token}@${apiUrl}/api/client/report`
-			: `YOUR_TOKEN@${apiUrl}/api/client/report`;
+			? `${token}@${apiUrl}/api/report`
+			: `YOUR_TOKEN@${apiUrl}/api/report`;
 
 		switch (framework) {
 			case 'gin':

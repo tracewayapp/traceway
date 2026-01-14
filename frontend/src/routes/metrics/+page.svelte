@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
+	import { goto } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button';
 	import { RefreshCw, Code } from 'lucide-svelte';
 	import ServerFilter from '$lib/components/dashboard/server-filter.svelte';
@@ -140,7 +141,7 @@
 	activeTab = initialUrlParams.tab;
 
 	// Update URL with current state
-	function updateUrl(pushState = true) {
+	function updateUrl(pushToHistory = true) {
 		if (!browser) return;
 
 		const params = new URLSearchParams();
@@ -159,11 +160,11 @@
 
 		const newUrl = `${window.location.pathname}?${params.toString()}`;
 
-		if (pushState) {
-			window.history.pushState({}, '', newUrl);
-		} else {
-			window.history.replaceState({}, '', newUrl);
-		}
+		goto(newUrl, {
+			replaceState: !pushToHistory,
+			noScroll: true,
+			keepFocus: true
+		});
 	}
 
 	// Handle browser back/forward navigation

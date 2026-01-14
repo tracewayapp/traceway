@@ -16,40 +16,45 @@
     {Icon: Link2, href: "/connection", title: "Connection"},
   ]
 
-  // Build href with time range params preserved between metrics and transactions
-  function getHref(baseHref: string): string {
+  // Reactive sidebar items with computed hrefs - explicitly read page.url to track dependency
+  const sidebarItemsWithHref = $derived.by(() => {
+    // Read page.url properties directly to establish reactive dependency
     const currentPath = page.url.pathname;
+    const currentSearch = page.url.search;
+    const preset = page.url.searchParams.get('preset');
+    const from = page.url.searchParams.get('from');
+    const to = page.url.searchParams.get('to');
+    const servers = page.url.searchParams.get('servers');
 
-    // Only preserve params when navigating between time range pages
     const isCurrentTimeRangePage = timeRangePages.some(p => currentPath.startsWith(p));
-    const isTargetTimeRangePage = timeRangePages.includes(baseHref);
 
-    if (isCurrentTimeRangePage && isTargetTimeRangePage) {
-      // Preserve preset, from, to params
-      const params = new URLSearchParams();
-      const preset = page.url.searchParams.get('preset');
-      const from = page.url.searchParams.get('from');
-      const to = page.url.searchParams.get('to');
+    return sidebarItems.map(item => {
+      const isTargetTimeRangePage = timeRangePages.includes(item.href);
 
-      if (preset) {
-        params.set('preset', preset);
-      } else if (from && to) {
-        params.set('from', from);
-        params.set('to', to);
+      let computedHref = item.href;
+
+      if (isCurrentTimeRangePage && isTargetTimeRangePage) {
+        const params = new URLSearchParams();
+
+        if (preset) {
+          params.set('preset', preset);
+        } else if (from && to) {
+          params.set('from', from);
+          params.set('to', to);
+        }
+
+        // Also preserve servers param for metrics page
+        if (item.href === '/metrics' && servers) {
+          params.set('servers', servers);
+        }
+
+        const queryString = params.toString();
+        computedHref = queryString ? `${item.href}?${queryString}` : item.href;
       }
 
-      // Also preserve servers param for metrics page
-      if (baseHref === '/metrics') {
-        const servers = page.url.searchParams.get('servers');
-        if (servers) params.set('servers', servers);
-      }
-
-      const queryString = params.toString();
-      return queryString ? `${baseHref}?${queryString}` : baseHref;
-    }
-
-    return baseHref;
-  }
+      return { ...item, computedHref };
+    });
+  });
 
 </script>
 
@@ -65,9 +70,9 @@
     <Sidebar.SidebarGroup>
       <Sidebar.SidebarGroupContent>
         <Sidebar.SidebarMenu>
-          {#each sidebarItems as sidebarItem}
+          {#each sidebarItemsWithHref as sidebarItem}
             <Sidebar.SidebarMenuItem>
-              <a href={getHref(sidebarItem.href)}>
+              <a href={sidebarItem.computedHref}>
                 <Sidebar.SidebarMenuButton isActive={page.url.pathname === sidebarItem.href || page.url.pathname.startsWith(sidebarItem.href + '/')}>
                   <sidebarItem.Icon />
                   <span>{sidebarItem.title}</span>

@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
     import { browser } from '$app/environment';
+    import { goto } from '$app/navigation';
     import { api } from '$lib/api';
     import { formatDuration, getNow, luxonToCalendarDateTime, parseISO, toUTCISO, calendarDateTimeToLuxon } from '$lib/utils/formatters';
     import { getTimezone } from '$lib/state/timezone.svelte';
@@ -110,7 +111,7 @@
     let toTime = $state(dateToTimeString(initialRange.to));
 
     // Update URL with current time range
-    function updateUrl(pushState = true) {
+    function updateUrl(pushToHistory = true) {
         if (!browser) return;
 
         const params = new URLSearchParams();
@@ -124,11 +125,11 @@
 
         const newUrl = `${window.location.pathname}?${params.toString()}`;
 
-        if (pushState) {
-            window.history.pushState({}, '', newUrl);
-        } else {
-            window.history.replaceState({}, '', newUrl);
-        }
+        goto(newUrl, {
+            replaceState: !pushToHistory,
+            noScroll: true,
+            keepFocus: true
+        });
     }
 
     // Handle browser back/forward navigation

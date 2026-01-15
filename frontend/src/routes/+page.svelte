@@ -6,7 +6,7 @@
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import * as Table from '$lib/components/ui/table';
 	import * as Tooltip from '$lib/components/ui/tooltip';
-	import { ArrowRight, Info, Gauge, Bug, CircleHelp as CircleQuestionMark } from 'lucide-svelte';
+	import { ArrowRight, Info, Gauge, Bug, CircleQuestionMark } from 'lucide-svelte';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { ImpactBadge } from '$lib/components/ui/impact-badge';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
@@ -112,7 +112,7 @@
 					<div class="mr-2 flex h-8 w-8 items-center justify-center rounded-md bg-chart-1/10">
 						<Gauge class="h-5 w-5 text-chart-1" />
 					</div>
-					<h2 class="text-2xl font-bold tracking-tight">Endpoints</h2>
+					<h2 class="text-2xl font-bold tracking-tight">Transaction</h2>
 					<Tooltip.Root>
 						<Tooltip.Trigger class="pt-1">
 							<CircleQuestionMark class="h-4 w-4 text-muted-foreground/60" />

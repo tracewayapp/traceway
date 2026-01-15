@@ -3,7 +3,7 @@
 	import * as Table from "$lib/components/ui/table/index.js";
 	import * as Tooltip from "$lib/components/ui/tooltip/index.js";
 	import { Button } from "$lib/components/ui/button/index.js";
-	import { ArrowDown, ArrowUp, ArrowUpDown, CircleHelp as CircleQuestionMark } from "lucide-svelte";
+	import { ArrowDown, ArrowUp, ArrowUpDown, CircleQuestionMark } from "lucide-svelte";
 
 	type SortDirection = "asc" | "desc";
 

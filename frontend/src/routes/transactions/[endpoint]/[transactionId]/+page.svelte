@@ -15,6 +15,9 @@
 	import SegmentWaterfall from '$lib/components/segments/segment-waterfall.svelte';
 	import SegmentEmptyState from '$lib/components/segments/segment-empty-state.svelte';
 	import type { TransactionDetailResponse } from '$lib/types/segments';
+	import PageHeader from '$lib/components/issues/page-header.svelte';
+	import { createRowClickHandler } from '$lib/utils/navigation';
+	import { resolve } from '$app/paths';
 
 	let { data } = $props();
 
@@ -60,42 +63,16 @@
 		}
 	}
 
-	function getBackUrl(): string {
-		const params = new URLSearchParams();
-		if (data.preset) {
-			params.set('preset', data.preset);
-		} else if (data.from && data.to) {
-			params.set('from', data.from);
-			params.set('to', data.to);
-		}
-		const queryString = params.toString();
-		return `/transactions/${encodeURIComponent(data.endpoint)}${queryString ? '?' + queryString : ''}`;
-	}
-
-	function goBack() {
-		goto(getBackUrl());
-	}
-
-	const backHref = $derived(getBackUrl());
-
 	onMount(() => {
 		loadData();
 	});
 </script>
 
 <div class="space-y-6">
-	<!-- Header -->
-	<div class="flex items-center gap-4">
-		<Button variant="ghost" size="sm" onclick={goBack} class="h-8 w-8 p-0">
-			<ArrowLeft class="h-4 w-4" />
-		</Button>
-		<div>
-			<h2 class="font-mono text-2xl font-bold tracking-tight break-all">
-				{decodeURIComponent(data.endpoint)}
-			</h2>
-			<p class="text-sm text-muted-foreground">Transaction ID: {data.transactionId}</p>
-		</div>
-	</div>
+	<PageHeader
+		title={decodeURIComponent(data.endpoint)} subtitle={`Transaction ID: ${data.transactionId}`}
+		onBack={createRowClickHandler(resolve('/transactions/[endpoint]', {endpoint: encodeURIComponent(data.endpoint)}))} />
+
 
 	{#if loading}
 		<div class="flex items-center justify-center py-20">
@@ -106,7 +83,7 @@
 			status={404}
 			title="Transaction Not Found"
 			description="The transaction you're looking for doesn't exist or may have expired."
-			{backHref}
+			onBack={createRowClickHandler(resolve('/transactions/[endpoint]', {endpoint: encodeURIComponent(data.endpoint)}))}
 			backLabel="Back to Endpoint"
 			onRetry={loadData}
 			identifier={data.transactionId}
@@ -116,7 +93,7 @@
 			status={400}
 			title="Failed to Load Transaction"
 			description={error}
-			{backHref}
+			onBack={createRowClickHandler(resolve('/transactions/[endpoint]', {endpoint: encodeURIComponent(data.endpoint)}))}
 			backLabel="Back to Endpoint"
 			onRetry={loadData}
 		/>

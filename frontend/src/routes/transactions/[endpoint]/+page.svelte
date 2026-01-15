@@ -17,6 +17,8 @@
     import ScopeDisplay from '$lib/components/scope-display.svelte';
     import { createRowClickHandler } from '$lib/utils/navigation';
     import PaginationFooter from '$lib/components/ui/pagination-footer/pagination-footer.svelte';
+	import PageHeader from '$lib/components/issues/page-header.svelte';
+	import { resolve } from '$app/paths';
 
     const timezone = $derived(getTimezone());
 
@@ -244,17 +246,6 @@
         loadData(false);
     }
 
-    function goBack() {
-        const params = new URLSearchParams();
-        if (selectedPreset) {
-            params.set('preset', selectedPreset);
-        } else {
-            params.set('from', getFromDateTimeUTC());
-            params.set('to', getToDateTimeUTC());
-        }
-        goto(`/transactions?${params.toString()}`);
-    }
-
     // Build URL for transaction detail with current time range
     function getTransactionDetailUrl(transactionId: string): string {
         const params = new URLSearchParams();
@@ -278,7 +269,7 @@
             status={404}
             title="Endpoint Not Found"
             description="The endpoint you're looking for doesn't exist or has no recorded transactions."
-            backHref="/transactions"
+            onBack={createRowClickHandler(resolve('/transactions'), 'presets', 'from', 'to')}
             backLabel="Back to Transactions"
             onRetry={() => loadData(false)}
             identifier={decodeURIComponent(data.endpoint)}
@@ -288,30 +279,30 @@
             status={errorStatus === 400 ? 400 : errorStatus === 422 ? 422 : 400}
             title="Failed to Load Transactions"
             description={error}
-            backHref="/transactions"
+            onBack={createRowClickHandler(resolve('/transactions'), 'presets', 'from', 'to')}
             backLabel="Back to Transactions"
             onRetry={() => loadData(false)}
         />
     {:else}
     <!-- Header with Title and Time Range Filter -->
-    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div class="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onclick={goBack} class="h-8 w-8 p-0">
-                <ArrowLeft class="h-4 w-4" />
-            </Button>
-            <div>
-                <h2 class="text-2xl font-bold tracking-tight font-mono break-all">{decodeURIComponent(data.endpoint)}</h2>
-                <p class="text-sm text-muted-foreground">Transaction instances for this endpoint</p>
-            </div>
-        </div>
-        <TimeRangePicker
-            bind:fromDate
-            bind:toDate
-            bind:fromTime
-            bind:toTime
-            bind:preset={selectedPreset}
-            onApply={handleTimeRangeChange}
+    <div class="flex flex-col gap-4 sm:flex-row sm:justify-between">
+
+        <PageHeader
+            title={decodeURIComponent(data.endpoint)}
+            subtitle="Transaction instances for this endpoint"
+            onBack={createRowClickHandler(resolve("/transactions"), "presets", "from", "to")}
         />
+
+        <div class="flex flex-col">
+            <TimeRangePicker
+                bind:fromDate
+                bind:toDate
+                bind:fromTime
+                bind:toTime
+                bind:preset={selectedPreset}
+                onApply={handleTimeRangeChange}
+            />
+        </div>
     </div>
 
     <!-- Endpoint Stats -->

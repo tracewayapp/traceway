@@ -14,6 +14,7 @@
 	import { onMount } from "svelte";
 	import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
 	import { ChevronDown } from 'lucide-svelte';
+	import { Toaster } from 'svelte-sonner';
 
 	let { children } = $props();
 	let showAddProjectModal = $state(false);
@@ -122,6 +123,8 @@
 		onOpenChange={(open) => showAddProjectModal = open}
 		onProjectCreated={handleProjectCreated}
 	/>
+
+	<Toaster richColors position="bottom-right" />
 {:else}
 	<main class="h-screen w-screen">
 		{@render children()}

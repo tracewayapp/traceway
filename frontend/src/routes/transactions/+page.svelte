@@ -18,6 +18,7 @@
     import { projectsState } from '$lib/state/projects.svelte';
     import { createRowClickHandler } from '$lib/utils/navigation';
     import { resolve } from '$app/paths';
+	import PageHeader from '$lib/components/issues/page-header.svelte';
 
     const timezone = $derived(getTimezone());
 
@@ -288,16 +289,20 @@
 
 <div class="space-y-4">
     <!-- Header with Title and Time Range Filter -->
-    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h2 class="text-2xl font-bold tracking-tight">Transactions</h2>
-        <TimeRangePicker
-            bind:fromDate
-            bind:toDate
-            bind:fromTime
-            bind:toTime
-            bind:preset={selectedPreset}
-            onApply={handleTimeRangeChange}
-        />
+     <div class="flex flex-col gap-4 sm:flex-row sm:justify-between">
+
+        <PageHeader title="Transactions" />
+
+        <div class="flex flex-col">
+            <TimeRangePicker
+                bind:fromDate
+                bind:toDate
+                bind:fromTime
+                bind:toTime
+                bind:preset={selectedPreset}
+                onApply={handleTimeRangeChange}
+            />
+        </div>
     </div>
 
     <!-- Endpoints Table -->

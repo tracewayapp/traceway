@@ -12,6 +12,8 @@
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import IssueTrendChart from '$lib/components/issue-trend-chart.svelte';
 	import Archive from '@lucide/svelte/icons/archive';
+	import { toast } from 'svelte-sonner';
+	import ArchiveConfirmationDialog from '$lib/components/archive-confirmation-dialog.svelte';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
 	import { PaginationFooter } from '$lib/components/ui/pagination-footer';
@@ -37,6 +39,7 @@
 	let loading = $state(true);
 	let error = $state('');
 	let archiving = $state(false);
+	let showArchiveDialog = $state(false);
 
 	// Pagination State
 	let page = $state(1);
@@ -177,11 +180,13 @@
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
 
+			toast.success('Successfully archived the Issue' + (selectedHashes.size > 1 ? 's' : ''));
 			selectedHashes = new Set();
 			await loadData();
 		} catch (e: any) {
 			console.error('Archive failed:', e);
 			error = e.message || 'Failed to archive issues';
+			throw e;
 		} finally {
 			archiving = false;
 		}
@@ -236,12 +241,12 @@
 			<Button
 				variant="outline"
 				size="sm"
-				onclick={archiveSelected}
+				onclick={() => showArchiveDialog = true}
 				disabled={archiving}
 				class="gap-1.5"
 			>
 				<Archive class="h-4 w-4" />
-				{archiving ? 'Archiving...' : 'Archive'}
+				Archive
 			</Button>
 			<Button variant="ghost" size="sm" onclick={() => (selectedHashes = new Set())}>
 				Clear selection
@@ -359,3 +364,10 @@
 		itemLabel="issue"
 	/>
 </div>
+
+<ArchiveConfirmationDialog
+	open={showArchiveDialog}
+	onOpenChange={(open) => showArchiveDialog = open}
+	count={selectedCount}
+	onConfirm={archiveSelected}
+/>

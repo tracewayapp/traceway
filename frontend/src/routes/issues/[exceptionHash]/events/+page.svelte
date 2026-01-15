@@ -16,6 +16,10 @@
     import { TracewayTableHeader } from "$lib/components/ui/traceway-table-header";
     import { TableEmptyState } from "$lib/components/ui/table-empty-state";
     import { PaginationFooter } from "$lib/components/ui/pagination-footer";
+    import { toast } from 'svelte-sonner';
+    import ArchiveConfirmationDialog from '$lib/components/archive-confirmation-dialog.svelte';
+    import Archive from '@lucide/svelte/icons/archive';
+	import { resolve } from '$app/paths';
 
     const timezone = $derived(getTimezone());
 
@@ -42,6 +46,8 @@
     let loading = $state(true);
     let error = $state('');
     let notFound = $state(false);
+    let showArchiveDialog = $state(false);
+    let archiving = $state(false);
 
     // Pagination state
     let currentPage = $state(1);
@@ -102,6 +108,24 @@
         loadData();
     }
 
+    async function archiveIssue() {
+        archiving = true;
+        try {
+            await api.post(
+                '/exception-stack-traces/archive',
+                { hashes: [page.params.exceptionHash] },
+                { projectId: projectsState.currentProjectId ?? undefined }
+            );
+            toast.success('Successfully archived the Issue');
+            goto('/issues');
+        } catch (e: any) {
+            console.error('Archive failed:', e);
+            throw e;
+        } finally {
+            archiving = false;
+        }
+    }
+
     onMount(() => {
         loadData();
     });
@@ -109,13 +133,25 @@
 
 <div class="space-y-6">
     <!-- Header -->
-    <div class="flex items-center gap-4">
+    <div class="flex items-center justify-between">
         <Button variant="outline" size="sm" onclick={() => goto(`/issues/${page.params.exceptionHash}`)}>
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
                 <path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>
             </svg>
             Back to Issue
         </Button>
+        {#if group}
+            <Button
+                variant="outline"
+                size="sm"
+                onclick={() => showArchiveDialog = true}
+                disabled={archiving}
+                class="gap-1.5"
+            >
+                <Archive class="h-4 w-4" />
+                Archive
+            </Button>
+        {/if}
     </div>
 
     {#if loading && !group}
@@ -127,7 +163,7 @@
             status={404}
             title="Exception Not Found"
             description="The exception you're looking for doesn't exist or may have been removed."
-            backHref="/issues"
+            onBack={createRowClickHandler(resolve('/issues'), 'presets', 'from', 'to')}
             backLabel="Back to Issues"
             onRetry={() => loadData()}
             identifier={page.params.exceptionHash}
@@ -137,7 +173,7 @@
             status={400}
             title="Something Went Wrong"
             description={error}
-            backHref="/issues"
+            onBack={createRowClickHandler(resolve('/issues'), 'presets', 'from', 'to')}
             backLabel="Back to Issues"
             onRetry={() => loadData()}
         />
@@ -218,3 +254,10 @@
         />
     {/if}
 </div>
+
+<ArchiveConfirmationDialog
+    open={showArchiveDialog}
+    onOpenChange={(open) => showArchiveDialog = open}
+    count={1}
+    onConfirm={archiveIssue}
+/>

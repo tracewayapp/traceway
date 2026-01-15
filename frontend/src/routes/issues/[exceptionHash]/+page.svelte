@@ -1,12 +1,19 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { page } from '$app/state';
+    import { goto } from '$app/navigation';
     import { api } from '$lib/api';
+    import { Button } from "$lib/components/ui/button";
     import { LoadingCircle } from "$lib/components/ui/loading-circle";
     import { ErrorDisplay } from "$lib/components/ui/error-display";
     import { projectsState } from '$lib/state/projects.svelte';
     import { StackTraceCard, EventCard, EventsTable, PageHeader } from '$lib/components/issues';
+    import { toast } from 'svelte-sonner';
+    import ArchiveConfirmationDialog from '$lib/components/archive-confirmation-dialog.svelte';
+    import Archive from '@lucide/svelte/icons/archive';
     import type { ExceptionGroup, ExceptionOccurrence, LinkedTransaction } from '$lib/types/exceptions';
+	import { createRowClickHandler } from '$lib/utils/navigation';
+	import { resolve } from '$app/paths';
 
     let group = $state<ExceptionGroup | null>(null);
     let occurrences = $state<ExceptionOccurrence[]>([]);
@@ -15,6 +22,8 @@
     let notFound = $state(false);
     let total = $state(0);
     let linkedTransaction = $state<LinkedTransaction | null>(null);
+    let showArchiveDialog = $state(false);
+    let archiving = $state(false);
 
     const exceptionHash = $derived(page.params.exceptionHash ?? '');
     const latestOccurrence = $derived(occurrences[0]);
@@ -75,17 +84,37 @@
         }
     }
 
+    async function archiveIssue() {
+        archiving = true;
+        try {
+            await api.post(
+                '/exception-stack-traces/archive',
+                { hashes: [exceptionHash] },
+                { projectId: projectsState.currentProjectId ?? undefined }
+            );
+            toast.success('Successfully archived the Issue');
+            goto('/issues');
+        } catch (e: any) {
+            console.error('Archive failed:', e);
+            throw e;
+        } finally {
+            archiving = false;
+        }
+    }
+
     onMount(() => {
         loadData();
     });
 </script>
 
 <div class="space-y-6">
-    <PageHeader
-        title={firstLineOfStackTrace}
-        subtitle="Exception Hash: {exceptionHash}"
-        backHref="/issues"
-    />
+    <div class="flex items-start justify-between gap-4">
+        <PageHeader
+            title={firstLineOfStackTrace}
+            subtitle="Exception Hash: {exceptionHash}"
+            onBack={createRowClickHandler(resolve("/issues"))}
+        />
+    </div>
 
     {#if loading && !group}
         <div class="flex items-center justify-center py-20">
@@ -96,7 +125,7 @@
             status={404}
             title="Exception Not Found"
             description="The exception you're looking for doesn't exist or may have been removed. It's possible the data has expired or the link is incorrect."
-            backHref="/issues"
+            onBack={createRowClickHandler(resolve('/issues'), 'presets', 'from', 'to')}
             backLabel="Back to Issues"
             onRetry={() => loadData()}
             identifier={exceptionHash}
@@ -106,7 +135,7 @@
             status={400}
             title="Something Went Wrong"
             description={error}
-            backHref="/issues"
+            onBack={createRowClickHandler(resolve('/issues'), 'presets', 'from', 'to')}
             backLabel="Back to Issues"
             onRetry={() => loadData()}
         />
@@ -117,6 +146,8 @@
             firstSeen={group.firstSeen}
             lastSeen={group.lastSeen}
             totalCount={group.count}
+            bind:showArchiveDialog={showArchiveDialog}
+            bind:archiving={archiving}
         />
 
         {#if latestOccurrence}
@@ -137,3 +168,10 @@
         />
     {/if}
 </div>
+
+<ArchiveConfirmationDialog
+    open={showArchiveDialog}
+    onOpenChange={(open) => showArchiveDialog = open}
+    count={1}
+    onConfirm={archiveIssue}
+/>

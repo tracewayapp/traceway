@@ -5,21 +5,25 @@
 
     interface Props {
         title: string;
-        subtitle: string;
-        backHref: string;
+        subtitle?: string;
+        onBack?: (e: MouseEvent) => void;
     }
 
-    let { title, subtitle, backHref }: Props = $props();
+    let { title, subtitle, onBack }: Props = $props();
 </script>
 
-<div class="flex items-center gap-4">
-    <Button variant="ghost" size="sm" onclick={() => goto(backHref)} class="h-8 w-8 p-0">
-        <ArrowLeft class="h-4 w-4" />
-    </Button>
+<div class="flex items-start gap-4">
+    {#if onBack}
+        <Button variant="ghost" size="sm" onclick={onBack} class="h-8 w-8 p-0">
+            <ArrowLeft class="h-4 w-4" />
+        </Button>
+    {/if}
     <div>
         <h2 class="font-mono text-2xl font-bold tracking-tight break-all">
             {title}
         </h2>
-        <p class="text-muted-foreground text-sm">{subtitle}</p>
+        {#if subtitle}
+            <p class="text-muted-foreground text-sm">{subtitle}</p>
+        {/if}
     </div>
 </div>

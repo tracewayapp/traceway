@@ -8,6 +8,11 @@
     import { formatDateTime } from '$lib/utils/formatters';
     import { StackTraceCard, EventCard, EventsTable, PageHeader } from '$lib/components/issues';
     import type { ExceptionGroup, ExceptionOccurrence, LinkedTransaction } from '$lib/types/exceptions';
+	import { createRowClickHandler } from '$lib/utils/navigation';
+	import { resolve } from '$app/paths';
+	import ArchiveConfirmationDialog from '$lib/components/archive-confirmation-dialog.svelte';
+	import { goto } from '$app/navigation';
+	import { toast } from 'svelte-sonner';
 
     let { data } = $props();
 
@@ -21,6 +26,9 @@
     let notFound = $state(false);
     let total = $state(0);
     let linkedTransaction = $state<LinkedTransaction | null>(null);
+    let showArchiveDialog = $state(false);
+    let archiving = $state(false);
+
 
     const isMessage = $derived(occurrence?.isMessage ?? false);
     const firstLineOfStackTrace = $derived(group?.stackTrace.split('\n')[0] || 'Exception');
@@ -86,6 +94,24 @@
         }
     }
 
+    async function archiveIssue() {
+        archiving = true;
+        try {
+            await api.post(
+                '/exception-stack-traces/archive',
+                { hashes: [data.exceptionHash] },
+                { projectId: projectsState.currentProjectId ?? undefined }
+            );
+            toast.success('Successfully archived the Issue');
+            goto(resolve("/issues"));
+        } catch (e: any) {
+            console.error('Archive failed:', e);
+            throw e;
+        } finally {
+            archiving = false;
+        }
+    }
+
     onMount(() => {
         loadData();
     });
@@ -95,7 +121,7 @@
     <PageHeader
         title={firstLineOfStackTrace}
         subtitle="Event from {formatDateTime(data.recordedAt, { timezone })}"
-        backHref="/issues/{data.exceptionHash}"
+        onBack={createRowClickHandler(resolve("/issues/[exceptionHash]", {exceptionHash: data.exceptionHash}))}
     />
 
     {#if loading && !group}
@@ -107,7 +133,7 @@
             status={404}
             title="Event Not Found"
             description="The specific event you're looking for doesn't exist or may have been removed."
-            backHref="/issues/{data.exceptionHash}"
+            onBack={createRowClickHandler(resolve('/issues/[exceptionHash]', {exceptionHash: data.exceptionHash}), 'presets', 'from', 'to')}
             backLabel="Back to Exception"
             onRetry={() => loadData()}
         />
@@ -116,7 +142,7 @@
             status={400}
             title="Something Went Wrong"
             description={error}
-            backHref="/issues/{data.exceptionHash}"
+            onBack={createRowClickHandler(resolve('/issues/[exceptionHash]', {exceptionHash: data.exceptionHash}), 'presets', 'from', 'to')}
             backLabel="Back to Exception"
             onRetry={() => loadData()}
         />
@@ -124,6 +150,8 @@
         <StackTraceCard
             stackTrace={group.stackTrace}
             {isMessage}
+            bind:showArchiveDialog={showArchiveDialog}
+            bind:archiving={archiving}
         />
 
         <EventCard
@@ -143,3 +171,11 @@
         />
     {/if}
 </div>
+
+
+<ArchiveConfirmationDialog
+    open={showArchiveDialog}
+    onOpenChange={(open) => showArchiveDialog = open}
+    count={1}
+    onConfirm={archiveIssue}
+/>

@@ -6,7 +6,7 @@
         status?: 404 | 400 | 422 | number;
         title?: string;
         description?: string;
-        backHref?: string;
+        onBack?: (e: MouseEvent) => void;
         backLabel?: string;
         onRetry?: () => void;
         identifier?: string;
@@ -16,7 +16,7 @@
         status = 404,
         title,
         description,
-        backHref,
+        onBack,
         backLabel = 'Go Back',
         onRetry,
         identifier
@@ -40,9 +40,9 @@
     const displayTitle = $derived(title || defaults[status]?.title || 'Error');
     const displayDescription = $derived(description || defaults[status]?.description || 'Something went wrong.');
 
-    function handleBack() {
-        if (backHref) {
-            goto(backHref);
+    function handleBack(e: MouseEvent) {
+        if (onBack) {
+            onBack(e);
         } else {
             history.back();
         }

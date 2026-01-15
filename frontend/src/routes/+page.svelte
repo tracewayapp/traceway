@@ -169,7 +169,7 @@
 									<Table.Row
 										class="cursor-pointer hover:bg-muted/50"
 										onclick={createRowClickHandler(
-											`/transactions/${encodeURIComponent(endpoint.endpoint)}?preset=24h`
+											`/endpoints/${encodeURIComponent(endpoint.endpoint)}?preset=24h`
 										)}
 									>
 										<Table.Cell
@@ -192,7 +192,7 @@
 										</Table.Cell>
 									</Table.Row>
 								{/each}
-								<ViewAllTableRow colspan={5} href="/transactions" label="View all transactions" />
+								<ViewAllTableRow colspan={5} href="/endpoints" label="View all endpoints" />
 							</Table.Body>
 						{:else}
 							<Table.Body>

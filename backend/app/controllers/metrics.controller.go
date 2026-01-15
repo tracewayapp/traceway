@@ -119,12 +119,12 @@ func (m metricsController) GetStatsMetrics(c *gin.Context) {
 	metrics := make([]models.DashboardMetric, 0, 4)
 
 	// 1. Requests count
-	requestsTrend, err := repositories.TransactionRepository.CountByInterval(c, projectId, start, end, intervalMinutes)
+	requestsTrend, err := repositories.EndpointRepository.CountByInterval(c, projectId, start, end, intervalMinutes)
 	if err != nil {
 		panic(err)
 	}
-	requestsCurrent, _ := repositories.TransactionRepository.CountBetween(c, projectId, start, end)
-	requestsPrev, _ := repositories.TransactionRepository.CountBetween(c, projectId, prevStart, prevEnd)
+	requestsCurrent, _ := repositories.EndpointRepository.CountBetween(c, projectId, start, end)
+	requestsPrev, _ := repositories.EndpointRepository.CountBetween(c, projectId, prevStart, prevEnd)
 	metrics = append(metrics, buildMetric("requests", "Requests", float64(requestsCurrent), "count", requestsTrend, float64(requestsPrev), "requests"))
 
 	// 2. Exceptions count
@@ -137,22 +137,22 @@ func (m metricsController) GetStatsMetrics(c *gin.Context) {
 	metrics = append(metrics, buildMetric("exceptions", "Exceptions", float64(exceptionsCurrent), "count", exceptionsTrend, float64(exceptionsPrev), "exceptions"))
 
 	// 3. Average Response Time
-	avgDurationTrend, err := repositories.TransactionRepository.AvgDurationByInterval(c, projectId, start, end, intervalMinutes)
+	avgDurationTrend, err := repositories.EndpointRepository.AvgDurationByInterval(c, projectId, start, end, intervalMinutes)
 	if err != nil {
 		panic(err)
 	}
 	avgDurationCurrent := getLastValue(avgDurationTrend)
-	avgDurationPrevTrend, _ := repositories.TransactionRepository.AvgDurationByInterval(c, projectId, prevStart, prevEnd, intervalMinutes)
+	avgDurationPrevTrend, _ := repositories.EndpointRepository.AvgDurationByInterval(c, projectId, prevStart, prevEnd, intervalMinutes)
 	avgDurationPrev := getAverageValue(avgDurationPrevTrend)
 	metrics = append(metrics, buildMetric("avg_response_time", "Avg Response Time", avgDurationCurrent, "ms", avgDurationTrend, avgDurationPrev, "response_time"))
 
 	// 4. Error Rate
-	errorRateTrend, err := repositories.TransactionRepository.ErrorRateByInterval(c, projectId, start, end, intervalMinutes)
+	errorRateTrend, err := repositories.EndpointRepository.ErrorRateByInterval(c, projectId, start, end, intervalMinutes)
 	if err != nil {
 		panic(err)
 	}
 	errorRateCurrent := getLastValue(errorRateTrend)
-	errorRatePrevTrend, _ := repositories.TransactionRepository.ErrorRateByInterval(c, projectId, prevStart, prevEnd, intervalMinutes)
+	errorRatePrevTrend, _ := repositories.EndpointRepository.ErrorRateByInterval(c, projectId, prevStart, prevEnd, intervalMinutes)
 	errorRatePrev := getAverageValue(errorRatePrevTrend)
 	metrics = append(metrics, buildMetric("error_rate", "Error Rate", errorRateCurrent, "%", errorRateTrend, errorRatePrev, "error_rate"))
 

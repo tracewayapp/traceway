@@ -33,15 +33,22 @@ func (e clientController) Report(c *gin.Context) {
 		return
 	}
 
-	transactionsToInsert := []models.Transaction{}
+	endpointsToInsert := []models.Endpoint{}
+	tasksToInsert := []models.Task{}
 	exceptionStackTraceToInsert := []models.ExceptionStackTrace{}
 	metricRecordsToInsert := []models.MetricRecord{}
 	segmentsToInsert := []models.Segment{}
 	for _, cf := range request.CollectionFrames {
 		for _, ct := range cf.Transactions {
-			t := ct.ToTransaction(request.AppVersion, request.ServerName)
-			t.ProjectId = projectId
-			transactionsToInsert = append(transactionsToInsert, t)
+			if ct.IsTask {
+				t := ct.ToTask(request.AppVersion, request.ServerName)
+				t.ProjectId = projectId
+				tasksToInsert = append(tasksToInsert, t)
+			} else {
+				e := ct.ToEndpoint(request.AppVersion, request.ServerName)
+				e.ProjectId = projectId
+				endpointsToInsert = append(endpointsToInsert, e)
+			}
 
 			// Extract segments from transaction
 			for _, cs := range ct.Segments {
@@ -64,13 +71,21 @@ func (e clientController) Report(c *gin.Context) {
 		}
 	}
 
-	err := repositories.TransactionRepository.InsertAsync(c, transactionsToInsert)
-
-	if err != nil {
-		panic(err)
+	if len(endpointsToInsert) > 0 {
+		err := repositories.EndpointRepository.InsertAsync(c, endpointsToInsert)
+		if err != nil {
+			panic(err)
+		}
 	}
 
-	err = repositories.ExceptionStackTraceRepository.InsertAsync(c, exceptionStackTraceToInsert)
+	if len(tasksToInsert) > 0 {
+		err := repositories.TaskRepository.InsertAsync(c, tasksToInsert)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	err := repositories.ExceptionStackTraceRepository.InsertAsync(c, exceptionStackTraceToInsert)
 
 	if err != nil {
 		panic(err)

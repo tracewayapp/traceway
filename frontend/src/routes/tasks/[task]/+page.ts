@@ -10,8 +10,7 @@ export const load: PageLoad = ({ params, url }) => {
 	}
 
 	return {
-		endpoint: params.endpoint,
-		transactionId: params.transactionId,
+		task: params.task,
 		preset: url.searchParams.get('preset') || null,
 		from: url.searchParams.get('from') || null,
 		to: url.searchParams.get('to') || null

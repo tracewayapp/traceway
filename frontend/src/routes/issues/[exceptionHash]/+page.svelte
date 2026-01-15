@@ -54,18 +54,22 @@
             const firstOccurrence = occurrences[0];
             if (firstOccurrence?.transactionId) {
                 try {
+                    const isTask = firstOccurrence.transactionType === 'task';
+                    const endpoint = isTask ? '/tasks' : '/endpoints';
                     const txResponse = await api.post(
-                        `/transactions/${firstOccurrence.transactionId}`,
+                        `${endpoint}/${firstOccurrence.transactionId}`,
                         {},
                         { projectId: projectsState.currentProjectId ?? undefined }
                     );
-                    if (txResponse.transaction) {
+                    const txData = isTask ? txResponse.task : txResponse.transaction;
+                    if (txData) {
                         linkedTransaction = {
-                            id: txResponse.transaction.id,
-                            endpoint: txResponse.transaction.endpoint,
-                            duration: txResponse.transaction.duration,
-                            statusCode: txResponse.transaction.statusCode,
-                            recordedAt: txResponse.transaction.recordedAt
+                            id: txData.id,
+                            endpoint: isTask ? txData.taskName : txData.endpoint,
+                            duration: txData.duration,
+                            statusCode: txData.statusCode || 0,
+                            recordedAt: txData.recordedAt,
+                            transactionType: isTask ? 'task' : 'endpoint'
                         };
                     }
                 } catch (txError) {

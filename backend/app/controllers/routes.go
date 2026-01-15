@@ -41,10 +41,17 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.GET("/metrics/stats", middleware.UseAppAuth, MetricsController.GetStatsMetrics)
 	router.GET("/metrics/server", middleware.UseAppAuth, MetricsController.GetServerMetrics)
 
-	router.POST("/transactions", middleware.UseAppAuth, TransactionController.FindAllTransactions)
-	router.POST("/transactions/grouped", middleware.UseAppAuth, TransactionController.FindGroupedByEndpoint)
-	router.POST("/transactions/endpoint", middleware.UseAppAuth, TransactionController.FindByEndpoint)
-	router.POST("/transactions/:transactionId", middleware.UseAppAuth, TransactionDetailController.GetTransactionDetail)
+	// Endpoints
+	router.POST("/endpoints", middleware.UseAppAuth, EndpointController.FindAllEndpoints)
+	router.POST("/endpoints/grouped", middleware.UseAppAuth, EndpointController.FindGroupedByEndpoint)
+	router.POST("/endpoints/endpoint", middleware.UseAppAuth, EndpointController.FindByEndpoint)
+	router.POST("/endpoints/:endpointId", middleware.UseAppAuth, EndpointDetailController.GetEndpointDetail)
+
+	// Tasks
+	router.POST("/tasks", middleware.UseAppAuth, TaskController.FindAllTasks)
+	router.POST("/tasks/grouped", middleware.UseAppAuth, TaskController.FindGroupedByTaskName)
+	router.POST("/tasks/task", middleware.UseAppAuth, TaskController.FindByTaskName)
+	router.POST("/tasks/:taskId", middleware.UseAppAuth, TaskDetailController.GetTaskDetail)
 	router.POST("/exception-stack-traces", middleware.UseAppAuth, ExceptionStackTraceController.FindGrouppedExceptionStackTraces)
 	router.POST("/exception-stack-traces/archive", middleware.UseAppAuth, ExceptionStackTraceController.ArchiveExceptions)
 	router.POST("/exception-stack-traces/unarchive", middleware.UseAppAuth, ExceptionStackTraceController.UnarchiveExceptions)

@@ -10,9 +10,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type transactionController struct{}
+type taskController struct{}
 
-type TransactionSearchRequest struct {
+type TaskSearchRequest struct {
 	ProjectId     string           `json:"projectId"`
 	FromDate      time.Time        `json:"fromDate"`
 	ToDate        time.Time        `json:"toDate"`
@@ -21,7 +21,7 @@ type TransactionSearchRequest struct {
 	Pagination    PaginationParams `json:"pagination"`
 }
 
-type EndpointTransactionsRequest struct {
+type TaskInstancesRequest struct {
 	ProjectId     string           `json:"projectId"`
 	FromDate      time.Time        `json:"fromDate"`
 	ToDate        time.Time        `json:"toDate"`
@@ -30,26 +30,26 @@ type EndpointTransactionsRequest struct {
 	Pagination    PaginationParams `json:"pagination"`
 }
 
-type EndpointTransactionsResponse struct {
-	Data       []models.Transaction       `json:"data"`
-	Stats      *models.EndpointDetailStats `json:"stats"`
-	Pagination Pagination                 `json:"pagination"`
+type TaskInstancesResponse struct {
+	Data       []models.Task           `json:"data"`
+	Stats      *models.TaskDetailStats `json:"stats"`
+	Pagination Pagination              `json:"pagination"`
 }
 
-func (e transactionController) FindAllTransactions(c *gin.Context) {
-	var request TransactionSearchRequest
+func (e taskController) FindAllTasks(c *gin.Context) {
+	var request TaskSearchRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	transactions, total, err := repositories.TransactionRepository.FindAll(c, request.ProjectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy)
+	tasks, total, err := repositories.TaskRepository.FindAll(c, request.ProjectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy)
 	if err != nil {
 		panic(err)
 	}
 
-	c.JSON(http.StatusOK, PaginatedResponse[models.Transaction]{
-		Data: transactions,
+	c.JSON(http.StatusOK, PaginatedResponse[models.Task]{
+		Data: tasks,
 		Pagination: Pagination{
 			Page:       request.Pagination.Page,
 			PageSize:   request.Pagination.PageSize,
@@ -59,19 +59,19 @@ func (e transactionController) FindAllTransactions(c *gin.Context) {
 	})
 }
 
-func (e transactionController) FindGroupedByEndpoint(c *gin.Context) {
-	var request TransactionSearchRequest
+func (e taskController) FindGroupedByTaskName(c *gin.Context) {
+	var request TaskSearchRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	stats, total, err := repositories.TransactionRepository.FindGroupedByEndpoint(c, request.ProjectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
+	stats, total, err := repositories.TaskRepository.FindGroupedByTaskName(c, request.ProjectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
 	if err != nil {
 		panic(err)
 	}
 
-	c.JSON(http.StatusOK, PaginatedResponse[models.EndpointStats]{
+	c.JSON(http.StatusOK, PaginatedResponse[models.TaskStats]{
 		Data: stats,
 		Pagination: Pagination{
 			Page:       request.Pagination.Page,
@@ -82,39 +82,39 @@ func (e transactionController) FindGroupedByEndpoint(c *gin.Context) {
 	})
 }
 
-func (e transactionController) FindByEndpoint(c *gin.Context) {
-	rawEndpoint := c.Query("endpoint")
-	if rawEndpoint == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "endpoint is required"})
+func (e taskController) FindByTaskName(c *gin.Context) {
+	rawTaskName := c.Query("task")
+	if rawTaskName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "task is required"})
 		return
 	}
 
-	// URL decode the endpoint (it may contain encoded slashes and spaces)
-	endpoint, err := url.PathUnescape(rawEndpoint)
+	// URL decode the task name
+	taskName, err := url.PathUnescape(rawTaskName)
 	if err != nil {
-		endpoint = rawEndpoint // fallback to raw value if decoding fails
+		taskName = rawTaskName // fallback to raw value if decoding fails
 	}
 
-	var request EndpointTransactionsRequest
+	var request TaskInstancesRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	transactions, total, err := repositories.TransactionRepository.FindByEndpoint(c, request.ProjectId, endpoint, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
+	tasks, total, err := repositories.TaskRepository.FindByTaskName(c, request.ProjectId, taskName, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
 	if err != nil {
 		panic(err)
 	}
 
-	// Get aggregate stats for this endpoint
-	stats, err := repositories.TransactionRepository.GetEndpointStats(c, request.ProjectId, endpoint, request.FromDate, request.ToDate)
+	// Get aggregate stats for this task
+	stats, err := repositories.TaskRepository.GetTaskStats(c, request.ProjectId, taskName, request.FromDate, request.ToDate)
 	if err != nil {
 		// Don't fail the request if stats fail, just return nil stats
 		stats = nil
 	}
 
-	c.JSON(http.StatusOK, EndpointTransactionsResponse{
-		Data:  transactions,
+	c.JSON(http.StatusOK, TaskInstancesResponse{
+		Data:  tasks,
 		Stats: stats,
 		Pagination: Pagination{
 			Page:       request.Pagination.Page,
@@ -125,4 +125,4 @@ func (e transactionController) FindByEndpoint(c *gin.Context) {
 	})
 }
 
-var TransactionController = transactionController{}
+var TaskController = taskController{}

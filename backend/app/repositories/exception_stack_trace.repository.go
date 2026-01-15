@@ -16,7 +16,7 @@ var ErrExceptionNotFound = errors.New("exception not found")
 type exceptionStackTraceRepository struct{}
 
 func (e *exceptionStackTraceRepository) InsertAsync(ctx context.Context, lines []models.ExceptionStackTrace) error {
-	batch, err := (*chdb.Conn).PrepareBatch(clickhouse.Context(context.Background(), clickhouse.WithAsync(false)), "INSERT INTO exception_stack_traces (project_id, transaction_id, exception_hash, stack_trace, recorded_at, scope, app_version, server_name, is_message)")
+	batch, err := (*chdb.Conn).PrepareBatch(clickhouse.Context(context.Background(), clickhouse.WithAsync(false)), "INSERT INTO exception_stack_traces (project_id, transaction_id, transaction_type, exception_hash, stack_trace, recorded_at, scope, app_version, server_name, is_message)")
 	if err != nil {
 		return err
 	}
@@ -31,7 +31,11 @@ func (e *exceptionStackTraceRepository) InsertAsync(ctx context.Context, lines [
 		if est.IsMessage {
 			isMessage = 1
 		}
-		if err := batch.Append(est.ProjectId, est.TransactionId, est.ExceptionHash, est.StackTrace, est.RecordedAt, scopeJSON, est.AppVersion, est.ServerName, isMessage); err != nil {
+		transactionType := est.TransactionType
+		if transactionType == "" {
+			transactionType = "endpoint"
+		}
+		if err := batch.Append(est.ProjectId, est.TransactionId, transactionType, est.ExceptionHash, est.StackTrace, est.RecordedAt, scopeJSON, est.AppVersion, est.ServerName, isMessage); err != nil {
 			return err
 		}
 	}
@@ -140,7 +144,7 @@ func (e *exceptionStackTraceRepository) FindByHash(ctx context.Context, projectI
 
 	// Get individual occurrences with pagination (including scope)
 	rows, err := (*chdb.Conn).Query(ctx,
-		"SELECT project_id, transaction_id, exception_hash, stack_trace, recorded_at, scope, app_version, server_name, is_message FROM exception_stack_traces WHERE project_id = ? AND exception_hash = ? ORDER BY recorded_at DESC LIMIT ? OFFSET ?",
+		"SELECT project_id, transaction_id, transaction_type, exception_hash, stack_trace, recorded_at, scope, app_version, server_name, is_message FROM exception_stack_traces WHERE project_id = ? AND exception_hash = ? ORDER BY recorded_at DESC LIMIT ? OFFSET ?",
 		projectId, exceptionHash, pageSize, offset)
 	if err != nil {
 		return nil, nil, 0, err
@@ -152,7 +156,7 @@ func (e *exceptionStackTraceRepository) FindByHash(ctx context.Context, projectI
 		var o models.ExceptionStackTrace
 		var scopeJSON string
 		var isMessage uint8
-		if err := rows.Scan(&o.ProjectId, &o.TransactionId, &o.ExceptionHash, &o.StackTrace, &o.RecordedAt, &scopeJSON, &o.AppVersion, &o.ServerName, &isMessage); err != nil {
+		if err := rows.Scan(&o.ProjectId, &o.TransactionId, &o.TransactionType, &o.ExceptionHash, &o.StackTrace, &o.RecordedAt, &scopeJSON, &o.AppVersion, &o.ServerName, &isMessage); err != nil {
 			return nil, nil, 0, err
 		}
 		o.IsMessage = isMessage == 1
@@ -308,12 +312,12 @@ func (e *exceptionStackTraceRepository) FindByTransactionId(ctx context.Context,
 	var isMessage uint8
 
 	err := (*chdb.Conn).QueryRow(ctx,
-		`SELECT project_id, transaction_id, exception_hash, stack_trace, recorded_at, scope, app_version, server_name, is_message
+		`SELECT project_id, transaction_id, transaction_type, exception_hash, stack_trace, recorded_at, scope, app_version, server_name, is_message
 		FROM exception_stack_traces
 		WHERE project_id = ? AND transaction_id = ?
 		LIMIT 1`,
 		projectId, transactionId).Scan(
-		&est.ProjectId, &est.TransactionId, &est.ExceptionHash, &est.StackTrace,
+		&est.ProjectId, &est.TransactionId, &est.TransactionType, &est.ExceptionHash, &est.StackTrace,
 		&est.RecordedAt, &scopeJSON, &est.AppVersion, &est.ServerName, &isMessage)
 
 	if err != nil {

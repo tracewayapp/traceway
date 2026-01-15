@@ -2,28 +2,46 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api';
-	import { formatDuration, getStatusColor, formatDateTime } from '$lib/utils/formatters';
+	import { formatDuration, formatDateTime } from '$lib/utils/formatters';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import { projectsState } from '$lib/state/projects.svelte';
-	import { ArrowLeft, ArrowRight, TriangleAlert } from 'lucide-svelte';
+	import { ArrowRight, TriangleAlert } from 'lucide-svelte';
 	import { LabelValue } from '$lib/components/ui/label-value';
 	import { ContextGrid } from '$lib/components/ui/context-grid';
 	import SegmentWaterfall from '$lib/components/segments/segment-waterfall.svelte';
 	import SegmentEmptyState from '$lib/components/segments/segment-empty-state.svelte';
-	import type { TransactionDetailResponse } from '$lib/types/segments';
 	import PageHeader from '$lib/components/issues/page-header.svelte';
 	import { createRowClickHandler } from '$lib/utils/navigation';
 	import { resolve } from '$app/paths';
+
+	type TaskDetailResponse = {
+		task: {
+			id: string;
+			taskName: string;
+			duration: number;
+			recordedAt: string;
+			clientIP: string;
+			scope: Record<string, string> | null;
+			serverName: string;
+			appVersion: string;
+		};
+		exception?: {
+			exceptionHash: string;
+			stackTrace: string;
+		};
+		segments: any[];
+		hasSegments: boolean;
+	};
 
 	let { data } = $props();
 
 	const timezone = $derived(getTimezone());
 
-	let response = $state<TransactionDetailResponse | null>(null);
+	let response = $state<TaskDetailResponse | null>(null);
 	let loading = $state(true);
 	let error = $state('');
 	let notFound = $state(false);
@@ -35,7 +53,7 @@
 
 		try {
 			const result = await api.post(
-				`/transactions/${data.transactionId}`,
+				`/tasks/${data.taskId}`,
 				{},
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
@@ -46,20 +64,10 @@
 			if (err.status === 404) {
 				notFound = true;
 			} else {
-				error = err.message || 'Failed to load transaction details';
+				error = err.message || 'Failed to load task details';
 			}
 		} finally {
 			loading = false;
-		}
-	}
-
-	function formatBytes(bytes: number): string {
-		if (bytes < 1024) {
-			return `${bytes} B`;
-		} else if (bytes < 1024 * 1024) {
-			return `${(bytes / 1024).toFixed(1)} KB`;
-		} else {
-			return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 		}
 	}
 
@@ -70,8 +78,8 @@
 
 <div class="space-y-6">
 	<PageHeader
-		title={decodeURIComponent(data.endpoint)} subtitle={`Transaction ID: ${data.transactionId}`}
-		onBack={createRowClickHandler(resolve('/transactions/[endpoint]', {endpoint: encodeURIComponent(data.endpoint)}))} />
+		title={decodeURIComponent(data.task)} subtitle={`Task ID: ${data.taskId}`}
+		onBack={createRowClickHandler(resolve('/tasks/[task]', {task: encodeURIComponent(data.task)}))} />
 
 
 	{#if loading}
@@ -81,81 +89,69 @@
 	{:else if notFound}
 		<ErrorDisplay
 			status={404}
-			title="Transaction Not Found"
-			description="The transaction you're looking for doesn't exist or may have expired."
-			onBack={createRowClickHandler(resolve('/transactions/[endpoint]', {endpoint: encodeURIComponent(data.endpoint)}))}
-			backLabel="Back to Endpoint"
+			title="Task Not Found"
+			description="The task instance you're looking for doesn't exist or may have expired."
+			onBack={createRowClickHandler(resolve('/tasks/[task]', {task: encodeURIComponent(data.task)}))}
+			backLabel="Back to Task"
 			onRetry={loadData}
-			identifier={data.transactionId}
+			identifier={data.taskId}
 		/>
 	{:else if error}
 		<ErrorDisplay
 			status={400}
-			title="Failed to Load Transaction"
+			title="Failed to Load Task"
 			description={error}
-			onBack={createRowClickHandler(resolve('/transactions/[endpoint]', {endpoint: encodeURIComponent(data.endpoint)}))}
-			backLabel="Back to Endpoint"
+			onBack={createRowClickHandler(resolve('/tasks/[task]', {task: encodeURIComponent(data.task)}))}
+			backLabel="Back to Task"
 			onRetry={loadData}
 		/>
 	{:else if response}
-		<!-- Transaction Details Card -->
+		<!-- Task Details Card -->
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>Transaction Details</Card.Title>
-				<Card.Description>Details of this specific transaction occurrence</Card.Description>
+				<Card.Title>Task Details</Card.Title>
+				<Card.Description>Details of this specific task execution</Card.Description>
 			</Card.Header>
 			<Card.Content class="space-y-6">
 				<div class="grid grid-cols-2 gap-4 md:grid-cols-4">
 					<LabelValue
-						label="Endpoint"
-						value={decodeURIComponent(data.endpoint)}
+						label="Task"
+						value={decodeURIComponent(data.task)}
 						mono
-					/>
-					<LabelValue
-						label="Status"
-						value={response.transaction.statusCode}
-						mono
-						large
-						valueClass={getStatusColor(response.transaction.statusCode)}
 					/>
 					<LabelValue
 						label="Duration"
-						value={formatDuration(response.transaction.duration)}
+						value={formatDuration(response.task.duration)}
 						mono
 						large
 					/>
 					<LabelValue
 						label="Recorded At"
-						value={formatDateTime(response.transaction.recordedAt, { timezone })}
+						value={formatDateTime(response.task.recordedAt, { timezone })}
 						mono
 					/>
 					<LabelValue
 						label="Server"
-						value={response.transaction.serverName}
+						value={response.task.serverName}
 						mono
 					/>
 					<LabelValue
 						label="Version"
-						value={response.transaction.appVersion}
+						value={response.task.appVersion}
 						mono
 					/>
 					<LabelValue
 						label="Client IP"
-						value={response.transaction.clientIP}
-						mono
-					/>
-					<LabelValue
-						label="Body Size"
-						value={formatBytes(response.transaction.bodySize)}
+						value={response.task.clientIP}
 						mono
 					/>
 				</div>
 
-				{#if response.transaction.scope && Object.keys(response.transaction.scope).length > 0}
+				{#if response.task.scope && Object.keys(response.task.scope).length > 0}
 					<hr class="border-border" />
 					<div>
 						<p class="mb-3 text-sm font-medium">Context (Scope)</p>
-						<ContextGrid scope={response.transaction.scope} />
+						<ContextGrid scope={response.task.scope} />
 					</div>
 				{/if}
 			</Card.Content>
@@ -169,7 +165,7 @@
 						<TriangleAlert class="h-5 w-5 text-red-500" />
 						<Card.Title class="text-red-600 dark:text-red-400">Exception Occurred</Card.Title>
 					</div>
-					<Card.Description>This transaction resulted in an exception</Card.Description>
+					<Card.Description>This task execution resulted in an exception</Card.Description>
 				</Card.Header>
 				<Card.Content>
 					<div class="mb-4 max-h-32 overflow-x-auto rounded-md bg-muted p-3">
@@ -198,9 +194,9 @@
 				<Card.Title>Segments</Card.Title>
 				<Card.Description>
 					{#if response.hasSegments}
-						Timing breakdown of operations within this transaction
+						Timing breakdown of operations within this task
 					{:else}
-						No segments recorded for this transaction
+						No segments recorded for this task
 					{/if}
 				</Card.Description>
 			</Card.Header>
@@ -208,8 +204,8 @@
 				{#if response.hasSegments}
 					<SegmentWaterfall
 						segments={response.segments}
-						transactionDuration={response.transaction.duration}
-						transactionStartTime={response.transaction.recordedAt}
+						transactionDuration={response.task.duration}
+						transactionStartTime={response.task.recordedAt}
 					/>
 				{:else}
 					<SegmentEmptyState framework={projectsState.currentProject?.framework ?? 'gin'} />

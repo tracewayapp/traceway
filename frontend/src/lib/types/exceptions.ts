@@ -8,6 +8,7 @@ export type ExceptionGroup = {
 
 export type ExceptionOccurrence = {
     transactionId: string | null;
+    transactionType: 'endpoint' | 'task';
     exceptionHash: string;
     stackTrace: string;
     recordedAt: string;
@@ -24,4 +25,5 @@ export type LinkedTransaction = {
     duration: number;
     statusCode: number;
     recordedAt: string;
+    transactionType: 'endpoint' | 'task';
 };

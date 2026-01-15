@@ -3,6 +3,7 @@ import { goto } from '$app/navigation';
 import { CalendarDate } from '@internationalized/date';
 import { getNow, parseISO } from './formatters';
 
+export const presetMinutes: Record<string, number> = {
 	'30m': 30,
 	'60m': 60,
 	'3h': 180,

@@ -4,11 +4,8 @@
     import { formatDuration, toUTCISO, calendarDateTimeToLuxon } from '$lib/utils/formatters';
     import { getTimezone } from '$lib/state/timezone.svelte';
     import * as Table from "$lib/components/ui/table";
-    import { Button } from "$lib/components/ui/button";
     import { LoadingCircle } from "$lib/components/ui/loading-circle";
-    import * as Select from "$lib/components/ui/select";
     import { TracewayTableHeader } from "$lib/components/ui/traceway-table-header";
-    import { ImpactBadge } from "$lib/components/ui/impact-badge";
     import { TableEmptyState } from "$lib/components/ui/table-empty-state";
     import { PaginationFooter } from "$lib/components/ui/pagination-footer";
     import { TimeRangePicker } from "$lib/components/ui/time-range-picker";
@@ -29,8 +26,8 @@
 
     const timezone = $derived(getTimezone());
 
-    type EndpointStats = {
-        endpoint: string;
+    type TaskStats = {
+        taskName: string;
         count: number;
         p50Duration: number;
         p95Duration: number;
@@ -38,10 +35,10 @@
         lastSeen: string;
     };
 
-    type SortField = 'count' | 'p50_duration' | 'p95_duration' | 'last_seen' | 'impact';
+    type SortField = 'count' | 'p50_duration' | 'p95_duration' | 'last_seen';
     type SortDirection = 'asc' | 'desc';
 
-    let endpoints = $state<EndpointStats[]>([]);
+    let tasks = $state<TaskStats[]>([]);
     let loading = $state(true);
     let error = $state('');
 
@@ -87,19 +84,9 @@
         loadData(false);
     }
 
-    // Sorting - default to impact descending
-    let orderBy = $state<SortField>('impact');
+    // Sorting - default to count descending
+    let orderBy = $state<SortField>('count');
     let sortDirection = $state<SortDirection>('desc');
-
-    // Page size options
-    const pageSizeOptions = [
-        { value: "10", label: "10" },
-        { value: "20", label: "20" },
-        { value: "50", label: "50" },
-        { value: "100", label: "100" }
-    ];
-
-    const pageSizeLabel = $derived(pageSizeOptions.find(o => o.value === pageSize.toString())?.label ?? pageSize.toString());
 
     // Combine date and time into UTC ISO datetime string
     function getFromDateTimeUTC(): string {
@@ -134,17 +121,6 @@
         return count.toLocaleString();
     }
 
-    // Calculate impact level based on call volume and response time variance
-    // Returns: 'critical' | 'high' | 'medium' | null (null = not significant)
-    function getImpactLevel(count: number, p50: number, p95: number): 'critical' | 'high' | 'medium' | null {
-        const varianceMs = (p95 - p50) / 1_000_000;
-        const score = count * varianceMs;
-        if (score > 100) return 'critical';
-        if (score > 10) return 'high';
-        if (score > 1) return 'medium';
-        return null;
-    }
-
     async function loadData(pushToHistory = true) {
         loading = true;
         error = '';
@@ -164,9 +140,9 @@
                 }
             };
 
-            const response = await api.post('/transactions/grouped', requestBody, { projectId: projectsState.currentProjectId ?? undefined });
+            const response = await api.post('/tasks/grouped', requestBody, { projectId: projectsState.currentProjectId ?? undefined });
 
-            endpoints = response.data || [];
+            tasks = response.data || [];
             total = response.pagination.total;
             totalPages = response.pagination.totalPages;
         } catch (e: any) {
@@ -222,7 +198,7 @@
     <!-- Header with Title and Time Range Filter -->
      <div class="flex flex-col gap-4 sm:flex-row sm:justify-between">
 
-        <PageHeader title="Transactions" />
+        <PageHeader title="Tasks" />
 
         <div class="flex flex-col">
             <TimeRangePicker
@@ -236,13 +212,13 @@
         </div>
     </div>
 
-    <!-- Endpoints Table -->
+    <!-- Tasks Table -->
     <div class="rounded-md border overflow-hidden">
         <Table.Root>
             {#if loading}
             <Table.Body>
                 <Table.Row>
-                    <Table.Cell colspan={5} class="h-48">
+                    <Table.Cell colspan={4} class="h-48">
                         <div class="flex justify-center items-center h-full">
                             <LoadingCircle size="xlg" />
                         </div>
@@ -252,25 +228,25 @@
             {:else if error}
             <Table.Body>
                 <Table.Row>
-                    <Table.Cell colspan={5} class="h-24 text-center text-red-500">
+                    <Table.Cell colspan={4} class="h-24 text-center text-red-500">
                         {error}
                     </Table.Cell>
                 </Table.Row>
             </Table.Body>
-            {:else if endpoints.length === 0}
+            {:else if tasks.length === 0}
             <Table.Body>
-                <TableEmptyState colspan={5} message="No transaction data received yet" />
+                <TableEmptyState colspan={4} message="No task data received yet" />
             </Table.Body>
             {:else}
             <Table.Header>
                 <Table.Row>
                     <TracewayTableHeader
-                        label="Endpoint"
-                        tooltip="The API route or page being accessed"
+                        label="Task"
+                        tooltip="The background job or task name"
                     />
                     <TracewayTableHeader
-                        label="Calls"
-                        tooltip="Total number of requests"
+                        label="Runs"
+                        tooltip="Total number of task executions"
                         sortField="count"
                         currentSortField={orderBy}
                         {sortDirection}
@@ -279,7 +255,7 @@
                     />
                     <TracewayTableHeader
                         label="Typical"
-                        tooltip="Median response time (P50)"
+                        tooltip="Median duration (P50)"
                         sortField="p50_duration"
                         currentSortField={orderBy}
                         {sortDirection}
@@ -288,46 +264,32 @@
                     />
                     <TracewayTableHeader
                         label="Slow"
-                        tooltip="95th percentile - slowest 5% of requests"
+                        tooltip="95th percentile - slowest 5% of executions"
                         sortField="p95_duration"
                         currentSortField={orderBy}
                         {sortDirection}
                         onSort={(field) => handleSort(field as SortField)}
                         class="w-[100px]"
                     />
-                    <TracewayTableHeader
-                        label="Impact"
-                        tooltip="Priority based on traffic × response time variance"
-                        sortField="impact"
-                        currentSortField={orderBy}
-                        {sortDirection}
-                        onSort={(field) => handleSort(field as SortField)}
-                        align="right"
-                        class="w-[120px]"
-                    />
                 </Table.Row>
             </Table.Header>
             <Table.Body>
-                {#each endpoints as endpoint}
-                    {@const impactLevel = getImpactLevel(endpoint.count, endpoint.p50Duration, endpoint.p95Duration)}
+                {#each tasks as task}
                     <Table.Row
                         class="cursor-pointer hover:bg-muted/50"
-                        onclick={createRowClickHandler(resolve(`/transactions/${encodeURIComponent(endpoint.endpoint)}`), 'preset', 'from', 'to')}
+                        onclick={createRowClickHandler(resolve(`/tasks/${encodeURIComponent(task.taskName)}`), 'preset', 'from', 'to')}
                     >
                         <Table.Cell class="font-mono text-sm">
-                            {endpoint.endpoint}
+                            {task.taskName}
                         </Table.Cell>
                         <Table.Cell class="tabular-nums">
-                            {formatCount(endpoint.count)}
+                            {formatCount(task.count)}
                         </Table.Cell>
                         <Table.Cell class="font-mono text-sm tabular-nums">
-                            {formatDuration(endpoint.p50Duration)}
+                            {formatDuration(task.p50Duration)}
                         </Table.Cell>
                         <Table.Cell class="font-mono text-sm tabular-nums">
-                            {formatDuration(endpoint.p95Duration)}
-                        </Table.Cell>
-                        <Table.Cell class="text-right">
-                            <ImpactBadge level={impactLevel} />
+                            {formatDuration(task.p95Duration)}
                         </Table.Cell>
                     </Table.Row>
                 {/each}
@@ -345,6 +307,6 @@
         onPageChange={handlePageChange}
         onPageSizeChange={handlePageSizeChange}
         {loading}
-        itemLabel="endpoint"
+        itemLabel="task"
     />
 </div>

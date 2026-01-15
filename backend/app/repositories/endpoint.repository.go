@@ -10,10 +10,10 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 )
 
-type transactionRepository struct{}
+type endpointRepository struct{}
 
-func (e *transactionRepository) InsertAsync(ctx context.Context, lines []models.Transaction) error {
-	batch, err := (*chdb.Conn).PrepareBatch(clickhouse.Context(context.Background(), clickhouse.WithAsync(false)), "INSERT INTO transactions (id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, scope, app_version, server_name)")
+func (e *endpointRepository) InsertAsync(ctx context.Context, lines []models.Endpoint) error {
+	batch, err := (*chdb.Conn).PrepareBatch(clickhouse.Context(context.Background(), clickhouse.WithAsync(false)), "INSERT INTO endpoints (id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, scope, app_version, server_name)")
 	if err != nil {
 		return err
 	}
@@ -31,15 +31,15 @@ func (e *transactionRepository) InsertAsync(ctx context.Context, lines []models.
 	return batch.Send()
 }
 
-func (e *transactionRepository) CountBetween(ctx context.Context, projectId string, start, end time.Time) (int64, error) {
+func (e *endpointRepository) CountBetween(ctx context.Context, projectId string, start, end time.Time) (int64, error) {
 	var count uint64
-	err := (*chdb.Conn).QueryRow(ctx, "SELECT count() FROM transactions WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, start, end).Scan(&count)
+	err := (*chdb.Conn).QueryRow(ctx, "SELECT count() FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, start, end).Scan(&count)
 	return int64(count), err
 }
 
-func (e *transactionRepository) FindAll(ctx context.Context, projectId string, fromDate, toDate time.Time, page, pageSize int, orderBy string) ([]models.Transaction, int64, error) {
+func (e *endpointRepository) FindAll(ctx context.Context, projectId string, fromDate, toDate time.Time, page, pageSize int, orderBy string) ([]models.Endpoint, int64, error) {
 	var count uint64
-	err := (*chdb.Conn).QueryRow(ctx, "SELECT count() FROM transactions WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, fromDate, toDate).Scan(&count)
+	err := (*chdb.Conn).QueryRow(ctx, "SELECT count() FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, fromDate, toDate).Scan(&count)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -57,16 +57,16 @@ func (e *transactionRepository) FindAll(ctx context.Context, projectId string, f
 		orderBy = "recorded_at"
 	}
 
-	query := "SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, scope, app_version, server_name FROM transactions WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " DESC LIMIT ? OFFSET ?"
+	query := "SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, scope, app_version, server_name FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " DESC LIMIT ? OFFSET ?"
 	rows, err := (*chdb.Conn).Query(ctx, query, projectId, fromDate, toDate, pageSize, offset)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer rows.Close()
 
-	var transactions []models.Transaction
+	var endpoints []models.Endpoint
 	for rows.Next() {
-		var t models.Transaction
+		var t models.Endpoint
 		var scopeJSON string
 		if err := rows.Scan(&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt, &t.StatusCode, &t.BodySize, &t.ClientIP, &scopeJSON, &t.AppVersion, &t.ServerName); err != nil {
 			return nil, 0, err
@@ -77,16 +77,16 @@ func (e *transactionRepository) FindAll(ctx context.Context, projectId string, f
 				t.Scope = nil
 			}
 		}
-		transactions = append(transactions, t)
+		endpoints = append(endpoints, t)
 	}
 
-	return transactions, int64(count), nil
+	return endpoints, int64(count), nil
 }
 
-func (e *transactionRepository) FindGroupedByEndpoint(ctx context.Context, projectId string, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.EndpointStats, int64, error) {
+func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectId string, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.EndpointStats, int64, error) {
 	// Count unique endpoints
 	var count uint64
-	err := (*chdb.Conn).QueryRow(ctx, "SELECT uniq(endpoint) FROM transactions WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, fromDate, toDate).Scan(&count)
+	err := (*chdb.Conn).QueryRow(ctx, "SELECT uniq(endpoint) FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, fromDate, toDate).Scan(&count)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -121,7 +121,7 @@ func (e *transactionRepository) FindGroupedByEndpoint(ctx context.Context, proje
 		quantile(0.95)(duration) as p95_duration,
 		avg(duration) as avg_duration,
 		max(recorded_at) as last_seen
-	FROM transactions
+	FROM endpoints
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY endpoint
 	ORDER BY ` + orderExpr + ` ` + sortDir + `
@@ -149,9 +149,9 @@ func (e *transactionRepository) FindGroupedByEndpoint(ctx context.Context, proje
 	return stats, int64(count), nil
 }
 
-func (e *transactionRepository) FindByEndpoint(ctx context.Context, projectId string, endpoint string, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.Transaction, int64, error) {
+func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId string, endpoint string, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.Endpoint, int64, error) {
 	var count uint64
-	err := (*chdb.Conn).QueryRow(ctx, "SELECT count() FROM transactions WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, endpoint, fromDate, toDate).Scan(&count)
+	err := (*chdb.Conn).QueryRow(ctx, "SELECT count() FROM endpoints WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, endpoint, fromDate, toDate).Scan(&count)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -175,16 +175,16 @@ func (e *transactionRepository) FindByEndpoint(ctx context.Context, projectId st
 		sortDir = "ASC"
 	}
 
-	query := "SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, scope, app_version, server_name FROM transactions WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " " + sortDir + " LIMIT ? OFFSET ?"
+	query := "SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, scope, app_version, server_name FROM endpoints WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " " + sortDir + " LIMIT ? OFFSET ?"
 	rows, err := (*chdb.Conn).Query(ctx, query, projectId, endpoint, fromDate, toDate, pageSize, offset)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer rows.Close()
 
-	var transactions []models.Transaction
+	var endpoints []models.Endpoint
 	for rows.Next() {
-		var t models.Transaction
+		var t models.Endpoint
 		var scopeJSON string
 		if err := rows.Scan(&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt, &t.StatusCode, &t.BodySize, &t.ClientIP, &scopeJSON, &t.AppVersion, &t.ServerName); err != nil {
 			return nil, 0, err
@@ -195,23 +195,23 @@ func (e *transactionRepository) FindByEndpoint(ctx context.Context, projectId st
 				t.Scope = nil
 			}
 		}
-		transactions = append(transactions, t)
+		endpoints = append(endpoints, t)
 	}
 
-	return transactions, int64(count), nil
+	return endpoints, int64(count), nil
 }
 
-// FindById returns a single transaction by ID
-func (e *transactionRepository) FindById(ctx context.Context, projectId, transactionId string) (*models.Transaction, error) {
+// FindById returns a single endpoint by ID
+func (e *endpointRepository) FindById(ctx context.Context, projectId, endpointId string) (*models.Endpoint, error) {
 	query := `SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, scope, app_version, server_name
-		FROM transactions
+		FROM endpoints
 		WHERE project_id = ? AND id = ?
 		LIMIT 1`
 
-	var t models.Transaction
+	var t models.Endpoint
 	var scopeJSON string
 
-	err := (*chdb.Conn).QueryRow(ctx, query, projectId, transactionId).Scan(
+	err := (*chdb.Conn).QueryRow(ctx, query, projectId, endpointId).Scan(
 		&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt,
 		&t.StatusCode, &t.BodySize, &t.ClientIP, &scopeJSON, &t.AppVersion, &t.ServerName)
 
@@ -229,12 +229,12 @@ func (e *transactionRepository) FindById(ctx context.Context, projectId, transac
 	return &t, nil
 }
 
-// CountByHour returns transaction counts grouped by hour
-func (e *transactionRepository) CountByHour(ctx context.Context, projectId string, start, end time.Time) ([]models.TimeSeriesPoint, error) {
+// CountByHour returns endpoint counts grouped by hour
+func (e *endpointRepository) CountByHour(ctx context.Context, projectId string, start, end time.Time) ([]models.TimeSeriesPoint, error) {
 	query := `SELECT
 		toStartOfHour(recorded_at) as hour,
 		toFloat64(count()) as count
-	FROM transactions
+	FROM endpoints
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY hour
 	ORDER BY hour ASC`
@@ -258,11 +258,11 @@ func (e *transactionRepository) CountByHour(ctx context.Context, projectId strin
 }
 
 // AvgDurationByHour returns average response time in ms grouped by hour
-func (e *transactionRepository) AvgDurationByHour(ctx context.Context, projectId string, start, end time.Time) ([]models.TimeSeriesPoint, error) {
+func (e *endpointRepository) AvgDurationByHour(ctx context.Context, projectId string, start, end time.Time) ([]models.TimeSeriesPoint, error) {
 	query := `SELECT
 		toStartOfHour(recorded_at) as hour,
 		avg(duration) / 1000000 as avg_duration_ms
-	FROM transactions
+	FROM endpoints
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY hour
 	ORDER BY hour ASC`
@@ -286,11 +286,11 @@ func (e *transactionRepository) AvgDurationByHour(ctx context.Context, projectId
 }
 
 // ErrorRateByHour returns error rate (percentage) grouped by hour
-func (e *transactionRepository) ErrorRateByHour(ctx context.Context, projectId string, start, end time.Time) ([]models.TimeSeriesPoint, error) {
+func (e *endpointRepository) ErrorRateByHour(ctx context.Context, projectId string, start, end time.Time) ([]models.TimeSeriesPoint, error) {
 	query := `SELECT
 		toStartOfHour(recorded_at) as hour,
 		countIf(status_code >= 400) * 100.0 / count() as error_rate
-	FROM transactions
+	FROM endpoints
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY hour
 	ORDER BY hour ASC`
@@ -313,12 +313,12 @@ func (e *transactionRepository) ErrorRateByHour(ctx context.Context, projectId s
 	return points, nil
 }
 
-// CountByInterval returns transaction counts grouped by configurable interval in minutes
-func (e *transactionRepository) CountByInterval(ctx context.Context, projectId string, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
+// CountByInterval returns endpoint counts grouped by configurable interval in minutes
+func (e *endpointRepository) CountByInterval(ctx context.Context, projectId string, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
 	query := `SELECT
 		toStartOfInterval(recorded_at, INTERVAL ? MINUTE) as bucket,
 		toFloat64(count()) as count
-	FROM transactions
+	FROM endpoints
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY bucket
 	ORDER BY bucket ASC`
@@ -342,11 +342,11 @@ func (e *transactionRepository) CountByInterval(ctx context.Context, projectId s
 }
 
 // AvgDurationByInterval returns average response time in ms grouped by configurable interval
-func (e *transactionRepository) AvgDurationByInterval(ctx context.Context, projectId string, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
+func (e *endpointRepository) AvgDurationByInterval(ctx context.Context, projectId string, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
 	query := `SELECT
 		toStartOfInterval(recorded_at, INTERVAL ? MINUTE) as bucket,
 		avg(duration) / 1000000 as avg_duration_ms
-	FROM transactions
+	FROM endpoints
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY bucket
 	ORDER BY bucket ASC`
@@ -370,11 +370,11 @@ func (e *transactionRepository) AvgDurationByInterval(ctx context.Context, proje
 }
 
 // ErrorRateByInterval returns error rate (percentage) grouped by configurable interval
-func (e *transactionRepository) ErrorRateByInterval(ctx context.Context, projectId string, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
+func (e *endpointRepository) ErrorRateByInterval(ctx context.Context, projectId string, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
 	query := `SELECT
 		toStartOfInterval(recorded_at, INTERVAL ? MINUTE) as bucket,
 		countIf(status_code >= 400) * 100.0 / count() as error_rate
-	FROM transactions
+	FROM endpoints
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY bucket
 	ORDER BY bucket ASC`
@@ -399,7 +399,7 @@ func (e *transactionRepository) ErrorRateByInterval(ctx context.Context, project
 
 // FindWorstEndpoints returns endpoints ordered by impact score (count * variance)
 // Higher call volume + larger variance = higher impact
-func (e *transactionRepository) FindWorstEndpoints(ctx context.Context, projectId string, start, end time.Time, limit int) ([]models.EndpointStats, error) {
+func (e *endpointRepository) FindWorstEndpoints(ctx context.Context, projectId string, start, end time.Time, limit int) ([]models.EndpointStats, error) {
 	query := `SELECT
 		endpoint,
 		count() as count,
@@ -407,7 +407,7 @@ func (e *transactionRepository) FindWorstEndpoints(ctx context.Context, projectI
 		quantile(0.95)(duration) as p95_duration,
 		avg(duration) as avg_duration,
 		max(recorded_at) as last_seen
-	FROM transactions
+	FROM endpoints
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY endpoint
 	ORDER BY count * (p95_duration - p50_duration) DESC
@@ -436,7 +436,7 @@ func (e *transactionRepository) FindWorstEndpoints(ctx context.Context, projectI
 }
 
 // GetEndpointStats returns aggregate statistics for a specific endpoint
-func (e *transactionRepository) GetEndpointStats(ctx context.Context, projectId, endpoint string, start, end time.Time) (*models.EndpointDetailStats, error) {
+func (e *endpointRepository) GetEndpointStats(ctx context.Context, projectId, endpoint string, start, end time.Time) (*models.EndpointDetailStats, error) {
 	// Calculate time range duration for throughput calculation
 	durationMinutes := end.Sub(start).Minutes()
 	if durationMinutes < 1 {
@@ -453,7 +453,7 @@ func (e *transactionRepository) GetEndpointStats(ctx context.Context, projectId,
 		countIf(duration <= 500000000 AND status_code < 400) +
 			(countIf(duration > 500000000 AND duration <= 2000000000 AND status_code < 400) * 0.5)
 			as satisfied_tolerating
-	FROM transactions
+	FROM endpoints
 	WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ?`
 
 	var stats models.EndpointDetailStats
@@ -484,4 +484,4 @@ func (e *transactionRepository) GetEndpointStats(ctx context.Context, projectId,
 	return &stats, nil
 }
 
-var TransactionRepository = transactionRepository{}
+var EndpointRepository = endpointRepository{}

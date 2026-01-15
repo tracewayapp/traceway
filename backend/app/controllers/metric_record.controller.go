@@ -30,11 +30,11 @@ func (e metricRecordController) FindHomepageStats(c *gin.Context) {
 	twoDaysAgo := now.Add(-48 * time.Hour)
 
 	// requests
-	requestsNow, err := repositories.TransactionRepository.CountBetween(c, projectId, oneDayAgo, now)
+	requestsNow, err := repositories.EndpointRepository.CountBetween(c, projectId, oneDayAgo, now)
 	if err != nil {
 		panic(err)
 	}
-	requestsPrev, err := repositories.TransactionRepository.CountBetween(c, projectId, twoDaysAgo, oneDayAgo)
+	requestsPrev, err := repositories.EndpointRepository.CountBetween(c, projectId, twoDaysAgo, oneDayAgo)
 	if err != nil {
 		panic(err)
 	}

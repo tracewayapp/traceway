@@ -1,13 +1,11 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { api } from '$lib/api';
-    import { formatDuration, formatDurationMs, getStatusColor, formatDateTime, parseISO, toUTCISO, calendarDateTimeToLuxon } from '$lib/utils/formatters';
+    import { formatDuration, formatDurationMs, formatDateTime, parseISO, toUTCISO, calendarDateTimeToLuxon } from '$lib/utils/formatters';
     import { getTimezone } from '$lib/state/timezone.svelte';
     import * as Table from "$lib/components/ui/table";
-    import { Button } from "$lib/components/ui/button";
     import { LoadingCircle } from "$lib/components/ui/loading-circle";
     import { TimeRangePicker } from "$lib/components/ui/time-range-picker";
-    import { ArrowLeft } from "@lucide/svelte";
     import { TracewayTableHeader } from "$lib/components/ui/traceway-table-header";
     import { TableEmptyState } from "$lib/components/ui/table-empty-state";
     import { CalendarDate } from "@internationalized/date";
@@ -28,37 +26,33 @@
 
     const timezone = $derived(getTimezone());
 
-    type Transaction = {
+    type Task = {
         id: string;
-        endpoint: string;
+        taskName: string;
         duration: number;
         recordedAt: string;
-        statusCode: number;
-        bodySize: number;
         clientIP: string;
         scope: Record<string, string> | null;
         serverName: string;
         appVersion: string;
     };
 
-    type EndpointStats = {
+    type TaskStats = {
         count: number;
         avgDuration: number;
         medianDuration: number;
         p95Duration: number;
         p99Duration: number;
-        apdex: number;
-        errorRate: number;
         throughput: number;
     };
 
-    type SortField = 'recorded_at' | 'duration' | 'status_code' | 'body_size';
+    type SortField = 'recorded_at' | 'duration';
     type SortDirection = 'asc' | 'desc';
 
     let { data } = $props();
 
-    let transactions = $state<Transaction[]>([]);
-    let stats = $state<EndpointStats | null>(null);
+    let tasks = $state<Task[]>([]);
+    let stats = $state<TaskStats | null>(null);
     let loading = $state(true);
     let error = $state('');
     let notFound = $state(false);
@@ -137,16 +131,6 @@
         loadData();
     }
 
-    function formatBytes(bytes: number): string {
-        if (bytes < 1024) {
-            return `${bytes} B`;
-        } else if (bytes < 1024 * 1024) {
-            return `${(bytes / 1024).toFixed(1)} KB`;
-        } else {
-            return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-        }
-    }
-
     async function loadData(pushToHistory = true) {
         loading = true;
         error = '';
@@ -167,9 +151,9 @@
                 }
             };
 
-            const response = await api.post(`/transactions/endpoint?endpoint=${encodeURIComponent(data.endpoint)}`, requestBody, { projectId: projectsState.currentProjectId ?? undefined });
+            const response = await api.post(`/tasks/task?task=${encodeURIComponent(data.task)}`, requestBody, { projectId: projectsState.currentProjectId ?? undefined });
 
-            transactions = response.data || [];
+            tasks = response.data || [];
             stats = response.stats || null;
             total = response.pagination.total;
             totalPages = response.pagination.totalPages;
@@ -221,20 +205,20 @@
     {#if notFound}
         <ErrorDisplay
             status={404}
-            title="Endpoint Not Found"
-            description="The endpoint you're looking for doesn't exist or has no recorded transactions."
-            onBack={createRowClickHandler(resolve('/transactions'), 'presets', 'from', 'to')}
-            backLabel="Back to Transactions"
+            title="Task Not Found"
+            description="The task you're looking for doesn't exist or has no recorded executions."
+            onBack={createRowClickHandler(resolve('/tasks'), 'presets', 'from', 'to')}
+            backLabel="Back to Tasks"
             onRetry={() => loadData(false)}
-            identifier={decodeURIComponent(data.endpoint)}
+            identifier={decodeURIComponent(data.task)}
         />
     {:else if error && !loading}
         <ErrorDisplay
             status={errorStatus === 400 ? 400 : errorStatus === 422 ? 422 : 400}
-            title="Failed to Load Transactions"
+            title="Failed to Load Tasks"
             description={error}
-            onBack={createRowClickHandler(resolve('/transactions'), 'presets', 'from', 'to')}
-            backLabel="Back to Transactions"
+            onBack={createRowClickHandler(resolve('/tasks'), 'presets', 'from', 'to')}
+            backLabel="Back to Tasks"
             onRetry={() => loadData(false)}
         />
     {:else}
@@ -242,9 +226,9 @@
     <div class="flex flex-col gap-4 sm:flex-row sm:justify-between">
 
         <PageHeader
-            title={decodeURIComponent(data.endpoint)}
-            subtitle="Transaction instances for this endpoint"
-            onBack={createRowClickHandler(resolve("/transactions"), "presets", "from", "to")}
+            title={decodeURIComponent(data.task)}
+            subtitle="Task instances"
+            onBack={createRowClickHandler(resolve("/tasks"), "presets", "from", "to")}
         />
 
         <div class="flex flex-col">
@@ -259,32 +243,24 @@
         </div>
     </div>
 
-    <!-- Endpoint Stats -->
+    <!-- Task Stats -->
     {#if stats}
-        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
             <div class="space-y-1">
                 <p class="text-2xl font-semibold tracking-tight">{formatDurationMs(stats.avgDuration)}</p>
-                <p class="text-xs text-muted-foreground">Average response time</p>
+                <p class="text-xs text-muted-foreground">Average duration</p>
             </div>
             <div class="space-y-1">
                 <p class="text-2xl font-semibold tracking-tight">{formatDurationMs(stats.medianDuration)}</p>
-                <p class="text-xs text-muted-foreground">Median response time</p>
+                <p class="text-xs text-muted-foreground">Median duration</p>
             </div>
             <div class="space-y-1">
                 <p class="text-2xl font-semibold tracking-tight">{formatDurationMs(stats.p95Duration)}</p>
-                <p class="text-xs text-muted-foreground">95th percentile response time</p>
+                <p class="text-xs text-muted-foreground">95th percentile</p>
             </div>
             <div class="space-y-1">
                 <p class="text-2xl font-semibold tracking-tight">{formatDurationMs(stats.p99Duration)}</p>
-                <p class="text-xs text-muted-foreground">99th percentile response time</p>
-            </div>
-            <div class="space-y-1">
-                <p class="text-2xl font-semibold tracking-tight">{stats.apdex.toFixed(2)}</p>
-                <p class="text-xs text-muted-foreground">Apdex score</p>
-            </div>
-            <div class="space-y-1">
-                <p class="text-2xl font-semibold tracking-tight">{stats.errorRate.toFixed(2)} %</p>
-                <p class="text-xs text-muted-foreground">Average error rate</p>
+                <p class="text-xs text-muted-foreground">99th percentile</p>
             </div>
             <div class="space-y-1">
                 <p class="text-2xl font-semibold tracking-tight">{stats.throughput.toFixed(0)} rpm</p>
@@ -297,10 +273,10 @@
         </div>
     {/if}
 
-    <!-- Transactions Table -->
+    <!-- Tasks Table -->
     <div class="rounded-md border overflow-hidden">
         <Table.Root>
-            {#if loading || transactions.length > 0}
+            {#if loading || tasks.length > 0}
             <Table.Header>
                 <Table.Row>
                     <TracewayTableHeader
@@ -319,22 +295,6 @@
                         onSort={(field) => handleSort(field as SortField)}
                         class="w-[120px]"
                     />
-                    <TracewayTableHeader
-                        label="Status"
-                        sortField="status_code"
-                        currentSortField={orderBy}
-                        {sortDirection}
-                        onSort={(field) => handleSort(field as SortField)}
-                        class="w-[100px]"
-                    />
-                    <TracewayTableHeader
-                        label="Body Size"
-                        sortField="body_size"
-                        currentSortField={orderBy}
-                        {sortDirection}
-                        onSort={(field) => handleSort(field as SortField)}
-                        class="w-[100px]"
-                    />
                     <TracewayTableHeader label="Client IP" class="w-[140px]" />
                     <TracewayTableHeader label="Server" class="w-[120px]" />
                     <TracewayTableHeader label="Version" class="w-[100px]" />
@@ -345,47 +305,41 @@
             <Table.Body>
                 {#if loading}
                     <Table.Row>
-                        <Table.Cell colspan={8} class="h-48">
+                        <Table.Cell colspan={6} class="h-48">
                             <div class="flex items-center justify-center">
                                 <LoadingCircle size="lg" />
                             </div>
                         </Table.Cell>
                     </Table.Row>
-                {:else if transactions.length === 0}
-                    <TableEmptyState colspan={8} message="No transactions found in this time range." />
+                {:else if tasks.length === 0}
+                    <TableEmptyState colspan={6} message="No tasks found in this time range." />
                 {:else}
-                    {#each transactions as transaction}
+                    {#each tasks as task}
                         <Table.Row
                             class="cursor-pointer hover:bg-muted/50"
                             onclick={createRowClickHandler(
-                                resolve("/transactions/[endpoint]/[transactionId]", {
-                                    endpoint: data.endpoint,
-                                    transactionId: transaction.id,
+                                resolve("/tasks/[task]/[taskId]", {
+                                    task: data.task,
+                                    taskId: task.id,
                                 }))}
                         >
                             <Table.Cell class="text-muted-foreground">
-                                {formatDateTime(transaction.recordedAt, { timezone })}
+                                {formatDateTime(task.recordedAt, { timezone })}
                             </Table.Cell>
                             <Table.Cell class="font-mono text-sm">
-                                {formatDuration(transaction.duration)}
-                            </Table.Cell>
-                            <Table.Cell class="font-mono text-sm {getStatusColor(transaction.statusCode)}">
-                                {transaction.statusCode}
-                            </Table.Cell>
-                            <Table.Cell class="font-mono text-sm">
-                                {formatBytes(transaction.bodySize)}
+                                {formatDuration(task.duration)}
                             </Table.Cell>
                             <Table.Cell class="font-mono text-sm text-muted-foreground">
-                                {transaction.clientIP}
+                                {task.clientIP}
                             </Table.Cell>
                             <Table.Cell class="font-mono text-sm text-muted-foreground">
-                                {transaction.serverName || '-'}
+                                {task.serverName || '-'}
                             </Table.Cell>
                             <Table.Cell class="font-mono text-sm text-muted-foreground">
-                                {transaction.appVersion || '-'}
+                                {task.appVersion || '-'}
                             </Table.Cell>
                             <Table.Cell>
-                                <ScopeDisplay scope={transaction.scope} />
+                                <ScopeDisplay scope={task.scope} />
                             </Table.Cell>
                         </Table.Row>
                     {/each}
@@ -403,7 +357,7 @@
         onPageChange={handlePageChange}
         onPageSizeChange={handlePageSizeChange}
         {loading}
-        itemLabel="endpoint"
+        itemLabel="task"
     />
     {/if}
 </div>

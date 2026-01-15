@@ -1,18 +1,30 @@
 import { goto } from '$app/navigation';
 
-/**
- * Handles row click with support for ctrl/cmd+click to open in new tab.
- * Returns an onclick handler for use in table rows.
- */
-export function createRowClickHandler(href: string) {
+// in the future it would be really cool if we could bind the type here to get type safety and force the use of resolve :/
+// this also won't work with absolute paths - meh so be it
+export function createRowClickHandler(href: string, ...stickyParams: string[]) {
 	return (event: MouseEvent) => {
-		// Check for ctrl (Windows/Linux) or cmd (Mac) key
+		let finalHref = href;
+
+		if (stickyParams.length > 0) {
+			const currentParams = new URLSearchParams(window.location.search);
+			const url = new URL(href, window.location.origin);
+
+			stickyParams.forEach(stickyParam => {
+				const currentValue = currentParams.get(stickyParam);
+				if (currentValue !== null) {
+					url.searchParams.set(stickyParam, currentValue);
+				}
+			});
+
+			finalHref = url.pathname + url.search;
+		}
+
 		if (event.ctrlKey || event.metaKey) {
-			// Open in new tab
-			window.open(href, '_blank');
+			window.open(finalHref, '_blank');
 		} else {
-			// Normal navigation
-			goto(href);
+			// eslint-disable-next-line svelte/no-navigation-without-resolve
+			goto(finalHref);
 		}
 	};
 }

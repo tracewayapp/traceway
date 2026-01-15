@@ -16,6 +16,8 @@
     import { TimeRangePicker } from "$lib/components/ui/time-range-picker";
     import { CalendarDate, getLocalTimeZone, today } from "@internationalized/date";
     import { projectsState } from '$lib/state/projects.svelte';
+    import { createRowClickHandler } from '$lib/utils/navigation';
+    import { resolve } from '$app/paths';
 
     const timezone = $derived(getTimezone());
 
@@ -271,26 +273,6 @@
         loadData(false); // Don't push to history for sorting
     }
 
-    function getEndpointUrl(endpoint: string): string {
-        const params = new URLSearchParams();
-        if (selectedPreset) {
-            params.set('preset', selectedPreset);
-        } else {
-            params.set('from', getFromDateTimeUTC());
-            params.set('to', getToDateTimeUTC());
-        }
-        return `/transactions/${encodeURIComponent(endpoint)}?${params.toString()}`;
-    }
-
-    function navigateToEndpoint(endpoint: string, event: MouseEvent) {
-        const url = getEndpointUrl(endpoint);
-        if (event.ctrlKey || event.metaKey) {
-            window.open(url, '_blank');
-        } else {
-            window.location.href = url;
-        }
-    }
-
     onMount(() => {
         // Add popstate listener for back/forward navigation
         window.addEventListener('popstate', handlePopState);
@@ -396,7 +378,7 @@
                     {@const impactLevel = getImpactLevel(endpoint.count, endpoint.p50Duration, endpoint.p95Duration)}
                     <Table.Row
                         class="cursor-pointer hover:bg-muted/50"
-                        onclick={(e) => navigateToEndpoint(endpoint.endpoint, e)}
+                        onclick={createRowClickHandler(resolve(`/transactions/${encodeURIComponent(endpoint.endpoint)}`), 'preset', 'from', 'to')}
                     >
                         <Table.Cell class="font-mono text-sm">
                             {endpoint.endpoint}

@@ -202,6 +202,12 @@ func (d dashboardController) GetDashboard(c *gin.Context) {
 }
 
 func buildMetric(id, name string, current float64, unit string, trend []models.TimeSeriesPoint, prev float64, metricType string) models.DashboardMetric {
+	// Append unit to name if meaningful (not empty and not "count")
+	displayName := name
+	if unit != "" && unit != "count" {
+		displayName = name + " (" + unit + ")"
+	}
+
 	// Convert TimeSeriesPoint to DashboardTrendPoint
 	trendPoints := make([]models.DashboardTrendPoint, len(trend))
 	for i, p := range trend {
@@ -222,7 +228,7 @@ func buildMetric(id, name string, current float64, unit string, trend []models.T
 
 	return models.DashboardMetric{
 		ID:        id,
-		Name:      name,
+		Name:      displayName,
 		Value:     current,
 		Unit:      unit,
 		Trend:     trendPoints,
@@ -232,6 +238,12 @@ func buildMetric(id, name string, current float64, unit string, trend []models.T
 }
 
 func buildMetricWithServers(id, name, unit string, serverData map[string][]models.TimeSeriesPoint, prev float64, metricType string) models.DashboardMetric {
+	// Append unit to name if meaningful (not empty and not "count")
+	displayName := name
+	if unit != "" && unit != "count" {
+		displayName = name + " (" + unit + ")"
+	}
+
 	servers := make([]models.ServerMetricTrend, 0, len(serverData))
 	var aggregateValue float64
 	var aggregateTrend []models.DashboardTrendPoint
@@ -307,7 +319,7 @@ func buildMetricWithServers(id, name, unit string, serverData map[string][]model
 
 	return models.DashboardMetric{
 		ID:        id,
-		Name:      name,
+		Name:      displayName,
 		Value:     aggregateValue,
 		Unit:      unit,
 		Trend:     aggregateTrend,

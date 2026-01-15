@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
-	import { goto } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button';
 	import { RefreshCw, Code } from 'lucide-svelte';
 	import ServerFilter from '$lib/components/dashboard/server-filter.svelte';
@@ -19,10 +18,19 @@
 	import { api } from '$lib/api';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { getTimezone } from '$lib/state/timezone.svelte';
-	import { getNow, parseISO, toUTCISO, calendarDateTimeToLuxon, formatDateTime } from '$lib/utils/formatters';
+	import { toUTCISO, calendarDateTimeToLuxon, formatDateTime } from '$lib/utils/formatters';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
 	import { CalendarDate } from '@internationalized/date';
 	import { getServerColorMap } from '$lib/utils/server-colors';
+	import {
+		presetMinutes,
+		getTimeRangeFromPreset,
+		dateToCalendarDate,
+		dateToTimeString,
+		parseTimeRangeFromUrl,
+		getResolvedTimeRange,
+		updateUrl
+	} from '$lib/utils/url-params';
 
 	const timezone = $derived(getTimezone());
 
@@ -58,30 +66,8 @@
 	// Compute server color map for consistent colors across all charts
 	const serverColorMap = $derived(getServerColorMap(availableServers()));
 
-	// Preset definitions (must match TimeRangePicker)
-	const presetMinutes: Record<string, number> = {
-		'30m': 30,
-		'60m': 60,
-		'3h': 180,
-		'6h': 360,
-		'12h': 720,
-		'24h': 1440,
-		'3d': 4320,
-		'7d': 10080,
-		'1M': 43200,
-		'3M': 129600
-	};
-
-	// Calculate time range from preset
-	function getTimeRangeFromPresetLocal(presetValue: string): { from: Date; to: Date } {
-		const minutes = presetMinutes[presetValue] || 360;
-		const now = getNow(timezone);
-		const from = now.minus({ minutes });
-		return { from: from.toJSDate(), to: now.toJSDate() };
-	}
-
-	// Parse URL params
-	function parseUrlParams(): {
+	// Parse extended URL params (includes servers and tab)
+	function parseMetricsUrlParams(): {
 		preset: string | null;
 		from: Date | null;
 		to: Date | null;
@@ -89,10 +75,8 @@
 		tab: MetricsTab;
 	} {
 		if (!browser) return { preset: '6h', from: null, to: null, servers: [], tab: 'application' };
+
 		const params = new URLSearchParams(window.location.search);
-		const presetParam = params.get('preset');
-		const fromParam = params.get('from');
-		const toParam = params.get('to');
 		const serversParam = params.get('servers');
 		const tabParam = params.get('tab') as MetricsTab | null;
 
@@ -101,34 +85,13 @@
 			? tabParam
 			: 'application';
 
-		if (presetParam && presetMinutes[presetParam]) {
-			return { preset: presetParam, from: null, to: null, servers, tab };
-		}
-
-		if (fromParam && toParam) {
-			const fromDt = parseISO(fromParam, timezone);
-			const toDt = parseISO(toParam, timezone);
-			if (fromDt.isValid && toDt.isValid) {
-				return { preset: null, from: fromDt.toJSDate(), to: toDt.toJSDate(), servers, tab };
-			}
-		}
-
-		return { preset: '6h', from: null, to: null, servers, tab };
-	}
-
-	function dateToCalendarDate(date: Date): CalendarDate {
-		return new CalendarDate(date.getFullYear(), date.getMonth() + 1, date.getDate());
-	}
-
-	function dateToTimeString(date: Date): string {
-		return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+		const timeParams = parseTimeRangeFromUrl(timezone);
+		return { ...timeParams, servers, tab };
 	}
 
 	// Initialize from URL or defaults
-	const initialUrlParams = parseUrlParams();
-	const initialRange = initialUrlParams.preset
-		? getTimeRangeFromPresetLocal(initialUrlParams.preset)
-		: { from: initialUrlParams.from!, to: initialUrlParams.to! };
+	const initialUrlParams = parseMetricsUrlParams();
+	const initialRange = getResolvedTimeRange(initialUrlParams, timezone);
 
 	let selectedPreset = $state<string | null>(initialUrlParams.preset);
 	let fromDate = $state<CalendarDate>(dateToCalendarDate(initialRange.from));
@@ -141,51 +104,37 @@
 	activeTab = initialUrlParams.tab;
 
 	// Update URL with current state
-	function updateUrl(pushToHistory = true) {
+	function updateMetricsUrl(pushToHistory = true) {
 		if (!browser) return;
 
-		const params = new URLSearchParams();
-		params.set('tab', activeTab);
+		const params: Record<string, string | null | undefined> = {
+			tab: activeTab
+		};
 
 		if (selectedPreset) {
-			params.set('preset', selectedPreset);
+			params.preset = selectedPreset;
 		} else {
-			params.set('from', getFromDateTimeUTC());
-			params.set('to', getToDateTimeUTC());
+			params.from = getFromDateTimeUTC();
+			params.to = getToDateTimeUTC();
 		}
 
 		if (selectedServers.length > 0 && selectedServers.length < availableServers().length) {
-			params.set('servers', selectedServers.join(','));
+			params.servers = selectedServers.join(',');
 		}
 
-		const newUrl = `${window.location.pathname}?${params.toString()}`;
-
-		goto(newUrl, {
-			replaceState: !pushToHistory,
-			noScroll: true,
-			keepFocus: true
-		});
+		updateUrl(params, { pushToHistory });
 	}
 
 	// Handle browser back/forward navigation
 	function handlePopState() {
-		const urlParams = parseUrlParams();
+		const urlParams = parseMetricsUrlParams();
+		const range = getResolvedTimeRange(urlParams, timezone);
 
-		if (urlParams.preset) {
-			selectedPreset = urlParams.preset;
-			const range = getTimeRangeFromPresetLocal(urlParams.preset);
-			fromDate = dateToCalendarDate(range.from);
-			fromTime = dateToTimeString(range.from);
-			toDate = dateToCalendarDate(range.to);
-			toTime = dateToTimeString(range.to);
-		} else if (urlParams.from && urlParams.to) {
-			selectedPreset = null;
-			fromDate = dateToCalendarDate(urlParams.from);
-			fromTime = dateToTimeString(urlParams.from);
-			toDate = dateToCalendarDate(urlParams.to);
-			toTime = dateToTimeString(urlParams.to);
-		}
-
+		selectedPreset = urlParams.preset;
+		fromDate = dateToCalendarDate(range.from);
+		fromTime = dateToTimeString(range.from);
+		toDate = dateToCalendarDate(range.to);
+		toTime = dateToTimeString(range.to);
 		selectedServers = urlParams.servers;
 		activeTab = urlParams.tab;
 
@@ -314,7 +263,7 @@
 
 	// Load only the active tab's data (lazy loading)
 	function loadActiveTab(pushToHistory = true) {
-		if (pushToHistory) updateUrl(true);
+		if (pushToHistory) updateMetricsUrl(true);
 
 		// Update shared time domain
 		sharedTimeDomain = [new Date(getFromDateTimeUTC()), new Date(getToDateTimeUTC())];
@@ -334,7 +283,7 @@
 
 	// Force reload (for refresh button & time range change)
 	function reloadActiveTab() {
-		updateUrl(true);
+		updateMetricsUrl(true);
 		sharedTimeDomain = [new Date(getFromDateTimeUTC()), new Date(getToDateTimeUTC())];
 
 		// Clear all cached data when time range changes
@@ -366,13 +315,13 @@
 	function handleTabChange(tab: string) {
 		activeTab = tab as MetricsTab;
 		loadActiveTab(false);
-		updateUrl(false);
+		updateMetricsUrl(false);
 	}
 
 	// Client-side server filtering - NO API call needed
 	function handleServerSelectionChange(servers: string[]) {
 		selectedServers = servers;
-		updateUrl(false);
+		updateMetricsUrl(false);
 	}
 
 	// Handle drag-to-zoom selection from chart overlay

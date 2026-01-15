@@ -1,8 +1,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { goto } from '$app/navigation';
     import { api } from '$lib/api';
-    import { formatDuration, formatDurationMs, getStatusColor, formatDateTime, getNow, parseISO, toUTCISO, calendarDateTimeToLuxon } from '$lib/utils/formatters';
+    import { formatDuration, formatDurationMs, getStatusColor, formatDateTime, parseISO, toUTCISO, calendarDateTimeToLuxon } from '$lib/utils/formatters';
     import { getTimezone } from '$lib/state/timezone.svelte';
     import * as Table from "$lib/components/ui/table";
     import { Button } from "$lib/components/ui/button";
@@ -11,14 +10,21 @@
     import { ArrowLeft } from "@lucide/svelte";
     import { TracewayTableHeader } from "$lib/components/ui/traceway-table-header";
     import { TableEmptyState } from "$lib/components/ui/table-empty-state";
-    import { CalendarDate, getLocalTimeZone, today } from "@internationalized/date";
+    import { CalendarDate } from "@internationalized/date";
     import { ErrorDisplay } from "$lib/components/ui/error-display";
     import { projectsState } from '$lib/state/projects.svelte';
     import ScopeDisplay from '$lib/components/scope-display.svelte';
     import { createRowClickHandler } from '$lib/utils/navigation';
     import PaginationFooter from '$lib/components/ui/pagination-footer/pagination-footer.svelte';
-	import PageHeader from '$lib/components/issues/page-header.svelte';
-	import { resolve } from '$app/paths';
+    import PageHeader from '$lib/components/issues/page-header.svelte';
+    import { resolve } from '$app/paths';
+    import {
+        presetMinutes,
+        getTimeRangeFromPreset,
+        dateToCalendarDate,
+        dateToTimeString,
+        updateUrl
+    } from '$lib/utils/url-params';
 
     const timezone = $derived(getTimezone());
 
@@ -64,41 +70,11 @@
     let total = $state(0);
     let totalPages = $state(0);
 
-    // Preset definitions (must match TimeRangePicker)
-    const presetMinutes: Record<string, number> = {
-        '30m': 30,
-        '60m': 60,
-        '3h': 180,
-        '6h': 360,
-        '12h': 720,
-        '24h': 1440,
-        '3d': 4320,
-        '7d': 10080,
-        '1M': 43200,
-        '3M': 129600,
-    };
-
-    // Helper functions
-    function getTimeRangeFromPresetLocal(presetValue: string): { from: Date; to: Date } {
-        const minutes = presetMinutes[presetValue] || 360;
-        const now = getNow(timezone);
-        const from = now.minus({ minutes });
-        return { from: from.toJSDate(), to: now.toJSDate() };
-    }
-
-    function dateToCalendarDate(date: Date): CalendarDate {
-        return new CalendarDate(date.getFullYear(), date.getMonth() + 1, date.getDate());
-    }
-
-    function dateToTimeString(date: Date): string {
-        return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-    }
-
-    // Initialize from URL params
+    // Initialize from URL params (from page data)
     function getInitialRange(): { preset: string | null; from: Date; to: Date } {
         // If preset is provided, use it
         if (data.preset && presetMinutes[data.preset]) {
-            const range = getTimeRangeFromPresetLocal(data.preset);
+            const range = getTimeRangeFromPreset(data.preset, timezone);
             return { preset: data.preset, from: range.from, to: range.to };
         }
 
@@ -112,7 +88,7 @@
         }
 
         // Default to 6h preset
-        const range = getTimeRangeFromPresetLocal('6h');
+        const range = getTimeRangeFromPreset('6h', timezone);
         return { preset: '6h', from: range.from, to: range.to };
     }
 
@@ -125,23 +101,13 @@
     let fromTime = $state(dateToTimeString(initialRange.from));
     let toTime = $state(dateToTimeString(initialRange.to));
 
-    function updateUrl(pushToHistory = true) {
-        const params = new URLSearchParams();
-
-        if (selectedPreset) {
-            params.set('preset', selectedPreset);
-        } else {
-            params.set('from', getFromDateTimeUTC());
-            params.set('to', getToDateTimeUTC());
-        }
-
-        const newUrl = `${window.location.pathname}?${params.toString()}`;
-
-        goto(newUrl, {
-            replaceState: !pushToHistory,
-            noScroll: true,
-            keepFocus: true
-        });
+    function updateTimeRangeUrl(pushToHistory = true) {
+        updateUrl(
+            selectedPreset
+                ? { preset: selectedPreset }
+                : { from: getFromDateTimeUTC(), to: getToDateTimeUTC() },
+            { pushToHistory }
+        );
     }
 
     // Sorting State
@@ -187,7 +153,7 @@
         notFound = false;
         errorStatus = 0;
 
-        updateUrl(pushToHistory);
+        updateTimeRangeUrl(pushToHistory);
 
         try {
             const requestBody = {

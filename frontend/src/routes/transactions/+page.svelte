@@ -1,9 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
-    import { browser } from '$app/environment';
-    import { goto } from '$app/navigation';
     import { api } from '$lib/api';
-    import { formatDuration, getNow, luxonToCalendarDateTime, parseISO, toUTCISO, calendarDateTimeToLuxon } from '$lib/utils/formatters';
+    import { formatDuration, toUTCISO, calendarDateTimeToLuxon } from '$lib/utils/formatters';
     import { getTimezone } from '$lib/state/timezone.svelte';
     import * as Table from "$lib/components/ui/table";
     import { Button } from "$lib/components/ui/button";
@@ -14,11 +12,20 @@
     import { TableEmptyState } from "$lib/components/ui/table-empty-state";
     import { PaginationFooter } from "$lib/components/ui/pagination-footer";
     import { TimeRangePicker } from "$lib/components/ui/time-range-picker";
-    import { CalendarDate, getLocalTimeZone, today } from "@internationalized/date";
+    import { CalendarDate } from "@internationalized/date";
     import { projectsState } from '$lib/state/projects.svelte';
     import { createRowClickHandler } from '$lib/utils/navigation';
     import { resolve } from '$app/paths';
-	import PageHeader from '$lib/components/issues/page-header.svelte';
+    import PageHeader from '$lib/components/issues/page-header.svelte';
+    import {
+        presetMinutes,
+        getTimeRangeFromPreset,
+        dateToCalendarDate,
+        dateToTimeString,
+        parseTimeRangeFromUrl,
+        getResolvedTimeRange,
+        updateUrl
+    } from '$lib/utils/url-params';
 
     const timezone = $derived(getTimezone());
 
@@ -44,67 +51,9 @@
     let total = $state(0);
     let totalPages = $state(0);
 
-    // Preset definitions (must match TimeRangePicker)
-    const presetMinutes: Record<string, number> = {
-        '30m': 30,
-        '60m': 60,
-        '3h': 180,
-        '6h': 360,
-        '12h': 720,
-        '24h': 1440,
-        '3d': 4320,
-        '7d': 10080,
-        '1M': 43200,
-        '3M': 129600,
-    };
-
-    // Helper functions
-    function getTimeRangeFromPresetLocal(presetValue: string): { from: Date; to: Date } {
-        const minutes = presetMinutes[presetValue] || 360;
-        const now = getNow(timezone);
-        const from = now.minus({ minutes });
-        return { from: from.toJSDate(), to: now.toJSDate() };
-    }
-
-    function dateToCalendarDate(date: Date): CalendarDate {
-        return new CalendarDate(date.getFullYear(), date.getMonth() + 1, date.getDate());
-    }
-
-    function dateToTimeString(date: Date): string {
-        return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-    }
-
-    // Parse URL params - supports preset OR from/to
-    function parseUrlParams(): { preset: string | null; from: Date | null; to: Date | null } {
-        if (!browser) return { preset: '6h', from: null, to: null };
-        const params = new URLSearchParams(window.location.search);
-        const presetParam = params.get('preset');
-        const fromParam = params.get('from');
-        const toParam = params.get('to');
-
-        // If preset is specified, use it
-        if (presetParam && presetMinutes[presetParam]) {
-            return { preset: presetParam, from: null, to: null };
-        }
-
-        // If custom from/to specified
-        if (fromParam && toParam) {
-            const fromDt = parseISO(fromParam, timezone);
-            const toDt = parseISO(toParam, timezone);
-            if (fromDt.isValid && toDt.isValid) {
-                return { preset: null, from: fromDt.toJSDate(), to: toDt.toJSDate() };
-            }
-        }
-
-        // Default to 6h preset
-        return { preset: '6h', from: null, to: null };
-    }
-
     // Initialize from URL
-    const initialUrlParams = parseUrlParams();
-    const initialRange = initialUrlParams.preset
-        ? getTimeRangeFromPresetLocal(initialUrlParams.preset)
-        : { from: initialUrlParams.from!, to: initialUrlParams.to! };
+    const initialUrlParams = parseTimeRangeFromUrl(timezone);
+    const initialRange = getResolvedTimeRange(initialUrlParams, timezone);
 
     // Date Range State
     let selectedPreset = $state<string | null>(initialUrlParams.preset);
@@ -114,43 +63,25 @@
     let toTime = $state(dateToTimeString(initialRange.to));
 
     // Update URL with current time range
-    function updateUrl(pushToHistory = true) {
-        const params = new URLSearchParams();
-
-        if (selectedPreset) {
-            params.set('preset', selectedPreset);
-        } else {
-            params.set('from', getFromDateTimeUTC());
-            params.set('to', getToDateTimeUTC());
-        }
-
-        const newUrl = `${window.location.pathname}?${params.toString()}`;
-
-        goto(newUrl, {
-            replaceState: !pushToHistory,
-            noScroll: true,
-            keepFocus: true
-        });
+    function updateTimeRangeUrl(pushToHistory = true) {
+        updateUrl(
+            selectedPreset
+                ? { preset: selectedPreset }
+                : { from: getFromDateTimeUTC(), to: getToDateTimeUTC() },
+            { pushToHistory }
+        );
     }
 
     // Handle browser back/forward navigation
     function handlePopState() {
-        const urlParams = parseUrlParams();
+        const urlParams = parseTimeRangeFromUrl(timezone);
+        const range = getResolvedTimeRange(urlParams, timezone);
 
-        if (urlParams.preset) {
-            selectedPreset = urlParams.preset;
-            const range = getTimeRangeFromPresetLocal(urlParams.preset);
-            fromDate = dateToCalendarDate(range.from);
-            fromTime = dateToTimeString(range.from);
-            toDate = dateToCalendarDate(range.to);
-            toTime = dateToTimeString(range.to);
-        } else if (urlParams.from && urlParams.to) {
-            selectedPreset = null;
-            fromDate = dateToCalendarDate(urlParams.from);
-            fromTime = dateToTimeString(urlParams.from);
-            toDate = dateToCalendarDate(urlParams.to);
-            toTime = dateToTimeString(urlParams.to);
-        }
+        selectedPreset = urlParams.preset;
+        fromDate = dateToCalendarDate(range.from);
+        fromTime = dateToTimeString(range.from);
+        toDate = dateToCalendarDate(range.to);
+        toTime = dateToTimeString(range.to);
 
         page = 1;
         loadData(false);
@@ -219,7 +150,7 @@
         error = '';
 
         // Update URL
-        updateUrl(pushToHistory);
+        updateTimeRangeUrl(pushToHistory);
 
         try {
             const requestBody = {

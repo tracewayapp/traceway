@@ -114,8 +114,6 @@
 
     // Update URL with current time range
     function updateUrl(pushToHistory = true) {
-        if (!browser) return;
-
         const params = new URLSearchParams();
 
         if (selectedPreset) {

@@ -16,6 +16,7 @@
     import { projectsState } from '$lib/state/projects.svelte';
     import ScopeDisplay from '$lib/components/scope-display.svelte';
     import { createRowClickHandler } from '$lib/utils/navigation';
+    import PaginationFooter from '$lib/components/ui/pagination-footer/pagination-footer.svelte';
 
     const timezone = $derived(getTimezone());
 
@@ -122,6 +123,25 @@
     let fromTime = $state(dateToTimeString(initialRange.from));
     let toTime = $state(dateToTimeString(initialRange.to));
 
+    function updateUrl(pushToHistory = true) {
+        const params = new URLSearchParams();
+
+        if (selectedPreset) {
+            params.set('preset', selectedPreset);
+        } else {
+            params.set('from', getFromDateTimeUTC());
+            params.set('to', getToDateTimeUTC());
+        }
+
+        const newUrl = `${window.location.pathname}?${params.toString()}`;
+
+        goto(newUrl, {
+            replaceState: !pushToHistory,
+            noScroll: true,
+            keepFocus: true
+        });
+    }
+
     // Sorting State
     let orderBy = $state<SortField>('recorded_at');
     let sortDirection = $state<SortDirection>('desc');
@@ -159,11 +179,13 @@
         }
     }
 
-    async function loadData() {
+    async function loadData(pushToHistory = true) {
         loading = true;
         error = '';
         notFound = false;
         errorStatus = 0;
+
+        updateUrl(pushToHistory);
 
         try {
             const requestBody = {
@@ -199,8 +221,14 @@
     function handlePageChange(newPage: number) {
         if (newPage >= 1 && newPage <= totalPages) {
             page = newPage;
-            loadData();
+            loadData(false);
         }
+    }
+
+    function handlePageSizeChange(newPageSize: number) {
+        pageSize = newPageSize;
+        page = 1;
+        loadData(false); // Don't push to history for pagination
     }
 
     function handleSort(field: SortField) {
@@ -213,7 +241,7 @@
             sortDirection = 'desc';
         }
         page = 1;
-        loadData();
+        loadData(false);
     }
 
     function goBack() {
@@ -240,7 +268,7 @@
     }
 
     onMount(() => {
-        loadData();
+        loadData(false);
     });
 </script>
 
@@ -252,7 +280,7 @@
             description="The endpoint you're looking for doesn't exist or has no recorded transactions."
             backHref="/transactions"
             backLabel="Back to Transactions"
-            onRetry={() => loadData()}
+            onRetry={() => loadData(false)}
             identifier={decodeURIComponent(data.endpoint)}
         />
     {:else if error && !loading}
@@ -262,7 +290,7 @@
             description={error}
             backHref="/transactions"
             backLabel="Back to Transactions"
-            onRetry={() => loadData()}
+            onRetry={() => loadData(false)}
         />
     {:else}
     <!-- Header with Title and Time Range Filter -->
@@ -418,41 +446,15 @@
     </div>
 
     <!-- Pagination Footer -->
-    <div class="flex items-center justify-between px-2">
-        <div class="flex-1 text-sm text-muted-foreground">
-            {total} transaction(s) found.
-        </div>
-        <div class="flex items-center space-x-6 lg:space-x-8">
-            <div class="flex w-[100px] items-center justify-center text-sm font-medium">
-                Page {page} of {totalPages || 1}
-            </div>
-            <div class="flex items-center space-x-2">
-                <Button
-                    variant="outline"
-                    size="sm"
-                    class="h-8 w-8 p-0"
-                    onclick={() => handlePageChange(page - 1)}
-                    disabled={page <= 1 || loading}
-                >
-                    <span class="sr-only">Go to previous page</span>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 15 15" fill="none" class="h-4 w-4">
-                        <path d="M8.84182 3.13514C9.04327 3.32401 9.05348 3.64042 8.86462 3.84188L5.43521 7.49991L8.86462 11.1579C9.05348 11.3594 9.04327 11.6758 8.84182 11.8647C8.64036 12.0535 8.32394 12.0433 8.13508 11.8419L4.38508 7.84188C4.20477 7.64955 4.20477 7.35027 4.38508 7.15794L8.13508 3.15794C8.32394 2.95648 8.64036 2.94628 8.84182 3.13514Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"></path>
-                    </svg>
-                </Button>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    class="h-8 w-8 p-0"
-                    onclick={() => handlePageChange(page + 1)}
-                    disabled={page >= totalPages || loading}
-                >
-                    <span class="sr-only">Go to next page</span>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 15 15" fill="none" class="h-4 w-4">
-                        <path d="M6.1584 3.13508C6.35985 2.94621 6.67627 2.95642 6.86514 3.15788L10.6151 7.15788C10.7954 7.3502 10.7954 7.64949 10.6151 7.84182L6.86514 11.8418C6.67627 12.0433 6.35985 12.0535 6.1584 11.8646C5.95694 11.6757 5.94673 11.3593 6.1356 11.1579L9.565 7.49985L6.1356 3.84182C5.94673 3.64036 5.95694 3.32394 6.1584 3.13508Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"></path>
-                    </svg>
-                </Button>
-            </div>
-        </div>
-    </div>
+    <PaginationFooter
+        currentPage={page}
+        {totalPages}
+        {pageSize}
+        totalItems={total}
+        onPageChange={handlePageChange}
+        onPageSizeChange={handlePageSizeChange}
+        {loading}
+        itemLabel="endpoint"
+    />
     {/if}
 </div>

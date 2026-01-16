@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/google/uuid"
 )
 
 type metricRecordRepository struct{}
@@ -24,14 +25,14 @@ func (e *metricRecordRepository) InsertAsync(ctx context.Context, lines []models
 	return batch.Send()
 }
 
-func (e *metricRecordRepository) GetAverageBetween(ctx context.Context, projectId string, name string, start, end time.Time) (float64, error) {
+func (e *metricRecordRepository) GetAverageBetween(ctx context.Context, projectId uuid.UUID, name string, start, end time.Time) (float64, error) {
 	var avg float64
 	err := (*chdb.Conn).QueryRow(ctx, "SELECT coalesce(avg(value), 0) FROM metric_records WHERE project_id = ? AND name = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, name, start, end).Scan(&avg)
 	return avg, err
 }
 
 // GetAverageByHour returns metric averages grouped by hour
-func (e *metricRecordRepository) GetAverageByHour(ctx context.Context, projectId string, name string, start, end time.Time) ([]models.TimeSeriesPoint, error) {
+func (e *metricRecordRepository) GetAverageByHour(ctx context.Context, projectId uuid.UUID, name string, start, end time.Time) ([]models.TimeSeriesPoint, error) {
 	query := `SELECT
 		toStartOfHour(recorded_at) as hour,
 		avg(value) as avg_value
@@ -59,7 +60,7 @@ func (e *metricRecordRepository) GetAverageByHour(ctx context.Context, projectId
 }
 
 // GetAverageByInterval returns metric averages grouped by configurable interval in minutes
-func (e *metricRecordRepository) GetAverageByInterval(ctx context.Context, projectId string, name string, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
+func (e *metricRecordRepository) GetAverageByInterval(ctx context.Context, projectId uuid.UUID, name string, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
 	query := `SELECT
 		toStartOfInterval(recorded_at, INTERVAL ? MINUTE) as bucket,
 		avg(value) as avg_value
@@ -87,7 +88,7 @@ func (e *metricRecordRepository) GetAverageByInterval(ctx context.Context, proje
 }
 
 // GetDistinctServers returns all unique server names with data in the time range
-func (e *metricRecordRepository) GetDistinctServers(ctx context.Context, projectId string, start, end time.Time) ([]string, error) {
+func (e *metricRecordRepository) GetDistinctServers(ctx context.Context, projectId uuid.UUID, start, end time.Time) ([]string, error) {
 	query := `SELECT DISTINCT server_name FROM metric_records
               WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
               AND server_name != ''
@@ -111,7 +112,7 @@ func (e *metricRecordRepository) GetDistinctServers(ctx context.Context, project
 }
 
 // GetAverageByIntervalPerServer returns metric averages grouped by interval and server
-func (e *metricRecordRepository) GetAverageByIntervalPerServer(ctx context.Context, projectId string, name string, start, end time.Time, intervalMinutes int, servers []string) (map[string][]models.TimeSeriesPoint, error) {
+func (e *metricRecordRepository) GetAverageByIntervalPerServer(ctx context.Context, projectId uuid.UUID, name string, start, end time.Time, intervalMinutes int, servers []string) (map[string][]models.TimeSeriesPoint, error) {
 	query := `SELECT
 		toStartOfInterval(recorded_at, INTERVAL ? MINUTE) as bucket,
 		server_name,

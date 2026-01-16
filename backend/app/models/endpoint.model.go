@@ -1,10 +1,14 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type Endpoint struct {
-	Id        string `json:"id" ch:"id"`
-	ProjectId string `json:"projectId" ch:"project_id"`
+	Id        uuid.UUID `json:"id" ch:"id"`
+	ProjectId uuid.UUID `json:"projectId" ch:"project_id"`
 	// endpoint is the route from the router/does not contain actual params so it's safe to group on it
 	Endpoint   string            `json:"endpoint" ch:"endpoint"`
 	Duration   time.Duration     `json:"duration" ch:"duration"`

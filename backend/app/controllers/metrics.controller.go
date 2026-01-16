@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type metricsController struct{}
@@ -32,7 +33,11 @@ type ServerMetricsResponse struct {
 // GetApplicationMetrics returns Go application metrics (Go Routines, Heap Objects, GC Cycles, GC Pause)
 // Always returns ALL servers' data - ignores server selector
 func (m metricsController) GetApplicationMetrics(c *gin.Context) {
-	projectId := c.Query("projectId")
+	projectId, err := uuid.Parse(c.Query("projectId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+		return
+	}
 	now := time.Now()
 	start, end := parseTimeRange(c, now)
 
@@ -104,7 +109,11 @@ func (m metricsController) GetApplicationMetrics(c *gin.Context) {
 // GetStatsMetrics returns request/exception stats (Requests, Exceptions, Avg Response Time, Error Rate)
 // These are NOT per-server metrics
 func (m metricsController) GetStatsMetrics(c *gin.Context) {
-	projectId := c.Query("projectId")
+	projectId, err := uuid.Parse(c.Query("projectId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+		return
+	}
 	now := time.Now()
 	start, end := parseTimeRange(c, now)
 
@@ -165,7 +174,11 @@ func (m metricsController) GetStatsMetrics(c *gin.Context) {
 // GetServerMetrics returns server resource metrics (CPU Usage, Memory Usage, Total Memory)
 // Always returns ALL servers' data - ignores server selector
 func (m metricsController) GetServerMetrics(c *gin.Context) {
-	projectId := c.Query("projectId")
+	projectId, err := uuid.Parse(c.Query("projectId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+		return
+	}
 	now := time.Now()
 	start, end := parseTimeRange(c, now)
 

@@ -1,11 +1,15 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type Segment struct {
-	Id            string        `json:"id" ch:"id"`
-	TransactionId string        `json:"transactionId" ch:"transaction_id"`
-	ProjectId     string        `json:"projectId" ch:"project_id"`
+	Id            uuid.UUID     `json:"id" ch:"id"`
+	TransactionId uuid.UUID     `json:"transactionId" ch:"transaction_id"`
+	ProjectId     uuid.UUID     `json:"projectId" ch:"project_id"`
 	Name          string        `json:"name" ch:"name"`
 	StartTime     time.Time     `json:"startTime" ch:"start_time"`
 	Duration      time.Duration `json:"duration" ch:"duration"`

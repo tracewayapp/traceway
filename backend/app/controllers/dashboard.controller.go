@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type dashboardController struct{}
@@ -19,7 +20,11 @@ type DashboardOverviewResponse struct {
 }
 
 func (d dashboardController) GetDashboardOverview(c *gin.Context) {
-	projectId := c.Query("projectId")
+	projectId, err := uuid.Parse(c.Query("projectId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+		return
+	}
 
 	now := time.Now()
 	start := now.Add(-24 * time.Hour)
@@ -43,7 +48,11 @@ func (d dashboardController) GetDashboardOverview(c *gin.Context) {
 }
 
 func (d dashboardController) GetDashboard(c *gin.Context) {
-	projectId := c.Query("projectId")
+	projectId, err := uuid.Parse(c.Query("projectId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+		return
+	}
 	serversParam := c.Query("servers")
 
 	// Parse selected servers

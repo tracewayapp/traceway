@@ -6,6 +6,7 @@ import (
 	"context"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/google/uuid"
 )
 
 type segmentRepository struct{}
@@ -38,7 +39,7 @@ func (r *segmentRepository) InsertAsync(ctx context.Context, segments []models.S
 	return batch.Send()
 }
 
-func (r *segmentRepository) FindByTransactionId(ctx context.Context, projectId, transactionId string) ([]models.Segment, error) {
+func (r *segmentRepository) FindByTransactionId(ctx context.Context, projectId, transactionId uuid.UUID) ([]models.Segment, error) {
 	query := `SELECT
 		id, transaction_id, project_id, name, start_time, duration, recorded_at
 	FROM segments

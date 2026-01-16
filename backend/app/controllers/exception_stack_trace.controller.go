@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type exceptionStackTraceController struct{}
 
 type ExceptionSearchRequest struct {
-	ProjectId       string           `json:"projectId"`
+	ProjectId       uuid.UUID        `json:"projectId"`
 	FromDate        time.Time        `json:"fromDate"`
 	ToDate          time.Time        `json:"toDate"`
 	OrderBy         string           `json:"orderBy"`
@@ -24,12 +25,12 @@ type ExceptionSearchRequest struct {
 }
 
 type ArchiveRequest struct {
-	ProjectId string   `json:"projectId"`
-	Hashes    []string `json:"hashes"`
+	ProjectId uuid.UUID `json:"projectId"`
+	Hashes    []string  `json:"hashes"`
 }
 
 type ExceptionDetailRequest struct {
-	ProjectId  string           `json:"projectId"`
+	ProjectId  uuid.UUID        `json:"projectId"`
 	Pagination PaginationParams `json:"pagination"`
 }
 
@@ -163,14 +164,14 @@ func (e exceptionStackTraceController) UnarchiveExceptions(c *gin.Context) {
 }
 
 func (e exceptionStackTraceController) FindById(c *gin.Context) {
-	exceptionId := c.Param("exceptionId")
-	if exceptionId == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "exception id is required"})
+	exceptionId, err := uuid.Parse(c.Param("exceptionId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid exception id"})
 		return
 	}
 
 	var request struct {
-		ProjectId string `json:"projectId"`
+		ProjectId uuid.UUID `json:"projectId"`
 	}
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

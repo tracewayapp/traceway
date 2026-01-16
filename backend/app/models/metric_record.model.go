@@ -1,9 +1,13 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type MetricRecord struct {
-	ProjectId  string    `json:"projectId" ch:"project_id"`
+	ProjectId  uuid.UUID `json:"projectId" ch:"project_id"`
 	Name       string    `json:"name" ch:"name"`
 	Value      float64   `json:"value" ch:"value"`
 	RecordedAt time.Time `json:"recordedAt" ch:"recorded_at"`

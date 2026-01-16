@@ -1,9 +1,13 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type Project struct {
-	Id        string    `json:"id" ch:"id"`
+	Id        uuid.UUID `json:"id" ch:"id"`
 	Name      string    `json:"name" ch:"name"`
 	Token     string    `json:"token" ch:"token"`
 	Framework string    `json:"framework" ch:"framework"`
@@ -12,7 +16,7 @@ type Project struct {
 
 // ProjectResponse omits the token for security in listing endpoints
 type ProjectResponse struct {
-	Id        string    `json:"id"`
+	Id        uuid.UUID `json:"id"`
 	Name      string    `json:"name"`
 	Framework string    `json:"framework"`
 	CreatedAt time.Time `json:"createdAt"`
@@ -20,7 +24,7 @@ type ProjectResponse struct {
 
 // ProjectWithToken includes token - used when creating or viewing connection details
 type ProjectWithToken struct {
-	Id        string    `json:"id"`
+	Id        uuid.UUID `json:"id"`
 	Name      string    `json:"name"`
 	Token     string    `json:"token"`
 	Framework string    `json:"framework"`

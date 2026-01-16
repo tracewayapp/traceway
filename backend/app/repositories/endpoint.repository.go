@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/google/uuid"
 )
 
 type endpointRepository struct{}
@@ -31,13 +32,13 @@ func (e *endpointRepository) InsertAsync(ctx context.Context, lines []models.End
 	return batch.Send()
 }
 
-func (e *endpointRepository) CountBetween(ctx context.Context, projectId string, start, end time.Time) (int64, error) {
+func (e *endpointRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {
 	var count uint64
 	err := (*chdb.Conn).QueryRow(ctx, "SELECT count() FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, start, end).Scan(&count)
 	return int64(count), err
 }
 
-func (e *endpointRepository) FindAll(ctx context.Context, projectId string, fromDate, toDate time.Time, page, pageSize int, orderBy string) ([]models.Endpoint, int64, error) {
+func (e *endpointRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string) ([]models.Endpoint, int64, error) {
 	var count uint64
 	err := (*chdb.Conn).QueryRow(ctx, "SELECT count() FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, fromDate, toDate).Scan(&count)
 	if err != nil {
@@ -83,7 +84,7 @@ func (e *endpointRepository) FindAll(ctx context.Context, projectId string, from
 	return endpoints, int64(count), nil
 }
 
-func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectId string, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.EndpointStats, int64, error) {
+func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.EndpointStats, int64, error) {
 	// Count unique endpoints
 	var count uint64
 	err := (*chdb.Conn).QueryRow(ctx, "SELECT uniq(endpoint) FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, fromDate, toDate).Scan(&count)
@@ -149,7 +150,7 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 	return stats, int64(count), nil
 }
 
-func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId string, endpoint string, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.Endpoint, int64, error) {
+func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.UUID, endpoint string, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.Endpoint, int64, error) {
 	var count uint64
 	err := (*chdb.Conn).QueryRow(ctx, "SELECT count() FROM endpoints WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, endpoint, fromDate, toDate).Scan(&count)
 	if err != nil {
@@ -202,7 +203,7 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId strin
 }
 
 // FindById returns a single endpoint by ID
-func (e *endpointRepository) FindById(ctx context.Context, projectId, endpointId string) (*models.Endpoint, error) {
+func (e *endpointRepository) FindById(ctx context.Context, projectId, endpointId uuid.UUID) (*models.Endpoint, error) {
 	query := `SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, scope, app_version, server_name
 		FROM endpoints
 		WHERE project_id = ? AND id = ?
@@ -230,7 +231,7 @@ func (e *endpointRepository) FindById(ctx context.Context, projectId, endpointId
 }
 
 // CountByHour returns endpoint counts grouped by hour
-func (e *endpointRepository) CountByHour(ctx context.Context, projectId string, start, end time.Time) ([]models.TimeSeriesPoint, error) {
+func (e *endpointRepository) CountByHour(ctx context.Context, projectId uuid.UUID, start, end time.Time) ([]models.TimeSeriesPoint, error) {
 	query := `SELECT
 		toStartOfHour(recorded_at) as hour,
 		toFloat64(count()) as count
@@ -258,7 +259,7 @@ func (e *endpointRepository) CountByHour(ctx context.Context, projectId string, 
 }
 
 // AvgDurationByHour returns average response time in ms grouped by hour
-func (e *endpointRepository) AvgDurationByHour(ctx context.Context, projectId string, start, end time.Time) ([]models.TimeSeriesPoint, error) {
+func (e *endpointRepository) AvgDurationByHour(ctx context.Context, projectId uuid.UUID, start, end time.Time) ([]models.TimeSeriesPoint, error) {
 	query := `SELECT
 		toStartOfHour(recorded_at) as hour,
 		avg(duration) / 1000000 as avg_duration_ms
@@ -286,7 +287,7 @@ func (e *endpointRepository) AvgDurationByHour(ctx context.Context, projectId st
 }
 
 // ErrorRateByHour returns error rate (percentage) grouped by hour
-func (e *endpointRepository) ErrorRateByHour(ctx context.Context, projectId string, start, end time.Time) ([]models.TimeSeriesPoint, error) {
+func (e *endpointRepository) ErrorRateByHour(ctx context.Context, projectId uuid.UUID, start, end time.Time) ([]models.TimeSeriesPoint, error) {
 	query := `SELECT
 		toStartOfHour(recorded_at) as hour,
 		countIf(status_code >= 400) * 100.0 / count() as error_rate
@@ -314,7 +315,7 @@ func (e *endpointRepository) ErrorRateByHour(ctx context.Context, projectId stri
 }
 
 // CountByInterval returns endpoint counts grouped by configurable interval in minutes
-func (e *endpointRepository) CountByInterval(ctx context.Context, projectId string, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
+func (e *endpointRepository) CountByInterval(ctx context.Context, projectId uuid.UUID, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
 	query := `SELECT
 		toStartOfInterval(recorded_at, INTERVAL ? MINUTE) as bucket,
 		toFloat64(count()) as count
@@ -342,7 +343,7 @@ func (e *endpointRepository) CountByInterval(ctx context.Context, projectId stri
 }
 
 // AvgDurationByInterval returns average response time in ms grouped by configurable interval
-func (e *endpointRepository) AvgDurationByInterval(ctx context.Context, projectId string, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
+func (e *endpointRepository) AvgDurationByInterval(ctx context.Context, projectId uuid.UUID, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
 	query := `SELECT
 		toStartOfInterval(recorded_at, INTERVAL ? MINUTE) as bucket,
 		avg(duration) / 1000000 as avg_duration_ms
@@ -370,7 +371,7 @@ func (e *endpointRepository) AvgDurationByInterval(ctx context.Context, projectI
 }
 
 // ErrorRateByInterval returns error rate (percentage) grouped by configurable interval
-func (e *endpointRepository) ErrorRateByInterval(ctx context.Context, projectId string, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
+func (e *endpointRepository) ErrorRateByInterval(ctx context.Context, projectId uuid.UUID, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
 	query := `SELECT
 		toStartOfInterval(recorded_at, INTERVAL ? MINUTE) as bucket,
 		countIf(status_code >= 400) * 100.0 / count() as error_rate
@@ -399,7 +400,7 @@ func (e *endpointRepository) ErrorRateByInterval(ctx context.Context, projectId 
 
 // FindWorstEndpoints returns endpoints ordered by impact score (count * variance)
 // Higher call volume + larger variance = higher impact
-func (e *endpointRepository) FindWorstEndpoints(ctx context.Context, projectId string, start, end time.Time, limit int) ([]models.EndpointStats, error) {
+func (e *endpointRepository) FindWorstEndpoints(ctx context.Context, projectId uuid.UUID, start, end time.Time, limit int) ([]models.EndpointStats, error) {
 	query := `SELECT
 		endpoint,
 		count() as count,
@@ -436,7 +437,7 @@ func (e *endpointRepository) FindWorstEndpoints(ctx context.Context, projectId s
 }
 
 // GetEndpointStats returns aggregate statistics for a specific endpoint
-func (e *endpointRepository) GetEndpointStats(ctx context.Context, projectId, endpoint string, start, end time.Time) (*models.EndpointDetailStats, error) {
+func (e *endpointRepository) GetEndpointStats(ctx context.Context, projectId uuid.UUID, endpoint string, start, end time.Time) (*models.EndpointDetailStats, error) {
 	// Calculate time range duration for throughput calculation
 	durationMinutes := end.Sub(start).Minutes()
 	if durationMinutes < 1 {

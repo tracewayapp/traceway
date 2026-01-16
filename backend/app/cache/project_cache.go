@@ -7,11 +7,13 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type projectCache struct {
-	projects     map[string]*models.Project // key: token
-	projectsById map[string]*models.Project // key: id
+	projects     map[string]*models.Project    // key: token
+	projectsById map[uuid.UUID]*models.Project // key: id
 	mu           sync.RWMutex
 	lastRefresh  time.Time
 }
@@ -19,7 +21,7 @@ type projectCache struct {
 // ProjectCache is the global project cache instance
 var ProjectCache = &projectCache{
 	projects:     make(map[string]*models.Project),
-	projectsById: make(map[string]*models.Project),
+	projectsById: make(map[uuid.UUID]*models.Project),
 }
 
 // Init initializes the cache by loading all projects from the database
@@ -38,7 +40,7 @@ func (c *projectCache) Refresh(ctx context.Context) error {
 	defer c.mu.Unlock()
 
 	c.projects = make(map[string]*models.Project)
-	c.projectsById = make(map[string]*models.Project)
+	c.projectsById = make(map[uuid.UUID]*models.Project)
 
 	for i := range projects {
 		proj := &projects[i]
@@ -58,7 +60,7 @@ func (c *projectCache) GetByToken(token string) *models.Project {
 }
 
 // GetById returns a project by its ID, or nil if not found
-func (c *projectCache) GetById(id string) *models.Project {
+func (c *projectCache) GetById(id uuid.UUID) *models.Project {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.projectsById[id]

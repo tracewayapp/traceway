@@ -53,7 +53,7 @@ func (e clientController) Report(c *gin.Context) {
 
 			// Extract segments from transaction
 			for _, cs := range ct.Segments {
-				seg := cs.ToSegment(ct.Id)
+				seg := cs.ToSegment(ct.ParsedId())
 				seg.ProjectId = projectId
 				segmentsToInsert = append(segmentsToInsert, seg)
 			}
@@ -61,7 +61,7 @@ func (e clientController) Report(c *gin.Context) {
 
 		for _, cst := range cf.StackTraces {
 			est := cst.ToExceptionStackTrace(computeExceptionHash(cst.StackTrace, cst.IsMessage), request.AppVersion, request.ServerName)
-			est.Id = uuid.New().String()
+			est.Id = uuid.New()
 			est.ProjectId = projectId
 			exceptionStackTraceToInsert = append(exceptionStackTraceToInsert, est)
 		}

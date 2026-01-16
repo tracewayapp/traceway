@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 const ProjectContextKey = "project"
@@ -41,9 +42,9 @@ func InitUseClientAuth() {
 }
 
 // GetProjectId retrieves the project ID from the Gin context
-func GetProjectId(c *gin.Context) string {
+func GetProjectId(c *gin.Context) uuid.UUID {
 	if id, exists := c.Get(ProjectIdContextKey); exists {
-		return id.(string)
+		return id.(uuid.UUID)
 	}
-	return ""
+	return uuid.Nil
 }

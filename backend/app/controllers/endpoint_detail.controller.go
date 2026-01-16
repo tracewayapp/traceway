@@ -6,12 +6,13 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type endpointDetailController struct{}
 
 type EndpointDetailRequest struct {
-	ProjectId string `json:"projectId"`
+	ProjectId uuid.UUID `json:"projectId"`
 }
 
 type EndpointExceptionInfo struct {
@@ -21,7 +22,7 @@ type EndpointExceptionInfo struct {
 }
 
 type EndpointMessageInfo struct {
-	Id            string            `json:"id"`
+	Id            uuid.UUID         `json:"id"`
 	ExceptionHash string            `json:"exceptionHash"`
 	StackTrace    string            `json:"stackTrace"`
 	RecordedAt    string            `json:"recordedAt"`
@@ -37,9 +38,9 @@ type EndpointDetailResponse struct {
 }
 
 func (c endpointDetailController) GetEndpointDetail(ctx *gin.Context) {
-	endpointId := ctx.Param("endpointId")
-	if endpointId == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "endpointId is required"})
+	endpointId, err := uuid.Parse(ctx.Param("endpointId"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid endpointId"})
 		return
 	}
 

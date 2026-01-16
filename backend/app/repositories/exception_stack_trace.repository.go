@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/google/uuid"
 )
 
 var ErrExceptionNotFound = errors.New("exception not found")
@@ -43,13 +44,13 @@ func (e *exceptionStackTraceRepository) InsertAsync(ctx context.Context, lines [
 	return batch.Send()
 }
 
-func (e *exceptionStackTraceRepository) CountBetween(ctx context.Context, projectId string, start, end time.Time) (int64, error) {
+func (e *exceptionStackTraceRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {
 	var count uint64
 	err := (*chdb.Conn).QueryRow(ctx, "SELECT count() FROM exception_stack_traces WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, start, end).Scan(&count)
 	return int64(count), err
 }
 
-func (e *exceptionStackTraceRepository) FindGrouped(ctx context.Context, projectId string, fromDate, toDate time.Time, page, pageSize int, orderBy string, search string, searchType string, includeArchived bool) ([]models.ExceptionGroup, int64, error) {
+func (e *exceptionStackTraceRepository) FindGrouped(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, search string, searchType string, includeArchived bool) ([]models.ExceptionGroup, int64, error) {
 	offset := (page - 1) * pageSize
 
 	// Parse sort direction from orderBy (e.g., "last_seen_asc" -> "last_seen", "ASC")
@@ -145,7 +146,7 @@ func (e *exceptionStackTraceRepository) FindGrouped(ctx context.Context, project
 	return groups, int64(count), nil
 }
 
-func (e *exceptionStackTraceRepository) FindByHash(ctx context.Context, projectId string, exceptionHash string, page, pageSize int) (*models.ExceptionGroup, []models.ExceptionStackTrace, int64, error) {
+func (e *exceptionStackTraceRepository) FindByHash(ctx context.Context, projectId uuid.UUID, exceptionHash string, page, pageSize int) (*models.ExceptionGroup, []models.ExceptionStackTrace, int64, error) {
 	offset := (page - 1) * pageSize
 
 	// Get grouped info
@@ -189,7 +190,7 @@ func (e *exceptionStackTraceRepository) FindByHash(ctx context.Context, projectI
 }
 
 // CountByHour returns exception counts grouped by hour
-func (e *exceptionStackTraceRepository) CountByHour(ctx context.Context, projectId string, start, end time.Time) ([]models.TimeSeriesPoint, error) {
+func (e *exceptionStackTraceRepository) CountByHour(ctx context.Context, projectId uuid.UUID, start, end time.Time) ([]models.TimeSeriesPoint, error) {
 	query := `SELECT
 		toStartOfHour(recorded_at) as hour,
 		toFloat64(count()) as count
@@ -217,7 +218,7 @@ func (e *exceptionStackTraceRepository) CountByHour(ctx context.Context, project
 }
 
 // CountByInterval returns exception counts grouped by configurable interval in minutes
-func (e *exceptionStackTraceRepository) CountByInterval(ctx context.Context, projectId string, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
+func (e *exceptionStackTraceRepository) CountByInterval(ctx context.Context, projectId uuid.UUID, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
 	query := `SELECT
 		toStartOfInterval(recorded_at, INTERVAL ? MINUTE) as bucket,
 		toFloat64(count()) as count
@@ -245,7 +246,7 @@ func (e *exceptionStackTraceRepository) CountByInterval(ctx context.Context, pro
 }
 
 // GetHourlyTrendForHashes returns hourly counts for specific exception hashes
-func (e *exceptionStackTraceRepository) GetHourlyTrendForHashes(ctx context.Context, projectId string, hashes []string, start, end time.Time) (map[string][]models.ExceptionTrendPoint, error) {
+func (e *exceptionStackTraceRepository) GetHourlyTrendForHashes(ctx context.Context, projectId uuid.UUID, hashes []string, start, end time.Time) (map[string][]models.ExceptionTrendPoint, error) {
 	if len(hashes) == 0 {
 		return make(map[string][]models.ExceptionTrendPoint), nil
 	}
@@ -279,7 +280,7 @@ func (e *exceptionStackTraceRepository) GetHourlyTrendForHashes(ctx context.Cont
 }
 
 // ArchiveByHashes archives exceptions by their hashes
-func (e *exceptionStackTraceRepository) ArchiveByHashes(ctx context.Context, projectId string, hashes []string) error {
+func (e *exceptionStackTraceRepository) ArchiveByHashes(ctx context.Context, projectId uuid.UUID, hashes []string) error {
 	if len(hashes) == 0 {
 		return nil
 	}
@@ -299,7 +300,7 @@ func (e *exceptionStackTraceRepository) ArchiveByHashes(ctx context.Context, pro
 }
 
 // UnarchiveByHashes removes exceptions from the archive
-func (e *exceptionStackTraceRepository) UnarchiveByHashes(ctx context.Context, projectId string, hashes []string) error {
+func (e *exceptionStackTraceRepository) UnarchiveByHashes(ctx context.Context, projectId uuid.UUID, hashes []string) error {
 	if len(hashes) == 0 {
 		return nil
 	}
@@ -310,7 +311,7 @@ func (e *exceptionStackTraceRepository) UnarchiveByHashes(ctx context.Context, p
 }
 
 // IsArchived checks if a specific exception hash is archived
-func (e *exceptionStackTraceRepository) IsArchived(ctx context.Context, projectId string, hash string) (bool, error) {
+func (e *exceptionStackTraceRepository) IsArchived(ctx context.Context, projectId uuid.UUID, hash string) (bool, error) {
 	var count uint64
 	err := (*chdb.Conn).QueryRow(ctx,
 		"SELECT count() FROM archived_exceptions FINAL WHERE project_id = ? AND exception_hash = ?",
@@ -321,7 +322,7 @@ func (e *exceptionStackTraceRepository) IsArchived(ctx context.Context, projectI
 	return count > 0, nil
 }
 
-func (e *exceptionStackTraceRepository) FindExceptionByTransactionId(ctx context.Context, projectId string, transactionId string) (*models.ExceptionStackTrace, error) {
+func (e *exceptionStackTraceRepository) FindExceptionByTransactionId(ctx context.Context, projectId uuid.UUID, transactionId uuid.UUID) (*models.ExceptionStackTrace, error) {
 	var est models.ExceptionStackTrace
 	var scopeJSON string
 	var isMessage uint8
@@ -352,7 +353,7 @@ func (e *exceptionStackTraceRepository) FindExceptionByTransactionId(ctx context
 }
 
 // FindAllByTransactionId returns all exceptions and messages associated with a specific transaction
-func (e *exceptionStackTraceRepository) FindAllByTransactionId(ctx context.Context, projectId string, transactionId string) ([]models.ExceptionStackTrace, error) {
+func (e *exceptionStackTraceRepository) FindAllByTransactionId(ctx context.Context, projectId uuid.UUID, transactionId uuid.UUID) ([]models.ExceptionStackTrace, error) {
 	rows, err := (*chdb.Conn).Query(ctx,
 		`SELECT id, project_id, transaction_id, transaction_type, exception_hash, stack_trace, recorded_at, scope, app_version, server_name, is_message
 		FROM exception_stack_traces
@@ -389,7 +390,7 @@ func (e *exceptionStackTraceRepository) FindAllByTransactionId(ctx context.Conte
 }
 
 // FindById returns a single exception by its ID
-func (e *exceptionStackTraceRepository) FindById(ctx context.Context, projectId string, id string) (*models.ExceptionStackTrace, error) {
+func (e *exceptionStackTraceRepository) FindById(ctx context.Context, projectId uuid.UUID, id uuid.UUID) (*models.ExceptionStackTrace, error) {
 	var est models.ExceptionStackTrace
 	var scopeJSON string
 	var isMessage uint8

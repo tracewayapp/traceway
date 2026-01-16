@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/google/uuid"
 )
 
 type taskRepository struct{}
@@ -31,13 +32,13 @@ func (e *taskRepository) InsertAsync(ctx context.Context, lines []models.Task) e
 	return batch.Send()
 }
 
-func (e *taskRepository) CountBetween(ctx context.Context, projectId string, start, end time.Time) (int64, error) {
+func (e *taskRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {
 	var count uint64
 	err := (*chdb.Conn).QueryRow(ctx, "SELECT count() FROM tasks WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, start, end).Scan(&count)
 	return int64(count), err
 }
 
-func (e *taskRepository) FindAll(ctx context.Context, projectId string, fromDate, toDate time.Time, page, pageSize int, orderBy string) ([]models.Task, int64, error) {
+func (e *taskRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string) ([]models.Task, int64, error) {
 	var count uint64
 	err := (*chdb.Conn).QueryRow(ctx, "SELECT count() FROM tasks WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, fromDate, toDate).Scan(&count)
 	if err != nil {
@@ -81,7 +82,7 @@ func (e *taskRepository) FindAll(ctx context.Context, projectId string, fromDate
 	return tasks, int64(count), nil
 }
 
-func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId string, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.TaskStats, int64, error) {
+func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.TaskStats, int64, error) {
 	// Count unique task names
 	var count uint64
 	err := (*chdb.Conn).QueryRow(ctx, "SELECT uniq(task_name) FROM tasks WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, fromDate, toDate).Scan(&count)
@@ -147,7 +148,7 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId st
 	return stats, int64(count), nil
 }
 
-func (e *taskRepository) FindByTaskName(ctx context.Context, projectId string, taskName string, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.Task, int64, error) {
+func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID, taskName string, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.Task, int64, error) {
 	var count uint64
 	err := (*chdb.Conn).QueryRow(ctx, "SELECT count() FROM tasks WHERE project_id = ? AND task_name = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, taskName, fromDate, toDate).Scan(&count)
 	if err != nil {
@@ -198,7 +199,7 @@ func (e *taskRepository) FindByTaskName(ctx context.Context, projectId string, t
 }
 
 // FindById returns a single task by ID
-func (e *taskRepository) FindById(ctx context.Context, projectId, taskId string) (*models.Task, error) {
+func (e *taskRepository) FindById(ctx context.Context, projectId, taskId uuid.UUID) (*models.Task, error) {
 	query := `SELECT id, project_id, task_name, duration, recorded_at, client_ip, scope, app_version, server_name
 		FROM tasks
 		WHERE project_id = ? AND id = ?
@@ -226,7 +227,7 @@ func (e *taskRepository) FindById(ctx context.Context, projectId, taskId string)
 }
 
 // CountByHour returns task counts grouped by hour
-func (e *taskRepository) CountByHour(ctx context.Context, projectId string, start, end time.Time) ([]models.TimeSeriesPoint, error) {
+func (e *taskRepository) CountByHour(ctx context.Context, projectId uuid.UUID, start, end time.Time) ([]models.TimeSeriesPoint, error) {
 	query := `SELECT
 		toStartOfHour(recorded_at) as hour,
 		toFloat64(count()) as count
@@ -254,7 +255,7 @@ func (e *taskRepository) CountByHour(ctx context.Context, projectId string, star
 }
 
 // AvgDurationByHour returns average duration in ms grouped by hour
-func (e *taskRepository) AvgDurationByHour(ctx context.Context, projectId string, start, end time.Time) ([]models.TimeSeriesPoint, error) {
+func (e *taskRepository) AvgDurationByHour(ctx context.Context, projectId uuid.UUID, start, end time.Time) ([]models.TimeSeriesPoint, error) {
 	query := `SELECT
 		toStartOfHour(recorded_at) as hour,
 		avg(duration) / 1000000 as avg_duration_ms
@@ -282,7 +283,7 @@ func (e *taskRepository) AvgDurationByHour(ctx context.Context, projectId string
 }
 
 // CountByInterval returns task counts grouped by configurable interval in minutes
-func (e *taskRepository) CountByInterval(ctx context.Context, projectId string, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
+func (e *taskRepository) CountByInterval(ctx context.Context, projectId uuid.UUID, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
 	query := `SELECT
 		toStartOfInterval(recorded_at, INTERVAL ? MINUTE) as bucket,
 		toFloat64(count()) as count
@@ -310,7 +311,7 @@ func (e *taskRepository) CountByInterval(ctx context.Context, projectId string, 
 }
 
 // AvgDurationByInterval returns average duration in ms grouped by configurable interval
-func (e *taskRepository) AvgDurationByInterval(ctx context.Context, projectId string, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
+func (e *taskRepository) AvgDurationByInterval(ctx context.Context, projectId uuid.UUID, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
 	query := `SELECT
 		toStartOfInterval(recorded_at, INTERVAL ? MINUTE) as bucket,
 		avg(duration) / 1000000 as avg_duration_ms
@@ -338,7 +339,7 @@ func (e *taskRepository) AvgDurationByInterval(ctx context.Context, projectId st
 }
 
 // FindWorstTasks returns tasks ordered by impact score (count * variance)
-func (e *taskRepository) FindWorstTasks(ctx context.Context, projectId string, start, end time.Time, limit int) ([]models.TaskStats, error) {
+func (e *taskRepository) FindWorstTasks(ctx context.Context, projectId uuid.UUID, start, end time.Time, limit int) ([]models.TaskStats, error) {
 	query := `SELECT
 		task_name,
 		count() as count,
@@ -375,7 +376,7 @@ func (e *taskRepository) FindWorstTasks(ctx context.Context, projectId string, s
 }
 
 // GetTaskStats returns aggregate statistics for a specific task
-func (e *taskRepository) GetTaskStats(ctx context.Context, projectId, taskName string, start, end time.Time) (*models.TaskDetailStats, error) {
+func (e *taskRepository) GetTaskStats(ctx context.Context, projectId uuid.UUID, taskName string, start, end time.Time) (*models.TaskDetailStats, error) {
 	// Calculate time range duration for throughput calculation
 	durationMinutes := end.Sub(start).Minutes()
 	if durationMinutes < 1 {

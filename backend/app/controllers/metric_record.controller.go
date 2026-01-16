@@ -7,12 +7,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type metricRecordController struct{}
 
 type HomepageStatsRequest struct {
-	ProjectId string `json:"projectId"`
+	ProjectId uuid.UUID `json:"projectId"`
 }
 
 func (e metricRecordController) FindHomepageStats(c *gin.Context) {

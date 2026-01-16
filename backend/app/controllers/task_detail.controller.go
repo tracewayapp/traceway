@@ -6,12 +6,13 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type taskDetailController struct{}
 
 type TaskDetailRequest struct {
-	ProjectId string `json:"projectId"`
+	ProjectId uuid.UUID `json:"projectId"`
 }
 
 type TaskExceptionInfo struct {
@@ -21,7 +22,7 @@ type TaskExceptionInfo struct {
 }
 
 type TaskMessageInfo struct {
-	Id            string            `json:"id"`
+	Id            uuid.UUID         `json:"id"`
 	ExceptionHash string            `json:"exceptionHash"`
 	StackTrace    string            `json:"stackTrace"`
 	RecordedAt    string            `json:"recordedAt"`
@@ -37,9 +38,9 @@ type TaskDetailResponse struct {
 }
 
 func (c taskDetailController) GetTaskDetail(ctx *gin.Context) {
-	taskId := ctx.Param("taskId")
-	if taskId == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "taskId is required"})
+	taskId, err := uuid.Parse(ctx.Param("taskId"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid taskId"})
 		return
 	}
 

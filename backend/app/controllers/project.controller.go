@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // Valid framework values
@@ -83,7 +84,11 @@ func (p projectController) CreateProject(c *gin.Context) {
 
 // GetProject returns a project by ID with its token (for connection page)
 func (p projectController) GetProject(c *gin.Context) {
-	projectId := c.Param("id")
+	projectId, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+		return
+	}
 
 	project := cache.ProjectCache.GetById(projectId)
 	if project == nil {

@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type taskController struct{}
 
 type TaskSearchRequest struct {
-	ProjectId     string           `json:"projectId"`
+	ProjectId     uuid.UUID        `json:"projectId"`
 	FromDate      time.Time        `json:"fromDate"`
 	ToDate        time.Time        `json:"toDate"`
 	OrderBy       string           `json:"orderBy"`
@@ -22,7 +23,7 @@ type TaskSearchRequest struct {
 }
 
 type TaskInstancesRequest struct {
-	ProjectId     string           `json:"projectId"`
+	ProjectId     uuid.UUID        `json:"projectId"`
 	FromDate      time.Time        `json:"fromDate"`
 	ToDate        time.Time        `json:"toDate"`
 	OrderBy       string           `json:"orderBy"`

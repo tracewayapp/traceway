@@ -3,6 +3,8 @@ package clientmodels
 import (
 	"backend/app/models"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type ClientExceptionStackTrace struct {
@@ -19,9 +21,17 @@ func (c *ClientExceptionStackTrace) ToExceptionStackTrace(exceptionHash, appVers
 	if c.IsTask {
 		transactionType = "task"
 	}
+
+	var transactionId *uuid.UUID
+	if c.TransactionId != nil {
+		if parsed, err := uuid.Parse(*c.TransactionId); err == nil {
+			transactionId = &parsed
+		}
+	}
+
 	return models.ExceptionStackTrace{
 		ExceptionHash:   exceptionHash,
-		TransactionId:   c.TransactionId,
+		TransactionId:   transactionId,
 		TransactionType: transactionType,
 		StackTrace:      c.StackTrace,
 		RecordedAt:      c.RecordedAt,
@@ -60,9 +70,17 @@ type ClientTransaction struct {
 	IsTask     bool              `json:"isTask"`
 }
 
+// ParsedId returns the transaction ID as uuid.UUID
+func (c *ClientTransaction) ParsedId() uuid.UUID {
+	if parsed, err := uuid.Parse(c.Id); err == nil {
+		return parsed
+	}
+	return uuid.New()
+}
+
 func (c *ClientTransaction) ToEndpoint(appVersion, serverName string) models.Endpoint {
 	return models.Endpoint{
-		Id:         c.Id,
+		Id:         c.ParsedId(),
 		Endpoint:   c.Endpoint,
 		Duration:   c.Duration,
 		RecordedAt: c.RecordedAt,
@@ -77,7 +95,7 @@ func (c *ClientTransaction) ToEndpoint(appVersion, serverName string) models.End
 
 func (c *ClientTransaction) ToTask(appVersion, serverName string) models.Task {
 	return models.Task{
-		Id:         c.Id,
+		Id:         c.ParsedId(),
 		TaskName:   c.Endpoint, // Endpoint field is used as task name
 		Duration:   c.Duration,
 		RecordedAt: c.RecordedAt,
@@ -95,9 +113,17 @@ type ClientSegment struct {
 	Duration  time.Duration `json:"duration"`
 }
 
-func (c *ClientSegment) ToSegment(transactionId string) models.Segment {
+// ParsedId returns the segment ID as uuid.UUID
+func (c *ClientSegment) ParsedId() uuid.UUID {
+	if parsed, err := uuid.Parse(c.Id); err == nil {
+		return parsed
+	}
+	return uuid.New()
+}
+
+func (c *ClientSegment) ToSegment(transactionId uuid.UUID) models.Segment {
 	return models.Segment{
-		Id:            c.Id,
+		Id:            c.ParsedId(),
 		TransactionId: transactionId,
 		Name:          c.Name,
 		StartTime:     c.StartTime,

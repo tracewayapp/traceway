@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type endpointController struct{}
 
 type EndpointSearchRequest struct {
-	ProjectId     string           `json:"projectId"`
+	ProjectId     uuid.UUID        `json:"projectId"`
 	FromDate      time.Time        `json:"fromDate"`
 	ToDate        time.Time        `json:"toDate"`
 	OrderBy       string           `json:"orderBy"`
@@ -22,7 +23,7 @@ type EndpointSearchRequest struct {
 }
 
 type EndpointInstancesRequest struct {
-	ProjectId     string           `json:"projectId"`
+	ProjectId     uuid.UUID        `json:"projectId"`
 	FromDate      time.Time        `json:"fromDate"`
 	ToDate        time.Time        `json:"toDate"`
 	OrderBy       string           `json:"orderBy"`

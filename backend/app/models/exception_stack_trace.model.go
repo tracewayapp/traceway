@@ -1,11 +1,15 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type ExceptionStackTrace struct {
-	Id              string            `json:"id" ch:"id"`
-	ProjectId       string            `json:"projectId" ch:"project_id"`
-	TransactionId   *string           `json:"transactionId" ch:"transaction_id"`
+	Id              uuid.UUID         `json:"id" ch:"id"`
+	ProjectId       uuid.UUID         `json:"projectId" ch:"project_id"`
+	TransactionId   *uuid.UUID        `json:"transactionId" ch:"transaction_id"`
 	TransactionType string            `json:"transactionType" ch:"transaction_type"` // "endpoint" or "task"
 	ExceptionHash   string            `json:"exceptionHash" ch:"exception_hash"`
 	StackTrace      string            `json:"stackTrace" ch:"stack_trace"`

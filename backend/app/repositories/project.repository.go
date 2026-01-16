@@ -42,7 +42,7 @@ func (p *projectRepository) FindByToken(ctx context.Context, token string) (*mod
 	return &proj, nil
 }
 
-func (p *projectRepository) FindById(ctx context.Context, id string) (*models.Project, error) {
+func (p *projectRepository) FindById(ctx context.Context, id uuid.UUID) (*models.Project, error) {
 	var proj models.Project
 	err := (*chdb.Conn).QueryRow(ctx, "SELECT id, name, token, framework, created_at FROM projects WHERE id = ?", id).
 		Scan(&proj.Id, &proj.Name, &proj.Token, &proj.Framework, &proj.CreatedAt)
@@ -53,7 +53,7 @@ func (p *projectRepository) FindById(ctx context.Context, id string) (*models.Pr
 }
 
 func (p *projectRepository) Create(ctx context.Context, name string, framework string) (*models.Project, error) {
-	id := uuid.New().String()
+	id := uuid.New()
 	token := generateSecureToken()
 
 	err := (*chdb.Conn).Exec(ctx, "INSERT INTO projects (id, name, token, framework) VALUES (?, ?, ?, ?)", id, name, token, framework)

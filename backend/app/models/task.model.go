@@ -1,10 +1,14 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type Task struct {
-	Id         string            `json:"id" ch:"id"`
-	ProjectId  string            `json:"projectId" ch:"project_id"`
+	Id         uuid.UUID         `json:"id" ch:"id"`
+	ProjectId  uuid.UUID         `json:"projectId" ch:"project_id"`
 	TaskName   string            `json:"taskName" ch:"task_name"`
 	Duration   time.Duration     `json:"duration" ch:"duration"`
 	RecordedAt time.Time         `json:"recordedAt" ch:"recorded_at"`

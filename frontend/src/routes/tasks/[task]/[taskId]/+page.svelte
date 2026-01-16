@@ -121,7 +121,7 @@
 				<Card.Description>Details of this specific task execution</Card.Description>
 			</Card.Header>
 			<Card.Content class="space-y-6">
-				<div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+				<div class="grid grid-cols-2 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
 					<LabelValue
 						label="Task"
 						value={decodeURIComponent(data.task)}
@@ -145,7 +145,7 @@
 					/>
 					<LabelValue
 						label="Version"
-						value={response.task.appVersion}
+						value={response.task.appVersion || '-'}
 						mono
 					/>
 				</div>

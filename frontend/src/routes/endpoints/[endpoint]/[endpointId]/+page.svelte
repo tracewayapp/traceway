@@ -137,7 +137,7 @@
 					/>
 					<LabelValue
 						label="Version"
-						value={response.endpoint.appVersion}
+						value={response.endpoint.appVersion || '-'}
 						mono
 					/>
 					<LabelValue

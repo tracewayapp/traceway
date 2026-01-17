@@ -1,4 +1,6 @@
 <script lang="ts">
+	import ContextView from './context-view.svelte';
+
 	let {
 		scope,
 		sorted = true
@@ -18,9 +20,6 @@
 
 <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
 	{#each entries() as [key, value]}
-		<div class="flex flex-col gap-1 rounded-md bg-muted p-3">
-			<span class="text-xs font-medium text-muted-foreground">{key}</span>
-			<span class="font-mono text-sm break-all">{value}</span>
-		</div>
+		<ContextView title={key} {value} />
 	{/each}
 </div>

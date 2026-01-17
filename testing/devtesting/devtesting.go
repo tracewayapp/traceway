@@ -47,6 +47,12 @@ func testGin() {
 			})
 		}()
 	})
+	router.GET("/test-json", func(ctx *gin.Context) {
+		scope := traceway.GetScopeFromContext(ctx)
+		scope.SetTag("json tag", veryLongJsonForTestin)
+		traceway.CaptureMessageWithContext(ctx, "test json")
+	})
+
 	router.GET("/test-message", func(ctx *gin.Context) {
 		for i := range 10 {
 			traceway.CaptureMessageWithContext(ctx, "test message "+strconv.Itoa(i))
@@ -127,3 +133,5 @@ func testGin() {
 
 	router.Run()
 }
+
+var veryLongJsonForTestin = `{"str": "traceway", "obj": {"id": 1}, "obj2": {"id": 1}, "obj3": {"id": 1}, "obj4": {"id": 1}, "obj5loremipsumdoloret": {"id": "I'm baby tumeric VHS Brooklyn, echo park literally you probably haven't heard of them crucifix taiyaki chambray roof party man bun knausgaard waistcoat squid health goth. Gastropub godard bodega boys snackwave asymmetrical la croix. Whatever try-hard pour-over humblebrag austin microdosing organic bruh. Keffiyeh mukbang yuccie, 90's humblebrag roof party godard kale chips lo-fi sriracha aesthetic.", "id2": "ImbabytumericVHSBrooklynechoparkliterallyyouprobablyhaventheardofthemcrucifixtaiyakichambrayroofpartymanbunknausgaardwaistcoatsquidhealthgothGastropubgodardbodegaboyssnackwaveasymmetricallacroixWhatevertryhardpouroverhumblebragaustinmicrodosingorganicbruhKeffiyehmukbangyuccieshumblebragroofpartygodardkalechipslofisrirachaaesthetic"}, "arr": [1, 2, "", {"key": 1, "key2": "example"}]}`

@@ -56,7 +56,7 @@
 		"lucide-svelte": "^0.562.0",
 		"luxon": "^3.7.2",
 		"svelte-highlight": "^7.9.0",
-		"svelte-json-tree": "^2.2.0",
+		"@sveltejs/svelte-json-tree": "^2.2.1",
 		"svelte-sonner": "^1.0.7"
 	}
 }

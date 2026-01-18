@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math/rand/v2"
+	"net/http"
 	"os"
 	"strconv"
 	"time"
@@ -18,6 +19,10 @@ func main() {
 	testGin()
 }
 
+type JsonRecordingTest struct {
+	Name string
+}
+
 func testGin() {
 	endpoint := os.Getenv("TRACEWAY_ENDPOINT")
 	if endpoint == "" {
@@ -30,7 +35,21 @@ func testGin() {
 		endpoint,
 		tracewaygin.WithDebug(true),
 		tracewaygin.WithRepanic(true),
+		tracewaygin.WithOnErrorRecording(tracewaygin.RecordingUrl|tracewaygin.RecordingQuery|tracewaygin.RecordingHeader|tracewaygin.RecordingBody),
 	))
+
+	router.POST("/test-recording/:param", func(ctx *gin.Context) {
+		var data JsonRecordingTest
+
+		if err := ctx.ShouldBindJSON(&data); err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		if data.Name != "good" {
+			panic("Bad") // lol
+		}
+	})
 
 	router.GET("/test-task", func(ctx *gin.Context) {
 		go func() {

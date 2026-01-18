@@ -1,15 +1,21 @@
 <script lang="ts">
-	import { TriangleAlert } from 'lucide-svelte';
-
-	type ImpactLevel = 'critical' | 'high' | 'medium' | null;
+	import { TriangleAlert, CheckCircle } from 'lucide-svelte';
 
 	let {
-		level,
+		score,
 		showIcon
 	}: {
-		level: ImpactLevel;
+		score: number; // 0-1 Apdex-based impact score
 		showIcon?: boolean;
 	} = $props();
+
+	// Map score to impact level
+	type ImpactLevel = 'critical' | 'high' | 'medium' | 'good';
+	const level = $derived<ImpactLevel>(
+		score >= 0.75 ? 'critical' :
+		score >= 0.50 ? 'high' :
+		score >= 0.25 ? 'medium' : 'good'
+	);
 
 	// Default showIcon to true for critical and high levels
 	const shouldShowIcon = $derived(showIcon ?? (level === 'critical' || level === 'high'));
@@ -20,22 +26,30 @@
 				return {
 					bg: 'bg-red-500/15',
 					text: 'text-red-600 dark:text-red-400',
-					label: 'Critical'
+					label: 'Critical',
+					icon: 'alert'
 				};
 			case 'high':
 				return {
 					bg: 'bg-orange-500/15',
 					text: 'text-orange-600 dark:text-orange-400',
-					label: 'High'
+					label: 'High',
+					icon: 'alert'
 				};
 			case 'medium':
 				return {
 					bg: 'bg-yellow-500/15',
 					text: 'text-yellow-600 dark:text-yellow-500',
-					label: 'Medium'
+					label: 'Medium',
+					icon: 'alert'
 				};
-			default:
-				return null;
+			case 'good':
+				return {
+					bg: 'bg-green-500/15',
+					text: 'text-green-600 dark:text-green-400',
+					label: 'Good',
+					icon: 'check'
+				};
 		}
 	});
 </script>
@@ -46,7 +60,11 @@
 			?.bg} {config()?.text}"
 	>
 		{#if shouldShowIcon}
-			<TriangleAlert class="h-3 w-3" />
+			{#if config()?.icon === 'check'}
+				<CheckCircle class="h-3 w-3" />
+			{:else}
+				<TriangleAlert class="h-3 w-3" />
+			{/if}
 		{/if}
 		{config()?.label}
 	</span>

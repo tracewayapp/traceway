@@ -101,12 +101,12 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 		"p95_duration": "p95_duration",
 		"avg_duration": "avg_duration",
 		"last_seen":    "last_seen",
-		"impact":       "count * (p95_duration - p50_duration)",
+		"impact":       "impact",
 	}
 
 	orderExpr, ok := orderByMap[orderBy]
 	if !ok {
-		orderExpr = orderByMap["impact"] // Default to impact expression
+		orderExpr = "impact" // Default to impact
 	}
 
 	// Validate sort direction
@@ -115,13 +115,33 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 		sortDir = "ASC"
 	}
 
+	// Apdex thresholds: Good <= 500ms, Tolerable <= 2000ms, Bad > 2000ms or error
+	// Duration is in nanoseconds: 500ms = 500,000,000ns, 2000ms = 2,000,000,000ns
 	query := `SELECT
 		endpoint,
 		count() as count,
 		quantile(0.5)(duration) as p50_duration,
 		quantile(0.95)(duration) as p95_duration,
 		avg(duration) as avg_duration,
-		max(recorded_at) as last_seen
+		max(recorded_at) as last_seen,
+		greatest(
+			-- Base score: 1 - apdex
+			if(count() > 0,
+				1.0 - (
+					(countIf(duration <= 500000000 AND status_code < 400) +
+					 countIf(duration > 500000000 AND duration <= 2000000000 AND status_code < 400) * 0.5)
+					/ count()
+				),
+				0.0
+			),
+			-- Floor based on bad percentage
+			multiIf(
+				countIf(duration > 2000000000 OR status_code >= 400) / count() > 0.33, 0.75,
+				countIf(duration > 2000000000 OR status_code >= 400) / count() > 0.20, 0.50,
+				countIf(duration > 2000000000 OR status_code >= 400) / count() > 0.10, 0.25,
+				0.0
+			)
+		) as impact
 	FROM endpoints
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY endpoint
@@ -138,7 +158,7 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 	for rows.Next() {
 		var s models.EndpointStats
 		var p50, p95, avg float64
-		if err := rows.Scan(&s.Endpoint, &s.Count, &p50, &p95, &avg, &s.LastSeen); err != nil {
+		if err := rows.Scan(&s.Endpoint, &s.Count, &p50, &p95, &avg, &s.LastSeen, &s.Impact); err != nil {
 			return nil, 0, err
 		}
 		s.P50Duration = time.Duration(p50)
@@ -398,20 +418,40 @@ func (e *endpointRepository) ErrorRateByInterval(ctx context.Context, projectId 
 	return points, nil
 }
 
-// FindWorstEndpoints returns endpoints ordered by impact score (count * variance)
-// Higher call volume + larger variance = higher impact
+// FindWorstEndpoints returns endpoints ordered by Apdex-based impact score
+// Higher score = worse performance (1 - apdex with floor based on bad request percentage)
 func (e *endpointRepository) FindWorstEndpoints(ctx context.Context, projectId uuid.UUID, start, end time.Time, limit int) ([]models.EndpointStats, error) {
+	// Apdex thresholds: Good <= 500ms, Tolerable <= 2000ms, Bad > 2000ms or error
+	// Duration is in nanoseconds: 500ms = 500,000,000ns, 2000ms = 2,000,000,000ns
 	query := `SELECT
 		endpoint,
 		count() as count,
 		quantile(0.5)(duration) as p50_duration,
 		quantile(0.95)(duration) as p95_duration,
 		avg(duration) as avg_duration,
-		max(recorded_at) as last_seen
+		max(recorded_at) as last_seen,
+		greatest(
+			-- Base score: 1 - apdex
+			if(count() > 0,
+				1.0 - (
+					(countIf(duration <= 500000000 AND status_code < 400) +
+					 countIf(duration > 500000000 AND duration <= 2000000000 AND status_code < 400) * 0.5)
+					/ count()
+				),
+				0.0
+			),
+			-- Floor based on bad percentage
+			multiIf(
+				countIf(duration > 2000000000 OR status_code >= 400) / count() > 0.33, 0.75,
+				countIf(duration > 2000000000 OR status_code >= 400) / count() > 0.20, 0.50,
+				countIf(duration > 2000000000 OR status_code >= 400) / count() > 0.10, 0.25,
+				0.0
+			)
+		) as impact
 	FROM endpoints
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY endpoint
-	ORDER BY count * (p95_duration - p50_duration) DESC
+	ORDER BY impact DESC
 	LIMIT ?`
 
 	rows, err := (*chdb.Conn).Query(ctx, query, projectId, start, end, limit)
@@ -424,7 +464,7 @@ func (e *endpointRepository) FindWorstEndpoints(ctx context.Context, projectId u
 	for rows.Next() {
 		var s models.EndpointStats
 		var p50, p95, avg float64
-		if err := rows.Scan(&s.Endpoint, &s.Count, &p50, &p95, &avg, &s.LastSeen); err != nil {
+		if err := rows.Scan(&s.Endpoint, &s.Count, &p50, &p95, &avg, &s.LastSeen, &s.Impact); err != nil {
 			return nil, err
 		}
 		s.P50Duration = time.Duration(p50)

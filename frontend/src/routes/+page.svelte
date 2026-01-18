@@ -6,15 +6,27 @@
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import * as Table from '$lib/components/ui/table';
 	import * as Tooltip from '$lib/components/ui/tooltip';
-	import { ArrowRight, Info, Gauge, Bug, CircleQuestionMark } from 'lucide-svelte';
+	import { ArrowRight, Gauge, Bug, CircleQuestionMark, CircleCheck, RefreshCw, Copy, Check, Unplug } from 'lucide-svelte';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { ImpactBadge } from '$lib/components/ui/impact-badge';
-	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
 	import { ViewAllTableRow } from '$lib/components/ui/view-all-table-row';
 	import { api } from '$lib/api';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
-	import { projectsState } from '$lib/state/projects.svelte';
+	import { projectsState, type ProjectWithToken } from '$lib/state/projects.svelte';
 	import { setSortState } from '$lib/utils/sort-storage';
+	import { Button } from '$lib/components/ui/button';
+	import Highlight from 'svelte-highlight';
+	import go from 'svelte-highlight/languages/go';
+	import bash from 'svelte-highlight/languages/bash';
+	import { themeState } from '$lib/state/theme.svelte';
+	import 'svelte-highlight/styles/github-dark.css';
+	import {
+		getFrameworkCode,
+		getInstallCommand,
+		getTestingRouteCode,
+		getFrameworkLabel
+	} from '$lib/utils/framework-code';
+	import { toast } from 'svelte-sonner';
 
 	const timezone = $derived(getTimezone());
 
@@ -33,11 +45,13 @@
 		p95Duration: number;
 		avgDuration: number;
 		lastSeen: string;
+		impact: number; // 0-1 Apdex-based impact score from backend
 	};
 
 	type DashboardOverview = {
 		recentIssues: ExceptionGroup[];
 		worstEndpoints: EndpointStats[];
+		hasData: boolean;
 	};
 
 	let data = $state<DashboardOverview | null>(null);
@@ -45,8 +59,84 @@
 	let error = $state('');
 	let errorStatus = $state<number>(0);
 
-	async function loadDashboard() {
-		loading = true;
+	// Filter endpoints to only show those with impact > good (score >= 0.25)
+	const impactfulEndpoints = $derived(
+		data?.worstEndpoints?.filter((e) => e.impact >= 0.25) ?? []
+	);
+
+	// Integration setup state
+	let projectWithToken = $state<ProjectWithToken | null>(null);
+	let copiedInstall = $state(false);
+	let copiedCode = $state(false);
+	let copiedTesting = $state(false);
+	let checking = $state(false);
+
+	// Load project with token when hasData is false
+	$effect(() => {
+		if (data && !data.hasData && projectsState.currentProjectId) {
+			projectsState
+				.getProjectWithToken(projectsState.currentProjectId)
+				.then((p) => (projectWithToken = p))
+				.catch(() => (projectWithToken = null));
+		}
+	});
+
+	const sdkCode = $derived(
+		projectWithToken
+			? getFrameworkCode(
+					projectWithToken.framework,
+					projectWithToken.token,
+					projectWithToken.backendUrl
+				)
+			: ''
+	);
+
+	const installCommand = $derived(
+		projectWithToken
+			? getInstallCommand(projectWithToken.framework)
+			: 'go get github.com/traceway-io/go-client'
+	);
+
+	const testingRouteCode = getTestingRouteCode();
+
+	async function copyInstall() {
+		await navigator.clipboard.writeText(installCommand);
+		copiedInstall = true;
+		setTimeout(() => (copiedInstall = false), 2000);
+	}
+
+	async function copyCode() {
+		await navigator.clipboard.writeText(sdkCode);
+		copiedCode = true;
+		setTimeout(() => (copiedCode = false), 2000);
+	}
+
+	async function copyTesting() {
+		await navigator.clipboard.writeText(testingRouteCode);
+		copiedTesting = true;
+		setTimeout(() => (copiedTesting = false), 2000);
+	}
+
+	async function checkAgain() {
+		checking = true;
+		const hadDataBefore = data?.hasData ?? false;
+		await loadDashboard(false);
+		checking = false;
+
+		// Show success toast if data was received
+		if (!hadDataBefore && data?.hasData) {
+			toast.success('Integration successful! Data received from your application.');
+		} else if (!data?.hasData) {
+			toast.warning('No data received yet', {
+				position: 'top-center'
+			});
+		}
+	}
+
+	async function loadDashboard(showFullPageLoading = true) {
+		if (showFullPageLoading) {
+			loading = true;
+		}
 		error = '';
 		errorStatus = 0;
 
@@ -60,28 +150,15 @@
 			error = e.message || 'Failed to load dashboard data';
 			console.error(e);
 		} finally {
-			loading = false;
+			if (showFullPageLoading) {
+				loading = false;
+			}
 		}
 	}
 
 	onMount(() => {
 		loadDashboard();
 	});
-
-	// Calculate impact level based on call volume and response time variance
-	// Returns: 'critical' | 'high' | 'medium' | null (null = not significant)
-	function getImpactLevel(
-		count: number,
-		p50: number,
-		p95: number
-	): 'critical' | 'high' | 'medium' | null {
-		const varianceMs = (p95 - p50) / 1_000_000;
-		const score = count * varianceMs;
-		if (score > 100) return 'critical';
-		if (score > 10) return 'high';
-		if (score > 1) return 'medium';
-		return null;
-	}
 
 	function resetEndpointsSortToImpact() {
 		setSortState('endpoints', { field: 'impact', direction: 'desc' });
@@ -108,6 +185,159 @@
 		<div class="flex items-center justify-center py-20">
 			<LoadingCircle size="xlg" />
 		</div>
+	{:else if !error && data && !data.hasData}
+		<!-- Integration Not Connected -->
+		<div class="space-y-6">
+			<div class="rounded-md border bg-card">
+				<div class="flex flex-col items-center justify-center py-8 px-6 text-center">
+					<div class="flex h-12 w-12 items-center justify-center rounded-full bg-muted mb-4">
+						<Unplug class="h-6 w-6 text-muted-foreground" />
+					</div>
+					<h3 class="text-lg font-semibold mb-2">Connect Your Application</h3>
+					<p class="text-sm text-muted-foreground max-w-md mb-4">
+						No data has been received yet. Follow the steps below to integrate Traceway into your application.
+					</p>
+					<Button variant="outline" onclick={checkAgain} disabled={checking}>
+						{#if checking}
+							<RefreshCw class="mr-2 h-4 w-4 animate-spin" />
+						{:else}
+							<RefreshCw class="mr-2 h-4 w-4" />
+						{/if}
+						Check Again
+					</Button>
+				</div>
+			</div>
+
+			{#if projectWithToken}
+				<!-- Step 1: Install -->
+				<div class="rounded-md border bg-card">
+					<div class="border-b px-4 py-3">
+						<div class="flex items-center gap-3">
+							<div class="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-medium">
+								1
+							</div>
+							<h3 class="font-semibold">Install the SDK</h3>
+						</div>
+					</div>
+					<div class="p-4">
+						<div class="relative">
+							<div class="absolute top-2 right-2 z-10">
+								<Button variant="outline" size="sm" onclick={copyInstall}>
+									{#if copiedInstall}
+										<Check class="mr-2 h-4 w-4 text-green-500" />
+										Copied!
+									{:else}
+										<Copy class="mr-2 h-4 w-4" />
+										Copy
+									{/if}
+								</Button>
+							</div>
+							<div
+								class="overflow-x-auto rounded-lg text-sm {themeState.isDark
+									? 'dark-code'
+									: 'light-code'}"
+							>
+								<Highlight language={bash} code={installCommand} />
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<!-- Step 2: Setup Integration -->
+				<div class="rounded-md border bg-card">
+					<div class="border-b px-4 py-3">
+						<div class="flex items-center gap-3">
+							<div class="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-medium">
+								2
+							</div>
+							<h3 class="font-semibold">{getFrameworkLabel(projectWithToken.framework)} Integration</h3>
+						</div>
+						<p class="text-sm text-muted-foreground mt-1 ml-9">
+							Add the Traceway middleware to your application.
+						</p>
+					</div>
+					<div class="p-4">
+						<div class="relative">
+							<div class="absolute top-2 right-2 z-10">
+								<Button variant="outline" size="sm" onclick={copyCode}>
+									{#if copiedCode}
+										<Check class="mr-2 h-4 w-4 text-green-500" />
+										Copied!
+									{:else}
+										<Copy class="mr-2 h-4 w-4" />
+										Copy
+									{/if}
+								</Button>
+							</div>
+							<div
+								class="overflow-x-auto rounded-lg text-sm {themeState.isDark
+									? 'dark-code'
+									: 'light-code'}"
+							>
+								<Highlight language={go} code={sdkCode} />
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<!-- Step 3: Add Testing Route -->
+				<div class="rounded-md border bg-card">
+					<div class="border-b px-4 py-3">
+						<div class="flex items-center gap-3">
+							<div class="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-medium">
+								3
+							</div>
+							<h3 class="font-semibold">Add a Test Route</h3>
+						</div>
+						<p class="text-sm text-muted-foreground mt-1 ml-9">
+							Add this route to verify your integration, then visit <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono">GET /testing</code> in your browser.
+						</p>
+					</div>
+					<div class="p-4">
+						<div class="relative">
+							<div class="absolute top-2 right-2 z-10">
+								<Button variant="outline" size="sm" onclick={copyTesting}>
+									{#if copiedTesting}
+										<Check class="mr-2 h-4 w-4 text-green-500" />
+										Copied!
+									{:else}
+										<Copy class="mr-2 h-4 w-4" />
+										Copy
+									{/if}
+								</Button>
+							</div>
+							<div
+								class="overflow-x-auto rounded-lg text-sm {themeState.isDark
+									? 'dark-code'
+									: 'light-code'}"
+							>
+								<Highlight language={go} code={testingRouteCode} />
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<!-- Bottom Check Again -->
+				<div class="rounded-md border bg-card">
+					<div class="flex flex-col items-center justify-center py-6 px-6 text-center">
+						<div class="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 mb-4">
+							<Unplug class="h-6 w-6 text-destructive" />
+						</div>
+						<p class="text-sm text-muted-foreground mb-4">
+							Once you've completed the steps above and triggered the <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono">/testing</code> endpoint, click below to verify.
+						</p>
+						<Button variant="outline" onclick={checkAgain} disabled={checking}>
+							{#if checking}
+								<RefreshCw class="mr-2 h-4 w-4 animate-spin" />
+							{:else}
+								<RefreshCw class="mr-2 h-4 w-4" />
+							{/if}
+							Check Again
+						</Button>
+					</div>
+				</div>
+			{/if}
+		</div>
 	{:else if !error}
 		<div class="space-y-6">
 			<!-- Endpoints -->
@@ -123,14 +353,14 @@
 						</Tooltip.Trigger>
 						<Tooltip.Content>
 							<p>
-								Most impactful endpoints to optimize based on traffic and response time variance
+								Endpoints needing attention based on response time and error rates
 							</p>
 						</Tooltip.Content>
 					</Tooltip.Root>
 				</div>
-				<div class="overflow-hidden rounded-md border">
-					<Table.Root>
-						{#if data?.worstEndpoints && data.worstEndpoints.length > 0}
+				{#if impactfulEndpoints.length > 0}
+					<div class="overflow-hidden rounded-md border">
+						<Table.Root>
 							<Table.Header>
 								<Table.Row class="hover:bg-transparent">
 									<TracewayTableHeader
@@ -157,19 +387,14 @@
 									/>
 									<TracewayTableHeader
 										label="Impact"
-										tooltip="Priority based on traffic × variance"
+										tooltip="Priority based on response time and error rates"
 										align="right"
 										class="w-[80px]"
 									/>
 								</Table.Row>
 							</Table.Header>
 							<Table.Body>
-								{#each data.worstEndpoints as endpoint}
-									{@const impactLevel = getImpactLevel(
-										endpoint.count,
-										endpoint.p50Duration,
-										endpoint.p95Duration
-									)}
+								{#each impactfulEndpoints as endpoint}
 									<Table.Row
 										class="cursor-pointer hover:bg-muted/50"
 										onclick={createRowClickHandler(
@@ -192,19 +417,36 @@
 											{formatDuration(endpoint.p95Duration)}
 										</Table.Cell>
 										<Table.Cell class="py-3 text-right">
-											<ImpactBadge level={impactLevel} />
+											<ImpactBadge score={endpoint.impact} />
 										</Table.Cell>
 									</Table.Row>
 								{/each}
 								<ViewAllTableRow colspan={5} href="/endpoints" label="View all endpoints" onBeforeNavigate={resetEndpointsSortToImpact} />
 							</Table.Body>
-						{:else}
-							<Table.Body>
-								<TableEmptyState colspan={5} message="No transaction data received yet" />
-							</Table.Body>
-						{/if}
-					</Table.Root>
-				</div>
+						</Table.Root>
+					</div>
+				{:else}
+					<!-- Empty state card for endpoints -->
+					<div class="rounded-md border bg-card">
+						<div class="flex flex-col items-center justify-center py-12 px-6 text-center">
+							<div class="flex h-12 w-12 items-center justify-center rounded-full mb-4">
+								<CircleCheck class="h-12 w-12 text-green-500 dark:text-green-400" />
+							</div>
+							<h3 class="text-lg font-semibold mb-2">All Endpoints Healthy</h3>
+							<p class="text-sm text-muted-foreground max-w-sm mb-4">
+								No endpoints have been experiencing performance issues in the last 24h. Endpoints with slow response times or high error rates will appear here when detected.
+							</p>
+							<a
+								href="/endpoints"
+								class="text-sm font-medium text-primary hover:underline inline-flex items-center gap-1"
+								onclick={resetEndpointsSortToImpact}
+							>
+								View all endpoints
+								<ArrowRight class="h-4 w-4" />
+							</a>
+						</div>
+					</div>
+				{/if}
 			</div>
 
 			<!-- Issues Section -->
@@ -223,9 +465,9 @@
 						</Tooltip.Content>
 					</Tooltip.Root>
 				</div>
-				<div class="overflow-hidden rounded-md border">
-					<Table.Root>
-						{#if data?.recentIssues && data.recentIssues.length > 0}
+				{#if data?.recentIssues && data.recentIssues.length > 0}
+					<div class="overflow-hidden rounded-md border">
+						<Table.Root>
 							<Table.Header>
 								<Table.Row class="hover:bg-transparent">
 									<TracewayTableHeader
@@ -265,14 +507,80 @@
 								{/each}
 								<ViewAllTableRow colspan={3} href="/issues" label="View all issues" />
 							</Table.Body>
-						{:else}
-							<Table.Body>
-								<TableEmptyState colspan={3} message="No issues in the last 24 hours" />
-							</Table.Body>
-						{/if}
-					</Table.Root>
-				</div>
+						</Table.Root>
+					</div>
+				{:else}
+					<!-- Empty state card for issues -->
+					<div class="rounded-md border bg-card">
+						<div class="flex flex-col items-center justify-center py-12 px-6 text-center">
+							<div class="flex h-12 w-12 items-center justify-center rounded-full mb-4">
+								<CircleCheck class="h-12 w-12 text-green-500 dark:text-green-400" />
+							</div>
+							<h3 class="text-lg font-semibold mb-2">No Issues Found</h3>
+							<p class="text-sm text-muted-foreground max-w-sm mb-4">
+								No Issues have been recorded in the last 24 hours. When issues occur in your application, they will appear here for quick triage.
+							</p>
+							<a
+								href="/issues"
+								class="text-sm font-medium text-primary hover:underline inline-flex items-center gap-1"
+							>
+								View all issues
+								<ArrowRight class="h-4 w-4" />
+							</a>
+						</div>
+					</div>
+				{/if}
 			</div>
 		</div>
 	{/if}
 </div>
+
+<style>
+	/* Light theme - override dark theme defaults */
+	:global(.light-code .hljs) {
+		background: #f6f8fa;
+		color: #24292e;
+	}
+	:global(.light-code .hljs-keyword),
+	:global(.light-code .hljs-selector-tag) {
+		color: #d73a49;
+	}
+	:global(.light-code .hljs-string),
+	:global(.light-code .hljs-attr) {
+		color: #032f62;
+	}
+	:global(.light-code .hljs-function),
+	:global(.light-code .hljs-title) {
+		color: #6f42c1;
+	}
+	:global(.light-code .hljs-comment) {
+		color: #6a737d;
+	}
+	:global(.light-code .hljs-built_in) {
+		color: #005cc5;
+	}
+
+	/* Dark theme - ensure dark styles apply */
+	:global(.dark-code .hljs) {
+		background: #0d1117;
+		color: #c9d1d9;
+	}
+	:global(.dark-code .hljs-keyword),
+	:global(.dark-code .hljs-selector-tag) {
+		color: #ff7b72;
+	}
+	:global(.dark-code .hljs-string),
+	:global(.dark-code .hljs-attr) {
+		color: #a5d6ff;
+	}
+	:global(.dark-code .hljs-function),
+	:global(.dark-code .hljs-title) {
+		color: #d2a8ff;
+	}
+	:global(.dark-code .hljs-comment) {
+		color: #8b949e;
+	}
+	:global(.dark-code .hljs-built_in) {
+		color: #79c0ff;
+	}
+</style>

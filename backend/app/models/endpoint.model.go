@@ -28,6 +28,7 @@ type EndpointStats struct {
 	P95Duration time.Duration `json:"p95Duration"`
 	AvgDuration time.Duration `json:"avgDuration"`
 	LastSeen    time.Time     `json:"lastSeen"`
+	Impact      float64       `json:"impact"` // 0-1 Apdex-based impact score
 }
 
 // EndpointDetailStats contains detailed statistics for a specific endpoint

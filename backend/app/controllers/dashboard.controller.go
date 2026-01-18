@@ -15,8 +15,9 @@ import (
 type dashboardController struct{}
 
 type DashboardOverviewResponse struct {
-	RecentIssues    []models.ExceptionGroup `json:"recentIssues"`
-	WorstEndpoints  []models.EndpointStats  `json:"worstEndpoints"`
+	RecentIssues   []models.ExceptionGroup `json:"recentIssues"`
+	WorstEndpoints []models.EndpointStats  `json:"worstEndpoints"`
+	HasData        bool                    `json:"hasData"`
 }
 
 func (d dashboardController) GetDashboardOverview(c *gin.Context) {
@@ -41,9 +42,19 @@ func (d dashboardController) GetDashboardOverview(c *gin.Context) {
 		panic(err)
 	}
 
+	hasData := true
+	if len(worstEndpoints) == 0 && len(recentIssues) == 0 {
+		// Check if project has received ANY data (all time, not just 24h)
+		var epoch time.Time // zero time = beginning of time
+		endpointCount, _ := repositories.EndpointRepository.CountBetween(c, projectId, epoch, now)
+		exceptionCount, _ := repositories.ExceptionStackTraceRepository.CountBetween(c, projectId, epoch, now)
+		hasData = endpointCount > 0 || exceptionCount > 0
+	}
+
 	c.JSON(http.StatusOK, DashboardOverviewResponse{
 		RecentIssues:   recentIssues,
 		WorstEndpoints: worstEndpoints,
+		HasData:        hasData,
 	})
 }
 

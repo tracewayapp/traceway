@@ -129,3 +129,37 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Sonner toast overrides - clean black/white styling */
+[data-sonner-toaster] [data-sonner-toast] {
+  --normal-bg: white;
+  --normal-text: #1a1a1a;
+  --normal-border: #e5e5e5;
+  background: var(--normal-bg);
+  color: var(--normal-text);
+  border-color: var(--normal-border);
+}
+
+[data-sonner-toaster] [data-sonner-toast][data-type="warning"],
+[data-sonner-toaster] [data-sonner-toast][data-type="success"],
+[data-sonner-toaster] [data-sonner-toast][data-type="error"],
+[data-sonner-toaster] [data-sonner-toast][data-type="info"] {
+  background: var(--normal-bg);
+  color: var(--normal-text);
+  border-color: var(--normal-border);
+}
+
+.dark [data-sonner-toaster] [data-sonner-toast] {
+  --normal-bg: #1a1a1a;
+  --normal-text: #fafafa;
+  --normal-border: #333;
+}
+
+.dark [data-sonner-toaster] [data-sonner-toast][data-type="warning"],
+.dark [data-sonner-toaster] [data-sonner-toast][data-type="success"],
+.dark [data-sonner-toaster] [data-sonner-toast][data-type="error"],
+.dark [data-sonner-toaster] [data-sonner-toast][data-type="info"] {
+  background: var(--normal-bg);
+  color: var(--normal-text);
+  border-color: var(--normal-border);
+}

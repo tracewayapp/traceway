@@ -117,7 +117,7 @@
                 { hashes: [page.params.exceptionHash] },
                 { projectId: projectsState.currentProjectId ?? undefined }
             );
-            toast.success('Successfully archived the Issue');
+            toast.success('Successfully archived the Issue', { position: 'top-center' });
             goto('/issues');
         } catch (e: any) {
             console.error('Archive failed:', e);

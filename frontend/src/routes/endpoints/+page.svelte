@@ -42,6 +42,7 @@
         p95Duration: number;
         avgDuration: number;
         lastSeen: string;
+        impact: number; // 0-1 Apdex-based impact score from backend
     };
 
     type SortField = 'count' | 'p50_duration' | 'p95_duration' | 'last_seen' | 'impact';
@@ -139,17 +140,6 @@
             return `${(count / 1_000).toFixed(1)}k`;
         }
         return count.toLocaleString();
-    }
-
-    // Calculate impact level based on call volume and response time variance
-    // Returns: 'critical' | 'high' | 'medium' | null (null = not significant)
-    function getImpactLevel(count: number, p50: number, p95: number): 'critical' | 'high' | 'medium' | null {
-        const varianceMs = (p95 - p50) / 1_000_000;
-        const score = count * varianceMs;
-        if (score > 100) return 'critical';
-        if (score > 10) return 'high';
-        if (score > 1) return 'medium';
-        return null;
     }
 
     async function loadData(pushToHistory = true) {
@@ -262,7 +252,7 @@
             </Table.Body>
             {:else if endpoints.length === 0}
             <Table.Body>
-                <TableEmptyState colspan={5} message="No endpoint data received yet" />
+                <TableEmptyState colspan={5} message="No endpoint data available for your search parameters" />
             </Table.Body>
             {:else}
             <Table.Header>
@@ -313,7 +303,6 @@
             </Table.Header>
             <Table.Body>
                 {#each endpoints as endpoint}
-                    {@const impactLevel = getImpactLevel(endpoint.count, endpoint.p50Duration, endpoint.p95Duration)}
                     <Table.Row
                         class="cursor-pointer hover:bg-muted/50"
                         onclick={createRowClickHandler(resolve(`/endpoints/${encodeURIComponent(endpoint.endpoint)}`), 'preset', 'from', 'to')}
@@ -331,7 +320,7 @@
                             {formatDuration(endpoint.p95Duration)}
                         </Table.Cell>
                         <Table.Cell class="text-right">
-                            <ImpactBadge level={impactLevel} />
+                            <ImpactBadge score={endpoint.impact} />
                         </Table.Cell>
                     </Table.Row>
                 {/each}

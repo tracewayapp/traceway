@@ -287,7 +287,7 @@
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
 
-			toast.success('Successfully archived the Issue' + (selectedHashes.size > 1 ? 's' : ''));
+			toast.success('Successfully archived the Issue' + (selectedHashes.size > 1 ? 's' : ''), { position: 'top-center' });
 			selectedHashes = new Set();
 			await loadData();
 		} catch (e: any) {

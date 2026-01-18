@@ -124,7 +124,7 @@
 		onProjectCreated={handleProjectCreated}
 	/>
 
-	<Toaster richColors position="bottom-right" />
+	<Toaster position="bottom-right" />
 {:else}
 	<main class="h-screen w-screen">
 		{@render children()}

@@ -26,6 +26,7 @@ type EndpointStats struct {
 	Count       uint64        `json:"count"`
 	P50Duration time.Duration `json:"p50Duration"`
 	P95Duration time.Duration `json:"p95Duration"`
+	P99Duration time.Duration `json:"p99Duration"`
 	AvgDuration time.Duration `json:"avgDuration"`
 	LastSeen    time.Time     `json:"lastSeen"`
 	Impact      float64       `json:"impact"` // 0-1 Apdex-based impact score

@@ -99,6 +99,7 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 		"count":        "count",
 		"p50_duration": "p50_duration",
 		"p95_duration": "p95_duration",
+		"p99_duration": "p99_duration",
 		"avg_duration": "avg_duration",
 		"last_seen":    "last_seen",
 		"impact":       "impact",
@@ -122,6 +123,7 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 		count() as count,
 		quantile(0.5)(duration) as p50_duration,
 		quantile(0.95)(duration) as p95_duration,
+		quantile(0.99)(duration) as p99_duration,
 		avg(duration) as avg_duration,
 		max(recorded_at) as last_seen,
 		greatest(
@@ -157,12 +159,13 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 	var stats []models.EndpointStats
 	for rows.Next() {
 		var s models.EndpointStats
-		var p50, p95, avg float64
-		if err := rows.Scan(&s.Endpoint, &s.Count, &p50, &p95, &avg, &s.LastSeen, &s.Impact); err != nil {
+		var p50, p95, p99, avg float64
+		if err := rows.Scan(&s.Endpoint, &s.Count, &p50, &p95, &p99, &avg, &s.LastSeen, &s.Impact); err != nil {
 			return nil, 0, err
 		}
 		s.P50Duration = time.Duration(p50)
 		s.P95Duration = time.Duration(p95)
+		s.P99Duration = time.Duration(p99)
 		s.AvgDuration = time.Duration(avg)
 		stats = append(stats, s)
 	}

@@ -40,12 +40,13 @@
         count: number;
         p50Duration: number;
         p95Duration: number;
+        p99Duration: number;
         avgDuration: number;
         lastSeen: string;
         impact: number; // 0-1 Apdex-based impact score from backend
     };
 
-    type SortField = 'count' | 'p50_duration' | 'p95_duration' | 'last_seen' | 'impact';
+    type SortField = 'count' | 'p50_duration' | 'p95_duration' | 'p99_duration' | 'last_seen' | 'impact';
 
     let endpoints = $state<EndpointStats[]>([]);
     let loading = $state(true);
@@ -235,7 +236,7 @@
             {#if loading}
             <Table.Body>
                 <Table.Row>
-                    <Table.Cell colspan={5} class="h-48">
+                    <Table.Cell colspan={6} class="h-48">
                         <div class="flex justify-center items-center h-full">
                             <LoadingCircle size="xlg" />
                         </div>
@@ -245,14 +246,14 @@
             {:else if error}
             <Table.Body>
                 <Table.Row>
-                    <Table.Cell colspan={5} class="h-24 text-center text-red-500">
+                    <Table.Cell colspan={6} class="h-24 text-center text-red-500">
                         {error}
                     </Table.Cell>
                 </Table.Row>
             </Table.Body>
             {:else if endpoints.length === 0}
             <Table.Body>
-                <TableEmptyState colspan={5} message="No endpoint data available for your search parameters" />
+                <TableEmptyState colspan={6} message="No endpoint data available for your search parameters" />
             </Table.Body>
             {:else}
             <Table.Header>
@@ -290,6 +291,15 @@
                         class="w-[100px]"
                     />
                     <TracewayTableHeader
+                        label="Awful"
+                        tooltip="99th percentile - slowest 1% of requests"
+                        sortField="p99_duration"
+                        currentSortField={orderBy}
+                        {sortDirection}
+                        onSort={(field) => handleSort(field as SortField)}
+                        class="w-[100px]"
+                    />
+                    <TracewayTableHeader
                         label="Impact"
                         tooltip="Priority based on traffic × response time variance"
                         sortField="impact"
@@ -318,6 +328,9 @@
                         </Table.Cell>
                         <Table.Cell class="font-mono text-sm tabular-nums">
                             {formatDuration(endpoint.p95Duration)}
+                        </Table.Cell>
+                        <Table.Cell class="font-mono text-sm tabular-nums">
+                            {formatDuration(endpoint.p99Duration)}
                         </Table.Cell>
                         <Table.Cell class="text-right">
                             <ImpactBadge score={endpoint.impact} />

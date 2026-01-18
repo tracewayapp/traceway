@@ -17,7 +17,7 @@
 	import SegmentEmptyState from '$lib/components/segments/segment-empty-state.svelte';
 	import type { TransactionDetailResponse } from '$lib/types/segments';
 	import PageHeader from '$lib/components/issues/page-header.svelte';
-	import { createRowClickHandler } from '$lib/utils/navigation';
+	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { resolve } from '$app/paths';
 
 	let { data } = $props();
@@ -72,7 +72,7 @@
 <div class="space-y-6">
 	<PageHeader
 		title={decodeURIComponent(data.endpoint)} subtitle={`Endpoint ID: ${data.endpointId}`}
-		onBack={createRowClickHandler(resolve('/endpoints/[endpoint]', {endpoint: encodeURIComponent(data.endpoint)}))} />
+		onBack={createSmartBackHandler({ fallbackPath: resolve('/endpoints/[endpoint]', {endpoint: encodeURIComponent(data.endpoint)}) })} />
 
 
 	{#if loading}
@@ -84,7 +84,7 @@
 			status={404}
 			title="Endpoint Not Found"
 			description="The endpoint instance you're looking for doesn't exist or may have expired."
-			onBack={createRowClickHandler(resolve('/endpoints/[endpoint]', {endpoint: encodeURIComponent(data.endpoint)}))}
+			onBack={createSmartBackHandler({ fallbackPath: resolve('/endpoints/[endpoint]', {endpoint: encodeURIComponent(data.endpoint)}) })}
 			backLabel="Back to Endpoint"
 			onRetry={loadData}
 			identifier={data.endpointId}
@@ -94,7 +94,7 @@
 			status={400}
 			title="Failed to Load Endpoint"
 			description={error}
-			onBack={createRowClickHandler(resolve('/endpoints/[endpoint]', {endpoint: encodeURIComponent(data.endpoint)}))}
+			onBack={createSmartBackHandler({ fallbackPath: resolve('/endpoints/[endpoint]', {endpoint: encodeURIComponent(data.endpoint)}) })}
 			backLabel="Back to Endpoint"
 			onRetry={loadData}
 		/>

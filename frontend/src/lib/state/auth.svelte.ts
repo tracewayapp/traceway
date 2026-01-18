@@ -1,3 +1,5 @@
+import { clearNavDepth } from '$lib/utils/back-navigation';
+
 class AuthState {
     token = $state<string | null>(localStorage.getItem('APP_TOKEN'));
 
@@ -21,6 +23,7 @@ class AuthState {
 
     logout() {
         this.token = null;
+        clearNavDepth();
     }
 }
 

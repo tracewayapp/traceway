@@ -16,7 +16,7 @@
 	import SegmentWaterfall from '$lib/components/segments/segment-waterfall.svelte';
 	import SegmentEmptyState from '$lib/components/segments/segment-empty-state.svelte';
 	import PageHeader from '$lib/components/issues/page-header.svelte';
-	import { createRowClickHandler } from '$lib/utils/navigation';
+	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { resolve } from '$app/paths';
 
 	type TaskDetailResponse = {
@@ -87,7 +87,7 @@
 <div class="space-y-6">
 	<PageHeader
 		title={decodeURIComponent(data.task)} subtitle={`Task ID: ${data.taskId}`}
-		onBack={createRowClickHandler(resolve('/tasks/[task]', {task: encodeURIComponent(data.task)}))} />
+		onBack={createSmartBackHandler({ fallbackPath: resolve('/tasks/[task]', {task: encodeURIComponent(data.task)}) })} />
 
 
 	{#if loading}
@@ -99,7 +99,7 @@
 			status={404}
 			title="Task Not Found"
 			description="The task instance you're looking for doesn't exist or may have expired."
-			onBack={createRowClickHandler(resolve('/tasks/[task]', {task: encodeURIComponent(data.task)}))}
+			onBack={createSmartBackHandler({ fallbackPath: resolve('/tasks/[task]', {task: encodeURIComponent(data.task)}) })}
 			backLabel="Back to Task"
 			onRetry={loadData}
 			identifier={data.taskId}
@@ -109,7 +109,7 @@
 			status={400}
 			title="Failed to Load Task"
 			description={error}
-			onBack={createRowClickHandler(resolve('/tasks/[task]', {task: encodeURIComponent(data.task)}))}
+			onBack={createSmartBackHandler({ fallbackPath: resolve('/tasks/[task]', {task: encodeURIComponent(data.task)}) })}
 			backLabel="Back to Task"
 			onRetry={loadData}
 		/>

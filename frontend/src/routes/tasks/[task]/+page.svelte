@@ -13,6 +13,7 @@
     import { projectsState } from '$lib/state/projects.svelte';
     import ScopeDisplay from '$lib/components/scope-display.svelte';
     import { createRowClickHandler } from '$lib/utils/navigation';
+    import { createSmartBackHandler } from '$lib/utils/back-navigation';
     import PaginationFooter from '$lib/components/ui/pagination-footer/pagination-footer.svelte';
     import PageHeader from '$lib/components/issues/page-header.svelte';
     import { resolve } from '$app/paths';
@@ -210,7 +211,7 @@
             status={404}
             title="Task Not Found"
             description="The task you're looking for doesn't exist or has no recorded executions."
-            onBack={createRowClickHandler(resolve('/tasks'), 'presets', 'from', 'to')}
+            onBack={createSmartBackHandler({ fallbackPath: resolve('/tasks') })}
             backLabel="Back to Tasks"
             onRetry={() => loadData(false)}
             identifier={decodeURIComponent(data.task)}
@@ -220,7 +221,7 @@
             status={errorStatus === 400 ? 400 : errorStatus === 422 ? 422 : 400}
             title="Failed to Load Tasks"
             description={error}
-            onBack={createRowClickHandler(resolve('/tasks'), 'presets', 'from', 'to')}
+            onBack={createSmartBackHandler({ fallbackPath: resolve('/tasks') })}
             backLabel="Back to Tasks"
             onRetry={() => loadData(false)}
         />
@@ -231,7 +232,7 @@
         <PageHeader
             title={decodeURIComponent(data.task)}
             subtitle="Task instances"
-            onBack={createRowClickHandler(resolve("/tasks"), "presets", "from", "to")}
+            onBack={createSmartBackHandler({ fallbackPath: resolve("/tasks") })}
         />
 
         <div class="flex flex-col">

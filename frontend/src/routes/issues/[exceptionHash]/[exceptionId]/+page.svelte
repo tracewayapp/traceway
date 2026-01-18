@@ -8,7 +8,7 @@
     import { formatDateTime } from '$lib/utils/formatters';
     import { StackTraceCard, EventCard, EventsTable, PageHeader } from '$lib/components/issues';
     import type { ExceptionGroup, ExceptionOccurrence, LinkedTransaction } from '$lib/types/exceptions';
-	import { createRowClickHandler } from '$lib/utils/navigation';
+	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { resolve } from '$app/paths';
 	import ArchiveConfirmationDialog from '$lib/components/archive-confirmation-dialog.svelte';
 	import { goto } from '$app/navigation';
@@ -136,7 +136,7 @@
     <PageHeader
         title={firstLineOfStackTrace}
         subtitle={subtitleText}
-        onBack={createRowClickHandler(resolve("/issues/[exceptionHash]", {exceptionHash: data.exceptionHash}))}
+        onBack={createSmartBackHandler({ fallbackPath: resolve("/issues/[exceptionHash]", {exceptionHash: data.exceptionHash}) })}
     />
 
     {#if loading && !group}
@@ -148,7 +148,7 @@
             status={404}
             title="Event Not Found"
             description="The specific event you're looking for doesn't exist or may have been removed."
-            onBack={createRowClickHandler(resolve('/issues/[exceptionHash]', {exceptionHash: data.exceptionHash}), 'presets', 'from', 'to')}
+            onBack={createSmartBackHandler({ fallbackPath: resolve('/issues/[exceptionHash]', {exceptionHash: data.exceptionHash}) })}
             backLabel="Back to Exception"
             onRetry={() => loadData()}
         />
@@ -157,7 +157,7 @@
             status={400}
             title="Something Went Wrong"
             description={error}
-            onBack={createRowClickHandler(resolve('/issues/[exceptionHash]', {exceptionHash: data.exceptionHash}), 'presets', 'from', 'to')}
+            onBack={createSmartBackHandler({ fallbackPath: resolve('/issues/[exceptionHash]', {exceptionHash: data.exceptionHash}) })}
             backLabel="Back to Exception"
             onRetry={() => loadData()}
         />

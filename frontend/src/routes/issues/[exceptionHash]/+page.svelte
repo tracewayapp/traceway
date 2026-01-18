@@ -12,7 +12,7 @@
     import ArchiveConfirmationDialog from '$lib/components/archive-confirmation-dialog.svelte';
     import Archive from '@lucide/svelte/icons/archive';
     import type { ExceptionGroup, ExceptionOccurrence, LinkedTransaction } from '$lib/types/exceptions';
-	import { createRowClickHandler } from '$lib/utils/navigation';
+	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { resolve } from '$app/paths';
 
     let group = $state<ExceptionGroup | null>(null);
@@ -116,7 +116,7 @@
         <PageHeader
             title={firstLineOfStackTrace}
             subtitle="Exception Hash: {exceptionHash}"
-            onBack={createRowClickHandler(resolve("/issues"))}
+            onBack={createSmartBackHandler({ fallbackPath: resolve("/issues") })}
         />
     </div>
 
@@ -129,7 +129,7 @@
             status={404}
             title="Exception Not Found"
             description="The exception you're looking for doesn't exist or may have been removed. It's possible the data has expired or the link is incorrect."
-            onBack={createRowClickHandler(resolve('/issues'), 'presets', 'from', 'to')}
+            onBack={createSmartBackHandler({ fallbackPath: resolve('/issues') })}
             backLabel="Back to Issues"
             onRetry={() => loadData()}
             identifier={exceptionHash}
@@ -139,7 +139,7 @@
             status={400}
             title="Something Went Wrong"
             description={error}
-            onBack={createRowClickHandler(resolve('/issues'), 'presets', 'from', 'to')}
+            onBack={createSmartBackHandler({ fallbackPath: resolve('/issues') })}
             backLabel="Back to Issues"
             onRetry={() => loadData()}
         />

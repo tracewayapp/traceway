@@ -15,6 +15,7 @@
     import { projectsState } from '$lib/state/projects.svelte';
     import ScopeDisplay from '$lib/components/scope-display.svelte';
     import { createRowClickHandler } from '$lib/utils/navigation';
+    import { createSmartBackHandler } from '$lib/utils/back-navigation';
     import PaginationFooter from '$lib/components/ui/pagination-footer/pagination-footer.svelte';
     import PageHeader from '$lib/components/issues/page-header.svelte';
     import { resolve } from '$app/paths';
@@ -226,7 +227,7 @@
             status={404}
             title="Endpoint Not Found"
             description="The endpoint you're looking for doesn't exist or has no recorded transactions."
-            onBack={createRowClickHandler(resolve('/endpoints'), 'presets', 'from', 'to')}
+            onBack={createSmartBackHandler({ fallbackPath: resolve('/endpoints') })}
             backLabel="Back to Transactions"
             onRetry={() => loadData(false)}
             identifier={decodeURIComponent(data.endpoint)}
@@ -236,7 +237,7 @@
             status={errorStatus === 400 ? 400 : errorStatus === 422 ? 422 : 400}
             title="Failed to Load Transactions"
             description={error}
-            onBack={createRowClickHandler(resolve('/endpoints'), 'presets', 'from', 'to')}
+            onBack={createSmartBackHandler({ fallbackPath: resolve('/endpoints') })}
             backLabel="Back to Transactions"
             onRetry={() => loadData(false)}
         />
@@ -247,7 +248,7 @@
         <PageHeader
             title={decodeURIComponent(data.endpoint)}
             subtitle="Transaction instances for this endpoint"
-            onBack={createRowClickHandler(resolve("/endpoints"), "presets", "from", "to")}
+            onBack={createSmartBackHandler({ fallbackPath: resolve("/endpoints") })}
         />
 
         <div class="flex flex-col">

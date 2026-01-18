@@ -83,7 +83,8 @@ export function updateUrl(
 ): void {
 	if (!browser) return;
 
-	const { pushToHistory = true } = options;
+	// Note: pushToHistory option is kept for API compatibility but we always use replaceState
+	// This ensures back button navigates to previous PAGE, not previous params on same page
 	const urlParams = new URLSearchParams();
 
 	for (const [key, value] of Object.entries(params)) {
@@ -96,7 +97,7 @@ export function updateUrl(
 
 	// eslint-disable-next-line svelte/no-navigation-without-resolve
 	goto(newUrl, {
-		replaceState: !pushToHistory,
+		replaceState: true,
 		noScroll: true,
 		keepFocus: true
 	});

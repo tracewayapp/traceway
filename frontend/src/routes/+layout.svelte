@@ -1,10 +1,11 @@
 <script lang="ts">
 	import './layout.css';
-	import { goto } from '$app/navigation';
+	import { goto, afterNavigate } from '$app/navigation';
 	import { authState } from '$lib/state/auth.svelte';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { themeState, initTheme, toggleTheme } from '$lib/state/theme.svelte';
 	import { initTimezone } from '$lib/state/timezone.svelte';
+	import { incrementNavDepth, decrementNavDepth } from '$lib/utils/back-navigation';
 	import AppSidebar from '$lib/components/app-sidebar.svelte';
 	import AddProjectModal from '$lib/components/add-project-modal.svelte';
 	import FrameworkIcon from '$lib/components/framework-icon.svelte';
@@ -18,6 +19,24 @@
 
 	let { children } = $props();
 	let showAddProjectModal = $state(false);
+
+	// Track navigation depth for smart back buttons
+	let lastPathname = '';
+	afterNavigate((navigation) => {
+		if (!navigation.to?.url) return;
+		const newPathname = navigation.to.url.pathname;
+
+		if (navigation.type === 'popstate') {
+			// Browser back/forward button
+			decrementNavDepth();
+		} else if (newPathname !== lastPathname) {
+			// Navigated to a different page (not just param change)
+			incrementNavDepth();
+		}
+		// Param-only changes (same pathname) don't affect depth
+
+		lastPathname = newPathname;
+	});
 
 	onMount(() => {
 		initTheme();

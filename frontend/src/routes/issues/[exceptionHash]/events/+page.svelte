@@ -3,6 +3,7 @@
     import { page } from '$app/state';
     import { goto } from '$app/navigation';
     import { createRowClickHandler } from '$lib/utils/navigation';
+    import { createSmartBackHandler } from '$lib/utils/back-navigation';
     import { truncateStackTrace, formatDateTime } from '$lib/utils/formatters';
     import { getTimezone } from '$lib/state/timezone.svelte';
     import { api } from '$lib/api';
@@ -135,7 +136,7 @@
 <div class="space-y-6">
     <!-- Header -->
     <div class="flex items-center justify-between">
-        <Button variant="outline" size="sm" onclick={() => goto(`/issues/${page.params.exceptionHash}`)}>
+        <Button variant="outline" size="sm" onclick={createSmartBackHandler({ fallbackPath: resolve('/issues/[exceptionHash]', {exceptionHash: page.params.exceptionHash ?? ''}) })}>
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
                 <path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>
             </svg>
@@ -164,7 +165,7 @@
             status={404}
             title="Exception Not Found"
             description="The exception you're looking for doesn't exist or may have been removed."
-            onBack={createRowClickHandler(resolve('/issues'), 'presets', 'from', 'to')}
+            onBack={createSmartBackHandler({ fallbackPath: resolve('/issues') })}
             backLabel="Back to Issues"
             onRetry={() => loadData()}
             identifier={page.params.exceptionHash}
@@ -174,7 +175,7 @@
             status={400}
             title="Something Went Wrong"
             description={error}
-            onBack={createRowClickHandler(resolve('/issues'), 'presets', 'from', 'to')}
+            onBack={createSmartBackHandler({ fallbackPath: resolve('/issues') })}
             backLabel="Back to Issues"
             onRetry={() => loadData()}
         />

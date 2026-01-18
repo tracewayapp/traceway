@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand/v2"
 	"net/http"
 	"os"
@@ -14,6 +15,27 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+type CustomError struct {
+	Code    int
+	Message string
+}
+
+func (e *CustomError) Error() string {
+	return fmt.Sprintf("CustomError[%d]: %s", e.Code, e.Message)
+}
+
+func innerFunction() error {
+	return traceway.NewStackTraceError("error from inner function", 0)
+}
+
+func middleFunction() error {
+	return innerFunction()
+}
+
+func outerFunction() error {
+	return middleFunction()
+}
 
 func main() {
 	testGin()
@@ -148,6 +170,51 @@ func testGin() {
 
 	router.GET("/metrics", func(ctx *gin.Context) {
 		traceway.PrintCollectionFrameMetrics()
+	})
+
+	router.GET("/test-cerror-simple", func(ctx *gin.Context) {
+		ctx.Error(errors.New("simple error without stack"))
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "simple error"})
+	})
+
+	router.GET("/test-cerror-wrapped", func(ctx *gin.Context) {
+		base := errors.New("base error")
+		wrapped := fmt.Errorf("layer 1: %w", base)
+		wrapped2 := fmt.Errorf("layer 2: %w", wrapped)
+		ctx.Error(wrapped2)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "wrapped error"})
+	})
+
+	router.GET("/test-cerror-stacktrace", func(ctx *gin.Context) {
+		err := traceway.NewStackTraceError("error with stack trace", 0)
+		ctx.Error(err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "stacktrace error"})
+	})
+
+	router.GET("/test-cerror-stacktrace-wrapped", func(ctx *gin.Context) {
+		base := traceway.NewStackTraceError("base error with stack", 0)
+		wrapped := fmt.Errorf("wrapped with fmt: %w", base)
+		ctx.Error(wrapped)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "wrapped stacktrace error"})
+	})
+
+	router.GET("/test-cerror-multiple", func(ctx *gin.Context) {
+		ctx.Error(errors.New("first error"))
+		ctx.Error(traceway.NewStackTraceError("second error with stack", 0))
+		ctx.Error(fmt.Errorf("third error: %w", errors.New("nested")))
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "multiple errors"})
+	})
+
+	router.GET("/test-cerror-nested", func(ctx *gin.Context) {
+		err := outerFunction()
+		ctx.Error(err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "nested function error"})
+	})
+
+	router.GET("/test-cerror-custom", func(ctx *gin.Context) {
+		err := &CustomError{Code: 500, Message: "something went wrong"}
+		ctx.Error(err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "custom error"})
 	})
 
 	router.Run()

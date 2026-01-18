@@ -8,7 +8,6 @@ import (
 	"backend/app/migrations"
 	"backend/static"
 	"context"
-	"fmt"
 	"io/fs"
 	"log"
 	"net/http"

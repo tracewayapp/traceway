@@ -4,6 +4,8 @@ import (
 	"backend/app/chdb"
 	"backend/app/models"
 	"context"
+	"database/sql"
+	"errors"
 	"strings"
 
 	"github.com/google/uuid"
@@ -34,6 +36,9 @@ func (p *projectRepository) FindByToken(ctx context.Context, token string) (*mod
 	err := (*chdb.Conn).QueryRow(ctx, "SELECT id, name, token, framework, created_at FROM projects WHERE token = ?", token).
 		Scan(&proj.Id, &proj.Name, &proj.Token, &proj.Framework, &proj.CreatedAt)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &proj, nil
@@ -44,6 +49,9 @@ func (p *projectRepository) FindById(ctx context.Context, id uuid.UUID) (*models
 	err := (*chdb.Conn).QueryRow(ctx, "SELECT id, name, token, framework, created_at FROM projects WHERE id = ?", id).
 		Scan(&proj.Id, &proj.Name, &proj.Token, &proj.Framework, &proj.CreatedAt)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &proj, nil

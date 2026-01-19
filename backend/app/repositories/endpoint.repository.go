@@ -4,7 +4,9 @@ import (
 	"backend/app/chdb"
 	"backend/app/models"
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -240,6 +242,9 @@ func (e *endpointRepository) FindById(ctx context.Context, projectId, endpointId
 		&t.StatusCode, &t.BodySize, &t.ClientIP, &scopeJSON, &t.AppVersion, &t.ServerName)
 
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
 

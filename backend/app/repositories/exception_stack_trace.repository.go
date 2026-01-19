@@ -4,7 +4,9 @@ import (
 	"backend/app/chdb"
 	"backend/app/models"
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -152,7 +154,9 @@ func (e *exceptionStackTraceRepository) FindByHash(ctx context.Context, projectI
 		"SELECT exception_hash, any(stack_trace), max(recorded_at) as last_seen, min(recorded_at) as first_seen, count() as count FROM exception_stack_traces WHERE project_id = ? AND exception_hash = ? GROUP BY exception_hash",
 		projectId, exceptionHash).Scan(&group.ExceptionHash, &group.StackTrace, &group.LastSeen, &group.FirstSeen, &group.Count)
 	if err != nil {
-		// ClickHouse returns error when no rows found in QueryRow
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil, 0, nil
+		}
 		return nil, nil, 0, err
 	}
 
@@ -402,6 +406,9 @@ func (e *exceptionStackTraceRepository) FindById(ctx context.Context, projectId 
 		&est.RecordedAt, &scopeJSON, &est.AppVersion, &est.ServerName, &isMessage)
 
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
 

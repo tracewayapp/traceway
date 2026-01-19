@@ -4,8 +4,26 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
-# Build frontend
 cd "$ROOT_DIR/frontend"
+
+# Get current version from package.json
+CURRENT_VERSION=$(node -p "require('./package.json').version")
+echo "Current version: $CURRENT_VERSION"
+
+# Ask if user wants to update version
+read -p "Do you want to update the version? (y/N): " UPDATE_VERSION
+if [[ "$UPDATE_VERSION" =~ ^[Yy]$ ]]; then
+    read -p "Enter new version (current: $CURRENT_VERSION): " NEW_VERSION
+    if [ -n "$NEW_VERSION" ]; then
+        # Update version in package.json using npm
+        npm version "$NEW_VERSION" --no-git-tag-version
+        echo "Version updated to $NEW_VERSION"
+    else
+        echo "No version entered, keeping $CURRENT_VERSION"
+    fi
+fi
+
+# Build frontend
 npm install
 npm run build
 

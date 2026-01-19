@@ -46,4 +46,7 @@
       </Sidebar.SidebarGroupContent>
     </Sidebar.SidebarGroup>
   </Sidebar.SidebarContent>
+  <Sidebar.SidebarFooter class="py-1 border-t border-border flex flex-row justify-center italic">
+    <span class="text-xs text-muted-foreground">Traceway - v{__APP_VERSION__}</span>
+  </Sidebar.SidebarFooter>
 </Sidebar.Sidebar>

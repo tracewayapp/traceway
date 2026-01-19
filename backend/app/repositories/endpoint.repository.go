@@ -74,7 +74,6 @@ func (e *endpointRepository) FindAll(ctx context.Context, projectId uuid.UUID, f
 		if err := rows.Scan(&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt, &t.StatusCode, &t.BodySize, &t.ClientIP, &scopeJSON, &t.AppVersion, &t.ServerName); err != nil {
 			return nil, 0, err
 		}
-		// Parse scope JSON
 		if scopeJSON != "" && scopeJSON != "{}" {
 			if err := json.Unmarshal([]byte(scopeJSON), &t.Scope); err != nil {
 				t.Scope = nil
@@ -215,7 +214,6 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.
 		if err := rows.Scan(&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt, &t.StatusCode, &t.BodySize, &t.ClientIP, &scopeJSON, &t.AppVersion, &t.ServerName); err != nil {
 			return nil, 0, err
 		}
-		// Parse scope JSON
 		if scopeJSON != "" && scopeJSON != "{}" {
 			if err := json.Unmarshal([]byte(scopeJSON), &t.Scope); err != nil {
 				t.Scope = nil
@@ -248,7 +246,6 @@ func (e *endpointRepository) FindById(ctx context.Context, projectId, endpointId
 		return nil, err
 	}
 
-	// Parse scope JSON
 	if scopeJSON != "" && scopeJSON != "{}" {
 		if err := json.Unmarshal([]byte(scopeJSON), &t.Scope); err != nil {
 			t.Scope = nil
@@ -531,6 +528,136 @@ func (e *endpointRepository) GetEndpointStats(ctx context.Context, projectId uui
 	stats.Throughput = float64(count) / durationMinutes
 
 	return &stats, nil
+}
+
+// GetEndpointStackedChart returns time-bucketed data for top 5 endpoints by metric + "Other"
+func (e *endpointRepository) GetEndpointStackedChart(ctx context.Context, projectId uuid.UUID, start, end time.Time, intervalMinutes int, metricType string) (*models.EndpointStackedChartResponse, error) {
+	// Step 1: Get top 5 endpoints ranked by selected metric
+	var rankQuery string
+	switch metricType {
+	case "total_time":
+		rankQuery = `SELECT endpoint, count() * quantile(0.5)(duration) / 1000000 as metric_value
+			FROM endpoints
+			WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
+			GROUP BY endpoint
+			ORDER BY metric_value DESC
+			LIMIT 5`
+	case "p95":
+		rankQuery = `SELECT endpoint, quantile(0.95)(duration) / 1000000 as metric_value
+			FROM endpoints
+			WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
+			GROUP BY endpoint
+			ORDER BY metric_value DESC
+			LIMIT 5`
+	case "p99":
+		rankQuery = `SELECT endpoint, quantile(0.99)(duration) / 1000000 as metric_value
+			FROM endpoints
+			WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
+			GROUP BY endpoint
+			ORDER BY metric_value DESC
+			LIMIT 5`
+	default: // p50
+		rankQuery = `SELECT endpoint, quantile(0.5)(duration) / 1000000 as metric_value
+			FROM endpoints
+			WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
+			GROUP BY endpoint
+			ORDER BY metric_value DESC
+			LIMIT 5`
+	}
+
+	rows, err := (*chdb.Conn).Query(ctx, rankQuery, projectId, start, end)
+	if err != nil {
+		return nil, err
+	}
+
+	var topEndpoints []string
+	for rows.Next() {
+		var endpoint string
+		var metricValue float64
+		if err := rows.Scan(&endpoint, &metricValue); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		topEndpoints = append(topEndpoints, endpoint)
+	}
+	rows.Close()
+
+	if len(topEndpoints) == 0 {
+		return &models.EndpointStackedChartResponse{
+			Endpoints: []string{},
+			Series:    []models.EndpointTimeSeriesPoint{},
+		}, nil
+	}
+
+	// Step 2: Build the time-bucketed query with top endpoints + "Other"
+	var metricExpr string
+	switch metricType {
+	case "total_time":
+		metricExpr = "count() * quantile(0.5)(duration) / 1000000"
+	case "p95":
+		metricExpr = "quantile(0.95)(duration) / 1000000"
+	case "p99":
+		metricExpr = "quantile(0.99)(duration) / 1000000"
+	default: // p50
+		metricExpr = "quantile(0.5)(duration) / 1000000"
+	}
+
+	// Build CASE expression for categorizing endpoints
+	caseExpr := "multiIf("
+	for i, ep := range topEndpoints {
+		caseExpr += "endpoint = ?, '" + ep + "', "
+		_ = i // use index in iteration
+	}
+	caseExpr += "'Other')"
+
+	timeSeriesQuery := `SELECT
+		toStartOfInterval(recorded_at, INTERVAL ? MINUTE) as bucket,
+		` + caseExpr + ` as endpoint_category,
+		` + metricExpr + ` as metric_value
+	FROM endpoints
+	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
+	GROUP BY bucket, endpoint_category
+	ORDER BY bucket ASC, endpoint_category ASC`
+
+	// Build args: interval, top endpoints for CASE, then project_id, start, end
+	args := make([]interface{}, 0, len(topEndpoints)+4)
+	args = append(args, intervalMinutes)
+	for _, ep := range topEndpoints {
+		args = append(args, ep)
+	}
+	args = append(args, projectId, start, end)
+
+	rows, err = (*chdb.Conn).Query(ctx, timeSeriesQuery, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var series []models.EndpointTimeSeriesPoint
+	for rows.Next() {
+		var p models.EndpointTimeSeriesPoint
+		if err := rows.Scan(&p.Timestamp, &p.Endpoint, &p.Value); err != nil {
+			return nil, err
+		}
+		series = append(series, p)
+	}
+
+	// Build final endpoint list (top 5 + Other if there are other endpoints)
+	endpointSet := make(map[string]bool)
+	for _, p := range series {
+		endpointSet[p.Endpoint] = true
+	}
+
+	finalEndpoints := make([]string, 0, len(topEndpoints)+1)
+	finalEndpoints = append(finalEndpoints, topEndpoints...)
+	if endpointSet["Other"] {
+		finalEndpoints = append(finalEndpoints, "Other")
+	}
+
+	return &models.EndpointStackedChartResponse{
+		Endpoints: finalEndpoints,
+		Series:    series,
+	}, nil
 }
 
 var EndpointRepository = endpointRepository{}

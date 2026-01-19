@@ -45,6 +45,7 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/endpoints", middleware.UseAppAuth, EndpointController.FindAllEndpoints)
 	router.POST("/endpoints/grouped", middleware.UseAppAuth, EndpointController.FindGroupedByEndpoint)
 	router.POST("/endpoints/endpoint", middleware.UseAppAuth, EndpointController.FindByEndpoint)
+	router.POST("/endpoints/chart", middleware.UseAppAuth, EndpointController.GetStackedChart)
 	router.POST("/endpoints/:endpointId", middleware.UseAppAuth, EndpointDetailController.GetEndpointDetail)
 
 	// Tasks

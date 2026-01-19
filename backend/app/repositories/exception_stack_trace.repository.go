@@ -52,7 +52,6 @@ func (e *exceptionStackTraceRepository) CountBetween(ctx context.Context, projec
 func (e *exceptionStackTraceRepository) FindGrouped(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, search string, searchType string, includeArchived bool) ([]models.ExceptionGroup, int64, error) {
 	offset := (page - 1) * pageSize
 
-	// Parse sort direction from orderBy (e.g., "last_seen_asc" -> "last_seen", "ASC")
 	sortDirection := "DESC"
 	if strings.HasSuffix(orderBy, "_asc") {
 		orderBy = strings.TrimSuffix(orderBy, "_asc")
@@ -178,7 +177,6 @@ func (e *exceptionStackTraceRepository) FindByHash(ctx context.Context, projectI
 			return nil, nil, 0, err
 		}
 		o.IsMessage = isMessage == 1
-		// Parse scope JSON
 		if scopeJSON != "" && scopeJSON != "{}" {
 			if err := json.Unmarshal([]byte(scopeJSON), &o.Scope); err != nil {
 				o.Scope = nil // If parsing fails, leave scope as nil
@@ -343,7 +341,6 @@ func (e *exceptionStackTraceRepository) FindExceptionByTransactionId(ctx context
 	}
 
 	est.IsMessage = isMessage == 1
-	// Parse scope JSON
 	if scopeJSON != "" && scopeJSON != "{}" {
 		if err := json.Unmarshal([]byte(scopeJSON), &est.Scope); err != nil {
 			est.Scope = nil
@@ -413,7 +410,6 @@ func (e *exceptionStackTraceRepository) FindById(ctx context.Context, projectId 
 	}
 
 	est.IsMessage = isMessage == 1
-	// Parse scope JSON
 	if scopeJSON != "" && scopeJSON != "{}" {
 		if err := json.Unmarshal([]byte(scopeJSON), &est.Scope); err != nil {
 			est.Scope = nil

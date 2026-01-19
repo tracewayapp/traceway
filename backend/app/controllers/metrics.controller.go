@@ -244,9 +244,7 @@ func (m metricsController) GetServerMetrics(c *gin.Context) {
 	})
 }
 
-// parseTimeRange extracts fromDate and toDate from query params, defaults to last 24h
 func parseTimeRange(c *gin.Context, now time.Time) (start, end time.Time) {
-	// Parse fromDate parameter
 	if fromDateStr := c.Query("fromDate"); fromDateStr != "" {
 		if parsed, err := time.Parse(time.RFC3339, fromDateStr); err == nil {
 			start = parsed
@@ -257,7 +255,6 @@ func parseTimeRange(c *gin.Context, now time.Time) (start, end time.Time) {
 		start = now.Add(-24 * time.Hour)
 	}
 
-	// Parse toDate parameter
 	if toDateStr := c.Query("toDate"); toDateStr != "" {
 		if parsed, err := time.Parse(time.RFC3339, toDateStr); err == nil {
 			end = parsed

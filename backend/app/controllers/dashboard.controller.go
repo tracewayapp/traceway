@@ -69,7 +69,6 @@ func (d dashboardController) GetDashboard(c *gin.Context) {
 	}
 	serversParam := c.Query("servers")
 
-	// Parse selected servers
 	var selectedServers []string
 	if serversParam != "" {
 		selectedServers = strings.Split(serversParam, ",")
@@ -78,7 +77,6 @@ func (d dashboardController) GetDashboard(c *gin.Context) {
 	now := time.Now()
 	var start, end time.Time
 
-	// Parse fromDate parameter
 	if fromDateStr := c.Query("fromDate"); fromDateStr != "" {
 		if parsed, err := time.Parse(time.RFC3339, fromDateStr); err == nil {
 			start = parsed
@@ -89,7 +87,6 @@ func (d dashboardController) GetDashboard(c *gin.Context) {
 		start = now.Add(-24 * time.Hour)
 	}
 
-	// Parse toDate parameter
 	if toDateStr := c.Query("toDate"); toDateStr != "" {
 		if parsed, err := time.Parse(time.RFC3339, toDateStr); err == nil {
 			end = parsed

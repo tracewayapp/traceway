@@ -43,3 +43,16 @@ type EndpointDetailStats struct {
 	ErrorRate      float64 `json:"errorRate"`      // percentage
 	Throughput     float64 `json:"throughput"`     // requests per minute
 }
+
+// EndpointTimeSeriesPoint represents a single data point in a time series for endpoint charts
+type EndpointTimeSeriesPoint struct {
+	Timestamp time.Time `json:"timestamp"`
+	Endpoint  string    `json:"endpoint"`
+	Value     float64   `json:"value"`
+}
+
+// EndpointStackedChartResponse contains the data for rendering a stacked area chart
+type EndpointStackedChartResponse struct {
+	Endpoints []string                  `json:"endpoints"` // Top 5 + "Other"
+	Series    []EndpointTimeSeriesPoint `json:"series"`
+}

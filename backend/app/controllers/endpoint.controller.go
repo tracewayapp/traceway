@@ -38,6 +38,14 @@ type EndpointInstancesResponse struct {
 	Pagination Pagination                  `json:"pagination"`
 }
 
+type EndpointStackedChartRequest struct {
+	ProjectId       uuid.UUID `json:"projectId"`
+	FromDate        time.Time `json:"fromDate"`
+	ToDate          time.Time `json:"toDate"`
+	MetricType      string    `json:"metricType"`      // total_time, p50, p95, p99
+	IntervalMinutes int       `json:"intervalMinutes"` // bucket size
+}
+
 func (e endpointController) FindAllEndpoints(c *gin.Context) {
 	var request EndpointSearchRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
@@ -128,6 +136,33 @@ func (e endpointController) FindByEndpoint(c *gin.Context) {
 			TotalPages: (total + int64(request.Pagination.PageSize) - 1) / int64(request.Pagination.PageSize),
 		},
 	})
+}
+
+func (e endpointController) GetStackedChart(c *gin.Context) {
+	var request EndpointStackedChartRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate interval
+	if request.IntervalMinutes < 1 {
+		request.IntervalMinutes = 5 // default to 5 minutes
+	}
+
+	// Validate metric type
+	validMetrics := map[string]bool{"total_time": true, "p50": true, "p95": true, "p99": true}
+	if !validMetrics[request.MetricType] {
+		request.MetricType = "total_time" // default
+	}
+
+	data, err := repositories.EndpointRepository.GetEndpointStackedChart(c, request.ProjectId, request.FromDate, request.ToDate, request.IntervalMinutes, request.MetricType)
+	if err != nil {
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading stacked chart data: %w", err))
+		return
+	}
+
+	c.JSON(http.StatusOK, data)
 }
 
 var EndpointController = endpointController{}

@@ -72,7 +72,6 @@ func (e *taskRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromD
 		if err := rows.Scan(&t.Id, &t.ProjectId, &t.TaskName, &t.Duration, &t.RecordedAt, &t.ClientIP, &scopeJSON, &t.AppVersion, &t.ServerName); err != nil {
 			return nil, 0, err
 		}
-		// Parse scope JSON
 		if scopeJSON != "" && scopeJSON != "{}" {
 			if err := json.Unmarshal([]byte(scopeJSON), &t.Scope); err != nil {
 				t.Scope = nil
@@ -188,7 +187,6 @@ func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID
 		if err := rows.Scan(&t.Id, &t.ProjectId, &t.TaskName, &t.Duration, &t.RecordedAt, &t.ClientIP, &scopeJSON, &t.AppVersion, &t.ServerName); err != nil {
 			return nil, 0, err
 		}
-		// Parse scope JSON
 		if scopeJSON != "" && scopeJSON != "{}" {
 			if err := json.Unmarshal([]byte(scopeJSON), &t.Scope); err != nil {
 				t.Scope = nil
@@ -221,7 +219,6 @@ func (e *taskRepository) FindById(ctx context.Context, projectId, taskId uuid.UU
 		return nil, err
 	}
 
-	// Parse scope JSON
 	if scopeJSON != "" && scopeJSON != "{}" {
 		if err := json.Unmarshal([]byte(scopeJSON), &t.Scope); err != nil {
 			t.Scope = nil

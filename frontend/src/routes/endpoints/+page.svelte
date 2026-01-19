@@ -4,9 +4,11 @@
     import { formatDuration, toUTCISO, calendarDateTimeToLuxon } from '$lib/utils/formatters';
     import { getTimezone } from '$lib/state/timezone.svelte';
     import * as Table from "$lib/components/ui/table";
+    import * as Card from "$lib/components/ui/card";
     import { Button } from "$lib/components/ui/button";
     import { LoadingCircle } from "$lib/components/ui/loading-circle";
-    import * as Select from "$lib/components/ui/select";
+    import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+    import { ChevronDown, Check } from 'lucide-svelte';
     import { TracewayTableHeader } from "$lib/components/ui/traceway-table-header";
     import { ImpactBadge } from "$lib/components/ui/impact-badge";
     import { TableEmptyState } from "$lib/components/ui/table-empty-state";
@@ -17,6 +19,7 @@
     import { createRowClickHandler } from '$lib/utils/navigation';
     import { resolve } from '$app/paths';
     import PageHeader from '$lib/components/issues/page-header.svelte';
+    import D3StackedAreaChart from '$lib/components/dashboard/d3-stacked-area-chart.svelte';
     import {
         presetMinutes,
         getTimeRangeFromPreset,
@@ -32,6 +35,7 @@
         handleSortClick,
         type SortDirection
     } from '$lib/utils/sort-storage';
+	import { ChartLine } from '@lucide/svelte';
 
     const timezone = $derived(getTimezone());
 
@@ -48,9 +52,34 @@
 
     type SortField = 'count' | 'p50_duration' | 'p95_duration' | 'p99_duration' | 'last_seen' | 'impact';
 
+    type ChartDataPoint = {
+        timestamp: Date;
+        endpoint: string;
+        value: number;
+    };
+
+    type ChartResponse = {
+        endpoints: string[];
+        series: { timestamp: string; endpoint: string; value: number }[];
+    };
+
+    // Metric options for the chart
+    const metricOptions = [
+        { value: 'total_time', label: 'Total time' },
+        { value: 'p50', label: 'Average response time' },
+        { value: 'p95', label: 'Slow response time' },
+        { value: 'p99', label: 'Awful response time' }
+    ];
+
     let endpoints = $state<EndpointStats[]>([]);
     let loading = $state(true);
     let error = $state('');
+
+    // Chart state
+    let chartEndpoints = $state<string[]>([]);
+    let chartSeries = $state<ChartDataPoint[]>([]);
+    let chartLoading = $state(true);
+    let selectedMetric = $state('total_time');
 
     // Pagination State
     let page = $state(1);
@@ -143,6 +172,47 @@
         return count.toLocaleString();
     }
 
+    // Calculate interval based on time range
+    function calculateInterval(from: Date, to: Date): number {
+        const diffMs = to.getTime() - from.getTime();
+        const diffHours = diffMs / (1000 * 60 * 60);
+
+        if (diffHours <= 1) return 1; // 1 minute
+        if (diffHours <= 24) return 5; // 5 minutes
+        if (diffHours <= 24 * 7) return 60; // 1 hour
+        return 240; // 4 hours
+    }
+
+    async function loadChartData() {
+        chartLoading = true;
+
+        try {
+            const fromStr = getFromDateTimeUTC();
+            const toStr = getToDateTimeUTC();
+            const interval = calculateInterval(new Date(fromStr), new Date(toStr));
+
+            const response = await api.post('/endpoints/chart', {
+                fromDate: fromStr,
+                toDate: toStr,
+                metricType: selectedMetric,
+                intervalMinutes: interval
+            }, { projectId: projectsState.currentProjectId ?? undefined }) as ChartResponse;
+
+            chartEndpoints = response.endpoints || [];
+            chartSeries = (response.series || []).map((s: { timestamp: string; endpoint: string; value: number }) => ({
+                timestamp: new Date(s.timestamp),
+                endpoint: s.endpoint,
+                value: s.value
+            }));
+        } catch (e: any) {
+            console.error('Failed to load chart data:', e);
+            chartEndpoints = [];
+            chartSeries = [];
+        } finally {
+            chartLoading = false;
+        }
+    }
+
     async function loadData(pushToHistory = true) {
         loading = true;
         error = '';
@@ -173,6 +243,9 @@
         } finally {
             loading = false;
         }
+
+        // Also load chart data
+        loadChartData();
     }
 
     function handlePageChange(newPage: number) {
@@ -196,6 +269,16 @@
         page = 1;
         loadData(false);
     }
+
+    function handleMetricChange(value: string) {
+        selectedMetric = value;
+        loadChartData();
+    }
+
+    const selectedMetricLabel = $derived(metricOptions.find(o => o.value === selectedMetric)?.label ?? 'Total time');
+
+    // Get the unit for the selected metric
+    const chartUnit = $derived(selectedMetric === 'total_time' ? 'ms' : 'ms');
 
     onMount(() => {
         // Add popstate listener for back/forward navigation
@@ -229,6 +312,47 @@
             />
         </div>
     </div>
+
+    <!-- Performance Chart -->
+    <Card.Root class="pt-2">
+        <Card.Header class="flex flex-row items-center justify-between space-y-0 border-b [.border-b]:pb-2 pl-3">
+            <Card.Title class="text-base font-medium flex items-center gap-2">
+                <ChartLine class="h-3.5 w-3.5" />
+                <DropdownMenu.Root>
+                    <DropdownMenu.Trigger class="flex items-center text-sm gap-0.5 font-medium">
+                        {selectedMetricLabel}
+                        <ChevronDown class="h-3 w-3" />
+                    </DropdownMenu.Trigger>
+                    <DropdownMenu.Content align="start" class="w-[200px]">
+                        {#each metricOptions as option}
+                            <DropdownMenu.Item
+                                onclick={() => handleMetricChange(option.value)}
+                                class="flex items-center justify-between cursor-pointer"
+                            >
+                                <span>{option.label}</span>
+                                {#if option.value === selectedMetric}
+                                    <Check class="h-4 w-4" />
+                                {/if}
+                            </DropdownMenu.Item>
+                        {/each}
+                    </DropdownMenu.Content>
+                </DropdownMenu.Root>
+            </Card.Title>
+        </Card.Header>
+        <Card.Content>
+            {#if chartLoading}
+                <div class="flex justify-center items-center h-[220px]">
+                    <LoadingCircle size="xlg" />
+                </div>
+            {:else}
+                <D3StackedAreaChart
+                    endpoints={chartEndpoints}
+                    series={chartSeries}
+                    unit={chartUnit}
+                />
+            {/if}
+        </Card.Content>
+    </Card.Root>
 
     <!-- Endpoints Table -->
     <div class="rounded-md border overflow-hidden">

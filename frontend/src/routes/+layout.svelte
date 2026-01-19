@@ -76,7 +76,7 @@
 	<Sidebar.SidebarProvider>
 		<AppSidebar />
 		<Sidebar.SidebarInset>
-			<header class="flex h-16 shrink-0 items-center gap-2 border-b px-4">
+			<header class="flex h-12 shrink-0 items-center gap-2 border-b px-2">
 				<Sidebar.SidebarTrigger />
 				<div class="h-4 w-px bg-border"></div>
 				<h1 class="text-lg font-semibold">

@@ -8,6 +8,7 @@ import (
 	"backend/app/migrations"
 	"backend/static"
 	"context"
+	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
@@ -25,23 +26,33 @@ func main() {
 	if err != nil {
 		// we don't actually care for the .env file existing
 		// because in production we can just deploy with container variables
-		log.Println("Error loading .env file")
+		panic(fmt.Errorf("error loading the .env file: %w", err))
+	}
+
+	appToken := os.Getenv("APP_TOKEN")
+	if appToken == "" {
+		// without the api token we must not start
+		// this will be addressed when we add users
+		panic("APP_TOKEN environment variable is not set")
 	}
 
 	err = chdb.Init()
 	if err != nil {
-		panic(err)
+		// if clickhouse could not be connected to there is no reason to start the backend
+		// the panic here is valid
+		panic(fmt.Errorf("error connecting to chdb: %w", err))
 	}
 
 	err = migrations.Run()
 	if err != nil {
-		panic(err)
+		// if migrations fail - that means the backend could not be started - and thus we have to panic and stop the backend
+		panic(fmt.Errorf("migrations run failed: %w", err))
 	}
 
-	// Initialize project cache
+	// if projects cannot be loaded there is no point in starting our backend
 	ctx := context.Background()
 	if err := cache.ProjectCache.Init(ctx); err != nil {
-		panic(err)
+		panic(fmt.Errorf("projects cache could not be initialized: %w", err))
 	}
 
 	middleware.InitUseClientAuth()
@@ -66,8 +77,6 @@ func main() {
 	apiOnly := os.Getenv("API_ONLY") == "true"
 
 	if apiOnly {
-		log.Println("Running in API-only mode, static files disabled")
-		// Return 404 JSON for all unmatched routes
 		router.NoRoute(func(c *gin.Context) {
 			c.JSON(404, gin.H{"error": "Not found"})
 		})
@@ -93,26 +102,38 @@ func main() {
 		router.NoRoute(createSPAHandler(staticFS))
 	}
 
-	// Check if we should also listen on port 80
-	enablePort80 := os.Getenv("ENABLE_PORT_80") == "true"
-
-	if enablePort80 {
-		// Run port 80 server in a goroutine
-		go func() {
-			log.Println("Starting server on :80")
-			if err := router.Run(":80"); err != nil {
-				log.Printf("Error starting server on port 80: %v", err)
-			}
-		}()
+	// the backend will run on what is in the env, by default if nothing is specified we'll run on 80 and 8082
+	ports := os.Getenv("PORTS")
+	if ports == "" {
+		ports = "80,8082"
+	}
+	portsList := strings.Split(ports, ",")
+	if len(portsList) == 0 {
+		// if ports are bad we have to panic
+		panic(fmt.Errorf("ports env variable is invalid - no ports found"))
 	}
 
-	// Notify systemd that we're ready and start watchdog
-	notifySystemd()
+	if len(portsList) > 1 {
+		for i := 1; i < len(portsList); i++ {
+			if len(portsList[i]) == 0 {
+				continue
+			}
+			go func() {
+				port := ":" + portsList[i]
+				log.Println("Starting server on " + port)
 
-	// Run main server on port 8082
-	log.Println("Starting server on :8082")
-	if err := router.Run(":8082"); err != nil {
-		panic(err)
+				if err := router.Run(port); err != nil {
+					// if a port is bound or invalid - we have to panic and stop the app
+					panic(fmt.Errorf("Error starting server on port %s: %v", port, err))
+				}
+			}()
+		}
+	}
+
+	notifySystemd()
+	if err := router.Run(":" + portsList[0]); err != nil {
+		// if a port is bound or invalid - we have to panic and stop the app
+		panic(fmt.Errorf("Error starting server on port %s: %v", portsList[0], err))
 	}
 }
 

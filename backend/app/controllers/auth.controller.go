@@ -22,6 +22,7 @@ func (a authController) Login(c *gin.Context) {
 
 	appToken := os.Getenv("APP_TOKEN")
 	if appToken == "" {
+		// this is also confirmed in main, but just an extra layer of safety
 		panic("APP_TOKEN environment variable is not set")
 	}
 

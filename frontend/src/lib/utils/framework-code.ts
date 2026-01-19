@@ -81,6 +81,12 @@ export function getTestingRouteCode(): string {
 })`;
 }
 
+export function getTestingRouteCode2(): string {
+	return `r.GET("/testing", func(c *gin.Context) {
+    c.AbortWithError(500, traceway.NewStackTraceErrorf("testing"))
+})`;
+}
+
 export function getFrameworkLabel(framework: Framework): string {
 	const labels: Record<Framework, string> = {
 		gin: 'Gin',

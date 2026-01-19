@@ -24,7 +24,10 @@
 		getFrameworkCode,
 		getInstallCommand,
 		getTestingRouteCode,
-		getFrameworkLabel
+		getFrameworkLabel,
+
+		getTestingRouteCode2
+
 	} from '$lib/utils/framework-code';
 	import { toast } from 'svelte-sonner';
 
@@ -69,6 +72,7 @@
 	let copiedInstall = $state(false);
 	let copiedCode = $state(false);
 	let copiedTesting = $state(false);
+	let copiedTesting2 = $state(false);
 	let checking = $state(false);
 
 	// Load project with token when hasData is false
@@ -98,6 +102,7 @@
 	);
 
 	const testingRouteCode = getTestingRouteCode();
+	const testingRouteCode2 = getTestingRouteCode2();
 
 	async function copyInstall() {
 		await navigator.clipboard.writeText(installCommand);
@@ -115,6 +120,13 @@
 		await navigator.clipboard.writeText(testingRouteCode);
 		copiedTesting = true;
 		setTimeout(() => (copiedTesting = false), 2000);
+	}
+
+
+	async function copyTesting2() {
+		await navigator.clipboard.writeText(testingRouteCode2);
+		copiedTesting2 = true;
+		setTimeout(() => (copiedTesting2 = false), 2000);
 	}
 
 	async function checkAgain() {
@@ -312,6 +324,29 @@
 									: 'light-code'}"
 							>
 								<Highlight language={go} code={testingRouteCode} />
+							</div>
+						</div>
+
+						<div class="flex justify-center p-2 italic">or</div>
+
+						<div class="relative">
+							<div class="absolute top-2 right-2 z-10">
+								<Button variant="outline" size="sm" onclick={copyTesting2}>
+									{#if copiedTesting2}
+										<Check class="mr-2 h-4 w-4 text-green-500" />
+										Copied!
+									{:else}
+										<Copy class="mr-2 h-4 w-4" />
+										Copy
+									{/if}
+								</Button>
+							</div>
+							<div
+								class="overflow-x-auto rounded-lg text-sm {themeState.isDark
+									? 'dark-code'
+									: 'light-code'}"
+							>
+								<Highlight language={go} code={testingRouteCode2} />
 							</div>
 						</div>
 					</div>

@@ -132,17 +132,17 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 			-- Base score: 1 - apdex
 			if(count() > 0,
 				1.0 - (
-					(countIf(duration <= 500000000 AND status_code < 400) +
-					 countIf(duration > 500000000 AND duration <= 2000000000 AND status_code < 400) * 0.5)
+					(countIf(duration <= 500000000 AND status_code < 500) +
+					 countIf(duration > 500000000 AND duration <= 2000000000 AND status_code < 500) * 0.5)
 					/ count()
 				),
 				0.0
 			),
 			-- Floor based on bad percentage
 			multiIf(
-				countIf(duration > 2000000000 OR status_code >= 400) / count() > 0.33, 0.75,
-				countIf(duration > 2000000000 OR status_code >= 400) / count() > 0.20, 0.50,
-				countIf(duration > 2000000000 OR status_code >= 400) / count() > 0.10, 0.25,
+				countIf(duration > 2000000000 OR status_code >= 500) / count() > 0.33, 0.75,
+				countIf(duration > 2000000000 OR status_code >= 500) / count() > 0.20, 0.50,
+				countIf(duration > 2000000000 OR status_code >= 500) / count() > 0.10, 0.25,
 				0.0
 			)
 		) as impact
@@ -318,7 +318,7 @@ func (e *endpointRepository) AvgDurationByHour(ctx context.Context, projectId uu
 func (e *endpointRepository) ErrorRateByHour(ctx context.Context, projectId uuid.UUID, start, end time.Time) ([]models.TimeSeriesPoint, error) {
 	query := `SELECT
 		toStartOfHour(recorded_at) as hour,
-		countIf(status_code >= 400) * 100.0 / count() as error_rate
+		countIf(status_code >= 500) * 100.0 / count() as error_rate
 	FROM endpoints
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY hour
@@ -402,7 +402,7 @@ func (e *endpointRepository) AvgDurationByInterval(ctx context.Context, projectI
 func (e *endpointRepository) ErrorRateByInterval(ctx context.Context, projectId uuid.UUID, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
 	query := `SELECT
 		toStartOfInterval(recorded_at, INTERVAL ? MINUTE) as bucket,
-		countIf(status_code >= 400) * 100.0 / count() as error_rate
+		countIf(status_code >= 500) * 100.0 / count() as error_rate
 	FROM endpoints
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY bucket
@@ -442,17 +442,17 @@ func (e *endpointRepository) FindWorstEndpoints(ctx context.Context, projectId u
 			-- Base score: 1 - apdex
 			if(count() > 0,
 				1.0 - (
-					(countIf(duration <= 500000000 AND status_code < 400) +
-					 countIf(duration > 500000000 AND duration <= 2000000000 AND status_code < 400) * 0.5)
+					(countIf(duration <= 500000000 AND status_code < 500) +
+					 countIf(duration > 500000000 AND duration <= 2000000000 AND status_code < 500) * 0.5)
 					/ count()
 				),
 				0.0
 			),
 			-- Floor based on bad percentage
 			multiIf(
-				countIf(duration > 2000000000 OR status_code >= 400) / count() > 0.33, 0.75,
-				countIf(duration > 2000000000 OR status_code >= 400) / count() > 0.20, 0.50,
-				countIf(duration > 2000000000 OR status_code >= 400) / count() > 0.10, 0.25,
+				countIf(duration > 2000000000 OR status_code >= 500) / count() > 0.33, 0.75,
+				countIf(duration > 2000000000 OR status_code >= 500) / count() > 0.20, 0.50,
+				countIf(duration > 2000000000 OR status_code >= 500) / count() > 0.10, 0.25,
 				0.0
 			)
 		) as impact
@@ -498,9 +498,9 @@ func (e *endpointRepository) GetEndpointStats(ctx context.Context, projectId uui
 		quantile(0.5)(duration) / 1000000 as p50_duration_ms,
 		quantile(0.95)(duration) / 1000000 as p95_duration_ms,
 		quantile(0.99)(duration) / 1000000 as p99_duration_ms,
-		countIf(status_code >= 400) * 100.0 / count() as error_rate,
-		countIf(duration <= 500000000 AND status_code < 400) +
-			(countIf(duration > 500000000 AND duration <= 2000000000 AND status_code < 400) * 0.5)
+		countIf(status_code >= 500) * 100.0 / count() as error_rate,
+		countIf(duration <= 500000000 AND status_code < 500) +
+			(countIf(duration > 500000000 AND duration <= 2000000000 AND status_code < 500) * 0.5)
 			as satisfied_tolerating
 	FROM endpoints
 	WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ?`

@@ -1,11 +1,8 @@
 <script lang="ts">
 	import * as Card from '$lib/components/ui/card';
-	import * as Chart from "$lib/components/ui/chart/index.js";
-	import { LineChart, Points, Spline } from 'layerchart';
-	import { scaleUtc } from 'd3-scale';
 	import type { DashboardMetric, MetricTrendPoint, ServerMetricTrend } from '$lib/types/dashboard';
 	import { min, max } from 'd3-array';
-	import MetricChartOverlay from './metric-chart-overlay.svelte';
+	import D3LineChart from './d3-line-chart.svelte';
 
 	let {
 		metric,
@@ -30,10 +27,8 @@
 		metric.servers && metric.servers.length > 1
 	);
 
-
 	// Smart number formatting based on unit type
 	function formatMetricValue(value: number, unit: string): string {
-		// Percentages
 		if (unit === '%') {
 			if (value === 0) return '0';
 			if (Math.abs(value) < 0.1) return value.toFixed(2);
@@ -41,7 +36,6 @@
 			return Math.round(value).toString();
 		}
 
-		// Durations (ms)
 		if (unit === 'ms') {
 			if (value < 1) return (value * 1000).toFixed(0);
 			if (value < 10) return value.toFixed(1);
@@ -49,68 +43,26 @@
 			return (value / 1000).toFixed(1);
 		}
 
-		// Counts
 		if (unit === 'count' || unit === '') {
 			if (value >= 1_000_000) return (value / 1_000_000).toFixed(1) + 'M';
 			if (value >= 1_000) return (value / 1_000).toFixed(1) + 'K';
 			return Math.round(value).toString();
 		}
 
-		// Memory (MB) - convert to GB for large values
 		if (unit === 'MB') {
 			if (value >= 1024) return (value / 1024).toFixed(1) + ' GB';
 			return Math.round(value).toString() + ' MB';
 		}
 
-		// Default: round to 1 decimal
 		if (Number.isInteger(value)) return value.toString();
 		return value.toFixed(1);
 	}
-
-	// Generate chart config based on servers or single value
-	const chartConfig = $derived(() => {
-		if (hasMultiServerData && metric.servers) {
-			const config: Chart.ChartConfig = {};
-			for (const server of metric.servers) {
-				config[server.serverName] = {
-					label: server.serverName,
-					color: serverColorMap[server.serverName] || 'var(--chart-1)'
-				};
-			}
-			return config;
-		}
-		return {
-			value: { label: "Value", color: "var(--chart-1)" }
-		} satisfies Chart.ChartConfig;
-	});
-
-	// Calculate yMin/yMax considering multi-server data
-	const yMin = $derived((): number => {
-		if (hasMultiServerData && metric.servers) {
-			const allValues = metric.servers.flatMap((s: ServerMetricTrend) => s.trend.map((t: MetricTrendPoint) => t.value));
-			const minVal = min(allValues);
-			return typeof minVal === 'number' ? minVal : 0;
-		}
-		const minVal = min(metric.trend, (d: MetricTrendPoint) => d.value);
-		return typeof minVal === 'number' ? minVal : 0;
-	});
-	const yMax = $derived((): number => {
-		if (hasMultiServerData && metric.servers) {
-			const allValues = metric.servers.flatMap((s: ServerMetricTrend) => s.trend.map((t: MetricTrendPoint) => t.value));
-			const maxVal = max(allValues);
-			return typeof maxVal === 'number' ? maxVal : 0;
-		}
-		const maxVal = max(metric.trend, (d: MetricTrendPoint) => d.value);
-		return typeof maxVal === 'number' ? maxVal : 0;
-	});
-	const padding = $derived((yMax() - yMin()) * 0.1 || 1);
 
 	// Calculate X domain from timeDomain or data
 	const xDomainValue = $derived(() => {
 		if (timeDomain) {
 			return timeDomain;
 		}
-		// Fallback to data range
 		if (metric.trend.length > 0) {
 			const minTime = min(metric.trend, (d: MetricTrendPoint) => d.timestamp);
 			const maxTime = max(metric.trend, (d: MetricTrendPoint) => d.timestamp);
@@ -121,330 +73,57 @@
 		return undefined;
 	});
 
-	// Calculate expected interval from actual data and use 2x as gap threshold
-	const gapThresholdMs = $derived(() => {
-		if (metric.trend.length < 2) return 3600000; // 1 hour default
-		const intervals: number[] = [];
-		for (let i = 1; i < Math.min(metric.trend.length, 10); i++) {
-			intervals.push(metric.trend[i].timestamp.getTime() - metric.trend[i - 1].timestamp.getTime());
+	// Build series array for the chart
+	const chartSeries = $derived(() => {
+		if (hasMultiServerData && metric.servers) {
+			return metric.servers.map((server: ServerMetricTrend) => ({
+				key: server.serverName,
+				data: server.trend,
+				color: serverColorMap[server.serverName] || '#3b82f6'
+			}));
 		}
-		intervals.sort((a, b) => a - b);
-		const median = intervals[Math.floor(intervals.length / 2)];
-		return median * 2; // Gap threshold = 2x median interval
-	});
-
-	// Create lookup set for gap points - marks points that have a gap before them
-	const gapPoints = $derived(() => {
-		const gaps = new Set<number>();
-		const threshold = gapThresholdMs();
-		for (let i = 1; i < metric.trend.length; i++) {
-			const gap = metric.trend[i].timestamp.getTime() - metric.trend[i - 1].timestamp.getTime();
-			if (gap > threshold) {
-				// Mark the point AFTER the gap as "undefined" to break the line
-				gaps.add(metric.trend[i].timestamp.getTime());
-			}
-		}
-		return gaps;
-	});
-
-	// Function to determine if a point should be connected to the previous point
-	// A point is "defined" (line should be drawn TO it) if there's no gap before it
-	function isDefined(d: MetricTrendPoint): boolean {
-		return !gapPoints().has(d.timestamp.getTime());
-	}
-
-	// Calculate isolated points - points that have gaps BOTH before AND after them
-	// These are the only points that should show dots
-	const isolatedPoints = $derived(() => {
-		if (metric.trend.length === 0) return [];
-		if (metric.trend.length === 1) return metric.trend; // Single point is always isolated
-
-		const threshold = gapThresholdMs();
-		const isolated: MetricTrendPoint[] = [];
-
-		for (let i = 0; i < metric.trend.length; i++) {
-			const hasGapBefore = i === 0 ||
-				(metric.trend[i].timestamp.getTime() - metric.trend[i - 1].timestamp.getTime() > threshold);
-			const hasGapAfter = i === metric.trend.length - 1 ||
-				(metric.trend[i + 1].timestamp.getTime() - metric.trend[i].timestamp.getTime() > threshold);
-
-			if (hasGapBefore && hasGapAfter) {
-				isolated.push(metric.trend[i]);
-			}
-		}
-
-		return isolated;
+		return [{
+			key: 'value',
+			data: metric.trend,
+			color: '#3b82f6'
+		}];
 	});
 
 	const hasData = $derived(() => {
 		if (hasMultiServerData && metric.servers) {
-			return metric.servers.some((s: ServerMetricTrend) => s.trend.length > 0 && s.trend.some((t: MetricTrendPoint) => t.value !== 0));
+			return metric.servers.some((s: ServerMetricTrend) => s.trend.length > 0);
 		}
-		return metric.trend.length > 0 && metric.trend.some((d: MetricTrendPoint) => d.value !== 0);
+		return metric.trend.length > 0;
 	});
-
-	// Build merged data and series for multi-server charts
-	const multiServerChartData = $derived(() => {
-		if (!hasMultiServerData || !metric.servers) return [];
-
-		// Merge all server data by timestamp
-		const timeMap = new Map<number, Record<string, number>>();
-
-		for (const server of metric.servers) {
-			for (const point of server.trend) {
-				const timestamp = point.timestamp.getTime();
-				if (!timeMap.has(timestamp)) {
-					timeMap.set(timestamp, { timestamp } as any);
-				}
-				timeMap.get(timestamp)![server.serverName] = point.value;
-			}
-		}
-
-		// Convert to sorted array
-		return Array.from(timeMap.values())
-			.map(entry => ({
-				...entry,
-				timestamp: new Date(entry.timestamp as unknown as number)
-			}))
-			.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-	});
-
-	const multiServerSeries = $derived(() => {
-		if (!hasMultiServerData || !metric.servers) return [];
-		return metric.servers.map((server: ServerMetricTrend) => ({
-			key: server.serverName,
-			label: server.serverName,
-			color: serverColorMap[server.serverName] || 'var(--chart-1)'
-		}));
-	});
-
-	// Per-server gap detection for multi-server charts
-	const perServerGapData = $derived(() => {
-		if (!hasMultiServerData || !metric.servers) return new Map<string, {
-			gapPoints: Set<number>;
-			isolatedPoints: { timestamp: Date; value: number }[];
-		}>();
-
-		const result = new Map<string, {
-			gapPoints: Set<number>;
-			isolatedPoints: { timestamp: Date; value: number }[];
-		}>();
-
-		for (const server of metric.servers) {
-			const trend = server.trend;
-			if (trend.length < 2) {
-				result.set(server.serverName, {
-					gapPoints: new Set(),
-					isolatedPoints: trend.map((t: MetricTrendPoint) => ({ timestamp: t.timestamp, value: t.value }))
-				});
-				continue;
-			}
-
-			// Calculate threshold for this server (2x median interval)
-			const intervals: number[] = [];
-			for (let i = 1; i < Math.min(trend.length, 10); i++) {
-				intervals.push(trend[i].timestamp.getTime() - trend[i - 1].timestamp.getTime());
-			}
-			intervals.sort((a, b) => a - b);
-			const threshold = intervals[Math.floor(intervals.length / 2)] * 2;
-
-			// Calculate gap points (timestamps where line should break)
-			const serverGapPoints = new Set<number>();
-			for (let i = 1; i < trend.length; i++) {
-				const gap = trend[i].timestamp.getTime() - trend[i - 1].timestamp.getTime();
-				if (gap > threshold) {
-					serverGapPoints.add(trend[i].timestamp.getTime());
-				}
-			}
-
-			// Calculate isolated points (gaps both before AND after)
-			const isolated: { timestamp: Date; value: number }[] = [];
-			for (let i = 0; i < trend.length; i++) {
-				const hasGapBefore = i === 0 ||
-					(trend[i].timestamp.getTime() - trend[i - 1].timestamp.getTime() > threshold);
-				const hasGapAfter = i === trend.length - 1 ||
-					(trend[i + 1].timestamp.getTime() - trend[i].timestamp.getTime() > threshold);
-				if (hasGapBefore && hasGapAfter) {
-					isolated.push({ timestamp: trend[i].timestamp, value: trend[i].value });
-				}
-			}
-
-			result.set(server.serverName, { gapPoints: serverGapPoints, isolatedPoints: isolated });
-		}
-
-		return result;
-	});
-
-	// Helper to get defined function for a specific server
-	function getServerDefined(serverName: string) {
-		return (d: any) => {
-			// Check if value exists for this server at this point
-			const value = d[serverName];
-			if (value === undefined || value === null || Number.isNaN(value)) {
-				return false;
-			}
-			// Also check gap points
-			const gapData = perServerGapData().get(serverName);
-			if (!gapData) return true;
-			const timestamp = d.timestamp instanceof Date ? d.timestamp.getTime() : d.timestamp;
-			return !gapData.gapPoints.has(timestamp);
-		};
-	}
 </script>
 
-<Card.Root class="gap-3 pb-0">
-	<Card.Header class="pb-2">
+<Card.Root class="gap-0 pb-0">
+	<Card.Header class="pb-0">
 		<Card.Title class="text-sm font-medium">
 			{metric.name}
 		</Card.Title>
 	</Card.Header>
-	<Card.Content class="p-1 pt-0 pl-3">
-
-			<!-- Large Value Display -->
-
-			<!-- Sparkline Chart -->
-
-				<!-- <Chart
-					data={metric.trend}
-					x={(d: MetricTrendPoint) => d.timestamp}
-					xScale={scaleUtc()}
-					y={(d: MetricTrendPoint) => d.value}
-					yScale={scaleLinear()}
-					padding={{ top: 4, bottom: 4, left: 0, right: 0 }}
-				>
-					<Svg>
-						<Area
-							line={{ stroke: 'hsl(var(--chart-1))', 'stroke-width': 2 }}
-							area={{ fill: 'none' }}
-						/>
-					</Svg>
-				</Chart> -->
-
-			<MetricChartOverlay
-				fromTime={xDomainValue()?.[0] ?? new Date()}
-				toTime={xDomainValue()?.[1] ?? new Date()}
+	<Card.Content class="p-1 pt-0">
+		{#if hasData()}
+			<D3LineChart
+				series={chartSeries()}
+				xDomain={xDomainValue()}
+				height={220}
+				padding={{ top: 10, right: 4, bottom: 20, left: 45 }}
 				{onRangeSelect}
 				data={metric.trend}
 				servers={metric.servers}
 				{serverColorMap}
 				unit={metric.unit}
 				formatValue={(v) => metric.formatValue ? metric.formatValue(v) : formatMetricValue(v, metric.unit)}
-				chartId={metric.id}
 				{sharedHoverTime}
 				{isSourceChart}
 				{onHoverTimeChange}
-			>
-				<Chart.Container config={chartConfig()}>
-					{#if hasData()}
-						{#if hasMultiServerData}
-							<!-- Multi-server chart with per-server gap handling -->
-							<LineChart
-								data={multiServerChartData()}
-								x="timestamp"
-								xScale={scaleUtc()}
-								xDomain={xDomainValue()}
-								series={multiServerSeries()}
-								yDomain={[Math.max(0, yMin() - padding), yMax() + padding]}
-								seriesLayout="overlap"
-								axis={true}
-								rule={true}
-								grid={{ x: false, y: { style: '--stroke-color: hsl(var(--border));' } }}
-								props={{
-									xAxis: {
-										format: () => "",
-										rule: true
-									},
-									yAxis: {
-										format: (a: number) => {
-											if (a >= 1000000) return (a / 1000000).toFixed(1) + "M";
-											if (a >= 1000) return (a / 1000).toFixed(1) + "k";
-											return Number.isInteger(a) ? a.toString() : a.toFixed(1);
-										},
-										rule: true
-									}
-								}}
-								tooltip={false}
-							>
-								{#snippet spline({ props, seriesIndex })}
-									{@const serverName = multiServerSeries()[seriesIndex]?.key}
-									<Spline {...props} defined={getServerDefined(serverName)} />
-								{/snippet}
-
-								{#snippet aboveMarks()}
-									<!-- Per-server isolated points -->
-									{#each metric.servers ?? [] as server}
-										{@const gapData = perServerGapData().get(server.serverName)}
-										{@const color = serverColorMap[server.serverName] || 'var(--chart-1)'}
-										{#if gapData && gapData.isolatedPoints.length > 0}
-											<Points
-												data={gapData.isolatedPoints}
-												x="timestamp"
-												y="value"
-												r={2}
-												fill={color}
-											/>
-										{/if}
-									{/each}
-								{/snippet}
-							</LineChart>
-						{:else}
-							<!-- Single series chart (original behavior) -->
-							<LineChart
-								data={metric.trend}
-								x="timestamp"
-								xScale={scaleUtc()}
-								xDomain={xDomainValue()}
-								series={[
-									{
-										key: "value",
-										label: "Value",
-										color: "var(--chart-1)",
-									},
-								]}
-								yDomain={[Math.max(0, yMin() - padding), yMax() + padding]}
-								seriesLayout="stack"
-								axis={true}
-								rule={true}
-								grid={{ x: false, y: { style: '--stroke-color: hsl(var(--border));' } }}
-								props={{
-									xAxis: {
-										format: () => "",
-										rule: true
-									},
-									yAxis: {
-										format: (a: number) => {
-											if (a >= 1000000) return (a / 1000000).toFixed(1) + "M";
-											if (a >= 1000) return (a / 1000).toFixed(1) + "k";
-											return Number.isInteger(a) ? a.toString() : a.toFixed(1);
-										},
-										rule: true
-									},
-									spline: {
-										defined: isDefined
-									}
-								}}
-								tooltip={false}
-							>
-								{#snippet aboveMarks()}
-									<!-- Isolated points (dots only where no line) -->
-									{#if isolatedPoints().length > 0}
-										<Points
-											data={isolatedPoints()}
-											x="timestamp"
-											y="value"
-											r={2}
-											fill="var(--chart-1)"
-										/>
-									{/if}
-								{/snippet}
-							</LineChart>
-						{/if}
-					{:else}
-						<div class="flex h-[100px] items-center justify-center text-sm text-muted-foreground">
-							No data in this period
-						</div>
-					{/if}
-				</Chart.Container>
-			</MetricChartOverlay>
+			/>
+		{:else}
+			<div class="flex h-[220px] items-center justify-center text-sm text-muted-foreground">
+				No data in this period
+			</div>
+		{/if}
 	</Card.Content>
 </Card.Root>

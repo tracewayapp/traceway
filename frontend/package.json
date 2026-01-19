@@ -38,7 +38,6 @@
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-plugin-svelte": "^3.13.1",
 		"globals": "^16.5.0",
-		"layerchart": "^2.0.0-next.43",
 		"prettier": "^3.7.4",
 		"prettier-plugin-svelte": "^3.4.0",
 		"prettier-plugin-tailwindcss": "^0.7.2",
@@ -53,10 +52,10 @@
 		"vite": "^7.2.6"
 	},
 	"dependencies": {
+		"@sveltejs/svelte-json-tree": "^2.2.1",
 		"lucide-svelte": "^0.562.0",
 		"luxon": "^3.7.2",
 		"svelte-highlight": "^7.9.0",
-		"@sveltejs/svelte-json-tree": "^2.2.1",
 		"svelte-sonner": "^1.0.7"
 	}
 }

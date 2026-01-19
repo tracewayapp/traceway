@@ -1,10 +1,9 @@
 # Temporary documentation
 
 ## Project structure
-There are 3 projects:
+There are 2 projects in this repo and one more project in the go-clients repo https://github.com/tracewayapp/go-client
 
 backend
-clients/go-client
 frontend
 
 ## Backend 
@@ -27,37 +26,53 @@ To run it you need to create a .env file in the backend project locally with you
 Example .env:
 
 ```
-TOKEN="demotoken"
 APP_TOKEN="nice"
 CLICKHOUSE_SERVER=localhost:9000
 CLICKHOUSE_DATABASE=traceway
 CLICKHOUSE_USERNAME=default
 CLICKHOUSE_PASSWORD=
 CLICKHOUSE_TLS=false
+API_ONLY=false
+PORTS=80,8082
 ```
 
-The TOKEN value is what the clients/go-client will use to report while APP_TOKEN is what the frontend uses to access the backend.
+The APP_TOKEN value is what you will use to login when running the frontend. The client app will connect using the project level token, the default project is created in the migration 0009_insert_default_project.up.sql with the TOKEN value of default_token_change_me.
 
 ## Frontend
 
-This is a work in progress, it's in the wireframing/designing stages. It's a sveltekit app that is expected to run in the SPA mode (client running only). 
+Is a sveltekit app that is expected to run in the SPA mode (client running only). 
 
-If you really want to run it:
+To run it:
 1 - install node/npm
 2 - run `npm install`
 3 - run `npm run dev`
 
-## clients/go-client
+By default the frontend will connect to your backend on port 8082 if you're running your backend on a different port change the line `target: 'http://localhost:8082',` in the vite.config.ts
 
-This is a client that users would include in their app. Right now it only supports the gin framework.
+## go-client (https://github.com/tracewayapp/go-client)
 
-To run the basic devtesting app you can cd into `./devtesting` and run `go run .` this will start the server located in devtesting.go the keycode here is:
+This is a client that users would include in their app. Right now the only web framework supported is the gin framework.
+
+To run the basic devtesting app you can cd into `testing/devtesting` and run `go run .` this will start the server located in devtesting.go the key code here is:
 ```
-router.Use(tracewaygin.New(
-		"tracewaydemo",
-		"demotoken@http://localhost:8082/api/report",
-		traceway.WithDebug(true),
+    endpoint := os.Getenv("TRACEWAY_ENDPOINT")
+	if endpoint == "" {
+		endpoint = "default_token_change_me@http://localhost:8082/api/report"
+	}
+
+	router := gin.Default()
+
+	router.Use(tracewaygin.New(
+		endpoint,
+		tracewaygin.WithDebug(true),
+		tracewaygin.WithRepanic(true),
+		tracewaygin.WithOnErrorRecording(tracewaygin.RecordingUrl|tracewaygin.RecordingQuery|tracewaygin.RecordingHeader|tracewaygin.RecordingBody),
 	))
 ```
 
-Which sets up the code to upload to localhost:8082 with the token 'demotoken' (this has to match your .env from your backend). After that the code will start uploading your metrics/stracktraces to the backend, you should be able to see it in tableplus or any other clickhouse client you like using.
+Which sets up the code to upload to localhost:8082 with the token 'default_token_change_me' (this has to match your project). After that the code will start uploading your metrics/stracktraces to the backend, you should be able to see it in tableplus or any other clickhouse client you like using.
+
+## Screenshot
+
+<img width="2452" height="1966" alt="1" src="https://github.com/user-attachments/assets/30a4fa24-7d08-4b36-a8f3-42abc73692fd" />
+

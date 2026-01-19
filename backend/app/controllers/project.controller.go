@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	traceway "go.tracewayapp.com"
 )
 
 // Valid framework values
@@ -72,7 +73,8 @@ func (p projectController) CreateProject(c *gin.Context) {
 
 	project, err := repositories.ProjectRepository.Create(c, request.Name, request.Framework)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error creating a project: %w", err))
+		return
 	}
 
 	// Add to cache

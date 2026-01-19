@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	traceway "go.tracewayapp.com"
 )
 
 type metricsController struct{}
@@ -63,7 +64,8 @@ func (m metricsController) GetApplicationMetrics(c *gin.Context) {
 	// 1. Go Routines
 	goRoutinesPerServer, err := repositories.MetricRecordRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameGoRoutines, start, end, intervalMinutes, emptyServers)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading goRoutinesPerServer: %w", err))
+		return
 	}
 	goRoutinesPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameGoRoutines, prevStart, prevEnd)
 	metrics = append(metrics, buildMetricWithServers("go_routines", "Go Routines", "", goRoutinesPerServer, goRoutinesPrev, "go_routines"))
@@ -71,7 +73,8 @@ func (m metricsController) GetApplicationMetrics(c *gin.Context) {
 	// 2. Heap Objects
 	heapObjectsPerServer, err := repositories.MetricRecordRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameHeapObjects, start, end, intervalMinutes, emptyServers)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading heapObjectsPerServer: %w", err))
+		return
 	}
 	heapObjectsPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameHeapObjects, prevStart, prevEnd)
 	metrics = append(metrics, buildMetricWithServers("heap_objects", "Heap Objects", "", heapObjectsPerServer, heapObjectsPrev, "heap_objects"))
@@ -79,7 +82,8 @@ func (m metricsController) GetApplicationMetrics(c *gin.Context) {
 	// 3. GC Cycles (Num GC)
 	numGCPerServer, err := repositories.MetricRecordRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameNumGC, start, end, intervalMinutes, emptyServers)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading numGCPerServer: %w", err))
+		return
 	}
 	numGCPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameNumGC, prevStart, prevEnd)
 	metrics = append(metrics, buildMetricWithServers("num_gc", "GC Cycles", "", numGCPerServer, numGCPrev, "num_gc"))
@@ -87,7 +91,8 @@ func (m metricsController) GetApplicationMetrics(c *gin.Context) {
 	// 4. GC Pause Total (convert from nanoseconds to milliseconds)
 	gcPausePerServer, err := repositories.MetricRecordRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameGCPauseTotal, start, end, intervalMinutes, emptyServers)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading gcPausePerServer: %w", err))
+		return
 	}
 	// Convert nanoseconds to milliseconds for each server's data
 	for serverName, points := range gcPausePerServer {
@@ -130,7 +135,8 @@ func (m metricsController) GetStatsMetrics(c *gin.Context) {
 	// 1. Requests count
 	requestsTrend, err := repositories.EndpointRepository.CountByInterval(c, projectId, start, end, intervalMinutes)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading requestsTrend: %w", err))
+		return
 	}
 	requestsCurrent, _ := repositories.EndpointRepository.CountBetween(c, projectId, start, end)
 	requestsPrev, _ := repositories.EndpointRepository.CountBetween(c, projectId, prevStart, prevEnd)
@@ -139,7 +145,8 @@ func (m metricsController) GetStatsMetrics(c *gin.Context) {
 	// 2. Exceptions count
 	exceptionsTrend, err := repositories.ExceptionStackTraceRepository.CountByInterval(c, projectId, start, end, intervalMinutes)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading exceptionsTrend: %w", err))
+		return
 	}
 	exceptionsCurrent, _ := repositories.ExceptionStackTraceRepository.CountBetween(c, projectId, start, end)
 	exceptionsPrev, _ := repositories.ExceptionStackTraceRepository.CountBetween(c, projectId, prevStart, prevEnd)
@@ -148,7 +155,8 @@ func (m metricsController) GetStatsMetrics(c *gin.Context) {
 	// 3. Average Response Time
 	avgDurationTrend, err := repositories.EndpointRepository.AvgDurationByInterval(c, projectId, start, end, intervalMinutes)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading avgDurationTrend: %w", err))
+		return
 	}
 	avgDurationCurrent := getLastValue(avgDurationTrend)
 	avgDurationPrevTrend, _ := repositories.EndpointRepository.AvgDurationByInterval(c, projectId, prevStart, prevEnd, intervalMinutes)
@@ -158,7 +166,8 @@ func (m metricsController) GetStatsMetrics(c *gin.Context) {
 	// 4. Error Rate
 	errorRateTrend, err := repositories.EndpointRepository.ErrorRateByInterval(c, projectId, start, end, intervalMinutes)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading errorRateTrend: %w", err))
+		return
 	}
 	errorRateCurrent := getLastValue(errorRateTrend)
 	errorRatePrevTrend, _ := repositories.EndpointRepository.ErrorRateByInterval(c, projectId, prevStart, prevEnd, intervalMinutes)
@@ -204,7 +213,8 @@ func (m metricsController) GetServerMetrics(c *gin.Context) {
 	// 1. CPU Usage
 	cpuPerServer, err := repositories.MetricRecordRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameCpuUsage, start, end, intervalMinutes, emptyServers)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading cpuPerServer: %w", err))
+		return
 	}
 	cpuPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameCpuUsage, prevStart, prevEnd)
 	metrics = append(metrics, buildMetricWithServers("cpu_usage", "CPU Usage", "%", cpuPerServer, cpuPrev, "cpu"))
@@ -212,7 +222,8 @@ func (m metricsController) GetServerMetrics(c *gin.Context) {
 	// 2. Memory Usage (MB)
 	memPerServer, err := repositories.MetricRecordRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameMemoryUsage, start, end, intervalMinutes, emptyServers)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading memPerServer: %w", err))
+		return
 	}
 	memPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameMemoryUsage, prevStart, prevEnd)
 	metrics = append(metrics, buildMetricWithServers("memory_usage", "Memory Usage", "MB", memPerServer, memPrev, "memory"))
@@ -220,7 +231,8 @@ func (m metricsController) GetServerMetrics(c *gin.Context) {
 	// 3. Total System Memory (MB)
 	memTotalPerServer, err := repositories.MetricRecordRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameMemoryTotal, start, end, intervalMinutes, emptyServers)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading memTotalPerServer: %w", err))
+		return
 	}
 	memTotalPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameMemoryTotal, prevStart, prevEnd)
 	metrics = append(metrics, buildMetricWithServers("memory_total", "Total Memory", "MB", memTotalPerServer, memTotalPrev, "memory_total"))

@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	traceway "go.tracewayapp.com"
 )
 
 type metricRecordController struct{}
@@ -33,41 +34,49 @@ func (e metricRecordController) FindHomepageStats(c *gin.Context) {
 	// requests
 	requestsNow, err := repositories.EndpointRepository.CountBetween(c, projectId, oneDayAgo, now)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading requestsNow: %w", err))
+		return
 	}
 	requestsPrev, err := repositories.EndpointRepository.CountBetween(c, projectId, twoDaysAgo, oneDayAgo)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading requestsPrev: %w", err))
+		return
 	}
 
 	// exceptions
 	exceptionsNow, err := repositories.ExceptionStackTraceRepository.CountBetween(c, projectId, oneDayAgo, now)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading exceptionsNow: %w", err))
+		return
 	}
 	exceptionsPrev, err := repositories.ExceptionStackTraceRepository.CountBetween(c, projectId, twoDaysAgo, oneDayAgo)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading exceptionsPrev: %w", err))
+		return
 	}
 
 	// ram usage last 24h vs previous 24h
 	ramNow, err := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameMemoryUsage, oneDayAgo, now)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading ramNow: %w", err))
+		return
 	}
 	ramPrev, err := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameMemoryUsage, twoDaysAgo, oneDayAgo)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading ramPrev: %w", err))
+		return
 	}
 
 	// memory usage last 24h vs previous 24h
 	cpuNow, err := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameCpuUsage, oneDayAgo, now)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading cpuNow: %w", err))
+		return
 	}
 	cpuPrev, err := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameCpuUsage, twoDaysAgo, oneDayAgo)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading cpuPrev: %w", err))
+		return
 	}
 
 	c.JSON(http.StatusOK, HomepageStatsResponse{

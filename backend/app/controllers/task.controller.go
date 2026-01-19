@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	traceway "go.tracewayapp.com"
 )
 
 type taskController struct{}
@@ -46,7 +47,8 @@ func (e taskController) FindAllTasks(c *gin.Context) {
 
 	tasks, total, err := repositories.TaskRepository.FindAll(c, request.ProjectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading tasks: %w", err))
+		return
 	}
 
 	c.JSON(http.StatusOK, PaginatedResponse[models.Task]{
@@ -69,7 +71,8 @@ func (e taskController) FindGroupedByTaskName(c *gin.Context) {
 
 	stats, total, err := repositories.TaskRepository.FindGroupedByTaskName(c, request.ProjectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading stats by name: %w", err))
+		return
 	}
 
 	c.JSON(http.StatusOK, PaginatedResponse[models.TaskStats]{
@@ -104,7 +107,8 @@ func (e taskController) FindByTaskName(c *gin.Context) {
 
 	tasks, total, err := repositories.TaskRepository.FindByTaskName(c, request.ProjectId, taskName, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading tasks by name: %w", err))
+		return
 	}
 
 	// Get aggregate stats for this task

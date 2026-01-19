@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	traceway "go.tracewayapp.com"
 )
 
 type taskDetailController struct{}
@@ -37,39 +38,41 @@ type TaskDetailResponse struct {
 	Messages    []TaskMessageInfo  `json:"messages"`
 }
 
-func (c taskDetailController) GetTaskDetail(ctx *gin.Context) {
-	taskId, err := uuid.Parse(ctx.Param("taskId"))
+func (t taskDetailController) GetTaskDetail(c *gin.Context) {
+	taskId, err := uuid.Parse(c.Param("taskId"))
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid taskId"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid taskId"})
 		return
 	}
 
 	var request TaskDetailRequest
-	if err := ctx.ShouldBindJSON(&request); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Get task
-	task, err := repositories.TaskRepository.FindById(ctx, request.ProjectId, taskId)
+	task, err := repositories.TaskRepository.FindById(c, request.ProjectId, taskId)
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
 		return
 	}
 
 	// Get segments (flat list ordered by start_time)
-	segments, err := repositories.SegmentRepository.FindByTransactionId(ctx, request.ProjectId, taskId)
+	segments, err := repositories.SegmentRepository.FindByTransactionId(c, request.ProjectId, taskId)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading segments: %w", err))
+		return
 	}
 
 	// Get all linked exceptions and messages
 	var exceptionInfo *TaskExceptionInfo
 	var messages []TaskMessageInfo
 
-	allExceptions, err := repositories.ExceptionStackTraceRepository.FindAllByTransactionId(ctx, request.ProjectId, taskId)
+	allExceptions, err := repositories.ExceptionStackTraceRepository.FindAllByTransactionId(c, request.ProjectId, taskId)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading allExceptions: %w", err))
+		return
 	}
 
 	for _, exc := range allExceptions {
@@ -96,7 +99,7 @@ func (c taskDetailController) GetTaskDetail(ctx *gin.Context) {
 		messages = []TaskMessageInfo{}
 	}
 
-	ctx.JSON(http.StatusOK, TaskDetailResponse{
+	c.JSON(http.StatusOK, TaskDetailResponse{
 		Task:        task,
 		Segments:    segments,
 		HasSegments: len(segments) > 0,

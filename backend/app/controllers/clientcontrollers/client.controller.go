@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	traceway "go.tracewayapp.com"
 )
 
 type clientController struct{}
@@ -76,33 +77,38 @@ func (e clientController) Report(c *gin.Context) {
 	if len(endpointsToInsert) > 0 {
 		err := repositories.EndpointRepository.InsertAsync(c, endpointsToInsert)
 		if err != nil {
-			panic(err)
+			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting endpointsToInsert: %w", err))
+			return
 		}
 	}
 
 	if len(tasksToInsert) > 0 {
 		err := repositories.TaskRepository.InsertAsync(c, tasksToInsert)
 		if err != nil {
-			panic(err)
+			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting tasksToInsert: %w", err))
+			return
 		}
 	}
 
 	err := repositories.ExceptionStackTraceRepository.InsertAsync(c, exceptionStackTraceToInsert)
 
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting exceptionStackTraceToInsert: %w", err))
+		return
 	}
 
 	err = repositories.MetricRecordRepository.InsertAsync(c, metricRecordsToInsert)
 
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting metricRecordsToInsert: %w", err))
+		return
 	}
 
 	err = repositories.SegmentRepository.InsertAsync(c, segmentsToInsert)
 
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting segmentsToInsert: %w", err))
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{})

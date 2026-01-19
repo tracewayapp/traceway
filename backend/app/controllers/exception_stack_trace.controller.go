@@ -3,12 +3,13 @@ package controllers
 import (
 	"backend/app/models"
 	"backend/app/repositories"
-	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	traceway "go.tracewayapp.com"
 )
 
 type exceptionStackTraceController struct{}
@@ -49,7 +50,8 @@ func (e exceptionStackTraceController) FindGrouppedExceptionStackTraces(c *gin.C
 
 	exceptions, total, err := repositories.ExceptionStackTraceRepository.FindGrouped(c, request.ProjectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.Search, request.SearchType, request.IncludeArchived)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading exceptions: %w", err))
+		return
 	}
 
 	// Get hourly trends for all returned exception hashes (last 24 hours)
@@ -65,7 +67,8 @@ func (e exceptionStackTraceController) FindGrouppedExceptionStackTraces(c *gin.C
 
 		trends, err := repositories.ExceptionStackTraceRepository.GetHourlyTrendForHashes(c, request.ProjectId, hashes, start24h, now)
 		if err != nil {
-			panic(err)
+			c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading trends: %w", err))
+			return
 		}
 
 		// Attach trends to each exception group
@@ -104,11 +107,13 @@ func (e exceptionStackTraceController) FindByHash(c *gin.Context) {
 
 	group, occurrences, total, err := repositories.ExceptionStackTraceRepository.FindByHash(c, request.ProjectId, exceptionHash, request.Pagination.Page, request.Pagination.PageSize)
 	if err != nil {
-		if errors.Is(err, repositories.ErrExceptionNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Exception not found"})
-			return
-		}
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading the group: %w", err))
+		return
+	}
+
+	if group == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Exception not found"})
+		return
 	}
 
 	c.JSON(http.StatusOK, ExceptionDetailResponse{
@@ -137,7 +142,8 @@ func (e exceptionStackTraceController) ArchiveExceptions(c *gin.Context) {
 
 	err := repositories.ExceptionStackTraceRepository.ArchiveByHashes(c, request.ProjectId, request.Hashes)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error archiving %s: %w", strings.Join(request.Hashes, ","), err))
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"archived": len(request.Hashes)})
@@ -157,7 +163,8 @@ func (e exceptionStackTraceController) UnarchiveExceptions(c *gin.Context) {
 
 	err := repositories.ExceptionStackTraceRepository.UnarchiveByHashes(c, request.ProjectId, request.Hashes)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error unarchiving %s: %w", strings.Join(request.Hashes, ","), err))
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"unarchived": len(request.Hashes)})
@@ -180,11 +187,13 @@ func (e exceptionStackTraceController) FindById(c *gin.Context) {
 
 	exception, err := repositories.ExceptionStackTraceRepository.FindById(c, request.ProjectId, exceptionId)
 	if err != nil {
-		if errors.Is(err, repositories.ErrExceptionNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Exception not found"})
-			return
-		}
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading the exception: %w", err))
+		return
+	}
+
+	if exception == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Exception not found"})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"exception": exception})

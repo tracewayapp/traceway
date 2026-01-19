@@ -5,15 +5,12 @@ import (
 	"backend/app/models"
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/google/uuid"
 )
-
-var ErrExceptionNotFound = errors.New("exception not found")
 
 type exceptionStackTraceRepository struct{}
 
@@ -156,7 +153,7 @@ func (e *exceptionStackTraceRepository) FindByHash(ctx context.Context, projectI
 		projectId, exceptionHash).Scan(&group.ExceptionHash, &group.StackTrace, &group.LastSeen, &group.FirstSeen, &group.Count)
 	if err != nil {
 		// ClickHouse returns error when no rows found in QueryRow
-		return nil, nil, 0, ErrExceptionNotFound
+		return nil, nil, 0, err
 	}
 
 	// Get individual occurrences with pagination (including scope)
@@ -405,7 +402,7 @@ func (e *exceptionStackTraceRepository) FindById(ctx context.Context, projectId 
 		&est.RecordedAt, &scopeJSON, &est.AppVersion, &est.ServerName, &isMessage)
 
 	if err != nil {
-		return nil, ErrExceptionNotFound
+		return nil, err
 	}
 
 	est.IsMessage = isMessage == 1

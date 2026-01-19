@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	traceway "go.tracewayapp.com"
 )
 
 type endpointController struct{}
@@ -46,7 +47,8 @@ func (e endpointController) FindAllEndpoints(c *gin.Context) {
 
 	endpoints, total, err := repositories.EndpointRepository.FindAll(c, request.ProjectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading endpoints: %w", err))
+		return
 	}
 
 	c.JSON(http.StatusOK, PaginatedResponse[models.Endpoint]{
@@ -69,7 +71,8 @@ func (e endpointController) FindGroupedByEndpoint(c *gin.Context) {
 
 	stats, total, err := repositories.EndpointRepository.FindGroupedByEndpoint(c, request.ProjectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading stats: %w", err))
+		return
 	}
 
 	c.JSON(http.StatusOK, PaginatedResponse[models.EndpointStats]{
@@ -104,7 +107,8 @@ func (e endpointController) FindByEndpoint(c *gin.Context) {
 
 	endpoints, total, err := repositories.EndpointRepository.FindByEndpoint(c, request.ProjectId, endpoint, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading endpoints: %w", err))
+		return
 	}
 
 	// Get aggregate stats for this endpoint

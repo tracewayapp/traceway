@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	traceway "go.tracewayapp.com"
 )
 
 type endpointDetailController struct{}
@@ -37,39 +38,41 @@ type EndpointDetailResponse struct {
 	Messages    []EndpointMessageInfo  `json:"messages"`
 }
 
-func (c endpointDetailController) GetEndpointDetail(ctx *gin.Context) {
-	endpointId, err := uuid.Parse(ctx.Param("endpointId"))
+func (t endpointDetailController) GetEndpointDetail(c *gin.Context) {
+	endpointId, err := uuid.Parse(c.Param("endpointId"))
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid endpointId"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid endpointId"})
 		return
 	}
 
 	var request EndpointDetailRequest
-	if err := ctx.ShouldBindJSON(&request); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Get endpoint
-	endpoint, err := repositories.EndpointRepository.FindById(ctx, request.ProjectId, endpointId)
+	endpoint, err := repositories.EndpointRepository.FindById(c, request.ProjectId, endpointId)
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "Endpoint not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Endpoint not found"})
 		return
 	}
 
 	// Get segments (flat list ordered by start_time)
-	segments, err := repositories.SegmentRepository.FindByTransactionId(ctx, request.ProjectId, endpointId)
+	segments, err := repositories.SegmentRepository.FindByTransactionId(c, request.ProjectId, endpointId)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading segments: %w", err))
+		return
 	}
 
 	// Get all linked exceptions and messages
 	var exceptionInfo *EndpointExceptionInfo
 	var messages []EndpointMessageInfo
 
-	allExceptions, err := repositories.ExceptionStackTraceRepository.FindAllByTransactionId(ctx, request.ProjectId, endpointId)
+	allExceptions, err := repositories.ExceptionStackTraceRepository.FindAllByTransactionId(c, request.ProjectId, endpointId)
 	if err != nil {
-		panic(err)
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading all exceptions: %w", err))
+		return
 	}
 
 	for _, exc := range allExceptions {
@@ -96,7 +99,7 @@ func (c endpointDetailController) GetEndpointDetail(ctx *gin.Context) {
 		messages = []EndpointMessageInfo{}
 	}
 
-	ctx.JSON(http.StatusOK, EndpointDetailResponse{
+	c.JSON(http.StatusOK, EndpointDetailResponse{
 		Endpoint:    endpoint,
 		Segments:    segments,
 		HasSegments: len(segments) > 0,

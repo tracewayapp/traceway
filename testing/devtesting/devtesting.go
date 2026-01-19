@@ -26,7 +26,7 @@ func (e *CustomError) Error() string {
 }
 
 func innerFunction() error {
-	return traceway.NewStackTraceError("error from inner function")
+	return traceway.NewStackTraceErrorf("error from inner function")
 }
 
 func middleFunction() error {
@@ -186,13 +186,13 @@ func testGin() {
 	})
 
 	router.GET("/test-cerror-stacktrace", func(ctx *gin.Context) {
-		err := traceway.NewStackTraceError("error with stack trace")
+		err := traceway.NewStackTraceErrorf("error with stack trace")
 		ctx.Error(err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "stacktrace error"})
 	})
 
 	router.GET("/test-cerror-stacktrace-wrapped", func(ctx *gin.Context) {
-		base := traceway.NewStackTraceError("base error with stack")
+		base := traceway.NewStackTraceErrorf("base error with stack")
 		wrapped := fmt.Errorf("wrapped with fmt: %w", base)
 		ctx.Error(wrapped)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "wrapped stacktrace error"})
@@ -200,7 +200,7 @@ func testGin() {
 
 	router.GET("/test-cerror-multiple", func(ctx *gin.Context) {
 		ctx.Error(errors.New("first error"))
-		ctx.Error(traceway.NewStackTraceError("second error with stack"))
+		ctx.Error(traceway.NewStackTraceErrorf("second error with stack"))
 		ctx.Error(fmt.Errorf("third error: %w", errors.New("nested")))
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "multiple errors"})
 	})

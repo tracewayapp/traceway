@@ -20,6 +20,7 @@
     import { resolve } from '$app/paths';
     import PageHeader from '$lib/components/issues/page-header.svelte';
     import D3StackedAreaChart from '$lib/components/dashboard/d3-stacked-area-chart.svelte';
+    import D3HorizontalBarChart from '$lib/components/dashboard/d3-horizontal-bar-chart.svelte';
     import {
         presetMinutes,
         getTimeRangeFromPreset,
@@ -159,7 +160,7 @@
         toTime = to.time;
         selectedPreset = preset;
         page = 1;
-        loadData(true);
+        loadData(false);
     }
 
     // Format count with k/m suffixes
@@ -178,7 +179,7 @@
         const diffHours = diffMs / (1000 * 60 * 60);
 
         if (diffHours <= 1) return 1; // 1 minute
-        if (diffHours <= 24) return 5; // 5 minutes
+        if (diffHours <= 6) return 5; // 5 minutes
         if (diffHours <= 24 * 7) return 60; // 1 hour
         return 240; // 4 hours
     }
@@ -275,10 +276,53 @@
         loadChartData();
     }
 
+    function handleChartRangeSelect(from: Date, to: Date) {
+        selectedPreset = null;
+        fromDate = new CalendarDate(from.getFullYear(), from.getMonth() + 1, from.getDate());
+        fromTime = `${String(from.getHours()).padStart(2, '0')}:${String(from.getMinutes()).padStart(2, '0')}`;
+        toDate = new CalendarDate(to.getFullYear(), to.getMonth() + 1, to.getDate());
+        toTime = `${String(to.getHours()).padStart(2, '0')}:${String(to.getMinutes()).padStart(2, '0')}`;
+        page = 1;
+        loadData(true);
+    }
+
     const selectedMetricLabel = $derived(metricOptions.find(o => o.value === selectedMetric)?.label ?? 'Total time');
 
-    // Get the unit for the selected metric
-    const chartUnit = $derived(selectedMetric === 'total_time' ? 'ms' : 'ms');
+    // Format total time (input is milliseconds, not nanoseconds)
+    function formatTotalTime(ms: number): string {
+        if (ms >= 3600000) { // >= 1 hour
+            return `${(ms / 3600000).toFixed(1)}h`;
+        } else if (ms >= 60000) { // >= 1 minute
+            return `${(ms / 60000).toFixed(1)}m`;
+        } else if (ms >= 1000) { // >= 1 second
+            return `${(ms / 1000).toFixed(1)}s`;
+        } else if (ms < 1) {
+            return `${(ms * 1000).toFixed(0)}µs`;
+        }
+        return `${Math.round(ms)}ms`;
+    }
+
+    // Check if we should use bar chart (for percentile metrics)
+    const useBarChart = $derived(selectedMetric !== 'total_time');
+
+    // Get top 8 endpoints for bar chart based on selected metric
+    // Sort by the selected metric to show the worst (slowest) endpoints first
+    const barChartData = $derived.by(() => {
+        if (!useBarChart || endpoints.length === 0) return [];
+
+        const metricKey = selectedMetric === 'p50' ? 'p50Duration'
+            : selectedMetric === 'p95' ? 'p95Duration'
+            : 'p99Duration';
+
+        return [...endpoints]
+            .sort((a, b) => b[metricKey] - a[metricKey])
+            .slice(0, 8)
+            .map(ep => ({
+                endpoint: ep.endpoint,
+                value: ep[metricKey]
+            }));
+    });
+
 
     onMount(() => {
         // Add popstate listener for back/forward navigation
@@ -317,11 +361,11 @@
     <Card.Root class="pt-2">
         <Card.Header class="flex flex-row items-center justify-between space-y-0 border-b [.border-b]:pb-2 pl-3">
             <Card.Title class="text-base font-medium flex items-center gap-2">
-                <ChartLine class="h-3.5 w-3.5" />
+                <ChartLine class="h-3.5 w-3.5 text-muted-foreground" />
                 <DropdownMenu.Root>
-                    <DropdownMenu.Trigger class="flex items-center text-sm gap-0.5 font-medium">
+                    <DropdownMenu.Trigger class="flex items-center text-sm gap-0.5 font-[400] text-muted-foreground">
                         {selectedMetricLabel}
-                        <ChevronDown class="h-3 w-3" />
+                        <ChevronDown class="h-3 w-3 text-muted-foreground" />
                     </DropdownMenu.Trigger>
                     <DropdownMenu.Content align="start" class="w-[200px]">
                         {#each metricOptions as option}
@@ -340,15 +384,27 @@
             </Card.Title>
         </Card.Header>
         <Card.Content>
-            {#if chartLoading}
+            {#if chartLoading && !useBarChart}
                 <div class="flex justify-center items-center h-[220px]">
                     <LoadingCircle size="xlg" />
                 </div>
+            {:else if useBarChart}
+                {#if loading}
+                    <div class="flex justify-center items-center h-[220px]">
+                        <LoadingCircle size="xlg" />
+                    </div>
+                {:else}
+                    <D3HorizontalBarChart
+                        data={barChartData}
+                        formatValue={formatDuration}
+                    />
+                {/if}
             {:else}
                 <D3StackedAreaChart
                     endpoints={chartEndpoints}
                     series={chartSeries}
-                    unit={chartUnit}
+                    formatValue={formatTotalTime}
+                    onRangeSelect={handleChartRangeSelect}
                 />
             {/if}
         </Card.Content>

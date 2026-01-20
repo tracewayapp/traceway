@@ -22,7 +22,8 @@
 		height = 220,
 		padding = { top: 10, right: 4, bottom: 20, left: 55 },
 		unit = 'ms',
-		formatValue
+		formatValue,
+		onRangeSelect
 	} = $props<{
 		endpoints: string[];
 		series: DataPoint[];
@@ -30,6 +31,7 @@
 		padding?: { top: number; right: number; bottom: number; left: number };
 		unit?: string;
 		formatValue?: (value: number) => string;
+		onRangeSelect?: (from: Date, to: Date) => void;
 	}>();
 
 	const tz = $derived(getTimezone());
@@ -50,6 +52,11 @@
 	// Hover state
 	let isHovering = $state(false);
 	let mouseX = $state(0);
+
+	// Drag selection state
+	let isDragging = $state(false);
+	let dragStartX = $state(0);
+	let dragEndX = $state(0);
 
 	// Observe container width
 	$effect(() => {
@@ -197,6 +204,13 @@
 		return new Date(xMin().getTime() + timeDiff * percentage);
 	}
 
+	// Selection region computed values
+	const selectionLeft = $derived(Math.max(padding.left, Math.min(dragStartX, dragEndX)));
+	const selectionRight = $derived(Math.min(width - padding.right, Math.max(dragStartX, dragEndX)));
+	const selectionWidth = $derived(selectionRight - selectionLeft);
+	const selectionStartTime = $derived(getTimeAtPosition(selectionLeft));
+	const selectionEndTime = $derived(getTimeAtPosition(selectionLeft + selectionWidth));
+
 	// Find the closest data point to a given time
 	function getDataAtTime(time: Date): StackedData | null {
 		const data = stackedData();
@@ -244,6 +258,10 @@
 		if (!containerRef) return;
 		const rect = containerRef.getBoundingClientRect();
 		mouseX = e.clientX - rect.left;
+
+		if (isDragging) {
+			dragEndX = mouseX;
+		}
 	}
 
 	function handleMouseEnter() {
@@ -252,7 +270,48 @@
 
 	function handleMouseLeave() {
 		isHovering = false;
+		if (isDragging) isDragging = false;
 	}
+
+	function handleMouseDown(e: MouseEvent) {
+		if (!containerRef || e.button !== 0) return;
+		const rect = containerRef.getBoundingClientRect();
+		const x = e.clientX - rect.left;
+
+		if (x < padding.left || x > rect.width - padding.right) return;
+
+		isDragging = true;
+		dragStartX = x;
+		dragEndX = x;
+		e.preventDefault();
+	}
+
+	function handleMouseUp() {
+		if (!isDragging) return;
+
+		isDragging = false;
+
+		if (selectionWidth > 10 && onRangeSelect) {
+			const startTime = getTimeAtPosition(Math.min(dragStartX, dragEndX));
+			const endTime = getTimeAtPosition(Math.max(dragStartX, dragEndX));
+			onRangeSelect(startTime, endTime);
+		}
+	}
+
+	function handleKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape' && isDragging) {
+			isDragging = false;
+			dragStartX = 0;
+			dragEndX = 0;
+		}
+	}
+
+	$effect(() => {
+		if (isDragging) {
+			window.addEventListener('keydown', handleKeydown);
+			return () => window.removeEventListener('keydown', handleKeydown);
+		}
+	});
 
 	function formatTime(date: Date | null): string {
 		if (!date) return '';
@@ -277,12 +336,14 @@
 	<div
 		bind:this={containerRef}
 		class="relative select-none w-full"
-		style="height: {height}px; cursor: {isInChartArea() ? 'crosshair' : 'default'};"
+		style="height: {height}px; cursor: {isDragging ? 'col-resize' : (isInChartArea() ? 'crosshair' : 'default')};"
 		onmouseenter={handleMouseEnter}
 		onmouseleave={handleMouseLeave}
 		onmousemove={handleMouseMove}
+		onmousedown={handleMouseDown}
+		onmouseup={handleMouseUp}
 		role="application"
-		aria-label="Stacked area chart"
+		aria-label="Stacked area chart with drag-to-zoom"
 	>
 		{#if hasData && chartWidth > 0}
 			<svg {width} {height}>
@@ -356,8 +417,23 @@
 			</div>
 		{/if}
 
+		<!-- Drag selection overlay -->
+		{#if isDragging && selectionWidth > 0}
+			<div
+				class="absolute top-0 bottom-0 bg-primary/20 border-x border-primary/40 pointer-events-none"
+				style="left: {selectionLeft}px; width: {selectionWidth}px;"
+			>
+				<div class="absolute -top-5 left-0 -translate-x-full text-[9px] font-medium text-primary whitespace-nowrap">
+					{formatTime(selectionStartTime)}
+				</div>
+				<div class="absolute -top-5 right-0 translate-x-full text-[9px] font-medium text-primary whitespace-nowrap">
+					{formatTime(selectionEndTime)}
+				</div>
+			</div>
+		{/if}
+
 		<!-- Hover tooltip -->
-		{#if isHovering && isInChartArea() && calculatedData()}
+		{#if isHovering && !isDragging && isInChartArea() && calculatedData()}
 			{@const clampedX = Math.max(padding.left, Math.min(mouseX, width - padding.right))}
 			{@const data = calculatedData()}
 
@@ -380,7 +456,7 @@
 								<div class="flex items-center gap-1.5">
 									<span class="h-2 w-2 rounded-full flex-shrink-0" style="background-color: {getEndpointColor(endpoint)};"></span>
 									<span class="truncate max-w-[200px]" title={endpoint}>{truncateEndpoint(endpoint, 25)}</span>
-									<span class="ml-auto tabular-nums">{formatDisplayValue(value)}{unit ? ` ${unit}` : ''}</span>
+									<span class="ml-auto tabular-nums">{formatDisplayValue(value)}{!formatValue && unit ? ` ${unit}` : ''}</span>
 								</div>
 							{/if}
 						{/each}

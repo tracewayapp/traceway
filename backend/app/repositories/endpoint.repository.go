@@ -117,8 +117,8 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 		sortDir = "ASC"
 	}
 
-	// Apdex thresholds: Good <= 500ms, Tolerable <= 2000ms, Bad > 2000ms or error
-	// Duration is in nanoseconds: 500ms = 500,000,000ns, 2000ms = 2,000,000,000ns
+	// Apdex thresholds: Good <= 750ms, Tolerable <= 1500ms, Bad > 1500ms or error
+	// Duration is in nanoseconds: 750ms = 750,000,000ns, 1500ms = 1,500,000,000ns
 	query := `SELECT
 		endpoint,
 		count() as count,
@@ -131,17 +131,17 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 			-- Base score: 1 - apdex
 			if(count() > 0,
 				1.0 - (
-					(countIf(duration <= 500000000 AND status_code < 500) +
-					 countIf(duration > 500000000 AND duration <= 2000000000 AND status_code < 500) * 0.5)
+					(countIf(duration <= 750000000 AND status_code < 500) +
+					 countIf(duration > 750000000 AND duration <= 1500000000 AND status_code < 500) * 0.5)
 					/ count()
 				),
 				0.0
 			),
 			-- Floor based on bad percentage
 			multiIf(
-				countIf(duration > 2000000000 OR status_code >= 500) / count() > 0.33, 0.75,
-				countIf(duration > 2000000000 OR status_code >= 500) / count() > 0.20, 0.50,
-				countIf(duration > 2000000000 OR status_code >= 500) / count() > 0.10, 0.25,
+				countIf(duration > 1500000000 OR status_code >= 500) / count() > 0.33, 0.75,
+				countIf(duration > 1500000000 OR status_code >= 500) / count() > 0.20, 0.50,
+				countIf(duration > 1500000000 OR status_code >= 500) / count() > 0.10, 0.25,
 				0.0
 			)
 		) as impact
@@ -426,8 +426,8 @@ func (e *endpointRepository) ErrorRateByInterval(ctx context.Context, projectId 
 // FindWorstEndpoints returns endpoints ordered by Apdex-based impact score
 // Higher score = worse performance (1 - apdex with floor based on bad request percentage)
 func (e *endpointRepository) FindWorstEndpoints(ctx context.Context, projectId uuid.UUID, start, end time.Time, limit int) ([]models.EndpointStats, error) {
-	// Apdex thresholds: Good <= 500ms, Tolerable <= 2000ms, Bad > 2000ms or error
-	// Duration is in nanoseconds: 500ms = 500,000,000ns, 2000ms = 2,000,000,000ns
+	// Apdex thresholds: Good <= 750ms, Tolerable <= 1500ms, Bad > 1500ms or error
+	// Duration is in nanoseconds: 750ms = 750,000,000ns, 1500ms = 1,500,000,000ns
 	query := `SELECT
 		endpoint,
 		count() as count,
@@ -439,17 +439,17 @@ func (e *endpointRepository) FindWorstEndpoints(ctx context.Context, projectId u
 			-- Base score: 1 - apdex
 			if(count() > 0,
 				1.0 - (
-					(countIf(duration <= 500000000 AND status_code < 500) +
-					 countIf(duration > 500000000 AND duration <= 2000000000 AND status_code < 500) * 0.5)
+					(countIf(duration <= 750000000 AND status_code < 500) +
+					 countIf(duration > 750000000 AND duration <= 1500000000 AND status_code < 500) * 0.5)
 					/ count()
 				),
 				0.0
 			),
 			-- Floor based on bad percentage
 			multiIf(
-				countIf(duration > 2000000000 OR status_code >= 500) / count() > 0.33, 0.75,
-				countIf(duration > 2000000000 OR status_code >= 500) / count() > 0.20, 0.50,
-				countIf(duration > 2000000000 OR status_code >= 500) / count() > 0.10, 0.25,
+				countIf(duration > 1500000000 OR status_code >= 500) / count() > 0.33, 0.75,
+				countIf(duration > 1500000000 OR status_code >= 500) / count() > 0.20, 0.50,
+				countIf(duration > 1500000000 OR status_code >= 500) / count() > 0.10, 0.25,
 				0.0
 			)
 		) as impact

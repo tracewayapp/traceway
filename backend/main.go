@@ -22,12 +22,10 @@ import (
 )
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		// we don't actually care for the .env file existing
-		// because in production we can just deploy with container variables
-		panic(fmt.Errorf("error loading the .env file: %w", err))
-	}
+	// we don't actually care for the .env file existing
+	// because in production we can just deploy with container variables
+	// so the error is ignored
+	godotenv.Load()
 
 	appToken := os.Getenv("APP_TOKEN")
 	if appToken == "" {

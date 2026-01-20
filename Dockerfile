@@ -25,7 +25,7 @@ RUN npm run build
 # ==============================================================================
 # Stage 2: Build Backend with embedded frontend
 # ==============================================================================
-FROM golang:1.24-alpine AS backend-builder
+FROM golang:1.25-alpine AS backend-builder
 
 WORKDIR /app/backend
 
@@ -38,8 +38,8 @@ COPY backend/ ./
 # Copy built frontend to static/dist for embedding
 COPY --from=frontend-builder /app/frontend/build ./static/dist/
 
-# Fix go version and download deps
-RUN go mod edit -go=1.24 && go mod download
+# Download dependencies
+RUN go mod download
 
 # Build with embedded static files
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /traceway .

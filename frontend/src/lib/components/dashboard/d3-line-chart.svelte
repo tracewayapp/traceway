@@ -415,7 +415,13 @@
 	aria-label="Chart with drag-to-zoom"
 >
 	{#if hasData && chartWidth > 0}
+		{@const clipId = `chart-clip-${Math.random().toString(36).slice(2, 9)}`}
 		<svg {width} {height}>
+			<defs>
+				<clipPath id={clipId}>
+					<rect x={0} y={0} width={chartWidth} height={chartHeight} />
+				</clipPath>
+			</defs>
 			<g transform="translate({padding.left}, {padding.top})">
 				<!-- Y axis grid lines -->
 				{#each yTicks() as tick}
@@ -465,34 +471,36 @@
 				/>
 
 				<!-- Lines for each series (with gap detection) -->
-				{#each series as s}
-					{#if s.data.length > 0}
-						{@const segments = getLineSegments(s.data)}
-						{@const isolated = getIsolatedPoints(s.data)}
+				<g clip-path="url(#{clipId})">
+					{#each series as s}
+						{#if s.data.length > 0}
+							{@const segments = getLineSegments(s.data)}
+							{@const isolated = getIsolatedPoints(s.data)}
 
-						<!-- Draw line segments (only segments with 2+ points) -->
-						{#each segments as segment}
-							{#if segment.length > 1}
-								<path
-									d={generatePath(segment)}
-									fill="none"
-									stroke={s.color}
-									stroke-width="1.5"
+							<!-- Draw line segments (only segments with 2+ points) -->
+							{#each segments as segment}
+								{#if segment.length > 1}
+									<path
+										d={generatePath(segment)}
+										fill="none"
+										stroke={s.color}
+										stroke-width="1.5"
+									/>
+								{/if}
+							{/each}
+
+							<!-- Draw isolated points as dots -->
+							{#each isolated as point}
+								<circle
+									cx={xScale(point.timestamp)}
+									cy={yScale(point.value)}
+									r="3"
+									fill={s.color}
 								/>
-							{/if}
-						{/each}
-
-						<!-- Draw isolated points as dots -->
-						{#each isolated as point}
-							<circle
-								cx={xScale(point.timestamp)}
-								cy={yScale(point.value)}
-								r="3"
-								fill={s.color}
-							/>
-						{/each}
-					{/if}
-				{/each}
+							{/each}
+						{/if}
+					{/each}
+				</g>
 			</g>
 		</svg>
 	{:else}

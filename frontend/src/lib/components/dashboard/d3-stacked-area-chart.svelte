@@ -446,10 +446,10 @@
 			<!-- Value tooltip -->
 			{#if data}
 				<div
-					class="absolute top-0 -translate-x-1/2 -translate-y-full pointer-events-none z-10"
-					style="left: {clampedX}px;"
+					class="absolute -translate-x-1/2 -translate-y-full pointer-events-none z-10"
+					style="left: {clampedX}px; top: 10px;"
 				>
-					<div class="bg-foreground text-background rounded px-2 py-1.5 text-xs font-medium whitespace-nowrap shadow-lg mb-1 flex flex-col gap-0.5">
+					<div class="bg-background text-foreground border border-border rounded px-2 py-1.5 text-xs font-medium whitespace-nowrap mb-1 flex flex-col gap-0.5">
 						{#each endpoints as endpoint}
 							{@const value = getNumericValue(data, endpoint)}
 							{#if value > 0}

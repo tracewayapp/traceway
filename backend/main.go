@@ -34,7 +34,7 @@ func main() {
 		panic("APP_TOKEN environment variable is not set")
 	}
 
-	err = chdb.Init()
+	err := chdb.Init()
 	if err != nil {
 		// if clickhouse could not be connected to there is no reason to start the backend
 		// the panic here is valid

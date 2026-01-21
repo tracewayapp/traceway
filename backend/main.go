@@ -8,6 +8,7 @@ import (
 	"backend/app/migrations"
 	"backend/app/models"
 	"backend/app/pgdb"
+	"backend/app/services"
 	"backend/static"
 	"context"
 	"fmt"
@@ -29,11 +30,9 @@ func main() {
 	// so the error is ignored
 	godotenv.Load()
 
-	appToken := os.Getenv("APP_TOKEN")
-	if appToken == "" {
-		// without the api token we must not start
-		// this will be addressed when we add users
-		panic("APP_TOKEN environment variable is not set")
+	// Initialize JWT service
+	if err := services.InitJWT(); err != nil {
+		panic(fmt.Errorf("failed to initialize JWT: %w", err))
 	}
 
 	// Initialize PostgreSQL first (before migrations)
@@ -67,6 +66,9 @@ func main() {
 	}
 
 	middleware.InitUseClientAuth()
+	middleware.InitUseAppAuth()
+	middleware.InitRequireWriteAccess()
+	middleware.InitRequireProjectAccess()
 
 	router := gin.Default()
 

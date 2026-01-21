@@ -15,47 +15,52 @@ func getBackendUrl() string {
 }
 
 type Project struct {
-	Id        uuid.UUID `json:"id"`
-	Name      string    `json:"name"`
-	Token     string    `json:"token"`
-	Framework string    `json:"framework"`
-	CreatedAt time.Time `json:"createdAt"`
+	Id             uuid.UUID `json:"id"`
+	Name           string    `json:"name"`
+	Token          string    `json:"token"`
+	Framework      string    `json:"framework"`
+	OrganizationId *int      `json:"organizationId"`
+	CreatedAt      time.Time `json:"createdAt"`
 }
 
 type ProjectResponse struct {
-	Id         uuid.UUID `json:"id"`
-	Name       string    `json:"name"`
-	Framework  string    `json:"framework"`
-	CreatedAt  time.Time `json:"createdAt"`
-	BackendUrl string    `json:"backendUrl"`
+	Id             uuid.UUID `json:"id"`
+	Name           string    `json:"name"`
+	Framework      string    `json:"framework"`
+	OrganizationId *int      `json:"organizationId"`
+	CreatedAt      time.Time `json:"createdAt"`
+	BackendUrl     string    `json:"backendUrl"`
 }
 
 type ProjectWithToken struct {
-	Id         uuid.UUID `json:"id"`
-	Name       string    `json:"name"`
-	Token      string    `json:"token"`
-	Framework  string    `json:"framework"`
-	CreatedAt  time.Time `json:"createdAt"`
-	BackendUrl string    `json:"backendUrl"`
+	Id             uuid.UUID `json:"id"`
+	Name           string    `json:"name"`
+	Token          string    `json:"token"`
+	Framework      string    `json:"framework"`
+	OrganizationId *int      `json:"organizationId"`
+	CreatedAt      time.Time `json:"createdAt"`
+	BackendUrl     string    `json:"backendUrl"`
 }
 
 func (p *Project) ToResponse() ProjectResponse {
 	return ProjectResponse{
-		Id:         p.Id,
-		Name:       p.Name,
-		Framework:  p.Framework,
-		CreatedAt:  p.CreatedAt,
-		BackendUrl: getBackendUrl(),
+		Id:             p.Id,
+		Name:           p.Name,
+		Framework:      p.Framework,
+		OrganizationId: p.OrganizationId,
+		CreatedAt:      p.CreatedAt,
+		BackendUrl:     getBackendUrl(),
 	}
 }
 
 func (p *Project) ToWithToken() ProjectWithToken {
 	return ProjectWithToken{
-		Id:         p.Id,
-		Name:       p.Name,
-		Token:      p.Token,
-		Framework:  p.Framework,
-		CreatedAt:  p.CreatedAt,
-		BackendUrl: getBackendUrl(),
+		Id:             p.Id,
+		Name:           p.Name,
+		Token:          p.Token,
+		Framework:      p.Framework,
+		OrganizationId: p.OrganizationId,
+		CreatedAt:      p.CreatedAt,
+		BackendUrl:     getBackendUrl(),
 	}
 }

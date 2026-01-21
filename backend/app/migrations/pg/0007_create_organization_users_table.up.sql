@@ -1,0 +1,1 @@
+CREATE TABLE organization_users (id SERIAL PRIMARY KEY, user_id INT NOT NULL REFERENCES users(id), organization_id INT NOT NULL REFERENCES organizations(id), role TEXT NOT NULL CHECK (role IN ('owner','admin','user','readonly')), created_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(user_id, organization_id))

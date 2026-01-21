@@ -1,7 +1,8 @@
 import { clearNavDepth } from '$lib/utils/back-navigation';
+import { userState } from './user.svelte';
 
 class AuthState {
-    token = $state<string | null>(localStorage.getItem('APP_TOKEN'));
+    token = $state<string | null>(localStorage.getItem('AUTH_TOKEN'));
 
     isAuthenticated = $derived(!!this.token);
 
@@ -9,9 +10,9 @@ class AuthState {
         $effect.root(() => {
             $effect(() => {
                 if (this.token) {
-                    localStorage.setItem('APP_TOKEN', this.token);
+                    localStorage.setItem('AUTH_TOKEN', this.token);
                 } else {
-                    localStorage.removeItem('APP_TOKEN');
+                    localStorage.removeItem('AUTH_TOKEN');
                 }
             });
         });
@@ -23,6 +24,7 @@ class AuthState {
 
     logout() {
         this.token = null;
+        userState.clear();
         clearNavDepth();
     }
 }

@@ -14,7 +14,7 @@ async function request(method: string, endpoint: string, data?: unknown, options
     };
 
     if (currentToken) {
-        headers['Authorization'] = `${currentToken}`;
+        headers['Authorization'] = `Bearer ${currentToken}`;
     }
 
     const config: RequestInit = {
@@ -22,18 +22,13 @@ async function request(method: string, endpoint: string, data?: unknown, options
         headers,
     };
 
-    // For POST/PUT requests, add projectId to the body if provided
-    if (data && options?.projectId && !options?.skipProjectId) {
-        data = { ...data as object, projectId: options.projectId };
-    }
-
     if (data) {
         config.body = JSON.stringify(data);
     }
 
-    // For GET requests, add projectId as query parameter if provided
+    // Add projectId as query parameter if provided
     let url = `${BASE_URL}${endpoint}`;
-    if (method === 'GET' && options?.projectId && !options?.skipProjectId) {
+    if (options?.projectId && !options?.skipProjectId) {
         const separator = endpoint.includes('?') ? '&' : '?';
         url = `${url}${separator}projectId=${options.projectId}`;
     }

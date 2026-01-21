@@ -86,9 +86,30 @@ func (p *projectRepository) FindById(tx *sql.Tx, id uuid.UUID) (*models.Project,
 - Tables must have an `id` column
 - Always pass `*sql.Tx` from `ExecuteTransaction` to lit functions
 
+#### Handling "Not Found" Cases
+**IMPORTANT:** When using lit/PostgreSQL, do NOT check for `sql.ErrNoRows`. The lit library returns `nil` when no record is found, not an error. Always check for `nil` instead:
+
+```go
+// CORRECT - check for nil
+user, err := repositories.UserRepository.FindByEmail(tx, email)
+if err != nil {
+    return nil, err  // actual database error
+}
+if user == nil {
+    // record not found - handle accordingly
+    return nil, errors.New("user not found")
+}
+
+// WRONG - do not use sql.ErrNoRows with lit
+user, err := repositories.UserRepository.FindByEmail(tx, email)
+if err == sql.ErrNoRows {  // This won't work with lit!
+    // ...
+}
+```
+
 ### Environment Variables (Backend)
 ```
-APP_TOKEN=<dashboard auth token>
+JWT_SECRET=<min 32 char secret for JWT signing>
 CLICKHOUSE_SERVER=localhost:9000
 CLICKHOUSE_DATABASE=traceway
 CLICKHOUSE_USERNAME=default
@@ -115,8 +136,8 @@ Dashboard ← [SvelteKit Frontend] ← JSON API ← Gin Controllers
 
 ### Authentication
 Two-tier system:
-1. **Client Auth**: Project bearer tokens (SDK telemetry via `Authorization: Bearer <token>`)
-2. **App Auth**: `APP_TOKEN` env var (dashboard authentication)
+1. **Client Auth**: Project bearer tokens (SDK telemetry via `Authorization: Bearer <project_token>`)
+2. **App Auth**: JWT-based user authentication (dashboard via `Authorization: Bearer <jwt_token>`)
 
 ---
 
@@ -363,7 +384,20 @@ func (c *ReportController) Report(ctx *gin.Context) {
 #### Tables (PostgreSQL)
 | Table | Purpose |
 |-------|---------|
-| `projects` | Multi-tenant project config + tokens |
+| `users` | User accounts with email/password |
+| `organizations` | Multi-tenant organizations |
+| `organization_users` | Junction table linking users to organizations with roles |
+| `projects` | Project config + tokens, linked to organizations |
+
+#### Organization Roles
+| Role | Description |
+|------|-------------|
+| `owner` | Full access, can manage organization |
+| `admin` | Full access to projects |
+| `user` | Standard access to projects |
+| `readonly` | Read-only access, cannot create projects or archive exceptions |
+
+The `RequireWriteAccess` middleware blocks write operations for users with `readonly` role.
 
 #### Key Columns - transactions
 ```sql

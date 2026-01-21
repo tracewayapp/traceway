@@ -3,14 +3,16 @@
     import { Button } from "$lib/components/ui/button";
     import { Input } from "$lib/components/ui/input";
     import { Label } from "$lib/components/ui/label";
-    import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "$lib/components/ui/card";
+    import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "$lib/components/ui/card";
     import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
     import { CircleAlert } from "@lucide/svelte";
     import { authState } from '$lib/state/auth.svelte';
+    import { userState } from '$lib/state/user.svelte';
     import { projectsState } from '$lib/state/projects.svelte';
     import { themeState } from '$lib/state/theme.svelte';
 
-    let appToken = $state('');
+    let email = $state('');
+    let password = $state('');
     let error = $state('');
     let loading = $state(false);
 
@@ -18,28 +20,31 @@
         loading = true;
         error = '';
         try {
-            // Validate against backend
             const response = await fetch('/api/login', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ token: appToken })
+                body: JSON.stringify({ email, password })
             });
 
             if (!response.ok) {
-                throw new Error('Invalid token');
+                const data = await response.json();
+                throw new Error(data.error || 'Invalid credentials');
             }
 
-            // If successful, store token (store handles localStorage)
-            authState.setToken(appToken);
+            const data = await response.json();
+
+            // Store token and user
+            authState.setToken(data.token);
+            userState.setUser(data.user);
 
             // Load projects after successful login
             await projectsState.loadProjects();
 
             goto('/');
         } catch (e) {
-            error = 'Invalid APP_TOKEN';
+            error = e instanceof Error ? e.message : 'Invalid email or password';
         } finally {
             loading = false;
         }
@@ -69,21 +74,28 @@
                     </AlertDescription>
                 </Alert>
             {/if}
-            <div class="grid w-full items-center gap-4">
+            <form onsubmit={(e) => { e.preventDefault(); handleLogin(); }} class="grid w-full items-center gap-4">
                 <div class="flex flex-col space-y-1.5">
-                    <Label for="token">Token</Label>
-                    <Input id="token" bind:value={appToken} placeholder="APP_TOKEN" />
+                    <Label for="email">Email</Label>
+                    <Input id="email" type="email" bind:value={email} placeholder="you@example.com" required />
                 </div>
-            </div>
+                <div class="flex flex-col space-y-1.5">
+                    <Label for="password">Password</Label>
+                    <Input id="password" type="password" bind:value={password} placeholder="Password" required />
+                </div>
+                <Button type="submit" disabled={loading} class="w-full">
+                    {#if loading}
+                        Logging in...
+                    {:else}
+                        Login
+                    {/if}
+                </Button>
+            </form>
         </CardContent>
-        <CardFooter class="flex flex-col justify-between gap-2">
-            <Button onclick={handleLogin} disabled={loading} class="w-full">
-                {#if loading}
-                    Logging in...
-                {:else}
-                    Login
-                {/if}
-            </Button>
+        <CardFooter class="flex flex-col justify-center">
+            <p class="text-sm text-muted-foreground">
+                Don't have an account? <a href="/register" class="text-primary hover:underline">Create account</a>
+            </p>
         </CardFooter>
     </Card>
 </div>

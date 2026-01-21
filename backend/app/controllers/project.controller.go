@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"backend/app/cache"
+	"backend/app/middleware"
 	"backend/app/models"
 	"backend/app/pgdb"
 	"backend/app/repositories"
@@ -35,9 +36,17 @@ type CreateProjectRequest struct {
 	Framework string `json:"framework" binding:"required"`
 }
 
-// ListProjects returns all projects without tokens
+// ListProjects returns projects accessible by the authenticated user
 func (p projectController) ListProjects(c *gin.Context) {
-	projects := cache.ProjectCache.GetAll()
+	userId := middleware.GetUserId(c)
+
+	projects, err := pgdb.ExecuteTransaction(func(tx *sql.Tx) ([]*models.Project, error) {
+		return repositories.ProjectRepository.FindByUserId(tx, userId)
+	})
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error fetching projects: %w", err))
+		return
+	}
 
 	// Convert to response format (without tokens)
 	response := make([]models.ProjectResponse, len(projects))

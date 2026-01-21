@@ -6,6 +6,8 @@ import (
 	"backend/app/controllers"
 	"backend/app/middleware"
 	"backend/app/migrations"
+	"backend/app/models"
+	"backend/app/pgdb"
 	"backend/static"
 	"context"
 	"fmt"
@@ -34,13 +36,24 @@ func main() {
 		panic("APP_TOKEN environment variable is not set")
 	}
 
-	err := chdb.Init()
+	// Initialize PostgreSQL first (before migrations)
+	err := pgdb.Init()
+	if err != nil {
+		panic(fmt.Errorf("error connecting to postgres: %w", err))
+	}
+
+	// Initialize ClickHouse
+	err = chdb.Init()
 	if err != nil {
 		// if clickhouse could not be connected to there is no reason to start the backend
 		// the panic here is valid
 		panic(fmt.Errorf("error connecting to chdb: %w", err))
 	}
 
+	// we init models, so that they're registered with lit
+	models.Init()
+
+	// Run migrations (both databases)
 	err = migrations.Run()
 	if err != nil {
 		// if migrations fail - that means the backend could not be started - and thus we have to panic and stop the backend

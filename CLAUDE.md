@@ -24,8 +24,67 @@ Traceway is an error tracking and monitoring platform consisting of:
 
 ### Tech Stack
 - **Frontend**: SvelteKit 2.49, Svelte 5.45, Tailwind CSS v4, shadcn-svelte, Vite 7
-- **Backend**: Go 1.25, Gin 1.11, ClickHouse
+- **Backend**: Go 1.25, Gin 1.11, ClickHouse, PostgreSQL
 - **Client SDK**: Go 1.25, Gin middleware support
+
+### go-lightning Library (PostgreSQL ORM)
+- **Import**: `github.com/tracewayapp/go-lightning/lit`
+- **Purpose**: Lightweight generic CRUD operations for PostgreSQL
+
+#### Model Registration (required before use)
+```go
+lit.RegisterModel[User](lit.PostgreSQL)
+```
+
+#### Naming Conventions
+- Fields: CamelCase → snake_case (`FirstName` → `first_name`)
+- Consecutive uppercase: stay together (`HTTPCode` → `http_code`)
+- Tables: pluralize + snake_case (`User` → `users`)
+- Override via struct tag: `lit:"custom_name"`
+
+#### Core CRUD Operations
+All lit functions take `*sql.Tx` as the first argument for transactional consistency:
+
+| Function | Description |
+|----------|-------------|
+| `lit.Insert[T](tx, &entity)` | Insert, returns auto-generated int ID |
+| `lit.InsertUuid[T](tx, &entity)` | Insert with auto-generated UUID |
+| `lit.InsertExistingUuid[T](tx, &entity)` | Insert with pre-set UUID |
+| `lit.Select[T](tx, query, args...)` | Retrieve multiple records (returns `[]*T`) |
+| `lit.SelectSingle[T](tx, query, args...)` | Retrieve one record (returns `*T`) |
+| `lit.Update[T](tx, &entity, "WHERE id = $1", id)` | Update (WHERE required) |
+| `lit.Delete(tx, "DELETE FROM table WHERE id = $1", id)` | Delete records |
+
+#### Transaction Helper (`pgdb.ExecuteTransaction`)
+All PostgreSQL operations should use `ExecuteTransaction` for automatic commit/rollback:
+
+```go
+// ExecuteTransaction[T] wraps a function in a transaction
+// - Commits on success, rolls back on error or panic
+// - Returns (T, error) directly - no pointer wrapping
+
+project, err := pgdb.ExecuteTransaction(func(tx *sql.Tx) (*models.Project, error) {
+    // All repository calls receive the transaction
+    return repositories.ProjectRepository.FindById(tx, id)
+})
+```
+
+#### Repository Pattern
+Repositories accept `*sql.Tx` to participate in transactions:
+```go
+func (p *projectRepository) FindById(tx *sql.Tx, id uuid.UUID) (*models.Project, error) {
+    return lit.SelectSingle[models.Project](
+        tx,
+        "SELECT id, name, token, framework, created_at FROM projects WHERE id = $1",
+        id,
+    )
+}
+```
+
+#### PostgreSQL Specifics
+- Uses `$1, $2, $3` placeholders (not `?`)
+- Tables must have an `id` column
+- Always pass `*sql.Tx` from `ExecuteTransaction` to lit functions
 
 ### Environment Variables (Backend)
 ```
@@ -35,6 +94,12 @@ CLICKHOUSE_DATABASE=traceway
 CLICKHOUSE_USERNAME=default
 CLICKHOUSE_PASSWORD=
 CLICKHOUSE_TLS=false
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_DATABASE=traceway
+POSTGRES_USERNAME=traceway
+POSTGRES_PASSWORD=
+POSTGRES_SSLMODE=disable
 ```
 
 ---
@@ -216,7 +281,7 @@ Uses shadcn-svelte registry with bits-ui primitives. Key components:
 
 ### Architecture
 - **Framework**: Gin Gonic HTTP framework
-- **Database**: ClickHouse (columnar OLAP database)
+- **Database**: ClickHouse (columnar OLAP for telemetry), PostgreSQL (relational for projects)
 - **Port**: 8082
 - **Pattern**: Repository pattern with singleton controllers
 
@@ -242,7 +307,10 @@ backend/
 │   │   ├── auth.go             # Token validation
 │   │   └── gzip.go             # Request decompression
 │   ├── cache/                  # In-memory project token cache
-│   └── migrations/ch/          # ClickHouse migrations
+│   ├── pgdb/                   # PostgreSQL connection manager
+│   └── migrations/
+│       ├── ch/                 # ClickHouse migrations
+│       └── pg/                 # PostgreSQL migrations
 ```
 
 ### API Endpoints
@@ -283,15 +351,19 @@ func (c *ReportController) Report(ctx *gin.Context) {
 
 ### Database Schema
 
-#### Tables
+#### Tables (ClickHouse)
 | Table | Purpose | Partitioning |
 |-------|---------|--------------|
-| `projects` | Multi-tenant project config + tokens | None |
 | `transactions` | HTTP request metadata | Monthly (`toYYYYMM(timestamp)`) |
 | `exception_stack_traces` | Exceptions with stack traces | Monthly |
 | `metric_records` | Time-series system metrics | Monthly |
 | `endpoints` | Endpoint aggregates (materialized) | None |
 | `archived_exceptions` | Archived/resolved exceptions | None |
+
+#### Tables (PostgreSQL)
+| Table | Purpose |
+|-------|---------|
+| `projects` | Multi-tenant project config + tokens |
 
 #### Key Columns - transactions
 ```sql

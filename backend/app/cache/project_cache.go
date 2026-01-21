@@ -2,8 +2,10 @@ package cache
 
 import (
 	"backend/app/models"
+	"backend/app/pgdb"
 	"backend/app/repositories"
 	"context"
+	"database/sql"
 	"sort"
 	"sync"
 	"time"
@@ -28,7 +30,9 @@ func (c *projectCache) Init(ctx context.Context) error {
 }
 
 func (c *projectCache) Refresh(ctx context.Context) error {
-	projects, err := repositories.ProjectRepository.FindAll(ctx)
+	projects, err := pgdb.ExecuteTransaction(func(tx *sql.Tx) ([]*models.Project, error) {
+		return repositories.ProjectRepository.FindAll(tx)
+	})
 	if err != nil {
 		return err
 	}
@@ -40,7 +44,7 @@ func (c *projectCache) Refresh(ctx context.Context) error {
 	c.projectsById = make(map[uuid.UUID]*models.Project)
 
 	for i := range projects {
-		proj := &projects[i]
+		proj := projects[i]
 		c.projects[proj.Token] = proj
 		c.projectsById[proj.Id] = proj
 	}

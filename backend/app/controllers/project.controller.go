@@ -3,7 +3,9 @@ package controllers
 import (
 	"backend/app/cache"
 	"backend/app/models"
+	"backend/app/pgdb"
 	"backend/app/repositories"
+	"database/sql"
 	"net/http"
 	"regexp"
 	"unicode/utf8"
@@ -71,7 +73,9 @@ func (p projectController) CreateProject(c *gin.Context) {
 		return
 	}
 
-	project, err := repositories.ProjectRepository.Create(c, request.Name, request.Framework)
+	project, err := pgdb.ExecuteTransaction(func(tx *sql.Tx) (*models.Project, error) {
+		return repositories.ProjectRepository.Create(tx, request.Name, request.Framework)
+	})
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error creating a project: %w", err))
 		return
@@ -81,7 +85,7 @@ func (p projectController) CreateProject(c *gin.Context) {
 	cache.ProjectCache.AddProject(project)
 
 	// Return with token since this is creation
-	c.JSON(http.StatusCreated, project.ToWithToken())
+	c.JSON(http.StatusCreated, (*project).ToWithToken())
 }
 
 // GetProject returns a project by ID with its token (for connection page)

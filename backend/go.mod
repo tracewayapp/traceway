@@ -2,7 +2,12 @@ module backend
 
 go 1.25.1
 
-require github.com/coreos/go-systemd/v22 v22.6.0
+require (
+	github.com/coreos/go-systemd/v22 v22.6.0
+	github.com/lib/pq v1.10.9
+	github.com/tracewayapp/go-lightning/lit v0.0.0-20260121181925-c304b0bdd0dc
+	go.tracewayapp.com v0.2.3
+)
 
 require (
 	github.com/ClickHouse/ch-go v0.69.0 // indirect
@@ -40,7 +45,6 @@ require (
 	github.com/ugorji/go/codec v1.3.0 // indirect
 	go.opentelemetry.io/otel v1.39.0 // indirect
 	go.opentelemetry.io/otel/trace v1.39.0 // indirect
-	go.tracewayapp.com v0.2.3 // indirect
 	go.uber.org/mock v0.5.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/arch v0.20.0 // indirect

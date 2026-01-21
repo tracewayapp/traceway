@@ -1,72 +1,53 @@
 package repositories
 
 import (
-	"backend/app/chdb"
 	"backend/app/models"
-	"context"
 	"database/sql"
-	"errors"
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/tracewayapp/go-lightning/lit"
 )
 
 type projectRepository struct{}
 
-func (p *projectRepository) FindAll(ctx context.Context) ([]models.Project, error) {
-	rows, err := (*chdb.Conn).Query(ctx, "SELECT id, name, token, framework, created_at FROM projects ORDER BY created_at ASC")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var projects []models.Project
-	for rows.Next() {
-		var proj models.Project
-		if err := rows.Scan(&proj.Id, &proj.Name, &proj.Token, &proj.Framework, &proj.CreatedAt); err != nil {
-			return nil, err
-		}
-		projects = append(projects, proj)
-	}
-	return projects, nil
+func (p *projectRepository) FindAll(tx *sql.Tx) ([]*models.Project, error) {
+	return lit.Select[models.Project](
+		tx,
+		"SELECT id, name, token, framework, created_at FROM projects ORDER BY created_at ASC",
+	)
 }
 
-func (p *projectRepository) FindByToken(ctx context.Context, token string) (*models.Project, error) {
-	var proj models.Project
-	err := (*chdb.Conn).QueryRow(ctx, "SELECT id, name, token, framework, created_at FROM projects WHERE token = ?", token).
-		Scan(&proj.Id, &proj.Name, &proj.Token, &proj.Framework, &proj.CreatedAt)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return &proj, nil
+func (p *projectRepository) FindByToken(tx *sql.Tx, token string) (*models.Project, error) {
+	return lit.SelectSingle[models.Project](
+		tx,
+		"SELECT id, name, token, framework, created_at FROM projects WHERE token = $1",
+		token,
+	)
 }
 
-func (p *projectRepository) FindById(ctx context.Context, id uuid.UUID) (*models.Project, error) {
-	var proj models.Project
-	err := (*chdb.Conn).QueryRow(ctx, "SELECT id, name, token, framework, created_at FROM projects WHERE id = ?", id).
-		Scan(&proj.Id, &proj.Name, &proj.Token, &proj.Framework, &proj.CreatedAt)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return &proj, nil
+func (p *projectRepository) FindById(tx *sql.Tx, id uuid.UUID) (*models.Project, error) {
+	return lit.SelectSingle[models.Project](
+		tx,
+		"SELECT id, name, token, framework, created_at FROM projects WHERE id = $1",
+		id,
+	)
 }
 
-func (p *projectRepository) Create(ctx context.Context, name string, framework string) (*models.Project, error) {
-	id := uuid.New()
-	token := generateSecureToken()
+func (p *projectRepository) Create(tx *sql.Tx, name string, framework string) (*models.Project, error) {
+	project := &models.Project{
+		Id:        uuid.New(),
+		Name:      name,
+		Token:     generateSecureToken(),
+		Framework: framework,
+	}
 
-	err := (*chdb.Conn).Exec(ctx, "INSERT INTO projects (id, name, token, framework) VALUES (?, ?, ?, ?)", id, name, token, framework)
+	err := lit.InsertExistingUuid(tx, project)
 	if err != nil {
 		return nil, err
 	}
 
-	return p.FindById(ctx, id)
+	return project, nil
 }
 
 func generateSecureToken() string {

@@ -1,0 +1,87 @@
+# Docker Deployment
+
+Deploy Traceway using a single minimal Docker image that bundles both the frontend and backend.
+
+## Prerequisites
+
+- Docker installed
+- Node.js and npm (for building the frontend)
+- Go 1.25+ (for building the backend)
+
+## Build the Image
+
+### 1. Bundle the Frontend
+
+From the repository root, run the build script that compiles the frontend and bundles it into the backend:
+
+```bash
+./script/build-and-bundle-frontend.sh
+```
+
+This script:
+
+- Builds the SvelteKit frontend
+- Copies the static files into the backend's embedded assets
+
+### 2. Build the Docker Image
+
+Build the minimal Docker image:
+
+```bash
+docker build -f Dockerfile.minimal -t traceway:minimal .
+```
+
+## Run the Container
+
+Run Traceway with the required port bindings:
+
+```bash
+docker run -d \
+  --name traceway \
+  -p 80:80 \
+  -p 8082:8082 \
+  -e JWT_SECRET="your-secret-key-minimum-32-characters-long" \
+  -e CLICKHOUSE_SERVER="host.docker.internal:9000" \
+  -e CLICKHOUSE_DATABASE="traceway" \
+  -e CLICKHOUSE_USERNAME="default" \
+  -e CLICKHOUSE_PASSWORD="" \
+  -e POSTGRES_HOST="host.docker.internal" \
+  -e POSTGRES_PORT="5432" \
+  -e POSTGRES_DATABASE="traceway" \
+  -e POSTGRES_USERNAME="traceway" \
+  -e POSTGRES_PASSWORD="your-postgres-password" \
+  traceway:minimal
+```
+
+### Port Reference
+
+| Port   | Purpose                                       |
+| ------ | --------------------------------------------- |
+| `80`   | Dashboard (frontend)                          |
+| `8082` | API server (backend + SDK telemetry endpoint) |
+
+## Environment Variables
+
+| Variable              | Description                                      | Required |
+| --------------------- | ------------------------------------------------ | -------- |
+| `JWT_SECRET`          | Secret key for JWT signing (min 32 characters)   | Yes      |
+| `CLICKHOUSE_SERVER`   | ClickHouse server address                        | Yes      |
+| `CLICKHOUSE_DATABASE` | ClickHouse database name                         | Yes      |
+| `CLICKHOUSE_USERNAME` | ClickHouse username                              | Yes      |
+| `CLICKHOUSE_PASSWORD` | ClickHouse password                              | No       |
+| `CLICKHOUSE_TLS`      | Enable TLS for ClickHouse (`true`/`false`)       | No       |
+| `POSTGRES_HOST`       | PostgreSQL host                                  | Yes      |
+| `POSTGRES_PORT`       | PostgreSQL port                                  | Yes      |
+| `POSTGRES_DATABASE`   | PostgreSQL database name                         | Yes      |
+| `POSTGRES_USERNAME`   | PostgreSQL username                              | Yes      |
+| `POSTGRES_PASSWORD`   | PostgreSQL password                              | Yes      |
+| `POSTGRES_SSLMODE`    | PostgreSQL SSL mode (`disable`, `require`, etc.) | No       |
+
+## Verify the Deployment
+
+Once running, access:
+
+- **Dashboard**: http://localhost
+- **API**: http://localhost:8082/api
+
+Configure your Go SDK to send telemetry to `http://localhost:8082/api/report`.

@@ -47,8 +47,7 @@ export default function Home() {
             Telemetry & Issue Tracking <br /> for <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">Golang</span>
           </h1>
           <p className="text-zinc-600 text-lg md:text-xl max-w-xl mx-auto mb-10 leading-relaxed font-medium">
-            Simple integration, actionable insights, and regression tracking.
-            Debug less and build more with Traceway.
+            Ship fast and debug less with Traceway. Simple integration, performance insights, and regression tracking.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link href="https://docs.tracewayapp.com">
@@ -94,9 +93,9 @@ export default function Home() {
               <div className="rounded-lg overflow-hidden bg-white border border-zinc-200 shadow-xl shadow-zinc-200/50">
                 <div className="flex items-center justify-between px-3 py-2 bg-zinc-50 border-b border-zinc-100">
                   <div className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-full bg-zinc-200"></div>
-                    <div className="w-2.5 h-2.5 rounded-full bg-zinc-200"></div>
-                    <div className="w-2.5 h-2.5 rounded-full bg-zinc-200"></div>
+                    <div className="w-2.5 h-2.5 rounded-full bg-[#fe5f57]"></div>
+                    <div className="w-2.5 h-2.5 rounded-full bg-[#fdbc2e]"></div>
+                    <div className="w-2.5 h-2.5 rounded-full bg-[#28c841]"></div>
                   </div>
                   <span className="text-[10px] text-zinc-500 font-mono font-medium">main.go</span>
                 </div>

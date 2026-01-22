@@ -1,6 +1,7 @@
 import { useTheme } from "nextra-theme-docs";
 
 export default {
+  logoLink: "https://tracewayapp.com",
   logo: function Logo() {
     const { resolvedTheme } = useTheme();
     return (

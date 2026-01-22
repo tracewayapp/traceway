@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Github, ArrowRight, Activity, TrendingUp, AlertCircle, Bug, ChartGantt } from "lucide-react";
 
 export default function Home() {
@@ -286,6 +287,78 @@ export default function Home() {
             </div>
           </div>
 
+        </div>
+      </section>
+
+      {/* Q&A Section */}
+      <section className="py-24 bg-zinc-50 border-t border-zinc-100">
+        <div className="container mx-auto px-4 max-w-3xl">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold mb-4 text-zinc-900 tracking-tight">Frequently Asked Questions</h2>
+            <p className="text-zinc-600 text-lg">
+              Everything you need to know about Traceway.
+            </p>
+          </div>
+
+          <Accordion type="single" collapsible className="w-full">
+            <AccordionItem value="item-1" className="border-b-zinc-200">
+              <AccordionTrigger className="text-zinc-900 hover:text-zinc-700 hover:no-underline text-left">
+                What is Traceway?
+              </AccordionTrigger>
+              <AccordionContent className="text-zinc-600 leading-relaxed">
+                Traceway is an open-source telemetry and issue tracking platform. It is designed for Golang applications.
+                It helps prioritize tasks, track issues and optimize performance by providing exception tracking,
+                performance insights, and regression monitoring.
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="item-2" className="border-b-zinc-200">
+              <AccordionTrigger className="text-zinc-900 hover:text-zinc-700 hover:no-underline text-left">
+                How does it compare to OpenTelemetry?
+              </AccordionTrigger>
+              <AccordionContent className="text-zinc-600 leading-relaxed">
+                While OpenTelemetry is a powerful, generalized standard, it can be complex to configure and manage.
+                Traceway is "batteries-included" and opinionated, focusing on immediate value for Go developers
+                without the configuration overhead. We provide actionable insights (like issue ranking) out of the box.
+                It has a simple deployment model that makes it cheap to run in production.
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="item-3" className="border-b-zinc-200">
+              <AccordionTrigger className="text-zinc-900 hover:text-zinc-700 hover:no-underline text-left">
+                How does it compare to Sentry?
+              </AccordionTrigger>
+              <AccordionContent className="text-zinc-600 leading-relaxed">
+                Sentry is a great tool, but it can be expensive and their performance tracking for Golang applications is not as good as Traceway. Traceway is a lightweight,
+                open-source alternative that is easy to use and deploy. It is also more affordable to run than Sentry. Traceway offers more features for Golang applications specifically focusing on performance.
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="item-4" className="border-b-zinc-200">
+              <AccordionTrigger className="text-zinc-900 hover:text-zinc-700 hover:no-underline text-left">
+                How does it compare to New Relic?
+              </AccordionTrigger>
+              <AccordionContent className="text-zinc-600 leading-relaxed">
+                New Relic is incredible for raw data tracking but due to their wide feature set it can be hard to navigate and find what you actually "need" to fix.
+                Traceway addresses this by focusing on telling you what needs fixing by prioritizing and ranking endpoints. It provides server metrics (similar to new relic) while also providing a great issue tracking solution like Sentry.
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="item-5" className="border-b-zinc-200">
+              <AccordionTrigger className="text-zinc-900 hover:text-zinc-700 hover:no-underline text-left">
+                Can I self-host Traceway?
+              </AccordionTrigger>
+              <AccordionContent className="text-zinc-600 leading-relaxed">
+                Yes! Traceway is open source and can be easily self-hosted. We provide Docker containers
+                and binaries to make running your own instance straightforward.
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="item-6" className="border-b-zinc-200">
+              <AccordionTrigger className="text-zinc-900 hover:text-zinc-700 hover:no-underline text-left">
+                Is there a performance impact on the client?
+              </AccordionTrigger>
+              <AccordionContent className="text-zinc-600 leading-relaxed">
+                We designed the Traceway agent to be extremely lightweight. It uses efficient batching and
+                asynchronous reporting to ensure it has negligible impact on your application's latency or throughput.
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </div>
       </section>
 

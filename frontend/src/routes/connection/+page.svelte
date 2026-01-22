@@ -22,36 +22,9 @@
 		getFrameworkLabel
 	} from '$lib/utils/framework-code';
 
-	let projectWithToken = $state<ProjectWithToken | null>(null);
-	let loading = $state(true);
-	let error = $state<string | null>(null);
+	let projectWithToken = $derived(projectsState.currentProject);
 	let copiedCode = $state(false);
 	let copiedInstall = $state(false);
-
-	// React to project changes
-	$effect(() => {
-		const projectId = projectsState.currentProjectId;
-		if (projectId) {
-			loading = true;
-			error = null;
-			projectWithToken = null;
-
-			projectsState
-				.getProjectWithToken(projectId)
-				.then((project) => {
-					projectWithToken = project;
-				})
-				.catch((e) => {
-					error = e instanceof Error ? e.message : 'Failed to load project';
-				})
-				.finally(() => {
-					loading = false;
-				});
-		} else {
-			loading = false;
-			projectWithToken = null;
-		}
-	});
 
 	const sdkCode = $derived(
 		projectWithToken
@@ -88,19 +61,7 @@
 		<p class="text-muted-foreground">Connect your application to Traceway using the SDK</p>
 	</div>
 
-	{#if loading}
-		<Card>
-			<CardContent class="flex items-center justify-center py-12">
-				<LoadingCircle size="lg" />
-			</CardContent>
-		</Card>
-	{:else if error}
-		<Card>
-			<CardContent class="p-6">
-				<p class="text-destructive">{error}</p>
-			</CardContent>
-		</Card>
-	{:else if projectWithToken}
+	{#if projectWithToken}
 		<Card>
 			<CardHeader>
 				<CardTitle class="flex items-center gap-2">

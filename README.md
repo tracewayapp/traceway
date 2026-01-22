@@ -13,20 +13,33 @@ Represents the main backend for traceway. Stores stack traces, endpoint info and
 ### How to run:
 
 To run the backend you need to:
-1 - install golang
-2 - install clickhosue
-3 - create a clickhouse database (eg: traceway)
-4 - create a clickhouse user (eg: if one does not exist default/empty password)
-5 - create the .env file (instructions below)
-6 - open the backend folder and run `go run .`
+1. Install Go (1.25+)
+2. Install ClickHouse
+3. Install PostgreSQL
+4. Create databases and users (instructions below)
+5. Create the .env file (instructions below)
+6. Open the backend folder and run `go run .`
+
+### Database Setup
+
+#### ClickHouse
+1. Install ClickHouse
+2. Create a database: `CREATE DATABASE traceway`
+3. Use the default user or create one (default/empty password works for local dev)
+
+#### PostgreSQL
+1. Install PostgreSQL
+2. Create a database and user:
+```sql
+CREATE USER traceway WITH PASSWORD 'your_password';
+CREATE DATABASE traceway OWNER traceway;
+```
 
 ### Backend .env file
-To run it you need to create a .env file in the backend project locally with your own clickhouse credentials.
-
-Example .env:
+Create a .env file in the backend folder with your database credentials:
 
 ```
-APP_TOKEN="nice"
+JWT_SECRET=your-secret-key-minimum-32-characters-long
 CLICKHOUSE_SERVER=localhost:9000
 CLICKHOUSE_DATABASE=traceway
 CLICKHOUSE_USERNAME=default
@@ -34,9 +47,27 @@ CLICKHOUSE_PASSWORD=
 CLICKHOUSE_TLS=false
 API_ONLY=false
 PORTS=80,8082
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_DATABASE=traceway
+POSTGRES_USERNAME=traceway
+POSTGRES_PASSWORD=your_password
+POSTGRES_SSLMODE=disable
 ```
 
-The APP_TOKEN value is what you will use to login when running the frontend. The client app will connect using the project level token, the default project is created in the migration 0009_insert_default_project.up.sql with the TOKEN value of default_token_change_me.
+**JWT_SECRET**: Must be at least 32 characters. Used to sign JWT tokens for user authentication. Generate a secure random string for production.
+
+### User Registration
+
+When running locally for the first time:
+1. Start the backend (`go run .` in the backend folder)
+2. Start the frontend (`npm run dev` in the frontend folder)
+3. Navigate to http://localhost:5173
+4. The login page will automatically redirect you to the registration page since no users exist yet
+5. Register your first user account
+6. After registration, you'll be redirected to create your first organization and project
+
+The client SDK connects using project-level tokens (not user credentials). After creating a project, you'll receive a token to use with the SDK.
 
 ## Frontend
 

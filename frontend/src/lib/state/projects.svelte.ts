@@ -5,6 +5,7 @@ export type Framework = 'gin' | 'fiber' | 'chi' | 'fasthttp' | 'stdlib' | 'custo
 export interface Project {
     id: string;
     name: string;
+    token: string;
     framework: Framework;
     createdAt: string;
     backendUrl: string;
@@ -36,23 +37,27 @@ class ProjectsState {
         });
     }
 
+    setProjects(projects: Project[]) {
+        this.projects = projects;
+
+        // If no current project selected or current project not in list, select first one
+        if (!this.currentProjectId || !this.projects.find(p => p.id === this.currentProjectId)) {
+            if (this.projects.length > 0) {
+                this.currentProjectId = this.projects[0].id;
+            }
+        }
+
+        // Cache in localStorage
+        localStorage.setItem('PROJECTS_CACHE', JSON.stringify(this.projects));
+    }
+
     async loadProjects() {
         this.loading = true;
         this.error = null;
 
         try {
             const response = await api.get('/projects');
-            this.projects = response;
-
-            // If no current project selected or current project not in list, select first one
-            if (!this.currentProjectId || !this.projects.find(p => p.id === this.currentProjectId)) {
-                if (this.projects.length > 0) {
-                    this.currentProjectId = this.projects[0].id;
-                }
-            }
-
-            // Cache in localStorage
-            localStorage.setItem('PROJECTS_CACHE', JSON.stringify(this.projects));
+            this.setProjects(response)
         } catch (e: unknown) {
             const errorMessage = e instanceof Error ? e.message : 'Failed to load projects';
             this.error = errorMessage;
@@ -76,15 +81,10 @@ class ProjectsState {
         return response;
     }
 
-    async getProjectWithToken(id: string): Promise<ProjectWithToken> {
-        return await api.get(`/projects/${id}`);
-    }
-
     selectProject(projectId: string) {
         this.currentProjectId = projectId;
     }
 
-    // Initialize from localStorage cache on startup
     initFromCache() {
         const cached = localStorage.getItem('PROJECTS_CACHE');
         if (cached) {

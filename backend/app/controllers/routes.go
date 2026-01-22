@@ -3,6 +3,7 @@ package controllers
 import (
 	"backend/app/controllers/clientcontrollers"
 	"backend/app/middleware"
+	"os"
 
 	"github.com/gin-gonic/gin"
 )
@@ -29,36 +30,43 @@ func RegisterControllers(router *gin.RouterGroup) {
 
 	// Project management
 	router.GET("/projects", middleware.UseAppAuth, ProjectController.ListProjects)
-	router.POST("/projects", middleware.UseAppAuth, ProjectController.CreateProject)
-	router.GET("/projects/:id", middleware.UseAppAuth, ProjectController.GetProject)
+	router.POST("/projects", middleware.UseAppAuth, middleware.RequireWriteAccess, ProjectController.CreateProject)
 
-	router.POST("/stats", middleware.UseAppAuth, MetricRecordController.FindHomepageStats)
-	router.GET("/dashboard", middleware.UseAppAuth, DashboardController.GetDashboard)
-	router.GET("/dashboard/overview", middleware.UseAppAuth, DashboardController.GetDashboardOverview)
+	// Dashboard endpoints (projectId in query param)
+	router.POST("/stats", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricRecordController.FindHomepageStats)
+	router.GET("/dashboard", middleware.UseAppAuth, middleware.RequireProjectAccess, DashboardController.GetDashboard)
+	router.GET("/dashboard/overview", middleware.UseAppAuth, middleware.RequireProjectAccess, DashboardController.GetDashboardOverview)
 
-	// Metrics endpoints (split by category)
-	router.GET("/metrics/application", middleware.UseAppAuth, MetricsController.GetApplicationMetrics)
-	router.GET("/metrics/stats", middleware.UseAppAuth, MetricsController.GetStatsMetrics)
-	router.GET("/metrics/server", middleware.UseAppAuth, MetricsController.GetServerMetrics)
+	// Metrics endpoints (projectId in query param)
+	router.GET("/metrics/application", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricsController.GetApplicationMetrics)
+	router.GET("/metrics/stats", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricsController.GetStatsMetrics)
+	router.GET("/metrics/server", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricsController.GetServerMetrics)
 
-	// Endpoints
-	router.POST("/endpoints", middleware.UseAppAuth, EndpointController.FindAllEndpoints)
-	router.POST("/endpoints/grouped", middleware.UseAppAuth, EndpointController.FindGroupedByEndpoint)
-	router.POST("/endpoints/endpoint", middleware.UseAppAuth, EndpointController.FindByEndpoint)
-	router.POST("/endpoints/chart", middleware.UseAppAuth, EndpointController.GetStackedChart)
-	router.POST("/endpoints/:endpointId", middleware.UseAppAuth, EndpointDetailController.GetEndpointDetail)
+	// Endpoints (projectId in body)
+	router.POST("/endpoints", middleware.UseAppAuth, middleware.RequireProjectAccess, EndpointController.FindAllEndpoints)
+	router.POST("/endpoints/grouped", middleware.UseAppAuth, middleware.RequireProjectAccess, EndpointController.FindGroupedByEndpoint)
+	router.POST("/endpoints/endpoint", middleware.UseAppAuth, middleware.RequireProjectAccess, EndpointController.FindByEndpoint)
+	router.POST("/endpoints/chart", middleware.UseAppAuth, middleware.RequireProjectAccess, EndpointController.GetStackedChart)
+	router.POST("/endpoints/:endpointId", middleware.UseAppAuth, middleware.RequireProjectAccess, EndpointDetailController.GetEndpointDetail)
 
-	// Tasks
-	router.POST("/tasks", middleware.UseAppAuth, TaskController.FindAllTasks)
-	router.POST("/tasks/grouped", middleware.UseAppAuth, TaskController.FindGroupedByTaskName)
-	router.POST("/tasks/task", middleware.UseAppAuth, TaskController.FindByTaskName)
-	router.POST("/tasks/:taskId", middleware.UseAppAuth, TaskDetailController.GetTaskDetail)
-	router.POST("/exception-stack-traces", middleware.UseAppAuth, ExceptionStackTraceController.FindGrouppedExceptionStackTraces)
-	router.POST("/exception-stack-traces/archive", middleware.UseAppAuth, ExceptionStackTraceController.ArchiveExceptions)
-	router.POST("/exception-stack-traces/unarchive", middleware.UseAppAuth, ExceptionStackTraceController.UnarchiveExceptions)
-	router.POST("/exception-stack-traces/by-id/:exceptionId", middleware.UseAppAuth, ExceptionStackTraceController.FindById)
-	router.POST("/exception-stack-traces/:hash", middleware.UseAppAuth, ExceptionStackTraceController.FindByHash)
+	// Tasks (projectId in body)
+	router.POST("/tasks", middleware.UseAppAuth, middleware.RequireProjectAccess, TaskController.FindAllTasks)
+	router.POST("/tasks/grouped", middleware.UseAppAuth, middleware.RequireProjectAccess, TaskController.FindGroupedByTaskName)
+	router.POST("/tasks/task", middleware.UseAppAuth, middleware.RequireProjectAccess, TaskController.FindByTaskName)
+	router.POST("/tasks/:taskId", middleware.UseAppAuth, middleware.RequireProjectAccess, TaskDetailController.GetTaskDetail)
+
+	// Exceptions (projectId in body)
+	router.POST("/exception-stack-traces", middleware.UseAppAuth, middleware.RequireProjectAccess, ExceptionStackTraceController.FindGrouppedExceptionStackTraces)
+	router.POST("/exception-stack-traces/archive", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, ExceptionStackTraceController.ArchiveExceptions)
+	router.POST("/exception-stack-traces/unarchive", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, ExceptionStackTraceController.UnarchiveExceptions)
+	router.POST("/exception-stack-traces/by-id/:exceptionId", middleware.UseAppAuth, middleware.RequireProjectAccess, ExceptionStackTraceController.FindById)
+	router.POST("/exception-stack-traces/:hash", middleware.UseAppAuth, middleware.RequireProjectAccess, ExceptionStackTraceController.FindByHash)
 
 	// Auth
-	router.POST("/login", AuthController.Login)
+	router.POST("/login", middleware.Transactional, AuthController.Login)
+	router.POST("/register", middleware.Transactional, AuthController.Register)
+
+	if os.Getenv("CLOUD_MODE") != "true" {
+		router.GET("/has-organizations", middleware.Transactional, AuthController.HasOrganizations)
+	}
 }

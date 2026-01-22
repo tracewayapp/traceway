@@ -2,14 +2,16 @@ package controllers
 
 import (
 	"backend/app/cache"
+	"backend/app/middleware"
 	"backend/app/models"
+	"backend/app/pgdb"
 	"backend/app/repositories"
+	"database/sql"
 	"net/http"
 	"regexp"
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	traceway "go.tracewayapp.com"
 )
 
@@ -33,17 +35,18 @@ type CreateProjectRequest struct {
 	Framework string `json:"framework" binding:"required"`
 }
 
-// ListProjects returns all projects without tokens
 func (p projectController) ListProjects(c *gin.Context) {
-	projects := cache.ProjectCache.GetAll()
+	userId := middleware.GetUserId(c)
 
-	// Convert to response format (without tokens)
-	response := make([]models.ProjectResponse, len(projects))
-	for i, proj := range projects {
-		response[i] = proj.ToResponse()
+	projectsWithBackendUrl, err := pgdb.ExecuteTransaction(func(tx *sql.Tx) ([]*models.ProjectWithBackendUrl, error) {
+		return repositories.ProjectRepository.FindAllWithBackendUrlByUserId(tx, userId)
+	})
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error fetching projects: %w", err))
+		return
 	}
 
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, projectsWithBackendUrl)
 }
 
 // CreateProject creates a new project and returns it with its token
@@ -65,41 +68,22 @@ func (p projectController) CreateProject(c *gin.Context) {
 		return
 	}
 
-	// Validate framework
 	if !validFrameworks[request.Framework] {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Framework must be one of: stdlib, fasthttp, gin, fiber, chi, custom"})
 		return
 	}
 
-	project, err := repositories.ProjectRepository.Create(c, request.Name, request.Framework)
+	project, err := pgdb.ExecuteTransaction(func(tx *sql.Tx) (*models.Project, error) {
+		return repositories.ProjectRepository.Create(tx, request.Name, request.Framework)
+	})
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error creating a project: %w", err))
 		return
 	}
 
-	// Add to cache
 	cache.ProjectCache.AddProject(project)
 
-	// Return with token since this is creation
-	c.JSON(http.StatusCreated, project.ToWithToken())
-}
-
-// GetProject returns a project by ID with its token (for connection page)
-func (p projectController) GetProject(c *gin.Context) {
-	projectId, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
-		return
-	}
-
-	project := cache.ProjectCache.GetById(projectId)
-	if project == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
-		return
-	}
-
-	// Return with token for connection page
-	c.JSON(http.StatusOK, project.ToWithToken())
+	c.JSON(http.StatusCreated, project.ToProjectWithBackendUrl())
 }
 
 var ProjectController = projectController{}

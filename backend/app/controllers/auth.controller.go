@@ -1,6 +1,11 @@
 package controllers
 
 import (
+	"backend/app/cache"
+	"backend/app/middleware"
+	"backend/app/models"
+	"backend/app/repositories"
+	"backend/app/services"
 	"net/http"
 	"os"
 
@@ -9,29 +14,154 @@ import (
 
 type authController struct{}
 
-type LoginRequest struct {
-	Token string `json:"token" binding:"required"`
+func (a authController) HasOrganizations(c *gin.Context) {
+	tx := middleware.GetTx(c)
+	hasOrganizations, err := repositories.OrganizationRepository.HasOrganizations(tx)
+
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"hasOrganizations": hasOrganizations})
 }
 
 func (a authController) Login(c *gin.Context) {
-	var request LoginRequest
+	var request models.LoginRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
-	appToken := os.Getenv("APP_TOKEN")
-	if appToken == "" {
-		// this is also confirmed in main, but just an extra layer of safety
-		panic("APP_TOKEN environment variable is not set")
-	}
+	tx := middleware.GetTx(c)
 
-	if request.Token != appToken {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+	user, err := repositories.UserRepository.FindByEmail(tx, request.Email)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	if !services.CheckPassword(request.Password, user.Password) {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	token, err := services.GenerateToken(user.Id, user.Email)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	projects, err := repositories.ProjectRepository.FindAllWithBackendUrlByUserId(tx, user.Id)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, &models.LoginResponse{
+		Token:    token,
+		User:     user.ToResponse(),
+		Projects: projects,
+	})
+}
+
+func (a authController) Register(c *gin.Context) {
+	var request models.RegisterRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	tx := middleware.GetTx(c)
+
+	// if we're not in the cloud mode only a single organization is allowed
+	if os.Getenv("CLOUD_MODE") != "true" {
+		hasOrganizations, err := repositories.OrganizationRepository.HasOrganizations(tx)
+
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, err)
+			return
+		}
+
+		if hasOrganizations {
+			c.JSON(http.StatusConflict, gin.H{"error": "You already have an Organization registered. Please use login."})
+			return
+		}
+	}
+
+	exists, err := repositories.UserRepository.EmailExists(tx, request.Email)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+	if exists {
+		c.JSON(http.StatusConflict, gin.H{"error": "Email already exists"})
+		return
+	}
+
+	hashedPassword, err := services.HashPassword(request.Password)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	user, err := repositories.UserRepository.Create(tx, request.Email, request.Name, hashedPassword)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	org, err := repositories.OrganizationRepository.Create(tx, request.OrganizationName)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	_, err = repositories.OrganizationRepository.AddUser(tx, org.Id, user.Id, "owner")
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	project, err := repositories.ProjectRepository.CreateWithOrganization(tx, request.ProjectName, request.Framework, org.Id)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	token, err := services.GenerateToken(user.Id, user.Email)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	projects, err := repositories.ProjectRepository.FindAllWithBackendUrlByUserId(tx, user.Id)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	// cache can get out of sync here
+	// the transaction for creating the project is not guaranteed to have
+	// finished when this is inserted into cache
+	cache.ProjectCache.AddProject(&models.Project{
+		Id:             project.Id,
+		Name:           project.Name,
+		Token:          project.Token,
+		Framework:      project.Framework,
+		OrganizationId: project.OrganizationId,
+	})
+
+	c.JSON(http.StatusCreated, &models.RegisterResponse{
+		Token:    token,
+		User:     user.ToResponse(),
+		Project:  *project.ToProjectWithBackendUrl(),
+		Projects: projects,
+	})
 }
 
 var AuthController = authController{}

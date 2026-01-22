@@ -67,23 +67,12 @@
 		data?.worstEndpoints?.filter((e) => e.impact >= 0.25) ?? []
 	);
 
-	// Integration setup state
-	let projectWithToken = $state<ProjectWithToken | null>(null);
+	let projectWithToken = $derived(projectsState.currentProject);
 	let copiedInstall = $state(false);
 	let copiedCode = $state(false);
 	let copiedTesting = $state(false);
 	let copiedTesting2 = $state(false);
 	let checking = $state(false);
-
-	// Load project with token when hasData is false
-	$effect(() => {
-		if (data && !data.hasData && projectsState.currentProjectId) {
-			projectsState
-				.getProjectWithToken(projectsState.currentProjectId)
-				.then((p) => (projectWithToken = p))
-				.catch(() => (projectWithToken = null));
-		}
-	});
 
 	const sdkCode = $derived(
 		projectWithToken

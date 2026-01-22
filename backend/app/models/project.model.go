@@ -7,7 +7,19 @@ import (
 	"github.com/google/uuid"
 )
 
-// getBackendUrl returns the BACKEND_URL env var or default
+type Project struct {
+	Id             uuid.UUID `json:"id"`
+	Name           string    `json:"name"`
+	Token          string    `json:"token"`
+	Framework      string    `json:"framework"`
+	OrganizationId *int      `json:"organizationId"`
+	CreatedAt      time.Time `json:"createdAt"`
+}
+
+func (p Project) ToProjectWithBackendUrl() *ProjectWithBackendUrl {
+	return &ProjectWithBackendUrl{Project: p, BackendUrl: getBackendUrl()}
+}
+
 func getBackendUrl() string {
 	if url := os.Getenv("BACKEND_URL"); url != "" {
 		return url
@@ -15,52 +27,7 @@ func getBackendUrl() string {
 	return "https://tracewayapp.com"
 }
 
-type Project struct {
-	Id        uuid.UUID `json:"id" ch:"id"`
-	Name      string    `json:"name" ch:"name"`
-	Token     string    `json:"token" ch:"token"`
-	Framework string    `json:"framework" ch:"framework"`
-	CreatedAt time.Time `json:"createdAt" ch:"created_at"`
-}
-
-// ProjectResponse omits the token for security in listing endpoints
-type ProjectResponse struct {
-	Id         uuid.UUID `json:"id"`
-	Name       string    `json:"name"`
-	Framework  string    `json:"framework"`
-	CreatedAt  time.Time `json:"createdAt"`
-	BackendUrl string    `json:"backendUrl"`
-}
-
-// ProjectWithToken includes token - used when creating or viewing connection details
-type ProjectWithToken struct {
-	Id         uuid.UUID `json:"id"`
-	Name       string    `json:"name"`
-	Token      string    `json:"token"`
-	Framework  string    `json:"framework"`
-	CreatedAt  time.Time `json:"createdAt"`
-	BackendUrl string    `json:"backendUrl"`
-}
-
-// ToResponse converts a Project to ProjectResponse (without token)
-func (p *Project) ToResponse() ProjectResponse {
-	return ProjectResponse{
-		Id:         p.Id,
-		Name:       p.Name,
-		Framework:  p.Framework,
-		CreatedAt:  p.CreatedAt,
-		BackendUrl: getBackendUrl(),
-	}
-}
-
-// ToWithToken converts a Project to ProjectWithToken
-func (p *Project) ToWithToken() ProjectWithToken {
-	return ProjectWithToken{
-		Id:         p.Id,
-		Name:       p.Name,
-		Token:      p.Token,
-		Framework:  p.Framework,
-		CreatedAt:  p.CreatedAt,
-		BackendUrl: getBackendUrl(),
-	}
+type ProjectWithBackendUrl struct {
+	Project
+	BackendUrl string `json:"backendUrl"`
 }

@@ -22,36 +22,11 @@
 		getFrameworkLabel
 	} from '$lib/utils/framework-code';
 
-	let projectWithToken = $state<ProjectWithToken | null>(null);
+	let projectWithToken = $derived(projectsState.currentProject);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let copiedCode = $state(false);
 	let copiedInstall = $state(false);
-
-	// React to project changes
-	$effect(() => {
-		const projectId = projectsState.currentProjectId;
-		if (projectId) {
-			loading = true;
-			error = null;
-			projectWithToken = null;
-
-			projectsState
-				.getProjectWithToken(projectId)
-				.then((project) => {
-					projectWithToken = project;
-				})
-				.catch((e) => {
-					error = e instanceof Error ? e.message : 'Failed to load project';
-				})
-				.finally(() => {
-					loading = false;
-				});
-		} else {
-			loading = false;
-			projectWithToken = null;
-		}
-	});
 
 	const sdkCode = $derived(
 		projectWithToken

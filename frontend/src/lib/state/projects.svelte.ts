@@ -5,6 +5,7 @@ export type Framework = 'gin' | 'fiber' | 'chi' | 'fasthttp' | 'stdlib' | 'custo
 export interface Project {
     id: string;
     name: string;
+    token: string;
     framework: Framework;
     createdAt: string;
     backendUrl: string;
@@ -80,15 +81,10 @@ class ProjectsState {
         return response;
     }
 
-    async getProjectWithToken(id: string): Promise<ProjectWithToken> {
-        return await api.get(`/projects/${id}`);
-    }
-
     selectProject(projectId: string) {
         this.currentProjectId = projectId;
     }
 
-    // Initialize from localStorage cache on startup
     initFromCache() {
         const cached = localStorage.getItem('PROJECTS_CACHE');
         if (cached) {

@@ -1,0 +1,103 @@
+# Gin Framework Quick Start
+
+Get Traceway integrated with your Gin application in under 5 minutes.
+
+## Installation
+
+```bash
+go get github.com/tracewayapp/go-client
+```
+
+## Basic Setup
+
+Add the Traceway middleware to your Gin router:
+
+```go
+package main
+
+import (
+    "github.com/gin-gonic/gin"
+    tracewaygin "github.com/tracewayapp/go-client/traceway_gin"
+)
+
+func main() {
+    router := gin.Default()
+
+    // Add Traceway middleware (must be before routes)
+    router.Use(tracewaygin.New(
+        "your-token@http://localhost:8082/api/report",
+    ))
+
+    router.GET("/api/users", getUsers)
+    router.POST("/api/users", createUser)
+
+    router.Run(":8080")
+}
+```
+
+## What Gets Captured Automatically
+
+The middleware captures the following for every request:
+
+| Data            | Description                                               |
+| --------------- | --------------------------------------------------------- |
+| **Endpoint**    | HTTP method + route template (e.g., "GET /api/users/:id") |
+| **Duration**    | Request processing time in milliseconds                   |
+| **Status Code** | HTTP response status                                      |
+| **Body Size**   | Response body size in bytes                               |
+| **Client IP**   | Request origin IP address                                 |
+| **Panics**      | Automatically recovered and captured with stack trace     |
+
+## Error Handling
+
+### Automatic Panic Recovery
+
+Panics are automatically recovered and captured:
+
+```go
+func riskyHandler(c *gin.Context) {
+    // This panic will be captured with full stack trace
+    panic("something went wrong")
+}
+```
+
+The middleware will:
+
+1. Recover the panic
+2. Capture the stack trace
+3. Link it to the current transaction
+4. Re-panic (if `WithRepanic(true)`) or abort with 500
+
+### Gin Error Chain
+
+Errors added via `c.Error()` are also captured:
+
+```go
+func handler(c *gin.Context) {
+    if err := doSomething(); err != nil {
+        c.Error(err)  // Will be captured as exception
+        c.AbortWithStatus(500)
+        return
+    }
+    c.JSON(200, gin.H{"ok": true})
+}
+```
+
+Or alternatively:
+
+```go
+func handler(c *gin.Context) {
+    if err := doSomething(); err != nil {
+        c.AbortWithError(500, err)  // Will be captured as an exception
+        return
+    }
+    c.JSON(200, gin.H{"ok": true})
+}
+```
+
+## Next Steps
+
+- [Configuration](/go-client/gin/configuration) - All configuration options and error recording flags
+- [Scope](/go-client/scope) - Add contextual tags to requests
+- [Exceptions](/go-client/exceptions) - Manual exception capture
+- [Segments](/go-client/segments) - Track sub-operations within requests

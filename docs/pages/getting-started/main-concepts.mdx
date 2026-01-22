@@ -1,0 +1,125 @@
+# Main Concepts
+
+Traceway organizes your application telemetry into five core concepts: Endpoints, Issues, Tasks, Metrics, and Scope. Understanding these concepts will help you get the most out of your monitoring setup.
+
+## Endpoints
+
+Endpoints represent HTTP transactions in your application. Each endpoint is identified by its HTTP method and route pattern (e.g., `GET /api/users/:id`). Endpoints are ordered based on their Impact which takes into account the performance of the endpoint as well as how often it happens to behave poorly.
+
+## Issues
+
+Issues are exceptions (errors and panics) captured from your application as well as messages. Traceway automatically groups similar exceptions so the same logical error appears as one issue. Issues can contain their own Scope and they can be connected to a transaction or a task.
+
+### Error vs Message
+
+Traceway captures two types of exceptions:
+
+- **Errors** - Runtime exceptions with stack traces (panics, thrown errors)
+- **Messages** - Explicitly captured errors via `traceway.CaptureMessage("a string with some value")`
+
+Both appear in the Issues list with full context/scope.
+
+### Automatic Grouping
+
+Exceptions are grouped by normalizing their stack traces:
+
+- Variable values (user IDs, timestamps) are replaced with placeholders
+- Memory addresses and file paths are normalized
+- A hash is generated from the normalized trace
+
+This means the same bug produces one issue, not thousands of duplicates with different user data.
+
+### Issue Lifecycle
+
+1. **Active** - When an issue originally happens
+2. **Archived** - Marked as resolved by you (doesn't show up until it's reopened)
+3. **Reopened** - Archived issue that occurred again (regression)
+
+## Context/Scope Tags
+
+Scope can be captured on Enpoints/Issues/Tasks.
+It's a map of key value pairs that gives you extra context related to the instance you are reviewing.
+If the value is JSON it will be displayed formatted on the website.
+
+Tags help you understand who was affected and what they were doing.
+
+## Tasks
+
+Tasks are background operations that run outside of HTTP requests. Examples include:
+
+- Cron jobs
+- Queue workers
+- Data migrations
+- Scheduled reports
+- Long running tasks
+
+## Segments
+
+You can break Endpoinst and Tasks into segments to see where time is spent:
+
+```
+Total: 45s
+├── task.fetch_data: 5s (11%)
+├── task.process: 35s (78%)
+└── task.upload: 5s (11%)
+```
+
+This helps identify bottlenecks within long-running operations.
+
+## Metrics
+
+Metrics are time-series measurements of your application's health. They're collected automatically and can be extended with custom metrics.
+
+### System Metrics (Automatic)
+
+| Metric            | Description            |
+| ----------------- | ---------------------- |
+| `cpu.used_pcnt`   | CPU usage percentage   |
+| `mem.used`        | Memory usage in MB     |
+| `go.go_routines`  | Active goroutine count |
+| `go.heap_objects` | Objects on the heap    |
+| `go.num_gc`       | Total GC cycles        |
+| `go.gc_pause`     | Last GC pause duration |
+
+### Custom Metrics
+
+Capture application-specific measurements:
+
+```go
+traceway.CaptureMetric("queue.depth", float64(len(queue)))
+traceway.CaptureMetric("cache.hit_rate", hitRate)
+traceway.CaptureMetric("active.users", float64(activeUsers))
+```
+
+Custom metrics are currently not being displayed on the website.
+
+### What to Look For
+
+- **Memory growth** - Continuous increase suggests a leak
+- **Goroutine growth** - Unbounded increase indicates goroutine leak
+- **GC frequency** - High frequency means allocation pressure
+- **CPU spikes** - Correlate with specific endpoints or tasks
+
+## Putting It Together
+
+Here's how the concepts connect in a typical request flow:
+
+1. **Request arrives** → Creates a new transaction (Endpoint)
+2. **Auth middleware runs** → Adds user_id to Scope
+3. **Handler executes** → May create Segments for sub-operations
+4. **Error occurs** → Issue captured with full Scope context
+5. **Request completes** → Transaction recorded with duration
+6. **Background** → Metrics collected every 30 seconds
+7. **Tasks** → Capture all async (outside of the endpoints) code execution into Tasks
+
+All this data flows to your Traceway dashboard where you can:
+
+- Sort endpoints by Impact to find the worst performers and fix them
+- Get notified when errors happen to escalate
+- Track task durations over time
+- Monitor system health through metrics
+
+## Next Steps
+
+- [Go Client Quickstart](/go-client/gin/quickstart) - Set up the SDK
+- [Scope Documentation](/go-client/scope) - Deep dive into scope

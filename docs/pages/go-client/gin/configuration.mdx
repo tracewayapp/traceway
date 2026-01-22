@@ -1,0 +1,165 @@
+# Gin Configuration
+
+Complete reference for all Traceway Gin middleware configuration options.
+
+## Configuration Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `WithDebug(bool)` | Enables debug logging - prints all captured telemetry to stdout | `false` |
+| `WithVersion(string)` | Sets the application version shown in the dashboard | `""` |
+| `WithServerName(string)` | Sets the server hostname identifier | Auto-detected |
+| `WithRepanic(bool)` | Re-panics after capturing exception, allowing Gin's recovery to handle it | `true` |
+| `WithRecordUnmatched(bool)` | Captures 404 requests for unmatched routes | `true` |
+| `WithCollectionInterval(duration)` | How often batched telemetry data is sent to the server | `5s` |
+| `WithMaxCollectionFrames(int)` | Maximum frames to buffer before forcing send | `12` |
+| `WithMetricsInterval(duration)` | How often system metrics (CPU, memory) are collected | `30s` |
+| `WithOnErrorRecording(flags)` | What additional data to capture when exceptions occur | `0` (none) |
+
+## Error Recording Flags
+
+When an exception occurs, you can control what additional request data is captured using `WithOnErrorRecording`. Combine flags with the `|` operator.
+
+| Flag | Description | Privacy Impact |
+|------|-------------|----------------|
+| `RecordingUrl` | Includes the request URL path in exception data | Low |
+| `RecordingQuery` | Includes query parameters as JSON | Medium |
+| `RecordingHeader` | Includes request headers as JSON | High |
+| `RecordingBody` | Includes request body (JSON only, max 64KB) | High |
+
+**Privacy Note**: Body and header recording may capture sensitive data (authentication tokens, personal information). Use with caution in production environments.
+
+### Example: Combining Flags
+
+```go
+tracewaygin.WithOnErrorRecording(
+    tracewaygin.RecordingUrl | tracewaygin.RecordingQuery,
+)
+```
+
+## Complete Configuration Example
+
+```go
+package main
+
+import (
+    "time"
+
+    "github.com/gin-gonic/gin"
+    "github.com/tracewayapp/go-client/traceway"
+    tracewaygin "github.com/tracewayapp/go-client/traceway_gin"
+)
+
+func main() {
+    // Configure global scope (optional)
+    traceway.ConfigureScope(func(s *traceway.Scope) {
+        s.SetTag("environment", "production")
+        s.SetTag("service", "user-api")
+    })
+
+    router := gin.Default()
+
+    // Add Traceway middleware with full configuration
+    router.Use(tracewaygin.New(
+        "your-token@http://localhost:8082/api/report",
+
+        // Debug mode - logs all captured data to stdout
+        tracewaygin.WithDebug(true),
+
+        // Application version (shown in dashboard)
+        tracewaygin.WithVersion("1.2.3"),
+
+        // Server hostname
+        tracewaygin.WithServerName("api-server-01"),
+
+        // Re-panic after capturing (default: true)
+        // Set to false to let Gin's recovery middleware handle it
+        tracewaygin.WithRepanic(true),
+
+        // Capture unmatched routes (404s)
+        tracewaygin.WithRecordUnmatched(true),
+
+        // Control what data is captured on errors
+        tracewaygin.WithOnErrorRecording(
+            tracewaygin.RecordingUrl |
+            tracewaygin.RecordingQuery |
+            tracewaygin.RecordingHeader |
+            tracewaygin.RecordingBody,
+        ),
+
+        // Collection interval (how often batches are sent)
+        tracewaygin.WithCollectionInterval(5 * time.Second),
+
+        // Maximum frames before forcing send
+        tracewaygin.WithMaxCollectionFrames(12),
+
+        // Metrics collection interval
+        tracewaygin.WithMetricsInterval(30 * time.Second),
+    ))
+
+    // Routes
+    router.GET("/api/users/:id", func(c *gin.Context) {
+        // Add request-specific context
+        scope := tracewaygin.GetScopeFromGin(c)
+        scope.SetTag("user_id", c.Param("id"))
+
+        // Track database query
+        ctx := c.Request.Context()
+        seg := traceway.StartSegment(ctx, "db.users.find")
+        user, err := findUser(c.Param("id"))
+        seg.End()
+
+        if err != nil {
+            c.Error(err)
+            c.AbortWithStatus(500)
+            return
+        }
+
+        c.JSON(200, user)
+    })
+
+    router.Run(":8080")
+}
+```
+
+## Configuration Recommendations
+
+### Development
+
+```go
+tracewaygin.New(
+    connectionString,
+    tracewaygin.WithDebug(true),  // See all telemetry in console
+    tracewaygin.WithOnErrorRecording(
+        tracewaygin.RecordingUrl |
+        tracewaygin.RecordingQuery |
+        tracewaygin.RecordingHeader |
+        tracewaygin.RecordingBody,  // Full request data for debugging
+    ),
+)
+```
+
+### Production
+
+```go
+tracewaygin.New(
+    connectionString,
+    tracewaygin.WithVersion(os.Getenv("APP_VERSION")),
+    tracewaygin.WithServerName(os.Getenv("HOSTNAME")),
+    tracewaygin.WithOnErrorRecording(
+        tracewaygin.RecordingUrl |
+        tracewaygin.RecordingQuery,  // Limited data for privacy
+    ),
+)
+```
+
+### High-Traffic Services
+
+```go
+tracewaygin.New(
+    connectionString,
+    tracewaygin.WithCollectionInterval(10 * time.Second),  // Less frequent sends
+    tracewaygin.WithMaxCollectionFrames(20),               // Larger buffer
+    tracewaygin.WithMetricsInterval(60 * time.Second),     // Less frequent metrics
+)
+```

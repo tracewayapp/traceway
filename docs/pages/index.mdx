@@ -1,0 +1,66 @@
+# Traceway
+
+Traceway is an open-source error tracking and monitoring platform for Go applications. It provides real-time visibility into your application's health through:
+
+- **Exception Tracking**: Capture and group errors with full stack traces
+- **Endpoint Monitoring**: Track HTTP request performance with P50/P95/P99 percentiles
+- **Background Tasks**: Monitor background job execution and failures
+- **System Metrics**: Collect CPU, memory, and Go runtime statistics
+
+## Architecture
+
+Traceway consists of three main components:
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│  Your Go App    │────▶│  Traceway API   │◀────│   Dashboard     │
+│  + SDK Client   │     │   (Backend)     │     │   (Frontend)    │
+└─────────────────┘     └────────┬────────┘     └─────────────────┘
+                                 │
+                    ┌────────────┴────────────┐
+                    ▼                         ▼
+            ┌───────────────┐         ┌────────────────┐
+            │  ClickHouse   │         │   PostgreSQL   │
+            │  (Telemetry)  │         │   (Accounts)   │
+            └───────────────┘         └────────────────┘
+```
+
+## Quick Start
+
+1. **Set up the backend** - Follow the [Local Setup](/getting-started/local-setup) guide
+2. **Register your account** - Create your first user and organization
+3. **Create a project** - Get your project token for the SDK
+4. **Install the SDK** - Add the Go client to your application
+5. **View your data** - Monitor your application in the dashboard
+
+## Features
+
+### For Developers
+
+- **Automatic Error Capture**: Panics and errors are automatically captured with full context
+- **Request Scoping**: Add custom tags (user ID, tenant, etc.) to correlate errors
+- **Segment Tracking**: Measure sub-operations within requests (database queries, API calls)
+- **Background Task Support**: Track non-HTTP operations with the same tooling
+
+### For Operations
+
+- **Real-time Monitoring**: See errors and performance issues as they happen
+- **Smart Grouping**: Similar errors are automatically grouped by normalized stack traces
+- **Historical Analysis**: Query data across custom time ranges
+- **Multi-project Support**: Manage multiple applications from a single dashboard
+
+## Supported Frameworks
+
+Currently, Traceway provides official SDK support for:
+
+| Framework | Status | Documentation                     |
+| --------- | ------ | --------------------------------- |
+| Gin (Go)  | Stable | [Go Client - Gin](/go-client/gin) |
+
+More framework support is planned for future releases.
+
+## Next Steps
+
+- [Local Setup](/getting-started/local-setup) - Run Traceway on your machine
+- [Docker Deployment](/getting-started/docker) - Deploy with Docker
+- [Go Client Overview](/go-client/overview) - Learn about the SDK

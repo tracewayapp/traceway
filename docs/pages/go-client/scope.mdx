@@ -1,0 +1,175 @@
+# Scope
+
+Scopes attach contextual tags to exceptions and transactions, making it easier to debug and filter issues in the dashboard.
+
+## Request Scope
+
+Add contextual information specific to a single request:
+
+```go
+import tracewaygin "github.com/tracewayapp/go-client/traceway_gin"
+
+func handler(c *gin.Context) {
+    // Get the request-scoped scope
+    scope := tracewaygin.GetScope(c)
+
+    // Add tags that will be attached to any exceptions in this request
+    scope.SetTag("user_id", c.Param("id"))
+    scope.SetTag("tenant", "acme-corp")
+    scope.SetTag("feature_flag", "new_checkout")
+
+    // ... rest of handler
+}
+```
+
+Request scope tags are automatically included when:
+
+- Exceptions are captured during the request
+- The transaction is recorded
+- Segments are tracked
+
+## Scope Methods
+
+| Method                              | Description                                    |
+| ----------------------------------- | ---------------------------------------------- |
+| `SetTag(key, value string)`         | Set a string tag                               |
+| `SetTagJson(key string, value any)` | Set a JSON-serialized tag (for complex values) |
+| `GetTag(key string)`                | Retrieve a tag value                           |
+| `GetTags()`                         | Get a copy of all tags                         |
+
+### Examples
+
+```go
+// String tags
+scope.SetTag("user_id", "12345")
+scope.SetTag("organization", "acme-corp")
+
+// JSON tags for complex values
+scope.SetTagJson("cart_items", []string{"item1", "item2", "item3"})
+scope.SetTagJson("user_prefs", map[string]bool{"notifications": true})
+
+// Reading tags
+userID := scope.GetTag("user_id")
+allTags := scope.GetTags()
+```
+
+## Scope in Middleware
+
+Add tags for all requests in a middleware function:
+
+```go
+func authMiddleware() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        user := authenticate(c)
+
+        // Add user info to scope for all downstream handlers
+        scope := tracewaygin.GetScopeFromGin(c)
+        scope.SetTag("user_id", user.ID)
+        scope.SetTag("user_email", user.Email)
+        scope.SetTag("organization", user.OrgID)
+        scope.SetTag("role", user.Role)
+
+        c.Next()
+    }
+}
+```
+
+## Global Scope
+
+Global scope tags apply to all telemetry data. Configure them once at application startup:
+
+```go
+import "github.com/tracewayapp/go-client/traceway"
+
+func main() {
+    // Configure global scope (runs once at startup)
+    traceway.ConfigureScope(func(s *traceway.Scope) {
+        s.SetTag("environment", "production")
+        s.SetTag("region", "us-east-1")
+        s.SetTag("service", "user-api")
+        s.SetTag("version", os.Getenv("APP_VERSION"))
+    })
+
+    // ... rest of your application
+}
+```
+
+Global tags are inherited by every request scope and background task.
+
+## Tag Inheritance
+
+Tags flow from global to request scope:
+
+```
+Global Scope                Request Scope              Final Tags
+─────────────              ─────────────              ──────────
+environment: prod     +    user_id: 123         =    environment: prod
+region: us-east-1          tenant: acme               region: us-east-1
+service: user-api                                     service: user-api
+                                                      user_id: 123
+                                                      tenant: acme
+```
+
+Request-level tags override global tags if they have the same key.
+
+## Best Practices
+
+### 1. Set Global Context at Startup
+
+```go
+traceway.ConfigureScope(func(s *traceway.Scope) {
+    s.SetTag("environment", os.Getenv("ENV"))
+    s.SetTag("version", version)
+    s.SetTag("region", os.Getenv("AWS_REGION"))
+    s.SetTag("service", serviceName)
+})
+```
+
+### 2. Add User Context in Auth Middleware
+
+```go
+func authMiddleware() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        if user := getCurrentUser(c); user != nil {
+            scope := tracewaygin.GetScopeFromGin(c)
+            scope.SetTag("user_id", user.ID)
+            scope.SetTag("organization", user.OrgID)
+        }
+        c.Next()
+    }
+}
+```
+
+### 3. Add Request-Specific Context in Handlers
+
+```go
+func createOrderHandler(c *gin.Context) {
+    scope := tracewaygin.GetScopeFromGin(c)
+    scope.SetTag("action", "create_order")
+    scope.SetTag("item_count", fmt.Sprintf("%d", len(items)))
+    // ... rest of handler
+}
+```
+
+### 4. Use Meaningful Tag Names
+
+```go
+// Good - descriptive and searchable
+scope.SetTag("user_id", userID)
+scope.SetTag("order_id", orderID)
+scope.SetTag("payment_method", "stripe")
+
+// Avoid - too generic
+scope.SetTag("id", someID)
+scope.SetTag("type", "thing")
+```
+
+## Viewing Tags in Dashboard
+
+Tags appear in the detail view for:
+
+1. **Exceptions** and **Messages**
+2. **Endpoints**
+3. **Tasks**
+
+Use tags to debug issues with full context

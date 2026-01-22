@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Build output
+.next/
+out/
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Misc
+.DS_Store
+*.pem
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts

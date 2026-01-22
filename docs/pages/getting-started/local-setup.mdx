@@ -1,0 +1,155 @@
+# Local Setup
+
+This guide walks you through setting up Traceway on your local machine for development.
+
+## Prerequisites
+
+- **Go** 1.25 or later
+- **Node.js** 18+ and npm
+- **ClickHouse** (for telemetry storage)
+- **PostgreSQL** (for user and project data)
+
+## Database Setup
+
+### ClickHouse
+
+1. Install ClickHouse following the [official installation guide](https://clickhouse.com/docs/en/install)
+
+2. Start ClickHouse server
+
+3. Create a database:
+```sql
+CREATE DATABASE traceway
+```
+
+4. The default user (`default` with empty password) works for local development
+
+### PostgreSQL
+
+1. Install PostgreSQL following the [official installation guide](https://www.postgresql.org/download/)
+
+2. Create a user and database:
+```sql
+CREATE USER traceway WITH PASSWORD 'your_password';
+CREATE DATABASE traceway OWNER traceway;
+```
+
+## Backend Setup
+
+1. Navigate to the backend folder:
+```bash
+cd backend
+```
+
+2. Create a `.env` file with your configuration:
+```env
+JWT_SECRET=your-secret-key-minimum-32-characters-long
+CLICKHOUSE_SERVER=localhost:9000
+CLICKHOUSE_DATABASE=traceway
+CLICKHOUSE_USERNAME=default
+CLICKHOUSE_PASSWORD=
+CLICKHOUSE_TLS=false
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_DATABASE=traceway
+POSTGRES_USERNAME=traceway
+POSTGRES_PASSWORD=your_password
+POSTGRES_SSLMODE=disable
+```
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `JWT_SECRET` | Secret key for signing JWT tokens. Must be at least 32 characters. |
+| `CLICKHOUSE_SERVER` | ClickHouse server address (host:port) |
+| `CLICKHOUSE_DATABASE` | ClickHouse database name |
+| `CLICKHOUSE_USERNAME` | ClickHouse username |
+| `CLICKHOUSE_PASSWORD` | ClickHouse password (empty for default) |
+| `CLICKHOUSE_TLS` | Enable TLS for ClickHouse connection |
+| `POSTGRES_HOST` | PostgreSQL server host |
+| `POSTGRES_PORT` | PostgreSQL server port |
+| `POSTGRES_DATABASE` | PostgreSQL database name |
+| `POSTGRES_USERNAME` | PostgreSQL username |
+| `POSTGRES_PASSWORD` | PostgreSQL password |
+| `POSTGRES_SSLMODE` | PostgreSQL SSL mode (`disable`, `require`, etc.) |
+
+3. Run the backend:
+```bash
+go run .
+```
+
+The backend will start on port **8082** and automatically run database migrations.
+
+## Frontend Setup
+
+1. Navigate to the frontend folder:
+```bash
+cd frontend
+```
+
+2. Install dependencies:
+```bash
+npm install
+```
+
+3. Start the development server:
+```bash
+npm run dev
+```
+
+The frontend will start on port **5173** and proxy API requests to the backend.
+
+## First-Time Registration
+
+When running locally for the first time:
+
+1. Open your browser to [http://localhost:5173](http://localhost:5173)
+2. The login page will automatically redirect you to registration (since no users exist)
+3. Create your user account with email and password
+4. After registration, create your first organization
+5. Create your first project to get a project token
+
+The project token is used by the SDK to send telemetry data.
+
+## Connecting Your Application
+
+Once you have a project token, you can connect your Go application:
+
+```go
+import "github.com/tracewayapp/go-client/traceway_gin"
+
+func main() {
+    router := gin.Default()
+
+    // Replace with your project token
+    router.Use(tracewaygin.New(
+        "your_project_token@http://localhost:8082/api/report",
+    ))
+
+    router.GET("/", handler)
+    router.Run(":8080")
+}
+```
+
+See the [Go Client documentation](/go-client/overview) for detailed SDK usage.
+
+## Troubleshooting
+
+### Backend won't start
+
+- Verify ClickHouse is running: `clickhouse-client --query "SELECT 1"`
+- Verify PostgreSQL is running: `psql -U traceway -d traceway -c "SELECT 1"`
+- Check that all environment variables are set correctly
+
+### Frontend can't connect to backend
+
+- Ensure the backend is running on port 8082
+- Check the browser console for CORS or network errors
+- Verify the proxy configuration in `vite.config.ts`
+
+### No data appearing in dashboard
+
+- Verify your project token matches the one in the SDK configuration
+- Check that your application is making requests
+- Look at the backend logs for any ingestion errors

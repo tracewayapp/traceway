@@ -7,8 +7,8 @@ export default {
       <img
         src={
           resolvedTheme === "dark"
-            ? "/docs/traceway-logo-white.png"
-            : "/docs/traceway-logo.png"
+            ? "/traceway-logo-white.png"
+            : "/traceway-logo.png"
         }
         alt="Traceway"
         style={{ height: "32px" }}
@@ -39,7 +39,7 @@ export default {
   primaryHue: 205,
   darkMode: true,
   nextThemes: {
-    defaultTheme: "dark",
+    defaultTheme: "light",
   },
   sidebar: {
     defaultMenuCollapseLevel: 1,

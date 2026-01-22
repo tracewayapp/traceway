@@ -39,20 +39,15 @@ func (a authController) Login(c *gin.Context) {
 			return nil, err
 		}
 
-		projects, err := repositories.ProjectRepository.FindByUserId(tx, user.Id)
+		projects, err := repositories.ProjectRepository.FindAllWithBackendUrlByUserId(tx, user.Id)
 		if err != nil {
 			return nil, err
-		}
-
-		projectsResponse := make([]models.ProjectResponse, len(projects))
-		for i, proj := range projects {
-			projectsResponse[i] = proj.ToResponse()
 		}
 
 		return &models.LoginResponse{
 			Token:    token,
 			User:     user.ToResponse(),
-			Projects: projectsResponse,
+			Projects: projects,
 		}, nil
 	})
 
@@ -115,21 +110,16 @@ func (a authController) Register(c *gin.Context) {
 			return nil, err
 		}
 
-		projects, err := repositories.ProjectRepository.FindByUserId(tx, user.Id)
+		projects, err := repositories.ProjectRepository.FindAllWithBackendUrlByUserId(tx, user.Id)
 		if err != nil {
 			return nil, err
-		}
-
-		projectsResponse := make([]models.ProjectResponse, len(projects))
-		for i, proj := range projects {
-			projectsResponse[i] = proj.ToResponse()
 		}
 
 		return &models.RegisterResponse{
 			Token:    token,
 			User:     user.ToResponse(),
-			Project:  project.ToWithToken(),
-			Projects: projectsResponse,
+			Project:  *project.ToProjectWithBackendUrl(),
+			Projects: projects,
 		}, nil
 	})
 

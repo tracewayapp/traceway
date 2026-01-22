@@ -12,7 +12,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	traceway "go.tracewayapp.com"
 )
 
@@ -36,11 +35,10 @@ type CreateProjectRequest struct {
 	Framework string `json:"framework" binding:"required"`
 }
 
-// ListProjects returns projects accessible by the authenticated user
 func (p projectController) ListProjects(c *gin.Context) {
 	userId := middleware.GetUserId(c)
 
-	projects, err := pgdb.ExecuteTransaction(func(tx *sql.Tx) ([]*models.Project, error) {
+	projectsWithBackendUrl, err := pgdb.ExecuteTransaction(func(tx *sql.Tx) ([]*models.Project, error) {
 		return repositories.ProjectRepository.FindByUserId(tx, userId)
 	})
 	if err != nil {
@@ -48,13 +46,7 @@ func (p projectController) ListProjects(c *gin.Context) {
 		return
 	}
 
-	// Convert to response format (without tokens)
-	response := make([]models.ProjectResponse, len(projects))
-	for i, proj := range projects {
-		response[i] = proj.ToResponse()
-	}
-
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, projectsWithBackendUrl)
 }
 
 // CreateProject creates a new project and returns it with its token
@@ -76,7 +68,6 @@ func (p projectController) CreateProject(c *gin.Context) {
 		return
 	}
 
-	// Validate framework
 	if !validFrameworks[request.Framework] {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Framework must be one of: stdlib, fasthttp, gin, fiber, chi, custom"})
 		return
@@ -90,29 +81,9 @@ func (p projectController) CreateProject(c *gin.Context) {
 		return
 	}
 
-	// Add to cache
 	cache.ProjectCache.AddProject(project)
 
-	// Return with token since this is creation
-	c.JSON(http.StatusCreated, (*project).ToWithToken())
-}
-
-// GetProject returns a project by ID with its token (for connection page)
-func (p projectController) GetProject(c *gin.Context) {
-	projectId, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
-		return
-	}
-
-	project := cache.ProjectCache.GetById(projectId)
-	if project == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
-		return
-	}
-
-	// Return with token for connection page
-	c.JSON(http.StatusOK, project.ToWithToken())
+	c.JSON(http.StatusCreated, project.ToProjectWithBackendUrl())
 }
 
 var ProjectController = projectController{}

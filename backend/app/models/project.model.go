@@ -7,13 +7,6 @@ import (
 	"github.com/google/uuid"
 )
 
-func getBackendUrl() string {
-	if url := os.Getenv("BACKEND_URL"); url != "" {
-		return url
-	}
-	return "https://tracewayapp.com"
-}
-
 type Project struct {
 	Id             uuid.UUID `json:"id"`
 	Name           string    `json:"name"`
@@ -23,44 +16,18 @@ type Project struct {
 	CreatedAt      time.Time `json:"createdAt"`
 }
 
-type ProjectResponse struct {
-	Id             uuid.UUID `json:"id"`
-	Name           string    `json:"name"`
-	Framework      string    `json:"framework"`
-	OrganizationId *int      `json:"organizationId"`
-	CreatedAt      time.Time `json:"createdAt"`
-	BackendUrl     string    `json:"backendUrl"`
+func (p Project) ToProjectWithBackendUrl() *ProjectWithBackendUrl {
+	return &ProjectWithBackendUrl{Project: p, BackendUrl: getBackendUrl()}
 }
 
-type ProjectWithToken struct {
-	Id             uuid.UUID `json:"id"`
-	Name           string    `json:"name"`
-	Token          string    `json:"token"`
-	Framework      string    `json:"framework"`
-	OrganizationId *int      `json:"organizationId"`
-	CreatedAt      time.Time `json:"createdAt"`
-	BackendUrl     string    `json:"backendUrl"`
-}
-
-func (p *Project) ToResponse() ProjectResponse {
-	return ProjectResponse{
-		Id:             p.Id,
-		Name:           p.Name,
-		Framework:      p.Framework,
-		OrganizationId: p.OrganizationId,
-		CreatedAt:      p.CreatedAt,
-		BackendUrl:     getBackendUrl(),
+func getBackendUrl() string {
+	if url := os.Getenv("BACKEND_URL"); url != "" {
+		return url
 	}
+	return "https://tracewayapp.com"
 }
 
-func (p *Project) ToWithToken() ProjectWithToken {
-	return ProjectWithToken{
-		Id:             p.Id,
-		Name:           p.Name,
-		Token:          p.Token,
-		Framework:      p.Framework,
-		OrganizationId: p.OrganizationId,
-		CreatedAt:      p.CreatedAt,
-		BackendUrl:     getBackendUrl(),
-	}
+type ProjectWithBackendUrl struct {
+	Project
+	BackendUrl string `json:"backendUrl"`
 }

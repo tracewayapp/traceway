@@ -11,6 +11,22 @@ import (
 
 type projectRepository struct{}
 
+func (p *projectRepository) FindAllWithBackendUrlByUserId(tx *sql.Tx, userId int) ([]*models.ProjectWithBackendUrl, error) {
+	projects, err := p.FindByUserId(tx, userId)
+
+	if err != nil {
+		return nil, err
+	}
+
+	projectsWithBackendUrl := []*models.ProjectWithBackendUrl{}
+
+	for _, project := range projects {
+		projectsWithBackendUrl = append(projectsWithBackendUrl, project.ToProjectWithBackendUrl())
+	}
+
+	return projectsWithBackendUrl, nil
+}
+
 func (p *projectRepository) FindAll(tx *sql.Tx) ([]*models.Project, error) {
 	return lit.Select[models.Project](
 		tx,

@@ -41,7 +41,7 @@ export default function Home() {
 
         <div className="container mx-auto px-4 relative z-10 text-center">
           <Badge variant="secondary" className="mb-4 bg-zinc-100 text-zinc-600 hover:bg-zinc-200 px-2.5 py-0.5 border border-zinc-200 text-xs font-normal">
-            Star us on Github
+            Star us on GitHub
           </Badge>
           <h1 className="text-4xl md:text-6xl font-bold tracking-tight mb-6 text-zinc-900">
             Telemetry & Issue Tracking <br /> for <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">Golang</span>

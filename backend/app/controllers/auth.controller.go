@@ -2,17 +2,29 @@ package controllers
 
 import (
 	"backend/app/cache"
+	"backend/app/middleware"
 	"backend/app/models"
-	"backend/app/pgdb"
 	"backend/app/repositories"
 	"backend/app/services"
-	"database/sql"
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 )
 
 type authController struct{}
+
+func (a authController) HasOrganizations(c *gin.Context) {
+	tx := middleware.GetTx(c)
+	hasOrganizations, err := repositories.OrganizationRepository.HasOrganizations(tx)
+
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"hasOrganizations": hasOrganizations})
+}
 
 func (a authController) Login(c *gin.Context) {
 	var request models.LoginRequest
@@ -21,47 +33,40 @@ func (a authController) Login(c *gin.Context) {
 		return
 	}
 
-	result, err := pgdb.ExecuteTransaction(func(tx *sql.Tx) (*models.LoginResponse, error) {
-		user, err := repositories.UserRepository.FindByEmail(tx, request.Email)
-		if err != nil {
-			return nil, err
-		}
-		if user == nil {
-			return nil, nil
-		}
+	tx := middleware.GetTx(c)
 
-		if !services.CheckPassword(request.Password, user.Password) {
-			return nil, nil
-		}
+	user, err := repositories.UserRepository.FindByEmail(tx, request.Email)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
+		return
+	}
 
-		token, err := services.GenerateToken(user.Id, user.Email)
-		if err != nil {
-			return nil, err
-		}
+	if !services.CheckPassword(request.Password, user.Password) {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
 
-		projects, err := repositories.ProjectRepository.FindAllWithBackendUrlByUserId(tx, user.Id)
-		if err != nil {
-			return nil, err
-		}
-
-		return &models.LoginResponse{
-			Token:    token,
-			User:     user.ToResponse(),
-			Projects: projects,
-		}, nil
-	})
-
+	token, err := services.GenerateToken(user.Id, user.Email)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, err)
 		return
 	}
 
-	if result == nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
+	projects, err := repositories.ProjectRepository.FindAllWithBackendUrlByUserId(tx, user.Id)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	c.JSON(http.StatusOK, &models.LoginResponse{
+		Token:    token,
+		User:     user.ToResponse(),
+		Projects: projects,
+	})
 }
 
 func (a authController) Register(c *gin.Context) {
@@ -71,115 +76,92 @@ func (a authController) Register(c *gin.Context) {
 		return
 	}
 
-	result, err := pgdb.ExecuteTransaction(func(tx *sql.Tx) (*models.RegisterResponse, error) {
-		exists, err := repositories.UserRepository.EmailExists(tx, request.Email)
+	tx := middleware.GetTx(c)
+
+	// if we're not in the cloud mode only a single organization is allowed
+	if os.Getenv("CLOUD_MODE") != "true" {
+		hasOrganizations, err := repositories.OrganizationRepository.HasOrganizations(tx)
+
 		if err != nil {
-			return nil, err
-		}
-		if exists {
-			return nil, &EmailExistsError{}
-		}
-
-		hashedPassword, err := services.HashPassword(request.Password)
-		if err != nil {
-			return nil, err
-		}
-
-		user, err := repositories.UserRepository.Create(tx, request.Email, request.Name, hashedPassword)
-		if err != nil {
-			return nil, err
-		}
-
-		org, err := repositories.OrganizationRepository.Create(tx, request.OrganizationName)
-		if err != nil {
-			return nil, err
-		}
-
-		_, err = repositories.OrganizationRepository.AddUser(tx, org.Id, user.Id, "owner")
-		if err != nil {
-			return nil, err
-		}
-
-		project, err := repositories.ProjectRepository.CreateWithOrganization(tx, request.ProjectName, request.Framework, org.Id)
-		if err != nil {
-			return nil, err
-		}
-
-		token, err := services.GenerateToken(user.Id, user.Email)
-		if err != nil {
-			return nil, err
-		}
-
-		projects, err := repositories.ProjectRepository.FindAllWithBackendUrlByUserId(tx, user.Id)
-		if err != nil {
-			return nil, err
-		}
-
-		return &models.RegisterResponse{
-			Token:    token,
-			User:     user.ToResponse(),
-			Project:  *project.ToProjectWithBackendUrl(),
-			Projects: projects,
-		}, nil
-	})
-
-	if err != nil {
-		if _, ok := err.(*EmailExistsError); ok {
-			c.JSON(http.StatusConflict, gin.H{"error": "Email already exists"})
+			c.AbortWithError(http.StatusInternalServerError, err)
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+
+		if hasOrganizations {
+			c.JSON(http.StatusConflict, gin.H{"error": "You already have an Organization registered. Please use login."})
+			return
+		}
+	}
+
+	exists, err := repositories.UserRepository.EmailExists(tx, request.Email)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+	if exists {
+		c.JSON(http.StatusConflict, gin.H{"error": "Email already exists"})
 		return
 	}
 
-	// Add project to cache
-	cache.ProjectCache.AddProject(&models.Project{
-		Id:             result.Project.Id,
-		Name:           result.Project.Name,
-		Token:          result.Project.Token,
-		Framework:      result.Project.Framework,
-		OrganizationId: result.Project.OrganizationId,
-	})
-
-	c.JSON(http.StatusCreated, result)
-}
-
-func (a authController) Me(c *gin.Context) {
-	userId, exists := c.Get("userId")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-
-	result, err := pgdb.ExecuteTransaction(func(tx *sql.Tx) (*models.UserResponse, error) {
-		user, err := repositories.UserRepository.FindById(tx, userId.(int))
-		if err != nil {
-			return nil, err
-		}
-		if user == nil {
-			return nil, nil
-		}
-		response := user.ToResponse()
-		return &response, nil
-	})
-
+	hashedPassword, err := services.HashPassword(request.Password)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, err)
 		return
 	}
 
-	if result == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+	user, err := repositories.UserRepository.Create(tx, request.Email, request.Name, hashedPassword)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
-}
+	org, err := repositories.OrganizationRepository.Create(tx, request.OrganizationName)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
 
-type EmailExistsError struct{}
+	_, err = repositories.OrganizationRepository.AddUser(tx, org.Id, user.Id, "owner")
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
 
-func (e *EmailExistsError) Error() string {
-	return "email already exists"
+	project, err := repositories.ProjectRepository.CreateWithOrganization(tx, request.ProjectName, request.Framework, org.Id)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	token, err := services.GenerateToken(user.Id, user.Email)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	projects, err := repositories.ProjectRepository.FindAllWithBackendUrlByUserId(tx, user.Id)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	// cache can get out of sync here
+	// the transaction for creating the project is not guaranteed to have
+	// finished when this is inserted into cache
+	cache.ProjectCache.AddProject(&models.Project{
+		Id:             project.Id,
+		Name:           project.Name,
+		Token:          project.Token,
+		Framework:      project.Framework,
+		OrganizationId: project.OrganizationId,
+	})
+
+	c.JSON(http.StatusCreated, &models.RegisterResponse{
+		Token:    token,
+		User:     user.ToResponse(),
+		Project:  *project.ToProjectWithBackendUrl(),
+		Projects: projects,
+	})
 }
 
 var AuthController = authController{}

@@ -1,5 +1,4 @@
 import { clearNavDepth } from '$lib/utils/back-navigation';
-import { userState } from './user.svelte';
 
 class AuthState {
     token = $state<string | null>(localStorage.getItem('AUTH_TOKEN'));
@@ -24,7 +23,6 @@ class AuthState {
 
     logout() {
         this.token = null;
-        userState.clear();
         clearNavDepth();
     }
 }

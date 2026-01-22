@@ -23,6 +23,22 @@ func (r *organizationRepository) Create(tx *sql.Tx, name string) (*models.Organi
 	return org, nil
 }
 
+func (r *organizationRepository) HasOrganizations(tx *sql.Tx) (bool, error) {
+	result, err := lit.SelectSingle[CountResult](
+		tx,
+		`SELECT COUNT(*) as count
+		FROM organizations`,
+	)
+	if err != nil {
+		return false, err
+	}
+	if result == nil {
+		return false, nil
+	}
+
+	return result.Count > 0, nil
+}
+
 func (r *organizationRepository) FindById(tx *sql.Tx, id int) (*models.Organization, error) {
 	return lit.SelectSingle[models.Organization](
 		tx,

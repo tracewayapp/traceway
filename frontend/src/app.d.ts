@@ -10,6 +10,7 @@ declare global {
 	}
 
 	const __APP_VERSION__: string;
+	const __CLOUD_MODE__: string;
 }
 
 export {};

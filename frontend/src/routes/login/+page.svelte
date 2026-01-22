@@ -7,14 +7,38 @@
     import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
     import { CircleAlert } from "@lucide/svelte";
     import { authState } from '$lib/state/auth.svelte';
-    import { userState } from '$lib/state/user.svelte';
     import { projectsState } from '$lib/state/projects.svelte';
     import { themeState } from '$lib/state/theme.svelte';
+	import { toast } from 'svelte-sonner';
 
     let email = $state('');
     let password = $state('');
     let error = $state('');
     let loading = $state(false);
+
+    if (!__CLOUD_MODE__) {
+        $effect(() => {
+        // if we're not in the cloud mode we have to check if an organization exists and if it does not we need to take the user to the register page
+
+            loading = true;
+            fetch('/api/has-organizations', {
+                method: 'GET',
+            })
+            .then(response => response.json())
+            .then((response) => {
+                if (response.hasOrganizations) {
+                    loading = false
+                } else {
+                    goto("/register")
+                }
+            }).catch(() => {
+                toast.error("An unexpected error has occured. The page will refresh in 5 seconds.")
+                setTimeout(() => {
+                    window.location.reload()
+                }, 5000)
+            });
+        })
+    }
 
     async function handleLogin() {
         loading = true;
@@ -36,7 +60,6 @@
             const data = await response.json();
 
             authState.setToken(data.token);
-            userState.setUser(data.user);
             projectsState.setProjects(data.projects);
 
             goto('/');
@@ -89,10 +112,15 @@
                 </Button>
             </form>
         </CardContent>
-        <CardFooter class="flex flex-col justify-center">
-            <p class="text-sm text-muted-foreground">
-                Don't have an account? <a href="/register" class="text-primary hover:underline">Create account</a>
-            </p>
-        </CardFooter>
+
+        <!-- If the backend is running in the cloud mode we'll allow registration to take place -->
+        <!-- If we're running in the self hosted mode - we will not allow register -->
+        {#if __CLOUD_MODE__}
+            <CardFooter class="flex flex-col justify-center">
+                <p class="text-sm text-muted-foreground">
+                    Don't have an account? <a href="/register" class="text-primary hover:underline">Create account</a>
+                </p>
+            </CardFooter>
+        {/if}
     </Card>
 </div>

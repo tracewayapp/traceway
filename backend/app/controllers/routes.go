@@ -3,6 +3,7 @@ package controllers
 import (
 	"backend/app/controllers/clientcontrollers"
 	"backend/app/middleware"
+	"os"
 
 	"github.com/gin-gonic/gin"
 )
@@ -62,7 +63,10 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/exception-stack-traces/:hash", middleware.UseAppAuth, middleware.RequireProjectAccess, ExceptionStackTraceController.FindByHash)
 
 	// Auth
-	router.POST("/login", AuthController.Login)
-	router.POST("/register", AuthController.Register)
-	router.GET("/me", middleware.UseAppAuth, AuthController.Me)
+	router.POST("/login", middleware.Transactional, AuthController.Login)
+	router.POST("/register", middleware.Transactional, AuthController.Register)
+
+	if os.Getenv("CLOUD_MODE") != "true" {
+		router.GET("/has-organizations", middleware.Transactional, AuthController.HasOrganizations)
+	}
 }

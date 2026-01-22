@@ -8,9 +8,9 @@
     import * as Select from "$lib/components/ui/select";
     import { CircleAlert } from "@lucide/svelte";
     import { authState } from '$lib/state/auth.svelte';
-    import { userState } from '$lib/state/user.svelte';
     import { projectsState } from '$lib/state/projects.svelte';
     import { themeState } from '$lib/state/theme.svelte';
+	import { toast } from 'svelte-sonner';
 
     let email = $state('');
     let name = $state('');
@@ -21,6 +21,30 @@
     let framework = $state('gin');
     let error = $state('');
     let loading = $state(false);
+
+    if (!__CLOUD_MODE__) {
+        $effect(() => {
+            // if we're not in the cloud mode we have to check if an organization exists and if it does we should go to the login page
+
+            loading = true;
+            fetch('/api/has-organizations', {
+                method: 'GET',
+            })
+            .then(response => response.json())
+            .then((response) => {
+                if (response.hasOrganizations) {
+                    loading = false
+                } else {
+                    goto("/register")
+                }
+            }).catch(() => {
+                toast.error("An unexpected error has occured. The page will refresh in 5 seconds.")
+                setTimeout(() => {
+                    window.location.reload()
+                }, 5000)
+            });
+        })
+    }
 
     const frameworks = [
         { value: 'gin', label: 'Gin (Go)' },
@@ -67,7 +91,6 @@
             const data = await response.json();
 
             authState.setToken(data.token);
-            userState.setUser(data.user);
             projectsState.setProjects(data.projects);
 
             goto('/connection');
@@ -162,10 +185,13 @@
                 </Button>
             </form>
         </CardContent>
-        <CardFooter class="flex flex-col justify-center">
-            <p class="text-sm text-muted-foreground">
-                Already have an account? <a href="/login" class="text-primary hover:underline">Login</a>
-            </p>
-        </CardFooter>
+
+        {#if __CLOUD_MODE__}
+            <CardFooter class="flex flex-col justify-center">
+                <p class="text-sm text-muted-foreground">
+                    Already have an account? <a href="/login" class="text-primary hover:underline">Login</a>
+                </p>
+            </CardFooter>
+        {/if}
     </Card>
 </div>

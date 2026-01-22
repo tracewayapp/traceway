@@ -39,9 +39,20 @@ func (a authController) Login(c *gin.Context) {
 			return nil, err
 		}
 
+		projects, err := repositories.ProjectRepository.FindByUserId(tx, user.Id)
+		if err != nil {
+			return nil, err
+		}
+
+		projectsResponse := make([]models.ProjectResponse, len(projects))
+		for i, proj := range projects {
+			projectsResponse[i] = proj.ToResponse()
+		}
+
 		return &models.LoginResponse{
-			Token: token,
-			User:  user.ToResponse(),
+			Token:    token,
+			User:     user.ToResponse(),
+			Projects: projectsResponse,
 		}, nil
 	})
 
@@ -66,7 +77,6 @@ func (a authController) Register(c *gin.Context) {
 	}
 
 	result, err := pgdb.ExecuteTransaction(func(tx *sql.Tx) (*models.RegisterResponse, error) {
-		// Check if email already exists
 		exists, err := repositories.UserRepository.EmailExists(tx, request.Email)
 		if err != nil {
 			return nil, err
@@ -75,46 +85,51 @@ func (a authController) Register(c *gin.Context) {
 			return nil, &EmailExistsError{}
 		}
 
-		// Hash password
 		hashedPassword, err := services.HashPassword(request.Password)
 		if err != nil {
 			return nil, err
 		}
 
-		// Create user
 		user, err := repositories.UserRepository.Create(tx, request.Email, request.Name, hashedPassword)
 		if err != nil {
 			return nil, err
 		}
 
-		// Create organization
 		org, err := repositories.OrganizationRepository.Create(tx, request.OrganizationName)
 		if err != nil {
 			return nil, err
 		}
 
-		// Add user to organization as owner
 		_, err = repositories.OrganizationRepository.AddUser(tx, org.Id, user.Id, "owner")
 		if err != nil {
 			return nil, err
 		}
 
-		// Create project with organization
 		project, err := repositories.ProjectRepository.CreateWithOrganization(tx, request.ProjectName, request.Framework, org.Id)
 		if err != nil {
 			return nil, err
 		}
 
-		// Generate JWT token
 		token, err := services.GenerateToken(user.Id, user.Email)
 		if err != nil {
 			return nil, err
 		}
 
+		projects, err := repositories.ProjectRepository.FindByUserId(tx, user.Id)
+		if err != nil {
+			return nil, err
+		}
+
+		projectsResponse := make([]models.ProjectResponse, len(projects))
+		for i, proj := range projects {
+			projectsResponse[i] = proj.ToResponse()
+		}
+
 		return &models.RegisterResponse{
-			Token:   token,
-			User:    user.ToResponse(),
-			Project: project.ToWithToken(),
+			Token:    token,
+			User:     user.ToResponse(),
+			Project:  project.ToWithToken(),
+			Projects: projectsResponse,
 		}, nil
 	})
 

@@ -35,12 +35,9 @@
 
             const data = await response.json();
 
-            // Store token and user
             authState.setToken(data.token);
             userState.setUser(data.user);
-
-            // Load projects after successful login
-            await projectsState.loadProjects();
+            projectsState.setProjects(data.projects);
 
             goto('/');
         } catch (e) {

@@ -6,8 +6,9 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	Token string       `json:"token"`
-	User  UserResponse `json:"user"`
+	Token    string            `json:"token"`
+	User     UserResponse      `json:"user"`
+	Projects []ProjectResponse `json:"projects"`
 }
 
 type RegisterRequest struct {
@@ -20,7 +21,8 @@ type RegisterRequest struct {
 }
 
 type RegisterResponse struct {
-	Token   string           `json:"token"`
-	User    UserResponse     `json:"user"`
-	Project ProjectWithToken `json:"project"`
+	Token    string            `json:"token"`
+	User     UserResponse      `json:"user"`
+	Project  ProjectWithToken  `json:"project"`
+	Projects []ProjectResponse `json:"projects"`
 }

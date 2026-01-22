@@ -36,23 +36,27 @@ class ProjectsState {
         });
     }
 
+    setProjects(projects: Project[]) {
+        this.projects = projects;
+
+        // If no current project selected or current project not in list, select first one
+        if (!this.currentProjectId || !this.projects.find(p => p.id === this.currentProjectId)) {
+            if (this.projects.length > 0) {
+                this.currentProjectId = this.projects[0].id;
+            }
+        }
+
+        // Cache in localStorage
+        localStorage.setItem('PROJECTS_CACHE', JSON.stringify(this.projects));
+    }
+
     async loadProjects() {
         this.loading = true;
         this.error = null;
 
         try {
             const response = await api.get('/projects');
-            this.projects = response;
-
-            // If no current project selected or current project not in list, select first one
-            if (!this.currentProjectId || !this.projects.find(p => p.id === this.currentProjectId)) {
-                if (this.projects.length > 0) {
-                    this.currentProjectId = this.projects[0].id;
-                }
-            }
-
-            // Cache in localStorage
-            localStorage.setItem('PROJECTS_CACHE', JSON.stringify(this.projects));
+            this.setProjects(response)
         } catch (e: unknown) {
             const errorMessage = e instanceof Error ? e.message : 'Failed to load projects';
             this.error = errorMessage;

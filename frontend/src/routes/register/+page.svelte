@@ -30,7 +30,6 @@
     ];
 
     async function handleRegister() {
-        // Validate passwords match
         if (password !== confirmPassword) {
             error = 'Passwords do not match';
             return;
@@ -67,14 +66,10 @@
 
             const data = await response.json();
 
-            // Store token and user
             authState.setToken(data.token);
             userState.setUser(data.user);
+            projectsState.setProjects(data.projects);
 
-            // Load projects (will include the newly created project)
-            await projectsState.loadProjects();
-
-            // Redirect to connection page to show SDK setup
             goto('/connection');
         } catch (e) {
             error = e instanceof Error ? e.message : 'Registration failed';

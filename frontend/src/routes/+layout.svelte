@@ -16,6 +16,7 @@
 	import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
 	import { ChevronDown } from 'lucide-svelte';
 	import { Toaster } from 'svelte-sonner';
+	import { page } from '$app/state';
 
 	let { children } = $props();
 	let showAddProjectModal = $state(false);
@@ -42,7 +43,6 @@
 		initTheme();
 		initTimezone();
 
-		// Load projects after auth check
 		if (authState.isAuthenticated) {
 			projectsState.initFromCache();
 			projectsState.loadProjects();
@@ -72,7 +72,9 @@
 
 <svelte:head><link rel="icon" href="/favicon.ico" /></svelte:head>
 
-{#if authState.isAuthenticated}
+<!-- This is not ideal, but because our layout is a top level route it can end up showing sidebar on the login page (after the login before the transition). -->
+<!-- We could consider moving this to a lower level layout for the actual app, for now it's just a path check -->
+{#if authState.isAuthenticated && page.url.pathname !== "/login" && page.url.pathname !== "/register"}
 	<Sidebar.SidebarProvider>
 		<AppSidebar />
 		<Sidebar.SidebarInset>

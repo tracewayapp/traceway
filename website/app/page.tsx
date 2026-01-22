@@ -23,7 +23,7 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-4">
             <Link href="https://docs.tracewayapp.com" className="text-sm font-medium text-zinc-600 hover:text-zinc-900 transition-colors">
-              Documentation
+              Docs
             </Link>
             <Link href="https://github.com/tracewayapp/traceway" target="_blank" rel="noopener noreferrer">
               <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100">

@@ -23,8 +23,6 @@
 	} from '$lib/utils/framework-code';
 
 	let projectWithToken = $derived(projectsState.currentProject);
-	let loading = $state(true);
-	let error = $state<string | null>(null);
 	let copiedCode = $state(false);
 	let copiedInstall = $state(false);
 
@@ -63,19 +61,7 @@
 		<p class="text-muted-foreground">Connect your application to Traceway using the SDK</p>
 	</div>
 
-	{#if loading}
-		<Card>
-			<CardContent class="flex items-center justify-center py-12">
-				<LoadingCircle size="lg" />
-			</CardContent>
-		</Card>
-	{:else if error}
-		<Card>
-			<CardContent class="p-6">
-				<p class="text-destructive">{error}</p>
-			</CardContent>
-		</Card>
-	{:else if projectWithToken}
+	{#if projectWithToken}
 		<Card>
 			<CardHeader>
 				<CardTitle class="flex items-center gap-2">

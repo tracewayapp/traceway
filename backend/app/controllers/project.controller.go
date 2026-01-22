@@ -38,8 +38,8 @@ type CreateProjectRequest struct {
 func (p projectController) ListProjects(c *gin.Context) {
 	userId := middleware.GetUserId(c)
 
-	projectsWithBackendUrl, err := pgdb.ExecuteTransaction(func(tx *sql.Tx) ([]*models.Project, error) {
-		return repositories.ProjectRepository.FindByUserId(tx, userId)
+	projectsWithBackendUrl, err := pgdb.ExecuteTransaction(func(tx *sql.Tx) ([]*models.ProjectWithBackendUrl, error) {
+		return repositories.ProjectRepository.FindAllWithBackendUrlByUserId(tx, userId)
 	})
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error fetching projects: %w", err))

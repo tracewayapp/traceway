@@ -69,6 +69,33 @@ project, err := pgdb.ExecuteTransaction(func(tx *sql.Tx) (*models.Project, error
 })
 ```
 
+#### Transactional Middleware (`pgdb.Transactional`)
+For auth flows and routes requiring transaction context throughout the request lifecycle, use the `Transactional()` middleware:
+
+```go
+// In routes.go - wrap routes that need transaction context
+api.POST("/register", pgdb.Transactional(), authController.Register)
+api.POST("/login", pgdb.Transactional(), authController.Login)
+
+// In controller - retrieve transaction from Gin context
+func (c *AuthController) Register(ctx *gin.Context) {
+    tx := pgdb.GetTx(ctx)  // Get transaction from context
+
+    // Use tx for all repository calls
+    user, err := repositories.UserRepository.FindByEmail(tx, email)
+    if err != nil {
+        ctx.JSON(500, gin.H{"error": err.Error()})
+        return  // Transaction auto-rolls back on non-success status
+    }
+
+    ctx.JSON(201, user)  // Transaction auto-commits on 200/201/303
+}
+```
+
+**Auto-commit/rollback behavior:**
+- Commits on status codes: 200, 201, 303
+- Rolls back on all other status codes or panics
+
 #### Repository Pattern
 Repositories accept `*sql.Tx` to participate in transactions:
 ```go
@@ -85,6 +112,37 @@ func (p *projectRepository) FindById(tx *sql.Tx, id uuid.UUID) (*models.Project,
 - Uses `$1, $2, $3` placeholders (not `?`)
 - Tables must have an `id` column
 - Always pass `*sql.Tx` from `ExecuteTransaction` to lit functions
+
+#### Custom Result Models for Aggregates
+For queries that return aggregated or computed values (not direct table rows), create a custom result model:
+
+```go
+// Define a result model for the query output
+type CountResult struct {
+    Count int `lit:"count"`
+}
+
+// Register the model (in init or startup)
+func init() {
+    lit.RegisterModel[CountResult](lit.PostgreSQL)
+}
+
+// Use in repository
+func (r *userRepository) CountByOrganization(tx *sql.Tx, orgID uuid.UUID) (int, error) {
+    result, err := lit.SelectSingle[CountResult](
+        tx,
+        "SELECT COUNT(*) as count FROM users WHERE organization_id = $1",
+        orgID,
+    )
+    if err != nil {
+        return 0, err
+    }
+    if result == nil {
+        return 0, nil
+    }
+    return result.Count, nil
+}
+```
 
 #### Handling "Not Found" Cases
 **IMPORTANT:** When using lit/PostgreSQL, do NOT check for `sql.ErrNoRows`. The lit library returns `nil` when no record is found, not an error. Always check for `nil` instead:
@@ -105,6 +163,25 @@ user, err := repositories.UserRepository.FindByEmail(tx, email)
 if err == sql.ErrNoRows {  // This won't work with lit!
     // ...
 }
+```
+
+#### Handling "Not Found" Cases (ClickHouse)
+**IMPORTANT:** ClickHouse queries behave differently from lit/PostgreSQL. ClickHouse returns `sql.ErrNoRows` when no record is found. Always use `errors.Is()` to check:
+
+```go
+// CORRECT - ClickHouse returns sql.ErrNoRows
+exception, err := exceptionRepo.GetByHash(projectID, hash)
+if errors.Is(err, sql.ErrNoRows) {
+    // record not found - handle accordingly
+    return nil, errors.New("exception not found")
+}
+if err != nil {
+    return nil, err  // actual database error
+}
+
+// Summary of error handling:
+// - lit/PostgreSQL: check `if result == nil` (no error returned)
+// - ClickHouse: check `errors.Is(err, sql.ErrNoRows)`
 ```
 
 ### Environment Variables (Backend)
@@ -208,7 +285,7 @@ export const authState = new AuthState()
 
 The API client automatically:
 - Includes `Authorization: Bearer <token>` header
-- Includes `projectId` in POST request bodies
+- Adds `projectId` as a query parameter to all requests
 - Handles 401 responses by logging out and redirecting to `/login`
 
 ```typescript
@@ -230,26 +307,31 @@ Tables use shadcn-svelte base components with custom Traceway wrappers:
 | `PaginationFooter` | `src/lib/components/traceway/pagination-footer.svelte` | Pagination controls |
 
 #### Sorting Storage
-Table sorting persists to localStorage using a consistent pattern:
+Table sorting persists to localStorage using a consistent pattern via `src/lib/utils/sort-storage.ts`:
 
 ```typescript
-// Key format: traceway_sort_{pageKey}
-// Example: traceway_sort_issues, traceway_sort_transactions
+// Types
+type SortState = { field: string; direction: 'asc' | 'desc' }
 
-// In +page.svelte
-let orderBy = $state(loadSortFromStorage('issues', 'last_seen desc'))
+// Key format: traceway_sort_{pageKey}
+// Example: traceway_sort_issues, traceway_sort_endpoints
+
+// In +page.svelte - load initial state
+let sortState = $state<SortState>(getSortState('issues', { field: 'last_seen', direction: 'desc' }))
 
 // After sort change
-function handleSortClick(column: string) {
-    orderBy = handleSortClickUtil(orderBy, column, 'issues')
+function onSortClick(field: string) {
+    sortState = handleSortClick(field, sortState.field, sortState.direction, 'desc')
+    setSortState('issues', sortState)  // Persist to localStorage
 }
 ```
 
-The `handleSortClick` utility (`src/lib/utils/sorting.ts`):
-1. Toggles sort direction if same column
-2. Defaults to descending for new column
-3. Saves to localStorage
-4. Returns new `orderBy` string in backend format: `"column_name asc|desc"`
+**Available functions (`src/lib/utils/sort-storage.ts`):**
+| Function | Description |
+|----------|-------------|
+| `getSortState(pageKey, defaultState)` | Load sort state from localStorage |
+| `setSortState(pageKey, state)` | Save sort state to localStorage |
+| `handleSortClick(field, currentField, currentDirection, defaultDirection)` | Toggle sort direction, returns new `SortState` |
 
 #### TracewayTableHeader Component
 ```svelte
@@ -264,27 +346,60 @@ The `handleSortClick` utility (`src/lib/utils/sorting.ts`):
 
 ### URL State Management
 
-Time range and filters persist in URL query params:
+Time range and filters persist in URL query params via `src/lib/utils/url-params.ts`:
+
 ```typescript
-// src/lib/utils/url-state.ts
-// Presets: 1h, 6h, 24h, 7d, 30d, custom
+// Available presets: 30m, 60m, 3h, 6h, 12h, 24h, 3d, 7d, 1M, 3M
 
-// Reading from URL
-const range = getTimeRangeFromUrl(url.searchParams)
+// Parse time range from URL (in +page.svelte)
+const timeRange = parseTimeRangeFromUrl(timezoneState.timezone, '24h')
 
-// Updating URL (preserves other params)
-goto(updateUrlWithTimeRange(url, newRange))
+// Get resolved Date objects for API calls
+const { from, to } = getResolvedTimeRange(timeRange, timezoneState.timezone)
+
+// Update URL with new time range (preserves other params)
+updateUrl({ preset: '7d' })
+updateUrl({ from: customFrom, to: customTo })  // Custom range
 ```
+
+**Available functions (`src/lib/utils/url-params.ts`):**
+| Function | Description |
+|----------|-------------|
+| `parseTimeRangeFromUrl(timezone, defaultPreset)` | Parse `TimeRangeParams` from current URL |
+| `getResolvedTimeRange(params, timezone)` | Convert params to `{ from: Date, to: Date }` |
+| `updateUrl(params, options?)` | Update URL query params, optionally replace history |
+
+### Navigation Utilities
+
+Helper functions for preserving URL params during navigation (`src/lib/utils/navigation.ts`):
+
+```typescript
+// Add sticky params (like time range) to href for <a> tags
+const href = addStickyParamsToHref('/issues/abc123', 'preset', 'from', 'to')
+// Result: "/issues/abc123?preset=24h" (if preset=24h is in current URL)
+
+// Create click handler for table rows that preserves params
+const handleClick = createRowClickHandler('/issues/abc123', 'preset', 'from', 'to')
+```
+
+**Available functions:**
+| Function | Description |
+|----------|-------------|
+| `addStickyParamsToHref(href, ...stickyParams)` | Returns href with specified params from current URL |
+| `createRowClickHandler(href, ...stickyParams)` | Returns click handler that navigates with sticky params |
 
 ### Routes
 ```
 /                           Dashboard (protected) - overview metrics
 /login                      Login page (public)
+/register                   Registration page (public)
 /issues                     Issues list with filtering/sorting
 /issues/[hash]              Exception details view
 /issues/[hash]/events       Exception events timeline
-/transactions               Endpoint analytics with P50/P95/P99
-/transactions/[endpoint]    Single endpoint details
+/endpoints                  Endpoint analytics with P50/P95/P99
+/endpoints/[endpoint]       Single endpoint details
+/tasks                      Background tasks list
+/tasks/[task]               Single task details
 /metrics                    System metrics dashboard (CPU, memory, etc.)
 /connection                 SDK integration guide
 ```
@@ -465,20 +580,20 @@ The backend normalizes stack traces before hashing to group identical errors des
 ### Repository Patterns
 
 #### Singleton Pattern
+Repositories are exported as package-level singletons for simple access:
 ```go
-// backend/app/repositories/transactions.go
-var transactionRepoInstance *TransactionRepository
-var transactionRepoOnce sync.Once
+// backend/app/repositories/users.go
+var UserRepository = userRepository{}
 
-func GetTransactionRepository() *TransactionRepository {
-    transactionRepoOnce.Do(func() {
-        transactionRepoInstance = &TransactionRepository{db: GetDB()}
-    })
-    return transactionRepoInstance
-}
+// backend/app/repositories/projects.go
+var ProjectRepository = projectRepository{}
+
+// Usage in controllers
+user, err := repositories.UserRepository.FindByEmail(tx, email)
+project, err := repositories.ProjectRepository.FindById(tx, id)
 ```
 
-#### Batch Insert
+#### Batch Insert (ClickHouse)
 ```go
 func (r *TransactionRepository) BatchInsert(txns []models.Transaction) error {
     batch, _ := r.db.PrepareBatch(ctx, "INSERT INTO transactions ...")
@@ -836,15 +951,19 @@ The SDK sends data as gzipped JSON:
 
 ### Adding Table Sorting to a Page
 
-1. **Add state and load from storage**:
+1. **Import and add state**:
    ```typescript
-   let orderBy = $state(loadSortFromStorage('page-key', 'default_column desc'))
+   import { getSortState, setSortState, handleSortClick } from '$lib/utils/sort-storage'
+   import type { SortState } from '$lib/utils/sort-storage'
+
+   let sortState = $state<SortState>(getSortState('page-key', { field: 'default_column', direction: 'desc' }))
    ```
 
 2. **Add sort handler**:
    ```typescript
-   function handleSortClick(column: string) {
-       orderBy = handleSortClickUtil(orderBy, column, 'page-key')
+   function onSortClick(field: string) {
+       sortState = handleSortClick(field, sortState.field, sortState.direction, 'desc')
+       setSortState('page-key', sortState)
    }
    ```
 
@@ -853,9 +972,12 @@ The SDK sends data as gzipped JSON:
    <TracewayTableHeader
        label="Column"
        column="column_name"
-       {orderBy}
-       onclick={() => handleSortClick('column_name')}
+       orderBy={`${sortState.field} ${sortState.direction}`}
+       onclick={() => onSortClick('column_name')}
    />
    ```
 
-4. **Pass orderBy to API call** - backend expects format `"column asc"` or `"column desc"`
+4. **Pass to API call** - convert to backend format: `"column asc"` or `"column desc"`:
+   ```typescript
+   const orderBy = `${sortState.field} ${sortState.direction}`
+   ```

@@ -3,7 +3,7 @@ import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import { existsSync } from 'fs';
 import path from 'path';
 
-const billingPath = process.env.BILLING_PATH || '../traceway-billing/frontend';
+const billingPath = process.env.BILLING_PATH;
 const resolvedBillingPath = path.resolve(process.cwd(), billingPath);
 const billingExists = existsSync(resolvedBillingPath);
 
@@ -20,10 +20,12 @@ const config = {
 		adapter: adapter({
 			fallback: 'index.html'
 		}),
-		alias: billingExists ? {
-			'$billing': resolvedBillingPath,
-			'$billing/*': `${resolvedBillingPath}/*`
-		} : {}
+		alias: billingExists
+			? {
+					$billing: resolvedBillingPath,
+					'$billing/*': `${resolvedBillingPath}/*`
+				}
+			: {}
 	}
 };
 

@@ -24,6 +24,8 @@ import (
 	"github.com/joho/godotenv"
 )
 
+var PostStartupHooks []func(ctx context.Context)
+
 func Run() {
 	godotenv.Load()
 
@@ -60,6 +62,10 @@ func Run() {
 	middleware.InitRequireAdminAccess()
 
 	services.InitEmail()
+
+	for _, hook := range PostStartupHooks {
+		hook(ctx)
+	}
 
 	router := gin.Default()
 	router.Use(gin.Recovery())

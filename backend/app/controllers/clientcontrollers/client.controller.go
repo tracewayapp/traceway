@@ -1,6 +1,7 @@
 package clientcontrollers
 
 import (
+	"backend/app/hooks"
 	"backend/app/middleware"
 	"backend/app/models"
 	"backend/app/models/clientmodels"
@@ -109,6 +110,18 @@ func (e clientController) Report(c *gin.Context) {
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting segmentsToInsert: %w", err))
 		return
+	}
+
+	// Broadcast usage event for metering (cloud mode)
+	if project, exists := c.Get(middleware.ProjectContextKey); exists {
+		if p, ok := project.(*models.Project); ok && p.OrganizationId != nil {
+			hooks.BroadcastReport(hooks.ReportEvent{
+				OrganizationId: *p.OrganizationId,
+				EndpointCount:  len(endpointsToInsert),
+				ErrorCount:     len(exceptionStackTraceToInsert),
+				TaskCount:      len(tasksToInsert),
+			})
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{})

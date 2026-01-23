@@ -35,3 +35,16 @@ type RegisterResponse struct {
 	Projects      []*ProjectWithBackendUrl    `json:"projects"`
 	Organizations []*UserOrganizationResponse `json:"organizations"`
 }
+
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+type ResetPasswordRequest struct {
+	Password string `json:"password" binding:"required,min=8"`
+}
+
+type PasswordResetTokenInfo struct {
+	Valid bool   `json:"valid"`
+	Email string `json:"email,omitempty"`
+}

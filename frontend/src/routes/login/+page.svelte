@@ -109,6 +109,7 @@
                 <div class="flex flex-col space-y-1.5">
                     <Label for="password">Password</Label>
                     <Input id="password" type="password" bind:value={password} placeholder="Password" required />
+                    <a href="/forgot-password" class="text-sm text-primary hover:underline self-end">Forgot password?</a>
                 </div>
                 <Button type="submit" disabled={loading} class="w-full">
                     {#if loading}

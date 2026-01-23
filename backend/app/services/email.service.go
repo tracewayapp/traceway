@@ -92,3 +92,43 @@ The Traceway Team
 func (e *emailService) IsEnabled() bool {
 	return e.enabled
 }
+
+func (e *emailService) SendPasswordReset(toEmail string, token string) error {
+	resetUrl := fmt.Sprintf("%s/reset-password?token=%s", e.baseUrl, token)
+
+	subject := "Reset your Traceway password"
+	body := fmt.Sprintf(`Hello,
+
+You requested to reset your password for your Traceway account.
+
+Click the link below to reset your password:
+%s
+
+This link will expire in 1 hour.
+
+If you did not request this password reset, you can safely ignore this email.
+
+Best regards,
+The Traceway Team
+`, resetUrl)
+
+	if !e.enabled {
+		log.Printf("[EMAIL LOG] To: %s\nSubject: %s\nBody:\n%s", toEmail, subject, body)
+		return nil
+	}
+
+	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\n\r\n%s",
+		e.from, toEmail, subject, body)
+
+	auth := smtp.PlainAuth("", e.username, e.password, e.host)
+	addr := fmt.Sprintf("%s:%d", e.host, e.port)
+
+	err := smtp.SendMail(addr, auth, e.from, []string{toEmail}, []byte(msg))
+	if err != nil {
+		log.Printf("Failed to send password reset email to %s: %v", toEmail, err)
+		return err
+	}
+
+	log.Printf("Password reset email sent to %s", toEmail)
+	return nil
+}

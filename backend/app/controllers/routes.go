@@ -70,6 +70,11 @@ func RegisterControllers(router *gin.RouterGroup) {
 		router.GET("/has-organizations", middleware.Transactional, AuthController.HasOrganizations)
 	}
 
+	// Password reset
+	router.POST("/forgot-password", middleware.Transactional, PasswordResetController.ForgotPassword)
+	router.GET("/password-reset/:token", PasswordResetController.ValidateToken)
+	router.POST("/password-reset/:token", middleware.Transactional, PasswordResetController.ResetPassword)
+
 	// Organization settings (admin/owner access)
 	router.GET("/organizations/:organizationId/settings", middleware.UseAppAuth, middleware.RequireAdminAccess, OrganizationController.GetSettings)
 	router.PUT("/organizations/:organizationId/settings", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, OrganizationController.UpdateSettings)

@@ -5,11 +5,14 @@ import (
 )
 
 type User struct {
-	Id        int       `json:"id"`
-	Email     string    `json:"email"`
-	Name      string    `json:"name"`
-	Password  string    `json:"-"` // Never serialize
-	CreatedAt time.Time `json:"createdAt"`
+	Id                       int        `json:"id"`
+	Email                    string     `json:"email"`
+	Name                     string     `json:"name"`
+	Password                 string     `json:"-"`
+	CreatedAt                time.Time  `json:"createdAt"`
+	PasswordResetToken       *string    `json:"-"`
+	PasswordResetExpiresAt   *time.Time `json:"-"`
+	PasswordResetRequestedAt *time.Time `json:"-"`
 }
 
 type UserResponse struct {

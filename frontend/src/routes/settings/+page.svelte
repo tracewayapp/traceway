@@ -5,9 +5,25 @@
     import { organizationState } from '$lib/state/organization.svelte';
     import OrganizationTab from './organization-tab.svelte';
     import UsersTab from './users-tab.svelte';
+    import type { Component } from 'svelte';
 
     let loading = $state(true);
     let error = $state<string | null>(null);
+    let BillingTab = $state<Component<{ organizationId: number }> | null>(null);
+
+    async function loadBillingModule() {
+        try {
+            // @ts-ignore - $billing alias only exists when billing extension is available
+            const module = await import('$billing/billing-tab.svelte');
+            BillingTab = module.default;
+        } catch {
+            // Billing extension not available - this is expected for open source builds
+        }
+    }
+
+    $effect(() => {
+        loadBillingModule();
+    });
 
     const currentOrganizationId = $derived(projectsState.currentProject?.organizationId);
 
@@ -54,6 +70,9 @@
         <div class="space-y-6">
             <OrganizationTab />
             <UsersTab organizationId={currentOrganizationId!} />
+            {#if BillingTab}
+                <BillingTab organizationId={currentOrganizationId!} />
+            {/if}
         </div>
     {/if}
 </div>

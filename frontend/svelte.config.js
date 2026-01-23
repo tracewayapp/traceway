@@ -1,5 +1,11 @@
 import adapter from '@sveltejs/adapter-static';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
+import { existsSync } from 'fs';
+import path from 'path';
+
+const billingPath = process.env.BILLING_PATH || '../traceway-billing/frontend';
+const resolvedBillingPath = path.resolve(process.cwd(), billingPath);
+const billingExists = existsSync(resolvedBillingPath);
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
@@ -13,7 +19,11 @@ const config = {
 		// See https://svelte.dev/docs/kit/adapters for more information about adapters.
 		adapter: adapter({
 			fallback: 'index.html'
-		})
+		}),
+		alias: billingExists ? {
+			'$billing': resolvedBillingPath,
+			'$billing/*': `${resolvedBillingPath}/*`
+		} : {}
 	}
 };
 

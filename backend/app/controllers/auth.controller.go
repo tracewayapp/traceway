@@ -6,11 +6,14 @@ import (
 	"backend/app/models"
 	"backend/app/repositories"
 	"backend/app/services"
+	"database/sql"
 	"net/http"
 	"os"
 
 	"github.com/gin-gonic/gin"
 )
+
+var PostRegistrationHooks []func(tx *sql.Tx, org *models.Organization, user *models.User) error
 
 type authController struct{}
 
@@ -132,6 +135,13 @@ func (a authController) Register(c *gin.Context) {
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, err)
 		return
+	}
+
+	for _, hook := range PostRegistrationHooks {
+		if err := hook(tx, org, user); err != nil {
+			c.AbortWithError(http.StatusInternalServerError, err)
+			return
+		}
 	}
 
 	project, err := repositories.ProjectRepository.CreateWithOrganization(tx, request.ProjectName, request.Framework, org.Id)

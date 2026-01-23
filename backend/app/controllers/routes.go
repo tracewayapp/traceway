@@ -8,6 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+var ExtensionRoutes []func(router *gin.RouterGroup)
+
 type PaginationParams struct {
 	Page     int `json:"page" binding:"min=1"`
 	PageSize int `json:"pageSize" binding:"min=1,max=100"`
@@ -93,4 +95,8 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.GET("/invitations/:token", InvitationController.GetInvitationInfo)
 	router.POST("/invitations/:token/accept", middleware.Transactional, InvitationController.AcceptInvitation)
 	router.POST("/invitations/:token/accept-existing", middleware.UseAppAuth, middleware.Transactional, InvitationController.AcceptExistingUser)
+
+	for _, register := range ExtensionRoutes {
+		register(router)
+	}
 }

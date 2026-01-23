@@ -4,6 +4,8 @@ import (
 	"github.com/tracewayapp/go-lightning/lit"
 )
 
+var ExtensionModelRegistrations []func()
+
 func Init() {
 	lit.RegisterModel[Project](lit.PostgreSQL)
 	lit.RegisterModel[User](lit.PostgreSQL)
@@ -14,4 +16,8 @@ func Init() {
 	lit.RegisterModel[InvitationWithInviter](lit.PostgreSQL)
 	lit.RegisterModel[UserOrganizationResponse](lit.PostgreSQL)
 	lit.RegisterModel[CountResult](lit.PostgreSQL)
+
+	for _, register := range ExtensionModelRegistrations {
+		register()
+	}
 }

@@ -13,6 +13,13 @@ import (
 	_ "github.com/lib/pq"
 )
 
+type ExtensionMigration struct {
+	Source embed.FS
+	Path   string
+}
+
+var ExtensionPostgresMigrations []ExtensionMigration
+
 //go:embed ch/*.sql
 var migrationsChFS embed.FS
 
@@ -74,6 +81,37 @@ func runMigrationsPostgres(connStr string) error {
 
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		return fmt.Errorf("postgres migration failed: %w", err)
+	}
+
+	for _, ext := range ExtensionPostgresMigrations {
+		if err := runExtensionMigrations(db, ext); err != nil {
+			return fmt.Errorf("extension migration failed: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func runExtensionMigrations(db *sql.DB, ext ExtensionMigration) error {
+	source, err := iofs.New(ext.Source, ext.Path)
+	if err != nil {
+		return fmt.Errorf("failed to create extension migration source: %w", err)
+	}
+
+	driver, err := migratePg.WithInstance(db, &migratePg.Config{
+		MigrationsTable: "schema_migrations_ext",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create extension migration driver: %w", err)
+	}
+
+	m, err := migrate.NewWithInstance("iofs", source, "postgres", driver)
+	if err != nil {
+		return fmt.Errorf("failed to create extension migrate instance: %w", err)
+	}
+
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		return fmt.Errorf("extension postgres migration failed: %w", err)
 	}
 
 	return nil

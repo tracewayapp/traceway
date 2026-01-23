@@ -69,4 +69,23 @@ func RegisterControllers(router *gin.RouterGroup) {
 	if os.Getenv("CLOUD_MODE") != "true" {
 		router.GET("/has-organizations", middleware.Transactional, AuthController.HasOrganizations)
 	}
+
+	// Organization settings (admin/owner access)
+	router.GET("/organizations/:organizationId/settings", middleware.UseAppAuth, middleware.RequireAdminAccess, OrganizationController.GetSettings)
+	router.PUT("/organizations/:organizationId/settings", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, OrganizationController.UpdateSettings)
+	router.GET("/organizations/:organizationId/members", middleware.UseAppAuth, middleware.RequireAdminAccess, OrganizationController.GetMembers)
+
+	// Member management (admin/owner) - TRANSACTIONAL
+	router.PUT("/organizations/:organizationId/members/:userId", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, MemberController.UpdateRole)
+	router.DELETE("/organizations/:organizationId/members/:userId", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, MemberController.RemoveMember)
+
+	// Invitations management (admin/owner) - TRANSACTIONAL
+	router.POST("/organizations/:organizationId/invitations", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, InvitationController.InviteUser)
+	router.GET("/organizations/:organizationId/invitations", middleware.UseAppAuth, middleware.RequireAdminAccess, InvitationController.ListInvitations)
+	router.DELETE("/organizations/:organizationId/invitations/:id", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, InvitationController.RevokeInvitation)
+
+	// Public invitation endpoints - TRANSACTIONAL
+	router.GET("/invitations/:token", InvitationController.GetInvitationInfo)
+	router.POST("/invitations/:token/accept", middleware.Transactional, InvitationController.AcceptInvitation)
+	router.POST("/invitations/:token/accept-existing", middleware.UseAppAuth, middleware.Transactional, InvitationController.AcceptExistingUser)
 }

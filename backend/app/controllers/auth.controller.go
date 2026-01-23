@@ -62,10 +62,17 @@ func (a authController) Login(c *gin.Context) {
 		return
 	}
 
+	organizations, err := repositories.OrganizationRepository.FindByUserIdWithRoles(tx, user.Id)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
 	c.JSON(http.StatusOK, &models.LoginResponse{
-		Token:    token,
-		User:     user.ToResponse(),
-		Projects: projects,
+		Token:         token,
+		User:          user.ToResponse(),
+		Projects:      projects,
+		Organizations: organizations,
 	})
 }
 
@@ -156,11 +163,18 @@ func (a authController) Register(c *gin.Context) {
 		OrganizationId: project.OrganizationId,
 	})
 
+	organizations, err := repositories.OrganizationRepository.FindByUserIdWithRoles(tx, user.Id)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
 	c.JSON(http.StatusCreated, &models.RegisterResponse{
-		Token:    token,
-		User:     user.ToResponse(),
-		Project:  *project.ToProjectWithBackendUrl(),
-		Projects: projects,
+		Token:         token,
+		User:          user.ToResponse(),
+		Project:       *project.ToProjectWithBackendUrl(),
+		Projects:      projects,
+		Organizations: organizations,
 	})
 }
 

@@ -103,17 +103,8 @@ func (p *projectRepository) FindByUserId(tx *sql.Tx, userId int) ([]*models.Proj
 		userId,
 	)
 }
-
-type CountResult struct {
-	Count int `lit:"count"`
-}
-
-func init() {
-	lit.RegisterModel[CountResult](lit.PostgreSQL)
-}
-
 func (p *projectRepository) UserHasAccess(tx *sql.Tx, projectId uuid.UUID, userId int) (bool, error) {
-	result, err := lit.SelectSingle[CountResult](
+	result, err := lit.SelectSingle[models.CountResult](
 		tx,
 		`SELECT COUNT(*) as count
 		FROM projects p

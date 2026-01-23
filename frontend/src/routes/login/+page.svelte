@@ -1,5 +1,6 @@
 <script lang="ts">
     import { goto } from '$app/navigation';
+    import { page } from '$app/state';
     import { Button } from "$lib/components/ui/button";
     import { Input } from "$lib/components/ui/input";
     import { Label } from "$lib/components/ui/label";
@@ -15,6 +16,9 @@
     let password = $state('');
     let error = $state('');
     let loading = $state(false);
+
+    // Get returnTo parameter for redirecting after login
+    const returnTo = $derived(page.url.searchParams.get('returnTo'));
 
     if (!__CLOUD_MODE__) {
         $effect(() => {
@@ -60,9 +64,12 @@
             const data = await response.json();
 
             authState.setToken(data.token);
+            authState.setOrganizations(data.organizations || []);
             projectsState.setProjects(data.projects);
 
-            goto('/');
+            // Redirect to returnTo if provided, otherwise go to dashboard
+            const redirectTo = returnTo ? decodeURIComponent(returnTo) : '/';
+            goto(redirectTo);
         } catch (e) {
             error = e instanceof Error ? e.message : 'Invalid email or password';
         } finally {

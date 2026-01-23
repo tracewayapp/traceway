@@ -69,6 +69,10 @@ func main() {
 	middleware.InitUseAppAuth()
 	middleware.InitRequireWriteAccess()
 	middleware.InitRequireProjectAccess()
+	middleware.InitRequireAdminAccess()
+
+	// Initialize email service
+	services.InitEmail()
 
 	router := gin.Default()
 

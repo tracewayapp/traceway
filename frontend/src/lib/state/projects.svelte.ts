@@ -1,4 +1,5 @@
 import { api } from '$lib/api';
+import { authState } from './auth.svelte';
 
 export type Framework = 'gin' | 'fiber' | 'chi' | 'fasthttp' | 'stdlib' | 'custom';
 
@@ -7,6 +8,7 @@ export interface Project {
     name: string;
     token: string;
     framework: Framework;
+    organizationId: number | null;
     createdAt: string;
     backendUrl: string;
 }
@@ -16,7 +18,9 @@ export interface ProjectWithToken extends Project {
 }
 
 class ProjectsState {
-    projects = $state<Project[]>([]);
+    projects = $state<Project[]>(
+        JSON.parse(localStorage.getItem('PROJECTS_CACHE') || '[]')
+    );
     currentProjectId = $state<string | null>(localStorage.getItem('CURRENT_PROJECT_ID'));
     loading = $state(false);
     error = $state<string | null>(null);
@@ -24,6 +28,12 @@ class ProjectsState {
     currentProject = $derived(
         this.projects.find(p => p.id === this.currentProjectId) || this.projects[0] || null
     );
+
+    canManageCurrentProject = $derived.by(() => {
+        const organizationId = this.currentProject?.organizationId;
+        if (!organizationId) return false;
+        return authState.canManageOrganization(organizationId);
+    });
 
     constructor() {
         $effect.root(() => {

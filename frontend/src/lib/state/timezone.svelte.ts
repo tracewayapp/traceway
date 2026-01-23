@@ -1,21 +1,12 @@
 import { DateTime } from 'luxon';
-
-export const timezoneState = $state({
-	timezone: ''
-});
-
-export function initTimezone() {
-	if (typeof window !== 'undefined') {
-		const stored = localStorage.getItem('timezone');
-		timezoneState.timezone = stored || DateTime.local().zoneName || 'UTC';
-	}
-}
+import { projectsState } from './projects.svelte';
+import { authState } from './auth.svelte';
 
 export function getTimezone(): string {
-	return timezoneState.timezone || DateTime.local().zoneName || 'UTC';
-}
-
-export function setTimezone(tz: string) {
-	timezoneState.timezone = tz;
-	localStorage.setItem('timezone', tz);
+	const organizationId = projectsState.currentProject?.organizationId;
+	if (organizationId) {
+		const timezone = authState.getTimezoneForOrganization(organizationId);
+		if (timezone) return timezone;
+	}
+	return DateTime.local().zoneName || 'UTC';
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	traceway "go.tracewayapp.com"
 )
 
 // RequireWriteAccess middleware checks if the user has write access to the project's organization.
@@ -37,7 +38,7 @@ func InitRequireWriteAccess() {
 		}
 
 		if project.OrganizationId == nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Project has no organization"})
+			c.AbortWithStatusJSON(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Project has no organization: %d %s", project.Id, project.Name))
 			return
 		}
 

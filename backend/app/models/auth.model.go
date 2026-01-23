@@ -5,10 +5,18 @@ type LoginRequest struct {
 	Password string `json:"password" binding:"required"`
 }
 
+type UserOrganizationResponse struct {
+	Id       int    `json:"id"`
+	Name     string `json:"name"`
+	Role     string `json:"role"`
+	Timezone string `json:"timezone"`
+}
+
 type LoginResponse struct {
-	Token    string                   `json:"token"`
-	User     UserResponse             `json:"user"`
-	Projects []*ProjectWithBackendUrl `json:"projects"`
+	Token         string                      `json:"token"`
+	User          UserResponse                `json:"user"`
+	Projects      []*ProjectWithBackendUrl    `json:"projects"`
+	Organizations []*UserOrganizationResponse `json:"organizations"`
 }
 
 type RegisterRequest struct {
@@ -21,8 +29,22 @@ type RegisterRequest struct {
 }
 
 type RegisterResponse struct {
-	Token    string                   `json:"token"`
-	User     UserResponse             `json:"user"`
-	Project  ProjectWithBackendUrl    `json:"project"`
-	Projects []*ProjectWithBackendUrl `json:"projects"`
+	Token         string                      `json:"token"`
+	User          UserResponse                `json:"user"`
+	Project       ProjectWithBackendUrl       `json:"project"`
+	Projects      []*ProjectWithBackendUrl    `json:"projects"`
+	Organizations []*UserOrganizationResponse `json:"organizations"`
+}
+
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+type ResetPasswordRequest struct {
+	Password string `json:"password" binding:"required,min=8"`
+}
+
+type PasswordResetTokenInfo struct {
+	Valid bool   `json:"valid"`
+	Email string `json:"email,omitempty"`
 }

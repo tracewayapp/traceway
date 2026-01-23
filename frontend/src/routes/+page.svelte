@@ -126,7 +126,7 @@
 
 		// Show success toast if data was received
 		if (!hadDataBefore && data?.hasData) {
-			toast.success('Integration successful! Data received from your application.');
+			toast.success('Integration successful! Data received from your application.', { position: 'top-center' });
 		} else if (!data?.hasData) {
 			toast.warning('No data received yet', {
 				position: 'top-center'

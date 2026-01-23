@@ -11,6 +11,12 @@ Traceway is an error tracking and monitoring platform consisting of:
 
 ---
 
+## Code Style
+
+- **No pointless comments**: Do not add comments that simply describe what the code does. The code should be self-explanatory. Only add comments when explaining non-obvious "why" decisions.
+
+---
+
 ## Quick Start
 
 ### Development Commands

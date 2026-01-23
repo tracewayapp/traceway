@@ -6,11 +6,12 @@
     import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "$lib/components/ui/card";
     import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
     import * as Select from "$lib/components/ui/select";
-    import { CircleAlert } from "@lucide/svelte";
+    import { CircleAlert, Check } from "@lucide/svelte";
     import { authState } from '$lib/state/auth.svelte';
-    import { projectsState } from '$lib/state/projects.svelte';
+    import { projectsState, type Framework } from '$lib/state/projects.svelte';
     import { themeState } from '$lib/state/theme.svelte';
-	import { toast } from 'svelte-sonner';
+    import { toast } from 'svelte-sonner';
+    import FrameworkIcon from '$lib/components/framework-icon.svelte';
 
     let email = $state('');
     let name = $state('');
@@ -18,7 +19,7 @@
     let confirmPassword = $state('');
     let organizationName = $state('');
     let projectName = $state('');
-    let framework = $state('gin');
+    let framework = $state<Framework>('gin');
     let error = $state('');
     let loading = $state(false);
 
@@ -47,11 +48,17 @@
     }
 
     const frameworks = [
-        { value: 'gin', label: 'Gin (Go)' },
-        { value: 'echo', label: 'Echo (Go)' },
-        { value: 'fiber', label: 'Fiber (Go)' },
-        { value: 'other', label: 'Other' }
-    ];
+        { value: 'gin', label: 'Gin', description: 'Fast HTTP web framework' },
+        { value: 'fiber', label: 'Fiber', description: 'Express-inspired framework' },
+        { value: 'chi', label: 'Chi', description: 'Lightweight router' },
+        { value: 'fasthttp', label: 'FastHTTP', description: 'High-performance HTTP' },
+        { value: 'stdlib', label: 'Standard Library', description: 'net/http package' },
+        { value: 'custom', label: 'Custom', description: 'Other / manual setup' },
+    ] as const;
+
+    const selectedFrameworkLabel = $derived(
+        frameworks.find(f => f.value === framework)?.label ?? 'Select framework'
+    );
 
     async function handleRegister() {
         if (password !== confirmPassword) {
@@ -91,6 +98,7 @@
             const data = await response.json();
 
             authState.setToken(data.token);
+            authState.setOrganizations(data.organizations || []);
             projectsState.setProjects(data.projects);
 
             goto('/connection');
@@ -164,12 +172,26 @@
                     <Label for="framework">Framework</Label>
                     <Select.Root type="single" bind:value={framework}>
                         <Select.Trigger class="w-full">
-                            {frameworks.find(f => f.value === framework)?.label || 'Select framework'}
+                            <div class="flex items-center gap-2">
+                                <FrameworkIcon framework={framework} />
+                                <span>{selectedFrameworkLabel}</span>
+                            </div>
                         </Select.Trigger>
                         <Select.Content>
                             {#each frameworks as fw}
                                 <Select.Item value={fw.value}>
-                                    {fw.label}
+                                    {#snippet children({ selected })}
+                                        <div class="flex items-center gap-2">
+                                            <FrameworkIcon framework={fw.value} />
+                                            <div class="flex flex-col">
+                                                <span class="font-medium">{fw.label}</span>
+                                                <span class="text-xs text-muted-foreground">{fw.description}</span>
+                                            </div>
+                                        </div>
+                                        {#if selected}
+                                            <Check class="absolute end-2 size-4" />
+                                        {/if}
+                                    {/snippet}
                                 </Select.Item>
                             {/each}
                         </Select.Content>

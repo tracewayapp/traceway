@@ -4,7 +4,6 @@
 	import { authState } from '$lib/state/auth.svelte';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { themeState, initTheme, toggleTheme } from '$lib/state/theme.svelte';
-	import { initTimezone } from '$lib/state/timezone.svelte';
 	import { incrementNavDepth, decrementNavDepth } from '$lib/utils/back-navigation';
 	import AppSidebar from '$lib/components/app-sidebar.svelte';
 	import AddProjectModal from '$lib/components/add-project-modal.svelte';
@@ -41,10 +40,8 @@
 
 	onMount(() => {
 		initTheme();
-		initTimezone();
 
 		if (authState.isAuthenticated) {
-			projectsState.initFromCache();
 			projectsState.loadProjects();
 		}
 	});
@@ -74,7 +71,7 @@
 
 <!-- This is not ideal, but because our layout is a top level route it can end up showing sidebar on the login page (after the login before the transition). -->
 <!-- We could consider moving this to a lower level layout for the actual app, for now it's just a path check -->
-{#if authState.isAuthenticated && page.url.pathname !== "/login" && page.url.pathname !== "/register"}
+{#if authState.isAuthenticated && page.url.pathname !== "/login" && page.url.pathname !== "/register" && !page.url.pathname.startsWith("/accept-invitation")}
 	<Sidebar.SidebarProvider>
 		<AppSidebar />
 		<Sidebar.SidebarInset>

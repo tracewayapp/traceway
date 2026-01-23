@@ -9,4 +9,9 @@ func Init() {
 	lit.RegisterModel[User](lit.PostgreSQL)
 	lit.RegisterModel[Organization](lit.PostgreSQL)
 	lit.RegisterModel[OrganizationUser](lit.PostgreSQL)
+	lit.RegisterModel[OrganizationMember](lit.PostgreSQL)
+	lit.RegisterModel[Invitation](lit.PostgreSQL)
+	lit.RegisterModel[InvitationWithInviter](lit.PostgreSQL)
+	lit.RegisterModel[UserOrganizationResponse](lit.PostgreSQL)
+	lit.RegisterModel[CountResult](lit.PostgreSQL)
 }

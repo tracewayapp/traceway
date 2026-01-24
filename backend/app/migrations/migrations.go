@@ -16,6 +16,7 @@ import (
 type ExtensionMigration struct {
 	Source embed.FS
 	Path   string
+	Table  string // unique migration table name per extension
 }
 
 var ExtensionPostgresMigrations []ExtensionMigration
@@ -98,8 +99,13 @@ func runExtensionMigrations(db *sql.DB, ext ExtensionMigration) error {
 		return fmt.Errorf("failed to create extension migration source: %w", err)
 	}
 
+	tableName := ext.Table
+	if tableName == "" {
+		tableName = "schema_migrations_ext"
+	}
+
 	driver, err := migratePg.WithInstance(db, &migratePg.Config{
-		MigrationsTable: "schema_migrations_ext",
+		MigrationsTable: tableName,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create extension migration driver: %w", err)

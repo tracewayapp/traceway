@@ -1,4 +1,5 @@
 import { authState } from './state/auth.svelte';
+import { toast } from 'svelte-sonner';
 
 const BASE_URL = '/api';
 
@@ -39,6 +40,18 @@ async function request(method: string, endpoint: string, data?: unknown, options
         authState.logout();
         window.location.href = '/login';
         throw new Error('Unauthorized');
+    }
+
+    if (response.status === 403) {
+        const currentPath = window.location.pathname;
+        if (currentPath === '/' || currentPath === '') {
+            authState.logout();
+            window.location.href = '/login';
+        } else {
+            toast.warning("You don't have permission to access that feature", { position: 'top-center' });
+            window.location.href = '/';
+        }
+        throw new Error('Forbidden');
     }
 
     if (!response.ok) {

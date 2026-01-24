@@ -18,10 +18,13 @@
     let password = $state('');
     let confirmPassword = $state('');
     let organizationName = $state('');
+    let timezone = $state(Intl.DateTimeFormat().resolvedOptions().timeZone);
     let projectName = $state('');
     let framework = $state<Framework>('gin');
     let error = $state('');
     let loading = $state(false);
+
+    const timezones = Intl.supportedValuesOf('timeZone');
 
     if (!__CLOUD_MODE__) {
         $effect(() => {
@@ -85,6 +88,7 @@
                     name,
                     password,
                     organizationName,
+                    timezone,
                     projectName,
                     framework
                 })
@@ -101,7 +105,7 @@
             authState.setOrganizations(data.organizations || []);
             projectsState.setProjects(data.projects);
 
-            goto('/connection');
+            goto('/');
         } catch (e) {
             error = e instanceof Error ? e.message : 'Registration failed';
         } finally {
@@ -163,6 +167,26 @@
                 <div class="flex flex-col space-y-1.5">
                     <Label for="organizationName">Organization Name</Label>
                     <Input id="organizationName" type="text" bind:value={organizationName} placeholder="Your company or team" required />
+                </div>
+                <div class="flex flex-col space-y-1.5">
+                    <Label for="timezone">Timezone</Label>
+                    <Select.Root type="single" bind:value={timezone}>
+                        <Select.Trigger class="w-full">
+                            <span>{timezone}</span>
+                        </Select.Trigger>
+                        <Select.Content class="max-h-60">
+                            {#each timezones as tz}
+                                <Select.Item value={tz}>
+                                    {#snippet children({ selected })}
+                                        <span>{tz}</span>
+                                        {#if selected}
+                                            <Check class="absolute end-2 size-4" />
+                                        {/if}
+                                    {/snippet}
+                                </Select.Item>
+                            {/each}
+                        </Select.Content>
+                    </Select.Root>
                 </div>
                 <div class="flex flex-col space-y-1.5">
                     <Label for="projectName">Project Name</Label>

@@ -37,6 +37,12 @@ export default defineConfig(({ mode }) => {
 			__CLOUD_MODE__: env.CLOUD_MODE,
 			__BILLING_AVAILABLE__: billingExists
 		},
+		resolve: {
+			dedupe: ['d3-scale', 'd3-array']
+		},
+		optimizeDeps: {
+			include: ['d3-scale', 'd3-array']
+		},
 		server: {
 			proxy: {
 				'/api': {

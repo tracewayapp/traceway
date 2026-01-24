@@ -56,7 +56,7 @@ func testGin() {
 	router.Use(tracewaygin.New(
 		endpoint,
 		tracewaygin.WithDebug(true),
-		tracewaygin.WithRepanic(true),
+		// tracewaygin.WithRepanic(true),
 		tracewaygin.WithOnErrorRecording(tracewaygin.RecordingUrl|tracewaygin.RecordingQuery|tracewaygin.RecordingHeader|tracewaygin.RecordingBody),
 	))
 

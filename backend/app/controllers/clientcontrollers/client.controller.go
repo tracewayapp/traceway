@@ -26,10 +26,8 @@ type ReportRequest struct {
 }
 
 func (e clientController) Report(c *gin.Context) {
-	// Get project ID from context (set by middleware)
 	projectId := middleware.GetProjectId(c)
 
-	// we need to parse the request
 	var request ReportRequest
 	if err := c.ShouldBindBodyWithJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -112,7 +110,7 @@ func (e clientController) Report(c *gin.Context) {
 		return
 	}
 
-	// Broadcast usage event for metering (cloud mode)
+	// Broadcast usage event
 	if project, exists := c.Get(middleware.ProjectContextKey); exists {
 		if p, ok := project.(*models.Project); ok && p.OrganizationId != nil {
 			hooks.BroadcastReport(hooks.ReportEvent{

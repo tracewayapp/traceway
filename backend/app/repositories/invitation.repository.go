@@ -22,6 +22,7 @@ func (r *invitationRepository) Create(tx *sql.Tx, organizationId int, email stri
 		InvitedBy:      invitedBy,
 		Status:         "pending",
 		ExpiresAt:      expiresAt,
+		CreatedAt:      time.Now().UTC(),
 	}
 
 	id, err := lit.Insert(tx, invitation)

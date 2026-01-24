@@ -4,6 +4,7 @@ import (
 	"backend/app/models"
 	"database/sql"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/go-lightning/lit"
@@ -56,6 +57,7 @@ func (p *projectRepository) Create(tx *sql.Tx, name string, framework string) (*
 		Name:      name,
 		Token:     generateSecureToken(),
 		Framework: framework,
+		CreatedAt: time.Now().UTC(),
 	}
 
 	err := lit.InsertExistingUuid(tx, project)
@@ -73,6 +75,7 @@ func (p *projectRepository) CreateWithOrganization(tx *sql.Tx, name string, fram
 		Token:          generateSecureToken(),
 		Framework:      framework,
 		OrganizationId: &organizationId,
+		CreatedAt:      time.Now().UTC(),
 	}
 
 	err := lit.InsertExistingUuid(tx, project)

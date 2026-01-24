@@ -28,9 +28,10 @@ func (r *userRepository) FindById(tx *sql.Tx, id int) (*models.User, error) {
 
 func (r *userRepository) Create(tx *sql.Tx, email string, name string, hashedPassword string) (*models.User, error) {
 	user := &models.User{
-		Email:    email,
-		Name:     name,
-		Password: hashedPassword,
+		Email:     email,
+		Name:      name,
+		Password:  hashedPassword,
+		CreatedAt: time.Now().UTC(),
 	}
 
 	id, err := lit.Insert(tx, user)
@@ -59,7 +60,7 @@ func (r *userRepository) SetPasswordResetToken(tx *sql.Tx, userId int, token str
 			PasswordResetExpiresAt:   &expiresAt,
 			PasswordResetRequestedAt: &now,
 		},
-		"WHERE id = $1",
+		"id = $1",
 		userId,
 	)
 }
@@ -84,7 +85,7 @@ func (r *userRepository) UpdatePassword(tx *sql.Tx, userId int, hashedPassword s
 	return lit.Update[models.User](
 		tx,
 		&models.User{Password: hashedPassword},
-		"WHERE id = $1",
+		"id = $1",
 		userId,
 	)
 }

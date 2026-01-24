@@ -3,6 +3,7 @@ package repositories
 import (
 	"backend/app/models"
 	"database/sql"
+	"time"
 
 	"github.com/tracewayapp/go-lightning/lit"
 )
@@ -11,7 +12,8 @@ type organizationRepository struct{}
 
 func (r *organizationRepository) Create(tx *sql.Tx, name string) (*models.Organization, error) {
 	org := &models.Organization{
-		Name: name,
+		Name:      name,
+		CreatedAt: time.Now().UTC(),
 	}
 
 	id, err := lit.Insert(tx, org)
@@ -64,6 +66,7 @@ func (r *organizationRepository) AddUser(tx *sql.Tx, organizationId int, userId 
 		UserId:         userId,
 		OrganizationId: organizationId,
 		Role:           role,
+		CreatedAt:      time.Now().UTC(),
 	}
 
 	id, err := lit.Insert(tx, orgUser)

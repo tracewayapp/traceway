@@ -119,6 +119,37 @@ func (p *projectRepository) FindById(tx *sql.Tx, id uuid.UUID) (*models.Project,
 - Tables must have an `id` column
 - Always pass `*sql.Tx` from `ExecuteTransaction` to lit functions
 
+#### Common Pitfalls
+
+**Always initialize all struct fields with defaults:**
+When using `lit.Insert`, all struct fields are included in the INSERT statement, overriding database defaults. Always set fields like `CreatedAt` explicitly:
+
+```go
+// CORRECT - set CreatedAt explicitly
+user := &models.User{
+    Email:     email,
+    Name:      name,
+    CreatedAt: time.Now().UTC(),
+}
+
+// WRONG - CreatedAt remains zero value (0001-01-01)
+user := &models.User{
+    Email: email,
+    Name:  name,
+}
+```
+
+**lit.Update WHERE clause:**
+The `lit.Update` function automatically includes `WHERE` in the generated SQL. Do not add `WHERE` yourself:
+
+```go
+// CORRECT - just the condition
+lit.Update(tx, &user, "id = $1", user.Id)
+
+// WRONG - results in "WHERE WHERE id = $1"
+lit.Update(tx, &user, "WHERE id = $1", user.Id)
+```
+
 #### Custom Result Models for Aggregates
 For queries that return aggregated or computed values (not direct table rows), create a custom result model:
 

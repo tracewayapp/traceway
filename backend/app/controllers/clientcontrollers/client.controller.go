@@ -32,6 +32,15 @@ func (e clientController) Report(c *gin.Context) {
 		return
 	}
 
+	if project, exists := c.Get(middleware.ProjectContextKey); exists {
+		if p, ok := project.(*models.Project); ok && p.OrganizationId != nil {
+			if !hooks.CanReport(*p.OrganizationId) {
+				c.AbortWithStatus(http.StatusTooManyRequests)
+				return
+			}
+		}
+	}
+
 	var request ReportRequest
 	if err := c.ShouldBindBodyWithJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

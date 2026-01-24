@@ -29,3 +29,27 @@ func BroadcastReport(event ReportEvent) {
 		hook(event)
 	}
 }
+
+type CanReportHook func(orgId int) bool
+
+var (
+	canReportHook   CanReportHook
+	canReportHookMu sync.RWMutex
+)
+
+func RegisterCanReportHook(fn CanReportHook) {
+	canReportHookMu.Lock()
+	defer canReportHookMu.Unlock()
+	canReportHook = fn
+}
+
+func CanReport(orgId int) bool {
+	canReportHookMu.RLock()
+	hook := canReportHook
+	canReportHookMu.RUnlock()
+
+	if hook == nil {
+		return true
+	}
+	return hook(orgId)
+}

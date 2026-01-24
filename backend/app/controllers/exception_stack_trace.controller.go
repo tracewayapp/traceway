@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"backend/app/middleware"
 	"backend/app/models"
 	"backend/app/repositories"
 	"net/http"
@@ -15,7 +16,6 @@ import (
 type exceptionStackTraceController struct{}
 
 type ExceptionSearchRequest struct {
-	ProjectId       uuid.UUID        `json:"projectId"`
 	FromDate        time.Time        `json:"fromDate"`
 	ToDate          time.Time        `json:"toDate"`
 	OrderBy         string           `json:"orderBy"`
@@ -26,12 +26,10 @@ type ExceptionSearchRequest struct {
 }
 
 type ArchiveRequest struct {
-	ProjectId uuid.UUID `json:"projectId"`
-	Hashes    []string  `json:"hashes"`
+	Hashes []string `json:"hashes"`
 }
 
 type ExceptionDetailRequest struct {
-	ProjectId  uuid.UUID        `json:"projectId"`
 	Pagination PaginationParams `json:"pagination"`
 }
 
@@ -42,13 +40,19 @@ type ExceptionDetailResponse struct {
 }
 
 func (e exceptionStackTraceController) FindGrouppedExceptionStackTraces(c *gin.Context) {
+	projectId, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return
+	}
+
 	var request ExceptionSearchRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	exceptions, total, err := repositories.ExceptionStackTraceRepository.FindGrouped(c, request.ProjectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.Search, request.SearchType, request.IncludeArchived)
+	exceptions, total, err := repositories.ExceptionStackTraceRepository.FindGrouped(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.Search, request.SearchType, request.IncludeArchived)
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading exceptions: %w", err))
 		return
@@ -65,7 +69,7 @@ func (e exceptionStackTraceController) FindGrouppedExceptionStackTraces(c *gin.C
 		now := time.Now()
 		start24h := now.Add(-24 * time.Hour)
 
-		trends, err := repositories.ExceptionStackTraceRepository.GetHourlyTrendForHashes(c, request.ProjectId, hashes, start24h, now)
+		trends, err := repositories.ExceptionStackTraceRepository.GetHourlyTrendForHashes(c, projectId, hashes, start24h, now)
 		if err != nil {
 			c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading trends: %w", err))
 			return
@@ -93,6 +97,12 @@ func (e exceptionStackTraceController) FindGrouppedExceptionStackTraces(c *gin.C
 }
 
 func (e exceptionStackTraceController) FindByHash(c *gin.Context) {
+	projectId, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return
+	}
+
 	exceptionHash := c.Param("hash")
 	if exceptionHash == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "exception hash is required"})
@@ -105,7 +115,7 @@ func (e exceptionStackTraceController) FindByHash(c *gin.Context) {
 		request.Pagination = PaginationParams{Page: 1, PageSize: 20}
 	}
 
-	group, occurrences, total, err := repositories.ExceptionStackTraceRepository.FindByHash(c, request.ProjectId, exceptionHash, request.Pagination.Page, request.Pagination.PageSize)
+	group, occurrences, total, err := repositories.ExceptionStackTraceRepository.FindByHash(c, projectId, exceptionHash, request.Pagination.Page, request.Pagination.PageSize)
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading the group: %w", err))
 		return
@@ -129,6 +139,12 @@ func (e exceptionStackTraceController) FindByHash(c *gin.Context) {
 }
 
 func (e exceptionStackTraceController) ArchiveExceptions(c *gin.Context) {
+	projectId, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return
+	}
+
 	var request ArchiveRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -140,7 +156,7 @@ func (e exceptionStackTraceController) ArchiveExceptions(c *gin.Context) {
 		return
 	}
 
-	err := repositories.ExceptionStackTraceRepository.ArchiveByHashes(c, request.ProjectId, request.Hashes)
+	err = repositories.ExceptionStackTraceRepository.ArchiveByHashes(c, projectId, request.Hashes)
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error archiving %s: %w", strings.Join(request.Hashes, ","), err))
 		return
@@ -150,6 +166,12 @@ func (e exceptionStackTraceController) ArchiveExceptions(c *gin.Context) {
 }
 
 func (e exceptionStackTraceController) UnarchiveExceptions(c *gin.Context) {
+	projectId, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return
+	}
+
 	var request ArchiveRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -161,7 +183,7 @@ func (e exceptionStackTraceController) UnarchiveExceptions(c *gin.Context) {
 		return
 	}
 
-	err := repositories.ExceptionStackTraceRepository.UnarchiveByHashes(c, request.ProjectId, request.Hashes)
+	err = repositories.ExceptionStackTraceRepository.UnarchiveByHashes(c, projectId, request.Hashes)
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error unarchiving %s: %w", strings.Join(request.Hashes, ","), err))
 		return
@@ -171,21 +193,19 @@ func (e exceptionStackTraceController) UnarchiveExceptions(c *gin.Context) {
 }
 
 func (e exceptionStackTraceController) FindById(c *gin.Context) {
+	projectId, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return
+	}
+
 	exceptionId, err := uuid.Parse(c.Param("exceptionId"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid exception id"})
 		return
 	}
 
-	var request struct {
-		ProjectId uuid.UUID `json:"projectId"`
-	}
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	exception, err := repositories.ExceptionStackTraceRepository.FindById(c, request.ProjectId, exceptionId)
+	exception, err := repositories.ExceptionStackTraceRepository.FindById(c, projectId, exceptionId)
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading the exception: %w", err))
 		return

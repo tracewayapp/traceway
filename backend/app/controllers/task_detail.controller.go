@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"backend/app/middleware"
 	"backend/app/models"
 	"backend/app/repositories"
 	"net/http"
@@ -11,10 +12,6 @@ import (
 )
 
 type taskDetailController struct{}
-
-type TaskDetailRequest struct {
-	ProjectId uuid.UUID `json:"projectId"`
-}
 
 type TaskExceptionInfo struct {
 	ExceptionHash string `json:"exceptionHash"`
@@ -39,27 +36,27 @@ type TaskDetailResponse struct {
 }
 
 func (t taskDetailController) GetTaskDetail(c *gin.Context) {
+	projectId, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return
+	}
+
 	taskId, err := uuid.Parse(c.Param("taskId"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid taskId"})
 		return
 	}
 
-	var request TaskDetailRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
 	// Get task
-	task, err := repositories.TaskRepository.FindById(c, request.ProjectId, taskId)
+	task, err := repositories.TaskRepository.FindById(c, projectId, taskId)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
 		return
 	}
 
 	// Get segments (flat list ordered by start_time)
-	segments, err := repositories.SegmentRepository.FindByTransactionId(c, request.ProjectId, taskId)
+	segments, err := repositories.SegmentRepository.FindByTransactionId(c, projectId, taskId)
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading segments: %w", err))
 		return
@@ -69,7 +66,7 @@ func (t taskDetailController) GetTaskDetail(c *gin.Context) {
 	var exceptionInfo *TaskExceptionInfo
 	var messages []TaskMessageInfo
 
-	allExceptions, err := repositories.ExceptionStackTraceRepository.FindAllByTransactionId(c, request.ProjectId, taskId)
+	allExceptions, err := repositories.ExceptionStackTraceRepository.FindAllByTransactionId(c, projectId, taskId)
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading allExceptions: %w", err))
 		return

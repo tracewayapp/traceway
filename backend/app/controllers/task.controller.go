@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"backend/app/middleware"
 	"backend/app/models"
 	"backend/app/repositories"
 	"net/http"
@@ -8,14 +9,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	traceway "go.tracewayapp.com"
 )
 
 type taskController struct{}
 
 type TaskSearchRequest struct {
-	ProjectId     uuid.UUID        `json:"projectId"`
 	FromDate      time.Time        `json:"fromDate"`
 	ToDate        time.Time        `json:"toDate"`
 	OrderBy       string           `json:"orderBy"`
@@ -24,7 +23,6 @@ type TaskSearchRequest struct {
 }
 
 type TaskInstancesRequest struct {
-	ProjectId     uuid.UUID        `json:"projectId"`
 	FromDate      time.Time        `json:"fromDate"`
 	ToDate        time.Time        `json:"toDate"`
 	OrderBy       string           `json:"orderBy"`
@@ -39,13 +37,19 @@ type TaskInstancesResponse struct {
 }
 
 func (e taskController) FindAllTasks(c *gin.Context) {
+	projectId, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return
+	}
+
 	var request TaskSearchRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	tasks, total, err := repositories.TaskRepository.FindAll(c, request.ProjectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy)
+	tasks, total, err := repositories.TaskRepository.FindAll(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy)
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading tasks: %w", err))
 		return
@@ -63,13 +67,19 @@ func (e taskController) FindAllTasks(c *gin.Context) {
 }
 
 func (e taskController) FindGroupedByTaskName(c *gin.Context) {
+	projectId, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return
+	}
+
 	var request TaskSearchRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	stats, total, err := repositories.TaskRepository.FindGroupedByTaskName(c, request.ProjectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
+	stats, total, err := repositories.TaskRepository.FindGroupedByTaskName(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading stats by name: %w", err))
 		return
@@ -87,6 +97,12 @@ func (e taskController) FindGroupedByTaskName(c *gin.Context) {
 }
 
 func (e taskController) FindByTaskName(c *gin.Context) {
+	projectId, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return
+	}
+
 	rawTaskName := c.Query("task")
 	if rawTaskName == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "task is required"})
@@ -105,14 +121,14 @@ func (e taskController) FindByTaskName(c *gin.Context) {
 		return
 	}
 
-	tasks, total, err := repositories.TaskRepository.FindByTaskName(c, request.ProjectId, taskName, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
+	tasks, total, err := repositories.TaskRepository.FindByTaskName(c, projectId, taskName, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading tasks by name: %w", err))
 		return
 	}
 
 	// Get aggregate stats for this task
-	stats, err := repositories.TaskRepository.GetTaskStats(c, request.ProjectId, taskName, request.FromDate, request.ToDate)
+	stats, err := repositories.TaskRepository.GetTaskStats(c, projectId, taskName, request.FromDate, request.ToDate)
 	if err != nil {
 		// Don't fail the request if stats fail, just return nil stats
 		stats = nil

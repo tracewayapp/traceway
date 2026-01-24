@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"backend/app/middleware"
 	"backend/app/models"
 	"backend/app/repositories"
 	"net/http"
@@ -11,10 +12,6 @@ import (
 )
 
 type endpointDetailController struct{}
-
-type EndpointDetailRequest struct {
-	ProjectId uuid.UUID `json:"projectId"`
-}
 
 type EndpointExceptionInfo struct {
 	ExceptionHash string `json:"exceptionHash"`
@@ -39,27 +36,27 @@ type EndpointDetailResponse struct {
 }
 
 func (t endpointDetailController) GetEndpointDetail(c *gin.Context) {
+	projectId, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return
+	}
+
 	endpointId, err := uuid.Parse(c.Param("endpointId"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid endpointId"})
 		return
 	}
 
-	var request EndpointDetailRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
 	// Get endpoint
-	endpoint, err := repositories.EndpointRepository.FindById(c, request.ProjectId, endpointId)
+	endpoint, err := repositories.EndpointRepository.FindById(c, projectId, endpointId)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Endpoint not found"})
 		return
 	}
 
 	// Get segments (flat list ordered by start_time)
-	segments, err := repositories.SegmentRepository.FindByTransactionId(c, request.ProjectId, endpointId)
+	segments, err := repositories.SegmentRepository.FindByTransactionId(c, projectId, endpointId)
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading segments: %w", err))
 		return
@@ -69,7 +66,7 @@ func (t endpointDetailController) GetEndpointDetail(c *gin.Context) {
 	var exceptionInfo *EndpointExceptionInfo
 	var messages []EndpointMessageInfo
 
-	allExceptions, err := repositories.ExceptionStackTraceRepository.FindAllByTransactionId(c, request.ProjectId, endpointId)
+	allExceptions, err := repositories.ExceptionStackTraceRepository.FindAllByTransactionId(c, projectId, endpointId)
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading all exceptions: %w", err))
 		return

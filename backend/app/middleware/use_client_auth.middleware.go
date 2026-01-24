@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"backend/app/cache"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -11,6 +12,8 @@ import (
 
 const ProjectContextKey = "project"
 const ProjectIdContextKey = "project_id"
+
+var ErrProjectIdNotInContext = errors.New("projectId not found in context - ensure RequireProjectAccess middleware is applied")
 
 var UseClientAuth func(c *gin.Context)
 
@@ -42,9 +45,9 @@ func InitUseClientAuth() {
 }
 
 // GetProjectId retrieves the project ID from the Gin context
-func GetProjectId(c *gin.Context) uuid.UUID {
+func GetProjectId(c *gin.Context) (uuid.UUID, error) {
 	if id, exists := c.Get(ProjectIdContextKey); exists {
-		return id.(uuid.UUID)
+		return id.(uuid.UUID), nil
 	}
-	return uuid.Nil
+	return uuid.Nil, ErrProjectIdNotInContext
 }

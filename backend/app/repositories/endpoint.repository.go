@@ -491,14 +491,15 @@ func (e *endpointRepository) GetEndpointStats(ctx context.Context, projectId uui
 
 	query := `SELECT
 		count() as count,
-		avg(duration) / 1000000 as avg_duration_ms,
-		quantile(0.5)(duration) / 1000000 as p50_duration_ms,
-		quantile(0.95)(duration) / 1000000 as p95_duration_ms,
-		quantile(0.99)(duration) / 1000000 as p99_duration_ms,
-		countIf(status_code >= 500) * 100.0 / count() as error_rate,
-		countIf(duration <= 500000000 AND status_code < 500) +
-			(countIf(duration > 500000000 AND duration <= 2000000000 AND status_code < 500) * 0.5)
-			as satisfied_tolerating
+		if(count() > 0, avg(duration) / 1000000, 0) as avg_duration_ms,
+		if(count() > 0, quantile(0.5)(duration) / 1000000, 0) as p50_duration_ms,
+		if(count() > 0, quantile(0.95)(duration) / 1000000, 0) as p95_duration_ms,
+		if(count() > 0, quantile(0.99)(duration) / 1000000, 0) as p99_duration_ms,
+		if(count() > 0, countIf(status_code >= 500) * 100.0 / count(), 0) as error_rate,
+		if(count() > 0,
+			countIf(duration <= 500000000 AND status_code < 500) +
+			(countIf(duration > 500000000 AND duration <= 2000000000 AND status_code < 500) * 0.5),
+			0) as satisfied_tolerating
 	FROM endpoints
 	WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ?`
 

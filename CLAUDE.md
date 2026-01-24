@@ -627,6 +627,31 @@ query := `
 `
 ```
 
+### Error Handling Pattern
+
+**IMPORTANT:** When handling errors in controllers, always use `c.AbortWithError` with `traceway.NewStackTraceErrorf` instead of `c.JSON` with a generic error message. This ensures proper error tracking with stack traces.
+
+```go
+// CORRECT - Use AbortWithError with descriptive reason
+projectId, err := middleware.GetProjectId(c)
+if err != nil {
+    c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+    return
+}
+
+// WRONG - Do not use c.JSON for internal server errors
+if err != nil {
+    c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+    return
+}
+```
+
+**Key points:**
+- The reason should describe the actual cause (e.g., "RequireProjectAccess middleware must be applied")
+- Use `%w` to wrap the original error for proper error chaining
+- This pattern applies to all 500 Internal Server Error responses
+- For client errors (400, 404), `c.JSON` with an error message is acceptable
+
 ---
 
 ## Go Client SDK

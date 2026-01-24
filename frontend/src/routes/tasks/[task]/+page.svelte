@@ -96,10 +96,10 @@
 
     // Date Range State
     let selectedPreset = $state<string | null>(initialRange.preset);
-    let fromDate = $state<CalendarDate>(dateToCalendarDate(initialRange.from));
-    let toDate = $state<CalendarDate>(dateToCalendarDate(initialRange.to));
-    let fromTime = $state(dateToTimeString(initialRange.from));
-    let toTime = $state(dateToTimeString(initialRange.to));
+    let fromDate = $state<CalendarDate>(dateToCalendarDate(initialRange.from, timezone));
+    let toDate = $state<CalendarDate>(dateToCalendarDate(initialRange.to, timezone));
+    let fromTime = $state(dateToTimeString(initialRange.from, timezone));
+    let toTime = $state(dateToTimeString(initialRange.to, timezone));
 
     function updateTimeRangeUrl(pushToHistory = true) {
         updateUrl(

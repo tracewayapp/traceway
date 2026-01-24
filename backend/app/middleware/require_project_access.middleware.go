@@ -44,6 +44,7 @@ func InitRequireProjectAccess() {
 			return
 		}
 
+		c.Set(ProjectIdContextKey, projectId)
 		c.Next()
 	}
 }

@@ -1,6 +1,7 @@
 import { browser } from '$app/environment';
 import { goto } from '$app/navigation';
 import { CalendarDate } from '@internationalized/date';
+import { DateTime } from 'luxon';
 import { getNow, parseISO } from './formatters';
 
 export const presetMinutes: Record<string, number> = {
@@ -23,12 +24,14 @@ export function getTimeRangeFromPreset(presetValue: string, timezone: string): {
 	return { from: from.toJSDate(), to: now.toJSDate() };
 }
 
-export function dateToCalendarDate(date: Date): CalendarDate {
-	return new CalendarDate(date.getFullYear(), date.getMonth() + 1, date.getDate());
+export function dateToCalendarDate(date: Date, timezone: string): CalendarDate {
+	const dt = DateTime.fromJSDate(date).setZone(timezone);
+	return new CalendarDate(dt.year, dt.month, dt.day);
 }
 
-export function dateToTimeString(date: Date): string {
-	return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+export function dateToTimeString(date: Date, timezone: string): string {
+	const dt = DateTime.fromJSDate(date).setZone(timezone);
+	return `${String(dt.hour).padStart(2, '0')}:${String(dt.minute).padStart(2, '0')}`;
 }
 
 export type TimeRangeParams = {

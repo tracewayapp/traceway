@@ -1,30 +1,24 @@
 package controllers
 
 import (
+	"backend/app/middleware"
 	"backend/app/models"
 	"backend/app/repositories"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	traceway "go.tracewayapp.com"
 )
 
 type metricRecordController struct{}
 
-type HomepageStatsRequest struct {
-	ProjectId uuid.UUID `json:"projectId"`
-}
-
 func (e metricRecordController) FindHomepageStats(c *gin.Context) {
-	var request HomepageStatsRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	projectId, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
 		return
 	}
-
-	projectId := request.ProjectId
 
 	// requests in last 24h vs previous 24h
 	now := time.Now()

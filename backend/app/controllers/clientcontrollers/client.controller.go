@@ -26,7 +26,11 @@ type ReportRequest struct {
 }
 
 func (e clientController) Report(c *gin.Context) {
-	projectId := middleware.GetProjectId(c)
+	projectId, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("UseClientAuth middleware must be applied: %w", err))
+		return
+	}
 
 	var request ReportRequest
 	if err := c.ShouldBindBodyWithJSON(&request); err != nil {
@@ -89,7 +93,7 @@ func (e clientController) Report(c *gin.Context) {
 		}
 	}
 
-	err := repositories.ExceptionStackTraceRepository.InsertAsync(c, exceptionStackTraceToInsert)
+	err = repositories.ExceptionStackTraceRepository.InsertAsync(c, exceptionStackTraceToInsert)
 
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting exceptionStackTraceToInsert: %w", err))

@@ -94,10 +94,10 @@
 
 	// Time range state
 	let selectedPreset = $state<string | null>(initialUrlParams.preset);
-	let fromDate = $state<CalendarDate>(dateToCalendarDate(initialRange.from));
-	let toDate = $state<CalendarDate>(dateToCalendarDate(initialRange.to));
-	let fromTime = $state(dateToTimeString(initialRange.from));
-	let toTime = $state(dateToTimeString(initialRange.to));
+	let fromDate = $state<CalendarDate>(dateToCalendarDate(initialRange.from, timezone));
+	let toDate = $state<CalendarDate>(dateToCalendarDate(initialRange.to, timezone));
+	let fromTime = $state(dateToTimeString(initialRange.from, timezone));
+	let toTime = $state(dateToTimeString(initialRange.to, timezone));
 
 	// Search state (manual trigger only)
 	let searchQuery = $state(initialUrlParams.search);
@@ -240,10 +240,10 @@
 		const urlParams = parseIssuesUrlParams();
 		const range = getResolvedTimeRange(urlParams, timezone);
 		selectedPreset = urlParams.preset;
-		fromDate = dateToCalendarDate(range.from);
-		toDate = dateToCalendarDate(range.to);
-		fromTime = dateToTimeString(range.from);
-		toTime = dateToTimeString(range.to);
+		fromDate = dateToCalendarDate(range.from, timezone);
+		toDate = dateToCalendarDate(range.to, timezone);
+		fromTime = dateToTimeString(range.from, timezone);
+		toTime = dateToTimeString(range.to, timezone);
 		searchQuery = urlParams.search;
 		searchType = urlParams.searchType;
 		page = 1;

@@ -94,10 +94,10 @@
 
     // Date Range State
     let selectedPreset = $state<string | null>(initialUrlParams.preset);
-    let fromDate = $state<CalendarDate>(dateToCalendarDate(initialRange.from));
-    let toDate = $state<CalendarDate>(dateToCalendarDate(initialRange.to));
-    let fromTime = $state(dateToTimeString(initialRange.from));
-    let toTime = $state(dateToTimeString(initialRange.to));
+    let fromDate = $state<CalendarDate>(dateToCalendarDate(initialRange.from, timezone));
+    let toDate = $state<CalendarDate>(dateToCalendarDate(initialRange.to, timezone));
+    let fromTime = $state(dateToTimeString(initialRange.from, timezone));
+    let toTime = $state(dateToTimeString(initialRange.to, timezone));
 
     // Update URL with current time range
     function updateTimeRangeUrl(pushToHistory = true) {
@@ -115,10 +115,10 @@
         const range = getResolvedTimeRange(urlParams, timezone);
 
         selectedPreset = urlParams.preset;
-        fromDate = dateToCalendarDate(range.from);
-        fromTime = dateToTimeString(range.from);
-        toDate = dateToCalendarDate(range.to);
-        toTime = dateToTimeString(range.to);
+        fromDate = dateToCalendarDate(range.from, timezone);
+        fromTime = dateToTimeString(range.from, timezone);
+        toDate = dateToCalendarDate(range.to, timezone);
+        toTime = dateToTimeString(range.to, timezone);
 
         page = 1;
         loadData(false);

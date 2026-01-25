@@ -1,4 +1,4 @@
-Full documentation: https://docs.tracewayapp.com
+# Full documentation: https://docs.tracewayapp.com
 
 # Technical documentation for running locally
 

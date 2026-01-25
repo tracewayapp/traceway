@@ -1,4 +1,6 @@
-# Temporary documentation
+Full documentation: https://docs.tracewayapp.com
+
+# Technical documentation for running locally
 
 ## Project structure
 There are 2 projects in this repo and one more project in the go-clients repo https://github.com/tracewayapp/go-client

@@ -38,10 +38,10 @@ export default defineConfig(({ mode }) => {
 			__BILLING_AVAILABLE__: billingExists
 		},
 		resolve: {
-			dedupe: ['d3-scale', 'd3-array']
+			dedupe: ['d3-scale', 'd3-array', 'lucide-svelte', 'svelte']
 		},
 		optimizeDeps: {
-			include: ['d3-scale', 'd3-array']
+			include: ['d3-scale', 'd3-array', 'lucide-svelte']
 		},
 		server: {
 			proxy: {

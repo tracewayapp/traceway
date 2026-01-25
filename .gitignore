@@ -32,3 +32,6 @@ go.work.sum
 # .vscode/
 /.gemini
 .DS_Store
+
+# Frontend build output
+backend/static/dist/

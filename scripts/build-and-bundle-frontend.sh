@@ -23,6 +23,22 @@ if [[ "$UPDATE_VERSION" =~ ^[Yy]$ ]]; then
     fi
 fi
 
+# Ask for billing path
+read -p "Enter billing path (e.g., ../../traceway-cloud/frontend/src/lib/billing) or leave empty: " BILLING_PATH_INPUT
+if [ -n "$BILLING_PATH_INPUT" ]; then
+    export BILLING_PATH="$BILLING_PATH_INPUT"
+    echo "BILLING_PATH set to: $BILLING_PATH"
+else
+    echo "Building without billing module"
+fi
+
+# Ask for cloud mode
+read -p "Enable cloud mode? (y/N): " CLOUD_MODE_INPUT
+if [[ "$CLOUD_MODE_INPUT" =~ ^[Yy]$ ]]; then
+    export CLOUD_MODE=true
+    echo "CLOUD_MODE enabled"
+fi
+
 # Build frontend
 npm install
 npm run build

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
+	"net/url"
 	"os"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -136,7 +137,7 @@ func Run() error {
 		tlsConfig = ""
 	}
 
-	err := runMigrationsClickhouse(fmt.Sprintf(`clickhouse://%s?username=%s&password=%s&database=%s%s`, clickhouseServer, clickhouseUsername, clickhousePassword, clickhouseDatabase, tlsConfig))
+	err := runMigrationsClickhouse(fmt.Sprintf(`clickhouse://%s?username=%s&password=%s&database=%s%s`, clickhouseServer, url.QueryEscape(clickhouseUsername), url.QueryEscape(clickhousePassword), clickhouseDatabase, tlsConfig))
 	if err != nil {
 		return fmt.Errorf("clickhouse migrations failed: %w", err)
 	}
@@ -157,7 +158,7 @@ func Run() error {
 	}
 
 	pgConnStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
-		pgUsername, pgPassword, pgHost, pgPort, pgDatabase, pgSSLMode)
+		url.QueryEscape(pgUsername), url.QueryEscape(pgPassword), pgHost, pgPort, pgDatabase, pgSSLMode)
 
 	if err := runMigrationsPostgres(pgConnStr); err != nil {
 		return fmt.Errorf("postgres migrations failed: %w", err)

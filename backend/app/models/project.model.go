@@ -21,10 +21,10 @@ func (p Project) ToProjectWithBackendUrl() *ProjectWithBackendUrl {
 }
 
 func getBackendUrl() string {
-	if url := os.Getenv("BACKEND_URL"); url != "" {
+	if url := os.Getenv("APP_BASE_URL"); url != "" {
 		return url
 	}
-	return "https://tracewayapp.com"
+	return "https://cloud.tracewayapp.com"
 }
 
 type ProjectWithBackendUrl struct {

@@ -10,9 +10,10 @@ import (
 
 type organizationRepository struct{}
 
-func (r *organizationRepository) Create(tx *sql.Tx, name string) (*models.Organization, error) {
+func (r *organizationRepository) Create(tx *sql.Tx, name string, timezone string) (*models.Organization, error) {
 	org := &models.Organization{
 		Name:      name,
+		Timezone:  timezone,
 		CreatedAt: time.Now().UTC(),
 	}
 

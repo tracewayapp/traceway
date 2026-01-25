@@ -125,7 +125,7 @@ func (a authController) Register(c *gin.Context) {
 		return
 	}
 
-	org, err := repositories.OrganizationRepository.Create(tx, request.OrganizationName)
+	org, err := repositories.OrganizationRepository.Create(tx, request.OrganizationName, request.Timezone)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, err)
 		return

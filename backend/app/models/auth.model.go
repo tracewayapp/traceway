@@ -24,6 +24,7 @@ type RegisterRequest struct {
 	Name             string `json:"name" binding:"required"`
 	Password         string `json:"password" binding:"required,min=8"`
 	OrganizationName string `json:"organizationName" binding:"required"`
+	Timezone         string `json:"timezone" binding:"required"`
 	ProjectName      string `json:"projectName" binding:"required"`
 	Framework        string `json:"framework" binding:"required"`
 }

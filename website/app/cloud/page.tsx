@@ -53,7 +53,7 @@ export default function CloudPage() {
             {/* Cloud vs Self-Hosted Q&A */}
             <section className="py-24 bg-white">
                 <div className="container mx-auto px-4 max-w-3xl">
-                    <div className="text-center mb-16">
+                    <div className="text-center mb-12">
                         <h2 className="text-3xl font-bold mb-4 text-zinc-900 tracking-tight">Cloud vs. Self-Hosted</h2>
                         <p className="text-zinc-600 text-lg">
                             Common questions about our deployment options.
@@ -62,28 +62,28 @@ export default function CloudPage() {
 
                     <Accordion type="single" collapsible className="w-full">
                         <AccordionItem value="item-1" className="border-b-zinc-200">
-                            <AccordionTrigger className="text-zinc-900 hover:text-zinc-700 hover:no-underline text-left text-lg font-medium">
+                            <AccordionTrigger className="text-zinc-900 hover:text-zinc-700 hover:no-underline text-left">
                                 Why use Traceway Cloud?
                             </AccordionTrigger>
-                            <AccordionContent className="text-zinc-600 leading-relaxed text-base">
+                            <AccordionContent className="text-zinc-600 leading-relaxed">
                                 Traceway Cloud is simply for teams that don't want to self-host. We run the exact same open-source code but manage the infrastructure, updates, and backups for you.
                                 It allows you to focus on shipping features without worrying about maintaining an observability stack.
                             </AccordionContent>
                         </AccordionItem>
                         <AccordionItem value="item-2" className="border-b-zinc-200">
-                            <AccordionTrigger className="text-zinc-900 hover:text-zinc-700 hover:no-underline text-left text-lg font-medium">
+                            <AccordionTrigger className="text-zinc-900 hover:text-zinc-700 hover:no-underline text-left">
                                 Is the Open Source version limited?
                             </AccordionTrigger>
-                            <AccordionContent className="text-zinc-600 leading-relaxed text-base">
+                            <AccordionContent className="text-zinc-600 leading-relaxed">
                                 No. The code is 100% open source and fully featured. We do not gate features behind the cloud version.
                                 The cloud offering exists solely for convenience and for users who prefer a managed service over self-hosting.
                             </AccordionContent>
                         </AccordionItem>
                         <AccordionItem value="item-3" className="border-b-zinc-200">
-                            <AccordionTrigger className="text-zinc-900 hover:text-zinc-700 hover:no-underline text-left text-lg font-medium">
+                            <AccordionTrigger className="text-zinc-900 hover:text-zinc-700 hover:no-underline text-left">
                                 Can I migrate from Cloud to Self-Hosted later?
                             </AccordionTrigger>
-                            <AccordionContent className="text-zinc-600 leading-relaxed text-base">
+                            <AccordionContent className="text-zinc-600 leading-relaxed">
                                 Yes, since the underlying software is the same, we can work with you to export your data and migrate to a self-hosted instance at any time.
                                 You are never locked into our cloud platform.
                             </AccordionContent>

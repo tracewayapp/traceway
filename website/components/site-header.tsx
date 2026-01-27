@@ -1,8 +1,8 @@
-
 import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Github } from "lucide-react";
+import { MobileNav } from "@/components/mobile-nav";
 
 export function SiteHeader() {
     return (
@@ -27,8 +27,10 @@ export function SiteHeader() {
                         </Link>
                     </div>
                 </div>
-                <div className="flex items-center gap-4">
-                    <Link href="https://github.com/tracewayapp/traceway" target="_blank" rel="noopener noreferrer" className="hidden sm:block">
+
+                {/* Desktop Actions */}
+                <div className="hidden md:flex items-center gap-4">
+                    <Link href="https://github.com/tracewayapp/traceway" target="_blank" rel="noopener noreferrer">
                         <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100">
                             <Github className="h-4 w-4" />
                             <span className="sr-only">GitHub</span>
@@ -47,6 +49,9 @@ export function SiteHeader() {
                         </Link>
                     </div>
                 </div>
+
+                {/* Mobile Menu */}
+                <MobileNav />
             </div>
         </nav>
     );

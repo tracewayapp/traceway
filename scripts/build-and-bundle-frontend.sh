@@ -39,6 +39,15 @@ if [[ "$CLOUD_MODE_INPUT" =~ ^[Yy]$ ]]; then
     echo "CLOUD_MODE enabled"
 fi
 
+# Ask for Turnstile site key
+read -p "Enter Cloudflare Turnstile site key or leave empty to disable captcha: " TURNSTILE_SITE_KEY_INPUT
+if [ -n "$TURNSTILE_SITE_KEY_INPUT" ]; then
+    export PUBLIC_TURNSTILE_SITE_KEY="$TURNSTILE_SITE_KEY_INPUT"
+    echo "Turnstile captcha enabled"
+else
+    echo "Building without Turnstile captcha"
+fi
+
 # Build frontend
 npm install
 npm run build

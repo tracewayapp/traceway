@@ -8,33 +8,7 @@ import { Github, ArrowRight, Activity, TrendingUp, AlertCircle, Bug, ChartGantt 
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-white text-zinc-950 font-sans selection:bg-zinc-100 selection:text-zinc-900">
-      {/* Navigation */}
-      <nav className="border-b border-zinc-100 bg-white/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="container mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Image
-              src="/images/logo.png"
-              alt="Traceway Logo"
-              width={100}
-              height={100}
-              className="w-auto h-8"
-            />
-          </div>
-          <div className="flex items-center gap-4">
-            <Link href="https://docs.tracewayapp.com" className="text-sm font-medium text-zinc-600 hover:text-zinc-900 transition-colors">
-              Docs
-            </Link>
-            <Link href="https://github.com/tracewayapp/traceway" target="_blank" rel="noopener noreferrer">
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100">
-                <Github className="h-4 w-4" />
-                <span className="sr-only">GitHub</span>
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </nav>
-
+    <main className="min-h-screen bg-white text-zinc-950 font-sans selection:bg-zinc-100 selection:text-zinc-900">
       {/* Hero Section */}
       <section className="relative pt-16 pb-20 overflow-hidden">
         {/* Dot Pattern Background */}
@@ -378,6 +352,6 @@ export default function Home() {
           </div>
         </div>
       </footer>
-    </div>
+    </main>
   );
 }

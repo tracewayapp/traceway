@@ -27,6 +27,7 @@ type RegisterRequest struct {
 	Timezone         string `json:"timezone" binding:"required"`
 	ProjectName      string `json:"projectName" binding:"required"`
 	Framework        string `json:"framework" binding:"required"`
+	CaptchaToken     string `json:"captchaToken"`
 }
 
 type RegisterResponse struct {

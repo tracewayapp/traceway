@@ -86,6 +86,13 @@ func (a authController) Register(c *gin.Context) {
 		return
 	}
 
+	if services.TurnstileService.IsEnabled() {
+		if err := services.TurnstileService.Verify(request.CaptchaToken, c.ClientIP()); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
 	tx := middleware.GetTx(c)
 
 	// if we're not in the cloud mode only a single organization is allowed

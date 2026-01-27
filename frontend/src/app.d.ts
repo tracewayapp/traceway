@@ -11,6 +11,7 @@ declare global {
 
 	const __APP_VERSION__: string;
 	const __CLOUD_MODE__: string;
+	const __TURNSTILE_SITE_KEY__: string;
 }
 
 export {};

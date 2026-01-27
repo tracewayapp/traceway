@@ -35,7 +35,8 @@ export default defineConfig(({ mode }) => {
 		define: {
 			__APP_VERSION__: JSON.stringify(env.PUBLIC_APP_VERSION || pkg.version),
 			__CLOUD_MODE__: env.CLOUD_MODE,
-			__BILLING_AVAILABLE__: billingExists
+			__BILLING_AVAILABLE__: billingExists,
+			__TURNSTILE_SITE_KEY__: JSON.stringify(env.PUBLIC_TURNSTILE_SITE_KEY || '')
 		},
 		resolve: {
 			dedupe: ['d3-scale', 'd3-array', 'lucide-svelte', 'svelte']

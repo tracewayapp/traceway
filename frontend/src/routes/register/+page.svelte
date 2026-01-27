@@ -12,6 +12,7 @@
     import { themeState } from '$lib/state/theme.svelte';
     import { toast } from 'svelte-sonner';
     import FrameworkIcon from '$lib/components/framework-icon.svelte';
+    import TurnstileWidget from '$lib/components/turnstile-widget.svelte';
 
     let email = $state('');
     let name = $state('');
@@ -23,6 +24,10 @@
     let framework = $state<Framework>('gin');
     let error = $state('');
     let loading = $state(false);
+    let captchaToken = $state('');
+
+    const turnstileSiteKey = __TURNSTILE_SITE_KEY__;
+    const captchaEnabled = turnstileSiteKey !== '';
 
     const timezones = Intl.supportedValuesOf('timeZone');
 
@@ -74,6 +79,11 @@
             return;
         }
 
+        if (captchaEnabled && !captchaToken) {
+            error = 'Please complete the captcha';
+            return;
+        }
+
         loading = true;
         error = '';
 
@@ -90,7 +100,8 @@
                     organizationName,
                     timezone,
                     projectName,
-                    framework
+                    framework,
+                    captchaToken
                 })
             });
 
@@ -222,7 +233,17 @@
                     </Select.Root>
                 </div>
 
-                <Button type="submit" disabled={loading} class="w-full mt-2">
+                {#if captchaEnabled}
+                    <div class="flex flex-col space-y-1.5 mt-2">
+                        <TurnstileWidget
+                            siteKey={turnstileSiteKey}
+                            onVerify={(token) => captchaToken = token}
+                            onError={() => captchaToken = ''}
+                        />
+                    </div>
+                {/if}
+
+                <Button type="submit" disabled={loading || (captchaEnabled && !captchaToken)} class="w-full mt-2">
                     {#if loading}
                         Creating account...
                     {:else}

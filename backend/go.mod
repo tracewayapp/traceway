@@ -6,7 +6,7 @@ require (
 	github.com/coreos/go-systemd/v22 v22.6.0
 	github.com/lib/pq v1.10.9
 	github.com/tracewayapp/go-lightning/lit v0.0.0-20260121181925-c304b0bdd0dc
-	go.tracewayapp.com v0.2.3
+	go.tracewayapp.com v0.3.0
 )
 
 require (

@@ -52,7 +52,9 @@ func (e exceptionStackTraceController) FindGrouppedExceptionStackTraces(c *gin.C
 		return
 	}
 
+	seg := traceway.StartSegment(c, "loading grouped exceptions")
 	exceptions, total, err := repositories.ExceptionStackTraceRepository.FindGrouped(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.Search, request.SearchType, request.IncludeArchived)
+	seg.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading exceptions: %w", err))
 		return
@@ -69,7 +71,9 @@ func (e exceptionStackTraceController) FindGrouppedExceptionStackTraces(c *gin.C
 		now := time.Now()
 		start24h := now.Add(-24 * time.Hour)
 
+		seg = traceway.StartSegment(c, "loading hourly trends")
 		trends, err := repositories.ExceptionStackTraceRepository.GetHourlyTrendForHashes(c, projectId, hashes, start24h, now)
+		seg.End()
 		if err != nil {
 			c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading trends: %w", err))
 			return
@@ -115,7 +119,9 @@ func (e exceptionStackTraceController) FindByHash(c *gin.Context) {
 		request.Pagination = PaginationParams{Page: 1, PageSize: 20}
 	}
 
+	seg := traceway.StartSegment(c, "loading exception by hash")
 	group, occurrences, total, err := repositories.ExceptionStackTraceRepository.FindByHash(c, projectId, exceptionHash, request.Pagination.Page, request.Pagination.PageSize)
+	seg.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading the group: %w", err))
 		return
@@ -205,7 +211,9 @@ func (e exceptionStackTraceController) FindById(c *gin.Context) {
 		return
 	}
 
+	seg := traceway.StartSegment(c, "loading exception by id")
 	exception, err := repositories.ExceptionStackTraceRepository.FindById(c, projectId, exceptionId)
+	seg.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading the exception: %w", err))
 		return

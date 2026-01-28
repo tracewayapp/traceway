@@ -32,14 +32,18 @@ func (d dashboardController) GetDashboardOverview(c *gin.Context) {
 	start := now.Add(-24 * time.Hour)
 
 	// Get last 10 issues in the last 24 hours (only exceptions, not messages)
+	seg := traceway.StartSegment(c, "loading recent issues")
 	recentIssues, _, err := repositories.ExceptionStackTraceRepository.FindGrouped(c, projectId, start, now, 1, 10, "last_seen", "", "issues", false)
+	seg.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading recent issues: %w", err))
 		return
 	}
 
 	// Get 10 worst performing endpoints
+	seg = traceway.StartSegment(c, "loading worst endpoints")
 	worstEndpoints, err := repositories.EndpointRepository.FindWorstEndpoints(c, projectId, start, now, 10)
+	seg.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading worst endpoints: %w", err))
 		return
@@ -49,8 +53,10 @@ func (d dashboardController) GetDashboardOverview(c *gin.Context) {
 	if len(worstEndpoints) == 0 && len(recentIssues) == 0 {
 		// Check if project has received ANY data (all time, not just 24h)
 		var epoch time.Time // zero time = beginning of time
+		seg = traceway.StartSegment(c, "checking project data")
 		endpointCount, _ := repositories.EndpointRepository.CountBetween(c, projectId, epoch, now)
 		exceptionCount, _ := repositories.ExceptionStackTraceRepository.CountBetween(c, projectId, epoch, now)
+		seg.End()
 		hasData = endpointCount > 0 || exceptionCount > 0
 	}
 
@@ -114,104 +120,136 @@ func (d dashboardController) GetDashboard(c *gin.Context) {
 	metrics := make([]models.DashboardMetric, 0, 11)
 
 	// 1. Requests count
+	seg := traceway.StartSegment(c, "loading requests trend")
 	requestsTrend, err := repositories.EndpointRepository.CountByInterval(c, projectId, start, end, intervalMinutes)
 	if err != nil {
+		seg.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading requestsTrend: %w", err))
 		return
 	}
 	requestsCurrent, _ := repositories.EndpointRepository.CountBetween(c, projectId, start, end)
 	requestsPrev, _ := repositories.EndpointRepository.CountBetween(c, projectId, prevStart, prevEnd)
+	seg.End()
 	metrics = append(metrics, buildMetric("requests", "Requests", float64(requestsCurrent), "count", requestsTrend, float64(requestsPrev), "requests"))
 
 	// 2. Exceptions count
+	seg = traceway.StartSegment(c, "loading exceptions trend")
 	exceptionsTrend, err := repositories.ExceptionStackTraceRepository.CountByInterval(c, projectId, start, end, intervalMinutes)
 	if err != nil {
+		seg.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading exceptionsTrend: %w", err))
 		return
 	}
 	exceptionsCurrent, _ := repositories.ExceptionStackTraceRepository.CountBetween(c, projectId, start, end)
 	exceptionsPrev, _ := repositories.ExceptionStackTraceRepository.CountBetween(c, projectId, prevStart, prevEnd)
+	seg.End()
 	metrics = append(metrics, buildMetric("exceptions", "Exceptions", float64(exceptionsCurrent), "count", exceptionsTrend, float64(exceptionsPrev), "exceptions"))
 
 	// 3. Average Response Time
+	seg = traceway.StartSegment(c, "loading avg response time")
 	avgDurationTrend, err := repositories.EndpointRepository.AvgDurationByInterval(c, projectId, start, end, intervalMinutes)
 	if err != nil {
+		seg.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading avgDurationTrend: %w", err))
 		return
 	}
 	avgDurationCurrent := getLastValue(avgDurationTrend)
 	avgDurationPrevTrend, _ := repositories.EndpointRepository.AvgDurationByInterval(c, projectId, prevStart, prevEnd, intervalMinutes)
 	avgDurationPrev := getAverageValue(avgDurationPrevTrend)
+	seg.End()
 	metrics = append(metrics, buildMetric("avg_response_time", "Avg Response Time", avgDurationCurrent, "ms", avgDurationTrend, avgDurationPrev, "response_time"))
 
 	// 4. Error Rate
+	seg = traceway.StartSegment(c, "loading error rate")
 	errorRateTrend, err := repositories.EndpointRepository.ErrorRateByInterval(c, projectId, start, end, intervalMinutes)
 	if err != nil {
+		seg.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading errorRateTrend: %w", err))
 		return
 	}
 	errorRateCurrent := getLastValue(errorRateTrend)
 	errorRatePrevTrend, _ := repositories.EndpointRepository.ErrorRateByInterval(c, projectId, prevStart, prevEnd, intervalMinutes)
 	errorRatePrev := getAverageValue(errorRatePrevTrend)
+	seg.End()
 	metrics = append(metrics, buildMetric("error_rate", "Error Rate", errorRateCurrent, "%", errorRateTrend, errorRatePrev, "error_rate"))
 
 	// 5. CPU Usage
+	seg = traceway.StartSegment(c, "loading cpu usage")
 	cpuPerServer, err := repositories.MetricRecordRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameCpuUsage, start, end, intervalMinutes, selectedServers)
 	if err != nil {
+		seg.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading cpuPerServer: %w", err))
 		return
 	}
 	cpuPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameCpuUsage, prevStart, prevEnd)
+	seg.End()
 	metrics = append(metrics, buildMetricWithServers("cpu_usage", "CPU Usage", "%", cpuPerServer, cpuPrev, "cpu"))
 
 	// 6. Memory Usage (MB)
+	seg = traceway.StartSegment(c, "loading memory usage")
 	memPerServer, err := repositories.MetricRecordRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameMemoryUsage, start, end, intervalMinutes, selectedServers)
 	if err != nil {
+		seg.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading memPerServer: %w", err))
 		return
 	}
 	memPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameMemoryUsage, prevStart, prevEnd)
+	seg.End()
 	metrics = append(metrics, buildMetricWithServers("memory_usage", "Memory Usage", "MB", memPerServer, memPrev, "memory"))
 
 	// 7. Total System Memory (MB)
+	seg = traceway.StartSegment(c, "loading total memory")
 	memTotalPerServer, err := repositories.MetricRecordRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameMemoryTotal, start, end, intervalMinutes, selectedServers)
 	if err != nil {
+		seg.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading memTotalPerServer: %w", err))
 		return
 	}
 	memTotalPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameMemoryTotal, prevStart, prevEnd)
+	seg.End()
 	metrics = append(metrics, buildMetricWithServers("memory_total", "Total Memory", "MB", memTotalPerServer, memTotalPrev, "memory_total"))
 
 	// 8. Go Routines
+	seg = traceway.StartSegment(c, "loading go routines")
 	goRoutinesPerServer, err := repositories.MetricRecordRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameGoRoutines, start, end, intervalMinutes, selectedServers)
 	if err != nil {
+		seg.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading goRoutinesPerServer: %w", err))
 		return
 	}
 	goRoutinesPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameGoRoutines, prevStart, prevEnd)
+	seg.End()
 	metrics = append(metrics, buildMetricWithServers("go_routines", "Go Routines", "", goRoutinesPerServer, goRoutinesPrev, "go_routines"))
 
 	// 9. Heap Objects
+	seg = traceway.StartSegment(c, "loading heap objects")
 	heapObjectsPerServer, err := repositories.MetricRecordRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameHeapObjects, start, end, intervalMinutes, selectedServers)
 	if err != nil {
+		seg.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading heapObjectsPerServer: %w", err))
 		return
 	}
 	heapObjectsPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameHeapObjects, prevStart, prevEnd)
+	seg.End()
 	metrics = append(metrics, buildMetricWithServers("heap_objects", "Heap Objects", "", heapObjectsPerServer, heapObjectsPrev, "heap_objects"))
 
 	// 10. Num GC
+	seg = traceway.StartSegment(c, "loading gc cycles")
 	numGCPerServer, err := repositories.MetricRecordRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameNumGC, start, end, intervalMinutes, selectedServers)
 	if err != nil {
+		seg.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading numGCPerServer: %w", err))
 		return
 	}
 	numGCPrev, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameNumGC, prevStart, prevEnd)
+	seg.End()
 	metrics = append(metrics, buildMetricWithServers("num_gc", "GC Cycles", "", numGCPerServer, numGCPrev, "num_gc"))
 
 	// 11. GC Pause Total (convert from nanoseconds to milliseconds)
+	seg = traceway.StartSegment(c, "loading gc pause")
 	gcPausePerServer, err := repositories.MetricRecordRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameGCPauseTotal, start, end, intervalMinutes, selectedServers)
 	if err != nil {
+		seg.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading gcPausePerServer: %w", err))
 		return
 	}
@@ -222,6 +260,7 @@ func (d dashboardController) GetDashboard(c *gin.Context) {
 		}
 	}
 	gcPausePrevRaw, _ := repositories.MetricRecordRepository.GetAverageBetween(c, projectId, models.MetricNameGCPauseTotal, prevStart, prevEnd)
+	seg.End()
 	gcPausePrev := gcPausePrevRaw / 1_000_000
 	metrics = append(metrics, buildMetricWithServers("gc_pause", "GC Pause", "ms", gcPausePerServer, gcPausePrev, "gc_pause"))
 

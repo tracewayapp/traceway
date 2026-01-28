@@ -49,7 +49,9 @@ func (e taskController) FindAllTasks(c *gin.Context) {
 		return
 	}
 
+	seg := traceway.StartSegment(c, "loading tasks")
 	tasks, total, err := repositories.TaskRepository.FindAll(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy)
+	seg.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading tasks: %w", err))
 		return
@@ -79,7 +81,9 @@ func (e taskController) FindGroupedByTaskName(c *gin.Context) {
 		return
 	}
 
+	seg := traceway.StartSegment(c, "loading grouped tasks")
 	stats, total, err := repositories.TaskRepository.FindGroupedByTaskName(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
+	seg.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading stats by name: %w", err))
 		return
@@ -121,14 +125,18 @@ func (e taskController) FindByTaskName(c *gin.Context) {
 		return
 	}
 
+	seg := traceway.StartSegment(c, "loading task instances")
 	tasks, total, err := repositories.TaskRepository.FindByTaskName(c, projectId, taskName, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
+	seg.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading tasks by name: %w", err))
 		return
 	}
 
 	// Get aggregate stats for this task
+	seg = traceway.StartSegment(c, "loading task stats")
 	stats, err := repositories.TaskRepository.GetTaskStats(c, projectId, taskName, request.FromDate, request.ToDate)
+	seg.End()
 	if err != nil {
 		// Don't fail the request if stats fail, just return nil stats
 		stats = nil

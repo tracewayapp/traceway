@@ -56,7 +56,9 @@ func (e endpointController) FindAllEndpoints(c *gin.Context) {
 		return
 	}
 
+	seg := traceway.StartSegment(c, "loading endpoints")
 	endpoints, total, err := repositories.EndpointRepository.FindAll(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy)
+	seg.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading endpoints: %w", err))
 		return
@@ -86,7 +88,9 @@ func (e endpointController) FindGroupedByEndpoint(c *gin.Context) {
 		return
 	}
 
+	seg := traceway.StartSegment(c, "loading grouped endpoints")
 	stats, total, err := repositories.EndpointRepository.FindGroupedByEndpoint(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
+	seg.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading stats: %w", err))
 		return
@@ -128,14 +132,18 @@ func (e endpointController) FindByEndpoint(c *gin.Context) {
 		return
 	}
 
+	seg := traceway.StartSegment(c, "loading endpoint instances")
 	endpoints, total, err := repositories.EndpointRepository.FindByEndpoint(c, projectId, endpoint, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
+	seg.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading endpoints: %w", err))
 		return
 	}
 
 	// Get aggregate stats for this endpoint
+	seg = traceway.StartSegment(c, "loading endpoint stats")
 	stats, err := repositories.EndpointRepository.GetEndpointStats(c, projectId, endpoint, request.FromDate, request.ToDate)
+	seg.End()
 	if err != nil {
 		// Don't fail the request if stats fail, just return nil stats
 		stats = nil
@@ -176,7 +184,9 @@ func (e endpointController) GetStackedChart(c *gin.Context) {
 		request.MetricType = "total_time" // default
 	}
 
+	seg := traceway.StartSegment(c, "loading stacked chart")
 	data, err := repositories.EndpointRepository.GetEndpointStackedChart(c, projectId, request.FromDate, request.ToDate, request.IntervalMinutes, request.MetricType)
+	seg.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading stacked chart data: %w", err))
 		return

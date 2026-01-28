@@ -49,14 +49,18 @@ func (t endpointDetailController) GetEndpointDetail(c *gin.Context) {
 	}
 
 	// Get endpoint
+	seg := traceway.StartSegment(c, "loading endpoint")
 	endpoint, err := repositories.EndpointRepository.FindById(c, projectId, endpointId)
+	seg.End()
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Endpoint not found"})
 		return
 	}
 
 	// Get segments (flat list ordered by start_time)
+	seg = traceway.StartSegment(c, "loading segments")
 	segments, err := repositories.SegmentRepository.FindByTransactionId(c, projectId, endpointId)
+	seg.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading segments: %w", err))
 		return
@@ -66,7 +70,9 @@ func (t endpointDetailController) GetEndpointDetail(c *gin.Context) {
 	var exceptionInfo *EndpointExceptionInfo
 	var messages []EndpointMessageInfo
 
+	seg = traceway.StartSegment(c, "loading exceptions")
 	allExceptions, err := repositories.ExceptionStackTraceRepository.FindAllByTransactionId(c, projectId, endpointId)
+	seg.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading all exceptions: %w", err))
 		return

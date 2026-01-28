@@ -49,14 +49,18 @@ func (t taskDetailController) GetTaskDetail(c *gin.Context) {
 	}
 
 	// Get task
+	seg := traceway.StartSegment(c, "loading task")
 	task, err := repositories.TaskRepository.FindById(c, projectId, taskId)
+	seg.End()
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
 		return
 	}
 
 	// Get segments (flat list ordered by start_time)
+	seg = traceway.StartSegment(c, "loading segments")
 	segments, err := repositories.SegmentRepository.FindByTransactionId(c, projectId, taskId)
+	seg.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading segments: %w", err))
 		return
@@ -66,7 +70,9 @@ func (t taskDetailController) GetTaskDetail(c *gin.Context) {
 	var exceptionInfo *TaskExceptionInfo
 	var messages []TaskMessageInfo
 
+	seg = traceway.StartSegment(c, "loading exceptions")
 	allExceptions, err := repositories.ExceptionStackTraceRepository.FindAllByTransactionId(c, projectId, taskId)
+	seg.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading allExceptions: %w", err))
 		return

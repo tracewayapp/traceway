@@ -14,7 +14,7 @@
 	import { onMount } from "svelte";
 	import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
 	import { ChevronDown } from 'lucide-svelte';
-	import { Toaster } from 'svelte-sonner';
+	import { Toaster, toast } from 'svelte-sonner';
 	import { page } from '$app/state';
 
 	let { children } = $props();
@@ -57,6 +57,15 @@
 	}
 
 	function handleAddProjectClick() {
+		const organizationId = projectsState.currentProject?.organizationId
+			?? authState.organizations[0]?.id;
+		if (organizationId) {
+			const role = authState.getRoleForOrganization(organizationId);
+			if (role === 'readonly') {
+				toast.error("You're not authorized to perform that action", { position: 'top-center' });
+				return;
+			}
+		}
 		showAddProjectModal = true;
 	}
 

@@ -12,20 +12,53 @@ import (
 
 type projectRepository struct{}
 
-func (p *projectRepository) FindAllWithBackendUrlByUserId(tx *sql.Tx, userId int) ([]*models.ProjectWithBackendUrl, error) {
-	projects, err := p.FindByUserId(tx, userId)
+type projectWithRole struct {
+	Id             uuid.UUID `lit:"id"`
+	Name           string    `lit:"name"`
+	Token          string    `lit:"token"`
+	Framework      string    `lit:"framework"`
+	OrganizationId *int      `lit:"organization_id"`
+	CreatedAt      time.Time `lit:"created_at"`
+	Role           string    `lit:"role"`
+}
 
+func init() {
+	lit.RegisterModel[projectWithRole](lit.PostgreSQL)
+}
+
+func (p *projectRepository) FindAllWithBackendUrlByUserId(tx *sql.Tx, userId int) ([]*models.ProjectWithBackendUrl, error) {
+	rows, err := lit.Select[projectWithRole](
+		tx,
+		`SELECT DISTINCT p.id, p.name, p.token, p.framework, p.organization_id, p.created_at, ou.role
+		FROM projects p
+		INNER JOIN organization_users ou ON p.organization_id = ou.organization_id
+		WHERE ou.user_id = $1
+		ORDER BY p.created_at ASC`,
+		userId,
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	projectsWithBackendUrl := []*models.ProjectWithBackendUrl{}
+	result := make([]*models.ProjectWithBackendUrl, 0, len(rows))
+	for _, row := range rows {
+		token := row.Token
+		if row.Role == "readonly" {
+			token = "read-only-hidden-token"
+		}
 
-	for _, project := range projects {
-		projectsWithBackendUrl = append(projectsWithBackendUrl, project.ToProjectWithBackendUrl())
+		project := models.Project{
+			Id:             row.Id,
+			Name:           row.Name,
+			Token:          token,
+			Framework:      row.Framework,
+			OrganizationId: row.OrganizationId,
+			CreatedAt:      row.CreatedAt,
+		}
+		result = append(result, project.ToProjectWithBackendUrl())
 	}
 
-	return projectsWithBackendUrl, nil
+	return result, nil
 }
 
 func (p *projectRepository) FindAll(tx *sql.Tx) ([]*models.Project, error) {

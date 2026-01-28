@@ -22,6 +22,7 @@ import (
 	"github.com/coreos/go-systemd/v22/daemon"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	tracewaygin "go.tracewayapp.com/traceway_gin"
 )
 
 var PostStartupHooks []func(ctx context.Context)
@@ -68,7 +69,13 @@ func Run() {
 	}
 
 	router := gin.Default()
-	router.Use(gin.Recovery())
+
+	if monitoringTracewayUrl := os.Getenv("MONITORING_TRACEWAY_URL"); monitoringTracewayUrl != "" {
+		router.Use(tracewaygin.New(
+			monitoringTracewayUrl,
+			tracewaygin.WithOnErrorRecording(tracewaygin.RecordingQuery|tracewaygin.RecordingBody|tracewaygin.RecordingHeader|tracewaygin.RecordingUrl),
+		))
+	}
 
 	router.GET("/health", func(c *gin.Context) {
 		c.String(200, "OK")

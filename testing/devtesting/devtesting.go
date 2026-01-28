@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -11,9 +12,11 @@ import (
 	"time"
 
 	traceway "go.tracewayapp.com"
+	tracewaydb "go.tracewayapp.com/traceway_db"
 	tracewaygin "go.tracewayapp.com/traceway_gin"
 
 	"github.com/gin-gonic/gin"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type CustomError struct {
@@ -23,6 +26,32 @@ type CustomError struct {
 
 func (e *CustomError) Error() string {
 	return fmt.Sprintf("CustomError[%d]: %s", e.Code, e.Message)
+}
+
+type User struct {
+	Id        int    `json:"id"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Email     string `json:"email"`
+}
+
+var db *sql.DB
+
+func initDB() {
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		panic(err)
+	}
+	_, err = db.Exec(`CREATE TABLE users (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		first_name TEXT NOT NULL,
+		last_name TEXT NOT NULL,
+		email TEXT UNIQUE NOT NULL
+	)`)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func innerFunction() error {
@@ -38,6 +67,7 @@ func outerFunction() error {
 }
 
 func main() {
+	initDB()
 	testGin()
 }
 
@@ -217,7 +247,115 @@ func testGin() {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "custom error"})
 	})
 
+	// CRUD endpoints for testing TwDB segments
+	router.GET("/users", listUsers)
+	router.GET("/users/:id", getUser)
+	router.POST("/users", createUser)
+	router.PUT("/users/:id", updateUser)
+	router.DELETE("/users/:id", deleteUser)
+
 	router.Run()
+}
+
+func listUsers(c *gin.Context) {
+	twdb := tracewaydb.NewTwDB(c.Request.Context(), db)
+	rows, err := twdb.QueryContext(c.Request.Context(), "SELECT id, first_name, last_name, email FROM users")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.Id, &u.FirstName, &u.LastName, &u.Email); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		users = append(users, u)
+	}
+	c.JSON(http.StatusOK, users)
+}
+
+func getUser(c *gin.Context) {
+	id := c.Param("id")
+	twdb := tracewaydb.NewTwDB(c.Request.Context(), db)
+	row := twdb.QueryRowContext(c.Request.Context(), "SELECT id, first_name, last_name, email FROM users WHERE id = ?", id)
+
+	var u User
+	if err := row.Scan(&u.Id, &u.FirstName, &u.LastName, &u.Email); err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, u)
+}
+
+func createUser(c *gin.Context) {
+	var u User
+	if err := c.ShouldBindJSON(&u); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	twdb := tracewaydb.NewTwDB(c.Request.Context(), db)
+	result, err := twdb.ExecContext(c.Request.Context(), "INSERT INTO users (first_name, last_name, email) VALUES (?, ?, ?)", u.FirstName, u.LastName, u.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	id, _ := result.LastInsertId()
+	u.Id = int(id)
+	c.JSON(http.StatusCreated, u)
+}
+
+func updateUser(c *gin.Context) {
+	id := c.Param("id")
+	var u User
+	if err := c.ShouldBindJSON(&u); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	twdb := tracewaydb.NewTwDB(c.Request.Context(), db)
+	result, err := twdb.ExecContext(c.Request.Context(), "UPDATE users SET first_name = ?, last_name = ?, email = ? WHERE id = ?", u.FirstName, u.LastName, u.Email, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+
+	idInt, _ := strconv.Atoi(id)
+	u.Id = idInt
+	c.JSON(http.StatusOK, u)
+}
+
+func deleteUser(c *gin.Context) {
+	id := c.Param("id")
+	twdb := tracewaydb.NewTwDB(c.Request.Context(), db)
+	result, err := twdb.ExecContext(c.Request.Context(), "DELETE FROM users WHERE id = ?", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "user deleted"})
 }
 
 var veryLongJsonForTestin = `{"str": "traceway", "obj": {"id": 1}, "obj2": {"id": 1}, "obj3": {"id": 1}, "obj4": {"id": 1}, "obj5loremipsumdoloret": {"id": "I'm baby tumeric VHS Brooklyn, echo park literally you probably haven't heard of them crucifix taiyaki chambray roof party man bun knausgaard waistcoat squid health goth. Gastropub godard bodega boys snackwave asymmetrical la croix. Whatever try-hard pour-over humblebrag austin microdosing organic bruh. Keffiyeh mukbang yuccie, 90's humblebrag roof party godard kale chips lo-fi sriracha aesthetic.", "id2": "ImbabytumericVHSBrooklynechoparkliterallyyouprobablyhaventheardofthemcrucifixtaiyakichambrayroofpartymanbunknausgaardwaistcoatsquidhealthgothGastropubgodardbodegaboyssnackwaveasymmetricallacroixWhatevertryhardpouroverhumblebragaustinmicrodosingorganicbruhKeffiyehmukbangyuccieshumblebragroofpartygodardkalechipslofisrirachaaesthetic"}, "arr": [1, 2, "", {"key": 1, "key2": "example"}]}`

@@ -4,17 +4,17 @@
 	import { formatDuration } from '$lib/utils/formatters';
 
 	type Props = {
-		row: number,
+		row: number;
 		segment: Segment;
 		transactionStart: number;
 		transactionDuration: number;
 		isOdd: boolean;
 		nameColumnWidth: number;
-  	updateNameWidth: (width: number) => void;
+		updateNameWidth: (width: number) => void;
 
-		segmentCellHandleMouseEnter: (x: number) => void,
-		segmentCellHandleMouseMove: (x: number) => void,
-		segmentCellHandleMouseLeave: () => void,
+		segmentCellHandleMouseEnter: (x: number) => void;
+		segmentCellHandleMouseMove: (x: number) => void;
+		segmentCellHandleMouseLeave: () => void;
 	};
 
 	let {
@@ -27,7 +27,7 @@
 		updateNameWidth,
 		segmentCellHandleMouseEnter,
 		segmentCellHandleMouseMove,
-		segmentCellHandleMouseLeave,
+		segmentCellHandleMouseLeave
 	}: Props = $props();
 
 	const segmentStartMs = $derived(new Date(segment.startTime).getTime() - transactionStart);
@@ -54,7 +54,7 @@
 		{ bg: 'bg-lime-400', ring: 'ring-lime-500' },
 		{ bg: 'bg-rose-400', ring: 'ring-rose-500' },
 		{ bg: 'bg-sky-400', ring: 'ring-sky-500' },
-		{ bg: 'bg-slate-400', ring: 'ring-slate-500' },
+		{ bg: 'bg-slate-400', ring: 'ring-slate-500' }
 	];
 
 	const segmentColor = $derived(segmentColors[row % segmentColors.length]);
@@ -85,32 +85,36 @@
 
 	let nameElement: HTMLDivElement;
 
-  $effect(() => {
-    if (nameElement) {
-      // Measure the natural width needed
-      const naturalWidth = nameElement.scrollWidth;
-      updateNameWidth?.(naturalWidth);
-    }
-  });
+	$effect(() => {
+		if (nameElement) {
+			// Measure the natural width needed
+			const naturalWidth = nameElement.scrollWidth;
+			updateNameWidth?.(naturalWidth);
+		}
+	});
 </script>
 
-<div class={cn('border-border flex items-center border-b last:border-b-0', isOdd ? 'bg-muted/40' : '')}>
+<div
+	class={cn('flex items-center border-b border-border last:border-b-0', isOdd ? 'bg-muted/40' : '')}
+>
 	<!-- Segment name -->
 	<div
 		bind:this={nameElement}
-		class="border-border flex-shrink-0 truncate border-r px-3 py-1.5 font-mono text-xs"
-		style="min-width: {nameColumnWidth}px"
+		class="flex-shrink-0 truncate border-r border-border px-3 py-1.5 font-mono text-xs"
+		style="min-width: {nameColumnWidth}px; max-width: {nameColumnWidth}px"
 		title={segment.name}
 	>
 		{segment.name}
 	</div>
 
 	<!-- Timeline bar -->
-	<div class="relative flex-1 min-w-[200px] self-stretch flex items-center"
+	<div
+		class="relative flex min-w-[200px] flex-1 items-center self-stretch"
 		bind:this={containerElement}
 		onmouseenter={containerSegmentCellHandleMouseEnter}
 		onmousemove={containerSegmentCellHandleMouseMove}
-		onmouseleave={segmentCellHandleMouseLeave}>
+		onmouseleave={segmentCellHandleMouseLeave}
+	>
 		<div class="relative h-4 w-full">
 			<div
 				bind:this={barElement}
@@ -128,7 +132,9 @@
 	</div>
 
 	<!-- Duration -->
-	<div class="text-muted-foreground border-border w-[100px] flex-shrink-0 border-l px-3 py-1.5 text-right font-mono text-xs">
+	<div
+		class="w-[100px] flex-shrink-0 border-l border-border px-3 py-1.5 text-right font-mono text-xs text-muted-foreground"
+	>
 		{formatDuration(segment.duration)}
 	</div>
 </div>

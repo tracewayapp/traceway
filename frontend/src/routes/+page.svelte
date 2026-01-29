@@ -6,7 +6,17 @@
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import * as Table from '$lib/components/ui/table';
 	import * as Tooltip from '$lib/components/ui/tooltip';
-	import { ArrowRight, Gauge, Bug, CircleQuestionMark, CircleCheck, RefreshCw, Copy, Check, Unplug } from 'lucide-svelte';
+	import {
+		ArrowRight,
+		Gauge,
+		Bug,
+		CircleQuestionMark,
+		CircleCheck,
+		RefreshCw,
+		Copy,
+		Check,
+		Unplug
+	} from 'lucide-svelte';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { ImpactBadge } from '$lib/components/ui/impact-badge';
 	import { ViewAllTableRow } from '$lib/components/ui/view-all-table-row';
@@ -25,9 +35,7 @@
 		getInstallCommand,
 		getTestingRouteCode,
 		getFrameworkLabel,
-
 		getTestingRouteCode2
-
 	} from '$lib/utils/framework-code';
 	import { toast } from 'svelte-sonner';
 
@@ -63,9 +71,7 @@
 	let errorStatus = $state<number>(0);
 
 	// Filter endpoints to only show those with impact > good (score >= 0.25)
-	const impactfulEndpoints = $derived(
-		data?.worstEndpoints?.filter((e) => e.impact >= 0.25) ?? []
-	);
+	const impactfulEndpoints = $derived(data?.worstEndpoints?.filter((e) => e.impact >= 0.25) ?? []);
 
 	let projectWithToken = $derived(projectsState.currentProject);
 	let copiedInstall = $state(false);
@@ -111,7 +117,6 @@
 		setTimeout(() => (copiedTesting = false), 2000);
 	}
 
-
 	async function copyTesting2() {
 		await navigator.clipboard.writeText(testingRouteCode2);
 		copiedTesting2 = true;
@@ -126,13 +131,19 @@
 
 		// Show success toast if data was received
 		if (!hadDataBefore && data?.hasData) {
-			toast.success('Integration successful! Data received from your application.', { position: 'top-center' });
+			toast.success('Integration successful! Data received from your application.', {
+				position: 'top-center'
+			});
 		} else if (!data?.hasData) {
 			toast.warning('No data received yet', {
 				position: 'top-center'
 			});
 		}
 	}
+
+	api.get('/account', {
+		projectId: projectsState.currentProjectId ?? undefined
+	});
 
 	async function loadDashboard(showFullPageLoading = true) {
 		if (showFullPageLoading) {
@@ -190,13 +201,14 @@
 		<!-- Integration Not Connected -->
 		<div class="space-y-6">
 			<div class="rounded-md border bg-card">
-				<div class="flex flex-col items-center justify-center py-8 px-6 text-center">
-					<div class="flex h-12 w-12 items-center justify-center rounded-full bg-muted mb-4">
+				<div class="flex flex-col items-center justify-center px-6 py-8 text-center">
+					<div class="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
 						<Unplug class="h-6 w-6 text-muted-foreground" />
 					</div>
-					<h3 class="text-lg font-semibold mb-2">Connect Your Application</h3>
-					<p class="text-sm text-muted-foreground max-w-md mb-4">
-						No data has been received yet. Follow the steps below to integrate Traceway into your application.
+					<h3 class="mb-2 text-lg font-semibold">Connect Your Application</h3>
+					<p class="mb-4 max-w-md text-sm text-muted-foreground">
+						No data has been received yet. Follow the steps below to integrate Traceway into your
+						application.
 					</p>
 					<Button variant="outline" onclick={checkAgain} disabled={checking}>
 						{#if checking}
@@ -214,7 +226,9 @@
 				<div class="rounded-md border bg-card">
 					<div class="border-b px-4 py-3">
 						<div class="flex items-center gap-3">
-							<div class="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-medium">
+							<div
+								class="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground"
+							>
 								1
 							</div>
 							<h3 class="font-semibold">Install the SDK</h3>
@@ -248,12 +262,16 @@
 				<div class="rounded-md border bg-card">
 					<div class="border-b px-4 py-3">
 						<div class="flex items-center gap-3">
-							<div class="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-medium">
+							<div
+								class="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground"
+							>
 								2
 							</div>
-							<h3 class="font-semibold">{getFrameworkLabel(projectWithToken.framework)} Integration</h3>
+							<h3 class="font-semibold">
+								{getFrameworkLabel(projectWithToken.framework)} Integration
+							</h3>
 						</div>
-						<p class="text-sm text-muted-foreground mt-1 ml-9">
+						<p class="mt-1 ml-9 text-sm text-muted-foreground">
 							Add the Traceway middleware to your application.
 						</p>
 					</div>
@@ -285,13 +303,17 @@
 				<div class="rounded-md border bg-card">
 					<div class="border-b px-4 py-3">
 						<div class="flex items-center gap-3">
-							<div class="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-medium">
+							<div
+								class="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground"
+							>
 								3
 							</div>
 							<h3 class="font-semibold">Add a Test Route</h3>
 						</div>
-						<p class="text-sm text-muted-foreground mt-1 ml-9">
-							Add this route to verify your integration, then visit <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono">GET /testing</code> in your browser.
+						<p class="mt-1 ml-9 text-sm text-muted-foreground">
+							Add this route to verify your integration, then visit <code
+								class="rounded bg-muted px-1 py-0.5 font-mono text-xs">GET /testing</code
+							> in your browser.
 						</p>
 					</div>
 					<div class="p-4">
@@ -343,12 +365,16 @@
 
 				<!-- Bottom Check Again -->
 				<div class="rounded-md border bg-card">
-					<div class="flex flex-col items-center justify-center py-6 px-6 text-center">
-						<div class="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 mb-4">
+					<div class="flex flex-col items-center justify-center px-6 py-6 text-center">
+						<div
+							class="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10"
+						>
 							<Unplug class="h-6 w-6 text-destructive" />
 						</div>
-						<p class="text-sm text-muted-foreground mb-4">
-							Once you've completed the steps above and triggered the <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono">/testing</code> endpoint, click below to verify.
+						<p class="mb-4 text-sm text-muted-foreground">
+							Once you've completed the steps above and triggered the <code
+								class="rounded bg-muted px-1 py-0.5 font-mono text-xs">/testing</code
+							> endpoint, click below to verify.
 						</p>
 						<Button variant="outline" onclick={checkAgain} disabled={checking}>
 							{#if checking}
@@ -376,9 +402,7 @@
 							<CircleQuestionMark class="h-4 w-4 text-muted-foreground/60" />
 						</Tooltip.Trigger>
 						<Tooltip.Content>
-							<p>
-								Endpoints needing attention based on response time and error rates
-							</p>
+							<p>Endpoints needing attention based on response time and error rates</p>
 						</Tooltip.Content>
 					</Tooltip.Root>
 				</div>
@@ -445,24 +469,30 @@
 										</Table.Cell>
 									</Table.Row>
 								{/each}
-								<ViewAllTableRow colspan={5} href="/endpoints" label="View all endpoints" onBeforeNavigate={resetEndpointsSortToImpact} />
+								<ViewAllTableRow
+									colspan={5}
+									href="/endpoints"
+									label="View all endpoints"
+									onBeforeNavigate={resetEndpointsSortToImpact}
+								/>
 							</Table.Body>
 						</Table.Root>
 					</div>
 				{:else}
 					<!-- Empty state card for endpoints -->
 					<div class="rounded-md border bg-card">
-						<div class="flex flex-col items-center justify-center py-12 px-6 text-center">
-							<div class="flex h-12 w-12 items-center justify-center rounded-full mb-4">
+						<div class="flex flex-col items-center justify-center px-6 py-12 text-center">
+							<div class="mb-4 flex h-12 w-12 items-center justify-center rounded-full">
 								<CircleCheck class="h-12 w-12 text-green-500 dark:text-green-400" />
 							</div>
-							<h3 class="text-lg font-semibold mb-2">All Endpoints Healthy</h3>
-							<p class="text-sm text-muted-foreground max-w-sm mb-4">
-								No endpoints have been experiencing performance issues in the last 24h. Endpoints with slow response times or high error rates will appear here when detected.
+							<h3 class="mb-2 text-lg font-semibold">All Endpoints Healthy</h3>
+							<p class="mb-4 max-w-sm text-sm text-muted-foreground">
+								No endpoints have been experiencing performance issues in the last 24h. Endpoints
+								with slow response times or high error rates will appear here when detected.
 							</p>
 							<a
 								href="/endpoints"
-								class="text-sm font-medium text-primary hover:underline inline-flex items-center gap-1"
+								class="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
 								onclick={resetEndpointsSortToImpact}
 							>
 								View all endpoints
@@ -536,17 +566,18 @@
 				{:else}
 					<!-- Empty state card for issues -->
 					<div class="rounded-md border bg-card">
-						<div class="flex flex-col items-center justify-center py-12 px-6 text-center">
-							<div class="flex h-12 w-12 items-center justify-center rounded-full mb-4">
+						<div class="flex flex-col items-center justify-center px-6 py-12 text-center">
+							<div class="mb-4 flex h-12 w-12 items-center justify-center rounded-full">
 								<CircleCheck class="h-12 w-12 text-green-500 dark:text-green-400" />
 							</div>
-							<h3 class="text-lg font-semibold mb-2">No Issues Found</h3>
-							<p class="text-sm text-muted-foreground max-w-sm mb-4">
-								No Issues have been recorded in the last 24 hours. When issues occur in your application, they will appear here for quick triage.
+							<h3 class="mb-2 text-lg font-semibold">No Issues Found</h3>
+							<p class="mb-4 max-w-sm text-sm text-muted-foreground">
+								No Issues have been recorded in the last 24 hours. When issues occur in your
+								application, they will appear here for quick triage.
 							</p>
 							<a
 								href="/issues"
-								class="text-sm font-medium text-primary hover:underline inline-flex items-center gap-1"
+								class="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
 							>
 								View all issues
 								<ArrowRight class="h-4 w-4" />

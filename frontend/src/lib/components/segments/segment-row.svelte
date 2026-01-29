@@ -2,6 +2,9 @@
 	import type { Segment } from '$lib/types/segments';
 	import { cn } from '$lib/utils';
 	import { formatDuration } from '$lib/utils/formatters';
+	import * as Popover from '$lib/components/ui/popover';
+	import Copy from 'lucide-svelte/icons/copy';
+	import Check from 'lucide-svelte/icons/check';
 
 	type Props = {
 		row: number;
@@ -84,6 +87,13 @@
 	}
 
 	let nameElement: HTMLDivElement;
+	let copied = $state(false);
+
+	async function copySegmentName() {
+		await navigator.clipboard.writeText(segment.name);
+		copied = true;
+		setTimeout(() => (copied = false), 2000);
+	}
 
 	$effect(() => {
 		if (nameElement) {
@@ -98,14 +108,29 @@
 	class={cn('flex items-center border-b border-border last:border-b-0', isOdd ? 'bg-muted/40' : '')}
 >
 	<!-- Segment name -->
-	<div
-		bind:this={nameElement}
-		class="flex-shrink-0 truncate border-r border-border px-3 py-1.5 font-mono text-xs"
-		style="min-width: {nameColumnWidth}px; max-width: {nameColumnWidth}px"
-		title={segment.name}
-	>
-		{segment.name}
-	</div>
+	<Popover.Root>
+		<Popover.Trigger class="text-left cursor-pointer">
+			<div
+				bind:this={nameElement}
+				class="flex-shrink-0 truncate border-r border-border px-3 py-1.5 font-mono text-xs"
+				style="min-width: {nameColumnWidth}px; max-width: {nameColumnWidth}px"
+			>
+				{segment.name}
+			</div>
+		</Popover.Trigger>
+		<Popover.Content class="w-auto max-w-sm" align="start">
+			<div class="flex items-start gap-2">
+				<span class="font-mono text-xs break-all select-text">{segment.name}</span>
+				<button onclick={copySegmentName} class="shrink-0 p-1 rounded hover:bg-muted">
+					{#if copied}
+						<Check class="h-3.5 w-3.5 text-green-500" />
+					{:else}
+						<Copy class="h-3.5 w-3.5 text-muted-foreground" />
+					{/if}
+				</button>
+			</div>
+		</Popover.Content>
+	</Popover.Root>
 
 	<!-- Timeline bar -->
 	<div

@@ -53,7 +53,7 @@ func (e clientController) Report(c *gin.Context) {
 	metricRecordsToInsert := []models.MetricRecord{}
 	segmentsToInsert := []models.Segment{}
 	for _, cf := range request.CollectionFrames {
-		for _, ct := range cf.Transactions {
+		for _, ct := range cf.Traces {
 			if ct.IsTask {
 				t := ct.ToTask(request.AppVersion, request.ServerName)
 				t.ProjectId = projectId

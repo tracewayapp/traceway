@@ -9,8 +9,8 @@
 	type Props = {
 		row: number;
 		segment: Segment;
-		transactionStart: number;
-		transactionDuration: number;
+		traceStart: number;
+		traceDuration: number;
 		isOdd: boolean;
 		nameColumnWidth: number;
 		updateNameWidth: (width: number) => void;
@@ -23,8 +23,8 @@
 	let {
 		row,
 		segment,
-		transactionStart,
-		transactionDuration,
+		traceStart,
+		traceDuration,
 		isOdd,
 		nameColumnWidth,
 		updateNameWidth,
@@ -33,14 +33,14 @@
 		segmentCellHandleMouseLeave
 	}: Props = $props();
 
-	const segmentStartMs = $derived(new Date(segment.startTime).getTime() - transactionStart);
+	const segmentStartMs = $derived(new Date(segment.startTime).getTime() - traceStart);
 	const segmentDurationMs = $derived(segment.duration / 1_000_000);
-	const transactionDurationMs = $derived(transactionDuration / 1_000_000);
+	const traceDurationMs = $derived(traceDuration / 1_000_000);
 
 	// Calculate position and width as percentages
-	const leftPercent = $derived(Math.max(0, (segmentStartMs / transactionDurationMs) * 100));
+	const leftPercent = $derived(Math.max(0, (segmentStartMs / traceDurationMs) * 100));
 	const widthPercent = $derived(
-		Math.min(100 - leftPercent, (segmentDurationMs / transactionDurationMs) * 100)
+		Math.min(100 - leftPercent, (segmentDurationMs / traceDurationMs) * 100)
 	);
 
 	const segmentColors = [

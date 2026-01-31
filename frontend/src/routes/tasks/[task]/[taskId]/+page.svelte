@@ -259,8 +259,8 @@
 				{#if response.hasSegments}
 					<SegmentWaterfall
 						segments={response.segments}
-						transactionDuration={response.task.duration}
-						transactionStartTime={response.task.recordedAt}
+						traceDuration={response.task.duration}
+						traceStartTime={response.task.recordedAt}
 					/>
 				{:else}
 					<SegmentEmptyState framework={projectsState.currentProject?.framework ?? 'gin'} />

@@ -8,8 +8,8 @@ export type ExceptionGroup = {
 
 export type ExceptionOccurrence = {
     id: string;
-    transactionId: string | null;
-    transactionType: 'endpoint' | 'task';
+    traceId: string | null;
+    traceType: 'endpoint' | 'task';
     exceptionHash: string;
     stackTrace: string;
     recordedAt: string;
@@ -20,11 +20,11 @@ export type ExceptionOccurrence = {
     endpoint: string;
 };
 
-export type LinkedTransaction = {
+export type LinkedTrace = {
     id: string;
     endpoint: string;
     duration: number;
     statusCode: number;
     recordedAt: string;
-    transactionType: 'endpoint' | 'task';
+    traceType: 'endpoint' | 'task';
 };

@@ -9,8 +9,8 @@ import (
 type ExceptionStackTrace struct {
 	Id              uuid.UUID         `json:"id" ch:"id"`
 	ProjectId       uuid.UUID         `json:"projectId" ch:"project_id"`
-	TransactionId   *uuid.UUID        `json:"transactionId" ch:"transaction_id"`
-	TransactionType string            `json:"transactionType" ch:"transaction_type"` // "endpoint" or "task"
+	TraceId   *uuid.UUID        `json:"traceId" ch:"trace_id"`
+	TraceType string            `json:"traceType" ch:"trace_type"` // "endpoint" or "task"
 	ExceptionHash   string            `json:"exceptionHash" ch:"exception_hash"`
 	StackTrace      string            `json:"stackTrace" ch:"stack_trace"`
 	RecordedAt      time.Time         `json:"recordedAt" ch:"recorded_at"`

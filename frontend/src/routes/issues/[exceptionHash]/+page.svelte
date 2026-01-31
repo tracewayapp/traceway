@@ -14,7 +14,7 @@
 	import type {
 		ExceptionGroup,
 		ExceptionOccurrence,
-		LinkedTransaction
+		LinkedTrace
 	} from '$lib/types/exceptions';
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { resolve } from '$app/paths';
@@ -25,7 +25,7 @@
 	let error = $state('');
 	let notFound = $state(false);
 	let total = $state(0);
-	let linkedTransaction = $state<LinkedTransaction | null>(null);
+	let linkedTrace = $state<LinkedTrace | null>(null);
 	let showArchiveDialog = $state(false);
 	let archiving = $state(false);
 
@@ -39,7 +39,7 @@
 		loading = true;
 		error = '';
 		notFound = false;
-		linkedTransaction = null;
+		linkedTrace = null;
 
 		try {
 			const exceptionHash = page.params.exceptionHash;
@@ -58,30 +58,30 @@
 			occurrences = response.occurrences || [];
 			total = response.pagination.total;
 
-			// Load linked transaction if the latest occurrence has a transactionId
+			// Load linked trace if the latest occurrence has a traceId
 			const firstOccurrence = occurrences[0];
-			if (firstOccurrence?.transactionId) {
+			if (firstOccurrence?.traceId) {
 				try {
-					const isTask = firstOccurrence.transactionType === 'task';
+					const isTask = firstOccurrence.traceType === 'task';
 					const endpoint = isTask ? '/tasks' : '/endpoints';
 					const txResponse = await api.post(
-						`${endpoint}/${firstOccurrence.transactionId}`,
+						`${endpoint}/${firstOccurrence.traceId}`,
 						{},
 						{ projectId: projectsState.currentProjectId ?? undefined }
 					);
 					const txData = isTask ? txResponse.task : txResponse.endpoint;
 					if (txData) {
-						linkedTransaction = {
+						linkedTrace = {
 							id: txData.id,
 							endpoint: isTask ? txData.taskName : txData.endpoint,
 							duration: txData.duration,
 							statusCode: txData.statusCode || 0,
 							recordedAt: txData.recordedAt,
-							transactionType: isTask ? 'task' : 'endpoint'
+							traceType: isTask ? 'task' : 'endpoint'
 						};
 					}
 				} catch (txError) {
-					console.warn('Could not load linked transaction:', txError);
+					console.warn('Could not load linked trace:', txError);
 				}
 			}
 		} catch (e: any) {
@@ -165,7 +165,7 @@
 		{#if latestOccurrence}
 			<EventCard
 				occurrence={latestOccurrence}
-				{linkedTransaction}
+				{linkedTrace}
 				title="Last Event"
 				description="Details from the most recent occurrence of this exception"
 			/>

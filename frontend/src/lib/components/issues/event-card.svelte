@@ -3,7 +3,7 @@
     import { Button } from "$lib/components/ui/button";
     import * as Card from "$lib/components/ui/card";
     import { ArrowRight } from "lucide-svelte";
-    import type { ExceptionOccurrence, LinkedTransaction } from '$lib/types/exceptions';
+    import type { ExceptionOccurrence, LinkedTrace } from '$lib/types/exceptions';
     import { formatDuration, getStatusColor, formatDateTime } from '$lib/utils/formatters';
     import { getTimezone } from '$lib/state/timezone.svelte';
     import { ContextGrid } from '$lib/components/ui/context-grid';
@@ -11,7 +11,7 @@
 
     interface Props {
         occurrence: ExceptionOccurrence;
-        linkedTransaction: LinkedTransaction | null;
+        linkedTrace: LinkedTrace | null;
         title?: string;
         description?: string;
         timezone?: string;
@@ -19,7 +19,7 @@
 
     let {
         occurrence,
-        linkedTransaction,
+        linkedTrace,
         title = "Event",
         description = "Details for this specific occurrence",
         timezone
@@ -49,8 +49,8 @@
                 <p class="font-mono text-sm">{occurrence.appVersion || '-'}</p>
             </div>
             <div class="space-y-1">
-                <p class="text-sm text-muted-foreground">Transaction</p>
-                <p class="font-mono text-sm">{occurrence.transactionId || '-'}</p>
+                <p class="text-sm text-muted-foreground">Trace</p>
+                <p class="font-mono text-sm">{occurrence.traceId || '-'}</p>
             </div>
         </div>
 
@@ -63,47 +63,47 @@
         </div>
         {/if}
 
-        <!-- Related Transaction -->
-        {#if linkedTransaction}
+        <!-- Related Trace -->
+        {#if linkedTrace}
         <hr class="border-border" />
         <div>
             <p class="text-sm font-medium mb-3">
-                {linkedTransaction.transactionType === 'task' ? 'Related Task' : 'Related Endpoint'}
+                {linkedTrace.traceType === 'task' ? 'Related Task' : 'Related Endpoint'}
             </p>
             <div class="grid grid-cols-2 gap-4 md:grid-cols-4 mb-4">
                 <LabelValue
-                    label={linkedTransaction.transactionType === 'task' ? 'Task' : 'Endpoint'}
-                    value={linkedTransaction.endpoint}
+                    label={linkedTrace.traceType === 'task' ? 'Task' : 'Endpoint'}
+                    value={linkedTrace.endpoint}
                     mono
                 />
-                {#if linkedTransaction.transactionType !== 'task'}
+                {#if linkedTrace.traceType !== 'task'}
                 <LabelValue
                     label="Status"
-                    value={linkedTransaction.statusCode}
+                    value={linkedTrace.statusCode}
                     mono
                     large
-                    valueClass={getStatusColor(linkedTransaction.statusCode)}
+                    valueClass={getStatusColor(linkedTrace.statusCode)}
                 />
                 {/if}
                 <LabelValue
                     label="Duration"
-                    value={formatDuration(linkedTransaction.duration)}
+                    value={formatDuration(linkedTrace.duration)}
                     mono
                     large
                 />
                 <LabelValue
                     label="Recorded At"
-                    value={formatDateTime(linkedTransaction.recordedAt, { timezone })}
+                    value={formatDateTime(linkedTrace.recordedAt, { timezone })}
                     mono
                 />
             </div>
-            {#if linkedTransaction.transactionType === 'task'}
-            <Button variant="outline" size="sm" onclick={() => goto(`/tasks/${encodeURIComponent(linkedTransaction.endpoint)}/${linkedTransaction.id}?preset=24h`)}>
+            {#if linkedTrace.traceType === 'task'}
+            <Button variant="outline" size="sm" onclick={() => goto(`/tasks/${encodeURIComponent(linkedTrace.endpoint)}/${linkedTrace.id}?preset=24h`)}>
                 View Task Details
                 <ArrowRight class="ml-2 h-4 w-4" />
             </Button>
             {:else}
-            <Button variant="outline" size="sm" onclick={() => goto(`/endpoints/${encodeURIComponent(linkedTransaction.endpoint)}/${linkedTransaction.id}?preset=24h`)}>
+            <Button variant="outline" size="sm" onclick={() => goto(`/endpoints/${encodeURIComponent(linkedTrace.endpoint)}/${linkedTrace.id}?preset=24h`)}>
                 View Endpoint Details
                 <ArrowRight class="ml-2 h-4 w-4" />
             </Button>

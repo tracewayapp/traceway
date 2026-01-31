@@ -8,7 +8,7 @@ import (
 
 type Segment struct {
 	Id            uuid.UUID     `json:"id" ch:"id"`
-	TransactionId uuid.UUID     `json:"transactionId" ch:"transaction_id"`
+	TraceId       uuid.UUID     `json:"traceId" ch:"trace_id"`
 	ProjectId     uuid.UUID     `json:"projectId" ch:"project_id"`
 	Name          string        `json:"name" ch:"name"`
 	StartTime     time.Time     `json:"startTime" ch:"start_time"`

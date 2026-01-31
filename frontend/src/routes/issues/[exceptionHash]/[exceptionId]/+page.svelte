@@ -7,7 +7,7 @@
     import { getTimezone } from '$lib/state/timezone.svelte';
     import { formatDateTime } from '$lib/utils/formatters';
     import { StackTraceCard, EventCard, EventsTable, PageHeader } from '$lib/components/issues';
-    import type { ExceptionGroup, ExceptionOccurrence, LinkedTransaction } from '$lib/types/exceptions';
+    import type { ExceptionGroup, ExceptionOccurrence, LinkedTrace } from '$lib/types/exceptions';
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { resolve } from '$app/paths';
 	import ArchiveConfirmationDialog from '$lib/components/archive-confirmation-dialog.svelte';
@@ -25,7 +25,7 @@
     let error = $state('');
     let notFound = $state(false);
     let total = $state(0);
-    let linkedTransaction = $state<LinkedTransaction | null>(null);
+    let linkedTrace = $state<LinkedTrace | null>(null);
     let showArchiveDialog = $state(false);
     let archiving = $state(false);
 
@@ -39,7 +39,7 @@
         loading = true;
         error = '';
         notFound = false;
-        linkedTransaction = null;
+        linkedTrace = null;
 
         try {
             // Load the specific exception by ID
@@ -63,37 +63,37 @@
             allOccurrences = response.occurrences || [];
             total = response.pagination.total;
 
-            // Load linked transaction if this occurrence has a transactionId
-            if (occurrence.transactionId) {
+            // Load linked trace if this occurrence has a traceId
+            if (occurrence.traceId) {
                 try {
-                    const isTask = occurrence.transactionType === 'task';
-                    console.log('DEBUG linked transaction:', {
-                        transactionId: occurrence.transactionId,
-                        transactionType: occurrence.transactionType,
+                    const isTask = occurrence.traceType === 'task';
+                    console.log('DEBUG linked trace:', {
+                        traceId: occurrence.traceId,
+                        traceType: occurrence.traceType,
                         isTask
                     });
                     const endpoint = isTask ? '/tasks' : '/endpoints';
                     const txResponse = await api.post(
-                        `${endpoint}/${occurrence.transactionId}`,
+                        `${endpoint}/${occurrence.traceId}`,
                         {},
                         { projectId: projectsState.currentProjectId ?? undefined }
                     );
                     const txData = isTask ? txResponse.task : txResponse.endpoint;
                     if (txData) {
-                        linkedTransaction = {
+                        linkedTrace = {
                             id: txData.id,
                             endpoint: isTask ? txData.taskName : txData.endpoint,
                             duration: txData.duration,
                             statusCode: txData.statusCode || 0,
                             recordedAt: txData.recordedAt,
-                            transactionType: isTask ? 'task' : 'endpoint'
+                            traceType: isTask ? 'task' : 'endpoint'
                         };
                     }
                 } catch (txError) {
-                    console.error('Failed to load linked transaction:', {
+                    console.error('Failed to load linked trace:', {
                         error: txError,
-                        transactionId: occurrence.transactionId,
-                        transactionType: occurrence.transactionType
+                        traceId: occurrence.traceId,
+                        traceType: occurrence.traceType
                     });
                 }
             }
@@ -171,7 +171,7 @@
 
         <EventCard
             {occurrence}
-            {linkedTransaction}
+            {linkedTrace}
             title="Event"
             description="Details for this specific occurrence"
         />

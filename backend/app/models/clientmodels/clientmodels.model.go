@@ -8,37 +8,37 @@ import (
 )
 
 type ClientExceptionStackTrace struct {
-	TransactionId *string           `json:"transactionId"`
-	IsTask        bool              `json:"isTask"`
-	StackTrace    string            `json:"stackTrace"`
-	RecordedAt    time.Time         `json:"recordedAt"`
-	Scope         map[string]string `json:"scope"`
-	IsMessage     bool              `json:"isMessage"`
+	TraceId    *string           `json:"traceId"`
+	IsTask     bool              `json:"isTask"`
+	StackTrace string            `json:"stackTrace"`
+	RecordedAt time.Time         `json:"recordedAt"`
+	Scope      map[string]string `json:"scope"`
+	IsMessage  bool              `json:"isMessage"`
 }
 
 func (c *ClientExceptionStackTrace) ToExceptionStackTrace(exceptionHash, appVersion, serverName string) models.ExceptionStackTrace {
-	transactionType := "endpoint"
+	traceType := "endpoint"
 	if c.IsTask {
-		transactionType = "task"
+		traceType = "task"
 	}
 
-	var transactionId *uuid.UUID
-	if c.TransactionId != nil {
-		if parsed, err := uuid.Parse(*c.TransactionId); err == nil {
-			transactionId = &parsed
+	var traceId *uuid.UUID
+	if c.TraceId != nil {
+		if parsed, err := uuid.Parse(*c.TraceId); err == nil {
+			traceId = &parsed
 		}
 	}
 
 	return models.ExceptionStackTrace{
-		ExceptionHash:   exceptionHash,
-		TransactionId:   transactionId,
-		TransactionType: transactionType,
-		StackTrace:      c.StackTrace,
-		RecordedAt:      c.RecordedAt,
-		Scope:           c.Scope,
-		IsMessage:       c.IsMessage,
-		AppVersion:      appVersion,
-		ServerName:      serverName,
+		ExceptionHash: exceptionHash,
+		TraceId:       traceId,
+		TraceType:     traceType,
+		StackTrace:    c.StackTrace,
+		RecordedAt:    c.RecordedAt,
+		Scope:         c.Scope,
+		IsMessage:     c.IsMessage,
+		AppVersion:    appVersion,
+		ServerName:    serverName,
 	}
 }
 
@@ -57,7 +57,7 @@ func (c *ClientMetricRecord) ToMetricRecord(serverName string) models.MetricReco
 	}
 }
 
-type ClientTransaction struct {
+type ClientTrace struct {
 	Id         string            `json:"id"`
 	Endpoint   string            `json:"endpoint"`
 	Duration   time.Duration     `json:"duration"`
@@ -70,15 +70,15 @@ type ClientTransaction struct {
 	IsTask     bool              `json:"isTask"`
 }
 
-// ParsedId returns the transaction ID as uuid.UUID
-func (c *ClientTransaction) ParsedId() uuid.UUID {
+// ParsedId returns the trace ID as uuid.UUID
+func (c *ClientTrace) ParsedId() uuid.UUID {
 	if parsed, err := uuid.Parse(c.Id); err == nil {
 		return parsed
 	}
 	return uuid.New()
 }
 
-func (c *ClientTransaction) ToEndpoint(appVersion, serverName string) models.Endpoint {
+func (c *ClientTrace) ToEndpoint(appVersion, serverName string) models.Endpoint {
 	return models.Endpoint{
 		Id:         c.ParsedId(),
 		Endpoint:   c.Endpoint,
@@ -93,7 +93,7 @@ func (c *ClientTransaction) ToEndpoint(appVersion, serverName string) models.End
 	}
 }
 
-func (c *ClientTransaction) ToTask(appVersion, serverName string) models.Task {
+func (c *ClientTrace) ToTask(appVersion, serverName string) models.Task {
 	return models.Task{
 		Id:         c.ParsedId(),
 		TaskName:   c.Endpoint, // Endpoint field is used as task name
@@ -121,10 +121,10 @@ func (c *ClientSegment) ParsedId() uuid.UUID {
 	return uuid.New()
 }
 
-func (c *ClientSegment) ToSegment(transactionId uuid.UUID) models.Segment {
+func (c *ClientSegment) ToSegment(traceId uuid.UUID) models.Segment {
 	return models.Segment{
-		Id:            c.ParsedId(),
-		TransactionId: transactionId,
+		Id:      c.ParsedId(),
+		TraceId: traceId,
 		Name:          c.Name,
 		StartTime:     c.StartTime,
 		Duration:      c.Duration,
@@ -135,5 +135,5 @@ func (c *ClientSegment) ToSegment(transactionId uuid.UUID) models.Segment {
 type CollectionFrame struct {
 	StackTraces  []*ClientExceptionStackTrace `json:"stackTraces"`
 	Metrics      []*ClientMetricRecord        `json:"metrics"`
-	Transactions []*ClientTransaction         `json:"transactions"`
+	Traces       []*ClientTrace               `json:"traces"`
 }

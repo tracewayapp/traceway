@@ -15,7 +15,7 @@
 	import { ContextGrid } from '$lib/components/ui/context-grid';
 	import SegmentWaterfall from '$lib/components/segments/segment-waterfall.svelte';
 	import SegmentEmptyState from '$lib/components/segments/segment-empty-state.svelte';
-	import type { TransactionDetailResponse } from '$lib/types/segments';
+	import type { TraceDetailResponse } from '$lib/types/segments';
 	import PageHeader from '$lib/components/issues/page-header.svelte';
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { resolve } from '$app/paths';
@@ -24,7 +24,7 @@
 
 	const timezone = $derived(getTimezone());
 
-	let response = $state<TransactionDetailResponse | null>(null);
+	let response = $state<TraceDetailResponse | null>(null);
 	let loading = $state(true);
 	let error = $state('');
 	let notFound = $state(false);
@@ -261,8 +261,8 @@
 				{#if response.hasSegments}
 					<SegmentWaterfall
 						segments={response.segments}
-						transactionDuration={response.endpoint.duration}
-						transactionStartTime={response.endpoint.recordedAt}
+						traceDuration={response.endpoint.duration}
+						traceStartTime={response.endpoint.recordedAt}
 					/>
 				{:else}
 					<SegmentEmptyState framework={projectsState.currentProject?.framework ?? 'gin'} />

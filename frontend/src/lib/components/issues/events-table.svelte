@@ -60,8 +60,8 @@
                             tooltip="Server instance where error occurred"
                         />
                         <TracewayTableHeader
-                            label="Transaction"
-                            tooltip="Transaction ID if this occurred during a request"
+                            label="Trace"
+                            tooltip="Trace ID if this occurred during a request"
                         />
                     </Table.Row>
                 </Table.Header>
@@ -85,7 +85,7 @@
                                     {occurrence.serverName || '-'}
                                 </Table.Cell>
                                 <Table.Cell class="font-mono text-sm">
-                                    {occurrence.transactionId || '-'}
+                                    {occurrence.traceId || '-'}
                                 </Table.Cell>
                             </Table.Row>
                         {/each}

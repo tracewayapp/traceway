@@ -35,7 +35,7 @@
 
     const timezone = $derived(getTimezone());
 
-    type Transaction = {
+    type EndpointInstance = {
         id: string;
         endpoint: string;
         duration: number;
@@ -63,7 +63,7 @@
 
     let { data } = $props();
 
-    let transactions = $state<Transaction[]>([]);
+    let transactions = $state<EndpointInstance[]>([]);
     let stats = $state<EndpointStats | null>(null);
     let loading = $state(true);
     let error = $state('');
@@ -226,19 +226,19 @@
         <ErrorDisplay
             status={404}
             title="Endpoint Not Found"
-            description="The endpoint you're looking for doesn't exist or has no recorded transactions."
+            description="The endpoint you're looking for doesn't exist or has no recorded traces."
             onBack={createSmartBackHandler({ fallbackPath: resolve('/endpoints') })}
-            backLabel="Back to Transactions"
+            backLabel="Back to Endpoints"
             onRetry={() => loadData(false)}
             identifier={decodeURIComponent(data.endpoint)}
         />
     {:else if error && !loading}
         <ErrorDisplay
             status={errorStatus === 400 ? 400 : errorStatus === 422 ? 422 : 400}
-            title="Failed to Load Transactions"
+            title="Failed to Load Traces"
             description={error}
             onBack={createSmartBackHandler({ fallbackPath: resolve('/endpoints') })}
-            backLabel="Back to Transactions"
+            backLabel="Back to Endpoints"
             onRetry={() => loadData(false)}
         />
     {:else}
@@ -247,7 +247,7 @@
 
         <PageHeader
             title={decodeURIComponent(data.endpoint)}
-            subtitle="Transaction instances for this endpoint"
+            subtitle="Trace instances for this endpoint"
             onBack={createSmartBackHandler({ fallbackPath: resolve("/endpoints") })}
         />
 
@@ -301,7 +301,7 @@
         </div>
     {/if}
 
-    <!-- Transactions Table -->
+    <!-- Traces Table -->
     <div class="rounded-md border overflow-hidden">
         <Table.Root>
             {#if loading || transactions.length > 0}
@@ -356,7 +356,7 @@
                         </Table.Cell>
                     </Table.Row>
                 {:else if transactions.length === 0}
-                    <TableEmptyState colspan={8} message="No transactions found in this time range." />
+                    <TableEmptyState colspan={8} message="No traces found in this time range." />
                 {:else}
                     {#each transactions as transaction}
                         <Table.Row

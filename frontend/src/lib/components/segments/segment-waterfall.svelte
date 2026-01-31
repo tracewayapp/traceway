@@ -5,21 +5,21 @@
 
 	type Props = {
 		segments: Segment[];
-		transactionDuration: number;
-		transactionStartTime: string;
+		traceDuration: number;
+		traceStartTime: string;
 	};
 
-	let { segments, transactionDuration, transactionStartTime }: Props = $props();
+	let { segments, traceDuration, traceStartTime }: Props = $props();
 
-	const transactionStart = $derived(
+	const traceStart = $derived(
 		segments.length === 0
-			? new Date(transactionStartTime).getTime()
+			? new Date(traceStartTime).getTime()
 			: segments.reduce((earliest, seg) => {
 					const segTime = new Date(seg.startTime).getTime();
 					return segTime < earliest ? segTime : earliest;
 				}, new Date(segments[0].startTime).getTime())
 	);
-	const durationMs = $derived(transactionDuration / 1_000_000);
+	const durationMs = $derived(traceDuration / 1_000_000);
 
 	let nameColumnWidth = $state(180); // default minimum
 
@@ -82,8 +82,8 @@
 			<SegmentRow
 				row={i}
 				{segment}
-				{transactionStart}
-				{transactionDuration}
+				{traceStart}
+				{traceDuration}
 				isOdd={i % 2 === 1}
 				{nameColumnWidth}
 				{updateNameWidth}

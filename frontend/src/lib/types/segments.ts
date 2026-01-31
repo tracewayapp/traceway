@@ -1,6 +1,6 @@
 export type Segment = {
 	id: string;
-	transactionId: string;
+	traceId: string;
 	projectId: string;
 	name: string;
 	startTime: string; // ISO datetime
@@ -8,7 +8,7 @@ export type Segment = {
 	recordedAt: string;
 };
 
-export type TransactionDetail = {
+export type TraceDetail = {
 	id: string;
 	projectId: string;
 	endpoint: string;
@@ -36,8 +36,8 @@ export type MessageInfo = {
 	scope?: Record<string, string>;
 };
 
-export type TransactionDetailResponse = {
-	endpoint: TransactionDetail;
+export type TraceDetailResponse = {
+	endpoint: TraceDetail;
 	segments: Segment[];
 	hasSegments: boolean;
 	exception?: ExceptionInfo;

@@ -17,7 +17,7 @@ func (r *segmentRepository) InsertAsync(ctx context.Context, segments []models.S
 	}
 
 	batch, err := (*chdb.Conn).PrepareBatch(clickhouse.Context(context.Background(), clickhouse.WithAsync(false)),
-		"INSERT INTO segments (id, transaction_id, project_id, name, start_time, duration, recorded_at)")
+		"INSERT INTO segments (id, trace_id, project_id, name, start_time, duration, recorded_at)")
 	if err != nil {
 		return err
 	}
@@ -25,7 +25,7 @@ func (r *segmentRepository) InsertAsync(ctx context.Context, segments []models.S
 	for _, s := range segments {
 		if err := batch.Append(
 			s.Id,
-			s.TransactionId,
+			s.TraceId,
 			s.ProjectId,
 			s.Name,
 			s.StartTime,
@@ -39,14 +39,14 @@ func (r *segmentRepository) InsertAsync(ctx context.Context, segments []models.S
 	return batch.Send()
 }
 
-func (r *segmentRepository) FindByTransactionId(ctx context.Context, projectId, transactionId uuid.UUID) ([]models.Segment, error) {
+func (r *segmentRepository) FindByTraceId(ctx context.Context, projectId, traceId uuid.UUID) ([]models.Segment, error) {
 	query := `SELECT
-		id, transaction_id, project_id, name, start_time, duration, recorded_at
+		id, trace_id, project_id, name, start_time, duration, recorded_at
 	FROM segments
-	WHERE project_id = ? AND transaction_id = ?
+	WHERE project_id = ? AND trace_id = ?
 	ORDER BY start_time ASC`
 
-	rows, err := (*chdb.Conn).Query(ctx, query, projectId, transactionId)
+	rows, err := (*chdb.Conn).Query(ctx, query, projectId, traceId)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +56,7 @@ func (r *segmentRepository) FindByTransactionId(ctx context.Context, projectId, 
 	for rows.Next() {
 		var s models.Segment
 		if err := rows.Scan(
-			&s.Id, &s.TransactionId, &s.ProjectId,
+			&s.Id, &s.TraceId, &s.ProjectId,
 			&s.Name, &s.StartTime, &s.Duration, &s.RecordedAt,
 		); err != nil {
 			return nil, err

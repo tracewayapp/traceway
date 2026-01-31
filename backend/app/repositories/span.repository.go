@@ -9,20 +9,20 @@ import (
 	"github.com/google/uuid"
 )
 
-type segmentRepository struct{}
+type spanRepository struct{}
 
-func (r *segmentRepository) InsertAsync(ctx context.Context, segments []models.Segment) error {
-	if len(segments) == 0 {
+func (r *spanRepository) InsertAsync(ctx context.Context, spans []models.Span) error {
+	if len(spans) == 0 {
 		return nil
 	}
 
 	batch, err := (*chdb.Conn).PrepareBatch(clickhouse.Context(context.Background(), clickhouse.WithAsync(false)),
-		"INSERT INTO segments (id, trace_id, project_id, name, start_time, duration, recorded_at)")
+		"INSERT INTO spans (id, trace_id, project_id, name, start_time, duration, recorded_at)")
 	if err != nil {
 		return err
 	}
 
-	for _, s := range segments {
+	for _, s := range spans {
 		if err := batch.Append(
 			s.Id,
 			s.TraceId,
@@ -39,10 +39,10 @@ func (r *segmentRepository) InsertAsync(ctx context.Context, segments []models.S
 	return batch.Send()
 }
 
-func (r *segmentRepository) FindByTraceId(ctx context.Context, projectId, traceId uuid.UUID) ([]models.Segment, error) {
+func (r *spanRepository) FindByTraceId(ctx context.Context, projectId, traceId uuid.UUID) ([]models.Span, error) {
 	query := `SELECT
 		id, trace_id, project_id, name, start_time, duration, recorded_at
-	FROM segments
+	FROM spans
 	WHERE project_id = ? AND trace_id = ?
 	ORDER BY start_time ASC`
 
@@ -52,19 +52,19 @@ func (r *segmentRepository) FindByTraceId(ctx context.Context, projectId, traceI
 	}
 	defer rows.Close()
 
-	var segments []models.Segment
+	var spans []models.Span
 	for rows.Next() {
-		var s models.Segment
+		var s models.Span
 		if err := rows.Scan(
 			&s.Id, &s.TraceId, &s.ProjectId,
 			&s.Name, &s.StartTime, &s.Duration, &s.RecordedAt,
 		); err != nil {
 			return nil, err
 		}
-		segments = append(segments, s)
+		spans = append(spans, s)
 	}
 
-	return segments, nil
+	return spans, nil
 }
 
-var SegmentRepository = segmentRepository{}
+var SpanRepository = spanRepository{}

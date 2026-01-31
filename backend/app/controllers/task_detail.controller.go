@@ -28,9 +28,9 @@ type TaskMessageInfo struct {
 }
 
 type TaskDetailResponse struct {
-	Task        *models.Task       `json:"task"`
-	Segments    []models.Segment   `json:"segments"`
-	HasSegments bool               `json:"hasSegments"`
+	Task     *models.Task       `json:"task"`
+	Spans    []models.Span      `json:"spans"`
+	HasSpans bool               `json:"hasSpans"`
 	Exception   *TaskExceptionInfo `json:"exception,omitempty"`
 	Messages    []TaskMessageInfo  `json:"messages"`
 }
@@ -49,20 +49,20 @@ func (t taskDetailController) GetTaskDetail(c *gin.Context) {
 	}
 
 	// Get task
-	seg := traceway.StartSegment(c, "loading task")
+	span := traceway.StartSpan(c, "loading task")
 	task, err := repositories.TaskRepository.FindById(c, projectId, taskId)
-	seg.End()
+	span.End()
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
 		return
 	}
 
-	// Get segments (flat list ordered by start_time)
-	seg = traceway.StartSegment(c, "loading segments")
-	segments, err := repositories.SegmentRepository.FindByTraceId(c, projectId, taskId)
-	seg.End()
+	// Get spans (flat list ordered by start_time)
+	span = traceway.StartSpan(c, "loading spans")
+	spans, err := repositories.SpanRepository.FindByTraceId(c, projectId, taskId)
+	span.End()
 	if err != nil {
-		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading segments: %w", err))
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading spans: %w", err))
 		return
 	}
 
@@ -70,9 +70,9 @@ func (t taskDetailController) GetTaskDetail(c *gin.Context) {
 	var exceptionInfo *TaskExceptionInfo
 	var messages []TaskMessageInfo
 
-	seg = traceway.StartSegment(c, "loading exceptions")
+	span = traceway.StartSpan(c, "loading exceptions")
 	allExceptions, err := repositories.ExceptionStackTraceRepository.FindAllByTraceId(c, projectId, taskId)
-	seg.End()
+	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading allExceptions: %w", err))
 		return
@@ -103,9 +103,9 @@ func (t taskDetailController) GetTaskDetail(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, TaskDetailResponse{
-		Task:        task,
-		Segments:    segments,
-		HasSegments: len(segments) > 0,
+		Task:     task,
+		Spans:    spans,
+		HasSpans: len(spans) > 0,
 		Exception:   exceptionInfo,
 		Messages:    messages,
 	})

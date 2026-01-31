@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-type Segment struct {
+type Span struct {
 	Id            uuid.UUID     `json:"id" ch:"id"`
 	TraceId       uuid.UUID     `json:"traceId" ch:"trace_id"`
 	ProjectId     uuid.UUID     `json:"projectId" ch:"project_id"`

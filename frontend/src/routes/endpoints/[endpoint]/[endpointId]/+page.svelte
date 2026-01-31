@@ -13,9 +13,9 @@
 	import { ArrowLeft, ArrowRight, TriangleAlert, ClipboardList } from 'lucide-svelte';
 	import { LabelValue } from '$lib/components/ui/label-value';
 	import { ContextGrid } from '$lib/components/ui/context-grid';
-	import SegmentWaterfall from '$lib/components/segments/segment-waterfall.svelte';
-	import SegmentEmptyState from '$lib/components/segments/segment-empty-state.svelte';
-	import type { TraceDetailResponse } from '$lib/types/segments';
+	import SpanWaterfall from '$lib/components/spans/span-waterfall.svelte';
+	import SpanEmptyState from '$lib/components/spans/span-empty-state.svelte';
+	import type { TraceDetailResponse } from '$lib/types/spans';
 	import PageHeader from '$lib/components/issues/page-header.svelte';
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { resolve } from '$app/paths';
@@ -245,27 +245,27 @@
 			</Card.Root>
 		{/if}
 
-		<!-- Segments Section -->
+		<!-- Spans Section -->
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>Segments</Card.Title>
+				<Card.Title>Spans</Card.Title>
 				<Card.Description>
-					{#if response.hasSegments}
+					{#if response.hasSpans}
 						Timing breakdown of operations within this endpoint request
 					{:else}
-						No segments recorded for this endpoint request
+						No spans recorded for this endpoint request
 					{/if}
 				</Card.Description>
 			</Card.Header>
 			<Card.Content>
-				{#if response.hasSegments}
-					<SegmentWaterfall
-						segments={response.segments}
+				{#if response.hasSpans}
+					<SpanWaterfall
+						spans={response.spans}
 						traceDuration={response.endpoint.duration}
 						traceStartTime={response.endpoint.recordedAt}
 					/>
 				{:else}
-					<SegmentEmptyState framework={projectsState.currentProject?.framework ?? 'gin'} />
+					<SpanEmptyState framework={projectsState.currentProject?.framework ?? 'gin'} />
 				{/if}
 			</Card.Content>
 		</Card.Root>

@@ -28,9 +28,9 @@ type EndpointMessageInfo struct {
 }
 
 type EndpointDetailResponse struct {
-	Endpoint    *models.Endpoint       `json:"endpoint"`
-	Segments    []models.Segment       `json:"segments"`
-	HasSegments bool                   `json:"hasSegments"`
+	Endpoint *models.Endpoint       `json:"endpoint"`
+	Spans    []models.Span          `json:"spans"`
+	HasSpans bool                   `json:"hasSpans"`
 	Exception   *EndpointExceptionInfo `json:"exception,omitempty"`
 	Messages    []EndpointMessageInfo  `json:"messages"`
 }
@@ -49,20 +49,20 @@ func (t endpointDetailController) GetEndpointDetail(c *gin.Context) {
 	}
 
 	// Get endpoint
-	seg := traceway.StartSegment(c, "loading endpoint")
+	span := traceway.StartSpan(c, "loading endpoint")
 	endpoint, err := repositories.EndpointRepository.FindById(c, projectId, endpointId)
-	seg.End()
+	span.End()
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Endpoint not found"})
 		return
 	}
 
-	// Get segments (flat list ordered by start_time)
-	seg = traceway.StartSegment(c, "loading segments")
-	segments, err := repositories.SegmentRepository.FindByTraceId(c, projectId, endpointId)
-	seg.End()
+	// Get spans (flat list ordered by start_time)
+	span = traceway.StartSpan(c, "loading spans")
+	spans, err := repositories.SpanRepository.FindByTraceId(c, projectId, endpointId)
+	span.End()
 	if err != nil {
-		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading segments: %w", err))
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading spans: %w", err))
 		return
 	}
 
@@ -70,9 +70,9 @@ func (t endpointDetailController) GetEndpointDetail(c *gin.Context) {
 	var exceptionInfo *EndpointExceptionInfo
 	var messages []EndpointMessageInfo
 
-	seg = traceway.StartSegment(c, "loading exceptions")
+	span = traceway.StartSpan(c, "loading exceptions")
 	allExceptions, err := repositories.ExceptionStackTraceRepository.FindAllByTraceId(c, projectId, endpointId)
-	seg.End()
+	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading all exceptions: %w", err))
 		return
@@ -103,9 +103,9 @@ func (t endpointDetailController) GetEndpointDetail(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, EndpointDetailResponse{
-		Endpoint:    endpoint,
-		Segments:    segments,
-		HasSegments: len(segments) > 0,
+		Endpoint: endpoint,
+		Spans:    spans,
+		HasSpans: len(spans) > 0,
 		Exception:   exceptionInfo,
 		Messages:    messages,
 	})

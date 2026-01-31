@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Segment } from '$lib/types/segments';
+	import type { Span } from '$lib/types/spans';
 	import { cn } from '$lib/utils';
 	import { formatDuration } from '$lib/utils/formatters';
 	import * as Popover from '$lib/components/ui/popover';
@@ -8,42 +8,42 @@
 
 	type Props = {
 		row: number;
-		segment: Segment;
+		span: Span;
 		traceStart: number;
 		traceDuration: number;
 		isOdd: boolean;
 		nameColumnWidth: number;
 		updateNameWidth: (width: number) => void;
 
-		segmentCellHandleMouseEnter: (x: number) => void;
-		segmentCellHandleMouseMove: (x: number) => void;
-		segmentCellHandleMouseLeave: () => void;
+		spanCellHandleMouseEnter: (x: number) => void;
+		spanCellHandleMouseMove: (x: number) => void;
+		spanCellHandleMouseLeave: () => void;
 	};
 
 	let {
 		row,
-		segment,
+		span,
 		traceStart,
 		traceDuration,
 		isOdd,
 		nameColumnWidth,
 		updateNameWidth,
-		segmentCellHandleMouseEnter,
-		segmentCellHandleMouseMove,
-		segmentCellHandleMouseLeave
+		spanCellHandleMouseEnter,
+		spanCellHandleMouseMove,
+		spanCellHandleMouseLeave
 	}: Props = $props();
 
-	const segmentStartMs = $derived(new Date(segment.startTime).getTime() - traceStart);
-	const segmentDurationMs = $derived(segment.duration / 1_000_000);
+	const spanStartMs = $derived(new Date(span.startTime).getTime() - traceStart);
+	const spanDurationMs = $derived(span.duration / 1_000_000);
 	const traceDurationMs = $derived(traceDuration / 1_000_000);
 
 	// Calculate position and width as percentages
-	const leftPercent = $derived(Math.max(0, (segmentStartMs / traceDurationMs) * 100));
+	const leftPercent = $derived(Math.max(0, (spanStartMs / traceDurationMs) * 100));
 	const widthPercent = $derived(
-		Math.min(100 - leftPercent, (segmentDurationMs / traceDurationMs) * 100)
+		Math.min(100 - leftPercent, (spanDurationMs / traceDurationMs) * 100)
 	);
 
-	const segmentColors = [
+	const spanColors = [
 		{ bg: 'bg-blue-400', ring: 'ring-blue-500' },
 		{ bg: 'bg-green-400', ring: 'ring-green-500' },
 		{ bg: 'bg-purple-400', ring: 'ring-purple-500' },
@@ -60,7 +60,7 @@
 		{ bg: 'bg-slate-400', ring: 'ring-slate-500' }
 	];
 
-	const segmentColor = $derived(segmentColors[row % segmentColors.length]);
+	const spanColor = $derived(spanColors[row % spanColors.length]);
 
 	// Tooltip state (this is the tooltip on top of the line)
 	let isHovered = $state(false);
@@ -75,22 +75,22 @@
 	}
 
 	let containerElement: HTMLDivElement;
-	function containerSegmentCellHandleMouseEnter(e: MouseEvent) {
+	function containerSpanCellHandleMouseEnter(e: MouseEvent) {
 		const rect = containerElement.getBoundingClientRect();
 		const x = e.clientX - rect.left;
-		segmentCellHandleMouseEnter(x);
+		spanCellHandleMouseEnter(x);
 	}
-	function containerSegmentCellHandleMouseMove(e: MouseEvent) {
+	function containerSpanCellHandleMouseMove(e: MouseEvent) {
 		const rect = containerElement.getBoundingClientRect();
 		const x = e.clientX - rect.left;
-		segmentCellHandleMouseMove(x);
+		spanCellHandleMouseMove(x);
 	}
 
 	let nameElement: HTMLDivElement;
 	let copied = $state(false);
 
-	async function copySegmentName() {
-		await navigator.clipboard.writeText(segment.name);
+	async function copySpanName() {
+		await navigator.clipboard.writeText(span.name);
 		copied = true;
 		setTimeout(() => (copied = false), 2000);
 	}
@@ -107,7 +107,7 @@
 <div
 	class={cn('flex items-center border-b border-border last:border-b-0', isOdd ? 'bg-muted/40' : '')}
 >
-	<!-- Segment name -->
+	<!-- Span name -->
 	<Popover.Root>
 		<Popover.Trigger class="text-left cursor-pointer">
 			<div
@@ -115,13 +115,13 @@
 				class="flex-shrink-0 truncate border-r border-border px-3 py-1.5 font-mono text-xs"
 				style="min-width: {nameColumnWidth}px; max-width: {nameColumnWidth}px"
 			>
-				{segment.name}
+				{span.name}
 			</div>
 		</Popover.Trigger>
 		<Popover.Content class="w-auto max-w-sm" align="start">
 			<div class="flex items-start gap-2">
-				<span class="font-mono text-xs break-all select-text">{segment.name}</span>
-				<button onclick={copySegmentName} class="shrink-0 p-1 rounded hover:bg-muted">
+				<span class="font-mono text-xs break-all select-text">{span.name}</span>
+				<button onclick={copySpanName} class="shrink-0 p-1 rounded hover:bg-muted">
 					{#if copied}
 						<Check class="h-3.5 w-3.5 text-green-500" />
 					{:else}
@@ -136,17 +136,17 @@
 	<div
 		class="relative flex min-w-[200px] flex-1 items-center self-stretch"
 		bind:this={containerElement}
-		onmouseenter={containerSegmentCellHandleMouseEnter}
-		onmousemove={containerSegmentCellHandleMouseMove}
-		onmouseleave={segmentCellHandleMouseLeave}
+		onmouseenter={containerSpanCellHandleMouseEnter}
+		onmousemove={containerSpanCellHandleMouseMove}
+		onmouseleave={spanCellHandleMouseLeave}
 	>
 		<div class="relative h-4 w-full">
 			<div
 				bind:this={barElement}
 				class={cn(
 					'absolute h-full rounded-[2px] transition-all',
-					segmentColor.bg,
-					isHovered && `ring-2 ${segmentColor.ring}`
+					spanColor.bg,
+					isHovered && `ring-2 ${spanColor.ring}`
 				)}
 				style="left: {leftPercent}%; width: {Math.max(widthPercent, 1)}%"
 				onmouseenter={handleMouseEnter}
@@ -160,6 +160,6 @@
 	<div
 		class="w-[100px] flex-shrink-0 border-l border-border px-3 py-1.5 text-right font-mono text-xs text-muted-foreground"
 	>
-		{formatDuration(segment.duration)}
+		{formatDuration(span.duration)}
 	</div>
 </div>

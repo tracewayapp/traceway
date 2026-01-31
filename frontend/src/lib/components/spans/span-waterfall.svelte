@@ -1,23 +1,23 @@
 <script lang="ts">
-	import type { Segment } from '$lib/types/segments';
+	import type { Span } from '$lib/types/spans';
 	import ScrollArea from '../ui/scroll-area/scroll-area.svelte';
-	import SegmentRow from './segment-row.svelte';
+	import SpanRow from './span-row.svelte';
 
 	type Props = {
-		segments: Segment[];
+		spans: Span[];
 		traceDuration: number;
 		traceStartTime: string;
 	};
 
-	let { segments, traceDuration, traceStartTime }: Props = $props();
+	let { spans, traceDuration, traceStartTime }: Props = $props();
 
 	const traceStart = $derived(
-		segments.length === 0
+		spans.length === 0
 			? new Date(traceStartTime).getTime()
-			: segments.reduce((earliest, seg) => {
-					const segTime = new Date(seg.startTime).getTime();
-					return segTime < earliest ? segTime : earliest;
-				}, new Date(segments[0].startTime).getTime())
+			: spans.reduce((earliest, s) => {
+					const sTime = new Date(s.startTime).getTime();
+					return sTime < earliest ? sTime : earliest;
+				}, new Date(spans[0].startTime).getTime())
 	);
 	const durationMs = $derived(traceDuration / 1_000_000);
 
@@ -61,7 +61,7 @@
 				class="flex-shrink-0 border-r border-border px-3 py-1.5 text-xs font-medium"
 				style="min-width: {nameColumnWidth}px"
 			>
-				Segment Name
+				Span Name
 			</div>
 			<div bind:this={timelineElement} class="min-w-[200px] flex-1 px-3 py-1.5">
 				<div class="flex justify-between text-xs text-muted-foreground">
@@ -77,19 +77,19 @@
 			</div>
 		</div>
 
-		<!-- Segments -->
-		{#each segments as segment, i}
-			<SegmentRow
+		<!-- Spans -->
+		{#each spans as span, i}
+			<SpanRow
 				row={i}
-				{segment}
+				{span}
 				{traceStart}
 				{traceDuration}
 				isOdd={i % 2 === 1}
 				{nameColumnWidth}
 				{updateNameWidth}
-				segmentCellHandleMouseEnter={handleMouseEnter}
-				segmentCellHandleMouseMove={handleMouseMove}
-				segmentCellHandleMouseLeave={handleMouseLeave}
+				spanCellHandleMouseEnter={handleMouseEnter}
+				spanCellHandleMouseMove={handleMouseMove}
+				spanCellHandleMouseLeave={handleMouseLeave}
 			/>
 		{/each}
 

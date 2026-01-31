@@ -66,7 +66,7 @@ type ClientTrace struct {
 	BodySize   int               `json:"bodySize"`
 	ClientIP   string            `json:"clientIP"`
 	Scope      map[string]string `json:"scope"`
-	Segments   []*ClientSegment  `json:"segments"`
+	Spans      []*ClientSpan     `json:"spans"`
 	IsTask     bool              `json:"isTask"`
 }
 
@@ -106,23 +106,23 @@ func (c *ClientTrace) ToTask(appVersion, serverName string) models.Task {
 	}
 }
 
-type ClientSegment struct {
+type ClientSpan struct {
 	Id        string        `json:"id"`
 	Name      string        `json:"name"`
 	StartTime time.Time     `json:"startTime"`
 	Duration  time.Duration `json:"duration"`
 }
 
-// ParsedId returns the segment ID as uuid.UUID
-func (c *ClientSegment) ParsedId() uuid.UUID {
+// ParsedId returns the span ID as uuid.UUID
+func (c *ClientSpan) ParsedId() uuid.UUID {
 	if parsed, err := uuid.Parse(c.Id); err == nil {
 		return parsed
 	}
 	return uuid.New()
 }
 
-func (c *ClientSegment) ToSegment(traceId uuid.UUID) models.Segment {
-	return models.Segment{
+func (c *ClientSpan) ToSpan(traceId uuid.UUID) models.Span {
+	return models.Span{
 		Id:      c.ParsedId(),
 		TraceId: traceId,
 		Name:          c.Name,

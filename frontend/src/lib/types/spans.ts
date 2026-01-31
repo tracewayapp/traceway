@@ -1,4 +1,4 @@
-export type Segment = {
+export type Span = {
 	id: string;
 	traceId: string;
 	projectId: string;
@@ -38,8 +38,8 @@ export type MessageInfo = {
 
 export type TraceDetailResponse = {
 	endpoint: TraceDetail;
-	segments: Segment[];
-	hasSegments: boolean;
+	spans: Span[];
+	hasSpans: boolean;
 	exception?: ExceptionInfo;
 	messages: MessageInfo[];
 };

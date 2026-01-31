@@ -16,17 +16,17 @@
 	function getDocsUrl(fw: Framework): string {
 		switch (fw) {
 			case 'gin':
-				return 'https://docs.traceway.io/go/gin/segments';
+				return 'https://docs.traceway.io/go/gin/spans';
 			case 'fiber':
-				return 'https://docs.traceway.io/go/fiber/segments';
+				return 'https://docs.traceway.io/go/fiber/spans';
 			case 'chi':
-				return 'https://docs.traceway.io/go/chi/segments';
+				return 'https://docs.traceway.io/go/chi/spans';
 			case 'fasthttp':
-				return 'https://docs.traceway.io/go/fasthttp/segments';
+				return 'https://docs.traceway.io/go/fasthttp/spans';
 			case 'stdlib':
-				return 'https://docs.traceway.io/go/stdlib/segments';
+				return 'https://docs.traceway.io/go/stdlib/spans';
 			default:
-				return 'https://docs.traceway.io/go/segments';
+				return 'https://docs.traceway.io/go/spans';
 		}
 	}
 
@@ -35,39 +35,39 @@
 			case 'gin':
 				return `// In your Gin handler
 func MyHandler(c *gin.Context) {
-    // Start a segment for database operation
-    seg := traceway.StartSegment(c.Request.Context(), "db.query")
-    defer seg.End()
+    // Start a span for database operation
+    span := traceway.StartSpan(c.Request.Context(), "db.query")
+    defer span.End()
 
     // Your database operation here
     result, err := db.Query("SELECT * FROM users")
 
-    // Another segment for cache
-    cacheSeg := traceway.StartSegment(c.Request.Context(), "cache.set")
+    // Another span for cache
+    cacheSpan := traceway.StartSpan(c.Request.Context(), "cache.set")
     cache.Set("users", result)
-    cacheSeg.End()
+    cacheSpan.End()
 }`;
 			case 'fiber':
 				return `// In your Fiber handler
 func MyHandler(c *fiber.Ctx) error {
-    // Start a segment for database operation
-    seg := traceway.StartSegment(c.UserContext(), "db.query")
-    defer seg.End()
+    // Start a span for database operation
+    span := traceway.StartSpan(c.UserContext(), "db.query")
+    defer span.End()
 
     // Your database operation here
     result, err := db.Query("SELECT * FROM users")
 
-    // Another segment for cache
-    cacheSeg := traceway.StartSegment(c.UserContext(), "cache.set")
+    // Another span for cache
+    cacheSpan := traceway.StartSpan(c.UserContext(), "cache.set")
     cache.Set("users", result)
-    cacheSeg.End()
+    cacheSpan.End()
 
     return c.JSON(result)
 }`;
 			default:
-				return `seg := traceway.StartSegment(ctx, "db.load")
+				return `span := traceway.StartSpan(ctx, "db.load")
 // perform your operations here
-seg.End()`;
+span.End()`;
 		}
 	}
 
@@ -79,9 +79,9 @@ seg.End()`;
 	<div class="bg-muted mb-4 rounded-full p-3">
 		<Code class="text-muted-foreground h-6 w-6" />
 	</div>
-	<h3 class="mb-2 text-lg font-semibold">No Segments Recorded</h3>
+	<h3 class="mb-2 text-lg font-semibold">No Spans Recorded</h3>
 	<p class="text-muted-foreground mb-4 max-w-md text-sm">
-		Segments allow you to track the timing of individual operations within a transaction, such as
+		Spans allow you to track the timing of individual operations within a transaction, such as
 		database queries, HTTP calls, or cache operations.
 	</p>
 

@@ -51,7 +51,7 @@ func (e clientController) Report(c *gin.Context) {
 	tasksToInsert := []models.Task{}
 	exceptionStackTraceToInsert := []models.ExceptionStackTrace{}
 	metricRecordsToInsert := []models.MetricRecord{}
-	segmentsToInsert := []models.Segment{}
+	spansToInsert := []models.Span{}
 	for _, cf := range request.CollectionFrames {
 		for _, ct := range cf.Traces {
 			if ct.IsTask {
@@ -64,11 +64,11 @@ func (e clientController) Report(c *gin.Context) {
 				endpointsToInsert = append(endpointsToInsert, e)
 			}
 
-			// Extract segments from transaction
-			for _, cs := range ct.Segments {
-				seg := cs.ToSegment(ct.ParsedId())
-				seg.ProjectId = projectId
-				segmentsToInsert = append(segmentsToInsert, seg)
+			// Extract spans from trace
+			for _, cs := range ct.Spans {
+				span := cs.ToSpan(ct.ParsedId())
+				span.ProjectId = projectId
+				spansToInsert = append(spansToInsert, span)
 			}
 		}
 
@@ -116,10 +116,10 @@ func (e clientController) Report(c *gin.Context) {
 		return
 	}
 
-	err = repositories.SegmentRepository.InsertAsync(c, segmentsToInsert)
+	err = repositories.SpanRepository.InsertAsync(c, spansToInsert)
 
 	if err != nil {
-		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting segmentsToInsert: %w", err))
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting spansToInsert: %w", err))
 		return
 	}
 

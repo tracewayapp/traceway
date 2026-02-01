@@ -4,8 +4,8 @@ import { existsSync } from 'fs';
 import path from 'path';
 
 const billingPath = process.env.BILLING_PATH;
-const resolvedBillingPath = path.resolve(process.cwd(), billingPath);
-const billingExists = existsSync(resolvedBillingPath);
+const resolvedBillingPath = billingPath ? path.resolve(process.cwd(), billingPath) : undefined;
+const billingExists = resolvedBillingPath ? existsSync(resolvedBillingPath) : false;
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {

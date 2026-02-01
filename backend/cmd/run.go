@@ -22,7 +22,7 @@ import (
 	"github.com/coreos/go-systemd/v22/daemon"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	tracewaygin "go.tracewayapp.com/traceway_gin"
+	tracewaygin "go.tracewayapp.com/tracewaygin"
 )
 
 var PostStartupHooks []func(ctx context.Context)

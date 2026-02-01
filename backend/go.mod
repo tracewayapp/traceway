@@ -4,9 +4,11 @@ go 1.25.1
 
 require (
 	github.com/coreos/go-systemd/v22 v22.6.0
+	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/lib/pq v1.10.9
 	github.com/tracewayapp/go-lightning/lit v0.0.0-20260121181925-c304b0bdd0dc
-	go.tracewayapp.com v0.3.3
+	go.tracewayapp.com v0.4.1
+	go.tracewayapp.com/tracewaygin v0.4.1
 )
 
 require (
@@ -25,7 +27,6 @@ require (
 	github.com/go-playground/validator/v10 v10.27.0 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
-	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
@@ -63,9 +64,11 @@ require (
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
-	golang.org/x/crypto v0.46.0 // indirect
+	golang.org/x/crypto v0.46.0
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
 )
 
 replace go.tracewayapp.com => /Users/dusanstanojevic/Documents/workspace/go-client
+
+replace go.tracewayapp.com/tracewaygin => /Users/dusanstanojevic/Documents/workspace/go-client/tracewaygin

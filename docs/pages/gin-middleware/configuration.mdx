@@ -1,0 +1,147 @@
+# Gin Middleware Configuration
+
+## Middleware Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `WithRepanic(bool)` | Re-panic after capturing, letting upstream recovery handle it | `true` |
+| `WithRecordUnmatched(bool)` | Record requests for unregistered routes (404s) | `false` |
+| `WithRecordStatic(bool)` | Record requests for static file routes | `false` |
+| `WithIgnoredPaths(...string)` | Skip recording for specific route paths | none |
+| `WithOnErrorRecording(RecordingFlag)` | What additional data to capture on errors | `0` (none) |
+
+## Passthrough Core Options
+
+These options are forwarded to the core `traceway` client:
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `WithDebug(bool)` | Enable debug logging | `false` |
+| `WithVersion(string)` | Application version shown in dashboard | `""` |
+| `WithServerName(string)` | Server hostname identifier | Auto-detected |
+| `WithSampleRate(float64)` | Percentage of normal traces to record (0.0–1.0) | `1.0` |
+| `WithErrorSampleRate(float64)` | Percentage of error traces to record (0.0–1.0) | `1.0` |
+| `WithCollectionInterval(time.Duration)` | How often batched data is sent | `5s` |
+| `WithMaxCollectionFrames(int)` | Maximum frames to buffer | `12` |
+| `WithUploadTimeout(time.Duration)` | HTTP upload timeout | `2s` |
+| `WithMetricsInterval(time.Duration)` | System metrics collection interval | `30s` |
+
+## Repanic Behavior
+
+When `WithRepanic(true)` (default), the middleware re-panics after capturing the stack trace. This allows upstream recovery middleware (like `gin.Recovery()`) to handle the panic.
+
+When `WithRepanic(false)`, the middleware calls `c.AbortWithStatus(500)` and does not re-panic.
+
+## Route Filtering
+
+### Unmatched Routes
+
+By default, requests to unregistered routes (404s) are **not recorded**. The request is passed through but no trace is created.
+
+```go
+tracewaygin.WithRecordUnmatched(true) // Record 404 requests
+```
+
+When enabled, the raw URL path is used as the endpoint name instead of a route template.
+
+### Static Routes
+
+Requests served by Gin's `StaticFile`, `Static`, or `StaticFS` handlers are **not recorded** by default:
+
+```go
+tracewaygin.WithRecordStatic(true) // Record static file requests
+```
+
+### Ignored Paths
+
+Skip recording for specific route paths:
+
+```go
+tracewaygin.WithIgnoredPaths("/health", "/ready", "/metrics")
+```
+
+Ignored paths are still served — the request passes through to your handler, but no trace is recorded.
+
+## Complete Example
+
+```go
+package main
+
+import (
+    "time"
+
+    "github.com/gin-gonic/gin"
+    traceway "go.tracewayapp.com"
+    tracewaygin "go.tracewayapp.com/traceway_gin"
+)
+
+func main() {
+    traceway.ConfigureAttributes(func(s *traceway.Attributes) {
+        s.SetTag("environment", "production")
+        s.SetTag("service", "user-api")
+    })
+
+    router := gin.Default()
+
+    router.Use(tracewaygin.New(
+        "your-token@http://localhost:8082/api/report",
+        tracewaygin.WithVersion("1.2.3"),
+        tracewaygin.WithServerName("api-server-01"),
+        tracewaygin.WithRepanic(true),
+        tracewaygin.WithRecordUnmatched(false),
+        tracewaygin.WithRecordStatic(false),
+        tracewaygin.WithIgnoredPaths("/health", "/ready"),
+        tracewaygin.WithOnErrorRecording(
+            tracewaygin.RecordingUrl | tracewaygin.RecordingQuery,
+        ),
+        tracewaygin.WithCollectionInterval(5 * time.Second),
+        tracewaygin.WithMetricsInterval(30 * time.Second),
+    ))
+
+    router.GET("/api/users/:id", getUser)
+    router.Run(":8080")
+}
+```
+
+## Configuration Recommendations
+
+### Development
+
+```go
+tracewaygin.New(
+    connectionString,
+    tracewaygin.WithDebug(true),
+    tracewaygin.WithOnErrorRecording(
+        tracewaygin.RecordingUrl |
+        tracewaygin.RecordingQuery |
+        tracewaygin.RecordingHeader |
+        tracewaygin.RecordingBody,
+    ),
+)
+```
+
+### Production
+
+```go
+tracewaygin.New(
+    connectionString,
+    tracewaygin.WithVersion(os.Getenv("APP_VERSION")),
+    tracewaygin.WithServerName(os.Getenv("HOSTNAME")),
+    tracewaygin.WithOnErrorRecording(
+        tracewaygin.RecordingUrl | tracewaygin.RecordingQuery,
+    ),
+)
+```
+
+### High-Traffic Services
+
+```go
+tracewaygin.New(
+    connectionString,
+    tracewaygin.WithSampleRate(0.1),
+    tracewaygin.WithErrorSampleRate(1.0),
+    tracewaygin.WithCollectionInterval(10 * time.Second),
+    tracewaygin.WithMaxCollectionFrames(20),
+    tracewaygin.WithMetricsInterval(60 * time.Second),
+)
+```

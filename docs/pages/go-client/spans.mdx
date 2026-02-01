@@ -1,0 +1,136 @@
+# Spans
+
+Spans track timed sub-operations within a trace. Use them to measure where time is spent during request processing or task execution.
+
+## StartSpan
+
+Create a span within an active trace:
+
+```go
+func handler(c *gin.Context) {
+    ctx := c.Request.Context()
+
+    span := traceway.StartSpan(ctx, "db.users.find")
+    user, err := db.FindUser(userID)
+    span.End()
+
+    if err != nil {
+        c.Error(err)
+        return
+    }
+    c.JSON(200, user)
+}
+```
+
+`StartSpan` requires a context that carries a `TraceContext` (created by middleware or `StartTrace`). If no trace context exists, it returns `nil`.
+
+## The Defer Pattern
+
+Use `defer` to ensure spans are ended even when errors or panics occur:
+
+```go
+func fetchData(ctx context.Context) (*Data, error) {
+    span := traceway.StartSpan(ctx, "api.external.fetch")
+    defer span.End()
+
+    resp, err := http.Get(url)
+    if err != nil {
+        return nil, err
+    }
+    return parseResponse(resp)
+}
+```
+
+`End()` is safe to call on a `nil` span and safe to call multiple times — only the first call records the duration.
+
+## Multiple Spans
+
+Track sequential operations:
+
+```go
+func processOrder(ctx context.Context, orderID string) error {
+    span := traceway.StartSpan(ctx, "db.orders.find")
+    order, err := db.GetOrder(orderID)
+    span.End()
+    if err != nil {
+        return err
+    }
+
+    span = traceway.StartSpan(ctx, "logic.inventory.check")
+    available := checkInventory(order.Items)
+    span.End()
+    if !available {
+        return errors.New("items unavailable")
+    }
+
+    span = traceway.StartSpan(ctx, "api.stripe.charge")
+    err = stripe.Charge(order.PaymentMethod, order.Total)
+    span.End()
+
+    return err
+}
+```
+
+## Nesting
+
+Spans can be nested by starting child spans before ending the parent:
+
+```go
+func handler(c *gin.Context) {
+    ctx := c.Request.Context()
+
+    parent := traceway.StartSpan(ctx, "process.checkout")
+
+    child := traceway.StartSpan(ctx, "process.checkout.validate")
+    validate(cart)
+    child.End()
+
+    child = traceway.StartSpan(ctx, "process.checkout.charge")
+    charge(payment)
+    child.End()
+
+    parent.End()
+}
+```
+
+All spans are attached to the same trace context regardless of nesting depth.
+
+## Spans in Background Tasks
+
+Spans work within `MeasureTask`:
+
+```go
+traceway.MeasureTask("report.monthly", func(ctx context.Context) {
+    span := traceway.StartSpan(ctx, "report.fetch_data")
+    data := fetchReportData()
+    span.End()
+
+    span = traceway.StartSpan(ctx, "report.process")
+    result := processData(data)
+    span.End()
+
+    span = traceway.StartSpan(ctx, "report.upload")
+    uploadToS3(result)
+    span.End()
+})
+```
+
+## Naming Conventions
+
+Use hierarchical names following `category.resource.action`:
+
+```go
+// Database operations
+traceway.StartSpan(ctx, "db.users.find")
+traceway.StartSpan(ctx, "db.orders.insert")
+
+// External APIs
+traceway.StartSpan(ctx, "api.stripe.charge")
+traceway.StartSpan(ctx, "api.s3.upload")
+
+// Cache operations
+traceway.StartSpan(ctx, "cache.redis.get")
+
+// Business logic
+traceway.StartSpan(ctx, "logic.pricing.calculate")
+```

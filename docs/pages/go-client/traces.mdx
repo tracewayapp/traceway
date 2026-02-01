@@ -1,0 +1,110 @@
+# Traces
+
+The core SDK provides functions for creating and recording traces — both for HTTP endpoints and background tasks.
+
+## StartTrace
+
+Creates a new trace context and stores it in the Go context. Use this when you need manual control over trace creation outside of middleware.
+
+```go
+ctx := traceway.StartTrace(context.Background())
+
+// The context now carries a TraceContext with a unique ID
+// Use this context for spans, exceptions, and attributes
+```
+
+## GetTraceFromContext
+
+Retrieves the current trace context from a Go context:
+
+```go
+tc := traceway.GetTraceFromContext(ctx)
+if tc != nil {
+    fmt.Println("Trace ID:", tc.Id)
+}
+```
+
+## CaptureTrace
+
+Records a completed HTTP trace. Typically called by middleware — you rarely need this directly.
+
+```go
+traceway.CaptureTrace(
+    tc,           // *TraceContext
+    "GET /api/users",  // endpoint
+    duration,     // time.Duration
+    startedAt,    // time.Time
+    200,          // statusCode
+    1024,         // bodySize
+    "192.168.1.1", // clientIP
+)
+```
+
+## CaptureTraceWithAttributes
+
+Same as `CaptureTrace` but includes attributes:
+
+```go
+traceway.CaptureTraceWithAttributes(
+    tc,
+    "GET /api/users",
+    duration,
+    startedAt,
+    200,
+    1024,
+    "192.168.1.1",
+    map[string]string{"user_id": "123", "tenant": "acme"},
+)
+```
+
+## CaptureTask
+
+Records a completed background task:
+
+```go
+tc := &traceway.TraceContext{
+    Id:     uuid.NewString(),
+    IsTask: true,
+}
+
+start := time.Now()
+// ... do work ...
+duration := time.Since(start)
+
+traceway.CaptureTask(
+    tc,
+    "report.monthly",  // task name
+    duration,
+    start,
+    map[string]string{"report_type": "revenue"},
+)
+```
+
+## MeasureTask
+
+A convenience wrapper that creates a trace context, measures execution time, captures the task, and handles panics:
+
+```go
+traceway.MeasureTask("email.send_batch", func(ctx context.Context) {
+    // ctx carries a TraceContext and Attributes
+    // You can add spans and attributes here
+
+    span := traceway.StartSpan(ctx, "email.fetch_recipients")
+    recipients := fetchRecipients()
+    span.End()
+
+    span = traceway.StartSpan(ctx, "email.send_all")
+    sendEmails(recipients)
+    span.End()
+})
+```
+
+`MeasureTask` automatically:
+
+- Creates a `TraceContext` with `IsTask: true`
+- Creates an `Attributes` instance available via context
+- Measures execution duration
+- Records the task trace via `CaptureTask`
+- Recovers panics — captures the stack trace as an issue, then re-panics
+
+If the function panics, both the task trace and the exception are recorded before the panic propagates.

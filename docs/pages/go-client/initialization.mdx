@@ -1,0 +1,85 @@
+# Initialization
+
+## Connection String
+
+The SDK uses a connection string to configure the backend endpoint:
+
+```
+<project_token>@<api_url>
+```
+
+Examples:
+
+```
+550e8400-e29b-41d4-a716-446655440000@http://localhost:8082/api/report
+your-token@https://traceway.example.com/api/report
+```
+
+## Init
+
+Initialize the core client directly when not using middleware:
+
+```go
+import traceway "go.tracewayapp.com"
+
+func main() {
+    err := traceway.Init(
+        "your-token@http://localhost:8082/api/report",
+        traceway.WithVersion("1.0.0"),
+        traceway.WithDebug(true),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Your application code...
+}
+```
+
+`Init` can only be called once. A second call returns an error.
+
+When using middleware (`traceway_gin.New` or `traceway_http.New`), initialization is handled automatically — do not call `Init` separately.
+
+## Configuration Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `WithDebug(bool)` | Enable debug logging — prints captured telemetry to stdout | `false` |
+| `WithMaxCollectionFrames(int)` | Maximum frames to buffer in the ring buffer before forcing send | `12` |
+| `WithCollectionInterval(time.Duration)` | How often batched telemetry data is sent to the server | `5s` |
+| `WithUploadTimeout(time.Duration)` | HTTP timeout for uploading frames to the backend | `2s` |
+| `WithMetricsInterval(time.Duration)` | How often system metrics (CPU, memory, goroutines) are collected | `30s` |
+| `WithVersion(string)` | Application version shown in the dashboard | `""` |
+| `WithServerName(string)` | Server hostname identifier | Auto-detected from `os.Hostname()` |
+| `WithSampleRate(float64)` | Percentage of normal traces to record (0.0–1.0) | `1.0` |
+| `WithErrorSampleRate(float64)` | Percentage of error traces to record (0.0–1.0) | `1.0` |
+
+## Ring Buffer Batching
+
+The SDK uses a ring buffer system for efficient data collection:
+
+1. **Collection** — Traces, exceptions, and metrics are collected into the current "frame"
+2. **Rotation** — After the collection interval (default 5s), the frame is rotated into the send queue
+3. **Upload** — Frames in the send queue are compressed (gzip) and sent to the backend
+4. **Cleanup** — Successfully uploaded frames are removed from the buffer
+
+If the backend is temporarily unreachable, frames remain in the ring buffer. The buffer holds up to `maxCollectionFrames` (default 12) frames — at the default 5s interval, this means roughly 60 seconds of data is buffered before the oldest frames are dropped.
+
+## Sampling
+
+Sample rates control what percentage of traces are recorded:
+
+```go
+traceway.Init(
+    connectionString,
+    // Record 10% of normal traces
+    traceway.WithSampleRate(0.1),
+    // Record all error traces
+    traceway.WithErrorSampleRate(1.0),
+)
+```
+
+A trace is considered an error when:
+- A panic was recovered
+- The HTTP status code is >= 500
+- Gin context errors exist (Gin middleware only)

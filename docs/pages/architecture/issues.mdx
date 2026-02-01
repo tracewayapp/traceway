@@ -1,0 +1,60 @@
+# Issues
+
+Issues capture problems in your application — exceptions, panics, and explicitly sent messages.
+
+## What Creates an Issue
+
+An issue is created when:
+
+- A **panic** occurs during a traced request or task
+- An **error** is passed to `c.Error()` in Gin
+- Your code explicitly calls `CaptureException`, `CaptureMessage`, or related functions
+
+## Errors vs Messages
+
+Traceway captures two kinds of issues:
+
+- **Errors** — Runtime exceptions with stack traces (panics, captured errors)
+- **Messages** — Explicitly captured strings via `CaptureMessage("something happened")`
+
+Both appear in the Issues list with full context and attributes.
+
+## Connection to Traces
+
+Issues can be **linked to a trace** via context. When an exception occurs during an HTTP request or background task, the trace ID is automatically attached to the issue.
+
+This linkage means:
+
+- Viewing an issue shows which endpoint or task triggered it
+- Viewing a trace shows any issues that occurred during execution
+- Attributes from the trace context are included in the issue
+
+Issues captured outside of a trace context (no active request or task) are recorded as standalone issues without a trace link.
+
+## Automatic Grouping
+
+Traceway groups similar exceptions into a single issue by normalizing stack traces:
+
+- Variable values (user IDs, timestamps) are replaced with placeholders
+- Memory addresses and file paths are normalized
+- UUIDs, IP addresses, and numeric IDs are generalized
+- A hash is generated from the normalized trace
+
+This means the same bug produces one issue, not thousands of duplicates with different runtime data.
+
+## Issue Lifecycle
+
+1. **Active** — When an issue first occurs
+2. **Archived** — Marked as resolved by you (hidden from the default view)
+3. **Reopened** — An archived issue that occurred again (regression detected)
+
+## Attributes on Issues
+
+Issues carry their own attributes — the key-value metadata that was in scope when the exception occurred. If the issue is linked to a trace, it inherits the trace's attributes.
+
+When error recording flags are enabled in middleware, additional context is attached:
+
+- Request URL
+- Query parameters
+- Request body (JSON only, max 64KB)
+- Request headers

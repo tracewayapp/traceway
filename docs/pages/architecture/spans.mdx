@@ -1,0 +1,64 @@
+# Spans
+
+Spans are timed sub-operations within a trace. They show where time is spent during request processing or background task execution.
+
+## What Spans Capture
+
+Each span records:
+
+| Field | Description |
+|-------|-------------|
+| ID | Unique span identifier |
+| Name | Descriptive name you provide |
+| Start Time | When the span started |
+| Duration | Time elapsed (calculated on `End()`) |
+
+## Use Cases
+
+Spans are useful for timing:
+
+- Database queries
+- External API calls
+- Cache operations
+- File I/O
+- Business logic steps
+
+## Viewing Spans
+
+In the dashboard:
+
+1. Navigate to the **Endpoints** or **Tasks** page
+2. Click on an entry to see its details
+3. Individual traces show their spans as a timeline
+4. Each span displays its name and duration
+
+This helps identify bottlenecks — if a request takes 500ms and 450ms is in a database span, you know where to optimize.
+
+## Naming Conventions
+
+Use hierarchical, descriptive names for easy filtering:
+
+```
+db.users.find
+db.orders.insert
+api.stripe.charge
+api.sendgrid.send
+cache.redis.get
+logic.pricing.calculate
+```
+
+The pattern `category.resource.action` keeps span names consistent and searchable across your codebase.
+
+## Nesting
+
+Spans can be nested for hierarchical tracking. The parent span encompasses the child spans:
+
+```
+Total: 200ms
+├── process.checkout: 200ms
+│   ├── process.checkout.validate: 20ms
+│   ├── process.checkout.charge: 150ms
+│   └── process.checkout.fulfill: 30ms
+```
+
+Nesting is achieved by starting child spans before ending the parent span. All spans are attached to the same trace context.

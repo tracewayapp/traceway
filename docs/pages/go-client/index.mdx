@@ -1,0 +1,46 @@
+# Go Client SDK
+
+The `traceway` package is the core SDK for instrumenting Go applications. It captures traces, exceptions, messages, metrics, and spans.
+
+## Installation
+
+```bash
+go get go.tracewayapp.com
+```
+
+## Packages
+
+| Package | Import | Purpose |
+|---------|--------|---------|
+| Core | `go.tracewayapp.com` | All tracing, exception, message, metric, and span APIs |
+| Gin Middleware | `go.tracewayapp.com/traceway_gin` | Automatic instrumentation for Gin applications |
+| HTTP Middleware | `go.tracewayapp.com/traceway_http` | Automatic instrumentation for `net/http` servers |
+| DB Instrumentation | `go.tracewayapp.com/traceway_db` | Automatic span creation for `database/sql` operations |
+
+## When to Use Core vs Middleware
+
+**Use middleware** ([Gin](/gin-middleware) or [HTTP](/http-middleware)) when your application serves HTTP requests. The middleware handles initialization, trace creation, panic recovery, and data capture automatically.
+
+**Use the core package directly** when:
+
+- Running background tasks or workers (use `MeasureTask` or `StartTrace`)
+- Capturing exceptions outside of HTTP context (use `CaptureException`)
+- Sending messages (use `CaptureMessage`)
+- Adding spans to traced operations (use `StartSpan`)
+- Initializing Traceway without middleware (use `Init`)
+
+## Getting Your Project Token
+
+Before using the SDK, you need a project token from your Traceway instance:
+
+1. Register an account on your Traceway dashboard
+2. Create an organization
+3. Create a project — select your framework (e.g., "Go - Gin")
+4. Copy the generated project token (UUID format)
+
+## Next Steps
+
+- [Initialization](/go-client/initialization) — Connection string format and all configuration options
+- [Traces](/go-client/traces) — Recording HTTP requests and background tasks
+- [Exceptions](/go-client/exceptions) — Capturing errors and panics
+- [Spans](/go-client/spans) — Timing sub-operations

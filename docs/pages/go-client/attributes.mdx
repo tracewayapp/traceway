@@ -1,103 +1,116 @@
 # Attributes
 
-Attributes attach contextual tags to exceptions and transactions, making it easier to debug and filter issues in the dashboard.
+Attributes attach key-value metadata to traces and issues. The `Attributes` type is thread-safe and available through both global configuration and per-request context.
 
-## Request Attributes
+## Attributes API
 
-Add contextual information specific to a single request:
+### SetTag
+
+Set a string attribute:
 
 ```go
-import tracewaygin "github.com/tracewayapp/go-client/traceway_gin"
-
-func handler(c *gin.Context) {
-    attributes := tracewaygin.GetAttributesFromGin(c)
-
-    // Add tags that will be attached to any exceptions in this request
-    attributes.SetTag("user_id", c.Param("id"))
-    attributes.SetTag("tenant", "acme-corp")
-    attributes.SetTag("feature_flag", "new_checkout")
-
-    // ... rest of handler
-}
+attributes.SetTag("user_id", "12345")
+attributes.SetTag("tenant", "acme-corp")
 ```
 
-Request attribute tags are automatically included when:
+### SetTagJson
 
-- Exceptions are captured during the request
-- The transaction is recorded
-- Segments are tracked
-
-## Attributes Methods
-
-| Method                              | Description                                    |
-| ----------------------------------- | ---------------------------------------------- |
-| `SetTag(key, value string)`         | Set a string tag                               |
-| `SetTagJson(key string, value any)` | Set a JSON-serialized tag (for complex values) |
-| `GetTag(key string)`                | Retrieve a tag value                           |
-| `GetTags()`                         | Get a copy of all tags                         |
-
-### Examples
+Set an attribute with a JSON-serialized value. The value is marshaled to JSON and stored as a string. In the dashboard, JSON values are displayed with formatting.
 
 ```go
-// String tags
-attributes.SetTag("user_id", "12345")
-attributes.SetTag("organization", "acme-corp")
-
-// JSON tags for complex values
 attributes.SetTagJson("cart_items", []string{"item1", "item2", "item3"})
 attributes.SetTagJson("user_prefs", map[string]bool{"notifications": true})
-
-// Reading tags
-userID := attributes.GetTag("user_id")
-allTags := attributes.GetTags()
 ```
 
-## Attributes in Middleware
+Returns an error if JSON marshaling fails.
 
-Add tags for all requests in a middleware function:
+### GetTag
+
+Retrieve a single attribute value:
 
 ```go
-func authMiddleware() gin.HandlerFunc {
-    return func(c *gin.Context) {
-        user := authenticate(c)
-
-        // Add user info to attributes for all downstream handlers
-        attributes := tracewaygin.GetAttributesFromGin(c)
-        attributes.SetTag("user_id", user.ID)
-        attributes.SetTag("user_email", user.Email)
-        attributes.SetTag("organization", user.OrgID)
-        attributes.SetTag("role", user.Role)
-
-        c.Next()
-    }
+value, ok := attributes.GetTag("user_id")
+if ok {
+    fmt.Println("User:", value)
 }
+```
+
+### GetTags
+
+Get a copy of all attributes as a `map[string]string`:
+
+```go
+allTags := attributes.GetTags()
+for k, v := range allTags {
+    fmt.Printf("%s = %s\n", k, v)
+}
+```
+
+Returns a copy — modifying the returned map does not affect the original attributes.
+
+### Clone
+
+Create an independent copy of the attributes:
+
+```go
+copy := attributes.Clone()
+copy.SetTag("extra", "value") // Does not affect original
+```
+
+### Clear
+
+Remove all attributes:
+
+```go
+attributes.Clear()
 ```
 
 ## Global Attributes
 
-Global attribute tags apply to all telemetry data. Configure them once at application startup:
+### ConfigureAttributes
+
+Set attributes that apply to all traces and issues. Call once at application startup:
 
 ```go
-import "github.com/tracewayapp/go-client/traceway"
-
-func main() {
-    // Configure global attributes (runs once at startup)
-    traceway.ConfigureAttributes(func(s *traceway.Attributes) {
-        s.SetTag("environment", "production")
-        s.SetTag("region", "us-east-1")
-        s.SetTag("service", "user-api")
-        s.SetTag("version", os.Getenv("APP_VERSION"))
-    })
-
-    // ... rest of your application
-}
+traceway.ConfigureAttributes(func(s *traceway.Attributes) {
+    s.SetTag("environment", "production")
+    s.SetTag("region", "us-east-1")
+    s.SetTag("service", "user-api")
+    s.SetTag("version", os.Getenv("APP_VERSION"))
+})
 ```
 
-Global tags are inherited by every request's attributes and background task.
+Global attributes are inherited by every request's attribute set.
 
-## Tag Inheritance
+## Context-Based Attributes
 
-Tags flow from global to request attributes:
+### WithAttributes
+
+Create a new context with a cloned and modified attribute set:
+
+```go
+ctx = traceway.WithAttributes(ctx, func(a *traceway.Attributes) {
+    a.SetTag("operation", "checkout")
+    a.SetTag("step", "payment")
+})
+```
+
+This clones the attributes from the current context, applies the modifications, and stores the new set in the returned context. The original context's attributes are unchanged.
+
+### GetAttributesFromContext
+
+Retrieve attributes from a Go context:
+
+```go
+attributes := traceway.GetAttributesFromContext(ctx)
+attributes.SetTag("user_id", userID)
+```
+
+If the context has no attributes, returns a clone of the global attributes. If the context is `nil`, also returns a clone of the global attributes.
+
+## Attribute Inheritance
+
+Per-request attributes start as a clone of the global attributes. Request-level values override global values for the same key:
 
 ```
 Global Attributes          Request Attributes         Final Tags
@@ -109,66 +122,30 @@ service: user-api                                     service: user-api
                                                       tenant: acme
 ```
 
-Request-level tags override global tags if they have the same key.
+## Usage in Middleware
 
-## Best Practices
-
-### 1. Set Global Context at Startup
-
-```go
-traceway.ConfigureAttributes(func(s *traceway.Attributes) {
-    s.SetTag("environment", os.Getenv("ENV"))
-    s.SetTag("version", version)
-    s.SetTag("region", os.Getenv("AWS_REGION"))
-    s.SetTag("service", serviceName)
-})
-```
-
-### 2. Add User Context in Auth Middleware
+Add attributes for all requests in a Gin middleware:
 
 ```go
 func authMiddleware() gin.HandlerFunc {
     return func(c *gin.Context) {
-        if user := getCurrentUser(c); user != nil {
-            attributes := tracewaygin.GetAttributesFromGin(c)
-            attributes.SetTag("user_id", user.ID)
-            attributes.SetTag("organization", user.OrgID)
-        }
+        user := authenticate(c)
+        attributes := traceway.GetAttributesFromContext(c.Request.Context())
+        attributes.SetTag("user_id", user.ID)
+        attributes.SetTag("organization", user.OrgID)
         c.Next()
     }
 }
 ```
 
-### 3. Add Request-Specific Context in Handlers
+## Usage in Handlers
+
+Add request-specific attributes:
 
 ```go
 func createOrderHandler(c *gin.Context) {
-    attributes := tracewaygin.GetAttributesFromGin(c)
+    attributes := traceway.GetAttributesFromContext(c.Request.Context())
     attributes.SetTag("action", "create_order")
     attributes.SetTag("item_count", fmt.Sprintf("%d", len(items)))
-    // ... rest of handler
 }
 ```
-
-### 4. Use Meaningful Tag Names
-
-```go
-// Good - descriptive and searchable
-attributes.SetTag("user_id", userID)
-attributes.SetTag("order_id", orderID)
-attributes.SetTag("payment_method", "stripe")
-
-// Avoid - too generic
-attributes.SetTag("id", someID)
-attributes.SetTag("type", "thing")
-```
-
-## Viewing Tags in Dashboard
-
-Tags appear in the detail view for:
-
-1. **Exceptions** and **Messages**
-2. **Endpoints**
-3. **Tasks**
-
-Use tags to debug issues with full context

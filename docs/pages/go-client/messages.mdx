@@ -1,0 +1,60 @@
+# Messages
+
+Messages are explicitly captured strings that appear as issues in the dashboard. Unlike exceptions, messages don't carry automatic stack traces — they record whatever string you provide.
+
+## CaptureMessage
+
+Capture a standalone message:
+
+```go
+traceway.CaptureMessage("User exceeded rate limit")
+```
+
+This creates an issue with no trace link and no attributes beyond the message itself.
+
+## CaptureMessageWithContext
+
+Capture a message with trace linkage and attributes from the Go context:
+
+```go
+func handler(c *gin.Context) {
+    ctx := c.Request.Context()
+
+    if user.RequestCount > rateLimit {
+        traceway.CaptureMessageWithContext(ctx, "Rate limit exceeded for user")
+    }
+}
+```
+
+This links the message to the current trace and includes all in-scope attributes (user ID, tenant, etc.).
+
+## CaptureMessageAttributes
+
+Capture a message with explicit attributes:
+
+```go
+traceway.CaptureMessageAttributes(
+    "Payment processing delayed",
+    map[string]string{
+        "payment_id": paymentID,
+        "delay_ms":   fmt.Sprintf("%d", delayMs),
+        "provider":   "stripe",
+    },
+)
+```
+
+This creates a standalone message (no trace link) with the provided attributes.
+
+## When to Use Messages vs Exceptions
+
+Use **exceptions** (`CaptureException`) for actual errors — things that shouldn't happen and need stack traces for debugging.
+
+Use **messages** (`CaptureMessage`) for notable events that aren't errors:
+
+- Rate limit hits
+- Feature flag activations
+- Degraded service notifications
+- Business rule violations
+- Audit events
+
+Both appear in the Issues list, but messages are marked distinctly from errors.

@@ -1,0 +1,141 @@
+# Exceptions
+
+The SDK provides multiple ways to capture exceptions, from simple error capture to context-aware variants that link exceptions to traces.
+
+## CaptureException
+
+Capture an error with an automatically generated stack trace:
+
+```go
+if err := doSomething(); err != nil {
+    traceway.CaptureException(err)
+}
+```
+
+This creates a standalone issue — not linked to any trace.
+
+## CaptureExceptionWithAttributes
+
+Capture an error with custom attributes and an optional trace ID link:
+
+```go
+traceway.CaptureExceptionWithAttributes(
+    err,
+    map[string]string{"user_id": "123", "action": "checkout"},
+    &traceId, // or nil for standalone
+)
+```
+
+## CaptureExceptionWithContext
+
+Capture an error using the Go context to automatically extract the trace ID, task flag, and attributes:
+
+```go
+func handler(c *gin.Context) {
+    ctx := c.Request.Context()
+
+    if err := doSomething(); err != nil {
+        traceway.CaptureExceptionWithContext(ctx, err)
+        c.AbortWithStatus(500)
+        return
+    }
+}
+```
+
+This is the recommended way to capture exceptions within traced requests or tasks — it links the exception to the current trace and includes all in-scope attributes.
+
+## CaptureTraceException
+
+Link an exception to a specific trace by ID:
+
+```go
+traceway.CaptureTraceException(traceId, stackTraceString)
+```
+
+## CaptureTraceExceptionWithAttributes
+
+Same as above with attributes:
+
+```go
+traceway.CaptureTraceExceptionWithAttributes(
+    traceId,
+    stackTraceString,
+    map[string]string{"endpoint": "GET /api/users"},
+)
+```
+
+## CaptureTaskException
+
+Link an exception to a task trace:
+
+```go
+traceway.CaptureTaskException(traceId, stackTraceString)
+```
+
+The difference from `CaptureTraceException` is that the issue is marked as belonging to a task rather than an endpoint.
+
+## CaptureTaskExceptionWithAttributes
+
+```go
+traceway.CaptureTaskExceptionWithAttributes(
+    traceId,
+    stackTraceString,
+    map[string]string{"task": "report.monthly"},
+)
+```
+
+## Recover
+
+Recover from panics in goroutines and capture them as issues:
+
+```go
+func worker() {
+    defer traceway.Recover()
+
+    // If this panics, the stack trace is captured
+    riskyOperation()
+}
+```
+
+`Recover` captures the panic value and stack trace, then swallows the panic (the goroutine exits cleanly).
+
+## RecoverWithContext
+
+Same as `Recover` but includes attributes from the context:
+
+```go
+func worker(ctx context.Context) {
+    defer traceway.RecoverWithContext(ctx)
+
+    riskyOperation()
+}
+```
+
+Attributes in the context are attached to the captured issue.
+
+## PanicError
+
+`PanicError` is the error type used when `MeasureTask` re-panics after capturing an exception:
+
+```go
+type PanicError struct {
+    Value interface{}  // The original panic value
+    Stack string       // Formatted stack trace
+}
+```
+
+You can check for it when recovering panics from `MeasureTask`:
+
+```go
+defer func() {
+    if r := recover(); r != nil {
+        if pe, ok := r.(*traceway.PanicError); ok {
+            log.Printf("Task panicked: %v", pe.Value)
+        }
+    }
+}()
+
+traceway.MeasureTask("risky.task", func(ctx context.Context) {
+    panic("something broke")
+})
+```

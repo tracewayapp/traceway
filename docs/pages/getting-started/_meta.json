@@ -1,6 +1,4 @@
 {
   "local-setup": "Local Setup",
-  "docker": "Docker Deployment",
-  "main-concepts": "Main Concepts",
-  "go-client": "Go Client"
+  "docker": "Docker Deployment"
 }

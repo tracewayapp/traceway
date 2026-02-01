@@ -1,0 +1,96 @@
+# Gin Middleware
+
+The `traceway_gin` package provides middleware for the [Gin](https://gin-gonic.com/) web framework. It automatically creates a trace for each request, captures panics, and detects errors from Gin's error chain.
+
+## Installation
+
+```bash
+go get go.tracewayapp.com
+```
+
+## Basic Setup
+
+```go
+package main
+
+import (
+    "github.com/gin-gonic/gin"
+    tracewaygin "go.tracewayapp.com/traceway_gin"
+)
+
+func main() {
+    router := gin.Default()
+
+    // Add Traceway middleware (must be before routes)
+    router.Use(tracewaygin.New(
+        "your-token@http://localhost:8082/api/report",
+    ))
+
+    router.GET("/api/users", getUsers)
+    router.POST("/api/users", createUser)
+
+    router.Run(":8080")
+}
+```
+
+`New` returns a `gin.HandlerFunc` and calls `traceway.Init` internally — do not call `Init` separately.
+
+## What Gets Captured
+
+The middleware automatically captures for every request:
+
+| Data | Description |
+|------|-------------|
+| **Endpoint** | HTTP method + route template (e.g., `GET /api/users/:id`) |
+| **Duration** | Request processing time |
+| **Status Code** | HTTP response status |
+| **Body Size** | Response body size in bytes |
+| **Client IP** | From Gin's `ClientIP()` |
+| **Panics** | Recovered and captured with full stack trace |
+| **Gin Errors** | Errors added via `c.Error()` |
+
+## Error Detection
+
+A request is considered an error when any of these are true:
+
+- A **panic** occurred during handler execution
+- **Gin context errors** exist (`c.Errors` is non-empty)
+- The response **status code is >= 500**
+
+Error traces use the error sample rate for sampling decisions.
+
+## Panic Recovery
+
+When a panic occurs, the middleware:
+
+1. Recovers the panic
+2. Captures the full stack trace as an issue
+3. Either re-panics (default, `WithRepanic(true)`) or calls `c.AbortWithStatus(500)`
+
+```go
+func riskyHandler(c *gin.Context) {
+    panic("something went wrong")
+    // Stack trace is captured, linked to this request's trace
+}
+```
+
+## Gin Error Chain
+
+Errors added via `c.Error()` are captured as separate issues:
+
+```go
+func handler(c *gin.Context) {
+    if err := doSomething(); err != nil {
+        c.Error(err) // Captured as an issue
+        c.AbortWithStatus(500)
+        return
+    }
+}
+```
+
+If the error wraps a `StackTraceError` (from `traceway.NewStackTraceErrorf`), the embedded stack frames are used. Otherwise, the error type and message are recorded.
+
+## Next Steps
+
+- [Configuration](/gin-middleware/configuration) — All options including route filtering and passthrough settings
+- [Error Recording](/gin-middleware/error-recording) — Control what request data is captured on errors

@@ -1,5 +1,8 @@
 {
   "index": "Introduction",
   "getting-started": "Getting Started",
-  "go-client": "Go Client SDK"
+  "architecture": "Architecture",
+  "go-client": "Go Client SDK",
+  "gin-middleware": "Gin Middleware",
+  "http-middleware": "HTTP Middleware"
 }

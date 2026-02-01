@@ -1,0 +1,83 @@
+# Gin Error Recording
+
+When an exception occurs during a request (panic, Gin error, or status >= 500), you can control what additional request data is captured alongside the stack trace.
+
+## Recording Flags
+
+Configure error recording with `WithOnErrorRecording`:
+
+```go
+tracewaygin.New(
+    connectionString,
+    tracewaygin.WithOnErrorRecording(
+        tracewaygin.RecordingUrl | tracewaygin.RecordingQuery,
+    ),
+)
+```
+
+### Available Flags
+
+| Flag | Description | Privacy Impact |
+|------|-------------|----------------|
+| `RecordingUrl` | Request URL path | Low |
+| `RecordingQuery` | Query parameters as JSON | Medium |
+| `RecordingBody` | Request body (JSON content-type only, max 64KB) | High |
+| `RecordingHeader` | Request headers as JSON | High |
+
+### Combining Flags
+
+Flags are combined with the `|` operator:
+
+```go
+// Record URL and query parameters
+tracewaygin.RecordingUrl | tracewaygin.RecordingQuery
+
+// Record everything
+tracewaygin.RecordingUrl | tracewaygin.RecordingQuery | tracewaygin.RecordingBody | tracewaygin.RecordingHeader
+```
+
+## Body Capture Details
+
+Body recording has two constraints:
+
+- **Content-Type must be `application/json`** — non-JSON bodies are not captured
+- **Maximum size is 64KB** — bodies larger than 64KB are truncated
+
+After reading the body for capture, it is restored so downstream handlers can still read it.
+
+## Privacy Considerations
+
+Body and header recording may capture sensitive data:
+
+- Authentication tokens in headers
+- Personal information in request bodies
+- API keys in query parameters
+
+Use minimal recording flags in production:
+
+```go
+// Production — limited data
+tracewaygin.WithOnErrorRecording(
+    tracewaygin.RecordingUrl | tracewaygin.RecordingQuery,
+)
+
+// Development — full request data
+tracewaygin.WithOnErrorRecording(
+    tracewaygin.RecordingUrl |
+    tracewaygin.RecordingQuery |
+    tracewaygin.RecordingBody |
+    tracewaygin.RecordingHeader,
+)
+```
+
+## Captured Data Format
+
+Recorded data is attached as attributes on the issue:
+
+| Attribute Key | Value |
+|---------------|-------|
+| `url` | URL path string |
+| `query` | JSON-encoded query parameters |
+| `body` | Raw request body string |
+| `headers` | JSON-encoded request headers |
+| `user agent` | User-Agent header value (always captured on error) |

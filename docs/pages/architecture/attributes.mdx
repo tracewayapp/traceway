@@ -1,0 +1,62 @@
+# Attributes
+
+Attributes are key-value metadata attached to traces and issues. They provide the context you need to debug problems — who was affected, what they were doing, and in what environment.
+
+## Values
+
+Attribute values are always strings. If the string contains valid JSON, the Traceway dashboard will display it with proper formatting (syntax highlighting, collapsible sections).
+
+```go
+// Simple string value
+attributes.SetTag("user_id", "12345")
+
+// JSON value — displayed formatted in the dashboard
+attributes.SetTagJson("cart_items", []string{"item1", "item2", "item3"})
+```
+
+## Scope Levels
+
+### Global Attributes
+
+Set once at application startup. Applied to every trace and issue.
+
+```go
+traceway.ConfigureAttributes(func(s *traceway.Attributes) {
+    s.SetTag("environment", "production")
+    s.SetTag("region", "us-east-1")
+    s.SetTag("service", "user-api")
+})
+```
+
+### Per-Request Attributes
+
+Set during request handling via middleware context. Applied to the current trace and any issues captured during that request.
+
+```go
+func handler(c *gin.Context) {
+    attributes := traceway.GetAttributesFromContext(c.Request.Context())
+    attributes.SetTag("user_id", c.Param("id"))
+    attributes.SetTag("tenant", "acme-corp")
+}
+```
+
+## Inheritance
+
+Per-request attributes start as a clone of the global attributes. Request-level tags override global tags if they share the same key.
+
+```
+Global Attributes          Request Attributes         Final Tags
+─────────────────          ──────────────────         ──────────
+environment: prod     +    user_id: 123         =    environment: prod
+region: us-east-1          tenant: acme               region: us-east-1
+service: user-api                                     service: user-api
+                                                      user_id: 123
+                                                      tenant: acme
+```
+
+## What Carries Attributes
+
+- **Traces** (endpoints and tasks) — attributes are recorded with the trace
+- **Issues** (exceptions and messages) — attributes in scope at capture time are attached to the issue
+
+In the dashboard, attributes appear in the detail view for endpoints, tasks, and issues.

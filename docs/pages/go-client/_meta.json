@@ -1,5 +1,11 @@
 {
-  "gin": "Gin Framework",
+  "index": "Overview",
+  "initialization": "Initialization",
+  "traces": "Traces",
+  "spans": "Spans",
+  "exceptions": "Exceptions",
+  "messages": "Messages",
+  "metrics": "Metrics",
   "attributes": "Attributes",
-  "segments": "Segments"
+  "stack-traces": "Stack Traces"
 }

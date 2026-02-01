@@ -1,0 +1,99 @@
+# Stack Traces
+
+The SDK provides utilities for creating errors with embedded stack traces and formatting stack trace output.
+
+## NewStackTraceErrorf
+
+Create an error with an embedded stack trace, using `fmt.Errorf`-style formatting:
+
+```go
+err := traceway.NewStackTraceErrorf("failed to process order %s: %w", orderID, originalErr)
+```
+
+Returns a `*StackTraceError` that implements the `error` interface. The stack trace is captured at the call site.
+
+If the wrapped error (`%w`) already contains a `StackTraceError`, the existing stack frames are preserved instead of capturing new ones. This prevents duplicate stack traces when wrapping errors up the call chain.
+
+## WrapWithStackTrace
+
+Wrap an existing error with a stack trace:
+
+```go
+result, err := db.Query(query)
+if err != nil {
+    return traceway.WrapWithStackTrace(err, 0)
+}
+```
+
+The `skip` parameter controls how many stack frames to skip (0 captures from the call site).
+
+## StackTraceError Type
+
+Both `NewStackTraceErrorf` and `WrapWithStackTrace` return `*StackTraceError`:
+
+```go
+type StackTraceError struct {
+    Err    error
+    Frames []runtime.Frame
+}
+```
+
+Methods:
+
+| Method | Description |
+|--------|-------------|
+| `Error() string` | Returns the underlying error's message |
+| `Unwrap() error` | Returns the wrapped error (for `errors.Is`/`errors.As`) |
+| `GetStackFrames() []runtime.Frame` | Returns the captured stack frames |
+
+`StackTraceError` integrates with Go's error wrapping — `errors.Is` and `errors.As` work through it.
+
+## Why Use StackTraceError
+
+When you pass errors to Gin's `c.Error(err)`, the Gin middleware checks if the error contains a `StackTraceError`. If it does, the embedded stack frames are used for the issue's stack trace instead of capturing at the middleware level.
+
+This gives you accurate stack traces that point to where the error actually originated:
+
+```go
+func handler(c *gin.Context) {
+    user, err := findUser(c.Param("id"))
+    if err != nil {
+        // The stack trace will point to findUser, not this handler
+        c.Error(traceway.NewStackTraceErrorf("user lookup failed: %w", err))
+        c.AbortWithStatus(500)
+        return
+    }
+    c.JSON(200, user)
+}
+```
+
+## CaptureStack
+
+Capture the current call stack as `[]runtime.Frame`:
+
+```go
+frames := traceway.CaptureStack(0) // 0 = capture from call site
+```
+
+The `skip` parameter controls how many frames to skip from the top.
+
+## FormatErrorWithStack
+
+Format an error and stack frames into a human-readable string:
+
+```go
+frames := traceway.CaptureStack(0)
+formatted := traceway.FormatErrorWithStack(err, frames)
+```
+
+Output format:
+
+```
+*errors.errorString: connection refused
+Dial()
+    /app/net/dial.go:42
+Connect()
+    /app/db/connect.go:15
+handler()
+    /app/api/handler.go:28
+```

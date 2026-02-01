@@ -1,0 +1,66 @@
+# Traces
+
+A **Trace** is a timed unit of work in your application. Every HTTP request and background job that Traceway records is a trace.
+
+## Trace Types
+
+### Endpoints
+
+Endpoints are traces created automatically by middleware for HTTP requests. Each endpoint is identified by its HTTP method and route pattern:
+
+```
+GET /api/users/:id
+POST /api/orders
+DELETE /api/sessions/:token
+```
+
+Endpoints are ordered in the dashboard by **Impact**, which factors in both performance and error frequency.
+
+The middleware captures:
+
+| Field | Description |
+|-------|-------------|
+| Endpoint | HTTP method + route template |
+| Duration | Request processing time |
+| Status Code | HTTP response status |
+| Body Size | Response body size in bytes |
+| Client IP | Request origin IP address |
+| Attributes | Key-value metadata |
+| Spans | Timed sub-operations |
+
+### Tasks
+
+Tasks are traces created manually for background operations that run outside HTTP requests:
+
+- Cron jobs
+- Queue workers
+- Data migrations
+- Scheduled reports
+
+Tasks carry the same data as endpoints (duration, attributes, spans) but without HTTP-specific fields like status code or client IP.
+
+## Trace Lifecycle
+
+1. A trace is created — either automatically by middleware (endpoint) or manually via `StartTrace` / `MeasureTask` (task)
+2. During execution, spans and attributes are added to the trace via context
+3. If an error occurs, an issue is captured and linked to the trace via its ID
+4. When the work completes, the trace is recorded with its final duration and all collected data
+
+## Trace Identity
+
+Each trace gets a unique UUID. This ID links:
+
+- The trace record itself (endpoint name, duration, status)
+- Any spans created during execution
+- Any issues (exceptions/messages) captured during the trace
+
+When you view an issue in the dashboard, you can navigate to the trace that caused it, and vice versa.
+
+## Sampling
+
+Not every trace needs to be recorded. Traceway supports two sample rates:
+
+- **Sample rate** — Controls what percentage of normal traces are recorded (default: 100%)
+- **Error sample rate** — Controls what percentage of error traces are recorded (default: 100%)
+
+Error traces (panics, status >= 500, Gin errors) use the error sample rate, which you typically keep at 100% to capture all problems.

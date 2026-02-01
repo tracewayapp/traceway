@@ -39,7 +39,7 @@ Traceway consists of three main components:
 
 - **Automatic Error Capture**: Panics and errors are automatically captured with full context
 - **Request Scoping**: Add custom tags (user ID, tenant, etc.) to correlate errors
-- **Segment Tracking**: Measure sub-operations within requests (database queries, API calls)
+- **Span Tracking**: Measure sub-operations within requests (database queries, API calls)
 - **Background Task Support**: Track non-HTTP operations with the same tooling
 
 ### For Operations
@@ -55,12 +55,12 @@ Currently, Traceway provides official SDK support for:
 
 | Framework | Status | Documentation                     |
 | --------- | ------ | --------------------------------- |
-| Gin (Go)  | Stable | [Go Client - Gin](/go-client/gin) |
-
-More framework support is planned for future releases.
+| Gin (Go)  | Stable | [Gin Middleware](/gin-middleware)  |
+| net/http   | Stable | [HTTP Middleware](/http-middleware) |
 
 ## Next Steps
 
 - [Local Setup](/getting-started/local-setup) - Run Traceway on your machine
 - [Docker Deployment](/getting-started/docker) - Deploy with Docker
-- [Go Client Overview](/go-client/overview) - Learn about the SDK
+- [Architecture](/architecture) - Understand traces, issues, spans, and attributes
+- [Go Client SDK](/go-client) - Learn about the core SDK

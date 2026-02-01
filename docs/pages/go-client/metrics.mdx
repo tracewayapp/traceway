@@ -1,0 +1,76 @@
+# Metrics
+
+Metrics are time-series measurements of your application's health. System metrics are collected automatically; you can also capture custom metrics.
+
+## CaptureMetric
+
+Record a metric value:
+
+```go
+traceway.CaptureMetric("queue.depth", float64(len(queue)))
+traceway.CaptureMetric("cache.hit_rate", hitRate)
+traceway.CaptureMetric("active.users", float64(activeUsers))
+```
+
+Each call records the metric name, value, and current timestamp.
+
+## Automatic System Metrics
+
+The SDK automatically collects system metrics at the configured interval (default: 30 seconds):
+
+| Metric Constant | Name | Description |
+|-----------------|------|-------------|
+| `MetricNameCpuUsage` | `cpu.used_pcnt` | CPU usage percentage |
+| `MetricNameMemoryUsage` | `mem.used` | Memory usage in MB |
+| `MetricNameMemoryTotal` | `mem.total` | Total system memory in MB |
+| `MetricNameGoRoutines` | `go.go_routines` | Active goroutine count |
+| `MetricNameHeapObjects` | `go.heap_objects` | Objects on the heap |
+| `MetricNameNumGC` | `go.num_gc` | Total GC cycles |
+| `MetricNameGCPauseTotal` | `go.gc_pause` | Total GC pause time in nanoseconds |
+
+## Custom Metrics
+
+Capture application-specific measurements anywhere in your code:
+
+```go
+// Queue monitoring
+traceway.CaptureMetric("queue.depth", float64(len(queue)))
+traceway.CaptureMetric("queue.processing_rate", itemsPerSecond)
+
+// Cache performance
+traceway.CaptureMetric("cache.hit_rate", hits / total)
+traceway.CaptureMetric("cache.size", float64(cache.Len()))
+
+// Business metrics
+traceway.CaptureMetric("active.users", float64(activeUsers))
+traceway.CaptureMetric("orders.per_minute", orderRate)
+```
+
+Custom metrics are not currently displayed on the dashboard.
+
+## What to Look For
+
+- **Memory growth** — Continuous increase suggests a memory leak
+- **Goroutine growth** — Unbounded increase indicates goroutine leak
+- **GC frequency** — High `num_gc` growth means allocation pressure
+- **CPU spikes** — Correlate with specific endpoints or tasks
+
+## Metrics Interval
+
+Control how often system metrics are collected:
+
+```go
+traceway.Init(
+    connectionString,
+    traceway.WithMetricsInterval(60 * time.Second), // Collect every 60s instead of 30s
+)
+```
+
+Or via middleware:
+
+```go
+tracewaygin.New(
+    connectionString,
+    tracewaygin.WithMetricsInterval(60 * time.Second),
+)
+```

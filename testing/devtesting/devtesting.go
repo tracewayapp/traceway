@@ -12,8 +12,8 @@ import (
 	"time"
 
 	traceway "go.tracewayapp.com"
-	tracewaydb "go.tracewayapp.com/traceway_db"
-	tracewaygin "go.tracewayapp.com/traceway_gin"
+	tracewaydb "go.tracewayapp.com/tracewaydb"
+	tracewaygin "go.tracewayapp.com/tracewaygin"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"

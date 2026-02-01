@@ -1,1 +1,1 @@
-ALTER TABLE transactions RENAME COLUMN scope TO attributes
+ALTER TABLE traces RENAME COLUMN scope TO attributes

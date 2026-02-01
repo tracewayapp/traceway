@@ -4,5 +4,6 @@
   "architecture": "Architecture",
   "go-client": "Go Client SDK",
   "gin-middleware": "Gin Middleware",
-  "http-middleware": "HTTP Middleware"
+  "http-middleware": "HTTP Middleware",
+  "traceway-protocol": "Traceway Protocol"
 }

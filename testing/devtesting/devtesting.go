@@ -106,9 +106,9 @@ func testGin() {
 	router.GET("/test-task", func(ctx *gin.Context) {
 		go func() {
 			traceway.MeasureTask("traceway data processor", func(twctx context.Context) {
-				seg := traceway.StartSegment(twctx, "loading data")
+				span := traceway.StartSpan(twctx, "loading data")
 				time.Sleep(time.Second * time.Duration(rand.Float64()*2))
-				seg.End()
+				span.End()
 
 				for i := range 10 {
 					traceway.CaptureMessageWithContext(twctx, "data loaded successfully "+strconv.Itoa(i))
@@ -119,8 +119,8 @@ func testGin() {
 		}()
 	})
 	router.GET("/test-json", func(ctx *gin.Context) {
-		scope := traceway.GetScopeFromContext(ctx)
-		scope.SetTag("json tag", veryLongJsonForTestin)
+		attrs := traceway.GetAttributesFromContext(ctx)
+		attrs.SetTag("json tag", veryLongJsonForTestin)
 		traceway.CaptureMessageWithContext(ctx, "test json")
 	})
 
@@ -143,13 +143,13 @@ func testGin() {
 		panic("Cool")
 	})
 
-	router.GET("/test-self-report-scope", func(ctx *gin.Context) {
-		traceway.CaptureExceptionWithScope(errors.New("Test"), map[string]string{"Cool": "Pretty cool"}, nil)
+	router.GET("/test-self-report-attributes", func(ctx *gin.Context) {
+		traceway.CaptureExceptionWithAttributes(errors.New("Test"), map[string]string{"Cool": "Pretty cool"}, nil)
 	})
 
 	router.GET("/test-self-report-context", func(ctx *gin.Context) {
-		scope := traceway.GetScopeFromContext(ctx)
-		scope.SetTag("Interesting", "Pretty Cool")
+		attrs := traceway.GetAttributesFromContext(ctx)
+		attrs.SetTag("Interesting", "Pretty Cool")
 
 		traceway.CaptureExceptionWithContext(ctx, errors.New("Test2"))
 	})
@@ -171,30 +171,26 @@ func testGin() {
 		})
 	})
 
-	// Example: Capturing segments within a transaction
-	router.GET("/test-segments", func(ctx *gin.Context) {
-		dbAndCacheSeg := traceway.StartSegment(ctx, "db.and.cache")
+	router.GET("/test-spans", func(ctx *gin.Context) {
+		dbAndCacheSpan := traceway.StartSpan(ctx, "db.and.cache")
 
-		// Start a segment for database operation
-		seg := traceway.StartSegment(ctx, "db.query")
+		span := traceway.StartSpan(ctx, "db.query")
 		time.Sleep(time.Duration(50+rand.IntN(100)) * time.Millisecond)
-		seg.End()
+		span.End()
 
-		// Start a segment for cache operation
-		seg = traceway.StartSegment(ctx, "cache.set")
+		span = traceway.StartSpan(ctx, "cache.set")
 		time.Sleep(time.Duration(10+rand.IntN(30)) * time.Millisecond)
-		seg.End()
+		span.End()
 
-		// Start a segment for an HTTP call
-		seg = traceway.StartSegment(ctx, "http.external_api")
+		span = traceway.StartSpan(ctx, "http.external_api")
 		time.Sleep(time.Duration(100+rand.IntN(200)) * time.Millisecond)
-		seg.End()
+		span.End()
 
-		dbAndCacheSeg.End()
+		dbAndCacheSpan.End()
 
 		ctx.JSON(200, gin.H{
 			"status":  "ok",
-			"message": "Segments captured",
+			"message": "Spans captured",
 		})
 	})
 
@@ -247,7 +243,7 @@ func testGin() {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "custom error"})
 	})
 
-	// CRUD endpoints for testing TwDB segments
+	// CRUD endpoints for testing TwDB spans
 	router.GET("/users", listUsers)
 	router.GET("/users/:id", getUser)
 	router.POST("/users", createUser)

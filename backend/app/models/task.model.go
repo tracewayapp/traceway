@@ -13,7 +13,7 @@ type Task struct {
 	Duration   time.Duration     `json:"duration" ch:"duration"`
 	RecordedAt time.Time         `json:"recordedAt" ch:"recorded_at"`
 	ClientIP   string            `json:"clientIP" ch:"client_ip"`
-	Scope      map[string]string `json:"scope" ch:"scope"`
+	Attributes map[string]string `json:"attributes" ch:"attributes"`
 	AppVersion string            `json:"appVersion" ch:"app_version"`
 	ServerName string            `json:"serverName" ch:"server_name"`
 }

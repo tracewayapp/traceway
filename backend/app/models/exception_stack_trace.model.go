@@ -14,7 +14,7 @@ type ExceptionStackTrace struct {
 	ExceptionHash   string            `json:"exceptionHash" ch:"exception_hash"`
 	StackTrace      string            `json:"stackTrace" ch:"stack_trace"`
 	RecordedAt      time.Time         `json:"recordedAt" ch:"recorded_at"`
-	Scope           map[string]string `json:"scope" ch:"scope"`
+	Attributes      map[string]string `json:"attributes" ch:"attributes"`
 	AppVersion      string            `json:"appVersion" ch:"app_version"`
 	ServerName      string            `json:"serverName" ch:"server_name"`
 	IsMessage       bool              `json:"isMessage" ch:"is_message"`

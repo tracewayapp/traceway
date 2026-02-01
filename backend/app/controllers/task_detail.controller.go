@@ -24,7 +24,7 @@ type TaskMessageInfo struct {
 	ExceptionHash string            `json:"exceptionHash"`
 	StackTrace    string            `json:"stackTrace"`
 	RecordedAt    string            `json:"recordedAt"`
-	Scope         map[string]string `json:"scope,omitempty"`
+	Attributes    map[string]string `json:"attributes,omitempty"`
 }
 
 type TaskDetailResponse struct {
@@ -86,7 +86,7 @@ func (t taskDetailController) GetTaskDetail(c *gin.Context) {
 				ExceptionHash: exc.ExceptionHash,
 				StackTrace:    exc.StackTrace,
 				RecordedAt:    exc.RecordedAt.Format("2006-01-02T15:04:05Z07:00"),
-				Scope:         exc.Scope,
+				Attributes:    exc.Attributes,
 			})
 		} else if exceptionInfo == nil {
 			// Only take the first actual exception

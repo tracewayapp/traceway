@@ -1,8 +1,8 @@
-# Scope
+# Attributes
 
-Scopes attach contextual tags to exceptions and transactions, making it easier to debug and filter issues in the dashboard.
+Attributes attach contextual tags to exceptions and transactions, making it easier to debug and filter issues in the dashboard.
 
-## Request Scope
+## Request Attributes
 
 Add contextual information specific to a single request:
 
@@ -10,25 +10,24 @@ Add contextual information specific to a single request:
 import tracewaygin "github.com/tracewayapp/go-client/traceway_gin"
 
 func handler(c *gin.Context) {
-    // Get the request-scoped scope
-    scope := tracewaygin.GetScope(c)
+    attributes := tracewaygin.GetAttributesFromGin(c)
 
     // Add tags that will be attached to any exceptions in this request
-    scope.SetTag("user_id", c.Param("id"))
-    scope.SetTag("tenant", "acme-corp")
-    scope.SetTag("feature_flag", "new_checkout")
+    attributes.SetTag("user_id", c.Param("id"))
+    attributes.SetTag("tenant", "acme-corp")
+    attributes.SetTag("feature_flag", "new_checkout")
 
     // ... rest of handler
 }
 ```
 
-Request scope tags are automatically included when:
+Request attribute tags are automatically included when:
 
 - Exceptions are captured during the request
 - The transaction is recorded
 - Segments are tracked
 
-## Scope Methods
+## Attributes Methods
 
 | Method                              | Description                                    |
 | ----------------------------------- | ---------------------------------------------- |
@@ -41,19 +40,19 @@ Request scope tags are automatically included when:
 
 ```go
 // String tags
-scope.SetTag("user_id", "12345")
-scope.SetTag("organization", "acme-corp")
+attributes.SetTag("user_id", "12345")
+attributes.SetTag("organization", "acme-corp")
 
 // JSON tags for complex values
-scope.SetTagJson("cart_items", []string{"item1", "item2", "item3"})
-scope.SetTagJson("user_prefs", map[string]bool{"notifications": true})
+attributes.SetTagJson("cart_items", []string{"item1", "item2", "item3"})
+attributes.SetTagJson("user_prefs", map[string]bool{"notifications": true})
 
 // Reading tags
-userID := scope.GetTag("user_id")
-allTags := scope.GetTags()
+userID := attributes.GetTag("user_id")
+allTags := attributes.GetTags()
 ```
 
-## Scope in Middleware
+## Attributes in Middleware
 
 Add tags for all requests in a middleware function:
 
@@ -62,28 +61,28 @@ func authMiddleware() gin.HandlerFunc {
     return func(c *gin.Context) {
         user := authenticate(c)
 
-        // Add user info to scope for all downstream handlers
-        scope := tracewaygin.GetScopeFromGin(c)
-        scope.SetTag("user_id", user.ID)
-        scope.SetTag("user_email", user.Email)
-        scope.SetTag("organization", user.OrgID)
-        scope.SetTag("role", user.Role)
+        // Add user info to attributes for all downstream handlers
+        attributes := tracewaygin.GetAttributesFromGin(c)
+        attributes.SetTag("user_id", user.ID)
+        attributes.SetTag("user_email", user.Email)
+        attributes.SetTag("organization", user.OrgID)
+        attributes.SetTag("role", user.Role)
 
         c.Next()
     }
 }
 ```
 
-## Global Scope
+## Global Attributes
 
-Global scope tags apply to all telemetry data. Configure them once at application startup:
+Global attribute tags apply to all telemetry data. Configure them once at application startup:
 
 ```go
 import "github.com/tracewayapp/go-client/traceway"
 
 func main() {
-    // Configure global scope (runs once at startup)
-    traceway.ConfigureScope(func(s *traceway.Scope) {
+    // Configure global attributes (runs once at startup)
+    traceway.ConfigureAttributes(func(s *traceway.Attributes) {
         s.SetTag("environment", "production")
         s.SetTag("region", "us-east-1")
         s.SetTag("service", "user-api")
@@ -94,15 +93,15 @@ func main() {
 }
 ```
 
-Global tags are inherited by every request scope and background task.
+Global tags are inherited by every request's attributes and background task.
 
 ## Tag Inheritance
 
-Tags flow from global to request scope:
+Tags flow from global to request attributes:
 
 ```
-Global Scope                Request Scope              Final Tags
-─────────────              ─────────────              ──────────
+Global Attributes          Request Attributes         Final Tags
+─────────────────          ──────────────────         ──────────
 environment: prod     +    user_id: 123         =    environment: prod
 region: us-east-1          tenant: acme               region: us-east-1
 service: user-api                                     service: user-api
@@ -117,7 +116,7 @@ Request-level tags override global tags if they have the same key.
 ### 1. Set Global Context at Startup
 
 ```go
-traceway.ConfigureScope(func(s *traceway.Scope) {
+traceway.ConfigureAttributes(func(s *traceway.Attributes) {
     s.SetTag("environment", os.Getenv("ENV"))
     s.SetTag("version", version)
     s.SetTag("region", os.Getenv("AWS_REGION"))
@@ -131,9 +130,9 @@ traceway.ConfigureScope(func(s *traceway.Scope) {
 func authMiddleware() gin.HandlerFunc {
     return func(c *gin.Context) {
         if user := getCurrentUser(c); user != nil {
-            scope := tracewaygin.GetScopeFromGin(c)
-            scope.SetTag("user_id", user.ID)
-            scope.SetTag("organization", user.OrgID)
+            attributes := tracewaygin.GetAttributesFromGin(c)
+            attributes.SetTag("user_id", user.ID)
+            attributes.SetTag("organization", user.OrgID)
         }
         c.Next()
     }
@@ -144,9 +143,9 @@ func authMiddleware() gin.HandlerFunc {
 
 ```go
 func createOrderHandler(c *gin.Context) {
-    scope := tracewaygin.GetScopeFromGin(c)
-    scope.SetTag("action", "create_order")
-    scope.SetTag("item_count", fmt.Sprintf("%d", len(items)))
+    attributes := tracewaygin.GetAttributesFromGin(c)
+    attributes.SetTag("action", "create_order")
+    attributes.SetTag("item_count", fmt.Sprintf("%d", len(items)))
     // ... rest of handler
 }
 ```
@@ -155,13 +154,13 @@ func createOrderHandler(c *gin.Context) {
 
 ```go
 // Good - descriptive and searchable
-scope.SetTag("user_id", userID)
-scope.SetTag("order_id", orderID)
-scope.SetTag("payment_method", "stripe")
+attributes.SetTag("user_id", userID)
+attributes.SetTag("order_id", orderID)
+attributes.SetTag("payment_method", "stripe")
 
 // Avoid - too generic
-scope.SetTag("id", someID)
-scope.SetTag("type", "thing")
+attributes.SetTag("id", someID)
+attributes.SetTag("type", "thing")
 ```
 
 ## Viewing Tags in Dashboard

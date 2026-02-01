@@ -12,7 +12,7 @@ type ClientExceptionStackTrace struct {
 	IsTask     bool              `json:"isTask"`
 	StackTrace string            `json:"stackTrace"`
 	RecordedAt time.Time         `json:"recordedAt"`
-	Scope      map[string]string `json:"scope"`
+	Attributes map[string]string `json:"attributes"`
 	IsMessage  bool              `json:"isMessage"`
 }
 
@@ -35,7 +35,7 @@ func (c *ClientExceptionStackTrace) ToExceptionStackTrace(exceptionHash, appVers
 		TraceType:     traceType,
 		StackTrace:    c.StackTrace,
 		RecordedAt:    c.RecordedAt,
-		Scope:         c.Scope,
+		Attributes:    c.Attributes,
 		IsMessage:     c.IsMessage,
 		AppVersion:    appVersion,
 		ServerName:    serverName,
@@ -65,7 +65,7 @@ type ClientTrace struct {
 	StatusCode int               `json:"statusCode"`
 	BodySize   int               `json:"bodySize"`
 	ClientIP   string            `json:"clientIP"`
-	Scope      map[string]string `json:"scope"`
+	Attributes map[string]string `json:"attributes"`
 	Spans      []*ClientSpan     `json:"spans"`
 	IsTask     bool              `json:"isTask"`
 }
@@ -87,7 +87,7 @@ func (c *ClientTrace) ToEndpoint(appVersion, serverName string) models.Endpoint 
 		StatusCode: int16(c.StatusCode),
 		BodySize:   int32(c.BodySize),
 		ClientIP:   c.ClientIP,
-		Scope:      c.Scope,
+		Attributes: c.Attributes,
 		AppVersion: appVersion,
 		ServerName: serverName,
 	}
@@ -96,11 +96,11 @@ func (c *ClientTrace) ToEndpoint(appVersion, serverName string) models.Endpoint 
 func (c *ClientTrace) ToTask(appVersion, serverName string) models.Task {
 	return models.Task{
 		Id:         c.ParsedId(),
-		TaskName:   c.Endpoint, // Endpoint field is used as task name
+		TaskName:   c.Endpoint,
 		Duration:   c.Duration,
 		RecordedAt: c.RecordedAt,
 		ClientIP:   c.ClientIP,
-		Scope:      c.Scope,
+		Attributes: c.Attributes,
 		AppVersion: appVersion,
 		ServerName: serverName,
 	}

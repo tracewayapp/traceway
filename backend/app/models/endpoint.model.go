@@ -16,7 +16,7 @@ type Endpoint struct {
 	StatusCode int16             `json:"statusCode" ch:"status_code"`
 	BodySize   int32             `json:"bodySize" ch:"body_size"`
 	ClientIP   string            `json:"clientIP" ch:"client_ip"`
-	Scope      map[string]string `json:"scope" ch:"scope"`
+	Attributes map[string]string `json:"attributes" ch:"attributes"`
 	AppVersion string            `json:"appVersion" ch:"app_version"`
 	ServerName string            `json:"serverName" ch:"server_name"`
 }

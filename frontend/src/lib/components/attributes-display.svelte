@@ -2,14 +2,14 @@
     import * as Popover from "$lib/components/ui/popover";
 
     interface Props {
-        scope: Record<string, string> | null | undefined;
+        attributes: Record<string, string> | null | undefined;
         maxInlineTags?: number;
     }
 
-    let { scope, maxInlineTags = 3 }: Props = $props();
+    let { attributes, maxInlineTags = 3 }: Props = $props();
 
     const entries = $derived(
-        Object.entries(scope || {}).sort((a, b) => a[0].localeCompare(b[0]))
+        Object.entries(attributes || {}).sort((a, b) => a[0].localeCompare(b[0]))
     );
     const hasMore = $derived(entries.length > maxInlineTags);
     const visibleEntries = $derived(entries.slice(0, maxInlineTags));

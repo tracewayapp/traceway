@@ -13,7 +13,7 @@
     import { CalendarDate } from "@internationalized/date";
     import { ErrorDisplay } from "$lib/components/ui/error-display";
     import { projectsState } from '$lib/state/projects.svelte';
-    import ScopeDisplay from '$lib/components/scope-display.svelte';
+    import AttributesDisplay from '$lib/components/attributes-display.svelte';
     import { createRowClickHandler } from '$lib/utils/navigation';
     import { createSmartBackHandler } from '$lib/utils/back-navigation';
     import PaginationFooter from '$lib/components/ui/pagination-footer/pagination-footer.svelte';
@@ -43,7 +43,7 @@
         statusCode: number;
         bodySize: number;
         clientIP: string;
-        scope: Record<string, string> | null;
+        attributes: Record<string, string> | null;
         serverName: string;
         appVersion: string;
     };
@@ -386,7 +386,7 @@
                                 {transaction.appVersion || '-'}
                             </Table.Cell>
                             <Table.Cell>
-                                <ScopeDisplay scope={transaction.scope} />
+                                <AttributesDisplay attributes={transaction.attributes} />
                             </Table.Cell>
                         </Table.Row>
                     {/each}

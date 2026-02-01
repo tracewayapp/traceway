@@ -26,7 +26,7 @@
 			duration: number;
 			recordedAt: string;
 			clientIP: string;
-			scope: Record<string, string> | null;
+			attributes: Record<string, string> | null;
 			serverName: string;
 			appVersion: string;
 		};
@@ -39,7 +39,7 @@
 			exceptionHash: string;
 			stackTrace: string;
 			recordedAt: string;
-			scope?: Record<string, string>;
+			attributes?: Record<string, string>;
 		}[];
 		spans: any[];
 		hasSpans: boolean;
@@ -150,11 +150,11 @@
 					/>
 				</div>
 
-				{#if response.task.scope && Object.keys(response.task.scope).length > 0}
+				{#if response.task.attributes && Object.keys(response.task.attributes).length > 0}
 					<hr class="border-border" />
 					<div>
-						<p class="mb-3 text-sm font-medium">Context (Scope)</p>
-						<ContextGrid scope={response.task.scope} />
+						<p class="mb-3 text-sm font-medium">Context</p>
+						<ContextGrid attributes={response.task.attributes} />
 					</div>
 				{/if}
 			</Card.Content>
@@ -209,7 +209,7 @@
 							<Table.Row>
 								<Table.Head class="pl-6">Message</Table.Head>
 								<Table.Head class="w-[180px]">Recorded At</Table.Head>
-								<Table.Head class="w-[100px] pr-6">Scope</Table.Head>
+								<Table.Head class="w-[100px] pr-6">Attributes</Table.Head>
 							</Table.Row>
 						</Table.Header>
 						<Table.Body>
@@ -227,9 +227,9 @@
 										{formatDateTime(message.recordedAt, { timezone })}
 									</Table.Cell>
 									<Table.Cell class="pr-6">
-										{#if message.scope && Object.keys(message.scope).length > 0}
+										{#if message.attributes && Object.keys(message.attributes).length > 0}
 											<span class="text-xs text-muted-foreground">
-												{Object.keys(message.scope).length} key{Object.keys(message.scope).length === 1 ? '' : 's'}
+												{Object.keys(message.attributes).length} key{Object.keys(message.attributes).length === 1 ? '' : 's'}
 											</span>
 										{:else}
 											<span class="text-xs text-muted-foreground">-</span>

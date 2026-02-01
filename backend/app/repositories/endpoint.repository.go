@@ -16,18 +16,18 @@ import (
 type endpointRepository struct{}
 
 func (e *endpointRepository) InsertAsync(ctx context.Context, lines []models.Endpoint) error {
-	batch, err := (*chdb.Conn).PrepareBatch(clickhouse.Context(context.Background(), clickhouse.WithAsync(false)), "INSERT INTO endpoints (id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, scope, app_version, server_name)")
+	batch, err := (*chdb.Conn).PrepareBatch(clickhouse.Context(context.Background(), clickhouse.WithAsync(false)), "INSERT INTO endpoints (id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name)")
 	if err != nil {
 		return err
 	}
 	for _, t := range lines {
-		scopeJSON := "{}"
-		if len(t.Scope) != 0 {
-			if scopeBytes, err := json.Marshal(t.Scope); err == nil {
-				scopeJSON = string(scopeBytes)
+		attributesJSON := "{}"
+		if len(t.Attributes) != 0 {
+			if attributesBytes, err := json.Marshal(t.Attributes); err == nil {
+				attributesJSON = string(attributesBytes)
 			}
 		}
-		if err := batch.Append(t.Id, t.ProjectId, t.Endpoint, t.Duration, t.RecordedAt, t.StatusCode, t.BodySize, t.ClientIP, scopeJSON, t.AppVersion, t.ServerName); err != nil {
+		if err := batch.Append(t.Id, t.ProjectId, t.Endpoint, t.Duration, t.RecordedAt, t.StatusCode, t.BodySize, t.ClientIP, attributesJSON, t.AppVersion, t.ServerName); err != nil {
 			return err
 		}
 	}
@@ -60,7 +60,7 @@ func (e *endpointRepository) FindAll(ctx context.Context, projectId uuid.UUID, f
 		orderBy = "recorded_at"
 	}
 
-	query := "SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, scope, app_version, server_name FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " DESC LIMIT ? OFFSET ?"
+	query := "SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " DESC LIMIT ? OFFSET ?"
 	rows, err := (*chdb.Conn).Query(ctx, query, projectId, fromDate, toDate, pageSize, offset)
 	if err != nil {
 		return nil, 0, err
@@ -70,13 +70,13 @@ func (e *endpointRepository) FindAll(ctx context.Context, projectId uuid.UUID, f
 	var endpoints []models.Endpoint
 	for rows.Next() {
 		var t models.Endpoint
-		var scopeJSON string
-		if err := rows.Scan(&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt, &t.StatusCode, &t.BodySize, &t.ClientIP, &scopeJSON, &t.AppVersion, &t.ServerName); err != nil {
+		var attributesJSON string
+		if err := rows.Scan(&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt, &t.StatusCode, &t.BodySize, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName); err != nil {
 			return nil, 0, err
 		}
-		if scopeJSON != "" && scopeJSON != "{}" {
-			if err := json.Unmarshal([]byte(scopeJSON), &t.Scope); err != nil {
-				t.Scope = nil
+		if attributesJSON != "" && attributesJSON != "{}" {
+			if err := json.Unmarshal([]byte(attributesJSON), &t.Attributes); err != nil {
+				t.Attributes = nil
 			}
 		}
 		endpoints = append(endpoints, t)
@@ -200,7 +200,7 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.
 		sortDir = "ASC"
 	}
 
-	query := "SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, scope, app_version, server_name FROM endpoints WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " " + sortDir + " LIMIT ? OFFSET ?"
+	query := "SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name FROM endpoints WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " " + sortDir + " LIMIT ? OFFSET ?"
 	rows, err := (*chdb.Conn).Query(ctx, query, projectId, endpoint, fromDate, toDate, pageSize, offset)
 	if err != nil {
 		return nil, 0, err
@@ -210,13 +210,13 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.
 	var endpoints []models.Endpoint
 	for rows.Next() {
 		var t models.Endpoint
-		var scopeJSON string
-		if err := rows.Scan(&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt, &t.StatusCode, &t.BodySize, &t.ClientIP, &scopeJSON, &t.AppVersion, &t.ServerName); err != nil {
+		var attributesJSON string
+		if err := rows.Scan(&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt, &t.StatusCode, &t.BodySize, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName); err != nil {
 			return nil, 0, err
 		}
-		if scopeJSON != "" && scopeJSON != "{}" {
-			if err := json.Unmarshal([]byte(scopeJSON), &t.Scope); err != nil {
-				t.Scope = nil
+		if attributesJSON != "" && attributesJSON != "{}" {
+			if err := json.Unmarshal([]byte(attributesJSON), &t.Attributes); err != nil {
+				t.Attributes = nil
 			}
 		}
 		endpoints = append(endpoints, t)
@@ -227,17 +227,17 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.
 
 // FindById returns a single endpoint by ID
 func (e *endpointRepository) FindById(ctx context.Context, projectId, endpointId uuid.UUID) (*models.Endpoint, error) {
-	query := `SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, scope, app_version, server_name
+	query := `SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name
 		FROM endpoints
 		WHERE project_id = ? AND id = ?
 		LIMIT 1`
 
 	var t models.Endpoint
-	var scopeJSON string
+	var attributesJSON string
 
 	err := (*chdb.Conn).QueryRow(ctx, query, projectId, endpointId).Scan(
 		&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt,
-		&t.StatusCode, &t.BodySize, &t.ClientIP, &scopeJSON, &t.AppVersion, &t.ServerName)
+		&t.StatusCode, &t.BodySize, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -246,9 +246,9 @@ func (e *endpointRepository) FindById(ctx context.Context, projectId, endpointId
 		return nil, err
 	}
 
-	if scopeJSON != "" && scopeJSON != "{}" {
-		if err := json.Unmarshal([]byte(scopeJSON), &t.Scope); err != nil {
-			t.Scope = nil
+	if attributesJSON != "" && attributesJSON != "{}" {
+		if err := json.Unmarshal([]byte(attributesJSON), &t.Attributes); err != nil {
+			t.Attributes = nil
 		}
 	}
 

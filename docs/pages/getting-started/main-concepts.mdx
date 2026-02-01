@@ -1,6 +1,6 @@
 # Main Concepts
 
-Traceway organizes your application telemetry into five core concepts: Endpoints, Issues, Tasks, Metrics, and Scope. Understanding these concepts will help you get the most out of your monitoring setup.
+Traceway organizes your application telemetry into five core concepts: Endpoints, Issues, Tasks, Metrics, and Attributes. Understanding these concepts will help you get the most out of your monitoring setup.
 
 ## Endpoints
 
@@ -8,7 +8,7 @@ Endpoints represent HTTP transactions in your application. Each endpoint is iden
 
 ## Issues
 
-Issues are exceptions (errors and panics) captured from your application as well as messages. Traceway automatically groups similar exceptions so the same logical error appears as one issue. Issues can contain their own Scope and they can be connected to a transaction or a task.
+Issues are exceptions (errors and panics) captured from your application as well as messages. Traceway automatically groups similar exceptions so the same logical error appears as one issue. Issues can contain their own Attributes and they can be connected to a transaction or a task.
 
 ### Error vs Message
 
@@ -17,7 +17,7 @@ Traceway captures two types of exceptions:
 - **Errors** - Runtime exceptions with stack traces (panics, thrown errors)
 - **Messages** - Explicitly captured errors via `traceway.CaptureMessage("a string with some value")`
 
-Both appear in the Issues list with full context/scope.
+Both appear in the Issues list with full context.
 
 ### Automatic Grouping
 
@@ -35,10 +35,10 @@ This means the same bug produces one issue, not thousands of duplicates with dif
 2. **Archived** - Marked as resolved by you (doesn't show up until it's reopened)
 3. **Reopened** - Archived issue that occurred again (regression)
 
-## Context/Scope Tags
+## Context Tags
 
-Scope can be captured on Enpoints/Issues/Tasks.
-It's a map of key value pairs that gives you extra context related to the instance you are reviewing.
+Attributes can be captured on Endpoints/Issues/Tasks.
+They are a map of key value pairs that give you extra context related to the instance you are reviewing.
 If the value is JSON it will be displayed formatted on the website.
 
 Tags help you understand who was affected and what they were doing.
@@ -105,9 +105,9 @@ Custom metrics are currently not being displayed on the website.
 Here's how the concepts connect in a typical request flow:
 
 1. **Request arrives** → Creates a new transaction (Endpoint)
-2. **Auth middleware runs** → Adds user_id to Scope
+2. **Auth middleware runs** → Adds user_id to Attributes
 3. **Handler executes** → May create Segments for sub-operations
-4. **Error occurs** → Issue captured with full Scope context
+4. **Error occurs** → Issue captured with full Attributes context
 5. **Request completes** → Transaction recorded with duration
 6. **Background** → Metrics collected every 30 seconds
 7. **Tasks** → Capture all async (outside of the endpoints) code execution into Tasks
@@ -122,4 +122,4 @@ All this data flows to your Traceway dashboard where you can:
 ## Next Steps
 
 - [Go Client Quickstart](/go-client/gin/quickstart) - Set up the SDK
-- [Scope Documentation](/go-client/scope) - Deep dive into scope
+- [Attributes Documentation](/go-client/attributes) - Deep dive into attributes

@@ -11,7 +11,7 @@
     import { CalendarDate } from "@internationalized/date";
     import { ErrorDisplay } from "$lib/components/ui/error-display";
     import { projectsState } from '$lib/state/projects.svelte';
-    import ScopeDisplay from '$lib/components/scope-display.svelte';
+    import AttributesDisplay from '$lib/components/attributes-display.svelte';
     import { createRowClickHandler } from '$lib/utils/navigation';
     import { createSmartBackHandler } from '$lib/utils/back-navigation';
     import PaginationFooter from '$lib/components/ui/pagination-footer/pagination-footer.svelte';
@@ -39,7 +39,7 @@
         duration: number;
         recordedAt: string;
         clientIP: string;
-        scope: Record<string, string> | null;
+        attributes: Record<string, string> | null;
         serverName: string;
         appVersion: string;
     };
@@ -340,7 +340,7 @@
                                 {task.appVersion || '-'}
                             </Table.Cell>
                             <Table.Cell>
-                                <ScopeDisplay scope={task.scope} />
+                                <AttributesDisplay attributes={task.attributes} />
                             </Table.Cell>
                         </Table.Row>
                     {/each}

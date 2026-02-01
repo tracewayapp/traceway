@@ -17,7 +17,7 @@ export type TraceDetail = {
 	statusCode: number;
 	bodySize: number;
 	clientIP: string;
-	scope: Record<string, string> | null;
+	attributes: Record<string, string> | null;
 	appVersion: string;
 	serverName: string;
 };
@@ -33,7 +33,7 @@ export type MessageInfo = {
 	exceptionHash: string;
 	stackTrace: string;
 	recordedAt: string;
-	scope?: Record<string, string>;
+	attributes?: Record<string, string>;
 };
 
 export type TraceDetailResponse = {

@@ -13,7 +13,7 @@ export type ExceptionOccurrence = {
     exceptionHash: string;
     stackTrace: string;
     recordedAt: string;
-    scope: Record<string, string> | null;
+    attributes: Record<string, string> | null;
     appVersion: string;
     serverName: string;
     isMessage: boolean;

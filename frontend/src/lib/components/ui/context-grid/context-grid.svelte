@@ -2,15 +2,15 @@
 	import ContextView from './context-view.svelte';
 
 	let {
-		scope,
+		attributes,
 		sorted = true
 	}: {
-		scope: Record<string, string>;
+		attributes: Record<string, string>;
 		sorted?: boolean;
 	} = $props();
 
 	const entries = $derived(() => {
-		const items = Object.entries(scope);
+		const items = Object.entries(attributes);
 		if (sorted) {
 			return items.sort((a, b) => a[0].localeCompare(b[0]));
 		}

@@ -16,18 +16,18 @@ import (
 type taskRepository struct{}
 
 func (e *taskRepository) InsertAsync(ctx context.Context, lines []models.Task) error {
-	batch, err := (*chdb.Conn).PrepareBatch(clickhouse.Context(context.Background(), clickhouse.WithAsync(false)), "INSERT INTO tasks (id, project_id, task_name, duration, recorded_at, client_ip, scope, app_version, server_name)")
+	batch, err := (*chdb.Conn).PrepareBatch(clickhouse.Context(context.Background(), clickhouse.WithAsync(false)), "INSERT INTO tasks (id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name)")
 	if err != nil {
 		return err
 	}
 	for _, t := range lines {
-		scopeJSON := "{}"
-		if len(t.Scope) != 0 {
-			if scopeBytes, err := json.Marshal(t.Scope); err == nil {
-				scopeJSON = string(scopeBytes)
+		attributesJSON := "{}"
+		if len(t.Attributes) != 0 {
+			if attributesBytes, err := json.Marshal(t.Attributes); err == nil {
+				attributesJSON = string(attributesBytes)
 			}
 		}
-		if err := batch.Append(t.Id, t.ProjectId, t.TaskName, t.Duration, t.RecordedAt, t.ClientIP, scopeJSON, t.AppVersion, t.ServerName); err != nil {
+		if err := batch.Append(t.Id, t.ProjectId, t.TaskName, t.Duration, t.RecordedAt, t.ClientIP, attributesJSON, t.AppVersion, t.ServerName); err != nil {
 			return err
 		}
 	}
@@ -58,7 +58,7 @@ func (e *taskRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromD
 		orderBy = "recorded_at"
 	}
 
-	query := "SELECT id, project_id, task_name, duration, recorded_at, client_ip, scope, app_version, server_name FROM tasks WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " DESC LIMIT ? OFFSET ?"
+	query := "SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name FROM tasks WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " DESC LIMIT ? OFFSET ?"
 	rows, err := (*chdb.Conn).Query(ctx, query, projectId, fromDate, toDate, pageSize, offset)
 	if err != nil {
 		return nil, 0, err
@@ -68,13 +68,13 @@ func (e *taskRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromD
 	var tasks []models.Task
 	for rows.Next() {
 		var t models.Task
-		var scopeJSON string
-		if err := rows.Scan(&t.Id, &t.ProjectId, &t.TaskName, &t.Duration, &t.RecordedAt, &t.ClientIP, &scopeJSON, &t.AppVersion, &t.ServerName); err != nil {
+		var attributesJSON string
+		if err := rows.Scan(&t.Id, &t.ProjectId, &t.TaskName, &t.Duration, &t.RecordedAt, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName); err != nil {
 			return nil, 0, err
 		}
-		if scopeJSON != "" && scopeJSON != "{}" {
-			if err := json.Unmarshal([]byte(scopeJSON), &t.Scope); err != nil {
-				t.Scope = nil
+		if attributesJSON != "" && attributesJSON != "{}" {
+			if err := json.Unmarshal([]byte(attributesJSON), &t.Attributes); err != nil {
+				t.Attributes = nil
 			}
 		}
 		tasks = append(tasks, t)
@@ -173,7 +173,7 @@ func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID
 		sortDir = "ASC"
 	}
 
-	query := "SELECT id, project_id, task_name, duration, recorded_at, client_ip, scope, app_version, server_name FROM tasks WHERE project_id = ? AND task_name = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " " + sortDir + " LIMIT ? OFFSET ?"
+	query := "SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name FROM tasks WHERE project_id = ? AND task_name = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " " + sortDir + " LIMIT ? OFFSET ?"
 	rows, err := (*chdb.Conn).Query(ctx, query, projectId, taskName, fromDate, toDate, pageSize, offset)
 	if err != nil {
 		return nil, 0, err
@@ -183,13 +183,13 @@ func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID
 	var tasks []models.Task
 	for rows.Next() {
 		var t models.Task
-		var scopeJSON string
-		if err := rows.Scan(&t.Id, &t.ProjectId, &t.TaskName, &t.Duration, &t.RecordedAt, &t.ClientIP, &scopeJSON, &t.AppVersion, &t.ServerName); err != nil {
+		var attributesJSON string
+		if err := rows.Scan(&t.Id, &t.ProjectId, &t.TaskName, &t.Duration, &t.RecordedAt, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName); err != nil {
 			return nil, 0, err
 		}
-		if scopeJSON != "" && scopeJSON != "{}" {
-			if err := json.Unmarshal([]byte(scopeJSON), &t.Scope); err != nil {
-				t.Scope = nil
+		if attributesJSON != "" && attributesJSON != "{}" {
+			if err := json.Unmarshal([]byte(attributesJSON), &t.Attributes); err != nil {
+				t.Attributes = nil
 			}
 		}
 		tasks = append(tasks, t)
@@ -200,17 +200,17 @@ func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID
 
 // FindById returns a single task by ID
 func (e *taskRepository) FindById(ctx context.Context, projectId, taskId uuid.UUID) (*models.Task, error) {
-	query := `SELECT id, project_id, task_name, duration, recorded_at, client_ip, scope, app_version, server_name
+	query := `SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name
 		FROM tasks
 		WHERE project_id = ? AND id = ?
 		LIMIT 1`
 
 	var t models.Task
-	var scopeJSON string
+	var attributesJSON string
 
 	err := (*chdb.Conn).QueryRow(ctx, query, projectId, taskId).Scan(
 		&t.Id, &t.ProjectId, &t.TaskName, &t.Duration, &t.RecordedAt,
-		&t.ClientIP, &scopeJSON, &t.AppVersion, &t.ServerName)
+		&t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -219,9 +219,9 @@ func (e *taskRepository) FindById(ctx context.Context, projectId, taskId uuid.UU
 		return nil, err
 	}
 
-	if scopeJSON != "" && scopeJSON != "{}" {
-		if err := json.Unmarshal([]byte(scopeJSON), &t.Scope); err != nil {
-			t.Scope = nil
+	if attributesJSON != "" && attributesJSON != "{}" {
+		if err := json.Unmarshal([]byte(attributesJSON), &t.Attributes); err != nil {
+			t.Attributes = nil
 		}
 	}
 

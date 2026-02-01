@@ -51,8 +51,7 @@ import (
 )
 
 func main() {
-    // Configure global scope (optional)
-    traceway.ConfigureScope(func(s *traceway.Scope) {
+    traceway.ConfigureAttributes(func(s *traceway.Attributes) {
         s.SetTag("environment", "production")
         s.SetTag("service", "user-api")
     })
@@ -99,9 +98,8 @@ func main() {
 
     // Routes
     router.GET("/api/users/:id", func(c *gin.Context) {
-        // Add request-specific context
-        scope := tracewaygin.GetScopeFromGin(c)
-        scope.SetTag("user_id", c.Param("id"))
+        attributes := tracewaygin.GetAttributesFromGin(c)
+        attributes.SetTag("user_id", c.Param("id"))
 
         // Track database query
         ctx := c.Request.Context()

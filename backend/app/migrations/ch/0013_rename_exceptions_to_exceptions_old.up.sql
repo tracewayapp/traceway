@@ -1,0 +1,1 @@
+RENAME TABLE exception_stack_traces TO exception_stack_traces_old;

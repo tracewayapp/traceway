@@ -1,0 +1,1 @@
+DROP TABLE exception_stack_traces_old;

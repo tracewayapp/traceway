@@ -79,7 +79,7 @@ export default function Home() {
                     <code className="block">
                       <span className="text-purple-600 font-semibold">func</span> <span className="text-blue-600 font-semibold">main</span>() {"{"}{"\n"}
                       {"  "}r := gin.<span className="text-blue-600">Default</span>(){"\n"}
-                      {"  "}r.<span className="text-blue-600">Use</span>(traceway_gin.<span className="text-blue-600">New</span>(<span className="text-green-600">"{`{TOKEN}`}@https://{`{SERVER_URL}`}/api/report"</span>)){"\n"}
+                      {"  "}r.<span className="text-blue-600">Use</span>(tracewaygin.<span className="text-blue-600">New</span>(<span className="text-green-600">"{`{TOKEN}`}@https://{`{SERVER_URL}`}/api/report"</span>)){"\n"}
                       {"\n"}
                       {"  "}r.<span className="text-blue-600">GET</span>(<span className="text-green-600">"/test"</span>, <span className="text-purple-600 font-semibold">func</span>(ctx *gin.Context) {"{"}{"\n"}
                       {"    "}ctx.<span className="text-blue-600">AbortWithError</span>(<span className="text-orange-600">500</span>, fmt.<span className="text-blue-600">Errorf</span>(<span className="text-green-600">"Worked!"</span>)){"\n"}

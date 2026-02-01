@@ -39,7 +39,7 @@
 	const installCommand = $derived(
 		projectWithToken
 			? getInstallCommand(projectWithToken.framework)
-			: 'go get github.com/traceway-io/go-client'
+			: 'go get go.tracewayapp.com'
 	);
 
 	async function copyCode() {

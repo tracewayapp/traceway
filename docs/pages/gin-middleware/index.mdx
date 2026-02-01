@@ -1,11 +1,12 @@
 # Gin Middleware
 
-The `traceway_gin` package provides middleware for the [Gin](https://gin-gonic.com/) web framework. It automatically creates a trace for each request, captures panics, and detects errors from Gin's error chain.
+The `tracewaygin` package provides middleware for the [Gin](https://gin-gonic.com/) web framework. It automatically creates a trace for each request, captures panics, and detects errors from Gin's error chain.
 
 ## Installation
 
 ```bash
 go get go.tracewayapp.com
+go get go.tracewayapp.com/tracewaygin
 ```
 
 ## Basic Setup
@@ -15,7 +16,7 @@ package main
 
 import (
     "github.com/gin-gonic/gin"
-    tracewaygin "go.tracewayapp.com/traceway_gin"
+    tracewaygin "go.tracewayapp.com/tracewaygin"
 )
 
 func main() {

@@ -1,11 +1,12 @@
 # HTTP Middleware
 
-The `traceway_http` package provides middleware for standard `net/http` servers. It automatically creates a trace for each request, captures panics, and detects client IP addresses.
+The `tracewayhttp` package provides middleware for standard `net/http` servers. It automatically creates a trace for each request, captures panics, and detects client IP addresses.
 
 ## Installation
 
 ```bash
 go get go.tracewayapp.com
+go get go.tracewayapp.com/tracewayhttp
 ```
 
 ## Basic Setup
@@ -16,7 +17,7 @@ package main
 import (
     "net/http"
 
-    tracewayhttp "go.tracewayapp.com/traceway_http"
+    tracewayhttp "go.tracewayapp.com/tracewayhttp"
 )
 
 func main() {

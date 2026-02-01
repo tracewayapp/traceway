@@ -1,10 +1,10 @@
 import type { Framework } from '$lib/state/projects.svelte';
 
 export function getInstallCommand(framework: Framework): string {
-	const base = 'go get github.com/traceway-io/go-client';
+	const base = 'go get go.tracewayapp.com';
 	switch (framework) {
 		case 'gin':
-			return `${base}`;
+			return `${base} && go get go.tracewayapp.com/tracewaygin`;
 		case 'fiber':
 		case 'chi':
 		case 'fasthttp':
@@ -26,12 +26,12 @@ export function getFrameworkCode(framework: Framework, token: string, backendUrl
 
 import (
     "github.com/gin-gonic/gin"
-    "github.com/traceway-io/go-client/traceway_gin"
+    tracewaygin "go.tracewayapp.com/tracewaygin"
 )
 
 func main() {
     r := gin.Default()
-    r.Use(traceway_gin.New("${connectionString}"))
+    r.Use(tracewaygin.New("${connectionString}"))
     r.Run(":8080")
 }`;
 
@@ -46,14 +46,14 @@ func main() {
 // We welcome contributions! Please visit our GitHub repository
 // to help implement support for ${framework === 'custom' ? 'custom frameworks' : framework}:
 //
-// https://github.com/traceway-io/go-client
+// https://github.com/tracewayapp/go-client
 //
 // In the meantime, you can use the core SDK directly:
 
 package main
 
 import (
-    "github.com/traceway-io/go-client"
+    "go.tracewayapp.com"
 )
 
 func main() {

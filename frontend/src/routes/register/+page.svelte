@@ -11,7 +11,7 @@
     import { projectsState, type Framework } from '$lib/state/projects.svelte';
     import { themeState } from '$lib/state/theme.svelte';
     import { toast } from 'svelte-sonner';
-    import FrameworkIcon from '$lib/components/framework-icon.svelte';
+    import FrameworkCombobox from '$lib/components/framework-combobox.svelte';
     import TurnstileWidget from '$lib/components/turnstile-widget.svelte';
 
     let email = $state('');
@@ -54,26 +54,6 @@
             });
         })
     }
-
-    const frameworks = [
-        { value: 'gin', label: 'Gin', description: 'Fast HTTP web framework', group: 'Go' },
-        { value: 'fiber', label: 'Fiber', description: 'Express-inspired framework', group: 'Go' },
-        { value: 'chi', label: 'Chi', description: 'Lightweight router', group: 'Go' },
-        { value: 'fasthttp', label: 'FastHTTP', description: 'High-performance HTTP', group: 'Go' },
-        { value: 'stdlib', label: 'Standard Library', description: 'net/http package', group: 'Go' },
-        { value: 'custom', label: 'Custom', description: 'Other / manual setup', group: 'Go' },
-        { value: 'react', label: 'React', description: 'Frontend UI library', group: 'JavaScript' },
-        { value: 'svelte', label: 'Svelte', description: 'Frontend compiler framework', group: 'JavaScript' },
-        { value: 'vuejs', label: 'Vue.js', description: 'Progressive frontend framework', group: 'JavaScript' },
-        { value: 'nextjs', label: 'Next.js', description: 'React full-stack framework', group: 'JavaScript' },
-        { value: 'nestjs', label: 'NestJS', description: 'Node.js server framework', group: 'JavaScript' },
-        { value: 'express', label: 'Express', description: 'Minimal Node.js framework', group: 'JavaScript' },
-        { value: 'remix', label: 'Remix', description: 'React full-stack framework', group: 'JavaScript' },
-    ] as const;
-
-    const selectedFrameworkLabel = $derived(
-        frameworks.find(f => f.value === framework)?.label ?? 'Select framework'
-    );
 
     async function handleRegister() {
         if (password !== confirmPassword) {
@@ -212,54 +192,7 @@
                 </div>
                 <div class="flex flex-col space-y-1.5">
                     <Label for="framework">Framework</Label>
-                    <Select.Root type="single" bind:value={framework}>
-                        <Select.Trigger class="w-full">
-                            <div class="flex items-center gap-2">
-                                <FrameworkIcon framework={framework} />
-                                <span>{selectedFrameworkLabel}</span>
-                            </div>
-                        </Select.Trigger>
-                        <Select.Content>
-                            <Select.Group>
-                                <Select.GroupHeading class="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Go</Select.GroupHeading>
-                                {#each frameworks.filter(f => f.group === 'Go') as fw}
-                                    <Select.Item value={fw.value}>
-                                        {#snippet children({ selected })}
-                                            <div class="flex items-center gap-2">
-                                                <FrameworkIcon framework={fw.value} />
-                                                <div class="flex flex-col">
-                                                    <span class="font-medium">{fw.label}</span>
-                                                    <span class="text-xs text-muted-foreground">{fw.description}</span>
-                                                </div>
-                                            </div>
-                                            {#if selected}
-                                                <Check class="absolute end-2 size-4" />
-                                            {/if}
-                                        {/snippet}
-                                    </Select.Item>
-                                {/each}
-                            </Select.Group>
-                            <Select.Group>
-                                <Select.GroupHeading class="px-2 py-1.5 text-xs font-semibold text-muted-foreground">JavaScript</Select.GroupHeading>
-                                {#each frameworks.filter(f => f.group === 'JavaScript') as fw}
-                                    <Select.Item value={fw.value}>
-                                        {#snippet children({ selected })}
-                                            <div class="flex items-center gap-2">
-                                                <FrameworkIcon framework={fw.value} />
-                                                <div class="flex flex-col">
-                                                    <span class="font-medium">{fw.label}</span>
-                                                    <span class="text-xs text-muted-foreground">{fw.description}</span>
-                                                </div>
-                                            </div>
-                                            {#if selected}
-                                                <Check class="absolute end-2 size-4" />
-                                            {/if}
-                                        {/snippet}
-                                    </Select.Item>
-                                {/each}
-                            </Select.Group>
-                        </Select.Content>
-                    </Select.Root>
+                    <FrameworkCombobox bind:value={framework} />
                 </div>
 
                 {#if captchaEnabled}

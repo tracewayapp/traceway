@@ -4,6 +4,9 @@ import { useSdk, SDK_OPTIONS } from './SdkContext'
 
 const SDK_QUICK_START = {
   'go-gin': '/client/gin-middleware',
+  'go-chi': '/client/chi-middleware',
+  'go-fiber': '/client/fiber-middleware',
+  'go-fasthttp': '/client/fasthttp-middleware',
   'go-http': '/client/http-middleware',
   'go-generic': '/client/sdk',
 }

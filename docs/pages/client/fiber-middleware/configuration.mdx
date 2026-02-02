@@ -1,0 +1,163 @@
+# Fiber Middleware Configuration
+
+## Middleware Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `WithRepanic(bool)` | Re-panic after capturing, letting upstream recovery handle it | `true` |
+| `WithRecordUnmatched(bool)` | Record requests for unregistered routes (404s) | `false` |
+| `WithIgnoredPaths(...string)` | Skip recording for specific route paths | none |
+| `WithFilter(func(*fiber.Ctx) bool)` | Custom filter function — return `false` to skip recording | none |
+| `WithOnErrorRecording(RecordingFlag)` | What additional data to capture on errors | `0` (none) |
+
+## Passthrough Core Options
+
+These options are forwarded to the core `traceway` client:
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `WithDebug(bool)` | Enable debug logging | `false` |
+| `WithVersion(string)` | Application version shown in dashboard | `""` |
+| `WithServerName(string)` | Server hostname identifier | Auto-detected |
+| `WithSampleRate(float64)` | Percentage of normal traces to record (0.0–1.0) | `1.0` |
+| `WithErrorSampleRate(float64)` | Percentage of error traces to record (0.0–1.0) | `1.0` |
+| `WithCollectionInterval(time.Duration)` | How often batched data is sent | `5s` |
+| `WithMaxCollectionFrames(int)` | Maximum frames to buffer | `12` |
+| `WithUploadTimeout(time.Duration)` | HTTP upload timeout | `2s` |
+| `WithMetricsInterval(time.Duration)` | System metrics collection interval | `30s` |
+
+## Repanic Behavior
+
+When `WithRepanic(true)` (default), the middleware re-panics after capturing the stack trace. This allows Fiber's built-in error handler or upstream recovery middleware to handle the panic.
+
+When `WithRepanic(false)`, the middleware returns a 500 error and does not re-panic.
+
+## Route Filtering
+
+### Unmatched Routes
+
+By default, requests to unregistered routes (404s) are **not recorded**. The request is passed through but no trace is created.
+
+```go
+tracewayfiber.WithRecordUnmatched(true) // Record 404 requests
+```
+
+### Ignored Paths
+
+Skip recording for specific route paths:
+
+```go
+tracewayfiber.New(
+    connectionString,
+    tracewayfiber.WithIgnoredPaths("/health", "/ready", "/metrics"),
+)
+```
+
+Ignored paths are still served — the request passes through to your handler, but no trace is recorded.
+
+### WithFilter
+
+For dynamic filtering logic, use `WithFilter`. Return `false` to skip recording:
+
+```go
+tracewayfiber.New(
+    connectionString,
+    tracewayfiber.WithFilter(func(c *fiber.Ctx) bool {
+        // Skip internal service-to-service calls
+        if c.Get("X-Internal") == "true" {
+            return false
+        }
+        // Skip static assets
+        if strings.HasPrefix(c.Path(), "/static/") {
+            return false
+        }
+        return true
+    }),
+)
+```
+
+When the filter returns `false`, the request is passed directly to your handler without any Traceway wrapping.
+
+## Complete Example
+
+```go
+package main
+
+import (
+    "strings"
+    "time"
+
+    "github.com/gofiber/fiber/v2"
+    traceway "go.tracewayapp.com"
+    tracewayfiber "go.tracewayapp.com/tracewayfiber"
+)
+
+func main() {
+    traceway.ConfigureAttributes(func(s *traceway.Attributes) {
+        s.SetTag("environment", "production")
+        s.SetTag("service", "user-api")
+    })
+
+    app := fiber.New()
+
+    app.Use(tracewayfiber.New(
+        "your-token@http://localhost:8082/api/report",
+        tracewayfiber.WithVersion("1.2.3"),
+        tracewayfiber.WithServerName("api-server-01"),
+        tracewayfiber.WithRepanic(true),
+        tracewayfiber.WithRecordUnmatched(false),
+        tracewayfiber.WithIgnoredPaths("/health", "/ready"),
+        tracewayfiber.WithOnErrorRecording(
+            tracewayfiber.RecordingUrl | tracewayfiber.RecordingQuery,
+        ),
+        tracewayfiber.WithCollectionInterval(5 * time.Second),
+        tracewayfiber.WithMetricsInterval(30 * time.Second),
+    ))
+
+    app.Get("/api/users/:id", getUser)
+    app.Listen(":8080")
+}
+```
+
+## Configuration Recommendations
+
+### Development
+
+```go
+tracewayfiber.New(
+    connectionString,
+    tracewayfiber.WithDebug(true),
+    tracewayfiber.WithOnErrorRecording(
+        tracewayfiber.RecordingUrl |
+        tracewayfiber.RecordingQuery |
+        tracewayfiber.RecordingHeader |
+        tracewayfiber.RecordingBody,
+    ),
+)
+```
+
+### Production
+
+```go
+tracewayfiber.New(
+    connectionString,
+    tracewayfiber.WithVersion(os.Getenv("APP_VERSION")),
+    tracewayfiber.WithServerName(os.Getenv("HOSTNAME")),
+    tracewayfiber.WithOnErrorRecording(
+        tracewayfiber.RecordingUrl | tracewayfiber.RecordingQuery,
+    ),
+)
+```
+
+### High-Traffic Services
+
+```go
+tracewayfiber.New(
+    connectionString,
+    tracewayfiber.WithSampleRate(0.1),
+    tracewayfiber.WithErrorSampleRate(1.0),
+    tracewayfiber.WithCollectionInterval(10 * time.Second),
+    tracewayfiber.WithMaxCollectionFrames(20),
+    tracewayfiber.WithMetricsInterval(60 * time.Second),
+)
+```

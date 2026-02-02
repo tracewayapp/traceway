@@ -1,0 +1,115 @@
+# Fiber Middleware
+
+The `tracewayfiber` package provides middleware for the [Fiber](https://gofiber.io/) web framework. It automatically creates a trace for each request, captures panics and handler errors, and detects client IP addresses.
+
+## Installation
+
+```bash
+go get go.tracewayapp.com
+go get go.tracewayapp.com/tracewayfiber
+```
+
+## Basic Setup
+
+```go
+package main
+
+import (
+    "github.com/gofiber/fiber/v2"
+    tracewayfiber "go.tracewayapp.com/tracewayfiber"
+)
+
+func main() {
+    app := fiber.New()
+
+    // Add Traceway middleware (must be before routes)
+    app.Use(tracewayfiber.New(
+        "your-token@http://localhost:8082/api/report",
+    ))
+
+    app.Get("/api/users", getUsers)
+    app.Post("/api/users", createUser)
+
+    app.Listen(":8080")
+}
+```
+
+`New` returns a `fiber.Handler` and calls `traceway.Init` internally — do not call `Init` separately.
+
+## What Gets Captured
+
+The middleware automatically captures for every request:
+
+| Data | Description |
+|------|-------------|
+| **Endpoint** | HTTP method + route path (e.g., `GET /api/users/:id`) |
+| **Duration** | Request processing time |
+| **Status Code** | HTTP response status |
+| **Body Size** | Response body size in bytes |
+| **Client IP** | From Fiber's `c.IP()` |
+| **Panics** | Recovered and captured with full stack trace |
+| **Handler Errors** | Errors returned from handlers |
+
+## Error Detection
+
+A request is considered an error when any of these are true:
+
+- A **panic** occurred during handler execution
+- A handler **returned an error**
+- The response **status code is >= 500**
+
+Error traces use the error sample rate for sampling decisions.
+
+## Panic Recovery
+
+When a panic occurs, the middleware:
+
+1. Recovers the panic
+2. Captures the full stack trace as an issue
+3. Either re-panics (default, `WithRepanic(true)`) or returns a 500 error
+
+```go
+app.Get("/risky", func(c *fiber.Ctx) error {
+    panic("something went wrong")
+    // Stack trace is captured, linked to this request's trace
+    return nil
+})
+```
+
+## Handler Errors
+
+Errors returned from Fiber handlers are captured as issues:
+
+```go
+app.Get("/api/users/:id", func(c *fiber.Ctx) error {
+    user, err := findUser(c.Params("id"))
+    if err != nil {
+        return err // Captured as an issue
+    }
+    return c.JSON(user)
+})
+```
+
+## Context Access
+
+Access Traceway context from within your handlers:
+
+```go
+app.Get("/api/users", func(c *fiber.Ctx) error {
+    // Get attributes for this request
+    attributes := tracewayfiber.GetAttributesFromCtx(c)
+    attributes.SetTag("user_id", "123")
+
+    // Get trace context
+    trace := tracewayfiber.GetTraceFromCtx(c)
+
+    return c.SendString("OK")
+})
+```
+
+Context is stored in Fiber's `Locals` store.
+
+## Next Steps
+
+- [Configuration](/client/fiber-middleware/configuration) — All options including filtering and passthrough settings
+- [Error Recording](/client/fiber-middleware/error-recording) — Control what request data is captured on errors

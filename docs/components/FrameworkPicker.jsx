@@ -10,6 +10,27 @@ const FRAMEWORKS = [
     href: '/client/gin-middleware',
   },
   {
+    value: 'go-chi',
+    label: 'Go Chi',
+    description: 'Lightweight Chi router with automatic request tracing and panic recovery.',
+    icon: '/chi.png',
+    href: '/client/chi-middleware',
+  },
+  {
+    value: 'go-fiber',
+    label: 'Go Fiber',
+    description: 'Express-inspired Fiber framework with request tracing and error capture.',
+    icon: '/fiber.svg',
+    href: '/client/fiber-middleware',
+  },
+  {
+    value: 'go-fasthttp',
+    label: 'Go FastHTTP',
+    description: 'High-performance FastHTTP server with request tracing and panic recovery.',
+    icon: '/fasthttp.png',
+    href: '/client/fasthttp-middleware',
+  },
+  {
     value: 'go-http',
     label: 'Go net/http',
     description: 'Standard library HTTP middleware for request tracing and error capture.',

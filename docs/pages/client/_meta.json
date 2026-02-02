@@ -6,6 +6,9 @@
     "theme": { "sidebar": false, "pagination": false }
   },
   "gin-middleware": "Gin Middleware",
+  "chi-middleware": "Chi Middleware",
+  "fiber-middleware": "Fiber Middleware",
+  "fasthttp-middleware": "FastHTTP Middleware",
   "http-middleware": "HTTP Middleware",
   "sdk": "SDK Reference"
 }

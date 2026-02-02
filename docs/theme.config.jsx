@@ -6,6 +6,9 @@ import { useSdk } from "./components/SdkContext";
 
 const SDK_VISIBILITY = {
   "gin-middleware": "go-gin",
+  "chi-middleware": "go-chi",
+  "fiber-middleware": "go-fiber",
+  "fasthttp-middleware": "go-fasthttp",
   "http-middleware": "go-http",
 };
 

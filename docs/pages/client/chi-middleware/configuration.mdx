@@ -1,0 +1,156 @@
+# Chi Middleware Configuration
+
+## Middleware Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `WithRepanic(bool)` | Re-panic after capturing, letting upstream recovery handle it | `true` |
+| `WithIgnoredPaths(...string)` | Skip recording for specific URL paths | none |
+| `WithFilter(func(*http.Request) bool)` | Custom filter function — return `false` to skip recording | none |
+| `WithOnErrorRecording(RecordingFlag)` | What additional data to capture on errors | `0` (none) |
+
+## Passthrough Core Options
+
+These options are forwarded to the core `traceway` client:
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `WithDebug(bool)` | Enable debug logging | `false` |
+| `WithVersion(string)` | Application version shown in dashboard | `""` |
+| `WithServerName(string)` | Server hostname identifier | Auto-detected |
+| `WithSampleRate(float64)` | Percentage of normal traces to record (0.0–1.0) | `1.0` |
+| `WithErrorSampleRate(float64)` | Percentage of error traces to record (0.0–1.0) | `1.0` |
+| `WithCollectionInterval(time.Duration)` | How often batched data is sent | `5s` |
+| `WithMaxCollectionFrames(int)` | Maximum frames to buffer | `12` |
+| `WithUploadTimeout(time.Duration)` | HTTP upload timeout | `2s` |
+| `WithMetricsInterval(time.Duration)` | System metrics collection interval | `30s` |
+
+## Repanic Behavior
+
+When `WithRepanic(true)` (default), the middleware re-panics after capturing the stack trace. This allows upstream recovery middleware (like Chi's `middleware.Recoverer`) to handle the panic as well.
+
+When `WithRepanic(false)`, the middleware responds with HTTP 500 and does not re-panic.
+
+## Path Filtering
+
+### WithIgnoredPaths
+
+Skip recording for specific paths:
+
+```go
+tracewaychi.New(
+    connectionString,
+    tracewaychi.WithIgnoredPaths("/health", "/ready", "/metrics"),
+)
+```
+
+Ignored paths are still served — the request passes through to your handler, but no trace is recorded.
+
+### WithFilter
+
+For dynamic filtering logic, use `WithFilter`. Return `false` to skip recording:
+
+```go
+tracewaychi.New(
+    connectionString,
+    tracewaychi.WithFilter(func(r *http.Request) bool {
+        // Skip internal service-to-service calls
+        if r.Header.Get("X-Internal") == "true" {
+            return false
+        }
+        // Skip static assets
+        if strings.HasPrefix(r.URL.Path, "/static/") {
+            return false
+        }
+        return true
+    }),
+)
+```
+
+When the filter returns `false`, the request is passed directly to your handler without any Traceway wrapping.
+
+## Complete Example
+
+```go
+package main
+
+import (
+    "net/http"
+    "time"
+
+    "github.com/go-chi/chi/v5"
+    traceway "go.tracewayapp.com"
+    tracewaychi "go.tracewayapp.com/tracewaychi"
+)
+
+func main() {
+    traceway.ConfigureAttributes(func(s *traceway.Attributes) {
+        s.SetTag("environment", "production")
+        s.SetTag("service", "user-api")
+    })
+
+    r := chi.NewRouter()
+
+    r.Use(tracewaychi.New(
+        "your-token@http://localhost:8082/api/report",
+        tracewaychi.WithVersion("1.2.3"),
+        tracewaychi.WithServerName("api-server-01"),
+        tracewaychi.WithRepanic(true),
+        tracewaychi.WithIgnoredPaths("/health", "/ready"),
+        tracewaychi.WithFilter(func(r *http.Request) bool {
+            return r.Header.Get("X-Internal") != "true"
+        }),
+        tracewaychi.WithOnErrorRecording(
+            tracewaychi.RecordingUrl | tracewaychi.RecordingQuery,
+        ),
+        tracewaychi.WithCollectionInterval(5 * time.Second),
+        tracewaychi.WithMetricsInterval(30 * time.Second),
+    ))
+
+    r.Get("/api/users/{id}", getUser)
+    http.ListenAndServe(":8080", r)
+}
+```
+
+## Configuration Recommendations
+
+### Development
+
+```go
+tracewaychi.New(
+    connectionString,
+    tracewaychi.WithDebug(true),
+    tracewaychi.WithOnErrorRecording(
+        tracewaychi.RecordingUrl |
+        tracewaychi.RecordingQuery |
+        tracewaychi.RecordingHeader |
+        tracewaychi.RecordingBody,
+    ),
+)
+```
+
+### Production
+
+```go
+tracewaychi.New(
+    connectionString,
+    tracewaychi.WithVersion(os.Getenv("APP_VERSION")),
+    tracewaychi.WithServerName(os.Getenv("HOSTNAME")),
+    tracewaychi.WithOnErrorRecording(
+        tracewaychi.RecordingUrl | tracewaychi.RecordingQuery,
+    ),
+)
+```
+
+### High-Traffic Services
+
+```go
+tracewaychi.New(
+    connectionString,
+    tracewaychi.WithSampleRate(0.1),
+    tracewaychi.WithErrorSampleRate(1.0),
+    tracewaychi.WithCollectionInterval(10 * time.Second),
+    tracewaychi.WithMaxCollectionFrames(20),
+    tracewaychi.WithMetricsInterval(60 * time.Second),
+)
+```

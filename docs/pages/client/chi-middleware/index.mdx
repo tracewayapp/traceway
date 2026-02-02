@@ -1,0 +1,84 @@
+# Chi Middleware
+
+The `tracewaychi` package provides middleware for the [Chi](https://github.com/go-chi/chi) router. It automatically creates a trace for each request, captures panics, and detects client IP addresses.
+
+Chi is fully compatible with `net/http` middleware, so `tracewaychi` delegates to the `tracewayhttp` package internally while providing a Chi-specific API surface.
+
+## Installation
+
+```bash
+go get go.tracewayapp.com
+go get go.tracewayapp.com/tracewaychi
+```
+
+## Basic Setup
+
+```go
+package main
+
+import (
+    "net/http"
+
+    "github.com/go-chi/chi/v5"
+    tracewaychi "go.tracewayapp.com/tracewaychi"
+)
+
+func main() {
+    r := chi.NewRouter()
+
+    // Add Traceway middleware (must be before routes)
+    r.Use(tracewaychi.New(
+        "your-token@http://localhost:8082/api/report",
+    ))
+
+    r.Get("/api/users", getUsers)
+    r.Post("/api/users", createUser)
+
+    http.ListenAndServe(":8080", r)
+}
+```
+
+`New` returns `func(http.Handler) http.Handler` and calls `traceway.Init` internally — do not call `Init` separately.
+
+## What Gets Captured
+
+The middleware automatically captures for every request:
+
+| Data | Description |
+|------|-------------|
+| **Endpoint** | HTTP method + URL path (e.g., `GET /api/users`) |
+| **Duration** | Request processing time |
+| **Status Code** | HTTP response status |
+| **Body Size** | Response body size in bytes |
+| **Client IP** | Detected from headers or connection |
+| **Panics** | Recovered and captured with full stack trace |
+
+## Client IP Detection
+
+Client IP is resolved in this order:
+
+1. `X-Forwarded-For` header (first IP in the list)
+2. `X-Real-IP` header
+3. `RemoteAddr` from the connection
+
+## Error Detection
+
+A request is considered an error when:
+
+- A **panic** occurs during handler execution
+- The response status code is **>= 500**
+
+Error traces use the error sample rate for sampling decisions.
+
+## Panic Handling
+
+When a panic occurs, the middleware:
+
+1. Recovers the panic
+2. Captures the full stack trace as an issue
+3. Either re-panics (default, `WithRepanic(true)`) or responds with 500
+
+## Next Steps
+
+- [Configuration](/client/chi-middleware/configuration) — All options including filtering and passthrough settings
+- [Error Recording](/client/chi-middleware/error-recording) — Control what request data is captured on errors

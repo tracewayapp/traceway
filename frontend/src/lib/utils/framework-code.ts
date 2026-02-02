@@ -5,10 +5,14 @@ export function getInstallCommand(framework: Framework): string {
 	switch (framework) {
 		case 'gin':
 			return `${base} && go get go.tracewayapp.com/tracewaygin`;
-		case 'fiber':
 		case 'chi':
+			return `${base} && go get go.tracewayapp.com/tracewaychi`;
+		case 'fiber':
+			return `${base} && go get go.tracewayapp.com/tracewayfiber`;
 		case 'fasthttp':
+			return `${base} && go get go.tracewayapp.com/tracewayfasthttp`;
 		case 'stdlib':
+			return `${base} && go get go.tracewayapp.com/tracewayhttp`;
 		case 'custom':
 		default:
 			return base;
@@ -35,42 +39,89 @@ func main() {
     r.Run(":8080")
 }`;
 
-		case 'fiber':
 		case 'chi':
+			return `package main
+
+import (
+    "net/http"
+
+    "github.com/go-chi/chi/v5"
+    tracewaychi "go.tracewayapp.com/tracewaychi"
+)
+
+func main() {
+    r := chi.NewRouter()
+    r.Use(tracewaychi.New("${connectionString}"))
+
+    r.Get("/api/users", getUsers)
+    http.ListenAndServe(":8080", r)
+}`;
+
+		case 'fiber':
+			return `package main
+
+import (
+    "github.com/gofiber/fiber/v2"
+    tracewayfiber "go.tracewayapp.com/tracewayfiber"
+)
+
+func main() {
+    app := fiber.New()
+    app.Use(tracewayfiber.New("${connectionString}"))
+
+    app.Get("/api/users", getUsers)
+    app.Listen(":8080")
+}`;
+
 		case 'fasthttp':
+			return `package main
+
+import (
+    "github.com/valyala/fasthttp"
+    tracewayfasthttp "go.tracewayapp.com/tracewayfasthttp"
+)
+
+func main() {
+    handler := func(ctx *fasthttp.RequestCtx) {
+        ctx.SetStatusCode(200)
+        ctx.SetBodyString("Hello, World!")
+    }
+
+    tracedHandler := tracewayfasthttp.New("${connectionString}")(handler)
+    fasthttp.ListenAndServe(":8080", tracedHandler)
+}`;
+
 		case 'stdlib':
+			return `package main
+
+import (
+    "net/http"
+
+    tracewayhttp "go.tracewayapp.com/tracewayhttp"
+)
+
+func main() {
+    mux := http.NewServeMux()
+    mux.HandleFunc("/api/users", getUsers)
+
+    handler := tracewayhttp.New("${connectionString}")(mux)
+    http.ListenAndServe(":8080", handler)
+}`;
+
 		case 'custom':
 		default:
-			return `// This framework is not currently supported.
-//
-// We welcome contributions! Please visit our GitHub repository
-// to help implement support for ${framework === 'custom' ? 'custom frameworks' : framework}:
-//
-// https://github.com/tracewayapp/go-client
-//
-// In the meantime, you can use the core SDK directly:
-
-package main
+			return `package main
 
 import (
     "go.tracewayapp.com"
 )
 
 func main() {
-    // Initialize Traceway
     traceway.Init(
         "${connectionString}",
         traceway.WithVersion("1.0.0"),
         traceway.WithServerName("my-server"),
     )
-
-    // Capture exceptions manually
-    // traceway.CaptureException(err)
-    // traceway.CaptureExceptionWithContext(ctx, err)
-
-    // Capture messages
-    // traceway.CaptureMessage("Something happened")
-    // traceway.CaptureMessageWithContext(ctx, "Something happened")
 }`;
 	}
 }

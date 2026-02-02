@@ -1,0 +1,163 @@
+# FastHTTP Middleware Configuration
+
+## Middleware Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `WithRepanic(bool)` | Re-panic after capturing, letting upstream recovery handle it | `true` |
+| `WithIgnoredPaths(...string)` | Skip recording for specific URL paths | none |
+| `WithFilter(func(*fasthttp.RequestCtx) bool)` | Custom filter function — return `false` to skip recording | none |
+| `WithOnErrorRecording(RecordingFlag)` | What additional data to capture on errors | `0` (none) |
+
+## Passthrough Core Options
+
+These options are forwarded to the core `traceway` client:
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `WithDebug(bool)` | Enable debug logging | `false` |
+| `WithVersion(string)` | Application version shown in dashboard | `""` |
+| `WithServerName(string)` | Server hostname identifier | Auto-detected |
+| `WithSampleRate(float64)` | Percentage of normal traces to record (0.0–1.0) | `1.0` |
+| `WithErrorSampleRate(float64)` | Percentage of error traces to record (0.0–1.0) | `1.0` |
+| `WithCollectionInterval(time.Duration)` | How often batched data is sent | `5s` |
+| `WithMaxCollectionFrames(int)` | Maximum frames to buffer | `12` |
+| `WithUploadTimeout(time.Duration)` | HTTP upload timeout | `2s` |
+| `WithMetricsInterval(time.Duration)` | System metrics collection interval | `30s` |
+
+## Repanic Behavior
+
+When `WithRepanic(true)` (default), the middleware re-panics after capturing the stack trace. This allows upstream recovery handlers to handle the panic as well.
+
+When `WithRepanic(false)`, the middleware responds with HTTP 500 and does not re-panic.
+
+## Request Filtering
+
+### WithIgnoredPaths
+
+Skip recording for specific paths:
+
+```go
+tracewayfasthttp.New(
+    connectionString,
+    tracewayfasthttp.WithIgnoredPaths("/health", "/ready", "/metrics"),
+)
+```
+
+Ignored paths are still served — the request passes through to your handler, but no trace is recorded.
+
+### WithFilter
+
+For dynamic filtering logic, use `WithFilter`. Return `false` to skip recording:
+
+```go
+tracewayfasthttp.New(
+    connectionString,
+    tracewayfasthttp.WithFilter(func(ctx *fasthttp.RequestCtx) bool {
+        // Skip internal service-to-service calls
+        if string(ctx.Request.Header.Peek("X-Internal")) == "true" {
+            return false
+        }
+        // Skip static assets
+        if strings.HasPrefix(string(ctx.Path()), "/static/") {
+            return false
+        }
+        return true
+    }),
+)
+```
+
+When the filter returns `false`, the request is passed directly to your handler without any Traceway wrapping.
+
+## Complete Example
+
+```go
+package main
+
+import (
+    "strings"
+    "time"
+
+    "github.com/valyala/fasthttp"
+    traceway "go.tracewayapp.com"
+    tracewayfasthttp "go.tracewayapp.com/tracewayfasthttp"
+)
+
+func main() {
+    traceway.ConfigureAttributes(func(s *traceway.Attributes) {
+        s.SetTag("environment", "production")
+        s.SetTag("service", "user-api")
+    })
+
+    handler := func(ctx *fasthttp.RequestCtx) {
+        switch string(ctx.Path()) {
+        case "/api/users":
+            ctx.SetStatusCode(200)
+            ctx.SetBodyString(`{"users": []}`)
+        default:
+            ctx.SetStatusCode(404)
+        }
+    }
+
+    tracedHandler := tracewayfasthttp.New(
+        "your-token@http://localhost:8082/api/report",
+        tracewayfasthttp.WithVersion("1.2.3"),
+        tracewayfasthttp.WithServerName("api-server-01"),
+        tracewayfasthttp.WithRepanic(true),
+        tracewayfasthttp.WithIgnoredPaths("/health", "/ready"),
+        tracewayfasthttp.WithFilter(func(ctx *fasthttp.RequestCtx) bool {
+            return string(ctx.Request.Header.Peek("X-Internal")) != "true"
+        }),
+        tracewayfasthttp.WithOnErrorRecording(
+            tracewayfasthttp.RecordingUrl | tracewayfasthttp.RecordingQuery,
+        ),
+        tracewayfasthttp.WithCollectionInterval(5 * time.Second),
+        tracewayfasthttp.WithMetricsInterval(30 * time.Second),
+    )(handler)
+
+    fasthttp.ListenAndServe(":8080", tracedHandler)
+}
+```
+
+## Configuration Recommendations
+
+### Development
+
+```go
+tracewayfasthttp.New(
+    connectionString,
+    tracewayfasthttp.WithDebug(true),
+    tracewayfasthttp.WithOnErrorRecording(
+        tracewayfasthttp.RecordingUrl |
+        tracewayfasthttp.RecordingQuery |
+        tracewayfasthttp.RecordingHeader |
+        tracewayfasthttp.RecordingBody,
+    ),
+)
+```
+
+### Production
+
+```go
+tracewayfasthttp.New(
+    connectionString,
+    tracewayfasthttp.WithVersion(os.Getenv("APP_VERSION")),
+    tracewayfasthttp.WithServerName(os.Getenv("HOSTNAME")),
+    tracewayfasthttp.WithOnErrorRecording(
+        tracewayfasthttp.RecordingUrl | tracewayfasthttp.RecordingQuery,
+    ),
+)
+```
+
+### High-Traffic Services
+
+```go
+tracewayfasthttp.New(
+    connectionString,
+    tracewayfasthttp.WithSampleRate(0.1),
+    tracewayfasthttp.WithErrorSampleRate(1.0),
+    tracewayfasthttp.WithCollectionInterval(10 * time.Second),
+    tracewayfasthttp.WithMaxCollectionFrames(20),
+    tracewayfasthttp.WithMetricsInterval(60 * time.Second),
+)
+```

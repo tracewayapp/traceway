@@ -3,6 +3,9 @@ import { useRouter } from 'next/router'
 
 export const SDK_OPTIONS = [
   { value: 'go-gin', label: 'Go Gin' },
+  { value: 'go-chi', label: 'Go Chi' },
+  { value: 'go-fiber', label: 'Go Fiber' },
+  { value: 'go-fasthttp', label: 'Go FastHTTP' },
   { value: 'go-http', label: 'Go Http' },
   { value: 'go-generic', label: 'Go Generic' },
 ]

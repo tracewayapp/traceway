@@ -17,6 +17,8 @@
     let open = $state(false);
     let searchQuery = $state('');
     let searchInputRef = $state<HTMLInputElement | null>(null);
+    let triggerWrapperRef = $state<HTMLDivElement | null>(null);
+    let contentRef = $state<HTMLElement | null>(null);
 
     const frameworks = [
         { value: 'gin', label: 'Gin', description: 'Fast HTTP web framework', group: 'Go' },
@@ -56,13 +58,18 @@
         if (!isOpen) {
             searchQuery = '';
         } else {
-            requestAnimationFrame(() => searchInputRef?.focus());
+            requestAnimationFrame(() => {
+                searchInputRef?.focus();
+                if (contentRef && triggerWrapperRef) {
+                    contentRef.style.width = `${triggerWrapperRef.offsetWidth}px`;
+                }
+            });
         }
     }
 </script>
 
 <Combobox.Root type="single" bind:value bind:open onOpenChange={handleOpenChange}>
-    <div class="relative w-full">
+    <div class="relative w-full" bind:this={triggerWrapperRef}>
         <Combobox.Input
             {disabled}
             readonly
@@ -88,10 +95,11 @@
 
     <Combobox.Portal>
         <Combobox.Content
+            bind:ref={contentRef}
             sideOffset={4}
             preventScroll={true}
             class={cn(
-                "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-end-2 data-[side=right]:slide-in-from-start-2 data-[side=top]:slide-in-from-bottom-2 relative z-50 min-w-[8rem] origin-(--bits-select-content-transform-origin) rounded-md border shadow-md data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1"
+                "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-end-2 data-[side=right]:slide-in-from-start-2 data-[side=top]:slide-in-from-bottom-2 relative z-50 min-w-[8rem] rounded-md border shadow-md data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1"
             )}
         >
             <div class="flex items-center border-b px-3 py-2">
@@ -105,7 +113,7 @@
             </div>
 
             <SelectScrollUpButton />
-            <Combobox.Viewport class="w-full min-w-(--bits-select-anchor-width) max-h-72 overflow-y-auto scroll-my-1 p-1">
+            <Combobox.Viewport class="w-full max-h-72 overflow-y-auto scroll-my-1 p-1">
                 {#if filteredFrameworks.length === 0}
                     <div class="py-4 text-center text-sm text-muted-foreground">No frameworks found</div>
                 {:else}

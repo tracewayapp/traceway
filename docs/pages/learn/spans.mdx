@@ -6,12 +6,12 @@ Spans are timed sub-operations within a trace. They show where time is spent dur
 
 Each span records:
 
-| Field | Description |
-|-------|-------------|
-| ID | Unique span identifier |
-| Name | Descriptive name you provide |
-| Start Time | When the span started |
-| Duration | Time elapsed (calculated on `End()`) |
+| Field      | Description                          |
+| ---------- | ------------------------------------ |
+| ID         | Unique span identifier               |
+| Name       | Descriptive name you provide         |
+| Start Time | When the span started                |
+| Duration   | Time elapsed (calculated on `End()`) |
 
 ## Use Cases
 
@@ -51,14 +51,11 @@ The pattern `category.resource.action` keeps span names consistent and searchabl
 
 ## Nesting
 
-Spans can be nested for hierarchical tracking. The parent span encompasses the child spans:
+Spans can not be nested. The nesting is achieved purely by the start time of the child spans:
 
 ```
 Total: 200ms
-├── process.checkout: 200ms
-│   ├── process.checkout.validate: 20ms
-│   ├── process.checkout.charge: 150ms
-│   └── process.checkout.fulfill: 30ms
+├── process.checkout.validate: 20ms to 150ms
+├── process.checkout.charge: 150ms to 160ms
+└── process.checkout.fulfill: 160ms to 200ms
 ```
-
-Nesting is achieved by starting child spans before ending the parent span. All spans are attached to the same trace context.

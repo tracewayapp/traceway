@@ -1,0 +1,56 @@
+# Attributes
+
+Attributes are key-value metadata attached to traces and issues. They provide the context you need to debug problems — who was affected, what they were doing, and in what environment.
+
+## Structure
+
+Attributes are key-value pairs where each key and value are a string. They can exist on both **traces** and **issues**.
+
+Examples of common attributes:
+
+| Key | Value |
+|-----|-------|
+| `user_id` | `"12345"` |
+| `environment` | `"production"` |
+| `tenant` | `"acme-corp"` |
+| `cart_items` | `'["item1", "item2", "item3"]'` |
+
+## Values
+
+Since all values are strings, there are two ways they get displayed in the dashboard:
+
+- **Plain strings** — Displayed as-is, without any formatting (e.g., `"12345"`, `"production"`)
+- **JSON strings** — If the string contains valid JSON, the dashboard renders it in a JSON viewer with syntax highlighting and collapsible sections (e.g., `'{"name": "John", "age": 30}'`)
+
+This means you can attach structured data to any trace or issue by serializing it to a JSON string.
+
+## Scope Levels
+
+### Global Attributes
+
+Set once at application startup. Applied to every trace and issue your application produces.
+
+### Per-Request Attributes
+
+Set during request handling via the SDK. Applied only to the current trace and any issues captured during that request.
+
+### Inheritance
+
+Per-request attributes start as a clone of the global attributes. Request-level values override global values if they share the same key.
+
+```
+Global Attributes          Request Attributes         Final Tags
+─────────────────          ──────────────────         ──────────
+environment: prod     +    user_id: 123         =    environment: prod
+region: us-east-1          tenant: acme               region: us-east-1
+service: user-api                                     service: user-api
+                                                      user_id: 123
+                                                      tenant: acme
+```
+
+## Where Attributes Appear
+
+- **Traces** (endpoints and tasks) — attributes are recorded with the trace
+- **Issues** (exceptions and messages) — attributes in scope at capture time are attached to the issue
+
+In the dashboard, attributes appear in the detail view for endpoints, tasks, and issues.

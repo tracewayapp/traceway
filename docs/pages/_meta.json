@@ -1,9 +1,11 @@
 {
-  "index": "Introduction",
-  "getting-started": "Getting Started",
-  "architecture": "Architecture",
-  "go-client": "Go Client SDK",
-  "gin-middleware": "Gin Middleware",
-  "http-middleware": "HTTP Middleware",
-  "traceway-protocol": "Traceway Protocol"
+  "index": { "title": "Traceway", "type": "page", "display": "hidden" },
+  "client": { "title": "Docs", "type": "page", "withIndexPage": true },
+  "learn": { "title": "Learn", "type": "page" },
+  "protocol": {
+    "title": "Protocol",
+    "type": "page",
+    "theme": { "sidebar": false }
+  },
+  "server": { "title": "Self Host", "type": "page" }
 }

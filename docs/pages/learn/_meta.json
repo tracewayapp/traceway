@@ -1,5 +1,6 @@
 {
   "index": "Overview",
+  "data-flow": "Data Flow",
   "traces": "Traces",
   "issues": "Issues",
   "attributes": "Attributes",

@@ -1,0 +1,33 @@
+# Data Flow
+
+## Endpoint Flow
+
+Here's how the concepts connect in a typical request:
+
+1. **Request arrives** → Middleware creates a new **Trace** (Automatically by the client SDK for your framework)
+2. **Auth middleware runs** → Adds `user_id` to **Attributes** (Manually done by you - Traceway does not know about your authentication)
+3. **Handler executes** → Creates **Spans** for sub-operations (DB queries, API calls, your own spans...)
+4. **Error occurs** → **Issue** captured with full attributes context, linked to the trace (Automatically by the client SDK for your framework)
+5. **Request completes** → Trace recorded with duration, status code, and all spans (Automatically by the client SDK for your framework)
+
+## Task Flow
+
+Here's how the concepts connect in a typical scheduled/async task:
+
+1. **Task starts** → Client SDK provides a wrapper function for task execution
+2. **Your task code executes** → Creates **Spans** for sub-operations (DB queries, API calls, your own spans...)
+3. **Error occurs** → **Issue** captured with full attributes context, linked to the task trace (Automatically by the client SDK for your framework)
+4. **Task completes** → Trace recorded with duration, status code, and all spans (Automatically by the client SDK for your framework)
+
+## Metrics Flow
+
+1. **Background** → System **Metrics** collected every 30 seconds (Automatically by the client SDK for your framework)
+
+## After the data collection
+
+All this data flows to your Traceway dashboard where you can:
+
+- Sort endpoints by impact to find the worst performers
+- Get notified when errors happen
+- Track task durations over time
+- Monitor system health through metrics

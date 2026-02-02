@@ -6,16 +6,16 @@ Issues capture problems in your application — exceptions, panics, and explicit
 
 An issue is created when:
 
-- A **panic** occurs during a traced request or task
-- An **error** is passed to `c.Error()` in Gin
-- Your code explicitly calls `CaptureException`, `CaptureMessage`, or related functions
+- A **panic** or **unhandled exception** occurs during a traced request or task
+- An **error** is reported to the client SDK during request handling
+- Your code explicitly captures an exception or message through the client SDK
 
 ## Errors vs Messages
 
 Traceway captures two kinds of issues:
 
 - **Errors** — Runtime exceptions with stack traces (panics, captured errors)
-- **Messages** — Explicitly captured strings via `CaptureMessage("something happened")`
+- **Messages** — Explicitly captured strings sent through the client SDK
 
 Both appear in the Issues list with full context and attributes.
 
@@ -52,7 +52,7 @@ This means the same bug produces one issue, not thousands of duplicates with dif
 
 Issues carry their own attributes — the key-value metadata that was in scope when the exception occurred. If the issue is linked to a trace, it inherits the trace's attributes.
 
-When error recording flags are enabled in middleware, additional context is attached:
+When error recording flags are enabled in middleware, additional context can be attached (configurable per client library):
 
 - Request URL
 - Query parameters

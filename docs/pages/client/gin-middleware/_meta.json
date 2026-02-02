@@ -1,5 +1,5 @@
 {
   "index": "Quick Start",
-  "configuration": "Configuration",
+  "configuration": { "display": "hidden" },
   "error-recording": "Error Recording"
 }

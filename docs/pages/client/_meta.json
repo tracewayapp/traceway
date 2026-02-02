@@ -1,0 +1,11 @@
+{
+  "sdk-selector": { "type": "separator", "title": "sdk-selector" },
+  "index": {
+    "title": "Introduction",
+    "display": "hidden",
+    "theme": { "sidebar": false, "pagination": false }
+  },
+  "gin-middleware": "Gin Middleware",
+  "http-middleware": "HTTP Middleware",
+  "sdk": "SDK Reference"
+}

@@ -33,40 +33,24 @@ A **Trace** is a timed unit of work. There are two specializations:
 - **Endpoints** — HTTP requests, automatically created by middleware (e.g., `GET /api/users/:id`)
 - **Tasks** — Background jobs, manually created in your code (e.g., cron jobs, queue workers)
 
-Both carry duration, attributes, and spans. [Learn more →](/architecture/traces)
+Both carry duration, attributes, and spans. [Learn more →](/learn/traces)
 
 ### Issues
 
 An **Issue** captures a problem — an exception, a panic, or an explicitly sent message. Issues can be **connected to a trace** via the trace's context, linking the error to the request or task that caused it.
 
-Similar exceptions are automatically grouped by normalized stack trace hash. [Learn more →](/architecture/issues)
+Similar exceptions are automatically grouped by normalized stack trace hash. [Learn more →](/learn/issues)
 
 ### Attributes
 
 **Attributes** are key-value metadata attached to traces and issues. Values are strings — if the string is valid JSON, the dashboard displays it with proper formatting.
 
-Attributes flow from global scope to per-request scope. [Learn more →](/architecture/attributes)
+Attributes flow from global scope to per-request scope. [Learn more →](/learn/attributes)
 
 ### Spans
 
 **Spans** are timed sub-operations within a trace. Use them to measure where time is spent — database queries, API calls, business logic steps.
 
-Spans display as a timeline within a trace in the dashboard. [Learn more →](/architecture/spans)
+Spans display as a timeline within a trace in the dashboard. [Learn more →](/learn/spans)
 
-## Request Flow
-
-Here's how the concepts connect in a typical request:
-
-1. **Request arrives** → Middleware creates a new **Trace** (Endpoint type)
-2. **Auth middleware runs** → Adds `user_id` to **Attributes**
-3. **Handler executes** → Creates **Spans** for sub-operations (DB queries, API calls)
-4. **Error occurs** → **Issue** captured with full attributes context, linked to the trace
-5. **Request completes** → Trace recorded with duration, status code, and all spans
-6. **Background** → System **Metrics** collected every 30 seconds
-
-All this data flows to your Traceway dashboard where you can:
-
-- Sort endpoints by impact to find the worst performers
-- Get notified when errors happen
-- Track task durations over time
-- Monitor system health through metrics
+See [Data Flow](/learn/data-flow) for how these concepts connect during request processing, task execution, and metrics collection.

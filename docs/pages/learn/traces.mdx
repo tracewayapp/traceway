@@ -18,15 +18,15 @@ Endpoints are ordered in the dashboard by **Impact**, which factors in both perf
 
 The middleware captures:
 
-| Field | Description |
-|-------|-------------|
-| Endpoint | HTTP method + route template |
-| Duration | Request processing time |
-| Status Code | HTTP response status |
-| Body Size | Response body size in bytes |
-| Client IP | Request origin IP address |
-| Attributes | Key-value metadata |
-| Spans | Timed sub-operations |
+| Field       | Description                  |
+| ----------- | ---------------------------- |
+| Endpoint    | HTTP method + route template |
+| Duration    | Request processing time      |
+| Status Code | HTTP response status         |
+| Body Size   | Response body size in bytes  |
+| Client IP   | Request origin IP address    |
+| Attributes  | Key-value metadata           |
+| Spans       | Timed sub-operations         |
 
 ### Tasks
 
@@ -41,7 +41,7 @@ Tasks carry the same data as endpoints (duration, attributes, spans) but without
 
 ## Trace Lifecycle
 
-1. A trace is created — either automatically by middleware (endpoint) or manually via `StartTrace` / `MeasureTask` (task)
+1. A trace is created — either automatically by the client sdk (endpoints) or manually by starting a trace or measuring a task
 2. During execution, spans and attributes are added to the trace via context
 3. If an error occurs, an issue is captured and linked to the trace via its ID
 4. When the work completes, the trace is recorded with its final duration and all collected data
@@ -63,4 +63,4 @@ Not every trace needs to be recorded. Traceway supports two sample rates:
 - **Sample rate** — Controls what percentage of normal traces are recorded (default: 100%)
 - **Error sample rate** — Controls what percentage of error traces are recorded (default: 100%)
 
-Error traces (panics, status >= 500, Gin errors) use the error sample rate, which you typically keep at 100% to capture all problems.
+Error traces (exceptions, panics, status >= 500, errors) use the error sample rate, which you typically keep at 100% to capture all problems.

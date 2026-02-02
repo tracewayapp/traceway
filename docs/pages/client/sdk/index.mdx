@@ -19,7 +19,7 @@ go get go.tracewayapp.com
 
 ## When to Use Core vs Middleware
 
-**Use middleware** ([Gin](/gin-middleware) or [HTTP](/http-middleware)) when your application serves HTTP requests. The middleware handles initialization, trace creation, panic recovery, and data capture automatically.
+**Use middleware** ([Gin](/client/gin-middleware) or [HTTP](/client/http-middleware)) when your application serves HTTP requests. The middleware handles initialization, trace creation, panic recovery, and data capture automatically.
 
 **Use the core package directly** when:
 
@@ -40,7 +40,7 @@ Before using the SDK, you need a project token from your Traceway instance:
 
 ## Next Steps
 
-- [Initialization](/go-client/initialization) — Connection string format and all configuration options
-- [Traces](/go-client/traces) — Recording HTTP requests and background tasks
-- [Exceptions](/go-client/exceptions) — Capturing errors and panics
-- [Spans](/go-client/spans) — Timing sub-operations
+- [Initialization](/client/sdk/initialization) — Connection string format and all configuration options
+- [Traces](/client/sdk/traces) — Recording HTTP requests and background tasks
+- [Exceptions](/client/sdk/exceptions) — Capturing errors and panics
+- [Spans](/client/sdk/spans) — Timing sub-operations

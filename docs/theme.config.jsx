@@ -1,13 +1,24 @@
+import { useState, useEffect } from "react";
 import { useTheme } from "nextra-theme-docs";
+import SdkSelector from "./components/SdkSelector";
+import HiddenItem from "./components/HiddenItem";
+import { useSdk } from "./components/SdkContext";
+
+const SDK_VISIBILITY = {
+  "gin-middleware": "go-gin",
+  "http-middleware": "go-http",
+};
 
 export default {
   logoLink: "https://tracewayapp.com",
   logo: function Logo() {
     const { resolvedTheme } = useTheme();
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => setMounted(true), []);
     return (
       <img
         src={
-          resolvedTheme === "dark"
+          mounted && resolvedTheme === "dark"
             ? "/traceway-logo-white.png"
             : "/traceway-logo.png"
         }
@@ -45,6 +56,19 @@ export default {
   sidebar: {
     defaultMenuCollapseLevel: 1,
     toggleButton: true,
+    titleComponent({ title, type, route }) {
+      if (type === "separator" && title === "sdk-selector") {
+        return <SdkSelector />;
+      }
+
+      for (const [folder, requiredSdk] of Object.entries(SDK_VISIBILITY)) {
+        if (route && route.includes(`/${folder}`)) {
+          return <SdkGuard requiredSdk={requiredSdk}>{title}</SdkGuard>;
+        }
+      }
+
+      return <>{title}</>;
+    },
   },
   toc: {
     backToTop: true,
@@ -56,3 +80,11 @@ export default {
     content: null,
   },
 };
+
+function SdkGuard({ requiredSdk, children }) {
+  const { sdk } = useSdk();
+  if (sdk !== requiredSdk) {
+    return <HiddenItem />;
+  }
+  return <>{children}</>;
+}

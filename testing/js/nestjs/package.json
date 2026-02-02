@@ -1,0 +1,21 @@
+{
+  "name": "traceway-test-nestjs",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "@traceway/backend": "file:../../../../js-client/packages/backend",
+    "@traceway/core": "file:../../../../js-client/packages/core",
+    "reflect-metadata": "^0.2.0",
+    "rxjs": "^7.8.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -8,18 +8,20 @@
 	} from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
 	import { Copy, Check } from 'lucide-svelte';
-	import { projectsState, type ProjectWithToken } from '$lib/state/projects.svelte';
+	import { projectsState, type ProjectWithToken, isJsFramework } from '$lib/state/projects.svelte';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import FrameworkIcon from '$lib/components/framework-icon.svelte';
 	import Highlight from 'svelte-highlight';
 	import go from 'svelte-highlight/languages/go';
+	import javascript from 'svelte-highlight/languages/javascript';
 	import bash from 'svelte-highlight/languages/bash';
 	import { themeState } from '$lib/state/theme.svelte';
 	import 'svelte-highlight/styles/github-dark.css';
 	import {
 		getFrameworkCode,
 		getInstallCommand,
-		getFrameworkLabel
+		getFrameworkLabel,
+		getCodeLanguage
 	} from '$lib/utils/framework-code';
 
 	let projectWithToken = $derived(projectsState.currentProject);
@@ -40,6 +42,14 @@
 		projectWithToken
 			? getInstallCommand(projectWithToken.framework)
 			: 'go get go.tracewayapp.com'
+	);
+
+	const highlightLanguage = $derived(
+		projectWithToken && isJsFramework(projectWithToken.framework) ? javascript : go
+	);
+
+	const isJs = $derived(
+		projectWithToken ? isJsFramework(projectWithToken.framework) : false
 	);
 
 	async function copyCode() {
@@ -69,7 +79,7 @@
 					{getFrameworkLabel(projectWithToken.framework)} Integration
 				</CardTitle>
 				<CardDescription>
-					Add Traceway to your Go application with just a few lines of code.
+					Add Traceway to your application with just a few lines of code.
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
@@ -90,7 +100,7 @@
 							? 'dark-code'
 							: 'light-code'}"
 					>
-						<Highlight language={go} code={sdkCode} />
+						<Highlight language={highlightLanguage} code={sdkCode} />
 					</div>
 				</div>
 			</CardContent>
@@ -99,7 +109,7 @@
 		<Card>
 			<CardHeader>
 				<CardTitle>Installation</CardTitle>
-				<CardDescription>Install the required packages using go get.</CardDescription>
+				<CardDescription>Install the required packages{isJs ? '' : ' using go get'}.</CardDescription>
 			</CardHeader>
 			<CardContent>
 				<div class="relative">

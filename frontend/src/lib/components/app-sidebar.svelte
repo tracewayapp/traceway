@@ -3,7 +3,7 @@
   import { useSidebar } from '$lib/components/ui/sidebar';
   import { Bug, Link2, ChartNoAxesCombined, ChartNoAxesGantt, Gauge, ListEnd, Settings, BookOpen } from "@lucide/svelte";
   import { themeState } from '$lib/state/theme.svelte';
-  import { projectsState } from '$lib/state/projects.svelte';
+  import { projectsState, isFrontendFramework } from '$lib/state/projects.svelte';
 	import { LayoutDashboard } from "@lucide/svelte";
   import { page } from '$app/state';
 	import { createRowClickHandler } from "$lib/utils/navigation";
@@ -17,7 +17,9 @@
     external?: boolean;
   }
 
-  const sidebarItems: SidebarItem[] = [
+  const hiddenForFrontend = new Set(['Endpoints', 'Tasks', 'Metrics']);
+
+  const allSidebarItems: SidebarItem[] = [
     {Icon: LayoutDashboard, href: "/", title: "Dashboard", stickyParams: []},
     {Icon: Bug, href: "/issues", title: "Issues", stickyParams: []},
     {Icon: Gauge, href: "/endpoints", title: "Endpoints", stickyParams: ['presets', 'from', 'to']},
@@ -25,6 +27,12 @@
     {Icon: ChartNoAxesCombined, href: "/metrics", title: "Metrics", stickyParams: ['presets', 'from', 'to']},
     {Icon: Link2, href: "/connection", title: "Connection", stickyParams: []},
   ]
+
+  const sidebarItems = $derived(
+    projectsState.currentProject && isFrontendFramework(projectsState.currentProject.framework)
+      ? allSidebarItems.filter(item => !hiddenForFrontend.has(item.title))
+      : allSidebarItems
+  );
 
   const allSidebarItemsBottom: SidebarItem[] = [
     {Icon: BookOpen, href: "https://docs.tracewayapp.com", title: "Docs", stickyParams: [], external: true},

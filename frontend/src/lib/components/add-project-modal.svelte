@@ -23,14 +23,20 @@
     let createdProject = $state<ProjectWithToken | null>(null);
     let copied = $state(false);
 
-    // Framework options with labels
     const frameworks = [
-        { value: 'gin', label: 'Gin', description: 'Fast HTTP web framework' },
-        { value: 'fiber', label: 'Fiber', description: 'Express-inspired framework' },
-        { value: 'chi', label: 'Chi', description: 'Lightweight router' },
-        { value: 'fasthttp', label: 'FastHTTP', description: 'High-performance HTTP' },
-        { value: 'stdlib', label: 'Standard Library', description: 'net/http package' },
-        { value: 'custom', label: 'Custom', description: 'Other / manual setup' },
+        { value: 'gin', label: 'Gin', description: 'Fast HTTP web framework', group: 'Go' },
+        { value: 'fiber', label: 'Fiber', description: 'Express-inspired framework', group: 'Go' },
+        { value: 'chi', label: 'Chi', description: 'Lightweight router', group: 'Go' },
+        { value: 'fasthttp', label: 'FastHTTP', description: 'High-performance HTTP', group: 'Go' },
+        { value: 'stdlib', label: 'Standard Library', description: 'net/http package', group: 'Go' },
+        { value: 'custom', label: 'Custom', description: 'Other / manual setup', group: 'Go' },
+        { value: 'react', label: 'React', description: 'Frontend UI library', group: 'JavaScript' },
+        { value: 'svelte', label: 'Svelte', description: 'Frontend compiler framework', group: 'JavaScript' },
+        { value: 'vuejs', label: 'Vue.js', description: 'Progressive frontend framework', group: 'JavaScript' },
+        { value: 'nextjs', label: 'Next.js', description: 'React full-stack framework', group: 'JavaScript' },
+        { value: 'nestjs', label: 'NestJS', description: 'Node.js server framework', group: 'JavaScript' },
+        { value: 'express', label: 'Express', description: 'Minimal Node.js framework', group: 'JavaScript' },
+        { value: 'remix', label: 'Remix', description: 'React full-stack framework', group: 'JavaScript' },
     ] as const;
 
     const selectedFrameworkLabel = $derived(
@@ -174,26 +180,48 @@
                             </div>
                         </Select.Trigger>
                         <Select.Content>
-                            {#each frameworks as framework}
-                                <Select.Item value={framework.value}>
-                                    {#snippet children({ selected })}
-                                        <div class="flex items-center gap-2">
-                                            <FrameworkIcon framework={framework.value} />
-                                            <div class="flex flex-col">
-                                                <span class="font-medium">{framework.label}</span>
-                                                <span class="text-xs text-muted-foreground">{framework.description}</span>
+                            <Select.Group>
+                                <Select.GroupHeading class="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Go</Select.GroupHeading>
+                                {#each frameworks.filter(f => f.group === 'Go') as framework}
+                                    <Select.Item value={framework.value}>
+                                        {#snippet children({ selected })}
+                                            <div class="flex items-center gap-2">
+                                                <FrameworkIcon framework={framework.value} />
+                                                <div class="flex flex-col">
+                                                    <span class="font-medium">{framework.label}</span>
+                                                    <span class="text-xs text-muted-foreground">{framework.description}</span>
+                                                </div>
                                             </div>
-                                        </div>
-                                        {#if selected}
-                                            <Check class="absolute end-2 size-4" />
-                                        {/if}
-                                    {/snippet}
-                                </Select.Item>
-                            {/each}
+                                            {#if selected}
+                                                <Check class="absolute end-2 size-4" />
+                                            {/if}
+                                        {/snippet}
+                                    </Select.Item>
+                                {/each}
+                            </Select.Group>
+                            <Select.Group>
+                                <Select.GroupHeading class="px-2 py-1.5 text-xs font-semibold text-muted-foreground">JavaScript</Select.GroupHeading>
+                                {#each frameworks.filter(f => f.group === 'JavaScript') as framework}
+                                    <Select.Item value={framework.value}>
+                                        {#snippet children({ selected })}
+                                            <div class="flex items-center gap-2">
+                                                <FrameworkIcon framework={framework.value} />
+                                                <div class="flex flex-col">
+                                                    <span class="font-medium">{framework.label}</span>
+                                                    <span class="text-xs text-muted-foreground">{framework.description}</span>
+                                                </div>
+                                            </div>
+                                            {#if selected}
+                                                <Check class="absolute end-2 size-4" />
+                                            {/if}
+                                        {/snippet}
+                                    </Select.Item>
+                                {/each}
+                            </Select.Group>
                         </Select.Content>
                     </Select.Root>
                     <p class="text-xs text-muted-foreground">
-                        Select your Go web framework for tailored integration code
+                        Select your framework for tailored integration code
                     </p>
                 </div>
 

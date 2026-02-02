@@ -1,7 +1,18 @@
 import { api } from '$lib/api';
 import { authState } from './auth.svelte';
 
-export type Framework = 'gin' | 'fiber' | 'chi' | 'fasthttp' | 'stdlib' | 'custom';
+export type Framework = 'gin' | 'fiber' | 'chi' | 'fasthttp' | 'stdlib' | 'custom' | 'react' | 'svelte' | 'vuejs' | 'nextjs' | 'nestjs' | 'express' | 'remix';
+
+export const FRONTEND_FRAMEWORKS: Framework[] = ['react', 'svelte', 'vuejs'];
+export const JS_FRAMEWORKS: Framework[] = ['react', 'svelte', 'vuejs', 'nextjs', 'nestjs', 'express', 'remix'];
+
+export function isFrontendFramework(fw: Framework): boolean {
+	return FRONTEND_FRAMEWORKS.includes(fw);
+}
+
+export function isJsFramework(fw: Framework): boolean {
+	return JS_FRAMEWORKS.includes(fw);
+}
 
 export interface Project {
     id: string;

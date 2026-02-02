@@ -22,11 +22,12 @@
 	import { ViewAllTableRow } from '$lib/components/ui/view-all-table-row';
 	import { api } from '$lib/api';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
-	import { projectsState, type ProjectWithToken } from '$lib/state/projects.svelte';
+	import { projectsState, type ProjectWithToken, isFrontendFramework, isJsFramework } from '$lib/state/projects.svelte';
 	import { setSortState } from '$lib/utils/sort-storage';
 	import { Button } from '$lib/components/ui/button';
 	import Highlight from 'svelte-highlight';
 	import go from 'svelte-highlight/languages/go';
+	import javascript from 'svelte-highlight/languages/javascript';
 	import bash from 'svelte-highlight/languages/bash';
 	import { themeState } from '$lib/state/theme.svelte';
 	import 'svelte-highlight/styles/github-dark.css';
@@ -35,7 +36,8 @@
 		getInstallCommand,
 		getTestingRouteCode,
 		getFrameworkLabel,
-		getTestingRouteCode2
+		getTestingRouteCode2,
+		getCodeLanguage
 	} from '$lib/utils/framework-code';
 	import { toast } from 'svelte-sonner';
 
@@ -96,8 +98,22 @@
 			: 'go get go.tracewayapp.com'
 	);
 
-	const testingRouteCode = getTestingRouteCode();
-	const testingRouteCode2 = getTestingRouteCode2();
+	const isFrontend = $derived(
+		projectWithToken ? isFrontendFramework(projectWithToken.framework) : false
+	);
+
+	const codeLanguage = $derived(
+		projectWithToken ? getCodeLanguage(projectWithToken.framework) : 'go' as const
+	);
+
+	const highlightLanguage = $derived(codeLanguage === 'javascript' ? javascript : go);
+
+	const testingRouteCode = $derived(
+		getTestingRouteCode(projectWithToken?.framework)
+	);
+	const testingRouteCode2 = $derived(
+		getTestingRouteCode2(projectWithToken?.framework)
+	);
 
 	async function copyInstall() {
 		await navigator.clipboard.writeText(installCommand);
@@ -293,7 +309,7 @@
 									? 'dark-code'
 									: 'light-code'}"
 							>
-								<Highlight language={go} code={sdkCode} />
+								<Highlight language={highlightLanguage} code={sdkCode} />
 							</div>
 						</div>
 					</div>
@@ -334,7 +350,7 @@
 									? 'dark-code'
 									: 'light-code'}"
 							>
-								<Highlight language={go} code={testingRouteCode} />
+								<Highlight language={highlightLanguage} code={testingRouteCode} />
 							</div>
 						</div>
 
@@ -357,7 +373,7 @@
 									? 'dark-code'
 									: 'light-code'}"
 							>
-								<Highlight language={go} code={testingRouteCode2} />
+								<Highlight language={highlightLanguage} code={testingRouteCode2} />
 							</div>
 						</div>
 					</div>
@@ -390,6 +406,7 @@
 		</div>
 	{:else if !error}
 		<div class="space-y-6">
+			{#if !isFrontend}
 			<!-- Endpoints -->
 			<div>
 				<div class="items-bottom mb-4 flex gap-1">
@@ -502,6 +519,7 @@
 					</div>
 				{/if}
 			</div>
+			{/if}
 
 			<!-- Issues Section -->
 			<div>

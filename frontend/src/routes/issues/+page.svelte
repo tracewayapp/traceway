@@ -4,9 +4,7 @@
 	import { createRowClickHandler } from '$lib/utils/navigation';
 	import { api } from '$lib/api';
 	import * as Table from '$lib/components/ui/table';
-	import { Input } from '$lib/components/ui/input';
-	import { Button } from '$lib/components/ui/button';
-	import * as Select from '$lib/components/ui/select';
+	import { SearchBar } from '$lib/components/ui/search-bar';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { projectsState } from '$lib/state/projects.svelte';
@@ -110,9 +108,6 @@
 		{ value: 'messages', label: 'Messages' }
 	];
 
-	const searchTypeLabel = $derived(
-		searchTypeOptions.find((o) => o.value === searchType)?.label ?? 'All'
-	);
 
 	// Page size options
 	const pageSizeOptions = [
@@ -327,35 +322,15 @@
 		</div>
 	</div>
 
-	<!-- Row 2: Search Type Dropdown + Search Input + Go Button -->
-	<div class="flex">
-
-		<Input
-			placeholder="Search exceptions..."
-			class="h-9 w-[250px] rounded-r-none border-r-0 lg:w-[320px]"
-			bind:value={searchQuery}
-			onkeydown={(e) => {
-				if (e.key === 'Enter') handleSearch();
-			}}
-		/>
-
-		<Select.Root type="single" bind:value={searchType}>
-			<Select.Trigger class="h-9 w-[110px] rounded-none border-r-0">
-				{searchTypeLabel}
-			</Select.Trigger>
-			<Select.Content>
-				{#each searchTypeOptions as option}
-					<Select.Item value={option.value} label={option.label}>
-						{option.label}
-					</Select.Item>
-				{/each}
-			</Select.Content>
-		</Select.Root>
-
-		<Button variant="outline" class="h-9 rounded-l-none" onclick={handleSearch} disabled={loading}>
-			Go
-		</Button>
-	</div>
+	<!-- Row 2: Search -->
+	<SearchBar
+		placeholder="Search exceptions..."
+		bind:value={searchQuery}
+		bind:typeValue={searchType}
+		typeOptions={searchTypeOptions}
+		onSearch={handleSearch}
+		disabled={loading}
+	/>
 
 	<!-- Archive Toolbar - shown when items selected -->
 	{#if selectedCount > 0}

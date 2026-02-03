@@ -85,10 +85,20 @@ func (e *endpointRepository) FindAll(ctx context.Context, projectId uuid.UUID, f
 	return endpoints, int64(count), nil
 }
 
-func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.EndpointStats, int64, error) {
+func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string, search string) ([]models.EndpointStats, int64, error) {
+	// Build WHERE clause with optional search filter
+	whereClause := "project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
+	args := []interface{}{projectId, fromDate, toDate}
+
+	if search != "" {
+		whereClause += " AND positionCaseInsensitive(endpoint, ?) > 0"
+		args = append(args, search)
+	}
+
 	// Count unique endpoints
 	var count uint64
-	err := (*chdb.Conn).QueryRow(ctx, "SELECT uniq(endpoint) FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, fromDate, toDate).Scan(&count)
+	countQuery := "SELECT uniq(endpoint) FROM endpoints WHERE " + whereClause
+	err := (*chdb.Conn).QueryRow(ctx, countQuery, args...).Scan(&count)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -146,12 +156,15 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 			)
 		) as impact
 	FROM endpoints
-	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
+	WHERE ` + whereClause + `
 	GROUP BY endpoint
 	ORDER BY ` + orderExpr + ` ` + sortDir + `
 	LIMIT ? OFFSET ?`
 
-	rows, err := (*chdb.Conn).Query(ctx, query, projectId, fromDate, toDate, pageSize, offset)
+	// Add pagination args
+	queryArgs := append(args, pageSize, offset)
+
+	rows, err := (*chdb.Conn).Query(ctx, query, queryArgs...)
 	if err != nil {
 		return nil, 0, err
 	}

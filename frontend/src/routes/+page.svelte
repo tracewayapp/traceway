@@ -91,9 +91,7 @@
 	);
 
 	const installCommand = $derived(
-		projectWithToken
-			? getInstallCommand(projectWithToken.framework)
-			: 'go get go.tracewayapp.com'
+		projectWithToken ? getInstallCommand(projectWithToken.framework) : 'go get go.tracewayapp.com'
 	);
 
 	const testingRouteCode = getTestingRouteCode();
@@ -140,10 +138,6 @@
 			});
 		}
 	}
-
-	api.get('/account', {
-		projectId: projectsState.currentProjectId ?? undefined
-	});
 
 	async function loadDashboard(showFullPageLoading = true) {
 		if (showFullPageLoading) {

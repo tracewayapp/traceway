@@ -14,6 +14,8 @@ export function getInstallCommand(framework: Framework): string {
 			return `${base} && go get go.tracewayapp.com/tracewayfasthttp`;
 		case 'stdlib':
 			return `${base} && go get go.tracewayapp.com/tracewayhttp`;
+		case 'drift':
+			return `${base} && go get go.tracewayapp.com/drift`;
 		case 'react':
 			return 'npm install @tracewayapp/react';
 		case 'svelte':
@@ -106,6 +108,22 @@ func main() {
     fasthttp.ListenAndServe(":8080", tracedHandler)
 }`;
 
+		case 'stdlib':
+			return `package main
+
+import (
+    "net/http"
+
+    tracewayhttp "go.tracewayapp.com/tracewayhttp"
+)
+
+func main() {
+    mux := http.NewServeMux()
+    mux.HandleFunc("/api/users", getUsers)
+
+    handler := tracewayhttp.New("${connectionString}")(mux)
+    http.ListenAndServe(":8080", handler)
+}`;
 		case 'stdlib':
 			return `package main
 
@@ -229,14 +247,22 @@ captureException(new Error("Test error from Traceway integration"));`;
 
 function getPackageName(framework: Framework): string {
 	switch (framework) {
-		case 'react': return 'react';
-		case 'svelte': return 'svelte';
-		case 'vuejs': return 'vue';
-		case 'nextjs': return 'next';
-		case 'nestjs': return 'nest';
-		case 'express': return 'express';
-		case 'remix': return 'remix';
-		default: return 'react';
+		case 'react':
+			return 'react';
+		case 'svelte':
+			return 'svelte';
+		case 'vuejs':
+			return 'vue';
+		case 'nextjs':
+			return 'next';
+		case 'nestjs':
+			return 'nest';
+		case 'express':
+			return 'express';
+		case 'remix':
+			return 'remix';
+		default:
+			return 'react';
 	}
 }
 
@@ -254,7 +280,7 @@ export function getFrameworkLabel(framework: Framework): string {
 		nextjs: 'Next.js',
 		nestjs: 'NestJS',
 		express: 'Express',
-		remix: 'Remix',
+		remix: 'Remix'
 	};
 	return labels[framework] || framework;
 }

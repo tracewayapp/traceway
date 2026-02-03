@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ContextView from './context-view.svelte';
+	import AttributesView from './attributes-view.svelte';
 
 	let {
 		attributes,
@@ -20,6 +20,6 @@
 
 <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
 	{#each entries() as [key, value]}
-		<ContextView title={key} {value} />
+		<AttributesView title={key} {value} />
 	{/each}
 </div>

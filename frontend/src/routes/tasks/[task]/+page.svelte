@@ -322,7 +322,7 @@
                         <Table.Row
                             class="cursor-pointer hover:bg-muted/50"
                             onclick={createRowClickHandler(
-                                `/tasks/${encodeURIComponent(decodeURIComponent(data.task))}/${task.id}`)}
+                                `/tasks/${encodeURIComponent(decodeURIComponent(data.task))}/${task.id}`, 'preset', 'from', 'to')}
                         >
                             <Table.Cell class="text-muted-foreground">
                                 {formatDateTime(task.recordedAt, { timezone })}

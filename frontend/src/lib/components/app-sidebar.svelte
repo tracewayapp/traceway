@@ -19,10 +19,10 @@
 
   const sidebarItems: SidebarItem[] = [
     {Icon: LayoutDashboard, href: "/", title: "Dashboard", stickyParams: []},
-    {Icon: Bug, href: "/issues", title: "Issues", stickyParams: []},
-    {Icon: Gauge, href: "/endpoints", title: "Endpoints", stickyParams: ['presets', 'from', 'to']},
-    {Icon: ListEnd, href: "/tasks", title: "Tasks", stickyParams: ['presets', 'from', 'to']},
-    {Icon: ChartNoAxesCombined, href: "/metrics", title: "Metrics", stickyParams: ['presets', 'from', 'to']},
+    {Icon: Bug, href: "/issues", title: "Issues", stickyParams: ['preset', 'from', 'to']},
+    {Icon: Gauge, href: "/endpoints", title: "Endpoints", stickyParams: ['preset', 'from', 'to']},
+    {Icon: ListEnd, href: "/tasks", title: "Tasks", stickyParams: ['preset', 'from', 'to']},
+    {Icon: ChartNoAxesCombined, href: "/metrics", title: "Metrics", stickyParams: ['preset', 'from', 'to']},
     {Icon: Link2, href: "/connection", title: "Connection", stickyParams: []},
   ]
 

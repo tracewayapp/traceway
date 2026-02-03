@@ -461,22 +461,22 @@
 							<Table.Cell
 								class="max-w-[400px] truncate font-mono text-sm"
 								title={exception.stackTrace}
-								onclick={createRowClickHandler(`/issues/${exception.exceptionHash}`)}
+								onclick={createRowClickHandler(`/issues/${exception.exceptionHash}`, 'preset', 'from', 'to')}
 							>
 								<span class="text-foreground">{exception.stackTrace.split('\n')[0]}</span>
 							</Table.Cell>
-							<Table.Cell onclick={createRowClickHandler(`/issues/${exception.exceptionHash}`)}>
+							<Table.Cell onclick={createRowClickHandler(`/issues/${exception.exceptionHash}`, 'preset', 'from', 'to')}>
 								<IssueTrendChart trend={exception.hourlyTrend || []} />
 							</Table.Cell>
 							<Table.Cell
 								class="text-right font-medium tabular-nums"
-								onclick={createRowClickHandler(`/issues/${exception.exceptionHash}`)}
+								onclick={createRowClickHandler(`/issues/${exception.exceptionHash}`, 'preset', 'from', 'to')}
 							>
 								{exception.count.toLocaleString()}
 							</Table.Cell>
 							<Table.Cell
 								class="text-muted-foreground"
-								onclick={createRowClickHandler(`/issues/${exception.exceptionHash}`)}
+								onclick={createRowClickHandler(`/issues/${exception.exceptionHash}`, 'preset', 'from', 'to')}
 							>
 								{formatDateTime(exception.lastSeen, { timezone })}
 							</Table.Cell>

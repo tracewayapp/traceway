@@ -144,7 +144,19 @@ func testGin() {
 	})
 
 	router.GET("/test-self-report-attributes", func(ctx *gin.Context) {
-		traceway.CaptureExceptionWithAttributes(errors.New("Test"), map[string]string{"Cool": "Pretty cool"}, nil)
+		traceway.CaptureExceptionWithAttributes(errors.New("Test"), map[string]string{
+			"Cool":  `{"this": "is", "a": "json", "attr": 10}`,
+			"Cool2": "Pretty cool2",
+			"Cool3": "Pretty cool3"}, nil)
+	})
+
+	router.GET("/test-self-report-attributes-panic", func(ctx *gin.Context) {
+		attrs := traceway.GetAttributesFromContext(ctx)
+		attrs.SetTag("Cool1", `{"this": "is", "a": "json", "attr": 10}`)
+		attrs.SetTag("Cool2", "Pretty Cool2")
+		attrs.SetTag("Cool3", "Pretty Cool3")
+
+		panic(errors.New("Test"))
 	})
 
 	router.GET("/test-self-report-context", func(ctx *gin.Context) {

@@ -2,6 +2,8 @@
 
 Issues capture problems in your application — exceptions, panics, and explicitly sent messages.
 
+<img src="/issues.png" alt="Issues Dashboard" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
 ## What Creates an Issue
 
 An issue is created when:
@@ -28,6 +30,8 @@ This linkage means:
 - Viewing an issue shows which endpoint or task triggered it
 - Viewing a trace shows any issues that occurred during execution
 - Attributes from the trace context are included in the issue
+
+<img src="/endpoint-exception.png" alt="Endpoint with Exception" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
 Issues captured outside of a trace context (no active request or task) are recorded as standalone issues without a trace link.
 

@@ -129,11 +129,7 @@ export function SdkProvider({ children }) {
     if (!VALID_VALUES.has(value)) return
     setSdkState(value)
     localStorage.setItem(STORAGE_KEY, value)
-
-    const url = new URL(window.location.href)
-    url.searchParams.set('sdk', value)
-    router.replace(url.pathname + url.search, undefined, { shallow: true })
-  }, [router])
+  }, [])
 
   return (
     <SdkContext.Provider value={{ sdk, setSdk }}>

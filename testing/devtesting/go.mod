@@ -5,7 +5,7 @@ go 1.25.1
 require (
 	github.com/gin-gonic/gin v1.11.0
 	github.com/mattn/go-sqlite3 v1.14.33
-	go.tracewayapp.com v0.4.1
+	go.tracewayapp.com v0.4.3
 	go.tracewayapp.com/tracewaydb v0.0.0-00010101000000-000000000000
 	go.tracewayapp.com/tracewaygin v0.0.0-00010101000000-000000000000
 )

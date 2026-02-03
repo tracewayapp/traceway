@@ -20,6 +20,7 @@ type EndpointSearchRequest struct {
 	OrderBy       string           `json:"orderBy"`
 	SortDirection string           `json:"sortDirection"`
 	Pagination    PaginationParams `json:"pagination"`
+	Search        string           `json:"search"`
 }
 
 type EndpointInstancesRequest struct {
@@ -89,7 +90,7 @@ func (e endpointController) FindGroupedByEndpoint(c *gin.Context) {
 	}
 
 	span := traceway.StartSpan(c, "loading grouped endpoints")
-	stats, total, err := repositories.EndpointRepository.FindGroupedByEndpoint(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
+	stats, total, err := repositories.EndpointRepository.FindGroupedByEndpoint(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection, request.Search)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading stats: %w", err))

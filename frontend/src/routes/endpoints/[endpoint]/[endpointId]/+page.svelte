@@ -12,7 +12,7 @@
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { ArrowLeft, ArrowRight, TriangleAlert, ClipboardList } from 'lucide-svelte';
 	import { LabelValue } from '$lib/components/ui/label-value';
-	import { ContextGrid } from '$lib/components/ui/context-grid';
+	import { AttributesGrid } from '$lib/components/ui/attributes-grid/index.js';
 	import SpanWaterfall from '$lib/components/spans/span-waterfall.svelte';
 	import SpanEmptyState from '$lib/components/spans/span-empty-state.svelte';
 	import type { TraceDetailResponse } from '$lib/types/spans';
@@ -71,9 +71,14 @@
 
 <div class="space-y-6">
 	<PageHeader
-		title={decodeURIComponent(data.endpoint)} subtitle={`Endpoint ID: ${data.endpointId}`}
-		onBack={createSmartBackHandler({ fallbackPath: resolve('/endpoints/[endpoint]', {endpoint: encodeURIComponent(data.endpoint)}) })} />
-
+		title={decodeURIComponent(data.endpoint)}
+		subtitle={`Endpoint ID: ${data.endpointId}`}
+		onBack={createSmartBackHandler({
+			fallbackPath: resolve('/endpoints/[endpoint]', {
+				endpoint: encodeURIComponent(data.endpoint)
+			})
+		})}
+	/>
 
 	{#if loading}
 		<div class="flex items-center justify-center py-20">
@@ -84,7 +89,11 @@
 			status={404}
 			title="Endpoint Not Found"
 			description="The endpoint instance you're looking for doesn't exist or may have expired."
-			onBack={createSmartBackHandler({ fallbackPath: resolve('/endpoints/[endpoint]', {endpoint: encodeURIComponent(data.endpoint)}) })}
+			onBack={createSmartBackHandler({
+				fallbackPath: resolve('/endpoints/[endpoint]', {
+					endpoint: encodeURIComponent(data.endpoint)
+				})
+			})}
 			backLabel="Back to Endpoint"
 			onRetry={loadData}
 			identifier={data.endpointId}
@@ -94,7 +103,11 @@
 			status={400}
 			title="Failed to Load Endpoint"
 			description={error}
-			onBack={createSmartBackHandler({ fallbackPath: resolve('/endpoints/[endpoint]', {endpoint: encodeURIComponent(data.endpoint)}) })}
+			onBack={createSmartBackHandler({
+				fallbackPath: resolve('/endpoints/[endpoint]', {
+					endpoint: encodeURIComponent(data.endpoint)
+				})
+			})}
 			backLabel="Back to Endpoint"
 			onRetry={loadData}
 		/>
@@ -107,11 +120,7 @@
 			</Card.Header>
 			<Card.Content class="space-y-6">
 				<div class="grid grid-cols-2 gap-4 md:grid-cols-4">
-					<LabelValue
-						label="Endpoint"
-						value={decodeURIComponent(data.endpoint)}
-						mono
-					/>
+					<LabelValue label="Endpoint" value={decodeURIComponent(data.endpoint)} mono />
 					<LabelValue
 						label="Status"
 						value={response.endpoint.statusCode}
@@ -130,33 +139,17 @@
 						value={formatDateTime(response.endpoint.recordedAt, { timezone })}
 						mono
 					/>
-					<LabelValue
-						label="Server"
-						value={response.endpoint.serverName}
-						mono
-					/>
-					<LabelValue
-						label="Version"
-						value={response.endpoint.appVersion || '-'}
-						mono
-					/>
-					<LabelValue
-						label="Client IP"
-						value={response.endpoint.clientIP}
-						mono
-					/>
-					<LabelValue
-						label="Body Size"
-						value={formatBytes(response.endpoint.bodySize)}
-						mono
-					/>
+					<LabelValue label="Server" value={response.endpoint.serverName} mono />
+					<LabelValue label="Version" value={response.endpoint.appVersion || '-'} mono />
+					<LabelValue label="Client IP" value={response.endpoint.clientIP} mono />
+					<LabelValue label="Body Size" value={formatBytes(response.endpoint.bodySize)} mono />
 				</div>
 
 				{#if response.endpoint.attributes && Object.keys(response.endpoint.attributes).length > 0}
 					<hr class="border-border" />
 					<div>
-						<p class="mb-3 text-sm font-medium">Context</p>
-						<ContextGrid attributes={response.endpoint.attributes} />
+						<p class="mb-3 text-sm font-medium">Attributes</p>
+						<AttributesGrid attributes={response.endpoint.attributes} />
 					</div>
 				{/if}
 			</Card.Content>
@@ -202,7 +195,8 @@
 						<Card.Title>Messages</Card.Title>
 					</div>
 					<Card.Description>
-						{response.messages.length} message{response.messages.length === 1 ? '' : 's'} logged during this request
+						{response.messages.length} message{response.messages.length === 1 ? '' : 's'} logged during
+						this request
 					</Card.Description>
 				</Card.Header>
 				<Card.Content class="px-0 pb-0">
@@ -231,7 +225,10 @@
 									<Table.Cell class="pr-6">
 										{#if message.attributes && Object.keys(message.attributes).length > 0}
 											<span class="text-xs text-muted-foreground">
-												{Object.keys(message.attributes).length} key{Object.keys(message.attributes).length === 1 ? '' : 's'}
+												{Object.keys(message.attributes).length} key{Object.keys(message.attributes)
+													.length === 1
+													? ''
+													: 's'}
 											</span>
 										{:else}
 											<span class="text-xs text-muted-foreground">-</span>

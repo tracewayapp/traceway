@@ -12,7 +12,7 @@
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { ArrowRight, TriangleAlert, ClipboardList } from 'lucide-svelte';
 	import { LabelValue } from '$lib/components/ui/label-value';
-	import { ContextGrid } from '$lib/components/ui/context-grid';
+	import { AttributesGrid } from '$lib/components/ui/attributes-grid/index.js';
 	import SpanWaterfall from '$lib/components/spans/span-waterfall.svelte';
 	import SpanEmptyState from '$lib/components/spans/span-empty-state.svelte';
 	import PageHeader from '$lib/components/issues/page-header.svelte';
@@ -86,9 +86,12 @@
 
 <div class="space-y-6">
 	<PageHeader
-		title={decodeURIComponent(data.task)} subtitle={`Task ID: ${data.taskId}`}
-		onBack={createSmartBackHandler({ fallbackPath: resolve('/tasks/[task]', {task: encodeURIComponent(data.task)}) })} />
-
+		title={decodeURIComponent(data.task)}
+		subtitle={`Task ID: ${data.taskId}`}
+		onBack={createSmartBackHandler({
+			fallbackPath: resolve('/tasks/[task]', { task: encodeURIComponent(data.task) })
+		})}
+	/>
 
 	{#if loading}
 		<div class="flex items-center justify-center py-20">
@@ -99,7 +102,9 @@
 			status={404}
 			title="Task Not Found"
 			description="The task instance you're looking for doesn't exist or may have expired."
-			onBack={createSmartBackHandler({ fallbackPath: resolve('/tasks/[task]', {task: encodeURIComponent(data.task)}) })}
+			onBack={createSmartBackHandler({
+				fallbackPath: resolve('/tasks/[task]', { task: encodeURIComponent(data.task) })
+			})}
 			backLabel="Back to Task"
 			onRetry={loadData}
 			identifier={data.taskId}
@@ -109,7 +114,9 @@
 			status={400}
 			title="Failed to Load Task"
 			description={error}
-			onBack={createSmartBackHandler({ fallbackPath: resolve('/tasks/[task]', {task: encodeURIComponent(data.task)}) })}
+			onBack={createSmartBackHandler({
+				fallbackPath: resolve('/tasks/[task]', { task: encodeURIComponent(data.task) })
+			})}
 			backLabel="Back to Task"
 			onRetry={loadData}
 		/>
@@ -122,39 +129,22 @@
 			</Card.Header>
 			<Card.Content class="space-y-6">
 				<div class="grid grid-cols-2 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-					<LabelValue
-						label="Task"
-						value={decodeURIComponent(data.task)}
-						mono
-					/>
-					<LabelValue
-						label="Duration"
-						value={formatDuration(response.task.duration)}
-						mono
-						large
-					/>
+					<LabelValue label="Task" value={decodeURIComponent(data.task)} mono />
+					<LabelValue label="Duration" value={formatDuration(response.task.duration)} mono large />
 					<LabelValue
 						label="Recorded At"
 						value={formatDateTime(response.task.recordedAt, { timezone })}
 						mono
 					/>
-					<LabelValue
-						label="Server"
-						value={response.task.serverName}
-						mono
-					/>
-					<LabelValue
-						label="Version"
-						value={response.task.appVersion || '-'}
-						mono
-					/>
+					<LabelValue label="Server" value={response.task.serverName} mono />
+					<LabelValue label="Version" value={response.task.appVersion || '-'} mono />
 				</div>
 
 				{#if response.task.attributes && Object.keys(response.task.attributes).length > 0}
 					<hr class="border-border" />
 					<div>
-						<p class="mb-3 text-sm font-medium">Context</p>
-						<ContextGrid attributes={response.task.attributes} />
+						<p class="mb-3 text-sm font-medium">Attributes</p>
+						<AttributesGrid attributes={response.task.attributes} />
 					</div>
 				{/if}
 			</Card.Content>
@@ -200,7 +190,8 @@
 						<Card.Title>Messages</Card.Title>
 					</div>
 					<Card.Description>
-						{response.messages.length} message{response.messages.length === 1 ? '' : 's'} logged during this task
+						{response.messages.length} message{response.messages.length === 1 ? '' : 's'} logged during
+						this task
 					</Card.Description>
 				</Card.Header>
 				<Card.Content class="px-0 pb-0">
@@ -229,7 +220,10 @@
 									<Table.Cell class="pr-6">
 										{#if message.attributes && Object.keys(message.attributes).length > 0}
 											<span class="text-xs text-muted-foreground">
-												{Object.keys(message.attributes).length} key{Object.keys(message.attributes).length === 1 ? '' : 's'}
+												{Object.keys(message.attributes).length} key{Object.keys(message.attributes)
+													.length === 1
+													? ''
+													: 's'}
 											</span>
 										{:else}
 											<span class="text-xs text-muted-foreground">-</span>

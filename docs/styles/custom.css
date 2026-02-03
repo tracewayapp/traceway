@@ -7,6 +7,17 @@
   margin-left: auto;
 }
 
+/* Mobile navbar - keep logo on the left */
+@media (max-width: 767px) {
+  .nextra-nav-container nav {
+    justify-content: flex-start !important;
+  }
+
+  .nextra-nav-container nav > a:first-child {
+    margin-right: auto !important;
+  }
+}
+
 /* SDK Selector - injected into sidebar via separator */
 li:has(> .sdk-selector) {
   padding: 0 !important;
@@ -54,8 +65,7 @@ li:has(> .sdk-selector) > span:first-child {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  z-index: 50;
-  overflow: hidden;
+  z-index: 100;
 }
 
 .sdk-selector-search {
@@ -65,8 +75,14 @@ li:has(> .sdk-selector) > span:first-child {
   border: none;
   border-bottom: 1px solid #e5e7eb;
   outline: none;
+  box-shadow: none;
   background: transparent;
   color: #111827;
+}
+
+.sdk-selector-search:focus {
+  outline: none;
+  box-shadow: none;
 }
 
 .sdk-selector-search::placeholder {
@@ -77,6 +93,8 @@ li:has(> .sdk-selector) > span:first-child {
   list-style: none !important;
   margin: 0 !important;
   padding: 4px !important;
+  max-height: 240px;
+  overflow-y: auto;
 }
 
 .sdk-selector-list li {
@@ -231,6 +249,11 @@ li:has(> .sdk-selector) > span:first-child {
   color: #e5e7eb;
 }
 
+:is(html[class~="dark"]) .sdk-selector-search:focus {
+  outline: none;
+  box-shadow: none;
+}
+
 :is(html[class~="dark"]) .sdk-selector-search::placeholder {
   color: #6b7280;
 }
@@ -246,4 +269,27 @@ li:has(> .sdk-selector) > span:first-child {
 :is(html[class~="dark"]) .sdk-selector-option.active {
   background: #1e3a5f;
   color: #60a5fa;
+}
+
+/* Protocol page - hide sidebar placeholder to expand content */
+body[data-page="protocol"] .nx-mx-auto.nx-flex > div.nx-w-64.nx-shrink-0,
+body[data-page^="protocol"] .nx-mx-auto.nx-flex > div.nx-w-64.nx-shrink-0 {
+  display: none !important;
+}
+
+/* Client index page - full width content on large screens */
+@media (min-width: 1280px) {
+  /* Hide left sidebar placeholder */
+  body[data-page="client"] .nx-mx-auto.nx-flex > div.nx-w-64.nx-shrink-0 {
+    display: none !important;
+  }
+
+  /* Hide right TOC */
+  body[data-page="client"] nav.nextra-toc {
+    display: none !important;
+  }
+
+  body[data-page="client"] main.nx-max-w-6xl {
+    max-width: none !important;
+  }
 }

@@ -5,6 +5,7 @@ import { DateTime } from 'luxon';
 import { getNow, parseISO } from './formatters';
 
 export const presetMinutes: Record<string, number> = {
+	'5m': 5,
 	'30m': 30,
 	'60m': 60,
 	'3h': 180,

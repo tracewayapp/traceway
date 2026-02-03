@@ -4,27 +4,7 @@ Traceway organizes your application telemetry around two building blocks: **Trac
 
 ## Building Blocks
 
-```
-┌──────────────────────────────────────────────────────┐
-│                      Trace                           │
-│  (Endpoint or Task)                                  │
-│                                                      │
-│  ┌────────┐  ┌────────────┐  ┌──────────────────┐   │
-│  │ Span 1 │  │  Span 2    │  │     Span 3       │   │
-│  └────────┘  └────────────┘  └──────────────────┘   │
-│                                                      │
-│  Attributes: { user_id: "123", tenant: "acme" }      │
-└──────────────────────────────────────────────────────┘
-        │
-        │ linked via traceId
-        ▼
-┌──────────────────────────────────────────────────────┐
-│                      Issue                           │
-│  (Exception or Message)                              │
-│                                                      │
-│  Attributes: { user_id: "123", url: "/api/users" }   │
-└──────────────────────────────────────────────────────┘
-```
+<img src="/architecture.png" alt="Traceway Architecture" style={{ maxWidth: '100%', height: 'auto' }} />
 
 ### Traces
 

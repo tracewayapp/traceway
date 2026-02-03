@@ -53,7 +53,7 @@
 
     // Pagination state
     let currentPage = $state(1);
-    let pageSize = $state(20);
+    let pageSize = $state(50);
     let total = $state(0);
     let totalPages = $state(0);
 
@@ -226,7 +226,7 @@
                         {#each occurrences as occurrence}
                             <Table.Row
                                 class="cursor-pointer hover:bg-muted/50"
-                                onclick={createRowClickHandler(`/issues/${page.params.exceptionHash}/${occurrence.id}`)}
+                                onclick={createRowClickHandler(`/issues/${page.params.exceptionHash}/${occurrence.id}`, 'preset', 'from', 'to')}
                             >
                                 <Table.Cell>{formatDateTime(occurrence.recordedAt, { timezone })}</Table.Cell>
                                 <Table.Cell class="font-mono text-sm text-muted-foreground">

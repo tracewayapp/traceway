@@ -14,6 +14,8 @@
     import { TableEmptyState } from "$lib/components/ui/table-empty-state";
     import { PaginationFooter } from "$lib/components/ui/pagination-footer";
     import { TimeRangePicker } from "$lib/components/ui/time-range-picker";
+    import { SearchBar } from "$lib/components/ui/search-bar";
+    import { browser } from '$app/environment';
     import { CalendarDate } from "@internationalized/date";
     import { projectsState } from '$lib/state/projects.svelte';
     import { createRowClickHandler } from '$lib/utils/navigation';
@@ -84,13 +86,27 @@
 
     // Pagination State
     let page = $state(1);
-    let pageSize = $state(100);
+    let pageSize = $state(50);
     let total = $state(0);
     let totalPages = $state(0);
 
+    // Parse URL params including search
+    function parseEndpointsUrlParams() {
+        if (!browser) return { preset: '24h', from: null, to: null, search: '' };
+        const params = new URLSearchParams(window.location.search);
+        const timeParams = parseTimeRangeFromUrl(timezone, '24h');
+        return {
+            ...timeParams,
+            search: params.get('search') || ''
+        };
+    }
+
     // Initialize from URL
-    const initialUrlParams = parseTimeRangeFromUrl(timezone);
+    const initialUrlParams = parseEndpointsUrlParams();
     const initialRange = getResolvedTimeRange(initialUrlParams, timezone);
+
+    // Search state
+    let searchQuery = $state(initialUrlParams.search);
 
     // Date Range State
     let selectedPreset = $state<string | null>(initialUrlParams.preset);
@@ -99,19 +115,24 @@
     let fromTime = $state(dateToTimeString(initialRange.from, timezone));
     let toTime = $state(dateToTimeString(initialRange.to, timezone));
 
-    // Update URL with current time range
+    // Update URL with current time range and search
     function updateTimeRangeUrl(pushToHistory = true) {
-        updateUrl(
-            selectedPreset
-                ? { preset: selectedPreset }
-                : { from: getFromDateTimeUTC(), to: getToDateTimeUTC() },
-            { pushToHistory }
-        );
+        const params: Record<string, string | null | undefined> = {};
+        if (selectedPreset) {
+            params.preset = selectedPreset;
+        } else {
+            params.from = getFromDateTimeUTC();
+            params.to = getToDateTimeUTC();
+        }
+        if (searchQuery.trim()) {
+            params.search = searchQuery.trim();
+        }
+        updateUrl(params, { pushToHistory });
     }
 
     // Handle browser back/forward navigation
     function handlePopState() {
-        const urlParams = parseTimeRangeFromUrl(timezone);
+        const urlParams = parseEndpointsUrlParams();
         const range = getResolvedTimeRange(urlParams, timezone);
 
         selectedPreset = urlParams.preset;
@@ -119,6 +140,7 @@
         fromTime = dateToTimeString(range.from, timezone);
         toDate = dateToCalendarDate(range.to, timezone);
         toTime = dateToTimeString(range.to, timezone);
+        searchQuery = urlParams.search;
 
         page = 1;
         loadData(false);
@@ -230,7 +252,8 @@
                 pagination: {
                     page: page,
                     pageSize: pageSize
-                }
+                },
+                search: searchQuery.trim()
             };
 
             const response = await api.post('/endpoints/grouped', requestBody, { projectId: projectsState.currentProjectId ?? undefined });
@@ -274,6 +297,11 @@
     function handleMetricChange(value: string) {
         selectedMetric = value;
         loadChartData();
+    }
+
+    function handleSearch() {
+        page = 1;
+        loadData(true);
     }
 
     function handleChartRangeSelect(from: Date, to: Date) {
@@ -356,6 +384,14 @@
             />
         </div>
     </div>
+
+    <!-- Search -->
+    <SearchBar
+        placeholder="Search endpoints..."
+        bind:value={searchQuery}
+        onSearch={handleSearch}
+        disabled={loading}
+    />
 
     <!-- Performance Chart -->
     <Card.Root class="pt-2">

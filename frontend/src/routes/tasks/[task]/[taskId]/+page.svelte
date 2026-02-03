@@ -12,7 +12,7 @@
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { ArrowRight, TriangleAlert, ClipboardList } from 'lucide-svelte';
 	import { LabelValue } from '$lib/components/ui/label-value';
-	import { ContextGrid } from '$lib/components/ui/context-grid';
+	import { AttributesGrid } from '$lib/components/ui/attributes-grid/index.js';
 	import SpanWaterfall from '$lib/components/spans/span-waterfall.svelte';
 	import SpanEmptyState from '$lib/components/spans/span-empty-state.svelte';
 	import PageHeader from '$lib/components/issues/page-header.svelte';
@@ -144,7 +144,7 @@
 					<hr class="border-border" />
 					<div>
 						<p class="mb-3 text-sm font-medium">Attributes</p>
-						<ContextGrid attributes={response.task.attributes} />
+						<AttributesGrid attributes={response.task.attributes} />
 					</div>
 				{/if}
 			</Card.Content>

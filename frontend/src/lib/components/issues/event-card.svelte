@@ -6,7 +6,7 @@
 	import type { ExceptionOccurrence, LinkedTrace } from '$lib/types/exceptions';
 	import { formatDuration, getStatusColor, formatDateTime } from '$lib/utils/formatters';
 	import { getTimezone } from '$lib/state/timezone.svelte';
-	import { ContextGrid } from '$lib/components/ui/context-grid';
+	import { AttributesGrid } from '$lib/components/ui/attributes-grid';
 	import { LabelValue } from '../ui/label-value';
 
 	interface Props {
@@ -54,12 +54,12 @@
 			</div>
 		</div>
 
-		<!-- Context -->
+		<!-- AttributesGrid -->
 		{#if occurrence.attributes && Object.keys(occurrence.attributes).length > 0}
 			<hr class="border-border" />
 			<div>
 				<p class="mb-3 text-sm font-medium">Attributes</p>
-				<ContextGrid attributes={occurrence.attributes} />
+				<AttributesGrid attributes={occurrence.attributes} />
 			</div>
 		{/if}
 

@@ -40,14 +40,14 @@ func main() {
 
 The middleware automatically captures for every request:
 
-| Data | Description |
-|------|-------------|
-| **Endpoint** | HTTP method + URL path (e.g., `GET /api/users`) |
-| **Duration** | Request processing time |
-| **Status Code** | HTTP response status |
-| **Body Size** | Response body size in bytes |
-| **Client IP** | Detected from headers or connection |
-| **Panics** | Recovered and captured with full stack trace |
+| Data            | Description                                     |
+| --------------- | ----------------------------------------------- |
+| **Endpoint**    | HTTP method + URL path (e.g., `GET /api/users`) |
+| **Duration**    | Request processing time                         |
+| **Status Code** | HTTP response status                            |
+| **Body Size**   | Response body size in bytes                     |
+| **Client IP**   | Detected from headers or connection             |
+| **Panics**      | Recovered and captured with full stack trace    |
 
 ## Client IP Detection
 
@@ -90,6 +90,22 @@ func handler(ctx *fasthttp.RequestCtx) {
 ```
 
 Context is stored in FastHTTP's `UserValue` store, not in Go's standard `context.Context`.
+
+## Connection package
+
+The connection page in the sidebar will have your projects unique API key and the integration instructions.
+
+<img
+  src="/connection.png"
+  alt="SDK Connection Setup"
+  style={{
+    maxWidth: "100%",
+    height: "auto",
+    marginTop: "16px",
+    borderRadius: "8px",
+    border: "1px solid #e5e7eb",
+  }}
+/>
 
 ## Next Steps
 

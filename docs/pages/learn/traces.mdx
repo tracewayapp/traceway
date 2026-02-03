@@ -16,6 +16,8 @@ DELETE /api/sessions/:token
 
 Endpoints are ordered in the dashboard by **Impact**, which factors in both performance and error frequency.
 
+<img src="/endpoints.png" alt="Endpoints Dashboard" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
 The middleware captures:
 
 | Field       | Description                  |
@@ -38,6 +40,8 @@ Tasks are traces created manually for background operations that run outside HTT
 - Scheduled reports
 
 Tasks carry the same data as endpoints (duration, attributes, spans) but without HTTP-specific fields like status code or client IP.
+
+<img src="/tasks.png" alt="Tasks Dashboard" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
 ## Trace Lifecycle
 

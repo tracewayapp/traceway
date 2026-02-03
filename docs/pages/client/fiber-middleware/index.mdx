@@ -40,15 +40,15 @@ func main() {
 
 The middleware automatically captures for every request:
 
-| Data | Description |
-|------|-------------|
-| **Endpoint** | HTTP method + route path (e.g., `GET /api/users/:id`) |
-| **Duration** | Request processing time |
-| **Status Code** | HTTP response status |
-| **Body Size** | Response body size in bytes |
-| **Client IP** | From Fiber's `c.IP()` |
-| **Panics** | Recovered and captured with full stack trace |
-| **Handler Errors** | Errors returned from handlers |
+| Data               | Description                                           |
+| ------------------ | ----------------------------------------------------- |
+| **Endpoint**       | HTTP method + route path (e.g., `GET /api/users/:id`) |
+| **Duration**       | Request processing time                               |
+| **Status Code**    | HTTP response status                                  |
+| **Body Size**      | Response body size in bytes                           |
+| **Client IP**      | From Fiber's `c.IP()`                                 |
+| **Panics**         | Recovered and captured with full stack trace          |
+| **Handler Errors** | Errors returned from handlers                         |
 
 ## Error Detection
 
@@ -108,6 +108,22 @@ app.Get("/api/users", func(c *fiber.Ctx) error {
 ```
 
 Context is stored in Fiber's `Locals` store.
+
+## Connection package
+
+The connection page in the sidebar will have your projects unique API key and the integration instructions.
+
+<img
+  src="/connection.png"
+  alt="SDK Connection Setup"
+  style={{
+    maxWidth: "100%",
+    height: "auto",
+    marginTop: "16px",
+    borderRadius: "8px",
+    border: "1px solid #e5e7eb",
+  }}
+/>
 
 ## Next Steps
 

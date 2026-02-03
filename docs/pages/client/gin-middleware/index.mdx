@@ -40,15 +40,15 @@ func main() {
 
 The middleware automatically captures for every request:
 
-| Data | Description |
-|------|-------------|
-| **Endpoint** | HTTP method + route template (e.g., `GET /api/users/:id`) |
-| **Duration** | Request processing time |
-| **Status Code** | HTTP response status |
-| **Body Size** | Response body size in bytes |
-| **Client IP** | From Gin's `ClientIP()` |
-| **Panics** | Recovered and captured with full stack trace |
-| **Gin Errors** | Errors added via `c.Error()` |
+| Data            | Description                                               |
+| --------------- | --------------------------------------------------------- |
+| **Endpoint**    | HTTP method + route template (e.g., `GET /api/users/:id`) |
+| **Duration**    | Request processing time                                   |
+| **Status Code** | HTTP response status                                      |
+| **Body Size**   | Response body size in bytes                               |
+| **Client IP**   | From Gin's `ClientIP()`                                   |
+| **Panics**      | Recovered and captured with full stack trace              |
+| **Gin Errors**  | Errors added via `c.Error()`                              |
 
 ## Error Detection
 
@@ -90,6 +90,22 @@ func handler(c *gin.Context) {
 ```
 
 If the error wraps a `StackTraceError` (from `traceway.NewStackTraceErrorf`), the embedded stack frames are used. Otherwise, the error type and message are recorded.
+
+## Connection package
+
+The connection page in the sidebar will have your projects unique API key and the integration instructions.
+
+<img
+  src="/connection.png"
+  alt="SDK Connection Setup"
+  style={{
+    maxWidth: "100%",
+    height: "auto",
+    marginTop: "16px",
+    borderRadius: "8px",
+    border: "1px solid #e5e7eb",
+  }}
+/>
 
 ## Next Steps
 

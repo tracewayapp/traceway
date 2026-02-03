@@ -53,7 +53,7 @@
 
     // Pagination state
     let currentPage = $state(1);
-    let pageSize = $state(20);
+    let pageSize = $state(50);
     let total = $state(0);
     let totalPages = $state(0);
 

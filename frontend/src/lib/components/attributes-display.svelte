@@ -6,7 +6,7 @@
 		maxInlineTags?: number;
 	}
 
-	let { attributes, maxInlineTags = 3 }: Props = $props();
+	let { attributes, maxInlineTags = 2 }: Props = $props();
 
 	const entries = $derived(
 		Object.entries(attributes || {}).sort((a, b) => a[0].localeCompare(b[0]))
@@ -28,7 +28,7 @@
 		{/each}
 		{#if hasMore}
 			<Popover.Root>
-				<Popover.Trigger>
+				<Popover.Trigger onclick={(e) => e.stopPropagation()}>
 					<span
 						class="cursor-pointer text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
 					>

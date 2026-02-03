@@ -1,0 +1,73 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36" version="29.3.6">
+  <diagram name="Page-1" id="wy32oRJBnUYnc9i8Ji1n">
+    <mxGraphModel dx="815" dy="558" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="nGLuf51OtG82o4zcJS6--42" edge="1" parent="1" source="nGLuf51OtG82o4zcJS6--3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="nGLuf51OtG82o4zcJS6--21">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="nGLuf51OtG82o4zcJS6--48" edge="1" parent="1" source="nGLuf51OtG82o4zcJS6--3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="nGLuf51OtG82o4zcJS6--46">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="nGLuf51OtG82o4zcJS6--3" parent="1" style="swimlane;whiteSpace=wrap;html=1;expand=1;collapsible=0;" value="Trace" vertex="1">
+          <mxGeometry height="103" width="270" x="186" y="79" as="geometry" />
+        </mxCell>
+        <mxCell id="nGLuf51OtG82o4zcJS6--4" parent="nGLuf51OtG82o4zcJS6--3" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;b&gt;Endpoint&lt;/b&gt;&lt;br&gt;&lt;i&gt;GET /users/:id&lt;/i&gt;" vertex="1">
+          <mxGeometry height="60" width="120" x="11" y="31" as="geometry" />
+        </mxCell>
+        <mxCell id="nGLuf51OtG82o4zcJS6--6" parent="nGLuf51OtG82o4zcJS6--3" style="rounded=0;whiteSpace=wrap;html=1;spacing=2;" value="&lt;b&gt;Task&lt;/b&gt;&lt;br&gt;&lt;i&gt;send-notifications&lt;/i&gt;" vertex="1">
+          <mxGeometry height="60" width="120" x="139" y="31" as="geometry" />
+        </mxCell>
+        <mxCell id="nGLuf51OtG82o4zcJS6--41" edge="1" parent="1" source="nGLuf51OtG82o4zcJS6--8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="nGLuf51OtG82o4zcJS6--21">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="nGLuf51OtG82o4zcJS6--8" parent="1" style="swimlane;whiteSpace=wrap;html=1;expand=1;collapsible=0;" value="Issue" vertex="1">
+          <mxGeometry height="103" width="270" x="12" y="274" as="geometry" />
+        </mxCell>
+        <mxCell id="nGLuf51OtG82o4zcJS6--9" parent="nGLuf51OtG82o4zcJS6--8" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;b&gt;Exception&lt;/b&gt;&lt;br&gt;&lt;i&gt;db failed to open&lt;/i&gt;" vertex="1">
+          <mxGeometry height="60" width="120" x="11" y="31" as="geometry" />
+        </mxCell>
+        <mxCell id="nGLuf51OtG82o4zcJS6--10" parent="nGLuf51OtG82o4zcJS6--8" style="rounded=0;whiteSpace=wrap;html=1;spacing=2;" value="&lt;b&gt;Message&lt;/b&gt;&lt;div&gt;&lt;br/&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="120" x="139" y="31" as="geometry" />
+        </mxCell>
+        <mxCell id="nGLuf51OtG82o4zcJS6--11" edge="1" parent="1" source="nGLuf51OtG82o4zcJS6--3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="145" y="131" />
+              <mxPoint x="145" y="275" />
+            </Array>
+            <mxPoint x="145" y="274" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="nGLuf51OtG82o4zcJS6--12" connectable="0" parent="nGLuf51OtG82o4zcJS6--11" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="Traces can have Issues&amp;nbsp;&lt;div&gt;attached to them&lt;/div&gt;" vertex="1">
+          <mxGeometry relative="1" x="-0.497" y="3" as="geometry">
+            <mxPoint x="-35" y="-26" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="nGLuf51OtG82o4zcJS6--21" parent="1" style="swimlane;whiteSpace=wrap;html=1;expand=1;collapsible=0;" value="Attributes" vertex="1">
+          <mxGeometry height="79" width="104" x="269" y="437" as="geometry" />
+        </mxCell>
+        <mxCell id="nGLuf51OtG82o4zcJS6--39" parent="nGLuf51OtG82o4zcJS6--21" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;fontStyle=2" value="Key: UserId&amp;nbsp;&lt;div&gt;Value: 10&lt;/div&gt;" vertex="1">
+          <mxGeometry height="42" width="106" x="15" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="nGLuf51OtG82o4zcJS6--44" connectable="0" parent="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="A Trace can have&amp;nbsp;&lt;div&gt;multiple Attributes&lt;/div&gt;" vertex="1">
+          <mxGeometry x="377" y="305" as="geometry">
+            <mxPoint x="-8" y="4" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="nGLuf51OtG82o4zcJS6--45" connectable="0" parent="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="An Issue can have&amp;nbsp;&lt;div&gt;multiple additional Attributes&lt;/div&gt;" vertex="1">
+          <mxGeometry x="131" y="494" as="geometry">
+            <mxPoint x="-8" y="4" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="nGLuf51OtG82o4zcJS6--46" parent="1" style="swimlane;whiteSpace=wrap;html=1;expand=1;collapsible=0;" value="Spans" vertex="1">
+          <mxGeometry height="93" width="198" x="460" y="271" as="geometry" />
+        </mxCell>
+        <mxCell id="nGLuf51OtG82o4zcJS6--47" parent="nGLuf51OtG82o4zcJS6--46" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;fontStyle=2" value="Name:db.load.user&lt;div&gt;Started At: {time}&lt;br&gt;Duration: {time}&lt;/div&gt;" vertex="1">
+          <mxGeometry height="54" width="174" x="15" y="30" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

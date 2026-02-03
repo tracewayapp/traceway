@@ -7,7 +7,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/lib/pq v1.10.9
 	github.com/tracewayapp/go-lightning/lit v0.0.0-20260121181925-c304b0bdd0dc
-	go.tracewayapp.com v0.4.1
+	go.tracewayapp.com v0.4.3
 	go.tracewayapp.com/tracewaygin v0.4.1
 )
 

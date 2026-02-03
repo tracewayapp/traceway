@@ -7,6 +7,17 @@
   margin-left: auto;
 }
 
+/* Mobile navbar - keep logo on the left */
+@media (max-width: 767px) {
+  .nextra-nav-container nav {
+    justify-content: flex-start !important;
+  }
+
+  .nextra-nav-container nav > a:first-child {
+    margin-right: auto !important;
+  }
+}
+
 /* SDK Selector - injected into sidebar via separator */
 li:has(> .sdk-selector) {
   padding: 0 !important;

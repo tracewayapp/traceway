@@ -43,6 +43,7 @@
     const presetGroups: PresetGroup[] = [
         {
             presets: [
+                { value: '5m', label: '5 minutes', minutes: 5 },
                 { value: '30m', label: '30 minutes', minutes: 30 },
                 { value: '60m', label: '60 minutes', minutes: 60 },
             ]

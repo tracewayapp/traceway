@@ -105,6 +105,7 @@ export function getTimeRangeFromPreset(
 	const now = DateTime.now().setZone(tz);
 
 	const presetMinutes: Record<string, number> = {
+		'5m': 5,
 		'30m': 30,
 		'60m': 60,
 		'3h': 180,

@@ -114,7 +114,9 @@ class ProjectsState {
     }
 
     async createProject(name: string, framework: Framework = 'gin'): Promise<ProjectWithToken> {
-        const response = await api.post('/projects', { name, framework });
+        const response = await api.post('/projects', { name, framework }, {
+            projectId: this.currentProjectId ?? undefined
+        });
 
         // Reload projects to refresh cache
         await this.loadProjects();

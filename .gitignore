@@ -35,3 +35,5 @@ go.work.sum
 
 # Frontend build output
 backend/static/dist/
+/testing/devtesting-nestjs/node_modules
+/testing/devtesting-nestjs/dist

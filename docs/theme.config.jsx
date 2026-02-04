@@ -10,6 +10,9 @@ const SDK_VISIBILITY = {
   "fiber-middleware": "go-fiber",
   "fasthttp-middleware": "go-fasthttp",
   "http-middleware": "go-http",
+  "react": "js-react",
+  "vue": "js-vue",
+  "svelte": "js-svelte",
 };
 
 export default {

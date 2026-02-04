@@ -1,0 +1,199 @@
+# Composables
+
+Use the `useTraceway` composable to capture errors and messages in Vue components.
+
+## useTraceway
+
+```vue
+<script setup>
+import { useTraceway } from "@traceway/vue";
+
+const { captureException, captureExceptionWithAttributes, captureMessage } = useTraceway();
+</script>
+```
+
+## Return Value
+
+| Function | Description |
+|----------|-------------|
+| `captureException(error)` | Capture an error with stack trace |
+| `captureExceptionWithAttributes(error, attributes)` | Capture an error with metadata |
+| `captureMessage(message)` | Send a custom message |
+
+## captureException
+
+Capture errors in event handlers or async functions:
+
+```vue
+<script setup>
+import { useTraceway } from "@traceway/vue";
+
+const { captureException } = useTraceway();
+
+async function handleSubmit() {
+  try {
+    await submitForm();
+  } catch (error) {
+    captureException(error);
+    showErrorNotification("Submission failed");
+  }
+}
+</script>
+
+<template>
+  <button @click="handleSubmit">Submit</button>
+</template>
+```
+
+## captureExceptionWithAttributes
+
+Add context to errors:
+
+```vue
+<script setup>
+import { useTraceway } from "@traceway/vue";
+
+const props = defineProps(['userId']);
+const { captureExceptionWithAttributes } = useTraceway();
+
+async function loadData() {
+  try {
+    const data = await fetchUserData(props.userId);
+    // ...
+  } catch (error) {
+    captureExceptionWithAttributes(error, {
+      userId: props.userId,
+      action: "loadUserData",
+    });
+  }
+}
+</script>
+```
+
+## captureMessage
+
+Track non-error events:
+
+```vue
+<script setup>
+import { useTraceway } from "@traceway/vue";
+
+const { captureMessage } = useTraceway();
+
+function handleCheckout() {
+  captureMessage("User started checkout");
+  router.push("/checkout");
+}
+</script>
+
+<template>
+  <button @click="handleCheckout">Proceed to Checkout</button>
+</template>
+```
+
+## Composable Pattern
+
+Create reusable async handlers:
+
+```javascript
+// composables/useTrackedFetch.js
+import { ref } from "vue";
+import { useTraceway } from "@traceway/vue";
+
+export function useTrackedFetch(url, context = {}) {
+  const { captureExceptionWithAttributes } = useTraceway();
+  const data = ref(null);
+  const error = ref(null);
+  const loading = ref(false);
+
+  async function execute() {
+    loading.value = true;
+    error.value = null;
+    try {
+      const response = await fetch(url);
+      data.value = await response.json();
+    } catch (err) {
+      error.value = err;
+      captureExceptionWithAttributes(err, {
+        url,
+        ...context,
+      });
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  return { data, error, loading, execute };
+}
+```
+
+Usage:
+
+```vue
+<script setup>
+import { useTrackedFetch } from "@/composables/useTrackedFetch";
+
+const { data, error, loading, execute } = useTrackedFetch(
+  "/api/users",
+  { component: "UserList" }
+);
+
+onMounted(execute);
+</script>
+```
+
+## Options API
+
+For Options API components, use `inject`:
+
+```vue
+<script>
+import { TracewayKey } from "@traceway/vue";
+
+export default {
+  inject: {
+    traceway: { from: TracewayKey },
+  },
+  methods: {
+    handleError(error) {
+      this.traceway.captureException(error);
+    },
+  },
+};
+</script>
+```
+
+## Error Handling Best Practices
+
+```vue
+<script setup>
+import { useTraceway } from "@traceway/vue";
+import { ref } from "vue";
+
+const { captureException } = useTraceway();
+const errorMessage = ref("");
+
+async function handleAction() {
+  errorMessage.value = "";
+  try {
+    await performAction();
+  } catch (error) {
+    // 1. Capture for monitoring
+    captureException(error);
+
+    // 2. Show user-friendly message
+    errorMessage.value = "Action failed. Please try again.";
+
+    // 3. Optionally rethrow for error boundaries
+    // throw error;
+  }
+}
+</script>
+
+<template>
+  <div>
+    <button @click="handleAction">Perform Action</button>
+    <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
+  </div>
+</template>
+```

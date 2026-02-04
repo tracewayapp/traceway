@@ -15,19 +15,19 @@ export function getInstallCommand(framework: Framework): string {
 		case 'stdlib':
 			return `${base} && go get go.tracewayapp.com/tracewayhttp`;
 		case 'react':
-			return 'npm install @tracewayapp/react';
+			return 'npm install @traceway/react';
 		case 'svelte':
-			return 'npm install @tracewayapp/svelte';
+			return 'npm install @traceway/svelte';
 		case 'vuejs':
-			return 'npm install @tracewayapp/vue';
+			return 'npm install @traceway/vue';
 		case 'nextjs':
-			return 'npm install @tracewayapp/next';
+			return 'npm install @traceway/next';
 		case 'nestjs':
-			return 'npm install @tracewayapp/nest';
+			return 'npm install @traceway/nest';
 		case 'express':
-			return 'npm install @tracewayapp/express';
+			return 'npm install @traceway/express';
 		case 'remix':
-			return 'npm install @tracewayapp/remix';
+			return 'npm install @traceway/remix';
 		case 'custom':
 		default:
 			return base;
@@ -124,32 +124,44 @@ func main() {
 }`;
 
 		case 'react':
-			return `import { init, captureException } from "@tracewayapp/react";
-
-init("${connectionString}");
+			return `import { TracewayProvider } from "@traceway/react";
 
 function App() {
-    return <div>My App</div>;
+  return (
+    <TracewayProvider connectionString="${connectionString}">
+      <YourApp />
+    </TracewayProvider>
+  );
 }
 
 export default App;`;
 
 		case 'svelte':
-			return `import { init, captureException } from "@tracewayapp/svelte";
+			return `<script>
+  import { setupTraceway } from "@traceway/svelte";
 
-init("${connectionString}");`;
+  setupTraceway({
+    connectionString: "${connectionString}",
+  });
+</script>
+
+<slot />`;
 
 		case 'vuejs':
 			return `import { createApp } from "vue";
-import { init, captureException } from "@tracewayapp/vue";
-
-init("${connectionString}");
+import { createTracewayPlugin } from "@traceway/vue";
+import App from "./App.vue";
 
 const app = createApp(App);
+
+app.use(createTracewayPlugin({
+  connectionString: "${connectionString}",
+}));
+
 app.mount("#app");`;
 
 		case 'nextjs':
-			return `import { withTraceway } from "@tracewayapp/next";
+			return `import { withTraceway } from "@traceway/next";
 
 export default withTraceway({
     connectionString: "${connectionString}",
@@ -157,7 +169,7 @@ export default withTraceway({
 
 		case 'nestjs':
 			return `import { Module } from "@nestjs/common";
-import { TracewayModule } from "@tracewayapp/nest";
+import { TracewayModule } from "@traceway/nest";
 
 @Module({
     imports: [
@@ -170,7 +182,7 @@ export class AppModule {}`;
 
 		case 'express':
 			return `import express from "express";
-import { traceway } from "@tracewayapp/express";
+import { traceway } from "@traceway/express";
 
 const app = express();
 app.use(traceway("${connectionString}"));
@@ -182,7 +194,7 @@ app.get("/api/users", (req, res) => {
 app.listen(8080);`;
 
 		case 'remix':
-			return `import { withTraceway } from "@tracewayapp/remix";
+			return `import { withTraceway } from "@traceway/remix";
 
 export default withTraceway({
     connectionString: "${connectionString}",
@@ -218,9 +230,28 @@ throw new Error("Test error from Traceway integration");`;
 
 export function getTestingRouteCode2(framework?: Framework): string {
 	if (framework && isJsFramework(framework)) {
-		return `import { captureException } from "@tracewayapp/${getPackageName(framework)}";
+		switch (framework) {
+			case 'react':
+				return `import { useTraceway } from "@traceway/react";
 
-captureException(new Error("Test error from Traceway integration"));`;
+// In a component using the hook
+const { captureException } = useTraceway();
+captureException(new Error("Test error"));`;
+			case 'svelte':
+				return `import { getTraceway } from "@traceway/svelte";
+
+const { captureException } = getTraceway();
+captureException(new Error("Test error"));`;
+			case 'vuejs':
+				return `import { useTraceway } from "@traceway/vue";
+
+const { captureException } = useTraceway();
+captureException(new Error("Test error"));`;
+			default:
+				return `import { captureException } from "@traceway/${getPackageName(framework)}";
+
+captureException(new Error("Test error"));`;
+		}
 	}
 	return `r.GET("/testing", func(c *gin.Context) {
     c.AbortWithError(500, traceway.NewStackTraceErrorf("testing"))

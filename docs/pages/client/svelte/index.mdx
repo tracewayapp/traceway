@@ -1,0 +1,108 @@
+# Svelte Quick Start
+
+Integrate Traceway into your Svelte or SvelteKit application with the `@traceway/svelte` package.
+
+## Installation
+
+```bash
+npm install @traceway/svelte
+```
+
+## Setup
+
+Call `setupTraceway` in your root component (e.g., `+layout.svelte` for SvelteKit):
+
+```svelte
+<script>
+  import { setupTraceway } from "@traceway/svelte";
+
+  setupTraceway({
+    connectionString: "your-token@https://traceway.example.com/api/report",
+  });
+</script>
+
+<slot />
+```
+
+## Capture Errors in Components
+
+Use `getTraceway` in child components:
+
+```svelte
+<script>
+  import { getTraceway } from "@traceway/svelte";
+
+  const { captureException } = getTraceway();
+
+  async function handleSubmit() {
+    try {
+      await submitForm();
+    } catch (error) {
+      captureException(error);
+    }
+  }
+</script>
+
+<button on:click={handleSubmit}>Submit</button>
+```
+
+## With Options
+
+```svelte
+<script>
+  import { setupTraceway } from "@traceway/svelte";
+
+  setupTraceway({
+    connectionString: "your-token@https://traceway.example.com/api/report",
+    options: {
+      debug: true,
+      version: "1.0.0",
+    },
+  });
+</script>
+
+<slot />
+```
+
+## Test Your Integration
+
+```svelte
+<script>
+  import { getTraceway } from "@traceway/svelte";
+
+  const { captureException } = getTraceway();
+
+  function sendTestError() {
+    captureException(new Error("Test error from Svelte"));
+  }
+</script>
+
+<button on:click={sendTestError}>Send Test Error</button>
+```
+
+Click the button and check your Traceway dashboard to verify the error appears.
+
+## SvelteKit Setup
+
+For SvelteKit, set up Traceway in your root layout:
+
+```svelte
+<!-- src/routes/+layout.svelte -->
+<script>
+  import { setupTraceway } from "@traceway/svelte";
+  import { browser } from "$app/environment";
+
+  // Only initialize on client
+  if (browser) {
+    setupTraceway({
+      connectionString: "your-token@https://traceway.example.com/api/report",
+    });
+  }
+</script>
+
+<slot />
+```
+
+## Next Steps
+
+- [Context Setup](/client/svelte/context) - Configuration and advanced usage

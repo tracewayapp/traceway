@@ -1,0 +1,159 @@
+# Error Boundary
+
+The `TracewayErrorBoundary` component catches React errors and reports them to Traceway.
+
+## Basic Usage
+
+```jsx
+import { TracewayErrorBoundary } from "@traceway/react";
+
+function App() {
+  return (
+    <TracewayErrorBoundary fallback={<ErrorPage />}>
+      <YourApp />
+    </TracewayErrorBoundary>
+  );
+}
+
+function ErrorPage() {
+  return (
+    <div>
+      <h1>Something went wrong</h1>
+      <p>Please refresh the page or try again later.</p>
+    </div>
+  );
+}
+```
+
+## Props
+
+| Prop | Type | Required | Description |
+|------|------|----------|-------------|
+| `children` | `ReactNode` | Yes | Components to wrap |
+| `fallback` | `ReactNode` | Yes | UI to show when an error occurs |
+| `onError` | `function` | No | Callback when error is caught |
+
+## With onError Callback
+
+```jsx
+<TracewayErrorBoundary
+  fallback={<ErrorPage />}
+  onError={(error, errorInfo) => {
+    console.error("Error caught:", error);
+    console.error("Component stack:", errorInfo.componentStack);
+  }}
+>
+  <YourApp />
+</TracewayErrorBoundary>
+```
+
+## Nested Error Boundaries
+
+Use multiple error boundaries to isolate failures:
+
+```jsx
+function App() {
+  return (
+    <TracewayErrorBoundary fallback={<FullPageError />}>
+      <Header />
+      <main>
+        <TracewayErrorBoundary fallback={<SidebarError />}>
+          <Sidebar />
+        </TracewayErrorBoundary>
+        <TracewayErrorBoundary fallback={<ContentError />}>
+          <MainContent />
+        </TracewayErrorBoundary>
+      </main>
+    </TracewayErrorBoundary>
+  );
+}
+```
+
+If `Sidebar` throws, only the sidebar shows an error; the rest of the app continues working.
+
+## Fallback with Error Details
+
+```jsx
+function ErrorFallback({ error }) {
+  return (
+    <div className="error-container">
+      <h2>Oops! Something went wrong</h2>
+      {process.env.NODE_ENV === "development" && (
+        <pre>{error.message}</pre>
+      )}
+      <button onClick={() => window.location.reload()}>
+        Reload Page
+      </button>
+    </div>
+  );
+}
+
+// Note: To receive error in fallback, use a custom error boundary
+// that passes error to the fallback component
+```
+
+## What Gets Caught
+
+Error boundaries catch:
+- Errors in render methods
+- Errors in lifecycle methods
+- Errors in constructors of child components
+
+Error boundaries do **not** catch:
+- Event handlers (use try/catch and `captureException`)
+- Async code (use try/catch and `captureException`)
+- Server-side rendering errors
+- Errors in the error boundary itself
+
+## Event Handler Errors
+
+For event handlers, use `useTraceway`:
+
+```jsx
+import { useTraceway } from "@traceway/react";
+
+function Button() {
+  const { captureException } = useTraceway();
+
+  function handleClick() {
+    try {
+      doSomethingRisky();
+    } catch (error) {
+      captureException(error);
+      // Show user-friendly error
+    }
+  }
+
+  return <button onClick={handleClick}>Click me</button>;
+}
+```
+
+## Reset Error Boundary
+
+To allow users to retry after an error:
+
+```jsx
+import { useState } from "react";
+
+function App() {
+  const [key, setKey] = useState(0);
+
+  return (
+    <TracewayErrorBoundary
+      key={key}
+      fallback={
+        <div>
+          <p>Something went wrong</p>
+          <button onClick={() => setKey(k => k + 1)}>
+            Try Again
+          </button>
+        </div>
+      }
+    >
+      <YourApp />
+    </TracewayErrorBoundary>
+  );
+}
+```
+
+Changing the `key` remounts the error boundary, clearing its error state.

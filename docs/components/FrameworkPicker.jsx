@@ -44,6 +44,34 @@ const FRAMEWORKS = [
     icon: '/custom.png',
     href: '/client/sdk',
   },
+  {
+    value: 'js-react',
+    label: 'React',
+    description: 'React applications with error boundaries and hooks.',
+    icon: '/react.svg',
+    href: '/client/react',
+  },
+  {
+    value: 'js-vue',
+    label: 'Vue.js',
+    description: 'Vue 3 applications with plugin and composables.',
+    icon: '/vue.svg',
+    href: '/client/vue',
+  },
+  {
+    value: 'js-svelte',
+    label: 'Svelte',
+    description: 'Svelte/SvelteKit applications with context API.',
+    icon: '/svelte.png',
+    href: '/client/svelte',
+  },
+  {
+    value: 'js-generic',
+    label: 'JS Generic',
+    description: 'Framework-agnostic JavaScript SDK for browsers.',
+    icon: '/javascript.svg',
+    href: '/client/js-sdk',
+  },
 ]
 
 export default function FrameworkPicker() {

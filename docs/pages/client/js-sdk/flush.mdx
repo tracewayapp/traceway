@@ -1,0 +1,114 @@
+# Flush & Lifecycle
+
+Understanding the SDK's batching behavior and how to control it.
+
+## Batching Behavior
+
+The Traceway SDK batches events to reduce network overhead:
+
+1. Events are collected in memory
+2. After `debounceMs` (default: 1500ms) of no new events, the batch is sent
+3. If an upload fails, it retries after `retryDelayMs` (default: 10000ms)
+
+This means events are not sent immediately. For most applications, this is the desired behavior.
+
+## flush()
+
+Force-send all pending events immediately:
+
+```javascript
+import { flush } from "@traceway/frontend";
+
+// Send all pending events now
+await flush();
+```
+
+## When to Use flush()
+
+### Before Page Unload
+
+```javascript
+window.addEventListener("beforeunload", () => {
+  flush();
+});
+```
+
+Note: Due to browser limitations, `flush()` during `beforeunload` may not always complete. Use the [Beacon API](https://developer.mozilla.org/en-US/docs/Web/API/Beacon_API) pattern if critical events must be sent.
+
+### After Critical Errors
+
+```javascript
+try {
+  criticalOperation();
+} catch (error) {
+  captureException(error);
+  await flush(); // Ensure this error is sent immediately
+  showErrorPage();
+}
+```
+
+### Before Redirects
+
+```javascript
+async function handleLogout() {
+  captureMessage("User logged out");
+  await flush(); // Send before redirect
+  window.location.href = "/login";
+}
+```
+
+### In Tests
+
+```javascript
+it("should capture errors", async () => {
+  captureException(new Error("Test error"));
+  await flush(); // Ensure event is sent before assertions
+  // ... verify event was received
+});
+```
+
+## Lifecycle Considerations
+
+### Single Page Applications (SPAs)
+
+For SPAs, initialize once at app startup. The SDK handles batching across route changes automatically.
+
+```javascript
+// main.js or index.js
+import { init } from "@traceway/frontend";
+
+init("your-token@https://traceway.example.com/api/report");
+```
+
+### Server-Side Rendering (SSR)
+
+The SDK is browser-only. For SSR frameworks:
+
+```javascript
+// Only initialize on client
+if (typeof window !== "undefined") {
+  init("your-token@https://traceway.example.com/api/report");
+}
+```
+
+Or use framework-specific packages that handle this automatically.
+
+## Tuning Batching
+
+Adjust timing based on your needs:
+
+```javascript
+init("your-token@...", {
+  // Faster batching for critical apps
+  debounceMs: 500,
+  retryDelayMs: 5000,
+});
+```
+
+```javascript
+init("your-token@...", {
+  // More aggressive batching for high-traffic apps
+  debounceMs: 3000,
+  retryDelayMs: 15000,
+});
+```

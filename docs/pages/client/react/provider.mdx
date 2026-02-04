@@ -1,0 +1,102 @@
+# TracewayProvider
+
+The `TracewayProvider` component initializes Traceway and provides context to child components.
+
+## Basic Usage
+
+```jsx
+import { TracewayProvider } from "@traceway/react";
+
+function App() {
+  return (
+    <TracewayProvider connectionString="your-token@https://traceway.example.com/api/report">
+      <YourApp />
+    </TracewayProvider>
+  );
+}
+```
+
+## Props
+
+| Prop | Type | Required | Description |
+|------|------|----------|-------------|
+| `connectionString` | `string` | Yes | Your Traceway connection string |
+| `options` | `object` | No | Configuration options |
+| `children` | `ReactNode` | Yes | Child components |
+
+## Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `debug` | `boolean` | `false` | Log events to console |
+| `debounceMs` | `number` | `1500` | Batch delay in milliseconds |
+| `retryDelayMs` | `number` | `10000` | Retry delay for failed uploads |
+| `version` | `string` | `undefined` | Your application version |
+
+## Example with Options
+
+```jsx
+<TracewayProvider
+  connectionString="your-token@https://traceway.example.com/api/report"
+  options={{
+    debug: process.env.NODE_ENV === "development",
+    version: process.env.REACT_APP_VERSION,
+    debounceMs: 1000,
+  }}
+>
+  <YourApp />
+</TracewayProvider>
+```
+
+## Environment-Specific Setup
+
+```jsx
+function App() {
+  const connectionString = process.env.NODE_ENV === "production"
+    ? process.env.REACT_APP_TRACEWAY_PROD
+    : process.env.REACT_APP_TRACEWAY_DEV;
+
+  return (
+    <TracewayProvider connectionString={connectionString}>
+      <YourApp />
+    </TracewayProvider>
+  );
+}
+```
+
+## Placement
+
+Place `TracewayProvider` as high as possible in your component tree, typically in your root `App` component or `index.js`:
+
+```jsx
+// index.js
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { TracewayProvider } from "@traceway/react";
+import App from "./App";
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(
+  <React.StrictMode>
+    <TracewayProvider connectionString="your-token@...">
+      <App />
+    </TracewayProvider>
+  </React.StrictMode>
+);
+```
+
+## TracewayContext
+
+For advanced use cases, you can access the context directly:
+
+```jsx
+import { TracewayContext } from "@traceway/react";
+import { useContext } from "react";
+
+function MyComponent() {
+  const traceway = useContext(TracewayContext);
+  // Use traceway.captureException, etc.
+}
+```
+
+However, the `useTraceway` hook is preferred for most use cases.

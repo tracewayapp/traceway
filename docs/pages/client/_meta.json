@@ -12,6 +12,7 @@
   "http-middleware": "HTTP Middleware",
   "sdk": "SDK Reference",
   "node-sdk": "Node.js SDK",
+  "nestjs": "NestJS",
   "react": "React",
   "vue": "Vue.js",
   "svelte": "Svelte",

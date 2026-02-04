@@ -1,0 +1,168 @@
+# TracewayExceptionFilter
+
+The `TracewayExceptionFilter` is a global exception filter that captures unhandled exceptions and sends them to Traceway with full stack traces and request context.
+
+## Setup
+
+Register the filter globally in your app module:
+
+```typescript
+import { Module } from "@nestjs/common";
+import { APP_FILTER } from "@nestjs/core";
+import { TracewayModule, TracewayExceptionFilter } from "@traceway/nestjs";
+
+@Module({
+  imports: [
+    TracewayModule.forRoot({
+      connectionString: "your-token@https://traceway.example.com/api/report",
+      onErrorRecording: ["url", "query", "body", "headers"],
+    }),
+  ],
+  providers: [
+    {
+      provide: APP_FILTER,
+      useClass: TracewayExceptionFilter,
+    },
+  ],
+})
+export class AppModule {}
+```
+
+## What Gets Captured
+
+When an exception is thrown:
+
+| Data | Condition |
+|------|-----------|
+| Error message | Always |
+| Stack trace | Always |
+| Trace ID | If within a traced request |
+| Trace attributes | If within a traced request |
+| User agent | Always |
+| URL | If `onErrorRecording` includes `"url"` |
+| Query params | If `onErrorRecording` includes `"query"` |
+| Request body | If `onErrorRecording` includes `"body"` (JSON only) |
+| Headers | If `onErrorRecording` includes `"headers"` |
+
+## Error Recording Options
+
+Configure what request data to include with captured exceptions:
+
+```typescript
+TracewayModule.forRoot({
+  connectionString: "...",
+  onErrorRecording: ["url", "query", "body", "headers"],
+})
+```
+
+### URL Recording
+
+```typescript
+onErrorRecording: ["url"]
+```
+
+Captures the request path:
+```
+url: "/api/users/123"
+```
+
+### Query Recording
+
+```typescript
+onErrorRecording: ["query"]
+```
+
+Captures query parameters as JSON:
+```
+query: {"page":"1","limit":"10"}
+```
+
+### Body Recording
+
+```typescript
+onErrorRecording: ["body"]
+```
+
+Captures request body for JSON requests (max 64KB):
+```
+body: {"name":"John","email":"john@example.com"}
+```
+
+### Headers Recording
+
+```typescript
+onErrorRecording: ["headers"]
+```
+
+Captures request headers (excluding `authorization` and `cookie` for security):
+```
+headers: {"content-type":"application/json","x-request-id":"abc123"}
+```
+
+## Exception Types
+
+### HttpException
+
+For NestJS `HttpException` errors (4xx client errors), the filter:
+- Returns the standard NestJS error response
+- Does **not** capture to Traceway (client errors are expected)
+
+### Server Errors (5xx)
+
+For server errors and unhandled exceptions:
+- Captures the exception to Traceway
+- Returns a 500 Internal Server Error response
+
+```typescript
+@Get("crash")
+crash() {
+  // This gets captured to Traceway
+  throw new Error("Something went wrong");
+}
+
+@Get("not-found")
+notFound() {
+  // This does NOT get captured (4xx error)
+  throw new NotFoundException("User not found");
+}
+```
+
+## Combining with Other Filters
+
+If you have other exception filters, ensure `TracewayExceptionFilter` runs first by registering it before other filters:
+
+```typescript
+providers: [
+  {
+    provide: APP_FILTER,
+    useClass: TracewayExceptionFilter,
+  },
+  {
+    provide: APP_FILTER,
+    useClass: YourCustomFilter,
+  },
+],
+```
+
+## Manual Exception Capture
+
+For errors you catch and handle yourself, use `TracewayService`:
+
+```typescript
+@Injectable()
+export class PaymentService {
+  constructor(private readonly traceway: TracewayService) {}
+
+  async processPayment(amount: number) {
+    try {
+      await this.paymentGateway.charge(amount);
+    } catch (error) {
+      // Capture but don't re-throw
+      this.traceway.captureException(error);
+
+      // Handle gracefully
+      return { success: false, error: "Payment failed" };
+    }
+  }
+}
+```

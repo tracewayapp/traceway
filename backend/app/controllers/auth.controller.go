@@ -11,6 +11,7 @@ import (
 	"os"
 
 	"github.com/gin-gonic/gin"
+	traceway "go.tracewayapp.com"
 )
 
 var PostRegistrationHooks []func(tx *sql.Tx, org *models.Organization, user *models.User) error
@@ -149,6 +150,12 @@ func (a authController) Register(c *gin.Context) {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
 		}
+	}
+
+	if !validFrameworks[request.Framework] {
+		traceway.CaptureMessage("Invalid framework received during registration: " + request.Framework)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Framework must be one of: gin, fiber, chi, fasthttp, stdlib, custom, react, svelte, vuejs, nextjs, nestjs, express, remix"})
+		return
 	}
 
 	project, err := repositories.ProjectRepository.CreateWithOrganization(tx, request.ProjectName, request.Framework, org.Id)

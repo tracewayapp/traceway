@@ -10,6 +10,7 @@ const SDK_QUICK_START = {
   'go-http': '/client/http-middleware',
   'go-generic': '/client/sdk',
   'js-node': '/client/node-sdk',
+  'js-nestjs': '/client/nestjs',
   'js-react': '/client/react',
   'js-vue': '/client/vue',
   'js-svelte': '/client/svelte',

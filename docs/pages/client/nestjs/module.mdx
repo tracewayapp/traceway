@@ -1,0 +1,124 @@
+# TracewayModule
+
+The `TracewayModule` is a global NestJS module that initializes Traceway and provides the `TracewayService` throughout your application.
+
+## Static Configuration
+
+Use `forRoot()` for static configuration:
+
+```typescript
+import { Module } from "@nestjs/common";
+import { TracewayModule } from "@traceway/nestjs";
+
+@Module({
+  imports: [
+    TracewayModule.forRoot({
+      connectionString: "your-token@https://traceway.example.com/api/report",
+      debug: true,
+      version: "1.0.0",
+      serverName: "api-server-1",
+      sampleRate: 1.0,
+      errorSampleRate: 1.0,
+      ignoredRoutes: ["/health", "/metrics"],
+      onErrorRecording: ["url", "query", "body", "headers"],
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+## Async Configuration
+
+Use `forRootAsync()` when you need to load configuration from environment variables or a config service:
+
+```typescript
+import { Module } from "@nestjs/common";
+import { ConfigModule, ConfigService } from "@nestjs/config";
+import { TracewayModule } from "@traceway/nestjs";
+
+@Module({
+  imports: [
+    ConfigModule.forRoot(),
+    TracewayModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (config: ConfigService) => ({
+        connectionString: config.get("TRACEWAY_CONNECTION_STRING"),
+        debug: config.get("NODE_ENV") !== "production",
+        version: config.get("APP_VERSION"),
+        serverName: config.get("HOSTNAME"),
+      }),
+      inject: [ConfigService],
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+### Using useClass
+
+You can also use a factory class:
+
+```typescript
+import { Injectable } from "@nestjs/common";
+import { TracewayModule, TracewayOptionsFactory, TracewayModuleOptions } from "@traceway/nestjs";
+
+@Injectable()
+class TracewayConfigService implements TracewayOptionsFactory {
+  createTracewayOptions(): TracewayModuleOptions {
+    return {
+      connectionString: process.env.TRACEWAY_CONNECTION_STRING,
+      debug: process.env.NODE_ENV !== "production",
+    };
+  }
+}
+
+@Module({
+  imports: [
+    TracewayModule.forRootAsync({
+      useClass: TracewayConfigService,
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+## Configuration Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `connectionString` | `string` | Required | Connection string in format `token@endpoint` |
+| `debug` | `boolean` | `false` | Enable debug logging |
+| `version` | `string` | `""` | Application version |
+| `serverName` | `string` | hostname | Server identifier |
+| `sampleRate` | `number` | `1.0` | Trace sampling rate (0-1) |
+| `errorSampleRate` | `number` | `1.0` | Error trace sampling rate (0-1) |
+| `ignoredRoutes` | `string[]` | `[]` | Routes to skip tracing |
+| `onErrorRecording` | `Array` | `[]` | Data to include with errors |
+
+### onErrorRecording Options
+
+When an exception is captured, you can include additional request data:
+
+| Value | Description |
+|-------|-------------|
+| `"url"` | Request URL path |
+| `"query"` | Query parameters as JSON |
+| `"body"` | Request body (JSON only, max 64KB) |
+| `"headers"` | Request headers (excludes Authorization and Cookie) |
+
+## Lifecycle
+
+- **Initialization**: Traceway is initialized when the module loads
+- **Shutdown**: Traceway flushes pending data and shuts down when the module is destroyed
+
+The module implements `OnModuleDestroy` to ensure graceful shutdown:
+
+```typescript
+async onModuleDestroy(): Promise<void> {
+  await this.tracewayService.shutdownAsync();
+}
+```
+
+## Global Module
+
+`TracewayModule` is decorated with `@Global()`, so `TracewayService` is available for injection in any module without needing to import `TracewayModule` again.

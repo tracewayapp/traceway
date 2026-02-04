@@ -22,7 +22,12 @@
 	import { ViewAllTableRow } from '$lib/components/ui/view-all-table-row';
 	import { api } from '$lib/api';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
-	import { projectsState, type ProjectWithToken, isFrontendFramework, isJsFramework } from '$lib/state/projects.svelte';
+	import {
+		projectsState,
+		type ProjectWithToken,
+		isFrontendFramework,
+		isJsFramework
+	} from '$lib/state/projects.svelte';
 	import { setSortState } from '$lib/utils/sort-storage';
 	import { Button } from '$lib/components/ui/button';
 	import Highlight from 'svelte-highlight';
@@ -40,8 +45,19 @@
 		getCodeLanguage
 	} from '$lib/utils/framework-code';
 	import { toast } from 'svelte-sonner';
+	import { goto } from '$app/navigation';
 
 	const timezone = $derived(getTimezone());
+
+	$effect(() => {
+		if (
+			projectsState.currentProject &&
+			isFrontendFramework(projectsState.currentProject.framework)
+		) {
+			// index redirects to issues on a frontend project
+			goto('issues');
+		}
+	});
 
 	type ExceptionGroup = {
 		exceptionHash: string;
@@ -101,17 +117,13 @@
 	);
 
 	const codeLanguage = $derived(
-		projectWithToken ? getCodeLanguage(projectWithToken.framework) : 'go' as const
+		projectWithToken ? getCodeLanguage(projectWithToken.framework) : ('go' as const)
 	);
 
 	const highlightLanguage = $derived(codeLanguage === 'javascript' ? javascript : go);
 
-	const testingRouteCode = $derived(
-		getTestingRouteCode(projectWithToken?.framework)
-	);
-	const testingRouteCode2 = $derived(
-		getTestingRouteCode2(projectWithToken?.framework)
-	);
+	const testingRouteCode = $derived(getTestingRouteCode(projectWithToken?.framework));
+	const testingRouteCode2 = $derived(getTestingRouteCode2(projectWithToken?.framework));
 
 	async function copyInstall() {
 		await navigator.clipboard.writeText(installCommand);
@@ -401,118 +413,118 @@
 	{:else if !error}
 		<div class="space-y-6">
 			{#if !isFrontend}
-			<!-- Endpoints -->
-			<div>
-				<div class="items-bottom mb-4 flex gap-1">
-					<div class="mr-2 flex h-8 w-8 items-center justify-center rounded-md bg-chart-1/10">
-						<Gauge class="h-5 w-5 text-chart-1" />
-					</div>
-					<h2 class="text-2xl font-bold tracking-tight">Endpoints</h2>
-					<Tooltip.Root>
-						<Tooltip.Trigger class="pt-1">
-							<CircleQuestionMark class="h-4 w-4 text-muted-foreground/60" />
-						</Tooltip.Trigger>
-						<Tooltip.Content>
-							<p>Endpoints needing attention based on response time and error rates</p>
-						</Tooltip.Content>
-					</Tooltip.Root>
-				</div>
-				{#if impactfulEndpoints.length > 0}
-					<div class="overflow-hidden rounded-md border">
-						<Table.Root>
-							<Table.Header>
-								<Table.Row class="hover:bg-transparent">
-									<TracewayTableHeader
-										label="Endpoint"
-										tooltip="The API route or page being accessed"
-									/>
-									<TracewayTableHeader
-										label="Calls"
-										tooltip="Total number of requests"
-										align="right"
-										class="w-[70px]"
-									/>
-									<TracewayTableHeader
-										label="Typical"
-										tooltip="Median response time (P50)"
-										align="right"
-										class="w-[80px]"
-									/>
-									<TracewayTableHeader
-										label="Slow"
-										tooltip="95th percentile - slowest 5%"
-										align="right"
-										class="w-[70px]"
-									/>
-									<TracewayTableHeader
-										label="Impact"
-										tooltip="Priority based on response time and error rates"
-										align="right"
-										class="w-[80px]"
-									/>
-								</Table.Row>
-							</Table.Header>
-							<Table.Body>
-								{#each impactfulEndpoints as endpoint}
-									<Table.Row
-										class="cursor-pointer hover:bg-muted/50"
-										onclick={createRowClickHandler(
-											`/endpoints/${encodeURIComponent(endpoint.endpoint)}?preset=24h`
-										)}
-									>
-										<Table.Cell
-											class="max-w-[300px] truncate py-3 font-mono text-sm"
-											title={endpoint.endpoint}
-										>
-											{endpoint.endpoint}
-										</Table.Cell>
-										<Table.Cell class="py-3 text-right tabular-nums">
-											{endpoint.count.toLocaleString()}
-										</Table.Cell>
-										<Table.Cell class="py-3 text-right font-mono text-sm tabular-nums">
-											{formatDuration(endpoint.p50Duration)}
-										</Table.Cell>
-										<Table.Cell class="py-3 text-right font-mono text-sm tabular-nums">
-											{formatDuration(endpoint.p95Duration)}
-										</Table.Cell>
-										<Table.Cell class="py-3 text-right">
-											<ImpactBadge score={endpoint.impact} />
-										</Table.Cell>
-									</Table.Row>
-								{/each}
-								<ViewAllTableRow
-									colspan={5}
-									href="/endpoints"
-									label="View all endpoints"
-									onBeforeNavigate={resetEndpointsSortToImpact}
-								/>
-							</Table.Body>
-						</Table.Root>
-					</div>
-				{:else}
-					<!-- Empty state card for endpoints -->
-					<div class="rounded-md border bg-card">
-						<div class="flex flex-col items-center justify-center px-6 py-12 text-center">
-							<div class="mb-4 flex h-12 w-12 items-center justify-center rounded-full">
-								<CircleCheck class="h-12 w-12 text-green-500 dark:text-green-400" />
-							</div>
-							<h3 class="mb-2 text-lg font-semibold">All Endpoints Healthy</h3>
-							<p class="mb-4 max-w-sm text-sm text-muted-foreground">
-								No endpoints have been experiencing performance issues in the last 24h. Endpoints
-								with slow response times or high error rates will appear here when detected.
-							</p>
-							<a
-								href="/endpoints"
-								class="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-								onclick={resetEndpointsSortToImpact}
-							>
-								View all endpoints
-								<ArrowRight class="h-4 w-4" />
-							</a>
+				<!-- Endpoints -->
+				<div>
+					<div class="items-bottom mb-4 flex gap-1">
+						<div class="mr-2 flex h-8 w-8 items-center justify-center rounded-md bg-chart-1/10">
+							<Gauge class="h-5 w-5 text-chart-1" />
 						</div>
+						<h2 class="text-2xl font-bold tracking-tight">Endpoints</h2>
+						<Tooltip.Root>
+							<Tooltip.Trigger class="pt-1">
+								<CircleQuestionMark class="h-4 w-4 text-muted-foreground/60" />
+							</Tooltip.Trigger>
+							<Tooltip.Content>
+								<p>Endpoints needing attention based on response time and error rates</p>
+							</Tooltip.Content>
+						</Tooltip.Root>
 					</div>
-				{/if}
-			</div>
+					{#if impactfulEndpoints.length > 0}
+						<div class="overflow-hidden rounded-md border">
+							<Table.Root>
+								<Table.Header>
+									<Table.Row class="hover:bg-transparent">
+										<TracewayTableHeader
+											label="Endpoint"
+											tooltip="The API route or page being accessed"
+										/>
+										<TracewayTableHeader
+											label="Calls"
+											tooltip="Total number of requests"
+											align="right"
+											class="w-[70px]"
+										/>
+										<TracewayTableHeader
+											label="Typical"
+											tooltip="Median response time (P50)"
+											align="right"
+											class="w-[80px]"
+										/>
+										<TracewayTableHeader
+											label="Slow"
+											tooltip="95th percentile - slowest 5%"
+											align="right"
+											class="w-[70px]"
+										/>
+										<TracewayTableHeader
+											label="Impact"
+											tooltip="Priority based on response time and error rates"
+											align="right"
+											class="w-[80px]"
+										/>
+									</Table.Row>
+								</Table.Header>
+								<Table.Body>
+									{#each impactfulEndpoints as endpoint}
+										<Table.Row
+											class="cursor-pointer hover:bg-muted/50"
+											onclick={createRowClickHandler(
+												`/endpoints/${encodeURIComponent(endpoint.endpoint)}?preset=24h`
+											)}
+										>
+											<Table.Cell
+												class="max-w-[300px] truncate py-3 font-mono text-sm"
+												title={endpoint.endpoint}
+											>
+												{endpoint.endpoint}
+											</Table.Cell>
+											<Table.Cell class="py-3 text-right tabular-nums">
+												{endpoint.count.toLocaleString()}
+											</Table.Cell>
+											<Table.Cell class="py-3 text-right font-mono text-sm tabular-nums">
+												{formatDuration(endpoint.p50Duration)}
+											</Table.Cell>
+											<Table.Cell class="py-3 text-right font-mono text-sm tabular-nums">
+												{formatDuration(endpoint.p95Duration)}
+											</Table.Cell>
+											<Table.Cell class="py-3 text-right">
+												<ImpactBadge score={endpoint.impact} />
+											</Table.Cell>
+										</Table.Row>
+									{/each}
+									<ViewAllTableRow
+										colspan={5}
+										href="/endpoints"
+										label="View all endpoints"
+										onBeforeNavigate={resetEndpointsSortToImpact}
+									/>
+								</Table.Body>
+							</Table.Root>
+						</div>
+					{:else}
+						<!-- Empty state card for endpoints -->
+						<div class="rounded-md border bg-card">
+							<div class="flex flex-col items-center justify-center px-6 py-12 text-center">
+								<div class="mb-4 flex h-12 w-12 items-center justify-center rounded-full">
+									<CircleCheck class="h-12 w-12 text-green-500 dark:text-green-400" />
+								</div>
+								<h3 class="mb-2 text-lg font-semibold">All Endpoints Healthy</h3>
+								<p class="mb-4 max-w-sm text-sm text-muted-foreground">
+									No endpoints have been experiencing performance issues in the last 24h. Endpoints
+									with slow response times or high error rates will appear here when detected.
+								</p>
+								<a
+									href="/endpoints"
+									class="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+									onclick={resetEndpointsSortToImpact}
+								>
+									View all endpoints
+									<ArrowRight class="h-4 w-4" />
+								</a>
+							</div>
+						</div>
+					{/if}
+				</div>
 			{/if}
 
 			<!-- Issues Section -->

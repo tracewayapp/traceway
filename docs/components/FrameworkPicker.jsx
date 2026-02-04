@@ -48,14 +48,14 @@ const FRAMEWORKS = [
     value: 'js-react',
     label: 'React',
     description: 'React applications with error boundaries and hooks.',
-    icon: '/react.svg',
+    icon: '/react.png',
     href: '/client/react',
   },
   {
     value: 'js-vue',
     label: 'Vue.js',
     description: 'Vue 3 applications with plugin and composables.',
-    icon: '/vue.svg',
+    icon: '/vue.png',
     href: '/client/vue',
   },
   {
@@ -69,7 +69,7 @@ const FRAMEWORKS = [
     value: 'js-generic',
     label: 'JS Generic',
     description: 'Framework-agnostic JavaScript SDK for browsers.',
-    icon: '/javascript.svg',
+    icon: '/javascript.png',
     href: '/client/js-sdk',
   },
 ]

@@ -1,0 +1,240 @@
+# Tasks
+
+Measure background tasks and async jobs with automatic timing and error capture.
+
+## measureTask
+
+Measure a synchronous or async function:
+
+```typescript
+import { measureTask } from "@traceway/backend";
+
+// Async function
+measureTask("send-welcome-emails", async () => {
+  await sendWelcomeEmails();
+});
+
+// Sync function
+measureTask("process-batch", () => {
+  processBatch(items);
+});
+```
+
+`measureTask` automatically:
+- Generates a unique trace ID
+- Records start/end times
+- Captures exceptions if the task fails
+- Applies sampling rules
+
+## Task vs Trace
+
+Tasks are traces marked with `isTask: true`. They appear in a separate "Tasks" section in the dashboard, keeping them distinct from HTTP requests.
+
+| Aspect | HTTP Traces | Tasks |
+|--------|-------------|-------|
+| Endpoint | `"GET /api/users"` | `"process-emails"` |
+| Status code | 200, 500, etc. | Always 0 |
+| Client IP | Request IP | Empty |
+| Dashboard | Endpoints view | Tasks view |
+
+## Error Handling
+
+If a task throws, the error is captured and re-thrown:
+
+```typescript
+measureTask("risky-task", async () => {
+  throw new Error("Task failed");
+});
+// Error is captured to Traceway, then re-thrown
+```
+
+## Sampling
+
+Tasks respect the configured sample rates:
+
+```typescript
+import { init } from "@traceway/backend";
+
+init("your-token@...", {
+  sampleRate: 0.1,      // 10% of successful tasks
+  errorSampleRate: 1.0, // 100% of failed tasks
+});
+```
+
+## captureTask
+
+Capture a task with explicit parameters:
+
+```typescript
+import { captureTask } from "@traceway/backend";
+
+const traceId = crypto.randomUUID();
+const startedAt = new Date();
+
+await doWork();
+
+const durationMs = Date.now() - startedAt.getTime();
+
+captureTask(
+  traceId,
+  "background-job",   // task name
+  durationMs,
+  startedAt,
+  { jobId: "123" },   // attributes (optional)
+  spans,              // spans array (optional)
+);
+```
+
+## withTraceContext for Tasks
+
+For more control, use `withTraceContext` with `isTask: true`:
+
+```typescript
+import {
+  withTraceContext,
+  startSpan,
+  endSpan,
+  setTraceAttribute,
+  captureCurrentTrace,
+  captureException,
+} from "@traceway/backend";
+
+await withTraceContext(
+  { isTask: true, endpoint: "sync-inventory" },
+  async () => {
+    try {
+      setTraceAttribute("batchSize", items.length.toString());
+
+      const fetchSpan = startSpan("fetch-inventory");
+      const inventory = await fetchInventory();
+      endSpan(fetchSpan);
+
+      const updateSpan = startSpan("update-database");
+      await updateDatabase(inventory);
+      endSpan(updateSpan);
+    } catch (error) {
+      captureException(error);
+      throw error;
+    } finally {
+      captureCurrentTrace();
+    }
+  }
+);
+```
+
+## Cron Job Example
+
+```typescript
+import { measureTask } from "@traceway/backend";
+import cron from "node-cron";
+
+// Run every hour
+cron.schedule("0 * * * *", () => {
+  measureTask("hourly-cleanup", async () => {
+    await cleanupExpiredSessions();
+    await archiveOldRecords();
+    await sendPendingNotifications();
+  });
+});
+```
+
+## Queue Worker Example
+
+```typescript
+import { measureTask, captureException } from "@traceway/backend";
+
+queue.process("email", async (job) => {
+  await measureTask(`email:${job.data.type}`, async () => {
+    await sendEmail(job.data);
+  });
+});
+```
+
+## Bull Queue Example
+
+```typescript
+import { withTraceContext, captureCurrentTrace, setTraceAttribute } from "@traceway/backend";
+import Bull from "bull";
+
+const emailQueue = new Bull("email");
+
+emailQueue.process(async (job) => {
+  return withTraceContext(
+    { isTask: true, endpoint: `email:${job.data.type}` },
+    async () => {
+      setTraceAttribute("jobId", job.id.toString());
+      setTraceAttribute("emailType", job.data.type);
+
+      await sendEmail(job.data);
+
+      captureCurrentTrace();
+    }
+  );
+});
+```
+
+## Periodic Tasks
+
+```typescript
+import { measureTask } from "@traceway/backend";
+
+// Run every 5 minutes
+setInterval(() => {
+  measureTask("health-check", async () => {
+    await checkDatabaseConnection();
+    await checkCacheConnection();
+    await checkExternalApis();
+  });
+}, 5 * 60 * 1000);
+```
+
+## Batch Processing
+
+```typescript
+import { measureTask, captureMetric } from "@traceway/backend";
+
+async function processBatch(items: Item[]) {
+  await measureTask("process-batch", async () => {
+    let processed = 0;
+    let failed = 0;
+
+    for (const item of items) {
+      try {
+        await processItem(item);
+        processed++;
+      } catch (error) {
+        failed++;
+        // Individual errors are logged but don't fail the batch
+      }
+    }
+
+    captureMetric("batch.processed", processed);
+    captureMetric("batch.failed", failed);
+  });
+}
+```
+
+## Long-Running Tasks
+
+For long-running tasks, consider capturing intermediate progress:
+
+```typescript
+import { withTraceContext, setTraceAttribute, captureCurrentTrace } from "@traceway/backend";
+
+await withTraceContext(
+  { isTask: true, endpoint: "data-migration" },
+  async () => {
+    const total = await countRecords();
+    let processed = 0;
+
+    for await (const batch of getBatches()) {
+      await processBatch(batch);
+      processed += batch.length;
+
+      setTraceAttribute("progress", `${processed}/${total}`);
+    }
+
+    captureCurrentTrace();
+  }
+);
+```

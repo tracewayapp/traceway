@@ -1,0 +1,209 @@
+# Metrics
+
+Capture custom metrics to track application-specific values over time.
+
+## captureMetric
+
+Record a metric value:
+
+```typescript
+import { captureMetric } from "@traceway/backend";
+
+// Capture a custom metric
+captureMetric("queue.length", 42);
+captureMetric("cache.hit_rate", 0.85);
+captureMetric("api.response_time_ms", 150);
+```
+
+Metrics are batched and sent with the next collection frame.
+
+## Metric Names
+
+Use dot-separated names for organization:
+
+```typescript
+// Good naming
+captureMetric("orders.processed", count);
+captureMetric("orders.value_usd", totalValue);
+captureMetric("users.active", activeCount);
+captureMetric("cache.memory_mb", memoryUsage);
+
+// Bad naming
+captureMetric("processed", count);      // Too vague
+captureMetric("orderCount", count);     // Inconsistent style
+```
+
+## Use Cases
+
+### Business Metrics
+
+```typescript
+// Track order processing
+captureMetric("orders.created", 1);
+captureMetric("orders.total_value", order.total);
+
+// Track user activity
+captureMetric("users.signups", 1);
+captureMetric("users.logins", 1);
+```
+
+### Performance Metrics
+
+```typescript
+// Track external API response times
+const start = Date.now();
+await externalApi.call();
+captureMetric("external.api_ms", Date.now() - start);
+
+// Track database query times
+captureMetric("db.query_ms", queryDuration);
+```
+
+### Resource Metrics
+
+```typescript
+// Track queue depth
+captureMetric("queue.pending", queue.length);
+
+// Track cache usage
+captureMetric("cache.entries", cache.size);
+captureMetric("cache.memory_mb", cache.memoryUsage / 1024 / 1024);
+```
+
+### Rate Metrics
+
+```typescript
+// Track success/failure rates
+captureMetric("payments.success", 1);
+captureMetric("payments.failed", 0);
+
+// Track feature usage
+captureMetric("feature.dark_mode", user.darkModeEnabled ? 1 : 0);
+```
+
+## Periodic Metrics Collection
+
+For metrics that should be collected periodically:
+
+```typescript
+import { captureMetric } from "@traceway/backend";
+
+// Collect queue metrics every 10 seconds
+setInterval(() => {
+  captureMetric("queue.pending", jobQueue.length);
+  captureMetric("queue.processing", activeJobs.size);
+  captureMetric("queue.completed", completedJobs.count);
+}, 10000);
+```
+
+## System Metrics
+
+The SDK automatically collects system metrics when configured. These are collected at the `metricsInterval` (default: 30 seconds):
+
+| Metric | Description |
+|--------|-------------|
+| Memory usage | Process memory consumption |
+| CPU usage | Process CPU utilization |
+
+To customize the collection interval:
+
+```typescript
+import { init } from "@traceway/backend";
+
+init("your-token@...", {
+  metricsInterval: 60000, // Collect every 60 seconds
+});
+```
+
+## Histogram Pattern
+
+For tracking distributions, capture individual values:
+
+```typescript
+// Track response times
+function trackResponseTime(durationMs: number) {
+  captureMetric("http.response_time_ms", durationMs);
+}
+
+// The dashboard aggregates these into percentiles
+```
+
+## Counter Pattern
+
+For counting events, increment by 1:
+
+```typescript
+function trackOrder(order: Order) {
+  captureMetric("orders.count", 1);
+  captureMetric("orders.items", order.items.length);
+  captureMetric("orders.value", order.total);
+}
+```
+
+## Gauge Pattern
+
+For point-in-time values:
+
+```typescript
+function reportQueueStatus() {
+  captureMetric("queue.size", queue.length);
+  captureMetric("queue.oldest_age_s", queue.oldestItemAge / 1000);
+}
+```
+
+## Express Metrics Middleware
+
+```typescript
+import { captureMetric } from "@traceway/backend";
+
+app.use((req, res, next) => {
+  const start = Date.now();
+
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    captureMetric("http.request_ms", duration);
+    captureMetric(`http.status.${res.statusCode}`, 1);
+  });
+
+  next();
+});
+```
+
+## Database Metrics
+
+```typescript
+import { captureMetric } from "@traceway/backend";
+
+async function trackedQuery<T>(sql: string): Promise<T> {
+  const start = Date.now();
+  try {
+    const result = await db.query(sql);
+    captureMetric("db.query_ms", Date.now() - start);
+    captureMetric("db.query_success", 1);
+    return result;
+  } catch (error) {
+    captureMetric("db.query_ms", Date.now() - start);
+    captureMetric("db.query_error", 1);
+    throw error;
+  }
+}
+```
+
+## Caching Metrics
+
+```typescript
+import { captureMetric } from "@traceway/backend";
+
+async function cachedFetch<T>(key: string, fetchFn: () => Promise<T>): Promise<T> {
+  const cached = await cache.get(key);
+  if (cached) {
+    captureMetric("cache.hit", 1);
+    return cached;
+  }
+
+  captureMetric("cache.miss", 1);
+  const value = await fetchFn();
+  await cache.set(key, value);
+  return value;
+}
+```

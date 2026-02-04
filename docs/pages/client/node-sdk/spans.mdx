@@ -1,0 +1,226 @@
+# Spans
+
+Spans measure the duration of sub-operations within a trace. Use them to identify slow database queries, external API calls, or any operation you want to time.
+
+## startSpan / endSpan
+
+Start and end a span:
+
+```typescript
+import { startSpan, endSpan } from "@traceway/backend";
+
+const span = startSpan("database-query");
+const users = await db.query("SELECT * FROM users");
+endSpan(span);
+```
+
+When called within a trace context, spans are automatically added to the trace.
+
+## SpanHandle
+
+`startSpan` returns a `SpanHandle` object:
+
+```typescript
+interface SpanHandle {
+  id: string;       // Unique span ID (UUID)
+  name: string;     // Span name
+  startTime: string; // ISO timestamp
+  startedAt: number; // Unix timestamp (ms)
+}
+```
+
+## Auto-Context Integration
+
+Spans are automatically added to the current trace context:
+
+```typescript
+import { withTraceContext, startSpan, endSpan, captureCurrentTrace } from "@traceway/backend";
+
+await withTraceContext({ endpoint: "GET /api/users" }, async () => {
+  const dbSpan = startSpan("db-query");
+  const users = await db.query("SELECT * FROM users");
+  endSpan(dbSpan);
+
+  const cacheSpan = startSpan("cache-write");
+  await cache.set("users", users);
+  endSpan(cacheSpan);
+
+  // Trace includes both spans
+  captureCurrentTrace();
+});
+```
+
+## Disabling Auto-Add
+
+To end a span without adding it to the context:
+
+```typescript
+const span = startSpan("optional-operation");
+await doWork();
+const completedSpan = endSpan(span, false); // Second param disables auto-add
+```
+
+## Manual Span Addition
+
+Add a span to the context manually:
+
+```typescript
+import { addSpanToContext } from "@traceway/backend";
+
+const span = {
+  id: "custom-id",
+  name: "external-api",
+  startTime: new Date().toISOString(),
+  duration: 150000000, // nanoseconds
+};
+
+addSpanToContext(span);
+```
+
+## Getting Trace Spans
+
+### getTraceSpans
+
+Get all spans from the current trace:
+
+```typescript
+import { getTraceSpans } from "@traceway/backend";
+
+const spans = getTraceSpans();
+// Returns empty array if not in a trace context
+```
+
+## Nested Spans
+
+Spans can represent nested operations:
+
+```typescript
+await withTraceContext({ endpoint: "POST /api/orders" }, async () => {
+  const orderSpan = startSpan("create-order");
+
+  // Nested spans
+  const validateSpan = startSpan("validate-items");
+  await validateOrderItems(items);
+  endSpan(validateSpan);
+
+  const inventorySpan = startSpan("check-inventory");
+  await checkInventory(items);
+  endSpan(inventorySpan);
+
+  const paymentSpan = startSpan("process-payment");
+  await processPayment(paymentInfo);
+  endSpan(paymentSpan);
+
+  endSpan(orderSpan);
+  captureCurrentTrace();
+});
+```
+
+## Error Handling
+
+Always end spans, even on error:
+
+```typescript
+const span = startSpan("risky-operation");
+try {
+  await riskyOperation();
+} finally {
+  endSpan(span);
+}
+```
+
+Or use a helper:
+
+```typescript
+async function withSpan<T>(name: string, fn: () => Promise<T>): Promise<T> {
+  const span = startSpan(name);
+  try {
+    return await fn();
+  } finally {
+    endSpan(span);
+  }
+}
+
+// Usage
+const users = await withSpan("database-query", () =>
+  db.query("SELECT * FROM users")
+);
+```
+
+## Span Naming Conventions
+
+Use descriptive names that indicate the operation type:
+
+| Good | Bad |
+|------|-----|
+| `db-query-users` | `query` |
+| `redis-cache-get` | `cache` |
+| `stripe-api-charge` | `api` |
+| `s3-upload-image` | `upload` |
+| `kafka-publish-event` | `publish` |
+
+## Database Wrapper Example
+
+```typescript
+import { startSpan, endSpan } from "@traceway/backend";
+
+class TracedDatabase {
+  constructor(private db: Database) {}
+
+  async query<T>(sql: string, params?: unknown[]): Promise<T> {
+    const span = startSpan("db-query");
+    try {
+      return await this.db.query(sql, params);
+    } finally {
+      endSpan(span);
+    }
+  }
+
+  async transaction<T>(fn: (tx: Transaction) => Promise<T>): Promise<T> {
+    const span = startSpan("db-transaction");
+    try {
+      return await this.db.transaction(fn);
+    } finally {
+      endSpan(span);
+    }
+  }
+}
+```
+
+## HTTP Client Wrapper Example
+
+```typescript
+import { startSpan, endSpan } from "@traceway/backend";
+
+async function tracedFetch(url: string, options?: RequestInit): Promise<Response> {
+  const span = startSpan(`fetch-${new URL(url).hostname}`);
+  try {
+    return await fetch(url, options);
+  } finally {
+    endSpan(span);
+  }
+}
+```
+
+## Parallel Operations with Forked Context
+
+When running parallel operations, use `forkTraceContext` to isolate spans:
+
+```typescript
+import { forkTraceContext, startSpan, endSpan } from "@traceway/backend";
+
+await Promise.all([
+  forkTraceContext(async () => {
+    const span = startSpan("fetch-users");
+    await fetchUsers();
+    endSpan(span);
+  }),
+  forkTraceContext(async () => {
+    const span = startSpan("fetch-orders");
+    await fetchOrders();
+    endSpan(span);
+  }),
+]);
+```
+
+Without forking, spans from parallel operations might interleave unpredictably.

@@ -1,0 +1,169 @@
+# Initialization
+
+Initialize the SDK once at application startup, before capturing any events.
+
+## Basic Initialization
+
+```typescript
+import { init } from "@traceway/backend";
+
+init("your-token@https://traceway.example.com/api/report");
+```
+
+## With Options
+
+```typescript
+import { init } from "@traceway/backend";
+
+init("your-token@https://traceway.example.com/api/report", {
+  debug: true,
+  version: "1.2.3",
+  sampleRate: 0.1,
+  errorSampleRate: 1.0,
+});
+```
+
+## Options Reference
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `debug` | `boolean` | `false` | Log captured events to stdout |
+| `version` | `string` | `""` | Application version (shown in dashboard) |
+| `serverName` | `string` | Auto-detected | Server identifier (defaults to `os.hostname()`) |
+| `maxCollectionFrames` | `number` | `12` | Maximum frames in ring buffer before oldest are dropped |
+| `collectionInterval` | `number` | `5000` | Milliseconds between frame rotations |
+| `uploadThrottle` | `number` | `2000` | Milliseconds between upload attempts |
+| `metricsInterval` | `number` | `30000` | Milliseconds between system metrics collection |
+| `sampleRate` | `number` | `1.0` | Percentage of normal traces to record (0.0–1.0) |
+| `errorSampleRate` | `number` | `1.0` | Percentage of error traces to record (0.0–1.0) |
+
+## Ring Buffer Batching
+
+The SDK uses a ring buffer system for efficient data collection:
+
+1. **Collection** — Traces, exceptions, and metrics are collected into the current frame
+2. **Rotation** — After `collectionInterval` (default 5s), the frame rotates into the send queue
+3. **Upload** — Frames are gzip-compressed and sent to the backend
+4. **Cleanup** — Successfully uploaded frames are removed from the buffer
+
+If the backend is temporarily unreachable, frames remain in the buffer. At default settings (12 frames × 5s interval), roughly 60 seconds of data is buffered before the oldest frames are dropped.
+
+## Sampling
+
+Control what percentage of traces are recorded:
+
+```typescript
+init("your-token@...", {
+  // Record 10% of normal traces
+  sampleRate: 0.1,
+  // Record all error traces (status >= 500)
+  errorSampleRate: 1.0,
+});
+```
+
+A trace is considered an error when:
+- The HTTP status code is >= 500
+- An exception was captured within the trace
+
+## Server Name
+
+By default, the SDK uses `os.hostname()` as the server identifier. Override for custom identification:
+
+```typescript
+init("your-token@...", {
+  serverName: "api-server-1",
+});
+```
+
+The server name appears in the dashboard, useful for debugging distributed systems.
+
+## Debug Mode
+
+Enable debug logging to see captured events:
+
+```typescript
+init("your-token@...", {
+  debug: process.env.NODE_ENV === "development",
+});
+```
+
+Debug output includes:
+- Captured exceptions and messages
+- Trace capture events
+- Upload success/failure status
+
+## Single Initialization
+
+The SDK can only be initialized once. Calling `init()` a second time throws an error:
+
+```typescript
+init("token@url"); // OK
+init("token@url"); // Throws: "Traceway: already initialized. Call shutdown() first."
+```
+
+To reinitialize, first call `shutdown()`:
+
+```typescript
+import { init, shutdown } from "@traceway/backend";
+
+init("token@url");
+// ... later ...
+await shutdown();
+init("new-token@url"); // OK
+```
+
+## Express Example
+
+```typescript
+import express from "express";
+import { init, shutdown } from "@traceway/backend";
+
+const app = express();
+
+// Initialize before setting up routes
+init(process.env.TRACEWAY_CONNECTION!, {
+  version: process.env.npm_package_version,
+  debug: process.env.NODE_ENV === "development",
+});
+
+app.get("/api/users", async (req, res) => {
+  // Your route handler
+});
+
+const server = app.listen(3000);
+
+// Graceful shutdown
+process.on("SIGTERM", async () => {
+  await shutdown();
+  server.close();
+});
+```
+
+## Environment Configuration
+
+Store your connection string in environment variables:
+
+```bash
+# .env
+TRACEWAY_CONNECTION=your-token@https://traceway.example.com/api/report
+```
+
+```typescript
+init(process.env.TRACEWAY_CONNECTION!);
+```
+
+## TypeScript
+
+Full TypeScript support is included:
+
+```typescript
+import { init, type TracewayOptions } from "@traceway/backend";
+
+const options: TracewayOptions = {
+  debug: true,
+  version: "1.0.0",
+  sampleRate: 0.5,
+};
+
+init("your-token@https://traceway.example.com/api/report", options);
+```

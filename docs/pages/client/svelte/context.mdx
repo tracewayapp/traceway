@@ -24,6 +24,8 @@ Must be called during component initialization (not in an event handler):
 </script>
 ```
 
+**Delayed Initialization:** The SDK initialization (`init()`) is deferred until `onMount`. This means the actual connection to the Traceway server happens after the component mounts, not during the initial script execution. The context functions (`captureException`, etc.) are available immediately, but events captured before mount will be queued and sent once initialization completes.
+
 ### Options
 
 | Option | Type | Required | Description |

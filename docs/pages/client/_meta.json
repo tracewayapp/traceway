@@ -11,6 +11,7 @@
   "fasthttp-middleware": "FastHTTP Middleware",
   "http-middleware": "HTTP Middleware",
   "sdk": "SDK Reference",
+  "node-sdk": "Node.js SDK",
   "react": "React",
   "vue": "Vue.js",
   "svelte": "Svelte",

@@ -1,0 +1,191 @@
+# Exceptions
+
+Capture Node.js errors and exceptions with full stack traces.
+
+## captureException
+
+Capture an error with its stack trace:
+
+```typescript
+import { captureException } from "@traceway/backend";
+
+try {
+  await riskyOperation();
+} catch (error) {
+  captureException(error);
+}
+```
+
+The SDK extracts the error type, message, and stack trace automatically.
+
+## Trace Context Integration
+
+When called inside a trace context, exceptions are automatically linked to the current trace:
+
+```typescript
+import { captureException, withTraceContext } from "@traceway/backend";
+
+await withTraceContext({ endpoint: "GET /api/users" }, async () => {
+  try {
+    await fetchUsers();
+  } catch (error) {
+    // This exception is automatically linked to the trace
+    captureException(error);
+  }
+});
+```
+
+## captureExceptionWithAttributes
+
+Capture an error with additional metadata:
+
+```typescript
+import { captureExceptionWithAttributes } from "@traceway/backend";
+
+try {
+  await processOrder(orderId);
+} catch (error) {
+  captureExceptionWithAttributes(error, {
+    orderId,
+    userId: currentUser.id,
+    action: "checkout",
+  });
+}
+```
+
+Attributes appear as tags in the Traceway dashboard for filtering and debugging.
+
+## captureMessage
+
+Send a custom message (non-error):
+
+```typescript
+import { captureMessage } from "@traceway/backend";
+
+// Log significant events
+captureMessage("Payment processed successfully");
+
+// With context
+captureMessage(`User ${userId} logged in from ${ipAddress}`);
+```
+
+Messages appear in the exceptions view but are marked as messages rather than errors.
+
+## Attribute Best Practices
+
+**Do include:**
+- User identifiers (anonymized if needed)
+- Request/transaction IDs
+- Relevant business context (order ID, product ID)
+- Feature flags or A/B test variants
+
+**Avoid including:**
+- Sensitive data (passwords, tokens, PII)
+- Large objects or arrays
+- Circular references
+
+## Error Handling Patterns
+
+### Express Error Middleware
+
+```typescript
+import { captureException } from "@traceway/backend";
+
+app.use((err, req, res, next) => {
+  captureException(err);
+  res.status(500).json({ error: "Internal server error" });
+});
+```
+
+### Async/Await Pattern
+
+```typescript
+async function safeOperation() {
+  try {
+    return await riskyOperation();
+  } catch (error) {
+    captureException(error);
+    throw error; // Re-throw if needed
+  }
+}
+```
+
+### Promise Rejection Handler
+
+```typescript
+process.on("unhandledRejection", (reason) => {
+  if (reason instanceof Error) {
+    captureException(reason);
+  }
+});
+```
+
+### Uncaught Exception Handler
+
+```typescript
+process.on("uncaughtException", (error) => {
+  captureException(error);
+  // Give time for the exception to be sent
+  setTimeout(() => process.exit(1), 1000);
+});
+```
+
+## Stack Trace Formatting
+
+The SDK automatically formats Node.js stack traces, normalizing:
+
+- Absolute file paths to relative paths
+- Memory addresses
+- Node.js internal frames
+
+This ensures consistent grouping of identical errors across different environments.
+
+## Custom Error Types
+
+Custom error classes are fully supported:
+
+```typescript
+class ValidationError extends Error {
+  constructor(
+    message: string,
+    public field: string,
+  ) {
+    super(message);
+    this.name = "ValidationError";
+  }
+}
+
+try {
+  throw new ValidationError("Invalid email", "email");
+} catch (error) {
+  captureExceptionWithAttributes(error, {
+    field: error.field,
+  });
+}
+```
+
+## Linking Exceptions to Traces
+
+Exceptions captured within a `withTraceContext` block are automatically linked:
+
+```typescript
+withTraceContext({ endpoint: "POST /api/orders" }, async () => {
+  try {
+    await createOrder(data);
+  } catch (error) {
+    // Linked to this trace via the trace ID
+    captureException(error);
+    throw error;
+  }
+});
+```
+
+To manually link an exception to a trace:
+
+```typescript
+import { getTraceId, captureExceptionWithAttributes } from "@traceway/backend";
+
+captureExceptionWithAttributes(error, {
+  customAttribute: "value",
+}, getTraceId());
+```

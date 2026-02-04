@@ -1,0 +1,9 @@
+{
+  "index": "Overview",
+  "initialization": "Initialization",
+  "exceptions": "Exceptions",
+  "traces": "Traces",
+  "spans": "Spans",
+  "metrics": "Metrics",
+  "tasks": "Tasks"
+}

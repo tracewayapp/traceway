@@ -45,6 +45,13 @@ const FRAMEWORKS = [
     href: '/client/sdk',
   },
   {
+    value: 'js-node',
+    label: 'Node.js',
+    description: 'Node.js backend SDK with trace context, spans, and metrics.',
+    icon: '/node.svg',
+    href: '/client/node-sdk',
+  },
+  {
     value: 'js-react',
     label: 'React',
     description: 'React applications with error boundaries and hooks.',

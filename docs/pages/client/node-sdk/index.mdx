@@ -1,0 +1,139 @@
+# Node.js Backend SDK
+
+The `@traceway/backend` package is a complete Node.js SDK for server-side applications. It provides error tracking, distributed tracing, span management, and metrics collection.
+
+## Installation
+
+```bash
+npm install @traceway/backend
+```
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| **Error Capture** | Capture exceptions and messages with full stack traces |
+| **Trace Context** | AsyncLocalStorage-based trace propagation across async operations |
+| **Span Management** | Time sub-operations within traces |
+| **Metrics** | Capture custom metrics and system metrics |
+| **Background Tasks** | Measure background jobs and async tasks |
+| **Sampling** | Configure sample rates for normal and error traces |
+
+## Quick Start
+
+```typescript
+import {
+  init,
+  captureException,
+  withTraceContext,
+  startSpan,
+  endSpan,
+  captureCurrentTrace,
+  shutdown,
+} from "@traceway/backend";
+
+// Initialize once at startup
+init("your-token@https://traceway.example.com/api/report");
+
+// Use trace context for HTTP requests
+async function handleRequest(req, res) {
+  await withTraceContext(
+    {
+      endpoint: `${req.method} ${req.path}`,
+      clientIP: req.ip,
+    },
+    async () => {
+      try {
+        // Start a span for database work
+        const dbSpan = startSpan("database-query");
+        const users = await db.query("SELECT * FROM users");
+        endSpan(dbSpan);
+
+        res.json(users);
+      } catch (error) {
+        captureException(error);
+        res.status(500).json({ error: "Internal error" });
+      } finally {
+        captureCurrentTrace();
+      }
+    }
+  );
+}
+
+// Graceful shutdown
+process.on("SIGTERM", async () => {
+  await shutdown();
+  process.exit(0);
+});
+```
+
+## When to Use
+
+Use `@traceway/backend` when:
+
+- Building Node.js/Express/Fastify/Koa servers
+- Running background workers or task processors
+- Need distributed tracing across async operations
+- Want automatic trace context propagation
+
+For browser applications, use [`@traceway/frontend`](/client/js-sdk) or framework-specific packages.
+
+## Connection String Format
+
+```
+<project_token>@<server_url>/api/report
+```
+
+Example:
+```
+abc123def456@https://traceway.example.com/api/report
+```
+
+Find your connection string in the Traceway dashboard under **Project Settings**.
+
+## Exports
+
+```typescript
+// Core functions
+export { init, shutdown } from "@traceway/backend";
+
+// Exception capture
+export { captureException, captureExceptionWithAttributes, captureMessage } from "@traceway/backend";
+
+// Trace context (AsyncLocalStorage-based)
+export {
+  withTraceContext,
+  runWithTraceContext,
+  getTraceContext,
+  getTraceId,
+  hasTraceContext,
+  setTraceAttribute,
+  setTraceAttributes,
+  setTraceResponseInfo,
+  forkTraceContext,
+} from "@traceway/backend";
+
+// Trace capture
+export { captureCurrentTrace, captureTrace, captureTask } from "@traceway/backend";
+
+// Span management
+export { startSpan, endSpan, addSpanToContext, getTraceSpans, getTraceDuration } from "@traceway/backend";
+
+// Metrics
+export { captureMetric } from "@traceway/backend";
+
+// Task measurement
+export { measureTask } from "@traceway/backend";
+
+// Types
+export type { TracewayOptions, TraceContext, TraceContextOptions, SpanHandle } from "@traceway/backend";
+```
+
+## Next Steps
+
+- [Initialization](/client/node-sdk/initialization) — Configuration options and setup
+- [Exceptions](/client/node-sdk/exceptions) — Capturing errors and messages
+- [Traces](/client/node-sdk/traces) — Trace context management
+- [Spans](/client/node-sdk/spans) — Timing sub-operations
+- [Metrics](/client/node-sdk/metrics) — Custom and system metrics
+- [Tasks](/client/node-sdk/tasks) — Background task measurement

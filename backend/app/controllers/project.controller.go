@@ -7,6 +7,7 @@ import (
 	"backend/app/pgdb"
 	"backend/app/repositories"
 	"database/sql"
+	"fmt"
 	"net/http"
 	"regexp"
 	"unicode/utf8"
@@ -83,8 +84,21 @@ func (p projectController) CreateProject(c *gin.Context) {
 		return
 	}
 
+	projectId, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return
+	}
+
 	project, err := pgdb.ExecuteTransaction(func(tx *sql.Tx) (*models.Project, error) {
-		return repositories.ProjectRepository.Create(tx, request.Name, request.Framework)
+		currentProject, err := repositories.ProjectRepository.FindById(tx, projectId)
+		if err != nil {
+			return nil, err
+		}
+		if currentProject == nil || currentProject.OrganizationId == nil {
+			return nil, fmt.Errorf("current project has no organization")
+		}
+		return repositories.ProjectRepository.CreateWithOrganization(tx, request.Name, request.Framework, *currentProject.OrganizationId)
 	})
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error creating a project: %w", err))

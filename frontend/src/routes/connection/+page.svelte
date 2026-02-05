@@ -39,18 +39,14 @@
 	);
 
 	const installCommand = $derived(
-		projectWithToken
-			? getInstallCommand(projectWithToken.framework)
-			: 'go get go.tracewayapp.com'
+		projectWithToken ? getInstallCommand(projectWithToken.framework) : 'go get go.tracewayapp.com'
 	);
 
 	const highlightLanguage = $derived(
 		projectWithToken && isJsFramework(projectWithToken.framework) ? javascript : go
 	);
 
-	const isJs = $derived(
-		projectWithToken ? isJsFramework(projectWithToken.framework) : false
-	);
+	const isJs = $derived(projectWithToken ? isJsFramework(projectWithToken.framework) : false);
 
 	async function copyCode() {
 		await navigator.clipboard.writeText(sdkCode);
@@ -109,7 +105,9 @@
 		<Card>
 			<CardHeader>
 				<CardTitle>Installation</CardTitle>
-				<CardDescription>Install the required packages{isJs ? '' : ' using go get'}.</CardDescription>
+				<CardDescription
+					>Install the required packages{isJs ? '' : ' using go get'}.</CardDescription
+				>
 			</CardHeader>
 			<CardContent>
 				<div class="relative">
@@ -147,6 +145,9 @@
 
 <style>
 	/* Light theme - override dark theme defaults */
+	:global(.light-code .hljs-name) {
+		color: #4ba3f7;
+	}
 	:global(.light-code .hljs) {
 		background: #f6f8fa;
 		color: #24292e;

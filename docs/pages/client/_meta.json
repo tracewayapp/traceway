@@ -10,5 +10,11 @@
   "fiber-middleware": "Fiber Middleware",
   "fasthttp-middleware": "FastHTTP Middleware",
   "http-middleware": "HTTP Middleware",
-  "sdk": "SDK Reference"
+  "sdk": "SDK Reference",
+  "node-sdk": "Node.js SDK",
+  "nestjs": "NestJS",
+  "react": "React",
+  "vue": "Vue.js",
+  "svelte": "Svelte",
+  "js-sdk": "JS SDK Reference"
 }

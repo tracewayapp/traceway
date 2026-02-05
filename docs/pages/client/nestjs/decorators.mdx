@@ -1,0 +1,171 @@
+# Decorators
+
+The `@traceway/nestjs` package provides the `@Span` decorator for automatic span creation around methods.
+
+## @Span Decorator
+
+The `@Span` decorator wraps a method to automatically create and end a span, timing the method's execution.
+
+### Basic Usage
+
+```typescript
+import { Injectable } from "@nestjs/common";
+import { Span } from "@traceway/nestjs";
+
+@Injectable()
+export class UsersService {
+  @Span("db.users.findAll")
+  async findAll() {
+    return this.userRepository.find();
+  }
+
+  @Span("db.users.findOne")
+  async findOne(id: string) {
+    return this.userRepository.findOne(id);
+  }
+
+  @Span("db.users.create")
+  async create(data: CreateUserDto) {
+    return this.userRepository.save(data);
+  }
+}
+```
+
+### Default Span Name
+
+If no name is provided, the method name is used:
+
+```typescript
+@Injectable()
+export class UsersService {
+  @Span() // Span name will be "findAll"
+  async findAll() {
+    return this.userRepository.find();
+  }
+}
+```
+
+### With Async Methods
+
+The decorator handles both sync and async methods:
+
+```typescript
+@Injectable()
+export class CacheService {
+  @Span("cache.get")
+  async get(key: string): Promise<string | null> {
+    // Async operation
+    return this.redis.get(key);
+  }
+
+  @Span("cache.compute")
+  computeHash(data: string): string {
+    // Sync operation
+    return crypto.createHash("sha256").update(data).digest("hex");
+  }
+}
+```
+
+### Error Handling
+
+The span is ended even if the method throws an error:
+
+```typescript
+@Injectable()
+export class PaymentService {
+  @Span("payment.process")
+  async processPayment(amount: number) {
+    // If this throws, the span is still ended
+    // and the error propagates normally
+    await this.gateway.charge(amount);
+  }
+}
+```
+
+## Naming Conventions
+
+Use descriptive, hierarchical span names:
+
+| Pattern | Example | Use Case |
+|---------|---------|----------|
+| `db.<table>.<operation>` | `db.users.findOne` | Database operations |
+| `cache.<operation>` | `cache.get` | Cache operations |
+| `http.<service>` | `http.payment-api` | External HTTP calls |
+| `queue.<action>` | `queue.publish` | Message queue operations |
+| `<service>.<method>` | `email.send` | Service method calls |
+
+## Combining with TracewayService
+
+You can use `@Span` alongside `TracewayService` for more control:
+
+```typescript
+@Injectable()
+export class OrdersService {
+  constructor(private readonly traceway: TracewayService) {}
+
+  @Span("orders.process")
+  async processOrder(orderId: string) {
+    // Set attributes for the trace
+    this.traceway.setTraceAttribute("orderId", orderId);
+
+    // Create nested spans manually
+    const validationSpan = this.traceway.startSpan("orders.validate");
+    await this.validateOrder(orderId);
+    this.traceway.endSpan(validationSpan);
+
+    // The @Span decorator handles the outer span
+    await this.fulfillOrder(orderId);
+  }
+}
+```
+
+## Limitations
+
+### Class Methods Only
+
+The decorator only works on class methods, not standalone functions:
+
+```typescript
+// Works
+@Injectable()
+class MyService {
+  @Span("operation")
+  doSomething() {}
+}
+
+// Does NOT work
+@Span("operation") // Error: decorators on functions not supported
+function standalone() {}
+```
+
+### No Parameter Access
+
+The span name is static and cannot access method parameters:
+
+```typescript
+@Injectable()
+class UsersService {
+  // Span name is always "db.users.findOne"
+  // Cannot be "db.users.findOne:123" based on id parameter
+  @Span("db.users.findOne")
+  async findOne(id: string) {}
+}
+```
+
+For dynamic span names, use `TracewayService.startSpan()` manually:
+
+```typescript
+@Injectable()
+class UsersService {
+  constructor(private readonly traceway: TracewayService) {}
+
+  async findOne(id: string) {
+    const span = this.traceway.startSpan(`db.users.findOne:${id}`);
+    try {
+      return await this.userRepository.findOne(id);
+    } finally {
+      this.traceway.endSpan(span);
+    }
+  }
+}
+```

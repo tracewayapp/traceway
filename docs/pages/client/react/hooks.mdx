@@ -1,0 +1,168 @@
+# Hooks
+
+Use the `useTraceway` hook to capture errors and messages in your React components.
+
+## useTraceway
+
+```jsx
+import { useTraceway } from "@traceway/react";
+
+function MyComponent() {
+  const { captureException, captureExceptionWithAttributes, captureMessage } = useTraceway();
+
+  // Use these functions as needed
+}
+```
+
+## Return Value
+
+| Function | Description |
+|----------|-------------|
+| `captureException(error)` | Capture an error with stack trace |
+| `captureExceptionWithAttributes(error, attributes)` | Capture an error with metadata |
+| `captureMessage(message)` | Send a custom message |
+
+## captureException
+
+Capture errors in event handlers or async code:
+
+```jsx
+function SubmitButton() {
+  const { captureException } = useTraceway();
+
+  async function handleSubmit() {
+    try {
+      await submitForm();
+    } catch (error) {
+      captureException(error);
+      showErrorToast("Submission failed");
+    }
+  }
+
+  return <button onClick={handleSubmit}>Submit</button>;
+}
+```
+
+## captureExceptionWithAttributes
+
+Add context to errors for easier debugging:
+
+```jsx
+function UserProfile({ userId }) {
+  const { captureExceptionWithAttributes } = useTraceway();
+
+  async function loadProfile() {
+    try {
+      const profile = await fetchProfile(userId);
+      setProfile(profile);
+    } catch (error) {
+      captureExceptionWithAttributes(error, {
+        userId,
+        action: "loadProfile",
+        timestamp: Date.now(),
+      });
+    }
+  }
+
+  // ...
+}
+```
+
+## captureMessage
+
+Track non-error events:
+
+```jsx
+function CheckoutButton({ cart }) {
+  const { captureMessage } = useTraceway();
+
+  function handleCheckout() {
+    captureMessage(`Checkout started: ${cart.items.length} items`);
+    startCheckout(cart);
+  }
+
+  return <button onClick={handleCheckout}>Checkout</button>;
+}
+```
+
+## Custom Hook Example
+
+Create a wrapper hook for common patterns:
+
+```jsx
+// hooks/useTrackedAsync.js
+import { useTraceway } from "@traceway/react";
+import { useState, useCallback } from "react";
+
+export function useTrackedAsync(asyncFn, context = {}) {
+  const { captureExceptionWithAttributes } = useTraceway();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const execute = useCallback(async (...args) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await asyncFn(...args);
+      return result;
+    } catch (err) {
+      setError(err);
+      captureExceptionWithAttributes(err, context);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [asyncFn, context, captureExceptionWithAttributes]);
+
+  return { execute, loading, error };
+}
+
+// Usage
+function MyComponent() {
+  const { execute, loading, error } = useTrackedAsync(
+    () => fetch("/api/data").then(r => r.json()),
+    { component: "MyComponent" }
+  );
+
+  // ...
+}
+```
+
+## Without Hook (Class Components)
+
+For class components, use `TracewayContext`:
+
+```jsx
+import { TracewayContext } from "@traceway/react";
+
+class MyClassComponent extends React.Component {
+  static contextType = TracewayContext;
+
+  handleError = (error) => {
+    this.context.captureException(error);
+  };
+
+  render() {
+    // ...
+  }
+}
+```
+
+## Best Practices
+
+1. **Don't over-capture**: Only capture meaningful errors, not validation failures
+2. **Add context**: Use `captureExceptionWithAttributes` when debugging info would help
+3. **Handle gracefully**: Always show users a friendly message when errors occur
+4. **Combine with error boundaries**: Use hooks for event handlers, boundaries for render errors
+
+```jsx
+// Good pattern: graceful error handling
+async function handleAction() {
+  try {
+    await riskyAction();
+  } catch (error) {
+    captureException(error);
+    setErrorMessage("Action failed. Please try again.");
+  }
+}
+```

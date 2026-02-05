@@ -1,4 +1,5 @@
 import type { Framework } from '$lib/state/projects.svelte';
+import { isJsFramework } from '$lib/state/projects.svelte';
 
 export function getInstallCommand(framework: Framework): string {
 	const base = 'go get go.tracewayapp.com';
@@ -13,6 +14,20 @@ export function getInstallCommand(framework: Framework): string {
 			return `${base} && go get go.tracewayapp.com/tracewayfasthttp`;
 		case 'stdlib':
 			return `${base} && go get go.tracewayapp.com/tracewayhttp`;
+		case 'react':
+			return 'npm install @traceway/react';
+		case 'svelte':
+			return 'npm install @traceway/svelte';
+		case 'vuejs':
+			return 'npm install @traceway/vue';
+		case 'nextjs':
+			return 'npm install @traceway/next';
+		case 'nestjs':
+			return 'npm install @traceway/nest';
+		case 'express':
+			return 'npm install @traceway/express';
+		case 'remix':
+			return 'npm install @traceway/remix';
 		case 'custom':
 		default:
 			return base;
@@ -108,6 +123,83 @@ func main() {
     http.ListenAndServe(":8080", handler)
 }`;
 
+		case 'react':
+			return `import { TracewayProvider } from "@traceway/react";
+
+function App() {
+  return (
+    <TracewayProvider connectionString="${connectionString}">
+      <YourApp />
+    </TracewayProvider>
+  );
+}
+
+export default App;`;
+
+		case 'svelte':
+			return `<script>
+  import { setupTraceway } from "@traceway/svelte";
+
+  setupTraceway({
+    connectionString: "${connectionString}",
+  });
+</script>
+
+<slot />`;
+
+		case 'vuejs':
+			return `import { createApp } from "vue";
+import { createTracewayPlugin } from "@traceway/vue";
+import App from "./App.vue";
+
+const app = createApp(App);
+
+app.use(createTracewayPlugin({
+  connectionString: "${connectionString}",
+}));
+
+app.mount("#app");`;
+
+		case 'nextjs':
+			return `import { withTraceway } from "@traceway/next";
+
+export default withTraceway({
+    connectionString: "${connectionString}",
+});`;
+
+		case 'nestjs':
+			return `import { Module } from "@nestjs/common";
+import { TracewayModule } from "@traceway/nest";
+
+@Module({
+    imports: [
+        TracewayModule.forRoot({
+            connectionString: "${connectionString}",
+        }),
+    ],
+})
+export class AppModule {}`;
+
+		case 'express':
+			return `import express from "express";
+import { traceway } from "@traceway/express";
+
+const app = express();
+app.use(traceway("${connectionString}"));
+
+app.get("/api/users", (req, res) => {
+    res.json({ users: [] });
+});
+
+app.listen(8080);`;
+
+		case 'remix':
+			return `import { withTraceway } from "@traceway/remix";
+
+export default withTraceway({
+    connectionString: "${connectionString}",
+});`;
+
 		case 'custom':
 		default:
 			return `package main
@@ -126,16 +218,57 @@ func main() {
 	}
 }
 
-export function getTestingRouteCode(): string {
+export function getTestingRouteCode(framework?: Framework): string {
+	if (framework && isJsFramework(framework)) {
+		return `// Trigger a test error
+throw new Error("Test error from Traceway integration");`;
+	}
 	return `r.GET("/testing", func(c *gin.Context) {
     panic("Test error from Traceway integration")
 })`;
 }
 
-export function getTestingRouteCode2(): string {
+export function getTestingRouteCode2(framework?: Framework): string {
+	if (framework && isJsFramework(framework)) {
+		switch (framework) {
+			case 'react':
+				return `import { useTraceway } from "@traceway/react";
+
+// In a component using the hook
+const { captureException } = useTraceway();
+captureException(new Error("Test error"));`;
+			case 'svelte':
+				return `import { getTraceway } from "@traceway/svelte";
+
+const { captureException } = getTraceway();
+captureException(new Error("Test error"));`;
+			case 'vuejs':
+				return `import { useTraceway } from "@traceway/vue";
+
+const { captureException } = useTraceway();
+captureException(new Error("Test error"));`;
+			default:
+				return `import { captureException } from "@traceway/${getPackageName(framework)}";
+
+captureException(new Error("Test error"));`;
+		}
+	}
 	return `r.GET("/testing", func(c *gin.Context) {
     c.AbortWithError(500, traceway.NewStackTraceErrorf("testing"))
 })`;
+}
+
+function getPackageName(framework: Framework): string {
+	switch (framework) {
+		case 'react': return 'react';
+		case 'svelte': return 'svelte';
+		case 'vuejs': return 'vue';
+		case 'nextjs': return 'next';
+		case 'nestjs': return 'nest';
+		case 'express': return 'express';
+		case 'remix': return 'remix';
+		default: return 'react';
+	}
 }
 
 export function getFrameworkLabel(framework: Framework): string {
@@ -145,7 +278,18 @@ export function getFrameworkLabel(framework: Framework): string {
 		chi: 'Chi',
 		fasthttp: 'FastHTTP',
 		stdlib: 'Standard Library (net/http)',
-		custom: 'Custom Integration'
+		custom: 'Custom Integration',
+		react: 'React',
+		svelte: 'Svelte',
+		vuejs: 'Vue.js',
+		nextjs: 'Next.js',
+		nestjs: 'NestJS',
+		express: 'Express',
+		remix: 'Remix',
 	};
 	return labels[framework] || framework;
+}
+
+export function getCodeLanguage(framework: Framework): 'go' | 'javascript' {
+	return isJsFramework(framework) ? 'javascript' : 'go';
 }

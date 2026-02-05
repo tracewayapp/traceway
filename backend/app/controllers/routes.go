@@ -28,11 +28,12 @@ type Pagination struct {
 }
 
 func RegisterControllers(router *gin.RouterGroup) {
-	router.POST("/report", middleware.UseClientAuth, middleware.UseGzip, clientcontrollers.ClientController.Report)
+	router.OPTIONS("/report", middleware.CORSReport)
+	router.POST("/report", middleware.CORSReport, middleware.UseClientAuth, middleware.UseGzip, clientcontrollers.ClientController.Report)
 
 	// Project management
 	router.GET("/projects", middleware.UseAppAuth, ProjectController.ListProjects)
-	router.POST("/projects", middleware.UseAppAuth, middleware.RequireWriteAccess, ProjectController.CreateProject)
+	router.POST("/projects", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, ProjectController.CreateProject)
 
 	// Dashboard endpoints (projectId in query param)
 	router.POST("/stats", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricRecordController.FindHomepageStats)

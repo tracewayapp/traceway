@@ -1,0 +1,89 @@
+# Exceptions
+
+Capture JavaScript errors and exceptions with full stack traces.
+
+## captureException
+
+Capture an error with its stack trace:
+
+```javascript
+import { captureException } from "@traceway/frontend";
+
+try {
+  riskyOperation();
+} catch (error) {
+  captureException(error);
+}
+```
+
+The SDK extracts the error type, message, and stack trace automatically.
+
+## captureExceptionWithAttributes
+
+Capture an error with additional metadata:
+
+```javascript
+import { captureExceptionWithAttributes } from "@traceway/frontend";
+
+try {
+  processOrder(orderId);
+} catch (error) {
+  captureExceptionWithAttributes(error, {
+    orderId: orderId,
+    userId: currentUser.id,
+    action: "checkout",
+  });
+}
+```
+
+Attributes appear as tags in the Traceway dashboard, making it easier to filter and debug issues.
+
+## Attribute Best Practices
+
+**Do include:**
+- User identifiers (anonymized if needed)
+- Request/transaction IDs
+- Feature flags or A/B test variants
+- Relevant business context (order ID, product ID, etc.)
+
+**Avoid including:**
+- Sensitive data (passwords, tokens, PII)
+- Large objects or arrays
+- Circular references
+
+## Error Types
+
+The SDK handles various JavaScript error types:
+
+```javascript
+// Standard Error
+captureException(new Error("Something went wrong"));
+
+// TypeError
+captureException(new TypeError("Cannot read property 'x' of undefined"));
+
+// Custom errors
+class ValidationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "ValidationError";
+  }
+}
+captureException(new ValidationError("Invalid email format"));
+```
+
+## Non-Error Values
+
+If you capture a non-Error value, the SDK wraps it:
+
+```javascript
+// These work, but Error objects are preferred
+captureException("Something went wrong");
+captureException({ code: 500, message: "Server error" });
+```
+
+For best stack traces, always throw and catch actual `Error` objects.
+
+## React Error Boundaries
+
+For React applications, use the `@traceway/react` package which provides a `TracewayErrorBoundary` component that automatically captures React component errors. See the [React documentation](/client/react/error-boundary) for details.

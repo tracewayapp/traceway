@@ -1,0 +1,234 @@
+# TracewayService
+
+The `TracewayService` is an injectable service that provides methods for manual error capture, span creation, and trace attribute management.
+
+## Injection
+
+Inject `TracewayService` into any service or controller:
+
+```typescript
+import { Injectable } from "@nestjs/common";
+import { TracewayService } from "@traceway/nestjs";
+
+@Injectable()
+export class UsersService {
+  constructor(private readonly traceway: TracewayService) {}
+}
+```
+
+## Methods
+
+### captureException
+
+Capture an error with automatic trace context:
+
+```typescript
+captureException(error: Error): void
+```
+
+```typescript
+try {
+  await this.externalApi.call();
+} catch (error) {
+  this.traceway.captureException(error);
+  throw error; // Re-throw or handle gracefully
+}
+```
+
+### captureExceptionWithAttributes
+
+Capture an error with custom attributes:
+
+```typescript
+captureExceptionWithAttributes(
+  error: Error,
+  attributes?: Record<string, string>,
+  traceId?: string
+): void
+```
+
+```typescript
+this.traceway.captureExceptionWithAttributes(error, {
+  userId: user.id,
+  action: "checkout",
+  cartTotal: String(cart.total),
+});
+```
+
+### captureMessage
+
+Capture an informational message:
+
+```typescript
+captureMessage(msg: string, attributes?: Record<string, string>): void
+```
+
+```typescript
+this.traceway.captureMessage("User completed onboarding", {
+  userId: user.id,
+  plan: user.plan,
+});
+```
+
+### startSpan / endSpan
+
+Create custom spans for timing operations:
+
+```typescript
+startSpan(name: string): SpanHandle
+endSpan(span: SpanHandle, addToContext?: boolean): void
+```
+
+```typescript
+async findUserWithOrders(userId: string) {
+  const userSpan = this.traceway.startSpan("db.users.findOne");
+  const user = await this.userRepository.findOne(userId);
+  this.traceway.endSpan(userSpan);
+
+  const ordersSpan = this.traceway.startSpan("db.orders.findByUser");
+  const orders = await this.orderRepository.findByUser(userId);
+  this.traceway.endSpan(ordersSpan);
+
+  return { user, orders };
+}
+```
+
+### measureTask
+
+Measure a background task:
+
+```typescript
+measureTask(title: string, fn: () => void | Promise<void>): void
+```
+
+```typescript
+// Fire and forget background task
+this.traceway.measureTask("send-welcome-email", async () => {
+  await this.emailService.sendWelcome(user.email);
+});
+```
+
+### setTraceAttribute / setTraceAttributes
+
+Add attributes to the current trace:
+
+```typescript
+setTraceAttribute(key: string, value: string): void
+setTraceAttributes(attributes: Record<string, string>): void
+```
+
+```typescript
+async handleRequest(userId: string, action: string) {
+  // Single attribute
+  this.traceway.setTraceAttribute("userId", userId);
+
+  // Multiple attributes
+  this.traceway.setTraceAttributes({
+    action,
+    timestamp: new Date().toISOString(),
+  });
+}
+```
+
+### getTraceId
+
+Get the current trace ID:
+
+```typescript
+getTraceId(): string | undefined
+```
+
+```typescript
+async processOrder(order: Order) {
+  const traceId = this.traceway.getTraceId();
+
+  // Include trace ID in external API calls for correlation
+  await this.fulfillmentApi.submit(order, {
+    headers: { "X-Trace-ID": traceId },
+  });
+}
+```
+
+### getTraceContext
+
+Get the full trace context:
+
+```typescript
+getTraceContext(): TraceContext | undefined
+```
+
+```typescript
+const ctx = this.traceway.getTraceContext();
+if (ctx) {
+  console.log("Trace ID:", ctx.traceId);
+  console.log("Endpoint:", ctx.endpoint);
+  console.log("Spans:", ctx.spans.length);
+}
+```
+
+### withTraceContext
+
+Run a function within a new trace context:
+
+```typescript
+withTraceContext<T>(options: TraceContextOptions, fn: () => T): T
+```
+
+```typescript
+// Useful for background jobs or non-HTTP contexts
+this.traceway.withTraceContext(
+  { endpoint: "cron.cleanup", isTask: true },
+  async () => {
+    await this.cleanupOldRecords();
+  }
+);
+```
+
+## Example: Full Service
+
+```typescript
+import { Injectable } from "@nestjs/common";
+import { TracewayService, Span } from "@traceway/nestjs";
+
+@Injectable()
+export class OrdersService {
+  constructor(
+    private readonly traceway: TracewayService,
+    private readonly orderRepository: OrderRepository,
+    private readonly paymentService: PaymentService,
+    private readonly emailService: EmailService,
+  ) {}
+
+  @Span("orders.create")
+  async createOrder(userId: string, items: OrderItem[]) {
+    // Set trace attributes for debugging
+    this.traceway.setTraceAttributes({
+      userId,
+      itemCount: String(items.length),
+    });
+
+    // Create order with span
+    const orderSpan = this.traceway.startSpan("db.orders.create");
+    const order = await this.orderRepository.create({ userId, items });
+    this.traceway.endSpan(orderSpan);
+
+    // Process payment
+    const paymentSpan = this.traceway.startSpan("payment.process");
+    try {
+      await this.paymentService.charge(order.total);
+    } catch (error) {
+      this.traceway.captureException(error);
+      throw error;
+    } finally {
+      this.traceway.endSpan(paymentSpan);
+    }
+
+    // Send confirmation email (background task)
+    this.traceway.measureTask("email.order-confirmation", async () => {
+      await this.emailService.sendOrderConfirmation(order);
+    });
+
+    return order;
+  }
+}
+```

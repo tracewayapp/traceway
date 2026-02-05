@@ -1,0 +1,90 @@
+# Vue Quick Start
+
+Integrate Traceway into your Vue 3 application with the `@traceway/vue` package.
+
+## Installation
+
+```bash
+npm install @traceway/vue
+```
+
+## Setup
+
+Install the Traceway plugin in your Vue application:
+
+```javascript
+import { createApp } from "vue";
+import { createTracewayPlugin } from "@traceway/vue";
+import App from "./App.vue";
+
+const app = createApp(App);
+
+app.use(createTracewayPlugin({
+  connectionString: "your-token@https://traceway.example.com/api/report",
+}));
+
+app.mount("#app");
+```
+
+The plugin automatically installs a global error handler that captures uncaught errors.
+
+## Capture Errors in Components
+
+Use the `useTraceway` composable:
+
+```vue
+<script setup>
+import { useTraceway } from "@traceway/vue";
+
+const { captureException } = useTraceway();
+
+async function handleSubmit() {
+  try {
+    await submitForm();
+  } catch (error) {
+    captureException(error);
+  }
+}
+</script>
+
+<template>
+  <button @click="handleSubmit">Submit</button>
+</template>
+```
+
+## With Options
+
+```javascript
+app.use(createTracewayPlugin({
+  connectionString: "your-token@https://traceway.example.com/api/report",
+  options: {
+    debug: true,
+    version: "1.0.0",
+  },
+}));
+```
+
+## Test Your Integration
+
+```vue
+<script setup>
+import { useTraceway } from "@traceway/vue";
+
+const { captureException } = useTraceway();
+
+function sendTestError() {
+  captureException(new Error("Test error from Vue"));
+}
+</script>
+
+<template>
+  <button @click="sendTestError">Send Test Error</button>
+</template>
+```
+
+Click the button and check your Traceway dashboard to verify the error appears.
+
+## Next Steps
+
+- [Plugin Setup](/client/vue/plugin) - Configuration options
+- [Composables](/client/vue/composables) - Using useTraceway

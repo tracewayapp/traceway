@@ -7,6 +7,7 @@ import (
 	"backend/app/pgdb"
 	"backend/app/repositories"
 	"database/sql"
+	"fmt"
 	"net/http"
 	"regexp"
 	"unicode/utf8"
@@ -17,12 +18,21 @@ import (
 
 // Valid framework values
 var validFrameworks = map[string]bool{
-	"stdlib":   true,
-	"fasthttp": true,
+	// Go frameworks
 	"gin":      true,
 	"fiber":    true,
 	"chi":      true,
+	"fasthttp": true,
+	"stdlib":   true,
 	"custom":   true,
+	// JavaScript frameworks
+	"react":   true,
+	"svelte":  true,
+	"vuejs":   true,
+	"nextjs":  true,
+	"nestjs":  true,
+	"express": true,
+	"remix":   true,
 }
 
 // Project name validation regex: allows alphanumeric, spaces, hyphens, and underscores
@@ -69,12 +79,26 @@ func (p projectController) CreateProject(c *gin.Context) {
 	}
 
 	if !validFrameworks[request.Framework] {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Framework must be one of: stdlib, fasthttp, gin, fiber, chi, custom"})
+		traceway.CaptureMessage("Invalid framework received: " + request.Framework)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Framework must be one of: gin, fiber, chi, fasthttp, stdlib, custom, react, svelte, vuejs, nextjs, nestjs, express, remix"})
+		return
+	}
+
+	projectId, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
 		return
 	}
 
 	project, err := pgdb.ExecuteTransaction(func(tx *sql.Tx) (*models.Project, error) {
-		return repositories.ProjectRepository.Create(tx, request.Name, request.Framework)
+		currentProject, err := repositories.ProjectRepository.FindById(tx, projectId)
+		if err != nil {
+			return nil, err
+		}
+		if currentProject == nil || currentProject.OrganizationId == nil {
+			return nil, fmt.Errorf("current project has no organization")
+		}
+		return repositories.ProjectRepository.CreateWithOrganization(tx, request.Name, request.Framework, *currentProject.OrganizationId)
 	})
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error creating a project: %w", err))

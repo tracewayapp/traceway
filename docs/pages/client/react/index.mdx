@@ -1,0 +1,105 @@
+# React Quick Start
+
+Integrate Traceway into your React application with the `@traceway/react` package.
+
+## Installation
+
+```bash
+npm install @traceway/react
+```
+
+## Setup
+
+Wrap your application with `TracewayProvider`:
+
+```jsx
+import { TracewayProvider } from "@traceway/react";
+
+function App() {
+  return (
+    <TracewayProvider connectionString="your-token@https://traceway.example.com/api/report">
+      <YourApp />
+    </TracewayProvider>
+  );
+}
+
+export default App;
+```
+
+## Add Error Boundary
+
+Wrap components that might throw errors:
+
+```jsx
+import { TracewayProvider, TracewayErrorBoundary } from "@traceway/react";
+
+function App() {
+  return (
+    <TracewayProvider connectionString="your-token@https://traceway.example.com/api/report">
+      <TracewayErrorBoundary fallback={<ErrorPage />}>
+        <YourApp />
+      </TracewayErrorBoundary>
+    </TracewayProvider>
+  );
+}
+```
+
+## Capture Errors Manually
+
+Use the `useTraceway` hook in components:
+
+```jsx
+import { useTraceway } from "@traceway/react";
+
+function MyComponent() {
+  const { captureException } = useTraceway();
+
+  async function handleSubmit() {
+    try {
+      await submitForm();
+    } catch (error) {
+      captureException(error);
+    }
+  }
+
+  return <button onClick={handleSubmit}>Submit</button>;
+}
+```
+
+## With Options
+
+```jsx
+<TracewayProvider
+  connectionString="your-token@https://traceway.example.com/api/report"
+  options={{
+    debug: true,
+    version: "1.0.0",
+  }}
+>
+  <YourApp />
+</TracewayProvider>
+```
+
+## Test Your Integration
+
+```jsx
+import { useTraceway } from "@traceway/react";
+
+function TestButton() {
+  const { captureException } = useTraceway();
+
+  return (
+    <button onClick={() => captureException(new Error("Test error"))}>
+      Send Test Error
+    </button>
+  );
+}
+```
+
+Click the button and check your Traceway dashboard to verify the error appears.
+
+## Next Steps
+
+- [TracewayProvider](/client/react/provider) - Configuration options
+- [Error Boundary](/client/react/error-boundary) - Automatic error capture
+- [Hooks](/client/react/hooks) - Manual error capture

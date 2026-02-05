@@ -8,6 +8,12 @@ export const SDK_OPTIONS = [
   { value: 'go-fasthttp', label: 'Go FastHTTP' },
   { value: 'go-http', label: 'Go Http' },
   { value: 'go-generic', label: 'Go Generic' },
+  { value: 'js-node', label: 'Node.js' },
+  { value: 'js-nestjs', label: 'NestJS' },
+  { value: 'js-react', label: 'React' },
+  { value: 'js-vue', label: 'Vue.js' },
+  { value: 'js-svelte', label: 'Svelte' },
+  { value: 'js-generic', label: 'JS Generic' },
 ]
 
 const STORAGE_KEY = 'traceway-docs-sdk'
@@ -19,6 +25,12 @@ const PATH_SDK_MAP = {
   'fiber-middleware': 'go-fiber',
   'fasthttp-middleware': 'go-fasthttp',
   'http-middleware': 'go-http',
+  'node-sdk': 'js-node',
+  'nestjs': 'js-nestjs',
+  'react': 'js-react',
+  'vue': 'js-vue',
+  'svelte': 'js-svelte',
+  'js-sdk': 'js-generic',
 }
 
 const SdkContext = createContext({

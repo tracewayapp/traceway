@@ -23,6 +23,29 @@
     <img src="/fasthttp.png" alt="FastHTTP" class={className} />
 {:else if framework === 'stdlib'}
     <img src="/stdlib.png" alt="Standard Library" class={className} />
+{:else if framework === 'react'}
+    <svg class={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="8" cy="8" r="1.5" fill="#61DAFB"/>
+        <ellipse cx="8" cy="8" rx="6.5" ry="2.5" stroke="#61DAFB" stroke-width="0.8" fill="none"/>
+        <ellipse cx="8" cy="8" rx="6.5" ry="2.5" stroke="#61DAFB" stroke-width="0.8" fill="none" transform="rotate(60 8 8)"/>
+        <ellipse cx="8" cy="8" rx="6.5" ry="2.5" stroke="#61DAFB" stroke-width="0.8" fill="none" transform="rotate(120 8 8)"/>
+    </svg>
+{:else if framework === 'svelte'}
+    <img src="/svelte.png" alt="Svelte" class={className} />
+{:else if framework === 'vuejs'}
+    <svg class={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12.8 1H10.4L8 5L5.6 1H3.2L8 9.5L12.8 1Z" fill="#41B883"/>
+        <path d="M15 1H12.8L8 9.5L3.2 1H1L8 13L15 1Z" fill="#41B883" opacity="0.6"/>
+        <path d="M12.8 1H10.4L8 5L5.6 1H3.2L8 9.5L12.8 1Z" fill="#35495E"/>
+    </svg>
+{:else if framework === 'nextjs'}
+    <img src="/nextjs.png" alt="Next.js" class={className} />
+{:else if framework === 'nestjs'}
+    <img src="/nestjs.png" alt="NestJS" class={className} />
+{:else if framework === 'express'}
+    <img src="/express.png" alt="Express" class={className} />
+{:else if framework === 'remix'}
+    <img src="/remix.png" alt="Remix" class={className} />
 {:else}
     <img src="/custom.png" alt="Custom" class={className} />
 {/if}

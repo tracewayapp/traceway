@@ -1,0 +1,145 @@
+# Plugin Setup
+
+Configure the Traceway Vue plugin with `createTracewayPlugin`.
+
+## Basic Setup
+
+```javascript
+import { createApp } from "vue";
+import { createTracewayPlugin } from "@traceway/vue";
+import App from "./App.vue";
+
+const app = createApp(App);
+
+app.use(createTracewayPlugin({
+  connectionString: "your-token@https://traceway.example.com/api/report",
+}));
+
+app.mount("#app");
+```
+
+## Plugin Options
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `connectionString` | `string` | Yes | Your Traceway connection string |
+| `options` | `object` | No | SDK configuration options |
+
+## SDK Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `debug` | `boolean` | `false` | Log events to console |
+| `debounceMs` | `number` | `1500` | Batch delay in milliseconds |
+| `retryDelayMs` | `number` | `10000` | Retry delay for failed uploads |
+| `version` | `string` | `undefined` | Your application version |
+
+## Full Example
+
+```javascript
+import { createApp } from "vue";
+import { createTracewayPlugin } from "@traceway/vue";
+import App from "./App.vue";
+
+const app = createApp(App);
+
+app.use(createTracewayPlugin({
+  connectionString: "your-token@https://traceway.example.com/api/report",
+  options: {
+    debug: import.meta.env.DEV,
+    version: import.meta.env.VITE_APP_VERSION,
+    debounceMs: 1000,
+  },
+}));
+
+app.mount("#app");
+```
+
+## Automatic Error Handling
+
+The plugin automatically installs `app.config.errorHandler` to capture:
+
+- Component rendering errors
+- Watcher errors
+- Lifecycle hook errors
+
+```javascript
+// This is handled automatically by the plugin:
+app.config.errorHandler = (err, instance, info) => {
+  // Error is captured and sent to Traceway
+};
+```
+
+## Environment-Specific Configuration
+
+```javascript
+const connectionString = import.meta.env.PROD
+  ? import.meta.env.VITE_TRACEWAY_PROD
+  : import.meta.env.VITE_TRACEWAY_DEV;
+
+app.use(createTracewayPlugin({
+  connectionString,
+  options: {
+    debug: import.meta.env.DEV,
+  },
+}));
+```
+
+## Manual Injection
+
+For advanced use cases, you can use the injection key directly:
+
+```vue
+<script setup>
+import { inject } from "vue";
+import { TracewayKey } from "@traceway/vue";
+
+const traceway = inject(TracewayKey);
+traceway.captureException(new Error("Manual capture"));
+</script>
+```
+
+However, the `useTraceway` composable is preferred for most use cases.
+
+## Vite Configuration
+
+Add your connection string to `.env`:
+
+```
+VITE_TRACEWAY_CONNECTION=your-token@https://traceway.example.com/api/report
+```
+
+Use in your app:
+
+```javascript
+app.use(createTracewayPlugin({
+  connectionString: import.meta.env.VITE_TRACEWAY_CONNECTION,
+}));
+```
+
+## Nuxt Integration
+
+For Nuxt 3, create a plugin:
+
+```javascript
+// plugins/traceway.client.ts
+import { createTracewayPlugin } from "@traceway/vue";
+
+export default defineNuxtPlugin((nuxtApp) => {
+  nuxtApp.vueApp.use(createTracewayPlugin({
+    connectionString: useRuntimeConfig().public.tracewayConnection,
+  }));
+});
+```
+
+Add to `nuxt.config.ts`:
+
+```typescript
+export default defineNuxtConfig({
+  runtimeConfig: {
+    public: {
+      tracewayConnection: process.env.TRACEWAY_CONNECTION,
+    },
+  },
+});
+```

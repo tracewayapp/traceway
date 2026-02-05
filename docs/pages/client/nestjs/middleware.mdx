@@ -1,0 +1,112 @@
+# TracewayMiddleware
+
+The `TracewayMiddleware` wraps each HTTP request in a trace context, automatically capturing request timing, status codes, and any spans created during the request.
+
+## Setup
+
+Apply the middleware in your app module:
+
+```typescript
+import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
+import { TracewayModule, TracewayMiddleware } from "@traceway/nestjs";
+
+@Module({
+  imports: [
+    TracewayModule.forRoot({
+      connectionString: "your-token@https://traceway.example.com/api/report",
+    }),
+  ],
+})
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(TracewayMiddleware).forRoutes("*");
+  }
+}
+```
+
+## Selective Routes
+
+Apply middleware to specific routes only:
+
+```typescript
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(TracewayMiddleware)
+      .forRoutes("users", "orders", "products");
+  }
+}
+```
+
+Or exclude specific routes:
+
+```typescript
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(TracewayMiddleware)
+      .exclude("health", "metrics")
+      .forRoutes("*");
+  }
+}
+```
+
+## What Gets Captured
+
+For each request, the middleware captures:
+
+| Field | Description |
+|-------|-------------|
+| `endpoint` | HTTP method and route path (e.g., `GET /users/:id`) |
+| `clientIP` | Client IP from X-Forwarded-For header or socket |
+| `statusCode` | HTTP response status code |
+| `bodySize` | Response body size from Content-Length header |
+| `duration` | Total request processing time |
+| `spans` | Any spans created during the request |
+| `attributes` | Custom attributes set via `TracewayService` |
+
+## How It Works
+
+1. **Request Start**: Creates a new trace context with `withTraceContext()`
+2. **Request Processing**: Your controllers and services run within the trace context
+3. **Response Finish**: On the `res.finish` event:
+   - Records status code and body size with `setTraceResponseInfo()`
+   - Captures the trace with `captureCurrentTrace()`
+
+## Ignored Routes
+
+Use the `ignoredRoutes` option in `TracewayModule.forRoot()` to skip tracing for specific routes:
+
+```typescript
+TracewayModule.forRoot({
+  connectionString: "...",
+  ignoredRoutes: ["/health", "/metrics", "/favicon.ico"],
+})
+```
+
+## Trace Context
+
+The middleware establishes a trace context that propagates through all async operations. This means:
+
+- Exceptions captured with `TracewayService.captureException()` are linked to the trace
+- Spans created with `TracewayService.startSpan()` are added to the trace
+- Attributes set with `TracewayService.setTraceAttribute()` are included in the trace
+
+```typescript
+@Injectable()
+export class UsersService {
+  constructor(private readonly traceway: TracewayService) {}
+
+  async findOne(id: string) {
+    // This attribute will be included in the current request's trace
+    this.traceway.setTraceAttribute("userId", id);
+
+    // This span will be part of the current request's trace
+    const span = this.traceway.startSpan("db.query");
+    const user = await this.userRepository.findOne(id);
+    this.traceway.endSpan(span);
+
+    return user;
+  }
+}
+```

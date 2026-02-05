@@ -1,0 +1,79 @@
+# JS SDK Overview
+
+The Traceway JavaScript SDK provides error tracking for browser-based applications. It captures exceptions, messages, and sends them to your Traceway backend.
+
+## Packages
+
+| Package | Description |
+|---------|-------------|
+| `@traceway/frontend` | Core browser SDK (framework-agnostic) |
+| `@traceway/react` | React bindings with Provider, Error Boundary, and hooks |
+| `@traceway/vue` | Vue 3 plugin and composables |
+| `@traceway/svelte` | Svelte context-based integration |
+
+## Installation
+
+```bash
+npm install @traceway/frontend
+```
+
+Or use a framework-specific package:
+
+```bash
+npm install @traceway/react
+npm install @traceway/vue
+npm install @traceway/svelte
+```
+
+## Connection String Format
+
+All Traceway SDKs use a connection string to identify your project and endpoint:
+
+```
+<project_token>@<server_url>/api/report
+```
+
+Example:
+```
+abc123def456@https://traceway.example.com/api/report
+```
+
+You can find your connection string in the Traceway dashboard under **Project Settings**.
+
+## When to Use
+
+Use the generic `@traceway/frontend` package when:
+
+- You're using a framework without official bindings
+- You need direct control over initialization
+- You're building a vanilla JavaScript application
+- You want to integrate with a custom framework
+
+For React, Vue, or Svelte applications, use the framework-specific packages for better integration and developer experience.
+
+## Basic Usage
+
+```javascript
+import { init, captureException, captureMessage } from "@traceway/frontend";
+
+// Initialize once at app startup
+init("your-token@https://traceway.example.com/api/report");
+
+// Capture errors
+try {
+  riskyOperation();
+} catch (error) {
+  captureException(error);
+}
+
+// Capture custom messages
+captureMessage("User completed checkout");
+```
+
+## Features
+
+- **Automatic batching**: Events are batched and sent periodically to reduce network overhead
+- **Retry with backoff**: Failed uploads are automatically retried
+- **Stack trace capture**: Full stack traces are captured for exceptions
+- **Custom attributes**: Attach metadata to exceptions for better debugging
+- **Lightweight**: Minimal bundle size impact

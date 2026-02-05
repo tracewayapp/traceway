@@ -1,0 +1,267 @@
+# Traces
+
+The backend SDK provides AsyncLocalStorage-based trace context management. Trace context automatically propagates through async operations, allowing you to link exceptions, spans, and attributes to the current trace.
+
+## withTraceContext
+
+Run a function within a new trace context:
+
+```typescript
+import { withTraceContext, captureCurrentTrace } from "@traceway/backend";
+
+await withTraceContext(
+  {
+    endpoint: "GET /api/users",
+    clientIP: req.ip,
+  },
+  async () => {
+    // All async operations here share the same trace context
+    const users = await db.query("SELECT * FROM users");
+    res.json(users);
+
+    // Capture the trace when done
+    captureCurrentTrace();
+  }
+);
+```
+
+### TraceContextOptions
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `endpoint` | `string` | No | Endpoint name (e.g., "GET /api/users") |
+| `traceId` | `string` | No | Custom trace ID (auto-generated if not provided) |
+| `isTask` | `boolean` | No | Mark as background task instead of HTTP trace |
+| `attributes` | `Record<string, string>` | No | Initial trace attributes |
+| `clientIP` | `string` | No | Client IP address for HTTP traces |
+
+## Reading Trace Context
+
+### getTraceContext
+
+Get the full trace context object:
+
+```typescript
+import { getTraceContext } from "@traceway/backend";
+
+const ctx = getTraceContext();
+if (ctx) {
+  console.log("Trace ID:", ctx.traceId);
+  console.log("Endpoint:", ctx.endpoint);
+  console.log("Spans:", ctx.spans.length);
+}
+```
+
+### getTraceId
+
+Get just the current trace ID:
+
+```typescript
+import { getTraceId } from "@traceway/backend";
+
+const traceId = getTraceId();
+// Returns undefined if not in a trace context
+```
+
+### hasTraceContext
+
+Check if currently within a trace context:
+
+```typescript
+import { hasTraceContext } from "@traceway/backend";
+
+if (hasTraceContext()) {
+  // Safe to use trace-related functions
+}
+```
+
+## Setting Attributes
+
+### setTraceAttribute
+
+Set a single attribute on the current trace:
+
+```typescript
+import { setTraceAttribute } from "@traceway/backend";
+
+setTraceAttribute("userId", currentUser.id);
+setTraceAttribute("tenantId", tenant.id);
+```
+
+### setTraceAttributes
+
+Set multiple attributes at once:
+
+```typescript
+import { setTraceAttributes } from "@traceway/backend";
+
+setTraceAttributes({
+  userId: currentUser.id,
+  tenantId: tenant.id,
+  plan: subscription.plan,
+});
+```
+
+Attributes are no-op when called outside a trace context.
+
+## HTTP Response Info
+
+### setTraceResponseInfo
+
+Set HTTP response information for the trace:
+
+```typescript
+import { setTraceResponseInfo, withTraceContext, captureCurrentTrace } from "@traceway/backend";
+
+await withTraceContext({ endpoint: "GET /api/users" }, async () => {
+  // ... handle request ...
+
+  // Set response info before capturing
+  setTraceResponseInfo(200, responseBody.length);
+  captureCurrentTrace();
+});
+```
+
+## Capturing Traces
+
+### captureCurrentTrace
+
+Capture the current trace context as a trace record:
+
+```typescript
+import { captureCurrentTrace, withTraceContext, setTraceResponseInfo } from "@traceway/backend";
+
+await withTraceContext({ endpoint: "POST /api/orders" }, async () => {
+  const result = await createOrder(data);
+
+  setTraceResponseInfo(201, JSON.stringify(result).length);
+  captureCurrentTrace(); // Records the trace with all spans and attributes
+});
+```
+
+### captureTrace (Manual)
+
+Capture a trace with explicit parameters:
+
+```typescript
+import { captureTrace } from "@traceway/backend";
+
+captureTrace(
+  traceId,           // string
+  "GET /api/users",  // endpoint
+  45.2,              // duration in ms
+  new Date(),        // start time
+  200,               // status code
+  1024,              // body size
+  "192.168.1.1",     // client IP
+  { userId: "123" }, // attributes (optional)
+  spans,             // spans array (optional)
+);
+```
+
+## Forking Trace Context
+
+### forkTraceContext
+
+Fork the current context for parallel operations with isolated spans:
+
+```typescript
+import { forkTraceContext, withTraceContext, startSpan, endSpan } from "@traceway/backend";
+
+await withTraceContext({ endpoint: "GET /api/dashboard" }, async () => {
+  // Run multiple operations in parallel, each with isolated spans
+  await Promise.all([
+    forkTraceContext(async () => {
+      const span = startSpan("fetch-users");
+      await fetchUsers();
+      endSpan(span);
+    }),
+    forkTraceContext(async () => {
+      const span = startSpan("fetch-metrics");
+      await fetchMetrics();
+      endSpan(span);
+    }),
+  ]);
+
+  // All spans are merged back to the parent context
+  captureCurrentTrace();
+});
+```
+
+Forked contexts:
+- Share the same trace ID as the parent
+- Get their own isolated span list
+- Inherit parent attributes
+- Merge spans back to parent when complete
+
+## Trace Duration
+
+### getTraceDuration
+
+Get elapsed time since trace started:
+
+```typescript
+import { getTraceDuration } from "@traceway/backend";
+
+const elapsedMs = getTraceDuration();
+// Returns 0 if not in a trace context
+```
+
+## Express Middleware Example
+
+```typescript
+import {
+  withTraceContext,
+  setTraceAttribute,
+  setTraceResponseInfo,
+  captureCurrentTrace,
+  captureException,
+} from "@traceway/backend";
+
+function tracingMiddleware(req, res, next) {
+  withTraceContext(
+    {
+      endpoint: `${req.method} ${req.path}`,
+      clientIP: req.ip,
+    },
+    async () => {
+      // Add user info if authenticated
+      if (req.user) {
+        setTraceAttribute("userId", req.user.id);
+      }
+
+      // Capture response on finish
+      res.on("finish", () => {
+        setTraceResponseInfo(res.statusCode, res.get("content-length") || 0);
+        captureCurrentTrace();
+      });
+
+      try {
+        await next();
+      } catch (error) {
+        captureException(error);
+        throw error;
+      }
+    }
+  );
+}
+```
+
+## Background Tasks
+
+For background tasks, set `isTask: true`:
+
+```typescript
+await withTraceContext(
+  {
+    isTask: true,
+    endpoint: "process-emails",
+  },
+  async () => {
+    await processEmails();
+    captureCurrentTrace();
+  }
+);
+```
+
+Tasks appear separately from HTTP traces in the dashboard.

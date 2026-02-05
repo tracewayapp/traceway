@@ -1,12 +1,12 @@
 <script lang="ts">
     import * as Sheet from "$lib/components/ui/sheet";
-    import * as Select from "$lib/components/ui/select";
     import { Button } from "$lib/components/ui/button";
     import { Input } from "$lib/components/ui/input";
     import { Label } from "$lib/components/ui/label";
-    import { projectsState, type ProjectWithToken, type Framework } from '$lib/state/projects.svelte';
+    import { projectsState, getFrameworkLabel, type ProjectWithToken, type Framework } from '$lib/state/projects.svelte';
     import { Copy, Check, ExternalLink } from 'lucide-svelte';
     import FrameworkIcon from './framework-icon.svelte';
+    import FrameworkCombobox from './framework-combobox.svelte';
 
     interface Props {
         open: boolean;
@@ -22,20 +22,6 @@
     let error = $state('');
     let createdProject = $state<ProjectWithToken | null>(null);
     let copied = $state(false);
-
-    // Framework options with labels
-    const frameworks = [
-        { value: 'gin', label: 'Gin', description: 'Fast HTTP web framework' },
-        { value: 'fiber', label: 'Fiber', description: 'Express-inspired framework' },
-        { value: 'chi', label: 'Chi', description: 'Lightweight router' },
-        { value: 'fasthttp', label: 'FastHTTP', description: 'High-performance HTTP' },
-        { value: 'stdlib', label: 'Standard Library', description: 'net/http package' },
-        { value: 'custom', label: 'Custom', description: 'Other / manual setup' },
-    ] as const;
-
-    const selectedFrameworkLabel = $derived(
-        frameworks.find(f => f.value === selectedFramework)?.label ?? 'Select framework'
-    );
 
     async function handleSubmit(e: Event) {
         e.preventDefault();
@@ -112,7 +98,7 @@
                     <Label>Framework</Label>
                     <div class="flex items-center gap-2 text-sm text-muted-foreground">
                         <FrameworkIcon framework={selectedFramework} />
-                        <span>{selectedFrameworkLabel}</span>
+                        <span>{getFrameworkLabel(selectedFramework)}</span>
                     </div>
                 </div>
 
@@ -166,34 +152,9 @@
 
                 <div class="space-y-2">
                     <Label for="framework">Framework</Label>
-                    <Select.Root type="single" bind:value={selectedFramework}>
-                        <Select.Trigger class="w-full">
-                            <div class="flex items-center gap-2">
-                                <FrameworkIcon framework={selectedFramework} />
-                                <span>{selectedFrameworkLabel}</span>
-                            </div>
-                        </Select.Trigger>
-                        <Select.Content>
-                            {#each frameworks as framework}
-                                <Select.Item value={framework.value}>
-                                    {#snippet children({ selected })}
-                                        <div class="flex items-center gap-2">
-                                            <FrameworkIcon framework={framework.value} />
-                                            <div class="flex flex-col">
-                                                <span class="font-medium">{framework.label}</span>
-                                                <span class="text-xs text-muted-foreground">{framework.description}</span>
-                                            </div>
-                                        </div>
-                                        {#if selected}
-                                            <Check class="absolute end-2 size-4" />
-                                        {/if}
-                                    {/snippet}
-                                </Select.Item>
-                            {/each}
-                        </Select.Content>
-                    </Select.Root>
+                    <FrameworkCombobox bind:value={selectedFramework} disabled={loading} />
                     <p class="text-xs text-muted-foreground">
-                        Select your Go web framework for tailored integration code
+                        Select your framework for tailored integration code
                     </p>
                 </div>
 

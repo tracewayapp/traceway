@@ -11,7 +11,7 @@
     import { projectsState, type Framework } from '$lib/state/projects.svelte';
     import { themeState } from '$lib/state/theme.svelte';
     import { toast } from 'svelte-sonner';
-    import FrameworkIcon from '$lib/components/framework-icon.svelte';
+    import FrameworkCombobox from '$lib/components/framework-combobox.svelte';
     import TurnstileWidget from '$lib/components/turnstile-widget.svelte';
 
     let email = $state('');
@@ -54,19 +54,6 @@
             });
         })
     }
-
-    const frameworks = [
-        { value: 'gin', label: 'Gin', description: 'Fast HTTP web framework' },
-        { value: 'fiber', label: 'Fiber', description: 'Express-inspired framework' },
-        { value: 'chi', label: 'Chi', description: 'Lightweight router' },
-        { value: 'fasthttp', label: 'FastHTTP', description: 'High-performance HTTP' },
-        { value: 'stdlib', label: 'Standard Library', description: 'net/http package' },
-        { value: 'custom', label: 'Custom', description: 'Other / manual setup' },
-    ] as const;
-
-    const selectedFrameworkLabel = $derived(
-        frameworks.find(f => f.value === framework)?.label ?? 'Select framework'
-    );
 
     async function handleRegister() {
         if (password !== confirmPassword) {
@@ -205,32 +192,7 @@
                 </div>
                 <div class="flex flex-col space-y-1.5">
                     <Label for="framework">Framework</Label>
-                    <Select.Root type="single" bind:value={framework}>
-                        <Select.Trigger class="w-full">
-                            <div class="flex items-center gap-2">
-                                <FrameworkIcon framework={framework} />
-                                <span>{selectedFrameworkLabel}</span>
-                            </div>
-                        </Select.Trigger>
-                        <Select.Content>
-                            {#each frameworks as fw}
-                                <Select.Item value={fw.value}>
-                                    {#snippet children({ selected })}
-                                        <div class="flex items-center gap-2">
-                                            <FrameworkIcon framework={fw.value} />
-                                            <div class="flex flex-col">
-                                                <span class="font-medium">{fw.label}</span>
-                                                <span class="text-xs text-muted-foreground">{fw.description}</span>
-                                            </div>
-                                        </div>
-                                        {#if selected}
-                                            <Check class="absolute end-2 size-4" />
-                                        {/if}
-                                    {/snippet}
-                                </Select.Item>
-                            {/each}
-                        </Select.Content>
-                    </Select.Root>
+                    <FrameworkCombobox bind:value={framework} />
                 </div>
 
                 {#if captchaEnabled}

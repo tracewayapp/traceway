@@ -1,7 +1,38 @@
 import { api } from '$lib/api';
 import { authState } from './auth.svelte';
 
-export type Framework = 'gin' | 'fiber' | 'chi' | 'fasthttp' | 'stdlib' | 'custom';
+export type Framework = 'gin' | 'fiber' | 'chi' | 'fasthttp' | 'stdlib' | 'custom' | 'react' | 'svelte' | 'vuejs' | 'nextjs' | 'nestjs' | 'express' | 'remix';
+
+export const FRONTEND_FRAMEWORKS: Framework[] = ['react', 'svelte', 'vuejs'];
+export const JS_FRAMEWORKS: Framework[] = ['react', 'svelte', 'vuejs', 'nextjs', 'nestjs', 'express', 'remix'];
+
+export const FRAMEWORK_LABELS: Record<Framework, string> = {
+	gin: 'Gin',
+	fiber: 'Fiber',
+	chi: 'Chi',
+	fasthttp: 'FastHTTP',
+	stdlib: 'Standard Library',
+	custom: 'Custom',
+	react: 'React',
+	svelte: 'Svelte',
+	vuejs: 'Vue.js',
+	nextjs: 'Next.js',
+	nestjs: 'NestJS',
+	express: 'Express',
+	remix: 'Remix',
+};
+
+export function getFrameworkLabel(fw: Framework): string {
+	return FRAMEWORK_LABELS[fw] ?? fw;
+}
+
+export function isFrontendFramework(fw: Framework): boolean {
+	return FRONTEND_FRAMEWORKS.includes(fw);
+}
+
+export function isJsFramework(fw: Framework): boolean {
+	return JS_FRAMEWORKS.includes(fw);
+}
 
 export interface Project {
     id: string;

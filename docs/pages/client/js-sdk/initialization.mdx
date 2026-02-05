@@ -1,0 +1,77 @@
+# Initialization
+
+Initialize the Traceway SDK once at application startup, before capturing any events.
+
+## Basic Initialization
+
+```javascript
+import { init } from "@traceway/frontend";
+
+init("your-token@https://traceway.example.com/api/report");
+```
+
+## With Options
+
+```javascript
+import { init } from "@traceway/frontend";
+
+init("your-token@https://traceway.example.com/api/report", {
+  debug: true,
+  version: "1.2.3",
+  debounceMs: 2000,
+});
+```
+
+## Options Reference
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `debug` | `boolean` | `false` | Log captured events to the browser console |
+| `debounceMs` | `number` | `1500` | Milliseconds to wait before sending batched events |
+| `retryDelayMs` | `number` | `10000` | Milliseconds to wait before retrying failed uploads |
+| `version` | `string` | `undefined` | Your application version (shown in Traceway dashboard) |
+
+## Auto-Capture Behavior
+
+By default, the SDK does **not** automatically capture unhandled errors. You need to either:
+
+1. Use a framework integration (React, Vue, Svelte) that provides automatic capture
+2. Set up your own global error handler:
+
+```javascript
+import { init, captureException } from "@traceway/frontend";
+
+init("your-token@https://traceway.example.com/api/report");
+
+// Capture unhandled errors
+window.addEventListener("error", (event) => {
+  captureException(event.error);
+});
+
+// Capture unhandled promise rejections
+window.addEventListener("unhandledrejection", (event) => {
+  captureException(event.reason);
+});
+```
+
+## Debug Mode
+
+When `debug: true` is set, the SDK logs all captured events to the browser console. This is useful during development to verify events are being captured correctly.
+
+```javascript
+init("your-token@https://traceway.example.com/api/report", {
+  debug: process.env.NODE_ENV === "development",
+});
+```
+
+## Multiple Environments
+
+For different environments, use separate project tokens:
+
+```javascript
+const connectionString = process.env.NODE_ENV === "production"
+  ? "prod-token@https://traceway.example.com/api/report"
+  : "dev-token@https://traceway.example.com/api/report";
+
+init(connectionString);
+```

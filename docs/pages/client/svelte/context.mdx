@@ -1,0 +1,220 @@
+# Context Setup
+
+Understanding Traceway's Svelte context integration.
+
+## How It Works
+
+Traceway uses Svelte's context API to provide error capture functions to your component tree:
+
+1. `setupTraceway()` initializes the SDK and sets context
+2. `getTraceway()` retrieves the context in child components
+
+## setupTraceway
+
+Must be called during component initialization (not in an event handler):
+
+```svelte
+<script>
+  import { setupTraceway } from "@traceway/svelte";
+
+  // Correct: called at component initialization
+  setupTraceway({
+    connectionString: "your-token@https://traceway.example.com/api/report",
+  });
+</script>
+```
+
+**Delayed Initialization:** The SDK initialization (`init()`) is deferred until `onMount`. This means the actual connection to the Traceway server happens after the component mounts, not during the initial script execution. The context functions (`captureException`, etc.) are available immediately, but events captured before mount will be queued and sent once initialization completes.
+
+### Options
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `connectionString` | `string` | Yes | Your Traceway connection string |
+| `options` | `object` | No | SDK configuration |
+
+### SDK Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `debug` | `boolean` | `false` | Log events to console |
+| `debounceMs` | `number` | `1500` | Batch delay in milliseconds |
+| `retryDelayMs` | `number` | `10000` | Retry delay for failed uploads |
+| `version` | `string` | `undefined` | Your application version |
+
+## getTraceway
+
+Retrieve capture functions in any child component:
+
+```svelte
+<script>
+  import { getTraceway } from "@traceway/svelte";
+
+  const { captureException, captureExceptionWithAttributes, captureMessage } = getTraceway();
+</script>
+```
+
+### Return Value
+
+| Function | Description |
+|----------|-------------|
+| `captureException(error)` | Capture an error with stack trace |
+| `captureExceptionWithAttributes(error, attributes)` | Capture error with metadata |
+| `captureMessage(message)` | Send a custom message |
+
+## Complete Example
+
+Root layout:
+
+```svelte
+<!-- src/routes/+layout.svelte -->
+<script>
+  import { setupTraceway } from "@traceway/svelte";
+  import { browser } from "$app/environment";
+  import { PUBLIC_TRACEWAY_CONNECTION } from "$env/static/public";
+
+  if (browser) {
+    setupTraceway({
+      connectionString: PUBLIC_TRACEWAY_CONNECTION,
+      options: {
+        debug: import.meta.env.DEV,
+      },
+    });
+  }
+</script>
+
+<slot />
+```
+
+Child component:
+
+```svelte
+<!-- src/lib/components/Form.svelte -->
+<script>
+  import { getTraceway } from "@traceway/svelte";
+
+  const { captureException, captureExceptionWithAttributes } = getTraceway();
+
+  let formData = { email: "", name: "" };
+
+  async function handleSubmit() {
+    try {
+      const response = await fetch("/api/submit", {
+        method: "POST",
+        body: JSON.stringify(formData),
+      });
+      if (!response.ok) throw new Error("Submission failed");
+    } catch (error) {
+      captureExceptionWithAttributes(error, {
+        email: formData.email,
+        action: "form_submit",
+      });
+    }
+  }
+</script>
+
+<form on:submit|preventDefault={handleSubmit}>
+  <input bind:value={formData.name} placeholder="Name" />
+  <input bind:value={formData.email} placeholder="Email" />
+  <button type="submit">Submit</button>
+</form>
+```
+
+## TRACEWAY_KEY
+
+For advanced use cases, you can access the context key directly:
+
+```svelte
+<script>
+  import { getContext } from "svelte";
+  import { TRACEWAY_KEY } from "@traceway/svelte";
+
+  const traceway = getContext(TRACEWAY_KEY);
+</script>
+```
+
+## SvelteKit Error Handling
+
+For SvelteKit's error handling, create a custom error hook:
+
+```javascript
+// src/hooks.client.js
+import { getTraceway } from "@traceway/svelte";
+
+export function handleError({ error, event }) {
+  // Note: Context may not be available in hooks
+  // Consider using the core SDK directly here
+  console.error("Unhandled error:", error);
+}
+```
+
+For client-side errors, use `+error.svelte`:
+
+```svelte
+<!-- src/routes/+error.svelte -->
+<script>
+  import { page } from "$app/stores";
+  import { getTraceway } from "@traceway/svelte";
+  import { onMount } from "svelte";
+
+  const { captureException } = getTraceway();
+
+  onMount(() => {
+    if ($page.error) {
+      captureException($page.error);
+    }
+  });
+</script>
+
+<h1>Error: {$page.status}</h1>
+<p>{$page.error?.message}</p>
+```
+
+## Environment Variables
+
+For SvelteKit, use public environment variables:
+
+```
+# .env
+PUBLIC_TRACEWAY_CONNECTION=your-token@https://traceway.example.com/api/report
+```
+
+```svelte
+<script>
+  import { PUBLIC_TRACEWAY_CONNECTION } from "$env/static/public";
+
+  setupTraceway({
+    connectionString: PUBLIC_TRACEWAY_CONNECTION,
+  });
+</script>
+```
+
+## Best Practices
+
+1. **Initialize early**: Call `setupTraceway` in your root layout
+2. **Check for browser**: In SvelteKit, only initialize on the client
+3. **Use attributes**: Add context with `captureExceptionWithAttributes`
+4. **Handle gracefully**: Show user-friendly errors while capturing details
+
+```svelte
+<script>
+  import { getTraceway } from "@traceway/svelte";
+
+  const { captureException } = getTraceway();
+  let error = null;
+
+  async function loadData() {
+    try {
+      const data = await fetchData();
+      // use data
+    } catch (e) {
+      captureException(e);
+      error = "Failed to load data. Please try again.";
+    }
+  }
+</script>
+
+{#if error}
+  <p class="error">{error}</p>
+{/if}
+```

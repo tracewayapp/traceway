@@ -1,0 +1,71 @@
+# Messages
+
+Send custom log messages to Traceway for tracking non-error events.
+
+## captureMessage
+
+Send a simple text message:
+
+```javascript
+import { captureMessage } from "@traceway/frontend";
+
+// Track important events
+captureMessage("User completed onboarding");
+
+// Track business metrics
+captureMessage("Payment processed successfully");
+
+// Track navigation
+captureMessage("User visited pricing page");
+```
+
+## Use Cases
+
+### User Actions
+
+```javascript
+function handlePurchase(product) {
+  captureMessage(`Purchase: ${product.name}`);
+  // ... process purchase
+}
+```
+
+### Feature Usage
+
+```javascript
+function enableBetaFeature(featureName) {
+  captureMessage(`Beta feature enabled: ${featureName}`);
+  // ... enable feature
+}
+```
+
+### Debugging Production Issues
+
+```javascript
+function processData(data) {
+  if (data.items.length > 1000) {
+    captureMessage(`Large dataset processed: ${data.items.length} items`);
+  }
+  // ... process data
+}
+```
+
+## Messages vs Exceptions
+
+| Use `captureMessage` when | Use `captureException` when |
+|---------------------------|----------------------------|
+| Tracking user actions | An error occurred |
+| Logging business events | Catching exceptions |
+| Debugging production flows | Something unexpected happened |
+| Monitoring feature usage | Operation failed |
+
+## Best Practices
+
+1. **Be concise**: Messages should be short and descriptive
+2. **Include context**: Add relevant identifiers when helpful
+3. **Avoid sensitive data**: Never include passwords, tokens, or PII
+4. **Use sparingly**: Messages add overhead; don't log every action
+
+## Viewing Messages
+
+Messages appear in the Traceway dashboard alongside exceptions. You can filter by message type to see only messages or only exceptions.

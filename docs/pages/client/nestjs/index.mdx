@@ -1,0 +1,164 @@
+# NestJS Quick Start
+
+Integrate Traceway into your NestJS application with the `@traceway/nestjs` package.
+
+## Installation
+
+```bash
+npm install @traceway/nestjs
+```
+
+## Setup
+
+### 1. Import TracewayModule
+
+Add `TracewayModule.forRoot()` to your app module:
+
+```typescript
+import { Module } from "@nestjs/common";
+import { TracewayModule } from "@traceway/nestjs";
+
+@Module({
+  imports: [
+    TracewayModule.forRoot({
+      connectionString: "your-token@https://traceway.example.com/api/report",
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+### 2. Add Middleware for Request Tracing
+
+Apply `TracewayMiddleware` to trace all HTTP requests:
+
+```typescript
+import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
+import { TracewayModule, TracewayMiddleware } from "@traceway/nestjs";
+
+@Module({
+  imports: [
+    TracewayModule.forRoot({
+      connectionString: "your-token@https://traceway.example.com/api/report",
+    }),
+  ],
+})
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(TracewayMiddleware).forRoutes("*");
+  }
+}
+```
+
+### 3. Add Exception Filter
+
+Register `TracewayExceptionFilter` globally to capture unhandled exceptions:
+
+```typescript
+import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
+import { APP_FILTER } from "@nestjs/core";
+import {
+  TracewayModule,
+  TracewayMiddleware,
+  TracewayExceptionFilter,
+} from "@traceway/nestjs";
+
+@Module({
+  imports: [
+    TracewayModule.forRoot({
+      connectionString: "your-token@https://traceway.example.com/api/report",
+      debug: true,
+      onErrorRecording: ["url", "query", "body", "headers"],
+    }),
+  ],
+  providers: [
+    {
+      provide: APP_FILTER,
+      useClass: TracewayExceptionFilter,
+    },
+  ],
+})
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(TracewayMiddleware).forRoutes("*");
+  }
+}
+```
+
+## What Gets Captured
+
+| Data | Description |
+|------|-------------|
+| Endpoint | HTTP method and route (e.g., `GET /users/:id`) |
+| Duration | Request processing time |
+| Status Code | HTTP response status |
+| Client IP | Client IP address from headers or socket |
+| Exceptions | Unhandled errors with full stack traces |
+| Spans | Custom spans created within the request |
+
+## Using TracewayService
+
+Inject `TracewayService` to capture errors and create spans manually:
+
+```typescript
+import { Injectable } from "@nestjs/common";
+import { TracewayService, Span } from "@traceway/nestjs";
+
+@Injectable()
+export class UsersService {
+  constructor(private readonly traceway: TracewayService) {}
+
+  @Span("db.users.findAll")
+  async findAll() {
+    // Span automatically created and ended
+    return this.userRepository.find();
+  }
+
+  async createUser(data: CreateUserDto) {
+    // Manual span
+    const span = this.traceway.startSpan("db.users.create");
+    try {
+      const user = await this.userRepository.save(data);
+      return user;
+    } finally {
+      this.traceway.endSpan(span);
+    }
+  }
+
+  async riskyOperation() {
+    try {
+      await this.externalApi.call();
+    } catch (error) {
+      // Manual exception capture
+      this.traceway.captureException(error);
+      throw error;
+    }
+  }
+}
+```
+
+## Test Your Integration
+
+Create a test endpoint that throws an error:
+
+```typescript
+import { Controller, Get } from "@nestjs/common";
+
+@Controller()
+export class AppController {
+  @Get("test-error")
+  testError() {
+    throw new Error("Test error from NestJS");
+  }
+}
+```
+
+Visit `/test-error` and check your Traceway dashboard to verify the error appears with a full stack trace.
+
+## Next Steps
+
+- [TracewayModule](/client/nestjs/module) - Configuration options and async setup
+- [Middleware](/client/nestjs/middleware) - Request tracing details
+- [Exception Filter](/client/nestjs/filter) - Error recording options
+- [TracewayService](/client/nestjs/service) - Manual instrumentation
+- [Decorators](/client/nestjs/decorators) - @Span decorator usage

@@ -1,11 +1,11 @@
 # Svelte Quick Start
 
-Integrate Traceway into your Svelte or SvelteKit application with the `@traceway/svelte` package.
+Integrate Traceway into your Svelte or SvelteKit application with the `@tracewayapp/svelte` package.
 
 ## Installation
 
 ```bash
-npm install @traceway/svelte
+npm install @tracewayapp/svelte
 ```
 
 ## Setup
@@ -14,7 +14,7 @@ Call `setupTraceway` in your root component (e.g., `+layout.svelte` for SvelteKi
 
 ```svelte
 <script>
-  import { setupTraceway } from "@traceway/svelte";
+  import { setupTraceway } from "@tracewayapp/svelte";
 
   setupTraceway({
     connectionString: "your-token@https://traceway.example.com/api/report",
@@ -30,7 +30,7 @@ Use `getTraceway` in child components:
 
 ```svelte
 <script>
-  import { getTraceway } from "@traceway/svelte";
+  import { getTraceway } from "@tracewayapp/svelte";
 
   const { captureException } = getTraceway();
 
@@ -50,7 +50,7 @@ Use `getTraceway` in child components:
 
 ```svelte
 <script>
-  import { setupTraceway } from "@traceway/svelte";
+  import { setupTraceway } from "@tracewayapp/svelte";
 
   setupTraceway({
     connectionString: "your-token@https://traceway.example.com/api/report",
@@ -68,7 +68,7 @@ Use `getTraceway` in child components:
 
 ```svelte
 <script>
-  import { getTraceway } from "@traceway/svelte";
+  import { getTraceway } from "@tracewayapp/svelte";
 
   const { captureException } = getTraceway();
 
@@ -89,7 +89,7 @@ For SvelteKit, set up Traceway in your root layout:
 ```svelte
 <!-- src/routes/+layout.svelte -->
 <script>
-  import { setupTraceway } from "@traceway/svelte";
+  import { setupTraceway } from "@tracewayapp/svelte";
   import { browser } from "$app/environment";
 
   // Only initialize on client

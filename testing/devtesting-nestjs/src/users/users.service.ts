@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
-import { Span } from "@traceway/nestjs";
+import { Span } from "@tracewayapp/nestjs";
 import { User, CreateUserDto, UpdateUserDto } from "./user.entity";
 
 @Injectable()

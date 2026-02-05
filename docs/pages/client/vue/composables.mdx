@@ -6,7 +6,7 @@ Use the `useTraceway` composable to capture errors and messages in Vue component
 
 ```vue
 <script setup>
-import { useTraceway } from "@traceway/vue";
+import { useTraceway } from "@tracewayapp/vue";
 
 const { captureException, captureExceptionWithAttributes, captureMessage } = useTraceway();
 </script>
@@ -26,7 +26,7 @@ Capture errors in event handlers or async functions:
 
 ```vue
 <script setup>
-import { useTraceway } from "@traceway/vue";
+import { useTraceway } from "@tracewayapp/vue";
 
 const { captureException } = useTraceway();
 
@@ -51,7 +51,7 @@ Add context to errors:
 
 ```vue
 <script setup>
-import { useTraceway } from "@traceway/vue";
+import { useTraceway } from "@tracewayapp/vue";
 
 const props = defineProps(['userId']);
 const { captureExceptionWithAttributes } = useTraceway();
@@ -76,7 +76,7 @@ Track non-error events:
 
 ```vue
 <script setup>
-import { useTraceway } from "@traceway/vue";
+import { useTraceway } from "@tracewayapp/vue";
 
 const { captureMessage } = useTraceway();
 
@@ -98,7 +98,7 @@ Create reusable async handlers:
 ```javascript
 // composables/useTrackedFetch.js
 import { ref } from "vue";
-import { useTraceway } from "@traceway/vue";
+import { useTraceway } from "@tracewayapp/vue";
 
 export function useTrackedFetch(url, context = {}) {
   const { captureExceptionWithAttributes } = useTraceway();
@@ -148,7 +148,7 @@ For Options API components, use `inject`:
 
 ```vue
 <script>
-import { TracewayKey } from "@traceway/vue";
+import { TracewayKey } from "@tracewayapp/vue";
 
 export default {
   inject: {
@@ -167,7 +167,7 @@ export default {
 
 ```vue
 <script setup>
-import { useTraceway } from "@traceway/vue";
+import { useTraceway } from "@tracewayapp/vue";
 import { ref } from "vue";
 
 const { captureException } = useTraceway();

@@ -1,11 +1,11 @@
 # Node.js Backend SDK
 
-The `@traceway/backend` package is a complete Node.js SDK for server-side applications. It provides error tracking, distributed tracing, span management, and metrics collection.
+The `@tracewayapp/backend` package is a complete Node.js SDK for server-side applications. It provides error tracking, distributed tracing, span management, and metrics collection.
 
 ## Installation
 
 ```bash
-npm install @traceway/backend
+npm install @tracewayapp/backend
 ```
 
 ## Features
@@ -30,7 +30,7 @@ import {
   endSpan,
   captureCurrentTrace,
   shutdown,
-} from "@traceway/backend";
+} from "@tracewayapp/backend";
 
 // Initialize once at startup
 init("your-token@https://traceway.example.com/api/report");
@@ -69,14 +69,14 @@ process.on("SIGTERM", async () => {
 
 ## When to Use
 
-Use `@traceway/backend` when:
+Use `@tracewayapp/backend` when:
 
 - Building Node.js/Express/Fastify/Koa servers
 - Running background workers or task processors
 - Need distributed tracing across async operations
 - Want automatic trace context propagation
 
-For browser applications, use [`@traceway/frontend`](/client/js-sdk) or framework-specific packages.
+For browser applications, use [`@tracewayapp/frontend`](/client/js-sdk) or framework-specific packages.
 
 ## Connection String Format
 
@@ -95,10 +95,10 @@ Find your connection string in the Traceway dashboard under **Project Settings**
 
 ```typescript
 // Core functions
-export { init, shutdown } from "@traceway/backend";
+export { init, shutdown } from "@tracewayapp/backend";
 
 // Exception capture
-export { captureException, captureExceptionWithAttributes, captureMessage } from "@traceway/backend";
+export { captureException, captureExceptionWithAttributes, captureMessage } from "@tracewayapp/backend";
 
 // Trace context (AsyncLocalStorage-based)
 export {
@@ -111,22 +111,22 @@ export {
   setTraceAttributes,
   setTraceResponseInfo,
   forkTraceContext,
-} from "@traceway/backend";
+} from "@tracewayapp/backend";
 
 // Trace capture
-export { captureCurrentTrace, captureTrace, captureTask } from "@traceway/backend";
+export { captureCurrentTrace, captureTrace, captureTask } from "@tracewayapp/backend";
 
 // Span management
-export { startSpan, endSpan, addSpanToContext, getTraceSpans, getTraceDuration } from "@traceway/backend";
+export { startSpan, endSpan, addSpanToContext, getTraceSpans, getTraceDuration } from "@tracewayapp/backend";
 
 // Metrics
-export { captureMetric } from "@traceway/backend";
+export { captureMetric } from "@tracewayapp/backend";
 
 // Task measurement
-export { measureTask } from "@traceway/backend";
+export { measureTask } from "@tracewayapp/backend";
 
 // Types
-export type { TracewayOptions, TraceContext, TraceContextOptions, SpanHandle } from "@traceway/backend";
+export type { TracewayOptions, TraceContext, TraceContextOptions, SpanHandle } from "@tracewayapp/backend";
 ```
 
 ## Next Steps

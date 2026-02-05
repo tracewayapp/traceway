@@ -5,7 +5,7 @@ Initialize the SDK once at application startup, before capturing any events.
 ## Basic Initialization
 
 ```typescript
-import { init } from "@traceway/backend";
+import { init } from "@tracewayapp/backend";
 
 init("your-token@https://traceway.example.com/api/report");
 ```
@@ -13,7 +13,7 @@ init("your-token@https://traceway.example.com/api/report");
 ## With Options
 
 ```typescript
-import { init } from "@traceway/backend";
+import { init } from "@tracewayapp/backend";
 
 init("your-token@https://traceway.example.com/api/report", {
   debug: true,
@@ -104,7 +104,7 @@ init("token@url"); // Throws: "Traceway: already initialized. Call shutdown() fi
 To reinitialize, first call `shutdown()`:
 
 ```typescript
-import { init, shutdown } from "@traceway/backend";
+import { init, shutdown } from "@tracewayapp/backend";
 
 init("token@url");
 // ... later ...
@@ -116,7 +116,7 @@ init("new-token@url"); // OK
 
 ```typescript
 import express from "express";
-import { init, shutdown } from "@traceway/backend";
+import { init, shutdown } from "@tracewayapp/backend";
 
 const app = express();
 
@@ -157,7 +157,7 @@ init(process.env.TRACEWAY_CONNECTION!);
 Full TypeScript support is included:
 
 ```typescript
-import { init, type TracewayOptions } from "@traceway/backend";
+import { init, type TracewayOptions } from "@tracewayapp/backend";
 
 const options: TracewayOptions = {
   debug: true,

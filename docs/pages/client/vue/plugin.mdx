@@ -6,7 +6,7 @@ Configure the Traceway Vue plugin with `createTracewayPlugin`.
 
 ```javascript
 import { createApp } from "vue";
-import { createTracewayPlugin } from "@traceway/vue";
+import { createTracewayPlugin } from "@tracewayapp/vue";
 import App from "./App.vue";
 
 const app = createApp(App);
@@ -38,7 +38,7 @@ app.mount("#app");
 
 ```javascript
 import { createApp } from "vue";
-import { createTracewayPlugin } from "@traceway/vue";
+import { createTracewayPlugin } from "@tracewayapp/vue";
 import App from "./App.vue";
 
 const app = createApp(App);
@@ -92,7 +92,7 @@ For advanced use cases, you can use the injection key directly:
 ```vue
 <script setup>
 import { inject } from "vue";
-import { TracewayKey } from "@traceway/vue";
+import { TracewayKey } from "@tracewayapp/vue";
 
 const traceway = inject(TracewayKey);
 traceway.captureException(new Error("Manual capture"));
@@ -123,7 +123,7 @@ For Nuxt 3, create a plugin:
 
 ```javascript
 // plugins/traceway.client.ts
-import { createTracewayPlugin } from "@traceway/vue";
+import { createTracewayPlugin } from "@tracewayapp/vue";
 
 export default defineNuxtPlugin((nuxtApp) => {
   nuxtApp.vueApp.use(createTracewayPlugin({

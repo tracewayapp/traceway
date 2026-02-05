@@ -7,7 +7,7 @@ Capture JavaScript errors and exceptions with full stack traces.
 Capture an error with its stack trace:
 
 ```javascript
-import { captureException } from "@traceway/frontend";
+import { captureException } from "@tracewayapp/frontend";
 
 try {
   riskyOperation();
@@ -23,7 +23,7 @@ The SDK extracts the error type, message, and stack trace automatically.
 Capture an error with additional metadata:
 
 ```javascript
-import { captureExceptionWithAttributes } from "@traceway/frontend";
+import { captureExceptionWithAttributes } from "@tracewayapp/frontend";
 
 try {
   processOrder(orderId);
@@ -86,4 +86,4 @@ For best stack traces, always throw and catch actual `Error` objects.
 
 ## React Error Boundaries
 
-For React applications, use the `@traceway/react` package which provides a `TracewayErrorBoundary` component that automatically captures React component errors. See the [React documentation](/client/react/error-boundary) for details.
+For React applications, use the `@tracewayapp/react` package which provides a `TracewayErrorBoundary` component that automatically captures React component errors. See the [React documentation](/client/react/error-boundary) for details.

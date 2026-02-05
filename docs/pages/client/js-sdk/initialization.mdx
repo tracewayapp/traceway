@@ -5,7 +5,7 @@ Initialize the Traceway SDK once at application startup, before capturing any ev
 ## Basic Initialization
 
 ```javascript
-import { init } from "@traceway/frontend";
+import { init } from "@tracewayapp/frontend";
 
 init("your-token@https://traceway.example.com/api/report");
 ```
@@ -13,7 +13,7 @@ init("your-token@https://traceway.example.com/api/report");
 ## With Options
 
 ```javascript
-import { init } from "@traceway/frontend";
+import { init } from "@tracewayapp/frontend";
 
 init("your-token@https://traceway.example.com/api/report", {
   debug: true,
@@ -39,7 +39,7 @@ By default, the SDK does **not** automatically capture unhandled errors. You nee
 2. Set up your own global error handler:
 
 ```javascript
-import { init, captureException } from "@traceway/frontend";
+import { init, captureException } from "@tracewayapp/frontend";
 
 init("your-token@https://traceway.example.com/api/report");
 

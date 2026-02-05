@@ -1,11 +1,11 @@
 # Vue Quick Start
 
-Integrate Traceway into your Vue 3 application with the `@traceway/vue` package.
+Integrate Traceway into your Vue 3 application with the `@tracewayapp/vue` package.
 
 ## Installation
 
 ```bash
-npm install @traceway/vue
+npm install @tracewayapp/vue
 ```
 
 ## Setup
@@ -14,7 +14,7 @@ Install the Traceway plugin in your Vue application:
 
 ```javascript
 import { createApp } from "vue";
-import { createTracewayPlugin } from "@traceway/vue";
+import { createTracewayPlugin } from "@tracewayapp/vue";
 import App from "./App.vue";
 
 const app = createApp(App);
@@ -34,7 +34,7 @@ Use the `useTraceway` composable:
 
 ```vue
 <script setup>
-import { useTraceway } from "@traceway/vue";
+import { useTraceway } from "@tracewayapp/vue";
 
 const { captureException } = useTraceway();
 
@@ -68,7 +68,7 @@ app.use(createTracewayPlugin({
 
 ```vue
 <script setup>
-import { useTraceway } from "@traceway/vue";
+import { useTraceway } from "@tracewayapp/vue";
 
 const { captureException } = useTraceway();
 

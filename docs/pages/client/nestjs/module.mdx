@@ -8,7 +8,7 @@ Use `forRoot()` for static configuration:
 
 ```typescript
 import { Module } from "@nestjs/common";
-import { TracewayModule } from "@traceway/nestjs";
+import { TracewayModule } from "@tracewayapp/nestjs";
 
 @Module({
   imports: [
@@ -34,7 +34,7 @@ Use `forRootAsync()` when you need to load configuration from environment variab
 ```typescript
 import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
-import { TracewayModule } from "@traceway/nestjs";
+import { TracewayModule } from "@tracewayapp/nestjs";
 
 @Module({
   imports: [
@@ -60,7 +60,7 @@ You can also use a factory class:
 
 ```typescript
 import { Injectable } from "@nestjs/common";
-import { TracewayModule, TracewayOptionsFactory, TracewayModuleOptions } from "@traceway/nestjs";
+import { TracewayModule, TracewayOptionsFactory, TracewayModuleOptions } from "@tracewayapp/nestjs";
 
 @Injectable()
 class TracewayConfigService implements TracewayOptionsFactory {

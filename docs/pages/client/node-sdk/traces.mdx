@@ -7,7 +7,7 @@ The backend SDK provides AsyncLocalStorage-based trace context management. Trace
 Run a function within a new trace context:
 
 ```typescript
-import { withTraceContext, captureCurrentTrace } from "@traceway/backend";
+import { withTraceContext, captureCurrentTrace } from "@tracewayapp/backend";
 
 await withTraceContext(
   {
@@ -42,7 +42,7 @@ await withTraceContext(
 Get the full trace context object:
 
 ```typescript
-import { getTraceContext } from "@traceway/backend";
+import { getTraceContext } from "@tracewayapp/backend";
 
 const ctx = getTraceContext();
 if (ctx) {
@@ -57,7 +57,7 @@ if (ctx) {
 Get just the current trace ID:
 
 ```typescript
-import { getTraceId } from "@traceway/backend";
+import { getTraceId } from "@tracewayapp/backend";
 
 const traceId = getTraceId();
 // Returns undefined if not in a trace context
@@ -68,7 +68,7 @@ const traceId = getTraceId();
 Check if currently within a trace context:
 
 ```typescript
-import { hasTraceContext } from "@traceway/backend";
+import { hasTraceContext } from "@tracewayapp/backend";
 
 if (hasTraceContext()) {
   // Safe to use trace-related functions
@@ -82,7 +82,7 @@ if (hasTraceContext()) {
 Set a single attribute on the current trace:
 
 ```typescript
-import { setTraceAttribute } from "@traceway/backend";
+import { setTraceAttribute } from "@tracewayapp/backend";
 
 setTraceAttribute("userId", currentUser.id);
 setTraceAttribute("tenantId", tenant.id);
@@ -93,7 +93,7 @@ setTraceAttribute("tenantId", tenant.id);
 Set multiple attributes at once:
 
 ```typescript
-import { setTraceAttributes } from "@traceway/backend";
+import { setTraceAttributes } from "@tracewayapp/backend";
 
 setTraceAttributes({
   userId: currentUser.id,
@@ -111,7 +111,7 @@ Attributes are no-op when called outside a trace context.
 Set HTTP response information for the trace:
 
 ```typescript
-import { setTraceResponseInfo, withTraceContext, captureCurrentTrace } from "@traceway/backend";
+import { setTraceResponseInfo, withTraceContext, captureCurrentTrace } from "@tracewayapp/backend";
 
 await withTraceContext({ endpoint: "GET /api/users" }, async () => {
   // ... handle request ...
@@ -129,7 +129,7 @@ await withTraceContext({ endpoint: "GET /api/users" }, async () => {
 Capture the current trace context as a trace record:
 
 ```typescript
-import { captureCurrentTrace, withTraceContext, setTraceResponseInfo } from "@traceway/backend";
+import { captureCurrentTrace, withTraceContext, setTraceResponseInfo } from "@tracewayapp/backend";
 
 await withTraceContext({ endpoint: "POST /api/orders" }, async () => {
   const result = await createOrder(data);
@@ -144,7 +144,7 @@ await withTraceContext({ endpoint: "POST /api/orders" }, async () => {
 Capture a trace with explicit parameters:
 
 ```typescript
-import { captureTrace } from "@traceway/backend";
+import { captureTrace } from "@tracewayapp/backend";
 
 captureTrace(
   traceId,           // string
@@ -166,7 +166,7 @@ captureTrace(
 Fork the current context for parallel operations with isolated spans:
 
 ```typescript
-import { forkTraceContext, withTraceContext, startSpan, endSpan } from "@traceway/backend";
+import { forkTraceContext, withTraceContext, startSpan, endSpan } from "@tracewayapp/backend";
 
 await withTraceContext({ endpoint: "GET /api/dashboard" }, async () => {
   // Run multiple operations in parallel, each with isolated spans
@@ -201,7 +201,7 @@ Forked contexts:
 Get elapsed time since trace started:
 
 ```typescript
-import { getTraceDuration } from "@traceway/backend";
+import { getTraceDuration } from "@tracewayapp/backend";
 
 const elapsedMs = getTraceDuration();
 // Returns 0 if not in a trace context
@@ -216,7 +216,7 @@ import {
   setTraceResponseInfo,
   captureCurrentTrace,
   captureException,
-} from "@traceway/backend";
+} from "@tracewayapp/backend";
 
 function tracingMiddleware(req, res, next) {
   withTraceContext(

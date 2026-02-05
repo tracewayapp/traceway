@@ -7,7 +7,7 @@ Capture Node.js errors and exceptions with full stack traces.
 Capture an error with its stack trace:
 
 ```typescript
-import { captureException } from "@traceway/backend";
+import { captureException } from "@tracewayapp/backend";
 
 try {
   await riskyOperation();
@@ -23,7 +23,7 @@ The SDK extracts the error type, message, and stack trace automatically.
 When called inside a trace context, exceptions are automatically linked to the current trace:
 
 ```typescript
-import { captureException, withTraceContext } from "@traceway/backend";
+import { captureException, withTraceContext } from "@tracewayapp/backend";
 
 await withTraceContext({ endpoint: "GET /api/users" }, async () => {
   try {
@@ -40,7 +40,7 @@ await withTraceContext({ endpoint: "GET /api/users" }, async () => {
 Capture an error with additional metadata:
 
 ```typescript
-import { captureExceptionWithAttributes } from "@traceway/backend";
+import { captureExceptionWithAttributes } from "@tracewayapp/backend";
 
 try {
   await processOrder(orderId);
@@ -60,7 +60,7 @@ Attributes appear as tags in the Traceway dashboard for filtering and debugging.
 Send a custom message (non-error):
 
 ```typescript
-import { captureMessage } from "@traceway/backend";
+import { captureMessage } from "@tracewayapp/backend";
 
 // Log significant events
 captureMessage("Payment processed successfully");
@@ -89,7 +89,7 @@ Messages appear in the exceptions view but are marked as messages rather than er
 ### Express Error Middleware
 
 ```typescript
-import { captureException } from "@traceway/backend";
+import { captureException } from "@tracewayapp/backend";
 
 app.use((err, req, res, next) => {
   captureException(err);
@@ -183,7 +183,7 @@ withTraceContext({ endpoint: "POST /api/orders" }, async () => {
 To manually link an exception to a trace:
 
 ```typescript
-import { getTraceId, captureExceptionWithAttributes } from "@traceway/backend";
+import { getTraceId, captureExceptionWithAttributes } from "@tracewayapp/backend";
 
 captureExceptionWithAttributes(error, {
   customAttribute: "value",

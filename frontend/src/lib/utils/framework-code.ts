@@ -15,19 +15,19 @@ export function getInstallCommand(framework: Framework): string {
 		case 'stdlib':
 			return `${base} && go get go.tracewayapp.com/tracewayhttp`;
 		case 'react':
-			return 'npm install @traceway/react';
+			return 'npm install @tracewayapp/react';
 		case 'svelte':
-			return 'npm install @traceway/svelte';
+			return 'npm install @tracewayapp/svelte';
 		case 'vuejs':
-			return 'npm install @traceway/vue';
+			return 'npm install @tracewayapp/vue';
 		case 'nextjs':
-			return 'npm install @traceway/next';
+			return 'npm install @tracewayapp/next';
 		case 'nestjs':
-			return 'npm install @traceway/nest';
+			return 'npm install @tracewayapp/nest';
 		case 'express':
-			return 'npm install @traceway/express';
+			return 'npm install @tracewayapp/express';
 		case 'remix':
-			return 'npm install @traceway/remix';
+			return 'npm install @tracewayapp/remix';
 		case 'custom':
 		default:
 			return base;
@@ -124,7 +124,7 @@ func main() {
 }`;
 
 		case 'react':
-			return `import { TracewayProvider } from "@traceway/react";
+			return `import { TracewayProvider } from "@tracewayapp/react";
 
 function App() {
   return (
@@ -138,7 +138,7 @@ export default App;`;
 
 		case 'svelte':
 			return `<script>
-  import { setupTraceway } from "@traceway/svelte";
+  import { setupTraceway } from "@tracewayapp/svelte";
 
   setupTraceway({
     connectionString: "${connectionString}",
@@ -149,7 +149,7 @@ export default App;`;
 
 		case 'vuejs':
 			return `import { createApp } from "vue";
-import { createTracewayPlugin } from "@traceway/vue";
+import { createTracewayPlugin } from "@tracewayapp/vue";
 import App from "./App.vue";
 
 const app = createApp(App);
@@ -161,7 +161,7 @@ app.use(createTracewayPlugin({
 app.mount("#app");`;
 
 		case 'nextjs':
-			return `import { withTraceway } from "@traceway/next";
+			return `import { withTraceway } from "@tracewayapp/next";
 
 export default withTraceway({
     connectionString: "${connectionString}",
@@ -169,7 +169,7 @@ export default withTraceway({
 
 		case 'nestjs':
 			return `import { Module } from "@nestjs/common";
-import { TracewayModule } from "@traceway/nest";
+import { TracewayModule } from "@tracewayapp/nest";
 
 @Module({
     imports: [
@@ -182,7 +182,7 @@ export class AppModule {}`;
 
 		case 'express':
 			return `import express from "express";
-import { traceway } from "@traceway/express";
+import { traceway } from "@tracewayapp/express";
 
 const app = express();
 app.use(traceway("${connectionString}"));
@@ -194,7 +194,7 @@ app.get("/api/users", (req, res) => {
 app.listen(8080);`;
 
 		case 'remix':
-			return `import { withTraceway } from "@traceway/remix";
+			return `import { withTraceway } from "@tracewayapp/remix";
 
 export default withTraceway({
     connectionString: "${connectionString}",
@@ -232,23 +232,23 @@ export function getTestingRouteCode2(framework?: Framework): string {
 	if (framework && isJsFramework(framework)) {
 		switch (framework) {
 			case 'react':
-				return `import { useTraceway } from "@traceway/react";
+				return `import { useTraceway } from "@tracewayapp/react";
 
 // In a component using the hook
 const { captureException } = useTraceway();
 captureException(new Error("Test error"));`;
 			case 'svelte':
-				return `import { getTraceway } from "@traceway/svelte";
+				return `import { getTraceway } from "@tracewayapp/svelte";
 
 const { captureException } = getTraceway();
 captureException(new Error("Test error"));`;
 			case 'vuejs':
-				return `import { useTraceway } from "@traceway/vue";
+				return `import { useTraceway } from "@tracewayapp/vue";
 
 const { captureException } = useTraceway();
 captureException(new Error("Test error"));`;
 			default:
-				return `import { captureException } from "@traceway/${getPackageName(framework)}";
+				return `import { captureException } from "@tracewayapp/${getPackageName(framework)}";
 
 captureException(new Error("Test error"));`;
 		}

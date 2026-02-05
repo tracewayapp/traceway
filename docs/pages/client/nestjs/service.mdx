@@ -8,7 +8,7 @@ Inject `TracewayService` into any service or controller:
 
 ```typescript
 import { Injectable } from "@nestjs/common";
-import { TracewayService } from "@traceway/nestjs";
+import { TracewayService } from "@tracewayapp/nestjs";
 
 @Injectable()
 export class UsersService {
@@ -188,7 +188,7 @@ this.traceway.withTraceContext(
 
 ```typescript
 import { Injectable } from "@nestjs/common";
-import { TracewayService, Span } from "@traceway/nestjs";
+import { TracewayService, Span } from "@tracewayapp/nestjs";
 
 @Injectable()
 export class OrdersService {

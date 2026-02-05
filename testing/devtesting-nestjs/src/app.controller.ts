@@ -8,7 +8,7 @@ import {
   HttpStatus,
 } from "@nestjs/common";
 import { AppService } from "./app.service";
-import { TracewayService } from "@traceway/nestjs";
+import { TracewayService } from "@tracewayapp/nestjs";
 
 interface JsonRecordingTest {
   name: string;

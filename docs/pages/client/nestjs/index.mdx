@@ -1,11 +1,11 @@
 # NestJS Quick Start
 
-Integrate Traceway into your NestJS application with the `@traceway/nestjs` package.
+Integrate Traceway into your NestJS application with the `@tracewayapp/nestjs` package.
 
 ## Installation
 
 ```bash
-npm install @traceway/nestjs
+npm install @tracewayapp/nestjs
 ```
 
 ## Setup
@@ -16,7 +16,7 @@ Add `TracewayModule.forRoot()` to your app module:
 
 ```typescript
 import { Module } from "@nestjs/common";
-import { TracewayModule } from "@traceway/nestjs";
+import { TracewayModule } from "@tracewayapp/nestjs";
 
 @Module({
   imports: [
@@ -34,7 +34,7 @@ Apply `TracewayMiddleware` to trace all HTTP requests:
 
 ```typescript
 import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
-import { TracewayModule, TracewayMiddleware } from "@traceway/nestjs";
+import { TracewayModule, TracewayMiddleware } from "@tracewayapp/nestjs";
 
 @Module({
   imports: [
@@ -61,7 +61,7 @@ import {
   TracewayModule,
   TracewayMiddleware,
   TracewayExceptionFilter,
-} from "@traceway/nestjs";
+} from "@tracewayapp/nestjs";
 
 @Module({
   imports: [
@@ -102,7 +102,7 @@ Inject `TracewayService` to capture errors and create spans manually:
 
 ```typescript
 import { Injectable } from "@nestjs/common";
-import { TracewayService, Span } from "@traceway/nestjs";
+import { TracewayService, Span } from "@tracewayapp/nestjs";
 
 @Injectable()
 export class UsersService {

@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { TracewayService, Span } from "@traceway/nestjs";
+import { TracewayService, Span } from "@tracewayapp/nestjs";
 
 class CustomError extends Error {
   constructor(

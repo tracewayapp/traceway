@@ -6,23 +6,23 @@ The Traceway JavaScript SDK provides error tracking for browser-based applicatio
 
 | Package | Description |
 |---------|-------------|
-| `@traceway/frontend` | Core browser SDK (framework-agnostic) |
-| `@traceway/react` | React bindings with Provider, Error Boundary, and hooks |
-| `@traceway/vue` | Vue 3 plugin and composables |
-| `@traceway/svelte` | Svelte context-based integration |
+| `@tracewayapp/frontend` | Core browser SDK (framework-agnostic) |
+| `@tracewayapp/react` | React bindings with Provider, Error Boundary, and hooks |
+| `@tracewayapp/vue` | Vue 3 plugin and composables |
+| `@tracewayapp/svelte` | Svelte context-based integration |
 
 ## Installation
 
 ```bash
-npm install @traceway/frontend
+npm install @tracewayapp/frontend
 ```
 
 Or use a framework-specific package:
 
 ```bash
-npm install @traceway/react
-npm install @traceway/vue
-npm install @traceway/svelte
+npm install @tracewayapp/react
+npm install @tracewayapp/vue
+npm install @tracewayapp/svelte
 ```
 
 ## Connection String Format
@@ -42,7 +42,7 @@ You can find your connection string in the Traceway dashboard under **Project Se
 
 ## When to Use
 
-Use the generic `@traceway/frontend` package when:
+Use the generic `@tracewayapp/frontend` package when:
 
 - You're using a framework without official bindings
 - You need direct control over initialization
@@ -54,7 +54,7 @@ For React, Vue, or Svelte applications, use the framework-specific packages for 
 ## Basic Usage
 
 ```javascript
-import { init, captureException, captureMessage } from "@traceway/frontend";
+import { init, captureException, captureMessage } from "@tracewayapp/frontend";
 
 // Initialize once at app startup
 init("your-token@https://traceway.example.com/api/report");

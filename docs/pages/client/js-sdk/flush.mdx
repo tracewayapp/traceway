@@ -17,7 +17,7 @@ This means events are not sent immediately. For most applications, this is the d
 Force-send all pending events immediately:
 
 ```javascript
-import { flush } from "@traceway/frontend";
+import { flush } from "@tracewayapp/frontend";
 
 // Send all pending events now
 await flush();
@@ -75,7 +75,7 @@ For SPAs, initialize once at app startup. The SDK handles batching across route 
 
 ```javascript
 // main.js or index.js
-import { init } from "@traceway/frontend";
+import { init } from "@tracewayapp/frontend";
 
 init("your-token@https://traceway.example.com/api/report");
 ```

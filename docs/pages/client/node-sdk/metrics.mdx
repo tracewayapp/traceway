@@ -7,7 +7,7 @@ Capture custom metrics to track application-specific values over time.
 Record a metric value:
 
 ```typescript
-import { captureMetric } from "@traceway/backend";
+import { captureMetric } from "@tracewayapp/backend";
 
 // Capture a custom metric
 captureMetric("queue.length", 42);
@@ -86,7 +86,7 @@ captureMetric("feature.dark_mode", user.darkModeEnabled ? 1 : 0);
 For metrics that should be collected periodically:
 
 ```typescript
-import { captureMetric } from "@traceway/backend";
+import { captureMetric } from "@tracewayapp/backend";
 
 // Collect queue metrics every 10 seconds
 setInterval(() => {
@@ -108,7 +108,7 @@ The SDK automatically collects system metrics when configured. These are collect
 To customize the collection interval:
 
 ```typescript
-import { init } from "@traceway/backend";
+import { init } from "@tracewayapp/backend";
 
 init("your-token@...", {
   metricsInterval: 60000, // Collect every 60 seconds
@@ -154,7 +154,7 @@ function reportQueueStatus() {
 ## Express Metrics Middleware
 
 ```typescript
-import { captureMetric } from "@traceway/backend";
+import { captureMetric } from "@tracewayapp/backend";
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -172,7 +172,7 @@ app.use((req, res, next) => {
 ## Database Metrics
 
 ```typescript
-import { captureMetric } from "@traceway/backend";
+import { captureMetric } from "@tracewayapp/backend";
 
 async function trackedQuery<T>(sql: string): Promise<T> {
   const start = Date.now();
@@ -192,7 +192,7 @@ async function trackedQuery<T>(sql: string): Promise<T> {
 ## Caching Metrics
 
 ```typescript
-import { captureMetric } from "@traceway/backend";
+import { captureMetric } from "@tracewayapp/backend";
 
 async function cachedFetch<T>(key: string, fetchFn: () => Promise<T>): Promise<T> {
   const cached = await cache.get(key);

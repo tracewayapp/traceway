@@ -5,7 +5,7 @@ The `TracewayProvider` component initializes Traceway and provides context to ch
 ## Basic Usage
 
 ```jsx
-import { TracewayProvider } from "@traceway/react";
+import { TracewayProvider } from "@tracewayapp/react";
 
 function App() {
   return (
@@ -72,7 +72,7 @@ Place `TracewayProvider` as high as possible in your component tree, typically i
 // index.js
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { TracewayProvider } from "@traceway/react";
+import { TracewayProvider } from "@tracewayapp/react";
 import App from "./App";
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
@@ -90,7 +90,7 @@ root.render(
 For advanced use cases, you can access the context directly:
 
 ```jsx
-import { TracewayContext } from "@traceway/react";
+import { TracewayContext } from "@tracewayapp/react";
 import { useContext } from "react";
 
 function MyComponent() {

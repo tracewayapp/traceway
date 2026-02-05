@@ -15,7 +15,7 @@ Must be called during component initialization (not in an event handler):
 
 ```svelte
 <script>
-  import { setupTraceway } from "@traceway/svelte";
+  import { setupTraceway } from "@tracewayapp/svelte";
 
   // Correct: called at component initialization
   setupTraceway({
@@ -48,7 +48,7 @@ Retrieve capture functions in any child component:
 
 ```svelte
 <script>
-  import { getTraceway } from "@traceway/svelte";
+  import { getTraceway } from "@tracewayapp/svelte";
 
   const { captureException, captureExceptionWithAttributes, captureMessage } = getTraceway();
 </script>
@@ -69,7 +69,7 @@ Root layout:
 ```svelte
 <!-- src/routes/+layout.svelte -->
 <script>
-  import { setupTraceway } from "@traceway/svelte";
+  import { setupTraceway } from "@tracewayapp/svelte";
   import { browser } from "$app/environment";
   import { PUBLIC_TRACEWAY_CONNECTION } from "$env/static/public";
 
@@ -91,7 +91,7 @@ Child component:
 ```svelte
 <!-- src/lib/components/Form.svelte -->
 <script>
-  import { getTraceway } from "@traceway/svelte";
+  import { getTraceway } from "@tracewayapp/svelte";
 
   const { captureException, captureExceptionWithAttributes } = getTraceway();
 
@@ -127,7 +127,7 @@ For advanced use cases, you can access the context key directly:
 ```svelte
 <script>
   import { getContext } from "svelte";
-  import { TRACEWAY_KEY } from "@traceway/svelte";
+  import { TRACEWAY_KEY } from "@tracewayapp/svelte";
 
   const traceway = getContext(TRACEWAY_KEY);
 </script>
@@ -139,7 +139,7 @@ For SvelteKit's error handling, create a custom error hook:
 
 ```javascript
 // src/hooks.client.js
-import { getTraceway } from "@traceway/svelte";
+import { getTraceway } from "@tracewayapp/svelte";
 
 export function handleError({ error, event }) {
   // Note: Context may not be available in hooks
@@ -154,7 +154,7 @@ For client-side errors, use `+error.svelte`:
 <!-- src/routes/+error.svelte -->
 <script>
   import { page } from "$app/stores";
-  import { getTraceway } from "@traceway/svelte";
+  import { getTraceway } from "@tracewayapp/svelte";
   import { onMount } from "svelte";
 
   const { captureException } = getTraceway();
@@ -198,7 +198,7 @@ PUBLIC_TRACEWAY_CONNECTION=your-token@https://traceway.example.com/api/report
 
 ```svelte
 <script>
-  import { getTraceway } from "@traceway/svelte";
+  import { getTraceway } from "@tracewayapp/svelte";
 
   const { captureException } = getTraceway();
   let error = null;

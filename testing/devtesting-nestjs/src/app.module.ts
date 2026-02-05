@@ -4,7 +4,7 @@ import {
   TracewayModule,
   TracewayMiddleware,
   TracewayExceptionFilter,
-} from "@traceway/nestjs";
+} from "@tracewayapp/nestjs";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 import { UsersModule } from "./users/users.module";

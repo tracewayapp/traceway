@@ -7,7 +7,7 @@ Spans measure the duration of sub-operations within a trace. Use them to identif
 Start and end a span:
 
 ```typescript
-import { startSpan, endSpan } from "@traceway/backend";
+import { startSpan, endSpan } from "@tracewayapp/backend";
 
 const span = startSpan("database-query");
 const users = await db.query("SELECT * FROM users");
@@ -34,7 +34,7 @@ interface SpanHandle {
 Spans are automatically added to the current trace context:
 
 ```typescript
-import { withTraceContext, startSpan, endSpan, captureCurrentTrace } from "@traceway/backend";
+import { withTraceContext, startSpan, endSpan, captureCurrentTrace } from "@tracewayapp/backend";
 
 await withTraceContext({ endpoint: "GET /api/users" }, async () => {
   const dbSpan = startSpan("db-query");
@@ -65,7 +65,7 @@ const completedSpan = endSpan(span, false); // Second param disables auto-add
 Add a span to the context manually:
 
 ```typescript
-import { addSpanToContext } from "@traceway/backend";
+import { addSpanToContext } from "@tracewayapp/backend";
 
 const span = {
   id: "custom-id",
@@ -84,7 +84,7 @@ addSpanToContext(span);
 Get all spans from the current trace:
 
 ```typescript
-import { getTraceSpans } from "@traceway/backend";
+import { getTraceSpans } from "@tracewayapp/backend";
 
 const spans = getTraceSpans();
 // Returns empty array if not in a trace context
@@ -162,7 +162,7 @@ Use descriptive names that indicate the operation type:
 ## Database Wrapper Example
 
 ```typescript
-import { startSpan, endSpan } from "@traceway/backend";
+import { startSpan, endSpan } from "@tracewayapp/backend";
 
 class TracedDatabase {
   constructor(private db: Database) {}
@@ -190,7 +190,7 @@ class TracedDatabase {
 ## HTTP Client Wrapper Example
 
 ```typescript
-import { startSpan, endSpan } from "@traceway/backend";
+import { startSpan, endSpan } from "@tracewayapp/backend";
 
 async function tracedFetch(url: string, options?: RequestInit): Promise<Response> {
   const span = startSpan(`fetch-${new URL(url).hostname}`);
@@ -207,7 +207,7 @@ async function tracedFetch(url: string, options?: RequestInit): Promise<Response
 When running parallel operations, use `forkTraceContext` to isolate spans:
 
 ```typescript
-import { forkTraceContext, startSpan, endSpan } from "@traceway/backend";
+import { forkTraceContext, startSpan, endSpan } from "@tracewayapp/backend";
 
 await Promise.all([
   forkTraceContext(async () => {

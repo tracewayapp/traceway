@@ -5,7 +5,7 @@ The `TracewayErrorBoundary` component catches React errors and reports them to T
 ## Basic Usage
 
 ```jsx
-import { TracewayErrorBoundary } from "@traceway/react";
+import { TracewayErrorBoundary } from "@tracewayapp/react";
 
 function App() {
   return (
@@ -110,7 +110,7 @@ Error boundaries do **not** catch:
 For event handlers, use `useTraceway`:
 
 ```jsx
-import { useTraceway } from "@traceway/react";
+import { useTraceway } from "@tracewayapp/react";
 
 function Button() {
   const { captureException } = useTraceway();

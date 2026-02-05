@@ -5,7 +5,7 @@ Use the `useTraceway` hook to capture errors and messages in your React componen
 ## useTraceway
 
 ```jsx
-import { useTraceway } from "@traceway/react";
+import { useTraceway } from "@tracewayapp/react";
 
 function MyComponent() {
   const { captureException, captureExceptionWithAttributes, captureMessage } = useTraceway();
@@ -91,7 +91,7 @@ Create a wrapper hook for common patterns:
 
 ```jsx
 // hooks/useTrackedAsync.js
-import { useTraceway } from "@traceway/react";
+import { useTraceway } from "@tracewayapp/react";
 import { useState, useCallback } from "react";
 
 export function useTrackedAsync(asyncFn, context = {}) {
@@ -133,7 +133,7 @@ function MyComponent() {
 For class components, use `TracewayContext`:
 
 ```jsx
-import { TracewayContext } from "@traceway/react";
+import { TracewayContext } from "@tracewayapp/react";
 
 class MyClassComponent extends React.Component {
   static contextType = TracewayContext;

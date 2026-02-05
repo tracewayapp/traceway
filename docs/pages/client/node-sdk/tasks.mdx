@@ -7,7 +7,7 @@ Measure background tasks and async jobs with automatic timing and error capture.
 Measure a synchronous or async function:
 
 ```typescript
-import { measureTask } from "@traceway/backend";
+import { measureTask } from "@tracewayapp/backend";
 
 // Async function
 measureTask("send-welcome-emails", async () => {
@@ -53,7 +53,7 @@ measureTask("risky-task", async () => {
 Tasks respect the configured sample rates:
 
 ```typescript
-import { init } from "@traceway/backend";
+import { init } from "@tracewayapp/backend";
 
 init("your-token@...", {
   sampleRate: 0.1,      // 10% of successful tasks
@@ -66,7 +66,7 @@ init("your-token@...", {
 Capture a task with explicit parameters:
 
 ```typescript
-import { captureTask } from "@traceway/backend";
+import { captureTask } from "@tracewayapp/backend";
 
 const traceId = crypto.randomUUID();
 const startedAt = new Date();
@@ -97,7 +97,7 @@ import {
   setTraceAttribute,
   captureCurrentTrace,
   captureException,
-} from "@traceway/backend";
+} from "@tracewayapp/backend";
 
 await withTraceContext(
   { isTask: true, endpoint: "sync-inventory" },
@@ -125,7 +125,7 @@ await withTraceContext(
 ## Cron Job Example
 
 ```typescript
-import { measureTask } from "@traceway/backend";
+import { measureTask } from "@tracewayapp/backend";
 import cron from "node-cron";
 
 // Run every hour
@@ -141,7 +141,7 @@ cron.schedule("0 * * * *", () => {
 ## Queue Worker Example
 
 ```typescript
-import { measureTask, captureException } from "@traceway/backend";
+import { measureTask, captureException } from "@tracewayapp/backend";
 
 queue.process("email", async (job) => {
   await measureTask(`email:${job.data.type}`, async () => {
@@ -153,7 +153,7 @@ queue.process("email", async (job) => {
 ## Bull Queue Example
 
 ```typescript
-import { withTraceContext, captureCurrentTrace, setTraceAttribute } from "@traceway/backend";
+import { withTraceContext, captureCurrentTrace, setTraceAttribute } from "@tracewayapp/backend";
 import Bull from "bull";
 
 const emailQueue = new Bull("email");
@@ -176,7 +176,7 @@ emailQueue.process(async (job) => {
 ## Periodic Tasks
 
 ```typescript
-import { measureTask } from "@traceway/backend";
+import { measureTask } from "@tracewayapp/backend";
 
 // Run every 5 minutes
 setInterval(() => {
@@ -191,7 +191,7 @@ setInterval(() => {
 ## Batch Processing
 
 ```typescript
-import { measureTask, captureMetric } from "@traceway/backend";
+import { measureTask, captureMetric } from "@tracewayapp/backend";
 
 async function processBatch(items: Item[]) {
   await measureTask("process-batch", async () => {
@@ -219,7 +219,7 @@ async function processBatch(items: Item[]) {
 For long-running tasks, consider capturing intermediate progress:
 
 ```typescript
-import { withTraceContext, setTraceAttribute, captureCurrentTrace } from "@traceway/backend";
+import { withTraceContext, setTraceAttribute, captureCurrentTrace } from "@tracewayapp/backend";
 
 await withTraceContext(
   { isTask: true, endpoint: "data-migration" },

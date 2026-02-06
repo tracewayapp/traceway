@@ -14,6 +14,14 @@
 
     let email = $state(page.url.searchParams.get('email') ?? '');
     let password = $state(page.url.searchParams.get('password') ?? '');
+
+    if (page.url.searchParams.has('email') || page.url.searchParams.has('password')) {
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete('email');
+        cleanUrl.searchParams.delete('password');
+        window.history.replaceState({}, '', cleanUrl.pathname + cleanUrl.search);
+    }
+
     let error = $state('');
     let loading = $state(false);
 

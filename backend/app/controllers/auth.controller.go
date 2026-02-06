@@ -33,7 +33,7 @@ func (a authController) HasOrganizations(c *gin.Context) {
 func (a authController) Login(c *gin.Context) {
 	var request models.LoginRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
 		return
 	}
 

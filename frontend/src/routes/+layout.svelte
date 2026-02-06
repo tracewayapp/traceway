@@ -168,7 +168,9 @@
 
 	<Toaster position="bottom-right" />
 {:else}
-	<main class="h-screen w-screen">
-		{@render children()}
-	</main>
+	{#if page.url.pathname === '/login' || page.url.pathname === '/register' || page.url.pathname.startsWith('/accept-invitation')}
+		<main class="h-screen w-screen">
+			{@render children()}
+		</main>
+	{/if}
 {/if}

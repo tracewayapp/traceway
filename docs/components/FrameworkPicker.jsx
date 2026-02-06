@@ -9,6 +9,7 @@ const FRAMEWORKS = [
       "Gin Gonic web framework with automatic request tracing and panic recovery.",
     icon: "/gin.png",
     href: "/client/gin-middleware",
+    badge: "production",
   },
   {
     value: "go-chi",
@@ -17,6 +18,7 @@ const FRAMEWORKS = [
       "Lightweight Chi router with automatic request tracing and panic recovery.",
     icon: "/chi.png",
     href: "/client/chi-middleware",
+    badge: "new",
   },
   {
     value: "go-fiber",
@@ -25,6 +27,7 @@ const FRAMEWORKS = [
       "Express-inspired Fiber framework with request tracing and error capture.",
     icon: "/fiber.svg",
     href: "/client/fiber-middleware",
+    badge: "new",
   },
   {
     value: "go-fasthttp",
@@ -33,6 +36,7 @@ const FRAMEWORKS = [
       "High-performance FastHTTP server with request tracing and panic recovery.",
     icon: "/fasthttp.png",
     href: "/client/fasthttp-middleware",
+    badge: "new",
   },
   {
     value: "go-http",
@@ -41,6 +45,7 @@ const FRAMEWORKS = [
       "Standard library HTTP middleware for request tracing and error capture.",
     icon: "/stdlib.png",
     href: "/client/http-middleware",
+    badge: "new",
   },
   {
     value: "go-generic",
@@ -49,6 +54,7 @@ const FRAMEWORKS = [
       "Framework-agnostic SDK for manual instrumentation of any Go application.",
     icon: "/custom.png",
     href: "/client/sdk",
+    badge: "new",
   },
   {
     value: "js-node",
@@ -56,6 +62,7 @@ const FRAMEWORKS = [
     description: "Node.js backend SDK with trace context, spans, and metrics.",
     icon: "/node.png",
     href: "/client/node-sdk",
+    badge: "new",
   },
   {
     value: "js-nestjs",
@@ -63,6 +70,7 @@ const FRAMEWORKS = [
     description: "NestJS framework with module, middleware, and decorators.",
     icon: "/nestjs.png",
     href: "/client/nestjs",
+    badge: "production",
   },
   {
     value: "js-react",
@@ -70,6 +78,7 @@ const FRAMEWORKS = [
     description: "React applications with error boundaries and hooks.",
     icon: "/react.png",
     href: "/client/react",
+    badge: "production",
   },
   {
     value: "js-vue",
@@ -77,6 +86,7 @@ const FRAMEWORKS = [
     description: "Vue 3 applications with plugin and composables.",
     icon: "/vue.png",
     href: "/client/vue",
+    badge: "new",
   },
   {
     value: "js-svelte",
@@ -84,6 +94,7 @@ const FRAMEWORKS = [
     description: "Svelte/SvelteKit applications with context API.",
     icon: "/svelte.png",
     href: "/client/svelte",
+    badge: "production",
   },
   {
     value: "js-generic",
@@ -91,6 +102,7 @@ const FRAMEWORKS = [
     description: "Framework-agnostic JavaScript SDK for browsers.",
     icon: "/javascript.png",
     href: "/client/js-sdk",
+    badge: "new",
   },
 ];
 
@@ -116,11 +128,16 @@ export default function FrameworkPicker() {
             className="framework-picker-card"
             onClick={() => handleSelect(fw)}
           >
-            <img
-              src={fw.icon}
-              alt={fw.label}
-              className="framework-picker-icon"
-            />
+            <div className="framework-picker-top">
+              <img
+                src={fw.icon}
+                alt={fw.label}
+                className="framework-picker-icon"
+              />
+              <span className={`framework-picker-badge ${fw.badge === "production" ? "badge-production" : "badge-new"}`}>
+                {fw.badge === "production" ? "Used in Production" : "New"}
+              </span>
+            </div>
             <span className="framework-picker-label">{fw.label}</span>
             <span className="framework-picker-desc">{fw.description}</span>
           </button>

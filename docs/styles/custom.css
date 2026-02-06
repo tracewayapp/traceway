@@ -183,6 +183,42 @@ li:has(> .sdk-selector) > span:first-child {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
+.framework-picker-top {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.framework-picker-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
+}
+
+.badge-production {
+  background: #4ba0f2;
+  color: white;
+}
+
+.badge-new {
+  background: #15803d;
+  color: white;
+}
+
+:is(html[class~="dark"]) .badge-production {
+  background: rgba(59, 130, 246, 0.15);
+  color: #93bbfd;
+}
+
+:is(html[class~="dark"]) .badge-new {
+  background: rgba(34, 197, 94, 0.15);
+  color: #86efac;
+}
+
 .framework-picker-icon {
   width: 28px;
   height: 28px;

@@ -50,7 +50,7 @@ func (a authController) Login(c *gin.Context) {
 	}
 
 	if !services.CheckPassword(request.Password, user.Password) {
-		c.AbortWithError(http.StatusInternalServerError, err)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
 		return
 	}
 

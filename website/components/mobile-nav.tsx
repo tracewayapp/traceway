@@ -44,6 +44,22 @@ export function MobileNav() {
             {isOpen && mounted && createPortal(
                 <div className="md:hidden fixed top-14 left-0 right-0 bottom-0 bg-white z-50 p-4 overflow-y-auto border-t border-zinc-100 animate-in slide-in-from-top-2 fade-in duration-200 flex flex-col">
                     <div className="flex flex-col gap-6 mt-4">
+                        <div className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Product</div>
+                        <Link
+                            href="/product/issue-tracking"
+                            className="text-lg font-medium text-zinc-600 hover:text-zinc-900 transition-colors pl-2"
+                            onClick={() => setIsOpen(false)}
+                        >
+                            Issue Tracking
+                        </Link>
+                        <Link
+                            href="/product/performance"
+                            className="text-lg font-medium text-zinc-600 hover:text-zinc-900 transition-colors pl-2"
+                            onClick={() => setIsOpen(false)}
+                        >
+                            Performance
+                        </Link>
+                        <div className="border-t border-zinc-100"></div>
                         <Link
                             href="/cloud"
                             className="text-lg font-medium text-zinc-600 hover:text-zinc-900 transition-colors"

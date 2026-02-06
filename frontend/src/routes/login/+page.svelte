@@ -12,8 +12,8 @@
     import { themeState } from '$lib/state/theme.svelte';
 	import { toast } from 'svelte-sonner';
 
-    let email = $state('');
-    let password = $state('');
+    let email = $state(page.url.searchParams.get('email') ?? '');
+    let password = $state(page.url.searchParams.get('password') ?? '');
     let error = $state('');
     let loading = $state(false);
 

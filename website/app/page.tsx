@@ -1,10 +1,28 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Github, ArrowRight, Activity, TrendingUp, AlertCircle, Bug, ChartGantt } from "lucide-react";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
+  Github,
+  ArrowRight,
+  Activity,
+  TrendingUp,
+  AlertCircle,
+  Bug,
+  Gauge,
+} from "lucide-react";
 import { CodeTabs } from "@/components/code-tabs";
 
 const frameworks = [
@@ -30,24 +48,42 @@ export default function Home() {
 
         <div className="container mx-auto px-4 relative z-10 text-center">
           <Link href="https://github.com/tracewayapp/traceway" target="_blank">
-            <Badge variant="secondary" className="mb-4 bg-zinc-100 text-zinc-600 hover:bg-zinc-200 px-2.5 py-0.5 border border-zinc-200 text-xs font-normal cursor-pointer">
+            <Badge
+              variant="secondary"
+              className="mb-4 bg-zinc-100 text-zinc-600 hover:bg-zinc-200 px-2.5 py-0.5 border border-zinc-200 text-xs font-normal cursor-pointer"
+            >
               Star us on GitHub
             </Badge>
           </Link>
           <h1 className="text-4xl md:text-6xl font-bold tracking-tight mb-6 text-zinc-900">
-            Telemetry & Issue Tracking <br /> for <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">Go & JavaScript</span>
+            Telemetry & Issue Tracking <br /> for{" "}
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">
+              Go & JavaScript
+            </span>
           </h1>
           <p className="text-zinc-600 text-lg md:text-xl max-w-2xl mx-auto mb-10 leading-relaxed font-medium">
-            Traceway automatically ranks your issues so you fix what matters first. Simple integration, performance insights, and regression tracking across your entire stack.
+            Traceway automatically ranks your issues so you fix what matters
+            first. Simple integration, performance insights, and regression
+            tracking across your entire stack.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link href="https://docs.tracewayapp.com">
-              <Button size="lg" className="h-10 px-6 text-sm bg-zinc-900 text-white hover:bg-zinc-800 shadow-lg shadow-zinc-900/20">
+              <Button
+                size="lg"
+                className="h-10 px-6 text-sm bg-zinc-900 text-white hover:bg-zinc-800 shadow-lg shadow-zinc-900/20"
+              >
                 Get Started <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </Link>
-            <Link href="https://github.com/tracewayapp/traceway" target="_blank">
-              <Button variant="outline" size="lg" className="h-10 px-6 text-sm border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-900 shadow-sm">
+            <Link
+              href="https://github.com/tracewayapp/traceway"
+              target="_blank"
+            >
+              <Button
+                variant="outline"
+                size="lg"
+                className="h-10 px-6 text-sm border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-900 shadow-sm"
+              >
                 <Github className="mr-2 h-4 w-4" /> View on GitHub
               </Button>
             </Link>
@@ -58,7 +94,9 @@ export default function Home() {
       {/* Framework Logos */}
       <section className="py-10 bg-white border-b border-zinc-100">
         <div className="container mx-auto px-4 max-w-4xl">
-          <p className="text-center text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-6">Works with your stack</p>
+          <p className="text-center text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-6">
+            Works with your stack
+          </p>
           <div className="flex flex-wrap items-center justify-center gap-8 md:gap-10">
             {frameworks.map((fw) => (
               <Image
@@ -79,22 +117,31 @@ export default function Home() {
         <div className="container mx-auto px-4 max-w-5xl">
           <div className="flex flex-col md:flex-row items-center justify-between gap-12">
             <div className="flex-1 space-y-4">
-              <h2 className="text-2xl font-bold tracking-tight text-zinc-900">2-Minute Integration</h2>
+              <h2 className="text-2xl font-bold tracking-tight text-zinc-900">
+                2-Minute Integration
+              </h2>
               <p className="text-zinc-600 text-base leading-relaxed max-w-md">
-                Add the middleware to your router and start collecting actionable telemetry instantly.
-                No complex configuration required.
+                Add the middleware to your router and start collecting
+                actionable telemetry instantly. No complex configuration
+                required.
               </p>
               <ul className="space-y-3 pt-2">
                 <li className="flex items-center gap-2.5 text-zinc-700 font-medium text-sm">
-                  <div className="h-6 w-6 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xs font-bold">1</div>
+                  <div className="h-6 w-6 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xs font-bold">
+                    1
+                  </div>
                   Install the package
                 </li>
                 <li className="flex items-center gap-2.5 text-zinc-700 font-medium text-sm">
-                  <div className="h-6 w-6 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xs font-bold">2</div>
+                  <div className="h-6 w-6 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xs font-bold">
+                    2
+                  </div>
                   Add middleware
                 </li>
                 <li className="flex items-center gap-2.5 text-zinc-700 font-medium text-sm">
-                  <div className="h-6 w-6 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xs font-bold">3</div>
+                  <div className="h-6 w-6 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xs font-bold">
+                    3
+                  </div>
                   View insights
                 </li>
               </ul>
@@ -110,9 +157,12 @@ export default function Home() {
       <section className="py-20 bg-white">
         <div className="container mx-auto px-4 max-w-5xl">
           <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4 text-zinc-900 tracking-tight">Built for Reliability</h2>
+            <h2 className="text-3xl md:text-4xl font-bold mb-4 text-zinc-900 tracking-tight">
+              Built for Reliability
+            </h2>
             <p className="text-zinc-600 text-lg max-w-xl mx-auto">
-              Traceway treats every error as a signal. We help you cut through the noise and find exactly what broke.
+              Traceway treats every error as a signal. We help you cut through
+              the noise and find exactly what broke.
             </p>
           </div>
 
@@ -122,9 +172,12 @@ export default function Home() {
                 <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center mb-3">
                   <TrendingUp className="w-5 h-5 text-blue-600" />
                 </div>
-                <CardTitle className="text-lg">Automatic Issue Ranking</CardTitle>
+                <CardTitle className="text-lg">
+                  Automatic Issue Ranking
+                </CardTitle>
                 <CardDescription className="text-zinc-500 text-sm mt-1.5">
-                  Stop triaging manually. Traceway ranks issues by impact so your team fixes the most critical problems first.
+                  Stop triaging manually. Traceway ranks issues by impact so
+                  your team fixes the most critical problems first.
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -136,7 +189,8 @@ export default function Home() {
                 </div>
                 <CardTitle className="text-lg">Regression Tracking</CardTitle>
                 <CardDescription className="text-zinc-500 text-sm mt-1.5">
-                  Automatically track when issues reappear. Keep your production environment clean and stable.
+                  Automatically track when issues reappear. Keep your production
+                  environment clean and stable.
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -148,7 +202,8 @@ export default function Home() {
                 </div>
                 <CardTitle className="text-lg">Error Grouping</CardTitle>
                 <CardDescription className="text-zinc-500 text-sm mt-1.5">
-                  Intelligent grouping of similar errors. See the impact of a bug at a glance.
+                  Intelligent grouping of similar errors. See the impact of a
+                  bug at a glance.
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -165,11 +220,14 @@ export default function Home() {
               <div className="w-12 h-12 bg-red-50 rounded-2xl flex items-center justify-center">
                 <Bug className="w-6 h-6 text-red-600" />
               </div>
-              <h3 className="text-2xl md:text-3xl font-bold text-zinc-900 tracking-tight">Granular exception tracking</h3>
+              <h3 className="text-2xl md:text-3xl font-bold text-zinc-900 tracking-tight">
+                Granular exception tracking
+              </h3>
               <p className="text-zinc-600 text-lg leading-relaxed">
-                Traceway captures every exception with full stack traces and context.
-                We group similar errors together, so you can see exactly how many times an issue occurred,
-                when it started, and which users are affected.
+                Traceway captures every exception with full stack traces and
+                context. We group similar errors together, so you can see
+                exactly how many times an issue occurred, when it started, and
+                which users are affected.
               </p>
               <ul className="space-y-3 pt-2">
                 <li className="flex items-center gap-3 text-zinc-700">
@@ -206,10 +264,14 @@ export default function Home() {
               <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center">
                 <Activity className="w-6 h-6 text-blue-600" />
               </div>
-              <h3 className="text-2xl md:text-3xl font-bold text-zinc-900 tracking-tight">Deep endpoint introspection</h3>
+              <h3 className="text-2xl md:text-3xl font-bold text-zinc-900 tracking-tight">
+                Deep endpoint introspection
+              </h3>
               <p className="text-zinc-600 text-lg leading-relaxed">
-                Go beyond simple metrics. Inspect individual requests to understand the exact state of your application.
-                View headers, payload sizes, and custom context variables for every single trace.
+                Go beyond simple metrics. Inspect individual requests to
+                understand the exact state of your application. View headers,
+                payload sizes, and custom context variables for every single
+                trace.
               </p>
               <ul className="space-y-3 pt-2">
                 <li className="flex items-center gap-3 text-zinc-700">
@@ -236,25 +298,29 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Feature 3: Performance (Spans) */}
+          {/* Feature 3: Server & Runtime Metrics */}
           <div className="flex flex-col md:flex-row items-center gap-12 lg:gap-20">
             <div className="flex-1 space-y-6">
               <div className="w-12 h-12 bg-orange-50 rounded-2xl flex items-center justify-center">
-                <ChartGantt className="w-6 h-6 text-orange-600" />
+                <Gauge className="w-6 h-6 text-orange-600" />
               </div>
-              <h3 className="text-2xl md:text-3xl font-bold text-zinc-900 tracking-tight">Performance waterfall</h3>
+              <h3 className="text-2xl md:text-3xl font-bold text-zinc-900 tracking-tight">
+                Server & runtime metrics
+              </h3>
               <p className="text-zinc-600 text-lg leading-relaxed">
-                Visualize latency with precision. Our span waterfall view breaks down every operation in your request,
-                showing you exactly which database query or external API call is slowing you down.
+                Monitor your infrastructure without extra tooling. Traceway
+                automatically collects CPU usage, memory consumption, goroutine
+                counts, and garbage collection stats, giving you a complete
+                picture of your server health alongside your errors.
               </p>
               <ul className="space-y-3 pt-2">
                 <li className="flex items-center gap-3 text-zinc-700">
                   <div className="w-1.5 h-1.5 rounded-full bg-orange-500"></div>
-                  Operation-level timing
+                  Go runtime stats & GC tracking
                 </li>
                 <li className="flex items-center gap-3 text-zinc-700">
                   <div className="w-1.5 h-1.5 rounded-full bg-orange-500"></div>
-                  Identify bottlenecks instantly
+                  CPU & memory monitoring
                 </li>
               </ul>
             </div>
@@ -262,8 +328,8 @@ export default function Home() {
               <div className="absolute inset-0 bg-gradient-to-tr from-orange-100/50 to-transparent rounded-3xl transform rotate-3 scale-105 -z-10"></div>
               <div className="relative rounded-xl overflow-hidden border border-zinc-200 shadow-2xl shadow-zinc-200/50 bg-white">
                 <Image
-                  src="/images/screenshot-3.png"
-                  alt="Performance Waterfall"
+                  src="/images/screenshot-4.png"
+                  alt="Server Metrics Dashboard"
                   width={800}
                   height={600}
                   className="w-full h-auto"
@@ -271,19 +337,23 @@ export default function Home() {
               </div>
             </div>
           </div>
-
         </div>
       </section>
 
       {/* Demo CTA Section */}
       <section className="py-20 bg-zinc-50/50 border-b border-zinc-100">
         <div className="container mx-auto px-4 max-w-3xl text-center">
-          <h2 className="text-3xl md:text-4xl font-bold mb-4 text-zinc-900 tracking-tight">See it in action</h2>
+          <h2 className="text-3xl md:text-4xl font-bold mb-4 text-zinc-900 tracking-tight">
+            See it in action
+          </h2>
           <p className="text-zinc-600 text-lg mb-8">
-            Explore a live demo with sample data — no signup required.
+            Explore a live demo with sample data, no signup required.
           </p>
           <Link href="https://cloud.tracewayapp.com/login?email=demo@tracewayapp.com&password=demoaccount!">
-            <Button size="lg" className="h-10 px-6 text-sm bg-zinc-900 text-white hover:bg-zinc-800 shadow-lg shadow-zinc-900/20">
+            <Button
+              size="lg"
+              className="h-10 px-6 text-sm bg-zinc-900 text-white hover:bg-zinc-800 shadow-lg shadow-zinc-900/20"
+            >
               Try Live Demo <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </Link>
@@ -294,7 +364,9 @@ export default function Home() {
       <section className="py-24 bg-zinc-50 border-t border-zinc-100">
         <div className="container mx-auto px-4 max-w-3xl">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold mb-4 text-zinc-900 tracking-tight">Frequently Asked Questions</h2>
+            <h2 className="text-3xl font-bold mb-4 text-zinc-900 tracking-tight">
+              Frequently Asked Questions
+            </h2>
             <p className="text-zinc-600 text-lg">
               Everything you need to know about Traceway.
             </p>
@@ -306,10 +378,12 @@ export default function Home() {
                 What is Traceway?
               </AccordionTrigger>
               <AccordionContent className="text-zinc-600 leading-relaxed">
-                Traceway is an open-source telemetry and issue tracking platform designed for Go and JavaScript applications,
-                with support for popular frameworks like Gin, Express, NestJS, Next.js, and more.
-                It helps prioritize tasks, track issues and optimize performance by providing exception tracking,
-                performance insights, and regression monitoring.
+                Traceway is an open-source telemetry and issue tracking platform
+                designed for Go and JavaScript applications, with support for
+                popular frameworks like Gin, Express, NestJS, Next.js, and more.
+                It helps prioritize tasks, track issues and optimize performance
+                by providing exception tracking, performance insights, and
+                regression monitoring.
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="item-2" className="border-b-zinc-200">
@@ -317,10 +391,13 @@ export default function Home() {
                 How does it compare to OpenTelemetry?
               </AccordionTrigger>
               <AccordionContent className="text-zinc-600 leading-relaxed">
-                While OpenTelemetry is a powerful, generalized standard, it can be complex to configure and manage.
-                Traceway is &ldquo;batteries-included&rdquo; and opinionated, focusing on immediate value for Go and JavaScript developers
-                without the configuration overhead. We provide actionable insights (like issue ranking) out of the box.
-                It has a simple deployment model that makes it cheap to run in production.
+                While OpenTelemetry is a powerful, generalized standard, it can
+                be complex to configure and manage. Traceway is
+                &ldquo;batteries-included&rdquo; and opinionated, focusing on
+                immediate value for Go and JavaScript developers without the
+                configuration overhead. We provide actionable insights (like
+                issue ranking) out of the box. It has a simple deployment model
+                that makes it cheap to run in production.
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="item-3" className="border-b-zinc-200">
@@ -328,10 +405,12 @@ export default function Home() {
                 How does it compare to Sentry?
               </AccordionTrigger>
               <AccordionContent className="text-zinc-600 leading-relaxed">
-                Sentry is a great tool, but it requires manual triage and can be expensive at scale.
-                Traceway automatically ranks issues by impact so you always know what to fix first.
-                It&apos;s a lightweight, open-source alternative that combines performance monitoring and issue tracking
-                in one tool, with first-class support for both Go and JavaScript.
+                Sentry is a great tool, but it requires manual triage and can be
+                expensive at scale. Traceway automatically ranks issues by
+                impact so you always know what to fix first. It&apos;s a
+                lightweight, open-source alternative that combines performance
+                monitoring and issue tracking in one tool, with first-class
+                support for both Go and JavaScript.
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="item-4" className="border-b-zinc-200">
@@ -339,8 +418,13 @@ export default function Home() {
                 How does it compare to New Relic?
               </AccordionTrigger>
               <AccordionContent className="text-zinc-600 leading-relaxed">
-                New Relic is incredible for raw data tracking but due to their wide feature set it can be hard to navigate and find what you actually need to fix.
-                Traceway addresses this by focusing on telling you what needs fixing by prioritizing and ranking issues across your Go and JavaScript services. It provides server metrics (similar to New Relic) while also providing a great issue tracking solution like Sentry.
+                New Relic is incredible for raw data tracking but due to their
+                wide feature set it can be hard to navigate and find what you
+                actually need to fix. Traceway addresses this by focusing on
+                telling you what needs fixing by prioritizing and ranking issues
+                across your Go and JavaScript services. It provides server
+                metrics (similar to New Relic) while also providing a great
+                issue tracking solution like Sentry.
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="item-5" className="border-b-zinc-200">
@@ -348,8 +432,9 @@ export default function Home() {
                 Can I self-host Traceway?
               </AccordionTrigger>
               <AccordionContent className="text-zinc-600 leading-relaxed">
-                Yes! Traceway is open source and can be easily self-hosted. We provide Docker containers
-                and binaries to make running your own instance straightforward.
+                Yes! Traceway is open source and can be easily self-hosted. We
+                provide Docker containers and binaries to make running your own
+                instance straightforward.
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="item-6" className="border-b-zinc-200">
@@ -357,14 +442,15 @@ export default function Home() {
                 Is there a performance impact on the client?
               </AccordionTrigger>
               <AccordionContent className="text-zinc-600 leading-relaxed">
-                We designed the Traceway agent to be extremely lightweight. It uses efficient batching and
-                asynchronous reporting to ensure it has negligible impact on your application&apos;s latency or throughput.
+                We designed the Traceway agent to be extremely lightweight. It
+                uses efficient batching and asynchronous reporting to ensure it
+                has negligible impact on your application&apos;s latency or
+                throughput.
               </AccordionContent>
             </AccordionItem>
           </Accordion>
         </div>
       </section>
-
     </main>
   );
 }

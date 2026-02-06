@@ -63,7 +63,7 @@
 
 	// Pagination State
 	let page = $state(1);
-	let pageSize = $state(50);
+	let pageSize = $state(20);
 	let total = $state(0);
 	let totalPages = $state(0);
 
@@ -107,7 +107,6 @@
 		{ value: 'issues', label: 'Issues' },
 		{ value: 'messages', label: 'Messages' }
 	];
-
 
 	// Page size options
 	const pageSizeOptions = [
@@ -282,7 +281,9 @@
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
 
-			toast.success('Successfully archived the Issue' + (selectedHashes.size > 1 ? 's' : ''), { position: 'top-center' });
+			toast.success('Successfully archived the Issue' + (selectedHashes.size > 1 ? 's' : ''), {
+				position: 'top-center'
+			});
 			selectedHashes = new Set();
 			await loadData();
 		} catch (e: any) {
@@ -343,7 +344,7 @@
 			<Button
 				variant="outline"
 				size="sm"
-				onclick={() => showArchiveDialog = true}
+				onclick={() => (showArchiveDialog = true)}
 				disabled={archiving}
 				class="gap-1.5"
 			>
@@ -436,22 +437,44 @@
 							<Table.Cell
 								class="max-w-[400px] truncate font-mono text-sm"
 								title={exception.stackTrace}
-								onclick={createRowClickHandler(`/issues/${exception.exceptionHash}`, 'preset', 'from', 'to')}
+								onclick={createRowClickHandler(
+									`/issues/${exception.exceptionHash}`,
+									'preset',
+									'from',
+									'to'
+								)}
 							>
 								<span class="text-foreground">{exception.stackTrace.split('\n')[0]}</span>
 							</Table.Cell>
-							<Table.Cell onclick={createRowClickHandler(`/issues/${exception.exceptionHash}`, 'preset', 'from', 'to')}>
+							<Table.Cell
+								onclick={createRowClickHandler(
+									`/issues/${exception.exceptionHash}`,
+									'preset',
+									'from',
+									'to'
+								)}
+							>
 								<IssueTrendChart trend={exception.hourlyTrend || []} />
 							</Table.Cell>
 							<Table.Cell
 								class="text-right font-medium tabular-nums"
-								onclick={createRowClickHandler(`/issues/${exception.exceptionHash}`, 'preset', 'from', 'to')}
+								onclick={createRowClickHandler(
+									`/issues/${exception.exceptionHash}`,
+									'preset',
+									'from',
+									'to'
+								)}
 							>
 								{exception.count.toLocaleString()}
 							</Table.Cell>
 							<Table.Cell
 								class="text-muted-foreground"
-								onclick={createRowClickHandler(`/issues/${exception.exceptionHash}`, 'preset', 'from', 'to')}
+								onclick={createRowClickHandler(
+									`/issues/${exception.exceptionHash}`,
+									'preset',
+									'from',
+									'to'
+								)}
 							>
 								{formatDateTime(exception.lastSeen, { timezone })}
 							</Table.Cell>
@@ -477,7 +500,7 @@
 
 <ArchiveConfirmationDialog
 	open={showArchiveDialog}
-	onOpenChange={(open) => showArchiveDialog = open}
+	onOpenChange={(open) => (showArchiveDialog = open)}
 	count={selectedCount}
 	onConfirm={archiveSelected}
 />

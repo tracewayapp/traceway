@@ -341,18 +341,18 @@ export default function Home() {
       </section>
 
       {/* Demo CTA Section */}
-      <section className="py-20 bg-zinc-50/50 border-b border-zinc-100">
+      <section className="py-8 bg-zinc-50/50 border-b border-zinc-100">
         <div className="container mx-auto px-4 max-w-3xl text-center">
           <h2 className="text-3xl md:text-4xl font-bold mb-4 text-zinc-900 tracking-tight">
             See it in action
           </h2>
-          <p className="text-zinc-600 text-lg mb-8">
+          <p className="text-zinc-600 text-lg mb-4">
             Explore a live demo with sample data, no signup required.
           </p>
           <Link href="https://cloud.tracewayapp.com/login?email=demo@tracewayapp.com&password=demoaccount!">
             <Button
               size="lg"
-              className="h-10 px-6 text-sm bg-zinc-900 text-white hover:bg-zinc-800 shadow-lg shadow-zinc-900/20"
+              className="h-10 px-4 text-sm bg-zinc-900 text-white hover:bg-zinc-800 shadow-lg shadow-zinc-900/20"
             >
               Try Live Demo <ArrowRight className="ml-2 h-4 w-4" />
             </Button>

@@ -8,14 +8,22 @@
 	import AppSidebar from '$lib/components/app-sidebar.svelte';
 	import AddProjectModal from '$lib/components/add-project-modal.svelte';
 	import FrameworkIcon from '$lib/components/framework-icon.svelte';
-	import * as Sidebar from "$lib/components/ui/sidebar";
-	import { Button } from "$lib/components/ui/button";
-	import { Sun, Moon, LogOut, Plus, Check } from "@lucide/svelte";
-	import { onMount } from "svelte";
-	import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+	import * as Sidebar from '$lib/components/ui/sidebar';
+	import { Button } from '$lib/components/ui/button';
+	import { Sun, Moon, LogOut, Plus, Check } from '@lucide/svelte';
+	import { onMount } from 'svelte';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { ChevronDown } from 'lucide-svelte';
 	import { Toaster, toast } from 'svelte-sonner';
 	import { page } from '$app/state';
+	import { setupTraceway } from '@tracewayapp/svelte';
+	import { captureException } from '@tracewayapp/frontend';
+
+	if (__TRACEWAY_URL__) {
+		setupTraceway({
+			connectionString: __TRACEWAY_URL__
+		});
+	}
 
 	let { children } = $props();
 	let showAddProjectModal = $state(false);
@@ -57,8 +65,8 @@
 	}
 
 	function handleAddProjectClick() {
-		const organizationId = projectsState.currentProject?.organizationId
-			?? authState.organizations[0]?.id;
+		const organizationId =
+			projectsState.currentProject?.organizationId ?? authState.organizations[0]?.id;
 		if (organizationId) {
 			const role = authState.getRoleForOrganization(organizationId);
 			if (role === 'readonly') {
@@ -80,7 +88,7 @@
 
 <!-- This is not ideal, but because our layout is a top level route it can end up showing sidebar on the login page (after the login before the transition). -->
 <!-- We could consider moving this to a lower level layout for the actual app, for now it's just a path check -->
-{#if authState.isAuthenticated && page.url.pathname !== "/login" && page.url.pathname !== "/register" && !page.url.pathname.startsWith("/accept-invitation")}
+{#if authState.isAuthenticated && page.url.pathname !== '/login' && page.url.pathname !== '/register' && !page.url.pathname.startsWith('/accept-invitation')}
 	<Sidebar.SidebarProvider>
 		<AppSidebar />
 		<Sidebar.SidebarInset>
@@ -89,7 +97,9 @@
 				<div class="h-4 w-px bg-border"></div>
 				<h1 class="text-lg font-semibold">
 					<DropdownMenu.Root>
-						<DropdownMenu.Trigger class="flex flex-row items-center gap-2 hover:bg-accent hover:text-accent-foreground rounded-md px-2 py-1 transition-colors">
+						<DropdownMenu.Trigger
+							class="flex flex-row items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-accent hover:text-accent-foreground"
+						>
 							{#if projectsState.currentProject}
 								<FrameworkIcon framework={projectsState.currentProject.framework} />
 							{/if}
@@ -103,7 +113,7 @@
 								{#each projectsState.projects as project}
 									<DropdownMenu.Item
 										onclick={() => handleProjectSelect(project.id)}
-										class="flex items-center justify-between cursor-pointer"
+										class="flex cursor-pointer items-center justify-between"
 									>
 										<div class="flex items-center gap-2">
 											<FrameworkIcon framework={project.framework} />
@@ -127,7 +137,12 @@
 					</DropdownMenu.Root>
 				</h1>
 				<div class="ml-auto flex items-center gap-2">
-					<Button variant="ghost" size="icon" onclick={toggleTheme} title={themeState.isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}>
+					<Button
+						variant="ghost"
+						size="icon"
+						onclick={toggleTheme}
+						title={themeState.isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+					>
 						{#if themeState.isDark}
 							<Sun class="h-5 w-5" />
 						{:else}
@@ -139,7 +154,7 @@
 					</Button>
 				</div>
 			</header>
-			<main class="flex-1 min-w-0 p-4">
+			<main class="min-w-0 flex-1 p-4">
 				{@render children()}
 			</main>
 		</Sidebar.SidebarInset>
@@ -147,7 +162,7 @@
 
 	<AddProjectModal
 		open={showAddProjectModal}
-		onOpenChange={(open) => showAddProjectModal = open}
+		onOpenChange={(open) => (showAddProjectModal = open)}
 		onProjectCreated={handleProjectCreated}
 	/>
 

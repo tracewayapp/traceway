@@ -1,7 +1,7 @@
 {
 	"name": "frontend",
 	"private": true,
-	"version": "1.0.9",
+	"version": "1.0.10",
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
@@ -53,6 +53,7 @@
 	},
 	"dependencies": {
 		"@sveltejs/svelte-json-tree": "^2.2.1",
+		"@tracewayapp/svelte": "^0.3.0",
 		"lucide-svelte": "^0.562.0",
 		"luxon": "^3.7.2",
 		"svelte-highlight": "^7.9.0",

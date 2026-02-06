@@ -18,13 +18,13 @@ function injectBillingSource(): Plugin {
 		transform(code, id) {
 			if (id.endsWith('.css') && code.includes('@source "$BILLING_PATH"')) {
 				if (billingExists) {
-					return code.replace('@source "$BILLING_PATH"', `@source "${resolvedBillingPath}"`)
+					return code.replace('@source "$BILLING_PATH"', `@source "${resolvedBillingPath}"`);
 				} else {
-					return code.replace('@source "$BILLING_PATH";', '')
+					return code.replace('@source "$BILLING_PATH";', '');
 				}
 			}
 		}
-	}
+	};
 }
 
 export default defineConfig(({ mode }) => {
@@ -36,6 +36,7 @@ export default defineConfig(({ mode }) => {
 			__APP_VERSION__: JSON.stringify(env.PUBLIC_APP_VERSION || pkg.version),
 			__CLOUD_MODE__: env.CLOUD_MODE,
 			__BILLING_AVAILABLE__: billingExists,
+			__TRACEWAY_URL__: JSON.stringify(env.TRACEWAY_URL || ''),
 			__TURNSTILE_SITE_KEY__: JSON.stringify(env.PUBLIC_TURNSTILE_SITE_KEY || '')
 		},
 		resolve: {

@@ -48,6 +48,15 @@ else
     echo "Building without Turnstile captcha"
 fi
 
+# Ask for Traceway URL
+read -p "Enter Traceway connection string (e.g., token@https://host/api/report) or leave empty: " TRACEWAY_URL_INPUT
+if [ -n "$TRACEWAY_URL_INPUT" ]; then
+    export TRACEWAY_URL="$TRACEWAY_URL_INPUT"
+    echo "Traceway self-monitoring enabled"
+else
+    echo "Building without Traceway self-monitoring"
+fi
+
 # Build frontend
 npm install
 npm run build

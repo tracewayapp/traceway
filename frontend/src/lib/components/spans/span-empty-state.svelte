@@ -36,14 +36,14 @@
 				return `// In your Gin handler
 func MyHandler(c *gin.Context) {
     // Start a span for database operation
-    span := traceway.StartSpan(c.Request.Context(), "db.query")
+    span := traceway.StartSpan(c, "db.query")
     defer span.End()
 
     // Your database operation here
     result, err := db.Query("SELECT * FROM users")
 
     // Another span for cache
-    cacheSpan := traceway.StartSpan(c.Request.Context(), "cache.set")
+    cacheSpan := traceway.StartSpan(c, "cache.set")
     cache.Set("users", result)
     cacheSpan.End()
 }`;
@@ -76,18 +76,20 @@ span.End()`;
 </script>
 
 <div class="flex flex-col items-center justify-center py-8 text-center">
-	<div class="bg-muted mb-4 rounded-full p-3">
-		<Code class="text-muted-foreground h-6 w-6" />
+	<div class="mb-4 rounded-full bg-muted p-3">
+		<Code class="h-6 w-6 text-muted-foreground" />
 	</div>
 	<h3 class="mb-2 text-lg font-semibold">No Spans Recorded</h3>
-	<p class="text-muted-foreground mb-4 max-w-md text-sm">
+	<p class="mb-4 max-w-md text-sm text-muted-foreground">
 		Spans allow you to track the timing of individual operations within a transaction, such as
 		database queries, HTTP calls, or cache operations.
 	</p>
 
 	<div class="mb-4 w-full max-w-xl text-left">
-		<p class="text-muted-foreground mb-2 text-xs">Example usage:</p>
-		<div class="rounded-lg overflow-hidden text-sm {themeState.isDark ? 'dark-code' : 'light-code'}">
+		<p class="mb-2 text-xs text-muted-foreground">Example usage:</p>
+		<div
+			class="overflow-hidden rounded-lg text-sm {themeState.isDark ? 'dark-code' : 'light-code'}"
+		>
 			<Highlight language={go} code={codeExample} />
 		</div>
 	</div>

@@ -101,28 +101,34 @@ headers: {"content-type":"application/json","x-request-id":"abc123"}
 
 ## Exception Types
 
-### HttpException
+### Client Errors (4xx)
 
-For NestJS `HttpException` errors (4xx client errors), the filter:
+For `HttpException` errors with 4xx status codes, the filter:
 - Returns the standard NestJS error response
 - Does **not** capture to Traceway (client errors are expected)
 
 ### Server Errors (5xx)
 
-For server errors and unhandled exceptions:
+For server errors (status code >= 500), including 5xx `HttpException`s and unhandled exceptions:
 - Captures the exception to Traceway
-- Returns a 500 Internal Server Error response
+- Returns the appropriate error response
 
 ```typescript
 @Get("crash")
 crash() {
-  // This gets captured to Traceway
+  // Captured — unhandled error becomes 500
   throw new Error("Something went wrong");
+}
+
+@Get("bad-gateway")
+badGateway() {
+  // Captured — HttpException with 5xx status
+  throw new HttpException("Bad Gateway", 502);
 }
 
 @Get("not-found")
 notFound() {
-  // This does NOT get captured (4xx error)
+  // NOT captured — 4xx client error
   throw new NotFoundException("User not found");
 }
 ```

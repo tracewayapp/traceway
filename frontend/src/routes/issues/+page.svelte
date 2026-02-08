@@ -32,6 +32,7 @@
 		handleSortClick,
 		type SortDirection
 	} from '$lib/utils/sort-storage';
+	import Button from '$lib/components/ui/button/button.svelte';
 
 	const timezone = $derived(getTimezone());
 

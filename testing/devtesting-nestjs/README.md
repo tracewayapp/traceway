@@ -18,6 +18,30 @@ The app starts on port **3001** by default (configurable via `PORT` env var).
 | `PORT` | `3001` | Server port |
 | `TRACEWAY_ENDPOINT` | `default_token_change_me@http://localhost:8082/api/report` | Traceway connection string |
 
+## Docker (PM2 cluster mode)
+
+Runs 4 instances of the app via PM2 in cluster mode.
+
+### Build
+
+```bash
+./docker-build.sh
+```
+
+This packs the local `@tracewayapp/*` packages into tarballs, builds the Docker image, then cleans up.
+
+### Run
+
+```bash
+docker run -p 3001:3001 \
+  -e TRACEWAY_ENDPOINT="ed37c05e51c54f1db721f6fc59994e9b@http://host.docker.internal:8082/api/report" \
+  devtesting-nestjs
+```
+
+`host.docker.internal` resolves to the host machine's localhost, so the app inside Docker can reach the Traceway backend running on your local port 8082.
+
+The NestJS app is exposed on `http://localhost:3001` as usual.
+
 ## SDK Integration
 
 All `@tracewayapp/nestjs` integration points are used correctly:

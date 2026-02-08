@@ -2,7 +2,8 @@
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
 	import { Button } from '$lib/components/ui/button';
-	import { RefreshCw, Code } from 'lucide-svelte';
+	import { RefreshCw, Code, Info } from 'lucide-svelte';
+	import * as Alert from '$lib/components/ui/alert';
 	import ServerFilter from '$lib/components/dashboard/server-filter.svelte';
 	import MetricsTabContent from '$lib/components/dashboard/metrics-tab-content.svelte';
 	import * as Tabs from '$lib/components/ui/tabs';
@@ -16,7 +17,7 @@
 		ServerMetricsData
 	} from '$lib/types/dashboard';
 	import { api } from '$lib/api';
-	import { projectsState } from '$lib/state/projects.svelte';
+	import { projectsState, isJsFramework } from '$lib/state/projects.svelte';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import { toUTCISO, calendarDateTimeToLuxon, formatDateTime } from '$lib/utils/formatters';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
@@ -33,6 +34,10 @@
 	} from '$lib/utils/url-params';
 
 	const timezone = $derived(getTimezone());
+
+	const hideApplicationTab = $derived(
+		projectsState.currentProject ? isJsFramework(projectsState.currentProject.framework) : false
+	);
 
 	// Tab state
 	let activeTab = $state<MetricsTab>('application');
@@ -58,8 +63,8 @@
 	// Merge available servers from all endpoints
 	const availableServers = $derived(() => {
 		const servers = new Set<string>();
-		applicationData?.availableServers?.forEach(s => servers.add(s));
-		serverData?.availableServers?.forEach(s => servers.add(s));
+		applicationData?.availableServers?.forEach((s) => servers.add(s));
+		serverData?.availableServers?.forEach((s) => servers.add(s));
 		return Array.from(servers).sort();
 	});
 
@@ -81,9 +86,13 @@
 		const tabParam = params.get('tab') as MetricsTab | null;
 
 		const servers = serversParam ? serversParam.split(',').filter((s) => s.length > 0) : [];
-		const tab: MetricsTab = tabParam && ['application', 'stats', 'server'].includes(tabParam)
-			? tabParam
-			: 'application';
+		const defaultTab: MetricsTab = hideApplicationTab ? 'stats' : 'application';
+		const tab: MetricsTab =
+			tabParam && ['application', 'stats', 'server'].includes(tabParam)
+				? tabParam === 'application' && hideApplicationTab
+					? 'stats'
+					: tabParam
+				: defaultTab;
 
 		const timeParams = parseTimeRangeFromUrl(timezone);
 		return { ...timeParams, servers, tab };
@@ -145,13 +154,19 @@
 
 	function getFromDateTimeUTC(): string {
 		const [hour, minute] = (fromTime || '00:00').split(':').map(Number);
-		const dt = calendarDateTimeToLuxon({ year: fromDate.year, month: fromDate.month, day: fromDate.day, hour, minute }, timezone);
+		const dt = calendarDateTimeToLuxon(
+			{ year: fromDate.year, month: fromDate.month, day: fromDate.day, hour, minute },
+			timezone
+		);
 		return toUTCISO(dt);
 	}
 
 	function getToDateTimeUTC(): string {
 		const [hour, minute] = (toTime || '23:59').split(':').map(Number);
-		const dt = calendarDateTimeToLuxon({ year: toDate.year, month: toDate.month, day: toDate.day, hour, minute }, timezone);
+		const dt = calendarDateTimeToLuxon(
+			{ year: toDate.year, month: toDate.month, day: toDate.day, hour, minute },
+			timezone
+		);
 		return toUTCISO(dt);
 	}
 
@@ -274,6 +289,7 @@
 				break;
 			case 'stats':
 				if (!statsData) loadStatsMetrics();
+				if (!serverData) loadServerMetrics();
 				break;
 			case 'server':
 				if (!serverData) loadServerMetrics();
@@ -291,9 +307,16 @@
 
 		// Load the active tab
 		switch (activeTab) {
-			case 'application': loadApplicationMetrics(); break;
-			case 'stats': loadStatsMetrics(); break;
-			case 'server': loadServerMetrics(); break;
+			case 'application':
+				loadApplicationMetrics();
+				break;
+			case 'stats':
+				loadStatsMetrics();
+				loadServerMetrics();
+				break;
+			case 'server':
+				loadServerMetrics();
+				break;
 		}
 	}
 
@@ -337,26 +360,32 @@
 	// Get last updated time for current tab
 	const lastUpdated = $derived(() => {
 		switch (activeTab) {
-			case 'application': return applicationData?.lastUpdated;
-			case 'stats': return statsData?.lastUpdated;
-			case 'server': return serverData?.lastUpdated;
-			default: return undefined;
+			case 'application':
+				return applicationData?.lastUpdated;
+			case 'stats':
+				return statsData?.lastUpdated;
+			case 'server':
+				return serverData?.lastUpdated;
+			default:
+				return undefined;
 		}
 	});
 
 	const lastUpdatedFormatted = $derived(
-		lastUpdated()
-			? formatDateTime(lastUpdated()!, { timezone, format: 'time' })
-			: ''
+		lastUpdated() ? formatDateTime(lastUpdated()!, { timezone, format: 'time' }) : ''
 	);
 
 	// Check if current tab is loading
 	const isCurrentTabLoading = $derived(() => {
 		switch (activeTab) {
-			case 'application': return loadingApplication;
-			case 'stats': return loadingStats;
-			case 'server': return loadingServer;
-			default: return false;
+			case 'application':
+				return loadingApplication;
+			case 'stats':
+				return loadingStats;
+			case 'server':
+				return loadingServer;
+			default:
+				return false;
 		}
 	});
 
@@ -390,7 +419,9 @@
 		<div class="flex flex-wrap items-center justify-between gap-2">
 			<div class="flex flex-wrap items-center gap-2">
 				<Tabs.List>
-					<Tabs.Trigger value="application">Application</Tabs.Trigger>
+					{#if !hideApplicationTab}
+						<Tabs.Trigger value="application">Application</Tabs.Trigger>
+					{/if}
 					<Tabs.Trigger value="stats">Stats</Tabs.Trigger>
 					<Tabs.Trigger value="server">CPU / Mem</Tabs.Trigger>
 					<Tabs.Trigger value="custom">Custom</Tabs.Trigger>
@@ -408,11 +439,16 @@
 
 			{#if lastUpdated()}
 				<div class="flex items-center gap-1">
-					<span class="text-sm text-muted-foreground whitespace-nowrap">
+					<span class="text-sm whitespace-nowrap text-muted-foreground">
 						Updated: {lastUpdatedFormatted}
 					</span>
 
-					<Button variant="ghost" size="sm" onclick={() => reloadActiveTab()} disabled={isCurrentTabLoading()}>
+					<Button
+						variant="ghost"
+						size="sm"
+						onclick={() => reloadActiveTab()}
+						disabled={isCurrentTabLoading()}
+					>
 						<RefreshCw class="h-4 w-4 {isCurrentTabLoading() ? 'animate-spin' : ''}" />
 					</Button>
 				</div>
@@ -437,6 +473,17 @@
 
 		<!-- Stats Tab -->
 		<Tabs.Content value="stats">
+			{#if availableServers().length > 1}
+				<Alert.Root
+					class="mt-2 mb-2 border-none"
+					style="background: color-mix(in srgb, var(--sidebar-accent) 8%, transparent);"
+				>
+					<Info class="h-4 w-4" style="color: var(--sidebar-accent);" />
+					<Alert.Description style="color: var(--sidebar-accent);">
+						Stats are aggregated across all servers. Switch to CPU / Mem for per-server breakdowns.
+					</Alert.Description>
+				</Alert.Root>
+			{/if}
 			<MetricsTabContent
 				metrics={statsData?.metrics ?? null}
 				loading={loadingStats}
@@ -470,12 +517,13 @@
 		<!-- Custom Tab -->
 		<Tabs.Content value="custom">
 			<div class="flex flex-col items-center justify-center py-8 text-center">
-				<div class="bg-muted mb-4 rounded-full p-3">
-					<Code class="text-muted-foreground h-6 w-6" />
+				<div class="mb-4 rounded-full bg-muted p-3">
+					<Code class="h-6 w-6 text-muted-foreground" />
 				</div>
 				<h3 class="mb-2 text-lg font-semibold">Custom Metrics not supported</h3>
-				<p class="text-muted-foreground mb-4 max-w-md text-sm">
-					Custom Metrics are not currently supported, but we're working on it and hope to have them supported soon.
+				<p class="mb-4 max-w-md text-sm text-muted-foreground">
+					Custom Metrics are not currently supported, but we're working on it and hope to have them
+					supported soon.
 				</p>
 			</div>
 		</Tabs.Content>

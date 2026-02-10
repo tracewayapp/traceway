@@ -74,7 +74,8 @@
 		p95Duration: number;
 		avgDuration: number;
 		lastSeen: string;
-		impact: number; // 0-1 Apdex-based impact score from backend
+		impact: number;
+		impactReason: string;
 	};
 
 	type DashboardOverview = {
@@ -488,7 +489,7 @@
 												{formatDuration(endpoint.p95Duration)}
 											</Table.Cell>
 											<Table.Cell class="py-3 text-right">
-												<ImpactBadge score={endpoint.impact} />
+												<ImpactBadge score={endpoint.impact} reason={endpoint.impactReason} />
 											</Table.Cell>
 										</Table.Row>
 									{/each}

@@ -1,20 +1,21 @@
 <script lang="ts">
 	import { TriangleAlert, CheckCircle } from 'lucide-svelte';
+	import * as Tooltip from '$lib/components/ui/tooltip';
 
 	let {
 		score,
-		showIcon
+		showIcon,
+		reason
 	}: {
-		score: number; // 0-1 Apdex-based impact score
+		score: number; // 0-1 impact score
 		showIcon?: boolean;
+		reason?: string;
 	} = $props();
 
 	// Map score to impact level
 	type ImpactLevel = 'critical' | 'high' | 'medium' | 'good';
 	const level = $derived<ImpactLevel>(
-		score >= 0.75 ? 'critical' :
-		score >= 0.50 ? 'high' :
-		score >= 0.25 ? 'medium' : 'good'
+		score >= 0.75 ? 'critical' : score >= 0.5 ? 'high' : score >= 0.25 ? 'medium' : 'good'
 	);
 
 	// Default showIcon to true for critical and high levels
@@ -54,7 +55,7 @@
 	});
 </script>
 
-{#if config()}
+{#snippet badge()}
 	<span
 		class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium {config()
 			?.bg} {config()?.text}"
@@ -68,4 +69,19 @@
 		{/if}
 		{config()?.label}
 	</span>
+{/snippet}
+
+{#if config()}
+	{#if reason}
+		<Tooltip.Root>
+			<Tooltip.Trigger class="cursor-default">
+				{@render badge()}
+			</Tooltip.Trigger>
+			<Tooltip.Content side="left">
+				{reason}
+			</Tooltip.Content>
+		</Tooltip.Root>
+	{:else}
+		{@render badge()}
+	{/if}
 {/if}

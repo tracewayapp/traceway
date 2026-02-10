@@ -87,11 +87,14 @@ func (e *endpointRepository) FindAll(ctx context.Context, projectId uuid.UUID, f
 
 func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string, search string) ([]models.EndpointStats, int64, error) {
 	// Build WHERE clause with optional search filter
+	// Count query uses bare column names; main query uses e. prefix for LEFT JOIN
 	whereClause := "project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
+	joinWhereClause := "e.project_id = ? AND e.recorded_at >= ? AND e.recorded_at <= ?"
 	args := []interface{}{projectId, fromDate, toDate}
 
 	if search != "" {
 		whereClause += " AND positionCaseInsensitive(endpoint, ?) > 0"
+		joinWhereClause += " AND positionCaseInsensitive(e.endpoint, ?) > 0"
 		args = append(args, search)
 	}
 
@@ -127,37 +130,65 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 		sortDir = "ASC"
 	}
 
-	// Apdex thresholds: Good <= 750ms, Tolerable <= 1500ms, Bad > 1500ms or error
-	// Duration is in nanoseconds: 750ms = 750,000,000ns, 1500ms = 1,500,000,000ns
 	query := `SELECT
-		endpoint,
-		count() as count,
-		quantile(0.5)(duration) as p50_duration,
-		quantile(0.95)(duration) as p95_duration,
-		quantile(0.99)(duration) as p99_duration,
-		avg(duration) as avg_duration,
-		max(recorded_at) as last_seen,
+		endpoint, total_count as count, p50_duration, p95_duration, p99_duration,
+		avg_duration, last_seen, offset_ms,
+		satisfied_count, tolerating_count, bad_count, client_error_count,
 		greatest(
-			-- Base score: 1 - apdex
-			if(count() > 0,
-				1.0 - (
-					(countIf(duration <= 750000000 AND status_code < 500) +
-					 countIf(duration > 750000000 AND duration <= 1500000000 AND status_code < 500) * 0.5)
-					/ count()
-				),
-				0.0
-			),
-			-- Floor based on bad percentage
+			if(total_count > 0,
+				1.0 - ((satisfied_count + tolerating_count * 0.5) / total_count), 0.0),
 			multiIf(
-				countIf(duration > 1500000000 OR status_code >= 500) / count() > 0.33, 0.75,
-				countIf(duration > 1500000000 OR status_code >= 500) / count() > 0.20, 0.50,
-				countIf(duration > 1500000000 OR status_code >= 500) / count() > 0.10, 0.25,
-				0.0
-			)
+				bad_count / total_count > 0.33, 0.75,
+				bad_count / total_count > 0.20, 0.50,
+				bad_count / total_count > 0.10, 0.25, 0.0),
+			multiIf(
+				toFloat64(p99_duration) - toFloat64(offset_ms) * 1000000 > 8000000000, 0.75,
+				toFloat64(p99_duration) - toFloat64(offset_ms) * 1000000 > 6000000000, 0.50,
+				toFloat64(p99_duration) - toFloat64(offset_ms) * 1000000 > 3000000000, 0.25, 0.0),
+			if(total_count > 10,
+				multiIf(
+					client_error_count / total_count > 0.50, 0.75,
+					client_error_count / total_count > 0.25, 0.50, 0.0),
+				0.0),
+			multiIf(
+				bad_count / total_count > 0.10 AND bad_count >= 500, 0.75,
+				bad_count / total_count > 0.10 AND bad_count >= 50, 0.50,
+				bad_count / total_count > 0.05 AND bad_count >= 2000, 0.75,
+				bad_count / total_count > 0.05 AND bad_count >= 500, 0.50,
+				bad_count / total_count > 0.05 AND bad_count >= 50, 0.25,
+				bad_count / total_count > 0.01 AND bad_count >= 10000, 0.75,
+				bad_count / total_count > 0.01 AND bad_count >= 2000, 0.50,
+				bad_count / total_count > 0.01 AND bad_count >= 500, 0.25,
+				0.0)
 		) as impact
-	FROM endpoints
-	WHERE ` + whereClause + `
-	GROUP BY endpoint
+	FROM (
+		SELECT
+			endpoint,
+			offset_ms,
+			count() as total_count,
+			quantile(0.5)(duration) as p50_duration,
+			quantile(0.95)(duration) as p95_duration,
+			quantile(0.99)(duration) as p99_duration,
+			avg(duration) as avg_duration,
+			max(recorded_at) as last_seen,
+			countIf(duration <= (750000000 + toInt64(offset_ms) * 1000000)
+				AND status_code < 500) as satisfied_count,
+			countIf(duration > (750000000 + toInt64(offset_ms) * 1000000)
+				AND duration <= (1500000000 + toInt64(offset_ms) * 1000000)
+				AND status_code < 500) as tolerating_count,
+			countIf(duration > (1500000000 + toInt64(offset_ms) * 1000000)
+				OR status_code >= 500) as bad_count,
+			countIf(status_code >= 400 AND status_code < 500) as client_error_count
+		FROM (
+			SELECT e.endpoint, e.duration, e.status_code, e.recorded_at,
+				   s.offset_ms as offset_ms
+			FROM endpoints e
+			LEFT JOIN (SELECT * FROM slow_endpoints FINAL) AS s
+				ON e.endpoint = s.endpoint AND e.project_id = s.project_id
+			WHERE ` + joinWhereClause + `
+		)
+		GROUP BY endpoint, offset_ms
+	)
 	ORDER BY ` + orderExpr + ` ` + sortDir + `
 	LIMIT ? OFFSET ?`
 
@@ -174,13 +205,18 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 	for rows.Next() {
 		var s models.EndpointStats
 		var p50, p95, p99, avg float64
-		if err := rows.Scan(&s.Endpoint, &s.Count, &p50, &p95, &p99, &avg, &s.LastSeen, &s.Impact); err != nil {
+		var offsetMs uint32
+		var satisfiedCount, toleratingCount, badCount, clientErrorCount uint64
+		if err := rows.Scan(&s.Endpoint, &s.Count, &p50, &p95, &p99, &avg, &s.LastSeen,
+			&offsetMs, &satisfiedCount, &toleratingCount, &badCount, &clientErrorCount,
+			&s.Impact); err != nil {
 			return nil, 0, err
 		}
 		s.P50Duration = time.Duration(p50)
 		s.P95Duration = time.Duration(p95)
 		s.P99Duration = time.Duration(p99)
 		s.AvgDuration = time.Duration(avg)
+		s.ImpactReason = computeImpactReason(s.Count, satisfiedCount, toleratingCount, badCount, clientErrorCount, p99, offsetMs)
 		stats = append(stats, s)
 	}
 
@@ -436,39 +472,66 @@ func (e *endpointRepository) ErrorRateByInterval(ctx context.Context, projectId 
 	return points, nil
 }
 
-// FindWorstEndpoints returns endpoints ordered by Apdex-based impact score
-// Higher score = worse performance (1 - apdex with floor based on bad request percentage)
 func (e *endpointRepository) FindWorstEndpoints(ctx context.Context, projectId uuid.UUID, start, end time.Time, limit int) ([]models.EndpointStats, error) {
-	// Apdex thresholds: Good <= 750ms, Tolerable <= 1500ms, Bad > 1500ms or error
-	// Duration is in nanoseconds: 750ms = 750,000,000ns, 1500ms = 1,500,000,000ns
 	query := `SELECT
-		endpoint,
-		count() as count,
-		quantile(0.5)(duration) as p50_duration,
-		quantile(0.95)(duration) as p95_duration,
-		avg(duration) as avg_duration,
-		max(recorded_at) as last_seen,
+		endpoint, total_count, p50_duration, p95_duration, p99_duration,
+		avg_duration, last_seen, offset_ms,
+		satisfied_count, tolerating_count, bad_count, client_error_count,
 		greatest(
-			-- Base score: 1 - apdex
-			if(count() > 0,
-				1.0 - (
-					(countIf(duration <= 750000000 AND status_code < 500) +
-					 countIf(duration > 750000000 AND duration <= 1500000000 AND status_code < 500) * 0.5)
-					/ count()
-				),
-				0.0
-			),
-			-- Floor based on bad percentage
+			if(total_count > 0,
+				1.0 - ((satisfied_count + tolerating_count * 0.5) / total_count), 0.0),
 			multiIf(
-				countIf(duration > 1500000000 OR status_code >= 500) / count() > 0.33, 0.75,
-				countIf(duration > 1500000000 OR status_code >= 500) / count() > 0.20, 0.50,
-				countIf(duration > 1500000000 OR status_code >= 500) / count() > 0.10, 0.25,
-				0.0
-			)
+				bad_count / total_count > 0.33, 0.75,
+				bad_count / total_count > 0.20, 0.50,
+				bad_count / total_count > 0.10, 0.25, 0.0),
+			multiIf(
+				toFloat64(p99_duration) - toFloat64(offset_ms) * 1000000 > 8000000000, 0.75,
+				toFloat64(p99_duration) - toFloat64(offset_ms) * 1000000 > 6000000000, 0.50,
+				toFloat64(p99_duration) - toFloat64(offset_ms) * 1000000 > 3000000000, 0.25, 0.0),
+			if(total_count > 10,
+				multiIf(
+					client_error_count / total_count > 0.50, 0.75,
+					client_error_count / total_count > 0.25, 0.50, 0.0),
+				0.0),
+			multiIf(
+				bad_count / total_count > 0.10 AND bad_count >= 500, 0.75,
+				bad_count / total_count > 0.10 AND bad_count >= 50, 0.50,
+				bad_count / total_count > 0.05 AND bad_count >= 2000, 0.75,
+				bad_count / total_count > 0.05 AND bad_count >= 500, 0.50,
+				bad_count / total_count > 0.05 AND bad_count >= 50, 0.25,
+				bad_count / total_count > 0.01 AND bad_count >= 10000, 0.75,
+				bad_count / total_count > 0.01 AND bad_count >= 2000, 0.50,
+				bad_count / total_count > 0.01 AND bad_count >= 500, 0.25,
+				0.0)
 		) as impact
-	FROM endpoints
-	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
-	GROUP BY endpoint
+	FROM (
+		SELECT
+			endpoint,
+			offset_ms,
+			count() as total_count,
+			quantile(0.5)(duration) as p50_duration,
+			quantile(0.95)(duration) as p95_duration,
+			quantile(0.99)(duration) as p99_duration,
+			avg(duration) as avg_duration,
+			max(recorded_at) as last_seen,
+			countIf(duration <= (750000000 + toInt64(offset_ms) * 1000000)
+				AND status_code < 500) as satisfied_count,
+			countIf(duration > (750000000 + toInt64(offset_ms) * 1000000)
+				AND duration <= (1500000000 + toInt64(offset_ms) * 1000000)
+				AND status_code < 500) as tolerating_count,
+			countIf(duration > (1500000000 + toInt64(offset_ms) * 1000000)
+				OR status_code >= 500) as bad_count,
+			countIf(status_code >= 400 AND status_code < 500) as client_error_count
+		FROM (
+			SELECT e.endpoint, e.duration, e.status_code, e.recorded_at,
+				   s.offset_ms as offset_ms
+			FROM endpoints e
+			LEFT JOIN (SELECT * FROM slow_endpoints FINAL) AS s
+				ON e.endpoint = s.endpoint AND e.project_id = s.project_id
+			WHERE e.project_id = ? AND e.recorded_at >= ? AND e.recorded_at <= ?
+		)
+		GROUP BY endpoint, offset_ms
+	)
 	ORDER BY impact DESC
 	LIMIT ?`
 
@@ -481,13 +544,19 @@ func (e *endpointRepository) FindWorstEndpoints(ctx context.Context, projectId u
 	var stats []models.EndpointStats
 	for rows.Next() {
 		var s models.EndpointStats
-		var p50, p95, avg float64
-		if err := rows.Scan(&s.Endpoint, &s.Count, &p50, &p95, &avg, &s.LastSeen, &s.Impact); err != nil {
+		var p50, p95, p99, avg float64
+		var offsetMs uint32
+		var satisfiedCount, toleratingCount, badCount, clientErrorCount uint64
+		if err := rows.Scan(&s.Endpoint, &s.Count, &p50, &p95, &p99, &avg, &s.LastSeen,
+			&offsetMs, &satisfiedCount, &toleratingCount, &badCount, &clientErrorCount,
+			&s.Impact); err != nil {
 			return nil, err
 		}
 		s.P50Duration = time.Duration(p50)
 		s.P95Duration = time.Duration(p95)
+		s.P99Duration = time.Duration(p99)
 		s.AvgDuration = time.Duration(avg)
+		s.ImpactReason = computeImpactReason(s.Count, satisfiedCount, toleratingCount, badCount, clientErrorCount, p99, offsetMs)
 		stats = append(stats, s)
 	}
 
@@ -672,6 +741,28 @@ func (e *endpointRepository) GetEndpointStackedChart(ctx context.Context, projec
 		Endpoints: finalEndpoints,
 		Series:    series,
 	}, nil
+}
+
+func (e *endpointRepository) GetSlowEndpoint(ctx context.Context, projectId uuid.UUID, endpoint string) (uint32, string, error) {
+	var offsetMs uint32
+	var reason string
+	err := (*chdb.Conn).QueryRow(ctx, "SELECT offset_ms, reason FROM slow_endpoints FINAL WHERE project_id = ? AND endpoint = ?", projectId, endpoint).Scan(&offsetMs, &reason)
+	return offsetMs, reason, err
+}
+
+func (e *endpointRepository) UpsertSlowEndpoint(ctx context.Context, projectId uuid.UUID, endpoint string, offsetMs uint32, reason string) error {
+	err := (*chdb.Conn).Exec(ctx, "ALTER TABLE slow_endpoints DELETE WHERE project_id = ? AND endpoint = ?", projectId, endpoint)
+	if err != nil {
+		return err
+	}
+	batch, err := (*chdb.Conn).PrepareBatch(ctx, "INSERT INTO slow_endpoints (project_id, endpoint, offset_ms, reason)")
+	if err != nil {
+		return err
+	}
+	if err := batch.Append(projectId, endpoint, offsetMs, reason); err != nil {
+		return err
+	}
+	return batch.Send()
 }
 
 var EndpointRepository = endpointRepository{}

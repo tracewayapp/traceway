@@ -50,6 +50,8 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/endpoints/grouped", middleware.UseAppAuth, middleware.RequireProjectAccess, EndpointController.FindGroupedByEndpoint)
 	router.POST("/endpoints/endpoint", middleware.UseAppAuth, middleware.RequireProjectAccess, EndpointController.FindByEndpoint)
 	router.POST("/endpoints/chart", middleware.UseAppAuth, middleware.RequireProjectAccess, EndpointController.GetStackedChart)
+	router.GET("/endpoints/slow", middleware.UseAppAuth, middleware.RequireProjectAccess, EndpointController.GetSlowEndpoint)
+	router.POST("/endpoints/slow", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, EndpointController.SetSlowEndpoint)
 	router.POST("/endpoints/:endpointId", middleware.UseAppAuth, middleware.RequireProjectAccess, EndpointDetailController.GetEndpointDetail)
 
 	// Tasks (projectId in body)

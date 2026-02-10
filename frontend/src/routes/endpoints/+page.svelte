@@ -50,7 +50,8 @@
         p99Duration: number;
         avgDuration: number;
         lastSeen: string;
-        impact: number; // 0-1 Apdex-based impact score from backend
+        impact: number;
+        impactReason: string;
     };
 
     type SortField = 'count' | 'p50_duration' | 'p95_duration' | 'p99_duration' | 'last_seen' | 'impact';
@@ -517,7 +518,7 @@
                     />
                     <TracewayTableHeader
                         label="Impact"
-                        tooltip="Priority based on traffic × response time variance"
+                        tooltip="Impact score based on Apdex, error rates, P99 latency, and request volume"
                         sortField="impact"
                         currentSortField={orderBy}
                         {sortDirection}
@@ -549,7 +550,7 @@
                             {formatDuration(endpoint.p99Duration)}
                         </Table.Cell>
                         <Table.Cell class="text-right">
-                            <ImpactBadge score={endpoint.impact} />
+                            <ImpactBadge score={endpoint.impact} reason={endpoint.impactReason} />
                         </Table.Cell>
                     </Table.Row>
                 {/each}

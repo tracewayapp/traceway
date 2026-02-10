@@ -4,6 +4,8 @@ import (
 	"backend/app/middleware"
 	"backend/app/models"
 	"backend/app/repositories"
+	"database/sql"
+	"errors"
 	"net/http"
 	"net/url"
 	"time"
@@ -194,6 +196,64 @@ func (e endpointController) GetStackedChart(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, data)
+}
+
+func (e endpointController) GetSlowEndpoint(c *gin.Context) {
+	projectId, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return
+	}
+
+	rawEndpoint := c.Query("endpoint")
+	if rawEndpoint == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "endpoint is required"})
+		return
+	}
+
+	endpoint, err := url.PathUnescape(rawEndpoint)
+	if err != nil {
+		endpoint = rawEndpoint
+	}
+
+	offsetMs, reason, err := repositories.EndpointRepository.GetSlowEndpoint(c, projectId, endpoint)
+	if errors.Is(err, sql.ErrNoRows) {
+		c.JSON(http.StatusOK, gin.H{"offsetMs": 0, "reason": ""})
+		return
+	}
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error loading slow endpoint: %w", err))
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"offsetMs": offsetMs, "reason": reason})
+}
+
+type SetSlowEndpointRequest struct {
+	Endpoint string `json:"endpoint" binding:"required"`
+	OffsetMs uint32 `json:"offsetMs"`
+	Reason   string `json:"reason"`
+}
+
+func (e endpointController) SetSlowEndpoint(c *gin.Context) {
+	projectId, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return
+	}
+
+	var request SetSlowEndpointRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := repositories.EndpointRepository.UpsertSlowEndpoint(c, projectId, request.Endpoint, request.OffsetMs, request.Reason); err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error saving slow endpoint: %w", err))
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"offsetMs": request.OffsetMs})
 }
 
 var EndpointController = endpointController{}

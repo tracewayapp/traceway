@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
 import { useTheme } from "nextra-theme-docs";
 import SdkSelector from "./components/SdkSelector";
 import HiddenItem from "./components/HiddenItem";
@@ -42,8 +43,11 @@ export default {
     text: `${new Date().getFullYear()} Traceway. All rights reserved.`,
   },
   useNextSeoProps() {
+    const { asPath } = useRouter();
+    const cleanPath = asPath.split("?")[0].split("#")[0];
     return {
       titleTemplate: "%s - Traceway Docs",
+      canonical: `https://docs.tracewayapp.com${cleanPath === "/" ? "" : cleanPath}`,
     };
   },
   head: (

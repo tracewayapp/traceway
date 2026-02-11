@@ -15,6 +15,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://tracewayapp.com"),
+  alternates: {
+    canonical: "./",
+  },
   title: "Traceway",
   description: "Telemetry & Issue Tracking for Go & JavaScript",
   icons: {

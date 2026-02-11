@@ -42,10 +42,9 @@
             .then(response => response.json())
             .then((response) => {
                 if (response.hasOrganizations) {
-                    loading = false
-                } else {
-                    goto("/register")
+                    goto("/login")
                 }
+                loading = false
             }).catch(() => {
                 toast.error("An unexpected error has occured. The page will refresh in 5 seconds.")
                 setTimeout(() => {

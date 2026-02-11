@@ -1,0 +1,58 @@
+# Docker Compose
+
+Runs Traceway, ClickHouse, and PostgreSQL as separate services. Uses the [Minimal Container](/server/minimal) image with databases managed by Docker Compose.
+
+## Quick Start
+
+```bash
+# Start the full stack (builds images and starts all services)
+docker compose up --build
+
+# Clean restart (removes volumes, resets all data)
+docker compose down -v && docker compose up --build
+```
+
+After starting, open `http://localhost/register` to create your first account.
+
+## Configuration
+
+The `docker-compose.yml` in the repository root is ready to use out of the box. To customize, edit the environment variables in the file directly:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CLICKHOUSE_SERVER` | `clickhouse:9000` | ClickHouse host:port |
+| `CLICKHOUSE_DATABASE` | `traceway` | ClickHouse database name |
+| `CLICKHOUSE_USERNAME` | `default` | ClickHouse username |
+| `CLICKHOUSE_PASSWORD` | `clickhouse` | ClickHouse password |
+| `CLICKHOUSE_TLS` | `false` | Enable TLS for ClickHouse |
+| `POSTGRES_HOST` | `postgres` | PostgreSQL host |
+| `POSTGRES_PORT` | `5432` | PostgreSQL port |
+| `POSTGRES_DATABASE` | `traceway` | PostgreSQL database name |
+| `POSTGRES_USERNAME` | `traceway` | PostgreSQL username |
+| `POSTGRES_PASSWORD` | `traceway` | PostgreSQL password |
+| `POSTGRES_SSLMODE` | `disable` | PostgreSQL SSL mode |
+| `JWT_SECRET` | `change-this-to-a-secure-secret-at-least-32-chars` | JWT signing secret (min 32 chars) |
+
+## Access Points
+
+| URL | Description |
+|-----|-------------|
+| `http://localhost/` | Frontend dashboard |
+| `http://localhost/api/*` | Backend API |
+| `http://localhost/health` | Health check |
+
+## Useful Commands
+
+```bash
+# View logs for all services
+docker compose logs -f
+
+# View logs for a specific service
+docker compose logs -f traceway
+
+# Stop all services
+docker compose down
+
+# Stop and remove all data
+docker compose down -v
+```

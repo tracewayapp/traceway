@@ -11,6 +11,24 @@ const billingPath = process.env.BILLING_PATH;
 const resolvedBillingPath = billingPath ? path.resolve(import.meta.dirname, billingPath) : null;
 const billingExists = resolvedBillingPath && existsSync(resolvedBillingPath);
 
+function stubBillingImports(): Plugin {
+	if (billingExists) return { name: 'stub-billing-imports' };
+	return {
+		name: 'stub-billing-imports',
+		enforce: 'pre',
+		resolveId(id) {
+			if (id.startsWith('$billing/')) {
+				return '\0virtual:billing-stub';
+			}
+		},
+		load(id) {
+			if (id === '\0virtual:billing-stub') {
+				return 'export default {}';
+			}
+		}
+	};
+}
+
 function injectBillingSource(): Plugin {
 	return {
 		name: 'inject-billing-source',
@@ -31,7 +49,7 @@ export default defineConfig(({ mode }) => {
 	const env = loadEnv(mode, process.cwd(), '');
 
 	return {
-		plugins: [injectBillingSource(), tailwindcss(), sveltekit()],
+		plugins: [stubBillingImports(), injectBillingSource(), tailwindcss(), sveltekit()],
 		define: {
 			__APP_VERSION__: JSON.stringify(env.PUBLIC_APP_VERSION || pkg.version),
 			__CLOUD_MODE__: env.CLOUD_MODE,

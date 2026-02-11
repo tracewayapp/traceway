@@ -1,0 +1,69 @@
+# All-in-One Container
+
+Single Docker container with ClickHouse, PostgreSQL, and the Go backend managed by supervisord. Best for simple setups where you want everything in one place.
+
+## Build
+
+```bash
+docker build -t traceway:latest .
+```
+
+## Run
+
+```bash
+docker run -d --name traceway \
+  -p 80:80 \
+  -v traceway-ch:/var/lib/clickhouse \
+  -v traceway-pg:/var/lib/postgresql/data \
+  traceway:latest
+```
+
+After starting, open `http://localhost/register` to create your first account.
+
+## Environment Variables
+
+All environment variables have working defaults, no configuration required. Override as needed:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CLICKHOUSE_SERVER` | `localhost:9000` | ClickHouse host:port |
+| `CLICKHOUSE_DATABASE` | `traceway` | ClickHouse database name |
+| `CLICKHOUSE_USERNAME` | `default` | ClickHouse username |
+| `CLICKHOUSE_PASSWORD` | *(empty)* | ClickHouse password |
+| `CLICKHOUSE_TLS` | `false` | Enable TLS for ClickHouse |
+| `POSTGRES_HOST` | `localhost` | PostgreSQL host |
+| `POSTGRES_PORT` | `5432` | PostgreSQL port |
+| `POSTGRES_DATABASE` | `traceway` | PostgreSQL database name |
+| `POSTGRES_USERNAME` | `traceway` | PostgreSQL username |
+| `POSTGRES_PASSWORD` | *(empty)* | PostgreSQL password |
+| `POSTGRES_SSLMODE` | `disable` | PostgreSQL SSL mode |
+| `JWT_SECRET` | *(built-in default)* | JWT signing secret (min 32 chars) |
+| `GIN_MODE` | `release` | Gin framework mode |
+
+## Access Points
+
+| URL | Description |
+|-----|-------------|
+| `http://localhost/` | Frontend dashboard |
+| `http://localhost/api/*` | Backend API |
+| `http://localhost/health` | Health check |
+
+## Useful Commands
+
+```bash
+# View logs
+docker logs traceway
+docker logs -f traceway
+
+# Enter container shell
+docker exec -it traceway bash
+
+# Check process status
+docker exec traceway supervisorctl status
+
+# Health check
+curl http://localhost/health
+
+# Stop and remove
+docker stop traceway && docker rm traceway
+```

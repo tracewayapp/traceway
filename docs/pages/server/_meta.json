@@ -1,5 +1,7 @@
 {
   "index": "Overview",
-  "local-setup": "Local Setup",
-  "docker": "Docker Deployment"
+  "all-in-one": "All-in-One Container",
+  "docker-compose": "Docker Compose",
+  "minimal": "Minimal Container",
+  "local-setup": "Local Setup"
 }

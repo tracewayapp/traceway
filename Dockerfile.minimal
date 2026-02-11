@@ -21,6 +21,7 @@ RUN npm ci
 # Copy source and build
 COPY frontend/ ./
 
+ENV CLOUD_MODE=false
 RUN npm run build
 
 # ==============================================================================
@@ -39,7 +40,9 @@ COPY backend/ ./
 # Copy built frontend to static/dist for embedding
 COPY --from=frontend-builder /app/frontend/build ./static/dist/
 
-# Download dependencies
+# Strip local replace directives and download dependencies
+RUN go mod edit -dropreplace=go.tracewayapp.com -dropreplace=go.tracewayapp.com/tracewaygin
+RUN go mod tidy
 RUN go mod download
 
 # Build with embedded static files
@@ -63,10 +66,9 @@ WORKDIR /app
 
 # Environment variables (can be overridden at runtime)
 ENV GIN_MODE=release
-ENV ENABLE_PORT_80=true
 
 # Expose ports
-# 80: Frontend + API (when ENABLE_PORT_80=true)
+# 80: Frontend + API
 # 8082: Direct API access
 EXPOSE 80 8082
 

@@ -1,0 +1,61 @@
+services:
+  traceway:
+    build:
+      context: .
+      dockerfile: Dockerfile.minimal
+    ports:
+      - "80:80"
+    environment:
+      CLICKHOUSE_SERVER: "clickhouse:9000"
+      CLICKHOUSE_DATABASE: "traceway"
+      CLICKHOUSE_USERNAME: "default"
+      CLICKHOUSE_PASSWORD: "clickhouse"
+      CLICKHOUSE_TLS: "false"
+      POSTGRES_HOST: "postgres"
+      POSTGRES_PORT: "5432"
+      POSTGRES_DATABASE: "traceway"
+      POSTGRES_USERNAME: "traceway"
+      POSTGRES_PASSWORD: "traceway"
+      POSTGRES_SSLMODE: "disable"
+      JWT_SECRET: "change-this-to-a-secure-secret-at-least-32-chars"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8-alpine
+    environment:
+      CLICKHOUSE_DB: traceway
+      CLICKHOUSE_PASSWORD: clickhouse
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--password", "clickhouse", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+      retries: 10
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: traceway
+      POSTGRES_PASSWORD: traceway
+      POSTGRES_DB: traceway
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U traceway"]
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  clickhouse-data:
+  postgres-data:

@@ -1,0 +1,72 @@
+# Minimal Container
+
+Lightweight Alpine image (~20-30MB) containing only the Go backend with the embedded frontend. Requires external ClickHouse and PostgreSQL instances.
+
+## Build
+
+```bash
+docker build -f Dockerfile.minimal -t traceway:minimal .
+```
+
+## Run
+
+```bash
+docker run -d --name traceway \
+  -p 80:80 \
+  -e CLICKHOUSE_SERVER="clickhouse-host:9000" \
+  -e CLICKHOUSE_DATABASE="traceway" \
+  -e CLICKHOUSE_USERNAME="default" \
+  -e CLICKHOUSE_PASSWORD="your-password" \
+  -e POSTGRES_HOST="postgres-host" \
+  -e POSTGRES_PORT="5432" \
+  -e POSTGRES_DATABASE="traceway" \
+  -e POSTGRES_USERNAME="traceway" \
+  -e POSTGRES_PASSWORD="your-password" \
+  -e POSTGRES_SSLMODE="disable" \
+  -e JWT_SECRET="your-jwt-secret-min-32-characters-long" \
+  traceway:minimal
+```
+
+After starting, open `http://localhost/register` to create your first account.
+
+## Required Environment Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `CLICKHOUSE_SERVER` | ClickHouse host:port | `clickhouse:9000` |
+| `CLICKHOUSE_DATABASE` | ClickHouse database | `traceway` |
+| `CLICKHOUSE_USERNAME` | ClickHouse username | `default` |
+| `CLICKHOUSE_PASSWORD` | ClickHouse password | `password` |
+| `CLICKHOUSE_TLS` | Enable TLS | `false` |
+| `POSTGRES_HOST` | PostgreSQL host | `postgres` |
+| `POSTGRES_PORT` | PostgreSQL port | `5432` |
+| `POSTGRES_DATABASE` | PostgreSQL database | `traceway` |
+| `POSTGRES_USERNAME` | PostgreSQL username | `traceway` |
+| `POSTGRES_PASSWORD` | PostgreSQL password | `password` |
+| `POSTGRES_SSLMODE` | PostgreSQL SSL mode | `disable` |
+| `JWT_SECRET` | JWT signing secret (min 32 chars) | `your-secret-here` |
+
+## Access Points
+
+| URL | Description |
+|-----|-------------|
+| `http://localhost/` | Frontend dashboard |
+| `http://localhost/api/*` | Backend API |
+| `http://localhost/health` | Health check |
+
+## Useful Commands
+
+```bash
+# View logs
+docker logs traceway
+docker logs -f traceway
+
+# Enter container shell
+docker exec -it traceway sh
+
+# Health check
+curl http://localhost/health
+
+# Stop and remove
+docker stop traceway && docker rm traceway
+```

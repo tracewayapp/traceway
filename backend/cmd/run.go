@@ -9,6 +9,7 @@ import (
 	"backend/app/models"
 	"backend/app/pgdb"
 	"backend/app/services"
+	"backend/app/storage"
 	"backend/static"
 	"context"
 	"fmt"
@@ -45,6 +46,10 @@ func Run() {
 	}
 
 	models.Init()
+
+	if err := storage.Init(); err != nil {
+		panic(fmt.Errorf("failed to initialize storage: %w", err))
+	}
 
 	err = migrations.Run()
 	if err != nil {

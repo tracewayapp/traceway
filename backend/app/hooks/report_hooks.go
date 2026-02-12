@@ -7,6 +7,7 @@ type ReportEvent struct {
 	EndpointCount  int
 	ErrorCount     int
 	TaskCount      int
+	RecordingCount int
 }
 
 var (

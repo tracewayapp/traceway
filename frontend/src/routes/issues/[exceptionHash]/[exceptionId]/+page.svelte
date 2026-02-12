@@ -26,6 +26,7 @@
     let notFound = $state(false);
     let total = $state(0);
     let linkedTrace = $state<LinkedTrace | null>(null);
+    let sessionRecordingEvents = $state<unknown[] | null>(null);
     let showArchiveDialog = $state(false);
     let archiving = $state(false);
 
@@ -40,11 +41,13 @@
         error = '';
         notFound = false;
         linkedTrace = null;
+        sessionRecordingEvents = null;
 
         try {
             // Load the specific exception by ID
             const exceptionResponse = await api.post(`/exception-stack-traces/by-id/${data.exceptionId}`, {}, { projectId: projectsState.currentProjectId ?? undefined });
             occurrence = exceptionResponse.exception;
+            sessionRecordingEvents = exceptionResponse.sessionRecordingEvents ?? null;
 
             if (!occurrence) {
                 notFound = true;
@@ -172,6 +175,7 @@
         <EventCard
             {occurrence}
             {linkedTrace}
+            {sessionRecordingEvents}
             title="Event"
             description="Details for this specific occurrence"
         />

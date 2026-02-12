@@ -4,6 +4,11 @@ import (
 	"backend/app/middleware"
 	"backend/app/models"
 	"backend/app/repositories"
+	"backend/app/storage"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -34,9 +39,10 @@ type ExceptionDetailRequest struct {
 }
 
 type ExceptionDetailResponse struct {
-	Group       *models.ExceptionGroup       `json:"group"`
-	Occurrences []models.ExceptionStackTrace `json:"occurrences"`
-	Pagination  Pagination                   `json:"pagination"`
+	Group                  *models.ExceptionGroup       `json:"group"`
+	Occurrences            []models.ExceptionStackTrace `json:"occurrences"`
+	Pagination             Pagination                   `json:"pagination"`
+	SessionRecordingEvents json.RawMessage              `json:"sessionRecordingEvents,omitempty"`
 }
 
 func (e exceptionStackTraceController) FindGrouppedExceptionStackTraces(c *gin.Context) {
@@ -132,7 +138,7 @@ func (e exceptionStackTraceController) FindByHash(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, ExceptionDetailResponse{
+	response := ExceptionDetailResponse{
 		Group:       group,
 		Occurrences: occurrences,
 		Pagination: Pagination{
@@ -141,7 +147,23 @@ func (e exceptionStackTraceController) FindByHash(c *gin.Context) {
 			Total:      total,
 			TotalPages: (total + int64(request.Pagination.PageSize) - 1) / int64(request.Pagination.PageSize),
 		},
-	})
+	}
+
+	if len(occurrences) > 0 {
+		filePath, err := repositories.SessionRecordingRepository.FindByExceptionId(c, projectId, occurrences[0].Id)
+		if err == nil && filePath != "" {
+			eventsData, err := storage.Store.Read(c, filePath)
+			if err == nil {
+				response.SessionRecordingEvents = json.RawMessage(eventsData)
+			} else {
+				traceway.CaptureException(fmt.Errorf("failed to read session recording (key=%s): %w", filePath, err))
+			}
+		} else if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			traceway.CaptureException(fmt.Errorf("failed to load session recording ref for exception %s: %w", occurrences[0].Id, err))
+		}
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 func (e exceptionStackTraceController) ArchiveExceptions(c *gin.Context) {
@@ -224,7 +246,21 @@ func (e exceptionStackTraceController) FindById(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"exception": exception})
+	response := gin.H{"exception": exception}
+
+	filePath, err := repositories.SessionRecordingRepository.FindByExceptionId(c, projectId, exceptionId)
+	if err == nil && filePath != "" {
+		eventsData, err := storage.Store.Read(c, filePath)
+		if err == nil {
+			response["sessionRecordingEvents"] = json.RawMessage(eventsData)
+		} else {
+			traceway.CaptureException(fmt.Errorf("failed to read session recording (key=%s): %w", filePath, err))
+		}
+	} else if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		traceway.CaptureException(fmt.Errorf("failed to load session recording ref for exception %s: %w", exceptionId, err))
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 var ExceptionStackTraceController = exceptionStackTraceController{}

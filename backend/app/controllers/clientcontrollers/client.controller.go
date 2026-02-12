@@ -6,11 +6,15 @@ import (
 	"backend/app/models"
 	"backend/app/models/clientmodels"
 	"backend/app/repositories"
+	"backend/app/storage"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -52,6 +56,19 @@ func (e clientController) Report(c *gin.Context) {
 	exceptionStackTraceToInsert := []models.ExceptionStackTrace{}
 	metricRecordsToInsert := []models.MetricRecord{}
 	spansToInsert := []models.Span{}
+
+	type recordingWork struct {
+		Id          uuid.UUID
+		ProjectId   uuid.UUID
+		ExceptionId uuid.UUID
+		Events      []byte
+		RecordedAt  time.Time
+	}
+	var recordingsWork []recordingWork
+
+	// Map frontend sessionRecordingId → backend-generated exception UUID
+	recordingIdToExceptionId := map[string]uuid.UUID{}
+
 	for _, cf := range request.CollectionFrames {
 		for _, ct := range cf.Traces {
 			if ct.IsTask {
@@ -64,7 +81,6 @@ func (e clientController) Report(c *gin.Context) {
 				endpointsToInsert = append(endpointsToInsert, e)
 			}
 
-			// Extract spans from trace
 			for _, cs := range ct.Spans {
 				span := cs.ToSpan(ct.ParsedId())
 				span.ProjectId = projectId
@@ -76,6 +92,9 @@ func (e clientController) Report(c *gin.Context) {
 			est := cst.ToExceptionStackTrace(computeExceptionHash(cst.StackTrace, cst.IsMessage), request.AppVersion, request.ServerName)
 			est.Id = uuid.New()
 			est.ProjectId = projectId
+			if cst.SessionRecordingId != nil {
+				recordingIdToExceptionId[*cst.SessionRecordingId] = est.Id
+			}
 			exceptionStackTraceToInsert = append(exceptionStackTraceToInsert, est)
 		}
 
@@ -83,6 +102,20 @@ func (e clientController) Report(c *gin.Context) {
 			mr := cm.ToMetricRecord(request.ServerName)
 			mr.ProjectId = projectId
 			metricRecordsToInsert = append(metricRecordsToInsert, mr)
+		}
+
+		for _, sr := range cf.SessionRecordings {
+			exceptionId, ok := recordingIdToExceptionId[sr.ExceptionId]
+			if !ok {
+				continue
+			}
+			recordingsWork = append(recordingsWork, recordingWork{
+				Id:          uuid.New(),
+				ProjectId:   projectId,
+				ExceptionId: exceptionId,
+				Events:      sr.Events,
+				RecordedAt:  time.Now().UTC(),
+			})
 		}
 	}
 
@@ -123,7 +156,6 @@ func (e clientController) Report(c *gin.Context) {
 		return
 	}
 
-	// Broadcast usage event
 	if project, exists := c.Get(middleware.ProjectContextKey); exists {
 		if p, ok := project.(*models.Project); ok && p.OrganizationId != nil {
 			hooks.BroadcastReport(hooks.ReportEvent{
@@ -131,8 +163,32 @@ func (e clientController) Report(c *gin.Context) {
 				EndpointCount:  len(endpointsToInsert),
 				ErrorCount:     len(exceptionStackTraceToInsert),
 				TaskCount:      len(tasksToInsert),
+				RecordingCount: len(recordingsWork),
 			})
 		}
+	}
+
+	if len(recordingsWork) > 0 {
+		work := recordingsWork
+		go func() {
+			for _, rw := range work {
+				key := fmt.Sprintf("recordings/%s/%s.json", rw.ProjectId, rw.ExceptionId)
+				if err := storage.Store.Write(context.Background(), key, rw.Events); err != nil {
+					traceway.CaptureException(fmt.Errorf("failed to write session recording (key=%s): %w", key, err))
+					continue
+				}
+				err := repositories.SessionRecordingRepository.InsertAsync(context.Background(), []models.SessionRecording{{
+					Id:          rw.Id,
+					ProjectId:   rw.ProjectId,
+					ExceptionId: rw.ExceptionId,
+					FilePath:    key,
+					RecordedAt:  rw.RecordedAt,
+				}})
+				if err != nil {
+					traceway.CaptureException(fmt.Errorf("failed to insert session recording ref (key=%s): %w", key, err))
+				}
+			}
+		}()
 	}
 
 	c.JSON(http.StatusOK, gin.H{})
@@ -156,41 +212,19 @@ func computeExceptionHash(stackTrace string, isMessage bool) string {
 	normalized := stackTrace
 
 	if !isMessage {
-		// Only normalize for actual exceptions, not messages
-		// Remove the error message content (keep just the error type)
 		normalized = errorMessageRe.ReplaceAllString(normalized, "$1")
-
-		// Remove absolute paths, keep just filename:line
 		normalized = absolutePathRe.ReplaceAllString(normalized, "$1")
-
-		// Remove version numbers from module paths
 		normalized = versionRe.ReplaceAllString(normalized, "")
-
-		// Replace hex addresses/pointers
 		normalized = hexRe.ReplaceAllString(normalized, "<hex>")
-
-		// Replace UUIDs
 		normalized = uuidRe.ReplaceAllString(normalized, "<uuid>")
-
-		// Replace standalone large numbers (likely IDs, not line numbers)
-		// Since Go doesn't support lookbehind, we preserve the surrounding characters
 		normalized = largeNumberRe.ReplaceAllString(normalized, "${1}<id>${3}")
-
-		// Replace email addresses
 		normalized = emailRe.ReplaceAllString(normalized, "<email>")
-
-		// Replace IP addresses
 		normalized = ipRe.ReplaceAllString(normalized, "<ip>")
-
-		// Normalize goroutine numbers
 		normalized = goroutineRe.ReplaceAllString(normalized, "goroutine <n>")
-
-		// Normalize whitespace
 		normalized = spacesRe.ReplaceAllString(normalized, " ")
 		normalized = newlinesRe.ReplaceAllString(normalized, "\n")
 	}
 
-	// Compute SHA-256 and return first 16 hex characters
 	normalized = strings.TrimSpace(normalized)
 	hash := sha256.Sum256([]byte(normalized))
 	return hex.EncodeToString(hash[:])[:16]

@@ -56,6 +56,7 @@
 		"@tracewayapp/svelte": "^0.3.0",
 		"lucide-svelte": "^0.562.0",
 		"luxon": "^3.7.2",
+		"rrweb-player": "^2.0.0-alpha.18",
 		"svelte-highlight": "^7.9.0",
 		"svelte-sonner": "^1.0.7"
 	}

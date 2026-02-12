@@ -2,18 +2,20 @@ package clientmodels
 
 import (
 	"backend/app/models"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
 )
 
 type ClientExceptionStackTrace struct {
-	TraceId    *string           `json:"traceId"`
-	IsTask     bool              `json:"isTask"`
-	StackTrace string            `json:"stackTrace"`
-	RecordedAt time.Time         `json:"recordedAt"`
-	Attributes map[string]string `json:"attributes"`
-	IsMessage  bool              `json:"isMessage"`
+	TraceId            *string           `json:"traceId"`
+	IsTask             bool              `json:"isTask"`
+	StackTrace         string            `json:"stackTrace"`
+	RecordedAt         time.Time         `json:"recordedAt"`
+	Attributes         map[string]string `json:"attributes"`
+	IsMessage          bool              `json:"isMessage"`
+	SessionRecordingId *string           `json:"sessionRecordingId"`
 }
 
 func (c *ClientExceptionStackTrace) ToExceptionStackTrace(exceptionHash, appVersion, serverName string) models.ExceptionStackTrace {
@@ -132,8 +134,14 @@ func (c *ClientSpan) ToSpan(traceId uuid.UUID) models.Span {
 	}
 }
 
+type ClientSessionRecording struct {
+	ExceptionId string          `json:"exceptionId"`
+	Events      json.RawMessage `json:"events"`
+}
+
 type CollectionFrame struct {
-	StackTraces  []*ClientExceptionStackTrace `json:"stackTraces"`
-	Metrics      []*ClientMetricRecord        `json:"metrics"`
-	Traces       []*ClientTrace               `json:"traces"`
+	StackTraces       []*ClientExceptionStackTrace `json:"stackTraces"`
+	Metrics           []*ClientMetricRecord        `json:"metrics"`
+	Traces            []*ClientTrace               `json:"traces"`
+	SessionRecordings []*ClientSessionRecording    `json:"sessionRecordings"`
 }

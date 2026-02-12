@@ -6,7 +6,7 @@
   </picture>
 </p>
 
-<h3 align="center">Error tracking and performance monitoring for Go and Node.js</h3>
+<h3 align="center">Error tracking and performance monitoring</h3>
 
 <p align="center">
   <a href="https://tracewayapp.com">Website</a> · <a href="https://docs.tracewayapp.com">Docs</a> · <a href="https://github.com/tracewayapp/go-client">Go Client SDK</a>

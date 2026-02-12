@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="Traceway Logo.png" alt="Traceway Logo" width="400" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="Traceway Logo White.png" />
+    <source media="(prefers-color-scheme: light)" srcset="Traceway Logo.png" />
+    <img src="Traceway Logo.png" alt="Traceway Logo" width="400" />
+  </picture>
 </p>
 
 <h3 align="center">Error tracking and performance monitoring for Go and Node.js</h3>

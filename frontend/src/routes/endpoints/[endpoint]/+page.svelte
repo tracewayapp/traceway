@@ -208,6 +208,14 @@
 		notFound = false;
 		errorStatus = 0;
 
+		if (selectedPreset) {
+			const range = getTimeRangeFromPreset(selectedPreset, timezone);
+			fromDate = dateToCalendarDate(range.from, timezone);
+			toDate = dateToCalendarDate(range.to, timezone);
+			fromTime = dateToTimeString(range.from, timezone);
+			toTime = dateToTimeString(range.to, timezone);
+		}
+
 		updateTimeRangeUrl(pushToHistory);
 
 		try {

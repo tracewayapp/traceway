@@ -37,3 +37,4 @@ go.work.sum
 backend/static/dist/
 /testing/devtesting-nestjs/node_modules
 /testing/devtesting-nestjs/dist
+/backend/storage/recordings

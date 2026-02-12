@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { Globe } from 'lucide-svelte';
+	import type { eventWithTime } from '@rrweb/types';
 
 	interface Props {
-		events: unknown[] | null;
+		events: (eventWithTime & { data?: { href?: string } })[] | null;
 	}
 
 	let { events }: Props = $props();
@@ -29,9 +30,18 @@
 
 		const width = Math.round(container.clientWidth * 0.75);
 
+		const chartColor = getComputedStyle(container).getPropertyValue('--chart-1').trim();
+
 		player = new rrwebPlayer({
 			target: container,
-			props: { events, width, height: getPlayerHeight(width) }
+			props: {
+				events,
+				width,
+				height: getPlayerHeight(width),
+				mouseTail: {
+					strokeStyle: chartColor
+				}
+			}
 		});
 
 		resizeObserver = new ResizeObserver((entries) => {
@@ -180,5 +190,10 @@
 
 	.player-wrapper :global(.replayer-wrapper.touch-active) {
 		border-color: var(--chart-1) !important;
+	}
+
+	/* Mouse cursor */
+	.player-wrapper :global(.replayer-mouse) {
+		background-image: url('data:image/svg+xml;charset=utf-8;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSczMDBweCcgaGVpZ2h0PSczMDBweCcgdmlld0JveD0nMCAwIDUwIDUwJz48cGF0aCBkPSdNNSAyTDUgNDNMMTQuNSAzM0wyMyA0OEwzMCA0NC41TDIxLjUgMjkuNUwzNSAyOS41WicgZmlsbD0nIzAwMDAwMCcgc3Ryb2tlPScjZmZmZmZmJyBzdHJva2Utd2lkdGg9JzIuNScgc3Ryb2tlLWxpbmVqb2luPSdyb3VuZCcvPjwvc3ZnPg==') !important;
 	}
 </style>

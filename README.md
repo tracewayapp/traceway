@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="Traceway Logo White.png" />
-    <source media="(prefers-color-scheme: light)" srcset="Traceway Logo.png" />
+    <source media="(prefers-color-scheme: dark)" srcset="Traceway%20Logo%20White.png" />
+    <source media="(prefers-color-scheme: light)" srcset="Traceway%20Logo.png" />
     <img src="Traceway Logo.png" alt="Traceway Logo" width="400" />
   </picture>
 </p>

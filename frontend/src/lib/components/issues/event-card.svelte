@@ -44,7 +44,7 @@
 			<Card.Title>Session Replay</Card.Title>
 		</Card.Header>
 		<Card.Content class="p-0">
-			<SessionReplay events={sessionRecordingEvents} />
+			<SessionReplay events={sessionRecordingEvents as any} />
 		</Card.Content>
 	</Card.Root>
 {/if}

@@ -38,6 +38,7 @@
 				events,
 				width,
 				height: getPlayerHeight(width),
+				autoPlay: false,
 				mouseTail: {
 					strokeStyle: chartColor
 				}

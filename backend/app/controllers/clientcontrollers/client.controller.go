@@ -69,7 +69,7 @@ func (e clientController) Report(c *gin.Context) {
 	// Map frontend sessionRecordingId → backend-generated exception UUID
 	recordingIdToExceptionId := map[string]uuid.UUID{}
 
-	for _, cf := range request.CollectionFrames {
+	for i, cf := range request.CollectionFrames {
 		for _, ct := range cf.Traces {
 			if ct.IsTask {
 				t := ct.ToTask(request.AppVersion, request.ServerName)

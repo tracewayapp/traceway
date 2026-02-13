@@ -1,5 +1,4 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
     import { api } from '$lib/api';
     import { LoadingCircle } from "$lib/components/ui/loading-circle";
     import { ErrorDisplay } from "$lib/components/ui/error-display";
@@ -130,7 +129,8 @@
         }
     }
 
-    onMount(() => {
+    $effect(() => {
+        data.exceptionId;
         loadData();
     });
 </script>

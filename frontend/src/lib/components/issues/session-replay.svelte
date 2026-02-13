@@ -161,6 +161,10 @@
 		color: var(--foreground) !important;
 	}
 
+	.player-wrapper :global(.rr-controller__btns button svg) {
+		fill: currentColor;
+	}
+
 	.player-wrapper :global(.rr-controller__btns button:hover) {
 		background: var(--accent) !important;
 	}

@@ -16,6 +16,7 @@ func Init() {
 	lit.RegisterModel[InvitationWithInviter](lit.PostgreSQL)
 	lit.RegisterModel[UserOrganizationResponse](lit.PostgreSQL)
 	lit.RegisterModel[CountResult](lit.PostgreSQL)
+	lit.RegisterModel[SourceMap](lit.PostgreSQL)
 
 	for _, register := range ExtensionModelRegistrations {
 		register()

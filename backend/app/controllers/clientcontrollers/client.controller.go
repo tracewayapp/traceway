@@ -6,6 +6,7 @@ import (
 	"backend/app/models"
 	"backend/app/models/clientmodels"
 	"backend/app/repositories"
+	"backend/app/services"
 	"backend/app/storage"
 	"context"
 	"crypto/sha256"
@@ -89,7 +90,14 @@ func (e clientController) Report(c *gin.Context) {
 		}
 
 		for _, cst := range cf.StackTraces {
-			est := cst.ToExceptionStackTrace(computeExceptionHash(cst.StackTrace, cst.IsMessage), request.AppVersion, request.ServerName)
+			resolvedStackTrace := cst.StackTrace
+			if project, exists := c.Get(middleware.ProjectContextKey); exists {
+				if p, ok := project.(*models.Project); ok && isJsFramework(p.Framework) {
+					resolvedStackTrace = services.ResolveStackTrace(c, projectId, request.AppVersion, cst.StackTrace)
+				}
+			}
+			est := cst.ToExceptionStackTrace(computeExceptionHash(resolvedStackTrace, cst.IsMessage), request.AppVersion, request.ServerName)
+			est.StackTrace = resolvedStackTrace
 			est.Id = uuid.New()
 			est.ProjectId = projectId
 			if cst.SessionRecordingId != nil {
@@ -231,6 +239,20 @@ func computeExceptionHash(stackTrace string, isMessage bool) string {
 	normalized = strings.TrimSpace(normalized)
 	hash := sha256.Sum256([]byte(normalized))
 	return hex.EncodeToString(hash[:])[:16]
+}
+
+var jsFrameworks = map[string]bool{
+	"react":   true,
+	"svelte":  true,
+	"vuejs":   true,
+	"nextjs":  true,
+	"nestjs":  true,
+	"express": true,
+	"remix":   true,
+}
+
+func isJsFramework(framework string) bool {
+	return jsFrameworks[framework]
 }
 
 var ClientController = clientController{}

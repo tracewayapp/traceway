@@ -60,12 +60,14 @@ func Run() {
 	if err := cache.ProjectCache.Init(ctx); err != nil {
 		panic(fmt.Errorf("projects cache could not be initialized: %w", err))
 	}
+	cache.InitSourceMapCache(200, 500*1024*1024)
 
 	middleware.InitUseClientAuth()
 	middleware.InitUseAppAuth()
 	middleware.InitRequireWriteAccess()
 	middleware.InitRequireProjectAccess()
 	middleware.InitRequireAdminAccess()
+	middleware.InitUseSourceMapAuth()
 
 	services.InitEmail()
 

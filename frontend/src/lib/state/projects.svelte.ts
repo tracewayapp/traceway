@@ -41,6 +41,7 @@ export interface Project {
     framework: Framework;
     organizationId: number | null;
     createdAt: string;
+    sourceMapToken: string | null;
     backendUrl: string;
 }
 
@@ -122,6 +123,14 @@ class ProjectsState {
         await this.loadProjects();
 
         return response;
+    }
+
+    async generateSourceMapToken(): Promise<string> {
+        const resp = await api.post('/projects/source-map-token', {}, {
+            projectId: this.currentProjectId ?? undefined
+        });
+        await this.loadProjects();
+        return resp.sourceMapToken;
     }
 
     selectProject(projectId: string) {

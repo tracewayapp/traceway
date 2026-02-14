@@ -110,4 +110,24 @@ func (p projectController) CreateProject(c *gin.Context) {
 	c.JSON(http.StatusCreated, project.ToProjectWithBackendUrl())
 }
 
+func (p projectController) GenerateSourceMapToken(c *gin.Context) {
+	projectId, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return
+	}
+
+	token, err := pgdb.ExecuteTransaction(func(tx *sql.Tx) (string, error) {
+		return repositories.ProjectRepository.GenerateSourceMapToken(tx, projectId)
+	})
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to generate source map token: %w", err))
+		return
+	}
+
+	cache.ProjectCache.UpdateSourceMapToken(projectId, token)
+
+	c.JSON(http.StatusOK, gin.H{"sourceMapToken": token})
+}
+
 var ProjectController = projectController{}

@@ -14,6 +14,7 @@ type Project struct {
 	Framework      string    `json:"framework"`
 	OrganizationId *int      `json:"organizationId"`
 	CreatedAt      time.Time `json:"createdAt"`
+	SourceMapToken *string   `json:"sourceMapToken,omitempty"`
 }
 
 func (p Project) ToProjectWithBackendUrl() *ProjectWithBackendUrl {

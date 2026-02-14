@@ -3,6 +3,7 @@ package repositories
 import (
 	"backend/app/models"
 	"database/sql"
+	"fmt"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ type projectWithRole struct {
 	Framework      string    `lit:"framework"`
 	OrganizationId *int      `lit:"organization_id"`
 	CreatedAt      time.Time `lit:"created_at"`
+	SourceMapToken *string   `lit:"source_map_token"`
 	Role           string    `lit:"role"`
 }
 
@@ -29,7 +31,7 @@ func init() {
 func (p *projectRepository) FindAllWithBackendUrlByUserId(tx *sql.Tx, userId int) ([]*models.ProjectWithBackendUrl, error) {
 	rows, err := lit.Select[projectWithRole](
 		tx,
-		`SELECT DISTINCT p.id, p.name, p.token, p.framework, p.organization_id, p.created_at, ou.role
+		`SELECT DISTINCT p.id, p.name, p.token, p.framework, p.organization_id, p.created_at, p.source_map_token, ou.role
 		FROM projects p
 		INNER JOIN organization_users ou ON p.organization_id = ou.organization_id
 		WHERE ou.user_id = $1
@@ -43,8 +45,10 @@ func (p *projectRepository) FindAllWithBackendUrlByUserId(tx *sql.Tx, userId int
 	result := make([]*models.ProjectWithBackendUrl, 0, len(rows))
 	for _, row := range rows {
 		token := row.Token
+		sourceMapToken := row.SourceMapToken
 		if row.Role == "readonly" {
 			token = "read-only-hidden-token"
+			sourceMapToken = nil
 		}
 
 		project := models.Project{
@@ -54,6 +58,7 @@ func (p *projectRepository) FindAllWithBackendUrlByUserId(tx *sql.Tx, userId int
 			Framework:      row.Framework,
 			OrganizationId: row.OrganizationId,
 			CreatedAt:      row.CreatedAt,
+			SourceMapToken: sourceMapToken,
 		}
 		result = append(result, project.ToProjectWithBackendUrl())
 	}
@@ -64,14 +69,14 @@ func (p *projectRepository) FindAllWithBackendUrlByUserId(tx *sql.Tx, userId int
 func (p *projectRepository) FindAll(tx *sql.Tx) ([]*models.Project, error) {
 	return lit.Select[models.Project](
 		tx,
-		"SELECT id, name, token, framework, organization_id, created_at FROM projects ORDER BY created_at ASC",
+		"SELECT id, name, token, framework, organization_id, created_at, source_map_token FROM projects ORDER BY created_at ASC",
 	)
 }
 
 func (p *projectRepository) FindByToken(tx *sql.Tx, token string) (*models.Project, error) {
 	return lit.SelectSingle[models.Project](
 		tx,
-		"SELECT id, name, token, framework, organization_id, created_at FROM projects WHERE token = $1",
+		"SELECT id, name, token, framework, organization_id, created_at, source_map_token FROM projects WHERE token = $1",
 		token,
 	)
 }
@@ -79,7 +84,7 @@ func (p *projectRepository) FindByToken(tx *sql.Tx, token string) (*models.Proje
 func (p *projectRepository) FindById(tx *sql.Tx, id uuid.UUID) (*models.Project, error) {
 	return lit.SelectSingle[models.Project](
 		tx,
-		"SELECT id, name, token, framework, organization_id, created_at FROM projects WHERE id = $1",
+		"SELECT id, name, token, framework, organization_id, created_at, source_map_token FROM projects WHERE id = $1",
 		id,
 	)
 }
@@ -122,7 +127,7 @@ func (p *projectRepository) CreateWithOrganization(tx *sql.Tx, name string, fram
 func (p *projectRepository) FindByOrganizationId(tx *sql.Tx, organizationId int) ([]*models.Project, error) {
 	return lit.Select[models.Project](
 		tx,
-		"SELECT id, name, token, framework, organization_id, created_at FROM projects WHERE organization_id = $1 ORDER BY created_at ASC",
+		"SELECT id, name, token, framework, organization_id, created_at, source_map_token FROM projects WHERE organization_id = $1 ORDER BY created_at ASC",
 		organizationId,
 	)
 }
@@ -131,7 +136,7 @@ func (p *projectRepository) FindByOrganizationId(tx *sql.Tx, organizationId int)
 func (p *projectRepository) FindByUserId(tx *sql.Tx, userId int) ([]*models.Project, error) {
 	return lit.Select[models.Project](
 		tx,
-		`SELECT DISTINCT p.id, p.name, p.token, p.framework, p.organization_id, p.created_at
+		`SELECT DISTINCT p.id, p.name, p.token, p.framework, p.organization_id, p.created_at, p.source_map_token
 		FROM projects p
 		INNER JOIN organization_users ou ON p.organization_id = ou.organization_id
 		WHERE ou.user_id = $1
@@ -157,6 +162,32 @@ func (p *projectRepository) UserHasAccess(tx *sql.Tx, projectId uuid.UUID, userI
 	}
 
 	return result.Count > 0, nil
+}
+
+func (p *projectRepository) GenerateSourceMapToken(tx *sql.Tx, projectId uuid.UUID) (string, error) {
+	project, err := p.FindById(tx, projectId)
+	if err != nil {
+		return "", err
+	}
+	if project == nil {
+		return "", fmt.Errorf("project not found: %s", projectId)
+	}
+
+	token := generateSecureToken()
+	project.SourceMapToken = &token
+	err = lit.Update[models.Project](tx, project, "id = $1", projectId)
+	if err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+func (p *projectRepository) FindBySourceMapToken(tx *sql.Tx, token string) (*models.Project, error) {
+	return lit.SelectSingle[models.Project](
+		tx,
+		"SELECT id, name, token, framework, organization_id, created_at, source_map_token FROM projects WHERE source_map_token = $1",
+		token,
+	)
 }
 
 func generateSecureToken() string {

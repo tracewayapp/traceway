@@ -69,7 +69,7 @@ func (e clientController) Report(c *gin.Context) {
 	// Map frontend sessionRecordingId → backend-generated exception UUID
 	recordingIdToExceptionId := map[string]uuid.UUID{}
 
-	for i, cf := range request.CollectionFrames {
+	for _, cf := range request.CollectionFrames {
 		for _, ct := range cf.Traces {
 			if ct.IsTask {
 				t := ct.ToTask(request.AppVersion, request.ServerName)
@@ -171,21 +171,24 @@ func (e clientController) Report(c *gin.Context) {
 	if len(recordingsWork) > 0 {
 		work := recordingsWork
 		go func() {
+			var successful []models.SessionRecording
 			for _, rw := range work {
 				key := fmt.Sprintf("recordings/%s/%s.json", rw.ProjectId, rw.ExceptionId)
 				if err := storage.Store.Write(context.Background(), key, rw.Events); err != nil {
-					traceway.CaptureException(fmt.Errorf("failed to write session recording (key=%s): %w", key, err))
+					traceway.CaptureException(traceway.NewStackTraceErrorf("failed to write session recording (key=%s): %w", key, err))
 					continue
 				}
-				err := repositories.SessionRecordingRepository.InsertAsync(context.Background(), []models.SessionRecording{{
+				successful = append(successful, models.SessionRecording{
 					Id:          rw.Id,
 					ProjectId:   rw.ProjectId,
 					ExceptionId: rw.ExceptionId,
 					FilePath:    key,
 					RecordedAt:  rw.RecordedAt,
-				}})
-				if err != nil {
-					traceway.CaptureException(fmt.Errorf("failed to insert session recording ref (key=%s): %w", key, err))
+				})
+			}
+			if len(successful) > 0 {
+				if err := repositories.SessionRecordingRepository.InsertAsync(context.Background(), successful); err != nil {
+					traceway.CaptureException(traceway.NewStackTraceErrorf("failed to batch insert %d session recording refs: %w", len(successful), err))
 				}
 			}
 		}()

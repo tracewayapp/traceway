@@ -138,7 +138,7 @@
 		const dt = calendarDateTimeToLuxon(
 			{ year: toDate.year, month: toDate.month, day: toDate.day, hour, minute },
 			timezone
-		);
+		).endOf('minute');
 		return toUTCISO(dt);
 	}
 

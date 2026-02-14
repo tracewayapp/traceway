@@ -683,6 +683,25 @@ if err != nil {
 - This pattern applies to all 500 Internal Server Error responses
 - For client errors (400, 404), `c.JSON` with an error message is acceptable
 
+**Non-stopping errors:** For errors that should not abort the request (e.g., optional feature failed to load), use `traceway.CaptureException` to report them instead of `log.Printf`:
+
+```go
+// CORRECT - Report non-stopping errors via traceway
+if err != nil {
+    traceway.CaptureException(fmt.Errorf("failed to read session recording (key=%s): %w", key, err))
+}
+
+// WRONG - Do not use log.Printf for errors
+if err != nil {
+    log.Printf("Failed to read session recording (key=%s): %v", key, err)
+}
+```
+
+**Summary:**
+- **Stopping errors** (abort the request): `c.AbortWithError(status, traceway.NewStackTraceErrorf("reason: %w", err))`
+- **Non-stopping errors** (continue serving): `traceway.CaptureException(fmt.Errorf("reason: %w", err))`
+- **Always** wrap errors with `traceway.NewStackTraceErrorf` or `fmt.Errorf` using `%w` — never discard the original error
+
 ---
 
 ## Go Client SDK

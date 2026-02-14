@@ -8,10 +8,13 @@
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import { AttributesGrid } from '$lib/components/ui/attributes-grid';
 	import { LabelValue } from '../ui/label-value';
+	import { projectsState, isFrontendFramework } from '$lib/state/projects.svelte';
+	import SessionReplay from './session-replay.svelte';
 
 	interface Props {
 		occurrence: ExceptionOccurrence;
 		linkedTrace: LinkedTrace | null;
+		sessionRecordingEvents?: unknown[] | null;
 		title?: string;
 		description?: string;
 		timezone?: string;
@@ -20,13 +23,33 @@
 	let {
 		occurrence,
 		linkedTrace,
+		sessionRecordingEvents = null,
 		title = 'Event',
 		description = 'Details for this specific occurrence',
 		timezone
 	}: Props = $props();
 
 	const tz = $derived(timezone ?? getTimezone());
+	const isFrontend = $derived(
+		projectsState.currentProject?.framework
+			? isFrontendFramework(projectsState.currentProject.framework)
+			: false
+	);
 </script>
+
+<!-- Session Replay -->
+{#if sessionRecordingEvents && sessionRecordingEvents.length > 0}
+	<Card.Root class="pb-0">
+		<Card.Header class="gap-0">
+			<Card.Title>Session Replay</Card.Title>
+		</Card.Header>
+		<Card.Content class="p-0">
+			{#key sessionRecordingEvents}
+			<SessionReplay events={sessionRecordingEvents as any} />
+		{/key}
+		</Card.Content>
+	</Card.Root>
+{/if}
 
 <Card.Root>
 	<Card.Header>
@@ -35,23 +58,27 @@
 	</Card.Header>
 	<Card.Content class="space-y-6">
 		<!-- Event Details -->
-		<div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+		<div class="grid grid-cols-2 gap-4 {isFrontend ? 'md:grid-cols-2' : 'md:grid-cols-4'}">
 			<div class="space-y-1">
 				<p class="text-sm text-muted-foreground">Recorded At</p>
 				<p class="font-mono text-sm">{formatDateTime(occurrence.recordedAt, { timezone: tz })}</p>
 			</div>
-			<div class="space-y-1">
-				<p class="text-sm text-muted-foreground">Server</p>
-				<p class="font-mono text-sm">{occurrence.serverName || '-'}</p>
-			</div>
+			{#if !isFrontend}
+				<div class="space-y-1">
+					<p class="text-sm text-muted-foreground">Server</p>
+					<p class="font-mono text-sm">{occurrence.serverName || '-'}</p>
+				</div>
+			{/if}
 			<div class="space-y-1">
 				<p class="text-sm text-muted-foreground">Version</p>
 				<p class="font-mono text-sm">{occurrence.appVersion || '-'}</p>
 			</div>
-			<div class="space-y-1">
-				<p class="text-sm text-muted-foreground">Trace</p>
-				<p class="font-mono text-sm">{occurrence.traceId || '-'}</p>
-			</div>
+			{#if !isFrontend}
+				<div class="space-y-1">
+					<p class="text-sm text-muted-foreground">Trace</p>
+					<p class="font-mono text-sm">{occurrence.traceId || '-'}</p>
+				</div>
+			{/if}
 		</div>
 
 		<!-- AttributesGrid -->

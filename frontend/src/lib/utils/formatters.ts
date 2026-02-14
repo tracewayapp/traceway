@@ -97,32 +97,7 @@ export function getNow(timezone?: string): DateTime {
 	return DateTime.now().setZone(tz);
 }
 
-export function getTimeRangeFromPreset(
-	preset: string,
-	timezone?: string
-): { from: DateTime; to: DateTime } {
-	const tz = timezone ?? getTimezone();
-	const now = DateTime.now().setZone(tz);
 
-	const presetMinutes: Record<string, number> = {
-		'5m': 5,
-		'30m': 30,
-		'60m': 60,
-		'3h': 180,
-		'6h': 360,
-		'12h': 720,
-		'24h': 1440,
-		'3d': 4320,
-		'7d': 10080,
-		'1M': 43200,
-		'3M': 129600
-	};
-
-	const minutes = presetMinutes[preset] || 360;
-	const from = now.minus({ minutes });
-
-	return { from, to: now };
-}
 
 export function luxonToCalendarDateTime(dt: DateTime): {
 	year: number;

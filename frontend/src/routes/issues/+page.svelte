@@ -21,6 +21,7 @@
 	import {
 		parseTimeRangeFromUrl,
 		getResolvedTimeRange,
+		getTimeRangeFromPreset,
 		dateToCalendarDate,
 		dateToTimeString,
 		updateUrl
@@ -132,7 +133,7 @@
 		const luxonDt = calendarDateTimeToLuxon(
 			{ year: toDate.year, month: toDate.month, day: toDate.day, hour, minute },
 			timezone
-		);
+		).endOf('minute');
 		return toUTCISO(luxonDt);
 	}
 
@@ -152,6 +153,14 @@
 	async function loadData(pushToHistory = true) {
 		loading = true;
 		error = '';
+
+		if (selectedPreset) {
+			const range = getTimeRangeFromPreset(selectedPreset, timezone);
+			fromDate = dateToCalendarDate(range.from, timezone);
+			toDate = dateToCalendarDate(range.to, timezone);
+			fromTime = dateToTimeString(range.from, timezone);
+			toTime = dateToTimeString(range.to, timezone);
+		}
 
 		updateIssuesUrl(pushToHistory);
 

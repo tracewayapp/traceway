@@ -166,7 +166,7 @@
 		const dt = calendarDateTimeToLuxon(
 			{ year: toDate.year, month: toDate.month, day: toDate.day, hour, minute },
 			timezone
-		);
+		).endOf('minute');
 		return toUTCISO(dt);
 	}
 
@@ -278,6 +278,14 @@
 
 	// Load only the active tab's data (lazy loading)
 	function loadActiveTab(pushToHistory = true) {
+		if (selectedPreset) {
+			const range = getTimeRangeFromPreset(selectedPreset, timezone);
+			fromDate = dateToCalendarDate(range.from, timezone);
+			toDate = dateToCalendarDate(range.to, timezone);
+			fromTime = dateToTimeString(range.from, timezone);
+			toTime = dateToTimeString(range.to, timezone);
+		}
+
 		if (pushToHistory) updateMetricsUrl(true);
 
 		// Update shared time domain
@@ -299,6 +307,14 @@
 
 	// Force reload (for refresh button & time range change)
 	function reloadActiveTab() {
+		if (selectedPreset) {
+			const range = getTimeRangeFromPreset(selectedPreset, timezone);
+			fromDate = dateToCalendarDate(range.from, timezone);
+			toDate = dateToCalendarDate(range.to, timezone);
+			fromTime = dateToTimeString(range.from, timezone);
+			toTime = dateToTimeString(range.to, timezone);
+		}
+
 		updateMetricsUrl(true);
 		sharedTimeDomain = [new Date(getFromDateTimeUTC()), new Date(getToDateTimeUTC())];
 

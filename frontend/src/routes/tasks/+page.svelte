@@ -104,7 +104,7 @@
 
     function getToDateTimeUTC(): string {
         const [hour, minute] = (toTime || '23:59').split(':').map(Number);
-        const dt = calendarDateTimeToLuxon({ year: toDate.year, month: toDate.month, day: toDate.day, hour, minute }, timezone);
+        const dt = calendarDateTimeToLuxon({ year: toDate.year, month: toDate.month, day: toDate.day, hour, minute }, timezone).endOf('minute');
         return toUTCISO(dt);
     }
 
@@ -131,6 +131,14 @@
     async function loadData(pushToHistory = true) {
         loading = true;
         error = '';
+
+        if (selectedPreset) {
+            const range = getTimeRangeFromPreset(selectedPreset, timezone);
+            fromDate = dateToCalendarDate(range.from, timezone);
+            toDate = dateToCalendarDate(range.to, timezone);
+            fromTime = dateToTimeString(range.from, timezone);
+            toTime = dateToTimeString(range.to, timezone);
+        }
 
         // Update URL
         updateTimeRangeUrl(pushToHistory);

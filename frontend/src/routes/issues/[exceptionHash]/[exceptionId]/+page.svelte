@@ -1,5 +1,4 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
     import { api } from '$lib/api';
     import { LoadingCircle } from "$lib/components/ui/loading-circle";
     import { ErrorDisplay } from "$lib/components/ui/error-display";
@@ -26,6 +25,7 @@
     let notFound = $state(false);
     let total = $state(0);
     let linkedTrace = $state<LinkedTrace | null>(null);
+    let sessionRecordingEvents = $state<unknown[] | null>(null);
     let showArchiveDialog = $state(false);
     let archiving = $state(false);
 
@@ -40,11 +40,13 @@
         error = '';
         notFound = false;
         linkedTrace = null;
+        sessionRecordingEvents = null;
 
         try {
             // Load the specific exception by ID
             const exceptionResponse = await api.post(`/exception-stack-traces/by-id/${data.exceptionId}`, {}, { projectId: projectsState.currentProjectId ?? undefined });
             occurrence = exceptionResponse.exception;
+            sessionRecordingEvents = exceptionResponse.sessionRecordingEvents ?? null;
 
             if (!occurrence) {
                 notFound = true;
@@ -127,7 +129,8 @@
         }
     }
 
-    onMount(() => {
+    $effect(() => {
+        data.exceptionId;
         loadData();
     });
 </script>
@@ -172,6 +175,7 @@
         <EventCard
             {occurrence}
             {linkedTrace}
+            {sessionRecordingEvents}
             title="Event"
             description="Details for this specific occurrence"
         />

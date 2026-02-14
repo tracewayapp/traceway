@@ -104,7 +104,7 @@
 
     function getToDateTimeUTC(): string {
         const [hour, minute] = (toTime || '23:59').split(':').map(Number);
-        const dt = calendarDateTimeToLuxon({ year: toDate.year, month: toDate.month, day: toDate.day, hour, minute }, timezone);
+        const dt = calendarDateTimeToLuxon({ year: toDate.year, month: toDate.month, day: toDate.day, hour, minute }, timezone).endOf('minute');
         return toUTCISO(dt);
     }
 

@@ -73,7 +73,6 @@ func (e exceptionStackTraceController) FindGrouppedExceptionStackTraces(c *gin.C
 			hashes[i] = ex.ExceptionHash
 		}
 
-		// Calculate 24-hour window
 		now := time.Now()
 		start24h := now.Add(-24 * time.Hour)
 

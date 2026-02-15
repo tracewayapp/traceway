@@ -5,10 +5,13 @@ import (
 	"backend/app/middleware"
 	"backend/app/models"
 	"backend/app/models/clientmodels"
+	"backend/app/pgdb"
 	"backend/app/repositories"
+	"backend/app/services"
 	"backend/app/storage"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -87,9 +90,34 @@ func (e clientController) Report(c *gin.Context) {
 				spansToInsert = append(spansToInsert, span)
 			}
 		}
+		projectAsAny, projectExists := c.Get(middleware.ProjectContextKey)
+		var project *models.Project
+		if projectExists {
+			if p, ok := projectAsAny.(*models.Project); ok {
+				project = p
+			}
+		}
+
+		var sourceMaps *[]*models.SourceMap
+		if project != nil && isJsFramework(project.Framework) {
+			sourceMapsLoaded, err := pgdb.ExecuteTransaction(func(tx *sql.Tx) ([]*models.SourceMap, error) {
+				if request.AppVersion != "" {
+					return repositories.SourceMapRepository.FindByProjectAndVersion(tx, projectId, request.AppVersion)
+				}
+				return repositories.SourceMapRepository.FindLatestByProject(tx, projectId)
+			})
+			if err == nil && len(sourceMapsLoaded) > 0 {
+				sourceMaps = &sourceMapsLoaded
+			}
+		}
 
 		for _, cst := range cf.StackTraces {
-			est := cst.ToExceptionStackTrace(computeExceptionHash(cst.StackTrace, cst.IsMessage), request.AppVersion, request.ServerName)
+			resolvedStackTrace := cst.StackTrace
+			if sourceMaps != nil {
+				resolvedStackTrace = services.ResolveStackTrace(c, projectId, cst.StackTrace, *sourceMaps)
+			}
+			est := cst.ToExceptionStackTrace(computeExceptionHash(resolvedStackTrace, cst.IsMessage), request.AppVersion, request.ServerName)
+			est.StackTrace = resolvedStackTrace
 			est.Id = uuid.New()
 			est.ProjectId = projectId
 			if cst.SessionRecordingId != nil {
@@ -231,6 +259,20 @@ func computeExceptionHash(stackTrace string, isMessage bool) string {
 	normalized = strings.TrimSpace(normalized)
 	hash := sha256.Sum256([]byte(normalized))
 	return hex.EncodeToString(hash[:])[:16]
+}
+
+var jsFrameworks = map[string]bool{
+	"react":   true,
+	"svelte":  true,
+	"vuejs":   true,
+	"nextjs":  true,
+	"nestjs":  true,
+	"express": true,
+	"remix":   true,
+}
+
+func isJsFramework(framework string) bool {
+	return jsFrameworks[framework]
 }
 
 var ClientController = clientController{}

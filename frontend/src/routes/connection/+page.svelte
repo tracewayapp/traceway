@@ -7,7 +7,7 @@
 		CardTitle
 	} from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
-	import { Copy, Check } from 'lucide-svelte';
+	import { Copy, Check, KeyRound } from 'lucide-svelte';
 	import { projectsState, type ProjectWithToken, isJsFramework } from '$lib/state/projects.svelte';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import FrameworkIcon from '$lib/components/framework-icon.svelte';
@@ -20,13 +20,15 @@
 	import {
 		getFrameworkCode,
 		getInstallCommand,
-		getFrameworkLabel,
-		getCodeLanguage
+		getFrameworkLabel
 	} from '$lib/utils/framework-code';
 
 	let projectWithToken = $derived(projectsState.currentProject);
 	let copiedCode = $state(false);
 	let copiedInstall = $state(false);
+	let copiedToken = $state(false);
+	let copiedCommand = $state(false);
+	let generatingToken = $state(false);
 
 	const sdkCode = $derived(
 		projectWithToken
@@ -47,6 +49,13 @@
 	);
 
 	const isJs = $derived(projectWithToken ? isJsFramework(projectWithToken.framework) : false);
+	const sourceMapToken = $derived(projectWithToken?.sourceMapToken ?? null);
+
+	const uploadCommand = $derived(
+		projectWithToken && sourceMapToken
+			? `npx @tracewayapp/sourcemap-upload --url ${projectWithToken.backendUrl} --token ${sourceMapToken} --version YOUR_VERSION --directory dist/assets`
+			: ''
+	);
 
 	async function copyCode() {
 		await navigator.clipboard.writeText(sdkCode);
@@ -58,6 +67,28 @@
 		await navigator.clipboard.writeText(installCommand);
 		copiedInstall = true;
 		setTimeout(() => (copiedInstall = false), 2000);
+	}
+
+	async function generateToken() {
+		generatingToken = true;
+		try {
+			await projectsState.generateSourceMapToken();
+		} finally {
+			generatingToken = false;
+		}
+	}
+
+	async function copyToken() {
+		if (!sourceMapToken) return;
+		await navigator.clipboard.writeText(sourceMapToken);
+		copiedToken = true;
+		setTimeout(() => (copiedToken = false), 2000);
+	}
+
+	async function copyUploadCommand() {
+		await navigator.clipboard.writeText(uploadCommand);
+		copiedCommand = true;
+		setTimeout(() => (copiedCommand = false), 2000);
 	}
 </script>
 
@@ -132,6 +163,79 @@
 				</div>
 			</CardContent>
 		</Card>
+		{#if isJs}
+			<Card>
+				<CardHeader>
+					<CardTitle class="flex items-center gap-2">
+						<KeyRound class="h-5 w-5" />
+						Source Map Upload
+					</CardTitle>
+					<CardDescription>
+						Upload source maps to see original file names and line numbers in stack traces
+						from minified code.
+					</CardDescription>
+				</CardHeader>
+				<CardContent>
+					{#if sourceMapToken}
+						<div class="space-y-4">
+							<div>
+								<p class="text-sm font-medium mb-2">Upload Token</p>
+								<div class="flex items-center gap-2">
+									<code
+										class="flex-1 rounded-md bg-muted px-3 py-2 text-sm font-mono break-all"
+										>{sourceMapToken}</code
+									>
+									<Button variant="outline" size="sm" onclick={copyToken}>
+										{#if copiedToken}
+											<Check class="h-4 w-4 text-green-500" />
+										{:else}
+											<Copy class="h-4 w-4" />
+										{/if}
+									</Button>
+								</div>
+							</div>
+							<div>
+								<p class="text-sm font-medium mb-2">Usage</p>
+								<div class="relative">
+									<div class="absolute top-2 right-2 z-10">
+										<Button variant="outline" size="sm" onclick={copyUploadCommand}>
+											{#if copiedCommand}
+												<Check class="mr-2 h-4 w-4 text-green-500" />
+												Copied!
+											{:else}
+												<Copy class="mr-2 h-4 w-4" />
+												Copy
+											{/if}
+										</Button>
+									</div>
+									<div
+										class="overflow-x-auto rounded-lg text-sm {themeState.isDark
+											? 'dark-code'
+											: 'light-code'}"
+									>
+										<Highlight language={bash} code={uploadCommand} />
+									</div>
+								</div>
+							</div>
+						</div>
+					{:else}
+						<p class="text-sm text-muted-foreground mb-4">
+							Generate an upload token to start uploading source maps as part of your build
+							process.
+						</p>
+						<Button onclick={generateToken} disabled={generatingToken}>
+							{#if generatingToken}
+								<LoadingCircle class="mr-2 h-4 w-4" />
+								Generating...
+							{:else}
+								<KeyRound class="mr-2 h-4 w-4" />
+								Generate Upload Token
+							{/if}
+						</Button>
+					{/if}
+				</CardContent>
+			</Card>
+		{/if}
 	{:else}
 		<Card>
 			<CardContent class="p-6 text-center">

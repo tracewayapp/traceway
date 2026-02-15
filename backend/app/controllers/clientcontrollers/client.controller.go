@@ -116,7 +116,7 @@ func (e clientController) Report(c *gin.Context) {
 			if sourceMaps != nil {
 				resolvedStackTrace = services.ResolveStackTrace(c, projectId, cst.StackTrace, *sourceMaps)
 			}
-			est := cst.ToExceptionStackTrace(computeExceptionHash(resolvedStackTrace, cst.IsMessage), request.AppVersion, request.ServerName)
+			est := cst.ToExceptionStackTrace(ComputeExceptionHash(resolvedStackTrace, cst.IsMessage), request.AppVersion, request.ServerName)
 			est.StackTrace = resolvedStackTrace
 			est.Id = uuid.New()
 			est.ProjectId = projectId
@@ -239,7 +239,7 @@ var (
 	newlinesRe     = regexp.MustCompile(`\n+`)
 )
 
-func computeExceptionHash(stackTrace string, isMessage bool) string {
+func ComputeExceptionHash(stackTrace string, isMessage bool) string {
 	normalized := stackTrace
 
 	if !isMessage {

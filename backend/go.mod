@@ -16,6 +16,13 @@ require (
 )
 
 require (
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.2 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20250825161204-c5933d9347a5 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20250825161204-c5933d9347a5 // indirect
+	google.golang.org/grpc v1.75.1 // indirect
+)
+
+require (
 	github.com/ClickHouse/ch-go v0.69.0 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.4 // indirect
@@ -44,13 +51,12 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.27.0 // indirect
-	github.com/go-sourcemap/sourcemap v2.1.4+incompatible // indirect
+	github.com/go-sourcemap/sourcemap v2.1.4+incompatible
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
-	github.com/kr/pretty v0.3.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421 // indirect
@@ -67,6 +73,7 @@ require (
 	github.com/ugorji/go/codec v1.3.0 // indirect
 	go.opentelemetry.io/otel v1.39.0 // indirect
 	go.opentelemetry.io/otel/trace v1.39.0 // indirect
+	go.opentelemetry.io/proto/otlp v1.9.0
 	go.uber.org/mock v0.5.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/arch v0.20.0 // indirect
@@ -74,8 +81,7 @@ require (
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/tools v0.39.0 // indirect
-	google.golang.org/protobuf v1.36.9 // indirect
-	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
+	google.golang.org/protobuf v1.36.10
 )
 
 require (

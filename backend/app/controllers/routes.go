@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"backend/app/controllers/clientcontrollers"
+	"backend/app/controllers/otelcontrollers"
 	"backend/app/middleware"
 	"os"
 
@@ -30,6 +31,11 @@ type Pagination struct {
 func RegisterControllers(router *gin.RouterGroup) {
 	router.OPTIONS("/report", middleware.CORSReport)
 	router.POST("/report", middleware.CORSReport, middleware.UseClientAuth, middleware.UseGzip, clientcontrollers.ClientController.Report)
+
+	// OTLP/HTTP ingestion
+	otelGroup := router.Group("/otel")
+	otelGroup.POST("/v1/traces", middleware.UseClientAuth, otelcontrollers.OtelController.ExportTraces)
+	otelGroup.POST("/v1/metrics", middleware.UseClientAuth, otelcontrollers.OtelController.ExportMetrics)
 
 	// Project management
 	router.GET("/projects", middleware.UseAppAuth, ProjectController.ListProjects)

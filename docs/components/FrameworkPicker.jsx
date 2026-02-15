@@ -104,6 +104,14 @@ const FRAMEWORKS = [
     href: "/client/js-sdk",
     badge: "new",
   },
+  {
+    value: "otel",
+    label: "OpenTelemetry",
+    description: "Send traces and metrics from any OTel-instrumented app to Traceway.",
+    icon: "/otel.png",
+    href: "/client/otel",
+    badge: "new",
+  },
 ];
 
 export default function FrameworkPicker() {

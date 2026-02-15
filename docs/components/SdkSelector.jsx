@@ -15,6 +15,7 @@ const SDK_QUICK_START = {
   'js-vue': '/client/vue',
   'js-svelte': '/client/svelte',
   'js-generic': '/client/js-sdk',
+  'otel': '/client/otel',
 }
 
 export default function SdkSelector() {

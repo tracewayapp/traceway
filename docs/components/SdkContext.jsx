@@ -14,6 +14,7 @@ export const SDK_OPTIONS = [
   { value: 'js-vue', label: 'Vue.js' },
   { value: 'js-svelte', label: 'Svelte' },
   { value: 'js-generic', label: 'JS Generic' },
+  { value: 'otel', label: 'OpenTelemetry' },
 ]
 
 const STORAGE_KEY = 'traceway-docs-sdk'
@@ -30,7 +31,7 @@ const PATH_SDK_MAP = {
   'react': 'js-react',
   'vue': 'js-vue',
   'svelte': 'js-svelte',
-  'js-sdk': 'js-generic',
+  'otel': 'otel',
 }
 
 const SdkContext = createContext({

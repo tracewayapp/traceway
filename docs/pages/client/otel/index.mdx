@@ -1,0 +1,76 @@
+# OpenTelemetry Integration
+
+Send traces and metrics from any OpenTelemetry-instrumented application to Traceway using the standard OTLP/HTTP protocol.
+
+## Supported Protocols
+
+| Protocol | Content-Type |
+|----------|-------------|
+| Protobuf | `application/x-protobuf` or `application/protobuf` |
+| JSON | `application/json` |
+
+Both formats follow the [OTLP/HTTP specification](https://opentelemetry.io/docs/specs/otlp/#otlphttp). Gzip compression is supported via the `Content-Encoding: gzip` header.
+
+## Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/otel/v1/traces` | Ingest spans and trace data |
+| POST | `/api/otel/v1/metrics` | Ingest metric data |
+
+Maximum request body size is 10MB.
+
+## Authentication
+
+All requests must include a Bearer token in the `Authorization` header. Use your project token from the Traceway dashboard.
+
+```
+Authorization: Bearer <project_token>
+```
+
+## Quick Start with OTel Collector
+
+Configure the OpenTelemetry Collector to export to Traceway:
+
+```yaml
+exporters:
+  otlphttp:
+    endpoint: "https://your-traceway-instance.com/api/otel"
+    headers:
+      Authorization: "Bearer your-project-token"
+
+service:
+  pipelines:
+    traces:
+      exporters: [otlphttp]
+    metrics:
+      exporters: [otlphttp]
+```
+
+## Quick Start with OTel SDK
+
+Configure an OpenTelemetry SDK to export directly to Traceway. Here's an example using the Node.js SDK:
+
+```typescript
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
+
+const traceExporter = new OTLPTraceExporter({
+  url: "https://your-traceway-instance.com/api/otel/v1/traces",
+  headers: {
+    Authorization: "Bearer your-project-token",
+  },
+});
+
+const metricExporter = new OTLPMetricExporter({
+  url: "https://your-traceway-instance.com/api/otel/v1/metrics",
+  headers: {
+    Authorization: "Bearer your-project-token",
+  },
+});
+```
+
+## Next Steps
+
+- [Traces](/client/otel/traces) — how OTel spans map to Traceway concepts
+- [Metrics](/client/otel/metrics) — supported metric types and histogram handling

@@ -11,10 +11,14 @@ const SDK_VISIBILITY = {
   "fiber-middleware": "go-fiber",
   "fasthttp-middleware": "go-fasthttp",
   "http-middleware": "go-http",
+  sdk: "go-",
   "node-sdk": "js-node",
-  "react": "js-react",
-  "vue": "js-vue",
-  "svelte": "js-svelte",
+  nestjs: "js-nestjs",
+  react: "js-react",
+  vue: "js-vue",
+  svelte: "js-svelte",
+  "js-sdk": "js-",
+  otel: "otel",
 };
 
 export default {
@@ -94,7 +98,10 @@ export default {
 
 function SdkGuard({ requiredSdk, children }) {
   const { sdk } = useSdk();
-  if (sdk !== requiredSdk) {
+  const visible = requiredSdk.endsWith("-")
+    ? sdk.startsWith(requiredSdk)
+    : sdk === requiredSdk;
+  if (!visible) {
     return <HiddenItem />;
   }
   return <>{children}</>;

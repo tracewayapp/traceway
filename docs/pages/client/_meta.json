@@ -16,5 +16,6 @@
   "react": "React",
   "vue": "Vue.js",
   "svelte": "Svelte",
-  "js-sdk": "JS SDK Reference"
+  "js-sdk": "JS SDK Reference",
+  "otel": "OpenTelemetry"
 }

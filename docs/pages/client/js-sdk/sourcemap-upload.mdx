@@ -1,0 +1,108 @@
+# Source Maps
+
+Upload source maps to Traceway so that minified stack traces in production exceptions are automatically deobfuscated.
+
+## Installation
+
+```bash
+npm install -D @tracewayapp/sourcemap-upload
+```
+
+This provides the `traceway-sourcemaps` CLI command.
+
+## Usage
+
+```bash
+traceway-sourcemaps \
+  --url https://your-traceway-instance.com \
+  --token your-sourcemap-token \
+  --version 1.2.3 \
+  --directory ./dist
+```
+
+The CLI recursively finds all `*.map` files in the specified directory and uploads them to Traceway via `POST /api/sourcemaps/upload`.
+
+## CLI Options
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--url <url>` | Yes | Traceway backend URL |
+| `--token <token>` | Yes | Source map upload token |
+| `--version <version>` | Yes | App version to associate with the source maps |
+| `--directory <dir>` | No | Directory to search (default: current directory) |
+
+## Environment Variables
+
+Instead of passing flags, you can set environment variables:
+
+| Variable | Equivalent Flag |
+|----------|----------------|
+| `TRACEWAY_URL` | `--url` |
+| `TRACEWAY_SOURCEMAP_TOKEN` | `--token` |
+
+Flags take precedence over environment variables when both are set.
+
+## Limits
+
+Individual source map files must not exceed **50MB**.
+
+## CI/CD Example (GitHub Actions)
+
+```yaml
+name: Deploy
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Upload source maps
+        run: npx traceway-sourcemaps --version ${{ github.sha }} --directory ./dist
+        env:
+          TRACEWAY_URL: ${{ secrets.TRACEWAY_URL }}
+          TRACEWAY_SOURCEMAP_TOKEN: ${{ secrets.TRACEWAY_SOURCEMAP_TOKEN }}
+```
+
+## Build Script Integration
+
+Add the upload step to your `package.json` scripts:
+
+```json
+{
+  "scripts": {
+    "build": "vite build",
+    "postbuild": "traceway-sourcemaps --version $npm_package_version --directory ./dist"
+  }
+}
+```
+
+Make sure `TRACEWAY_URL` and `TRACEWAY_SOURCEMAP_TOKEN` are set in your environment.
+
+## Version Matching
+
+The `--version` value must match the `version` option passed to the Traceway SDK during initialization:
+
+```javascript
+import { init } from "@tracewayapp/frontend";
+
+init("your-token@https://traceway.example.com/api/report", {
+  version: "1.2.3", // Must match the --version used during upload
+});
+```
+
+When an exception is captured, Traceway uses the version to look up the correct source maps and deobfuscate the stack trace.
+
+## Next Steps
+
+- [Exceptions](/client/js-sdk/exceptions) — capturing errors with the JS SDK
+- [Initialization](/client/js-sdk/initialization) — configuring the SDK `version` option

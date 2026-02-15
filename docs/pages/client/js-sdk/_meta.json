@@ -3,5 +3,7 @@
   "initialization": "Initialization",
   "exceptions": "Exceptions",
   "messages": "Messages",
-  "flush": "Flush & Lifecycle"
+  "flush": "Flush & Lifecycle",
+  "sourcemap-upload": "Source Maps",
+  "session-replay": "Session Replay"
 }

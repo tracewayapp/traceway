@@ -1,0 +1,58 @@
+# Session Replay
+
+Session Replay records DOM changes and user interactions in the browser, then attaches the recording to captured exceptions. This lets you see exactly what happened leading up to an error.
+
+## How It Works
+
+Session Replay uses [rrweb](https://github.com/rrweb-io/rrweb) to record the DOM. Recordings are split into segments that rotate on a fixed interval. When an exception is captured, all current segments are attached to it and sent to Traceway.
+
+Recordings appear on the exception detail page in the Traceway dashboard as a **Session Replay** card.
+
+## Enabled by Default
+
+Session Replay is enabled by default when using `@tracewayapp/frontend` in a browser environment. No additional configuration is needed.
+
+```javascript
+import { init } from "@tracewayapp/frontend";
+
+// Session Replay is active
+init("your-token@https://traceway.example.com/api/report");
+```
+
+## Disabling Session Replay
+
+```javascript
+import { init } from "@tracewayapp/frontend";
+
+init("your-token@https://traceway.example.com/api/report", {
+  sessionRecording: false,
+});
+```
+
+## Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `sessionRecording` | `boolean` | `true` | Enable or disable session recording |
+| `sessionRecordingSegmentDuration` | `number` | `10000` | Duration of each recording segment in milliseconds |
+
+## Segment Rotation
+
+Recordings are split into segments to limit memory usage. Every 10 seconds (by default), the current segment is finalized and a new one begins with a fresh DOM snapshot.
+
+You can adjust the segment duration:
+
+```javascript
+init("your-token@https://traceway.example.com/api/report", {
+  sessionRecordingSegmentDuration: 30000, // 30 seconds per segment
+});
+```
+
+## Viewing Recordings
+
+When an exception includes session recording data, a **Session Replay** card appears on the exception detail page in the Traceway dashboard. The replay shows DOM state and user interactions leading up to the error.
+
+## Next Steps
+
+- [Exceptions](/client/js-sdk/exceptions) — capturing errors with the JS SDK
+- [Initialization](/client/js-sdk/initialization) — all SDK configuration options

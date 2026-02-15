@@ -1,0 +1,103 @@
+# Traces
+
+Traceway ingests OpenTelemetry spans via the OTLP/HTTP protocol and maps them to its own data model.
+
+## Span Mapping
+
+How OTel spans are classified in Traceway depends on whether the span is a root span and its kind:
+
+| OTel Span | Condition | Traceway Concept |
+|-----------|-----------|-----------------|
+| Root span | `SpanKind = SERVER` with HTTP attributes | **Endpoint** |
+| Root span | All other kinds | **Task** |
+| Non-root span | Has a parent span ID | **Span** |
+| Exception event | Event named `"exception"` on any span | **Issue** |
+
+A root span is one with no `parentSpanId`.
+
+## Resource Attributes
+
+These resource-level attributes are extracted and applied to all spans in the resource:
+
+| Attribute | Traceway Field | Description |
+|-----------|---------------|-------------|
+| `service.name` | Server Name | Identifies the service or application |
+| `service.version` | App Version | Application version string |
+
+## HTTP Semantic Conventions
+
+For root SERVER spans with HTTP attributes, Traceway extracts the following:
+
+| OTel Attribute | Fallback | Traceway Field |
+|---------------|----------|----------------|
+| `http.request.method` | `http.method` | HTTP method |
+| `http.route` | Span name | Route path |
+| `http.response.status_code` | `http.status_code` | Status code |
+| `http.response.body.size` | `http.response_content_length` | Response body size |
+| `client.address` | `net.peer.ip` | Client IP |
+
+The endpoint name is constructed as `"METHOD /route"` (e.g., `"GET /api/users"`).
+
+## Exception Events
+
+Spans with events named `"exception"` are extracted as Issues in Traceway. The following event attributes are used:
+
+| Attribute | Description |
+|-----------|-------------|
+| `exception.type` | Error class name (e.g., `RuntimeError`) |
+| `exception.message` | Error message |
+| `exception.stacktrace` | Full stack trace |
+
+Exceptions are grouped by a normalized hash of the stack trace, so the same logical error produces the same Issue regardless of runtime differences like memory addresses or user IDs.
+
+## Example: Node.js with OTel SDK
+
+```typescript
+import { NodeSDK } from "@opentelemetry/sdk-node";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
+
+const sdk = new NodeSDK({
+  serviceName: "my-service",
+  serviceVersion: "1.0.0",
+  traceExporter: new OTLPTraceExporter({
+    url: "https://your-traceway-instance.com/api/otel/v1/traces",
+    headers: {
+      Authorization: "Bearer your-project-token",
+    },
+  }),
+  instrumentations: [getNodeAutoInstrumentations()],
+});
+
+sdk.start();
+```
+
+This automatically instruments HTTP servers, database clients, and other libraries. Root SERVER spans become Endpoints in Traceway, child spans become Spans, and any exceptions recorded as span events become Issues.
+
+## Example: Python with OTel SDK
+
+```python
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import Resource
+
+resource = Resource.create({
+    "service.name": "my-python-service",
+    "service.version": "1.0.0",
+})
+
+provider = TracerProvider(resource=resource)
+exporter = OTLPSpanExporter(
+    endpoint="https://your-traceway-instance.com/api/otel/v1/traces",
+    headers={"Authorization": "Bearer your-project-token"},
+)
+provider.add_span_processor(BatchSpanProcessor(exporter))
+trace.set_tracer_provider(provider)
+```
+
+## Next Steps
+
+- [Metrics](/client/otel/metrics) — export metrics to Traceway via OTel
+- [Overview](/client/otel) — protocol details and authentication

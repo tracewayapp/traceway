@@ -424,3 +424,19 @@ body[data-page^="protocol"] .nx-mx-auto.nx-flex > div.nx-w-64.nx-shrink-0 {
     max-width: none !important;
   }
 }
+
+/* Hide mobile menu backdrop on desktop when resizing with menu open */
+@media (min-width: 768px) {
+  div:has(+ .nextra-sidebar-container)[class*="nx-fixed"] {
+    display: none !important;
+  }
+}
+
+.nextra-sidebar-container > :nth-child(2) {
+  display: flex;
+  flex-direction: column;
+}
+
+.nextra-sidebar-container > :nth-child(2) > :nth-child(1) {
+  flex: 1;
+}

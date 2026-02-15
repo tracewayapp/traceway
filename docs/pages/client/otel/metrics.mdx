@@ -1,0 +1,81 @@
+# Metrics
+
+Traceway ingests OpenTelemetry metrics via the OTLP/HTTP protocol at `POST /api/otel/v1/metrics`.
+
+## Supported Metric Types
+
+| OTel Type | Supported | Traceway Handling |
+|-----------|-----------|-------------------|
+| Gauge | Yes | Stored as-is |
+| Sum | Yes | Stored as-is |
+| Histogram | Yes | Computes average and count (see below) |
+| ExponentialHistogram | No | — |
+| Summary | No | — |
+
+## Histogram Handling
+
+Histograms are converted into two separate metric records:
+
+| Derived Metric | Name | Value |
+|---------------|------|-------|
+| Average | `{name}.avg` | `sum / count` |
+| Count | `{name}.count` | Total number of observations |
+
+For example, a histogram named `http.request.duration` produces:
+- `http.request.duration.avg` — the average request duration
+- `http.request.duration.count` — the total number of requests observed
+
+Histogram bucket boundaries are not stored.
+
+## Resource Attributes
+
+The `service.name` resource attribute is used as the Server Name for all metrics in the resource.
+
+## Example: Node.js Metric Export
+
+```typescript
+import { NodeSDK } from "@opentelemetry/sdk-node";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
+import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
+
+const sdk = new NodeSDK({
+  serviceName: "my-service",
+  metricReader: new PeriodicExportingMetricReader({
+    exporter: new OTLPMetricExporter({
+      url: "https://your-traceway-instance.com/api/otel/v1/metrics",
+      headers: {
+        Authorization: "Bearer your-project-token",
+      },
+    }),
+    exportIntervalMillis: 30000,
+  }),
+});
+
+sdk.start();
+```
+
+## Example: Python Metric Export
+
+```python
+from opentelemetry import metrics
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+from opentelemetry.sdk.resources import Resource
+
+resource = Resource.create({"service.name": "my-python-service"})
+
+exporter = OTLPMetricExporter(
+    endpoint="https://your-traceway-instance.com/api/otel/v1/metrics",
+    headers={"Authorization": "Bearer your-project-token"},
+)
+
+reader = PeriodicExportingMetricReader(exporter, export_interval_millis=30000)
+provider = MeterProvider(resource=resource, metric_readers=[reader])
+metrics.set_meter_provider(provider)
+```
+
+## Next Steps
+
+- [Traces](/client/otel/traces) — how OTel spans map to Traceway concepts
+- [Overview](/client/otel) — protocol details and authentication

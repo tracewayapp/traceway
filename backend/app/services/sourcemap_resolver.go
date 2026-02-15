@@ -3,11 +3,8 @@ package services
 import (
 	"backend/app/cache"
 	"backend/app/models"
-	"backend/app/pgdb"
-	"backend/app/repositories"
 	"backend/app/storage"
 	"context"
-	"database/sql"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -31,14 +28,8 @@ var jsControlFlowKeywords = map[string]bool{
 	"catch": true, "return": true, "throw": true, "else": true,
 }
 
-func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, appVersion string, stackTrace string) string {
-	sourceMaps, err := pgdb.ExecuteTransaction(func(tx *sql.Tx) ([]*models.SourceMap, error) {
-		if appVersion != "" {
-			return repositories.SourceMapRepository.FindByProjectAndVersion(tx, projectId, appVersion)
-		}
-		return repositories.SourceMapRepository.FindLatestByProject(tx, projectId)
-	})
-	if err != nil || len(sourceMaps) == 0 {
+func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace string, sourceMaps []*models.SourceMap) string {
+	if len(sourceMaps) == 0 {
 		return stackTrace
 	}
 

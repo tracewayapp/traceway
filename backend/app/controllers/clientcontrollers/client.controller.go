@@ -5,11 +5,13 @@ import (
 	"backend/app/middleware"
 	"backend/app/models"
 	"backend/app/models/clientmodels"
+	"backend/app/pgdb"
 	"backend/app/repositories"
 	"backend/app/services"
 	"backend/app/storage"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -88,13 +90,31 @@ func (e clientController) Report(c *gin.Context) {
 				spansToInsert = append(spansToInsert, span)
 			}
 		}
+		projectAsAny, projectExists := c.Get(middleware.ProjectContextKey)
+		var project *models.Project
+		if projectExists {
+			if p, ok := projectAsAny.(*models.Project); ok {
+				project = p
+			}
+		}
+
+		var sourceMaps *[]*models.SourceMap
+		if project != nil && isJsFramework(project.Framework) {
+			sourceMapsLoaded, err := pgdb.ExecuteTransaction(func(tx *sql.Tx) ([]*models.SourceMap, error) {
+				if request.AppVersion != "" {
+					return repositories.SourceMapRepository.FindByProjectAndVersion(tx, projectId, request.AppVersion)
+				}
+				return repositories.SourceMapRepository.FindLatestByProject(tx, projectId)
+			})
+			if err == nil && len(sourceMapsLoaded) > 0 {
+				sourceMaps = &sourceMapsLoaded
+			}
+		}
 
 		for _, cst := range cf.StackTraces {
 			resolvedStackTrace := cst.StackTrace
-			if project, exists := c.Get(middleware.ProjectContextKey); exists {
-				if p, ok := project.(*models.Project); ok && isJsFramework(p.Framework) {
-					resolvedStackTrace = services.ResolveStackTrace(c, projectId, request.AppVersion, cst.StackTrace)
-				}
+			if sourceMaps != nil {
+				resolvedStackTrace = services.ResolveStackTrace(c, projectId, cst.StackTrace, *sourceMaps)
 			}
 			est := cst.ToExceptionStackTrace(computeExceptionHash(resolvedStackTrace, cst.IsMessage), request.AppVersion, request.ServerName)
 			est.StackTrace = resolvedStackTrace

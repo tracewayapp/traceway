@@ -20,7 +20,16 @@ import (
 )
 
 var stackFrameRe = regexp.MustCompile(`^(\s{4})(.+):(\d+):(\d+)$`)
-var jsFuncDeclRe = regexp.MustCompile(`(?:function\s+(\w+)|(?:const|let|var)\s+(\w+)\s*=|^\s*(?:async\s+)?(\w+)\s*\()`)
+var jsFuncDeclRe = regexp.MustCompile(
+	`(?:(?:export\s+(?:default\s+)?)?function\s+(\w+)` +
+		`|(?:const|let|var)\s+(\w+)\s*=` +
+		`|^\s*(?:async\s+)?(\w+)\s*\([^)]*\)\s*\{)`,
+)
+
+var jsControlFlowKeywords = map[string]bool{
+	"if": true, "for": true, "while": true, "switch": true,
+	"catch": true, "return": true, "throw": true, "else": true,
+}
 
 func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, appVersion string, stackTrace string) string {
 	sourceMaps, err := pgdb.ExecuteTransaction(func(tx *sql.Tx) ([]*models.SourceMap, error) {
@@ -89,9 +98,9 @@ func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, appVersion stri
 			continue
 		}
 
-		if origName == "" {
-			if content := consumer.SourceContent(origFile); content != "" {
-				origName = extractFunctionName(content, origLine)
+		if content := consumer.SourceContent(origFile); content != "" {
+			if extracted := extractFunctionName(content, origLine); extracted != "" {
+				origName = extracted
 			}
 		}
 
@@ -158,7 +167,7 @@ func extractFunctionName(sourceContent string, line int) string {
 		matches := jsFuncDeclRe.FindStringSubmatch(lines[i])
 		if matches != nil {
 			for _, m := range matches[1:] {
-				if m != "" {
+				if m != "" && !jsControlFlowKeywords[m] {
 					return m
 				}
 			}

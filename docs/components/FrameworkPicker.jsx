@@ -3,6 +3,14 @@ import { useSdk } from "./SdkContext";
 
 const FRAMEWORKS = [
   {
+    value: "otel",
+    label: "OpenTelemetry (otel)",
+    description: "Send traces and metrics from any OTel-instrumented app to Traceway.",
+    icon: "/otel.png",
+    href: "/client/otel",
+    badge: "new",
+  },
+  {
     value: "go-gin",
     label: "Go Gin",
     description:
@@ -102,14 +110,6 @@ const FRAMEWORKS = [
     description: "Framework-agnostic JavaScript SDK for browsers.",
     icon: "/javascript.png",
     href: "/client/js-sdk",
-    badge: "new",
-  },
-  {
-    value: "otel",
-    label: "OpenTelemetry",
-    description: "Send traces and metrics from any OTel-instrumented app to Traceway.",
-    icon: "/otel.png",
-    href: "/client/otel",
     badge: "new",
   },
 ];

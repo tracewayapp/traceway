@@ -154,7 +154,7 @@ func (a authController) Register(c *gin.Context) {
 
 	if !validFrameworks[request.Framework] {
 		traceway.CaptureMessage("Invalid framework received during registration: " + request.Framework)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Framework must be one of: gin, fiber, chi, fasthttp, stdlib, custom, react, svelte, vuejs, nextjs, nestjs, express, remix"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Framework must be one of: gin, fiber, chi, fasthttp, stdlib, custom, react, svelte, vuejs, nextjs, nestjs, express, remix, opentelemetry"})
 		return
 	}
 

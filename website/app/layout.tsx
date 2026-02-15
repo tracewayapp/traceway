@@ -19,8 +19,8 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "./",
   },
-  title: "Traceway",
-  description: "Telemetry & Issue Tracking for Go & JavaScript",
+  title: "Traceway - Know what to fix first",
+  description: "Traceway scores every endpoint and exception by real user impact, then ranks them. 100% open source telemetry, issue tracking, and session replay for Go & JavaScript.",
   icons: {
     icon: "/favicon.ico",
   },

@@ -45,7 +45,7 @@ export function CodeTabs() {
     const [activeTab, setActiveTab] = useState(0);
 
     return (
-        <div className="rounded-lg overflow-hidden bg-white border border-zinc-200 shadow-xl shadow-zinc-200/50">
+        <div className="rounded-lg overflow-hidden bg-white border border-zinc-200">
             <div className="flex items-center justify-between px-3 py-2 bg-zinc-50 border-b border-zinc-100">
                 <div className="flex items-center gap-1.5">
                     <div className="w-2.5 h-2.5 rounded-full bg-[#fe5f57]"></div>

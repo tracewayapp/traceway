@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { Github, AlertCircle, Activity, ChevronDown } from "lucide-react";
+import { Github, AlertCircle, Activity, Video, ChevronDown } from "lucide-react";
 import { MobileNav } from "@/components/mobile-nav";
 
 export function SiteHeader() {
@@ -77,6 +77,19 @@ export function SiteHeader() {
                                         <div>
                                             <div className="text-sm font-medium text-zinc-900">Performance</div>
                                             <p className="text-xs text-zinc-500 mt-0.5">P50/P95/P99 percentiles, waterfall traces, and server metrics</p>
+                                        </div>
+                                    </Link>
+                                    <Link
+                                        href="/product/session-replay"
+                                        className="flex items-start gap-3 rounded-md p-3 hover:bg-zinc-50 transition-colors"
+                                        onClick={() => setOpen(false)}
+                                    >
+                                        <div className="w-8 h-8 bg-purple-50 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+                                            <Video className="w-4 h-4 text-purple-600" />
+                                        </div>
+                                        <div>
+                                            <div className="text-sm font-medium text-zinc-900">Session Replay</div>
+                                            <p className="text-xs text-zinc-500 mt-0.5">See exactly what users did before every exception</p>
                                         </div>
                                     </Link>
                                 </div>

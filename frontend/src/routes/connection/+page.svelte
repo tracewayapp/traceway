@@ -8,7 +8,7 @@
 	} from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
 	import { Copy, Check, KeyRound } from 'lucide-svelte';
-	import { projectsState, type ProjectWithToken, isJsFramework } from '$lib/state/projects.svelte';
+	import { projectsState, type ProjectWithToken, isJsFramework, isOtelFramework } from '$lib/state/projects.svelte';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import FrameworkIcon from '$lib/components/framework-icon.svelte';
 	import Highlight from 'svelte-highlight';
@@ -29,6 +29,12 @@
 	let copiedToken = $state(false);
 	let copiedCommand = $state(false);
 	let generatingToken = $state(false);
+	let copiedOtelEndpoint = $state(false);
+	let copiedOtelToken = $state(false);
+
+	const isOtel = $derived(projectWithToken ? isOtelFramework(projectWithToken.framework) : false);
+	const otelEndpoint = $derived(projectWithToken ? `${projectWithToken.backendUrl}/api/report` : '');
+	const otelToken = $derived(projectWithToken?.token ?? '');
 
 	const sdkCode = $derived(
 		projectWithToken
@@ -90,6 +96,18 @@
 		copiedCommand = true;
 		setTimeout(() => (copiedCommand = false), 2000);
 	}
+
+	async function copyOtelEndpoint() {
+		await navigator.clipboard.writeText(otelEndpoint);
+		copiedOtelEndpoint = true;
+		setTimeout(() => (copiedOtelEndpoint = false), 2000);
+	}
+
+	async function copyOtelToken() {
+		await navigator.clipboard.writeText(otelToken);
+		copiedOtelToken = true;
+		setTimeout(() => (copiedOtelToken = false), 2000);
+	}
 </script>
 
 <div class="space-y-4">
@@ -99,6 +117,49 @@
 	</div>
 
 	{#if projectWithToken}
+		{#if isOtel}
+			<Card>
+				<CardHeader>
+					<CardTitle class="flex items-center gap-2">
+						<FrameworkIcon framework={projectWithToken.framework} />
+						OpenTelemetry Integration
+					</CardTitle>
+					<CardDescription>
+						Point your OTLP exporter at Traceway
+					</CardDescription>
+				</CardHeader>
+				<CardContent>
+					<div class="space-y-6">
+						<div>
+							<p class="text-sm font-medium mb-2">Step 1 — Endpoint URL</p>
+							<div class="flex items-center gap-2">
+								<code class="flex-1 rounded-md bg-muted px-3 py-2 text-sm font-mono break-all">{otelEndpoint}</code>
+								<Button variant="outline" size="sm" onclick={copyOtelEndpoint}>
+									{#if copiedOtelEndpoint}
+										<Check class="h-4 w-4 text-green-500" />
+									{:else}
+										<Copy class="h-4 w-4" />
+									{/if}
+								</Button>
+							</div>
+						</div>
+						<div>
+							<p class="text-sm font-medium mb-2">Step 2 — Token</p>
+							<div class="flex items-center gap-2">
+								<code class="flex-1 rounded-md bg-muted px-3 py-2 text-sm font-mono break-all">{otelToken}</code>
+								<Button variant="outline" size="sm" onclick={copyOtelToken}>
+									{#if copiedOtelToken}
+										<Check class="h-4 w-4 text-green-500" />
+									{:else}
+										<Copy class="h-4 w-4" />
+									{/if}
+								</Button>
+							</div>
+						</div>
+					</div>
+				</CardContent>
+			</Card>
+		{:else}
 		<Card>
 			<CardHeader>
 				<CardTitle class="flex items-center gap-2">
@@ -235,6 +296,7 @@
 					{/if}
 				</CardContent>
 			</Card>
+		{/if}
 		{/if}
 	{:else}
 		<Card>

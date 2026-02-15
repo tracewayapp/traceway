@@ -46,6 +46,8 @@
     <img src="/express.png" alt="Express" class={className} />
 {:else if framework === 'remix'}
     <img src="/remix.png" alt="Remix" class={className} />
+{:else if framework === 'opentelemetry'}
+    <img src="/opentelemetry.png" alt="OpenTelemetry" class={className} />
 {:else}
     <img src="/custom.png" alt="Custom" class={className} />
 {/if}

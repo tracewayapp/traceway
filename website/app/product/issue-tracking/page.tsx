@@ -13,6 +13,7 @@ const frameworks = [
     { name: "Next.js", src: "/images/frameworks/nextjs.png" },
     { name: "Svelte", src: "/images/frameworks/svelte.png" },
     { name: "Remix", src: "/images/frameworks/remix.png" },
+    { name: "OpenTelemetry", src: "/images/frameworks/otel.png" },
 ];
 
 export default function IssueTrackingPage() {
@@ -76,7 +77,7 @@ export default function IssueTrackingPage() {
                         </div>
                         <div className="flex-1 w-full relative">
                             <div className="absolute inset-0 bg-gradient-to-tr from-blue-100/50 to-transparent rounded-3xl transform rotate-3 scale-105 -z-10"></div>
-                            <div className="relative rounded-xl overflow-hidden border border-zinc-200 shadow-2xl shadow-zinc-200/50 bg-white">
+                            <div className="relative rounded-xl overflow-hidden border border-zinc-200 bg-white">
                                 <Image
                                     src="/images/screenshot-2.png"
                                     alt="Issue Ranking Dashboard"
@@ -120,7 +121,7 @@ export default function IssueTrackingPage() {
                         </div>
                         <div className="flex-1 w-full relative">
                             <div className="absolute inset-0 bg-gradient-to-tl from-orange-100/50 to-transparent rounded-3xl transform -rotate-3 scale-105 -z-10"></div>
-                            <div className="relative rounded-xl overflow-hidden border border-zinc-200 shadow-2xl shadow-zinc-200/50 bg-white">
+                            <div className="relative rounded-xl overflow-hidden border border-zinc-200 bg-white">
                                 <Image
                                     src="/images/screenshot-2.png"
                                     alt="Error Grouping Interface"
@@ -154,7 +155,7 @@ export default function IssueTrackingPage() {
                                     alt={fw.name}
                                     width={40}
                                     height={40}
-                                    className="h-8 w-auto grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all duration-200"
+                                    className="h-8 w-auto opacity-80 hover:opacity-100 transition-all duration-200"
                                 />
                             ))}
                         </div>

@@ -28,6 +28,8 @@ export function getInstallCommand(framework: Framework): string {
 			return 'npm install @tracewayapp/express';
 		case 'remix':
 			return 'npm install @tracewayapp/remix';
+		case 'opentelemetry':
+			return '';
 		case 'custom':
 		default:
 			return base;
@@ -200,6 +202,9 @@ export default withTraceway({
     connectionString: "${connectionString}",
 });`;
 
+		case 'opentelemetry':
+			return '';
+
 		case 'custom':
 		default:
 			return `package main
@@ -286,10 +291,12 @@ export function getFrameworkLabel(framework: Framework): string {
 		nestjs: 'NestJS',
 		express: 'Express',
 		remix: 'Remix',
+		opentelemetry: 'OpenTelemetry',
 	};
 	return labels[framework] || framework;
 }
 
 export function getCodeLanguage(framework: Framework): 'go' | 'javascript' {
+	if (framework === 'opentelemetry') return 'go';
 	return isJsFramework(framework) ? 'javascript' : 'go';
 }

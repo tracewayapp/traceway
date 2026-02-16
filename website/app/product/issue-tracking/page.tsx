@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+
 import { Badge } from "@/components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { ArrowRight, TrendingUp, Layers, Globe } from "lucide-react";
@@ -33,15 +33,11 @@ export default function IssueTrackingPage() {
                         Traceway automatically ranks issues by impact across your Go and JavaScript services, so your team always knows what to fix first.
                     </p>
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                        <Link href="https://docs.tracewayapp.com">
-                            <Button size="lg" className="h-10 px-6 text-sm bg-zinc-900 text-white hover:bg-zinc-800 shadow-lg shadow-zinc-900/20">
+                        <Link href="https://docs.tracewayapp.com" className="inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-all cursor-pointer h-10 px-6 bg-zinc-900 text-white hover:bg-zinc-800 shadow-lg shadow-zinc-900/20">
                                 Get Started <ArrowRight className="ml-2 h-4 w-4" />
-                            </Button>
                         </Link>
-                        <Link href="http://cloud.tracewayapp.com/register">
-                            <Button variant="outline" size="lg" className="h-10 px-6 text-sm border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-900 shadow-sm">
+                        <Link href="http://cloud.tracewayapp.com/register" className="inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-all cursor-pointer h-10 px-6 border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-900 shadow-sm">
                                 Try Traceway Cloud
-                            </Button>
                         </Link>
                     </div>
                 </div>

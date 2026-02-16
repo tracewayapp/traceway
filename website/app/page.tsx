@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+
 import {
   Card,
   CardDescription,
@@ -64,25 +64,11 @@ export default function Home() {
             needs attention. No triage meetings. No alert fatigue.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link href="https://docs.tracewayapp.com">
-              <Button
-                size="lg"
-                className="h-10 px-6 text-sm bg-zinc-900 text-white hover:bg-zinc-800 shadow-lg shadow-zinc-900/20"
-              >
+            <Link href="https://docs.tracewayapp.com" className="inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-all cursor-pointer h-10 px-6 bg-zinc-900 text-white hover:bg-zinc-800 shadow-lg shadow-zinc-900/20">
                 Get Started <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
             </Link>
-            <Link
-              href="https://github.com/tracewayapp/traceway"
-              target="_blank"
-            >
-              <Button
-                variant="outline"
-                size="lg"
-                className="h-10 px-6 text-sm border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-900 shadow-sm"
-              >
+            <Link href="https://github.com/tracewayapp/traceway" target="_blank" className="inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-all cursor-pointer h-10 px-6 border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-900 shadow-sm">
                 <Github className="mr-2 h-4 w-4" /> View on GitHub
-              </Button>
             </Link>
           </div>
           <div className="mt-4">
@@ -385,13 +371,8 @@ export default function Home() {
           <p className="text-zinc-600 text-lg mb-4">
             Explore a live demo with sample data, no signup required.
           </p>
-          <Link href="https://cloud.tracewayapp.com/login?email=demo@tracewayapp.com&password=demoaccount!">
-            <Button
-              size="lg"
-              className="h-10 px-4 text-sm bg-zinc-900 text-white hover:bg-zinc-800 shadow-lg shadow-zinc-900/20"
-            >
+          <Link href="https://cloud.tracewayapp.com/login?email=demo@tracewayapp.com&password=demoaccount!" className="inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-all cursor-pointer h-10 px-4 bg-zinc-900 text-white hover:bg-zinc-800 shadow-lg shadow-zinc-900/20">
               Try Live Demo <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
           </Link>
         </div>
       </section>
@@ -411,22 +392,11 @@ export default function Home() {
           </div>
           <CostComparison />
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mt-10">
-            <Link href="/cloud">
-              <Button
-                size="lg"
-                className="h-10 px-6 text-sm bg-[#4ba3f7] text-white hover:bg-[#3b93e7] shadow-lg shadow-blue-900/10"
-              >
+            <Link href="/cloud" className="inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-all cursor-pointer h-10 px-6 bg-[#4ba3f7] text-white hover:bg-[#3b93e7] shadow-lg shadow-blue-900/10">
                 See Cloud pricing <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
             </Link>
-            <Link href="https://docs.tracewayapp.com">
-              <Button
-                variant="outline"
-                size="lg"
-                className="h-10 px-6 text-sm border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-900 shadow-sm"
-              >
+            <Link href="https://docs.tracewayapp.com" className="inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-all cursor-pointer h-10 px-6 border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-900 shadow-sm">
                 Self-host for free <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
             </Link>
           </div>
         </div>

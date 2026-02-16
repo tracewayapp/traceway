@@ -4,7 +4,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
+
 
 const TIERS = [
     {
@@ -86,10 +86,8 @@ export function PricingCalculator() {
             </div>
 
             <div className="mt-8 flex justify-center">
-                <Link href="http://cloud.tracewayapp.com/register">
-                    <Button size="lg" className="h-10 px-6 text-sm bg-[#4ba3f7] text-white hover:bg-[#3b93e7] font-bold shadow-sm shadow-blue-400/20">
+                <Link href="http://cloud.tracewayapp.com/register" className="inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-all cursor-pointer h-10 px-6 bg-[#4ba3f7] text-white hover:bg-[#3b93e7] font-bold shadow-sm shadow-blue-400/20">
                         Try for free <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
                 </Link>
             </div>
         </div>

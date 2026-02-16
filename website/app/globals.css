@@ -123,3 +123,8 @@
     @apply bg-background text-foreground;
   }
 }
+
+button,
+a:hover {
+  cursor: pointer !important;
+}

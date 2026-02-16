@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Button } from "@/components/ui/button";
+
 import { Github, AlertCircle, Activity, Video, ChevronDown } from "lucide-react";
 import { MobileNav } from "@/components/mobile-nav";
 
@@ -106,22 +106,16 @@ export function SiteHeader() {
 
                 {/* Desktop Actions */}
                 <div className="hidden md:flex items-center gap-4">
-                    <Link href="https://github.com/tracewayapp/traceway" target="_blank" rel="noopener noreferrer">
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100">
+                    <Link href="https://github.com/tracewayapp/traceway" target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-all cursor-pointer h-8 w-8 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100">
                             <Github className="h-4 w-4" />
                             <span className="sr-only">GitHub</span>
-                        </Button>
                     </Link>
                     <div className="flex items-center gap-2">
-                        <Link href="http://cloud.tracewayapp.com/login">
-                            <Button variant="ghost" className="text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100">
+                        <Link href="http://cloud.tracewayapp.com/login" className="inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-all cursor-pointer h-9 px-4 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100">
                                 Sign in
-                            </Button>
                         </Link>
-                        <Link href="http://cloud.tracewayapp.com/register">
-                            <Button className="bg-[#4ba3f7] text-white hover:bg-[#3b93e7] font-medium">
+                        <Link href="http://cloud.tracewayapp.com/register" className="inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-all cursor-pointer h-9 px-4 bg-[#4ba3f7] text-white hover:bg-[#3b93e7]">
                                 Try for free
-                            </Button>
                         </Link>
                     </div>
                 </div>

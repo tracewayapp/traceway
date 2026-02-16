@@ -1,6 +1,6 @@
 import { PricingCalculator } from "@/components/pricing-calculator";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+
 import { ArrowRight } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
@@ -22,15 +22,11 @@ export default function CloudPage() {
                         Focus on shipping features, not managing infrastructure. Get all the power of Traceway with zero maintenance.
                     </p>
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                        <Link href="http://cloud.tracewayapp.com/register">
-                            <Button size="lg" className="h-10 px-6 text-sm bg-[#4ba3f7] text-white hover:bg-[#3b93e7] font-bold shadow-sm shadow-blue-400/20">
+                        <Link href="http://cloud.tracewayapp.com/register" className="inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-all cursor-pointer h-10 px-6 bg-[#4ba3f7] text-white hover:bg-[#3b93e7] font-bold shadow-sm shadow-blue-400/20">
                                 Start Free Trial <ArrowRight className="ml-2 h-4 w-4" />
-                            </Button>
                         </Link>
-                        <Link href="https://docs.tracewayapp.com/cloud">
-                            <Button variant="outline" size="lg" className="h-10 px-6 text-sm border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-900">
+                        <Link href="https://docs.tracewayapp.com/cloud" className="inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-all cursor-pointer h-10 px-6 border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-900">
                                 How it works
-                            </Button>
                         </Link>
                     </div>
                 </div>

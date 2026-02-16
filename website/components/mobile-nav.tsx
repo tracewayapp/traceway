@@ -93,15 +93,11 @@ export function MobileNav() {
                     </div>
                     <div className="flex-1"></div>
                     <div className="mt-8 flex flex-col gap-4">
-                        <Link href="http://cloud.tracewayapp.com/register" className="w-full" onClick={() => setIsOpen(false)}>
-                            <Button className="w-full bg-[#4ba3f7] text-white hover:bg-[#3b93e7] font-medium h-12 text-lg">
+                        <Link href="http://cloud.tracewayapp.com/register" onClick={() => setIsOpen(false)} className="inline-flex items-center justify-center gap-2 rounded-md font-medium transition-all cursor-pointer w-full bg-[#4ba3f7] text-white hover:bg-[#3b93e7] h-12 text-lg">
                                 Try for free
-                            </Button>
                         </Link>
-                        <Link href="http://cloud.tracewayapp.com/login" className="w-full" onClick={() => setIsOpen(false)}>
-                            <Button variant="outline" className="w-full h-12 text-lg text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100">
+                        <Link href="http://cloud.tracewayapp.com/login" onClick={() => setIsOpen(false)} className="inline-flex items-center justify-center gap-2 rounded-md font-medium transition-all cursor-pointer w-full h-12 text-lg border border-zinc-200 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100">
                                 Sign in
-                            </Button>
                         </Link>
                     </div>
                 </div>,

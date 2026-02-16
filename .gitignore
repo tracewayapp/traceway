@@ -39,3 +39,4 @@ backend/static/dist/
 /testing/devtesting-nestjs/dist
 /backend/storage/recordings
 /backend/storage
+/docs/.wrangler

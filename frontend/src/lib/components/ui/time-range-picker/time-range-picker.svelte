@@ -243,7 +243,6 @@
         const fromParts = luxonToCalendarDateTime(fromDt);
         const toParts = luxonToCalendarDateTime(now);
 
-        // Update temp values only - don't close or apply yet
         tempFromDateTime = new CalendarDateTime(
             fromParts.year,
             fromParts.month,
@@ -260,6 +259,8 @@
             toParts.minute,
             toParts.second
         );
+
+        applyAndClose();
     }
 
     function toggleCustom() {

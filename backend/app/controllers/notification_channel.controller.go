@@ -43,7 +43,7 @@ type createChannelRequest struct {
 }
 
 var validChannelTypes = map[string]bool{
-	"email": true, "webhook": true, "slack": true, "github": true,
+	"email": true, "webhook": true, "slack": true, "github": true, "pushover": true,
 }
 
 func (ctrl *notificationChannelController) Create(ctx *gin.Context) {
@@ -69,7 +69,7 @@ func (ctrl *notificationChannelController) Create(ctx *gin.Context) {
 		return
 	}
 	if !validChannelTypes[req.ChannelType] {
-		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Channel type must be one of: email, webhook, slack, github."})
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Channel type must be one of: email, webhook, slack, github, pushover."})
 		return
 	}
 
@@ -142,7 +142,7 @@ func (ctrl *notificationChannelController) Update(ctx *gin.Context) {
 		return
 	}
 	if !validChannelTypes[req.ChannelType] {
-		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Channel type must be one of: email, webhook, slack, github."})
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Channel type must be one of: email, webhook, slack, github, pushover."})
 		return
 	}
 

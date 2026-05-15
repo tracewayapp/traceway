@@ -44,6 +44,16 @@
 	let githubOwner = $state('');
 	let githubRepo = $state('');
 	let githubLabels = $state('');
+	let pushoverUserKey = $state('');
+	let pushoverAppToken = $state('');
+	let pushoverDevice = $state('');
+	let pushoverPriority = $state(0);
+	let pushoverRetry = $state(30);
+	let pushoverExpire = $state(3600);
+	let pushoverCallback = $state('');
+	let pushoverSound = $state('');
+	let pushoverHtml = $state(false);
+	let pushoverTtl = $state(0);
 
 	const isEditing = $derived(channel !== null);
 
@@ -51,7 +61,8 @@
 		{ value: 'email', label: 'Email' },
 		{ value: 'webhook', label: 'Webhook' },
 		{ value: 'slack', label: 'Slack' },
-		{ value: 'github', label: 'GitHub' }
+		{ value: 'github', label: 'GitHub' },
+		{ value: 'pushover', label: 'Pushover' }
 	];
 
 	function resetForm() {
@@ -70,6 +81,16 @@
 		githubOwner = '';
 		githubRepo = '';
 		githubLabels = '';
+		pushoverUserKey = '';
+		pushoverAppToken = '';
+		pushoverDevice = '';
+		pushoverPriority = 0;
+		pushoverRetry = 30;
+		pushoverExpire = 3600;
+		pushoverCallback = '';
+		pushoverSound = '';
+		pushoverHtml = false;
+		pushoverTtl = 0;
 	}
 
 	function populateFromChannel(ch: NotificationChannel) {
@@ -98,6 +119,17 @@
 			githubOwner = config.owner || '';
 			githubRepo = config.repo || '';
 			githubLabels = (config.labels || []).join(', ');
+		} else if (ch.channelType === 'pushover') {
+			pushoverUserKey = config.userKey || '';
+			pushoverAppToken = config.appToken || '';
+			pushoverDevice = config.device || '';
+			pushoverPriority = config.priority ?? 0;
+			pushoverRetry = config.retry ?? 30;
+			pushoverExpire = config.expire ?? 3600;
+			pushoverCallback = config.callback || '';
+			pushoverSound = config.sound || '';
+			pushoverHtml = config.html ?? false;
+			pushoverTtl = config.ttl ?? 0;
 		}
 	}
 
@@ -130,6 +162,22 @@
 				.map((l) => l.trim())
 				.filter((l) => l);
 			if (labels.length > 0) config.labels = labels;
+			return config;
+		} else if (channelType === 'pushover') {
+			const config: any = {
+				userKey: pushoverUserKey,
+				appToken: pushoverAppToken
+			};
+			if (pushoverDevice) config.device = pushoverDevice;
+			if (pushoverPriority) config.priority = pushoverPriority;
+			if (pushoverPriority === 2) {
+				config.retry = pushoverRetry;
+				config.expire = pushoverExpire;
+				if (pushoverCallback) config.callback = pushoverCallback;
+			}
+			if (pushoverSound) config.sound = pushoverSound;
+			if (pushoverHtml) config.html = pushoverHtml;
+			if (pushoverTtl > 0) config.ttl = pushoverTtl;
 			return config;
 		}
 		return {};
@@ -203,7 +251,7 @@
 </script>
 
 <AlertDialog.Root {open} onOpenChange={handleOpenChange}>
-	<AlertDialog.Content class="max-w-md">
+	<AlertDialog.Content class="max-w-md max-h-[90vh] overflow-y-auto">
 		<AlertDialog.Header>
 			<AlertDialog.Title>{isEditing ? 'Edit Channel' : 'New Channel'}</AlertDialog.Title>
 			<AlertDialog.Description>
@@ -374,6 +422,58 @@
 				<div class="space-y-2">
 					<Label for="gh-labels">Labels (optional, comma-separated)</Label>
 					<Input id="gh-labels" bind:value={githubLabels} placeholder="bug, traceway" />
+				</div>
+			{:else if channelType === 'pushover'}
+				<div class="space-y-2">
+					<Label for="po-user-key">User Key</Label>
+					<Input id="po-user-key" bind:value={pushoverUserKey} placeholder="Your Pushover user key" required />
+				</div>
+				<div class="space-y-2">
+					<Label for="po-app-token">App Token</Label>
+					<Input id="po-app-token" type="password" bind:value={pushoverAppToken} placeholder="Your Pushover application token" required />
+				</div>
+				<div class="space-y-2">
+					<Label for="po-device">Device (optional)</Label>
+					<Input id="po-device" bind:value={pushoverDevice} placeholder="Leave empty for all devices" />
+				</div>
+				<div class="space-y-2">
+					<Label for="po-priority">Priority</Label>
+					<Select.Root type="single" bind:value={pushoverPriority}>
+						<Select.Trigger class="w-full">
+							{pushoverPriority === 0 ? 'Normal' : pushoverPriority === 1 ? 'High' : 'Emergency'}
+						</Select.Trigger>
+						<Select.Content>
+							<Select.Item value={0}>Normal</Select.Item>
+							<Select.Item value={1}>High</Select.Item>
+							<Select.Item value={2}>Emergency</Select.Item>
+						</Select.Content>
+					</Select.Root>
+				</div>
+				{#if pushoverPriority === 2}
+					<div class="space-y-2">
+						<Label for="po-retry">Retry Interval (seconds, min 30)</Label>
+						<Input id="po-retry" type="number" bind:value={pushoverRetry} min={30} />
+					</div>
+					<div class="space-y-2">
+						<Label for="po-expire">Expiry (seconds, max 10800)</Label>
+						<Input id="po-expire" type="number" bind:value={pushoverExpire} min={1} max={10800} />
+					</div>
+					<div class="space-y-2">
+						<Label for="po-callback">Callback URL (optional)</Label>
+						<Input id="po-callback" bind:value={pushoverCallback} placeholder="https://hooks.example.com/acknowledged" />
+					</div>
+				{/if}
+				<div class="space-y-2">
+					<Label for="po-sound">Sound (optional)</Label>
+					<Input id="po-sound" bind:value={pushoverSound} placeholder="e.g. pushover, bike, bugle" />
+				</div>
+				<div class="flex items-center gap-2">
+					<input id="po-html" type="checkbox" bind:checked={pushoverHtml} class="h-4 w-4" />
+					<Label for="po-html">Enable HTML formatting</Label>
+				</div>
+				<div class="space-y-2">
+					<Label for="po-ttl">Time to Live (seconds, 0 = forever)</Label>
+					<Input id="po-ttl" type="number" bind:value={pushoverTtl} min={0} placeholder="0" />
 				</div>
 			{/if}
 

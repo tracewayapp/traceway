@@ -97,12 +97,13 @@
 		email: 'Email',
 		webhook: 'Webhook',
 		slack: 'Slack',
-		github: 'GitHub'
+		github: 'GitHub',
+		pushover: 'Pushover'
 	};
 
 	const tabDescriptions: Record<string, string> = {
 		channels:
-			'Channels define where your notifications are delivered — such as Email, Slack, Webhooks, or GitHub Issues. Create a channel first, then attach it to a rule.',
+			'Channels define where your notifications are delivered — such as Email, Slack, Webhooks, GitHub Issues, or Pushover. Create a channel first, then attach it to a rule.',
 		rules: 'Rules define when notifications are triggered. Each rule monitors a specific condition and sends an alert through the attached channel when that condition is met.',
 		history:
 			'A log of all notifications that have been sent, including their status and the rule that triggered them.'

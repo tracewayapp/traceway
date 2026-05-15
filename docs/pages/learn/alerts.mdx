@@ -1,12 +1,12 @@
 # Alerts
 
-Alerts notify you when conditions in your application require attention — errors, latency spikes, metric thresholds, or missing data. Configure channels and rules to get notified through email, Slack, webhooks, or GitHub Issues.
+Alerts notify you when conditions in your application require attention — errors, latency spikes, metric thresholds, or missing data. Configure channels and rules to get notified through email, Slack, webhooks, GitHub Issues, or Pushover.
 
 ## How Alerts Work
 
 The alerting system has two parts:
 
-- **Channels** define where notifications are delivered (email, Slack, webhook, GitHub)
+- **Channels** define where notifications are delivered (email, Slack, webhook, GitHub, Pushover)
 - **Rules** define what conditions trigger a notification
 
 When a rule's condition is met, Traceway sends a notification through the rule's attached channel. Each rule is linked to exactly one channel, but a channel can be used by multiple rules.
@@ -21,6 +21,7 @@ A channel represents a notification destination. Traceway supports four channel 
 | Slack   | Posts a message to a Slack channel via incoming webhook | Webhook URL |
 | Webhook | Sends an HTTP POST with a JSON payload to any URL | URL, optional headers, optional HMAC secret |
 | GitHub  | Creates a GitHub issue in a repository | Personal access token, repository owner/name, optional labels |
+| Pushover | Sends push notifications to your mobile devices | User Key, App Token |
 
 Each channel has a **Test** button that sends a sample notification so you can verify the configuration before attaching rules.
 

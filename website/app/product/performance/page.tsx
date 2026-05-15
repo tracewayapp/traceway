@@ -226,7 +226,7 @@ export default function PerformancePage() {
                       <p>
                         For incident management, notification rules fire when
                         the Impact Score or error rate crosses a threshold, and
-                        route alerts to Slack, GitHub Issues, email, or custom
+                        route alerts to Slack, GitHub Issues, email, Pushover, or custom
                         webhooks.
                       </p>
                     </>

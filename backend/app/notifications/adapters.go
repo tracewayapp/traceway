@@ -57,6 +57,12 @@ func NewAdapter(channelType string, configJSON json.RawMessage) (Adapter, error)
 			return nil, fmt.Errorf("invalid github config: %w", err)
 		}
 		return &cfg, nil
+	case "pushover":
+		var cfg PushoverAdapter
+		if err := json.Unmarshal(configJSON, &cfg); err != nil {
+			return nil, fmt.Errorf("invalid pushover config: %w", err)
+		}
+		return &cfg, nil
 	default:
 		return nil, fmt.Errorf("unknown channel type: %s", channelType)
 	}

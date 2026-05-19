@@ -58,13 +58,47 @@ case "${LOCATION}" in
         ;;
 esac
 
+# retry_eof: run an `hcloud` command, capturing stderr. If the command exits
+# non-zero AND its stderr contains "EOF", wait 5 seconds and retry — up to 3
+# attempts total. Hetzner's API occasionally drops its keep-alive TCP
+# connection mid-action-poll, so hcloud surfaces an EOF even though the
+# server-side operation actually succeeded. On any retry attempt, an
+# "already exists" error is treated as success because it means the original
+# (EOF'd) call did go through. All other failure modes propagate immediately.
+retry_eof() {
+    local attempt=1 max=3 delay=5 errfile rc
+    errfile="$(mktemp)"
+    while true; do
+        "$@" 2>"${errfile}" && rc=0 || rc=$?
+        cat "${errfile}" >&2
+        if [[ $rc -eq 0 ]]; then
+            rm -f "${errfile}"
+            return 0
+        fi
+        if [[ ${attempt} -gt 1 ]] && grep -qiE "already (exists|in use)|name .* not unique" "${errfile}"; then
+            echo "  ↳ resource already exists from earlier attempt; treating as success" >&2
+            rm -f "${errfile}"
+            return 0
+        fi
+        if grep -q "EOF" "${errfile}" && [[ $attempt -lt $max ]]; then
+            echo "  ↳ hcloud hit EOF, sleeping ${delay}s and retrying (attempt $((attempt+1))/${max})" >&2
+            sleep $delay
+            attempt=$((attempt + 1))
+            : > "${errfile}"
+            continue
+        fi
+        rm -f "${errfile}"
+        return $rc
+    done
+}
+
 # Create a /24 private network so SUT and loadgen can talk over 10.0.0.x.
 if ! hcloud network describe "${NET_NAME}" >/dev/null 2>&1; then
     echo "creating network ${NET_NAME} in zone ${NETWORK_ZONE}" >&2
-    hcloud network create --name "${NET_NAME}" --ip-range 10.0.0.0/24 >/dev/null
-    hcloud network add-subnet "${NET_NAME}" --network-zone "${NETWORK_ZONE}" --type cloud --ip-range 10.0.0.0/24 >/dev/null
+    retry_eof hcloud network create --name "${NET_NAME}" --ip-range 10.0.0.0/24 >/dev/null
+    retry_eof hcloud network add-subnet "${NET_NAME}" --network-zone "${NETWORK_ZONE}" --type cloud --ip-range 10.0.0.0/24 >/dev/null
 fi
-NET_ID=$(hcloud network describe "${NET_NAME}" -o format='{{.ID}}')
+NET_ID=$(retry_eof hcloud network describe "${NET_NAME}" -o format='{{.ID}}')
 
 create_server() {
     local name="$1" type="$2" private_ip="$3"
@@ -73,7 +107,7 @@ create_server() {
         return
     fi
     echo "creating server ${name} (${type}) in ${LOCATION}" >&2
-    hcloud server create \
+    retry_eof hcloud server create \
         --name "${name}" \
         --type "${type}" \
         --image "${IMAGE}" \
@@ -92,13 +126,13 @@ create_server "${LOADGEN_NAME}" "${LOADGEN_TIER}" "10.0.0.3"
 # return them.
 get_field() {
     local name="$1" field="$2"
-    hcloud server describe "${name}" -o format="{{${field}}}"
+    retry_eof hcloud server describe "${name}" -o format="{{${field}}}"
 }
 
 SUT_PUBLIC_IP=$(get_field "${SUT_NAME}" ".PublicNet.IPv4.IP")
 LOADGEN_PUBLIC_IP=$(get_field "${LOADGEN_NAME}" ".PublicNet.IPv4.IP")
-SUT_PRIVATE_IP=$(hcloud server describe "${SUT_NAME}" -o json | jq -r '.private_net[0].ip')
-LOADGEN_PRIVATE_IP=$(hcloud server describe "${LOADGEN_NAME}" -o json | jq -r '.private_net[0].ip')
+SUT_PRIVATE_IP=$(retry_eof hcloud server describe "${SUT_NAME}" -o json | jq -r '.private_net[0].ip')
+LOADGEN_PRIVATE_IP=$(retry_eof hcloud server describe "${LOADGEN_NAME}" -o json | jq -r '.private_net[0].ip')
 
 jq -nc \
     --arg sutPub "${SUT_PUBLIC_IP}" \

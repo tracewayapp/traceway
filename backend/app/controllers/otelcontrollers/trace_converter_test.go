@@ -445,6 +445,82 @@ func TestFormatExceptionStackTrace(t *testing.T) {
 	}
 }
 
+func TestConvertTraces_ChildGenAiSpan(t *testing.T) {
+	rootSpanId := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
+	childSpanId := []byte{0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18}
+	traceIdBytes := []byte{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99}
+	now := uint64(1700000000000000000)
+
+	req := &coltracepb.ExportTraceServiceRequest{
+		ResourceSpans: []*tracepb.ResourceSpans{
+			{
+				Resource: &resourcepb.Resource{
+					Attributes: []*commonpb.KeyValue{strKV("service.name", "my-ai-app")},
+				},
+				ScopeSpans: []*tracepb.ScopeSpans{
+					{
+						Spans: []*tracepb.Span{
+							{
+								TraceId:           traceIdBytes,
+								SpanId:            rootSpanId,
+								Name:              "POST /api/chat",
+								Kind:              tracepb.Span_SPAN_KIND_SERVER,
+								StartTimeUnixNano: now,
+								EndTimeUnixNano:   now + 5000000000,
+								Attributes: []*commonpb.KeyValue{
+									strKV("http.request.method", "POST"),
+									strKV("http.route", "/api/chat"),
+								},
+							},
+							{
+								TraceId:           traceIdBytes,
+								SpanId:            childSpanId,
+								ParentSpanId:      rootSpanId,
+								Name:              "openai.chat",
+								Kind:              tracepb.Span_SPAN_KIND_CLIENT,
+								StartTimeUnixNano: now + 100000000,
+								EndTimeUnixNano:   now + 4000000000,
+								Attributes: []*commonpb.KeyValue{
+									strKV("gen_ai.system", "openai"),
+									strKV("gen_ai.request.model", "gpt-4o"),
+									strKV("gen_ai.operation.name", "chat"),
+									strKV("trace.name", "Chat completion"),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	endpoints, _, spans, _, aiTraces, _ := convertTraces(testProjectId, req)
+
+	if len(endpoints) != 1 {
+		t.Fatalf("expected 1 endpoint, got %d", len(endpoints))
+	}
+	if len(spans) != 0 {
+		t.Errorf("expected 0 spans (child gen_ai should become ai_trace), got %d", len(spans))
+	}
+	if len(aiTraces) != 1 {
+		t.Fatalf("expected 1 ai_trace, got %d", len(aiTraces))
+	}
+
+	at := aiTraces[0]
+	if at.DistributedTraceId == nil {
+		t.Fatal("expected ai_trace.DistributedTraceId to be set")
+	}
+	if *at.DistributedTraceId != endpoints[0].Id {
+		t.Errorf("ai_trace.DistributedTraceId = %s, want endpoint.Id = %s", *at.DistributedTraceId, endpoints[0].Id)
+	}
+	if at.Provider != "openai" {
+		t.Errorf("ai_trace.Provider = %q, want %q", at.Provider, "openai")
+	}
+	if at.Model != "gpt-4o" {
+		t.Errorf("ai_trace.Model = %q, want %q", at.Model, "gpt-4o")
+	}
+}
+
 // --- Helpers ---
 
 func makeAttrs(key, val string) []*commonpb.KeyValue {

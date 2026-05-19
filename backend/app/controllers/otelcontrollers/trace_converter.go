@@ -139,6 +139,17 @@ func convertTraces(projectId uuid.UUID, req *coltracepb.ExportTraceServiceReques
 				} else {
 					continue
 				}
+			} else if hasGenAiAttributes(spanAttrs) {
+				// Child gen_ai spans become AI trace rows linked back to the root via DistributedTraceId.
+				aiTrace := buildAiTrace(
+					spanId, projectId, span, spanAttrs, allAttrs,
+					startTime, duration, serverName, appVersion,
+				)
+				aiTrace.DistributedTraceId = &traceId
+				aiTraces = append(aiTraces, aiTrace)
+				if conv := extractConversation(spanAttrs, projectId, spanId); conv != nil {
+					aiConversations = append(aiConversations, *conv)
+				}
 			} else {
 				spanName := span.Name
 				if dbQuery := getStringAttribute(spanAttrs, "db.query.text"); dbQuery != "" {
@@ -223,18 +234,25 @@ func buildEndpoint(
 		clientIP = getStringAttribute(attrs, "net.peer.ip")
 	}
 
+	// OTel semantic convention: http.response.header.<name> (underscored, lowercase)
+	contentType := getStringAttribute(attrs, "http.response.header.content_type")
+	if contentType == "" {
+		contentType = getStringAttribute(attrs, "http.response.header.content-type")
+	}
+
 	return models.Endpoint{
-		Id:         id,
-		ProjectId:  projectId,
-		Endpoint:   endpoint,
-		Duration:   duration,
-		RecordedAt: startTime,
-		StatusCode: statusCode,
-		BodySize:   bodySize,
-		ClientIP:   clientIP,
-		Attributes: allAttrs,
-		AppVersion: appVersion,
-		ServerName: serverName,
+		Id:          id,
+		ProjectId:   projectId,
+		Endpoint:    endpoint,
+		Duration:    duration,
+		RecordedAt:  startTime,
+		StatusCode:  statusCode,
+		BodySize:    bodySize,
+		ClientIP:    clientIP,
+		Attributes:  allAttrs,
+		AppVersion:  appVersion,
+		ServerName:  serverName,
+		ContentType: contentType,
 	}
 }
 

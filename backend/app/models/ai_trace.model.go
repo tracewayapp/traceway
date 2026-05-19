@@ -7,8 +7,9 @@ import (
 )
 
 type AiTrace struct {
-	Id              uuid.UUID         `json:"id" ch:"id"`
-	ProjectId       uuid.UUID         `json:"projectId" ch:"project_id"`
+	Id                 uuid.UUID         `json:"id" ch:"id"`
+	ProjectId          uuid.UUID         `json:"projectId" ch:"project_id"`
+	DistributedTraceId *uuid.UUID        `json:"distributedTraceId,omitempty" ch:"distributed_trace_id"`
 	RecordedAt      time.Time         `json:"recordedAt" ch:"recorded_at"`
 	Duration        time.Duration     `json:"duration" ch:"duration"`
 	StatusCode      uint8             `json:"statusCode" ch:"status_code"`

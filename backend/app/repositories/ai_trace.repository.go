@@ -19,7 +19,7 @@ type aiTraceRepository struct{}
 
 func (r *aiTraceRepository) InsertAsync(ctx context.Context, lines []models.AiTrace) error {
 	batch, err := chdb.Conn.PrepareBatch(clickhouse.Context(context.Background(), clickhouse.WithAsync(false)),
-		"INSERT INTO ai_traces (id, project_id, recorded_at, duration, status_code, model, response_model, provider, operation, input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens, input_cost, output_cost, total_cost, trace_name, user_id, finish_reason, server_name, app_version, storage_key, attributes)")
+		"INSERT INTO ai_traces (id, project_id, recorded_at, duration, status_code, model, response_model, provider, operation, input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens, input_cost, output_cost, total_cost, trace_name, user_id, finish_reason, server_name, app_version, storage_key, attributes, distributed_trace_id)")
 	if err != nil {
 		return err
 	}
@@ -36,7 +36,7 @@ func (r *aiTraceRepository) InsertAsync(ctx context.Context, lines []models.AiTr
 			t.InputTokens, t.OutputTokens, t.TotalTokens, t.CachedTokens, t.ReasoningTokens,
 			t.InputCost, t.OutputCost, t.TotalCost,
 			t.TraceName, t.UserId, t.FinishReason, t.ServerName, t.AppVersion,
-			t.StorageKey, attributesJSON,
+			t.StorageKey, attributesJSON, t.DistributedTraceId,
 		); err != nil {
 			return err
 		}
@@ -152,7 +152,7 @@ func (r *aiTraceRepository) FindByTraceName(ctx context.Context, projectId uuid.
 		input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens,
 		input_cost, output_cost, total_cost,
 		trace_name, user_id, finish_reason, server_name, app_version,
-		storage_key, attributes
+		storage_key, attributes, distributed_trace_id
 	FROM ai_traces
 	WHERE project_id = ? AND trace_name = ? AND recorded_at >= ? AND recorded_at <= ?
 	ORDER BY ` + orderBy + ` ` + sortDir + `
@@ -174,7 +174,7 @@ func (r *aiTraceRepository) FindByTraceName(ctx context.Context, projectId uuid.
 			&t.InputTokens, &t.OutputTokens, &t.TotalTokens, &t.CachedTokens, &t.ReasoningTokens,
 			&t.InputCost, &t.OutputCost, &t.TotalCost,
 			&t.TraceName, &t.UserId, &t.FinishReason, &t.ServerName, &t.AppVersion,
-			&t.StorageKey, &attributesJSON,
+			&t.StorageKey, &attributesJSON, &t.DistributedTraceId,
 		); err != nil {
 			return nil, 0, err
 		}
@@ -236,7 +236,7 @@ func (r *aiTraceRepository) FindById(ctx context.Context, projectId, traceId uui
 		input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens,
 		input_cost, output_cost, total_cost,
 		trace_name, user_id, finish_reason, server_name, app_version,
-		storage_key, attributes
+		storage_key, attributes, distributed_trace_id
 	FROM ai_traces
 	WHERE project_id = ? AND id = ?
 	LIMIT 1`
@@ -250,7 +250,7 @@ func (r *aiTraceRepository) FindById(ctx context.Context, projectId, traceId uui
 		&t.InputTokens, &t.OutputTokens, &t.TotalTokens, &t.CachedTokens, &t.ReasoningTokens,
 		&t.InputCost, &t.OutputCost, &t.TotalCost,
 		&t.TraceName, &t.UserId, &t.FinishReason, &t.ServerName, &t.AppVersion,
-		&t.StorageKey, &attributesJSON,
+		&t.StorageKey, &attributesJSON, &t.DistributedTraceId,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

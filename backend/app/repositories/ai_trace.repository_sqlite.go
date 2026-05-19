@@ -15,30 +15,31 @@ import (
 )
 
 type aiTraceRow struct {
-	Id              uuid.UUID     `lit:"id"`
-	ProjectId       uuid.UUID     `lit:"project_id"`
-	RecordedAt      SQLiteTime    `lit:"recorded_at"`
-	Duration        int64         `lit:"duration"`
-	StatusCode      uint8         `lit:"status_code"`
-	Model           string        `lit:"model"`
-	ResponseModel   string        `lit:"response_model"`
-	Provider        string        `lit:"provider"`
-	Operation       string        `lit:"operation"`
-	InputTokens     int64         `lit:"input_tokens"`
-	OutputTokens    int64         `lit:"output_tokens"`
-	TotalTokens     int64         `lit:"total_tokens"`
-	CachedTokens    int64         `lit:"cached_tokens"`
-	ReasoningTokens int64         `lit:"reasoning_tokens"`
-	InputCost       float64       `lit:"input_cost"`
-	OutputCost      float64       `lit:"output_cost"`
-	TotalCost       float64       `lit:"total_cost"`
-	TraceName       string        `lit:"trace_name"`
-	UserId          string        `lit:"user_id"`
-	FinishReason    string        `lit:"finish_reason"`
-	ServerName      string        `lit:"server_name"`
-	AppVersion      string        `lit:"app_version"`
-	StorageKey      string        `lit:"storage_key"`
-	Attributes      SQLiteJSONMap `lit:"attributes"`
+	Id                 uuid.UUID      `lit:"id"`
+	ProjectId          uuid.UUID      `lit:"project_id"`
+	DistributedTraceId *uuid.UUID     `lit:"distributed_trace_id"`
+	RecordedAt         SQLiteTime     `lit:"recorded_at"`
+	Duration           int64          `lit:"duration"`
+	StatusCode         uint8          `lit:"status_code"`
+	Model              string         `lit:"model"`
+	ResponseModel      string         `lit:"response_model"`
+	Provider           string         `lit:"provider"`
+	Operation          string         `lit:"operation"`
+	InputTokens        int64          `lit:"input_tokens"`
+	OutputTokens       int64          `lit:"output_tokens"`
+	TotalTokens        int64          `lit:"total_tokens"`
+	CachedTokens       int64          `lit:"cached_tokens"`
+	ReasoningTokens    int64          `lit:"reasoning_tokens"`
+	InputCost          float64        `lit:"input_cost"`
+	OutputCost         float64        `lit:"output_cost"`
+	TotalCost          float64        `lit:"total_cost"`
+	TraceName          string         `lit:"trace_name"`
+	UserId             string         `lit:"user_id"`
+	FinishReason       string         `lit:"finish_reason"`
+	ServerName         string         `lit:"server_name"`
+	AppVersion         string         `lit:"app_version"`
+	StorageKey         string         `lit:"storage_key"`
+	Attributes         SQLiteJSONMap  `lit:"attributes"`
 }
 
 type groupedAiTraceRow struct {
@@ -76,58 +77,60 @@ func init() {
 
 func aiTraceToRow(t models.AiTrace) aiTraceRow {
 	return aiTraceRow{
-		Id:              t.Id,
-		ProjectId:       t.ProjectId,
-		RecordedAt:      NewSQLiteTime(t.RecordedAt),
-		Duration:        int64(t.Duration),
-		StatusCode:      t.StatusCode,
-		Model:           t.Model,
-		ResponseModel:   t.ResponseModel,
-		Provider:        t.Provider,
-		Operation:       t.Operation,
-		InputTokens:     t.InputTokens,
-		OutputTokens:    t.OutputTokens,
-		TotalTokens:     t.TotalTokens,
-		CachedTokens:    t.CachedTokens,
-		ReasoningTokens: t.ReasoningTokens,
-		InputCost:       t.InputCost,
-		OutputCost:      t.OutputCost,
-		TotalCost:       t.TotalCost,
-		TraceName:       t.TraceName,
-		UserId:          t.UserId,
-		FinishReason:    t.FinishReason,
-		ServerName:      t.ServerName,
-		AppVersion:      t.AppVersion,
-		StorageKey:      t.StorageKey,
-		Attributes:      NewSQLiteJSONMap(t.Attributes),
+		Id:                 t.Id,
+		ProjectId:          t.ProjectId,
+		DistributedTraceId: t.DistributedTraceId,
+		RecordedAt:         NewSQLiteTime(t.RecordedAt),
+		Duration:           int64(t.Duration),
+		StatusCode:         t.StatusCode,
+		Model:              t.Model,
+		ResponseModel:      t.ResponseModel,
+		Provider:           t.Provider,
+		Operation:          t.Operation,
+		InputTokens:        t.InputTokens,
+		OutputTokens:       t.OutputTokens,
+		TotalTokens:        t.TotalTokens,
+		CachedTokens:       t.CachedTokens,
+		ReasoningTokens:    t.ReasoningTokens,
+		InputCost:          t.InputCost,
+		OutputCost:         t.OutputCost,
+		TotalCost:          t.TotalCost,
+		TraceName:          t.TraceName,
+		UserId:             t.UserId,
+		FinishReason:       t.FinishReason,
+		ServerName:         t.ServerName,
+		AppVersion:         t.AppVersion,
+		StorageKey:         t.StorageKey,
+		Attributes:         NewSQLiteJSONMap(t.Attributes),
 	}
 }
 
 func (r *aiTraceRow) toModel() models.AiTrace {
 	t := models.AiTrace{
-		Id:              r.Id,
-		ProjectId:       r.ProjectId,
-		RecordedAt:      r.RecordedAt.Time,
-		Duration:        time.Duration(r.Duration),
-		StatusCode:      r.StatusCode,
-		Model:           r.Model,
-		ResponseModel:   r.ResponseModel,
-		Provider:        r.Provider,
-		Operation:       r.Operation,
-		InputTokens:     r.InputTokens,
-		OutputTokens:    r.OutputTokens,
-		TotalTokens:     r.TotalTokens,
-		CachedTokens:    r.CachedTokens,
-		ReasoningTokens: r.ReasoningTokens,
-		InputCost:       r.InputCost,
-		OutputCost:      r.OutputCost,
-		TotalCost:       r.TotalCost,
-		TraceName:       r.TraceName,
-		UserId:          r.UserId,
-		FinishReason:    r.FinishReason,
-		ServerName:      r.ServerName,
-		AppVersion:      r.AppVersion,
-		StorageKey:      r.StorageKey,
+		Id:                 r.Id,
+		ProjectId:          r.ProjectId,
+		DistributedTraceId: r.DistributedTraceId,
+		RecordedAt:         r.RecordedAt.Time,
+		Duration:           time.Duration(r.Duration),
+		StatusCode:         r.StatusCode,
+		Model:              r.Model,
+		ResponseModel:      r.ResponseModel,
+		Provider:           r.Provider,
+		Operation:          r.Operation,
+		InputTokens:        r.InputTokens,
+		OutputTokens:       r.OutputTokens,
+		TotalTokens:        r.TotalTokens,
+		CachedTokens:       r.CachedTokens,
+		ReasoningTokens:    r.ReasoningTokens,
+		InputCost:          r.InputCost,
+		OutputCost:         r.OutputCost,
+		TotalCost:          r.TotalCost,
+		TraceName:          r.TraceName,
+		UserId:             r.UserId,
+		FinishReason:       r.FinishReason,
+		ServerName:         r.ServerName,
+		AppVersion:         r.AppVersion,
+		StorageKey:         r.StorageKey,
 	}
 	if r.Attributes != nil {
 		t.Attributes = map[string]string(r.Attributes)

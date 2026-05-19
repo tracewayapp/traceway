@@ -47,7 +47,7 @@ Traceway is an **OpenTelemetry-native** observability platform that combines **l
 - **Session Replay** — Watch what the user did right before the error. Available for web (any JS framework) and Flutter.
 - **AI Observability** — LLM cost, tokens, latency, and full conversations across providers (OpenRouter and any OTel-compatible AI gateway).
 
-Plus: configurable alerts (Slack / GitHub / email / webhook / Pushover), Apdex + Impact-Score endpoint ranking, multi-tenant orgs with role-based access, and a per-endpoint slow-threshold override.
+Plus: configurable alerts (Slack / GitHub / email / webhook / Pushover / Telegram), Apdex + Impact-Score endpoint ranking, multi-tenant orgs with role-based access, and a per-endpoint slow-threshold override.
 
 ## Why Traceway
 

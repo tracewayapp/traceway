@@ -98,7 +98,8 @@
 		webhook: 'Webhook',
 		slack: 'Slack',
 		github: 'GitHub',
-		pushover: 'Pushover'
+		pushover: 'Pushover',
+		telegram: 'Telegram'
 	};
 
 	const tabDescriptions: Record<string, string> = {

@@ -63,6 +63,12 @@ func NewAdapter(channelType string, configJSON json.RawMessage) (Adapter, error)
 			return nil, fmt.Errorf("invalid pushover config: %w", err)
 		}
 		return &cfg, nil
+	case "telegram":
+		var cfg TelegramAdapter
+		if err := json.Unmarshal(configJSON, &cfg); err != nil {
+			return nil, fmt.Errorf("invalid telegram config: %w", err)
+		}
+		return &cfg, nil
 	default:
 		return nil, fmt.Errorf("unknown channel type: %s", channelType)
 	}

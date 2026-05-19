@@ -1,19 +1,19 @@
 # Alerts
 
-Alerts notify you when conditions in your application require attention — errors, latency spikes, metric thresholds, or missing data. Configure channels and rules to get notified through email, Slack, webhooks, GitHub Issues, or Pushover.
+Alerts notify you when conditions in your application require attention — errors, latency spikes, metric thresholds, or missing data. Configure channels and rules to get notified through email, Slack, webhooks, GitHub Issues, Pushover, or Telegram.
 
 ## How Alerts Work
 
 The alerting system has two parts:
 
-- **Channels** define where notifications are delivered (email, Slack, webhook, GitHub, Pushover)
+- **Channels** define where notifications are delivered (email, Slack, webhook, GitHub, Pushover, Telegram)
 - **Rules** define what conditions trigger a notification
 
 When a rule's condition is met, Traceway sends a notification through the rule's attached channel. Each rule is linked to exactly one channel, but a channel can be used by multiple rules.
 
 ## Channels
 
-A channel represents a notification destination. Traceway supports four channel types:
+A channel represents a notification destination. Traceway supports the following channel types:
 
 | Channel | Description | Configuration |
 |---------|-------------|---------------|
@@ -22,6 +22,7 @@ A channel represents a notification destination. Traceway supports four channel 
 | Webhook | Sends an HTTP POST with a JSON payload to any URL | URL, optional headers, optional HMAC secret |
 | GitHub  | Creates a GitHub issue in a repository | Personal access token, repository owner/name, optional labels |
 | Pushover | Sends push notifications to your mobile devices | User Key, App Token |
+| Telegram | Sends a message via a Telegram bot to a user or group chat | Bot Token, Chat ID |
 
 Each channel has a **Test** button that sends a sample notification so you can verify the configuration before attaching rules.
 
@@ -73,6 +74,25 @@ Then configure the GitHub channel in Traceway:
 | Labels | No | Comma-separated labels to apply to created issues, e.g. `bug,traceway` |
 
 <img src="/channel-github.png" alt="GitHub channel configuration dialog" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+### Setting Up Telegram
+
+To send alerts to a Telegram user or group, you need a **Bot Token** and a **Chat ID**:
+
+1. Open Telegram and start a chat with [@BotFather](https://t.me/BotFather)
+2. Send `/newbot`, then follow the prompts to give your bot a name and username
+3. BotFather will reply with a **Bot Token** in the form `123456789:ABCdefGhIJKlmNoPQRstuVwxyZ` — copy it
+4. Decide where the bot should post:
+   - **Direct messages:** open a chat with your new bot and send it any message, then visit `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates` in a browser and copy the `chat.id` value from the response
+   - **Group chat:** add the bot to the group, send a message in the group, then visit the same `getUpdates` URL and copy the `chat.id` (group IDs are negative numbers, e.g. `-1001234567890`)
+5. Send a `/start` message to the bot at least once so it is allowed to message you
+
+Then configure the Telegram channel in Traceway:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| Bot Token | Yes | The token BotFather gave you |
+| Chat ID | Yes | The destination user or group chat ID |
 
 ### Webhook Payload
 

@@ -54,6 +54,8 @@
 	let pushoverSound = $state('');
 	let pushoverHtml = $state(false);
 	let pushoverTtl = $state(0);
+	let telegramBotToken = $state('');
+	let telegramChatId = $state('');
 
 	const isEditing = $derived(channel !== null);
 
@@ -62,7 +64,8 @@
 		{ value: 'webhook', label: 'Webhook' },
 		{ value: 'slack', label: 'Slack' },
 		{ value: 'github', label: 'GitHub' },
-		{ value: 'pushover', label: 'Pushover' }
+		{ value: 'pushover', label: 'Pushover' },
+		{ value: 'telegram', label: 'Telegram' }
 	];
 
 	function resetForm() {
@@ -91,6 +94,8 @@
 		pushoverSound = '';
 		pushoverHtml = false;
 		pushoverTtl = 0;
+		telegramBotToken = '';
+		telegramChatId = '';
 	}
 
 	function populateFromChannel(ch: NotificationChannel) {
@@ -130,6 +135,9 @@
 			pushoverSound = config.sound || '';
 			pushoverHtml = config.html ?? false;
 			pushoverTtl = config.ttl ?? 0;
+		} else if (ch.channelType === 'telegram') {
+			telegramBotToken = config.botToken || '';
+			telegramChatId = config.chatId || '';
 		}
 	}
 
@@ -179,6 +187,11 @@
 			if (pushoverHtml) config.html = pushoverHtml;
 			if (Number(pushoverTtl) > 0) config.ttl = Number(pushoverTtl);
 			return config;
+		} else if (channelType === 'telegram') {
+			return {
+				botToken: telegramBotToken,
+				chatId: telegramChatId
+			};
 		}
 		return {};
 	}
@@ -474,6 +487,26 @@
 				<div class="space-y-2">
 					<Label for="po-ttl">Time to Live (seconds, 0 = forever)</Label>
 					<Input id="po-ttl" type="number" bind:value={pushoverTtl} min={0} placeholder="0" />
+				</div>
+			{:else if channelType === 'telegram'}
+				<div class="space-y-2">
+					<Label for="tg-bot-token">Bot Token</Label>
+					<Input
+						id="tg-bot-token"
+						type="password"
+						bind:value={telegramBotToken}
+						placeholder="Token from @BotFather"
+						required
+					/>
+				</div>
+				<div class="space-y-2">
+					<Label for="tg-chat-id">Chat ID</Label>
+					<Input
+						id="tg-chat-id"
+						bind:value={telegramChatId}
+						placeholder="Destination user or group ID"
+						required
+					/>
 				</div>
 			{/if}
 

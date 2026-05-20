@@ -139,8 +139,35 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 	query := `SELECT
 		endpoint, total_count as count, p50_duration, p95_duration, p99_duration,
 		avg_duration, last_seen, offset_ms,
-		satisfied_count, tolerating_count, bad_count, client_error_count, is_stream,
-		if(is_stream = 1, 0.0, greatest(
+		satisfied_count, tolerating_count, bad_count, client_error_count,
+		server_error_count, is_stream,
+		if(is_stream = 1,
+			-- Streaming endpoints: skip Apdex + P99 (duration-driven, meaningless
+			-- for connection lifetimes). Substitute server_error_count for
+			-- bad_count so a 30s SSE connection isn't classified as "bad" by
+			-- duration. Keeps components 2, 4, 5 of the normal impact formula.
+			greatest(
+				multiIf(
+					server_error_count / total_count > 0.33, 0.75,
+					server_error_count / total_count > 0.20, 0.50,
+					server_error_count / total_count > 0.10, 0.25, 0.0),
+				if(endpoint != 'UNMATCHED' AND total_count > 10,
+					multiIf(
+						client_error_count / total_count > 0.50, 0.75,
+						client_error_count / total_count > 0.25, 0.50, 0.0),
+					0.0),
+				multiIf(
+					server_error_count / total_count > 0.10 AND server_error_count >= 500, 0.75,
+					server_error_count / total_count > 0.10 AND server_error_count >= 50, 0.50,
+					server_error_count / total_count > 0.05 AND server_error_count >= 2000, 0.75,
+					server_error_count / total_count > 0.05 AND server_error_count >= 500, 0.50,
+					server_error_count / total_count > 0.05 AND server_error_count >= 50, 0.25,
+					server_error_count / total_count > 0.01 AND server_error_count >= 10000, 0.75,
+					server_error_count / total_count > 0.01 AND server_error_count >= 2000, 0.50,
+					server_error_count / total_count > 0.01 AND server_error_count >= 500, 0.25,
+					0.0)
+			),
+			greatest(
 			if(total_count > 0,
 				1.0 - ((satisfied_count + tolerating_count * 0.5) / total_count), 0.0),
 			multiIf(
@@ -185,7 +212,8 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 				AND status_code < 500) as tolerating_count,
 			countIf(duration > (1500000000 + toInt64(offset_ms) * 1000000)
 				OR status_code >= 500) as bad_count,
-			countIf(status_code >= 400 AND status_code < 500) as client_error_count
+			countIf(status_code >= 400 AND status_code < 500) as client_error_count,
+			countIf(status_code >= 500) as server_error_count
 		FROM (
 			SELECT e.endpoint, e.duration, e.status_code, e.recorded_at, e.is_stream,
 				   s.offset_ms as offset_ms
@@ -213,16 +241,19 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 		var s models.EndpointStats
 		var p50, p95, p99, avg float64
 		var offsetMs uint32
-		var satisfiedCount, toleratingCount, badCount, clientErrorCount uint64
+		var satisfiedCount, toleratingCount, badCount, clientErrorCount, serverErrorCount uint64
 		var isStream uint8
 		if err := rows.Scan(&s.Endpoint, &s.Count, &p50, &p95, &p99, &avg, &s.LastSeen,
 			&offsetMs, &satisfiedCount, &toleratingCount, &badCount, &clientErrorCount,
-			&isStream, &s.Impact); err != nil {
+			&serverErrorCount, &isStream, &s.Impact); err != nil {
 			return nil, 0, err
 		}
 		s.IsStream = isStream == 1
 		if s.IsStream {
-			// Latency/Apdex/impact are intentionally zero for streaming endpoints.
+			// Latency/Apdex are zero for streams. Impact came from the
+			// stream-specific branch of the SQL (status-code components only);
+			// the reason is computed from the same status-code aggregates.
+			s.ImpactReason = ComputeStreamImpactReason(s.Endpoint, s.Count, serverErrorCount, clientErrorCount)
 			stats = append(stats, s)
 			continue
 		}

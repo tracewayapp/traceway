@@ -295,6 +295,28 @@ func main() {
 		})
 	})
 
+	router.GET("/api/test-sse", func(c *gin.Context) {
+		span := trace.SpanFromContext(c.Request.Context())
+		span.SetAttributes(attribute.Bool("traceway.is_stream", true))
+		writeSSEStream(c, 30*time.Second, time.Second)
+	})
+
+	// Short SSE for quicker iteration.
+	router.GET("/api/test-sse-short", func(c *gin.Context) {
+		span := trace.SpanFromContext(c.Request.Context())
+		span.SetAttributes(attribute.Bool("traceway.is_stream", true))
+		writeSSEStream(c, 5*time.Second, 500*time.Millisecond)
+	})
+
+	// Long-poll style — no SSE Content-Type, just a long-held connection that
+	// returns JSON at the end. Flagged via the same span attribute.
+	router.GET("/api/test-long-poll", func(c *gin.Context) {
+		span := trace.SpanFromContext(c.Request.Context())
+		span.SetAttributes(attribute.Bool("traceway.is_stream", true))
+		time.Sleep(10 * time.Second)
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "via": "long-poll"})
+	})
+
 	fmt.Println()
 	fmt.Println("=================================================")
 	fmt.Printf("  Node build:       http://localhost:%d\n", appPort)
@@ -308,8 +330,40 @@ func main() {
 	fmt.Printf("    curl http://localhost:%d/api/test-log-levels\n", appPort)
 	fmt.Printf("    curl http://localhost:%d/api/test-spans-with-logs\n", appPort)
 	fmt.Printf("    curl http://localhost:%d/api/test-distributed-logs\n", appPort)
+	fmt.Println()
+	fmt.Println("  Streaming endpoints (is_stream — expect a 'Stream' badge):")
+	fmt.Printf("    curl -N http://localhost:%d/api/test-sse\n", appPort)
+	fmt.Printf("    curl -N http://localhost:%d/api/test-sse-short\n", appPort)
+	fmt.Printf("    curl http://localhost:%d/api/test-long-poll\n", appPort)
 	fmt.Println("=================================================")
 	fmt.Println()
 
 	router.Run(fmt.Sprintf(":%d", appPort))
+}
+func writeSSEStream(c *gin.Context, duration, interval time.Duration) {
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.WriteHeader(http.StatusOK)
+	c.Writer.Flush()
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	timeout := time.After(duration)
+
+	clientGone := c.Request.Context().Done()
+	tick := 0
+	for {
+		select {
+		case <-clientGone:
+			return
+		case <-timeout:
+			return
+		case t := <-ticker.C:
+			tick++
+			fmt.Fprintf(c.Writer, "event: tick\ndata: {\"n\":%d,\"time\":\"%s\"}\n\n", tick, t.Format(time.RFC3339Nano))
+			c.Writer.Flush()
+		}
+	}
 }

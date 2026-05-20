@@ -28,6 +28,8 @@
 	import PageHeader from '$lib/components/issues/page-header.svelte';
 	import { Input } from '$lib/components/ui/input';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
+	import * as Tooltip from '$lib/components/ui/tooltip';
+	import { Badge } from '$lib/components/ui/badge';
 	import { toast } from 'svelte-sonner';
 	import { resolve } from '$app/paths';
 	import {
@@ -362,13 +364,28 @@
 				title={decodeURIComponent(data.endpoint)}
 				subtitle="Trace instances for this endpoint"
 				onBack={goBackToEndpoints}
-			/>
+			>
+				{#snippet trailing()}
+					{#if stats?.isStream}
+						<Tooltip.Root>
+							<Tooltip.Trigger>
+								<Badge variant="outline" class="font-sans">Stream</Badge>
+							</Tooltip.Trigger>
+							<Tooltip.Content side="bottom" class="max-w-xs">
+								Streaming endpoint — latency metrics aren't tracked.
+							</Tooltip.Content>
+						</Tooltip.Root>
+					{/if}
+				{/snippet}
+			</PageHeader>
 
 			<div class="flex items-start gap-2">
-				<Button variant="outline" size="sm" onclick={() => { offsetInput = offsetMs > 0 ? String(offsetMs) : ''; reasonInput = reason; showSlowDialog = true; }}>
-					<Snail class="h-4 w-4" />
-					{offsetMs > 0 ? `+${offsetMs}ms offset` : 'Expected Performance'}
-				</Button>
+				{#if !stats?.isStream}
+					<Button variant="outline" size="sm" onclick={() => { offsetInput = offsetMs > 0 ? String(offsetMs) : ''; reasonInput = reason; showSlowDialog = true; }}>
+						<Snail class="h-4 w-4" />
+						{offsetMs > 0 ? `+${offsetMs}ms offset` : 'Expected Performance'}
+					</Button>
+				{/if}
 				<TimeRangePicker
 					bind:fromDate
 					bind:toDate
@@ -380,7 +397,7 @@
 			</div>
 		</div>
 
-		{#if offsetMs > 0}
+		{#if offsetMs > 0 && !stats?.isStream}
 			<div class="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-4 py-3 text-sm">
 				<Snail class="h-4 w-4 shrink-0 text-muted-foreground" />
 				<span>
@@ -395,11 +412,6 @@
 		<!-- Endpoint Stats -->
 		{#if stats}
 			{#if stats.isStream}
-				<div class="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm">
-					<span class="font-medium">Streaming endpoint</span> — long-lived response
-					(SSE, WebSocket, or similar). Latency, Apdex and impact scoring don't apply
-					here; throughput, error rate and per-request inspection still do.
-				</div>
 				<div class="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-3">
 					<div class="space-y-1">
 						<p class="text-2xl font-semibold tracking-tight">{stats.count.toLocaleString()}</p>

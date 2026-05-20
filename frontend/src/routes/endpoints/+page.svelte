@@ -565,11 +565,7 @@
                             {endpoint.isStream ? '—' : formatDuration(endpoint.p99Duration)}
                         </Table.Cell>
                         <Table.Cell class="text-right">
-                            {#if endpoint.isStream}
-                                <span class="text-muted-foreground text-sm">—</span>
-                            {:else}
-                                <ImpactBadge score={endpoint.impact} reason={endpoint.impactReason} />
-                            {/if}
+                            <ImpactBadge score={endpoint.impact} reason={endpoint.impactReason} />
                         </Table.Cell>
                     </Table.Row>
                 {/each}

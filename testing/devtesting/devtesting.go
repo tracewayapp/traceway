@@ -88,6 +88,10 @@ func testGin() {
 		tracewaygin.WithDebug(true),
 		// tracewaygin.WithRepanic(true),
 		tracewaygin.WithOnErrorRecording(tracewaygin.RecordingUrl|tracewaygin.RecordingQuery|tracewaygin.RecordingHeader|tracewaygin.RecordingBody),
+		// /test-stream-config does not set a streaming Content-Type, so it can't be
+		// auto-sniffed. Declaring it here marks it as a stream up-front. Useful for
+		// long-poll / chunked-JSON routes that look like normal requests on the wire.
+		tracewaygin.WithStreamingPaths("/test-stream-config"),
 	))
 
 	router.POST("/test-recording/:param", func(ctx *gin.Context) {
@@ -181,6 +185,32 @@ func testGin() {
 		ctx.JSON(200, gin.H{
 			"param": ctx.Param("param"),
 		})
+	})
+
+	// SSE auto-detection — middleware sniffs Content-Type: text/event-stream.
+	router.GET("/test-sse", func(ctx *gin.Context) {
+		writeSSEStream(ctx, 30*time.Second, time.Second)
+	})
+
+	// Short SSE — same auto-detection, faster turnaround for iterating.
+	router.GET("/test-sse-short", func(ctx *gin.Context) {
+		writeSSEStream(ctx, 5*time.Second, 500*time.Millisecond)
+	})
+
+	// Explicit MarkStream — no streaming Content-Type, but the handler flags
+	// the request mid-flight. Mirrors long-poll / chunked-JSON cases.
+	router.GET("/test-stream-marked", func(ctx *gin.Context) {
+		traceway.MarkStream(ctx.Request.Context())
+		// Pretend to long-poll for ~10s then return JSON.
+		time.Sleep(10 * time.Second)
+		ctx.JSON(http.StatusOK, gin.H{"status": "ok", "via": "MarkStream"})
+	})
+
+	// Per-route config — registered via WithStreamingPaths above. No header,
+	// no API call, but flagged by path because the SDK can't sniff this case.
+	router.GET("/test-stream-config", func(ctx *gin.Context) {
+		time.Sleep(8 * time.Second)
+		ctx.JSON(http.StatusOK, gin.H{"status": "ok", "via": "WithStreamingPaths"})
 	})
 
 	router.GET("/test-spans", func(ctx *gin.Context) {
@@ -383,6 +413,34 @@ func deleteUser(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "user deleted"})
+}
+
+func writeSSEStream(ctx *gin.Context, duration, interval time.Duration) {
+	ctx.Writer.Header().Set("Content-Type", "text/event-stream")
+	ctx.Writer.Header().Set("Cache-Control", "no-cache")
+	ctx.Writer.Header().Set("Connection", "keep-alive")
+	ctx.Writer.Header().Set("X-Accel-Buffering", "no")
+	ctx.Writer.WriteHeader(http.StatusOK)
+	ctx.Writer.Flush()
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	timeout := time.After(duration)
+
+	clientGone := ctx.Request.Context().Done()
+	tick := 0
+	for {
+		select {
+		case <-clientGone:
+			return
+		case <-timeout:
+			return
+		case t := <-ticker.C:
+			tick++
+			fmt.Fprintf(ctx.Writer, "event: tick\ndata: {\"n\":%d,\"time\":\"%s\"}\n\n", tick, t.Format(time.RFC3339Nano))
+			ctx.Writer.Flush()
+		}
+	}
 }
 
 var veryLongJsonForTestin = `{"str": "traceway", "obj": {"id": 1}, "obj2": {"id": 1}, "obj3": {"id": 1}, "obj4": {"id": 1}, "obj5loremipsumdoloret": {"id": "I'm baby tumeric VHS Brooklyn, echo park literally you probably haven't heard of them crucifix taiyaki chambray roof party man bun knausgaard waistcoat squid health goth. Gastropub godard bodega boys snackwave asymmetrical la croix. Whatever try-hard pour-over humblebrag austin microdosing organic bruh. Keffiyeh mukbang yuccie, 90's humblebrag roof party godard kale chips lo-fi sriracha aesthetic.", "id2": "ImbabytumericVHSBrooklynechoparkliterallyyouprobablyhaventheardofthemcrucifixtaiyakichambrayroofpartymanbunknausgaardwaistcoatsquidhealthgothGastropubgodardbodegaboyssnackwaveasymmetricallacroixWhatevertryhardpouroverhumblebragaustinmicrodosingorganicbruhKeffiyehmukbangyuccieshumblebragroofpartygodardkalechipslofisrirachaaesthetic"}, "arr": [1, 2, "", {"key": 1, "key2": "example"}]}`

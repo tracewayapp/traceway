@@ -103,6 +103,101 @@ func ComputeImpactReason(
 	}
 }
 
+func ComputeStreamImpact(endpoint string, total, serverErrorCount, clientErrorCount uint64) float64 {
+	if total == 0 {
+		return 0
+	}
+	badRate := float64(serverErrorCount) / float64(total)
+	clientRate := float64(clientErrorCount) / float64(total)
+	return math.Max(
+		errorRateFloor(badRate),
+		math.Max(
+			clientErrorFloor(endpoint, total, clientRate),
+			volumeAwareErrorFloor(badRate, serverErrorCount),
+		),
+	)
+}
+
+func ComputeStreamImpactReason(endpoint string, total, serverErrorCount, clientErrorCount uint64) string {
+	if total == 0 {
+		return "Streaming endpoint is healthy"
+	}
+
+	totalF := float64(total)
+	badRate := float64(serverErrorCount) / totalF
+	clientRate := float64(clientErrorCount) / totalF
+
+	errorRateScore := errorRateFloor(badRate)
+	clientErrorScore := clientErrorFloor(endpoint, total, clientRate)
+	volumeScore := volumeAwareErrorFloor(badRate, serverErrorCount)
+
+	maxScore := math.Max(errorRateScore, math.Max(clientErrorScore, volumeScore))
+	if maxScore < 0.25 {
+		return "Streaming endpoint is healthy"
+	}
+
+	// Priority when tied: Volume > Client Error > Error Rate (matches the
+	// non-stream ordering, just with the latency tiers omitted).
+	switch {
+	case volumeScore >= maxScore:
+		return fmt.Sprintf("%s server errors with %.1f%% error rate", formatCount(serverErrorCount), badRate*100)
+	case clientErrorScore >= maxScore:
+		return fmt.Sprintf("%.0f%% of stream requests returning 4xx errors", clientRate*100)
+	default:
+		return fmt.Sprintf("%.0f%% of stream requests returning 5xx errors", badRate*100)
+	}
+}
+
+// errorRateFloor / clientErrorFloor / volumeAwareErrorFloor are the tier
+// definitions from ComputeImpactReason (mirrored in computeImpactScore),
+// factored out so the stream variants reuse identical thresholds.
+func errorRateFloor(badRate float64) float64 {
+	switch {
+	case badRate > 0.33:
+		return 0.75
+	case badRate > 0.20:
+		return 0.50
+	case badRate > 0.10:
+		return 0.25
+	}
+	return 0
+}
+
+func clientErrorFloor(endpoint string, total uint64, clientRate float64) float64 {
+	if endpoint == "UNMATCHED" || total <= 10 {
+		return 0
+	}
+	switch {
+	case clientRate > 0.50:
+		return 0.75
+	case clientRate > 0.25:
+		return 0.50
+	}
+	return 0
+}
+
+func volumeAwareErrorFloor(badRate float64, badCount uint64) float64 {
+	switch {
+	case badRate > 0.10 && badCount >= 500:
+		return 0.75
+	case badRate > 0.10 && badCount >= 50:
+		return 0.50
+	case badRate > 0.05 && badCount >= 2000:
+		return 0.75
+	case badRate > 0.05 && badCount >= 500:
+		return 0.50
+	case badRate > 0.05 && badCount >= 50:
+		return 0.25
+	case badRate > 0.01 && badCount >= 10000:
+		return 0.75
+	case badRate > 0.01 && badCount >= 2000:
+		return 0.50
+	case badRate > 0.01 && badCount >= 500:
+		return 0.25
+	}
+	return 0
+}
+
 func formatDurationHuman(d time.Duration) string {
 	if d >= time.Second {
 		secs := d.Seconds()

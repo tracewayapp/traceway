@@ -263,13 +263,17 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 
 		// Streaming endpoints are still surfaced (count, error rate, throughput),
 		// but their connection lifetime is not request latency — zero out the
-		// latency/Apdex/impact signals so they don't poison rankings.
+		// latency signals. Impact still fires on status-code-driven components
+		// (server-error rate, client-error rate, volume-weighted error rate)
+		// so a streaming endpoint returning lots of 5xx still ranks.
 		if g.IsStream {
 			stats = append(stats, models.EndpointStats{
-				Endpoint: g.Endpoint,
-				Count:    g.TotalCount,
-				LastSeen: lastSeen,
-				IsStream: true,
+				Endpoint:     g.Endpoint,
+				Count:        g.TotalCount,
+				LastSeen:     lastSeen,
+				Impact:       ComputeStreamImpact(g.Endpoint, g.TotalCount, g.ServerErrorCount, g.ClientErrorCount),
+				ImpactReason: ComputeStreamImpactReason(g.Endpoint, g.TotalCount, g.ServerErrorCount, g.ClientErrorCount),
+				IsStream:     true,
 			})
 			continue
 		}

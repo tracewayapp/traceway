@@ -1,5 +1,11 @@
 # HTTP Middleware
 
+import { Callout } from "nextra/components";
+
+<Callout type="warning">
+  The Traceway Go SDK is no longer the recommended way to integrate with Traceway. For new projects, instrument with [OpenTelemetry](/client/otel) — it works across languages and Traceway natively ingests OTLP. The Go SDK is still supported, but new features land in the OTel path first.
+</Callout>
+
 The `tracewayhttp` package provides middleware for standard `net/http` servers. It automatically creates a trace for each request, captures panics, and detects client IP addresses.
 
 ## Installation

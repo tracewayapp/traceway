@@ -1,5 +1,11 @@
 # Chi Middleware
 
+import { Callout } from "nextra/components";
+
+<Callout type="warning">
+  The Traceway Go SDK is no longer the recommended way to integrate with Traceway. For new projects, instrument with [OpenTelemetry](/client/otel) — it works across languages and Traceway natively ingests OTLP. The Go SDK is still supported, but new features land in the OTel path first.
+</Callout>
+
 The `tracewaychi` package provides middleware for the [Chi](https://github.com/go-chi/chi) router. It automatically creates a trace for each request, captures panics, and detects client IP addresses.
 
 Chi is fully compatible with `net/http` middleware, so `tracewaychi` delegates to the `tracewayhttp` package internally while providing a Chi-specific API surface.

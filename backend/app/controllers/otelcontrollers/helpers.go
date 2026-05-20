@@ -131,3 +131,34 @@ func getFloatAttribute(attrs []*commonpb.KeyValue, key string) float64 {
 	}
 	return 0
 }
+
+// getStringValues returns all string values for an attribute. Handles both
+// scalar string (`AnyValue_StringValue`) and the array form OTel uses for
+// captured response headers (`AnyValue_ArrayValue` of `AnyValue_StringValue`).
+func getStringValues(attrs []*commonpb.KeyValue, key string) []string {
+	var out []string
+	for _, kv := range attrs {
+		if kv.Key != key || kv.Value == nil {
+			continue
+		}
+		switch v := kv.Value.Value.(type) {
+		case *commonpb.AnyValue_StringValue:
+			if v.StringValue != "" {
+				out = append(out, v.StringValue)
+			}
+		case *commonpb.AnyValue_ArrayValue:
+			if v.ArrayValue == nil {
+				continue
+			}
+			for _, item := range v.ArrayValue.Values {
+				if item == nil {
+					continue
+				}
+				if sv, ok := item.Value.(*commonpb.AnyValue_StringValue); ok && sv.StringValue != "" {
+					out = append(out, sv.StringValue)
+				}
+			}
+		}
+	}
+	return out
+}

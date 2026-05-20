@@ -38,6 +38,18 @@ For root SERVER spans with HTTP attributes, Traceway extracts the following:
 
 The endpoint name is constructed as `"METHOD /route"` (e.g., `"GET /api/users"`).
 
+### Streaming Responses (SSE / WebSocket)
+
+Long-lived streaming routes are flagged as `is_stream` on ingest so that the dashboard excludes them from P50/P95/P99, Apdex, and impact scoring. They still appear in the endpoints list with their count, status code, error rate, and throughput. Detection signals (any of):
+
+| Signal | OTel attribute |
+|--------|----------------|
+| Server-Sent Events | `http.response.header.content-type` contains `text/event-stream` |
+| WebSocket upgrade | `http.response.status_code = 101` |
+| Vendor opt-in | `traceway.is_stream = true` (bool) — for protocols the headers don't expose |
+
+There is no OpenTelemetry-standard streaming attribute; Traceway sniffs the captured Content-Type response header. Make sure your OTel instrumentation actually captures `http.response.header.content-type` (some SDKs require explicit opt-in for header capture). Otherwise set `traceway.is_stream = true` directly on the span when starting a stream.
+
 ## Exception Events
 
 Spans with events named `"exception"` are extracted as Issues in Traceway. The following event attributes are used:

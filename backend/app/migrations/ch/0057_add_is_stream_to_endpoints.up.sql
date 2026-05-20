@@ -1,0 +1,1 @@
+ALTER TABLE endpoints ADD COLUMN is_stream UInt8 DEFAULT 0

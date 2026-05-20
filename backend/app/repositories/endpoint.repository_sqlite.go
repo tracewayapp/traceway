@@ -31,6 +31,7 @@ type endpoint struct {
 	ServerName         string        `lit:"server_name"`
 	DistributedTraceId *uuid.UUID    `lit:"distributed_trace_id"`
 	SpanId             *uuid.UUID    `lit:"span_id"`
+	IsStream           bool          `lit:"is_stream"`
 }
 
 type groupedEndpointRow struct {
@@ -44,6 +45,7 @@ type groupedEndpointRow struct {
 	SatisfiedCount   uint64  `lit:"satisfied_count"`
 	ToleratingCount  uint64  `lit:"tolerating_count"`
 	BadCount         uint64  `lit:"bad_count"`
+	IsStream         bool    `lit:"is_stream"`
 }
 
 type endpointDurationRow struct {
@@ -71,6 +73,10 @@ type endpointDetailStatsRow struct {
 	SatisfiedTolerating float64 `lit:"satisfied_tolerating"`
 }
 
+type isStreamFlagRow struct {
+	IsStream bool `lit:"is_stream"`
+}
+
 func init() {
 	models.ExtensionModelRegistrations = append(models.ExtensionModelRegistrations, func(driver lit.Driver) {
 		lit.RegisterModel[endpoint](driver)
@@ -80,6 +86,7 @@ func init() {
 		lit.RegisterModel[endpointMetricRow](driver)
 		lit.RegisterModel[distinctEndpointRow](driver)
 		lit.RegisterModel[endpointDetailStatsRow](driver)
+		lit.RegisterModel[isStreamFlagRow](driver)
 	})
 }
 
@@ -98,6 +105,7 @@ func endpointToRow(e models.Endpoint) endpoint {
 		ServerName:         e.ServerName,
 		DistributedTraceId: e.DistributedTraceId,
 		SpanId:             e.SpanId,
+		IsStream:           e.IsStream,
 	}
 }
 
@@ -115,6 +123,7 @@ func (r *endpoint) toModel() models.Endpoint {
 		ServerName:         r.ServerName,
 		DistributedTraceId: r.DistributedTraceId,
 		SpanId:             r.SpanId,
+		IsStream:           r.IsStream,
 	}
 	if r.Attributes != nil {
 		e.Attributes = map[string]string(r.Attributes)
@@ -219,7 +228,8 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 		SUM(CASE WHEN e.status_code >= 400 AND e.status_code < 500 THEN 1 ELSE 0 END) as client_error_count,
 		SUM(CASE WHEN e.duration <= (750000000 + COALESCE(s.offset_ms, 0) * 1000000) AND e.status_code < 500 THEN 1 ELSE 0 END) as satisfied_count,
 		SUM(CASE WHEN e.duration > (750000000 + COALESCE(s.offset_ms, 0) * 1000000) AND e.duration <= (1500000000 + COALESCE(s.offset_ms, 0) * 1000000) AND e.status_code < 500 THEN 1 ELSE 0 END) as tolerating_count,
-		SUM(CASE WHEN e.duration > (1500000000 + COALESCE(s.offset_ms, 0) * 1000000) OR e.status_code >= 500 THEN 1 ELSE 0 END) as bad_count
+		SUM(CASE WHEN e.duration > (1500000000 + COALESCE(s.offset_ms, 0) * 1000000) OR e.status_code >= 500 THEN 1 ELSE 0 END) as bad_count,
+		MAX(e.is_stream) as is_stream
 	FROM endpoints e
 	LEFT JOIN slow_endpoints s ON e.endpoint = s.endpoint AND e.project_id = s.project_id
 	WHERE ` + whereClause + `
@@ -241,7 +251,7 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 		var g groupedEndpointRow
 		if err := sqlRows.Scan(&g.Endpoint, &g.TotalCount, &g.AvgDuration, &g.LastSeen,
 			&g.OffsetMs, &g.ServerErrorCount, &g.ClientErrorCount,
-			&g.SatisfiedCount, &g.ToleratingCount, &g.BadCount); err != nil {
+			&g.SatisfiedCount, &g.ToleratingCount, &g.BadCount, &g.IsStream); err != nil {
 			return nil, 0, err
 		}
 		groups = append(groups, g)
@@ -249,6 +259,21 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 
 	var stats []models.EndpointStats
 	for _, g := range groups {
+		lastSeen, _ := time.Parse(time.RFC3339Nano, g.LastSeen)
+
+		// Streaming endpoints are still surfaced (count, error rate, throughput),
+		// but their connection lifetime is not request latency — zero out the
+		// latency/Apdex/impact signals so they don't poison rankings.
+		if g.IsStream {
+			stats = append(stats, models.EndpointStats{
+				Endpoint: g.Endpoint,
+				Count:    g.TotalCount,
+				LastSeen: lastSeen,
+				IsStream: true,
+			})
+			continue
+		}
+
 		durations, err := fetchSortedDurations(ctx, projectId, g.Endpoint, fromDate, toDate)
 		if err != nil {
 			return nil, 0, err
@@ -259,8 +284,6 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 		p99 := computePercentile(durations, 0.99)
 
 		impact := computeImpactScore(g.Endpoint, g.TotalCount, g.SatisfiedCount, g.ToleratingCount, g.BadCount, g.ClientErrorCount, p99, g.OffsetMs)
-
-		lastSeen, _ := time.Parse(time.RFC3339Nano, g.LastSeen)
 
 		stats = append(stats, models.EndpointStats{
 			Endpoint:    g.Endpoint,
@@ -363,7 +386,7 @@ func (e *endpointRepository) CountByHour(ctx context.Context, projectId uuid.UUI
 func (e *endpointRepository) AvgDurationByHour(ctx context.Context, projectId uuid.UUID, start, end time.Time) ([]models.TimeSeriesPoint, error) {
 	results, err := lit.SelectNamed[timeSeriesResult](db.TelemetryDB,
 		`SELECT strftime('%Y-%m-%d %H:00:00', recorded_at) as bucket, AVG(duration) / 1000000.0 as agg_value
-		FROM endpoints WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
+		FROM endpoints WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to AND is_stream = 0
 		GROUP BY bucket ORDER BY bucket ASC`,
 		lit.P{"project_id": projectId, "from": NewSQLiteTime(start), "to": NewSQLiteTime(end)})
 	if err != nil {
@@ -402,7 +425,7 @@ func (e *endpointRepository) AvgDurationByInterval(ctx context.Context, projectI
 	secs := intervalMinutes * 60
 	results, err := lit.SelectNamed[timeSeriesResult](db.TelemetryDB,
 		fmt.Sprintf(`SELECT datetime((strftime('%%s', recorded_at) / %d) * %d, 'unixepoch') as bucket, AVG(duration) / 1000000.0 as agg_value
-		FROM endpoints WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
+		FROM endpoints WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to AND is_stream = 0
 		GROUP BY bucket ORDER BY bucket ASC`, secs, secs),
 		lit.P{"project_id": projectId, "from": NewSQLiteTime(start), "to": NewSQLiteTime(end)})
 	if err != nil {
@@ -438,10 +461,11 @@ func (e *endpointRepository) FindWorstEndpoints(ctx context.Context, projectId u
 		SUM(CASE WHEN e.status_code >= 400 AND e.status_code < 500 THEN 1 ELSE 0 END) as client_error_count,
 		SUM(CASE WHEN e.duration <= (750000000 + COALESCE(s.offset_ms, 0) * 1000000) AND e.status_code < 500 THEN 1 ELSE 0 END) as satisfied_count,
 		SUM(CASE WHEN e.duration > (750000000 + COALESCE(s.offset_ms, 0) * 1000000) AND e.duration <= (1500000000 + COALESCE(s.offset_ms, 0) * 1000000) AND e.status_code < 500 THEN 1 ELSE 0 END) as tolerating_count,
-		SUM(CASE WHEN e.duration > (1500000000 + COALESCE(s.offset_ms, 0) * 1000000) OR e.status_code >= 500 THEN 1 ELSE 0 END) as bad_count
+		SUM(CASE WHEN e.duration > (1500000000 + COALESCE(s.offset_ms, 0) * 1000000) OR e.status_code >= 500 THEN 1 ELSE 0 END) as bad_count,
+		MAX(e.is_stream) as is_stream
 	FROM endpoints e
 	LEFT JOIN slow_endpoints s ON e.endpoint = s.endpoint AND e.project_id = s.project_id
-	WHERE e.project_id = :project_id AND e.recorded_at >= :from AND e.recorded_at <= :to
+	WHERE e.project_id = :project_id AND e.recorded_at >= :from AND e.recorded_at <= :to AND e.is_stream = 0
 	GROUP BY e.endpoint`
 
 	parsedQuery, args, err := lit.ParseNamedQuery(db.Driver, groupQuery, params)
@@ -460,7 +484,7 @@ func (e *endpointRepository) FindWorstEndpoints(ctx context.Context, projectId u
 		var g groupedEndpointRow
 		if err := sqlRows.Scan(&g.Endpoint, &g.TotalCount, &g.AvgDuration, &g.LastSeen,
 			&g.OffsetMs, &g.ServerErrorCount, &g.ClientErrorCount,
-			&g.SatisfiedCount, &g.ToleratingCount, &g.BadCount); err != nil {
+			&g.SatisfiedCount, &g.ToleratingCount, &g.BadCount, &g.IsStream); err != nil {
 			return nil, err
 		}
 		groups = append(groups, g)
@@ -530,24 +554,36 @@ func (e *endpointRepository) GetEndpointStats(ctx context.Context, projectId uui
 		return &models.EndpointDetailStats{}, nil
 	}
 
-	var stats models.EndpointDetailStats
-	stats.Count = row.Count
-	stats.AvgDuration = row.AvgDurationMs
-	stats.ErrorRate = row.ErrorRate
-	if row.Count > 0 {
-		stats.Apdex = row.SatisfiedTolerating / float64(row.Count)
-	}
-	stats.Throughput = float64(row.Count) / durationMinutes
-
-	durations, err := fetchSortedDurations(ctx, projectId, endpoint, start, end)
+	isStreamRow, err := lit.SelectSingleNamed[isStreamFlagRow](db.TelemetryDB,
+		`SELECT MAX(is_stream) as is_stream FROM endpoints WHERE project_id = :project_id AND endpoint = :endpoint AND recorded_at >= :from AND recorded_at <= :to`,
+		params)
 	if err != nil {
 		return nil, err
 	}
+	isStream := isStreamRow != nil && isStreamRow.IsStream
 
-	if len(durations) > 0 {
-		stats.MedianDuration = computePercentile(durations, 0.5) / 1000000.0
-		stats.P95Duration = computePercentile(durations, 0.95) / 1000000.0
-		stats.P99Duration = computePercentile(durations, 0.99) / 1000000.0
+	var stats models.EndpointDetailStats
+	stats.Count = row.Count
+	stats.ErrorRate = row.ErrorRate
+	stats.Throughput = float64(row.Count) / durationMinutes
+	stats.IsStream = isStream
+
+	if !isStream {
+		stats.AvgDuration = row.AvgDurationMs
+		if row.Count > 0 {
+			stats.Apdex = row.SatisfiedTolerating / float64(row.Count)
+		}
+
+		durations, err := fetchSortedDurations(ctx, projectId, endpoint, start, end)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(durations) > 0 {
+			stats.MedianDuration = computePercentile(durations, 0.5) / 1000000.0
+			stats.P95Duration = computePercentile(durations, 0.95) / 1000000.0
+			stats.P99Duration = computePercentile(durations, 0.99) / 1000000.0
+		}
 	}
 
 	return &stats, nil
@@ -595,7 +631,7 @@ func (e *endpointRepository) GetEndpointStackedChart(ctx context.Context, projec
 		%s as endpoint_category,
 		%s as metric_value
 	FROM endpoints
-	WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
+	WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to AND is_stream = 0
 	GROUP BY bucket, endpoint_category
 	ORDER BY bucket ASC, endpoint_category ASC`, secs, secs, caseExpr, metricExpr)
 
@@ -657,7 +693,7 @@ func (e *endpointRepository) getStackedChartWithPercentiles(ctx context.Context,
 		endpoint,
 		duration
 	FROM endpoints
-	WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
+	WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to AND is_stream = 0
 	ORDER BY bucket ASC, endpoint ASC, duration ASC`, bucketSecs, bucketSecs)
 
 	parsedQuery, args, err := lit.ParseNamedQuery(db.Driver, query,
@@ -759,7 +795,7 @@ func (e *endpointRepository) UpsertSlowEndpoint(ctx context.Context, projectId u
 
 func fetchSortedDurations(ctx context.Context, projectId uuid.UUID, endpoint string, from, to time.Time) ([]float64, error) {
 	results, err := lit.SelectNamed[endpointDurationRow](db.TelemetryDB,
-		"SELECT duration FROM endpoints WHERE project_id = :project_id AND endpoint = :endpoint AND recorded_at >= :from AND recorded_at <= :to ORDER BY duration ASC",
+		"SELECT duration FROM endpoints WHERE project_id = :project_id AND endpoint = :endpoint AND recorded_at >= :from AND recorded_at <= :to AND is_stream = 0 ORDER BY duration ASC",
 		lit.P{"project_id": projectId, "endpoint": endpoint, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to)})
 	if err != nil {
 		return nil, err
@@ -873,7 +909,7 @@ func getTopEndpointsByMetric(ctx context.Context, projectId uuid.UUID, from, to 
 	if metricType == "total_time" {
 		results, err := lit.SelectNamed[endpointMetricRow](db.TelemetryDB,
 			`SELECT endpoint, COUNT(*) * AVG(duration) / 1000000.0 as metric_value
-			FROM endpoints WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
+			FROM endpoints WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to AND is_stream = 0
 			GROUP BY endpoint ORDER BY metric_value DESC LIMIT 5`,
 			params)
 		if err != nil {
@@ -896,7 +932,7 @@ func getTopEndpointsByMetric(ctx context.Context, projectId uuid.UUID, from, to 
 	}
 
 	epRows, err := lit.SelectNamed[distinctEndpointRow](db.TelemetryDB,
-		`SELECT DISTINCT endpoint FROM endpoints WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to`,
+		`SELECT DISTINCT endpoint FROM endpoints WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to AND is_stream = 0`,
 		params)
 	if err != nil {
 		return nil, err

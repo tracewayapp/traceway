@@ -3,6 +3,7 @@ package otelcontrollers
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -235,7 +236,42 @@ func buildEndpoint(
 		Attributes: allAttrs,
 		AppVersion: appVersion,
 		ServerName: serverName,
+		IsStream:   isOtelStreamingEndpoint(attrs, statusCode),
 	}
+}
+
+// isOtelStreamingEndpoint detects long-lived streaming responses on OTel spans:
+//   - status 101 (WebSocket upgrade)
+//   - http.response.header.content-type contains text/event-stream (SSE)
+//
+// OTel has no standard `is_stream` attribute, so we sniff the captured headers.
+// Clients that don't capture `http.response.header.content-type` won't trigger
+// SSE detection — they can fall back to a vendor extension attribute
+// `traceway.is_stream` (boolean) or the WebSocket signal.
+func isOtelStreamingEndpoint(attrs []*commonpb.KeyValue, statusCode int16) bool {
+	if statusCode == http.StatusSwitchingProtocols {
+		return true
+	}
+	if b, ok := getBoolAttribute(attrs, "traceway.is_stream"); ok && b {
+		return true
+	}
+	for _, ct := range getStringValues(attrs, "http.response.header.content-type") {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(ct)), "text/event-stream") {
+			return true
+		}
+	}
+	return false
+}
+
+func getBoolAttribute(attrs []*commonpb.KeyValue, key string) (bool, bool) {
+	for _, kv := range attrs {
+		if kv.Key == key && kv.Value != nil {
+			if bv, ok := kv.Value.Value.(*commonpb.AnyValue_BoolValue); ok {
+				return bv.BoolValue, true
+			}
+		}
+	}
+	return false, false
 }
 
 func getHTTPEndpoint(attrs []*commonpb.KeyValue, fallback string) string {

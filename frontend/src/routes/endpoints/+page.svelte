@@ -11,6 +11,7 @@
     import { ChevronDown, Check } from 'lucide-svelte';
     import { TracewayTableHeader } from "$lib/components/ui/traceway-table-header";
     import { ImpactBadge } from "$lib/components/ui/impact-badge";
+    import { Badge } from "$lib/components/ui/badge";
     import { TableEmptyState } from "$lib/components/ui/table-empty-state";
     import { PaginationFooter } from "$lib/components/ui/pagination-footer";
     import { TimeRangePicker } from "$lib/components/ui/time-range-picker";
@@ -52,6 +53,7 @@
         lastSeen: string;
         impact: number;
         impactReason: string;
+        isStream?: boolean;
     };
 
     type SortField = 'count' | 'p50_duration' | 'p95_duration' | 'p99_duration' | 'last_seen' | 'impact';
@@ -543,22 +545,31 @@
                         onclick={createRowClickHandler(resolve(`/endpoints/${encodeURIComponent(endpoint.endpoint)}`), 'preset', 'from', 'to')}
                     >
                         <Table.Cell class="font-mono text-sm max-w-[50%] break-all whitespace-normal">
-                            {endpoint.endpoint}
+                            <span class="inline-flex items-center gap-2">
+                                {endpoint.endpoint}
+                                {#if endpoint.isStream}
+                                    <Badge variant="outline" class="font-sans text-xs" title="Streaming response (SSE / WebSocket / long-poll). Excluded from latency, Apdex, and impact scoring.">Stream</Badge>
+                                {/if}
+                            </span>
                         </Table.Cell>
                         <Table.Cell class="tabular-nums">
                             {formatCount(endpoint.count)}
                         </Table.Cell>
-                        <Table.Cell class="font-mono text-sm tabular-nums">
-                            {formatDuration(endpoint.p50Duration)}
+                        <Table.Cell class="font-mono text-sm tabular-nums text-muted-foreground">
+                            {endpoint.isStream ? '—' : formatDuration(endpoint.p50Duration)}
                         </Table.Cell>
-                        <Table.Cell class="font-mono text-sm tabular-nums">
-                            {formatDuration(endpoint.p95Duration)}
+                        <Table.Cell class="font-mono text-sm tabular-nums text-muted-foreground">
+                            {endpoint.isStream ? '—' : formatDuration(endpoint.p95Duration)}
                         </Table.Cell>
-                        <Table.Cell class="font-mono text-sm tabular-nums">
-                            {formatDuration(endpoint.p99Duration)}
+                        <Table.Cell class="font-mono text-sm tabular-nums text-muted-foreground">
+                            {endpoint.isStream ? '—' : formatDuration(endpoint.p99Duration)}
                         </Table.Cell>
                         <Table.Cell class="text-right">
-                            <ImpactBadge score={endpoint.impact} reason={endpoint.impactReason} />
+                            {#if endpoint.isStream}
+                                <span class="text-muted-foreground text-sm">—</span>
+                            {:else}
+                                <ImpactBadge score={endpoint.impact} reason={endpoint.impactReason} />
+                            {/if}
                         </Table.Cell>
                     </Table.Row>
                 {/each}

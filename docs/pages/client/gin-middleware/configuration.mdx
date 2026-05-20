@@ -8,6 +8,7 @@
 | `WithRecordUnmatched(bool)` | Record requests for unregistered routes (404s) | `false` |
 | `WithRecordStatic(bool)` | Record requests for static file routes | `false` |
 | `WithIgnoredPaths(...string)` | Skip recording for specific route paths | none |
+| `WithStreamingPaths(...string)` | Mark routes as long-lived streaming responses (SSE / WS / long-poll) | none |
 | `WithOnErrorRecording(RecordingFlag)` | What additional data to capture on errors | `0` (none) |
 
 ## Passthrough Core Options
@@ -61,6 +62,34 @@ tracewaygin.WithIgnoredPaths("/health", "/ready", "/metrics")
 ```
 
 Ignored paths are still served — the request passes through to your handler, but no trace is recorded.
+
+## Streaming Responses (SSE / WebSocket / long-poll)
+
+Long-lived streaming routes — Server-Sent Events, WebSocket connections, long-polling — have a request lifetime that equals the connection duration, not request processing latency. If they were recorded as normal endpoints they would dominate P50/P95/P99 rankings, tank Apdex, and trigger slow-endpoint alerts even when behaving correctly.
+
+The middleware **auto-detects** streaming responses by inspecting the response headers after the handler returns:
+
+| Signal | Detection |
+|--------|-----------|
+| Server-Sent Events | `Content-Type: text/event-stream` |
+| WebSocket upgrade  | HTTP status `101 Switching Protocols`, or `Upgrade: websocket` |
+
+When a streaming response is detected the trace is still recorded — its status code, error rate, and throughput remain visible on the dashboard — but its duration is **excluded** from P50/P95/P99, Apdex, and impact scoring.
+
+For routes the SDK can't auto-detect (long-polling, chunked JSON streams, custom protocols), declare them up-front:
+
+```go
+tracewaygin.WithStreamingPaths("/api/long-poll", "/api/stream/json")
+```
+
+Or mark dynamically from any handler reachable on the request — useful when the same route is sometimes streaming, sometimes not:
+
+```go
+func eventsHandler(c *gin.Context) {
+    traceway.MarkStream(c.Request.Context())
+    // ... write stream ...
+}
+```
 
 ## Complete Example
 

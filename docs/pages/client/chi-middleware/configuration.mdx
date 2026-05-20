@@ -6,6 +6,7 @@
 |--------|-------------|---------|
 | `WithRepanic(bool)` | Re-panic after capturing, letting upstream recovery handle it | `true` |
 | `WithIgnoredPaths(...string)` | Skip recording for specific URL paths | none |
+| `WithStreamingPaths(...string)` | Mark paths as long-lived streaming responses (SSE / WS / long-poll) | none |
 | `WithFilter(func(*http.Request) bool)` | Custom filter function — return `false` to skip recording | none |
 | `WithOnErrorRecording(RecordingFlag)` | What additional data to capture on errors | `0` (none) |
 
@@ -68,6 +69,37 @@ tracewaychi.New(
 ```
 
 When the filter returns `false`, the request is passed directly to your handler without any Traceway wrapping.
+
+## Streaming Responses (SSE / WebSocket / long-poll)
+
+Long-lived streaming routes have a request lifetime that equals the connection duration, not request processing latency. Recording them as normal endpoints would dominate P50/P95/P99 rankings, tank Apdex, and trigger slow-endpoint alerts.
+
+The middleware **auto-detects** streaming responses from the response headers:
+
+| Signal | Detection |
+|--------|-----------|
+| Server-Sent Events | `Content-Type: text/event-stream` |
+| WebSocket upgrade  | HTTP status `101 Switching Protocols`, or `Upgrade: websocket` |
+
+Streaming requests are still recorded — status code, error rate, and throughput remain visible — but their duration is **excluded** from P50/P95/P99, Apdex, and impact scoring.
+
+Declare paths the SDK can't auto-detect (long-polling, chunked JSON streams):
+
+```go
+tracewaychi.New(
+    connectionString,
+    tracewaychi.WithStreamingPaths("/api/long-poll", "/api/stream/json"),
+)
+```
+
+Or mark dynamically from any handler:
+
+```go
+func eventsHandler(w http.ResponseWriter, r *http.Request) {
+    traceway.MarkStream(r.Context())
+    // ... write stream ...
+}
+```
 
 ## Complete Example
 

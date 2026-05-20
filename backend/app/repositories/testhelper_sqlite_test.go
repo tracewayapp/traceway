@@ -66,7 +66,8 @@ CREATE TABLE IF NOT EXISTS endpoints (
     attributes TEXT NOT NULL DEFAULT '{}',
     app_version TEXT NOT NULL DEFAULT '',
     server_name TEXT NOT NULL DEFAULT '',
-    distributed_trace_id TEXT DEFAULT NULL
+    distributed_trace_id TEXT DEFAULT NULL,
+    is_stream INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_endpoints_project_recorded ON endpoints(project_id, recorded_at);
 CREATE INDEX IF NOT EXISTS idx_endpoints_project_endpoint ON endpoints(project_id, endpoint);

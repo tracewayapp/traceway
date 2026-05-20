@@ -96,6 +96,7 @@ type ClientTrace struct {
 	Attributes         map[string]string `json:"attributes"`
 	Spans              []*ClientSpan     `json:"spans"`
 	IsTask             bool              `json:"isTask"`
+	IsStream           bool              `json:"isStream"`
 	DistributedTraceId string            `json:"distributedTraceId"`
 }
 
@@ -130,6 +131,7 @@ func (c *ClientTrace) ToEndpoint(appVersion, serverName string) models.Endpoint 
 		AppVersion:         appVersion,
 		ServerName:         serverName,
 		DistributedTraceId: c.parsedDistributedTraceId(),
+		IsStream:           c.IsStream,
 	}
 }
 

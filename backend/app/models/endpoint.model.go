@@ -21,6 +21,7 @@ type Endpoint struct {
 	ServerName         string            `json:"serverName" ch:"server_name"`
 	DistributedTraceId *uuid.UUID        `json:"distributedTraceId,omitempty" ch:"distributed_trace_id"`
 	SpanId             *uuid.UUID        `json:"spanId,omitempty" ch:"span_id"`
+	IsStream bool `json:"isStream" ch:"is_stream"`
 }
 
 type EndpointStats struct {
@@ -33,6 +34,7 @@ type EndpointStats struct {
 	LastSeen    time.Time     `json:"lastSeen"`
 	Impact       float64       `json:"impact"`       // 0-1 impact score
 	ImpactReason string        `json:"impactReason"` // human-readable explanation of the dominant impact factor
+	IsStream     bool          `json:"isStream"`     // true => latency/Apdex/impact intentionally zero
 }
 
 // EndpointDetailStats contains detailed statistics for a specific endpoint
@@ -45,6 +47,7 @@ type EndpointDetailStats struct {
 	Apdex          float64 `json:"apdex"`          // 0-1 score
 	ErrorRate      float64 `json:"errorRate"`      // percentage
 	Throughput     float64 `json:"throughput"`     // requests per minute
+	IsStream       bool    `json:"isStream"`       // true => latency/Apdex are not meaningful for this endpoint
 }
 
 // EndpointTimeSeriesPoint represents a single data point in a time series for endpoint charts

@@ -70,6 +70,7 @@
 		apdex: number;
 		errorRate: number;
 		throughput: number;
+		isStream?: boolean;
 	};
 
 	type SortField = 'recorded_at' | 'duration' | 'status_code' | 'body_size';
@@ -393,38 +394,60 @@
 
 		<!-- Endpoint Stats -->
 		{#if stats}
-			<div class="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-7">
-				<div class="space-y-1">
-					<p class="text-2xl font-semibold tracking-tight">{formatDurationMs(stats.avgDuration)}</p>
-					<p class="text-xs text-muted-foreground">Average response time</p>
+			{#if stats.isStream}
+				<div class="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm">
+					<span class="font-medium">Streaming endpoint</span> — long-lived response
+					(SSE, WebSocket, or similar). Latency, Apdex and impact scoring don't apply
+					here; throughput, error rate and per-request inspection still do.
 				</div>
-				<div class="space-y-1">
-					<p class="text-2xl font-semibold tracking-tight">
-						{formatDurationMs(stats.medianDuration)}
-					</p>
-					<p class="text-xs text-muted-foreground">Median response time</p>
+				<div class="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-3">
+					<div class="space-y-1">
+						<p class="text-2xl font-semibold tracking-tight">{stats.count.toLocaleString()}</p>
+						<p class="text-xs text-muted-foreground">Connections</p>
+					</div>
+					<div class="space-y-1">
+						<p class="text-2xl font-semibold tracking-tight">{stats.errorRate.toFixed(2)} %</p>
+						<p class="text-xs text-muted-foreground">Average error rate</p>
+					</div>
+					<div class="space-y-1">
+						<p class="text-2xl font-semibold tracking-tight">{stats.throughput.toFixed(0)} rpm</p>
+						<p class="text-xs text-muted-foreground">Average throughput</p>
+					</div>
 				</div>
-				<div class="space-y-1">
-					<p class="text-2xl font-semibold tracking-tight">{formatDurationMs(stats.p95Duration)}</p>
-					<p class="text-xs text-muted-foreground">95th percentile response time</p>
+			{:else}
+				<div class="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-7">
+					<div class="space-y-1">
+						<p class="text-2xl font-semibold tracking-tight">{formatDurationMs(stats.avgDuration)}</p>
+						<p class="text-xs text-muted-foreground">Average response time</p>
+					</div>
+					<div class="space-y-1">
+						<p class="text-2xl font-semibold tracking-tight">
+							{formatDurationMs(stats.medianDuration)}
+						</p>
+						<p class="text-xs text-muted-foreground">Median response time</p>
+					</div>
+					<div class="space-y-1">
+						<p class="text-2xl font-semibold tracking-tight">{formatDurationMs(stats.p95Duration)}</p>
+						<p class="text-xs text-muted-foreground">95th percentile response time</p>
+					</div>
+					<div class="space-y-1">
+						<p class="text-2xl font-semibold tracking-tight">{formatDurationMs(stats.p99Duration)}</p>
+						<p class="text-xs text-muted-foreground">99th percentile response time</p>
+					</div>
+					<div class="space-y-1">
+						<p class="text-2xl font-semibold tracking-tight">{stats.apdex.toFixed(2)}</p>
+						<p class="text-xs text-muted-foreground">Apdex score</p>
+					</div>
+					<div class="space-y-1">
+						<p class="text-2xl font-semibold tracking-tight">{stats.errorRate.toFixed(2)} %</p>
+						<p class="text-xs text-muted-foreground">Average error rate</p>
+					</div>
+					<div class="space-y-1">
+						<p class="text-2xl font-semibold tracking-tight">{stats.throughput.toFixed(0)} rpm</p>
+						<p class="text-xs text-muted-foreground">Average throughput</p>
+					</div>
 				</div>
-				<div class="space-y-1">
-					<p class="text-2xl font-semibold tracking-tight">{formatDurationMs(stats.p99Duration)}</p>
-					<p class="text-xs text-muted-foreground">99th percentile response time</p>
-				</div>
-				<div class="space-y-1">
-					<p class="text-2xl font-semibold tracking-tight">{stats.apdex.toFixed(2)}</p>
-					<p class="text-xs text-muted-foreground">Apdex score</p>
-				</div>
-				<div class="space-y-1">
-					<p class="text-2xl font-semibold tracking-tight">{stats.errorRate.toFixed(2)} %</p>
-					<p class="text-xs text-muted-foreground">Average error rate</p>
-				</div>
-				<div class="space-y-1">
-					<p class="text-2xl font-semibold tracking-tight">{stats.throughput.toFixed(0)} rpm</p>
-					<p class="text-xs text-muted-foreground">Average throughput</p>
-				</div>
-			</div>
+			{/if}
 		{:else if loading}
 			<div class="flex items-center justify-center py-8">
 				<LoadingCircle size="lg" />

@@ -311,7 +311,7 @@ func testGin() {
 	router.PUT("/users/:id", updateUser)
 	router.DELETE("/users/:id", deleteUser)
 
-	router.Run()
+	router.Run(":8081")
 }
 
 func listUsers(c *gin.Context) {

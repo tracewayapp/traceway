@@ -1,22 +1,84 @@
 # Docker Compose
 
-Runs Traceway, ClickHouse, and PostgreSQL as separate services. Uses the [Minimal Container](/server/minimal) image with databases managed by Docker Compose.
+Runs Traceway, ClickHouse, and PostgreSQL as separate services using the [Minimal Container](/server/minimal) image.
 
 ## Quick Start
 
-```bash
-# Start the full stack (builds images and starts all services)
-docker compose up --build
+No build required — use the pre-built image from GitHub Container Registry with this `docker-compose.yml`:
 
-# Clean restart (removes volumes, resets all data)
-docker compose down -v && docker compose up --build
+```yaml
+services:
+  traceway:
+    image: ghcr.io/tracewayapp/traceway:minimal
+    ports:
+      - "80:80"
+    environment:
+      CLICKHOUSE_SERVER: "clickhouse:9000"
+      CLICKHOUSE_DATABASE: "traceway"
+      CLICKHOUSE_USERNAME: "default"
+      CLICKHOUSE_PASSWORD: "clickhouse"
+      CLICKHOUSE_TLS: "false"
+      POSTGRES_HOST: "postgres"
+      POSTGRES_PORT: "5432"
+      POSTGRES_DATABASE: "traceway"
+      POSTGRES_USERNAME: "traceway"
+      POSTGRES_PASSWORD: "traceway"
+      POSTGRES_SSLMODE: "disable"
+      JWT_SECRET: "change-this-to-a-secure-secret-at-least-32-chars"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8-alpine
+    environment:
+      CLICKHOUSE_DB: traceway
+      CLICKHOUSE_PASSWORD: clickhouse
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--password", "clickhouse", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+      retries: 10
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: traceway
+      POSTGRES_PASSWORD: traceway
+      POSTGRES_DB: traceway
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U traceway"]
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  clickhouse-data:
+  postgres-data:
+```
+
+```bash
+docker compose up -d
 ```
 
 After starting, open `http://localhost/register` to create your first account.
 
+The `docker-compose.yml` in the repository root builds from source instead. Use that if you are actively developing Traceway or need to run a modified build (`docker compose up --build`).
+
 ## Configuration
 
-The `docker-compose.yml` in the repository root is ready to use out of the box. To customize, edit the environment variables in the file directly:
+Edit the environment variables in your compose file as needed:
 
 | Variable | Default | Description |
 |----------|---------|-------------|

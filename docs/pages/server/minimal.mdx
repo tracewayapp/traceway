@@ -2,15 +2,13 @@
 
 Lightweight Alpine image (~20-30MB) containing only the Go backend with the embedded frontend. Requires external ClickHouse and PostgreSQL instances.
 
-## Build
+## Quick Start
+
+Pull the pre-built image and run it pointing at your databases:
 
 ```bash
-docker build -f Dockerfile.minimal -t traceway:minimal .
-```
+docker pull ghcr.io/tracewayapp/traceway:minimal
 
-## Run
-
-```bash
 docker run -d --name traceway \
   -p 80:80 \
   -e CLICKHOUSE_SERVER="clickhouse-host:9000" \
@@ -25,10 +23,20 @@ docker run -d --name traceway \
   -e POSTGRES_SSLMODE="disable" \
   -e JWT_SECRET="your-jwt-secret-min-32-characters-long" \
   -e APP_BASE_URL="https://traceway.example.com" \
-  traceway:minimal
+  ghcr.io/tracewayapp/traceway:minimal
 ```
 
 After starting, open `http://localhost/register` to create your first account.
+
+## Build from Source
+
+Only needed if you want to run a custom or modified build:
+
+```bash
+docker build -f Dockerfile.minimal -t traceway:minimal .
+```
+
+Then use `traceway:minimal` instead of `ghcr.io/tracewayapp/traceway:minimal` in the command above.
 
 ## Required Environment Variables
 

@@ -4,26 +4,34 @@ Smallest possible Traceway deployment: a single Alpine container that uses SQLit
 
 All persistent state — both SQLite database files and blob storage — lives under `/data`. Bind-mount that single folder to keep your data across restarts.
 
-## Build
+## Quick Start
+
+Pull the pre-built image and run it with a persistent data volume:
 
 ```bash
-docker build -f Dockerfile.sqlite -t traceway:sqlite .
-```
+docker pull ghcr.io/tracewayapp/traceway:sqlite
 
-## Run (local storage)
-
-```bash
 docker run -d --name traceway \
   -p 80:80 \
   -v "$(pwd)/traceway-data:/data" \
   -e JWT_SECRET="your-jwt-secret-min-32-characters-long" \
   -e APP_BASE_URL="https://traceway.example.com" \
-  traceway:sqlite
+  ghcr.io/tracewayapp/traceway:sqlite
 ```
 
 Both SQLite files (`traceway.db`, `traceway_telemetry.db`) and uploaded blobs (under `storage/`) land inside the mounted folder.
 
 After starting, open `http://localhost/register` to create your first account.
+
+## Build from Source
+
+Only needed if you want to run a custom or modified build:
+
+```bash
+docker build -f Dockerfile.sqlite -t traceway:sqlite .
+```
+
+Then use `traceway:sqlite` instead of `ghcr.io/tracewayapp/traceway:sqlite` in the commands above.
 
 ## Run (S3 storage)
 
@@ -39,7 +47,7 @@ docker run -d --name traceway \
   -e S3_REGION="us-east-1" \
   -e S3_ACCESS_KEY="your-access-key" \
   -e S3_SECRET_KEY="your-secret-key" \
-  traceway:sqlite
+  ghcr.io/tracewayapp/traceway:sqlite
 ```
 
 For non-AWS providers add `-e S3_ENDPOINT="https://s3.example.com"`. If `S3_ACCESS_KEY` and `S3_SECRET_KEY` are omitted, the AWS SDK falls back to the default credential chain (IAM role, environment, shared config).

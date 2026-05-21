@@ -2,7 +2,33 @@
 
 import { Callout } from "nextra/components";
 
-This guide covers how to set up the Traceway development environment, run tests, and submit changes.
+This guide covers how to contribute to Traceway — from filing an issue to getting a PR merged.
+
+## Community
+
+The fastest way to ask questions, share ideas, or get help from maintainers is [Discord](https://discord.gg/9tPn2SB3). Issues and PRs are the right place for concrete bugs and changes; Discord is for everything else.
+
+## Opening Issues
+
+### Bug reports
+
+Search open issues first to avoid duplicates. When you file a bug, include:
+
+- **What happened** — a clear description of the bug
+- **What you expected** — what should have happened instead
+- **Steps to reproduce** — the smallest sequence of steps that triggers it
+- **Environment** — Traceway version, deployment type (SQLite, Docker Compose, all-in-one), OS
+- **Logs** — any relevant error messages or stack traces
+
+The more precise the reproduction steps, the faster the fix.
+
+### Feature requests
+
+Open an issue before writing code. Describe the problem you're solving and what you have in mind. This avoids building something that conflicts with existing plans, duplicates in-progress work, or doesn't fit the project's direction. A quick conversation upfront saves everyone time.
+
+### Labels
+
+Maintainers add labels after the issue is filed. You don't need to set them yourself.
 
 ## Project Structure
 
@@ -271,3 +297,35 @@ Then create a pull request on GitHub. Include:
 git fetch upstream
 git rebase upstream/main
 ```
+
+## PR Review Process
+
+All pull requests require **at least one approving review** before merging. This applies to everyone, including maintainers.
+
+### What reviewers look at
+
+- **Correctness** — does the code do what the PR says it does?
+- **Testing** — are the requirements in "Before submitting" met? Repository changes need the pgch Docker tests to pass.
+- **Patterns** — does the change follow the conventions in [CLAUDE.md](https://github.com/tracewayapp/traceway/blob/main/CLAUDE.md)? Reviewers will push back on divergence from established patterns.
+- **Scope** — is the PR focused? A small, focused PR is always preferred over one that mixes unrelated changes.
+
+### Merge strategy
+
+PRs are squash-merged, so write a clear PR title and description — they become the commit message on `main`. Don't just say "fix bug"; say what bug, why it happened, and what you changed.
+
+### Review timeline
+
+Maintainers aim to review PRs within a few days. If a PR has been open for more than a week with no response, ping in Discord. If you push new commits after requesting review, leave a comment explaining what changed — don't silently update the branch.
+
+## Using AI Tools
+
+AI-assisted contributions are welcome. Claude Code, Copilot, and similar tools can speed up boilerplate and help explore options.
+
+Ground rules:
+
+- **Review everything.** You are responsible for every line in your PR regardless of whether AI wrote it. Read the diff. Understand it. If you don't understand something, figure it out before submitting — reviewers will ask.
+- **Test it yourself.** Don't rely on AI saying "this should work." Run the code. Run the tests listed in "Before submitting."
+- **Architecture matters.** AI doesn't know the conventions in this repo. Cross-check generated code against [CLAUDE.md](https://github.com/tracewayapp/traceway/blob/main/CLAUDE.md) — especially the error handling patterns, transaction middleware, and repository patterns.
+- **Say so in the PR description.** Mention that you used AI assistance so reviewers know to look carefully at novel patterns or structural choices.
+
+There is no stigma around AI usage here — just shared responsibility for quality.

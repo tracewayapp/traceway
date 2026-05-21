@@ -2,23 +2,35 @@
 
 Single Docker container with ClickHouse, PostgreSQL, and the Go backend managed by supervisord. Best for simple setups where you want everything in one place.
 
-## Build
+## Quick Start
+
+Pull the pre-built image from GitHub Container Registry:
+
+```bash
+docker pull ghcr.io/tracewayapp/traceway:latest
+
+docker run -d --name traceway \
+  -p 80:80 \
+  -v traceway-ch:/var/lib/clickhouse \
+  -v traceway-pg:/var/lib/postgresql/data \
+  ghcr.io/tracewayapp/traceway:latest
+```
+
+After starting, open `http://localhost/register` to create your first account.
+
+## Build from Source
+
+Only needed if you want to run a custom or modified build:
 
 ```bash
 docker build -t traceway:latest .
-```
 
-## Run
-
-```bash
 docker run -d --name traceway \
   -p 80:80 \
   -v traceway-ch:/var/lib/clickhouse \
   -v traceway-pg:/var/lib/postgresql/data \
   traceway:latest
 ```
-
-After starting, open `http://localhost/register` to create your first account.
 
 ## Environment Variables
 

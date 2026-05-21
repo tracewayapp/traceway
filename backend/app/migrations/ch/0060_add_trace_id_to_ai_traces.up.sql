@@ -1,0 +1,1 @@
+ALTER TABLE ai_traces ADD COLUMN trace_id UUID DEFAULT id

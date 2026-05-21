@@ -46,6 +46,7 @@
     type EndpointStats = {
         endpoint: string;
         count: number;
+        nonRootCount: number;
         p50Duration: number;
         p95Duration: number;
         p99Duration: number;
@@ -55,6 +56,14 @@
         impactReason: string;
         isStream?: boolean;
     };
+
+    type RootFilter = 'all' | 'root' | 'nonroot';
+
+    const rootFilterOptions: { value: RootFilter; label: string }[] = [
+        { value: 'all', label: 'All' },
+        { value: 'root', label: 'Root only' },
+        { value: 'nonroot', label: 'Non-root only' }
+    ];
 
     type SortField = 'count' | 'p50_duration' | 'p95_duration' | 'p99_duration' | 'last_seen' | 'impact';
 
@@ -93,14 +102,17 @@
     let total = $state(0);
     let totalPages = $state(0);
 
-    // Parse URL params including search
+    // Parse URL params including search and root filter
     function parseEndpointsUrlParams() {
-        if (!browser) return { preset: '24h', from: null, to: null, search: '' };
+        if (!browser) return { preset: '24h', from: null, to: null, search: '', root: 'all' as RootFilter };
         const params = new URLSearchParams(window.location.search);
         const timeParams = parseTimeRangeFromUrl(timezone, '24h');
+        const rawRoot = params.get('root');
+        const root: RootFilter = rawRoot === 'root' || rawRoot === 'nonroot' ? rawRoot : 'all';
         return {
             ...timeParams,
-            search: params.get('search') || ''
+            search: params.get('search') || '',
+            root
         };
     }
 
@@ -110,6 +122,9 @@
 
     // Search state
     let searchQuery = $state(initialUrlParams.search);
+
+    // Root filter state
+    let rootFilter = $state<RootFilter>(initialUrlParams.root);
 
     // Date Range State
     let selectedPreset = $state<string | null>(initialUrlParams.preset);
@@ -130,6 +145,7 @@
         if (searchQuery.trim()) {
             params.search = searchQuery.trim();
         }
+        params.root = rootFilter === 'all' ? null : rootFilter;
         updateUrl(params, { pushToHistory });
     }
 
@@ -144,6 +160,7 @@
         toDate = dateToCalendarDate(range.to, timezone);
         toTime = dateToTimeString(range.to, timezone);
         searchQuery = urlParams.search;
+        rootFilter = urlParams.root;
 
         page = 1;
         loadData(false);
@@ -255,7 +272,7 @@
         updateTimeRangeUrl(pushToHistory);
 
         try {
-            const requestBody = {
+            const requestBody: Record<string, unknown> = {
                 fromDate: getFromDateTimeUTC(),
                 toDate: getToDateTimeUTC(),
                 orderBy: orderBy,
@@ -266,6 +283,8 @@
                 },
                 search: searchQuery.trim()
             };
+            if (rootFilter === 'root') requestBody.isRoot = true;
+            else if (rootFilter === 'nonroot') requestBody.isRoot = false;
 
             const response = await api.post('/endpoints/grouped', requestBody, { projectId: projectsState.currentProjectId ?? undefined });
 
@@ -315,6 +334,12 @@
         loadData(true);
     }
 
+    function handleRootFilterChange(value: RootFilter) {
+        rootFilter = value;
+        page = 1;
+        loadData(true);
+    }
+
     function handleChartRangeSelect(from: Date, to: Date) {
         selectedPreset = null;
         fromDate = new CalendarDate(from.getFullYear(), from.getMonth() + 1, from.getDate());
@@ -326,6 +351,7 @@
     }
 
     const selectedMetricLabel = $derived(metricOptions.find(o => o.value === selectedMetric)?.label ?? 'Total time');
+    const rootFilterLabel = $derived(rootFilterOptions.find(o => o.value === rootFilter)?.label ?? 'All');
 
     // Format total time (input is milliseconds, not nanoseconds)
     function formatTotalTime(ms: number): string {
@@ -396,13 +422,39 @@
         </div>
     </div>
 
-    <!-- Search -->
-    <SearchBar
-        placeholder="Search endpoints..."
-        bind:value={searchQuery}
-        onSearch={handleSearch}
-        disabled={loading}
-    />
+    <!-- Search + Root filter -->
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div class="flex-1">
+            <SearchBar
+                placeholder="Search endpoints..."
+                bind:value={searchQuery}
+                onSearch={handleSearch}
+                disabled={loading}
+            />
+        </div>
+        <DropdownMenu.Root>
+            <DropdownMenu.Trigger
+                class="flex items-center gap-1 rounded-md border border-input bg-background px-3 py-2 text-sm hover:bg-accent"
+            >
+                <span class="text-muted-foreground">Roots:</span>
+                <span>{rootFilterLabel}</span>
+                <ChevronDown class="h-3 w-3 text-muted-foreground" />
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content align="end" class="w-[180px]">
+                {#each rootFilterOptions as option}
+                    <DropdownMenu.Item
+                        onclick={() => handleRootFilterChange(option.value)}
+                        class="flex items-center justify-between cursor-pointer"
+                    >
+                        <span>{option.label}</span>
+                        {#if option.value === rootFilter}
+                            <Check class="h-4 w-4" />
+                        {/if}
+                    </DropdownMenu.Item>
+                {/each}
+            </DropdownMenu.Content>
+        </DropdownMenu.Root>
+    </div>
 
     <!-- Performance Chart -->
     <Card.Root class="pt-2">
@@ -549,6 +601,9 @@
                                 {endpoint.endpoint}
                                 {#if endpoint.isStream}
                                     <Badge variant="outline" class="font-sans text-xs" title="Streaming response (SSE / WebSocket / long-poll). Excluded from latency, Apdex, and impact scoring.">Stream</Badge>
+                                {/if}
+                                {#if endpoint.nonRootCount > 0}
+                                    <Badge variant="secondary" class="font-sans text-xs" title="At least one entry was captured as a child span of another endpoint/task/AI trace.">Not Root</Badge>
                                 {/if}
                             </span>
                         </Table.Cell>

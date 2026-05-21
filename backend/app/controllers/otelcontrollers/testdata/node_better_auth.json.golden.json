@@ -1,6 +1,12 @@
 {
-  "endpointCount": 1,
+  "endpointCount": 2,
   "endpoints": [
+    {
+      "endpoint": "handler /get-session",
+      "statusCode": 0,
+      "serverName": "panelshot",
+      "appVersion": "0.1.0"
+    },
     {
       "endpoint": "GET /get-session",
       "statusCode": 0,

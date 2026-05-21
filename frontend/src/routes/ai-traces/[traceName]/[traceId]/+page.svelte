@@ -4,6 +4,7 @@
 	import { formatDuration, formatDateTime } from '$lib/utils/formatters';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import * as Card from '$lib/components/ui/card';
+	import { Badge } from '$lib/components/ui/badge';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import { projectsState } from '$lib/state/projects.svelte';
@@ -36,6 +37,15 @@
 		serverName: string;
 		appVersion: string;
 		attributes: Record<string, string> | null;
+		parentSpanId?: string;
+		traceId?: string;
+	};
+
+	type ParentRef = {
+		kind: 'endpoint' | 'task' | 'ai_trace';
+		id: string;
+		name: string;
+		traceId: string;
 	};
 
 	type AiTraceDetailResponse = {
@@ -44,6 +54,7 @@
 			input: string;
 			output: string;
 		};
+		parentRef?: ParentRef;
 	};
 
 	let { data } = $props();
@@ -245,6 +256,30 @@
 		/>
 	{:else if response}
 		{@const trace = response.aiTrace}
+
+		{#if trace.parentSpanId || response.parentRef}
+			<div class="flex flex-wrap items-center gap-3 rounded-md border border-border bg-muted/30 px-4 py-3 text-sm">
+				{#if trace.parentSpanId}
+					<Badge variant="secondary" title="This entry was captured as a child span of another endpoint/task/AI trace.">Not Root</Badge>
+				{/if}
+				{#if response.parentRef}
+					<span class="text-muted-foreground">Parent:</span>
+					{#if response.parentRef.kind === 'endpoint'}
+						<a class="font-mono text-foreground hover:underline" href={`/endpoints/${encodeURIComponent(response.parentRef.name)}/${response.parentRef.id}`}>
+							endpoint · {response.parentRef.name}
+						</a>
+					{:else if response.parentRef.kind === 'task'}
+						<a class="font-mono text-foreground hover:underline" href={`/tasks/${encodeURIComponent(response.parentRef.name)}/${response.parentRef.id}`}>
+							task · {response.parentRef.name}
+						</a>
+					{:else if response.parentRef.kind === 'ai_trace'}
+						<a class="font-mono text-foreground hover:underline" href={`/ai-traces/${encodeURIComponent(response.parentRef.name)}/${response.parentRef.id}`}>
+							ai_trace · {response.parentRef.name}
+						</a>
+					{/if}
+				{/if}
+			</div>
+		{/if}
 
 		<Card.Root>
 			<Card.Header>

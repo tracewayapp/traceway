@@ -31,12 +31,15 @@ type endpoint struct {
 	ServerName         string        `lit:"server_name"`
 	DistributedTraceId *uuid.UUID    `lit:"distributed_trace_id"`
 	SpanId             *uuid.UUID    `lit:"span_id"`
+	TraceId            uuid.UUID     `lit:"trace_id"`
+	ParentSpanId       *uuid.UUID    `lit:"parent_span_id"`
 	IsStream           bool          `lit:"is_stream"`
 }
 
 type groupedEndpointRow struct {
 	Endpoint         string  `lit:"endpoint"`
 	TotalCount       uint64  `lit:"total_count"`
+	NonRootCount     uint64  `lit:"non_root_count"`
 	AvgDuration      float64 `lit:"avg_duration"`
 	LastSeen         string  `lit:"last_seen"`
 	OffsetMs         uint32  `lit:"offset_ms"`
@@ -105,6 +108,8 @@ func endpointToRow(e models.Endpoint) endpoint {
 		ServerName:         e.ServerName,
 		DistributedTraceId: e.DistributedTraceId,
 		SpanId:             e.SpanId,
+		TraceId:            e.TraceId,
+		ParentSpanId:       e.ParentSpanId,
 		IsStream:           e.IsStream,
 	}
 }
@@ -123,6 +128,8 @@ func (r *endpoint) toModel() models.Endpoint {
 		ServerName:         r.ServerName,
 		DistributedTraceId: r.DistributedTraceId,
 		SpanId:             r.SpanId,
+		TraceId:            r.TraceId,
+		ParentSpanId:       r.ParentSpanId,
 		IsStream:           r.IsStream,
 	}
 	if r.Attributes != nil {
@@ -183,7 +190,7 @@ func (e *endpointRepository) FindAll(ctx context.Context, projectId uuid.UUID, f
 	}
 
 	rows, err := lit.SelectNamed[endpoint](db.TelemetryDB,
-		fmt.Sprintf(`SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id
+		fmt.Sprintf(`SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, trace_id, parent_span_id
 		FROM endpoints WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
 		ORDER BY %s DESC LIMIT :limit OFFSET :offset`, orderBy),
 		lit.P{"project_id": projectId, "from": NewSQLiteTime(fromDate), "to": NewSQLiteTime(toDate), "limit": pageSize, "offset": offset})
@@ -199,13 +206,20 @@ func (e *endpointRepository) FindAll(ctx context.Context, projectId uuid.UUID, f
 	return endpoints, count, nil
 }
 
-func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string, search string) ([]models.EndpointStats, int64, error) {
+func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string, search string, isRoot *bool) ([]models.EndpointStats, int64, error) {
 	params := lit.P{"project_id": projectId, "from": NewSQLiteTime(fromDate), "to": NewSQLiteTime(toDate)}
 
 	whereClause := "e.project_id = :project_id AND e.recorded_at >= :from AND e.recorded_at <= :to"
 	if search != "" {
 		whereClause += " AND INSTR(LOWER(e.endpoint), LOWER(:search)) > 0"
 		params["search"] = search
+	}
+	if isRoot != nil {
+		if *isRoot {
+			whereClause += " AND e.parent_span_id IS NULL"
+		} else {
+			whereClause += " AND e.parent_span_id IS NOT NULL"
+		}
 	}
 
 	countQuery := "SELECT COUNT(DISTINCT e.endpoint) AS count FROM endpoints e WHERE " + whereClause
@@ -221,6 +235,7 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 	groupQuery := `SELECT
 		e.endpoint,
 		COUNT(*) as total_count,
+		SUM(CASE WHEN e.parent_span_id IS NOT NULL THEN 1 ELSE 0 END) as non_root_count,
 		AVG(e.duration) as avg_duration,
 		MAX(e.recorded_at) as last_seen,
 		COALESCE(s.offset_ms, 0) as offset_ms,
@@ -249,7 +264,7 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 	var groups []groupedEndpointRow
 	for sqlRows.Next() {
 		var g groupedEndpointRow
-		if err := sqlRows.Scan(&g.Endpoint, &g.TotalCount, &g.AvgDuration, &g.LastSeen,
+		if err := sqlRows.Scan(&g.Endpoint, &g.TotalCount, &g.NonRootCount, &g.AvgDuration, &g.LastSeen,
 			&g.OffsetMs, &g.ServerErrorCount, &g.ClientErrorCount,
 			&g.SatisfiedCount, &g.ToleratingCount, &g.BadCount, &g.IsStream); err != nil {
 			return nil, 0, err
@@ -270,6 +285,7 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 			stats = append(stats, models.EndpointStats{
 				Endpoint:     g.Endpoint,
 				Count:        g.TotalCount,
+				NonRootCount: g.NonRootCount,
 				LastSeen:     lastSeen,
 				Impact:       ComputeStreamImpact(g.Endpoint, g.TotalCount, g.ServerErrorCount, g.ClientErrorCount),
 				ImpactReason: ComputeStreamImpactReason(g.Endpoint, g.TotalCount, g.ServerErrorCount, g.ClientErrorCount),
@@ -290,14 +306,15 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 		impact := computeImpactScore(g.Endpoint, g.TotalCount, g.SatisfiedCount, g.ToleratingCount, g.BadCount, g.ClientErrorCount, p99, g.OffsetMs)
 
 		stats = append(stats, models.EndpointStats{
-			Endpoint:    g.Endpoint,
-			Count:       g.TotalCount,
-			P50Duration: time.Duration(p50),
-			P95Duration: time.Duration(p95),
-			P99Duration: time.Duration(p99),
-			AvgDuration: time.Duration(g.AvgDuration),
-			LastSeen:    lastSeen,
-			Impact:      impact,
+			Endpoint:     g.Endpoint,
+			Count:        g.TotalCount,
+			NonRootCount: g.NonRootCount,
+			P50Duration:  time.Duration(p50),
+			P95Duration:  time.Duration(p95),
+			P99Duration:  time.Duration(p99),
+			AvgDuration:  time.Duration(g.AvgDuration),
+			LastSeen:     lastSeen,
+			Impact:       impact,
 			ImpactReason: ComputeImpactReason(g.Endpoint, g.TotalCount, g.SatisfiedCount, g.ToleratingCount,
 				g.BadCount, g.ClientErrorCount, p99, g.OffsetMs),
 		})
@@ -344,7 +361,7 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.
 	}
 
 	rows, err := lit.SelectNamed[endpoint](db.TelemetryDB,
-		fmt.Sprintf(`SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id
+		fmt.Sprintf(`SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, trace_id, parent_span_id
 		FROM endpoints WHERE project_id = :project_id AND endpoint = :endpoint AND recorded_at >= :from AND recorded_at <= :to
 		ORDER BY %s %s LIMIT :limit OFFSET :offset`, orderBy, sortDir),
 		lit.P{"project_id": projectId, "endpoint": endpointName, "from": NewSQLiteTime(fromDate), "to": NewSQLiteTime(toDate), "limit": pageSize, "offset": offset})
@@ -362,7 +379,7 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.
 
 func (e *endpointRepository) FindById(ctx context.Context, projectId, endpointId uuid.UUID) (*models.Endpoint, error) {
 	row, err := lit.SelectSingleNamed[endpoint](db.TelemetryDB,
-		`SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id
+		`SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, trace_id, parent_span_id
 		FROM endpoints WHERE project_id = :project_id AND id = :id LIMIT 1`,
 		lit.P{"project_id": projectId, "id": endpointId})
 	if err != nil {

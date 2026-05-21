@@ -29,13 +29,18 @@ type AiTrace struct {
 	FinishReason    string            `json:"finishReason" ch:"finish_reason"`
 	ServerName      string            `json:"serverName" ch:"server_name"`
 	AppVersion      string            `json:"appVersion" ch:"app_version"`
-	StorageKey      string            `json:"storageKey" ch:"storage_key"`
-	Attributes      map[string]string `json:"attributes" ch:"attributes"`
+	StorageKey         string            `json:"storageKey" ch:"storage_key"`
+	Attributes         map[string]string `json:"attributes" ch:"attributes"`
+	TraceId            uuid.UUID         `json:"traceId" ch:"trace_id"`
+	SpanId             *uuid.UUID        `json:"spanId,omitempty" ch:"span_id"`
+	ParentSpanId       *uuid.UUID        `json:"parentSpanId,omitempty" ch:"parent_span_id"`
+	DistributedTraceId *uuid.UUID        `json:"distributedTraceId,omitempty" ch:"distributed_trace_id"`
 }
 
 type AiTraceStats struct {
 	TraceName       string        `json:"traceName"`
 	Count           uint64        `json:"count"`
+	NonRootCount    uint64        `json:"nonRootCount"`
 	P50Duration     time.Duration `json:"p50Duration"`
 	P95Duration     time.Duration `json:"p95Duration"`
 	AvgDuration     time.Duration `json:"avgDuration"`

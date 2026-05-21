@@ -10,6 +10,9 @@
     import { PaginationFooter } from "$lib/components/ui/pagination-footer";
     import { TimeRangePicker } from "$lib/components/ui/time-range-picker";
     import { SearchBar } from "$lib/components/ui/search-bar";
+    import { Badge } from "$lib/components/ui/badge";
+    import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+    import { ChevronDown, Check } from 'lucide-svelte';
     import { browser } from '$app/environment';
     import { CalendarDate } from "@internationalized/date";
     import { projectsState } from '$lib/state/projects.svelte';
@@ -37,6 +40,7 @@
     type AiTraceStats = {
         traceName: string;
         count: number;
+        nonRootCount: number;
         p50Duration: number;
         p95Duration: number;
         avgDuration: number;
@@ -49,6 +53,14 @@
 
     type SortField = 'count' | 'p50_duration' | 'p95_duration' | 'total_tokens' | 'total_cost' | 'last_seen';
 
+    type RootFilter = 'all' | 'root' | 'nonroot';
+
+    const rootFilterOptions: { value: RootFilter; label: string }[] = [
+        { value: 'all', label: 'All' },
+        { value: 'root', label: 'Root only' },
+        { value: 'nonroot', label: 'Non-root only' }
+    ];
+
     let traces = $state<AiTraceStats[]>([]);
     let loading = $state(true);
     let error = $state('');
@@ -59,14 +71,17 @@
     let total = $state(0);
     let totalPages = $state(0);
 
-    // Parse URL params including search
+    // Parse URL params including search and root filter
     function parseAiTracesUrlParams() {
-        if (!browser) return { preset: '24h', from: null, to: null, search: '' };
+        if (!browser) return { preset: '24h', from: null, to: null, search: '', root: 'all' as RootFilter };
         const params = new URLSearchParams(window.location.search);
         const timeParams = parseTimeRangeFromUrl(timezone, '24h');
+        const rawRoot = params.get('root');
+        const root: RootFilter = rawRoot === 'root' || rawRoot === 'nonroot' ? rawRoot : 'all';
         return {
             ...timeParams,
-            search: params.get('search') || ''
+            search: params.get('search') || '',
+            root
         };
     }
 
@@ -76,6 +91,9 @@
 
     // Search state
     let searchQuery = $state(initialUrlParams.search);
+
+    // Root filter state
+    let rootFilter = $state<RootFilter>(initialUrlParams.root);
 
     // Date Range State
     let selectedPreset = $state<string | null>(initialUrlParams.preset);
@@ -96,6 +114,7 @@
         if (searchQuery.trim()) {
             params.search = searchQuery.trim();
         }
+        params.root = rootFilter === 'all' ? null : rootFilter;
         updateUrl(params, { pushToHistory });
     }
 
@@ -110,6 +129,7 @@
         toDate = dateToCalendarDate(range.to, timezone);
         toTime = dateToTimeString(range.to, timezone);
         searchQuery = urlParams.search;
+        rootFilter = urlParams.root;
 
         page = 1;
         loadData(false);
@@ -180,7 +200,7 @@
         updateTimeRangeUrl(pushToHistory);
 
         try {
-            const requestBody = {
+            const requestBody: Record<string, unknown> = {
                 fromDate: getFromDateTimeUTC(),
                 toDate: getToDateTimeUTC(),
                 orderBy: orderBy,
@@ -191,6 +211,8 @@
                 },
                 search: searchQuery.trim()
             };
+            if (rootFilter === 'root') requestBody.isRoot = true;
+            else if (rootFilter === 'nonroot') requestBody.isRoot = false;
 
             const response = await api.post('/ai-traces/grouped', requestBody, { projectId: projectsState.currentProjectId ?? undefined });
 
@@ -232,6 +254,14 @@
         loadData(true);
     }
 
+    function handleRootFilterChange(value: RootFilter) {
+        rootFilter = value;
+        page = 1;
+        loadData(true);
+    }
+
+    const rootFilterLabel = $derived(rootFilterOptions.find(o => o.value === rootFilter)?.label ?? 'All');
+
     onMount(() => {
         // Add popstate listener for back/forward navigation
         window.addEventListener('popstate', handlePopState);
@@ -263,13 +293,39 @@
         </div>
     </div>
 
-    <!-- Search -->
-    <SearchBar
-        placeholder="Search traces..."
-        bind:value={searchQuery}
-        onSearch={handleSearch}
-        disabled={loading}
-    />
+    <!-- Search + Root filter -->
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div class="flex-1">
+            <SearchBar
+                placeholder="Search traces..."
+                bind:value={searchQuery}
+                onSearch={handleSearch}
+                disabled={loading}
+            />
+        </div>
+        <DropdownMenu.Root>
+            <DropdownMenu.Trigger
+                class="flex items-center gap-1 rounded-md border border-input bg-background px-3 py-2 text-sm hover:bg-accent"
+            >
+                <span class="text-muted-foreground">Roots:</span>
+                <span>{rootFilterLabel}</span>
+                <ChevronDown class="h-3 w-3 text-muted-foreground" />
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content align="end" class="w-[180px]">
+                {#each rootFilterOptions as option}
+                    <DropdownMenu.Item
+                        onclick={() => handleRootFilterChange(option.value)}
+                        class="flex items-center justify-between cursor-pointer"
+                    >
+                        <span>{option.label}</span>
+                        {#if option.value === rootFilter}
+                            <Check class="h-4 w-4" />
+                        {/if}
+                    </DropdownMenu.Item>
+                {/each}
+            </DropdownMenu.Content>
+        </DropdownMenu.Root>
+    </div>
 
     <!-- AI Traces Table -->
     <div class="rounded-md border overflow-hidden">
@@ -366,7 +422,12 @@
                         onclick={createRowClickHandler(resolve(`/ai-traces/${encodeURIComponent(trace.traceName)}`), 'preset', 'from', 'to')}
                     >
                         <Table.Cell class="font-mono text-sm">
-                            {trace.traceName}
+                            <span class="inline-flex items-center gap-2">
+                                {trace.traceName}
+                                {#if trace.nonRootCount > 0}
+                                    <Badge variant="secondary" class="font-sans text-xs" title="At least one entry was captured as a child span of another endpoint/task/AI trace.">Not Root</Badge>
+                                {/if}
+                            </span>
                         </Table.Cell>
                         <Table.Cell class="tabular-nums">
                             {formatCount(trace.count)}

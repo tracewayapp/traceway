@@ -28,12 +28,26 @@ type EndpointMessageInfo struct {
 	Attributes    map[string]string `json:"attributes,omitempty"`
 }
 
+type EnrichedSpan struct {
+	models.Span
+	LinkedAiTraceId   *uuid.UUID `json:"linkedAiTraceId,omitempty"`
+	LinkedAiTraceName *string    `json:"linkedAiTraceName,omitempty"`
+}
+
+type ParentRefResponse struct {
+	Kind    string    `json:"kind"`
+	Id      uuid.UUID `json:"id"`
+	Name    string    `json:"name"`
+	TraceId uuid.UUID `json:"traceId"`
+}
+
 type EndpointDetailResponse struct {
 	Endpoint  *models.Endpoint       `json:"endpoint"`
-	Spans     []models.Span          `json:"spans"`
+	Spans     []EnrichedSpan         `json:"spans"`
 	HasSpans  bool                   `json:"hasSpans"`
 	Exception *EndpointExceptionInfo `json:"exception,omitempty"`
 	Messages  []EndpointMessageInfo  `json:"messages"`
+	ParentRef *ParentRefResponse     `json:"parentRef,omitempty"`
 }
 
 func (t endpointDetailController) GetEndpointDetail(c *gin.Context) {
@@ -62,13 +76,37 @@ func (t endpointDetailController) GetEndpointDetail(c *gin.Context) {
 		return
 	}
 
-	// Get spans (flat list ordered by start_time)
+	// Get spans (flat list ordered by start_time). Note: spans are indexed by
+	// the trace ID, not the endpoint row's id, so dereference via endpoint.TraceId.
 	span = traceway.StartSpan(c, "loading spans")
-	spans, err := repositories.SpanRepository.FindByTraceId(c, projectId, endpointId)
+	spans, err := repositories.SpanRepository.FindByTraceId(c, projectId, endpoint.TraceId)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading spans: %w", err))
 		return
+	}
+
+	// Enrich spans with AI-trace links so the frontend can render a "View AI trace"
+	// icon next to spans that landed in the ai_traces table.
+	spanIds := make([]uuid.UUID, 0, len(spans))
+	for _, s := range spans {
+		spanIds = append(spanIds, s.Id)
+	}
+	aiRefs, err := repositories.AiTraceRepository.FindBySpanIds(c, projectId, spanIds)
+	if err != nil {
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading linked ai traces: %w", err))
+		return
+	}
+	enrichedSpans := make([]EnrichedSpan, 0, len(spans))
+	for _, s := range spans {
+		es := EnrichedSpan{Span: s}
+		if ref, ok := aiRefs[s.Id]; ok {
+			id := ref.Id
+			name := ref.TraceName
+			es.LinkedAiTraceId = &id
+			es.LinkedAiTraceName = &name
+		}
+		enrichedSpans = append(enrichedSpans, es)
 	}
 
 	// Get all linked exceptions and messages
@@ -76,7 +114,7 @@ func (t endpointDetailController) GetEndpointDetail(c *gin.Context) {
 	var messages []EndpointMessageInfo
 
 	span = traceway.StartSpan(c, "loading exceptions")
-	allExceptions, err := repositories.ExceptionStackTraceRepository.FindAllByTraceId(c, projectId, endpointId)
+	allExceptions, err := repositories.ExceptionStackTraceRepository.FindAllByTraceId(c, projectId, endpoint.TraceId)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading all exceptions: %w", err))
@@ -107,12 +145,25 @@ func (t endpointDetailController) GetEndpointDetail(c *gin.Context) {
 		messages = []EndpointMessageInfo{}
 	}
 
+	var parentRefResp *ParentRefResponse
+	if endpoint.ParentSpanId != nil {
+		ref, err := repositories.FindParentRef(c, projectId, *endpoint.ParentSpanId)
+		if err != nil {
+			c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading parent ref: %w", err))
+			return
+		}
+		if ref != nil {
+			parentRefResp = &ParentRefResponse{Kind: ref.Kind, Id: ref.Id, Name: ref.Name, TraceId: ref.TraceId}
+		}
+	}
+
 	c.JSON(http.StatusOK, EndpointDetailResponse{
 		Endpoint:  endpoint,
-		Spans:     spans,
-		HasSpans:  len(spans) > 0,
+		Spans:     enrichedSpans,
+		HasSpans:  len(enrichedSpans) > 0,
 		Exception: exceptionInfo,
 		Messages:  messages,
+		ParentRef: parentRefResp,
 	})
 }
 

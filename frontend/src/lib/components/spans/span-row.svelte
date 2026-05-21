@@ -5,6 +5,7 @@
 	import * as Popover from '$lib/components/ui/popover';
 	import Copy from 'lucide-svelte/icons/copy';
 	import Check from 'lucide-svelte/icons/check';
+	import Sparkles from 'lucide-svelte/icons/sparkles';
 
 	type Props = {
 		row: number;
@@ -108,29 +109,39 @@
 	class={cn('flex items-center border-b border-border last:border-b-0', isOdd ? 'bg-muted/40' : '')}
 >
 	<!-- Span name -->
-	<Popover.Root>
-		<Popover.Trigger class="text-left cursor-pointer">
-			<div
-				bind:this={nameElement}
-				class="flex-shrink-0 truncate border-r border-border px-3 py-1.5 font-mono text-xs"
-				style="min-width: {nameColumnWidth}px; max-width: {nameColumnWidth}px"
-			>
+	<div
+		bind:this={nameElement}
+		class="flex flex-shrink-0 items-center gap-1.5 border-r border-border px-3 py-1.5 font-mono text-xs"
+		style="min-width: {nameColumnWidth}px; max-width: {nameColumnWidth}px"
+	>
+		<Popover.Root>
+			<Popover.Trigger class="min-w-0 flex-1 truncate text-left cursor-pointer">
 				{span.name}
-			</div>
-		</Popover.Trigger>
-		<Popover.Content class="w-auto max-w-sm" align="start">
-			<div class="flex items-start gap-2">
-				<span class="font-mono text-xs break-all select-text">{span.name}</span>
-				<button onclick={copySpanName} class="shrink-0 p-1 rounded hover:bg-muted">
-					{#if copied}
-						<Check class="h-3.5 w-3.5 text-green-500" />
-					{:else}
-						<Copy class="h-3.5 w-3.5 text-muted-foreground" />
-					{/if}
-				</button>
-			</div>
-		</Popover.Content>
-	</Popover.Root>
+			</Popover.Trigger>
+			<Popover.Content class="w-auto max-w-sm" align="start">
+				<div class="flex items-start gap-2">
+					<span class="font-mono text-xs break-all select-text">{span.name}</span>
+					<button onclick={copySpanName} class="shrink-0 p-1 rounded hover:bg-muted">
+						{#if copied}
+							<Check class="h-3.5 w-3.5 text-green-500" />
+						{:else}
+							<Copy class="h-3.5 w-3.5 text-muted-foreground" />
+						{/if}
+					</button>
+				</div>
+			</Popover.Content>
+		</Popover.Root>
+		{#if span.linkedAiTraceId && span.linkedAiTraceName}
+			<a
+				href={`/ai-traces/${encodeURIComponent(span.linkedAiTraceName)}/${span.linkedAiTraceId}`}
+				class="shrink-0 text-muted-foreground hover:text-foreground"
+				title="View AI trace"
+				aria-label="View AI trace"
+			>
+				<Sparkles class="h-3.5 w-3.5" />
+			</a>
+		{/if}
+	</div>
 
 	<!-- Timeline bar -->
 	<div

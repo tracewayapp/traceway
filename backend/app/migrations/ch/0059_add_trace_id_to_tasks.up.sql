@@ -1,0 +1,1 @@
+ALTER TABLE tasks ADD COLUMN trace_id UUID DEFAULT id

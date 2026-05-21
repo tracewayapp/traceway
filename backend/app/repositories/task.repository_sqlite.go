@@ -27,13 +27,16 @@ type task struct {
 	ServerName         string        `lit:"server_name"`
 	DistributedTraceId *uuid.UUID    `lit:"distributed_trace_id"`
 	SpanId             *uuid.UUID    `lit:"span_id"`
+	TraceId            uuid.UUID     `lit:"trace_id"`
+	ParentSpanId       *uuid.UUID    `lit:"parent_span_id"`
 }
 
 type taskGroupRow struct {
-	TaskName    string  `lit:"task_name"`
-	Count       uint64  `lit:"count"`
-	AvgDuration float64 `lit:"avg_duration"`
-	LastSeen    string  `lit:"last_seen"`
+	TaskName     string  `lit:"task_name"`
+	Count        uint64  `lit:"count"`
+	NonRootCount uint64  `lit:"non_root_count"`
+	AvgDuration  float64 `lit:"avg_duration"`
+	LastSeen     string  `lit:"last_seen"`
 }
 
 type taskCountStatsRow struct {
@@ -67,6 +70,8 @@ func taskToRow(t models.Task) task {
 		ServerName:         t.ServerName,
 		DistributedTraceId: t.DistributedTraceId,
 		SpanId:             t.SpanId,
+		TraceId:            t.TraceId,
+		ParentSpanId:       t.ParentSpanId,
 	}
 }
 
@@ -82,6 +87,8 @@ func (r *task) toModel() models.Task {
 		ServerName:         r.ServerName,
 		DistributedTraceId: r.DistributedTraceId,
 		SpanId:             r.SpanId,
+		TraceId:            r.TraceId,
+		ParentSpanId:       r.ParentSpanId,
 	}
 	if r.Attributes != nil {
 		t.Attributes = map[string]string(r.Attributes)
@@ -139,7 +146,7 @@ func (e *taskRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromD
 	}
 
 	rows, err := lit.SelectNamed[task](db.TelemetryDB,
-		fmt.Sprintf(`SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id
+		fmt.Sprintf(`SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, trace_id, parent_span_id
 		FROM tasks WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
 		ORDER BY %s DESC LIMIT :limit OFFSET :offset`, orderBy),
 		lit.P{"project_id": projectId, "from": NewSQLiteTime(fromDate), "to": NewSQLiteTime(toDate), "limit": pageSize, "offset": offset})
@@ -155,11 +162,20 @@ func (e *taskRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromD
 	return tasks, count, nil
 }
 
-func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.TaskStats, int64, error) {
+func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string, isRoot *bool) ([]models.TaskStats, int64, error) {
 	params := lit.P{"project_id": projectId, "from": NewSQLiteTime(fromDate), "to": NewSQLiteTime(toDate)}
 
+	whereClause := "project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to"
+	if isRoot != nil {
+		if *isRoot {
+			whereClause += " AND parent_span_id IS NULL"
+		} else {
+			whereClause += " AND parent_span_id IS NOT NULL"
+		}
+	}
+
 	totalResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
-		"SELECT COUNT(DISTINCT task_name) AS count FROM tasks WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to",
+		"SELECT COUNT(DISTINCT task_name) AS count FROM tasks WHERE "+whereClause,
 		params)
 	if err != nil {
 		return nil, 0, err
@@ -182,8 +198,8 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 	groupParams := lit.P{"project_id": projectId, "from": NewSQLiteTime(fromDate), "to": NewSQLiteTime(toDate)}
 
 	if needsGoSort {
-		baseQuery = `SELECT task_name, COUNT(*) as count, AVG(duration) as avg_duration, MAX(recorded_at) as last_seen
-			FROM tasks WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
+		baseQuery = `SELECT task_name, COUNT(*) as count, SUM(CASE WHEN parent_span_id IS NOT NULL THEN 1 ELSE 0 END) as non_root_count, AVG(duration) as avg_duration, MAX(recorded_at) as last_seen
+			FROM tasks WHERE ` + whereClause + `
 			GROUP BY task_name`
 	} else {
 		orderExpr := map[string]string{"count": "count", "last_seen": "last_seen"}
@@ -191,8 +207,8 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 		if !ok {
 			expr = "count"
 		}
-		baseQuery = fmt.Sprintf(`SELECT task_name, COUNT(*) as count, AVG(duration) as avg_duration, MAX(recorded_at) as last_seen
-			FROM tasks WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
+		baseQuery = fmt.Sprintf(`SELECT task_name, COUNT(*) as count, SUM(CASE WHEN parent_span_id IS NOT NULL THEN 1 ELSE 0 END) as non_root_count, AVG(duration) as avg_duration, MAX(recorded_at) as last_seen
+			FROM tasks WHERE `+whereClause+`
 			GROUP BY task_name ORDER BY %s %s LIMIT :limit OFFSET :offset`, expr, sortDir)
 		groupParams["limit"] = pageSize
 		groupParams["offset"] = offset
@@ -212,12 +228,13 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 
 		ls, _ := time.Parse(time.RFC3339Nano, g.LastSeen)
 		stats = append(stats, models.TaskStats{
-			TaskName:    g.TaskName,
-			Count:       g.Count,
-			P50Duration: time.Duration(computePercentile(durations, 0.5)),
-			P95Duration: time.Duration(computePercentile(durations, 0.95)),
-			AvgDuration: time.Duration(g.AvgDuration),
-			LastSeen:    ls,
+			TaskName:     g.TaskName,
+			Count:        g.Count,
+			NonRootCount: g.NonRootCount,
+			P50Duration:  time.Duration(computePercentile(durations, 0.5)),
+			P95Duration:  time.Duration(computePercentile(durations, 0.95)),
+			AvgDuration:  time.Duration(g.AvgDuration),
+			LastSeen:     ls,
 		})
 	}
 
@@ -289,7 +306,7 @@ func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID
 	}
 
 	rows, err := lit.SelectNamed[task](db.TelemetryDB,
-		fmt.Sprintf(`SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id
+		fmt.Sprintf(`SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, trace_id, parent_span_id
 		FROM tasks WHERE project_id = :project_id AND task_name = :task_name AND recorded_at >= :from AND recorded_at <= :to
 		ORDER BY %s %s LIMIT :limit OFFSET :offset`, orderBy, sortDir),
 		lit.P{"project_id": projectId, "task_name": taskName, "from": NewSQLiteTime(fromDate), "to": NewSQLiteTime(toDate), "limit": pageSize, "offset": offset})
@@ -307,7 +324,7 @@ func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID
 
 func (e *taskRepository) FindById(ctx context.Context, projectId, taskId uuid.UUID) (*models.Task, error) {
 	row, err := lit.SelectSingleNamed[task](db.TelemetryDB,
-		`SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id
+		`SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, trace_id, parent_span_id
 		FROM tasks WHERE project_id = :project_id AND id = :id LIMIT 1`,
 		lit.P{"project_id": projectId, "id": taskId})
 	if err != nil {

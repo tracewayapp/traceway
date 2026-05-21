@@ -90,4 +90,21 @@ func (r *spanRepository) FindByTraceId(ctx context.Context, projectId, traceId u
 	return spans, nil
 }
 
+func (r *spanRepository) FindById(ctx context.Context, projectId, spanId uuid.UUID) (*models.Span, error) {
+	row, err := lit.SelectSingleNamed[span](db.TelemetryDB,
+		`SELECT id, trace_id, project_id, name, start_time, duration, recorded_at, parent_span_id
+		FROM spans
+		WHERE project_id = :project_id AND id = :id
+		LIMIT 1`,
+		lit.P{"project_id": projectId, "id": spanId})
+	if err != nil {
+		return nil, err
+	}
+	if row == nil {
+		return nil, nil
+	}
+	s := row.toModel()
+	return &s, nil
+}
+
 var SpanRepository = spanRepository{}

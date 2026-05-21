@@ -5,6 +5,7 @@
 	import { formatDuration, getStatusColor, formatDateTime } from '$lib/utils/formatters';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import { Badge } from '$lib/components/ui/badge';
 	import * as Card from '$lib/components/ui/card';
 	import * as Table from '$lib/components/ui/table';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
@@ -115,6 +116,30 @@
 			onRetry={loadData}
 		/>
 	{:else if response}
+		{#if response.endpoint.parentSpanId || response.parentRef}
+			<div class="flex flex-wrap items-center gap-3 rounded-md border border-border bg-muted/30 px-4 py-3 text-sm">
+				{#if response.endpoint.parentSpanId}
+					<Badge variant="secondary" title="This entry was captured as a child span of another endpoint/task/AI trace.">Not Root</Badge>
+				{/if}
+				{#if response.parentRef}
+					<span class="text-muted-foreground">Parent:</span>
+					{#if response.parentRef.kind === 'endpoint'}
+						<a class="font-mono text-foreground hover:underline" href={`/endpoints/${encodeURIComponent(response.parentRef.name)}/${response.parentRef.id}`}>
+							endpoint · {response.parentRef.name}
+						</a>
+					{:else if response.parentRef.kind === 'task'}
+						<a class="font-mono text-foreground hover:underline" href={`/tasks/${encodeURIComponent(response.parentRef.name)}/${response.parentRef.id}`}>
+							task · {response.parentRef.name}
+						</a>
+					{:else if response.parentRef.kind === 'ai_trace'}
+						<a class="font-mono text-foreground hover:underline" href={`/ai-traces/${encodeURIComponent(response.parentRef.name)}/${response.parentRef.id}`}>
+							ai_trace · {response.parentRef.name}
+						</a>
+					{/if}
+				{/if}
+			</div>
+		{/if}
+
 		<!-- Endpoint Details Card -->
 		<Card.Root>
 			<Card.Header>
@@ -270,7 +295,7 @@
 
 		<TraceLogsPanel
 			projectId={projectsState.currentProjectId ?? ''}
-			traceId={traceIdUuidToHex(response.endpoint.id)}
+			traceId={traceIdUuidToHex(response.endpoint.traceId ?? response.endpoint.id)}
 			distributedTraceId={response.endpoint.distributedTraceId ?? null}
 			spans={response.spans ?? []}
 			rootSpan={{

@@ -96,13 +96,14 @@ func TestConvertTraces_Snapshot(t *testing.T) {
 
 			endpoints, _, spans, exceptions, aiTraces, aiConversations := convertTraces(testProjectId, req)
 
-			// Check if all child spans share a trace ID with an endpoint
+			// Check if all child spans share a trace ID with an endpoint or AI trace.
+			// (After the Id=spanId refactor, the trace ID is in TraceId, not Id.)
 			endpointIds := map[uuid.UUID]bool{}
 			for _, ep := range endpoints {
-				endpointIds[ep.Id] = true
+				endpointIds[ep.TraceId] = true
 			}
 			for _, at := range aiTraces {
-				endpointIds[at.Id] = true
+				endpointIds[at.TraceId] = true
 			}
 			allLinked := true
 			snapSpans := make([]snapshotSpan, len(spans))
@@ -381,7 +382,7 @@ func TestTraceIdResolution_CrossScope(t *testing.T) {
 		t.Fatalf("expected 1 endpoint, got %d", len(endpoints))
 	}
 
-	rootTraceId := endpoints[0].Id
+	rootTraceId := endpoints[0].TraceId
 	for _, s := range spans {
 		if s.TraceId != rootTraceId {
 			t.Errorf("span %q has traceId %s, want %s (root endpoint)", s.Name, s.TraceId, rootTraceId)
@@ -442,6 +443,191 @@ func TestFormatExceptionStackTrace(t *testing.T) {
 				t.Errorf("formatExceptionStackTrace() =\n%q\nwant:\n%q", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestConvertTraces_HttpRootWithGenAiChild verifies the dual-write behavior for
+// a gen_ai child span of an HTTP server root: one endpoint row at the root,
+// one ai_trace row at the child, one span row (the child only), and any
+// exception on the child gets trace_type=ai_trace.
+func TestConvertTraces_HttpRootWithGenAiChild(t *testing.T) {
+	rootSpanId := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
+	childSpanId := []byte{0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18}
+	traceIdBytes := []byte{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99}
+	now := uint64(1700000000000000000)
+
+	req := &coltracepb.ExportTraceServiceRequest{
+		ResourceSpans: []*tracepb.ResourceSpans{
+			{
+				Resource: &resourcepb.Resource{
+					Attributes: []*commonpb.KeyValue{strKV("service.name", "agent")},
+				},
+				ScopeSpans: []*tracepb.ScopeSpans{
+					{
+						Spans: []*tracepb.Span{
+							{
+								TraceId:           traceIdBytes,
+								SpanId:            rootSpanId,
+								Name:              "POST /api/chat",
+								Kind:              tracepb.Span_SPAN_KIND_SERVER,
+								StartTimeUnixNano: now,
+								EndTimeUnixNano:   now + 5_000_000,
+								Attributes: []*commonpb.KeyValue{
+									strKV("http.request.method", "POST"),
+									strKV("http.route", "/api/chat"),
+								},
+							},
+							{
+								TraceId:           traceIdBytes,
+								SpanId:            childSpanId,
+								ParentSpanId:      rootSpanId,
+								Name:              "chat.completion",
+								Kind:              tracepb.Span_SPAN_KIND_CLIENT,
+								StartTimeUnixNano: now + 1_000_000,
+								EndTimeUnixNano:   now + 4_000_000,
+								Attributes: []*commonpb.KeyValue{
+									strKV("gen_ai.request.model", "gpt-4o"),
+									strKV("gen_ai.system", "openai"),
+								},
+								Events: []*tracepb.Span_Event{
+									{
+										Name:         "exception",
+										TimeUnixNano: now + 3_000_000,
+										Attributes: []*commonpb.KeyValue{
+											strKV("exception.type", "RateLimitError"),
+											strKV("exception.message", "429"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	endpoints, tasks, spans, exceptions, aiTraces, _ := convertTraces(testProjectId, req)
+
+	if len(endpoints) != 1 {
+		t.Fatalf("expected 1 endpoint, got %d", len(endpoints))
+	}
+	if len(tasks) != 0 {
+		t.Fatalf("expected 0 tasks, got %d", len(tasks))
+	}
+	if len(aiTraces) != 1 {
+		t.Fatalf("expected 1 ai_trace, got %d", len(aiTraces))
+	}
+	if len(spans) != 1 {
+		t.Fatalf("expected 1 span (child only — root is single-write), got %d", len(spans))
+	}
+	if len(exceptions) != 1 {
+		t.Fatalf("expected 1 exception, got %d", len(exceptions))
+	}
+
+	ep := endpoints[0]
+	ai := aiTraces[0]
+	traceUUID := otelTraceIDToUUID(traceIdBytes)
+	rootSpanUUID := otelSpanIDToUUID(rootSpanId)
+	childSpanUUID := otelSpanIDToUUID(childSpanId)
+
+	if ep.Id != rootSpanUUID {
+		t.Errorf("endpoint.Id = %s, want root spanId %s", ep.Id, rootSpanUUID)
+	}
+	if ep.TraceId != traceUUID {
+		t.Errorf("endpoint.TraceId = %s, want %s", ep.TraceId, traceUUID)
+	}
+	if ep.ParentSpanId != nil {
+		t.Errorf("endpoint.ParentSpanId = %v, want nil for root", ep.ParentSpanId)
+	}
+
+	if ai.Id != childSpanUUID {
+		t.Errorf("ai_trace.Id = %s, want child spanId %s", ai.Id, childSpanUUID)
+	}
+	if ai.TraceId != traceUUID {
+		t.Errorf("ai_trace.TraceId = %s, want %s", ai.TraceId, traceUUID)
+	}
+	if ai.ParentSpanId == nil || *ai.ParentSpanId != rootSpanUUID {
+		t.Errorf("ai_trace.ParentSpanId = %v, want %s", ai.ParentSpanId, rootSpanUUID)
+	}
+
+	if spans[0].Id != childSpanUUID {
+		t.Errorf("span row should be the child, got Id=%s", spans[0].Id)
+	}
+
+	if exceptions[0].TraceType != "ai_trace" {
+		t.Errorf("exception traceType = %q, want %q", exceptions[0].TraceType, "ai_trace")
+	}
+}
+
+// TestConvertTraces_MultiStepAgent verifies that an HTTP root with N gen_ai
+// children produces N distinct ai_trace rows (each with its own spanId as Id).
+func TestConvertTraces_MultiStepAgent(t *testing.T) {
+	rootSpanId := []byte{0xA0, 0xA0, 0xA0, 0xA0, 0xA0, 0xA0, 0xA0, 0xA0}
+	traceIdBytes := []byte{0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0}
+	now := uint64(1700000000000000000)
+
+	const N = 3
+	scope := &tracepb.ScopeSpans{
+		Spans: []*tracepb.Span{
+			{
+				TraceId:           traceIdBytes,
+				SpanId:            rootSpanId,
+				Name:              "POST /agent",
+				Kind:              tracepb.Span_SPAN_KIND_SERVER,
+				StartTimeUnixNano: now,
+				EndTimeUnixNano:   now + 10_000_000,
+				Attributes: []*commonpb.KeyValue{
+					strKV("http.request.method", "POST"),
+					strKV("http.route", "/agent"),
+				},
+			},
+		},
+	}
+	for i := 0; i < N; i++ {
+		childId := []byte{0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, byte(i + 1)}
+		scope.Spans = append(scope.Spans, &tracepb.Span{
+			TraceId:           traceIdBytes,
+			SpanId:            childId,
+			ParentSpanId:      rootSpanId,
+			Name:              "step",
+			Kind:              tracepb.Span_SPAN_KIND_CLIENT,
+			StartTimeUnixNano: now + uint64(i)*1_000_000,
+			EndTimeUnixNano:   now + uint64(i+1)*1_000_000,
+			Attributes: []*commonpb.KeyValue{
+				strKV("gen_ai.request.model", "gpt-4o"),
+				strKV("gen_ai.system", "openai"),
+			},
+		})
+	}
+
+	req := &coltracepb.ExportTraceServiceRequest{
+		ResourceSpans: []*tracepb.ResourceSpans{
+			{
+				Resource:   &resourcepb.Resource{Attributes: []*commonpb.KeyValue{strKV("service.name", "agent")}},
+				ScopeSpans: []*tracepb.ScopeSpans{scope},
+			},
+		},
+	}
+
+	endpoints, _, _, _, aiTraces, _ := convertTraces(testProjectId, req)
+
+	if len(endpoints) != 1 {
+		t.Fatalf("expected 1 endpoint, got %d", len(endpoints))
+	}
+	if len(aiTraces) != N {
+		t.Fatalf("expected %d ai_trace rows, got %d", N, len(aiTraces))
+	}
+
+	seen := map[uuid.UUID]bool{}
+	for _, ai := range aiTraces {
+		if seen[ai.Id] {
+			t.Errorf("duplicate ai_trace Id %s — each child should have its own row", ai.Id)
+		}
+		seen[ai.Id] = true
+		if ai.ParentSpanId == nil {
+			t.Errorf("ai_trace %s has nil ParentSpanId — should reference the root", ai.Id)
+		}
 	}
 }
 

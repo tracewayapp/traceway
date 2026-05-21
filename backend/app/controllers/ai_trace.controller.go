@@ -24,6 +24,7 @@ type AiTraceSearchRequest struct {
 	SortDirection string           `json:"sortDirection"`
 	Pagination    PaginationParams `json:"pagination"`
 	Search        string           `json:"search"`
+	IsRoot        *bool            `json:"isRoot,omitempty"`
 }
 
 type AiTraceInstancesRequest struct {
@@ -41,8 +42,9 @@ type AiTraceInstancesResponse struct {
 }
 
 type AiTraceDetailResponse struct {
-	AiTrace      *models.AiTrace `json:"aiTrace"`
-	Conversation json.RawMessage `json:"conversation,omitempty"`
+	AiTrace      *models.AiTrace    `json:"aiTrace"`
+	Conversation json.RawMessage    `json:"conversation,omitempty"`
+	ParentRef    *ParentRefResponse `json:"parentRef,omitempty"`
 }
 
 func (a aiTraceController) FindGroupedByTraceName(c *gin.Context) {
@@ -58,7 +60,7 @@ func (a aiTraceController) FindGroupedByTraceName(c *gin.Context) {
 		return
 	}
 
-	stats, total, err := repositories.AiTraceRepository.FindGroupedByTraceName(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection, request.Search)
+	stats, total, err := repositories.AiTraceRepository.FindGroupedByTraceName(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection, request.Search, request.IsRoot)
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading ai trace stats: %w", err))
 		return
@@ -147,6 +149,17 @@ func (a aiTraceController) GetAiTraceDetail(c *gin.Context) {
 
 	response := AiTraceDetailResponse{
 		AiTrace: aiTrace,
+	}
+
+	if aiTrace.ParentSpanId != nil {
+		ref, err := repositories.FindParentRef(c, projectId, *aiTrace.ParentSpanId)
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error loading parent ref: %w", err))
+			return
+		}
+		if ref != nil {
+			response.ParentRef = &ParentRefResponse{Kind: ref.Kind, Id: ref.Id, Name: ref.Name, TraceId: ref.TraceId}
+		}
 	}
 
 	if aiTrace.StorageKey != "" {

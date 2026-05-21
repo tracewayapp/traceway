@@ -1,0 +1,3 @@
+ALTER TABLE tasks ADD COLUMN trace_id TEXT DEFAULT NULL;
+ALTER TABLE tasks ADD COLUMN parent_span_id TEXT DEFAULT NULL;
+UPDATE tasks SET trace_id = id WHERE trace_id IS NULL;

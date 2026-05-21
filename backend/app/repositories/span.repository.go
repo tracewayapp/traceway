@@ -6,6 +6,8 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/chdb"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"context"
+	"database/sql"
+	"errors"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/google/uuid"
@@ -68,6 +70,26 @@ func (r *spanRepository) FindByTraceId(ctx context.Context, projectId, traceId u
 	}
 
 	return spans, nil
+}
+
+func (r *spanRepository) FindById(ctx context.Context, projectId, spanId uuid.UUID) (*models.Span, error) {
+	query := `SELECT id, trace_id, project_id, name, start_time, duration, recorded_at, parent_span_id
+	FROM spans
+	WHERE project_id = ? AND id = ?
+	LIMIT 1`
+
+	var s models.Span
+	err := chdb.Conn.QueryRow(ctx, query, projectId, spanId).Scan(
+		&s.Id, &s.TraceId, &s.ProjectId,
+		&s.Name, &s.StartTime, &s.Duration, &s.RecordedAt, &s.ParentSpanId,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &s, nil
 }
 
 var SpanRepository = spanRepository{}

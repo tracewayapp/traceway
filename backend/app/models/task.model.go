@@ -18,15 +18,18 @@ type Task struct {
 	ServerName         string            `json:"serverName" ch:"server_name"`
 	DistributedTraceId *uuid.UUID        `json:"distributedTraceId,omitempty" ch:"distributed_trace_id"`
 	SpanId             *uuid.UUID        `json:"spanId,omitempty" ch:"span_id"`
+	TraceId            uuid.UUID         `json:"traceId" ch:"trace_id"`
+	ParentSpanId       *uuid.UUID        `json:"parentSpanId,omitempty" ch:"parent_span_id"`
 }
 
 type TaskStats struct {
-	TaskName    string        `json:"taskName"`
-	Count       uint64        `json:"count"`
-	P50Duration time.Duration `json:"p50Duration"`
-	P95Duration time.Duration `json:"p95Duration"`
-	AvgDuration time.Duration `json:"avgDuration"`
-	LastSeen    time.Time     `json:"lastSeen"`
+	TaskName     string        `json:"taskName"`
+	Count        uint64        `json:"count"`
+	NonRootCount uint64        `json:"nonRootCount"`
+	P50Duration  time.Duration `json:"p50Duration"`
+	P95Duration  time.Duration `json:"p95Duration"`
+	AvgDuration  time.Duration `json:"avgDuration"`
+	LastSeen     time.Time     `json:"lastSeen"`
 }
 
 // TaskDetailStats contains detailed statistics for a specific task

@@ -20,6 +20,7 @@ type TaskSearchRequest struct {
 	OrderBy       string           `json:"orderBy"`
 	SortDirection string           `json:"sortDirection"`
 	Pagination    PaginationParams `json:"pagination"`
+	IsRoot        *bool            `json:"isRoot,omitempty"`
 }
 
 type TaskInstancesRequest struct {
@@ -82,7 +83,7 @@ func (e taskController) FindGroupedByTaskName(c *gin.Context) {
 	}
 
 	span := traceway.StartSpan(c, "loading grouped tasks")
-	stats, total, err := repositories.TaskRepository.FindGroupedByTaskName(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
+	stats, total, err := repositories.TaskRepository.FindGroupedByTaskName(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection, request.IsRoot)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading stats by name: %w", err))

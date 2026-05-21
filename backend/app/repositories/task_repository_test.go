@@ -141,7 +141,7 @@ func TestTaskRepository_FindGroupedByTaskName(t *testing.T) {
 		t.Fatalf("InsertAsync failed: %v", err)
 	}
 
-	stats, total, err := TaskRepository.FindGroupedByTaskName(ctx, projectId, now.Add(-time.Hour), now.Add(time.Hour), 1, 10, "count", "desc")
+	stats, total, err := TaskRepository.FindGroupedByTaskName(ctx, projectId, now.Add(-time.Hour), now.Add(time.Hour), 1, 10, "count", "desc", nil)
 	if err != nil {
 		t.Fatalf("FindGroupedByTaskName failed: %v", err)
 	}

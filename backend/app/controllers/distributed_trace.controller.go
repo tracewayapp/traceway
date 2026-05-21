@@ -23,6 +23,7 @@ type DistributedTraceNode struct {
 	TraceType   string                 `json:"traceType"`
 	Endpoint    *models.Endpoint       `json:"endpoint,omitempty"`
 	Task        *models.Task           `json:"task,omitempty"`
+	AiTrace     *models.AiTrace        `json:"aiTrace,omitempty"`
 	Spans       []models.Span          `json:"spans"`
 	Exception   *EndpointExceptionInfo `json:"exception,omitempty"`
 }
@@ -79,6 +80,12 @@ func (d distributedTraceController) GetDistributedTrace(c *gin.Context) {
 		return
 	}
 
+	aiTraces, err := repositories.AiTraceRepository.FindByDistributedTraceId(ctx, distributedTraceId, projectIds)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to query ai traces: %w", err))
+		return
+	}
+
 	exceptions, err := repositories.ExceptionStackTraceRepository.FindByDistributedTraceId(ctx, distributedTraceId, projectIds)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to query exceptions: %w", err))
@@ -100,10 +107,13 @@ func (d distributedTraceController) GetDistributedTrace(c *gin.Context) {
 
 	matchedIds := make(map[uuid.UUID]bool)
 	for _, ep := range endpoints {
-		matchedIds[ep.Id] = true
+		matchedIds[ep.TraceId] = true
 	}
 	for _, t := range tasks {
-		matchedIds[t.Id] = true
+		matchedIds[t.TraceId] = true
+	}
+	for _, ai := range aiTraces {
+		matchedIds[ai.TraceId] = true
 	}
 
 	var nodes []DistributedTraceNode
@@ -115,7 +125,7 @@ func (d distributedTraceController) GetDistributedTrace(c *gin.Context) {
 			TraceType:   "endpoint",
 			Endpoint:    &ep,
 			Spans:       []models.Span{},
-			Exception:   exceptionByTraceId[ep.Id],
+			Exception:   exceptionByTraceId[ep.TraceId],
 		}
 		nodes = append(nodes, node)
 	}
@@ -127,7 +137,19 @@ func (d distributedTraceController) GetDistributedTrace(c *gin.Context) {
 			TraceType:   "task",
 			Task:        &t,
 			Spans:       []models.Span{},
-			Exception:   exceptionByTraceId[t.Id],
+			Exception:   exceptionByTraceId[t.TraceId],
+		}
+		nodes = append(nodes, node)
+	}
+
+	for _, ai := range aiTraces {
+		node := DistributedTraceNode{
+			ProjectId:   ai.ProjectId,
+			ProjectName: projectNameMap[ai.ProjectId],
+			TraceType:   "ai_trace",
+			AiTrace:     &ai,
+			Spans:       []models.Span{},
+			Exception:   exceptionByTraceId[ai.TraceId],
 		}
 		nodes = append(nodes, node)
 	}

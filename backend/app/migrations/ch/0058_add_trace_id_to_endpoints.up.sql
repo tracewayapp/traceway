@@ -1,0 +1,1 @@
+ALTER TABLE endpoints ADD COLUMN trace_id UUID DEFAULT id

@@ -18,7 +18,7 @@ import (
 type endpointRepository struct{}
 
 func (e *endpointRepository) InsertAsync(ctx context.Context, lines []models.Endpoint) error {
-	batch, err := chdb.Conn.PrepareBatch(clickhouse.Context(context.Background(), clickhouse.WithAsync(false)), "INSERT INTO endpoints (id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, is_stream)")
+	batch, err := chdb.Conn.PrepareBatch(clickhouse.Context(context.Background(), clickhouse.WithAsync(false)), "INSERT INTO endpoints (id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, trace_id, parent_span_id, is_stream)")
 	if err != nil {
 		return err
 	}
@@ -33,7 +33,7 @@ func (e *endpointRepository) InsertAsync(ctx context.Context, lines []models.End
 		if t.IsStream {
 			isStream = 1
 		}
-		if err := batch.Append(t.Id, t.ProjectId, t.Endpoint, int64(t.Duration), t.RecordedAt, t.StatusCode, t.BodySize, t.ClientIP, attributesJSON, t.AppVersion, t.ServerName, t.DistributedTraceId, t.SpanId, isStream); err != nil {
+		if err := batch.Append(t.Id, t.ProjectId, t.Endpoint, int64(t.Duration), t.RecordedAt, t.StatusCode, t.BodySize, t.ClientIP, attributesJSON, t.AppVersion, t.ServerName, t.DistributedTraceId, t.SpanId, t.TraceId, t.ParentSpanId, isStream); err != nil {
 			return err
 		}
 	}
@@ -66,7 +66,7 @@ func (e *endpointRepository) FindAll(ctx context.Context, projectId uuid.UUID, f
 		orderBy = "recorded_at"
 	}
 
-	query := "SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " DESC LIMIT ? OFFSET ?"
+	query := "SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, trace_id, parent_span_id FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " DESC LIMIT ? OFFSET ?"
 	rows, err := chdb.Conn.Query(ctx, query, projectId, fromDate, toDate, pageSize, offset)
 	if err != nil {
 		return nil, 0, err
@@ -77,7 +77,7 @@ func (e *endpointRepository) FindAll(ctx context.Context, projectId uuid.UUID, f
 	for rows.Next() {
 		var t models.Endpoint
 		var attributesJSON string
-		if err := rows.Scan(&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt, &t.StatusCode, &t.BodySize, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.DistributedTraceId); err != nil {
+		if err := rows.Scan(&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt, &t.StatusCode, &t.BodySize, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.DistributedTraceId, &t.SpanId, &t.TraceId, &t.ParentSpanId); err != nil {
 			return nil, 0, err
 		}
 		if attributesJSON != "" && attributesJSON != "{}" {
@@ -91,7 +91,7 @@ func (e *endpointRepository) FindAll(ctx context.Context, projectId uuid.UUID, f
 	return endpoints, int64(count), nil
 }
 
-func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string, search string) ([]models.EndpointStats, int64, error) {
+func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string, search string, isRoot *bool) ([]models.EndpointStats, int64, error) {
 	// Build WHERE clause with optional search filter
 	// Count query uses bare column names; main query uses e. prefix for LEFT JOIN
 	whereClause := "project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
@@ -102,6 +102,16 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 		whereClause += " AND positionCaseInsensitive(endpoint, ?) > 0"
 		joinWhereClause += " AND positionCaseInsensitive(e.endpoint, ?) > 0"
 		args = append(args, search)
+	}
+
+	if isRoot != nil {
+		if *isRoot {
+			whereClause += " AND parent_span_id IS NULL"
+			joinWhereClause += " AND e.parent_span_id IS NULL"
+		} else {
+			whereClause += " AND parent_span_id IS NOT NULL"
+			joinWhereClause += " AND e.parent_span_id IS NOT NULL"
+		}
 	}
 
 	// Count unique endpoints
@@ -137,7 +147,7 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 	}
 
 	query := `SELECT
-		endpoint, total_count as count, p50_duration, p95_duration, p99_duration,
+		endpoint, total_count as count, non_root_count, p50_duration, p95_duration, p99_duration,
 		avg_duration, last_seen, offset_ms,
 		satisfied_count, tolerating_count, bad_count, client_error_count,
 		server_error_count, is_stream,
@@ -200,6 +210,7 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 			offset_ms,
 			is_stream,
 			count() as total_count,
+			countIf(parent_span_id IS NOT NULL) as non_root_count,
 			quantile(0.5)(duration) as p50_duration,
 			quantile(0.95)(duration) as p95_duration,
 			quantile(0.99)(duration) as p99_duration,
@@ -216,6 +227,7 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 			countIf(status_code >= 500) as server_error_count
 		FROM (
 			SELECT e.endpoint, e.duration, e.status_code, e.recorded_at, e.is_stream,
+				   e.parent_span_id,
 				   s.offset_ms as offset_ms
 			FROM endpoints e
 			LEFT JOIN (SELECT * FROM slow_endpoints FINAL) AS s
@@ -243,7 +255,7 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 		var offsetMs uint32
 		var satisfiedCount, toleratingCount, badCount, clientErrorCount, serverErrorCount uint64
 		var isStream uint8
-		if err := rows.Scan(&s.Endpoint, &s.Count, &p50, &p95, &p99, &avg, &s.LastSeen,
+		if err := rows.Scan(&s.Endpoint, &s.Count, &s.NonRootCount, &p50, &p95, &p99, &avg, &s.LastSeen,
 			&offsetMs, &satisfiedCount, &toleratingCount, &badCount, &clientErrorCount,
 			&serverErrorCount, &isStream, &s.Impact); err != nil {
 			return nil, 0, err
@@ -294,7 +306,7 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.
 		sortDir = "ASC"
 	}
 
-	query := "SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id FROM endpoints WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " " + sortDir + " LIMIT ? OFFSET ?"
+	query := "SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, trace_id, parent_span_id FROM endpoints WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " " + sortDir + " LIMIT ? OFFSET ?"
 	rows, err := chdb.Conn.Query(ctx, query, projectId, endpoint, fromDate, toDate, pageSize, offset)
 	if err != nil {
 		return nil, 0, err
@@ -305,7 +317,7 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.
 	for rows.Next() {
 		var t models.Endpoint
 		var attributesJSON string
-		if err := rows.Scan(&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt, &t.StatusCode, &t.BodySize, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.DistributedTraceId); err != nil {
+		if err := rows.Scan(&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt, &t.StatusCode, &t.BodySize, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.DistributedTraceId, &t.SpanId, &t.TraceId, &t.ParentSpanId); err != nil {
 			return nil, 0, err
 		}
 		if attributesJSON != "" && attributesJSON != "{}" {
@@ -321,7 +333,7 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.
 
 // FindById returns a single endpoint by ID
 func (e *endpointRepository) FindById(ctx context.Context, projectId, endpointId uuid.UUID) (*models.Endpoint, error) {
-	query := `SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id
+	query := `SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, trace_id, parent_span_id
 		FROM endpoints
 		WHERE project_id = ? AND id = ?
 		LIMIT 1`
@@ -331,7 +343,7 @@ func (e *endpointRepository) FindById(ctx context.Context, projectId, endpointId
 
 	err := chdb.Conn.QueryRow(ctx, query, projectId, endpointId).Scan(
 		&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt,
-		&t.StatusCode, &t.BodySize, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.DistributedTraceId, &t.SpanId)
+		&t.StatusCode, &t.BodySize, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.DistributedTraceId, &t.SpanId, &t.TraceId, &t.ParentSpanId)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -826,7 +838,7 @@ func (e *endpointRepository) UpsertSlowEndpoint(ctx context.Context, projectId u
 }
 
 func (e *endpointRepository) FindByDistributedTraceId(ctx context.Context, distributedTraceId uuid.UUID, projectIds []uuid.UUID) ([]models.Endpoint, error) {
-	query := `SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id
+	query := `SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, trace_id, parent_span_id
 		FROM endpoints
 		WHERE distributed_trace_id = ? AND project_id IN (?)
 		ORDER BY recorded_at ASC`
@@ -842,7 +854,7 @@ func (e *endpointRepository) FindByDistributedTraceId(ctx context.Context, distr
 		var t models.Endpoint
 		var attributesJSON string
 		if err := rows.Scan(&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt,
-			&t.StatusCode, &t.BodySize, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.DistributedTraceId); err != nil {
+			&t.StatusCode, &t.BodySize, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.DistributedTraceId, &t.SpanId, &t.TraceId, &t.ParentSpanId); err != nil {
 			return nil, err
 		}
 		if attributesJSON != "" && attributesJSON != "{}" {

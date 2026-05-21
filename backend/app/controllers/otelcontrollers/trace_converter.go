@@ -99,6 +99,7 @@ func convertTraces(projectId uuid.UUID, req *coltracepb.ExportTraceServiceReques
 			traceId := spanToTraceId[string(span.SpanId)]
 
 			spanId := otelSpanIDToUUID(span.SpanId)
+			parentSpanId := ptrSpanUUID(span.ParentSpanId)
 			startTime := nanoToTime(span.StartTimeUnixNano)
 			endTime := nanoToTime(span.EndTimeUnixNano)
 			duration := endTime.Sub(startTime)
@@ -110,37 +111,45 @@ func convertTraces(projectId uuid.UUID, req *coltracepb.ExportTraceServiceReques
 				}
 			}
 
-			if isRoot {
-				rootSpanId := spanId
-				if (span.Kind == tracepb.Span_SPAN_KIND_SERVER || span.Kind == tracepb.Span_SPAN_KIND_INTERNAL) && hasHTTPAttributes(spanAttrs) {
-					ep := buildEndpoint(
-						traceId, projectId, span, spanAttrs, allAttrs,
-						startTime, duration, serverName, appVersion,
-					)
-					ep.DistributedTraceId = distributedTraceId
-					ep.SpanId = &rootSpanId
-					endpoints = append(endpoints, ep)
-				} else if span.Kind == tracepb.Span_SPAN_KIND_CONSUMER {
-					t := buildTask(
-						traceId, projectId, span, allAttrs,
-						startTime, endTime, duration, serverName, appVersion,
-					)
-					t.DistributedTraceId = distributedTraceId
-					t.SpanId = &rootSpanId
-					tasks = append(tasks, t)
-				} else if hasGenAiAttributes(spanAttrs) {
-					aiTrace := buildAiTrace(
-						traceId, projectId, span, spanAttrs, allAttrs,
-						startTime, duration, serverName, appVersion,
-					)
-					aiTraces = append(aiTraces, aiTrace)
-					if conv := extractConversation(spanAttrs, projectId, traceId); conv != nil {
-						aiConversations = append(aiConversations, *conv)
-					}
-				} else {
-					continue
+			// Precedence: endpoint > task > ai_trace > other.
+			kind := classifyKind(span, spanAttrs)
+
+			switch kind {
+			case "endpoint":
+				ep := buildEndpoint(
+					spanId, traceId, projectId, span, spanAttrs, allAttrs,
+					startTime, duration, serverName, appVersion,
+				)
+				ep.DistributedTraceId = distributedTraceId
+				ep.SpanId = &spanId
+				ep.ParentSpanId = parentSpanId
+				endpoints = append(endpoints, ep)
+			case "task":
+				t := buildTask(
+					spanId, traceId, projectId, span, allAttrs,
+					startTime, endTime, duration, serverName, appVersion,
+				)
+				t.DistributedTraceId = distributedTraceId
+				t.SpanId = &spanId
+				t.ParentSpanId = parentSpanId
+				tasks = append(tasks, t)
+			case "ai_trace":
+				aiTrace := buildAiTrace(
+					spanId, traceId, projectId, span, spanAttrs, allAttrs,
+					startTime, duration, serverName, appVersion,
+				)
+				aiTrace.DistributedTraceId = distributedTraceId
+				aiTrace.SpanId = &spanId
+				aiTrace.ParentSpanId = parentSpanId
+				aiTraces = append(aiTraces, aiTrace)
+				if conv := extractConversation(spanAttrs, projectId, spanId); conv != nil {
+					aiConversations = append(aiConversations, *conv)
 				}
-			} else {
+			}
+
+			// Dual-write a generic span row for non-roots so the waterfall stays
+			// complete even when the span also landed in a special table.
+			if !isRoot {
 				spanName := span.Name
 				if dbQuery := getStringAttribute(spanAttrs, "db.query.text"); dbQuery != "" {
 					spanName = dbQuery
@@ -156,13 +165,20 @@ func convertTraces(projectId uuid.UUID, req *coltracepb.ExportTraceServiceReques
 					StartTime:    startTime,
 					Duration:     duration,
 					RecordedAt:   startTime,
-					ParentSpanId: ptrSpanUUID(span.ParentSpanId),
+					ParentSpanId: parentSpanId,
 				})
 			}
 
-			traceType := "task"
-			if isRoot && (span.Kind == tracepb.Span_SPAN_KIND_SERVER || span.Kind == tracepb.Span_SPAN_KIND_INTERNAL) && hasHTTPAttributes(spanAttrs) {
+			var traceType string
+			switch kind {
+			case "endpoint":
 				traceType = "endpoint"
+			case "task":
+				traceType = "task"
+			case "ai_trace":
+				traceType = "ai_trace"
+			default:
+				traceType = "task"
 			}
 
 			for _, event := range span.Events {
@@ -190,8 +206,25 @@ func hasHTTPAttributes(attrs []*commonpb.KeyValue) bool {
 	return false
 }
 
+// classifyKind categorizes a span into the special table it should populate.
+// Precedence is endpoint > task > ai_trace > other so a span that matches
+// more than one criterion (e.g. an HTTP server span that also carries gen_ai
+// attributes) lands consistently in the higher-priority table.
+func classifyKind(span *tracepb.Span, attrs []*commonpb.KeyValue) string {
+	if (span.Kind == tracepb.Span_SPAN_KIND_SERVER || span.Kind == tracepb.Span_SPAN_KIND_INTERNAL) && hasHTTPAttributes(attrs) {
+		return "endpoint"
+	}
+	if span.Kind == tracepb.Span_SPAN_KIND_CONSUMER {
+		return "task"
+	}
+	if hasGenAiAttributes(attrs) {
+		return "ai_trace"
+	}
+	return "other"
+}
+
 func buildEndpoint(
-	id, projectId uuid.UUID,
+	id, traceId, projectId uuid.UUID,
 	span *tracepb.Span,
 	attrs []*commonpb.KeyValue,
 	allAttrs map[string]string,
@@ -226,6 +259,7 @@ func buildEndpoint(
 
 	return models.Endpoint{
 		Id:         id,
+		TraceId:    traceId,
 		ProjectId:  projectId,
 		Endpoint:   endpoint,
 		Duration:   duration,
@@ -297,7 +331,7 @@ func getHTTPEndpoint(attrs []*commonpb.KeyValue, fallback string) string {
 }
 
 func buildTask(
-	id, projectId uuid.UUID,
+	id, traceId, projectId uuid.UUID,
 	span *tracepb.Span,
 	allAttrs map[string]string,
 	startTime, endTime time.Time,
@@ -306,6 +340,7 @@ func buildTask(
 ) models.Task {
 	return models.Task{
 		Id:         id,
+		TraceId:    traceId,
 		ProjectId:  projectId,
 		TaskName:   span.Name,
 		Duration:   duration,
@@ -355,7 +390,7 @@ func hasGenAiAttributes(attrs []*commonpb.KeyValue) bool {
 }
 
 func buildAiTrace(
-	id, projectId uuid.UUID,
+	id, traceId, projectId uuid.UUID,
 	span *tracepb.Span,
 	attrs []*commonpb.KeyValue,
 	allAttrs map[string]string,
@@ -405,6 +440,7 @@ func buildAiTrace(
 
 	return models.AiTrace{
 		Id:              id,
+		TraceId:         traceId,
 		ProjectId:       projectId,
 		RecordedAt:      startTime,
 		Duration:        duration,
@@ -473,7 +509,7 @@ func filterNonStandardAiAttrs(allAttrs map[string]string) map[string]string {
 	return result
 }
 
-func extractConversation(attrs []*commonpb.KeyValue, projectId, traceId uuid.UUID) *aiTraceConversation {
+func extractConversation(attrs []*commonpb.KeyValue, projectId, id uuid.UUID) *aiTraceConversation {
 	input := getStringAttribute(attrs, "gen_ai.prompt")
 	if input == "" {
 		input = getStringAttribute(attrs, "trace.input")
@@ -504,7 +540,7 @@ func extractConversation(attrs []*commonpb.KeyValue, projectId, traceId uuid.UUI
 	}
 
 	return &aiTraceConversation{
-		StorageKey: fmt.Sprintf("ai-traces/%s/%s.json", projectId, traceId),
+		StorageKey: fmt.Sprintf("ai-traces/%s/%s.json", projectId, id),
 		Content:    data,
 	}
 }

@@ -30,10 +30,11 @@ type TaskMessageInfo struct {
 
 type TaskDetailResponse struct {
 	Task      *models.Task       `json:"task"`
-	Spans     []models.Span      `json:"spans"`
+	Spans     []EnrichedSpan     `json:"spans"`
 	HasSpans  bool               `json:"hasSpans"`
 	Exception *TaskExceptionInfo `json:"exception,omitempty"`
 	Messages  []TaskMessageInfo  `json:"messages"`
+	ParentRef *ParentRefResponse `json:"parentRef,omitempty"`
 }
 
 func (t taskDetailController) GetTaskDetail(c *gin.Context) {
@@ -54,17 +55,43 @@ func (t taskDetailController) GetTaskDetail(c *gin.Context) {
 	task, err := repositories.TaskRepository.FindById(c, projectId, taskId)
 	span.End()
 	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error loading task: %w", err))
+		return
+	}
+	if task == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
 		return
 	}
 
-	// Get spans (flat list ordered by start_time)
+	// Get spans (flat list ordered by start_time). Spans are indexed by trace ID,
+	// not the task row's id — dereference via task.TraceId.
 	span = traceway.StartSpan(c, "loading spans")
-	spans, err := repositories.SpanRepository.FindByTraceId(c, projectId, taskId)
+	spans, err := repositories.SpanRepository.FindByTraceId(c, projectId, task.TraceId)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading spans: %w", err))
 		return
+	}
+
+	spanIds := make([]uuid.UUID, 0, len(spans))
+	for _, s := range spans {
+		spanIds = append(spanIds, s.Id)
+	}
+	aiRefs, err := repositories.AiTraceRepository.FindBySpanIds(c, projectId, spanIds)
+	if err != nil {
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading linked ai traces: %w", err))
+		return
+	}
+	enrichedSpans := make([]EnrichedSpan, 0, len(spans))
+	for _, s := range spans {
+		es := EnrichedSpan{Span: s}
+		if ref, ok := aiRefs[s.Id]; ok {
+			id := ref.Id
+			name := ref.TraceName
+			es.LinkedAiTraceId = &id
+			es.LinkedAiTraceName = &name
+		}
+		enrichedSpans = append(enrichedSpans, es)
 	}
 
 	// Get all linked exceptions and messages
@@ -72,7 +99,7 @@ func (t taskDetailController) GetTaskDetail(c *gin.Context) {
 	var messages []TaskMessageInfo
 
 	span = traceway.StartSpan(c, "loading exceptions")
-	allExceptions, err := repositories.ExceptionStackTraceRepository.FindAllByTraceId(c, projectId, taskId)
+	allExceptions, err := repositories.ExceptionStackTraceRepository.FindAllByTraceId(c, projectId, task.TraceId)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading allExceptions: %w", err))
@@ -103,12 +130,25 @@ func (t taskDetailController) GetTaskDetail(c *gin.Context) {
 		messages = []TaskMessageInfo{}
 	}
 
+	var parentRefResp *ParentRefResponse
+	if task.ParentSpanId != nil {
+		ref, err := repositories.FindParentRef(c, projectId, *task.ParentSpanId)
+		if err != nil {
+			c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading parent ref: %w", err))
+			return
+		}
+		if ref != nil {
+			parentRefResp = &ParentRefResponse{Kind: ref.Kind, Id: ref.Id, Name: ref.Name, TraceId: ref.TraceId}
+		}
+	}
+
 	c.JSON(http.StatusOK, TaskDetailResponse{
 		Task:      task,
-		Spans:     spans,
-		HasSpans:  len(spans) > 0,
+		Spans:     enrichedSpans,
+		HasSpans:  len(enrichedSpans) > 0,
 		Exception: exceptionInfo,
 		Messages:  messages,
+		ParentRef: parentRefResp,
 	})
 }
 

@@ -6,6 +6,9 @@ export type Span = {
 	startTime: string; // ISO datetime
 	duration: number; // nanoseconds
 	recordedAt: string;
+	parentSpanId?: string;
+	linkedAiTraceId?: string;
+	linkedAiTraceName?: string;
 };
 
 export type TraceDetail = {
@@ -22,6 +25,8 @@ export type TraceDetail = {
 	serverName: string;
 	distributedTraceId?: string;
 	spanId?: string;
+	traceId?: string;
+	parentSpanId?: string;
 };
 
 export type ExceptionInfo = {
@@ -38,10 +43,18 @@ export type MessageInfo = {
 	attributes?: Record<string, string>;
 };
 
+export type ParentRef = {
+	kind: 'endpoint' | 'task' | 'ai_trace';
+	id: string;
+	name: string;
+	traceId: string;
+};
+
 export type TraceDetailResponse = {
 	endpoint: TraceDetail;
 	spans: Span[];
 	hasSpans: boolean;
 	exception?: ExceptionInfo;
 	messages: MessageInfo[];
+	parentRef?: ParentRef;
 };

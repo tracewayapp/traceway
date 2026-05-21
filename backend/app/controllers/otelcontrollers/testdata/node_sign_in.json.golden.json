@@ -1,6 +1,18 @@
 {
-  "endpointCount": 1,
+  "endpointCount": 3,
   "endpoints": [
+    {
+      "endpoint": "handler /sign-in/email",
+      "statusCode": 0,
+      "serverName": "panelshot",
+      "appVersion": "0.1.0"
+    },
+    {
+      "endpoint": "hook after /sign-in/email plugin:bearer",
+      "statusCode": 0,
+      "serverName": "panelshot",
+      "appVersion": "0.1.0"
+    },
     {
       "endpoint": "POST /sign-in/email",
       "statusCode": 0,
@@ -36,7 +48,7 @@
   "exceptions": [
     {
       "stackTrace": "APIError: Invalid email or password",
-      "traceType": "task"
+      "traceType": "endpoint"
     }
   ],
   "aiTraceCount": 0,

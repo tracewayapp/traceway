@@ -9,6 +9,10 @@
     import { TableEmptyState } from "$lib/components/ui/table-empty-state";
     import { PaginationFooter } from "$lib/components/ui/pagination-footer";
     import { TimeRangePicker } from "$lib/components/ui/time-range-picker";
+    import { Badge } from "$lib/components/ui/badge";
+    import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+    import { ChevronDown, Check } from 'lucide-svelte';
+    import { browser } from '$app/environment';
     import { CalendarDate } from "@internationalized/date";
     import { projectsState } from '$lib/state/projects.svelte';
     import { createRowClickHandler } from '$lib/utils/navigation';
@@ -35,6 +39,7 @@
     type TaskStats = {
         taskName: string;
         count: number;
+        nonRootCount: number;
         p50Duration: number;
         p95Duration: number;
         avgDuration: number;
@@ -42,6 +47,14 @@
     };
 
     type SortField = 'count' | 'p50_duration' | 'p95_duration' | 'last_seen';
+
+    type RootFilter = 'all' | 'root' | 'nonroot';
+
+    const rootFilterOptions: { value: RootFilter; label: string }[] = [
+        { value: 'all', label: 'All' },
+        { value: 'root', label: 'Root only' },
+        { value: 'nonroot', label: 'Non-root only' }
+    ];
 
     let tasks = $state<TaskStats[]>([]);
     let loading = $state(true);
@@ -57,6 +70,14 @@
     const initialUrlParams = parseTimeRangeFromUrl(timezone);
     const initialRange = getResolvedTimeRange(initialUrlParams, timezone);
 
+    function parseRootFilterFromUrl(): RootFilter {
+        if (!browser) return 'all';
+        const raw = new URLSearchParams(window.location.search).get('root');
+        return raw === 'root' || raw === 'nonroot' ? raw : 'all';
+    }
+
+    let rootFilter = $state<RootFilter>(parseRootFilterFromUrl());
+
     // Date Range State
     let selectedPreset = $state<string | null>(initialUrlParams.preset);
     let fromDate = $state<CalendarDate>(dateToCalendarDate(initialRange.from, timezone));
@@ -66,12 +87,11 @@
 
     // Update URL with current time range
     function updateTimeRangeUrl(pushToHistory = true) {
-        updateUrl(
-            selectedPreset
-                ? { preset: selectedPreset }
-                : { from: getFromDateTimeUTC(), to: getToDateTimeUTC() },
-            { pushToHistory }
-        );
+        const params: Record<string, string | null | undefined> = selectedPreset
+            ? { preset: selectedPreset }
+            : { from: getFromDateTimeUTC(), to: getToDateTimeUTC() };
+        params.root = rootFilter === 'all' ? null : rootFilter;
+        updateUrl(params, { pushToHistory });
     }
 
     // Handle browser back/forward navigation
@@ -84,6 +104,7 @@
         fromTime = dateToTimeString(range.from, timezone);
         toDate = dateToCalendarDate(range.to, timezone);
         toTime = dateToTimeString(range.to, timezone);
+        rootFilter = parseRootFilterFromUrl();
 
         page = 1;
         loadData(false);
@@ -144,7 +165,7 @@
         updateTimeRangeUrl(pushToHistory);
 
         try {
-            const requestBody = {
+            const requestBody: Record<string, unknown> = {
                 fromDate: getFromDateTimeUTC(),
                 toDate: getToDateTimeUTC(),
                 orderBy: orderBy,
@@ -154,6 +175,8 @@
                     pageSize: pageSize
                 }
             };
+            if (rootFilter === 'root') requestBody.isRoot = true;
+            else if (rootFilter === 'nonroot') requestBody.isRoot = false;
 
             const response = await api.post('/tasks/grouped', requestBody, { projectId: projectsState.currentProjectId ?? undefined });
 
@@ -190,6 +213,14 @@
         loadData(false);
     }
 
+    function handleRootFilterChange(value: RootFilter) {
+        rootFilter = value;
+        page = 1;
+        loadData(true);
+    }
+
+    const rootFilterLabel = $derived(rootFilterOptions.find(o => o.value === rootFilter)?.label ?? 'All');
+
     onMount(() => {
         // Add popstate listener for back/forward navigation
         window.addEventListener('popstate', handlePopState);
@@ -211,7 +242,29 @@
 
         <PageHeader title="Tasks" />
 
-        <div class="flex flex-col">
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <DropdownMenu.Root>
+                <DropdownMenu.Trigger
+                    class="flex items-center gap-1 rounded-md border border-input bg-background px-3 py-2 text-sm hover:bg-accent"
+                >
+                    <span class="text-muted-foreground">Roots:</span>
+                    <span>{rootFilterLabel}</span>
+                    <ChevronDown class="h-3 w-3 text-muted-foreground" />
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Content align="end" class="w-[180px]">
+                    {#each rootFilterOptions as option}
+                        <DropdownMenu.Item
+                            onclick={() => handleRootFilterChange(option.value)}
+                            class="flex items-center justify-between cursor-pointer"
+                        >
+                            <span>{option.label}</span>
+                            {#if option.value === rootFilter}
+                                <Check class="h-4 w-4" />
+                            {/if}
+                        </DropdownMenu.Item>
+                    {/each}
+                </DropdownMenu.Content>
+            </DropdownMenu.Root>
             <TimeRangePicker
                 bind:fromDate
                 bind:toDate
@@ -291,7 +344,12 @@
                         onclick={createRowClickHandler(resolve(`/tasks/${encodeURIComponent(task.taskName)}`), 'preset', 'from', 'to')}
                     >
                         <Table.Cell class="font-mono text-sm">
-                            {task.taskName}
+                            <span class="inline-flex items-center gap-2">
+                                {task.taskName}
+                                {#if task.nonRootCount > 0}
+                                    <Badge variant="secondary" class="font-sans text-xs" title="At least one entry was captured as a child span of another endpoint/task/AI trace.">Not Root</Badge>
+                                {/if}
+                            </span>
                         </Table.Cell>
                         <Table.Cell class="tabular-nums">
                             {formatCount(task.count)}

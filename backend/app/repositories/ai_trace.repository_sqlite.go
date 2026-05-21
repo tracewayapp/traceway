@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,35 +16,40 @@ import (
 )
 
 type aiTraceRow struct {
-	Id              uuid.UUID     `lit:"id"`
-	ProjectId       uuid.UUID     `lit:"project_id"`
-	RecordedAt      SQLiteTime    `lit:"recorded_at"`
-	Duration        int64         `lit:"duration"`
-	StatusCode      uint8         `lit:"status_code"`
-	Model           string        `lit:"model"`
-	ResponseModel   string        `lit:"response_model"`
-	Provider        string        `lit:"provider"`
-	Operation       string        `lit:"operation"`
-	InputTokens     int64         `lit:"input_tokens"`
-	OutputTokens    int64         `lit:"output_tokens"`
-	TotalTokens     int64         `lit:"total_tokens"`
-	CachedTokens    int64         `lit:"cached_tokens"`
-	ReasoningTokens int64         `lit:"reasoning_tokens"`
-	InputCost       float64       `lit:"input_cost"`
-	OutputCost      float64       `lit:"output_cost"`
-	TotalCost       float64       `lit:"total_cost"`
-	TraceName       string        `lit:"trace_name"`
-	UserId          string        `lit:"user_id"`
-	FinishReason    string        `lit:"finish_reason"`
-	ServerName      string        `lit:"server_name"`
-	AppVersion      string        `lit:"app_version"`
-	StorageKey      string        `lit:"storage_key"`
-	Attributes      SQLiteJSONMap `lit:"attributes"`
+	Id                 uuid.UUID     `lit:"id"`
+	ProjectId          uuid.UUID     `lit:"project_id"`
+	RecordedAt         SQLiteTime    `lit:"recorded_at"`
+	Duration           int64         `lit:"duration"`
+	StatusCode         uint8         `lit:"status_code"`
+	Model              string        `lit:"model"`
+	ResponseModel      string        `lit:"response_model"`
+	Provider           string        `lit:"provider"`
+	Operation          string        `lit:"operation"`
+	InputTokens        int64         `lit:"input_tokens"`
+	OutputTokens       int64         `lit:"output_tokens"`
+	TotalTokens        int64         `lit:"total_tokens"`
+	CachedTokens       int64         `lit:"cached_tokens"`
+	ReasoningTokens    int64         `lit:"reasoning_tokens"`
+	InputCost          float64       `lit:"input_cost"`
+	OutputCost         float64       `lit:"output_cost"`
+	TotalCost          float64       `lit:"total_cost"`
+	TraceName          string        `lit:"trace_name"`
+	UserId             string        `lit:"user_id"`
+	FinishReason       string        `lit:"finish_reason"`
+	ServerName         string        `lit:"server_name"`
+	AppVersion         string        `lit:"app_version"`
+	StorageKey         string        `lit:"storage_key"`
+	Attributes         SQLiteJSONMap `lit:"attributes"`
+	TraceId            uuid.UUID     `lit:"trace_id"`
+	SpanId             *uuid.UUID    `lit:"span_id"`
+	ParentSpanId       *uuid.UUID    `lit:"parent_span_id"`
+	DistributedTraceId *uuid.UUID    `lit:"distributed_trace_id"`
 }
 
 type groupedAiTraceRow struct {
 	TraceName       string  `lit:"trace_name"`
 	TotalCount      uint64  `lit:"total_count"`
+	NonRootCount    uint64  `lit:"non_root_count"`
 	AvgDuration     float64 `lit:"avg_duration"`
 	TotalTokens     int64   `lit:"total_tokens"`
 	TotalCost       float64 `lit:"total_cost"`
@@ -76,58 +82,66 @@ func init() {
 
 func aiTraceToRow(t models.AiTrace) aiTraceRow {
 	return aiTraceRow{
-		Id:              t.Id,
-		ProjectId:       t.ProjectId,
-		RecordedAt:      NewSQLiteTime(t.RecordedAt),
-		Duration:        int64(t.Duration),
-		StatusCode:      t.StatusCode,
-		Model:           t.Model,
-		ResponseModel:   t.ResponseModel,
-		Provider:        t.Provider,
-		Operation:       t.Operation,
-		InputTokens:     t.InputTokens,
-		OutputTokens:    t.OutputTokens,
-		TotalTokens:     t.TotalTokens,
-		CachedTokens:    t.CachedTokens,
-		ReasoningTokens: t.ReasoningTokens,
-		InputCost:       t.InputCost,
-		OutputCost:      t.OutputCost,
-		TotalCost:       t.TotalCost,
-		TraceName:       t.TraceName,
-		UserId:          t.UserId,
-		FinishReason:    t.FinishReason,
-		ServerName:      t.ServerName,
-		AppVersion:      t.AppVersion,
-		StorageKey:      t.StorageKey,
-		Attributes:      NewSQLiteJSONMap(t.Attributes),
+		Id:                 t.Id,
+		ProjectId:          t.ProjectId,
+		RecordedAt:         NewSQLiteTime(t.RecordedAt),
+		Duration:           int64(t.Duration),
+		StatusCode:         t.StatusCode,
+		Model:              t.Model,
+		ResponseModel:      t.ResponseModel,
+		Provider:           t.Provider,
+		Operation:          t.Operation,
+		InputTokens:        t.InputTokens,
+		OutputTokens:       t.OutputTokens,
+		TotalTokens:        t.TotalTokens,
+		CachedTokens:       t.CachedTokens,
+		ReasoningTokens:    t.ReasoningTokens,
+		InputCost:          t.InputCost,
+		OutputCost:         t.OutputCost,
+		TotalCost:          t.TotalCost,
+		TraceName:          t.TraceName,
+		UserId:             t.UserId,
+		FinishReason:       t.FinishReason,
+		ServerName:         t.ServerName,
+		AppVersion:         t.AppVersion,
+		StorageKey:         t.StorageKey,
+		Attributes:         NewSQLiteJSONMap(t.Attributes),
+		TraceId:            t.TraceId,
+		SpanId:             t.SpanId,
+		ParentSpanId:       t.ParentSpanId,
+		DistributedTraceId: t.DistributedTraceId,
 	}
 }
 
 func (r *aiTraceRow) toModel() models.AiTrace {
 	t := models.AiTrace{
-		Id:              r.Id,
-		ProjectId:       r.ProjectId,
-		RecordedAt:      r.RecordedAt.Time,
-		Duration:        time.Duration(r.Duration),
-		StatusCode:      r.StatusCode,
-		Model:           r.Model,
-		ResponseModel:   r.ResponseModel,
-		Provider:        r.Provider,
-		Operation:       r.Operation,
-		InputTokens:     r.InputTokens,
-		OutputTokens:    r.OutputTokens,
-		TotalTokens:     r.TotalTokens,
-		CachedTokens:    r.CachedTokens,
-		ReasoningTokens: r.ReasoningTokens,
-		InputCost:       r.InputCost,
-		OutputCost:      r.OutputCost,
-		TotalCost:       r.TotalCost,
-		TraceName:       r.TraceName,
-		UserId:          r.UserId,
-		FinishReason:    r.FinishReason,
-		ServerName:      r.ServerName,
-		AppVersion:      r.AppVersion,
-		StorageKey:      r.StorageKey,
+		Id:                 r.Id,
+		ProjectId:          r.ProjectId,
+		RecordedAt:         r.RecordedAt.Time,
+		Duration:           time.Duration(r.Duration),
+		StatusCode:         r.StatusCode,
+		Model:              r.Model,
+		ResponseModel:      r.ResponseModel,
+		Provider:           r.Provider,
+		Operation:          r.Operation,
+		InputTokens:        r.InputTokens,
+		OutputTokens:       r.OutputTokens,
+		TotalTokens:        r.TotalTokens,
+		CachedTokens:       r.CachedTokens,
+		ReasoningTokens:    r.ReasoningTokens,
+		InputCost:          r.InputCost,
+		OutputCost:         r.OutputCost,
+		TotalCost:          r.TotalCost,
+		TraceName:          r.TraceName,
+		UserId:             r.UserId,
+		FinishReason:       r.FinishReason,
+		ServerName:         r.ServerName,
+		AppVersion:         r.AppVersion,
+		StorageKey:         r.StorageKey,
+		TraceId:            r.TraceId,
+		SpanId:             r.SpanId,
+		ParentSpanId:       r.ParentSpanId,
+		DistributedTraceId: r.DistributedTraceId,
 	}
 	if r.Attributes != nil {
 		t.Attributes = map[string]string(r.Attributes)
@@ -150,13 +164,20 @@ func (r *aiTraceRepository) InsertAsync(ctx context.Context, lines []models.AiTr
 	return nil
 }
 
-func (r *aiTraceRepository) FindGroupedByTraceName(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy, sortDirection, search string) ([]models.AiTraceStats, int64, error) {
+func (r *aiTraceRepository) FindGroupedByTraceName(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy, sortDirection, search string, isRoot *bool) ([]models.AiTraceStats, int64, error) {
 	params := lit.P{"project_id": projectId, "from": NewSQLiteTime(fromDate), "to": NewSQLiteTime(toDate)}
 
 	whereClause := "project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to"
 	if search != "" {
 		whereClause += " AND INSTR(LOWER(trace_name), LOWER(:search)) > 0"
 		params["search"] = search
+	}
+	if isRoot != nil {
+		if *isRoot {
+			whereClause += " AND parent_span_id IS NULL"
+		} else {
+			whereClause += " AND parent_span_id IS NOT NULL"
+		}
 	}
 
 	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
@@ -171,6 +192,7 @@ func (r *aiTraceRepository) FindGroupedByTraceName(ctx context.Context, projectI
 
 	rows, err := lit.SelectNamed[groupedAiTraceRow](db.TelemetryDB,
 		`SELECT trace_name, COUNT(*) AS total_count,
+			SUM(CASE WHEN parent_span_id IS NOT NULL THEN 1 ELSE 0 END) AS non_root_count,
 			AVG(duration) AS avg_duration,
 			SUM(total_tokens) AS total_tokens,
 			SUM(total_cost) AS total_cost,
@@ -205,6 +227,7 @@ func (r *aiTraceRepository) FindGroupedByTraceName(ctx context.Context, projectI
 		stats = append(stats, models.AiTraceStats{
 			TraceName:       row.TraceName,
 			Count:           row.TotalCount,
+			NonRootCount:    row.NonRootCount,
 			P50Duration:     time.Duration(computePercentile(sortedDurations, 0.5)),
 			P95Duration:     time.Duration(computePercentile(sortedDurations, 0.95)),
 			AvgDuration:     time.Duration(row.AvgDuration),
@@ -286,7 +309,8 @@ func (r *aiTraceRepository) FindByTraceName(ctx context.Context, projectId uuid.
 			input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens,
 			input_cost, output_cost, total_cost,
 			trace_name, user_id, finish_reason, server_name, app_version,
-			storage_key, attributes
+			storage_key, attributes,
+			trace_id, span_id, parent_span_id, distributed_trace_id
 		FROM ai_traces
 		WHERE project_id = :project_id AND trace_name = :trace_name AND recorded_at >= :from AND recorded_at <= :to
 		ORDER BY %s %s LIMIT :limit OFFSET :offset`, orderBy, sortDir),
@@ -362,7 +386,8 @@ func (r *aiTraceRepository) FindById(ctx context.Context, projectId, traceId uui
 			input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens,
 			input_cost, output_cost, total_cost,
 			trace_name, user_id, finish_reason, server_name, app_version,
-			storage_key, attributes
+			storage_key, attributes,
+			trace_id, span_id, parent_span_id, distributed_trace_id
 		FROM ai_traces
 		WHERE project_id = :project_id AND id = :id
 		LIMIT 1`,
@@ -375,6 +400,84 @@ func (r *aiTraceRepository) FindById(ctx context.Context, projectId, traceId uui
 	}
 	result := row.toModel()
 	return &result, nil
+}
+
+func (r *aiTraceRepository) FindByDistributedTraceId(ctx context.Context, distributedTraceId uuid.UUID, projectIds []uuid.UUID) ([]models.AiTrace, error) {
+	if len(projectIds) == 0 {
+		return nil, nil
+	}
+
+	placeholders := make([]string, 0, len(projectIds))
+	params := lit.P{"distributed_trace_id": distributedTraceId}
+	for i, id := range projectIds {
+		key := fmt.Sprintf("project_id_%d", i)
+		placeholders = append(placeholders, ":"+key)
+		params[key] = id
+	}
+
+	query := `SELECT id, project_id, recorded_at, duration, status_code,
+		model, response_model, provider, operation,
+		input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens,
+		input_cost, output_cost, total_cost,
+		trace_name, user_id, finish_reason, server_name, app_version,
+		storage_key, attributes,
+		trace_id, span_id, parent_span_id, distributed_trace_id
+	FROM ai_traces
+	WHERE distributed_trace_id = :distributed_trace_id AND project_id IN (` + strings.Join(placeholders, ",") + `)
+	ORDER BY recorded_at ASC`
+
+	rows, err := lit.SelectNamed[aiTraceRow](db.TelemetryDB, query, params)
+	if err != nil {
+		return nil, err
+	}
+
+	traces := make([]models.AiTrace, 0, len(rows))
+	for _, row := range rows {
+		traces = append(traces, row.toModel())
+	}
+	return traces, nil
+}
+
+type aiTraceSpanRefRow struct {
+	SpanId    *uuid.UUID `lit:"span_id"`
+	Id        uuid.UUID  `lit:"id"`
+	TraceName string     `lit:"trace_name"`
+}
+
+func init() {
+	models.ExtensionModelRegistrations = append(models.ExtensionModelRegistrations, func(driver lit.Driver) {
+		lit.RegisterModel[aiTraceSpanRefRow](driver)
+	})
+}
+
+func (r *aiTraceRepository) FindBySpanIds(ctx context.Context, projectId uuid.UUID, spanIds []uuid.UUID) (map[uuid.UUID]AiTraceRef, error) {
+	result := map[uuid.UUID]AiTraceRef{}
+	if len(spanIds) == 0 {
+		return result, nil
+	}
+
+	placeholders := make([]string, 0, len(spanIds))
+	params := lit.P{"project_id": projectId}
+	for i, id := range spanIds {
+		key := fmt.Sprintf("span_id_%d", i)
+		placeholders = append(placeholders, ":"+key)
+		params[key] = id
+	}
+
+	query := `SELECT span_id, id, trace_name
+		FROM ai_traces
+		WHERE project_id = :project_id AND span_id IN (` + strings.Join(placeholders, ",") + `)`
+
+	rows, err := lit.SelectNamed[aiTraceSpanRefRow](db.TelemetryDB, query, params)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if row.SpanId != nil {
+			result[*row.SpanId] = AiTraceRef{Id: row.Id, TraceName: row.TraceName}
+		}
+	}
+	return result, nil
 }
 
 var AiTraceRepository = aiTraceRepository{}

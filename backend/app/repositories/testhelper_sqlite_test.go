@@ -150,9 +150,11 @@ CREATE TABLE IF NOT EXISTS spans (
     start_time DATETIME NOT NULL,
     duration INTEGER NOT NULL DEFAULT 0,
     recorded_at DATETIME NOT NULL,
-    parent_span_id TEXT DEFAULT NULL
+    parent_span_id TEXT DEFAULT NULL,
+    entity_id TEXT DEFAULT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_spans_project_trace ON spans(project_id, trace_id);
+CREATE INDEX IF NOT EXISTS idx_spans_project_entity ON spans(project_id, entity_id);
 
 CREATE TABLE IF NOT EXISTS metric_points (
     project_id TEXT NOT NULL,

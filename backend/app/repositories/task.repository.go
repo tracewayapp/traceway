@@ -212,6 +212,49 @@ func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID
 	return tasks, int64(count), nil
 }
 
+// FindByParentSpanIds returns task rows whose parent_span_id is in the given
+// set, projected into ChildEntityRef. Used by FindChildEntitiesBySpanIds to
+// surface tasks (e.g. queued jobs) nested under a parent entity's subtree.
+func (e *taskRepository) FindByParentSpanIds(ctx context.Context, projectId uuid.UUID, spanIds []uuid.UUID) ([]ChildEntityRef, error) {
+	if len(spanIds) == 0 {
+		return nil, nil
+	}
+
+	query := `SELECT id, task_name, parent_span_id, trace_id, recorded_at, duration
+		FROM tasks
+		WHERE project_id = ? AND parent_span_id IN (?)`
+
+	rows, err := chdb.Conn.Query(ctx, query, projectId, spanIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var refs []ChildEntityRef
+	for rows.Next() {
+		var (
+			id           uuid.UUID
+			name         string
+			parentSpanId *uuid.UUID
+			traceId      uuid.UUID
+			recordedAt   time.Time
+			durationNs   int64
+		)
+		if err := rows.Scan(&id, &name, &parentSpanId, &traceId, &recordedAt, &durationNs); err != nil {
+			return nil, err
+		}
+		if parentSpanId == nil {
+			continue
+		}
+		refs = append(refs, ChildEntityRef{
+			Kind: "task", Id: id, Name: name,
+			ParentSpanId: *parentSpanId, TraceId: traceId,
+			RecordedAt: recordedAt, Duration: time.Duration(durationNs),
+		})
+	}
+	return refs, nil
+}
+
 // FindById returns a single task by ID
 func (e *taskRepository) FindById(ctx context.Context, projectId, taskId uuid.UUID) (*models.Task, error) {
 	query := `SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, trace_id, parent_span_id

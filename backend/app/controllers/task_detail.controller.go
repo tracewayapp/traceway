@@ -29,12 +29,13 @@ type TaskMessageInfo struct {
 }
 
 type TaskDetailResponse struct {
-	Task      *models.Task       `json:"task"`
-	Spans     []EnrichedSpan     `json:"spans"`
-	HasSpans  bool               `json:"hasSpans"`
-	Exception *TaskExceptionInfo `json:"exception,omitempty"`
-	Messages  []TaskMessageInfo  `json:"messages"`
-	ParentRef *ParentRefResponse `json:"parentRef,omitempty"`
+	Task          *models.Task          `json:"task"`
+	Spans         []EnrichedSpan        `json:"spans"`
+	HasSpans      bool                  `json:"hasSpans"`
+	Exception     *TaskExceptionInfo    `json:"exception,omitempty"`
+	Messages      []TaskMessageInfo     `json:"messages"`
+	ParentRef     *ParentRefResponse    `json:"parentRef,omitempty"`
+	ChildEntities []ChildEntityResponse `json:"childEntities"`
 }
 
 func (t taskDetailController) GetTaskDetail(c *gin.Context) {
@@ -63,14 +64,27 @@ func (t taskDetailController) GetTaskDetail(c *gin.Context) {
 		return
 	}
 
-	// Get spans (flat list ordered by start_time). Spans are indexed by trace ID,
-	// not the task row's id — dereference via task.TraceId.
+	// Load only spans whose entity_id resolves to this task, so a producer span
+	// (or the originating request's internal spans) in the same trace doesn't
+	// leak into this waterfall. Historical rows (pre-Phase-2) have entity_id
+	// NULL — recognise them by the Phase-1 backfill invariant id == trace_id and
+	// fall back to the trace-wide query so old detail pages keep working until
+	// the operator runs the CH UPDATE to populate entity_id.
 	span = traceway.StartSpan(c, "loading spans")
-	spans, err := repositories.SpanRepository.FindByTraceId(c, projectId, task.TraceId)
+	spans, err := repositories.SpanRepository.FindByEntityId(c, projectId, task.Id)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading spans: %w", err))
 		return
+	}
+	if len(spans) == 0 && task.Id == task.TraceId {
+		span = traceway.StartSpan(c, "loading spans (legacy fallback)")
+		spans, err = repositories.SpanRepository.FindByTraceId(c, projectId, task.TraceId)
+		span.End()
+		if err != nil {
+			c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading spans (legacy fallback): %w", err))
+			return
+		}
 	}
 
 	spanIds := make([]uuid.UUID, 0, len(spans))
@@ -142,13 +156,30 @@ func (t taskDetailController) GetTaskDetail(c *gin.Context) {
 		}
 	}
 
+	// See endpoint_detail.controller.go for the rationale on subtreeIds + child
+	// entities — same shape applies here so a task that dispatches another task,
+	// or calls an LLM, surfaces those entities in this task's waterfall.
+	subtreeIds := make([]uuid.UUID, 0, len(spans)+1)
+	subtreeIds = append(subtreeIds, task.Id)
+	for _, s := range spans {
+		subtreeIds = append(subtreeIds, s.Id)
+	}
+	span = traceway.StartSpan(c, "loading child entities")
+	children, err := repositories.FindChildEntitiesBySpanIds(c, projectId, subtreeIds)
+	span.End()
+	if err != nil {
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading child entities: %w", err))
+		return
+	}
+
 	c.JSON(http.StatusOK, TaskDetailResponse{
-		Task:      task,
-		Spans:     enrichedSpans,
-		HasSpans:  len(enrichedSpans) > 0,
-		Exception: exceptionInfo,
-		Messages:  messages,
-		ParentRef: parentRefResp,
+		Task:          task,
+		Spans:         enrichedSpans,
+		HasSpans:      len(enrichedSpans) > 0,
+		Exception:     exceptionInfo,
+		Messages:      messages,
+		ParentRef:     parentRefResp,
+		ChildEntities: toChildEntityResponses(children),
 	})
 }
 

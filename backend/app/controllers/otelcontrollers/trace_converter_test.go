@@ -555,8 +555,133 @@ func TestConvertTraces_HttpRootWithGenAiChild(t *testing.T) {
 		t.Errorf("span row should be the child, got Id=%s", spans[0].Id)
 	}
 
+	// Phase 2: the gen_ai child is itself an ai_trace entity, so its dual-written
+	// span row should own itself (entity_id = childSpanUUID), NOT the endpoint
+	// root. This is what keeps it out of the endpoint detail's waterfall.
+	if spans[0].EntityId == nil || *spans[0].EntityId != childSpanUUID {
+		t.Errorf("span.EntityId = %v, want %s (the gen_ai span itself)", spans[0].EntityId, childSpanUUID)
+	}
+
 	if exceptions[0].TraceType != "ai_trace" {
 		t.Errorf("exception traceType = %q, want %q", exceptions[0].TraceType, "ai_trace")
+	}
+}
+
+// TestConvertTraces_DispatchJob_EntityOwnership reproduces the Zentigo
+// dispatch-job pattern: an HTTP endpoint root with a producer span child, plus
+// a separate CONSUMER (task) sub-tree whose parent is the producer. The
+// producer should belong to the endpoint entity, while the consumer and its
+// children belong to the task entity. This is the test that proves the
+// subtree-leak bug from Phase 1 is gone.
+func TestConvertTraces_DispatchJob_EntityOwnership(t *testing.T) {
+	rootSpanId := []byte{0xE0, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07}
+	producerSpanId := []byte{0xE0, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17}
+	consumerSpanId := []byte{0xC0, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27}
+	dbQuerySpanId := []byte{0xD0, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37}
+	traceIdBytes := []byte{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99}
+	now := uint64(1700000000000000000)
+
+	req := &coltracepb.ExportTraceServiceRequest{
+		ResourceSpans: []*tracepb.ResourceSpans{
+			{
+				Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{strKV("service.name", "zentigo")}},
+				ScopeSpans: []*tracepb.ScopeSpans{
+					{
+						Spans: []*tracepb.Span{
+							// HTTP server span (endpoint root).
+							{
+								TraceId:           traceIdBytes,
+								SpanId:            rootSpanId,
+								Name:              "GET /test/traceway/dispatch-job",
+								Kind:              tracepb.Span_SPAN_KIND_SERVER,
+								StartTimeUnixNano: now,
+								EndTimeUnixNano:   now + 10_000_000,
+								Attributes: []*commonpb.KeyValue{
+									strKV("http.request.method", "GET"),
+									strKV("http.route", "/test/traceway/dispatch-job"),
+								},
+							},
+							// Producer span inside the request (PRODUCER kind → generic).
+							{
+								TraceId:           traceIdBytes,
+								SpanId:            producerSpanId,
+								ParentSpanId:      rootSpanId,
+								Name:              "queue.dispatch TestTracewayJob",
+								Kind:              tracepb.Span_SPAN_KIND_PRODUCER,
+								StartTimeUnixNano: now + 1_000_000,
+								EndTimeUnixNano:   now + 2_000_000,
+							},
+							// CONSUMER span — separate sub-tree under the producer.
+							{
+								TraceId:           traceIdBytes,
+								SpanId:            consumerSpanId,
+								ParentSpanId:      producerSpanId,
+								Name:              "TestTracewayJob",
+								Kind:              tracepb.Span_SPAN_KIND_CONSUMER,
+								StartTimeUnixNano: now + 5_000_000,
+								EndTimeUnixNano:   now + 8_000_000,
+							},
+							// DB query inside handle().
+							{
+								TraceId:           traceIdBytes,
+								SpanId:            dbQuerySpanId,
+								ParentSpanId:      consumerSpanId,
+								Name:              "select * from users",
+								Kind:              tracepb.Span_SPAN_KIND_INTERNAL,
+								StartTimeUnixNano: now + 6_000_000,
+								EndTimeUnixNano:   now + 7_000_000,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	endpoints, tasks, spans, _, _, _ := convertTraces(testProjectId, req)
+
+	if len(endpoints) != 1 {
+		t.Fatalf("expected 1 endpoint, got %d", len(endpoints))
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 task (the CONSUMER), got %d", len(tasks))
+	}
+
+	endpointSpanUUID := otelSpanIDToUUID(rootSpanId)
+	producerUUID := otelSpanIDToUUID(producerSpanId)
+	consumerUUID := otelSpanIDToUUID(consumerSpanId)
+	dbQueryUUID := otelSpanIDToUUID(dbQuerySpanId)
+
+	if endpoints[0].Id != endpointSpanUUID {
+		t.Errorf("endpoint.Id = %s, want %s", endpoints[0].Id, endpointSpanUUID)
+	}
+	if tasks[0].Id != consumerUUID {
+		t.Errorf("task.Id = %s, want consumer spanId %s", tasks[0].Id, consumerUUID)
+	}
+
+	// We expect 3 dual-written generic span rows: producer, consumer, db query.
+	// (The root endpoint is single-write — no span row.)
+	if len(spans) != 3 {
+		t.Fatalf("expected 3 spans (producer, consumer, db query), got %d", len(spans))
+	}
+
+	gotEntity := map[uuid.UUID]uuid.UUID{} // spanId → entity_id
+	for _, s := range spans {
+		if s.EntityId == nil {
+			t.Errorf("span %q has nil EntityId, expected resolution", s.Name)
+			continue
+		}
+		gotEntity[s.Id] = *s.EntityId
+	}
+
+	if got := gotEntity[producerUUID]; got != endpointSpanUUID {
+		t.Errorf("producer span EntityId = %s, want endpoint %s — producer should belong to the originating endpoint", got, endpointSpanUUID)
+	}
+	if got := gotEntity[consumerUUID]; got != consumerUUID {
+		t.Errorf("consumer span EntityId = %s, want self %s — a CONSUMER span owns its own subtree", got, consumerUUID)
+	}
+	if got := gotEntity[dbQueryUUID]; got != consumerUUID {
+		t.Errorf("db query EntityId = %s, want consumer %s — descendants of the task belong to the task entity", got, consumerUUID)
 	}
 }
 

@@ -50,6 +50,19 @@ export type ParentRef = {
 	traceId: string;
 };
 
+// ChildEntity is an endpoint/task/ai_trace nested inside the current row's
+// owned-span subtree (transitive). The detail controllers compute these and
+// the waterfall renders them as click-targets so the user can navigate down.
+export type ChildEntity = {
+	kind: 'endpoint' | 'task' | 'ai_trace';
+	id: string;
+	name: string;
+	parentSpanId: string;
+	traceId: string;
+	recordedAt: string;
+	duration: number; // nanoseconds
+};
+
 export type TraceDetailResponse = {
 	endpoint: TraceDetail;
 	spans: Span[];
@@ -57,4 +70,5 @@ export type TraceDetailResponse = {
 	exception?: ExceptionInfo;
 	messages: MessageInfo[];
 	parentRef?: ParentRef;
+	childEntities: ChildEntity[];
 };

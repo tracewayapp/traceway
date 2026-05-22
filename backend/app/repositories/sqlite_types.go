@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/app/models"
 )
@@ -127,10 +128,23 @@ type filePathResult struct {
 	FilePath string `lit:"file_path"`
 }
 
+// childEntityRow is the SQLite projection used by FindByParentSpanIds on the
+// three entity repos. The name column varies per table (`endpoint`, `task_name`,
+// `trace_name`) so each query aliases it as `name`.
+type childEntityRow struct {
+	Id           uuid.UUID  `lit:"id"`
+	Name         string     `lit:"name"`
+	ParentSpanId *uuid.UUID `lit:"parent_span_id"`
+	TraceId      uuid.UUID  `lit:"trace_id"`
+	RecordedAt   SQLiteTime `lit:"recorded_at"`
+	Duration     int64      `lit:"duration"`
+}
+
 func init() {
 	models.ExtensionModelRegistrations = append(models.ExtensionModelRegistrations, func(driver lit.Driver) {
 		lit.RegisterModel[timeSeriesResult](driver)
 		lit.RegisterModel[groupedTimeSeriesResult](driver)
 		lit.RegisterModel[filePathResult](driver)
+		lit.RegisterModel[childEntityRow](driver)
 	})
 }

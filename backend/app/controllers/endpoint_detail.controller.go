@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
@@ -41,13 +42,42 @@ type ParentRefResponse struct {
 	TraceId uuid.UUID `json:"traceId"`
 }
 
+// ChildEntityResponse mirrors repositories.ChildEntityRef for JSON.
+// Duration is nanoseconds to match models.Span.Duration on the wire.
+type ChildEntityResponse struct {
+	Kind         string    `json:"kind"`
+	Id           uuid.UUID `json:"id"`
+	Name         string    `json:"name"`
+	ParentSpanId uuid.UUID `json:"parentSpanId"`
+	TraceId      uuid.UUID `json:"traceId"`
+	RecordedAt   string    `json:"recordedAt"`
+	Duration     int64     `json:"duration"`
+}
+
+func toChildEntityResponses(refs []repositories.ChildEntityRef) []ChildEntityResponse {
+	out := make([]ChildEntityResponse, 0, len(refs))
+	for _, ref := range refs {
+		out = append(out, ChildEntityResponse{
+			Kind:         ref.Kind,
+			Id:           ref.Id,
+			Name:         ref.Name,
+			ParentSpanId: ref.ParentSpanId,
+			TraceId:      ref.TraceId,
+			RecordedAt:   ref.RecordedAt.Format(time.RFC3339Nano),
+			Duration:     int64(ref.Duration),
+		})
+	}
+	return out
+}
+
 type EndpointDetailResponse struct {
-	Endpoint  *models.Endpoint       `json:"endpoint"`
-	Spans     []EnrichedSpan         `json:"spans"`
-	HasSpans  bool                   `json:"hasSpans"`
-	Exception *EndpointExceptionInfo `json:"exception,omitempty"`
-	Messages  []EndpointMessageInfo  `json:"messages"`
-	ParentRef *ParentRefResponse     `json:"parentRef,omitempty"`
+	Endpoint      *models.Endpoint       `json:"endpoint"`
+	Spans         []EnrichedSpan         `json:"spans"`
+	HasSpans      bool                   `json:"hasSpans"`
+	Exception     *EndpointExceptionInfo `json:"exception,omitempty"`
+	Messages      []EndpointMessageInfo  `json:"messages"`
+	ParentRef     *ParentRefResponse     `json:"parentRef,omitempty"`
+	ChildEntities []ChildEntityResponse  `json:"childEntities"`
 }
 
 func (t endpointDetailController) GetEndpointDetail(c *gin.Context) {
@@ -76,14 +106,27 @@ func (t endpointDetailController) GetEndpointDetail(c *gin.Context) {
 		return
 	}
 
-	// Get spans (flat list ordered by start_time). Note: spans are indexed by
-	// the trace ID, not the endpoint row's id, so dereference via endpoint.TraceId.
+	// Load only spans whose entity_id resolves to this endpoint, so a trace that
+	// also contains a queued task (or a sibling endpoint) doesn't leak that
+	// subtree into this waterfall. Historical rows (pre-Phase-2) have entity_id
+	// NULL — recognise them by the Phase-1 backfill invariant id == trace_id and
+	// fall back to the trace-wide query so old detail pages keep working until
+	// the operator runs the CH UPDATE to populate entity_id.
 	span = traceway.StartSpan(c, "loading spans")
-	spans, err := repositories.SpanRepository.FindByTraceId(c, projectId, endpoint.TraceId)
+	spans, err := repositories.SpanRepository.FindByEntityId(c, projectId, endpoint.Id)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading spans: %w", err))
 		return
+	}
+	if len(spans) == 0 && endpoint.Id == endpoint.TraceId {
+		span = traceway.StartSpan(c, "loading spans (legacy fallback)")
+		spans, err = repositories.SpanRepository.FindByTraceId(c, projectId, endpoint.TraceId)
+		span.End()
+		if err != nil {
+			c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading spans (legacy fallback): %w", err))
+			return
+		}
 	}
 
 	// Enrich spans with AI-trace links so the frontend can render a "View AI trace"
@@ -157,13 +200,31 @@ func (t endpointDetailController) GetEndpointDetail(c *gin.Context) {
 		}
 	}
 
+	// Find entities nested anywhere in this endpoint's owned-span subtree (the
+	// endpoint itself plus every span returned above). Surfaces the
+	// dispatched-task / nested-gen_ai cases that Phase 2 stopped including in
+	// the waterfall — without re-introducing the cross-subtree leak.
+	subtreeIds := make([]uuid.UUID, 0, len(spans)+1)
+	subtreeIds = append(subtreeIds, endpoint.Id)
+	for _, s := range spans {
+		subtreeIds = append(subtreeIds, s.Id)
+	}
+	span = traceway.StartSpan(c, "loading child entities")
+	children, err := repositories.FindChildEntitiesBySpanIds(c, projectId, subtreeIds)
+	span.End()
+	if err != nil {
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading child entities: %w", err))
+		return
+	}
+
 	c.JSON(http.StatusOK, EndpointDetailResponse{
-		Endpoint:  endpoint,
-		Spans:     enrichedSpans,
-		HasSpans:  len(enrichedSpans) > 0,
-		Exception: exceptionInfo,
-		Messages:  messages,
-		ParentRef: parentRefResp,
+		Endpoint:      endpoint,
+		Spans:         enrichedSpans,
+		HasSpans:      len(enrichedSpans) > 0,
+		Exception:     exceptionInfo,
+		Messages:      messages,
+		ParentRef:     parentRefResp,
+		ChildEntities: toChildEntityResponses(children),
 	})
 }
 

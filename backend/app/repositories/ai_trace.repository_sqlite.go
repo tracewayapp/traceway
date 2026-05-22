@@ -71,9 +71,15 @@ type aiTraceDetailStatsRow struct {
 	AvgOutputTokens float64 `lit:"avg_output_tokens"`
 }
 
+type aiTraceRowNaming struct{ lit.DefaultDbNamingStrategy }
+
+func (aiTraceRowNaming) GetTableNameFromStructName(string) string {
+	return "ai_traces"
+}
+
 func init() {
 	models.ExtensionModelRegistrations = append(models.ExtensionModelRegistrations, func(driver lit.Driver) {
-		lit.RegisterModel[aiTraceRow](driver)
+		lit.RegisterModelWithNaming[aiTraceRow](driver, aiTraceRowNaming{})
 		lit.RegisterModel[groupedAiTraceRow](driver)
 		lit.RegisterModel[aiTraceDurationRow](driver)
 		lit.RegisterModel[aiTraceDetailStatsRow](driver)
@@ -377,6 +383,42 @@ func (r *aiTraceRepository) GetTraceNameStats(ctx context.Context, projectId uui
 	stats.P95Duration = computePercentile(sortedDurations, 0.95)
 
 	return stats, nil
+}
+
+// FindByParentSpanIds: see ai_trace.repository.go (CH) for purpose and shape.
+func (r *aiTraceRepository) FindByParentSpanIds(ctx context.Context, projectId uuid.UUID, spanIds []uuid.UUID) ([]ChildEntityRef, error) {
+	if len(spanIds) == 0 {
+		return nil, nil
+	}
+
+	placeholders := make([]string, 0, len(spanIds))
+	params := lit.P{"project_id": projectId}
+	for i, id := range spanIds {
+		key := fmt.Sprintf("psid_%d", i)
+		placeholders = append(placeholders, ":"+key)
+		params[key] = id
+	}
+
+	query := `SELECT id, trace_name AS name, parent_span_id, trace_id, recorded_at, duration
+		FROM ai_traces
+		WHERE project_id = :project_id AND parent_span_id IN (` + strings.Join(placeholders, ",") + `)`
+
+	rows, err := lit.SelectNamed[childEntityRow](db.TelemetryDB, query, params)
+	if err != nil {
+		return nil, err
+	}
+	refs := make([]ChildEntityRef, 0, len(rows))
+	for _, row := range rows {
+		if row.ParentSpanId == nil {
+			continue
+		}
+		refs = append(refs, ChildEntityRef{
+			Kind: "ai_trace", Id: row.Id, Name: row.Name,
+			ParentSpanId: *row.ParentSpanId, TraceId: row.TraceId,
+			RecordedAt: row.RecordedAt.Time, Duration: time.Duration(row.Duration),
+		})
+	}
+	return refs, nil
 }
 
 func (r *aiTraceRepository) FindById(ctx context.Context, projectId, traceId uuid.UUID) (*models.AiTrace, error) {

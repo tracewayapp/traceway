@@ -1,0 +1,1 @@
+ALTER TABLE spans ADD COLUMN entity_id Nullable(UUID) DEFAULT NULL

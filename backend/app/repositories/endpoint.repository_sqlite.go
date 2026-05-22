@@ -377,6 +377,42 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.
 	return endpoints, count, nil
 }
 
+// FindByParentSpanIds: see endpoint.repository.go (CH) for purpose and shape.
+func (e *endpointRepository) FindByParentSpanIds(ctx context.Context, projectId uuid.UUID, spanIds []uuid.UUID) ([]ChildEntityRef, error) {
+	if len(spanIds) == 0 {
+		return nil, nil
+	}
+
+	placeholders := make([]string, 0, len(spanIds))
+	params := lit.P{"project_id": projectId}
+	for i, id := range spanIds {
+		key := fmt.Sprintf("psid_%d", i)
+		placeholders = append(placeholders, ":"+key)
+		params[key] = id
+	}
+
+	query := `SELECT id, endpoint AS name, parent_span_id, trace_id, recorded_at, duration
+		FROM endpoints
+		WHERE project_id = :project_id AND parent_span_id IN (` + strings.Join(placeholders, ",") + `)`
+
+	rows, err := lit.SelectNamed[childEntityRow](db.TelemetryDB, query, params)
+	if err != nil {
+		return nil, err
+	}
+	refs := make([]ChildEntityRef, 0, len(rows))
+	for _, row := range rows {
+		if row.ParentSpanId == nil {
+			continue
+		}
+		refs = append(refs, ChildEntityRef{
+			Kind: "endpoint", Id: row.Id, Name: row.Name,
+			ParentSpanId: *row.ParentSpanId, TraceId: row.TraceId,
+			RecordedAt: row.RecordedAt.Time, Duration: time.Duration(row.Duration),
+		})
+	}
+	return refs, nil
+}
+
 func (e *endpointRepository) FindById(ctx context.Context, projectId, endpointId uuid.UUID) (*models.Endpoint, error) {
 	row, err := lit.SelectSingleNamed[endpoint](db.TelemetryDB,
 		`SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, trace_id, parent_span_id

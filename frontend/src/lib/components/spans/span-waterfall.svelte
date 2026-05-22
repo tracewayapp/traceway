@@ -1,28 +1,40 @@
 <script lang="ts">
-	import type { Span } from '$lib/types/spans';
+	import type { Span, ChildEntity } from '$lib/types/spans';
 	import ScrollArea from '../ui/scroll-area/scroll-area.svelte';
 	import SpanRow from './span-row.svelte';
+	import ChildEntityRow from './child-entity-row.svelte';
 	import { preciseTimeMs } from '$lib/utils/formatters';
 
 	type Props = {
 		spans: Span[];
 		traceDuration: number;
 		traceStartTime: string;
+		childEntities?: ChildEntity[];
 	};
 
-	let { spans: rawSpans, traceDuration, traceStartTime }: Props = $props();
+	let { spans: rawSpans, traceDuration, traceStartTime, childEntities = [] }: Props = $props();
 
-	const spans = $derived(
-		[...rawSpans].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
-	);
+	// Tagged union so we can interleave spans + child entities in one sorted list.
+	type Row =
+		| { type: 'span'; startMs: number; span: Span }
+		| { type: 'child'; startMs: number; entity: ChildEntity };
+
+	const rows = $derived.by<Row[]>(() => {
+		const merged: Row[] = [];
+		for (const s of rawSpans) {
+			merged.push({ type: 'span', startMs: preciseTimeMs(s.startTime), span: s });
+		}
+		for (const ce of childEntities) {
+			merged.push({ type: 'child', startMs: preciseTimeMs(ce.recordedAt), entity: ce });
+		}
+		merged.sort((a, b) => a.startMs - b.startMs);
+		return merged;
+	});
 
 	const traceStart = $derived(
-		spans.length === 0
+		rows.length === 0
 			? preciseTimeMs(traceStartTime)
-			: spans.reduce((earliest, s) => {
-					const sTime = preciseTimeMs(s.startTime);
-					return sTime < earliest ? sTime : earliest;
-				}, preciseTimeMs(spans[0].startTime))
+			: rows.reduce((earliest, r) => (r.startMs < earliest ? r.startMs : earliest), rows[0].startMs)
 	);
 	const durationMs = $derived(traceDuration / 1_000_000);
 
@@ -82,20 +94,31 @@
 			</div>
 		</div>
 
-		<!-- Spans -->
-		{#each spans as span, i}
-			<SpanRow
-				row={i}
-				{span}
-				{traceStart}
-				{traceDuration}
-				isOdd={i % 2 === 1}
-				{nameColumnWidth}
-				{updateNameWidth}
-				spanCellHandleMouseEnter={handleMouseEnter}
-				spanCellHandleMouseMove={handleMouseMove}
-				spanCellHandleMouseLeave={handleMouseLeave}
-			/>
+		<!-- Spans + child entities, interleaved by start time -->
+		{#each rows as row, i}
+			{#if row.type === 'span'}
+				<SpanRow
+					row={i}
+					span={row.span}
+					{traceStart}
+					{traceDuration}
+					isOdd={i % 2 === 1}
+					{nameColumnWidth}
+					{updateNameWidth}
+					spanCellHandleMouseEnter={handleMouseEnter}
+					spanCellHandleMouseMove={handleMouseMove}
+					spanCellHandleMouseLeave={handleMouseLeave}
+				/>
+			{:else}
+				<ChildEntityRow
+					row={i}
+					entity={row.entity}
+					{traceStart}
+					{traceDuration}
+					isOdd={i % 2 === 1}
+					{nameColumnWidth}
+				/>
+			{/if}
 		{/each}
 
 		{#if isHovered}

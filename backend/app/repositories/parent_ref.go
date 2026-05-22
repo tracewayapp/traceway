@@ -2,6 +2,8 @@ package repositories
 
 import (
 	"context"
+	"sort"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -16,6 +18,51 @@ type ParentRef struct {
 	Id      uuid.UUID
 	Name    string
 	TraceId uuid.UUID
+}
+
+// ChildEntityRef describes a child entity (endpoint/task/ai_trace) whose
+// parent_span_id falls inside another entity's owned-span subtree. Used by the
+// detail controllers to surface "things that happened under this row" without
+// re-introducing the cross-subtree leak that Phase 2 fixed.
+type ChildEntityRef struct {
+	Kind         string
+	Id           uuid.UUID
+	Name         string
+	ParentSpanId uuid.UUID
+	TraceId      uuid.UUID
+	RecordedAt   time.Time
+	Duration     time.Duration
+}
+
+// FindChildEntitiesBySpanIds returns every endpoint/task/ai_trace row whose
+// parent_span_id is in the given set, sorted by RecordedAt ascending so the
+// frontend can render them chronologically in the waterfall. Empty input
+// short-circuits to an empty result (no query).
+func FindChildEntitiesBySpanIds(ctx context.Context, projectId uuid.UUID, spanIds []uuid.UUID) ([]ChildEntityRef, error) {
+	if len(spanIds) == 0 {
+		return nil, nil
+	}
+
+	endpoints, err := EndpointRepository.FindByParentSpanIds(ctx, projectId, spanIds)
+	if err != nil {
+		return nil, err
+	}
+	tasks, err := TaskRepository.FindByParentSpanIds(ctx, projectId, spanIds)
+	if err != nil {
+		return nil, err
+	}
+	ais, err := AiTraceRepository.FindByParentSpanIds(ctx, projectId, spanIds)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]ChildEntityRef, 0, len(endpoints)+len(tasks)+len(ais))
+	out = append(out, endpoints...)
+	out = append(out, tasks...)
+	out = append(out, ais...)
+
+	sort.Slice(out, func(i, j int) bool { return out[i].RecordedAt.Before(out[j].RecordedAt) })
+	return out, nil
 }
 
 const findParentRefMaxDepth = 10

@@ -272,7 +272,7 @@
 
 		<!-- Spans Section -->
 		<Card.Root>
-			{#if response.hasSpans}
+			{#if response.hasSpans || (response.childEntities?.length ?? 0) > 0}
 				<Card.Header>
 					<Card.Title>Spans</Card.Title>
 					<Card.Description>
@@ -281,9 +281,10 @@
 				</Card.Header>
 			{/if}
 			<Card.Content>
-				{#if response.hasSpans}
+				{#if response.hasSpans || (response.childEntities?.length ?? 0) > 0}
 					<SpanWaterfall
 						spans={response.spans}
+						childEntities={response.childEntities ?? []}
 						traceDuration={response.endpoint.duration}
 						traceStartTime={response.endpoint.recordedAt}
 					/>

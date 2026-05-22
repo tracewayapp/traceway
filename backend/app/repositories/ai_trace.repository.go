@@ -242,6 +242,50 @@ func (r *aiTraceRepository) GetTraceNameStats(ctx context.Context, projectId uui
 	return &stats, nil
 }
 
+// FindByParentSpanIds returns ai_trace rows whose parent_span_id is in the
+// given set, projected into ChildEntityRef. Used by FindChildEntitiesBySpanIds
+// to surface gen_ai children nested under a parent entity's subtree — closes
+// the AI-link-icon regression that Phase 2's entity_id filter introduced.
+func (r *aiTraceRepository) FindByParentSpanIds(ctx context.Context, projectId uuid.UUID, spanIds []uuid.UUID) ([]ChildEntityRef, error) {
+	if len(spanIds) == 0 {
+		return nil, nil
+	}
+
+	query := `SELECT id, trace_name, parent_span_id, trace_id, recorded_at, duration
+		FROM ai_traces
+		WHERE project_id = ? AND parent_span_id IN (?)`
+
+	rows, err := chdb.Conn.Query(ctx, query, projectId, spanIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var refs []ChildEntityRef
+	for rows.Next() {
+		var (
+			id           uuid.UUID
+			name         string
+			parentSpanId *uuid.UUID
+			traceId      uuid.UUID
+			recordedAt   time.Time
+			durationNs   int64
+		)
+		if err := rows.Scan(&id, &name, &parentSpanId, &traceId, &recordedAt, &durationNs); err != nil {
+			return nil, err
+		}
+		if parentSpanId == nil {
+			continue
+		}
+		refs = append(refs, ChildEntityRef{
+			Kind: "ai_trace", Id: id, Name: name,
+			ParentSpanId: *parentSpanId, TraceId: traceId,
+			RecordedAt: recordedAt, Duration: time.Duration(durationNs),
+		})
+	}
+	return refs, nil
+}
+
 func (r *aiTraceRepository) FindById(ctx context.Context, projectId, traceId uuid.UUID) (*models.AiTrace, error) {
 	query := `SELECT id, project_id, recorded_at, duration, status_code,
 		model, response_model, provider, operation,

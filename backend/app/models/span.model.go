@@ -15,4 +15,5 @@ type Span struct {
 	Duration     time.Duration `json:"duration" ch:"duration"`
 	RecordedAt   time.Time     `json:"recordedAt" ch:"recorded_at"`
 	ParentSpanId *uuid.UUID    `json:"parentSpanId,omitempty" ch:"parent_span_id"`
+	EntityId     *uuid.UUID    `json:"entityId,omitempty" ch:"entity_id"`
 }

@@ -47,8 +47,9 @@ func convertTraces(projectId uuid.UUID, req *coltracepb.ExportTraceServiceReques
 			scopeName string
 		}
 		var allSpans []spanEntry
-		parentMap := map[string]string{}        // childSpanId → parentSpanId
-		spanById := map[string]*tracepb.Span{}  // spanId → span (for trace_id lookup)
+		parentMap := map[string]string{}       // childSpanId → parentSpanId
+		spanById := map[string]*tracepb.Span{} // spanId → span (for trace_id lookup)
+		spanKind := map[string]string{}        // spanId → classifyKind result (cached so we don't re-classify in pass 2)
 		for _, ss := range rs.ScopeSpans {
 			for _, span := range ss.Spans {
 				allSpans = append(allSpans, spanEntry{span: span, scopeName: ss.GetScope().GetName()})
@@ -56,6 +57,7 @@ func convertTraces(projectId uuid.UUID, req *coltracepb.ExportTraceServiceReques
 				if len(span.ParentSpanId) > 0 {
 					parentMap[string(span.SpanId)] = string(span.ParentSpanId)
 				}
+				spanKind[string(span.SpanId)] = classifyKind(span, span.Attributes)
 			}
 		}
 
@@ -89,6 +91,41 @@ func convertTraces(projectId uuid.UUID, req *coltracepb.ExportTraceServiceReques
 			resolveTraceId(string(entry.span.SpanId))
 		}
 
+		// resolveEntityId walks up parentMap to find the nearest special-kind
+		// ancestor (endpoint/task/ai_trace), INCLUDING the span itself when it's
+		// already a special kind. Returns the ancestor's spanId as a UUID. Returns
+		// (uuid.Nil, false) when the chain runs out without hitting a special-table
+		// span — that span's entity_id will be NULL and the row won't appear on any
+		// detail-page waterfall until a future backfill resolves it across batch
+		// boundaries. See roots.md "Phase 2" for the design rationale.
+		spanToEntityId := map[string]uuid.UUID{}
+		var resolveEntityId func(spanIdStr string) (uuid.UUID, bool)
+		resolveEntityId = func(spanIdStr string) (uuid.UUID, bool) {
+			if eid, ok := spanToEntityId[spanIdStr]; ok {
+				return eid, eid != uuid.Nil
+			}
+			if k, ok := spanKind[spanIdStr]; ok && k != "other" {
+				if sp, ok := spanById[spanIdStr]; ok {
+					eid := otelSpanIDToUUID(sp.SpanId)
+					spanToEntityId[spanIdStr] = eid
+					return eid, true
+				}
+			}
+			// Mark in-progress before recursing so a pathological parent cycle
+			// (A→B→A — never seen with valid OTel data, but possible with malformed
+			// payloads) terminates instead of blowing the stack. The second visit
+			// will hit the cache and return (uuid.Nil, false); we overwrite the
+			// sentinel below if the chain actually resolves.
+			spanToEntityId[spanIdStr] = uuid.Nil
+			if parent, ok := parentMap[spanIdStr]; ok {
+				if eid, found := resolveEntityId(parent); found {
+					spanToEntityId[spanIdStr] = eid
+					return eid, true
+				}
+			}
+			return uuid.Nil, false
+		}
+
 		// Second pass: process spans and create records
 		for _, entry := range allSpans {
 			span := entry.span
@@ -112,7 +149,9 @@ func convertTraces(projectId uuid.UUID, req *coltracepb.ExportTraceServiceReques
 			}
 
 			// Precedence: endpoint > task > ai_trace > other.
-			kind := classifyKind(span, spanAttrs)
+			// Classification was cached in the first pass so resolveEntityId could
+			// see it without re-running the kind check.
+			kind := spanKind[string(span.SpanId)]
 
 			switch kind {
 			case "endpoint":
@@ -157,6 +196,11 @@ func convertTraces(projectId uuid.UUID, req *coltracepb.ExportTraceServiceReques
 					spanName = dbStatement
 				}
 
+				var entityId *uuid.UUID
+				if eid, ok := resolveEntityId(string(span.SpanId)); ok {
+					entityId = &eid
+				}
+
 				spans = append(spans, models.Span{
 					Id:           spanId,
 					TraceId:      traceId,
@@ -166,6 +210,7 @@ func convertTraces(projectId uuid.UUID, req *coltracepb.ExportTraceServiceReques
 					Duration:     duration,
 					RecordedAt:   startTime,
 					ParentSpanId: parentSpanId,
+					EntityId:     entityId,
 				})
 			}
 

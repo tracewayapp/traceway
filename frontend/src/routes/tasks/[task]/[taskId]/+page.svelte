@@ -28,6 +28,16 @@
 		traceId: string;
 	};
 
+	type ChildEntity = {
+		kind: 'endpoint' | 'task' | 'ai_trace';
+		id: string;
+		name: string;
+		parentSpanId: string;
+		traceId: string;
+		recordedAt: string;
+		duration: number;
+	};
+
 	type TaskDetailResponse = {
 		task: {
 			id: string;
@@ -56,6 +66,7 @@
 		spans: any[];
 		hasSpans: boolean;
 		parentRef?: ParentRef;
+		childEntities: ChildEntity[];
 	};
 
 	let { data } = $props();
@@ -279,7 +290,7 @@
 			<Card.Header>
 				<Card.Title>Spans</Card.Title>
 				<Card.Description>
-					{#if response.hasSpans}
+					{#if response.hasSpans || (response.childEntities?.length ?? 0) > 0}
 						Timing breakdown of operations within this task
 					{:else}
 						No spans recorded for this task
@@ -287,9 +298,10 @@
 				</Card.Description>
 			</Card.Header>
 			<Card.Content>
-				{#if response.hasSpans}
+				{#if response.hasSpans || (response.childEntities?.length ?? 0) > 0}
 					<SpanWaterfall
 						spans={response.spans}
+						childEntities={response.childEntities ?? []}
 						traceDuration={response.task.duration}
 						traceStartTime={response.task.recordedAt}
 					/>

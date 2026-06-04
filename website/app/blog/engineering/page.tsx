@@ -6,7 +6,7 @@ import { BlogSubscribe } from "@/components/blog-subscribe";
 import { getPostsByCategory } from "@/lib/blog";
 
 export const metadata: Metadata = {
-  title: "Engineering Blog — Traceway",
+  title: "Engineering Blog · Traceway",
   description:
     "Deep dives, benchmarks, and engineering notes from the Traceway team.",
 };

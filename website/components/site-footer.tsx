@@ -1,6 +1,8 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Github } from "lucide-react";
+import { DiscordIcon } from "@/components/discord-icon";
+import { GITHUB_URL, DISCORD_URL } from "@/lib/links";
 
 type Column = {
   heading: string;
@@ -32,7 +34,8 @@ const COLUMNS: Column[] = [
       { label: "Blog", href: "/blog/engineering" },
       { label: "Release Notes", href: "/blog" },
       { label: "Docs", href: "https://docs.tracewayapp.com", external: true },
-      { label: "GitHub", href: "https://github.com/tracewayapp/traceway", external: true },
+      { label: "GitHub", href: GITHUB_URL, external: true },
+      { label: "Discord", href: DISCORD_URL, external: true },
     ],
   },
   {
@@ -79,13 +82,22 @@ export function SiteFooter() {
             </p>
             <div className="mt-5 flex items-center gap-2">
               <Link
-                href="https://github.com/tracewayapp/traceway"
+                href={GITHUB_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="h-8 w-8 inline-flex items-center justify-center rounded-md text-[color:var(--fg-2)] hover:text-[color:var(--fg-0)] hover:bg-[color:var(--ink-2)] transition-colors"
                 aria-label="GitHub"
               >
                 <Github className="h-4 w-4" />
+              </Link>
+              <Link
+                href={DISCORD_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="h-8 w-8 inline-flex items-center justify-center rounded-md text-[color:var(--fg-2)] hover:text-[color:var(--fg-0)] hover:bg-[color:var(--ink-2)] transition-colors"
+                aria-label="Discord"
+              >
+                <DiscordIcon className="h-4 w-4" />
               </Link>
             </div>
           </div>

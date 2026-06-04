@@ -149,7 +149,7 @@ export function PricingCalculator() {
         >
           <p className="text-sm" style={{ color: "var(--fg-1)" }}>
             <span style={{ color: "var(--fg-0)", fontWeight: 600 }}>No overage charges, ever.</span>{" "}
-            Every plan has a fixed price. If you approach your limit, we&apos;ll notify you — your bill
+            Every plan has a fixed price. If you approach your limit, we&apos;ll notify you. Your bill
             will never increase without your approval.
           </p>
           <p className="text-xs" style={{ color: "var(--fg-3)" }}>

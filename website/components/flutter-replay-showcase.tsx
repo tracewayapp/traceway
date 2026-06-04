@@ -211,7 +211,7 @@ export function FlutterReplayShowcase({
             </div>
 
             <div className="grid gap-5 md:grid-cols-[minmax(0,1.4fr)_minmax(260px,0.8fr)]">
-              {/* LEFT — Flutter stack trace */}
+              {/* LEFT: Flutter stack trace */}
               <div
                 className="rounded-[12px] p-4 sm:p-5 min-w-0 overflow-hidden"
                 style={{
@@ -297,7 +297,7 @@ export function FlutterReplayShowcase({
                 </div>
               </div>
 
-              {/* RIGHT — phone + control bar */}
+              {/* RIGHT: phone + control bar */}
               <div className="flex flex-col items-center min-w-0 w-full">
                 <h4
                   className="self-start text-[15px] mb-3"
@@ -350,7 +350,7 @@ export function FlutterReplayShowcase({
                     </div>
                   </div>
 
-                  {/* Control bar — external, styled to match Traceway dashboard */}
+                  {/* Control bar: external, styled to match Traceway dashboard */}
                   <div
                     className="w-full rounded-xl px-4 py-3"
                     style={{

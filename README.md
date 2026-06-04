@@ -1,5 +1,3 @@
-<h1 align="center">I just realized there is an HN post about Traceway. I didn't make it, and unfortunately my account is rate limited so I can't reply to everyone. I've written my response <a href="./HN.md">here</a></h1>
-
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="Traceway%20Logo%20White.png" />

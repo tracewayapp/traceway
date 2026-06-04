@@ -8,7 +8,6 @@ const FRAMEWORKS = [
     description: "AI observability for OpenRouter with automatic OTLP trace export.",
     icon: "/openrouter.png",
     href: "/client/openrouter",
-    badge: "production",
   },
   {
     value: "otel",
@@ -16,7 +15,6 @@ const FRAMEWORKS = [
     description: "Send traces and metrics from any OTel-instrumented app to Traceway.",
     icon: "/otel.png",
     href: "/client/otel",
-    badge: "production",
   },
   {
     value: "cloudflare",
@@ -24,7 +22,6 @@ const FRAMEWORKS = [
     description: "Cloudflare Workers with automatic request tracing via OTLP.",
     icon: "/cloudflare.png",
     href: "/client/cloudflare",
-    badge: "production",
   },
   {
     value: "php-symfony",
@@ -32,7 +29,6 @@ const FRAMEWORKS = [
     description: "Symfony framework with OpenTelemetry auto-instrumentation.",
     icon: "/symfony.png",
     href: "/client/symfony",
-    badge: "production",
   },
   {
     value: "php-laravel",
@@ -40,7 +36,6 @@ const FRAMEWORKS = [
     description: "Laravel framework with OpenTelemetry auto-instrumentation.",
     icon: "/laravel.png",
     href: "/client/laravel",
-    badge: "production",
   },
   {
     value: "python-django",
@@ -48,7 +43,6 @@ const FRAMEWORKS = [
     description: "Django framework with OpenTelemetry auto-instrumentation.",
     icon: "/django.png",
     href: "/client/django",
-    badge: "new",
   },
   {
     value: "go-gin",
@@ -57,7 +51,6 @@ const FRAMEWORKS = [
       "Gin Gonic web framework with automatic request tracing and panic recovery.",
     icon: "/gin.png",
     href: "/client/gin-middleware",
-    badge: "production",
   },
   {
     value: "go-chi",
@@ -66,7 +59,6 @@ const FRAMEWORKS = [
       "Lightweight Chi router with automatic request tracing and panic recovery.",
     icon: "/chi.png",
     href: "/client/chi-middleware",
-    badge: "new",
   },
   {
     value: "go-fiber",
@@ -75,7 +67,6 @@ const FRAMEWORKS = [
       "Express-inspired Fiber framework with request tracing and error capture.",
     icon: "/fiber.svg",
     href: "/client/fiber-middleware",
-    badge: "new",
   },
   {
     value: "go-fasthttp",
@@ -84,7 +75,6 @@ const FRAMEWORKS = [
       "High-performance FastHTTP server with request tracing and panic recovery.",
     icon: "/fasthttp.png",
     href: "/client/fasthttp-middleware",
-    badge: "new",
   },
   {
     value: "go-http",
@@ -93,7 +83,6 @@ const FRAMEWORKS = [
       "Standard library HTTP middleware for request tracing and error capture.",
     icon: "/stdlib.png",
     href: "/client/http-middleware",
-    badge: "new",
   },
   {
     value: "go-generic",
@@ -102,7 +91,6 @@ const FRAMEWORKS = [
       "Framework-agnostic SDK for manual instrumentation of any Go application.",
     icon: "/custom.png",
     href: "/client/sdk",
-    badge: "new",
   },
   {
     value: "js-nextjs",
@@ -110,7 +98,6 @@ const FRAMEWORKS = [
     description: "Next.js applications with OpenTelemetry auto-instrumentation.",
     icon: "/nextjs.png",
     href: "/client/nextjs",
-    badge: "new",
   },
   {
     value: "js-node",
@@ -118,7 +105,6 @@ const FRAMEWORKS = [
     description: "Node.js backend with OpenTelemetry traces and metrics.",
     icon: "/node.png",
     href: "/client/node-sdk",
-    badge: "production",
   },
   {
     value: "js-nestjs",
@@ -126,7 +112,6 @@ const FRAMEWORKS = [
     description: "NestJS framework with OpenTelemetry auto-instrumentation.",
     icon: "/nestjs.png",
     href: "/client/nestjs",
-    badge: "production",
   },
   {
     value: "js-hono",
@@ -134,7 +119,6 @@ const FRAMEWORKS = [
     description: "Lightweight multi-runtime framework with OpenTelemetry.",
     icon: "/hono.png",
     href: "/client/hono",
-    badge: "production",
   },
   {
     value: "js-react",
@@ -142,7 +126,6 @@ const FRAMEWORKS = [
     description: "React applications with error boundaries and hooks.",
     icon: "/react.png",
     href: "/client/react",
-    badge: "production",
   },
   {
     value: "js-vue",
@@ -150,7 +133,6 @@ const FRAMEWORKS = [
     description: "Vue 3 applications with plugin and composables.",
     icon: "/vue.png",
     href: "/client/vue",
-    badge: "new",
   },
   {
     value: "js-svelte",
@@ -158,7 +140,6 @@ const FRAMEWORKS = [
     description: "Svelte/SvelteKit applications with context API.",
     icon: "/svelte.png",
     href: "/client/svelte",
-    badge: "production",
   },
   {
     value: "js-jquery",
@@ -166,7 +147,6 @@ const FRAMEWORKS = [
     description: "jQuery applications with automatic AJAX error capture.",
     icon: "/jquery.png",
     href: "/client/jquery",
-    badge: "new",
   },
   {
     value: "js-generic",
@@ -174,7 +154,6 @@ const FRAMEWORKS = [
     description: "Framework-agnostic JavaScript SDK for browsers.",
     icon: "/javascript.png",
     href: "/client/js-sdk",
-    badge: "production",
   },
   {
     value: "flutter",
@@ -182,7 +161,6 @@ const FRAMEWORKS = [
     description: "Flutter mobile apps with automatic error capture and screen recording.",
     icon: "/flutter.png",
     href: "/client/flutter",
-    badge: "production",
   },
   {
     value: "android",
@@ -190,7 +168,6 @@ const FRAMEWORKS = [
     description: "Native Android (Kotlin/Java) apps with automatic exception capture, logs, HTTP, and navigation breadcrumbs.",
     icon: "/android.png",
     href: "/client/android",
-    badge: "new",
   },
   {
     value: "react-native",
@@ -198,7 +175,6 @@ const FRAMEWORKS = [
     description: "React Native and Expo apps with automatic exception, fetch / XHR, and console capture. Works in Expo Go.",
     icon: "/react.png",
     href: "/client/react-native",
-    badge: "new",
   },
 ];
 
@@ -224,16 +200,11 @@ export default function FrameworkPicker() {
             className="framework-picker-card"
             onClick={() => handleSelect(fw)}
           >
-            <div className="framework-picker-top">
-              <img
-                src={fw.icon}
-                alt={fw.label}
-                className="framework-picker-icon"
-              />
-              <span className={`framework-picker-badge ${fw.badge === "production" ? "badge-production" : "badge-new"}`}>
-                {fw.badge === "production" ? "Used in Production" : "New"}
-              </span>
-            </div>
+            <img
+              src={fw.icon}
+              alt={fw.label}
+              className="framework-picker-icon"
+            />
             <span className="framework-picker-label">{fw.label}</span>
             <span className="framework-picker-desc">{fw.description}</span>
           </button>

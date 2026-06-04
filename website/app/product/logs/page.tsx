@@ -12,7 +12,7 @@ import { AuroraBackground } from "@/components/aurora-background";
 export default function LogsPage() {
   return (
     <main className="relative">
-      <section className="hero hero-product gridbg relative">
+      <section className="hero hero-product relative">
         <AuroraBackground variant="hero" />
         <div className="wrap relative z-10">
           <Chip>
@@ -50,7 +50,7 @@ export default function LogsPage() {
           description="Filter by severity, service, or trace. Full-text search over log bodies is powered by a token index, and any resource, scope, or log attribute can be queried for exact matches."
           bullets={[
             "Body search backed by token indexes",
-            "Six severity levels — TRACE, DEBUG, INFO, WARN, ERROR, FATAL",
+            "Six severity levels: TRACE, DEBUG, INFO, WARN, ERROR, FATAL",
             "Attribute filters on resource, scope, and log fields",
             "Time-range facet navigation",
           ]}
@@ -78,7 +78,7 @@ export default function LogsPage() {
             <p>
               Every log carries the trace and span ID of the request that
               emitted it. Open any endpoint and see the exact log lines tied to
-              that invocation — or follow a distributed trace to see logs from
+              that invocation, or follow a distributed trace to see logs from
               every service it touched.
             </p>
           </BentoCell>
@@ -89,7 +89,7 @@ export default function LogsPage() {
             iconColor="var(--ok)"
           >
             <p>
-              Send logs from any OTel SDK — Node.js, Python, Go, Java, .NET,
+              Send logs from any OTel SDK: Node.js, Python, Go, Java, .NET,
               PHP. No vendor client needed. OTLP/HTTP supports Protobuf and
               JSON, with a 30-day TTL.
             </p>
@@ -139,7 +139,7 @@ export default function LogsPage() {
                         <code>span_id</code> from the active context at emission
                         time. That means logs emitted inside a request handler,
                         background job, or child span are automatically
-                        associated with the corresponding trace — no extra
+                        associated with the corresponding trace, with no extra
                         plumbing required.
                       </p>
                     </>
@@ -151,7 +151,7 @@ export default function LogsPage() {
                 },
                 {
                   q: "Do logs count toward my event limit?",
-                  a: "Logs have their own ingestion tier that scales with your plan. See the Cloud pricing page for current limits — self-hosting is unlimited.",
+                  a: "Logs have their own ingestion tier that scales with your plan. See the Cloud pricing page for current limits. Self-hosting is unlimited.",
                 },
               ]}
             />

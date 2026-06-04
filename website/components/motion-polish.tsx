@@ -11,7 +11,7 @@ export function MotionPolish() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    // The blog is a reading experience — no entrance/scroll animations.
+    // The blog is a reading experience, no entrance/scroll animations.
     if (pathname?.startsWith("/blog")) return;
 
     let cancelled = false;
@@ -27,84 +27,14 @@ export function MotionPolish() {
       if (cancelled) return;
       gsap.registerPlugin(ScrollTrigger);
 
-      // Hero entrance timeline
+      // Hero entrance: quick, small, once
       const hero = document.querySelector(".hero");
       if (hero) {
         const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
-        tl.from(".site-nav", { y: -20, opacity: 0, duration: 0.7 }, 0)
-          .from(".hero .chip", { y: 16, opacity: 0, duration: 0.7 }, 0.15)
-          .from(".hero h1", { y: 30, opacity: 0, duration: 0.9 }, 0.25)
-          .from(".hero-sub", { y: 18, opacity: 0, duration: 0.7 }, 0.55)
-          .from(".pillars > *", { y: 24, opacity: 0, duration: 0.7, stagger: 0.07, ease: "power2.out" }, 0.85)
-          .from(".pillars-sec > *", { y: 12, opacity: 0, duration: 0.5, stagger: 0.05 }, 1.05);
+        tl.from(".hero .chip", { y: 10, opacity: 0, duration: 0.45 }, 0)
+          .from(".hero h1", { y: 14, opacity: 0, duration: 0.55 }, 0.08)
+          .from(".hero-sub", { y: 10, opacity: 0, duration: 0.45 }, 0.18);
       }
-
-      // Scroll-reveal on every non-hero section
-      document.querySelectorAll<HTMLElement>("section").forEach((sec) => {
-        if (sec.classList.contains("hero")) return;
-        const eyebrow = sec.querySelector(".eyebrow");
-        const heading = sec.querySelector("h2, h1");
-        const para = sec.querySelector("h2 + p, h1 + p, .section-sub");
-        const els = [eyebrow, heading, para].filter(Boolean) as Element[];
-        if (!els.length) return;
-        gsap.set(els, { opacity: 0, y: 28 });
-        const t = ScrollTrigger.create({
-          trigger: sec,
-          start: "top 82%",
-          once: true,
-          onEnter: () => {
-            gsap.to(els, { opacity: 1, y: 0, duration: 0.85, ease: "power3.out", stagger: 0.08 });
-          },
-        });
-        triggers.push(t);
-      });
-
-      // Grid staggers
-      [".bento-grid", ".feature-row", ".pillars", ".pillars-all", ".tracks"].forEach((sel) => {
-        document.querySelectorAll<HTMLElement>(sel).forEach((grid) => {
-          const cards = Array.from(grid.children);
-          if (!cards.length) return;
-          if (grid.classList.contains("pillars") && hero) return; // hero already animated this
-          gsap.set(cards, { opacity: 0, y: 28 });
-          const t = ScrollTrigger.create({
-            trigger: grid,
-            start: "top 85%",
-            once: true,
-            onEnter: () => {
-              gsap.to(cards, {
-                opacity: 1,
-                y: 0,
-                duration: 0.8,
-                ease: "power3.out",
-                stagger: { each: 0.07, from: "start" },
-              });
-            },
-          });
-          triggers.push(t);
-        });
-      });
-
-      // Aurora drift layer
-      const auroraProxy = document.createElement("div");
-      auroraProxy.setAttribute("data-aurora-proxy", "");
-      auroraProxy.style.cssText = `
-        position: fixed; inset: -10vh -10vw; pointer-events: none; z-index: -1;
-        background:
-          radial-gradient(700px 420px at var(--ax, 80%) var(--ay, 5%), color-mix(in oklab, var(--a1) 18%, transparent), transparent 65%),
-          radial-gradient(600px 380px at var(--bx, 5%) var(--by, 30%), color-mix(in oklab, var(--a2) 12%, transparent), transparent 65%);
-        transition: opacity .4s;
-      `;
-      document.body.appendChild(auroraProxy);
-      const auroraTween = gsap.to(auroraProxy, {
-        "--ax": "15%",
-        "--ay": "50%",
-        "--bx": "90%",
-        "--by": "70%",
-        ease: "none",
-        scrollTrigger: { start: "top top", end: "bottom bottom", scrub: 1.2 },
-      });
-      if (auroraTween.scrollTrigger) triggers.push(auroraTween.scrollTrigger);
-      cleanups.push(() => auroraProxy.remove());
 
       // Number counters
       document.querySelectorAll<HTMLElement>(".stats-strip .num").forEach((el) => {
@@ -194,32 +124,6 @@ export function MotionPolish() {
         });
         triggers.push(t);
       }
-
-      // Bento micro-tilt
-      document.querySelectorAll<HTMLElement>(".bento-grid .b").forEach((card) => {
-        card.style.transformStyle = "preserve-3d";
-        const onMove = (e: MouseEvent) => {
-          const r = card.getBoundingClientRect();
-          const px = (e.clientX - r.left) / r.width - 0.5;
-          const py = (e.clientY - r.top) / r.height - 0.5;
-          gsap.to(card, {
-            rotationY: px * 4,
-            rotationX: -py * 4,
-            y: -2,
-            duration: 0.5,
-            ease: "power2.out",
-            transformPerspective: 1000,
-          });
-        };
-        const onLeave = () =>
-          gsap.to(card, { rotationX: 0, rotationY: 0, y: 0, duration: 0.7, ease: "power3.out" });
-        card.addEventListener("mousemove", onMove);
-        card.addEventListener("mouseleave", onLeave);
-        cleanups.push(() => {
-          card.removeEventListener("mousemove", onMove);
-          card.removeEventListener("mouseleave", onLeave);
-        });
-      });
 
       // Refresh after layout settles
       const r1 = setTimeout(() => ScrollTrigger.refresh(), 600);

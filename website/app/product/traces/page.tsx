@@ -13,7 +13,7 @@ import { AuroraBackground } from "@/components/aurora-background";
 export default function TracesPage() {
   return (
     <main className="relative">
-      <section className="hero hero-product gridbg relative">
+      <section className="hero hero-product relative">
         <AuroraBackground variant="hero" />
         <div className="wrap relative z-10">
           <Chip>
@@ -39,7 +39,7 @@ export default function TracesPage() {
         </div>
       </section>
 
-      {/* Distributed trace example — absorbed from home */}
+      {/* Distributed trace example, absorbed from home */}
       <section className="wrap py-20">
         <SectionHead
           eyebrow="Cross-service"
@@ -84,7 +84,7 @@ export default function TracesPage() {
           reverse
           eyebrow="Replay"
           title="See what the user did when the backend broke"
-          description="Traceway connects frontend session replays to backend exceptions. When your payment service returns a 500, you don't just see the stack trace — you see the user clicking Checkout, filling in their card, and hitting submit."
+          description="Traceway connects frontend session replays to backend exceptions. When your payment service returns a 500, you don't just see the stack trace. You see the user clicking Checkout, filling in their card, and hitting submit."
           bullets={[
             "Frontend replay linked to backend errors",
             "Automatic correlation via trace ID",
@@ -101,7 +101,7 @@ export default function TracesPage() {
           eyebrow="Deep context"
           title={
             <>
-              More than spans — <em>full context</em>
+              More than spans, <em>full context</em>
             </>
           }
         />
@@ -128,7 +128,7 @@ export default function TracesPage() {
             <p>
               The Impact Score extends across service boundaries. When an
               upstream service degrades, its impact propagates to every
-              downstream consumer — so you fix the root cause, not the symptoms.
+              downstream consumer, so you fix the root cause, not the symptoms.
             </p>
           </BentoCell>
         </BentoGrid>
@@ -172,7 +172,7 @@ export default function TracesPage() {
                 },
                 {
                   q: "Does distributed tracing work with message queues and async workflows?",
-                  a: "Yes. Traceway uses W3C Trace Context, and OpenTelemetry instrumentation libraries for Kafka, RabbitMQ, SQS, and other message brokers propagate the trace context through message headers automatically. When a consumer processes a message, its spans are linked to the original producer's trace — so an API that publishes to Kafka, which triggers a worker, which calls a downstream service, appears as a single connected trace.",
+                  a: "Yes. Traceway uses W3C Trace Context, and OpenTelemetry instrumentation libraries for Kafka, RabbitMQ, SQS, and other message brokers propagate the trace context through message headers automatically. When a consumer processes a message, its spans are linked to the original producer's trace, so an API that publishes to Kafka, which triggers a worker, which calls a downstream service, appears as a single connected trace.",
                 },
               ]}
             />

@@ -26,8 +26,8 @@ import { FlutterReplayShowcase } from "@/components/flutter-replay-showcase";
 export default function FlutterSessionReplayPage() {
   return (
     <main className="relative">
-      {/* 1. HERO — centered, matches home page layout */}
-      <section className="hero hero-product gridbg relative">
+      {/* 1. HERO: centered, matches home page layout */}
+      <section className="hero hero-product relative">
         <AuroraBackground variant="hero" />
         <div className="wrap relative z-10">
           <div className="text-center max-w-3xl mx-auto flex flex-col items-center">
@@ -51,7 +51,7 @@ export default function FlutterSessionReplayPage() {
         </div>
       </section>
 
-      {/* 1a. Showcase — stack trace paired with phone replay */}
+      {/* 1a. Showcase: stack trace paired with phone replay */}
       <FlutterReplayShowcase />
 
       {/* 1b. Free-tier positioning section */}
@@ -68,8 +68,8 @@ export default function FlutterSessionReplayPage() {
               <>
                 Same error grouping, same impact ranking, same alerts you&rsquo;d
                 expect from{" "}
-                <span style={{ fontWeight: 900, color: "#7f5cfc" }}>Sentry</span>{" "}
-                — with the full replay included on the free tier. No per-replay
+                <span style={{ fontWeight: 900, color: "#7f5cfc" }}>Sentry</span>,{" "}
+                with the full replay included on the free tier. No per-replay
                 billing.
               </>
             }
@@ -87,7 +87,7 @@ export default function FlutterSessionReplayPage() {
                     letterSpacing: "0.04em",
                   }}
                 >
-                  10,000 replays / month — free, forever
+                  10,000 replays / month, free forever
                 </span>
               </Chip>
             </Link>
@@ -110,7 +110,7 @@ export default function FlutterSessionReplayPage() {
         </div>
       </section>
 
-      {/* 2. SEE IT — product screenshot, the single biggest missing piece */}
+      {/* 2. SEE IT: product screenshot, the single biggest missing piece */}
       <section className="wrap pt-10">
         <FeatureRow
           eyebrow="The actual player"
@@ -119,7 +119,7 @@ export default function FlutterSessionReplayPage() {
               Press play on <em>the moment it broke.</em>
             </>
           }
-          description="Every exception in the Traceway dashboard carries its replay. Open the stack trace, press play, and watch the last seconds of your user's session leading up to the crash — synced to the timeline."
+          description="Every exception in the Traceway dashboard carries its replay. Open the stack trace, press play, and watch the last seconds of your user's session leading up to the crash, synced to the timeline."
           bullets={[
             "Scrub through the full session timeline",
             "Replay ID linked from every stack trace",
@@ -133,7 +133,7 @@ export default function FlutterSessionReplayPage() {
         />
       </section>
 
-      {/* 3. THE 4 LINES — masking on by default */}
+      {/* 3. THE 4 LINES: masking on by default */}
       <section className="wrap py-20">
         <div className="grid gap-12 md:grid-cols-[1fr_1.1fr] items-center">
           <div>
@@ -143,8 +143,8 @@ export default function FlutterSessionReplayPage() {
             </h2>
             <p className="muted mt-4 max-w-[460px]">
               Recording starts on the first frame. Every exception carries the
-              replay ID automatically. Sensitive widgets are masked by default
-              — wrap anything extra in <code>TracewayMask</code>.
+              replay ID automatically. Sensitive widgets are masked by default.
+              Wrap anything extra in <code>TracewayMask</code>.
             </p>
             <p
               className="mt-4 text-[13px]"
@@ -186,7 +186,7 @@ export default function FlutterSessionReplayPage() {
               A video is <em>the start.</em> The context is the rest.
             </>
           }
-          description="Every replay carries the surrounding signal — so you don't just watch what happened, you see why."
+          description="Every replay carries the surrounding signal, so you don't just watch what happened, you see why."
         />
         <BentoGrid>
           <BentoCell
@@ -208,7 +208,7 @@ export default function FlutterSessionReplayPage() {
           >
             <p>
               Every <code>print</code> and <code>debugPrint</code> from the
-              last 10 seconds — captured via a Zone hook, no manual wiring.
+              last 10 seconds, captured via a Zone hook with no manual wiring.
               Capped at 200 lines.
             </p>
           </BentoCell>
@@ -221,7 +221,7 @@ export default function FlutterSessionReplayPage() {
             <p>
               Method, URL, status, duration, and byte counts for every dart:io
               HTTP call. Catches <code>package:http</code>, Dio, Firebase, and
-              anything on the platform client — no per-call instrumentation.
+              anything on the platform client, with no per-call instrumentation.
             </p>
           </BentoCell>
           <BentoCell
@@ -231,8 +231,8 @@ export default function FlutterSessionReplayPage() {
             iconColor="var(--a2)"
           >
             <p>
-              Every push, pop, and replace from any <code>Navigator</code> —
-              attach <code>Traceway.navigatorObserver</code> once and the
+              Every push, pop, and replace from any <code>Navigator</code>.
+              Attach <code>Traceway.navigatorObserver</code> once and the
               route history rides with every crash.
             </p>
           </BentoCell>
@@ -243,8 +243,8 @@ export default function FlutterSessionReplayPage() {
             iconColor="var(--warn)"
           >
             <p>
-              Tag your own breadcrumbs — <code>cart.add_item</code>,{" "}
-              <code>auth.login_succeeded</code> — with{" "}
+              Tag your own breadcrumbs like <code>cart.add_item</code> and{" "}
+              <code>auth.login_succeeded</code> with{" "}
               <code>Traceway.recordAction</code>. Capped at 200 entries.
             </p>
           </BentoCell>
@@ -271,7 +271,7 @@ export default function FlutterSessionReplayPage() {
               No frame drops. <em>No battery spike.</em>
             </>
           }
-          description="Benchmarked on Pixel 5/6/8 and iPhone 8/14 Pro/16 Pro via Firebase Test Lab — 10 workloads × 4 SDK configs per device. Full harness open source; re-run it on your own tier. Tail latencies included because p50 is where bugs hide."
+          description="Benchmarked on Pixel 5/6/8 and iPhone 8/14 Pro/16 Pro via Firebase Test Lab: 10 workloads × 4 SDK configs per device. Full harness open source; re-run it on your own tier. Tail latencies included because p50 is where bugs hide."
         />
         <StatsStrip
           stats={[
@@ -298,7 +298,7 @@ export default function FlutterSessionReplayPage() {
                 <strong style={{ color: "var(--fg-1)" }}>Idle is free.</strong>{" "}
                 With <code>screenCapture: false</code> or before the first
                 recording, RSS overhead stays under 10&nbsp;MB on every tested
-                device — typically zero.
+                device, and is typically zero.
               </li>
               <li>
                 <strong style={{ color: "var(--fg-1)" }}>Active recording stays small.</strong>{" "}
@@ -308,14 +308,14 @@ export default function FlutterSessionReplayPage() {
               </li>
               <li>
                 <strong style={{ color: "var(--fg-1)" }}>Exception capture beats a frame.</strong>{" "}
-                Sub-millisecond on iOS, under 15&nbsp;ms on Android — both fit
+                Sub-millisecond on iOS, under 15&nbsp;ms on Android. Both fit
                 inside a single 60 Hz frame (16.7&nbsp;ms), so capturing an
                 exception cannot drop a frame in steady state.
               </li>
               <li>
                 <strong style={{ color: "var(--fg-1)" }}>Disk persistence is free.</strong>{" "}
                 Writing recordings to disk consumes the same RAM as in-memory
-                only — no extra cost for offline-safe shipping.
+                only, with no extra cost for offline-safe shipping.
               </li>
             </ul>
           </div>
@@ -333,7 +333,7 @@ export default function FlutterSessionReplayPage() {
             >
               <li>
                 Numbers come from a single GitHub Actions run on Firebase Test
-                Lab hardware — methodology and raw data live in the SDK repo.
+                Lab hardware. Methodology and raw data live in the SDK repo.
               </li>
               <li>
                 Frame-timing carries enough variance per scenario that we don&rsquo;t
@@ -386,7 +386,7 @@ export default function FlutterSessionReplayPage() {
                 className="mt-3 text-[14px] max-w-[520px]"
                 style={{ color: "var(--fg-2)" }}
               >
-                Every part of Traceway is open source — the Flutter SDK, the Go
+                Every part of Traceway is open source: the Flutter SDK, the Go
                 backend, the dashboard. Nothing about your crash data is a
                 black box.
               </p>

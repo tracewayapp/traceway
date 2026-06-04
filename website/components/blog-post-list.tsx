@@ -22,7 +22,7 @@ export function BlogPostList({ posts }: { posts: BlogPostMeta[] }) {
             </div>
             <div
               className="text-[18px] font-medium transition-colors group-hover:text-[color:var(--fg-0)]"
-              style={{ fontFamily: "var(--font-display)", color: "var(--fg-1)" }}
+              style={{ fontFamily: "var(--font-body)", color: "var(--fg-1)" }}
             >
               {post.title}
             </div>

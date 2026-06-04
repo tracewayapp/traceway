@@ -13,7 +13,7 @@ import { Eyebrow } from "@/components/eyebrow";
 export default function AiTracingPage() {
   return (
     <main className="relative">
-      <section className="hero hero-product gridbg relative">
+      <section className="hero hero-product relative">
         <AuroraBackground variant="hero" />
         <div className="wrap relative z-10">
           <Chip>
@@ -128,7 +128,7 @@ export default function AiTracingPage() {
             Trace AI <em>like any other service</em>
           </>
         }
-        description="Costs, tokens, latency, and conversations — all in one place."
+        description="Costs, tokens, latency, and conversations, all in one place."
         primary={{
           label: "Read the AI Tracing docs",
           href: "https://docs.tracewayapp.com/client/openrouter",
@@ -154,7 +154,7 @@ export default function AiTracingPage() {
                         <code>gen_ai.*</code> semantic convention attributes.
                       </p>
                       <p>
-                        OpenRouter has built-in support — just enable
+                        OpenRouter has built-in support. Just enable
                         Observability in your settings. For other providers, use
                         any OpenTelemetry SDK to instrument your AI calls and
                         send them to Traceway.

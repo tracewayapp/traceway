@@ -3,6 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Github, Menu } from "lucide-react";
+import { DiscordIcon } from "@/components/discord-icon";
+import { GITHUB_URL, DISCORD_URL } from "@/lib/links";
 import type { LucideIcon } from "lucide-react";
 import {
   Sheet,
@@ -94,7 +96,7 @@ export function MobileNav({
                 Docs
               </Link>
               <Link
-                href="https://github.com/tracewayapp/traceway"
+                href={GITHUB_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setOpen(false)}
@@ -103,6 +105,17 @@ export function MobileNav({
               >
                 GitHub
                 <Github className="h-4 w-4" />
+              </Link>
+              <Link
+                href={DISCORD_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setOpen(false)}
+                className="py-3 text-[16px] font-medium text-[color:var(--fg-0)] hover:text-[color:var(--a2)] inline-flex items-center gap-2"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                Discord
+                <DiscordIcon className="h-4 w-4" />
               </Link>
             </div>
           </div>

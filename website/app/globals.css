@@ -4,7 +4,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /* =============================================================
-   Traceway Design Tokens — Dark-first, with light override
+   Traceway Design Tokens: dark-first, with light override
    Source: design guidelines/styles.css
    ============================================================= */
 
@@ -27,7 +27,7 @@
   --fg-2: #8a93a6;
   --fg-3: #5a6374;
 
-  /* Accent — Electric Indigo palette */
+  /* Accent: Electric Indigo palette */
   --a1: #7c5cff;
   --a2: #00d4ff;
   --a3: #ff4d8d;
@@ -45,7 +45,7 @@
   --radius-lg: 10px;
   --container-max: 1240px;
 
-  /* shadcn aliases — pointed at Traceway tokens */
+  /* shadcn aliases, pointed at Traceway tokens */
   --background: var(--ink-0);
   --foreground: var(--fg-0);
   --card: var(--ink-3);
@@ -82,7 +82,7 @@
 }
 
 /* =============================================================
-   Tailwind @theme — expose CSS vars as Tailwind utilities
+   Tailwind @theme: expose CSS vars as Tailwind utilities
    ============================================================= */
 @theme inline {
   --color-background: var(--background);
@@ -124,7 +124,7 @@
   --color-hair: var(--hair);
   --color-hair-2: var(--hair-2);
 
-  --font-sans: var(--font-display);
+  --font-sans: var(--font-body);
   --font-display: var(--font-display);
   --font-mono: var(--font-mono);
   --font-body: var(--font-body);
@@ -169,16 +169,13 @@
   }
   html {
     background: var(--ink-0);
-    font-family: var(--font-mono);
+    font-family: var(--font-body);
   }
   body {
     color: var(--fg-1);
-    font-family: var(--font-mono);
-    background:
-      radial-gradient(1200px 700px at 85% -10%, color-mix(in oklab, var(--a1) 22%, transparent), transparent 60%),
-      radial-gradient(900px 600px at -10% 20%, color-mix(in oklab, var(--a2) 14%, transparent), transparent 60%),
-      var(--ink-0);
-    font-feature-settings: "ss01", "cv11";
+    font-family: var(--font-body);
+    background: var(--ink-0);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
   }
@@ -188,9 +185,9 @@
   h4,
   h5,
   h6 {
-    font-family: var(--font-display);
+    font-family: var(--font-body);
     color: var(--fg-0);
-    font-weight: 700;
+    font-weight: 600;
     margin: 0;
   }
   h1,
@@ -201,7 +198,6 @@
     font-size: clamp(40px, 5.6vw, 75px);
     line-height: 1.02;
     letter-spacing: -0.035em;
-    font-weight: 700;
   }
   h2 {
     font-size: clamp(28px, 3.2vw, 46px);
@@ -218,13 +214,14 @@
     font-weight: 600;
     letter-spacing: -0.01em;
   }
+  h1:has(em),
+  h2:has(em) {
+    color: var(--fg-2);
+  }
   h1 em,
   h2 em {
     font-style: normal;
-    background: linear-gradient(90deg, var(--a2), var(--a1) 60%, var(--a3));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    color: var(--fg-0);
     font-weight: inherit;
   }
   p {
@@ -255,7 +252,7 @@
 }
 
 /* =============================================================
-   Utility components — ported from design guidelines/styles.css
+   Utility components, ported from design guidelines/styles.css
    ============================================================= */
 @layer components {
   .wrap {
@@ -264,12 +261,53 @@
     padding: 0 28px;
   }
 
+  /* Light band: local token remap so a run of sections renders on white.
+     Everything inside follows the same semantic vars; hard cuts at the edges. */
+  .band-light {
+    --ink-0: #ffffff;
+    --ink-1: #f6f7f9;
+    --ink-2: #eff1f5;
+    --ink-3: #e8ebf1;
+    --ink-4: #dde1ea;
+    --ink-5: #ccd2de;
+    --hair: rgba(10, 14, 24, 0.08);
+    --hair-2: rgba(10, 14, 24, 0.15);
+    --fg-0: #0b0e16;
+    --fg-1: #353d4e;
+    --fg-2: #5d6678;
+    --fg-3: #8a93a6;
+    --a2: #0080b3;
+    --a4: #9a7b1a;
+    --ok: #0c9d6e;
+    --crit: #d63b41;
+    background: var(--ink-0);
+    color: var(--fg-1);
+    color-scheme: light;
+  }
+
+  /* Terminal stays a dark object inside the light band. */
+  .band-light .term {
+    --ink-1: #0a0d14;
+    --hair: rgba(255, 255, 255, 0.06);
+    --hair-2: rgba(255, 255, 255, 0.10);
+    --fg-1: #c9d0dd;
+    --fg-3: #5a6374;
+    --a2: #00d4ff;
+    --ok: #22e0a8;
+    color-scheme: dark;
+    box-shadow: 0 24px 48px -28px rgba(10, 14, 24, 0.35);
+  }
+
+  .band-light .btn-primary {
+    box-shadow: none;
+  }
+
   .eyebrow {
     font-family: var(--font-mono);
     font-size: 11px;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--a2);
+    color: var(--fg-2);
     font-weight: 500;
     display: inline-block;
   }
@@ -282,28 +320,6 @@
   }
   .dim {
     color: var(--fg-3);
-  }
-
-  /* Grid blueprint background */
-  .gridbg {
-    position: relative;
-  }
-  .gridbg::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background-image:
-      linear-gradient(to right, var(--hair) 1px, transparent 1px),
-      linear-gradient(to bottom, var(--hair) 1px, transparent 1px);
-    background-size: 56px 56px;
-    mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000 50%, transparent 100%);
-    -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000 50%, transparent 100%);
-    z-index: 0;
-  }
-  .gridbg > * {
-    position: relative;
-    z-index: 1;
   }
 
   /* Buttons */
@@ -332,15 +348,11 @@
     background: color-mix(in oklab, var(--fg-0) 92%, white);
   }
   .btn-accent {
-    background: linear-gradient(180deg, color-mix(in oklab, var(--a1) 100%, white 12%), var(--a1));
+    background: var(--a1);
     color: #0a0612;
-    box-shadow: 0 10px 30px -12px color-mix(in oklab, var(--a1) 80%, transparent),
-      0 0 0 1px color-mix(in oklab, var(--a1) 40%, transparent);
-    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
   }
   .btn-accent:hover {
-    background: linear-gradient(180deg, color-mix(in oklab, var(--a1) 100%, white 18%), var(--a1));
-    transform: translateY(2px);
+    background: color-mix(in oklab, var(--a1) 88%, white);
   }
   .btn-ghost {
     border-color: var(--hair-2);
@@ -364,12 +376,11 @@
     border-radius: var(--radius-lg);
     padding: 20px 22px;
     text-decoration: none;
-    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+    transition: background 0.15s ease, border-color 0.15s ease;
   }
   .blog-card:hover {
     background: var(--ink-3);
-    border-color: color-mix(in oklab, var(--a1) 35%, var(--hair-2));
-    transform: translateY(-2px);
+    border-color: var(--hair-2);
   }
 
   /* Segmented blog tabs */
@@ -454,21 +465,18 @@
     height: 6px;
     border-radius: 50%;
     background: var(--a2);
-    box-shadow: 0 0 8px var(--a2);
     flex-shrink: 0;
   }
   .chip.ok .dot {
     background: var(--ok);
-    box-shadow: 0 0 8px var(--ok);
   }
   .chip.crit .dot {
     background: var(--crit);
-    box-shadow: 0 0 8px var(--crit);
   }
 
   /* Cards */
   .surface-card {
-    background: linear-gradient(180deg, var(--ink-3), var(--ink-2));
+    background: var(--ink-1);
     border: 1px solid var(--hair);
     border-radius: var(--radius-lg);
     padding: 22px;
@@ -486,7 +494,7 @@
     position: relative;
   }
 
-  /* Compact hero variant for product / cloud pages — narrower container
+  /* Compact hero variant for product / cloud pages. A narrower container
      means the huge home-size H1 would wrap to 3 lines and dominate the fold. */
   .hero-product {
     padding: 56px 0 48px;
@@ -503,13 +511,6 @@
   .hero-product .hero-cta-row {
     margin-top: 24px;
   }
-  .hero h1 em {
-    font-style: normal;
-    background: linear-gradient(90deg, var(--a2), var(--a1) 60%, var(--a3));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
   .hero-sub {
     font-size: 19px;
     color: var(--fg-1);
@@ -525,112 +526,13 @@
     align-items: center;
   }
 
-  /* Hero grid — left copy, right dashboard/pillars visual */
-  .hero-grid {
-    display: grid;
-    grid-template-columns: 1.05fr 1.3fr;
-    gap: 56px;
-    align-items: center;
-  }
-  /* When pillars serve as the hero-right visual, reset the top margin
-     that .pillars normally has when stacked below hero copy. */
-  .hero-pillars .pillars {
-    margin-top: 0;
-  }
-  .hero-pillars .pillars-sec {
-    margin-top: 12px;
-  }
-
-  /* All 6 pillars in one uniform grid (hero-right inside pillar-wrap).
-     gap handles both row AND column spacing; min-height keeps every
-     card at the same visual size regardless of description length. */
-  .pillars-all {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
-    align-items: stretch;
-  }
-  .pillars-all > .pillar {
-    min-height: 210px;
-    display: flex;
-    flex-direction: column;
-  }
-  @media (max-width: 720px) {
-    .pillars-all {
-      grid-template-columns: 1fr 1fr;
-    }
-  }
-
-  /* Pillar wrap — a window-chrome frame with a "Traceway" title bar */
+  /* Pillar wrap: framed panel (used by the Flutter replay showcase) */
   .pillar-wrap {
     border-radius: 14px;
     border: 1px solid var(--hair-2);
-    background: linear-gradient(
-      180deg,
-      color-mix(in oklab, var(--ink-2) 80%, transparent),
-      color-mix(in oklab, var(--ink-1) 60%, transparent)
-    );
+    background: var(--ink-1);
     overflow: hidden;
-    box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.7),
-      0 0 0 1px rgba(255, 255, 255, 0.03),
-      inset 0 1px 0 rgba(255, 255, 255, 0.04);
     position: relative;
-  }
-  .pillar-wrap::before {
-    content: "";
-    position: absolute;
-    inset: -1px;
-    background: radial-gradient(
-      500px 260px at 70% 0%,
-      color-mix(in oklab, var(--a1) 18%, transparent),
-      transparent 60%
-    );
-    pointer-events: none;
-  }
-  .pillar-wrap-head {
-    position: relative;
-    z-index: 1;
-    padding: 14px 18px;
-    border-bottom: 1px solid var(--hair);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    background: color-mix(in oklab, var(--ink-0) 35%, transparent);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-  }
-  .pillar-wrap-brand {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    font-family: var(--font-display);
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    color: var(--fg-0);
-  }
-  .pillar-wrap-brand img {
-    height: 18px;
-    width: auto;
-    filter: invert(1) brightness(1.1);
-  }
-  .pillar-wrap-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-family: var(--font-mono);
-    font-size: 10.5px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--fg-3);
-  }
-  .pillar-wrap-tag .dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--ok);
-    box-shadow: 0 0 8px var(--ok);
   }
   .pillar-wrap-body {
     position: relative;
@@ -638,125 +540,12 @@
     padding: 22px;
   }
 
-  /* Two-track header for section intros */
-  .two-track {
-    padding: 100px 0 40px;
-  }
-  .two-track-head {
-    margin-bottom: 48px;
-  }
-  .two-track-head h2 {
-    margin-top: 14px;
-  }
-
-  /* Pillar cards (home hero grid) */
-  .pillars {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-    margin-top: 34px;
-  }
-  .pillars-sec {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-    margin-top: 10px;
-  }
-  .pillar {
-    padding: 18px;
-    border-radius: 10px;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
-    border: 1px solid var(--hair);
-    position: relative;
-    overflow: hidden;
-    display: block;
-    color: inherit;
-    transition: border-color 0.2s, transform 0.2s, background 0.2s;
-  }
-  .pillar:hover {
-    border-color: var(--hair-2);
-    transform: translateY(-2px);
-  }
-  .pillar .p-ico {
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
-    display: grid;
-    place-items: center;
-    background: color-mix(in oklab, var(--pc, var(--a1)) 18%, transparent);
-    border: 1px solid color-mix(in oklab, var(--pc, var(--a1)) 40%, transparent);
-    color: var(--pc, var(--a1));
-    margin-bottom: 14px;
-  }
-  .pillar h4,
-  .pillar .p-title {
-    margin: 0 0 4px;
-    font-family: var(--font-display);
-    font-weight: 600;
-    font-size: 17px;
-    color: var(--fg-0);
-    letter-spacing: -0.01em;
-  }
-  .pillar p,
-  .pillar .p-desc {
-    margin: 0;
-    font-size: 13px;
-    color: var(--fg-2);
-    line-height: 1.45;
-  }
-  .pillar-sec {
-    padding: 18px;
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--hair);
-    display: block;
-    font-family: var(--font-display);
-    color: inherit;
-    transition: border-color 0.2s, background 0.2s, transform 0.2s;
-  }
-  .pillar-sec:hover {
-    border-color: var(--hair-2);
-    transform: translateY(-1px);
-  }
-  .pillar-sec .ps-title {
-    color: var(--fg-0);
-    font-family: var(--font-display);
-    font-weight: 600;
-    font-size: 17px;
-    letter-spacing: -0.01em;
-    line-height: 1.2;
-    margin-bottom: 12px;
-  }
-  .pillar-sec .ps-body {
-    display: grid;
-    grid-template-columns: 28px 1fr;
-    gap: 10px;
-    align-items: start;
-  }
-  .pillar-sec .ps-ico {
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
-    display: grid;
-    place-items: center;
-    background: color-mix(in oklab, var(--pc, var(--a1)) 18%, transparent);
-    border: 1px solid color-mix(in oklab, var(--pc, var(--a1)) 40%, transparent);
-    color: var(--pc, var(--a1));
-    flex-shrink: 0;
-  }
-  .pillar-sec .ps-desc {
-    color: var(--fg-2);
-    font-size: 13px;
-    line-height: 1.45;
-  }
-
   /* Terminal */
   .term {
     border-radius: var(--radius-lg);
     border: 1px solid var(--hair-2);
-    background: linear-gradient(#080b12, #0d1220);
+    background: var(--ink-1);
     overflow: hidden;
-    box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.9);
     color: var(--fg-1);
   }
   .term-head {
@@ -881,7 +670,6 @@
     overflow: hidden;
     border: 1px solid var(--hair-2);
     background: var(--ink-2);
-    box-shadow: 0 40px 80px -30px rgba(0, 0, 0, 0.9);
   }
   .feat-visual img {
     width: 100%;
@@ -922,11 +710,11 @@
     grid-column: span 2;
     border-radius: var(--radius-lg);
     border: 1px solid var(--hair);
-    background: linear-gradient(180deg, var(--ink-3), var(--ink-2));
+    background: var(--ink-1);
     padding: 24px;
     position: relative;
     overflow: hidden;
-    transition: transform 0.2s, border-color 0.2s;
+    transition: border-color 0.2s;
   }
   .b:hover {
     border-color: var(--hair-2);
@@ -969,11 +757,11 @@
     width: 28px;
     height: 28px;
     border-radius: 6px;
-    background: color-mix(in oklab, var(--a1) 20%, transparent);
-    border: 1px solid color-mix(in oklab, var(--a1) 40%, transparent);
+    background: var(--ink-3);
+    border: 1px solid var(--hair-2);
     display: grid;
     place-items: center;
-    color: var(--a1);
+    color: var(--fg-1);
   }
 
   /* Stats strip */
@@ -1003,10 +791,6 @@
   }
   .stat .num em {
     font-style: normal;
-    background: linear-gradient(90deg, var(--a2), var(--a1));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
   }
   .stat .lbl {
     margin-top: 10px;
@@ -1017,75 +801,7 @@
     text-transform: uppercase;
   }
 
-  /* Two-track */
-  .tracks {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24px;
-  }
-  .track {
-    position: relative;
-    padding: 32px;
-    border-radius: var(--radius-lg);
-    background:
-      radial-gradient(400px 200px at 100% 0%, color-mix(in oklab, var(--track) 28%, transparent), transparent 60%),
-      linear-gradient(180deg, var(--ink-3), var(--ink-2));
-    border: 1px solid var(--hair);
-    overflow: hidden;
-    min-height: 420px;
-  }
-  .track[data-kind="detect"] {
-    --track: var(--a3);
-  }
-  .track[data-kind="resolve"] {
-    --track: var(--a1);
-  }
-  .track-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--track);
-    padding: 4px 8px;
-    border: 1px solid color-mix(in oklab, var(--track) 30%, transparent);
-    border-radius: 4px;
-    background: color-mix(in oklab, var(--track) 10%, transparent);
-  }
-  .track h3 {
-    margin: 18px 0 10px;
-    font-size: 30px;
-    letter-spacing: -0.03em;
-  }
-  .track p {
-    color: var(--fg-2);
-    max-width: 420px;
-  }
-  .track-list {
-    margin-top: 20px;
-    display: grid;
-    gap: 10px;
-    padding: 0;
-  }
-  .track-list li {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    list-style: none;
-    font-family: var(--font-display);
-    font-size: 14px;
-    color: var(--fg-1);
-  }
-  .track-list li::before {
-    content: "";
-    width: 14px;
-    height: 1px;
-    background: var(--track);
-  }
-
-  /* FAQ — native details/summary */
+  /* FAQ: native details/summary */
   .faq-list {
     max-width: 820px;
     margin: 0 auto;
@@ -1141,23 +857,9 @@
     border-radius: 16px;
     padding: 72px 40px;
     text-align: center;
-    background:
-      radial-gradient(600px 300px at 50% 120%, color-mix(in oklab, var(--a1) 30%, transparent), transparent 60%),
-      radial-gradient(500px 250px at 50% -40%, color-mix(in oklab, var(--a2) 25%, transparent), transparent 60%),
-      linear-gradient(180deg, var(--ink-3), var(--ink-2));
-    border: 1px solid var(--hair-2);
+    background: var(--ink-1);
+    border: 1px solid var(--hair);
     overflow: hidden;
-  }
-  .final-cta-box::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background-image:
-      linear-gradient(to right, var(--hair) 1px, transparent 1px),
-      linear-gradient(to bottom, var(--hair) 1px, transparent 1px);
-    background-size: 32px 32px;
-    mask-image: radial-gradient(ellipse 70% 90% at 50% 50%, #000 30%, transparent 80%);
-    -webkit-mask-image: radial-gradient(ellipse 70% 90% at 50% 50%, #000 30%, transparent 80%);
   }
   .final-cta-box h2 {
     position: relative;
@@ -1215,7 +917,7 @@
   .cost-bar .fill {
     position: absolute;
     inset: 0 auto 0 0;
-    background: linear-gradient(90deg, rgba(255, 90, 95, 0.75), rgba(255, 90, 95, 0.35));
+    background: color-mix(in oklab, var(--crit) 55%, transparent);
     display: flex;
     align-items: center;
     justify-content: flex-end;
@@ -1225,7 +927,7 @@
     color: #fff;
   }
   .cost-bar.us .fill {
-    background: linear-gradient(90deg, color-mix(in oklab, var(--a1) 90%, white 0%), color-mix(in oklab, var(--a2) 80%, transparent));
+    background: var(--a1);
     color: #07090f;
     font-weight: 600;
   }
@@ -1243,25 +945,7 @@
     color: var(--a2);
   }
 
-  /* Live dashboard / hero visual wrap */
-  .live-dash {
-    position: relative;
-    border-radius: 14px;
-    overflow: hidden;
-    border: 1px solid var(--hair-2);
-    background: linear-gradient(180deg, #0d1220, #080b12);
-    box-shadow: 0 40px 80px -30px rgba(0, 0, 0, 0.8),
-      0 0 0 1px rgba(255, 255, 255, 0.04),
-      inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  }
-  .live-dash::before {
-    content: "";
-    position: absolute;
-    inset: -1px;
-    background: radial-gradient(600px 300px at 70% 0%, color-mix(in oklab, var(--a1) 26%, transparent), transparent 60%);
-    pointer-events: none;
-  }
-  /* Logos row — marquee host */
+  /* Logos row: marquee host */
   .logos-row {
     display: flex;
     align-items: center;
@@ -1289,7 +973,7 @@
     background: color-mix(in oklab, var(--a1) 10%, transparent);
   }
 
-  /* Prose — minimal, for legal pages */
+  /* Prose: minimal, for legal pages */
   .prose {
     max-width: 760px;
     margin: 0 auto;
@@ -1340,7 +1024,7 @@
     border: 1px solid var(--hair);
   }
 
-  /* Blog reading typography — proportional Inter body, mono chrome.
+  /* Blog reading typography: proportional Inter body, mono chrome.
      Scoped so the marketing pages keep their all-mono aesthetic. */
   .blog-lead {
     font-family: var(--font-body);
@@ -1371,7 +1055,7 @@
     font-family: var(--font-mono);
   }
 
-  /* Highlight a key phrase — use sparingly (raw <mark> in MDX). */
+  /* Highlight a key phrase. Use sparingly (raw <mark> in MDX). */
   .blog-body mark {
     background: color-mix(in oklab, var(--a1) 24%, transparent);
     color: var(--fg-0);
@@ -1381,7 +1065,7 @@
     -webkit-box-decoration-break: clone;
   }
 
-  /* Callout / aside — a styled markdown blockquote (> in MDX). */
+  /* Callout / aside: a styled markdown blockquote (> in MDX). */
   .blog-body blockquote {
     margin: 24px 0;
     padding: 16px 20px;
@@ -1397,7 +1081,7 @@
     margin-top: 10px;
   }
 
-  /* Blog post title — smaller than the marketing hero H1. */
+  /* Blog post title, smaller than the marketing hero H1. */
   .blog-article .prose h1 {
     font-size: 38px;
   }
@@ -1445,14 +1129,6 @@
 
 /* Responsive */
 @media (max-width: 1080px) {
-  .hero-grid {
-    grid-template-columns: 1fr;
-    gap: 40px;
-  }
-  .pillars,
-  .pillars-sec {
-    grid-template-columns: 1fr 1fr;
-  }
   .feature-row,
   .feature-row.reverse {
     grid-template-columns: 1fr;
@@ -1461,9 +1137,6 @@
   }
   .feature-row.reverse .feat-copy {
     order: 0;
-  }
-  .tracks {
-    grid-template-columns: 1fr;
   }
   .bento-grid {
     grid-template-columns: repeat(4, 1fr);
@@ -1489,12 +1162,6 @@
   }
 }
 @media (max-width: 720px) {
-  .pillars {
-    grid-template-columns: 1fr 1fr;
-  }
-  .pillars-sec {
-    grid-template-columns: 1fr;
-  }
   .bento-grid {
     grid-template-columns: 1fr;
   }
@@ -1518,7 +1185,7 @@
   }
 }
 
-/* ── Flutter replay showcase — strip rrweb-player's default chrome ──────── */
+/* ── Flutter replay showcase: strip rrweb-player's default chrome ──────── */
 .flutter-replay-mount .rr-player {
   background: transparent !important;
   box-shadow: none !important;

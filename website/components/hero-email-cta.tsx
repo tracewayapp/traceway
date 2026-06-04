@@ -2,16 +2,13 @@
 
 import { useState, FormEvent } from "react";
 import Link from "next/link";
-import { getCalendlyUrl } from "@/lib/calendly";
+import { GITHUB_URL, DISCORD_URL } from "@/lib/links";
 
 export function HeroEmailCTA({
-  bookDemoHref,
   placeholder = "Email Address",
 }: {
-  bookDemoHref?: string;
   placeholder?: string;
 }) {
-  const demoHref = bookDemoHref ?? getCalendlyUrl();
   const [email, setEmail] = useState("");
 
   function handleSubmit(e: FormEvent) {
@@ -58,13 +55,24 @@ export function HeroEmailCTA({
         className="mt-3 text-center text-[13px]"
         style={{ color: "var(--fg-2)", fontFamily: "var(--font-mono)" }}
       >
-        Start for free or{" "}
         <Link
-          href={demoHref}
+          href={GITHUB_URL}
+          target="_blank"
+          rel="noopener noreferrer"
           className="underline underline-offset-4 hover:text-[color:var(--fg-0)] transition-colors"
           style={{ color: "var(--fg-0)" }}
         >
-          Book a demo
+          Star on GitHub
+        </Link>{" "}
+        ·{" "}
+        <Link
+          href={DISCORD_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline underline-offset-4 hover:text-[color:var(--fg-0)] transition-colors"
+          style={{ color: "var(--fg-0)" }}
+        >
+          Join the Discord
         </Link>
       </p>
     </div>

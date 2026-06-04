@@ -12,7 +12,7 @@ import { AuroraBackground } from "@/components/aurora-background";
 export default function PerformancePage() {
   return (
     <main className="relative">
-      <section className="hero hero-product gridbg relative">
+      <section className="hero hero-product relative">
         <AuroraBackground variant="hero" />
         <div className="wrap relative z-10">
           <Chip>
@@ -37,7 +37,7 @@ export default function PerformancePage() {
         </div>
       </section>
 
-      {/* Impact Score — scoring and ranking logic */}
+      {/* Impact Score: scoring and ranking logic */}
       <section className="wrap py-20">
         <SectionHead
           eyebrow="Impact Score"
@@ -46,7 +46,7 @@ export default function PerformancePage() {
               One score. Five signals. <em>Zero guesswork.</em>
             </>
           }
-          description="The Impact Score combines five service-level indicators into one automatic priority for every endpoint. It takes the max across all five — if any single signal is bad, the endpoint surfaces immediately."
+          description="The Impact Score combines five service-level indicators into one automatic priority for every endpoint. It takes the max across all five, so if any single signal is bad, the endpoint surfaces immediately."
         />
         <div className="mt-10 max-w-5xl mx-auto">
           <Image
@@ -60,7 +60,7 @@ export default function PerformancePage() {
         </div>
       </section>
 
-      {/* Drill into any request — absorbed from home */}
+      {/* Drill into any request, absorbed from home */}
       <section className="wrap">
         <FeatureRow
           eyebrow="Endpoint introspection"
@@ -69,7 +69,7 @@ export default function PerformancePage() {
               Drill into <em>any request</em>
             </>
           }
-          description="Request/response details, waterfall traces, and custom context tags. Understand the exact state of your application for every single trace — not just aggregates."
+          description="Request/response details, waterfall traces, and custom context tags. Understand the exact state of your application for every single trace, not just aggregates."
           bullets={[
             "Detailed request/response payloads",
             "Waterfall trace view with span attributes",
@@ -122,7 +122,7 @@ export default function PerformancePage() {
               Know what counts as <em>slow</em>
             </>
           }
-          description="Set a slow-endpoint threshold globally or per route. Traceway uses it as the apdex anchor — a deliberate knob so /api/health and /api/checkout can be judged on their own terms."
+          description="Set a slow-endpoint threshold globally or per route. Traceway uses it as the apdex anchor, a deliberate knob so /api/health and /api/checkout can be judged on their own terms."
         />
         <div
           className="mt-8 max-w-3xl mx-auto rounded-[12px] p-8"
@@ -207,9 +207,9 @@ export default function PerformancePage() {
                     <>
                       <p>
                         The Impact Score is Traceway&apos;s automatic prioritization
-                        system. It combines five service-level indicators — an
+                        system. It combines five service-level indicators (an
                         inverted apdex variant, error rate floor, P99 latency
-                        floor, client error floor, and volume error floor — into
+                        floor, client error floor, and volume error floor) into
                         a single 0-100 score for every endpoint.
                       </p>
                       <p>
@@ -238,7 +238,7 @@ export default function PerformancePage() {
                 },
                 {
                   q: "How are the apdex thresholds computed?",
-                  a: "Traceway uses a slow-endpoint threshold as the apdex anchor. Requests under 750ms are Good, under 1500ms are Tolerable, and over 1500ms (or returning 5xx) are Bad. You can override the threshold globally or per-endpoint to account for routes that have different latency profiles — /api/health and /api/checkout rightly judged on their own terms.",
+                  a: "Traceway uses a slow-endpoint threshold as the apdex anchor. Requests under 750ms are Good, under 1500ms are Tolerable, and over 1500ms (or returning 5xx) are Bad. You can override the threshold globally or per-endpoint to account for routes that have different latency profiles, so /api/health and /api/checkout are rightly judged on their own terms.",
                 },
                 {
                   q: "Where do server metrics live now?",

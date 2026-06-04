@@ -15491,7 +15491,7 @@
       "texts": [
         {
           "id": 901,
-          "value": "Zero. \"Strawberry\" is spelled s-t-r-a-w-b-e-r-r-y — no P's in there."
+          "value": "Zero. \"Strawberry\" is spelled s-t-r-a-w-b-e-r-r-y, no P's in there."
         }
       ],
       "attributes": [],
@@ -15935,7 +15935,7 @@
           "nextId": null,
           "node": {
             "type": 3,
-            "textContent": "Zero. \"Strawberry\" is spelled s-t-r-a-w-b-e-r-r-y — no P's in there.",
+            "textContent": "Zero. \"Strawberry\" is spelled s-t-r-a-w-b-e-r-r-y, no P's in there.",
             "id": 935
           }
         },

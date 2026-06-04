@@ -16,7 +16,9 @@ import {
   Smartphone,
 } from "lucide-react";
 import { MobileNav } from "@/components/mobile-nav";
+import { DiscordIcon } from "@/components/discord-icon";
 import { cn } from "@/lib/utils";
+import { GITHUB_URL, DISCORD_URL } from "@/lib/links";
 
 type NavItem = {
   title: string;
@@ -73,7 +75,7 @@ const SPECIALIZED: NavItem[] = [
   },
   {
     title: "Flutter Session Replay",
-    description: "Open-source mobile replay — 10s before every exception.",
+    description: "Open-source mobile replay, 10s before every exception.",
     href: "/product/flutter-session-replay",
     icon: Smartphone,
   },
@@ -115,9 +117,7 @@ export function SiteHeader() {
       className="site-nav sticky top-0 z-50 border-b transition-colors"
       style={{
         borderColor: "var(--hair)",
-        background: "color-mix(in oklab, var(--ink-0) 70%, transparent)",
-        backdropFilter: "blur(14px) saturate(140%)",
-        WebkitBackdropFilter: "blur(14px) saturate(140%)",
+        background: "var(--ink-0)",
       }}
     >
       <div className="wrap flex h-16 items-center justify-between">
@@ -163,9 +163,9 @@ export function SiteHeader() {
                   open ? "opacity-100 translate-y-0 pointer-events-auto" : "opacity-0 -translate-y-1 pointer-events-none"
                 )}
                 style={{
-                  background: "linear-gradient(180deg, var(--ink-3), var(--ink-2))",
+                  background: "var(--ink-2)",
                   border: "1px solid var(--hair-2)",
-                  boxShadow: "0 30px 60px -20px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.03)",
+                  boxShadow: "0 16px 40px -24px rgba(0,0,0,0.7)",
                   padding: 24,
                 }}
                 role="menu"
@@ -244,13 +244,22 @@ export function SiteHeader() {
 
         <div className="hidden md:flex items-center gap-3">
           <Link
-            href="https://github.com/tracewayapp/traceway"
+            href={GITHUB_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center justify-center h-8 w-8 rounded-md text-[color:var(--fg-2)] hover:text-[color:var(--fg-0)] hover:bg-[color:var(--ink-2)] transition-colors"
           >
             <Github className="h-4 w-4" />
             <span className="sr-only">GitHub</span>
+          </Link>
+          <Link
+            href={DISCORD_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center h-8 w-8 rounded-md text-[color:var(--fg-2)] hover:text-[color:var(--fg-0)] hover:bg-[color:var(--ink-2)] transition-colors"
+          >
+            <DiscordIcon className="h-4 w-4" />
+            <span className="sr-only">Discord</span>
           </Link>
           <Link
             href="https://cloud.tracewayapp.com/login"

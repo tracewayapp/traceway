@@ -8,27 +8,64 @@ import {
   BarChart3,
   Workflow,
   Bug,
-  XCircle,
-  CheckCircle2,
+  Github,
 } from "lucide-react";
 
 import { Eyebrow } from "@/components/eyebrow";
-import { Chip } from "@/components/chip";
-import { PillarCard } from "@/components/pillar-card";
+import { DiscordIcon } from "@/components/discord-icon";
 import { FinalCTA } from "@/components/final-cta";
 import { Terminal } from "@/components/terminal";
 import { StatsStrip } from "@/components/stats-strip";
-import { TwoTrack } from "@/components/two-track";
 import { HeroEmailCTA } from "@/components/hero-email-cta";
 import { getCalendlyUrl } from "@/lib/calendly";
+import { GITHUB_URL, DISCORD_URL } from "@/lib/links";
+
+const PILLARS = [
+  {
+    icon: ScrollText,
+    title: "Logs",
+    description: "Structured, trace-linked, sub-second search",
+    href: "/product/logs",
+  },
+  {
+    icon: Network,
+    title: "Traces",
+    description: "End-to-end span waterfalls across every service",
+    href: "/product/traces",
+  },
+  {
+    icon: BarChart3,
+    title: "Metrics",
+    description: "Host, runtime, and custom metrics on any chart",
+    href: "/product/metrics",
+  },
+  {
+    icon: Video,
+    title: "Session replay",
+    description: "Web DOM capture, attached to exceptions",
+    href: "/product/session-replay",
+  },
+  {
+    icon: Bug,
+    title: "Exceptions",
+    description: "Grouped, normalized, paired with replay",
+    href: "/product/stack-traces",
+  },
+  {
+    icon: Workflow,
+    title: "AI tracing",
+    description: "LLM cost, tokens, conversations",
+    href: "/product/ai-tracing",
+  },
+];
 
 export default function Home() {
   return (
     <main className="relative">
-      {/* HERO — dash0-style centered block: chip, title, subtitle, email form, book-a-demo helper */}
-      <section className="hero gridbg">
+      {/* HERO: centered chip, title, subhead, email form */}
+      <section className="hero">
         <div className="wrap">
-          <div className="text-center max-w-3xl mx-auto flex flex-col items-center">
+          <div className="text-center max-w-4xl mx-auto flex flex-col items-center">
             <Image
               src="/images/frameworks/otel.png"
               alt="OpenTelemetry"
@@ -36,10 +73,13 @@ export default function Home() {
               height={56}
               className="mb-5"
             />
-            <Chip variant="ok">OpenTelemetry-native</Chip>
             <h1 className="mt-6">
-              Observability that <em>closes the loop.</em>
+              The open-source APM <em>built on OpenTelemetry.</em>
             </h1>
+            <p className="hero-sub text-pretty">
+              Complete observability. Logs, traces, metrics, session replay,
+              and exceptions, all connected.
+            </p>
 
             <div className="mt-10 w-full">
               <HeroEmailCTA />
@@ -48,374 +88,214 @@ export default function Home() {
         </div>
       </section>
 
-      {/* PRODUCT SHOWCASE — 6 pillars in the branded "Traceway" box */}
-      <section className="pb-24">
-        <div className="wrap max-w-5xl mx-auto">
-          <div id="dashboard-mount" className="pillar-wrap">
-            <div className="pillar-wrap-head">
-              <span className="pillar-wrap-brand">
-                <Image
-                  src="/images/logo.png"
-                  alt="Traceway"
-                  width={120}
-                  height={24}
-                  priority
-                />
-              </span>
-            </div>
-            <div className="pillar-wrap-body">
-              <div className="pillars-all">
-                <PillarCard
-                  icon={ScrollText}
-                  title="Logs"
-                  description="Structured, trace-linked, sub-second search."
-                  href="/product/logs"
-                  color="a2"
-                />
-                <PillarCard
-                  icon={Network}
-                  title="Traces"
-                  description="End-to-end span waterfalls across every service."
-                  href="/product/traces"
-                  color="a1"
-                />
-                <PillarCard
-                  icon={BarChart3}
-                  title="Metrics"
-                  description="Host, runtime, custom — any dimension, any chart."
-                  href="/product/metrics"
-                  color="ok"
-                />
-                <PillarCard
-                  icon={Video}
-                  title="Session replay"
-                  description="Web DOM capture + exception attach."
-                  href="/product/session-replay"
-                  color="a2"
-                />
-                <PillarCard
-                  icon={Bug}
-                  title="Exceptions / Stack Traces"
-                  description="Grouped, normalized, paired with replay."
-                  href="/product/stack-traces"
-                  color="a3"
-                />
-                <PillarCard
-                  icon={Workflow}
-                  title="AI tracing"
-                  description="LLM cost, tokens, conversations."
-                  href="/product/ai-tracing"
-                  color="a4"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* SMB POSITIONING — 3-way comparison: Enterprise SaaS / DIY OSS / Traceway */}
-      <section className="two-track" id="otel">
+      {/* PRODUCT: the dashboard itself, then the six pillars as a plain list */}
+      <section className="pt-10 pb-24">
         <div className="wrap">
-          <div className="two-track-head">
-            <Eyebrow>For teams without an SRE</Eyebrow>
-            <h2>
-              Everything you&apos;d build or buy.{" "}
-              <em>Stitched by one trace ID.</em>
-            </h2>
-            <p className="muted mt-4 max-w-[700px]">
-              Most teams either pay enterprise tools, or spend months wiring up
-              their own. Traceway gives you both — logs, traces, metrics,
-              session replay, stack traces, and AI — in one connected system,
-              not six.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-            {/* Column 1 — Enterprise SaaS route */}
-            <div
-              className="rounded-[12px] p-7 relative overflow-hidden"
-              style={{
-                background:
-                  "linear-gradient(180deg, color-mix(in oklab, var(--ink-2) 70%, transparent), color-mix(in oklab, var(--ink-1) 50%, transparent))",
-                border: "1px solid var(--hair)",
-              }}
-            >
-              <Eyebrow>The enterprise route</Eyebrow>
-              <h3
-                className="mt-3"
-                style={{
-                  color: "var(--fg-1)",
-                  fontSize: 19,
-                  letterSpacing: "-0.015em",
-                }}
-              >
-                Pay Datadog + Sentry + PagerDuty.
-              </h3>
-              <ul className="mt-5 space-y-3">
-                {[
-                  "Hire a senior SRE (~$200k+/year)",
-                  "Datadog + Sentry + PagerDuty — 3 bills, 3 auth systems",
-                  "Metered per event, per host, per seat — surprise overages",
-                  "Proprietary SDKs per language, per vendor",
-                ].map((item) => (
-                  <li
-                    key={item}
-                    className="flex items-start gap-3 text-[14px]"
-                    style={{ color: "var(--fg-2)", lineHeight: 1.5 }}
-                  >
-                    <XCircle
-                      className="mt-0.5 flex-shrink-0"
-                      style={{ color: "var(--crit)" }}
-                      size={18}
-                    />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Column 2 — DIY open-source route */}
-            <div
-              className="rounded-[12px] p-7 relative overflow-hidden"
-              style={{
-                background:
-                  "linear-gradient(180deg, color-mix(in oklab, var(--ink-2) 70%, transparent), color-mix(in oklab, var(--ink-1) 50%, transparent))",
-                border: "1px solid var(--hair)",
-              }}
-            >
-              <Eyebrow>The DIY route</Eyebrow>
-              <h3
-                className="mt-3"
-                style={{
-                  color: "var(--fg-1)",
-                  fontSize: 19,
-                  letterSpacing: "-0.015em",
-                }}
-              >
-                Glue 6 open-source tools together.
-              </h3>
-              <ul className="mt-5 space-y-3">
-                {[
-                  "Prometheus + Grafana + Loki + Tempo + Alertmanager",
-                  "OTel Collector on top + errbit or self-hosted Sentry",
-                  "Cardinality, retention, upgrades — weekly ops work",
-                  "Session replay + source maps? Good luck wiring it.",
-                ].map((item) => (
-                  <li
-                    key={item}
-                    className="flex items-start gap-3 text-[14px]"
-                    style={{ color: "var(--fg-2)", lineHeight: 1.5 }}
-                  >
-                    <XCircle
-                      className="mt-0.5 flex-shrink-0"
-                      style={{ color: "var(--crit)" }}
-                      size={18}
-                    />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Column 3 — With Traceway (highlighted) */}
-            <div
-              className="rounded-[12px] p-7 relative overflow-hidden"
-              style={{
-                background:
-                  "radial-gradient(500px 280px at 90% 0%, color-mix(in oklab, var(--ok) 14%, transparent), transparent 60%), linear-gradient(180deg, var(--ink-3), var(--ink-2))",
-                border:
-                  "1px solid color-mix(in oklab, var(--ok) 30%, var(--hair-2))",
-                boxShadow:
-                  "0 20px 40px -20px color-mix(in oklab, var(--ok) 30%, transparent)",
-              }}
-            >
-              <Eyebrow>With Traceway</Eyebrow>
-              <h3
-                className="mt-3"
-                style={{
-                  color: "var(--fg-0)",
-                  fontSize: 19,
-                  letterSpacing: "-0.015em",
-                }}
-              >
-                One system. One trace ID. Every surface stitched.
-              </h3>
-              <ul className="mt-5 space-y-3">
-                {[
-                  "Logs + traces + metrics + replay + stacks + AI — bundled",
-                  "MIT-licensed — no BSL, no open-core asterisks",
-                  <>
-                    <code>docker compose up -d</code> — 90-second install
-                  </>,
-                  "Click a log, see its span, see the replay, see the exception",
-                ].map((item, i) => (
-                  <li
-                    key={i}
-                    className="flex items-start gap-3 text-[14px]"
-                    style={{ color: "var(--fg-1)", lineHeight: 1.5 }}
-                  >
-                    <CheckCircle2
-                      className="mt-0.5 flex-shrink-0"
-                      style={{ color: "var(--ok)" }}
-                      size={18}
-                    />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* COST — brief, left-aligned */}
-      <section className="py-24" id="cost">
-        <div className="wrap grid gap-14 md:grid-cols-[1fr_1.1fr] items-center">
-          <div className="max-w-3xl">
-            <Eyebrow>Pricing that doesn&apos;t lie to you</Eyebrow>
-            <h2 className="mt-4">
-              A fraction of the cost. <em>None of the asterisks.</em>
-            </h2>
-            <p className="muted mt-4 max-w-[640px]">
-              Traceway runs on ClickHouse columnar storage — 1M daily events
-              compresses to ~2GB/month. Fixed monthly tiers, no per-event
-              gouging, no overage invoices at 2am.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Link href="/cloud" className="btn btn-accent">
-                See pricing
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-              <Link
-                href="https://docs.tracewayapp.com"
-                className="btn btn-ghost"
-              >
-                Self-host for free
-              </Link>
-            </div>
-          </div>
           <Image
             src="/images/home-hero-overview.png"
             alt="Traceway dashboard: endpoints overview with impact scoring"
-            width={1600}
-            height={1000}
-            className="w-full h-auto rounded-[12px]"
-            style={{ border: "1px solid var(--hair)" }}
+            width={2336}
+            height={1532}
+            priority
+            className="w-full h-auto rounded-[12px] border border-hair-2 bg-ink-1"
           />
+
+          <div className="mt-16 grid gap-x-12 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
+            {PILLARS.map((pillar) => (
+              <Link key={pillar.href} href={pillar.href} className="group">
+                <div className="flex items-center gap-2.5">
+                  <pillar.icon className="size-[18px] text-fg-2" aria-hidden />
+                  <h3 className="text-base font-semibold text-fg-0">
+                    {pillar.title}
+                  </h3>
+                  <ArrowRight
+                    className="size-3.5 text-fg-3 opacity-0 -translate-x-1 transition group-hover:opacity-100 group-hover:translate-x-0"
+                    aria-hidden
+                  />
+                </div>
+                <p className="muted mt-2">{pillar.description}</p>
+              </Link>
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* DEPLOY — stats strip + terminal */}
-      <section className="py-24">
-        <div className="wrap grid gap-14 md:grid-cols-[1fr_1.1fr] items-center">
-          <div>
-            <Eyebrow>Your data. Your metal.</Eyebrow>
-            <h2 className="mt-4">
-              Self-host in <em>90 seconds flat.</em>
-            </h2>
-            <p className="muted mt-4 max-w-[460px]">
-              MIT licensed. No BSL. No &ldquo;open core.&rdquo; Every feature
-              Traceway Cloud has, your cluster has. Point an OTLP exporter at it
-              and you&apos;re in business.
-            </p>
-            <StatsStrip
-              stats={[
-                { num: "<em>0s</em>", label: "Config required" },
-                { num: "100%", label: "Feature parity" },
-                { num: "MIT", label: "License" },
+      {/* WHITE BAND: deploy, detect/resolve, cost render on white */}
+      <div className="band-light">
+        {/* DEPLOY: stats strip + terminal */}
+        <section className="py-24">
+          <div className="wrap grid gap-14 md:grid-cols-[10fr_11fr] items-center">
+            <div>
+              <Eyebrow>Your data. Your metal.</Eyebrow>
+              <h2 className="mt-4">
+                Self-host in <em>90 seconds flat.</em>
+              </h2>
+              <p className="muted mt-4 max-w-[460px] text-pretty">
+                MIT licensed, full feature parity with Cloud. Point an OTLP
+                exporter at it and you&apos;re in business.
+              </p>
+              <StatsStrip
+                stats={[
+                  { num: "<em>0s</em>", label: "Config required" },
+                  { num: "100%", label: "Feature parity" },
+                  { num: "MIT", label: "License" },
+                ]}
+              />
+            </div>
+            <Terminal
+              title="bash · traceway.sh · 80×24"
+              lines={[
+                {
+                  ln: "1",
+                  type: "tx",
+                  content: (
+                    <>
+                      <span className="cmd">$</span> git clone
+                      github.com/tracewayapp/traceway
+                    </>
+                  ),
+                },
+                {
+                  ln: "2",
+                  type: "tx",
+                  content: (
+                    <>
+                      <span className="cmd">$</span> cd traceway &amp;&amp; docker
+                      compose up -d
+                    </>
+                  ),
+                },
+                { ln: "3", type: "mute", content: "# pulling images…" },
+                {
+                  ln: "4",
+                  type: "mute",
+                  content: "# starting clickhouse · postgres · collector",
+                },
+                {
+                  ln: "5",
+                  type: "ok",
+                  content: "# ✓ dashboard at http://localhost:3000",
+                },
+                {
+                  ln: "6",
+                  type: "tx",
+                  content: (
+                    <>
+                      <span className="cmd">$</span>
+                    </>
+                  ),
+                },
               ]}
+              showCursor
             />
           </div>
-          <Terminal
-            title="bash · traceway.sh · 80×24"
-            lines={[
-              {
-                ln: "1",
-                type: "tx",
-                content: (
-                  <>
-                    <span className="cmd">$</span> git clone
-                    github.com/tracewayapp/traceway
-                  </>
-                ),
-              },
-              {
-                ln: "2",
-                type: "tx",
-                content: (
-                  <>
-                    <span className="cmd">$</span> cd traceway &amp;&amp; docker
-                    compose up -d
-                  </>
-                ),
-              },
-              { ln: "3", type: "mute", content: "# pulling images…" },
-              {
-                ln: "4",
-                type: "mute",
-                content: "# starting clickhouse · postgres · collector",
-              },
-              {
-                ln: "5",
-                type: "ok",
-                content: "# ✓ dashboard at http://localhost:3000",
-              },
-              {
-                ln: "6",
-                type: "tx",
-                content: (
-                  <>
-                    <span className="cmd">$</span>
-                  </>
-                ),
-              },
-            ]}
-            showCursor
-          />
-        </div>
-      </section>
+        </section>
 
-      {/* DETECT → RESOLVE */}
-      <section className="py-24">
-        <div className="wrap">
-          <div className="two-track-head">
+        {/* DETECT → RESOLVE: two quiet steps, no glow tracks */}
+        <section className="py-24">
+          <div className="wrap">
             <Eyebrow>Why it matters</Eyebrow>
-            <h2 className="mt-3">
-              Customers don&apos;t complain — they quit.{" "}
+            <h2 className="mt-4 max-w-[24ch]">
+              Customers don&apos;t complain, they quit.{" "}
               <em>We stop the bleeding.</em>
             </h2>
-            <p className="muted mt-4 max-w-[640px]">
-              Your users won&apos;t open a ticket when something breaks —
-              they&apos;ll close the tab. Traceway catches the error, the
-              session replay, and the exact failing span before they bounce.
+            <p className="muted mt-4 max-w-[640px] text-pretty">
+              Traceway catches the error, the session replay, and the exact
+              failing span before your users close the tab.
             </p>
+
+            <div className="mt-14 grid gap-12 md:grid-cols-2">
+              <div className="border-t border-hair pt-8">
+                <p className="font-mono text-[0.6875rem] uppercase tracking-[0.14em] text-fg-3">
+                  01 · Detect
+                </p>
+                <h3 className="mt-3">Surface what actually matters.</h3>
+                <p className="muted mt-3 max-w-[440px] text-pretty">
+                  Impact Score ranks every endpoint by five service-level
+                  signals and routes alerts to Slack, GitHub, or webhook. No
+                  false-positive fatigue.
+                </p>
+              </div>
+              <div className="border-t border-hair pt-8">
+                <p className="font-mono text-[0.6875rem] uppercase tracking-[0.14em] text-fg-3">
+                  02 · Resolve
+                </p>
+                <h3 className="mt-3">Walk the full trace. Fix. Ship.</h3>
+                <p className="muted mt-3 max-w-[440px] text-pretty">
+                  Click an exception to see the session replay, the
+                  cross-service trace, and the source-mapped stack.
+                  Context-switching is the bug.
+                </p>
+              </div>
+            </div>
           </div>
-          <TwoTrack
-            detect={{
-              badge: "01 · Detect",
-              title: "Surface what actually matters.",
-              description:
-                "Impact Score ranks every endpoint by five SLIs and bubbles the worst up first. Alerts route to Slack, GitHub, or webhook by threshold — no false-positive fatigue.",
-              items: [
-                "Impact Score across 5 service-level signals",
-                "Per-endpoint slow threshold override",
-                "Slack, GitHub, webhook, email routing",
-                "Regression detection on new releases",
-              ],
-            }}
-            resolve={{
-              badge: "02 · Resolve",
-              title: "Walk the full trace. Fix. Ship.",
-              description:
-                "Click an exception, see the frontend replay, the cross-service trace, the exact span that threw, and the source-mapped stack. Context-switching is the bug.",
-              items: [
-                "Frontend replay linked to backend errors",
-                "Cross-service distributed trace waterfalls",
-                "Source-mapped stack traces (webpack, esbuild, Vite)",
-                "SHA-256 grouped duplicates into one ranked issue",
-              ],
-            }}
-          />
+        </section>
+
+        {/* COST: the closing argument before community */}
+        <section className="py-24">
+          <div className="wrap grid gap-14 md:grid-cols-[10fr_11fr] items-center">
+            <div>
+              <Eyebrow>Pricing that doesn&apos;t lie to you</Eyebrow>
+              <h2 className="mt-4">
+                A fraction of the cost. <em>None of the asterisks.</em>
+              </h2>
+              <p className="muted mt-4 max-w-[460px] text-pretty">
+                ClickHouse columnar storage compresses 1M daily events to ~2
+                GB/month. Fixed monthly tiers, no per-event gouging.
+              </p>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Link href="/cloud" className="btn btn-accent">
+                  See pricing
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+                <Link
+                  href="https://docs.tracewayapp.com"
+                  className="btn btn-ghost"
+                >
+                  Self-host for free
+                </Link>
+              </div>
+            </div>
+            <Image
+              src="/images/performance-endpoints-impact-table.png"
+              alt="Traceway endpoints ranked by impact score"
+              width={2470}
+              height={1548}
+              className="w-full h-auto rounded-[12px] border border-hair bg-ink-1"
+            />
+          </div>
+        </section>
+      </div>
+
+      {/* COMMUNITY: built in the open */}
+      <section className="py-24">
+        <div className="wrap">
+          <Eyebrow>Community</Eyebrow>
+          <h2 className="mt-4">Built in the open.</h2>
+          <p className="muted mt-4 max-w-[640px] text-pretty">
+            Traceway is MIT licensed and developed in public. Star the repo,
+            file issues, and help shape the roadmap.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link
+              href={GITHUB_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-ghost"
+            >
+              <Github className="h-4 w-4" />
+              Star on GitHub
+            </Link>
+            <Link
+              href={DISCORD_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-ghost"
+            >
+              <DiscordIcon className="h-4 w-4" />
+              Join the Discord
+            </Link>
+          </div>
         </div>
       </section>
 

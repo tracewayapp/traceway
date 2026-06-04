@@ -12,7 +12,7 @@ import { getAllPosts, getPostBySlug } from "@/lib/blog";
 type Params = { slug: string };
 
 // Note: "engineering" is reserved by the static /blog/engineering route, so no
-// post may be named engineering.mdx — the static segment would shadow it here.
+// post may be named engineering.mdx; the static segment would shadow it here.
 export function generateStaticParams(): Params[] {
   return getAllPosts().map((p) => ({ slug: p.slug }));
 }
@@ -24,14 +24,14 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const post = getPostBySlug(slug);
-  if (!post) return { title: "Not found — Traceway" };
+  if (!post) return { title: "Not found · Traceway" };
   const description =
     post.description ??
     (post.category === "engineering"
-      ? `${post.title} — from the Traceway engineering blog.`
+      ? `${post.title}, from the Traceway engineering blog.`
       : `Release notes for Traceway ${post.title}.`);
   return {
-    title: `${post.title} — Traceway`,
+    title: `${post.title} · Traceway`,
     description,
   };
 }

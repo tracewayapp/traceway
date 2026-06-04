@@ -5,7 +5,7 @@ import { BlogPostList } from "@/components/blog-post-list";
 import { getPostsByCategory } from "@/lib/blog";
 
 export const metadata: Metadata = {
-  title: "Blog — Traceway",
+  title: "Blog · Traceway",
   description: "Release notes and updates from the Traceway team.",
 };
 

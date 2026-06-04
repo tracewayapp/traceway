@@ -12,7 +12,7 @@ import { AuroraBackground } from "@/components/aurora-background";
 export default function SessionReplayPage() {
   return (
     <main className="relative">
-      <section className="hero hero-product gridbg relative">
+      <section className="hero hero-product relative">
         <AuroraBackground variant="hero" />
         <div className="wrap relative z-10">
           <Chip>
@@ -23,8 +23,8 @@ export default function SessionReplayPage() {
             See exactly <em>what the user did.</em>
           </h1>
           <p className="hero-sub">
-            Traceway captures ~10 seconds of user activity before every error —
-            clicks, scrolls, and form interactions are attached to exceptions
+            Traceway captures ~10 seconds of user activity before every error.
+            Clicks, scrolls, and form interactions are attached to exceptions
             automatically. No manual reproduction needed.
           </p>
           <div className="hero-cta-row">
@@ -47,7 +47,7 @@ export default function SessionReplayPage() {
               See exactly <em>what the user did</em>
             </>
           }
-          description="Traceway captures ~10 seconds of user activity before every error. Clicks, scrolls, and form interactions are attached to exceptions automatically — no manual reproduction needed."
+          description="Traceway captures ~10 seconds of user activity before every error. Clicks, scrolls, and form interactions are attached to exceptions automatically, with no manual reproduction needed."
           bullets={[
             "Pre-error activity capture",
             "Automatic attachment to exceptions",
@@ -89,7 +89,7 @@ export default function SessionReplayPage() {
           <BentoCell
             size="wide"
             icon={Zap}
-            title="Attached to every exception — automatically"
+            title="Attached to every exception, automatically"
             iconColor="var(--a4)"
           >
             <p>
@@ -134,7 +134,7 @@ export default function SessionReplayPage() {
               items={[
                 {
                   q: "What is session replay?",
-                  a: "Session replay records DOM changes in the browser. When an error occurs, Traceway captures approximately 10 seconds of user activity leading up to the exception — clicks, scrolls, form interactions, and page navigations. The replay is attached to the exception automatically, so you can see exactly what the user did without asking them to reproduce the issue.",
+                  a: "Session replay records DOM changes in the browser. When an error occurs, Traceway captures approximately 10 seconds of user activity leading up to the exception: clicks, scrolls, form interactions, and page navigations. The replay is attached to the exception automatically, so you can see exactly what the user did without asking them to reproduce the issue.",
                 },
                 {
                   q: "How does session replay work?",
@@ -142,7 +142,7 @@ export default function SessionReplayPage() {
                 },
                 {
                   q: "Does session replay affect performance?",
-                  a: "The recording adds minimal overhead — it runs a circular DOM buffer in the background and only the last ~10 seconds are retained. Data is sent only when an exception triggers capture, so there's no continuous upload.",
+                  a: "The recording adds minimal overhead. It runs a circular DOM buffer in the background and only the last ~10 seconds are retained. Data is sent only when an exception triggers capture, so there's no continuous upload.",
                 },
                 {
                   q: "What about user privacy?",
@@ -161,8 +161,8 @@ export default function SessionReplayPage() {
                         <code>class=&quot;rr-block&quot;</code> hides the element entirely
                         behind a neutral placeholder, and{" "}
                         <code>class=&quot;rr-ignore&quot;</code> records input interactions
-                        without capturing the typed characters. No SDK configuration needed —
-                        drop the class on the element.
+                        without capturing the typed characters. No SDK configuration needed,
+                        just drop the class on the element.
                       </p>
                     </>
                   ),

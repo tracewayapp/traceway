@@ -11,8 +11,8 @@ import { AuroraBackground } from "@/components/aurora-background";
 export default function StackTracesPage() {
   return (
     <main className="relative">
-      {/* Hero — left aligned */}
-      <section className="hero hero-product gridbg relative">
+      {/* Hero, left aligned */}
+      <section className="hero hero-product relative">
         <AuroraBackground variant="hero" />
         <div className="wrap relative z-10">
           <Chip variant="crit">
@@ -24,7 +24,7 @@ export default function StackTracesPage() {
           </h1>
           <p className="hero-sub">
             Every exception, grouped by a 10-step normalization pipeline and
-            SHA-256 hash — thousands of duplicates collapse into one issue,
+            SHA-256 hash. Thousands of duplicates collapse into one issue,
             paired with the session replay or screen recording that caused it.
           </p>
           <div className="hero-cta-row">
@@ -38,7 +38,7 @@ export default function StackTracesPage() {
         </div>
       </section>
 
-      {/* Every exception grouped and ranked — absorbed from home */}
+      {/* Every exception grouped and ranked, absorbed from home */}
       <section className="wrap">
         <FeatureRow
           eyebrow="Grouping"
@@ -65,7 +65,7 @@ export default function StackTracesPage() {
           eyebrow="Normalization"
           title={
             <>
-              Same bug, <em>same group</em> — every time
+              Same bug, <em>same group</em>, every time
             </>
           }
           description="Traceway normalizes stack traces before hashing, so the same logical error gets grouped together even when runtime values differ. Memory addresses, UUIDs, timestamps, numeric IDs, and ANSI codes are stripped before the hash."
@@ -78,7 +78,7 @@ export default function StackTracesPage() {
         />
       </section>
 
-      {/* Visual context — pair stack traces with session replay */}
+      {/* Visual context: pair stack traces with session replay */}
       <section className="wrap">
         <FeatureRow
           eyebrow="Visual context"
@@ -87,7 +87,7 @@ export default function StackTracesPage() {
               Pair every stack trace with the <em>replay that caused it</em>
             </>
           }
-          description="When a backend exception fires, Traceway attaches the session replay or mobile recording the user was generating at that moment. Open the stack trace — the replay is right there. See what the user did, what the UI looked like, and where the code blew up, in one pane."
+          description="When a backend exception fires, Traceway attaches the session replay or mobile recording the user was generating at that moment. Open the stack trace and the replay is right there. See what the user did, what the UI looked like, and where the code blew up, in one pane."
           bullets={[
             "Web DOM replay linked by trace ID",
             "Flutter and React Native screen recording",
@@ -120,7 +120,7 @@ export default function StackTracesPage() {
                 },
                 {
                   q: "How does automatic issue ranking work?",
-                  a: "Traceway scores each issue based on how often it occurs, how recently it appeared, and how many users are affected. Issues are continuously re-ranked as new data comes in, so regressions and trending problems surface immediately — no manual triage required.",
+                  a: "Traceway scores each issue based on how often it occurs, how recently it appeared, and how many users are affected. Issues are continuously re-ranked as new data comes in, so regressions and trending problems surface immediately, with no manual triage required.",
                 },
                 {
                   q: "How does error grouping handle different environments?",

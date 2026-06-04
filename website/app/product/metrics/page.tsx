@@ -11,7 +11,7 @@ import { AuroraBackground } from "@/components/aurora-background";
 export default function MetricsPage() {
   return (
     <main className="relative">
-      <section className="hero hero-product gridbg relative">
+      <section className="hero hero-product relative">
         <AuroraBackground variant="hero" />
         <div className="wrap relative z-10">
           <Chip variant="ok">
@@ -23,7 +23,7 @@ export default function MetricsPage() {
           </h1>
           <p className="hero-sub">
             Application metrics via OpenTelemetry, automatic server metrics,
-            and flexible widget dashboards — all included, with no per-metric
+            and flexible widget dashboards, all included, with no per-metric
             billing and no surprise overages.
           </p>
           <div className="hero-cta-row">
@@ -62,7 +62,7 @@ export default function MetricsPage() {
         <FeatureRow
           reverse
           eyebrow="Host metrics"
-          title="CPU, memory, disk, network — one line to install"
+          title="CPU, memory, disk, network. One line to install"
           description={
             <>
               The <Link href="https://github.com/tracewayapp/traceway-otel-agent" style={{ color: "var(--a2)", textDecoration: "underline" }}>Traceway OTel Agent</Link> is a pre-built OpenTelemetry Collector distribution that scrapes host metrics every 60 seconds and ships them to your project over OTLP/HTTP. Install with a single curl, no config file required.
@@ -72,7 +72,7 @@ export default function MetricsPage() {
             "One-line install on Linux (systemd), macOS (launchd), or Windows",
             "CPU, memory, load, disk, filesystem, network",
             "60-second collection interval via hostmetricsreceiver",
-            "Runs alongside your apps — no code changes",
+            "Runs alongside your apps, no code changes",
             "Also tails any log files you point it at (opt-in)",
           ]}
           image={{ src: "/images/metrics-server-runtime.png", alt: "Server metrics dashboard" }}
@@ -124,7 +124,7 @@ export default function MetricsPage() {
                     <>
                       <p>
                         Point any OpenTelemetry SDK at{" "}
-                        <code>/api/otel/v1/metrics</code> — OTLP/HTTP and
+                        <code>/api/otel/v1/metrics</code>. OTLP/HTTP and
                         OTLP/gRPC are both supported natively. Counter, Gauge,
                         and Histogram metric types are ingested as-is, and
                         dimensional tags become facet filters in the dashboard.
@@ -156,7 +156,7 @@ export default function MetricsPage() {
                         <code>TRACEWAY_PROCESS_NAMES</code>.
                       </p>
                       <p>
-                        No config file to write — you set{" "}
+                        No config file to write. You set{" "}
                         <code>TRACEWAY_TOKEN</code> and the installer wires up
                         systemd/launchd/Windows service for you. In-process Go
                         runtime metrics (goroutines, heap objects, GC) are
@@ -167,7 +167,7 @@ export default function MetricsPage() {
                 },
                 {
                   q: "Do custom metrics count toward my event limit?",
-                  a: "No. Metrics are included at no additional event cost — only issues, HTTP requests, and background tasks count toward your event limit. This means you can emit thousands of custom metrics without worrying about billing.",
+                  a: "No. Metrics are included at no additional event cost. Only issues, HTTP requests, and background tasks count toward your event limit. This means you can emit thousands of custom metrics without worrying about billing.",
                 },
                 {
                   q: "Can I query metrics by tag or dimension?",

@@ -181,6 +181,15 @@ type ExceptionDetails struct {
 	AppVersion string
 	ServerName string
 	RecordedAt time.Time
+	TraceType  string
+	TraceName  string
+}
+
+func (d ExceptionDetails) endpointForMessage() string {
+	if d.TraceType == "endpoint" {
+		return d.TraceName
+	}
+	return ""
 }
 
 func buildNewErrorMessage(details ExceptionDetails, projectName string) Message {
@@ -189,6 +198,7 @@ func buildNewErrorMessage(details ExceptionDetails, projectName string) Message 
 		Body:     buildExceptionBody("A new error has been detected: "+details.ErrorType, details),
 		Severity: SeverityCritical,
 		URL:      fmt.Sprintf("/issues/%s", details.Hash),
+		Endpoint: details.endpointForMessage(),
 	}
 }
 
@@ -198,6 +208,7 @@ func buildErrorRegressionMessage(details ExceptionDetails, projectName string) M
 		Body:     buildExceptionBody("A previously resolved error has reappeared: "+details.ErrorType, details),
 		Severity: SeverityCritical,
 		URL:      fmt.Sprintf("/issues/%s", details.Hash),
+		Endpoint: details.endpointForMessage(),
 	}
 }
 
@@ -220,6 +231,16 @@ func buildExceptionBody(headline string, d ExceptionDetails) string {
 	}
 	if d.ServerName != "" {
 		fmt.Fprintf(&b, "\nServer: %s", d.ServerName)
+	}
+	if d.TraceName != "" {
+		switch d.TraceType {
+		case "task":
+			fmt.Fprintf(&b, "\nTask: %s", d.TraceName)
+		case "ai_trace":
+			fmt.Fprintf(&b, "\nAI trace: %s", d.TraceName)
+		default:
+			fmt.Fprintf(&b, "\nEndpoint: %s", d.TraceName)
+		}
 	}
 
 	if d.StackTrace != "" {

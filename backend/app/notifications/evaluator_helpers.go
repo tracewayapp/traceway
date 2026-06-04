@@ -112,6 +112,44 @@ func extractErrorType(stackTrace string) string {
 	return "Unknown Error"
 }
 
+func resolveTraceName(ctx context.Context, projectId uuid.UUID, traceId *uuid.UUID, traceType string) string {
+	if traceId == nil {
+		return ""
+	}
+	switch traceType {
+	case "task":
+		task, err := repositories.TaskRepository.FindById(ctx, projectId, *traceId)
+		if err != nil {
+			traceway.CaptureException(fmt.Errorf("failed to resolve task name for notification: %w", err))
+			return ""
+		}
+		if task == nil {
+			return ""
+		}
+		return task.TaskName
+	case "ai_trace":
+		trace, err := repositories.AiTraceRepository.FindById(ctx, projectId, *traceId)
+		if err != nil {
+			traceway.CaptureException(fmt.Errorf("failed to resolve ai trace name for notification: %w", err))
+			return ""
+		}
+		if trace == nil {
+			return ""
+		}
+		return trace.TraceName
+	default:
+		endpoint, err := repositories.EndpointRepository.FindById(ctx, projectId, *traceId)
+		if err != nil {
+			traceway.CaptureException(fmt.Errorf("failed to resolve endpoint name for notification: %w", err))
+			return ""
+		}
+		if endpoint == nil {
+			return ""
+		}
+		return endpoint.Endpoint
+	}
+}
+
 func getProjectName(projectId uuid.UUID) string {
 	project, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.Project, error) {
 		return repositories.ProjectRepository.FindById(tx, projectId)

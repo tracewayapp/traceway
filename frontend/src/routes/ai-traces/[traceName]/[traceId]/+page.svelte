@@ -12,6 +12,8 @@
 	import PageHeader from '$lib/components/issues/page-header.svelte';
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { resolve } from '$app/paths';
+	import TraceLogsPanel from '$lib/components/trace-logs/trace-logs-panel.svelte';
+	import { traceIdUuidToHex } from '$lib/utils/span-id';
 
 	type AiTrace = {
 		id: string;
@@ -36,6 +38,7 @@
 		serverName: string;
 		appVersion: string;
 		attributes: Record<string, string> | null;
+		distributedTraceId?: string;
 	};
 
 	type AiTraceDetailResponse = {
@@ -398,5 +401,14 @@
 				</Card.Content>
 			</Card.Root>
 		{/if}
+
+		<TraceLogsPanel
+			projectId={projectsState.currentProjectId ?? ''}
+			traceId={traceIdUuidToHex(trace.id)}
+			distributedTraceId={trace.distributedTraceId ?? null}
+			spans={[]}
+			rootSpan={{ id: trace.id, name: trace.traceName }}
+			traceRecordedAt={trace.recordedAt}
+		/>
 	{/if}
 </div>

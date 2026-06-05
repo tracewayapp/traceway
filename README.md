@@ -86,7 +86,7 @@ func main() {
     go tracewaybackend.Run(
         tracewaybackend.WithPort(8082),
         tracewaybackend.WithDefaultUser("admin@localhost.com", "admin"),
-        tracewaybackend.WithDefaultProject("My App", "go", "dev-token"),
+        tracewaybackend.WithDefaultProject("My App", "opentelemetry", "dev-token"),
     )
 
     // ... start your app, point its OTel exporter to http://localhost:8082/api/otel/v1/traces

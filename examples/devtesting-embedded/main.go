@@ -134,9 +134,9 @@ func main() {
 		tracewaybackend.WithSQLitePath("./storage/traceway.db"),
 		tracewaybackend.WithPort(8082),
 		tracewaybackend.WithDefaultUser("admin@localhost.com", "admin"),
-		tracewaybackend.WithDefaultProject("Backend API", "go", backendToken),
+		tracewaybackend.WithDefaultProject("Backend API", "opentelemetry", backendToken),
 		tracewaybackend.WithDefaultProject("jQuery Frontend", "jquery", frontendToken),
-		tracewaybackend.WithDefaultProject("Traceway Monitoring", "go", monitoringToken),
+		tracewaybackend.WithDefaultProject("Traceway Monitoring", "gin", monitoringToken),
 		tracewaybackend.WithMonitoringURL(monitoringToken+"@http://localhost:8082/api/report"),
 	)
 

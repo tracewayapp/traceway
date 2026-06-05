@@ -23,7 +23,7 @@ func main() {
 	go tracewaybackend.Run(
 		tracewaybackend.WithPort(8082),
 		tracewaybackend.WithDefaultUser("admin@localhost.com", "admin"),
-		tracewaybackend.WithDefaultProject("Example App", "go", tracewayToken),
+		tracewaybackend.WithDefaultProject("Example App", "gin", tracewayToken),
 		tracewaybackend.DisableLogging(),
 	)
 

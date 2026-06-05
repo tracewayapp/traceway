@@ -39,7 +39,7 @@ func main() {
 	go tracewaybackend.Run(
 		tracewaybackend.WithPort(8082),
 		tracewaybackend.WithDefaultUser("admin@localhost.com", "admin"),
-		tracewaybackend.WithDefaultProject("My App", "go", "dev-token"),
+		tracewaybackend.WithDefaultProject("My App", "opentelemetry", "dev-token"),
 	)
 
 	router := gin.Default()
@@ -85,7 +85,7 @@ func main() {
 	go tracewaybackend.Run(
 		tracewaybackend.WithPort(8082),
 		tracewaybackend.WithDefaultUser("admin@localhost.com", "admin"),
-		tracewaybackend.WithDefaultProject("My App", "go", tracewayToken),
+		tracewaybackend.WithDefaultProject("My App", "opentelemetry", tracewayToken),
 	)
 
 	shutdown := initTracer()
@@ -160,8 +160,8 @@ All options are passed to `tracewaybackend.Run()`. When any options are provided
 go tracewaybackend.Run(
 	tracewaybackend.WithPort(8082),
 	tracewaybackend.WithDefaultUser("admin@localhost.com", "admin"),
-	tracewaybackend.WithDefaultProject("Backend", "go", "backend-token"),
-	tracewaybackend.WithDefaultProject("Frontend", "sveltekit", "frontend-token"),
+	tracewaybackend.WithDefaultProject("Backend", "opentelemetry", "backend-token"),
+	tracewaybackend.WithDefaultProject("Frontend", "svelte", "frontend-token"),
 )
 ```
 
@@ -173,7 +173,7 @@ By default, the database is **in-memory** — all data is lost when your applica
 tracewaybackend.Run(
 	tracewaybackend.WithSQLitePath("./traceway.db"),
 	tracewaybackend.WithDefaultUser("admin@localhost.com", "admin"),
-	tracewaybackend.WithDefaultProject("My App", "go", "dev-token"),
+	tracewaybackend.WithDefaultProject("My App", "opentelemetry", "dev-token"),
 )
 ```
 
@@ -190,7 +190,7 @@ if os.Getenv("ENV") != "production" {
 	go tracewaybackend.Run(
 		tracewaybackend.WithPort(8082),
 		tracewaybackend.WithDefaultUser("admin@localhost.com", "admin"),
-		tracewaybackend.WithDefaultProject("My App", "go", "dev-token"),
+		tracewaybackend.WithDefaultProject("My App", "opentelemetry", "dev-token"),
 	)
 }
 ```

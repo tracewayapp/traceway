@@ -53,6 +53,9 @@
 
 	let activeTab = $state<'this-trace' | 'all-distributed'>('this-trace');
 
+	const tabTriggerClass =
+		'rounded-none border-b-2 border-transparent bg-transparent px-0 pb-2 pt-0 text-sm font-medium text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none';
+
 	// This-trace data
 	let logs = $state<LogRecord[]>([]);
 	let loading = $state(true);
@@ -166,31 +169,23 @@
 </script>
 
 <Card.Root class="gap-0 pb-0 overflow-hidden">
-	<Card.Header>
+	<Card.Header class={distributedTraceId ? '' : 'pb-4'}>
 		<Card.Title>Logs</Card.Title>
 	</Card.Header>
 	<Card.Content class="p-0">
 		<Tabs.Root value={activeTab} onValueChange={onTabChange}>
-			<Tabs.List
-				class="h-auto w-full justify-start gap-4 rounded-none border-b bg-transparent p-0 pl-6 pt-0 pb-2"
-			>
-				<Tabs.Trigger
-					value="this-trace"
-					class="rounded-none border-b-2 border-transparent bg-transparent px-0 pb-2 pt-0 text-sm font-medium text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+			{#if distributedTraceId}
+				<Tabs.List
+					class="h-auto w-full justify-start gap-4 rounded-none border-b bg-transparent p-0 pl-6 pt-0 pb-2"
 				>
-					This Trace
-				</Tabs.Trigger>
-				{#if distributedTraceId}
-					<Tabs.Trigger
-						value="all-distributed"
-						class="rounded-none border-b-2 border-transparent bg-transparent px-0 pb-2 pt-0 text-sm font-medium text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
-					>
+					<Tabs.Trigger value="this-trace" class={tabTriggerClass}>This Trace</Tabs.Trigger>
+					<Tabs.Trigger value="all-distributed" class={tabTriggerClass}>
 						All Distributed Traces
 					</Tabs.Trigger>
-				{/if}
-			</Tabs.List>
+				</Tabs.List>
+			{/if}
 
-			<Tabs.Content value="this-trace" class="mt-0">
+			<Tabs.Content value="this-trace" class={distributedTraceId ? 'mt-0' : 'mt-0 border-t'}>
 				{#if loading}
 					<div class="flex items-center justify-center py-6">
 						<LoadingCircle size="lg" />

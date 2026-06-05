@@ -177,6 +177,14 @@ func (p projectController) UpdateProject(c *gin.Context) {
 				c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Healthcheck paths must start with / (a leading or trailing * is allowed as a wildcard)"})
 				return
 			}
+			if strings.Contains(base, "*") {
+				c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Wildcards are only allowed as a single leading or trailing *"})
+				return
+			}
+			if base == "/" && base != path {
+				c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Wildcard healthcheck paths need at least one character besides /"})
+				return
+			}
 			cleaned = append(cleaned, path)
 		}
 		healthcheckPaths = &cleaned

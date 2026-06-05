@@ -1,0 +1,52 @@
+# Healthchecks
+
+Healthcheck endpoints get hit constantly: Kubernetes probes every few seconds, load balancer target checks, uptime monitors. Storing every successful probe wastes events on traffic that carries no information. Traceway detects healthcheck endpoints at ingestion and **only stores requests that fail**.
+
+## How It Works
+
+When a request arrives on either ingestion path (the native SDK `/api/report` endpoint or OTLP traces), Traceway checks three things:
+
+1. The method is `GET` or `HEAD`
+2. The path matches a known healthcheck pattern (built-in or custom)
+3. The response status is below 400
+
+If all three are true, the request is dropped before it is written to the database. Its child spans are dropped with it. Requests with status 400 or higher are always stored, so a failing healthcheck still shows up in your endpoints list and can trigger alerts.
+
+Exceptions are never dropped. If a healthcheck request returns 200 but captures an exception, both the exception and its trace are kept so the error remains fully inspectable.
+
+## Built-In Paths
+
+Path matching is case-insensitive and ignores trailing slashes. The built-in list covers the common conventions:
+
+| Pattern | Used by |
+|---------|---------|
+| `/health`, `/healthcheck`, `/health-check`, `/health_check` | General convention, ASP.NET Core |
+| `/healthz`, `/livez`, `/readyz` | Kubernetes probes |
+| `/live`, `/ready`, `/alive` | Container orchestrators, lightship |
+| `/ping`, `/status`, `/heartbeat` | Load balancers, uptime monitors |
+| `/up` | Rails 7.1+, Laravel 11+ |
+| `/ht` | Django (django-health-check) |
+| `/actuator/health` and sub-paths | Spring Boot Actuator |
+| any path ending in `/health` | Catches prefixed variants like `/api/health` |
+
+## Custom Paths
+
+If your healthcheck lives somewhere else, add custom paths in the project settings. Each entry is one path, with optional wildcards:
+
+| Pattern | Matches |
+|---------|---------|
+| `/internal/probe` | Exactly `/internal/probe` |
+| `/checks/*` | Any path starting with `/checks/` |
+| `*/liveness` | Any path ending in `/liveness` |
+
+## Configuration
+
+The feature is **enabled by default** for every project. To change it, open the project switcher, edit the project, and use the **Drop healthy healthcheck requests** toggle. The same form accepts custom paths (one per line) and shows the full built-in list.
+
+Turning the toggle off stores all healthcheck traffic again. The setting takes effect immediately, no restart required.
+
+## Dashboard Behavior
+
+Endpoints detected as healthchecks show a **Healthcheck** badge in the endpoints list and on the endpoint detail page. Because only failures are stored, the request count and error rate for these endpoints reflect failures only. A healthcheck endpoint showing a 100% error rate means "every stored request failed", which is expected, since healthy requests are not stored at all.
+
+Dropped requests are counted in the `traceway.ingest.healthchecks_dropped` self-monitoring metric, tagged with the ingestion signal (`native` or `traces`), so you can verify the filter is working.

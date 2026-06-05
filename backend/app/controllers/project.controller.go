@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
@@ -59,8 +60,10 @@ type CreateProjectRequest struct {
 }
 
 type UpdateProjectRequest struct {
-	Name      string `json:"name" binding:"required"`
-	Framework string `json:"framework" binding:"required"`
+	Name                    string    `json:"name" binding:"required"`
+	Framework               string    `json:"framework" binding:"required"`
+	DropHealthyHealthchecks *bool     `json:"dropHealthyHealthchecks"`
+	HealthcheckPaths        *[]string `json:"healthcheckPaths"`
 }
 
 type DeleteProjectRequest struct {
@@ -153,6 +156,32 @@ func (p projectController) UpdateProject(c *gin.Context) {
 		return
 	}
 
+	var healthcheckPaths *[]string
+	if request.HealthcheckPaths != nil {
+		if len(*request.HealthcheckPaths) > 50 {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "At most 50 healthcheck paths are allowed"})
+			return
+		}
+		cleaned := make([]string, 0, len(*request.HealthcheckPaths))
+		for _, path := range *request.HealthcheckPaths {
+			path = strings.TrimSpace(path)
+			if path == "" {
+				continue
+			}
+			if utf8.RuneCountInString(path) > 200 {
+				c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Healthcheck paths must be at most 200 characters"})
+				return
+			}
+			base := strings.TrimSuffix(strings.TrimPrefix(path, "*"), "*")
+			if !strings.HasPrefix(base, "/") {
+				c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Healthcheck paths must start with / (a leading or trailing * is allowed as a wildcard)"})
+				return
+			}
+			cleaned = append(cleaned, path)
+		}
+		healthcheckPaths = &cleaned
+	}
+
 	projectId, err := middleware.GetProjectId(c)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
@@ -160,7 +189,7 @@ func (p projectController) UpdateProject(c *gin.Context) {
 	}
 
 	project, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.Project, error) {
-		return repositories.ProjectRepository.Update(tx, projectId, request.Name, request.Framework)
+		return repositories.ProjectRepository.Update(tx, projectId, request.Name, request.Framework, request.DropHealthyHealthchecks, healthcheckPaths)
 	})
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error updating project: %w", err))

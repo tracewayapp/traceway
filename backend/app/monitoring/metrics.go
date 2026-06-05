@@ -39,6 +39,12 @@ func RecordIngestBatch(signal, table string, convertMs, insertMs float64, size, 
 	traceway.CaptureMetricWithTags("traceway.ingest.batch.bytes", float64(bytes), tags)
 }
 
+func RecordHealthchecksDropped(signal string, count int) {
+	traceway.CaptureMetricWithTags("traceway.ingest.healthchecks_dropped", float64(count), map[string]string{
+		"signal": signal,
+	})
+}
+
 func RecordRateLimited(orgID int) {
 	traceway.CaptureMetricWithTags("traceway.ingest.rate_limited", 1, map[string]string{
 		"org_id": strconv.Itoa(orgID),

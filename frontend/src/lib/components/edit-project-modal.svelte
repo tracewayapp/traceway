@@ -4,6 +4,8 @@
     import { Button } from "$lib/components/ui/button";
     import { Input } from "$lib/components/ui/input";
     import { Label } from "$lib/components/ui/label";
+    import { Checkbox } from "$lib/components/ui/checkbox";
+    import { DEFAULT_HEALTHCHECK_PATHS } from '$lib/utils/healthcheck';
     import { projectsState, type Project, type Framework } from '$lib/state/projects.svelte';
     import { Check, Trash2, Copy, CircleAlert } from 'lucide-svelte';
     import FrameworkCombobox from './framework-combobox.svelte';
@@ -20,6 +22,9 @@
 
     let projectName = $state('');
     let selectedFramework = $state<Framework>('gin');
+    let dropHealthyHealthchecks = $state(true);
+    let healthcheckPathsText = $state('');
+    let showDefaultHealthcheckPaths = $state(false);
     let loading = $state(false);
     let error = $state('');
     let showDeleteConfirm = $state(false);
@@ -31,6 +36,8 @@
         if (open && project) {
             projectName = project.name;
             selectedFramework = project.framework;
+            dropHealthyHealthchecks = project.dropHealthyHealthchecks ?? true;
+            healthcheckPathsText = (project.healthcheckPaths ?? []).join('\n');
             error = '';
         }
     });
@@ -64,8 +71,13 @@
         loading = true;
         error = '';
 
+        const healthcheckPaths = healthcheckPathsText
+            .split('\n')
+            .map(p => p.trim())
+            .filter(p => p.length > 0);
+
         try {
-            await projectsState.updateProject(project.id, projectName.trim(), selectedFramework);
+            await projectsState.updateProject(project.id, projectName.trim(), selectedFramework, dropHealthyHealthchecks, healthcheckPaths);
             toast.success('Successfully updated the project', { position: 'top-center' });
             onOpenChange(false);
         } catch (err: any) {
@@ -129,6 +141,55 @@
                 <p class="text-xs text-muted-foreground">
                     Select your framework for tailored integration code
                 </p>
+            </div>
+
+            <div class="space-y-3 border-t pt-4">
+                <div class="flex items-start gap-2">
+                    <Checkbox
+                        checked={dropHealthyHealthchecks}
+                        onCheckedChange={(checked) => dropHealthyHealthchecks = checked === true}
+                        disabled={loading}
+                        class="mt-0.5"
+                        aria-label="Drop healthy healthcheck requests"
+                    />
+                    <div class="space-y-1">
+                        <Label class="cursor-pointer" onclick={() => { if (!loading) dropHealthyHealthchecks = !dropHealthyHealthchecks; }}>Drop healthy healthcheck requests</Label>
+                        <p class="text-xs text-muted-foreground">
+                            Requests to common healthcheck endpoints (GET/HEAD) are only stored when they fail with status 400 or higher.
+                            <button
+                                type="button"
+                                class="underline hover:text-foreground"
+                                onclick={() => showDefaultHealthcheckPaths = !showDefaultHealthcheckPaths}
+                            >
+                                {showDefaultHealthcheckPaths ? 'Hide' : 'Show'} built-in paths
+                            </button>
+                        </p>
+                        {#if showDefaultHealthcheckPaths}
+                            <div class="flex flex-wrap gap-1 pt-1">
+                                {#each DEFAULT_HEALTHCHECK_PATHS as path}
+                                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs">{path}</code>
+                                {/each}
+                            </div>
+                        {/if}
+                    </div>
+                </div>
+
+                {#if dropHealthyHealthchecks}
+                    <div class="space-y-2">
+                        <Label for="edit-healthcheck-paths">Additional healthcheck paths</Label>
+                        <textarea
+                            id="edit-healthcheck-paths"
+                            bind:value={healthcheckPathsText}
+                            disabled={loading}
+                            rows="3"
+                            placeholder={"/internal/probe\n/checks/*"}
+                            class="border-input bg-background dark:bg-input/30 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 flex w-full rounded-md border px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
+                        ></textarea>
+                        <p class="text-xs text-muted-foreground">
+                            One path per line. Use a trailing * to match a prefix or a leading * to match a suffix.
+                        </p>
+                    </div>
+                {/if}
             </div>
 
             {#if error}

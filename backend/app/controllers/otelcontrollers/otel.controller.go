@@ -34,16 +34,21 @@ func (o otelController) ExportTraces(c *gin.Context) {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("UseClientAuth middleware must be applied: %w", err))
 		return
 	}
-	if project, exists := c.Get(middleware.ProjectContextKey); exists {
-		if p, ok := project.(*models.Project); ok && p.OrganizationId != nil {
-			if attrs := traceway.GetAttributesFromContext(c); attrs != nil {
-				attrs.SetTag("organization_id", fmt.Sprintf("%d", *p.OrganizationId))
-			}
-			if !hooks.CanReport(*p.OrganizationId) {
-				monitoring.RecordRateLimited(*p.OrganizationId)
-				c.AbortWithStatus(http.StatusTooManyRequests)
-				return
-			}
+	var project *models.Project
+	if projectAsAny, exists := c.Get(middleware.ProjectContextKey); exists {
+		if p, ok := projectAsAny.(*models.Project); ok {
+			project = p
+		}
+	}
+
+	if project != nil && project.OrganizationId != nil {
+		if attrs := traceway.GetAttributesFromContext(c); attrs != nil {
+			attrs.SetTag("organization_id", fmt.Sprintf("%d", *project.OrganizationId))
+		}
+		if !hooks.CanReport(*project.OrganizationId) {
+			monitoring.RecordRateLimited(*project.OrganizationId)
+			c.AbortWithStatus(http.StatusTooManyRequests)
+			return
 		}
 	}
 	req, bodyBytes, err := decodeTraceRequest(c)
@@ -54,6 +59,13 @@ func (o otelController) ExportTraces(c *gin.Context) {
 
 	convertStart := time.Now()
 	endpoints, tasks, spans, exceptions, aiTraces, aiConversations := convertTraces(projectId, req)
+
+	var droppedHealthchecks int
+	endpoints, spans, droppedHealthchecks = services.FilterHealthchecks(project, endpoints, spans, exceptions)
+	if droppedHealthchecks > 0 {
+		monitoring.RecordHealthchecksDropped(monitoring.SignalTraces, droppedHealthchecks)
+	}
+
 	convertMs := msSince(convertStart)
 
 	insertStart := time.Now()
@@ -111,17 +123,15 @@ func (o otelController) ExportTraces(c *gin.Context) {
 		exceptionHashes = append(exceptionHashes, ex.ExceptionHash)
 	}
 
-	if project, exists := c.Get(middleware.ProjectContextKey); exists {
-		if p, ok := project.(*models.Project); ok && p.OrganizationId != nil {
-			hooks.BroadcastReport(hooks.ReportEvent{
-				OrganizationId:  *p.OrganizationId,
-				ProjectId:       projectId,
-				EndpointCount:   len(endpoints),
-				ErrorCount:      len(exceptions),
-				TaskCount:       len(tasks),
-				ExceptionHashes: exceptionHashes,
-			})
-		}
+	if project != nil && project.OrganizationId != nil {
+		hooks.BroadcastReport(hooks.ReportEvent{
+			OrganizationId:  *project.OrganizationId,
+			ProjectId:       projectId,
+			EndpointCount:   len(endpoints),
+			ErrorCount:      len(exceptions),
+			TaskCount:       len(tasks),
+			ExceptionHashes: exceptionHashes,
+		})
 	}
 
 	writeTraceResponse(c)

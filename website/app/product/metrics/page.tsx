@@ -38,66 +38,69 @@ export default function MetricsPage() {
       </section>
 
       {/* Application metrics */}
-      <section className="wrap">
-        <FeatureRow
-          eyebrow="Application metrics"
-          title={
-            <>
-              Application metrics <em>via OpenTelemetry</em>
-            </>
-          }
-          description="Emit Counter, Gauge, and Histogram metrics through the OpenTelemetry SDK you already have. Traceway ingests OTLP natively, preserves units and dimensional tags, and bills nothing per metric."
-          bullets={[
-            "OTLP/HTTP and OTLP/gRPC ingestion",
-            "Counter / Gauge / Histogram preserved natively",
-            "Dimensional tags become facet filters",
-            "No per-metric billing",
-          ]}
-          image={{ src: "/images/metrics-application-dashboard.png", alt: "Application metrics dashboard" }}
-        />
-      </section>
+      {/* WHITE BAND: feature sections render on white */}
+      <div className="band-light">
+        <section className="wrap">
+          <FeatureRow
+            eyebrow="Application metrics"
+            title={
+              <>
+                Application metrics <em>via OpenTelemetry</em>
+              </>
+            }
+            description="Emit Counter, Gauge, and Histogram metrics through the OpenTelemetry SDK you already have. Traceway ingests OTLP natively, preserves units and dimensional tags, and bills nothing per metric."
+            bullets={[
+              "OTLP/HTTP and OTLP/gRPC ingestion",
+              "Counter / Gauge / Histogram preserved natively",
+              "Dimensional tags become facet filters",
+              "No per-metric billing",
+            ]}
+            image={{ src: "/images/metrics-application-dashboard.png", alt: "Application metrics dashboard" }}
+          />
+        </section>
 
-      {/* Server metrics */}
-      <section className="wrap">
-        <FeatureRow
-          reverse
-          eyebrow="Host metrics"
-          title="CPU, memory, disk, network. One line to install"
-          description={
-            <>
-              The <Link href="https://github.com/tracewayapp/traceway-otel-agent" style={{ color: "var(--a2)", textDecoration: "underline" }}>Traceway OTel Agent</Link> is a pre-built OpenTelemetry Collector distribution that scrapes host metrics every 60 seconds and ships them to your project over OTLP/HTTP. Install with a single curl, no config file required.
-            </>
-          }
-          bullets={[
-            "One-line install on Linux (systemd), macOS (launchd), or Windows",
-            "CPU, memory, load, disk, filesystem, network",
-            "60-second collection interval via hostmetricsreceiver",
-            "Runs alongside your apps, no code changes",
-            "Also tails any log files you point it at (opt-in)",
-          ]}
-          image={{ src: "/images/metrics-server-runtime.png", alt: "Server metrics dashboard" }}
-        />
-      </section>
+        {/* Server metrics */}
+        <section className="wrap">
+          <FeatureRow
+            reverse
+            eyebrow="Host metrics"
+            title="CPU, memory, disk, network. One line to install"
+            description={
+              <>
+                The <Link href="https://github.com/tracewayapp/traceway-otel-agent" style={{ color: "var(--a2)", textDecoration: "underline" }}>Traceway OTel Agent</Link> is a pre-built OpenTelemetry Collector distribution that scrapes host metrics every 60 seconds and ships them to your project over OTLP/HTTP. Install with a single curl, no config file required.
+              </>
+            }
+            bullets={[
+              "One-line install on Linux (systemd), macOS (launchd), or Windows",
+              "CPU, memory, load, disk, filesystem, network",
+              "60-second collection interval via hostmetricsreceiver",
+              "Runs alongside your apps, no code changes",
+              "Also tails any log files you point it at (opt-in)",
+            ]}
+            image={{ src: "/images/metrics-server-runtime.png", alt: "Server metrics dashboard" }}
+          />
+        </section>
 
-      {/* Widget groups */}
-      <section className="wrap">
-        <FeatureRow
-          eyebrow="Widget groups"
-          title={
-            <>
-              Dashboards that match <em>your team&apos;s mental model</em>
-            </>
-          }
-          description="Pick metrics, pick charts, group them into widget pages. No query language required; filters, tag breakdowns, and rollups are all declarative."
-          bullets={[
-            "Drag-to-add charts",
-            "Group widgets by feature, service, or team",
-            "Per-metric filters and rollups",
-            "Set default dashboards per organization",
-          ]}
-          image={{ src: "/images/metrics-widget-groups.png", alt: "Widget groups dashboard" }}
-        />
-      </section>
+        {/* Widget groups */}
+        <section className="wrap">
+          <FeatureRow
+            eyebrow="Widget groups"
+            title={
+              <>
+                Dashboards that match <em>your team&apos;s mental model</em>
+              </>
+            }
+            description="Pick metrics, pick charts, group them into widget pages. No query language required; filters, tag breakdowns, and rollups are all declarative."
+            bullets={[
+              "Drag-to-add charts",
+              "Group widgets by feature, service, or team",
+              "Per-metric filters and rollups",
+              "Set default dashboards per organization",
+            ]}
+            image={{ src: "/images/metrics-widget-groups.png", alt: "Widget groups dashboard" }}
+          />
+        </section>
+      </div>
 
       <FinalCTA
         title={

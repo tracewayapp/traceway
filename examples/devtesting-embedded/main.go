@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"math/rand/v2"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -63,7 +64,7 @@ func (s *otelService) shutdown(ctx context.Context) {
 	_ = s.lp.Shutdown(ctx)
 }
 
-func initOtelService(ctx context.Context, serviceName, token string) (*otelService, error) {
+func initOtelService(ctx context.Context, serviceName, token string, extraResourceAttrs ...attribute.KeyValue) (*otelService, error) {
 	headers := map[string]string{"Authorization": "Bearer " + token}
 
 	traceExporter, err := otlptracehttp.New(ctx,
@@ -87,7 +88,7 @@ func initOtelService(ctx context.Context, serviceName, token string) (*otelServi
 	}
 
 	res, err := resource.New(ctx,
-		resource.WithAttributes(semconv.ServiceName(serviceName)),
+		resource.WithAttributes(append([]attribute.KeyValue{semconv.ServiceName(serviceName)}, extraResourceAttrs...)...),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("%s resource: %w", serviceName, err)
@@ -159,6 +160,17 @@ func main() {
 		panic(err)
 	}
 	defer workerSvc.shutdown(ctx)
+
+	attrTestSvc, err := initOtelService(ctx, "attr-test-service", backendToken,
+		attribute.String("os.description", "7.0.11-orbstack-00360-gc9bc4d96ac70 #1 SMP PREEMPT_DYNAMIC Thu Jun 4 16:40:25 UTC 2026 aarch64 GNU/Linux"),
+		attribute.String("os.version", "#1 SMP PREEMPT_DYNAMIC Thu Jun 4 16:40:25 UTC 2026"),
+		attribute.String("host.id", strings.Repeat("f3b47b65006f", 6)),
+		attribute.String("process.command_line", "/usr/local/sbin/php-fpm --nodaemonize --fpm-config /usr/local/etc/php-fpm.d/www.conf --force-stderr"),
+	)
+	if err != nil {
+		panic(err)
+	}
+	defer attrTestSvc.shutdown(ctx)
 
 	router := gin.Default()
 
@@ -306,6 +318,29 @@ func main() {
 		})
 	})
 
+	router.GET("/api/test-long-attributes", func(c *gin.Context) {
+		ctx := c.Request.Context()
+		longToken := strings.Repeat("0646a849a52752904984ab92b2a39f1c", 12)
+		span := trace.SpanFromContext(ctx)
+		span.SetAttributes(
+			attribute.String("request.signature", longToken),
+			attribute.String("http.user_agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"),
+		)
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
+	router.GET("/api/test-long-log-attributes", func(c *gin.Context) {
+		ctx := c.Request.Context()
+		longToken := strings.Repeat("0646a849a52752904984ab92b2a39f1c", 12)
+		attrTestSvc.log(ctx, otellog.SeverityDebug, "DEBUG",
+			"log line with long attributes; unbroken debug context: "+longToken,
+			otellog.String("auth.token", longToken),
+			otellog.String("stack.preview", "goroutine 1 [running]:\nmain.handler(0x14000123456)\n\t/app/main.go:42 +0x1f4\nmain.process(0x14000123456)\n\t/app/worker.go:88 +0x2bc"),
+			otellog.String("payload.json", `{"user":{"id":"0646a849a52752904984ab92b2a39f1c","token":"`+longToken+`"}}`),
+		)
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
 	router.GET("/api/test-sse", func(c *gin.Context) {
 		span := trace.SpanFromContext(c.Request.Context())
 		span.SetAttributes(attribute.Bool("traceway.is_stream", true))
@@ -341,6 +376,8 @@ func main() {
 	fmt.Printf("    curl http://localhost:%d/api/test-log-levels\n", appPort)
 	fmt.Printf("    curl http://localhost:%d/api/test-spans-with-logs\n", appPort)
 	fmt.Printf("    curl http://localhost:%d/api/test-distributed-logs\n", appPort)
+	fmt.Printf("    curl http://localhost:%d/api/test-long-attributes\n", appPort)
+	fmt.Printf("    curl http://localhost:%d/api/test-long-log-attributes\n", appPort)
 	fmt.Println()
 	fmt.Println("  Streaming endpoints (is_stream — expect a 'Stream' badge):")
 	fmt.Printf("    curl -N http://localhost:%d/api/test-sse\n", appPort)

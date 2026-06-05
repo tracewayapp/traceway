@@ -15,7 +15,7 @@ export default function BlogIndex() {
   return (
     <main className="relative">
       <section className="wrap pt-6 pb-24">
-        <div className="prose">
+        <div className="prose max-w-[960px]">
           <Eyebrow>Blog</Eyebrow>
           <h1 className="mt-4 mb-3">Releases & updates</h1>
           <p style={{ color: "var(--fg-2)" }} className="mb-12">

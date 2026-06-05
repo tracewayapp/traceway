@@ -59,6 +59,16 @@ const PILLARS = [
   },
 ];
 
+const STACK_ICONS = [
+  { src: "/images/frameworks/otel.png", size: 116, z: 30, pos: "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" },
+  { src: "/images/frameworks/node.png", size: 76, z: 20, pos: "left-[22%] top-[16%]" },
+  { src: "/images/frameworks/svelte.png", size: 64, z: 10, pos: "right-[18%] top-[10%]" },
+  { src: "/images/frameworks/gin.png", size: 72, z: 20, pos: "left-[16%] bottom-[12%]" },
+  { src: "/images/frameworks/nextjs.png", size: 68, z: 20, pos: "right-[20%] bottom-[14%]" },
+  { src: "/images/frameworks/symfony.png", size: 56, z: 10, pos: "left-[4%] top-[42%]" },
+  { src: "/images/frameworks/cloudflare.png", size: 56, z: 10, pos: "right-[4%] top-[44%]" },
+];
+
 export default function Home() {
   return (
     <main className="relative">
@@ -120,10 +130,70 @@ export default function Home() {
         </div>
       </section>
 
-      {/* WHITE BAND: deploy, detect/resolve, cost render on white */}
+      {/* WHITE BAND: community, deploy, detect/resolve, cost render on white */}
       <div className="band-light">
+        {/* COMMUNITY: built in the open */}
+        <section className="py-20">
+          <div className="wrap grid gap-14 md:grid-cols-[11fr_9fr] items-center">
+            <div>
+              <Eyebrow>Community</Eyebrow>
+              <h2 className="mt-4">Built in the open.</h2>
+              <p className="muted mt-4 max-w-[640px] text-pretty">
+                Traceway is MIT licensed and developed in public. Star the
+                repo, file issues, and help shape the roadmap.
+              </p>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Link
+                  href={GITHUB_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-ghost"
+                >
+                  <Github className="h-4 w-4" />
+                  Star on GitHub
+                </Link>
+                <Link
+                  href={DISCORD_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-ghost"
+                >
+                  <DiscordIcon className="h-4 w-4" />
+                  Join the Discord
+                </Link>
+              </div>
+            </div>
+
+            {/* Overlapping stack of supported runtimes, OTel front and center */}
+            <div
+              className="relative hidden md:block h-[320px]"
+              aria-hidden="true"
+            >
+              {STACK_ICONS.map((tile) => (
+                <div
+                  key={tile.src}
+                  className={`absolute grid place-items-center rounded-2xl border border-hair-2 bg-ink-0 ${tile.pos}`}
+                  style={{
+                    width: tile.size,
+                    height: tile.size,
+                    zIndex: tile.z,
+                    boxShadow: "0 12px 28px -16px rgba(10, 14, 24, 0.25)",
+                  }}
+                >
+                  <Image
+                    src={tile.src}
+                    alt=""
+                    width={Math.round(tile.size * 0.54)}
+                    height={Math.round(tile.size * 0.54)}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* DEPLOY: stats strip + terminal */}
-        <section className="py-24">
+        <section className="py-20">
           <div className="wrap grid gap-14 md:grid-cols-[10fr_11fr] items-center">
             <div>
               <Eyebrow>Your data. Your metal.</Eyebrow>
@@ -192,7 +262,7 @@ export default function Home() {
         </section>
 
         {/* DETECT → RESOLVE: two quiet steps, no glow tracks */}
-        <section className="py-24">
+        <section className="py-20">
           <div className="wrap">
             <Eyebrow>Why it matters</Eyebrow>
             <h2 className="mt-4 max-w-[24ch]">
@@ -231,8 +301,8 @@ export default function Home() {
           </div>
         </section>
 
-        {/* COST: the closing argument before community */}
-        <section className="py-24">
+        {/* COST: closes the white band */}
+        <section className="py-20">
           <div className="wrap grid gap-14 md:grid-cols-[10fr_11fr] items-center">
             <div>
               <Eyebrow>Pricing that doesn&apos;t lie to you</Eyebrow>
@@ -265,39 +335,8 @@ export default function Home() {
             />
           </div>
         </section>
-      </div>
 
-      {/* COMMUNITY: built in the open */}
-      <section className="py-24">
-        <div className="wrap">
-          <Eyebrow>Community</Eyebrow>
-          <h2 className="mt-4">Built in the open.</h2>
-          <p className="muted mt-4 max-w-[640px] text-pretty">
-            Traceway is MIT licensed and developed in public. Star the repo,
-            file issues, and help shape the roadmap.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Link
-              href={GITHUB_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-ghost"
-            >
-              <Github className="h-4 w-4" />
-              Star on GitHub
-            </Link>
-            <Link
-              href={DISCORD_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-ghost"
-            >
-              <DiscordIcon className="h-4 w-4" />
-              Join the Discord
-            </Link>
-          </div>
-        </div>
-      </section>
+      </div>
 
       {/* Final CTA */}
       <FinalCTA

@@ -285,6 +285,24 @@
     color-scheme: light;
   }
 
+  /* A pinned-dark tile inside the light band (cards that should stay dark). */
+  .band-light .dark-tile {
+    --ink-1: #0a0d14;
+    --ink-3: #151a24;
+    --hair: rgba(255, 255, 255, 0.06);
+    --hair-2: rgba(255, 255, 255, 0.10);
+    --fg-0: #f4f6fb;
+    --fg-1: #c9d0dd;
+    --fg-2: #8a93a6;
+    --fg-3: #5a6374;
+    --a2: #00d4ff;
+    --ok: #22e0a8;
+    color-scheme: dark;
+    background: var(--ink-1);
+    border: 1px solid var(--hair-2);
+    box-shadow: 0 24px 48px -28px rgba(10, 14, 24, 0.35);
+  }
+
   /* Terminal stays a dark object inside the light band. */
   .band-light .term {
     --ink-1: #0a0d14;
@@ -435,8 +453,11 @@
 
   /* Article reading panel */
   .blog-article {
-    max-width: 920px;
+    max-width: 1060px;
     margin: 0 auto;
+  }
+  .blog-article .prose {
+    max-width: none;
   }
   .blog-panel {
     border: 1px solid var(--hair-2);
@@ -524,20 +545,6 @@
     margin-top: 28px;
     flex-wrap: wrap;
     align-items: center;
-  }
-
-  /* Pillar wrap: framed panel (used by the Flutter replay showcase) */
-  .pillar-wrap {
-    border-radius: 14px;
-    border: 1px solid var(--hair-2);
-    background: var(--ink-1);
-    overflow: hidden;
-    position: relative;
-  }
-  .pillar-wrap-body {
-    position: relative;
-    z-index: 1;
-    padding: 22px;
   }
 
   /* Terminal */
@@ -655,14 +662,12 @@
     align-items: start;
   }
   .feat-bullets li::before {
-    content: "";
-    width: 14px;
-    height: 14px;
-    border-radius: 4px;
-    background: color-mix(in oklab, var(--a1) 30%, transparent);
-    border: 1px solid color-mix(in oklab, var(--a1) 50%, transparent);
-    position: relative;
-    top: 4px;
+    content: "›";
+    font-family: var(--font-mono);
+    font-size: 15px;
+    line-height: inherit;
+    color: var(--a1);
+    text-align: center;
   }
   .feat-visual {
     position: relative;

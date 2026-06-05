@@ -39,82 +39,85 @@ export default function SessionReplayPage() {
       </section>
 
       {/* Absorbed from home */}
-      <section className="wrap">
-        <FeatureRow
-          eyebrow="Pre-error capture"
-          title={
-            <>
-              See exactly <em>what the user did</em>
-            </>
-          }
-          description="Traceway captures ~10 seconds of user activity before every error. Clicks, scrolls, and form interactions are attached to exceptions automatically, with no manual reproduction needed."
-          bullets={[
-            "Pre-error activity capture",
-            "Automatic attachment to exceptions",
-            "Clicks, scrolls, and form interactions",
-            "Page navigation timeline",
-          ]}
-          image={{ src: "/images/session-replay-viewer.png", alt: "Session replay interface" }}
-        />
-      </section>
+      {/* WHITE BAND: feature sections render on white */}
+      <div className="band-light">
+        <section className="wrap">
+          <FeatureRow
+            eyebrow="Pre-error capture"
+            title={
+              <>
+                See exactly <em>what the user did</em>
+              </>
+            }
+            description="Traceway captures ~10 seconds of user activity before every error. Clicks, scrolls, and form interactions are attached to exceptions automatically, with no manual reproduction needed."
+            bullets={[
+              "Pre-error activity capture",
+              "Automatic attachment to exceptions",
+              "Clicks, scrolls, and form interactions",
+              "Page navigation timeline",
+            ]}
+            image={{ src: "/images/session-replay-viewer.png", alt: "Session replay interface" }}
+          />
+        </section>
 
-      {/* Watch moments before error */}
-      <section className="wrap">
-        <FeatureRow
-          reverse
-          eyebrow="DOM replay"
-          title="Watch the moments before every error"
-          description="Traceway records DOM changes in the browser, not screenshots. You can scrub through the timeline, pause on the exact moment things went wrong, and see the user's real interaction."
-          bullets={[
-            "Lightweight DOM snapshot recording",
-            "Scrub through exact user timeline",
-            "Console and network overlays",
-            "Trace ID links every replay to the backend",
-          ]}
-          image={{ src: "/images/session-replay-scrubbing-timeline.png", alt: "DOM replay scrubbing" }}
-        />
-      </section>
+        {/* Watch moments before error */}
+        <section className="wrap">
+          <FeatureRow
+            reverse
+            eyebrow="DOM replay"
+            title="Watch the moments before every error"
+            description="Traceway records DOM changes in the browser, not screenshots. You can scrub through the timeline, pause on the exact moment things went wrong, and see the user's real interaction."
+            bullets={[
+              "Lightweight DOM snapshot recording",
+              "Scrub through exact user timeline",
+              "Console and network overlays",
+              "Trace ID links every replay to the backend",
+            ]}
+            image={{ src: "/images/session-replay-scrubbing-timeline.png", alt: "DOM replay scrubbing" }}
+          />
+        </section>
 
-      {/* 2-card bento */}
-      <section className="wrap py-10">
-        <SectionHead
-          eyebrow="Automatic & private"
-          title={
-            <>
-              Zero-config capture. <em>Privacy-first by default.</em>
-            </>
-          }
-        />
-        <BentoGrid>
-          <BentoCell
-            size="wide"
-            icon={Zap}
-            title="Attached to every exception, automatically"
-            iconColor="var(--a4)"
-          >
-            <p>
-              No manual setup or reproduction steps. Every exception gets a
-              replay attached automatically. Click into any issue and watch
-              exactly what the user did in the ~10 seconds before things
-              broke.
-            </p>
-          </BentoCell>
-          <BentoCell
-            size="tall"
-            icon={ShieldCheck}
-            title="Built for privacy"
-            iconColor="var(--ok)"
-          >
-            <p>
-              Passwords and any element marked{" "}
-              <code>data-sensitive</code> are masked by default. Need stricter
-              control? Drop <code>class=&quot;rr-mask&quot;</code> on any
-              element to blank its text, or <code>rr-block</code> to hide it
-              entirely. No SDK configuration needed.
-            </p>
-          </BentoCell>
-        </BentoGrid>
-      </section>
+        {/* 2-card bento */}
+        <section className="wrap py-10">
+          <SectionHead
+            eyebrow="Automatic & private"
+            title={
+              <>
+                Zero-config capture. <em>Privacy-first by default.</em>
+              </>
+            }
+          />
+          <BentoGrid>
+            <BentoCell
+              size="wide"
+              icon={Zap}
+              title="Attached to every exception, automatically"
+              iconColor="var(--a4)"
+            >
+              <p>
+                No manual setup or reproduction steps. Every exception gets a
+                replay attached automatically. Click into any issue and watch
+                exactly what the user did in the ~10 seconds before things
+                broke.
+              </p>
+            </BentoCell>
+            <BentoCell
+              size="tall"
+              icon={ShieldCheck}
+              title="Built for privacy"
+              iconColor="var(--ok)"
+            >
+              <p>
+                Passwords and any element marked{" "}
+                <code>data-sensitive</code> are masked by default. Need stricter
+                control? Drop <code>class=&quot;rr-mask&quot;</code> on any
+                element to blank its text, or <code>rr-block</code> to hide it
+                entirely. No SDK configuration needed.
+              </p>
+            </BentoCell>
+          </BentoGrid>
+        </section>
+      </div>
 
       <FinalCTA
         title={

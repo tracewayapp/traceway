@@ -186,130 +186,100 @@ export function FlutterReplayShowcase({
   return (
     <section className="wrap pb-24">
       <div className="max-w-5xl mx-auto">
-        <div className="pillar-wrap">
-          <div className="pillar-wrap-body">
-            {/* Issue header */}
-            <div className="mb-5 min-w-0">
-              <h3
-                className="text-[17px] sm:text-[20px] leading-tight break-words"
+        <div
+          className="rounded-[14px] overflow-hidden"
+          style={{
+            background: "var(--ink-0)",
+            border: "1px solid var(--hair-2)",
+          }}
+        >
+          {/* Issue header */}
+          <div
+            className="flex flex-wrap items-center justify-between gap-3 px-5 sm:px-7 pt-5 pb-4"
+            style={{
+              background: "var(--ink-1)",
+              borderBottom: "1px solid var(--hair)",
+            }}
+          >
+            <div className="min-w-0">
+              <h4
+                className="text-[15px]"
                 style={{
                   fontFamily: "var(--font-display)",
                   color: "var(--fg-0)",
-                  letterSpacing: "-0.01em",
-                  overflowWrap: "anywhere",
+                  letterSpacing: "-0.005em",
                 }}
               >
-                _TypeError: type &apos;Null&apos; is not a subtype of type
-                &apos;String&apos; in type cast
-              </h3>
+                Stack Trace
+              </h4>
               <p
-                className="mt-1 text-[12px]"
-                style={{ color: "var(--fg-3)", fontFamily: "var(--font-mono)" }}
+                className="mt-1 text-[11.5px] leading-relaxed"
+                style={{
+                  color: "var(--fg-3)",
+                  fontFamily: "var(--font-mono)",
+                }}
               >
-                Exception Hash: b4c8f9a2e1d03f7a
+                First seen: Apr 6, 2026, 10:17 AM · Last seen: Apr 10, 2026,
+                1:53 AM · Total occurrences: 23 · Platform: Flutter 3.27.1
               </p>
             </div>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1 rounded-md"
+              style={{
+                border: "1px solid var(--hair-2)",
+                color: "var(--fg-1)",
+                background:
+                  "color-mix(in oklab, var(--ink-2) 60%, transparent)",
+                fontFamily: "var(--font-display)",
+              }}
+            >
+              <Archive className="h-3.5 w-3.5" />
+              Archive
+            </button>
+          </div>
 
-            <div className="grid gap-5 md:grid-cols-[minmax(0,1.4fr)_minmax(260px,0.8fr)]">
-              {/* LEFT: Flutter stack trace */}
-              <div
-                className="rounded-[12px] p-4 sm:p-5 min-w-0 overflow-hidden"
-                style={{
-                  background:
-                    "color-mix(in oklab, var(--ink-0) 50%, transparent)",
-                  border: "1px solid var(--hair)",
-                }}
-              >
-                <div className="flex items-center justify-between">
-                  <h4
-                    className="text-[15px]"
-                    style={{
-                      fontFamily: "var(--font-display)",
-                      color: "var(--fg-0)",
-                      letterSpacing: "-0.005em",
-                    }}
-                  >
-                    Stack Trace
-                  </h4>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1 rounded-md"
-                    style={{
-                      border: "1px solid var(--hair-2)",
-                      color: "var(--fg-1)",
-                      background:
-                        "color-mix(in oklab, var(--ink-2) 60%, transparent)",
-                      fontFamily: "var(--font-display)",
-                    }}
-                  >
-                    <Archive className="h-3.5 w-3.5" />
-                    Archive
-                  </button>
-                </div>
-                <p
-                  className="mt-3 text-[11.5px] leading-relaxed"
-                  style={{
-                    color: "var(--fg-3)",
-                    fontFamily: "var(--font-mono)",
-                  }}
-                >
-                  First seen: Apr 6, 2026, 10:17 AM · Last seen: Apr 10, 2026,
-                  1:53 AM · Total occurrences: 23 · Platform: Flutter 3.27.1
-                </p>
-                <div
-                  className="mt-4 rounded-md p-3 sm:p-4 text-[11px] sm:text-[12px] leading-[1.75] min-w-0"
-                  style={{
-                    background:
-                      "color-mix(in oklab, var(--ink-0) 80%, transparent)",
-                    border: "1px solid var(--hair)",
-                    fontFamily: "var(--font-mono)",
-                    overflowWrap: "anywhere",
-                    wordBreak: "break-word",
-                    color: "var(--fg-1)",
-                  }}
-                >
-                  <div style={{ color: "var(--crit)" }}>
-                    _TypeError: type &apos;Null&apos; is not a subtype of type
-                    &apos;String&apos; in type cast
-                  </div>
-                  <div className="mt-3" style={{ color: "var(--fg-3)" }}>
-                    ▸ 12 framework frames (package:flutter)
-                  </div>
-                  <StackFrame
-                    name="new CheckoutScreen.fromCart"
-                    file="package:shop_app/screens/checkout_screen.dart:142:18"
-                  />
-                  <StackFrame
-                    name="_CheckoutScreenState._loadCart"
-                    file="package:shop_app/screens/checkout_screen.dart:98:24"
-                  />
-                  <StackFrame
-                    name="CartRepository.fetchItems"
-                    file="package:shop_app/data/cart_repository.dart:57:12"
-                  />
-                  <StackFrame
-                    name="ApiClient.get"
-                    file="package:shop_app/data/api_client.dart:34:20"
-                  />
-                  <div className="mt-3" style={{ color: "var(--fg-3)" }}>
-                    ▸ 4 async gap frames
-                  </div>
-                </div>
+          {/* Issue body: trace text + embedded replay */}
+          <div className="grid gap-8 md:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.8fr)] items-start px-5 sm:px-7 py-6">
+            <div
+              className="text-[11px] sm:text-[12px] leading-[1.75] min-w-0"
+              style={{
+                fontFamily: "var(--font-mono)",
+                overflowWrap: "anywhere",
+                wordBreak: "break-word",
+                color: "var(--fg-1)",
+              }}
+            >
+              <div style={{ color: "var(--crit)" }}>
+                _TypeError: type &apos;Null&apos; is not a subtype of type
+                &apos;String&apos; in type cast
               </div>
+              <div className="mt-3" style={{ color: "var(--fg-3)" }}>
+                ▸ 12 framework frames (package:flutter)
+              </div>
+              <StackFrame
+                name="_ChatScreenState._onSendPressed"
+                file="package:assistant_app/screens/chat_screen.dart:121:18"
+              />
+              <StackFrame
+                name="ConversationRepository.sendMessage"
+                file="package:assistant_app/data/conversation_repository.dart:64:24"
+              />
+              <StackFrame
+                name="StreamedResponse.parseChunk"
+                file="package:assistant_app/data/streamed_response.dart:41:12"
+              />
+              <StackFrame
+                name="ApiClient.streamCompletion"
+                file="package:assistant_app/data/api_client.dart:90:20"
+              />
+              <div className="mt-3" style={{ color: "var(--fg-3)" }}>
+                ▸ 4 async gap frames
+              </div>
+            </div>
 
-              {/* RIGHT: phone + control bar */}
-              <div className="flex flex-col items-center min-w-0 w-full">
-                <h4
-                  className="self-start text-[15px] mb-3"
-                  style={{
-                    fontFamily: "var(--font-display)",
-                    color: "var(--fg-0)",
-                    letterSpacing: "-0.005em",
-                  }}
-                >
-                  Session Replay
-                </h4>
-
+            {/* Embedded replay: phone + control bar */}
+            <div className="flex flex-col items-center min-w-0 w-full justify-self-center">
                 <div
                   ref={phoneWrapperRef}
                   className="flex flex-col items-center gap-4"
@@ -322,11 +292,9 @@ export function FlutterReplayShowcase({
                       aspectRatio: `${RECORDING_W} / ${RECORDING_H}`,
                       borderRadius: 36,
                       padding: PHONE_PADDING,
-                      background: "linear-gradient(180deg, #1a1f2b, #0a0d14)",
-                      border:
-                        "1px solid color-mix(in oklab, var(--hair-2) 120%, transparent)",
-                      boxShadow:
-                        "0 40px 60px -30px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.03), inset 0 2px 0 rgba(255,255,255,0.05)",
+                      background: "var(--ink-2)",
+                      border: "1px solid var(--hair-2)",
+                      boxShadow: "0 32px 48px -32px rgba(0, 0, 0, 0.6)",
                     }}
                   >
                     <div
@@ -443,7 +411,6 @@ export function FlutterReplayShowcase({
                     </div>
                   </div>
                 </div>
-              </div>
             </div>
           </div>
         </div>

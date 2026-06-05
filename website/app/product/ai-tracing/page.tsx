@@ -40,87 +40,90 @@ export default function AiTracingPage() {
       </section>
 
       {/* Cost */}
-      <section className="wrap">
-        <FeatureRow
-          eyebrow="Cost"
-          title={
-            <>
-              Know exactly <em>what AI costs you</em>
-            </>
-          }
-          description="Every AI call tracked with input cost, output cost, and total cost. See breakdowns per agent, per model, and per time period. Spot cost spikes before they hit your invoice."
-          bullets={[
-            "Per-call cost tracking with input / output breakdown",
-            "Aggregated cost per agent and model",
-            "Token usage with cached and reasoning token tracking",
-            "Anomaly detection on cost per call",
-          ]}
-          image={{ src: "/images/ai-traces-cost.png", alt: "AI cost dashboard" }}
-        />
-      </section>
+      {/* WHITE BAND: feature sections render on white */}
+      <div className="band-light">
+        <section className="wrap">
+          <FeatureRow
+            eyebrow="Cost"
+            title={
+              <>
+                Know exactly <em>what AI costs you</em>
+              </>
+            }
+            description="Every AI call tracked with input cost, output cost, and total cost. See breakdowns per agent, per model, and per time period. Spot cost spikes before they hit your invoice."
+            bullets={[
+              "Per-call cost tracking with input / output breakdown",
+              "Aggregated cost per agent and model",
+              "Token usage with cached and reasoning token tracking",
+              "Anomaly detection on cost per call",
+            ]}
+            image={{ src: "/images/ai-traces-cost.png", alt: "AI cost dashboard" }}
+          />
+        </section>
 
-      {/* Conversation */}
-      <section className="wrap">
-        <FeatureRow
-          reverse
-          eyebrow="Conversation"
-          title="Replay every conversation"
-          description="See the exact prompt sent to the model and the full response it generated. Debug unexpected model behavior, catch hallucinations, and understand what your AI agents are actually doing."
-          bullets={[
-            "Full prompt + completion stored and rendered as chat",
-            "Raw JSON view for debugging edge cases",
-            "Privacy mode available to exclude conversation content",
-            "Search and filter by prompt content",
-          ]}
-          image={{ src: "/images/ai-traces-conversation.png", alt: "Conversation replay" }}
-        />
-      </section>
+        {/* Conversation */}
+        <section className="wrap">
+          <FeatureRow
+            reverse
+            eyebrow="Conversation"
+            title="Replay every conversation"
+            description="See the exact prompt sent to the model and the full response it generated. Debug unexpected model behavior, catch hallucinations, and understand what your AI agents are actually doing."
+            bullets={[
+              "Full prompt + completion stored and rendered as chat",
+              "Raw JSON view for debugging edge cases",
+              "Privacy mode available to exclude conversation content",
+              "Search and filter by prompt content",
+            ]}
+            image={{ src: "/images/ai-traces-conversation.png", alt: "Conversation replay" }}
+          />
+        </section>
 
-      {/* Performance */}
-      <section className="wrap">
-        <FeatureRow
-          eyebrow="Latency"
-          title="Understand AI latency at every percentile"
-          description="AI calls have wildly variable latency. See P50 and P95 duration breakdowns per agent, identify which models or providers are causing slowdowns, and track performance over time."
-          bullets={[
-            "P50 / P95 latency per agent and model",
-            "Drill down from agent to individual calls",
-            "Throughput and token usage trends",
-            "Compare providers side-by-side",
-          ]}
-          image={{ src: "/images/ai-traces-latency.png", alt: "AI latency dashboard" }}
-        />
-      </section>
+        {/* Performance */}
+        <section className="wrap">
+          <FeatureRow
+            eyebrow="Latency"
+            title="Understand AI latency at every percentile"
+            description="AI calls have wildly variable latency. See P50 and P95 duration breakdowns per agent, identify which models or providers are causing slowdowns, and track performance over time."
+            bullets={[
+              "P50 / P95 latency per agent and model",
+              "Drill down from agent to individual calls",
+              "Throughput and token usage trends",
+              "Compare providers side-by-side",
+            ]}
+            image={{ src: "/images/ai-traces-latency.png", alt: "AI latency dashboard" }}
+          />
+        </section>
 
-      {/* Zero code */}
-      <section className="wrap py-16 text-center">
-        <div className="max-w-3xl mx-auto flex flex-col items-center gap-5">
-          <Eyebrow>Instrument-free</Eyebrow>
-          <h2>Zero code changes required</h2>
-          <p style={{ color: "var(--fg-1)", fontSize: 17 }}>
-            If you&apos;re using OpenRouter, enable Observability in your
-            settings and point it at Traceway. That&apos;s it. For other
-            providers, any OpenTelemetry-instrumented AI call with{" "}
-            <code>gen_ai.*</code> attributes is automatically captured.
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-10 pt-5 opacity-80">
-            <Image
-              src="/images/frameworks/openrouter.png"
-              alt="OpenRouter"
-              width={40}
-              height={40}
-              className="h-8 w-auto opacity-80 hover:opacity-100 transition-all"
-            />
-            <Image
-              src="/images/frameworks/otel.png"
-              alt="OpenTelemetry"
-              width={40}
-              height={40}
-              className="h-8 w-auto opacity-80 hover:opacity-100 transition-all"
-            />
+        {/* Zero code */}
+        <section className="wrap py-16 text-center">
+          <div className="max-w-3xl mx-auto flex flex-col items-center gap-5">
+            <Eyebrow>Instrument-free</Eyebrow>
+            <h2>Zero code changes required</h2>
+            <p style={{ color: "var(--fg-1)", fontSize: 17 }}>
+              If you&apos;re using OpenRouter, enable Observability in your
+              settings and point it at Traceway. That&apos;s it. For other
+              providers, any OpenTelemetry-instrumented AI call with{" "}
+              <code>gen_ai.*</code> attributes is automatically captured.
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-10 pt-5 opacity-80">
+              <Image
+                src="/images/frameworks/openrouter.png"
+                alt="OpenRouter"
+                width={40}
+                height={40}
+                className="h-8 w-auto opacity-80 hover:opacity-100 transition-all"
+              />
+              <Image
+                src="/images/frameworks/otel.png"
+                alt="OpenTelemetry"
+                width={40}
+                height={40}
+                className="h-8 w-auto opacity-80 hover:opacity-100 transition-all"
+              />
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
 
       <FinalCTA
         title={

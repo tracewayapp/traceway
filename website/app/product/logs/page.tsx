@@ -39,63 +39,66 @@ export default function LogsPage() {
       </section>
 
       {/* Search across every log */}
-      <section className="wrap">
-        <FeatureRow
-          eyebrow="Search"
-          title={
-            <>
-              Search across <em>every log</em>
-            </>
-          }
-          description="Filter by severity, service, or trace. Full-text search over log bodies is powered by a token index, and any resource, scope, or log attribute can be queried for exact matches."
-          bullets={[
-            "Body search backed by token indexes",
-            "Six severity levels: TRACE, DEBUG, INFO, WARN, ERROR, FATAL",
-            "Attribute filters on resource, scope, and log fields",
-            "Time-range facet navigation",
-          ]}
-          image={{ src: "/images/logs-search-and-detail.png", alt: "Logs search and detail view", width: 1600, height: 1000 }}
-        />
-      </section>
+      {/* WHITE BAND: feature sections render on white */}
+      <div className="band-light">
+        <section className="wrap">
+          <FeatureRow
+            eyebrow="Search"
+            title={
+              <>
+                Search across <em>every log</em>
+              </>
+            }
+            description="Filter by severity, service, or trace. Full-text search over log bodies is powered by a token index, and any resource, scope, or log attribute can be queried for exact matches."
+            bullets={[
+              "Body search backed by token indexes",
+              "Six severity levels: TRACE, DEBUG, INFO, WARN, ERROR, FATAL",
+              "Attribute filters on resource, scope, and log fields",
+              "Time-range facet navigation",
+            ]}
+            image={{ src: "/images/logs-search-and-detail.png", alt: "Logs search and detail view", width: 1600, height: 1000 }}
+          />
+        </section>
 
-      {/* 2-card bento */}
-      <section className="wrap py-10">
-        <SectionHead
-          eyebrow="Built for correlation"
-          title={
-            <>
-              Linked to traces. <em>Native to OpenTelemetry.</em>
-            </>
-          }
-        />
-        <BentoGrid>
-          <BentoCell
-            size="wide"
-            icon={Network}
-            title="Linked to every trace"
-            iconColor="var(--a1)"
-          >
-            <p>
-              Every log carries the trace and span ID of the request that
-              emitted it. Open any endpoint and see the exact log lines tied to
-              that invocation, or follow a distributed trace to see logs from
-              every service it touched.
-            </p>
-          </BentoCell>
-          <BentoCell
-            size="tall"
-            icon={Boxes}
-            title="OpenTelemetry-native"
-            iconColor="var(--ok)"
-          >
-            <p>
-              Send logs from any OTel SDK: Node.js, Python, Go, Java, .NET,
-              PHP. No vendor client needed. OTLP/HTTP supports Protobuf and
-              JSON, with a 30-day TTL.
-            </p>
-          </BentoCell>
-        </BentoGrid>
-      </section>
+        {/* 2-card bento */}
+        <section className="wrap py-10">
+          <SectionHead
+            eyebrow="Built for correlation"
+            title={
+              <>
+                Linked to traces. <em>Native to OpenTelemetry.</em>
+              </>
+            }
+          />
+          <BentoGrid>
+            <BentoCell
+              size="wide"
+              icon={Network}
+              title="Linked to every trace"
+              iconColor="var(--a1)"
+            >
+              <p>
+                Every log carries the trace and span ID of the request that
+                emitted it. Open any endpoint and see the exact log lines tied to
+                that invocation, or follow a distributed trace to see logs from
+                every service it touched.
+              </p>
+            </BentoCell>
+            <BentoCell
+              size="tall"
+              icon={Boxes}
+              title="OpenTelemetry-native"
+              iconColor="var(--ok)"
+            >
+              <p>
+                Send logs from any OTel SDK: Node.js, Python, Go, Java, .NET,
+                PHP. No vendor client needed. OTLP/HTTP supports Protobuf and
+                JSON, with a 30-day TTL.
+              </p>
+            </BentoCell>
+          </BentoGrid>
+        </section>
+      </div>
 
       <FinalCTA
         title={

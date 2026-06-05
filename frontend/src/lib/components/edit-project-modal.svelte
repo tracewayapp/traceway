@@ -156,6 +156,12 @@
             </div>
         {:else}
             <form onsubmit={handleSubmit} class="px-6 pb-6 space-y-5">
+                {#if error}
+                    <div class="rounded-md bg-destructive/10 border border-destructive/20 p-3">
+                        <p class="text-sm text-destructive">{error}</p>
+                    </div>
+                {/if}
+
                 {#if activeTab === 'project'}
                     <div class="space-y-2">
                         <Label for="edit-project-name">Project Name</Label>
@@ -225,12 +231,6 @@
                             </p>
                         </div>
                     {/if}
-                {/if}
-
-                {#if error}
-                    <div class="rounded-md bg-destructive/10 border border-destructive/20 p-3">
-                        <p class="text-sm text-destructive">{error}</p>
-                    </div>
                 {/if}
 
                 <div class="flex justify-end gap-2 pt-2">

@@ -11,6 +11,15 @@
 	} = $props();
 
 	let copied = $state(false);
+	let showFull = $state(false);
+	let clamped = $state(false);
+	let valueEl = $state<HTMLElement | null>(null);
+
+	$effect(() => {
+		if (valueEl && !showFull) {
+			clamped = valueEl.scrollHeight > valueEl.clientHeight + 1;
+		}
+	});
 
 	const parsedJson = $derived(() => {
 		try {
@@ -49,11 +58,23 @@
 		</button>
 	</div>
 	{#if parsedJson()}
-		<div class="json-tree-container">
+		<div class="json-tree-container whitespace-normal overflow-x-auto">
 			<JSONTree value={parsedJson()} />
 		</div>
 	{:else}
-		<span class="font-mono text-sm break-all">{value}</span>
+		<span
+			bind:this={valueEl}
+			class="font-mono text-sm whitespace-pre-wrap break-all {showFull ? '' : 'line-clamp-4'}"
+			>{value}</span
+		>
+		{#if clamped || showFull}
+			<button
+				onclick={() => (showFull = !showFull)}
+				class="self-start text-xs text-muted-foreground hover:text-foreground transition-colors"
+			>
+				{showFull ? 'Show less' : 'Show more...'}
+			</button>
+		{/if}
 	{/if}
 </div>
 

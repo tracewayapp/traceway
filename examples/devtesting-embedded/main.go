@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"math/rand/v2"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -306,6 +307,21 @@ func main() {
 		})
 	})
 
+	router.GET("/api/test-long-attributes", func(c *gin.Context) {
+		ctx := c.Request.Context()
+		longToken := strings.Repeat("0646a849a52752904984ab92b2a39f1c", 12)
+		span := trace.SpanFromContext(ctx)
+		span.SetAttributes(attribute.String("request.signature", longToken))
+		backendSvc.log(ctx, otellog.SeverityDebug, "DEBUG",
+			"long attribute test; unbroken debug context: "+longToken,
+			otellog.String("os.description", "7.0.11-orbstack-00360-gc9bc4d96ac70 #1 SMP PREEMPT_DYNAMIC Thu Jun 4 16:40:25 UTC 2026 aarch64 GNU/Linux"),
+			otellog.String("auth.token", longToken),
+			otellog.String("stack.preview", "goroutine 1 [running]:\nmain.handler(0x14000123456)\n\t/app/main.go:42 +0x1f4\nmain.process(0x14000123456)\n\t/app/worker.go:88 +0x2bc"),
+			otellog.String("payload.json", `{"user":{"id":"0646a849a52752904984ab92b2a39f1c","token":"`+longToken+`"}}`),
+		)
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
 	router.GET("/api/test-sse", func(c *gin.Context) {
 		span := trace.SpanFromContext(c.Request.Context())
 		span.SetAttributes(attribute.Bool("traceway.is_stream", true))
@@ -341,6 +357,7 @@ func main() {
 	fmt.Printf("    curl http://localhost:%d/api/test-log-levels\n", appPort)
 	fmt.Printf("    curl http://localhost:%d/api/test-spans-with-logs\n", appPort)
 	fmt.Printf("    curl http://localhost:%d/api/test-distributed-logs\n", appPort)
+	fmt.Printf("    curl http://localhost:%d/api/test-long-attributes\n", appPort)
 	fmt.Println()
 	fmt.Println("  Streaming endpoints (is_stream — expect a 'Stream' badge):")
 	fmt.Printf("    curl -N http://localhost:%d/api/test-sse\n", appPort)

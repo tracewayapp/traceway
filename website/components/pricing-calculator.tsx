@@ -76,7 +76,7 @@ export function PricingCalculator() {
           {TIERS.map((tier, i) => (
             <div
               key={tier.id}
-              className="grid grid-cols-12 gap-4 px-6 py-5 items-center transition-colors hover:bg-[color:rgba(255,255,255,0.02)]"
+              className="grid grid-cols-12 gap-4 px-6 py-5 items-center transition-colors hover:bg-[color:color-mix(in_oklab,var(--fg-0)_3%,transparent)]"
               style={{
                 borderBottom: i < TIERS.length - 1 ? "1px solid var(--hair)" : "none",
                 background: tier.highlight

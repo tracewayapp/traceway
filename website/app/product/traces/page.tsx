@@ -40,99 +40,102 @@ export default function TracesPage() {
       </section>
 
       {/* Distributed trace example, absorbed from home */}
-      <section className="wrap py-20">
-        <SectionHead
-          eyebrow="Cross-service"
-          title="Trace requests across every service"
-          description="Follow a single user action from the browser through your API gateway, backend services, and database calls. See the full picture in one distributed trace."
-        />
-        <div className="mt-8 max-w-4xl mx-auto">
-          <Image
-            src="/images/traces-cross-service.png"
-            alt="Distributed trace across multiple services"
-            width={1600}
-            height={500}
-            className="w-full h-auto rounded-[12px]"
-            style={{ border: "1px solid var(--hair)" }}
+      {/* WHITE BAND: feature sections render on white */}
+      <div className="band-light">
+        <section className="wrap py-20">
+          <SectionHead
+            eyebrow="Cross-service"
+            title="Trace requests across every service"
+            description="Follow a single user action from the browser through your API gateway, backend services, and database calls. See the full picture in one distributed trace."
           />
-        </div>
-      </section>
+          <div className="mt-8 max-w-4xl mx-auto">
+            <Image
+              src="/images/traces-cross-service.png"
+              alt="Distributed trace across multiple services"
+              width={1600}
+              height={500}
+              className="w-full h-auto rounded-[12px]"
+              style={{ border: "1px solid var(--hair)" }}
+            />
+          </div>
+        </section>
 
-      {/* Full distributed trace screenshot */}
-      <section className="wrap">
-        <FeatureRow
-          eyebrow="Waterfall"
-          title={
-            <>
-              Every span. <em>Every hop.</em>
-            </>
-          }
-          description="Visualize a request as a waterfall: each hop between services shows duration, status, and the exact span where latency or errors appear. Click any span to open its logs, exceptions, and attributes."
-          bullets={[
-            "Cross-service distributed trace propagation",
-            "W3C Trace Context standard headers",
-            "Drill-down to span attributes, logs, events",
-            "Async workflows (Kafka, RabbitMQ, SQS)",
-          ]}
-          image={{ src: "/images/traces-spans-waterfall.png", alt: "Span waterfall timing breakdown", width: 1600, height: 500 }}
-        />
-      </section>
+        {/* Full distributed trace screenshot */}
+        <section className="wrap">
+          <FeatureRow
+            eyebrow="Waterfall"
+            title={
+              <>
+                Every span. <em>Every hop.</em>
+              </>
+            }
+            description="Visualize a request as a waterfall: each hop between services shows duration, status, and the exact span where latency or errors appear. Click any span to open its logs, exceptions, and attributes."
+            bullets={[
+              "Cross-service distributed trace propagation",
+              "W3C Trace Context standard headers",
+              "Drill-down to span attributes, logs, events",
+              "Async workflows (Kafka, RabbitMQ, SQS)",
+            ]}
+            image={{ src: "/images/traces-spans-waterfall.png", alt: "Span waterfall timing breakdown", width: 1600, height: 500 }}
+          />
+        </section>
 
-      {/* Session replay + backend errors */}
-      <section className="wrap">
-        <FeatureRow
-          reverse
-          eyebrow="Replay"
-          title="See what the user did when the backend broke"
-          description="Traceway connects frontend session replays to backend exceptions. When your payment service returns a 500, you don't just see the stack trace. You see the user clicking Checkout, filling in their card, and hitting submit."
-          bullets={[
-            "Frontend replay linked to backend errors",
-            "Automatic correlation via trace ID",
-            "No manual reproduction needed",
-            "Works across browser and server",
-          ]}
-          image={{ src: "/images/session-replay-viewer.png", alt: "Session replay linked to trace" }}
-        />
-      </section>
+        {/* Session replay + backend errors */}
+        <section className="wrap">
+          <FeatureRow
+            reverse
+            eyebrow="Replay"
+            title="See what the user did when the backend broke"
+            description="Traceway connects frontend session replays to backend exceptions. When your payment service returns a 500, you don't just see the stack trace. You see the user clicking Checkout, filling in their card, and hitting submit."
+            bullets={[
+              "Frontend replay linked to backend errors",
+              "Automatic correlation via trace ID",
+              "No manual reproduction needed",
+              "Works across browser and server",
+            ]}
+            image={{ src: "/images/session-replay-viewer.png", alt: "Session replay linked to trace" }}
+          />
+        </section>
 
-      {/* Two card bento */}
-      <section className="wrap py-10">
-        <SectionHead
-          eyebrow="Deep context"
-          title={
-            <>
-              More than spans, <em>full context</em>
-            </>
-          }
-        />
-        <BentoGrid>
-          <BentoCell
-            size="wide"
-            icon={FileCode}
-            title="Source map stack trace resolution"
-            iconColor="var(--a4)"
-          >
-            <p>
-              Minified JavaScript stack traces are resolved to original source
-              files and line numbers automatically. Upload your source maps and
-              every frontend error shows readable, actionable traces. Works with
-              webpack, esbuild, and Vite.
-            </p>
-          </BentoCell>
-          <BentoCell
-            size="tall"
-            icon={TrendingUp}
-            title="Impact propagation"
-            iconColor="var(--a2)"
-          >
-            <p>
-              The Impact Score extends across service boundaries. When an
-              upstream service degrades, its impact propagates to every
-              downstream consumer, so you fix the root cause, not the symptoms.
-            </p>
-          </BentoCell>
-        </BentoGrid>
-      </section>
+        {/* Two card bento */}
+        <section className="wrap py-10">
+          <SectionHead
+            eyebrow="Deep context"
+            title={
+              <>
+                More than spans, <em>full context</em>
+              </>
+            }
+          />
+          <BentoGrid>
+            <BentoCell
+              size="wide"
+              icon={FileCode}
+              title="Source map stack trace resolution"
+              iconColor="var(--a4)"
+            >
+              <p>
+                Minified JavaScript stack traces are resolved to original source
+                files and line numbers automatically. Upload your source maps and
+                every frontend error shows readable, actionable traces. Works with
+                webpack, esbuild, and Vite.
+              </p>
+            </BentoCell>
+            <BentoCell
+              size="tall"
+              icon={TrendingUp}
+              title="Impact propagation"
+              iconColor="var(--a2)"
+            >
+              <p>
+                The Impact Score extends across service boundaries. When an
+                upstream service degrades, its impact propagates to every
+                downstream consumer, so you fix the root cause, not the symptoms.
+              </p>
+            </BentoCell>
+          </BentoGrid>
+        </section>
+      </div>
 
       <FinalCTA
         title={

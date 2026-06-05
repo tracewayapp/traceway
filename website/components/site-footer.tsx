@@ -58,10 +58,7 @@ const COLUMNS: Column[] = [
 export function SiteFooter() {
   const year = new Date().getFullYear();
   return (
-    <footer
-      className="mt-20"
-      style={{ borderTop: "1px solid var(--hair)", padding: "50px 0 40px" }}
-    >
+    <footer style={{ borderTop: "1px solid var(--hair)", padding: "50px 0 40px" }}>
       <div className="wrap">
         <div className="footer-grid grid gap-10 md:gap-9 grid-cols-2 md:grid-cols-[1.2fr_repeat(5,1fr)]">
           <div className="col-span-2 md:col-span-1">

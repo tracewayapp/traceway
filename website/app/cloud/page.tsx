@@ -40,40 +40,43 @@ export default function CloudPage() {
       </section>
 
       {/* Pricing */}
-      <section className="wrap py-20">
-        <SectionHead
-          eyebrow="Pricing"
-          title="Simple, predictable pricing"
-          description="Start free and scale as you grow. No credit card required for the Starter plan."
-        />
-        <div className="mt-8">
-          <PricingCalculator />
-        </div>
-      </section>
+      {/* WHITE BAND: pricing + cost comparison render on white */}
+      <div className="band-light">
+        <section className="wrap py-20">
+          <SectionHead
+            eyebrow="Pricing"
+            title="Simple, predictable pricing"
+            description="Start free and scale as you grow. No credit card required for the Starter plan."
+          />
+          <div className="mt-8">
+            <PricingCalculator />
+          </div>
+        </section>
 
-      {/* Cost comparison / cost advantage, absorbed from home */}
-      <section className="wrap py-10" id="cost-mount" data-cost-mount>
-        <SectionHead
-          eyebrow="Cost"
-          title={
-            <>
-              Designed for efficiency. <em>Built to lower your cloud bill.</em>
-            </>
-          }
-          description="Traceway runs lean. ClickHouse columnar storage compresses 1 million daily events into ~2-3 GB per month. Postgres is used for efficient user and organization storage."
-        />
-        <div className="mt-8">
-          <CostComparison />
-        </div>
-        <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
-          <Link href="https://cloud.tracewayapp.com/register" className="btn btn-accent">
-            Start on Cloud <ArrowRight className="h-4 w-4" />
-          </Link>
-          <Link href="https://docs.tracewayapp.com" className="btn btn-ghost">
-            Self-host for free
-          </Link>
-        </div>
-      </section>
+        {/* Cost comparison / cost advantage, absorbed from home */}
+        <section className="wrap py-10" id="cost-mount" data-cost-mount>
+          <SectionHead
+            eyebrow="Cost"
+            title={
+              <>
+                Designed for efficiency. <em>Built to lower your cloud bill.</em>
+              </>
+            }
+            description="Traceway runs lean. ClickHouse columnar storage compresses 1 million daily events into ~2-3 GB per month. Postgres is used for efficient user and organization storage."
+          />
+          <div className="mt-8">
+            <CostComparison />
+          </div>
+          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Link href="https://cloud.tracewayapp.com/register" className="btn btn-accent">
+              Start on Cloud <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link href="https://docs.tracewayapp.com" className="btn btn-ghost">
+              Self-host for free
+            </Link>
+          </div>
+        </section>
+      </div>
 
       <FinalCTA
         title={

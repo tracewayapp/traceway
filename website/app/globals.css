@@ -320,6 +320,14 @@
     box-shadow: none;
   }
 
+  .band-light .btn-accent {
+    background: var(--fg-0);
+    color: var(--ink-0);
+  }
+  .band-light .btn-accent:hover {
+    background: color-mix(in oklab, var(--fg-0) 88%, white);
+  }
+
   .eyebrow {
     font-family: var(--font-mono);
     font-size: 11px;

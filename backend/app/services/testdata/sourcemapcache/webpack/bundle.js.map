@@ -1,0 +1,32 @@
+{
+  "version": 3,
+  "file": "bundle.js",
+  "mappings": "qBAAAA,EAAOC,QAAU,SAAaC,GAC5BA,M,QCDFF,EAAOC,QAAU,WACf,MAAM,IAAIE,MAAM,UCAdC,EAA2B,GAG/B,SAASC,EAAoBC,GAE5B,IAAIC,EAAeH,EAAyBE,GAC5C,QAAqBE,IAAjBD,EACH,OAAOA,EAAaN,QAGrB,IAAID,EAASI,EAAyBE,GAAY,CAGjDL,QAAS,IAOV,OAHAQ,EAAoBH,GAAUN,EAAQA,EAAOC,QAASI,GAG/CL,EAAOC,Q,MCrBf,MAAMS,EAAM,EAAQ,KACR,EAAQ,IAGlBC,CAGED,I",
+  "sources": [
+    "webpack:///./bar.js",
+    "webpack:///./foo.js",
+    "webpack:///webpack/bootstrap",
+    "webpack:///./app.js"
+  ],
+  "sourcesContent": [
+    "module.exports = function bar(f) {\n  f();\n};\n",
+    "module.exports = function foo () {\n  throw new Error(\"wat\");\n};\n",
+    "// The module cache\nvar __webpack_module_cache__ = {};\n\n// The require function\nfunction __webpack_require__(moduleId) {\n\t// Check if module is in cache\n\tvar cachedModule = __webpack_module_cache__[moduleId];\n\tif (cachedModule !== undefined) {\n\t\treturn cachedModule.exports;\n\t}\n\t// Create a new module (and put it into the cache)\n\tvar module = __webpack_module_cache__[moduleId] = {\n\t\t// no module.id needed\n\t\t// no module.loaded needed\n\t\texports: {}\n\t};\n\n\t// Execute the module function\n\t__webpack_modules__[moduleId](module, module.exports, __webpack_require__);\n\n\t// Return the exports of the module\n\treturn module.exports;\n}\n\n",
+    "const foo = require(\"./foo\");\nconst bar = require(\"./bar\");\n\nfunction baz(f) {\n  bar(f);\n}\n\nbaz(foo);\n"
+  ],
+  "names": [
+    "module",
+    "exports",
+    "f",
+    "Error",
+    "__webpack_module_cache__",
+    "__webpack_require__",
+    "moduleId",
+    "cachedModule",
+    "undefined",
+    "__webpack_modules__",
+    "foo",
+    "bar"
+  ],
+  "sourceRoot": ""
+}

@@ -46,6 +46,10 @@ Flags take precedence over environment variables when both are set.
 
 Individual source map files must not exceed **50MB**.
 
+## Maps Without Source File Names
+
+Some build pipelines produce source maps where the `sources` array contains `null` entries: the mappings and embedded source content are intact, but the original file names are missing. Traceway still deobfuscates these frames, resolving the line, column, and function name, and shows `<unknown>` in place of the file name (e.g. `<unknown>:3:9`). To get real file names in stack traces, configure your bundler to emit `sources` entries in its source maps.
+
 ## CI/CD Example (GitHub Actions)
 
 ```yaml

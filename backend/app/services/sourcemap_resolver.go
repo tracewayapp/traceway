@@ -176,8 +176,8 @@ func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace stri
 			continue
 		}
 
-		origFile, origName, origLine, origCol, ok := consumer.Source(lineNum, colNum)
-		if !ok || origFile == "" {
+		origFile, origName, origLine, origCol, ok := consumer.Source(lineNum, colNum-1)
+		if !ok {
 			resolved = append(resolved, line)
 			continue
 		}
@@ -188,7 +188,11 @@ func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace stri
 			}
 		}
 
-		resolved = append(resolved, fmt.Sprintf("%s%s:%d:%d", indent, origFile, origLine, origCol))
+		if origFile == "" {
+			origFile = "<unknown>"
+		}
+
+		resolved = append(resolved, fmt.Sprintf("%s%s:%d:%d", indent, origFile, origLine, origCol+1))
 		framesResolved++
 
 		if origName != "" && len(resolved) >= 2 {

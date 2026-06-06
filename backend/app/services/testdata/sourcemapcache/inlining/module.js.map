@@ -1,0 +1,26 @@
+{
+  "version": 3,
+  "file": "module.js",
+  "sources": [
+    "../src/bar.js",
+    "../src/foo.js",
+    "../src/app.js"
+  ],
+  "sourcesContent": [
+    "import foo from './foo';\n\nexport default function bar(msg) {\n  foo(msg);\n}\n\n",
+    "export default function foo(msg) {\n  throw new Error(msg);\n}\n",
+    "import bar from \"./bar\";\n\nconst buttonCallback = () => bar(\"wat\");\n\nwindow.addEventListener(\"load\", () => {\n  document.querySelector(\"button\").addEventListener(\"click\", buttonCallback);\n});\n"
+  ],
+  "names": [
+    "bar",
+    "msg",
+    "Error",
+    "foo",
+    "buttonCallback",
+    "window",
+    "addEventListener",
+    "document",
+    "querySelector"
+  ],
+  "mappings": "AAEe,SAASA,EAAIC,ICFb,SAAaA,GAC1B,MAAM,IAAIC,MAAMD,EAClB,CDCEE,CAAIF,EACN,CEFA,MAAMG,EAAiB,IAAMJ,EAAI,OAEjCK,OAAOC,iBAAiB,QAAQ,KAC9BC,SAASC,cAAc,UAAUF,iBAAiB,QAASF,EAAe"
+}

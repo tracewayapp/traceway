@@ -1,0 +1,1 @@
+{"version":3,"names":["abcd"],"sources":["tests/fixtures/simple/original.js"],"sourcesContent":["// ./node_modules/.bin/terser -c -m --module tests/fixtures/simple/original.js --source-map includeSources -o tests/fixtures/simple/minified.js\nfunction abcd() {}\nexport default abcd;\n"],"mappings":"AACA,SAASA,oBACMA"}

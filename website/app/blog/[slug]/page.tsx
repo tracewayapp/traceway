@@ -3,13 +3,23 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { MDXRemote } from "next-mdx-remote/rsc";
 import remarkGfm from "remark-gfm";
+import rehypePrettyCode, {
+  type Options as RehypePrettyCodeOptions,
+} from "rehype-pretty-code";
 import { ArrowLeft } from "lucide-react";
 import { Eyebrow } from "@/components/eyebrow";
 import { BlogByline } from "@/components/blog-byline";
 import { BlogSubscribe } from "@/components/blog-subscribe";
 import { getAllPosts, getPostBySlug } from "@/lib/blog";
+import { tracewayShiki } from "@/lib/shiki-theme";
 
 type Params = { slug: string };
+
+const prettyCodeOptions: RehypePrettyCodeOptions = {
+  theme: tracewayShiki,
+  keepBackground: false,
+  defaultLang: "plaintext",
+};
 
 // Note: "engineering" is reserved by the static /blog/engineering route, so no
 // post may be named engineering.mdx; the static segment would shadow it here.
@@ -77,7 +87,12 @@ export default async function BlogPostPage({
               <div className="blog-body">
                 <MDXRemote
                   source={post.content}
-                  options={{ mdxOptions: { remarkPlugins: [remarkGfm] } }}
+                  options={{
+                    mdxOptions: {
+                      remarkPlugins: [remarkGfm],
+                      rehypePlugins: [[rehypePrettyCode, prettyCodeOptions]],
+                    },
+                  }}
                 />
               </div>
             </div>

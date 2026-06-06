@@ -19,9 +19,7 @@ Everything below is real output. I generated every table and trace by running th
 
 The smallest program I could write that throws across more than one stack frame is two files.
 
-`src/user.ts`:
-
-```ts
+```ts title="src/user.ts"
 export interface User {
   name: string;
 }
@@ -35,9 +33,7 @@ export function validateUser(user: User): User {
 }
 ```
 
-`src/index.ts`:
-
-```ts
+```ts title="src/index.ts"
 import { validateUser, type User } from "./user";
 
 function handleSignup(form: User): User {

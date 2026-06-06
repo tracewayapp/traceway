@@ -240,14 +240,13 @@
     color: inherit;
     cursor: pointer;
   }
-  code {
+  :not(pre) > code {
     font-family: var(--font-mono);
     font-size: 0.92em;
-    background: color-mix(in oklab, var(--a2) 10%, transparent);
-    color: var(--a2);
+    background: color-mix(in oklab, var(--a2) 8%, transparent);
+    color: color-mix(in oklab, var(--a2) 60%, var(--fg-1));
     padding: 2px 6px;
     border-radius: 4px;
-    border: 1px solid color-mix(in oklab, var(--a2) 20%, transparent);
   }
 }
 
@@ -1066,6 +1065,99 @@
   }
   .blog-body code {
     font-family: var(--font-mono);
+  }
+
+  .blog-body figure[data-rehype-pretty-code-figure] {
+    margin: 32px 0;
+  }
+  .blog-body pre {
+    background: var(--ink-0);
+    border: 1px solid var(--hair);
+    border-radius: var(--radius-lg);
+    padding: 16px 18px;
+    margin: 32px 0;
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 13.5px;
+    line-height: 1.7;
+    tab-size: 2;
+  }
+  .blog-body figure[data-rehype-pretty-code-figure] > pre {
+    margin: 0;
+  }
+  .blog-body pre code {
+    display: block;
+    font-family: inherit;
+    font-size: inherit;
+    background: none;
+    border: 0;
+    padding: 0;
+    color: inherit;
+  }
+  .blog-body pre [data-line] {
+    display: block;
+  }
+  .blog-body figcaption[data-rehype-pretty-code-title] {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--fg-2);
+    background: var(--ink-2);
+    border: 1px solid var(--hair);
+    border-bottom: 0;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding: 8px 18px;
+  }
+  .blog-body figcaption[data-rehype-pretty-code-title] + pre {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+
+  .blog-body table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 32px 0;
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  .blog-body th {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--fg-2);
+    text-align: left;
+    white-space: nowrap;
+    padding: 10px 18px 10px 0;
+    border-bottom: 1px solid var(--hair-2);
+  }
+  .blog-body td {
+    padding: 10px 18px 10px 0;
+    color: var(--fg-1);
+    vertical-align: top;
+    border-bottom: 1px solid var(--hair);
+  }
+  .blog-body th:last-child,
+  .blog-body td:last-child {
+    padding-right: 0;
+  }
+  @media (max-width: 720px) {
+    .blog-body table {
+      display: block;
+      overflow-x: auto;
+    }
+  }
+
+  .blog-body hr {
+    border: 0;
+    border-top: 1px solid var(--hair-2);
+    margin: 48px 0 40px;
+  }
+  .blog-body hr + h2 {
+    margin-top: 40px;
+  }
+  .blog-body hr + p {
+    color: var(--fg-2);
+    font-size: 15.5px;
   }
 
   /* Highlight a key phrase. Use sparingly (raw <mark> in MDX). */

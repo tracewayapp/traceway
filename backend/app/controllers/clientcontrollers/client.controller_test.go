@@ -50,6 +50,26 @@ func TestComputeExceptionHash_Java(t *testing.T) {
 	}
 }
 
+func TestComputeExceptionHash_JsFunctionNames(t *testing.T) {
+	stackA := "Error: Test error\n    anonymous()\n    ../src/app.js:3:30\n    bar()\n    ../src/bar.js:4:3"
+	stackB := "Error: Test error\n    buttonCallback()\n    ../src/app.js:3:30\n    module.exports()\n    ../src/bar.js:4:3"
+	if ComputeExceptionHash(stackA, false) != ComputeExceptionHash(stackB, false) {
+		t.Error("same locations with different resolved function names should have the same hash")
+	}
+
+	stackC := "Error: Test error\n    anonymous()\n    ../src/app.js:3:30"
+	stackD := "Error: Test error\n    anonymous()\n    ../src/other.js:7:12"
+	if ComputeExceptionHash(stackC, false) == ComputeExceptionHash(stackD, false) {
+		t.Error("different locations should have different hashes")
+	}
+
+	stackE := "Error: Test error\n    anonymous()\n    bundle.min.js:1:48211"
+	stackF := "Error: Test error\n    anonymous()\n    bundle.min.js:1:91567"
+	if ComputeExceptionHash(stackE, false) == ComputeExceptionHash(stackF, false) {
+		t.Error("different columns in minified frames should have different hashes")
+	}
+}
+
 func TestIsEmptyRaw(t *testing.T) {
 	cases := []struct {
 		name string

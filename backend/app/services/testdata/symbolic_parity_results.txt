@@ -1,7 +1,8 @@
 symbolic parity results
 fixtures: getsentry/symbolic 925230e878ea25f6a0af88171fce93b6272cd30d
 regenerate: go test ./app/services/ -run TestResolveStackTraceSymbolicParity -record-symbolic
-frames: 13 passed, 5 failed, 18 total
+PINNED frames intentionally deviate from symbolic; see sourcemapcache/README.md
+frames: 13 parity, 5 pinned deviations, 0 failing, 18 total
 
 [PASS] resolves_inlined_function :: module.js:1:63
   location expected: ../src/app.js:3:30
@@ -45,10 +46,11 @@ frames: 13 passed, 5 failed, 18 total
   name expected:     assign
   name actual:       assign
 
-[FAIL] resolves_location_from_cache :: preact.module.js:1:482
+[PINNED] resolves_location_from_cache :: preact.module.js:1:482
   location expected: ../src/create-element.js:40:9
   location actual:   ../src/create-element.js:40:9
-  name expected:     createElement
+  name parity target: createElement
+  name pinned:       normalizedProps
   name actual:       normalizedProps
 
 [PASS] resolves_location_from_cache :: preact.module.js:1:9780
@@ -81,10 +83,11 @@ frames: 13 passed, 5 failed, 18 total
   name expected:     foo
   name actual:       foo
 
-[FAIL] hermes_scope_lookup :: react-native-hermes:1:11858
+[PINNED] hermes_scope_lookup :: react-native-hermes:1:11858
   location expected: input.js:3:1
   location actual:   input.js:3:1
-  name expected:     <global>
+  name parity target: <global>
+  name pinned:       anonymous
   name actual:       anonymous
 
 [PASS] metro_scope_lookup :: react-native-metro.js:7:101
@@ -93,21 +96,24 @@ frames: 13 passed, 5 failed, 18 total
   name expected:     foo
   name actual:       foo
 
-[FAIL] metro_scope_lookup :: react-native-metro.js:6:44
+[PINNED] metro_scope_lookup :: react-native-metro.js:6:44
   location expected: input.js:3:1
   location actual:   input.js:3:1
-  name expected:     <global>
+  name parity target: <global>
+  name pinned:       foo
   name actual:       foo
 
-[FAIL] webpack_scope_lookup :: bundle.js:1:85
+[PINNED] webpack_scope_lookup :: bundle.js:1:85
   location expected: webpack:///./foo.js:2:9
   location actual:   webpack:///./foo.js:2:9
-  name expected:     module.exports
+  name parity target: module.exports
+  name pinned:       foo
   name actual:       foo
 
-[FAIL] webpack_scope_lookup :: bundle.js:1:44
+[PINNED] webpack_scope_lookup :: bundle.js:1:44
   location expected: webpack:///./bar.js:2:3
   location actual:   webpack:///./bar.js:2:3
-  name expected:     module.exports
+  name parity target: module.exports
+  name pinned:       bar
   name actual:       bar
 

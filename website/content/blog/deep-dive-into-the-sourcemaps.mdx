@@ -1,0 +1,504 @@
+---
+title: "Deep dive into the JS/TS toolchain: How source maps fall short where it matters most"
+date: "2026-06-06"
+category: "engineering"
+description: "What actually happens between your TypeScript and a production stack trace, decoded entirely by hand."
+---
+
+I'm building an exception tracking platform (Traceway), and I want its symbolication, the bit that turns a minified production stack trace back into "ah, `validateUser`, line 8", to be genuinely world-class, not "eh, close enough." So I did the obnoxious thing: I tried to symbolicate a trace entirely by hand, with nothing but the artifacts a browser actually ships me.
+
+And about ten minutes in I hit a wall that I now can't stop thinking about: **a source map, on its own, literally cannot recover the original function names.** Not "it's hard." Not "it's lossy." It *can't*. It will hand me the exact original file, line, and column of every frame, perfectly, every time, and then confidently give me back the wrong name for all of them. To get the names right I also need the minified bundle itself, parsed. That's the real reason every serious error tracker quietly insists you upload your bundle *and* your map, and almost nobody can tell you why.
+
+So let me show you why, by doing the whole thing by hand on a tiny real program. I decode the source map's `mappings` field digit by digit, do the position lookups (they're great!), watch the names fall apart (spectacularly), and then fix them with the one extra step that needs the bundle. The end result matches what Sentry produces, byte for byte. It's the same three-step algorithm going into Traceway's final symbolicator.
+
+Everything below is real output. I generated every table and trace by running the code on the programs I describe, with `esbuild 0.25` and `node v24`.
+
+---
+
+## 1. The program and the crash
+
+The smallest program I could write that throws across more than one stack frame is two files.
+
+`src/user.ts`:
+
+```ts
+export interface User {
+  name: string;
+}
+
+export function validateUser(user: User): User {
+  const trimmed = user.name.trim();
+  if (trimmed.length === 0) {
+    throw new Error("user has no name");   // line 8
+  }
+  return { name: trimmed };
+}
+```
+
+`src/index.ts`:
+
+```ts
+import { validateUser, type User } from "./user";
+
+function handleSignup(form: User): User {
+  return validateUser({ name: form.name });   // line 4
+}
+
+handleSignup({ name: "   " });                 // line 7
+```
+
+I bundled and minified it with `esbuild src/index.ts --bundle --format=iife --minify --sourcemap --outfile=dist/app.min.js`. The whole program collapsed onto **one line**. And look what the minifier did to the names. This is the crime scene: `validateUser` became `n`, `handleSignup` became `t`, and *both* parameters became `e`:
+
+```js
+(()=>{function n(e){let r=e.name.trim();if(r.length===0)throw new Error("user has no name");return{name:r}}function t(e){return n({name:e.name})}t({name:"   "});})();
+//# sourceMappingURL=app.min.js.map
+```
+
+I ran it. It crashed. Here's the raw stack trace, exactly what Traceway (or Sentry, or anything) gets from a browser in production:
+
+```
+Error: user has no name
+    at n (app.min.js:1:63)
+    at t (app.min.js:1:129)
+    at app.min.js:1:146
+    at app.min.js:1:164
+```
+
+Four frames. Each one is a `line:column` into the bundle, plus a minified name when V8 has one; that bottom frame is the top-level call of the IIFE wrapper itself, the `()` at the very end of the line. That's it. That's the entire amount of information I get to work with. (The columns are **1-based**, V8's convention. Frame 1 is column 63. File that away, because the off-by-one bit me later.)
+
+What I *want*, what a great symbolicator coughs up, is this:
+
+```
+Error: user has no name
+    at validateUser (src/user.ts:8:11)
+    at handleSignup (src/index.ts:4:10)
+    at <global> (src/index.ts:7:1)
+    at <global> (src/index.ts:7:29)
+```
+
+Names back, real `.ts` files, real lines. Let's earn it.
+
+---
+
+## 2. Anatomy of the source map
+
+The `.map` file is just JSON. Here's the real one, formatted, with `sourcesContent` truncated:
+
+```json
+{
+  "version": 3,
+  "sources": ["../src/user.ts", "../src/index.ts"],
+  "sourcesContent": ["export interface User {\n  name: string;\n}\n...", "import { validateUser..."],
+  "mappings": "MAIO,SAASA,EAAaC,EAAkB,CAC7C,IAAMC,EAAUD,EAAK,KAAK,KAAK,EAC/B,GAAIC,...",
+  "names": ["validateUser", "user", "trimmed", "handleSignup", "form", "validateUser"]
+}
+```
+
+Five fields matter:
+
+- **`version`**: always `3` today.
+- **`sources`**: the original files, referenced later *by index*. Index `0` is `../src/user.ts`, index `1` is `../src/index.ts`. (The `../` is just esbuild recording the path relative to `dist/`; a symbolicator normalizes it back to `src/user.ts`.)
+- **`sourcesContent`**: the full original text of each source. Optional, but almost always there. This is why DevTools can show you your real code without the `.ts` files being on the server.
+- **`names`**: a flat pool of original identifier strings, referenced *by index*. And here's the first "huh": `"validateUser"` shows up **twice**, at index 0 and index 5. No deduplication. And, crucially, there is no "minified → original" dictionary anywhere in here. The array is purely positional. Hold that thought, it's about to become the whole story.
+- **`mappings`**: the heart of it. A compressed list of **point mappings**, one per interesting token: *"the token at this bundle column came from this source, this original line, this original column, and (optionally) was spelled this name."*
+
+And that's the thing that genuinely surprised me, the load-bearing fact for everything below: **a source map is a list of points, not ranges.** It records "column X maps to original Y." It never, ever records "columns X through Z are the body of function F." That one design decision is the reason I'm about to need the bundle.
+
+---
+
+## 3. Decoding `mappings` by hand: the VLQ format
+
+The `mappings` string looks like a cat walked across the keyboard. It is not. It's three layers of structure stacked on top of each other:
+
+1. **Semicolons (`;`) separate generated lines.** My bundle is one line, so this map has zero semicolons. It's all one group. (In a normal multi-line bundle, each `;` bumps you to the next output line.)
+2. **Commas (`,`) separate segments within a line.** One segment = one token.
+3. **Each segment is 1, 4, or 5 numbers**, Base64-VLQ encoded:
+
+   | Fields | Meaning of each field (every one is a *delta* from the previous segment) |
+   |---|---|
+   | 1 | `[generatedColumn]` |
+   | 4 | `[generatedColumn, sourceIndex, originalLine, originalColumn]` |
+   | 5 | `[generatedColumn, sourceIndex, originalLine, originalColumn, nameIndex]` |
+
+Everything is a **delta**, never an absolute. That's the trick that keeps the string short. The values accumulate left to right. One gotcha I had to nail down: `generatedColumn` resets to 0 at every new line (every `;`), but `sourceIndex`, `originalLine`, `originalColumn`, and `nameIndex` keep accumulating across the *entire* file.
+
+### Base64-VLQ in one paragraph
+
+Each number is one or more Base64 digits. Take the alphabet `ABCD…abcd…0123…+/` (`A`=0, `B`=1, … `/`=63). For each char, grab its 6-bit value. The top bit (value 32) is a **continuation flag**: set means another digit follows with higher-order bits. The low 5 bits are payload, shifted 5 per continuation. Once you've got the full integer, the **lowest bit is the sign** (1 = negative) and the rest is magnitude: `value = (n & 1) ? -(n >>> 1) : (n >>> 1)`.
+
+Here's the whole decoder, no dependencies (the decoder is not optimal, it's just a quick and dirty example):
+
+```js
+const ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+function decodeSegment(seg) {
+  const vals = [];
+  let shift = 0, cur = 0;
+  for (const c of seg) {
+    const d = ALPHA.indexOf(c);
+    cur |= (d & 31) << shift;      // low 5 bits are payload
+    if (d & 32) {                  // bit 32 = "continuation, more digits follow"
+      shift += 5;
+    } else {
+      vals.push(cur & 1 ? -(cur >>> 1) : cur >>> 1);  // low bit = sign
+      cur = 0; shift = 0;
+    }
+  }
+  return vals;
+}
+```
+
+### One segment, all the way down
+
+Let me take the second segment of my map, `SAASA`, and grind through it character by character.
+
+| Char | Base64 value | Binary (6 bit) | Continuation? | Payload (low 5) |
+|---|---|---|---|---|
+| `S` | 18 | `010010` | no (bit 32 clear) | `10010` = 18 |
+| `A` | 0 | `000000` | no | 0 |
+| `A` | 0 | `000000` | no | 0 |
+| `S` | 18 | `010010` | no | 18 |
+| `A` | 0 | `000000` | no | 0 |
+
+No continuation bits, so each char is its own number. Apply the sign rule (`value = n&1 ? -(n>>1) : n>>1`):
+
+- `18` → `18 >>> 1` = **9**
+- `0` → **0**
+- `0` → **0**
+- `18` → **9**
+- `0` → **0**
+
+So `SAASA` decodes to `[9, 0, 0, 9, 0]`. Five fields → it carries a name. Apply the deltas to the running totals (after the first segment `MAIO`, those stood at generatedColumn 6, sourceIndex 0, originalLine 4, originalColumn 7, nameIndex 0):
+
+- generatedColumn: 6 + 9 = **15**
+- sourceIndex: 0 + 0 = **0** → `../src/user.ts`
+- originalLine: 4 + 0 = **4**
+- originalColumn: 7 + 9 = **16**
+- nameIndex: 0 + 0 = **0** → `names[0]` = `"validateUser"`
+
+Out loud: *bundle column 15 maps to `user.ts` line 4, column 16 (0-based), originally named `validateUser`.* Bundle column 15 is the `n` in `function n(`, i.e. the minified `validateUser`. The map recorded the rename **at the exact column where the token physically sits.** Not near it. *At* it. Remember that, because it's the whole trap.
+
+### Continuation example
+
+`kBAAkB` has a multi-digit number. `k` = 36 = `100100`: bit 32 is set, so it continues. Payload `00100` = 4. Next char `B` = 1 = `000001`, no continuation, payload `00001` = 1. Combine: `4 | (1 << 5)` = 36. Sign rule: `36 >>> 1` = **18**. So `kB` is one number, 18, and `kBAAkB` is `[18, 0, 0, 18]`, four fields, no name.
+
+### The full decode
+
+Doing that for every segment gives the complete mapping table. Here are the rows that matter, in the map's native **0-based** line/column, with the bundle text at each column so you can see precisely which token each row pins:
+
+```
+bundle col -> original file:line:col      name          | bundle text at that col
+         6 -> ../src/user.ts:4:7                         | "function n(e){le"
+        15 -> ../src/user.ts:4:16      validateUser      | "n(e){let r=e.nam"   <- token `n` (the def of validateUser)
+        17 -> ../src/user.ts:4:29      user              | "e){let r=e.name."   <- param `e` in n
+        24 -> ../src/user.ts:5:8       trimmed           | "r=e.name.trim();"
+        62 -> ../src/user.ts:7:10                        | "new Error(\"user "  <- THROW SITE: no name
+       107 -> ../src/index.ts:2:0                        | "function t(e){re"
+       116 -> ../src/index.ts:2:9      handleSignup      | "t(e){return n({n"   <- token `t` (the def of handleSignup)
+       118 -> ../src/index.ts:2:22     form              | "e){return n({nam"   <- param `e` in t
+       128 -> ../src/index.ts:3:9      validateUser      | "n({name:e.name})"   <- the CALL n(...) inside t
+       145 -> ../src/index.ts:6:0      handleSignup      | "t({name:\"   \"});"  <- the CALL t(...) at top level
+       159 -> ../src/index.ts:6:28                       | ");})();"            <- the map's LAST mapping (file this away too)
+```
+
+Two things to stare at before moving on, because the entire failure mode lives in these two lines:
+
+1. **The rename `n → validateUser` is recorded everywhere the token `n` physically appears**, its definition (column 15) and its call site (column 128), and **nowhere else.** The throw statement at column 62 contains no `n`, so the map says *nothing* about the name there. The field is empty. The map isn't being lazy; there was simply no `n` token to annotate.
+2. **The same minified name maps to different originals depending on where it sits.** `e` is `user` at column 17 and `form` at column 118. There is no global "minified `e` → original name" lookup, and there *cannot* be one, because renames only exist positionally. This is why "just reverse the minification" is a fantasy.
+
+---
+
+## 4. Resolving locations: the floor lookup (this part is great)
+
+For a frame at bundle `line:column`, how do I find the original location? I don't get an exact hit. Most columns have no mapping at all. So I do a **floor lookup**: take the mapping with the largest column ≤ my query column. Its source/line/column is the answer.
+
+```js
+function floorLookup(rows, genLine, genCol) {
+  let best = null;
+  for (const r of rows) {
+    if (r.genLine !== genLine) continue;
+    if (r.genCol > genCol) break;   // rows are sorted by column
+    best = r;
+  }
+  return best;
+}
+```
+
+**The off-by-one that got me:** stack traces are 1-based (V8), source maps are 0-based. Subtract 1 from the frame's line and column before the lookup; add 1 back after, for human eyes.
+
+Frame 1 is `at n (app.min.js:1:63)`. Subtract 1 → query line 0, column 62. The floor lookup lands on the mapping at column 62 (`new Error("user ...`), which points at `user.ts` 0-based line 7, column 10. Add 1 back → **`user.ts:8:11`**. The `throw` on line 8. Nailed it.
+
+Run all four frames:
+
+```
+frame                     | resolved location (works!) | map name at frame position
+--------------------------+----------------------------+---------------------------
+at n (1:63)               | ../src/user.ts:8:11        | ""
+at t (1:129)              | ../src/index.ts:4:10       | "validateUser"
+at (no name) (1:146)      | ../src/index.ts:7:1        | "handleSignup"
+at (no name) (1:164)      | ../src/index.ts:7:29       | ""
+```
+
+The **locations are flawless.** The throw on `user.ts:8`, the call on `index.ts:4`, the top-level call on `index.ts:7`, even the wrapper invocation pinned to the tail of line 7. The map absolutely crushes positions. I was feeling pretty good at this point.
+
+---
+
+## 5. Resolving names with the map alone: this part is a trainwreck
+
+Then I looked at that right-hand column. The correct names are `validateUser`, `handleSignup`, `<global>`, `<global>`. The map handed me `""`, `"validateUser"`, `"handleSignup"`, `""`. **All four wrong**, and the *way* each one is wrong is what made me sit up:
+
+- **Frame 1 (the throw site) → `""`.** The tokens at the crash position (`throw`, `new`, `Error`) were never renamed, so the map never recorded a name there. Blank. The actual function I'm in (`validateUser`) is defined 47 columns to the left, and the map has zero way to know I want *that* one.
+- **Frame 2 → `"validateUser"`. The wrong function entirely.** This frame is executing inside `handleSignup`. But a caller frame's saved position is, by definition, the *call site*, and the token sitting at column 128 is the call `n(...)`, i.e. the **callee**. So the map cheerfully returns the name of the function being *called*, not the one I'm *in*. Every caller frame in every stack trace has this property. It's not a bug in the map; it's the map answering a different question than the one I'm asking.
+- **Frame 3 (top-level code) → `"handleSignup"`.** Same trick: the position sits on the call `t(...)`, so I get the callee's name again, for a frame that isn't inside any function at all.
+- **Frame 4 (the wrapper call) → `""`.** Same failure as frame 1: nothing at that position was ever renamed, so the map recorded nothing there.
+
+And the minified names from the trace itself (`n`, `t`)? Useless. A real bundle has dozens of unrelated `n`s; the map can only translate a name at a *known position*, never a name in the abstract.
+
+There *is* one cute pattern hiding in that table: **frame N's correct name tends to sit at frame N+1's position.** Frame 1's answer (`validateUser`) is the map-name on frame 2's row; frame 2's answer (`handleSignup`) is the map-name on frame 3's row. Shift the names up a row and frames 1 and 2 magically come out right. I got briefly excited. Then I remembered frame 3 only inherits frame 4's blank, the bottom frame has no row below it to steal from at all, and the trick also detonates on framework callbacks and async resumptions. So this "caller-site fallback" is real. Production systems keep it as a backup. But it's a heuristic wearing a trench coat, not the answer.
+
+### Hold on. Why not always just steal from the frame below?
+
+Because I tried, and catching it lying is what finally made the bundle parse feel non-negotiable instead of paranoid. The shift-up trick answers the question *"what name was typed at the call site one frame down."* The question a stack frame actually poses is *"whose body is executing here."* For a boring direct call those two questions happen to share an answer: `validateUser(...)` minifies to `n(...)`, the map annotates that `n` token with the real name, done. And my little program is accidentally wall-to-wall boring calls. Real codebases are not. So, second tiny program. `validateUser` stays exactly as it was; around it:
+
+```ts
+// indirect call: the function arrives through a parameter
+function dispatch(handler: (u: User) => User, u: User): User {
+  return handler(u);
+}
+
+// async: after the await, the original call chain is gone
+async function handleSignup(form: User): Promise<User> {
+  await Promise.resolve();
+  return dispatch(validateUser, { name: form.name });
+}
+
+handleSignup({ name: "   " });
+```
+
+esbuild renames `dispatch` to `s` and `handleSignup` to `a` (`validateUser` is `n` again), and the crash comes back as three frames:
+
+```
+Error: user has no name
+    at n (heuristic.min.js:1:63)
+    at s (heuristic.min.js:1:131)
+    at a (heuristic.min.js:1:187)
+```
+
+Run the shift-up trick on it, next to the truth:
+
+```
+frame            | stolen from the frame below        | truth (enclosure)
+-----------------+------------------------------------+------------------
+at n (1:63)      | "handler"                          | WRONG: validateUser
+at s (1:131)     | "dispatch"                         | dispatch (match)
+at a (1:187)     | (no frame below, nothing to steal) | WRONG: handleSignup
+```
+
+Three frames, three different endings:
+
+- **`validateUser` got named `handler`. Confidently, plausibly, wrong.** `dispatch` invokes it as `handler(u)`, so the token physically sitting at the call site is the *parameter* `handler`, and the map translates exactly what's there, like it always does. The caller's call site records what the caller *typed*, and the caller didn't type `validateUser`. Every callback, dispatch table, middleware chain, `cb()`, `next()`, `fn.call(...)` in a real codebase produces this shape. And the cruel detail: `"validateUser"` *is* in this map, attached to the argument token `n` in `s(n, ...)`, two columns to the right of frame 3's position. The heuristic has no way to know that's the token to ask.
+- **`dispatch` came out right.** `handleSignup` calls it directly, by name. That's the one shape the trick handles.
+- **`handleSignup` got nothing.** The `await` severed it: by the time `validateUser` throws, the call `handleSignup({ ... })` finished long ago and is gone from the stack. The frames below it are microtask plumbing in another file. Every `async` function resumed after an `await` has this property, which in a modern codebase is most functions.
+
+And this is all still one bundle, one file. Let the caller be a framework scheduler, a DOM event dispatch, or a `setTimeout`, and the frame below lives in someone else's bundle (different file, different map) or in native code (no frame at all). Let the trace hit `Error.stackTraceLimit` and the last visible frame loses its donor entirely.
+
+So the frame below tells me what its author typed to make a call. It does not tell me whose body is executing in *my* frame. Those coincide for direct, same-file, still-on-the-stack calls and silently diverge everywhere else, which is the worst possible failure mode for a tool you reach for mid-incident. The name I need is a property of the crash location itself, not of whoever happens to be underneath it in the trace. Which raises the real question.
+
+---
+
+## 6. Why the map *cannot* do it, and I mean cannot
+
+Here's the question I actually need answered, for every single frame:
+
+> Which function **encloses** bundle column 62?
+
+The answer is written down in exactly one place in the universe: the **brace structure** of the bundle text. `function n(e){ … }` runs from column 6 to 107; `function t(e){ … }` runs 107 to 145 (spans end-exclusive, the way a parser reports them); column 62 lives inside the first. But the source map format has no notion of a range, a scope, or nesting. *Only points.* So the enclosure question isn't hard to answer from the map. It's **unanswerable from the map**, because the format has no field that could ever hold the answer. That's the part that flipped a switch for me: I wasn't failing at the task, I was asking a data structure for something it structurally cannot contain.
+
+Why is it built this way? Because source maps were designed for **debuggers**, and a debugger is *running the bundle.* DevTools always has the full bundle text in hand and parses scopes itself. It only ever needed the map for two things: translate a position, translate a token's name. The consumer that has the map but *not* the bundle, a server receiving a stack string over HTTP, which is precisely what Traceway is, was never in the room when this format was designed. The entire mismatch, in one sentence.
+
+---
+
+## 7. The fix: map + parsed bundle
+
+This is what Sentry (via its Rust `symbolic` library) and friends actually do, and it's exactly why **they make you upload the bundle next to the map.** Three steps per frame:
+
+```
+For frame "at n (app.min.js:1:63)":
+
+  STEP 1  LOCATION   (map only)     map.lookup(1:62)  -> user.ts:8:11
+  STEP 2  ENCLOSURE  (bundle only)  parse bundle; col 62 sits inside `function n`
+                                    whose NAME TOKEN is at col 15
+  STEP 3  NAME       (map again)    map.lookup(1:15)  -> "validateUser"
+```
+
+Step 2 is the only one that touches the bundle, and it's the magic move: it converts *"where the code crashed"* (column 62) into *"where the enclosing function's name token lives"* (column 15), and column 15 is the one position where the map bothered to record that rename. Location and name come from the same map; the bundle just tells me *which column to ask about.*
+
+I parse the bundle once into a compact scope index: sorted function ranges, each tagged with the column of its name token. From then on each frame is two map lookups and a scope-range check. Here's the whole thing, with `acorn` doing the parse:
+
+```js
+import { readFileSync } from "node:fs";
+import * as acorn from "acorn";
+import { decodeMappings, floorLookup } from "./vlq.mjs";
+
+const map = JSON.parse(readFileSync("dist/app.min.js.map", "utf8"));
+const rows = decodeMappings(map);
+const bundleLine = readFileSync("dist/app.min.js", "utf8").split("\n")[0];
+
+// --- STEP 2 prep: parse the bundle into function scopes ---
+const ast = acorn.parse(bundleLine, { ecmaVersion: "latest" });
+const scopes = [];
+(function walk(node) {
+  if (!node || typeof node.type !== "string") return;
+  if (node.type === "FunctionDeclaration" || node.type === "FunctionExpression") {
+    scopes.push({
+      start: node.start,
+      end: node.end,
+      nameCol: node.id ? node.id.start : null,  // column of the function's NAME token
+    });
+  }
+  // (production also indexes ArrowFunctionExpression, methods, and class fields;
+  //  esbuild's IIFE wrapper is an arrow, and skipping it is exactly right here:
+  //  code directly inside the wrapper IS the original top-level code)
+  for (const k in node) {
+    const v = node[k];
+    if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v.type === "string") walk(v);
+  }
+})(ast);
+scopes.sort((a, b) => (b.start - a.start) || (a.end - b.end));  // innermost first
+
+function enclosingNameCol(col) {
+  for (const s of scopes) if (col >= s.start && col < s.end) return s.nameCol;
+  return null;  // inside no function => global scope
+}
+
+// --- resolve each frame ---
+function symbolicate(line1, col1) {       // 1-based, straight from the trace
+  const col0 = col1 - 1;
+  const locHit  = floorLookup(rows, line1 - 1, col0);          // STEP 1
+  const nameCol = enclosingNameCol(col0);                       // STEP 2
+  let name;
+  if (nameCol === null) name = "<global>";
+  else {
+    const nameHit = floorLookup(rows, line1 - 1, nameCol);     // STEP 3
+    name = nameHit && nameHit.name ? nameHit.name : "(unknown)";
+  }
+  const loc = locHit ? `${locHit.source}:${locHit.line + 1}:${locHit.col + 1}` : "(no mapping)";
+  return { name, loc };
+}
+```
+
+Running it on the four real frames, with the steps printed so you can watch it work:
+
+```
+  raw frame:  at n (1:63)
+   step1 location  map.lookup(1:62)   -> ../src/user.ts:8:11
+   step2 enclosure col 62 is inside function whose name token is at col 15
+   step3 name      map.lookup(1:15)   -> "validateUser"
+   RESULT:  at validateUser (../src/user.ts:8:11)
+
+  raw frame:  at t (1:129)
+   step1 location  map.lookup(1:128)  -> ../src/index.ts:4:10
+   step2 enclosure col 128 is inside function whose name token is at col 116
+   step3 name      map.lookup(1:116)  -> "handleSignup"
+   RESULT:  at handleSignup (../src/index.ts:4:10)
+
+  raw frame:  at (anon) (1:146)
+   step1 location  map.lookup(1:145)  -> ../src/index.ts:7:1
+   step2 enclosure col 145 is inside NO function => <global>
+   step3 name      (global, no lookup)
+   RESULT:  at <global> (../src/index.ts:7:1)
+
+  raw frame:  at (anon) (1:164)
+   step1 location  map.lookup(1:163)  -> ../src/index.ts:7:29
+   step2 enclosure col 163 is inside NO function => <global>
+   step3 name      (global, no lookup)
+   RESULT:  at <global> (../src/index.ts:7:29)
+```
+
+Assembled:
+
+```
+Error: user has no name
+    at validateUser (src/user.ts:8:11)
+    at handleSignup (src/index.ts:4:10)
+    at <global> (src/index.ts:7:1)
+    at <global> (src/index.ts:7:29)
+```
+
+That's the target. Exactly. I symbolicated a minified production stack trace by hand and got what Sentry gets. The only thing that pulled the names out of the fire was parsing the bundle.
+
+---
+
+## 8. Wait, doesn't `node --enable-source-maps` do it from the map alone? (No.)
+
+Here's where I almost talked myself out of the whole conclusion. Node has built-in source-map support. I ran the *minified* bundle with the flag and it just... resolved the names:
+
+```
+$ node --enable-source-maps dist/app.min.js
+Error: user has no name
+    at validateUser (src/user.ts:8:11)
+    at handleSignup (src/index.ts:4:10)
+    at handleSignup (src/index.ts:7:1)      <- WRONG: the global frame wearing its callee's name
+    at <anonymous> (src/index.ts:7:29)
+```
+
+For a second I thought I'd been wrong and the map alone *was* enough. It wasn't, and this is actually the strongest proof in the whole post. From Node's own source (`lib/internal/source_map/prepare_stack_trace.js`):
+
+```js
+function getOriginalSymbolName(sourceMap, callSite, callerCallSite) {
+  const enclosingEntry = sourceMap.findEntry(
+    callSite.getEnclosingLineNumber() - 1,
+    callSite.getEnclosingColumnNumber() - 1,
+  );
+  if (enclosingEntry.name) return enclosingEntry.name;
+  // fallback: use the symbol name from the caller site ...
+}
+```
+
+`getEnclosingLineNumber()` / `getEnclosingColumnNumber()` are V8 `CallSite` APIs answering *"where is this frame's enclosing function defined?"*, which is **literally Step 2 of my algorithm.** Node gets it for free because **V8 already parsed the bundle: it's the thing executing it.** Then Node queries the map at that definition position (Step 3). The JavaScript engine is quietly playing the exact role my `acorn` parse plays. A server-side symbolicator has no running V8 holding a parsed bundle, which is *precisely* why it has to parse the bundle itself. Node didn't escape the requirement. It just happens to be standing inside the one process that already satisfies it.
+
+Except, and I only caught this when I instrumented the `CallSite` objects to watch the lookups happen, on this bundle the enclosing lookup comes back empty for **every single frame**. V8 reports the enclosing function's *first* character, column 6 for `function n`, and esbuild recorded the rename nine columns to the right, on the name token at column 15. The mapping sitting at column 6 exists and has no name field. So `enclosingEntry.name` is blank four times out of four, and every name in that output came from the **caller-site fallback**: the shift-the-names-up-a-row heuristic from Section 5, quietly doing all of the work, in Node core. Which sharpens Step 2 into its real form: it's not "find the enclosing function," it's "find the enclosing function's *name token*," because that is the only column where the map wrote the rename down. That's why my walk records `node.id.start` and not `node.start`.
+
+And then, chef's kiss, look at that third frame: `handleSignup` where it should be `<global>`. That frame is the original top-level code (the body of esbuild's IIFE wrapper), there's no named enclosing function anywhere above it, so the fallback fires on the wrapper-call frame below it, and the floor lookup lands on the map's very last mapping, the one I told you to file away. That mapping has no name field either. It gets one anyway: Node's VLQ parser, on the final segment of the entire `mappings` string, peeks past the end of the string, doesn't see a separator, reads a phantom fifth field of zero, and stamps the segment with whatever the name accumulator was last holding, which is `names[3]`, `handleSignup`. A callee leak, delivered by a parser quirk, onto a global frame, and it ships in Node core today. (The bottom frame at least fails honestly: its caller lives in Node's internals, a different file, so the fallback gives up and prints `<anonymous>`.) My by-hand version dodges all of this for two reasons: Step 2 hands back the name token's column instead of the function's first column, and I treat "inside no function" as an explicit `<global>` instead of falling back, which matters a lot when the bottom frames of basically every browser trace are global code.
+
+---
+
+## 9. The three-artifact reality
+
+Each artifact answers a different question, and you need all three:
+
+| Artifact    | What it provides |
+|-------------|------------------|
+| Stack trace | the **query**: bundle positions and minified names |
+| Source map  | **translation**: position → original position, and token → original name |
+| Bundle      | **structure**: which function encloses a position, and where its name token sits |
+
+Drop the bundle and you keep flawless locations and lose every name to one of three failure modes: blank at the crash token, the callee's name on caller frames, the callee's name on the global frame.
+
+The four traces this one tiny program can produce, side by side:
+
+| Trace | Names | Locations | What it proves |
+|---|---|---|---|
+| minified (production) | `n`, `t`, none, none | bundle line 1 | the starting point a tracker receives |
+| non-minified bundle | correct | bundle positions | what minification destroyed |
+| node `--enable-source-maps` | mostly correct, callee leak on global | original TS | every name came from the caller-site fallback; the global frame leaks |
+| target | correct incl. `<global>` | original TS | requires map **+** parsed bundle |
+
+### The fix that's coming to the format itself
+
+There's light at the end of this: the ECMA-426 source map standard has an in-progress **Scopes** extension (`originalScopes` / `generatedRanges`) that bakes scope ranges and names directly into the map, turning it from a bag of points into something that finally *contains* the enclosure answer. The day bundlers emit it, the bundle upload becomes unnecessary and I get to delete a whole code path with a smile. Until that day actually arrives across every bundler in the wild, the three-artifact reality stands: want correct function names, ship the bundle with the map.
+
+---
+
+## Conclusion
+
+Everything above is step one of a world-class symbolicator. It's the step with the trap in it, and now you know where the trap is: **location from the map, enclosure from the bundle, name from the map.** The version in this post is deliberately minimal, and the production version that I'm working on adds binary search over both indexes, multi-line bundles, arrow and method scopes, inlined-function handling, and caching. The map answers *where*. The bundle answers *who*. You need both.
+
+It's also only half the problem, and I picked the easy half on purpose: every trace in this post came out of one engine. The other half is that **the stack trace itself has no standard.** `error.stack` is a de facto convention that TC39 has been trying to specify for years. Node, Deno and Chromium all speak V8's dialect (`at fn (file:line:col)`), but Safari and Bun speak JavaScriptCore's (`fn@file:line:col`), Firefox speaks SpiderMonkey's, and the dialects disagree about async frames, eval frames, anonymous functions, global code, and where exactly a column points. A symbolicator that's world-class on Chrome traces and confused by Safari ones is not world-class. Taming that zoo, every backend and every frontend that can throw, is the next post.
+
+Everything in this post is reproducible: the programs, the decoder, the map-only resolver, the heuristic-catcher and the full symbolicator live at [github.com/tracewayapp/sourcemap-demo](https://github.com/tracewayapp/sourcemap-demo), each step wired up as an npm script.
+
+---
+
+*I'm building this in the open. Traceway is MIT-licensed and OpenTelemetry-native, and the symbolicator above is part of its exception tracking, and the code lives at [github.com/tracewayapp/traceway](https://github.com/tracewayapp/traceway). If you've wrestled source maps before, I'd love to hear how you handled the name-resolution problem. I suspect half of you already knew this and the other half just felt the same "wait, what" I did. You can always reach me at dusan@tracewayapp.com.*

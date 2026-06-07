@@ -12,6 +12,16 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/storage"
 )
 
+func newTestSourceMapCache(maxEntries int, maxBytes int64) *sourceMapCache {
+	return &sourceMapCache{
+		items:      make(map[string]*list.Element),
+		order:      list.New(),
+		loading:    make(map[string]*sourceMapLoad),
+		maxEntries: maxEntries,
+		maxBytes:   maxBytes,
+	}
+}
+
 type countingStorage struct {
 	mu    sync.Mutex
 	reads map[string]int
@@ -44,6 +54,7 @@ func TestSourceMapCacheSingleflight(t *testing.T) {
 		"singleflight-test.js.map": []byte(`{"version":3,"sources":["a.js"],"names":[],"mappings":"AAAA"}`),
 	}}
 	storage.Store = cs
+	c := newTestSourceMapCache(10, 1<<20)
 
 	const n = 16
 	results := make([]*parsedSourceMap, n)
@@ -52,7 +63,7 @@ func TestSourceMapCacheSingleflight(t *testing.T) {
 	for i := range n {
 		wg.Go(func() {
 			<-start
-			sm, err := smCache.getOrLoad(context.Background(), "singleflight-test.js.map")
+			sm, err := c.getOrLoad(context.Background(), "singleflight-test.js.map")
 			if err != nil {
 				t.Error(err)
 				return
@@ -72,11 +83,177 @@ func TestSourceMapCacheSingleflight(t *testing.T) {
 		}
 	}
 
-	if _, err := smCache.getOrLoad(context.Background(), "singleflight-test.js.map"); err != nil {
+	if _, err := c.getOrLoad(context.Background(), "singleflight-test.js.map"); err != nil {
 		t.Fatal(err)
 	}
 	if got := cs.reads["singleflight-test.js.map"]; got != 1 {
 		t.Errorf("expected cached lookup to not hit storage, got %d reads", got)
+	}
+}
+
+func TestSourceMapCacheDistinctKeysConcurrent(t *testing.T) {
+	prev := storage.Store
+	defer func() { storage.Store = prev }()
+	cs := &countingStorage{reads: map[string]int{}, data: map[string][]byte{}}
+	const keys = 8
+	for i := range keys {
+		cs.data[fmt.Sprintf("distinct-%d.js.map", i)] = []byte(`{"version":3,"sources":["a.js"],"names":[],"mappings":"AAAA"}`)
+	}
+	storage.Store = cs
+	c := newTestSourceMapCache(keys, 1<<20)
+
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	results := make([]*parsedSourceMap, keys*4)
+	for i := range keys * 4 {
+		wg.Go(func() {
+			<-start
+			sm, err := c.getOrLoad(context.Background(), fmt.Sprintf("distinct-%d.js.map", i%keys))
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			results[i] = sm
+		})
+	}
+	close(start)
+	wg.Wait()
+
+	for i := range keys {
+		key := fmt.Sprintf("distinct-%d.js.map", i)
+		if got := cs.reads[key]; got != 1 {
+			t.Errorf("key %s: expected 1 storage read, got %d", key, got)
+		}
+	}
+	for i := range keys * 4 {
+		if results[i] != results[i%keys] {
+			t.Fatal("callers of the same key should share one instance")
+		}
+	}
+}
+
+type flakyStorage struct {
+	mu       sync.Mutex
+	reads    int
+	failures int
+	data     []byte
+}
+
+func (f *flakyStorage) Write(_ context.Context, _ string, _ []byte) error { return nil }
+
+func (f *flakyStorage) Read(_ context.Context, _ string) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.reads++
+	if f.reads <= f.failures {
+		return nil, errors.New("storage down")
+	}
+	return f.data, nil
+}
+
+func TestSourceMapCacheFailedLoadRetries(t *testing.T) {
+	prev := storage.Store
+	defer func() { storage.Store = prev }()
+	fs := &flakyStorage{failures: 1, data: []byte(`{"version":3,"sources":["a.js"],"names":[],"mappings":"AAAA"}`)}
+	storage.Store = fs
+	c := newTestSourceMapCache(10, 1<<20)
+
+	if _, err := c.getOrLoad(context.Background(), "flaky.js.map"); err == nil {
+		t.Fatal("expected first load to fail")
+	}
+	c.mu.Lock()
+	if c.failures != 1 {
+		t.Errorf("expected 1 recorded failure, got %d", c.failures)
+	}
+	c.mu.Unlock()
+	sm, err := c.getOrLoad(context.Background(), "flaky.js.map")
+	if err != nil || sm == nil {
+		t.Fatalf("expected retry to succeed, got %v", err)
+	}
+	if fs.reads != 2 {
+		t.Errorf("expected 2 storage reads (fail then retry), got %d", fs.reads)
+	}
+	if _, err := c.getOrLoad(context.Background(), "flaky.js.map"); err != nil {
+		t.Fatal(err)
+	}
+	if fs.reads != 2 {
+		t.Errorf("expected cached lookup after retry, got %d reads", fs.reads)
+	}
+}
+
+type blockingPanicStorage struct {
+	release chan struct{}
+}
+
+func (b *blockingPanicStorage) Write(_ context.Context, _ string, _ []byte) error { return nil }
+
+func (b *blockingPanicStorage) Read(_ context.Context, _ string) ([]byte, error) {
+	<-b.release
+	panic("storage exploded")
+}
+
+func TestSourceMapCachePanicRecovery(t *testing.T) {
+	prev := storage.Store
+	defer func() { storage.Store = prev }()
+	release := make(chan struct{})
+	storage.Store = &blockingPanicStorage{release: release}
+	c := newTestSourceMapCache(10, 1<<20)
+
+	type result struct {
+		sm  *parsedSourceMap
+		err error
+	}
+	leader := make(chan result, 1)
+	go func() {
+		sm, err := c.getOrLoad(context.Background(), "boom.js.map")
+		leader <- result{sm, err}
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		c.mu.Lock()
+		_, loading := c.loading["boom.js.map"]
+		c.mu.Unlock()
+		if loading {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("load never started")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	waiters := make(chan result, 2)
+	for range 2 {
+		go func() {
+			sm, err := c.getOrLoad(context.Background(), "boom.js.map")
+			waiters <- result{sm, err}
+		}()
+	}
+
+	close(release)
+
+	r := <-leader
+	if r.err == nil || r.sm != nil {
+		t.Fatalf("expected leader to receive panic error, got sm=%v err=%v", r.sm, r.err)
+	}
+	for range 2 {
+		r := <-waiters
+		if r.err == nil || r.sm != nil {
+			t.Fatalf("expected waiter to receive an error, got sm=%v err=%v", r.sm, r.err)
+		}
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.loading) != 0 {
+		t.Error("loading entry leaked after panic")
+	}
+	if c.order.Len() != 0 {
+		t.Error("nothing should be cached after a failed load")
+	}
+	if c.failures != 1 {
+		t.Errorf("expected 1 recorded failure, got %d", c.failures)
 	}
 }
 
@@ -86,13 +263,7 @@ func TestSourceMapCacheByteCapEviction(t *testing.T) {
 	cs := &countingStorage{reads: map[string]int{}, data: map[string][]byte{}}
 	storage.Store = cs
 
-	c := &sourceMapCache{
-		items:      make(map[string]*list.Element),
-		order:      list.New(),
-		loading:    make(map[string]*sourceMapLoad),
-		maxEntries: 10,
-		maxBytes:   2000,
-	}
+	c := newTestSourceMapCache(10, 2000)
 
 	content := make([]byte, 700)
 	for i := range content {

@@ -18,18 +18,24 @@ import (
 	traceway "go.tracewayapp.com"
 )
 
+const sourceMapLoadTimeout = 5 * time.Second
+const sourceMapFailReportInterval = time.Minute
+
 type sourceMapCache struct {
-	mu          sync.Mutex
-	items       map[string]*list.Element
-	order       *list.List
-	loading     map[string]*sourceMapLoad
-	maxEntries  int
-	maxBytes    int64
-	curBytes    int64
-	hits        uint64
-	misses      uint64
-	evictions   uint64
-	lastParseMs float64
+	mu                  sync.Mutex
+	items               map[string]*list.Element
+	order               *list.List
+	loading             map[string]*sourceMapLoad
+	maxEntries          int
+	maxBytes            int64
+	curBytes            int64
+	hits                uint64
+	misses              uint64
+	evictions           uint64
+	failures            uint64
+	lastParseMs         float64
+	failuresSinceReport uint64
+	lastFailAt          time.Time
 }
 
 type sourceMapCacheEntry struct {
@@ -56,21 +62,26 @@ func InitSourceMapCache(maxEntries int, maxBytes int64) {
 	defer smCache.mu.Unlock()
 	smCache.maxEntries = maxEntries
 	smCache.maxBytes = maxBytes
+	smCache.evictLocked()
 }
 
-func (c *sourceMapCache) getOrLoad(ctx context.Context, key string) (*parsedSourceMap, error) {
+func (c *sourceMapCache) getOrLoad(ctx context.Context, key string) (sm *parsedSourceMap, err error) {
 	c.mu.Lock()
 	if el, ok := c.items[key]; ok {
 		c.hits++
 		c.order.MoveToFront(el)
-		sm := el.Value.(*sourceMapCacheEntry).sm
+		cached := el.Value.(*sourceMapCacheEntry).sm
 		c.mu.Unlock()
-		return sm, nil
+		return cached, nil
 	}
 	if l, ok := c.loading[key]; ok {
-		c.hits++
 		c.mu.Unlock()
 		<-l.done
+		if l.err == nil {
+			c.mu.Lock()
+			c.hits++
+			c.mu.Unlock()
+		}
 		return l.sm, l.err
 	}
 	c.misses++
@@ -78,48 +89,71 @@ func (c *sourceMapCache) getOrLoad(ctx context.Context, key string) (*parsedSour
 	c.loading[key] = l
 	c.mu.Unlock()
 
-	l.sm, l.err = c.load(ctx, key)
+	var parseMs float64
+	defer func() {
+		if r := recover(); r != nil {
+			l.sm = nil
+			l.err = fmt.Errorf("source map load panicked (key=%s): %v", key, r)
+			traceway.CaptureException(l.err)
+			sm, err = nil, l.err
+		}
+		c.mu.Lock()
+		delete(c.loading, key)
+		if l.err == nil && l.sm != nil {
+			c.lastParseMs = parseMs
+			c.insertLocked(key, l.sm)
+		} else {
+			c.failures++
+		}
+		c.mu.Unlock()
+		close(l.done)
+	}()
 
-	c.mu.Lock()
-	delete(c.loading, key)
-	if l.err == nil {
-		c.insertLocked(key, l.sm)
-	}
-	c.mu.Unlock()
-	close(l.done)
+	l.sm, parseMs, l.err = c.load(ctx, key)
 	return l.sm, l.err
 }
 
-func (c *sourceMapCache) load(ctx context.Context, key string) (*parsedSourceMap, error) {
-	data, err := storage.Store.Read(context.WithoutCancel(ctx), key)
+func (c *sourceMapCache) load(ctx context.Context, key string) (*parsedSourceMap, float64, error) {
+	readCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sourceMapLoadTimeout)
+	defer cancel()
+	data, err := storage.Store.Read(readCtx, key)
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("failed to read source map from storage (key=%s): %w", key, err))
-		return nil, err
+		c.reportLoadFailure(fmt.Errorf("failed to read source map from storage (key=%s): %w", key, err))
+		return nil, 0, err
 	}
 
 	parseStart := time.Now()
 	sm, err := parseSourceMap(data)
 	if err != nil {
-		return nil, err
+		c.reportLoadFailure(fmt.Errorf("failed to parse source map (key=%s): %w", key, err))
+		return nil, 0, err
 	}
+	return sm, float64(time.Since(parseStart).Microseconds()) / 1000.0, nil
+}
 
+func (c *sourceMapCache) reportLoadFailure(err error) {
+	var report uint64
 	c.mu.Lock()
-	c.lastParseMs = float64(time.Since(parseStart).Microseconds()) / 1000.0
+	c.failuresSinceReport++
+	if time.Since(c.lastFailAt) >= sourceMapFailReportInterval {
+		report = c.failuresSinceReport
+		c.failuresSinceReport = 0
+		c.lastFailAt = time.Now()
+	}
 	c.mu.Unlock()
-	return sm, nil
+	if report > 0 {
+		traceway.CaptureException(fmt.Errorf("source map loads failed %d time(s) since last report: %w", report, err))
+	}
 }
 
 func (c *sourceMapCache) insertLocked(key string, sm *parsedSourceMap) {
-	if el, ok := c.items[key]; ok {
-		entry := el.Value.(*sourceMapCacheEntry)
-		c.curBytes += sm.size - entry.sm.size
-		entry.sm = sm
-		c.order.MoveToFront(el)
-	} else {
-		el := c.order.PushFront(&sourceMapCacheEntry{key: key, sm: sm})
-		c.items[key] = el
-		c.curBytes += sm.size
-	}
+	el := c.order.PushFront(&sourceMapCacheEntry{key: key, sm: sm})
+	c.items[key] = el
+	c.curBytes += sm.size
+	c.evictLocked()
+}
+
+func (c *sourceMapCache) evictLocked() {
 	for c.order.Len() > c.maxEntries || c.curBytes > c.maxBytes {
 		back := c.order.Back()
 		if back == nil {
@@ -140,6 +174,7 @@ type SourceMapCacheStats struct {
 	Hits        uint64
 	Misses      uint64
 	Evictions   uint64
+	Failures    uint64
 	LastParseMs float64
 }
 
@@ -154,6 +189,7 @@ func SourceMapStats() SourceMapCacheStats {
 		Hits:        smCache.hits,
 		Misses:      smCache.misses,
 		Evictions:   smCache.evictions,
+		Failures:    smCache.failures,
 		LastParseMs: smCache.lastParseMs,
 	}
 }

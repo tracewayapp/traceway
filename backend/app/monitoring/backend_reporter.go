@@ -17,6 +17,7 @@ type backendBaselines struct {
 	smHits      uint64
 	smMisses    uint64
 	smEvictions uint64
+	smFailures  uint64
 	first       bool
 }
 
@@ -58,10 +59,12 @@ func reportBackendOnce(b *backendBaselines) {
 		traceway.CaptureMetric("traceway.sourcemap.hits.delta", float64(safeDelta(b.smHits, smStats.Hits)))
 		traceway.CaptureMetric("traceway.sourcemap.misses.delta", float64(safeDelta(b.smMisses, smStats.Misses)))
 		traceway.CaptureMetric("traceway.sourcemap.evictions.delta", float64(safeDelta(b.smEvictions, smStats.Evictions)))
+		traceway.CaptureMetric("traceway.sourcemap.load_failures.delta", float64(safeDelta(b.smFailures, smStats.Failures)))
 	}
 	b.smHits = smStats.Hits
 	b.smMisses = smStats.Misses
 	b.smEvictions = smStats.Evictions
+	b.smFailures = smStats.Failures
 	b.first = false
 
 	traceway.CaptureMetric("traceway.cache.projects.entries", float64(cache.ProjectCache.Entries()))

@@ -78,6 +78,7 @@ Not emitted in SQLite mode.
 |--------|---------|
 | `traceway.sourcemap.entries` / `traceway.sourcemap.bytes` | Parsed source maps held in memory and their estimated total size |
 | `traceway.sourcemap.hits.delta` / `misses.delta` / `evictions.delta` | Cache traffic since the last tick |
+| `traceway.sourcemap.load_failures.delta` | Failed source map loads (storage error, 5s timeout, unparseable map) since the last tick; affected traces are stored unsymbolicated |
 | `traceway.sourcemap.parse_ms` | Duration of the most recent source map parse |
 
 ## Source map cache sizing

@@ -143,7 +143,7 @@ func TestResolveStackTraceSymbolicParity(t *testing.T) {
 
 			lines := []string{"Error: symbolic fixture test"}
 			for _, f := range tc.frames {
-				lines = append(lines, "    anonymous()")
+				lines = append(lines, "anonymous()")
 				lines = append(lines, fmt.Sprintf("    %s:%d:%d", f.inFile, f.inLine, f.inCol))
 			}
 			input := strings.Join(lines, "\n")

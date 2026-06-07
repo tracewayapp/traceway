@@ -340,7 +340,7 @@ func (e clientController) Report(c *gin.Context) {
 var (
 	errorMessageRe  = regexp.MustCompile(`(?m)^(\*?[\w.]+):\s*.+`)
 	causedByRe      = regexp.MustCompile(`(?m)^(Caused by:\s*[\w.$]+):\s*.+`)
-	jsFuncLineRe    = regexp.MustCompile(`(?m)^( {4})(.+)\(\)$`)
+	jsFuncLineRe    = regexp.MustCompile(`(?m)^( {0,4})(.+)\(\)(\n {4}.+:\d+:\d+)$`)
 	absolutePathRe  = regexp.MustCompile(`/[^\s:]+/([^/\s:]+:\d+)`)
 	versionRe       = regexp.MustCompile(`@v[\d.]+`)
 	hexRe           = regexp.MustCompile(`0x[0-9a-fA-F]+`)
@@ -361,7 +361,7 @@ func ComputeExceptionHash(stackTrace string, isMessage bool) string {
 	if !isMessage {
 		normalized = causedByRe.ReplaceAllString(normalized, "$1")
 		normalized = errorMessageRe.ReplaceAllString(normalized, "$1")
-		normalized = jsFuncLineRe.ReplaceAllString(normalized, "${1}<fn>")
+		normalized = jsFuncLineRe.ReplaceAllString(normalized, "${1}<fn>${3}")
 		normalized = absolutePathRe.ReplaceAllString(normalized, "$1")
 		normalized = versionRe.ReplaceAllString(normalized, "")
 		normalized = hexRe.ReplaceAllString(normalized, "<hex>")

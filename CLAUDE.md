@@ -851,7 +851,7 @@ The backend normalizes stack traces before hashing to group identical errors des
 
 **Normalization Steps:**
 1. Extract error type only (remove error message content)
-2. Collapse JS SDK function-name lines (4-space indent ending in `()`) to `<fn>` so resolved function names never affect grouping
+2. Collapse JS SDK function-name lines (ending in `()`, directly above a 4-space-indented `file:line:col` location line) to `<fn>` so resolved function names never affect grouping; anchoring on the location line keeps Go traces (tab-indented file lines) untouched
 3. Remove absolute file paths (keep `filename:line` only)
 4. Replace hexadecimal addresses with `<hex>`
 5. Replace UUIDs with `<uuid>`

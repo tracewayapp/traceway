@@ -10,9 +10,9 @@ Symbolication is the process of translating minified production stack traces bac
 
 ```
 TypeError: Cannot read properties of undefined (reading 'name')
-    anonymous()
+anonymous()
     app.bundle.js:1:48211
-    anonymous()
+anonymous()
     app.bundle.js:1:13377
 ```
 
@@ -20,9 +20,9 @@ With source maps uploaded, Traceway stores it like this instead:
 
 ```
 TypeError: Cannot read properties of undefined (reading 'name')
-    renderUserCard()
+renderUserCard()
     src/components/UserCard.tsx:42:17
-    handleClick()
+handleClick()
     src/pages/Profile.tsx:108:5
 ```
 
@@ -40,10 +40,10 @@ Nothing is re-resolved when you view an issue. The trade-off: traces are immutab
 
 ## The Frame Format
 
-The JS SDK sends each frame as two lines: a function name line ending in `()`, then a location line indented by four spaces:
+The JS SDK does not send the browser's raw `error.stack` string. Stack formats are not standardized: V8 (Chrome, Edge, Hermes) emits `    at funcName (file:line:col)`, while Firefox and JavaScriptCore (Safari) emit `funcName@file:line:col`. The SDK parses both families and normalizes every frame into a canonical two-line wire format: a function name line ending in `()`, then a location line indented by four spaces:
 
 ```
-    anonymous()
+anonymous()
     app.bundle.js:1:48211
 ```
 
@@ -172,11 +172,11 @@ These are known, pinned deviations in our test suite (more on that below). Two d
 
 Issue grouping hashes a normalized form of the **resolved** trace. Two normalization rules exist specifically because of JS symbolication:
 
-**Function name lines are collapsed.** Any 4-space-indented line ending in `()` becomes `<fn>` before hashing:
+**Function name lines are collapsed.** A line ending in `()` that sits directly above a frame location line becomes `<fn>` before hashing (anchoring on the location line below means Go traces, whose file lines are tab-indented, are never touched):
 
 ```
-    createElement()                       becomes:     <fn>
-    ../src/create-element.js:40:9         stays:       ../src/create-element.js:40:9
+createElement()                       becomes:    <fn>
+    ../src/create-element.js:40:9     stays:      ../src/create-element.js:40:9
 ```
 
 So these two traces, identical except for resolved names, produce the **same hash** and land in the same issue:

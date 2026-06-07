@@ -22,4 +22,4 @@ Five frames intentionally deviate from symbolic's expected function names: symbo
 
 Source maps can carry `"sources": [null, ...]`: mappings and inlined `sourcesContent` are present but the original file names are not (seen with older uglify/Raven-era pipelines). Symbolic resolves these to a nameless file; our resolver emits the placeholder `<unknown>` as the file name (e.g. `<unknown>:3:9`) and still runs function-name extraction against the inlined source content. The parity test encodes symbolic's "no file name" as `<unknown>` to match that convention.
 
-Caveat: go-sourcemap's `SourceContent("")` returns the content of the first empty entry in `sources`, so with multiple null sources the content used for name extraction can belong to the wrong file. Acceptable for the extraction heuristic, but the lookup is ambiguous by nature.
+Caveat: the resolver's source-content lookup is by file name, and `""` matches the first empty entry in `sources`, so with multiple null sources the content used for name extraction can belong to the wrong file. Acceptable for the extraction heuristic, but the lookup is ambiguous by nature.

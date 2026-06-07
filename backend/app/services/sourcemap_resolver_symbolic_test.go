@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tracewayapp/traceway/backend/app/cache"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 
@@ -120,7 +119,7 @@ var symbolicCases = []symbolicCase{
 }
 
 func TestResolveStackTraceSymbolicParity(t *testing.T) {
-	cache.InitSourceMapCache(100, 64<<20)
+	InitSourceMapCache(100, 64<<20)
 	store, err := storage.NewLocalStorage("testdata")
 	if err != nil {
 		t.Fatal(err)

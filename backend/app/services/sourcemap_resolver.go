@@ -94,7 +94,7 @@ func (c *sourceMapCache) getOrLoad(ctx context.Context, key string) (sm *parsedS
 		if r := recover(); r != nil {
 			l.sm = nil
 			l.err = fmt.Errorf("source map load panicked (key=%s): %v", key, r)
-			traceway.CaptureException(l.err)
+			c.reportLoadFailure(l.err)
 			sm, err = nil, l.err
 		}
 		c.mu.Lock()
@@ -315,6 +315,7 @@ func getSourceMap(ctx context.Context, storageKey string, localMaps map[string]*
 	}
 	m, err := smCache.getOrLoad(ctx, storageKey)
 	if err != nil {
+		localMaps[storageKey] = nil
 		return nil, err
 	}
 	localMaps[storageKey] = m

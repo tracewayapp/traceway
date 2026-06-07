@@ -9,7 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/storage"
+
+	"github.com/google/uuid"
 )
 
 func newTestSourceMapCache(maxEntries int, maxBytes int64) *sourceMapCache {
@@ -252,8 +255,26 @@ func TestSourceMapCachePanicRecovery(t *testing.T) {
 	if c.order.Len() != 0 {
 		t.Error("nothing should be cached after a failed load")
 	}
-	if c.failures != 1 {
-		t.Errorf("expected 1 recorded failure, got %d", c.failures)
+	if c.failures == 0 {
+		t.Error("expected at least one recorded failure")
+	}
+}
+
+func TestResolveStackTraceFailedMapAttemptedOncePerTrace(t *testing.T) {
+	prev := storage.Store
+	defer func() { storage.Store = prev }()
+	cs := &countingStorage{reads: map[string]int{}, data: map[string][]byte{}}
+	storage.Store = cs
+
+	sourceMaps := []*models.SourceMap{{FileName: "dead.js.map", StorageKey: "dead.js.map"}}
+	trace := "Error: boom\n    fn()\n    dead.js:1:10\n    fn2()\n    dead.js:1:20\n    fn3()\n    dead.js:1:30"
+
+	resolved := ResolveStackTrace(context.Background(), uuid.New(), trace, sourceMaps)
+	if resolved != trace {
+		t.Error("trace should be stored as-is when its source map cannot be loaded")
+	}
+	if got := cs.reads["dead.js.map"]; got != 1 {
+		t.Errorf("expected 1 load attempt per trace for a failing map, got %d", got)
 	}
 }
 

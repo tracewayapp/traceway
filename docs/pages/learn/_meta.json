@@ -4,6 +4,7 @@
   "traces": "Traces",
   "ai-tracing": "AI Tracing",
   "issues": "Issues",
+  "symbolication-js": "Symbolication (JS)",
   "sessions": "Sessions",
   "attributes": "Attributes",
   "spans": "Spans",

@@ -23,6 +23,32 @@ var severityChoices = []struct {
 	{logspb.SeverityNumber_SEVERITY_NUMBER_ERROR, "ERROR"},
 }
 
+// logBodies is a deterministic pool of realistic-looking log lines so the
+// /logs dashboard page renders publishable screenshots instead of 120 chars
+// of random gibberish. Workload shape (uniform random selection across a
+// fixed pool) is unchanged from the prior randomString path — only the
+// per-record byte payload differs. See POSTS.md decision log 2026-06-08.
+var logBodies = []string{
+	"user logged in",
+	"user logged out",
+	"checkout completed for order 4821",
+	"payment authorized via stripe (amount=42.99 usd)",
+	"product 9123 added to cart",
+	"product 9123 removed from cart",
+	"search returned 18 results for query=\"running shoes\"",
+	"cache miss for key=user:8821 — refilled from db (3.2ms)",
+	"db pool reached 80% capacity (24/30 conns)",
+	"slow query detected: SELECT * FROM orders WHERE ... (842ms)",
+	"rate limit hit for ip=10.0.4.21 endpoint=/api/search",
+	"request retried after 502 from upstream service=inventory",
+	"connection timeout reaching downstream service=billing",
+	"failed to deserialize webhook payload: unexpected token",
+	"session expired for user_id=8821 — redirecting to /login",
+	"feature flag \"new-checkout-flow\" evaluated to true",
+	"background job \"daily-report\" finished in 12.4s",
+	"OTLP exporter flushed batch=128 size=42.1KB",
+}
+
 type logsSender struct{}
 
 func (logsSender) Name() string { return "logs" }
@@ -50,7 +76,7 @@ func (logsSender) BuildBody(rng *mathrand.Rand, batchSize int) ([]byte, error) {
 			ObservedTimeUnixNano: uint64(ts),
 			SeverityNumber:       sev.number,
 			SeverityText:         sev.text,
-			Body:                 &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: randomString(rng, 120)}},
+			Body:                 &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: logBodies[rng.Intn(len(logBodies))]}},
 			Attributes: []*commonpb.KeyValue{
 				strAttr("logger.name", "bench-loadgen"),
 				strAttr("thread.name", "worker-1"),

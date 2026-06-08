@@ -15,9 +15,18 @@ import (
 // metrics in metric_registry on first sight; bench traffic with 10 stable
 // names exercises that path once per name per project and otherwise lets the
 // hot path stay hot.
+//
+// First 7 names match canonical constants in backend/app/models/metric_record.model.go
+// (`MetricNameCpuUsage`, `MetricNameMemoryUsage`, etc.) so the dashboard cards
+// at /metrics render real-looking values during ingest. Remaining 3 are
+// application-style names that exist in the metric_points table for the
+// read-probe's generic time-range queries but don't bind to a specific card.
+// Workload shape (uniform random, 10 stable names) is unchanged from prior
+// posts — see POSTS.md decision log 2026-06-08 for rationale.
 var metricNames = []string{
-	"bench.metric.cpu", "bench.metric.mem", "bench.metric.qps", "bench.metric.lat", "bench.metric.errs",
-	"bench.metric.disk", "bench.metric.net", "bench.metric.heap", "bench.metric.gc", "bench.metric.fd",
+	"cpu.used_pcnt", "mem.used", "mem.total",
+	"go.go_routines", "go.heap_objects", "go.num_gc", "go.gc_pause",
+	"disk.used_pcnt", "net.bytes_tx", "app.requests_total",
 }
 
 type metricsSender struct{}

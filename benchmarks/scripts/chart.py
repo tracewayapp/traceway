@@ -978,6 +978,75 @@ def render_readprobe(runs: list[dict], signal: str, out: Path) -> None:
     plt.close(fig)
 
 
+def render_readprobe_per_endpoint(runs: list[dict], signal: str, out: Path) -> None:
+    """Latency vs rows ingested, **one line per probed endpoint**, per (tier, mode).
+    Shows which specific query slows down first as the table grows. Replaces
+    the single-line render_readprobe view when the JSON has per-endpoint
+    probe data (T2+). Older JSON without `step["probes"]` falls back to the
+    median-only view in render_readprobe."""
+    sig_runs = [r for r in iter_runs(runs, signal, "read-probe") if _readprobe_steps(r)]
+    sig_runs = [r for r in sig_runs if any(s.get("probes") for s in _readprobe_steps(r))]
+    if not sig_runs:
+        return
+
+    fig, ax = plt.subplots(figsize=(12, 7))
+    plotted = False
+    threshold_ms = 5000
+    # Deterministic palette per endpoint name. Falls back to grey if more than 6.
+    endpoint_palette = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"]
+    endpoint_color: dict[str, str] = {}
+
+    for run in sig_runs:
+        rp = run.get("readProbe") or {}
+        threshold_ms = rp.get("readThresholdMs", threshold_ms)
+        steps = _readprobe_steps(run)
+        if not steps:
+            continue
+
+        # Collect per-endpoint (rowsIngested, latencyMs, ok) series.
+        by_endpoint: dict[str, list[tuple[float, float, bool]]] = {}
+        for s in steps:
+            rows = s.get("rowsIngested", 0)
+            for p in (s.get("probes") or []):
+                name = p.get("name") or p.get("path") or "unknown"
+                by_endpoint.setdefault(name, []).append((rows, p.get("latencyMs", 0), bool(p.get("ok", False))))
+
+        run_lbl = run_label(run)
+        for name, series in by_endpoint.items():
+            if name not in endpoint_color:
+                endpoint_color[name] = endpoint_palette[len(endpoint_color) % len(endpoint_palette)]
+            color = endpoint_color[name]
+            xs = [pt[0] for pt in series]
+            ys = [pt[1] for pt in series]
+            oks = [pt[2] for pt in series]
+            ax.plot(xs, ys, linestyle="-", color=color, alpha=0.85,
+                    label=f"{run_lbl} · {name}")
+            for x, y, ok in zip(xs, ys, oks):
+                ax.plot(x, y, marker=("o" if ok else "x"), color=color,
+                        markersize=8, markeredgewidth=2 if not ok else 1, linestyle="")
+            plotted = True
+
+    if not plotted:
+        plt.close(fig)
+        return
+
+    ax.axhline(threshold_ms, linestyle="--", color="#cc3333", alpha=0.7,
+               label=f"threshold ({threshold_ms}ms)")
+    ax.set_xlabel(f"{ROW_LABEL[signal]} ingested (log)")
+    ax.set_ylabel("Read latency (ms, log)")
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_title(
+        f"Per-endpoint read latency vs table size — {signal}\n"
+        "○ = HTTP ok,  × = HTTP error.  Step pass uses median across endpoints."
+    )
+    ax.grid(True, which="both", linestyle=":", alpha=0.4)
+    ax.legend(loc="upper left", fontsize=8, ncol=1)
+    fig.tight_layout()
+    fig.savefig(out, dpi=130)
+    plt.close(fig)
+
+
 def render_readprobe_ingest_time(runs: list[dict], signal: str, out: Path) -> None:
     sig_runs = [r for r in iter_runs(runs, signal, "read-probe") if _readprobe_steps(r)]
     if not sig_runs:
@@ -1313,6 +1382,7 @@ def main() -> int:
         # Read-probe charts (no-op if no read-probe runs for this signal)
         render_readprobe_headline(runs, signal, results_dir / f"chart-readprobe-headline-{signal}.png")
         render_readprobe(runs, signal, results_dir / f"chart-readprobe-{signal}.png")
+        render_readprobe_per_endpoint(runs, signal, results_dir / f"chart-readprobe-per-endpoint-{signal}.png")
         render_readprobe_ingest_time(runs, signal, results_dir / f"chart-readprobe-ingest-time-{signal}.png")
         render_readprobe_tier_scaling(runs, signal, results_dir / f"chart-readprobe-tier-scaling-{signal}.png")
         render_readprobe_cliff(runs, signal, results_dir / f"chart-readprobe-cliff-{signal}.png")

@@ -38,6 +38,10 @@ on:
         required: true
         type: boolean
         default: false
+      loadgen_tier:
+        description: 'Override loadgen instance type (e.g. cpx11). Leave empty for the per-location default (cax11 in EU, cpx11 in US). Use cpx11 when CAX/ARM capacity is unavailable in the chosen EU datacenter.'
+        required: false
+        default: ''
 
 concurrency:
   group: benchmark-hardware
@@ -88,6 +92,7 @@ jobs:
       HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
       BENCH_LOCATION: ${{ github.event.inputs.location }}
       BENCH_SCENARIO: ${{ github.event.inputs.scenario }}
+      LOADGEN_TIER: ${{ github.event.inputs.loadgen_tier }}
       # Managed-ClickHouse credentials. Used only when modes contains
       # managed-ch; empty for sqlite/pgch entries (harmless — sut-bootstrap
       # only validates them when MODE=managed-ch).

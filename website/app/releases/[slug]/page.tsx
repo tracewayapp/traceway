@@ -6,7 +6,7 @@ import { getPostsByCategory, getPostBySlug, postMetadata } from "@/lib/blog";
 type Params = { slug: string };
 
 export function generateStaticParams(): Params[] {
-  return getPostsByCategory("engineering").map((p) => ({ slug: p.slug }));
+  return getPostsByCategory("release").map((p) => ({ slug: p.slug }));
 }
 
 export async function generateMetadata({
@@ -16,26 +16,26 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const post = getPostBySlug(slug);
-  if (!post || post.category !== "engineering")
+  if (!post || post.category !== "release")
     return { title: "Not found · Traceway" };
   return postMetadata(post);
 }
 
-export default async function BlogPostPage({
+export default async function ReleasePostPage({
   params,
 }: {
   params: Promise<Params>;
 }) {
   const { slug } = await params;
   const post = getPostBySlug(slug);
-  if (!post || post.category !== "engineering") notFound();
+  if (!post || post.category !== "release") notFound();
 
   return (
     <BlogArticle
       post={post}
-      backHref="/blog"
-      eyebrow="Engineering"
-      showSubscribe
+      backHref="/releases"
+      eyebrow="Release"
+      showSubscribe={false}
     />
   );
 }

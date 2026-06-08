@@ -31,8 +31,8 @@ const COLUMNS: Column[] = [
   {
     heading: "Resources",
     links: [
-      { label: "Blog", href: "/blog/engineering" },
-      { label: "Release Notes", href: "/blog" },
+      { label: "Blog", href: "/blog" },
+      { label: "Release Notes", href: "/releases" },
       { label: "Docs", href: "https://docs.tracewayapp.com", external: true },
       { label: "GitHub", href: GITHUB_URL, external: true },
       { label: "Discord", href: DISCORD_URL, external: true },

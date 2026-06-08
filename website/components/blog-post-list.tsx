@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { BlogPostMeta } from "@/lib/blog";
+import { postHref, type BlogPostMeta } from "@/lib/blog";
 
 export function BlogPostList({ posts }: { posts: BlogPostMeta[] }) {
   if (posts.length === 0) {
@@ -13,7 +13,7 @@ export function BlogPostList({ posts }: { posts: BlogPostMeta[] }) {
     >
       {posts.map((post) => (
         <li key={post.slug}>
-          <Link href={`/blog/${post.slug}`} className="blog-card group">
+          <Link href={postHref(post)} className="blog-card group">
             <div
               className="text-[12px] mb-1.5"
               style={{ color: "var(--fg-3)", fontFamily: "var(--font-mono)" }}

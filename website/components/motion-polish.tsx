@@ -12,7 +12,8 @@ export function MotionPolish() {
     if (typeof window === "undefined") return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     // The blog is a reading experience, no entrance/scroll animations.
-    if (pathname?.startsWith("/blog")) return;
+    if (pathname?.startsWith("/blog") || pathname?.startsWith("/releases"))
+      return;
 
     let cancelled = false;
     const triggers: ScrollTriggerInstance[] = [];

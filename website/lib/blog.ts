@@ -54,3 +54,21 @@ export function getPostBySlug(slug: string): BlogPost | null {
   if (!fs.existsSync(filepath)) return null;
   return readPostFile(filename);
 }
+
+export function postHref(p: { slug: string; category: BlogCategory }): string {
+  return p.category === "engineering"
+    ? `/blog/${p.slug}`
+    : `/releases/${p.slug}`;
+}
+
+export function postMetadata(post: BlogPost): {
+  title: string;
+  description: string;
+} {
+  const description =
+    post.description ??
+    (post.category === "engineering"
+      ? `${post.title}, from the Traceway engineering blog.`
+      : `Release notes for Traceway ${post.title}.`);
+  return { title: `${post.title} · Traceway`, description };
+}

@@ -87,6 +87,22 @@ if [[ "${SMOKE}" == "smoke" ]]; then
     fi
 fi
 
+# Optional read-probe fill-phase overrides. Defaults (8192 × 100 req/s) push
+# ~160k items per 200ms drain tick, which blows past low fill-level targets on
+# slower DBs (notably SQLite: a "100k" step actually overshoots to ~1M for
+# spans and ~4M for logs, smearing the cliff measurement across decades of
+# table size). Lowering both knobs together keeps per-step overshoot under the
+# next fill-level boundary. Only meaningful when scenario=read-probe; loadgen
+# silently ignores them otherwise.
+if [[ "${SCENARIO}" == "read-probe" ]]; then
+    if [[ -n "${BENCH_FILL_BATCH_SIZE:-}" ]]; then
+        extra_args+=( --fill-batch-size "${BENCH_FILL_BATCH_SIZE}" )
+    fi
+    if [[ -n "${BENCH_FILL_REQUEST_RATE:-}" ]]; then
+        extra_args+=( --fill-request-rate "${BENCH_FILL_REQUEST_RATE}" )
+    fi
+fi
+
 # SQLite has no merge-idle equivalent — /health/deep returns chReachable=false
 # and waitForMergesIdle skips immediately. Compensate with a longer per-step
 # drain and a fixed inter-phase cooldown so the SUT can finish digesting

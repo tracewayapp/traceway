@@ -42,6 +42,14 @@ on:
         description: 'Override loadgen instance type (e.g. cpx11). Leave empty for the per-location default (cax11 in EU, cpx11 in US). Use cpx11 when CAX/ARM capacity is unavailable in the chosen EU datacenter.'
         required: false
         default: ''
+      fill_batch_size:
+        description: 'Read-probe fill phase batch size override (default 8192). Lower this (e.g. 1024) for SQLite to limit per-tick ingest overshoot — the loadgen drains counters every 200ms, so 8192×100req/s adds ~160k items per tick, blowing past low fill-level targets. Ignored unless scenario=read-probe.'
+        required: false
+        default: ''
+      fill_request_rate:
+        description: 'Read-probe fill phase request rate override (default 100 req/s). Combined with fill_batch_size sets total ingest rate. Lower together for SQLite to keep step-target overshoot small. Ignored unless scenario=read-probe.'
+        required: false
+        default: ''
 
 concurrency:
   group: benchmark-hardware
@@ -93,6 +101,8 @@ jobs:
       BENCH_LOCATION: ${{ github.event.inputs.location }}
       BENCH_SCENARIO: ${{ github.event.inputs.scenario }}
       LOADGEN_TIER: ${{ github.event.inputs.loadgen_tier }}
+      BENCH_FILL_BATCH_SIZE: ${{ github.event.inputs.fill_batch_size }}
+      BENCH_FILL_REQUEST_RATE: ${{ github.event.inputs.fill_request_rate }}
       # Managed-ClickHouse credentials. Used only when modes contains
       # managed-ch; empty for sqlite/pgch entries (harmless — sut-bootstrap
       # only validates them when MODE=managed-ch).

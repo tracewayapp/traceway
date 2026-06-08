@@ -12,11 +12,25 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-var endpointPaths = []string{
-	"GET /api/users", "POST /api/users", "GET /api/orders", "POST /api/orders",
-	"GET /api/products/:id", "PUT /api/products/:id", "GET /api/search",
-	"POST /api/checkout", "GET /api/cart", "DELETE /api/cart/:id",
-	"GET /api/auth/me", "POST /api/auth/login", "GET /api/health",
+// endpointPaths is a (method, path) pool. Keeping them paired so the synthetic
+// traffic mix maps cleanly to real-world HTTP shapes (POST /users + GET /users
+// etc.). The span Name is set to "{method} {path}" — what dashboards display —
+// while http.method and http.route are set to the matched method and path
+// individually. Earlier the loadgen hardcoded http.method="GET" and emitted
+// Names like "GET /api/users", causing the /endpoints page to render
+// "GET GET /api/users" (and "GET POST /api/users" for non-GET picks). Fixed
+// 2026-06-08; see POSTS.md decision log.
+var endpointPaths = []struct {
+	method string
+	path   string
+}{
+	{"GET", "/api/users"}, {"POST", "/api/users"},
+	{"GET", "/api/orders"}, {"POST", "/api/orders"},
+	{"GET", "/api/products/:id"}, {"PUT", "/api/products/:id"},
+	{"GET", "/api/search"}, {"POST", "/api/checkout"},
+	{"GET", "/api/cart"}, {"DELETE", "/api/cart/:id"},
+	{"GET", "/api/auth/me"}, {"POST", "/api/auth/login"},
+	{"GET", "/api/health"},
 }
 
 type spansSender struct{}
@@ -43,17 +57,18 @@ func (spansSender) BuildBody(rng *mathrand.Rand, batchSize int) ([]byte, error) 
 		duration := time.Duration(10+rng.Intn(990)) * time.Millisecond
 		endNs := startNs + int64(duration)
 
+		ep := endpointPaths[rng.Intn(len(endpointPaths))]
 		spans[i] = &tracepb.Span{
 			TraceId:           traceId,
 			SpanId:            spanId,
-			Name:              endpointPaths[rng.Intn(len(endpointPaths))],
+			Name:              ep.method + " " + ep.path,
 			Kind:              tracepb.Span_SPAN_KIND_SERVER,
 			StartTimeUnixNano: uint64(startNs),
 			EndTimeUnixNano:   uint64(endNs),
 			Attributes: []*commonpb.KeyValue{
-				strAttr("http.method", "GET"),
+				strAttr("http.method", ep.method),
 				intAttr("http.status_code", int64(pickStatus(rng))),
-				strAttr("http.route", endpointPaths[rng.Intn(len(endpointPaths))]),
+				strAttr("http.route", ep.path),
 			},
 			Status: &tracepb.Status{Code: tracepb.Status_STATUS_CODE_OK},
 		}

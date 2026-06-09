@@ -13,6 +13,7 @@ export type BlogPostMeta = {
   version?: string;
   category: BlogCategory;
   description?: string;
+  author?: string;
 };
 
 export type BlogPost = BlogPostMeta & {
@@ -31,7 +32,8 @@ function readPostFile(filename: string): BlogPost | null {
     data.category === "engineering" ? "engineering" : "release";
   const description =
     typeof data.description === "string" ? data.description : undefined;
-  return { slug, title, date, version, category, description, content };
+  const author = typeof data.author === "string" ? data.author : undefined;
+  return { slug, title, date, version, category, description, author, content };
 }
 
 export function getAllPosts(): BlogPostMeta[] {

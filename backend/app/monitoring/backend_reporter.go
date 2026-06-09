@@ -14,11 +14,13 @@ import (
 const backendReportInterval = 30 * time.Second
 
 type backendBaselines struct {
-	smHits      uint64
-	smMisses    uint64
-	smEvictions uint64
-	smFailures  uint64
-	first       bool
+	smHits         uint64
+	smMisses       uint64
+	smEvictions    uint64
+	smFailures     uint64
+	smNotFound     uint64
+	smNegativeHits uint64
+	first          bool
 }
 
 func StartBackendReporter(ctx context.Context) {
@@ -53,6 +55,7 @@ func reportBackendOnce(b *backendBaselines) {
 	smStats := services.SourceMapStats()
 	traceway.CaptureMetric("traceway.sourcemap.entries", float64(smStats.Entries))
 	traceway.CaptureMetric("traceway.sourcemap.bytes", float64(smStats.Bytes))
+	traceway.CaptureMetric("traceway.sourcemap.negative_entries", float64(smStats.NegativeEntries))
 	traceway.CaptureMetric("traceway.sourcemap.parse_ms", smStats.LastParseMs)
 
 	if !b.first {
@@ -60,11 +63,15 @@ func reportBackendOnce(b *backendBaselines) {
 		traceway.CaptureMetric("traceway.sourcemap.misses.delta", float64(safeDelta(b.smMisses, smStats.Misses)))
 		traceway.CaptureMetric("traceway.sourcemap.evictions.delta", float64(safeDelta(b.smEvictions, smStats.Evictions)))
 		traceway.CaptureMetric("traceway.sourcemap.load_failures.delta", float64(safeDelta(b.smFailures, smStats.Failures)))
+		traceway.CaptureMetric("traceway.sourcemap.not_found.delta", float64(safeDelta(b.smNotFound, smStats.NotFound)))
+		traceway.CaptureMetric("traceway.sourcemap.negative_hits.delta", float64(safeDelta(b.smNegativeHits, smStats.NegativeHits)))
 	}
 	b.smHits = smStats.Hits
 	b.smMisses = smStats.Misses
 	b.smEvictions = smStats.Evictions
 	b.smFailures = smStats.Failures
+	b.smNotFound = smStats.NotFound
+	b.smNegativeHits = smStats.NegativeHits
 	b.first = false
 
 	traceway.CaptureMetric("traceway.cache.projects.entries", float64(cache.ProjectCache.Entries()))

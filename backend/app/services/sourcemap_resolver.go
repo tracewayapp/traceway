@@ -21,7 +21,10 @@ import (
 
 const sourceMapLoadTimeout = 5 * time.Second
 const sourceMapFailReportInterval = time.Minute
-const sourceMapNegativeTTL = time.Minute
+const sourceMapNegativeBaseTTL = time.Minute
+const sourceMapTransientNegativeBaseTTL = 15 * time.Second
+const sourceMapNegativeMaxTTL = 15 * time.Minute
+const sourceMapNegativeMaxKeys = 10000
 
 type resolverBuild func(context.Context) (*symbolicator.Resolver, int64, error)
 
@@ -30,7 +33,7 @@ type sourceMapCache struct {
 	items               map[string]*list.Element
 	order               *list.List
 	loading             map[string]*resolverLoad
-	negative            map[string]time.Time
+	negative            map[string]*negativeEntry
 	maxEntries          int
 	maxBytes            int64
 	curBytes            int64
@@ -38,9 +41,16 @@ type sourceMapCache struct {
 	misses              uint64
 	evictions           uint64
 	failures            uint64
+	notFound            uint64
+	negativeHits        uint64
 	lastParseMs         float64
 	failuresSinceReport uint64
 	lastFailAt          time.Time
+}
+
+type negativeEntry struct {
+	expiresAt time.Time
+	failures  uint32
 }
 
 type sourceMapCacheEntry struct {
@@ -59,7 +69,7 @@ var smCache = &sourceMapCache{
 	items:      make(map[string]*list.Element),
 	order:      list.New(),
 	loading:    make(map[string]*resolverLoad),
-	negative:   make(map[string]time.Time),
+	negative:   make(map[string]*negativeEntry),
 	maxEntries: 200,
 	maxBytes:   500 << 20,
 }
@@ -110,8 +120,15 @@ func (c *sourceMapCache) getOrBuild(ctx context.Context, key string, build resol
 		if l.err == nil && l.resolver != nil {
 			c.lastParseMs = buildMs
 			c.insertLocked(key, l.resolver, size)
-		} else if l.err != nil && !errors.Is(l.err, storage.ErrNotFound) {
-			c.failures++
+			delete(c.negative, key)
+		} else if l.err != nil {
+			if errors.Is(l.err, storage.ErrNotFound) {
+				c.notFound++
+				c.markNegativeLocked(key, sourceMapNegativeBaseTTL)
+			} else {
+				c.failures++
+				c.markNegativeLocked(key, sourceMapTransientNegativeBaseTTL)
+			}
 		}
 		c.mu.Unlock()
 		close(l.done)
@@ -129,21 +146,60 @@ func (c *sourceMapCache) getOrBuild(ctx context.Context, key string, build resol
 func (c *sourceMapCache) isNegative(key string) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	exp, ok := c.negative[key]
-	if !ok {
+	e, ok := c.negative[key]
+	if !ok || time.Now().After(e.expiresAt) {
 		return false
 	}
-	if time.Now().After(exp) {
-		delete(c.negative, key)
-		return false
-	}
+	c.negativeHits++
 	return true
 }
 
-func (c *sourceMapCache) markNegative(key string) {
+func (c *sourceMapCache) markNegativeLocked(key string, base time.Duration) {
+	e := c.negative[key]
+	if e == nil {
+		if len(c.negative) >= sourceMapNegativeMaxKeys {
+			c.pruneNegativeLocked()
+		}
+		e = &negativeEntry{}
+		c.negative[key] = e
+	}
+	ttl := min(base<<min(e.failures, 16), sourceMapNegativeMaxTTL)
+	e.failures++
+	e.expiresAt = time.Now().Add(ttl)
+}
+
+func (c *sourceMapCache) pruneNegativeLocked() {
+	now := time.Now()
+	for k, e := range c.negative {
+		if now.After(e.expiresAt) {
+			delete(c.negative, k)
+		}
+	}
+	for k := range c.negative {
+		if len(c.negative) < sourceMapNegativeMaxKeys {
+			break
+		}
+		delete(c.negative, k)
+	}
+}
+
+func (c *sourceMapCache) invalidate(key string) {
 	c.mu.Lock()
-	c.negative[key] = time.Now().Add(sourceMapNegativeTTL)
-	c.mu.Unlock()
+	defer c.mu.Unlock()
+	delete(c.negative, key)
+	if el, ok := c.items[key]; ok {
+		evicted := c.order.Remove(el).(*sourceMapCacheEntry)
+		delete(c.items, key)
+		c.curBytes -= evicted.size
+	}
+}
+
+func InvalidateSourceMap(projectId uuid.UUID, fileName string) {
+	base := filepath.Base(fileName)
+	if !strings.HasSuffix(base, ".map") {
+		base += ".map"
+	}
+	smCache.invalidate(fmt.Sprintf("sourcemaps/%s/%s", projectId, base))
 }
 
 func (c *sourceMapCache) reportLoadFailure(err error) {
@@ -182,30 +238,36 @@ func (c *sourceMapCache) evictLocked() {
 }
 
 type SourceMapCacheStats struct {
-	Entries     int
-	Bytes       int64
-	MaxEntries  int
-	MaxBytes    int64
-	Hits        uint64
-	Misses      uint64
-	Evictions   uint64
-	Failures    uint64
-	LastParseMs float64
+	Entries         int
+	Bytes           int64
+	MaxEntries      int
+	MaxBytes        int64
+	Hits            uint64
+	Misses          uint64
+	Evictions       uint64
+	Failures        uint64
+	NotFound        uint64
+	NegativeHits    uint64
+	NegativeEntries int
+	LastParseMs     float64
 }
 
 func SourceMapStats() SourceMapCacheStats {
 	smCache.mu.Lock()
 	defer smCache.mu.Unlock()
 	return SourceMapCacheStats{
-		Entries:     smCache.order.Len(),
-		Bytes:       smCache.curBytes,
-		MaxEntries:  smCache.maxEntries,
-		MaxBytes:    smCache.maxBytes,
-		Hits:        smCache.hits,
-		Misses:      smCache.misses,
-		Evictions:   smCache.evictions,
-		Failures:    smCache.failures,
-		LastParseMs: smCache.lastParseMs,
+		Entries:         smCache.order.Len(),
+		Bytes:           smCache.curBytes,
+		MaxEntries:      smCache.maxEntries,
+		MaxBytes:        smCache.maxBytes,
+		Hits:            smCache.hits,
+		Misses:          smCache.misses,
+		Evictions:       smCache.evictions,
+		Failures:        smCache.failures,
+		NotFound:        smCache.notFound,
+		NegativeHits:    smCache.negativeHits,
+		NegativeEntries: len(smCache.negative),
+		LastParseMs:     smCache.lastParseMs,
 	}
 }
 
@@ -253,9 +315,6 @@ func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace stri
 
 		resolver, err := getResolver(ctx, mapKey, buildResolver(mapKey, bundleKey), localResolvers)
 		if err != nil || resolver == nil {
-			if errors.Is(err, storage.ErrNotFound) {
-				smCache.markNegative(mapKey)
-			}
 			resolved = append(resolved, line)
 			continue
 		}

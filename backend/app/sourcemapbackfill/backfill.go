@@ -11,6 +11,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/config"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 
 	"github.com/google/uuid"
@@ -88,6 +89,7 @@ func migrateProject(ctx context.Context, projectId uuid.UUID) bool {
 		if !copyObject(ctx, projectId, oldKey, flatKey) {
 			return false
 		}
+		services.InvalidateSourceMap(projectId, base)
 	}
 
 	flattenRow := models.SourceMapFlattenMigration{

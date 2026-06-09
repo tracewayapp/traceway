@@ -3,6 +3,7 @@ package controllers
 import (
 	"fmt"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
+	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	"io"
 	"net/http"
@@ -70,6 +71,7 @@ func (s sourceMapController) Upload(c *gin.Context) {
 			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to write source map to storage: %w", err))
 			return
 		}
+		services.InvalidateSourceMap(projectId, fileHeader.Filename)
 
 		uploaded++
 	}

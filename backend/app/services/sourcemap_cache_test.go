@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -20,7 +21,7 @@ func newTestSourceMapCache(maxEntries int, maxBytes int64) *sourceMapCache {
 		items:      make(map[string]*list.Element),
 		order:      list.New(),
 		loading:    make(map[string]*resolverLoad),
-		negative:   make(map[string]time.Time),
+		negative:   make(map[string]*negativeEntry),
 		maxEntries: maxEntries,
 		maxBytes:   maxBytes,
 	}
@@ -292,6 +293,116 @@ func TestResolveStackTraceFailedMapAttemptedOncePerTrace(t *testing.T) {
 	mapKey := fmt.Sprintf("sourcemaps/%s/dead.js.map", projectId)
 	if got := cs.reads[mapKey]; got != 1 {
 		t.Errorf("expected 1 load attempt per trace for a failing map, got %d", got)
+	}
+}
+
+func TestSourceMapNegativeBackoffEscalates(t *testing.T) {
+	c := newTestSourceMapCache(10, 1<<20)
+
+	c.mu.Lock()
+	c.markNegativeLocked("k", sourceMapNegativeBaseTTL)
+	first := time.Until(c.negative["k"].expiresAt)
+	c.mu.Unlock()
+	if first > sourceMapNegativeBaseTTL || first < sourceMapNegativeBaseTTL-time.Second {
+		t.Errorf("first failure should use the base TTL, got %v", first)
+	}
+
+	c.mu.Lock()
+	c.markNegativeLocked("k", sourceMapNegativeBaseTTL)
+	second := time.Until(c.negative["k"].expiresAt)
+	for range 20 {
+		c.markNegativeLocked("k", sourceMapNegativeBaseTTL)
+	}
+	capped := time.Until(c.negative["k"].expiresAt)
+	c.mu.Unlock()
+
+	if second < first {
+		t.Errorf("TTL should escalate on repeat failures: first %v, second %v", first, second)
+	}
+	if capped > sourceMapNegativeMaxTTL || capped < sourceMapNegativeMaxTTL-time.Second {
+		t.Errorf("TTL should cap at %v, got %v", sourceMapNegativeMaxTTL, capped)
+	}
+}
+
+func TestSourceMapNegativeMapPrunesAtCap(t *testing.T) {
+	c := newTestSourceMapCache(10, 1<<20)
+	c.mu.Lock()
+	for i := range sourceMapNegativeMaxKeys {
+		c.markNegativeLocked(fmt.Sprintf("k-%d", i), sourceMapNegativeBaseTTL)
+	}
+	c.markNegativeLocked("one-more", sourceMapNegativeBaseTTL)
+	size := len(c.negative)
+	c.mu.Unlock()
+	if size > sourceMapNegativeMaxKeys {
+		t.Errorf("negative map should stay at or below %d keys, got %d", sourceMapNegativeMaxKeys, size)
+	}
+}
+
+func TestResolveStackTraceTransientFailureNegativeCached(t *testing.T) {
+	prev := storage.Store
+	defer func() { storage.Store = prev }()
+	fs := &flakyStorage{failures: 1 << 30}
+	storage.Store = fs
+
+	projectId := uuid.New()
+	trace := "Error: boom\n    fn()\n    down.js:1:10"
+
+	_ = ResolveStackTrace(context.Background(), projectId, trace)
+	_ = ResolveStackTrace(context.Background(), projectId, trace)
+
+	if fs.reads != 1 {
+		t.Errorf("transient storage failures should be negative cached, got %d reads", fs.reads)
+	}
+}
+
+func TestInvalidateSourceMapClearsNegative(t *testing.T) {
+	InitSourceMapCache(100, 64<<20)
+	prev := storage.Store
+	defer func() { storage.Store = prev }()
+	cs := &countingStorage{reads: map[string]int{}, data: map[string][]byte{}}
+	storage.Store = cs
+
+	projectId := uuid.New()
+	mapKey := fmt.Sprintf("sourcemaps/%s/late.js.map", projectId)
+	trace := "Error: boom\n    fn()\n    late.js:1:1"
+
+	if got := ResolveStackTrace(context.Background(), projectId, trace); got != trace {
+		t.Error("trace should pass through while the map is missing")
+	}
+
+	cs.data[mapKey] = []byte(`{"version":3,"sources":["a.js"],"names":[],"mappings":"AAAA"}`)
+	InvalidateSourceMap(projectId, "late.js.map")
+
+	resolved := ResolveStackTrace(context.Background(), projectId, trace)
+	if !strings.Contains(resolved, "a.js:1:1") {
+		t.Errorf("upload should clear the negative entry immediately, got %q", resolved)
+	}
+}
+
+func TestInvalidateSourceMapEvictsStaleResolver(t *testing.T) {
+	InitSourceMapCache(100, 64<<20)
+	prev := storage.Store
+	defer func() { storage.Store = prev }()
+	cs := &countingStorage{reads: map[string]int{}, data: map[string][]byte{}}
+	storage.Store = cs
+
+	projectId := uuid.New()
+	mapKey := fmt.Sprintf("sourcemaps/%s/stable.js.map", projectId)
+	cs.data[mapKey] = []byte(`{"version":3,"sources":["a.js"],"names":[],"mappings":"AAAA"}`)
+	trace := "Error: boom\n    fn()\n    stable.js:1:1"
+
+	if got := ResolveStackTrace(context.Background(), projectId, trace); !strings.Contains(got, "a.js:1:1") {
+		t.Fatalf("expected initial resolution against a.js, got %q", got)
+	}
+
+	cs.data[mapKey] = []byte(`{"version":3,"sources":["b.js"],"names":[],"mappings":"AAAA"}`)
+	if got := ResolveStackTrace(context.Background(), projectId, trace); !strings.Contains(got, "a.js:1:1") {
+		t.Fatalf("re-upload without invalidation should still serve the cached resolver, got %q", got)
+	}
+
+	InvalidateSourceMap(projectId, "stable.js")
+	if got := ResolveStackTrace(context.Background(), projectId, trace); !strings.Contains(got, "b.js:1:1") {
+		t.Errorf("invalidation should evict the cached resolver, got %q", got)
 	}
 }
 

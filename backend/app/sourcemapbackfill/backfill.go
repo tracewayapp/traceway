@@ -19,13 +19,6 @@ import (
 
 const storageOpTimeout = 15 * time.Second
 
-// Start copies legacy versioned source map objects to the flat
-// sourcemaps/{project}/{file} layout for projects that uploaded maps before the
-// version dimension was removed. It runs once at startup; the
-// source_map_flatten_migrations table makes it idempotent and resumable, so each
-// start only touches projects that have not been migrated yet. The copy never
-// deletes the old versioned objects, so it is safe to re-run and leaves the
-// legacy keys in place as harmless orphans.
 func Start(ctx context.Context) {
 	if db.DB == nil || storage.Store == nil {
 		return

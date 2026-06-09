@@ -126,7 +126,6 @@ func TestFlattenCopiesNewestVersionToFlatKey(t *testing.T) {
 	if n := countMigrations(t); n != 1 {
 		t.Errorf("migration rows = %d, want 1", n)
 	}
-	// Copy-only: the old versioned objects must still be present.
 	if _, ok := ms.get(fmt.Sprintf("sourcemaps/%s/v1/app.js.map", p)); !ok {
 		t.Error("old v1 object should be left in place (copy-only)")
 	}
@@ -156,8 +155,6 @@ func TestFlattenSkipsAlreadyMigratedProjects(t *testing.T) {
 	run(context.Background())
 
 	flatKey := fmt.Sprintf("sourcemaps/%s/app.js.map", p)
-	// A later upload writes the flat key directly; the project is already
-	// recorded as migrated, so a re-run must not overwrite it from old rows.
 	ms.data[flatKey] = []byte("SECOND")
 	seedMap(t, ms, p, "v2", "app.js.map", "FROM_OLD_ROW", time.Now().UTC().Add(time.Hour))
 

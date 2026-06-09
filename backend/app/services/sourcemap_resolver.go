@@ -211,10 +211,6 @@ func SourceMapStats() SourceMapCacheStats {
 
 var stackFrameRe = regexp.MustCompile(`^(\s{4})(.+):(\d+):(\d+)$`)
 
-// ResolveStackTrace symbolicates a JS stack trace using source maps stored in
-// object storage. Maps are addressed deterministically by filename at
-// sourcemaps/{projectId}/{file}, so no version and no database lookup are
-// needed; the most recent upload of each file wins.
 func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace string) string {
 	prefix := fmt.Sprintf("sourcemaps/%s/", projectId)
 

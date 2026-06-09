@@ -49,7 +49,7 @@ export function BlogArticle({
             <div className="prose">
               <Eyebrow>{eyebrow}</Eyebrow>
               <h1 className="mt-4 mb-3">{post.title}</h1>
-              <BlogByline date={formatDate(post.date)} />
+              <BlogByline date={formatDate(post.date)} author={post.author} />
 
               {post.description && (
                 <p className="blog-lead mb-12">{post.description}</p>

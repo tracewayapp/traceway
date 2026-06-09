@@ -56,3 +56,6 @@ backend/static/dist/
 /benchmarks/loadgen/loadgen-linux-arm64
 /benchmarks/_artifact/
 benchmarks/loadgen/bench-loadgen
+
+# Rust build artifacts (oxc symbolicator shim)
+backend/app/symbolicator/oxc-shim/target/

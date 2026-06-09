@@ -1,0 +1,20 @@
+[package]
+name = "oxc_shim"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+oxc_allocator = "=0.135.0"
+oxc_ast = "=0.135.0"
+oxc_ast_visit = "=0.135.0"
+oxc_parser = "=0.135.0"
+oxc_span = "=0.135.0"
+oxc_syntax = "=0.135.0"
+
+[profile.release]
+lto = true
+codegen-units = 1

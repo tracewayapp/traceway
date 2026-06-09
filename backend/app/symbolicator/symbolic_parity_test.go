@@ -125,6 +125,20 @@ var parityCases = []parityCase{
 }
 
 func TestSymbolicParity(t *testing.T) {
+	original := activeBundleParser
+	defer func() { activeBundleParser = original }()
+
+	for _, parserName := range AvailableParsers() {
+		t.Run(parserName, func(t *testing.T) {
+			if err := SetParser(parserName); err != nil {
+				t.Fatalf("SetParser(%q): %v", parserName, err)
+			}
+			runParityCases(t)
+		})
+	}
+}
+
+func runParityCases(t *testing.T) {
 	for _, tc := range parityCases {
 		t.Run(tc.name, func(t *testing.T) {
 			mapBytes := mustRead(t, fixture(t, tc.mapPath...))

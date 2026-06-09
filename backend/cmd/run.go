@@ -25,6 +25,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/sourcemapbackfill"
 	"github.com/tracewayapp/traceway/backend/app/storage"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator"
 	"github.com/tracewayapp/traceway/backend/static"
 
 	"github.com/coreos/go-systemd/v22/daemon"
@@ -114,6 +115,11 @@ func Run(opts ...Option) {
 		parsePositiveInt(cfg.SourceMapCacheMaxEntries, 200),
 		int64(parsePositiveInt(cfg.SourceMapCacheMaxBytesMB, 500))*1024*1024,
 	)
+	if cfg.SymbolicatorParser != "" {
+		if err := symbolicator.SetParser(cfg.SymbolicatorParser); err != nil {
+			panic(fmt.Errorf("symbolicator parser init failed: %w", err))
+		}
+	}
 
 	middleware.InitUseClientAuth()
 	middleware.InitUseAppAuth()

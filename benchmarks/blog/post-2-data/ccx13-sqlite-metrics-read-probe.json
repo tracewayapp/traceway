@@ -1,0 +1,124 @@
+{
+  "tier": "ccx13",
+  "mode": "sqlite",
+  "signal": "metrics",
+  "scenario": "read-probe",
+  "startedAt": "2026-06-09T10:01:48Z",
+  "endedAt": "2026-06-09T10:09:29Z",
+  "readProbe": {
+    "endpoints": [
+      {
+        "name": "metrics-server",
+        "path": "/api/metrics/server"
+      },
+      {
+        "name": "metrics-application",
+        "path": "/api/metrics/application"
+      },
+      {
+        "name": "dashboard",
+        "path": "/api/dashboard"
+      }
+    ],
+    "readPath": "/api/metrics/server",
+    "readThresholdMs": 5000,
+    "settleSeconds": 10,
+    "fillBatchSize": 1024,
+    "fillRequestRate": 25,
+    "steps": [
+      {
+        "fillLevelTarget": 100000,
+        "rowsIngested": 103424,
+        "ingestSecondsElapsed": 4.025633939,
+        "probes": [
+          {
+            "name": "metrics-server",
+            "path": "/api/metrics/server",
+            "latencyMs": 425.23123200000003,
+            "ok": true
+          },
+          {
+            "name": "metrics-application",
+            "path": "/api/metrics/application",
+            "latencyMs": 343.979527,
+            "ok": true
+          },
+          {
+            "name": "dashboard",
+            "path": "/api/dashboard",
+            "latencyMs": 443.048077,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 425.23123200000003,
+        "readLatencyMs": 425.23123200000003,
+        "readOk": true,
+        "passed": true
+      },
+      {
+        "fillLevelTarget": 1000000,
+        "rowsIngested": 1003520,
+        "ingestSecondsElapsed": 44.230255547,
+        "probes": [
+          {
+            "name": "metrics-server",
+            "path": "/api/metrics/server",
+            "latencyMs": 3743.352243,
+            "ok": true
+          },
+          {
+            "name": "metrics-application",
+            "path": "/api/metrics/application",
+            "latencyMs": 3849.445222,
+            "ok": true
+          },
+          {
+            "name": "dashboard",
+            "path": "/api/dashboard",
+            "latencyMs": 4938.900678999999,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 3849.445222,
+        "readLatencyMs": 3849.445222,
+        "readOk": true,
+        "passed": true
+      },
+      {
+        "fillLevelTarget": 10000000,
+        "rowsIngested": 10000384,
+        "ingestSecondsElapsed": 350.438980646,
+        "probes": [
+          {
+            "name": "metrics-server",
+            "path": "/api/metrics/server",
+            "latencyMs": 6000.413476000001,
+            "ok": false,
+            "error": "Get \"http://10.0.0.2/api/metrics/server?fromDate=2026-06-08T10%3A09%3A11Z\u0026projectId=293a987a-c0fd-4b2b-9b70-783b17e1cb79\u0026toDate=2026-06-09T10%3A09%3A11Z\": context deadline exceeded"
+          },
+          {
+            "name": "metrics-application",
+            "path": "/api/metrics/application",
+            "latencyMs": 6000.34941,
+            "ok": false,
+            "error": "Get \"http://10.0.0.2/api/metrics/application?fromDate=2026-06-08T10%3A09%3A17Z\u0026projectId=293a987a-c0fd-4b2b-9b70-783b17e1cb79\u0026toDate=2026-06-09T10%3A09%3A17Z\": context deadline exceeded"
+          },
+          {
+            "name": "dashboard",
+            "path": "/api/dashboard",
+            "latencyMs": 6001.854048,
+            "ok": false,
+            "error": "Get \"http://10.0.0.2/api/dashboard?fromDate=2026-06-08T10%3A09%3A23Z\u0026projectId=293a987a-c0fd-4b2b-9b70-783b17e1cb79\u0026toDate=2026-06-09T10%3A09%3A23Z\": context deadline exceeded"
+          }
+        ],
+        "medianLatencyMs": 6000.413476000001,
+        "readLatencyMs": 6000.413476000001,
+        "readOk": false,
+        "passed": false,
+        "failReason": "probe metrics-server failed: Get \"http://10.0.0.2/api/metrics/server?fromDate=2026-06-08T10%3A09%3A11Z\u0026projectId=293a987a-c0fd-4b2b-9b70-783b17e1cb79\u0026toDate=2026-06-09T10%3A09%3A11Z\": context deadline exceeded (latency 6000ms)"
+      }
+    ],
+    "maxFillLevelPassed": 1000000
+  },
+  "maxFillLevelPassed": 1000000
+}

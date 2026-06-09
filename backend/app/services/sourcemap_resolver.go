@@ -11,103 +11,186 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/cache"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 
-	"github.com/go-sourcemap/sourcemap"
 	"github.com/google/uuid"
 	traceway "go.tracewayapp.com"
 )
 
-// parsedSourceMapCache holds already-parsed *sourcemap.Consumer values so
-// concurrent stack-trace resolutions can reuse one parse. A raw 20 MB
-// source map balloons to ~100-200 MB once parsed; re-parsing on every
-// stack frame (or every request) was the OOM cause on the 1 GB t4g.micro.
-//
-// Consumers are safe for concurrent reads per go-sourcemap docs.
-type parsedSourceMapCache struct {
-	mu          sync.Mutex
-	items       map[string]*list.Element
-	order       *list.List
-	max         int
-	hits        uint64
-	misses      uint64
-	lastParseMs float64
+const sourceMapLoadTimeout = 5 * time.Second
+const sourceMapFailReportInterval = time.Minute
+
+type sourceMapCache struct {
+	mu                  sync.Mutex
+	items               map[string]*list.Element
+	order               *list.List
+	loading             map[string]*sourceMapLoad
+	maxEntries          int
+	maxBytes            int64
+	curBytes            int64
+	hits                uint64
+	misses              uint64
+	evictions           uint64
+	failures            uint64
+	lastParseMs         float64
+	failuresSinceReport uint64
+	lastFailAt          time.Time
 }
 
-type parsedSourceMapEntry struct {
-	key      string
-	consumer *sourcemap.Consumer
+type sourceMapCacheEntry struct {
+	key string
+	sm  *parsedSourceMap
 }
 
-var parsedSourceMaps = &parsedSourceMapCache{
-	items: make(map[string]*list.Element),
-	order: list.New(),
-	max:   5,
+type sourceMapLoad struct {
+	done chan struct{}
+	sm   *parsedSourceMap
+	err  error
 }
 
-func InitParsedSourceMapCache(max int) {
-	parsedSourceMaps.mu.Lock()
-	defer parsedSourceMaps.mu.Unlock()
-	parsedSourceMaps.max = max
+var smCache = &sourceMapCache{
+	items:      make(map[string]*list.Element),
+	order:      list.New(),
+	loading:    make(map[string]*sourceMapLoad),
+	maxEntries: 200,
+	maxBytes:   500 << 20,
 }
 
-func (c *parsedSourceMapCache) get(key string) (*sourcemap.Consumer, bool) {
+func InitSourceMapCache(maxEntries int, maxBytes int64) {
+	smCache.mu.Lock()
+	defer smCache.mu.Unlock()
+	smCache.maxEntries = maxEntries
+	smCache.maxBytes = maxBytes
+	smCache.evictLocked()
+}
+
+func (c *sourceMapCache) getOrLoad(ctx context.Context, key string) (sm *parsedSourceMap, err error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if el, ok := c.items[key]; ok {
 		c.hits++
 		c.order.MoveToFront(el)
-		return el.Value.(*parsedSourceMapEntry).consumer, true
+		cached := el.Value.(*sourceMapCacheEntry).sm
+		c.mu.Unlock()
+		return cached, nil
+	}
+	if l, ok := c.loading[key]; ok {
+		c.mu.Unlock()
+		<-l.done
+		if l.err == nil {
+			c.mu.Lock()
+			c.hits++
+			c.mu.Unlock()
+		}
+		return l.sm, l.err
 	}
 	c.misses++
-	return nil, false
+	l := &sourceMapLoad{done: make(chan struct{})}
+	c.loading[key] = l
+	c.mu.Unlock()
+
+	var parseMs float64
+	defer func() {
+		if r := recover(); r != nil {
+			l.sm = nil
+			l.err = fmt.Errorf("source map load panicked (key=%s): %v", key, r)
+			c.reportLoadFailure(l.err)
+			sm, err = nil, l.err
+		}
+		c.mu.Lock()
+		delete(c.loading, key)
+		if l.err == nil && l.sm != nil {
+			c.lastParseMs = parseMs
+			c.insertLocked(key, l.sm)
+		} else {
+			c.failures++
+		}
+		c.mu.Unlock()
+		close(l.done)
+	}()
+
+	l.sm, parseMs, l.err = c.load(ctx, key)
+	return l.sm, l.err
 }
 
-func (c *parsedSourceMapCache) recordParse(ms float64) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.lastParseMs = ms
-}
-
-func (c *parsedSourceMapCache) put(key string, consumer *sourcemap.Consumer) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if el, ok := c.items[key]; ok {
-		el.Value.(*parsedSourceMapEntry).consumer = consumer
-		c.order.MoveToFront(el)
-		return
+func (c *sourceMapCache) load(ctx context.Context, key string) (*parsedSourceMap, float64, error) {
+	readCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sourceMapLoadTimeout)
+	defer cancel()
+	data, err := storage.Store.Read(readCtx, key)
+	if err != nil {
+		c.reportLoadFailure(fmt.Errorf("failed to read source map from storage (key=%s): %w", key, err))
+		return nil, 0, err
 	}
-	el := c.order.PushFront(&parsedSourceMapEntry{key: key, consumer: consumer})
+
+	parseStart := time.Now()
+	sm, err := parseSourceMap(data)
+	if err != nil {
+		c.reportLoadFailure(fmt.Errorf("failed to parse source map (key=%s): %w", key, err))
+		return nil, 0, err
+	}
+	return sm, float64(time.Since(parseStart).Microseconds()) / 1000.0, nil
+}
+
+func (c *sourceMapCache) reportLoadFailure(err error) {
+	var report uint64
+	c.mu.Lock()
+	c.failuresSinceReport++
+	if time.Since(c.lastFailAt) >= sourceMapFailReportInterval {
+		report = c.failuresSinceReport
+		c.failuresSinceReport = 0
+		c.lastFailAt = time.Now()
+	}
+	c.mu.Unlock()
+	if report > 0 {
+		traceway.CaptureException(fmt.Errorf("source map loads failed %d time(s) since last report: %w", report, err))
+	}
+}
+
+func (c *sourceMapCache) insertLocked(key string, sm *parsedSourceMap) {
+	el := c.order.PushFront(&sourceMapCacheEntry{key: key, sm: sm})
 	c.items[key] = el
-	for c.order.Len() > c.max {
+	c.curBytes += sm.size
+	c.evictLocked()
+}
+
+func (c *sourceMapCache) evictLocked() {
+	for c.order.Len() > c.maxEntries || c.curBytes > c.maxBytes {
 		back := c.order.Back()
 		if back == nil {
 			break
 		}
-		evicted := c.order.Remove(back).(*parsedSourceMapEntry)
+		evicted := c.order.Remove(back).(*sourceMapCacheEntry)
 		delete(c.items, evicted.key)
+		c.curBytes -= evicted.sm.size
+		c.evictions++
 	}
 }
 
-type ParsedSourceMapCacheStats struct {
+type SourceMapCacheStats struct {
 	Entries     int
-	Max         int
+	Bytes       int64
+	MaxEntries  int
+	MaxBytes    int64
 	Hits        uint64
 	Misses      uint64
+	Evictions   uint64
+	Failures    uint64
 	LastParseMs float64
 }
 
-func ParsedSourceMapStats() ParsedSourceMapCacheStats {
-	parsedSourceMaps.mu.Lock()
-	defer parsedSourceMaps.mu.Unlock()
-	return ParsedSourceMapCacheStats{
-		Entries:     parsedSourceMaps.order.Len(),
-		Max:         parsedSourceMaps.max,
-		Hits:        parsedSourceMaps.hits,
-		Misses:      parsedSourceMaps.misses,
-		LastParseMs: parsedSourceMaps.lastParseMs,
+func SourceMapStats() SourceMapCacheStats {
+	smCache.mu.Lock()
+	defer smCache.mu.Unlock()
+	return SourceMapCacheStats{
+		Entries:     smCache.order.Len(),
+		Bytes:       smCache.curBytes,
+		MaxEntries:  smCache.maxEntries,
+		MaxBytes:    smCache.maxBytes,
+		Hits:        smCache.hits,
+		Misses:      smCache.misses,
+		Evictions:   smCache.evictions,
+		Failures:    smCache.failures,
+		LastParseMs: smCache.lastParseMs,
 	}
 }
 
@@ -128,12 +211,9 @@ func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace stri
 		return stackTrace
 	}
 
-	// Build lookup: basename of source map's file_name (without .map) -> source map
-	// Also keep a map of file_name -> storage_key for direct lookup
 	smByBasename := make(map[string]*models.SourceMap)
 	for _, sm := range sourceMaps {
 		smByBasename[sm.FileName] = sm
-		// Also index by basename
 		base := filepath.Base(sm.FileName)
 		smByBasename[base] = sm
 	}
@@ -143,9 +223,7 @@ func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace stri
 	framesResolved := 0
 	maxFrames := 50
 
-	// Per-call consumer map — a given source map is parsed at most once per
-	// ResolveStackTrace invocation even if not in the global cache.
-	localConsumers := make(map[string]*sourcemap.Consumer)
+	localMaps := make(map[string]*parsedSourceMap)
 
 	for _, line := range lines {
 		if framesResolved >= maxFrames {
@@ -170,25 +248,29 @@ func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace stri
 			continue
 		}
 
-		consumer, err := getParsedSourceMap(ctx, sm.StorageKey, localConsumers)
-		if err != nil || consumer == nil {
+		pm, err := getSourceMap(ctx, sm.StorageKey, localMaps)
+		if err != nil || pm == nil {
 			resolved = append(resolved, line)
 			continue
 		}
 
-		origFile, origName, origLine, origCol, ok := consumer.Source(lineNum, colNum)
-		if !ok || origFile == "" {
+		origFile, origName, origLine, origCol, ok := pm.source(lineNum, colNum-1)
+		if !ok {
 			resolved = append(resolved, line)
 			continue
 		}
 
-		if content := consumer.SourceContent(origFile); content != "" {
+		if content := pm.sourceContent(origFile); content != "" {
 			if extracted := extractFunctionName(content, origLine); extracted != "" {
 				origName = extracted
 			}
 		}
 
-		resolved = append(resolved, fmt.Sprintf("%s%s:%d:%d", indent, origFile, origLine, origCol))
+		if origFile == "" {
+			origFile = "<unknown>"
+		}
+
+		resolved = append(resolved, fmt.Sprintf("%s%s:%d:%d", indent, origFile, origLine, origCol+1))
 		framesResolved++
 
 		if origName != "" && len(resolved) >= 2 {
@@ -205,19 +287,16 @@ func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace stri
 }
 
 func findSourceMap(stackFile string, smByBasename map[string]*models.SourceMap) *models.SourceMap {
-	// Try file.map directly
 	mapName := stackFile + ".map"
 	if sm, ok := smByBasename[mapName]; ok {
 		return sm
 	}
 
-	// Try basename.map
 	base := filepath.Base(stackFile) + ".map"
 	if sm, ok := smByBasename[base]; ok {
 		return sm
 	}
 
-	// Try without query params
 	cleanName := stackFile
 	if idx := strings.IndexAny(cleanName, "?#"); idx != -1 {
 		cleanName = cleanName[:idx]
@@ -230,44 +309,17 @@ func findSourceMap(stackFile string, smByBasename map[string]*models.SourceMap) 
 	return nil
 }
 
-// getParsedSourceMap returns a reusable *sourcemap.Consumer for the given
-// storage key, parsing at most once per unique source map. Lookup order:
-//
-//  1. Per-call localConsumers (same ResolveStackTrace invocation)
-//  2. Global parsedSourceMaps LRU (cross-request reuse, capped at 5 entries)
-//  3. Raw-bytes cache, then storage.Store.Read — then parse and populate.
-//
-// The raw-bytes cache is still populated so the parse only pays one storage
-// read even when the parsed cache evicts us.
-func getParsedSourceMap(ctx context.Context, storageKey string, localConsumers map[string]*sourcemap.Consumer) (*sourcemap.Consumer, error) {
-	if c, ok := localConsumers[storageKey]; ok {
-		return c, nil
+func getSourceMap(ctx context.Context, storageKey string, localMaps map[string]*parsedSourceMap) (*parsedSourceMap, error) {
+	if m, ok := localMaps[storageKey]; ok {
+		return m, nil
 	}
-	if c, ok := parsedSourceMaps.get(storageKey); ok {
-		localConsumers[storageKey] = c
-		return c, nil
-	}
-
-	data, ok := cache.SourceMapCache.Get(storageKey)
-	if !ok {
-		var err error
-		data, err = storage.Store.Read(ctx, storageKey)
-		if err != nil {
-			traceway.CaptureException(fmt.Errorf("failed to read source map from storage (key=%s): %w", storageKey, err))
-			return nil, err
-		}
-		cache.SourceMapCache.Put(storageKey, data)
-	}
-
-	parseStart := time.Now()
-	consumer, err := sourcemap.Parse("", data)
+	m, err := smCache.getOrLoad(ctx, storageKey)
 	if err != nil {
+		localMaps[storageKey] = nil
 		return nil, err
 	}
-	parsedSourceMaps.recordParse(float64(time.Since(parseStart).Microseconds()) / 1000.0)
-	parsedSourceMaps.put(storageKey, consumer)
-	localConsumers[storageKey] = consumer
-	return consumer, nil
+	localMaps[storageKey] = m
+	return m, nil
 }
 
 func extractFunctionName(sourceContent string, line int) string {

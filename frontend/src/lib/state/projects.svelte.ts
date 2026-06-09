@@ -67,6 +67,8 @@ export interface Project {
     createdAt: string;
     sourceMapToken: string | null;
     backendUrl: string;
+    dropHealthyHealthchecks: boolean;
+    healthcheckPaths: string[] | null;
 }
 
 export interface ProjectWithToken extends Project {
@@ -149,8 +151,8 @@ class ProjectsState {
         return response;
     }
 
-    async updateProject(id: string, name: string, framework: Framework): Promise<Project> {
-        const response = await api.put('/projects', { name, framework }, {
+    async updateProject(id: string, name: string, framework: Framework, dropHealthyHealthchecks: boolean, healthcheckPaths: string[]): Promise<Project> {
+        const response = await api.put('/projects', { name, framework, dropHealthyHealthchecks, healthcheckPaths }, {
             projectId: id
         });
         await this.loadProjects();

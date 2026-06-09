@@ -851,15 +851,18 @@ The backend normalizes stack traces before hashing to group identical errors des
 
 **Normalization Steps:**
 1. Extract error type only (remove error message content)
-2. Remove absolute file paths (keep `filename:line` only)
-3. Replace hexadecimal addresses with `<hex>`
-4. Replace UUIDs with `<uuid>`
-5. Replace IP addresses with `<ip>`
-6. Replace timestamps with `<timestamp>`
-7. Replace numeric IDs in paths with `<id>`
-8. Normalize whitespace
-9. Remove ANSI color codes
-10. Hash the normalized string with SHA-256, truncate to 16 chars
+2. Collapse JS SDK function-name lines (ending in `()`, directly above a 4-space-indented `file:line:col` location line) to `<fn>` so resolved function names never affect grouping; anchoring on the location line keeps Go traces (tab-indented file lines) untouched
+3. Remove absolute file paths (keep `filename:line` only)
+4. Replace hexadecimal addresses with `<hex>`
+5. Replace UUIDs with `<uuid>`
+6. Replace IP addresses with `<ip>`
+7. Replace timestamps with `<timestamp>`
+8. Replace numeric IDs in paths with `<id>`
+9. Normalize whitespace
+10. Remove ANSI color codes
+11. Hash the normalized string with SHA-256, truncate to 16 chars
+
+**Note:** columns are intentionally kept in the hash. Minified bundles put everything on line 1, so the column is the only frame disambiguator when no source map matched. Function names are excluded (step 2) because they are derived from the location and change as symbolication improves.
 
 **Result:** Same logical error gets same hash, even if:
 - Error message contains different user IDs

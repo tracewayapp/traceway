@@ -1,0 +1,119 @@
+symbolic parity results
+fixtures: getsentry/symbolic 925230e878ea25f6a0af88171fce93b6272cd30d
+regenerate: go test ./app/services/ -run TestResolveStackTraceSymbolicParity -record-symbolic
+PINNED frames intentionally deviate from symbolic; see sourcemapcache/README.md
+frames: 13 parity, 5 pinned deviations, 0 failing, 18 total
+
+[PASS] resolves_inlined_function :: module.js:1:63
+  location expected: ../src/app.js:3:30
+  location actual:   ../src/app.js:3:30
+  name expected:     buttonCallback
+  name actual:       buttonCallback
+
+[PASS] resolves_inlined_function :: module.js:1:47
+  location expected: ../src/bar.js:4:3
+  location actual:   ../src/bar.js:4:3
+  name expected:     bar
+  name actual:       bar
+
+[PASS] resolves_inlined_function :: module.js:1:34
+  location expected: ../src/foo.js:2:9
+  location actual:   ../src/foo.js:2:9
+  name expected:     (not asserted)
+  name actual:       foo
+
+[PASS] resolves_inlined_function :: module.js:2:18
+  location expected: module.js:2:18
+  location actual:   module.js:2:18
+  name expected:     anonymous
+  name actual:       anonymous
+
+[PASS] writes_simple_cache :: minified.js:1:11
+  location expected: tests/fixtures/simple/original.js:2:10
+  location actual:   tests/fixtures/simple/original.js:2:10
+  name expected:     abcd
+  name actual:       abcd
+
+[PASS] resolves_location_from_cache :: preact.module.js:1:50
+  location expected: ../src/constants.js:3:35
+  location actual:   ../src/constants.js:3:35
+  name expected:     (not asserted)
+  name actual:       IS_NON_DIMENSIONAL
+
+[PASS] resolves_location_from_cache :: preact.module.js:1:133
+  location expected: ../src/util.js:12:23
+  location actual:   ../src/util.js:12:23
+  name expected:     assign
+  name actual:       assign
+
+[PINNED] resolves_location_from_cache :: preact.module.js:1:482
+  location expected: ../src/create-element.js:40:9
+  location actual:   ../src/create-element.js:40:9
+  name parity target: createElement
+  name pinned:       normalizedProps
+  name actual:       normalizedProps
+
+[PASS] resolves_location_from_cache :: preact.module.js:1:9780
+  location expected: ../src/component.js:182:5
+  location actual:   ../src/component.js:182:5
+  name expected:     (not asserted)
+  name actual:       defer
+
+[PASS] resolves_location_from_cache :: preact.module.js:1:9795
+  location expected: ../src/create-context.js:3:12
+  location actual:   ../src/create-context.js:3:12
+  name expected:     (not asserted)
+  name actual:       i
+
+[PASS] missing_source_names :: nofiles.js:1:39
+  location expected: <unknown>:3:9
+  location actual:   <unknown>:3:9
+  name expected:     add
+  name actual:       add
+
+[PASS] missing_source_contents :: preact-missing-source-contents.module.js:1:133
+  location expected: ../src/util.js:12:23
+  location actual:   ../src/util.js:12:23
+  name expected:     (not asserted)
+  name actual:       obj
+
+[PASS] hermes_scope_lookup :: react-native-hermes:1:11940
+  location expected: module.js:2:11
+  location actual:   module.js:2:11
+  name expected:     foo
+  name actual:       foo
+
+[PINNED] hermes_scope_lookup :: react-native-hermes:1:11858
+  location expected: input.js:3:1
+  location actual:   input.js:3:1
+  name parity target: <global>
+  name pinned:       anonymous
+  name actual:       anonymous
+
+[PASS] metro_scope_lookup :: react-native-metro.js:7:101
+  location expected: module.js:2:11
+  location actual:   module.js:2:11
+  name expected:     foo
+  name actual:       foo
+
+[PINNED] metro_scope_lookup :: react-native-metro.js:6:44
+  location expected: input.js:3:1
+  location actual:   input.js:3:1
+  name parity target: <global>
+  name pinned:       foo
+  name actual:       foo
+
+[PINNED] webpack_scope_lookup :: bundle.js:1:85
+  location expected: webpack:///./foo.js:2:9
+  location actual:   webpack:///./foo.js:2:9
+  name parity target: module.exports
+  name pinned:       foo
+  name actual:       foo
+
+[PINNED] webpack_scope_lookup :: bundle.js:1:44
+  location expected: webpack:///./bar.js:2:3
+  location actual:   webpack:///./bar.js:2:3
+  name parity target: module.exports
+  name pinned:       bar
+  name actual:       bar
+

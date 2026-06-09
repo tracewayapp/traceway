@@ -1,5 +1,3 @@
-<h1 align="center">I just realized there is an HN post about Traceway. I didn't make it, and unfortunately my account is rate limited so I can't reply to everyone. I've written my response <a href="./HN.md">here</a></h1>
-
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="Traceway%20Logo%20White.png" />
@@ -88,7 +86,7 @@ func main() {
     go tracewaybackend.Run(
         tracewaybackend.WithPort(8082),
         tracewaybackend.WithDefaultUser("admin@localhost.com", "admin"),
-        tracewaybackend.WithDefaultProject("My App", "go", "dev-token"),
+        tracewaybackend.WithDefaultProject("My App", "opentelemetry", "dev-token"),
     )
 
     // ... start your app, point its OTel exporter to http://localhost:8082/api/otel/v1/traces

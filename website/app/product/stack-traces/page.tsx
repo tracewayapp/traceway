@@ -11,8 +11,8 @@ import { AuroraBackground } from "@/components/aurora-background";
 export default function StackTracesPage() {
   return (
     <main className="relative">
-      {/* Hero — left aligned */}
-      <section className="hero hero-product gridbg relative">
+      {/* Hero, left aligned */}
+      <section className="hero hero-product relative">
         <AuroraBackground variant="hero" />
         <div className="wrap relative z-10">
           <Chip variant="crit">
@@ -24,7 +24,7 @@ export default function StackTracesPage() {
           </h1>
           <p className="hero-sub">
             Every exception, grouped by a 10-step normalization pipeline and
-            SHA-256 hash — thousands of duplicates collapse into one issue,
+            SHA-256 hash. Thousands of duplicates collapse into one issue,
             paired with the session replay or screen recording that caused it.
           </p>
           <div className="hero-cta-row">
@@ -38,65 +38,68 @@ export default function StackTracesPage() {
         </div>
       </section>
 
-      {/* Every exception grouped and ranked — absorbed from home */}
-      <section className="wrap">
-        <FeatureRow
-          eyebrow="Grouping"
-          title={
-            <>
-              Every exception, <em>grouped and ranked</em>
-            </>
-          }
-          description="Full stack traces, 10-step normalization, SHA-256 grouping. Thousands of duplicates collapse into one ranked issue so you fix what matters first."
-          bullets={[
-            "Full stack trace capture with file:line",
-            "Intelligent error grouping via SHA-256 hash",
-            "User impact analysis across sessions",
-            "Source map resolution for minified JS",
-          ]}
-          image={{ src: "/images/exceptions-grouped-ranked.png", alt: "Exception tracking interface" }}
-        />
-      </section>
+      {/* Every exception grouped and ranked, absorbed from home */}
+      {/* WHITE BAND: feature sections render on white */}
+      <div className="band-light">
+        <section className="wrap">
+          <FeatureRow
+            eyebrow="Grouping"
+            title={
+              <>
+                Every exception, <em>grouped and ranked</em>
+              </>
+            }
+            description="Full stack traces, 10-step normalization, SHA-256 grouping. Thousands of duplicates collapse into one ranked issue so you fix what matters first."
+            bullets={[
+              "Full stack trace capture with file:line",
+              "Intelligent error grouping via SHA-256 hash",
+              "User impact analysis across sessions",
+              "Source map resolution for minified JS",
+            ]}
+            image={{ src: "/images/exceptions-grouped-ranked.png", alt: "Exception tracking interface" }}
+          />
+        </section>
 
-      {/* Intelligent grouping */}
-      <section className="wrap">
-        <FeatureRow
-          reverse
-          eyebrow="Normalization"
-          title={
-            <>
-              Same bug, <em>same group</em> — every time
-            </>
-          }
-          description="Traceway normalizes stack traces before hashing, so the same logical error gets grouped together even when runtime values differ. Memory addresses, UUIDs, timestamps, numeric IDs, and ANSI codes are stripped before the hash."
-          bullets={[
-            "Stack trace normalization (10-step pipeline)",
-            "Cross-service deduplication",
-            "Full context preserved on every occurrence",
-          ]}
-          image={{ src: "/images/stack-trace.png", alt: "Error grouping interface" }}
-        />
-      </section>
+        {/* Intelligent grouping */}
+        <section className="wrap">
+          <FeatureRow
+            reverse
+            eyebrow="Normalization"
+            title={
+              <>
+                Same bug, <em>same group</em>, every time
+              </>
+            }
+            description="Traceway normalizes stack traces before hashing, so the same logical error gets grouped together even when runtime values differ. Memory addresses, UUIDs, timestamps, numeric IDs, and ANSI codes are stripped before the hash."
+            bullets={[
+              "Stack trace normalization (10-step pipeline)",
+              "Cross-service deduplication",
+              "Full context preserved on every occurrence",
+            ]}
+            image={{ src: "/images/stack-trace.png", alt: "Error grouping interface" }}
+          />
+        </section>
 
-      {/* Visual context — pair stack traces with session replay */}
-      <section className="wrap">
-        <FeatureRow
-          eyebrow="Visual context"
-          title={
-            <>
-              Pair every stack trace with the <em>replay that caused it</em>
-            </>
-          }
-          description="When a backend exception fires, Traceway attaches the session replay or mobile recording the user was generating at that moment. Open the stack trace — the replay is right there. See what the user did, what the UI looked like, and where the code blew up, in one pane."
-          bullets={[
-            "Web DOM replay linked by trace ID",
-            "Flutter and React Native screen recording",
-            "Jump from stack frame → exact frame of the replay",
-            "Frontend + backend context in one pane",
-          ]}
-          image={{ src: "/images/session-replay-viewer.png", alt: "Stack trace paired with session replay" }}
-        />
-      </section>
+        {/* Visual context: pair stack traces with session replay */}
+        <section className="wrap">
+          <FeatureRow
+            eyebrow="Visual context"
+            title={
+              <>
+                Pair every stack trace with the <em>replay that caused it</em>
+              </>
+            }
+            description="When a backend exception fires, Traceway attaches the session replay or mobile recording the user was generating at that moment. Open the stack trace and the replay is right there. See what the user did, what the UI looked like, and where the code blew up, in one pane."
+            bullets={[
+              "Web DOM replay linked by trace ID",
+              "Flutter and React Native screen recording",
+              "Jump from stack frame → exact frame of the replay",
+              "Frontend + backend context in one pane",
+            ]}
+            image={{ src: "/images/session-replay-viewer.png", alt: "Stack trace paired with session replay" }}
+          />
+        </section>
+      </div>
 
       <FinalCTA
         title={
@@ -120,7 +123,7 @@ export default function StackTracesPage() {
                 },
                 {
                   q: "How does automatic issue ranking work?",
-                  a: "Traceway scores each issue based on how often it occurs, how recently it appeared, and how many users are affected. Issues are continuously re-ranked as new data comes in, so regressions and trending problems surface immediately — no manual triage required.",
+                  a: "Traceway scores each issue based on how often it occurs, how recently it appeared, and how many users are affected. Issues are continuously re-ranked as new data comes in, so regressions and trending problems surface immediately, with no manual triage required.",
                 },
                 {
                   q: "How does error grouping handle different environments?",

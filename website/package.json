@@ -24,9 +24,11 @@
     "next-sitemap": "^4.2.3",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "rehype-pretty-code": "^0.14.3",
     "remark-gfm": "^4.0.1",
     "rrweb": "^2.0.0-alpha.4",
     "rrweb-player": "^1.0.0-alpha.4",
+    "shiki": "^4.2.0",
     "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {

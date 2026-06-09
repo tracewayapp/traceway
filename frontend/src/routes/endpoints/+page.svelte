@@ -21,6 +21,7 @@
     import { browser } from '$app/environment';
     import { CalendarDate } from "@internationalized/date";
     import { projectsState } from '$lib/state/projects.svelte';
+    import { isHealthcheckEndpoint } from '$lib/utils/healthcheck';
     import { createRowClickHandler } from '$lib/utils/navigation';
     import { resolve } from '$app/paths';
     import PageHeader from '$lib/components/issues/page-header.svelte';
@@ -44,6 +45,8 @@
 	import { ChartLine } from '@lucide/svelte';
 
     const timezone = $derived(getTimezone());
+    const dropHealthyHealthchecks = $derived(projectsState.currentProject?.dropHealthyHealthchecks ?? false);
+    const healthcheckPaths = $derived(projectsState.currentProject?.healthcheckPaths ?? []);
 
     type EndpointStats = {
         endpoint: string;
@@ -564,6 +567,9 @@
                                 {endpoint.endpoint}
                                 {#if endpoint.isStream}
                                     <Badge variant="outline" class="font-sans text-xs" title="Streaming response (SSE / WebSocket / long-poll). Excluded from latency, Apdex, and impact scoring.">Stream</Badge>
+                                {/if}
+                                {#if dropHealthyHealthchecks && isHealthcheckEndpoint(endpoint.endpoint, healthcheckPaths)}
+                                    <Badge variant="outline" class="font-sans text-xs" title="Healthcheck endpoint. Only failed requests (status 400+) are stored, so counts and error rates reflect failures only. Configure in project settings.">Healthcheck</Badge>
                                 {/if}
                                 {#if endpoint.hasNonRoot}
                                     <NonRootChip mixed={endpoint.hasRoot && endpoint.hasNonRoot} />

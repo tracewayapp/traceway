@@ -4,27 +4,27 @@ date: "2026-05-04"
 version: "1.0.6"
 ---
 
-First release of the Traceway React Native SDK — error tracking for React Native and Expo apps. The wire format is identical to the browser, Android, and Flutter SDKs, so the same Traceway backend ingests reports from every Traceway client.
+First release of the Traceway React Native SDK: error tracking for React Native and Expo apps. The wire format is identical to the browser, Android, and Flutter SDKs, so the same Traceway backend ingests reports from every Traceway client.
 
 ## Features
 
-- Automatic capture of every uncaught throw via React Native's `ErrorUtils` global handler — RN's red-box dev overlay still appears, the previous handler is preserved
+- Automatic capture of every uncaught throw via React Native's `ErrorUtils` global handler. RN's red-box dev overlay still appears, the previous handler is preserved
 - Unhandled promise rejections caught through the same handler
 - Render-time errors caught via `<TracewayErrorBoundary>`
 - Full Hermes / JavaScriptCore stack traces, normalized to the same wire format the other SDKs emit
 - The last ~10 seconds of `console.{debug,log,info,warn,error}` attached to every report
-- `fetch` and `XMLHttpRequest` wrapped at install time — method, URL, status, duration, byte counts. Calls to the Traceway endpoint itself are skipped to avoid recursion
+- `fetch` and `XMLHttpRequest` wrapped at install time: method, URL, status, duration, byte counts. Calls to the Traceway endpoint itself are skipped to avoid recursion
 - Auto-collected device attributes (`os.name`, `os.version`, screen resolution / density, locale, runtime engine) attached to every report
 - Custom breadcrumbs via `recordAction(...)` and per-app globals via `setDeviceAttributes(...)`
 - React surface: `<TracewayProvider>`, `<TracewayErrorBoundary>`, `useTraceway()` hook
-- Pure JavaScript — no native modules, no `pod install`, no Gradle changes. Works in **Expo Go**, in bare React Native CLI projects, and in EAS builds
+- Pure JavaScript: no native modules, no `pod install`, no Gradle changes. Works in **Expo Go**, in bare React Native CLI projects, and in EAS builds
 - Gzip-compressed transport via `fflate` (Hermes / JSC have no `CompressionStream`)
 - Published as `@tracewayapp/react-native` on npm, RN ≥ 0.72, React ≥ 18
 
 ## Limitations
 
-- **No screen recording.** Unlike the browser SDK, this package does not record the screen. The `rrweb` recorder is intentionally absent — nothing in the bundle reaches into a DOM that doesn't exist.
-- **Navigation needs manual wiring.** React Native has no `window.history` to auto-instrument and no equivalent to Android's Activity lifecycle callbacks. Wire `recordNavigation(from, to)` into your navigation library — the docs include a `react-navigation` and an Expo Router example.
+- **No screen recording.** Unlike the browser SDK, this package does not record the screen. The `rrweb` recorder is intentionally absent, so nothing in the bundle reaches into a DOM that doesn't exist.
+- **Navigation needs manual wiring.** React Native has no `window.history` to auto-instrument and no equivalent to Android's Activity lifecycle callbacks. Wire `recordNavigation(from, to)` into your navigation library. The docs include a `react-navigation` and an Expo Router example.
 - **Richer device info needs an extra package.** The auto-collected attributes use only RN core APIs (`Platform`, `Dimensions`, `PixelRatio`, `Intl`). To add `device.model`, `device.manufacturer`, etc., install `expo-device` or `react-native-device-info` yourself and pass the extras via `setDeviceAttributes(...)`.
 
-For browser apps, use [`@tracewayapp/frontend`](https://www.npmjs.com/package/@tracewayapp/frontend) — same wire format, plus rrweb session replay. For native apps without React Native, use the [Flutter SDK](https://github.com/tracewayapp/traceway-flutter) (with screen recording on iOS / Android / macOS) or the [Android SDK](https://github.com/tracewayapp/traceway-android).
+For browser apps, use [`@tracewayapp/frontend`](https://www.npmjs.com/package/@tracewayapp/frontend), which has the same wire format, plus rrweb session replay. For native apps without React Native, use the [Flutter SDK](https://github.com/tracewayapp/traceway-flutter) (with screen recording on iOS / Android / macOS) or the [Android SDK](https://github.com/tracewayapp/traceway-android).

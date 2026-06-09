@@ -100,11 +100,12 @@ func evaluateErrorRegression(ctx context.Context, rule *models.NotificationRuleW
 }
 
 func getExceptionDetails(ctx context.Context, projectId uuid.UUID, hash string) ExceptionDetails {
-	var idStr, stackTrace, appVersion, serverName, attributesJSON, recordedAtStr string
+	var idStr, stackTrace, traceType, appVersion, serverName, attributesJSON, recordedAtStr string
+	var traceIdStr sql.NullString
 
 	err := db.DB.QueryRowContext(ctx,
-		"SELECT id, stack_trace, attributes, app_version, server_name, recorded_at FROM exception_stack_traces WHERE project_id = ? AND exception_hash = ? ORDER BY recorded_at DESC LIMIT 1",
-		projectId.String(), hash).Scan(&idStr, &stackTrace, &attributesJSON, &appVersion, &serverName, &recordedAtStr)
+		"SELECT id, trace_id, trace_type, stack_trace, attributes, app_version, server_name, recorded_at FROM exception_stack_traces WHERE project_id = ? AND exception_hash = ? ORDER BY recorded_at DESC LIMIT 1",
+		projectId.String(), hash).Scan(&idStr, &traceIdStr, &traceType, &stackTrace, &attributesJSON, &appVersion, &serverName, &recordedAtStr)
 
 	details := ExceptionDetails{
 		Hash: hash,
@@ -124,6 +125,15 @@ func getExceptionDetails(ctx context.Context, projectId uuid.UUID, hash string) 
 	details.AppVersion = appVersion
 	details.ServerName = serverName
 	details.RecordedAt, _ = time.Parse(time.RFC3339Nano, recordedAtStr)
+	details.TraceType = traceType
+
+	var traceId *uuid.UUID
+	if traceIdStr.Valid {
+		if parsed, parseErr := uuid.Parse(traceIdStr.String); parseErr == nil {
+			traceId = &parsed
+		}
+	}
+	details.TraceName = resolveTraceName(ctx, projectId, traceId, traceType)
 
 	if attributesJSON != "" && attributesJSON != "{}" {
 		attrs := make(map[string]string)

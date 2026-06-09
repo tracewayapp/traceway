@@ -6,7 +6,7 @@ import { JetBrains_Mono, IBM_Plex_Mono, Inter } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 
-// Dark-only site — no theme toggle.
+// Dark-only site, no theme toggle.
 
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-display",
@@ -33,9 +33,9 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "./",
   },
-  title: "Traceway — Logs, Traces, Metrics, Session Replay, Exceptions",
+  title: "Traceway · Open Source APM Built on OpenTelemetry",
   description:
-    "Traceway is open-source observability for modern backends. Logs, traces, metrics, session replay, and stack traces — correlated by one trace ID. Self-host free or run on Traceway Cloud.",
+    "Traceway is an open-source APM built on OpenTelemetry. Complete observability: logs, traces, metrics, session replay, and exceptions, all connected. MIT licensed. Self-host free or run on Traceway Cloud.",
   icons: {
     icon: "/favicon.ico",
   },

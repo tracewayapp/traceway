@@ -21,6 +21,7 @@
 	import { CalendarDate } from '@internationalized/date';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import { projectsState } from '$lib/state/projects.svelte';
+	import { isHealthcheckEndpoint } from '$lib/utils/healthcheck';
 	import AttributesDisplay from '$lib/components/attributes-display.svelte';
 	import { createRowClickHandler } from '$lib/utils/navigation';
 	import { goto } from '$app/navigation';
@@ -373,6 +374,16 @@
 							</Tooltip.Trigger>
 							<Tooltip.Content side="bottom" class="max-w-xs">
 								Streaming endpoint — latency metrics aren't tracked.
+							</Tooltip.Content>
+						</Tooltip.Root>
+					{/if}
+					{#if (projectsState.currentProject?.dropHealthyHealthchecks ?? false) && isHealthcheckEndpoint(decodeURIComponent(data.endpoint), projectsState.currentProject?.healthcheckPaths)}
+						<Tooltip.Root>
+							<Tooltip.Trigger>
+								<Badge variant="outline" class="font-sans">Healthcheck</Badge>
+							</Tooltip.Trigger>
+							<Tooltip.Content side="bottom" class="max-w-xs">
+								Only failed requests (status 400+) are stored for this endpoint, so counts and error rates reflect failures only. Configure in project settings.
 							</Tooltip.Content>
 						</Tooltip.Root>
 					{/if}

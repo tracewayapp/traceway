@@ -15,14 +15,16 @@ import (
 type projectRepository struct{}
 
 type projectWithRole struct {
-	Id             uuid.UUID `lit:"id"`
-	Name           string    `lit:"name"`
-	Token          string    `lit:"token"`
-	Framework      string    `lit:"framework"`
-	OrganizationId *int      `lit:"organization_id"`
-	CreatedAt      time.Time `lit:"created_at"`
-	SourceMapToken *string   `lit:"source_map_token"`
-	Role           string    `lit:"role"`
+	Id                      uuid.UUID          `lit:"id"`
+	Name                    string             `lit:"name"`
+	Token                   string             `lit:"token"`
+	Framework               string             `lit:"framework"`
+	OrganizationId          *int               `lit:"organization_id"`
+	CreatedAt               time.Time          `lit:"created_at"`
+	SourceMapToken          *string            `lit:"source_map_token"`
+	DropHealthyHealthchecks bool               `lit:"drop_healthy_healthchecks"`
+	HealthcheckPaths        models.StringSlice `lit:"healthcheck_paths"`
+	Role                    string             `lit:"role"`
 }
 
 func init() {
@@ -34,7 +36,7 @@ func init() {
 func (p *projectRepository) FindAllWithBackendUrlByUserId(tx *sql.Tx, userId int) ([]*models.ProjectWithBackendUrl, error) {
 	rows, err := lit.SelectNamed[projectWithRole](
 		tx,
-		`SELECT DISTINCT p.id, p.name, p.token, p.framework, p.organization_id, p.created_at, p.source_map_token, ou.role
+		`SELECT DISTINCT p.id, p.name, p.token, p.framework, p.organization_id, p.created_at, p.source_map_token, p.drop_healthy_healthchecks, p.healthcheck_paths, ou.role
 		FROM projects p
 		INNER JOIN organization_users ou ON p.organization_id = ou.organization_id
 		WHERE ou.user_id = :user_id
@@ -55,13 +57,15 @@ func (p *projectRepository) FindAllWithBackendUrlByUserId(tx *sql.Tx, userId int
 		}
 
 		project := models.Project{
-			Id:             row.Id,
-			Name:           row.Name,
-			Token:          token,
-			Framework:      row.Framework,
-			OrganizationId: row.OrganizationId,
-			CreatedAt:      row.CreatedAt,
-			SourceMapToken: sourceMapToken,
+			Id:                      row.Id,
+			Name:                    row.Name,
+			Token:                   token,
+			Framework:               row.Framework,
+			OrganizationId:          row.OrganizationId,
+			CreatedAt:               row.CreatedAt,
+			SourceMapToken:          sourceMapToken,
+			DropHealthyHealthchecks: row.DropHealthyHealthchecks,
+			HealthcheckPaths:        row.HealthcheckPaths,
 		}
 		result = append(result, project.ToProjectWithBackendUrl())
 	}
@@ -72,14 +76,14 @@ func (p *projectRepository) FindAllWithBackendUrlByUserId(tx *sql.Tx, userId int
 func (p *projectRepository) FindAll(tx *sql.Tx) ([]*models.Project, error) {
 	return lit.Select[models.Project](
 		tx,
-		"SELECT id, name, token, framework, organization_id, created_at, source_map_token FROM projects ORDER BY created_at ASC",
+		"SELECT id, name, token, framework, organization_id, created_at, source_map_token, drop_healthy_healthchecks, healthcheck_paths FROM projects ORDER BY created_at ASC",
 	)
 }
 
 func (p *projectRepository) FindByToken(tx *sql.Tx, token string) (*models.Project, error) {
 	return lit.SelectSingleNamed[models.Project](
 		tx,
-		"SELECT id, name, token, framework, organization_id, created_at, source_map_token FROM projects WHERE token = :token",
+		"SELECT id, name, token, framework, organization_id, created_at, source_map_token, drop_healthy_healthchecks, healthcheck_paths FROM projects WHERE token = :token",
 		lit.P{"token": token},
 	)
 }
@@ -87,18 +91,19 @@ func (p *projectRepository) FindByToken(tx *sql.Tx, token string) (*models.Proje
 func (p *projectRepository) FindById(tx *sql.Tx, id uuid.UUID) (*models.Project, error) {
 	return lit.SelectSingleNamed[models.Project](
 		tx,
-		"SELECT id, name, token, framework, organization_id, created_at, source_map_token FROM projects WHERE id = :id",
+		"SELECT id, name, token, framework, organization_id, created_at, source_map_token, drop_healthy_healthchecks, healthcheck_paths FROM projects WHERE id = :id",
 		lit.P{"id": id},
 	)
 }
 
 func (p *projectRepository) Create(tx *sql.Tx, name string, framework string) (*models.Project, error) {
 	project := &models.Project{
-		Id:        uuid.New(),
-		Name:      name,
-		Token:     generateSecureToken(),
-		Framework: framework,
-		CreatedAt: time.Now().UTC(),
+		Id:                      uuid.New(),
+		Name:                    name,
+		Token:                   generateSecureToken(),
+		Framework:               framework,
+		CreatedAt:               time.Now().UTC(),
+		DropHealthyHealthchecks: true,
 	}
 
 	err := lit.InsertExistingUuid(tx, project)
@@ -111,12 +116,13 @@ func (p *projectRepository) Create(tx *sql.Tx, name string, framework string) (*
 
 func (p *projectRepository) CreateWithOrganization(tx *sql.Tx, name string, framework string, organizationId int) (*models.Project, error) {
 	project := &models.Project{
-		Id:             uuid.New(),
-		Name:           name,
-		Token:          generateSecureToken(),
-		Framework:      framework,
-		OrganizationId: &organizationId,
-		CreatedAt:      time.Now().UTC(),
+		Id:                      uuid.New(),
+		Name:                    name,
+		Token:                   generateSecureToken(),
+		Framework:               framework,
+		OrganizationId:          &organizationId,
+		CreatedAt:               time.Now().UTC(),
+		DropHealthyHealthchecks: true,
 	}
 
 	err := lit.InsertExistingUuid(tx, project)
@@ -130,7 +136,7 @@ func (p *projectRepository) CreateWithOrganization(tx *sql.Tx, name string, fram
 func (p *projectRepository) FindByOrganizationId(tx *sql.Tx, organizationId int) ([]*models.Project, error) {
 	return lit.SelectNamed[models.Project](
 		tx,
-		"SELECT id, name, token, framework, organization_id, created_at, source_map_token FROM projects WHERE organization_id = :org_id ORDER BY created_at ASC",
+		"SELECT id, name, token, framework, organization_id, created_at, source_map_token, drop_healthy_healthchecks, healthcheck_paths FROM projects WHERE organization_id = :org_id ORDER BY created_at ASC",
 		lit.P{"org_id": organizationId},
 	)
 }
@@ -138,7 +144,7 @@ func (p *projectRepository) FindByOrganizationId(tx *sql.Tx, organizationId int)
 func (p *projectRepository) FindByUserId(tx *sql.Tx, userId int) ([]*models.Project, error) {
 	return lit.SelectNamed[models.Project](
 		tx,
-		`SELECT DISTINCT p.id, p.name, p.token, p.framework, p.organization_id, p.created_at, p.source_map_token
+		`SELECT DISTINCT p.id, p.name, p.token, p.framework, p.organization_id, p.created_at, p.source_map_token, p.drop_healthy_healthchecks, p.healthcheck_paths
 		FROM projects p
 		INNER JOIN organization_users ou ON p.organization_id = ou.organization_id
 		WHERE ou.user_id = :user_id
@@ -184,7 +190,7 @@ func (p *projectRepository) GenerateSourceMapToken(tx *sql.Tx, projectId uuid.UU
 	return token, nil
 }
 
-func (p *projectRepository) Update(tx *sql.Tx, id uuid.UUID, name string, framework string) (*models.Project, error) {
+func (p *projectRepository) Update(tx *sql.Tx, id uuid.UUID, name string, framework string, dropHealthyHealthchecks *bool, healthcheckPaths *[]string) (*models.Project, error) {
 	project, err := p.FindById(tx, id)
 	if err != nil {
 		return nil, err
@@ -194,6 +200,12 @@ func (p *projectRepository) Update(tx *sql.Tx, id uuid.UUID, name string, framew
 	}
 	project.Name = name
 	project.Framework = framework
+	if dropHealthyHealthchecks != nil {
+		project.DropHealthyHealthchecks = *dropHealthyHealthchecks
+	}
+	if healthcheckPaths != nil {
+		project.HealthcheckPaths = models.StringSlice(*healthcheckPaths)
+	}
 	err = lit.UpdateNamed[models.Project](tx, project, "id = :id", lit.P{"id": id})
 	if err != nil {
 		return nil, err
@@ -221,7 +233,7 @@ func (p *projectRepository) Delete(tx *sql.Tx, id uuid.UUID) error {
 func (p *projectRepository) FindBySourceMapToken(tx *sql.Tx, token string) (*models.Project, error) {
 	return lit.SelectSingleNamed[models.Project](
 		tx,
-		"SELECT id, name, token, framework, organization_id, created_at, source_map_token FROM projects WHERE source_map_token = :smt",
+		"SELECT id, name, token, framework, organization_id, created_at, source_map_token, drop_healthy_healthchecks, healthcheck_paths FROM projects WHERE source_map_token = :smt",
 		lit.P{"smt": token},
 	)
 }

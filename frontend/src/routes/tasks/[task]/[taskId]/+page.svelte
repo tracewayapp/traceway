@@ -19,6 +19,8 @@
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { resolve } from '$app/paths';
 	import DistributedTraceCard from '$lib/components/distributed-trace/distributed-trace-card.svelte';
+	import TraceLogsPanel from '$lib/components/trace-logs/trace-logs-panel.svelte';
+	import { traceIdUuidToHex } from '$lib/utils/span-id';
 
 	type TaskDetailResponse = {
 		task: {
@@ -265,6 +267,18 @@
 				{/if}
 			</Card.Content>
 		</Card.Root>
+
+		<TraceLogsPanel
+			projectId={projectsState.currentProjectId ?? ''}
+			traceId={traceIdUuidToHex(response.task.id)}
+			distributedTraceId={response.task.distributedTraceId ?? null}
+			spans={response.spans ?? []}
+			rootSpan={{
+				id: response.task.spanId ?? response.task.id,
+				name: response.task.taskName
+			}}
+			traceRecordedAt={response.task.recordedAt}
+		/>
 
 		{#if response.task.distributedTraceId}
 			<DistributedTraceCard distributedTraceId={response.task.distributedTraceId} />

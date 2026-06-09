@@ -13,7 +13,7 @@ import { getCalendlyUrl } from "@/lib/calendly";
 export default function CloudPage() {
   return (
     <main className="relative">
-      <section className="hero hero-product gridbg relative">
+      <section className="hero hero-product relative">
         <AuroraBackground variant="hero" />
         <div className="wrap relative z-10">
           <Chip>
@@ -25,7 +25,7 @@ export default function CloudPage() {
           </h1>
           <p className="hero-sub">
             Focus on shipping features, not managing infrastructure. All the
-            power of Traceway with zero maintenance — same open-source code,
+            power of Traceway with zero maintenance. Same open-source code,
             managed by us.
           </p>
           <div className="hero-cta-row">
@@ -40,40 +40,43 @@ export default function CloudPage() {
       </section>
 
       {/* Pricing */}
-      <section className="wrap py-20">
-        <SectionHead
-          eyebrow="Pricing"
-          title="Simple, predictable pricing"
-          description="Start free and scale as you grow. No credit card required for the Starter plan."
-        />
-        <div className="mt-8">
-          <PricingCalculator />
-        </div>
-      </section>
+      {/* WHITE BAND: pricing + cost comparison render on white */}
+      <div className="band-light">
+        <section className="wrap py-20">
+          <SectionHead
+            eyebrow="Pricing"
+            title="Simple, predictable pricing"
+            description="Start free and scale as you grow. No credit card required for the Starter plan."
+          />
+          <div className="mt-8">
+            <PricingCalculator />
+          </div>
+        </section>
 
-      {/* Cost comparison / cost advantage — absorbed from home */}
-      <section className="wrap py-10" id="cost-mount" data-cost-mount>
-        <SectionHead
-          eyebrow="Cost"
-          title={
-            <>
-              Designed for efficiency. <em>Built to lower your cloud bill.</em>
-            </>
-          }
-          description="Traceway runs lean. ClickHouse columnar storage compresses 1 million daily events into ~2-3 GB per month. Postgres is used for efficient user and organization storage."
-        />
-        <div className="mt-8">
-          <CostComparison />
-        </div>
-        <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
-          <Link href="https://cloud.tracewayapp.com/register" className="btn btn-accent">
-            Start on Cloud <ArrowRight className="h-4 w-4" />
-          </Link>
-          <Link href="https://docs.tracewayapp.com" className="btn btn-ghost">
-            Self-host for free
-          </Link>
-        </div>
-      </section>
+        {/* Cost comparison / cost advantage, absorbed from home */}
+        <section className="wrap py-10" id="cost-mount" data-cost-mount>
+          <SectionHead
+            eyebrow="Cost"
+            title={
+              <>
+                Designed for efficiency. <em>Built to lower your cloud bill.</em>
+              </>
+            }
+            description="Traceway runs lean. ClickHouse columnar storage compresses 1 million daily events into ~2-3 GB per month. Postgres is used for efficient user and organization storage."
+          />
+          <div className="mt-8">
+            <CostComparison />
+          </div>
+          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Link href="https://cloud.tracewayapp.com/register" className="btn btn-accent">
+              Start on Cloud <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link href="https://docs.tracewayapp.com" className="btn btn-ghost">
+              Self-host for free
+            </Link>
+          </div>
+        </section>
+      </div>
 
       <FinalCTA
         title={
@@ -92,7 +95,7 @@ export default function CloudPage() {
         }}
       />
 
-      {/* FAQ — includes absorbed from home */}
+      {/* FAQ, includes absorbed from home */}
       <section className="wrap pt-10 pb-24">
         <div className="max-w-3xl mx-auto">
           <SectionHead align="center" eyebrow="FAQ" title="Cloud & pricing FAQ" />
@@ -106,8 +109,8 @@ export default function CloudPage() {
                       <p>
                         Datadog and New Relic charge per host, per event, or per
                         GB ingested, and bills can spike unpredictably as
-                        traffic grows. Traceway Cloud has fixed-price tiers —
-                        at the Enterprise level, 200 million monthly events
+                        traffic grows. Traceway Cloud has fixed-price tiers.
+                        At the Enterprise level, 200 million monthly events
                         cost $499.99 ($0.0000025 per event) with no overage
                         charges. Self-hosted Traceway has zero licensing cost.
                       </p>
@@ -119,7 +122,7 @@ export default function CloudPage() {
                         endpoint performance analytics, exception tracking with
                         automatic grouping and ranking, session replay,
                         distributed tracing, metrics, logs, and AI
-                        observability — all in one tool. Datadog and New Relic
+                        observability, all in one tool. Datadog and New Relic
                         split these across separate products, each with its
                         own billing meter.
                       </p>
@@ -146,15 +149,15 @@ export default function CloudPage() {
                 },
                 {
                   q: "What support do Cloud customers get?",
-                  a: "All Cloud customers on a paid plan can open GitHub issues that are triaged with highest priority by our engineering team. You talk directly to the people who build Traceway — no help desk routing. Enterprise+ customers also receive a shared Slack channel with direct access to the team. Self-hosted users are welcome to open GitHub issues and participate in community discussions — we actively monitor and respond.",
+                  a: "All Cloud customers on a paid plan can open GitHub issues that are triaged with highest priority by our engineering team. You talk directly to the people who build Traceway, with no help desk routing. Enterprise+ customers also receive a shared Slack channel with direct access to the team. Self-hosted users are welcome to open GitHub issues and participate in community discussions. We actively monitor and respond.",
                 },
                 {
                   q: "Are there overage charges?",
-                  a: "No. Every plan has a fixed monthly price. If you approach your included volume, we notify you in advance so you can decide whether to upgrade. What you see on the pricing table is what you pay — no metered billing, no surprise line items, no usage-based surcharges.",
+                  a: "No. Every plan has a fixed monthly price. If you approach your included volume, we notify you in advance so you can decide whether to upgrade. What you see on the pricing table is what you pay. No metered billing, no surprise line items, no usage-based surcharges.",
                 },
                 {
                   q: "How does Traceway Cloud compare on cost at scale?",
-                  a: "At the Enterprise tier, 200 million monthly events cost $499.99 — that is $0.0000025 per event. Competitors like Datadog and Sentry charge orders of magnitude more at the same volume, often with additional per-host, per-seat, or overage fees on top. Enterprise+ offers even cheaper per-event pricing with a dedicated SRE and shared Slack channel.",
+                  a: "At the Enterprise tier, 200 million monthly events cost $499.99, which is $0.0000025 per event. Competitors like Datadog and Sentry charge orders of magnitude more at the same volume, often with additional per-host, per-seat, or overage fees on top. Enterprise+ offers even cheaper per-event pricing with a dedicated SRE and shared Slack channel.",
                 },
                 {
                   q: "What counts as an event?",

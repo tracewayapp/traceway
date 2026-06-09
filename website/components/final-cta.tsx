@@ -25,7 +25,7 @@ export function FinalCTA({
         <div className="btns">
           <Link
             href={primary.href}
-            className="btn btn-accent"
+            className="btn btn-primary"
             {...(primary.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
           >
             {primary.label}

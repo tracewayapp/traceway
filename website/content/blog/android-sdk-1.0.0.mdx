@@ -4,17 +4,17 @@ date: "2026-05-04"
 version: "1.0.0"
 ---
 
-First release of the Traceway Android SDK — error tracking for native Android apps. The wire format is identical to the Flutter SDK, so the same Traceway backend ingests reports from both.
+First release of the Traceway Android SDK: error tracking for native Android apps. The wire format is identical to the Flutter SDK, so the same Traceway backend ingests reports from both.
 
 ## Features
 
 - Automatic capture of all uncaught Java/Kotlin exceptions on every thread, with full JVM stack traces
-- View click handler throws, background thread throws, and main `Handler.post` throws — all caught automatically
+- View click handler throws, background thread throws, and main `Handler.post` throws, all caught automatically
 - The last ~10 seconds of `println` / `System.out` / `System.err` output attached to every report
 - HTTP requests captured through the bundled OkHttp interceptor (method, URL, status, duration, byte counts)
 - Activity push / pop transitions recorded automatically
 - Custom breadcrumbs via `Traceway.recordAction(...)`
-- Disk persistence — pending exceptions survive app restarts
+- Disk persistence, so pending exceptions survive app restarts
 - Gzip-compressed transport
 - One-line setup from `Application.onCreate()`
 - API 21+, published to Maven Central
@@ -22,7 +22,7 @@ First release of the Traceway Android SDK — error tracking for native Android 
 ## Limitations
 
 - **No session recording.** Unlike the Flutter SDK, this library does not record video. The `screenCapture`, `capturePixelRatio`, `maxBufferFrames`, and `fps` options on `TracewayOptions` are accepted for API parity but have no effect.
-- `android.util.Log` calls bypass `System.out` and are not captured automatically — wire up a Timber tree calling `TracewayClient.instance?.recordLog(...)` to capture every Logcat line.
+- `android.util.Log` calls bypass `System.out` and are not captured automatically. Wire up a Timber tree calling `TracewayClient.instance?.recordLog(...)` to capture every Logcat line.
 - Non-OkHttp HTTP clients need manual recording through `TracewayClient.instance?.recordNetworkEvent(...)`.
 
-For Flutter apps that also need session recording, use the [`traceway`](https://github.com/tracewayapp/traceway-flutter) Flutter package — same wire format, plus video, across iOS, Android, and macOS.
+For Flutter apps that also need session recording, use the [`traceway`](https://github.com/tracewayapp/traceway-flutter) Flutter package. Same wire format, plus video, across iOS, Android, and macOS.

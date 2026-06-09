@@ -1,0 +1,2 @@
+(()=>{var r={562:r=>{r.exports=function(r){r()}},298:r=>{r.exports=function(){throw new Error("wat")}}},t={};function o(n){var e=t[n];if(void 0!==e)return e.exports;var s=t[n]={exports:{}};return r[n](s,s.exports,o),s.exports}(()=>{const r=o(298);o(562)(r)})()})();
+//# sourceMappingURL=bundle.js.map

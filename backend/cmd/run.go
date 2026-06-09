@@ -109,11 +109,10 @@ func Run(opts ...Option) {
 	if err := cache.ProjectCache.Init(ctx); err != nil {
 		panic(fmt.Errorf("projects cache could not be initialized: %w", err))
 	}
-	cache.InitSourceMapCache(
+	services.InitSourceMapCache(
 		parsePositiveInt(cfg.SourceMapCacheMaxEntries, 200),
 		int64(parsePositiveInt(cfg.SourceMapCacheMaxBytesMB, 500))*1024*1024,
 	)
-	services.InitParsedSourceMapCache(parsePositiveInt(cfg.SourceMapParsedCacheMax, 5))
 
 	middleware.InitUseClientAuth()
 	middleware.InitUseAppAuth()

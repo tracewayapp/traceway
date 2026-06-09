@@ -42,7 +42,7 @@ export default function Contact() {
         body: JSON.stringify(payload),
       });
     } catch {
-      // Don't block the user if the notification fails — they still get to sign up.
+      // Don't block the user if the notification fails. They still get to sign up.
     }
 
     // If NEXT_PUBLIC_CALENDLY_URL is set, send the user to Calendly with
@@ -79,7 +79,7 @@ export default function Contact() {
 
   return (
     <main className="relative">
-      <section className="hero gridbg relative overflow-hidden pt-20 pb-24">
+      <section className="hero relative overflow-hidden pt-20 pb-24">
         <div className="wrap relative z-10 max-w-3xl mx-auto">
           <div className="text-center mb-10">
             <Eyebrow>Get started</Eyebrow>

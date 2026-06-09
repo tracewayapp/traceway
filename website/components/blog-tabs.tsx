@@ -1,13 +1,13 @@
 import Link from "next/link";
 
-type Tab = { label: string; href: string; key: "release" | "engineering" };
+type Tab = { label: string; href: string; key: "blog" | "releases" };
 
 const TABS: Tab[] = [
-  { label: "Releases", href: "/blog", key: "release" },
-  { label: "Engineering", href: "/blog/engineering", key: "engineering" },
+  { label: "Blog", href: "/blog", key: "blog" },
+  { label: "Releases", href: "/releases", key: "releases" },
 ];
 
-export function BlogTabs({ active }: { active: "release" | "engineering" }) {
+export function BlogTabs({ active }: { active: "blog" | "releases" }) {
   return (
     <div className="mb-12">
       <nav className="blog-tabs">

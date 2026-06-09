@@ -1,0 +1,286 @@
+# Symbolication (JS)
+
+import { Callout } from "nextra/components";
+
+<Callout type="info">
+  **This is actively being worked on.** If you have ideas or suggestions for how symbolication should evolve, we want to hear them: reach out on [Discord](https://discord.gg/RZq9NT62nc) or open an issue on [GitHub](https://github.com/tracewayapp/traceway).
+</Callout>
+
+Symbolication is the process of translating minified production stack traces back into the original source locations your team actually wrote. Browsers report errors against the shipped bundle, so without symbolication an exception looks like this:
+
+```
+TypeError: Cannot read properties of undefined (reading 'name')
+anonymous()
+    app.bundle.js:1:48211
+anonymous()
+    app.bundle.js:1:13377
+```
+
+With source maps uploaded, Traceway stores it like this instead:
+
+```
+TypeError: Cannot read properties of undefined (reading 'name')
+renderUserCard()
+    src/components/UserCard.tsx:42:17
+handleClick()
+    src/pages/Profile.tsx:108:5
+```
+
+This page explains exactly how that translation works today, what is cached and when, how the pipeline is observable through metrics, where the current heuristics fall short, and how we verify the output. For how to upload source maps in the first place, see [Source Maps](/client/js-sdk/sourcemap-upload).
+
+## When Symbolication Runs
+
+Symbolication happens **once, at ingest**, inside `POST /api/report`:
+
+1. The report arrives from the JS SDK. If the project is a JS framework, the backend loads the project's source maps from the database: the set matching the report's `version` if one was sent, otherwise the latest uploaded set. This is why the `--version` flag on upload must match the SDK's `version` option.
+2. Each stack trace in the report is resolved frame by frame.
+3. The **resolved** trace is what gets hashed for grouping and stored in ClickHouse.
+
+Nothing is re-resolved when you view an issue. The trade-off: traces are immutable snapshots of the symbolication quality at the moment they arrived. Uploading better source maps improves future events, not past ones.
+
+## The Frame Format
+
+The JS SDK does not send the browser's raw `error.stack` string. Stack formats are not standardized: V8 (Chrome, Edge, Hermes) emits `    at funcName (file:line:col)`, while Firefox and JavaScriptCore (Safari) emit `funcName@file:line:col`. The SDK parses both families and normalizes every frame into a canonical two-line wire format: a function name line ending in `()`, then a location line indented by four spaces:
+
+```
+anonymous()
+    app.bundle.js:1:48211
+```
+
+The resolver recognizes location lines with a single regex:
+
+```
+^(\s{4})(.+):(\d+):(\d+)$
+```
+
+Anything that does not match (the error message, the name lines, blank lines) passes through untouched. This is the first invariant of the pipeline: **the resolver can only rewrite a line or leave it exactly as it was**. There is no failure mode that drops or corrupts a frame.
+
+## The Resolution Pipeline
+
+For each location line, in order:
+
+### 1. Find the right source map
+
+The frame's file name is matched against the uploaded maps by appending `.map`:
+
+| Frame file | Lookup attempts |
+|---|---|
+| `app.bundle.js` | `app.bundle.js.map`, then basename `app.bundle.js.map` |
+| `https://cdn.example.com/assets/app.bundle.js` | full name, then basename `app.bundle.js.map` |
+| `app.bundle.js?v=abc123` | query/fragment stripped, then `app.bundle.js.map` |
+
+No match: the line passes through unchanged.
+
+### 2. Get the parsed map
+
+The map comes from the in-memory cache described below. First use pays a storage read plus a parse; everything after is a memory lookup.
+
+### 3. Look up the position
+
+Browser stack traces use 1-based columns; the source map spec uses 0-based. The resolver subtracts 1 before the lookup and adds 1 back when printing. This off-by-one matters more than it sounds: minified bundles put the entire program on line 1, so being one column off can land on a *different token entirely* and resolve to the wrong original file.
+
+Here is a real lookup, taken verbatim from our test fixtures. The original file:
+
+```js
+// built with: terser -c -m --module original.js --source-map includeSources
+function abcd() {}
+export default abcd;
+```
+
+terser renames `abcd` to `t` and emits:
+
+```js
+function t(){}export default t;
+```
+
+with this source map:
+
+```json
+{
+  "version": 3,
+  "names": ["abcd"],
+  "sources": ["tests/fixtures/simple/original.js"],
+  "sourcesContent": ["...the original file, embedded..."],
+  "mappings": "AACA,SAASA,oBACMA"
+}
+```
+
+A frame pointing at `minified.js:1:11` (the `t` in `function t`) resolves through the `mappings` (delta-encoded VLQ segments of generated position, source index, original position, name index) to `tests/fixtures/simple/original.js:2:10`, with the name token `abcd`.
+
+### 4. Rewrite the lines
+
+The location line becomes `original-file:line:column` (same indentation). If a function name was resolved, the *name line directly above it* (the `anonymous()` line) is rewritten to `abcd()`.
+
+If the source map carries `"sources": [null]` entries (older uglify pipelines), the file name is rendered as `<unknown>` but the line, column, and name still resolve.
+
+A maximum of **50 frames** per trace are resolved; deeper frames pass through minified.
+
+## Function Names: The Regex Heuristic
+
+Locations come straight from the source map and are exact. Function names are harder, because a source map's `names` token at a position is the identifier *at that token*, not the name of the *enclosing function* that a stack trace conventionally shows. Getting the enclosing function right requires scope analysis: parsing the minified bundle into an AST and mapping positions to function scopes, which is what Sentry's symbolic does. Traceway does not store the minified bundle, only the `.map`, so scope analysis is not possible today.
+
+Instead we use a heuristic. Since most maps embed the original source (`sourcesContent`), the resolver takes the resolved original line and scans **backwards up to 50 lines** for something that looks like a function declaration:
+
+```
+(?:export\s+(?:default\s+)?)?function\s+(\w+)   match: function declarations
+(?:const|let|var)\s+(\w+)\s*=                   match: variable assignments
+^\s*(?:async\s+)?(\w+)\s*\([^)]*\)\s*\{         match: method shorthand
+```
+
+The first match wins, with control flow keywords (`if`, `for`, `while`, `switch`, `catch`, `return`, `throw`, `else`) filtered out. When the heuristic finds something, it overrides the source map's name token. When it finds nothing, the name token is used as-is.
+
+### Where it works
+
+```js
+export function assign(obj, props) {
+  for (let i in props) obj[i] = props[i];   // error thrown here
+  return obj;
+}
+```
+
+Scanning backwards from the error line immediately hits `function assign`, which is correct. Simple module-level functions, exported functions, and arrow functions assigned to `const` all resolve well.
+
+### Where it fails, concretely
+
+The middle alternation matches **any** variable assignment, not just function expressions, and the scan has no notion of scope boundaries. From preact's `create-element.js`:
+
+```js
+export function createElement(type, props, children) {
+  let normalizedProps = {},
+    key, ref, i;
+  for (i in props) {                         // error around here (line 40)
+    ...
+  }
+}
+```
+
+Scanning backwards from line 40, the first match is `let normalizedProps =`, so the frame is named `normalizedProps` instead of `createElement`. Similar failure shapes:
+
+| Case | Correct name | Heuristic produces |
+|---|---|---|
+| Nearest declaration is a local variable | `createElement` | `normalizedProps` |
+| Top-level/module code (Hermes, Metro bundles) | `<global>` | `anonymous` or a nearby declaration |
+| CommonJS export assignment | `module.exports` | the inner function's name |
+| Sibling function that closed above the error line | enclosing function | the sibling |
+
+These are known, pinned deviations in our test suite (more on that below). Two design decisions contain the blast radius:
+
+1. **Names never affect grouping.** See the next section.
+2. **Locations are never heuristic.** The file, line, and column shown are exact source map output, so the click-through is right even when the label is wrong.
+
+## How Symbolication Interacts with Grouping
+
+Issue grouping hashes a normalized form of the **resolved** trace. Two normalization rules exist specifically because of JS symbolication:
+
+**Function name lines are collapsed.** A line ending in `()` that sits directly above a frame location line becomes `<fn>` before hashing (anchoring on the location line below means Go traces, whose file lines are tab-indented, are never touched):
+
+```
+createElement()                       becomes:    <fn>
+    ../src/create-element.js:40:9     stays:      ../src/create-element.js:40:9
+```
+
+So these two traces, identical except for resolved names, produce the **same hash** and land in the same issue:
+
+```
+Error: boom                          Error: boom
+    normalizedProps()                    createElement()
+    ../src/create-element.js:40:9        ../src/create-element.js:40:9
+```
+
+This means name quality can keep improving (including the future scope-analysis work) without re-bucketing your existing issues.
+
+**Columns are kept.** Minified bundles put everything on line 1, so when no source map matched, the column is the only thing distinguishing two different errors. `bundle.min.js:1:48211` and `bundle.min.js:1:91567` therefore hash differently, on purpose.
+
+One consequence to be aware of: a trace that fails symbolication (storage outage, see below) hashes differently than its symbolicated twin. During an outage the same logical error can transiently open a second issue group, which stops growing once storage recovers.
+
+## What Is Cached, How, and When
+
+Source maps for real applications are large (a 20 MB `.map` is unremarkable), and the parsed lookup structure is what actually serves frames. Traceway keeps **one in-memory cache** of parsed maps, keyed by the map's storage key.
+
+### What a cache entry contains
+
+When a map is parsed, only the four things the resolver ever reads are kept:
+
+| Field | Used for |
+|---|---|
+| `mappings` (decoded to 24-byte segments) | position lookup via binary search |
+| `sources` | original file names |
+| `sourcesContent` | the function name heuristic |
+| `names` | function name tokens |
+
+Everything else in the JSON (raw VLQ text, `file`, `sourceRoot` after resolution) is discarded, and **the raw file bytes exist only for the duration of the parse**. A parsed entry is typically 2 to 5 times the raw file size, and its actual in-memory size is measured at parse time, which is what the byte cap counts.
+
+### Cache policy
+
+| Property | Value |
+|---|---|
+| Keying | storage key, one entry per uploaded map file |
+| Capacity | `SOURCEMAP_CACHE_MAX_ENTRIES` (default 200) and `SOURCEMAP_CACHE_MAX_BYTES_MB` (default 500, measured parsed size) |
+| Eviction | least recently used, whenever either cap is exceeded |
+| Loading | deduplicated (singleflight): concurrent requests for the same map share one storage read and one parse |
+| Load timeout | 5 seconds per storage read |
+| Failures | never cached globally; retried on the next exception |
+
+### The lifecycle, end to end
+
+Say two exceptions referencing `app.bundle.js.map` arrive at the same time, on a cold cache:
+
+1. Both miss the cache and race to a mutex. The winner registers itself as the **loader** for that key; the loser sees the in-flight registration and parks.
+2. The loader reads the `.map` from storage (S3 or local disk, 5 second budget), parses it, throws the raw bytes away, and inserts the slim parsed entry.
+3. The parked request wakes and receives the exact same parsed instance. One read, one parse, one copy in memory, no matter how many requests piled up.
+4. Every subsequent exception is a pure memory hit, which also bumps the entry to the front of the LRU.
+5. If the cache later exceeds a cap, the least recently used entries are dropped. A dropped map is not an error; the next exception that needs it repeats steps 1 to 3.
+
+### When loading fails
+
+If the read times out, storage errors, or the map fails to parse:
+
+- The affected frames pass through **unchanged**, and the trace is stored as-is. Ingest is never blocked beyond the 5 second budget and never errors because of symbolication.
+- The failure is **not cached**, so the next exception retries immediately; recovery after an outage is instant.
+- Within a single trace, a failed map is attempted **once**, not once per frame, so a 50-frame trace cannot stack fifty timeouts.
+- Traceway self-reports the failure into its own monitoring project, throttled to one exception per minute with a count of suppressed occurrences.
+
+## Observability
+
+The backend self-reports cache metrics every 30 seconds (see [Capacity Monitoring](/server/capacity-monitoring) for the full operations view):
+
+| Metric | Meaning |
+|---|---|
+| `traceway.sourcemap.entries` | parsed maps currently in memory |
+| `traceway.sourcemap.bytes` | measured total size of those entries |
+| `traceway.sourcemap.hits.delta` | cache hits since the last tick |
+| `traceway.sourcemap.misses.delta` | loads triggered since the last tick |
+| `traceway.sourcemap.evictions.delta` | LRU evictions since the last tick |
+| `traceway.sourcemap.load_failures.delta` | failed loads (storage error, 5s timeout, unparseable map); each one is a trace stored unsymbolicated |
+| `traceway.sourcemap.parse_ms` | duration of the most recent parse |
+
+What healthy looks like: `misses.delta` near zero in steady state (every miss is a storage read plus a re-parse), `load_failures.delta` at zero (anything above zero means minified traces are reaching your issues), and `bytes` comfortably under the cap. A useful alert is `load_failures.delta` max greater than 0 over 5 minutes.
+
+## Limitations Today
+
+Honest list, in rough order of impact:
+
+1. **Function names are heuristic.** No scope analysis; the regex picks the nearest declaration-looking line above the error, which is wrong in the patterns shown above. Locations are unaffected.
+2. **The minified bundle is not stored**, only the `.map`. This is what blocks real scope analysis (and is the prerequisite for fixing limitation 1).
+3. **Symbolication is ingest-only.** Maps uploaded after an event arrived do not improve that event.
+4. **The 5 second load budget trades completeness for latency.** A map that takes longer to fetch produces an unsymbolicated trace (recorded in `load_failures.delta`) rather than a slow ingest.
+5. **Outages split grouping transiently.** Unsymbolicated and symbolicated versions of the same error hash differently.
+6. **Maps with multiple `null` sources are ambiguous.** Frames resolve as `<unknown>`, and the name heuristic may read the wrong embedded source, since empty file names cannot be told apart.
+7. **50 resolved frames per trace.** Deeper frames stay minified.
+8. **Hermes/Metro global code** is labeled `anonymous` rather than `<global>`.
+
+## How We Verify It
+
+The resolver is tested for parity against [getsentry/symbolic](https://github.com/getsentry/symbolic), the symbolication engine behind Sentry, using its own fixture suite (webpack, Metro, Hermes, preact, inlined functions, null-source maps). Every frame's expected file, line, column, and name is asserted, and the committed baseline currently reads:
+
+```
+frames: 13 parity, 5 pinned deviations, 0 failing, 18 total
+```
+
+All 18 frames match symbolic on **location**. The 5 deviations are **name-only**, are exactly the heuristic failures documented above, and are pinned: the tests assert our current output, so any drift fails the build, and each pinned frame records the symbolic name as the parity target to restore once scope analysis lands.
+
+## Related Pages
+
+- [Source Maps](/client/js-sdk/sourcemap-upload): uploading maps from CI and matching versions
+- [Issues](/learn/issues): grouping, lifecycle, and archiving
+- [Capacity Monitoring](/server/capacity-monitoring): cache sizing and alerting

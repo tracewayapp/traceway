@@ -58,13 +58,18 @@ func (e clientController) Report(c *gin.Context) {
 		return
 	}
 
-	if project, exists := c.Get(middleware.ProjectContextKey); exists {
-		if p, ok := project.(*models.Project); ok && p.OrganizationId != nil {
-			if !hooks.CanReport(*p.OrganizationId) {
-				monitoring.RecordRateLimited(*p.OrganizationId)
-				c.AbortWithStatus(http.StatusTooManyRequests)
-				return
-			}
+	var project *models.Project
+	if projectAsAny, exists := c.Get(middleware.ProjectContextKey); exists {
+		if p, ok := projectAsAny.(*models.Project); ok {
+			project = p
+		}
+	}
+
+	if project != nil && project.OrganizationId != nil {
+		if !hooks.CanReport(*project.OrganizationId) {
+			monitoring.RecordRateLimited(*project.OrganizationId)
+			c.AbortWithStatus(http.StatusTooManyRequests)
+			return
 		}
 	}
 
@@ -139,14 +144,6 @@ func (e clientController) Report(c *gin.Context) {
 				spansToInsert = append(spansToInsert, span)
 			}
 		}
-		projectAsAny, projectExists := c.Get(middleware.ProjectContextKey)
-		var project *models.Project
-		if projectExists {
-			if p, ok := projectAsAny.(*models.Project); ok {
-				project = p
-			}
-		}
-
 		var sourceMaps *[]*models.SourceMap
 		if project != nil && isJsFramework(project.Framework) {
 			loadSpan := traceway.StartSpan(c, "report.load_source_maps")
@@ -242,6 +239,12 @@ func (e clientController) Report(c *gin.Context) {
 	}
 	convertSpan.End()
 
+	var droppedHealthchecks int
+	endpointsToInsert, spansToInsert, droppedHealthchecks = services.FilterHealthchecks(project, endpointsToInsert, spansToInsert, exceptionStackTraceToInsert)
+	if droppedHealthchecks > 0 {
+		monitoring.RecordHealthchecksDropped(monitoring.SignalNative, droppedHealthchecks)
+	}
+
 	convertMs := float64(time.Since(convertStart).Microseconds()) / 1000.0
 	insertStart := time.Now()
 
@@ -315,18 +318,16 @@ func (e clientController) Report(c *gin.Context) {
 		exceptionHashes = append(exceptionHashes, est.ExceptionHash)
 	}
 
-	if project, exists := c.Get(middleware.ProjectContextKey); exists {
-		if p, ok := project.(*models.Project); ok && p.OrganizationId != nil {
-			hooks.BroadcastReport(hooks.ReportEvent{
-				OrganizationId:  *p.OrganizationId,
-				ProjectId:       projectId,
-				EndpointCount:   len(endpointsToInsert),
-				ErrorCount:      len(exceptionStackTraceToInsert),
-				TaskCount:       len(tasksToInsert),
-				RecordingCount:  len(recordingsWork),
-				ExceptionHashes: exceptionHashes,
-			})
-		}
+	if project != nil && project.OrganizationId != nil {
+		hooks.BroadcastReport(hooks.ReportEvent{
+			OrganizationId:  *project.OrganizationId,
+			ProjectId:       projectId,
+			EndpointCount:   len(endpointsToInsert),
+			ErrorCount:      len(exceptionStackTraceToInsert),
+			TaskCount:       len(tasksToInsert),
+			RecordingCount:  len(recordingsWork),
+			ExceptionHashes: exceptionHashes,
+		})
 	}
 
 	for _, rw := range recordingsWork {
@@ -339,6 +340,7 @@ func (e clientController) Report(c *gin.Context) {
 var (
 	errorMessageRe  = regexp.MustCompile(`(?m)^(\*?[\w.]+):\s*.+`)
 	causedByRe      = regexp.MustCompile(`(?m)^(Caused by:\s*[\w.$]+):\s*.+`)
+	jsFuncLineRe    = regexp.MustCompile(`(?m)^( {0,4})(.+)\(\)(\n {4}.+:\d+:\d+)$`)
 	absolutePathRe  = regexp.MustCompile(`/[^\s:]+/([^/\s:]+:\d+)`)
 	versionRe       = regexp.MustCompile(`@v[\d.]+`)
 	hexRe           = regexp.MustCompile(`0x[0-9a-fA-F]+`)
@@ -359,6 +361,7 @@ func ComputeExceptionHash(stackTrace string, isMessage bool) string {
 	if !isMessage {
 		normalized = causedByRe.ReplaceAllString(normalized, "$1")
 		normalized = errorMessageRe.ReplaceAllString(normalized, "$1")
+		normalized = jsFuncLineRe.ReplaceAllString(normalized, "${1}<fn>${3}")
 		normalized = absolutePathRe.ReplaceAllString(normalized, "$1")
 		normalized = versionRe.ReplaceAllString(normalized, "")
 		normalized = hexRe.ReplaceAllString(normalized, "<hex>")

@@ -72,31 +72,29 @@ Not emitted in SQLite mode.
 | `traceway.recordings.dropped.delta` | Segments dropped (queue full) since the last tick — data loss |
 | `traceway.recordings.failed.delta` | Upload/insert failures since the last tick |
 
-### Source map caches (every 30s)
+### Source map cache (every 30s)
 
 | Metric | Meaning |
 |--------|---------|
-| `traceway.sourcemap.raw.entries` / `traceway.sourcemap.raw.bytes` | Raw `.map` files held in memory |
-| `traceway.sourcemap.raw.hits.delta` / `misses.delta` / `evictions.delta` | Raw cache traffic since the last tick |
-| `traceway.sourcemap.parsed.entries` | Parsed source maps held in memory |
-| `traceway.sourcemap.parsed.hits.delta` / `misses.delta` | Parsed cache traffic since the last tick |
-| `traceway.sourcemap.parsed.parse_ms` | Duration of the most recent source map parse |
+| `traceway.sourcemap.entries` / `traceway.sourcemap.bytes` | Parsed source maps held in memory and their estimated total size |
+| `traceway.sourcemap.hits.delta` / `misses.delta` / `evictions.delta` | Cache traffic since the last tick |
+| `traceway.sourcemap.load_failures.delta` | Failed source map loads (storage error, 5s timeout, unparseable map) since the last tick; affected traces are stored unsymbolicated |
+| `traceway.sourcemap.parse_ms` | Duration of the most recent source map parse |
 
 ## Source map cache sizing
 
-Source maps are cached at two levels: raw file bytes, and parsed lookup structures. **A parsed source map is roughly 5–10× its raw size** — a 20 MB `.map` file becomes 100–200 MB in memory. The parsed cache is capped at 5 entries by default for exactly this reason; with five large maps that's still up to ~1 GB.
+Source maps are cached parsed, in a single LRU keyed by file. Only the fields the resolver uses are kept (mappings, source names, embedded source contents); the raw `.map` bytes are held only while parsing. Concurrent requests for the same map share one storage read and one parse, so a given map exists in memory at most once. A parsed map is typically 2-5x its raw size; the cache cap is on the estimated in-memory size, not the raw file size.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SOURCEMAP_CACHE_MAX_ENTRIES` | `200` | Max raw `.map` files kept in memory |
-| `SOURCEMAP_CACHE_MAX_BYTES_MB` | `500` | Max total raw bytes kept in memory |
-| `SOURCEMAP_PARSED_CACHE_MAX` | `5` | Max parsed source maps kept in memory |
+| `SOURCEMAP_CACHE_MAX_ENTRIES` | `200` | Max parsed source maps kept in memory |
+| `SOURCEMAP_CACHE_MAX_BYTES_MB` | `500` | Max estimated in-memory size of all parsed maps |
 
 Sizing guidance:
 
-- **Small box (1–2 GB RAM):** `SOURCEMAP_CACHE_MAX_BYTES_MB=100`, `SOURCEMAP_PARSED_CACHE_MAX=2`.
-- **Plenty of RAM, many active source maps:** raise `SOURCEMAP_PARSED_CACHE_MAX` until `traceway.sourcemap.parsed.misses.delta` stays near zero in steady state — every parsed-cache miss re-parses a map, which burns CPU and briefly doubles its memory footprint.
-- Watch `traceway.proc.rss_mb` against your host RAM; if it climbs after exception views with stack traces, the parsed cache is the usual suspect.
+- **Small box (1-2 GB RAM):** `SOURCEMAP_CACHE_MAX_BYTES_MB=100`.
+- **Plenty of RAM, many active source maps:** raise `SOURCEMAP_CACHE_MAX_BYTES_MB` until `traceway.sourcemap.misses.delta` stays near zero in steady state; every miss is a storage read plus a re-parse, which burns CPU and briefly doubles that map's memory footprint.
+- Watch `traceway.proc.rss_mb` against your host RAM; if it climbs after exception views with stack traces, the source map cache is the usual suspect.
 
 ## Alerting on these metrics
 
@@ -126,7 +124,7 @@ Two more rule types complete the picture:
 | `traceway.recordings.dropped.delta` | max | gt | 0 | 5 | warning | Recording segments being dropped — ingestion overload |
 | `cpu.used_pcnt` | avg | gt | 80 | 10 | warning | Backend CPU-bound |
 | `traceway.proc.rss_mb` | avg | gt | 80% of host RAM | 10 | warning | Memory pressure / OOM risk (e.g. 800 on a 1 GB box) |
-| `traceway.sourcemap.raw.bytes` | avg | gt | ~half of `SOURCEMAP_CACHE_MAX_BYTES_MB`×1MB | 30 | info | Source map cache growing — revisit sizing |
+| `traceway.sourcemap.bytes` | avg | gt | ~half of `SOURCEMAP_CACHE_MAX_BYTES_MB`×1MB | 30 | info | Source map cache growing, revisit sizing |
 
 Plus the two non-metric rules: **Endpoint P95 threshold** on `POST /api/report` (e.g. 1000 ms over 10 minutes) and **No data** on `metrics` with 10 minutes of silence.
 

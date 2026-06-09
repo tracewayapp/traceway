@@ -166,9 +166,13 @@ func (l logController) resolveDistributedTraceIds(ctx context.Context, dtid uuid
 	if err != nil {
 		return nil, err
 	}
+	aiTraces, err := repositories.AiTraceRepository.FindByDistributedTraceId(ctx, dtid, projectIds)
+	if err != nil {
+		return nil, err
+	}
 
-	seen := make(map[string]struct{}, len(endpoints)+len(tasks))
-	result := make([]string, 0, len(endpoints)+len(tasks))
+	seen := make(map[string]struct{}, len(endpoints)+len(tasks)+len(aiTraces))
+	result := make([]string, 0, len(endpoints)+len(tasks)+len(aiTraces))
 	add := func(id uuid.UUID) {
 		h := hex.EncodeToString(id[:])
 		if _, ok := seen[h]; ok {
@@ -185,6 +189,9 @@ func (l logController) resolveDistributedTraceIds(ctx context.Context, dtid uuid
 	}
 	for _, t := range tasks {
 		add(t.Id)
+	}
+	for _, a := range aiTraces {
+		add(a.Id)
 	}
 	return result, nil
 }

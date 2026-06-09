@@ -38,16 +38,14 @@ export function BlogSubscribe() {
     <div
       className="mt-16 rounded-[14px] p-6 md:p-8"
       style={{
-        background:
-          "linear-gradient(180deg, color-mix(in oklab, var(--ink-2) 80%, transparent), color-mix(in oklab, var(--ink-1) 60%, transparent))",
+        background: "var(--ink-1)",
         border: "1px solid var(--hair-2)",
-        boxShadow: "0 30px 60px -30px rgba(0, 0, 0, 0.5)",
       }}
     >
       <Eyebrow>Subscribe</Eyebrow>
       <h3
         className="mt-3 mb-2 text-[20px] font-medium"
-        style={{ fontFamily: "var(--font-display)", color: "var(--fg-0)" }}
+        style={{ fontFamily: "var(--font-body)", color: "var(--fg-0)" }}
       >
         Get new engineering posts in your inbox
       </h3>
@@ -57,7 +55,7 @@ export function BlogSubscribe() {
           className="mt-3 text-[14px]"
           style={{ color: "var(--fg-2)", fontFamily: "var(--font-mono)" }}
         >
-          Thanks — we&apos;ll email you when we publish.
+          Thanks, we&apos;ll email you when we publish.
         </p>
       ) : (
         <form

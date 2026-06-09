@@ -1,5 +1,5 @@
 /* =========================================================================
-   Traceway Docs — dark-only design tokens ported from website design-guidelines
+   Traceway Docs: dark-only design tokens ported from website design-guidelines
    (styles.css). Override Nextra's default theme colors and apply mono-native
    typography.
    ========================================================================= */
@@ -22,7 +22,7 @@
   --fg-2: #8a93a6;
   --fg-3: #5a6374;
 
-  /* Accent — Electric Indigo */
+  /* Accent: Electric Indigo */
   --a1: #7c5cff;
   --a2: #00d4ff;
   --a3: #ff4d8d;
@@ -43,7 +43,7 @@
   /* Font aliases mirroring website var names
      (--font-display / --font-mono are populated by next/font in _app.jsx) */
   --f-display: var(--font-display, "JetBrains Mono"), "IBM Plex Mono", ui-monospace, monospace;
-  --f-body:    var(--font-mono,    "IBM Plex Mono"), "JetBrains Mono", ui-monospace, monospace;
+  --f-body:    var(--font-body, "Inter"), ui-sans-serif, system-ui, -apple-system, sans-serif;
   --f-mono:    var(--font-mono,    "IBM Plex Mono"), "JetBrains Mono", ui-monospace, monospace;
 }
 
@@ -56,16 +56,20 @@ body {
   background: var(--ink-0) !important;
   color: var(--fg-1);
   color-scheme: dark;
-  font-family: var(--font-mono, "IBM Plex Mono"), "JetBrains Mono", ui-monospace,
-    monospace;
+  font-family: var(--font-body, "Inter"), ui-sans-serif, system-ui,
+    -apple-system, sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   -webkit-font-smoothing: antialiased;
 }
 
+/* The font variables live on the app wrapper (next/font), so re-apply the
+   body font where they actually resolve. */
+.docs-root {
+  font-family: var(--f-body);
+}
+
 body {
-  background:
-    radial-gradient(1200px 700px at 85% -10%, color-mix(in oklab, var(--a1) 12%, transparent), transparent 60%),
-    radial-gradient(900px 600px at -10% 20%, color-mix(in oklab, var(--a2) 8%, transparent), transparent 60%),
-    var(--ink-0) !important;
+  background: var(--ink-0) !important;
 }
 
 main h1,
@@ -80,9 +84,10 @@ main h6,
 .nextra-content h4,
 .nextra-content h5,
 .nextra-content h6 {
-  font-family: var(--font-display, "JetBrains Mono"), "IBM Plex Mono",
-    ui-monospace, monospace !important;
+  font-family: var(--font-body, "Inter"), ui-sans-serif, system-ui,
+    -apple-system, sans-serif !important;
   color: var(--fg-0) !important;
+  font-weight: 600;
   letter-spacing: -0.015em;
   text-wrap: balance;
 }
@@ -92,7 +97,7 @@ main h1,
   font-size: clamp(40px, 5.6vw, 75px) !important;
   line-height: 1.02 !important;
   letter-spacing: -0.035em !important;
-  font-weight: 700 !important;
+  font-weight: 600 !important;
 }
 
 main h2,
@@ -100,7 +105,7 @@ main h2,
   font-size: clamp(28px, 3.2vw, 46px) !important;
   line-height: 1.05 !important;
   letter-spacing: -0.025em !important;
-  font-weight: 700 !important;
+  font-weight: 600 !important;
 }
 
 main h3,
@@ -111,16 +116,20 @@ main h3,
   font-weight: 600 !important;
 }
 
+main h1:has(em),
+main h2:has(em),
+.nextra-content h1:has(em),
+.nextra-content h2:has(em) {
+  color: var(--fg-2) !important;
+}
+
 main h1 em,
 main h2 em,
 .nextra-content h1 em,
 .nextra-content h2 em {
   font-style: normal;
-  font-weight: 700;
-  background: linear-gradient(90deg, var(--a2), var(--a1) 60%, var(--a3));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent !important;
+  font-weight: 600;
+  color: var(--fg-0) !important;
 }
 
 main p,
@@ -216,10 +225,9 @@ main code {
 
 .nextra-code-block pre,
 pre.nextra-code {
-  background: linear-gradient(180deg, #080b12, #0d1220) !important;
+  background: var(--ink-1) !important;
   border: 1px solid var(--hair-2);
   border-radius: 10px;
-  box-shadow: 0 20px 40px -20px rgba(0, 0, 0, 0.6);
 }
 
 .nextra-code-block pre code,
@@ -298,7 +306,7 @@ main hr,
 }
 
 /* Matched query terms: Nextra colors these with the dark indigo primary, which
-   is hard to read on the panel — lighten so the match stands out legibly. */
+   is hard to read on the panel. Lighten so the match stands out legibly. */
 .nextra-search .nx-text-primary-600 {
   color: color-mix(in oklab, var(--a1) 55%, var(--fg-0)) !important;
   font-weight: 600;
@@ -332,7 +340,7 @@ main hr,
 }
 
 /* =========================================================================
-   Utility classes — opt-in, ported from website/design guidelines/styles.css.
+   Utility classes, opt-in, ported from website/design guidelines/styles.css.
    Available to MDX authors via className; no !important except where a more
    specific existing rule (e.g., `main a { color: ... !important }`) would win.
    ========================================================================= */
@@ -367,25 +375,13 @@ main hr,
 }
 
 .surface-card {
-  background: linear-gradient(180deg, var(--ink-3), var(--ink-2));
+  background: var(--ink-1);
   border: 1px solid var(--hair);
   border-radius: var(--radius-lg);
   padding: 22px;
 }
 
 .gridbg { position: relative; }
-.gridbg::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(to right, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-  background-size: 56px 56px;
-  mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000 50%, transparent 100%);
-  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000 50%, transparent 100%);
-}
 
 /* Chips */
 .chip {
@@ -406,13 +402,12 @@ main hr,
   height: 6px;
   border-radius: 50%;
   background: var(--a2);
-  box-shadow: 0 0 8px var(--a2);
   flex-shrink: 0;
 }
-.chip.ok   .dot { background: var(--ok);   box-shadow: 0 0 8px var(--ok); }
-.chip.crit .dot { background: var(--crit); box-shadow: 0 0 8px var(--crit); }
+.chip.ok   .dot { background: var(--ok); }
+.chip.crit .dot { background: var(--crit); }
 
-/* Buttons — !important on color values to beat `main a { color: var(--a2) !important }` */
+/* Buttons: !important on color values to beat `main a { color: var(--a2) !important }` */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -444,17 +439,11 @@ main hr,
 }
 
 .btn-accent {
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--a1) 100%, white 12%),
-    var(--a1)
-  );
+  background: var(--a1);
   color: #0a0612 !important;
-  box-shadow: 0 10px 30px -12px color-mix(in oklab, var(--a1) 80%, transparent),
-    0 0 0 1px color-mix(in oklab, var(--a1) 40%, transparent);
 }
 .btn-accent:hover {
-  filter: brightness(1.06);
+  background: color-mix(in oklab, var(--a1) 88%, white);
   color: #0a0612 !important;
 }
 
@@ -475,7 +464,7 @@ main hr,
 }
 
 /* =========================================================================
-   SDK Selector — injected into sidebar via separator
+   SDK Selector, injected into sidebar via separator
    ========================================================================= */
 
 li:has(> .sdk-selector) {
@@ -522,11 +511,10 @@ li:has(> .sdk-selector) > span:first-child {
   top: calc(100% + 4px);
   left: 8px;
   right: 8px;
-  background: linear-gradient(180deg, var(--ink-3), var(--ink-2));
+  background: var(--ink-2);
   border: 1px solid var(--hair-2);
   border-radius: 8px;
-  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.6),
-    0 0 0 1px rgba(255, 255, 255, 0.03);
+  box-shadow: 0 16px 40px -24px rgba(0, 0, 0, 0.7);
   z-index: 100;
 }
 
@@ -611,7 +599,7 @@ li:has(> .sdk-selector) > span:first-child {
   font-weight: 600;
   margin: 0 0 8px 0;
   color: var(--fg-0);
-  font-family: var(--font-display), ui-monospace, monospace;
+  font-family: var(--f-body);
   letter-spacing: -0.01em;
 }
 
@@ -641,48 +629,16 @@ li:has(> .sdk-selector) > span:first-child {
   padding: 24px;
   border: 1px solid var(--hair);
   border-radius: 12px;
-  background: linear-gradient(180deg, var(--ink-3), var(--ink-2));
+  background: var(--ink-1);
   cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+  transition: border-color 0.2s, background 0.2s;
   text-align: left;
   font-family: inherit;
 }
 
 .framework-picker-card:hover {
-  border-color: color-mix(in oklab, var(--a1) 50%, var(--hair-2));
-  box-shadow: 0 20px 40px -20px color-mix(in oklab, var(--a1) 30%, transparent),
-    0 0 0 1px color-mix(in oklab, var(--a1) 20%, transparent);
-  transform: translateY(-2px);
-}
-
-.framework-picker-top {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  width: 100%;
-}
-
-.framework-picker-badge {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 4px;
-  letter-spacing: 0.02em;
-  line-height: 1.5;
-  font-family: var(--font-mono), ui-monospace, monospace;
-  text-transform: uppercase;
-}
-
-.badge-production {
-  background: color-mix(in oklab, var(--a1) 18%, transparent);
-  color: var(--a1);
-  border: 1px solid color-mix(in oklab, var(--a1) 40%, transparent);
-}
-
-.badge-new {
-  background: color-mix(in oklab, var(--ok) 18%, transparent);
-  color: var(--ok);
-  border: 1px solid color-mix(in oklab, var(--ok) 40%, transparent);
+  border-color: var(--hair-2);
+  background: var(--ink-2);
 }
 
 .framework-picker-icon {
@@ -729,15 +685,14 @@ li:has(> .sdk-selector) > span:first-child {
   padding: 24px;
   border: 1px solid var(--hair);
   border-radius: 12px;
-  background: linear-gradient(180deg, var(--ink-3), var(--ink-2));
+  background: var(--ink-1);
   text-decoration: none !important;
-  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+  transition: border-color 0.2s, background 0.2s;
 }
 
 .deployment-card:hover {
-  border-color: color-mix(in oklab, var(--a1) 50%, var(--hair-2));
-  box-shadow: 0 20px 40px -20px color-mix(in oklab, var(--a1) 30%, transparent);
-  transform: translateY(-2px);
+  border-color: var(--hair-2);
+  background: var(--ink-2);
 }
 
 .deployment-card-top {

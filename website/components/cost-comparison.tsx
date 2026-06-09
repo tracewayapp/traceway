@@ -6,7 +6,7 @@ const cards = [
     color: "var(--ok)",
     title: "No per-event pricing",
     description:
-      "Competitors charge more as you grow. Self-host on your own infrastructure or use Cloud with fixed-price tiers — no per-event, per-host, or per-seat fees.",
+      "Competitors charge more as you grow. Self-host on your own infrastructure or use Cloud with fixed-price tiers. No per-event, per-host, or per-seat fees.",
   },
   {
     icon: Database,

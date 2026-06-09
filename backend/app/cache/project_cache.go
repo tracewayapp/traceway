@@ -106,6 +106,8 @@ func (c *projectCache) UpdateProject(proj *models.Project) {
 	}
 	cached.Name = proj.Name
 	cached.Framework = proj.Framework
+	cached.DropHealthyHealthchecks = proj.DropHealthyHealthchecks
+	cached.HealthcheckPaths = proj.HealthcheckPaths
 }
 
 func (c *projectCache) RemoveProject(id uuid.UUID) {

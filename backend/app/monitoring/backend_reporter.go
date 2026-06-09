@@ -14,12 +14,11 @@ import (
 const backendReportInterval = 30 * time.Second
 
 type backendBaselines struct {
-	rawHits      uint64
-	rawMisses    uint64
-	rawEvictions uint64
-	parsedHits   uint64
-	parsedMisses uint64
-	first        bool
+	smHits      uint64
+	smMisses    uint64
+	smEvictions uint64
+	smFailures  uint64
+	first       bool
 }
 
 func StartBackendReporter(ctx context.Context) {
@@ -51,26 +50,21 @@ func reportBackendOnce(b *backendBaselines) {
 		traceway.CaptureMetric("traceway.proc.rss_mb", float64(rss)/1024.0/1024.0)
 	}
 
-	rawStats := cache.SourceMapCache.Stats()
-	traceway.CaptureMetric("traceway.sourcemap.raw.entries", float64(rawStats.Entries))
-	traceway.CaptureMetric("traceway.sourcemap.raw.bytes", float64(rawStats.Bytes))
-
-	parsedStats := services.ParsedSourceMapStats()
-	traceway.CaptureMetric("traceway.sourcemap.parsed.entries", float64(parsedStats.Entries))
-	traceway.CaptureMetric("traceway.sourcemap.parsed.parse_ms", parsedStats.LastParseMs)
+	smStats := services.SourceMapStats()
+	traceway.CaptureMetric("traceway.sourcemap.entries", float64(smStats.Entries))
+	traceway.CaptureMetric("traceway.sourcemap.bytes", float64(smStats.Bytes))
+	traceway.CaptureMetric("traceway.sourcemap.parse_ms", smStats.LastParseMs)
 
 	if !b.first {
-		traceway.CaptureMetric("traceway.sourcemap.raw.hits.delta", float64(safeDelta(b.rawHits, rawStats.Hits)))
-		traceway.CaptureMetric("traceway.sourcemap.raw.misses.delta", float64(safeDelta(b.rawMisses, rawStats.Misses)))
-		traceway.CaptureMetric("traceway.sourcemap.raw.evictions.delta", float64(safeDelta(b.rawEvictions, rawStats.Evictions)))
-		traceway.CaptureMetric("traceway.sourcemap.parsed.hits.delta", float64(safeDelta(b.parsedHits, parsedStats.Hits)))
-		traceway.CaptureMetric("traceway.sourcemap.parsed.misses.delta", float64(safeDelta(b.parsedMisses, parsedStats.Misses)))
+		traceway.CaptureMetric("traceway.sourcemap.hits.delta", float64(safeDelta(b.smHits, smStats.Hits)))
+		traceway.CaptureMetric("traceway.sourcemap.misses.delta", float64(safeDelta(b.smMisses, smStats.Misses)))
+		traceway.CaptureMetric("traceway.sourcemap.evictions.delta", float64(safeDelta(b.smEvictions, smStats.Evictions)))
+		traceway.CaptureMetric("traceway.sourcemap.load_failures.delta", float64(safeDelta(b.smFailures, smStats.Failures)))
 	}
-	b.rawHits = rawStats.Hits
-	b.rawMisses = rawStats.Misses
-	b.rawEvictions = rawStats.Evictions
-	b.parsedHits = parsedStats.Hits
-	b.parsedMisses = parsedStats.Misses
+	b.smHits = smStats.Hits
+	b.smMisses = smStats.Misses
+	b.smEvictions = smStats.Evictions
+	b.smFailures = smStats.Failures
 	b.first = false
 
 	traceway.CaptureMetric("traceway.cache.projects.entries", float64(cache.ProjectCache.Entries()))

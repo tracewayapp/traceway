@@ -57,7 +57,7 @@ func setup(t *testing.T) *memStore {
 	mainDB.SetMaxOpenConns(1)
 
 	ddl := []string{
-		`CREATE TABLE source_maps (id INTEGER PRIMARY KEY, project_id TEXT NOT NULL, version TEXT NOT NULL, file_name TEXT NOT NULL, debug_id TEXT NOT NULL DEFAULT '', storage_key TEXT NOT NULL, file_size INTEGER NOT NULL, uploaded_at DATETIME NOT NULL)`,
+		`CREATE TABLE source_maps (id INTEGER PRIMARY KEY, project_id TEXT NOT NULL, version TEXT NOT NULL, file_name TEXT NOT NULL, storage_key TEXT NOT NULL, file_size INTEGER NOT NULL, uploaded_at DATETIME NOT NULL)`,
 		`CREATE TABLE source_map_flatten_migrations (id INTEGER PRIMARY KEY, project_id TEXT NOT NULL UNIQUE, migrated_at DATETIME NOT NULL)`,
 	}
 	for _, stmt := range ddl {
@@ -144,6 +144,24 @@ func TestFlattenIsIdempotentAcrossRuns(t *testing.T) {
 
 	if n := countMigrations(t); n != 1 {
 		t.Errorf("migration rows after two runs = %d, want 1", n)
+	}
+}
+
+func TestFlattenRetryDoesNotOverwriteFreshUploads(t *testing.T) {
+	ms := setup(t)
+	p := uuid.New()
+	seedMap(t, ms, p, "v1", "app.js.map", "STALE", time.Now().UTC())
+
+	flatKey := fmt.Sprintf("sourcemaps/%s/app.js.map", p)
+	ms.data[flatKey] = []byte("FRESH_UPLOAD")
+
+	run(context.Background())
+
+	if got, _ := ms.get(flatKey); got != "FRESH_UPLOAD" {
+		t.Errorf("flat key = %q, a backfill retry must not overwrite a newer upload", got)
+	}
+	if n := countMigrations(t); n != 1 {
+		t.Errorf("migration rows = %d, want 1 (project should still be marked migrated)", n)
 	}
 }
 

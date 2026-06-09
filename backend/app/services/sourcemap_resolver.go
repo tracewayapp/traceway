@@ -369,17 +369,18 @@ func mapBasename(stackFile string) string {
 
 func buildResolver(mapKey, bundleKey string) resolverBuild {
 	return func(ctx context.Context) (*symbolicator.Resolver, int64, error) {
-		readCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sourceMapLoadTimeout)
-		defer cancel()
+		base := context.WithoutCancel(ctx)
 
-		mapBytes, err := storage.Store.Read(readCtx, mapKey)
+		mapBytes, err := readWithTimeout(base, mapKey)
 		if err != nil {
 			return nil, 0, err
 		}
 
 		var bundleBytes []byte
-		if b, readErr := storage.Store.Read(readCtx, bundleKey); readErr == nil {
+		if b, readErr := readWithTimeout(base, bundleKey); readErr == nil {
 			bundleBytes = b
+		} else if !errors.Is(readErr, storage.ErrNotFound) {
+			return nil, 0, fmt.Errorf("failed to read bundle (key=%s): %w", bundleKey, readErr)
 		}
 
 		resolver, err := symbolicator.NewResolver(mapBytes, bundleBytes)
@@ -388,4 +389,10 @@ func buildResolver(mapKey, bundleKey string) resolverBuild {
 		}
 		return resolver, resolver.ApproxSize(), nil
 	}
+}
+
+func readWithTimeout(ctx context.Context, key string) ([]byte, error) {
+	readCtx, cancel := context.WithTimeout(ctx, sourceMapLoadTimeout)
+	defer cancel()
+	return storage.Store.Read(readCtx, key)
 }

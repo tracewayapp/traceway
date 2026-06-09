@@ -11,7 +11,6 @@ type SourceMap struct {
 	ProjectId  uuid.UUID `json:"projectId"`
 	Version    string    `json:"version"`
 	FileName   string    `json:"fileName"`
-	DebugId    string    `json:"debugId"`
 	StorageKey string    `json:"storageKey"`
 	FileSize   int64     `json:"fileSize"`
 	UploadedAt time.Time `json:"uploadedAt"`

@@ -90,7 +90,7 @@ Symbolication resolves stack frames against object storage at `sourcemaps/{proje
 
 Lookups that find no map (or fail to load one) are negative-cached per filename with an escalating cooldown: a missing map starts at 1 minute, a transient failure at 15 seconds, and each consecutive failure doubles the cooldown up to a 15 minute cap. Uploading a file clears its cooldown and evicts any cached resolver on the instance that handled the upload; in multi-instance deployments the other instances retry within their remaining cooldown. This keeps JS projects that never upload maps from generating a steady stream of storage reads, and keeps a storage outage from adding read-timeout latency to every exception report.
 
-When upgrading from a version that stored maps under per-version paths, a one-time backfill runs at startup: it copies each project's most recent map per filename to the flat layout and records completion per project. Old objects are left in place and can be removed manually.
+Upgrading from 1.7? The flat storage layout is new in 1.8 and existing maps are migrated automatically at startup; see [Upgrading to 1.8](/server/upgrade-1-8).
 
 | Variable | Default | Description |
 |----------|---------|-------------|

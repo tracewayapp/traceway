@@ -1,0 +1,52 @@
+# Upgrading from 1.7 to 1.8
+
+This guide covers the one breaking change in 1.8 that touches persisted data: the source map storage migration. If you do not use JS source maps, 1.8 is a drop-in upgrade and you can stop reading.
+
+## What changed
+
+1.7 stored uploaded source maps in object storage under per-version paths and tracked them in the database:
+
+```
+sourcemaps/{projectId}/{version}/{filename}
+```
+
+At ingest, the backend looked up the right set of maps by the `version` reported by the SDK, which meant the `--version` flag passed to the upload CLI had to match the `version` option passed to the SDK at runtime.
+
+1.8 removes the version concept from source maps entirely. Maps live at a flat, deterministic key and are matched by the stack frame's filename alone:
+
+```
+sourcemaps/{projectId}/{filename}
+```
+
+The most recent upload of each filename wins. Content-hashed bundle names (the default in Vite, Next, Angular, and most bundlers) keep every build's maps distinct automatically. The SDK's `version` option still exists, but it is now plain metadata for filtering exceptions in the dashboard and has no effect on symbolication.
+
+## The automatic storage migration
+
+On first startup, 1.8 migrates existing maps to the flat layout. No operator action is required.
+
+For each project that has source maps recorded in the database:
+
+1. The most recent upload of each filename (across all versions) is copied to its flat key.
+2. A flat key that already exists is never overwritten, so anything uploaded with the 1.8 CLI always wins over backfilled content, even if the migration retries after a partial failure.
+3. Completion is recorded per project in the `source_map_flatten_migrations` table. Migrated projects are skipped on subsequent startups.
+4. If any copy fails (for example a transient S3 error), the project is not marked migrated and the whole project is retried on the next startup. Failures are reported to your monitoring project as exceptions.
+
+The migration **copies**, it does not move: the old `sourcemaps/{projectId}/{version}/...` objects are left in place. Once the backfill has completed for all projects (every project has a row in `source_map_flatten_migrations`), the versioned paths are dead data and can be deleted from your bucket or `STORAGE_PATH` to reclaim space.
+
+## What this means for symbolication during the upgrade
+
+If a project ships multiple app versions concurrently **and** uses stable bundle filenames (such as `app.js` rather than `app.[hash].js`), 1.7 could resolve each report against its own version's maps. 1.8 resolves every report against the most recent upload of that filename. Switch your bundler to content-hashed filenames to keep concurrent versions distinct.
+
+## Update the upload CLI
+
+Upgrade `@tracewayapp/sourcemap-upload` together with the backend:
+
+- The `--version` flag is gone. Old CI scripts that still pass it keep working; the flag is ignored.
+- The new CLI also uploads the minified `.js`/`.cjs`/`.mjs` bundle next to each map, which is what enables function names in resolved stack traces.
+- Do not point the new CLI at a 1.7 backend: 1.7 stores its uploads as `unversioned`, and any SDK that reports a `version` will then match no maps and silently lose symbolication.
+
+## Related pages
+
+- [Symbolication](/learn/symbolication-js): the full resolution pipeline in 1.8
+- [Source Maps](/client/js-sdk/sourcemap-upload): CLI usage and CI examples
+- [Capacity & Self-Monitoring](/server/capacity-monitoring): cache sizing and the symbolication metrics

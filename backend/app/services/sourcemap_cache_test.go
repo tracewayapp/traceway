@@ -406,6 +406,53 @@ func TestInvalidateSourceMapEvictsStaleResolver(t *testing.T) {
 	}
 }
 
+type bundleFailStorage struct {
+	data       map[string][]byte
+	failBundle bool
+}
+
+func (b *bundleFailStorage) Write(_ context.Context, key string, data []byte) error {
+	b.data[key] = data
+	return nil
+}
+
+func (b *bundleFailStorage) Read(_ context.Context, key string) ([]byte, error) {
+	if b.failBundle && !strings.HasSuffix(key, ".map") {
+		return nil, errors.New("storage down")
+	}
+	d, ok := b.data[key]
+	if !ok {
+		return nil, storage.ErrNotFound
+	}
+	return d, nil
+}
+
+func TestTransientBundleReadFailureFailsBuild(t *testing.T) {
+	InitSourceMapCache(100, 64<<20)
+	prev := storage.Store
+	defer func() { storage.Store = prev }()
+	projectId := uuid.New()
+	prefix := fmt.Sprintf("sourcemaps/%s/", projectId)
+	bs := &bundleFailStorage{failBundle: true, data: map[string][]byte{
+		prefix + "app.js.map": []byte(`{"version":3,"sources":["a.js"],"names":[],"mappings":"AAAA"}`),
+		prefix + "app.js":     []byte(`var x=1;`),
+	}}
+	storage.Store = bs
+
+	trace := "Error: boom\n    fn()\n    app.js:1:1"
+
+	if got := ResolveStackTrace(context.Background(), projectId, trace); got != trace {
+		t.Errorf("a transient bundle read failure must not cache a names-less resolver, got %q", got)
+	}
+
+	bs.failBundle = false
+	InvalidateSourceMap(projectId, "app.js.map")
+
+	if got := ResolveStackTrace(context.Background(), projectId, trace); !strings.Contains(got, "a.js:1:1") {
+		t.Errorf("expected full resolution once the bundle read recovers, got %q", got)
+	}
+}
+
 func TestSourceMapCacheByteCapEviction(t *testing.T) {
 	prev := storage.Store
 	defer func() { storage.Store = prev }()

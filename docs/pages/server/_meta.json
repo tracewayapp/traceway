@@ -6,5 +6,6 @@
   "sqlite": "SQLite",
   "local-setup": "Local Setup",
   "haloy": "Haloy",
-  "capacity-monitoring": "Capacity & Self-Monitoring"
+  "capacity-monitoring": "Capacity & Self-Monitoring",
+  "upgrade-1-8": "Upgrading to 1.8"
 }

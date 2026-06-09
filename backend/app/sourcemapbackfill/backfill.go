@@ -61,7 +61,7 @@ func run(ctx context.Context) {
 func migrateProject(ctx context.Context, projectId uuid.UUID) bool {
 	rows, err := lit.SelectNamed[models.SourceMap](
 		db.DB,
-		`SELECT s.* FROM source_maps s
+		`SELECT s.id, s.project_id, s.version, s.file_name, s.storage_key, s.file_size, s.uploaded_at FROM source_maps s
 		 JOIN (SELECT file_name, MAX(uploaded_at) AS mx FROM source_maps WHERE project_id = :pid GROUP BY file_name) g
 		   ON s.file_name = g.file_name AND s.uploaded_at = g.mx
 		 WHERE s.project_id = :pid`,
@@ -106,6 +106,13 @@ func migrateProject(ctx context.Context, projectId uuid.UUID) bool {
 func copyObject(ctx context.Context, projectId uuid.UUID, oldKey, flatKey string) bool {
 	opCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), storageOpTimeout)
 	defer cancel()
+
+	if _, err := storage.Store.Read(opCtx, flatKey); err == nil {
+		return true
+	} else if !errors.Is(err, storage.ErrNotFound) {
+		traceway.CaptureException(fmt.Errorf("source map flatten: failed to check %s for project %s: %w", flatKey, projectId, err))
+		return false
+	}
 
 	data, err := storage.Store.Read(opCtx, oldKey)
 	if errors.Is(err, storage.ErrNotFound) {

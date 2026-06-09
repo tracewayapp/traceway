@@ -216,7 +216,7 @@ Say two exceptions referencing `app.bundle.js.map` arrive at the same time, on a
 
 If the map does not exist, the read times out, storage errors, or the map fails to parse:
 
-- The affected frames pass through **unchanged**, and the trace is stored as-is. Ingest is never blocked beyond the read budget and never errors because of symbolication.
+- The affected frames pass through **unchanged**, and the trace is stored as-is. Ingest is never blocked beyond the per-read budgets (5 seconds each for the map and the bundle) and never errors because of symbolication. A transient failure reading the *bundle* fails the build too, rather than silently caching a resolver without function names; the cooldown retries it within seconds.
 - The failure is **negative-cached per filename**: while the cooldown is active, frames referencing that filename skip the storage read entirely. A missing map starts at a 1 minute cooldown; a transient failure (timeout, storage error, unparseable map) starts at 15 seconds, so brief storage hiccups recover fast. Each consecutive failure doubles the cooldown, capped at 15 minutes, so a project that never uploads maps converges to a few storage reads per hour per filename instead of one per minute.
 - The cooldown clears the moment that filename is uploaded (the upload endpoint invalidates it in-process) or a load succeeds. In a multi-instance deployment, instances other than the one that served the upload retry within their remaining cooldown, at most 15 minutes.
 - The negative cache is bounded at 10,000 filenames; expired entries are pruned when the bound is hit.

@@ -23,6 +23,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/recordings"
 	"github.com/tracewayapp/traceway/backend/app/retention"
 	"github.com/tracewayapp/traceway/backend/app/services"
+	"github.com/tracewayapp/traceway/backend/app/sourcemapbackfill"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	"github.com/tracewayapp/traceway/backend/static"
 
@@ -132,6 +133,7 @@ func Run(opts ...Option) {
 	notifications.StartEvaluator(ctx)
 	retention.Start(ctx)
 	recordings.Start(ctx)
+	sourcemapbackfill.Start(ctx)
 
 	var router *gin.Engine
 	if o != nil && o.disableLogging {

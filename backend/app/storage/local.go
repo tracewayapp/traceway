@@ -39,7 +39,7 @@ func (l *localStorage) Read(_ context.Context, key string) ([]byte, error) {
 	data, err := os.ReadFile(fullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("file not found: %s", key)
+			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("failed to read file %s: %w", fullPath, err)
 	}

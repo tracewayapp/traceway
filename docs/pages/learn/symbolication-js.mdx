@@ -32,7 +32,7 @@ This page explains exactly how that translation works today, what is cached and 
 
 Symbolication happens **once, at ingest**, inside `POST /api/report`:
 
-1. The report arrives from the JS SDK. If the project is a JS framework, the backend loads the project's source maps from the database: the set matching the report's `version` if one was sent, otherwise the latest uploaded set. This is why the `--version` flag on upload must match the SDK's `version` option.
+1. The report arrives from the JS SDK. If the project is a JS framework, each frame is resolved directly against object storage at `sourcemaps/{projectId}/{filename}` — the map is addressed by the frame's filename, with no version and no database lookup. The most recent upload of each filename wins.
 2. Each stack trace in the report is resolved frame by frame.
 3. The **resolved** trace is what gets hashed for grouping and stored in ClickHouse.
 
@@ -281,6 +281,6 @@ All 18 frames match symbolic on **location**. The 5 deviations are **name-only**
 
 ## Related Pages
 
-- [Source Maps](/client/js-sdk/sourcemap-upload): uploading maps from CI and matching versions
+- [Source Maps](/client/js-sdk/sourcemap-upload): uploading maps from CI
 - [Issues](/learn/issues): grouping, lifecycle, and archiving
 - [Capacity Monitoring](/server/capacity-monitoring): cache sizing and alerting

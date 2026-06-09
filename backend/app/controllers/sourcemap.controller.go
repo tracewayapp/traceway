@@ -1,28 +1,18 @@
 package controllers
 
 import (
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
-	"github.com/tracewayapp/traceway/backend/app/storage"
-	"database/sql"
-	"encoding/json"
 	"fmt"
+	"github.com/tracewayapp/traceway/backend/app/middleware"
+	"github.com/tracewayapp/traceway/backend/app/storage"
 	"io"
 	"net/http"
 	"path/filepath"
-	"regexp"
-	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	traceway "go.tracewayapp.com"
 )
 
 type sourceMapController struct{}
-
-var jsDebugIdRe = regexp.MustCompile(`//# debugId=([0-9a-fA-F-]{36})`)
 
 func isSourceArtifact(name string) bool {
 	switch filepath.Ext(name) {
@@ -31,26 +21,6 @@ func isSourceArtifact(name string) bool {
 	default:
 		return false
 	}
-}
-
-func extractDebugId(fileName string, data []byte) string {
-	if strings.HasSuffix(fileName, ".map") {
-		var m struct {
-			DebugId      string `json:"debugId"`
-			DebugIdSnake string `json:"debug_id"`
-		}
-		if err := json.Unmarshal(data, &m); err == nil {
-			if m.DebugId != "" {
-				return m.DebugId
-			}
-			return m.DebugIdSnake
-		}
-		return ""
-	}
-	if match := jsDebugIdRe.FindSubmatch(data); match != nil {
-		return string(match[1])
-	}
-	return ""
 }
 
 func (s sourceMapController) Upload(c *gin.Context) {
@@ -63,11 +33,6 @@ func (s sourceMapController) Upload(c *gin.Context) {
 	if err := c.Request.ParseMultipartForm(50 << 20); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse multipart form"})
 		return
-	}
-
-	version := c.Request.FormValue("version")
-	if version == "" {
-		version = "unversioned"
 	}
 
 	files := c.Request.MultipartForm.File["files"]
@@ -100,37 +65,9 @@ func (s sourceMapController) Upload(c *gin.Context) {
 			return
 		}
 
-		debugId := extractDebugId(fileHeader.Filename, data)
-		storageKey := fmt.Sprintf("sourcemaps/%s/%s/%s", projectId, version, fileHeader.Filename)
-
+		storageKey := fmt.Sprintf("sourcemaps/%s/%s", projectId, fileHeader.Filename)
 		if err := storage.Store.Write(c, storageKey, data); err != nil {
 			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to write source map to storage: %w", err))
-			return
-		}
-
-		_, err = db.ExecuteTransaction(func(tx *sql.Tx) (*models.SourceMap, error) {
-			existing, err := repositories.SourceMapRepository.FindByProjectVersionAndFileName(tx, projectId, version, fileHeader.Filename)
-			if err != nil {
-				return nil, err
-			}
-			if existing != nil {
-				existing.StorageKey = storageKey
-				existing.FileSize = fileHeader.Size
-				existing.DebugId = debugId
-				existing.UploadedAt = time.Now().UTC()
-				return existing, repositories.SourceMapRepository.Update(tx, existing)
-			}
-			return repositories.SourceMapRepository.Create(tx, &models.SourceMap{
-				ProjectId:  projectId,
-				Version:    version,
-				FileName:   fileHeader.Filename,
-				DebugId:    debugId,
-				StorageKey: storageKey,
-				FileSize:   fileHeader.Size,
-			})
-		})
-		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to upsert source map metadata: %w", err))
 			return
 		}
 

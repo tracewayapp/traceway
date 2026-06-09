@@ -3,7 +3,6 @@ package clientcontrollers
 import (
 	"bytes"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -12,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/hooks"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
@@ -144,26 +142,13 @@ func (e clientController) Report(c *gin.Context) {
 				spansToInsert = append(spansToInsert, span)
 			}
 		}
-		var sourceMaps *[]*models.SourceMap
-		if project != nil && isJsFramework(project.Framework) {
-			loadSpan := traceway.StartSpan(c, "report.load_source_maps")
-			sourceMapsLoaded, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.SourceMap, error) {
-				if request.AppVersion != "" {
-					return repositories.SourceMapRepository.FindByProjectAndVersion(tx, projectId, request.AppVersion)
-				}
-				return repositories.SourceMapRepository.FindLatestByProject(tx, projectId)
-			})
-			loadSpan.End()
-			if err == nil && len(sourceMapsLoaded) > 0 {
-				sourceMaps = &sourceMapsLoaded
-			}
-		}
+		resolveJs := project != nil && isJsFramework(project.Framework)
 
 		resolveSpan := traceway.StartSpan(c, "report.resolve_stack_traces")
 		for _, cst := range cf.StackTraces {
 			resolvedStackTrace := cst.StackTrace
-			if sourceMaps != nil {
-				resolvedStackTrace = services.ResolveStackTrace(c, cst.StackTrace, *sourceMaps)
+			if resolveJs {
+				resolvedStackTrace = services.ResolveStackTrace(c, projectId, cst.StackTrace)
 			}
 			est := cst.ToExceptionStackTrace(ComputeExceptionHash(resolvedStackTrace, cst.IsMessage), request.AppVersion, request.ServerName)
 			est.StackTrace = resolvedStackTrace

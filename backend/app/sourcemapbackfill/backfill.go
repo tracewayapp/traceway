@@ -1,0 +1,128 @@
+package sourcemapbackfill
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"path/filepath"
+	"time"
+
+	"github.com/tracewayapp/lit/v2"
+	"github.com/tracewayapp/traceway/backend/app/config"
+	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/storage"
+
+	"github.com/google/uuid"
+	traceway "go.tracewayapp.com"
+)
+
+const storageOpTimeout = 15 * time.Second
+
+// Start copies legacy versioned source map objects to the flat
+// sourcemaps/{project}/{file} layout for projects that uploaded maps before the
+// version dimension was removed. It runs once at startup; the
+// source_map_flatten_migrations table makes it idempotent and resumable, so each
+// start only touches projects that have not been migrated yet. The copy never
+// deletes the old versioned objects, so it is safe to re-run and leaves the
+// legacy keys in place as harmless orphans.
+func Start(ctx context.Context) {
+	if db.DB == nil || storage.Store == nil {
+		return
+	}
+	go func() {
+		defer traceway.Recover()
+		run(ctx)
+	}()
+}
+
+func run(ctx context.Context) {
+	projects, err := lit.SelectNamed[models.SourceMapProjectId](
+		db.DB,
+		"SELECT DISTINCT project_id FROM source_maps WHERE project_id NOT IN (SELECT project_id FROM source_map_flatten_migrations)",
+		lit.P{},
+	)
+	if err != nil {
+		traceway.CaptureException(fmt.Errorf("source map flatten: failed to list un-migrated projects: %w", err))
+		return
+	}
+	if len(projects) == 0 {
+		return
+	}
+
+	migrated := 0
+	for _, p := range projects {
+		if ctx.Err() != nil {
+			return
+		}
+		if migrateProject(ctx, p.ProjectId) {
+			migrated++
+		}
+	}
+	if migrated > 0 {
+		config.Logf("source map flatten: migrated %d project(s) to versionless layout", migrated)
+	}
+}
+
+func migrateProject(ctx context.Context, projectId uuid.UUID) bool {
+	rows, err := lit.SelectNamed[models.SourceMap](
+		db.DB,
+		`SELECT s.* FROM source_maps s
+		 JOIN (SELECT file_name, MAX(uploaded_at) AS mx FROM source_maps WHERE project_id = :pid GROUP BY file_name) g
+		   ON s.file_name = g.file_name AND s.uploaded_at = g.mx
+		 WHERE s.project_id = :pid`,
+		lit.P{"pid": projectId},
+	)
+	if err != nil {
+		traceway.CaptureException(fmt.Errorf("source map flatten: failed to read source maps for project %s: %w", projectId, err))
+		return false
+	}
+
+	seen := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		base := filepath.Base(row.FileName)
+		if seen[base] {
+			continue
+		}
+		seen[base] = true
+
+		oldKey := row.StorageKey
+		flatKey := fmt.Sprintf("sourcemaps/%s/%s", projectId, base)
+		if oldKey == flatKey {
+			continue
+		}
+
+		if !copyObject(ctx, projectId, oldKey, flatKey) {
+			return false
+		}
+	}
+
+	flattenRow := models.SourceMapFlattenMigration{
+		ProjectId:  projectId,
+		MigratedAt: time.Now().UTC(),
+	}
+	if _, err := lit.Insert(db.DB, &flattenRow); err != nil {
+		traceway.CaptureException(fmt.Errorf("source map flatten: failed to record migration for project %s: %w", projectId, err))
+		return false
+	}
+	return true
+}
+
+func copyObject(ctx context.Context, projectId uuid.UUID, oldKey, flatKey string) bool {
+	opCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), storageOpTimeout)
+	defer cancel()
+
+	data, err := storage.Store.Read(opCtx, oldKey)
+	if errors.Is(err, storage.ErrNotFound) {
+		return true
+	}
+	if err != nil {
+		traceway.CaptureException(fmt.Errorf("source map flatten: failed to read %s for project %s: %w", oldKey, projectId, err))
+		return false
+	}
+	if err := storage.Store.Write(opCtx, flatKey, data); err != nil {
+		traceway.CaptureException(fmt.Errorf("source map flatten: failed to write %s for project %s: %w", flatKey, projectId, err))
+		return false
+	}
+	return true
+}

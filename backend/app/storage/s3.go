@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -10,6 +11,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 )
 
 type s3Storage struct {
@@ -61,6 +64,9 @@ func (s *s3Storage) Read(ctx context.Context, key string) ([]byte, error) {
 		Key:    aws.String(key),
 	})
 	if err != nil {
+		if isS3NotFound(err) {
+			return nil, ErrNotFound
+		}
 		return nil, fmt.Errorf("failed to get object %s: %w", key, err)
 	}
 	defer output.Body.Close()
@@ -70,4 +76,19 @@ func (s *s3Storage) Read(ctx context.Context, key string) ([]byte, error) {
 		return nil, fmt.Errorf("failed to read object body %s: %w", key, err)
 	}
 	return data, nil
+}
+
+func isS3NotFound(err error) bool {
+	var nsk *s3types.NoSuchKey
+	if errors.As(err, &nsk) {
+		return true
+	}
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.ErrorCode() {
+		case "NoSuchKey", "NotFound", "404":
+			return true
+		}
+	}
+	return false
 }

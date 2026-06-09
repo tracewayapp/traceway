@@ -3,27 +3,34 @@ package services
 import (
 	"container/list"
 	"context"
+	"errors"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/storage"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator"
 
+	"github.com/google/uuid"
 	traceway "go.tracewayapp.com"
 )
 
 const sourceMapLoadTimeout = 5 * time.Second
 const sourceMapFailReportInterval = time.Minute
+const sourceMapNegativeTTL = time.Minute
+
+type resolverBuild func(context.Context) (*symbolicator.Resolver, int64, error)
 
 type sourceMapCache struct {
 	mu                  sync.Mutex
 	items               map[string]*list.Element
 	order               *list.List
 	loading             map[string]*resolverLoad
+	negative            map[string]time.Time
 	maxEntries          int
 	maxBytes            int64
 	curBytes            int64
@@ -52,6 +59,7 @@ var smCache = &sourceMapCache{
 	items:      make(map[string]*list.Element),
 	order:      list.New(),
 	loading:    make(map[string]*resolverLoad),
+	negative:   make(map[string]time.Time),
 	maxEntries: 200,
 	maxBytes:   500 << 20,
 }
@@ -102,7 +110,7 @@ func (c *sourceMapCache) getOrBuild(ctx context.Context, key string, build resol
 		if l.err == nil && l.resolver != nil {
 			c.lastParseMs = buildMs
 			c.insertLocked(key, l.resolver, size)
-		} else {
+		} else if l.err != nil && !errors.Is(l.err, storage.ErrNotFound) {
 			c.failures++
 		}
 		c.mu.Unlock()
@@ -112,10 +120,30 @@ func (c *sourceMapCache) getOrBuild(ctx context.Context, key string, build resol
 	start := time.Now()
 	l.resolver, size, l.err = build(ctx)
 	buildMs = float64(time.Since(start).Microseconds()) / 1000.0
-	if l.err != nil {
+	if l.err != nil && !errors.Is(l.err, storage.ErrNotFound) {
 		c.reportLoadFailure(fmt.Errorf("failed to build source map resolver (key=%s): %w", key, l.err))
 	}
 	return l.resolver, l.err
+}
+
+func (c *sourceMapCache) isNegative(key string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	exp, ok := c.negative[key]
+	if !ok {
+		return false
+	}
+	if time.Now().After(exp) {
+		delete(c.negative, key)
+		return false
+	}
+	return true
+}
+
+func (c *sourceMapCache) markNegative(key string) {
+	c.mu.Lock()
+	c.negative[key] = time.Now().Add(sourceMapNegativeTTL)
+	c.mu.Unlock()
 }
 
 func (c *sourceMapCache) reportLoadFailure(err error) {
@@ -183,12 +211,12 @@ func SourceMapStats() SourceMapCacheStats {
 
 var stackFrameRe = regexp.MustCompile(`^(\s{4})(.+):(\d+):(\d+)$`)
 
-func ResolveStackTrace(ctx context.Context, stackTrace string, sourceMaps []*models.SourceMap) string {
-	if len(sourceMaps) == 0 {
-		return stackTrace
-	}
-
-	store := newTracewayStore(sourceMaps)
+// ResolveStackTrace symbolicates a JS stack trace using source maps stored in
+// object storage. Maps are addressed deterministically by filename at
+// sourcemaps/{projectId}/{file}, so no version and no database lookup are
+// needed; the most recent upload of each file wins.
+func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace string) string {
+	prefix := fmt.Sprintf("sourcemaps/%s/", projectId)
 
 	lines := strings.Split(stackTrace, "\n")
 	resolved := make([]string, 0, len(lines))
@@ -214,14 +242,24 @@ func ResolveStackTrace(ctx context.Context, stackTrace string, sourceMaps []*mod
 		lineNum, _ := strconv.Atoi(matches[3])
 		colNum, _ := strconv.Atoi(matches[4])
 
-		cacheKey, build, ok := store.Resolve(ctx, FrameRef{URL: fileName})
-		if !ok {
+		base := mapBasename(fileName)
+		if base == "" {
+			resolved = append(resolved, line)
+			continue
+		}
+		mapKey := prefix + base + ".map"
+		bundleKey := prefix + base
+
+		if smCache.isNegative(mapKey) {
 			resolved = append(resolved, line)
 			continue
 		}
 
-		resolver, err := getResolver(ctx, cacheKey, build, localResolvers)
+		resolver, err := getResolver(ctx, mapKey, buildResolver(mapKey, bundleKey), localResolvers)
 		if err != nil || resolver == nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				smCache.markNegative(mapKey)
+			}
 			resolved = append(resolved, line)
 			continue
 		}
@@ -264,4 +302,35 @@ func getResolver(ctx context.Context, cacheKey string, build resolverBuild, loca
 	}
 	local[cacheKey] = r
 	return r, nil
+}
+
+func mapBasename(stackFile string) string {
+	clean := stackFile
+	if idx := strings.IndexAny(clean, "?#"); idx != -1 {
+		clean = clean[:idx]
+	}
+	return filepath.Base(clean)
+}
+
+func buildResolver(mapKey, bundleKey string) resolverBuild {
+	return func(ctx context.Context) (*symbolicator.Resolver, int64, error) {
+		readCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sourceMapLoadTimeout)
+		defer cancel()
+
+		mapBytes, err := storage.Store.Read(readCtx, mapKey)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		var bundleBytes []byte
+		if b, readErr := storage.Store.Read(readCtx, bundleKey); readErr == nil {
+			bundleBytes = b
+		}
+
+		resolver, err := symbolicator.NewResolver(mapBytes, bundleBytes)
+		if err != nil {
+			return nil, 0, err
+		}
+		return resolver, resolver.ApproxSize(), nil
+	}
 }

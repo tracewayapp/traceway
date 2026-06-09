@@ -29,6 +29,8 @@ func Init(driver lit.Driver) {
 	lit.RegisterModel[UserOrganizationResponse](driver)
 	lit.RegisterModel[CountResult](driver)
 	lit.RegisterModel[SourceMap](driver)
+	lit.RegisterModel[SourceMapFlattenMigration](driver)
+	lit.RegisterModel[SourceMapProjectId](driver)
 	lit.RegisterModelWithNaming[MetricRegistry](driver, metricRegistryNaming{})
 	lit.RegisterModel[WidgetGroup](driver)
 	lit.RegisterModel[WidgetGroupWidget](driver)

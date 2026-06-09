@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator"
+
+	"github.com/google/uuid"
 )
 
 func newTestSourceMapCache(maxEntries int, maxBytes int64) *sourceMapCache {
@@ -19,6 +20,7 @@ func newTestSourceMapCache(maxEntries int, maxBytes int64) *sourceMapCache {
 		items:      make(map[string]*list.Element),
 		order:      list.New(),
 		loading:    make(map[string]*resolverLoad),
+		negative:   make(map[string]time.Time),
 		maxEntries: maxEntries,
 		maxBytes:   maxBytes,
 	}
@@ -58,7 +60,7 @@ func (c *countingStorage) Read(_ context.Context, key string) ([]byte, error) {
 	time.Sleep(10 * time.Millisecond)
 	d, ok := c.data[key]
 	if !ok {
-		return nil, errors.New("not found")
+		return nil, storage.ErrNotFound
 	}
 	return d, nil
 }
@@ -280,14 +282,15 @@ func TestResolveStackTraceFailedMapAttemptedOncePerTrace(t *testing.T) {
 	cs := &countingStorage{reads: map[string]int{}, data: map[string][]byte{}}
 	storage.Store = cs
 
-	sourceMaps := []*models.SourceMap{{FileName: "dead.js.map", StorageKey: "dead.js.map"}}
+	projectId := uuid.New()
 	trace := "Error: boom\n    fn()\n    dead.js:1:10\n    fn2()\n    dead.js:1:20\n    fn3()\n    dead.js:1:30"
 
-	resolved := ResolveStackTrace(context.Background(), trace, sourceMaps)
+	resolved := ResolveStackTrace(context.Background(), projectId, trace)
 	if resolved != trace {
 		t.Error("trace should be stored as-is when its source map cannot be loaded")
 	}
-	if got := cs.reads["dead.js.map"]; got != 1 {
+	mapKey := fmt.Sprintf("sourcemaps/%s/dead.js.map", projectId)
+	if got := cs.reads[mapKey]; got != 1 {
 		t.Errorf("expected 1 load attempt per trace for a failing map, got %d", got)
 	}
 }

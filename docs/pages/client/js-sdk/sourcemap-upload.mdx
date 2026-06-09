@@ -16,7 +16,6 @@ This provides the `traceway-sourcemaps` CLI command.
 traceway-sourcemaps \
   --url https://your-traceway-instance.com \
   --token your-sourcemap-token \
-  --version 1.2.3 \
   --directory ./dist
 ```
 
@@ -28,7 +27,6 @@ The CLI recursively finds all `*.map` files in the specified directory and uploa
 |------|----------|-------------|
 | `--url <url>` | Yes | Traceway backend URL |
 | `--token <token>` | Yes | Source map upload token |
-| `--version <version>` | Yes | App version to associate with the source maps |
 | `--directory <dir>` | No | Directory to search (default: current directory) |
 
 ## Environment Variables
@@ -71,7 +69,7 @@ jobs:
       - run: npm run build
 
       - name: Upload source maps
-        run: npx traceway-sourcemaps --version ${{ github.sha }} --directory ./dist
+        run: npx traceway-sourcemaps --directory ./dist
         env:
           TRACEWAY_URL: ${{ secrets.TRACEWAY_URL }}
           TRACEWAY_SOURCEMAP_TOKEN: ${{ secrets.TRACEWAY_SOURCEMAP_TOKEN }}
@@ -85,26 +83,18 @@ Add the upload step to your `package.json` scripts:
 {
   "scripts": {
     "build": "vite build",
-    "postbuild": "traceway-sourcemaps --version $npm_package_version --directory ./dist"
+    "postbuild": "traceway-sourcemaps --directory ./dist"
   }
 }
 ```
 
 Make sure `TRACEWAY_URL` and `TRACEWAY_SOURCEMAP_TOKEN` are set in your environment.
 
-## Version Matching
+## How Maps Are Matched
 
-The `--version` value must match the `version` option passed to the Traceway SDK during initialization:
+There is nothing to configure at runtime. When an exception is captured, Traceway takes each minified frame's filename and looks up the map you uploaded under that same name, deobfuscating the frame. The most recent upload of each filename wins, so content-hashed bundle names (the default in Vite, Next, Angular, and most bundlers) keep every build's maps distinct automatically.
 
-```javascript
-import { init } from "@tracewayapp/frontend";
-
-init("your-token@https://traceway.example.com/api/report", {
-  version: "1.2.3", // Must match the --version used during upload
-});
-```
-
-When an exception is captured, Traceway uses the version to look up the correct source maps and deobfuscate the stack trace.
+The SDK's `version` option is unrelated to source maps — it is plain metadata shown on exceptions in the dashboard for filtering by build, and can be set or omitted independently of uploads.
 
 ## Next Steps
 

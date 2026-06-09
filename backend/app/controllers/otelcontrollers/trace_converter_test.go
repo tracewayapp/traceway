@@ -734,7 +734,7 @@ func TestConvertTraces_HoneycombJsExceptionSymbolicates(t *testing.T) {
 	}
 
 	var symInput, symLang string
-	symbolicate := func(_ context.Context, stackTrace, language, _ string) string {
+	symbolicate := func(_ context.Context, stackTrace, language string) string {
 		symInput, symLang = stackTrace, language
 		return "RESOLVED"
 	}

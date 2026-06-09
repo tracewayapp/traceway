@@ -441,7 +441,7 @@ func buildTask(
 	}
 }
 
-type symbolicateFunc func(ctx context.Context, stackTrace, language, version string) string
+type symbolicateFunc func(ctx context.Context, stackTrace, language string) string
 
 func buildException(
 	ctx context.Context,
@@ -463,7 +463,7 @@ func buildException(
 	}
 
 	if symbolicate != nil {
-		stackTrace = symbolicate(ctx, stackTrace, language, appVersion)
+		stackTrace = symbolicate(ctx, stackTrace, language)
 	}
 
 	hash := clientcontrollers.ComputeExceptionHash(stackTrace, false)

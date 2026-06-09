@@ -167,7 +167,7 @@ In the spirit of [post 1's "be specific"](https://tracewayapp.com/blog/sqlite-ob
 - **Read under concurrent write.** Ingest stops, settle, then probe. That isolates DB read performance from ingest pressure, but it is also not what a production dashboard does at 3 PM on a Tuesday. The "read while writing" scenario is post 7's territory, after the `read-under-load` harness lands.
 - **Correctness of the returned data.** We measured response time, not row counts or content. A fast wrong answer would have passed our probe.
 - **The full dashboard.** Three named endpoints per signal. The pages that drive Traceway's main flow - `/endpoints/[endpoint]`, `/issues/[hash]`, `/metrics`, `/logs` - are the ones we read; the ones we didn't measure include settings, project management, member invites, and anything else not on the hot path.
-- **Variance.** One 30-minute sustained run per signal. From post 3 onward the headline is the median of three reps with the range shown; this post (and post 1) are explicitly single-shot, see [POSTS.md decision log](https://github.com/tracewayapp/traceway/blob/main/benchmarks/blog/POSTS.md).
+- **Variance.** One 30-minute sustained run per signal. From post 3 onward the headline is the median of three reps with the range shown; this post (and post 1) are explicitly single-shot, see the methodology box above.
 - **Sustained durability.** 30 minutes of sustained load tells you the box is not falling over inside those 30 minutes. It does not tell you what week three on the same disk looks like.
 - **Tuning.** Out-of-the-box SQLite defaults plus the transactional-insert change from post 1 (which is baseline now, not an experiment). PRAGMA tuning, custom indexes, schema rewrites, none of it. Tuning is its own post.
 

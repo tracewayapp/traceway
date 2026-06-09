@@ -4,11 +4,12 @@
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import Button from '../ui/button/button.svelte';
 	import { Archive, ChevronRight, ChevronDown } from 'lucide-svelte';
-	import { parseStackTrace } from '$lib/utils/stack-trace-parser';
+	import { parseStackTrace, type StackFrame } from '$lib/utils/stack-trace-parser';
 
 	interface Props {
 		stackTrace: string;
 		isMessage?: boolean;
+		isJavaScript?: boolean;
 		firstSeen?: string;
 		lastSeen?: string;
 		totalCount?: number;
@@ -20,6 +21,7 @@
 	let {
 		stackTrace,
 		isMessage = false,
+		isJavaScript = false,
 		firstSeen,
 		lastSeen,
 		totalCount,
@@ -31,6 +33,7 @@
 	const tz = $derived(timezone ?? getTimezone());
 	const showStats = $derived(firstSeen && lastSeen && totalCount !== undefined);
 	const parsed = $derived(parseStackTrace(stackTrace));
+	const usePretty = $derived(isJavaScript && parsed.groups.length > 0);
 
 	let expandedGroups = $state<Set<number>>(new Set());
 
@@ -42,6 +45,23 @@
 			next.add(index);
 		}
 		expandedGroups = next;
+	}
+
+	function formatFrame(frame: StackFrame) {
+		const fn = (frame.functionName ?? '').replace(/\(\)\s*$/, '').trim() || '<anonymous>';
+		const m = frame.location.match(/^(.*):(\d+):(\d+)$/);
+		if (!m) {
+			return { fn, dir: '', file: frame.location, lineCol: '', raw: frame.location };
+		}
+		const [, path, line, col] = m;
+		const slash = path.lastIndexOf('/');
+		return {
+			fn,
+			dir: slash >= 0 ? path.slice(0, slash + 1) : '',
+			file: slash >= 0 ? path.slice(slash + 1) : path,
+			lineCol: `:${line}:${col}`,
+			raw: frame.location
+		};
 	}
 </script>
 
@@ -71,58 +91,89 @@
 		</div>
 		{#if showStats}
 			<Card.Description>
-				First seen: {formatDateTime(firstSeen!, { timezone: tz })} · Last seen: {formatDateTime(
-					lastSeen!,
-					{ timezone: tz }
-				)} · Total occurrences: {totalCount}
+				<span class="tabular-nums"
+					>First seen: {formatDateTime(firstSeen!, { timezone: tz })} · Last seen: {formatDateTime(
+						lastSeen!,
+						{ timezone: tz }
+					)} · Total occurrences: {totalCount}</span
+				>
 			</Card.Description>
 		{/if}
 	</Card.Header>
 	<Card.Content>
-		<div class="overflow-x-auto rounded-md bg-muted p-4 font-mono text-sm whitespace-pre-wrap">
-			{#if parsed.errorMessage}<div>{parsed.errorMessage}</div>{/if}
-			{#each parsed.groups as group, i}
-				{#if group.type === 'app'}
-					<div>
-						{#if group.frame.functionName}
-							<div>{group.frame.functionName}</div>
-						{/if}
-						<div>{group.frame.location}</div>
-					</div>
-				{:else}
-					<div
-						class="-mb-4 cursor-pointer pt-2 text-muted-foreground select-none"
-						role="button"
-						tabindex="0"
-						onclick={() => toggleGroup(i)}
-						onkeydown={(e) => {
-							if (e.key === 'Enter' || e.key === ' ') {
-								e.preventDefault();
-								toggleGroup(i);
-							}
-						}}
-					>
-						<span class="inline-flex items-center">
-							{#if expandedGroups.has(i)}
-								<ChevronDown class="mr-0.5 h-3.5 w-3.5" />
-							{:else}
-								<ChevronRight class="mr-0.5 h-3.5 w-3.5" />
-							{/if}
-							{group.frames.length} library {group.frames.length === 1 ? 'frame' : 'frames'} ({group.packageName})
-						</span>
-					</div>
-					{#if expandedGroups.has(i)}
-						{#each group.frames as frame}
-							<div class="text-muted-foreground">
-								{#if frame.functionName}
-									<div>{frame.functionName}</div>
-								{/if}
-								<div>{frame.location}</div>
+		{#if usePretty}
+		<div class="overflow-hidden rounded-lg border">
+			{#if parsed.errorMessage}
+				<div class="border-b bg-muted/60 px-4 py-3">
+					<p class="font-mono text-sm font-medium break-words whitespace-pre-wrap text-foreground">
+						{parsed.errorMessage}
+					</p>
+				</div>
+			{/if}
+
+			<ol role="list" class="divide-y divide-border">
+				{#each parsed.groups as group, i}
+					{#if group.type === 'app'}
+						{@const f = formatFrame(group.frame)}
+						<li
+							class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 border-l-2 px-4 py-2.5 {i ===
+							0
+								? 'border-l-primary'
+								: 'border-l-primary/35'}"
+						>
+							<div class="min-w-0 font-mono text-sm font-medium break-all text-foreground">
+								{f.fn}
 							</div>
-						{/each}
+							<div class="min-w-0 font-mono text-xs break-all text-muted-foreground tabular-nums" title={f.raw}>
+								{f.dir}<span class="text-foreground/85">{f.file}</span>{f.lineCol}
+							</div>
+						</li>
+					{:else}
+						<li class="border-l-2 border-l-transparent">
+							<button
+								type="button"
+								class="flex w-full items-center gap-1.5 px-4 py-2 text-left text-xs text-muted-foreground hover:bg-muted/60"
+								onclick={() => toggleGroup(i)}
+							>
+								{#if expandedGroups.has(i)}
+									<ChevronDown class="size-3.5 shrink-0" />
+								{:else}
+									<ChevronRight class="size-3.5 shrink-0" />
+								{/if}
+								<span class="tabular-nums"
+									>{group.frames.length} library {group.frames.length === 1 ? 'frame' : 'frames'}</span
+								>
+								<span class="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground/70"
+									>{group.packageName}</span
+								>
+							</button>
+							{#if expandedGroups.has(i)}
+								<ol role="list" class="divide-y divide-border/50 border-t border-border/50 bg-muted/20">
+									{#each group.frames as frame}
+										{@const f = formatFrame(frame)}
+										<li class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 py-2 pr-4 pl-9">
+											<div class="min-w-0 font-mono text-sm break-all text-muted-foreground">
+												{f.fn}
+											</div>
+											<div
+												class="min-w-0 font-mono text-xs break-all text-muted-foreground/70 tabular-nums"
+												title={f.raw}
+											>
+												{f.dir}<span class="text-foreground/60">{f.file}</span>{f.lineCol}
+											</div>
+										</li>
+									{/each}
+								</ol>
+							{/if}
+						</li>
 					{/if}
-				{/if}
-			{/each}
+				{/each}
+			</ol>
 		</div>
+		{:else}
+		<div class="overflow-x-auto rounded-lg border bg-muted/40 p-4">
+			<pre class="font-mono text-sm break-words whitespace-pre-wrap text-foreground">{stackTrace}</pre>
+		</div>
+		{/if}
 	</Card.Content>
 </Card.Root>

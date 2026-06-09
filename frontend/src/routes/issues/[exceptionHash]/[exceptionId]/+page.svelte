@@ -2,7 +2,7 @@
     import { api } from '$lib/api';
     import { LoadingCircle } from "$lib/components/ui/loading-circle";
     import { ErrorDisplay } from "$lib/components/ui/error-display";
-    import { projectsState } from '$lib/state/projects.svelte';
+    import { projectsState, isJsFramework, isJsLanguage } from '$lib/state/projects.svelte';
     import { getTimezone } from '$lib/state/timezone.svelte';
     import { formatDateTime } from '$lib/utils/formatters';
     import { StackTraceCard, EventCard, EventsTable, PageHeader } from '$lib/components/issues';
@@ -31,6 +31,11 @@
 
 
     const isMessage = $derived(occurrence?.isMessage ?? false);
+    const isJavaScript = $derived(
+        (projectsState.currentProject?.framework
+            ? isJsFramework(projectsState.currentProject.framework)
+            : false) || isJsLanguage(occurrence?.attributes?.['telemetry.sdk.language'])
+    );
     const firstLineOfStackTrace = $derived(occurrence?.stackTrace.split('\n')[0] || 'Exception');
     const hasMoreOccurrences = $derived(total > 10);
     const subtitleText = $derived(occurrence ? `Event from ${formatDateTime(occurrence.recordedAt, { timezone })}` : 'Loading...');
@@ -169,6 +174,7 @@
         <StackTraceCard
             stackTrace={occurrence.stackTrace}
             {isMessage}
+            {isJavaScript}
             bind:showArchiveDialog={showArchiveDialog}
             bind:archiving={archiving}
         />

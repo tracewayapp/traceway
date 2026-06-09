@@ -1,6 +1,7 @@
 package otelcontrollers
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"os"
@@ -94,7 +95,7 @@ func TestConvertTraces_Snapshot(t *testing.T) {
 				t.Fatalf("failed to unmarshal fixture %s: %v", tt.fixture, err)
 			}
 
-			endpoints, _, spans, exceptions, aiTraces, aiConversations := convertTraces(testProjectId, req)
+			endpoints, _, spans, exceptions, aiTraces, aiConversations := convertTraces(context.Background(), testProjectId, req, nil)
 
 			// Check if all child spans share a trace ID with an endpoint
 			endpointIds := map[uuid.UUID]bool{}
@@ -375,7 +376,7 @@ func TestTraceIdResolution_CrossScope(t *testing.T) {
 		},
 	}
 
-	endpoints, _, spans, _, _, _ := convertTraces(testProjectId, req)
+	endpoints, _, spans, _, _, _ := convertTraces(context.Background(), testProjectId, req, nil)
 
 	if len(endpoints) != 1 {
 		t.Fatalf("expected 1 endpoint, got %d", len(endpoints))
@@ -468,7 +469,7 @@ func TestConvertTraces_ConsumerNonRoot_BecomesTask(t *testing.T) {
 		}},
 	}
 
-	endpoints, tasks, spans, _, _, _ := convertTraces(testProjectId, req)
+	endpoints, tasks, spans, _, _, _ := convertTraces(context.Background(), testProjectId, req, nil)
 
 	if len(endpoints) != 0 {
 		t.Fatalf("expected 0 endpoints, got %d", len(endpoints))
@@ -518,7 +519,7 @@ func TestConvertTraces_ConsoleCommand_BecomesTask(t *testing.T) {
 		}},
 	}
 
-	_, tasks, _, _, _, _ := convertTraces(testProjectId, req)
+	_, tasks, _, _, _, _ := convertTraces(context.Background(), testProjectId, req, nil)
 	if len(tasks) != 1 {
 		t.Fatalf("expected 1 task, got %d", len(tasks))
 	}
@@ -550,7 +551,7 @@ func TestConvertTraces_InlineGenAi_BecomesAiTrace(t *testing.T) {
 		}},
 	}
 
-	endpoints, _, _, _, aiTraces, _ := convertTraces(testProjectId, req)
+	endpoints, _, _, _, aiTraces, _ := convertTraces(context.Background(), testProjectId, req, nil)
 	if len(endpoints) != 1 {
 		t.Fatalf("expected 1 endpoint, got %d", len(endpoints))
 	}
@@ -604,7 +605,7 @@ func TestConvertTraces_ExceptionOnConsumer_TraceTypeIsTask(t *testing.T) {
 		}},
 	}
 
-	_, tasks, _, exceptions, _, _ := convertTraces(testProjectId, req)
+	_, tasks, _, exceptions, _, _ := convertTraces(context.Background(), testProjectId, req, nil)
 	if len(tasks) != 1 || len(exceptions) != 1 {
 		t.Fatalf("expected 1 task + 1 exception, got %d / %d", len(tasks), len(exceptions))
 	}
@@ -638,7 +639,7 @@ func TestConvertTraces_OrphanSpan_FallsBackToTraceId(t *testing.T) {
 		}},
 	}
 
-	_, _, spans, _, _, _ := convertTraces(testProjectId, req)
+	_, _, spans, _, _, _ := convertTraces(context.Background(), testProjectId, req, nil)
 	if len(spans) != 1 {
 		t.Fatalf("expected 1 span row, got %d", len(spans))
 	}
@@ -658,5 +659,102 @@ func strKV(key, val string) *commonpb.KeyValue {
 	return &commonpb.KeyValue{
 		Key:   key,
 		Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: val}},
+	}
+}
+
+func strArrayKV(key string, vals ...string) *commonpb.KeyValue {
+	items := make([]*commonpb.AnyValue, len(vals))
+	for i, v := range vals {
+		items[i] = &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: v}}
+	}
+	return &commonpb.KeyValue{Key: key, Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_ArrayValue{ArrayValue: &commonpb.ArrayValue{Values: items}}}}
+}
+
+func intArrayKV(key string, vals ...int64) *commonpb.KeyValue {
+	items := make([]*commonpb.AnyValue, len(vals))
+	for i, v := range vals {
+		items[i] = &commonpb.AnyValue{Value: &commonpb.AnyValue_IntValue{IntValue: v}}
+	}
+	return &commonpb.KeyValue{Key: key, Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_ArrayValue{ArrayValue: &commonpb.ArrayValue{Values: items}}}}
+}
+
+func TestBuildHoneycombStackTrace(t *testing.T) {
+	attrs := []*commonpb.KeyValue{
+		strArrayKV("exception.structured_stacktrace.urls", "https://x/app.js", "https://x/app.js"),
+		strArrayKV("exception.structured_stacktrace.functions", "foo", ""),
+		intArrayKV("exception.structured_stacktrace.lines", 10, 20),
+		intArrayKV("exception.structured_stacktrace.columns", 5, 7),
+	}
+	got, ok := buildHoneycombStackTrace("Error", "boom", attrs)
+	if !ok {
+		t.Fatal("expected ok=true when structured stacktrace present")
+	}
+	want := "Error: boom\nfoo()\n    https://x/app.js:10:5\n    https://x/app.js:20:7"
+	if got != want {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+
+	if _, ok := buildHoneycombStackTrace("Error", "boom", makeAttrs("exception.stacktrace", "x")); ok {
+		t.Error("expected ok=false when the structured field is absent")
+	}
+}
+
+func TestConvertTraces_HoneycombJsExceptionSymbolicates(t *testing.T) {
+	traceId := []byte{0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9, 0xaa, 0xab, 0xac, 0xad, 0xae, 0xaf}
+	spanId := []byte{0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb6, 0xb7}
+	now := uint64(1_700_000_000_000_000_000)
+
+	req := &coltracepb.ExportTraceServiceRequest{
+		ResourceSpans: []*tracepb.ResourceSpans{{
+			Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{
+				strKV("service.name", "web"),
+				strKV("telemetry.sdk.language", "webjs"),
+			}},
+			ScopeSpans: []*tracepb.ScopeSpans{{
+				Spans: []*tracepb.Span{{
+					TraceId: traceId, SpanId: spanId,
+					Name: "GET /", Kind: tracepb.Span_SPAN_KIND_SERVER,
+					StartTimeUnixNano: now, EndTimeUnixNano: now + 1_000_000,
+					Attributes: makeAttrs("http.route", "/"),
+					Events: []*tracepb.Span_Event{{
+						Name:         "exception",
+						TimeUnixNano: now + 500_000,
+						Attributes: []*commonpb.KeyValue{
+							strKV("exception.type", "Error"),
+							strKV("exception.message", "user has no name"),
+							strArrayKV("exception.structured_stacktrace.urls", "app.min.js", "app.min.js"),
+							strArrayKV("exception.structured_stacktrace.functions", "n", ""),
+							intArrayKV("exception.structured_stacktrace.lines", 1, 1),
+							intArrayKV("exception.structured_stacktrace.columns", 63, 146),
+						},
+					}},
+				}},
+			}},
+		}},
+	}
+
+	var symInput, symLang string
+	symbolicate := func(_ context.Context, stackTrace, language, _ string) string {
+		symInput, symLang = stackTrace, language
+		return "RESOLVED"
+	}
+
+	_, _, _, exceptions, _, _ := convertTraces(context.Background(), testProjectId, req, symbolicate)
+	if len(exceptions) != 1 {
+		t.Fatalf("expected 1 exception, got %d", len(exceptions))
+	}
+	exc := exceptions[0]
+	if symLang != "webjs" {
+		t.Errorf("expected language webjs passed to symbolicate, got %q", symLang)
+	}
+	wantParsed := "Error: user has no name\nn()\n    app.min.js:1:63\n    app.min.js:1:146"
+	if symInput != wantParsed {
+		t.Errorf("honeycomb parse:\n got %q\nwant %q", symInput, wantParsed)
+	}
+	if exc.StackTrace != "RESOLVED" {
+		t.Errorf("expected symbolicated stack trace stored, got %q", exc.StackTrace)
+	}
+	if exc.Attributes["telemetry.sdk.language"] != "webjs" {
+		t.Errorf("expected stamped telemetry.sdk.language=webjs, got %q", exc.Attributes["telemetry.sdk.language"])
 	}
 }

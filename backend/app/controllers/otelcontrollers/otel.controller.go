@@ -2,11 +2,13 @@ package otelcontrollers
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/hooks"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
@@ -57,8 +59,36 @@ func (o otelController) ExportTraces(c *gin.Context) {
 		return
 	}
 
+	sourceMapsByVersion := map[string][]*models.SourceMap{}
+	loadSourceMaps := func(version string) []*models.SourceMap {
+		if maps, ok := sourceMapsByVersion[version]; ok {
+			return maps
+		}
+		loaded, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.SourceMap, error) {
+			if version != "" {
+				return repositories.SourceMapRepository.FindByProjectAndVersion(tx, projectId, version)
+			}
+			return repositories.SourceMapRepository.FindLatestByProject(tx, projectId)
+		})
+		if err != nil {
+			loaded = nil
+		}
+		sourceMapsByVersion[version] = loaded
+		return loaded
+	}
+	symbolicate := func(ctx context.Context, stackTrace, language, version string) string {
+		if !isJsLanguage(language) {
+			return stackTrace
+		}
+		maps := loadSourceMaps(version)
+		if len(maps) == 0 {
+			return stackTrace
+		}
+		return services.ResolveStackTrace(ctx, stackTrace, maps)
+	}
+
 	convertStart := time.Now()
-	endpoints, tasks, spans, exceptions, aiTraces, aiConversations := convertTraces(projectId, req)
+	endpoints, tasks, spans, exceptions, aiTraces, aiConversations := convertTraces(c, projectId, req, symbolicate)
 
 	var droppedHealthchecks int
 	endpoints, spans, droppedHealthchecks = services.FilterHealthchecks(project, endpoints, spans, exceptions)

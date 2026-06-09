@@ -50,6 +50,12 @@ export function isJsFramework(fw: Framework): boolean {
 	return JS_FRAMEWORKS.includes(fw);
 }
 
+export const JS_LANGUAGES = ['webjs', 'nodejs', 'javascript', 'typescript'];
+
+export function isJsLanguage(lang?: string | null): boolean {
+	return !!lang && JS_LANGUAGES.includes(lang.toLowerCase());
+}
+
 export function isOtelFramework(fw: Framework): boolean {
 	return fw === 'opentelemetry' || fw === 'hono';
 }

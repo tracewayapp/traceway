@@ -162,3 +162,54 @@ func getStringValues(attrs []*commonpb.KeyValue, key string) []string {
 	}
 	return out
 }
+
+func getStringArray(attrs []*commonpb.KeyValue, key string) []string {
+	for _, kv := range attrs {
+		if kv.Key != key || kv.Value == nil {
+			continue
+		}
+		av, ok := kv.Value.Value.(*commonpb.AnyValue_ArrayValue)
+		if !ok || av.ArrayValue == nil {
+			continue
+		}
+		out := make([]string, 0, len(av.ArrayValue.Values))
+		for _, item := range av.ArrayValue.Values {
+			s := ""
+			if item != nil {
+				if sv, ok := item.Value.(*commonpb.AnyValue_StringValue); ok {
+					s = sv.StringValue
+				}
+			}
+			out = append(out, s)
+		}
+		return out
+	}
+	return nil
+}
+
+func getIntArray(attrs []*commonpb.KeyValue, key string) []int64 {
+	for _, kv := range attrs {
+		if kv.Key != key || kv.Value == nil {
+			continue
+		}
+		av, ok := kv.Value.Value.(*commonpb.AnyValue_ArrayValue)
+		if !ok || av.ArrayValue == nil {
+			continue
+		}
+		out := make([]int64, 0, len(av.ArrayValue.Values))
+		for _, item := range av.ArrayValue.Values {
+			var n int64
+			if item != nil {
+				switch iv := item.Value.(type) {
+				case *commonpb.AnyValue_IntValue:
+					n = iv.IntValue
+				case *commonpb.AnyValue_DoubleValue:
+					n = int64(iv.DoubleValue)
+				}
+			}
+			out = append(out, n)
+		}
+		return out
+	}
+	return nil
+}

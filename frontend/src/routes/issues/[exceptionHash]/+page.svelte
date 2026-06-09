@@ -6,7 +6,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
-	import { projectsState } from '$lib/state/projects.svelte';
+	import { projectsState, isJsFramework, isJsLanguage } from '$lib/state/projects.svelte';
 	import { StackTraceCard, EventCard, EventsTable, PageHeader } from '$lib/components/issues';
 	import { toast } from 'svelte-sonner';
 	import ArchiveConfirmationDialog from '$lib/components/archive-confirmation-dialog.svelte';
@@ -35,6 +35,11 @@
 	const exceptionHash = $derived(page.params.exceptionHash ?? '');
 	const latestOccurrence = $derived(occurrences[0]);
 	const isMessage = $derived(latestOccurrence?.isMessage ?? false);
+	const isJavaScript = $derived(
+		(projectsState.currentProject?.framework
+			? isJsFramework(projectsState.currentProject.framework)
+			: false) || isJsLanguage(latestOccurrence?.attributes?.['telemetry.sdk.language'])
+	);
 	const hasMoreOccurrences = $derived(total > 10);
 	const firstLineOfStackTrace = $derived(latestOccurrence?.stackTrace.split('\n')[0] || 'Exception');
 
@@ -163,6 +168,7 @@
 		<StackTraceCard
 			stackTrace={latestOccurrence?.stackTrace ?? group.stackTrace}
 			{isMessage}
+			{isJavaScript}
 			firstSeen={group.firstSeen}
 			lastSeen={group.lastSeen}
 			totalCount={group.count}

@@ -1,6 +1,7 @@
 package otelcontrollers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -41,7 +42,7 @@ func (k entityKind) traceType() string {
 	return ""
 }
 
-func convertTraces(projectId uuid.UUID, req *coltracepb.ExportTraceServiceRequest) (
+func convertTraces(ctx context.Context, projectId uuid.UUID, req *coltracepb.ExportTraceServiceRequest, symbolicate symbolicateFunc) (
 	endpoints []models.Endpoint,
 	tasks []models.Task,
 	spans []models.Span,
@@ -54,6 +55,7 @@ func convertTraces(projectId uuid.UUID, req *coltracepb.ExportTraceServiceReques
 		resourceAttrs := rs.GetResource().GetAttributes()
 		serverName := getStringAttribute(resourceAttrs, "service.name")
 		appVersion := getStringAttribute(resourceAttrs, "service.version")
+		language := getStringAttribute(resourceAttrs, "telemetry.sdk.language")
 		if appVersion == "" {
 			if scriptVersionId := getStringAttribute(resourceAttrs, "cloudflare.script_version.id"); scriptVersionId != "" {
 				if idx := strings.LastIndex(scriptVersionId, "-"); idx != -1 {
@@ -264,8 +266,8 @@ func convertTraces(projectId uuid.UUID, req *coltracepb.ExportTraceServiceReques
 			for _, event := range span.Events {
 				if event.Name == "exception" {
 					exc := buildException(
-						projectId, ownerId, traceType, event,
-						allAttrs, serverName, appVersion,
+						ctx, projectId, ownerId, traceType, event,
+						allAttrs, serverName, appVersion, language, symbolicate,
 					)
 					if owner != nil {
 						exc.DistributedTraceId = owner.distributedTraceId
@@ -439,20 +441,38 @@ func buildTask(
 	}
 }
 
+type symbolicateFunc func(ctx context.Context, stackTrace, language, version string) string
+
 func buildException(
+	ctx context.Context,
 	projectId, traceId uuid.UUID,
 	traceType string,
 	event *tracepb.Span_Event,
 	spanAttrs map[string]string,
-	serverName, appVersion string,
+	serverName, appVersion, language string,
+	symbolicate symbolicateFunc,
 ) models.ExceptionStackTrace {
 	eventAttrs := event.Attributes
 	excType := getStringAttribute(eventAttrs, "exception.type")
 	excMessage := getStringAttribute(eventAttrs, "exception.message")
-	excStacktrace := getStringAttribute(eventAttrs, "exception.stacktrace")
 
-	stackTrace := formatExceptionStackTrace(excType, excMessage, excStacktrace)
+	stackTrace, ok := buildHoneycombStackTrace(excType, excMessage, eventAttrs)
+	if !ok {
+		excStacktrace := getStringAttribute(eventAttrs, "exception.stacktrace")
+		stackTrace = formatExceptionStackTrace(excType, excMessage, excStacktrace)
+	}
+
+	if symbolicate != nil {
+		stackTrace = symbolicate(ctx, stackTrace, language, appVersion)
+	}
+
 	hash := clientcontrollers.ComputeExceptionHash(stackTrace, false)
+
+	attrs := spanAttrs
+	if isJsLanguage(language) {
+		attrs = cloneStringMap(spanAttrs)
+		attrs["telemetry.sdk.language"] = language
+	}
 
 	return models.ExceptionStackTrace{
 		Id:            uuid.New(),
@@ -462,10 +482,63 @@ func buildException(
 		ExceptionHash: hash,
 		StackTrace:    stackTrace,
 		RecordedAt:    nanoToTime(event.TimeUnixNano),
-		Attributes:    spanAttrs,
+		Attributes:    attrs,
 		AppVersion:    appVersion,
 		ServerName:    serverName,
 	}
+}
+
+func cloneStringMap(m map[string]string) map[string]string {
+	out := make(map[string]string, len(m)+1)
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
+func isJsLanguage(lang string) bool {
+	switch strings.ToLower(lang) {
+	case "webjs", "nodejs", "javascript", "typescript":
+		return true
+	}
+	return false
+}
+
+func buildHoneycombStackTrace(excType, excMessage string, eventAttrs []*commonpb.KeyValue) (string, bool) {
+	urls := getStringArray(eventAttrs, "exception.structured_stacktrace.urls")
+	if len(urls) == 0 {
+		return "", false
+	}
+	functions := getStringArray(eventAttrs, "exception.structured_stacktrace.functions")
+	lines := getIntArray(eventAttrs, "exception.structured_stacktrace.lines")
+	columns := getIntArray(eventAttrs, "exception.structured_stacktrace.columns")
+
+	at := func(s []string, i int) string {
+		if i < len(s) {
+			return s[i]
+		}
+		return ""
+	}
+	atInt := func(s []int64, i int) int64 {
+		if i < len(s) {
+			return s[i]
+		}
+		return 0
+	}
+
+	var b strings.Builder
+	if header := formatExceptionStackTrace(excType, excMessage, ""); header != "unknown exception" {
+		b.WriteString(header)
+		b.WriteByte('\n')
+	}
+	for i, url := range urls {
+		if fn := at(functions, i); fn != "" {
+			b.WriteString(fn)
+			b.WriteString("()\n")
+		}
+		fmt.Fprintf(&b, "    %s:%d:%d\n", url, atInt(lines, i), atInt(columns, i))
+	}
+	return strings.TrimRight(b.String(), "\n"), true
 }
 
 func hasGenAiAttributes(attrs []*commonpb.KeyValue) bool {

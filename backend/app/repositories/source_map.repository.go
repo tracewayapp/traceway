@@ -50,4 +50,12 @@ func (s *sourceMapRepository) FindByProjectVersionAndFileName(tx *sql.Tx, projec
 	)
 }
 
+func (s *sourceMapRepository) FindByProjectAndDebugId(tx *sql.Tx, projectId uuid.UUID, debugId string) ([]*models.SourceMap, error) {
+	return lit.SelectNamed[models.SourceMap](
+		tx,
+		"SELECT * FROM source_maps WHERE project_id = :project_id AND debug_id = :debug_id",
+		lit.P{"project_id": projectId, "debug_id": debugId},
+	)
+}
+
 var SourceMapRepository = sourceMapRepository{}

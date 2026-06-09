@@ -163,7 +163,7 @@ func (e clientController) Report(c *gin.Context) {
 		for _, cst := range cf.StackTraces {
 			resolvedStackTrace := cst.StackTrace
 			if sourceMaps != nil {
-				resolvedStackTrace = services.ResolveStackTrace(c, projectId, cst.StackTrace, *sourceMaps)
+				resolvedStackTrace = services.ResolveStackTrace(c, cst.StackTrace, *sourceMaps)
 			}
 			est := cst.ToExceptionStackTrace(ComputeExceptionHash(resolvedStackTrace, cst.IsMessage), request.AppVersion, request.ServerName)
 			est.StackTrace = resolvedStackTrace

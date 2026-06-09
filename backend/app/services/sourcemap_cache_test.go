@@ -11,17 +11,30 @@ import (
 
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/storage"
-
-	"github.com/google/uuid"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator"
 )
 
 func newTestSourceMapCache(maxEntries int, maxBytes int64) *sourceMapCache {
 	return &sourceMapCache{
 		items:      make(map[string]*list.Element),
 		order:      list.New(),
-		loading:    make(map[string]*sourceMapLoad),
+		loading:    make(map[string]*resolverLoad),
 		maxEntries: maxEntries,
 		maxBytes:   maxBytes,
+	}
+}
+
+func storageResolverBuild(key string) resolverBuild {
+	return func(ctx context.Context) (*symbolicator.Resolver, int64, error) {
+		data, err := storage.Store.Read(ctx, key)
+		if err != nil {
+			return nil, 0, err
+		}
+		r, err := symbolicator.NewResolver(data, nil)
+		if err != nil {
+			return nil, 0, err
+		}
+		return r, int64(len(data)), nil
 	}
 }
 
@@ -60,18 +73,18 @@ func TestSourceMapCacheSingleflight(t *testing.T) {
 	c := newTestSourceMapCache(10, 1<<20)
 
 	const n = 16
-	results := make([]*parsedSourceMap, n)
+	results := make([]*symbolicator.Resolver, n)
 	var wg sync.WaitGroup
 	start := make(chan struct{})
 	for i := range n {
 		wg.Go(func() {
 			<-start
-			sm, err := c.getOrLoad(context.Background(), "singleflight-test.js.map")
+			r, err := c.getOrBuild(context.Background(), "singleflight-test.js.map", storageResolverBuild("singleflight-test.js.map"))
 			if err != nil {
 				t.Error(err)
 				return
 			}
-			results[i] = sm
+			results[i] = r
 		})
 	}
 	close(start)
@@ -82,11 +95,11 @@ func TestSourceMapCacheSingleflight(t *testing.T) {
 	}
 	for i := 1; i < n; i++ {
 		if results[i] != results[0] {
-			t.Fatal("expected all callers to share a single parsed instance")
+			t.Fatal("expected all callers to share a single resolver instance")
 		}
 	}
 
-	if _, err := c.getOrLoad(context.Background(), "singleflight-test.js.map"); err != nil {
+	if _, err := c.getOrBuild(context.Background(), "singleflight-test.js.map", storageResolverBuild("singleflight-test.js.map")); err != nil {
 		t.Fatal(err)
 	}
 	if got := cs.reads["singleflight-test.js.map"]; got != 1 {
@@ -107,16 +120,17 @@ func TestSourceMapCacheDistinctKeysConcurrent(t *testing.T) {
 
 	var wg sync.WaitGroup
 	start := make(chan struct{})
-	results := make([]*parsedSourceMap, keys*4)
+	results := make([]*symbolicator.Resolver, keys*4)
 	for i := range keys * 4 {
 		wg.Go(func() {
 			<-start
-			sm, err := c.getOrLoad(context.Background(), fmt.Sprintf("distinct-%d.js.map", i%keys))
+			key := fmt.Sprintf("distinct-%d.js.map", i%keys)
+			r, err := c.getOrBuild(context.Background(), key, storageResolverBuild(key))
 			if err != nil {
 				t.Error(err)
 				return
 			}
-			results[i] = sm
+			results[i] = r
 		})
 	}
 	close(start)
@@ -161,7 +175,7 @@ func TestSourceMapCacheFailedLoadRetries(t *testing.T) {
 	storage.Store = fs
 	c := newTestSourceMapCache(10, 1<<20)
 
-	if _, err := c.getOrLoad(context.Background(), "flaky.js.map"); err == nil {
+	if _, err := c.getOrBuild(context.Background(), "flaky.js.map", storageResolverBuild("flaky.js.map")); err == nil {
 		t.Fatal("expected first load to fail")
 	}
 	c.mu.Lock()
@@ -169,14 +183,14 @@ func TestSourceMapCacheFailedLoadRetries(t *testing.T) {
 		t.Errorf("expected 1 recorded failure, got %d", c.failures)
 	}
 	c.mu.Unlock()
-	sm, err := c.getOrLoad(context.Background(), "flaky.js.map")
-	if err != nil || sm == nil {
+	r, err := c.getOrBuild(context.Background(), "flaky.js.map", storageResolverBuild("flaky.js.map"))
+	if err != nil || r == nil {
 		t.Fatalf("expected retry to succeed, got %v", err)
 	}
 	if fs.reads != 2 {
 		t.Errorf("expected 2 storage reads (fail then retry), got %d", fs.reads)
 	}
-	if _, err := c.getOrLoad(context.Background(), "flaky.js.map"); err != nil {
+	if _, err := c.getOrBuild(context.Background(), "flaky.js.map", storageResolverBuild("flaky.js.map")); err != nil {
 		t.Fatal(err)
 	}
 	if fs.reads != 2 {
@@ -203,13 +217,13 @@ func TestSourceMapCachePanicRecovery(t *testing.T) {
 	c := newTestSourceMapCache(10, 1<<20)
 
 	type result struct {
-		sm  *parsedSourceMap
-		err error
+		resolver *symbolicator.Resolver
+		err      error
 	}
 	leader := make(chan result, 1)
 	go func() {
-		sm, err := c.getOrLoad(context.Background(), "boom.js.map")
-		leader <- result{sm, err}
+		r, err := c.getOrBuild(context.Background(), "boom.js.map", storageResolverBuild("boom.js.map"))
+		leader <- result{r, err}
 	}()
 
 	deadline := time.Now().Add(2 * time.Second)
@@ -229,21 +243,21 @@ func TestSourceMapCachePanicRecovery(t *testing.T) {
 	waiters := make(chan result, 2)
 	for range 2 {
 		go func() {
-			sm, err := c.getOrLoad(context.Background(), "boom.js.map")
-			waiters <- result{sm, err}
+			r, err := c.getOrBuild(context.Background(), "boom.js.map", storageResolverBuild("boom.js.map"))
+			waiters <- result{r, err}
 		}()
 	}
 
 	close(release)
 
 	r := <-leader
-	if r.err == nil || r.sm != nil {
-		t.Fatalf("expected leader to receive panic error, got sm=%v err=%v", r.sm, r.err)
+	if r.err == nil || r.resolver != nil {
+		t.Fatalf("expected leader to receive panic error, got resolver=%v err=%v", r.resolver, r.err)
 	}
 	for range 2 {
 		r := <-waiters
-		if r.err == nil || r.sm != nil {
-			t.Fatalf("expected waiter to receive an error, got sm=%v err=%v", r.sm, r.err)
+		if r.err == nil || r.resolver != nil {
+			t.Fatalf("expected waiter to receive an error, got resolver=%v err=%v", r.resolver, r.err)
 		}
 	}
 
@@ -269,7 +283,7 @@ func TestResolveStackTraceFailedMapAttemptedOncePerTrace(t *testing.T) {
 	sourceMaps := []*models.SourceMap{{FileName: "dead.js.map", StorageKey: "dead.js.map"}}
 	trace := "Error: boom\n    fn()\n    dead.js:1:10\n    fn2()\n    dead.js:1:20\n    fn3()\n    dead.js:1:30"
 
-	resolved := ResolveStackTrace(context.Background(), uuid.New(), trace, sourceMaps)
+	resolved := ResolveStackTrace(context.Background(), trace, sourceMaps)
 	if resolved != trace {
 		t.Error("trace should be stored as-is when its source map cannot be loaded")
 	}
@@ -293,7 +307,7 @@ func TestSourceMapCacheByteCapEviction(t *testing.T) {
 	for i := range 3 {
 		key := fmt.Sprintf("evict-%d.js.map", i)
 		cs.data[key] = fmt.Appendf(nil, `{"version":3,"sources":["a.js"],"sourcesContent":[%q],"names":[],"mappings":"AAAA"}`, content)
-		if _, err := c.getOrLoad(context.Background(), key); err != nil {
+		if _, err := c.getOrBuild(context.Background(), key, storageResolverBuild(key)); err != nil {
 			t.Fatal(err)
 		}
 	}

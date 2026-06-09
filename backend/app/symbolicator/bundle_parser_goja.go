@@ -10,9 +10,7 @@ import (
 	"github.com/dop251/goja/parser"
 )
 
-type GojaBundleParser struct{}
-
-func (GojaBundleParser) Parse(bundle []byte) (FunctionScopes, error) {
+func parseFunctionScopes(bundle []byte) (*functionScopes, error) {
 	src := string(bundle)
 	prog, err := parser.ParseFile(nil, "", src, 0, parser.WithDisableSourceMaps)
 	if err != nil {
@@ -45,7 +43,7 @@ func (GojaBundleParser) Parse(bundle []byte) (FunctionScopes, error) {
 			nameLine: name.line, nameCol: name.col,
 		}
 	}
-	return &functionScopes{scopes: scopes}, nil
+	return &functionScopes{transitions: buildTransitions(scopes)}, nil
 }
 
 type genScope struct {
@@ -55,35 +53,97 @@ type genScope struct {
 }
 
 type functionScopes struct {
-	scopes []genScope
+	transitions []scopeTransition // sorted by generated position
 }
 
-func (fs *functionScopes) EnclosingFunction(genLine, genCol uint32) (uint32, uint32, bool) {
-	best := -1
-	for i := range fs.scopes {
-		s := &fs.scopes[i]
-		if !lessEq(s.startLine, s.startCol, genLine, genCol) {
+// scopeTransition marks that, from this generated position onward, the
+// innermost enclosing function's name token is at (nameLine, nameCol). has is
+// false when no function encloses the range (global scope).
+type scopeTransition struct {
+	line, col         uint32
+	nameLine, nameCol uint32
+	has               bool
+}
+
+type scopeEvent struct {
+	line, col uint32
+	start     bool
+	scope     int
+}
+
+// buildTransitions flattens the well-nested function scopes into a sorted list
+// of transitions in a single sweep, so the resolver can find the enclosing
+// function of any token with a linear merge instead of scanning every scope per
+// token.
+func buildTransitions(scopes []genScope) []scopeTransition {
+	events := make([]scopeEvent, 0, len(scopes)*2)
+	for i := range scopes {
+		s := scopes[i]
+		if !less(s.startLine, s.startCol, s.endLine, s.endCol) {
 			continue
 		}
-		if !less(genLine, genCol, s.endLine, s.endCol) {
-			continue
+		events = append(events,
+			scopeEvent{line: s.startLine, col: s.startCol, start: true, scope: i},
+			scopeEvent{line: s.endLine, col: s.endCol, start: false, scope: i},
+		)
+	}
+	slices.SortFunc(events, func(a, b scopeEvent) int {
+		if a.line != b.line {
+			return int(a.line) - int(b.line)
 		}
-		if best < 0 || less(fs.scopes[best].startLine, fs.scopes[best].startCol, s.startLine, s.startCol) {
-			best = i
+		if a.col != b.col {
+			return int(a.col) - int(b.col)
+		}
+		if a.start == b.start {
+			return 0
+		}
+		if !a.start { // a scope ending here closes before another opens
+			return -1
+		}
+		return 1
+	})
+
+	var transitions []scopeTransition
+	stack := make([]int, 0, 16)
+	var lastNameLine, lastNameCol uint32
+	lastHas, haveLast := false, false
+
+	for i := 0; i < len(events); {
+		line, col := events[i].line, events[i].col
+		for i < len(events) && events[i].line == line && events[i].col == col {
+			if events[i].start {
+				stack = append(stack, events[i].scope)
+			} else {
+				stack = removeFromStack(stack, events[i].scope)
+			}
+			i++
+		}
+
+		var nameLine, nameCol uint32
+		has := false
+		if len(stack) > 0 {
+			top := scopes[stack[len(stack)-1]]
+			nameLine, nameCol, has = top.nameLine, top.nameCol, true
+		}
+		if !haveLast || has != lastHas || nameLine != lastNameLine || nameCol != lastNameCol {
+			transitions = append(transitions, scopeTransition{line: line, col: col, nameLine: nameLine, nameCol: nameCol, has: has})
+			lastNameLine, lastNameCol, lastHas, haveLast = nameLine, nameCol, has, true
 		}
 	}
-	if best < 0 {
-		return 0, 0, false
+	return transitions
+}
+
+func removeFromStack(stack []int, scope int) []int {
+	for i := len(stack) - 1; i >= 0; i-- {
+		if stack[i] == scope {
+			return append(stack[:i], stack[i+1:]...)
+		}
 	}
-	return fs.scopes[best].nameLine, fs.scopes[best].nameCol, true
+	return stack
 }
 
 func less(aLine, aCol, bLine, bCol uint32) bool {
 	return aLine < bLine || (aLine == bLine && aCol < bCol)
-}
-
-func lessEq(aLine, aCol, bLine, bCol uint32) bool {
-	return aLine < bLine || (aLine == bLine && aCol <= bCol)
 }
 
 type genPos struct {

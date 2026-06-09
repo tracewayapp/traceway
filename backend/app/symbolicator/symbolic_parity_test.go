@@ -130,7 +130,7 @@ func TestSymbolicParity(t *testing.T) {
 			mapBytes := mustRead(t, fixture(t, tc.mapPath...))
 			bundle := readIfSet(t, tc.minifiedPath)
 
-			r, err := NewResolver(GoSourceMapParser{}, GojaBundleParser{}, mapBytes, bundle)
+			r, err := NewResolver(mapBytes, bundle)
 			if err != nil {
 				t.Fatalf("NewResolver: %v", err)
 			}

@@ -1,0 +1,1 @@
+ALTER TABLE source_maps ADD COLUMN debug_id TEXT NOT NULL DEFAULT ''

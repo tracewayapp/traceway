@@ -7,9 +7,12 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -18,6 +21,37 @@ import (
 )
 
 type sourceMapController struct{}
+
+var jsDebugIdRe = regexp.MustCompile(`//# debugId=([0-9a-fA-F-]{36})`)
+
+func isSourceArtifact(name string) bool {
+	switch filepath.Ext(name) {
+	case ".map", ".js", ".cjs", ".mjs":
+		return true
+	default:
+		return false
+	}
+}
+
+func extractDebugId(fileName string, data []byte) string {
+	if strings.HasSuffix(fileName, ".map") {
+		var m struct {
+			DebugId      string `json:"debugId"`
+			DebugIdSnake string `json:"debug_id"`
+		}
+		if err := json.Unmarshal(data, &m); err == nil {
+			if m.DebugId != "" {
+				return m.DebugId
+			}
+			return m.DebugIdSnake
+		}
+		return ""
+	}
+	if match := jsDebugIdRe.FindSubmatch(data); match != nil {
+		return string(match[1])
+	}
+	return ""
+}
 
 func (s sourceMapController) Upload(c *gin.Context) {
 	projectId, err := middleware.GetProjectId(c)
@@ -44,7 +78,7 @@ func (s sourceMapController) Upload(c *gin.Context) {
 
 	uploaded := 0
 	for _, fileHeader := range files {
-		if !strings.HasSuffix(fileHeader.Filename, ".map") {
+		if !isSourceArtifact(fileHeader.Filename) {
 			continue
 		}
 
@@ -66,6 +100,7 @@ func (s sourceMapController) Upload(c *gin.Context) {
 			return
 		}
 
+		debugId := extractDebugId(fileHeader.Filename, data)
 		storageKey := fmt.Sprintf("sourcemaps/%s/%s/%s", projectId, version, fileHeader.Filename)
 
 		if err := storage.Store.Write(c, storageKey, data); err != nil {
@@ -81,6 +116,7 @@ func (s sourceMapController) Upload(c *gin.Context) {
 			if existing != nil {
 				existing.StorageKey = storageKey
 				existing.FileSize = fileHeader.Size
+				existing.DebugId = debugId
 				existing.UploadedAt = time.Now().UTC()
 				return existing, repositories.SourceMapRepository.Update(tx, existing)
 			}
@@ -88,6 +124,7 @@ func (s sourceMapController) Upload(c *gin.Context) {
 				ProjectId:  projectId,
 				Version:    version,
 				FileName:   fileHeader.Filename,
+				DebugId:    debugId,
 				StorageKey: storageKey,
 				FileSize:   fileHeader.Size,
 			})

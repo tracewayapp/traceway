@@ -4,7 +4,6 @@ import (
 	"container/list"
 	"context"
 	"fmt"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -12,9 +11,8 @@ import (
 	"time"
 
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/storage"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator"
 
-	"github.com/google/uuid"
 	traceway "go.tracewayapp.com"
 )
 
@@ -25,7 +23,7 @@ type sourceMapCache struct {
 	mu                  sync.Mutex
 	items               map[string]*list.Element
 	order               *list.List
-	loading             map[string]*sourceMapLoad
+	loading             map[string]*resolverLoad
 	maxEntries          int
 	maxBytes            int64
 	curBytes            int64
@@ -39,20 +37,21 @@ type sourceMapCache struct {
 }
 
 type sourceMapCacheEntry struct {
-	key string
-	sm  *parsedSourceMap
+	key      string
+	resolver *symbolicator.Resolver
+	size     int64
 }
 
-type sourceMapLoad struct {
-	done chan struct{}
-	sm   *parsedSourceMap
-	err  error
+type resolverLoad struct {
+	done     chan struct{}
+	resolver *symbolicator.Resolver
+	err      error
 }
 
 var smCache = &sourceMapCache{
 	items:      make(map[string]*list.Element),
 	order:      list.New(),
-	loading:    make(map[string]*sourceMapLoad),
+	loading:    make(map[string]*resolverLoad),
 	maxEntries: 200,
 	maxBytes:   500 << 20,
 }
@@ -65,12 +64,12 @@ func InitSourceMapCache(maxEntries int, maxBytes int64) {
 	smCache.evictLocked()
 }
 
-func (c *sourceMapCache) getOrLoad(ctx context.Context, key string) (sm *parsedSourceMap, err error) {
+func (c *sourceMapCache) getOrBuild(ctx context.Context, key string, build resolverBuild) (resolver *symbolicator.Resolver, err error) {
 	c.mu.Lock()
 	if el, ok := c.items[key]; ok {
 		c.hits++
 		c.order.MoveToFront(el)
-		cached := el.Value.(*sourceMapCacheEntry).sm
+		cached := el.Value.(*sourceMapCacheEntry).resolver
 		c.mu.Unlock()
 		return cached, nil
 	}
@@ -82,26 +81,27 @@ func (c *sourceMapCache) getOrLoad(ctx context.Context, key string) (sm *parsedS
 			c.hits++
 			c.mu.Unlock()
 		}
-		return l.sm, l.err
+		return l.resolver, l.err
 	}
 	c.misses++
-	l := &sourceMapLoad{done: make(chan struct{})}
+	l := &resolverLoad{done: make(chan struct{})}
 	c.loading[key] = l
 	c.mu.Unlock()
 
-	var parseMs float64
+	var size int64
+	var buildMs float64
 	defer func() {
 		if r := recover(); r != nil {
-			l.sm = nil
-			l.err = fmt.Errorf("source map load panicked (key=%s): %v", key, r)
+			l.resolver = nil
+			l.err = fmt.Errorf("source map resolver build panicked (key=%s): %v", key, r)
 			c.reportLoadFailure(l.err)
-			sm, err = nil, l.err
+			resolver, err = nil, l.err
 		}
 		c.mu.Lock()
 		delete(c.loading, key)
-		if l.err == nil && l.sm != nil {
-			c.lastParseMs = parseMs
-			c.insertLocked(key, l.sm)
+		if l.err == nil && l.resolver != nil {
+			c.lastParseMs = buildMs
+			c.insertLocked(key, l.resolver, size)
 		} else {
 			c.failures++
 		}
@@ -109,26 +109,13 @@ func (c *sourceMapCache) getOrLoad(ctx context.Context, key string) (sm *parsedS
 		close(l.done)
 	}()
 
-	l.sm, parseMs, l.err = c.load(ctx, key)
-	return l.sm, l.err
-}
-
-func (c *sourceMapCache) load(ctx context.Context, key string) (*parsedSourceMap, float64, error) {
-	readCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sourceMapLoadTimeout)
-	defer cancel()
-	data, err := storage.Store.Read(readCtx, key)
-	if err != nil {
-		c.reportLoadFailure(fmt.Errorf("failed to read source map from storage (key=%s): %w", key, err))
-		return nil, 0, err
+	start := time.Now()
+	l.resolver, size, l.err = build(ctx)
+	buildMs = float64(time.Since(start).Microseconds()) / 1000.0
+	if l.err != nil {
+		c.reportLoadFailure(fmt.Errorf("failed to build source map resolver (key=%s): %w", key, l.err))
 	}
-
-	parseStart := time.Now()
-	sm, err := parseSourceMap(data)
-	if err != nil {
-		c.reportLoadFailure(fmt.Errorf("failed to parse source map (key=%s): %w", key, err))
-		return nil, 0, err
-	}
-	return sm, float64(time.Since(parseStart).Microseconds()) / 1000.0, nil
+	return l.resolver, l.err
 }
 
 func (c *sourceMapCache) reportLoadFailure(err error) {
@@ -142,14 +129,14 @@ func (c *sourceMapCache) reportLoadFailure(err error) {
 	}
 	c.mu.Unlock()
 	if report > 0 {
-		traceway.CaptureException(fmt.Errorf("source map loads failed %d time(s) since last report: %w", report, err))
+		traceway.CaptureException(fmt.Errorf("source map resolver builds failed %d time(s) since last report: %w", report, err))
 	}
 }
 
-func (c *sourceMapCache) insertLocked(key string, sm *parsedSourceMap) {
-	el := c.order.PushFront(&sourceMapCacheEntry{key: key, sm: sm})
+func (c *sourceMapCache) insertLocked(key string, resolver *symbolicator.Resolver, size int64) {
+	el := c.order.PushFront(&sourceMapCacheEntry{key: key, resolver: resolver, size: size})
 	c.items[key] = el
-	c.curBytes += sm.size
+	c.curBytes += size
 	c.evictLocked()
 }
 
@@ -161,7 +148,7 @@ func (c *sourceMapCache) evictLocked() {
 		}
 		evicted := c.order.Remove(back).(*sourceMapCacheEntry)
 		delete(c.items, evicted.key)
-		c.curBytes -= evicted.sm.size
+		c.curBytes -= evicted.size
 		c.evictions++
 	}
 }
@@ -195,35 +182,20 @@ func SourceMapStats() SourceMapCacheStats {
 }
 
 var stackFrameRe = regexp.MustCompile(`^(\s{4})(.+):(\d+):(\d+)$`)
-var jsFuncDeclRe = regexp.MustCompile(
-	`(?:(?:export\s+(?:default\s+)?)?function\s+(\w+)` +
-		`|(?:const|let|var)\s+(\w+)\s*=` +
-		`|^\s*(?:async\s+)?(\w+)\s*\([^)]*\)\s*\{)`,
-)
 
-var jsControlFlowKeywords = map[string]bool{
-	"if": true, "for": true, "while": true, "switch": true,
-	"catch": true, "return": true, "throw": true, "else": true,
-}
-
-func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace string, sourceMaps []*models.SourceMap) string {
+func ResolveStackTrace(ctx context.Context, stackTrace string, sourceMaps []*models.SourceMap) string {
 	if len(sourceMaps) == 0 {
 		return stackTrace
 	}
 
-	smByBasename := make(map[string]*models.SourceMap)
-	for _, sm := range sourceMaps {
-		smByBasename[sm.FileName] = sm
-		base := filepath.Base(sm.FileName)
-		smByBasename[base] = sm
-	}
+	store := newTracewayStore(sourceMaps)
 
 	lines := strings.Split(stackTrace, "\n")
 	resolved := make([]string, 0, len(lines))
 	framesResolved := 0
 	maxFrames := 50
 
-	localMaps := make(map[string]*parsedSourceMap)
+	localResolvers := make(map[string]*symbolicator.Resolver)
 
 	for _, line := range lines {
 		if framesResolved >= maxFrames {
@@ -242,43 +214,38 @@ func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace stri
 		lineNum, _ := strconv.Atoi(matches[3])
 		colNum, _ := strconv.Atoi(matches[4])
 
-		sm := findSourceMap(fileName, smByBasename)
-		if sm == nil {
-			resolved = append(resolved, line)
-			continue
-		}
-
-		pm, err := getSourceMap(ctx, sm.StorageKey, localMaps)
-		if err != nil || pm == nil {
-			resolved = append(resolved, line)
-			continue
-		}
-
-		origFile, origName, origLine, origCol, ok := pm.source(lineNum, colNum-1)
+		cacheKey, build, ok := store.Resolve(ctx, FrameRef{URL: fileName})
 		if !ok {
 			resolved = append(resolved, line)
 			continue
 		}
 
-		if content := pm.sourceContent(origFile); content != "" {
-			if extracted := extractFunctionName(content, origLine); extracted != "" {
-				origName = extracted
-			}
+		resolver, err := getResolver(ctx, cacheKey, build, localResolvers)
+		if err != nil || resolver == nil {
+			resolved = append(resolved, line)
+			continue
 		}
 
-		if origFile == "" {
-			origFile = "<unknown>"
+		frame, ok := resolver.Lookup(uint32(lineNum-1), uint32(colNum-1))
+		if !ok {
+			resolved = append(resolved, line)
+			continue
 		}
 
-		resolved = append(resolved, fmt.Sprintf("%s%s:%d:%d", indent, origFile, origLine, origCol+1))
+		file := frame.File
+		if file == "" {
+			file = "<unknown>"
+		}
+
+		resolved = append(resolved, fmt.Sprintf("%s%s:%d:%d", indent, file, frame.Line, frame.Col))
 		framesResolved++
 
-		if origName != "" && len(resolved) >= 2 {
+		if frame.Fn != "" && len(resolved) >= 2 {
 			prev := resolved[len(resolved)-2]
 			if strings.HasSuffix(strings.TrimSpace(prev), "()") {
 				trimmed := strings.TrimSpace(prev)
-				indent := prev[:len(prev)-len(trimmed)]
-				resolved[len(resolved)-2] = indent + origName + "()"
+				prevIndent := prev[:len(prev)-len(trimmed)]
+				resolved[len(resolved)-2] = prevIndent + frame.Fn + "()"
 			}
 		}
 	}
@@ -286,53 +253,15 @@ func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace stri
 	return strings.Join(resolved, "\n")
 }
 
-func findSourceMap(stackFile string, smByBasename map[string]*models.SourceMap) *models.SourceMap {
-	mapName := stackFile + ".map"
-	if sm, ok := smByBasename[mapName]; ok {
-		return sm
+func getResolver(ctx context.Context, cacheKey string, build resolverBuild, local map[string]*symbolicator.Resolver) (*symbolicator.Resolver, error) {
+	if r, ok := local[cacheKey]; ok {
+		return r, nil
 	}
-
-	base := filepath.Base(stackFile) + ".map"
-	if sm, ok := smByBasename[base]; ok {
-		return sm
-	}
-
-	cleanName := stackFile
-	if idx := strings.IndexAny(cleanName, "?#"); idx != -1 {
-		cleanName = cleanName[:idx]
-	}
-	mapName = filepath.Base(cleanName) + ".map"
-	if sm, ok := smByBasename[mapName]; ok {
-		return sm
-	}
-
-	return nil
-}
-
-func getSourceMap(ctx context.Context, storageKey string, localMaps map[string]*parsedSourceMap) (*parsedSourceMap, error) {
-	if m, ok := localMaps[storageKey]; ok {
-		return m, nil
-	}
-	m, err := smCache.getOrLoad(ctx, storageKey)
+	r, err := smCache.getOrBuild(ctx, cacheKey, build)
 	if err != nil {
-		localMaps[storageKey] = nil
+		local[cacheKey] = nil
 		return nil, err
 	}
-	localMaps[storageKey] = m
-	return m, nil
-}
-
-func extractFunctionName(sourceContent string, line int) string {
-	lines := strings.Split(sourceContent, "\n")
-	for i := line - 1; i >= 0 && i >= line-50; i-- {
-		matches := jsFuncDeclRe.FindStringSubmatch(lines[i])
-		if matches != nil {
-			for _, m := range matches[1:] {
-				if m != "" && !jsControlFlowKeywords[m] {
-					return m
-				}
-			}
-		}
-	}
-	return ""
+	local[cacheKey] = r
+	return r, nil
 }

@@ -385,6 +385,7 @@ var jsFrameworks = map[string]bool{
 	"react":        true,
 	"svelte":       true,
 	"vuejs":        true,
+	"jquery":       true,
 	"nextjs":       true,
 	"nestjs":       true,
 	"express":      true,

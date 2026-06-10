@@ -223,18 +223,18 @@ If the map does not exist, the read times out, storage errors, or the map fails 
 
 ## Cache Backends: Memory and Disk
 
-The in-memory cache described above is the default and always present. `SOURCEMAP_CACHE_TYPE=disk` layers a local cache of precompiled `.tw` files underneath it, which changes what a *memory miss* costs. Lookup order with the disk tier enabled:
+The in-memory cache described above is the default and always present. In both modes, a memory miss first checks object storage for a precompiled [`.tw` resolver](#the-tw-resolver-format) before rebuilding, and every rebuild writes the finished `.tw` back to object storage, so a given map is rebuilt once cluster-wide and every other instance (and every restart) downloads the compiled artifact instead of re-parsing. `SOURCEMAP_CACHE_TYPE=disk` adds a local cache of those `.tw` files in between, which changes what a *memory miss* costs. The full lookup order:
 
-1. **In-memory LRU.** Same as memory-only mode; a hit is a pure memory lookup.
-2. **Local `.tw` file** under `SOURCEMAP_DISK_CACHE_PATH`. The file is memory-mapped and the resolver opens with validation only; on little-endian hosts (amd64, arm64) the token table is used directly from the mapped pages with zero copying or decoding. Counted in `disk.hits`.
-3. **`.tw` from object storage.** Downloaded, written to the local directory (atomically, via temp file and rename), then opened as in step 2. Counted in `store_hits`.
-4. **Full rebuild** from the `.map` and bundle, exactly like memory-only mode. The finished resolver is serialized to `.tw` and written back to both object storage and the local directory, so the rebuild happens once cluster-wide rather than once per instance. Counted in `builds`.
+1. **In-memory LRU.** Both modes. A hit is a pure memory lookup.
+2. **Local `.tw` file** under `SOURCEMAP_DISK_CACHE_PATH` (disk mode only). The file is memory-mapped and the resolver opens with validation only; on little-endian hosts (amd64, arm64) the token table is used directly from the mapped pages with zero copying or decoding. Counted in `disk.hits`.
+3. **`.tw` from object storage.** Both modes. In disk mode it is written to the local directory (atomically, via temp file and rename) and then opened as in step 2; in memory mode it is opened on the heap. Counted in `store_hits`.
+4. **Full rebuild** from the `.map` and bundle. Both modes. The finished resolver is serialized to `.tw` and written back to object storage (and, in disk mode, to the local directory). Counted in `builds`.
 
 The local directory is itself an LRU bounded by bytes (`SOURCEMAP_DISK_CACHE_MAX_MB`, default 2048): least recently used `.tw` files are deleted when the cap is exceeded. The directory is scanned at startup, so the cache survives restarts with its recency order approximated from file mtimes; mtimes are refreshed on use at most once per 10 minutes to keep that approximation current without constant metadata writes. A `.tw` file that fails validation (truncated, corrupt, or written by an older format version) is deleted and rebuilt from the original artifacts; this is a recovery path, not an error.
 
-Uploads warm the disk tier proactively: after `/api/sourcemaps/upload` stores the files, a background task deletes the stale `.tw` from object storage, evicts the cached resolver, and rebuilds it, so the first exception after a deploy finds a hot cache instead of paying the build.
+Uploads warm the cache proactively in both modes: after `/api/sourcemaps/upload` stores the files, a background task deletes the stale `.tw` from object storage, evicts the cached resolver, and rebuilds it, so the first exception after a deploy finds a hot cache instead of paying the build.
 
-When to enable it: the memory-only default is right for most deployments. The disk tier pays off when the set of actively-resolving maps is much larger than the memory cap (high eviction traffic, where each re-entry would otherwise re-parse a multi-megabyte map), and in multi-instance deployments (each instance reuses the `.tw` built by whichever instance got there first instead of re-parsing).
+When to enable it: the memory-only default is right for most deployments. The disk tier pays off when the set of actively-resolving maps is much larger than the memory cap (high eviction traffic): a re-entry becomes a local mmap open measured in microseconds instead of an object storage download, and the token tables live in page cache rather than on the process heap, so resident memory tracks the hot set instead of the cap.
 
 ## The `.tw` Resolver Format
 
@@ -318,8 +318,8 @@ The backend self-reports cache metrics every 30 seconds (see [Capacity Monitorin
 | `traceway.sourcemap.not_found.delta` | lookups that found no uploaded map for the frame's filename since the last tick |
 | `traceway.sourcemap.negative_hits.delta` | frame lookups skipped by an active cooldown since the last tick |
 | `traceway.sourcemap.parse_ms` | duration of the most recent resolver build |
-| `traceway.sourcemap.store_hits.delta` | memory misses served by a `.tw` fetched from object storage since the last tick (disk tier) |
-| `traceway.sourcemap.builds.delta` | memory misses that required a full rebuild from `.map` + bundle since the last tick (disk tier) |
+| `traceway.sourcemap.store_hits.delta` | memory misses served by a `.tw` fetched from object storage since the last tick (both cache modes) |
+| `traceway.sourcemap.builds.delta` | memory misses that required a full rebuild from `.map` + bundle since the last tick (both cache modes) |
 | `traceway.sourcemap.disk.entries` / `disk.bytes` | local `.tw` files currently cached and their total size (disk tier only) |
 | `traceway.sourcemap.disk.hits.delta` | memory misses served by a local `.tw` file since the last tick (disk tier only) |
 | `traceway.sourcemap.disk.evictions.delta` | local `.tw` files evicted by the byte cap since the last tick (disk tier only) |

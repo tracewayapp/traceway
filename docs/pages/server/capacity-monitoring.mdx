@@ -83,7 +83,7 @@ Not emitted in SQLite mode.
 | `traceway.sourcemap.not_found.delta` | Lookups since the last tick where no map was uploaded for the frame's filename; sustained nonzero for a project that should symbolicate usually means a missing CI upload step |
 | `traceway.sourcemap.negative_hits.delta` | Frame lookups skipped by an active cooldown since the last tick; high values are normal for JS projects that do not upload maps |
 | `traceway.sourcemap.parse_ms` | Duration of the most recent resolver build |
-| `traceway.sourcemap.store_hits.delta` / `builds.delta` | With the disk cache enabled, memory misses served by a precompiled `.tw` from object storage vs. full rebuilds from `.map` + bundle |
+| `traceway.sourcemap.store_hits.delta` / `builds.delta` | Memory misses served by a precompiled `.tw` from object storage vs. full rebuilds from `.map` + bundle; reported in both cache modes, since the `.tw` store tier is always active |
 | `traceway.sourcemap.disk.entries` / `disk.bytes` | Local `.tw` files cached on disk and their total size (only reported when `SOURCEMAP_CACHE_TYPE=disk`) |
 | `traceway.sourcemap.disk.hits.delta` / `disk.evictions.delta` | Memory misses served by a local `.tw` file, and local files evicted by the byte cap, since the last tick |
 
@@ -95,7 +95,7 @@ Lookups that find no map (or fail to load one) are negative-cached per filename 
 
 Upgrading from 1.7? The flat storage layout is new in 1.8 and existing maps are migrated automatically at startup; see [Upgrading to 1.8](/server/upgrade-1-8).
 
-Optionally, `SOURCEMAP_CACHE_TYPE=disk` adds a local disk tier of precompiled `.tw` resolver files between the memory cache and object storage: a memory miss is then served by memory-mapping a local file (or fetching the `.tw` from storage) instead of re-parsing the map and bundle, and rebuilds happen once cluster-wide because the resulting `.tw` is written back to storage. See [the `.tw` format](/learn/symbolication-js#the-tw-resolver-format) and [cache backends](/learn/symbolication-js#cache-backends-memory-and-disk) for the mechanics.
+In both modes, a memory miss first tries a precompiled `.tw` resolver from object storage before re-parsing the map and bundle, and rebuilds happen once cluster-wide because the resulting `.tw` is written back to storage. Optionally, `SOURCEMAP_CACHE_TYPE=disk` adds a local disk tier of those `.tw` files between the memory cache and object storage, so a miss becomes a local mmap open instead of a storage download. See [the `.tw` format](/learn/symbolication-js#the-tw-resolver-format) and [cache backends](/learn/symbolication-js#cache-backends-memory-and-disk) for the mechanics.
 
 | Variable | Default | Description |
 |----------|---------|-------------|

@@ -89,7 +89,7 @@ OpenTelemetry currently has **no debug ID convention**: there is no semantic-con
 
 - **Rollup/Vite native IDs**: Rollup's `output.sourcemapDebugIds: true` emits the comment and map field but no runtime registry, so the SDK cannot report IDs at runtime from that alone. The Traceway plugin is a superset; you do not need both.
 - **Sentry tooling**: bundles processed by `@sentry/vite-plugin`, `@sentry/webpack-plugin`, or `sentry-cli sourcemaps inject` register `_sentryDebugIds`, which the Traceway SDK also reads. Maps carrying only the legacy `debug_id` field are accepted on upload.
-- **esbuild** has no debug ID support (and no plugin hook that allows injecting one); esbuild-built apps fall back to filename matching.
+- **esbuild**: the Traceway plugin does not cover esbuild, and esbuild emits no debug IDs natively. Bundles processed by `@sentry/esbuild-plugin` (or a post-build `sentry-cli sourcemaps inject`) get `_sentryDebugIds` injected, which the SDK reads as described above, so esbuild apps can still get exact debug-ID matching through that tooling; without it they fall back to filename matching.
 
 ## Next Steps
 

@@ -15,9 +15,10 @@ go get github.com/tracewayapp/traceway/backend@latest
 ```
 
 <Callout type="info">
-  The symbolicator packages ship in backend releases after `v1.5.2`. The import
-  paths below are stable public packages; everything under
-  `backend/app/symbolicator` is importable.
+  The symbolicator packages first ship in backend release `v1.8.0`, so
+  `@latest` resolves to a version that has them. The import paths below are
+  stable public packages; everything under `backend/app/symbolicator` is
+  importable.
 </Callout>
 
 | Package | Import path | Purpose |
@@ -171,7 +172,7 @@ What `twcache` handles for you:
 Function-name resolution parses the minified bundle into scopes. Two parsers produce identical output (a parity test asserts this across the fixture suite, see [Bundle Parsers](/learn/symbolication-js#bundle-parsers)):
 
 - **goja** (default): pure Go, zero setup.
-- **oxc**: a Rust parser behind cgo, several times faster on large bundles. Requires building the shim once (`scripts/build-oxc-shim.sh` in the repo) and compiling your program with `-tags oxc`.
+- **oxc**: a Rust parser behind cgo, several times faster on large bundles. The `-tags oxc` build links a static library from the `scopes` package's own source directory (`oxc-shim/target/release/liboxc_shim.a`), which the read-only module cache that `go get` populates never contains. To enable it, build against a writable checkout: clone the repo, run `scripts/build-oxc-shim.sh` once, add a `replace github.com/tracewayapp/traceway/backend => /path/to/traceway/backend` directive to your `go.mod` (or vendor the module and build the shim inside `vendor/`), then compile with `-tags oxc`.
 
 ```go
 import "github.com/tracewayapp/traceway/backend/app/symbolicator/scopes"

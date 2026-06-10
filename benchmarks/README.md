@@ -462,7 +462,7 @@ benchmarks/
     _cachebench.sh               # Shared matrix/stub helpers for the two above
   results-throughput/            # Committed throughput results (wiped per dispatch)
   results-probe/                 # Committed read-probe results (wiped per dispatch)
-  results-cachebench/            # Committed symbolicator cache results (wiped per dispatch)
+  results-cachebench/            # Symbolicator cache results; CI uploads these as a run artifact, never committed
   results/                       # Historical dated folders (not written to anymore)
   charts.md                      # Reading guide for every chart chart.py emits
 ```

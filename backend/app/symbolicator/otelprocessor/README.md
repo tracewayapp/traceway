@@ -14,9 +14,11 @@ The processor ships as a public package of the `github.com/tracewayapp/traceway/
 
 ```yaml
 processors:
-  - gomod: github.com/tracewayapp/traceway/backend v1.6.0
+  - gomod: github.com/tracewayapp/traceway/backend v1.8.0
     import: github.com/tracewayapp/traceway/backend/app/symbolicator/otelprocessor
 ```
+
+The processor first ships in `v1.8.0`; use that tag or any newer one.
 
 Or, when assembling a collector programmatically, register the factory directly:
 

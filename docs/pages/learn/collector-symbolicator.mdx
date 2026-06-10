@@ -39,7 +39,7 @@ receivers:
 
 processors:
   - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.154.0
-  - gomod: github.com/tracewayapp/traceway/backend v1.6.0
+  - gomod: github.com/tracewayapp/traceway/backend v1.8.0
     import: github.com/tracewayapp/traceway/backend/app/symbolicator/otelprocessor
 
 exporters:
@@ -47,9 +47,9 @@ exporters:
 ```
 
 <Callout type="info">
-  Use the latest tag of `github.com/tracewayapp/traceway/backend` (the
-  processor ships in releases after `v1.5.2`), and keep the collector
-  component versions aligned with each other as usual for OCB manifests.
+  The processor first ships in `v1.8.0`; use that tag or any newer one, and
+  keep the collector component versions aligned with each other as usual for
+  OCB manifests.
 </Callout>
 
 ### Build it

@@ -54,6 +54,13 @@ func (c *countingStorage) Write(_ context.Context, key string, data []byte) erro
 	return nil
 }
 
+func (c *countingStorage) Delete(_ context.Context, key string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.data, key)
+	return nil
+}
+
 func (c *countingStorage) Read(_ context.Context, key string) ([]byte, error) {
 	c.mu.Lock()
 	c.reads[key]++
@@ -161,6 +168,8 @@ type flakyStorage struct {
 
 func (f *flakyStorage) Write(_ context.Context, _ string, _ []byte) error { return nil }
 
+func (f *flakyStorage) Delete(_ context.Context, _ string) error { return nil }
+
 func (f *flakyStorage) Read(_ context.Context, _ string) ([]byte, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -206,6 +215,8 @@ type blockingPanicStorage struct {
 }
 
 func (b *blockingPanicStorage) Write(_ context.Context, _ string, _ []byte) error { return nil }
+
+func (b *blockingPanicStorage) Delete(_ context.Context, _ string) error { return nil }
 
 func (b *blockingPanicStorage) Read(_ context.Context, _ string) ([]byte, error) {
 	<-b.release
@@ -410,6 +421,8 @@ type bundleFailStorage struct {
 	data       map[string][]byte
 	failBundle bool
 }
+
+func (b *bundleFailStorage) Delete(_ context.Context, _ string) error { return nil }
 
 func (b *bundleFailStorage) Write(_ context.Context, key string, data []byte) error {
 	b.data[key] = data

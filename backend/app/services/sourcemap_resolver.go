@@ -28,6 +28,13 @@ const sourceMapNegativeMaxKeys = 10000
 
 type resolverBuild func(context.Context) (*symbolicator.Resolver, int64, error)
 
+type resolverCache interface {
+	getOrBuild(ctx context.Context, key string, build resolverBuild) (*symbolicator.Resolver, error)
+	isNegative(key string) bool
+	invalidate(key string)
+	stats() SourceMapCacheStats
+}
+
 type sourceMapCache struct {
 	mu                  sync.Mutex
 	items               map[string]*list.Element
@@ -73,6 +80,8 @@ var smCache = &sourceMapCache{
 	maxEntries: 200,
 	maxBytes:   500 << 20,
 }
+
+var activeSMCache resolverCache = smCache
 
 func InitSourceMapCache(maxEntries int, maxBytes int64) {
 	smCache.mu.Lock()
@@ -194,12 +203,20 @@ func (c *sourceMapCache) invalidate(key string) {
 	}
 }
 
+func sourceMapPrefix(projectId uuid.UUID) string {
+	return fmt.Sprintf("sourcemaps/%s/", projectId)
+}
+
+func SourceMapStorageKey(projectId uuid.UUID, fileName string) string {
+	return sourceMapPrefix(projectId) + fileName
+}
+
 func InvalidateSourceMap(projectId uuid.UUID, fileName string) {
 	base := filepath.Base(fileName)
 	if !strings.HasSuffix(base, ".map") {
 		base += ".map"
 	}
-	smCache.invalidate(fmt.Sprintf("sourcemaps/%s/%s", projectId, base))
+	activeSMCache.invalidate(SourceMapStorageKey(projectId, base))
 }
 
 func (c *sourceMapCache) reportLoadFailure(err error) {
@@ -250,31 +267,44 @@ type SourceMapCacheStats struct {
 	NegativeHits    uint64
 	NegativeEntries int
 	LastParseMs     float64
+
+	DiskEnabled   bool
+	DiskEntries   int
+	DiskBytes     int64
+	DiskMaxBytes  int64
+	DiskHits      uint64
+	StoreHits     uint64
+	Builds        uint64
+	DiskEvictions uint64
 }
 
 func SourceMapStats() SourceMapCacheStats {
-	smCache.mu.Lock()
-	defer smCache.mu.Unlock()
+	return activeSMCache.stats()
+}
+
+func (c *sourceMapCache) stats() SourceMapCacheStats {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return SourceMapCacheStats{
-		Entries:         smCache.order.Len(),
-		Bytes:           smCache.curBytes,
-		MaxEntries:      smCache.maxEntries,
-		MaxBytes:        smCache.maxBytes,
-		Hits:            smCache.hits,
-		Misses:          smCache.misses,
-		Evictions:       smCache.evictions,
-		Failures:        smCache.failures,
-		NotFound:        smCache.notFound,
-		NegativeHits:    smCache.negativeHits,
-		NegativeEntries: len(smCache.negative),
-		LastParseMs:     smCache.lastParseMs,
+		Entries:         c.order.Len(),
+		Bytes:           c.curBytes,
+		MaxEntries:      c.maxEntries,
+		MaxBytes:        c.maxBytes,
+		Hits:            c.hits,
+		Misses:          c.misses,
+		Evictions:       c.evictions,
+		Failures:        c.failures,
+		NotFound:        c.notFound,
+		NegativeHits:    c.negativeHits,
+		NegativeEntries: len(c.negative),
+		LastParseMs:     c.lastParseMs,
 	}
 }
 
 var stackFrameRe = regexp.MustCompile(`^(\s{4})(.+):(\d+):(\d+)$`)
 
 func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace string) string {
-	prefix := fmt.Sprintf("sourcemaps/%s/", projectId)
+	prefix := sourceMapPrefix(projectId)
 
 	lines := strings.Split(stackTrace, "\n")
 	resolved := make([]string, 0, len(lines))
@@ -308,7 +338,7 @@ func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace stri
 		mapKey := prefix + base + ".map"
 		bundleKey := prefix + base
 
-		if smCache.isNegative(mapKey) {
+		if activeSMCache.isNegative(mapKey) {
 			resolved = append(resolved, line)
 			continue
 		}
@@ -350,7 +380,7 @@ func getResolver(ctx context.Context, cacheKey string, build resolverBuild, loca
 	if r, ok := local[cacheKey]; ok {
 		return r, nil
 	}
-	r, err := smCache.getOrBuild(ctx, cacheKey, build)
+	r, err := activeSMCache.getOrBuild(ctx, cacheKey, build)
 	if err != nil {
 		local[cacheKey] = nil
 		return nil, err

@@ -58,6 +58,17 @@ func (s *s3Storage) Write(ctx context.Context, key string, data []byte) error {
 	return nil
 }
 
+func (s *s3Storage) Delete(ctx context.Context, key string) error {
+	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil && !isS3NotFound(err) {
+		return fmt.Errorf("failed to delete object %s: %w", key, err)
+	}
+	return nil
+}
+
 func (s *s3Storage) Read(ctx context.Context, key string) ([]byte, error) {
 	output, err := s.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),

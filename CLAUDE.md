@@ -258,6 +258,12 @@ SESSION_RECORDING_RETENTION_DAYS=30   # 0 to disable; only applies when STORAGE_
 # Session recording uploads (see "Session Recording Uploader" section below)
 SESSION_RECORDING_UPLOAD_WORKERS=32   # 0 to disable uploads entirely
 SESSION_RECORDING_UPLOAD_QUEUE_SIZE=2048
+
+# Source map symbolicator
+SYMBOLICATOR_PARSER=goja              # goja (default) or oxc (requires -tags oxc build, see scripts/build-oxc-shim.sh)
+SOURCEMAP_CACHE_TYPE=memory           # memory (default) or disk (mmap-backed .tw cache)
+SOURCEMAP_DISK_CACHE_PATH=./twcache   # only used when SOURCEMAP_CACHE_TYPE=disk
+SOURCEMAP_DISK_CACHE_MAX_MB=2048      # capacity-based LRU eviction of local .tw files
 ```
 
 ---

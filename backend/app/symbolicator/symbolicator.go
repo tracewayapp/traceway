@@ -1,6 +1,7 @@
 package symbolicator
 
 import (
+	"runtime"
 	"sort"
 
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap_parser"
@@ -87,6 +88,7 @@ func NewResolver(sourceMap, bundle []byte) (*Resolver, error) {
 }
 
 func (r *Resolver) Lookup(genLine, genCol uint32) (StackTraceFrame, bool) {
+	defer runtime.KeepAlive(r)
 	toks := r.tokens
 	idx := sort.Search(len(toks), func(i int) bool {
 		return toks[i].genLine > genLine || (toks[i].genLine == genLine && toks[i].genCol > genCol)

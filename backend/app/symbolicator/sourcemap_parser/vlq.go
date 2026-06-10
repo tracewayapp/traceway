@@ -15,6 +15,26 @@ func init() {
 	}
 }
 
+func AppendVLQ(dst []byte, v int64) []byte {
+	var u uint64
+	if v < 0 {
+		u = uint64(-v)<<1 | 1
+	} else {
+		u = uint64(v) << 1
+	}
+	for {
+		d := u & 31
+		u >>= 5
+		if u != 0 {
+			d |= 32
+		}
+		dst = append(dst, vlqAlphabet[d])
+		if u == 0 {
+			return dst
+		}
+	}
+}
+
 func decodeVLQ(seg string, dst []int64) ([]int64, error) {
 	var cur uint64
 	var shift uint

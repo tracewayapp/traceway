@@ -1,0 +1,125 @@
+name: benchmark-symbolicator-cache
+
+on:
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: 'Hetzner tier for the single SUT box (ccx13=2 cores/8GB, ccx23=4/16, ccx33=8/32)'
+        required: true
+        default: 'ccx13'
+      location:
+        description: 'Hetzner datacenter (nbg1, fsn1, hel1, ash, hil)'
+        required: true
+        default: 'nbg1'
+      entries:
+        description: 'Comma-separated corpus sizes (bundle+map+tw triples, ~1MB resolver each at default tokens)'
+        required: true
+        default: '1000,2000,4000,6000,8000,12000'
+      cold_ratios:
+        description: 'Comma-separated cold-traffic ratios (share of lookups outside the 30-bundle hot set)'
+        required: true
+        default: '0,0.05,0.25'
+      duration:
+        description: 'Measured duration per cell, seconds suffix required (e.g. 60s)'
+        required: true
+        default: '60s'
+      hot:
+        description: 'Hot set size (distinct active exceptions)'
+        required: true
+        default: '30'
+      unbounded:
+        description: 'Also run an unbounded in-memory cache variant to find the OOM break point'
+        required: true
+        type: boolean
+        default: true
+      smoke:
+        description: 'Tiny matrix to validate the pipeline (~5 min)'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    env:
+      HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Install hcloud CLI
+        run: |
+          curl -fsSL https://github.com/hetznercloud/cli/releases/download/v1.50.0/hcloud-linux-amd64.tar.gz \
+            | sudo tar -xz -C /usr/local/bin hcloud
+
+      - name: Materialize SSH key
+        run: |
+          umask 077
+          key="$RUNNER_TEMP/benchmark-key"
+          printf '%s\n' "${{ secrets.BENCHMARK_SSH_PRIVATE_KEY }}" > "$key"
+          echo "BENCHMARK_SSH_KEY=$key" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Run cache benchmark sweep
+        env:
+          TIER: ${{ github.event.inputs.tier }}
+          LOCATION: ${{ github.event.inputs.location }}
+          ENTRIES: ${{ github.event.inputs.entries }}
+          COLD_RATIOS: ${{ github.event.inputs.cold_ratios }}
+          DURATION: ${{ github.event.inputs.duration }}
+          HOT: ${{ github.event.inputs.hot }}
+          UNBOUNDED: ${{ github.event.inputs.unbounded == 'true' && '1' || '0' }}
+          SMOKE: ${{ github.event.inputs.smoke == 'true' && '1' || '0' }}
+          OUT_DIR: ${{ github.workspace }}/benchmarks/results-cachebench
+        run: ./benchmarks/scripts/cachebench-entry.sh
+
+      - name: Publish summary
+        if: always()
+        run: |
+          if [[ -f benchmarks/results-cachebench/summary.md ]]; then
+            cat benchmarks/results-cachebench/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cachebench-${{ github.event.inputs.tier }}
+          path: benchmarks/results-cachebench/
+          if-no-files-found: warn
+
+      - name: Commit results
+        if: github.event.inputs.smoke != 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "traceway-bot"
+          git config user.email "bot@tracewayapp.com"
+
+          staged="benchmarks/results-cachebench"
+          tmp_staged="$(mktemp -d)/staged"
+          cp -a "${staged}" "${tmp_staged}"
+
+          git fetch origin main
+          git reset --hard origin/main
+
+          rm -rf "${staged}"
+          mkdir -p "${staged}"
+          cp -a "${tmp_staged}/." "${staged}/"
+          rm -rf "${tmp_staged%/staged}"
+
+          git add -A "${staged}"
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+            exit 0
+          fi
+          git commit -m "bench: symbolicator-cache ${{ github.event.inputs.tier }} $(date -u +%Y-%m-%d)"
+          git pull --rebase origin main
+          git push

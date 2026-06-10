@@ -70,12 +70,9 @@ type genScope struct {
 }
 
 type functionScopes struct {
-	transitions []scopeTransition // sorted by generated position
+	transitions []scopeTransition
 }
 
-// scopeTransition marks that, from this generated position onward, the
-// innermost enclosing function's name token is at (nameLine, nameCol). has is
-// false when no function encloses the range (global scope).
 type scopeTransition struct {
 	line, col         uint32
 	nameLine, nameCol uint32
@@ -88,10 +85,6 @@ type scopeEvent struct {
 	scope     int
 }
 
-// buildTransitions flattens the well-nested function scopes into a sorted list
-// of transitions in a single sweep, so the resolver can find the enclosing
-// function of any token with a linear merge instead of scanning every scope per
-// token.
 func buildTransitions(scopes []genScope) []scopeTransition {
 	events := make([]scopeEvent, 0, len(scopes)*2)
 	for i := range scopes {
@@ -114,7 +107,7 @@ func buildTransitions(scopes []genScope) []scopeTransition {
 		if a.start == b.start {
 			return 0
 		}
-		if !a.start { // a scope ending here closes before another opens
+		if !a.start {
 			return -1
 		}
 		return 1

@@ -12,6 +12,8 @@
 #   {"sutPublicIp":"...","sutPrivateIp":"...","loadgenPublicIp":"...","loadgenPrivateIp":"...","networkId":"...","runId":"..."}
 set -euo pipefail
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_ssh.sh"
+
 if [[ $# -lt 2 ]]; then
     echo "usage: $0 <tier> <run-id> [location]" >&2
     exit 2
@@ -57,40 +59,6 @@ case "${LOCATION}" in
         NETWORK_ZONE="eu-central"
         ;;
 esac
-
-# retry_eof: run an `hcloud` command, capturing stderr. If the command exits
-# non-zero AND its stderr contains "EOF", wait 5 seconds and retry — up to 3
-# attempts total. Hetzner's API occasionally drops its keep-alive TCP
-# connection mid-action-poll, so hcloud surfaces an EOF even though the
-# server-side operation actually succeeded. On any retry attempt, an
-# "already exists" error is treated as success because it means the original
-# (EOF'd) call did go through. All other failure modes propagate immediately.
-retry_eof() {
-    local attempt=1 max=3 delay=5 errfile rc
-    errfile="$(mktemp)"
-    while true; do
-        "$@" 2>"${errfile}" && rc=0 || rc=$?
-        cat "${errfile}" >&2
-        if [[ $rc -eq 0 ]]; then
-            rm -f "${errfile}"
-            return 0
-        fi
-        if [[ ${attempt} -gt 1 ]] && grep -qiE "already (exists|in use)|name .* not unique" "${errfile}"; then
-            echo "  ↳ resource already exists from earlier attempt; treating as success" >&2
-            rm -f "${errfile}"
-            return 0
-        fi
-        if grep -q "EOF" "${errfile}" && [[ $attempt -lt $max ]]; then
-            echo "  ↳ hcloud hit EOF, sleeping ${delay}s and retrying (attempt $((attempt+1))/${max})" >&2
-            sleep $delay
-            attempt=$((attempt + 1))
-            : > "${errfile}"
-            continue
-        fi
-        rm -f "${errfile}"
-        return $rc
-    done
-}
 
 # Create a /24 private network so SUT and loadgen can talk over 10.0.0.x.
 if ! hcloud network describe "${NET_NAME}" >/dev/null 2>&1; then

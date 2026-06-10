@@ -6,24 +6,18 @@ import (
 	"testing"
 )
 
-func fixtureRoot(t *testing.T) string {
+func fixture(t testing.TB, parts ...string) string {
 	t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", "..", "..", "..", "symbolic"))
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		if _, statErr := os.Stat(root); statErr == nil {
+			return filepath.Join(append([]string{root, "symbolic-testutils", "fixtures"}, parts...)...)
+		}
 	}
-	if _, err := os.Stat(root); err != nil {
-		t.Skipf("symbolic fixture checkout not found at %s", root)
-	}
-	return root
+	return filepath.Join(append([]string{"..", "services", "testdata"}, parts...)...)
 }
 
-func fixture(t *testing.T, parts ...string) string {
-	t.Helper()
-	return filepath.Join(append([]string{fixtureRoot(t), "symbolic-testutils", "fixtures"}, parts...)...)
-}
-
-func mustRead(t *testing.T, path string) []byte {
+func mustRead(t testing.TB, path string) []byte {
 	t.Helper()
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -32,7 +26,7 @@ func mustRead(t *testing.T, path string) []byte {
 	return data
 }
 
-func readIfSet(t *testing.T, parts []string) []byte {
+func readIfSet(t testing.TB, parts []string) []byte {
 	if parts == nil {
 		return nil
 	}

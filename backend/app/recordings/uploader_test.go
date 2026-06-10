@@ -15,6 +15,8 @@ type stubStorage struct {
 	written atomic.Uint64
 }
 
+func (s *stubStorage) Delete(_ context.Context, _ string) error { return nil }
+
 func (s *stubStorage) Write(ctx context.Context, key string, data []byte) error {
 	if s.delay > 0 {
 		select {

@@ -56,5 +56,5 @@ func parseFunctionScopesOxc(bundle []byte) (*functionScopes, error) {
 			raw = append(raw, rawScope{start: vals[i], end: vals[i+1], namePos: vals[i+2]})
 		}
 	}
-	return scopesFromRaw(string(bundle), raw), nil
+	return scopesFromRaw(unsafe.String(unsafe.SliceData(bundle), len(bundle)), raw), nil
 }

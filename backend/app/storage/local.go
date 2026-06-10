@@ -34,6 +34,14 @@ func (l *localStorage) Write(_ context.Context, key string, data []byte) error {
 	return nil
 }
 
+func (l *localStorage) Delete(_ context.Context, key string) error {
+	fullPath := filepath.Join(l.basePath, key)
+	if err := os.Remove(fullPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to delete file %s: %w", fullPath, err)
+	}
+	return nil
+}
+
 func (l *localStorage) Read(_ context.Context, key string) ([]byte, error) {
 	fullPath := filepath.Join(l.basePath, key)
 	data, err := os.ReadFile(fullPath)

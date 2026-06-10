@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"context"
 	"fmt"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/services"
@@ -43,6 +44,17 @@ func (s sourceMapController) Upload(c *gin.Context) {
 	}
 
 	uploaded := 0
+	var storedNames []string
+	defer func() {
+		if len(storedNames) == 0 {
+			return
+		}
+		genCtx := context.WithoutCancel(c.Request.Context())
+		go func() {
+			defer traceway.Recover()
+			services.GenerateTWArtifacts(genCtx, projectId, storedNames)
+		}()
+	}()
 	for _, fileHeader := range files {
 		if !isSourceArtifact(fileHeader.Filename) {
 			continue
@@ -66,12 +78,13 @@ func (s sourceMapController) Upload(c *gin.Context) {
 			return
 		}
 
-		storageKey := fmt.Sprintf("sourcemaps/%s/%s", projectId, fileHeader.Filename)
+		storageKey := services.SourceMapStorageKey(projectId, fileHeader.Filename)
 		if err := storage.Store.Write(c, storageKey, data); err != nil {
 			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to write source map to storage: %w", err))
 			return
 		}
 		services.InvalidateSourceMap(projectId, fileHeader.Filename)
+		storedNames = append(storedNames, fileHeader.Filename)
 
 		uploaded++
 	}

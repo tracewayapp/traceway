@@ -33,8 +33,8 @@ impl<'a> Visit<'a> for ScopeCollector {
 }
 
 fn collect_scopes(src: &str) -> Option<Vec<u32>> {
-    let allocator = Allocator::default();
     for source_type in [SourceType::mjs(), SourceType::cjs()] {
+        let allocator = Allocator::default();
         let ret = Parser::new(&allocator, src, source_type).parse();
         if ret.panicked || !ret.errors.is_empty() {
             continue;

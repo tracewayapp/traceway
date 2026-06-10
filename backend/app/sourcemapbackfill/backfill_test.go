@@ -30,6 +30,13 @@ func (m *memStore) Write(_ context.Context, key string, data []byte) error {
 	return nil
 }
 
+func (m *memStore) Delete(_ context.Context, key string) error {
+	m.mu.Lock()
+	delete(m.data, key)
+	m.mu.Unlock()
+	return nil
+}
+
 func (m *memStore) Read(_ context.Context, key string) ([]byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

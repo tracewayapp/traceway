@@ -1,50 +1,21 @@
-package symbolicator
+package scopes
 
 import (
-	"fmt"
 	"slices"
-	"strings"
 	"unicode/utf16"
 )
 
-type bundleParser func(bundle []byte) (*functionScopes, error)
-
-var bundleParsers = map[string]bundleParser{
-	"goja": parseFunctionScopesGoja,
-}
-
-var activeBundleParser = "goja"
-
-func SetParser(name string) error {
-	if _, ok := bundleParsers[name]; !ok {
-		return fmt.Errorf("symbolicator: unknown bundle parser %q (available: %s)", name, strings.Join(AvailableParsers(), ", "))
-	}
-	activeBundleParser = name
-	return nil
-}
-
-func ActiveParser() string {
-	return activeBundleParser
-}
-
-func AvailableParsers() []string {
-	names := make([]string, 0, len(bundleParsers))
-	for name := range bundleParsers {
-		names = append(names, name)
-	}
-	slices.Sort(names)
-	return names
-}
-
-func parseFunctionScopes(bundle []byte) (*functionScopes, error) {
-	return bundleParsers[activeBundleParser](bundle)
+type Transition struct {
+	Line, Col         uint32
+	NameLine, NameCol uint32
+	Named             bool
 }
 
 type rawScope struct {
 	start, end, namePos uint32
 }
 
-func scopesFromRaw(src string, raw []rawScope) *functionScopes {
+func scopesFromRaw(src string, raw []rawScope) []Transition {
 	offsets := make([]uint32, 0, len(raw)*3)
 	for _, s := range raw {
 		offsets = append(offsets, s.start, s.end, s.namePos)
@@ -60,7 +31,7 @@ func scopesFromRaw(src string, raw []rawScope) *functionScopes {
 			nameLine: name.line, nameCol: name.col,
 		}
 	}
-	return &functionScopes{transitions: buildTransitions(scopes)}
+	return buildTransitions(scopes)
 }
 
 type genScope struct {
@@ -69,23 +40,13 @@ type genScope struct {
 	nameLine, nameCol   uint32
 }
 
-type functionScopes struct {
-	transitions []scopeTransition
-}
-
-type scopeTransition struct {
-	line, col         uint32
-	nameLine, nameCol uint32
-	has               bool
-}
-
 type scopeEvent struct {
 	line, col uint32
 	start     bool
 	scope     int
 }
 
-func buildTransitions(scopes []genScope) []scopeTransition {
+func buildTransitions(scopes []genScope) []Transition {
 	events := make([]scopeEvent, 0, len(scopes)*2)
 	for i := range scopes {
 		s := scopes[i]
@@ -113,10 +74,10 @@ func buildTransitions(scopes []genScope) []scopeTransition {
 		return 1
 	})
 
-	var transitions []scopeTransition
+	var transitions []Transition
 	stack := make([]int, 0, 16)
 	var lastNameLine, lastNameCol uint32
-	lastHas, haveLast := false, false
+	lastNamed, haveLast := false, false
 
 	for i := 0; i < len(events); {
 		line, col := events[i].line, events[i].col
@@ -130,14 +91,14 @@ func buildTransitions(scopes []genScope) []scopeTransition {
 		}
 
 		var nameLine, nameCol uint32
-		has := false
+		named := false
 		if len(stack) > 0 {
 			top := scopes[stack[len(stack)-1]]
-			nameLine, nameCol, has = top.nameLine, top.nameCol, true
+			nameLine, nameCol, named = top.nameLine, top.nameCol, true
 		}
-		if !haveLast || has != lastHas || nameLine != lastNameLine || nameCol != lastNameCol {
-			transitions = append(transitions, scopeTransition{line: line, col: col, nameLine: nameLine, nameCol: nameCol, has: has})
-			lastNameLine, lastNameCol, lastHas, haveLast = nameLine, nameCol, has, true
+		if !haveLast || named != lastNamed || nameLine != lastNameLine || nameCol != lastNameCol {
+			transitions = append(transitions, Transition{Line: line, Col: col, NameLine: nameLine, NameCol: nameCol, Named: named})
+			lastNameLine, lastNameCol, lastNamed, haveLast = nameLine, nameCol, named, true
 		}
 	}
 	return transitions

@@ -58,5 +58,5 @@ backend/static/dist/
 benchmarks/loadgen/bench-loadgen
 
 # Rust build artifacts (oxc symbolicator shim)
-backend/app/symbolicator/oxc-shim/target/
+backend/app/symbolicator/scopes/oxc-shim/target/
 symbolicator-bench.txt

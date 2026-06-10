@@ -4,7 +4,8 @@ import (
 	"runtime"
 	"sort"
 
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap_parser"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/scopes"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap"
 )
 
 type StackTraceFrame struct {
@@ -28,25 +29,21 @@ type Resolver struct {
 }
 
 func NewResolver(sourceMap, bundle []byte) (*Resolver, error) {
-	m, err := sourcemap_parser.Parse(sourceMap)
+	m, err := sourcemap.Parse(sourceMap)
 	if err != nil {
 		return nil, err
 	}
 
-	var scopes *functionScopes
+	var transitions []scopes.Transition
 	if len(bundle) > 0 {
-		if fs, err := parseFunctionScopes(bundle); err == nil {
-			scopes = fs
+		if ts, err := scopes.Parse(bundle); err == nil {
+			transitions = ts
 		}
 	}
 
 	files := newInterner()
 	fns := newInterner()
 
-	var transitions []scopeTransition
-	if scopes != nil {
-		transitions = scopes.transitions
-	}
 	ti := -1
 	var curFnIdx int32 = -1
 	curResolved := false
@@ -57,23 +54,23 @@ func NewResolver(sourceMap, bundle []byte) (*Resolver, error) {
 
 		// Tokens are sorted by generated position, so the floor transition
 		// pointer only moves forward across the whole map (linear merge).
-		for ti+1 < len(transitions) && !less(t.GenLine, t.GenCol, transitions[ti+1].line, transitions[ti+1].col) {
+		for ti+1 < len(transitions) && !posLess(t.GenLine, t.GenCol, transitions[ti+1].Line, transitions[ti+1].Col) {
 			ti++
 			curResolved = false
 		}
 
 		rt := resolvedToken{genLine: t.GenLine, genCol: t.GenCol, fileIdx: -1, fnIdx: -1}
-		if t.SrcID != sourcemap_parser.NoID && int(t.SrcID) < len(m.Sources) {
+		if t.SrcID != sourcemap.NoID && int(t.SrcID) < len(m.Sources) {
 			rt.fileIdx = files.intern(m.Sources[t.SrcID])
 			rt.srcLine = t.SrcLine + 1
 			rt.srcCol = t.SrcCol + 1
-			if ti >= 0 && transitions[ti].has {
+			if ti >= 0 && transitions[ti].Named {
 				// Resolve the enclosing function's name once per transition,
 				// not once per token.
 				if !curResolved {
 					curFnIdx = -1
 					tr := transitions[ti]
-					if nt := m.FloorToken(tr.nameLine, tr.nameCol); nt != nil && nt.NameID != sourcemap_parser.NoID {
+					if nt := m.FloorToken(tr.NameLine, tr.NameCol); nt != nil && nt.NameID != sourcemap.NoID {
 						curFnIdx = fns.intern(m.Names[nt.NameID])
 					}
 					curResolved = true
@@ -85,6 +82,10 @@ func NewResolver(sourceMap, bundle []byte) (*Resolver, error) {
 	}
 
 	return &Resolver{tokens: tokens, files: files.list, fns: fns.list}, nil
+}
+
+func posLess(aLine, aCol, bLine, bCol uint32) bool {
+	return aLine < bLine || (aLine == bLine && aCol < bCol)
 }
 
 func (r *Resolver) Lookup(genLine, genCol uint32) (StackTraceFrame, bool) {

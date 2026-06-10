@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestCanonicalizeJSStackTraceChrome(t *testing.T) {
+func TestCanonicalizeChrome(t *testing.T) {
 	input := strings.Join([]string{
 		"TypeError: Cannot read properties of undefined (reading 'name')",
 		"    at renderUser (https://app.example.com/assets/app.min.js:1:13337)",
@@ -38,7 +38,7 @@ func TestCanonicalizeJSStackTraceChrome(t *testing.T) {
 	}
 }
 
-func TestCanonicalizeJSStackTraceNodeAndBun(t *testing.T) {
+func TestCanonicalizeNodeAndBun(t *testing.T) {
 	input := strings.Join([]string{
 		"Error: connect ECONNREFUSED",
 		"    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1300:16)",
@@ -63,7 +63,7 @@ func TestCanonicalizeJSStackTraceNodeAndBun(t *testing.T) {
 	}
 }
 
-func TestCanonicalizeJSStackTraceChromeEval(t *testing.T) {
+func TestCanonicalizeChromeEval(t *testing.T) {
 	input := strings.Join([]string{
 		"Error: boom",
 		"    at eval (eval at run (https://x.test/app.min.js:1:100), <anonymous>:5:9)",
@@ -79,7 +79,7 @@ func TestCanonicalizeJSStackTraceChromeEval(t *testing.T) {
 	}
 }
 
-func TestCanonicalizeJSStackTraceFirefox(t *testing.T) {
+func TestCanonicalizeFirefox(t *testing.T) {
 	input := strings.Join([]string{
 		"TypeError: user is undefined",
 		"renderUser@https://app.example.com/assets/app.min.js:1:13337",
@@ -104,7 +104,7 @@ func TestCanonicalizeJSStackTraceFirefox(t *testing.T) {
 	}
 }
 
-func TestCanonicalizeJSStackTraceSafari(t *testing.T) {
+func TestCanonicalizeSafari(t *testing.T) {
 	input := strings.Join([]string{
 		"renderUser@https://app.example.com/assets/app.min.js:1:13337",
 		"global code@https://app.example.com/assets/app.min.js:1:24601",
@@ -127,7 +127,7 @@ func TestCanonicalizeJSStackTraceSafari(t *testing.T) {
 	}
 }
 
-func TestCanonicalizeJSStackTracePassthrough(t *testing.T) {
+func TestCanonicalizePassthrough(t *testing.T) {
 	cases := map[string]string{
 		"canonical": "Error: boom\nanonymous()\n    minified.js:1:11",
 		"go":        "runtime error: invalid memory address\nmain.handler(0x0)\n\t/srv/app/main.go:42 +0x1b",

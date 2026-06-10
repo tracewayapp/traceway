@@ -1,4 +1,4 @@
-package sourcemap_parser
+package sourcemap
 
 import (
 	"encoding/json"

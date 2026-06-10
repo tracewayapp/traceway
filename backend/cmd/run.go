@@ -25,7 +25,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/sourcemapbackfill"
 	"github.com/tracewayapp/traceway/backend/app/storage"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/scopes"
 	"github.com/tracewayapp/traceway/backend/static"
 
 	"github.com/coreos/go-systemd/v22/daemon"
@@ -130,7 +130,7 @@ func Run(opts ...Option) {
 		panic(fmt.Errorf("unknown SOURCEMAP_CACHE_TYPE: %s", cfg.SourceMapCacheType))
 	}
 	if cfg.SymbolicatorParser != "" {
-		if err := symbolicator.SetParser(cfg.SymbolicatorParser); err != nil {
+		if err := scopes.SetParser(cfg.SymbolicatorParser); err != nil {
 			panic(fmt.Errorf("symbolicator parser init failed: %w", err))
 		}
 	}

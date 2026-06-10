@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/scopes"
 )
 
 func fixture(t testing.TB, parts ...string) string {
@@ -119,12 +121,12 @@ var parityCases = []parityCase{
 }
 
 func TestSymbolicParity(t *testing.T) {
-	original := activeBundleParser
-	defer func() { activeBundleParser = original }()
+	original := scopes.ActiveParser()
+	defer func() { _ = scopes.SetParser(original) }()
 
-	for _, parserName := range AvailableParsers() {
+	for _, parserName := range scopes.AvailableParsers() {
 		t.Run(parserName, func(t *testing.T) {
-			if err := SetParser(parserName); err != nil {
+			if err := scopes.SetParser(parserName); err != nil {
 				t.Fatalf("SetParser(%q): %v", parserName, err)
 			}
 			runParityCases(t)

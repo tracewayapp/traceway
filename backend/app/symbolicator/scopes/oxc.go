@@ -1,6 +1,6 @@
 //go:build oxc && cgo
 
-package symbolicator
+package scopes
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/oxc-shim/include
@@ -16,7 +16,7 @@ import (
 )
 
 func init() {
-	bundleParsers["oxc"] = parseFunctionScopesOxc
+	bundleParsers["oxc"] = parseOxc
 }
 
 var oxcParseErrors = map[int32]string{
@@ -26,7 +26,7 @@ var oxcParseErrors = map[int32]string{
 	4: "parser panicked",
 }
 
-func parseFunctionScopesOxc(bundle []byte) (*functionScopes, error) {
+func parseOxc(bundle []byte) ([]Transition, error) {
 	if len(bundle) == 0 {
 		return scopesFromRaw("", nil), nil
 	}

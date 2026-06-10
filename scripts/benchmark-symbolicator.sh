@@ -12,9 +12,9 @@ OUT="${OUT:-$ROOT_DIR/symbolicator-bench.txt}"
 
 cd "$ROOT_DIR/backend"
 
-go test -tags oxc ./app/symbolicator/ -count=1
+go test -tags oxc ./app/symbolicator/... -count=1
 
-go test -tags oxc ./app/symbolicator/ \
+go test -tags oxc ./app/symbolicator/... \
     -run '^$' \
     -bench 'BenchmarkBundleParsers|BenchmarkNewResolver|BenchmarkOpenTW' \
     -benchtime "$BENCHTIME" \

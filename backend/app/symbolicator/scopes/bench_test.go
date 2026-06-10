@@ -1,7 +1,9 @@
-package symbolicator
+package scopes
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -15,6 +17,26 @@ var benchBundles = []struct {
 	{name: "webpack", path: []string{"sourcemapcache", "webpack", "bundle.js"}},
 	{name: "metro", path: []string{"sourcemapcache", "hermes-metro", "react-native-metro.js"}},
 	{name: "preact", path: []string{"sourcemapcache", "preact.module.js"}},
+}
+
+func benchFixture(t testing.TB, parts ...string) string {
+	t.Helper()
+	root, err := filepath.Abs(filepath.Join("..", "..", "..", "..", "..", "symbolic"))
+	if err == nil {
+		if _, statErr := os.Stat(root); statErr == nil {
+			return filepath.Join(append([]string{root, "symbolic-testutils", "fixtures"}, parts...)...)
+		}
+	}
+	return filepath.Join(append([]string{"..", "..", "services", "testdata"}, parts...)...)
+}
+
+func benchRead(t testing.TB, parts []string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(benchFixture(t, parts...))
+	if err != nil {
+		t.Fatalf("reading fixture: %v", err)
+	}
+	return data
 }
 
 func syntheticBundle(targetBytes int) []byte {
@@ -51,7 +73,7 @@ func benchParser(b *testing.B, parserName string, bundle []byte) {
 
 func BenchmarkBundleParsers(b *testing.B) {
 	for _, fixture := range benchBundles {
-		bundle := readIfSet(b, fixture.path)
+		bundle := benchRead(b, fixture.path)
 		for _, parserName := range AvailableParsers() {
 			b.Run(fmt.Sprintf("%s/%s", fixture.name, parserName), func(b *testing.B) {
 				benchParser(b, parserName, bundle)
@@ -67,48 +89,6 @@ func BenchmarkBundleParsersSynthetic(b *testing.B) {
 			b.Run(fmt.Sprintf("%dMB/%s", size>>20, parserName), func(b *testing.B) {
 				benchParser(b, parserName, bundle)
 			})
-		}
-	}
-}
-
-func BenchmarkNewResolver(b *testing.B) {
-	mapBytes := mustRead(b, fixture(b, "sourcemapcache", "preact.module.js.map"))
-	bundle := mustRead(b, fixture(b, "sourcemapcache", "preact.module.js"))
-
-	for _, parserName := range AvailableParsers() {
-		b.Run("preact/"+parserName, func(b *testing.B) {
-			original := activeBundleParser
-			defer func() { activeBundleParser = original }()
-			if err := SetParser(parserName); err != nil {
-				b.Skipf("parser %s not available in this build", parserName)
-			}
-			b.SetBytes(int64(len(mapBytes) + len(bundle)))
-			b.ReportAllocs()
-			b.ResetTimer()
-			for b.Loop() {
-				if _, err := NewResolver(mapBytes, bundle); err != nil {
-					b.Fatal(err)
-				}
-			}
-		})
-	}
-}
-
-func BenchmarkOpenTW(b *testing.B) {
-	mapBytes := mustRead(b, fixture(b, "sourcemapcache", "preact.module.js.map"))
-	bundle := mustRead(b, fixture(b, "sourcemapcache", "preact.module.js"))
-	resolver, err := NewResolver(mapBytes, bundle)
-	if err != nil {
-		b.Fatal(err)
-	}
-	tw := resolver.MarshalTW()
-
-	b.SetBytes(int64(len(tw)))
-	b.ReportAllocs()
-	b.ResetTimer()
-	for b.Loop() {
-		if _, err := OpenTW(tw); err != nil {
-			b.Fatal(err)
 		}
 	}
 }

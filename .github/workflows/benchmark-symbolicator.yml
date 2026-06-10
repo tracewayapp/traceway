@@ -37,8 +37,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            backend/app/symbolicator/oxc-shim/target
-          key: oxc-shim-${{ runner.os }}-${{ hashFiles('backend/app/symbolicator/oxc-shim/Cargo.lock') }}
+            backend/app/symbolicator/scopes/oxc-shim/target
+          key: oxc-shim-${{ runner.os }}-${{ hashFiles('backend/app/symbolicator/scopes/oxc-shim/Cargo.lock') }}
 
       - name: Run benchmarks
         env:

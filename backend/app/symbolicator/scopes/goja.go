@@ -1,4 +1,4 @@
-package symbolicator
+package scopes
 
 import (
 	"regexp"
@@ -8,7 +8,7 @@ import (
 	"github.com/dop251/goja/parser"
 )
 
-func parseFunctionScopesGoja(bundle []byte) (*functionScopes, error) {
+func parseGoja(bundle []byte) ([]Transition, error) {
 	src := string(bundle)
 	prog, err := parser.ParseFile(nil, "", src, 0, parser.WithDisableSourceMaps)
 	if err != nil {

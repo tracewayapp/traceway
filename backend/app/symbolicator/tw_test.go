@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap_parser"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap"
 )
 
 func TestTWRoundTrip(t *testing.T) {
@@ -23,7 +23,7 @@ func TestTWRoundTrip(t *testing.T) {
 				t.Fatalf("OpenTW: %v", err)
 			}
 
-			parsed, err := sourcemap_parser.Parse(mapBytes)
+			parsed, err := sourcemap.Parse(mapBytes)
 			if err != nil {
 				t.Fatalf("parsing source map: %v", err)
 			}

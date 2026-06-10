@@ -13,7 +13,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap_parser"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap"
 
 	"github.com/google/uuid"
 )
@@ -76,11 +76,11 @@ func buildCanonical(tokens int) (bundle, mapJSON []byte) {
 		line := i % 1000
 		srcCol := i % 80
 		name := i % namePoolSize
-		mappings = sourcemap_parser.AppendVLQ(mappings, int64(cols[i]-prevCol))
-		mappings = sourcemap_parser.AppendVLQ(mappings, int64(src-prevSrc))
-		mappings = sourcemap_parser.AppendVLQ(mappings, int64(line-prevLine))
-		mappings = sourcemap_parser.AppendVLQ(mappings, int64(srcCol-prevSrcCol))
-		mappings = sourcemap_parser.AppendVLQ(mappings, int64(name-prevName))
+		mappings = sourcemap.AppendVLQ(mappings, int64(cols[i]-prevCol))
+		mappings = sourcemap.AppendVLQ(mappings, int64(src-prevSrc))
+		mappings = sourcemap.AppendVLQ(mappings, int64(line-prevLine))
+		mappings = sourcemap.AppendVLQ(mappings, int64(srcCol-prevSrcCol))
+		mappings = sourcemap.AppendVLQ(mappings, int64(name-prevName))
 		prevCol, prevSrc, prevLine, prevSrcCol, prevName = cols[i], src, line, srcCol, name
 	}
 

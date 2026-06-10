@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/tracewayapp/traceway/backend/app/symbolicator"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/jsstack"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.uber.org/zap"
 )
@@ -180,7 +181,7 @@ func (p *symbolicatorProcessor) extractFrames(attrs pcommon.Map, rawStack string
 		return frames, true, nil
 	}
 
-	parsed := symbolicator.ParseJSStackFrames(rawStack)
+	parsed := jsstack.ParseFrames(rawStack)
 	if len(parsed) == 0 {
 		return nil, false, errUnparseableStackTrace
 	}

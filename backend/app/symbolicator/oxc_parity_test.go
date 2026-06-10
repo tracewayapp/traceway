@@ -5,12 +5,13 @@ package symbolicator
 import (
 	"testing"
 
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap_parser"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/scopes"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap"
 )
 
 func TestOxcGojaLookupEquivalence(t *testing.T) {
-	original := activeBundleParser
-	defer func() { activeBundleParser = original }()
+	original := scopes.ActiveParser()
+	defer func() { _ = scopes.SetParser(original) }()
 
 	for _, tc := range parityCases {
 		if tc.minifiedPath == nil {
@@ -20,19 +21,23 @@ func TestOxcGojaLookupEquivalence(t *testing.T) {
 			mapBytes := mustRead(t, fixture(t, tc.mapPath...))
 			bundle := mustRead(t, fixture(t, tc.minifiedPath...))
 
-			activeBundleParser = "goja"
+			if err := scopes.SetParser("goja"); err != nil {
+				t.Fatal(err)
+			}
 			gojaResolver, err := NewResolver(mapBytes, bundle)
 			if err != nil {
 				t.Fatalf("NewResolver(goja): %v", err)
 			}
 
-			activeBundleParser = "oxc"
+			if err := scopes.SetParser("oxc"); err != nil {
+				t.Fatal(err)
+			}
 			oxcResolver, err := NewResolver(mapBytes, bundle)
 			if err != nil {
 				t.Fatalf("NewResolver(oxc): %v", err)
 			}
 
-			parsed, err := sourcemap_parser.Parse(mapBytes)
+			parsed, err := sourcemap.Parse(mapBytes)
 			if err != nil {
 				t.Fatalf("parsing source map: %v", err)
 			}

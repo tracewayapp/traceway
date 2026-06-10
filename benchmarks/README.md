@@ -422,7 +422,9 @@ What to expect in the summary table (one section per cold ratio):
   producing the "file-based is the only option beyond here" line. Disk RSS
   stays flat (only hot pages resident).
 
-Non-smoke dispatches commit results to `benchmarks/results-cachebench/`.
+Results are not committed back to the repo: every dispatch uploads
+`benchmarks/results-cachebench/` (per-cell JSON plus `summary.md`) as a run
+artifact, and the summary table is rendered in the job step summary.
 
 ## Layout
 

@@ -1,11 +1,5 @@
 # Symbolication (JS)
 
-import { Callout } from "nextra/components";
-
-<Callout type="info">
-  **This is actively being worked on.** If you have ideas or suggestions for how symbolication should evolve, we want to hear them: reach out on [Discord](https://discord.gg/RZq9NT62nc) or open an issue on [GitHub](https://github.com/tracewayapp/traceway).
-</Callout>
-
 Symbolication is the process of translating minified production stack traces back into the original source locations your team actually wrote. Browsers report errors against the shipped bundle, so without symbolication an exception looks like this:
 
 ```
@@ -79,7 +73,7 @@ No map in storage: the line passes through unchanged, and that filename enters a
 
 ### 2. Get the resolver
 
-The parsed lookup structure comes from the in-memory cache described below. First use pays a storage read plus a parse; everything after is a memory lookup.
+The parsed lookup structure comes from the in-memory cache described below, optionally backed by a disk tier of precompiled [`.tw` files](#the-tw-resolver-format). First use pays a storage read plus a parse (or a memory-mapped `.tw` open, which skips the parse); everything after is a memory lookup.
 
 ### 3. Look up the position
 
@@ -177,7 +171,7 @@ One consequence to be aware of: a trace that fails symbolication (storage outage
 
 ## What Is Cached, How, and When
 
-Source maps for real applications are large (a 20 MB `.map` is unremarkable), and the compiled lookup structure is what actually serves frames. Traceway keeps **one in-memory cache** of built resolvers, keyed by the map's storage key.
+Source maps for real applications are large (a 20 MB `.map` is unremarkable), and the compiled lookup structure is what actually serves frames. Traceway keeps **one in-memory cache** of built resolvers, keyed by the map's storage key, optionally backed by a **disk tier** of precompiled [`.tw` files](#the-tw-resolver-format) (see [Cache backends](#cache-backends-memory-and-disk)).
 
 ### What a cache entry contains
 
@@ -195,7 +189,7 @@ Everything else is discarded: the raw map and bundle bytes, `sourcesContent`, th
 
 | Property | Value |
 |---|---|
-| Keying | map storage key, one entry per bundle filename per project |
+| Keying | map storage key: one entry per bundle filename per project, plus one per debug ID for [debug-ID artifacts](/client/js-sdk/debug-ids) |
 | Capacity | `SOURCEMAP_CACHE_MAX_ENTRIES` (default 200) and `SOURCEMAP_CACHE_MAX_BYTES_MB` (default 500, estimated resolver size) |
 | Eviction | least recently used, whenever either cap is exceeded |
 | Loading | deduplicated (singleflight): concurrent requests for the same map share one storage read and one build |
@@ -225,6 +219,87 @@ If the map does not exist, the read times out, storage errors, or the map fails 
 - Within a single trace, a failed map is attempted **once**, not once per frame, so a 50-frame trace cannot stack fifty timeouts.
 - Traceway self-reports the failure into its own monitoring project, throttled to one exception per minute with a count of suppressed occurrences.
 
+## Cache Backends: Memory and Disk
+
+The in-memory cache described above is the default and always present. `SOURCEMAP_CACHE_TYPE=disk` layers a local cache of precompiled `.tw` files underneath it, which changes what a *memory miss* costs. Lookup order with the disk tier enabled:
+
+1. **In-memory LRU.** Same as memory-only mode; a hit is a pure memory lookup.
+2. **Local `.tw` file** under `SOURCEMAP_DISK_CACHE_PATH`. The file is memory-mapped and the resolver opens with validation only; on little-endian hosts (amd64, arm64) the token table is used directly from the mapped pages with zero copying or decoding. Counted in `disk.hits`.
+3. **`.tw` from object storage.** Downloaded, written to the local directory (atomically, via temp file and rename), then opened as in step 2. Counted in `store_hits`.
+4. **Full rebuild** from the `.map` and bundle, exactly like memory-only mode. The finished resolver is serialized to `.tw` and written back to both object storage and the local directory, so the rebuild happens once cluster-wide rather than once per instance. Counted in `builds`.
+
+The local directory is itself an LRU bounded by bytes (`SOURCEMAP_DISK_CACHE_MAX_MB`, default 2048): least recently used `.tw` files are deleted when the cap is exceeded. The directory is scanned at startup, so the cache survives restarts with its recency order approximated from file mtimes; mtimes are refreshed on use at most once per 10 minutes to keep that approximation current without constant metadata writes. A `.tw` file that fails validation (truncated, corrupt, or written by an older format version) is deleted and rebuilt from the original artifacts; this is a recovery path, not an error.
+
+Uploads warm the disk tier proactively: after `/api/sourcemaps/upload` stores the files, a background task deletes the stale `.tw` from object storage, evicts the cached resolver, and rebuilds it, so the first exception after a deploy finds a hot cache instead of paying the build.
+
+When to enable it: the memory-only default is right for most deployments. The disk tier pays off when the set of actively-resolving maps is much larger than the memory cap (high eviction traffic, where each re-entry would otherwise re-parse a multi-megabyte map), and in multi-instance deployments (each instance reuses the `.tw` built by whichever instance got there first instead of re-parsing).
+
+## The `.tw` Resolver Format
+
+Building a resolver is the expensive part of symbolication: parse the `.map` JSON, decode the VLQ `mappings`, parse the bundle, run scope analysis, pre-resolve every enclosing function name. `.tw` is the binary serialization of the *finished* resolver, so opening one skips all of that. It is designed to be memory-mapped and used in place.
+
+All integers are little-endian. The layout:
+
+```
+offset    size      field
+0         4         magic "TWSM"
+4         4         format version (currently 1)
+8         4         token count (N)
+12        4         file name count (F)
+16        4         function name count (G)
+20        4         reserved (0)
+24        24 × N    token table
+...       4 × (F+1) file name offsets
+...       var       file name blob (concatenated UTF-8)
+...       4 × (G+1) function name offsets
+...       var       function name blob (concatenated UTF-8)
+```
+
+**Token table.** One 24-byte record per source map mapping, six 32-bit fields each: generated line, generated column, original line, original column, file name index, function name index. Lines and columns are stored exactly as the resolver uses them (original line/column already 1-based, generated 0-based), so no arithmetic happens at lookup time. The two indices are signed; `-1` means "no original file" (an unmapped segment) or "no enclosing function". Tokens are sorted by generated position, which is what makes a frame lookup a single binary search over the mapped file. Function names being materialized per token is the key property: scope analysis ran once, at build time, and its output is just an index into the name table.
+
+**String tables.** Each table is `count + 1` offsets followed by one concatenated UTF-8 blob; string `i` spans `blob[offsets[i]:offsets[i+1]]`. Offsets must be monotonically non-decreasing. The names are interned, so a file referenced by ten thousand tokens is stored once.
+
+**Opening.** `OpenTW` validates and does nothing else: magic and version match, every section lies within the file, offsets are monotonic, every token index is in range, and no trailing bytes follow the last table. On a little-endian host where the in-memory token struct matches the on-disk record layout (true on amd64 and arm64), the token table is reinterpreted directly from the mapped bytes: zero copies, zero decoding, and the OS page cache shares it across anything else mapping the same file. The only allocations are the interned strings. On other hosts the tokens are decoded record by record into a fresh slice.
+
+**Versioning.** The format is versioned by a single integer with no migration path, deliberately: a `.tw` is a cache artifact, never the source of truth. Bumping the version makes every existing file fail validation, after which each is lazily rebuilt from its `.map` and bundle.
+
+**Placement.** A `.tw` lives at the map's storage key with the `.map` suffix replaced by `.tw`: `sourcemaps/{projectId}/app.bundle.js.map` compiles to `sourcemaps/{projectId}/app.bundle.js.tw`, and debug-ID artifacts to `sourcemaps/{projectId}/by-debug-id/{debugId}.js.tw`. The local disk cache mirrors the same relative paths under `SOURCEMAP_DISK_CACHE_PATH`.
+
+## Bundle Parsers
+
+Function name resolution (the scope analysis above) requires parsing the minified bundle into an AST. Two parsers are available:
+
+| Parser | Availability | Implementation |
+|---|---|---|
+| `goja` | always (default) | pure Go, via the [goja](https://github.com/dop251/goja) parser |
+| `oxc` | opt-in build | Rust, via the [oxc](https://oxc.rs) parser behind a small C FFI shim |
+
+`goja` ships in every build and needs nothing. It parses the bundle as a script and, when that fails on ESM syntax, neutralizes the module syntax and retries.
+
+`oxc` is substantially faster on large bundles but requires a Rust toolchain at *build* time (the resulting binary is self-contained):
+
+```bash
+./scripts/build-oxc-shim.sh        # cargo build --release of the FFI shim
+cd backend && go build -tags oxc . # links the static library in
+```
+
+Select the parser at runtime with `SYMBOLICATOR_PARSER=oxc` (or `goja`). Selecting a parser that was not compiled in fails startup with the list of available parsers, rather than silently falling back.
+
+The parser choice affects **build speed only, never output**: both parsers must produce identical scope transitions, and a parity test asserts oxc against goja across the fixture suite. Since parsing happens only when a resolver is built (and the result is cached, including into `.tw`), the parser matters most for deployments with heavy map churn or with the disk cache disabled. `scripts/benchmark-symbolicator.sh` benchmarks the two side by side.
+
+## Configuration Reference
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SYMBOLICATOR_PARSER` | `goja` | Bundle parser for function name resolution: `goja` or `oxc` (the latter only in `-tags oxc` builds) |
+| `SOURCEMAP_CACHE_TYPE` | `memory` | `memory` for the in-memory LRU only, `disk` to add the local `.tw` tier |
+| `SOURCEMAP_DISK_CACHE_PATH` | `./twcache` | Directory for local `.tw` files (disk mode only) |
+| `SOURCEMAP_DISK_CACHE_MAX_MB` | `2048` | Byte cap for the local `.tw` directory, LRU-evicted (disk mode only) |
+| `SOURCEMAP_CACHE_MAX_ENTRIES` | `200` | Max built resolvers held in memory |
+| `SOURCEMAP_CACHE_MAX_BYTES_MB` | `500` | Max estimated in-memory size of all resolvers |
+
+See [Capacity & Self-Monitoring](/server/capacity-monitoring) for sizing guidance.
+
 ## Observability
 
 The backend self-reports cache metrics every 30 seconds (see [Capacity Monitoring](/server/capacity-monitoring) for the full operations view):
@@ -241,6 +316,11 @@ The backend self-reports cache metrics every 30 seconds (see [Capacity Monitorin
 | `traceway.sourcemap.not_found.delta` | lookups that found no uploaded map for the frame's filename since the last tick |
 | `traceway.sourcemap.negative_hits.delta` | frame lookups skipped by an active cooldown since the last tick |
 | `traceway.sourcemap.parse_ms` | duration of the most recent resolver build |
+| `traceway.sourcemap.store_hits.delta` | memory misses served by a `.tw` fetched from object storage since the last tick (disk tier) |
+| `traceway.sourcemap.builds.delta` | memory misses that required a full rebuild from `.map` + bundle since the last tick (disk tier) |
+| `traceway.sourcemap.disk.entries` / `disk.bytes` | local `.tw` files currently cached and their total size (disk tier only) |
+| `traceway.sourcemap.disk.hits.delta` | memory misses served by a local `.tw` file since the last tick (disk tier only) |
+| `traceway.sourcemap.disk.evictions.delta` | local `.tw` files evicted by the byte cap since the last tick (disk tier only) |
 
 What healthy looks like: `misses.delta` near zero in steady state (every miss is a storage read plus a rebuild), `load_failures.delta` at zero (anything above zero means minified traces are reaching your issues), and `bytes` comfortably under the cap. A useful alert is `load_failures.delta` max greater than 0 over 5 minutes.
 
@@ -265,6 +345,8 @@ Honest list, in rough order of impact:
 The resolver is tested for parity against [getsentry/symbolic](https://github.com/getsentry/symbolic), the symbolication engine behind Sentry, using its own fixture suite (webpack, Metro, Hermes, preact, inlined functions, null-source maps). Every fixture frame's expected file, line, column, and name is asserted exactly, so any drift fails the build.
 
 All frames match symbolic on **location**. With scope analysis, names now match too for frames inside a function, including the cases the old text-scanning heuristic got wrong (preact's `createElement` and `assign` among them). The remaining name gap is module-level code, where symbolic reports `<global>` and Traceway reports no name (limitation 9 above).
+
+Two more invariants are tested directly: the `.tw` format round-trips (a resolver serialized and reopened answers every lookup identically, including from a memory-mapped file), and the `oxc` parser produces scope output identical to `goja` across the fixture suite, so the parser choice can never change symbolication results.
 
 ## Related Pages
 

@@ -1,10 +1,10 @@
 # Debug IDs
 
-Debug IDs tie a deployed bundle to the exact source map produced by the same build. At build time, `@tracewayapp/bundler-plugin` embeds a unique 128-bit ID (UUID format) into both the bundle and its `.map` file. At runtime the SDK reports the IDs of the bundles involved in each exception, and the backend uses them to pick the matching map — content-addressed, with no dependence on filenames, URLs, versions, or deploy timing.
+Debug IDs tie a deployed bundle to the exact source map produced by the same build. At build time, `@tracewayapp/bundler-plugin` embeds a unique 128-bit ID (UUID format) into both the bundle and its `.map` file. At runtime the SDK reports the IDs of the bundles involved in each exception, and the backend uses them to pick the matching map: content-addressed, with no dependence on filenames, URLs, versions, or deploy timing.
 
 This is the same mechanism Sentry pioneered and the [ECMA-426 source map specification's Debug ID proposal](https://github.com/tc39/ecma426/blob/main/proposals/debug-id.md) standardizes: a `debugId` field in the source map JSON and a `//# debugId=<uuid>` comment in the generated file. Traceway emits and consumes exactly that format, so artifacts are interoperable with other ECMA-426 tooling, and Traceway accepts artifacts produced by other debug-ID-aware tools (Sentry's bundler plugins, `sentry-cli sourcemaps inject`, Rollup's `output.sourcemapDebugIds`, Bun).
 
-Without debug IDs, maps are matched by filename — which works with content-hashed bundle names but breaks down with stable names like `app.js` served from multiple concurrent deploys. See [How Maps Are Matched](/client/js-sdk/sourcemap-upload#how-maps-are-matched).
+Without debug IDs, maps are matched by filename, which works with content-hashed bundle names but breaks down with stable names like `app.js` served from multiple concurrent deploys. See [How Maps Are Matched](/client/js-sdk/sourcemap-upload#how-maps-are-matched).
 
 ## Installation
 
@@ -59,7 +59,7 @@ Requires webpack 5.
 
 ## Upload As Usual
 
-The upload step is unchanged — the backend detects debug IDs in the uploaded files automatically:
+The upload step is unchanged; the backend detects debug IDs in the uploaded files automatically:
 
 ```bash
 npx traceway-sourcemaps \
@@ -73,7 +73,7 @@ npx traceway-sourcemaps \
 For every emitted JS chunk, the plugin:
 
 1. Derives a deterministic debug ID from the chunk's content (a SHA-256 hash formatted as a UUID), so rebuilding identical input yields the identical ID.
-2. Injects a small self-executing snippet at the top of the chunk (after any shebang and `"use strict"` directive) that registers the ID in a `_tracewayDebugIds` global, keyed by the stack of a synthetic error — which is how the SDK later discovers the runtime URL each bundle was loaded from. Source maps are adjusted for the insertion, so resolved positions are unaffected.
+2. Injects a small self-executing snippet at the top of the chunk (after any shebang and `"use strict"` directive) that registers the ID in a `_tracewayDebugIds` global, keyed by the stack of a synthetic error, which is how the SDK later discovers the runtime URL each bundle was loaded from. Source maps are adjusted for the insertion, so resolved positions are unaffected.
 3. Appends a `//# debugId=<uuid>` comment to the chunk, above the `//# sourceMappingURL=` comment.
 4. Writes the ID into the source map JSON as `debugId` (and `debug_id` for compatibility with Sentry-era tooling).
 
@@ -83,7 +83,7 @@ When an exception is captured, the SDK reads `_tracewayDebugIds` (and `_sentryDe
 
 Debug IDs work the same way for server-side bundles: the injected snippet detects `globalThis`/`global`, and Node stack traces carry the bundle path just like browser ones. If you bundle a Node service with Vite, Rollup, or webpack, the same plugin applies.
 
-OpenTelemetry currently has **no debug ID convention** — there is no semantic-conventions attribute for source map linkage, and the JS SDKs do not collect anything like it. Traceway therefore carries debug IDs in its own report payload (a `debugIds` filename-to-ID map on each exception). Because the build artifacts follow the ECMA-426 format rather than anything Traceway-specific, a future Node/OTel integration can adopt the same uploads without rebuilding anything.
+OpenTelemetry currently has **no debug ID convention**: there is no semantic-conventions attribute for source map linkage, and the JS SDKs do not collect anything like it. Traceway therefore carries debug IDs in its own report payload (a `debugIds` filename-to-ID map on each exception). Because the build artifacts follow the ECMA-426 format rather than anything Traceway-specific, a future Node/OTel integration can adopt the same uploads without rebuilding anything.
 
 ## Interoperability Notes
 
@@ -93,5 +93,5 @@ OpenTelemetry currently has **no debug ID convention** — there is no semantic-
 
 ## Next Steps
 
-- [Source Maps](/client/js-sdk/sourcemap-upload) — the upload CLI
-- [Symbolication](/learn/symbolication-js) — the full resolution pipeline
+- [Source Maps](/client/js-sdk/sourcemap-upload): the upload CLI
+- [Symbolication](/learn/symbolication-js): the full resolution pipeline

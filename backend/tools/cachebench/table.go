@@ -56,18 +56,29 @@ func renderTable(resultsDir string) (string, error) {
 	fmt.Fprintf(&sb, "# Symbolicator cache benchmark: in-memory vs mmap disk cache\n\n")
 	fmt.Fprintf(&sb, "Instance: %s. Hot set: %d bundles. Workload: %d concurrent resolvers, 3 frames per stack trace.\n\n",
 		rows[0].Tier, rows[0].Hot, rows[0].Concurrency)
+	sb.WriteString("Peak RSS is the benchmark process's maximum resident memory over the whole cell (sampled every 200ms), so it captures the worst-case RAM cost of each cache design under that load.\n\n")
 
 	for _, ratio := range ratios {
 		fmt.Fprintf(&sb, "## Cold traffic ratio %.0f%% (share of lookups hitting a uniformly random bundle outside the hot set)\n\n", ratio*100)
 		entrySizes := slices.Sorted(maps.Keys(cells[ratio]))
 
-		sb.WriteString("| Bundles | Resolver corpus |")
+		ratioLabels := make([]string, 0, len(labels))
 		for _, l := range labels {
-			fmt.Fprintf(&sb, " %s rps | %s p99 ms | %s RSS MB |", l, l, l)
+			for _, entries := range entrySizes {
+				if cells[ratio][entries][l] != nil {
+					ratioLabels = append(ratioLabels, l)
+					break
+				}
+			}
+		}
+
+		sb.WriteString("| Bundles | Resolver corpus |")
+		for _, l := range ratioLabels {
+			fmt.Fprintf(&sb, " %s rps | %s p99 ms | %s peak RSS MB |", l, l, l)
 		}
 		sb.WriteString(" Winner |\n")
 		sb.WriteString("|---|---|")
-		for range labels {
+		for range ratioLabels {
 			sb.WriteString("---|---|---|")
 		}
 		sb.WriteString("---|\n")
@@ -85,7 +96,7 @@ func renderTable(resultsDir string) (string, error) {
 			fmt.Fprintf(&sb, "| %d | %.2f GB |", entries, corpusGB)
 
 			bestLabel, bestRPS := "", -1.0
-			for _, l := range labels {
+			for _, l := range ratioLabels {
 				c := row[l]
 				if c == nil {
 					sb.WriteString(" - | - | - |")
@@ -126,7 +137,7 @@ func renderTable(resultsDir string) (string, error) {
 		sb.WriteString("| Bundles | Label | Hits | Misses | Builds | Disk hits | Store hits | Disk evictions | Unresolved frames | GC pause ms |\n")
 		sb.WriteString("|---|---|---|---|---|---|---|---|---|---|\n")
 		for _, entries := range entrySizes {
-			for _, l := range labels {
+			for _, l := range ratioLabels {
 				r := cells[ratio][entries][l]
 				if r == nil || r.Status != "ok" {
 					continue

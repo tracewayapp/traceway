@@ -39,7 +39,7 @@ on:
         default: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   bench:
@@ -48,9 +48,6 @@ jobs:
       HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.RELEASE_TOKEN }}
 
       - name: Install hcloud CLI
         run: |
@@ -95,31 +92,3 @@ jobs:
           name: cachebench-${{ github.event.inputs.tier }}
           path: benchmarks/results-cachebench/
           if-no-files-found: warn
-
-      - name: Commit results
-        if: github.event.inputs.smoke != 'true'
-        run: |
-          set -euo pipefail
-          git config user.name "traceway-bot"
-          git config user.email "bot@tracewayapp.com"
-
-          staged="benchmarks/results-cachebench"
-          tmp_staged="$(mktemp -d)/staged"
-          cp -a "${staged}" "${tmp_staged}"
-
-          git fetch origin main
-          git reset --hard origin/main
-
-          rm -rf "${staged}"
-          mkdir -p "${staged}"
-          cp -a "${tmp_staged}/." "${staged}/"
-          rm -rf "${tmp_staged%/staged}"
-
-          git add -A "${staged}"
-          if git diff --cached --quiet; then
-            echo "nothing to commit"
-            exit 0
-          fi
-          git commit -m "bench: symbolicator-cache ${{ github.event.inputs.tier }} $(date -u +%Y-%m-%d)"
-          git pull --rebase origin main
-          git push

@@ -1,24 +1,24 @@
-package symbolicator
+package jsstack
 
 import (
 	"strconv"
 	"strings"
 )
 
-type JSStackFrame struct {
+type Frame struct {
 	Function string
 	URL      string
 	Line     uint32
 	Col      uint32
 }
 
-func ParseJSStackFrames(trace string) []JSStackFrame {
+func ParseFrames(trace string) []Frame {
 	lines := strings.Split(trace, "\n")
 	parse := detectJsFrameParser(lines)
 	if parse == nil {
 		return nil
 	}
-	var frames []JSStackFrame
+	var frames []Frame
 	for _, line := range lines {
 		f, ok := parse(line)
 		if !ok || f.loc == "" {
@@ -28,7 +28,7 @@ func ParseJSStackFrames(trace string) []JSStackFrame {
 		if !ok {
 			continue
 		}
-		frames = append(frames, JSStackFrame{Function: f.fn, URL: url, Line: lineNum, Col: col})
+		frames = append(frames, Frame{Function: f.fn, URL: url, Line: lineNum, Col: col})
 	}
 	return frames
 }

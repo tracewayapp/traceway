@@ -1,4 +1,4 @@
-package symbolicator
+package jsstack
 
 import (
 	"regexp"
@@ -13,7 +13,7 @@ type jsStackFrame struct {
 var jsLocRe = regexp.MustCompile(`^.+:\d+:\d+$`)
 var jsEvalLocRe = regexp.MustCompile(`\(([^()]+:\d+:\d+)\)`)
 
-func CanonicalizeJSStackTrace(trace string) (string, bool) {
+func Canonicalize(trace string) (string, bool) {
 	lines := strings.Split(trace, "\n")
 
 	parse := detectJsFrameParser(lines)

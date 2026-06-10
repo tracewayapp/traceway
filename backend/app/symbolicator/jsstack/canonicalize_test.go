@@ -1,4 +1,4 @@
-package symbolicator
+package jsstack
 
 import (
 	"strings"
@@ -16,7 +16,7 @@ func TestCanonicalizeJSStackTraceChrome(t *testing.T) {
 		"    at Array.forEach (<anonymous>)",
 	}, "\n")
 
-	got, ok := CanonicalizeJSStackTrace(input)
+	got, ok := Canonicalize(input)
 	if !ok {
 		t.Fatal("expected chrome trace to be detected")
 	}
@@ -46,7 +46,7 @@ func TestCanonicalizeJSStackTraceNodeAndBun(t *testing.T) {
 		"    at /srv/app/dist/server.js:10:5",
 	}, "\n")
 
-	got, ok := CanonicalizeJSStackTrace(input)
+	got, ok := Canonicalize(input)
 	if !ok {
 		t.Fatal("expected node trace to be detected")
 	}
@@ -69,7 +69,7 @@ func TestCanonicalizeJSStackTraceChromeEval(t *testing.T) {
 		"    at eval (eval at run (https://x.test/app.min.js:1:100), <anonymous>:5:9)",
 	}, "\n")
 
-	got, ok := CanonicalizeJSStackTrace(input)
+	got, ok := Canonicalize(input)
 	if !ok {
 		t.Fatal("expected eval trace to be detected")
 	}
@@ -87,7 +87,7 @@ func TestCanonicalizeJSStackTraceFirefox(t *testing.T) {
 		"outer@https://app.example.com/assets/app.min.js line 2 > eval:1:1",
 	}, "\n")
 
-	got, ok := CanonicalizeJSStackTrace(input)
+	got, ok := Canonicalize(input)
 	if !ok {
 		t.Fatal("expected firefox trace to be detected")
 	}
@@ -111,7 +111,7 @@ func TestCanonicalizeJSStackTraceSafari(t *testing.T) {
 		"promiseReactionJob@[native code]",
 	}, "\n")
 
-	got, ok := CanonicalizeJSStackTrace(input)
+	got, ok := Canonicalize(input)
 	if !ok {
 		t.Fatal("expected safari trace to be detected")
 	}
@@ -136,7 +136,7 @@ func TestCanonicalizeJSStackTracePassthrough(t *testing.T) {
 		"empty":     "",
 	}
 	for name, input := range cases {
-		got, ok := CanonicalizeJSStackTrace(input)
+		got, ok := Canonicalize(input)
 		if ok {
 			t.Errorf("%s: expected no detection", name)
 		}

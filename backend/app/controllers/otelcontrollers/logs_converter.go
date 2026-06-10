@@ -1,6 +1,7 @@
 package otelcontrollers
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"strconv"
@@ -14,12 +15,13 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models"
 )
 
-func convertLogs(projectId uuid.UUID, req *collogspb.ExportLogsServiceRequest) []models.LogRecord {
+func convertLogs(ctx context.Context, projectId uuid.UUID, req *collogspb.ExportLogsServiceRequest) []models.LogRecord {
 	var records []models.LogRecord
 
 	for _, rl := range req.ResourceLogs {
 		resAttrs := extractAttributes(rl.GetResource().GetAttributes())
 		serviceName := getStringAttribute(rl.GetResource().GetAttributes(), "service.name")
+		language := getStringAttribute(rl.GetResource().GetAttributes(), "telemetry.sdk.language")
 		resourceSchemaUrl := rl.GetSchemaUrl()
 
 		for _, sl := range rl.ScopeLogs {
@@ -30,7 +32,11 @@ func convertLogs(projectId uuid.UUID, req *collogspb.ExportLogsServiceRequest) [
 			scopeSchemaUrl := sl.GetSchemaUrl()
 
 			for _, lr := range sl.LogRecords {
-				records = append(records, toLogRecord(projectId, lr, serviceName, resourceSchemaUrl, resAttrs, scopeSchemaUrl, scopeName, scopeVersion, scopeAttrs))
+				record := toLogRecord(projectId, lr, serviceName, resourceSchemaUrl, resAttrs, scopeSchemaUrl, scopeName, scopeVersion, scopeAttrs)
+				if stackTrace := record.LogAttributes["exception.stacktrace"]; stackTrace != "" {
+					record.LogAttributes["exception.stacktrace"] = otelSymbolicateJs(projectId, ctx, stackTrace, language, scopeName)
+				}
+				records = append(records, record)
 			}
 		}
 	}

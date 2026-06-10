@@ -42,7 +42,7 @@ func (k entityKind) traceType() string {
 	return ""
 }
 
-func convertTraces(ctx context.Context, projectId uuid.UUID, req *coltracepb.ExportTraceServiceRequest, symbolicate symbolicateFunc) (
+func convertTraces(ctx context.Context, projectId uuid.UUID, req *coltracepb.ExportTraceServiceRequest) (
 	endpoints []models.Endpoint,
 	tasks []models.Task,
 	spans []models.Span,
@@ -267,7 +267,7 @@ func convertTraces(ctx context.Context, projectId uuid.UUID, req *coltracepb.Exp
 				if event.Name == "exception" {
 					exc := buildException(
 						ctx, projectId, ownerId, traceType, event,
-						allAttrs, serverName, appVersion, language, entry.scopeName, symbolicate,
+						allAttrs, serverName, appVersion, language, entry.scopeName,
 					)
 					if owner != nil {
 						exc.DistributedTraceId = owner.distributedTraceId
@@ -441,8 +441,6 @@ func buildTask(
 	}
 }
 
-type symbolicateFunc func(ctx context.Context, stackTrace, language, scopeName string) string
-
 func buildException(
 	ctx context.Context,
 	projectId, traceId uuid.UUID,
@@ -450,7 +448,6 @@ func buildException(
 	event *tracepb.Span_Event,
 	spanAttrs map[string]string,
 	serverName, appVersion, language, scopeName string,
-	symbolicate symbolicateFunc,
 ) models.ExceptionStackTrace {
 	eventAttrs := event.Attributes
 	excType := getStringAttribute(eventAttrs, "exception.type")
@@ -462,9 +459,7 @@ func buildException(
 		stackTrace = formatExceptionStackTrace(excType, excMessage, excStacktrace)
 	}
 
-	if symbolicate != nil {
-		stackTrace = symbolicate(ctx, stackTrace, language, scopeName)
-	}
+	stackTrace = otelSymbolicateJs(projectId, ctx, stackTrace, language, scopeName)
 
 	hash := clientcontrollers.ComputeExceptionHash(stackTrace, false)
 

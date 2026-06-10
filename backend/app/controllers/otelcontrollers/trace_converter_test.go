@@ -6,9 +6,11 @@ import (
 	"flag"
 	"os"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/tracewayapp/traceway/backend/app/services"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
@@ -95,7 +97,8 @@ func TestConvertTraces_Snapshot(t *testing.T) {
 				t.Fatalf("failed to unmarshal fixture %s: %v", tt.fixture, err)
 			}
 
-			endpoints, _, spans, exceptions, aiTraces, aiConversations := convertTraces(context.Background(), testProjectId, req, nil)
+			setFakeStore(t, nil)
+			endpoints, _, spans, exceptions, aiTraces, aiConversations := convertTraces(context.Background(), testProjectId, req)
 
 			// Check if all child spans share a trace ID with an endpoint
 			endpointIds := map[uuid.UUID]bool{}
@@ -376,7 +379,7 @@ func TestTraceIdResolution_CrossScope(t *testing.T) {
 		},
 	}
 
-	endpoints, _, spans, _, _, _ := convertTraces(context.Background(), testProjectId, req, nil)
+	endpoints, _, spans, _, _, _ := convertTraces(context.Background(), testProjectId, req)
 
 	if len(endpoints) != 1 {
 		t.Fatalf("expected 1 endpoint, got %d", len(endpoints))
@@ -469,7 +472,7 @@ func TestConvertTraces_ConsumerNonRoot_BecomesTask(t *testing.T) {
 		}},
 	}
 
-	endpoints, tasks, spans, _, _, _ := convertTraces(context.Background(), testProjectId, req, nil)
+	endpoints, tasks, spans, _, _, _ := convertTraces(context.Background(), testProjectId, req)
 
 	if len(endpoints) != 0 {
 		t.Fatalf("expected 0 endpoints, got %d", len(endpoints))
@@ -519,7 +522,7 @@ func TestConvertTraces_ConsoleCommand_BecomesTask(t *testing.T) {
 		}},
 	}
 
-	_, tasks, _, _, _, _ := convertTraces(context.Background(), testProjectId, req, nil)
+	_, tasks, _, _, _, _ := convertTraces(context.Background(), testProjectId, req)
 	if len(tasks) != 1 {
 		t.Fatalf("expected 1 task, got %d", len(tasks))
 	}
@@ -551,7 +554,7 @@ func TestConvertTraces_InlineGenAi_BecomesAiTrace(t *testing.T) {
 		}},
 	}
 
-	endpoints, _, _, _, aiTraces, _ := convertTraces(context.Background(), testProjectId, req, nil)
+	endpoints, _, _, _, aiTraces, _ := convertTraces(context.Background(), testProjectId, req)
 	if len(endpoints) != 1 {
 		t.Fatalf("expected 1 endpoint, got %d", len(endpoints))
 	}
@@ -605,7 +608,7 @@ func TestConvertTraces_ExceptionOnConsumer_TraceTypeIsTask(t *testing.T) {
 		}},
 	}
 
-	_, tasks, _, exceptions, _, _ := convertTraces(context.Background(), testProjectId, req, nil)
+	_, tasks, _, exceptions, _, _ := convertTraces(context.Background(), testProjectId, req)
 	if len(tasks) != 1 || len(exceptions) != 1 {
 		t.Fatalf("expected 1 task + 1 exception, got %d / %d", len(tasks), len(exceptions))
 	}
@@ -639,7 +642,7 @@ func TestConvertTraces_OrphanSpan_FallsBackToTraceId(t *testing.T) {
 		}},
 	}
 
-	_, _, spans, _, _, _ := convertTraces(context.Background(), testProjectId, req, nil)
+	_, _, spans, _, _, _ := convertTraces(context.Background(), testProjectId, req)
 	if len(spans) != 1 {
 		t.Fatalf("expected 1 span row, got %d", len(spans))
 	}
@@ -734,32 +737,64 @@ func TestConvertTraces_HoneycombJsExceptionSymbolicates(t *testing.T) {
 		}},
 	}
 
-	var symInput, symLang, symScope string
-	symbolicate := func(_ context.Context, stackTrace, language, scopeName string) string {
-		symInput, symLang, symScope = stackTrace, language, scopeName
-		return "RESOLVED"
-	}
-
-	_, _, _, exceptions, _, _ := convertTraces(context.Background(), testProjectId, req, symbolicate)
+	setFakeStore(t, nil)
+	_, _, _, exceptions, _, _ := convertTraces(context.Background(), testProjectId, req)
 	if len(exceptions) != 1 {
 		t.Fatalf("expected 1 exception, got %d", len(exceptions))
 	}
 	exc := exceptions[0]
-	if symLang != "webjs" {
-		t.Errorf("expected language webjs passed to symbolicate, got %q", symLang)
-	}
-	if symScope != "@opentelemetry/instrumentation-fetch" {
-		t.Errorf("expected instrumentation scope passed to symbolicate, got %q", symScope)
-	}
 	wantParsed := "Error: user has no name\nn()\n    app.min.js:1:63\n    app.min.js:1:146"
-	if symInput != wantParsed {
-		t.Errorf("honeycomb parse:\n got %q\nwant %q", symInput, wantParsed)
-	}
-	if exc.StackTrace != "RESOLVED" {
-		t.Errorf("expected symbolicated stack trace stored, got %q", exc.StackTrace)
+	if exc.StackTrace != wantParsed {
+		t.Errorf("honeycomb parse:\n got %q\nwant %q", exc.StackTrace, wantParsed)
 	}
 	if exc.Attributes["telemetry.sdk.language"] != "webjs" {
 		t.Errorf("expected stamped telemetry.sdk.language=webjs, got %q", exc.Attributes["telemetry.sdk.language"])
+	}
+}
+
+func TestConvertTraces_JsExceptionResolvesWithSourceMap(t *testing.T) {
+	projectId := uuid.MustParse("00000000-0000-0000-0000-0000000000ac")
+	setFakeStore(t, map[string][]byte{
+		services.SourceMapStorageKey(projectId, "minified.js.map"): []byte(testSourceMap),
+	})
+
+	traceId := []byte{0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9, 0xaa, 0xab, 0xac, 0xad, 0xae, 0xaf}
+	spanId := []byte{0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb6, 0xb7}
+	now := uint64(1_700_000_000_000_000_000)
+
+	req := &coltracepb.ExportTraceServiceRequest{
+		ResourceSpans: []*tracepb.ResourceSpans{{
+			Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{
+				strKV("service.name", "web"),
+				strKV("telemetry.sdk.language", "webjs"),
+			}},
+			ScopeSpans: []*tracepb.ScopeSpans{{
+				Scope: &commonpb.InstrumentationScope{Name: "@opentelemetry/instrumentation-fetch"},
+				Spans: []*tracepb.Span{{
+					TraceId: traceId, SpanId: spanId,
+					Name: "GET /", Kind: tracepb.Span_SPAN_KIND_SERVER,
+					StartTimeUnixNano: now, EndTimeUnixNano: now + 1_000_000,
+					Attributes: makeAttrs("http.route", "/"),
+					Events: []*tracepb.Span_Event{{
+						Name:         "exception",
+						TimeUnixNano: now + 500_000,
+						Attributes: []*commonpb.KeyValue{
+							strKV("exception.type", "Error"),
+							strKV("exception.message", "boom"),
+							strKV("exception.stacktrace", "Error: boom\n    at t (https://cdn.example.com/assets/minified.js:1:11)"),
+						},
+					}},
+				}},
+			}},
+		}},
+	}
+
+	_, _, _, exceptions, _, _ := convertTraces(context.Background(), projectId, req)
+	if len(exceptions) != 1 {
+		t.Fatalf("expected 1 exception, got %d", len(exceptions))
+	}
+	if !strings.Contains(exceptions[0].StackTrace, "original.js") {
+		t.Errorf("expected stack trace resolved via source map, got %q", exceptions[0].StackTrace)
 	}
 }
 

@@ -50,7 +50,7 @@ func buildTransitions(scopes []genScope) []Transition {
 	events := make([]scopeEvent, 0, len(scopes)*2)
 	for i := range scopes {
 		s := scopes[i]
-		if !less(s.startLine, s.startCol, s.endLine, s.endCol) {
+		if s.startLine > s.endLine || (s.startLine == s.endLine && s.startCol >= s.endCol) {
 			continue
 		}
 		events = append(events,
@@ -85,7 +85,12 @@ func buildTransitions(scopes []genScope) []Transition {
 			if events[i].start {
 				stack = append(stack, events[i].scope)
 			} else {
-				stack = removeFromStack(stack, events[i].scope)
+				for j := len(stack) - 1; j >= 0; j-- {
+					if stack[j] == events[i].scope {
+						stack = slices.Delete(stack, j, j+1)
+						break
+					}
+				}
 			}
 			i++
 		}
@@ -102,19 +107,6 @@ func buildTransitions(scopes []genScope) []Transition {
 		}
 	}
 	return transitions
-}
-
-func removeFromStack(stack []int, scope int) []int {
-	for i := len(stack) - 1; i >= 0; i-- {
-		if stack[i] == scope {
-			return append(stack[:i], stack[i+1:]...)
-		}
-	}
-	return stack
-}
-
-func less(aLine, aCol, bLine, bCol uint32) bool {
-	return aLine < bLine || (aLine == bLine && aCol < bCol)
 }
 
 type genPos struct {

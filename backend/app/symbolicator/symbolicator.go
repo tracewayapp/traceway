@@ -54,7 +54,11 @@ func NewResolver(sourceMap, bundle []byte) (*Resolver, error) {
 
 		// Tokens are sorted by generated position, so the floor transition
 		// pointer only moves forward across the whole map (linear merge).
-		for ti+1 < len(transitions) && !posLess(t.GenLine, t.GenCol, transitions[ti+1].Line, transitions[ti+1].Col) {
+		for ti+1 < len(transitions) {
+			next := &transitions[ti+1]
+			if t.GenLine < next.Line || (t.GenLine == next.Line && t.GenCol < next.Col) {
+				break
+			}
 			ti++
 			curResolved = false
 		}
@@ -82,10 +86,6 @@ func NewResolver(sourceMap, bundle []byte) (*Resolver, error) {
 	}
 
 	return &Resolver{tokens: tokens, files: files.list, fns: fns.list}, nil
-}
-
-func posLess(aLine, aCol, bLine, bCol uint32) bool {
-	return aLine < bLine || (aLine == bLine && aCol < bCol)
 }
 
 func (r *Resolver) Lookup(genLine, genCol uint32) (StackTraceFrame, bool) {

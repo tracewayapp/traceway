@@ -17,15 +17,6 @@ import (
 
 type sourceMapController struct{}
 
-func isSourceArtifact(name string) bool {
-	switch filepath.Ext(name) {
-	case ".map", ".js", ".cjs", ".mjs":
-		return true
-	default:
-		return false
-	}
-}
-
 func (s sourceMapController) Upload(c *gin.Context) {
 	projectId, err := middleware.GetProjectId(c)
 	if err != nil {
@@ -57,7 +48,9 @@ func (s sourceMapController) Upload(c *gin.Context) {
 		}()
 	}()
 	for _, fileHeader := range files {
-		if !isSourceArtifact(fileHeader.Filename) {
+		switch filepath.Ext(fileHeader.Filename) {
+		case ".map", ".js", ".cjs", ".mjs":
+		default:
 			continue
 		}
 

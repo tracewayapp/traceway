@@ -14,6 +14,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/storage"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/jsstack"
 	traceway "go.tracewayapp.com"
 )
 
@@ -57,11 +58,12 @@ func (o otelController) ExportTraces(c *gin.Context) {
 		return
 	}
 
-	symbolicate := func(ctx context.Context, stackTrace, language string) string {
-		if !isJsLanguage(language) {
+	symbolicate := func(ctx context.Context, stackTrace, language, scopeName string) string {
+		if !isJsTelemetry(language, scopeName) {
 			return stackTrace
 		}
-		return services.ResolveStackTrace(ctx, projectId, stackTrace, nil)
+		canonical, _ := jsstack.Canonicalize(stackTrace)
+		return services.ResolveStackTrace(ctx, projectId, canonical, nil)
 	}
 
 	convertStart := time.Now()

@@ -1,7 +1,6 @@
 package services
 
 import (
-	"container/list"
 	"context"
 	"fmt"
 	"os"
@@ -11,19 +10,30 @@ import (
 
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/twcache"
 
 	"github.com/google/uuid"
 )
 
 func newTestDiskCache(t *testing.T, maxBytes int64) *sourceMapDiskCache {
 	t.Helper()
-	return &sourceMapDiskCache{
-		mem:      newTestSourceMapCache(100, 64<<20),
-		dir:      t.TempDir(),
-		files:    make(map[string]*list.Element),
-		order:    list.New(),
-		maxBytes: maxBytes,
+	return newTestDiskCacheAt(t, t.TempDir(), maxBytes)
+}
+
+func newTestDiskCacheAt(t *testing.T, dir string, maxBytes int64) *sourceMapDiskCache {
+	t.Helper()
+	disk, err := twcache.New(dir, maxBytes, nil)
+	if err != nil {
+		t.Fatalf("twcache.New: %v", err)
 	}
+	return &sourceMapDiskCache{
+		mem:  newTestSourceMapCache(100, 64<<20),
+		disk: disk,
+	}
+}
+
+func twPathFor(d *sourceMapDiskCache, mapKey string) string {
+	return filepath.Join(d.disk.Dir(), filepath.FromSlash(twKeyFor(mapKey)))
 }
 
 func swapStorage(t *testing.T) *countingStorage {
@@ -66,27 +76,14 @@ func TestDiskCacheBuildsThenServesFromLocalFile(t *testing.T) {
 	}
 	assertSimpleLookup(t, r)
 
-	twPath, ok := d.pathFor(mapKey)
-	if !ok {
-		t.Fatal("pathFor failed")
-	}
-	if _, err := os.Stat(twPath); err != nil {
+	if _, err := os.Stat(twPathFor(d, mapKey)); err != nil {
 		t.Fatalf("expected tw file on disk: %v", err)
 	}
 	if smBuilds.Load() != 1 {
 		t.Fatalf("builds: got %d, want 1", smBuilds.Load())
 	}
 
-	restarted := &sourceMapDiskCache{
-		mem:      newTestSourceMapCache(100, 64<<20),
-		dir:      d.dir,
-		files:    make(map[string]*list.Element),
-		order:    list.New(),
-		maxBytes: 64 << 20,
-	}
-	if err := restarted.scan(); err != nil {
-		t.Fatalf("scan: %v", err)
-	}
+	restarted := newTestDiskCacheAt(t, d.disk.Dir(), 64<<20)
 
 	mapReads := cs.reads[mapKey]
 	r2, err := restarted.getOrBuild(context.Background(), mapKey, buildResolver(mapKey, bundleKey))
@@ -94,8 +91,8 @@ func TestDiskCacheBuildsThenServesFromLocalFile(t *testing.T) {
 		t.Fatalf("getOrBuild after restart: %v", err)
 	}
 	assertSimpleLookup(t, r2)
-	if restarted.diskHits.Load() != 1 {
-		t.Fatalf("diskHits: got %d, want 1", restarted.diskHits.Load())
+	if hits := restarted.disk.Stats().Hits; hits != 1 {
+		t.Fatalf("disk hits: got %d, want 1", hits)
 	}
 	if cs.reads[mapKey] != mapReads {
 		t.Fatal("restart should serve from local tw file without reading the source map")
@@ -137,7 +134,7 @@ func TestDiskCachePullsTWFromStorage(t *testing.T) {
 	if cs.reads[mapKey] != 0 || cs.reads[bundleKey] != 0 {
 		t.Fatal("tw artifact in storage should make map and bundle reads unnecessary")
 	}
-	if twPath, _ := d.pathFor(mapKey); !fileExists(twPath) {
+	if !fileExists(twPathFor(d, mapKey)) {
 		t.Fatal("tw pulled from storage should be cached on local disk")
 	}
 }
@@ -151,7 +148,7 @@ func TestDiskCacheCorruptLocalFileFallsBack(t *testing.T) {
 	seedFixture(t, cs, prefix+"minified.js.map", "testdata/sourcemapcache/simple/minified.js.map")
 	mapKey := prefix + "minified.js.map"
 
-	twPath, _ := d.pathFor(mapKey)
+	twPath := twPathFor(d, mapKey)
 	if err := os.MkdirAll(filepath.Dir(twPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -208,19 +205,18 @@ func TestDiskCacheCapacityEviction(t *testing.T) {
 		t.Fatalf("getOrBuild second: %v", err)
 	}
 
-	firstPath, _ := d.pathFor(firstKey)
-	secondPath, _ := d.pathFor(secondKey)
-	if fileExists(firstPath) {
+	if fileExists(twPathFor(d, firstKey)) {
 		t.Fatal("oldest tw file should be evicted when over capacity")
 	}
-	if !fileExists(secondPath) {
+	if !fileExists(twPathFor(d, secondKey)) {
 		t.Fatal("newest tw file should survive eviction")
 	}
-	if d.diskEvictions != 1 {
-		t.Fatalf("diskEvictions: got %d, want 1", d.diskEvictions)
+	stats := d.disk.Stats()
+	if stats.Evictions != 1 {
+		t.Fatalf("disk evictions: got %d, want 1", stats.Evictions)
 	}
-	if d.curBytes > d.maxBytes {
-		t.Fatalf("curBytes %d exceeds maxBytes %d", d.curBytes, d.maxBytes)
+	if stats.Bytes > stats.MaxBytes {
+		t.Fatalf("cached bytes %d exceed maxBytes %d", stats.Bytes, stats.MaxBytes)
 	}
 }
 
@@ -236,7 +232,7 @@ func TestDiskCacheInvalidateRemovesFile(t *testing.T) {
 	if _, err := d.getOrBuild(context.Background(), mapKey, buildResolver(mapKey, prefix+"minified.js")); err != nil {
 		t.Fatalf("getOrBuild: %v", err)
 	}
-	twPath, _ := d.pathFor(mapKey)
+	twPath := twPathFor(d, mapKey)
 	if !fileExists(twPath) {
 		t.Fatal("expected tw file before invalidate")
 	}
@@ -245,8 +241,8 @@ func TestDiskCacheInvalidateRemovesFile(t *testing.T) {
 	if fileExists(twPath) {
 		t.Fatal("invalidate should remove the local tw file")
 	}
-	if len(d.files) != 0 || d.curBytes != 0 {
-		t.Fatalf("expected empty disk index, got %d entries / %d bytes", len(d.files), d.curBytes)
+	if stats := d.disk.Stats(); stats.Entries != 0 || stats.Bytes != 0 {
+		t.Fatalf("expected empty disk index, got %d entries / %d bytes", stats.Entries, stats.Bytes)
 	}
 }
 
@@ -376,9 +372,9 @@ func TestDiskCacheRefreshesCorruptStoreTw(t *testing.T) {
 
 func TestDiskCacheScanSkipsUnreadableEntries(t *testing.T) {
 	swapStorage(t)
-	d := newTestDiskCache(t, 64<<20)
+	dir := t.TempDir()
 
-	locked := filepath.Join(d.dir, "locked")
+	locked := filepath.Join(dir, "locked")
 	if err := os.MkdirAll(locked, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -390,7 +386,7 @@ func TestDiskCacheScanSkipsUnreadableEntries(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
 
-	if err := d.scan(); err != nil {
+	if _, err := twcache.New(dir, 64<<20, nil); err != nil {
 		t.Fatalf("scan must tolerate unreadable entries, got: %v", err)
 	}
 }

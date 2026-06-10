@@ -10,19 +10,20 @@ What you get by swapping:
 
 ## Usage
 
-The processor ships as part of the `github.com/tracewayapp/traceway` module; the public entry point is `traceway.SymbolicatorProcessor()`. Add it to an [OpenTelemetry Collector Builder](https://opentelemetry.io/docs/collector/custom-collector/) manifest:
+The processor ships as a public package of the `github.com/tracewayapp/traceway/backend` module; the entry point is `otelprocessor.NewFactory()`. Add it to an [OpenTelemetry Collector Builder](https://opentelemetry.io/docs/collector/custom-collector/) manifest (the `import` line points the builder at the package inside the module):
 
 ```yaml
 processors:
-  - gomod: github.com/tracewayapp/traceway v0.1.0
+  - gomod: github.com/tracewayapp/traceway/backend v1.6.0
+    import: github.com/tracewayapp/traceway/backend/app/symbolicator/otelprocessor
 ```
 
 Or, when assembling a collector programmatically, register the factory directly:
 
 ```go
-import "github.com/tracewayapp/traceway"
+import "github.com/tracewayapp/traceway/backend/app/symbolicator/otelprocessor"
 
-factory := traceway.SymbolicatorProcessor()
+factory := otelprocessor.NewFactory()
 factories.Processors[factory.Type()] = factory
 ```
 
@@ -83,5 +84,6 @@ The store holds your build output as-is: minified bundles next to their maps, ad
 ## Links
 
 - [Traceway](https://tracewayapp.com), the MIT-licensed error tracking platform this engine comes from
+- [Hosted docs for this processor](https://docs.tracewayapp.com/learn/collector-symbolicator), including the builder walkthrough
 - [Symbolication pipeline internals](https://docs.tracewayapp.com/learn/symbolication-js), including the `.tw` format
 - [Honeycomb's processor](https://github.com/honeycombio/opentelemetry-collector-symbolicator), whose configuration surface this matches

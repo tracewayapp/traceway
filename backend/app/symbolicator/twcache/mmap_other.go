@@ -1,6 +1,6 @@
 //go:build !unix
 
-package sourcemapprocessor
+package twcache
 
 import (
 	"errors"
@@ -15,6 +15,6 @@ func mmapFile(path string) ([]byte, func(), error) {
 	return data, func() {}, nil
 }
 
-func diskCapacityBytes(dir string) (int64, error) {
+func DiskCapacityBytes(dir string) (int64, error) {
 	return 0, errors.New("disk capacity detection is not supported on this platform")
 }

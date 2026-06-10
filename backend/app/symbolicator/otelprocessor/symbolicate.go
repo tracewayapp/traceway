@@ -1,4 +1,4 @@
-package sourcemapprocessor
+package otelprocessor
 
 import (
 	"context"
@@ -119,24 +119,20 @@ func (p *symbolicatorProcessor) processRecord(ctx context.Context, attrs, resour
 
 	attrs.PutBool(p.cfg.SymbolicatorFailureAttributeKey, failed)
 	if failed {
+		failures := 0
+		for i := range results {
+			if results[i].err != nil {
+				failures++
+			}
+		}
 		err := firstErr
-		if countFailures(results) > 1 {
+		if failures > 1 {
 			err = fmt.Errorf("symbolication failed for some stack frames: %w", firstErr)
 		}
 		attrs.PutStr(p.cfg.SymbolicatorErrorAttributeKey, err.Error())
 	}
 	attrs.PutStr("traceway.processor_type", componentType.String())
 	attrs.PutStr("traceway.processor_version", processorVersion)
-}
-
-func countFailures(results []frameResult) int {
-	n := 0
-	for i := range results {
-		if results[i].err != nil {
-			n++
-		}
-	}
-	return n
 }
 
 func (p *symbolicatorProcessor) languageAllowed(attrs, resource pcommon.Map) bool {

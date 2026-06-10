@@ -267,7 +267,7 @@ func convertTraces(ctx context.Context, projectId uuid.UUID, req *coltracepb.Exp
 				if event.Name == "exception" {
 					exc := buildException(
 						ctx, projectId, ownerId, traceType, event,
-						allAttrs, serverName, appVersion, language, symbolicate,
+						allAttrs, serverName, appVersion, language, entry.scopeName, symbolicate,
 					)
 					if owner != nil {
 						exc.DistributedTraceId = owner.distributedTraceId
@@ -441,7 +441,7 @@ func buildTask(
 	}
 }
 
-type symbolicateFunc func(ctx context.Context, stackTrace, language string) string
+type symbolicateFunc func(ctx context.Context, stackTrace, language, scopeName string) string
 
 func buildException(
 	ctx context.Context,
@@ -449,7 +449,7 @@ func buildException(
 	traceType string,
 	event *tracepb.Span_Event,
 	spanAttrs map[string]string,
-	serverName, appVersion, language string,
+	serverName, appVersion, language, scopeName string,
 	symbolicate symbolicateFunc,
 ) models.ExceptionStackTrace {
 	eventAttrs := event.Attributes
@@ -463,7 +463,7 @@ func buildException(
 	}
 
 	if symbolicate != nil {
-		stackTrace = symbolicate(ctx, stackTrace, language)
+		stackTrace = symbolicate(ctx, stackTrace, language, scopeName)
 	}
 
 	hash := clientcontrollers.ComputeExceptionHash(stackTrace, false)
@@ -502,6 +502,20 @@ func isJsLanguage(lang string) bool {
 		return true
 	}
 	return false
+}
+
+// JS instrumentations are also recognizable by their scope name when
+// telemetry.sdk.language is absent: npm scoped packages ("@scope/pkg") are
+// an npm-only naming convention across OTel SDKs, and Next.js's built-in
+// tracer reports the unscoped scope name "next.js".
+func isJsTelemetry(language, scopeName string) bool {
+	if isJsLanguage(language) {
+		return true
+	}
+	if strings.HasPrefix(scopeName, "@") && strings.Contains(scopeName, "/") {
+		return true
+	}
+	return scopeName == "next.js"
 }
 
 func buildHoneycombStackTrace(excType, excMessage string, eventAttrs []*commonpb.KeyValue) (string, bool) {

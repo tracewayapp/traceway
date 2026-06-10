@@ -1,6 +1,6 @@
 //go:build unix
 
-package services
+package twcache
 
 import (
 	"os"
@@ -28,4 +28,12 @@ func mmapFile(path string) ([]byte, func(), error) {
 		return nil, nil, err
 	}
 	return data, func() { _ = syscall.Munmap(data) }, nil
+}
+
+func DiskCapacityBytes(dir string) (int64, error) {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(dir, &st); err != nil {
+		return 0, err
+	}
+	return int64(uint64(st.Bsize) * st.Blocks), nil
 }

@@ -711,6 +711,7 @@ func TestConvertTraces_HoneycombJsExceptionSymbolicates(t *testing.T) {
 				strKV("telemetry.sdk.language", "webjs"),
 			}},
 			ScopeSpans: []*tracepb.ScopeSpans{{
+				Scope: &commonpb.InstrumentationScope{Name: "@opentelemetry/instrumentation-fetch"},
 				Spans: []*tracepb.Span{{
 					TraceId: traceId, SpanId: spanId,
 					Name: "GET /", Kind: tracepb.Span_SPAN_KIND_SERVER,
@@ -733,9 +734,9 @@ func TestConvertTraces_HoneycombJsExceptionSymbolicates(t *testing.T) {
 		}},
 	}
 
-	var symInput, symLang string
-	symbolicate := func(_ context.Context, stackTrace, language string) string {
-		symInput, symLang = stackTrace, language
+	var symInput, symLang, symScope string
+	symbolicate := func(_ context.Context, stackTrace, language, scopeName string) string {
+		symInput, symLang, symScope = stackTrace, language, scopeName
 		return "RESOLVED"
 	}
 
@@ -747,6 +748,9 @@ func TestConvertTraces_HoneycombJsExceptionSymbolicates(t *testing.T) {
 	if symLang != "webjs" {
 		t.Errorf("expected language webjs passed to symbolicate, got %q", symLang)
 	}
+	if symScope != "@opentelemetry/instrumentation-fetch" {
+		t.Errorf("expected instrumentation scope passed to symbolicate, got %q", symScope)
+	}
 	wantParsed := "Error: user has no name\nn()\n    app.min.js:1:63\n    app.min.js:1:146"
 	if symInput != wantParsed {
 		t.Errorf("honeycomb parse:\n got %q\nwant %q", symInput, wantParsed)
@@ -756,5 +760,39 @@ func TestConvertTraces_HoneycombJsExceptionSymbolicates(t *testing.T) {
 	}
 	if exc.Attributes["telemetry.sdk.language"] != "webjs" {
 		t.Errorf("expected stamped telemetry.sdk.language=webjs, got %q", exc.Attributes["telemetry.sdk.language"])
+	}
+}
+
+func TestIsJsTelemetry(t *testing.T) {
+	jsCases := [][2]string{
+		{"webjs", ""},
+		{"nodejs", ""},
+		{"javascript", ""},
+		{"TypeScript", ""},
+		{"", "@opentelemetry/instrumentation-express"},
+		{"", "@vercel/otel"},
+		{"", "@prisma/instrumentation"},
+		{"", "next.js"},
+		{"nodejs", "io.opentelemetry.tomcat-7.0"},
+	}
+	for _, c := range jsCases {
+		if !isJsTelemetry(c[0], c[1]) {
+			t.Errorf("isJsTelemetry(%q, %q) = false, want true", c[0], c[1])
+		}
+	}
+
+	nonJsCases := [][2]string{
+		{"", ""},
+		{"java", "io.opentelemetry.spring-webmvc-6.0"},
+		{"python", "opentelemetry.instrumentation.flask"},
+		{"go", "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"},
+		{"dotnet", "OpenTelemetry.Instrumentation.AspNetCore"},
+		{"ruby", "OpenTelemetry::Instrumentation::Rack"},
+		{"", "@noslash"},
+	}
+	for _, c := range nonJsCases {
+		if isJsTelemetry(c[0], c[1]) {
+			t.Errorf("isJsTelemetry(%q, %q) = true, want false", c[0], c[1])
+		}
 	}
 }

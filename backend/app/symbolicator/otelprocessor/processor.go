@@ -1,4 +1,4 @@
-package sourcemapprocessor
+package otelprocessor
 
 import (
 	"context"

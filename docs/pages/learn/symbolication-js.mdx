@@ -22,6 +22,8 @@ handleClick()
 
 This page explains exactly how that translation works today, what is cached and when, how the pipeline is observable through metrics, where the current limits are, and how we verify the output. For how to upload source maps in the first place, see [Source Maps](/client/js-sdk/sourcemap-upload).
 
+The engine described here is also usable outside Traceway's ingest: as an importable Go package ([Symbolicator as a Library](/learn/symbolicator-library)) and as a standalone OpenTelemetry Collector processor ([Collector Symbolicator](/learn/collector-symbolicator)).
+
 ## When Symbolication Runs
 
 Symbolication happens **once, at ingest**, inside `POST /api/report`:

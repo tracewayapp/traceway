@@ -1,4 +1,4 @@
-package sourcemapprocessor
+package otelprocessor
 
 import (
 	"context"
@@ -74,9 +74,14 @@ func (a *artifactStore) getSourceAndMap(ctx context.Context, frameURL, buildUUID
 	}
 
 	sourceKey := a.key(buildUUID, base)
-	source, err := a.fetchWithQueryFallback(ctx, sourceKey, u.RawQuery)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to find source file %q: %w", sourceKey, err)
+	var source []byte
+	if u.RawQuery != "" {
+		source, err = a.store.fetch(ctx, sourceKey+"?"+u.RawQuery)
+	}
+	if source == nil || err != nil {
+		if source, err = a.store.fetch(ctx, sourceKey); err != nil {
+			return nil, nil, fmt.Errorf("failed to find source file %q: %w", sourceKey, err)
+		}
 	}
 
 	mapRef := findSourceMappingURL(source)
@@ -109,15 +114,6 @@ func (a *artifactStore) key(buildUUID, base string) string {
 	}
 	parts = append(parts, base)
 	return path.Join(parts...)
-}
-
-func (a *artifactStore) fetchWithQueryFallback(ctx context.Context, key, rawQuery string) ([]byte, error) {
-	if rawQuery != "" {
-		if data, err := a.store.fetch(ctx, key+"?"+rawQuery); err == nil {
-			return data, nil
-		}
-	}
-	return a.store.fetch(ctx, key)
 }
 
 func findSourceMappingURL(source []byte) string {

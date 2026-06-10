@@ -204,12 +204,8 @@ func (c *sourceMapCache) invalidate(key string) {
 	}
 }
 
-func sourceMapPrefix(projectId uuid.UUID) string {
-	return fmt.Sprintf("sourcemaps/%s/", projectId)
-}
-
 func SourceMapStorageKey(projectId uuid.UUID, fileName string) string {
-	return sourceMapPrefix(projectId) + fileName
+	return fmt.Sprintf("sourcemaps/%s/%s", projectId, fileName)
 }
 
 func InvalidateSourceMap(projectId uuid.UUID, fileName string) {
@@ -310,7 +306,7 @@ func (c *sourceMapCache) stats() SourceMapCacheStats {
 var stackFrameRe = regexp.MustCompile(`^(\s{4})(.+):(\d+):(\d+)$`)
 
 func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace string, debugIds map[string]string) string {
-	prefix := sourceMapPrefix(projectId)
+	prefix := SourceMapStorageKey(projectId, "")
 
 	lines := strings.Split(stackTrace, "\n")
 	resolved := make([]string, 0, len(lines))
@@ -336,11 +332,11 @@ func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace stri
 		lineNum, _ := strconv.Atoi(matches[3])
 		colNum, _ := strconv.Atoi(matches[4])
 
-		base := mapBasename(fileName)
-		if base == "" {
-			resolved = append(resolved, line)
-			continue
+		clean := fileName
+		if idx := strings.IndexAny(clean, "?#"); idx != -1 {
+			clean = clean[:idx]
 		}
+		base := filepath.Base(clean)
 
 		resolver := frameResolver(ctx, prefix, fileName, base, debugIds, localResolvers)
 		if resolver == nil {
@@ -376,7 +372,11 @@ func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace stri
 }
 
 func frameResolver(ctx context.Context, prefix, fileName, base string, debugIds map[string]string, local map[string]*symbolicator.Resolver) *symbolicator.Resolver {
-	if id := frameDebugId(debugIds, fileName, base); id != "" {
+	id := NormalizeDebugId(debugIds[fileName])
+	if id == "" {
+		id = NormalizeDebugId(debugIds[base])
+	}
+	if id != "" {
 		mapKey := prefix + DebugIdMapName(id)
 		if !activeSMCache.isNegative(mapKey) {
 			bundleKey := prefix + DebugIdBundleName(id)
@@ -397,16 +397,6 @@ func frameResolver(ctx context.Context, prefix, fileName, base string, debugIds 
 	return r
 }
 
-func frameDebugId(debugIds map[string]string, fileName, base string) string {
-	if len(debugIds) == 0 {
-		return ""
-	}
-	if id := NormalizeDebugId(debugIds[fileName]); id != "" {
-		return id
-	}
-	return NormalizeDebugId(debugIds[base])
-}
-
 func getResolver(ctx context.Context, cacheKey string, build resolverBuild, local map[string]*symbolicator.Resolver) (*symbolicator.Resolver, error) {
 	if r, ok := local[cacheKey]; ok {
 		return r, nil
@@ -418,14 +408,6 @@ func getResolver(ctx context.Context, cacheKey string, build resolverBuild, loca
 	}
 	local[cacheKey] = r
 	return r, nil
-}
-
-func mapBasename(stackFile string) string {
-	clean := stackFile
-	if idx := strings.IndexAny(clean, "?#"); idx != -1 {
-		clean = clean[:idx]
-	}
-	return filepath.Base(clean)
 }
 
 var smStoreHits, smBuilds atomic.Uint64

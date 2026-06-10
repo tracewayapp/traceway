@@ -16,11 +16,6 @@ import (
 
 const defaultProjectId = "00000000-0000-4000-8000-000000000001"
 
-func initStorage(corpusDir string) error {
-	config.Init(&config.Cfg{StorageType: "local", StoragePath: corpusDir})
-	return storage.Init()
-}
-
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: cachebench <generate|run|table> [flags]")
@@ -60,7 +55,8 @@ func cmdGenerate(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := initStorage(*corpusDir); err != nil {
+	config.Init(&config.Cfg{StorageType: "local", StoragePath: *corpusDir})
+	if err := storage.Init(); err != nil {
 		return err
 	}
 	start := time.Now()
@@ -103,7 +99,8 @@ func cmdRun(args []string) error {
 	if cfg.label == "" {
 		cfg.label = cfg.mode
 	}
-	if err := initStorage(cfg.corpusDir); err != nil {
+	config.Init(&config.Cfg{StorageType: "local", StoragePath: cfg.corpusDir})
+	if err := storage.Init(); err != nil {
 		return err
 	}
 	return runBench(cfg)

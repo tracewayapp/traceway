@@ -31,12 +31,8 @@ type corpusManifest struct {
 	ResolverBytes int64 `json:"resolverBytes"`
 }
 
-func manifestPath(corpusDir string) string {
-	return filepath.Join(corpusDir, "corpus-manifest.json")
-}
-
 func loadManifest(corpusDir string) (*corpusManifest, error) {
-	data, err := os.ReadFile(manifestPath(corpusDir))
+	data, err := os.ReadFile(filepath.Join(corpusDir, "corpus-manifest.json"))
 	if err != nil {
 		return nil, err
 	}
@@ -150,5 +146,5 @@ func generateCorpus(ctx context.Context, corpusDir string, projectId uuid.UUID, 
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(manifestPath(corpusDir), data, 0o644)
+	return os.WriteFile(filepath.Join(corpusDir, "corpus-manifest.json"), data, 0o644)
 }

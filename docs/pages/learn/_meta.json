@@ -5,6 +5,8 @@
   "ai-tracing": "AI Tracing",
   "issues": "Issues",
   "symbolication-js": "Symbolication (JS)",
+  "symbolicator-library": "Symbolicator as a Library",
+  "collector-symbolicator": "Collector Symbolicator",
   "sessions": "Sessions",
   "attributes": "Attributes",
   "spans": "Spans",

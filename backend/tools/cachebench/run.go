@@ -300,4 +300,3 @@ func buildTrace(file string, bundleLen int, rng *rand.Rand) string {
 	}
 	return sb.String()
 }
-

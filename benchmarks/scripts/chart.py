@@ -13,6 +13,8 @@ each render function filters to its own scenario.
 See benchmarks/charts.md for a reader's guide to each output.
 """
 
+from __future__ import annotations
+
 import json
 import sys
 from pathlib import Path

@@ -102,6 +102,10 @@ Numbers came in slightly ahead of post 1's metrics-only headline (58k), but as f
 
 Read-probe held longer on metrics than on spans or logs: **1M rows** passed, but barely - median 3.85 s across the three probes (`/api/metrics/server` 3.74 s, `/api/metrics/application` 3.85 s, `/api/dashboard` 4.94 s). At 10M rows every probe hit the 6 s query timeout, no slow-but-returning behavior, just a hard wall. That makes sense for the metric points table: 10 names × ~6k points/sec × 30 min ≈ 11M rows is a single throughput run's output, well past the comfortable-read window.
 
+![Per-endpoint read latency vs metric_points table size on log-log axes. All three probes sit under 500 ms at 100k rows, crowd the 5 s threshold at 1M, and time out past it at 10M](/blog/break-sqlite-traceway/chart-readprobe-metrics.webp)
+
+The cliff in one chart: comfortable at 100k, on the edge at 1M, gone at 10M. All three probes track together; `/api/dashboard` runs hottest at every step.
+
 We did not screenshot the metrics dashboard for this post. The cards on `/metrics` render the values your apps send; with a synthetic loadgen emitting `rng.Float64() * 100` per point, the chart shapes are technically real but the values themselves don't tell a story worth pasting into a blog. Post 1 already showed the metrics dashboard reading real values; nothing on the metrics-side UI has changed.
 
 ## Logs - 4,877 records/sec, dashboard fast at 100k
@@ -119,6 +123,10 @@ INFO/WARN/ERROR mixed, real-shape body lines from the 18-string pool (`"product 
 Trace ID, span ID, scope, `code.namespace`, `logger.name`, `resource.deployment.environment`, `resource.service.name`, `resource.service.version`, `retry.count`, every OTel-defined attribute the loadgen attached, ready to jump from log to span via the trace ID. This is the payoff for sending logs through OTLP instead of stuffing them into a third sidecar: every log line is one click from the request that produced it.
 
 Read-probe was unexpectedly fast on logs: **100k rows** passed at a 114 ms median across the three probes. Severity-filtered queries, free-text body search, and trace-ID lookups all came back inside ~130 ms. At 1M rows the cliff hit unevenly, the trace-ID lookup came back in 1.7 s, the body search in 5 s, and the severity filter timed out at 6 s. Median was just under threshold but one probe failing fails the step. The dashboard "feels broken" before the median says it is.
+
+![Per-endpoint read latency vs log_records table size on log-log axes. At 100k all three probes sit around 100 ms. At 1M the trace-id lookup stays low (~1.7 s), body search lands on the 5 s threshold, and the severity filter times out](/blog/break-sqlite-traceway/chart-readprobe-logs.webp)
+
+The trace-ID probe matches at most one row per query, so it stays fast even as the table grows. The body search and severity filter both return many rows, and the cost scales with the result set, not the lookup. Same table, three queries, three different cliffs.
 
 ## Where it breaks
 

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tracewayapp/traceway/backend/app/storage"
@@ -212,11 +213,14 @@ func SourceMapStorageKey(projectId uuid.UUID, fileName string) string {
 }
 
 func InvalidateSourceMap(projectId uuid.UUID, fileName string) {
-	base := filepath.Base(fileName)
-	if !strings.HasSuffix(base, ".map") {
-		base += ".map"
+	name := fileName
+	if !strings.HasPrefix(name, sourceMapDebugIdDir) {
+		name = filepath.Base(name)
 	}
-	activeSMCache.invalidate(SourceMapStorageKey(projectId, base))
+	if !strings.HasSuffix(name, ".map") {
+		name += ".map"
+	}
+	activeSMCache.invalidate(SourceMapStorageKey(projectId, name))
 }
 
 func (c *sourceMapCache) reportLoadFailure(err error) {
@@ -298,12 +302,14 @@ func (c *sourceMapCache) stats() SourceMapCacheStats {
 		NegativeHits:    c.negativeHits,
 		NegativeEntries: len(c.negative),
 		LastParseMs:     c.lastParseMs,
+		StoreHits:       smStoreHits.Load(),
+		Builds:          smBuilds.Load(),
 	}
 }
 
 var stackFrameRe = regexp.MustCompile(`^(\s{4})(.+):(\d+):(\d+)$`)
 
-func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace string) string {
+func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace string, debugIds map[string]string) string {
 	prefix := sourceMapPrefix(projectId)
 
 	lines := strings.Split(stackTrace, "\n")
@@ -335,16 +341,9 @@ func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace stri
 			resolved = append(resolved, line)
 			continue
 		}
-		mapKey := prefix + base + ".map"
-		bundleKey := prefix + base
 
-		if activeSMCache.isNegative(mapKey) {
-			resolved = append(resolved, line)
-			continue
-		}
-
-		resolver, err := getResolver(ctx, mapKey, buildResolver(mapKey, bundleKey), localResolvers)
-		if err != nil || resolver == nil {
+		resolver := frameResolver(ctx, prefix, fileName, base, debugIds, localResolvers)
+		if resolver == nil {
 			resolved = append(resolved, line)
 			continue
 		}
@@ -376,6 +375,38 @@ func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace stri
 	return strings.Join(resolved, "\n")
 }
 
+func frameResolver(ctx context.Context, prefix, fileName, base string, debugIds map[string]string, local map[string]*symbolicator.Resolver) *symbolicator.Resolver {
+	if id := frameDebugId(debugIds, fileName, base); id != "" {
+		mapKey := prefix + DebugIdMapName(id)
+		if !activeSMCache.isNegative(mapKey) {
+			bundleKey := prefix + DebugIdBundleName(id)
+			if r, err := getResolver(ctx, mapKey, buildResolver(mapKey, bundleKey), local); err == nil && r != nil {
+				return r
+			}
+		}
+	}
+
+	mapKey := prefix + base + ".map"
+	if activeSMCache.isNegative(mapKey) {
+		return nil
+	}
+	r, err := getResolver(ctx, mapKey, buildResolver(mapKey, prefix+base), local)
+	if err != nil {
+		return nil
+	}
+	return r
+}
+
+func frameDebugId(debugIds map[string]string, fileName, base string) string {
+	if len(debugIds) == 0 {
+		return ""
+	}
+	if id := NormalizeDebugId(debugIds[fileName]); id != "" {
+		return id
+	}
+	return NormalizeDebugId(debugIds[base])
+}
+
 func getResolver(ctx context.Context, cacheKey string, build resolverBuild, local map[string]*symbolicator.Resolver) (*symbolicator.Resolver, error) {
 	if r, ok := local[cacheKey]; ok {
 		return r, nil
@@ -397,9 +428,24 @@ func mapBasename(stackFile string) string {
 	return filepath.Base(clean)
 }
 
+var smStoreHits, smBuilds atomic.Uint64
+
 func buildResolver(mapKey, bundleKey string) resolverBuild {
 	return func(ctx context.Context) (*symbolicator.Resolver, int64, error) {
 		base := context.WithoutCancel(ctx)
+
+		refreshStoreTw := true
+		twKey := twKeyFor(mapKey)
+		twBytes, err := readWithTimeout(base, twKey)
+		if err == nil {
+			if r, twErr := symbolicator.OpenTW(twBytes); twErr == nil {
+				smStoreHits.Add(1)
+				return r, r.ApproxSize(), nil
+			}
+		} else if !errors.Is(err, storage.ErrNotFound) {
+			refreshStoreTw = false
+			traceway.CaptureException(fmt.Errorf("failed to read tw artifact, rebuilding from source map (key=%s): %w", twKey, err))
+		}
 
 		mapBytes, err := readWithTimeout(base, mapKey)
 		if err != nil {
@@ -416,6 +462,12 @@ func buildResolver(mapKey, bundleKey string) resolverBuild {
 		resolver, err := symbolicator.NewResolver(mapBytes, bundleBytes)
 		if err != nil {
 			return nil, 0, err
+		}
+		smBuilds.Add(1)
+		if refreshStoreTw {
+			if werr := storage.Store.Write(base, twKey, resolver.MarshalTW()); werr != nil {
+				traceway.CaptureException(fmt.Errorf("failed to refresh tw artifact in storage (key=%s): %w", twKey, werr))
+			}
 		}
 		return resolver, resolver.ApproxSize(), nil
 	}

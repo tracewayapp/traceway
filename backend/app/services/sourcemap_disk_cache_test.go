@@ -32,6 +32,8 @@ func swapStorage(t *testing.T) *countingStorage {
 	t.Cleanup(func() { storage.Store = prev })
 	cs := &countingStorage{reads: map[string]int{}, data: map[string][]byte{}}
 	storage.Store = cs
+	smStoreHits.Store(0)
+	smBuilds.Store(0)
 	return cs
 }
 
@@ -71,8 +73,8 @@ func TestDiskCacheBuildsThenServesFromLocalFile(t *testing.T) {
 	if _, err := os.Stat(twPath); err != nil {
 		t.Fatalf("expected tw file on disk: %v", err)
 	}
-	if d.builds.Load() != 1 {
-		t.Fatalf("builds: got %d, want 1", d.builds.Load())
+	if smBuilds.Load() != 1 {
+		t.Fatalf("builds: got %d, want 1", smBuilds.Load())
 	}
 
 	restarted := &sourceMapDiskCache{
@@ -129,8 +131,8 @@ func TestDiskCachePullsTWFromStorage(t *testing.T) {
 	}
 	assertSimpleLookup(t, r)
 
-	if d.storeHits.Load() != 1 {
-		t.Fatalf("storeHits: got %d, want 1", d.storeHits.Load())
+	if smStoreHits.Load() != 1 {
+		t.Fatalf("storeHits: got %d, want 1", smStoreHits.Load())
 	}
 	if cs.reads[mapKey] != 0 || cs.reads[bundleKey] != 0 {
 		t.Fatal("tw artifact in storage should make map and bundle reads unnecessary")
@@ -164,8 +166,8 @@ func TestDiskCacheCorruptLocalFileFallsBack(t *testing.T) {
 	if _, ok := r.Lookup(0, 10); !ok {
 		t.Fatal("expected lookup to resolve after rebuilding from source map")
 	}
-	if d.builds.Load() != 1 {
-		t.Fatalf("builds: got %d, want 1", d.builds.Load())
+	if smBuilds.Load() != 1 {
+		t.Fatalf("builds: got %d, want 1", smBuilds.Load())
 	}
 	data, err := os.ReadFile(twPath)
 	if err != nil {
@@ -258,7 +260,7 @@ func TestDiskCacheResolveStackTraceEndToEnd(t *testing.T) {
 	seedFixture(t, cs, prefix+"minified.js", "testdata/sourcemapcache/simple/minified.js")
 
 	input := "Error: boom\nanonymous()\n    minified.js:1:11"
-	lines := strings.Split(ResolveStackTrace(context.Background(), projectId, input), "\n")
+	lines := strings.Split(ResolveStackTrace(context.Background(), projectId, input, nil), "\n")
 
 	if got, want := lines[2], "    tests/fixtures/simple/original.js:2:10"; got != want {
 		t.Errorf("location: got %q, want %q", got, want)
@@ -340,8 +342,8 @@ func TestDiskCacheTransientTwErrorFallsBackToBuild(t *testing.T) {
 		t.Fatalf("getOrBuild should fall back to building from the map, got: %v", err)
 	}
 	assertSimpleLookup(t, r)
-	if d.builds.Load() != 1 {
-		t.Fatalf("builds: got %d, want 1", d.builds.Load())
+	if smBuilds.Load() != 1 {
+		t.Fatalf("builds: got %d, want 1", smBuilds.Load())
 	}
 	if _, ok := cs.data[prefix+"minified.js.tw"]; ok {
 		t.Fatal("transient tw read error must not trigger a storage refresh")

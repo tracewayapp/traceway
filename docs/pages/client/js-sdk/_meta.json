@@ -6,5 +6,6 @@
   "distributed-tracing": "Distributed Tracing",
   "flush": "Flush & Lifecycle",
   "sourcemap-upload": "Source Maps",
+  "debug-ids": "Debug IDs",
   "session-replay": "Session Replay"
 }

@@ -3,7 +3,6 @@ package services
 import (
 	"container/list"
 	"context"
-	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -15,7 +14,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/storage"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator"
 
 	traceway "go.tracewayapp.com"
@@ -31,8 +29,6 @@ type sourceMapDiskCache struct {
 	curBytes int64
 
 	diskHits      atomic.Uint64
-	storeHits     atomic.Uint64
-	builds        atomic.Uint64
 	diskEvictions uint64
 }
 
@@ -127,11 +123,7 @@ func (d *sourceMapDiskCache) getOrBuild(ctx context.Context, key string, build r
 func (d *sourceMapDiskCache) load(ctx context.Context, mapKey string, build resolverBuild) (*symbolicator.Resolver, int64, error) {
 	path, ok := d.pathFor(mapKey)
 	if !ok {
-		r, size, err := build(ctx)
-		if err == nil {
-			d.builds.Add(1)
-		}
-		return r, size, err
+		return build(ctx)
 	}
 
 	if r, size, err := d.openLocal(mapKey, path); err == nil {
@@ -139,31 +131,11 @@ func (d *sourceMapDiskCache) load(ctx context.Context, mapKey string, build reso
 		return r, size, nil
 	}
 
-	refreshStoreTw := true
-	twKey := twKeyFor(mapKey)
-	twBytes, err := readWithTimeout(context.WithoutCancel(ctx), twKey)
-	if err == nil {
-		if r, size, werr := d.writeAndOpen(mapKey, path, twBytes); werr == nil {
-			d.storeHits.Add(1)
-			return r, size, nil
-		}
-	} else if !errors.Is(err, storage.ErrNotFound) {
-		refreshStoreTw = false
-		traceway.CaptureException(fmt.Errorf("failed to read tw artifact, rebuilding from source map (key=%s): %w", twKey, err))
-	}
-
 	resolver, size, err := build(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
-	d.builds.Add(1)
-	tw := resolver.MarshalTW()
-	if refreshStoreTw {
-		if werr := storage.Store.Write(context.WithoutCancel(ctx), twKey, tw); werr != nil {
-			traceway.CaptureException(fmt.Errorf("failed to refresh tw artifact in storage (key=%s): %w", twKey, werr))
-		}
-	}
-	if r, msize, werr := d.writeAndOpen(mapKey, path, tw); werr == nil {
+	if r, msize, werr := d.writeAndOpen(mapKey, path, resolver.MarshalTW()); werr == nil {
 		return r, msize, nil
 	} else {
 		traceway.CaptureException(fmt.Errorf("failed to write tw cache file (key=%s): %w", mapKey, werr))
@@ -285,8 +257,6 @@ func (d *sourceMapDiskCache) stats() SourceMapCacheStats {
 	s.DiskBytes = d.curBytes
 	s.DiskMaxBytes = d.maxBytes
 	s.DiskHits = d.diskHits.Load()
-	s.StoreHits = d.storeHits.Load()
-	s.Builds = d.builds.Load()
 	s.DiskEvictions = d.diskEvictions
 	return s
 }

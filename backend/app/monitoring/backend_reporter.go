@@ -69,19 +69,19 @@ func reportBackendOnce(b *backendBaselines) {
 		traceway.CaptureMetric("traceway.sourcemap.load_failures.delta", float64(safeDelta(b.smFailures, smStats.Failures)))
 		traceway.CaptureMetric("traceway.sourcemap.not_found.delta", float64(safeDelta(b.smNotFound, smStats.NotFound)))
 		traceway.CaptureMetric("traceway.sourcemap.negative_hits.delta", float64(safeDelta(b.smNegativeHits, smStats.NegativeHits)))
+		traceway.CaptureMetric("traceway.sourcemap.store_hits.delta", float64(safeDelta(b.smStoreHits, smStats.StoreHits)))
+		traceway.CaptureMetric("traceway.sourcemap.builds.delta", float64(safeDelta(b.smBuilds, smStats.Builds)))
 	}
+	b.smStoreHits = smStats.StoreHits
+	b.smBuilds = smStats.Builds
 	if smStats.DiskEnabled {
 		traceway.CaptureMetric("traceway.sourcemap.disk.entries", float64(smStats.DiskEntries))
 		traceway.CaptureMetric("traceway.sourcemap.disk.bytes", float64(smStats.DiskBytes))
 		if !b.first {
 			traceway.CaptureMetric("traceway.sourcemap.disk.hits.delta", float64(safeDelta(b.smDiskHits, smStats.DiskHits)))
-			traceway.CaptureMetric("traceway.sourcemap.disk.store_hits.delta", float64(safeDelta(b.smStoreHits, smStats.StoreHits)))
-			traceway.CaptureMetric("traceway.sourcemap.disk.builds.delta", float64(safeDelta(b.smBuilds, smStats.Builds)))
 			traceway.CaptureMetric("traceway.sourcemap.disk.evictions.delta", float64(safeDelta(b.smDiskEvictions, smStats.DiskEvictions)))
 		}
 		b.smDiskHits = smStats.DiskHits
-		b.smStoreHits = smStats.StoreHits
-		b.smBuilds = smStats.Builds
 		b.smDiskEvictions = smStats.DiskEvictions
 	}
 

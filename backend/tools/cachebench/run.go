@@ -176,7 +176,7 @@ func runBench(cfg runConfig) error {
 				}
 				trace := buildTrace(fileNames[idx], manifest.BundleBytes, rng)
 				start := time.Now()
-				out := services.ResolveStackTrace(workCtx, projectId, trace)
+				out := services.ResolveStackTrace(workCtx, projectId, trace, nil)
 				elapsed := time.Since(start)
 				if measuring.Load() {
 					res.record(elapsed.Nanoseconds())

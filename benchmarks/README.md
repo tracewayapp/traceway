@@ -348,6 +348,82 @@ they're missing.
   ingest path. Read-probe surfaces the cluster's read scaling, which is what
   you actually buy from a managed offering.
 
+## Symbolicator benchmarks
+
+Two additional workflows benchmark the JS symbolicator. They answer different
+questions and run on different infrastructure:
+
+| Workflow | What it measures | Where it runs | Cost |
+|---|---|---|---|
+| `benchmark-symbolicator` | Bundle parser throughput: goja vs oxc (`go test -bench`) | GitHub runner | free, ~10 min |
+| `benchmark-symbolicator-cache` | Resolver cache architecture: in-memory LRU vs mmap disk cache | One Hetzner box | under 1 EUR, ~2 h |
+
+Both are `workflow_dispatch` only. The workflow file must exist on `main` to be
+dispatchable; select the feature branch in the run dropdown to execute that
+branch's scripts and code.
+
+### Parser benchmark
+
+`scripts/benchmark-symbolicator.sh` (repo root `scripts/`, not this folder)
+builds the oxc Rust shim, runs the symbolicator test suite as a gate, then runs
+`BenchmarkBundleParsers` over the bundler fixtures (simple, inlining, webpack,
+metro, preact) plus 1MB/5MB synthetic bundles, with both parsers. Results land
+in the job step summary. Expected shape: oxc 2-4.5x faster than goja with
+roughly 99% fewer allocations; `BenchmarkOpenTW` in the hundreds of
+nanoseconds.
+
+### Cache benchmark (cachebench)
+
+> With a corpus of **N** uploaded bundles (more than RAM can hold), a hot set
+> of ~30 active exceptions, and **R**% of lookups hitting the long tail, which
+> resolver cache is cheaper: parsed-in-memory or mmap'd `.tw` files on disk,
+> and at what corpus size does one break?
+
+The harness is `backend/tools/cachebench` (it imports backend internals, so it
+lives in the backend module): `generate` writes a corpus of synthetic
+bundle + VLQ source map + `.tw` triples, `run` executes one cell
+(mode x entries x cold-ratio) in a fresh process and emits a JSON row with
+throughput (rps), weighted p50/p95/p99 latency, peak RSS sampled at 200ms, GC
+totals, and cache internals (hits, builds, disk hits, store hits, evictions),
+`table` merges the rows into a markdown summary that marks the crossover
+corpus size and any OOM break point.
+
+Run it three ways:
+
+```bash
+# Locally, no Hetzner (small corpus; RSS reads 0 on macOS, Linux is the real measurement)
+./benchmarks/scripts/cachebench-local.sh
+
+# From a laptop against Hetzner (same env vars as the hardware benchmark)
+export HCLOUD_TOKEN=... BENCHMARK_SSH_KEY=~/.ssh/benchmark-key
+SMOKE=1 ./benchmarks/scripts/cachebench-entry.sh   # ~5 min pipeline check
+./benchmarks/scripts/cachebench-entry.sh           # full sweep
+
+# From GitHub Actions: dispatch benchmark-symbolicator-cache, smoke=true first
+```
+
+Defaults: ccx13 (2 vCPU / 8 GB), corpus 1000 to 12000 bundles (~1 MB resolver
+each against a 5.6 GB bounded memory budget, 70% of RAM), cold ratios
+0 / 0.05 / 0.25, plus an unbounded in-memory variant per cell to find the OOM
+break point. Each cell gets a wiped tw-cache and dropped page caches. A cell
+killed by the OOM killer is recorded as `BREAK (OOM)` instead of failing the
+sweep; ssh drops and timeouts are recorded as `ERROR`/`TIMEOUT` so they cannot
+masquerade as cache conclusions.
+
+What to expect in the summary table (one section per cold ratio):
+
+- **Cold 0%:** memory wins or ties every row; with only the hot set in play
+  nothing ever misses. Baseline sanity.
+- **Cold 5% / 25%:** memory wins while the corpus fits its budget, then
+  degrades once it does not (every cold lookup pulls the `.tw` artifact from
+  storage into the heap, churning the LRU and the GC) while disk holds sub-ms
+  p99 via mmap re-opens. The table prints the crossover row.
+- **memory-unbounded:** RSS climbs with corpus size until `BREAK (OOM)`,
+  producing the "file-based is the only option beyond here" line. Disk RSS
+  stays flat (only hot pages resident).
+
+Non-smoke dispatches commit results to `benchmarks/results-cachebench/`.
+
 ## Layout
 
 ```
@@ -378,9 +454,13 @@ benchmarks/
     loadgen-bootstrap.sh         # Cross-compiles + runs loadgen
     seed-project.sh              # /api/register -> JWT + project token JSON
     chart.py                     # matplotlib renderer (throughput + read-probe charts)
-    _ssh.sh                      # Shared ssh/rsync helpers
+    _ssh.sh                      # Shared ssh/rsync helpers + retry_eof
+    cachebench-local.sh          # Symbolicator cache sweep on this machine
+    cachebench-entry.sh          # Symbolicator cache sweep on one Hetzner box
+    _cachebench.sh               # Shared matrix/stub helpers for the two above
   results-throughput/            # Committed throughput results (wiped per dispatch)
   results-probe/                 # Committed read-probe results (wiped per dispatch)
+  results-cachebench/            # Committed symbolicator cache results (wiped per dispatch)
   results/                       # Historical dated folders (not written to anymore)
   charts.md                      # Reading guide for every chart chart.py emits
 ```

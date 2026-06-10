@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	traceway "go.tracewayapp.com"
@@ -85,6 +86,20 @@ func (s sourceMapController) Upload(c *gin.Context) {
 		}
 		services.InvalidateSourceMap(projectId, fileHeader.Filename)
 		storedNames = append(storedNames, fileHeader.Filename)
+
+		if debugId := services.ExtractDebugId(fileHeader.Filename, data); debugId != "" {
+			aliasName := services.DebugIdBundleName(debugId)
+			if strings.HasSuffix(fileHeader.Filename, ".map") {
+				aliasName = services.DebugIdMapName(debugId)
+			}
+			aliasKey := services.SourceMapStorageKey(projectId, aliasName)
+			if err := storage.Store.Write(c, aliasKey, data); err != nil {
+				c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to write debug id artifact to storage: %w", err))
+				return
+			}
+			services.InvalidateSourceMap(projectId, aliasName)
+			storedNames = append(storedNames, aliasName)
+		}
 
 		uploaded++
 	}

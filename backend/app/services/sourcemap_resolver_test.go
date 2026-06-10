@@ -34,7 +34,7 @@ func TestResolveStackTraceWithBundle(t *testing.T) {
 	seedFixture(t, cs, prefix+"minified.js", "testdata/sourcemapcache/simple/minified.js")
 
 	input := "Error: boom\nanonymous()\n    minified.js:1:11"
-	lines := strings.Split(ResolveStackTrace(context.Background(), projectId, input), "\n")
+	lines := strings.Split(ResolveStackTrace(context.Background(), projectId, input, nil), "\n")
 
 	if got, want := lines[2], "    tests/fixtures/simple/original.js:2:10"; got != want {
 		t.Errorf("location: got %q, want %q", got, want)
@@ -56,7 +56,7 @@ func TestResolveStackTraceLocationOnlyWithoutBundle(t *testing.T) {
 	seedFixture(t, cs, prefix+"preact-missing-source-contents.module.js.map", "testdata/sourcemapcache/preact-missing-source-contents.module.js.map")
 
 	input := "Error: boom\nanonymous()\n    preact-missing-source-contents.module.js:1:133"
-	lines := strings.Split(ResolveStackTrace(context.Background(), projectId, input), "\n")
+	lines := strings.Split(ResolveStackTrace(context.Background(), projectId, input, nil), "\n")
 
 	if got, want := lines[2], "    ../src/util.js:12:23"; got != want {
 		t.Errorf("location: got %q, want %q", got, want)
@@ -76,8 +76,8 @@ func TestResolveStackTraceNegativeCacheAvoidsRepeatReads(t *testing.T) {
 	projectId := uuid.New()
 	input := "Error: boom\n    foo()\n    missing.js:1:5"
 
-	_ = ResolveStackTrace(context.Background(), projectId, input)
-	_ = ResolveStackTrace(context.Background(), projectId, input)
+	_ = ResolveStackTrace(context.Background(), projectId, input, nil)
+	_ = ResolveStackTrace(context.Background(), projectId, input, nil)
 
 	mapKey := fmt.Sprintf("sourcemaps/%s/missing.js.map", projectId)
 	if got := cs.reads[mapKey]; got != 1 {

@@ -148,7 +148,7 @@ func (e clientController) Report(c *gin.Context) {
 		for _, cst := range cf.StackTraces {
 			resolvedStackTrace := cst.StackTrace
 			if resolveJs {
-				resolvedStackTrace = services.ResolveStackTrace(c, projectId, cst.StackTrace)
+				resolvedStackTrace = services.ResolveStackTrace(c, projectId, cst.StackTrace, cst.DebugIds)
 			}
 			est := cst.ToExceptionStackTrace(ComputeExceptionHash(resolvedStackTrace, cst.IsMessage), request.AppVersion, request.ServerName)
 			est.StackTrace = resolvedStackTrace

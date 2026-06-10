@@ -297,7 +297,7 @@ func TestResolveStackTraceFailedMapAttemptedOncePerTrace(t *testing.T) {
 	projectId := uuid.New()
 	trace := "Error: boom\n    fn()\n    dead.js:1:10\n    fn2()\n    dead.js:1:20\n    fn3()\n    dead.js:1:30"
 
-	resolved := ResolveStackTrace(context.Background(), projectId, trace)
+	resolved := ResolveStackTrace(context.Background(), projectId, trace, nil)
 	if resolved != trace {
 		t.Error("trace should be stored as-is when its source map cannot be loaded")
 	}
@@ -358,11 +358,12 @@ func TestResolveStackTraceTransientFailureNegativeCached(t *testing.T) {
 	projectId := uuid.New()
 	trace := "Error: boom\n    fn()\n    down.js:1:10"
 
-	_ = ResolveStackTrace(context.Background(), projectId, trace)
-	_ = ResolveStackTrace(context.Background(), projectId, trace)
+	_ = ResolveStackTrace(context.Background(), projectId, trace, nil)
+	firstReads := fs.reads
+	_ = ResolveStackTrace(context.Background(), projectId, trace, nil)
 
-	if fs.reads != 1 {
-		t.Errorf("transient storage failures should be negative cached, got %d reads", fs.reads)
+	if fs.reads != firstReads {
+		t.Errorf("transient storage failures should be negative cached, got %d extra reads", fs.reads-firstReads)
 	}
 }
 
@@ -377,14 +378,14 @@ func TestInvalidateSourceMapClearsNegative(t *testing.T) {
 	mapKey := fmt.Sprintf("sourcemaps/%s/late.js.map", projectId)
 	trace := "Error: boom\n    fn()\n    late.js:1:1"
 
-	if got := ResolveStackTrace(context.Background(), projectId, trace); got != trace {
+	if got := ResolveStackTrace(context.Background(), projectId, trace, nil); got != trace {
 		t.Error("trace should pass through while the map is missing")
 	}
 
 	cs.data[mapKey] = []byte(`{"version":3,"sources":["a.js"],"names":[],"mappings":"AAAA"}`)
 	InvalidateSourceMap(projectId, "late.js.map")
 
-	resolved := ResolveStackTrace(context.Background(), projectId, trace)
+	resolved := ResolveStackTrace(context.Background(), projectId, trace, nil)
 	if !strings.Contains(resolved, "a.js:1:1") {
 		t.Errorf("upload should clear the negative entry immediately, got %q", resolved)
 	}
@@ -402,18 +403,18 @@ func TestInvalidateSourceMapEvictsStaleResolver(t *testing.T) {
 	cs.data[mapKey] = []byte(`{"version":3,"sources":["a.js"],"names":[],"mappings":"AAAA"}`)
 	trace := "Error: boom\n    fn()\n    stable.js:1:1"
 
-	if got := ResolveStackTrace(context.Background(), projectId, trace); !strings.Contains(got, "a.js:1:1") {
+	if got := ResolveStackTrace(context.Background(), projectId, trace, nil); !strings.Contains(got, "a.js:1:1") {
 		t.Fatalf("expected initial resolution against a.js, got %q", got)
 	}
 
 	cs.data[mapKey] = []byte(`{"version":3,"sources":["b.js"],"names":[],"mappings":"AAAA"}`)
-	if got := ResolveStackTrace(context.Background(), projectId, trace); !strings.Contains(got, "a.js:1:1") {
+	if got := ResolveStackTrace(context.Background(), projectId, trace, nil); !strings.Contains(got, "a.js:1:1") {
 		t.Fatalf("re-upload without invalidation should still serve the cached resolver, got %q", got)
 	}
 
-	InvalidateSourceMap(projectId, "stable.js")
-	if got := ResolveStackTrace(context.Background(), projectId, trace); !strings.Contains(got, "b.js:1:1") {
-		t.Errorf("invalidation should evict the cached resolver, got %q", got)
+	GenerateTWArtifacts(context.Background(), projectId, []string{"stable.js.map"})
+	if got := ResolveStackTrace(context.Background(), projectId, trace, nil); !strings.Contains(got, "b.js:1:1") {
+		t.Errorf("upload must evict both the cached resolver and the stale tw artifact, got %q", got)
 	}
 }
 
@@ -454,14 +455,14 @@ func TestTransientBundleReadFailureFailsBuild(t *testing.T) {
 
 	trace := "Error: boom\n    fn()\n    app.js:1:1"
 
-	if got := ResolveStackTrace(context.Background(), projectId, trace); got != trace {
+	if got := ResolveStackTrace(context.Background(), projectId, trace, nil); got != trace {
 		t.Errorf("a transient bundle read failure must not cache a names-less resolver, got %q", got)
 	}
 
 	bs.failBundle = false
 	InvalidateSourceMap(projectId, "app.js.map")
 
-	if got := ResolveStackTrace(context.Background(), projectId, trace); !strings.Contains(got, "a.js:1:1") {
+	if got := ResolveStackTrace(context.Background(), projectId, trace, nil); !strings.Contains(got, "a.js:1:1") {
 		t.Errorf("expected full resolution once the bundle read recovers, got %q", got)
 	}
 }

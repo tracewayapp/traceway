@@ -92,7 +92,10 @@ Make sure `TRACEWAY_URL` and `TRACEWAY_SOURCEMAP_TOKEN` are set in your environm
 
 ## How Maps Are Matched
 
-There is nothing to configure at runtime. When an exception is captured, Traceway takes each minified frame's filename and looks up the map you uploaded under that same name, deobfuscating the frame. The most recent upload of each filename wins, so content-hashed bundle names (the default in Vite, Next, Angular, and most bundlers) keep every build's maps distinct automatically.
+There is nothing to configure at runtime. When an exception is captured, Traceway resolves each minified frame in two steps:
+
+1. **By debug ID**, when the exception carries one for the frame's file. If your build uses [`@tracewayapp/bundler-plugin`](/client/js-sdk/debug-ids), every bundle and its map share an embedded unique ID, and the backend picks the map uploaded with that exact ID — immune to filename collisions and concurrent deploys. The upload endpoint detects debug IDs in uploaded files automatically; no CLI flags involved.
+2. **By filename** otherwise: the map you uploaded under the frame's filename is used. The most recent upload of each filename wins, so content-hashed bundle names (the default in Vite, Next, Angular, and most bundlers) keep every build's maps distinct automatically.
 
 Uploads take effect immediately: the backend evicts any cached state for the uploaded filenames, so exceptions arriving right after a deploy resolve against the new maps. See [Symbolication](/learn/symbolication-js) for the full resolution pipeline.
 
@@ -100,5 +103,6 @@ The SDK's `version` option is unrelated to source maps: it is plain metadata sho
 
 ## Next Steps
 
+- [Debug IDs](/client/js-sdk/debug-ids) — exact build-to-map matching via the bundler plugin
 - [Exceptions](/client/js-sdk/exceptions) — capturing errors with the JS SDK
 - [Initialization](/client/js-sdk/initialization) — configuring the SDK `version` option

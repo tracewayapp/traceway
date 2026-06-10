@@ -32,7 +32,7 @@ This page explains exactly how that translation works today, what is cached and 
 
 Symbolication happens **once, at ingest**, inside `POST /api/report`:
 
-1. The report arrives from the JS SDK. If the project is a JS framework, each frame is resolved directly against object storage at `sourcemaps/{projectId}/{filename}`: the map is addressed by the frame's filename, with no version and no database lookup. The most recent upload of each filename wins.
+1. The report arrives from the JS SDK. If the project is a JS framework, each frame is resolved directly against object storage, with no version and no database lookup. When the exception carries a [debug ID](/client/js-sdk/debug-ids) for the frame's file, the map is addressed at `sourcemaps/{projectId}/by-debug-id/{debugId}.js.map`; otherwise it is addressed by the frame's filename at `sourcemaps/{projectId}/{filename}.map`, where the most recent upload of each filename wins.
 2. Each stack trace in the report is resolved frame by frame.
 3. The **resolved** trace is what gets hashed for grouping and stored in ClickHouse.
 
@@ -63,7 +63,9 @@ For each location line, in order:
 
 ### 1. Find the right source map
 
-The frame's file name is reduced to its basename (any query string or fragment stripped first), and the map is addressed in object storage at a deterministic key:
+**By debug ID first.** If the exception payload carries a `debugIds` entry for the frame's file (injected at build time by [`@tracewayapp/bundler-plugin`](/client/js-sdk/debug-ids)), the map is addressed at `sourcemaps/{projectId}/by-debug-id/{debugId}.js.map` and the bundle at the same key without `.map`. This is content-addressed matching: the ID was embedded into the bundle and its map by the build, so the frame can never resolve against a map from a different build, regardless of filenames, CDNs, or concurrent deploys. If no artifact with that debug ID was uploaded, resolution falls back to filename matching below.
+
+**By filename otherwise.** The frame's file name is reduced to its basename (any query string or fragment stripped first), and the map is addressed in object storage at a deterministic key:
 
 | Frame file | Storage key |
 |---|---|
@@ -250,7 +252,7 @@ Honest list, in rough order of impact:
 
 1. **Function names require the bundle.** The current upload CLI sends it automatically, but map-only uploads (older CLI versions, or maps whose sibling bundle was not in the build output) resolve locations without names.
 2. **Symbolication is ingest-only.** Maps uploaded after an event arrived do not improve that event.
-3. **Maps are matched by basename.** Two bundles with the same filename in different directories collide, and the most recent upload wins. Content-hashed bundle names (the default in Vite, Next, Angular, and most bundlers) avoid this entirely; stable names like `app.js` shared across concurrently deployed versions resolve against the latest upload only.
+3. **Filename matching collides on stable names.** Without debug IDs, two bundles with the same filename in different directories collide, and the most recent upload wins. Content-hashed bundle names (the default in Vite, Next, Angular, and most bundlers) avoid this in practice, and [debug IDs](/client/js-sdk/debug-ids) eliminate it entirely by addressing maps by build content instead of by name.
 4. **The 5 second load budget trades completeness for latency.** A map that takes longer to fetch produces an unsymbolicated trace (recorded in `load_failures.delta`) rather than a slow ingest.
 5. **Failure cooldowns can delay recovery on other instances.** Uploading a map clears its cooldown instantly on the instance that handled the upload; in multi-instance deployments, the rest retry within their remaining cooldown, at most 15 minutes.
 6. **Outages split grouping transiently.** Unsymbolicated and symbolicated versions of the same error hash differently.

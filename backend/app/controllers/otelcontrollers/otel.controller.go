@@ -61,7 +61,7 @@ func (o otelController) ExportTraces(c *gin.Context) {
 		if !isJsLanguage(language) {
 			return stackTrace
 		}
-		return services.ResolveStackTrace(ctx, projectId, stackTrace)
+		return services.ResolveStackTrace(ctx, projectId, stackTrace, nil)
 	}
 
 	convertStart := time.Now()

@@ -18,6 +18,7 @@ type ClientExceptionStackTrace struct {
 	SessionRecordingId *string           `json:"sessionRecordingId"`
 	SessionId          *string           `json:"sessionId"`
 	DistributedTraceId *string           `json:"distributedTraceId"`
+	DebugIds           map[string]string `json:"debugIds"`
 }
 
 func (c *ClientExceptionStackTrace) ToExceptionStackTrace(exceptionHash, appVersion, serverName string) models.ExceptionStackTrace {

@@ -25,14 +25,14 @@ const SKILLS = [
     icon: Plug,
     name: "/traceway-setup",
     description:
-      "Instruments a project from scratch. Reads the repo, wires OpenTelemetry exporters for the backend and Traceway SDKs for web and mobile, then verifies that clean, grouped data arrives.",
+      "Reads your repo and wires it up: OpenTelemetry for the backend, Traceway SDKs for web and mobile. Verifies data arrives clean and grouped.",
     tags: ["OTel backends", "Web + mobile SDKs", "Source maps", "Verification"],
   },
   {
     icon: SquareTerminal,
     name: "/traceway",
     description:
-      "Operates Traceway day to day. Installs and authenticates the traceway CLI, queries exceptions, logs, endpoints, and metrics, and walks a bug from report to root cause.",
+      "Installs the traceway CLI, then uses it: exceptions, logs, endpoints, and metrics, from bug report to root cause.",
     tags: ["CLI install", "Telemetry queries", "Debugging", "Issue triage"],
   },
 ];
@@ -93,7 +93,7 @@ export default function AgentSkillsPage() {
               Two skills, <em>one install.</em>
             </>
           }
-          description="Skills are plain Markdown playbooks your agent loads on demand. One sets your project up; the other runs the day-to-day investigation."
+          description="Plain Markdown playbooks your agent loads on demand. One sets up your project, the other queries and debugs it."
         />
         <dl className="grid gap-5 md:grid-cols-2">
           {SKILLS.map((skill) => (
@@ -135,17 +135,15 @@ export default function AgentSkillsPage() {
                 From bug report <em>to root cause</em>
               </h2>
               <p>
-                Describe the bug the way a user reported it. The skill walks
-                your agent through the same investigation a senior engineer
-                would run: exceptions first, then logs around the failure,
-                endpoint health, and metrics. It ends in your code, not in a
-                dashboard.
+                Paste the bug report as written. The agent pulls the matching
+                exceptions, the logs around the failure, and endpoint stats,
+                then opens the failing code.
               </p>
               <ul className="feat-bullets">
-                <li>Grouped exceptions with full stack traces and tags</li>
-                <li>Trace-correlated logs reconstruct the failing request</li>
-                <li>First-seen timestamps line up regressions with deploys</li>
-                <li>The agent reads the failing code and proposes the fix</li>
+                <li>Grouped exceptions with full stack traces</li>
+                <li>Logs correlated by trace id</li>
+                <li>First-seen times point at the breaking deploy</li>
+                <li>Ends with a proposed fix in your code</li>
               </ul>
             </div>
             <AgentDebugTerminal />
@@ -160,16 +158,15 @@ export default function AgentSkillsPage() {
                 A command line <em>designed for agents first</em>
               </h2>
               <p>
-                Most CLIs assume a human is typing. The traceway CLI assumes
-                an agent is: machine-readable output, stable error envelopes
-                with hints, and nothing that blocks a session waiting for
-                input. Humans still get tables on a TTY.
+                Built for non-interactive use: JSON output, stable errors, and
+                nothing that hangs waiting for input. Humans on a TTY still
+                get tables.
               </p>
               <ul className="feat-bullets">
-                <li>JSON by default when piped, tables when watched</li>
-                <li>--fields trims responses to exactly what was asked</li>
-                <li>Stable error identifiers and exit codes to branch on</li>
-                <li>Mutations fail fast without --yes, no hung prompts</li>
+                <li>JSON when piped, tables on a TTY</li>
+                <li>--fields trims responses to what was asked</li>
+                <li>Stable error identifiers and exit codes</li>
+                <li>Mutations require --yes, nothing hangs</li>
               </ul>
             </div>
             <Terminal
@@ -241,12 +238,12 @@ export default function AgentSkillsPage() {
                 Set up by the agent, <em>not by the docs</em>
               </>
             }
-            description="/traceway-setup reads your repo and picks the right integration path: OpenTelemetry for any backend, Traceway SDKs for browser and mobile. It enforces the rules that keep data clean, then checks that telemetry is actually arriving."
+            description="/traceway-setup picks the right path for each part of the stack: OTel for backends, Traceway SDKs for browser and mobile. Then it verifies data is actually arriving."
             bullets={[
-              "Detects frameworks, services, and background jobs from the repo",
-              "OTel for backends, Traceway SDKs for web and mobile",
-              "Wires tasks, AI traces, and source maps, not just HTTP",
-              "Finishes by verifying grouped endpoints in your dashboard",
+              "Detects frameworks and services from the repo",
+              "OTel for backends, SDKs for web and mobile",
+              "Covers background tasks, AI traces, and source maps",
+              "Verifies grouped endpoints in the dashboard",
             ]}
             image={{
               src: "/images/performance-percentiles-overview.png",

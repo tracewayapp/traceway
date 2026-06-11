@@ -15,8 +15,17 @@ Two values are required:
 |---|---|---|
 | **Instance URL** | `https://traceway.example.com` | The URL of the Traceway dashboard |
 | **Project token** | `abc123...` | Traceway dashboard → Connection page |
+| **Source map upload token** (optional) | `def456...` | Traceway dashboard → Connection page → Source Map Upload |
 
 Both may be provided in the invocation (e.g. `/traceway-setup with token abc123 and url https://traceway.example.com`). If either is missing, check for existing `TRACEWAY_URL` / `TRACEWAY_TOKEN` environment variables or `.env` entries in the project — otherwise ask the user before proceeding. Never invent placeholder values in committed code; wire everything through environment variables.
+
+If a **source map upload token** is provided and the project produces minified/bundled JavaScript, add source map upload to the build or deploy step so stack traces resolve to original files and lines:
+
+```bash
+npx @tracewayapp/sourcemap-upload --url <instance-url> --token <source-map-upload-token> --version <release-version> --directory <build-output, e.g. dist/assets>
+```
+
+Do not commit the upload token; keep it in CI secrets or an untracked env file.
 
 ## What Traceway Needs
 

@@ -1,12 +1,14 @@
 <script lang="ts">
 	import bash from 'svelte-highlight/languages/bash';
-	import plaintext from 'svelte-highlight/languages/plaintext';
-	import { SKILL_INSTALL_COMMAND, getSetupPrompt } from '$lib/utils/ai-setup';
+	import { SKILL_INSTALL_COMMAND, getSetupPromptParts } from '$lib/utils/ai-setup';
+	import { projectsState } from '$lib/state/projects.svelte';
 	import CopyableCodeBlock from './copyable-code-block.svelte';
+	import CopyablePrompt from './copyable-prompt.svelte';
 
 	let { backendUrl, token }: { backendUrl: string; token: string } = $props();
 
-	const setupPrompt = $derived(getSetupPrompt(backendUrl, token));
+	const sourceMapToken = $derived(projectsState.currentProject?.sourceMapToken ?? null);
+	const promptParts = $derived(getSetupPromptParts(backendUrl, token, sourceMapToken));
 </script>
 
 <div class="rounded-md border bg-card">
@@ -40,10 +42,11 @@
 			<h3 class="font-semibold">Run the Setup Prompt</h3>
 		</div>
 		<p class="mt-1 ml-9 text-sm text-muted-foreground">
-			Paste this prompt into your agent. Your instance URL and project token are already filled in.
+			Paste this prompt into your agent. Your instance URL and project token are already filled
+			in{sourceMapToken ? ', along with your source map upload token' : ''}.
 		</p>
 	</div>
 	<div class="p-4">
-		<CopyableCodeBlock code={setupPrompt} language={plaintext} wrap />
+		<CopyablePrompt parts={promptParts} />
 	</div>
 </div>

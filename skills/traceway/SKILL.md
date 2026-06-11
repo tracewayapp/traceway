@@ -138,10 +138,10 @@ traceway exceptions show $HASH --output json | jq -r '.occurrences[0].distribute
 
 ```bash
 traceway metrics query --name system.cpu.utilization --aggregation max --since 24h
-traceway metrics query --name <name> --aggregation avg|sum|count|min|max|p50|p95|p99 [--tag key=value] [--group-by <tag>]
+traceway metrics query --name <name> --aggregation avg|sum|count|min|max [--tag key=value] [--group-by <tag>]
 ```
 
-There is no `metrics list`; a bogus name returns an empty `series: {}` cleanly, so probing names is safe. Host metrics from the Traceway OTel Agent live under `system.*` names.
+The CLI also accepts `p50|p95|p99`, but the server has no quantile aggregation for metric points and silently computes `avg` for them — never present those as percentiles. Latency percentiles come from `traceway endpoints list`, computed from raw request durations. There is no `metrics list`; a bogus name returns an empty `series: {}` cleanly, so probing names is safe. Host metrics from the Traceway OTel Agent live under `system.*` names, and OTLP histogram metrics are stored as two series, `<name>.avg` and `<name>.count`.
 
 ### 4. Correlate with the code
 

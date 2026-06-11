@@ -37,13 +37,13 @@ Two hard rules apply to every backend integration:
 
 | OTel Span | Condition | Traceway Concept |
 |---|---|---|
-| Root span | `SpanKind = SERVER` or `INTERNAL` with HTTP attributes | **Endpoint** |
+| Root span (or span whose parent lives in another service) | `SpanKind = SERVER` or `INTERNAL` with HTTP attributes | **Endpoint** |
 | Any span | `SpanKind = CONSUMER` | **Task** |
 | Root span | `SpanKind = INTERNAL` with a `console.command` attribute | **Task** (CLI command) |
 | Any span | Has any `gen_ai.*` attribute | **AI Trace** |
 | Non-root span | Has a parent span ID, matched none of the above | **Span** (child) |
-| Exception event | Event named `"exception"` on any span | **Issue** |
-| Root span | Matched none of the above | **Dropped silently** |
+| Exception event | Event named `"exception"` on any span above | **Issue** |
+| Root span | Matched none of the above | **Dropped silently** (including its exception events) |
 
 For the exact classification rules, endpoint naming, metric conversion, and all the quirks, read `data-model.md` in this skill directory. It is the authoritative reference.
 

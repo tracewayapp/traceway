@@ -7,7 +7,7 @@
 		CardTitle
 	} from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
-	import { Copy, Check, KeyRound } from 'lucide-svelte';
+	import { Copy, Check } from 'lucide-svelte';
 	import {
 		projectsState,
 		type ProjectWithToken,
@@ -15,8 +15,6 @@
 		isOtelFramework,
 		isCloudflareFramework
 	} from '$lib/state/projects.svelte';
-	import { authState } from '$lib/state/auth.svelte';
-	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import FrameworkIcon from '$lib/components/framework-icon.svelte';
 	import Highlight from 'svelte-highlight';
 	import go from 'svelte-highlight/languages/go';
@@ -24,7 +22,6 @@
 	import bash from 'svelte-highlight/languages/bash';
 	import php from 'svelte-highlight/languages/php';
 	import python from 'svelte-highlight/languages/python';
-	import yaml from 'svelte-highlight/languages/yaml';
 	import { themeState } from '$lib/state/theme.svelte';
 	import 'svelte-highlight/styles/github-dark.css';
 	import {
@@ -32,22 +29,24 @@
 		getInstallCommand,
 		getFrameworkLabel
 	} from '$lib/utils/framework-code';
+	import { getSetupMode } from '$lib/utils/setup-storage';
+	import SetupModeTabs from '$lib/components/setup/setup-mode-tabs.svelte';
+	import AiSetupSteps from '$lib/components/setup/ai-setup-steps.svelte';
+	import OtelSetupSteps from '$lib/components/setup/otel-setup-steps.svelte';
+	import OtelExporterConfig from '$lib/components/setup/otel-exporter-config.svelte';
+	import SourceMapUploadCard from '$lib/components/setup/source-map-upload-card.svelte';
 
 	let projectWithToken = $derived(projectsState.currentProject);
+	let setupMode = $state(getSetupMode());
 	let copiedCode = $state(false);
 	let copiedInstall = $state(false);
-	let copiedToken = $state(false);
-	let copiedCommand = $state(false);
-	let generatingToken = $state(false);
-	let copiedOtelEndpoint = $state(false);
-	let copiedOtelAuth = $state(false);
-	let copiedOtelCollector = $state(false);
 	let copiedCfEndpoint = $state(false);
 	let copiedCfAuth = $state(false);
 	let copiedCfWrangler = $state(false);
 	let copiedCfDeploy = $state(false);
 
 	const isOtel = $derived(projectWithToken ? isOtelFramework(projectWithToken.framework) : false);
+	const isOtelGeneric = $derived(projectWithToken?.framework === 'opentelemetry');
 	const isCloudflare = $derived(
 		projectWithToken ? isCloudflareFramework(projectWithToken.framework) : false
 	);
@@ -116,17 +115,6 @@ service:
 	});
 
 	const isJs = $derived(projectWithToken ? isJsFramework(projectWithToken.framework) : false);
-	const isReadonly = $derived(
-		authState.getRoleForOrganization(projectsState.currentProject?.organizationId ?? 0) ===
-			'readonly'
-	);
-	const sourceMapToken = $derived(projectWithToken?.sourceMapToken ?? null);
-
-	const uploadCommand = $derived(
-		projectWithToken && sourceMapToken
-			? `npx @tracewayapp/sourcemap-upload --url ${projectWithToken.backendUrl} --token ${sourceMapToken} --version YOUR_VERSION --directory dist/assets`
-			: ''
-	);
 
 	async function copyCode() {
 		await navigator.clipboard.writeText(sdkCode);
@@ -138,28 +126,6 @@ service:
 		await navigator.clipboard.writeText(installCommand);
 		copiedInstall = true;
 		setTimeout(() => (copiedInstall = false), 2000);
-	}
-
-	async function generateToken() {
-		generatingToken = true;
-		try {
-			await projectsState.generateSourceMapToken();
-		} finally {
-			generatingToken = false;
-		}
-	}
-
-	async function copyToken() {
-		if (!sourceMapToken) return;
-		await navigator.clipboard.writeText(sourceMapToken);
-		copiedToken = true;
-		setTimeout(() => (copiedToken = false), 2000);
-	}
-
-	async function copyUploadCommand() {
-		await navigator.clipboard.writeText(uploadCommand);
-		copiedCommand = true;
-		setTimeout(() => (copiedCommand = false), 2000);
 	}
 
 	async function copyCfEndpoint() {
@@ -185,24 +151,6 @@ service:
 		copiedCfDeploy = true;
 		setTimeout(() => (copiedCfDeploy = false), 2000);
 	}
-
-	async function copyOtelEndpoint() {
-		await navigator.clipboard.writeText(otelEndpoint);
-		copiedOtelEndpoint = true;
-		setTimeout(() => (copiedOtelEndpoint = false), 2000);
-	}
-
-	async function copyOtelAuth() {
-		await navigator.clipboard.writeText(otelAuthHeader);
-		copiedOtelAuth = true;
-		setTimeout(() => (copiedOtelAuth = false), 2000);
-	}
-
-	async function copyOtelCollector() {
-		await navigator.clipboard.writeText(otelCollectorConfig);
-		copiedOtelCollector = true;
-		setTimeout(() => (copiedOtelCollector = false), 2000);
-	}
 </script>
 
 <div class="space-y-4">
@@ -212,7 +160,12 @@ service:
 	</div>
 
 	{#if projectWithToken}
-		{#if isOtel}
+		<SetupModeTabs mode={setupMode} onModeChange={(m) => (setupMode = m)} />
+		{#if setupMode === 'ai'}
+			<AiSetupSteps backendUrl={projectWithToken.backendUrl} token={projectWithToken.token} />
+		{:else if isOtelGeneric}
+			<OtelSetupSteps backendUrl={projectWithToken.backendUrl} token={projectWithToken.token} />
+		{:else if isOtel}
 			<Card>
 				<CardHeader>
 					<CardTitle class="flex items-center gap-2">
@@ -224,65 +177,11 @@ service:
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<div class="space-y-6">
-						<div>
-							<p class="mb-1 text-sm font-medium">OTLP Endpoint</p>
-							<p class="mb-2 text-xs text-muted-foreground">
-								Your SDK or Collector will append <code class="text-xs">/v1/traces</code> and
-								<code class="text-xs">/v1/metrics</code> automatically.
-							</p>
-							<div class="flex items-center gap-2">
-								<code class="flex-1 rounded-md bg-muted px-3 py-2 font-mono text-sm break-all"
-									>{otelEndpoint}</code
-								>
-								<Button variant="outline" size="sm" onclick={copyOtelEndpoint}>
-									{#if copiedOtelEndpoint}
-										<Check class="h-4 w-4 text-green-500" />
-									{:else}
-										<Copy class="h-4 w-4" />
-									{/if}
-								</Button>
-							</div>
-						</div>
-						<div>
-							<p class="mb-2 text-sm font-medium">Authorization Header</p>
-							<div class="flex items-center gap-2">
-								<code class="flex-1 rounded-md bg-muted px-3 py-2 font-mono text-sm break-all"
-									>{otelAuthHeader}</code
-								>
-								<Button variant="outline" size="sm" onclick={copyOtelAuth}>
-									{#if copiedOtelAuth}
-										<Check class="h-4 w-4 text-green-500" />
-									{:else}
-										<Copy class="h-4 w-4" />
-									{/if}
-								</Button>
-							</div>
-						</div>
-						<div>
-							<p class="mb-2 text-sm font-medium">Example: OTel Collector (optional)</p>
-							<div class="relative">
-								<div class="absolute top-2 right-2 z-10">
-									<Button variant="outline" size="sm" onclick={copyOtelCollector}>
-										{#if copiedOtelCollector}
-											<Check class="mr-2 h-4 w-4 text-green-500" />
-											Copied!
-										{:else}
-											<Copy class="mr-2 h-4 w-4" />
-											Copy
-										{/if}
-									</Button>
-								</div>
-								<div
-									class="overflow-x-auto rounded-lg text-sm {themeState.isDark
-										? 'dark-code'
-										: 'light-code'}"
-								>
-									<Highlight language={yaml} code={otelCollectorConfig} />
-								</div>
-							</div>
-						</div>
-					</div>
+					<OtelExporterConfig
+						endpoint={otelEndpoint}
+						authHeader={otelAuthHeader}
+						collectorConfig={otelCollectorConfig}
+					/>
 				</CardContent>
 			</Card>
 		{:else if isCloudflare}
@@ -443,77 +342,8 @@ service:
 					</div>
 				</CardContent>
 			</Card>
-			{#if isJs && !isReadonly}
-				<Card>
-					<CardHeader>
-						<CardTitle class="flex items-center gap-2">
-							<KeyRound class="h-5 w-5" />
-							Source Map Upload
-						</CardTitle>
-						<CardDescription>
-							Upload source maps to see original file names and line numbers in stack traces from
-							minified code.
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						{#if sourceMapToken}
-							<div class="space-y-4">
-								<div>
-									<p class="mb-2 text-sm font-medium">Upload Token</p>
-									<div class="flex items-center gap-2">
-										<code class="flex-1 rounded-md bg-muted px-3 py-2 font-mono text-sm break-all"
-											>{sourceMapToken}</code
-										>
-										<Button variant="outline" size="sm" onclick={copyToken}>
-											{#if copiedToken}
-												<Check class="h-4 w-4 text-green-500" />
-											{:else}
-												<Copy class="h-4 w-4" />
-											{/if}
-										</Button>
-									</div>
-								</div>
-								<div>
-									<p class="mb-2 text-sm font-medium">Usage</p>
-									<div class="relative">
-										<div class="absolute top-2 right-2 z-10">
-											<Button variant="outline" size="sm" onclick={copyUploadCommand}>
-												{#if copiedCommand}
-													<Check class="mr-2 h-4 w-4 text-green-500" />
-													Copied!
-												{:else}
-													<Copy class="mr-2 h-4 w-4" />
-													Copy
-												{/if}
-											</Button>
-										</div>
-										<div
-											class="overflow-x-auto rounded-lg text-sm {themeState.isDark
-												? 'dark-code'
-												: 'light-code'}"
-										>
-											<Highlight language={bash} code={uploadCommand} />
-										</div>
-									</div>
-								</div>
-							</div>
-						{:else}
-							<p class="mb-4 text-sm text-muted-foreground">
-								Generate an upload token to start uploading source maps as part of your build
-								process.
-							</p>
-							<Button onclick={generateToken} disabled={generatingToken}>
-								{#if generatingToken}
-									<LoadingCircle class="mr-2 h-4 w-4" />
-									Generating...
-								{:else}
-									<KeyRound class="mr-2 h-4 w-4" />
-									Generate Upload Token
-								{/if}
-							</Button>
-						{/if}
-					</CardContent>
-				</Card>
+			{#if isJs}
+				<SourceMapUploadCard />
 			{/if}
 		{/if}
 	{:else}

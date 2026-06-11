@@ -42,7 +42,6 @@
 	import php from 'svelte-highlight/languages/php';
 	import python from 'svelte-highlight/languages/python';
 	import { themeState } from '$lib/state/theme.svelte';
-	import yaml from 'svelte-highlight/languages/yaml';
 	import 'svelte-highlight/styles/github-dark.css';
 	import {
 		getFrameworkCode,
@@ -54,6 +53,12 @@
 	} from '$lib/utils/framework-code';
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
+	import { OTEL_SDKS } from '$lib/utils/otel-sdks';
+	import { getSetupMode } from '$lib/utils/setup-storage';
+	import SetupModeTabs from '$lib/components/setup/setup-mode-tabs.svelte';
+	import AiSetupSteps from '$lib/components/setup/ai-setup-steps.svelte';
+	import OtelSetupSteps from '$lib/components/setup/otel-setup-steps.svelte';
+	import OtelExporterConfig from '$lib/components/setup/otel-exporter-config.svelte';
 
 	const timezone = $derived(getTimezone());
 
@@ -115,6 +120,7 @@
 	const impactfulEndpoints = $derived(data?.worstEndpoints?.filter((e) => e.impact >= 0.25) ?? []);
 
 	let projectWithToken = $derived(projectsState.currentProject);
+	let setupMode = $state(getSetupMode());
 	let copiedInstall = $state(false);
 	let copiedCode = $state(false);
 	let copiedTesting = $state(false);
@@ -176,6 +182,7 @@
 	let copiedCfDeploy = $state(false);
 
 	const isOtel = $derived(projectWithToken ? isOtelFramework(projectWithToken.framework) : false);
+	const isOtelGeneric = $derived(projectWithToken?.framework === 'opentelemetry');
 	const otelBaseEndpoint = $derived(
 		projectWithToken ? `${projectWithToken.backendUrl}/api/otel` : ''
 	);
@@ -197,21 +204,7 @@ service:
 			: ''
 	);
 
-	const otelSdks = [
-		{
-			lang: 'Node.js',
-			cmd: 'npm install @opentelemetry/sdk-node @opentelemetry/exporter-trace-otlp-http @opentelemetry/exporter-metrics-otlp-http'
-		},
-		{ lang: 'Python', cmd: 'pip install opentelemetry-sdk opentelemetry-exporter-otlp-proto-http' },
-		{ lang: 'Go', cmd: 'go get go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp' },
-		{ lang: 'Java', cmd: "implementation 'io.opentelemetry:opentelemetry-exporter-otlp'" },
-		{ lang: '.NET', cmd: 'dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol' }
-	];
-
 	let copiedSdkLang = $state<string | null>(null);
-	let copiedOtelEndpoint = $state(false);
-	let copiedOtelAuth = $state(false);
-	let copiedOtelCollector = $state(false);
 
 	async function copyCfEndpoint() {
 		await navigator.clipboard.writeText(cfOtelEndpoint);
@@ -241,24 +234,6 @@ service:
 		await navigator.clipboard.writeText(cmd);
 		copiedSdkLang = lang;
 		setTimeout(() => (copiedSdkLang = null), 2000);
-	}
-
-	async function copyOtelEndpoint() {
-		await navigator.clipboard.writeText(otelBaseEndpoint);
-		copiedOtelEndpoint = true;
-		setTimeout(() => (copiedOtelEndpoint = false), 2000);
-	}
-
-	async function copyOtelAuth() {
-		await navigator.clipboard.writeText(otelAuthHeader);
-		copiedOtelAuth = true;
-		setTimeout(() => (copiedOtelAuth = false), 2000);
-	}
-
-	async function copyOtelCollector() {
-		await navigator.clipboard.writeText(otelCollectorConfig);
-		copiedOtelCollector = true;
-		setTimeout(() => (copiedOtelCollector = false), 2000);
 	}
 
 	async function copyInstall() {
@@ -395,7 +370,10 @@ service:
 			</div>
 
 			{#if projectWithToken}
-				{#if isCloudflare}
+				<SetupModeTabs mode={setupMode} onModeChange={(m) => (setupMode = m)} />
+				{#if setupMode === 'ai'}
+					<AiSetupSteps backendUrl={projectWithToken.backendUrl} token={projectWithToken.token} />
+				{:else if isCloudflare}
 					<!-- Cloudflare Step 1: Create a Destination -->
 					<div class="rounded-md border bg-card">
 						<div class="border-b px-4 py-3">
@@ -515,6 +493,11 @@ service:
 							</div>
 						</div>
 					</div>
+				{:else if isOtelGeneric}
+					<OtelSetupSteps
+						backendUrl={projectWithToken.backendUrl}
+						token={projectWithToken.token}
+					/>
 				{:else if isOtel}
 					<!-- OTel Step 1: Install an OTel SDK -->
 					<div class="rounded-md border bg-card">
@@ -533,18 +516,18 @@ service:
 							</p>
 						</div>
 						<div class="space-y-2 p-4">
-							{#each otelSdks as sdk}
+							{#each OTEL_SDKS as sdk (sdk.id)}
 								<div class="flex items-center gap-2">
-									<span class="w-16 shrink-0 text-sm font-medium">{sdk.lang}</span>
+									<span class="w-16 shrink-0 text-sm font-medium">{sdk.label}</span>
 									<code class="flex-1 rounded-md bg-muted px-3 py-2 font-mono text-xs break-all"
-										>{sdk.cmd}</code
+										>{sdk.installCommand}</code
 									>
 									<Button
 										variant="outline"
 										size="sm"
-										onclick={() => copySdkInstall(sdk.lang, sdk.cmd)}
+										onclick={() => copySdkInstall(sdk.label, sdk.installCommand)}
 									>
-										{#if copiedSdkLang === sdk.lang}
+										{#if copiedSdkLang === sdk.label}
 											<Check class="h-4 w-4 text-green-500" />
 										{:else}
 											<Copy class="h-4 w-4" />
@@ -578,67 +561,12 @@ service:
 								Point your OTLP/HTTP exporter at Traceway using the endpoint and token below.
 							</p>
 						</div>
-						<div class="space-y-4 p-4">
-							<div>
-								<p class="mb-2 text-sm font-medium">OTLP Endpoint</p>
-								<p class="mb-2 text-xs text-muted-foreground">
-									Your SDK or Collector will append <code
-										class="rounded bg-muted px-1 py-0.5 font-mono text-xs">/v1/traces</code
-									>
-									and
-									<code class="rounded bg-muted px-1 py-0.5 font-mono text-xs">/v1/metrics</code> automatically.
-								</p>
-								<div class="flex items-center gap-2">
-									<code class="flex-1 rounded-md bg-muted px-3 py-2 font-mono text-sm break-all"
-										>{otelBaseEndpoint}</code
-									>
-									<Button variant="outline" size="sm" onclick={copyOtelEndpoint}>
-										{#if copiedOtelEndpoint}
-											<Check class="h-4 w-4 text-green-500" />
-										{:else}
-											<Copy class="h-4 w-4" />
-										{/if}
-									</Button>
-								</div>
-							</div>
-							<div>
-								<p class="mb-2 text-sm font-medium">Authorization Header</p>
-								<div class="flex items-center gap-2">
-									<code class="flex-1 rounded-md bg-muted px-3 py-2 font-mono text-sm break-all"
-										>{otelAuthHeader}</code
-									>
-									<Button variant="outline" size="sm" onclick={copyOtelAuth}>
-										{#if copiedOtelAuth}
-											<Check class="h-4 w-4 text-green-500" />
-										{:else}
-											<Copy class="h-4 w-4" />
-										{/if}
-									</Button>
-								</div>
-							</div>
-							<div>
-								<p class="mb-2 text-sm font-medium">Example: OTel Collector (optional)</p>
-								<div class="relative">
-									<div class="absolute top-2 right-2 z-10">
-										<Button variant="outline" size="sm" onclick={copyOtelCollector}>
-											{#if copiedOtelCollector}
-												<Check class="mr-2 h-4 w-4 text-green-500" />
-												Copied!
-											{:else}
-												<Copy class="mr-2 h-4 w-4" />
-												Copy
-											{/if}
-										</Button>
-									</div>
-									<div
-										class="overflow-x-auto rounded-lg text-sm {themeState.isDark
-											? 'dark-code'
-											: 'light-code'}"
-									>
-										<Highlight language={yaml} code={otelCollectorConfig} />
-									</div>
-								</div>
-							</div>
+						<div class="p-4">
+							<OtelExporterConfig
+								endpoint={otelBaseEndpoint}
+								authHeader={otelAuthHeader}
+								collectorConfig={otelCollectorConfig}
+							/>
 						</div>
 					</div>
 
@@ -812,7 +740,7 @@ service:
 							<Unplug class="h-6 w-6 text-destructive" />
 						</div>
 						<p class="mb-4 text-sm text-muted-foreground">
-							{#if isOtel || isCloudflare}
+							{#if setupMode === 'ai' || isOtel || isCloudflare}
 								Once you've completed the steps above and sent some traffic through your
 								application, click below to verify.
 							{:else}

@@ -1,6 +1,6 @@
 ---
-name: traceway-setup-project
-description: Connect a project to a Traceway instance so it reports endpoints, spans, errors, and metrics. Use when the user wants to add Traceway (or OpenTelemetry tracing that exports to Traceway) to a backend, frontend, or mobile project. Accepts a project token and instance URL, e.g. "/traceway-setup-project with token abc123".
+name: traceway-setup
+description: Connect a project to a Traceway instance so it reports endpoints, spans, errors, and metrics. Use when the user wants to add Traceway (or OpenTelemetry tracing that exports to Traceway) to a backend, frontend, or mobile project. Accepts a project token and instance URL, e.g. "/traceway-setup with token abc123".
 ---
 
 # Set Up Traceway in a Project
@@ -16,7 +16,7 @@ Two values are required:
 | **Instance URL** | `https://traceway.example.com` | The URL of the Traceway dashboard |
 | **Project token** | `abc123...` | Traceway dashboard → Connection page |
 
-Both may be provided in the invocation (e.g. `/traceway-setup-project with token abc123 and url https://traceway.example.com`). If either is missing, check for existing `TRACEWAY_URL` / `TRACEWAY_TOKEN` environment variables or `.env` entries in the project — otherwise ask the user before proceeding. Never invent placeholder values in committed code; wire everything through environment variables.
+Both may be provided in the invocation (e.g. `/traceway-setup with token abc123 and url https://traceway.example.com`). If either is missing, check for existing `TRACEWAY_URL` / `TRACEWAY_TOKEN` environment variables or `.env` entries in the project — otherwise ask the user before proceeding. Never invent placeholder values in committed code; wire everything through environment variables.
 
 ## What Traceway Needs
 
@@ -39,9 +39,15 @@ For the integration to work correctly, the instrumentation MUST capture:
 | Non-root span | Has a parent span ID | **Span** |
 | Exception event | Event named `"exception"` on any span | **Issue** |
 
-## Step 1: Identify the Framework
+## Step 1: Analyze the Architecture
 
-Detect the framework by reading `package.json` (Node.js), `go.mod` (Go), `composer.json` (PHP), `requirements.txt`/`pyproject.toml` (Python), `pubspec.yaml` (Flutter), `build.gradle` (Android), or asking the user.
+Before changing anything, build a picture of what needs instrumenting:
+
+1. **Frameworks and languages**: detect them by reading `package.json` (Node.js), `go.mod` (Go), `composer.json` (PHP), `requirements.txt`/`pyproject.toml` (Python), `pubspec.yaml` (Flutter), `build.gradle` (Android), or asking the user.
+2. **Services and entry points**: in a monorepo, list each deployable service and its entry point. Each service that should report to Traceway needs its own integration, and usually its own project token (ask the user before reusing one token across services).
+3. **Background work**: find cron jobs, queue consumers, schedulers, and long-running workers. These must be instrumented as Tasks (root spans with `SpanKind.CONSUMER`), not Endpoints.
+
+Then follow the framework-specific guide for each service that needs instrumenting.
 
 ## Step 2: Follow the Framework-Specific Guide
 

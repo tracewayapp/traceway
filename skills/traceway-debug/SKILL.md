@@ -122,4 +122,4 @@ traceway exceptions archive <hash> --yes
 
 ## If There Is No Telemetry
 
-Empty results usually mean the wrong project, wrong time window, or the app is not instrumented. Check `traceway projects list`, widen `--since`, and if the app was never connected to Traceway, set it up first (see the `traceway-setup-project` skill).
+Empty results usually mean the wrong project, wrong time window, or the app is not instrumented. Check `traceway projects list`, widen `--since`, and if the app was never connected to Traceway, set it up first (see the `traceway-setup` skill).

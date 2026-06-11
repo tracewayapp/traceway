@@ -193,6 +193,8 @@ traceway metrics query --name <metric.name>
 
 `--name` is required; omitting it exits with code 2 and `usage_error`.
 
+**Percentile caveat:** the CLI accepts `p50`/`p95`/`p99` but the server has no quantile aggregation for metric points — it silently computes `avg` for them. Do not present percentile results from `metrics query` to a user; latency percentiles come from `traceway endpoints list` (computed from raw request durations).
+
 **There is no `metrics list` / `metrics discover` subcommand.** The CLI cannot enumerate available metric names — the user has to provide one, or you have to guess from OpenTelemetry semantic conventions. Names observed live: `system.cpu.utilization`, `system.network.io`, `system.network.errors`, `system.network.dropped`. If the user is checking system telemetry, those four are the likeliest starting points; if they're checking app-level metrics, ask.
 
 A bogus metric name returns exit 0 with `series: {}` (clean empty, not an error). Use that to probe whether a name exists.

@@ -85,47 +85,6 @@ export default function AgentSkillsPage() {
         </div>
       </section>
 
-      <section className="wrap pt-8 pb-24">
-        <SectionHead
-          eyebrow="The skills"
-          title={
-            <>
-              Two skills, <em>one install.</em>
-            </>
-          }
-          description="Plain Markdown playbooks your agent loads on demand. One sets up your project, the other queries and debugs it."
-        />
-        <dl className="grid gap-5 md:grid-cols-2">
-          {SKILLS.map((skill) => (
-            <div key={skill.name} className="surface-card">
-              <dt className="flex items-center gap-3">
-                <span
-                  className="grid size-8 shrink-0 place-items-center rounded-md border border-hair-2 bg-ink-3 text-a2"
-                  aria-hidden
-                >
-                  <skill.icon className="size-4" />
-                </span>
-                <span className="font-mono text-sm font-medium text-fg-0">
-                  {skill.name}
-                </span>
-              </dt>
-              <dd className="mt-4">
-                <p className="muted text-sm leading-relaxed">
-                  {skill.description}
-                </p>
-                <div className="mt-5 flex flex-wrap gap-2">
-                  {skill.tags.map((tag) => (
-                    <span key={tag} className="tag">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </section>
-
       <div className="band-light">
         <section className="wrap">
           <div className="feature-row">
@@ -148,6 +107,47 @@ export default function AgentSkillsPage() {
             </div>
             <AgentDebugTerminal />
           </div>
+        </section>
+
+        <section className="wrap py-8">
+          <SectionHead
+            eyebrow="The skills"
+            title={
+              <>
+                Two skills, <em>one install.</em>
+              </>
+            }
+            description="Plain Markdown playbooks your agent loads on demand. One sets up your project, the other queries and debugs it."
+          />
+          <dl className="grid gap-5 md:grid-cols-2">
+            {SKILLS.map((skill) => (
+              <div key={skill.name} className="surface-card">
+                <dt className="flex items-center gap-3">
+                  <span
+                    className="grid size-8 shrink-0 place-items-center rounded-md border border-hair-2 bg-ink-3 text-a2"
+                    aria-hidden
+                  >
+                    <skill.icon className="size-4" />
+                  </span>
+                  <span className="font-mono text-sm font-medium text-fg-0">
+                    {skill.name}
+                  </span>
+                </dt>
+                <dd className="mt-4">
+                  <p className="muted text-sm leading-relaxed">
+                    {skill.description}
+                  </p>
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    {skill.tags.map((tag) => (
+                      <span key={tag} className="tag">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </dd>
+              </div>
+            ))}
+          </dl>
         </section>
 
         <section className="wrap">

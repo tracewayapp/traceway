@@ -19,7 +19,7 @@
   --ink-4: #1d2430;
   --ink-5: #283041;
   --hair: rgba(255, 255, 255, 0.06);
-  --hair-2: rgba(255, 255, 255, 0.10);
+  --hair-2: rgba(255, 255, 255, 0.1);
 
   /* Text */
   --fg-0: #f4f6fb;
@@ -290,7 +290,7 @@
     --ink-1: #0a0d14;
     --ink-3: #151a24;
     --hair: rgba(255, 255, 255, 0.06);
-    --hair-2: rgba(255, 255, 255, 0.10);
+    --hair-2: rgba(255, 255, 255, 0.1);
     --fg-0: #f4f6fb;
     --fg-1: #c9d0dd;
     --fg-2: #8a93a6;
@@ -306,9 +306,12 @@
   /* Terminal stays a dark object inside the light band. */
   .band-light .term {
     --ink-1: #0a0d14;
+    --ink-2: #0f131c;
     --hair: rgba(255, 255, 255, 0.06);
-    --hair-2: rgba(255, 255, 255, 0.10);
+    --hair-2: rgba(255, 255, 255, 0.1);
+    --fg-0: #f4f6fb;
     --fg-1: #c9d0dd;
+    --fg-2: #8a93a6;
     --fg-3: #5a6374;
     --a2: #00d4ff;
     --ok: #22e0a8;
@@ -351,7 +354,10 @@
     font-weight: 500;
     font-size: 14px;
     letter-spacing: -0.01em;
-    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    transition:
+      background 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease;
     border: 1px solid transparent;
     white-space: nowrap;
     cursor: pointer;
@@ -360,7 +366,9 @@
   .btn-primary {
     background: var(--fg-0);
     color: var(--ink-0);
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 0 0 1px rgba(255, 255, 255, 0.12);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.6) inset,
+      0 0 0 1px rgba(255, 255, 255, 0.12);
   }
   .btn-primary:hover {
     background: color-mix(in oklab, var(--fg-0) 92%, white);
@@ -394,7 +402,9 @@
     border-radius: var(--radius-lg);
     padding: 20px 22px;
     text-decoration: none;
-    transition: background 0.15s ease, border-color 0.15s ease;
+    transition:
+      background 0.15s ease,
+      border-color 0.15s ease;
   }
   .blog-card:hover {
     background: var(--ink-3);
@@ -419,7 +429,10 @@
     color: var(--fg-3);
     text-decoration: none;
     border: 1px solid transparent;
-    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    transition:
+      background 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease;
   }
   .blog-tab:hover {
     color: var(--fg-1);
@@ -581,6 +594,7 @@
     font-family: var(--font-mono);
     font-size: 13px;
     line-height: 1.75;
+    padding-top: 12px;
   }
   .term-line {
     display: grid;

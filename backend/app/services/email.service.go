@@ -132,7 +132,7 @@ The Traceway Team
 }
 
 func (e *emailService) sendMail(to []string, msg []byte) error {
-	addr := fmt.Sprintf("%s:%d", e.host, e.port)
+	addr := net.JoinHostPort(e.host, strconv.Itoa(e.port))
 	auth := smtp.PlainAuth("", e.username, e.password, e.host)
 
 	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)

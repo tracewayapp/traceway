@@ -42,7 +42,7 @@ func (k entityKind) traceType() string {
 	return ""
 }
 
-func convertTraces(ctx context.Context, projectId uuid.UUID, req *coltracepb.ExportTraceServiceRequest) (
+func convertTraces(ctx context.Context, existingProject *models.Project, projectId uuid.UUID, req *coltracepb.ExportTraceServiceRequest) (
 	endpoints []models.Endpoint,
 	tasks []models.Task,
 	spans []models.Span,
@@ -50,6 +50,7 @@ func convertTraces(ctx context.Context, projectId uuid.UUID, req *coltracepb.Exp
 	aiTraces []models.AiTrace,
 	aiConversations []aiTraceConversation,
 ) {
+	suppressEntities := existingProject != nil && clientcontrollers.IsFrontendFramework(existingProject.Framework)
 
 	for _, rs := range req.ResourceSpans {
 		resourceAttrs := rs.GetResource().GetAttributes()
@@ -94,6 +95,9 @@ func convertTraces(ctx context.Context, projectId uuid.UUID, req *coltracepb.Exp
 		spanIdToPromotion := map[string]promotion{}
 
 		for _, entry := range allSpans {
+			if suppressEntities {
+				break
+			}
 			span := entry.span
 			kind := classifySpan(span, spanById)
 			if kind == entityNone {
@@ -232,7 +236,7 @@ func convertTraces(ctx context.Context, projectId uuid.UUID, req *coltracepb.Exp
 						aiConversations = append(aiConversations, *conv)
 					}
 				}
-			} else if len(span.ParentSpanId) > 0 {
+			} else if !suppressEntities && len(span.ParentSpanId) > 0 {
 				// Non-root, unpromoted span → goes to the generic spans table,
 				// re-rooted to its nearest enclosing entity (or the OTel
 				// trace_id as fallback when the parent chain doesn't reach a
@@ -276,7 +280,7 @@ func convertTraces(ctx context.Context, projectId uuid.UUID, req *coltracepb.Exp
 				if event.Name == "exception" {
 					hadExceptionEvent = true
 					exc := buildException(
-						ctx, projectId, ownerId, traceType, event.Attributes, event.TimeUnixNano,
+						ctx, existingProject, projectId, ownerId, traceType, event.Attributes, event.TimeUnixNano,
 						allAttrs, serverName, appVersion, language, entry.scopeName,
 					)
 					if owner != nil {
@@ -288,7 +292,7 @@ func convertTraces(ctx context.Context, projectId uuid.UUID, req *coltracepb.Exp
 
 			if !hadExceptionEvent && hasExceptionAttributes(span.Attributes) {
 				exc := buildException(
-					ctx, projectId, ownerId, traceType, span.Attributes, span.StartTimeUnixNano,
+					ctx, existingProject, projectId, ownerId, traceType, span.Attributes, span.StartTimeUnixNano,
 					allAttrs, serverName, appVersion, language, entry.scopeName,
 				)
 				if owner != nil {
@@ -471,6 +475,7 @@ func buildTask(
 
 func buildException(
 	ctx context.Context,
+	existingProject *models.Project,
 	projectId, traceId uuid.UUID,
 	traceType string,
 	excAttrs []*commonpb.KeyValue,
@@ -487,7 +492,7 @@ func buildException(
 		stackTrace = formatExceptionStackTrace(excType, excMessage, excStacktrace)
 	}
 
-	stackTrace = otelSymbolicateJs(projectId, ctx, stackTrace, language, scopeName)
+	stackTrace = otelSymbolicateJs(existingProject, projectId, ctx, stackTrace, language, scopeName)
 
 	hash := clientcontrollers.ComputeExceptionHash(stackTrace, false)
 

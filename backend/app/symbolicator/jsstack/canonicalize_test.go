@@ -97,7 +97,27 @@ func TestCanonicalizeFirefox(t *testing.T) {
 		"    https://app.example.com/assets/app.min.js:1:13337",
 		"    https://app.example.com/assets/app.min.js:1:24601",
 		"outer()",
-		"    https://app.example.com/assets/app.min.js line 2 > eval:1:1",
+		"    https://app.example.com/assets/app.min.js:2:1",
+	}, "\n")
+	if got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestCanonicalizeFirefoxNestedEvalMarkers(t *testing.T) {
+	input := strings.Join([]string{
+		"Error: deep",
+		"f@https://x.test/app.min.js line 3 > eval line 1 > eval:1:9",
+	}, "\n")
+
+	got, ok := Canonicalize(input)
+	if !ok {
+		t.Fatal("expected firefox eval trace to be detected")
+	}
+	want := strings.Join([]string{
+		"Error: deep",
+		"f()",
+		"    https://x.test/app.min.js:3:1",
 	}, "\n")
 	if got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
@@ -143,5 +163,32 @@ func TestCanonicalizePassthrough(t *testing.T) {
 		if got != input {
 			t.Errorf("%s: trace must pass through unchanged, got %q", name, got)
 		}
+	}
+}
+
+func TestCanonicalizeFirefoxDropsSyntheticFrames(t *testing.T) {
+	input := strings.Join([]string{
+		"TypeError: x is undefined",
+		"assertValid@https://x.test/app.min.js:1:730",
+		"handleCheckout@https://x.test/app.min.js:1:1383",
+		"handleEvent*@https://x.test/app.min.js:1:2067",
+		"async*loadRate@https://x.test/app.min.js:1:2223",
+	}, "\n")
+
+	got, ok := Canonicalize(input)
+	if !ok {
+		t.Fatal("expected firefox trace to be detected")
+	}
+	want := strings.Join([]string{
+		"TypeError: x is undefined",
+		"assertValid()",
+		"    https://x.test/app.min.js:1:730",
+		"handleCheckout()",
+		"    https://x.test/app.min.js:1:1383",
+		"loadRate()",
+		"    https://x.test/app.min.js:1:2223",
+	}, "\n")
+	if got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
 	}
 }

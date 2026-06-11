@@ -108,3 +108,33 @@ func TestIsEmptyRaw(t *testing.T) {
 		})
 	}
 }
+
+func TestComputeExceptionHash_DropsColumnsBeyondLineOne(t *testing.T) {
+	resolvedChrome := "TypeError: boom\nassertValid()\n    ../../src/pricing.ts:23:11\napplyDiscount()\n    ../../src/pricing.ts:17:3"
+	resolvedWebkit := "TypeError: boom\nassertValid()\n    ../../src/pricing.ts:23:15\napplyDiscount()\n    ../../src/pricing.ts:17:9"
+	if ComputeExceptionHash(resolvedChrome, false) != ComputeExceptionHash(resolvedWebkit, false) {
+		t.Error("resolved frames with engine-specific columns must hash identically")
+	}
+
+	minifiedA := "TypeError: boom\nfn()\n    app.min.js:1:730"
+	minifiedB := "TypeError: boom\nfn()\n    app.min.js:1:999"
+	if ComputeExceptionHash(minifiedA, false) == ComputeExceptionHash(minifiedB, false) {
+		t.Error("line-1 minified frames must keep the column as disambiguator")
+	}
+}
+
+func TestComputeExceptionHash_GoTraceUnaffectedByJsNormalizers(t *testing.T) {
+	goTrace := "runtime error: invalid memory address or nil pointer dereference\nmain.handleOrder(0x0)\n\t/srv/app/internal/orders/handler.go:42 +0x1b\nmain.main()\n\t/srv/app/main.go:18 +0x2f\ngoroutine 17 [running]:"
+	if urlOriginRe.MatchString(goTrace) {
+		t.Error("urlOriginRe must not match Go traces")
+	}
+	if laterLineColRe.MatchString(goTrace) {
+		t.Error("laterLineColRe must not match Go traces, they have no :line:col suffix")
+	}
+	if jsFuncLineRe.MatchString(goTrace) {
+		t.Error("jsFuncLineRe must not match tab-indented Go traces")
+	}
+	if ComputeExceptionHash(goTrace, false) != "5fa84c6186649978" {
+		t.Errorf("Go trace hash drifted: %s (update only if grouping intentionally changed)", ComputeExceptionHash(goTrace, false))
+	}
+}

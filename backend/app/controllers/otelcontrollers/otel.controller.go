@@ -23,11 +23,14 @@ func msSince(t time.Time) float64 {
 	return float64(time.Since(t).Microseconds()) / 1000.0
 }
 
-func otelSymbolicateJs(projectId uuid.UUID, ctx context.Context, stackTrace, language, scopeName string) string {
+func otelSymbolicateJs(existingProject *models.Project, projectId uuid.UUID, ctx context.Context, stackTrace, language, scopeName string) string {
 	if !isJsTelemetry(language, scopeName) {
 		return stackTrace
 	}
 	canonical, _ := jsstack.Canonicalize(stackTrace)
+	if existingProject == nil || existingProject.SourceMapToken == nil {
+		return canonical
+	}
 	return services.ResolveStackTrace(ctx, projectId, canonical, nil)
 }
 
@@ -68,7 +71,7 @@ func (o otelController) ExportTraces(c *gin.Context) {
 	}
 
 	convertStart := time.Now()
-	endpoints, tasks, spans, exceptions, aiTraces, aiConversations := convertTraces(c, projectId, req)
+	endpoints, tasks, spans, exceptions, aiTraces, aiConversations := convertTraces(c, project, projectId, req)
 
 	var droppedHealthchecks int
 	endpoints, spans, droppedHealthchecks = services.FilterHealthchecks(project, endpoints, spans, exceptions)
@@ -208,9 +211,10 @@ func (o otelController) ExportLogs(c *gin.Context) {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("UseClientAuth middleware must be applied: %w", err))
 		return
 	}
-
+	var existingProject *models.Project
 	if project, exists := c.Get(middleware.ProjectContextKey); exists {
 		if p, ok := project.(*models.Project); ok && p.OrganizationId != nil {
+			existingProject = p
 			if attrs := traceway.GetAttributesFromContext(c); attrs != nil {
 				attrs.SetTag("organization_id", fmt.Sprintf("%d", *p.OrganizationId))
 			}
@@ -229,7 +233,7 @@ func (o otelController) ExportLogs(c *gin.Context) {
 	}
 
 	convertStart := time.Now()
-	records := convertLogs(c, projectId, req)
+	records := convertLogs(existingProject, c, projectId, req)
 	convertMs := msSince(convertStart)
 
 	insertMs := 0.0

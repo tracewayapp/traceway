@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/app/controllers/clientcontrollers"
+	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
@@ -100,7 +101,7 @@ func TestConvertTraces_Snapshot(t *testing.T) {
 			}
 
 			setFakeStore(t, nil)
-			endpoints, _, spans, exceptions, aiTraces, aiConversations := convertTraces(context.Background(), testProjectId, req)
+			endpoints, _, spans, exceptions, aiTraces, aiConversations := convertTraces(context.Background(), nil, testProjectId, req)
 
 			// Check if all child spans share a trace ID with an endpoint
 			endpointIds := map[uuid.UUID]bool{}
@@ -381,7 +382,7 @@ func TestTraceIdResolution_CrossScope(t *testing.T) {
 		},
 	}
 
-	endpoints, _, spans, _, _, _ := convertTraces(context.Background(), testProjectId, req)
+	endpoints, _, spans, _, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 
 	if len(endpoints) != 1 {
 		t.Fatalf("expected 1 endpoint, got %d", len(endpoints))
@@ -474,7 +475,7 @@ func TestConvertTraces_ConsumerNonRoot_BecomesTask(t *testing.T) {
 		}},
 	}
 
-	endpoints, tasks, spans, _, _, _ := convertTraces(context.Background(), testProjectId, req)
+	endpoints, tasks, spans, _, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 
 	if len(endpoints) != 0 {
 		t.Fatalf("expected 0 endpoints, got %d", len(endpoints))
@@ -524,7 +525,7 @@ func TestConvertTraces_ConsoleCommand_BecomesTask(t *testing.T) {
 		}},
 	}
 
-	_, tasks, _, _, _, _ := convertTraces(context.Background(), testProjectId, req)
+	_, tasks, _, _, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 	if len(tasks) != 1 {
 		t.Fatalf("expected 1 task, got %d", len(tasks))
 	}
@@ -556,7 +557,7 @@ func TestConvertTraces_InlineGenAi_BecomesAiTrace(t *testing.T) {
 		}},
 	}
 
-	endpoints, _, _, _, aiTraces, _ := convertTraces(context.Background(), testProjectId, req)
+	endpoints, _, _, _, aiTraces, _ := convertTraces(context.Background(), nil, testProjectId, req)
 	if len(endpoints) != 1 {
 		t.Fatalf("expected 1 endpoint, got %d", len(endpoints))
 	}
@@ -610,7 +611,7 @@ func TestConvertTraces_ExceptionOnConsumer_TraceTypeIsTask(t *testing.T) {
 		}},
 	}
 
-	_, tasks, _, exceptions, _, _ := convertTraces(context.Background(), testProjectId, req)
+	_, tasks, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 	if len(tasks) != 1 || len(exceptions) != 1 {
 		t.Fatalf("expected 1 task + 1 exception, got %d / %d", len(tasks), len(exceptions))
 	}
@@ -644,7 +645,7 @@ func TestConvertTraces_OrphanSpan_FallsBackToTraceId(t *testing.T) {
 		}},
 	}
 
-	_, _, spans, _, _, _ := convertTraces(context.Background(), testProjectId, req)
+	_, _, spans, _, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 	if len(spans) != 1 {
 		t.Fatalf("expected 1 span row, got %d", len(spans))
 	}
@@ -740,7 +741,7 @@ func TestConvertTraces_HoneycombJsExceptionSymbolicates(t *testing.T) {
 	}
 
 	setFakeStore(t, nil)
-	_, _, _, exceptions, _, _ := convertTraces(context.Background(), testProjectId, req)
+	_, _, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 	if len(exceptions) != 1 {
 		t.Fatalf("expected 1 exception, got %d", len(exceptions))
 	}
@@ -791,7 +792,7 @@ func TestConvertTraces_JsExceptionResolvesWithSourceMap(t *testing.T) {
 		}},
 	}
 
-	_, _, _, exceptions, _, _ := convertTraces(context.Background(), projectId, req)
+	_, _, _, exceptions, _, _ := convertTraces(context.Background(), tokenProject(projectId), projectId, req)
 	if len(exceptions) != 1 {
 		t.Fatalf("expected 1 exception, got %d", len(exceptions))
 	}
@@ -872,7 +873,7 @@ func TestConvertTraces_ExceptionSpanAttrs_CapturedAsTask(t *testing.T) {
 	req := honeycombExceptionSpanRequest(honeycombExceptionSpanAttrs(), nil, strKV("telemetry.sdk.language", "webjs"))
 
 	setFakeStore(t, nil)
-	endpoints, tasks, spans, exceptions, _, _ := convertTraces(context.Background(), testProjectId, req)
+	endpoints, tasks, spans, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 	if len(endpoints) != 0 || len(tasks) != 0 || len(spans) != 0 {
 		t.Fatalf("expected no entity/span rows, got %d endpoints / %d tasks / %d spans", len(endpoints), len(tasks), len(spans))
 	}
@@ -921,7 +922,7 @@ func TestConvertTraces_ExceptionSpanAttrs_StrippedFromEndpointRow(t *testing.T) 
 	}
 
 	setFakeStore(t, nil)
-	endpoints, _, _, exceptions, _, _ := convertTraces(context.Background(), testProjectId, req)
+	endpoints, _, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 	if len(endpoints) != 1 || len(exceptions) != 1 {
 		t.Fatalf("expected 1 endpoint + 1 exception, got %d / %d", len(endpoints), len(exceptions))
 	}
@@ -949,7 +950,7 @@ func TestConvertTraces_ExceptionEventAndSpanAttrs_EventWins(t *testing.T) {
 	req := honeycombExceptionSpanRequest(honeycombExceptionSpanAttrs(), events, strKV("telemetry.sdk.language", "webjs"))
 
 	setFakeStore(t, nil)
-	_, _, _, exceptions, _, _ := convertTraces(context.Background(), testProjectId, req)
+	_, _, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 	if len(exceptions) != 1 {
 		t.Fatalf("expected exactly 1 exception, got %d", len(exceptions))
 	}
@@ -966,7 +967,7 @@ func TestConvertTraces_ExceptionSpanAttrs_HeaderOnly(t *testing.T) {
 	req := honeycombExceptionSpanRequest(attrs, nil, strKV("telemetry.sdk.language", "webjs"))
 
 	setFakeStore(t, nil)
-	_, _, _, exceptions, _, _ := convertTraces(context.Background(), testProjectId, req)
+	_, _, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 	if len(exceptions) != 1 {
 		t.Fatalf("expected 1 exception, got %d", len(exceptions))
 	}
@@ -979,7 +980,7 @@ func TestConvertTraces_ExceptionSpanAttrs_NoLanguageAttr(t *testing.T) {
 	req := honeycombExceptionSpanRequest(honeycombExceptionSpanAttrs(), nil)
 
 	setFakeStore(t, nil)
-	_, _, _, exceptions, _, _ := convertTraces(context.Background(), testProjectId, req)
+	_, _, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 	if len(exceptions) != 1 {
 		t.Fatalf("expected 1 exception, got %d", len(exceptions))
 	}
@@ -1048,7 +1049,7 @@ func TestExceptionHash_FourWayStability(t *testing.T) {
 		"firefox-raw": firefoxRaw,
 		"structured":  structured,
 	} {
-		_, _, _, exceptions, _, _ := convertTraces(context.Background(), testProjectId, fourWayRequest(attrs, nil))
+		_, _, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, fourWayRequest(attrs, nil))
 		if len(exceptions) != 1 {
 			t.Fatalf("%s: expected 1 exception, got %d", name, len(exceptions))
 		}
@@ -1062,5 +1063,36 @@ func TestExceptionHash_FourWayStability(t *testing.T) {
 	}
 	if hashSdk != "ae66d509d719ab7a" {
 		t.Errorf("documented four-way hash changed: got %s, want ae66d509d719ab7a (update this constant only if the grouping algorithm intentionally changed)", hashSdk)
+	}
+}
+
+func TestConvertTraces_FrontendFrameworkSuppressesEntityRows(t *testing.T) {
+	raw, err := os.ReadFile("testdata/honeycomb_global_error.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := &coltracepb.ExportTraceServiceRequest{}
+	if err := protojson.Unmarshal(raw, req); err != nil {
+		t.Fatal(err)
+	}
+
+	setFakeStore(t, nil)
+	reactProject := &models.Project{Id: testProjectId, Framework: "react"}
+	endpoints, tasks, spans, exceptions, aiTraces, _ := convertTraces(context.Background(), reactProject, testProjectId, req)
+	if len(endpoints) != 0 || len(tasks) != 0 || len(spans) != 0 || len(aiTraces) != 0 {
+		t.Fatalf("expected no entity/span rows for a frontend-framework project, got %d endpoints / %d tasks / %d spans / %d aiTraces",
+			len(endpoints), len(tasks), len(spans), len(aiTraces))
+	}
+	if len(exceptions) != 1 {
+		t.Fatalf("expected the exception to still be extracted, got %d", len(exceptions))
+	}
+	if exceptions[0].TraceType != "task" {
+		t.Errorf("expected TraceType 'task', got %q", exceptions[0].TraceType)
+	}
+
+	backendProject := &models.Project{Id: testProjectId, Framework: "gin"}
+	endpoints, _, _, _, _, _ = convertTraces(context.Background(), backendProject, testProjectId, req)
+	if len(endpoints) == 0 {
+		t.Error("expected non-frontend frameworks to keep promoting endpoint rows")
 	}
 }

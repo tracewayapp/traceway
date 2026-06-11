@@ -148,7 +148,7 @@ At 1M rows the cliff hit, and it hit unevenly: the trace-ID lookup came back in 
 
 ![Per-endpoint read latency vs log_records table size on log-log axes. At 100k all three probes sit around 100 ms. At 1M the trace-id lookup stays low (~1.7 s), body search lands on the 5 s threshold, and the severity filter times out](/blog/break-sqlite-traceway/chart-readprobe-logs.webp)
 
-The uneven failure has a simple shape. The trace-ID probe matches at most one row per query, so it stays fast as the table grows. The body search and severity filter both return many rows, and their cost scales with the result set, not the lookup. Same table, three queries, three different cliffs.
+The uneven failure has a simple shape. The trace-ID probe matches at most one row per query, so it stays fast as the table grows. The body search and severity filter both return many rows, and their cost scales with the result set, not the lookup.
 
 ## Where it breaks
 

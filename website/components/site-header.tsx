@@ -15,6 +15,7 @@ import {
   Activity,
   Smartphone,
   Bot,
+  Braces,
 } from "lucide-react";
 import { MobileNav } from "@/components/mobile-nav";
 import { DiscordIcon } from "@/components/discord-icon";
@@ -85,6 +86,12 @@ const SPECIALIZED: NavItem[] = [
     description: "Open-source mobile replay, 10s before every exception.",
     href: "/product/flutter-session-replay",
     icon: Smartphone,
+  },
+  {
+    title: "JavaScript Symbolication",
+    description: "Minified stack traces, resolved to your source.",
+    href: "/product/javascript-symbolication",
+    icon: Braces,
   },
 ];
 

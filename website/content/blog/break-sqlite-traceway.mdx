@@ -3,7 +3,7 @@ title: "I Tried to Break SQLite Traceway. Here's What It Took."
 date: "2026-06-09"
 category: "engineering"
 author: "jovan"
-description: "Post 1 only measured metrics writes. This time I ran spans, metrics, and logs against the same $16.49/month CCX13 box, and probed real dashboard queries at 100k, 1M, and 10M rows. SQLite handled more than I expected, until it didn't."
+description: "Post 1 only measured metrics writes. This time I ran spans, metrics, and logs against the same $16.49/month CCX13 box, and probed real dashboard queries at 100k, 1M, and 10M rows."
 ---
 
 ## TL;DR
@@ -33,7 +33,7 @@ Two things were missing:
 1. **Spans and logs writes.** OTLP defines three signals; an observability stack benchmark that only does one is half the picture.
 2. **Anything read-side.** A database that ingests fast but cliffs the dashboard at 200k rows is not a dashboard you'd ship.
 
-This post fills both gaps on the same hardware, same DB mode, same load generator. The methodology grew; the box did not.
+This post fills both gaps on the same hardware, same DB mode, same load generator. The methodology grew between posts. The hardware didn't.
 
 Here's the plan. First the methodology, because half of it is new and the numbers mean nothing without the pass/fail rules. Then one section per signal - metrics first, since post 1 gives it a baseline, then spans, then logs - each covering its write ceiling and its read ceiling. Then the three cliffs side by side, what they mean for a real fleet, and what I deliberately left out.
 
@@ -70,7 +70,7 @@ The headline per signal is the highest achieved items/sec across all passing ste
 
 This scenario answers the question post 1 punted on: you've ingested all this data, can you actually look at it?
 
-Fill the table to a target row count - 100k, then 1M, then 10M, then 100M, stopping at the first level that fails. At each level: fill, let the SUT settle for 10 seconds, then issue three real dashboard queries against the populated table, each with a 6-second timeout. A fill level passes when the median latency across the three probes is ≤ 5 s **and** all three come back before the timeout. The second condition matters: one hung query fails the level even if the other two are instant, because a dashboard with one dead page is a broken dashboard.
+Fill the table to a target row count - 100k, then 1M, then 10M, then 100M, stopping at the first level that fails. At each level: fill, let the SUT settle for 10 seconds, then issue three real dashboard queries against the populated table, each with a 6-second timeout. A fill level passes when the median latency across the three probes is ≤ 5 s **and** all three come back before the timeout. The second condition matters: one hung query fails the level even if the other two are instant, because during an incident you don't get to pick which page you need.
 
 The probed endpoints per signal:
 
@@ -130,7 +130,7 @@ On the read side, the spans dashboard stayed usable up to **100k rows**, median 
 
 Logs are the highest-volume signal in most real systems, and going in, the one I expected to hurt the most.
 
-The ramp settled at batch=1024, 5 req/sec: **4,877 records/sec sustained**, error rate 0%, p50 ingest 113 ms, p95 7.7 s. The phase 2 cliff between 5 and 7.5 req/sec is the sharpest in the whole dataset - bumping the request rate by 1.5× takes the error rate from 0% to 98% almost immediately. That's not a soft cliff. That's the SUT running out of write budget and refusing the next batch.
+The ramp settled at batch=1024, 5 req/sec: **4,877 records/sec sustained**, error rate 0%, p50 ingest 113 ms, p95 7.7 s. The phase 2 cliff between 5 and 7.5 req/sec is the sharpest in the whole dataset - bumping the request rate by 1.5× takes the error rate from 0% to 98% almost immediately. Past 5 req/sec the box stops accepting batches at all.
 
 `/logs` after a few minutes of ingest:
 
@@ -144,7 +144,7 @@ Trace ID, span ID, scope, `code.namespace`, `logger.name`, resource attributes, 
 
 The read side is where logs surprised me. **100k rows passed at a 114 ms median**, with all three query shapes - severity filter, free-text body search, trace-ID lookup - coming back in 102–133 ms. That's an order of magnitude faster than the spans dashboard at the same fill.
 
-At 1M rows the cliff hit, and it hit unevenly: the trace-ID lookup came back in 1.7 s, the body search in 5 s, and the severity filter timed out. The median was just under the 5 s bar, but the severity filter hitting the timeout fails the level - this is the all-probes rule from the methodology doing exactly its job, because a dashboard "feels broken" before the median says it is.
+At 1M rows the cliff hit, and it hit unevenly: the trace-ID lookup came back in 1.7 s, the body search in 5 s, and the severity filter timed out. The median was just under the 5 s bar, but the severity filter hitting the timeout fails the level anyway - this is exactly the case the all-probes rule was written for: a median that looks fine while one of the pages is dead.
 
 ![Per-endpoint read latency vs log_records table size on log-log axes. At 100k all three probes sit around 100 ms. At 1M the trace-id lookup stays low (~1.7 s), body search lands on the 5 s threshold, and the severity filter times out](/blog/break-sqlite-traceway/chart-readprobe-logs.webp)
 
@@ -156,7 +156,7 @@ Three signals, three write ceilings, three read ceilings, side by side:
 
 | Signal | Write cliff (single-shot, sustained) | Read cliff (largest fill level passed) | What happens above it |
 |---|---|---|---|
-| Metrics | ~62k points/sec | 1M rows, median 3.85 s - narrow headroom | At 10M every probe hits the timeout - a wall, not a slope |
+| Metrics | ~62k points/sec | 1M rows, median 3.85 s - narrow headroom | At 10M every probe hits the timeout, with nothing in between |
 | Spans | ~30k spans/sec | 100k rows, median 2.27 s | At 1M both representative probes time out |
 | Logs | ~5k records/sec, sharp HTTP-5xx cliff above 5 req/sec | 100k rows, median 114 ms | At 1M the trace-ID lookup is still fast (1.7 s) but the severity filter times out |
 
@@ -166,7 +166,7 @@ That uneven logs failure is the most useful detail in the table for picking a re
 
 ## 5 seconds is generous
 
-I promised in the methodology to come back to the threshold. Here's the honest version: your users expect 500 ms. A page that takes 5 seconds to load is broken - users hit refresh, blame the network, give up. So why is the read-probe threshold 5 s?
+I promised in the methodology to come back to the threshold. Here's the problem with that number: your users expect 500 ms. A page that takes 5 seconds to load is broken - users hit refresh, blame the network, give up. So why is the read-probe threshold 5 s?
 
 Because the threshold isn't a UX target, it's a *"the database is still responding"* floor. It separates "this query is slow" from "this query died." The series uses the same threshold across every database so the numbers compare; it does not claim that 5 s is what your on-call experiences.
 

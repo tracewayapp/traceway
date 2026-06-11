@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Traceway Symbolication Test App</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 640px;
+        margin: 40px auto;
+        padding: 0 16px;
+      }
+      button {
+        display: block;
+        width: 100%;
+        margin: 8px 0;
+        padding: 12px;
+        font-size: 15px;
+        cursor: pointer;
+      }
+      #status {
+        margin-top: 16px;
+        padding: 8px;
+        background: #f4f4f4;
+        font-family: monospace;
+        font-size: 13px;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Symbolication Test App</h1>
+    <p id="mode"></p>
+    <button id="throw-nested">Throw uncaught error (nested call chain)</button>
+    <button id="throw-rejection">Unhandled promise rejection</button>
+    <button id="throw-eval">Throw inside eval</button>
+    <button id="throw-foreach">Throw inside Array.forEach callback</button>
+    <button id="throw-message">Capture message (no stack)</button>
+    <div id="status">ready</div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

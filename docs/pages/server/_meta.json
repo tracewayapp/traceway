@@ -5,6 +5,7 @@
   "minimal": "Minimal Container",
   "sqlite": "SQLite",
   "local-setup": "Local Setup",
+  "storage": "Blob Storage",
   "haloy": "Haloy",
   "capacity-monitoring": "Capacity & Self-Monitoring",
   "upgrade-1-8": "Upgrading to 1.8"

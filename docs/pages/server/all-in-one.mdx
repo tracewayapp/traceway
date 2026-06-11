@@ -13,10 +13,13 @@ docker run -d --name traceway \
   -p 80:80 \
   -v traceway-ch:/var/lib/clickhouse \
   -v traceway-pg:/var/lib/postgresql/data \
+  -v traceway-storage:/app/storage \
   ghcr.io/tracewayapp/traceway:latest
 ```
 
 After starting, open `http://localhost/register` to create your first account.
+
+The `traceway-storage` volume holds [blob storage](/server/storage): uploaded source maps, session recordings, and AI traces. Without it those files are lost when the container is recreated. To use S3 instead of a volume, see [Blob Storage](/server/storage).
 
 ## Build from Source
 
@@ -29,6 +32,7 @@ docker run -d --name traceway \
   -p 80:80 \
   -v traceway-ch:/var/lib/clickhouse \
   -v traceway-pg:/var/lib/postgresql/data \
+  -v traceway-storage:/app/storage \
   traceway:latest
 ```
 
@@ -52,6 +56,8 @@ All environment variables have working defaults, no configuration required. Over
 | `JWT_SECRET` | *(built-in default)* | JWT signing secret (min 32 chars) |
 | `GIN_MODE` | `release` | Gin framework mode |
 | `APP_BASE_URL` | *(none)* | Public URL of your Traceway instance (e.g. `https://traceway.example.com`). Used for SDK setup instructions, email links, and OAuth callback URLs. |
+| `STORAGE_TYPE` | `local` | Blob storage backend for source maps, session recordings, and AI traces: `local` or `s3`. See [Blob Storage](/server/storage) for the S3 variables. |
+| `STORAGE_PATH` | `./storage` | Folder for local blob storage, `/app/storage` in this image. Mount a volume there. Ignored when `STORAGE_TYPE=s3`. |
 | `SESSION_RECORDING_RETENTION_DAYS` | `30` | Days to keep session recording files on disk under `STORAGE_PATH/recordings/`. Files older than the TTL are deleted hourly and on startup. No effect when `STORAGE_TYPE=s3`. Set to `0` to disable. |
 
 > ClickHouse data retention is controlled per-table at the schema level (TTLs on `metric_points`, `metric_points_1m`, `metric_points_1h`, `log_records`); other telemetry tables are retained indefinitely until you drop monthly partitions manually. The `SQLITE_RETENTION_DAYS` setting only applies in SQLite mode and has no effect in this image.

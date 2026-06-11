@@ -1,0 +1,48 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+        cors:
+          allowed_origins:
+            - "*"
+          allowed_headers:
+            - "*"
+
+processors:
+  batch:
+    timeout: 2s
+
+exporters:
+  otlphttp/traceway:
+    endpoint: http://localhost:8082/api/otel
+    headers:
+      Authorization: "Bearer ${env:TW_PROJECT_TOKEN}"
+    compression: gzip
+  otlphttp/honeycombmock:
+    endpoint: http://localhost:8090
+    encoding: json
+  file:
+    path: ./captures/otlp-capture.jsonl
+  debug:
+    verbosity: basic
+
+service:
+  telemetry:
+    metrics:
+      level: none
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/traceway, otlphttp/honeycombmock, file, debug]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/traceway, otlphttp/honeycombmock, file, debug]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/traceway, debug]

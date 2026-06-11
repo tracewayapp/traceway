@@ -1,14 +1,15 @@
 package cache
 
 import (
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
 	"context"
 	"database/sql"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/repositories"
 
 	"github.com/google/uuid"
 )

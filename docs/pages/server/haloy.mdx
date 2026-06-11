@@ -181,6 +181,8 @@ Point your SDK's connection string at your Traceway domain:
 | `GITHUB_CLIENT_ID` | *(unset)* | Optional. GitHub OAuth App client ID. Setting both GitHub variables enables the **Continue with GitHub** button. |
 | `GITHUB_CLIENT_SECRET` | *(unset)* | Optional. GitHub OAuth App client secret. |
 | `OAUTH_SESSION_SECRET` | *(falls back to `JWT_SECRET`)* | Optional. Cookie signing secret for the OAuth round-trip. |
+| `STORAGE_TYPE` | `local` | Blob storage backend for source maps, session recordings, and AI traces: `local` or `s3`. See [Blob Storage](/server/storage) for the S3 variables and persistence notes. |
+| `STORAGE_PATH` | `./storage` | Folder for local blob storage. Point it at a persistent mount, or use `STORAGE_TYPE=s3`. Ignored when `STORAGE_TYPE=s3`. |
 | `SESSION_RECORDING_RETENTION_DAYS` | `30` | Optional. Days to keep on-disk session recordings under `STORAGE_PATH/recordings/`. Worker runs hourly and on startup. `0` disables; no effect when `STORAGE_TYPE=s3`. |
 
 When configuring providers, set the callback URL on the provider side to `https://traceway.yourdomain.com/api/auth/callback/{google|github}`.

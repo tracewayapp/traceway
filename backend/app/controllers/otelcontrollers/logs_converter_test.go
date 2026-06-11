@@ -66,7 +66,7 @@ func TestConvertLogs_SymbolicatesExceptionStacktrace(t *testing.T) {
 		strKV("exception.stacktrace", rawStack),
 	)
 
-	records := convertLogs(context.Background(), projectId, req)
+	records := convertLogs(tokenProject(projectId), context.Background(), projectId, req)
 	if len(records) != 1 {
 		t.Fatalf("expected 1 record, got %d", len(records))
 	}
@@ -86,7 +86,7 @@ func TestConvertLogs_ScopeNameDetectsJs(t *testing.T) {
 	rawStack := "Error: boom\n    at t (https://cdn.example.com/assets/minified.js:1:11)"
 	req := logsRequest("", "@opentelemetry/winston-transport", strKV("exception.stacktrace", rawStack))
 
-	records := convertLogs(context.Background(), projectId, req)
+	records := convertLogs(nil, context.Background(), projectId, req)
 	if len(records) != 1 {
 		t.Fatalf("expected 1 record, got %d", len(records))
 	}
@@ -102,7 +102,7 @@ func TestConvertLogs_NonJsStacktraceUntouched(t *testing.T) {
 	rawStack := "java.lang.RuntimeException: boom\n\tat com.example.Foo.bar(Foo.java:10)"
 	req := logsRequest("java", "io.opentelemetry.tomcat-7.0", strKV("exception.stacktrace", rawStack))
 
-	records := convertLogs(context.Background(), testProjectId, req)
+	records := convertLogs(nil, context.Background(), testProjectId, req)
 	if len(records) != 1 {
 		t.Fatalf("expected 1 record, got %d", len(records))
 	}
@@ -154,5 +154,31 @@ func TestToLogRecord_IDEncoding(t *testing.T) {
 				t.Errorf("SpanId = %q (len %d), want %q", rec.SpanId, len(rec.SpanId), tt.wantSpan)
 			}
 		})
+	}
+}
+
+func TestConvertLogs_NoTokenCanonicalizesWithoutResolving(t *testing.T) {
+	projectId := uuid.MustParse("00000000-0000-0000-0000-0000000000ae")
+	setFakeStore(t, map[string][]byte{
+		services.SourceMapStorageKey(projectId, "minified.js.map"): []byte(testSourceMap),
+	})
+
+	rawStack := "Error: boom\n    at t (https://cdn.example.com/assets/minified.js:1:11)"
+	req := logsRequest("webjs", "@opentelemetry/winston-transport",
+		strKV("exception.type", "Error"),
+		strKV("exception.stacktrace", rawStack),
+	)
+
+	records := convertLogs(nil, context.Background(), projectId, req)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	got := records[0].LogAttributes["exception.stacktrace"]
+	want := "Error: boom\nt()\n    https://cdn.example.com/assets/minified.js:1:11"
+	if got != want {
+		t.Errorf("expected canonicalized-but-unresolved stack without a token, got %q", got)
+	}
+	if _, ok := records[0].LogAttributes["exception.stacktrace.original"]; ok {
+		t.Error("exception.stacktrace.original must not be added")
 	}
 }

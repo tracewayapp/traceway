@@ -15,7 +15,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models"
 )
 
-func convertLogs(ctx context.Context, projectId uuid.UUID, req *collogspb.ExportLogsServiceRequest) []models.LogRecord {
+func convertLogs(existingProject *models.Project, ctx context.Context, projectId uuid.UUID, req *collogspb.ExportLogsServiceRequest) []models.LogRecord {
 	var records []models.LogRecord
 
 	for _, rl := range req.ResourceLogs {
@@ -34,7 +34,7 @@ func convertLogs(ctx context.Context, projectId uuid.UUID, req *collogspb.Export
 			for _, lr := range sl.LogRecords {
 				record := toLogRecord(projectId, lr, serviceName, resourceSchemaUrl, resAttrs, scopeSchemaUrl, scopeName, scopeVersion, scopeAttrs)
 				if stackTrace := record.LogAttributes["exception.stacktrace"]; stackTrace != "" {
-					record.LogAttributes["exception.stacktrace"] = otelSymbolicateJs(projectId, ctx, stackTrace, language, scopeName)
+					record.LogAttributes["exception.stacktrace"] = otelSymbolicateJs(existingProject, projectId, ctx, stackTrace, language, scopeName)
 				}
 				records = append(records, record)
 			}

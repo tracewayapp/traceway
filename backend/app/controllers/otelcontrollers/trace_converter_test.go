@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/tracewayapp/traceway/backend/app/controllers/clientcontrollers"
+	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
@@ -83,6 +85,7 @@ func TestConvertTraces_Snapshot(t *testing.T) {
 		{"node_better_auth", "testdata/node_better_auth.json"},
 		{"node_sign_in", "testdata/node_sign_in.json"},
 		{"spring_boot_exception", "testdata/spring_boot_exception.json"},
+		{"honeycomb_global_error", "testdata/honeycomb_global_error.json"},
 	}
 
 	for _, tt := range tests {
@@ -98,7 +101,7 @@ func TestConvertTraces_Snapshot(t *testing.T) {
 			}
 
 			setFakeStore(t, nil)
-			endpoints, _, spans, exceptions, aiTraces, aiConversations := convertTraces(context.Background(), testProjectId, req)
+			endpoints, _, spans, exceptions, aiTraces, aiConversations := convertTraces(context.Background(), nil, testProjectId, req)
 
 			// Check if all child spans share a trace ID with an endpoint
 			endpointIds := map[uuid.UUID]bool{}
@@ -379,7 +382,7 @@ func TestTraceIdResolution_CrossScope(t *testing.T) {
 		},
 	}
 
-	endpoints, _, spans, _, _, _ := convertTraces(context.Background(), testProjectId, req)
+	endpoints, _, spans, _, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 
 	if len(endpoints) != 1 {
 		t.Fatalf("expected 1 endpoint, got %d", len(endpoints))
@@ -472,7 +475,7 @@ func TestConvertTraces_ConsumerNonRoot_BecomesTask(t *testing.T) {
 		}},
 	}
 
-	endpoints, tasks, spans, _, _, _ := convertTraces(context.Background(), testProjectId, req)
+	endpoints, tasks, spans, _, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 
 	if len(endpoints) != 0 {
 		t.Fatalf("expected 0 endpoints, got %d", len(endpoints))
@@ -522,7 +525,7 @@ func TestConvertTraces_ConsoleCommand_BecomesTask(t *testing.T) {
 		}},
 	}
 
-	_, tasks, _, _, _, _ := convertTraces(context.Background(), testProjectId, req)
+	_, tasks, _, _, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 	if len(tasks) != 1 {
 		t.Fatalf("expected 1 task, got %d", len(tasks))
 	}
@@ -554,7 +557,7 @@ func TestConvertTraces_InlineGenAi_BecomesAiTrace(t *testing.T) {
 		}},
 	}
 
-	endpoints, _, _, _, aiTraces, _ := convertTraces(context.Background(), testProjectId, req)
+	endpoints, _, _, _, aiTraces, _ := convertTraces(context.Background(), nil, testProjectId, req)
 	if len(endpoints) != 1 {
 		t.Fatalf("expected 1 endpoint, got %d", len(endpoints))
 	}
@@ -608,7 +611,7 @@ func TestConvertTraces_ExceptionOnConsumer_TraceTypeIsTask(t *testing.T) {
 		}},
 	}
 
-	_, tasks, _, exceptions, _, _ := convertTraces(context.Background(), testProjectId, req)
+	_, tasks, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 	if len(tasks) != 1 || len(exceptions) != 1 {
 		t.Fatalf("expected 1 task + 1 exception, got %d / %d", len(tasks), len(exceptions))
 	}
@@ -642,7 +645,7 @@ func TestConvertTraces_OrphanSpan_FallsBackToTraceId(t *testing.T) {
 		}},
 	}
 
-	_, _, spans, _, _, _ := convertTraces(context.Background(), testProjectId, req)
+	_, _, spans, _, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 	if len(spans) != 1 {
 		t.Fatalf("expected 1 span row, got %d", len(spans))
 	}
@@ -738,7 +741,7 @@ func TestConvertTraces_HoneycombJsExceptionSymbolicates(t *testing.T) {
 	}
 
 	setFakeStore(t, nil)
-	_, _, _, exceptions, _, _ := convertTraces(context.Background(), testProjectId, req)
+	_, _, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 	if len(exceptions) != 1 {
 		t.Fatalf("expected 1 exception, got %d", len(exceptions))
 	}
@@ -789,7 +792,7 @@ func TestConvertTraces_JsExceptionResolvesWithSourceMap(t *testing.T) {
 		}},
 	}
 
-	_, _, _, exceptions, _, _ := convertTraces(context.Background(), projectId, req)
+	_, _, _, exceptions, _, _ := convertTraces(context.Background(), tokenProject(projectId), projectId, req)
 	if len(exceptions) != 1 {
 		t.Fatalf("expected 1 exception, got %d", len(exceptions))
 	}
@@ -829,5 +832,267 @@ func TestIsJsTelemetry(t *testing.T) {
 		if isJsTelemetry(c[0], c[1]) {
 			t.Errorf("isJsTelemetry(%q, %q) = true, want false", c[0], c[1])
 		}
+	}
+}
+
+func honeycombExceptionSpanAttrs() []*commonpb.KeyValue {
+	return []*commonpb.KeyValue{
+		strKV("exception.type", "TypeError"),
+		strKV("exception.message", "discount rate must be finite"),
+		strKV("exception.stacktrace", "TypeError: discount rate must be finite\n    at assertValid (http://localhost:4173/assets/app.js:1:730)\n    at handleCheckout (http://localhost:4173/assets/app.js:1:1366)"),
+		strArrayKV("exception.structured_stacktrace.urls", "http://localhost:4173/assets/app.js", "http://localhost:4173/assets/app.js"),
+		strArrayKV("exception.structured_stacktrace.functions", "assertValid", "handleCheckout"),
+		intArrayKV("exception.structured_stacktrace.lines", 1, 1),
+		intArrayKV("exception.structured_stacktrace.columns", 730, 1366),
+	}
+}
+
+func honeycombExceptionSpanRequest(spanAttrs []*commonpb.KeyValue, events []*tracepb.Span_Event, resourceAttrs ...*commonpb.KeyValue) *coltracepb.ExportTraceServiceRequest {
+	traceId := []byte{0xc0, 0xc1, 0xc2, 0xc3, 0xc4, 0xc5, 0xc6, 0xc7, 0xc8, 0xc9, 0xca, 0xcb, 0xcc, 0xcd, 0xce, 0xcf}
+	spanId := []byte{0xd0, 0xd1, 0xd2, 0xd3, 0xd4, 0xd5, 0xd6, 0xd7}
+	now := uint64(1_700_000_000_000_000_000)
+
+	return &coltracepb.ExportTraceServiceRequest{
+		ResourceSpans: []*tracepb.ResourceSpans{{
+			Resource: &resourcepb.Resource{Attributes: append([]*commonpb.KeyValue{strKV("service.name", "web")}, resourceAttrs...)},
+			ScopeSpans: []*tracepb.ScopeSpans{{
+				Scope: &commonpb.InstrumentationScope{Name: "@honeycombio/instrumentation-global-errors"},
+				Spans: []*tracepb.Span{{
+					TraceId: traceId, SpanId: spanId,
+					Name: "exception", Kind: tracepb.Span_SPAN_KIND_INTERNAL,
+					StartTimeUnixNano: now, EndTimeUnixNano: now,
+					Attributes: spanAttrs,
+					Events:     events,
+				}},
+			}},
+		}},
+	}
+}
+
+func TestConvertTraces_ExceptionSpanAttrs_CapturedAsTask(t *testing.T) {
+	req := honeycombExceptionSpanRequest(honeycombExceptionSpanAttrs(), nil, strKV("telemetry.sdk.language", "webjs"))
+
+	setFakeStore(t, nil)
+	endpoints, tasks, spans, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	if len(endpoints) != 0 || len(tasks) != 0 || len(spans) != 0 {
+		t.Fatalf("expected no entity/span rows, got %d endpoints / %d tasks / %d spans", len(endpoints), len(tasks), len(spans))
+	}
+	if len(exceptions) != 1 {
+		t.Fatalf("expected 1 exception, got %d", len(exceptions))
+	}
+	exc := exceptions[0]
+	if exc.TraceType != "task" {
+		t.Errorf("expected TraceType 'task', got %q", exc.TraceType)
+	}
+	want := "TypeError: discount rate must be finite\nassertValid()\n    http://localhost:4173/assets/app.js:1:730\nhandleCheckout()\n    http://localhost:4173/assets/app.js:1:1366"
+	if exc.StackTrace != want {
+		t.Errorf("expected stack built from structured arrays:\n got %q\nwant %q", exc.StackTrace, want)
+	}
+	if _, ok := exc.Attributes["exception.stacktrace"]; ok {
+		t.Error("expected exception.stacktrace stripped from exception attributes")
+	}
+}
+
+func TestConvertTraces_ExceptionSpanAttrs_StrippedFromEndpointRow(t *testing.T) {
+	traceId := []byte{0xe0, 0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xe6, 0xe7, 0xe8, 0xe9, 0xea, 0xeb, 0xec, 0xed, 0xee, 0xef}
+	spanId := []byte{0xe8, 0xe9, 0xea, 0xeb, 0xec, 0xed, 0xee, 0xef}
+	now := uint64(1_700_000_000_000_000_000)
+
+	req := &coltracepb.ExportTraceServiceRequest{
+		ResourceSpans: []*tracepb.ResourceSpans{{
+			Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{
+				strKV("service.name", "web"),
+				strKV("telemetry.sdk.language", "webjs"),
+			}},
+			ScopeSpans: []*tracepb.ScopeSpans{{
+				Scope: &commonpb.InstrumentationScope{Name: "@scope/server"},
+				Spans: []*tracepb.Span{{
+					TraceId: traceId, SpanId: spanId,
+					Name: "POST /checkout", Kind: tracepb.Span_SPAN_KIND_SERVER,
+					StartTimeUnixNano: now, EndTimeUnixNano: now + 1_000_000,
+					Attributes: []*commonpb.KeyValue{
+						strKV("http.route", "/checkout"),
+						strKV("exception.type", "Error"),
+						strKV("exception.message", "boom"),
+						strKV("exception.stacktrace", "Error: boom\n    at handler (http://x/app.js:1:10)"),
+					},
+				}},
+			}},
+		}},
+	}
+
+	setFakeStore(t, nil)
+	endpoints, _, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	if len(endpoints) != 1 || len(exceptions) != 1 {
+		t.Fatalf("expected 1 endpoint + 1 exception, got %d / %d", len(endpoints), len(exceptions))
+	}
+	if exceptions[0].TraceType != "endpoint" {
+		t.Errorf("expected TraceType 'endpoint', got %q", exceptions[0].TraceType)
+	}
+	if _, ok := endpoints[0].Attributes["exception.stacktrace"]; ok {
+		t.Error("expected exception.stacktrace stripped from endpoint attributes")
+	}
+	if endpoints[0].Attributes["http.route"] != "/checkout" {
+		t.Errorf("expected other endpoint attributes intact, got %v", endpoints[0].Attributes)
+	}
+}
+
+func TestConvertTraces_ExceptionEventAndSpanAttrs_EventWins(t *testing.T) {
+	now := uint64(1_700_000_000_000_000_000)
+	events := []*tracepb.Span_Event{{
+		Name:         "exception",
+		TimeUnixNano: now,
+		Attributes: []*commonpb.KeyValue{
+			strKV("exception.type", "EventError"),
+			strKV("exception.message", "from the event"),
+		},
+	}}
+	req := honeycombExceptionSpanRequest(honeycombExceptionSpanAttrs(), events, strKV("telemetry.sdk.language", "webjs"))
+
+	setFakeStore(t, nil)
+	_, _, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	if len(exceptions) != 1 {
+		t.Fatalf("expected exactly 1 exception, got %d", len(exceptions))
+	}
+	if !strings.HasPrefix(exceptions[0].StackTrace, "EventError: from the event") {
+		t.Errorf("expected the event to win, got %q", exceptions[0].StackTrace)
+	}
+}
+
+func TestConvertTraces_ExceptionSpanAttrs_HeaderOnly(t *testing.T) {
+	attrs := []*commonpb.KeyValue{
+		strKV("exception.type", "Error"),
+		strKV("exception.message", "Script error."),
+	}
+	req := honeycombExceptionSpanRequest(attrs, nil, strKV("telemetry.sdk.language", "webjs"))
+
+	setFakeStore(t, nil)
+	_, _, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	if len(exceptions) != 1 {
+		t.Fatalf("expected 1 exception, got %d", len(exceptions))
+	}
+	if exceptions[0].StackTrace != "Error: Script error." {
+		t.Errorf("expected header-only stack trace, got %q", exceptions[0].StackTrace)
+	}
+}
+
+func TestConvertTraces_ExceptionSpanAttrs_NoLanguageAttr(t *testing.T) {
+	req := honeycombExceptionSpanRequest(honeycombExceptionSpanAttrs(), nil)
+
+	setFakeStore(t, nil)
+	_, _, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	if len(exceptions) != 1 {
+		t.Fatalf("expected 1 exception, got %d", len(exceptions))
+	}
+	want := "TypeError: discount rate must be finite\nassertValid()\n    http://localhost:4173/assets/app.js:1:730\nhandleCheckout()\n    http://localhost:4173/assets/app.js:1:1366"
+	if exceptions[0].StackTrace != want {
+		t.Errorf("expected JS canonical output via scope-name fallback:\n got %q\nwant %q", exceptions[0].StackTrace, want)
+	}
+}
+
+func fourWayRequest(spanAttrs []*commonpb.KeyValue, eventAttrs []*commonpb.KeyValue) *coltracepb.ExportTraceServiceRequest {
+	traceId := []byte{0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9, 0xfa, 0xfb, 0xfc, 0xfd, 0xfe, 0x01}
+	spanId := []byte{0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0x01}
+	now := uint64(1_700_000_000_000_000_000)
+
+	span := &tracepb.Span{
+		TraceId: traceId, SpanId: spanId,
+		Name: "exception", Kind: tracepb.Span_SPAN_KIND_INTERNAL,
+		StartTimeUnixNano: now, EndTimeUnixNano: now,
+		Attributes: spanAttrs,
+	}
+	if eventAttrs != nil {
+		span.Events = []*tracepb.Span_Event{{Name: "exception", TimeUnixNano: now, Attributes: eventAttrs}}
+	}
+	return &coltracepb.ExportTraceServiceRequest{
+		ResourceSpans: []*tracepb.ResourceSpans{{
+			Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{
+				strKV("service.name", "web"),
+				strKV("telemetry.sdk.language", "webjs"),
+			}},
+			ScopeSpans: []*tracepb.ScopeSpans{{
+				Scope: &commonpb.InstrumentationScope{Name: "@honeycombio/instrumentation-global-errors"},
+				Spans: []*tracepb.Span{span},
+			}},
+		}},
+	}
+}
+
+func TestExceptionHash_FourWayStability(t *testing.T) {
+	setFakeStore(t, nil)
+
+	sdkCanonical := "TypeError: discount rate is corrupted\nassertValidDiscountRate()\n    app.min.js:1:730\napplyDiscount()\n    app.min.js:1:199"
+	hashSdk := clientcontrollers.ComputeExceptionHash(sdkCanonical, false)
+
+	chromeRaw := []*commonpb.KeyValue{
+		strKV("exception.type", "TypeError"),
+		strKV("exception.message", "discount rate is corrupted"),
+		strKV("exception.stacktrace", "TypeError: discount rate is corrupted\n    at assertValidDiscountRate (http://localhost:4173/assets/app.min.js:1:730)\n    at applyDiscount (http://localhost:4173/assets/app.min.js:1:199)"),
+	}
+	firefoxRaw := []*commonpb.KeyValue{
+		strKV("exception.type", "TypeError"),
+		strKV("exception.message", "discount rate is corrupted"),
+		strKV("exception.stacktrace", "assertValidDiscountRate@http://localhost:4173/assets/app.min.js:1:730\napplyDiscount@http://localhost:4173/assets/app.min.js:1:199"),
+	}
+	structured := []*commonpb.KeyValue{
+		strKV("exception.type", "TypeError"),
+		strKV("exception.message", "discount rate is corrupted"),
+		strArrayKV("exception.structured_stacktrace.urls", "http://localhost:4173/assets/app.min.js", "http://localhost:4173/assets/app.min.js"),
+		strArrayKV("exception.structured_stacktrace.functions", "assertValidDiscountRate", "applyDiscount"),
+		intArrayKV("exception.structured_stacktrace.lines", 1, 1),
+		intArrayKV("exception.structured_stacktrace.columns", 730, 199),
+	}
+
+	hashes := map[string]string{"sdk-canonical": hashSdk}
+	for name, attrs := range map[string][]*commonpb.KeyValue{
+		"chrome-raw":  chromeRaw,
+		"firefox-raw": firefoxRaw,
+		"structured":  structured,
+	} {
+		_, _, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, fourWayRequest(attrs, nil))
+		if len(exceptions) != 1 {
+			t.Fatalf("%s: expected 1 exception, got %d", name, len(exceptions))
+		}
+		hashes[name] = exceptions[0].ExceptionHash
+	}
+
+	for name, h := range hashes {
+		if h != hashSdk {
+			t.Errorf("hash mismatch: %s = %s, sdk-canonical = %s (all four ingest forms of the same error must group into one issue)", name, h, hashSdk)
+		}
+	}
+	if hashSdk != "ae66d509d719ab7a" {
+		t.Errorf("documented four-way hash changed: got %s, want ae66d509d719ab7a (update this constant only if the grouping algorithm intentionally changed)", hashSdk)
+	}
+}
+
+func TestConvertTraces_FrontendFrameworkSuppressesEntityRows(t *testing.T) {
+	raw, err := os.ReadFile("testdata/honeycomb_global_error.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := &coltracepb.ExportTraceServiceRequest{}
+	if err := protojson.Unmarshal(raw, req); err != nil {
+		t.Fatal(err)
+	}
+
+	setFakeStore(t, nil)
+	reactProject := &models.Project{Id: testProjectId, Framework: "react"}
+	endpoints, tasks, spans, exceptions, aiTraces, _ := convertTraces(context.Background(), reactProject, testProjectId, req)
+	if len(endpoints) != 0 || len(tasks) != 0 || len(spans) != 0 || len(aiTraces) != 0 {
+		t.Fatalf("expected no entity/span rows for a frontend-framework project, got %d endpoints / %d tasks / %d spans / %d aiTraces",
+			len(endpoints), len(tasks), len(spans), len(aiTraces))
+	}
+	if len(exceptions) != 1 {
+		t.Fatalf("expected the exception to still be extracted, got %d", len(exceptions))
+	}
+	if exceptions[0].TraceType != "task" {
+		t.Errorf("expected TraceType 'task', got %q", exceptions[0].TraceType)
+	}
+
+	backendProject := &models.Project{Id: testProjectId, Framework: "gin"}
+	endpoints, _, _, _, _, _ = convertTraces(context.Background(), backendProject, testProjectId, req)
+	if len(endpoints) == 0 {
+		t.Error("expected non-frontend frameworks to keep promoting endpoint rows")
 	}
 }

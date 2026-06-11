@@ -1,0 +1,27 @@
+{
+  "name": "symbolication-node-app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "rollup -c",
+    "build:debug-ids": "TW_DEBUG_IDS=1 rollup -c",
+    "start": "node dist/app.mjs",
+    "start:cjs": "node dist/app.cjs",
+    "upload-maps": "traceway-sourcemaps --url http://localhost:8082 --token 5840239bbba04aa58e5f96ec130c10bd --directory dist"
+  },
+  "devDependencies": {
+    "@rollup/plugin-terser": "^0.4.4",
+    "@tracewayapp/bundler-plugin": "file:../../../../js-client/packages/bundler-plugin",
+    "@tracewayapp/sourcemap-upload": "file:../../../../js-client/packages/sourcemap-upload",
+    "rollup": "^4.0.0",
+    "webpack": "^5.107.2",
+    "webpack-cli": "^7.0.3"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.218.0",
+    "@opentelemetry/resources": "^2.7.1",
+    "@opentelemetry/sdk-trace-node": "^2.7.1"
+  }
+}

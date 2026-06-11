@@ -72,7 +72,7 @@ func Run(opts ...Option) {
 			config.LoggingEnabled = false
 		}
 
-		applyOAuthEnvOverrides(cfg)
+		applyEnvOverrides(cfg)
 	}
 	config.Init(cfg)
 
@@ -238,10 +238,10 @@ func Run(opts ...Option) {
 	}
 }
 
-// applyOAuthEnvOverrides lets the dev-options path pick up OAuth/OIDC env vars
-// so embedded examples (e.g. devtesting-embedded) can be configured for SSO
-// testing without exposing every OIDC knob as a WithXxx option.
-func applyOAuthEnvOverrides(cfg *config.Cfg) {
+// applyEnvOverrides lets the dev-options path pick up OAuth/OIDC and
+// symbolicator env vars so embedded examples (e.g. devtesting-embedded) can be
+// configured without exposing every knob as a WithXxx option.
+func applyEnvOverrides(cfg *config.Cfg) {
 	for _, m := range []struct {
 		envVar string
 		dest   *string
@@ -264,6 +264,12 @@ func applyOAuthEnvOverrides(cfg *config.Cfg) {
 		{"OIDC_TOKEN_URL", &cfg.OIDCTokenURL},
 		{"OIDC_USER_INFO_URL", &cfg.OIDCUserInfoURL},
 		{"DISABLE_PASSWORD_LOGIN", &cfg.DisablePasswordLogin},
+		{"SOURCEMAP_CACHE_MAX_ENTRIES", &cfg.SourceMapCacheMaxEntries},
+		{"SOURCEMAP_CACHE_MAX_BYTES_MB", &cfg.SourceMapCacheMaxBytesMB},
+		{"SOURCEMAP_CACHE_TYPE", &cfg.SourceMapCacheType},
+		{"SOURCEMAP_DISK_CACHE_PATH", &cfg.SourceMapDiskCachePath},
+		{"SOURCEMAP_DISK_CACHE_MAX_MB", &cfg.SourceMapDiskCacheMaxMB},
+		{"SYMBOLICATOR_PARSER", &cfg.SymbolicatorParser},
 	} {
 		if v := os.Getenv(m.envVar); v != "" {
 			*m.dest = v

@@ -1,0 +1,25 @@
+{
+  "endpointCount": 1,
+  "endpoints": [
+    {
+      "endpoint": "TTFB",
+      "statusCode": 0,
+      "serverName": "symbolication-vite-app",
+      "appVersion": ""
+    }
+  ],
+  "taskCount": 0,
+  "spanCount": 0,
+  "spans": [],
+  "exceptionCount": 1,
+  "exceptions": [
+    {
+      "stackTrace": "TypeError: discount rate must be a finite number between 0 and 1, got: NaN\nassertValidDiscountRate()\n    http://localhost:4173/assets/app-DWNS_JMv.js:1:321\napplyDiscount()\n    http://localhost:4173/assets/app-DWNS_JMv.js:1:199\ncomputeOrderTotal()\n    http://localhost:4173/assets/app-DWNS_JMv.js:1:64\nHTMLButtonElement.handleCheckout()\n    http://localhost:4173/assets/app-DWNS_JMv.js:1:957",
+      "traceType": "task"
+    }
+  ],
+  "aiTraceCount": 0,
+  "aiTraces": [],
+  "conversationCount": 0,
+  "allSpansLinked": true
+}

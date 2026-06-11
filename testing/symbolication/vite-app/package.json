@@ -1,0 +1,23 @@
+{
+  "name": "symbolication-vite-app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5174",
+    "build": "vite build",
+    "build:debug-ids": "TW_DEBUG_IDS=1 vite build",
+    "build:honeycomb": "VITE_TW_MODE=honeycomb vite build",
+    "serve": "node serve.mjs",
+    "upload-maps": "traceway-sourcemaps --url http://localhost:8082 --token 5840239bbba04aa58e5f96ec130c10bd --directory dist"
+  },
+  "dependencies": {
+    "@honeycombio/opentelemetry-web": "^1.3.0",
+    "@tracewayapp/frontend": "file:../../../../js-client/packages/frontend"
+  },
+  "devDependencies": {
+    "@tracewayapp/bundler-plugin": "file:../../../../js-client/packages/bundler-plugin",
+    "@tracewayapp/sourcemap-upload": "file:../../../../js-client/packages/sourcemap-upload",
+    "vite": "^7.0.0"
+  }
+}

@@ -48,7 +48,7 @@
 	}
 
 	function formatFrame(frame: StackFrame) {
-		const fn = (frame.functionName ?? '').replace(/\(\)\s*$/, '').trim() || '<anonymous>';
+		const fn = (frame.functionName ?? '').replace(/\(\)\s*$/, '').trim();
 		const m = frame.location.match(/^(.*):(\d+):(\d+)$/);
 		if (!m) {
 			return { fn, dir: '', file: frame.location, lineCol: '', raw: frame.location };
@@ -59,7 +59,7 @@
 			fn,
 			dir: slash >= 0 ? path.slice(0, slash + 1) : '',
 			file: slash >= 0 ? path.slice(slash + 1) : path,
-			lineCol: `:${line}:${col}`,
+			lineCol: `${line}:${col}`,
 			raw: frame.location
 		};
 	}
@@ -100,80 +100,97 @@
 			</Card.Description>
 		{/if}
 	</Card.Header>
-	<Card.Content>
+	<Card.Content class="pb-2">
 		{#if usePretty}
-		<div class="overflow-hidden rounded-lg border">
-			{#if parsed.errorMessage}
-				<div class="border-b bg-muted/60 px-4 py-3">
-					<p class="font-mono text-sm font-medium break-words whitespace-pre-wrap text-foreground">
-						{parsed.errorMessage}
-					</p>
-				</div>
-			{/if}
-
-			<ol role="list" class="divide-y divide-border">
-				{#each parsed.groups as group, i}
-					{#if group.type === 'app'}
-						{@const f = formatFrame(group.frame)}
-						<li
-							class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 border-l-2 px-4 py-2.5 {i ===
-							0
-								? 'border-l-primary'
-								: 'border-l-primary/35'}"
+			<div class="overflow-hidden rounded-md border">
+				{#if parsed.errorMessage}
+					<div class="border-b bg-muted/50 px-4 py-3">
+						<p
+							class="font-mono text-sm font-medium break-words whitespace-pre-wrap text-foreground"
 						>
-							<div class="min-w-0 font-mono text-sm font-medium break-all text-foreground">
-								{f.fn}
-							</div>
-							<div class="min-w-0 font-mono text-xs break-all text-muted-foreground tabular-nums" title={f.raw}>
-								{f.dir}<span class="text-foreground/85">{f.file}</span>{f.lineCol}
-							</div>
-						</li>
-					{:else}
-						<li class="border-l-2 border-l-transparent">
-							<button
-								type="button"
-								class="flex w-full items-center gap-1.5 px-4 py-2 text-left text-xs text-muted-foreground hover:bg-muted/60"
-								onclick={() => toggleGroup(i)}
+							{parsed.errorMessage}
+						</p>
+					</div>
+				{/if}
+
+				<ol role="list" class="divide-y divide-border/60">
+					{#each parsed.groups as group, i}
+						{#if group.type === 'app'}
+							{@const f = formatFrame(group.frame)}
+							<li
+								class="flex flex-wrap items-baseline gap-x-1.5 px-4 py-2 font-mono text-sm tabular-nums"
+								title={f.raw}
 							>
-								{#if expandedGroups.has(i)}
-									<ChevronDown class="size-3.5 shrink-0" />
-								{:else}
-									<ChevronRight class="size-3.5 shrink-0" />
+								<span class="min-w-0 break-all text-muted-foreground"
+									>{f.dir}<span class="font-medium text-foreground">{f.file}</span></span
+								>
+								{#if f.fn}
+									<span class="text-muted-foreground/70">in</span>
+									<span class="min-w-0 font-medium break-all text-foreground">{f.fn}</span>
 								{/if}
-								<span class="tabular-nums"
-									>{group.frames.length} library {group.frames.length === 1 ? 'frame' : 'frames'}</span
+								{#if f.lineCol}
+									<span class="text-muted-foreground/70">at line</span>
+									<span class="text-foreground">{f.lineCol}</span>
+								{/if}
+							</li>
+						{:else}
+							<li>
+								<button
+									type="button"
+									class="flex w-full items-center gap-1.5 bg-muted/25 px-4 py-2 text-left text-xs text-muted-foreground hover:bg-muted/70"
+									onclick={() => toggleGroup(i)}
 								>
-								<span class="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground/70"
-									>{group.packageName}</span
-								>
-							</button>
-							{#if expandedGroups.has(i)}
-								<ol role="list" class="divide-y divide-border/50 border-t border-border/50 bg-muted/20">
-									{#each group.frames as frame}
-										{@const f = formatFrame(frame)}
-										<li class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 py-2 pr-4 pl-9">
-											<div class="min-w-0 font-mono text-sm break-all text-muted-foreground">
-												{f.fn}
-											</div>
-											<div
-												class="min-w-0 font-mono text-xs break-all text-muted-foreground/70 tabular-nums"
+									{#if expandedGroups.has(i)}
+										<ChevronDown class="size-3.5 shrink-0" />
+									{:else}
+										<ChevronRight class="size-3.5 shrink-0" />
+									{/if}
+									<span class="tabular-nums"
+										>{group.frames.length} library {group.frames.length === 1
+											? 'frame'
+											: 'frames'}</span
+									>
+									<span
+										class="rounded-md border bg-background px-1.5 py-0.5 font-mono text-foreground/70"
+										>{group.packageName}</span
+									>
+								</button>
+								{#if expandedGroups.has(i)}
+									<ol
+										role="list"
+										class="divide-y divide-border/40 border-t border-border/40 bg-muted/30"
+									>
+										{#each group.frames as frame}
+											{@const f = formatFrame(frame)}
+											<li
+												class="flex flex-wrap items-baseline gap-x-1.5 py-2 pr-4 pl-9 font-mono text-sm text-muted-foreground tabular-nums"
 												title={f.raw}
 											>
-												{f.dir}<span class="text-foreground/60">{f.file}</span>{f.lineCol}
-											</div>
-										</li>
-									{/each}
-								</ol>
-							{/if}
-						</li>
-					{/if}
-				{/each}
-			</ol>
-		</div>
+												<span class="min-w-0 break-all"
+													>{f.dir}<span class="text-foreground/70">{f.file}</span></span
+												>
+												{#if f.fn}
+													<span class="text-muted-foreground/60">in</span>
+													<span class="min-w-0 break-all text-foreground/70">{f.fn}</span>
+												{/if}
+												{#if f.lineCol}
+													<span class="text-muted-foreground/60">at line</span>
+													<span>{f.lineCol}</span>
+												{/if}
+											</li>
+										{/each}
+									</ol>
+								{/if}
+							</li>
+						{/if}
+					{/each}
+				</ol>
+			</div>
 		{:else}
-		<div class="overflow-x-auto rounded-lg border bg-muted/40 p-4">
-			<pre class="font-mono text-sm break-words whitespace-pre-wrap text-foreground">{stackTrace}</pre>
-		</div>
+			<div class="overflow-x-auto rounded-lg border bg-muted/40 p-4">
+				<pre
+					class="font-mono text-sm break-words whitespace-pre-wrap text-foreground">{stackTrace}</pre>
+			</div>
 		{/if}
 	</Card.Content>
 </Card.Root>

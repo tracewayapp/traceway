@@ -21,11 +21,13 @@
 	import Highlight from 'svelte-highlight';
 	import go from 'svelte-highlight/languages/go';
 	import javascript from 'svelte-highlight/languages/javascript';
+	import typescript from 'svelte-highlight/languages/typescript';
 	import bash from 'svelte-highlight/languages/bash';
 	import php from 'svelte-highlight/languages/php';
 	import python from 'svelte-highlight/languages/python';
 	import yaml from 'svelte-highlight/languages/yaml';
 	import { themeState } from '$lib/state/theme.svelte';
+	import * as Tabs from '$lib/components/ui/tabs';
 	import 'svelte-highlight/styles/github-dark.css';
 	import {
 		getFrameworkCode,
@@ -38,6 +40,8 @@
 	let copiedInstall = $state(false);
 	let copiedToken = $state(false);
 	let copiedCommand = $state(false);
+	let copiedPluginInstall = $state(false);
+	let copiedBundlerConfig = $state(false);
 	let generatingToken = $state(false);
 	let copiedOtelEndpoint = $state(false);
 	let copiedOtelAuth = $state(false);
@@ -122,9 +126,69 @@ service:
 	);
 	const sourceMapToken = $derived(projectWithToken?.sourceMapToken ?? null);
 
+	type Bundler = 'vite' | 'rollup' | 'webpack';
+
+	const bundlerConfigs: Record<
+		Bundler,
+		{ label: string; file: string; directory: string; language: typeof javascript; code: string }
+	> = {
+		vite: {
+			label: 'Vite',
+			file: 'vite.config.ts',
+			directory: 'dist/assets',
+			language: typescript,
+			code: `import { defineConfig } from "vite";
+import { tracewayDebugIds } from "@tracewayapp/bundler-plugin/vite";
+
+export default defineConfig({
+  build: {
+    sourcemap: true,
+  },
+  plugins: [tracewayDebugIds()],
+});`
+		},
+		rollup: {
+			label: 'Rollup',
+			file: 'rollup.config.js',
+			directory: 'dist',
+			language: javascript,
+			code: `import { tracewayDebugIds } from "@tracewayapp/bundler-plugin/rollup";
+
+export default {
+  output: {
+    sourcemap: true,
+  },
+  plugins: [tracewayDebugIds()],
+};`
+		},
+		webpack: {
+			label: 'webpack',
+			file: 'webpack.config.js',
+			directory: 'dist',
+			language: javascript,
+			code: `const {
+  TracewayDebugIdsWebpackPlugin,
+} = require("@tracewayapp/bundler-plugin/webpack");
+
+module.exports = {
+  devtool: "source-map",
+  plugins: [new TracewayDebugIdsWebpackPlugin()],
+};`
+		}
+	};
+
+	let bundler = $state<Bundler>('vite');
+
+	const pluginInstallCommand = 'npm install -D @tracewayapp/bundler-plugin';
+
+	const showBundlerSetup = $derived(isJs && projectWithToken?.framework !== 'react-native');
+
 	const uploadCommand = $derived(
 		projectWithToken && sourceMapToken
-			? `npx @tracewayapp/sourcemap-upload --url ${projectWithToken.backendUrl} --token ${sourceMapToken} --version YOUR_VERSION --directory dist/assets`
+			? `npx @tracewayapp/sourcemap-upload \\
+  --url ${projectWithToken.backendUrl} \\
+  --token ${sourceMapToken} \\
+  --directory ${showBundlerSetup ? bundlerConfigs[bundler].directory : 'dist'}`
 			: ''
 	);
 

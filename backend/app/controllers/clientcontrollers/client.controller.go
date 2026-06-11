@@ -326,6 +326,7 @@ var (
 	errorMessageRe  = regexp.MustCompile(`(?m)^(\*?[\w.]+):\s*.+`)
 	causedByRe      = regexp.MustCompile(`(?m)^(Caused by:\s*[\w.$]+):\s*.+`)
 	jsFuncLineRe    = regexp.MustCompile(`(?m)^( {0,4})(.+)\(\)(\n {4}.+:\d+:\d+)$`)
+	urlOriginRe     = regexp.MustCompile(`[a-zA-Z][a-zA-Z0-9+.\-]*://[^/\s]*`)
 	absolutePathRe  = regexp.MustCompile(`/[^\s:]+/([^/\s:]+:\d+)`)
 	versionRe       = regexp.MustCompile(`@v[\d.]+`)
 	hexRe           = regexp.MustCompile(`0x[0-9a-fA-F]+`)
@@ -347,6 +348,11 @@ func ComputeExceptionHash(stackTrace string, isMessage bool) string {
 		normalized = causedByRe.ReplaceAllString(normalized, "$1")
 		normalized = errorMessageRe.ReplaceAllString(normalized, "$1")
 		normalized = jsFuncLineRe.ReplaceAllString(normalized, "${1}<fn>${3}")
+		// Bundle URLs (https://host/assets/app.js, file:///srv/app.mjs,
+		// webpack://app/./src/x.js) must group with the same frames reported
+		// as bare filenames by the JS SDK, so the origin goes first and the
+		// remaining /path is reduced by absolutePathRe like any other path.
+		normalized = urlOriginRe.ReplaceAllString(normalized, "")
 		normalized = absolutePathRe.ReplaceAllString(normalized, "$1")
 		normalized = versionRe.ReplaceAllString(normalized, "")
 		normalized = hexRe.ReplaceAllString(normalized, "<hex>")

@@ -142,7 +142,7 @@ func (e clientController) Report(c *gin.Context) {
 				spansToInsert = append(spansToInsert, span)
 			}
 		}
-		resolveJs := project != nil && isJsFramework(project.Framework)
+		resolveJs := project != nil && isJsFramework(project.Framework) && project.SourceMapToken != nil
 
 		resolveSpan := traceway.StartSpan(c, "report.resolve_stack_traces")
 		for _, cst := range cf.StackTraces {
@@ -326,7 +326,13 @@ var (
 	errorMessageRe  = regexp.MustCompile(`(?m)^(\*?[\w.]+):\s*.+`)
 	causedByRe      = regexp.MustCompile(`(?m)^(Caused by:\s*[\w.$]+):\s*.+`)
 	jsFuncLineRe    = regexp.MustCompile(`(?m)^( {0,4})(.+)\(\)(\n {4}.+:\d+:\d+)$`)
+	urlOriginRe     = regexp.MustCompile(`[a-zA-Z][a-zA-Z0-9+.\-]*://[^/\s]*`)
 	absolutePathRe  = regexp.MustCompile(`/[^\s:]+/([^/\s:]+:\d+)`)
+	// Engines disagree on column conventions for the same throw, so columns
+	// only disambiguate when everything sits on line 1 (minified bundles with
+	// no matching source map). For any other line the column is dropped from
+	// the hash so resolved frames group across engines.
+	laterLineColRe = regexp.MustCompile(`(?m)^(\s*.+:(?:[2-9]|[1-9]\d+)):\d+$`)
 	versionRe       = regexp.MustCompile(`@v[\d.]+`)
 	hexRe           = regexp.MustCompile(`0x[0-9a-fA-F]+`)
 	uuidRe          = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
@@ -347,7 +353,13 @@ func ComputeExceptionHash(stackTrace string, isMessage bool) string {
 		normalized = causedByRe.ReplaceAllString(normalized, "$1")
 		normalized = errorMessageRe.ReplaceAllString(normalized, "$1")
 		normalized = jsFuncLineRe.ReplaceAllString(normalized, "${1}<fn>${3}")
+		// Bundle URLs (https://host/assets/app.js, file:///srv/app.mjs,
+		// webpack://app/./src/x.js) must group with the same frames reported
+		// as bare filenames by the JS SDK, so the origin goes first and the
+		// remaining /path is reduced by absolutePathRe like any other path.
+		normalized = urlOriginRe.ReplaceAllString(normalized, "")
 		normalized = absolutePathRe.ReplaceAllString(normalized, "$1")
+		normalized = laterLineColRe.ReplaceAllString(normalized, "$1")
 		normalized = versionRe.ReplaceAllString(normalized, "")
 		normalized = hexRe.ReplaceAllString(normalized, "<hex>")
 		normalized = uuidRe.ReplaceAllString(normalized, "<uuid>")
@@ -380,6 +392,23 @@ var jsFrameworks = map[string]bool{
 
 func isJsFramework(framework string) bool {
 	return jsFrameworks[framework]
+}
+
+// Browser-only frameworks. Spans arriving for these projects are page-load
+// noise (web vitals, fetch spans), never server endpoints, so OTel trace
+// ingest only extracts exceptions for them. Fullstack frameworks (nextjs,
+// remix) and JS backends (nestjs, express, hono, cloudflare) are excluded
+// because they emit legitimate SERVER spans.
+var frontendJsFrameworks = map[string]bool{
+	"react":        true,
+	"svelte":       true,
+	"vuejs":        true,
+	"jquery":       true,
+	"react-native": true,
+}
+
+func IsFrontendFramework(framework string) bool {
+	return frontendJsFrameworks[framework]
 }
 
 var ClientController = clientController{}

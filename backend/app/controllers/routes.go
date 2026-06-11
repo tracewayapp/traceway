@@ -34,9 +34,12 @@ func RegisterControllers(router *gin.RouterGroup) {
 
 	// OTLP/HTTP ingestion
 	otelGroup := router.Group("/otel")
-	otelGroup.POST("/v1/traces", middleware.UseClientAuth, otelcontrollers.OtelController.ExportTraces)
-	otelGroup.POST("/v1/metrics", middleware.UseClientAuth, otelcontrollers.OtelController.ExportMetrics)
-	otelGroup.POST("/v1/logs", middleware.UseClientAuth, otelcontrollers.OtelController.ExportLogs)
+	otelGroup.OPTIONS("/v1/traces", middleware.CORSReport)
+	otelGroup.OPTIONS("/v1/metrics", middleware.CORSReport)
+	otelGroup.OPTIONS("/v1/logs", middleware.CORSReport)
+	otelGroup.POST("/v1/traces", middleware.CORSReport, middleware.UseClientAuth, otelcontrollers.OtelController.ExportTraces)
+	otelGroup.POST("/v1/metrics", middleware.CORSReport, middleware.UseClientAuth, otelcontrollers.OtelController.ExportMetrics)
+	otelGroup.POST("/v1/logs", middleware.CORSReport, middleware.UseClientAuth, otelcontrollers.OtelController.ExportLogs)
 
 	// Project management
 	router.GET("/projects", middleware.UseAppAuth, ProjectController.ListProjects)

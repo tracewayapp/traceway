@@ -12,6 +12,7 @@ type jsStackFrame struct {
 
 var jsLocRe = regexp.MustCompile(`^.+:\d+:\d+$`)
 var jsEvalLocRe = regexp.MustCompile(`\(([^()]+:\d+:\d+)\)`)
+var geckoEvalLocRe = regexp.MustCompile(`^(.*?) line (\d+) > (?:eval|Function)(?: line \d+ > (?:eval|Function))*:\d+:\d+$`)
 
 func Canonicalize(trace string) (string, bool) {
 	lines := strings.Split(trace, "\n")
@@ -28,6 +29,19 @@ func Canonicalize(trace string) (string, bool) {
 		if !ok {
 			out = append(out, line)
 			continue
+		}
+		// Gecko chains engine mechanisms onto frame names with stars:
+		// "async*loadRate" is the real loadRate reached via async machinery
+		// (Chrome prints "at async loadRate"), while a bare "handleEvent*" or
+		// "async*" is purely synthetic. Other engines never emit either form,
+		// so the marker is stripped and synthetic-only frames are dropped to
+		// keep grouping engine-independent.
+		if i := strings.LastIndex(f.fn, "*"); i != -1 {
+			f.fn = f.fn[i+1:]
+			if f.fn == "" {
+				converted = true
+				continue
+			}
 		}
 		if f.loc == "" {
 			if f.fn != "" {
@@ -114,6 +128,9 @@ func parseGeckoFrame(line string) (jsStackFrame, bool) {
 	}
 	if !jsLocRe.MatchString(loc) {
 		return jsStackFrame{}, false
+	}
+	if m := geckoEvalLocRe.FindStringSubmatch(loc); m != nil {
+		loc = m[1] + ":" + m[2] + ":1"
 	}
 	return jsStackFrame{fn: name, loc: loc}, true
 }

@@ -16,8 +16,8 @@
 		isCloudflareFramework
 	} from '$lib/state/projects.svelte';
 	import { authState } from '$lib/state/auth.svelte';
-	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import FrameworkIcon from '$lib/components/framework-icon.svelte';
+	import SourceMapSetup from '$lib/components/source-map-setup.svelte';
 	import Highlight from 'svelte-highlight';
 	import go from 'svelte-highlight/languages/go';
 	import javascript from 'svelte-highlight/languages/javascript';
@@ -36,9 +36,6 @@
 	let projectWithToken = $derived(projectsState.currentProject);
 	let copiedCode = $state(false);
 	let copiedInstall = $state(false);
-	let copiedToken = $state(false);
-	let copiedCommand = $state(false);
-	let generatingToken = $state(false);
 	let copiedOtelEndpoint = $state(false);
 	let copiedOtelAuth = $state(false);
 	let copiedOtelCollector = $state(false);
@@ -120,14 +117,6 @@ service:
 		authState.getRoleForOrganization(projectsState.currentProject?.organizationId ?? 0) ===
 			'readonly'
 	);
-	const sourceMapToken = $derived(projectWithToken?.sourceMapToken ?? null);
-
-	const uploadCommand = $derived(
-		projectWithToken && sourceMapToken
-			? `npx @tracewayapp/sourcemap-upload --url ${projectWithToken.backendUrl} --token ${sourceMapToken} --version YOUR_VERSION --directory dist/assets`
-			: ''
-	);
-
 	async function copyCode() {
 		await navigator.clipboard.writeText(sdkCode);
 		copiedCode = true;
@@ -138,28 +127,6 @@ service:
 		await navigator.clipboard.writeText(installCommand);
 		copiedInstall = true;
 		setTimeout(() => (copiedInstall = false), 2000);
-	}
-
-	async function generateToken() {
-		generatingToken = true;
-		try {
-			await projectsState.generateSourceMapToken();
-		} finally {
-			generatingToken = false;
-		}
-	}
-
-	async function copyToken() {
-		if (!sourceMapToken) return;
-		await navigator.clipboard.writeText(sourceMapToken);
-		copiedToken = true;
-		setTimeout(() => (copiedToken = false), 2000);
-	}
-
-	async function copyUploadCommand() {
-		await navigator.clipboard.writeText(uploadCommand);
-		copiedCommand = true;
-		setTimeout(() => (copiedCommand = false), 2000);
 	}
 
 	async function copyCfEndpoint() {
@@ -443,78 +410,23 @@ service:
 					</div>
 				</CardContent>
 			</Card>
-			{#if isJs && !isReadonly}
-				<Card>
-					<CardHeader>
-						<CardTitle class="flex items-center gap-2">
-							<KeyRound class="h-5 w-5" />
-							Source Map Upload
-						</CardTitle>
-						<CardDescription>
-							Upload source maps to see original file names and line numbers in stack traces from
-							minified code.
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						{#if sourceMapToken}
-							<div class="space-y-4">
-								<div>
-									<p class="mb-2 text-sm font-medium">Upload Token</p>
-									<div class="flex items-center gap-2">
-										<code class="flex-1 rounded-md bg-muted px-3 py-2 font-mono text-sm break-all"
-											>{sourceMapToken}</code
-										>
-										<Button variant="outline" size="sm" onclick={copyToken}>
-											{#if copiedToken}
-												<Check class="h-4 w-4 text-green-500" />
-											{:else}
-												<Copy class="h-4 w-4" />
-											{/if}
-										</Button>
-									</div>
-								</div>
-								<div>
-									<p class="mb-2 text-sm font-medium">Usage</p>
-									<div class="relative">
-										<div class="absolute top-2 right-2 z-10">
-											<Button variant="outline" size="sm" onclick={copyUploadCommand}>
-												{#if copiedCommand}
-													<Check class="mr-2 h-4 w-4 text-green-500" />
-													Copied!
-												{:else}
-													<Copy class="mr-2 h-4 w-4" />
-													Copy
-												{/if}
-											</Button>
-										</div>
-										<div
-											class="overflow-x-auto rounded-lg text-sm {themeState.isDark
-												? 'dark-code'
-												: 'light-code'}"
-										>
-											<Highlight language={bash} code={uploadCommand} />
-										</div>
-									</div>
-								</div>
-							</div>
-						{:else}
-							<p class="mb-4 text-sm text-muted-foreground">
-								Generate an upload token to start uploading source maps as part of your build
-								process.
-							</p>
-							<Button onclick={generateToken} disabled={generatingToken}>
-								{#if generatingToken}
-									<LoadingCircle class="mr-2 h-4 w-4" />
-									Generating...
-								{:else}
-									<KeyRound class="mr-2 h-4 w-4" />
-									Generate Upload Token
-								{/if}
-							</Button>
-						{/if}
-					</CardContent>
-				</Card>
-			{/if}
+		{/if}
+		{#if (isJs || isOtel) && !isReadonly}
+			<Card>
+				<CardHeader>
+					<CardTitle class="flex items-center gap-2">
+						<KeyRound class="h-5 w-5" />
+						Source Map Upload
+					</CardTitle>
+					<CardDescription>
+						Upload source maps to see original file names and line numbers in stack traces from
+						minified code.{#if isOtel}{' '}Only applies to JavaScript applications.{/if}
+					</CardDescription>
+				</CardHeader>
+				<CardContent>
+					<SourceMapSetup />
+				</CardContent>
+			</Card>
 		{/if}
 	{:else}
 		<Card>

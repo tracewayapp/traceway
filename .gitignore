@@ -63,3 +63,4 @@ symbolicator-bench.txt
 
 # Benchmark tool binary, built on demand by benchmarks/scripts/cachebench-*.sh
 /backend/cachebench
+/examples/devtesting-embedded/twcache

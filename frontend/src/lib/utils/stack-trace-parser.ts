@@ -19,8 +19,11 @@ export type ParsedStackTrace = {
 };
 
 function extractPackageName(location: string): string {
-	const nodeMatch = location.match(/node_modules\/([^/]+)/);
-	if (nodeMatch) return nodeMatch[1];
+	const nodeModulesMatch = location.match(/node_modules\/([^/]+)/);
+	if (nodeModulesMatch) return nodeModulesMatch[1];
+
+	const nodeInternalMatch = location.match(/^node:[a-z_]+/);
+	if (nodeInternalMatch) return nodeInternalMatch[0];
 
 	const dartMatch = location.match(/^(package:[^/]+|dart:[^/]+)/);
 	if (dartMatch) return dartMatch[1];
@@ -45,8 +48,12 @@ export function parseStackTrace(raw: string): ParsedStackTrace {
 				const prevLine = lines[j].trim();
 				if (prevLine === '') continue;
 				if (!locationPattern.test(lines[j])) {
-					functionName = prevLine;
-					if (firstFrameIndex === -1) firstFuncNameIndex = j;
+					const messageLike =
+						firstFrameIndex === -1 && !prevLine.endsWith('()') && prevLine.includes(': ');
+					if (!messageLike) {
+						functionName = prevLine;
+						if (firstFrameIndex === -1) firstFuncNameIndex = j;
+					}
 				}
 				break;
 			}
@@ -57,7 +64,7 @@ export function parseStackTrace(raw: string): ParsedStackTrace {
 				functionName,
 				location,
 				isLibrary: location.includes('node_modules') ||
-					/^(package:flutter\/|dart:|package:collection\/)/.test(location)
+					/^(package:flutter\/|dart:|package:collection\/|node:)/.test(location)
 			});
 		}
 	}

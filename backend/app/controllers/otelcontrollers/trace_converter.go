@@ -42,7 +42,7 @@ func (k entityKind) traceType() string {
 	return ""
 }
 
-func convertTraces(ctx context.Context, projectId uuid.UUID, req *coltracepb.ExportTraceServiceRequest) (
+func convertTraces(ctx context.Context, existingProject *models.Project, projectId uuid.UUID, req *coltracepb.ExportTraceServiceRequest) (
 	endpoints []models.Endpoint,
 	tasks []models.Task,
 	spans []models.Span,
@@ -50,6 +50,7 @@ func convertTraces(ctx context.Context, projectId uuid.UUID, req *coltracepb.Exp
 	aiTraces []models.AiTrace,
 	aiConversations []aiTraceConversation,
 ) {
+	suppressEntities := existingProject != nil && clientcontrollers.IsFrontendFramework(existingProject.Framework)
 
 	for _, rs := range req.ResourceSpans {
 		resourceAttrs := rs.GetResource().GetAttributes()
@@ -94,6 +95,9 @@ func convertTraces(ctx context.Context, projectId uuid.UUID, req *coltracepb.Exp
 		spanIdToPromotion := map[string]promotion{}
 
 		for _, entry := range allSpans {
+			if suppressEntities {
+				break
+			}
 			span := entry.span
 			kind := classifySpan(span, spanById)
 			if kind == entityNone {
@@ -163,6 +167,11 @@ func convertTraces(ctx context.Context, projectId uuid.UUID, req *coltracepb.Exp
 			span := entry.span
 			spanAttrs := span.Attributes
 			allAttrs := extractAttributes(spanAttrs)
+			// A span carrying exception.stacktrace always yields an exception
+			// record (from the attribute path, or from the event when both are
+			// present), so the raw blob is never duplicated onto the
+			// endpoint/task/span rows or the exception's attribute map.
+			delete(allAttrs, "exception.stacktrace")
 			startTime := nanoToTime(span.StartTimeUnixNano)
 			endTime := nanoToTime(span.EndTimeUnixNano)
 			duration := endTime.Sub(startTime)
@@ -227,7 +236,7 @@ func convertTraces(ctx context.Context, projectId uuid.UUID, req *coltracepb.Exp
 						aiConversations = append(aiConversations, *conv)
 					}
 				}
-			} else if len(span.ParentSpanId) > 0 {
+			} else if !suppressEntities && len(span.ParentSpanId) > 0 {
 				// Non-root, unpromoted span → goes to the generic spans table,
 				// re-rooted to its nearest enclosing entity (or the OTel
 				// trace_id as fallback when the parent chain doesn't reach a
@@ -250,11 +259,14 @@ func convertTraces(ctx context.Context, projectId uuid.UUID, req *coltracepb.Exp
 					ParentSpanId: ptrSpanUUID(span.ParentSpanId),
 					Attributes:   allAttrs,
 				})
-			} else {
-				// Unpromoted root span — match historical behavior and drop
-				// it (no entity row, no span row, no exception). Common case:
-				// CLIENT-kind roots or non-HTTP SERVER roots from custom
-				// instrumentation that we don't have a dedicated page for.
+			} else if !spanCarriesException(span) {
+				// Unpromoted root span: match historical behavior and drop it
+				// (no entity row, no span row). Common case: CLIENT-kind roots
+				// or non-HTTP SERVER roots from custom instrumentation that we
+				// don't have a dedicated page for. Spans carrying an exception
+				// signal (event or exception.* span attributes, e.g. Honeycomb's
+				// global-errors zero-duration root span) fall through so the
+				// exception is still captured, without an entity or span row.
 				continue
 			}
 
@@ -263,10 +275,12 @@ func convertTraces(ctx context.Context, projectId uuid.UUID, req *coltracepb.Exp
 				traceType = "task"
 			}
 
+			hadExceptionEvent := false
 			for _, event := range span.Events {
 				if event.Name == "exception" {
+					hadExceptionEvent = true
 					exc := buildException(
-						ctx, projectId, ownerId, traceType, event,
+						ctx, existingProject, projectId, ownerId, traceType, event.Attributes, event.TimeUnixNano,
 						allAttrs, serverName, appVersion, language, entry.scopeName,
 					)
 					if owner != nil {
@@ -275,6 +289,17 @@ func convertTraces(ctx context.Context, projectId uuid.UUID, req *coltracepb.Exp
 					exceptions = append(exceptions, exc)
 				}
 			}
+
+			if !hadExceptionEvent && hasExceptionAttributes(span.Attributes) {
+				exc := buildException(
+					ctx, existingProject, projectId, ownerId, traceType, span.Attributes, span.StartTimeUnixNano,
+					allAttrs, serverName, appVersion, language, entry.scopeName,
+				)
+				if owner != nil {
+					exc.DistributedTraceId = owner.distributedTraceId
+				}
+				exceptions = append(exceptions, exc)
+			}
 		}
 	}
 	return
@@ -282,6 +307,13 @@ func convertTraces(ctx context.Context, projectId uuid.UUID, req *coltracepb.Exp
 
 func classifySpan(span *tracepb.Span, spanById map[string]*tracepb.Span) entityKind {
 	attrs := span.Attributes
+	// Honeycomb's browser SDK stamps page context (url.path etc.) on every
+	// span, including the zero-duration INTERNAL `exception` spans emitted by
+	// its global-errors instrumentation. Those must become exception rows,
+	// not endpoints, so exception-bearing INTERNAL spans are never promoted.
+	if span.Kind == tracepb.Span_SPAN_KIND_INTERNAL && hasExceptionAttributes(attrs) {
+		return entityNone
+	}
 	if (span.Kind == tracepb.Span_SPAN_KIND_SERVER || span.Kind == tracepb.Span_SPAN_KIND_INTERNAL) && hasHTTPAttributes(attrs) {
 		if len(span.ParentSpanId) == 0 {
 			return entityEndpoint
@@ -443,23 +475,24 @@ func buildTask(
 
 func buildException(
 	ctx context.Context,
+	existingProject *models.Project,
 	projectId, traceId uuid.UUID,
 	traceType string,
-	event *tracepb.Span_Event,
+	excAttrs []*commonpb.KeyValue,
+	timeUnixNano uint64,
 	spanAttrs map[string]string,
 	serverName, appVersion, language, scopeName string,
 ) models.ExceptionStackTrace {
-	eventAttrs := event.Attributes
-	excType := getStringAttribute(eventAttrs, "exception.type")
-	excMessage := getStringAttribute(eventAttrs, "exception.message")
+	excType := getStringAttribute(excAttrs, "exception.type")
+	excMessage := getStringAttribute(excAttrs, "exception.message")
 
-	stackTrace, ok := buildHoneycombStackTrace(excType, excMessage, eventAttrs)
+	stackTrace, ok := buildHoneycombStackTrace(excType, excMessage, excAttrs)
 	if !ok {
-		excStacktrace := getStringAttribute(eventAttrs, "exception.stacktrace")
+		excStacktrace := getStringAttribute(excAttrs, "exception.stacktrace")
 		stackTrace = formatExceptionStackTrace(excType, excMessage, excStacktrace)
 	}
 
-	stackTrace = otelSymbolicateJs(projectId, ctx, stackTrace, language, scopeName)
+	stackTrace = otelSymbolicateJs(existingProject, projectId, ctx, stackTrace, language, scopeName)
 
 	hash := clientcontrollers.ComputeExceptionHash(stackTrace, false)
 
@@ -476,11 +509,26 @@ func buildException(
 		TraceType:     traceType,
 		ExceptionHash: hash,
 		StackTrace:    stackTrace,
-		RecordedAt:    nanoToTime(event.TimeUnixNano),
+		RecordedAt:    nanoToTime(timeUnixNano),
 		Attributes:    attrs,
 		AppVersion:    appVersion,
 		ServerName:    serverName,
 	}
+}
+
+func hasExceptionAttributes(attrs []*commonpb.KeyValue) bool {
+	return getStringAttribute(attrs, "exception.type") != "" ||
+		getStringAttribute(attrs, "exception.message") != "" ||
+		getStringAttribute(attrs, "exception.stacktrace") != ""
+}
+
+func spanCarriesException(span *tracepb.Span) bool {
+	for _, event := range span.Events {
+		if event.Name == "exception" {
+			return true
+		}
+	}
+	return hasExceptionAttributes(span.Attributes)
 }
 
 func cloneStringMap(m map[string]string) map[string]string {

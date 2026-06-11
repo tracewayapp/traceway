@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { Bot, Plug, SquareTerminal } from "lucide-react";
+import { Bot } from "lucide-react";
 
 import { Chip } from "@/components/chip";
 import { SectionHead } from "@/components/section-head";
@@ -22,14 +22,14 @@ export const metadata: Metadata = {
 
 const SKILLS = [
   {
-    icon: Plug,
+    label: "01 · Setup",
     name: "/traceway-setup",
     description:
       "Reads your repo and wires it up: OpenTelemetry for the backend, Traceway SDKs for web and mobile. Verifies data arrives clean and grouped.",
     tags: ["OTel backends", "Web + mobile SDKs", "Source maps", "Verification"],
   },
   {
-    icon: SquareTerminal,
+    label: "02 · Debug",
     name: "/traceway",
     description:
       "Installs the traceway CLI, then uses it: exceptions, logs, endpoints, and metrics, from bug report to root cause.",
@@ -107,47 +107,6 @@ export default function AgentSkillsPage() {
             </div>
             <AgentDebugTerminal />
           </div>
-        </section>
-
-        <section className="wrap py-8">
-          <SectionHead
-            eyebrow="The skills"
-            title={
-              <>
-                Two skills, <em>one install.</em>
-              </>
-            }
-            description="Plain Markdown playbooks your agent loads on demand. One sets up your project, the other queries and debugs it."
-          />
-          <dl className="grid gap-5 md:grid-cols-2">
-            {SKILLS.map((skill) => (
-              <div key={skill.name} className="surface-card">
-                <dt className="flex items-center gap-3">
-                  <span
-                    className="grid size-8 shrink-0 place-items-center rounded-md border border-hair-2 bg-ink-3 text-a2"
-                    aria-hidden
-                  >
-                    <skill.icon className="size-4" />
-                  </span>
-                  <span className="font-mono text-sm font-medium text-fg-0">
-                    {skill.name}
-                  </span>
-                </dt>
-                <dd className="mt-4">
-                  <p className="muted text-sm leading-relaxed">
-                    {skill.description}
-                  </p>
-                  <div className="mt-5 flex flex-wrap gap-2">
-                    {skill.tags.map((tag) => (
-                      <span key={tag} className="tag">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                </dd>
-              </div>
-            ))}
-          </dl>
         </section>
 
         <section className="wrap">
@@ -250,6 +209,44 @@ export default function AgentSkillsPage() {
               alt: "Traceway endpoints grouped by route pattern with percentiles",
             }}
           />
+        </section>
+
+        <section className="wrap py-8">
+          <Eyebrow>The skills</Eyebrow>
+          <h2 className="mt-4 max-w-[24ch]">
+            Two skills, <em>one install.</em>
+          </h2>
+          <p className="muted mt-4 max-w-[640px] text-pretty">
+            Plain Markdown playbooks your agent loads on demand. One sets up
+            your project, the other queries and debugs it.
+          </p>
+
+          <dl className="mt-14 grid gap-12 md:grid-cols-2">
+            {SKILLS.map((skill) => (
+              <div key={skill.name} className="border-t border-hair pt-8">
+                <dt>
+                  <p className="font-mono text-[0.6875rem] uppercase tracking-[0.14em] text-fg-3">
+                    {skill.label}
+                  </p>
+                  <p className="mt-3 font-mono text-xl font-semibold text-fg-0 md:text-[1.375rem]">
+                    {skill.name}
+                  </p>
+                </dt>
+                <dd className="m-0">
+                  <p className="muted mt-3 max-w-[440px] text-pretty">
+                    {skill.description}
+                  </p>
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    {skill.tags.map((tag) => (
+                      <span key={tag} className="tag">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </dd>
+              </div>
+            ))}
+          </dl>
         </section>
 
         <section className="wrap py-16 text-center">

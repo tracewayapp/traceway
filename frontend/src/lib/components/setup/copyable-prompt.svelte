@@ -29,13 +29,11 @@
 		</Button>
 	</div>
 	<code
-		class="block rounded-lg bg-muted py-3 pr-24 pl-4 font-mono text-sm leading-7 break-words whitespace-pre-wrap text-muted-foreground"
+		class="block rounded-lg bg-muted py-3 pr-24 pl-4 font-mono text-sm break-words whitespace-pre-wrap text-foreground"
 	>
 		{#each parts as part, i (i)}
 			{#if part.bold}
-				<span class="rounded border bg-background px-1.5 py-0.5 break-all text-foreground"
-					>{part.text}</span
-				>
+				<span class="break-all text-muted-foreground">{part.text}</span>
 			{:else}
 				{part.text}
 			{/if}

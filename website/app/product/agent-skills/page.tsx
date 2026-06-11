@@ -257,10 +257,9 @@ export default function AgentSkillsPage() {
             <Eyebrow>Compatibility</Eyebrow>
             <h2>One format, every agent</h2>
             <p style={{ color: "var(--fg-1)", fontSize: 17 }}>
-              Skills are plain Markdown in the open SKILL.md format. If your
-              agent can read instructions, it can run Traceway. No plugin
-              marketplace, no vendor lock-in, and the skills live in the same
-              MIT-licensed repo as the rest of Traceway.
+              Skills are plain Markdown in the open SKILL.md format. No
+              marketplace, no lock-in. They live in the same MIT-licensed
+              repo as Traceway itself.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2">
               {AGENTS.map((agent) => (
@@ -279,7 +278,7 @@ export default function AgentSkillsPage() {
             Give your agent <em>production context.</em>
           </>
         }
-        description="Install the skills, point the CLI at your instance, and let the agent take the next bug."
+        description="Install the skills and let your agent take the next bug."
         primary={{
           label: "Star on GitHub",
           href: GITHUB_URL,
@@ -303,36 +302,35 @@ export default function AgentSkillsPage() {
               items={[
                 {
                   q: "What exactly is an agent skill?",
-                  a: "A skill is a Markdown playbook (SKILL.md) that compatible coding agents load when a task matches its description. Traceway ships two: one that instruments a project, and one that operates Traceway from the terminal, from installing the CLI to querying telemetry and investigating bugs. They are versioned in the open-source repo like any other code.",
+                  a: "A SKILL.md file: Markdown instructions your agent loads when a task matches. Traceway ships two, one that sets up a project and one that queries and debugs it. Both live in the open-source repo.",
                 },
                 {
                   q: "Which agents are supported?",
                   a: (
                     <>
                       <p>
-                        Any agent that understands the SKILL.md convention:
-                        Claude Code, Cursor, Codex, OpenCode, Gemini CLI,
-                        Copilot, and more.
+                        Anything that reads SKILL.md: Claude Code, Cursor,
+                        Codex, OpenCode, Gemini CLI, Copilot, and more.
                       </p>
                       <p>
                         <code>npx skills add tracewayapp/traceway</code>{" "}
-                        detects the agents on your machine and installs the
-                        skills where each one expects them.
+                        installs the skills for every agent it finds on your
+                        machine.
                       </p>
                     </>
                   ),
                 },
                 {
                   q: "Can an agent damage my production data?",
-                  a: "No. The CLI is read-only except for archiving exception groups, and every mutation requires an explicit --yes flag in non-interactive contexts. An agent can query telemetry freely but cannot change it by accident.",
+                  a: "No. The CLI is read-only apart from archiving exception groups, and that requires an explicit --yes flag.",
                 },
                 {
                   q: "Does this work with self-hosted Traceway?",
-                  a: "Yes. The CLI authenticates against any instance with traceway login --url, and profiles let one machine talk to several instances, cloud or self-hosted.",
+                  a: "Yes. traceway login --url works against any instance, and profiles let one machine use several.",
                 },
                 {
-                  q: "Do I need the CLI installed before the skills are useful?",
-                  a: "No. The /traceway skill installs it: it downloads the right binary for the platform, authenticates against your instance, and selects a project before running its first query.",
+                  q: "Do I need the CLI installed first?",
+                  a: "No. The /traceway skill installs and authenticates it before running its first query.",
                 },
               ]}
             />

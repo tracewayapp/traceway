@@ -144,10 +144,9 @@ export default function Home() {
                 <em>Hand them the telemetry.</em>
               </h2>
               <p className="muted mt-4 max-w-[460px] text-pretty">
-                One command installs the Traceway skills into Claude Code,
-                Cursor, or any agent that reads SKILL.md. Your agent queries
-                exceptions, logs, and metrics through the traceway CLI and
-                walks a bug to its root cause.
+                One command installs the skills into Claude Code, Cursor, or
+                any agent that reads SKILL.md. From there your agent queries
+                exceptions, logs, and metrics itself.
               </p>
               <div className="mt-7">
                 <SkillInstallCommand className="w-full max-w-[460px]" />

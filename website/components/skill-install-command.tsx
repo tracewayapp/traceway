@@ -32,7 +32,7 @@ export function SkillInstallCommand({
       className={cn(
         "group inline-flex max-w-full items-center rounded-lg border border-hair-2 bg-ink-1 text-left font-mono transition-colors hover:bg-ink-2",
         size === "lg"
-          ? "gap-4 py-4 pl-6 pr-3.5 text-sm sm:text-base"
+          ? "gap-3 py-3 pl-4 pr-2.5 text-xs sm:gap-4 sm:py-4 sm:pl-6 sm:pr-3.5 sm:text-base"
           : "gap-3 py-2.5 pl-4 pr-2.5 text-xs sm:text-[0.8125rem]",
         className
       )}
@@ -44,7 +44,7 @@ export function SkillInstallCommand({
       <span
         className={cn(
           "grid shrink-0 place-items-center rounded-md border border-hair bg-ink-2 transition-colors",
-          size === "lg" ? "size-9" : "size-7",
+          size === "lg" ? "size-7 sm:size-9" : "size-7",
           copied ? "text-ok" : "text-fg-2 group-hover:text-fg-0"
         )}
         aria-hidden

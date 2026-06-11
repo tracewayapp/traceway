@@ -11,8 +11,8 @@ export function AgentDebugTerminal({ className }: { className?: string }) {
           type: "tx",
           content: (
             <>
-              <span className="cmd">❯</span> /traceway-debug users report 500s
-              on checkout since this morning
+              <span className="cmd">❯</span> /traceway users report 500s on
+              checkout since this morning
             </>
           ),
         },

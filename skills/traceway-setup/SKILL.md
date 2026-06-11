@@ -15,7 +15,14 @@ Connect an existing project to a Traceway instance so it reports endpoints, span
 | **Project token** | `abc123...` | Traceway dashboard → Connection page |
 | **Source map upload token** (optional, frontend only) | `def456...` | Traceway dashboard → Connection page → Source Maps |
 
-Instance URL and project token may be provided in the invocation (e.g. `/traceway-setup with token abc123 and url https://traceway.example.com`). If either is missing, check for existing `TRACEWAY_URL` / `TRACEWAY_TOKEN` environment variables or `.env` entries in the project, otherwise ask the user before proceeding. Never invent placeholder values in committed code; wire everything through environment variables.
+Instance URL and project token may be provided in the invocation (e.g. `/traceway-setup with token abc123 and url https://traceway.example.com`). If either is missing:
+
+1. Check for existing `TRACEWAY_URL` / `TRACEWAY_TOKEN` environment variables or `.env` entries in the project.
+2. Still missing: ask the user whether they already have a Traceway account.
+   - **Yes**: ask them to open their Traceway dashboard, go to the project's **Connection** page, and paste the instance URL and project token here. If no project exists yet for this app, have them create one first, picking the framework that matches this codebase.
+   - **No**: send them to the register page to create an account: https://cloud.tracewayapp.com/register (or `https://<their-instance>/register` if they are self-hosting). After registering and creating a project, the Connection page shows the token; ask them to paste the URL and token here.
+
+Do not proceed without real values. Never invent placeholder values in committed code; wire everything through environment variables.
 
 ## Integration Paths
 

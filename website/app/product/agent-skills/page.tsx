@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { Bot, Bug, Github, Plug, SquareTerminal } from "lucide-react";
+import { Bot, Plug, SquareTerminal } from "lucide-react";
 
 import { Chip } from "@/components/chip";
 import { SectionHead } from "@/components/section-head";
@@ -26,18 +26,14 @@ const SKILLS = [
     name: "/traceway-setup",
     description:
       "Instruments a project from scratch. Reads the repo, wires OpenTelemetry exporters for the backend and Traceway SDKs for web and mobile, then verifies that clean, grouped data arrives.",
-  },
-  {
-    icon: Bug,
-    name: "/traceway-debug",
-    description:
-      "Investigates a bug end to end. Pulls grouped exceptions, queries logs around the failure, checks endpoint health and metrics, and correlates it all with your code.",
+    tags: ["OTel backends", "Web + mobile SDKs", "Source maps", "Verification"],
   },
   {
     icon: SquareTerminal,
-    name: "/traceway-install-cli",
+    name: "/traceway",
     description:
-      "Installs the traceway CLI, authenticates against your instance, cloud or self-hosted, and selects the project so every other skill can query it.",
+      "Operates Traceway day to day. Installs and authenticates the traceway CLI, queries exceptions, logs, endpoints, and metrics, and walks a bug from report to root cause.",
+    tags: ["CLI install", "Telemetry queries", "Debugging", "Issue triage"],
   },
 ];
 
@@ -56,35 +52,36 @@ export default function AgentSkillsPage() {
       <section className="hero hero-product relative">
         <AuroraBackground variant="hero" />
         <div className="wrap relative z-10">
-          <Chip>
-            <Bot className="h-3 w-3 inline mr-1" />
-            Agent Skills
-          </Chip>
-          <h1 className="mt-6">
-            AI-first observability. <em>Your agent does the debugging.</em>
-          </h1>
-          <p className="hero-sub">
-            Install the Traceway skills once and your coding agent can
-            instrument your app, query production telemetry through the
-            agent-first traceway CLI, and take a bug from report to root
-            cause.
-          </p>
-          <div className="hero-cta-row">
-            <SkillInstallCommand />
-            <Link
-              href={GITHUB_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-ghost"
-            >
-              <Github className="h-4 w-4" />
-              View on GitHub
-            </Link>
+          <div className="flex flex-col items-center text-center">
+            <Chip>
+              <Bot className="h-3 w-3 inline mr-1" />
+              Agent Skills
+            </Chip>
+            <h1 className="mt-6 max-w-[30ch]">
+              AI-first observability. <em>Your agent does the debugging.</em>
+            </h1>
+            <p className="hero-sub text-pretty">
+              Your agent sets up Traceway, queries production telemetry, and
+              finds the root cause.
+            </p>
+            <div className="mt-8 w-full max-w-[640px]">
+              <SkillInstallCommand size="lg" className="w-full" />
+            </div>
+            <p className="dim mt-5 font-mono text-[0.75rem]">
+              Works with Claude Code, Cursor, Codex, and any agent that reads
+              SKILL.md.
+            </p>
+            <p className="mt-3 font-mono text-[0.6875rem] uppercase tracking-[0.08em]">
+              <Link
+                href={GITHUB_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-fg-2 hover:text-a2 transition-colors"
+              >
+                View on GitHub →
+              </Link>
+            </p>
           </div>
-          <p className="dim mt-5 font-mono text-[0.75rem]">
-            Works with Claude Code, Cursor, Codex, and any agent that reads
-            SKILL.md.
-          </p>
         </div>
       </section>
 
@@ -93,12 +90,12 @@ export default function AgentSkillsPage() {
           eyebrow="The skills"
           title={
             <>
-              Three skills, <em>one install.</em>
+              Two skills, <em>one install.</em>
             </>
           }
-          description="Skills are plain Markdown playbooks your agent loads on demand. Each one encodes how a Traceway engineer would do the job, so your agent does it the same way."
+          description="Skills are plain Markdown playbooks your agent loads on demand. One sets your project up; the other runs the day-to-day investigation."
         />
-        <dl className="grid gap-5 md:grid-cols-3">
+        <dl className="grid gap-5 md:grid-cols-2">
           {SKILLS.map((skill) => (
             <div key={skill.name} className="surface-card">
               <dt className="flex items-center gap-3">
@@ -112,8 +109,17 @@ export default function AgentSkillsPage() {
                   {skill.name}
                 </span>
               </dt>
-              <dd className="muted mt-4 text-sm leading-relaxed">
-                {skill.description}
+              <dd className="mt-4">
+                <p className="muted text-sm leading-relaxed">
+                  {skill.description}
+                </p>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  {skill.tags.map((tag) => (
+                    <span key={tag} className="tag">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
               </dd>
             </div>
           ))}
@@ -300,7 +306,7 @@ export default function AgentSkillsPage() {
               items={[
                 {
                   q: "What exactly is an agent skill?",
-                  a: "A skill is a Markdown playbook (SKILL.md) that compatible coding agents load when a task matches its description. Traceway ships three: one to instrument a project, one to investigate bugs with production telemetry, and one to install and authenticate the traceway CLI. They are versioned in the open-source repo like any other code.",
+                  a: "A skill is a Markdown playbook (SKILL.md) that compatible coding agents load when a task matches its description. Traceway ships two: one that instruments a project, and one that operates Traceway from the terminal, from installing the CLI to querying telemetry and investigating bugs. They are versioned in the open-source repo like any other code.",
                 },
                 {
                   q: "Which agents are supported?",
@@ -329,7 +335,7 @@ export default function AgentSkillsPage() {
                 },
                 {
                   q: "Do I need the CLI installed before the skills are useful?",
-                  a: "No. The /traceway-install-cli skill handles that: it downloads the right binary for the platform, authenticates, and selects a project. The debug skill calls it automatically when the CLI is missing.",
+                  a: "No. The /traceway skill installs it: it downloads the right binary for the platform, authenticates against your instance, and selects a project before running its first query.",
                 },
               ]}
             />

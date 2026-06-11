@@ -132,36 +132,37 @@ export default function Home() {
         </div>
       </section>
 
-      {/* AI-FIRST: install the agent skills, agent session terminal */}
-      <section className="pb-24">
-        <div className="wrap grid gap-14 md:grid-cols-[10fr_11fr] items-center">
-          <div>
-            <Eyebrow>AI-first</Eyebrow>
-            <h2 className="mt-4">
-              Your agents can fix production. <em>Hand them the telemetry.</em>
-            </h2>
-            <p className="muted mt-4 max-w-[460px] text-pretty">
-              One command installs the Traceway skills into Claude Code,
-              Cursor, or any agent that reads SKILL.md. Your agent queries
-              exceptions, logs, and metrics through the traceway CLI and
-              walks a bug to its root cause.
-            </p>
-            <div className="mt-7">
-              <SkillInstallCommand />
-            </div>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Link href="/product/agent-skills" className="btn btn-ghost">
-                Explore Agent Skills
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </div>
-          </div>
-          <AgentDebugTerminal />
-        </div>
-      </section>
-
-      {/* WHITE BAND: community, deploy, detect/resolve, cost render on white */}
+      {/* WHITE BAND: AI-first, community, deploy, detect/resolve, cost render on white */}
       <div className="band-light">
+        {/* AI-FIRST: install the agent skills, agent session terminal */}
+        <section className="pt-20">
+          <div className="wrap grid gap-14 md:grid-cols-[10fr_11fr] items-center">
+            <div>
+              <Eyebrow>AI-first</Eyebrow>
+              <h2 className="mt-4">
+                Your agents can fix production.{" "}
+                <em>Hand them the telemetry.</em>
+              </h2>
+              <p className="muted mt-4 max-w-[460px] text-pretty">
+                One command installs the Traceway skills into Claude Code,
+                Cursor, or any agent that reads SKILL.md. Your agent queries
+                exceptions, logs, and metrics through the traceway CLI and
+                walks a bug to its root cause.
+              </p>
+              <div className="mt-7">
+                <SkillInstallCommand className="w-full max-w-[460px]" />
+              </div>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Link href="/product/agent-skills" className="btn btn-ghost">
+                  Explore Agent Skills
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </div>
+            </div>
+            <AgentDebugTerminal />
+          </div>
+        </section>
+
         {/* COMMUNITY: built in the open */}
         <section className="py-20">
           <div className="wrap grid gap-14 md:grid-cols-[11fr_9fr] items-center">

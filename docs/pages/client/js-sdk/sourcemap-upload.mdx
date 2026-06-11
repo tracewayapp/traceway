@@ -10,6 +10,12 @@ npm install -D @tracewayapp/sourcemap-upload
 
 This provides the `traceway-sourcemaps` CLI command.
 
+## Getting an Upload Token
+
+Uploads authenticate with a dedicated **upload token**, not the project token your SDK uses. Generate it in the dashboard: open the **Connection** page for your project, scroll to the **Source Maps** section, and click **Generate Upload Token**. The token is per-project and can be copied from the same place later.
+
+Treat it like any other CI secret. **Regenerate** issues a new token and invalidates the current one immediately, so any pipeline still using the old token fails to upload until its secret is updated. Members with the `readonly` role cannot generate or regenerate tokens; ask an organization admin.
+
 ## Usage
 
 ```bash
@@ -20,6 +26,8 @@ traceway-sourcemaps \
 ```
 
 The CLI recursively finds all `*.map` files in the specified directory and uploads them to Traceway via `POST /api/sourcemaps/upload`, together with the sibling `.js`/`.cjs`/`.mjs` bundle next to each map when one exists. The bundle is what lets the backend resolve the enclosing function name for each frame; without it, symbolication still resolves file, line, and column but leaves function names as the browser reported them.
+
+On self-hosted instances, uploaded files land in the backend's [blob storage](/server/storage); configure S3 or a persistent volume there before wiring uploads into CI, or the maps disappear when the container is recreated.
 
 ## CLI Options
 
@@ -89,6 +97,38 @@ Add the upload step to your `package.json` scripts:
 ```
 
 Make sure `TRACEWAY_URL` and `TRACEWAY_SOURCEMAP_TOKEN` are set in your environment.
+
+## HTTP API
+
+The CLI is a thin wrapper around a single endpoint, so any CI pipeline can upload without Node.js:
+
+```
+POST /api/sourcemaps/upload
+Authorization: Bearer {upload token}
+Content-Type: multipart/form-data
+```
+
+Files go in the repeatable multipart field `files`. Upload each bundle together with its map:
+
+```bash
+curl --fail -X POST "https://your-traceway-instance.com/api/sourcemaps/upload" \
+  -H "Authorization: Bearer $TRACEWAY_SOURCEMAP_TOKEN" \
+  -F "files=@dist/assets/index-DZ8aDdLF.js" \
+  -F "files=@dist/assets/index-DZ8aDdLF.js.map"
+```
+
+The contract:
+
+| Behavior | Detail |
+|----------|--------|
+| Accepted extensions | `.map`, `.js`, `.cjs`, `.mjs`. Files with any other extension are silently skipped, not rejected. |
+| Size limit | 50MB per file. A larger file fails the request with `400` and an error message. |
+| Auth failure | Missing or invalid token returns `401`. |
+| Response | `200` with `{"uploaded": N}`, counting only the stored files (skipped files are excluded). |
+| Debug IDs | Detected server-side in the uploaded content; no extra fields or flags needed. |
+| Effect | Immediate. Cached resolvers for the uploaded filenames are evicted before the response, and precompiled [`.tw` resolvers](/learn/symbolication-js#the-tw-resolver-format) are rebuilt in the background so the first exception after a deploy finds a warm cache. |
+
+The multipart filename becomes the stored name, and stack frames match against the basename of the frame's file, so send plain filenames without directory paths. `curl -F` already does this: it uses the basename of the local path.
 
 ## How Maps Are Matched
 

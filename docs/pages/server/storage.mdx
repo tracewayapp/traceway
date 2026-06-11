@@ -1,0 +1,80 @@
+# Blob Storage
+
+The backend keeps binary artifacts outside the databases, behind a single storage interface with two backends: the local filesystem (default) and S3. Everything in this page applies to all deployment flavors ([All-in-One](/server/all-in-one), [Minimal](/server/minimal), [Docker Compose](/server/docker-compose), [SQLite](/server/sqlite), [Haloy](/server/haloy)).
+
+What lives in blob storage:
+
+| Artifact | Keys | Written by |
+|----------|------|-----------|
+| Source maps and bundles | `sourcemaps/{projectId}/{filename}` and `sourcemaps/{projectId}/by-debug-id/{debugId}.js[.map]` | [`POST /api/sourcemaps/upload`](/client/js-sdk/sourcemap-upload), typically from CI |
+| Compiled `.tw` resolvers | same keys with the `.map`/`.js` suffix replaced by `.tw` | the [symbolication cache](/learn/symbolication-js#cache-backends-memory-and-disk), automatically |
+| Session recording segments | `recordings/{projectId}/...` | the [recording uploader](/server/capacity-monitoring) |
+| AI trace payloads | `ai-traces/{projectId}/...` | OTLP ingest |
+
+If you upload source maps from CI, this is where they land. Configure either a persistent volume (local mode) or S3 before relying on those uploads; with neither, the files sit inside the container and are lost when it is recreated, and symbolication silently stops matching.
+
+## Local Storage (default)
+
+With `STORAGE_TYPE` unset or set to `local`, blobs are written under `STORAGE_PATH`, which defaults to `./storage` relative to the backend working directory.
+
+Where that resolves to per image:
+
+| Image | Path | Persistence |
+|-------|------|-------------|
+| All-in-One (`traceway:latest`) | `/app/storage` | not a declared volume, mount one yourself |
+| Minimal (`traceway:minimal`) | `/app/storage` | not a declared volume, mount one yourself |
+| SQLite (`traceway:sqlite`) | `/data/storage` | covered by the image's `/data` volume |
+
+For the all-in-one and minimal images, add a mount so uploads survive container recreation:
+
+```bash
+docker run -d --name traceway \
+  ... \
+  -v traceway-storage:/app/storage \
+  ghcr.io/tracewayapp/traceway:minimal
+```
+
+Alternatively set `STORAGE_PATH` to a path that is already on a mounted volume.
+
+## S3 Storage
+
+Set `STORAGE_TYPE=s3` to offload blobs to S3 or any S3-compatible service (MinIO, Cloudflare R2, DigitalOcean Spaces). No volume is needed for blobs in this mode, and multiple backend instances share the same artifacts.
+
+```bash
+docker run -d --name traceway \
+  ... \
+  -e STORAGE_TYPE="s3" \
+  -e S3_BUCKET="your-bucket" \
+  -e S3_REGION="us-east-1" \
+  -e S3_ACCESS_KEY="your-access-key" \
+  -e S3_SECRET_KEY="your-secret-key" \
+  ghcr.io/tracewayapp/traceway:minimal
+```
+
+For non-AWS providers add `-e S3_ENDPOINT="https://s3.example.com"`, which also switches the client to path-style URLs. If `S3_ACCESS_KEY` and `S3_SECRET_KEY` are omitted, the AWS SDK falls back to the default credential chain (IAM role, environment, shared config), so on EC2/ECS/EKS you can rely on instance or task roles and pass no static keys at all.
+
+The backend needs `GetObject`, `PutObject`, and `DeleteObject` on the bucket. Startup fails fast if `S3_BUCKET` or `S3_REGION` is missing.
+
+## Configuration Reference
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `STORAGE_TYPE` | `local` | Blob storage backend. `local` or `s3` |
+| `STORAGE_PATH` | `./storage` | Folder for local blob storage (`/data/storage` in the SQLite image). Ignored when `STORAGE_TYPE=s3` |
+| `S3_BUCKET` | *(unset)* | Required when `STORAGE_TYPE=s3` |
+| `S3_REGION` | *(unset)* | Required when `STORAGE_TYPE=s3` |
+| `S3_ACCESS_KEY` | *(unset)* | Optional. Falls back to the default AWS credential chain when unset |
+| `S3_SECRET_KEY` | *(unset)* | Optional. Pair with `S3_ACCESS_KEY` |
+| `S3_ENDPOINT` | *(unset)* | Optional. Set for S3-compatible providers (MinIO, R2, Spaces). Enables path-style URLs |
+
+## Retention
+
+The `SESSION_RECORDING_RETENTION_DAYS` worker prunes recording files on local disk only; it is a no-op when `STORAGE_TYPE=s3`. Use a bucket lifecycle rule on the `recordings/` prefix instead.
+
+Source maps are retained indefinitely in both modes: the most recent upload of each filename is what symbolication uses, and stale `.tw` resolvers are replaced automatically on upload. If you upgraded from 1.7, the old versioned `sourcemaps/{projectId}/{version}/...` paths are dead data once the [flatten migration](/server/upgrade-1-8) completes and can be deleted.
+
+## Related Pages
+
+- [Source Maps](/client/js-sdk/sourcemap-upload): uploading maps from CI
+- [Symbolication (JS)](/learn/symbolication-js): how `.tw` resolvers and the cache tiers use this storage
+- [SQLite](/server/sqlite): single-container deployment with the same storage options

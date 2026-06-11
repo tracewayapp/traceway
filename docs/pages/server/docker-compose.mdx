@@ -25,6 +25,8 @@ services:
       POSTGRES_PASSWORD: "traceway"
       POSTGRES_SSLMODE: "disable"
       JWT_SECRET: "change-this-to-a-secure-secret-at-least-32-chars"
+    volumes:
+      - traceway-storage:/app/storage
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -66,6 +68,7 @@ services:
 volumes:
   clickhouse-data:
   postgres-data:
+  traceway-storage:
 ```
 
 ```bash
@@ -73,6 +76,8 @@ docker compose up -d
 ```
 
 After starting, open `http://localhost/register` to create your first account.
+
+The `traceway-storage` volume holds [blob storage](/server/storage): uploaded source maps, session recordings, and AI traces. Without it those files are lost when the container is recreated. To use S3 instead of a volume, see [Blob Storage](/server/storage).
 
 The `docker-compose.yml` in the repository root builds from source instead. Use that if you are actively developing Traceway or need to run a modified build (`docker compose up --build`).
 
@@ -95,6 +100,8 @@ Edit the environment variables in your compose file as needed:
 | `POSTGRES_SSLMODE` | `disable` | PostgreSQL SSL mode |
 | `JWT_SECRET` | `change-this-to-a-secure-secret-at-least-32-chars` | JWT signing secret (min 32 chars) |
 | `APP_BASE_URL` | *(none)* | Public URL of your Traceway instance (e.g. `https://traceway.example.com`). Used for SDK setup instructions, email links, and OAuth callback URLs. |
+| `STORAGE_TYPE` | `local` | Blob storage backend for source maps, session recordings, and AI traces: `local` or `s3`. See [Blob Storage](/server/storage) for the S3 variables. |
+| `STORAGE_PATH` | `./storage` | Folder for local blob storage, `/app/storage` in the minimal image. Mount a volume there. Ignored when `STORAGE_TYPE=s3`. |
 | `SESSION_RECORDING_RETENTION_DAYS` | `30` | Days to keep session recording files on disk under `STORAGE_PATH/recordings/`. A worker deletes older files hourly and on startup. No effect when `STORAGE_TYPE=s3`. Set to `0` to disable. |
 
 > ClickHouse table TTLs (`metric_points`, `log_records`, etc.) are managed at the schema level; this stack does not run the SQLite retention worker.

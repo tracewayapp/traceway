@@ -11,6 +11,7 @@ docker pull ghcr.io/tracewayapp/traceway:minimal
 
 docker run -d --name traceway \
   -p 80:80 \
+  -v traceway-storage:/app/storage \
   -e CLICKHOUSE_SERVER="clickhouse-host:9000" \
   -e CLICKHOUSE_DATABASE="traceway" \
   -e CLICKHOUSE_USERNAME="default" \
@@ -27,6 +28,8 @@ docker run -d --name traceway \
 ```
 
 After starting, open `http://localhost/register` to create your first account.
+
+The `traceway-storage` volume holds [blob storage](/server/storage): uploaded source maps, session recordings, and AI traces. Without it those files are lost when the container is recreated. To use S3 instead of a volume, see [Blob Storage](/server/storage).
 
 ## Build from Source
 
@@ -55,6 +58,8 @@ Then use `traceway:minimal` instead of `ghcr.io/tracewayapp/traceway:minimal` in
 | `POSTGRES_SSLMODE` | PostgreSQL SSL mode | `disable` |
 | `JWT_SECRET` | JWT signing secret (min 32 chars) | `your-secret-here` |
 | `APP_BASE_URL` | Public URL of your instance. Used for SDK setup instructions, email links, and OAuth callback URLs. | `https://traceway.example.com` |
+| `STORAGE_TYPE` | Blob storage backend for source maps, session recordings, and AI traces: `local` (default) or `s3`. See [Blob Storage](/server/storage) for the S3 variables. | `local` |
+| `STORAGE_PATH` | Folder for local blob storage. Defaults to `./storage`, which is `/app/storage` in this image. Mount a volume there. Ignored when `STORAGE_TYPE=s3`. | `/app/storage` |
 | `SESSION_RECORDING_RETENTION_DAYS` | Days to keep on-disk session recordings under `STORAGE_PATH/recordings/`. Defaults to `30`. Worker runs hourly and on startup. `0` disables; no effect when `STORAGE_TYPE=s3`. | `30` |
 
 ## SSO (optional)

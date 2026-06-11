@@ -23,6 +23,7 @@ const COLUMNS: Column[] = [
   {
     heading: "Specialized",
     links: [
+      { label: "Agent Skills", href: "/product/agent-skills" },
       { label: "AI Tracing", href: "/product/ai-tracing" },
       { label: "Performance", href: "/product/performance" },
       { label: "Flutter Session Replay", href: "/product/flutter-session-replay" },

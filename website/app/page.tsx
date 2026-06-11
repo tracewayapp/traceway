@@ -15,6 +15,8 @@ import { Eyebrow } from "@/components/eyebrow";
 import { DiscordIcon } from "@/components/discord-icon";
 import { FinalCTA } from "@/components/final-cta";
 import { Terminal } from "@/components/terminal";
+import { SkillInstallCommand } from "@/components/skill-install-command";
+import { AgentDebugTerminal } from "@/components/agent-debug-terminal";
 import { StatsStrip } from "@/components/stats-strip";
 import { HeroEmailCTA } from "@/components/hero-email-cta";
 import { getCalendlyUrl } from "@/lib/calendly";
@@ -127,6 +129,34 @@ export default function Home() {
               </Link>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* AI-FIRST: install the agent skills, agent session terminal */}
+      <section className="pb-24">
+        <div className="wrap grid gap-14 md:grid-cols-[10fr_11fr] items-center">
+          <div>
+            <Eyebrow>AI-first</Eyebrow>
+            <h2 className="mt-4">
+              Your agents can fix production. <em>Hand them the telemetry.</em>
+            </h2>
+            <p className="muted mt-4 max-w-[460px] text-pretty">
+              One command installs the Traceway skills into Claude Code,
+              Cursor, or any agent that reads SKILL.md. Your agent queries
+              exceptions, logs, and metrics through the traceway CLI and
+              walks a bug to its root cause.
+            </p>
+            <div className="mt-7">
+              <SkillInstallCommand />
+            </div>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link href="/product/agent-skills" className="btn btn-ghost">
+                Explore Agent Skills
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+          </div>
+          <AgentDebugTerminal />
         </div>
       </section>
 

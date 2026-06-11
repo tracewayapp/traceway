@@ -14,6 +14,7 @@ import {
   Workflow,
   Activity,
   Smartphone,
+  Bot,
 } from "lucide-react";
 import { MobileNav } from "@/components/mobile-nav";
 import { DiscordIcon } from "@/components/discord-icon";
@@ -61,6 +62,12 @@ const PILLARS: NavItem[] = [
 ];
 
 const SPECIALIZED: NavItem[] = [
+  {
+    title: "Agent Skills",
+    description: "Your AI agent debugs with Traceway.",
+    href: "/product/agent-skills",
+    icon: Bot,
+  },
   {
     title: "AI Tracing",
     description: "LLM cost, tokens, latency, conversations.",

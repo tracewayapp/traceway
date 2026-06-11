@@ -1,6 +1,22 @@
-# Add Traceway to a Project
+---
+name: traceway-setup-project
+description: Connect a project to a Traceway instance so it reports endpoints, spans, errors, and metrics. Use when the user wants to add Traceway (or OpenTelemetry tracing that exports to Traceway) to a backend, frontend, or mobile project. Accepts a project token and instance URL, e.g. "/traceway-setup-project with token abc123".
+---
 
-Add OpenTelemetry tracing to an existing project so it reports to a Traceway instance.
+# Set Up Traceway in a Project
+
+Connect an existing project to a Traceway instance so it reports endpoints, spans, errors, and metrics.
+
+## Step 0: Gather Connection Info
+
+Two values are required:
+
+| Value | Example | Where to find it |
+|---|---|---|
+| **Instance URL** | `https://traceway.example.com` | The URL of the Traceway dashboard |
+| **Project token** | `abc123...` | Traceway dashboard → Connection page |
+
+Both may be provided in the invocation (e.g. `/traceway-setup-project with token abc123 and url https://traceway.example.com`). If either is missing, check for existing `TRACEWAY_URL` / `TRACEWAY_TOKEN` environment variables or `.env` entries in the project — otherwise ask the user before proceeding. Never invent placeholder values in committed code; wire everything through environment variables.
 
 ## What Traceway Needs
 
@@ -25,26 +41,26 @@ For the integration to work correctly, the instrumentation MUST capture:
 
 ## Step 1: Identify the Framework
 
-Detect the framework by reading `package.json` (Node.js), `go.mod` (Go), `composer.json` (PHP), or asking the user.
+Detect the framework by reading `package.json` (Node.js), `go.mod` (Go), `composer.json` (PHP), `requirements.txt`/`pyproject.toml` (Python), `pubspec.yaml` (Flutter), `build.gradle` (Android), or asking the user.
 
 ## Step 2: Follow the Framework-Specific Guide
 
 ### Hono (Node.js)
-Follow `skills/add-traceway-to-hono-project.md`. Uses `@hono/otel` middleware — do NOT use `@opentelemetry/instrumentation-http` (it doesn't work with Hono's ESM imports on Node 22+).
+Follow `hono.md` in this skill directory. Uses `@hono/otel` middleware — do NOT use `@opentelemetry/instrumentation-http` (it doesn't work with Hono's ESM imports on Node 22+).
 - Endpoints: `@hono/otel` sets `http.route` automatically
 - Status codes: `@hono/otel` sets them automatically
 - Exceptions: `@hono/otel` records thrown errors automatically
 - Tasks: No built-in scheduler — use `SpanKind.CONSUMER` manually for background work
 
 ### NestJS (Node.js)
-Follow `skills/add-traceway-to-nestjs-project.md`. Simplest integration — Express auto-instrumentation handles everything.
+Follow `nestjs.md` in this skill directory. Simplest integration — Express auto-instrumentation handles everything.
 - Endpoints: `instrumentation-express` sets `http.route` automatically
 - Status codes: `instrumentation-http` sets them automatically
 - Exceptions: Express error handling records them automatically
 - Tasks: Wrap `@nestjs/schedule` cron jobs and `@nestjs/bull` queue consumers with `SpanKind.CONSUMER` spans
 
 ### Next.js (Node.js)
-Follow `skills/add-traceway-to-nextjs-project.md`. Requires `withRoute()` wrapper for API routes and `@prisma/instrumentation` for database tracing.
+Follow `nextjs.md` in this skill directory. Requires `withRoute()` wrapper for API routes and `@prisma/instrumentation` for database tracing.
 - Endpoints: `withRoute()` helper must be added manually to every API route handler
 - Status codes: Set by the HTTP instrumentation
 - Exceptions: `withRoute()` catches and records thrown errors
@@ -56,14 +72,18 @@ Follow `skills/add-traceway-to-nextjs-project.md`. Requires `withRoute()` wrappe
 - No app code changes needed — auto-instrumentation captures routes, status codes, errors
 - Start with `node --import ./instrumentation.js server.js`
 - Tasks: Use `SpanKind.CONSUMER` manually for background work
-- Full docs: `docs/pages/client/node-sdk/index.mdx`
+- Full docs: https://docs.tracewayapp.com/client/node-sdk
 
 ### Gin / Chi / Fiber / FastHTTP / stdlib (Go)
 - Install the framework-specific middleware: `go get go.tracewayapp.com/tracewaygin` (or `tracewaychi`, `tracewayfiber`, `tracewayfasthttp`, `tracewayhttp`)
 - Add middleware: `r.Use(tracewaygin.New("token@http://traceway:8082/api/report"))`
 - Reports via Traceway's native protocol (`/api/report`), not OTel
 - Endpoints, status codes, exceptions, and tasks are all handled by the Go SDK automatically
-- Full docs: `docs/pages/client/gin-middleware/index.mdx` (or the corresponding framework directory)
+- Full docs: https://docs.tracewayapp.com/client/gin-middleware (or the corresponding framework page)
+
+### Django (Python)
+- Uses OTel auto-instrumentation for Django
+- Full docs: https://docs.tracewayapp.com/client/django
 
 ### Symfony (PHP)
 - Install: `composer require traceway/opentelemetry-symfony open-telemetry/exporter-otlp php-http/guzzle7-adapter`
@@ -71,17 +91,25 @@ Follow `skills/add-traceway-to-nextjs-project.md`. Requires `withRoute()` wrappe
 - Add `\OpenTelemetry\SDK\SdkAutoloader::autoload()` to `public/index.php`
 - Endpoints and status codes: handled by Symfony OTel auto-instrumentation
 - Tasks: Symfony Messenger consumers are auto-instrumented as Tasks
-- Full docs: `docs/pages/client/symfony/index.mdx`
+- Full docs: https://docs.tracewayapp.com/client/symfony
 
-### React / Vue / Svelte / jQuery (Frontend)
+### Laravel (PHP)
+- Full docs: https://docs.tracewayapp.com/client/laravel
+
+### React / Vue / Svelte / jQuery / plain JS (Frontend)
 - Install the framework-specific Traceway SDK: `npm install @tracewayapp/react` (or `@tracewayapp/vue`, `@tracewayapp/svelte`, `@tracewayapp/jquery`)
 - These are client-side SDKs that report to `/api/report`, not OTel
-- Full docs: `docs/pages/client/react/index.mdx` (or the corresponding framework directory)
+- They capture JS errors (as Issues), page loads, and web vitals; upload source maps for readable stack traces from minified bundles
+- Full docs: https://docs.tracewayapp.com/client/react (or `vue`, `svelte`, `jquery`, `js-sdk` for plain JavaScript)
+
+### React Native / Flutter / Android (Mobile)
+- Install the platform Traceway SDK and initialize it with the instance URL + project token at app startup
+- Full docs: https://docs.tracewayapp.com/client/react-native, https://docs.tracewayapp.com/client/flutter, https://docs.tracewayapp.com/client/android
 
 ### Cloudflare Workers
 - Uses Cloudflare's built-in OTLP export, not the Node SDK
 - Scheduled handlers (`scheduled` event) create root spans automatically
-- Full docs: `docs/pages/client/cloudflare/index.mdx`
+- Full docs: https://docs.tracewayapp.com/client/cloudflare
 
 ### Any Other Language (Generic OTel)
 - Use any OpenTelemetry SDK for the language
@@ -89,7 +117,7 @@ Follow `skills/add-traceway-to-nextjs-project.md`. Requires `withRoute()` wrappe
 - Set `Authorization: Bearer <project-token>` header
 - Ensure `http.route` is set on root SERVER spans (not just `url.path`)
 - Use `SpanKind.CONSUMER` for background/scheduled work
-- Full docs: `docs/pages/client/otel/index.mdx`
+- Full docs: https://docs.tracewayapp.com/client/otel
 
 ## Instrumenting Background Tasks (All Frameworks)
 
@@ -129,3 +157,16 @@ Without `SpanKind.CONSUMER`, the span would either be classified as an Endpoint 
 - **Environment variables**: `TRACEWAY_URL` and `TRACEWAY_TOKEN` (or standard `OTEL_*` vars)
 - **Auto-instrumented child spans** (CJS packages only): `pg`, `mysql2`, `mongodb`, `ioredis`, `redis`, Prisma (with `@prisma/instrumentation`), outgoing `fetch()` via `instrumentation-undici`
 - **Not auto-instrumented**: SQLite (`better-sqlite3`), custom business logic — use `tracer.startActiveSpan()` manually
+
+## Step 3: Verify
+
+1. Start the app and hit a few endpoints (or trigger an error on purpose).
+2. Check the Traceway dashboard:
+   - **Endpoints page** — routes appear grouped by pattern (e.g. `GET /api/users/:id`), not by literal URL
+   - **Issues page** — thrown errors appear with stack traces
+   - **Endpoint detail → Spans tab** — database queries and outgoing calls appear as children
+3. If the `traceway` CLI is installed and authenticated, verify from the terminal instead:
+   ```bash
+   traceway endpoints list --since 15m
+   traceway exceptions list --since 15m
+   ```

@@ -12,8 +12,8 @@
   },
   "devDependencies": {
     "@rollup/plugin-terser": "^0.4.4",
-    "@tracewayapp/bundler-plugin": "file:../../../../js-client/packages/bundler-plugin",
-    "@tracewayapp/sourcemap-upload": "file:../../../../js-client/packages/sourcemap-upload",
+    "@tracewayapp/bundler-plugin": "^1.2.0",
+    "@tracewayapp/sourcemap-upload": "^1.2.0",
     "rollup": "^4.0.0",
     "webpack": "^5.107.2",
     "webpack-cli": "^7.0.3"

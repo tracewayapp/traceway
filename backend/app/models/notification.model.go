@@ -35,21 +35,19 @@ type NotificationRule struct {
 	UpdatedAt       time.Time       `json:"updatedAt" lit:"updated_at"`
 }
 
-type NotificationHistory struct {
-	Id           int       `json:"id" lit:"id"`
-	ProjectId    uuid.UUID `json:"projectId" lit:"project_id"`
-	RuleId       *int      `json:"ruleId" lit:"rule_id"`
-	ChannelId    *int      `json:"channelId" lit:"channel_id"`
-	RuleType     string    `json:"ruleType" lit:"rule_type"`
-	RuleName     string    `json:"ruleName" lit:"rule_name"`
-	ChannelName  string    `json:"channelName" lit:"channel_name"`
-	Severity     string    `json:"severity" lit:"severity"`
-	Subject      string    `json:"subject" lit:"subject"`
-	Body         string    `json:"body" lit:"body"`
-	Status       string    `json:"status" lit:"status"`
-	ErrorMessage *string   `json:"errorMessage" lit:"error_message"`
-	URL          string    `json:"url" lit:"url"`
-	CreatedAt    time.Time `json:"createdAt" lit:"created_at"`
+type NotificationHistoryEntry struct {
+	RuleId       int       `json:"ruleId"`
+	RuleType     string    `json:"ruleType"`
+	RuleName     string    `json:"ruleName"`
+	ChannelType  string    `json:"channelType"`
+	ChannelName  string    `json:"channelName"`
+	Severity     string    `json:"severity"`
+	Subject      string    `json:"subject"`
+	Body         string    `json:"body"`
+	Status       string    `json:"status"`
+	ErrorMessage string    `json:"errorMessage"`
+	URL          string    `json:"url"`
+	CreatedAt    time.Time `json:"createdAt"`
 }
 
 type NotificationRuleWithChannel struct {

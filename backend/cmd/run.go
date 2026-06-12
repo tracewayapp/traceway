@@ -264,6 +264,7 @@ func applyEnvOverrides(cfg *config.Cfg) {
 		{"OIDC_TOKEN_URL", &cfg.OIDCTokenURL},
 		{"OIDC_USER_INFO_URL", &cfg.OIDCUserInfoURL},
 		{"DISABLE_PASSWORD_LOGIN", &cfg.DisablePasswordLogin},
+		{"NOTIFICATION_POLL_SECONDS", &cfg.NotificationPollSeconds},
 		{"SOURCEMAP_CACHE_MAX_ENTRIES", &cfg.SourceMapCacheMaxEntries},
 		{"SOURCEMAP_CACHE_MAX_BYTES_MB", &cfg.SourceMapCacheMaxBytesMB},
 		{"SOURCEMAP_CACHE_TYPE", &cfg.SourceMapCacheType},

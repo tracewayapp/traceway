@@ -61,15 +61,16 @@
 	}
 
 	interface NotificationHistory {
-		id: number;
+		ruleId: number;
 		ruleType: string;
 		ruleName: string;
+		channelType: string;
 		channelName: string;
 		severity: string;
 		subject: string;
 		body: string;
 		status: string;
-		errorMessage: string | null;
+		errorMessage: string;
 		url: string;
 		createdAt: string;
 	}
@@ -90,7 +91,8 @@
 		error_regression: 'Error Regression',
 		impact_score_critical: 'Impact Score Critical',
 		impact_score_high: 'Impact Score High',
-		impact_score_medium: 'Impact Score Medium'
+		impact_score_medium: 'Impact Score Medium',
+		ai_trace_cost: 'AI Trace Cost'
 	};
 
 	const channelTypeLabels: Record<string, string> = {

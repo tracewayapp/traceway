@@ -15,6 +15,12 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models"
 )
 
+type aiTraceRowNaming struct{ lit.DefaultDbNamingStrategy }
+
+func (aiTraceRowNaming) GetTableNameFromStructName(string) string {
+	return "ai_traces"
+}
+
 type aiTraceRow struct {
 	Id                 uuid.UUID     `lit:"id"`
 	ProjectId          uuid.UUID     `lit:"project_id"`
@@ -72,7 +78,7 @@ type aiTraceDetailStatsRow struct {
 
 func init() {
 	models.ExtensionModelRegistrations = append(models.ExtensionModelRegistrations, func(driver lit.Driver) {
-		lit.RegisterModel[aiTraceRow](driver)
+		lit.RegisterModelWithNaming[aiTraceRow](driver, aiTraceRowNaming{})
 		lit.RegisterModel[groupedAiTraceRow](driver)
 		lit.RegisterModel[aiTraceDurationRow](driver)
 		lit.RegisterModel[aiTraceDetailStatsRow](driver)

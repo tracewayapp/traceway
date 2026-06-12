@@ -40,16 +40,6 @@ func setupRetentionTestDB(t *testing.T) {
 		}
 	}
 
-	for _, tgt := range mainRetentionTargets {
-		ddl := fmt.Sprintf(
-			"CREATE TABLE %s (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT, %s DATETIME NOT NULL)",
-			tgt.table, tgt.column,
-		)
-		if _, err := mainDB.Exec(ddl); err != nil {
-			t.Fatalf("main ddl %s: %v", tgt.table, err)
-		}
-	}
-
 	prevDB, prevTelDB, prevDriver := db.DB, db.TelemetryDB, db.Driver
 	db.DB = mainDB
 	db.TelemetryDB = telDB
@@ -105,16 +95,12 @@ func TestRunSQLiteRetention_DeletesOldKeepsFresh(t *testing.T) {
 	insertWithTime(t, db.TelemetryDB, "fired_notifications", "fired_at", old)
 	insertWithTime(t, db.TelemetryDB, "fired_notifications", "fired_at", fresh)
 
-	insertWithTime(t, db.DB, "notification_history", "created_at", old)
-	insertWithTime(t, db.DB, "notification_history", "created_at", fresh)
-
 	runSQLiteRetention(context.Background(), 30)
 
 	assertCount(t, db.TelemetryDB, "endpoints", 3)
 	assertCount(t, db.TelemetryDB, "log_records", 2)
 	assertCount(t, db.TelemetryDB, "sessions", 1)
 	assertCount(t, db.TelemetryDB, "fired_notifications", 1)
-	assertCount(t, db.DB, "notification_history", 1)
 }
 
 func TestRunSQLiteRetention_BoundaryRowAtCutoffStays(t *testing.T) {

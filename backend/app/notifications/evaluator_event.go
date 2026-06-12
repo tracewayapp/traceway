@@ -19,7 +19,7 @@ func evaluateNewError(ctx context.Context, rule *models.NotificationRuleWithChan
 	var cfg newErrorConfig
 	json.Unmarshal(rule.Config, &cfg)
 
-	for _, hash := range event.ExceptionHashes {
+	for hash, batchOccurrences := range countOccurrences(event.ExceptionHashes) {
 		dedupKey := fmt.Sprintf("%d:%s", rule.Id, hash)
 		if dedup.isDuplicate(dedupKey, time.Duration(rule.CooldownMinutes)*time.Minute) {
 			continue
@@ -34,9 +34,7 @@ func evaluateNewError(ctx context.Context, rule *models.NotificationRuleWithChan
 			continue
 		}
 
-		// count > 1 means this hash already existed before this batch
-		if count > 1 {
-			// Check if this hash was archived (resolved) — if so, a re-occurrence should be treated as new
+		if count > uint64(batchOccurrences) {
 			var archivedCount uint64
 			archErr := chdb.Conn.QueryRow(ctx,
 				"SELECT count() FROM archived_exceptions FINAL WHERE project_id = ? AND exception_hash = ?",
@@ -45,7 +43,6 @@ func evaluateNewError(ctx context.Context, rule *models.NotificationRuleWithChan
 				continue
 			}
 
-			// Archived — only fire if this is the first re-occurrence after archiving
 			var postArchiveCount uint64
 			archErr = chdb.Conn.QueryRow(ctx,
 				"SELECT count() FROM exception_stack_traces WHERE project_id = ? AND exception_hash = ? AND recorded_at > (SELECT max(archived_at) FROM archived_exceptions FINAL WHERE project_id = ? AND exception_hash = ?)",
@@ -55,7 +52,7 @@ func evaluateNewError(ctx context.Context, rule *models.NotificationRuleWithChan
 				continue
 			}
 
-			if postArchiveCount > 1 {
+			if postArchiveCount > uint64(batchOccurrences) {
 				continue
 			}
 		}
@@ -74,7 +71,7 @@ func evaluateNewError(ctx context.Context, rule *models.NotificationRuleWithChan
 }
 
 func evaluateErrorRegression(ctx context.Context, rule *models.NotificationRuleWithChannel, event hooks.ReportEvent) {
-	for _, hash := range event.ExceptionHashes {
+	for hash := range countOccurrences(event.ExceptionHashes) {
 		dedupKey := fmt.Sprintf("%d:%s", rule.Id, hash)
 		if dedup.isDuplicate(dedupKey, time.Duration(rule.CooldownMinutes)*time.Minute) {
 			continue

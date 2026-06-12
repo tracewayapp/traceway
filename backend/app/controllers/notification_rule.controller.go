@@ -11,6 +11,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/notifications"
 	"github.com/tracewayapp/traceway/backend/app/repositories"
 	traceway "go.tracewayapp.com"
 )
@@ -147,6 +148,7 @@ func (ctrl *notificationRuleController) Create(ctx *gin.Context) {
 		return
 	}
 	rule.Id = id
+	notifications.ClearRuleState(id)
 
 	ctx.JSON(http.StatusCreated, rule)
 }

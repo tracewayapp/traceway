@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/tracewayapp/traceway/backend/app/config"
@@ -15,15 +16,35 @@ import (
 
 func StartEvaluator(ctx context.Context) {
 	config.Logln("Starting notification evaluator")
+	seedCooldowns(ctx)
 	startDedupPurger(ctx)
 	registerReportHook()
 	go startPolledLoop(ctx)
 }
 
+func pollInterval() time.Duration {
+	seconds := 60
+	if v := config.Config.NotificationPollSeconds; v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed >= 5 {
+			seconds = parsed
+		}
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+func seedCooldowns(ctx context.Context) {
+	entries, err := repositories.FiredNotificationRepository.FindLastFiredPerRule(ctx)
+	if err != nil {
+		traceway.CaptureException(fmt.Errorf("failed to seed notification cooldowns: %w", err))
+		return
+	}
+	cooldowns.seed(entries)
+}
+
 func startPolledLoop(ctx context.Context) {
 	defer traceway.Recover()
 
-	ticker := time.NewTicker(60 * time.Second)
+	ticker := time.NewTicker(pollInterval())
 	defer ticker.Stop()
 
 	for {

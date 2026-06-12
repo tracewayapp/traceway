@@ -200,6 +200,7 @@ CREATE TABLE IF NOT EXISTS fired_notifications (
     status TEXT NOT NULL DEFAULT '',
     error_message TEXT NOT NULL DEFAULT '',
     endpoint TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL DEFAULT '',
     fired_at DATETIME NOT NULL
 );
 `

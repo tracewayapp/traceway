@@ -35,6 +35,10 @@ on:
         description: 'Hetzner server type for the collector under test'
         required: true
         default: 'ccx33'
+      ldg_type:
+        description: 'Hetzner server type for the load generator (shared vCPU)'
+        required: true
+        default: 'cpx42'
       connections:
         description: 'Loadgen concurrency ramp'
         required: true
@@ -135,6 +139,7 @@ jobs:
           HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
           SCENARIOS: ${{ inputs.scenarios }}
           SUT_TYPE: ${{ inputs.sut_type }}
+          LDG_TYPE: ${{ inputs.ldg_type }}
           CONNECTIONS: ${{ inputs.connections }}
           STEP_DURATION: ${{ inputs.step_duration }}
           CHURN_ENTRIES: ${{ inputs.churn_entries }}

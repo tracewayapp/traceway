@@ -25,6 +25,28 @@ Drive a Traceway instance from the terminal with the `traceway` CLI. The first w
 - **Exit codes**: 0 ok, 1 generic/API, 2 usage, 3 connection, 4 auth, 5 not found, 6 rate limited, 7 server 5xx. Errors emit `{"error":"<stable_id>","message":"...","hint":"...","exit_code":N}` on stderr; branch on the `error` field.
 - On exit code 4 (auth), do not run `traceway login` yourself; switch to the Login flow and let the user enter credentials.
 
+## Resolving Dashboard URLs
+
+Users paste dashboard URLs (`https://<instance>/<route>`) as references in any flow. Resolve by route family:
+
+| URL path | Identifies | How to fetch it |
+|---|---|---|
+| `/issues/<hash>` and `/issues/<hash>/events` | Exception group (hash = 16 hex chars) | `traceway exceptions show <hash>` |
+| `/issues/<hash>/<occurrenceId>` (UUID) | One occurrence within the group | `traceway exceptions show <hash> --output json \| jq '.occurrences[] \| select(.id=="<occurrenceId>")'`; occurrences are paginated, walk `--page` if not in the first page |
+| `/endpoints/<endpoint>` | Endpoint group; the segment is the URL-encoded endpoint name (`GET%20%2Fapi%2Fusers%2F%3Aid` is `GET /api/users/:id`) | Decode it, then `traceway endpoints list --search "<decoded name>"` (there is no `endpoints show`) |
+| `/endpoints/<endpoint>/<endpointId>` | One request (transaction) of that endpoint | No CLI for single transactions; fetch the group as above, correlate with `traceway logs query --trace-id <id>` if a trace ID is known from context |
+| `/tasks/<task>` and `/tasks/<task>/<taskId>` | Background task group / single run | No CLI; point the user at the dashboard Tasks page |
+| `/sessions/<sessionId>` | Session replay | No CLI; dashboard only. Occurrences reference sessions via their `sessionId` field |
+| `/ai-traces/<traceName>` and `/ai-traces/<traceName>/<traceId>` | AI trace group / single trace | No CLI; dashboard only |
+| `/logs` | Logs page (its filters are not stored in the URL) | `traceway logs query` with flags taken from the user's description |
+| `/issues`, `/endpoints`, `/metrics`, `/` | List and dashboard pages | The matching `list` / `query` command |
+
+**Time window**: most dashboard URLs carry `?preset=<p>` or `?from=<iso>&to=<iso>` (sticky across pages); honor them instead of the default window.
+
+- `preset` values `5m 30m 60m 3h 6h 12h 24h 3d 7d` map directly to `--since`; the CLI has no month unit, so map `1M` to `--since 30d` and `3M` to `--since 90d`.
+- `from`/`to` are ISO timestamps; pass via `--from`/`--to`, appending `Z` (or the correct offset) when missing, since the CLI requires RFC3339.
+- No time params means the page was on its default; pick `--since` per the ground rules.
+
 ## Flow: Login
 
 ### 1. Check for an existing install
@@ -44,8 +66,9 @@ OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m); [ "$ARCH" = "aarch64" ] && ARCH=arm64
 URL=$(curl -s "https://api.github.com/repos/tracewayapp/traceway/releases?per_page=20" \
   | grep -o "https://[^\"]*traceway_[^\"]*_${OS}_${ARCH}\.tar\.gz" | head -1)
-curl -sL "$URL" | tar -xz traceway
-install -m 755 traceway ~/.local/bin/traceway && rm traceway
+TMP=$(mktemp -d)
+curl -sL "$URL" | tar -xz -C "$TMP"
+install -m 755 "$TMP/traceway" ~/.local/bin/traceway && rm -rf "$TMP"
 ```
 
 Make sure `~/.local/bin` is on `PATH` (or install to `/usr/local/bin`). Fallback, build from source (requires Go):
@@ -93,7 +116,7 @@ The selected project is used implicitly by all subsequent commands.
 
 | Reference looks like | How to resolve |
 |---|---|
-| Dashboard URL (`https://<instance>/issues/<hash>`, `/issues/<hash>/events`, `/issues/<hash>/<occurrenceId>`) | Take the path segment right after `/issues/`; that is the hash |
+| Dashboard URL | See "Resolving Dashboard URLs" above; for `/issues/...` URLs the path segment right after `/issues/` is the hash, and `?preset`/`?from`/`?to` give the time window |
 | Bare 16-char hex string | Already the hash |
 | Anything else (title, error message, type, file name) | Search: `traceway exceptions list --since 7d --search "<text>"`; widen to `--since 30d` (and `--include-archived`) if empty |
 | No issue reference, just a bug description | Skip to triage below |

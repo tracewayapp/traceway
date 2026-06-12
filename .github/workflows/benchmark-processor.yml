@@ -1,0 +1,119 @@
+name: benchmark-processor
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenarios:
+        description: 'Scenarios to run'
+        required: true
+        default: 'hot churn'
+      sut_type:
+        description: 'Hetzner server type for the collector under test'
+        required: true
+        default: 'ccx33'
+      connections:
+        description: 'Loadgen concurrency ramp'
+        required: true
+        default: '8,16,32,64,128,256'
+      step_duration:
+        description: 'Duration per concurrency step'
+        required: true
+        default: '60s'
+      churn_entries:
+        description: 'Corpus entries for the churn scenario'
+        required: true
+        default: '512'
+      pad_kb:
+        description: 'Bundle padding KB per corpus entry'
+        required: true
+        default: '256'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build oxc shim
+        run: bash scripts/build-oxc-shim.sh
+      - name: Build traceway collector (oxc)
+        working-directory: benchmarks/processor
+        run: |
+          GOBIN=$PWD/bin go install go.opentelemetry.io/collector/cmd/builder@v0.154.0
+          ./bin/builder --config manifest-traceway.yaml --skip-compilation
+          cd build-traceway && CGO_ENABLED=1 go build -tags oxc -o otelcol-bench-traceway .
+      - name: Build honeycomb collector
+        working-directory: benchmarks/processor
+        run: |
+          GOBIN=$PWD/bin go install go.opentelemetry.io/collector/cmd/builder@v0.143.0
+          CGO_ENABLED=1 ./bin/builder --config manifest-honeycomb.yaml
+      - name: Build drain
+        working-directory: benchmarks/processor/drain
+        run: cargo build --release
+      - name: Build loadgen and corpusgen
+        working-directory: benchmarks/processor
+        run: |
+          cd loadgen && go mod tidy && go build -o loadgen . && cd ..
+          cd corpusgen && go build -o corpusgen .
+      - name: Build node-app bundle
+        working-directory: testing/symbolication/node-app
+        run: npm install && npm run build
+      - name: Assemble artifacts
+        working-directory: benchmarks/processor
+        run: |
+          mkdir -p artifacts
+          cp build-traceway/otelcol-bench-traceway artifacts/
+          cp build-honeycomb/otelcol-bench-honeycomb artifacts/
+          cp "$(find ~/go/pkg/mod/github.com/honeycombio -name 'libsymbolic_cabi.so' -path '*linux_x86_64*' | head -1)" artifacts/
+          cp drain/target/release/drain artifacts/
+          cp loadgen/loadgen corpusgen/corpusgen artifacts/
+          cp config-traceway.yaml config-honeycomb.yaml rss-sampler.sh artifacts/
+          cp ../../testing/symbolication/node-app/dist/app.mjs ../../testing/symbolication/node-app/dist/app.mjs.map artifacts/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-artifacts
+          path: benchmarks/processor/artifacts/
+
+  bench:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        impl: [traceway-oxc, honeycomb]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: bench-artifacts
+          path: benchmarks/processor/artifacts/
+      - name: Install hcloud CLI
+        run: |
+          curl -sL https://github.com/hetznercloud/cli/releases/latest/download/hcloud-linux-amd64.tar.gz | tar xz hcloud
+          sudo mv hcloud /usr/local/bin/
+      - name: Run benchmark
+        working-directory: benchmarks/processor
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+          SCENARIOS: ${{ inputs.scenarios }}
+          SUT_TYPE: ${{ inputs.sut_type }}
+          CONNECTIONS: ${{ inputs.connections }}
+          STEP_DURATION: ${{ inputs.step_duration }}
+          CHURN_ENTRIES: ${{ inputs.churn_entries }}
+          PAD_KB: ${{ inputs.pad_kb }}
+        run: bash run-hetzner.sh ${{ matrix.impl }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: results-${{ matrix.impl }}
+          path: benchmarks/processor/results/

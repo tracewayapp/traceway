@@ -8,6 +8,8 @@ import (
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/processor"
 	"go.opentelemetry.io/collector/processor/processorhelper"
+
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/scopes"
 )
 
 const processorVersion = "0.1.0"
@@ -61,6 +63,11 @@ func createDefaultConfig() component.Config {
 }
 
 func newSymbolicator(cfg *Config, set processor.Settings) (*symbolicatorProcessor, error) {
+	if cfg.Parser != "" {
+		if err := scopes.SetParser(cfg.Parser); err != nil {
+			return nil, err
+		}
+	}
 	store, err := newStore(cfg)
 	if err != nil {
 		return nil, err

@@ -1,0 +1,18 @@
+dist:
+  name: otelcol-bench-traceway
+  description: Bench collector with the Traceway symbolicator
+  output_path: ./build-traceway
+
+receivers:
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.154.0
+
+processors:
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.154.0
+  - gomod: github.com/tracewayapp/traceway/backend v1.8.0
+    import: github.com/tracewayapp/traceway/backend/app/symbolicator/otelprocessor
+
+exporters:
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.154.0
+
+replaces:
+  - github.com/tracewayapp/traceway/backend => ../../../backend

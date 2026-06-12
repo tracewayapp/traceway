@@ -1,0 +1,33 @@
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  source_map_symbolicator:
+    source_map_store: file_store
+    local_source_maps:
+      path: ${env:STORE_PATH}
+    cache_dir: ${env:CACHE_DIR}
+    preserve_stack_trace: false
+    parser: ${env:SYMB_PARSER}
+
+exporters:
+  otlphttp/drain:
+    endpoint: ${env:DRAIN_ENDPOINT}
+    compression: none
+    sending_queue:
+      enabled: false
+    retry_on_failure:
+      enabled: false
+
+service:
+  telemetry:
+    metrics:
+      level: none
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [source_map_symbolicator]
+      exporters: [otlphttp/drain]

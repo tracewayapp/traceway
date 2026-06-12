@@ -74,6 +74,7 @@ For each span, span event, or log record carrying `exception.stacktrace`:
 | `build_uuid_attribute_key` | `app.debug.source_map_uuid` | Resource attribute used as a store key prefix |
 | `language_attribute_key` | `telemetry.sdk.language` | Attribute checked against `allowed_languages` |
 | `allowed_languages` | `[]` | When set, only records with a matching language are processed |
+| `parser` | `""` | Bundle scope-analysis parser: `goja` (pure Go, the default) or `oxc` (requires a collector compiled with `-tags oxc` and the oxc shim, see `scripts/build-oxc-shim.sh`) |
 
 All attribute key names (`stack_trace_attribute_key`, `urls_attribute_key`, `symbolicator_failure_attribute_key`, and the rest) are remappable with the same configuration keys and defaults as Honeycomb's processor.
 

@@ -58,6 +58,8 @@ type Config struct {
 
 	LanguageAttributeKey string   `mapstructure:"language_attribute_key"`
 	AllowedLanguages     []string `mapstructure:"allowed_languages"`
+
+	Parser string `mapstructure:"parser"`
 }
 
 func (c *Config) Validate() error {

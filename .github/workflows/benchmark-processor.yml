@@ -151,6 +151,14 @@ jobs:
           OOM_DURATION: ${{ inputs.oom_duration }}
           OOM_SUT_TYPE: ${{ inputs.oom_sut_type }}
         run: bash run-hetzner.sh ${{ matrix.impl }}
+      - name: Cleanup hetzner
+        if: always()
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+        run: |
+          hcloud server delete "bench-sut-${{ github.run_id }}-${{ matrix.impl }}" 2>/dev/null || true
+          hcloud server delete "bench-ldg-${{ github.run_id }}-${{ matrix.impl }}" 2>/dev/null || true
+          hcloud ssh-key delete "bench-key-${{ github.run_id }}-${{ matrix.impl }}" 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:

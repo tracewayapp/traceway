@@ -99,7 +99,7 @@ for scenario in $SCENARIOS; do
   $SSH "root@$LDG_IP" "curl -sf -X POST http://127.0.0.1:9319/reset"
   $SSH "root@$SUT_IP" "cd /opt/bench || exit 1; [ ! -f collector.pid ] || { kill \$(cat collector.pid) 2>/dev/null || true; sleep 1; }; rm -rf twcache; nohup env STORE_PATH=./corpus-$scenario CACHE_DIR=$CACHE_DIR_REMOTE CACHE_SIZE=$cachesize SYMB_PARSER=$PARSER DRAIN_ENDPOINT=http://$LDG_IP:9319 LD_LIBRARY_PATH=/opt/bench ./$COL_BIN --config $COL_CFG > collector.log 2>&1 & echo \$! > collector.pid; sleep 3; kill -0 \$!"
   T0=$($SSH "root@$SUT_IP" "date +%s")
-  $SSH "root@$SUT_IP" "cd /opt/bench && nohup bash rss-sampler.sh \$(cat collector.pid) rss.csv > /dev/null 2>&1 &"
+  $SSH "root@$SUT_IP" "cd /opt/bench || exit 1; nohup bash rss-sampler.sh \$(cat collector.pid) rss.csv > /dev/null 2>&1 &"
 
   $SSH "root@$LDG_IP" "cd /opt/bench && ./loadgen --target http://$SUT_IP:4318/v1/traces --corpus corpus-$scenario/corpus.json --connections $conns --step-duration $dur --spans-per-request $SPANS_PER_REQUEST --out loadgen.json" || true
 

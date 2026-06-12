@@ -1,0 +1,1 @@
+import{s as t,p as r}from"./CDPClubO.js";const e={get data(){return r.data},get error(){return r.error},get form(){return r.form},get params(){return r.params},get route(){return r.route},get state(){return r.state},get status(){return r.status},get url(){return r.url}};t.updated.check;const s=e;export{s as p};

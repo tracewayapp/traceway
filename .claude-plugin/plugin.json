@@ -1,0 +1,11 @@
+{
+  "name": "tw",
+  "description": "Traceway skills: /tw:traceway debugs production issues through the traceway CLI, /tw:traceway-setup instruments a project to report to a Traceway instance.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Traceway"
+  },
+  "homepage": "https://tracewayapp.com",
+  "repository": "https://github.com/tracewayapp/traceway",
+  "license": "MIT"
+}

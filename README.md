@@ -47,6 +47,33 @@ Traceway is an **OpenTelemetry-native** observability platform that combines **l
 
 Plus: configurable alerts (Slack / GitHub / email / webhook / Pushover / Telegram), Apdex + Impact-Score endpoint ranking, multi-tenant orgs with role-based access, and a per-endpoint slow-threshold override.
 
+## AI-First
+
+Your agent sets up Traceway, queries production telemetry, and finds the root cause:
+
+```bash
+npx skills add tracewayapp/traceway
+```
+
+One command installs two skills into Claude Code, Cursor, Codex, or any agent that reads `SKILL.md`:
+
+- **`/traceway-setup`** reads your repo and wires it up: OTel for backends, Traceway SDKs for web and mobile. Then it verifies data actually arrives.
+- **`/traceway`** installs the `traceway` CLI and uses it to query exceptions, logs, endpoints, and metrics, from bug report to root cause.
+
+The [CLI](./cli) is designed for agents first: JSON when piped, tables on a TTY, stable error identifiers and exit codes, `--fields` to trim responses. It is read-only apart from archiving exceptions, which requires an explicit `--yes`, so nothing hangs and nothing gets damaged.
+
+The skills are plain Markdown in [`skills/`](./skills), in the same MIT-licensed repo. No marketplace, no lock-in. [Learn more →](https://tracewayapp.com/product/agent-skills)
+
+## JavaScript Symbolication
+
+`app.min.js:1:63` tells you nothing. Traceway resolves minified production errors back to the original file, line, and function the moment they arrive.
+
+The symbolicator is pure Go and built to keep up with ingest. Each source map compiles once into a binary `.tw` file and is memory-mapped from disk: under a microsecond to open a compiled map, p99 lookup under a millisecond on a cold cache, zero maps re-parsed after a restart. The corpus is a disk budget, not a RAM budget.
+
+The same engine ships as a standalone [OpenTelemetry Collector processor](./backend/app/symbolicator/otelprocessor), drop-in compatible with Honeycomb's `source_map_symbolicator`: same component type, same attribute contract, same config keys. Use it in your own pipeline, with or without Traceway behind it.
+
+Upload maps from CI with `npx traceway-sourcemaps --directory ./dist`. Benchmarks live in [`benchmarks/`](./benchmarks); run them on your fork. [Learn more →](https://tracewayapp.com/product/javascript-symbolication)
+
 ## Why Traceway
 
 |                          | Enterprise (Datadog / New Relic) | DIY OSS stack (Prometheus + Loki + Tempo + ...) | **Traceway**                      |
@@ -192,6 +219,8 @@ Traceway integrates with the tools you already use. Every integration ships trac
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `backend/`  | Go/Gin API server — OTLP ingest, REST API, notifications, migrations                                                                                                                                                                    |
 | `frontend/` | SvelteKit 2 dashboard SPA                                                                                                                                                                                                               |
+| `cli/`      | Agent-first `traceway` command line for querying exceptions, logs, endpoints, and metrics                                                                                                                                              |
+| `skills/`   | Agent skills (`/traceway-setup`, `/traceway`) for Claude Code, Cursor, Codex, and any SKILL.md-compatible agent                                                                                                                         |
 | `docs/`     | Documentation site (Nextra)                                                                                                                                                                                                             |
 | `examples/` | Working examples — [embedded mode](./examples/embedded-backend-otel) and OTel-instrumented apps ([Express](./examples/express-otel), [NestJS](./examples/nestjs-otel), [Next.js](./examples/nextjs-otel), [Hono](./examples/hono-otel)) |
 | `website/`  | Landing page                                                                                                                                                                                                                            |

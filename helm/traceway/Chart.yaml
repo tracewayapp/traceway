@@ -2,8 +2,8 @@ apiVersion: v2
 name: traceway
 description: Error tracking and monitoring for Go applications
 type: application
-version: 1.7.33
-appVersion: "1.7.33"
+version: 1.8.0
+appVersion: "1.8.0"
 keywords:
   - monitoring
   - error-tracking

@@ -1,5 +1,5 @@
 ---
-title: "I Tried to Break SQLite Traceway. Here's What It Took."
+title: "I Tried to Break SQLite Traceway. The Reads Broke First."
 date: "2026-06-09"
 category: "engineering"
 author: "jovan"
@@ -31,11 +31,11 @@ Read latency (fill the table to a target row count, then load real dashboard pag
 Two things were missing:
 
 1. **Spans and logs writes.** OTLP, the OpenTelemetry wire protocol, defines three signals: traces, metrics, and logs. An observability stack benchmark that only does one is half the picture.
-2. **Anything read-side.** A database that ingests fast but cliffs the dashboard at 200k rows is not a dashboard you'd ship.
+2. **Anything read-side.** A database that ingests fast but kills the dashboard at 200k rows isn't something you'd ship.
 
 This post fills both gaps on the same hardware, same DB mode, same load generator. The only thing that grew between the two posts is the harness - the load generator plus the scripts that orchestrate the runs.
 
-Here's the plan. First the methodology, because half of it is new and the numbers mean nothing without the pass/fail rules. Then one section per signal - metrics first, since post 1 gives it a baseline, then spans, then logs - each covering its write ceiling and its read ceiling. Then the three cliffs side by side, why the 5-second threshold is generous, what the cliffs mean for a real fleet, and what I deliberately left out.
+Here's the plan. Methodology first, because half of it is new and the numbers mean nothing without the pass/fail rules. Then one section per signal: metrics first, since post 1 gives it a baseline, then spans, then logs. Each covers its write ceiling and its read ceiling. After that: the three cliffs compared, why the 5-second threshold is generous, what this means for a real fleet, and what I left out.
 
 ## How I measured
 
@@ -94,13 +94,13 @@ These sit inside the methodology for a reason. Read them before quoting numbers 
 
 Metrics first, because it's the one signal with a baseline - post 1 measured exactly this, on the same box, in the same DB mode.
 
-The ramp settled at batch=8192, 7.5 req/sec in phase 2: **61,712 points/sec sustained**, error rate 0.33%, p50 ingest 109 ms, p95 1.8 s. Phase 1 found the batch ceiling at 16384, which failed with a 13% error rate, because past a point a bigger batch just takes longer to write than the request budget allows, and the SUT starts rejecting.
+The ramp settled at batch=8192, 7.5 req/sec in phase 2: **61,712 points/sec sustained**, error rate 0.33%, p50 ingest 109 ms, p95 1.8 s. Phase 1 found the batch ceiling at 16384, which failed with a 13% error rate. Past a point, a bigger batch just takes longer to write than the request budget allows, and the SUT starts rejecting.
 
-That's slightly ahead of post 1's 58k headline, but as flagged in the caveats, the harness changed between posts and the two numbers shouldn't be compared digit-for-digit. The qualitative read is the same as post 1: SQLite handles metrics ingest comfortably at this scale, with hundreds of milliseconds of headroom on ingest latency before anything cliffs.
+That's slightly ahead of post 1's 58k headline, but as flagged in the caveats, the harness changed between posts and the two numbers shouldn't be compared digit-for-digit. The qualitative read is the same as post 1: SQLite handles metrics ingest comfortably at this scale, with hundreds of milliseconds of ingest-latency headroom.
 
 No `/metrics` screenshot this time. The loadgen emits `rng.Float64() * 100` per point, so the cards render real shapes but nonsense values. Post 1 already showed the UI reading real values; the read-probe chart below is the visual for this section.
 
-On the read side, metrics held longer than either other signal: **1M rows passed**, but barely - median 3.85 s across the three probes (`/api/metrics/server` 3.74 s, `/api/metrics/application` 3.85 s, `/api/dashboard` 4.94 s). At 10M rows every probe hit the 6 s timeout, with no slow-but-returning behavior in between. And 10M is closer than it sounds: at the headline write rate, it's under three minutes of sustained ingest.
+On the read side, metrics held longer than either other signal. **1M rows passed**, but barely: median 3.85 s across the three probes (`/api/metrics/server` 3.74 s, `/api/metrics/application` 3.85 s, `/api/dashboard` 4.94 s). At 10M rows every probe hit the 6 s timeout. And 10M is closer than it sounds: at the headline write rate, it's under three minutes of sustained ingest.
 
 ![Per-endpoint read latency vs metric_points table size on log-log axes. All three probes sit under 500 ms at 100k rows, crowd the 5 s threshold at 1M, and time out past it at 10M](/blog/break-sqlite-traceway/chart-readprobe-metrics.webp)
 
@@ -110,7 +110,7 @@ The cliff in one chart: comfortable at 100k, on the edge at 1M, gone at 10M. All
 
 Metrics was the known quantity. Spans are the first new signal, and they're heavier: each span carries a route, timing, status, and a bag of attributes that the dashboard later has to aggregate into percentiles.
 
-The ramp settled at batch=4096, 7.5 req/sec: **30,508 spans/sec sustained**, error rate 0%, p50 ingest 98 ms, p95 208 ms. Phase 1 found the batch ceiling at 8192 (5.7% error rate); phase 3, the many-small-clients shape, cliffed at batch=100, 550 req/sec with 6.6%.
+The ramp settled at batch=4096, 7.5 req/sec: **30,508 spans/sec sustained**, error rate 0%, p50 ingest 98 ms, p95 208 ms. Phase 1 found the batch ceiling at 8192 (5.7% error rate); phase 3, the many-small-clients shape, failed at batch=100, 550 req/sec with a 6.6% error rate.
 
 What that looks like in the UI - the `/endpoints` page after a few minutes of ingest:
 
@@ -124,7 +124,7 @@ Drilling into one route, `POST /api/users`, gives the per-endpoint trace table:
 
 504 ms average, p50 505 ms, p95 951 ms, p99 990 ms, 26,749 rpm sustained, 2.08% error rate. Each row in the table is one span: `http.method=POST`, `http.route=/api/users`, version 1.0.0, server `bench-loadgen`. This is the page that pays off the "I can pull a slow request out of a million" promise - filter to a route, sort by duration, there's your tail.
 
-On the read side, the spans dashboard stayed usable up to **100k rows**, median 2.27 s across the three probes (`/api/endpoints/grouped` 2.27 s, `/api/endpoints/chart` 2.29 s, `/api/exception-stack-traces` ~1 ms - that last one is the small-query-on-empty-exceptions artifact from the caveats; without it, the two representative probes still sit around 2.3 s). At 1M rows both representative probes timed out. The cliff sits somewhere between 100k and 1M and I did not bisect it. That ceiling is worth taking seriously: at 30k spans/sec ingest, you reach 1M rows in roughly 33 seconds of sustained traffic. SQLite Traceway on a CCX13 will let you read recent spans; it is not the database for "show me last quarter's p99 across every route."
+On the read side, the spans dashboard stayed usable up to **100k rows**, median 2.27 s. `/api/endpoints/grouped` and `/api/endpoints/chart` both sat around 2.3 s. The third probe, `/api/exception-stack-traces`, came back in ~1 ms - that's the empty-query artifact from the caveats, so ignore it. At 1M rows both real probes timed out. The cliff sits somewhere between 100k and 1M; I did not bisect it. At 30k spans/sec ingest, that's roughly 33 seconds of sustained traffic. SQLite Traceway on a CCX13 will let you read recent spans. It is not the database for "show me last quarter's p99 across every route."
 
 ## Logs: 4,877 records/sec, dashboard fast at 100k
 
@@ -152,23 +152,23 @@ The uneven failure has a simple shape. The trace-ID probe matches at most one ro
 
 ## Where it breaks
 
-Three signals, three write ceilings, three read ceilings, side by side:
+Three signals, each with a write ceiling and a read ceiling:
 
 | Signal | Write cliff (single-shot, sustained) | Read cliff (largest fill level passed) | What happens above it |
 |---|---|---|---|
-| Metrics | ~62k points/sec | 1M rows, median 3.85 s - narrow headroom | At 10M every probe hits the timeout, with nothing in between |
+| Metrics | ~62k points/sec | 1M rows, median 3.85 s - narrow headroom | At 10M every probe hits the timeout |
 | Spans | ~30k spans/sec | 100k rows, median 2.27 s | At 1M both representative probes time out |
 | Logs | ~5k records/sec, sharp HTTP-5xx cliff above 5 req/sec | 100k rows, median 114 ms | At 1M the trace-ID lookup is still fast (1.7 s) but the severity filter times out |
 
-The shapes are different. Metrics has the highest ingest ceiling and the highest read ceiling, but the read margin at 1M is thin. Spans ingest at half the metrics rate and cliff reads at 100k. Logs ingest the slowest *and* cliff reads at 100k - but the read story at 100k is the most comfortable of the three, and the failure at 1M is uneven: some queries stay fast while others time out hard.
+The shapes are different. Metrics has the highest ingest ceiling and the highest read ceiling, but the read margin at 1M is thin. Spans ingest at half the metrics rate and their reads give out at 100k. Logs ingest the slowest and also stop at 100k - but the read story at 100k is the most comfortable of the three, and the failure at 1M is uneven: some queries stay fast while others time out hard.
 
-That uneven logs failure is the most useful detail in the table for picking a retention policy. The page that paginates raw rows ("show me the last 50 ERRORs") stays usable longer than the page that scans the whole table to find a string. SQLite indexes do their job; full table scans do not. Plan retention so the page your on-call actually opens during an incident is on the indexed side of the cliff.
+The uneven logs failure matters for retention policy. The page that paginates raw rows ("show me the last 50 ERRORs") stays usable longer than the page that scans the whole table to find a string. SQLite indexes do their job; full table scans do not. Plan retention so the page your on-call actually opens during an incident is on the indexed side of the cliff.
 
 ## 5 seconds is generous
 
-I promised in the methodology to come back to the threshold. Here's the problem with that number: your users expect 500 ms. A page that takes 5 seconds to load is broken. Users hit refresh, blame the network, give up. So why is the read-probe threshold 5 s?
+I promised in the methodology to come back to the threshold. Your users expect 500 ms. A page that takes 5 seconds to load is broken. Users hit refresh and blame the network. So why is the read-probe threshold 5 s?
 
-Because the threshold isn't a UX target, it's a *"the database is still responding"* floor. It separates "this query is slow" from "this query died." The series uses the same threshold across every database so the numbers compare; it does not claim that 5 s is what your on-call experiences.
+Because the threshold isn't a UX target, it's a "the database is still responding" floor. It separates "this query is slow" from "this query died." The series uses the same threshold across every database so the numbers compare; it does not claim that 5 s is what your on-call experiences.
 
 So re-read the cliffs with a 500 ms threshold instead:
 
@@ -176,7 +176,7 @@ So re-read the cliffs with a 500 ms threshold instead:
 - **Spans at 100k fails** - both representative probes are above 2 s.
 - **Metrics at 100k passes** at 343–443 ms across the three probes, but **1M fails** at 3.7–4.9 s.
 
-If you care about *snappy* dashboards, not just *responsive* ones, the comfortable ceiling shrinks: ~100k rows on logs and metrics, and not even 100k on spans. The 1M+ headline numbers are "still loading" territory, not the floor of good UX. I kept the 5 s threshold for series consistency, but if you're a small-fleet operator deciding when to switch databases, halve the row counts in the headlines before deciding.
+Hold the dashboards to 500 ms and the comfortable ceiling shrinks: ~100k rows on logs and metrics, not even 100k on spans. The 1M+ headline numbers are "still loading" territory, not the floor of good UX. I kept the 5 s threshold so the series stays comparable. If you're a small-fleet operator deciding when to switch databases, halve the row counts in the headlines first.
 
 ## What fits comfortably
 
@@ -188,7 +188,7 @@ The cliffs say where it breaks. The other half of the question is what fits unde
 
 Every signal fits comfortably on the write side. The binding constraint is logs throughput, and even there you're at 40% of the cliff, with room for spikes.
 
-The read side is where the math gets interesting. At this fleet rate, logs reach their 100k read cliff in 50 seconds; spans reach theirs in just over 3 minutes; metrics reach their 1M cliff in under 3 hours. So **retention, not throughput, is the real config knob** for SQLite Traceway. Short retention - a few hours of recent data, the bare minimum for an incident workflow - keeps every signal on the usable side of the cliff. Long retention, days of history for trend analysis, pushes you off the cheap-box configuration entirely and into post 3's territory: ClickHouse on the same box.
+The read side is tighter. At this fleet rate, logs hit their 100k read cliff in 50 seconds. Spans take just over 3 minutes. Metrics take under 3 hours to reach 1M. So retention, not throughput, is the real config knob for SQLite Traceway. A few hours of retention - the bare minimum for an incident workflow - keeps every signal on the usable side of the cliff. Days of history for trend analysis pushes you off the cheap box entirely and into post 3's territory: ClickHouse on the same hardware.
 
 ## What I deliberately didn't measure
 
@@ -207,7 +207,7 @@ If you need any of these, the answer is "not in this post." I will get to them.
 
 I went into this expecting SQLite to cliff hard on logs and was ready to write up "the cheap tier is only for metrics." Logs writes do cliff sharply at 5k/sec, sure. But the logs *dashboard* at 100k rows came back in 114 ms, faster than the spans dashboard at the same fill. That was the surprise of the run, and the reason this post isn't titled the way I expected it would be.
 
-SQLite is doing more than people give it credit for *at this scale*. The $16.49/month box ran spans, metrics, and logs side by side and let me query the resulting tables through real dashboard pages - two of the three signals stayed usable through 100k rows, metrics held through 1M. For small fleets, side projects, or backend-for-mobile-frontend, the single-binary configuration is real. You do not need a multi-component LGTM deployment (Loki, Grafana, Tempo, Mimir) to have a working observability story.
+SQLite is doing more than people give it credit for at this scale. The $16.49/month box ingested all three signals and served real dashboard pages on top. Two of the three stayed usable through 100k rows. Metrics held through 1M. For small fleets, side projects, or backend-for-mobile-frontend, the single-binary configuration is real. You do not need a multi-component LGTM deployment (Loki, Grafana, Tempo, Mimir) to have a working observability story.
 
 What the data also says, plainly: SQLite Traceway is not the configuration for the day you grow past a million spans an hour. The cliff is closer than the ingest number suggests, and the next post moves the same workload to ClickHouse on the same box to find out what that buys you.
 

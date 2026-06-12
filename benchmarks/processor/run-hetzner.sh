@@ -97,19 +97,19 @@ for scenario in $SCENARIOS; do
   CACHE_DIR_REMOTE=""
   [ -n "$DISK" ] && CACHE_DIR_REMOTE="/opt/bench/twcache"
   $SSH "root@$LDG_IP" "curl -sf -X POST http://127.0.0.1:9319/reset"
-  $SSH "root@$SUT_IP" "pkill -f $COL_BIN 2>/dev/null; rm -rf /opt/bench/twcache; cd /opt/bench && nohup env STORE_PATH=./corpus-$scenario CACHE_DIR=$CACHE_DIR_REMOTE CACHE_SIZE=$cachesize SYMB_PARSER=$PARSER DRAIN_ENDPOINT=http://$LDG_IP:9319 LD_LIBRARY_PATH=/opt/bench ./$COL_BIN --config $COL_CFG > collector.log 2>&1 & sleep 3; pgrep -f $COL_BIN"
+  $SSH "root@$SUT_IP" "cd /opt/bench || exit 1; [ ! -f collector.pid ] || { kill \$(cat collector.pid) 2>/dev/null || true; sleep 1; }; rm -rf twcache; nohup env STORE_PATH=./corpus-$scenario CACHE_DIR=$CACHE_DIR_REMOTE CACHE_SIZE=$cachesize SYMB_PARSER=$PARSER DRAIN_ENDPOINT=http://$LDG_IP:9319 LD_LIBRARY_PATH=/opt/bench ./$COL_BIN --config $COL_CFG > collector.log 2>&1 & echo \$! > collector.pid; sleep 3; kill -0 \$!"
   T0=$($SSH "root@$SUT_IP" "date +%s")
-  $SSH "root@$SUT_IP" "cd /opt/bench && nohup bash rss-sampler.sh \$(pgrep -f $COL_BIN | head -1) rss.csv > /dev/null 2>&1 &"
+  $SSH "root@$SUT_IP" "cd /opt/bench && nohup bash rss-sampler.sh \$(cat collector.pid) rss.csv > /dev/null 2>&1 &"
 
   $SSH "root@$LDG_IP" "cd /opt/bench && ./loadgen --target http://$SUT_IP:4318/v1/traces --corpus corpus-$scenario/corpus.json --connections $conns --step-duration $dur --spans-per-request $SPANS_PER_REQUEST --out loadgen.json" || true
 
-  if ! $SSH "root@$SUT_IP" "pgrep -f $COL_BIN > /dev/null"; then
+  if ! $SSH "root@$SUT_IP" "kill -0 \$(cat /opt/bench/collector.pid) 2>/dev/null"; then
     TDEAD=$($SSH "root@$SUT_IP" "tail -1 /opt/bench/rss.csv | cut -d, -f1")
     echo "$(( TDEAD - T0 ))" > "$outdir/died"
   fi
   $SSH "root@$LDG_IP" "curl -sf http://127.0.0.1:9319/stats" > "$outdir/drain.json" || echo '{}' > "$outdir/drain.json"
   $SCP "root@$LDG_IP:/opt/bench/loadgen.json" "$outdir/loadgen.json"
-  $SSH "root@$SUT_IP" "pkill -f $COL_BIN; sleep 2" || true
+  $SSH "root@$SUT_IP" "kill \$(cat /opt/bench/collector.pid) 2>/dev/null; sleep 2" || true
   $SCP "root@$SUT_IP:/opt/bench/rss.csv" "$outdir/rss.csv" || true
   $SCP "root@$SUT_IP:/opt/bench/collector.log" "$outdir/collector.log" || true
   echo "== $tag =="

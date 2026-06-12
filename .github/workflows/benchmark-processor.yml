@@ -55,6 +55,9 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: hetzner-bench-processor
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -113,6 +116,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         impl: [honeycomb, traceway-oxc-mem, traceway-oxc-disk, traceway-goja-mem, traceway-goja-disk]
     steps:

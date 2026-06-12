@@ -18,7 +18,7 @@ STEP_DURATION="${STEP_DURATION:-60s}"
 SPANS_PER_REQUEST="${SPANS_PER_REQUEST:-20}"
 SUT_TYPE="${SUT_TYPE:-ccx33}"
 OOM_SUT_TYPE="${OOM_SUT_TYPE:-ccx13}"
-LDG_TYPE="${LDG_TYPE:-ccx23}"
+LDG_TYPE="${LDG_TYPE:-cpx41}"
 LOCATION="${LOCATION:-fsn1}"
 RESULTS="${RESULTS:-./results}"
 RUN_ID="${GITHUB_RUN_ID:-local}-$IMPL"
@@ -63,10 +63,11 @@ wait_ssh() {
 
 provision() {
   local name="$1" type="$2"
-  hcloud server create --name "$name" --type "$type" --image ubuntu-24.04 --location "$LOCATION" --ssh-key "bench-key-$RUN_ID" > /dev/null
+  hcloud server create --name "$name" --type "$type" --image ubuntu-24.04 --location "$LOCATION" --ssh-key "bench-key-$RUN_ID" > /dev/null || exit 1
   local ip
   ip=$(hcloud server ip "$name")
-  wait_ssh "$ip"
+  [ -n "$ip" ] || { echo "no ip for $name" >&2; exit 1; }
+  wait_ssh "$ip" || { echo "ssh unreachable on $name ($ip)" >&2; exit 1; }
   $SCP -r artifacts "root@$ip:/opt/bench" > /dev/null
   $SSH "root@$ip" "chmod +x /opt/bench/* 2>/dev/null || true"
   echo "$ip"

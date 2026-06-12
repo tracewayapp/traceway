@@ -1,0 +1,42 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:5317
+      http:
+        endpoint: 0.0.0.0:5318
+        cors:
+          allowed_origins:
+            - "*"
+          allowed_headers:
+            - "*"
+
+processors:
+  source_map_symbolicator:
+    source_map_store: file_store
+    local_source_maps:
+      path: ./sourcemaps
+  batch:
+    timeout: 2s
+
+exporters:
+  otlphttp/grafana:
+    endpoint: https://otlp-gateway-prod-us-east-3.grafana.net/otlp
+    headers:
+      Authorization: "Basic ${env:GRAFANA_OTLP_BASIC}"
+  debug:
+    verbosity: detailed
+
+service:
+  telemetry:
+    metrics:
+      level: none
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [source_map_symbolicator, batch]
+      exporters: [otlphttp/grafana, debug]
+    logs:
+      receivers: [otlp]
+      processors: [source_map_symbolicator, batch]
+      exporters: [otlphttp/grafana, debug]

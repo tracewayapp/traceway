@@ -1,0 +1,16 @@
+dist:
+  name: otelcol-honeycomb-symbolicator
+  description: OTel Collector with the Honeycomb source map symbolicator
+  output_path: ./build
+  cgo_enabled: true
+
+receivers:
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.143.0
+
+processors:
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.143.0
+  - gomod: github.com/honeycombio/opentelemetry-collector-symbolicator/sourcemapprocessor v1.0.3
+
+exporters:
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.143.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.143.0

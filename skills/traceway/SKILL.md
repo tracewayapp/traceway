@@ -1,6 +1,6 @@
 ---
 name: traceway
-description: Operate a Traceway observability instance through the traceway CLI: log in, query exceptions, logs, endpoints, and metrics, and debug production issues down to root cause. Use when the user invokes /traceway with a subcommand, e.g. "/traceway login", "/traceway debug issue <hash|url|title>", "/traceway what's broken in prod", or whenever they want to investigate errors, crashes, slowness, or logs from an app monitored by Traceway.
+description: 'Operate a Traceway observability instance through the traceway CLI: log in, query exceptions, logs, endpoints, and metrics, and debug production issues down to root cause. Use when the user invokes /traceway with a subcommand, e.g. "/traceway login", "/traceway debug issue <hash|url|title>", "/traceway what''s broken in prod", or whenever they want to investigate errors, crashes, slowness, or logs from an app monitored by Traceway.'
 ---
 
 # Traceway

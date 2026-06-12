@@ -589,6 +589,34 @@
     color: var(--fg-3);
     letter-spacing: 0.08em;
   }
+  .term-tabs {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+  }
+  .term-tabs .term-tab {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    padding: 8px 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--fg-2);
+    background: rgba(8, 11, 18, 0.8);
+    border-bottom: 1px solid var(--hair);
+  }
+  .term-tabs .term-tab + .term-tab {
+    border-left: 1px solid var(--hair);
+  }
+  .term-tabs .term-tab:not([aria-selected="true"]):hover {
+    color: var(--fg-1);
+  }
+  .term-tabs .term-tab[aria-selected="true"] {
+    color: var(--fg-0);
+    background: transparent;
+    border-bottom-color: transparent;
+  }
   .term-body {
     padding: 22px;
     font-family: var(--font-mono);

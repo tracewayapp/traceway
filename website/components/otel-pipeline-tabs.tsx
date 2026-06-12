@@ -76,27 +76,19 @@ export function OtelPipelineTabs() {
         <span className="tdot" style={{ background: "#ff5a5f" }} />
         <span className="tdot" style={{ background: "#ffd166" }} />
         <span className="tdot" style={{ background: "#22e0a8" }} />
-        <div className="ml-auto flex items-center gap-1">
-          {TABS.map((tab, i) => (
-            <button
-              key={tab.filename}
-              onClick={() => setActiveTab(i)}
-              className="rounded px-2.5 py-0.5 text-[10.5px] transition-colors"
-              style={{
-                fontFamily: "var(--font-mono)",
-                color: activeTab === i ? "var(--fg-0)" : "var(--fg-3)",
-                background:
-                  activeTab === i ? "rgba(255, 255, 255, 0.08)" : "transparent",
-                border:
-                  activeTab === i
-                    ? "1px solid var(--hair-2)"
-                    : "1px solid transparent",
-              }}
-            >
-              {tab.filename}
-            </button>
-          ))}
-        </div>
+      </div>
+      <div className="term-tabs" role="tablist">
+        {TABS.map((tab, i) => (
+          <button
+            key={tab.filename}
+            role="tab"
+            aria-selected={activeTab === i}
+            className="term-tab"
+            onClick={() => setActiveTab(i)}
+          >
+            {tab.filename}
+          </button>
+        ))}
       </div>
       <div className="overflow-x-auto">
         <pre

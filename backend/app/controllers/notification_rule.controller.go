@@ -148,7 +148,6 @@ func (ctrl *notificationRuleController) Create(ctx *gin.Context) {
 		return
 	}
 	rule.Id = id
-	notifications.ClearRuleState(id)
 
 	ctx.JSON(http.StatusCreated, rule)
 }
@@ -230,6 +229,7 @@ func (ctrl *notificationRuleController) Update(ctx *gin.Context) {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to update notification rule: %w", err))
 		return
 	}
+	notifications.ClearRuleState(id)
 
 	ctx.JSON(http.StatusOK, existing)
 }
@@ -263,6 +263,7 @@ func (ctrl *notificationRuleController) Delete(ctx *gin.Context) {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to delete notification rule: %w", err))
 		return
 	}
+	notifications.ClearRuleState(id)
 
 	ctx.JSON(http.StatusOK, gin.H{"deleted": true})
 }

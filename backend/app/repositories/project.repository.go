@@ -215,7 +215,6 @@ func (p *projectRepository) Update(tx *sql.Tx, id uuid.UUID, name string, framew
 
 func (p *projectRepository) Delete(tx *sql.Tx, id uuid.UUID) error {
 	related := []string{
-		"notification_history",
 		"notification_rules",
 		"notification_channels",
 		"widget_groups",

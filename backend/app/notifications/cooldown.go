@@ -33,16 +33,27 @@ func (m *cooldownTracker) recordFire(ruleId int) {
 	m.fired[ruleId] = time.Now()
 }
 
+func ruleStatePrefix(ruleId int) string {
+	return fmt.Sprintf("%d:", ruleId)
+}
+
+func errorDedupKey(ruleId int, hash string) string {
+	return ruleStatePrefix(ruleId) + hash
+}
+
+func aiCostDedupKey(ruleId int, traceName string) string {
+	return ruleStatePrefix(ruleId) + "ai_cost:" + traceName
+}
+
 func ClearRuleState(ruleId int) {
 	cooldowns.mu.Lock()
 	delete(cooldowns.fired, ruleId)
 	cooldowns.mu.Unlock()
 
-	rulePrefix := fmt.Sprintf("%d:", ruleId)
-	aiPrefix := fmt.Sprintf("ai_cost:%d:", ruleId)
+	prefix := ruleStatePrefix(ruleId)
 	dedup.mu.Lock()
 	for k := range dedup.seen {
-		if strings.HasPrefix(k, rulePrefix) || strings.HasPrefix(k, aiPrefix) {
+		if strings.HasPrefix(k, prefix) {
 			delete(dedup.seen, k)
 		}
 	}
@@ -50,7 +61,7 @@ func ClearRuleState(ruleId int) {
 
 	impactStateMu.Lock()
 	for k := range impactState {
-		if strings.HasPrefix(k, rulePrefix) {
+		if strings.HasPrefix(k, prefix) {
 			delete(impactState, k)
 		}
 	}

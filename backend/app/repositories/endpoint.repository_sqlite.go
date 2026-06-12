@@ -317,7 +317,7 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 		p95 := computePercentile(durations, 0.95)
 		p99 := computePercentile(durations, 0.99)
 
-		impact := computeImpactScore(g.Endpoint, g.TotalCount, g.SatisfiedCount, g.ToleratingCount, g.BadCount, g.ClientErrorCount, p99, g.OffsetMs)
+		impact := ComputeImpactScore(g.Endpoint, g.TotalCount, g.SatisfiedCount, g.ToleratingCount, g.BadCount, g.ClientErrorCount, p99, g.OffsetMs)
 
 		stats = append(stats, models.EndpointStats{
 			Endpoint:    g.Endpoint,
@@ -537,7 +537,7 @@ func (e *endpointRepository) FindWorstEndpoints(ctx context.Context, projectId u
 		p95 := computePercentile(durations, 0.95)
 		p99 := computePercentile(durations, 0.99)
 
-		impact := computeImpactScore(g.Endpoint, g.TotalCount, g.SatisfiedCount, g.ToleratingCount, g.BadCount, g.ClientErrorCount, p99, g.OffsetMs)
+		impact := ComputeImpactScore(g.Endpoint, g.TotalCount, g.SatisfiedCount, g.ToleratingCount, g.BadCount, g.ClientErrorCount, p99, g.OffsetMs)
 
 		lastSeen, _ := time.Parse(time.RFC3339Nano, g.LastSeen)
 
@@ -843,7 +843,7 @@ func fetchSortedDurations(ctx context.Context, projectId uuid.UUID, endpoint str
 	return durations, nil
 }
 
-func computeImpactScore(endpoint string, total, satisfiedCount, toleratingCount, badCount, clientErrorCount uint64, p99Ns float64, offsetMs uint32) float64 {
+func ComputeImpactScore(endpoint string, total, satisfiedCount, toleratingCount, badCount, clientErrorCount uint64, p99Ns float64, offsetMs uint32) float64 {
 	if total == 0 {
 		return 0
 	}

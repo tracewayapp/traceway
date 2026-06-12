@@ -86,7 +86,7 @@ func evaluateAiTraceCostEvent(rule *models.NotificationRuleWithChannel, event ho
 			continue
 		}
 
-		dedupKey := fmt.Sprintf("ai_cost:%d:%s", rule.Id, at.TraceName)
+		dedupKey := aiCostDedupKey(rule.Id, at.TraceName)
 		if dedup.isDuplicate(dedupKey, time.Duration(rule.CooldownMinutes)*time.Minute) {
 			continue
 		}

@@ -103,7 +103,7 @@ func (r *firedNotificationRepository) FindByProject(ctx context.Context, project
 }
 
 func (r *firedNotificationRepository) FindLastFiredPerRule(ctx context.Context) (map[int]time.Time, error) {
-	rows, err := chdb.Conn.Query(ctx, "SELECT rule_id, max(fired_at) FROM fired_notifications GROUP BY rule_id")
+	rows, err := chdb.Conn.Query(ctx, "SELECT rule_id, max(fired_at) FROM fired_notifications WHERE status = 'sent' GROUP BY rule_id")
 	if err != nil {
 		return nil, err
 	}

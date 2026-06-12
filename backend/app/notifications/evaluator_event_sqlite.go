@@ -21,7 +21,7 @@ func evaluateNewError(ctx context.Context, rule *models.NotificationRuleWithChan
 	json.Unmarshal(rule.Config, &cfg)
 
 	for hash, batchOccurrences := range countOccurrences(event.ExceptionHashes) {
-		dedupKey := fmt.Sprintf("%d:%s", rule.Id, hash)
+		dedupKey := errorDedupKey(rule.Id, hash)
 		if dedup.isDuplicate(dedupKey, time.Duration(rule.CooldownMinutes)*time.Minute) {
 			continue
 		}
@@ -73,7 +73,7 @@ func evaluateNewError(ctx context.Context, rule *models.NotificationRuleWithChan
 
 func evaluateErrorRegression(ctx context.Context, rule *models.NotificationRuleWithChannel, event hooks.ReportEvent) {
 	for hash := range countOccurrences(event.ExceptionHashes) {
-		dedupKey := fmt.Sprintf("%d:%s", rule.Id, hash)
+		dedupKey := errorDedupKey(rule.Id, hash)
 		if dedup.isDuplicate(dedupKey, time.Duration(rule.CooldownMinutes)*time.Minute) {
 			continue
 		}

@@ -49,7 +49,7 @@ func (t *SQLiteTime) parseString(s string) error {
 }
 
 func (t SQLiteTime) Value() (driver.Value, error) {
-	return t.Time.UTC().Format(time.RFC3339Nano), nil
+	return t.Time.UTC().Format("2006-01-02T15:04:05.000000000Z07:00"), nil
 }
 
 // SQLiteJSONMap handles scanning map[string]string from SQLite TEXT JSON columns

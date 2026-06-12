@@ -251,13 +251,17 @@ func evaluateMetricThreshold(ctx context.Context, rule *models.NotificationRule,
 		selectExpr = "argMax(value, recorded_at)"
 	}
 
-	query := fmt.Sprintf("SELECT %s FROM metric_points WHERE project_id = ? AND name = ? AND recorded_at >= ? AND recorded_at <= ?", selectExpr)
+	query := fmt.Sprintf("SELECT count(), %s FROM metric_points WHERE project_id = ? AND name = ? AND recorded_at >= ? AND recorded_at <= ?", selectExpr)
 	args := []interface{}{projectId, cfg.MetricName, from, now}
 
+	var count uint64
 	var value float64
-	err := chdb.Conn.QueryRow(ctx, query, args...).Scan(&value)
+	err := chdb.Conn.QueryRow(ctx, query, args...).Scan(&count, &value)
 	if err != nil {
 		return nil, err
+	}
+	if count == 0 {
+		return &EvalResult{Fired: false}, nil
 	}
 
 	fired := false
@@ -433,68 +437,36 @@ func evaluateTaskDurationThreshold(ctx context.Context, rule *models.Notificatio
 
 // --- Task Failure Rate ---
 
-type taskFailureRateConfig struct {
-	TaskName         string  `json:"taskName"`
-	ThresholdPercent float64 `json:"thresholdPercent"`
-	LookbackMinutes  int     `json:"lookbackMinutes"`
-	MinExecutions    int     `json:"minExecutions"`
-}
-
-func evaluateTaskFailureRate(ctx context.Context, rule *models.NotificationRule, projectId uuid.UUID) (*EvalResult, error) {
-	var cfg taskFailureRateConfig
-	if err := json.Unmarshal(rule.Config, &cfg); err != nil {
-		return nil, fmt.Errorf("invalid task_failure_rate config: %w", err)
-	}
-	if cfg.LookbackMinutes <= 0 {
-		cfg.LookbackMinutes = 60
-	}
-	if cfg.MinExecutions <= 0 {
-		cfg.MinExecutions = 5
-	}
-
-	now := time.Now().UTC()
-	from := now.Add(-time.Duration(cfg.LookbackMinutes) * time.Minute)
-	named := cfg.TaskName != "" && cfg.TaskName != "*"
-
-	totalQuery := "SELECT count() FROM tasks WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
-	totalArgs := []interface{}{projectId, from, now}
+func countTaskExecutions(ctx context.Context, projectId uuid.UUID, taskName string, named bool, from, to time.Time) (int64, error) {
+	query := "SELECT count() FROM tasks WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
+	args := []interface{}{projectId, from, to}
 	if named {
-		totalQuery += " AND task_name = ?"
-		totalArgs = append(totalArgs, cfg.TaskName)
+		query += " AND task_name = ?"
+		args = append(args, taskName)
 	}
 
 	var total uint64
-	if err := chdb.Conn.QueryRow(ctx, totalQuery, totalArgs...).Scan(&total); err != nil {
-		return nil, err
+	if err := chdb.Conn.QueryRow(ctx, query, args...).Scan(&total); err != nil {
+		return 0, err
 	}
-	if total < uint64(cfg.MinExecutions) {
-		return &EvalResult{Fired: false}, nil
-	}
+	return int64(total), nil
+}
 
-	failedQuery := "SELECT countDistinct(trace_id) FROM exception_stack_traces WHERE project_id = ? AND trace_type = 'task' AND recorded_at >= ? AND recorded_at <= ?"
-	failedArgs := []interface{}{projectId, from, now}
+func countFailedTaskExecutions(ctx context.Context, projectId uuid.UUID, taskName string, named bool, from, to time.Time) (int64, error) {
+	query := "SELECT countDistinct(trace_id) FROM exception_stack_traces WHERE project_id = ? AND trace_type = 'task' AND recorded_at >= ? AND recorded_at <= ?" +
+		" AND trace_id IN (SELECT id FROM tasks WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
+	args := []interface{}{projectId, from, to, projectId, from, to}
 	if named {
-		failedQuery += " AND trace_id IN (SELECT id FROM tasks WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? AND task_name = ?)"
-		failedArgs = append(failedArgs, projectId, from, now, cfg.TaskName)
+		query += " AND task_name = ?"
+		args = append(args, taskName)
 	}
+	query += ")"
 
 	var failed uint64
-	if err := chdb.Conn.QueryRow(ctx, failedQuery, failedArgs...).Scan(&failed); err != nil {
-		return nil, err
+	if err := chdb.Conn.QueryRow(ctx, query, args...).Scan(&failed); err != nil {
+		return 0, err
 	}
-
-	rate := float64(failed) / float64(total) * 100
-	if rate < cfg.ThresholdPercent {
-		return &EvalResult{Fired: false}, nil
-	}
-
-	taskName := cfg.TaskName
-	if taskName == "" || taskName == "*" {
-		taskName = "all tasks"
-	}
-	projectName := getProjectName(projectId)
-	msg := buildTaskFailureRateMessage(taskName, rate, cfg.ThresholdPercent, int64(failed), int64(total), cfg.LookbackMinutes, projectName)
-	return &EvalResult{Fired: true, Message: msg}, nil
+	return int64(failed), nil
 }
 
 // --- Throughput Drop ---
@@ -655,13 +627,13 @@ func computeImpactEndpoints(ctx context.Context, projectId uuid.UUID, minRequest
 			FROM endpoints e
 			LEFT JOIN (SELECT * FROM slow_endpoints FINAL) AS s
 				ON e.endpoint = s.endpoint AND e.project_id = s.project_id
-			WHERE e.project_id = ? AND e.recorded_at >= ? AND e.recorded_at <= ?
+			WHERE e.project_id = ? AND e.recorded_at >= ? AND e.recorded_at <= ? AND e.is_stream = 0
 		)
 		GROUP BY endpoint, offset_ms
 	)
-	WHERE impact >= 0.25 AND total_count >= ?`
+	WHERE impact >= ? AND total_count >= ?`
 
-	rows, err := chdb.Conn.Query(ctx, query, projectId, from, now, uint64(minRequests))
+	rows, err := chdb.Conn.Query(ctx, query, projectId, from, now, minImpactThreshold, uint64(minRequests))
 	if err != nil {
 		return nil, err
 	}

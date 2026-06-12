@@ -23,8 +23,6 @@ func sanitizeForDB(s string) string {
 }
 
 func dispatch(rule *models.NotificationRuleWithChannel, msg Message) {
-	cooldowns.recordFire(rule.Id)
-
 	channel, dbErr := db.ExecuteTransaction(func(tx *sql.Tx) (*models.NotificationChannel, error) {
 		return repositories.NotificationChannelRepository.FindById(tx, rule.ChannelId)
 	})
@@ -55,6 +53,7 @@ func dispatch(rule *models.NotificationRuleWithChannel, msg Message) {
 		return
 	}
 
+	cooldowns.recordFire(rule.Id)
 	recordFiredNotification(rule, msg, "sent", "")
 }
 

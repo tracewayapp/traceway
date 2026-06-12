@@ -6,7 +6,31 @@ on:
       scenarios:
         description: 'Scenarios to run'
         required: true
-        default: 'hot churn'
+        default: 'hot churn oom'
+      oom_entries:
+        description: 'Corpus entries for the oom scenario'
+        required: true
+        default: '4096'
+      oom_pad_kb:
+        description: 'Bundle padding KB per oom corpus entry'
+        required: true
+        default: '1024'
+      oom_map_pad_kb:
+        description: 'sourcesContent padding KB per oom corpus map'
+        required: true
+        default: '1024'
+      oom_mappings_pad_kb:
+        description: 'VLQ mappings padding KB per oom corpus map'
+        required: true
+        default: '1024'
+      oom_duration:
+        description: 'Max duration of the oom load step'
+        required: true
+        default: '30m'
+      oom_sut_type:
+        description: 'Hetzner server type for the oom scenario'
+        required: true
+        default: 'ccx13'
       sut_type:
         description: 'Hetzner server type for the collector under test'
         required: true
@@ -90,7 +114,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        impl: [traceway-oxc, honeycomb]
+        impl: [honeycomb, traceway-oxc-mem, traceway-oxc-disk, traceway-goja-mem, traceway-goja-disk]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -111,9 +135,34 @@ jobs:
           STEP_DURATION: ${{ inputs.step_duration }}
           CHURN_ENTRIES: ${{ inputs.churn_entries }}
           PAD_KB: ${{ inputs.pad_kb }}
+          OOM_ENTRIES: ${{ inputs.oom_entries }}
+          OOM_PAD_KB: ${{ inputs.oom_pad_kb }}
+          OOM_MAP_PAD_KB: ${{ inputs.oom_map_pad_kb }}
+          OOM_MAPPINGS_PAD_KB: ${{ inputs.oom_mappings_pad_kb }}
+          OOM_DURATION: ${{ inputs.oom_duration }}
+          OOM_SUT_TYPE: ${{ inputs.oom_sut_type }}
         run: bash run-hetzner.sh ${{ matrix.impl }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: results-${{ matrix.impl }}
+          path: benchmarks/processor/results/
+
+  summary:
+    needs: bench
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: results-*
+          merge-multiple: true
+          path: benchmarks/processor/results/
+      - name: Summarize
+        working-directory: benchmarks/processor
+        run: bash summarize.sh ./results | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: summary
           path: benchmarks/processor/results/

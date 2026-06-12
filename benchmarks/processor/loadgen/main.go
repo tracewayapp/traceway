@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -121,6 +122,7 @@ func main() {
 						atomic.AddInt64(&errs, 1)
 						continue
 					}
+					io.Copy(io.Discard, resp.Body)
 					resp.Body.Close()
 					if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 						atomic.AddInt64(&ok, 1)

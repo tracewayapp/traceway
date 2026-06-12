@@ -3,10 +3,16 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-IMPLS="${IMPLS:-traceway-oxc honeycomb}"
-SCENARIOS="${SCENARIOS:-hot churn}"
+IMPLS="${IMPLS:-honeycomb traceway-oxc-mem traceway-oxc-disk traceway-goja-mem traceway-goja-disk}"
+SCENARIOS="${SCENARIOS:-hot churn oom}"
 CHURN_ENTRIES="${CHURN_ENTRIES:-512}"
 PAD_KB="${PAD_KB:-256}"
+OOM_ENTRIES="${OOM_ENTRIES:-4096}"
+OOM_PAD_KB="${OOM_PAD_KB:-1024}"
+OOM_MAP_PAD_KB="${OOM_MAP_PAD_KB:-1024}"
+OOM_MAPPINGS_PAD_KB="${OOM_MAPPINGS_PAD_KB:-1024}"
+OOM_CONNECTIONS="${OOM_CONNECTIONS:-32}"
+OOM_DURATION="${OOM_DURATION:-30m}"
 CONNECTIONS="${CONNECTIONS:-4,8,16,32,64,128}"
 STEP_DURATION="${STEP_DURATION:-30s}"
 SPANS_PER_REQUEST="${SPANS_PER_REQUEST:-20}"
@@ -39,85 +45,88 @@ build_all() {
   fi
 }
 
+scenario_params() {
+  case "$1" in
+    hot)   echo "1 $PAD_KB 0:0 128 $CONNECTIONS $STEP_DURATION" ;;
+    churn) echo "$CHURN_ENTRIES $PAD_KB 0:0 128 $CONNECTIONS $STEP_DURATION" ;;
+    oom)   echo "$OOM_ENTRIES $OOM_PAD_KB $OOM_MAP_PAD_KB:$OOM_MAPPINGS_PAD_KB $OOM_ENTRIES $OOM_CONNECTIONS $OOM_DURATION" ;;
+  esac
+}
+
 gen_corpus() {
-  local scenario="$1" entries="$2"
+  local scenario="$1" entries="$2" pad="$3" mappad="$4"
   local dir="./corpus-$scenario"
   if [ ! -f "$dir/corpus.json" ]; then
-    ./corpusgen/corpusgen --entries "$entries" --pad-kb "$PAD_KB" --out "$dir"
+    ./corpusgen/corpusgen --entries "$entries" --pad-kb "$pad" --map-pad-kb "${mappad%%:*}" --mappings-pad-kb "${mappad##*:}" --out "$dir" >&2
   fi
   echo "$dir"
 }
 
-collector_bin() {
+impl_env() {
   case "$1" in
-    traceway-*) echo "./build-traceway/otelcol-bench-traceway" ;;
-    honeycomb)  echo "./build-honeycomb/otelcol-bench-honeycomb" ;;
-  esac
-}
-
-collector_cfg() {
-  case "$1" in
-    traceway-*) echo "config-traceway.yaml" ;;
-    honeycomb)  echo "config-honeycomb.yaml" ;;
+    honeycomb) echo "BIN=./build-honeycomb/otelcol-bench-honeycomb CFG=config-honeycomb.yaml PARSER= DISK=" ;;
+    traceway-oxc-mem)   echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER=oxc DISK=" ;;
+    traceway-oxc-disk)  echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER=oxc DISK=1" ;;
+    traceway-goja-mem)  echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER=goja DISK=" ;;
+    traceway-goja-disk) echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER=goja DISK=1" ;;
+    *) echo "unknown impl $1" >&2; return 1 ;;
   esac
 }
 
 run_one() {
   local impl="$1" scenario="$2"
-  local entries=1
-  [ "$scenario" = "churn" ] && entries="$CHURN_ENTRIES"
+  read -r entries pad mappad cachesize conns dur <<< "$(scenario_params "$scenario")"
   local store
-  store=$(gen_corpus "$scenario" "$entries")
+  store=$(gen_corpus "$scenario" "$entries" "$pad" "$mappad")
+  local BIN CFG PARSER DISK
+  eval "$(impl_env "$impl")"
   local tag="$impl-$scenario"
   local outdir="$RESULTS/$tag"
   mkdir -p "$outdir"
+
+  pkill -f 'target/release/drain' 2>/dev/null || true
+  pkill -f otelcol-bench 2>/dev/null || true
+  for i in $(seq 1 10); do
+    lsof -iTCP:9319 -sTCP:LISTEN >/dev/null 2>&1 || lsof -iTCP:4318 -sTCP:LISTEN >/dev/null 2>&1 || break
+    sleep 1
+  done
 
   DRAIN_ADDR=127.0.0.1:9319 ./drain/target/release/drain &
   local drain_pid=$!
   sleep 1
   curl -sf -X POST http://127.0.0.1:9319/reset > /dev/null
 
-  local cache_dir
-  cache_dir=$(mktemp -d)
-  STORE_PATH="$store" CACHE_DIR="$cache_dir" SYMB_PARSER="${impl#traceway-}" \
+  local cache_dir=""
+  [ -n "$DISK" ] && cache_dir=$(mktemp -d)
+  STORE_PATH="$store" CACHE_DIR="$cache_dir" CACHE_SIZE="$cachesize" SYMB_PARSER="${PARSER:-goja}" \
     DRAIN_ENDPOINT=http://127.0.0.1:9319 \
-    "$(collector_bin "$impl")" --config "$(collector_cfg "$impl")" > "$outdir/collector.log" 2>&1 &
+    "$BIN" --config "$CFG" > "$outdir/collector.log" 2>&1 &
   local col_pid=$!
 
   for i in $(seq 1 30); do
-    curl -sf -o /dev/null -X POST -H 'Content-Type: application/x-protobuf' --data-binary '' http://127.0.0.1:4318/v1/traces 2>/dev/null && break
-    kill -0 "$col_pid" 2>/dev/null || { echo "collector died, see $outdir/collector.log" >&2; kill "$drain_pid"; return 1; }
+    curl -s -o /dev/null http://127.0.0.1:4318/ 2>/dev/null && break
+    kill -0 "$col_pid" 2>/dev/null || { echo "collector died at startup, see $outdir/collector.log" >&2; kill "$drain_pid"; return 1; }
     sleep 1
   done
 
   bash ./rss-sampler.sh "$col_pid" "$outdir/rss.csv" &
   local rss_pid=$!
+  local t0
+  t0=$(date +%s)
 
   ./loadgen/loadgen --target http://127.0.0.1:4318/v1/traces --corpus "$store/corpus.json" \
-    --connections "$CONNECTIONS" --step-duration "$STEP_DURATION" \
-    --spans-per-request "$SPANS_PER_REQUEST" --out "$outdir/loadgen.json"
+    --connections "$conns" --step-duration "$dur" \
+    --spans-per-request "$SPANS_PER_REQUEST" --out "$outdir/loadgen.json" || true
 
-  curl -sf http://127.0.0.1:9319/stats > "$outdir/drain.json"
+  if ! kill -0 "$col_pid" 2>/dev/null; then
+    echo "$(( $(tail -1 "$outdir/rss.csv" | cut -d, -f1) - t0 ))" > "$outdir/died"
+  fi
+  curl -sf http://127.0.0.1:9319/stats > "$outdir/drain.json" || echo '{}' > "$outdir/drain.json"
   kill "$col_pid" "$drain_pid" 2>/dev/null || true
   wait "$rss_pid" 2>/dev/null || true
-  rm -rf "$cache_dir"
+  [ -n "$cache_dir" ] && rm -rf "$cache_dir"
   echo "== $tag =="
   cat "$outdir/drain.json"; echo
-}
-
-summarize() {
-  echo
-  printf '%-28s %12s %12s %10s %14s\n' run max_stacks/s peak_rss_mb p99_ms drain_symb_pct
-  for d in "$RESULTS"/*/; do
-    [ -f "$d/loadgen.json" ] || continue
-    local name peak maxr p99 pct
-    name=$(basename "$d")
-    maxr=$(jq '[.[].stacks_per_sec] | max' "$d/loadgen.json")
-    p99=$(jq '[.[] | select(.stacks_per_sec == ([.[].stacks_per_sec] | max))] | .[0].p99_ms' "$d/loadgen.json" 2>/dev/null || jq '.[-1].p99_ms' "$d/loadgen.json")
-    peak=$(tail -n +2 "$d/rss.csv" | cut -d, -f2 | sort -n | tail -1)
-    pct=$(jq -r 'if .requests > 0 then (100 * .symbolicated / .requests | floor) else 0 end' "$d/drain.json")
-    printf '%-28s %12.0f %12d %10.1f %13s%%\n' "$name" "$maxr" "$((${peak:-0} / 1024))" "$p99" "$pct"
-  done
 }
 
 [ -n "$SKIP_BUILD" ] || build_all
@@ -126,4 +135,4 @@ for impl in $IMPLS; do
     run_one "$impl" "$scenario"
   done
 done
-summarize
+bash ./summarize.sh "$RESULTS"

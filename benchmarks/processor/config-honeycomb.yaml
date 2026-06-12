@@ -9,6 +9,7 @@ processors:
     source_map_store: file_store
     local_source_maps:
       path: ${env:STORE_PATH}
+    source_map_cache_size: ${env:CACHE_SIZE:-128}
     preserve_stack_trace: false
 
 exporters:

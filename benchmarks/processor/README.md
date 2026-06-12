@@ -25,13 +25,36 @@ so one accepted loadgen request equals one fully symbolicated export delivered t
 the drain. Loadgen ok-rate times spans-per-request is the end-to-end
 stacktraces/sec; the drain's symbolicated percentage is the correctness check.
 
+## Implementations
+
+| impl | binary | parser | cache |
+|------|--------|--------|-------|
+| `honeycomb` | otelcol-bench-honeycomb | symbolic (cgo) | RAM LRU, entry-count bound |
+| `traceway-oxc-mem` | otelcol-bench-traceway | oxc | in-memory resolvers only |
+| `traceway-oxc-disk` | otelcol-bench-traceway | oxc | mmap'd `.tw` disk tier |
+| `traceway-goja-mem` | otelcol-bench-traceway | goja | in-memory resolvers only |
+| `traceway-goja-disk` | otelcol-bench-traceway | goja | mmap'd `.tw` disk tier |
+
+One traceway binary (built with `-tags oxc`) serves all four variants; parser
+and cache mode are runtime config (`parser`, `cache_dir`).
+
 ## Scenarios
 
-- `hot`: one bundle, always cache-warm. Pure resolve throughput.
-- `churn`: 512 bundles (default) against the 128-entry resolver cache.
-  Honeycomb re-parses through Sentry symbolic on every eviction; Traceway
-  re-opens compiled `.tw` files from its disk cache. This is also where the
-  goja-vs-oxc parser choice matters, since the parser only runs on cache misses.
+- `hot`: one bundle, always cache-warm. Pure resolve throughput ramp.
+- `churn`: 512 bundles (default) against a 128-entry resolver cache.
+  Honeycomb re-parses through Sentry symbolic on every eviction; Traceway disk
+  variants re-open compiled `.tw` files. The goja-vs-oxc choice matters here,
+  since the parser only runs on cache misses.
+- `oom`: 4096 bundles (default) with 1MB bundle padding, 1MB of
+  sourcesContent padding, AND 1MB of synthetic VLQ mappings per map (so
+  traceway's token table grows too and the corpus is realistic, not rigged), cache entry limit raised to corpus size,
+  fixed 32-connection load until the corpus is fully resident or the collector
+  dies. Honeycomb retains the raw map JSON plus the minified bundle on the C
+  heap per entry, so RSS grows with corpus bytes. Traceway discards bundles and
+  sourcesContent after compiling the compact `.tw` token table; the mem
+  variants keep resolvers on the Go heap, the disk variants only mmap handles.
+  The oom run defaults to a small SUT (ccx13, 8 GB) so the breaking point
+  arrives quickly.
 
 Corpus entries are the real minified node-app bundle padded with `--pad-kb`
 of valid JS (default 256 KB) so scope-analysis parse cost is realistic. The

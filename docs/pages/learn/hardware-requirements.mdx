@@ -1,0 +1,104 @@
+# Hardware Requirements
+
+import { Callout } from "nextra/components";
+
+How much CPU, RAM, and disk Traceway needs depends almost entirely on **which storage backend you run**. The backend ships as a single static Go binary (CGO disabled, frontend embedded), so the binary itself is cheap. What costs memory is the database next to it.
+
+There are two shapes:
+
+- **SQLite mode** (single binary, zero external dependencies). The whole stack is one process. This is the lightweight option.
+- **ClickHouse + PostgreSQL mode** (`pgch`). ClickHouse is built to use a lot of RAM for caches and merges, so this is the heavier option that scales much further.
+
+## TL;DR
+
+| Deployment | Minimum to start | Comfortable | Notes |
+|------------|------------------|-------------|-------|
+| **SQLite** (single binary) | 1 vCPU, 512 MB RAM | 2 vCPU, 1 to 2 GB RAM | The backend process idles at ~30 MB RSS. Memory grows with the SQLite page cache and source map cache, both capped. |
+| **ClickHouse + PostgreSQL** | 2 vCPU, 4 GB RAM | 4 vCPU, 8 GB+ RAM | ClickHouse is the floor here, not Traceway. It claims up to 80% of host RAM by design. |
+
+If you just want "the smallest box that runs it," that is the SQLite deployment, and it is genuinely small. The Go process is not where your money goes.
+
+## The backend process itself
+
+The backend is a single static binary with the SvelteKit frontend embedded into it. There is no Node runtime, no separate web server, and (in SQLite mode) no external database to host.
+
+Measured at idle in SQLite mode, serving the dashboard and API with every background worker running (notification evaluator, retention worker, the 32-worker session-recording uploader, OAuth prune worker):
+
+```
+Idle RSS ≈ 30 MB
+```
+
+So the intuition that "it's about 100 MB" is, if anything, conservative for an idle instance. The process baseline is small. What makes the number move is data flowing through it, and that load lands in a few well-defined caches, each with a configurable ceiling.
+
+What consumes memory under real traffic:
+
+1. **The SQLite page cache** (SQLite mode only), capped at ~512 MB.
+2. **The source map cache**, capped at 500 MB in memory by default, and only filled if you upload source maps.
+3. **Per-request conversion work**: decoding OTLP/JSON payloads and hashing, proportional to your ingest rate. This is CPU, not retained memory.
+
+None of these are committed up front. A box with no source maps and light ingest stays near the idle floor.
+
+## SQLite mode (the small one)
+
+The [SQLite deployment](/server/sqlite) is one Alpine container, one process, two SQLite files, and a folder for blobs. No Postgres, no ClickHouse.
+
+A **1 vCPU / 512 MB** box is enough to stand it up and run a small project. **2 vCPU / 1 to 2 GB** is comfortable for a real workload and leaves headroom for the caches.
+
+The telemetry database is tuned for append-heavy writes and will grow its page cache up to ~512 MB under sustained ingest (`cache_size(-524288)`), with a 1 GB memory-mapped read window on top. On a small box you do not need to touch this. The cache is a ceiling, not a reservation, and SQLite only grows it as the working set demands.
+
+We benchmark the single-binary SQLite build on dedicated Hetzner CCX instances, from **CCX13 (2 vCPU / 8 GB)** up to **CCX43 (16 vCPU / 64 GB)**. Even the small tiers sustain tens of thousands of OTLP data points per second over OTLP/HTTP before write latency starts to climb, which is far more headroom than most self-hosted projects need.
+
+<Callout type="info">
+  Where does SQLite actually stop being enough? We pushed the single-binary
+  build until it fell over and wrote up exactly where the cliff is and why:
+  [Breaking SQLite Traceway](https://tracewayapp.com/blog/break-sqlite-traceway).
+  When you outgrow it, switch to the ClickHouse + PostgreSQL deployment below.
+</Callout>
+
+### Disk
+
+SQLite stores telemetry on local disk, so disk is the resource to watch, not RAM. Size it for your retention window. Telemetry rows are pruned by a background worker (`SQLITE_RETENTION_DAYS`, default 30); see [Data retention on the SQLite page](/server/sqlite#configuration). Blob storage (source maps, session recordings, AI traces) lives under the same `/data` volume unless you offload it to S3.
+
+## ClickHouse + PostgreSQL mode
+
+The [Docker Compose](/server/docker-compose), [all-in-one](/server/all-in-one), and [minimal](/server/minimal) deployments run the `pgch` build against ClickHouse (telemetry) and PostgreSQL (config). Here the hardware floor is set by **ClickHouse**, not by the Traceway backend.
+
+ClickHouse is designed to use memory aggressively. In the bundled config it claims up to **80% of host RAM** (`max_server_memory_usage_to_ram_ratio = 0.8`) for query and merge buffers, and reserves a multi-GB mark cache. Plan around that, not around the Go process:
+
+- **Minimum:** 2 vCPU / 4 GB RAM. Workable for a small instance, but ClickHouse will feel tight.
+- **Comfortable:** 4 vCPU / 8 GB+ RAM. Give ClickHouse room for merges so background compaction keeps up with ingest.
+- **Heavy ingest:** 8 vCPU / 16 to 32 GB. At this point you are scaling ClickHouse, and the backend stays comparatively cheap.
+
+PostgreSQL holds only relational config (users, projects, organizations, notification rules) and is low-volume. The backend opens a small pool (25 connections) against it, and it is never the bottleneck.
+
+For a deployment that points the backend at a managed or external ClickHouse instead of co-locating it, the SUT only needs to host the Go backend plus local Postgres, which brings its own footprint back down close to the SQLite numbers.
+
+When you are deciding whether to scale ClickHouse, scale the backend, or put a queue in front of ingestion, the [Capacity & Self-Monitoring guide](/server/capacity-monitoring) walks through the exact metrics and thresholds for each.
+
+## What actually drives memory (and how to cap it)
+
+If you are sizing a small box, these are the knobs that matter. Every one has a hard ceiling, so the process cannot grow unbounded.
+
+| Driver | Default | Tune with | When it matters |
+|--------|---------|-----------|-----------------|
+| Source map cache (in memory) | 500 MB cap, 200 resolvers | `SOURCEMAP_CACHE_MAX_BYTES_MB`, `SOURCEMAP_CACHE_MAX_ENTRIES` | JS/TS projects that upload source maps. On a 1 to 2 GB box, set the cap to `100`. |
+| Source map cache (disk tier) | off | `SOURCEMAP_CACHE_TYPE=disk`, `SOURCEMAP_DISK_CACHE_MAX_MB` (2048) | Many active maps, or multiple backend instances. Moves `.tw` resolvers to memory-mapped files. |
+| SQLite page cache | ~512 MB cap | `cache_size` pragma | SQLite mode under sustained ingest. A ceiling, grown on demand. |
+| Session-recording uploader | 32 workers, 2048 queue | `SESSION_RECORDING_UPLOAD_WORKERS`, `SESSION_RECORDING_UPLOAD_QUEUE_SIZE` | Browser/mobile session replay. Set workers to `0` to disable entirely. |
+
+On a memory-constrained host, the single most effective change is lowering `SOURCEMAP_CACHE_MAX_BYTES_MB`. The source map cache is the largest tunable consumer, because resolving a minified stack frame means holding a built resolver in memory.
+
+<Callout type="info">
+  Source maps are the heaviest single thing the backend keeps in memory, and the
+  caching design (in-memory LRU, the precompiled `.tw` format, the optional disk
+  tier) exists specifically to keep that bounded. The full story is in
+  [A deep dive into the source maps](https://tracewayapp.com/blog/deep-dive-into-the-sourcemaps),
+  with the in-product mechanics on the [Symbolication (JS)](/learn/symbolication-js) page.
+</Callout>
+
+## Rules of thumb
+
+- **"I want the cheapest thing that runs."** SQLite mode, 1 vCPU / 512 MB. It idles around 30 MB and the caches are capped.
+- **"Small production app, some JS source maps."** SQLite mode, 2 vCPU / 1 to 2 GB, source map cap at 100 to 250 MB.
+- **"High ingest, long retention, want it to scale."** ClickHouse + PostgreSQL, 4 vCPU / 8 GB+, and size ClickHouse first.
+- **"It's getting slow."** Don't guess. Turn on [self-monitoring](/server/capacity-monitoring) and let the metrics tell you whether to scale ClickHouse, scale the backend, or buffer ingestion.

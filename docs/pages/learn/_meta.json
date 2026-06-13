@@ -18,5 +18,6 @@
   "embedded-mode": "Embedded Mode",
   "otel-agent": "OTel Agent",
   "build-tags": "Build Tags",
+  "hardware-requirements": "Hardware Requirements",
   "contributing": "Contributing"
 }

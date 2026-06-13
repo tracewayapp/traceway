@@ -27,6 +27,7 @@ type resolverCache struct {
 	loading    map[string]*resolverLoad
 	negative   map[string]negativeEntry
 	disk       *twcache.Cache
+	buildSem   chan struct{}
 }
 
 type cacheEntry struct {
@@ -59,6 +60,9 @@ func newResolverCache(cfg *Config) (*resolverCache, error) {
 			return nil, err
 		}
 		c.disk = disk
+	}
+	if cfg.MaxConcurrentBuilds > 0 {
+		c.buildSem = make(chan struct{}, cfg.MaxConcurrentBuilds)
 	}
 	return c, nil
 }
@@ -119,13 +123,13 @@ func (c *resolverCache) get(ctx context.Context, key string, build buildFunc) (*
 
 func (c *resolverCache) load(ctx context.Context, key string, build buildFunc) (*symbolicator.Resolver, error) {
 	if c.disk == nil {
-		return build(ctx)
+		return c.runBuild(ctx, build)
 	}
 	name := diskNameFor(key)
 	if r, err := c.disk.Open(name); err == nil {
 		return r, nil
 	}
-	r, err := build(ctx)
+	r, err := c.runBuild(ctx, build)
 	if err != nil {
 		return nil, err
 	}
@@ -133,6 +137,18 @@ func (c *resolverCache) load(ctx context.Context, key string, build buildFunc) (
 		return cached, nil
 	}
 	return r, nil
+}
+
+func (c *resolverCache) runBuild(ctx context.Context, build buildFunc) (*symbolicator.Resolver, error) {
+	if c.buildSem != nil {
+		select {
+		case c.buildSem <- struct{}{}:
+			defer func() { <-c.buildSem }()
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return build(ctx)
 }
 
 func diskNameFor(key string) string {

@@ -52,6 +52,8 @@ type Config struct {
 
 	SourceMapCacheSize int `mapstructure:"source_map_cache_size"`
 
+	MaxConcurrentBuilds int `mapstructure:"max_concurrent_builds"`
+
 	CacheDir        string `mapstructure:"cache_dir"`
 	CacheMaxMB      int    `mapstructure:"cache_max_mb"`
 	CacheMaxDiskPct int    `mapstructure:"cache_max_disk_pct"`

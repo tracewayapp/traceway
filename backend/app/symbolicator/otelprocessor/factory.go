@@ -2,6 +2,7 @@ package otelprocessor
 
 import (
 	"context"
+	"runtime"
 	"time"
 
 	"go.opentelemetry.io/collector/component"
@@ -56,10 +57,19 @@ func createDefaultConfig() component.Config {
 
 		SourceMapCacheSize: 128,
 
+		MaxConcurrentBuilds: defaultMaxConcurrentBuilds(),
+
 		CacheMaxMB: 2048,
 
 		LanguageAttributeKey: "telemetry.sdk.language",
 	}
+}
+
+func defaultMaxConcurrentBuilds() int {
+	if n := 2 * runtime.GOMAXPROCS(0); n < 16 {
+		return n
+	}
+	return 16
 }
 
 func newSymbolicator(cfg *Config, set processor.Settings) (*symbolicatorProcessor, error) {

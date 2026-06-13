@@ -39,7 +39,7 @@ RUN go mod download
 
 # Build WITHOUT the pgch tag so the SQLite codepath in app/db/db_sqlite.go
 # is selected. modernc.org/sqlite is pure Go, so CGO_ENABLED=0 is fine.
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /traceway ./cmd/traceway
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /traceway ./cmd/traceway
 
 # ==============================================================================
 # Stage 3: Minimal runtime image

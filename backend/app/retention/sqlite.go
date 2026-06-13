@@ -27,13 +27,6 @@ var telemetryRetentionTargets = []struct {
 	{"sessions", "started_at"},
 }
 
-var mainRetentionTargets = []struct {
-	table  string
-	column string
-}{
-	{"notification_history", "created_at"},
-}
-
 func startSQLiteRetention(ctx context.Context, days int) {
 	if !db.IsSQLite() {
 		return
@@ -75,18 +68,6 @@ func runSQLiteRetention(ctx context.Context, days int) {
 			query := fmt.Sprintf("DELETE FROM %s WHERE %s < :cutoff", tgt.table, tgt.column)
 			if err := lit.DeleteNamed(db.Driver, db.TelemetryDB, query, params); err != nil {
 				traceway.CaptureException(fmt.Errorf("retention: delete from telemetry.%s failed: %w", tgt.table, err))
-			}
-		}
-	}
-
-	if db.DB != nil {
-		for _, tgt := range mainRetentionTargets {
-			if ctx.Err() != nil {
-				return
-			}
-			query := fmt.Sprintf("DELETE FROM %s WHERE %s < :cutoff", tgt.table, tgt.column)
-			if err := lit.DeleteNamed(db.Driver, db.DB, query, params); err != nil {
-				traceway.CaptureException(fmt.Errorf("retention: delete from main.%s failed: %w", tgt.table, err))
 			}
 		}
 	}

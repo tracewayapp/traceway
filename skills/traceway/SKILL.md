@@ -220,4 +220,4 @@ traceway logs query --service checkout-api --min-severity 17 --since 1h --output
   | jq '.data[]? | {timestamp, body, traceId}'
 ```
 
-Empty results (`data: null`) are not errors: widen the window, re-check the active project (`traceway projects list`), and if the app was never connected to Traceway, set it up first (the `traceway-setup` skill).
+Empty results (`data: null` or `data: []`) are not errors: widen the window, re-check the active project (`traceway projects list`), and if the app was never connected to Traceway, set it up first (the `traceway-setup` skill).

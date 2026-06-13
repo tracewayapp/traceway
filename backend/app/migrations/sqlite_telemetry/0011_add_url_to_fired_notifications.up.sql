@@ -1,0 +1,1 @@
+ALTER TABLE fired_notifications ADD COLUMN url TEXT NOT NULL DEFAULT ''

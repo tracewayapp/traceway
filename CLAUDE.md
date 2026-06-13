@@ -251,6 +251,9 @@ POSTGRES_USERNAME=traceway
 POSTGRES_PASSWORD=
 POSTGRES_SSLMODE=disable
 
+# Notifications
+NOTIFICATION_POLL_SECONDS=60          # polled rule evaluation interval; minimum 5, invalid values fall back to 60
+
 # Retention (see "Data Retention" section below)
 SQLITE_RETENTION_DAYS=30              # 0 to disable; only applies in SQLite mode
 SESSION_RECORDING_RETENTION_DAYS=30   # 0 to disable; only applies when STORAGE_TYPE=local
@@ -706,7 +709,7 @@ In SQLite mode (`DB_TYPE=sqlite`), the backend uses **two separate SQLite databa
 **Main DB tables** (`db.DB` — transactional, uses lit with `*sql.Tx`):
 - `users`, `organizations`, `organization_users`, `projects`, `invitations`
 - `source_maps`, `metric_registry`, `widget_groups`, `widget_group_widgets`
-- `notification_channels`, `notification_rules`, `notification_history`
+- `notification_channels`, `notification_rules`
 
 **Telemetry DB tables** (`db.TelemetryDB` — non-transactional, uses lit with `db.TelemetryDB` directly):
 - `endpoints`, `tasks`, `exception_stack_traces`, `spans`, `metric_points`
@@ -752,7 +755,7 @@ Retention is handled in three different ways depending on the deployment.
 | `log_records` | **30 days** | `0045_create_log_records.up.sql` |
 | All other CH tables (`transactions`, `exception_stack_traces`, `tasks`, `spans`, `sessions`, `ai_traces`, `session_recordings`, `fired_notifications`, `archived_exceptions`, `slow_endpoints`, `endpoints`, etc.) | **No TTL — retained indefinitely** | — |
 
-**2. SQLite — `retention.Start` worker** (`backend/app/retention/sqlite.go`). In SQLite mode, neither `db.DB` nor `db.TelemetryDB` has any built-in expiry, so a background worker fires once at startup and then every hour and runs a `DELETE FROM <table> WHERE <time_column> < cutoff` against each telemetry table plus `notification_history`.
+**2. SQLite — `retention.Start` worker** (`backend/app/retention/sqlite.go`). In SQLite mode, neither `db.DB` nor `db.TelemetryDB` has any built-in expiry, so a background worker fires once at startup and then every hour and runs a `DELETE FROM <table> WHERE <time_column> < cutoff` against each telemetry table.
 
 | Variable | Default | Notes |
 |----------|---------|-------|
@@ -766,7 +769,6 @@ Tables it prunes (and the column used):
 | Telemetry | `log_records` | `timestamp` |
 | Telemetry | `sessions` | `started_at` |
 | Telemetry | `fired_notifications` | `fired_at` |
-| Main (`db.DB`) | `notification_history` | `created_at` |
 
 `archived_exceptions` (per-hash flags) and `slow_endpoints` (per-endpoint config) are intentionally skipped — they are not time-series data.
 

@@ -86,15 +86,23 @@ func evaluateAiTraceCostEvent(rule *models.NotificationRuleWithChannel, event ho
 			continue
 		}
 
-		dedupKey := fmt.Sprintf("ai_cost:%d:%s", rule.Id, at.TraceName)
+		dedupKey := aiCostDedupKey(rule.Id, at.TraceName)
 		if dedup.isDuplicate(dedupKey, time.Duration(rule.CooldownMinutes)*time.Minute) {
 			continue
 		}
 		dedup.record(dedupKey)
 
-		msg := buildAiTraceCostMessage(at.TraceName, at.TotalCost, cfg.ThresholdCost, 0, projectName)
+		msg := buildAiTraceCostMessage(at.TraceName, at.TotalCost, cfg.ThresholdCost, projectName)
 		dispatch(rule, msg)
 	}
+}
+
+func countOccurrences(hashes []string) map[string]int {
+	occurrences := make(map[string]int, len(hashes))
+	for _, h := range hashes {
+		occurrences[h]++
+	}
+	return occurrences
 }
 
 func extractErrorType(stackTrace string) string {

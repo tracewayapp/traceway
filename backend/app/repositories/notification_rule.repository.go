@@ -72,7 +72,7 @@ func (r *notificationRuleRepository) Delete(tx *sql.Tx, id int) error {
 }
 
 func (r *notificationRuleRepository) UpdateEnabled(tx *sql.Tx, id int, enabled bool) error {
-	q, a, err := lit.ParseNamedQuery(db.Driver, "UPDATE notification_rules SET enabled = :enabled, updated_at = NOW() WHERE id = :id", lit.P{"enabled": enabled, "id": id})
+	q, a, err := lit.ParseNamedQuery(db.Driver, "UPDATE notification_rules SET enabled = :enabled, updated_at = :updated_at WHERE id = :id", lit.P{"enabled": enabled, "updated_at": time.Now().UTC(), "id": id})
 	if err != nil {
 		return err
 	}
@@ -80,7 +80,7 @@ func (r *notificationRuleRepository) UpdateEnabled(tx *sql.Tx, id int, enabled b
 }
 
 func (r *notificationRuleRepository) UpdateSnoozedUntil(tx *sql.Tx, id int, snoozedUntil *time.Time) error {
-	q, a, err := lit.ParseNamedQuery(db.Driver, "UPDATE notification_rules SET snoozed_until = :snoozed_until, updated_at = NOW() WHERE id = :id", lit.P{"snoozed_until": snoozedUntil, "id": id})
+	q, a, err := lit.ParseNamedQuery(db.Driver, "UPDATE notification_rules SET snoozed_until = :snoozed_until, updated_at = :updated_at WHERE id = :id", lit.P{"snoozed_until": snoozedUntil, "updated_at": time.Now().UTC(), "id": id})
 	if err != nil {
 		return err
 	}

@@ -27,14 +27,12 @@ func dispatch(rule *models.NotificationRuleWithChannel, msg Message) {
 		return repositories.NotificationChannelRepository.FindById(tx, rule.ChannelId)
 	})
 	if dbErr != nil || channel == nil {
-		recordHistory(rule, msg, "failed", "failed to load channel")
 		recordFiredNotification(rule, msg, "failed", "failed to load channel")
 		return
 	}
 
 	adapter, err := NewAdapter(channel.ChannelType, channel.Config)
 	if err != nil {
-		recordHistory(rule, msg, "failed", err.Error())
 		recordFiredNotification(rule, msg, "failed", err.Error())
 		return
 	}
@@ -50,15 +48,13 @@ func dispatch(rule *models.NotificationRuleWithChannel, msg Message) {
 
 	err = adapter.Send(ctx, msg)
 	if err != nil {
-		recordHistory(rule, msg, "failed", err.Error())
 		recordFiredNotification(rule, msg, "failed", err.Error())
 		traceway.CaptureException(fmt.Errorf("notification dispatch failed (rule=%d, channel=%s): %w", rule.Id, rule.ChannelName, err))
 		return
 	}
 
-	recordHistory(rule, msg, "sent", "")
-	recordFiredNotification(rule, msg, "sent", "")
 	cooldowns.recordFire(rule.Id)
+	recordFiredNotification(rule, msg, "sent", "")
 }
 
 func recordFiredNotification(rule *models.NotificationRuleWithChannel, msg Message, status string, errorMsg string) {
@@ -78,6 +74,7 @@ func recordFiredNotification(rule *models.NotificationRuleWithChannel, msg Messa
 			Status:      status,
 			ErrorMsg:    sanitizeForDB(errorMsg),
 			Endpoint:    msg.Endpoint,
+			URL:         msg.URL,
 			FiredAt:     time.Now().UTC(),
 		})
 		if err != nil {
@@ -86,41 +83,3 @@ func recordFiredNotification(rule *models.NotificationRuleWithChannel, msg Messa
 	}()
 }
 
-func recordHistory(rule *models.NotificationRuleWithChannel, msg Message, status string, errorMsg string) {
-	var errMsgPtr *string
-	if errorMsg != "" {
-		errMsgPtr = &errorMsg
-	}
-
-	ruleId := rule.Id
-	channelId := rule.ChannelId
-
-	history := &models.NotificationHistory{
-		ProjectId:    rule.ProjectId,
-		RuleId:       &ruleId,
-		ChannelId:    &channelId,
-		RuleType:     rule.RuleType,
-		RuleName:     rule.Name,
-		ChannelName:  rule.ChannelName,
-		Severity:     string(msg.Severity),
-		Subject:      sanitizeForDB(msg.Subject),
-		Body:         sanitizeForDB(msg.Body),
-		Status:       status,
-		ErrorMessage: errMsgPtr,
-		URL:          msg.URL,
-		CreatedAt:    time.Now().UTC(),
-	}
-
-	if errMsgPtr != nil {
-		sanitized := sanitizeForDB(*errMsgPtr)
-		errMsgPtr = &sanitized
-		history.ErrorMessage = errMsgPtr
-	}
-
-	_, dbErr := db.ExecuteTransaction(func(tx *sql.Tx) (int, error) {
-		return repositories.NotificationHistoryRepository.Create(tx, history)
-	})
-	if dbErr != nil {
-		traceway.CaptureException(fmt.Errorf("failed to record notification history: %w", dbErr))
-	}
-}

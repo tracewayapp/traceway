@@ -9,6 +9,7 @@
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
 	import { projectsState, isFrontendFramework } from '$lib/state/projects.svelte';
+	import { ruleTypeOptions } from './rule-types';
 
 	interface NotificationChannel {
 		id: number;
@@ -78,31 +79,10 @@
 	let dropPercent = $state(50);
 	let baselineWindowMinutes = $state(60);
 	let ignorePatterns = $state('');
-	let includeArchived = $state(true);
 	let traceName = $state('*');
 	let thresholdCost = $state(0.5);
 
 	const isEditing = $derived(rule !== null);
-
-	const ruleTypeOptions = [
-		{ value: 'new_error', label: 'New Issue' },
-		{ value: 'impact_score_critical', label: 'Impact Score Critical' },
-		{ value: 'impact_score_high', label: 'Impact Score High' },
-		{ value: 'impact_score_medium', label: 'Impact Score Medium' },
-		{ value: 'error_regression', label: 'Error Regression' },
-		{ value: 'error_rate_threshold', label: 'Error Rate' },
-		{ value: 'error_count_threshold', label: 'Error Count' },
-		{ value: 'endpoint_p95_threshold', label: 'Endpoint P95' },
-		{ value: 'endpoint_p99_threshold', label: 'Endpoint P99' },
-		{ value: 'endpoint_error_rate', label: 'Endpoint Error Rate' },
-		{ value: 'apdex_drop', label: 'Apdex Drop' },
-		{ value: 'metric_threshold', label: 'Metric Threshold' },
-		{ value: 'no_data', label: 'No Data' },
-		{ value: 'task_duration_threshold', label: 'Task Duration' },
-		{ value: 'task_failure_rate', label: 'Task Failure Rate' },
-		{ value: 'throughput_drop', label: 'Throughput Drop' },
-		{ value: 'ai_trace_cost', label: 'AI Trace Cost' }
-	];
 
 	const isFrontendProject = $derived(
 		!!projectsState.currentProject &&
@@ -110,15 +90,7 @@
 	);
 
 	const visibleRuleTypes = $derived(
-		isFrontendProject
-			? [{ value: 'new_error', label: 'New Issue' }]
-			: [
-					{ value: 'new_error', label: 'New Issue' },
-					{ value: 'impact_score_critical', label: 'Impact Score Critical' },
-					{ value: 'impact_score_high', label: 'Impact Score High' },
-					{ value: 'impact_score_medium', label: 'Impact Score Medium' },
-					{ value: 'ai_trace_cost', label: 'AI Trace Cost' }
-				]
+		isFrontendProject ? [{ value: 'new_error', label: 'New Issue' }] : ruleTypeOptions
 	);
 
 	$effect(() => {
@@ -137,7 +109,31 @@
 		impact_score_medium:
 			'Fires when an endpoint\u2019s impact score reaches medium level (\u2265 0.25), an early warning of emerging performance or reliability issues.',
 		ai_trace_cost:
-			'Fires when an individual AI trace exceeds a cost threshold. Monitors per-call spending across AI providers.'
+			'Fires when an individual AI trace exceeds a cost threshold. Monitors per-call spending across AI providers.',
+		error_regression:
+			'Fires when an error that was previously archived (resolved) occurs again.',
+		error_rate_threshold:
+			'Fires when the percentage of requests returning 5xx across all endpoints exceeds the threshold within the lookback window.',
+		error_count_threshold:
+			'Fires when the total number of errors recorded within the lookback window reaches the threshold.',
+		endpoint_p95_threshold:
+			'Fires when the P95 response time of an endpoint (or all endpoints) exceeds the threshold within the lookback window.',
+		endpoint_p99_threshold:
+			'Fires when the P99 response time of an endpoint (or all endpoints) exceeds the threshold within the lookback window.',
+		endpoint_error_rate:
+			'Fires when the percentage of 5xx responses on a specific endpoint exceeds the threshold within the lookback window.',
+		apdex_drop:
+			'Fires when the Apdex satisfaction score drops below the threshold within the lookback window.',
+		metric_threshold:
+			'Fires when an aggregated metric value violates the configured comparison against the threshold within the lookback window.',
+		no_data:
+			'Fires when no telemetry of the selected kind (endpoints, exceptions, metrics or tasks) has been received for the configured number of minutes.',
+		task_duration_threshold:
+			'Fires when the P95 duration of a background task exceeds the threshold within the lookback window.',
+		task_failure_rate:
+			'Fires when the percentage of background task executions that recorded an error exceeds the threshold within the lookback window.',
+		throughput_drop:
+			'Fires when request throughput drops by more than the configured percentage compared to the preceding baseline window.'
 	};
 
 	const operatorOptions = [
@@ -191,7 +187,6 @@
 		dropPercent = 50;
 		baselineWindowMinutes = 60;
 		ignorePatterns = '';
-		includeArchived = true;
 		traceName = '*';
 		thresholdCost = 0.5;
 	}
@@ -261,9 +256,6 @@
 			case 'new_error':
 				ignorePatterns = (cfg.ignorePatterns || []).join(', ');
 				break;
-			case 'error_regression':
-				includeArchived = cfg.includeArchived ?? true;
-				break;
 			case 'impact_score_critical':
 			case 'impact_score_high':
 			case 'impact_score_medium':
@@ -306,8 +298,6 @@
 					.filter((p) => p);
 				return { ignorePatterns: patterns };
 			}
-			case 'error_regression':
-				return { includeArchived };
 			case 'impact_score_critical':
 			case 'impact_score_high':
 			case 'impact_score_medium':
@@ -747,16 +737,6 @@
 							bind:value={ignorePatterns}
 							placeholder="*timeout*, *context canceled*"
 						/>
-					</div>
-				{:else if ruleType === 'error_regression'}
-					<div class="flex items-center gap-2">
-						<input
-							id="cfg-include-archived"
-							type="checkbox"
-							bind:checked={includeArchived}
-							class="h-4 w-4 rounded border-border"
-						/>
-						<Label for="cfg-include-archived">Include archived exceptions</Label>
 					</div>
 				{:else if ruleType === 'impact_score_critical' || ruleType === 'impact_score_high' || ruleType === 'impact_score_medium'}
 					<div class="space-y-2">

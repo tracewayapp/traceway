@@ -20,14 +20,14 @@ func evaluateNewError(ctx context.Context, rule *models.NotificationRuleWithChan
 	var cfg newErrorConfig
 	json.Unmarshal(rule.Config, &cfg)
 
-	for _, hash := range event.ExceptionHashes {
-		dedupKey := fmt.Sprintf("%d:%s", rule.Id, hash)
+	for hash, batchOccurrences := range countOccurrences(event.ExceptionHashes) {
+		dedupKey := errorDedupKey(rule.Id, hash)
 		if dedup.isDuplicate(dedupKey, time.Duration(rule.CooldownMinutes)*time.Minute) {
 			continue
 		}
 
 		var count int64
-		err := db.DB.QueryRowContext(ctx,
+		err := db.TelemetryDB.QueryRowContext(ctx,
 			"SELECT COUNT(*) FROM exception_stack_traces WHERE project_id = ? AND exception_hash = ?",
 			event.ProjectId.String(), hash).Scan(&count)
 		if err != nil {
@@ -35,9 +35,9 @@ func evaluateNewError(ctx context.Context, rule *models.NotificationRuleWithChan
 			continue
 		}
 
-		if count > 1 {
+		if count > int64(batchOccurrences) {
 			var archivedCount int64
-			archErr := db.DB.QueryRowContext(ctx,
+			archErr := db.TelemetryDB.QueryRowContext(ctx,
 				"SELECT COUNT(*) FROM archived_exceptions WHERE project_id = ? AND exception_hash = ?",
 				event.ProjectId.String(), hash).Scan(&archivedCount)
 			if archErr != nil || archivedCount == 0 {
@@ -45,7 +45,7 @@ func evaluateNewError(ctx context.Context, rule *models.NotificationRuleWithChan
 			}
 
 			var postArchiveCount int64
-			archErr = db.DB.QueryRowContext(ctx,
+			archErr = db.TelemetryDB.QueryRowContext(ctx,
 				"SELECT COUNT(*) FROM exception_stack_traces WHERE project_id = ? AND exception_hash = ? AND recorded_at > (SELECT MAX(archived_at) FROM archived_exceptions WHERE project_id = ? AND exception_hash = ?)",
 				event.ProjectId.String(), hash, event.ProjectId.String(), hash).Scan(&postArchiveCount)
 			if archErr != nil {
@@ -53,7 +53,7 @@ func evaluateNewError(ctx context.Context, rule *models.NotificationRuleWithChan
 				continue
 			}
 
-			if postArchiveCount > 1 {
+			if postArchiveCount > int64(batchOccurrences) {
 				continue
 			}
 		}
@@ -72,14 +72,14 @@ func evaluateNewError(ctx context.Context, rule *models.NotificationRuleWithChan
 }
 
 func evaluateErrorRegression(ctx context.Context, rule *models.NotificationRuleWithChannel, event hooks.ReportEvent) {
-	for _, hash := range event.ExceptionHashes {
-		dedupKey := fmt.Sprintf("%d:%s", rule.Id, hash)
+	for hash := range countOccurrences(event.ExceptionHashes) {
+		dedupKey := errorDedupKey(rule.Id, hash)
 		if dedup.isDuplicate(dedupKey, time.Duration(rule.CooldownMinutes)*time.Minute) {
 			continue
 		}
 
 		var count int64
-		err := db.DB.QueryRowContext(ctx,
+		err := db.TelemetryDB.QueryRowContext(ctx,
 			"SELECT COUNT(*) FROM archived_exceptions WHERE project_id = ? AND exception_hash = ?",
 			event.ProjectId.String(), hash).Scan(&count)
 		if err != nil {
@@ -103,7 +103,7 @@ func getExceptionDetails(ctx context.Context, projectId uuid.UUID, hash string) 
 	var idStr, stackTrace, traceType, appVersion, serverName, attributesJSON, recordedAtStr string
 	var traceIdStr sql.NullString
 
-	err := db.DB.QueryRowContext(ctx,
+	err := db.TelemetryDB.QueryRowContext(ctx,
 		"SELECT id, trace_id, trace_type, stack_trace, attributes, app_version, server_name, recorded_at FROM exception_stack_traces WHERE project_id = ? AND exception_hash = ? ORDER BY recorded_at DESC LIMIT 1",
 		projectId.String(), hash).Scan(&idStr, &traceIdStr, &traceType, &stackTrace, &attributesJSON, &appVersion, &serverName, &recordedAtStr)
 

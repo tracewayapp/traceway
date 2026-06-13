@@ -11,6 +11,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/notifications"
 	"github.com/tracewayapp/traceway/backend/app/repositories"
 	traceway "go.tracewayapp.com"
 )
@@ -228,6 +229,7 @@ func (ctrl *notificationRuleController) Update(ctx *gin.Context) {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to update notification rule: %w", err))
 		return
 	}
+	notifications.ClearRuleState(id)
 
 	ctx.JSON(http.StatusOK, existing)
 }
@@ -261,6 +263,7 @@ func (ctrl *notificationRuleController) Delete(ctx *gin.Context) {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to delete notification rule: %w", err))
 		return
 	}
+	notifications.ClearRuleState(id)
 
 	ctx.JSON(http.StatusOK, gin.H{"deleted": true})
 }

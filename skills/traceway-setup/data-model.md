@@ -21,7 +21,7 @@ Traceway turns OTel spans into five distinct concepts, each with its own dashboa
 |---|---|---|
 | **Endpoint** | Endpoints (P50/P95/P99, error rates, Apdex) | Root spans that look like HTTP requests |
 | **Task** | Tasks (background jobs, cron, consumers) | `CONSUMER`-kind spans |
-| **Span** | Endpoint/Task detail → Spans tab (waterfall) | Child spans (DB queries, outgoing calls, custom work) |
+| **Span** | Endpoint/Task detail -> Spans tab (waterfall) | Child spans (DB queries, outgoing calls, custom work) |
 | **Issue** | Issues (grouped errors with stack traces) | `exception` events on spans |
 | **AI Trace** | AI Traces (tokens, cost, model) | Spans with `gen_ai.*` attributes |
 
@@ -29,14 +29,16 @@ Traceway turns OTel spans into five distinct concepts, each with its own dashboa
 
 For every incoming span, Traceway applies these rules in order:
 
-1. **Endpoint** — `SpanKind` is `SERVER` or `INTERNAL`, the span has at least one HTTP attribute (`http.request.method`, `http.method`, `http.route`, or `url.path`), AND it is either a root span (no parent) or its parent span is not present in the same export batch (cross-process tracing, e.g. behind a proxy that injects `traceparent`).
+1. **Endpoint** — `SpanKind` is `SERVER` or `INTERNAL`, the span has at least one HTTP attribute (`http.request.method`, `http.method`, `http.route`, or `url.path`), AND it is either a root span (no parent) or its parent span is not present in the same export batch (cross-process tracing, e.g. behind a proxy that injects `traceparent`). One carve-out: an `INTERNAL` span carrying `exception.*` attributes is never promoted to an Endpoint, even with HTTP attributes present — browser SDKs (e.g. Honeycomb's) stamp page context like `url.path` onto their error spans, and those must become Issues, not endpoints.
 2. **Task** — `SpanKind` is `CONSUMER`. This applies to ANY consumer span, root or not.
 3. **Task** — a root `INTERNAL` span with a `console.command` attribute (CLI command instrumentation, e.g. Laravel/Symfony console).
 4. **AI Trace** — the span has any attribute starting with `gen_ai.`.
 5. **Child span** — anything else with a parent: stored as a generic span, attached to the nearest promoted ancestor (Endpoint/Task/AI Trace) by walking up the parent chain.
-6. **Dropped** — anything else that is a root span. A root span that matches none of the rules above is silently discarded, along with any exception events on it.
+6. **Dropped** — anything else that is a root span. A root span that matches none of the rules above is silently discarded: no entity row, no span row. One exception: if the span carries an exception signal (an `exception` event or `exception.*` attributes), the exception is still captured as an Issue, linked by the raw OTel trace ID — only the span itself is lost.
 
-The consequences of rule 6 are the most common integration bug: a custom root span created with `tracer.startActiveSpan("my-job")` and default `SpanKind.INTERNAL` produces NOTHING in Traceway. Background work must use `SpanKind.CONSUMER` (see Tasks below).
+The consequences of rule 6 are the most common integration bug: a custom root span created with `tracer.startActiveSpan("my-job")` and default `SpanKind.INTERNAL` produces nothing on the Endpoints or Tasks pages (errors recorded on it do still reach Issues, but with no Endpoint/Task to link back to). Background work must use `SpanKind.CONSUMER` (see Tasks below).
+
+One project-level gate sits above all of these rules: a project whose framework is a frontend type (react, vue, svelte, ...) never promotes OTel spans to Endpoints/Tasks/AI Traces — only exceptions are extracted. Backend OTel exporters must point at a backend-framework project token.
 
 ## Endpoints: Name and Route Parameters
 
@@ -80,7 +82,7 @@ Quirks:
 - **Missing status code becomes `0`.** Without `http.response.status_code`, error tracking and Apdex for that endpoint are meaningless. Make sure the instrumentation sets it.
 - **Streaming endpoints** (long-lived responses that would otherwise look like terrible P99s) are detected when: status is `101` (WebSocket upgrade), the captured response header `http.response.header.content-type` contains `text/event-stream` (SSE), or the vendor attribute `traceway.is_stream` (boolean) is `true`. OTel clients don't capture response headers by default — for SSE endpoints either enable capture of `content-type` or set `traceway.is_stream` manually. Streaming endpoints keep their request count and error rate, but latency percentiles and Apdex are zeroed (connection lifetime is not request latency).
 - **Health-check endpoints are filtered at ingestion** according to the project's health-check configuration, so `GET /health`-style routes don't pollute the endpoint list or stats.
-- **Apdex thresholds are fixed**: satisfied at duration up to 750 ms, tolerating up to 1.5 s, bad above that or on any 5xx response.
+- **Apdex thresholds are hardcoded, and they differ by page.** The Endpoints list buckets requests as satisfied up to 750 ms, tolerating up to 1.5 s, bad above that or on any 5xx — both boundaries shifted upward by the endpoint's slow-endpoint offset when one is configured (Endpoints page -> slow endpoint threshold). The endpoint detail page computes its displayed Apdex score with 500 ms / 2 s boundaries instead (no offset), and the apdex-drop notification rule uses flat 750 ms / 1.5 s. None of the thresholds are configurable.
 
 ## Tasks: Scheduled Jobs, Cron, Queue Consumers
 
@@ -115,7 +117,7 @@ Quirks:
 
 - **The span name IS the task name, and Traceway groups tasks by name.** Use a stable identifier like `cleanup-expired-sessions` or `process-email-queue`. Never put job IDs, timestamps, or user IDs in the span name — each unique name becomes a separate task group.
 - **Every `CONSUMER` span becomes a Task, even non-root ones.** If a queue library's auto-instrumentation already emits `CONSUMER` spans (e.g. Kafka/RabbitMQ consumers, Symfony Messenger), do NOT wrap them in another `CONSUMER` span — you'd get duplicate Task entries.
-- A root `INTERNAL` span with `SpanKind.INTERNAL` (the default!) is **dropped silently** — this is the most common reason "my cron job doesn't show up". The kind must be `CONSUMER`.
+- A root span with `SpanKind.INTERNAL` (the default!) is **dropped silently** — this is the most common reason "my cron job doesn't show up". The kind must be `CONSUMER`. (An exception recorded on the dropped span still reaches Issues, but the task run itself — name, duration, history — is lost.)
 - Per-job context (job ID, batch size) belongs in span **attributes**, where it shows on the task detail page without affecting grouping.
 
 ## Database Queries and Child Spans
@@ -137,11 +139,13 @@ Errors become **Issues** when recorded as a span **event named `exception`** (`s
 - `exception.message` — error message
 - `exception.stacktrace` — full stack trace text
 
+Setting the same `exception.*` keys as plain span **attributes** (instead of an event) also works — Traceway builds an Issue from the attributes when no `exception` event is present on the span.
+
 Quirks:
 
-- **Exceptions on dropped spans are dropped too.** An exception recorded on an unpromoted root span (see classification rule 6) never reaches the Issues page. Record exceptions on spans that live inside an Endpoint/Task, or fix the span kind.
+- **Exceptions survive span-dropping, but their context doesn't.** An exception recorded on an unpromoted root span (see classification rule 6) still becomes an Issue, but there is no Endpoint/Task for it to link to — the occurrence carries only the raw trace ID. Record exceptions on spans that live inside an Endpoint/Task, or fix the span kind, so Issues stay correlated with the request or job that raised them.
 - Traceway also understands Honeycomb-style structured stack traces (`exception.structured_stacktrace.urls` / `.functions` / `.lines` / `.columns` array attributes) — used by some browser/edge SDKs.
-- **Grouping is automatic.** Before hashing (SHA-256, truncated to 16 hex chars), Traceway normalizes the stack trace: error messages are stripped (only the error type is kept, including on `Caused by:` lines), JS function-name lines collapse to `<fn>`, absolute paths reduce to `filename:line`, dependency version suffixes (`@v1.2.3`) are removed, and runtime values are replaced with placeholders — hex addresses → `<hex>`, UUIDs → `<uuid>`, numbers of 5+ digits → `<id>`, emails → `<email>`, IPs → `<ip>`, goroutine IDs → `goroutine <n>`. JVM frames additionally lose their line numbers (`(Foo.java:123)` → `(Foo.java)`) and `... N more` becomes `... more`. The same logical error therefore groups into one Issue even when runtime values differ — don't try to pre-group errors client-side.
+- **Grouping is automatic.** Before hashing (SHA-256, truncated to 16 hex chars), Traceway normalizes the stack trace: error messages are stripped (only the error type is kept, including on `Caused by:` lines), JS function-name lines collapse to `<fn>`, absolute paths reduce to `filename:line`, dependency version suffixes (`@v1.2.3`) are removed, and runtime values are replaced with placeholders — hex addresses -> `<hex>`, UUIDs -> `<uuid>`, numbers of 5+ digits -> `<id>`, emails -> `<email>`, IPs -> `<ip>`, goroutine IDs -> `goroutine <n>`. JVM frames additionally lose their line numbers (`(Foo.java:123)` -> `(Foo.java)`) and `... N more` becomes `... more`. The same logical error therefore groups into one Issue even when runtime values differ — don't try to pre-group errors client-side.
 - **JS projects get source-map symbolication.** Triggered when the `telemetry.sdk.language` resource attribute is a JS value (`nodejs`, `webjs`, `javascript`, `typescript` — OTel SDKs set this automatically), or when the instrumentation scope name is npm-scoped (`@scope/pkg`) or `next.js`. Minified frames are resolved server-side **before** grouping, so uploading source maps improves grouping too.
 - **Source maps are matched by filename (and debug ID when embedded), not by version.** Upload via `POST /api/sourcemaps/upload` (multipart `files` field, `.map`/`.js`/`.cjs`/`.mjs`, max 50 MB per file) using a token from `POST /api/projects/source-map-token`. A frame referencing `app.min.js` resolves against the uploaded `app.min.js.map` by name — keep bundle filenames unique per release (content hashes do this) or rely on debug IDs.
 
@@ -164,6 +168,7 @@ Quirks:
 - **Histograms lose their buckets.** Only the average and count survive — you cannot compute true percentiles from an OTLP histogram in Traceway.
 - **No percentile aggregations on metrics at all.** Metric queries support `avg`, `sum`, `count`, `min`, and `max` only; anything else silently falls back to `avg`. Latency percentiles (P50/P95/P99) exist for Endpoints and Tasks because those are computed from raw span durations — if you need percentiles on a measurement, model it as a span, not a metric.
 - **Tags come from data-point attributes only.** Resource attributes are NOT copied onto metric points, with two exceptions: `service.name` becomes the `server_name` tag, and the process-scraper allowlist (`process.pid`, `process.executable.name`, `process.command_line`, `process.owner`) is lifted so hostmetrics per-process series stay distinguishable. Any per-series dimension must be a data-point attribute, and keep its cardinality low.
+- **Raw metric points expire after 7 days** (ClickHouse TTL). Queries over wider ranges read pre-aggregated rollups instead — 1-minute rollups are kept 30 days, 1-hour rollups 1 year, 1-day rollups indefinitely — so older metrics lose granularity rather than disappearing.
 
 ### Built-in metric names
 
@@ -192,7 +197,7 @@ Quirks:
 - **Emit logs inside the active span context.** The trace ID on a log record is what links it to the Endpoint/Task that produced it — OTel log bridges do this automatically when a span is active.
 - **Body search over ranges longer than 24 hours requires at least one additional filter** (service, severity, trace, or attribute) — unbounded full-text scans are rejected.
 - A JS `exception.stacktrace` attribute on a log record is source-map symbolicated, same as span exceptions.
-- Logs are retained for 30 days (database TTL); other telemetry has no fixed expiry on ClickHouse deployments.
+- Logs are retained for 30 days (database TTL). Spans, endpoints, tasks, and exceptions have no fixed expiry on ClickHouse deployments; metrics roll up with their own TTLs (see Metrics above).
 
 ## Resource Attributes
 
@@ -221,7 +226,7 @@ After wiring up any project, confirm in the dashboard (or via `traceway` CLI):
 2. **Endpoints page** — status codes are non-zero.
 3. **Tasks page** — each scheduled job appears under one stable name after triggering it. (Dashboard only — the CLI has no `tasks` command.)
 4. **Issues page** — a deliberately thrown error shows up with a readable stack trace.
-5. **Endpoint detail → Spans tab** — DB queries appear as children showing the SQL text.
+5. **Endpoint detail -> Spans tab** — DB queries appear as children showing the SQL text.
 
 With the `traceway` CLI (`--since` takes relative ranges like `1h`, `24h`, `7d`):
 

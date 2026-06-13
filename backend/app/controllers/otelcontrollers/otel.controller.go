@@ -136,6 +136,11 @@ func (o otelController) ExportTraces(c *gin.Context) {
 		exceptionHashes = append(exceptionHashes, ex.ExceptionHash)
 	}
 
+	var aiTraceInfos []hooks.AiTraceInfo
+	for _, at := range aiTraces {
+		aiTraceInfos = append(aiTraceInfos, hooks.AiTraceInfo{TraceName: at.TraceName, TotalCost: at.TotalCost})
+	}
+
 	if project != nil && project.OrganizationId != nil {
 		hooks.BroadcastReport(hooks.ReportEvent{
 			OrganizationId:  *project.OrganizationId,
@@ -144,6 +149,7 @@ func (o otelController) ExportTraces(c *gin.Context) {
 			ErrorCount:      len(exceptions),
 			TaskCount:       len(tasks),
 			ExceptionHashes: exceptionHashes,
+			AiTraces:        aiTraceInfos,
 		})
 	}
 

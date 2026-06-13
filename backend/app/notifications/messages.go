@@ -26,29 +26,29 @@ func endpointTimeRangeURL(now time.Time) string {
 	return fmt.Sprintf("/endpoints?from=%s&to=%s", from, to)
 }
 
-func buildEndpointLatencyMessage(percentile string, latencyMs float64, thresholdMs float64, endpoint string, projectName string) Message {
+func buildEndpointLatencyMessage(percentile string, latencyMs float64, thresholdMs float64, endpoint string, window int, projectName string) Message {
 	return Message{
 		Subject:  fmt.Sprintf("[%s] %s latency %.0fms on %s", projectName, percentile, latencyMs, endpoint),
-		Body:     fmt.Sprintf("The %s latency for %s has reached %.0fms (threshold: %.0fms).", percentile, endpoint, latencyMs, thresholdMs),
+		Body:     fmt.Sprintf("The %s latency for %s has reached %.0fms over the last %d minutes (threshold: %.0fms).", percentile, endpoint, latencyMs, window, thresholdMs),
 		Severity: SeverityWarning,
 		URL:      endpointTimeRangeURL(time.Now()),
 	}
 }
 
-func buildApdexDropMessage(apdex float64, threshold float64, projectName string) Message {
+func buildApdexDropMessage(apdex float64, threshold float64, total int64, window int, projectName string) Message {
 	severity := SeverityWarning
 	if apdex < 0.5 {
 		severity = SeverityCritical
 	}
 	return Message{
 		Subject:  fmt.Sprintf("[%s] Apdex dropped to %.2f (threshold: %.2f)", projectName, apdex, threshold),
-		Body:     fmt.Sprintf("The Apdex score has dropped to %.2f (threshold: %.2f).", apdex, threshold),
+		Body:     fmt.Sprintf("The Apdex score has dropped to %.2f across %d requests over the last %d minutes (threshold: %.2f).", apdex, total, window, threshold),
 		Severity: severity,
 		URL:      endpointTimeRangeURL(time.Now()),
 	}
 }
 
-func buildMetricThresholdMessage(metricName string, value float64, operator string, threshold float64, projectName string) Message {
+func buildMetricThresholdMessage(metricName string, value float64, operator string, threshold float64, aggregation string, window int, projectName string) Message {
 	severity := SeverityWarning
 	diff := value - threshold
 	if diff < 0 {
@@ -57,9 +57,12 @@ func buildMetricThresholdMessage(metricName string, value float64, operator stri
 	if diff > threshold*0.2 {
 		severity = SeverityCritical
 	}
+	if aggregation == "" {
+		aggregation = "avg"
+	}
 	return Message{
 		Subject:  fmt.Sprintf("[%s] Metric %s is %.2f (threshold: %s %.2f)", projectName, metricName, value, operator, threshold),
-		Body:     fmt.Sprintf("The metric %s has a value of %.2f which violates the threshold %s %.2f.", metricName, value, operator, threshold),
+		Body:     fmt.Sprintf("The metric %s has a %s of %.2f over the last %d minutes which violates the threshold %s %.2f.", metricName, aggregation, value, window, operator, threshold),
 		Severity: severity,
 		URL:      "/metrics?preset=1h",
 	}
@@ -87,23 +90,36 @@ func buildErrorCountMessage(count int64, threshold int64, window int, projectNam
 	}
 }
 
-func buildTaskDurationMessage(taskName string, p95Ms float64, thresholdMs float64, projectName string) Message {
+func buildTaskDurationMessage(taskName string, p95Ms float64, thresholdMs float64, window int, projectName string) Message {
 	return Message{
 		Subject:  fmt.Sprintf("[%s] Task %s P95 %.0fms exceeds %.0fms", projectName, taskName, p95Ms, thresholdMs),
-		Body:     fmt.Sprintf("The task %s P95 duration is %.0fms (threshold: %.0fms).", taskName, p95Ms, thresholdMs),
+		Body:     fmt.Sprintf("The task %s P95 duration is %.0fms over the last %d minutes (threshold: %.0fms).", taskName, p95Ms, window, thresholdMs),
 		Severity: SeverityWarning,
 		URL:      "/tasks?preset=1h",
 	}
 }
 
-func buildThroughputDropMessage(dropPercent float64, projectName string) Message {
+func buildTaskFailureRateMessage(taskName string, rate float64, threshold float64, failed int64, total int64, window int, projectName string) Message {
+	severity := SeverityWarning
+	if rate >= threshold*2 {
+		severity = SeverityCritical
+	}
+	return Message{
+		Subject:  fmt.Sprintf("[%s] Task %s failure rate %.1f%% exceeds %.1f%%", projectName, taskName, rate, threshold),
+		Body:     fmt.Sprintf("The task %s failed %d of %d executions (%.1f%%) over the last %d minutes (threshold: %.1f%%).", taskName, failed, total, rate, window, threshold),
+		Severity: severity,
+		URL:      "/tasks?preset=1h",
+	}
+}
+
+func buildThroughputDropMessage(dropPercent float64, current int64, expected float64, window int, projectName string) Message {
 	severity := SeverityWarning
 	if dropPercent >= 80 {
 		severity = SeverityCritical
 	}
 	return Message{
 		Subject:  fmt.Sprintf("[%s] Throughput dropped %.0f%% vs baseline", projectName, dropPercent),
-		Body:     fmt.Sprintf("Request throughput has dropped by %.0f%% compared to the baseline window.", dropPercent),
+		Body:     fmt.Sprintf("Request throughput has dropped by %.0f%%: %d requests in the last %d minutes vs an expected %.0f based on the baseline window.", dropPercent, current, window, expected),
 		Severity: severity,
 		URL:      endpointTimeRangeURL(time.Now()),
 	}
@@ -159,14 +175,14 @@ func formatCostForMessage(cost float64) string {
 	return fmt.Sprintf("$%.2f", cost)
 }
 
-func buildAiTraceCostMessage(traceName string, cost float64, threshold float64, window int, projectName string) Message {
+func buildAiTraceCostMessage(traceName string, cost float64, threshold float64, projectName string) Message {
 	severity := SeverityWarning
 	if cost >= threshold*3 {
 		severity = SeverityCritical
 	}
 	return Message{
 		Subject:  fmt.Sprintf("[%s] AI trace %s cost %s exceeds %s", projectName, traceName, formatCostForMessage(cost), formatCostForMessage(threshold)),
-		Body:     fmt.Sprintf("The AI trace \"%s\" cost %s in the last %d minutes (threshold: %s).", traceName, formatCostForMessage(cost), window, formatCostForMessage(threshold)),
+		Body:     fmt.Sprintf("The AI trace \"%s\" cost %s, exceeding the threshold of %s.", traceName, formatCostForMessage(cost), formatCostForMessage(threshold)),
 		Severity: severity,
 		URL:      "/ai-traces?preset=1h",
 	}

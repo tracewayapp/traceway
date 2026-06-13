@@ -112,51 +112,247 @@ If you configure an HMAC secret on the channel, each request includes an `X-Trac
 
 ## Rules
 
-### Rule Types
+A rule connects a condition to a channel. Every rule has:
 
-| Rule | What It Monitors |
-|------|-----------------|
-| New Issue | A never-before-seen exception appears |
-| Impact Score Critical | An endpoint's [impact score](/learn/endpoints#impact-score) reaches critical level |
-| Impact Score High | An endpoint's impact score reaches high level |
-| Impact Score Medium | An endpoint's impact score reaches medium level |
+| Setting | Description |
+|---------|-------------|
+| Name | A label you choose, included in notifications |
+| Type | One of the rule types below, with type-specific configuration |
+| Channel | The channel notifications are delivered through (exactly one per rule) |
+| Cooldown | Minimum time between notifications for the same condition (default 15 minutes) |
+| Severity | Auto (derived from the condition) or an explicit override |
 
-### Coming Soon
+Rules belong to a project and only evaluate that project's data. Frontend projects only support the New Issue rule type; all other types monitor backend telemetry.
 
-The following rule types are planned but not yet available:
+## Rule Types
 
-- **Error Regression** — A previously resolved (archived) [issue](/learn/issues) reappears
-- **Error Rate** — Overall 5xx error rate exceeds a percentage threshold
-- **Error Count** — Total number of errors exceeds a count in a time window
-- **Endpoint P95** — P95 latency for an endpoint exceeds a millisecond threshold
-- **Endpoint P99** — P99 latency for an endpoint exceeds a millisecond threshold
-- **Endpoint Error Rate** — A specific endpoint's error rate exceeds a percentage threshold
-- **Apdex Drop** — Apdex score falls below a threshold
-- **Metric Threshold** — A custom or system [metric](/learn/metrics) crosses a boundary (above or below)
-- **No Data** — No telemetry data received for a specified duration
-- **Task Duration** — A background task's P95 duration exceeds a threshold
-- **Task Failure Rate** — A background task's failure rate exceeds a percentage threshold
-- **Throughput Drop** — Request volume drops compared to baseline
+| Rule | Fires When | Evaluation |
+|------|-----------|------------|
+| [New Issue](#new-issue) | A never-before-seen error appears | On ingest |
+| [Error Regression](#error-regression) | A resolved (archived) error reappears | On ingest |
+| [Error Rate](#error-rate) | The 5xx rate across all endpoints exceeds a percentage | Polled |
+| [Error Count](#error-count) | Total errors in a window reach a count | Polled |
+| [Endpoint Error Rate](#endpoint-error-rate) | One endpoint's 5xx rate exceeds a percentage | Polled |
+| [Endpoint P95 / P99](#endpoint-p95--p99) | Latency percentile exceeds a millisecond threshold | Polled |
+| [Apdex Drop](#apdex-drop) | The Apdex score falls below a threshold | Polled |
+| [Throughput Drop](#throughput-drop) | Request volume drops versus the preceding baseline | Polled |
+| [Impact Score](#impact-score-critical--high--medium) | An endpoint newly crosses an impact level | Polled |
+| [Task Duration](#task-duration) | A background task's P95 duration exceeds a threshold | Polled |
+| [Task Failure Rate](#task-failure-rate) | The share of failed task executions exceeds a percentage | Polled |
+| [Metric Threshold](#metric-threshold) | An aggregated metric violates a comparison | Polled |
+| [No Data](#no-data) | No telemetry received for a configured duration | Polled |
+| [AI Trace Cost](#ai-trace-cost) | A single AI trace exceeds a cost threshold | On ingest |
 
-### Evaluation
+### New Issue
 
-New Issue rules are evaluated immediately when new data arrives during report ingestion. Impact Score rules are evaluated every 60 seconds by a background process.
+Fires the first time an error with a given fingerprint is seen. Errors are grouped by a normalized stack trace hash (see [Issues](/learn/issues)), so the same logical error reported many times produces a single alert. If you archive an issue and it occurs again, that first re-occurrence counts as new and fires the rule.
+
+The notification includes the error type, stack trace, app version, server name, the endpoint or task it occurred on, and a deep link to the issue.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| Ignore Patterns | empty | Comma-separated, case-insensitive substring matches against the error type, e.g. `*timeout*, *context canceled*`. Matching errors never alert. |
+
+The cooldown applies per error, not per rule: two different new errors arriving a minute apart both alert, but the same error will not alert again until its cooldown expires.
+
+### Error Regression
+
+Fires when an error whose issue was archived (resolved) occurs again. Use this to catch fixes that did not stick. The cooldown applies per error. There is no extra configuration.
+
+### Error Rate
+
+Fires when the percentage of requests returning a 5xx status across all endpoints exceeds the threshold within the lookback window.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| Threshold % | 5 | Error rate that triggers the alert |
+| Lookback Minutes | 5 | Window the rate is computed over |
+| Min Requests | 10 | Minimum requests in the window; below this the rule never fires, which avoids noise from a single failed request in quiet periods |
+
+### Error Count
+
+Fires when the total number of errors recorded in the lookback window reaches the threshold. Captured messages (log-style events without an exception) are not counted.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| Threshold Count | 100 | Number of errors that triggers the alert |
+| Lookback Minutes | 60 | Window the count is computed over |
+
+### Endpoint Error Rate
+
+Like Error Rate, but scoped to a single endpoint.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| Endpoint | | The endpoint to monitor, e.g. `GET /api/users` |
+| Threshold % | 2 | Error rate that triggers the alert |
+| Lookback Minutes | 10 | Window the rate is computed over |
+| Min Requests | 20 | Minimum requests in the window before the rule can fire |
+
+### Endpoint P95 / P99
+
+Fires when the P95 (or P99) response time over the lookback window exceeds the threshold. Two separate rule types so you can alert on each percentile independently.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| Endpoint | `*` | A specific endpoint, or `*` for all endpoints combined |
+| Threshold ms | 500 | Latency that triggers the alert |
+| Lookback Minutes | 5 | Window the percentile is computed over |
+
+### Apdex Drop
+
+Fires when the Apdex score over the lookback window falls below the threshold. Traceway computes Apdex with fixed bands: requests up to 750 ms are satisfied, up to 1500 ms are tolerating, and anything slower or returning 5xx is bad. The score is `(satisfied + tolerating / 2) / total`, so 1.0 is perfect and anything below roughly 0.85 means users are noticing.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| Threshold Apdex | 0.85 | Score below which the alert fires |
+| Lookback Minutes | 15 | Window the score is computed over |
+| Min Requests | 50 | Minimum requests in the window before the rule can fire |
+
+### Throughput Drop
+
+Fires when request volume in the lookback window drops by more than the configured percentage compared to the baseline window that immediately precedes it. The baseline count is normalized to the lookback length, so a 15-minute window is compared against the expected 15-minute share of a 60-minute baseline. If the baseline window has no traffic at all, the rule does not fire.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| Drop % | 50 | Drop versus the normalized baseline that triggers the alert |
+| Lookback Minutes | 15 | The current window being measured |
+| Baseline Window Minutes | 60 | The preceding window used as the baseline |
+
+### Impact Score (Critical / High / Medium)
+
+Fires when an endpoint's impact score crosses into the configured level. The impact score is a 0 to 1 rating computed over the trailing 24 hours as the worst of five components: Apdex degradation, server error rate, P99 latency, client error rate, and error volume. Medium starts at 0.25, High at 0.50, and Critical at 0.75. Streaming endpoints are excluded.
+
+These rules are transition-based: they fire once when an endpoint newly enters the level, not continuously while it stays there. The endpoint alerts again only if it drops out of the level and later crosses back in. After a server restart the first evaluation establishes a baseline without firing.
+
+The notification names the endpoint, its score, and the dominant reason (for example a P99 of 9.2 s, or a 12% server error rate).
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| Min Requests | 50 | Endpoints with fewer requests in 24 hours are ignored |
+
+### Task Duration
+
+Fires when the P95 duration of background task executions over the lookback window exceeds the threshold.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| Task Name | `*` | A specific task, or `*` for all tasks combined |
+| Threshold ms | 30000 | P95 duration that triggers the alert |
+| Lookback Minutes | 30 | Window the percentile is computed over |
+
+### Task Failure Rate
+
+Fires when the percentage of task executions that recorded an error exceeds the threshold. An execution counts as failed when at least one exception was captured during it, so one execution with three errors counts once.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| Task Name | `*` | A specific task, or `*` for all tasks combined |
+| Threshold % | 10 | Failure rate that triggers the alert |
+| Lookback Minutes | 60 | Window the rate is computed over |
+| Min Executions | 5 | Minimum executions in the window before the rule can fire |
+
+### Metric Threshold
+
+Fires when an aggregated [metric](/learn/metrics) value violates the configured comparison over the lookback window. Works for both system metrics (`cpu.used_pcnt`, `mem.used_pcnt`, ...) and custom metrics. If the window contains no data points the rule does not fire; pair it with a No Data rule if you also want to know when the metric stops reporting.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| Metric Name | | The metric to monitor |
+| Aggregation | avg | One of `avg`, `max`, `min`, `sum`, `p95`, `p99`, `last` (most recent value) |
+| Operator | gt | One of `gt`, `gte`, `lt`, `lte`, `eq` |
+| Threshold Value | 90 | The value compared against the aggregate |
+| Lookback Minutes | 5 | Window the aggregate is computed over |
+
+The aggregation spans every series of the metric name, with no tag filter. For metrics tagged per host, per disk, or per table, an `avg` can hide one bad series behind healthy ones; prefer `max` (or `min` for lower-is-bad metrics) so the worst series drives the alert.
+
+### No Data
+
+Fires when no telemetry of the selected kind has been received for the configured number of minutes. Use it to detect a stopped service, a broken deploy, or a misconfigured SDK rather than an application-level problem.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| Data Type | any | One of `any`, `endpoints`, `exceptions`, `metrics`, `tasks`. `any` fires only when all four kinds are silent |
+| Silence Minutes | 10 | How long the data must be absent before the alert fires |
+
+### AI Trace Cost
+
+Fires when a single [AI trace](/learn/ai-tracing) exceeds a cost threshold, catching runaway agent loops or unexpectedly expensive calls as they are ingested rather than at the end of the month.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| Trace Name | `*` | A specific trace name, or `*` for all traces |
+| Threshold Cost | 0.5 | Cost in USD a single trace must reach to trigger the alert |
+
+The cooldown applies per trace name, so two different expensive workflows alert independently.
+
+## Evaluation Model and Cost
+
+Rules are evaluated in one of two ways:
+
+- **On ingest** (New Issue, Error Regression, AI Trace Cost): evaluated immediately as reports arrive, so alerts fire within seconds of the triggering event.
+- **Polled** (everything else): a background loop evaluates all enabled polled rules on an interval. The default is every 60 seconds; self-hosted deployments can tune it with `NOTIFICATION_POLL_SECONDS` (minimum 5). Detection latency for polled rules is at most one poll interval.
+
+Each rule type has a different evaluation cost against the telemetry database. This matters mostly for self-hosted deployments with many rules or high data volume:
+
+| Rule | Work per evaluation | Relative cost |
+|------|--------------------|---------------|
+| AI Trace Cost | In-memory check of the ingested batch, no queries | Minimal |
+| New Issue | 1 to 3 indexed lookups per distinct new error in the batch | Low |
+| Error Regression | 1 indexed lookup per distinct error in the batch | Low |
+| Error Rate | One aggregate over the lookback window | Low |
+| Error Count | One count over the lookback window | Low |
+| Endpoint Error Rate | One aggregate over one endpoint's window | Low |
+| Endpoint P95 / P99 | One percentile over the lookback window | Low |
+| Apdex Drop | One aggregate over the lookback window | Low |
+| Metric Threshold | One aggregate over one metric's window | Low |
+| No Data | One freshness check per data type, up to four for `any` | Low |
+| Task Duration | One percentile over the lookback window | Low |
+| Throughput Drop | Two counts: lookback plus baseline window | Low |
+| Task Failure Rate | Two queries joining tasks and exceptions over the window | Moderate |
+| Impact Score | One scan of the trailing 24 hours of requests | Highest |
+
+Cost-relevant behavior:
+
+- Rules that are snoozed or still in cooldown are skipped entirely, including their queries. Longer cooldowns directly reduce evaluation load.
+- The three Impact Score levels share one 24-hour scan per project per poll cycle through a 30-second cache, so adding all three costs the same as adding one.
+- On-ingest rules deduplicate per error hash, so a busy error stops generating lookups once it has alerted until its cooldown expires.
+- Polled query cost scales with the lookback window. The defaults keep windows short; a 24-hour lookback on a high-traffic project costs proportionally more.
+- In SQLite mode percentile rules (Endpoint P95/P99, Task Duration, Metric Threshold with `p95`/`p99`) load the window's values into memory to compute the percentile, so prefer short lookback windows on busy projects.
 
 ## Cooldown and Snooze
 
-**Cooldown** prevents a rule from firing repeatedly for the same ongoing condition. After an alert fires, the rule will not fire again until the cooldown period expires. The default cooldown is 15 minutes, and it can be configured per rule.
+**Cooldown** prevents a rule from firing repeatedly for the same ongoing condition. The default is 15 minutes, configurable per rule.
 
-**Snooze** lets you temporarily mute a rule for a set duration from the dashboard. This is useful during deployments, maintenance windows, or known incidents where you don't want to be notified.
+- For polled rules the cooldown is rule-wide: after a notification is delivered, the rule is not evaluated again until the cooldown expires.
+- For on-ingest rules the cooldown is per condition: per error hash for New Issue and Error Regression, per trace name for AI Trace Cost. Different errors can alert back-to-back; the same error cannot.
+
+Rule-level cooldowns are persisted with the notification history, so a server restart does not cause every rule to re-fire. Per-error cooldown state is held in memory and resets on restart, meaning an already-alerted error can alert once more after a restart. Editing a rule resets its cooldown and per-error state so the new configuration takes effect immediately.
+
+**Snooze** temporarily mutes a rule for a set duration from the dashboard. Snoozed rules are not evaluated at all. Use it during deployments, maintenance windows, or known incidents.
 
 ## Severity
 
-Each rule has a **Severity** setting that controls the severity level attached to its notifications. The default is **Auto**, which assigns severity based on the condition:
+Each rule has a **Severity** setting that controls the severity attached to its notifications. The default is **Auto**, which derives severity from how badly the condition is violated:
 
-| Severity | Auto Triggers |
-|----------|--------------|
-| Critical | New errors, critical impact score, error regressions |
-| Warning  | High impact score, elevated error/latency thresholds |
-| Info     | Medium impact score |
+| Rule | Auto Severity |
+|------|--------------|
+| New Issue | Critical |
+| Error Regression | Critical |
+| No Data | Critical |
+| Error Rate | Warning; Critical at twice the threshold |
+| Error Count | Warning; Critical at five times the threshold |
+| Endpoint Error Rate | Warning; Critical at twice the threshold |
+| Endpoint P95 / P99 | Warning |
+| Apdex Drop | Warning; Critical when Apdex falls below 0.5 |
+| Throughput Drop | Warning; Critical at an 80% drop or more |
+| Impact Score Critical | Critical |
+| Impact Score High | Warning |
+| Impact Score Medium | Info |
+| Task Duration | Warning |
+| Task Failure Rate | Warning; Critical at twice the threshold |
+| Metric Threshold | Warning; Critical when the value deviates from the threshold by more than 20% |
+| AI Trace Cost | Warning; Critical at three times the threshold |
 
 You can override the automatic severity by setting it explicitly on a rule to **Critical**, **Warning**, or **Info**. This is useful when you want a normally-warning condition to page as critical, or to downgrade noisy rules to info.
 

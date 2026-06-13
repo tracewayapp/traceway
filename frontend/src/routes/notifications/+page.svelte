@@ -33,6 +33,7 @@
 	import ChannelDialog from './channel-dialog.svelte';
 	import RuleDialog from './rule-dialog.svelte';
 	import SnoozeDialog from './snooze-dialog.svelte';
+	import { ruleTypeLabels } from './rule-types';
 
 	interface NotificationChannel {
 		id: number;
@@ -61,37 +62,19 @@
 	}
 
 	interface NotificationHistory {
-		id: number;
+		ruleId: number;
 		ruleType: string;
 		ruleName: string;
+		channelType: string;
 		channelName: string;
 		severity: string;
 		subject: string;
 		body: string;
 		status: string;
-		errorMessage: string | null;
+		errorMessage: string;
 		url: string;
 		createdAt: string;
 	}
-
-	const ruleTypeLabels: Record<string, string> = {
-		error_rate_threshold: 'Error Rate',
-		endpoint_p95_threshold: 'Endpoint P95',
-		endpoint_p99_threshold: 'Endpoint P99',
-		apdex_drop: 'Apdex Drop',
-		metric_threshold: 'Metric Threshold',
-		no_data: 'No Data',
-		error_count_threshold: 'Error Count',
-		task_duration_threshold: 'Task Duration',
-		task_failure_rate: 'Task Failure Rate',
-		throughput_drop: 'Throughput Drop',
-		endpoint_error_rate: 'Endpoint Error Rate',
-		new_error: 'New Issue',
-		error_regression: 'Error Regression',
-		impact_score_critical: 'Impact Score Critical',
-		impact_score_high: 'Impact Score High',
-		impact_score_medium: 'Impact Score Medium'
-	};
 
 	const channelTypeLabels: Record<string, string> = {
 		email: 'Email',

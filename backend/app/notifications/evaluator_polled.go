@@ -6,13 +6,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/app/chdb"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
 )
 
 type EvalResult struct {
@@ -32,6 +30,7 @@ var polledEvaluators = map[string]RuleEvaluator{
 	"no_data":                 evaluateNoData,
 	"error_count_threshold":   evaluateErrorCountThreshold,
 	"task_duration_threshold": evaluateTaskDurationThreshold,
+	"task_failure_rate":       evaluateTaskFailureRate,
 	"throughput_drop":         evaluateThroughputDrop,
 	"endpoint_error_rate":     evaluateEndpointErrorRate,
 	"impact_score_critical":   evaluateImpactScoreCritical,
@@ -124,7 +123,7 @@ func evaluateEndpointP95Threshold(ctx context.Context, rule *models.Notification
 		endpoint = "all endpoints"
 	}
 	projectName := getProjectName(projectId)
-	msg := buildEndpointLatencyMessage("P95", p95, cfg.ThresholdMs, endpoint, projectName)
+	msg := buildEndpointLatencyMessage("P95", p95, cfg.ThresholdMs, endpoint, cfg.LookbackMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }
 
@@ -164,7 +163,7 @@ func evaluateEndpointP99Threshold(ctx context.Context, rule *models.Notification
 		endpoint = "all endpoints"
 	}
 	projectName := getProjectName(projectId)
-	msg := buildEndpointLatencyMessage("P99", p99, cfg.ThresholdMs, endpoint, projectName)
+	msg := buildEndpointLatencyMessage("P99", p99, cfg.ThresholdMs, endpoint, cfg.LookbackMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }
 
@@ -210,7 +209,7 @@ func evaluateApdexDrop(ctx context.Context, rule *models.NotificationRule, proje
 	}
 
 	projectName := getProjectName(projectId)
-	msg := buildApdexDropMessage(apdex, cfg.ThresholdApdex, projectName)
+	msg := buildApdexDropMessage(apdex, cfg.ThresholdApdex, int64(total), cfg.LookbackMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }
 
@@ -236,27 +235,33 @@ func evaluateMetricThreshold(ctx context.Context, rule *models.NotificationRule,
 	now := time.Now().UTC()
 	from := now.Add(-time.Duration(cfg.LookbackMinutes) * time.Minute)
 
-	aggFunc := "avg"
+	selectExpr := "avg(value)"
 	switch cfg.Aggregation {
 	case "max":
-		aggFunc = "max"
+		selectExpr = "max(value)"
 	case "min":
-		aggFunc = "min"
+		selectExpr = "min(value)"
 	case "sum":
-		aggFunc = "sum"
+		selectExpr = "sum(value)"
 	case "p95":
-		aggFunc = "quantile(0.95)"
+		selectExpr = "quantile(0.95)(value)"
 	case "p99":
-		aggFunc = "quantile(0.99)"
+		selectExpr = "quantile(0.99)(value)"
+	case "last":
+		selectExpr = "argMax(value, recorded_at)"
 	}
 
-	query := fmt.Sprintf("SELECT %s(value) FROM metric_points WHERE project_id = ? AND name = ? AND recorded_at >= ? AND recorded_at <= ?", aggFunc)
+	query := fmt.Sprintf("SELECT count(), %s FROM metric_points WHERE project_id = ? AND name = ? AND recorded_at >= ? AND recorded_at <= ?", selectExpr)
 	args := []interface{}{projectId, cfg.MetricName, from, now}
 
+	var count uint64
 	var value float64
-	err := chdb.Conn.QueryRow(ctx, query, args...).Scan(&value)
+	err := chdb.Conn.QueryRow(ctx, query, args...).Scan(&count, &value)
 	if err != nil {
 		return nil, err
+	}
+	if count == 0 {
+		return &EvalResult{Fired: false}, nil
 	}
 
 	fired := false
@@ -278,7 +283,7 @@ func evaluateMetricThreshold(ctx context.Context, rule *models.NotificationRule,
 	}
 
 	projectName := getProjectName(projectId)
-	msg := buildMetricThresholdMessage(cfg.MetricName, value, cfg.Operator, cfg.ThresholdValue, projectName)
+	msg := buildMetricThresholdMessage(cfg.MetricName, value, cfg.Operator, cfg.ThresholdValue, cfg.Aggregation, cfg.LookbackMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }
 
@@ -426,8 +431,42 @@ func evaluateTaskDurationThreshold(ctx context.Context, rule *models.Notificatio
 		taskName = "all tasks"
 	}
 	projectName := getProjectName(projectId)
-	msg := buildTaskDurationMessage(taskName, p95, cfg.ThresholdMs, projectName)
+	msg := buildTaskDurationMessage(taskName, p95, cfg.ThresholdMs, cfg.LookbackMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
+}
+
+// --- Task Failure Rate ---
+
+func countTaskExecutions(ctx context.Context, projectId uuid.UUID, taskName string, named bool, from, to time.Time) (int64, error) {
+	query := "SELECT count() FROM tasks WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
+	args := []interface{}{projectId, from, to}
+	if named {
+		query += " AND task_name = ?"
+		args = append(args, taskName)
+	}
+
+	var total uint64
+	if err := chdb.Conn.QueryRow(ctx, query, args...).Scan(&total); err != nil {
+		return 0, err
+	}
+	return int64(total), nil
+}
+
+func countFailedTaskExecutions(ctx context.Context, projectId uuid.UUID, taskName string, named bool, from, to time.Time) (int64, error) {
+	query := "SELECT countDistinct(trace_id) FROM exception_stack_traces WHERE project_id = ? AND trace_type = 'task' AND recorded_at >= ? AND recorded_at <= ?" +
+		" AND trace_id IN (SELECT id FROM tasks WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
+	args := []interface{}{projectId, from, to, projectId, from, to}
+	if named {
+		query += " AND task_name = ?"
+		args = append(args, taskName)
+	}
+	query += ")"
+
+	var failed uint64
+	if err := chdb.Conn.QueryRow(ctx, query, args...).Scan(&failed); err != nil {
+		return 0, err
+	}
+	return int64(failed), nil
 }
 
 // --- Throughput Drop ---
@@ -485,7 +524,7 @@ func evaluateThroughputDrop(ctx context.Context, rule *models.NotificationRule, 
 	}
 
 	projectName := getProjectName(projectId)
-	msg := buildThroughputDropMessage(dropPercent, projectName)
+	msg := buildThroughputDropMessage(dropPercent, int64(currentCount), normalizedBaseline, cfg.LookbackMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }
 
@@ -534,30 +573,11 @@ func evaluateEndpointErrorRate(ctx context.Context, rule *models.NotificationRul
 
 // --- Impact Score ---
 
-var (
-	impactStateMu sync.RWMutex
-	impactState   = make(map[string]map[string]bool)
-)
-
-type impactScoreConfig struct {
-	MinRequests int `json:"minRequests"`
-}
-
-type impactMessageBuilder func(endpoint string, score float64, reason string, projectName string) Message
-
-func evaluateImpactScore(ctx context.Context, rule *models.NotificationRule, projectId uuid.UUID, threshold float64, buildMsg impactMessageBuilder) (*EvalResult, error) {
-	var cfg impactScoreConfig
-	if err := json.Unmarshal(rule.Config, &cfg); err != nil {
-		return nil, fmt.Errorf("invalid impact_score config: %w", err)
-	}
-	if cfg.MinRequests <= 0 {
-		cfg.MinRequests = 50
-	}
-
+func computeImpactEndpoints(ctx context.Context, projectId uuid.UUID, minRequests int) ([]impactEndpointData, error) {
 	now := time.Now().UTC()
 	from := now.Add(-24 * time.Hour)
 
-	query := fmt.Sprintf(`SELECT
+	query := `SELECT
 		endpoint, total_count, p99_duration, offset_ms,
 		satisfied_count, tolerating_count, bad_count, client_error_count,
 		greatest(
@@ -607,31 +627,19 @@ func evaluateImpactScore(ctx context.Context, rule *models.NotificationRule, pro
 			FROM endpoints e
 			LEFT JOIN (SELECT * FROM slow_endpoints FINAL) AS s
 				ON e.endpoint = s.endpoint AND e.project_id = s.project_id
-			WHERE e.project_id = ? AND e.recorded_at >= ? AND e.recorded_at <= ?
+			WHERE e.project_id = ? AND e.recorded_at >= ? AND e.recorded_at <= ? AND e.is_stream = 0
 		)
 		GROUP BY endpoint, offset_ms
 	)
-	WHERE impact >= %.2f AND total_count >= ?`, threshold)
+	WHERE impact >= ? AND total_count >= ?`
 
-	rows, err := chdb.Conn.Query(ctx, query, projectId, from, now, uint64(cfg.MinRequests))
+	rows, err := chdb.Conn.Query(ctx, query, projectId, from, now, minImpactThreshold, uint64(minRequests))
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	type impactEndpoint struct {
-		endpoint     string
-		impact       float64
-		totalCount   uint64
-		p99          float64
-		offsetMs     uint32
-		satisfied    uint64
-		tolerating   uint64
-		bad          uint64
-		clientErrors uint64
-	}
-
-	currentSet := make(map[string]impactEndpoint)
+	var result []impactEndpointData
 	for rows.Next() {
 		var ep string
 		var totalCount, satisfied, tolerating, bad, clientErrors uint64
@@ -642,7 +650,7 @@ func evaluateImpactScore(ctx context.Context, rule *models.NotificationRule, pro
 			&satisfied, &tolerating, &bad, &clientErrors, &impact); err != nil {
 			return nil, err
 		}
-		currentSet[ep] = impactEndpoint{
+		result = append(result, impactEndpointData{
 			endpoint:     ep,
 			impact:       impact,
 			totalCount:   totalCount,
@@ -652,55 +660,11 @@ func evaluateImpactScore(ctx context.Context, rule *models.NotificationRule, pro
 			tolerating:   tolerating,
 			bad:          bad,
 			clientErrors: clientErrors,
-		}
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
-	stateKey := fmt.Sprintf("%d:%s", rule.Id, projectId.String())
-
-	impactStateMu.RLock()
-	prevSet := impactState[stateKey]
-	impactStateMu.RUnlock()
-
-	newSet := make(map[string]bool)
-	for ep := range currentSet {
-		newSet[ep] = true
-	}
-
-	impactStateMu.Lock()
-	impactState[stateKey] = newSet
-	impactStateMu.Unlock()
-
-	projectName := getProjectName(projectId)
-
-	var messages []Message
-	if prevSet != nil {
-		for ep, data := range currentSet {
-			if prevSet[ep] {
-				continue
-			}
-			reason := repositories.ComputeImpactReason(
-				ep, data.totalCount, data.satisfied, data.tolerating,
-				data.bad, data.clientErrors, data.p99, data.offsetMs,
-			)
-			messages = append(messages, buildMsg(ep, data.impact, reason, projectName))
-		}
-	}
-
-	if len(messages) == 0 {
-		return &EvalResult{Fired: false}, nil
-	}
-	return &EvalResult{Fired: true, Messages: messages}, nil
+	return result, nil
 }
-
-func evaluateImpactScoreCritical(ctx context.Context, rule *models.NotificationRule, projectId uuid.UUID) (*EvalResult, error) {
-	return evaluateImpactScore(ctx, rule, projectId, 0.75, buildImpactScoreCriticalMessage)
-}
-
-func evaluateImpactScoreHigh(ctx context.Context, rule *models.NotificationRule, projectId uuid.UUID) (*EvalResult, error) {
-	return evaluateImpactScore(ctx, rule, projectId, 0.50, buildImpactScoreHighMessage)
-}
-
-func evaluateImpactScoreMedium(ctx context.Context, rule *models.NotificationRule, projectId uuid.UUID) (*EvalResult, error) {
-	return evaluateImpactScore(ctx, rule, projectId, 0.25, buildImpactScoreMediumMessage)
-}
-

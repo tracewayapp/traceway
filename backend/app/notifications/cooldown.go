@@ -2,6 +2,8 @@ package notifications
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -29,6 +31,51 @@ func (m *cooldownTracker) recordFire(ruleId int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.fired[ruleId] = time.Now()
+}
+
+func ruleStatePrefix(ruleId int) string {
+	return fmt.Sprintf("%d:", ruleId)
+}
+
+func errorDedupKey(ruleId int, hash string) string {
+	return ruleStatePrefix(ruleId) + hash
+}
+
+func aiCostDedupKey(ruleId int, traceName string) string {
+	return ruleStatePrefix(ruleId) + "ai_cost:" + traceName
+}
+
+func ClearRuleState(ruleId int) {
+	cooldowns.mu.Lock()
+	delete(cooldowns.fired, ruleId)
+	cooldowns.mu.Unlock()
+
+	prefix := ruleStatePrefix(ruleId)
+	dedup.mu.Lock()
+	for k := range dedup.seen {
+		if strings.HasPrefix(k, prefix) {
+			delete(dedup.seen, k)
+		}
+	}
+	dedup.mu.Unlock()
+
+	impactStateMu.Lock()
+	for k := range impactState {
+		if strings.HasPrefix(k, prefix) {
+			delete(impactState, k)
+		}
+	}
+	impactStateMu.Unlock()
+}
+
+func (m *cooldownTracker) seed(entries map[int]time.Time) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, t := range entries {
+		if existing, ok := m.fired[id]; !ok || t.After(existing) {
+			m.fired[id] = t
+		}
+	}
 }
 
 type dedupTracker struct {

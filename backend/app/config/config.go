@@ -40,6 +40,8 @@ type Cfg struct {
 	SourceMapDiskCacheMaxMB  string
 	SymbolicatorParser       string
 
+	NotificationPollSeconds string
+
 	SMTPEnabled  string
 	SMTPHost     string
 	SMTPPort     string
@@ -118,6 +120,8 @@ func LoadFromEnv() *Cfg {
 		SourceMapDiskCachePath:   os.Getenv("SOURCEMAP_DISK_CACHE_PATH"),
 		SourceMapDiskCacheMaxMB:  os.Getenv("SOURCEMAP_DISK_CACHE_MAX_MB"),
 		SymbolicatorParser:       os.Getenv("SYMBOLICATOR_PARSER"),
+
+		NotificationPollSeconds: os.Getenv("NOTIFICATION_POLL_SECONDS"),
 
 		SMTPEnabled:  os.Getenv("SMTP_ENABLED"),
 		SMTPHost:     os.Getenv("SMTP_HOST"),

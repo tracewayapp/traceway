@@ -12,8 +12,8 @@ Connect an existing project to a Traceway instance so it reports endpoints, span
 | Value | Example | Where to find it |
 |---|---|---|
 | **Instance URL** | `https://traceway.example.com` | The URL of the Traceway dashboard |
-| **Project token** | `abc123...` | Traceway dashboard → Connection page |
-| **Source map upload token** (optional, frontend only) | `def456...` | Traceway dashboard → Connection page → Source Maps |
+| **Project token** | `abc123...` | Traceway dashboard -> Connection page |
+| **Source map upload token** (optional, frontend only) | `def456...` | Traceway dashboard -> Connection page -> Source Maps |
 
 Instance URL and project token may be provided in the invocation (e.g. `/traceway-setup with token abc123 and url https://traceway.example.com`). If either is missing:
 
@@ -38,7 +38,7 @@ Pick the path by project type. This is not negotiable per framework; it is how T
 Two hard rules apply to every backend integration:
 
 1. **Endpoints MUST arrive parametrized.** `http.route` must be set to the route pattern (`/api/users/:id`), never the concrete URL. Traceway uses the value as-is; when it is missing it falls back to `url.path`, and the Endpoints page explodes into one row per unique URL.
-2. **Background work MUST use `SpanKind.CONSUMER`.** A root span with the default `INTERNAL` kind and no HTTP attributes is silently dropped.
+2. **Background work MUST use `SpanKind.CONSUMER`.** A root span with the default `INTERNAL` kind and no HTTP attributes is silently dropped (exceptions recorded on it still reach Issues, but the task run itself is lost).
 
 ### How Traceway classifies spans
 
@@ -49,8 +49,8 @@ Two hard rules apply to every backend integration:
 | Root span | `SpanKind = INTERNAL` with a `console.command` attribute | **Task** (CLI command) |
 | Any span | Has any `gen_ai.*` attribute | **AI Trace** |
 | Non-root span | Has a parent span ID, matched none of the above | **Span** (child) |
-| Exception event | Event named `"exception"` on any span above | **Issue** |
-| Root span | Matched none of the above | **Dropped silently** (including its exception events) |
+| Exception | `exception` event (or `exception.*` attributes) on any span | **Issue** |
+| Root span | Matched none of the above | **Dropped** (exceptions recorded on it still become Issues, unlinked) |
 
 For the exact classification rules, endpoint naming, metric conversion, and all the quirks, read `data-model.md` in this skill directory. It is the authoritative reference.
 
@@ -212,6 +212,8 @@ Attributes Traceway reads (all optional, set what is available):
 | `gen_ai.response.finish_reason` | Why generation stopped |
 | `gen_ai.prompt` / `gen_ai.completion` | Conversation content, shown on the trace detail page (skip if content must not leave the app) |
 
+Conversation content is also read from `trace.input`/`trace.output` (or `span.input`/`span.output`) when `gen_ai.prompt`/`gen_ai.completion` are absent, and missing `total_tokens`/`total_cost` are computed from the input + output values.
+
 ```typescript
 return tracer.startActiveSpan("chat-completion", async (span) => {
   const response = await openai.chat.completions.create({ model: "gpt-4o", messages });
@@ -227,7 +229,7 @@ return tracer.startActiveSpan("chat-completion", async (span) => {
 });
 ```
 
-Zero-code path for OpenRouter users: in OpenRouter Settings → Observability, add an OpenTelemetry Collector destination pointing at `https://<instance>/api/otel/v1/traces` with header `{"Authorization": "Bearer <project-token>"}`. Docs: https://docs.tracewayapp.com/client/openrouter
+Zero-code path for OpenRouter users: in OpenRouter Settings -> Observability, add an OpenTelemetry Collector destination pointing at `https://<instance>/api/otel/v1/traces` with header `{"Authorization": "Bearer <project-token>"}`. Docs: https://docs.tracewayapp.com/client/openrouter
 
 ## Frontend and Mobile
 
@@ -239,13 +241,13 @@ Frontend and mobile projects do NOT use OTel; they use the Traceway SDKs reporti
 2. **Bundler plugin**: `npm install -D @tracewayapp/bundler-plugin`, then add `tracewayDebugIds()` from `@tracewayapp/bundler-plugin/vite` (or `/rollup`, or `TracewayDebugIdsWebpackPlugin` from `/webpack`) to the bundler config, with source maps enabled (`build.sourcemap: true` / `devtool: "source-map"`).
 3. **Source map upload**: `npm install -D @tracewayapp/sourcemap-upload`, then run `traceway-sourcemaps --url <instance> --token <source-map-upload-token> --directory ./dist` as a postbuild or CI step (env vars: `TRACEWAY_URL`, `TRACEWAY_SOURCEMAP_TOKEN`). The upload token comes from Step 0 and is a CI secret, never committed.
 
-Full docs: https://docs.tracewayapp.com/client/react (or `vue`, `svelte`, `jquery`, `js-sdk`).
+For the per-framework init code (plain JS, React, Vue, Svelte/SvelteKit, jQuery), the shared SDK options, error filtering, custom attributes, distributed tracing, and the full debug-ID + source map pipeline, read `frontend-js.md` in this skill directory. Online docs: https://docs.tracewayapp.com/client/react (or `vue`, `svelte`, `jquery`, `js-sdk`).
 
 **Full-stack JS** (Next.js, SvelteKit, Remix): both sides. Server side follows Step 2 (verify `http.route` grouping; set it manually in a server hook where the auto-instrumentation does not know the router). Browser side follows the three pieces above.
 
 **Mobile**, always the platform SDK, never OTel:
 
-- **Flutter**: `flutter pub add traceway`, then `Traceway.run(connectionString: '<token>@https://<instance>/api/report', child: MyApp())`. Docs: https://docs.tracewayapp.com/client/flutter
+- **Flutter**: `flutter pub add traceway`, then `Traceway.run(connectionString: '<token>@https://<instance>/api/report', child: MyApp())`. For options, platform permissions, the navigator observer, screen recording, privacy masking, and the Flutter web caveat, read `flutter.md` in this skill directory. Docs: https://docs.tracewayapp.com/client/flutter
 - **React Native**: `npm install @tracewayapp/react-native`, wrap the app in `TracewayProvider`. Docs: https://docs.tracewayapp.com/client/react-native
 - **Android**: `implementation("com.tracewayapp:traceway:<version>")`, call `Traceway.init(...)` at startup. Docs: https://docs.tracewayapp.com/client/android
 
@@ -286,7 +288,7 @@ Metrics arrive within ~60s under their hostmetrics names (`system.cpu.utilizatio
 2. Check the Traceway dashboard:
    - **Endpoints page**: routes appear grouped by pattern (e.g. `GET /api/users/:id`), not by literal URL, and status codes are non-zero.
    - **Issues page**: thrown errors appear with stack traces. For frontend projects, stack traces are symbolicated to original files and lines.
-   - **Endpoint detail → Spans tab**: database queries and outgoing calls appear as children.
+   - **Endpoint detail -> Spans tab**: database queries and outgoing calls appear as children.
    - **Tasks page**: after triggering each background job once, it appears under one stable name.
    - **AI Traces page** (if Step 4 applied): model calls appear with token counts and cost.
    - **Metrics** (if the agent was installed): host metrics arrive within about 60 seconds.

@@ -149,7 +149,7 @@ func ComputeStreamImpactReason(endpoint string, total, serverErrorCount, clientE
 }
 
 // errorRateFloor / clientErrorFloor / volumeAwareErrorFloor are the tier
-// definitions from ComputeImpactReason (mirrored in computeImpactScore),
+// definitions from ComputeImpactReason (mirrored in ComputeImpactScore),
 // factored out so the stream variants reuse identical thresholds.
 func errorRateFloor(badRate float64) float64 {
 	switch {

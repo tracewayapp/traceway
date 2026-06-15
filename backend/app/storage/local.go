@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,8 @@ import (
 type localStorage struct {
 	basePath string
 }
+
+var ErrInvalidKey = errors.New("storage: key escapes base path")
 
 func NewLocalStorage(basePath string) (*localStorage, error) {
 	abs, err := filepath.Abs(basePath)
@@ -22,8 +25,19 @@ func NewLocalStorage(basePath string) (*localStorage, error) {
 	return &localStorage{basePath: abs}, nil
 }
 
+func (l *localStorage) resolve(key string) (string, error) {
+	rel := filepath.FromSlash(key)
+	if !filepath.IsLocal(rel) {
+		return "", fmt.Errorf("%w: %q", ErrInvalidKey, key)
+	}
+	return filepath.Join(l.basePath, rel), nil
+}
+
 func (l *localStorage) Write(_ context.Context, key string, data []byte) error {
-	fullPath := filepath.Join(l.basePath, key)
+	fullPath, err := l.resolve(key)
+	if err != nil {
+		return err
+	}
 	dir := filepath.Dir(fullPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", dir, err)
@@ -35,7 +49,10 @@ func (l *localStorage) Write(_ context.Context, key string, data []byte) error {
 }
 
 func (l *localStorage) Delete(_ context.Context, key string) error {
-	fullPath := filepath.Join(l.basePath, key)
+	fullPath, err := l.resolve(key)
+	if err != nil {
+		return err
+	}
 	if err := os.Remove(fullPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to delete file %s: %w", fullPath, err)
 	}
@@ -43,7 +60,10 @@ func (l *localStorage) Delete(_ context.Context, key string) error {
 }
 
 func (l *localStorage) Read(_ context.Context, key string) ([]byte, error) {
-	fullPath := filepath.Join(l.basePath, key)
+	fullPath, err := l.resolve(key)
+	if err != nil {
+		return nil, err
+	}
 	data, err := os.ReadFile(fullPath)
 	if err != nil {
 		if os.IsNotExist(err) {

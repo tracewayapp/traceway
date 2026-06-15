@@ -304,7 +304,11 @@ func (p *symbolicatorProcessor) symbolicateFrame(ctx context.Context, f stackFra
 		return frameResult{err: fmt.Errorf("line/column out of range: %d:%d", f.line, f.col)}
 	}
 
-	data, done, err := p.cache.Get(ctx, cacheKey(f.url, buildUUID), func(ctx context.Context) ([]byte, error) {
+	key := cacheKey(f.url, buildUUID)
+	if p.cache.IsNegative(key) {
+		return frameResult{err: fmt.Errorf("no source map for %s", f.url)}
+	}
+	data, done, err := p.cache.Get(ctx, key, func(ctx context.Context) ([]byte, error) {
 		fetchCtx, cancel := context.WithTimeout(ctx, p.cfg.Timeout)
 		defer cancel()
 		source, sourceMap, err := p.store.getSourceAndMap(fetchCtx, f.url, buildUUID)

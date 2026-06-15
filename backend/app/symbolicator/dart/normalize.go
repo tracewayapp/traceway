@@ -13,7 +13,8 @@ func NormalizeDebugID(debugID string) string {
 }
 
 func NormalizeArch(arch string) string {
-	switch strings.ToLower(strings.TrimSpace(arch)) {
+	a := strings.ToLower(strings.TrimSpace(arch))
+	switch a {
 	case "x86_64", "x64", "amd64":
 		return "x64"
 	case "aarch64", "arm64":
@@ -22,7 +23,27 @@ func NormalizeArch(arch string) string {
 		return "arm"
 	case "ia32", "x86", "i386":
 		return "ia32"
-	default:
-		return strings.ToLower(strings.TrimSpace(arch))
 	}
+	var b strings.Builder
+	for _, r := range a {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func IsValidArch(arch string) bool {
+	a := strings.TrimSpace(arch)
+	if a == "" {
+		return false
+	}
+	for _, r := range a {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '_':
+		default:
+			return false
+		}
+	}
+	return true
 }

@@ -66,6 +66,10 @@ func (s symbolsController) Upload(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("cannot determine arch for %s; pass an 'arch' field", fileHeader.Filename)})
 			return
 		}
+		if !dart.IsValidArch(arch) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid arch %q for %s; expected an architecture token like arm64, x64, arm, or ia32", arch, fileHeader.Filename)})
+			return
+		}
 
 		buildID, err := dart.ReadBuildID(data)
 		if err != nil {

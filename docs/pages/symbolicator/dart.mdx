@@ -1,0 +1,156 @@
+# Dart
+
+For Dart, the debug info is the build's `.symbols` file. Obfuscated Flutter release builds strip names and line tables out of the binary, so a crash reports against raw machine code. The frames carry nothing but an offset into a snapshot section:
+
+```
+*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+pid: 1234, tid: 5678, name 1.ui
+build_id: '8a5f0c2e1b7d4f93a6e0c8b1d2f3a4b5'
+os: android arch: arm64 comp: yes sim: no
+#00 abs 7f1c2a0040 virt 0000000000241040 _kDartIsolateSnapshotInstructions+0x12340
+#01 abs 7f1c2a0a10 virt 0000000000241a10 _kDartIsolateSnapshotInstructions+0x12d10
+```
+
+With the build's `.symbols` file uploaded, that resolves into named source frames, inline calls expanded:
+
+```
+#0  UserRepository.fetch (package:app/data/user_repository.dart:88:14)
+#1  _ProfilePageState.build.<anonymous closure> (package:app/ui/profile_page.dart:142:20)
+#2  StatelessElement.build (package:flutter/src/widgets/framework.dart:5678:28)
+```
+
+This page covers the Dart-specific mechanics in the order you meet them: when a symbol upload is needed, how to set it up and upload with the SDK, the upload API, and then how a non-symbolic trace is recognized and resolved into source frames. For when symbolication runs, the cache, and the `.tw` format, see [Architecture](/symbolicator).
+
+## Obfuscated builds and `.symbols` files
+
+A plain `flutter build --release` keeps enough symbol information that crash traces are already readable (function names and `file:line`), and the SDK reports them as-is. You only need to upload symbols when you harden a build with **`--obfuscate`** and/or **`--split-debug-info`**:
+
+- **`--obfuscate`** renames identifiers and strips names out of the binary, which shrinks the app and protects your source. Release traces then arrive as bare instruction offsets.
+- **`--split-debug-info=<dir>`** writes the stripped debug information into a separate `.symbols` file per architecture, so it ships to you instead of inside the app.
+
+```bash
+flutter build apk --release --obfuscate --split-debug-info=build/symbols
+```
+
+This writes ELF files like `app.android-arm64.symbols`, one per architecture you ship (`arm64`, `arm`, `x64`). Each is a stripped ELF carrying DWARF debug info and a `.note.gnu.build-id` note, plus the `_kDartIsolateSnapshotInstructions` and `_kDartVmSnapshotInstructions` symbols that anchor the snapshot sections. The engine reads the build ID from that note and the section base addresses from those symbols; that's everything a lookup needs.
+
+Apple platforms are the exception: Mach-O builds carry no GNU build-id note, so for iOS and macOS the debug ID is the build's Mach-O UUID instead (handled for you below).
+
+## Uploading symbols with the Flutter SDK
+
+The [`traceway`](https://pub.dev/packages/traceway) package ships an uploader that finds the `.symbols` files, derives each one's architecture and debug ID, and posts them. Configure it once, then run it on every release.
+
+**One-time setup.** Add a `traceway:` block to your app's `pubspec.yaml`:
+
+```yaml
+traceway:
+  url: https://your-traceway-host   # omit on Traceway Cloud
+  # upload_token: ...               # prefer the env var, especially in CI
+```
+
+The upload token is your project's **upload token** from the dashboard, the same one used for JavaScript source maps. It is **not** the runtime token in your `Traceway.run()` connection string.
+
+**Per release.** Build with the symbol flags, then run the uploader:
+
+```sh
+flutter build apk --release --obfuscate --split-debug-info=build/symbols
+
+TRACEWAY_UPLOAD_TOKEN=your-token dart run traceway:upload_symbols
+```
+
+The uploader reads the URL and token from config or environment and auto-discovers `build/symbols`, so no flags are required. Each value resolves from a CLI flag first, then an environment variable, then `pubspec.yaml`:
+
+| Value | Flag | Env var | `pubspec.yaml` key | Default |
+|---|---|---|---|---|
+| Upload token | `--token` | `TRACEWAY_UPLOAD_TOKEN` | `upload_token` | required |
+| Instance URL | `--url` | `TRACEWAY_URL` | `url` | Traceway Cloud |
+| Symbols directory | `--symbols-dir` | | `symbols_dir` | `build/symbols` |
+| Apple app bundle | `--app` | | `app` | auto-discovered |
+
+Pass `--dry-run` to resolve the config and list what would be uploaded without sending. Symbols are unique to each build, so upload on every release: a crash can only be symbolicated against the exact build it came from.
+
+On Android the debug ID is read straight from each file's build-id note. On iOS and macOS the file doesn't carry one, so the uploader reads the Mach-O UUID from the built `.app` (the same value the runtime reports), auto-discovering it under `build/`. Point it explicitly when needed:
+
+```sh
+dart run traceway:upload_symbols --app build/macos/Build/Products/Release/YourApp.app
+```
+
+## The upload API
+
+The uploader posts each file to a dedicated endpoint. This is the wire protocol it speaks (and why Apple builds need the SDK uploader rather than a raw HTTP call: the `debug_id` must come from the compiled `.app`):
+
+```
+POST /api/symbols/upload
+Authorization: Bearer <upload token>
+Content-Type: multipart/form-data
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `files` | yes | One or more `.symbols` files. Non-`.symbols` entries are ignored. 200 MB per file. |
+| `arch` | sometimes | The architecture token (`arm64`, `arm`, `x64`, `ia32`). Optional when the filename ends in `-<arch>.symbols`, which Flutter's output already does. |
+| `debug_id` | sometimes | Required only when the file has no build-id note (Apple). When the file does have one, this must match it if provided. |
+
+The build ID is normalized (lowercased, hex digits only) and the arch too (`x86_64`/`amd64` collapse to `x64`, `aarch64` to `arm64`). The stored key is:
+
+```
+dartsymbols/{projectId}/{debugId}-{arch}.symbols
+```
+
+Because the key is content-addressed by build ID, releases never collide, and re-uploading the same build is idempotent.
+
+## How a Dart trace is recognized
+
+Dart symbolication keys off a **non-symbolic** trace, identified by frame lines of this shape:
+
+```
+#00 abs 7f1c2a0040 virt 0000000000241040 _kDartIsolateSnapshotInstructions+0x12340
+```
+
+Each frame names a snapshot section, `_kDartIsolateSnapshotInstructions` (the app's own code) or `_kDartVmSnapshotInstructions` (the Dart VM), and an offset into it. The parser pulls three things from the surrounding text:
+
+| Field | Source line | Used for |
+|---|---|---|
+| build ID | `build_id: '...'` | matching the trace to an uploaded `.symbols` |
+| architecture | `os: ... arch: ...` | picking the right per-arch `.symbols` |
+| frames | `#N ... _kDart...Instructions+0xOFFSET` | the PC offsets to resolve |
+
+A trace that is already symbolic, or carries no recognizable Dart frames, passes through untouched.
+
+## How an offset resolves
+
+The build's `.symbols` is compiled into a range-lookup resolver (the [`.tw`](/symbolicator#the-tw-resolver-format) form). Each frame then resolves through these steps:
+
+1. **Compute the program counter.** The frame's offset is added to the base address of its section (isolate or VM), recovered from the snapshot instruction symbols. That absolute PC is what the lookup keys on.
+2. **Look up the PC.** A binary search over the resolver's range table finds the PC's entry and its span of frames. DWARF inline information means one machine address can stand for several source frames, so a single `#N` offset can expand into a chain of inlined calls, innermost first.
+3. **Render.** Resolved frames print as `#N  Function (file:line:col)`. A frame with no match (a PC outside any known range, or symbols that weren't uploaded) keeps its raw form, `#N  _kDartIsolateSnapshotInstructions+0xOFFSET`, so the trace is never worse than it arrived. A maximum of **50 frames** are emitted, inline expansions included.
+
+If no symbols are found for the build, every frame falls back to its raw offset form.
+
+## The flat format
+
+Where the JavaScript `.tw` maps generated positions to original positions, the Dart `.tw` maps **PC ranges to inline frame spans**. Building it flattens the DWARF debug info into a structure tuned for the lookup above:
+
+- A header carrying the isolate and VM base addresses and the table sizes.
+- A range table, sorted by PC, where each entry covers a contiguous PC range and points at a run of frames (more than one when calls were inlined).
+- A frame table of `(file, line, column, function)` records, with file and function names interned.
+
+The general properties (memory-mapped, zero-copy on little-endian hosts, a versioned cache artifact rebuilt from the original debug info) are the same as every `.tw`; see [Architecture](/symbolicator#the-tw-resolver-format).
+
+## How it differs from JavaScript
+
+| | JavaScript | Dart |
+|---|---|---|
+| Raw artifact | source map + minified bundle | `.symbols` ELF (DWARF) |
+| Frame input | file, line, column | PC offset into a snapshot section |
+| Keyed by | filename or debug ID | build ID + architecture |
+| Function names | bundle scope analysis | DWARF, directly |
+| One frame in | one frame out | one *or more* frames out (inline expansion) |
+
+The architecture dimension is the practical difference to remember: a single JavaScript build has one map per bundle, but a single Flutter build ships several `.symbols` files, and a trace only resolves against the one matching the device's arch. Upload all of them.
+
+## Related pages
+
+- [Flutter SDK](/client/flutter): capturing exceptions from a Flutter app
+- [Architecture](/symbolicator): when symbolication runs, the cache tiers, and the `.tw` format
+- [Performance](/symbolicator/performance): cache sizing and failure handling

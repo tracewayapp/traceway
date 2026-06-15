@@ -76,6 +76,8 @@ module.exports = {
 	let copiedPluginInstall = $state(false);
 	let copiedBundlerConfig = $state(false);
 	let copiedCommand = $state(false);
+	let copiedFlutterBuild = $state(false);
+	let copiedFlutterUpload = $state(false);
 
 	const pluginInstallCommand = 'npm install -D @tracewayapp/bundler-plugin';
 
@@ -85,6 +87,9 @@ module.exports = {
 		authState.getRoleForOrganization(project?.organizationId ?? 0) === 'readonly'
 	);
 
+	const isFlutter = $derived(project?.framework === 'flutter');
+	const artifactLabel = $derived(isFlutter ? 'debug symbols' : 'source maps');
+
 	const showBundlerSetup = $derived(project?.framework !== 'react-native');
 
 	const uploadCommand = $derived(
@@ -93,6 +98,17 @@ module.exports = {
   --url ${project.backendUrl} \\
   --token ${sourceMapToken} \\
   --directory ${showBundlerSetup ? bundlerConfigs[bundler].directory : 'dist'}`
+			: ''
+	);
+
+	const flutterBuildCommand =
+		'flutter build apk --release --obfuscate --split-debug-info=build/symbols';
+
+	const flutterUploadCommand = $derived(
+		project && sourceMapToken
+			? `dart run traceway:upload_symbols \\
+  --token ${sourceMapToken} \\
+  --url ${project.backendUrl}`
 			: ''
 	);
 
@@ -142,6 +158,18 @@ module.exports = {
 		copiedCommand = true;
 		setTimeout(() => (copiedCommand = false), 2000);
 	}
+
+	async function copyFlutterBuild() {
+		await navigator.clipboard.writeText(flutterBuildCommand);
+		copiedFlutterBuild = true;
+		setTimeout(() => (copiedFlutterBuild = false), 2000);
+	}
+
+	async function copyFlutterUpload() {
+		await navigator.clipboard.writeText(flutterUploadCommand);
+		copiedFlutterUpload = true;
+		setTimeout(() => (copiedFlutterUpload = false), 2000);
+	}
 </script>
 
 {#if sourceMapToken}
@@ -169,13 +197,13 @@ module.exports = {
 				</Button>
 			</div>
 		</div>
-		{#if showBundlerSetup}
+		{#if isFlutter}
 			<div>
-				<p class="mb-2 text-sm font-medium">Step 1: Install the bundler plugin</p>
+				<p class="mb-2 text-sm font-medium">Step 1: Build with obfuscation enabled</p>
 				<div class="relative">
 					<div class="absolute top-2 right-2 z-10">
-						<Button variant="outline" size="sm" onclick={copyPluginInstall}>
-							{#if copiedPluginInstall}
+						<Button variant="outline" size="sm" onclick={copyFlutterBuild}>
+							{#if copiedFlutterBuild}
 								<Check class="mr-2 h-4 w-4 text-green-500" />
 								Copied!
 							{:else}
@@ -189,31 +217,118 @@ module.exports = {
 							? 'dark-code'
 							: 'light-code'}"
 					>
-						<Highlight language={bash} code={pluginInstallCommand} />
+						<Highlight language={bash} code={flutterBuildCommand} />
 					</div>
 				</div>
+				<p class="mt-2 text-xs text-muted-foreground">
+					This writes a per-architecture .symbols file into build/symbols. The example builds an
+					Android APK; other targets emit their own symbol files in the same directory.
+				</p>
 			</div>
 			<div>
-				<p class="mb-2 text-sm font-medium">Step 2: Add the plugin to your bundler</p>
-				<Tabs.Root
-					value={bundler}
-					onValueChange={(v) => {
-						if (v) bundler = v as Bundler;
-					}}
-				>
-					<Tabs.List class="mb-2">
-						{#each Object.entries(bundlerConfigs) as [value, config] (value)}
-							<Tabs.Trigger {value}>{config.label}</Tabs.Trigger>
-						{/each}
-					</Tabs.List>
-				</Tabs.Root>
-				<p class="mb-2 font-mono text-xs text-muted-foreground">
-					{bundlerConfigs[bundler].file}
+				<p class="mb-2 text-sm font-medium">Step 2: Upload the symbols after each release build</p>
+				<div class="relative">
+					<div class="absolute top-2 right-2 z-10">
+						<Button variant="outline" size="sm" onclick={copyFlutterUpload}>
+							{#if copiedFlutterUpload}
+								<Check class="mr-2 h-4 w-4 text-green-500" />
+								Copied!
+							{:else}
+								<Copy class="mr-2 h-4 w-4" />
+								Copy
+							{/if}
+						</Button>
+					</div>
+					<div
+						class="overflow-x-auto rounded-lg text-sm {themeState.isDark
+							? 'dark-code'
+							: 'light-code'}"
+					>
+						<Highlight language={bash} code={flutterUploadCommand} />
+					</div>
+				</div>
+				<p class="mt-2 text-xs text-muted-foreground">
+					Run from your project root after each release. The uploader auto-discovers build/symbols
+					and pushes every architecture in one go; symbols are unique per build, so re-upload on
+					each release. In CI, pass the token as <code class="font-mono">TRACEWAY_UPLOAD_TOKEN</code>
+					instead of the flag.
+				</p>
+			</div>
+		{:else}
+			{#if showBundlerSetup}
+				<div>
+					<p class="mb-2 text-sm font-medium">Step 1: Install the bundler plugin</p>
+					<div class="relative">
+						<div class="absolute top-2 right-2 z-10">
+							<Button variant="outline" size="sm" onclick={copyPluginInstall}>
+								{#if copiedPluginInstall}
+									<Check class="mr-2 h-4 w-4 text-green-500" />
+									Copied!
+								{:else}
+									<Copy class="mr-2 h-4 w-4" />
+									Copy
+								{/if}
+							</Button>
+						</div>
+						<div
+							class="overflow-x-auto rounded-lg text-sm {themeState.isDark
+								? 'dark-code'
+								: 'light-code'}"
+						>
+							<Highlight language={bash} code={pluginInstallCommand} />
+						</div>
+					</div>
+				</div>
+				<div>
+					<p class="mb-2 text-sm font-medium">Step 2: Add the plugin to your bundler</p>
+					<Tabs.Root
+						value={bundler}
+						onValueChange={(v) => {
+							if (v) bundler = v as Bundler;
+						}}
+					>
+						<Tabs.List class="mb-2">
+							{#each Object.entries(bundlerConfigs) as [value, config] (value)}
+								<Tabs.Trigger {value}>{config.label}</Tabs.Trigger>
+							{/each}
+						</Tabs.List>
+					</Tabs.Root>
+					<p class="mb-2 font-mono text-xs text-muted-foreground">
+						{bundlerConfigs[bundler].file}
+					</p>
+					<div class="relative">
+						<div class="absolute top-2 right-2 z-10">
+							<Button variant="outline" size="sm" onclick={copyBundlerConfig}>
+								{#if copiedBundlerConfig}
+									<Check class="mr-2 h-4 w-4 text-green-500" />
+									Copied!
+								{:else}
+									<Copy class="mr-2 h-4 w-4" />
+									Copy
+								{/if}
+							</Button>
+						</div>
+						<div
+							class="overflow-x-auto rounded-lg text-sm {themeState.isDark
+								? 'dark-code'
+								: 'light-code'}"
+						>
+							<Highlight
+								language={bundlerConfigs[bundler].language}
+								code={bundlerConfigs[bundler].code}
+							/>
+						</div>
+					</div>
+				</div>
+			{/if}
+			<div>
+				<p class="mb-2 text-sm font-medium">
+					{showBundlerSetup ? 'Step 3: Upload after your production build' : 'Usage'}
 				</p>
 				<div class="relative">
 					<div class="absolute top-2 right-2 z-10">
-						<Button variant="outline" size="sm" onclick={copyBundlerConfig}>
-							{#if copiedBundlerConfig}
+						<Button variant="outline" size="sm" onclick={copyUploadCommand}>
+							{#if copiedCommand}
 								<Check class="mr-2 h-4 w-4 text-green-500" />
 								Copied!
 							{:else}
@@ -227,50 +342,38 @@ module.exports = {
 							? 'dark-code'
 							: 'light-code'}"
 					>
-						<Highlight
-							language={bundlerConfigs[bundler].language}
-							code={bundlerConfigs[bundler].code}
-						/>
+						<Highlight language={bash} code={uploadCommand} />
 					</div>
 				</div>
 			</div>
 		{/if}
-		<div>
-			<p class="mb-2 text-sm font-medium">
-				{showBundlerSetup ? 'Step 3: Upload after your production build' : 'Usage'}
-			</p>
-			<div class="relative">
-				<div class="absolute top-2 right-2 z-10">
-					<Button variant="outline" size="sm" onclick={copyUploadCommand}>
-						{#if copiedCommand}
-							<Check class="mr-2 h-4 w-4 text-green-500" />
-							Copied!
-						{:else}
-							<Copy class="mr-2 h-4 w-4" />
-							Copy
-						{/if}
-					</Button>
-				</div>
-				<div
-					class="overflow-x-auto rounded-lg text-sm {themeState.isDark
-						? 'dark-code'
-						: 'light-code'}"
-				>
-					<Highlight language={bash} code={uploadCommand} />
-				</div>
-			</div>
-		</div>
 	</div>
 {:else if isReadonly}
 	<p class="text-sm text-muted-foreground">
-		An upload token is required to upload source maps. Ask an organization admin to generate one
+		An upload token is required to upload {artifactLabel}. Ask an organization admin to generate one
 		from the Connection page.
 	</p>
 {:else}
 	<div class="flex items-center justify-between gap-4">
-		<p class="text-sm text-muted-foreground">
-			Generate an upload token to start uploading source maps as part of your build process.
-		</p>
+		{#if isFlutter}
+			<p class="text-sm text-muted-foreground">
+				Plain release builds already report readable traces. Only obfuscated builds (<code
+					class="rounded bg-muted px-1 py-0.5 font-mono text-xs">--obfuscate</code
+				>) need this: generate a token, then upload your <code
+					class="rounded bg-muted px-1 py-0.5 font-mono text-xs">.symbols</code
+				> after each release to resolve their stack traces.
+				<a
+					href="https://docs.tracewayapp.com/client/flutter"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="underline hover:text-foreground">Flutter docs</a
+				>
+			</p>
+		{:else}
+			<p class="text-sm text-muted-foreground">
+				Generate an upload token to start uploading {artifactLabel} as part of your build process.
+			</p>
+		{/if}
 		<Button variant="outline" size="sm" onclick={generateToken} disabled={generatingToken}>
 			{#if generatingToken}
 				<LoadingCircle class="mr-2 h-4 w-4" />

@@ -95,7 +95,7 @@ Lookups that find no map (or fail to load one) are negative-cached per filename 
 
 Upgrading from 1.7? The flat storage layout is new in 1.8 and existing maps are migrated automatically at startup; see [Upgrading to 1.8](/server/upgrade-1-8).
 
-In both modes, a memory miss first tries a precompiled `.tw` resolver from object storage before re-parsing the map and bundle, and rebuilds happen once cluster-wide because the resulting `.tw` is written back to storage. Optionally, `SOURCEMAP_CACHE_TYPE=disk` adds a local disk tier of those `.tw` files between the memory cache and object storage, so a miss becomes a local mmap open instead of a storage download. See [the `.tw` format](/learn/symbolication-js#the-tw-resolver-format) and [cache backends](/learn/symbolication-js#cache-backends-memory-and-disk) for the mechanics.
+In both modes, a memory miss first tries a precompiled `.tw` resolver from object storage before re-parsing the map and bundle, and rebuilds happen once cluster-wide because the resulting `.tw` is written back to storage. Optionally, `SOURCEMAP_CACHE_TYPE=disk` adds a local disk tier of those `.tw` files between the memory cache and object storage, so a miss becomes a local mmap open instead of a storage download. See [the `.tw` format](/symbolicator#the-tw-resolver-format) and [cache tiers](/symbolicator#cache-tiers) for the mechanics.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -104,7 +104,7 @@ In both modes, a memory miss first tries a precompiled `.tw` resolver from objec
 | `SOURCEMAP_CACHE_TYPE` | `memory` | `disk` adds the local `.tw` tier |
 | `SOURCEMAP_DISK_CACHE_PATH` | `./twcache` | Directory for local `.tw` files (disk mode only) |
 | `SOURCEMAP_DISK_CACHE_MAX_MB` | `2048` | Byte cap for the local `.tw` directory, LRU-evicted (disk mode only) |
-| `SYMBOLICATOR_PARSER` | `goja` | Bundle parser for function name resolution; `oxc` is faster on large bundles but requires a `-tags oxc` build (see [Bundle parsers](/learn/symbolication-js#bundle-parsers)) |
+| `SYMBOLICATOR_PARSER` | `goja` | Bundle parser for function name resolution; `oxc` is faster on large bundles but requires a `-tags oxc` build (see [Bundle parsers](/symbolicator/javascript#bundle-parsers)) |
 
 Sizing guidance:
 

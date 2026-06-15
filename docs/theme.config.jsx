@@ -37,7 +37,7 @@ export default {
       <img
         src="/traceway-logo-white.png"
         alt="Traceway"
-        style={{ height: "32px" }}
+        style={{ height: "28px" }}
       />
     );
   },

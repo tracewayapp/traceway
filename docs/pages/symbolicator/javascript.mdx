@@ -1,0 +1,174 @@
+# JavaScript
+
+For JavaScript, the debug info is a source map plus the minified bundle it was built from. Browsers report errors against the shipped bundle, so without symbolication an exception looks like this:
+
+```
+TypeError: Cannot read properties of undefined (reading 'name')
+anonymous()
+    app.bundle.js:1:48211
+anonymous()
+    app.bundle.js:1:13377
+```
+
+With the map uploaded, Traceway resolves it to this:
+
+```
+TypeError: Cannot read properties of undefined (reading 'name')
+renderUserCard()
+    src/components/UserCard.tsx:42:17
+handleClick()
+    src/pages/Profile.tsx:108:5
+```
+
+This page covers the JavaScript-specific mechanics: how a frame is parsed, how it resolves against a source map, and how the minified bundle recovers function names. For when symbolication runs, the cache, and the `.tw` format, see [Architecture](/symbolicator). For uploading maps, see [Source Maps](/client/js-sdk/sourcemap-upload).
+
+## The frame format
+
+The JS SDK does not send the browser's raw `error.stack` string. Stack formats are not standardized: V8 (Chrome, Edge, Hermes) emits `    at funcName (file:line:col)`, while Firefox and JavaScriptCore (Safari) emit `funcName@file:line:col`. The SDK parses both families and normalizes every frame into a canonical two-line wire format: a function name line ending in `()`, then a location line indented by four spaces:
+
+```
+anonymous()
+    app.bundle.js:1:48211
+```
+
+The resolver recognizes location lines with a single regex:
+
+```
+^(\s{4})(.+):(\d+):(\d+)$
+```
+
+Anything that doesn't match (the error message, the name lines, blank lines) passes through untouched. This is the first invariant of the pipeline: **the resolver can only rewrite a line or leave it exactly as it was**. There is no failure mode that drops or corrupts a frame.
+
+## The resolution pipeline
+
+For each location line, in order:
+
+### 1. Find the right source map
+
+**By debug ID first.** If the exception payload carries a `debugIds` entry for the frame's file (injected at build time by [`@tracewayapp/bundler-plugin`](/client/js-sdk/debug-ids)), the map is addressed at `sourcemaps/{projectId}/by-debug-id/{debugId}.js.map` and the bundle at the same key without `.map`. This is content-addressed matching: the ID was embedded into the bundle and its map by the build, so the frame can never resolve against a map from a different build, regardless of filenames, CDNs, or concurrent deploys. If no artifact with that debug ID was uploaded, resolution falls back to filename matching below.
+
+**By filename otherwise.** The frame's file name is reduced to its basename (any query string or fragment stripped first), and the map is addressed in object storage at a deterministic key:
+
+| Frame file | Storage key |
+|---|---|
+| `app.bundle.js` | `sourcemaps/{projectId}/app.bundle.js.map` |
+| `https://cdn.example.com/assets/app.bundle.js` | `sourcemaps/{projectId}/app.bundle.js.map` |
+| `app.bundle.js?v=abc123` | `sourcemaps/{projectId}/app.bundle.js.map` |
+
+The minified bundle, when the upload CLI found one next to the map, lives at the same key without the `.map` suffix and feeds function name resolution (below).
+
+No map in storage: the line passes through unchanged, and that filename enters a miss cooldown so subsequent exceptions skip the storage read entirely (see [Performance](/symbolicator/performance#when-loading-fails)).
+
+### 2. Get the resolver
+
+The parsed lookup structure comes from the [cache tiers](/symbolicator#cache-tiers). First use pays a storage read plus a parse (or a memory-mapped [`.tw`](/symbolicator#the-tw-resolver-format) open, which skips the parse); everything after is a memory lookup.
+
+### 3. Look up the position
+
+Browser stack traces use 1-based columns; the source map spec uses 0-based. The resolver subtracts 1 before the lookup and adds 1 back when printing. This off-by-one matters more than it sounds: minified bundles put the entire program on line 1, so being one column off can land on a *different token entirely* and resolve to the wrong original file.
+
+Here is a real lookup, taken verbatim from our test fixtures. The original file:
+
+```js
+// built with: terser -c -m --module original.js --source-map includeSources
+function abcd() {}
+export default abcd;
+```
+
+terser renames `abcd` to `t` and emits:
+
+```js
+function t(){}export default t;
+```
+
+with this source map:
+
+```json
+{
+  "version": 3,
+  "names": ["abcd"],
+  "sources": ["tests/fixtures/simple/original.js"],
+  "sourcesContent": ["...the original file, embedded..."],
+  "mappings": "AACA,SAASA,oBACMA"
+}
+```
+
+A frame pointing at `minified.js:1:11` (the `t` in `function t`) resolves through the `mappings` (delta-encoded VLQ segments of generated position, source index, original position, name index) to `tests/fixtures/simple/original.js:2:10`, with the name token `abcd`.
+
+### 4. Rewrite the lines
+
+The location line becomes `original-file:line:column` (same indentation). If a function name was resolved, the *name line directly above it* (the `anonymous()` line) is rewritten to `abcd()`.
+
+If the source map carries `"sources": [null]` entries (older uglify pipelines), the file name is rendered as `<unknown>` but the line, column, and name still resolve.
+
+A maximum of **50 frames** per trace are resolved; deeper frames pass through minified.
+
+## Function names: scope analysis
+
+Locations come straight from the source map and are exact. Function names are harder, because a source map's `names` token at a position is the identifier *at that token*, not the name of the *enclosing function* that a stack trace conventionally shows. Getting the enclosing function right requires scope analysis: parsing the minified bundle into an AST and mapping positions to function scopes. This is the same approach Sentry's symbolic takes, and it's why the upload CLI sends the minified bundle alongside each `.map`.
+
+When a bundle is available, the resolver:
+
+1. Parses it with a [bundle parser](#bundle-parsers) into every function in the file: declarations, function expressions, arrow functions, and class methods, each with the generated position of its name. If the bundle fails to parse as a script (ESM syntax), it's retried with module syntax neutralized.
+2. Flattens the nested scopes into a sorted list of transitions: "from this generated position onward, the innermost enclosing function's name sits at line L, column C".
+3. For each mapping in the source map, resolves the enclosing function's *name position* back through the map itself, yielding the original, pre-minification name.
+
+Take preact's `create-element.js`, which the old name heuristic famously got wrong:
+
+```js
+export function createElement(type, props, children) {
+  let normalizedProps = {},
+    key, ref, i;
+  for (i in props) {                         // error around here (line 40)
+    ...
+  }
+}
+```
+
+A frame inside that loop now resolves to `createElement`, because the scope walk knows which function *contains* the error position rather than guessing from nearby text.
+
+When no bundle was uploaded (a map-only upload from an older CLI, or a `.map` with no sibling bundle in the build output), there is no scope information and **no name is resolved**: the name line stays whatever the SDK reported (typically `anonymous()`), while file, line, and column still resolve exactly. Locations never depend on the bundle, so the click-through is right even when the label is missing.
+
+Resolved names never affect issue grouping, so name quality can keep improving (for example, by uploading bundles where you previously uploaded only maps) without re-bucketing existing issues. See [Issues](/learn/issues) for how grouping works.
+
+## Bundle parsers
+
+Scope analysis parses the minified bundle into an AST. Two parsers are available:
+
+| Parser | Availability | Implementation |
+|---|---|---|
+| `goja` | always (default) | pure Go, via the [goja](https://github.com/dop251/goja) parser |
+| `oxc` | opt-in build | Rust, via the [oxc](https://oxc.rs) parser behind a small C FFI shim |
+
+`goja` ships in every build and needs nothing, which keeps the engine pure Go and runnable in a `scratch` image. `oxc` is substantially faster on large bundles but requires a Rust toolchain at build time:
+
+```bash
+./scripts/build-oxc-shim.sh        # cargo build --release of the FFI shim
+cd backend && go build -tags oxc . # links the static library in
+```
+
+The parser choice affects build speed only, never output: a parity test asserts oxc against goja across the fixture suite, and `.tw` files are interchangeable between them. Since parsing happens only when a resolver is built, the parser matters most for deployments with heavy map churn or with the disk cache disabled.
+
+## Limitations today
+
+In rough order of impact:
+
+1. **Function names require the bundle.** The current upload CLI sends it automatically, but map-only uploads (older CLI versions, or maps whose sibling bundle was not in the build output) resolve locations without names.
+2. **Filename matching collides on stable names.** Without debug IDs, two bundles with the same filename in different directories collide, and the most recent upload wins. Content-hashed bundle names (the default in Vite, Next, Angular, and most bundlers) avoid this in practice, and [debug IDs](/client/js-sdk/debug-ids) eliminate it entirely by addressing maps by build content instead of by name.
+3. **Maps with `null` sources are ambiguous.** Frames resolve as `<unknown>`, though line, column, and name still resolve.
+4. **50 resolved frames per trace.** Deeper frames stay minified.
+5. **Module-level code has no name.** Errors thrown outside any function (Hermes/Metro global prologue, top-level module code) resolve location-only rather than being labeled `<global>`.
+
+## How we verify it
+
+The resolver is tested for parity against [getsentry/symbolic](https://github.com/getsentry/symbolic), the symbolication engine behind Sentry, using its own fixture suite (webpack, Metro, Hermes, preact, inlined functions, null-source maps). Every fixture frame's expected file, line, column, and name is asserted exactly, so any drift fails the build.
+
+All frames match symbolic on **location**. With scope analysis, names now match too for frames inside a function, including the cases the old text-scanning heuristic got wrong (preact's `createElement` and `assign` among them). The remaining name gap is module-level code, where symbolic reports `<global>` and Traceway reports no name (limitation 5 above).
+
+Two more invariants are tested directly: the `.tw` format round-trips (a resolver serialized and reopened answers every lookup identically, including from a memory-mapped file), and the `oxc` parser produces scope output identical to `goja` across the fixture suite, so the parser choice can never change symbolication results.
+
+## Related pages
+
+- [Source Maps](/client/js-sdk/sourcemap-upload): uploading maps from CI
+- [Architecture](/symbolicator): when symbolication runs, the `.tw` format, and the cache tiers
+- [Performance](/symbolicator/performance): cache sizing, failure handling, and metrics

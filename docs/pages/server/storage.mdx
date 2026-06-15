@@ -7,7 +7,7 @@ What lives in blob storage:
 | Artifact | Keys | Written by |
 |----------|------|-----------|
 | Source maps and bundles | `sourcemaps/{projectId}/{filename}` and `sourcemaps/{projectId}/by-debug-id/{debugId}.js[.map]` | [`POST /api/sourcemaps/upload`](/client/js-sdk/sourcemap-upload), typically from CI |
-| Compiled `.tw` resolvers | same keys with the `.map`/`.js` suffix replaced by `.tw` | the [symbolication cache](/learn/symbolication-js#cache-backends-memory-and-disk), automatically |
+| Compiled `.tw` resolvers | same keys with the `.map`/`.js` suffix replaced by `.tw` | the [symbolication cache](/symbolicator#cache-tiers), automatically |
 | Session recording segments | `recordings/{projectId}/...` | the [recording uploader](/server/capacity-monitoring) |
 | AI trace payloads | `ai-traces/{projectId}/...` | OTLP ingest |
 
@@ -76,5 +76,5 @@ Source maps are retained indefinitely in both modes: the most recent upload of e
 ## Related Pages
 
 - [Source Maps](/client/js-sdk/sourcemap-upload): uploading maps from CI
-- [Symbolication (JS)](/learn/symbolication-js): how `.tw` resolvers and the cache tiers use this storage
+- [Symbolication](/symbolicator): how `.tw` resolvers and the cache tiers use this storage
 - [SQLite](/server/sqlite): single-container deployment with the same storage options

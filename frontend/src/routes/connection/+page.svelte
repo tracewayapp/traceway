@@ -13,7 +13,8 @@
 		type ProjectWithToken,
 		isJsFramework,
 		isOtelFramework,
-		isCloudflareFramework
+		isCloudflareFramework,
+		supportsSymbolUpload
 	} from '$lib/state/projects.svelte';
 	import FrameworkIcon from '$lib/components/framework-icon.svelte';
 	import Highlight from 'svelte-highlight';
@@ -115,6 +116,9 @@ service:
 	});
 
 	const isJs = $derived(projectWithToken ? isJsFramework(projectWithToken.framework) : false);
+	const showSymbolUpload = $derived(
+		projectWithToken ? supportsSymbolUpload(projectWithToken.framework) : false
+	);
 
 	async function copyCode() {
 		await navigator.clipboard.writeText(sdkCode);
@@ -342,7 +346,7 @@ service:
 					</div>
 				</CardContent>
 			</Card>
-			{#if isJs}
+			{#if showSymbolUpload}
 				<SourceMapUploadCard />
 			{/if}
 		{/if}

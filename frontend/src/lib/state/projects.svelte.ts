@@ -50,6 +50,10 @@ export function isJsFramework(fw: Framework): boolean {
 	return JS_FRAMEWORKS.includes(fw);
 }
 
+export function supportsSymbolUpload(fw: Framework): boolean {
+	return isJsFramework(fw) || fw === 'flutter';
+}
+
 export const JS_LANGUAGES = ['webjs', 'nodejs', 'javascript', 'typescript'];
 
 export function isJsLanguage(lang?: string | null): boolean {

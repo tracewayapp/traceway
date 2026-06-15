@@ -2,6 +2,7 @@
   "index": { "title": "Traceway", "type": "page", "display": "hidden" },
   "client": { "title": "Docs", "type": "page", "withIndexPage": true },
   "learn": { "title": "Learn", "type": "page" },
+  "symbolicator": { "title": "Symbolicator", "type": "page" },
   "protocol": {
     "title": "Protocol",
     "type": "page",

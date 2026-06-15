@@ -87,6 +87,6 @@ The store holds your build output as-is: minified bundles next to their maps, ad
 ## Links
 
 - [Traceway](https://tracewayapp.com), the MIT-licensed error tracking platform this engine comes from
-- [Hosted docs for this processor](https://docs.tracewayapp.com/learn/collector-symbolicator), including the builder walkthrough
-- [Symbolication pipeline internals](https://docs.tracewayapp.com/learn/symbolication-js), including the `.tw` format
+- [Hosted docs for this processor](https://docs.tracewayapp.com/symbolicator/opentelemetry), including the builder walkthrough
+- [Symbolication pipeline internals](https://docs.tracewayapp.com/symbolicator), including the `.tw` format
 - [Honeycomb's processor](https://github.com/honeycombio/opentelemetry-collector-symbolicator), whose configuration surface this matches

@@ -1,0 +1,8 @@
+{
+  "index": "Architecture",
+  "javascript": "JavaScript",
+  "dart": "Dart",
+  "performance": "Performance",
+  "opentelemetry": "OpenTelemetry",
+  "library": "Library"
+}

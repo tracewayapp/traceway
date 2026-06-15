@@ -1,5 +1,6 @@
 /product/issue-tracking         /product/stack-traces               301
 /product/distributed-tracing    /product/traces                     301
+/product/javascript-symbolication /product/symbolication            301
 
 /blog/engineering               /blog                               301
 /blog/android-sdk-1.0.0         /releases/android-sdk-1.0.0         301

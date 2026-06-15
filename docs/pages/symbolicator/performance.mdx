@@ -1,0 +1,113 @@
+# Performance
+
+The symbolicator has one performance decision that matters: where compiled resolvers live. Everything else (the `.tw` format, the lookup being a binary search, strings interned once) is fixed by the [architecture](/symbolicator). What you tune is the cache, and the choice is memory or disk.
+
+## Memory vs disk
+
+The in-memory LRU is always present and is the default. Compiled resolvers live on the heap, capped by entry count and estimated size. It's the right choice for most deployments: when the set of actively-resolving maps fits under the cap, every lookup after the first is a pure memory hit.
+
+The disk tier adds a local cache of [`.tw` files](/symbolicator#the-tw-resolver-format) between memory and object storage. It changes what a *memory miss* costs. Instead of downloading and re-parsing, a miss becomes a local memory-mapped open measured in microseconds, and the token tables live in the OS page cache rather than on the process heap. The practical effect:
+
+- **Resident memory tracks the hot set, not the corpus.** A thousand distinct builds on disk cost disk, not RAM. Memory mode has to hold every actively-used resolver in the heap at once.
+- **Restarts warm instantly.** The local directory is scanned at startup, so a redeploy doesn't pay to rebuild everything.
+- **Corpus size becomes a disk budget.** You bound it with a byte cap instead of hoping it fits in memory.
+
+The disk tier earns its keep when the set of maps actively resolving is much larger than the memory cap, which is exactly when memory mode thrashes: high eviction traffic, every eviction a re-download and re-parse. If your corpus comfortably fits in RAM, the memory default is simpler and just as fast.
+
+## Benchmarks
+
+We load-tested both cache modes (and both [bundle parsers](/symbolicator/javascript#bundle-parsers)) against [Honeycomb's processor](https://github.com/honeycombio/opentelemetry-collector-symbolicator), across three scenarios, using the harness in [`benchmarks/processor`](https://github.com/tracewayapp/traceway/tree/main/benchmarks/processor). `hot` reuses a small set of maps so the cache stays warm. `churn` keeps swapping in fresh builds so the cache is under constant eviction pressure. `oom` pushes the corpus past what fits in RAM to see what falls over.
+
+JavaScript, [full run](https://github.com/tracewayapp/traceway/actions/runs/27523441037):
+
+| impl | scenario | max stacks/s | p99 ms (max) | peak RSS (MB) | avg CPU% | symb% | outcome |
+|------|----------|-------------:|-------------:|--------------:|---------:|------:|---------|
+| honeycomb | churn | 938 | 2961.886 | 4491 | 104 | 100 | survived |
+| honeycomb | hot | 20735 | 373.363 | 125 | 183 | 100 | survived |
+| honeycomb | oom | 938 | 2961.886 | 6844 | 90 | 99 | survived |
+| traceway-goja-disk | churn | 29804 | 22.650 | 337 | 684 | 100 | survived |
+| traceway-goja-disk | hot | 31962 | 9.250 | 340 | 686 | 100 | survived |
+| traceway-goja-disk | oom | 29804 | 22.650 | 6950 | 172 | 100 | survived |
+| traceway-goja-mem | churn | 3414 | 6341.875 | 1309 | 687 | 100 | survived |
+| traceway-goja-mem | hot | 30568 | 10.594 | 313 | 677 | 100 | survived |
+| traceway-goja-mem | oom | 3414 | 6341.875 | 7456 | 127 | 100 | died@236s |
+| traceway-oxc-disk | churn | 29923 | 17.663 | 361 | 693 | 100 | survived |
+| traceway-oxc-disk | hot | 30910 | 4.093 | 379 | 692 | 100 | survived |
+| traceway-oxc-disk | oom | 29923 | 17.663 | 6851 | 163 | 100 | survived |
+| traceway-oxc-mem | churn | 16755 | 128.841 | 584 | 657 | 100 | survived |
+| traceway-oxc-mem | hot | 31915 | 12.495 | 311 | 687 | 100 | survived |
+| traceway-oxc-mem | oom | 16755 | 128.841 | 7469 | 106 | 100 | died@40s |
+
+Read the `churn` rows first, because that's where caching strategy shows. Disk mode holds around 30k stacks/s with a p99 near 20ms. Honeycomb does 938 stacks/s with a 3-second tail. Memory mode collapses too: goja-mem drops to 3,414 stacks/s with a 6-second p99, because it's recompiling maps it just evicted. Then look at `oom`: both memory-mode variants die, disk mode survives. On a hot working set everyone's fine and the gaps close, which is the point. Cache mode only matters once the corpus stops fitting.
+
+Dart, [full run](https://github.com/tracewayapp/traceway/actions/runs/27522485099). Honeycomb isn't here because it doesn't do Dart:
+
+| impl | scenario | max stacks/s | p99 ms (max) | peak RSS (MB) | avg CPU% | symb% | outcome |
+|------|----------|-------------:|-------------:|--------------:|---------:|------:|---------|
+| traceway-dart-disk | churn | 22915 | 398.521 | 138 | 303 | 100 | survived |
+| traceway-dart-disk | hot | 24304 | 425.903 | 137 | 295 | 100 | survived |
+| traceway-dart-disk | oom | 22915 | 398.521 | 103 | 172 | 100 | survived |
+| traceway-dart-mem | churn | 8586 | 72.739 | 529 | 653 | 98 | survived |
+| traceway-dart-mem | hot | 28605 | 5.509 | 361 | 672 | 100 | survived |
+| traceway-dart-mem | oom | 8586 | 72.739 | 2165 | 109 | 100 | survived |
+
+Dart trades a little differently. The ELF symbol files are large, so memory mode wins the hot path outright (28,605 stacks/s, 5.5ms p99) when everything fits. But watch the RSS column: disk mode stays pinned between 103 and 138 MB across every scenario, including `oom`, while memory mode climbs to 2,165 MB. Disk mode pays a steadier ~400ms tail for mmap page-ins and buys flat, predictable memory in return.
+
+The one-sentence summary across both languages: if your corpus fits in RAM and stays there, memory mode is fastest; if it doesn't, or you can't promise it always will, disk mode is the one that keeps running.
+
+## Sizing
+
+In Traceway's ingest path, the cache is configured by environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SOURCEMAP_CACHE_TYPE` | `memory` | `memory` for the in-memory LRU only, `disk` to add the local `.tw` tier |
+| `SOURCEMAP_DISK_CACHE_PATH` | `./twcache` | Directory for local `.tw` files (disk mode only) |
+| `SOURCEMAP_DISK_CACHE_MAX_MB` | `2048` | Byte cap for the local `.tw` directory, LRU-evicted (disk mode only) |
+| `SOURCEMAP_CACHE_MAX_ENTRIES` | `200` | Max built resolvers held in memory |
+| `SOURCEMAP_CACHE_MAX_BYTES_MB` | `500` | Max estimated in-memory size of all resolvers |
+| `SYMBOLICATOR_PARSER` | `goja` | Bundle parser for function names: `goja` or `oxc` (the latter only in `-tags oxc` builds) |
+
+In the [collector processor](/symbolicator/opentelemetry) the same modes are configured by processor keys instead (`cache_dir`, `cache_max_mb`, `cache_max_disk_pct`, `source_map_cache_size`); see that page for the full reference. A `.tw` file is typically a small multiple of the map's `mappings` field, far smaller than the parsed-in-RAM representation, so a disk budget stretches much further than a memory budget for the same corpus. See [Capacity & Self-Monitoring](/server/capacity-monitoring) for the operations view.
+
+## When loading fails
+
+If a map doesn't exist, a read times out, storage errors, or an artifact fails to parse:
+
+- The affected frames pass through **unchanged**, and the trace is stored as-is. Ingest is never blocked beyond the per-read budget (5 seconds) and never errors because of symbolication.
+- The failure is **negative-cached per key**: while the cooldown is active, frames referencing it skip the storage read entirely. A missing artifact starts at a 1 minute cooldown; a transient failure (timeout, storage error, unparseable input) starts at 15 seconds, so brief hiccups recover fast. Each consecutive failure doubles the cooldown, capped at 15 minutes, so a project that never uploads converges to a few storage reads per hour instead of one per minute.
+- The cooldown clears the moment that artifact is uploaded (the upload endpoint invalidates it in-process) or a load succeeds. In a multi-instance deployment, other instances retry within their remaining cooldown, at most 15 minutes.
+- Within a single trace, a failed artifact is attempted **once**, not once per frame, so a 50-frame trace cannot stack fifty timeouts.
+- Traceway self-reports the failure into its own monitoring project, throttled to one exception per minute with a count of suppressed occurrences.
+
+## Observability
+
+The backend self-reports cache metrics every 30 seconds:
+
+| Metric | Meaning |
+|---|---|
+| `traceway.sourcemap.entries` | built resolvers currently in memory |
+| `traceway.sourcemap.bytes` | estimated total size of those entries |
+| `traceway.sourcemap.negative_entries` | keys currently under a miss/failure cooldown |
+| `traceway.sourcemap.hits.delta` | cache hits since the last tick |
+| `traceway.sourcemap.misses.delta` | builds triggered since the last tick |
+| `traceway.sourcemap.evictions.delta` | LRU evictions since the last tick |
+| `traceway.sourcemap.load_failures.delta` | failed builds; each one is a trace stored unsymbolicated |
+| `traceway.sourcemap.not_found.delta` | lookups that found no uploaded artifact since the last tick |
+| `traceway.sourcemap.negative_hits.delta` | lookups skipped by an active cooldown since the last tick |
+| `traceway.sourcemap.parse_ms` | duration of the most recent resolver build |
+| `traceway.sourcemap.store_hits.delta` | memory misses served by a `.tw` fetched from object storage (both cache modes) |
+| `traceway.sourcemap.builds.delta` | memory misses that required a full rebuild (both cache modes) |
+| `traceway.sourcemap.disk.entries` / `disk.bytes` | local `.tw` files cached and their total size (disk tier only) |
+| `traceway.sourcemap.disk.hits.delta` | memory misses served by a local `.tw` file (disk tier only) |
+| `traceway.sourcemap.disk.evictions.delta` | local `.tw` files evicted by the byte cap (disk tier only) |
+
+What healthy looks like: `misses.delta` near zero in steady state, `load_failures.delta` at zero (anything above means unsymbolicated traces are reaching your issues), and `bytes` comfortably under the cap. A useful alert is `load_failures.delta` max greater than 0 over 5 minutes.
+
+`not_found.delta` is a configuration signal, not a failure: sustained nonzero values for a project that should symbolicate mean exceptions reference artifacts that were never uploaded, most commonly a missing upload step in CI. `negative_hits.delta` shows the cooldown doing its job; high values alongside high `not_found.delta` are normal for projects that simply don't upload.
+
+## Related pages
+
+- [Architecture](/symbolicator): the cache tiers and the `.tw` format
+- [OpenTelemetry](/symbolicator/opentelemetry#sizing-the-cache): cache keys for the collector processor
+- [Capacity & Self-Monitoring](/server/capacity-monitoring): the operations view

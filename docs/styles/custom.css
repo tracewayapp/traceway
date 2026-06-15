@@ -14,7 +14,7 @@
   --ink-4: #1d2430;
   --ink-5: #283041;
   --hair: rgba(255, 255, 255, 0.06);
-  --hair-2: rgba(255, 255, 255, 0.10);
+  --hair-2: rgba(255, 255, 255, 0.1);
 
   /* Text */
   --fg-0: #f4f6fb;
@@ -42,9 +42,14 @@
 
   /* Font aliases mirroring website var names
      (--font-display / --font-mono are populated by next/font in _app.jsx) */
-  --f-display: var(--font-display, "JetBrains Mono"), "IBM Plex Mono", ui-monospace, monospace;
-  --f-body:    var(--font-body, "Inter"), ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --f-mono:    var(--font-mono,    "IBM Plex Mono"), "JetBrains Mono", ui-monospace, monospace;
+  --f-display:
+    var(--font-display, "JetBrains Mono"), "IBM Plex Mono", ui-monospace,
+    monospace;
+  --f-body:
+    var(--font-body, "Inter"), ui-sans-serif, system-ui, -apple-system,
+    sans-serif;
+  --f-mono:
+    var(--font-mono, "IBM Plex Mono"), "JetBrains Mono", ui-monospace, monospace;
 }
 
 /* =========================================================================
@@ -56,8 +61,12 @@ body {
   background: var(--ink-0) !important;
   color: var(--fg-1);
   color-scheme: dark;
-  font-family: var(--font-body, "Inter"), ui-sans-serif, system-ui,
-    -apple-system, sans-serif;
+  font-family:
+    var(--font-body, "Inter"),
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    sans-serif;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   -webkit-font-smoothing: antialiased;
 }
@@ -84,8 +93,12 @@ main h6,
 .nextra-content h4,
 .nextra-content h5,
 .nextra-content h6 {
-  font-family: var(--font-body, "Inter"), ui-sans-serif, system-ui,
-    -apple-system, sans-serif !important;
+  font-family:
+    var(--font-body, "Inter"),
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    sans-serif !important;
   color: var(--fg-0) !important;
   font-weight: 600;
   letter-spacing: -0.015em;
@@ -154,9 +167,7 @@ main a:hover,
    ========================================================================= */
 
 .nextra-nav-container {
-  background: color-mix(in oklab, var(--ink-0) 75%, transparent) !important;
-  backdrop-filter: blur(14px) saturate(140%);
-  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  background: var(--ink-0) !important;
   border-bottom: 1px solid var(--hair);
 }
 
@@ -175,6 +186,7 @@ main a:hover,
 .nextra-sidebar-container button {
   color: var(--fg-2) !important;
   font-family: var(--font-mono), ui-monospace, monospace;
+  border: 1px solid transparent !important;
 }
 
 .nextra-sidebar-container a:hover,
@@ -183,10 +195,20 @@ main a:hover,
   background: var(--ink-2) !important;
 }
 
+.nextra-sidebar-container a.nx-bg-primary-100,
 .nextra-sidebar-container .nx-text-primary-600,
 .nextra-sidebar-container a[aria-current="page"] {
-  color: var(--a2) !important;
-  background: color-mix(in oklab, var(--a1) 14%, transparent) !important;
+  color: var(--fg-0) !important;
+  background: transparent !important;
+  border-color: var(--fg-0) !important;
+}
+
+/* Expanded top-level folder containing the active page: Nextra fills it with the
+   primary tint (nx-bg-primary-100 / dark:nx-bg-primary-400/10). Keep it
+   transparent so only the active leaf is boxed, not its parent section. */
+.nextra-sidebar-container button.nx-bg-primary-100 {
+  color: var(--fg-0) !important;
+  background: transparent !important;
 }
 
 /* Right TOC */
@@ -322,7 +344,29 @@ main hr,
    ========================================================================= */
 
 .nextra-nav-container nav > a:first-child {
-  margin-right: 20px !important;
+  margin-right: 24px !important;
+}
+
+/* Top-nav menu links: match the marketing website header (JetBrains Mono,
+   14px / 500, h-9 px-3 rounded-md pills). Selector scoped to the page-nav
+   anchors via nx-text-sm so the logo and GitHub icon link are untouched. */
+.nextra-nav-container nav a.nx-text-sm {
+  font-family: var(--font-display) !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  padding: 0 12px !important;
+  border-radius: var(--radius) !important;
+  color: var(--fg-1) !important;
+}
+
+.nextra-nav-container nav a.nx-text-sm:hover {
+  color: var(--fg-0) !important;
+  background: var(--ink-2) !important;
+}
+
+.nextra-nav-container nav a.nx-text-sm.nx-text-primary-600,
+.nextra-nav-container nav a.nx-text-sm[aria-current="true"] {
+  color: var(--fg-0) !important;
 }
 
 .nextra-nav-container .nextra-search {
@@ -365,8 +409,12 @@ main hr,
   opacity: 0.5;
 }
 
-.muted { color: var(--fg-2); }
-.dim   { color: var(--fg-3); }
+.muted {
+  color: var(--fg-2);
+}
+.dim {
+  color: var(--fg-3);
+}
 
 .hair-rule {
   height: 1px;
@@ -381,7 +429,9 @@ main hr,
   padding: 22px;
 }
 
-.gridbg { position: relative; }
+.gridbg {
+  position: relative;
+}
 
 /* Chips */
 .chip {
@@ -404,8 +454,12 @@ main hr,
   background: var(--a2);
   flex-shrink: 0;
 }
-.chip.ok   .dot { background: var(--ok); }
-.chip.crit .dot { background: var(--crit); }
+.chip.ok .dot {
+  background: var(--ok);
+}
+.chip.crit .dot {
+  background: var(--crit);
+}
 
 /* Buttons: !important on color values to beat `main a { color: var(--a2) !important }` */
 .btn {
@@ -418,19 +472,27 @@ main hr,
   font-weight: 500;
   font-size: 14px;
   letter-spacing: -0.01em;
-  transition: transform 0.12s ease, background 0.2s, border-color 0.2s,
-    color 0.2s, filter 0.2s, box-shadow 0.2s;
+  transition:
+    transform 0.12s ease,
+    background 0.2s,
+    border-color 0.2s,
+    color 0.2s,
+    filter 0.2s,
+    box-shadow 0.2s;
   border: 1px solid transparent;
   white-space: nowrap;
   cursor: pointer;
   text-decoration: none !important;
 }
-.btn:active { transform: scale(0.97); }
+.btn:active {
+  transform: scale(0.97);
+}
 
 .btn-primary {
   background: var(--fg-0);
   color: var(--ink-0) !important;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset,
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.6) inset,
     0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 .btn-primary:hover {
@@ -481,7 +543,7 @@ li:has(> .sdk-selector) > span:first-child {
 .sdk-selector {
   position: relative;
   width: 100%;
-  padding: 0 8px;
+  padding: 0px;
 }
 
 .sdk-selector-trigger {
@@ -498,7 +560,9 @@ li:has(> .sdk-selector) > span:first-child {
   background: var(--ink-2);
   color: var(--fg-0);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
 }
 
 .sdk-selector-trigger:hover {
@@ -565,7 +629,9 @@ li:has(> .sdk-selector) > span:first-child {
   background: transparent;
   color: var(--fg-1);
   cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  transition:
+    background 0.12s,
+    color 0.12s;
 }
 
 .sdk-selector-option:hover {
@@ -631,7 +697,9 @@ li:has(> .sdk-selector) > span:first-child {
   border-radius: 12px;
   background: var(--ink-1);
   cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
+  transition:
+    border-color 0.2s,
+    background 0.2s;
   text-align: left;
   font-family: inherit;
 }
@@ -687,7 +755,9 @@ li:has(> .sdk-selector) > span:first-child {
   border-radius: 12px;
   background: var(--ink-1);
   text-decoration: none !important;
-  transition: border-color 0.2s, background 0.2s;
+  transition:
+    border-color 0.2s,
+    background 0.2s;
 }
 
 .deployment-card:hover {

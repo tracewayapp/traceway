@@ -1,12 +1,11 @@
 import Link from "next/link";
 import Image from "next/image";
 import type { Metadata } from "next";
-import { ArrowRight, Github, BookOpen, Workflow } from "lucide-react";
+import { Github, BookOpen, Workflow } from "lucide-react";
 
 import { Eyebrow } from "@/components/eyebrow";
 import { SectionHead } from "@/components/section-head";
 import { StatsStrip } from "@/components/stats-strip";
-import { FeatureRow } from "@/components/feature-row";
 import { FaqList } from "@/components/faq-list";
 import { FinalCTA } from "@/components/final-cta";
 import { AuroraBackground } from "@/components/aurora-background";
@@ -15,9 +14,9 @@ import { SymbolicationBeforeAfter } from "@/components/symbolication-before-afte
 import { GITHUB_URL } from "@/lib/links";
 
 export const metadata: Metadata = {
-  title: "JavaScript Stack Trace Symbolication · Traceway",
+  title: "Stack Trace Symbolication · Traceway",
   description:
-    "Open-source, OpenTelemetry-compatible source map symbolication. Resolve minified production errors back to the original file, line, and function at ingest. Pure Go, built to be fast.",
+    "Open-source, OpenTelemetry-compatible symbolication for JavaScript source maps and Dart/Flutter obfuscation maps. Resolve minified production errors back to the original file, line, and function at ingest. Pure Go, built to be fast.",
 };
 
 const BUNDLERS = [
@@ -31,7 +30,74 @@ const BUNDLERS = [
   "Cloudflare Workers",
 ];
 
-export default function JavaScriptSymbolicationPage() {
+const LANGUAGE_TILES = [
+  {
+    src: "/images/frameworks/flutter.png",
+    alt: "Flutter",
+    w: 250,
+    h: 250,
+    size: 104,
+    z: 30,
+    pos: "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
+    engine: true,
+  },
+  {
+    src: "/images/frameworks/javascript.png",
+    alt: "JavaScript",
+    w: 45,
+    h: 45,
+    size: 72,
+    z: 20,
+    pos: "left-[23%] top-[16%]",
+  },
+  {
+    src: "/images/frameworks/node.png",
+    alt: "Node",
+    w: 52,
+    h: 64,
+    size: 68,
+    z: 20,
+    pos: "right-[19%] top-[14%]",
+  },
+  {
+    src: "/images/frameworks/remix.png",
+    alt: "Remix",
+    w: 45,
+    h: 45,
+    size: 50,
+    z: 10,
+    pos: "left-1/2 top-[5%] -translate-x-1/2",
+  },
+  {
+    src: "/images/frameworks/react.png",
+    alt: "React",
+    w: 45,
+    h: 40,
+    size: 56,
+    z: 10,
+    pos: "right-[17%] top-[50%]",
+  },
+  {
+    src: "/images/frameworks/svelte.png",
+    alt: "Svelte",
+    w: 45,
+    h: 45,
+    size: 62,
+    z: 20,
+    pos: "left-[20%] bottom-[16%]",
+  },
+  {
+    src: "/images/frameworks/nextjs.png",
+    alt: "Next.js",
+    w: 45,
+    h: 45,
+    size: 60,
+    z: 20,
+    pos: "right-[37%] bottom-[13%]",
+  },
+];
+
+export default function SymbolicationPage() {
   return (
     <main className="relative">
       <section className="hero hero-product relative">
@@ -69,12 +135,17 @@ export default function JavaScriptSymbolicationPage() {
             </p>
             <div className="hero-cta-row justify-center">
               <Link
-                href="https://docs.tracewayapp.com/client/js-sdk/sourcemap-upload"
+                href="https://cloud.tracewayapp.com/register"
                 className="btn btn-accent"
               >
-                Upload your source maps <ArrowRight className="h-4 w-4" />
+                Start for free
               </Link>
-              <Link href={GITHUB_URL} className="btn btn-ghost" target="_blank" rel="noopener noreferrer">
+              <Link
+                href={GITHUB_URL}
+                className="btn btn-ghost"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 <Github className="h-4 w-4" />
                 View on GitHub
               </Link>
@@ -90,102 +161,117 @@ export default function JavaScriptSymbolicationPage() {
         <SymbolicationBeforeAfter />
 
         <section className="wrap py-20">
-          <SectionHead
-            eyebrow="Performance"
-            title={
-              <>
-                Symbolication that <em>keeps up with ingest.</em>
-              </>
-            }
-            description="Most symbolicators re-parse source maps on every restart and hold them in RAM until the process dies. Ours compiles each map once, then memory-maps it from disk. Numbers below come from the benchmark workflows in the repo."
-          />
-          <StatsStrip
-            stats={[
-              { num: "<em>&lt;1</em>µs", label: "To open a compiled source map" },
-              { num: "<em>&lt;1</em>ms", label: "p99 lookup with a cold cache" },
-              { num: "<em>3</em>×", label: "Faster bundle parsing than SWC" },
-              { num: "<em>0</em>", label: "Maps re-parsed after a restart" },
-            ]}
-          />
-          <div className="mt-14 grid gap-12 md:grid-cols-2">
-            <div className="border-t border-hair pt-8">
-              <p className="font-mono text-[0.6875rem] uppercase tracking-[0.14em] text-fg-3">
-                Why it stays fast
-              </p>
-              <ul className="mt-4 space-y-3 text-[14px]" style={{ color: "var(--fg-2)" }}>
-                <li>
-                  <strong style={{ color: "var(--fg-1)" }}>Parse once, compile to .tw.</strong>{" "}
-                  Each map and bundle compiles into a binary format on first
-                  use. Every lookup after that opens the file in under a
-                  microsecond and binary-searches it.
-                </li>
-                <li>
-                  <strong style={{ color: "var(--fg-1)" }}>Disk is the budget, not RAM.</strong>{" "}
-                  Compiled maps are memory-mapped, so resident memory tracks
-                  the hot set. A corpus of thousands of bundles costs disk
-                  space, not heap.
-                </li>
-                <li>
-                  <strong style={{ color: "var(--fg-1)" }}>Cold lookups don&rsquo;t hurt.</strong>{" "}
-                  An in-RAM LRU churns the garbage collector every time an old
-                  release throws. The mmap cache holds p99 under a millisecond
-                  on the long tail.
-                </li>
-                <li>
-                  <strong style={{ color: "var(--fg-1)" }}>Restarts warm from disk.</strong>{" "}
-                  Nothing is re-parsed when the process comes back. The cache
-                  is already there.
-                </li>
-              </ul>
-            </div>
-            <div className="border-t border-hair pt-8">
-              <p className="font-mono text-[0.6875rem] uppercase tracking-[0.14em] text-fg-3">
-                The fine print
-              </p>
-              <ul className="mt-4 space-y-3 text-[14px]" style={{ color: "var(--fg-3)" }}>
-                <li>
-                  <strong style={{ color: "var(--fg-1)" }}>Two parser engines.</strong>{" "}
-                  The default build is pure Go and parses bundles with{" "}
-                  <code>dop251/goja</code>. A build flag swaps in{" "}
-                  <code>oxc</code>, which{" "}
-                  <Link
-                    href="https://oxc.rs/docs/guide/usage/parser.html"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline decoration-dotted underline-offset-4 hover:text-[color:var(--a2)]"
+          <div className="grid items-center gap-12 md:grid-cols-[1fr_0.9fr] md:gap-14">
+            <div className="order-2 md:order-1">
+              <div
+                className="relative hidden h-[360px] md:block"
+                aria-hidden="true"
+              >
+                {LANGUAGE_TILES.map((t) => (
+                  <div
+                    key={t.alt}
+                    title={t.alt}
+                    className={`absolute grid place-items-center rounded-2xl border border-hair-2 bg-ink-0 ${t.pos}`}
+                    style={{
+                      width: t.size,
+                      height: t.size,
+                      zIndex: t.z,
+                      boxShadow: "0 12px 28px -16px rgba(10, 14, 24, 0.25)",
+                    }}
                   >
-                    parses 3x faster than SWC
-                  </Link>
-                  .
-                </li>
-                <li>
-                  <strong style={{ color: "var(--fg-1)" }}>Two cache modes.</strong>{" "}
-                  Hold parsed maps in memory, or compile them to{" "}
-                  <code>.tw</code> files and memory-map them from disk.
-                </li>
-                <li>
-                  <strong style={{ color: "var(--fg-1)" }}>Not memory bound.</strong>{" "}
-                  With oxc and the disk cache, the corpus is a disk budget: the
-                  cache holds as many maps as the disk fits. Competing
-                  symbolicators cache parsed maps in RAM, so their corpus caps
-                  out at what the heap can hold.
-                </li>
-                <li>
-                  <strong style={{ color: "var(--fg-1)" }}>Benchmarked in the open.</strong>{" "}
-                  Parser numbers come from <code>go test -bench</code> over
-                  webpack, Metro, and Preact fixtures plus 1&nbsp;MB and
-                  5&nbsp;MB synthetic bundles. Cache numbers come from a sweep
-                  of 1,000 to 12,000 bundles on a 2&nbsp;vCPU box. Both
-                  workflows are in the repo; run them on your fork.
-                </li>
-                <li>
-                  <strong style={{ color: "var(--fg-1)" }}>MIT licensed, actually open source.</strong>{" "}
-                  The parsers, the cache, the collector processor, and the
-                  whole backend live in one public repo. No open core, no
-                  enterprise tier where symbolication really lives.
-                </li>
-              </ul>
+                    <Image
+                      src={t.src}
+                      alt=""
+                      width={t.w}
+                      height={t.h}
+                      style={{
+                        height: Math.round(t.size * (t.engine ? 0.56 : 0.5)),
+                        width: "auto",
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-3 md:hidden">
+                {LANGUAGE_TILES.filter((t) => !t.engine).map((t) => (
+                  <div
+                    key={t.alt}
+                    title={t.alt}
+                    className="grid size-14 shrink-0 place-items-center rounded-2xl border border-hair-2 bg-ink-0"
+                    style={{
+                      boxShadow: "0 12px 28px -16px rgba(10, 14, 24, 0.25)",
+                    }}
+                  >
+                    <Image
+                      src={t.src}
+                      alt={t.alt}
+                      width={t.w}
+                      height={t.h}
+                      className="h-8 w-auto"
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
+            <div className="order-1 md:order-2">
+              <Eyebrow>Languages &amp; throughput</Eyebrow>
+              <h3
+                className="mt-4 text-[22px] leading-tight text-pretty"
+                style={{ color: "var(--fg-0)" }}
+              >
+                JavaScript, Dart, Flutter, and more coming soon.
+              </h3>
+              <p
+                className="mt-4 text-[15px] text-pretty"
+                style={{ color: "var(--fg-2)" }}
+              >
+                One engine reads JavaScript source maps and Dart and Flutter
+                obfuscation maps through the same compiled cache, plus every JS
+                framework that ships them, from React and Svelte to Next.js and
+                Remix. Even on the cheapest box we tested, a 2&nbsp;vCPU Hetzner{" "}
+                <code>ccx13</code>, it clears{" "}
+                <strong style={{ color: "var(--fg-0)" }}>
+                  over 32&times; the stack traces per second
+                </strong>{" "}
+                of Honeycomb&rsquo;s symbolicator.
+                <sup className="ml-0.5" style={{ color: "var(--a2)" }}>
+                  *
+                </sup>
+              </p>
+              <p
+                className="mt-5 text-[12px]"
+                style={{ color: "var(--fg-3)", fontFamily: "var(--font-mono)" }}
+              >
+                * Measured running as an OpenTelemetry Collector. The full
+                benchmark workflow lives in the repo.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-20">
+            <SectionHead
+              eyebrow="Performance"
+              title={
+                <>
+                  Symbolication that <em>keeps up with ingest.</em>
+                </>
+              }
+              description="Most symbolicators re-parse source maps on every restart and hold them in RAM until the process dies. Ours compiles each map once, then memory-maps it from disk. The numbers below come straight from the benchmark workflow in the repo, run head to head against Honeycomb's symbolicator on Hetzner hardware."
+            />
+            <StatsStrip
+              stats={[
+                { num: "<em>30K+</em>", label: "Stacks/s, hot or cold" },
+                {
+                  num: "<em>32</em>×",
+                  label: "Honeycomb's throughput under churn",
+                },
+                {
+                  num: "<em>18</em>ms",
+                  label: "Churn p99, where Honeycomb hits ~3s",
+                },
+                { num: "<em>361</em>MB", label: "Peak under churn, vs 4.5 GB" },
+              ]}
+            />
           </div>
         </section>
 
@@ -200,14 +286,17 @@ export default function JavaScriptSymbolicationPage() {
                 The same engine ships as an OpenTelemetry Collector processor.
                 It&rsquo;s a drop-in replacement for Honeycomb&rsquo;s{" "}
                 <code>source_map_symbolicator</code>: same component type, same
-                attribute contract, same config keys. Existing pipelines and
-                web instrumentation work unchanged.
+                attribute contract, same config keys. Existing pipelines and web
+                instrumentation work unchanged.
               </p>
               <ul className="feat-bullets">
                 <li>Symbolicates spans, span events, and log records</li>
                 <li>Cache bounded by disk size, not an entry count in RAM</li>
                 <li>Pure Go, so no glibc base image required</li>
-                <li>Works in any collector build, with or without Traceway behind it</li>
+                <li>
+                  Works in any collector build, with or without Traceway behind
+                  it
+                </li>
               </ul>
             </div>
             <OtelPipelineTabs />
@@ -217,7 +306,10 @@ export default function JavaScriptSymbolicationPage() {
         <section className="wrap pb-10">
           <div
             className="rounded-2xl px-6 py-8 md:px-10 md:py-10"
-            style={{ background: "var(--ink-1)", border: "1px solid var(--hair)" }}
+            style={{
+              background: "var(--ink-1)",
+              border: "1px solid var(--hair)",
+            }}
           >
             <div className="grid gap-8 md:grid-cols-[1.2fr_1fr] items-center">
               <div>
@@ -225,10 +317,13 @@ export default function JavaScriptSymbolicationPage() {
                 <h3 className="mt-3 text-[22px] leading-tight">
                   Read the parser. Run the benchmarks. Self-host all of it.
                 </h3>
-                <p className="mt-3 text-[14px] max-w-[520px]" style={{ color: "var(--fg-2)" }}>
+                <p
+                  className="mt-3 text-[14px] max-w-[520px]"
+                  style={{ color: "var(--fg-2)" }}
+                >
                   The symbolicator, the benchmark harnesses, and the rest of
-                  Traceway live in one MIT-licensed repo. Nothing about how
-                  your stack traces get resolved is a black box.
+                  Traceway live in one MIT-licensed repo. Nothing about how your
+                  stack traces get resolved is a black box.
                 </p>
                 <div className="mt-5 flex flex-wrap gap-2">
                   {BUNDLERS.map((b) => (
@@ -244,27 +339,36 @@ export default function JavaScriptSymbolicationPage() {
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 hover:text-[color:var(--a2)]"
-                  style={{ color: "var(--fg-1)", fontFamily: "var(--font-mono)" }}
+                  style={{
+                    color: "var(--fg-1)",
+                    fontFamily: "var(--font-mono)",
+                  }}
                 >
                   <Github className="h-3.5 w-3.5" />
                   traceway →
                 </Link>
                 <Link
-                  href="https://github.com/tracewayapp/traceway/tree/main/backend/app/symbolicator/otelprocessor"
+                  href="https://docs.tracewayapp.com/symbolicator/opentelemetry"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 hover:text-[color:var(--a2)]"
-                  style={{ color: "var(--fg-1)", fontFamily: "var(--font-mono)" }}
+                  style={{
+                    color: "var(--fg-1)",
+                    fontFamily: "var(--font-mono)",
+                  }}
                 >
                   <Workflow className="h-3.5 w-3.5" />
                   OTel processor →
                 </Link>
                 <Link
-                  href="https://docs.tracewayapp.com/client/js-sdk/sourcemap-upload"
+                  href="https://docs.tracewayapp.com/symbolicator"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 hover:text-[color:var(--a2)]"
-                  style={{ color: "var(--fg-1)", fontFamily: "var(--font-mono)" }}
+                  style={{
+                    color: "var(--fg-1)",
+                    fontFamily: "var(--font-mono)",
+                  }}
                 >
                   <BookOpen className="h-3.5 w-3.5" />
                   Documentation →
@@ -284,7 +388,7 @@ export default function JavaScriptSymbolicationPage() {
         description="Upload your source maps once. Every production error after that points at the code you wrote."
         primary={{
           label: "Get Started",
-          href: "https://docs.tracewayapp.com/client/js-sdk/sourcemap-upload",
+          href: "https://docs.tracewayapp.com/symbolicator/javascript",
         }}
         secondary={{
           label: "Star on GitHub",
@@ -318,6 +422,10 @@ export default function JavaScriptSymbolicationPage() {
                 {
                   q: "Which bundlers and frameworks are supported?",
                   a: "Anything that emits standard source maps: Vite, webpack, esbuild, Rollup, Metro, and the frameworks built on them. Inline sourceMappingURL data URIs are supported, and maps with missing source file names still resolve line, column, and function name.",
+                },
+                {
+                  q: "Does it symbolicate Dart and Flutter?",
+                  a: "Yes. The same engine reads Dart obfuscation maps and resolves obfuscated Flutter and Dart stack traces back to your original symbols. It runs through the same compiled-cache pipeline as JavaScript, and the benchmark above shows both cache modes surviving every load scenario, including the memory-starved OOM box.",
                 },
                 {
                   q: "Are my source maps exposed publicly?",

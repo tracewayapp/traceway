@@ -256,6 +256,28 @@ This replaces the region with a solid color (black by default) in the recording.
 - **Platform errors** — native platform channel errors.
 - **Uncaught async errors** — any unhandled exceptions in asynchronous code, captured via Dart's `Zone` mechanism.
 
+## Release Symbolication (obfuscated builds)
+
+A plain `flutter build --release` keeps readable stack traces, so there's nothing to do. If you harden a release with `--obfuscate` and/or `--split-debug-info`, the binary no longer carries names and traces arrive as bare instruction offsets. Upload the build's `.symbols` files and Traceway symbolicates those traces server-side.
+
+The SDK ships an uploader. Configure it once in `pubspec.yaml`:
+
+```yaml
+traceway:
+  url: https://your-traceway-host   # omit on Traceway Cloud
+  # upload_token: ...               # prefer the env var in CI
+```
+
+The upload token is your project's upload token from the dashboard (the same one used for JS source maps), not the runtime token in your connection string. Then on every release:
+
+```sh
+flutter build apk --release --obfuscate --split-debug-info=build/symbols
+
+TRACEWAY_UPLOAD_TOKEN=your-token dart run traceway:upload_symbols
+```
+
+The uploader auto-discovers `build/symbols`, so no flags are required. See [Dart symbolication](/symbolicator/dart) for the full reference (flags, Apple debug IDs, the upload API) and how resolution works.
+
 ## Test Your Integration
 
 Add a button that throws an error to verify everything is wired up:

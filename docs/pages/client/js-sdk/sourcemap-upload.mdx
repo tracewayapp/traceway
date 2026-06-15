@@ -126,7 +126,7 @@ The contract:
 | Auth failure | Missing or invalid token returns `401`. |
 | Response | `200` with `{"uploaded": N}`, counting only the stored files (skipped files are excluded). |
 | Debug IDs | Detected server-side in the uploaded content; no extra fields or flags needed. |
-| Effect | Immediate. Cached resolvers for the uploaded filenames are evicted before the response, and precompiled [`.tw` resolvers](/learn/symbolication-js#the-tw-resolver-format) are rebuilt in the background so the first exception after a deploy finds a warm cache. |
+| Effect | Immediate. Cached resolvers for the uploaded filenames are evicted before the response, and precompiled [`.tw` resolvers](/symbolicator#the-tw-resolver-format) are rebuilt in the background so the first exception after a deploy finds a warm cache. |
 
 The multipart filename becomes the stored name, and stack frames match against the basename of the frame's file, so send plain filenames without directory paths. `curl -F` already does this: it uses the basename of the local path.
 
@@ -137,7 +137,7 @@ There is nothing to configure at runtime. When an exception is captured, Tracewa
 1. **By debug ID**, when the exception carries one for the frame's file. If your build uses [`@tracewayapp/bundler-plugin`](/client/js-sdk/debug-ids), every bundle and its map share an embedded unique ID, and the backend picks the map uploaded with that exact ID, immune to filename collisions and concurrent deploys. The upload endpoint detects debug IDs in uploaded files automatically; no CLI flags involved.
 2. **By filename** otherwise: the map you uploaded under the frame's filename is used. The most recent upload of each filename wins, so content-hashed bundle names (the default in Vite, Next, Angular, and most bundlers) keep every build's maps distinct automatically.
 
-Uploads take effect immediately: the backend evicts any cached state for the uploaded filenames, so exceptions arriving right after a deploy resolve against the new maps. See [Symbolication](/learn/symbolication-js) for the full resolution pipeline.
+Uploads take effect immediately: the backend evicts any cached state for the uploaded filenames, so exceptions arriving right after a deploy resolve against the new maps. See [Symbolication](/symbolicator/javascript) for the full resolution pipeline.
 
 The SDK's `version` option is unrelated to source maps: it is plain metadata shown on exceptions in the dashboard for filtering by build, and can be set or omitted independently of uploads.
 

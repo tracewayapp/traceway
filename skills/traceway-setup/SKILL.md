@@ -13,7 +13,7 @@ Connect an existing project to a Traceway instance so it reports endpoints, span
 |---|---|---|
 | **Instance URL** | `https://traceway.example.com` | The URL of the Traceway dashboard |
 | **Project token** | `abc123...` | Traceway dashboard -> Connection page |
-| **Source map upload token** (optional, frontend only) | `def456...` | Traceway dashboard -> Connection page -> Source Maps |
+| **Upload token** (optional; frontend source maps and obfuscated Flutter symbols) | `def456...` | Traceway dashboard -> Connection page -> Source Maps / Symbol Upload |
 
 Instance URL and project token may be provided in the invocation (e.g. `/traceway-setup with token abc123 and url https://traceway.example.com`). If either is missing:
 
@@ -247,7 +247,7 @@ For the per-framework init code (plain JS, React, Vue, Svelte/SvelteKit, jQuery)
 
 **Mobile**, always the platform SDK, never OTel:
 
-- **Flutter**: `flutter pub add traceway`, then `Traceway.run(connectionString: '<token>@https://<instance>/api/report', child: MyApp())`. For options, platform permissions, the navigator observer, screen recording, privacy masking, and the Flutter web caveat, read `flutter.md` in this skill directory. Docs: https://docs.tracewayapp.com/client/flutter
+- **Flutter**: `flutter pub add traceway`, then `Traceway.run(connectionString: '<token>@https://<instance>/api/report', child: MyApp())`. Then check whether the release build is obfuscated (`--obfuscate --split-debug-info`): if it is, production crash stack traces arrive obfuscated and stay unreadable until the build's `.symbols` files are uploaded, so ask the user for the upload token (Step 0) and wire up the symbol upload. For options, platform permissions, the navigator observer, screen recording, privacy masking, the obfuscation check and symbol upload, and the Flutter web caveat, read `flutter.md` in this skill directory. Docs: https://docs.tracewayapp.com/client/flutter
 - **React Native**: `npm install @tracewayapp/react-native`, wrap the app in `TracewayProvider`. Docs: https://docs.tracewayapp.com/client/react-native
 - **Android**: `implementation("com.tracewayapp:traceway:<version>")`, call `Traceway.init(...)` at startup. Docs: https://docs.tracewayapp.com/client/android
 
@@ -287,7 +287,7 @@ Metrics arrive within ~60s under their hostmetrics names (`system.cpu.utilizatio
 1. Start the app and hit a few endpoints (or trigger an error on purpose).
 2. Check the Traceway dashboard:
    - **Endpoints page**: routes appear grouped by pattern (e.g. `GET /api/users/:id`), not by literal URL, and status codes are non-zero.
-   - **Issues page**: thrown errors appear with stack traces. For frontend projects, stack traces are symbolicated to original files and lines.
+   - **Issues page**: thrown errors appear with stack traces. For frontend projects, stack traces are symbolicated to original files and lines; for obfuscated Flutter builds, they resolve once the build's `.symbols` files have been uploaded.
    - **Endpoint detail -> Spans tab**: database queries and outgoing calls appear as children.
    - **Tasks page**: after triggering each background job once, it appears under one stable name.
    - **AI Traces page** (if Step 4 applied): model calls appear with token counts and cost.

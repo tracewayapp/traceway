@@ -119,6 +119,50 @@ Every captured exception ships with the last ~10 seconds of context from two rol
   );
   ```
 
+## Symbol upload (obfuscated builds)
+
+A plain `flutter build --release` keeps enough symbol information that crash stack traces are already readable (function names plus `file:line`), and the SDK reports them as-is. You only need symbol upload when the build is hardened with `--obfuscate` and/or `--split-debug-info=<dir>`: those flags strip and rename Dart symbols into per-architecture `.symbols` files, so production traces then arrive as bare instruction offsets and stay unreadable until Traceway resolves them server-side from the build's `.symbols` files (the same way it handles JavaScript source maps).
+
+**First, check whether the build is obfuscated.** Look at how release artifacts are produced (the `flutter build` invocations in CI under `.github/`, in `fastlane/`, in a `Makefile`, or in shell scripts) and ask the user how they build for release. If neither `--obfuscate` nor `--split-debug-info` is passed, stack traces are already readable and symbol upload is unnecessary; skip the rest of this section. If obfuscation is (or will be) used, set up the upload.
+
+**Then ask for the upload token.** Symbol uploads authenticate with the dedicated upload token (Connection page > Symbol Upload, the same token shown under Source Maps), NOT the project token from the connection string. Get it from Step 0; it is a CI secret, never committed. `readonly` members cannot generate one.
+
+The `traceway` package ships an uploader (`dart run traceway:upload_symbols`) that finds the `.symbols` files, derives each one's architecture and debug ID, and posts them. Configure it once, then run it on every release.
+
+**One-time setup.** Add a `traceway:` block to the app's `pubspec.yaml`:
+
+```yaml
+traceway:
+  url: https://<instance>   # omit on Traceway Cloud
+  # upload_token: ...        # prefer the env var below, especially in CI
+```
+
+The upload token resolves from `TRACEWAY_UPLOAD_TOKEN` (or `--token`) before the `upload_token` key, so keep it out of `pubspec.yaml` in CI.
+
+**Per release.** Build with obfuscation and a known symbols directory, then run the uploader:
+
+```bash
+flutter build apk --release --obfuscate --split-debug-info=build/symbols
+
+TRACEWAY_UPLOAD_TOKEN=<upload-token> dart run traceway:upload_symbols
+```
+
+The uploader auto-discovers `build/symbols` and uploads every architecture in one run, so no flags are required. Each value resolves from a CLI flag first (`--token`, `--url`, `--symbols-dir`), then an env var (`TRACEWAY_UPLOAD_TOKEN`, `TRACEWAY_URL`), then the `pubspec.yaml` block. Pass `--dry-run` to preview. Symbols are unique to each build, so upload on every release; a crash only resolves against the exact build it came from.
+
+The build command above produces an Android APK; other targets (`appbundle`, `ios`, `macos`) emit their own `.symbols` files into the same directory, all picked up by a single uploader run. On Android the debug ID is read straight from each file's build-id note. iOS and macOS `.symbols` carry no such note, so the uploader reads the Mach-O UUID from the built `.app` (auto-discovered under `build/`, or point at it with `--app build/macos/Build/Products/Release/YourApp.app`); run the uploader on the same Mac that produced the build. There is no hand-written upload path for Apple builds because that UUID can only be read from the compiled app.
+
+Wire the upload into the release pipeline right after the build step (CI, fastlane, or a build script), with the token from a secret:
+
+```yaml
+- name: Upload Flutter symbols
+  run: dart run traceway:upload_symbols
+  env:
+    TRACEWAY_URL: ${{ secrets.TRACEWAY_URL }}
+    TRACEWAY_UPLOAD_TOKEN: ${{ secrets.TRACEWAY_UPLOAD_TOKEN }}
+```
+
+Self-hosted instances must have blob storage (S3 or a persistent volume) configured, or uploaded symbols disappear when the container is recreated.
+
 ## Flutter web
 
 The Flutter SDK does not support web (no error tracking, no screen recording there). For Flutter web apps, use the JS SDK in `web/index.html` instead:
@@ -139,4 +183,4 @@ final res = await client.get(Uri.parse('https://api.example.com/users'));
 
 ## Verify
 
-Add a button that throws (`throw StateError('Test error from Traceway')`), tap it, and check the Issues page in the dashboard. With `screenCapture: true`, the recording appears alongside the stack trace.
+Add a button that throws (`throw StateError('Test error from Traceway')`), tap it, and check the Issues page in the dashboard. With `screenCapture: true`, the recording appears alongside the stack trace. For an obfuscated release build, confirm the stack trace shows real frames rather than obfuscated offsets once the matching `.symbols` files have been uploaded.

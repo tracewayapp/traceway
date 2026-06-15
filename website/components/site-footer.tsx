@@ -27,7 +27,7 @@ const COLUMNS: Column[] = [
       { label: "AI Tracing", href: "/product/ai-tracing" },
       { label: "Performance", href: "/product/performance" },
       { label: "Flutter Session Replay", href: "/product/flutter-session-replay" },
-      { label: "JavaScript Symbolication", href: "/product/javascript-symbolication" },
+      { label: "Symbolicator", href: "/product/symbolication" },
     ],
   },
   {

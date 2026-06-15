@@ -3,7 +3,7 @@
 ## Navbar
 
 - The header navbar items must always be aligned to the left (next to the logo), not centered or spread across the header. This is achieved via CSS in `styles/custom.css`.
-- Navbar order: Docs, Learn, Protocol, Self Host (controlled by key order in `pages/_meta.json`).
+- Navbar order: Docs, Learn, Symbolicator, Protocol, Self Host (controlled by key order in `pages/_meta.json`).
 
 ## SDK Selection (path-derived)
 

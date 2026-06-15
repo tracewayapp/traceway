@@ -88,9 +88,9 @@ const SPECIALIZED: NavItem[] = [
     icon: Smartphone,
   },
   {
-    title: "JavaScript Symbolication",
-    description: "Minified stack traces, resolved to your source.",
-    href: "/product/javascript-symbolication",
+    title: "Symbolicator",
+    description: "Minified JS and Dart stack traces, resolved to your source.",
+    href: "/product/symbolication",
     icon: Braces,
   },
 ];

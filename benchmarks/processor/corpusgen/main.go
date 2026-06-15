@@ -6,11 +6,23 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
 type corpus struct {
-	Urls []string `json:"urls"`
+	Language string   `json:"language"`
+	Urls     []string `json:"urls"`
+}
+
+type dartBuild struct {
+	BuildID string `json:"buildId"`
+	Trace   string `json:"trace"`
+}
+
+type dartCorpus struct {
+	Language string      `json:"language"`
+	Builds   []dartBuild `json:"builds"`
 }
 
 const vlqChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -150,14 +162,25 @@ func padMap(mapBytes []byte, kb, mappingsKB, seed int) []byte {
 }
 
 func main() {
+	language := flag.String("language", "js", "corpus language: js or dart")
 	bundle := flag.String("bundle", "../../testing/symbolication/node-app/dist/app.mjs", "")
 	mapFile := flag.String("map", "../../testing/symbolication/node-app/dist/app.mjs.map", "")
+	symbols := flag.String("symbols", "seeds/dart/app.debug.elf", "dart: seed .symbols/.elf")
+	traceFile := flag.String("trace", "seeds/dart/trace.txt", "dart: seed non-symbolic trace")
 	entries := flag.Int("entries", 1, "")
 	padKB := flag.Int("pad-kb", 256, "")
 	mapPadKB := flag.Int("map-pad-kb", 0, "")
 	mappingsPadKB := flag.Int("mappings-pad-kb", 0, "")
 	out := flag.String("out", "./corpus", "")
 	flag.Parse()
+
+	if err := os.MkdirAll(*out, 0o755); err != nil {
+		panic(err)
+	}
+	if *language == "dart" {
+		generateDart(*out, *symbols, *traceFile, *entries)
+		return
+	}
 
 	bundleBytes, err := os.ReadFile(*bundle)
 	if err != nil {
@@ -169,10 +192,7 @@ func main() {
 	}
 	firstLine := strings.SplitN(string(bundleBytes), "\n", 2)[0]
 
-	if err := os.MkdirAll(*out, 0o755); err != nil {
-		panic(err)
-	}
-	c := corpus{}
+	c := corpus{Language: "js"}
 	for n := 0; n < *entries; n++ {
 		var pad strings.Builder
 		chunk := "function __benchPad%d_%d(a,b){var c=a*b+%d;for(var i=0;i<3;i++){c+=i*a-b}return c}\n"
@@ -200,4 +220,52 @@ func main() {
 		panic(err)
 	}
 	fmt.Printf("wrote %d entries (%d KB padding each) to %s\n", *entries, *padKB, *out)
+}
+
+var archRe = regexp.MustCompile(`os:\s*\S+\s+arch:\s*(\S+)`)
+var buildIDLineRe = regexp.MustCompile(`build_id:\s*'[0-9a-fA-F]+'`)
+
+func generateDart(out, symbolsPath, tracePath string, entries int) {
+	elf, err := os.ReadFile(symbolsPath)
+	if err != nil {
+		panic(fmt.Errorf("reading dart seed symbols %q: %w", symbolsPath, err))
+	}
+	template, err := os.ReadFile(tracePath)
+	if err != nil {
+		panic(fmt.Errorf("reading dart seed trace %q: %w", tracePath, err))
+	}
+	absSeed, err := filepath.Abs(symbolsPath)
+	if err != nil {
+		panic(err)
+	}
+	arch := "arm64"
+	if m := archRe.FindStringSubmatch(string(template)); m != nil {
+		arch = m[1]
+	}
+
+	c := dartCorpus{Language: "dart"}
+	for n := 0; n < entries; n++ {
+		buildID := fmt.Sprintf("%032x", n)
+		dest := filepath.Join(out, buildID+"-"+arch+".symbols")
+		_ = os.Remove(dest)
+		if err := os.Link(absSeed, dest); err != nil {
+
+			if werr := os.WriteFile(dest, elf, 0o644); werr != nil {
+				panic(werr)
+			}
+		}
+		c.Builds = append(c.Builds, dartBuild{BuildID: buildID, Trace: substituteBuildID(string(template), buildID)})
+	}
+	data, _ := json.MarshalIndent(c, "", "  ")
+	if err := os.WriteFile(filepath.Join(out, "corpus.json"), data, 0o644); err != nil {
+		panic(err)
+	}
+	fmt.Printf("wrote %d dart builds (arch %s, seed %s) to %s\n", entries, arch, symbolsPath, out)
+}
+
+func substituteBuildID(trace, buildID string) string {
+	if buildIDLineRe.MatchString(trace) {
+		return buildIDLineRe.ReplaceAllString(trace, "build_id: '"+buildID+"'")
+	}
+	return "build_id: '" + buildID + "'\n" + trace
 }

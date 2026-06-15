@@ -9,7 +9,7 @@ import (
 	"go.opentelemetry.io/collector/processor"
 	"go.opentelemetry.io/collector/processor/processorhelper"
 
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/scopes"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/scopes"
 )
 
 const processorVersion = "0.1.0"
@@ -72,7 +72,7 @@ func newSymbolicator(cfg *Config, set processor.Settings) (*symbolicatorProcesso
 	if err != nil {
 		return nil, err
 	}
-	cache, err := newResolverCache(cfg)
+	cache, err := newCache(cfg)
 	if err != nil {
 		return nil, err
 	}

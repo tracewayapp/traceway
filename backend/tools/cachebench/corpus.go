@@ -12,7 +12,6 @@ import (
 
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/storage"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap"
 
 	"github.com/google/uuid"
@@ -96,14 +95,13 @@ func buildCanonical(tokens int) (bundle, mapJSON []byte) {
 func generateCorpus(ctx context.Context, corpusDir string, projectId uuid.UUID, entries, tokens, workers int) error {
 	bundle, mapJSON := buildCanonical(tokens)
 
-	resolver, err := symbolicator.NewResolver(mapJSON, bundle)
+	tw, err := sourcemap.BuildTW(mapJSON, bundle)
 	if err != nil {
-		return fmt.Errorf("building canonical resolver: %w", err)
+		return fmt.Errorf("building canonical artifact: %w", err)
 	}
-	tw := resolver.MarshalTW()
 
-	if frame, ok := resolver.Lookup(0, 10); !ok || !strings.HasPrefix(frame.File, "src/module-") {
-		return fmt.Errorf("canonical resolver sanity check failed: %+v ok=%v", frame, ok)
+	if frame, ok := sourcemap.LookupTW(tw, 0, 10); !ok || !strings.HasPrefix(frame.File, "src/module-") {
+		return fmt.Errorf("canonical artifact sanity check failed: %+v ok=%v", frame, ok)
 	}
 
 	var idx atomic.Int64
@@ -140,7 +138,7 @@ func generateCorpus(ctx context.Context, corpusDir string, projectId uuid.UUID, 
 		BundleBytes:   len(bundle),
 		MapBytes:      len(mapJSON),
 		TwBytes:       len(tw),
-		ResolverBytes: resolver.ApproxSize(),
+		ResolverBytes: int64(len(tw)),
 	}
 	data, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {

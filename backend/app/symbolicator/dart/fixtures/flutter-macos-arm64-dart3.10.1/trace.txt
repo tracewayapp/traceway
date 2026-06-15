@@ -1,0 +1,24 @@
+PaymentDeclinedException: card declined for $30.59
+*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+pid: 58347, tid: 8806539456, name io.flutter.platform
+os: macos arch: arm64 comp: no sim: no
+build_id: 'fe664295997135e7b67b648ba66ca9eb'
+isolate_dso_base: 1130a0000, vm_dso_base: 1130a0000
+isolate_instructions: 1130aac00, vm_instructions: 1130a0440
+    #00 abs 00000001131eca6b _kDartIsolateSnapshotInstructions+0x141e6b
+    #01 abs 00000001131ec99b _kDartIsolateSnapshotInstructions+0x141d9b
+    #02 abs 00000001131ec963 _kDartIsolateSnapshotInstructions+0x141d63
+    #03 abs 00000001131ebb23 _kDartIsolateSnapshotInstructions+0x140f23
+    #04 abs 000000011320abdf _kDartIsolateSnapshotInstructions+0x15ffdf
+    #05 abs 00000001130c524b _kDartIsolateSnapshotInstructions+0x1a64b
+    #06 abs 00000001131c50c3 _kDartIsolateSnapshotInstructions+0x11a4c3
+    #07 abs 00000001131eaf6f _kDartIsolateSnapshotInstructions+0x14036f
+    #08 abs 0000000113225087 _kDartIsolateSnapshotInstructions+0x17a487
+    #09 abs 00000001131eaeab _kDartIsolateSnapshotInstructions+0x1402ab
+    #10 abs 0000000113205137 _kDartIsolateSnapshotInstructions+0x15a537
+    #11 abs 000000011322be8b _kDartIsolateSnapshotInstructions+0x18128b
+    #12 abs 00000001130ab25b _kDartIsolateSnapshotInstructions+0x65b
+    #13 abs 000000011322be8b _kDartIsolateSnapshotInstructions+0x18128b
+    #14 abs 0000000113205563 _kDartIsolateSnapshotInstructions+0x15a963
+    #15 abs 000000011322bbe7 _kDartIsolateSnapshotInstructions+0x180fe7
+    #16 abs 00000001130c256b _kDartIsolateSnapshotInstructions+0x1796b

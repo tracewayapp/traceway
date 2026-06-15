@@ -15,7 +15,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/storage"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/jsstack"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/jsstack"
 	traceway "go.tracewayapp.com"
 )
 

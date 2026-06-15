@@ -1,249 +1,294 @@
 package twcache
 
 import (
-	"container/list"
+	"context"
 	"errors"
 	"fmt"
-	"io/fs"
-	"os"
-	"path/filepath"
-	"runtime"
-	"sort"
-	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
-
-	"github.com/tracewayapp/traceway/backend/app/symbolicator"
 )
 
-const mtimeRefreshInterval = 10 * time.Minute
+const (
+	negativeBaseTTL      = time.Minute
+	transientNegativeTTL = 15 * time.Second
+	negativeMaxTTL       = 15 * time.Minute
+	negativeMaxKeys      = 10000
+	failReportInterval   = time.Minute
+)
 
 var ErrInvalidName = errors.New("twcache: cache name escapes the cache directory")
 
-type Cache struct {
-	dir  string
-	warn func(error)
+type LoadFunc func(ctx context.Context) ([]byte, error)
 
-	mu        sync.Mutex
-	files     map[string]*list.Element
-	order     *list.List
-	maxBytes  int64
-	curBytes  int64
-	hits      uint64
-	evictions uint64
+type store interface {
+	get(name string) (data []byte, done func(), ok bool)
+
+	contains(name string) bool
+	put(name string, data []byte) error
+	remove(name string)
+	setLimits(maxEntries int, maxBytes int64)
+	stats() storeStats
+	dir() string
 }
 
-type entry struct {
-	name      string
-	size      int64
-	touchedAt time.Time
+type storeStats struct {
+	Mode       string
+	Entries    int
+	Bytes      int64
+	MaxBytes   int64
+	MaxEntries int
+	Evictions  uint64
+}
+
+func noop() {}
+
+type Cache struct {
+	name  string
+	store store
+	warn  func(error)
+
+	NotFound func(error) bool
+
+	Validate func([]byte) bool
+
+	mu                  sync.Mutex
+	loading             map[string]*cacheLoad
+	negative            map[string]*negEntry
+	negativeHits        uint64
+	lastParseMs         float64
+	failuresSinceReport uint64
+	lastFailAt          time.Time
+
+	hits     atomic.Uint64
+	misses   atomic.Uint64
+	failures atomic.Uint64
+	notFound atomic.Uint64
+}
+
+type negEntry struct {
+	expiresAt time.Time
+	failures  uint32
+}
+
+type cacheLoad struct {
+	done chan struct{}
+	err  error
+}
+
+func newCache(s store, warn func(error)) *Cache {
+	return &Cache{
+		name:     "symbolication artifact",
+		store:    s,
+		warn:     warn,
+		loading:  make(map[string]*cacheLoad),
+		negative: make(map[string]*negEntry),
+	}
+}
+
+func NewMem(maxEntries int, maxBytes int64) *Cache {
+	return newCache(newMemStore(maxEntries, maxBytes), nil)
+}
+
+func NewDisk(dir string, maxBytes int64, warn func(error)) (*Cache, error) {
+	s, err := newDiskStore(dir, maxBytes, warn)
+	if err != nil {
+		return nil, err
+	}
+	return newCache(s, warn), nil
+}
+
+func (c *Cache) SetWarn(warn func(error)) { c.warn = warn }
+
+func (c *Cache) SetLimits(maxEntries int, maxBytes int64) {
+	c.store.setLimits(maxEntries, maxBytes)
+}
+
+func (c *Cache) Dir() string { return c.store.dir() }
+
+func (c *Cache) Get(ctx context.Context, key string, load LoadFunc) (data []byte, done func(), err error) {
+	if data, done, ok := c.store.get(key); ok {
+		if c.Validate == nil || c.Validate(data) {
+			c.hits.Add(1)
+			return data, done, nil
+		}
+
+		done()
+		c.store.remove(key)
+	}
+	if err := c.ensureBuilt(ctx, key, load); err != nil {
+		return nil, noop, err
+	}
+	if data, done, ok := c.store.get(key); ok {
+		return data, done, nil
+	}
+	return nil, noop, fmt.Errorf("%s: %q evicted before use", c.name, key)
+}
+
+func (c *Cache) ensureBuilt(ctx context.Context, key string, load LoadFunc) error {
+	c.mu.Lock()
+	if l, ok := c.loading[key]; ok {
+		c.mu.Unlock()
+		<-l.done
+		if l.err == nil {
+			c.hits.Add(1)
+		}
+		return l.err
+	}
+
+	if c.store.contains(key) {
+		c.mu.Unlock()
+		c.hits.Add(1)
+		return nil
+	}
+	c.misses.Add(1)
+	l := &cacheLoad{done: make(chan struct{})}
+	c.loading[key] = l
+	c.mu.Unlock()
+
+	var ms float64
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				l.err = fmt.Errorf("%s load panicked (key=%s): %v", c.name, key, r)
+			}
+		}()
+		start := time.Now()
+		blob, lerr := load(ctx)
+		ms = float64(time.Since(start).Microseconds()) / 1000.0
+		if lerr != nil {
+			l.err = lerr
+			return
+		}
+		l.err = c.store.put(key, blob)
+	}()
+
+	c.mu.Lock()
+	delete(c.loading, key)
+	if l.err == nil {
+		c.lastParseMs = ms
+		delete(c.negative, key)
+	} else {
+		c.markNegativeLocked(key, l.err)
+	}
+	c.mu.Unlock()
+
+	close(l.done)
+	if l.err != nil && !c.isNotFound(l.err) {
+		c.reportFailure(l.err)
+	}
+	return l.err
+}
+
+func (c *Cache) isNotFound(err error) bool {
+	return c.NotFound == nil || c.NotFound(err)
+}
+
+func (c *Cache) IsNegative(key string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e, ok := c.negative[key]
+	if !ok || time.Now().After(e.expiresAt) {
+		return false
+	}
+	c.negativeHits++
+	return true
+}
+
+func (c *Cache) Invalidate(key string) {
+	c.mu.Lock()
+	delete(c.negative, key)
+	c.mu.Unlock()
+	c.store.remove(key)
+}
+
+func (c *Cache) markNegativeLocked(key string, loadErr error) {
+	base := transientNegativeTTL
+	if c.isNotFound(loadErr) {
+		base = negativeBaseTTL
+		c.notFound.Add(1)
+	} else {
+		c.failures.Add(1)
+	}
+	e := c.negative[key]
+	if e == nil {
+		if len(c.negative) >= negativeMaxKeys {
+			c.pruneNegativeLocked()
+		}
+		e = &negEntry{}
+		c.negative[key] = e
+	}
+	ttl := min(base<<min(e.failures, 16), negativeMaxTTL)
+	e.failures++
+	e.expiresAt = time.Now().Add(ttl)
+}
+
+func (c *Cache) pruneNegativeLocked() {
+	now := time.Now()
+	for k, e := range c.negative {
+		if now.After(e.expiresAt) {
+			delete(c.negative, k)
+		}
+	}
+	for k := range c.negative {
+		if len(c.negative) < negativeMaxKeys {
+			break
+		}
+		delete(c.negative, k)
+	}
+}
+
+func (c *Cache) reportFailure(err error) {
+	var report uint64
+	c.mu.Lock()
+	c.failuresSinceReport++
+	if time.Since(c.lastFailAt) >= failReportInterval {
+		report = c.failuresSinceReport
+		c.failuresSinceReport = 0
+		c.lastFailAt = time.Now()
+	}
+	c.mu.Unlock()
+	if report > 0 && c.warn != nil {
+		c.warn(fmt.Errorf("%s loads failed %d time(s) since last report: %w", c.name, report, err))
+	}
 }
 
 type Stats struct {
-	Entries   int
-	Bytes     int64
-	MaxBytes  int64
-	Hits      uint64
-	Evictions uint64
-}
-
-func New(dir string, maxBytes int64, warn func(error)) (*Cache, error) {
-	if maxBytes <= 0 {
-		return nil, errors.New("twcache: maxBytes must be positive")
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create tw cache dir: %w", err)
-	}
-	c := &Cache{
-		dir:      dir,
-		warn:     warn,
-		files:    make(map[string]*list.Element),
-		order:    list.New(),
-		maxBytes: maxBytes,
-	}
-	if err := c.scan(); err != nil {
-		return nil, fmt.Errorf("failed to scan tw cache dir: %w", err)
-	}
-	return c, nil
-}
-
-func (c *Cache) Dir() string {
-	return c.dir
-}
-
-func (c *Cache) path(name string) (string, error) {
-	rel := filepath.FromSlash(name)
-	if !filepath.IsLocal(rel) {
-		return "", ErrInvalidName
-	}
-	return filepath.Join(c.dir, rel), nil
-}
-
-func (c *Cache) scan() error {
-	type scanned struct {
-		name  string
-		size  int64
-		mtime time.Time
-	}
-	var found []scanned
-	err := filepath.WalkDir(c.dir, func(path string, dirEntry fs.DirEntry, err error) error {
-		if err != nil {
-			if c.warn != nil {
-				c.warn(fmt.Errorf("skipping unreadable tw cache entry (path=%s): %w", path, err))
-			}
-			return nil
-		}
-		if dirEntry.IsDir() || !strings.HasSuffix(path, ".tw") {
-			return nil
-		}
-		info, err := dirEntry.Info()
-		if err != nil {
-			return nil
-		}
-		rel, err := filepath.Rel(c.dir, path)
-		if err != nil {
-			return nil
-		}
-		found = append(found, scanned{name: filepath.ToSlash(rel), size: info.Size(), mtime: info.ModTime()})
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	sort.Slice(found, func(i, j int) bool { return found[i].mtime.Before(found[j].mtime) })
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	for _, f := range found {
-		el := c.order.PushFront(&entry{name: f.name, size: f.size})
-		c.files[f.name] = el
-		c.curBytes += f.size
-	}
-	c.evictLocked()
-	return nil
-}
-
-// Open mmaps the named .tw file and returns a resolver backed by it. The
-// mapping is released by a runtime cleanup once the resolver is collected.
-// Corrupt files are removed so the caller's rebuild can replace them.
-func (c *Cache) Open(name string) (*symbolicator.Resolver, error) {
-	return c.open(name, true)
-}
-
-func (c *Cache) open(name string, countHit bool) (*symbolicator.Resolver, error) {
-	path, err := c.path(name)
-	if err != nil {
-		return nil, err
-	}
-	data, unmap, err := mmapFile(path)
-	if err != nil {
-		return nil, err
-	}
-	resolver, err := symbolicator.OpenTW(data)
-	if err != nil {
-		unmap()
-		c.Remove(name)
-		return nil, err
-	}
-	runtime.AddCleanup(resolver, func(u func()) { u() }, unmap)
-	c.noteUse(name, int64(len(data)), countHit)
-	return resolver, nil
-}
-
-// Write atomically persists data as the named .tw file and returns a
-// resolver mmapped from it. Write does not count as a cache hit.
-func (c *Cache) Write(name string, data []byte) (*symbolicator.Resolver, error) {
-	path, err := c.path(name)
-	if err != nil {
-		return nil, err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return nil, err
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".tw-*")
-	if err != nil {
-		return nil, err
-	}
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		os.Remove(tmp.Name())
-		return nil, err
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmp.Name())
-		return nil, err
-	}
-	if err := os.Rename(tmp.Name(), path); err != nil {
-		os.Remove(tmp.Name())
-		return nil, err
-	}
-	return c.open(name, false)
-}
-
-func (c *Cache) noteUse(name string, size int64, countHit bool) {
-	now := time.Now()
-	updateMtime := false
-	c.mu.Lock()
-	if countHit {
-		c.hits++
-	}
-	if el, ok := c.files[name]; ok {
-		e := el.Value.(*entry)
-		c.curBytes += size - e.size
-		e.size = size
-		c.order.MoveToFront(el)
-		if now.Sub(e.touchedAt) > mtimeRefreshInterval {
-			e.touchedAt = now
-			updateMtime = true
-		}
-	} else {
-		c.files[name] = c.order.PushFront(&entry{name: name, size: size, touchedAt: now})
-		c.curBytes += size
-	}
-	c.evictLocked()
-	c.mu.Unlock()
-	if updateMtime {
-		if path, err := c.path(name); err == nil {
-			_ = os.Chtimes(path, now, now)
-		}
-	}
-}
-
-func (c *Cache) Remove(name string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if el, ok := c.files[name]; ok {
-		c.dropLocked(el)
-	} else if path, err := c.path(name); err == nil {
-		os.Remove(path)
-	}
-}
-
-func (c *Cache) dropLocked(el *list.Element) {
-	e := c.order.Remove(el).(*entry)
-	delete(c.files, e.name)
-	c.curBytes -= e.size
-	os.Remove(filepath.Join(c.dir, filepath.FromSlash(e.name)))
-}
-
-func (c *Cache) evictLocked() {
-	for c.curBytes > c.maxBytes {
-		back := c.order.Back()
-		if back == nil {
-			break
-		}
-		c.dropLocked(back)
-		c.evictions++
-	}
+	Mode            string
+	Entries         int
+	Bytes           int64
+	MaxBytes        int64
+	MaxEntries      int
+	Hits            uint64
+	Misses          uint64
+	Evictions       uint64
+	Failures        uint64
+	NotFound        uint64
+	NegativeHits    uint64
+	NegativeEntries int
+	LastParseMs     float64
 }
 
 func (c *Cache) Stats() Stats {
+	ss := c.store.stats()
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	negEntries := len(c.negative)
+	negHits := c.negativeHits
+	lastMs := c.lastParseMs
+	c.mu.Unlock()
 	return Stats{
-		Entries:   c.order.Len(),
-		Bytes:     c.curBytes,
-		MaxBytes:  c.maxBytes,
-		Hits:      c.hits,
-		Evictions: c.evictions,
+		Mode:            ss.Mode,
+		Entries:         ss.Entries,
+		Bytes:           ss.Bytes,
+		MaxBytes:        ss.MaxBytes,
+		MaxEntries:      ss.MaxEntries,
+		Evictions:       ss.Evictions,
+		Hits:            c.hits.Load(),
+		Misses:          c.misses.Load(),
+		Failures:        c.failures.Load(),
+		NotFound:        c.notFound.Load(),
+		NegativeHits:    negHits,
+		NegativeEntries: negEntries,
+		LastParseMs:     lastMs,
 	}
 }

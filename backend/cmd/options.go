@@ -1,12 +1,12 @@
 package cmd
 
 type options struct {
-	sqlitePath           string
-	port                 int
-	serverURL            string
-	disableLogging       bool
-	defaultUser          *defaultUserOpts
-	defaultProjects      []defaultProjectOpts
+	sqlitePath            string
+	port                  int
+	serverURL             string
+	disableLogging        bool
+	defaultUser           *defaultUserOpts
+	defaultProjects       []defaultProjectOpts
 	monitoringTracewayURL string
 }
 
@@ -16,9 +16,10 @@ type defaultUserOpts struct {
 }
 
 type defaultProjectOpts struct {
-	name      string
-	framework string
-	token     string
+	name           string
+	framework      string
+	token          string
+	sourceMapToken string
 }
 
 type Option func(*options)
@@ -58,6 +59,16 @@ func WithDefaultProject(name, framework, token string) Option {
 		o.defaultProjects = append(o.defaultProjects, defaultProjectOpts{
 			name: name, framework: framework, token: token,
 		})
+	}
+}
+
+func WithDefaultProjectSourceMapToken(name, token string) Option {
+	return func(o *options) {
+		for i := range o.defaultProjects {
+			if o.defaultProjects[i].name == name {
+				o.defaultProjects[i].sourceMapToken = token
+			}
+		}
 	}
 }
 

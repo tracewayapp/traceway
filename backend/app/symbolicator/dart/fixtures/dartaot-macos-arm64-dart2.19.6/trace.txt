@@ -1,0 +1,12 @@
+Unhandled exception:
+Bad state: boom from level3
+*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+pid: 25805, tid: 8806539456, name Dart_Initialize
+os: macos arch: arm64 comp: no sim: no
+build_id: '8228d9e1d6fa5932606d8ed329fefc6c'
+isolate_dso_base: 100ab0000, vm_dso_base: 100ab0000
+isolate_instructions: 100aed780, vm_instructions: 100ae8000
+    #00 abs 0000000100b2cb3f virt 000000000007cb3f _kDartIsolateSnapshotInstructions+0x3f3bf
+    #01 abs 0000000100b2cb0b virt 000000000007cb0b _kDartIsolateSnapshotInstructions+0x3f38b
+    #02 abs 0000000100b2d0cb virt 000000000007d0cb _kDartIsolateSnapshotInstructions+0x3f94b
+    #03 abs 0000000100af301b virt 000000000004301b _kDartIsolateSnapshotInstructions+0x589b

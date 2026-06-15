@@ -39,7 +39,7 @@ func TestExtractDebugIdFromBundle(t *testing.T) {
 }
 
 func TestResolveStackTracePrefersDebugId(t *testing.T) {
-	InitSourceMapCache(100, 64<<20)
+	useMemCache(t)
 	prev := storage.Store
 	defer func() { storage.Store = prev }()
 	cs := &countingStorage{reads: map[string]int{}, data: map[string][]byte{}}
@@ -67,7 +67,7 @@ func TestResolveStackTracePrefersDebugId(t *testing.T) {
 }
 
 func TestResolveStackTraceFallsBackToFilenameWhenDebugIdMissing(t *testing.T) {
-	InitSourceMapCache(100, 64<<20)
+	useMemCache(t)
 	prev := storage.Store
 	defer func() { storage.Store = prev }()
 	cs := &countingStorage{reads: map[string]int{}, data: map[string][]byte{}}
@@ -88,21 +88,29 @@ func TestResolveStackTraceFallsBackToFilenameWhenDebugIdMissing(t *testing.T) {
 }
 
 func TestInvalidateSourceMapKeepsDebugIdDir(t *testing.T) {
-	InitSourceMapCache(100, 64<<20)
+	useMemCache(t)
+	prev := storage.Store
+	defer func() { storage.Store = prev }()
+	storage.Store = &countingStorage{reads: map[string]int{}, data: map[string][]byte{}}
+
 	projectId := uuid.New()
 	debugId := "85314830-023f-4cf1-a267-535f4e37bb17"
+	mapKey := SourceMapStorageKey(projectId, DebugIdMapName(debugId))
+	bundleKey := SourceMapStorageKey(projectId, DebugIdBundleName(debugId))
+	twKey := twKeyFor(mapKey)
 
-	smCache.mu.Lock()
-	key := SourceMapStorageKey(projectId, DebugIdMapName(debugId))
-	smCache.negative[key] = &negativeEntry{}
-	smCache.mu.Unlock()
+	_, done, err := sharedCache.Get(context.Background(), twKey, loadSourceMapBlob(mapKey, bundleKey))
+	done()
+	if err == nil {
+		t.Fatal("expected the missing map to fail to load")
+	}
+	if !sharedCache.IsNegative(twKey) {
+		t.Fatal("expected a negative entry after the failed load")
+	}
 
 	InvalidateSourceMap(projectId, DebugIdBundleName(debugId))
 
-	smCache.mu.Lock()
-	_, stillThere := smCache.negative[key]
-	smCache.mu.Unlock()
-	if stillThere {
+	if sharedCache.IsNegative(twKey) {
 		t.Error("expected debug id map key to be invalidated")
 	}
 }

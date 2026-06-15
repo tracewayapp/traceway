@@ -40,7 +40,7 @@ build_all() {
   (cd loadgen && go mod tidy >/dev/null 2>&1; go build -o loadgen .)
   (cd corpusgen && go build -o corpusgen .)
 
-  if [ ! -f ../../testing/symbolication/node-app/dist/app.mjs ]; then
+  if echo "$IMPLS" | grep -qE 'honeycomb|oxc|goja' && [ ! -f ../../testing/symbolication/node-app/dist/app.mjs ]; then
     (cd ../../testing/symbolication/node-app && npm install && npm run build)
   fi
 }
@@ -54,32 +54,47 @@ scenario_params() {
 }
 
 gen_corpus() {
-  local scenario="$1" entries="$2" pad="$3" mappad="$4"
-  local dir="./corpus-$scenario"
+  local lang="$1" scenario="$2" entries="$3" pad="$4" mappad="$5"
+  local dir="./corpus-$lang-$scenario"
   if [ ! -f "$dir/corpus.json" ]; then
-    ./corpusgen/corpusgen --entries "$entries" --pad-kb "$pad" --map-pad-kb "${mappad%%:*}" --mappings-pad-kb "${mappad##*:}" --out "$dir" >&2
+    if [ "$lang" = dart ]; then
+      ./corpusgen/corpusgen --language dart --entries "$entries" --out "$dir" >&2
+    else
+      ./corpusgen/corpusgen --entries "$entries" --pad-kb "$pad" --map-pad-kb "${mappad%%:*}" --mappings-pad-kb "${mappad##*:}" --out "$dir" >&2
+    fi
   fi
   echo "$dir"
 }
 
 impl_env() {
   case "$1" in
-    honeycomb) echo "BIN=./build-honeycomb/otelcol-bench-honeycomb CFG=config-honeycomb.yaml PARSER= DISK=" ;;
-    traceway-oxc-mem)   echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER=oxc DISK=" ;;
-    traceway-oxc-disk)  echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER=oxc DISK=1" ;;
-    traceway-goja-mem)  echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER=goja DISK=" ;;
-    traceway-goja-disk) echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER=goja DISK=1" ;;
+    honeycomb) echo "BIN=./build-honeycomb/otelcol-bench-honeycomb CFG=config-honeycomb.yaml PARSER= DISK= LANG=js" ;;
+    traceway-oxc-mem)   echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER=oxc DISK= LANG=js" ;;
+    traceway-oxc-disk)  echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER=oxc DISK=1 LANG=js" ;;
+    traceway-goja-mem)  echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER=goja DISK= LANG=js" ;;
+    traceway-goja-disk) echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER=goja DISK=1 LANG=js" ;;
+    traceway-dart-mem)  echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER= DISK= LANG=dart" ;;
+    traceway-dart-disk) echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER= DISK=1 LANG=dart" ;;
     *) echo "unknown impl $1" >&2; return 1 ;;
+  esac
+}
+
+drain_markers() {
+  case "$1" in
+    dart) echo "OK_MARKER=crash.dart FAIL_MARKER=_kDartIsolateSnapshotInstructions" ;;
+    *)    echo "OK_MARKER=../src/inventory.js FAIL_MARKER=.mjs:1:" ;;
   esac
 }
 
 run_one() {
   local impl="$1" scenario="$2"
   read -r entries pad mappad cachesize conns dur <<< "$(scenario_params "$scenario")"
-  local store
-  store=$(gen_corpus "$scenario" "$entries" "$pad" "$mappad")
-  local BIN CFG PARSER DISK
+  local BIN CFG PARSER DISK LANG
   eval "$(impl_env "$impl")"
+  local store
+  store=$(gen_corpus "$LANG" "$scenario" "$entries" "$pad" "$mappad")
+  local OK_MARKER FAIL_MARKER
+  eval "$(drain_markers "$LANG")"
   local tag="$impl-$scenario"
   local outdir="$RESULTS/$tag"
   mkdir -p "$outdir"
@@ -91,7 +106,7 @@ run_one() {
     sleep 1
   done
 
-  DRAIN_ADDR=127.0.0.1:9319 ./drain/target/release/drain &
+  DRAIN_ADDR=127.0.0.1:9319 OK_MARKER="$OK_MARKER" FAIL_MARKER="$FAIL_MARKER" ./drain/target/release/drain &
   local drain_pid=$!
   sleep 1
   curl -sf -X POST http://127.0.0.1:9319/reset > /dev/null

@@ -1,12 +1,11 @@
 //go:build oxc && cgo
 
-package symbolicator
+package sourcemap
 
 import (
 	"testing"
 
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/scopes"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/scopes"
 )
 
 func TestOxcGojaLookupEquivalence(t *testing.T) {
@@ -24,28 +23,28 @@ func TestOxcGojaLookupEquivalence(t *testing.T) {
 			if err := scopes.SetParser("goja"); err != nil {
 				t.Fatal(err)
 			}
-			gojaResolver, err := NewResolver(mapBytes, bundle)
+			gojaTW, err := BuildTW(mapBytes, bundle)
 			if err != nil {
-				t.Fatalf("NewResolver(goja): %v", err)
+				t.Fatalf("BuildTW(goja): %v", err)
 			}
 
 			if err := scopes.SetParser("oxc"); err != nil {
 				t.Fatal(err)
 			}
-			oxcResolver, err := NewResolver(mapBytes, bundle)
+			oxcTW, err := BuildTW(mapBytes, bundle)
 			if err != nil {
-				t.Fatalf("NewResolver(oxc): %v", err)
+				t.Fatalf("BuildTW(oxc): %v", err)
 			}
 
-			parsed, err := sourcemap.Parse(mapBytes)
+			parsed, err := Parse(mapBytes)
 			if err != nil {
 				t.Fatalf("parsing source map: %v", err)
 			}
 
 			mismatches := 0
 			for _, token := range parsed.Tokens {
-				gFrame, gOk := gojaResolver.Lookup(token.GenLine, token.GenCol)
-				oFrame, oOk := oxcResolver.Lookup(token.GenLine, token.GenCol)
+				gFrame, gOk := LookupTW(gojaTW, token.GenLine, token.GenCol)
+				oFrame, oOk := LookupTW(oxcTW, token.GenLine, token.GenCol)
 				if gOk != oOk || gFrame != oFrame {
 					mismatches++
 					if mismatches <= 10 {

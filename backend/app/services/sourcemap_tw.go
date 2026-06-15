@@ -30,8 +30,10 @@ func GenerateTWArtifacts(ctx context.Context, projectId uuid.UUID, fileNames []s
 		}
 		InvalidateSourceMap(projectId, base)
 
-		if _, err := activeSMCache.getOrBuild(ctx, mapKey, buildResolver(mapKey, bundleKey)); err != nil && !errors.Is(err, storage.ErrNotFound) {
+		_, done, err := sharedCache.Get(ctx, twKey, loadSourceMapBlob(mapKey, bundleKey))
+		if err != nil && !errors.Is(err, storage.ErrNotFound) {
 			traceway.CaptureException(fmt.Errorf("tw generation: failed to warm resolver (key=%s): %w", mapKey, err))
 		}
+		done()
 	}
 }

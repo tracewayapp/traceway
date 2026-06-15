@@ -27,9 +27,6 @@ import (
 
 type clientController struct{}
 
-// isEmptyRaw reports whether a json.RawMessage carries no meaningful payload —
-// nil, blank, `null`, `[]`, or `{}` all count as empty. Used to drop session
-// recordings that would otherwise just be wasted S3 writes.
 func isEmptyRaw(r json.RawMessage) bool {
 	if len(r) == 0 {
 		return true
@@ -98,10 +95,6 @@ func (e clientController) Report(c *gin.Context) {
 
 	var recordingsWork []recordings.Job
 
-	// Map frontend sessionRecordingId → backend-generated exception UUID.
-	// Used only for the legacy exception-bound recording path; the always-on
-	// session linkage uses the SDK-supplied sessionId UUID directly (it IS
-	// the session row id by design, so no in-request map is needed).
 	recordingIdToExceptionId := map[string]uuid.UUID{}
 
 	convertSpan := traceway.StartSpan(c, "report.convert_frames")
@@ -109,9 +102,7 @@ func (e clientController) Report(c *gin.Context) {
 		for _, cs := range cf.Sessions {
 			s := cs.ToSession(request.AppVersion, request.ServerName)
 			s.ProjectId = projectId
-			// The SDK can't see the public-facing IP; we stamp it server-side
-			// into the attributes blob so the dashboard surfaces it alongside
-			// browser/url/viewport collected by the SDK.
+
 			if clientIP := c.ClientIP(); clientIP != "" {
 				if s.Attributes == nil {
 					s.Attributes = map[string]string{}
@@ -142,13 +133,16 @@ func (e clientController) Report(c *gin.Context) {
 				spansToInsert = append(spansToInsert, span)
 			}
 		}
-		resolveJs := project != nil && isJsFramework(project.Framework) && project.SourceMapToken != nil
+		resolveJs := project != nil && project.SourceMapToken != nil && jsFrameworks[project.Framework]
+		resolveDart := project != nil && project.SourceMapToken != nil && project.Framework == "flutter"
 
 		resolveSpan := traceway.StartSpan(c, "report.resolve_stack_traces")
 		for _, cst := range cf.StackTraces {
 			resolvedStackTrace := cst.StackTrace
 			if resolveJs {
 				resolvedStackTrace = services.ResolveStackTrace(c, projectId, cst.StackTrace, cst.DebugIds)
+			} else if resolveDart {
+				resolvedStackTrace = services.ResolveDartStackTrace(c, projectId, cst.StackTrace)
 			}
 			est := cst.ToExceptionStackTrace(ComputeExceptionHash(resolvedStackTrace, cst.IsMessage), request.AppVersion, request.ServerName)
 			est.StackTrace = resolvedStackTrace
@@ -157,10 +151,7 @@ func (e clientController) Report(c *gin.Context) {
 			if cst.SessionRecordingId != nil {
 				recordingIdToExceptionId[*cst.SessionRecordingId] = est.Id
 			}
-			// The SDK-provided session UID is the session row id by design, so
-			// parse it directly. The parent `sessions` row may have been
-			// upserted in an earlier request — we don't require it in this
-			// batch.
+
 			if cst.SessionId != nil {
 				if parsed, err := uuid.Parse(*cst.SessionId); err == nil {
 					est.SessionId = &parsed
@@ -177,10 +168,7 @@ func (e clientController) Report(c *gin.Context) {
 		}
 
 		for _, sr := range cf.SessionRecordings {
-			// A recording can be exception-bound (legacy path), session-bound
-			// (always-on path), or both. Exception linkage requires the
-			// exception to be in this batch; session linkage doesn't, since
-			// the SDK-provided sessionId is the session row id by design.
+
 			var exceptionId uuid.UUID
 			if sr.ExceptionId != "" {
 				if id, ok := recordingIdToExceptionId[sr.ExceptionId]; ok {
@@ -323,27 +311,24 @@ func (e clientController) Report(c *gin.Context) {
 }
 
 var (
-	errorMessageRe  = regexp.MustCompile(`(?m)^(\*?[\w.]+):\s*.+`)
-	causedByRe      = regexp.MustCompile(`(?m)^(Caused by:\s*[\w.$]+):\s*.+`)
-	jsFuncLineRe    = regexp.MustCompile(`(?m)^( {0,4})(.+)\(\)(\n {4}.+:\d+:\d+)$`)
-	urlOriginRe     = regexp.MustCompile(`[a-zA-Z][a-zA-Z0-9+.\-]*://[^/\s]*`)
-	absolutePathRe  = regexp.MustCompile(`/[^\s:]+/([^/\s:]+:\d+)`)
-	// Engines disagree on column conventions for the same throw, so columns
-	// only disambiguate when everything sits on line 1 (minified bundles with
-	// no matching source map). For any other line the column is dropped from
-	// the hash so resolved frames group across engines.
+	errorMessageRe = regexp.MustCompile(`(?m)^(\*?[\w.]+):\s*.+`)
+	causedByRe     = regexp.MustCompile(`(?m)^(Caused by:\s*[\w.$]+):\s*.+`)
+	jsFuncLineRe   = regexp.MustCompile(`(?m)^( {0,4})(.+)\(\)(\n {4}.+:\d+:\d+)$`)
+	urlOriginRe    = regexp.MustCompile(`[a-zA-Z][a-zA-Z0-9+.\-]*://[^/\s]*`)
+	absolutePathRe = regexp.MustCompile(`/[^\s:]+/([^/\s:]+:\d+)`)
+
 	laterLineColRe = regexp.MustCompile(`(?m)^(\s*.+:(?:[2-9]|[1-9]\d+)):\d+$`)
-	versionRe       = regexp.MustCompile(`@v[\d.]+`)
-	hexRe           = regexp.MustCompile(`0x[0-9a-fA-F]+`)
-	uuidRe          = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
-	largeNumberRe   = regexp.MustCompile(`(^|[^:\d])(\d{5,})($|[^\d])`)
-	emailRe         = regexp.MustCompile(`[\w.\-]+@[\w.\-]+\.\w+`)
-	ipRe            = regexp.MustCompile(`\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?`)
-	goroutineRe     = regexp.MustCompile(`goroutine \d+`)
-	javaLineNumRe   = regexp.MustCompile(`\((\w[\w.$]*\.(?:java|kt|scala)):\d+\)`)
-	javaEllipsisRe  = regexp.MustCompile(`\.\.\. \d+ more`)
-	spacesRe        = regexp.MustCompile(`[ \t]+`)
-	newlinesRe      = regexp.MustCompile(`\n+`)
+	versionRe      = regexp.MustCompile(`@v[\d.]+`)
+	hexRe          = regexp.MustCompile(`0x[0-9a-fA-F]+`)
+	uuidRe         = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
+	largeNumberRe  = regexp.MustCompile(`(^|[^:\d])(\d{5,})($|[^\d])`)
+	emailRe        = regexp.MustCompile(`[\w.\-]+@[\w.\-]+\.\w+`)
+	ipRe           = regexp.MustCompile(`\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?`)
+	goroutineRe    = regexp.MustCompile(`goroutine \d+`)
+	javaLineNumRe  = regexp.MustCompile(`\((\w[\w.$]*\.(?:java|kt|scala)):\d+\)`)
+	javaEllipsisRe = regexp.MustCompile(`\.\.\. \d+ more`)
+	spacesRe       = regexp.MustCompile(`[ \t]+`)
+	newlinesRe     = regexp.MustCompile(`\n+`)
 )
 
 func ComputeExceptionHash(stackTrace string, isMessage bool) string {
@@ -353,10 +338,7 @@ func ComputeExceptionHash(stackTrace string, isMessage bool) string {
 		normalized = causedByRe.ReplaceAllString(normalized, "$1")
 		normalized = errorMessageRe.ReplaceAllString(normalized, "$1")
 		normalized = jsFuncLineRe.ReplaceAllString(normalized, "${1}<fn>${3}")
-		// Bundle URLs (https://host/assets/app.js, file:///srv/app.mjs,
-		// webpack://app/./src/x.js) must group with the same frames reported
-		// as bare filenames by the JS SDK, so the origin goes first and the
-		// remaining /path is reduced by absolutePathRe like any other path.
+
 		normalized = urlOriginRe.ReplaceAllString(normalized, "")
 		normalized = absolutePathRe.ReplaceAllString(normalized, "$1")
 		normalized = laterLineColRe.ReplaceAllString(normalized, "$1")
@@ -390,15 +372,6 @@ var jsFrameworks = map[string]bool{
 	"react-native": true,
 }
 
-func isJsFramework(framework string) bool {
-	return jsFrameworks[framework]
-}
-
-// Browser-only frameworks. Spans arriving for these projects are page-load
-// noise (web vitals, fetch spans), never server endpoints, so OTel trace
-// ingest only extracts exceptions for them. Fullstack frameworks (nextjs,
-// remix) and JS backends (nestjs, express, hono, cloudflare) are excluded
-// because they emit legitimate SERVER spans.
 var frontendJsFrameworks = map[string]bool{
 	"react":        true,
 	"svelte":       true,

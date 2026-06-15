@@ -9,31 +9,42 @@ import (
 	"testing"
 
 	"github.com/tracewayapp/traceway/backend/app/storage"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/twcache"
 
 	"github.com/google/uuid"
 )
 
-func newTestDiskCache(t *testing.T, maxBytes int64) *sourceMapDiskCache {
+func useMemCache(t *testing.T) {
 	t.Helper()
-	return newTestDiskCacheAt(t, t.TempDir(), maxBytes)
+	prev := sharedCache
+	sharedCache = newSymbolicatorCache()
+	t.Cleanup(func() { sharedCache = prev })
 }
 
-func newTestDiskCacheAt(t *testing.T, dir string, maxBytes int64) *sourceMapDiskCache {
+func useDiskCache(t *testing.T, dir string, maxBytes int64) *twcache.Cache {
 	t.Helper()
-	disk, err := twcache.New(dir, maxBytes, nil)
+	prev := sharedCache
+	if err := EnableSymbolicatorDiskCache(dir, maxBytes); err != nil {
+		t.Fatalf("EnableSymbolicatorDiskCache: %v", err)
+	}
+	t.Cleanup(func() { sharedCache = prev })
+	return sharedCache
+}
+
+func resolveSMFrame(t *testing.T, ctx context.Context, mapKey, bundleKey string) (sourcemap.StackTraceFrame, bool, error) {
+	t.Helper()
+	data, done, err := sharedCache.Get(ctx, twKeyFor(mapKey), loadSourceMapBlob(mapKey, bundleKey))
 	if err != nil {
-		t.Fatalf("twcache.New: %v", err)
+		return sourcemap.StackTraceFrame{}, false, err
 	}
-	return &sourceMapDiskCache{
-		mem:  newTestSourceMapCache(100, 64<<20),
-		disk: disk,
-	}
+	defer done()
+	frame, ok := sourcemap.LookupTW(data, 0, 10)
+	return frame, ok, nil
 }
 
-func twPathFor(d *sourceMapDiskCache, mapKey string) string {
-	return filepath.Join(d.disk.Dir(), filepath.FromSlash(twKeyFor(mapKey)))
+func twPathFor(disk *twcache.Cache, mapKey string) string {
+	return filepath.Join(disk.Dir(), filepath.FromSlash(twKeyFor(mapKey)))
 }
 
 func swapStorage(t *testing.T) *countingStorage {
@@ -47,9 +58,8 @@ func swapStorage(t *testing.T) *countingStorage {
 	return cs
 }
 
-func assertSimpleLookup(t *testing.T, r *symbolicator.Resolver) {
+func assertSimpleLookup(t *testing.T, frame sourcemap.StackTraceFrame, ok bool) {
 	t.Helper()
-	frame, ok := r.Lookup(0, 10)
 	if !ok {
 		t.Fatal("expected lookup to resolve")
 	}
@@ -60,7 +70,7 @@ func assertSimpleLookup(t *testing.T, r *symbolicator.Resolver) {
 
 func TestDiskCacheBuildsThenServesFromLocalFile(t *testing.T) {
 	cs := swapStorage(t)
-	d := newTestDiskCache(t, 64<<20)
+	disk := useDiskCache(t, t.TempDir(), 64<<20)
 
 	projectId := uuid.New()
 	prefix := fmt.Sprintf("sourcemaps/%s/", projectId)
@@ -70,28 +80,27 @@ func TestDiskCacheBuildsThenServesFromLocalFile(t *testing.T) {
 	mapKey := prefix + "minified.js.map"
 	bundleKey := prefix + "minified.js"
 
-	r, err := d.getOrBuild(context.Background(), mapKey, buildResolver(mapKey, bundleKey))
+	frame, ok, err := resolveSMFrame(t, context.Background(), mapKey, bundleKey)
 	if err != nil {
-		t.Fatalf("getOrBuild: %v", err)
+		t.Fatalf("resolve: %v", err)
 	}
-	assertSimpleLookup(t, r)
+	assertSimpleLookup(t, frame, ok)
 
-	if _, err := os.Stat(twPathFor(d, mapKey)); err != nil {
+	if _, err := os.Stat(twPathFor(disk, mapKey)); err != nil {
 		t.Fatalf("expected tw file on disk: %v", err)
 	}
 	if smBuilds.Load() != 1 {
 		t.Fatalf("builds: got %d, want 1", smBuilds.Load())
 	}
 
-	restarted := newTestDiskCacheAt(t, d.disk.Dir(), 64<<20)
-
+	restarted := useDiskCache(t, disk.Dir(), 64<<20)
 	mapReads := cs.reads[mapKey]
-	r2, err := restarted.getOrBuild(context.Background(), mapKey, buildResolver(mapKey, bundleKey))
+	frame2, ok2, err := resolveSMFrame(t, context.Background(), mapKey, bundleKey)
 	if err != nil {
-		t.Fatalf("getOrBuild after restart: %v", err)
+		t.Fatalf("resolve after restart: %v", err)
 	}
-	assertSimpleLookup(t, r2)
-	if hits := restarted.disk.Stats().Hits; hits != 1 {
+	assertSimpleLookup(t, frame2, ok2)
+	if hits := restarted.Stats().Hits; hits != 1 {
 		t.Fatalf("disk hits: got %d, want 1", hits)
 	}
 	if cs.reads[mapKey] != mapReads {
@@ -101,7 +110,7 @@ func TestDiskCacheBuildsThenServesFromLocalFile(t *testing.T) {
 
 func TestDiskCachePullsTWFromStorage(t *testing.T) {
 	cs := swapStorage(t)
-	d := newTestDiskCache(t, 64<<20)
+	disk := useDiskCache(t, t.TempDir(), 64<<20)
 
 	projectId := uuid.New()
 	prefix := fmt.Sprintf("sourcemaps/%s/", projectId)
@@ -116,17 +125,17 @@ func TestDiskCachePullsTWFromStorage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolver, err := symbolicator.NewResolver(mapBytes, bundleBytes)
+	tw, err := sourcemap.BuildTW(mapBytes, bundleBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs.data[prefix+"minified.js.tw"] = resolver.MarshalTW()
+	cs.data[prefix+"minified.js.tw"] = tw
 
-	r, err := d.getOrBuild(context.Background(), mapKey, buildResolver(mapKey, bundleKey))
+	frame, ok, err := resolveSMFrame(t, context.Background(), mapKey, bundleKey)
 	if err != nil {
-		t.Fatalf("getOrBuild: %v", err)
+		t.Fatalf("resolve: %v", err)
 	}
-	assertSimpleLookup(t, r)
+	assertSimpleLookup(t, frame, ok)
 
 	if smStoreHits.Load() != 1 {
 		t.Fatalf("storeHits: got %d, want 1", smStoreHits.Load())
@@ -134,21 +143,21 @@ func TestDiskCachePullsTWFromStorage(t *testing.T) {
 	if cs.reads[mapKey] != 0 || cs.reads[bundleKey] != 0 {
 		t.Fatal("tw artifact in storage should make map and bundle reads unnecessary")
 	}
-	if !fileExists(twPathFor(d, mapKey)) {
+	if !fileExists(twPathFor(disk, mapKey)) {
 		t.Fatal("tw pulled from storage should be cached on local disk")
 	}
 }
 
 func TestDiskCacheCorruptLocalFileFallsBack(t *testing.T) {
 	cs := swapStorage(t)
-	d := newTestDiskCache(t, 64<<20)
+	disk := useDiskCache(t, t.TempDir(), 64<<20)
 
 	projectId := uuid.New()
 	prefix := fmt.Sprintf("sourcemaps/%s/", projectId)
 	seedFixture(t, cs, prefix+"minified.js.map", "testdata/sourcemapcache/simple/minified.js.map")
 	mapKey := prefix + "minified.js.map"
 
-	twPath := twPathFor(d, mapKey)
+	twPath := twPathFor(disk, mapKey)
 	if err := os.MkdirAll(filepath.Dir(twPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -156,13 +165,14 @@ func TestDiskCacheCorruptLocalFileFallsBack(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r, err := d.getOrBuild(context.Background(), mapKey, buildResolver(mapKey, prefix+"minified.js"))
+	frame, ok, err := resolveSMFrame(t, context.Background(), mapKey, prefix+"minified.js")
 	if err != nil {
-		t.Fatalf("getOrBuild: %v", err)
+		t.Fatalf("resolve: %v", err)
 	}
-	if _, ok := r.Lookup(0, 10); !ok {
+	if !ok {
 		t.Fatal("expected lookup to resolve after rebuilding from source map")
 	}
+	_ = frame
 	if smBuilds.Load() != 1 {
 		t.Fatalf("builds: got %d, want 1", smBuilds.Load())
 	}
@@ -170,8 +180,8 @@ func TestDiskCacheCorruptLocalFileFallsBack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected regenerated tw file: %v", err)
 	}
-	if _, err := symbolicator.OpenTW(data); err != nil {
-		t.Fatalf("regenerated tw file should be valid: %v", err)
+	if !sourcemap.ValidTW(data) {
+		t.Fatal("regenerated tw file should be valid")
 	}
 }
 
@@ -182,13 +192,13 @@ func TestDiskCacheCapacityEviction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolver, err := symbolicator.NewResolver(mapBytes, nil)
+	tw, err := sourcemap.BuildTW(mapBytes, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	twSize := int64(len(resolver.MarshalTW()))
+	twSize := int64(len(tw))
 
-	d := newTestDiskCache(t, twSize+twSize/2)
+	disk := useDiskCache(t, t.TempDir(), twSize+twSize/2)
 
 	projectId := uuid.New()
 	prefix := fmt.Sprintf("sourcemaps/%s/", projectId)
@@ -198,20 +208,20 @@ func TestDiskCacheCapacityEviction(t *testing.T) {
 	firstKey := prefix + "first.js.map"
 	secondKey := prefix + "second.js.map"
 
-	if _, err := d.getOrBuild(context.Background(), firstKey, buildResolver(firstKey, prefix+"first.js")); err != nil {
-		t.Fatalf("getOrBuild first: %v", err)
+	if _, _, err := resolveSMFrame(t, context.Background(), firstKey, prefix+"first.js"); err != nil {
+		t.Fatalf("resolve first: %v", err)
 	}
-	if _, err := d.getOrBuild(context.Background(), secondKey, buildResolver(secondKey, prefix+"second.js")); err != nil {
-		t.Fatalf("getOrBuild second: %v", err)
+	if _, _, err := resolveSMFrame(t, context.Background(), secondKey, prefix+"second.js"); err != nil {
+		t.Fatalf("resolve second: %v", err)
 	}
 
-	if fileExists(twPathFor(d, firstKey)) {
+	if fileExists(twPathFor(disk, firstKey)) {
 		t.Fatal("oldest tw file should be evicted when over capacity")
 	}
-	if !fileExists(twPathFor(d, secondKey)) {
+	if !fileExists(twPathFor(disk, secondKey)) {
 		t.Fatal("newest tw file should survive eviction")
 	}
-	stats := d.disk.Stats()
+	stats := disk.Stats()
 	if stats.Evictions != 1 {
 		t.Fatalf("disk evictions: got %d, want 1", stats.Evictions)
 	}
@@ -222,33 +232,33 @@ func TestDiskCacheCapacityEviction(t *testing.T) {
 
 func TestDiskCacheInvalidateRemovesFile(t *testing.T) {
 	cs := swapStorage(t)
-	d := newTestDiskCache(t, 64<<20)
+	disk := useDiskCache(t, t.TempDir(), 64<<20)
 
 	projectId := uuid.New()
 	prefix := fmt.Sprintf("sourcemaps/%s/", projectId)
 	seedFixture(t, cs, prefix+"minified.js.map", "testdata/sourcemapcache/simple/minified.js.map")
 	mapKey := prefix + "minified.js.map"
 
-	if _, err := d.getOrBuild(context.Background(), mapKey, buildResolver(mapKey, prefix+"minified.js")); err != nil {
-		t.Fatalf("getOrBuild: %v", err)
+	if _, _, err := resolveSMFrame(t, context.Background(), mapKey, prefix+"minified.js"); err != nil {
+		t.Fatalf("resolve: %v", err)
 	}
-	twPath := twPathFor(d, mapKey)
+	twPath := twPathFor(disk, mapKey)
 	if !fileExists(twPath) {
 		t.Fatal("expected tw file before invalidate")
 	}
 
-	d.invalidate(mapKey)
+	InvalidateSourceMap(projectId, "minified.js.map")
 	if fileExists(twPath) {
 		t.Fatal("invalidate should remove the local tw file")
 	}
-	if stats := d.disk.Stats(); stats.Entries != 0 || stats.Bytes != 0 {
+	if stats := disk.Stats(); stats.Entries != 0 || stats.Bytes != 0 {
 		t.Fatalf("expected empty disk index, got %d entries / %d bytes", stats.Entries, stats.Bytes)
 	}
 }
 
 func TestDiskCacheResolveStackTraceEndToEnd(t *testing.T) {
 	cs := swapStorage(t)
-	swapActiveCache(t, newTestDiskCache(t, 64<<20))
+	useDiskCache(t, t.TempDir(), 64<<20)
 
 	projectId := uuid.New()
 	prefix := fmt.Sprintf("sourcemaps/%s/", projectId)
@@ -266,16 +276,9 @@ func TestDiskCacheResolveStackTraceEndToEnd(t *testing.T) {
 	}
 }
 
-func swapActiveCache(t *testing.T, c resolverCache) {
-	t.Helper()
-	prev := activeSMCache
-	activeSMCache = c
-	t.Cleanup(func() { activeSMCache = prev })
-}
-
 func TestGenerateTWArtifacts(t *testing.T) {
 	cs := swapStorage(t)
-	swapActiveCache(t, newTestDiskCache(t, 64<<20))
+	useDiskCache(t, t.TempDir(), 64<<20)
 
 	projectId := uuid.New()
 	prefix := fmt.Sprintf("sourcemaps/%s/", projectId)
@@ -288,16 +291,13 @@ func TestGenerateTWArtifacts(t *testing.T) {
 	if !ok {
 		t.Fatal("expected tw artifact in storage after generation")
 	}
-	r, err := symbolicator.OpenTW(twBytes)
-	if err != nil {
-		t.Fatalf("OpenTW: %v", err)
-	}
-	assertSimpleLookup(t, r)
+	frame, lok := sourcemap.LookupTW(twBytes, 0, 10)
+	assertSimpleLookup(t, frame, lok)
 }
 
 func TestGenerateTWArtifactsDeletesStaleOnFailure(t *testing.T) {
 	cs := swapStorage(t)
-	swapActiveCache(t, newTestDiskCache(t, 64<<20))
+	useDiskCache(t, t.TempDir(), 64<<20)
 
 	projectId := uuid.New()
 	prefix := fmt.Sprintf("sourcemaps/%s/", projectId)
@@ -325,7 +325,7 @@ func (s *twErrStorage) Read(ctx context.Context, key string) ([]byte, error) {
 func TestDiskCacheTransientTwErrorFallsBackToBuild(t *testing.T) {
 	cs := swapStorage(t)
 	storage.Store = &twErrStorage{countingStorage: cs}
-	d := newTestDiskCache(t, 64<<20)
+	useDiskCache(t, t.TempDir(), 64<<20)
 
 	projectId := uuid.New()
 	prefix := fmt.Sprintf("sourcemaps/%s/", projectId)
@@ -333,11 +333,11 @@ func TestDiskCacheTransientTwErrorFallsBackToBuild(t *testing.T) {
 	seedFixture(t, cs, prefix+"minified.js", "testdata/sourcemapcache/simple/minified.js")
 	mapKey := prefix + "minified.js.map"
 
-	r, err := d.getOrBuild(context.Background(), mapKey, buildResolver(mapKey, prefix+"minified.js"))
+	frame, ok, err := resolveSMFrame(t, context.Background(), mapKey, prefix+"minified.js")
 	if err != nil {
-		t.Fatalf("getOrBuild should fall back to building from the map, got: %v", err)
+		t.Fatalf("resolve should fall back to building from the map, got: %v", err)
 	}
-	assertSimpleLookup(t, r)
+	assertSimpleLookup(t, frame, ok)
 	if smBuilds.Load() != 1 {
 		t.Fatalf("builds: got %d, want 1", smBuilds.Load())
 	}
@@ -348,7 +348,7 @@ func TestDiskCacheTransientTwErrorFallsBackToBuild(t *testing.T) {
 
 func TestDiskCacheRefreshesCorruptStoreTw(t *testing.T) {
 	cs := swapStorage(t)
-	d := newTestDiskCache(t, 64<<20)
+	useDiskCache(t, t.TempDir(), 64<<20)
 
 	projectId := uuid.New()
 	prefix := fmt.Sprintf("sourcemaps/%s/", projectId)
@@ -356,17 +356,16 @@ func TestDiskCacheRefreshesCorruptStoreTw(t *testing.T) {
 	cs.data[prefix+"minified.js.tw"] = []byte("corrupt artifact")
 	mapKey := prefix + "minified.js.map"
 
-	r, err := d.getOrBuild(context.Background(), mapKey, buildResolver(mapKey, prefix+"minified.js"))
+	_, ok, err := resolveSMFrame(t, context.Background(), mapKey, prefix+"minified.js")
 	if err != nil {
-		t.Fatalf("getOrBuild: %v", err)
+		t.Fatalf("resolve: %v", err)
 	}
-	if _, ok := r.Lookup(0, 10); !ok {
+	if !ok {
 		t.Fatal("expected lookup to resolve after rebuild")
 	}
 
-	refreshed := cs.data[prefix+"minified.js.tw"]
-	if _, err := symbolicator.OpenTW(refreshed); err != nil {
-		t.Fatalf("corrupt storage tw should be replaced with a valid artifact: %v", err)
+	if !sourcemap.ValidTW(cs.data[prefix+"minified.js.tw"]) {
+		t.Fatal("corrupt storage tw should be replaced with a valid artifact")
 	}
 }
 
@@ -386,7 +385,7 @@ func TestDiskCacheScanSkipsUnreadableEntries(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
 
-	if _, err := twcache.New(dir, 64<<20, nil); err != nil {
+	if _, err := twcache.NewDisk(dir, 64<<20, nil); err != nil {
 		t.Fatalf("scan must tolerate unreadable entries, got: %v", err)
 	}
 }

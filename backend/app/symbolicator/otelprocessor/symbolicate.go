@@ -7,8 +7,10 @@ import (
 	"math"
 	"strings"
 
-	"github.com/tracewayapp/traceway/backend/app/symbolicator"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/jsstack"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/dart"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/jsstack"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/twcache"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.uber.org/zap"
 )
@@ -16,15 +18,17 @@ import (
 const (
 	parsingMethodStructured = "structured_stacktrace_attributes"
 	parsingMethodParsed     = "processor_parsed"
+	maxDartFrames           = 50
 )
 
 var errMismatchedLength = errors.New("mismatched stacktrace attribute lengths")
 var errUnparseableStackTrace = errors.New("unable to parse stack trace")
+var errMissingDartBuild = errors.New("dart trace missing build_id or arch")
 
 type symbolicatorProcessor struct {
 	cfg    *Config
 	store  *artifactStore
-	cache  *resolverCache
+	cache  *twcache.Cache
 	logger *zap.Logger
 }
 
@@ -53,6 +57,11 @@ func (p *symbolicatorProcessor) processRecord(ctx context.Context, attrs, resour
 		return
 	}
 	originalStack := stackVal.Str()
+
+	if dart.IsNonSymbolic(originalStack) {
+		p.symbolicateDartTrace(ctx, attrs, originalStack)
+		return
+	}
 
 	buildUUID := ""
 	if v, ok := resource.Get(p.cfg.BuildUUIDAttributeKey); ok {
@@ -131,8 +140,98 @@ func (p *symbolicatorProcessor) processRecord(ctx context.Context, attrs, resour
 		}
 		attrs.PutStr(p.cfg.SymbolicatorErrorAttributeKey, err.Error())
 	}
+	p.putProcessorMeta(attrs)
+}
+
+func (p *symbolicatorProcessor) putProcessorMeta(attrs pcommon.Map) {
 	attrs.PutStr("traceway.processor_type", componentType.String())
 	attrs.PutStr("traceway.processor_version", processorVersion)
+}
+
+func (p *symbolicatorProcessor) symbolicateDartTrace(ctx context.Context, attrs pcommon.Map, rawStack string) {
+	attrs.PutStr(p.cfg.SymbolicatorParsingMethodAttributeKey, parsingMethodParsed)
+	if p.cfg.PreserveStackTrace {
+		attrs.PutStr(p.cfg.OriginalStackTraceAttributeKey, rawStack)
+	}
+
+	trace := dart.ParseTrace(rawStack)
+	arch := trace.Arch
+	if arch == "" {
+		arch = p.cfg.DartDefaultArch
+	}
+
+	fail := func(err error) {
+		attrs.PutStr(p.cfg.StackTraceAttributeKey, p.renderDartTrace(attrs, trace, nil))
+		attrs.PutBool(p.cfg.SymbolicatorFailureAttributeKey, true)
+		attrs.PutStr(p.cfg.SymbolicatorErrorAttributeKey, err.Error())
+		p.putProcessorMeta(attrs)
+	}
+
+	if len(trace.Frames) == 0 {
+		fail(errUnparseableStackTrace)
+		return
+	}
+	if trace.BuildID == "" || arch == "" {
+		fail(errMissingDartBuild)
+		return
+	}
+
+	key := dartCacheKey(p.store.dartSymbolsKey(trace.BuildID, arch))
+	if p.cache.IsNegative(key) {
+		fail(fmt.Errorf("failed to find dart symbols for build %s/%s", trace.BuildID, arch))
+		return
+	}
+
+	data, done, err := p.cache.Get(ctx, key, func(ctx context.Context) ([]byte, error) {
+		fetchCtx, cancel := context.WithTimeout(ctx, p.cfg.Timeout)
+		defer cancel()
+		elf, err := p.store.getDartSymbols(fetchCtx, trace.BuildID, arch)
+		if err != nil {
+			return nil, err
+		}
+		return dart.BuildFlat(elf)
+	})
+	if err != nil {
+		fail(err)
+		return
+	}
+	defer done()
+
+	attrs.PutStr(p.cfg.StackTraceAttributeKey, p.renderDartTrace(attrs, trace, data))
+	attrs.PutBool(p.cfg.SymbolicatorFailureAttributeKey, false)
+	p.putProcessorMeta(attrs)
+}
+
+func (p *symbolicatorProcessor) renderDartTrace(attrs pcommon.Map, trace dart.StackTrace, data []byte) string {
+	var b strings.Builder
+	excType := strAttr(attrs, p.cfg.ExceptionTypeAttributeKey)
+	excMessage := strAttr(attrs, p.cfg.ExceptionMessageAttributeKey)
+	if excType != "" && excMessage != "" {
+		fmt.Fprintf(&b, "%s: %s\n", excType, excMessage)
+	}
+	n := 0
+	for _, f := range trace.Frames {
+		if n >= maxDartFrames {
+			break
+		}
+		var resolved []dart.SymFrame
+		if data != nil {
+			resolved = dart.LookupFlat(data, f)
+		}
+		if len(resolved) == 0 {
+			fmt.Fprintf(&b, "#%d  %s+%x\n", n, dart.InstructionSymbol(f.Section), f.Offset)
+			n++
+			continue
+		}
+		for _, sf := range resolved {
+			if n >= maxDartFrames {
+				break
+			}
+			fmt.Fprintf(&b, "#%d  %s (%s)\n", n, sf.Function, sf.Location())
+			n++
+		}
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 func (p *symbolicatorProcessor) languageAllowed(attrs, resource pcommon.Map) bool {
@@ -205,20 +304,21 @@ func (p *symbolicatorProcessor) symbolicateFrame(ctx context.Context, f stackFra
 		return frameResult{err: fmt.Errorf("line/column out of range: %d:%d", f.line, f.col)}
 	}
 
-	resolver, err := p.cache.get(ctx, f.url+"|"+buildUUID, func(ctx context.Context) (*symbolicator.Resolver, error) {
+	data, done, err := p.cache.Get(ctx, cacheKey(f.url, buildUUID), func(ctx context.Context) ([]byte, error) {
 		fetchCtx, cancel := context.WithTimeout(ctx, p.cfg.Timeout)
 		defer cancel()
 		source, sourceMap, err := p.store.getSourceAndMap(fetchCtx, f.url, buildUUID)
 		if err != nil {
 			return nil, err
 		}
-		return symbolicator.NewResolver(sourceMap, source)
+		return sourcemap.BuildTW(sourceMap, source)
 	})
 	if err != nil {
 		return frameResult{err: err}
 	}
+	defer done()
 
-	frame, ok := resolver.Lookup(uint32(f.line-1), uint32(f.col-1))
+	frame, ok := sourcemap.LookupTW(data, uint32(f.line-1), uint32(f.col-1))
 	if !ok {
 		return frameResult{err: fmt.Errorf("no mapping at %d:%d", f.line, f.col)}
 	}

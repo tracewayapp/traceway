@@ -1,12 +1,12 @@
-package symbolicator
+package sourcemap
 
 import (
 	"testing"
 
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/scopes"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/scopes"
 )
 
-func BenchmarkNewResolver(b *testing.B) {
+func BenchmarkBuildTW(b *testing.B) {
 	mapBytes := mustRead(b, fixture(b, "sourcemapcache", "preact.module.js.map"))
 	bundle := mustRead(b, fixture(b, "sourcemapcache", "preact.module.js"))
 
@@ -21,7 +21,7 @@ func BenchmarkNewResolver(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for b.Loop() {
-				if _, err := NewResolver(mapBytes, bundle); err != nil {
+				if _, err := BuildTW(mapBytes, bundle); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -29,21 +29,20 @@ func BenchmarkNewResolver(b *testing.B) {
 	}
 }
 
-func BenchmarkOpenTW(b *testing.B) {
+func BenchmarkLookupTW(b *testing.B) {
 	mapBytes := mustRead(b, fixture(b, "sourcemapcache", "preact.module.js.map"))
 	bundle := mustRead(b, fixture(b, "sourcemapcache", "preact.module.js"))
-	resolver, err := NewResolver(mapBytes, bundle)
+	tw, err := BuildTW(mapBytes, bundle)
 	if err != nil {
 		b.Fatal(err)
 	}
-	tw := resolver.MarshalTW()
 
 	b.SetBytes(int64(len(tw)))
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		if _, err := OpenTW(tw); err != nil {
-			b.Fatal(err)
+		if _, ok := LookupTW(tw, 0, 132); !ok {
+			b.Fatal("expected a mapping")
 		}
 	}
 }

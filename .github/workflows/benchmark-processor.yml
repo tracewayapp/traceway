@@ -3,6 +3,15 @@ name: benchmark-processor
 on:
   workflow_dispatch:
     inputs:
+      language:
+        description: 'Symbolication language: js (5 impls incl. Honeycomb), dart (traceway-dart-mem/disk), or both'
+        required: true
+        default: 'js'
+        type: choice
+        options:
+          - js
+          - dart
+          - both
       scenarios:
         description: 'Scenarios to run'
         required: true
@@ -84,6 +93,7 @@ jobs:
           ./bin/builder --config manifest-traceway.yaml --skip-compilation
           cd build-traceway && CGO_ENABLED=1 go build -tags oxc -o otelcol-bench-traceway .
       - name: Build honeycomb collector
+        if: inputs.language != 'dart'
         working-directory: benchmarks/processor
         run: |
           GOBIN=$PWD/bin go install go.opentelemetry.io/collector/cmd/builder@v0.143.0
@@ -97,6 +107,7 @@ jobs:
           cd loadgen && go mod tidy && go build -o loadgen . && cd ..
           cd corpusgen && go build -o corpusgen .
       - name: Build node-app bundle
+        if: inputs.language != 'dart'
         working-directory: testing/symbolication/node-app
         run: npm install && npm run build
       - name: Assemble artifacts
@@ -104,25 +115,44 @@ jobs:
         run: |
           mkdir -p artifacts
           cp build-traceway/otelcol-bench-traceway artifacts/
-          cp build-honeycomb/otelcol-bench-honeycomb artifacts/
-          cp "$(find ~/go/pkg/mod/github.com/honeycombio -name 'libsymbolic_cabi.so' -path '*linux_x86_64*' | head -1)" artifacts/
           cp drain/target/release/drain artifacts/
           cp loadgen/loadgen corpusgen/corpusgen artifacts/
-          cp config-traceway.yaml config-honeycomb.yaml rss-sampler.sh artifacts/
-          cp ../../testing/symbolication/node-app/dist/app.mjs ../../testing/symbolication/node-app/dist/app.mjs.map artifacts/
+          cp config-traceway.yaml rss-sampler.sh artifacts/
+          cp -r seeds artifacts/
+          if [ -f build-honeycomb/otelcol-bench-honeycomb ]; then
+            cp build-honeycomb/otelcol-bench-honeycomb artifacts/
+            cp "$(find ~/go/pkg/mod/github.com/honeycombio -name 'libsymbolic_cabi.so' -path '*linux_x86_64*' | head -1)" artifacts/
+            cp config-honeycomb.yaml artifacts/
+            cp ../../testing/symbolication/node-app/dist/app.mjs ../../testing/symbolication/node-app/dist/app.mjs.map artifacts/
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: bench-artifacts
           path: benchmarks/processor/artifacts/
 
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      impls: ${{ steps.m.outputs.impls }}
+    steps:
+      - id: m
+        run: |
+          case "${{ inputs.language }}" in
+            js)   impls='["honeycomb","traceway-oxc-mem","traceway-oxc-disk","traceway-goja-mem","traceway-goja-disk"]' ;;
+            dart) impls='["traceway-dart-mem","traceway-dart-disk"]' ;;
+            both) impls='["honeycomb","traceway-oxc-mem","traceway-oxc-disk","traceway-goja-mem","traceway-goja-disk","traceway-dart-mem","traceway-dart-disk"]' ;;
+            *) echo "unknown language ${{ inputs.language }}" >&2; exit 1 ;;
+          esac
+          echo "impls=$impls" >> "$GITHUB_OUTPUT"
+
   bench:
-    needs: build
+    needs: [build, setup]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       max-parallel: 1
       matrix:
-        impl: [honeycomb, traceway-oxc-mem, traceway-oxc-disk, traceway-goja-mem, traceway-goja-disk]
+        impl: ${{ fromJson(needs.setup.outputs.impls) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4

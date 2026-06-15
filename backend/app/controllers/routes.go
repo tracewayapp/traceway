@@ -32,7 +32,6 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.OPTIONS("/report", middleware.CORSReport)
 	router.POST("/report", middleware.CORSReport, middleware.UseClientAuth, middleware.UseGzip, clientcontrollers.ClientController.Report)
 
-	// OTLP/HTTP ingestion
 	otelGroup := router.Group("/otel")
 	otelGroup.OPTIONS("/v1/traces", middleware.CORSReport)
 	otelGroup.OPTIONS("/v1/metrics", middleware.CORSReport)
@@ -41,7 +40,6 @@ func RegisterControllers(router *gin.RouterGroup) {
 	otelGroup.POST("/v1/metrics", middleware.CORSReport, middleware.UseClientAuth, otelcontrollers.OtelController.ExportMetrics)
 	otelGroup.POST("/v1/logs", middleware.CORSReport, middleware.UseClientAuth, otelcontrollers.OtelController.ExportLogs)
 
-	// Project management
 	router.GET("/projects", middleware.UseAppAuth, ProjectController.ListProjects)
 	router.POST("/projects", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, ProjectController.CreateProject)
 	router.PUT("/projects", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, ProjectController.UpdateProject)
@@ -49,23 +47,19 @@ func RegisterControllers(router *gin.RouterGroup) {
 
 	router.GET("/health/deep", middleware.UseAppAuth, HealthDeepController.Get)
 
-	// Dashboard endpoints (projectId in query param)
 	router.POST("/stats", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricRecordController.FindHomepageStats)
 	router.GET("/dashboard", middleware.UseAppAuth, middleware.RequireProjectAccess, DashboardController.GetDashboard)
 	router.GET("/dashboard/overview", middleware.UseAppAuth, middleware.RequireProjectAccess, DashboardController.GetDashboardOverview)
 
-	// Metrics endpoints (projectId in query param)
 	router.GET("/metrics/application", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricsController.GetApplicationMetrics)
 	router.GET("/metrics/stats", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricsController.GetStatsMetrics)
 	router.GET("/metrics/server", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricsController.GetServerMetrics)
 
-	// New metrics query API
 	router.POST("/metrics/query", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricQueryController.Query)
 	router.GET("/metrics/discover", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricQueryController.Discover)
 	router.GET("/metrics/discover/tags", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricQueryController.DiscoverTags)
 	router.PUT("/metrics/registry", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, MetricQueryController.UpdateRegistry)
 
-	// Widget groups
 	router.GET("/widget-groups", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, WidgetGroupController.List)
 	router.POST("/widget-groups", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, WidgetGroupController.Create)
 	router.POST("/widget-groups/populate-defaults", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, WidgetGroupController.PopulateDefaults)
@@ -74,14 +68,12 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.PUT("/widget-groups/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, WidgetGroupController.Update)
 	router.DELETE("/widget-groups/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, WidgetGroupController.Delete)
 
-	// Widgets (within widget groups)
 	router.POST("/widget-groups/:id/widgets", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, WidgetController.Add)
 	router.PUT("/widget-groups/:id/widgets/:wid", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, WidgetController.Update)
 	router.PUT("/widget-groups/:id/widgets/:wid/move", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, WidgetController.Move)
 	router.PUT("/widget-groups/:id/widgets/:wid/star", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, WidgetController.ToggleStar)
 	router.DELETE("/widget-groups/:id/widgets/:wid", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, WidgetController.Delete)
 
-	// Endpoints (projectId in body)
 	router.POST("/endpoints", middleware.UseAppAuth, middleware.RequireProjectAccess, EndpointController.FindAllEndpoints)
 	router.POST("/endpoints/grouped", middleware.UseAppAuth, middleware.RequireProjectAccess, EndpointController.FindGroupedByEndpoint)
 	router.POST("/endpoints/endpoint", middleware.UseAppAuth, middleware.RequireProjectAccess, EndpointController.FindByEndpoint)
@@ -90,41 +82,33 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/endpoints/slow", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, EndpointController.SetSlowEndpoint)
 	router.POST("/endpoints/:endpointId", middleware.UseAppAuth, middleware.RequireProjectAccess, EndpointDetailController.GetEndpointDetail)
 
-	// Tasks (projectId in body)
 	router.POST("/tasks", middleware.UseAppAuth, middleware.RequireProjectAccess, TaskController.FindAllTasks)
 	router.POST("/tasks/grouped", middleware.UseAppAuth, middleware.RequireProjectAccess, TaskController.FindGroupedByTaskName)
 	router.POST("/tasks/task", middleware.UseAppAuth, middleware.RequireProjectAccess, TaskController.FindByTaskName)
 	router.POST("/tasks/:taskId", middleware.UseAppAuth, middleware.RequireProjectAccess, TaskDetailController.GetTaskDetail)
 
-	// Sessions (projectId in body / query)
 	router.POST("/sessions", middleware.UseAppAuth, middleware.RequireProjectAccess, SessionController.FindAllSessions)
 	router.POST("/sessions/:sessionId", middleware.UseAppAuth, middleware.RequireProjectAccess, SessionDetailController.GetSessionDetail)
 	router.GET("/sessions/:sessionId/recording", middleware.UseAppAuth, middleware.RequireProjectAccess, SessionDetailController.GetSessionRecording)
 
-	// AI Traces (projectId in body)
 	router.POST("/ai-traces/grouped", middleware.UseAppAuth, middleware.RequireProjectAccess, AiTraceController.FindGroupedByTraceName)
 	router.POST("/ai-traces/trace", middleware.UseAppAuth, middleware.RequireProjectAccess, AiTraceController.FindByTraceName)
 	router.POST("/ai-traces/:traceId", middleware.UseAppAuth, middleware.RequireProjectAccess, AiTraceController.GetAiTraceDetail)
 
-	// Distributed traces
 	router.POST("/distributed-traces/:distributedTraceId", middleware.UseAppAuth, DistributedTraceController.GetDistributedTrace)
 
-	// Logs (projectId in body)
 	router.POST("/logs", middleware.UseAppAuth, middleware.RequireProjectAccess, LogController.List)
 
-	// Exceptions (projectId in body)
 	router.POST("/exception-stack-traces", middleware.UseAppAuth, middleware.RequireProjectAccess, ExceptionStackTraceController.FindGrouppedExceptionStackTraces)
 	router.POST("/exception-stack-traces/archive", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, ExceptionStackTraceController.ArchiveExceptions)
 	router.POST("/exception-stack-traces/unarchive", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, ExceptionStackTraceController.UnarchiveExceptions)
 	router.POST("/exception-stack-traces/by-id/:exceptionId", middleware.UseAppAuth, middleware.RequireProjectAccess, ExceptionStackTraceController.FindById)
 	router.POST("/exception-stack-traces/:hash", middleware.UseAppAuth, middleware.RequireProjectAccess, ExceptionStackTraceController.FindByHash)
 
-	// Auth
 	router.POST("/login", middleware.Transactional, AuthController.Login)
 	router.POST("/register", middleware.Transactional, AuthController.Register)
 	router.GET("/me/login-bundle", middleware.UseAppAuth, middleware.Transactional, AuthController.LoginBundle)
 
-	// OAuth (Google, GitHub via markbates/goth)
 	router.GET("/auth/providers", OAuthController.ListProviders)
 	router.GET("/auth/start/:provider", middleware.Transactional, OAuthController.Begin)
 	router.GET("/auth/callback/:provider", middleware.Transactional, OAuthController.Callback)
@@ -134,42 +118,35 @@ func RegisterControllers(router *gin.RouterGroup) {
 		router.GET("/has-organizations", middleware.Transactional, AuthController.HasOrganizations)
 	}
 
-	// Password reset
 	router.POST("/forgot-password", middleware.Transactional, PasswordResetController.ForgotPassword)
 	router.GET("/password-reset/:token", PasswordResetController.ValidateToken)
 	router.POST("/password-reset/:token", middleware.Transactional, PasswordResetController.ResetPassword)
 
-	// Organization settings (admin/owner access)
 	router.GET("/organizations/:organizationId/settings", middleware.UseAppAuth, middleware.RequireAdminAccess, OrganizationController.GetSettings)
 	router.PUT("/organizations/:organizationId/settings", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, OrganizationController.UpdateSettings)
 	router.GET("/organizations/:organizationId/members", middleware.UseAppAuth, middleware.RequireAdminAccess, OrganizationController.GetMembers)
 
-	// Member management (admin/owner) - TRANSACTIONAL
 	router.PUT("/organizations/:organizationId/members/:userId", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, MemberController.UpdateRole)
 	router.DELETE("/organizations/:organizationId/members/:userId", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, MemberController.RemoveMember)
 
-	// Invitations management (admin/owner) - TRANSACTIONAL
 	router.POST("/organizations/:organizationId/invitations", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, InvitationController.InviteUser)
 	router.GET("/organizations/:organizationId/invitations", middleware.UseAppAuth, middleware.RequireAdminAccess, InvitationController.ListInvitations)
 	router.DELETE("/organizations/:organizationId/invitations/:id", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, InvitationController.RevokeInvitation)
 
-	// Public invitation endpoints - TRANSACTIONAL
 	router.GET("/invitations/:token", InvitationController.GetInvitationInfo)
 	router.POST("/invitations/:token/accept", middleware.Transactional, InvitationController.AcceptInvitation)
 	router.POST("/invitations/:token/accept-existing", middleware.UseAppAuth, middleware.Transactional, InvitationController.AcceptExistingUser)
 
-	// Source map management
 	router.POST("/projects/source-map-token", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, ProjectController.GenerateSourceMapToken)
 	router.POST("/sourcemaps/upload", middleware.UseSourceMapAuth, SourceMapController.Upload)
+	router.POST("/symbols/upload", middleware.UseSourceMapAuth, SymbolsController.Upload)
 
-	// Notification channels
 	router.GET("/notification-channels", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, NotificationChannelController.List)
 	router.POST("/notification-channels", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, NotificationChannelController.Create)
 	router.PUT("/notification-channels/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, NotificationChannelController.Update)
 	router.DELETE("/notification-channels/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, NotificationChannelController.Delete)
 	router.POST("/notification-channels/:id/test", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, NotificationChannelController.Test)
 
-	// Notification rules
 	router.GET("/notification-rules", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, NotificationRuleController.List)
 	router.POST("/notification-rules", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, NotificationRuleController.Create)
 	router.PUT("/notification-rules/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, NotificationRuleController.Update)
@@ -177,7 +154,6 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/notification-rules/:id/toggle", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, NotificationRuleController.Toggle)
 	router.POST("/notification-rules/:id/snooze", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, NotificationRuleController.Snooze)
 
-	// Notification history
 	router.POST("/notification-history", middleware.UseAppAuth, middleware.RequireProjectAccess, NotificationHistoryController.List)
 
 	for _, register := range ExtensionRoutes {

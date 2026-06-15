@@ -38,10 +38,12 @@ var cdnHTML []byte
 var staticFS embed.FS
 
 const (
-	appPort         = 8080
-	backendToken    = "backend-dev-token"
-	frontendToken   = "frontend-dev-token"
-	monitoringToken = "monitoring-dev-token"
+	appPort            = 8080
+	backendToken       = "backend-dev-token"
+	frontendToken      = "frontend-dev-token"
+	monitoringToken    = "monitoring-dev-token"
+	flutterToken       = "flutter-dev-token"
+	flutterUploadToken = "flutter-upload-token"
 
 	backendServiceName = "backend-service"
 	workerServiceName  = "worker-service"
@@ -49,8 +51,6 @@ const (
 	otlpHost = "localhost:8082"
 )
 
-// otelService bundles a TracerProvider + LoggerProvider for a single logical service
-// so we can run two services in-process to exercise the distributed-logs flow.
 type otelService struct {
 	name string
 	tp   *sdktrace.TracerProvider
@@ -113,8 +113,6 @@ func initOtelService(ctx context.Context, serviceName, token string, extraResour
 	}, nil
 }
 
-// log emits an OTel log record. The SDK auto-attaches trace_id / span_id from ctx
-// so logs emitted inside a span get chip-linked on the trace detail page.
 func (s *otelService) log(ctx context.Context, sev otellog.Severity, sevText, body string, attrs ...otellog.KeyValue) {
 	rec := otellog.Record{}
 	now := time.Now()
@@ -137,11 +135,11 @@ func main() {
 		tracewaybackend.WithDefaultProject("Backend API", "opentelemetry", backendToken),
 		tracewaybackend.WithDefaultProject("jQuery Frontend", "jquery", frontendToken),
 		tracewaybackend.WithDefaultProject("Traceway Monitoring", "gin", monitoringToken),
+		tracewaybackend.WithDefaultProject("Flutter App", "flutter", flutterToken),
+		tracewaybackend.WithDefaultProjectSourceMapToken("Flutter App", flutterUploadToken),
 		tracewaybackend.WithMonitoringURL(monitoringToken+"@http://localhost:8082/api/report"),
 	)
 
-	// Give the backend a moment to start listening and register project tokens
-	// before we start sending OTel data at it.
 	time.Sleep(2 * time.Second)
 
 	ctx := context.Background()
@@ -152,9 +150,6 @@ func main() {
 	}
 	defer backendSvc.shutdown(ctx)
 
-	// Second OTel provider with a different service.name. Reports to the same
-	// Backend API project so both sides of the "distributed trace" are visible
-	// in one project. Used by /api/test-distributed-logs.
 	workerSvc, err := initOtelService(ctx, workerServiceName, backendToken)
 	if err != nil {
 		panic(err)
@@ -189,8 +184,6 @@ func main() {
 		c.Next()
 	})
 
-	// otelgin creates a SERVER span per request and puts it in c.Request.Context(),
-	// which is what the OTel logger reads to attach trace_id + span_id to each log.
 	router.Use(otelgin.Middleware(backendServiceName, otelgin.WithTracerProvider(backendSvc.tp)))
 
 	router.GET("/", func(c *gin.Context) {
@@ -204,7 +197,6 @@ func main() {
 	staticSub, _ := fs.Sub(staticFS, "static")
 	router.StaticFS("/static", http.FS(staticSub))
 
-	// Emits an error log + records an exception on the root span.
 	router.GET("/api/test-error", func(c *gin.Context) {
 		ctx := c.Request.Context()
 		backendSvc.log(ctx, otellog.SeverityInfo, "INFO", "received test-error request")
@@ -217,7 +209,6 @@ func main() {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 	})
 
-	// Emits a DEBUG + INFO log on a successful request.
 	router.GET("/api/test-success", func(c *gin.Context) {
 		ctx := c.Request.Context()
 		backendSvc.log(ctx, otellog.SeverityDebug, "DEBUG", "test-success entered")
@@ -226,8 +217,6 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"message": "success"})
 	})
 
-	// Emits one log at each severity level — useful for inspecting the /logs page
-	// and confirming the SeverityBadge renders every variant.
 	router.GET("/api/test-log-levels", func(c *gin.Context) {
 		ctx := c.Request.Context()
 		backendSvc.log(ctx, otellog.SeverityTrace1, "TRACE", "trace-level log for visual testing")
@@ -239,11 +228,6 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"emitted": 6})
 	})
 
-	// Nested child spans + logs from each level. On the endpoint detail page:
-	//   - root-span logs chip as the endpoint name
-	//   - child-span logs chip as that child span's name (db.query / cache.lookup / auth.verify)
-	// Also populates parent_span_id on each non-root span, and attributes on each
-	// child span so the span tree + attribute popover can be exercised.
 	router.GET("/api/test-spans-with-logs", func(c *gin.Context) {
 		ctx := c.Request.Context()
 		backendSvc.log(ctx, otellog.SeverityInfo, "INFO", "handler: entering /test-spans-with-logs")
@@ -280,10 +264,6 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	// Distributed logs: emits logs from two different services (backend-service
-	// and worker-service) with a shared traceway.distributed_trace_id so the
-	// "Load logs from other traces" button on the trace detail page has
-	// something to pull in.
 	router.GET("/api/test-distributed-logs", func(c *gin.Context) {
 		ctx := c.Request.Context()
 		dtid := uuid.New().String()
@@ -294,9 +274,6 @@ func main() {
 		backendSvc.log(ctx, otellog.SeverityInfo, "INFO", "backend: received request, about to call worker",
 			otellog.String("distributed_trace_id", dtid))
 
-		// Fresh root context (no parent) so the worker registers as a separate
-		// trace in Traceway. WithSpanKind(Consumer) makes the converter treat
-		// this as a task rather than another endpoint.
 		workerCtx, workerSpan := workerSvc.tr.Start(context.Background(), "worker.process-job",
 			trace.WithSpanKind(trace.SpanKindConsumer))
 		workerSpan.SetAttributes(attribute.String("traceway.distributed_trace_id", dtid))
@@ -347,15 +324,12 @@ func main() {
 		writeSSEStream(c, 30*time.Second, time.Second)
 	})
 
-	// Short SSE for quicker iteration.
 	router.GET("/api/test-sse-short", func(c *gin.Context) {
 		span := trace.SpanFromContext(c.Request.Context())
 		span.SetAttributes(attribute.Bool("traceway.is_stream", true))
 		writeSSEStream(c, 5*time.Second, 500*time.Millisecond)
 	})
 
-	// Long-poll style — no SSE Content-Type, just a long-held connection that
-	// returns JSON at the end. Flagged via the same span attribute.
 	router.GET("/api/test-long-poll", func(c *gin.Context) {
 		span := trace.SpanFromContext(c.Request.Context())
 		span.SetAttributes(attribute.Bool("traceway.is_stream", true))

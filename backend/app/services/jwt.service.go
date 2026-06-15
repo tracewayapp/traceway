@@ -1,9 +1,9 @@
 package services
 
 import (
-	"github.com/tracewayapp/traceway/backend/app/config"
 	"errors"
 	"fmt"
+	"github.com/tracewayapp/traceway/backend/app/config"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -34,7 +34,7 @@ func GenerateToken(userId int, email string) (string, error) {
 		UserId: userId,
 		Email:  email,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)), // 7 days
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
 		},

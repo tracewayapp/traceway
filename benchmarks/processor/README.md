@@ -34,9 +34,26 @@ stacktraces/sec; the drain's symbolicated percentage is the correctness check.
 | `traceway-oxc-disk` | otelcol-bench-traceway | oxc | mmap'd `.tw` disk tier |
 | `traceway-goja-mem` | otelcol-bench-traceway | goja | in-memory resolvers only |
 | `traceway-goja-disk` | otelcol-bench-traceway | goja | mmap'd `.tw` disk tier |
+| `traceway-dart-mem` | otelcol-bench-traceway | DWARF flatten | in-memory `.tw` only |
+| `traceway-dart-disk` | otelcol-bench-traceway | DWARF flatten | mmap'd `.tw` disk tier |
 
-One traceway binary (built with `-tags oxc`) serves all four variants; parser
-and cache mode are runtime config (`parser`, `cache_dir`).
+One traceway binary (built with `-tags oxc`) serves all variants; language
+(JS source maps vs. Dart symbols), parser, and cache mode are runtime config.
+The processor auto-routes a non-symbolic Dart AOT trace to its Dart path; on a
+cache miss it flattens the build's `.symbols` DWARF to a `.tw` (the analog of the
+JS map compile). There is no Honeycomb Dart comparison — Honeycomb's processor is
+JS-only.
+
+## Language
+
+`benchmark-processor` takes a `language` input: `js` (the 5 JS impls incl.
+Honeycomb), `dart` (the two `traceway-dart-*` impls), or `both`. Locally, just
+list the impls in `IMPLS`. The Dart corpus replicates a committed seed
+(`seeds/dart/app.debug.elf`, a real pure-Dart AOT `.symbols` ELF + its trace)
+under N synthetic build-ids — hardlinked, so N builds cost ~one inode — so the
+churn/oom scenarios exercise the cache the same way the JS corpus does. The
+drain's symbolicated check uses Dart markers (`crash.dart` resolved vs.
+`_kDart…SnapshotInstructions` unresolved) selected automatically per impl.
 
 ## Scenarios
 
@@ -72,7 +89,8 @@ timeline, not a single number.
 
 ```
 ./run-local.sh
-IMPLS="traceway-oxc traceway-goja honeycomb" SCENARIOS=churn CONNECTIONS=4,16,64 ./run-local.sh
+IMPLS="traceway-oxc-mem traceway-goja-mem honeycomb" SCENARIOS=churn CONNECTIONS=4,16,64 ./run-local.sh
+IMPLS="traceway-dart-mem traceway-dart-disk" SCENARIOS="hot churn" ./run-local.sh   # Dart
 ```
 
 Needs go, cargo, node, jq. Builds both collectors (the Traceway one with
@@ -98,9 +116,10 @@ but the collector.
 ## GitHub Action
 
 `benchmark-processor` (workflow_dispatch) builds all artifacts on the runner,
-then runs the two implementations as parallel matrix entries, each on its own
-Hetzner server pair. Needs the `HCLOUD_TOKEN` secret. Results are uploaded as
-`results-traceway-oxc` and `results-honeycomb` artifacts.
+then runs the impls as parallel matrix entries, each on its own Hetzner server
+pair. Needs the `HCLOUD_TOKEN` secret. The `language` input selects the matrix:
+`js` (the 5 JS impls), `dart` (`traceway-dart-mem`/`-disk`), or `both`. Results
+are uploaded as `results-<impl>` artifacts.
 
 ## Knobs
 

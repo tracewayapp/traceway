@@ -58,6 +58,10 @@ func seed(opts *options) error {
 				OrganizationId: &org.Id,
 				CreatedAt:      time.Now().UTC(),
 			}
+			if p.sourceMapToken != "" {
+				token := p.sourceMapToken
+				project.SourceMapToken = &token
+			}
 			if err := lit.InsertExistingUuid(tx, project); err != nil {
 				return struct{}{}, err
 			}

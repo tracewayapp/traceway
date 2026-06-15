@@ -1,22 +1,22 @@
-package symbolicator
+package sourcemap
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/scopes"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/scopes"
 )
 
 func fixture(t testing.TB, parts ...string) string {
 	t.Helper()
-	root, err := filepath.Abs(filepath.Join("..", "..", "..", "..", "symbolic"))
+	root, err := filepath.Abs(filepath.Join("..", "..", "..", "..", "..", "symbolic"))
 	if err == nil {
 		if _, statErr := os.Stat(root); statErr == nil {
 			return filepath.Join(append([]string{root, "symbolic-testutils", "fixtures"}, parts...)...)
 		}
 	}
-	return filepath.Join(append([]string{"..", "services", "testdata"}, parts...)...)
+	return filepath.Join(append([]string{"..", "..", "services", "testdata"}, parts...)...)
 }
 
 func mustRead(t testing.TB, path string) []byte {
@@ -140,13 +140,13 @@ func runParityCases(t *testing.T) {
 			mapBytes := mustRead(t, fixture(t, tc.mapPath...))
 			bundle := readIfSet(t, tc.minifiedPath)
 
-			r, err := NewResolver(mapBytes, bundle)
+			tw, err := BuildTW(mapBytes, bundle)
 			if err != nil {
-				t.Fatalf("NewResolver: %v", err)
+				t.Fatalf("BuildTW: %v", err)
 			}
 
 			for _, exp := range tc.expectations {
-				frame, ok := r.Lookup(exp.line, exp.col)
+				frame, ok := LookupTW(tw, exp.line, exp.col)
 
 				if exp.wantNone {
 					if ok {

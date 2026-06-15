@@ -1,7 +1,3 @@
-// Package tracewaybackend provides an embeddable Traceway backend that can be
-// run inside your own Go application. Uses SQLite for all storage — no external
-// databases required.
-//
 package tracewaybackend
 
 import "github.com/tracewayapp/traceway/backend/cmd"
@@ -17,4 +13,6 @@ var (
 	WithDefaultProject = cmd.WithDefaultProject
 	WithMonitoringURL  = cmd.WithMonitoringURL
 	DisableLogging     = cmd.DisableLogging
+
+	WithDefaultProjectSourceMapToken = cmd.WithDefaultProjectSourceMapToken
 )

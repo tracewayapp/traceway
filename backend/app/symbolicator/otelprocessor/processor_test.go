@@ -53,7 +53,7 @@ func newTestProcessor(t *testing.T, mutate func(*Config)) *symbolicatorProcessor
 	if err != nil {
 		t.Fatal(err)
 	}
-	cache, err := newResolverCache(cfg)
+	cache, err := newCache(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

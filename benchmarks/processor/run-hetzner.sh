@@ -27,13 +27,21 @@ command -v hcloud >/dev/null || { echo "hcloud CLI required" >&2; exit 1; }
 [ -d artifacts ] || { echo "artifacts/ missing, build first (see workflow or run-local.sh build_all)" >&2; exit 1; }
 
 case "$IMPL" in
-  honeycomb)          COL_BIN=otelcol-bench-honeycomb; COL_CFG=config-honeycomb.yaml; PARSER=goja; DISK= ;;
-  traceway-oxc-mem)   COL_BIN=otelcol-bench-traceway; COL_CFG=config-traceway.yaml; PARSER=oxc; DISK= ;;
-  traceway-oxc-disk)  COL_BIN=otelcol-bench-traceway; COL_CFG=config-traceway.yaml; PARSER=oxc; DISK=1 ;;
-  traceway-goja-mem)  COL_BIN=otelcol-bench-traceway; COL_CFG=config-traceway.yaml; PARSER=goja; DISK= ;;
-  traceway-goja-disk) COL_BIN=otelcol-bench-traceway; COL_CFG=config-traceway.yaml; PARSER=goja; DISK=1 ;;
+  honeycomb)          COL_BIN=otelcol-bench-honeycomb; COL_CFG=config-honeycomb.yaml; PARSER=goja; DISK=; LANG=js ;;
+  traceway-oxc-mem)   COL_BIN=otelcol-bench-traceway; COL_CFG=config-traceway.yaml; PARSER=oxc; DISK=; LANG=js ;;
+  traceway-oxc-disk)  COL_BIN=otelcol-bench-traceway; COL_CFG=config-traceway.yaml; PARSER=oxc; DISK=1; LANG=js ;;
+  traceway-goja-mem)  COL_BIN=otelcol-bench-traceway; COL_CFG=config-traceway.yaml; PARSER=goja; DISK=; LANG=js ;;
+  traceway-goja-disk) COL_BIN=otelcol-bench-traceway; COL_CFG=config-traceway.yaml; PARSER=goja; DISK=1; LANG=js ;;
+  traceway-dart-mem)  COL_BIN=otelcol-bench-traceway; COL_CFG=config-traceway.yaml; PARSER=goja; DISK=; LANG=dart ;;
+  traceway-dart-disk) COL_BIN=otelcol-bench-traceway; COL_CFG=config-traceway.yaml; PARSER=goja; DISK=1; LANG=dart ;;
   *) echo "unknown impl $IMPL" >&2; exit 1 ;;
 esac
+
+if [ "$LANG" = dart ]; then
+  OK_MARKER=crash.dart; FAIL_MARKER=_kDartIsolateSnapshotInstructions
+else
+  OK_MARKER=../src/inventory.js; FAIL_MARKER=.mjs:1:
+fi
 
 scenario_params() {
   case "$1" in
@@ -75,7 +83,7 @@ provision() {
 
 hcloud ssh-key create --name "bench-key-$RUN_ID" --public-key-from-file "$KEY_FILE.pub" > /dev/null
 LDG_IP=$(provision "bench-ldg-$RUN_ID" "$LDG_TYPE")
-$SSH "root@$LDG_IP" "nohup env DRAIN_ADDR=0.0.0.0:9319 /opt/bench/drain > /opt/bench/drain.log 2>&1 & sleep 1; curl -sf http://127.0.0.1:9319/stats"
+$SSH "root@$LDG_IP" "nohup env DRAIN_ADDR=0.0.0.0:9319 OK_MARKER='$OK_MARKER' FAIL_MARKER='$FAIL_MARKER' /opt/bench/drain > /opt/bench/drain.log 2>&1 & sleep 1; curl -sf http://127.0.0.1:9319/stats"
 
 PREV_SUT_TYPE=""
 SUT_IP=""
@@ -90,8 +98,13 @@ for scenario in $SCENARIOS; do
   outdir="$RESULTS/$tag"
   mkdir -p "$outdir"
 
+  if [ "$LANG" = dart ]; then
+    corpusgen_cmd="./corpusgen --language dart --symbols seeds/dart/app.debug.elf --trace seeds/dart/trace.txt --entries $entries --out corpus-$scenario"
+  else
+    corpusgen_cmd="./corpusgen --bundle app.mjs --map app.mjs.map --entries $entries --pad-kb $pad --map-pad-kb ${mappad%%:*} --mappings-pad-kb ${mappad##*:} --out corpus-$scenario"
+  fi
   for ip in "$SUT_IP" "$LDG_IP"; do
-    $SSH "root@$ip" "cd /opt/bench && [ -f corpus-$scenario/corpus.json ] || ./corpusgen --bundle app.mjs --map app.mjs.map --entries $entries --pad-kb $pad --map-pad-kb ${mappad%%:*} --mappings-pad-kb ${mappad##*:} --out corpus-$scenario"
+    $SSH "root@$ip" "cd /opt/bench && [ -f corpus-$scenario/corpus.json ] || $corpusgen_cmd"
   done
 
   CACHE_DIR_REMOTE=""

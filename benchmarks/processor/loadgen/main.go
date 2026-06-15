@@ -21,17 +21,32 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 )
 
-func buildBody(url string, spans int) []byte {
-	td := ptrace.NewTraces()
-	rs := td.ResourceSpans().AppendEmpty()
-	rs.Resource().Attributes().PutStr("service.name", "processor-bench")
-	rs.Resource().Attributes().PutStr("telemetry.sdk.language", "nodejs")
-	ss := rs.ScopeSpans().AppendEmpty()
+func orDefault(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
+}
+
+func buildBodyJS(url string, spans int) []byte {
 	stack := fmt.Sprintf(`RangeError: cannot reserve 3 units for order ord_1042, only 2 in stock
     at file:///bench/%s:1:435
     at p (file:///bench/%s:1:554)
     at file:///bench/%s:1:1180
     at file:///bench/%s:1:1717`, url, url, url, url)
+	return buildBody("nodejs", "RangeError", "bench", stack, spans)
+}
+
+func buildBodyDart(trace string, spans int) []byte {
+	return buildBody("dart", "DartError", "bench", trace, spans)
+}
+
+func buildBody(lang, excType, excMsg, stack string, spans int) []byte {
+	td := ptrace.NewTraces()
+	rs := td.ResourceSpans().AppendEmpty()
+	rs.Resource().Attributes().PutStr("service.name", "processor-bench")
+	rs.Resource().Attributes().PutStr("telemetry.sdk.language", lang)
+	ss := rs.ScopeSpans().AppendEmpty()
 	for i := 0; i < spans; i++ {
 		sp := ss.Spans().AppendEmpty()
 		sp.SetName("POST /orders/fulfill")
@@ -44,8 +59,8 @@ func buildBody(url string, spans int) []byte {
 		sp.SetSpanID(sid)
 		ev := sp.Events().AppendEmpty()
 		ev.SetName("exception")
-		ev.Attributes().PutStr("exception.type", "RangeError")
-		ev.Attributes().PutStr("exception.message", "bench")
+		ev.Attributes().PutStr("exception.type", excType)
+		ev.Attributes().PutStr("exception.message", excMsg)
 		ev.Attributes().PutStr("exception.stacktrace", stack)
 	}
 	req := ptraceotlp.NewExportRequestFromTraces(td)
@@ -57,16 +72,16 @@ func buildBody(url string, spans int) []byte {
 }
 
 type stepResult struct {
-	Connections int     `json:"connections"`
-	DurationSec float64 `json:"duration_sec"`
-	Sent        int64   `json:"sent"`
-	Ok          int64   `json:"ok"`
-	Rejected    int64   `json:"rejected"`
-	Errors      int64   `json:"errors"`
-	OkReqPerSec float64 `json:"ok_req_per_sec"`
+	Connections  int     `json:"connections"`
+	DurationSec  float64 `json:"duration_sec"`
+	Sent         int64   `json:"sent"`
+	Ok           int64   `json:"ok"`
+	Rejected     int64   `json:"rejected"`
+	Errors       int64   `json:"errors"`
+	OkReqPerSec  float64 `json:"ok_req_per_sec"`
 	StacksPerSec float64 `json:"stacks_per_sec"`
-	P50Ms       float64 `json:"p50_ms"`
-	P99Ms       float64 `json:"p99_ms"`
+	P50Ms        float64 `json:"p50_ms"`
+	P99Ms        float64 `json:"p99_ms"`
 }
 
 func main() {
@@ -83,16 +98,32 @@ func main() {
 		panic(err)
 	}
 	var c struct {
-		Urls []string `json:"urls"`
+		Language string   `json:"language"`
+		Urls     []string `json:"urls"`
+		Builds   []struct {
+			BuildID string `json:"buildId"`
+			Trace   string `json:"trace"`
+		} `json:"builds"`
 	}
 	if err := json.Unmarshal(raw, &c); err != nil {
 		panic(err)
 	}
-	bodies := make([][]byte, len(c.Urls))
-	for i, u := range c.Urls {
-		bodies[i] = buildBody(u, *spansPerReq)
+	var bodies [][]byte
+	if c.Language == "dart" {
+		bodies = make([][]byte, len(c.Builds))
+		for i, b := range c.Builds {
+			bodies[i] = buildBodyDart(b.Trace, *spansPerReq)
+		}
+	} else {
+		bodies = make([][]byte, len(c.Urls))
+		for i, u := range c.Urls {
+			bodies[i] = buildBodyJS(u, *spansPerReq)
+		}
 	}
-	fmt.Printf("prepared %d bodies, %d spans each, %d bytes first\n", len(bodies), *spansPerReq, len(bodies[0]))
+	if len(bodies) == 0 {
+		panic("corpus has no entries")
+	}
+	fmt.Printf("prepared %d %s bodies, %d spans each, %d bytes first\n", len(bodies), orDefault(c.Language, "js"), *spansPerReq, len(bodies[0]))
 
 	var results []stepResult
 	for _, s := range strings.Split(*connSteps, ",") {
@@ -150,16 +181,16 @@ func main() {
 			return lats[int(float64(len(lats)-1)*p)]
 		}
 		r := stepResult{
-			Connections: conns,
-			DurationSec: stepDur.Seconds(),
-			Sent:        sent,
-			Ok:          ok,
-			Rejected:    rejected,
-			Errors:      errs,
-			OkReqPerSec: float64(ok) / stepDur.Seconds(),
+			Connections:  conns,
+			DurationSec:  stepDur.Seconds(),
+			Sent:         sent,
+			Ok:           ok,
+			Rejected:     rejected,
+			Errors:       errs,
+			OkReqPerSec:  float64(ok) / stepDur.Seconds(),
 			StacksPerSec: float64(ok*int64(*spansPerReq)) / stepDur.Seconds(),
-			P50Ms:       pct(0.50),
-			P99Ms:       pct(0.99),
+			P50Ms:        pct(0.50),
+			P99Ms:        pct(0.99),
 		}
 		results = append(results, r)
 		line, _ := json.Marshal(r)

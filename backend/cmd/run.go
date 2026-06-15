@@ -25,7 +25,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/sourcemapbackfill"
 	"github.com/tracewayapp/traceway/backend/app/storage"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/scopes"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/scopes"
 	"github.com/tracewayapp/traceway/backend/static"
 
 	"github.com/coreos/go-systemd/v22/daemon"
@@ -123,7 +123,7 @@ func Run(opts ...Option) {
 			dir = "./twcache"
 		}
 		maxBytes := int64(parsePositiveInt(cfg.SourceMapDiskCacheMaxMB, 2048)) * 1024 * 1024
-		if err := services.EnableSourceMapDiskCache(dir, maxBytes); err != nil {
+		if err := services.EnableSymbolicatorDiskCache(dir, maxBytes); err != nil {
 			panic(fmt.Errorf("source map disk cache init failed: %w", err))
 		}
 	default:
@@ -238,9 +238,6 @@ func Run(opts ...Option) {
 	}
 }
 
-// applyEnvOverrides lets the dev-options path pick up OAuth/OIDC and
-// symbolicator env vars so embedded examples (e.g. devtesting-embedded) can be
-// configured without exposing every knob as a WithXxx option.
 func applyEnvOverrides(cfg *config.Cfg) {
 	for _, m := range []struct {
 		envVar string

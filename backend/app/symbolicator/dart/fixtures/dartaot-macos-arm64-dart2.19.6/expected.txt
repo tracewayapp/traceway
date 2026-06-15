@@ -1,0 +1,7 @@
+level3 (file:///private/tmp/dartsdks/work-2.19.6/crash.dart:3:3)
+level2 (file:///private/tmp/dartsdks/work-2.19.6/crash.dart:6:18)
+level1 (file:///private/tmp/dartsdks/work-2.19.6/crash.dart:7:18)
+main (file:///private/tmp/dartsdks/work-2.19.6/crash.dart:8:16)
+main (file:///private/tmp/dartsdks/work-2.19.6/crash.dart)
+_delayEntrypointInvocation.<anonymous closure> (dart:isolate-patch/isolate_patch.dart:297:19)
+_RawReceivePort._handleMessage (dart:isolate-patch/isolate_patch.dart:192:26)

@@ -115,7 +115,7 @@ func runBench(cfg runConfig) error {
 		if err := os.RemoveAll(cfg.diskDir); err != nil {
 			return err
 		}
-		if err := services.EnableSourceMapDiskCache(cfg.diskDir, int64(cfg.diskMB)<<20); err != nil {
+		if err := services.EnableSymbolicatorDiskCache(cfg.diskDir, int64(cfg.diskMB)<<20); err != nil {
 			return err
 		}
 	default:

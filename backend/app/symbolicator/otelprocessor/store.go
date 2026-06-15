@@ -17,6 +17,8 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/dart"
 )
 
 const (
@@ -102,6 +104,20 @@ func (a *artifactStore) getSourceAndMap(ctx context.Context, frameURL, buildUUID
 		return nil, nil, fmt.Errorf("failed to find source map %q: %w", mapKey, err)
 	}
 	return source, sourceMap, nil
+}
+
+func (a *artifactStore) dartSymbolsKey(buildID, arch string) string {
+	base := dart.NormalizeDebugID(buildID) + "-" + dart.NormalizeArch(arch) + ".symbols"
+	return a.key("", base)
+}
+
+func (a *artifactStore) getDartSymbols(ctx context.Context, buildID, arch string) ([]byte, error) {
+	key := a.dartSymbolsKey(buildID, arch)
+	data, err := a.store.fetch(ctx, key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find dart symbols %q: %w", key, err)
+	}
+	return data, nil
 }
 
 func (a *artifactStore) key(buildUUID, base string) string {

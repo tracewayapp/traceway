@@ -9,7 +9,7 @@ if ! command -v cargo &> /dev/null; then
     exit 1
 fi
 
-cd "$ROOT_DIR/backend/app/symbolicator/scopes/oxc-shim"
+cd "$ROOT_DIR/backend/app/symbolicator/sourcemap/scopes/oxc-shim"
 cargo build --release
 
 echo "Built liboxc_shim.a"

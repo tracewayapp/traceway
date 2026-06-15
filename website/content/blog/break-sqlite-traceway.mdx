@@ -211,6 +211,16 @@ SQLite is doing more than people give it credit for at this scale. The $16.49/mo
 
 What the data also says, plainly: Traceway on SQLite isn't the configuration for the day you grow past a million spans an hour. The cliff is closer than the ingest number suggests, and the next post moves the same workload to ClickHouse on the same box to find out what that buys you.
 
+## The verdict
+
+So, back to post 1's claim: a $16.49/month box runs your whole stack on SQLite. Metrics, yes. Spans, yes. Logs, no.
+
+Metrics and spans never gave me a reason to worry. Metrics ingest at 62k points/sec and the dashboard still loads at 1M rows, which on a small fleet is hours of history. Spans ingest at 30k/sec and read fine to 100k, which is all the recent traffic you'd actually click into. Neither write ceiling is anywhere near a small fleet, and short retention keeps the reads on the right side of the cliff.
+
+Logs are the one I'd keep off SQLite, and it took the whole run to see why. The reads aren't the problem; 114 ms at 100k was the fastest dashboard in the dataset. Volume is the problem. Logs are the highest-volume signal in almost every system, they have the lowest write ceiling of the three (5k/sec, and 5 req/sec is a wall, not a slope), and at a small-fleet rate they fill the read cliff in under a minute. Fast per-row reads don't help when the table outgrows itself faster than anything else and the severity filter times out the moment it does. So I'd send logs to ClickHouse from the start, and not talk myself into "just a few days on SQLite."
+
+The single binary on the cheap box is real for metrics and spans. Logs are where I'd stop trusting it.
+
 ## Raw data + workflow
 
 Everything in this post, runnable from the repo:

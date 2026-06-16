@@ -8,6 +8,7 @@ import { FinalCTA } from "@/components/final-cta";
 import { AuroraBackground } from "@/components/aurora-background";
 import { PricingCalculator } from "@/components/pricing-calculator";
 import { CostComparison } from "@/components/cost-comparison";
+import { ComplianceStrip } from "@/components/compliance-strip";
 import { getCalendlyUrl } from "@/lib/calendly";
 
 export default function CloudPage() {
@@ -74,6 +75,23 @@ export default function CloudPage() {
             <Link href="https://docs.tracewayapp.com" className="btn btn-ghost">
               Self-host for free
             </Link>
+          </div>
+        </section>
+
+        {/* Security & compliance */}
+        <section className="wrap pb-20">
+          <SectionHead
+            align="center"
+            eyebrow="Security & compliance"
+            title={
+              <>
+                Built to <em>enterprise standards.</em>
+              </>
+            }
+            description="Independent third-party audits are underway. SOC 2 Type II and ISO 27001 reports will be available on completion; reach out for current status under NDA."
+          />
+          <div className="mx-auto mt-2 max-w-2xl">
+            <ComplianceStrip />
           </div>
         </section>
       </div>

@@ -1,0 +1,218 @@
+---
+title: "Reading an obfuscated Flutter crash by hand"
+date: "2026-06-15"
+category: "engineering"
+---
+
+The best way I know to handle a complicated problem is to refuse to treat it as one. Break it into small pieces, understand each piece on its own, and the intimidating whole tends to come apart into a stack of boring, knowable parts.
+
+Symbolication is a good test of that. Turning an obfuscated crash back into a function name and a line number looks like magic, so before I automated a single step of it, I sat down and did the whole thing by hand on one real crash. You can't automate what you don't understand yet.
+
+Here's the trace. It fell out of an *obfuscated* release build of a tiny checkout app built in Flutter:
+
+```
+PaymentDeclinedException: card declined for $30.59
+build_id: 'fe664295997135e7b67b648ba66ca9eb'
+isolate_dso_base: 1130a0000, vm_dso_base: 1130a0000
+isolate_instructions: 1130aac00, vm_instructions: 1130a0440
+    #00 abs 00000001131eca6b _kDartIsolateSnapshotInstructions+0x141e6b
+    #01 abs 00000001131ec99b _kDartIsolateSnapshotInstructions+0x141d9b
+    #02 abs 00000001131ec963 _kDartIsolateSnapshotInstructions+0x141d63
+```
+
+Every line is a frame and each of the frames is useless. The frames have no file name, line number, or function name attached to them. The mapping that would make this readable still exists, it's just been pulled out of the app into a separate debug file by `--obfuscate --split-debug-info`. That file is an ELF carrying DWARF debug info, and it holds the entire answer.
+
+DWARF is the format that debug info is written in. It records how the compiled machine code maps back to your source: which address ranges belong to which function, and what file, line, and column each instruction came from. That's exactly the mapping I'm after. The catch is that it's dense on purpose. To keep the debug file small, it's packed as a tree of variable-length records full of back-references, none of it plain text, so you can't `grep` it. To actually see what's in there I wrote a small Go program (about 150 lines) that leans on the standard library's `debug/elf` and `debug/dwarf` to open the symbols file and print the whole tree to a file, with the section bases and every address range already resolved:
+
+```go
+data, _ := elfFile.DWARF()
+reader := data.Reader()
+for {
+    entry, err := reader.Next()
+    if entry == nil || err != nil {
+        break
+    }
+    printEntry(entry)        // tag, every attribute, and the resolved pc-range
+}
+```
+
+That gave me a 4 MB text file. Everything below is read straight out of it.
+
+## The two address spaces
+
+A frame in the crash trace looks like this:
+
+```
+#00 abs 00000001131eca6b _kDartIsolateSnapshotInstructions+0x141e6b
+```
+
+Read left to right, the frame is four pieces. `#00` is the frame number. `abs 00000001131eca6b` is the absolute address the instruction sat at in memory during this run. `_kDartIsolateSnapshotInstructions` is a named symbol that marks the start of the isolate's compiled code, and `+0x141e6b` is how far past that symbol the instruction is. So each frame is really one equation: the absolute address equals the symbol's address this run, plus a fixed offset. The runtime prints that symbol's address in the header as `isolate_instructions: 1130aac00`, which leaves the offset as the one thing I have to solve for.
+
+There are two completely different address spaces in play, and confusing them is the single biggest trap.
+
+**Runtime space** is where the OS happened to load the snapshot this run. Plug the header value into the equation and it checks out: `0x1131eca6b - 0x1130aac00 = 0x141e6b`, exactly the `+0x141e6b` the frame prints. ASLR randomizes that load address on every launch, so the `abs` value itself is throwaway.
+
+**Debug-file space** is the address layout inside `app.darwin-arm64.symbols`. It has nothing to do with where the code loaded at runtime.
+
+The offset `0x141e6b` is the bridge. It's identical in both spaces, because it's just "bytes past the start of the isolate instructions." Add it to that section's base in the debug file and you get a `pc`, short for program counter: the address of a single machine instruction, and the key the debug info is organized by. (That's why the ranges it prints below are "pc-ranges", the span of instructions a function owns.) So to look a frame up you do:
+
+```
+debug_pc = (debug-file base of that section) + offset
+```
+
+From here on, the crash trace has nothing left to offer. It gave me the one durable number, the offset, so I set it aside and open `app.darwin-arm64.symbols` instead. Everything below comes out of that file.
+
+## isolate base and vm base
+
+The first thing I need from the symbols file is that base. It's the first thing my program prints, before the tree, two numbers:
+
+```
+isolate base = 0xc67c0
+vm base      = 0xbc000
+```
+
+A symbols file is an ELF (Executable and Linkable Format), and an ELF holds two kinds of data I need: a symbol table mapping names to addresses, and the `.debug_*` sections that hold the DWARF tree. These bases come from the symbol table, not the tree. They're the addresses of the two symbols a frame can be measured from, `_kDartIsolateSnapshotInstructions` and `_kDartVmSnapshotInstructions`. Frame #00 is measured from the isolate one, so I add its base:
+
+```
+debug_pc = 0xc67c0 + 0x141e6b = 0x20862b
+```
+
+That `0x20862b` is the address I'll hunt for in the tree. (Notice the isolate base `0xc67c0` matches the compile unit's `Lowpc` below. That makes sense: the isolate instructions begin exactly where the compiled code begins.)
+
+## The shape of the tree
+
+Now I have an address, `0x20862b`, that the debug info can speak to. The bases came out of the symbol table; everything from here lives in the `.debug_*` sections, which together form one big tree.
+
+Each node in that tree is an *entry*: a type (its tag) plus a list of attributes. Entries nest by containment, and three tags carry the whole story:
+
+- **CompileUnit** is the root. Dart compiles the entire app into one unit, so there's a single one and everything else hangs off it.
+- **Subprogram** is a function, carrying its name and the address range its machine code covers.
+- **InlinedSubroutine** is a function the compiler pasted into a caller, nested inside whatever it was inlined into.
+
+Resolving the address is a walk down that tree: start at the root, step into whichever child's range contains `0x20862b`, and repeat until nothing deeper contains it.
+
+## The CompileUnit entry
+
+The walk starts at the root, the one `CompileUnit`:
+
+```
+CompileUnit @0xb
+    Name        "snapshot_assembly.S"
+    Producer    "Dart 3.10.1 (stable) ... on "macos_arm64""
+    Lowpc       0xc67c0
+    Highpc      0x247bd4
+    StmtList    0
+    pc-range    [0xc67c0-0x247bd4)
+```
+
+- **@0xb** is the DIE offset, this entry's byte position in the DWARF data. Every entry has one, and it's the address other entries point at.
+- **Name** is `snapshot_assembly.S`. Dart emits the entire AOT snapshot as one synthetic assembly file, so the whole program is a single compile unit.
+- **Producer** is the exact toolchain that built it, handy for checking you've got the matching symbols file.
+- **Lowpc / Highpc** are the `[start, end)` span of all code in the unit, in debug-file space.
+- **StmtList** is an offset into the line-number program (`.debug_line`). This is where `file:line:column` actually lives. My dump only walks the tree, so the precise crash line comes from this table, not from the `Decl*` fields below.
+- **pc-range** is the same span, resolved and pretty-printed. `0x20862b` falls inside `[0xc67c0-0x247bd4)`, so I descend into this unit.
+
+## Subprogram, a function, in two flavors
+
+Functions show up as `Subprogram` entries, and there are two kinds.
+
+**The abstract definition** is the shared "what this function is" record:
+
+```
+Subprogram @0x36399
+    Name        "chargeCard"
+    DeclFile    262
+    DeclLine    18
+    DeclColumn  1
+    Inline      1
+```
+
+- **DeclFile** `262` is an index into the file table (which lives in the line program, not this dump). It resolves to `app/lib/main.dart`.
+- **DeclLine / DeclColumn** are where the function is *declared*, the top of its declaration. That's line 18, not the crashing line.
+- **Inline 1** means this function got inlined somewhere. This entry has no address; it's the template every copy refers back to.
+
+**The concrete instance** is a real, emitted copy:
+
+```
+Subprogram @0x788f5
+    AbstractOrigin  222105
+    Lowpc           0x208570
+    Highpc          0x208654
+    Artificial      false
+    pc-range        [0x208570-0x208654)
+```
+
+It has no `Name` of its own. Instead **AbstractOrigin 222105** points back to the abstract definition. Its `Lowpc/Highpc` are the actual machine-code span of this copy of `chargeCard`, and `0x208570 <= 0x20862b < 0x208654`, so this is my frame. **Artificial false** means it maps to real user source rather than a compiler-synthesized stub.
+
+## AbstractOrigin
+
+That `222105` is the move that ties the two flavors together. It's a reference, by DIE offset, printed in decimal. Convert it to hex and `222105 = 0x36399`, which is exactly the `chargeCard` abstract entry above. That's how a nameless concrete instance gets its name. The compiler stores the name once and points every copy at it.
+
+## InlinedSubroutine, a function body pasted into a caller
+
+Frame #00 is a clean leaf, and so is every other frame in this trace. A more aggressively optimized build often isn't so tidy, because the compiler inlines small functions into their callers. That case shows up as an `InlinedSubroutine`, and one looks like this:
+
+```
+InlinedSubroutine @0x3e556
+    AbstractOrigin  740
+    Lowpc           0xc6a74
+    Highpc          0xc6ab0
+    CallFile        1
+    CallLine        835
+    CallColumn      25
+    pc-range        [0xc6a74-0xc6ab0)
+```
+
+(That example is from deep inside Flutter's framework, `_TransformedPointerEvent.delta`, not our checkout code, but the shape is identical.)
+
+- **AbstractOrigin** names which function got inlined here (follow it, same as before).
+- **Lowpc/Highpc** are the span inside the parent where this inlined copy's code sits.
+- **CallFile / CallLine / CallColumn** are the source location of the *call site*, where in the parent this inlined call was written. These three only appear on inlined entries, and they're what lets you rebuild the call line of each inlined caller.
+
+So one physical address can sit inside an `InlinedSubroutine`, inside another `InlinedSubroutine`, inside a `Subprogram`. That nesting is the inline stack.
+
+## Putting it together: resolving frame #00
+
+With only this file, reading the fields by hand:
+
+1. `pc = isolate base + offset = 0xc67c0 + 0x141e6b = 0x20862b`
+2. The `CompileUnit` pc-range `[0xc67c0-0x247bd4)` contains `0x20862b`, so descend into it.
+3. Find the `Subprogram` whose pc-range contains `0x20862b`: `@0x788f5`, range `[0x208570-0x208654)`. It fits.
+4. It has no name; `AbstractOrigin 222105` (`= 0x36399`) resolves to `chargeCard`.
+5. Look for an `InlinedSubroutine` inside it whose pc-range contains the pc. There's none, so `chargeCard` is the leaf frame.
+6. The final `main.dart:20:3` comes from the line-number program at this pc, not from `DeclLine`. `DeclLine 18` is just where the declaration starts.
+
+Result: `#0 chargeCard (main.dart:20:3)`. Three sources of truth, one address, no guessing.
+
+If step 5 had found nested `InlinedSubroutine`s, I'd emit innermost first, and each outer frame's `file:line:col` would come from the `CallFile/CallLine/CallColumn` of the frame nested inside it.
+
+## The general algorithm
+
+Stated purely in terms of the fields above:
+
+1. `pc = base[isolate|vm] + offset`.
+2. Pick the `CompileUnit` whose pc-range contains `pc`.
+3. Find the `Subprogram` whose pc-range contains `pc`; resolve its name through `AbstractOrigin`.
+4. Recurse into any `InlinedSubroutine` whose pc-range contains `pc`. Each level is one more, deeper, inlined frame.
+5. Emit innermost to outermost. The innermost location is the line table at `pc`; every outer frame's location is the `Call*` fields of the frame nested inside it.
+
+So `pc-range` answers "which function or inline owns this address," `AbstractOrigin` answers "what's its name," `Decl*` describes the function's own declaration site, and `Call*` rebuilds the call line of each inlined caller. That's the entire job.
+
+## Does it actually work?
+
+Running that over all 17 frames gives back the checkout chain, names and all, recovered from a binary with every identifier stripped out:
+
+```
+#0  chargeCard (main.dart:20:3)
+#1  applyTax (main.dart:30:10)
+#2  checkout (main.dart:35:10)
+#3  main.<anonymous closure> (main.dart:47:7)
+```
+
+I checked every frame against Dart's own `decode` tool from the `native_stack_traces` package (run with `-v`, so it expands every frame instead of hiding the VM-internal ones), and it agrees on all 17. Once you've read it out of the tree by hand once, the "decode" button stops being magic and starts being something you understand.
+
+And that's the point of doing it this way. The fields are the whole story: rebase the offset, find the range, follow `AbstractOrigin` for the name, read `Call*` to unfold the inlines, take the leaf line from the line table. I built exactly this into Traceway so you never have to open the tree yourself. Upload the `.symbols` file once per release, and obfuscated Flutter crashes come back with names and line numbers attached. It's part of [Traceway's symbolicator](https://docs.tracewayapp.com/symbolicator), and if you want the same autopsy for JavaScript, I did it for [source maps here](/blog/deep-dive-into-the-sourcemaps).
+
+---
+
+*I'm building this in the open. Traceway is MIT-licensed and OpenTelemetry-native, and the Flutter symbolicator above ships with it. Have you ever cracked open the debug format under one of your own tools? I'd love to hear what you found. You can always reach me at dusan@tracewayapp.com.*

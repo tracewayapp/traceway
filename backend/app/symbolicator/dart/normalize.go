@@ -47,3 +47,56 @@ func IsValidArch(arch string) bool {
 	}
 	return true
 }
+
+func normalizeFilePath(path string) string {
+	if path == "" {
+		return path
+	}
+	if pkg, rest, ok := packageFromHosted(path); ok {
+		return "package:" + pkg + "/" + rest
+	}
+	if pkg, rest, ok := packageFromPackagesDir(path); ok {
+		return "package:" + pkg + "/" + rest
+	}
+	if strings.HasPrefix(path, "/") {
+		if i := strings.LastIndex(path, "/lib/"); i != -1 {
+			if j := strings.LastIndex(path[:i], "/"); j >= 0 {
+				return path[j:]
+			}
+			return path[i:]
+		}
+	}
+	return path
+}
+
+func packageFromPackagesDir(p string) (string, string, bool) {
+	_, after, ok := strings.Cut(p, "/packages/")
+	if !ok {
+		return "", "", false
+	}
+	pkg, rest, ok := strings.Cut(after, "/")
+	if !ok || pkg == "" || !strings.HasPrefix(rest, "lib/") {
+		return "", "", false
+	}
+	return pkg, rest[len("lib/"):], true
+}
+
+func packageFromHosted(p string) (string, string, bool) {
+	_, after, ok := strings.Cut(p, "/hosted/")
+	if !ok {
+		return "", "", false
+	}
+	_, after, ok = strings.Cut(after, "/")
+	if !ok {
+		return "", "", false
+	}
+	dir, rest, ok := strings.Cut(after, "/")
+	if !ok || dir == "" || !strings.HasPrefix(rest, "lib/") {
+		return "", "", false
+	}
+	pkg, _, ok := strings.Cut(dir, "-")
+	if !ok || pkg == "" {
+		return "", "", false
+	}
+	return pkg, rest[len("lib/"):], true
+}

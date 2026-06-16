@@ -36,6 +36,7 @@
             ? isJsFramework(projectsState.currentProject.framework)
             : false) || isJsLanguage(occurrence?.attributes?.['telemetry.sdk.language'])
     );
+    const isFlutter = $derived(projectsState.currentProject?.framework === 'flutter');
     const firstLineOfStackTrace = $derived(occurrence?.stackTrace.split('\n')[0] || 'Exception');
     const hasMoreOccurrences = $derived(total > 10);
     const subtitleText = $derived(occurrence ? `Event from ${formatDateTime(occurrence.recordedAt, { timezone })}` : 'Loading...');
@@ -175,6 +176,7 @@
             stackTrace={occurrence.stackTrace}
             {isMessage}
             {isJavaScript}
+            {isFlutter}
             bind:showArchiveDialog={showArchiveDialog}
             bind:archiving={archiving}
         />

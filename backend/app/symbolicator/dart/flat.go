@@ -203,7 +203,7 @@ func flatten(data *dwarf.Data, base map[string]uint64, buildID string) *flatBuil
 			start := uint32(len(f.frames))
 			for _, sf := range sfs {
 				f.frames = append(f.frames, flatFrame{
-					fileIdx: files.intern(sf.File),
+					fileIdx: files.intern(normalizeFilePath(sf.File)),
 					line:    int32(sf.Line),
 					col:     int32(sf.Col),
 					fnIdx:   fns.intern(sf.Function),
@@ -414,7 +414,7 @@ func (in *interner) intern(s string) int32 {
 
 var dwMagic = [4]byte{'T', 'W', 'D', 'F'}
 
-const dwVersion = 1
+const dwVersion = 3
 
 var ErrInvalidFlat = errors.New("dart: invalid flat data")
 

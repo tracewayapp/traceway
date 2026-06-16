@@ -10,6 +10,7 @@
 		stackTrace: string;
 		isMessage?: boolean;
 		isJavaScript?: boolean;
+		isFlutter?: boolean;
 		firstSeen?: string;
 		lastSeen?: string;
 		totalCount?: number;
@@ -22,6 +23,7 @@
 		stackTrace,
 		isMessage = false,
 		isJavaScript = false,
+		isFlutter = false,
 		firstSeen,
 		lastSeen,
 		totalCount,
@@ -33,7 +35,7 @@
 	const tz = $derived(timezone ?? getTimezone());
 	const showStats = $derived(firstSeen && lastSeen && totalCount !== undefined);
 	const parsed = $derived(parseStackTrace(stackTrace));
-	const usePretty = $derived(isJavaScript && parsed.groups.length > 0);
+	const usePretty = $derived((isJavaScript || isFlutter) && parsed.groups.length > 0);
 
 	let expandedGroups = $state<Set<number>>(new Set());
 

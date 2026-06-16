@@ -18,6 +18,17 @@ export type ParsedStackTrace = {
 	groups: FrameGroup[];
 };
 
+function isLibraryLocation(location: string): boolean {
+	return (
+		location.includes('node_modules') ||
+		/^node:/.test(location) ||
+		/^dart:/.test(location) ||
+		/^third_party\//.test(location) ||
+		/^package:(flutter(\/|_)|collection\/)/.test(location) ||
+		/SnapshotInstructions\+0x/.test(location)
+	);
+}
+
 function extractPackageName(location: string): string {
 	const nodeModulesMatch = location.match(/node_modules\/([^/]+)/);
 	if (nodeModulesMatch) return nodeModulesMatch[1];
@@ -28,6 +39,9 @@ function extractPackageName(location: string): string {
 	const dartMatch = location.match(/^(package:[^/]+|dart:[^/]+)/);
 	if (dartMatch) return dartMatch[1];
 
+	if (/^third_party\//.test(location)) return 'dart sdk';
+	if (/SnapshotInstructions\+0x/.test(location)) return 'unresolved';
+
 	return 'library';
 }
 
@@ -35,14 +49,42 @@ export function parseStackTrace(raw: string): ParsedStackTrace {
 	const lines = raw.split('\n');
 	const frames: StackFrame[] = [];
 	let firstFrameIndex = -1;
-	let firstFuncNameIndex = -1;
+	let messageEndIndex = -1;
 
 	const locationPattern = /^\s*.+:\d+:\d+$/;
+	const dartFramePattern = /^\s*#\d+\s+(.+?)\s+\((.+)\)\s*$/;
+	const dartUnresolvedPattern = /^\s*#\d+\s+(\S+SnapshotInstructions\+0x[0-9a-fA-F]+)\s*$/;
 
 	for (let i = 0; i < lines.length; i++) {
+		const dartMatch = lines[i].match(dartFramePattern);
+		if (dartMatch) {
+			const location = dartMatch[2].trim();
+			if (firstFrameIndex === -1) {
+				firstFrameIndex = i;
+				messageEndIndex = i;
+			}
+			frames.push({
+				functionName: dartMatch[1].trim(),
+				location,
+				isLibrary: isLibraryLocation(location)
+			});
+			continue;
+		}
+
+		const unresolvedMatch = lines[i].match(dartUnresolvedPattern);
+		if (unresolvedMatch) {
+			if (firstFrameIndex === -1) {
+				firstFrameIndex = i;
+				messageEndIndex = i;
+			}
+			frames.push({ functionName: null, location: unresolvedMatch[1].trim(), isLibrary: true });
+			continue;
+		}
+
 		if (locationPattern.test(lines[i])) {
 			const location = lines[i].trim();
 			let functionName: string | null = null;
+			let funcNameIndex = -1;
 
 			for (let j = i - 1; j >= 0; j--) {
 				const prevLine = lines[j].trim();
@@ -52,29 +94,24 @@ export function parseStackTrace(raw: string): ParsedStackTrace {
 						firstFrameIndex === -1 && !prevLine.endsWith('()') && prevLine.includes(': ');
 					if (!messageLike) {
 						functionName = prevLine;
-						if (firstFrameIndex === -1) firstFuncNameIndex = j;
+						funcNameIndex = j;
 					}
 				}
 				break;
 			}
 
-			if (firstFrameIndex === -1) firstFrameIndex = i;
+			if (firstFrameIndex === -1) {
+				firstFrameIndex = i;
+				messageEndIndex = funcNameIndex !== -1 ? funcNameIndex : i;
+			}
 
-			frames.push({
-				functionName,
-				location,
-				isLibrary: location.includes('node_modules') ||
-					/^(package:flutter\/|dart:|package:collection\/|node:)/.test(location)
-			});
+			frames.push({ functionName, location, isLibrary: isLibraryLocation(location) });
 		}
 	}
 
-	const errorEndIndex = firstFrameIndex === -1
-		? lines.length
-		: firstFuncNameIndex !== -1 ? firstFuncNameIndex : firstFrameIndex;
 	const errorMessage = firstFrameIndex === -1
 		? raw.trim()
-		: lines.slice(0, errorEndIndex).join('\n').trim();
+		: lines.slice(0, messageEndIndex).join('\n').trim();
 
 	const groups: FrameGroup[] = [];
 

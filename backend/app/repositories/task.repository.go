@@ -440,13 +440,19 @@ func (e *taskRepository) GetTaskStats(ctx context.Context, projectId uuid.UUID, 
 	return &stats, nil
 }
 
-func (e *taskRepository) FindByDistributedTraceId(ctx context.Context, distributedTraceId uuid.UUID, projectIds []uuid.UUID) ([]models.Task, error) {
+func (e *taskRepository) FindByDistributedTraceId(ctx context.Context, distributedTraceId uuid.UUID, projectIds []uuid.UUID, recordedAt *time.Time) ([]models.Task, error) {
 	query := `SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id
 		FROM tasks
-		WHERE distributed_trace_id = ? AND project_id IN (?)
-		ORDER BY recorded_at ASC`
+		WHERE distributed_trace_id = ? AND project_id IN (?)`
+	args := []any{distributedTraceId, projectIds}
+	if recordedAt != nil {
+		from, to := traceWindowBounds(*recordedAt)
+		query += ` AND recorded_at >= ? AND recorded_at <= ?`
+		args = append(args, from, to)
+	}
+	query += ` ORDER BY recorded_at ASC`
 
-	rows, err := chdb.Conn.Query(ctx, query, distributedTraceId, projectIds)
+	rows, err := chdb.Conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

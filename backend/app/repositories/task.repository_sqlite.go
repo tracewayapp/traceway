@@ -472,7 +472,7 @@ func (e *taskRepository) GetTaskStats(ctx context.Context, projectId uuid.UUID, 
 	}, nil
 }
 
-func (e *taskRepository) FindByDistributedTraceId(ctx context.Context, distributedTraceId uuid.UUID, projectIds []uuid.UUID) ([]models.Task, error) {
+func (e *taskRepository) FindByDistributedTraceId(ctx context.Context, distributedTraceId uuid.UUID, projectIds []uuid.UUID, recordedAt *time.Time) ([]models.Task, error) {
 	if len(projectIds) == 0 {
 		return nil, nil
 	}
@@ -484,8 +484,14 @@ func (e *taskRepository) FindByDistributedTraceId(ctx context.Context, distribut
 		params[key] = pid
 	}
 	query := `SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id
-		FROM tasks WHERE distributed_trace_id = :trace_id AND project_id IN (` + strings.Join(placeholders, ",") + `)
-		ORDER BY recorded_at ASC`
+		FROM tasks WHERE distributed_trace_id = :trace_id AND project_id IN (` + strings.Join(placeholders, ",") + `)`
+	if recordedAt != nil {
+		from, to := traceWindowBounds(*recordedAt)
+		query += ` AND recorded_at >= :from AND recorded_at <= :to`
+		params["from"] = NewSQLiteTime(from)
+		params["to"] = NewSQLiteTime(to)
+	}
+	query += ` ORDER BY recorded_at ASC`
 
 	parsedQuery, args, err := lit.ParseNamedQuery(db.Driver, query, params)
 	if err != nil {

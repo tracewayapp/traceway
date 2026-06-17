@@ -538,7 +538,7 @@
 							<Table.Row
 								class="cursor-pointer hover:bg-muted/50"
 								onclick={createRowClickHandler(
-									`/endpoints/${encodeURIComponent(decodeURIComponent(data.endpoint))}/${transaction.id}`,
+									`/endpoints/${encodeURIComponent(decodeURIComponent(data.endpoint))}/${transaction.id}?t=${encodeURIComponent(transaction.recordedAt)}`,
 									'preset',
 									'from',
 									'to'

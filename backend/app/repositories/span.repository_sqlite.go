@@ -84,13 +84,20 @@ func (r *spanRepository) InsertAsync(ctx context.Context, spans []models.Span) e
 	return tx.Commit()
 }
 
-func (r *spanRepository) FindByTraceId(ctx context.Context, projectId, traceId uuid.UUID) ([]models.Span, error) {
-	rows, err := lit.SelectNamed[span](db.TelemetryDB,
-		`SELECT id, trace_id, project_id, name, start_time, duration, recorded_at, parent_span_id, attributes
+func (r *spanRepository) FindByTraceId(ctx context.Context, projectId, traceId uuid.UUID, recordedAt *time.Time) ([]models.Span, error) {
+	query := `SELECT id, trace_id, project_id, name, start_time, duration, recorded_at, parent_span_id, attributes
 		FROM spans
-		WHERE project_id = :project_id AND trace_id = :trace_id
-		ORDER BY start_time ASC`,
-		lit.P{"project_id": projectId, "trace_id": traceId})
+		WHERE project_id = :project_id AND trace_id = :trace_id`
+	params := lit.P{"project_id": projectId, "trace_id": traceId}
+	if recordedAt != nil {
+		from, to := traceWindowBounds(*recordedAt)
+		query += ` AND recorded_at >= :from AND recorded_at <= :to`
+		params["from"] = NewSQLiteTime(from)
+		params["to"] = NewSQLiteTime(to)
+	}
+	query += ` ORDER BY start_time ASC`
+
+	rows, err := lit.SelectNamed[span](db.TelemetryDB, query, params)
 	if err != nil {
 		return nil, err
 	}

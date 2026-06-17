@@ -336,17 +336,23 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.
 }
 
 // FindById returns a single endpoint by ID
-func (e *endpointRepository) FindById(ctx context.Context, projectId, endpointId uuid.UUID) (*models.Endpoint, error) {
+func (e *endpointRepository) FindById(ctx context.Context, projectId, endpointId uuid.UUID, recordedAt *time.Time) (*models.Endpoint, error) {
 	query := `SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, is_root
 		FROM endpoints
-		WHERE project_id = ? AND id = ?
-		LIMIT 1`
+		WHERE project_id = ? AND id = ?`
+	args := []any{projectId, endpointId}
+	if recordedAt != nil {
+		from, to := traceWindowBounds(*recordedAt)
+		query += ` AND recorded_at >= ? AND recorded_at <= ?`
+		args = append(args, from, to)
+	}
+	query += ` LIMIT 1`
 
 	var t models.Endpoint
 	var attributesJSON string
 	var isRoot uint8
 
-	err := chdb.Conn.QueryRow(ctx, query, projectId, endpointId).Scan(
+	err := chdb.Conn.QueryRow(ctx, query, args...).Scan(
 		&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt,
 		&t.StatusCode, &t.BodySize, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.DistributedTraceId, &t.SpanId, &isRoot)
 	t.IsRoot = isRoot == 1
@@ -843,13 +849,19 @@ func (e *endpointRepository) UpsertSlowEndpoint(ctx context.Context, projectId u
 	return batch.Send()
 }
 
-func (e *endpointRepository) FindByDistributedTraceId(ctx context.Context, distributedTraceId uuid.UUID, projectIds []uuid.UUID) ([]models.Endpoint, error) {
+func (e *endpointRepository) FindByDistributedTraceId(ctx context.Context, distributedTraceId uuid.UUID, projectIds []uuid.UUID, recordedAt *time.Time) ([]models.Endpoint, error) {
 	query := `SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id
 		FROM endpoints
-		WHERE distributed_trace_id = ? AND project_id IN (?)
-		ORDER BY recorded_at ASC`
+		WHERE distributed_trace_id = ? AND project_id IN (?)`
+	args := []any{distributedTraceId, projectIds}
+	if recordedAt != nil {
+		from, to := traceWindowBounds(*recordedAt)
+		query += ` AND recorded_at >= ? AND recorded_at <= ?`
+		args = append(args, from, to)
+	}
+	query += ` ORDER BY recorded_at ASC`
 
-	rows, err := chdb.Conn.Query(ctx, query, distributedTraceId, projectIds)
+	rows, err := chdb.Conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

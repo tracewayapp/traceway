@@ -285,7 +285,7 @@ func (r *aiTraceRepository) FindById(ctx context.Context, projectId, traceId uui
 	return &t, nil
 }
 
-func (r *aiTraceRepository) FindByDistributedTraceId(ctx context.Context, distributedTraceId uuid.UUID, projectIds []uuid.UUID) ([]models.AiTrace, error) {
+func (r *aiTraceRepository) FindByDistributedTraceId(ctx context.Context, distributedTraceId uuid.UUID, projectIds []uuid.UUID, recordedAt *time.Time) ([]models.AiTrace, error) {
 	if len(projectIds) == 0 {
 		return nil, nil
 	}
@@ -303,8 +303,13 @@ func (r *aiTraceRepository) FindByDistributedTraceId(ctx context.Context, distri
 		trace_name, user_id, finish_reason, server_name, app_version,
 		storage_key, attributes, distributed_trace_id, is_root
 	FROM ai_traces
-	WHERE distributed_trace_id = ? AND project_id IN (` + strings.Join(placeholders, ",") + `)
-	ORDER BY recorded_at ASC`
+	WHERE distributed_trace_id = ? AND project_id IN (` + strings.Join(placeholders, ",") + `)`
+	if recordedAt != nil {
+		from, to := traceWindowBounds(*recordedAt)
+		query += ` AND recorded_at >= ? AND recorded_at <= ?`
+		args = append(args, from, to)
+	}
+	query += ` ORDER BY recorded_at ASC`
 
 	rows, err := chdb.Conn.Query(ctx, query, args...)
 	if err != nil {

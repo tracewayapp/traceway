@@ -232,7 +232,7 @@ func TestEndpointRepository_FindById(t *testing.T) {
 		t.Fatalf("InsertAsync failed: %v", err)
 	}
 
-	found, err := EndpointRepository.FindById(ctx, projectId, ep.Id)
+	found, err := EndpointRepository.FindById(ctx, projectId, ep.Id, nil)
 	if err != nil {
 		t.Fatalf("FindById failed: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestEndpointRepository_FindById_NotFound(t *testing.T) {
 	setupTestDB(t)
 	ctx := context.Background()
 
-	found, err := EndpointRepository.FindById(ctx, uuid.New(), uuid.New())
+	found, err := EndpointRepository.FindById(ctx, uuid.New(), uuid.New(), nil)
 	if err != nil {
 		t.Fatalf("FindById failed: %v", err)
 	}

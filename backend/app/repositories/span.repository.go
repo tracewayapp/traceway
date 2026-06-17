@@ -5,6 +5,7 @@ package repositories
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/tracewayapp/traceway/backend/app/chdb"
 	"github.com/tracewayapp/traceway/backend/app/models"
@@ -50,14 +51,20 @@ func (r *spanRepository) InsertAsync(ctx context.Context, spans []models.Span) e
 	return batch.Send()
 }
 
-func (r *spanRepository) FindByTraceId(ctx context.Context, projectId, traceId uuid.UUID) ([]models.Span, error) {
+func (r *spanRepository) FindByTraceId(ctx context.Context, projectId, traceId uuid.UUID, recordedAt *time.Time) ([]models.Span, error) {
 	query := `SELECT
 		id, trace_id, project_id, name, start_time, duration, recorded_at, parent_span_id, attributes
 	FROM spans
-	WHERE project_id = ? AND trace_id = ?
-	ORDER BY start_time ASC`
+	WHERE project_id = ? AND trace_id = ?`
+	args := []any{projectId, traceId}
+	if recordedAt != nil {
+		from, to := traceWindowBounds(*recordedAt)
+		query += ` AND recorded_at >= ? AND recorded_at <= ?`
+		args = append(args, from, to)
+	}
+	query += ` ORDER BY start_time ASC`
 
-	rows, err := chdb.Conn.Query(ctx, query, projectId, traceId)
+	rows, err := chdb.Conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

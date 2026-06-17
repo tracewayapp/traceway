@@ -158,15 +158,15 @@ func (l logController) List(c *gin.Context) {
 func (l logController) resolveDistributedTraceIds(ctx context.Context, dtid uuid.UUID, projectId uuid.UUID, excludeTraceHex string) ([]string, error) {
 	projectIds := []uuid.UUID{projectId}
 
-	endpoints, err := repositories.EndpointRepository.FindByDistributedTraceId(ctx, dtid, projectIds)
+	endpoints, err := repositories.EndpointRepository.FindByDistributedTraceId(ctx, dtid, projectIds, nil)
 	if err != nil {
 		return nil, err
 	}
-	tasks, err := repositories.TaskRepository.FindByDistributedTraceId(ctx, dtid, projectIds)
+	tasks, err := repositories.TaskRepository.FindByDistributedTraceId(ctx, dtid, projectIds, nil)
 	if err != nil {
 		return nil, err
 	}
-	aiTraces, err := repositories.AiTraceRepository.FindByDistributedTraceId(ctx, dtid, projectIds)
+	aiTraces, err := repositories.AiTraceRepository.FindByDistributedTraceId(ctx, dtid, projectIds, nil)
 	if err != nil {
 		return nil, err
 	}

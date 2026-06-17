@@ -53,14 +53,16 @@ func (t taskDetailController) GetTaskDetail(c *gin.Context) {
 	span := traceway.StartSpan(c, "loading task")
 	task, err := repositories.TaskRepository.FindById(c, projectId, taskId)
 	span.End()
-	if err != nil {
+	if err != nil || task == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
 		return
 	}
 
+	recordedAt := task.RecordedAt
+
 	// Get spans (flat list ordered by start_time)
 	span = traceway.StartSpan(c, "loading spans")
-	spans, err := repositories.SpanRepository.FindByTraceId(c, projectId, taskId)
+	spans, err := repositories.SpanRepository.FindByTraceId(c, projectId, taskId, &recordedAt)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading spans: %w", err))
@@ -72,7 +74,7 @@ func (t taskDetailController) GetTaskDetail(c *gin.Context) {
 	var messages []TaskMessageInfo
 
 	span = traceway.StartSpan(c, "loading exceptions")
-	allExceptions, err := repositories.ExceptionStackTraceRepository.FindAllByTraceId(c, projectId, taskId)
+	allExceptions, err := repositories.ExceptionStackTraceRepository.FindAllByTraceId(c, projectId, taskId, &recordedAt)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading allExceptions: %w", err))

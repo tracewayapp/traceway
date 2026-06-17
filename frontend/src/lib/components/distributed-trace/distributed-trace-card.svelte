@@ -15,9 +15,10 @@
 	interface Props {
 		distributedTraceId: string;
 		currentExceptionHash?: string;
+		recordedAt?: string;
 	}
 
-	let { distributedTraceId, currentExceptionHash }: Props = $props();
+	let { distributedTraceId, currentExceptionHash, recordedAt }: Props = $props();
 
 	const timezone = $derived(getTimezone());
 
@@ -31,7 +32,7 @@
 		try {
 			response = (await api.post(
 				`/distributed-traces/${distributedTraceId}`,
-				{}
+				recordedAt ? { recordedAt } : {}
 			)) as DistributedTraceResponse;
 		} catch (e: any) {
 			error = e.message || 'Failed to load distributed trace';

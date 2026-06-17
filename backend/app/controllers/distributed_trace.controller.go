@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
+	"time"
 
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
@@ -16,6 +17,10 @@ import (
 )
 
 type distributedTraceController struct{}
+
+type distributedTraceRequest struct {
+	RecordedAt *time.Time `json:"recordedAt"`
+}
 
 type DistributedTraceNode struct {
 	ProjectId   uuid.UUID              `json:"projectId"`
@@ -40,6 +45,9 @@ func (d distributedTraceController) GetDistributedTrace(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid distributedTraceId"})
 		return
 	}
+
+	var request distributedTraceRequest
+	_ = c.ShouldBindJSON(&request)
 
 	userId := middleware.GetUserId(c)
 
@@ -68,25 +76,25 @@ func (d distributedTraceController) GetDistributedTrace(c *gin.Context) {
 
 	ctx := context.Background()
 
-	endpoints, err := repositories.EndpointRepository.FindByDistributedTraceId(ctx, distributedTraceId, projectIds)
+	endpoints, err := repositories.EndpointRepository.FindByDistributedTraceId(ctx, distributedTraceId, projectIds, request.RecordedAt)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to query endpoints: %w", err))
 		return
 	}
 
-	tasks, err := repositories.TaskRepository.FindByDistributedTraceId(ctx, distributedTraceId, projectIds)
+	tasks, err := repositories.TaskRepository.FindByDistributedTraceId(ctx, distributedTraceId, projectIds, request.RecordedAt)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to query tasks: %w", err))
 		return
 	}
 
-	aiTraces, err := repositories.AiTraceRepository.FindByDistributedTraceId(ctx, distributedTraceId, projectIds)
+	aiTraces, err := repositories.AiTraceRepository.FindByDistributedTraceId(ctx, distributedTraceId, projectIds, request.RecordedAt)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to query ai traces: %w", err))
 		return
 	}
 
-	exceptions, err := repositories.ExceptionStackTraceRepository.FindByDistributedTraceId(ctx, distributedTraceId, projectIds)
+	exceptions, err := repositories.ExceptionStackTraceRepository.FindByDistributedTraceId(ctx, distributedTraceId, projectIds, request.RecordedAt)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to query exceptions: %w", err))
 		return

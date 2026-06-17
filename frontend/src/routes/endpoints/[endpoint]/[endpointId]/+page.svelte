@@ -40,7 +40,7 @@
 		try {
 			const result = await api.post(
 				`/endpoints/${data.endpointId}`,
-				{},
+				data.recordedAt ? { recordedAt: data.recordedAt } : {},
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
 			response = result;
@@ -282,7 +282,10 @@
 		/>
 
 		{#if response.endpoint.distributedTraceId}
-			<DistributedTraceCard distributedTraceId={response.endpoint.distributedTraceId} />
+			<DistributedTraceCard
+				distributedTraceId={response.endpoint.distributedTraceId}
+				recordedAt={response.endpoint.recordedAt}
+			/>
 		{/if}
 	{/if}
 </div>

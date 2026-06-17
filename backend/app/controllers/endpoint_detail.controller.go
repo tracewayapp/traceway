@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
@@ -13,6 +14,10 @@ import (
 )
 
 type endpointDetailController struct{}
+
+type endpointDetailRequest struct {
+	RecordedAt *time.Time `json:"recordedAt"`
+}
 
 type EndpointExceptionInfo struct {
 	ExceptionHash string `json:"exceptionHash"`
@@ -49,9 +54,15 @@ func (t endpointDetailController) GetEndpointDetail(c *gin.Context) {
 		return
 	}
 
+	var request endpointDetailRequest
+	_ = c.ShouldBindJSON(&request)
+
 	// Get endpoint
 	span := traceway.StartSpan(c, "loading endpoint")
-	endpoint, err := repositories.EndpointRepository.FindById(c, projectId, endpointId)
+	endpoint, err := repositories.EndpointRepository.FindById(c, projectId, endpointId, request.RecordedAt)
+	if endpoint == nil && err == nil && request.RecordedAt != nil {
+		endpoint, err = repositories.EndpointRepository.FindById(c, projectId, endpointId, nil)
+	}
 	span.End()
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error loading endpoint: %w", err))
@@ -62,9 +73,11 @@ func (t endpointDetailController) GetEndpointDetail(c *gin.Context) {
 		return
 	}
 
+	recordedAt := endpoint.RecordedAt
+
 	// Get spans (flat list ordered by start_time)
 	span = traceway.StartSpan(c, "loading spans")
-	spans, err := repositories.SpanRepository.FindByTraceId(c, projectId, endpointId)
+	spans, err := repositories.SpanRepository.FindByTraceId(c, projectId, endpointId, &recordedAt)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading spans: %w", err))
@@ -76,7 +89,7 @@ func (t endpointDetailController) GetEndpointDetail(c *gin.Context) {
 	var messages []EndpointMessageInfo
 
 	span = traceway.StartSpan(c, "loading exceptions")
-	allExceptions, err := repositories.ExceptionStackTraceRepository.FindAllByTraceId(c, projectId, endpointId)
+	allExceptions, err := repositories.ExceptionStackTraceRepository.FindAllByTraceId(c, projectId, endpointId, &recordedAt)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading all exceptions: %w", err))

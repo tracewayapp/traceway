@@ -400,13 +400,19 @@ func (e *exceptionStackTraceRepository) FindExceptionByTraceId(ctx context.Conte
 }
 
 // FindAllByTraceId returns all exceptions and messages associated with a specific trace
-func (e *exceptionStackTraceRepository) FindAllByTraceId(ctx context.Context, projectId uuid.UUID, traceId uuid.UUID) ([]models.ExceptionStackTrace, error) {
-	rows, err := chdb.Conn.Query(ctx,
-		`SELECT id, project_id, trace_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, distributed_trace_id
+func (e *exceptionStackTraceRepository) FindAllByTraceId(ctx context.Context, projectId uuid.UUID, traceId uuid.UUID, recordedAt *time.Time) ([]models.ExceptionStackTrace, error) {
+	query := `SELECT id, project_id, trace_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, distributed_trace_id
 		FROM exception_stack_traces
-		WHERE project_id = ? AND trace_id = ?
-		ORDER BY recorded_at ASC`,
-		projectId, traceId)
+		WHERE project_id = ? AND trace_id = ?`
+	args := []any{projectId, traceId}
+	if recordedAt != nil {
+		from, to := traceWindowBounds(*recordedAt)
+		query += ` AND recorded_at >= ? AND recorded_at <= ?`
+		args = append(args, from, to)
+	}
+	query += ` ORDER BY recorded_at ASC`
+
+	rows, err := chdb.Conn.Query(ctx, query, args...)
 
 	if err != nil {
 		return nil, err
@@ -468,13 +474,19 @@ func (e *exceptionStackTraceRepository) FindById(ctx context.Context, projectId 
 	return &est, nil
 }
 
-func (e *exceptionStackTraceRepository) FindByDistributedTraceId(ctx context.Context, distributedTraceId uuid.UUID, projectIds []uuid.UUID) ([]models.ExceptionStackTrace, error) {
+func (e *exceptionStackTraceRepository) FindByDistributedTraceId(ctx context.Context, distributedTraceId uuid.UUID, projectIds []uuid.UUID, recordedAt *time.Time) ([]models.ExceptionStackTrace, error) {
 	query := `SELECT id, project_id, trace_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, distributed_trace_id
 		FROM exception_stack_traces
-		WHERE distributed_trace_id = ? AND project_id IN (?) AND is_message = false
-		ORDER BY recorded_at ASC`
+		WHERE distributed_trace_id = ? AND project_id IN (?) AND is_message = false`
+	args := []any{distributedTraceId, projectIds}
+	if recordedAt != nil {
+		from, to := traceWindowBounds(*recordedAt)
+		query += ` AND recorded_at >= ? AND recorded_at <= ?`
+		args = append(args, from, to)
+	}
+	query += ` ORDER BY recorded_at ASC`
 
-	rows, err := chdb.Conn.Query(ctx, query, distributedTraceId, projectIds)
+	rows, err := chdb.Conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

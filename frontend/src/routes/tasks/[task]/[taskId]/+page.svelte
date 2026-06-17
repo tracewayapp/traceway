@@ -281,7 +281,10 @@
 		/>
 
 		{#if response.task.distributedTraceId}
-			<DistributedTraceCard distributedTraceId={response.task.distributedTraceId} />
+			<DistributedTraceCard
+				distributedTraceId={response.task.distributedTraceId}
+				recordedAt={response.task.recordedAt}
+			/>
 		{/if}
 	{/if}
 </div>

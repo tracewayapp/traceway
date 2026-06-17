@@ -12,6 +12,7 @@ export const load: PageLoad = ({ params, url }) => {
 	return {
 		endpoint: params.endpoint,
 		endpointId: params.endpointId,
+		recordedAt: url.searchParams.get('t'),
 		preset: url.searchParams.get('preset') || null,
 		from: url.searchParams.get('from') || null,
 		to: url.searchParams.get('to') || null

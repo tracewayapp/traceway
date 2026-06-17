@@ -392,11 +392,19 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.
 	return endpoints, count, nil
 }
 
-func (e *endpointRepository) FindById(ctx context.Context, projectId, endpointId uuid.UUID) (*models.Endpoint, error) {
-	row, err := lit.SelectSingleNamed[endpoint](db.TelemetryDB,
-		`SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id
-		FROM endpoints WHERE project_id = :project_id AND id = :id LIMIT 1`,
-		lit.P{"project_id": projectId, "id": endpointId})
+func (e *endpointRepository) FindById(ctx context.Context, projectId, endpointId uuid.UUID, recordedAt *time.Time) (*models.Endpoint, error) {
+	query := `SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id
+		FROM endpoints WHERE project_id = :project_id AND id = :id`
+	params := lit.P{"project_id": projectId, "id": endpointId}
+	if recordedAt != nil {
+		from, to := traceWindowBounds(*recordedAt)
+		query += ` AND recorded_at >= :from AND recorded_at <= :to`
+		params["from"] = NewSQLiteTime(from)
+		params["to"] = NewSQLiteTime(to)
+	}
+	query += ` LIMIT 1`
+
+	row, err := lit.SelectSingleNamed[endpoint](db.TelemetryDB, query, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1006,7 +1014,7 @@ func getTopEndpointsByMetric(ctx context.Context, projectId uuid.UUID, from, to 
 	return result, nil
 }
 
-func (e *endpointRepository) FindByDistributedTraceId(ctx context.Context, distributedTraceId uuid.UUID, projectIds []uuid.UUID) ([]models.Endpoint, error) {
+func (e *endpointRepository) FindByDistributedTraceId(ctx context.Context, distributedTraceId uuid.UUID, projectIds []uuid.UUID, recordedAt *time.Time) ([]models.Endpoint, error) {
 	if len(projectIds) == 0 {
 		return nil, nil
 	}
@@ -1018,8 +1026,14 @@ func (e *endpointRepository) FindByDistributedTraceId(ctx context.Context, distr
 		params[key] = pid
 	}
 	query := `SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id
-		FROM endpoints WHERE distributed_trace_id = :trace_id AND project_id IN (` + strings.Join(placeholders, ",") + `)
-		ORDER BY recorded_at ASC`
+		FROM endpoints WHERE distributed_trace_id = :trace_id AND project_id IN (` + strings.Join(placeholders, ",") + `)`
+	if recordedAt != nil {
+		from, to := traceWindowBounds(*recordedAt)
+		query += ` AND recorded_at >= :from AND recorded_at <= :to`
+		params["from"] = NewSQLiteTime(from)
+		params["to"] = NewSQLiteTime(to)
+	}
+	query += ` ORDER BY recorded_at ASC`
 
 	parsedQuery, args, err := lit.ParseNamedQuery(db.Driver, query, params)
 	if err != nil {

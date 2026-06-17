@@ -404,7 +404,7 @@ func (r *aiTraceRepository) FindById(ctx context.Context, projectId, traceId uui
 	return &result, nil
 }
 
-func (r *aiTraceRepository) FindByDistributedTraceId(ctx context.Context, distributedTraceId uuid.UUID, projectIds []uuid.UUID) ([]models.AiTrace, error) {
+func (r *aiTraceRepository) FindByDistributedTraceId(ctx context.Context, distributedTraceId uuid.UUID, projectIds []uuid.UUID, recordedAt *time.Time) ([]models.AiTrace, error) {
 	if len(projectIds) == 0 {
 		return nil, nil
 	}
@@ -421,8 +421,14 @@ func (r *aiTraceRepository) FindByDistributedTraceId(ctx context.Context, distri
 			input_cost, output_cost, total_cost,
 			trace_name, user_id, finish_reason, server_name, app_version,
 			storage_key, attributes, distributed_trace_id, is_root
-		FROM ai_traces WHERE distributed_trace_id = :trace_id AND project_id IN (` + strings.Join(placeholders, ",") + `)
-		ORDER BY recorded_at ASC`
+		FROM ai_traces WHERE distributed_trace_id = :trace_id AND project_id IN (` + strings.Join(placeholders, ",") + `)`
+	if recordedAt != nil {
+		from, to := traceWindowBounds(*recordedAt)
+		query += ` AND recorded_at >= :from AND recorded_at <= :to`
+		params["from"] = NewSQLiteTime(from)
+		params["to"] = NewSQLiteTime(to)
+	}
+	query += ` ORDER BY recorded_at ASC`
 
 	parsedQuery, args, err := lit.ParseNamedQuery(db.Driver, query, params)
 	if err != nil {

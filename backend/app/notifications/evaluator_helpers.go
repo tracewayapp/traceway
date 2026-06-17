@@ -146,7 +146,7 @@ func resolveTraceName(ctx context.Context, projectId uuid.UUID, traceId *uuid.UU
 		}
 		return trace.TraceName
 	default:
-		endpoint, err := repositories.EndpointRepository.FindById(ctx, projectId, *traceId)
+		endpoint, err := repositories.EndpointRepository.FindById(ctx, projectId, *traceId, nil)
 		if err != nil {
 			traceway.CaptureException(fmt.Errorf("failed to resolve endpoint name for notification: %w", err))
 			return ""

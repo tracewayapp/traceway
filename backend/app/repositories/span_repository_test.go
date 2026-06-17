@@ -25,7 +25,7 @@ func TestSpanRepository_InsertAndFindByTraceId(t *testing.T) {
 		t.Fatalf("InsertAsync failed: %v", err)
 	}
 
-	found, err := SpanRepository.FindByTraceId(ctx, projectId, traceId)
+	found, err := SpanRepository.FindByTraceId(ctx, projectId, traceId, nil)
 	if err != nil {
 		t.Fatalf("FindByTraceId failed: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestSpanRepository_AttributesRoundTrip(t *testing.T) {
 		t.Fatalf("InsertAsync failed: %v", err)
 	}
 
-	found, err := SpanRepository.FindByTraceId(ctx, projectId, traceId)
+	found, err := SpanRepository.FindByTraceId(ctx, projectId, traceId, nil)
 	if err != nil {
 		t.Fatalf("FindByTraceId failed: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestSpanRepository_FindByTraceId_Empty(t *testing.T) {
 	setupTestDB(t)
 	ctx := context.Background()
 
-	found, err := SpanRepository.FindByTraceId(ctx, uuid.New(), uuid.New())
+	found, err := SpanRepository.FindByTraceId(ctx, uuid.New(), uuid.New(), nil)
 	if err != nil {
 		t.Fatalf("FindByTraceId failed: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestSpanRepository_ProjectIsolation(t *testing.T) {
 		t.Fatalf("InsertAsync failed: %v", err)
 	}
 
-	found, err := SpanRepository.FindByTraceId(ctx, project1, traceId)
+	found, err := SpanRepository.FindByTraceId(ctx, project1, traceId, nil)
 	if err != nil {
 		t.Fatalf("FindByTraceId failed: %v", err)
 	}

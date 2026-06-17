@@ -7,6 +7,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"database/sql"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -88,7 +89,11 @@ func (c *invitationController) InviteUser(ctx *gin.Context) {
 		return
 	}
 
-	go services.EmailService.SendInvitation(request.Email, inviter.Name, org.Name, invitation.Token)
+	go func() {
+		if err := services.EmailService.SendInvitation(request.Email, inviter.Name, org.Name, invitation.Token); err != nil {
+			traceway.CaptureException(fmt.Errorf("failed to send invitation email to %s: %w", request.Email, err))
+		}
+	}()
 
 	ctx.JSON(http.StatusCreated, gin.H{"message": "Invitation sent"})
 }

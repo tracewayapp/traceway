@@ -6,6 +6,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"database/sql"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -53,7 +54,11 @@ func (c *passwordResetController) ForgotPassword(ctx *gin.Context) {
 		return
 	}
 
-	go services.EmailService.SendPasswordReset(user.Email, token)
+	go func() {
+		if err := services.EmailService.SendPasswordReset(user.Email, token); err != nil {
+			traceway.CaptureException(fmt.Errorf("failed to send password reset email to %s: %w", user.Email, err))
+		}
+	}()
 
 	ctx.JSON(http.StatusOK, gin.H{"message": "If an account exists with this email, a password reset link will be sent to it."})
 }

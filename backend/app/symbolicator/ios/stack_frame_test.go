@@ -71,6 +71,33 @@ func TestParseHoneycombTraceBinaryName(t *testing.T) {
 	}
 }
 
+func TestParseHoneycombTraceCorpusFormat(t *testing.T) {
+	raw := "os: ios arch: arm64\n" +
+		"0   sample   0x0000000100000460   2DD71042-1184-32BE-8F92-DD4E3D3FE24A + 1120\n" +
+		"1   sample   0x0000000100000494   2dd71042-1184-32be-8f92-dd4e3d3fe24a + 1172"
+	tr := ParseHoneycombTrace(raw, "", "")
+	if len(tr.Frames) != 2 {
+		t.Fatalf("got %d frames, want 2", len(tr.Frames))
+	}
+	if tr.Frames[0].UUID != "2dd71042118432be8f92dd4e3d3fe24a" || tr.Frames[0].Offset != 0x460 || tr.Frames[0].Image != "sample" {
+		t.Errorf("frame0 = %+v", tr.Frames[0])
+	}
+	if tr.Frames[1].UUID != "2dd71042118432be8f92dd4e3d3fe24a" || tr.Frames[1].Offset != 0x494 {
+		t.Errorf("frame1 = %+v", tr.Frames[1])
+	}
+}
+
+func TestParseHoneycombTraceSpacedBinary(t *testing.T) {
+	raw := "12   Chateaux Bufeaux   0x000000010000abcd   6A8CB813-45F6-3652-AD33-778FD1EAB196 + 100436"
+	tr := ParseHoneycombTrace(raw, "", "")
+	if len(tr.Frames) != 1 {
+		t.Fatalf("got %d frames, want 1", len(tr.Frames))
+	}
+	if tr.Frames[0].Image != "Chateaux Bufeaux" || tr.Frames[0].UUID != "6a8cb81345f63652ad33778fd1eab196" || tr.Frames[0].Offset != 100436 {
+		t.Errorf("frame = %+v", tr.Frames[0])
+	}
+}
+
 func TestIsIOSTrace(t *testing.T) {
 	if !IsIOSTrace("os: ios arch: arm64\n#00 2dd71042118432be8f92dd4e3d3fe24a 0x460 sample") {
 		t.Error("valid iOS trace not detected")

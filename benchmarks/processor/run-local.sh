@@ -46,10 +46,12 @@ build_all() {
 }
 
 scenario_params() {
+  local oom_cache="$OOM_ENTRIES"
+  case "$2" in ios|honeycomb-ios) oom_cache="${OOM_CACHE:-128}" ;; esac
   case "$1" in
     hot)   echo "1 $PAD_KB 0:0 128 $CONNECTIONS $STEP_DURATION" ;;
     churn) echo "$CHURN_ENTRIES $PAD_KB 0:0 128 $CONNECTIONS $STEP_DURATION" ;;
-    oom)   echo "$OOM_ENTRIES $OOM_PAD_KB $OOM_MAP_PAD_KB:$OOM_MAPPINGS_PAD_KB $OOM_ENTRIES $OOM_CONNECTIONS $OOM_DURATION" ;;
+    oom)   echo "$OOM_ENTRIES $OOM_PAD_KB $OOM_MAP_PAD_KB:$OOM_MAPPINGS_PAD_KB $oom_cache $OOM_CONNECTIONS $OOM_DURATION" ;;
   esac
 }
 
@@ -96,9 +98,9 @@ drain_markers() {
 
 run_one() {
   local impl="$1" scenario="$2"
-  read -r entries pad mappad cachesize conns dur <<< "$(scenario_params "$scenario")"
   local BIN CFG PARSER DISK LANG SIGNAL=traces
   eval "$(impl_env "$impl")"
+  read -r entries pad mappad cachesize conns dur <<< "$(scenario_params "$scenario" "$LANG")"
   local store
   store=$(gen_corpus "$LANG" "$scenario" "$entries" "$pad" "$mappad")
   local OK_MARKER FAIL_MARKER

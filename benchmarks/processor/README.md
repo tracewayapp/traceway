@@ -96,6 +96,15 @@ traces and logs), so the same input shape resolves on both engines. Drain marker
   The oom run defaults to a small SUT (ccx13, 8 GB) so the breaking point
   arrives quickly.
 
+For `ios` and `honeycomb-ios` there is no padding lever (a dSYM is fixed-size and
+the engine holds a parsed symbol cache, not the raw artifact), so `oom` is instead
+a bounded-cache eviction soak: `OOM_ENTRIES` distinct build UUIDs cycle through a
+small `OOM_CACHE` (128 by default, well under the corpus) under sustained load on
+the small SUT. That is where per-dSYM cost shows up. Honeycomb's `symbolic` archive
+is heavyweight and its memory grows under sustained eviction (reaching multiple GB
+on a long run), so the small SUT eventually tips over; Traceway re-opens its compact
+`.tw` and stays flat. `hot` and `churn` are unchanged across languages.
+
 Corpus entries are the real minified node-app bundle padded with `--pad-kb`
 of valid JS (default 256 KB) so scope-analysis parse cost is realistic. The
 sourcemap stays valid because frames sit on line 1 before the padding.
@@ -153,6 +162,7 @@ the two `traceway-ios` impls.
 | `IMPLS` | `traceway-oxc honeycomb` | run-local.sh only; `traceway-goja` selects the goja parser in the same oxc-built binary |
 | `SCENARIOS` | `hot churn` | |
 | `CHURN_ENTRIES` | `512` | corpus size for churn |
+| `OOM_CACHE` | corpus size (js/dart), `128` (ios) | resolver cache size for oom; iOS uses a bounded cache so oom is an eviction soak rather than a resident-corpus test |
 | `PAD_KB` | `256` | padding per bundle |
 | `CONNECTIONS` | ramp | comma list of concurrency steps |
 | `STEP_DURATION` | `30s` local, `60s` hetzner | time per step |

@@ -65,7 +65,7 @@
 {:else if framework === 'android'}
     <img src="/android.png" alt="Android" class={className} style="object-fit: contain;" />
 {:else if framework === 'ios'}
-    <svg class={className} viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    <svg class={className} viewBox="0 1 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
         <path d="M11.05 8.5c-.02-1.5 1.23-2.22 1.28-2.26-.7-1.02-1.78-1.16-2.17-1.18-.92-.09-1.8.54-2.27.54-.47 0-1.19-.53-1.96-.51-1.01.01-1.94.59-2.46 1.49-1.05 1.82-.27 4.51.76 5.99.5.72 1.1 1.53 1.88 1.5.76-.03 1.04-.49 1.96-.49.91 0 1.17.49 1.97.47.81-.01 1.33-.73 1.83-1.46.58-.84.81-1.65.83-1.69-.02-.01-1.59-.61-1.61-2.43zM9.6 4.07c.42-.51.7-1.21.62-1.91-.6.02-1.33.4-1.76.91-.39.45-.73 1.17-.64 1.85.67.05 1.36-.34 1.78-.85z"/>
     </svg>
 {:else}

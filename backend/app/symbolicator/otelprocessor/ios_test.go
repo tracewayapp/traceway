@@ -192,4 +192,10 @@ func TestSymbolicateIOSTraceMissingSymbols(t *testing.T) {
 	if !strings.Contains(got, "sample+0x460") {
 		t.Errorf("expected stable image+offset frames, got:\n%s", got)
 	}
+	if v, ok := attrs.Get(p.cfg.SymbolicatorFailureAttributeKey); !ok || !v.Bool() {
+		t.Errorf("expected symbolicator.failed=true when no dSYM is available, got %v (present=%v)", v, ok)
+	}
+	if errMsg := strAttr(attrs, p.cfg.SymbolicatorErrorAttributeKey); errMsg == "" {
+		t.Error("expected symbolicator error attribute to be set when symbols are missing")
+	}
 }

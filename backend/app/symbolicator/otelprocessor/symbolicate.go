@@ -25,6 +25,7 @@ const (
 var errMismatchedLength = errors.New("mismatched stacktrace attribute lengths")
 var errUnparseableStackTrace = errors.New("unable to parse stack trace")
 var errMissingDartBuild = errors.New("dart trace missing build_id or arch")
+var errNoIOSSymbols = errors.New("no ios symbols found")
 
 type symbolicatorProcessor struct {
 	cfg    *Config
@@ -275,6 +276,8 @@ func (p *symbolicatorProcessor) symbolicateIOSTrace(ctx context.Context, attrs p
 			d()
 		}
 	}()
+	var resolveErr error
+	resolved := false
 	resolver := func(debugID string) []byte {
 		if d, ok := dataByUUID[debugID]; ok {
 			return d
@@ -282,6 +285,9 @@ func (p *symbolicatorProcessor) symbolicateIOSTrace(ctx context.Context, attrs p
 		key := flatCacheKey(p.store.iosSymbolsKey(debugID))
 		if p.cache.IsNegative(key) {
 			dataByUUID[debugID] = nil
+			if resolveErr == nil {
+				resolveErr = fmt.Errorf("failed to find ios symbols for %s", debugID)
+			}
 			return nil
 		}
 		data, done, err := p.cache.Get(ctx, key, func(ctx context.Context) ([]byte, error) {
@@ -295,15 +301,27 @@ func (p *symbolicatorProcessor) symbolicateIOSTrace(ctx context.Context, attrs p
 		})
 		if err != nil {
 			dataByUUID[debugID] = nil
+			if resolveErr == nil {
+				resolveErr = err
+			}
 			return nil
 		}
 		dones = append(dones, done)
 		dataByUUID[debugID] = data
+		resolved = true
 		return data
 	}
 
 	attrs.PutStr(p.cfg.StackTraceAttributeKey, p.renderIOSTrace(attrs, trace, resolver))
-	attrs.PutBool(p.cfg.SymbolicatorFailureAttributeKey, false)
+	if resolved {
+		attrs.PutBool(p.cfg.SymbolicatorFailureAttributeKey, false)
+	} else {
+		if resolveErr == nil {
+			resolveErr = errNoIOSSymbols
+		}
+		attrs.PutBool(p.cfg.SymbolicatorFailureAttributeKey, true)
+		attrs.PutStr(p.cfg.SymbolicatorErrorAttributeKey, resolveErr.Error())
+	}
 	p.putProcessorMeta(attrs)
 }
 

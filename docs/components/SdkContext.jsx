@@ -25,6 +25,7 @@ export const SDK_OPTIONS = [
   { value: 'python-django', label: 'Django' },
   { value: 'flutter', label: 'Flutter' },
   { value: 'android', label: 'Android' },
+  { value: 'ios', label: 'iOS' },
   { value: 'react-native', label: 'React Native' },
 ]
 
@@ -56,6 +57,7 @@ const FOLDER_SDK = {
   'django': 'python-django',
   'flutter': 'flutter',
   'android': 'android',
+  'ios': 'ios',
 }
 
 // Shared reference folders — the SDK cannot be derived from the path alone.

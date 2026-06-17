@@ -52,7 +52,7 @@ function isIOSSystemLocation(location: string): boolean {
 
 function isIOSEntryFunction(fn: string): boolean {
 	const f = fn.trim();
-	return f === 'main' || f === '$main' || f === 'start' || f === '_start';
+	return f === 'main';
 }
 
 function extractPackageName(location: string): string {

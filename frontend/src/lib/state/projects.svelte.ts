@@ -3,7 +3,7 @@ import { authState } from './auth.svelte';
 
 export type Framework = 'gin' | 'fiber' | 'chi' | 'fasthttp' | 'stdlib' | 'custom' | 'react' | 'svelte' | 'vuejs' | 'nextjs' | 'nestjs' | 'express' | 'remix' | 'jquery' | 'react-native' | 'hono' | 'cloudflare' | 'opentelemetry' | 'symfony' | 'laravel' | 'django' | 'flutter' | 'android' | 'ios';
 
-export const FRONTEND_FRAMEWORKS: Framework[] = ['react', 'svelte', 'vuejs', 'jquery', 'react-native', 'flutter', 'android'];
+export const FRONTEND_FRAMEWORKS: Framework[] = ['react', 'svelte', 'vuejs', 'jquery', 'react-native', 'flutter', 'android', 'ios'];
 export const JS_FRAMEWORKS: Framework[] = ['react', 'svelte', 'vuejs', 'nextjs', 'nestjs', 'express', 'remix', 'jquery', 'react-native'];
 
 export const FRAMEWORK_LABELS: Record<Framework, string> = {

@@ -10,7 +10,6 @@ import (
 const maxFrames = 50
 
 type StackFrame struct {
-	Index  int
 	UUID   string
 	Offset uint64
 	Image  string
@@ -37,10 +36,8 @@ func ParseTrace(text string) StackTrace {
 			}
 		}
 		if m := frameRe.FindStringSubmatch(line); m != nil {
-			idx, _ := strconv.Atoi(m[1])
 			off, _ := strconv.ParseUint(m[3], 16, 64)
 			t.Frames = append(t.Frames, StackFrame{
-				Index:  idx,
 				UUID:   strings.ToLower(m[2]),
 				Offset: off,
 				Image:  strings.TrimSpace(m[4]),

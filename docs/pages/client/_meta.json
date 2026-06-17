@@ -28,5 +28,6 @@
   "django": "Django",
   "flutter": "Flutter",
   "android": "Android",
+  "ios": "iOS",
   "react-native": "React Native"
 }

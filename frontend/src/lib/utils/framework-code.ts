@@ -49,7 +49,7 @@ export function getInstallCommand(framework: Framework): string {
 		case 'android':
 			return 'implementation("com.tracewayapp:traceway:1.0.0")';
 		case 'ios':
-			return '.package(url: "https://github.com/tracewayapp/traceway-swift.git", from: "1.0.0")';
+			return '.package(url: "https://github.com/tracewayapp/traceway-ios.git", from: "0.1.0")';
 		case 'custom':
 		default:
 			return base;
@@ -541,7 +541,7 @@ try {
 do {
     try riskyOperation()
 } catch {
-    Traceway.captureException(error)
+    Traceway.capture(error)
 }`;
 	}
 	if (framework && isJsFramework(framework)) {

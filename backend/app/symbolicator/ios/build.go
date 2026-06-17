@@ -168,7 +168,7 @@ func collectFuncsAndBounds(d *dwarf.Data, rdr *dwarf.Reader) ([]funcRange, []uin
 				for _, rg := range rs {
 					if rg[1] > rg[0] {
 						bounds = append(bounds, rg[0], rg[1])
-						if e.Tag == dwarf.TagSubprogram {
+						if e.Tag == dwarf.TagSubprogram && depth == 0 {
 							funcs = append(funcs, funcRange{low: rg[0], high: rg[1], off: e.Offset})
 						}
 					}

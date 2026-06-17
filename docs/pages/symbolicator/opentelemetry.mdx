@@ -12,7 +12,7 @@ It's a drop-in replacement for [Honeycomb's `source_map_symbolicator` processor]
 
 If you want to call the engine from your own Go code instead of a collector, see [Library](/symbolicator/library).
 
-The same processor also auto-routes non-symbolic Dart AOT traces to the [Dart](/symbolicator/dart) path. The walkthrough below covers the JavaScript source-map workflow.
+The same processor also auto-routes non-symbolic Dart AOT traces and stripped iOS/Swift traces to the [Dart](/symbolicator/dart) and [iOS](/symbolicator/ios) paths. The walkthrough below covers the JavaScript source-map workflow.
 
 ## Building a collector with the processor
 
@@ -212,6 +212,8 @@ Raw string parsing handles the stack formats browsers produce: V8 (including `as
 | `build_uuid_attribute_key` | `app.debug.source_map_uuid` | Resource attribute used as a store key prefix |
 | `language_attribute_key` | `telemetry.sdk.language` | Attribute checked against `allowed_languages` |
 | `allowed_languages` | `[]` | When set, only records with a matching language are processed |
+| `dart_default_arch` | `arm64` | Default CPU architecture used when a Dart trace does not carry one |
+| `ios_default_arch` | `arm64` | Default CPU architecture used when an iOS trace does not carry one |
 | `parser` | `goja` | Bundle parser for function names: `goja` or `oxc` (the latter only in `-tags oxc` builds) |
 
 Every attribute key from the table above is remappable (`stack_trace_attribute_key`, `urls_attribute_key`, `symbolicator_failure_attribute_key`, and so on), with the same configuration keys and defaults as Honeycomb's processor.

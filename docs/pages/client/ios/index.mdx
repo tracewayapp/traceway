@@ -1,0 +1,167 @@
+# iOS Quick Start
+
+Integrate Traceway into your native iOS application with the [`traceway-ios`](https://github.com/tracewayapp/traceway-ios) Swift package. Pure Swift, zero third-party dependencies. It captures errors and crashes only (no metrics, no transactions, no session replay) and speaks the same `/api/report` wire format as the other SDKs, so a single Traceway backend handles iOS alongside everything else.
+
+## Requirements
+
+- iOS 13.0+
+- Swift 5.9+ / Xcode 15+
+
+## Installation
+
+Install with Swift Package Manager. In Xcode, choose **File > Add Package Dependencies** and enter the repository URL:
+
+```
+https://github.com/tracewayapp/traceway-ios.git
+```
+
+Or add it directly to your `Package.swift`:
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/tracewayapp/traceway-ios.git", from: "0.1.0"),
+],
+```
+
+Then add `"Traceway"` to your target's dependencies:
+
+```swift
+.target(
+    name: "MyApp",
+    dependencies: ["Traceway"]
+),
+```
+
+## Setup
+
+Call `Traceway.start(connectionString:options:)` as early as possible so it is installed before any code that might crash. In SwiftUI, do it from your `App.init`:
+
+```swift
+import SwiftUI
+import Traceway
+
+@main
+struct MyApp: App {
+    init() {
+        Traceway.start(
+            connectionString: "your-token@https://cloud.tracewayapp.com/api/report",
+            options: TracewayOptions(version: "1.0.0")
+        )
+    }
+
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}
+```
+
+In UIKit, do it from `application(_:didFinishLaunchingWithOptions:)`:
+
+```swift
+import UIKit
+import Traceway
+
+@main
+class AppDelegate: UIResponder, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+    ) -> Bool {
+        Traceway.start(
+            connectionString: "your-token@https://cloud.tracewayapp.com/api/report",
+            options: TracewayOptions(version: "1.0.0")
+        )
+        return true
+    }
+}
+```
+
+## What Gets Captured Automatically
+
+After `Traceway.start(...)` runs, the following sources are captured with no additional configuration:
+
+- **Uncaught NSExceptions**: ObjC / UIKit exceptions that escape to the top of the stack.
+- **Fatal signals**: Swift runtime traps such as force-unwrapping a `nil`, array out-of-bounds access, `fatalError()`, and integer overflow, surfacing as `SIGTRAP`, `SIGILL`, `SIGABRT`, or `SIGSEGV`.
+
+Hard crashes are persisted to disk and uploaded on the **next launch**, so a crash that takes the process down still reaches your dashboard.
+
+## Capture Errors Manually
+
+```swift
+import Traceway
+
+// Capture any Swift Error
+do {
+    try riskyOperation()
+} catch {
+    Traceway.capture(error)
+}
+
+// Capture an NSError
+Traceway.capture(error: nsError)
+
+// Capture a message
+Traceway.capture(message: "User completed onboarding")
+
+// Force send pending reports (seconds; nil waits indefinitely)
+Traceway.flush(timeout: 5)
+```
+
+## With Options
+
+`TracewayOptions` accepts the following parameters. Field names mirror the other SDKs so configuration can be ported directly.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `sampleRate` | `1.0` | Fraction of exceptions to keep (0.0 to 1.0) |
+| `debug` | `false` | Log SDK activity via `NSLog` |
+| `version` | `""` | App version, sent as `appVersion` |
+| `debounceMs` | `1500` | Delay before batching and uploading |
+| `retryDelayMs` | `10000` | Delay before retrying a failed upload |
+| `maxPendingExceptions` | `5` | In-memory cap; oldest dropped when exceeded |
+| `persistToDisk` | `true` | Persist pending reports so they survive restarts |
+| `maxLocalFiles` | `5` | Max persisted report files |
+| `localFileMaxAgeHours` | `12` | Delete unsynced files older than this |
+
+```swift
+Traceway.start(
+    connectionString: "your-token@https://cloud.tracewayapp.com/api/report",
+    options: TracewayOptions(
+        sampleRate: 0.5,
+        debug: true,
+        version: "2.1.0",
+        debounceMs: 2000
+    )
+)
+```
+
+## Test Your Integration
+
+Add a button that triggers a crash to verify everything is wired up:
+
+```swift
+Button("Send Test Error") {
+    fatalError("Test error from Traceway integration")
+}
+```
+
+When the Xcode debugger is attached, lldb intercepts signals first, so a crash never reaches the SDK. Test crash capture by running **without** the debugger: launch the app from the home screen, trigger the crash, then relaunch and watch the report upload on the next launch. Caught errors sent through `Traceway.capture(...)` upload immediately and do not need this.
+
+## Release Symbolication (dSYM upload)
+
+A release build ships stripped, so crash traces arrive as bare image offsets with no function names or line numbers. Upload the build's `.dSYM` and Traceway symbolicates those traces server-side, turning each frame into `function (file:line:col)`. You upload the raw dSYM; there is no client-side parsing.
+
+The SDK ships an uploader script. Add an Xcode **Run Script** build phase that invokes it:
+
+```sh
+"$SRCROOT/path/to/Scripts/upload_symbols.sh"
+```
+
+The script no-ops on non-Release builds and when the token is unset, so it is safe to leave in place. Set two environment variables for the phase:
+
+- `TRACEWAY_UPLOAD_TOKEN`: your project's source map / symbol **upload token** from the dashboard, the same one used for JavaScript source maps. It is **not** the runtime token in your connection string.
+- `TRACEWAY_URL`: your Traceway base URL (or `/api/report` URL); the script derives the upload URL from it.
+
+See [iOS symbolication](/symbolicator/ios) for the full reference: the script flags, the raw HTTP upload contract for CI without Xcode, and how a non-symbolicated frame resolves into source.

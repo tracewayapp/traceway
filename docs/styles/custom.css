@@ -716,6 +716,14 @@ li:has(> .sdk-selector) > span:first-child {
   object-fit: contain;
 }
 
+.framework-picker-icon--adaptive {
+  filter: invert(1);
+}
+
+:is(html[class~="dark"]) .framework-picker-icon--adaptive {
+  filter: none;
+}
+
 .framework-picker-label {
   font-size: 16px;
   font-weight: 600;

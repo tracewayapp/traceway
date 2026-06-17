@@ -170,6 +170,14 @@ const FRAMEWORKS = [
     href: "/client/android",
   },
   {
+    value: "ios",
+    label: "iOS",
+    description: "Native iOS (Swift) apps with automatic crash and exception capture via Swift Package Manager.",
+    icon: "/ios.png",
+    iconClassName: "framework-picker-icon--adaptive",
+    href: "/client/ios",
+  },
+  {
     value: "react-native",
     label: "React Native",
     description: "React Native and Expo apps with automatic exception, fetch / XHR, and console capture. Works in Expo Go.",
@@ -203,7 +211,7 @@ export default function FrameworkPicker() {
             <img
               src={fw.icon}
               alt={fw.label}
-              className="framework-picker-icon"
+              className={`framework-picker-icon${fw.iconClassName ? ` ${fw.iconClassName}` : ""}`}
             />
             <span className="framework-picker-label">{fw.label}</span>
             <span className="framework-picker-desc">{fw.description}</span>

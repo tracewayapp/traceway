@@ -1,0 +1,119 @@
+# iOS
+
+For iOS, the debug info is the build's `.dSYM` (a Mach-O wrapper around DWARF). A stripped Swift or Objective-C release build keeps no function names or line tables in the shipped binary, so a crash reports against raw machine code. Each frame carries the image's Mach-O UUID, an offset into that image, and the image name:
+
+```
+Fatal error: Unexpectedly found nil while unwrapping an Optional value
+#00 8a5f0c2e1b7d4f93a6e0c8b1d2f3a4b5 0x00000000000a1340 MyApp
+#01 8a5f0c2e1b7d4f93a6e0c8b1d2f3a4b5 0x00000000000a2d10 MyApp
+```
+
+The offset is image-relative (the frame address minus the image's load address), so it is independent of where the dynamic linker slid the image at runtime. With the build's `.dSYM` uploaded, that resolves into named source frames, inline calls expanded:
+
+```
+#0  ProfileViewModel.load() (ProfileViewModel.swift:88:14)
+#1  ProfileView.body.getter (ProfileView.swift:142:20)
+#2  closure #1 in AppDelegate.application(_:didFinishLaunchingWithOptions:) (AppDelegate.swift:24:9)
+```
+
+Symbolication runs server-side from the `.dSYM` you upload; the client never parses anything. This page covers the iOS-specific mechanics in the order you meet them: how to upload the `.dSYM`, the upload API, how a non-symbolic trace is recognized, and how each frame resolves into source. For when symbolication runs, the cache, and the `.tw` format, see [Architecture](/symbolicator).
+
+## The `.dSYM` and why it ships separately
+
+A Release build strips names and line tables out of the binary to shrink the app and protect your source. Xcode writes that stripped debug information into a separate `.dSYM` bundle per build, which ships to you instead of inside the app. Inside the bundle, the Mach-O binary lives at `*.dSYM/Contents/Resources/DWARF/<ProductName>` and carries the DWARF debug info plus the `LC_UUID` load command that anchors it to the build.
+
+Mach-O builds carry no GNU build-id note, so the debug ID is the Mach-O UUID. A fat (universal) `.dSYM` holds one Mach-O slice per architecture you ship, each with its own UUID; the backend stores one entry per slice. Symbols are unique to each build, so upload on every release: a crash can only be symbolicated against the exact build it came from.
+
+## Uploading the `.dSYM` with the Xcode build phase
+
+The [`traceway-ios`](/client/ios) SDK ships an uploader at `Scripts/upload_symbols.sh` that finds the `.dSYM` binaries and posts them. The recommended setup is an Xcode **Run Script** build phase, so symbols upload automatically on every Release build:
+
+```bash
+"${SRCROOT}/path/to/Scripts/upload_symbols.sh"
+```
+
+The script no-ops on non-Release builds and when the token is unset, so it is safe to leave in place for Debug builds and local development. Configure it through the build environment:
+
+| Value | Flag | Env var | Default |
+|---|---|---|---|
+| Upload token | `--token` | `TRACEWAY_UPLOAD_TOKEN` | required |
+| Instance URL | `--url` | `TRACEWAY_URL` | Traceway Cloud |
+| dSYM directory | `--dsym-dir` | | Xcode's `DWARF_DSYM_FOLDER_PATH` |
+
+`TRACEWAY_UPLOAD_TOKEN` is your project's **upload token** from the dashboard, the same one used for JavaScript source maps. It is **not** the runtime token in your `Traceway.start()` connection string. `TRACEWAY_URL` is your Traceway base URL (or the `/api/report` URL); the script derives the upload endpoint from it.
+
+The script finds dSYM binaries at `*.dSYM/Contents/Resources/DWARF/*` and POSTs each one. Pass `--dry-run` to resolve the config and list what would be uploaded without sending.
+
+## Uploading from CI without Xcode
+
+The Run Script phase is convenient, but the uploader is a thin wrapper over a single endpoint. In CI, or anywhere Xcode is not driving the build, post each Mach-O binary directly:
+
+```
+POST /api/symbols/upload
+Authorization: Bearer <upload token>
+Content-Type: multipart/form-data
+```
+
+```bash
+curl -H "Authorization: Bearer $TRACEWAY_UPLOAD_TOKEN" \
+  -F "files=@MyApp.app.dSYM/Contents/Resources/DWARF/MyApp" \
+  https://cloud.tracewayapp.com/api/symbols/upload
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `files` | yes | One or more Mach-O dSYM binaries. Repeatable to upload several at once. 200 MB per file. |
+
+Unlike the Dart upload, iOS needs no `arch` or `debug_id` form fields. The backend auto-detects the Mach-O, reads the `LC_UUID` straight from the binary, and for a fat dSYM stores one entry per architecture slice. The stored key is content-addressed by UUID:
+
+```
+iossymbols/{projectId}/{uuid}.dsym
+```
+
+Because the key is content-addressed, releases never collide and re-uploading the same build is idempotent. The response reports how many entries were stored:
+
+```json
+{ "uploaded": 2 }
+```
+
+This is the same `/api/symbols/upload` endpoint Dart uses. Dart uploads `.symbols` files; iOS just uploads the Mach-O dSYM, and the backend routes on the file's format.
+
+## How an iOS trace is recognized
+
+The engine recognizes an iOS trace by the SDK language, `swift` or `ios`, or by the frame shape when the language is absent. A non-symbolic iOS frame has this form:
+
+```
+#00 8a5f0c2e1b7d4f93a6e0c8b1d2f3a4b5 0x00000000000a1340 MyApp
+```
+
+The parser pulls three things from each frame:
+
+| Field | Source | Used for |
+|---|---|---|
+| debug ID | the 32-hex Mach-O UUID | matching the trace to an uploaded `.dSYM` |
+| offset | `0x<image-relative-offset>` | the address to resolve, relative to the image base |
+| image | the trailing image name | grouping frames by image |
+
+A trace that is already symbolic, or carries no recognizable iOS frames, passes through untouched.
+
+## How an offset resolves
+
+The matching key is the Mach-O UUID (the debug ID). Because the frame offset is image-relative rather than the absolute runtime address, no runtime slide needs to be sent: the original VM address is reconstructed from the dSYM itself.
+
+1. **Reconstruct the program counter.** The frame's offset is added to the dSYM's `__TEXT` segment VM address, `pc = dSYM __TEXT VMAddr + offset`. That VM address is what the lookup keys on, and it is the same regardless of where the image was slid at runtime.
+2. **Look up the PC.** A binary search over the resolver's range table finds the PC's entry and its span of frames. DWARF inline information means one machine address can stand for several source frames, so a single `#N` offset can expand into a chain of inlined calls, innermost first.
+3. **Render.** Resolved frames print as `#N  functionName (file:line:col)`. A frame with no match (a PC outside any known range, or a dSYM that was not uploaded) keeps its raw form, so the trace is never worse than it arrived.
+
+If no dSYM is found for the build's UUID, every frame falls back to its raw offset form.
+
+## The flat format
+
+The `.dSYM` is decoded into Traceway's compact [`.tw`](/symbolicator#the-tw-resolver-format) flat artifact and cached, the same family of encoding used for the JavaScript source maps and the Dart `.symbols`. As with Dart, the iOS `.tw` maps **PC ranges to inline frame spans**: building it flattens the DWARF debug info into a range table sorted by PC, where each entry points at a run of frames (more than one when calls were inlined), plus a frame table of `(file, line, column, function)` records with names interned.
+
+The general properties (memory-mapped, zero-copy on little-endian hosts, a versioned cache artifact rebuilt from the original debug info) are the same as every `.tw`; see [Architecture](/symbolicator#the-tw-resolver-format).
+
+## Related pages
+
+- [iOS SDK](/client/ios): capturing errors and crashes from an iOS app
+- [Architecture](/symbolicator): when symbolication runs, the cache tiers, and the `.tw` format
+- [Performance](/symbolicator/performance): cache sizing and failure handling

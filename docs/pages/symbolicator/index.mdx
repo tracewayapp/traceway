@@ -14,7 +14,7 @@ Symbolication happens **once, at ingest**. A report arrives, each stack trace is
 
 The trade-off is that stored traces are immutable snapshots of the symbolication quality at the moment they arrived. Uploading better debug info improves future events, not past ones.
 
-This is dispatched by the trace, not configured per project: a browser exception resolves against source maps, a Flutter exception against its symbols, and the engine picks the path from the SDK language and the shape of the trace. The collector processor and the library do the same work at a different point in the pipeline.
+This is dispatched by the trace, not configured per project: a browser exception resolves against source maps, a Flutter exception against its symbols, an iOS crash against its dSYM, and the engine picks the path from the SDK language and the shape of the trace. The collector processor and the library do the same work at a different point in the pipeline.
 
 ## The pipeline
 
@@ -39,7 +39,7 @@ The structure is the same regardless of where the debug info came from:
 
 Because the ranges are sorted, a lookup is a single binary search. Because the layout is fixed and little-endian, opening a `.tw` validates its structure and then reads straight from the mapped pages, with no copying or decoding, and the OS page cache shares those pages across every process that maps the same file. Compiling the resolver (parsing the debug info, computing every range, interning every name) runs once at build time; opening the compiled result skips all of it.
 
-A `.tw` is a cache artifact, never the source of truth. It's versioned by a single integer with no migration path: bump the version and every existing file fails validation and is lazily rebuilt from its original debug info. Each language has its own `.tw` encoding tuned to its debug format; the per-language specifics are on the [JavaScript](/symbolicator/javascript) and [Dart](/symbolicator/dart) pages.
+A `.tw` is a cache artifact, never the source of truth. It's versioned by a single integer with no migration path: bump the version and every existing file fails validation and is lazily rebuilt from its original debug info. Each language has its own `.tw` encoding tuned to its debug format; the per-language specifics are on the [JavaScript](/symbolicator/javascript), [Dart](/symbolicator/dart), and [iOS](/symbolicator/ios) pages.
 
 ## Cache tiers
 
@@ -67,6 +67,7 @@ Raw artifacts are fetched on demand and never kept on local disk by the engine. 
 
 - **[JavaScript](/symbolicator/javascript)** — source maps and bundle scope analysis.
 - **[Dart](/symbolicator/dart)** — stripped Flutter traces and DWARF.
+- **[iOS](/symbolicator/ios)** — stripped Swift/ObjC release crashes and dSYM/DWARF.
 - **[Performance](/symbolicator/performance)** — memory vs disk cache, sizing, benchmarks, and the metrics to watch.
 - **[OpenTelemetry](/symbolicator/opentelemetry)** — running the engine as a collector processor.
 - **[Library](/symbolicator/library)** — calling the engine from your own Go code.

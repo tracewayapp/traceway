@@ -28,6 +28,7 @@ const SDK_VISIBILITY = {
   django: "python-django",
   flutter: "flutter",
   android: "android",
+  ios: "ios",
 };
 
 export default {

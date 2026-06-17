@@ -47,13 +47,27 @@ JS-only.
 ## Language
 
 `benchmark-processor` takes a `language` input: `js` (the 5 JS impls incl.
-Honeycomb), `dart` (the two `traceway-dart-*` impls), or `both`. Locally, just
-list the impls in `IMPLS`. The Dart corpus replicates a committed seed
+Honeycomb), `dart` (the two `traceway-dart-*` impls), `ios` (the two
+`traceway-ios-*` impls), or `both` (js+dart). Locally, just list the impls in
+`IMPLS`. The Dart corpus replicates a committed seed
 (`seeds/dart/app.debug.elf`, a real pure-Dart AOT `.symbols` ELF + its trace)
 under N synthetic build-ids — hardlinked, so N builds cost ~one inode — so the
 churn/oom scenarios exercise the cache the same way the JS corpus does. The
 drain's symbolicated check uses Dart markers (`crash.dart` resolved vs.
 `_kDart…SnapshotInstructions` unresolved) selected automatically per impl.
+
+The iOS corpus works the same way: a committed dSYM seed (`seeds/ios/app.dsym`)
+replicated under N synthetic build UUIDs as `<uuid>.dsym` (hardlinked), with the
+trace's per-frame UUID substituted per build. The store is keyed by UUID only —
+a UUID uniquely identifies one arch slice, so this matches Honeycomb's
+`<build-uuid>.dSYM` layout. The traceway processor auto-routes the non-symbolic
+iOS trace, reads the dSYM by UUID, and flattens
+its DWARF to a `.tw` on a cache miss (the dSYM analog of the Dart `.symbols`
+flatten). Drain markers: `sample.c` resolved vs. `sample+0x` unresolved. iOS is
+traceway-only here for now; unlike Dart, Honeycomb *does* ship an iOS
+`dsymprocessor`, so a `honeycomb-ios` comparison is possible as a follow-up (it
+needs the dsymprocessor built into the Honeycomb collector + a Honeycomb-format
+corpus).
 
 ## Scenarios
 
@@ -91,6 +105,7 @@ timeline, not a single number.
 ./run-local.sh
 IMPLS="traceway-oxc-mem traceway-goja-mem honeycomb" SCENARIOS=churn CONNECTIONS=4,16,64 ./run-local.sh
 IMPLS="traceway-dart-mem traceway-dart-disk" SCENARIOS="hot churn" ./run-local.sh   # Dart
+IMPLS="traceway-ios-mem traceway-ios-disk" SCENARIOS="hot churn" ./run-local.sh     # iOS
 ```
 
 Needs go, cargo, node, jq. Builds both collectors (the Traceway one with

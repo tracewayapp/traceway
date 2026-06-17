@@ -44,6 +44,8 @@ const (
 	monitoringToken    = "monitoring-dev-token"
 	flutterToken       = "flutter-dev-token"
 	flutterUploadToken = "flutter-upload-token"
+	iosToken           = "ios-dev-token"
+	iosUploadToken     = "ios-upload-token"
 
 	backendServiceName = "backend-service"
 	workerServiceName  = "worker-service"
@@ -137,6 +139,8 @@ func main() {
 		tracewaybackend.WithDefaultProject("Traceway Monitoring", "gin", monitoringToken),
 		tracewaybackend.WithDefaultProject("Flutter App", "flutter", flutterToken),
 		tracewaybackend.WithDefaultProjectSourceMapToken("Flutter App", flutterUploadToken),
+		tracewaybackend.WithDefaultProject("iOS App", "ios", iosToken),
+		tracewaybackend.WithDefaultProjectSourceMapToken("iOS App", iosUploadToken),
 		tracewaybackend.WithMonitoringURL(monitoringToken+"@http://localhost:8082/api/report"),
 	)
 

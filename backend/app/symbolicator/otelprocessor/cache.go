@@ -8,12 +8,13 @@ import (
 	"os"
 
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/dart"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/ios"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/twcache"
 )
 
 func validArtifact(b []byte) bool {
-	return sourcemap.ValidTW(b) || dart.ValidFlat(b)
+	return sourcemap.ValidTW(b) || dart.ValidFlat(b) || ios.ValidFlat(b)
 }
 
 func isObjectNotFound(err error) bool { return errors.Is(err, errObjectNotFound) }
@@ -56,7 +57,7 @@ func cacheKey(url, buildUUID string) string {
 	return hex.EncodeToString(sum[:]) + ".tw"
 }
 
-func dartCacheKey(symbolsKey string) string {
+func flatCacheKey(symbolsKey string) string {
 	sum := sha256.Sum256([]byte(symbolsKey))
 	return hex.EncodeToString(sum[:]) + ".tw"
 }

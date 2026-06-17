@@ -135,6 +135,7 @@ func (e clientController) Report(c *gin.Context) {
 		}
 		resolveJs := project != nil && project.SourceMapToken != nil && jsFrameworks[project.Framework]
 		resolveDart := project != nil && project.SourceMapToken != nil && project.Framework == "flutter"
+		resolveIos := project != nil && project.SourceMapToken != nil && project.Framework == "ios"
 
 		resolveSpan := traceway.StartSpan(c, "report.resolve_stack_traces")
 		for _, cst := range cf.StackTraces {
@@ -143,6 +144,8 @@ func (e clientController) Report(c *gin.Context) {
 				resolvedStackTrace = services.ResolveStackTrace(c, projectId, cst.StackTrace, cst.DebugIds)
 			} else if resolveDart {
 				resolvedStackTrace = services.ResolveDartStackTrace(c, projectId, cst.StackTrace)
+			} else if resolveIos {
+				resolvedStackTrace = services.ResolveIOSStackTrace(c, projectId, cst.StackTrace)
 			}
 			est := cst.ToExceptionStackTrace(ComputeExceptionHash(resolvedStackTrace, cst.IsMessage), request.AppVersion, request.ServerName)
 			est.StackTrace = resolvedStackTrace

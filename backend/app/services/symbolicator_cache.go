@@ -7,6 +7,7 @@ import (
 
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/dart"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/ios"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/twcache"
 
@@ -14,7 +15,7 @@ import (
 )
 
 func validArtifact(b []byte) bool {
-	return sourcemap.ValidTW(b) || dart.ValidFlat(b)
+	return sourcemap.ValidTW(b) || dart.ValidFlat(b) || ios.ValidFlat(b)
 }
 
 var sharedCache = newSymbolicatorCache()

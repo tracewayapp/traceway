@@ -212,7 +212,7 @@ func (a oauthController) FinishSetup(c *gin.Context) {
 	}
 
 	if !validFrameworks[request.Framework] {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Framework must be one of: gin, fiber, chi, fasthttp, stdlib, custom, react, svelte, vuejs, jquery, react-native, hono, cloudflare, opentelemetry, symfony, flutter, android"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Framework must be one of: gin, fiber, chi, fasthttp, stdlib, custom, react, svelte, vuejs, jquery, react-native, hono, cloudflare, opentelemetry, symfony, flutter, android, ios"})
 		return
 	}
 

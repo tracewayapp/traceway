@@ -1,7 +1,7 @@
 import { api } from '$lib/api';
 import { authState } from './auth.svelte';
 
-export type Framework = 'gin' | 'fiber' | 'chi' | 'fasthttp' | 'stdlib' | 'custom' | 'react' | 'svelte' | 'vuejs' | 'nextjs' | 'nestjs' | 'express' | 'remix' | 'jquery' | 'react-native' | 'hono' | 'cloudflare' | 'opentelemetry' | 'symfony' | 'laravel' | 'django' | 'flutter' | 'android';
+export type Framework = 'gin' | 'fiber' | 'chi' | 'fasthttp' | 'stdlib' | 'custom' | 'react' | 'svelte' | 'vuejs' | 'nextjs' | 'nestjs' | 'express' | 'remix' | 'jquery' | 'react-native' | 'hono' | 'cloudflare' | 'opentelemetry' | 'symfony' | 'laravel' | 'django' | 'flutter' | 'android' | 'ios';
 
 export const FRONTEND_FRAMEWORKS: Framework[] = ['react', 'svelte', 'vuejs', 'jquery', 'react-native', 'flutter', 'android'];
 export const JS_FRAMEWORKS: Framework[] = ['react', 'svelte', 'vuejs', 'nextjs', 'nestjs', 'express', 'remix', 'jquery', 'react-native'];
@@ -30,9 +30,10 @@ export const FRAMEWORK_LABELS: Record<Framework, string> = {
 	django: 'Django',
 	flutter: 'Flutter',
 	android: 'Android',
+	ios: 'iOS',
 };
 
-export const MOBILE_FRAMEWORKS: Framework[] = ['flutter', 'android'];
+export const MOBILE_FRAMEWORKS: Framework[] = ['flutter', 'android', 'ios'];
 
 export function getFrameworkLabel(fw: Framework): string {
 	return FRAMEWORK_LABELS[fw] ?? fw;
@@ -51,7 +52,7 @@ export function isJsFramework(fw: Framework): boolean {
 }
 
 export function supportsSymbolUpload(fw: Framework): boolean {
-	return isJsFramework(fw) || fw === 'flutter';
+	return isJsFramework(fw) || fw === 'flutter' || fw === 'ios';
 }
 
 export const JS_LANGUAGES = ['webjs', 'nodejs', 'javascript', 'typescript'];

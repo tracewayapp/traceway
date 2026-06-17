@@ -100,6 +100,14 @@ type borrow struct {
 	done func()
 }
 
+func releaseBorrows(local map[string]borrow) {
+	for _, br := range local {
+		if br.done != nil {
+			br.done()
+		}
+	}
+}
+
 func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace string, debugIds map[string]string) string {
 	prefix := SourceMapStorageKey(projectId, "")
 
@@ -109,13 +117,7 @@ func ResolveStackTrace(ctx context.Context, projectId uuid.UUID, stackTrace stri
 	maxFrames := 50
 
 	local := map[string]borrow{}
-	defer func() {
-		for _, br := range local {
-			if br.done != nil {
-				br.done()
-			}
-		}
-	}()
+	defer releaseBorrows(local)
 
 	for _, line := range lines {
 		if framesResolved >= maxFrames {

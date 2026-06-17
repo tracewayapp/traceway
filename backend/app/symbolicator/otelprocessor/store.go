@@ -19,6 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/dart"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/ios"
 )
 
 const (
@@ -116,6 +117,19 @@ func (a *artifactStore) getDartSymbols(ctx context.Context, buildID, arch string
 	data, err := a.store.fetch(ctx, key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find dart symbols %q: %w", key, err)
+	}
+	return data, nil
+}
+
+func (a *artifactStore) iosSymbolsKey(uuid string) string {
+	return a.key("", ios.NormalizeUUID(uuid)+".dsym")
+}
+
+func (a *artifactStore) getIOSDsym(ctx context.Context, uuid string) ([]byte, error) {
+	key := a.iosSymbolsKey(uuid)
+	data, err := a.store.fetch(ctx, key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find ios symbols %q: %w", key, err)
 	}
 	return data, nil
 }

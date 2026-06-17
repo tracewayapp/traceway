@@ -34,14 +34,16 @@ case "$IMPL" in
   traceway-goja-disk) COL_BIN=otelcol-bench-traceway; COL_CFG=config-traceway.yaml; PARSER=goja; DISK=1; LANG=js ;;
   traceway-dart-mem)  COL_BIN=otelcol-bench-traceway; COL_CFG=config-traceway.yaml; PARSER=goja; DISK=; LANG=dart ;;
   traceway-dart-disk) COL_BIN=otelcol-bench-traceway; COL_CFG=config-traceway.yaml; PARSER=goja; DISK=1; LANG=dart ;;
+  traceway-ios-mem)   COL_BIN=otelcol-bench-traceway; COL_CFG=config-traceway.yaml; PARSER=goja; DISK=; LANG=ios ;;
+  traceway-ios-disk)  COL_BIN=otelcol-bench-traceway; COL_CFG=config-traceway.yaml; PARSER=goja; DISK=1; LANG=ios ;;
   *) echo "unknown impl $IMPL" >&2; exit 1 ;;
 esac
 
-if [ "$LANG" = dart ]; then
-  OK_MARKER=crash.dart; FAIL_MARKER=_kDartIsolateSnapshotInstructions
-else
-  OK_MARKER=../src/inventory.js; FAIL_MARKER=.mjs:1:
-fi
+case "$LANG" in
+  dart) OK_MARKER=crash.dart; FAIL_MARKER=_kDartIsolateSnapshotInstructions ;;
+  ios)  OK_MARKER=sample.c; FAIL_MARKER=sample+0x ;;
+  *)    OK_MARKER=../src/inventory.js; FAIL_MARKER=.mjs:1: ;;
+esac
 
 scenario_params() {
   case "$1" in
@@ -98,11 +100,11 @@ for scenario in $SCENARIOS; do
   outdir="$RESULTS/$tag"
   mkdir -p "$outdir"
 
-  if [ "$LANG" = dart ]; then
-    corpusgen_cmd="./corpusgen --language dart --symbols seeds/dart/app.debug.elf --trace seeds/dart/trace.txt --entries $entries --out corpus-$scenario"
-  else
-    corpusgen_cmd="./corpusgen --bundle app.mjs --map app.mjs.map --entries $entries --pad-kb $pad --map-pad-kb ${mappad%%:*} --mappings-pad-kb ${mappad##*:} --out corpus-$scenario"
-  fi
+  case "$LANG" in
+    dart) corpusgen_cmd="./corpusgen --language dart --symbols seeds/dart/app.debug.elf --trace seeds/dart/trace.txt --entries $entries --out corpus-$scenario" ;;
+    ios)  corpusgen_cmd="./corpusgen --language ios --dsym seeds/ios/app.dsym --trace seeds/ios/trace.txt --entries $entries --out corpus-$scenario" ;;
+    *)    corpusgen_cmd="./corpusgen --bundle app.mjs --map app.mjs.map --entries $entries --pad-kb $pad --map-pad-kb ${mappad%%:*} --mappings-pad-kb ${mappad##*:} --out corpus-$scenario" ;;
+  esac
   for ip in "$SUT_IP" "$LDG_IP"; do
     $SSH "root@$ip" "cd /opt/bench && [ -f corpus-$scenario/corpus.json ] || $corpusgen_cmd"
   done

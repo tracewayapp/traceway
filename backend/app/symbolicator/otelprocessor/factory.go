@@ -58,6 +58,8 @@ func createDefaultConfig() component.Config {
 
 		CacheMaxMB: 2048,
 
+		IOSDefaultArch: "arm64",
+
 		LanguageAttributeKey: "telemetry.sdk.language",
 	}
 }

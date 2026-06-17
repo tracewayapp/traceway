@@ -30,7 +30,36 @@ function isLibraryLocation(location: string): boolean {
 	);
 }
 
+const IOS_SYSTEM_IMAGES = new Set([
+	'CoreFoundation', 'Foundation', 'CFNetwork', 'Security', 'UIKitCore', 'UIKit', 'SwiftUI',
+	'GraphicsServices', 'QuartzCore', 'CoreGraphics', 'CoreText', 'CoreData', 'CoreImage',
+	'CoreAudio', 'CoreVideo', 'CoreServices', 'CoreMotion', 'CoreLocation', 'Metal', 'MetalKit',
+	'ImageIO', 'Combine', 'Network', 'AudioToolbox', 'AVFoundation', 'WebKit', 'JavaScriptCore', 'dyld'
+]);
+
+function isIOSSystemImage(image: string): boolean {
+	const img = image.trim();
+	if (img === '' || img === '<unknown>') return true;
+	if (/^lib.*\.dylib$/.test(img)) return true;
+	if (/^libswift/.test(img)) return true;
+	return IOS_SYSTEM_IMAGES.has(img);
+}
+
+function isIOSSystemLocation(location: string): boolean {
+	const loc = location.trim();
+	return loc === '' || loc === '<compiler-generated>' || loc === '<unknown>';
+}
+
+function isIOSEntryFunction(fn: string): boolean {
+	const f = fn.trim();
+	return f === 'main' || f === '$main' || f === 'start' || f === '_start';
+}
+
 function extractPackageName(location: string): string {
+	const iosImageMatch = location.match(/^(.+?)\+0x[0-9a-fA-F]+$/);
+	if (iosImageMatch) return iosImageMatch[1];
+	if (location === '<compiler-generated>' || location === '<unknown>') return 'system';
+
 	const nodeModulesMatch = location.match(/node_modules\/([^/]+)/);
 	if (nodeModulesMatch) return nodeModulesMatch[1];
 
@@ -47,7 +76,7 @@ function extractPackageName(location: string): string {
 	return 'library';
 }
 
-export function parseStackTrace(raw: string): ParsedStackTrace {
+export function parseStackTrace(raw: string, opts: { ios?: boolean } = {}): ParsedStackTrace {
 	const lines = raw.split('\n');
 	const frames: StackFrame[] = [];
 	let firstFrameIndex = -1;
@@ -56,8 +85,41 @@ export function parseStackTrace(raw: string): ParsedStackTrace {
 	const locationPattern = /^\s*.+:\d+:\d+$/;
 	const dartFramePattern = /^\s*#\d+\s+(.+?)\s+\((.+)\)\s*$/;
 	const dartUnresolvedPattern = /^\s*#\d+\s+(\S+SnapshotInstructions\+0x[0-9a-fA-F]+)\s*$/;
+	const iosResolvedPattern = /^\s*#\d+\s+(.+?)\s+\((.+)\)\s*$/;
+	const iosUnresolvedPattern = /^\s*#\d+\s+(.+?)\+0x[0-9a-fA-F]+\s*$/;
 
 	for (let i = 0; i < lines.length; i++) {
+		if (opts.ios) {
+			const iosResolved = lines[i].match(iosResolvedPattern);
+			if (iosResolved) {
+				const fn = iosResolved[1].trim();
+				const location = iosResolved[2].trim();
+				if (firstFrameIndex === -1) {
+					firstFrameIndex = i;
+					messageEndIndex = i;
+				}
+				frames.push({
+					functionName: fn,
+					location,
+					isLibrary: isIOSSystemLocation(location) || isIOSEntryFunction(fn)
+				});
+				continue;
+			}
+			const iosUnresolved = lines[i].match(iosUnresolvedPattern);
+			if (iosUnresolved) {
+				if (firstFrameIndex === -1) {
+					firstFrameIndex = i;
+					messageEndIndex = i;
+				}
+				frames.push({
+					functionName: null,
+					location: lines[i].trim().replace(/^#\d+\s+/, ''),
+					isLibrary: isIOSSystemImage(iosUnresolved[1].trim())
+				});
+				continue;
+			}
+		}
+
 		const dartMatch = lines[i].match(dartFramePattern);
 		if (dartMatch) {
 			const location = dartMatch[2].trim();

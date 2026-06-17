@@ -47,6 +47,7 @@ var validFrameworks = map[string]bool{
 	// Mobile frameworks
 	"flutter":        true,
 	"android":        true,
+	"ios":            true,
 }
 
 // Project name validation regex: allows alphanumeric, spaces, hyphens, and underscores
@@ -105,7 +106,7 @@ func (p projectController) CreateProject(c *gin.Context) {
 
 	if !validFrameworks[request.Framework] {
 		traceway.CaptureMessage("Invalid framework received: " + request.Framework)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Framework must be one of: gin, fiber, chi, fasthttp, stdlib, custom, react, svelte, vuejs, jquery, react-native, hono, cloudflare, opentelemetry, symfony, laravel, django, flutter, android"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Framework must be one of: gin, fiber, chi, fasthttp, stdlib, custom, react, svelte, vuejs, jquery, react-native, hono, cloudflare, opentelemetry, symfony, laravel, django, flutter, android, ios"})
 		return
 	}
 
@@ -152,7 +153,7 @@ func (p projectController) UpdateProject(c *gin.Context) {
 		return
 	}
 	if !validFrameworks[request.Framework] {
-		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Framework must be one of: gin, fiber, chi, fasthttp, stdlib, custom, react, svelte, vuejs, jquery, react-native, hono, cloudflare, opentelemetry, symfony, laravel, django, flutter, android"})
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Framework must be one of: gin, fiber, chi, fasthttp, stdlib, custom, react, svelte, vuejs, jquery, react-native, hono, cloudflare, opentelemetry, symfony, laravel, django, flutter, android, ios"})
 		return
 	}
 

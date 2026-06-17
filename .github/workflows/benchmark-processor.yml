@@ -4,13 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       language:
-        description: 'Symbolication language: js (5 impls incl. Honeycomb), dart (traceway-dart-mem/disk), or both'
+        description: 'Symbolication language: js (5 impls incl. Honeycomb), dart (traceway-dart-mem/disk), ios (traceway-ios-mem/disk), or both (js+dart)'
         required: true
         default: 'js'
         type: choice
         options:
           - js
           - dart
+          - ios
           - both
       scenarios:
         description: 'Scenarios to run'
@@ -93,7 +94,7 @@ jobs:
           ./bin/builder --config manifest-traceway.yaml --skip-compilation
           cd build-traceway && CGO_ENABLED=1 go build -tags oxc -o otelcol-bench-traceway .
       - name: Build honeycomb collector
-        if: inputs.language != 'dart'
+        if: inputs.language == 'js' || inputs.language == 'both'
         working-directory: benchmarks/processor
         run: |
           GOBIN=$PWD/bin go install go.opentelemetry.io/collector/cmd/builder@v0.143.0
@@ -107,7 +108,7 @@ jobs:
           cd loadgen && go mod tidy && go build -o loadgen . && cd ..
           cd corpusgen && go build -o corpusgen .
       - name: Build node-app bundle
-        if: inputs.language != 'dart'
+        if: inputs.language == 'js' || inputs.language == 'both'
         working-directory: testing/symbolication/node-app
         run: npm install && npm run build
       - name: Assemble artifacts
@@ -140,6 +141,7 @@ jobs:
           case "${{ inputs.language }}" in
             js)   impls='["honeycomb","traceway-oxc-mem","traceway-oxc-disk","traceway-goja-mem","traceway-goja-disk"]' ;;
             dart) impls='["traceway-dart-mem","traceway-dart-disk"]' ;;
+            ios)  impls='["traceway-ios-mem","traceway-ios-disk"]' ;;
             both) impls='["honeycomb","traceway-oxc-mem","traceway-oxc-disk","traceway-goja-mem","traceway-goja-disk","traceway-dart-mem","traceway-dart-disk"]' ;;
             *) echo "unknown language ${{ inputs.language }}" >&2; exit 1 ;;
           esac

@@ -166,7 +166,8 @@ func main() {
 	bundle := flag.String("bundle", "../../testing/symbolication/node-app/dist/app.mjs", "")
 	mapFile := flag.String("map", "../../testing/symbolication/node-app/dist/app.mjs.map", "")
 	symbols := flag.String("symbols", "seeds/dart/app.debug.elf", "dart: seed .symbols/.elf")
-	traceFile := flag.String("trace", "seeds/dart/trace.txt", "dart: seed non-symbolic trace")
+	dsym := flag.String("dsym", "seeds/ios/app.dsym", "ios: seed dSYM (Mach-O DWARF)")
+	traceFile := flag.String("trace", "seeds/dart/trace.txt", "dart/ios: seed non-symbolic trace")
 	entries := flag.Int("entries", 1, "")
 	padKB := flag.Int("pad-kb", 256, "")
 	mapPadKB := flag.Int("map-pad-kb", 0, "")
@@ -179,6 +180,10 @@ func main() {
 	}
 	if *language == "dart" {
 		generateDart(*out, *symbols, *traceFile, *entries)
+		return
+	}
+	if *language == "ios" {
+		generateIOS(*out, *dsym, *traceFile, *entries)
 		return
 	}
 
@@ -268,4 +273,47 @@ func substituteBuildID(trace, buildID string) string {
 		return buildIDLineRe.ReplaceAllString(trace, "build_id: '"+buildID+"'")
 	}
 	return "build_id: '" + buildID + "'\n" + trace
+}
+
+var iosFrameUUIDRe = regexp.MustCompile(`(#\d+\s+)[0-9a-fA-F]{32}(\s+0x)`)
+
+func generateIOS(out, dsymPath, tracePath string, entries int) {
+	dsym, err := os.ReadFile(dsymPath)
+	if err != nil {
+		panic(fmt.Errorf("reading ios seed dSYM %q: %w", dsymPath, err))
+	}
+	template, err := os.ReadFile(tracePath)
+	if err != nil {
+		panic(fmt.Errorf("reading ios seed trace %q: %w", tracePath, err))
+	}
+	absSeed, err := filepath.Abs(dsymPath)
+	if err != nil {
+		panic(err)
+	}
+	arch := "arm64"
+	if m := archRe.FindStringSubmatch(string(template)); m != nil {
+		arch = m[1]
+	}
+
+	c := dartCorpus{Language: "ios"}
+	for n := 0; n < entries; n++ {
+		uuid := fmt.Sprintf("%032x", n)
+		dest := filepath.Join(out, uuid+".dsym")
+		_ = os.Remove(dest)
+		if err := os.Link(absSeed, dest); err != nil {
+			if werr := os.WriteFile(dest, dsym, 0o644); werr != nil {
+				panic(werr)
+			}
+		}
+		c.Builds = append(c.Builds, dartBuild{BuildID: uuid, Trace: substituteIOSUUID(string(template), uuid)})
+	}
+	data, _ := json.MarshalIndent(c, "", "  ")
+	if err := os.WriteFile(filepath.Join(out, "corpus.json"), data, 0o644); err != nil {
+		panic(err)
+	}
+	fmt.Printf("wrote %d ios builds (arch %s, seed %s) to %s\n", entries, arch, dsymPath, out)
+}
+
+func substituteIOSUUID(trace, uuid string) string {
+	return iosFrameUUIDRe.ReplaceAllString(trace, "${1}"+uuid+"${2}")
 }

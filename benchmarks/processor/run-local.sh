@@ -59,6 +59,8 @@ gen_corpus() {
   if [ ! -f "$dir/corpus.json" ]; then
     if [ "$lang" = dart ]; then
       ./corpusgen/corpusgen --language dart --entries "$entries" --out "$dir" >&2
+    elif [ "$lang" = ios ]; then
+      ./corpusgen/corpusgen --language ios --entries "$entries" --dsym seeds/ios/app.dsym --trace seeds/ios/trace.txt --out "$dir" >&2
     else
       ./corpusgen/corpusgen --entries "$entries" --pad-kb "$pad" --map-pad-kb "${mappad%%:*}" --mappings-pad-kb "${mappad##*:}" --out "$dir" >&2
     fi
@@ -75,6 +77,8 @@ impl_env() {
     traceway-goja-disk) echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER=goja DISK=1 LANG=js" ;;
     traceway-dart-mem)  echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER= DISK= LANG=dart" ;;
     traceway-dart-disk) echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER= DISK=1 LANG=dart" ;;
+    traceway-ios-mem)   echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER= DISK= LANG=ios" ;;
+    traceway-ios-disk)  echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER= DISK=1 LANG=ios" ;;
     *) echo "unknown impl $1" >&2; return 1 ;;
   esac
 }
@@ -82,6 +86,7 @@ impl_env() {
 drain_markers() {
   case "$1" in
     dart) echo "OK_MARKER=crash.dart FAIL_MARKER=_kDartIsolateSnapshotInstructions" ;;
+    ios)  echo "OK_MARKER=sample.c FAIL_MARKER=sample+0x" ;;
     *)    echo "OK_MARKER=../src/inventory.js FAIL_MARKER=.mjs:1:" ;;
   esac
 }

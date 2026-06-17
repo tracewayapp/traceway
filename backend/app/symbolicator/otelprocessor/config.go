@@ -57,6 +57,7 @@ type Config struct {
 	CacheMaxDiskPct int    `mapstructure:"cache_max_disk_pct"`
 
 	DartDefaultArch string `mapstructure:"dart_default_arch"`
+	IOSDefaultArch  string `mapstructure:"ios_default_arch"`
 
 	LanguageAttributeKey string   `mapstructure:"language_attribute_key"`
 	AllowedLanguages     []string `mapstructure:"allowed_languages"`

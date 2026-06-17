@@ -41,6 +41,12 @@
 			: false) || isJsLanguage(latestOccurrence?.attributes?.['telemetry.sdk.language'])
 	);
 	const isFlutter = $derived(projectsState.currentProject?.framework === 'flutter');
+	const isIOS = $derived(
+		projectsState.currentProject?.framework === 'ios' ||
+			['ios', 'swift'].includes(
+				(latestOccurrence?.attributes?.['telemetry.sdk.language'] ?? '').toLowerCase()
+			)
+	);
 	const hasMoreOccurrences = $derived(total > 10);
 	const firstLineOfStackTrace = $derived(latestOccurrence?.stackTrace.split('\n')[0] || 'Exception');
 
@@ -171,6 +177,7 @@
 			{isMessage}
 			{isJavaScript}
 			{isFlutter}
+			{isIOS}
 			firstSeen={group.firstSeen}
 			lastSeen={group.lastSeen}
 			totalCount={group.count}

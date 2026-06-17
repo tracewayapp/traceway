@@ -14,6 +14,7 @@
 	let projectWithToken = $derived(projectsState.currentProject);
 
 	const isFlutter = $derived(projectWithToken?.framework === 'flutter');
+	const isIOS = $derived(projectWithToken?.framework === 'ios');
 
 	const isReadonly = $derived(
 		authState.getRoleForOrganization(projectsState.currentProject?.organizationId ?? 0) ===
@@ -26,9 +27,9 @@
 		<CardHeader>
 			<CardTitle class="flex items-center gap-2">
 				<KeyRound class="h-5 w-5" />
-				{isFlutter ? 'Symbol Upload' : 'Source Map Upload'}
+				{isFlutter || isIOS ? 'Symbol Upload' : 'Source Map Upload'}
 			</CardTitle>
-			{#if !isFlutter}
+			{#if !isFlutter && !isIOS}
 				<CardDescription>
 					Upload source maps to see original file names and line numbers in stack traces from
 					minified code.

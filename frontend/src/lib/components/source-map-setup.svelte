@@ -78,6 +78,8 @@ module.exports = {
 	let copiedCommand = $state(false);
 	let copiedFlutterBuild = $state(false);
 	let copiedFlutterUpload = $state(false);
+	let copiedIosBuild = $state(false);
+	let copiedIosUpload = $state(false);
 
 	const pluginInstallCommand = 'npm install -D @tracewayapp/bundler-plugin';
 
@@ -88,7 +90,8 @@ module.exports = {
 	);
 
 	const isFlutter = $derived(project?.framework === 'flutter');
-	const artifactLabel = $derived(isFlutter ? 'debug symbols' : 'source maps');
+	const isIOS = $derived(project?.framework === 'ios');
+	const artifactLabel = $derived(isFlutter || isIOS ? 'debug symbols' : 'source maps');
 
 	const showBundlerSetup = $derived(project?.framework !== 'react-native');
 
@@ -109,6 +112,17 @@ module.exports = {
 			? `dart run traceway:upload_symbols \\
   --token ${sourceMapToken} \\
   --url ${project.backendUrl}`
+			: ''
+	);
+
+	const iosBuildCommand =
+		'xcodebuild -scheme MyApp -configuration Release \\\n  -archivePath build/MyApp.xcarchive archive';
+
+	const iosUploadCommand = $derived(
+		project && sourceMapToken
+			? `curl -X POST ${project.backendUrl}/api/symbols/upload \\
+  -H "Authorization: Bearer ${sourceMapToken}" \\
+  -F "files=@build/MyApp.xcarchive/dSYMs/MyApp.app.dSYM/Contents/Resources/DWARF/MyApp"`
 			: ''
 	);
 
@@ -169,6 +183,18 @@ module.exports = {
 		await navigator.clipboard.writeText(flutterUploadCommand);
 		copiedFlutterUpload = true;
 		setTimeout(() => (copiedFlutterUpload = false), 2000);
+	}
+
+	async function copyIosBuild() {
+		await navigator.clipboard.writeText(iosBuildCommand);
+		copiedIosBuild = true;
+		setTimeout(() => (copiedIosBuild = false), 2000);
+	}
+
+	async function copyIosUpload() {
+		await navigator.clipboard.writeText(iosUploadCommand);
+		copiedIosUpload = true;
+		setTimeout(() => (copiedIosUpload = false), 2000);
 	}
 </script>
 
@@ -252,6 +278,61 @@ module.exports = {
 					and pushes every architecture in one go; symbols are unique per build, so re-upload on
 					each release. In CI, pass the token as <code class="font-mono">TRACEWAY_UPLOAD_TOKEN</code>
 					instead of the flag.
+				</p>
+			</div>
+		{:else if isIOS}
+			<div>
+				<p class="mb-2 text-sm font-medium">Step 1: Build an archive with dSYMs</p>
+				<div class="relative">
+					<div class="absolute top-2 right-2 z-10">
+						<Button variant="outline" size="sm" onclick={copyIosBuild}>
+							{#if copiedIosBuild}
+								<Check class="mr-2 h-4 w-4 text-green-500" />
+								Copied!
+							{:else}
+								<Copy class="mr-2 h-4 w-4" />
+								Copy
+							{/if}
+						</Button>
+					</div>
+					<div
+						class="overflow-x-auto rounded-lg text-sm {themeState.isDark
+							? 'dark-code'
+							: 'light-code'}"
+					>
+						<Highlight language={bash} code={iosBuildCommand} />
+					</div>
+				</div>
+				<p class="mt-2 text-xs text-muted-foreground">
+					Release builds emit a .dSYM bundle per architecture under the archive's dSYMs directory.
+					Replace MyApp with your scheme name.
+				</p>
+			</div>
+			<div>
+				<p class="mb-2 text-sm font-medium">Step 2: Upload the dSYM after each release build</p>
+				<div class="relative">
+					<div class="absolute top-2 right-2 z-10">
+						<Button variant="outline" size="sm" onclick={copyIosUpload}>
+							{#if copiedIosUpload}
+								<Check class="mr-2 h-4 w-4 text-green-500" />
+								Copied!
+							{:else}
+								<Copy class="mr-2 h-4 w-4" />
+								Copy
+							{/if}
+						</Button>
+					</div>
+					<div
+						class="overflow-x-auto rounded-lg text-sm {themeState.isDark
+							? 'dark-code'
+							: 'light-code'}"
+					>
+						<Highlight language={bash} code={iosUploadCommand} />
+					</div>
+				</div>
+				<p class="mt-2 text-xs text-muted-foreground">
+					Upload the Mach-O DWARF inside the .dSYM bundle. Symbols are keyed by build UUID, so
+					re-upload on each release.
 				</p>
 			</div>
 		{:else}
@@ -367,6 +448,18 @@ module.exports = {
 					target="_blank"
 					rel="noopener noreferrer"
 					class="underline hover:text-foreground">Flutter docs</a
+				>
+			</p>
+		{:else if isIOS}
+			<p class="text-sm text-muted-foreground">
+				Release crashes report against stripped machine code. Generate a token, then upload your
+				<code class="rounded bg-muted px-1 py-0.5 font-mono text-xs">.dSYM</code> after each release
+				to resolve their stack traces.
+				<a
+					href="https://docs.tracewayapp.com/client/ios"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="underline hover:text-foreground">iOS docs</a
 				>
 			</p>
 		{:else}

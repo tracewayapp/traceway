@@ -1,0 +1,7 @@
+SampleError: boom
+*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+os: ios arch: arm64
+#00 2dd71042118432be8f92dd4e3d3fe24a 0x460 sample
+#01 2dd71042118432be8f92dd4e3d3fe24a 0x478 sample
+#02 2dd71042118432be8f92dd4e3d3fe24a 0x494 sample
+#03 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 0x1234 UnknownLib

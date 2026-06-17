@@ -48,6 +48,8 @@ export function getInstallCommand(framework: Framework): string {
 			return 'flutter pub add traceway';
 		case 'android':
 			return 'implementation("com.tracewayapp:traceway:1.0.0")';
+		case 'ios':
+			return '.package(url: "https://github.com/tracewayapp/traceway-swift.git", from: "1.0.0")';
 		case 'custom':
 		default:
 			return base;
@@ -403,6 +405,26 @@ class MyApp : Application() {
     }
 }`;
 
+		case 'ios':
+			return `import SwiftUI
+import Traceway
+
+@main
+struct MyApp: App {
+    init() {
+        Traceway.start(
+            connectionString: "${connectionString}",
+            options: TracewayOptions(version: "1.0.0")
+        )
+    }
+
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}`;
+
 		case 'custom':
 		default:
 			return `package main
@@ -473,6 +495,10 @@ throw StateError('Test error from Traceway integration');`;
 		return `// Trigger a test error
 throw RuntimeException("Test error from Traceway integration")`;
 	}
+	if (framework === 'ios') {
+		return `// Trigger a test error
+fatalError("Test error from Traceway integration")`;
+	}
 	if (framework && isJsFramework(framework)) {
 		return `// Trigger a test error
 throw new Error("Test error from Traceway integration");`;
@@ -507,6 +533,15 @@ try {
     riskyOperation()
 } catch (e: Throwable) {
     Traceway.captureException(e)
+}`;
+	}
+	if (framework === 'ios') {
+		return `import Traceway
+
+do {
+    try riskyOperation()
+} catch {
+    Traceway.captureException(error)
 }`;
 	}
 	if (framework && isJsFramework(framework)) {
@@ -595,6 +630,7 @@ export function getFrameworkLabel(framework: Framework): string {
 		django: 'Django',
 		flutter: 'Flutter',
 		android: 'Android',
+		ios: 'iOS',
 	};
 	return labels[framework] || framework;
 }
@@ -608,5 +644,6 @@ export function getCodeLanguage(framework: Framework): 'go' | 'javascript' | 'ba
 	if (framework === 'cloudflare') return 'javascript';
 	if (framework === 'flutter') return 'javascript'; // closest to Dart syntax highlighting
 	if (framework === 'android') return 'javascript'; // closest to Kotlin syntax highlighting
+	if (framework === 'ios') return 'javascript';
 	return isJsFramework(framework) ? 'javascript' : 'go';
 }

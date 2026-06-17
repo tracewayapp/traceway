@@ -11,8 +11,10 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/dart"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/ios"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	traceway "go.tracewayapp.com"
 )
 
@@ -38,9 +40,6 @@ func (s symbolsController) Upload(c *gin.Context) {
 
 	uploaded := 0
 	for _, fileHeader := range files {
-		if filepath.Ext(fileHeader.Filename) != ".symbols" {
-			continue
-		}
 		if fileHeader.Size > 200<<20 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("File %s exceeds 200MB limit", fileHeader.Filename)})
 			return
@@ -58,49 +57,80 @@ func (s symbolsController) Upload(c *gin.Context) {
 			return
 		}
 
-		arch := c.PostForm("arch")
-		if arch == "" {
-			arch = archFromSymbolsFilename(fileHeader.Filename)
-		}
-		if arch == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("cannot determine arch for %s; pass an 'arch' field", fileHeader.Filename)})
-			return
-		}
-		if !dart.IsValidArch(arch) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid arch %q for %s; expected an architecture token like arm64, x64, arm, or ia32", arch, fileHeader.Filename)})
-			return
-		}
-
-		buildID, err := dart.ReadBuildID(data)
-		if err != nil {
-			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": fmt.Sprintf("%s is not a valid Dart symbols file: %v", fileHeader.Filename, err)})
-			return
-		}
-
-		debugId := services.NormalizeDartDebugId(c.PostForm("debug_id"))
-		if note := services.NormalizeDartDebugId(buildID); note != "" {
-			if debugId != "" && debugId != note {
-				c.JSON(http.StatusUnprocessableEntity, gin.H{"error": fmt.Sprintf("debug_id %s does not match the build-id note %s in %s", debugId, note, fileHeader.Filename)})
+		switch {
+		case ios.IsMachO(data):
+			if !s.uploadIOS(c, projectId, fileHeader.Filename, data) {
 				return
 			}
-			debugId = note
+			uploaded++
+		case filepath.Ext(fileHeader.Filename) == ".symbols":
+			if !s.uploadDart(c, projectId, fileHeader.Filename, data) {
+				return
+			}
+			uploaded++
 		}
-		if debugId == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("no debug_id for %s; the file has no build-id note, so pass a 'debug_id' field (the Mach-O UUID)", fileHeader.Filename)})
-			return
-		}
-
-		key := services.DartSymbolsKey(projectId, debugId, arch)
-		if err := storage.Store.Write(c, key, data); err != nil {
-			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to write symbols to storage: %w", err))
-			return
-		}
-		services.InvalidateDartSymbols(key)
-
-		uploaded++
 	}
 
 	c.JSON(http.StatusOK, gin.H{"uploaded": uploaded})
+}
+
+func (s symbolsController) uploadDart(c *gin.Context, projectId uuid.UUID, filename string, data []byte) bool {
+	arch := c.PostForm("arch")
+	if arch == "" {
+		arch = archFromSymbolsFilename(filename)
+	}
+	if arch == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("cannot determine arch for %s; pass an 'arch' field", filename)})
+		return false
+	}
+	if !dart.IsValidArch(arch) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid arch %q for %s; expected an architecture token like arm64, x64, arm, or ia32", arch, filename)})
+		return false
+	}
+
+	buildID, err := dart.ReadBuildID(data)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": fmt.Sprintf("%s is not a valid Dart symbols file: %v", filename, err)})
+		return false
+	}
+
+	debugId := services.NormalizeDartDebugId(c.PostForm("debug_id"))
+	if note := services.NormalizeDartDebugId(buildID); note != "" {
+		if debugId != "" && debugId != note {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": fmt.Sprintf("debug_id %s does not match the build-id note %s in %s", debugId, note, filename)})
+			return false
+		}
+		debugId = note
+	}
+	if debugId == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("no debug_id for %s; the file has no build-id note, so pass a 'debug_id' field (the Mach-O UUID)", filename)})
+		return false
+	}
+
+	key := services.DartSymbolsKey(projectId, debugId, arch)
+	if err := storage.Store.Write(c, key, data); err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to write symbols to storage: %w", err))
+		return false
+	}
+	services.InvalidateDartSymbols(key)
+	return true
+}
+
+func (s symbolsController) uploadIOS(c *gin.Context, projectId uuid.UUID, filename string, data []byte) bool {
+	slices, err := ios.ReadUUIDs(data)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": fmt.Sprintf("%s is not a valid dSYM: %v", filename, err)})
+		return false
+	}
+	for _, sl := range slices {
+		key := services.IOSSymbolsKey(projectId, sl.UUID)
+		if err := storage.Store.Write(c, key, data); err != nil {
+			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to write symbols to storage: %w", err))
+			return false
+		}
+		services.InvalidateIOSSymbols(key)
+	}
+	return true
 }
 
 func archFromSymbolsFilename(name string) string {

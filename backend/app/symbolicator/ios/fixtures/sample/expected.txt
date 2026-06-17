@@ -1,0 +1,4 @@
+leaf (sample.c:7:18)
+compute (sample.c:14)
+main (sample.c:18)
+UnknownLib+0x1234

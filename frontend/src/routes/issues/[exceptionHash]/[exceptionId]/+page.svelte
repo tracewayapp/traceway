@@ -37,6 +37,12 @@
             : false) || isJsLanguage(occurrence?.attributes?.['telemetry.sdk.language'])
     );
     const isFlutter = $derived(projectsState.currentProject?.framework === 'flutter');
+    const isIOS = $derived(
+        projectsState.currentProject?.framework === 'ios' ||
+            ['ios', 'swift'].includes(
+                (occurrence?.attributes?.['telemetry.sdk.language'] ?? '').toLowerCase()
+            )
+    );
     const firstLineOfStackTrace = $derived(occurrence?.stackTrace.split('\n')[0] || 'Exception');
     const hasMoreOccurrences = $derived(total > 10);
     const subtitleText = $derived(occurrence ? `Event from ${formatDateTime(occurrence.recordedAt, { timezone })}` : 'Loading...');
@@ -177,6 +183,7 @@
             {isMessage}
             {isJavaScript}
             {isFlutter}
+            {isIOS}
             bind:showArchiveDialog={showArchiveDialog}
             bind:archiving={archiving}
         />

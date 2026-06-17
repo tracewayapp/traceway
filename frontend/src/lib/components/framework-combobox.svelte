@@ -40,6 +40,7 @@
         { value: 'opentelemetry', label: 'OpenTelemetry', description: 'Vendor-neutral observability', group: 'Backend' },
         { value: 'flutter', label: 'Flutter', description: 'Mobile UI framework', group: 'Mobile' },
         { value: 'android', label: 'Android', description: 'Native Android (Kotlin/Java)', group: 'Mobile' },
+        { value: 'ios', label: 'iOS', description: 'Native iOS (Swift/Objective-C)', group: 'Mobile' },
     ] as const;
 
     const selectedFrameworkLabel = $derived(getFrameworkLabel(value));

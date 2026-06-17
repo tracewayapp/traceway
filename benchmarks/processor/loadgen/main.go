@@ -41,6 +41,10 @@ func buildBodyDart(trace string, spans int) []byte {
 	return buildBody("dart", "DartError", "bench", trace, spans)
 }
 
+func buildBodyIOS(trace string, spans int) []byte {
+	return buildBody("swift", "IOSError", "bench", trace, spans)
+}
+
 func buildBody(lang, excType, excMsg, stack string, spans int) []byte {
 	td := ptrace.NewTraces()
 	rs := td.ResourceSpans().AppendEmpty()
@@ -109,12 +113,18 @@ func main() {
 		panic(err)
 	}
 	var bodies [][]byte
-	if c.Language == "dart" {
+	switch c.Language {
+	case "dart":
 		bodies = make([][]byte, len(c.Builds))
 		for i, b := range c.Builds {
 			bodies[i] = buildBodyDart(b.Trace, *spansPerReq)
 		}
-	} else {
+	case "ios":
+		bodies = make([][]byte, len(c.Builds))
+		for i, b := range c.Builds {
+			bodies[i] = buildBodyIOS(b.Trace, *spansPerReq)
+		}
+	default:
 		bodies = make([][]byte, len(c.Urls))
 		for i, u := range c.Urls {
 			bodies[i] = buildBodyJS(u, *spansPerReq)

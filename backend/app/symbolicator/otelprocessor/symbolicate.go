@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/dart"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/ios"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/jsstack"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/twcache"
@@ -58,8 +59,22 @@ func (p *symbolicatorProcessor) processRecord(ctx context.Context, attrs, resour
 	}
 	originalStack := stackVal.Str()
 
+	lang := strAttr(attrs, p.cfg.LanguageAttributeKey)
+	if lang == "" {
+		lang = strAttr(resource, p.cfg.LanguageAttributeKey)
+	}
+	if ios.IsIOSLanguage(lang) {
+		p.symbolicateIOSTrace(ctx, attrs, originalStack)
+		return
+	}
+
 	if dart.IsNonSymbolic(originalStack) {
 		p.symbolicateDartTrace(ctx, attrs, originalStack)
+		return
+	}
+
+	if ios.IsIOSTrace(originalStack) {
+		p.symbolicateIOSTrace(ctx, attrs, originalStack)
 		return
 	}
 
@@ -176,7 +191,7 @@ func (p *symbolicatorProcessor) symbolicateDartTrace(ctx context.Context, attrs 
 		return
 	}
 
-	key := dartCacheKey(p.store.dartSymbolsKey(trace.BuildID, arch))
+	key := flatCacheKey(p.store.dartSymbolsKey(trace.BuildID, arch))
 	if p.cache.IsNegative(key) {
 		fail(fmt.Errorf("failed to find dart symbols for build %s/%s", trace.BuildID, arch))
 		return
@@ -232,6 +247,80 @@ func (p *symbolicatorProcessor) renderDartTrace(attrs pcommon.Map, trace dart.St
 		}
 	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+func (p *symbolicatorProcessor) symbolicateIOSTrace(ctx context.Context, attrs pcommon.Map, rawStack string) {
+	trace := ios.ParseTrace(rawStack)
+	if len(trace.Frames) == 0 {
+		return
+	}
+
+	attrs.PutStr(p.cfg.SymbolicatorParsingMethodAttributeKey, parsingMethodParsed)
+	if p.cfg.PreserveStackTrace {
+		attrs.PutStr(p.cfg.OriginalStackTraceAttributeKey, rawStack)
+	}
+
+	arch := trace.Arch
+	if arch == "" {
+		arch = p.cfg.IOSDefaultArch
+	}
+	if arch == "" {
+		arch = "arm64"
+	}
+
+	dataByUUID := map[string][]byte{}
+	var dones []func()
+	defer func() {
+		for _, d := range dones {
+			d()
+		}
+	}()
+	resolver := func(debugID string) []byte {
+		if d, ok := dataByUUID[debugID]; ok {
+			return d
+		}
+		key := flatCacheKey(p.store.iosSymbolsKey(debugID))
+		if p.cache.IsNegative(key) {
+			dataByUUID[debugID] = nil
+			return nil
+		}
+		data, done, err := p.cache.Get(ctx, key, func(ctx context.Context) ([]byte, error) {
+			fetchCtx, cancel := context.WithTimeout(ctx, p.cfg.Timeout)
+			defer cancel()
+			dsym, err := p.store.getIOSDsym(fetchCtx, debugID)
+			if err != nil {
+				return nil, err
+			}
+			return ios.BuildFlat(dsym, debugID, arch)
+		})
+		if err != nil {
+			dataByUUID[debugID] = nil
+			return nil
+		}
+		dones = append(dones, done)
+		dataByUUID[debugID] = data
+		return data
+	}
+
+	attrs.PutStr(p.cfg.StackTraceAttributeKey, p.renderIOSTrace(attrs, trace, resolver))
+	attrs.PutBool(p.cfg.SymbolicatorFailureAttributeKey, false)
+	p.putProcessorMeta(attrs)
+}
+
+func (p *symbolicatorProcessor) renderIOSTrace(attrs pcommon.Map, trace ios.StackTrace, resolver func(string) []byte) string {
+	preamble := ""
+	if excType := strAttr(attrs, p.cfg.ExceptionTypeAttributeKey); excType != "" {
+		if excMessage := strAttr(attrs, p.cfg.ExceptionMessageAttributeKey); excMessage != "" {
+			preamble = excType + ": " + excMessage
+		}
+	}
+	return ios.RenderResolved(trace, preamble, func(uuid string, off uint64) []ios.SymFrame {
+		data := resolver(uuid)
+		if data == nil {
+			return nil
+		}
+		return ios.LookupFlat(data, off)
+	})
 }
 
 func (p *symbolicatorProcessor) languageAllowed(attrs, resource pcommon.Map) bool {

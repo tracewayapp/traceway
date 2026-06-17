@@ -11,6 +11,7 @@
 		isMessage?: boolean;
 		isJavaScript?: boolean;
 		isFlutter?: boolean;
+		isIOS?: boolean;
 		firstSeen?: string;
 		lastSeen?: string;
 		totalCount?: number;
@@ -24,6 +25,7 @@
 		isMessage = false,
 		isJavaScript = false,
 		isFlutter = false,
+		isIOS = false,
 		firstSeen,
 		lastSeen,
 		totalCount,
@@ -34,8 +36,9 @@
 
 	const tz = $derived(timezone ?? getTimezone());
 	const showStats = $derived(firstSeen && lastSeen && totalCount !== undefined);
-	const parsed = $derived(parseStackTrace(stackTrace));
-	const usePretty = $derived((isJavaScript || isFlutter) && parsed.groups.length > 0);
+	const parsed = $derived(parseStackTrace(stackTrace, { ios: isIOS }));
+	const usePretty = $derived((isJavaScript || isFlutter || isIOS) && parsed.groups.length > 0);
+	const groupNoun = $derived(isIOS ? 'system' : 'library');
 
 	let expandedGroups = $state<Set<number>>(new Set());
 
@@ -148,7 +151,7 @@
 										<ChevronRight class="size-3.5 shrink-0" />
 									{/if}
 									<span class="tabular-nums"
-										>{group.frames.length} library {group.frames.length === 1
+										>{group.frames.length} {groupNoun} {group.frames.length === 1
 											? 'frame'
 											: 'frames'}</span
 									>

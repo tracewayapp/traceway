@@ -11,7 +11,6 @@ processors:
       path: ${env:STORE_PATH}
     dsym_cache_size: ${env:CACHE_SIZE:-128}
     preserve_stack_trace: false
-    allowed_languages: [swift, ios]
 
 exporters:
   otlphttp/drain:

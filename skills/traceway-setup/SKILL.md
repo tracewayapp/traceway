@@ -1,6 +1,6 @@
 ---
 name: traceway-setup
-description: Connect a project to a Traceway instance so it reports endpoints, spans, errors, background tasks, AI traces, and metrics. Backends use OpenTelemetry over OTLP/HTTP, frontends and mobile apps use the Traceway SDKs, and host metrics use the Traceway OTel Agent. Use when the user wants to add Traceway (or OpenTelemetry tracing that exports to Traceway) to a backend, frontend, full-stack, or mobile project. Accepts a project token and instance URL, e.g. "/traceway-setup with token abc123".
+description: Connect a project to a Traceway instance so it reports endpoints, spans, errors, background tasks, AI traces, and metrics. Backends use OpenTelemetry over OTLP/HTTP, frontends and mobile apps (including native iOS/Swift) use the Traceway SDKs, and host metrics use the Traceway OTel Agent. Use when the user wants to add Traceway (or OpenTelemetry tracing that exports to Traceway) to a backend, frontend, full-stack, mobile, or iOS/Swift project. Accepts a project token and instance URL, e.g. "/traceway-setup with token abc123".
 ---
 
 # Set Up Traceway in a Project
@@ -13,7 +13,7 @@ Connect an existing project to a Traceway instance so it reports endpoints, span
 |---|---|---|
 | **Instance URL** | `https://traceway.example.com` | The URL of the Traceway dashboard |
 | **Project token** | `abc123...` | Traceway dashboard -> Connection page |
-| **Upload token** (optional; frontend source maps and obfuscated Flutter symbols) | `def456...` | Traceway dashboard -> Connection page -> Source Maps / Symbol Upload |
+| **Upload token** (optional; frontend source maps, obfuscated Flutter symbols, and iOS dSYMs) | `def456...` | Traceway dashboard -> Connection page -> Source Maps / Symbol Upload |
 
 Instance URL and project token may be provided in the invocation (e.g. `/traceway-setup with token abc123 and url https://traceway.example.com`). If either is missing:
 
@@ -33,7 +33,7 @@ Pick the path by project type. This is not negotiable per framework; it is how T
 | **Backend** (any language) | OpenTelemetry, exporting OTLP/HTTP to `<instance>/api/otel/v1/*`. Always, including Go. The native Traceway Go SDK is used only when the user explicitly asks for it. |
 | **Frontend** (browser SPA) | Traceway `@tracewayapp/<framework>` SDK + bundler plugin + source map upload (see "Frontend and Mobile" below). |
 | **Full-stack JS** (Next.js, SvelteKit, Remix) | BOTH: server side via OpenTelemetry AND browser side via the frontend SDK. |
-| **Mobile** (Flutter, React Native, Android) | The Traceway platform SDK only. Never OTel. |
+| **Mobile** (Flutter, React Native, Android, native Swift iOS) | The Traceway platform SDK. Never OTel. Sole exception: a non-Swift iOS/Apple app has no native SDK, so it uses an OTel library (e.g. Honeycomb) exporting to Traceway like a backend (see "Frontend and Mobile"). |
 
 Two hard rules apply to every backend integration:
 
@@ -58,7 +58,7 @@ For the exact classification rules, endpoint naming, metric conversion, and all 
 
 Before changing anything, build a picture of what needs instrumenting:
 
-1. **Frameworks and languages**: detect them by reading `package.json` (Node.js), `go.mod` (Go), `composer.json` (PHP), `requirements.txt`/`pyproject.toml` (Python), `pubspec.yaml` (Flutter), `build.gradle` (Android), or asking the user.
+1. **Frameworks and languages**: detect them by reading `package.json` (Node.js), `go.mod` (Go), `composer.json` (PHP), `requirements.txt`/`pyproject.toml` (Python), `pubspec.yaml` (Flutter), `build.gradle` (Android), `Package.swift` / `*.xcodeproj` / `*.xcworkspace` / `Podfile` (iOS/Swift; note whether the sources are Swift or Objective-C, which picks the path in "Frontend and Mobile"), or asking the user.
 2. **Services and entry points**: in a monorepo, list each deployable service and its entry point. Each service that should report to Traceway needs its own integration, and usually its own project token (ask the user before reusing one token across services).
 3. **Background work**: find cron jobs, queue consumers, schedulers, CLI commands, and long-running workers. These must be instrumented as Tasks (Step 3).
 4. **AI/LLM usage**: check dependencies for `openai`, `@anthropic-ai/sdk`, `anthropic`, `langchain` / `@langchain/*`, `ai` (Vercel AI SDK), `litellm`, `google-generativeai`, `cohere`, `openrouter`. If any are present, Step 4 applies.
@@ -250,6 +250,7 @@ For the per-framework init code (plain JS, React, Vue, Svelte/SvelteKit, jQuery)
 - **Flutter**: `flutter pub add traceway`, then `Traceway.run(connectionString: '<token>@https://<instance>/api/report', child: MyApp())`. Then check whether the release build is obfuscated (`--obfuscate --split-debug-info`): if it is, production crash stack traces arrive obfuscated and stay unreadable until the build's `.symbols` files are uploaded, so ask the user for the upload token (Step 0) and wire up the symbol upload. For options, platform permissions, the navigator observer, screen recording, privacy masking, the obfuscation check and symbol upload, and the Flutter web caveat, read `flutter.md` in this skill directory. Docs: https://docs.tracewayapp.com/client/flutter
 - **React Native**: `npm install @tracewayapp/react-native`, wrap the app in `TracewayProvider`. Docs: https://docs.tracewayapp.com/client/react-native
 - **Android**: `implementation("com.tracewayapp:traceway:<version>")`, call `Traceway.init(...)` at startup. Docs: https://docs.tracewayapp.com/client/android
+- **iOS / Swift** (native SwiftUI or UIKit): add the Traceway iOS SDK via Swift Package Manager (`https://github.com/tracewayapp/traceway-ios.git`) and call `Traceway.start(connectionString: "<token>@https://<instance>/api/report", options: TracewayOptions(version: "1.0.0"))` as early as possible. It captures uncaught `NSException`s and fatal signals (hard crashes upload on the next launch) plus manual `Traceway.capture(...)`; it reports errors and crashes only (no session replay). Release crashes arrive as bare addresses until the build's dSYMs are uploaded, so set up dSYM upload with the upload token (Step 0). For init code, options, the debugger caveat, and dSYM upload, read `ios.md` in this skill directory. **If the app is NOT a Swift app** (Objective-C only, a cross-platform stack with no Traceway mobile SDK, or a team standardized on OpenTelemetry), there is no native SDK: use an OTel distribution like Honeycomb with its exporter pointed at `<instance>/api/otel` and a `Authorization: Bearer <project-token>` header, exactly like a backend (Step 2). The non-Swift path is also in `ios.md`.
 
 ## Step 5: Deployment and Server Metrics
 
@@ -287,7 +288,7 @@ Metrics arrive within ~60s under their hostmetrics names (`system.cpu.utilizatio
 1. Start the app and hit a few endpoints (or trigger an error on purpose).
 2. Check the Traceway dashboard:
    - **Endpoints page**: routes appear grouped by pattern (e.g. `GET /api/users/:id`), not by literal URL, and status codes are non-zero.
-   - **Issues page**: thrown errors appear with stack traces. For frontend projects, stack traces are symbolicated to original files and lines; for obfuscated Flutter builds, they resolve once the build's `.symbols` files have been uploaded.
+   - **Issues page**: thrown errors appear with stack traces. For frontend projects, stack traces are symbolicated to original files and lines; for obfuscated Flutter builds, they resolve once the build's `.symbols` files have been uploaded; for native iOS Release crashes, they resolve to symbol names and `file:line` once the build's dSYMs have been uploaded.
    - **Endpoint detail -> Spans tab**: database queries and outgoing calls appear as children.
    - **Tasks page**: after triggering each background job once, it appears under one stable name.
    - **AI Traces page** (if Step 4 applied): model calls appear with token counts and cost.

@@ -16,7 +16,7 @@ import { GITHUB_URL } from "@/lib/links";
 export const metadata: Metadata = {
   title: "Stack Trace Symbolication · Traceway",
   description:
-    "Open-source, OpenTelemetry-compatible symbolication for JavaScript source maps and Dart/Flutter obfuscation maps. Resolve minified production errors back to the original file, line, and function at ingest. Pure Go, built to be fast.",
+    "Open-source, OpenTelemetry-compatible symbolication for JavaScript source maps, Dart/Flutter obfuscation maps, and iOS/Swift dSYM debug symbols. Resolve minified production errors and stripped native crashes back to the original file, line, and function at ingest. Pure Go, built to be fast.",
 };
 
 const BUNDLERS = [
@@ -34,11 +34,21 @@ const LANGUAGE_TILES = [
   {
     src: "/images/frameworks/flutter.png",
     alt: "Flutter",
-    w: 250,
-    h: 250,
+    w: 40,
+    h: 40,
+    size: 80,
+    z: 22,
+    pos: "left-[30%] top-1/2 -translate-x-1/2 -translate-y-1/2",
+    engine: true,
+  },
+  {
+    src: "/images/frameworks/swift.png",
+    alt: "Swift",
+    w: 200,
+    h: 171,
     size: 104,
     z: 30,
-    pos: "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
+    pos: "left-[70%] top-1/2 -translate-x-1/2 -translate-y-1/2",
     engine: true,
   },
   {
@@ -46,18 +56,9 @@ const LANGUAGE_TILES = [
     alt: "JavaScript",
     w: 45,
     h: 45,
-    size: 72,
+    size: 66,
     z: 20,
-    pos: "left-[23%] top-[16%]",
-  },
-  {
-    src: "/images/frameworks/node.png",
-    alt: "Node",
-    w: 52,
-    h: 64,
-    size: 68,
-    z: 20,
-    pos: "right-[19%] top-[14%]",
+    pos: "left-[12%] top-[6%]",
   },
   {
     src: "/images/frameworks/remix.png",
@@ -66,7 +67,34 @@ const LANGUAGE_TILES = [
     h: 45,
     size: 50,
     z: 10,
-    pos: "left-1/2 top-[5%] -translate-x-1/2",
+    pos: "left-1/2 top-[1%] -translate-x-1/2",
+  },
+  {
+    src: "/images/frameworks/node.png",
+    alt: "Node",
+    w: 52,
+    h: 64,
+    size: 66,
+    z: 20,
+    pos: "right-[12%] top-[6%]",
+  },
+  {
+    src: "/images/frameworks/svelte.png",
+    alt: "Svelte",
+    w: 45,
+    h: 45,
+    size: 58,
+    z: 20,
+    pos: "left-[14%] bottom-[6%]",
+  },
+  {
+    src: "/images/frameworks/nextjs.png",
+    alt: "Next.js",
+    w: 45,
+    h: 45,
+    size: 58,
+    z: 20,
+    pos: "left-1/2 bottom-[1%] -translate-x-1/2",
   },
   {
     src: "/images/frameworks/react.png",
@@ -75,25 +103,7 @@ const LANGUAGE_TILES = [
     h: 40,
     size: 56,
     z: 10,
-    pos: "right-[17%] top-[50%]",
-  },
-  {
-    src: "/images/frameworks/svelte.png",
-    alt: "Svelte",
-    w: 45,
-    h: 45,
-    size: 62,
-    z: 20,
-    pos: "left-[20%] bottom-[16%]",
-  },
-  {
-    src: "/images/frameworks/nextjs.png",
-    alt: "Next.js",
-    w: 45,
-    h: 45,
-    size: 60,
-    z: 20,
-    pos: "right-[37%] bottom-[13%]",
+    pos: "right-[14%] bottom-[8%]",
   },
 ];
 
@@ -219,17 +229,18 @@ export default function SymbolicationPage() {
                 className="mt-4 text-[22px] leading-tight text-pretty"
                 style={{ color: "var(--fg-0)" }}
               >
-                JavaScript, Dart, Flutter, and more coming soon.
+                JavaScript, Dart, Flutter, Swift, and more coming soon.
               </h3>
               <p
                 className="mt-4 text-[15px] text-pretty"
                 style={{ color: "var(--fg-2)" }}
               >
-                One engine reads JavaScript source maps and Dart and Flutter
-                obfuscation maps through the same compiled cache, plus every JS
-                framework that ships them, from React and Svelte to Next.js and
-                Remix. Even on the cheapest box we tested, a 2&nbsp;vCPU Hetzner{" "}
-                <code>ccx13</code>, it clears{" "}
+                One engine reads JavaScript source maps, Dart and Flutter
+                obfuscation maps, and iOS and Swift dSYM debug symbols through
+                the same compiled cache, plus every JS framework that ships
+                them, from React and Svelte to Next.js and Remix. Even on the
+                cheapest box we tested, a 2&nbsp;vCPU Hetzner <code>ccx13</code>
+                , it clears{" "}
                 <strong style={{ color: "var(--fg-0)" }}>
                   over 32&times; the stack traces per second
                 </strong>{" "}
@@ -426,6 +437,10 @@ export default function SymbolicationPage() {
                 {
                   q: "Does it symbolicate Dart and Flutter?",
                   a: "Yes. The same engine reads Dart obfuscation maps and resolves obfuscated Flutter and Dart stack traces back to your original symbols. It runs through the same compiled-cache pipeline as JavaScript, and the benchmark above shows both cache modes surviving every load scenario, including the memory-starved OOM box.",
+                },
+                {
+                  q: "Does it symbolicate iOS and Swift crashes?",
+                  a: "Yes. Upload your build's .dSYM and the same engine resolves stripped Swift and Objective-C crash addresses back to file, line, and function, with inline frames expanded. dSYMs upload through the same per-project token and POST endpoint as your source maps, so a single Xcode build phase or a curl in CI keeps every release symbolicated.",
                 },
                 {
                   q: "Are my source maps exposed publicly?",

@@ -108,14 +108,26 @@ service:
 
 	const highlightLanguage = $derived.by(() => {
 		if (!projectWithToken) return go;
-		if (projectWithToken.framework === 'symfony') return php;
-		if (projectWithToken.framework === 'laravel') return php;
-		if (projectWithToken.framework === 'django') return python;
-		if (isJsFramework(projectWithToken.framework)) return javascript;
+		const fw = projectWithToken.framework;
+		if (fw === 'symfony' || fw === 'laravel') return php;
+		if (fw === 'django') return python;
+		if (fw === 'ios' || fw === 'flutter' || fw === 'android') return javascript;
+		if (isJsFramework(fw)) return javascript;
 		return go;
 	});
 
 	const isJs = $derived(projectWithToken ? isJsFramework(projectWithToken.framework) : false);
+	const installDescription = $derived.by(() => {
+		const fw = projectWithToken?.framework;
+		let suffix = '';
+		if (fw === 'symfony' || fw === 'laravel') suffix = ' using composer';
+		else if (fw === 'django') suffix = ' using pip';
+		else if (fw === 'ios') suffix = ' using Swift Package Manager';
+		else if (fw === 'flutter') suffix = ' using pub';
+		else if (fw === 'android') suffix = ' using Gradle';
+		else if (!isJs) suffix = ' using go get';
+		return `Install the required packages${suffix}.`;
+	});
 	const showSymbolUpload = $derived(
 		projectWithToken ? supportsSymbolUpload(projectWithToken.framework) : false
 	);
@@ -319,9 +331,7 @@ service:
 			<Card>
 				<CardHeader>
 					<CardTitle>Installation</CardTitle>
-					<CardDescription
-						>Install the required packages{isJs ? '' : projectWithToken?.framework === 'symfony' || projectWithToken?.framework === 'laravel' ? ' using composer' : projectWithToken?.framework === 'django' ? ' using pip' : ' using go get'}.</CardDescription
-					>
+					<CardDescription>{installDescription}</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<div class="relative">

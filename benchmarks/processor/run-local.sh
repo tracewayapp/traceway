@@ -40,7 +40,7 @@ build_all() {
   (cd loadgen && go mod tidy >/dev/null 2>&1; go build -o loadgen .)
   (cd corpusgen && go build -o corpusgen .)
 
-  if echo "$IMPLS" | grep -qE 'honeycomb|oxc|goja' && [ ! -f ../../testing/symbolication/node-app/dist/app.mjs ]; then
+  if echo "$IMPLS" | grep -qE 'oxc|goja|(^| )honeycomb( |$)' && [ ! -f ../../testing/symbolication/node-app/dist/app.mjs ]; then
     (cd ../../testing/symbolication/node-app && npm install && npm run build)
   fi
 }

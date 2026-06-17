@@ -43,6 +43,9 @@ type Config struct {
 
 	BuildUUIDAttributeKey string `mapstructure:"build_uuid_attribute_key"`
 
+	IOSBuildUUIDAttributeKey  string `mapstructure:"ios_build_uuid_attribute_key"`
+	AppExecutableAttributeKey string `mapstructure:"app_executable_attribute_key"`
+
 	SourceMapStoreKey string                `mapstructure:"source_map_store"`
 	LocalSourceMaps   LocalSourceMapsConfig `mapstructure:"local_source_maps"`
 	S3SourceMaps      S3SourceMapsConfig    `mapstructure:"s3_source_maps"`

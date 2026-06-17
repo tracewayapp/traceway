@@ -1,8 +1,9 @@
 # benchmarks/processor
 
-Head-to-head benchmark of the Traceway source map symbolicator processor (oxc build)
-against Honeycomb's reference sourcemapprocessor, measuring sustained symbolication
-throughput and resident memory while ramping load to the breaking point.
+Head-to-head benchmark of the Traceway symbolicator processor against Honeycomb's
+reference processors (the `sourcemapprocessor` for JS and the `dsymprocessor` for
+iOS), measuring sustained symbolication throughput and resident memory while
+ramping load to the breaking point.
 
 ## Topology
 
@@ -36,6 +37,9 @@ stacktraces/sec; the drain's symbolicated percentage is the correctness check.
 | `traceway-goja-disk` | otelcol-bench-traceway | goja | mmap'd `.tw` disk tier |
 | `traceway-dart-mem` | otelcol-bench-traceway | DWARF flatten | in-memory `.tw` only |
 | `traceway-dart-disk` | otelcol-bench-traceway | DWARF flatten | mmap'd `.tw` disk tier |
+| `traceway-ios-mem` | otelcol-bench-traceway | DWARF flatten | in-memory `.tw` only |
+| `traceway-ios-disk` | otelcol-bench-traceway | DWARF flatten | mmap'd `.tw` disk tier |
+| `honeycomb-ios` | otelcol-bench-honeycomb | symbolic (cgo) | RAM LRU, entry-count bound |
 
 One traceway binary (built with `-tags oxc`) serves all variants; language
 (JS source maps vs. Dart symbols), parser, and cache mode are runtime config.
@@ -56,18 +60,23 @@ churn/oom scenarios exercise the cache the same way the JS corpus does. The
 drain's symbolicated check uses Dart markers (`crash.dart` resolved vs.
 `_kDart…SnapshotInstructions` unresolved) selected automatically per impl.
 
-The iOS corpus works the same way: a committed dSYM seed (`seeds/ios/app.dsym`)
-replicated under N synthetic build UUIDs as `<uuid>.dsym` (hardlinked), with the
-trace's per-frame UUID substituted per build. The store is keyed by UUID only —
-a UUID uniquely identifies one arch slice, so this matches Honeycomb's
-`<build-uuid>.dSYM` layout. The traceway processor auto-routes the non-symbolic
-iOS trace, reads the dSYM by UUID, and flattens
-its DWARF to a `.tw` on a cache miss (the dSYM analog of the Dart `.symbols`
-flatten). Drain markers: `sample.c` resolved vs. `sample+0x` unresolved. iOS is
-traceway-only here for now; unlike Dart, Honeycomb *does* ship an iOS
-`dsymprocessor`, so a `honeycomb-ios` comparison is possible as a follow-up (it
-needs the dsymprocessor built into the Honeycomb collector + a Honeycomb-format
-corpus).
+The traceway iOS impls work the same way: a committed dSYM seed
+(`seeds/ios/app.dsym`) hardlinked under N synthetic build UUIDs as `<uuid>.dsym`
+(one inode for N builds), with the trace's per-frame UUID substituted per build.
+The traceway processor auto-routes the non-symbolic iOS trace, reads the dSYM by
+UUID, and flattens its DWARF to a `.tw` on a cache miss (the dSYM analog of the
+Dart `.symbols` flatten).
+
+`honeycomb-ios` runs the same seed against Honeycomb's `dsymprocessor`. Two things
+differ from the traceway iOS path. Honeycomb is logs-only, so loadgen sends OTLP
+logs (not traces). And Honeycomb keys its symcache by the dSYM's embedded
+`LC_UUID`, so the corpus cannot hardlink one inode: corpusgen patches the
+`LC_UUID` per build and writes a real `<UUID>.dSYM/Contents/Resources/DWARF/<binary>`
+bundle. The trace is the Apple-style frame format Honeycomb parses
+(`<idx> <bin> 0x<addr> <UUID> + <offset>`). Traceway's own OTel processor accepts
+that exact Honeycomb frame format too (`ios.ParseHoneycombTrace`, routed for both
+traces and logs), so the same input shape resolves on both engines. Drain markers:
+`sample.c` resolved vs. `sample+0x` unresolved.
 
 ## Scenarios
 
@@ -105,7 +114,7 @@ timeline, not a single number.
 ./run-local.sh
 IMPLS="traceway-oxc-mem traceway-goja-mem honeycomb" SCENARIOS=churn CONNECTIONS=4,16,64 ./run-local.sh
 IMPLS="traceway-dart-mem traceway-dart-disk" SCENARIOS="hot churn" ./run-local.sh   # Dart
-IMPLS="traceway-ios-mem traceway-ios-disk" SCENARIOS="hot churn" ./run-local.sh     # iOS
+IMPLS="honeycomb-ios traceway-ios-mem traceway-ios-disk" SCENARIOS="hot churn" ./run-local.sh   # iOS head-to-head
 ```
 
 Needs go, cargo, node, jq. Builds both collectors (the Traceway one with
@@ -134,7 +143,8 @@ but the collector.
 then runs the impls as parallel matrix entries, each on its own Hetzner server
 pair. Needs the `HCLOUD_TOKEN` secret. The `language` input selects the matrix:
 `js` (the 5 JS impls), `dart` (`traceway-dart-mem`/`-disk`), or `both`. Results
-are uploaded as `results-<impl>` artifacts.
+are uploaded as `results-<impl>` artifacts. `ios` runs `honeycomb-ios` alongside
+the two `traceway-ios` impls.
 
 ## Knobs
 

@@ -26,6 +26,7 @@ RUN_ID="${GITHUB_RUN_ID:-local}-$IMPL"
 command -v hcloud >/dev/null || { echo "hcloud CLI required" >&2; exit 1; }
 [ -d artifacts ] || { echo "artifacts/ missing, build first (see workflow or run-local.sh build_all)" >&2; exit 1; }
 
+SIGNAL=traces
 case "$IMPL" in
   honeycomb)          COL_BIN=otelcol-bench-honeycomb; COL_CFG=config-honeycomb.yaml; PARSER=goja; DISK=; LANG=js ;;
   traceway-oxc-mem)   COL_BIN=otelcol-bench-traceway; COL_CFG=config-traceway.yaml; PARSER=oxc; DISK=; LANG=js ;;
@@ -36,12 +37,13 @@ case "$IMPL" in
   traceway-dart-disk) COL_BIN=otelcol-bench-traceway; COL_CFG=config-traceway.yaml; PARSER=goja; DISK=1; LANG=dart ;;
   traceway-ios-mem)   COL_BIN=otelcol-bench-traceway; COL_CFG=config-traceway.yaml; PARSER=goja; DISK=; LANG=ios ;;
   traceway-ios-disk)  COL_BIN=otelcol-bench-traceway; COL_CFG=config-traceway.yaml; PARSER=goja; DISK=1; LANG=ios ;;
+  honeycomb-ios)      COL_BIN=otelcol-bench-honeycomb; COL_CFG=config-honeycomb-ios.yaml; PARSER=goja; DISK=; LANG=honeycomb-ios; SIGNAL=logs ;;
   *) echo "unknown impl $IMPL" >&2; exit 1 ;;
 esac
 
 case "$LANG" in
   dart) OK_MARKER=crash.dart; FAIL_MARKER=_kDartIsolateSnapshotInstructions ;;
-  ios)  OK_MARKER=sample.c; FAIL_MARKER=sample+0x ;;
+  ios|honeycomb-ios) OK_MARKER=sample.c; FAIL_MARKER=sample+0x ;;
   *)    OK_MARKER=../src/inventory.js; FAIL_MARKER=.mjs:1: ;;
 esac
 
@@ -103,6 +105,7 @@ for scenario in $SCENARIOS; do
   case "$LANG" in
     dart) corpusgen_cmd="./corpusgen --language dart --symbols seeds/dart/app.debug.elf --trace seeds/dart/trace.txt --entries $entries --out corpus-$scenario" ;;
     ios)  corpusgen_cmd="./corpusgen --language ios --dsym seeds/ios/app.dsym --trace seeds/ios/trace.txt --entries $entries --out corpus-$scenario" ;;
+    honeycomb-ios) corpusgen_cmd="./corpusgen --language honeycomb-ios --dsym seeds/ios/app.dsym --trace seeds/ios/trace.txt --binary sample --entries $entries --out corpus-$scenario" ;;
     *)    corpusgen_cmd="./corpusgen --bundle app.mjs --map app.mjs.map --entries $entries --pad-kb $pad --map-pad-kb ${mappad%%:*} --mappings-pad-kb ${mappad##*:} --out corpus-$scenario" ;;
   esac
   for ip in "$SUT_IP" "$LDG_IP"; do
@@ -116,7 +119,7 @@ for scenario in $SCENARIOS; do
   T0=$($SSH "root@$SUT_IP" "date +%s")
   $SSH "root@$SUT_IP" "cd /opt/bench || exit 1; nohup bash rss-sampler.sh \$(cat collector.pid) rss.csv > /dev/null 2>&1 &"
 
-  $SSH "root@$LDG_IP" "cd /opt/bench && ./loadgen --target http://$SUT_IP:4318/v1/traces --corpus corpus-$scenario/corpus.json --connections $conns --step-duration $dur --spans-per-request $SPANS_PER_REQUEST --out loadgen.json" || true
+  $SSH "root@$LDG_IP" "cd /opt/bench && ./loadgen --target http://$SUT_IP:4318/v1/$SIGNAL --corpus corpus-$scenario/corpus.json --connections $conns --step-duration $dur --spans-per-request $SPANS_PER_REQUEST --out loadgen.json" || true
 
   if ! $SSH "root@$SUT_IP" "kill -0 \$(cat /opt/bench/collector.pid) 2>/dev/null"; then
     TDEAD=$($SSH "root@$SUT_IP" "tail -1 /opt/bench/rss.csv | cut -d, -f1")

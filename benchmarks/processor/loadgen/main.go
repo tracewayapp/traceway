@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 )
@@ -43,6 +45,29 @@ func buildBodyDart(trace string, spans int) []byte {
 
 func buildBodyIOS(trace string, spans int) []byte {
 	return buildBody("swift", "IOSError", "bench", trace, spans)
+}
+
+func buildBodyHoneycombIOSLogs(trace, binaryName, buildUUID string, records int) []byte {
+	ld := plog.NewLogs()
+	rl := ld.ResourceLogs().AppendEmpty()
+	res := rl.Resource().Attributes()
+	res.PutStr("service.name", "processor-bench")
+	res.PutStr("telemetry.sdk.language", "swift")
+	res.PutStr("app.bundle.executable", binaryName)
+	res.PutStr("app.debug.build_uuid", buildUUID)
+	sl := rl.ScopeLogs().AppendEmpty()
+	for i := 0; i < records; i++ {
+		lr := sl.LogRecords().AppendEmpty()
+		lr.Attributes().PutStr("exception.type", "IOSError")
+		lr.Attributes().PutStr("exception.message", "bench")
+		lr.Attributes().PutStr("exception.stacktrace", trace)
+	}
+	req := plogotlp.NewExportRequestFromLogs(ld)
+	data, err := req.MarshalProto()
+	if err != nil {
+		panic(err)
+	}
+	return data
 }
 
 func buildBody(lang, excType, excMsg, stack string, spans int) []byte {
@@ -102,9 +127,10 @@ func main() {
 		panic(err)
 	}
 	var c struct {
-		Language string   `json:"language"`
-		Urls     []string `json:"urls"`
-		Builds   []struct {
+		Language   string   `json:"language"`
+		BinaryName string   `json:"binaryName"`
+		Urls       []string `json:"urls"`
+		Builds     []struct {
 			BuildID string `json:"buildId"`
 			Trace   string `json:"trace"`
 		} `json:"builds"`
@@ -123,6 +149,11 @@ func main() {
 		bodies = make([][]byte, len(c.Builds))
 		for i, b := range c.Builds {
 			bodies[i] = buildBodyIOS(b.Trace, *spansPerReq)
+		}
+	case "honeycomb-ios":
+		bodies = make([][]byte, len(c.Builds))
+		for i, b := range c.Builds {
+			bodies[i] = buildBodyHoneycombIOSLogs(b.Trace, c.BinaryName, b.BuildID, *spansPerReq)
 		}
 	default:
 		bodies = make([][]byte, len(c.Urls))

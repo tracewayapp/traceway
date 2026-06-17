@@ -61,6 +61,8 @@ gen_corpus() {
       ./corpusgen/corpusgen --language dart --entries "$entries" --out "$dir" >&2
     elif [ "$lang" = ios ]; then
       ./corpusgen/corpusgen --language ios --entries "$entries" --dsym seeds/ios/app.dsym --trace seeds/ios/trace.txt --out "$dir" >&2
+    elif [ "$lang" = honeycomb-ios ]; then
+      ./corpusgen/corpusgen --language honeycomb-ios --entries "$entries" --dsym seeds/ios/app.dsym --trace seeds/ios/trace.txt --binary sample --out "$dir" >&2
     else
       ./corpusgen/corpusgen --entries "$entries" --pad-kb "$pad" --map-pad-kb "${mappad%%:*}" --mappings-pad-kb "${mappad##*:}" --out "$dir" >&2
     fi
@@ -79,6 +81,7 @@ impl_env() {
     traceway-dart-disk) echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER= DISK=1 LANG=dart" ;;
     traceway-ios-mem)   echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER= DISK= LANG=ios" ;;
     traceway-ios-disk)  echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER= DISK=1 LANG=ios" ;;
+    honeycomb-ios)      echo "BIN=./build-honeycomb/otelcol-bench-honeycomb CFG=config-honeycomb-ios.yaml PARSER= DISK= LANG=honeycomb-ios SIGNAL=logs" ;;
     *) echo "unknown impl $1" >&2; return 1 ;;
   esac
 }
@@ -86,7 +89,7 @@ impl_env() {
 drain_markers() {
   case "$1" in
     dart) echo "OK_MARKER=crash.dart FAIL_MARKER=_kDartIsolateSnapshotInstructions" ;;
-    ios)  echo "OK_MARKER=sample.c FAIL_MARKER=sample+0x" ;;
+    ios|honeycomb-ios) echo "OK_MARKER=sample.c FAIL_MARKER=sample+0x" ;;
     *)    echo "OK_MARKER=../src/inventory.js FAIL_MARKER=.mjs:1:" ;;
   esac
 }
@@ -94,7 +97,7 @@ drain_markers() {
 run_one() {
   local impl="$1" scenario="$2"
   read -r entries pad mappad cachesize conns dur <<< "$(scenario_params "$scenario")"
-  local BIN CFG PARSER DISK LANG
+  local BIN CFG PARSER DISK LANG SIGNAL=traces
   eval "$(impl_env "$impl")"
   local store
   store=$(gen_corpus "$LANG" "$scenario" "$entries" "$pad" "$mappad")
@@ -134,7 +137,7 @@ run_one() {
   local t0
   t0=$(date +%s)
 
-  ./loadgen/loadgen --target http://127.0.0.1:4318/v1/traces --corpus "$store/corpus.json" \
+  ./loadgen/loadgen --target "http://127.0.0.1:4318/v1/$SIGNAL" --corpus "$store/corpus.json" \
     --connections "$conns" --step-duration "$dur" \
     --spans-per-request "$SPANS_PER_REQUEST" --out "$outdir/loadgen.json" || true
 

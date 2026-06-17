@@ -103,3 +103,57 @@ func frameLabel(f StackFrame) string {
 	}
 	return f.UUID
 }
+
+var (
+	honeycombFrameRe = regexp.MustCompile(`^\s*[0-9]+\s+([\w .+-]+?)\s+0x[0-9a-fA-F]+\s+([\w .+-]*?)\s+\+\s+([0-9]+)\s*$`)
+	honeycombUUIDRe  = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+)
+
+func IsHoneycombTrace(text string) bool {
+	for _, line := range strings.Split(text, "\n") {
+		if honeycombFrameRe.MatchString(line) {
+			return true
+		}
+	}
+	return false
+}
+
+func ParseHoneycombTrace(text, buildUUID, appExecutable string) StackTrace {
+	var t StackTrace
+	for _, line := range strings.Split(text, "\n") {
+		if t.OS == "" {
+			if m := osArchRe.FindStringSubmatch(line); m != nil {
+				t.OS, t.Arch = m[1], m[2]
+			}
+		}
+		m := honeycombFrameRe.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		binary := strings.TrimSpace(m[1])
+		ref := strings.TrimSpace(m[2])
+		off, err := strconv.ParseUint(m[3], 10, 64)
+		if err != nil {
+			continue
+		}
+		var uuid, image string
+		switch {
+		case honeycombUUIDRe.MatchString(ref):
+			uuid, image = NormalizeUUID(ref), binary
+		case ref != "" && ref == appExecutable:
+			uuid, image = NormalizeUUID(buildUUID), ref
+		default:
+			continue
+		}
+		if uuid == "" {
+			continue
+		}
+		t.Frames = append(t.Frames, StackFrame{
+			UUID:   uuid,
+			Offset: off,
+			Image:  image,
+			Raw:    strings.TrimSpace(line),
+		})
+	}
+	return t
+}

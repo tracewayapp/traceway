@@ -65,7 +65,7 @@ func (p *symbolicatorProcessor) processRecord(ctx context.Context, attrs, resour
 		lang = strAttr(resource, p.cfg.LanguageAttributeKey)
 	}
 	if ios.IsIOSLanguage(lang) {
-		p.symbolicateIOSTrace(ctx, attrs, originalStack)
+		p.symbolicateIOSTrace(ctx, attrs, resource, originalStack)
 		return
 	}
 
@@ -74,8 +74,8 @@ func (p *symbolicatorProcessor) processRecord(ctx context.Context, attrs, resour
 		return
 	}
 
-	if ios.IsIOSTrace(originalStack) {
-		p.symbolicateIOSTrace(ctx, attrs, originalStack)
+	if ios.IsIOSTrace(originalStack) || ios.IsHoneycombTrace(originalStack) {
+		p.symbolicateIOSTrace(ctx, attrs, resource, originalStack)
 		return
 	}
 
@@ -250,8 +250,13 @@ func (p *symbolicatorProcessor) renderDartTrace(attrs pcommon.Map, trace dart.St
 	return strings.TrimRight(b.String(), "\n")
 }
 
-func (p *symbolicatorProcessor) symbolicateIOSTrace(ctx context.Context, attrs pcommon.Map, rawStack string) {
+func (p *symbolicatorProcessor) symbolicateIOSTrace(ctx context.Context, attrs, resource pcommon.Map, rawStack string) {
 	trace := ios.ParseTrace(rawStack)
+	if len(trace.Frames) == 0 {
+		buildUUID := strAttr(resource, p.cfg.IOSBuildUUIDAttributeKey)
+		appExecutable := strAttr(resource, p.cfg.AppExecutableAttributeKey)
+		trace = ios.ParseHoneycombTrace(rawStack, buildUUID, appExecutable)
+	}
 	if len(trace.Frames) == 0 {
 		return
 	}

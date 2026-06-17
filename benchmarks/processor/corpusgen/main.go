@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bytes"
+	"debug/macho"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -21,8 +25,9 @@ type dartBuild struct {
 }
 
 type dartCorpus struct {
-	Language string      `json:"language"`
-	Builds   []dartBuild `json:"builds"`
+	Language   string      `json:"language"`
+	BinaryName string      `json:"binaryName,omitempty"`
+	Builds     []dartBuild `json:"builds"`
 }
 
 const vlqChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -167,6 +172,7 @@ func main() {
 	mapFile := flag.String("map", "../../testing/symbolication/node-app/dist/app.mjs.map", "")
 	symbols := flag.String("symbols", "seeds/dart/app.debug.elf", "dart: seed .symbols/.elf")
 	dsym := flag.String("dsym", "seeds/ios/app.dsym", "ios: seed dSYM (Mach-O DWARF)")
+	binary := flag.String("binary", "sample", "honeycomb-ios: Mach-O name inside the .dSYM bundle")
 	traceFile := flag.String("trace", "seeds/dart/trace.txt", "dart/ios: seed non-symbolic trace")
 	entries := flag.Int("entries", 1, "")
 	padKB := flag.Int("pad-kb", 256, "")
@@ -184,6 +190,10 @@ func main() {
 	}
 	if *language == "ios" {
 		generateIOS(*out, *dsym, *traceFile, *entries)
+		return
+	}
+	if *language == "honeycomb-ios" {
+		generateHoneycombIOS(*out, *dsym, *traceFile, *binary, *entries)
 		return
 	}
 
@@ -316,4 +326,114 @@ func generateIOS(out, dsymPath, tracePath string, entries int) {
 
 func substituteIOSUUID(trace, uuid string) string {
 	return iosFrameUUIDRe.ReplaceAllString(trace, "${1}"+uuid+"${2}")
+}
+
+var twFrameRe = regexp.MustCompile(`^\s*#(\d+)\s+([0-9a-fA-F]{32})\s+0x([0-9a-fA-F]+)\s+(\S+)\s*$`)
+
+func hyphenateUUID(hex32 string) string {
+	h := strings.ToUpper(hex32)
+	if len(h) != 32 {
+		return h
+	}
+	return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:32]
+}
+
+func seedMachoUUID(data []byte) []byte {
+	f, err := macho.NewFile(bytes.NewReader(data))
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	for _, l := range f.Loads {
+		lb, ok := l.(macho.LoadBytes)
+		if !ok {
+			continue
+		}
+		raw := lb.Raw()
+		if len(raw) >= 24 && f.ByteOrder.Uint32(raw[0:4]) == 0x1b {
+			return append([]byte(nil), raw[8:24]...)
+		}
+	}
+	return nil
+}
+
+func patchMachoUUID(seed, oldUUID, newUUID []byte) []byte {
+	out := make([]byte, len(seed))
+	copy(out, seed)
+	if i := bytes.Index(out, oldUUID); i >= 0 {
+		copy(out[i:i+16], newUUID)
+	}
+	return out
+}
+
+type iosSeedFrame struct {
+	idx    int
+	uuid32 string
+	image  string
+	offset uint64
+}
+
+func generateHoneycombIOS(out, dsymPath, tracePath, binaryName string, entries int) {
+	seed, err := os.ReadFile(dsymPath)
+	if err != nil {
+		panic(fmt.Errorf("reading ios seed dSYM %q: %w", dsymPath, err))
+	}
+	template, err := os.ReadFile(tracePath)
+	if err != nil {
+		panic(fmt.Errorf("reading ios seed trace %q: %w", tracePath, err))
+	}
+	oldUUID := seedMachoUUID(seed)
+	if oldUUID == nil {
+		panic(fmt.Errorf("seed dSYM %q has no LC_UUID", dsymPath))
+	}
+
+	arch := "arm64"
+	if m := archRe.FindStringSubmatch(string(template)); m != nil {
+		arch = m[1]
+	}
+
+	var frames []iosSeedFrame
+	for _, line := range strings.Split(string(template), "\n") {
+		m := twFrameRe.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		idx, _ := strconv.Atoi(m[1])
+		off, _ := strconv.ParseUint(m[3], 16, 64)
+		frames = append(frames, iosSeedFrame{idx: idx, uuid32: strings.ToLower(m[2]), image: m[4], offset: off})
+	}
+	if len(frames) == 0 {
+		panic(fmt.Errorf("ios seed trace %q has no frames", tracePath))
+	}
+
+	c := dartCorpus{Language: "honeycomb-ios", BinaryName: binaryName}
+	for n := 0; n < entries; n++ {
+		buildHex := fmt.Sprintf("%032x", n)
+		buildUUID := hyphenateUUID(buildHex)
+		newUUID, _ := hex.DecodeString(buildHex)
+
+		dwarfDir := filepath.Join(out, buildUUID+".dSYM", "Contents", "Resources", "DWARF")
+		if err := os.MkdirAll(dwarfDir, 0o755); err != nil {
+			panic(err)
+		}
+		if err := os.WriteFile(filepath.Join(dwarfDir, binaryName), patchMachoUUID(seed, oldUUID, newUUID), 0o644); err != nil {
+			panic(err)
+		}
+
+		var b strings.Builder
+		fmt.Fprintf(&b, "os: ios arch: %s\n", arch)
+		for _, f := range frames {
+			uuid := buildUUID
+			if f.uuid32 != frames[0].uuid32 {
+				uuid = hyphenateUUID(f.uuid32)
+			}
+			fmt.Fprintf(&b, "%d   %s   0x%016x   %s + %d\n", f.idx, f.image, 0x100000000+f.offset, uuid, f.offset)
+		}
+		c.Builds = append(c.Builds, dartBuild{BuildID: buildUUID, Trace: b.String()})
+	}
+	data, _ := json.MarshalIndent(c, "", "  ")
+	if err := os.WriteFile(filepath.Join(out, "corpus.json"), data, 0o644); err != nil {
+		panic(err)
+	}
+	fmt.Printf("wrote %d honeycomb-ios builds (arch %s, binary %s, seed %s) to %s\n", entries, arch, binaryName, dsymPath, out)
 }

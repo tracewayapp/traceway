@@ -1,0 +1,33 @@
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  dsym_symbolicator:
+    dsym_store: file_store
+    local_dsyms:
+      path: ${env:STORE_PATH}
+    dsym_cache_size: ${env:CACHE_SIZE:-128}
+    preserve_stack_trace: false
+    allowed_languages: [swift, ios]
+
+exporters:
+  otlphttp/drain:
+    endpoint: ${env:DRAIN_ENDPOINT}
+    compression: none
+    sending_queue:
+      enabled: false
+    retry_on_failure:
+      enabled: false
+
+service:
+  telemetry:
+    metrics:
+      level: none
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [dsym_symbolicator]
+      exporters: [otlphttp/drain]

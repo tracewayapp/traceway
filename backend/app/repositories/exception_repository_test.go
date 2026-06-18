@@ -263,7 +263,7 @@ func TestExceptionRepository_FindById(t *testing.T) {
 		t.Fatalf("InsertAsync failed: %v", err)
 	}
 
-	found, err := ExceptionStackTraceRepository.FindById(ctx, projectId, exc.Id)
+	found, err := ExceptionStackTraceRepository.FindById(ctx, projectId, exc.Id, nil)
 	if err != nil {
 		t.Fatalf("FindById failed: %v", err)
 	}
@@ -279,7 +279,7 @@ func TestExceptionRepository_FindById_NotFound(t *testing.T) {
 	setupTestDB(t)
 	ctx := context.Background()
 
-	found, err := ExceptionStackTraceRepository.FindById(ctx, uuid.New(), uuid.New())
+	found, err := ExceptionStackTraceRepository.FindById(ctx, uuid.New(), uuid.New(), nil)
 	if err != nil {
 		t.Fatalf("FindById failed: %v", err)
 	}

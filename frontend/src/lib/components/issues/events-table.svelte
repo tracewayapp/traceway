@@ -38,7 +38,7 @@
     );
 
     function getRowUrl(occurrence: ExceptionOccurrence): string {
-        return `/issues/${exceptionHash}/${occurrence.id}`;
+        return `/issues/${exceptionHash}/${occurrence.id}?t=${encodeURIComponent(occurrence.recordedAt)}`;
     }
 
     function isCurrentEvent(occurrence: ExceptionOccurrence): boolean {

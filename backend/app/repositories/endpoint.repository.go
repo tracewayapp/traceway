@@ -855,7 +855,7 @@ func (e *endpointRepository) FindByDistributedTraceId(ctx context.Context, distr
 		WHERE distributed_trace_id = ? AND project_id IN (?)`
 	args := []any{distributedTraceId, projectIds}
 	if recordedAt != nil {
-		from, to := traceWindowBounds(*recordedAt)
+		from, to := distributedTraceWindowBounds(*recordedAt)
 		query += ` AND recorded_at >= ? AND recorded_at <= ?`
 		args = append(args, from, to)
 	}

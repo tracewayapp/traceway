@@ -124,7 +124,7 @@ func getExceptionDetails(ctx context.Context, projectId uuid.UUID, hash string) 
 	details.ServerName = serverName
 	details.RecordedAt = recordedAt
 	details.TraceType = traceType
-	details.TraceName = resolveTraceName(ctx, projectId, traceId, traceType)
+	details.TraceName = resolveTraceName(ctx, projectId, traceId, traceType, &details.RecordedAt)
 
 	if attributesJSON != "" && attributesJSON != "{}" {
 		attrs := make(map[string]string)

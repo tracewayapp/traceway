@@ -382,18 +382,25 @@ func (r *aiTraceRepository) GetTraceNameStats(ctx context.Context, projectId uui
 	return stats, nil
 }
 
-func (r *aiTraceRepository) FindById(ctx context.Context, projectId, traceId uuid.UUID) (*models.AiTrace, error) {
-	row, err := lit.SelectSingleNamed[aiTraceRow](db.TelemetryDB,
-		`SELECT id, project_id, recorded_at, duration, status_code,
+func (r *aiTraceRepository) FindById(ctx context.Context, projectId, traceId uuid.UUID, recordedAt *time.Time) (*models.AiTrace, error) {
+	query := `SELECT id, project_id, recorded_at, duration, status_code,
 			model, response_model, provider, operation,
 			input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens,
 			input_cost, output_cost, total_cost,
 			trace_name, user_id, finish_reason, server_name, app_version,
 			storage_key, attributes, distributed_trace_id, is_root
 		FROM ai_traces
-		WHERE project_id = :project_id AND id = :id
-		LIMIT 1`,
-		lit.P{"project_id": projectId, "id": traceId})
+		WHERE project_id = :project_id AND id = :id`
+	params := lit.P{"project_id": projectId, "id": traceId}
+	if recordedAt != nil {
+		from, to := traceWindowBounds(*recordedAt)
+		query += ` AND recorded_at >= :from AND recorded_at <= :to`
+		params["from"] = NewSQLiteTime(from)
+		params["to"] = NewSQLiteTime(to)
+	}
+	query += ` LIMIT 1`
+
+	row, err := lit.SelectSingleNamed[aiTraceRow](db.TelemetryDB, query, params)
 	if err != nil {
 		return nil, err
 	}
@@ -423,7 +430,7 @@ func (r *aiTraceRepository) FindByDistributedTraceId(ctx context.Context, distri
 			storage_key, attributes, distributed_trace_id, is_root
 		FROM ai_traces WHERE distributed_trace_id = :trace_id AND project_id IN (` + strings.Join(placeholders, ",") + `)`
 	if recordedAt != nil {
-		from, to := traceWindowBounds(*recordedAt)
+		from, to := distributedTraceWindowBounds(*recordedAt)
 		query += ` AND recorded_at >= :from AND recorded_at <= :to`
 		params["from"] = NewSQLiteTime(from)
 		params["to"] = NewSQLiteTime(to)

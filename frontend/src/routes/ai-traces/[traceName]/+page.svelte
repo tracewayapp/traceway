@@ -351,7 +351,7 @@
 							<Table.Row
 								class="cursor-pointer hover:bg-muted/50"
 								onclick={createRowClickHandler(
-									`/ai-traces/${encodeURIComponent(decodeURIComponent(data.traceName))}/${trace.id}`,
+									`/ai-traces/${encodeURIComponent(decodeURIComponent(data.traceName))}/${trace.id}?t=${encodeURIComponent(trace.recordedAt)}`,
 									'preset',
 									'from',
 									'to'

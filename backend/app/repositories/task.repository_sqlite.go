@@ -330,11 +330,19 @@ func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID
 	return tasks, count, nil
 }
 
-func (e *taskRepository) FindById(ctx context.Context, projectId, taskId uuid.UUID) (*models.Task, error) {
-	row, err := lit.SelectSingleNamed[task](db.TelemetryDB,
-		`SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, is_root
-		FROM tasks WHERE project_id = :project_id AND id = :id LIMIT 1`,
-		lit.P{"project_id": projectId, "id": taskId})
+func (e *taskRepository) FindById(ctx context.Context, projectId, taskId uuid.UUID, recordedAt *time.Time) (*models.Task, error) {
+	query := `SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, is_root
+		FROM tasks WHERE project_id = :project_id AND id = :id`
+	params := lit.P{"project_id": projectId, "id": taskId}
+	if recordedAt != nil {
+		from, to := traceWindowBounds(*recordedAt)
+		query += ` AND recorded_at >= :from AND recorded_at <= :to`
+		params["from"] = NewSQLiteTime(from)
+		params["to"] = NewSQLiteTime(to)
+	}
+	query += ` LIMIT 1`
+
+	row, err := lit.SelectSingleNamed[task](db.TelemetryDB, query, params)
 	if err != nil {
 		return nil, err
 	}
@@ -486,7 +494,7 @@ func (e *taskRepository) FindByDistributedTraceId(ctx context.Context, distribut
 	query := `SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id
 		FROM tasks WHERE distributed_trace_id = :trace_id AND project_id IN (` + strings.Join(placeholders, ",") + `)`
 	if recordedAt != nil {
-		from, to := traceWindowBounds(*recordedAt)
+		from, to := distributedTraceWindowBounds(*recordedAt)
 		query += ` AND recorded_at >= :from AND recorded_at <= :to`
 		params["from"] = NewSQLiteTime(from)
 		params["to"] = NewSQLiteTime(to)

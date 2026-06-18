@@ -182,7 +182,7 @@
 		try {
 			const result = await api.post(
 				`/ai-traces/${data.traceId}`,
-				{},
+				data.recordedAt ? { recordedAt: data.recordedAt } : {},
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
 			response = result;

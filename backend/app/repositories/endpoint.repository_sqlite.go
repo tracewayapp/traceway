@@ -1028,7 +1028,7 @@ func (e *endpointRepository) FindByDistributedTraceId(ctx context.Context, distr
 	query := `SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id
 		FROM endpoints WHERE distributed_trace_id = :trace_id AND project_id IN (` + strings.Join(placeholders, ",") + `)`
 	if recordedAt != nil {
-		from, to := traceWindowBounds(*recordedAt)
+		from, to := distributedTraceWindowBounds(*recordedAt)
 		query += ` AND recorded_at >= :from AND recorded_at <= :to`
 		params["from"] = NewSQLiteTime(from)
 		params["to"] = NewSQLiteTime(to)

@@ -56,7 +56,7 @@
 
         try {
             // Load the specific exception by ID
-            const exceptionResponse = await api.post(`/exception-stack-traces/by-id/${data.exceptionId}`, {}, { projectId: projectsState.currentProjectId ?? undefined });
+            const exceptionResponse = await api.post(`/exception-stack-traces/by-id/${data.exceptionId}`, data.recordedAt ? { recordedAt: data.recordedAt } : {}, { projectId: projectsState.currentProjectId ?? undefined });
             occurrence = exceptionResponse.exception;
             sessionRecording = exceptionResponse.sessionRecording ?? null;
             sessionId = exceptionResponse.sessionId ?? null;

@@ -443,17 +443,23 @@ func (e *exceptionStackTraceRepository) FindAllByTraceId(ctx context.Context, pr
 }
 
 // FindById returns a single exception by its ID
-func (e *exceptionStackTraceRepository) FindById(ctx context.Context, projectId uuid.UUID, id uuid.UUID) (*models.ExceptionStackTrace, error) {
+func (e *exceptionStackTraceRepository) FindById(ctx context.Context, projectId uuid.UUID, id uuid.UUID, recordedAt *time.Time) (*models.ExceptionStackTrace, error) {
 	var est models.ExceptionStackTrace
 	var attributesJSON string
 	var isMessage uint8
 
-	err := chdb.Conn.QueryRow(ctx,
-		`SELECT id, project_id, trace_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, distributed_trace_id
+	query := `SELECT id, project_id, trace_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, distributed_trace_id
 		FROM exception_stack_traces
-		WHERE project_id = ? AND id = ?
-		LIMIT 1`,
-		projectId, id).Scan(
+		WHERE project_id = ? AND id = ?`
+	args := []any{projectId, id}
+	if recordedAt != nil {
+		from, to := traceWindowBounds(*recordedAt)
+		query += ` AND recorded_at >= ? AND recorded_at <= ?`
+		args = append(args, from, to)
+	}
+	query += ` LIMIT 1`
+
+	err := chdb.Conn.QueryRow(ctx, query, args...).Scan(
 		&est.Id, &est.ProjectId, &est.TraceId, &est.TraceType, &est.ExceptionHash, &est.StackTrace,
 		&est.RecordedAt, &attributesJSON, &est.AppVersion, &est.ServerName, &isMessage, &est.DistributedTraceId)
 
@@ -480,7 +486,7 @@ func (e *exceptionStackTraceRepository) FindByDistributedTraceId(ctx context.Con
 		WHERE distributed_trace_id = ? AND project_id IN (?) AND is_message = false`
 	args := []any{distributedTraceId, projectIds}
 	if recordedAt != nil {
-		from, to := traceWindowBounds(*recordedAt)
+		from, to := distributedTraceWindowBounds(*recordedAt)
 		query += ` AND recorded_at >= ? AND recorded_at <= ?`
 		args = append(args, from, to)
 	}

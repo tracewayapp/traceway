@@ -12,6 +12,7 @@ export const load: PageLoad = ({ params, url }) => {
 	return {
 		task: params.task,
 		taskId: params.taskId,
+		recordedAt: url.searchParams.get('t'),
 		preset: url.searchParams.get('preset') || null,
 		from: url.searchParams.get('from') || null,
 		to: url.searchParams.get('to') || null

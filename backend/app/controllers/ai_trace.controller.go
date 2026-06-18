@@ -17,6 +17,10 @@ import (
 
 type aiTraceController struct{}
 
+type aiTraceDetailRequest struct {
+	RecordedAt *time.Time `json:"recordedAt"`
+}
+
 type AiTraceSearchRequest struct {
 	FromDate      time.Time        `json:"fromDate"`
 	ToDate        time.Time        `json:"toDate"`
@@ -136,7 +140,13 @@ func (a aiTraceController) GetAiTraceDetail(c *gin.Context) {
 		return
 	}
 
-	aiTrace, err := repositories.AiTraceRepository.FindById(c, projectId, traceId)
+	var request aiTraceDetailRequest
+	_ = c.ShouldBindJSON(&request)
+
+	aiTrace, err := repositories.AiTraceRepository.FindById(c, projectId, traceId, request.RecordedAt)
+	if aiTrace == nil && err == nil && request.RecordedAt != nil {
+		aiTrace, err = repositories.AiTraceRepository.FindById(c, projectId, traceId, nil)
+	}
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error loading ai trace: %w", err))
 		return

@@ -259,6 +259,10 @@ func (e exceptionStackTraceController) UnarchiveExceptions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"unarchived": len(request.Hashes)})
 }
 
+type exceptionByIdRequest struct {
+	RecordedAt *time.Time `json:"recordedAt"`
+}
+
 func (e exceptionStackTraceController) FindById(c *gin.Context) {
 	projectId, err := middleware.GetProjectId(c)
 	if err != nil {
@@ -272,8 +276,14 @@ func (e exceptionStackTraceController) FindById(c *gin.Context) {
 		return
 	}
 
+	var request exceptionByIdRequest
+	_ = c.ShouldBindJSON(&request)
+
 	span := traceway.StartSpan(c, "loading exception by id")
-	exception, err := repositories.ExceptionStackTraceRepository.FindById(c, projectId, exceptionId)
+	exception, err := repositories.ExceptionStackTraceRepository.FindById(c, projectId, exceptionId, request.RecordedAt)
+	if exception == nil && err == nil && request.RecordedAt != nil {
+		exception, err = repositories.ExceptionStackTraceRepository.FindById(c, projectId, exceptionId, nil)
+	}
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading the exception: %w", err))

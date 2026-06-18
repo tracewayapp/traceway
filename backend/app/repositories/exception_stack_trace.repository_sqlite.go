@@ -426,11 +426,19 @@ func (e *exceptionStackTraceRepository) FindAllByTraceId(ctx context.Context, pr
 	return results, nil
 }
 
-func (e *exceptionStackTraceRepository) FindById(ctx context.Context, projectId uuid.UUID, id uuid.UUID) (*models.ExceptionStackTrace, error) {
-	row, err := lit.SelectSingleNamed[exceptionRow](db.TelemetryDB,
-		`SELECT id, project_id, trace_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, distributed_trace_id, session_id
-		FROM exception_stack_traces WHERE project_id = :project_id AND id = :id LIMIT 1`,
-		lit.P{"project_id": projectId, "id": id})
+func (e *exceptionStackTraceRepository) FindById(ctx context.Context, projectId uuid.UUID, id uuid.UUID, recordedAt *time.Time) (*models.ExceptionStackTrace, error) {
+	query := `SELECT id, project_id, trace_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, distributed_trace_id, session_id
+		FROM exception_stack_traces WHERE project_id = :project_id AND id = :id`
+	params := lit.P{"project_id": projectId, "id": id}
+	if recordedAt != nil {
+		from, to := traceWindowBounds(*recordedAt)
+		query += ` AND recorded_at >= :from AND recorded_at <= :to`
+		params["from"] = NewSQLiteTime(from)
+		params["to"] = NewSQLiteTime(to)
+	}
+	query += ` LIMIT 1`
+
+	row, err := lit.SelectSingleNamed[exceptionRow](db.TelemetryDB, query, params)
 	if err != nil {
 		return nil, err
 	}
@@ -456,7 +464,7 @@ func (e *exceptionStackTraceRepository) FindByDistributedTraceId(ctx context.Con
 	query := `SELECT id, project_id, trace_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, distributed_trace_id, session_id
 		FROM exception_stack_traces WHERE distributed_trace_id = :trace_id AND project_id IN (` + strings.Join(placeholders, ",") + `) AND is_message = 0`
 	if recordedAt != nil {
-		from, to := traceWindowBounds(*recordedAt)
+		from, to := distributedTraceWindowBounds(*recordedAt)
 		query += ` AND recorded_at >= :from AND recorded_at <= :to`
 		params["from"] = NewSQLiteTime(from)
 		params["to"] = NewSQLiteTime(to)

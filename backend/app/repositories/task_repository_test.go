@@ -257,7 +257,7 @@ func TestTaskRepository_FindById(t *testing.T) {
 		t.Fatalf("InsertAsync failed: %v", err)
 	}
 
-	found, err := TaskRepository.FindById(ctx, projectId, task.Id)
+	found, err := TaskRepository.FindById(ctx, projectId, task.Id, nil)
 	if err != nil {
 		t.Fatalf("FindById failed: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestTaskRepository_FindById_NotFound(t *testing.T) {
 	setupTestDB(t)
 	ctx := context.Background()
 
-	found, err := TaskRepository.FindById(ctx, uuid.New(), uuid.New())
+	found, err := TaskRepository.FindById(ctx, uuid.New(), uuid.New(), nil)
 	if err != nil {
 		t.Fatalf("FindById failed: %v", err)
 	}

@@ -120,13 +120,16 @@ func extractErrorType(stackTrace string) string {
 	return "Unknown Error"
 }
 
-func resolveTraceName(ctx context.Context, projectId uuid.UUID, traceId *uuid.UUID, traceType string) string {
+func resolveTraceName(ctx context.Context, projectId uuid.UUID, traceId *uuid.UUID, traceType string, recordedAt *time.Time) string {
 	if traceId == nil {
 		return ""
 	}
 	switch traceType {
 	case "task":
-		task, err := repositories.TaskRepository.FindById(ctx, projectId, *traceId)
+		task, err := repositories.TaskRepository.FindById(ctx, projectId, *traceId, recordedAt)
+		if task == nil && err == nil && recordedAt != nil {
+			task, err = repositories.TaskRepository.FindById(ctx, projectId, *traceId, nil)
+		}
 		if err != nil {
 			traceway.CaptureException(fmt.Errorf("failed to resolve task name for notification: %w", err))
 			return ""
@@ -136,7 +139,10 @@ func resolveTraceName(ctx context.Context, projectId uuid.UUID, traceId *uuid.UU
 		}
 		return task.TaskName
 	case "ai_trace":
-		trace, err := repositories.AiTraceRepository.FindById(ctx, projectId, *traceId)
+		trace, err := repositories.AiTraceRepository.FindById(ctx, projectId, *traceId, recordedAt)
+		if trace == nil && err == nil && recordedAt != nil {
+			trace, err = repositories.AiTraceRepository.FindById(ctx, projectId, *traceId, nil)
+		}
 		if err != nil {
 			traceway.CaptureException(fmt.Errorf("failed to resolve ai trace name for notification: %w", err))
 			return ""
@@ -146,7 +152,10 @@ func resolveTraceName(ctx context.Context, projectId uuid.UUID, traceId *uuid.UU
 		}
 		return trace.TraceName
 	default:
-		endpoint, err := repositories.EndpointRepository.FindById(ctx, projectId, *traceId, nil)
+		endpoint, err := repositories.EndpointRepository.FindById(ctx, projectId, *traceId, recordedAt)
+		if endpoint == nil && err == nil && recordedAt != nil {
+			endpoint, err = repositories.EndpointRepository.FindById(ctx, projectId, *traceId, nil)
+		}
 		if err != nil {
 			traceway.CaptureException(fmt.Errorf("failed to resolve endpoint name for notification: %w", err))
 			return ""

@@ -344,7 +344,7 @@
 							<Table.Row
 								class="cursor-pointer hover:bg-muted/50"
 								onclick={createRowClickHandler(
-									`/tasks/${encodeURIComponent(decodeURIComponent(data.task))}/${task.id}`,
+									`/tasks/${encodeURIComponent(decodeURIComponent(data.task))}/${task.id}?t=${encodeURIComponent(task.recordedAt)}`,
 									'preset',
 									'from',
 									'to'

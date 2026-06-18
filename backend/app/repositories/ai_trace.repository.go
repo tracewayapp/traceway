@@ -245,7 +245,7 @@ func (r *aiTraceRepository) GetTraceNameStats(ctx context.Context, projectId uui
 	return &stats, nil
 }
 
-func (r *aiTraceRepository) FindById(ctx context.Context, projectId, traceId uuid.UUID) (*models.AiTrace, error) {
+func (r *aiTraceRepository) FindById(ctx context.Context, projectId, traceId uuid.UUID, recordedAt *time.Time) (*models.AiTrace, error) {
 	query := `SELECT id, project_id, recorded_at, duration, status_code,
 		model, response_model, provider, operation,
 		input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens,
@@ -253,14 +253,20 @@ func (r *aiTraceRepository) FindById(ctx context.Context, projectId, traceId uui
 		trace_name, user_id, finish_reason, server_name, app_version,
 		storage_key, attributes, distributed_trace_id, is_root
 	FROM ai_traces
-	WHERE project_id = ? AND id = ?
-	LIMIT 1`
+	WHERE project_id = ? AND id = ?`
+	args := []any{projectId, traceId}
+	if recordedAt != nil {
+		from, to := traceWindowBounds(*recordedAt)
+		query += ` AND recorded_at >= ? AND recorded_at <= ?`
+		args = append(args, from, to)
+	}
+	query += ` LIMIT 1`
 
 	var t models.AiTrace
 	var attributesJSON string
 	var isRoot uint8
 
-	err := chdb.Conn.QueryRow(ctx, query, projectId, traceId).Scan(
+	err := chdb.Conn.QueryRow(ctx, query, args...).Scan(
 		&t.Id, &t.ProjectId, &t.RecordedAt, &t.Duration, &t.StatusCode,
 		&t.Model, &t.ResponseModel, &t.Provider, &t.Operation,
 		&t.InputTokens, &t.OutputTokens, &t.TotalTokens, &t.CachedTokens, &t.ReasoningTokens,
@@ -305,7 +311,7 @@ func (r *aiTraceRepository) FindByDistributedTraceId(ctx context.Context, distri
 	FROM ai_traces
 	WHERE distributed_trace_id = ? AND project_id IN (` + strings.Join(placeholders, ",") + `)`
 	if recordedAt != nil {
-		from, to := traceWindowBounds(*recordedAt)
+		from, to := distributedTraceWindowBounds(*recordedAt)
 		query += ` AND recorded_at >= ? AND recorded_at <= ?`
 		args = append(args, from, to)
 	}

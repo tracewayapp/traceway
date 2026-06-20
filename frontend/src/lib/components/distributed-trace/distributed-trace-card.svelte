@@ -8,7 +8,6 @@
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { formatDuration, getStatusColor, formatDateTime } from '$lib/utils/formatters';
 	import { getTimezone } from '$lib/state/timezone.svelte';
-	import { projectsState } from '$lib/state/projects.svelte';
 	import { ArrowRight, GitBranch } from 'lucide-svelte';
 	import type { DistributedTraceResponse, DistributedTraceNode } from '$lib/types/distributed-trace';
 
@@ -57,15 +56,21 @@
 	}
 
 	function navigateToNode(node: DistributedTraceNode) {
-		projectsState.selectProject(node.projectId);
+		const project = `&projectId=${encodeURIComponent(node.projectId)}`;
 		if (node.traceType === 'task' && node.task) {
-			goto(`/tasks/${encodeURIComponent(node.task.taskName)}/${node.task.id}?preset=24h`);
+			goto(
+				`/tasks/${encodeURIComponent(node.task.taskName)}/${node.task.id}?preset=24h&t=${encodeURIComponent(node.task.recordedAt)}${project}`
+			);
 		} else if (node.traceType === 'ai_trace' && node.aiTrace) {
-			goto(`/ai-traces/${encodeURIComponent(node.aiTrace.traceName)}/${node.aiTrace.id}?preset=24h`);
+			goto(
+				`/ai-traces/${encodeURIComponent(node.aiTrace.traceName)}/${node.aiTrace.id}?preset=24h&t=${encodeURIComponent(node.aiTrace.recordedAt)}${project}`
+			);
 		} else if (node.traceType === 'exception' && node.exception) {
-			goto(`/issues/${node.exception.exceptionHash}?preset=24h`);
+			goto(`/issues/${node.exception.exceptionHash}?preset=24h${project}`);
 		} else if (node.endpoint) {
-			goto(`/endpoints/${encodeURIComponent(node.endpoint.endpoint)}/${node.endpoint.id}?preset=24h`);
+			goto(
+				`/endpoints/${encodeURIComponent(node.endpoint.endpoint)}/${node.endpoint.id}?preset=24h&t=${encodeURIComponent(node.endpoint.recordedAt)}${project}`
+			);
 		}
 	}
 

@@ -1,22 +1,28 @@
 import { goto } from '$app/navigation';
 
 export function addStickyParamsToHref(href: string, ...stickyParams: string[]) {
-	let finalHref = href;
+	const currentParams = new URLSearchParams(window.location.search);
+	const url = new URL(href, window.location.origin);
 
-	if (stickyParams.length > 0) {
-		const currentParams = new URLSearchParams(window.location.search);
-		const url = new URL(href, window.location.origin);
-
-		stickyParams.forEach(stickyParam => {
-			const currentValue = currentParams.get(stickyParam);
-			if (currentValue !== null) {
-				url.searchParams.set(stickyParam, currentValue);
-			}
-		});
-
-		finalHref = url.pathname + url.search;
+	// projectId is the source of truth for the selected project, so it is always
+	// sticky. An explicit projectId already in href (e.g. a cross-project link)
+	// wins over the current one.
+	if (!url.searchParams.has('projectId')) {
+		const currentProjectId = currentParams.get('projectId');
+		if (currentProjectId !== null) {
+			url.searchParams.set('projectId', currentProjectId);
+		}
 	}
-	return finalHref;
+
+	stickyParams.forEach(stickyParam => {
+		if (stickyParam === 'projectId') return;
+		const currentValue = currentParams.get(stickyParam);
+		if (currentValue !== null) {
+			url.searchParams.set(stickyParam, currentValue);
+		}
+	});
+
+	return url.pathname + url.search;
 }
 
 // in the future it would be really cool if we could bind the type here to get type safety and force the use of resolve :/

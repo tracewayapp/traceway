@@ -90,9 +90,16 @@ export function updateUrl(
 	const { pushToHistory = false } = options;
 	const urlParams = new URLSearchParams();
 
+	const currentProjectId = new URLSearchParams(window.location.search).get('projectId');
+	if (currentProjectId) {
+		urlParams.set('projectId', currentProjectId);
+	}
+
 	for (const [key, value] of Object.entries(params)) {
 		if (value != null && value !== '') {
 			urlParams.set(key, value);
+		} else {
+			urlParams.delete(key);
 		}
 	}
 

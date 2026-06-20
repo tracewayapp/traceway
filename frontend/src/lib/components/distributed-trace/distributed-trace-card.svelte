@@ -15,10 +15,25 @@
 	interface Props {
 		distributedTraceId: string;
 		currentExceptionHash?: string;
+		currentNodeId?: string;
 		recordedAt?: string;
 	}
 
-	let { distributedTraceId, currentExceptionHash, recordedAt }: Props = $props();
+	let { distributedTraceId, currentExceptionHash, currentNodeId, recordedAt }: Props = $props();
+
+	function isCurrentNode(node: DistributedTraceNode): boolean {
+		if (currentExceptionHash && node.traceType === 'exception') {
+			return node.exception?.exceptionHash === currentExceptionHash;
+		}
+		if (currentNodeId) {
+			return (
+				node.endpoint?.id === currentNodeId ||
+				node.task?.id === currentNodeId ||
+				node.aiTrace?.id === currentNodeId
+			);
+		}
+		return false;
+	}
 
 	const timezone = $derived(getTimezone());
 
@@ -125,7 +140,7 @@
 								<Badge variant="destructive" class="shrink-0">Exception</Badge>
 							{/if}
 						</div>
-						{#if currentExceptionHash && node.traceType === 'exception' && node.exception?.exceptionHash === currentExceptionHash}
+						{#if isCurrentNode(node)}
 						<Badge class="bg-blue-500 hover:bg-blue-500 text-white">You're here</Badge>
 					{:else}
 						<Button variant="ghost" size="sm" onclick={() => navigateToNode(node)}>

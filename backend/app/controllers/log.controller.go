@@ -115,7 +115,7 @@ func (l logController) List(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid distributedTraceId"})
 			return
 		}
-		traceIds, err := l.resolveDistributedTraceIds(c, dtid, projectId, request.ExcludeTraceId)
+		traceIds, err := l.resolveDistributedTraceIds(c, dtid, projectId, request.ExcludeTraceId, request.FromDate)
 		if err != nil {
 			c.AbortWithError(500, traceway.NewStackTraceErrorf("error resolving distributed trace: %w", err))
 			return
@@ -155,18 +155,23 @@ func (l logController) List(c *gin.Context) {
 	})
 }
 
-func (l logController) resolveDistributedTraceIds(ctx context.Context, dtid uuid.UUID, projectId uuid.UUID, excludeTraceHex string) ([]string, error) {
+func (l logController) resolveDistributedTraceIds(ctx context.Context, dtid uuid.UUID, projectId uuid.UUID, excludeTraceHex string, recordedAt time.Time) ([]string, error) {
 	projectIds := []uuid.UUID{projectId}
 
-	endpoints, err := repositories.EndpointRepository.FindByDistributedTraceId(ctx, dtid, projectIds, nil)
+	var recordedAtHint *time.Time
+	if !recordedAt.IsZero() {
+		recordedAtHint = &recordedAt
+	}
+
+	endpoints, err := repositories.EndpointRepository.FindByDistributedTraceId(ctx, dtid, projectIds, recordedAtHint)
 	if err != nil {
 		return nil, err
 	}
-	tasks, err := repositories.TaskRepository.FindByDistributedTraceId(ctx, dtid, projectIds, nil)
+	tasks, err := repositories.TaskRepository.FindByDistributedTraceId(ctx, dtid, projectIds, recordedAtHint)
 	if err != nil {
 		return nil, err
 	}
-	aiTraces, err := repositories.AiTraceRepository.FindByDistributedTraceId(ctx, dtid, projectIds, nil)
+	aiTraces, err := repositories.AiTraceRepository.FindByDistributedTraceId(ctx, dtid, projectIds, recordedAtHint)
 	if err != nil {
 		return nil, err
 	}

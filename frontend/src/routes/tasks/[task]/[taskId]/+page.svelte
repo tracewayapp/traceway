@@ -283,6 +283,7 @@
 		{#if response.task.distributedTraceId}
 			<DistributedTraceCard
 				distributedTraceId={response.task.distributedTraceId}
+				currentNodeId={response.task.id}
 				recordedAt={response.task.recordedAt}
 			/>
 		{/if}

@@ -7,7 +7,7 @@
 # ==============================================================================
 # Stage 1: Build Frontend
 # ==============================================================================
-FROM node:22-alpine AS frontend-builder
+FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
@@ -23,7 +23,7 @@ RUN npm run build
 # ==============================================================================
 # Stage 2: Build Backend with embedded frontend (no pgch tag = SQLite mode)
 # ==============================================================================
-FROM golang:1.25-alpine AS backend-builder
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS backend-builder
 
 WORKDIR /app/backend
 
@@ -39,7 +39,9 @@ RUN go mod download
 
 # Build WITHOUT the pgch tag so the SQLite codepath in app/db/db_sqlite.go
 # is selected. modernc.org/sqlite is pure Go, so CGO_ENABLED=0 is fine.
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /traceway ./cmd/traceway
+ARG TARGETOS
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags="-s -w" -o /traceway ./cmd/traceway
 
 # ==============================================================================
 # Stage 3: Minimal runtime image

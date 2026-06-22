@@ -32,23 +32,23 @@ const BUNDLERS = [
 
 const LANGUAGE_TILES = [
   {
+    src: "/images/frameworks/android.png",
+    alt: "Android",
+    w: 45,
+    h: 45,
+    size: 56,
+    z: 20,
+    pos: "left-[20%] top-1/2 -translate-x-1/2 -translate-y-1/2",
+    engine: true,
+  },
+  {
     src: "/images/frameworks/flutter.png",
     alt: "Flutter",
     w: 40,
     h: 40,
     size: 80,
     z: 22,
-    pos: "left-[24%] top-1/2 -translate-x-1/2 -translate-y-1/2",
-    engine: true,
-  },
-  {
-    src: "/images/frameworks/android.png",
-    alt: "Android",
-    w: 45,
-    h: 36,
-    size: 80,
-    z: 24,
-    pos: "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
+    pos: "left-[86%] top-1/2 -translate-x-1/2 -translate-y-1/2",
     engine: true,
   },
   {
@@ -58,7 +58,7 @@ const LANGUAGE_TILES = [
     h: 171,
     size: 104,
     z: 30,
-    pos: "left-[76%] top-1/2 -translate-x-1/2 -translate-y-1/2",
+    pos: "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
     engine: true,
   },
   {
@@ -239,7 +239,7 @@ export default function SymbolicationPage() {
                 className="mt-4 text-[22px] leading-tight text-pretty"
                 style={{ color: "var(--fg-0)" }}
               >
-                JavaScript, Dart, Flutter, Swift, Android, and more coming soon.
+                JavaScript, Dart, Flutter, Swift, and Android.
               </h3>
               <p
                 className="mt-4 text-[15px] text-pretty"
@@ -249,9 +249,8 @@ export default function SymbolicationPage() {
                 obfuscation maps, iOS and Swift dSYM debug symbols, and Android
                 R8 mapping files through the same compiled cache, plus every JS
                 framework that ships them, from React and Svelte to Next.js and
-                Remix. Even on the
-                cheapest box we tested, a 2&nbsp;vCPU Hetzner <code>ccx13</code>
-                , it clears{" "}
+                Remix. Even on the cheapest box we tested, a 2&nbsp;vCPU Hetzner{" "}
+                <code>ccx13</code>, it clears{" "}
                 <strong style={{ color: "var(--fg-0)" }}>
                   over 32&times; the stack traces per second
                 </strong>{" "}

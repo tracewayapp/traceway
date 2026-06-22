@@ -12,11 +12,11 @@ dependencies {
 }
 ```
 
-Maven Central is enabled by default in modern Android projects — no extra `repositories { ... }` entry is required.
+Maven Central is enabled by default in modern Android projects, so no extra `repositories { ... }` entry is required.
 
 ## Setup
 
-Initialize the SDK from your `Application.onCreate()`. This wraps the whole process — every uncaught exception, on every thread, is captured automatically:
+Initialize the SDK from your `Application.onCreate()`. This wraps the whole process. Every uncaught exception, on every thread, is captured automatically:
 
 ```kotlin
 import android.app.Application
@@ -74,7 +74,7 @@ Traceway.flush()
 | `sampleRate` | `Double` | `1.0` | Event sampling rate (0.0 to 1.0) |
 | `debug` | `Boolean` | `false` | Print debug info to logcat |
 | `version` | `String` | `""` | App version string |
-| `proguardUuid` | `String?` | `null` | R8/ProGuard build UUID for deobfuscating release crashes — set to `BuildConfig.TRACEWAY_PROGUARD_UUID` from the [symbols plugin](/symbolicator/android) |
+| `proguardUuid` | `String?` | `null` | R8/ProGuard build UUID for deobfuscating release crashes; set to `BuildConfig.TRACEWAY_PROGUARD_UUID` from the [symbols plugin](/symbolicator/android) |
 | `debounceMs` | `Long` | `1500` | Milliseconds before sending batched events |
 | `retryDelayMs` | `Long` | `10000` | Retry delay in ms on failed uploads |
 | `maxPendingExceptions` | `Int` | `5` | Max exceptions held in memory before oldest is dropped |
@@ -86,7 +86,7 @@ Traceway.flush()
 | `captureNavigation` | `Boolean` | `true` | Record activity push / pop transitions |
 | `eventsWindowMs` | `Long` | `10000` | Rolling window kept in the log/action buffers (ms) |
 | `eventsMaxCount` | `Int` | `200` | Hard cap applied independently to logs and actions |
-| `screenCapture` | `Boolean` | `false` | **No effect on Android** — accepted for API parity |
+| `screenCapture` | `Boolean` | `false` | **No effect on Android**, accepted for API parity |
 | `capturePixelRatio` | `Double` | `0.75` | **No effect on Android** |
 | `maxBufferFrames` | `Int` | `150` | **No effect on Android** |
 | `fps` | `Int` | `15` | **No effect on Android** |
@@ -108,7 +108,7 @@ Traceway.init(
 
 ## Logs & Actions
 
-Every captured exception ships with the last ~10 seconds of session context, attached to a `sessionRecordings` entry on the wire — the same shape the Flutter SDK uses (minus the video chunks). Two independent rolling buffers — **logs** and **actions** — are kept in memory, each capped at 200 entries by default.
+Every captured exception ships with the last ~10 seconds of session context, attached to a `sessionRecordings` entry on the wire, the same shape the Flutter SDK uses (minus the video chunks). Two independent rolling buffers, **logs** and **actions**, are kept in memory, each capped at 200 entries by default.
 
 ### Logs
 
@@ -131,7 +131,7 @@ Timber.plant(object : Timber.Tree() {
 
 Three kinds of actions are collected:
 
-- **Network** — every HTTP request routed through an OkHttp client with `TracewayOkHttpInterceptor` installed (method, URL, status, duration, request/response byte counts). Catches Retrofit, Coil, Glide-via-OkHttp, and your own usage:
+- **Network**: every HTTP request routed through an OkHttp client with `TracewayOkHttpInterceptor` installed (method, URL, status, duration, request/response byte counts). Catches Retrofit, Coil, Glide-via-OkHttp, and your own usage:
 
   ```kotlin
   val client = OkHttpClient.Builder()
@@ -147,9 +147,9 @@ Three kinds of actions are collected:
   )
   ```
 
-- **Navigation** — activity `push` / `pop` transitions, recorded automatically once `Traceway.init(...)` runs (the SDK registers an `Application.ActivityLifecycleCallbacks` for you). No wiring needed on your side.
+- **Navigation**: activity `push` / `pop` transitions, recorded automatically once `Traceway.init(...)` runs (the SDK registers an `Application.ActivityLifecycleCallbacks` for you). No wiring needed on your side.
 
-- **Custom** — anything your app records explicitly:
+- **Custom**: anything your app records explicitly:
 
   ```kotlin
   Traceway.recordAction(
@@ -161,7 +161,7 @@ Three kinds of actions are collected:
 
 ### Wire shape
 
-Logs and actions are sent to the backend inside the same `sessionRecordings` entry that the Flutter SDK uses for video — they're stored under separate `logs` and `actions` arrays. Each recording carries `startedAt` and `endedAt` ISO 8601 timestamps so the backend can align events on a timeline (`offsetIntoVideoMs = event.timestamp − recording.startedAt`):
+Logs and actions are sent to the backend inside the same `sessionRecordings` entry that the Flutter SDK uses for video. They're stored under separate `logs` and `actions` arrays. Each recording carries `startedAt` and `endedAt` ISO 8601 timestamps so the backend can align events on a timeline (`offsetIntoVideoMs = event.timestamp − recording.startedAt`):
 
 ```json
 {
@@ -206,14 +206,14 @@ Traceway.init(
 `Traceway.init(...)` sets up capture for the following sources with no additional configuration:
 
 - **Uncaught Java/Kotlin exceptions** on every thread, via `Thread.setDefaultUncaughtExceptionHandler`
-- **View click handler throws** — uncaught exceptions inside `View.OnClickListener`, `AlertDialog` button handlers, and similar UI callbacks
-- **Background thread throws** — anything that escapes a `Thread`'s `run()` body
-- **Main `Handler.post` throws** — async exceptions on the main looper, caught by the default uncaught-exception handler
-- **Activity lifecycle transitions** — `push` / `pop` recorded as navigation actions
+- **View click handler throws**: uncaught exceptions inside `View.OnClickListener`, `AlertDialog` button handlers, and similar UI callbacks
+- **Background thread throws**: anything that escapes a `Thread`'s `run()` body
+- **Main `Handler.post` throws**: async exceptions on the main looper, caught by the default uncaught-exception handler
+- **Activity lifecycle transitions**: `push` / `pop` recorded as navigation actions
 
 ## Deobfuscate Release Crashes
 
-Release builds run R8, so crash traces arrive with renamed classes and rewritten line numbers. To get readable traces, apply the [`com.tracewayapp.symbols`](/symbolicator/android) Gradle plugin — it injects a per-build UUID into `BuildConfig.TRACEWAY_PROGUARD_UUID` and uploads the build's `mapping.txt` to your Traceway instance. Pass the injected UUID to the SDK so each report can be matched to its mapping:
+Release builds run R8, so crash traces arrive with renamed classes and rewritten line numbers. To get readable traces, apply the [`com.tracewayapp.symbols`](/symbolicator/android) Gradle plugin. It injects a per-build UUID into `BuildConfig.TRACEWAY_PROGUARD_UUID` and uploads the build's `mapping.txt` to your Traceway instance. Pass the injected UUID to the SDK so each report can be matched to its mapping:
 
 ```kotlin
 Traceway.init(
@@ -249,4 +249,4 @@ Tap the button and check your Traceway dashboard to verify the error appears wit
 |----------|----------------|------------------|
 | Android (API 21+) | Yes | No |
 
-For Flutter apps that need cross-platform error tracking (and screen recording on iOS / Android / macOS), use the [Flutter SDK](/client/flutter) instead — it ships the same wire format so a single Traceway backend handles both.
+For Flutter apps that need cross-platform error tracking (and screen recording on iOS / Android / macOS), use the [Flutter SDK](/client/flutter) instead. It ships the same wire format, so a single Traceway backend handles both.

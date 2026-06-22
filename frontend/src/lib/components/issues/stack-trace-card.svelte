@@ -120,99 +120,105 @@
 	</Card.Header>
 	<Card.Content class="pb-2">
 		{#if usePretty}
-			<div class="mb-3 flex justify-end">
-				<Tabs.Root bind:value={viewMode}>
-					<Tabs.List>
-						<Tabs.Trigger value="formatted">Formatted</Tabs.Trigger>
-						<Tabs.Trigger value="raw">Raw</Tabs.Trigger>
-					</Tabs.List>
-				</Tabs.Root>
-			</div>
-		{/if}
-		{#if usePretty && viewMode === 'formatted'}
 			<div class="overflow-hidden rounded-md border">
-				{#if parsed.errorMessage}
-					<div class="border-b bg-muted/50 px-4 py-3">
+				<div class="flex items-center justify-between gap-3 border-b bg-muted/50 px-4 py-2.5">
+					{#if viewMode === 'formatted' && parsed.errorMessage}
 						<p
-							class="font-mono text-sm font-medium break-words whitespace-pre-wrap text-foreground"
+							class="min-w-0 flex-1 font-mono text-sm font-medium break-words whitespace-pre-wrap text-foreground"
 						>
 							{parsed.errorMessage}
 						</p>
+					{:else}
+						<div class="flex-1"></div>
+					{/if}
+					<div class="shrink-0">
+						<Tabs.Root bind:value={viewMode}>
+							<Tabs.List>
+								<Tabs.Trigger value="formatted">Formatted</Tabs.Trigger>
+								<Tabs.Trigger value="raw">Raw</Tabs.Trigger>
+							</Tabs.List>
+						</Tabs.Root>
+					</div>
+				</div>
+				{#if viewMode === 'formatted'}
+					<ol role="list" class="divide-y divide-border/60">
+						{#each parsed.groups as group, i}
+							{#if group.type === 'app'}
+								{@const f = formatFrame(group.frame)}
+								<li
+									class="flex flex-wrap items-baseline gap-x-1.5 px-4 py-2 font-mono text-sm tabular-nums"
+									title={f.raw}
+								>
+									<span class="min-w-0 break-all text-muted-foreground"
+										>{f.dir}<span class="font-medium text-foreground">{f.file}</span></span
+									>
+									{#if f.fn}
+										<span class="text-muted-foreground/70">in</span>
+										<span class="min-w-0 font-medium break-all text-foreground">{f.fn}</span>
+									{/if}
+									{#if f.lineCol}
+										<span class="text-muted-foreground/70">at line</span>
+										<span class="text-foreground">{f.lineCol}</span>
+									{/if}
+								</li>
+							{:else}
+								<li>
+									<button
+										type="button"
+										class="flex w-full items-center gap-1.5 bg-muted/25 px-4 py-2 text-left text-xs text-muted-foreground hover:bg-muted/70"
+										onclick={() => toggleGroup(i)}
+									>
+										{#if expandedGroups.has(i)}
+											<ChevronDown class="size-3.5 shrink-0" />
+										{:else}
+											<ChevronRight class="size-3.5 shrink-0" />
+										{/if}
+										<span class="tabular-nums"
+											>{group.frames.length}
+											{groupNoun}
+											{group.frames.length === 1 ? 'frame' : 'frames'}</span
+										>
+										<span
+											class="rounded-md border bg-background px-1.5 py-0.5 font-mono text-foreground/70"
+											>{group.packageName}</span
+										>
+									</button>
+									{#if expandedGroups.has(i)}
+										<ol
+											role="list"
+											class="divide-y divide-border/40 border-t border-border/40 bg-muted/30"
+										>
+											{#each group.frames as frame}
+												{@const f = formatFrame(frame)}
+												<li
+													class="flex flex-wrap items-baseline gap-x-1.5 py-2 pr-4 pl-9 font-mono text-sm text-muted-foreground tabular-nums"
+													title={f.raw}
+												>
+													<span class="min-w-0 break-all"
+														>{f.dir}<span class="text-foreground/70">{f.file}</span></span
+													>
+													{#if f.fn}
+														<span class="text-muted-foreground/60">in</span>
+														<span class="min-w-0 break-all text-foreground/70">{f.fn}</span>
+													{/if}
+													{#if f.lineCol}
+														<span class="text-muted-foreground/60">at line</span>
+														<span>{f.lineCol}</span>
+													{/if}
+												</li>
+											{/each}
+										</ol>
+									{/if}
+								</li>
+							{/if}
+						{/each}
+					</ol>
+				{:else}
+					<div class="overflow-x-auto bg-muted/40">
+						<pre
+							class="w-fit min-w-full p-4 font-mono text-sm whitespace-pre text-foreground">{stackTrace}</pre>
 					</div>
 				{/if}
-
-				<ol role="list" class="divide-y divide-border/60">
-					{#each parsed.groups as group, i}
-						{#if group.type === 'app'}
-							{@const f = formatFrame(group.frame)}
-							<li
-								class="flex flex-wrap items-baseline gap-x-1.5 px-4 py-2 font-mono text-sm tabular-nums"
-								title={f.raw}
-							>
-								<span class="min-w-0 break-all text-muted-foreground"
-									>{f.dir}<span class="font-medium text-foreground">{f.file}</span></span
-								>
-								{#if f.fn}
-									<span class="text-muted-foreground/70">in</span>
-									<span class="min-w-0 font-medium break-all text-foreground">{f.fn}</span>
-								{/if}
-								{#if f.lineCol}
-									<span class="text-muted-foreground/70">at line</span>
-									<span class="text-foreground">{f.lineCol}</span>
-								{/if}
-							</li>
-						{:else}
-							<li>
-								<button
-									type="button"
-									class="flex w-full items-center gap-1.5 bg-muted/25 px-4 py-2 text-left text-xs text-muted-foreground hover:bg-muted/70"
-									onclick={() => toggleGroup(i)}
-								>
-									{#if expandedGroups.has(i)}
-										<ChevronDown class="size-3.5 shrink-0" />
-									{:else}
-										<ChevronRight class="size-3.5 shrink-0" />
-									{/if}
-									<span class="tabular-nums"
-										>{group.frames.length} {groupNoun} {group.frames.length === 1
-											? 'frame'
-											: 'frames'}</span
-									>
-									<span
-										class="rounded-md border bg-background px-1.5 py-0.5 font-mono text-foreground/70"
-										>{group.packageName}</span
-									>
-								</button>
-								{#if expandedGroups.has(i)}
-									<ol
-										role="list"
-										class="divide-y divide-border/40 border-t border-border/40 bg-muted/30"
-									>
-										{#each group.frames as frame}
-											{@const f = formatFrame(frame)}
-											<li
-												class="flex flex-wrap items-baseline gap-x-1.5 py-2 pr-4 pl-9 font-mono text-sm text-muted-foreground tabular-nums"
-												title={f.raw}
-											>
-												<span class="min-w-0 break-all"
-													>{f.dir}<span class="text-foreground/70">{f.file}</span></span
-												>
-												{#if f.fn}
-													<span class="text-muted-foreground/60">in</span>
-													<span class="min-w-0 break-all text-foreground/70">{f.fn}</span>
-												{/if}
-												{#if f.lineCol}
-													<span class="text-muted-foreground/60">at line</span>
-													<span>{f.lineCol}</span>
-												{/if}
-											</li>
-										{/each}
-									</ol>
-								{/if}
-							</li>
-						{/if}
-					{/each}
-				</ol>
 			</div>
 		{:else}
 			<div class="overflow-x-auto rounded-lg border bg-muted/40">

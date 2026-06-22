@@ -5,14 +5,16 @@ export type StackFrame = {
 	packageHint?: string;
 };
 
-export type FrameGroup = {
-	type: 'app';
-	frame: StackFrame;
-} | {
-	type: 'library';
-	frames: StackFrame[];
-	packageName: string;
-};
+export type FrameGroup =
+	| {
+			type: 'app';
+			frame: StackFrame;
+	  }
+	| {
+			type: 'library';
+			frames: StackFrame[];
+			packageName: string;
+	  };
 
 export type ParsedStackTrace = {
 	errorMessage: string;
@@ -152,10 +154,34 @@ function goShortFunction(fn: string): string {
 }
 
 const IOS_SYSTEM_IMAGES = new Set([
-	'CoreFoundation', 'Foundation', 'CFNetwork', 'Security', 'UIKitCore', 'UIKit', 'SwiftUI',
-	'GraphicsServices', 'QuartzCore', 'CoreGraphics', 'CoreText', 'CoreData', 'CoreImage',
-	'CoreAudio', 'CoreVideo', 'CoreServices', 'CoreMotion', 'CoreLocation', 'Metal', 'MetalKit',
-	'ImageIO', 'Combine', 'Network', 'AudioToolbox', 'AVFoundation', 'WebKit', 'JavaScriptCore', 'dyld'
+	'CoreFoundation',
+	'Foundation',
+	'CFNetwork',
+	'Security',
+	'UIKitCore',
+	'UIKit',
+	'SwiftUI',
+	'GraphicsServices',
+	'QuartzCore',
+	'CoreGraphics',
+	'CoreText',
+	'CoreData',
+	'CoreImage',
+	'CoreAudio',
+	'CoreVideo',
+	'CoreServices',
+	'CoreMotion',
+	'CoreLocation',
+	'Metal',
+	'MetalKit',
+	'ImageIO',
+	'Combine',
+	'Network',
+	'AudioToolbox',
+	'AVFoundation',
+	'WebKit',
+	'JavaScriptCore',
+	'dyld'
 ]);
 
 function isIOSSystemImage(image: string): boolean {
@@ -353,13 +379,14 @@ export function parseStackTrace(
 		}
 	}
 
-	const errorMessage = firstFrameIndex === -1
-		? raw.trim()
-		: lines
-				.slice(0, messageEndIndex)
-				.filter((l) => !goroutineHeaderPattern.test(l))
-				.join('\n')
-				.trim();
+	const errorMessage =
+		firstFrameIndex === -1
+			? raw.trim()
+			: lines
+					.slice(0, messageEndIndex)
+					.filter((l) => !goroutineHeaderPattern.test(l))
+					.join('\n')
+					.trim();
 
 	const groups: FrameGroup[] = [];
 

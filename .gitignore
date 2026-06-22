@@ -58,7 +58,7 @@ backend/static/dist/
 benchmarks/loadgen/bench-loadgen
 
 # Rust build artifacts (oxc symbolicator shim)
-backend/app/symbolicator/scopes/oxc-shim/target/
+**/oxc-shim/target/
 symbolicator-bench.txt
 
 # Benchmark tool binary, built on demand by benchmarks/scripts/cachebench-*.sh

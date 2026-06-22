@@ -61,7 +61,7 @@ traceway {
 }
 ```
 
-`uploadToken` is your project's **upload token** from the dashboard, the same one used for JavaScript source maps and iOS dSYMs. It is **not** the runtime token in your SDK connection string — using the connection-string token here is rejected with a 401.
+`uploadToken` is your project's **upload token** from the dashboard, the same one used for JavaScript source maps and iOS dSYMs. It is **not** the runtime token in your SDK connection string. Using the connection-string token here is rejected with a 401.
 
 With `autoUpload = true` the upload runs automatically after `assembleRelease`. The default is `false` (so a release build never depends on backend availability); upload explicitly instead, which is the better fit for CI:
 
@@ -69,7 +69,7 @@ With `autoUpload = true` the upload runs automatically after `assembleRelease`. 
 ./gradlew assembleRelease uploadReleaseTracewaySymbols
 ```
 
-The plugin embeds a ProGuard UUID into `BuildConfig.TRACEWAY_PROGUARD_UUID` and names the uploaded mapping `<uuid>.txt`. The UUID is derived from the module path, variant, and app version (`versionName` + `versionCode`), so each released version gets its own mapping — **bump the version each release** so a new upload doesn't overwrite a previous release's mapping (or set `proguardUuid` explicitly for full control). Pass that value to the SDK so reported crashes carry the matching UUID:
+The plugin embeds a ProGuard UUID into `BuildConfig.TRACEWAY_PROGUARD_UUID` and names the uploaded mapping `<uuid>.txt`. The UUID is derived from the module path, variant, and app version (`versionName` + `versionCode`), so each released version gets its own mapping. **Bump the version each release** so a new upload doesn't overwrite a previous release's mapping (or set `proguardUuid` explicitly for full control). Pass that value to the SDK so reported crashes carry the matching UUID:
 
 ```kotlin
 Traceway.init(

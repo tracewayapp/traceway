@@ -5,14 +5,13 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
-  source_map_symbolicator:
-    source_map_store: file_store
-    local_source_maps:
+  proguard_symbolicator:
+    proguard_store: file_store
+    local_store:
       path: ${env:STORE_PATH}
-    cache_dir: ${env:CACHE_DIR:-}
-    source_map_cache_size: ${env:CACHE_SIZE:-128}
+    proguard_cache_size: ${env:CACHE_SIZE:-128}
     preserve_stack_trace: false
-    parser: ${env:SYMB_PARSER:-goja}
+    allowed_languages: [android]
 
 exporters:
   otlphttp/drain:
@@ -28,11 +27,7 @@ service:
     metrics:
       level: none
   pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [source_map_symbolicator]
-      exporters: [otlphttp/drain]
     logs:
       receivers: [otlp]
-      processors: [source_map_symbolicator]
+      processors: [proguard_symbolicator]
       exporters: [otlphttp/drain]

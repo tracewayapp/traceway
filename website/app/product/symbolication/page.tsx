@@ -1,7 +1,14 @@
 import Link from "next/link";
 import Image from "next/image";
 import type { Metadata } from "next";
-import { Github, BookOpen, Workflow } from "lucide-react";
+import {
+  Github,
+  BookOpen,
+  Workflow,
+  FileText,
+  ArrowRight,
+  ArrowUpRight,
+} from "lucide-react";
 
 import { Eyebrow } from "@/components/eyebrow";
 import { SectionHead } from "@/components/section-head";
@@ -28,6 +35,37 @@ const BUNDLERS = [
   "Next.js",
   "SvelteKit",
   "Cloudflare Workers",
+];
+
+const RESOURCES = [
+  {
+    icon: Github,
+    label: "Browse the source",
+    meta: "tracewayapp/traceway",
+    href: GITHUB_URL,
+    external: true,
+  },
+  {
+    icon: Workflow,
+    label: "OTel Collector processor",
+    meta: "Drop-in for Honeycomb",
+    href: "https://docs.tracewayapp.com/symbolicator/opentelemetry",
+    external: true,
+  },
+  {
+    icon: BookOpen,
+    label: "Documentation",
+    meta: "Architecture & cache tiers",
+    href: "https://docs.tracewayapp.com/symbolicator",
+    external: true,
+  },
+  {
+    icon: FileText,
+    label: "System design write-up",
+    meta: "How the .tw format works",
+    href: "/blog/system-design-of-a-symbolicator",
+    external: false,
+  },
 ];
 
 const LANGUAGE_TILES = [
@@ -277,7 +315,22 @@ export default function SymbolicationPage() {
                   Symbolication that <em>keeps up with ingest.</em>
                 </>
               }
-              description="Most symbolicators re-parse source maps on every restart and hold them in RAM until the process dies. Ours compiles each map once, then memory-maps it from disk. The numbers below come straight from the benchmark workflow in the repo, run head to head against Honeycomb's symbolicator on Hetzner hardware."
+              description={
+                <>
+                  Most symbolicators re-parse source maps on every restart and
+                  hold them in RAM until the process dies. Ours compiles each map
+                  once, then memory-maps it from disk. The numbers below come
+                  straight from the benchmark workflow in the repo, run head to
+                  head against Honeycomb&rsquo;s symbolicator on Hetzner
+                  hardware.{" "}
+                  <Link
+                    href="/blog/system-design-of-a-symbolicator"
+                    className="font-medium text-[color:var(--a2)] hover:underline"
+                  >
+                    Read why the design is this efficient &rarr;
+                  </Link>
+                </>
+              }
             />
             <StatsStrip
               stats={[
@@ -354,46 +407,37 @@ export default function SymbolicationPage() {
                   ))}
                 </div>
               </div>
-              <div className="flex flex-wrap gap-x-6 gap-y-3 text-[13px]">
-                <Link
-                  href={GITHUB_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 hover:text-[color:var(--a2)]"
-                  style={{
-                    color: "var(--fg-1)",
-                    fontFamily: "var(--font-mono)",
-                  }}
-                >
-                  <Github className="h-3.5 w-3.5" />
-                  traceway →
-                </Link>
-                <Link
-                  href="https://docs.tracewayapp.com/symbolicator/opentelemetry"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 hover:text-[color:var(--a2)]"
-                  style={{
-                    color: "var(--fg-1)",
-                    fontFamily: "var(--font-mono)",
-                  }}
-                >
-                  <Workflow className="h-3.5 w-3.5" />
-                  OTel processor →
-                </Link>
-                <Link
-                  href="https://docs.tracewayapp.com/symbolicator"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 hover:text-[color:var(--a2)]"
-                  style={{
-                    color: "var(--fg-1)",
-                    fontFamily: "var(--font-mono)",
-                  }}
-                >
-                  <BookOpen className="h-3.5 w-3.5" />
-                  Documentation →
-                </Link>
+              <div className="flex flex-col gap-0.5">
+                {RESOURCES.map(({ icon: Icon, label, meta, href, external }) => {
+                  const Arrow = external ? ArrowUpRight : ArrowRight;
+                  return (
+                    <Link
+                      key={label}
+                      href={href}
+                      {...(external
+                        ? { target: "_blank", rel: "noopener noreferrer" }
+                        : {})}
+                      className="group flex items-start gap-3 rounded-lg px-3 py-2.5 hover:bg-[var(--ink-2)]"
+                    >
+                      <Icon className="mt-0.5 size-4 shrink-0 text-[color:var(--fg-3)] group-hover:text-[color:var(--a2)]" />
+                      <span className="min-w-0 flex-1">
+                        <span
+                          className="flex items-center text-[13px] text-[color:var(--fg-1)] group-hover:text-[color:var(--a2)]"
+                          style={{ fontFamily: "var(--font-mono)" }}
+                        >
+                          <span className="truncate">{label}</span>
+                          <Arrow className="ml-auto size-4 shrink-0 text-[color:var(--fg-3)] transition-transform group-hover:translate-x-0.5 group-hover:text-[color:var(--a2)]" />
+                        </span>
+                        <span
+                          className="mt-0.5 block truncate text-[12px]"
+                          style={{ color: "var(--fg-3)" }}
+                        >
+                          {meta}
+                        </span>
+                      </span>
+                    </Link>
+                  );
+                })}
               </div>
             </div>
           </div>

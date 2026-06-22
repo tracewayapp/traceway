@@ -38,7 +38,7 @@ export function SymbolicationBeforeAfter() {
     <section className="wrap pt-16 pb-4">
       <div className="mx-auto grid max-w-5xl items-center gap-6 md:grid-cols-[1fr_auto_1fr] md:gap-5">
         <div className="min-w-0">
-          <CardLabel text="What the browser sends" />
+          <CardLabel text="What the client sends" />
           <div
             className="overflow-hidden rounded-xl px-6 py-5 text-[12px] leading-[1.7]"
             style={{

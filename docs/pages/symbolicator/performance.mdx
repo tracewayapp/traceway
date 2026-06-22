@@ -53,7 +53,25 @@ Dart, [full run](https://github.com/tracewayapp/traceway/actions/runs/2752248509
 
 Dart trades a little differently. The ELF symbol files are large, so memory mode wins the hot path outright (28,605 stacks/s, 5.5ms p99) when everything fits. But watch the RSS column: disk mode stays pinned between 103 and 138 MB across every scenario, including `oom`, while memory mode climbs to 2,165 MB. Disk mode pays a steadier ~400ms tail for mmap page-ins and buys flat, predictable memory in return.
 
-The one-sentence summary across both languages: if your corpus fits in RAM and stays there, memory mode is fastest; if it doesn't, or you can't promise it always will, disk mode is the one that keeps running.
+Android, from the same [`benchmarks/processor`](https://github.com/tracewayapp/traceway/tree/main/benchmarks/processor) harness. Honeycomb is back in the table, because its logs-only `proguard_symbolicator` does symbolicate Android:
+
+| impl | scenario | max stacks/s | p99 ms (max) | peak RSS (MB) | avg CPU% | symb% | outcome |
+|------|----------|-------------:|-------------:|--------------:|---------:|------:|---------|
+| honeycomb-android | churn | 18769 | 314.653 | 2319 | 286 | 100 | survived |
+| honeycomb-android | hot | 20394 | 316.124 | 2331 | 203 | 100 | survived |
+| honeycomb-android | oom | 1692 | 442.011 | 5575 | 151 | 100 | survived |
+| traceway-android-disk | churn | 37217 | 339.465 | 90 | 318 | 100 | survived |
+| traceway-android-disk | hot | 37095 | 338.281 | 87 | 316 | 100 | survived |
+| traceway-android-disk | oom | 663 | 1813.470 | 823 | 191 | 100 | survived |
+| traceway-android-mem | churn | 28238 | 7.657 | 289 | 693 | 99 | survived |
+| traceway-android-mem | hot | 28387 | 6.030 | 337 | 689 | 100 | survived |
+| traceway-android-mem | oom | 1924 | 829.739 | 3280 | 192 | 100 | survived |
+
+Android is a different shape from JavaScript, because an R8 `mapping.txt` is small and cheap to compile, so churn never thrashes: every implementation holds its hot number under churn, including Honeycomb, whose JavaScript throughput collapsed under churn but here stays around 19-20k. What separates them is memory. Traceway disk mode runs about 37k stacks/s while holding 90 MB resident, against Honeycomb's 19-20k at 2.3 GB: nearly double the throughput on a twenty-fifth of the memory. Memory mode trades the other way, about 28k stacks/s at a 6ms p99 (no page-ins) for around 300 MB. Disk mode's ~338ms tail is the memory-map page-in on a cold `.tw`, and its throughput edge comes from retracing off the binary-searched flat artifact in place rather than a parsed map on the heap.
+
+The `oom` row is an eviction soak: the cache is capped and every `mapping.txt` is padded to MB scale, so nothing stays warm. Everyone survives, but the trade inverts. Memory mode is fastest (1,924 stacks/s) because a miss just rebuilds in RAM, while disk mode pays a disk write-back and a fresh page-in on every miss (663 stacks/s) in exchange for holding RSS to 823 MB where Honeycomb needs 5.6 GB.
+
+The throughline across all three languages: when the working set fits in RAM, memory mode owns the tail latency, and for the heavyweight DWARF formats the throughput too. When it doesn't, or you can't promise it always will, disk mode is the one that keeps running, holds memory flat, and warms instantly on restart; on a format as cheap to recompile as R8, it is even the faster of the two. Memory mode is the simpler default, disk mode the answer when RAM headroom, not latency, is the binding constraint.
 
 ## Sizing
 

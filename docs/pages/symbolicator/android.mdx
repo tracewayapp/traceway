@@ -18,7 +18,7 @@ com.example.app.PaymentDeclinedException: card declined for $30.59
 	at com.example.app.MainActivity.crashKotlin(MainActivity.kt:33)
 ```
 
-This page covers how to upload `mapping.txt` with the Gradle plugin, the upload API, how a trace is recognized and resolved, and how to migrate an app off Honeycomb. For when symbolication runs, the cache, and the `.tw` format, see [Architecture](/symbolicator).
+This page covers how to upload `mapping.txt` with the Gradle plugin, the upload API, how a trace is recognized and resolved, the compact `.tw` artifact each mapping compiles into, and how to migrate an app off Honeycomb. For the shared cache model and when symbolication runs, see [Architecture](/symbolicator).
 
 ## R8: what `mapping.txt` says
 
@@ -43,7 +43,7 @@ Then apply it to your app module:
 
 ```kotlin
 plugins {
-  id("com.tracewayapp.symbols") version "0.0.1"
+  id("com.tracewayapp.symbols") version "1.0.1"
 }
 
 android {
@@ -110,6 +110,17 @@ androidmappings/{projectId}/{proguardUuid}.txt     # R8 mapping, by build UUID
 
 A maximum of 50 frames are emitted, inline expansions included. A frame with no match keeps its raw form, so a trace is never worse than it arrived.
 
+## The flat format
+
+R8 `mapping.txt` is plain text and cheap to parse, but the engine never retraces against the text twice. On the first crash for a build, the mapping compiles once into the same compact [`.tw`](/symbolicator#the-tw-resolver-format) flat artifact used for JavaScript source maps and native dSYM/DWARF symbols, and that artifact is what every later lookup uses.
+
+Where the other languages' `.tw` files map an address (a bundle position, a program counter) to a span of frames, the R8 `.tw` maps an obfuscated **(class, method, line)** to its original frames. It holds two sorted tables, both binary-searchable, with every class, method, and file name interned once:
+
+- A **class table**, sorted by obfuscated class name, mapping each token to its original fully qualified name and source file.
+- A **member table**, sorted within each class by obfuscated method name. Each record carries the original class, method, and file, plus the obfuscated and original line ranges. One obfuscated method can map to several records, because R8 inlines small methods into their callers, so a single frame resolves to a chain of source frames innermost first, with the obfuscated line selecting which records apply. Synthesized members are flagged and skipped.
+
+A lookup binary-searches the class table, then the member table, then filters by line range, so resolution stays a handful of comparisons no matter how large the mapping is. The artifact is read in place: in disk-cache mode a crash retraces straight off the memory-mapped `.tw` with the name tables living in the OS page cache, while in memory mode the parsed mapping is held on the heap. Either way the compiled form rides the [same cache tiers](/symbolicator#cache-tiers) as every other language (in-memory LRU, the local `.tw` disk cache, and object storage) and rebuilds automatically when the format version is bumped. The throughput and memory trade between the two modes is measured on [Performance](/symbolicator/performance).
+
 ## Migrating from Honeycomb
 
 Honeycomb symbolicates Android in its OpenTelemetry Collector, keying ProGuard mappings by the `app.debug.proguard_uuid` resource attribute and storing them as `<uuid>.txt`. Traceway reads that **same** attribute and `<uuid>.txt` naming on the OTLP path, so a migrating app does not change its instrumentation.
@@ -124,7 +135,8 @@ Symbolication then happens in Traceway, in the collector processor or in the bac
 
 ## Related pages
 
+- [Android SDK](/client/android): capturing errors and crashes from an Android app
 - [Architecture](/symbolicator): when symbolication runs, the cache tiers, and the `.tw` format
 - [iOS](/symbolicator/ios) and [Dart](/symbolicator/dart): the flat-DWARF approach for native symbols
-- [Performance](/symbolicator/performance): cache sizing and failure handling
+- [Performance](/symbolicator/performance): the Android benchmark, cache sizing, and failure handling
 ```

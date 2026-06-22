@@ -16,7 +16,7 @@ import { GITHUB_URL } from "@/lib/links";
 export const metadata: Metadata = {
   title: "Stack Trace Symbolication · Traceway",
   description:
-    "Open-source, OpenTelemetry-compatible symbolication for JavaScript source maps, Dart/Flutter obfuscation maps, and iOS/Swift dSYM debug symbols. Resolve minified production errors and stripped native crashes back to the original file, line, and function at ingest. Pure Go, built to be fast.",
+    "Open-source, OpenTelemetry-compatible symbolication for JavaScript source maps, Dart/Flutter obfuscation maps, iOS/Swift dSYM debug symbols, and Android R8/ProGuard mapping files. Resolve minified production errors and stripped native crashes back to the original file, line, and function at ingest. Pure Go, built to be fast.",
 };
 
 const BUNDLERS = [
@@ -38,7 +38,17 @@ const LANGUAGE_TILES = [
     h: 40,
     size: 80,
     z: 22,
-    pos: "left-[30%] top-1/2 -translate-x-1/2 -translate-y-1/2",
+    pos: "left-[24%] top-1/2 -translate-x-1/2 -translate-y-1/2",
+    engine: true,
+  },
+  {
+    src: "/images/frameworks/android.png",
+    alt: "Android",
+    w: 45,
+    h: 36,
+    size: 80,
+    z: 24,
+    pos: "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
     engine: true,
   },
   {
@@ -48,7 +58,7 @@ const LANGUAGE_TILES = [
     h: 171,
     size: 104,
     z: 30,
-    pos: "left-[70%] top-1/2 -translate-x-1/2 -translate-y-1/2",
+    pos: "left-[76%] top-1/2 -translate-x-1/2 -translate-y-1/2",
     engine: true,
   },
   {
@@ -229,16 +239,17 @@ export default function SymbolicationPage() {
                 className="mt-4 text-[22px] leading-tight text-pretty"
                 style={{ color: "var(--fg-0)" }}
               >
-                JavaScript, Dart, Flutter, Swift, and more coming soon.
+                JavaScript, Dart, Flutter, Swift, Android, and more coming soon.
               </h3>
               <p
                 className="mt-4 text-[15px] text-pretty"
                 style={{ color: "var(--fg-2)" }}
               >
                 One engine reads JavaScript source maps, Dart and Flutter
-                obfuscation maps, and iOS and Swift dSYM debug symbols through
-                the same compiled cache, plus every JS framework that ships
-                them, from React and Svelte to Next.js and Remix. Even on the
+                obfuscation maps, iOS and Swift dSYM debug symbols, and Android
+                R8 mapping files through the same compiled cache, plus every JS
+                framework that ships them, from React and Svelte to Next.js and
+                Remix. Even on the
                 cheapest box we tested, a 2&nbsp;vCPU Hetzner <code>ccx13</code>
                 , it clears{" "}
                 <strong style={{ color: "var(--fg-0)" }}>
@@ -441,6 +452,10 @@ export default function SymbolicationPage() {
                 {
                   q: "Does it symbolicate iOS and Swift crashes?",
                   a: "Yes. Upload your build's .dSYM and the same engine resolves stripped Swift and Objective-C crash addresses back to file, line, and function, with inline frames expanded. dSYMs upload through the same per-project token and POST endpoint as your source maps, so a single Xcode build phase or a curl in CI keeps every release symbolicated.",
+                },
+                {
+                  q: "Does it symbolicate Android crashes?",
+                  a: "Yes. Release builds run R8, which renames classes and rewrites line numbers, so crashes arrive obfuscated. Upload the build's mapping.txt and the same engine retraces every frame back to the original class, method, file, and line, expanding the calls R8 inlined. The Gradle plugin injects a per-build UUID and uploads the mapping for you, through the same per-project token and POST endpoint as your source maps and dSYMs. On the OpenTelemetry path it reads the same app.debug.proguard_uuid attribute as Honeycomb, so a migrating app keeps its instrumentation.",
                 },
                 {
                   q: "Are my source maps exposed publicly?",

@@ -53,7 +53,7 @@ type Cache[V any] struct {
 	Validate func(V) bool
 
 	mu                  sync.Mutex
-	loading             map[string]*cacheLoad
+	loading             map[string]*cacheLoad[V]
 	negative            map[string]*negEntry
 	negativeHits        uint64
 	lastParseMs         float64
@@ -71,9 +71,10 @@ type negEntry struct {
 	failures  uint32
 }
 
-type cacheLoad struct {
+type cacheLoad[V any] struct {
 	done chan struct{}
 	err  error
+	blob V
 }
 
 func newCache[V any](s store[V], warn func(error)) *Cache[V] {
@@ -81,7 +82,7 @@ func newCache[V any](s store[V], warn func(error)) *Cache[V] {
 		name:     "symbolication artifact",
 		store:    s,
 		warn:     warn,
-		loading:  make(map[string]*cacheLoad),
+		loading:  make(map[string]*cacheLoad[V]),
 		negative: make(map[string]*negEntry),
 	}
 }
@@ -145,8 +146,7 @@ func (c *Cache[V]) SetLimits(maxEntries int, maxBytes int64) {
 
 func (c *Cache[V]) Dir() string { return c.store.dir() }
 
-func (c *Cache[V]) Get(ctx context.Context, key string, load LoadFunc[V]) (data V, done func(), err error) {
-	var zero V
+func (c *Cache[V]) Get(ctx context.Context, key string, load LoadFunc[V]) (V, func(), error) {
 	if data, done, ok := c.store.get(key); ok {
 		if c.Validate == nil || c.Validate(data) {
 			c.hits.Add(1)
@@ -156,33 +156,29 @@ func (c *Cache[V]) Get(ctx context.Context, key string, load LoadFunc[V]) (data 
 		done()
 		c.store.remove(key)
 	}
-	if err := c.ensureBuilt(ctx, key, load); err != nil {
-		return zero, noop, err
-	}
-	if data, done, ok := c.store.get(key); ok {
-		return data, done, nil
-	}
-	return zero, noop, fmt.Errorf("%s: %q evicted before use", c.name, key)
+	return c.ensureBuilt(ctx, key, load)
 }
 
-func (c *Cache[V]) ensureBuilt(ctx context.Context, key string, load LoadFunc[V]) error {
+func (c *Cache[V]) ensureBuilt(ctx context.Context, key string, load LoadFunc[V]) (V, func(), error) {
+	var zero V
 	c.mu.Lock()
 	if l, ok := c.loading[key]; ok {
 		c.mu.Unlock()
 		<-l.done
-		if l.err == nil {
-			c.hits.Add(1)
+		if l.err != nil {
+			return zero, noop, l.err
 		}
-		return l.err
+		c.hits.Add(1)
+		return l.blob, noop, nil
 	}
 
-	if c.store.contains(key) {
+	if data, done, ok := c.store.get(key); ok {
 		c.mu.Unlock()
 		c.hits.Add(1)
-		return nil
+		return data, done, nil
 	}
 	c.misses.Add(1)
-	l := &cacheLoad{done: make(chan struct{})}
+	l := &cacheLoad[V]{done: make(chan struct{})}
 	c.loading[key] = l
 	c.mu.Unlock()
 
@@ -200,6 +196,7 @@ func (c *Cache[V]) ensureBuilt(ctx context.Context, key string, load LoadFunc[V]
 			l.err = lerr
 			return
 		}
+		l.blob = blob
 		l.err = c.store.put(key, blob)
 	}()
 
@@ -214,10 +211,13 @@ func (c *Cache[V]) ensureBuilt(ctx context.Context, key string, load LoadFunc[V]
 	c.mu.Unlock()
 
 	close(l.done)
-	if l.err != nil && !c.isNotFound(l.err) {
-		c.reportFailure(l.err)
+	if l.err != nil {
+		if !c.isNotFound(l.err) {
+			c.reportFailure(l.err)
+		}
+		return zero, noop, l.err
 	}
-	return l.err
+	return l.blob, noop, nil
 }
 
 func (c *Cache[V]) isNotFound(err error) bool {

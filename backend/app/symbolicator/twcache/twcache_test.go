@@ -3,6 +3,7 @@ package twcache
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -156,6 +157,36 @@ func TestNegativeAndInvalidate(t *testing.T) {
 				t.Errorf("invalidate should force a rebuild: got %d builds, want 2", calls.Load())
 			}
 		})
+	}
+}
+
+func TestGetSurvivesEvictionRace(t *testing.T) {
+	ctx := context.Background()
+	c := NewMem(1<<20, 48<<10)
+	payload := make([]byte, 4<<10)
+	const goroutines = 32
+	const iters = 3000
+	const keyspace = 64
+	var fails atomic.Int64
+	var wg sync.WaitGroup
+	for g := 0; g < goroutines; g++ {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			for i := 0; i < iters; i++ {
+				key := "k" + strconv.Itoa((g*7+i)%keyspace) + ".tw"
+				_, done, err := c.Get(ctx, key, blobLoad(payload, nil))
+				if err != nil {
+					fails.Add(1)
+					continue
+				}
+				done()
+			}
+		}(g)
+	}
+	wg.Wait()
+	if n := fails.Load(); n != 0 {
+		t.Errorf("%d of %d Gets failed under eviction pressure; the bounded retry should resolve every present key", n, goroutines*iters)
 	}
 }
 

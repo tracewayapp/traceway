@@ -4,7 +4,7 @@ import "strings"
 
 func IsR8Trace(text string) bool {
 	for _, line := range strings.Split(text, "\n") {
-		if atFrameRe.MatchString(line) {
+		if isAtFrame(line) {
 			return true
 		}
 	}

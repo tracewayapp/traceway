@@ -1,0 +1,21 @@
+# compiler: R8
+# compiler_version: 8.9.27
+# common_typos_disable
+# {"id":"com.android.tools.r8.mapping","version":"2.2"}
+# pg_map_id: e5f09de
+# pg_map_hash: SHA-256 e5f09de2797207316d0ebad5e82d1a6772e8c593fff6a0c7ffd62d6830c02c05
+com.example.demo.Checkout -> a.a:
+# {"id":"sourceFile","fileName":"Checkout.java"}
+    1:2:double chargeCard(double):5:6 -> a
+      # {"id":"com.android.tools.r8.residualsignature","signature":"(D)V"}
+com.example.demo.Main -> com.example.demo.Main:
+# {"id":"sourceFile","fileName":"Main.java"}
+    1:1:void main(java.lang.String[]):5:5 -> main
+    2:2:double com.example.demo.Checkout.checkout(double[]):16:16 -> main
+    2:2:void main(java.lang.String[]):6 -> main
+    3:3:double com.example.demo.Checkout.applyTax(double):11:11 -> main
+    3:3:double com.example.demo.Checkout.checkout(double[]):19 -> main
+    3:3:void main(java.lang.String[]):6 -> main
+com.example.demo.PaymentDeclinedException -> a.b:
+# {"id":"sourceFile","fileName":"PaymentDeclinedException.java"}
+    1:1:void <init>(java.lang.String):5:5 -> <init>

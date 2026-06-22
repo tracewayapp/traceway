@@ -199,7 +199,7 @@ func frameData(ctx context.Context, prefix, fileName, base string, debugIds map[
 	return getBlob(ctx, twKey, loadSourceMapBlob(mapKey, prefix+base), local)
 }
 
-func getBlob(ctx context.Context, twKey string, load twcache.LoadFunc, local map[string]borrow) []byte {
+func getBlob(ctx context.Context, twKey string, load twcache.LoadFunc[SymbolicationCacheEntry], local map[string]borrow) []byte {
 	if br, ok := local[twKey]; ok {
 		return br.data
 	}
@@ -208,14 +208,15 @@ func getBlob(ctx context.Context, twKey string, load twcache.LoadFunc, local map
 		local[twKey] = borrow{}
 		return nil
 	}
-	local[twKey] = borrow{data: data, done: done}
-	return data
+	b, _ := data.([]byte)
+	local[twKey] = borrow{data: b, done: done}
+	return b
 }
 
 var smStoreHits, smBuilds atomic.Uint64
 
-func loadSourceMapBlob(mapKey, bundleKey string) twcache.LoadFunc {
-	return func(ctx context.Context) ([]byte, error) {
+func loadSourceMapBlob(mapKey, bundleKey string) twcache.LoadFunc[SymbolicationCacheEntry] {
+	return func(ctx context.Context) (SymbolicationCacheEntry, error) {
 		base := context.WithoutCancel(ctx)
 		twKey := twKeyFor(mapKey)
 

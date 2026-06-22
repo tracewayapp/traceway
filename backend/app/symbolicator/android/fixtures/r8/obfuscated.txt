@@ -1,0 +1,3 @@
+Exception in thread "main" a.b: card declined for $30.59
+	at a.a.a(SourceFile:2)
+	at com.example.demo.Main.main(SourceFile:3)

@@ -10,6 +10,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/storage"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/android"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/dart"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/ios"
 
@@ -63,6 +64,11 @@ func (s symbolsController) Upload(c *gin.Context) {
 				return
 			}
 			uploaded++
+		case android.LooksLikeR8Mapping(data):
+			if !s.uploadAndroidMapping(c, projectId, fileHeader.Filename, data) {
+				return
+			}
+			uploaded++
 		case filepath.Ext(fileHeader.Filename) == ".symbols":
 			if !s.uploadDart(c, projectId, fileHeader.Filename, data) {
 				return
@@ -72,6 +78,30 @@ func (s symbolsController) Upload(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"uploaded": uploaded})
+}
+
+func (s symbolsController) uploadAndroidMapping(c *gin.Context, projectId uuid.UUID, filename string, data []byte) bool {
+	proguardUuid := c.PostForm("proguard_uuid")
+	if proguardUuid == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("no proguard_uuid for %s; pass a 'proguard_uuid' field (the build UUID)", filename)})
+		return false
+	}
+	if services.NormalizeProguardUUID(proguardUuid) == "" {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": fmt.Sprintf("invalid proguard_uuid %q for %s", proguardUuid, filename)})
+		return false
+	}
+	if android.ParseMapping(string(data)).IsEmpty() {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": fmt.Sprintf("%s is not a valid R8/ProGuard mapping", filename)})
+		return false
+	}
+
+	key := services.AndroidMappingKey(projectId, proguardUuid)
+	if err := storage.Store.Write(c, key, data); err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to write mapping to storage: %w", err))
+		return false
+	}
+	services.InvalidateAndroidMapping(key)
+	return true
 }
 
 func (s symbolsController) uploadDart(c *gin.Context, projectId uuid.UUID, filename string, data []byte) bool {

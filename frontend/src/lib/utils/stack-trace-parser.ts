@@ -2,6 +2,7 @@ export type StackFrame = {
 	functionName: string | null;
 	location: string;
 	isLibrary: boolean;
+	packageHint?: string;
 };
 
 export type FrameGroup = {
@@ -28,6 +29,34 @@ function isLibraryLocation(location: string): boolean {
 		/^package:(flutter(\/|_)|collection\/)/.test(location) ||
 		/SnapshotInstructions\+0x/.test(location)
 	);
+}
+
+const javaFramePattern = /^\s*at\s+([\w$.<>]+)\(([^)]*)\)\s*$/;
+
+const JAVA_SYSTEM_RE =
+	/^(java\.|javax\.|jakarta\.|jdk\.|sun\.|com\.sun\.|kotlin\.|kotlinx\.|android\.|androidx\.|com\.android\.|com\.google\.android\.|dalvik\.|libcore\.|org\.json\.)/;
+
+export function looksLikeJava(raw: string): boolean {
+	let count = 0;
+	for (const line of raw.split('\n')) {
+		const m = line.match(javaFramePattern);
+		if (m && !m[2].includes('/')) {
+			if (++count >= 2) return true;
+		}
+	}
+	return false;
+}
+
+function isJavaSystemClass(fqn: string): boolean {
+	return JAVA_SYSTEM_RE.test(fqn);
+}
+
+function javaPackageLabel(fqn: string): string {
+	const segs = fqn.split('.');
+	if ((segs[0] === 'com' || segs[0] === 'org' || segs[0] === 'io') && segs.length > 1) {
+		return `${segs[0]}.${segs[1]}`;
+	}
+	return segs[0] || 'system';
 }
 
 const IOS_SYSTEM_IMAGES = new Set([
@@ -76,7 +105,10 @@ function extractPackageName(location: string): string {
 	return 'library';
 }
 
-export function parseStackTrace(raw: string, opts: { ios?: boolean } = {}): ParsedStackTrace {
+export function parseStackTrace(
+	raw: string,
+	opts: { ios?: boolean; java?: boolean } = {}
+): ParsedStackTrace {
 	const lines = raw.split('\n');
 	const frames: StackFrame[] = [];
 	let firstFrameIndex = -1;
@@ -115,6 +147,32 @@ export function parseStackTrace(raw: string, opts: { ios?: boolean } = {}): Pars
 					functionName: null,
 					location: lines[i].trim().replace(/^#\d+\s+/, ''),
 					isLibrary: isIOSSystemImage(iosUnresolved[1].trim())
+				});
+				continue;
+			}
+		}
+
+		if (opts.java) {
+			const jm = lines[i].match(javaFramePattern);
+			if (jm && !jm[2].includes('/')) {
+				const fqMethod = jm[1];
+				const source = jm[2].trim();
+				const lastDot = fqMethod.lastIndexOf('.');
+				const method = lastDot >= 0 ? fqMethod.slice(lastDot + 1) : fqMethod;
+				const classFqn = lastDot >= 0 ? fqMethod.slice(0, lastDot) : '';
+				const classSimple = classFqn.includes('.')
+					? classFqn.slice(classFqn.lastIndexOf('.') + 1)
+					: classFqn;
+				const lib = isJavaSystemClass(fqMethod);
+				if (firstFrameIndex === -1) {
+					firstFrameIndex = i;
+					messageEndIndex = i;
+				}
+				frames.push({
+					functionName: classSimple ? `${classSimple}.${method}` : method,
+					location: source,
+					isLibrary: lib,
+					packageHint: lib ? javaPackageLabel(fqMethod) : undefined
 				});
 				continue;
 			}
@@ -193,7 +251,7 @@ export function parseStackTrace(raw: string, opts: { ios?: boolean } = {}): Pars
 			groups.push({
 				type: 'library',
 				frames: libraryFrames,
-				packageName: extractPackageName(libraryFrames[0].location)
+				packageName: libraryFrames[0].packageHint ?? extractPackageName(libraryFrames[0].location)
 			});
 		}
 	}

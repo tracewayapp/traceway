@@ -22,7 +22,7 @@ func useMemCache(t *testing.T) {
 	t.Cleanup(func() { sharedCache = prev })
 }
 
-func useDiskCache(t *testing.T, dir string, maxBytes int64) *twcache.Cache {
+func useDiskCache(t *testing.T, dir string, maxBytes int64) *twcache.Cache[SymbolicationCacheEntry] {
 	t.Helper()
 	prev := sharedCache
 	if err := EnableSymbolicatorDiskCache(dir, maxBytes); err != nil {
@@ -39,11 +39,12 @@ func resolveSMFrame(t *testing.T, ctx context.Context, mapKey, bundleKey string)
 		return sourcemap.StackTraceFrame{}, false, err
 	}
 	defer done()
-	frame, ok := sourcemap.LookupTW(data, 0, 10)
+	b, _ := data.([]byte)
+	frame, ok := sourcemap.LookupTW(b, 0, 10)
 	return frame, ok, nil
 }
 
-func twPathFor(disk *twcache.Cache, mapKey string) string {
+func twPathFor(disk *twcache.Cache[SymbolicationCacheEntry], mapKey string) string {
 	return filepath.Join(disk.Dir(), filepath.FromSlash(twKeyFor(mapKey)))
 }
 

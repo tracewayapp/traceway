@@ -1,0 +1,5 @@
+Exception in thread "main" com.example.demo.PaymentDeclinedException: card declined for $30.59
+	at com.example.demo.Checkout.chargeCard(Checkout.java:6)
+	at com.example.demo.Checkout.applyTax(Checkout.java:11)
+	at com.example.demo.Checkout.checkout(Checkout.java:19)
+	at com.example.demo.Main.main(Main.java:6)

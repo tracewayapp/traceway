@@ -1,0 +1,174 @@
+# compiler: R8
+# compiler_version: 8.7.18
+# min_api: 24
+# common_typos_disable
+# {"id":"com.android.tools.r8.mapping","version":"2.2"}
+# pg_map_id: 224618e
+# pg_map_hash: SHA-256 224618e8d10251e01f614fb1be0047f9d1b57e5efad071b0a17e917c1e76ef3d
+com.example.androdemo.Checkout -> R8$$REMOVED$$CLASS$$0:
+# {"id":"sourceFile","fileName":"Checkout.kt"}
+com.example.androdemo.MainActivity -> com.example.androdemo.MainActivity:
+# {"id":"sourceFile","fileName":"MainActivity.kt"}
+    int $r8$clinit -> a
+      # {"id":"com.android.tools.r8.synthesized"}
+    1:1:void <init>():8:8 -> <init>
+    1:1:void crashKotlin():33:33 -> a
+    2:2:double com.example.androdemo.Checkout.checkout(double[]):15:15 -> a
+    2:2:void crashKotlin():33 -> a
+    3:3:double com.example.androdemo.Checkout.chargeCard(double):5:5 -> a
+    3:3:double com.example.androdemo.Checkout.applyTax(double):10 -> a
+    3:3:double com.example.androdemo.Checkout.checkout(double[]):18 -> a
+    3:3:void crashKotlin():33 -> a
+    4:4:void kotlin.jvm.internal.Intrinsics.throwParameterIsNullNPE(java.lang.String):140:140 -> a
+    4:4:void kotlin.jvm.internal.Intrinsics.checkNotNullParameter(java.lang.Object,java.lang.String):131 -> a
+    4:4:void com.example.androdemo.PaymentDeclinedException.<init>(java.lang.String):0 -> a
+    4:4:double com.example.androdemo.Checkout.chargeCard(double):5 -> a
+    4:4:double com.example.androdemo.Checkout.applyTax(double):10 -> a
+    4:4:double com.example.androdemo.Checkout.checkout(double[]):18 -> a
+    4:4:void crashKotlin():33 -> a
+    5:5:java.lang.String kotlin.jvm.internal.Intrinsics.createParameterIsNullExceptionMessage(java.lang.String):144:144 -> a
+    5:5:void kotlin.jvm.internal.Intrinsics.throwParameterIsNullNPE(java.lang.String):140 -> a
+    5:5:void kotlin.jvm.internal.Intrinsics.checkNotNullParameter(java.lang.Object,java.lang.String):131 -> a
+    5:5:void com.example.androdemo.PaymentDeclinedException.<init>(java.lang.String):0 -> a
+    5:5:double com.example.androdemo.Checkout.chargeCard(double):5 -> a
+    5:5:double com.example.androdemo.Checkout.applyTax(double):10 -> a
+    5:5:double com.example.androdemo.Checkout.checkout(double[]):18 -> a
+    5:5:void crashKotlin():33 -> a
+    6:6:java.lang.String kotlin.jvm.internal.Intrinsics.createParameterIsNullExceptionMessage(java.lang.String):146:146 -> a
+    6:6:void kotlin.jvm.internal.Intrinsics.throwParameterIsNullNPE(java.lang.String):140 -> a
+    6:6:void kotlin.jvm.internal.Intrinsics.checkNotNullParameter(java.lang.Object,java.lang.String):131 -> a
+    6:6:void com.example.androdemo.PaymentDeclinedException.<init>(java.lang.String):0 -> a
+    6:6:double com.example.androdemo.Checkout.chargeCard(double):5 -> a
+    6:6:double com.example.androdemo.Checkout.applyTax(double):10 -> a
+    6:6:double com.example.androdemo.Checkout.checkout(double[]):18 -> a
+    6:6:void crashKotlin():33 -> a
+    7:7:java.lang.String kotlin.jvm.internal.Intrinsics.createParameterIsNullExceptionMessage(java.lang.String):149:149 -> a
+    7:7:void kotlin.jvm.internal.Intrinsics.throwParameterIsNullNPE(java.lang.String):140 -> a
+    7:7:void kotlin.jvm.internal.Intrinsics.checkNotNullParameter(java.lang.Object,java.lang.String):131 -> a
+    7:7:void com.example.androdemo.PaymentDeclinedException.<init>(java.lang.String):0 -> a
+    7:7:double com.example.androdemo.Checkout.chargeCard(double):5 -> a
+    7:7:double com.example.androdemo.Checkout.applyTax(double):10 -> a
+    7:7:double com.example.androdemo.Checkout.checkout(double[]):18 -> a
+    7:7:void crashKotlin():33 -> a
+    8:8:java.lang.String kotlin.jvm.internal.Intrinsics.createParameterIsNullExceptionMessage(java.lang.String):151:151 -> a
+    8:8:void kotlin.jvm.internal.Intrinsics.throwParameterIsNullNPE(java.lang.String):140 -> a
+    8:8:void kotlin.jvm.internal.Intrinsics.checkNotNullParameter(java.lang.Object,java.lang.String):131 -> a
+    8:8:void com.example.androdemo.PaymentDeclinedException.<init>(java.lang.String):0 -> a
+    8:8:double com.example.androdemo.Checkout.chargeCard(double):5 -> a
+    8:8:double com.example.androdemo.Checkout.applyTax(double):10 -> a
+    8:8:double com.example.androdemo.Checkout.checkout(double[]):18 -> a
+    8:8:void crashKotlin():33 -> a
+    9:11:java.lang.String kotlin.jvm.internal.Intrinsics.createParameterIsNullExceptionMessage(java.lang.String):153:155 -> a
+    9:11:void kotlin.jvm.internal.Intrinsics.throwParameterIsNullNPE(java.lang.String):140 -> a
+    9:11:void kotlin.jvm.internal.Intrinsics.checkNotNullParameter(java.lang.Object,java.lang.String):131 -> a
+    9:11:void com.example.androdemo.PaymentDeclinedException.<init>(java.lang.String):0 -> a
+    9:11:double com.example.androdemo.Checkout.chargeCard(double):5 -> a
+    9:11:double com.example.androdemo.Checkout.applyTax(double):10 -> a
+    9:11:double com.example.androdemo.Checkout.checkout(double[]):18 -> a
+    9:11:void crashKotlin():33 -> a
+    12:12:java.lang.String kotlin.jvm.internal.Intrinsics.createParameterIsNullExceptionMessage(java.lang.String):157:157 -> a
+    12:12:void kotlin.jvm.internal.Intrinsics.throwParameterIsNullNPE(java.lang.String):140 -> a
+    12:12:void kotlin.jvm.internal.Intrinsics.checkNotNullParameter(java.lang.Object,java.lang.String):131 -> a
+    12:12:void com.example.androdemo.PaymentDeclinedException.<init>(java.lang.String):0 -> a
+    12:12:double com.example.androdemo.Checkout.chargeCard(double):5 -> a
+    12:12:double com.example.androdemo.Checkout.applyTax(double):10 -> a
+    12:12:double com.example.androdemo.Checkout.checkout(double[]):18 -> a
+    12:12:void crashKotlin():33 -> a
+    13:13:void kotlin.jvm.internal.Intrinsics.throwParameterIsNullNPE(java.lang.String):140:140 -> a
+    13:13:void kotlin.jvm.internal.Intrinsics.checkNotNullParameter(java.lang.Object,java.lang.String):131 -> a
+    13:13:void com.example.androdemo.PaymentDeclinedException.<init>(java.lang.String):0 -> a
+    13:13:double com.example.androdemo.Checkout.chargeCard(double):5 -> a
+    13:13:double com.example.androdemo.Checkout.applyTax(double):10 -> a
+    13:13:double com.example.androdemo.Checkout.checkout(double[]):18 -> a
+    13:13:void crashKotlin():33 -> a
+    14:14:java.lang.Throwable kotlin.jvm.internal.Intrinsics.sanitizeStackTrace(java.lang.Throwable):253:253 -> a
+    14:14:void kotlin.jvm.internal.Intrinsics.throwParameterIsNullNPE(java.lang.String):140 -> a
+    14:14:void kotlin.jvm.internal.Intrinsics.checkNotNullParameter(java.lang.Object,java.lang.String):131 -> a
+    14:14:void com.example.androdemo.PaymentDeclinedException.<init>(java.lang.String):0 -> a
+    14:14:double com.example.androdemo.Checkout.chargeCard(double):5 -> a
+    14:14:double com.example.androdemo.Checkout.applyTax(double):10 -> a
+    14:14:double com.example.androdemo.Checkout.checkout(double[]):18 -> a
+    14:14:void crashKotlin():33 -> a
+    15:16:java.lang.Throwable kotlin.jvm.internal.Intrinsics.sanitizeStackTrace(java.lang.Throwable,java.lang.String):257:258 -> a
+    15:16:java.lang.Throwable kotlin.jvm.internal.Intrinsics.sanitizeStackTrace(java.lang.Throwable):253 -> a
+    15:16:void kotlin.jvm.internal.Intrinsics.throwParameterIsNullNPE(java.lang.String):140 -> a
+    15:16:void kotlin.jvm.internal.Intrinsics.checkNotNullParameter(java.lang.Object,java.lang.String):131 -> a
+    15:16:void com.example.androdemo.PaymentDeclinedException.<init>(java.lang.String):0 -> a
+    15:16:double com.example.androdemo.Checkout.chargeCard(double):5 -> a
+    15:16:double com.example.androdemo.Checkout.applyTax(double):10 -> a
+    15:16:double com.example.androdemo.Checkout.checkout(double[]):18 -> a
+    15:16:void crashKotlin():33 -> a
+    17:17:java.lang.Throwable kotlin.jvm.internal.Intrinsics.sanitizeStackTrace(java.lang.Throwable,java.lang.String):262:262 -> a
+    17:17:java.lang.Throwable kotlin.jvm.internal.Intrinsics.sanitizeStackTrace(java.lang.Throwable):253 -> a
+    17:17:void kotlin.jvm.internal.Intrinsics.throwParameterIsNullNPE(java.lang.String):140 -> a
+    17:17:void kotlin.jvm.internal.Intrinsics.checkNotNullParameter(java.lang.Object,java.lang.String):131 -> a
+    17:17:void com.example.androdemo.PaymentDeclinedException.<init>(java.lang.String):0 -> a
+    17:17:double com.example.androdemo.Checkout.chargeCard(double):5 -> a
+    17:17:double com.example.androdemo.Checkout.applyTax(double):10 -> a
+    17:17:double com.example.androdemo.Checkout.checkout(double[]):18 -> a
+    17:17:void crashKotlin():33 -> a
+    18:19:java.lang.Throwable kotlin.jvm.internal.Intrinsics.sanitizeStackTrace(java.lang.Throwable,java.lang.String):267:268 -> a
+    18:19:java.lang.Throwable kotlin.jvm.internal.Intrinsics.sanitizeStackTrace(java.lang.Throwable):253 -> a
+    18:19:void kotlin.jvm.internal.Intrinsics.throwParameterIsNullNPE(java.lang.String):140 -> a
+    18:19:void kotlin.jvm.internal.Intrinsics.checkNotNullParameter(java.lang.Object,java.lang.String):131 -> a
+    18:19:void com.example.androdemo.PaymentDeclinedException.<init>(java.lang.String):0 -> a
+    18:19:double com.example.androdemo.Checkout.chargeCard(double):5 -> a
+    18:19:double com.example.androdemo.Checkout.applyTax(double):10 -> a
+    18:19:double com.example.androdemo.Checkout.checkout(double[]):18 -> a
+    18:19:void crashKotlin():33 -> a
+    20:20:void kotlin.jvm.internal.Intrinsics.throwParameterIsNullNPE(java.lang.String):140:140 -> a
+    20:20:void kotlin.jvm.internal.Intrinsics.checkNotNullParameter(java.lang.Object,java.lang.String):131 -> a
+    20:20:void com.example.androdemo.PaymentDeclinedException.<init>(java.lang.String):0 -> a
+    20:20:double com.example.androdemo.Checkout.chargeCard(double):5 -> a
+    20:20:double com.example.androdemo.Checkout.applyTax(double):10 -> a
+    20:20:double com.example.androdemo.Checkout.checkout(double[]):18 -> a
+    20:20:void crashKotlin():33 -> a
+    21:21:void com.example.androdemo.PaymentDeclinedException.<init>(java.lang.String):3:3 -> a
+    21:21:double com.example.androdemo.Checkout.chargeCard(double):5 -> a
+    21:21:double com.example.androdemo.Checkout.applyTax(double):10 -> a
+    21:21:double com.example.androdemo.Checkout.checkout(double[]):18 -> a
+    21:21:void crashKotlin():33 -> a
+    22:22:double com.example.androdemo.Checkout.chargeCard(double):5:5 -> a
+    22:22:double com.example.androdemo.Checkout.applyTax(double):10 -> a
+    22:22:double com.example.androdemo.Checkout.checkout(double[]):18 -> a
+    22:22:void crashKotlin():33 -> a
+    1:1:void onCreate(android.os.Bundle):10:10 -> onCreate
+    2:4:void onCreate(android.os.Bundle):12:14 -> onCreate
+    5:7:void onCreate(android.os.Bundle):16:18 -> onCreate
+    8:8:void onCreate(android.os.Bundle):16:16 -> onCreate
+    9:11:void onCreate(android.os.Bundle):20:22 -> onCreate
+    12:12:void onCreate(android.os.Bundle):20:20 -> onCreate
+    13:13:void onCreate(android.os.Bundle):24:24 -> onCreate
+    14:14:void onCreate(android.os.Bundle):26:26 -> onCreate
+    15:15:void crashNative():37:37 -> onCreate
+    15:15:void onCreate(android.os.Bundle):28 -> onCreate
+    16:17:void onCreate(android.os.Bundle):26:27 -> onCreate
+com.example.androdemo.MainActivity$$ExternalSyntheticLambda0 -> a.a:
+# {"id":"sourceFile","fileName":"R8$$SyntheticClass"}
+# {"id":"com.android.tools.r8.synthesized"}
+    int a.MainActivity$$ExternalSyntheticLambda0.$r8$classId -> a
+      # {"id":"com.android.tools.r8.synthesized"}
+    com.example.androdemo.MainActivity com.example.androdemo.MainActivity$$InternalSyntheticLambda$1$fd788ef1c9019be65d0bc8853139bec490236ec6d1e2a1f187ca4d1845e5f895$0.f$0 -> b
+      # {"id":"com.android.tools.r8.synthesized"}
+    1:1:void a.MainActivity$$ExternalSyntheticLambda0.<init>(com.example.androdemo.MainActivity,int):0:0 -> <init>
+      # {"id":"com.android.tools.r8.synthesized"}
+    1:1:void com.example.androdemo.MainActivity.onCreate$lambda$4$lambda$3(com.example.androdemo.MainActivity,android.view.View):22:22 -> onClick
+    1:1:void a.MainActivity$$ExternalSyntheticLambda0.onClick(android.view.View):0 -> onClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    2:2:void com.example.androdemo.MainActivity.crashNative():37:37 -> onClick
+    2:2:void com.example.androdemo.MainActivity.onCreate$lambda$4$lambda$3(com.example.androdemo.MainActivity,android.view.View):22 -> onClick
+    2:2:void a.MainActivity$$ExternalSyntheticLambda0.onClick(android.view.View):0 -> onClick
+    3:3:void a.MainActivity$$ExternalSyntheticLambda0.onClick(android.view.View):0:0 -> onClick
+    4:4:void com.example.androdemo.MainActivity.onCreate$lambda$2$lambda$1(com.example.androdemo.MainActivity,android.view.View):18:18 -> onClick
+    4:4:void a.MainActivity$$ExternalSyntheticLambda0.onClick(android.view.View):0 -> onClick
+com.example.androdemo.NativeBridge -> com.example.androdemo.NativeBridge:
+# {"id":"sourceFile","fileName":"NativeBridge.kt"}
+    com.example.androdemo.NativeBridge INSTANCE -> a
+    1:1:void <init>():3:3 -> <clinit>
+    1:1:void <clinit>():0 -> <clinit>
+    2:2:void <clinit>():0:0 -> <clinit>
+    3:3:void <clinit>():5:5 -> <clinit>
+com.example.androdemo.PaymentDeclinedException -> a.b:
+# {"id":"sourceFile","fileName":"PaymentDeclinedException.kt"}
+kotlin.jvm.internal.Intrinsics -> b.a:
+# {"id":"sourceFile","fileName":"Intrinsics.java"}

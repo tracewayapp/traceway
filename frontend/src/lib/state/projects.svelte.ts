@@ -52,7 +52,7 @@ export function isJsFramework(fw: Framework): boolean {
 }
 
 export function supportsSymbolUpload(fw: Framework): boolean {
-	return isJsFramework(fw) || fw === 'flutter' || fw === 'ios';
+	return isJsFramework(fw) || fw === 'flutter' || fw === 'ios' || fw === 'android';
 }
 
 export const JS_LANGUAGES = ['webjs', 'nodejs', 'javascript', 'typescript'];

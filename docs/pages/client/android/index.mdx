@@ -74,6 +74,7 @@ Traceway.flush()
 | `sampleRate` | `Double` | `1.0` | Event sampling rate (0.0 to 1.0) |
 | `debug` | `Boolean` | `false` | Print debug info to logcat |
 | `version` | `String` | `""` | App version string |
+| `proguardUuid` | `String?` | `null` | R8/ProGuard build UUID for deobfuscating release crashes — set to `BuildConfig.TRACEWAY_PROGUARD_UUID` from the [symbols plugin](/symbolicator/android) |
 | `debounceMs` | `Long` | `1500` | Milliseconds before sending batched events |
 | `retryDelayMs` | `Long` | `10000` | Retry delay in ms on failed uploads |
 | `maxPendingExceptions` | `Int` | `5` | Max exceptions held in memory before oldest is dropped |
@@ -209,6 +210,23 @@ Traceway.init(
 - **Background thread throws** — anything that escapes a `Thread`'s `run()` body
 - **Main `Handler.post` throws** — async exceptions on the main looper, caught by the default uncaught-exception handler
 - **Activity lifecycle transitions** — `push` / `pop` recorded as navigation actions
+
+## Deobfuscate Release Crashes
+
+Release builds run R8, so crash traces arrive with renamed classes and rewritten line numbers. To get readable traces, apply the [`com.tracewayapp.symbols`](/symbolicator/android) Gradle plugin — it injects a per-build UUID into `BuildConfig.TRACEWAY_PROGUARD_UUID` and uploads the build's `mapping.txt` to your Traceway instance. Pass the injected UUID to the SDK so each report can be matched to its mapping:
+
+```kotlin
+Traceway.init(
+    application = this,
+    connectionString = BuildConfig.TRACEWAY_DSN,
+    options = TracewayOptions(
+        version = "1.0.0",
+        proguardUuid = BuildConfig.TRACEWAY_PROGUARD_UUID,
+    ),
+)
+```
+
+See the [Android symbolicator docs](/symbolicator/android) for the full plugin configuration, the upload token, and the manual upload path.
 
 ## Test Your Integration
 

@@ -68,6 +68,28 @@ func runSymbolsUpload(t *testing.T, projectId uuid.UUID, filename string, data [
 	return rec
 }
 
+func runSymbolsUploadWithFields(t *testing.T, projectId uuid.UUID, filename string, data []byte, fields map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	fw, _ := w.CreateFormFile("files", filename)
+	fw.Write(data)
+	for k, v := range fields {
+		_ = w.WriteField(k, v)
+	}
+	w.Close()
+
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/symbols/upload", &body)
+	c.Request.Header.Set("Content-Type", w.FormDataContentType())
+	c.Set(middleware.ProjectIdContextKey, projectId)
+
+	SymbolsController.Upload(c)
+	return rec
+}
+
 func iosUploadFixture(t *testing.T, name string) []byte {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("..", "symbolicator", "ios", "fixtures", "sample", name))
@@ -75,6 +97,55 @@ func iosUploadFixture(t *testing.T, name string) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+func androidUploadFixture(t *testing.T, parts ...string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(append([]string{"..", "symbolicator", "android", "fixtures"}, parts...)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func TestUploadAndroidMapping(t *testing.T) {
+	prev := storage.Store
+	defer func() { storage.Store = prev }()
+	store := newMemStore()
+	storage.Store = store
+
+	projectId := uuid.New()
+	const proguardUuid = "6A8CB813-45F6-3652-AD33-778FD1EAB196"
+	rec := runSymbolsUploadWithFields(t, projectId, "mapping.txt",
+		androidUploadFixture(t, "r8", "mapping.txt"),
+		map[string]string{"proguard_uuid": proguardUuid})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if _, ok := store.data[services.AndroidMappingKey(projectId, proguardUuid)]; !ok {
+		t.Errorf("mapping not stored at %s; keys=%v", services.AndroidMappingKey(projectId, proguardUuid), keysOf(store))
+	}
+}
+
+func TestUploadAndroidMappingRequiresUuid(t *testing.T) {
+	prev := storage.Store
+	defer func() { storage.Store = prev }()
+	storage.Store = newMemStore()
+
+	rec := runSymbolsUpload(t, uuid.New(), "mapping.txt", androidUploadFixture(t, "r8", "mapping.txt"))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing proguard_uuid, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func keysOf(s *memStore) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]string, 0, len(s.data))
+	for k := range s.data {
+		out = append(out, k)
+	}
+	return out
 }
 
 func TestUploadIOSFatStoresPerSlice(t *testing.T) {

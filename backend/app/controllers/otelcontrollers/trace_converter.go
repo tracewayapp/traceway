@@ -57,6 +57,7 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 		serverName := getStringAttribute(resourceAttrs, "service.name")
 		appVersion := getStringAttribute(resourceAttrs, "service.version")
 		language := getStringAttribute(resourceAttrs, "telemetry.sdk.language")
+		proguardUuid := getStringAttribute(resourceAttrs, "app.debug.proguard_uuid")
 		if appVersion == "" {
 			if scriptVersionId := getStringAttribute(resourceAttrs, "cloudflare.script_version.id"); scriptVersionId != "" {
 				if idx := strings.LastIndex(scriptVersionId, "-"); idx != -1 {
@@ -281,7 +282,7 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 					hadExceptionEvent = true
 					exc := buildException(
 						ctx, existingProject, projectId, ownerId, traceType, event.Attributes, event.TimeUnixNano,
-						allAttrs, serverName, appVersion, language, entry.scopeName,
+						allAttrs, serverName, appVersion, language, proguardUuid, entry.scopeName,
 					)
 					if owner != nil {
 						exc.DistributedTraceId = owner.distributedTraceId
@@ -293,7 +294,7 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 			if !hadExceptionEvent && hasExceptionAttributes(span.Attributes) {
 				exc := buildException(
 					ctx, existingProject, projectId, ownerId, traceType, span.Attributes, span.StartTimeUnixNano,
-					allAttrs, serverName, appVersion, language, entry.scopeName,
+					allAttrs, serverName, appVersion, language, proguardUuid, entry.scopeName,
 				)
 				if owner != nil {
 					exc.DistributedTraceId = owner.distributedTraceId
@@ -481,7 +482,7 @@ func buildException(
 	excAttrs []*commonpb.KeyValue,
 	timeUnixNano uint64,
 	spanAttrs map[string]string,
-	serverName, appVersion, language, scopeName string,
+	serverName, appVersion, language, proguardUuid, scopeName string,
 ) models.ExceptionStackTrace {
 	excType := getStringAttribute(excAttrs, "exception.type")
 	excMessage := getStringAttribute(excAttrs, "exception.message")
@@ -489,15 +490,21 @@ func buildException(
 	stackTrace, ok := buildHoneycombStackTrace(excType, excMessage, excAttrs)
 	if !ok {
 		excStacktrace := getStringAttribute(excAttrs, "exception.stacktrace")
+		if excStacktrace == "" {
+			if frames, aok := buildAndroidStructuredStackTrace(excAttrs); aok {
+				excStacktrace = frames
+			}
+		}
 		stackTrace = formatExceptionStackTrace(excType, excMessage, excStacktrace)
 	}
 
 	stackTrace = otelSymbolicateJs(existingProject, projectId, ctx, stackTrace, language, scopeName)
+	stackTrace = otelSymbolicateAndroid(existingProject, projectId, ctx, stackTrace, language, proguardUuid)
 
 	hash := clientcontrollers.ComputeExceptionHash(stackTrace, false)
 
 	attrs := spanAttrs
-	if isJsLanguage(language) {
+	if isJsLanguage(language) || isAndroidLanguage(language) {
 		attrs = cloneStringMap(spanAttrs)
 		attrs["telemetry.sdk.language"] = language
 	}
@@ -545,6 +552,42 @@ func isJsLanguage(lang string) bool {
 		return true
 	}
 	return false
+}
+
+func isAndroidLanguage(lang string) bool {
+	switch strings.ToLower(strings.TrimSpace(lang)) {
+	case "android", "java", "kotlin":
+		return true
+	}
+	return false
+}
+
+func buildAndroidStructuredStackTrace(eventAttrs []*commonpb.KeyValue) (string, bool) {
+	classes := getStringArray(eventAttrs, "exception.structured_stacktrace.classes")
+	if len(classes) == 0 {
+		return "", false
+	}
+	methods := getStringArray(eventAttrs, "exception.structured_stacktrace.methods")
+	files := getStringArray(eventAttrs, "exception.structured_stacktrace.source_files")
+	lines := getIntArray(eventAttrs, "exception.structured_stacktrace.lines")
+
+	var b strings.Builder
+	for i := range classes {
+		method := ""
+		if i < len(methods) {
+			method = methods[i]
+		}
+		file := ""
+		if i < len(files) {
+			file = files[i]
+		}
+		loc := file
+		if i < len(lines) && lines[i] > 0 {
+			loc = fmt.Sprintf("%s:%d", file, lines[i])
+		}
+		fmt.Fprintf(&b, "\tat %s.%s(%s)\n", classes[i], method, loc)
+	}
+	return strings.TrimRight(b.String(), "\n"), true
 }
 
 // JS instrumentations are also recognizable by their scope name when

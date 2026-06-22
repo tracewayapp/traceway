@@ -52,6 +52,8 @@ func createDefaultConfig() component.Config {
 		IOSBuildUUIDAttributeKey:  "app.debug.build_uuid",
 		AppExecutableAttributeKey: "app.bundle.executable",
 
+		ProguardUUIDAttributeKey: "app.debug.proguard_uuid",
+
 		SourceMapStoreKey: fileStoreKey,
 		LocalSourceMaps:   LocalSourceMapsConfig{Path: "."},
 

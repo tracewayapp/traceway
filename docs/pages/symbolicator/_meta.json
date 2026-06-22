@@ -3,6 +3,7 @@
   "javascript": "JavaScript",
   "dart": "Dart",
   "ios": "iOS",
+  "android": "Android",
   "performance": "Performance",
   "opentelemetry": "OpenTelemetry",
   "library": "Library"

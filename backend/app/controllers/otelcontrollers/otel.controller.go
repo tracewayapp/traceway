@@ -34,6 +34,16 @@ func otelSymbolicateJs(existingProject *models.Project, projectId uuid.UUID, ctx
 	return services.ResolveStackTrace(ctx, projectId, canonical, nil)
 }
 
+func otelSymbolicateAndroid(existingProject *models.Project, projectId uuid.UUID, ctx context.Context, stackTrace, language, proguardUuid string) string {
+	if !isAndroidLanguage(language) {
+		return stackTrace
+	}
+	if existingProject == nil || existingProject.SourceMapToken == nil {
+		return stackTrace
+	}
+	return services.ResolveAndroidStackTrace(ctx, projectId, stackTrace, proguardUuid)
+}
+
 type otelController struct{}
 
 var OtelController = otelController{}

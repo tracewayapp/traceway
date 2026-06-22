@@ -1,10 +1,11 @@
 <script lang="ts">
 	import * as Card from '$lib/components/ui/card';
+	import * as Tabs from '$lib/components/ui/tabs';
 	import { formatDateTime } from '$lib/utils/formatters';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import Button from '../ui/button/button.svelte';
 	import { Archive, ChevronRight, ChevronDown } from 'lucide-svelte';
-	import { parseStackTrace, type StackFrame } from '$lib/utils/stack-trace-parser';
+	import { parseStackTrace, looksLikeJava, type StackFrame } from '$lib/utils/stack-trace-parser';
 
 	interface Props {
 		stackTrace: string;
@@ -36,10 +37,14 @@
 
 	const tz = $derived(timezone ?? getTimezone());
 	const showStats = $derived(firstSeen && lastSeen && totalCount !== undefined);
-	const parsed = $derived(parseStackTrace(stackTrace, { ios: isIOS }));
-	const usePretty = $derived((isJavaScript || isFlutter || isIOS) && parsed.groups.length > 0);
-	const groupNoun = $derived(isIOS ? 'system' : 'library');
+	const isJava = $derived(looksLikeJava(stackTrace));
+	const parsed = $derived(parseStackTrace(stackTrace, { ios: isIOS, java: isJava }));
+	const usePretty = $derived(
+		(isJavaScript || isFlutter || isIOS || isJava) && parsed.groups.length > 0
+	);
+	const groupNoun = $derived(isIOS || isJava ? 'system' : 'library');
 
+	let viewMode = $state<'formatted' | 'raw'>('formatted');
 	let expandedGroups = $state<Set<number>>(new Set());
 
 	function toggleGroup(index: number) {
@@ -54,17 +59,19 @@
 
 	function formatFrame(frame: StackFrame) {
 		const fn = (frame.functionName ?? '').replace(/\(\)\s*$/, '').trim();
-		const m = frame.location.match(/^(.*):(\d+):(\d+)$/);
+		const withCol = frame.location.match(/^(.*):(\d+):(\d+)$/);
+		const m = withCol ?? frame.location.match(/^(.*):(\d+)$/);
 		if (!m) {
 			return { fn, dir: '', file: frame.location, lineCol: '', raw: frame.location };
 		}
-		const [, path, line, col] = m;
+		const path = m[1];
+		const lineCol = withCol ? `${m[2]}:${m[3]}` : m[2];
 		const slash = path.lastIndexOf('/');
 		return {
 			fn,
 			dir: slash >= 0 ? path.slice(0, slash + 1) : '',
 			file: slash >= 0 ? path.slice(slash + 1) : path,
-			lineCol: `${line}:${col}`,
+			lineCol,
 			raw: frame.location
 		};
 	}
@@ -107,6 +114,16 @@
 	</Card.Header>
 	<Card.Content class="pb-2">
 		{#if usePretty}
+			<div class="mb-3 flex justify-end">
+				<Tabs.Root bind:value={viewMode}>
+					<Tabs.List>
+						<Tabs.Trigger value="formatted">Formatted</Tabs.Trigger>
+						<Tabs.Trigger value="raw">Raw</Tabs.Trigger>
+					</Tabs.List>
+				</Tabs.Root>
+			</div>
+		{/if}
+		{#if usePretty && viewMode === 'formatted'}
 			<div class="overflow-hidden rounded-md border">
 				{#if parsed.errorMessage}
 					<div class="border-b bg-muted/50 px-4 py-3">
@@ -192,9 +209,9 @@
 				</ol>
 			</div>
 		{:else}
-			<div class="overflow-x-auto rounded-lg border bg-muted/40 p-4">
+			<div class="overflow-x-auto rounded-lg border bg-muted/40">
 				<pre
-					class="font-mono text-sm break-words whitespace-pre-wrap text-foreground">{stackTrace}</pre>
+					class="w-fit min-w-full p-4 font-mono text-sm whitespace-pre text-foreground">{stackTrace}</pre>
 			</div>
 		{/if}
 	</Card.Content>

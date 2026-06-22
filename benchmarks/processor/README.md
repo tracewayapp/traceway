@@ -179,6 +179,13 @@ are uploaded as `results-<impl>` artifacts. `ios` runs `honeycomb-ios` alongside
 the two `traceway-ios` impls; `android` runs `honeycomb-android` alongside the two
 `traceway-android` impls.
 
+`max-parallel: 3` caps concurrent matrix entries at 3. Each entry holds one SUT
+(`ccx33`, 8 dedicated vCPUs during `hot`/`churn`) plus one shared-vCPU loadgen
+(`cpx42`), so peak usage is 24 dedicated vCPUs and 6 servers. The Hetzner project
+quota must cover both: a dedicated-vCPU limit < 24 or a server limit < 6 fails the
+extra entries with `resource_limit_exceeded`. Keep the loadgen on a shared-vCPU
+type so it stays off the dedicated-vCPU quota.
+
 ## Knobs
 
 | Env | Default | Meaning |

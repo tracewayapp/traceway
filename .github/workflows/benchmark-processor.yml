@@ -154,7 +154,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 3
       matrix:
         impl: ${{ fromJson(needs.setup.outputs.impls) }}
     steps:

@@ -28,11 +28,22 @@ Retracing reads three things from it: a class line maps the original fully quali
 
 ## Uploading symbols with the Gradle plugin
 
-The Traceway symbols Gradle plugin finds the `mapping.txt` and posts it. Apply it to your app module:
+The Traceway symbols Gradle plugin finds the `mapping.txt` and posts it. It's published to Maven Central, so add `mavenCentral()` to your `pluginManagement` repositories in `settings.gradle.kts`:
+
+```kotlin
+pluginManagement {
+  repositories {
+    gradlePluginPortal()
+    mavenCentral()   // resolves com.tracewayapp.symbols
+  }
+}
+```
+
+Then apply it to your app module:
 
 ```kotlin
 plugins {
-  id("com.tracewayapp.symbols")
+  id("com.tracewayapp.symbols") version "0.0.1"
 }
 
 android {

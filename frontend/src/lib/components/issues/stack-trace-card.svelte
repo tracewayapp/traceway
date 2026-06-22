@@ -5,7 +5,12 @@
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import Button from '../ui/button/button.svelte';
 	import { Archive, ChevronRight, ChevronDown } from 'lucide-svelte';
-	import { parseStackTrace, looksLikeJava, type StackFrame } from '$lib/utils/stack-trace-parser';
+	import {
+		parseStackTrace,
+		looksLikeJava,
+		looksLikeGo,
+		type StackFrame
+	} from '$lib/utils/stack-trace-parser';
 
 	interface Props {
 		stackTrace: string;
@@ -38,9 +43,10 @@
 	const tz = $derived(timezone ?? getTimezone());
 	const showStats = $derived(firstSeen && lastSeen && totalCount !== undefined);
 	const isJava = $derived(looksLikeJava(stackTrace));
-	const parsed = $derived(parseStackTrace(stackTrace, { ios: isIOS, java: isJava }));
+	const isGo = $derived(looksLikeGo(stackTrace));
+	const parsed = $derived(parseStackTrace(stackTrace, { ios: isIOS, java: isJava, go: isGo }));
 	const usePretty = $derived(
-		(isJavaScript || isFlutter || isIOS || isJava) && parsed.groups.length > 0
+		(isJavaScript || isFlutter || isIOS || isJava || isGo) && parsed.groups.length > 0
 	);
 	const groupNoun = $derived(isIOS || isJava ? 'system' : 'library');
 

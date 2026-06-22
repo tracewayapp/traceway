@@ -59,6 +59,98 @@ function javaPackageLabel(fqn: string): string {
 	return segs[0] || 'system';
 }
 
+const goLocationPattern = /^[ \t]+(.+\.go):(\d+)(?:\s+\+0x[0-9a-fA-F]+)?\s*$/;
+const goroutineHeaderPattern = /^\s*goroutine\s+\d+\s+\[[^\]]*\]:\s*$/;
+
+export function looksLikeGo(raw: string): boolean {
+	let locations = 0;
+	let goroutine = false;
+	for (const line of raw.split('\n')) {
+		if (goLocationPattern.test(line)) {
+			if (++locations >= 2) return true;
+		} else if (goroutineHeaderPattern.test(line)) {
+			goroutine = true;
+		}
+	}
+	return locations >= 1 && goroutine;
+}
+
+function goFunctionName(rawFn: string): string {
+	return rawFn
+		.replace(/^created by\s+/, '')
+		.replace(/\s+in goroutine\s+\d+\s*$/, '')
+		.replace(/\([^()]*\)\s*$/, '')
+		.trim();
+}
+
+function goFunctionPackage(fn: string): string {
+	const lastSlash = fn.lastIndexOf('/');
+	const dot = fn.indexOf('.', lastSlash + 1);
+	if (dot < 0) return '';
+	const pkg = fn.slice(0, dot);
+	return pkg.startsWith('(') ? '' : pkg;
+}
+
+function isGoStdlibPackage(pkg: string): boolean {
+	if (pkg === '' || pkg === 'main') return false;
+	return !pkg.split('/')[0].includes('.');
+}
+
+function isGoDependencyPath(file: string): boolean {
+	return file.includes('/pkg/mod/') || file.includes('/vendor/') || /@v\d/.test(file);
+}
+
+function isGoStdlibPath(file: string): boolean {
+	if (/(?:^|\/)go\/src\//.test(file)) return true;
+	if (file.startsWith('/')) return false;
+	return !file.split('/')[0].includes('.');
+}
+
+function goDependencyHint(pkg: string, file: string): string {
+	if (pkg.includes('.')) return pkg;
+	const rest = file.match(/\/(?:pkg\/mod|vendor)\/(.+)/);
+	if (rest) {
+		const out: string[] = [];
+		for (const seg of rest[1].split('/')) {
+			const at = seg.indexOf('@');
+			if (at >= 0) {
+				out.push(seg.slice(0, at));
+				break;
+			}
+			out.push(seg);
+			if (out.length >= 3) break;
+		}
+		return out.join('/');
+	}
+	return pkg || 'dependency';
+}
+
+function goStdlibHint(pkg: string, file: string): string {
+	if (pkg) return pkg;
+	const rel = file.match(/\/go\/src\/(.+)/)?.[1] ?? file;
+	const slash = rel.lastIndexOf('/');
+	return slash >= 0 ? rel.slice(0, slash) : 'system';
+}
+
+function classifyGoFrame(fn: string, file: string): { isLibrary: boolean; hint?: string } {
+	const pkg = goFunctionPackage(fn);
+	if (isGoDependencyPath(file)) {
+		return { isLibrary: true, hint: goDependencyHint(pkg, file) };
+	}
+	if (pkg !== 'main' && isGoStdlibPackage(pkg)) {
+		return { isLibrary: true, hint: pkg };
+	}
+	if (isGoStdlibPath(file)) {
+		return { isLibrary: true, hint: goStdlibHint(pkg, file) };
+	}
+	return { isLibrary: false };
+}
+
+function goShortFunction(fn: string): string {
+	const slash = fn.lastIndexOf('/');
+	return slash >= 0 ? fn.slice(slash + 1) : fn;
+}
+
 const IOS_SYSTEM_IMAGES = new Set([
 	'CoreFoundation', 'Foundation', 'CFNetwork', 'Security', 'UIKitCore', 'UIKit', 'SwiftUI',
 	'GraphicsServices', 'QuartzCore', 'CoreGraphics', 'CoreText', 'CoreData', 'CoreImage',
@@ -107,7 +199,7 @@ function extractPackageName(location: string): string {
 
 export function parseStackTrace(
 	raw: string,
-	opts: { ios?: boolean; java?: boolean } = {}
+	opts: { ios?: boolean; java?: boolean; go?: boolean } = {}
 ): ParsedStackTrace {
 	const lines = raw.split('\n');
 	const frames: StackFrame[] = [];
@@ -178,6 +270,36 @@ export function parseStackTrace(
 			}
 		}
 
+		if (opts.go) {
+			const gm = lines[i].match(goLocationPattern);
+			if (gm) {
+				const location = `${gm[1]}:${gm[2]}`;
+				let funcName: string | null = null;
+				let funcIndex = -1;
+				for (let j = i - 1; j >= 0; j--) {
+					const prev = lines[j].trim();
+					if (prev === '') continue;
+					if (goroutineHeaderPattern.test(lines[j]) || goLocationPattern.test(lines[j])) break;
+					funcName = prev;
+					funcIndex = j;
+					break;
+				}
+				const fullName = funcName ? goFunctionName(funcName) : '';
+				const cls = classifyGoFrame(fullName, gm[1]);
+				if (firstFrameIndex === -1) {
+					firstFrameIndex = i;
+					messageEndIndex = funcIndex !== -1 ? funcIndex : i;
+				}
+				frames.push({
+					functionName: fullName ? goShortFunction(fullName) : null,
+					location,
+					isLibrary: cls.isLibrary,
+					packageHint: cls.isLibrary ? cls.hint : undefined
+				});
+				continue;
+			}
+		}
+
 		const dartMatch = lines[i].match(dartFramePattern);
 		if (dartMatch) {
 			const location = dartMatch[2].trim();
@@ -233,7 +355,11 @@ export function parseStackTrace(
 
 	const errorMessage = firstFrameIndex === -1
 		? raw.trim()
-		: lines.slice(0, messageEndIndex).join('\n').trim();
+		: lines
+				.slice(0, messageEndIndex)
+				.filter((l) => !goroutineHeaderPattern.test(l))
+				.join('\n')
+				.trim();
 
 	const groups: FrameGroup[] = [];
 

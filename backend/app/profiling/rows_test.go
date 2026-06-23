@@ -134,3 +134,92 @@ func TestBuildRows_MultiTypeSplitsProfiles(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildRows_PerTypeProfileRowsCarryProvenance(t *testing.T) {
+	projectId := uuid.MustParse("00000000-0000-0000-0000-000000000007")
+	start := time.Unix(1_700_000_000, 0).UTC()
+	d := Decoded{
+		Meta: Meta{
+			ServiceName: "checkout",
+			Start:       start,
+			End:         start.Add(30 * time.Second),
+			ServerName:  "pod-a",
+			AppVersion:  "1.2.3",
+		},
+		Stacks: []Stack{
+			{Hash: 0xAA, Frames: []string{"main.main", "main.work"}},
+		},
+		Samples: []Sample{
+			{Type: TypeHeapAllocSpace, StackHash: 0xAA, Value: 4096},
+			{Type: TypeHeapInuseSpace, StackHash: 0xAA, Value: 2048},
+		},
+	}
+
+	stacks, samples, profiles := BuildRows(projectId, []Decoded{d})
+
+	if len(stacks) != 1 || stacks[0].StackHash != 0xAA {
+		t.Fatalf("stacks wrong: %+v", stacks)
+	}
+
+	if len(profiles) != 2 {
+		t.Fatalf("expected one profile row per type (alloc + inuse), got %d", len(profiles))
+	}
+	byType := map[string]models.Profile{}
+	for _, p := range profiles {
+		byType[p.ProfileType] = p
+		if p.Id == uuid.Nil || p.ProjectId != projectId || p.ServiceName != "checkout" {
+			t.Errorf("profile identity wrong: %+v", p)
+		}
+		if p.ServerName != "pod-a" || p.AppVersion != "1.2.3" {
+			t.Errorf("profile provenance not carried: %+v", p)
+		}
+		if p.SampleCount != 1 {
+			t.Errorf("profile %q SampleCount = %d, want 1", p.ProfileType, p.SampleCount)
+		}
+	}
+	if byType[TypeHeapAllocSpace].TotalValue != 4096 || byType[TypeHeapInuseSpace].TotalValue != 2048 {
+		t.Errorf("totals wrong: alloc=%d inuse=%d", byType[TypeHeapAllocSpace].TotalValue, byType[TypeHeapInuseSpace].TotalValue)
+	}
+	if byType[TypeHeapAllocSpace].Id == byType[TypeHeapInuseSpace].Id {
+		t.Error("per-type profiles must have distinct ids")
+	}
+
+	for _, s := range samples {
+		if s.ProfileId != byType[s.Type].Id {
+			t.Errorf("sample type %q ProfileId = %v, want %v", s.Type, s.ProfileId, byType[s.Type].Id)
+		}
+		if s.ServerName != "pod-a" || s.AppVersion != "1.2.3" {
+			t.Errorf("sample provenance not carried: %+v", s)
+		}
+	}
+}
+
+func TestBuildRows_MergesAcrossDecodedBatch(t *testing.T) {
+	projectId := uuid.New()
+	start := time.Unix(1_700_000_500, 0).UTC()
+	d1 := Decoded{
+		Meta:    Meta{ServiceName: "api", Start: start, End: start.Add(10 * time.Second)},
+		Stacks:  []Stack{{Hash: 1, Frames: []string{"main.main"}}},
+		Samples: []Sample{{Type: TypeCPUNanos, StackHash: 1, Value: 300}},
+	}
+	d2 := Decoded{
+		Meta:    Meta{ServiceName: "api", Start: start, End: start.Add(10 * time.Second)},
+		Stacks:  []Stack{{Hash: 2, Frames: []string{"main.main", "main.idle"}}},
+		Samples: []Sample{{Type: TypeCPUNanos, StackHash: 2, Value: 100}},
+	}
+
+	stacks, samples, profiles := BuildRows(projectId, []Decoded{d1, d2})
+
+	if len(stacks) != 2 {
+		t.Fatalf("stacks = %d, want 2 across the batch", len(stacks))
+	}
+	if len(samples) != 2 {
+		t.Fatalf("samples = %d, want 2 across the batch", len(samples))
+	}
+	if len(profiles) != 2 {
+		t.Fatalf("profiles = %d, want 2 (one per decoded, each its own profile id)", len(profiles))
+	}
+	if profiles[0].Id == profiles[1].Id {
+		t.Error("profiles from distinct decoded inputs must have distinct ids")
+	}
+}

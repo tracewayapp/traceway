@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/app/chdb"
 	"github.com/tracewayapp/traceway/backend/app/models"
@@ -20,21 +21,18 @@ func (r *sessionRepository) Upsert(ctx context.Context, sessions []models.Sessio
 	if len(sessions) == 0 {
 		return nil
 	}
-	batch, err := chdb.Conn.PrepareBatch(chdb.BatchCtx(),
-		"INSERT INTO sessions (id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, distributed_trace_id, version)")
-	if err != nil {
-		return err
-	}
-	for _, s := range sessions {
-		attrs := s.Attributes
-		if attrs == nil {
-			attrs = map[string]string{}
+	return chdb.SendBatch("INSERT INTO sessions (id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, distributed_trace_id, version)", func(batch driver.Batch) error {
+		for _, s := range sessions {
+			attrs := s.Attributes
+			if attrs == nil {
+				attrs = map[string]string{}
+			}
+			if err := batch.Append(s.Id, s.ProjectId, s.StartedAt, s.EndedAt, s.Duration, s.ClientIP, attrs, s.AppVersion, s.ServerName, s.DistributedTraceId, time.Now()); err != nil {
+				return err
+			}
 		}
-		if err := batch.Append(s.Id, s.ProjectId, s.StartedAt, s.EndedAt, s.Duration, s.ClientIP, attrs, s.AppVersion, s.ServerName, s.DistributedTraceId, time.Now()); err != nil {
-			return err
-		}
-	}
-	return batch.Send()
+		return nil
+	})
 }
 
 func (r *sessionRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {

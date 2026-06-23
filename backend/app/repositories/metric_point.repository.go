@@ -8,22 +8,21 @@ import (
 	"context"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/google/uuid"
 )
 
 type metricPointRepository struct{}
 
 func (r *metricPointRepository) InsertAsync(ctx context.Context, points []models.MetricPoint) error {
-	batch, err := chdb.Conn.PrepareBatch(chdb.BatchCtx(), "INSERT INTO metric_points (project_id, name, value, tags, recorded_at)")
-	if err != nil {
-		return err
-	}
-	for _, p := range points {
-		if err := batch.Append(p.ProjectId, p.Name, p.Value, p.Tags, p.RecordedAt); err != nil {
-			return err
+	return chdb.SendBatch("INSERT INTO metric_points (project_id, name, value, tags, recorded_at)", func(batch driver.Batch) error {
+		for _, p := range points {
+			if err := batch.Append(p.ProjectId, p.Name, p.Value, p.Tags, p.RecordedAt); err != nil {
+				return err
+			}
 		}
-	}
-	return batch.Send()
+		return nil
+	})
 }
 
 func (r *metricPointRepository) QueryTimeSeries(ctx context.Context, projectId uuid.UUID, name string, from, to time.Time, intervalMinutes int, aggregation string, tagFilters map[string]string, groupBy string) (map[string][]models.TimeSeriesPoint, error) {

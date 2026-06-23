@@ -10,6 +10,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/chdb"
 	"github.com/tracewayapp/traceway/backend/app/models"
 
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/google/uuid"
 )
 
@@ -20,35 +21,30 @@ func (r *spanRepository) InsertAsync(ctx context.Context, spans []models.Span) e
 		return nil
 	}
 
-	batch, err := chdb.Conn.PrepareBatch(chdb.BatchCtx(),
-		"INSERT INTO spans (id, trace_id, project_id, name, start_time, duration, recorded_at, parent_span_id, attributes)")
-	if err != nil {
-		return err
-	}
-
-	for _, s := range spans {
-		attributesJSON := "{}"
-		if len(s.Attributes) != 0 {
-			if attributesBytes, err := json.Marshal(s.Attributes); err == nil {
-				attributesJSON = string(attributesBytes)
+	return chdb.SendBatch("INSERT INTO spans (id, trace_id, project_id, name, start_time, duration, recorded_at, parent_span_id, attributes)", func(batch driver.Batch) error {
+		for _, s := range spans {
+			attributesJSON := "{}"
+			if len(s.Attributes) != 0 {
+				if attributesBytes, err := json.Marshal(s.Attributes); err == nil {
+					attributesJSON = string(attributesBytes)
+				}
+			}
+			if err := batch.Append(
+				s.Id,
+				s.TraceId,
+				s.ProjectId,
+				s.Name,
+				s.StartTime,
+				int64(s.Duration),
+				s.RecordedAt,
+				s.ParentSpanId,
+				attributesJSON,
+			); err != nil {
+				return err
 			}
 		}
-		if err := batch.Append(
-			s.Id,
-			s.TraceId,
-			s.ProjectId,
-			s.Name,
-			s.StartTime,
-			int64(s.Duration),
-			s.RecordedAt,
-			s.ParentSpanId,
-			attributesJSON,
-		); err != nil {
-			return err
-		}
-	}
-
-	return batch.Send()
+		return nil
+	})
 }
 
 func (r *spanRepository) FindByTraceId(ctx context.Context, projectId, traceId uuid.UUID, recordedAt *time.Time) ([]models.Span, error) {

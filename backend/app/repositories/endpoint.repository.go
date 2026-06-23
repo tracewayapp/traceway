@@ -11,36 +11,35 @@ import (
 	"errors"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/google/uuid"
 )
 
 type endpointRepository struct{}
 
 func (e *endpointRepository) InsertAsync(ctx context.Context, lines []models.Endpoint) error {
-	batch, err := chdb.Conn.PrepareBatch(chdb.BatchCtx(), "INSERT INTO endpoints (id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, is_stream, is_root)")
-	if err != nil {
-		return err
-	}
-	for _, t := range lines {
-		attributesJSON := "{}"
-		if len(t.Attributes) != 0 {
-			if attributesBytes, err := json.Marshal(t.Attributes); err == nil {
-				attributesJSON = string(attributesBytes)
+	return chdb.SendBatch("INSERT INTO endpoints (id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, is_stream, is_root)", func(batch driver.Batch) error {
+		for _, t := range lines {
+			attributesJSON := "{}"
+			if len(t.Attributes) != 0 {
+				if attributesBytes, err := json.Marshal(t.Attributes); err == nil {
+					attributesJSON = string(attributesBytes)
+				}
+			}
+			isStream := uint8(0)
+			if t.IsStream {
+				isStream = 1
+			}
+			isRoot := uint8(0)
+			if t.IsRoot {
+				isRoot = 1
+			}
+			if err := batch.Append(t.Id, t.ProjectId, t.Endpoint, int64(t.Duration), t.RecordedAt, t.StatusCode, t.BodySize, t.ClientIP, attributesJSON, t.AppVersion, t.ServerName, t.DistributedTraceId, t.SpanId, isStream, isRoot); err != nil {
+				return err
 			}
 		}
-		isStream := uint8(0)
-		if t.IsStream {
-			isStream = 1
-		}
-		isRoot := uint8(0)
-		if t.IsRoot {
-			isRoot = 1
-		}
-		if err := batch.Append(t.Id, t.ProjectId, t.Endpoint, int64(t.Duration), t.RecordedAt, t.StatusCode, t.BodySize, t.ClientIP, attributesJSON, t.AppVersion, t.ServerName, t.DistributedTraceId, t.SpanId, isStream, isRoot); err != nil {
-			return err
-		}
-	}
-	return batch.Send()
+		return nil
+	})
 }
 
 func (e *endpointRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {

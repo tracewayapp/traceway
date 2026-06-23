@@ -11,32 +11,31 @@ import (
 	"errors"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/google/uuid"
 )
 
 type taskRepository struct{}
 
 func (e *taskRepository) InsertAsync(ctx context.Context, lines []models.Task) error {
-	batch, err := chdb.Conn.PrepareBatch(chdb.BatchCtx(), "INSERT INTO tasks (id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, is_root)")
-	if err != nil {
-		return err
-	}
-	for _, t := range lines {
-		attributesJSON := "{}"
-		if len(t.Attributes) != 0 {
-			if attributesBytes, err := json.Marshal(t.Attributes); err == nil {
-				attributesJSON = string(attributesBytes)
+	return chdb.SendBatch("INSERT INTO tasks (id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, is_root)", func(batch driver.Batch) error {
+		for _, t := range lines {
+			attributesJSON := "{}"
+			if len(t.Attributes) != 0 {
+				if attributesBytes, err := json.Marshal(t.Attributes); err == nil {
+					attributesJSON = string(attributesBytes)
+				}
+			}
+			isRoot := uint8(0)
+			if t.IsRoot {
+				isRoot = 1
+			}
+			if err := batch.Append(t.Id, t.ProjectId, t.TaskName, int64(t.Duration), t.RecordedAt, t.ClientIP, attributesJSON, t.AppVersion, t.ServerName, t.DistributedTraceId, t.SpanId, isRoot); err != nil {
+				return err
 			}
 		}
-		isRoot := uint8(0)
-		if t.IsRoot {
-			isRoot = 1
-		}
-		if err := batch.Append(t.Id, t.ProjectId, t.TaskName, int64(t.Duration), t.RecordedAt, t.ClientIP, attributesJSON, t.AppVersion, t.ServerName, t.DistributedTraceId, t.SpanId, isRoot); err != nil {
-			return err
-		}
-	}
-	return batch.Send()
+		return nil
+	})
 }
 
 func (e *taskRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {

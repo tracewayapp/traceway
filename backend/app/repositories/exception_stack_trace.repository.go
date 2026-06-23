@@ -12,36 +12,35 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/google/uuid"
 )
 
 type exceptionStackTraceRepository struct{}
 
 func (e *exceptionStackTraceRepository) InsertAsync(ctx context.Context, lines []models.ExceptionStackTrace) error {
-	batch, err := chdb.Conn.PrepareBatch(chdb.BatchCtx(), "INSERT INTO exception_stack_traces (id, project_id, trace_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, distributed_trace_id, session_id)")
-	if err != nil {
-		return err
-	}
-	for _, est := range lines {
-		attributesJSON := "{}"
-		if len(est.Attributes) != 0 {
-			if attributesBytes, err := json.Marshal(est.Attributes); err == nil {
-				attributesJSON = string(attributesBytes)
+	return chdb.SendBatch("INSERT INTO exception_stack_traces (id, project_id, trace_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, distributed_trace_id, session_id)", func(batch driver.Batch) error {
+		for _, est := range lines {
+			attributesJSON := "{}"
+			if len(est.Attributes) != 0 {
+				if attributesBytes, err := json.Marshal(est.Attributes); err == nil {
+					attributesJSON = string(attributesBytes)
+				}
+			}
+			isMessage := uint8(0)
+			if est.IsMessage {
+				isMessage = 1
+			}
+			traceType := est.TraceType
+			if traceType == "" {
+				traceType = "endpoint"
+			}
+			if err := batch.Append(est.Id, est.ProjectId, est.TraceId, traceType, est.ExceptionHash, est.StackTrace, est.RecordedAt, attributesJSON, est.AppVersion, est.ServerName, isMessage, est.DistributedTraceId, est.SessionId); err != nil {
+				return err
 			}
 		}
-		isMessage := uint8(0)
-		if est.IsMessage {
-			isMessage = 1
-		}
-		traceType := est.TraceType
-		if traceType == "" {
-			traceType = "endpoint"
-		}
-		if err := batch.Append(est.Id, est.ProjectId, est.TraceId, traceType, est.ExceptionHash, est.StackTrace, est.RecordedAt, attributesJSON, est.AppVersion, est.ServerName, isMessage, est.DistributedTraceId, est.SessionId); err != nil {
-			return err
-		}
-	}
-	return batch.Send()
+		return nil
+	})
 }
 
 // FindAllBySessionId returns all exceptions/messages stamped with the given session_id.

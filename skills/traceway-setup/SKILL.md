@@ -151,6 +151,8 @@ span?.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
 
 (Go: `span.RecordError(err, trace.WithStackTrace(true))`; the stack trace option is what produces the `exception.stacktrace` attribute.)
 
+**Return HTTP 500 when an exception happens.** A request that throws or panics must respond with `500` and set the span status to `ERROR` — never let it fall through to a `200`/`2xx`. The common trap is a recover/panic middleware that reports the exception but lets the response writer keep its default `200`: Traceway then records the endpoint transaction as a *success*, so the Endpoints page looks healthy while Issues fills up, and the exception becomes an unlinked island instead of correlating to a failed request (and, with distributed tracing, to the frontend call that triggered it). Always pair "an exception was recorded" with "respond `500` and set span status `ERROR`". Genuine client errors that are NOT bugs — validation `422`, auth `401`, not-found `404` — keep their real 4xx status and should not be recorded as exceptions in the first place.
+
 ### If the user explicitly asks for the Traceway Go SDK
 
 Only on explicit request, instead of OTel: `go get go.tracewayapp.com/tracewaygin` (or `tracewaychi`, `tracewayfiber`, `tracewayfasthttp`, `tracewayhttp`), add the middleware with connection string `<project-token>@https://<instance>/api/report`. Trade-off: the Go SDK natively emits the built-in system metric names (`cpu.used_pcnt`, `mem.used`, `go.*`) that populate the dashboard's built-in charts; on the OTel path those charts stay empty and host metrics come from the Traceway OTel Agent (Step 5).

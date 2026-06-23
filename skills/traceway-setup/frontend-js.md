@@ -198,13 +198,36 @@ clearAttributes();
 
 ### Distributed tracing
 
-The SDK instruments `fetch` (and XHR in the jQuery SDK) to propagate a `traceway-trace-id` header on same-origin requests, linking frontend errors to the backend requests that caused them. No configuration. For Axios:
+The SDK instruments `fetch` (and XHR in the jQuery SDK) to propagate a `traceway-trace-id` header on same-origin requests, and the backend echoes the same id back on the response. Errors the SDK captures on its own (uncaught exceptions, unhandled rejections, `captureHttpServerErrors`) link to the originating backend request automatically. For Axios, register the interceptor:
 
 ```javascript
 import { createAxiosInterceptor } from "@tracewayapp/frontend";
 
 api.interceptors.request.use(createAxiosInterceptor());
 ```
+
+**Manual captures in a `fetch`/API wrapper MUST pass the trace id explicitly — this is the #1 reason frontend issues show up unlinked to the backend.** The SDK holds the active distributed-trace id only *for the duration of the request* and clears it the instant the fetch settles. A `captureException` call in your `catch` or `if (!res.ok)` branch runs *after* `await fetch`, by which point the active id is already `null`, so the exception is stored with `distributedTraceId: null` and never connects to the backend trace — even though the request header was sent correctly. Read the id the backend echoed on the response and pass it through as the third argument:
+
+```javascript
+import { captureExceptionWithAttributes } from "@tracewayapp/frontend";
+
+async function request(path, options) {
+  const res = await fetch(path, options);
+  if (!res.ok) {
+    const err = new Error(`Request to ${path} failed (${res.status})`);
+    const distributedTraceId = res.headers.get("traceway-trace-id") || undefined;
+    captureExceptionWithAttributes(
+      err,
+      { path, method: options?.method || "GET", status: String(res.status) },
+      distributedTraceId ? { distributedTraceId } : undefined
+    );
+    throw err;
+  }
+  return res.json();
+}
+```
+
+The same applies to the React `useTraceway().captureExceptionWithAttributes`, the Vue/Svelte equivalents, and any other place you capture by hand after awaiting a request. When the frontend and backend are on different origins, the backend must also add `traceway-trace-id` to `Access-Control-Expose-Headers` or the browser cannot read it off the response.
 
 ## Bundler Plugin (debug IDs)
 

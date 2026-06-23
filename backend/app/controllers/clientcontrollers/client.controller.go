@@ -41,6 +41,7 @@ type ReportRequest struct {
 	CollectionFrames []*clientmodels.CollectionFrame `json:"collectionFrames"`
 	AppVersion       string                          `json:"appVersion"`
 	ServerName       string                          `json:"serverName"`
+	ProguardUuid     string                          `json:"proguardUuid"`
 }
 
 func (e clientController) Report(c *gin.Context) {
@@ -136,6 +137,7 @@ func (e clientController) Report(c *gin.Context) {
 		resolveJs := project != nil && project.SourceMapToken != nil && jsFrameworks[project.Framework]
 		resolveDart := project != nil && project.SourceMapToken != nil && project.Framework == "flutter"
 		resolveIos := project != nil && project.SourceMapToken != nil && project.Framework == "ios"
+		resolveAndroid := project != nil && project.SourceMapToken != nil && project.Framework == "android"
 
 		resolveSpan := traceway.StartSpan(c, "report.resolve_stack_traces")
 		for _, cst := range cf.StackTraces {
@@ -146,6 +148,8 @@ func (e clientController) Report(c *gin.Context) {
 				resolvedStackTrace = services.ResolveDartStackTrace(c, projectId, cst.StackTrace)
 			} else if resolveIos {
 				resolvedStackTrace = services.ResolveIOSStackTrace(c, projectId, cst.StackTrace)
+			} else if resolveAndroid {
+				resolvedStackTrace = services.ResolveAndroidStackTrace(c, projectId, cst.StackTrace, request.ProguardUuid)
 			}
 			est := cst.ToExceptionStackTrace(ComputeExceptionHash(resolvedStackTrace, cst.IsMessage), request.AppVersion, request.ServerName)
 			est.StackTrace = resolvedStackTrace

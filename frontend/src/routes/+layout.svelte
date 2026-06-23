@@ -35,11 +35,27 @@
 
 	const bannerOrganizationId = $derived(projectsState.currentProject?.organizationId ?? null);
 
+	const PUBLIC_PATHS = new Set([
+		'/login',
+		'/register',
+		'/auth/callback',
+		'/finish-setup',
+		'/forgot-password',
+		'/reset-password'
+	]);
+
+	function isProjectScopedPath(pathname: string): boolean {
+		if (PUBLIC_PATHS.has(pathname)) return false;
+		if (pathname.startsWith('/accept-invitation')) return false;
+		return true;
+	}
+
 	// Track navigation depth for smart back buttons
 	let lastPathname = '';
 	afterNavigate((navigation) => {
 		if (!navigation.to?.url) return;
-		const newPathname = navigation.to.url.pathname;
+		const newUrl = navigation.to.url;
+		const newPathname = newUrl.pathname;
 
 		if (navigation.type === 'popstate') {
 			// Browser back/forward button
@@ -51,6 +67,24 @@
 		// Param-only changes (same pathname) don't affect depth
 
 		lastPathname = newPathname;
+
+		// Make the URL the source of truth for the selected project: stamp the
+		// current project onto any project-scoped URL that lacks one, so the back
+		// button, reloads, and shared links all resolve to the right project.
+		if (
+			authState.isAuthenticated &&
+			isProjectScopedPath(newPathname) &&
+			projectsState.currentProjectId &&
+			!newUrl.searchParams.get('projectId')
+		) {
+			const canonical = new URL(newUrl);
+			canonical.searchParams.set('projectId', projectsState.currentProjectId);
+			goto(canonical.pathname + canonical.search, {
+				replaceState: true,
+				noScroll: true,
+				keepFocus: true
+			});
+		}
 	});
 
 	onMount(() => {
@@ -76,8 +110,7 @@
 	}
 
 	function handleProjectSelect(projectId: string) {
-		projectsState.selectProject(projectId);
-		goto('/');
+		goto(`/?projectId=${projectId}`);
 	}
 
 	function handleAddProjectClick() {

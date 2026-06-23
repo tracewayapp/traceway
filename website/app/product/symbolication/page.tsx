@@ -1,7 +1,14 @@
 import Link from "next/link";
 import Image from "next/image";
 import type { Metadata } from "next";
-import { Github, BookOpen, Workflow } from "lucide-react";
+import {
+  Github,
+  BookOpen,
+  Workflow,
+  FileText,
+  ArrowRight,
+  ArrowUpRight,
+} from "lucide-react";
 
 import { Eyebrow } from "@/components/eyebrow";
 import { SectionHead } from "@/components/section-head";
@@ -16,7 +23,7 @@ import { GITHUB_URL } from "@/lib/links";
 export const metadata: Metadata = {
   title: "Stack Trace Symbolication · Traceway",
   description:
-    "Open-source, OpenTelemetry-compatible symbolication for JavaScript source maps, Dart/Flutter obfuscation maps, and iOS/Swift dSYM debug symbols. Resolve minified production errors and stripped native crashes back to the original file, line, and function at ingest. Pure Go, built to be fast.",
+    "Open-source, OpenTelemetry-compatible symbolication for JavaScript source maps, Dart/Flutter obfuscation maps, iOS/Swift dSYM debug symbols, and Android R8/ProGuard mapping files. Resolve minified production errors and stripped native crashes back to the original file, line, and function at ingest. Pure Go, built to be fast.",
 };
 
 const BUNDLERS = [
@@ -30,7 +37,48 @@ const BUNDLERS = [
   "Cloudflare Workers",
 ];
 
+const RESOURCES = [
+  {
+    icon: Github,
+    label: "Browse the source",
+    meta: "tracewayapp/traceway",
+    href: GITHUB_URL,
+    external: true,
+  },
+  {
+    icon: Workflow,
+    label: "OTel Collector processor",
+    meta: "Drop-in for Honeycomb",
+    href: "https://docs.tracewayapp.com/symbolicator/opentelemetry",
+    external: true,
+  },
+  {
+    icon: BookOpen,
+    label: "Documentation",
+    meta: "Architecture & cache tiers",
+    href: "https://docs.tracewayapp.com/symbolicator",
+    external: true,
+  },
+  {
+    icon: FileText,
+    label: "System design write-up",
+    meta: "How the .tw format works",
+    href: "/blog/system-design-of-a-symbolicator",
+    external: false,
+  },
+];
+
 const LANGUAGE_TILES = [
+  {
+    src: "/images/frameworks/android.png",
+    alt: "Android",
+    w: 45,
+    h: 45,
+    size: 56,
+    z: 20,
+    pos: "left-[20%] top-1/2 -translate-x-1/2 -translate-y-1/2",
+    engine: true,
+  },
   {
     src: "/images/frameworks/flutter.png",
     alt: "Flutter",
@@ -38,7 +86,7 @@ const LANGUAGE_TILES = [
     h: 40,
     size: 80,
     z: 22,
-    pos: "left-[30%] top-1/2 -translate-x-1/2 -translate-y-1/2",
+    pos: "left-[86%] top-1/2 -translate-x-1/2 -translate-y-1/2",
     engine: true,
   },
   {
@@ -48,7 +96,7 @@ const LANGUAGE_TILES = [
     h: 171,
     size: 104,
     z: 30,
-    pos: "left-[70%] top-1/2 -translate-x-1/2 -translate-y-1/2",
+    pos: "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
     engine: true,
   },
   {
@@ -229,18 +277,18 @@ export default function SymbolicationPage() {
                 className="mt-4 text-[22px] leading-tight text-pretty"
                 style={{ color: "var(--fg-0)" }}
               >
-                JavaScript, Dart, Flutter, Swift, and more coming soon.
+                JavaScript, Dart, Flutter, Swift, and Android.
               </h3>
               <p
                 className="mt-4 text-[15px] text-pretty"
                 style={{ color: "var(--fg-2)" }}
               >
                 One engine reads JavaScript source maps, Dart and Flutter
-                obfuscation maps, and iOS and Swift dSYM debug symbols through
-                the same compiled cache, plus every JS framework that ships
-                them, from React and Svelte to Next.js and Remix. Even on the
-                cheapest box we tested, a 2&nbsp;vCPU Hetzner <code>ccx13</code>
-                , it clears{" "}
+                obfuscation maps, iOS and Swift dSYM debug symbols, and Android
+                R8 mapping files through the same compiled cache, plus every JS
+                framework that ships them, from React and Svelte to Next.js and
+                Remix. Even on the cheapest box we tested, a 2&nbsp;vCPU Hetzner{" "}
+                <code>ccx13</code>, it clears{" "}
                 <strong style={{ color: "var(--fg-0)" }}>
                   over 32&times; the stack traces per second
                 </strong>{" "}
@@ -267,7 +315,22 @@ export default function SymbolicationPage() {
                   Symbolication that <em>keeps up with ingest.</em>
                 </>
               }
-              description="Most symbolicators re-parse source maps on every restart and hold them in RAM until the process dies. Ours compiles each map once, then memory-maps it from disk. The numbers below come straight from the benchmark workflow in the repo, run head to head against Honeycomb's symbolicator on Hetzner hardware."
+              description={
+                <>
+                  Most symbolicators re-parse source maps on every restart and
+                  hold them in RAM until the process dies. Ours compiles each map
+                  once, then memory-maps it from disk. The numbers below come
+                  straight from the benchmark workflow in the repo, run head to
+                  head against Honeycomb&rsquo;s symbolicator on Hetzner
+                  hardware.{" "}
+                  <Link
+                    href="/blog/system-design-of-a-symbolicator"
+                    className="font-medium text-[color:var(--a2)] hover:underline"
+                  >
+                    Read why the design is this efficient &rarr;
+                  </Link>
+                </>
+              }
             />
             <StatsStrip
               stats={[
@@ -344,46 +407,37 @@ export default function SymbolicationPage() {
                   ))}
                 </div>
               </div>
-              <div className="flex flex-wrap gap-x-6 gap-y-3 text-[13px]">
-                <Link
-                  href={GITHUB_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 hover:text-[color:var(--a2)]"
-                  style={{
-                    color: "var(--fg-1)",
-                    fontFamily: "var(--font-mono)",
-                  }}
-                >
-                  <Github className="h-3.5 w-3.5" />
-                  traceway →
-                </Link>
-                <Link
-                  href="https://docs.tracewayapp.com/symbolicator/opentelemetry"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 hover:text-[color:var(--a2)]"
-                  style={{
-                    color: "var(--fg-1)",
-                    fontFamily: "var(--font-mono)",
-                  }}
-                >
-                  <Workflow className="h-3.5 w-3.5" />
-                  OTel processor →
-                </Link>
-                <Link
-                  href="https://docs.tracewayapp.com/symbolicator"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 hover:text-[color:var(--a2)]"
-                  style={{
-                    color: "var(--fg-1)",
-                    fontFamily: "var(--font-mono)",
-                  }}
-                >
-                  <BookOpen className="h-3.5 w-3.5" />
-                  Documentation →
-                </Link>
+              <div className="flex flex-col gap-0.5">
+                {RESOURCES.map(({ icon: Icon, label, meta, href, external }) => {
+                  const Arrow = external ? ArrowUpRight : ArrowRight;
+                  return (
+                    <Link
+                      key={label}
+                      href={href}
+                      {...(external
+                        ? { target: "_blank", rel: "noopener noreferrer" }
+                        : {})}
+                      className="group flex items-start gap-3 rounded-lg px-3 py-2.5 hover:bg-[var(--ink-2)]"
+                    >
+                      <Icon className="mt-0.5 size-4 shrink-0 text-[color:var(--fg-3)] group-hover:text-[color:var(--a2)]" />
+                      <span className="min-w-0 flex-1">
+                        <span
+                          className="flex items-center text-[13px] text-[color:var(--fg-1)] group-hover:text-[color:var(--a2)]"
+                          style={{ fontFamily: "var(--font-mono)" }}
+                        >
+                          <span className="truncate">{label}</span>
+                          <Arrow className="ml-auto size-4 shrink-0 text-[color:var(--fg-3)] transition-transform group-hover:translate-x-0.5 group-hover:text-[color:var(--a2)]" />
+                        </span>
+                        <span
+                          className="mt-0.5 block truncate text-[12px]"
+                          style={{ color: "var(--fg-3)" }}
+                        >
+                          {meta}
+                        </span>
+                      </span>
+                    </Link>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -441,6 +495,10 @@ export default function SymbolicationPage() {
                 {
                   q: "Does it symbolicate iOS and Swift crashes?",
                   a: "Yes. Upload your build's .dSYM and the same engine resolves stripped Swift and Objective-C crash addresses back to file, line, and function, with inline frames expanded. dSYMs upload through the same per-project token and POST endpoint as your source maps, so a single Xcode build phase or a curl in CI keeps every release symbolicated.",
+                },
+                {
+                  q: "Does it symbolicate Android crashes?",
+                  a: "Yes. Release builds run R8, which renames classes and rewrites line numbers, so crashes arrive obfuscated. Upload the build's mapping.txt and the same engine retraces every frame back to the original class, method, file, and line, expanding the calls R8 inlined. The Gradle plugin injects a per-build UUID and uploads the mapping for you, through the same per-project token and POST endpoint as your source maps and dSYMs. On the OpenTelemetry path it reads the same app.debug.proguard_uuid attribute as Honeycomb, so a migrating app keeps its instrumentation.",
                 },
                 {
                   q: "Are my source maps exposed publicly?",

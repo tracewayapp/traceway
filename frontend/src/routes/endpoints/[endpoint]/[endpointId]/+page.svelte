@@ -284,6 +284,7 @@
 		{#if response.endpoint.distributedTraceId}
 			<DistributedTraceCard
 				distributedTraceId={response.endpoint.distributedTraceId}
+				currentNodeId={response.endpoint.id}
 				recordedAt={response.endpoint.recordedAt}
 			/>
 		{/if}

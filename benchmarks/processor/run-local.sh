@@ -47,7 +47,7 @@ build_all() {
 
 scenario_params() {
   local oom_cache="$OOM_ENTRIES"
-  case "$2" in ios|honeycomb-ios) oom_cache="${OOM_CACHE:-128}" ;; esac
+  case "$2" in ios|honeycomb-ios|android) oom_cache="${OOM_CACHE:-128}" ;; esac
   case "$1" in
     hot)   echo "1 $PAD_KB 0:0 128 $CONNECTIONS $STEP_DURATION" ;;
     churn) echo "$CHURN_ENTRIES $PAD_KB 0:0 128 $CONNECTIONS $STEP_DURATION" ;;
@@ -65,6 +65,8 @@ gen_corpus() {
       ./corpusgen/corpusgen --language ios --entries "$entries" --dsym seeds/ios/app.dsym --trace seeds/ios/trace.txt --out "$dir" >&2
     elif [ "$lang" = honeycomb-ios ]; then
       ./corpusgen/corpusgen --language honeycomb-ios --entries "$entries" --dsym seeds/ios/app.dsym --trace seeds/ios/trace.txt --binary sample --out "$dir" >&2
+    elif [ "$lang" = android ]; then
+      ./corpusgen/corpusgen --language android --entries "$entries" --mapping seeds/android/mapping.txt --trace seeds/android/obfuscated.txt --map-pad-kb "${mappad%%:*}" --out "$dir" >&2
     else
       ./corpusgen/corpusgen --entries "$entries" --pad-kb "$pad" --map-pad-kb "${mappad%%:*}" --mappings-pad-kb "${mappad##*:}" --out "$dir" >&2
     fi
@@ -84,6 +86,9 @@ impl_env() {
     traceway-ios-mem)   echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER= DISK= LANG=ios" ;;
     traceway-ios-disk)  echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER= DISK=1 LANG=ios" ;;
     honeycomb-ios)      echo "BIN=./build-honeycomb/otelcol-bench-honeycomb CFG=config-honeycomb-ios.yaml PARSER= DISK= LANG=honeycomb-ios SIGNAL=logs" ;;
+    traceway-android-mem)  echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER= DISK= LANG=android SIGNAL=logs" ;;
+    traceway-android-disk) echo "BIN=./build-traceway/otelcol-bench-traceway CFG=config-traceway.yaml PARSER= DISK=1 LANG=android SIGNAL=logs" ;;
+    honeycomb-android)     echo "BIN=./build-honeycomb/otelcol-bench-honeycomb CFG=config-honeycomb-android.yaml PARSER= DISK= LANG=android SIGNAL=logs" ;;
     *) echo "unknown impl $1" >&2; return 1 ;;
   esac
 }
@@ -92,6 +97,7 @@ drain_markers() {
   case "$1" in
     dart) echo "OK_MARKER=crash.dart FAIL_MARKER=_kDartIsolateSnapshotInstructions" ;;
     ios|honeycomb-ios) echo "OK_MARKER=sample.c FAIL_MARKER=sample+0x" ;;
+    android) echo "OK_MARKER=.kt: FAIL_MARKER=SourceFile:" ;;
     *)    echo "OK_MARKER=../src/inventory.js FAIL_MARKER=.mjs:1:" ;;
   esac
 }

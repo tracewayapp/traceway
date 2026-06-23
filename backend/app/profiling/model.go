@@ -3,8 +3,6 @@ package profiling
 import (
 	"hash/fnv"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 const (
@@ -19,6 +17,10 @@ var keptSampleTypes = map[string]string{
 	"alloc_space": TypeHeapAllocSpace,
 }
 
+func IsGauge(profileType string) bool {
+	return profileType == TypeHeapInuseSpace
+}
+
 type Stack struct {
 	Hash   uint64
 	Frames []string
@@ -31,7 +33,6 @@ type Sample struct {
 }
 
 type Meta struct {
-	ProfileId   uuid.UUID
 	ServiceName string
 	Start       time.Time
 	End         time.Time
@@ -55,4 +56,10 @@ func HashFrames(frames []string) uint64 {
 		_, _ = h.Write([]byte{0})
 	}
 	return h.Sum64()
+}
+
+func reverseInPlace(s []string) {
+	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
+		s[i], s[j] = s[j], s[i]
+	}
 }

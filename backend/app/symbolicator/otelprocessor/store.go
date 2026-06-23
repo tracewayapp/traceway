@@ -18,6 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/android"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/dart"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/ios"
 )
@@ -130,6 +131,19 @@ func (a *artifactStore) getIOSDsym(ctx context.Context, uuid string) ([]byte, er
 	data, err := a.store.fetch(ctx, key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find ios symbols %q: %w", key, err)
+	}
+	return data, nil
+}
+
+func (a *artifactStore) androidMappingKey(proguardUuid string) string {
+	return a.key("", android.NormalizeProguardUUID(proguardUuid)+".txt")
+}
+
+func (a *artifactStore) getAndroidMapping(ctx context.Context, proguardUuid string) ([]byte, error) {
+	key := a.androidMappingKey(proguardUuid)
+	data, err := a.store.fetch(ctx, key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find android mapping %q: %w", key, err)
 	}
 	return data, nil
 }

@@ -3,12 +3,13 @@ package twcache
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
 )
 
-func blobLoad(data []byte, calls *atomic.Int64) LoadFunc {
+func blobLoad(data []byte, calls *atomic.Int64) LoadFunc[[]byte] {
 	return func(ctx context.Context) ([]byte, error) {
 		if calls != nil {
 			calls.Add(1)
@@ -17,13 +18,13 @@ func blobLoad(data []byte, calls *atomic.Int64) LoadFunc {
 	}
 }
 
-func caches(t *testing.T) map[string]*Cache {
+func caches(t *testing.T) map[string]*Cache[[]byte] {
 	t.Helper()
 	disk, err := NewDisk(t.TempDir(), 64<<20, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return map[string]*Cache{
+	return map[string]*Cache[[]byte]{
 		"mem":  NewMem(100, 64<<20),
 		"disk": disk,
 	}
@@ -156,5 +157,92 @@ func TestNegativeAndInvalidate(t *testing.T) {
 				t.Errorf("invalidate should force a rebuild: got %d builds, want 2", calls.Load())
 			}
 		})
+	}
+}
+
+func TestGetSurvivesEvictionRace(t *testing.T) {
+	ctx := context.Background()
+	c := NewMem(1<<20, 48<<10)
+	payload := make([]byte, 4<<10)
+	const goroutines = 32
+	const iters = 3000
+	const keyspace = 64
+	var fails atomic.Int64
+	var wg sync.WaitGroup
+	for g := 0; g < goroutines; g++ {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			for i := 0; i < iters; i++ {
+				key := "k" + strconv.Itoa((g*7+i)%keyspace) + ".tw"
+				_, done, err := c.Get(ctx, key, blobLoad(payload, nil))
+				if err != nil {
+					fails.Add(1)
+					continue
+				}
+				done()
+			}
+		}(g)
+	}
+	wg.Wait()
+	if n := fails.Load(); n != 0 {
+		t.Errorf("%d of %d Gets failed under eviction pressure; the bounded retry should resolve every present key", n, goroutines*iters)
+	}
+}
+
+func TestMemFuncOnePoolAcrossKinds(t *testing.T) {
+	type obj struct{ n int64 }
+	weigh := func(v any) int64 {
+		switch t := v.(type) {
+		case []byte:
+			return int64(len(t))
+		case *obj:
+			return t.n
+		default:
+			return 0
+		}
+	}
+	ctx := context.Background()
+
+	c := NewMemFunc[any](100, 1<<20, weigh)
+	b, doneB, err := c.Get(ctx, "bytes", func(context.Context) (any, error) { return []byte("hello"), nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := b.([]byte); !ok || string(got) != "hello" {
+		t.Fatalf("bytes entry: got %#v", b)
+	}
+	doneB()
+
+	o, doneO, err := c.Get(ctx, "obj", func(context.Context) (any, error) { return &obj{n: 42}, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := o.(*obj); !ok || got.n != 42 {
+		t.Fatalf("obj entry: got %#v", o)
+	}
+	doneO()
+
+	st := c.Stats()
+	if st.Entries != 2 {
+		t.Errorf("entries: got %d, want 2 (one pool holds both kinds)", st.Entries)
+	}
+	if want := int64(len("hello")) + 42; st.Bytes != want {
+		t.Errorf("bytes: got %d, want %d (budget summed across kinds)", st.Bytes, want)
+	}
+
+	small := NewMemFunc[any](100, 50, weigh)
+	if _, done, err := small.Get(ctx, "b", func(context.Context) (any, error) { return make([]byte, 40), nil }); err != nil {
+		t.Fatal(err)
+	} else {
+		done()
+	}
+	if _, done, err := small.Get(ctx, "o", func(context.Context) (any, error) { return &obj{n: 40}, nil }); err != nil {
+		t.Fatal(err)
+	} else {
+		done()
+	}
+	if s := small.Stats(); s.Entries != 1 || s.Bytes != 40 {
+		t.Errorf("cross-kind eviction: got entries=%d bytes=%d, want entries=1 bytes=40", s.Entries, s.Bytes)
 	}
 }

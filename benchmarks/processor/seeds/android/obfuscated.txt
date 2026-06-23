@@ -1,0 +1,5 @@
+a.b: card declined for $30.59
+	at com.example.androdemo.MainActivity.a(SourceFile:3)
+	at a.a.onClick(SourceFile:1)
+	at android.view.View.performClick(View.java:7659)
+	at android.app.Activity.dispatchTouchEvent(Activity.java:4204)

@@ -80,6 +80,8 @@ module.exports = {
 	let copiedFlutterUpload = $state(false);
 	let copiedIosBuild = $state(false);
 	let copiedIosUpload = $state(false);
+	let copiedAndroidSetup = $state(false);
+	let copiedAndroidUpload = $state(false);
 
 	const pluginInstallCommand = 'npm install -D @tracewayapp/bundler-plugin';
 
@@ -91,7 +93,8 @@ module.exports = {
 
 	const isFlutter = $derived(project?.framework === 'flutter');
 	const isIOS = $derived(project?.framework === 'ios');
-	const artifactLabel = $derived(isFlutter || isIOS ? 'debug symbols' : 'source maps');
+	const isAndroid = $derived(project?.framework === 'android');
+	const artifactLabel = $derived(isFlutter || isIOS || isAndroid ? 'debug symbols' : 'source maps');
 
 	const showBundlerSetup = $derived(project?.framework !== 'react-native');
 
@@ -125,6 +128,27 @@ module.exports = {
   -F "files=@build/MyApp.xcarchive/dSYMs/MyApp.app.dSYM/Contents/Resources/DWARF/MyApp"`
 			: ''
 	);
+
+	const androidSetupSnippet = $derived(
+		project && sourceMapToken
+			? `plugins {
+  id("com.tracewayapp.symbols")
+}
+
+android {
+  buildTypes {
+    release { isMinifyEnabled = true }
+  }
+}
+
+traceway {
+  token = "${sourceMapToken}"
+  url = "${project.backendUrl}"
+}`
+			: ''
+	);
+
+	const androidUploadCommand = './gradlew assembleRelease uploadReleaseTracewaySymbols';
 
 	let regenerateDialogOpen = $state(false);
 
@@ -195,6 +219,18 @@ module.exports = {
 		await navigator.clipboard.writeText(iosUploadCommand);
 		copiedIosUpload = true;
 		setTimeout(() => (copiedIosUpload = false), 2000);
+	}
+
+	async function copyAndroidSetup() {
+		await navigator.clipboard.writeText(androidSetupSnippet);
+		copiedAndroidSetup = true;
+		setTimeout(() => (copiedAndroidSetup = false), 2000);
+	}
+
+	async function copyAndroidUpload() {
+		await navigator.clipboard.writeText(androidUploadCommand);
+		copiedAndroidUpload = true;
+		setTimeout(() => (copiedAndroidUpload = false), 2000);
 	}
 </script>
 
@@ -335,6 +371,64 @@ module.exports = {
 					re-upload on each release.
 				</p>
 			</div>
+		{:else if isAndroid}
+			<div>
+				<p class="mb-2 text-sm font-medium">Step 1: Apply the Traceway symbols Gradle plugin</p>
+				<div class="relative">
+					<div class="absolute top-2 right-2 z-10">
+						<Button variant="outline" size="sm" onclick={copyAndroidSetup}>
+							{#if copiedAndroidSetup}
+								<Check class="mr-2 h-4 w-4 text-green-500" />
+								Copied!
+							{:else}
+								<Copy class="mr-2 h-4 w-4" />
+								Copy
+							{/if}
+						</Button>
+					</div>
+					<div
+						class="overflow-x-auto rounded-lg text-sm {themeState.isDark
+							? 'dark-code'
+							: 'light-code'}"
+					>
+						<Highlight language={javascript} code={androidSetupSnippet} />
+					</div>
+				</div>
+				<p class="mt-2 text-xs text-muted-foreground">
+					Add to your app module's <code class="font-mono">build.gradle.kts</code>. The plugin embeds a
+					ProGuard UUID into BuildConfig (matching Honeycomb's
+					<code class="font-mono">app.debug.proguard_uuid</code>) and names the uploaded mapping
+					<code class="font-mono">&lt;uuid&gt;.txt</code>.
+				</p>
+			</div>
+			<div>
+				<p class="mb-2 text-sm font-medium">Step 2: Build and upload after each release</p>
+				<div class="relative">
+					<div class="absolute top-2 right-2 z-10">
+						<Button variant="outline" size="sm" onclick={copyAndroidUpload}>
+							{#if copiedAndroidUpload}
+								<Check class="mr-2 h-4 w-4 text-green-500" />
+								Copied!
+							{:else}
+								<Copy class="mr-2 h-4 w-4" />
+								Copy
+							{/if}
+						</Button>
+					</div>
+					<div
+						class="overflow-x-auto rounded-lg text-sm {themeState.isDark
+							? 'dark-code'
+							: 'light-code'}"
+					>
+						<Highlight language={bash} code={androidUploadCommand} />
+					</div>
+				</div>
+				<p class="mt-2 text-xs text-muted-foreground">
+					Uploads the R8 <code class="font-mono">mapping.txt</code> and the unstripped native
+					<code class="font-mono">.so</code> libraries. Native symbols are keyed by GNU build-id, so
+					re-upload on each release.
+				</p>
+			</div>
 		{:else}
 			{#if showBundlerSetup}
 				<div>
@@ -460,6 +554,19 @@ module.exports = {
 					target="_blank"
 					rel="noopener noreferrer"
 					class="underline hover:text-foreground">iOS docs</a
+				>
+			</p>
+		{:else if isAndroid}
+			<p class="text-sm text-muted-foreground">
+				Release builds obfuscate Kotlin/Java with R8 and strip native code. Generate a token, then
+				upload your <code class="rounded bg-muted px-1 py-0.5 font-mono text-xs">mapping.txt</code> and
+				native <code class="rounded bg-muted px-1 py-0.5 font-mono text-xs">.so</code> libraries after each
+				release to resolve their stack traces.
+				<a
+					href="https://docs.tracewayapp.com/symbolicator/android"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="underline hover:text-foreground">Android docs</a
 				>
 			</p>
 		{:else}

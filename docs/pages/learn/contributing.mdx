@@ -319,13 +319,13 @@ Maintainers aim to review PRs within a few days. If a PR has been open for more 
 
 ## Using AI Tools
 
-AI-assisted contributions are welcome. Claude Code, Copilot, and similar tools can speed up boilerplate and help explore options.
+AI is fine. It is a tool, no different than IntelliJ or VSCode autocomplete, and it will be treated as such. Use whatever AI you find good to help write your code. What does not change is ownership of the result.
 
 Ground rules:
 
-- **Review everything.** You are responsible for every line in your PR regardless of whether AI wrote it. Read the diff. Understand it. If you don't understand something, figure it out before submitting — reviewers will ask.
-- **Test it yourself.** Don't rely on AI saying "this should work." Run the code. Run the tests listed in "Before submitting."
-- **Architecture matters.** AI doesn't know the conventions in this repo. Cross-check generated code against [CLAUDE.md](https://github.com/tracewayapp/traceway/blob/main/CLAUDE.md) — especially the error handling patterns, transaction middleware, and repository patterns.
-- **Say so in the PR description.** Mention that you used AI assistance so reviewers know to look carefully at novel patterns or structural choices.
+- **You are personally responsible for your code.** Whether you typed it, an autocomplete suggested it, or an AI agent generated the whole file, it is your code the moment it lands in a PR.
+- **Read and understand every line.** You are expected to understand each line you submit. Read the diff. If you cannot explain why a line is there or what it does, it is not ready for a PR. Reviewers will ask.
+- **Follow the project's guidelines and keep the style consistent**, regardless of how the code was written. AI does not know the conventions in this repo; you do. Cross-check generated code against [CLAUDE.md](https://github.com/tracewayapp/traceway/blob/main/CLAUDE.md), especially the error handling patterns, transaction middleware, and repository patterns.
+- **Test locally, rigorously, before committing.** Do not rely on AI saying "this should work." A human runs the code and the relevant tests (see "Before submitting") and confirms it works before it is committed.
 
-There is no stigma around AI usage here — just shared responsibility for quality.
+There is no stigma around AI usage here. The bar is the same as it has always been: correct, tested, idiomatic code that you understand and stand behind.

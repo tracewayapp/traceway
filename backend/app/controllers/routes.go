@@ -32,13 +32,18 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.OPTIONS("/report", middleware.CORSReport)
 	router.POST("/report", middleware.CORSReport, middleware.UseClientAuth, middleware.UseGzip, clientcontrollers.ClientController.Report)
 
+	router.OPTIONS("/profiles/ingest", middleware.CORSReport)
+	router.POST("/profiles/ingest", middleware.CORSReport, middleware.UseClientAuth, middleware.UseGzip, clientcontrollers.ProfileIngestController.Ingest)
+
 	otelGroup := router.Group("/otel")
 	otelGroup.OPTIONS("/v1/traces", middleware.CORSReport)
 	otelGroup.OPTIONS("/v1/metrics", middleware.CORSReport)
 	otelGroup.OPTIONS("/v1/logs", middleware.CORSReport)
+	otelGroup.OPTIONS("/v1development/profiles", middleware.CORSReport)
 	otelGroup.POST("/v1/traces", middleware.CORSReport, middleware.UseClientAuth, otelcontrollers.OtelController.ExportTraces)
 	otelGroup.POST("/v1/metrics", middleware.CORSReport, middleware.UseClientAuth, otelcontrollers.OtelController.ExportMetrics)
 	otelGroup.POST("/v1/logs", middleware.CORSReport, middleware.UseClientAuth, otelcontrollers.OtelController.ExportLogs)
+	otelGroup.POST("/v1development/profiles", middleware.CORSReport, middleware.UseClientAuth, otelcontrollers.OtelController.ExportProfiles)
 
 	router.GET("/projects", middleware.UseAppAuth, ProjectController.ListProjects)
 	router.POST("/projects", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, ProjectController.CreateProject)
@@ -90,6 +95,10 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/sessions", middleware.UseAppAuth, middleware.RequireProjectAccess, SessionController.FindAllSessions)
 	router.POST("/sessions/:sessionId", middleware.UseAppAuth, middleware.RequireProjectAccess, SessionDetailController.GetSessionDetail)
 	router.GET("/sessions/:sessionId/recording", middleware.UseAppAuth, middleware.RequireProjectAccess, SessionDetailController.GetSessionRecording)
+
+	router.POST("/profiles/grouped", middleware.UseAppAuth, middleware.RequireProjectAccess, ProfileController.FindGroupedByService)
+	router.POST("/profiles/series", middleware.UseAppAuth, middleware.RequireProjectAccess, ProfileController.GetSeries)
+	router.POST("/profiles/flamegraph", middleware.UseAppAuth, middleware.RequireProjectAccess, ProfileController.GetFlameGraph)
 
 	router.POST("/ai-traces/grouped", middleware.UseAppAuth, middleware.RequireProjectAccess, AiTraceController.FindGroupedByTraceName)
 	router.POST("/ai-traces/trace", middleware.UseAppAuth, middleware.RequireProjectAccess, AiTraceController.FindByTraceName)

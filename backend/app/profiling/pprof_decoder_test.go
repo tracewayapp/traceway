@@ -253,9 +253,6 @@ func TestPprofDecoder_Metadata(t *testing.T) {
 	if !d.Meta.End.Equal(wantStart.Add(30 * time.Second)) {
 		t.Errorf("end = %v, want start+30s", d.Meta.End.UTC())
 	}
-	if d.Meta.ProfileId == uuid.Nil {
-		t.Errorf("expected a non-nil ProfileId")
-	}
 }
 
 func TestPprofDecoder_DropsZeroValueSamples(t *testing.T) {

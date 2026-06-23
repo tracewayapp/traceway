@@ -70,6 +70,28 @@ func buildBodyHoneycombIOSLogs(trace, binaryName, buildUUID string, records int)
 	return data
 }
 
+func buildBodyAndroidLogs(trace, proguardUUID string, records int) []byte {
+	ld := plog.NewLogs()
+	rl := ld.ResourceLogs().AppendEmpty()
+	res := rl.Resource().Attributes()
+	res.PutStr("service.name", "processor-bench")
+	res.PutStr("telemetry.sdk.language", "android")
+	res.PutStr("app.debug.proguard_uuid", proguardUUID)
+	sl := rl.ScopeLogs().AppendEmpty()
+	for i := 0; i < records; i++ {
+		lr := sl.LogRecords().AppendEmpty()
+		lr.Attributes().PutStr("exception.type", "PaymentDeclinedException")
+		lr.Attributes().PutStr("exception.message", "bench")
+		lr.Attributes().PutStr("exception.stacktrace", trace)
+	}
+	req := plogotlp.NewExportRequestFromLogs(ld)
+	data, err := req.MarshalProto()
+	if err != nil {
+		panic(err)
+	}
+	return data
+}
+
 func buildBody(lang, excType, excMsg, stack string, spans int) []byte {
 	td := ptrace.NewTraces()
 	rs := td.ResourceSpans().AppendEmpty()
@@ -154,6 +176,11 @@ func main() {
 		bodies = make([][]byte, len(c.Builds))
 		for i, b := range c.Builds {
 			bodies[i] = buildBodyHoneycombIOSLogs(b.Trace, c.BinaryName, b.BuildID, *spansPerReq)
+		}
+	case "android":
+		bodies = make([][]byte, len(c.Builds))
+		for i, b := range c.Builds {
+			bodies[i] = buildBodyAndroidLogs(b.Trace, b.BuildID, *spansPerReq)
 		}
 	default:
 		bodies = make([][]byte, len(c.Urls))

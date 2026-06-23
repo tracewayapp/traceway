@@ -1,0 +1,37 @@
+// Stage 2 "build once, cache in memory" flow. Render:
+//   dot -Tsvg cache-in-memory.dot -o cache-in-memory.svg
+// Palette matches the Traceway dark theme (app/globals.css).
+digraph cache_in_memory {
+  bgcolor="transparent";
+  rankdir=TB;
+  nodesep=0.34;
+  ranksep=0.44;
+  pad=0.2;
+  fontname="Helvetica";
+
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=14,
+        penwidth=1.3, margin="0.30,0.18",
+        color="#283041", fillcolor="#151a24", fontcolor="#f4f6fb"];
+  edge [color="#5a6374", penwidth=1.4, arrowsize=0.85,
+        fontname="Helvetica", fontsize=11, fontcolor="#8a93a6"];
+
+  req   [label=<<b>incoming stack frame</b><br/><font face="Menlo" color="#8a93a6" point-size="12">app.min.js:1:5114</font>>,
+         fillcolor="#0f131c"];
+  cache [label=<<b>look up the file in the cache</b><br/><font color="#8fe6ff" point-size="12">in-memory, LRU, keyed by file</font>>,
+         color="#00d4ff", fillcolor="#08161c"];
+  build [label=<<b>parse &#8594; build the .tw index</b><br/><font color="#ff9a9d" point-size="12">slow, but only once per file</font>>,
+         color="#ff5a5f", fillcolor="#1b1115"];
+  store [label=<<b>keep the .tw in the cache</b><br/><font color="#8fe6ff" point-size="12">reused by every later request</font>>,
+         color="#00d4ff", fillcolor="#08161c"];
+  look  [label=<<b>search the cached index</b><br/><font color="#7ff0c8" point-size="12">fast: 44 ns, no parsing</font>>,
+         color="#22e0a8", fillcolor="#0c1714"];
+  out   [label=<<b>resolved frame</b><br/><font face="Menlo" color="#b9a7ff" point-size="12">checkout.js:48 &#183; validateCheckout</font>>,
+         color="#7c5cff", fillcolor="#15121f"];
+
+  req -> cache;
+  cache -> build [label="  miss (first time for this file)", color="#5a6374"];
+  cache -> look  [constraint=false, tailport=e, headport=e,
+                  label="hit\l(almost every\lrequest)\l", color="#22e0a8", fontcolor="#7ff0c8"];
+  build -> store -> look;
+  look -> out;
+}

@@ -97,7 +97,12 @@ func loadDartData(ctx context.Context, projectId uuid.UUID, trace dart.StackTrac
 	if err != nil {
 		return nil, noop
 	}
-	return data, done
+	b, ok := data.([]byte)
+	if !ok {
+		done()
+		return nil, noop
+	}
+	return b, done
 }
 
 func dartFlatKey(symbolsKey string) string {
@@ -112,9 +117,9 @@ func InvalidateDartSymbols(keys ...string) {
 	}
 }
 
-func loadDartBlob(cacheKey string) twcache.LoadFunc {
+func loadDartBlob(cacheKey string) twcache.LoadFunc[SymbolicationCacheEntry] {
 	symbolsKey := strings.TrimSuffix(cacheKey, ".tw") + ".symbols"
-	return func(ctx context.Context) ([]byte, error) {
+	return func(ctx context.Context) (SymbolicationCacheEntry, error) {
 		base := context.WithoutCancel(ctx)
 
 		if twBytes, err := readWithTimeout(base, cacheKey); err == nil {

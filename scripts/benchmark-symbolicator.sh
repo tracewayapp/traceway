@@ -16,7 +16,7 @@ go test -tags oxc ./app/symbolicator/... -count=1
 
 go test -tags oxc ./app/symbolicator/... \
     -run '^$' \
-    -bench 'BenchmarkBundleParsers|BenchmarkNewResolver|BenchmarkOpenTW' \
+    -bench 'BenchmarkBundleParsers|BenchmarkNewResolver|BenchmarkOpenTW|BenchmarkParseMapping' \
     -benchtime "$BENCHTIME" \
     -count "$COUNT" \
     -timeout 60m \

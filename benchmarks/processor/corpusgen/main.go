@@ -173,7 +173,8 @@ func main() {
 	symbols := flag.String("symbols", "seeds/dart/app.debug.elf", "dart: seed .symbols/.elf")
 	dsym := flag.String("dsym", "seeds/ios/app.dsym", "ios: seed dSYM (Mach-O DWARF)")
 	binary := flag.String("binary", "sample", "honeycomb-ios: Mach-O name inside the .dSYM bundle")
-	traceFile := flag.String("trace", "seeds/dart/trace.txt", "dart/ios: seed non-symbolic trace")
+	mapping := flag.String("mapping", "seeds/android/mapping.txt", "android: seed R8 mapping.txt")
+	traceFile := flag.String("trace", "seeds/dart/trace.txt", "dart/ios/android: seed non-symbolic trace")
 	entries := flag.Int("entries", 1, "")
 	padKB := flag.Int("pad-kb", 256, "")
 	mapPadKB := flag.Int("map-pad-kb", 0, "")
@@ -194,6 +195,10 @@ func main() {
 	}
 	if *language == "honeycomb-ios" {
 		generateHoneycombIOS(*out, *dsym, *traceFile, *binary, *entries)
+		return
+	}
+	if *language == "android" {
+		generateAndroid(*out, *mapping, *traceFile, *mapPadKB, *entries)
 		return
 	}
 
@@ -326,6 +331,58 @@ func generateIOS(out, dsymPath, tracePath string, entries int) {
 
 func substituteIOSUUID(trace, uuid string) string {
 	return iosFrameUUIDRe.ReplaceAllString(trace, "${1}"+uuid+"${2}")
+}
+
+func generateAndroid(out, mappingPath, tracePath string, mapPadKB, entries int) {
+	base, err := os.ReadFile(mappingPath)
+	if err != nil {
+		panic(fmt.Errorf("reading android seed mapping %q: %w", mappingPath, err))
+	}
+	trace, err := os.ReadFile(tracePath)
+	if err != nil {
+		panic(fmt.Errorf("reading android seed trace %q: %w", tracePath, err))
+	}
+	absSeed, err := filepath.Abs(mappingPath)
+	if err != nil {
+		panic(err)
+	}
+
+	c := dartCorpus{Language: "android"}
+	for n := 0; n < entries; n++ {
+		uuid := fmt.Sprintf("%032x", n)
+		dest := filepath.Join(out, uuid+".txt")
+		_ = os.Remove(dest)
+		if mapPadKB > 0 {
+			if err := os.WriteFile(dest, padMapping(base, mapPadKB, n), 0o644); err != nil {
+				panic(err)
+			}
+		} else if err := os.Link(absSeed, dest); err != nil {
+			if werr := os.WriteFile(dest, base, 0o644); werr != nil {
+				panic(werr)
+			}
+		}
+		c.Builds = append(c.Builds, dartBuild{BuildID: uuid, Trace: string(trace)})
+	}
+	data, _ := json.MarshalIndent(c, "", "  ")
+	if err := os.WriteFile(filepath.Join(out, "corpus.json"), data, 0o644); err != nil {
+		panic(err)
+	}
+	fmt.Printf("wrote %d android builds (map-pad %d KB, seed %s) to %s\n", entries, mapPadKB, mappingPath, out)
+}
+
+func padMapping(base []byte, kb, seed int) []byte {
+	var b strings.Builder
+	b.Write(base)
+	if len(base) > 0 && base[len(base)-1] != '\n' {
+		b.WriteByte('\n')
+	}
+	target := len(base) + kb*1024
+	for i := 0; b.Len() < target; i++ {
+		fmt.Fprintf(&b, "benchpad.S%dClass%d -> twbp_%d_%d:\n", seed, i, seed, i)
+		b.WriteString("    1:1:void run():1:1 -> a\n")
+		b.WriteString("    2:2:int compute(int):2:2 -> b\n")
+	}
+	return []byte(b.String())
 }
 
 var twFrameRe = regexp.MustCompile(`^\s*#(\d+)\s+([0-9a-fA-F]{32})\s+0x([0-9a-fA-F]+)\s+(\S+)\s*$`)

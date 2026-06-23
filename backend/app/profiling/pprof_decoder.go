@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/google/pprof/profile"
-	"github.com/google/uuid"
 )
 
 type PprofDecoder struct{}
@@ -34,7 +33,6 @@ func (PprofDecoder) Decode(ctx IngestContext, payload []byte) ([]Decoded, error)
 	}
 
 	meta := Meta{
-		ProfileId:   uuid.New(),
 		ServiceName: ctx.DefaultServiceName,
 		ServerName:  ctx.ServerName,
 		AppVersion:  ctx.AppVersion,
@@ -95,8 +93,6 @@ func rootFirstFrames(s *profile.Sample) []string {
 			leafToRoot = append(leafToRoot, line.Function.Name)
 		}
 	}
-	for i, j := 0, len(leafToRoot)-1; i < j; i, j = i+1, j-1 {
-		leafToRoot[i], leafToRoot[j] = leafToRoot[j], leafToRoot[i]
-	}
+	reverseInPlace(leafToRoot)
 	return leafToRoot
 }

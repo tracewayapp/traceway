@@ -7,21 +7,42 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/android"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/dart"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/ios"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/twcache"
 )
 
-func validArtifact(b []byte) bool {
-	return sourcemap.ValidTW(b) || dart.ValidFlat(b) || ios.ValidFlat(b)
+type cacheEntry = any
+
+func validArtifact(v cacheEntry) bool {
+	switch t := v.(type) {
+	case []byte:
+		return sourcemap.ValidTW(t) || dart.ValidFlat(t) || ios.ValidFlat(t) || android.ValidR8Flat(t)
+	case *android.Mapping:
+		return t != nil
+	default:
+		return false
+	}
+}
+
+func weighEntry(v cacheEntry) int64 {
+	switch t := v.(type) {
+	case []byte:
+		return int64(len(t))
+	case *android.Mapping:
+		return t.ApproxSize()
+	default:
+		return 0
+	}
 }
 
 func isObjectNotFound(err error) bool { return errors.Is(err, errObjectNotFound) }
 
-func newCache(cfg *Config) (*twcache.Cache, error) {
+func newCache(cfg *Config) (*twcache.Cache[cacheEntry], error) {
 	if cfg.CacheDir == "" {
-		c := twcache.NewMem(cfg.SourceMapCacheSize, 1<<62)
+		c := twcache.NewMemFunc(cfg.SourceMapCacheSize, 1<<62, weighEntry)
 		c.Validate = validArtifact
 		c.NotFound = isObjectNotFound
 		return c, nil
@@ -43,7 +64,7 @@ func newCache(cfg *Config) (*twcache.Cache, error) {
 	if maxBytes <= 0 {
 		return nil, fmt.Errorf("the source map cache requires a positive byte cap (cache_max_mb or cache_max_disk_pct)")
 	}
-	c, err := twcache.NewDisk(cfg.CacheDir, maxBytes, nil)
+	c, err := twcache.NewDiskAny(cfg.CacheDir, maxBytes, nil)
 	if err != nil {
 		return nil, err
 	}

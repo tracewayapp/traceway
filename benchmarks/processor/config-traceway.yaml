@@ -32,3 +32,7 @@ service:
       receivers: [otlp]
       processors: [source_map_symbolicator]
       exporters: [otlphttp/drain]
+    logs:
+      receivers: [otlp]
+      processors: [source_map_symbolicator]
+      exporters: [otlphttp/drain]

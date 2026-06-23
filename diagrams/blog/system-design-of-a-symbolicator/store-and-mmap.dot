@@ -1,0 +1,41 @@
+// Stage 3 "store it and mmap it" cascade. Render:
+//   dot -Tsvg store-and-mmap.dot -o store-and-mmap.svg
+// Palette matches the Traceway dark theme (app/globals.css).
+digraph store_and_mmap {
+  bgcolor="transparent";
+  rankdir=TB;
+  nodesep=0.34;
+  ranksep=0.44;
+  pad=0.2;
+  fontname="Helvetica";
+
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=14,
+        penwidth=1.3, margin="0.30,0.18",
+        color="#283041", fillcolor="#151a24", fontcolor="#f4f6fb"];
+  edge [color="#5a6374", penwidth=1.4, arrowsize=0.85,
+        fontname="Helvetica", fontsize=11, fontcolor="#8a93a6"];
+
+  req     [label=<<b>incoming stack frame</b><br/><font face="Menlo" color="#8a93a6" point-size="12">app.min.js:1:5114</font>>,
+           fillcolor="#0f131c"];
+  local   [label=<<b>tier 1 &#183; local disk</b><br/><font color="#8a93a6" point-size="12">is the .tw file on this box?</font>>];
+  obj     [label=<<b>tier 2 &#183; object storage</b><br/><font color="#8a93a6" point-size="12">is a prebuilt .tw stored?</font>>];
+  rebuild [label=<<b>tier 3 &#183; build it once</b><br/><font color="#ff9a9d" point-size="12">first crash of a brand-new release</font>>,
+           color="#ff5a5f", fillcolor="#1b1115"];
+  fetch   [label=<<b>download the .tw, write to disk</b><br/><font color="#8fe6ff" point-size="12">still no parsing</font>>,
+           color="#00d4ff", fillcolor="#08161c"];
+  back    [label=<<b>write the .tw to object storage</b><br/><font color="#8fe6ff" point-size="12">every replica is warm after this</font>>,
+           color="#00d4ff", fillcolor="#08161c"];
+  mmap    [label=<<b>mmap the .tw, search in place</b><br/><font color="#7ff0c8" point-size="12">fast: served from the OS page cache</font>>,
+           color="#22e0a8", fillcolor="#0c1714"];
+  out     [label=<<b>resolved frame</b><br/><font face="Menlo" color="#b9a7ff" point-size="12">checkout.js:48 &#183; validateCheckout</font>>,
+           color="#7c5cff", fillcolor="#15121f"];
+
+  req -> local;
+  local -> mmap    [label="  hit (hot path)", color="#22e0a8", fontcolor="#7ff0c8"];
+  local -> obj     [label="  miss", color="#5a6374"];
+  obj -> fetch     [label="  hit", color="#5a6374"];
+  fetch -> mmap;
+  obj -> rebuild   [label="  miss (cold-cold)", color="#5a6374"];
+  rebuild -> back -> mmap;
+  mmap -> out;
+}

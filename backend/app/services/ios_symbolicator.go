@@ -72,8 +72,8 @@ func iosErrorPreamble(raw string) string {
 	return strings.TrimRight(strings.Join(lines[:cut], "\n"), "\n")
 }
 
-func loadIOSBlob(cacheKey, symbolsKey, debugID, arch string) twcache.LoadFunc {
-	return func(ctx context.Context) ([]byte, error) {
+func loadIOSBlob(cacheKey, symbolsKey, debugID, arch string) twcache.LoadFunc[SymbolicationCacheEntry] {
+	return func(ctx context.Context) (SymbolicationCacheEntry, error) {
 		base := context.WithoutCancel(ctx)
 
 		if tw, err := readWithTimeout(base, cacheKey); err == nil {

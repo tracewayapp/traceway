@@ -30,6 +30,20 @@ type ProfileSample struct {
 	SpanId      string            `json:"spanId" ch:"span_id"`
 }
 
+type ProfileGroup struct {
+	ServiceName  string    `json:"serviceName" ch:"service_name"`
+	Type         string    `json:"type" ch:"profile_type"`
+	ProfileCount int64     `json:"profileCount" ch:"profile_count"`
+	SampleCount  int64     `json:"sampleCount" ch:"sample_count"`
+	TotalValue   int64     `json:"totalValue" ch:"total_value"`
+	LastSeen     time.Time `json:"lastSeen" ch:"last_seen"`
+}
+
+type ProfileStackValue struct {
+	Stack []string `json:"stack"`
+	Value int64    `json:"value"`
+}
+
 type Profile struct {
 	Id                 uuid.UUID         `json:"id" ch:"id"`
 	ProjectId          uuid.UUID         `json:"projectId" ch:"project_id"`

@@ -25,6 +25,8 @@ require (
 	go.opentelemetry.io/collector/processor v1.60.0
 	go.opentelemetry.io/collector/processor/processorhelper v0.154.0
 	go.opentelemetry.io/collector/processor/processortest v0.154.0
+	go.opentelemetry.io/proto/otlp/collector/profiles/v1development v0.3.0
+	go.opentelemetry.io/proto/otlp/profiles/v1development v0.3.0
 	go.tracewayapp.com v1.0.2
 	go.tracewayapp.com/tracewaygin v1.0.2
 	go.uber.org/zap v1.28.0
@@ -56,7 +58,7 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.3.6 // indirect
 	github.com/googleapis/gax-go/v2 v2.15.0 // indirect
 	github.com/gorilla/mux v1.7.4 // indirect
-	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.2 // indirect
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
 	github.com/hashicorp/go-version v1.9.0 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
@@ -148,7 +150,7 @@ require (
 	github.com/ugorji/go/codec v1.3.0 // indirect
 	go.opentelemetry.io/otel v1.44.0 // indirect
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
-	go.opentelemetry.io/proto/otlp v1.9.0
+	go.opentelemetry.io/proto/otlp v1.10.0
 	go.uber.org/mock v0.5.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/arch v0.20.0 // indirect

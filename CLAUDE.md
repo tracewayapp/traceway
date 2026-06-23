@@ -539,6 +539,7 @@ backend/
 | POST | `/api/otel/v1/traces` | Client | OTLP/HTTP trace ingestion |
 | POST | `/api/otel/v1/metrics` | Client | OTLP/HTTP metric ingestion |
 | POST | `/api/otel/v1/logs` | Client | OTLP/HTTP log ingestion |
+| POST | `/api/otel/v1development/profiles` | Client | OTLP/HTTP profile ingestion (development signal) |
 
 **Auth & Registration**
 | Method | Endpoint | Auth | Purpose |

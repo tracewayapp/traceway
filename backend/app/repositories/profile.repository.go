@@ -5,12 +5,19 @@ package repositories
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"sort"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/app/chdb"
 	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/profiling"
 )
 
 type profileRepository struct{}
+
+const profileStackDedup = `(SELECT project_id, service_name, stack_hash, any(stack) AS stack FROM profiling_stacks WHERE project_id = ? AND service_name = ? GROUP BY project_id, service_name, stack_hash)`
 
 func (r *profileRepository) InsertStacksAsync(ctx context.Context, stacks []models.ProfileStack) error {
 	if len(stacks) == 0 {
@@ -78,6 +85,165 @@ func (r *profileRepository) InsertProfilesAsync(ctx context.Context, profiles []
 		}
 	}
 	return batch.Send()
+}
+
+func (r *profileRepository) FindGroupedByService(ctx context.Context, projectId uuid.UUID, from, to time.Time, page, pageSize int, orderBy, sortDirection string) ([]models.ProfileGroup, int64, error) {
+	var count uint64
+	err := chdb.Conn.QueryRow(ctx,
+		`SELECT count() FROM (SELECT service_name, profile_type FROM profiles
+			WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
+			GROUP BY service_name, profile_type)`, projectId, from, to).Scan(&count)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	orderByMap := map[string]string{
+		"total_value":   "total_value",
+		"sample_count":  "sample_count",
+		"profile_count": "profile_count",
+		"last_seen":     "last_seen",
+	}
+	orderExpr, ok := orderByMap[orderBy]
+	if !ok {
+		orderExpr = "total_value"
+	}
+	sortDir := "DESC"
+	if sortDirection == "asc" {
+		sortDir = "ASC"
+	}
+	offset := (page - 1) * pageSize
+
+	query := fmt.Sprintf(`SELECT service_name, profile_type,
+			count() AS profile_count,
+			sum(sample_count) AS sample_count,
+			sum(total_value) AS total_value,
+			max(recorded_at) AS last_seen
+		FROM profiles
+		WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
+		GROUP BY service_name, profile_type
+		ORDER BY %s %s
+		LIMIT ? OFFSET ?`, orderExpr, sortDir)
+
+	rows, err := chdb.Conn.Query(ctx, query, projectId, from, to, pageSize, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var groups []models.ProfileGroup
+	for rows.Next() {
+		var g models.ProfileGroup
+		var profileCount, sampleCount uint64
+		if err := rows.Scan(&g.ServiceName, &g.Type, &profileCount, &sampleCount, &g.TotalValue, &g.LastSeen); err != nil {
+			return nil, 0, err
+		}
+		g.ProfileCount = int64(profileCount)
+		g.SampleCount = int64(sampleCount)
+		groups = append(groups, g)
+	}
+	return groups, int64(count), nil
+}
+
+func (r *profileRepository) GetSeries(ctx context.Context, projectId uuid.UUID, service, profileType string, from, to time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
+	if intervalMinutes < 1 {
+		intervalMinutes = 1
+	}
+	agg := "sum"
+	if profiling.IsGauge(profileType) {
+		agg = "avg"
+	}
+
+	query := fmt.Sprintf(`SELECT toStartOfInterval(start_time, INTERVAL ? MINUTE) AS bucket,
+			toFloat64(%s(value)) AS agg_value
+		FROM profiling_samples
+		WHERE project_id = ? AND type = ? AND service_name = ? AND start_time >= ? AND start_time <= ?
+		GROUP BY bucket ORDER BY bucket ASC`, agg)
+
+	rows, err := chdb.Conn.Query(ctx, query, intervalMinutes, projectId, profileType, service, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var points []models.TimeSeriesPoint
+	for rows.Next() {
+		var p models.TimeSeriesPoint
+		if err := rows.Scan(&p.Timestamp, &p.Value); err != nil {
+			return nil, err
+		}
+		points = append(points, p)
+	}
+	return points, nil
+}
+
+func (r *profileRepository) GetFlameGraph(ctx context.Context, projectId uuid.UUID, service, profileType string, from, to time.Time, labelFilters map[string]string) ([]models.ProfileStackValue, error) {
+	bareFilter, bareArgs := chLabelFilter("", labelFilters)
+	aliasFilter, aliasArgs := chLabelFilter("s.", labelFilters)
+
+	var query string
+	var args []interface{}
+	if profiling.IsGauge(profileType) {
+		query = `WITH latest AS (
+			SELECT argMax(profile_id, start_time) AS pid FROM profiling_samples
+			WHERE project_id = ? AND type = ? AND service_name = ? AND start_time >= ? AND start_time <= ?` + bareFilter + `
+			GROUP BY server_name)
+		SELECT st.stack, sum(s.value) AS v
+		FROM profiling_samples s
+		INNER JOIN latest l ON l.pid = s.profile_id
+		INNER JOIN ` + profileStackDedup + ` st ON st.project_id = s.project_id AND st.service_name = s.service_name AND st.stack_hash = s.stack_hash
+		WHERE s.project_id = ? AND s.type = ? AND s.service_name = ? AND s.start_time >= ? AND s.start_time <= ?` + aliasFilter + `
+		GROUP BY s.stack_hash, st.stack`
+		args = append(args, projectId, profileType, service, from, to)
+		args = append(args, bareArgs...)
+		args = append(args, projectId, service)
+		args = append(args, projectId, profileType, service, from, to)
+		args = append(args, aliasArgs...)
+	} else {
+		query = `SELECT st.stack, sum(s.value) AS v
+		FROM profiling_samples s
+		INNER JOIN ` + profileStackDedup + ` st ON st.project_id = s.project_id AND st.service_name = s.service_name AND st.stack_hash = s.stack_hash
+		WHERE s.project_id = ? AND s.type = ? AND s.service_name = ? AND s.start_time >= ? AND s.start_time <= ?` + aliasFilter + `
+		GROUP BY s.stack_hash, st.stack`
+		args = append(args, projectId, service)
+		args = append(args, projectId, profileType, service, from, to)
+		args = append(args, aliasArgs...)
+	}
+
+	rows, err := chdb.Conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.ProfileStackValue
+	for rows.Next() {
+		var frames []string
+		var value int64
+		if err := rows.Scan(&frames, &value); err != nil {
+			return nil, err
+		}
+		out = append(out, models.ProfileStackValue{Stack: frames, Value: value})
+	}
+	return out, nil
+}
+
+func chLabelFilter(qualifier string, filters map[string]string) (string, []interface{}) {
+	if len(filters) == 0 {
+		return "", nil
+	}
+	keys := make([]string, 0, len(filters))
+	for k := range filters {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	clause := ""
+	var args []interface{}
+	for _, k := range keys {
+		clause += fmt.Sprintf(" AND %slabels[?] = ?", qualifier)
+		args = append(args, k, filters[k])
+	}
+	return clause, args
 }
 
 var ProfileRepository = profileRepository{}

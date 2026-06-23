@@ -1,0 +1,142 @@
+# Android
+
+A release build of an Android app runs R8, which minifies and obfuscates the bytecode. When a Kotlin or Java exception is thrown out of that code, every class and method has been renamed and the line tables rewritten, so the trace arrives obfuscated:
+
+```
+a.b: card declined for $30.59
+	at a.a.a(SourceFile:2)
+	at com.example.app.MainActivity.a(SourceFile:3)
+```
+
+The trace is reversed with the build's `mapping.txt`. With it uploaded, the trace above resolves to source:
+
+```
+com.example.app.PaymentDeclinedException: card declined for $30.59
+	at com.example.app.Checkout.chargeCard(Checkout.kt:5)
+	at com.example.app.Checkout.applyTax(Checkout.kt:10)
+	at com.example.app.Checkout.checkout(Checkout.kt:18)
+	at com.example.app.MainActivity.crashKotlin(MainActivity.kt:33)
+```
+
+This page covers how to upload `mapping.txt` with the Gradle plugin, the upload API, how a trace is recognized and resolved, the compact `.tw` artifact each mapping compiles into, and how to migrate an app off Honeycomb. For the shared cache model and when symbolication runs, see [Architecture](/symbolicator).
+
+## R8: what `mapping.txt` says
+
+A release build with `minifyEnabled true` runs R8, which shrinks, optimizes, and obfuscates the bytecode. It renames classes and methods to short tokens, inlines small methods into their callers, and rewrites the line-number table. The reverse map is the `mapping.txt` written to `app/build/outputs/mapping/<variant>/mapping.txt`.
+
+Retracing reads three things from it: a class line maps the original fully qualified name to the obfuscated one; a `sourceFile` comment records the original file; and member lines map each method with line ranges on both sides. Because R8 inlines, one obfuscated frame can expand to several source frames, listed innermost first. The grouping hash is therefore computed **after** retrace, so inline expansion does not split one error into many issues.
+
+## Uploading symbols with the Gradle plugin
+
+The Traceway symbols Gradle plugin finds the `mapping.txt` and posts it. It's published to Maven Central, so add `mavenCentral()` to your `pluginManagement` repositories in `settings.gradle.kts`:
+
+```kotlin
+pluginManagement {
+  repositories {
+    gradlePluginPortal()
+    mavenCentral()   // resolves com.tracewayapp.symbols
+  }
+}
+```
+
+Then apply it to your app module:
+
+```kotlin
+plugins {
+  id("com.tracewayapp.symbols") version "1.0.1"
+}
+
+android {
+  buildFeatures { buildConfig = true }   // required for the injected UUID field
+  buildTypes {
+    release { isMinifyEnabled = true }
+  }
+}
+
+traceway {
+  uploadToken = "<your project upload token>"
+  url = "https://your-traceway-host"    // instance base URL
+  autoUpload = true                     // run after assembleRelease; default false
+  // proguardUuid = "..."               // optional: pin the build UUID yourself
+}
+```
+
+`uploadToken` is your project's **upload token** from the dashboard, the same one used for JavaScript source maps and iOS dSYMs. It is **not** the runtime token in your SDK connection string. Using the connection-string token here is rejected with a 401.
+
+With `autoUpload = true` the upload runs automatically after `assembleRelease`. The default is `false` (so a release build never depends on backend availability); upload explicitly instead, which is the better fit for CI:
+
+```bash
+./gradlew assembleRelease uploadReleaseTracewaySymbols
+```
+
+The plugin embeds a ProGuard UUID into `BuildConfig.TRACEWAY_PROGUARD_UUID` and names the uploaded mapping `<uuid>.txt`. The UUID is derived from the module path, variant, and app version (`versionName` + `versionCode`), so each released version gets its own mapping. **Bump the version each release** so a new upload doesn't overwrite a previous release's mapping (or set `proguardUuid` explicitly for full control). Pass that value to the SDK so reported crashes carry the matching UUID:
+
+```kotlin
+Traceway.init(
+  application = this,
+  connectionString = BuildConfig.TRACEWAY_DSN,
+  options = TracewayOptions(
+    version = "1.0.0",
+    proguardUuid = BuildConfig.TRACEWAY_PROGUARD_UUID,
+  ),
+)
+```
+
+## The upload API
+
+The plugin posts to the shared symbols endpoint:
+
+```
+POST /api/symbols/upload
+Authorization: Bearer <upload token>
+Content-Type: multipart/form-data
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `files` | yes | The `mapping.txt` file. 200 MB per file. |
+| `proguard_uuid` | yes | The build UUID. The mapping is stored as `<uuid>.txt`. |
+
+The backend recognizes an R8 mapping by its header and class lines. The stored key is:
+
+```
+androidmappings/{projectId}/{proguardUuid}.txt     # R8 mapping, by build UUID
+```
+
+## How a trace is recognized and resolved
+
+- A `at pkg.Class.method(File:line)` frame is retraced through the build's mapping, expanding inlined frames.
+- Any other line passes through; obfuscated class tokens in the exception header and `Caused by:` lines are deobfuscated too.
+
+A maximum of 50 frames are emitted, inline expansions included. A frame with no match keeps its raw form, so a trace is never worse than it arrived.
+
+## The flat format
+
+R8 `mapping.txt` is plain text and cheap to parse, but the engine never retraces against the text twice. On the first crash for a build, the mapping compiles once into the same compact [`.tw`](/symbolicator#the-tw-resolver-format) flat artifact used for JavaScript source maps and native dSYM/DWARF symbols, and that artifact is what every later lookup uses.
+
+Where the other languages' `.tw` files map an address (a bundle position, a program counter) to a span of frames, the R8 `.tw` maps an obfuscated **(class, method, line)** to its original frames. It holds two sorted tables, both binary-searchable, with every class, method, and file name interned once:
+
+- A **class table**, sorted by obfuscated class name, mapping each token to its original fully qualified name and source file.
+- A **member table**, sorted within each class by obfuscated method name. Each record carries the original class, method, and file, plus the obfuscated and original line ranges. One obfuscated method can map to several records, because R8 inlines small methods into their callers, so a single frame resolves to a chain of source frames innermost first, with the obfuscated line selecting which records apply. Synthesized members are flagged and skipped.
+
+A lookup binary-searches the class table, then the member table, then filters by line range, so resolution stays a handful of comparisons no matter how large the mapping is. The artifact is read in place: in disk-cache mode a crash retraces straight off the memory-mapped `.tw` with the name tables living in the OS page cache, while in memory mode the parsed mapping is held on the heap. Either way the compiled form rides the [same cache tiers](/symbolicator#cache-tiers) as every other language (in-memory LRU, the local `.tw` disk cache, and object storage) and rebuilds automatically when the format version is bumped. The throughput and memory trade between the two modes is measured on [Performance](/symbolicator/performance).
+
+## Migrating from Honeycomb
+
+Honeycomb symbolicates Android in its OpenTelemetry Collector, keying ProGuard mappings by the `app.debug.proguard_uuid` resource attribute and storing them as `<uuid>.txt`. Traceway reads that **same** attribute and `<uuid>.txt` naming on the OTLP path, so a migrating app does not change its instrumentation.
+
+To move an app from Honeycomb to Traceway:
+
+1. Point the OpenTelemetry Android SDK's OTLP exporter at Traceway's endpoint (`/api/otel/v1/traces`) with a Bearer project token.
+2. Keep your existing `proguard-uuid` Gradle plugin, which sets `app.debug.proguard_uuid`.
+3. Upload your `<uuid>.txt` mappings to Traceway (via the Gradle plugin above, or any POST to `/api/symbols/upload` with a `proguard_uuid` field).
+
+Symbolication then happens in Traceway, in the collector processor or in the backend, with no Honeycomb collector in the path.
+
+## Related pages
+
+- [Android SDK](/client/android): capturing errors and crashes from an Android app
+- [Architecture](/symbolicator): when symbolication runs, the cache tiers, and the `.tw` format
+- [iOS](/symbolicator/ios) and [Dart](/symbolicator/dart): the flat-DWARF approach for native symbols
+- [Performance](/symbolicator/performance): the Android benchmark, cache sizing, and failure handling
+```

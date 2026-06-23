@@ -8,10 +8,11 @@ import (
 )
 
 const (
-	SignalTraces  = "traces"
-	SignalMetrics = "metrics"
-	SignalLogs    = "logs"
-	SignalNative  = "native"
+	SignalTraces   = "traces"
+	SignalMetrics  = "metrics"
+	SignalLogs     = "logs"
+	SignalProfiles = "profiles"
+	SignalNative   = "native"
 )
 
 var inFlightIngest atomic.Int64

@@ -12,6 +12,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/monitoring"
+	"github.com/tracewayapp/traceway/backend/app/profiling"
 	"github.com/tracewayapp/traceway/backend/app/repositories"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/storage"
@@ -32,6 +33,16 @@ func otelSymbolicateJs(existingProject *models.Project, projectId uuid.UUID, ctx
 		return canonical
 	}
 	return services.ResolveStackTrace(ctx, projectId, canonical, nil)
+}
+
+func otelSymbolicateAndroid(existingProject *models.Project, projectId uuid.UUID, ctx context.Context, stackTrace, language, proguardUuid string) string {
+	if !isAndroidLanguage(language) {
+		return stackTrace
+	}
+	if existingProject == nil || existingProject.SourceMapToken == nil {
+		return stackTrace
+	}
+	return services.ResolveAndroidStackTrace(ctx, projectId, stackTrace, proguardUuid)
 }
 
 type otelController struct{}
@@ -255,4 +266,65 @@ func (o otelController) ExportLogs(c *gin.Context) {
 	monitoring.RecordIngestBatch(monitoring.SignalLogs, "log_records", convertMs, insertMs, len(records), bodyBytes)
 
 	writeLogsResponse(c)
+}
+
+func (o otelController) ExportProfiles(c *gin.Context) {
+	monitoring.IngestStarted()
+	defer monitoring.IngestFinished()
+
+	projectId, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("UseClientAuth middleware must be applied: %w", err))
+		return
+	}
+
+	if project, exists := c.Get(middleware.ProjectContextKey); exists {
+		if p, ok := project.(*models.Project); ok && p.OrganizationId != nil {
+			if attrs := traceway.GetAttributesFromContext(c); attrs != nil {
+				attrs.SetTag("organization_id", fmt.Sprintf("%d", *p.OrganizationId))
+			}
+			if !hooks.CanReport(*p.OrganizationId) {
+				monitoring.RecordRateLimited(*p.OrganizationId)
+				c.AbortWithStatus(http.StatusTooManyRequests)
+				return
+			}
+		}
+	}
+
+	payload, bodyBytes, err := decodeProfilesPayload(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	convertStart := time.Now()
+	decoded, err := profiling.OTLPDecoder{}.Decode(profiling.IngestContext{
+		ProjectId:  projectId,
+		ReceivedAt: time.Now().UTC(),
+	}, payload)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	stacks, samples, profiles := profiling.BuildRows(projectId, decoded)
+	convertMs := msSince(convertStart)
+
+	insertStart := time.Now()
+	if err := repositories.ProfileRepository.InsertStacksAsync(c, stacks); err != nil {
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL profiling stacks: %w", err))
+		return
+	}
+	if err := repositories.ProfileRepository.InsertSamplesAsync(c, samples); err != nil {
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL profiling samples: %w", err))
+		return
+	}
+	if err := repositories.ProfileRepository.InsertProfilesAsync(c, profiles); err != nil {
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL profiles: %w", err))
+		return
+	}
+	insertMs := msSince(insertStart)
+
+	monitoring.RecordIngestBatch(monitoring.SignalProfiles, "profiling_samples", convertMs, insertMs, len(samples), bodyBytes)
+
+	writeProfilesResponse(c)
 }

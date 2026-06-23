@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	collogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	colmetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	colprofilespb "go.opentelemetry.io/proto/otlp/collector/profiles/v1development"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -84,6 +85,36 @@ func writeTraceResponse(c *gin.Context) {
 
 func writeMetricsResponse(c *gin.Context) {
 	resp := &colmetricspb.ExportMetricsServiceResponse{}
+	if isProtobuf(c) {
+		data, _ := proto.Marshal(resp)
+		c.Data(http.StatusOK, "application/x-protobuf", data)
+	} else {
+		data, _ := protojson.Marshal(resp)
+		c.Data(http.StatusOK, "application/json", data)
+	}
+}
+
+func decodeProfilesPayload(c *gin.Context) ([]byte, int, error) {
+	body, err := readBody(c)
+	if err != nil {
+		return nil, 0, err
+	}
+	if isProtobuf(c) {
+		return body, len(body), nil
+	}
+	req := &colprofilespb.ExportProfilesServiceRequest{}
+	if err := protojson.Unmarshal(body, req); err != nil {
+		return nil, 0, fmt.Errorf("failed to unmarshal JSON: %w", err)
+	}
+	binary, err := proto.Marshal(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to re-encode profiles request: %w", err)
+	}
+	return binary, len(body), nil
+}
+
+func writeProfilesResponse(c *gin.Context) {
+	resp := &colprofilespb.ExportProfilesServiceResponse{}
 	if isProtobuf(c) {
 		data, _ := proto.Marshal(resp)
 		c.Data(http.StatusOK, "application/x-protobuf", data)

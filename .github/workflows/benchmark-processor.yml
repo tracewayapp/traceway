@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       language:
-        description: 'Symbolication language: js (5 impls incl. Honeycomb), dart (traceway-dart-mem/disk), ios (honeycomb-ios + traceway-ios-mem/disk), or both (js+dart)'
+        description: 'Symbolication language: js (5 impls incl. Honeycomb), dart (traceway-dart-mem/disk), ios (honeycomb-ios + traceway-ios-mem/disk), android (honeycomb-android + traceway-android-mem/disk), or both (js+dart)'
         required: true
         default: 'js'
         type: choice
@@ -12,6 +12,7 @@ on:
           - js
           - dart
           - ios
+          - android
           - both
       scenarios:
         description: 'Scenarios to run'
@@ -94,7 +95,7 @@ jobs:
           ./bin/builder --config manifest-traceway.yaml --skip-compilation
           cd build-traceway && CGO_ENABLED=1 go build -tags oxc -o otelcol-bench-traceway .
       - name: Build honeycomb collector
-        if: inputs.language == 'js' || inputs.language == 'both' || inputs.language == 'ios'
+        if: inputs.language == 'js' || inputs.language == 'both' || inputs.language == 'ios' || inputs.language == 'android'
         working-directory: benchmarks/processor
         run: |
           GOBIN=$PWD/bin go install go.opentelemetry.io/collector/cmd/builder@v0.143.0
@@ -123,7 +124,7 @@ jobs:
           if [ -f build-honeycomb/otelcol-bench-honeycomb ]; then
             cp build-honeycomb/otelcol-bench-honeycomb artifacts/
             cp "$(find ~/go/pkg/mod/github.com/honeycombio -name 'libsymbolic_cabi.so' -path '*linux_x86_64*' | head -1)" artifacts/
-            cp config-honeycomb.yaml config-honeycomb-ios.yaml artifacts/
+            cp config-honeycomb.yaml config-honeycomb-ios.yaml config-honeycomb-android.yaml artifacts/
             [ -f ../../testing/symbolication/node-app/dist/app.mjs ] && cp ../../testing/symbolication/node-app/dist/app.mjs ../../testing/symbolication/node-app/dist/app.mjs.map artifacts/ || true
           fi
       - uses: actions/upload-artifact@v4
@@ -142,6 +143,7 @@ jobs:
             js)   impls='["honeycomb","traceway-oxc-mem","traceway-oxc-disk","traceway-goja-mem","traceway-goja-disk"]' ;;
             dart) impls='["traceway-dart-mem","traceway-dart-disk"]' ;;
             ios)  impls='["honeycomb-ios","traceway-ios-mem","traceway-ios-disk"]' ;;
+            android) impls='["honeycomb-android","traceway-android-mem","traceway-android-disk"]' ;;
             both) impls='["honeycomb","traceway-oxc-mem","traceway-oxc-disk","traceway-goja-mem","traceway-goja-disk","traceway-dart-mem","traceway-dart-disk"]' ;;
             *) echo "unknown language ${{ inputs.language }}" >&2; exit 1 ;;
           esac
@@ -152,7 +154,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 3
       matrix:
         impl: ${{ fromJson(needs.setup.outputs.impls) }}
     steps:

@@ -40,6 +40,9 @@ stacktraces/sec; the drain's symbolicated percentage is the correctness check.
 | `traceway-ios-mem` | otelcol-bench-traceway | DWARF flatten | in-memory `.tw` only |
 | `traceway-ios-disk` | otelcol-bench-traceway | DWARF flatten | mmap'd `.tw` disk tier |
 | `honeycomb-ios` | otelcol-bench-honeycomb | symbolic (cgo) | RAM LRU, entry-count bound |
+| `traceway-android-mem` | otelcol-bench-traceway | R8 retrace | in-memory mapping only |
+| `traceway-android-disk` | otelcol-bench-traceway | R8 retrace | mmap'd `.tw` disk tier |
+| `honeycomb-android` | otelcol-bench-honeycomb | symbolic (cgo) | RAM LRU, entry-count bound |
 
 One traceway binary (built with `-tags oxc`) serves all variants; language
 (JS source maps vs. Dart symbols), parser, and cache mode are runtime config.
@@ -52,7 +55,8 @@ JS-only.
 
 `benchmark-processor` takes a `language` input: `js` (the 5 JS impls incl.
 Honeycomb), `dart` (the two `traceway-dart-*` impls), `ios` (the two
-`traceway-ios-*` impls), or `both` (js+dart). Locally, just list the impls in
+`traceway-ios-*` impls), `android` (`honeycomb-android` + the two
+`traceway-android-*` impls), or `both` (js+dart). Locally, just list the impls in
 `IMPLS`. The Dart corpus replicates a committed seed
 (`seeds/dart/app.debug.elf`, a real pure-Dart AOT `.symbols` ELF + its trace)
 under N synthetic build-ids — hardlinked, so N builds cost ~one inode — so the
@@ -77,6 +81,17 @@ bundle. The trace is the Apple-style frame format Honeycomb parses
 that exact Honeycomb frame format too (`ios.ParseHoneycombTrace`, routed for both
 traces and logs), so the same input shape resolves on both engines. Drain markers:
 `sample.c` resolved vs. `sample+0x` unresolved.
+
+The Android impls compare R8/ProGuard retrace head-to-head. A committed
+`mapping.txt` seed (`seeds/android/mapping.txt`, the `r8-app` fixture) is written
+under N synthetic ProGuard UUIDs as `<uuid>.txt`, hardlinked when unpadded so N
+builds cost one inode. Both engines key the mapping by UUID and read the identical
+flat `<STORE_PATH>/<uuid>.txt` store, so a single corpus serves both (no per-engine
+layout split, unlike iOS). Honeycomb's `proguard_symbolicator` is logs-only, so all
+three Android impls send OTLP logs carrying a `app.debug.proguard_uuid` resource
+attribute and an obfuscated `exception.stacktrace`; Traceway's processor
+auto-routes the R8 trace via `telemetry.sdk.language=android`. Drain markers:
+`.kt:` resolved vs. `SourceFile:` unresolved.
 
 ## Scenarios
 
@@ -103,7 +118,10 @@ small `OOM_CACHE` (128 by default, well under the corpus) under sustained load o
 the small SUT. That is where per-dSYM cost shows up. Honeycomb's `symbolic` archive
 is heavyweight and its memory grows under sustained eviction (reaching multiple GB
 on a long run), so the small SUT eventually tips over; Traceway re-opens its compact
-`.tw` and stays flat. `hot` and `churn` are unchanged across languages.
+`.tw` and stays flat. Android `oom` caps the cache at `OOM_CACHE` (128 by default)
+like iOS, an eviction soak, but pads each `mapping.txt` to MB scale via
+`OOM_MAP_PAD_KB` (the synthetic class blocks never collide with the seed's frames,
+so retrace output is unchanged). `hot` and `churn` are unchanged across languages.
 
 Corpus entries are the real minified node-app bundle padded with `--pad-kb`
 of valid JS (default 256 KB) so scope-analysis parse cost is realistic. The
@@ -124,7 +142,12 @@ timeline, not a single number.
 IMPLS="traceway-oxc-mem traceway-goja-mem honeycomb" SCENARIOS=churn CONNECTIONS=4,16,64 ./run-local.sh
 IMPLS="traceway-dart-mem traceway-dart-disk" SCENARIOS="hot churn" ./run-local.sh   # Dart
 IMPLS="honeycomb-ios traceway-ios-mem traceway-ios-disk" SCENARIOS="hot churn" ./run-local.sh   # iOS head-to-head
+IMPLS="honeycomb-android traceway-android-mem traceway-android-disk" SCENARIOS="hot churn" ./run-local.sh   # Android R8 head-to-head
 ```
+
+Run one impl at a time locally if you hit `connect: can't assign requested
+address`: a fast Android run can churn enough collector-to-drain connections to
+exhaust the host's ephemeral ports. Hetzner runs (separate boxes) are unaffected.
 
 Needs go, cargo, node, jq. Builds both collectors (the Traceway one with
 `-tags oxc` after `scripts/build-oxc-shim.sh`), drain, loadgen, corpusgen,
@@ -153,7 +176,15 @@ then runs the impls as parallel matrix entries, each on its own Hetzner server
 pair. Needs the `HCLOUD_TOKEN` secret. The `language` input selects the matrix:
 `js` (the 5 JS impls), `dart` (`traceway-dart-mem`/`-disk`), or `both`. Results
 are uploaded as `results-<impl>` artifacts. `ios` runs `honeycomb-ios` alongside
-the two `traceway-ios` impls.
+the two `traceway-ios` impls; `android` runs `honeycomb-android` alongside the two
+`traceway-android` impls.
+
+`max-parallel: 3` caps concurrent matrix entries at 3. Each entry holds one SUT
+(`ccx33`, 8 dedicated vCPUs during `hot`/`churn`) plus one shared-vCPU loadgen
+(`cpx42`), so peak usage is 24 dedicated vCPUs and 6 servers. The Hetzner project
+quota must cover both: a dedicated-vCPU limit < 24 or a server limit < 6 fails the
+extra entries with `resource_limit_exceeded`. Keep the loadgen on a shared-vCPU
+type so it stays off the dedicated-vCPU quota.
 
 ## Knobs
 
@@ -162,7 +193,7 @@ the two `traceway-ios` impls.
 | `IMPLS` | `traceway-oxc honeycomb` | run-local.sh only; `traceway-goja` selects the goja parser in the same oxc-built binary |
 | `SCENARIOS` | `hot churn` | |
 | `CHURN_ENTRIES` | `512` | corpus size for churn |
-| `OOM_CACHE` | corpus size (js/dart), `128` (ios) | resolver cache size for oom; iOS uses a bounded cache so oom is an eviction soak rather than a resident-corpus test |
+| `OOM_CACHE` | corpus size (js/dart), `128` (ios/android) | resolver cache size for oom; iOS and Android use a bounded cache so oom is an eviction soak rather than a resident-corpus test |
 | `PAD_KB` | `256` | padding per bundle |
 | `CONNECTIONS` | ramp | comma list of concurrency steps |
 | `STEP_DURATION` | `30s` local, `60s` hetzner | time per step |

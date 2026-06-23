@@ -11,6 +11,7 @@ processors:
   - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.143.0
   - gomod: github.com/honeycombio/opentelemetry-collector-symbolicator/sourcemapprocessor v1.0.3
   - gomod: github.com/honeycombio/opentelemetry-collector-symbolicator/dsymprocessor v1.0.2
+  - gomod: github.com/honeycombio/opentelemetry-collector-symbolicator/proguardprocessor v1.0.1
 
 exporters:
   - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.143.0

@@ -1,0 +1,38 @@
+// The .tw resolver format (JS encoding). Render:
+//   dot -Tsvg tw-format.dot -o tw-format.svg
+// Palette matches the Traceway dark theme (app/globals.css).
+digraph tw_format {
+  bgcolor="transparent";
+  pad=0.15;
+  node [shape=plaintext, fontname="Helvetica"];
+
+  tw [label=<
+    <table border="1" color="#283041" cellborder="0" cellspacing="0" cellpadding="9" bgcolor="#0d111a">
+      <tr><td colspan="3" align="left"><font color="#f4f6fb" point-size="15"><b>the .tw resolver format</b></font>&nbsp;&nbsp;<font color="#5a6374" point-size="11">flat &#183; little-endian &#183; memory-mapped</font></td></tr>
+      <hr/>
+      <tr>
+        <td align="left" bgcolor="#11161f"><font color="#c9d0dd" point-size="14"><b>header</b></font></td>
+        <td align="left" bgcolor="#11161f"><font face="Menlo" color="#8a93a6" point-size="13">magic "TWSM" &#183; version &#183; table counts</font></td>
+        <td align="right" bgcolor="#11161f"><font color="#5a6374" point-size="12">24 B</font></td>
+      </tr>
+      <hr/>
+      <tr>
+        <td align="left" bgcolor="#0e1322"><font color="#b9a7ff" point-size="14"><b>token[ ]</b></font></td>
+        <td align="left" bgcolor="#0e1322"><font face="Menlo" color="#c9d0dd" point-size="13">genLine genCol srcLine srcCol fileIdx fnIdx</font><br align="left"/><font color="#5a6374" point-size="11">sorted by (genLine, genCol) for binary search</font></td>
+        <td align="right" bgcolor="#0e1322"><font color="#8a93a6" point-size="12">24 B<br/>each</font></td>
+      </tr>
+      <hr/>
+      <tr>
+        <td align="left" bgcolor="#0a1620"><font color="#8fe6ff" point-size="14"><b>file strings</b></font></td>
+        <td align="left" bgcolor="#0a1620"><font face="Menlo" color="#c9d0dd" point-size="13">offsets[ ] + blob</font></td>
+        <td align="right" bgcolor="#0a1620"><font color="#5a6374" point-size="12">interned</font></td>
+      </tr>
+      <hr/>
+      <tr>
+        <td align="left" bgcolor="#0a1620"><font color="#8fe6ff" point-size="14"><b>fn strings</b></font></td>
+        <td align="left" bgcolor="#0a1620"><font face="Menlo" color="#c9d0dd" point-size="13">offsets[ ] + blob</font></td>
+        <td align="right" bgcolor="#0a1620"><font color="#5a6374" point-size="12">interned</font></td>
+      </tr>
+    </table>
+  >];
+}

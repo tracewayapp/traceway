@@ -19,13 +19,13 @@ const (
 
 var ErrInvalidName = errors.New("twcache: cache name escapes the cache directory")
 
-type LoadFunc func(ctx context.Context) ([]byte, error)
+type LoadFunc[V any] func(ctx context.Context) (V, error)
 
-type store interface {
-	get(name string) (data []byte, done func(), ok bool)
+type store[V any] interface {
+	get(name string) (data V, done func(), ok bool)
 
 	contains(name string) bool
-	put(name string, data []byte) error
+	put(name string, data V) error
 	remove(name string)
 	setLimits(maxEntries int, maxBytes int64)
 	stats() storeStats
@@ -43,17 +43,17 @@ type storeStats struct {
 
 func noop() {}
 
-type Cache struct {
+type Cache[V any] struct {
 	name  string
-	store store
+	store store[V]
 	warn  func(error)
 
 	NotFound func(error) bool
 
-	Validate func([]byte) bool
+	Validate func(V) bool
 
 	mu                  sync.Mutex
-	loading             map[string]*cacheLoad
+	loading             map[string]*cacheLoad[V]
 	negative            map[string]*negEntry
 	negativeHits        uint64
 	lastParseMs         float64
@@ -71,26 +71,31 @@ type negEntry struct {
 	failures  uint32
 }
 
-type cacheLoad struct {
+type cacheLoad[V any] struct {
 	done chan struct{}
 	err  error
+	blob V
 }
 
-func newCache(s store, warn func(error)) *Cache {
-	return &Cache{
+func newCache[V any](s store[V], warn func(error)) *Cache[V] {
+	return &Cache[V]{
 		name:     "symbolication artifact",
 		store:    s,
 		warn:     warn,
-		loading:  make(map[string]*cacheLoad),
+		loading:  make(map[string]*cacheLoad[V]),
 		negative: make(map[string]*negEntry),
 	}
 }
 
-func NewMem(maxEntries int, maxBytes int64) *Cache {
-	return newCache(newMemStore(maxEntries, maxBytes), nil)
+func NewMem(maxEntries int, maxBytes int64) *Cache[[]byte] {
+	return newCache(newMemStore(maxEntries, maxBytes, func(b []byte) int64 { return int64(len(b)) }), nil)
 }
 
-func NewDisk(dir string, maxBytes int64, warn func(error)) (*Cache, error) {
+func NewMemFunc[V any](maxEntries int, maxBytes int64, weigh func(V) int64) *Cache[V] {
+	return newCache(newMemStore(maxEntries, maxBytes, weigh), nil)
+}
+
+func NewDisk(dir string, maxBytes int64, warn func(error)) (*Cache[[]byte], error) {
 	s, err := newDiskStore(dir, maxBytes, warn)
 	if err != nil {
 		return nil, err
@@ -98,15 +103,50 @@ func NewDisk(dir string, maxBytes int64, warn func(error)) (*Cache, error) {
 	return newCache(s, warn), nil
 }
 
-func (c *Cache) SetWarn(warn func(error)) { c.warn = warn }
+type anyDiskStore struct{ inner *twcachedisk }
 
-func (c *Cache) SetLimits(maxEntries int, maxBytes int64) {
+func (a anyDiskStore) get(name string) (any, func(), bool) {
+	b, done, ok := a.inner.get(name)
+	if !ok {
+		return nil, noop, false
+	}
+	return b, done, true
+}
+
+func (a anyDiskStore) contains(name string) bool { return a.inner.contains(name) }
+
+func (a anyDiskStore) put(name string, data any) error {
+	b, ok := data.([]byte)
+	if !ok {
+		return nil
+	}
+	return a.inner.put(name, b)
+}
+
+func (a anyDiskStore) remove(name string) { a.inner.remove(name) }
+func (a anyDiskStore) setLimits(maxEntries int, maxBytes int64) {
+	a.inner.setLimits(maxEntries, maxBytes)
+}
+func (a anyDiskStore) stats() storeStats { return a.inner.stats() }
+func (a anyDiskStore) dir() string       { return a.inner.dir() }
+
+func NewDiskAny(dir string, maxBytes int64, warn func(error)) (*Cache[any], error) {
+	s, err := newDiskStore(dir, maxBytes, warn)
+	if err != nil {
+		return nil, err
+	}
+	return newCache(anyDiskStore{inner: s}, warn), nil
+}
+
+func (c *Cache[V]) SetWarn(warn func(error)) { c.warn = warn }
+
+func (c *Cache[V]) SetLimits(maxEntries int, maxBytes int64) {
 	c.store.setLimits(maxEntries, maxBytes)
 }
 
-func (c *Cache) Dir() string { return c.store.dir() }
+func (c *Cache[V]) Dir() string { return c.store.dir() }
 
-func (c *Cache) Get(ctx context.Context, key string, load LoadFunc) (data []byte, done func(), err error) {
+func (c *Cache[V]) Get(ctx context.Context, key string, load LoadFunc[V]) (V, func(), error) {
 	if data, done, ok := c.store.get(key); ok {
 		if c.Validate == nil || c.Validate(data) {
 			c.hits.Add(1)
@@ -116,33 +156,29 @@ func (c *Cache) Get(ctx context.Context, key string, load LoadFunc) (data []byte
 		done()
 		c.store.remove(key)
 	}
-	if err := c.ensureBuilt(ctx, key, load); err != nil {
-		return nil, noop, err
-	}
-	if data, done, ok := c.store.get(key); ok {
-		return data, done, nil
-	}
-	return nil, noop, fmt.Errorf("%s: %q evicted before use", c.name, key)
+	return c.ensureBuilt(ctx, key, load)
 }
 
-func (c *Cache) ensureBuilt(ctx context.Context, key string, load LoadFunc) error {
+func (c *Cache[V]) ensureBuilt(ctx context.Context, key string, load LoadFunc[V]) (V, func(), error) {
+	var zero V
 	c.mu.Lock()
 	if l, ok := c.loading[key]; ok {
 		c.mu.Unlock()
 		<-l.done
-		if l.err == nil {
-			c.hits.Add(1)
+		if l.err != nil {
+			return zero, noop, l.err
 		}
-		return l.err
+		c.hits.Add(1)
+		return l.blob, noop, nil
 	}
 
-	if c.store.contains(key) {
+	if data, done, ok := c.store.get(key); ok {
 		c.mu.Unlock()
 		c.hits.Add(1)
-		return nil
+		return data, done, nil
 	}
 	c.misses.Add(1)
-	l := &cacheLoad{done: make(chan struct{})}
+	l := &cacheLoad[V]{done: make(chan struct{})}
 	c.loading[key] = l
 	c.mu.Unlock()
 
@@ -160,6 +196,7 @@ func (c *Cache) ensureBuilt(ctx context.Context, key string, load LoadFunc) erro
 			l.err = lerr
 			return
 		}
+		l.blob = blob
 		l.err = c.store.put(key, blob)
 	}()
 
@@ -174,17 +211,20 @@ func (c *Cache) ensureBuilt(ctx context.Context, key string, load LoadFunc) erro
 	c.mu.Unlock()
 
 	close(l.done)
-	if l.err != nil && !c.isNotFound(l.err) {
-		c.reportFailure(l.err)
+	if l.err != nil {
+		if !c.isNotFound(l.err) {
+			c.reportFailure(l.err)
+		}
+		return zero, noop, l.err
 	}
-	return l.err
+	return l.blob, noop, nil
 }
 
-func (c *Cache) isNotFound(err error) bool {
+func (c *Cache[V]) isNotFound(err error) bool {
 	return c.NotFound == nil || c.NotFound(err)
 }
 
-func (c *Cache) IsNegative(key string) bool {
+func (c *Cache[V]) IsNegative(key string) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	e, ok := c.negative[key]
@@ -195,14 +235,14 @@ func (c *Cache) IsNegative(key string) bool {
 	return true
 }
 
-func (c *Cache) Invalidate(key string) {
+func (c *Cache[V]) Invalidate(key string) {
 	c.mu.Lock()
 	delete(c.negative, key)
 	c.mu.Unlock()
 	c.store.remove(key)
 }
 
-func (c *Cache) markNegativeLocked(key string, loadErr error) {
+func (c *Cache[V]) markNegativeLocked(key string, loadErr error) {
 	base := transientNegativeTTL
 	if c.isNotFound(loadErr) {
 		base = negativeBaseTTL
@@ -223,7 +263,7 @@ func (c *Cache) markNegativeLocked(key string, loadErr error) {
 	e.expiresAt = time.Now().Add(ttl)
 }
 
-func (c *Cache) pruneNegativeLocked() {
+func (c *Cache[V]) pruneNegativeLocked() {
 	now := time.Now()
 	for k, e := range c.negative {
 		if now.After(e.expiresAt) {
@@ -238,7 +278,7 @@ func (c *Cache) pruneNegativeLocked() {
 	}
 }
 
-func (c *Cache) reportFailure(err error) {
+func (c *Cache[V]) reportFailure(err error) {
 	var report uint64
 	c.mu.Lock()
 	c.failuresSinceReport++
@@ -269,7 +309,7 @@ type Stats struct {
 	LastParseMs     float64
 }
 
-func (c *Cache) Stats() Stats {
+func (c *Cache[V]) Stats() Stats {
 	ss := c.store.stats()
 	c.mu.Lock()
 	negEntries := len(c.negative)

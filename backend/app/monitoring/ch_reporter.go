@@ -4,11 +4,16 @@ package monitoring
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
+	"strings"
+	"sync"
 	"time"
 
 	traceway "go.tracewayapp.com"
 
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/tracewayapp/traceway/backend/app/chdb"
 )
 
@@ -30,6 +35,49 @@ type chBaselines struct {
 	delayedInserts  uint64
 	rejectedInserts uint64
 	first           bool
+}
+
+const transientReportInterval = 10 * time.Minute
+
+var (
+	transientReportMu   sync.Mutex
+	lastTransientReport time.Time
+)
+
+func transientCHError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if chdb.IsConnError(err) {
+		return true
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "i/o timeout")
+}
+
+func withRetry(fn func() error) error {
+	return chdb.RetryOnConn(2, transientCHError, fn)
+}
+
+func captureMonitoringErr(err error) {
+	if transientCHError(err) {
+		transientReportMu.Lock()
+		report := time.Since(lastTransientReport) >= transientReportInterval
+		if report {
+			lastTransientReport = time.Now()
+		}
+		transientReportMu.Unlock()
+		if !report {
+			return
+		}
+	}
+	traceway.CaptureException(err)
 }
 
 func StartClickHouseReporter(ctx context.Context) {
@@ -79,13 +127,15 @@ func reportPartsByTable(ctx context.Context) {
 	for _, table := range telemetryTables {
 		var parts uint64
 		var rows uint64
-		err := chdb.Conn.QueryRow(
-			ctx,
-			"SELECT coalesce(count(), 0), coalesce(sum(rows), 0) FROM system.parts WHERE database = currentDatabase() AND table = ? AND active",
-			table,
-		).Scan(&parts, &rows)
+		err := withRetry(func() error {
+			return chdb.Conn.QueryRow(
+				ctx,
+				"SELECT coalesce(count(), 0), coalesce(sum(rows), 0) FROM system.parts WHERE database = currentDatabase() AND table = ? AND active",
+				table,
+			).Scan(&parts, &rows)
+		})
 		if err != nil {
-			traceway.CaptureException(fmt.Errorf("monitoring: system.parts query for %q failed: %w", table, err))
+			captureMonitoringErr(fmt.Errorf("monitoring: system.parts query for %q failed: %w", table, err))
 			continue
 		}
 		tags := map[string]string{"table": table}
@@ -95,12 +145,17 @@ func reportPartsByTable(ctx context.Context) {
 }
 
 func reportMaxPartsPerPartition(ctx context.Context) {
-	rows, err := chdb.Conn.Query(
-		ctx,
-		"SELECT table, max(parts) FROM (SELECT table, partition, count() AS parts FROM system.parts WHERE database = currentDatabase() AND active GROUP BY table, partition) GROUP BY table",
-	)
+	var rows driver.Rows
+	err := withRetry(func() error {
+		var e error
+		rows, e = chdb.Conn.Query(
+			ctx,
+			"SELECT table, max(parts) FROM (SELECT table, partition, count() AS parts FROM system.parts WHERE database = currentDatabase() AND active GROUP BY table, partition) GROUP BY table",
+		)
+		return e
+	})
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("monitoring: system.parts per-partition query failed: %w", err))
+		captureMonitoringErr(fmt.Errorf("monitoring: system.parts per-partition query failed: %w", err))
 		return
 	}
 	defer rows.Close()
@@ -109,24 +164,26 @@ func reportMaxPartsPerPartition(ctx context.Context) {
 		var table string
 		var maxParts uint64
 		if err := rows.Scan(&table, &maxParts); err != nil {
-			traceway.CaptureException(fmt.Errorf("monitoring: system.parts per-partition scan failed: %w", err))
+			captureMonitoringErr(fmt.Errorf("monitoring: system.parts per-partition scan failed: %w", err))
 			return
 		}
 		traceway.CaptureMetricWithTags("traceway.ch.parts.max_per_partition", float64(maxParts), map[string]string{"table": table})
 	}
 	if err := rows.Err(); err != nil {
-		traceway.CaptureException(fmt.Errorf("monitoring: system.parts per-partition rows failed: %w", err))
+		captureMonitoringErr(fmt.Errorf("monitoring: system.parts per-partition rows failed: %w", err))
 	}
 }
 
 func reportMergesRunning(ctx context.Context) {
 	var merges uint64
-	err := chdb.Conn.QueryRow(
-		ctx,
-		"SELECT coalesce(count(), 0) FROM system.merges WHERE database = currentDatabase()",
-	).Scan(&merges)
+	err := withRetry(func() error {
+		return chdb.Conn.QueryRow(
+			ctx,
+			"SELECT coalesce(count(), 0) FROM system.merges WHERE database = currentDatabase()",
+		).Scan(&merges)
+	})
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("monitoring: system.merges query failed: %w", err))
+		captureMonitoringErr(fmt.Errorf("monitoring: system.merges query failed: %w", err))
 		return
 	}
 	traceway.CaptureMetric("traceway.ch.merges.running", float64(merges))
@@ -135,22 +192,22 @@ func reportMergesRunning(ctx context.Context) {
 func reportEventDeltas(ctx context.Context, b *chBaselines) {
 	curInserted, err := scanEventValue(ctx, "InsertedRows")
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("monitoring: system.events InsertedRows failed: %w", err))
+		captureMonitoringErr(fmt.Errorf("monitoring: system.events InsertedRows failed: %w", err))
 		return
 	}
 	curFailed, err := scanEventValue(ctx, "FailedInsertQuery")
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("monitoring: system.events FailedInsertQuery failed: %w", err))
+		captureMonitoringErr(fmt.Errorf("monitoring: system.events FailedInsertQuery failed: %w", err))
 		return
 	}
 	curDelayed, err := scanEventValue(ctx, "DelayedInserts")
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("monitoring: system.events DelayedInserts failed: %w", err))
+		captureMonitoringErr(fmt.Errorf("monitoring: system.events DelayedInserts failed: %w", err))
 		return
 	}
 	curRejected, err := scanEventValue(ctx, "RejectedInserts")
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("monitoring: system.events RejectedInserts failed: %w", err))
+		captureMonitoringErr(fmt.Errorf("monitoring: system.events RejectedInserts failed: %w", err))
 		return
 	}
 
@@ -170,18 +227,25 @@ func reportEventDeltas(ctx context.Context, b *chBaselines) {
 
 func scanEventValue(ctx context.Context, event string) (uint64, error) {
 	var value uint64
-	err := chdb.Conn.QueryRow(
-		ctx,
-		"SELECT coalesce(sum(value), 0) FROM system.events WHERE event = ?",
-		event,
-	).Scan(&value)
+	err := withRetry(func() error {
+		return chdb.Conn.QueryRow(
+			ctx,
+			"SELECT coalesce(sum(value), 0) FROM system.events WHERE event = ?",
+			event,
+		).Scan(&value)
+	})
 	return value, err
 }
 
 func reportDiskUsage(ctx context.Context) {
-	rows, err := chdb.Conn.Query(ctx, "SELECT name, free_space, total_space FROM system.disks")
+	var rows driver.Rows
+	err := withRetry(func() error {
+		var e error
+		rows, e = chdb.Conn.Query(ctx, "SELECT name, free_space, total_space FROM system.disks")
+		return e
+	})
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("monitoring: system.disks query failed: %w", err))
+		captureMonitoringErr(fmt.Errorf("monitoring: system.disks query failed: %w", err))
 		return
 	}
 	defer rows.Close()
@@ -190,7 +254,7 @@ func reportDiskUsage(ctx context.Context) {
 		var name string
 		var free, total uint64
 		if err := rows.Scan(&name, &free, &total); err != nil {
-			traceway.CaptureException(fmt.Errorf("monitoring: system.disks scan failed: %w", err))
+			captureMonitoringErr(fmt.Errorf("monitoring: system.disks scan failed: %w", err))
 			return
 		}
 		if total == 0 {
@@ -202,29 +266,33 @@ func reportDiskUsage(ctx context.Context) {
 		traceway.CaptureMetricWithTags("traceway.ch.disk.used_pcnt", float64(total-free)/float64(total)*100, tags)
 	}
 	if err := rows.Err(); err != nil {
-		traceway.CaptureException(fmt.Errorf("monitoring: system.disks rows failed: %w", err))
+		captureMonitoringErr(fmt.Errorf("monitoring: system.disks rows failed: %w", err))
 	}
 }
 
 func reportServerMemory(ctx context.Context) {
 	var tracking int64
-	err := chdb.Conn.QueryRow(
-		ctx,
-		"SELECT coalesce(sum(value), 0) FROM system.metrics WHERE metric = 'MemoryTracking'",
-	).Scan(&tracking)
+	err := withRetry(func() error {
+		return chdb.Conn.QueryRow(
+			ctx,
+			"SELECT coalesce(sum(value), 0) FROM system.metrics WHERE metric = 'MemoryTracking'",
+		).Scan(&tracking)
+	})
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("monitoring: system.metrics MemoryTracking failed: %w", err))
+		captureMonitoringErr(fmt.Errorf("monitoring: system.metrics MemoryTracking failed: %w", err))
 	} else {
 		traceway.CaptureMetric("traceway.ch.memory.tracking_bytes", float64(tracking))
 	}
 
 	var available float64
-	err = chdb.Conn.QueryRow(
-		ctx,
-		"SELECT coalesce(sum(value), 0) FROM system.asynchronous_metrics WHERE metric = 'OSMemoryAvailable'",
-	).Scan(&available)
+	err = withRetry(func() error {
+		return chdb.Conn.QueryRow(
+			ctx,
+			"SELECT coalesce(sum(value), 0) FROM system.asynchronous_metrics WHERE metric = 'OSMemoryAvailable'",
+		).Scan(&available)
+	})
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("monitoring: system.asynchronous_metrics OSMemoryAvailable failed: %w", err))
+		captureMonitoringErr(fmt.Errorf("monitoring: system.asynchronous_metrics OSMemoryAvailable failed: %w", err))
 		return
 	}
 	if available > 0 {

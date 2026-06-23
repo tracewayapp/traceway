@@ -7,6 +7,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/android"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/dart"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/ios"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap"
@@ -30,8 +31,34 @@ var errNoIOSSymbols = errors.New("no ios symbols found")
 type symbolicatorProcessor struct {
 	cfg    *Config
 	store  *artifactStore
-	cache  *twcache.Cache
+	cache  *twcache.Cache[cacheEntry]
 	logger *zap.Logger
+}
+
+func (p *symbolicatorProcessor) getBytes(ctx context.Context, key string, load twcache.LoadFunc[cacheEntry]) ([]byte, func(), error) {
+	data, done, err := p.cache.Get(ctx, key, load)
+	if err != nil {
+		return nil, done, err
+	}
+	b, ok := data.([]byte)
+	if !ok {
+		done()
+		return nil, func() {}, fmt.Errorf("cache entry for %q is not bytes", key)
+	}
+	return b, done, nil
+}
+
+func (p *symbolicatorProcessor) getMapping(ctx context.Context, key string, load twcache.LoadFunc[cacheEntry]) (*android.Mapping, func(), error) {
+	data, done, err := p.cache.Get(ctx, key, load)
+	if err != nil {
+		return nil, done, err
+	}
+	m, ok := data.(*android.Mapping)
+	if !ok || m == nil {
+		done()
+		return nil, func() {}, fmt.Errorf("cache entry for %q is not a mapping", key)
+	}
+	return m, done, nil
 }
 
 type stackFrame struct {
@@ -66,6 +93,11 @@ func (p *symbolicatorProcessor) processRecord(ctx context.Context, attrs, resour
 	}
 	if ios.IsIOSLanguage(lang) {
 		p.symbolicateIOSTrace(ctx, attrs, resource, originalStack)
+		return
+	}
+
+	if isAndroidLang(lang) {
+		p.symbolicateAndroidTrace(ctx, attrs, resource, originalStack)
 		return
 	}
 
@@ -198,7 +230,7 @@ func (p *symbolicatorProcessor) symbolicateDartTrace(ctx context.Context, attrs 
 		return
 	}
 
-	data, done, err := p.cache.Get(ctx, key, func(ctx context.Context) ([]byte, error) {
+	data, done, err := p.getBytes(ctx, key, func(ctx context.Context) (cacheEntry, error) {
 		fetchCtx, cancel := context.WithTimeout(ctx, p.cfg.Timeout)
 		defer cancel()
 		elf, err := p.store.getDartSymbols(fetchCtx, trace.BuildID, arch)
@@ -295,7 +327,7 @@ func (p *symbolicatorProcessor) symbolicateIOSTrace(ctx context.Context, attrs, 
 			}
 			return nil
 		}
-		data, done, err := p.cache.Get(ctx, key, func(ctx context.Context) ([]byte, error) {
+		data, done, err := p.getBytes(ctx, key, func(ctx context.Context) (cacheEntry, error) {
 			fetchCtx, cancel := context.WithTimeout(ctx, p.cfg.Timeout)
 			defer cancel()
 			dsym, err := p.store.getIOSDsym(fetchCtx, debugID)
@@ -344,6 +376,96 @@ func (p *symbolicatorProcessor) renderIOSTrace(attrs pcommon.Map, trace ios.Stac
 		}
 		return ios.LookupFlat(data, off)
 	})
+}
+
+func isAndroidLang(lang string) bool {
+	switch strings.ToLower(strings.TrimSpace(lang)) {
+	case "android", "java", "kotlin":
+		return true
+	}
+	return false
+}
+
+func (p *symbolicatorProcessor) symbolicateAndroidTrace(ctx context.Context, attrs, resource pcommon.Map, rawStack string) {
+	attrs.PutStr(p.cfg.SymbolicatorParsingMethodAttributeKey, parsingMethodParsed)
+	if p.cfg.PreserveStackTrace {
+		attrs.PutStr(p.cfg.OriginalStackTraceAttributeKey, rawStack)
+	}
+
+	proguardUUID := strAttr(resource, p.cfg.ProguardUUIDAttributeKey)
+	if proguardUUID == "" {
+		proguardUUID = strAttr(attrs, p.cfg.ProguardUUIDAttributeKey)
+	}
+
+	text := rawStack
+	resolved := false
+	var firstErr error
+
+	var dones []func()
+	defer func() {
+		for _, d := range dones {
+			d()
+		}
+	}()
+
+	if proguardUUID != "" && android.IsR8Trace(text) {
+		if p.cache.Dir() != "" {
+			key := flatCacheKey(p.store.androidMappingKey(proguardUUID))
+			if p.cache.IsNegative(key) {
+				firstErr = fmt.Errorf("no android mapping for %s", proguardUUID)
+			} else {
+				data, done, err := p.getBytes(ctx, key, func(ctx context.Context) (cacheEntry, error) {
+					fetchCtx, cancel := context.WithTimeout(ctx, p.cfg.Timeout)
+					defer cancel()
+					raw, err := p.store.getAndroidMapping(fetchCtx, proguardUUID)
+					if err != nil {
+						return nil, err
+					}
+					return android.BuildR8Flat(string(raw)), nil
+				})
+				if err != nil {
+					firstErr = err
+				} else {
+					dones = append(dones, done)
+					text = android.RetraceFlat(data, text)
+					resolved = true
+				}
+			}
+		} else {
+			key := p.store.androidMappingKey(proguardUUID)
+			if p.cache.IsNegative(key) {
+				firstErr = fmt.Errorf("no android mapping for %s", proguardUUID)
+			} else {
+				m, done, err := p.getMapping(ctx, key, func(ctx context.Context) (cacheEntry, error) {
+					fetchCtx, cancel := context.WithTimeout(ctx, p.cfg.Timeout)
+					defer cancel()
+					raw, err := p.store.getAndroidMapping(fetchCtx, proguardUUID)
+					if err != nil {
+						return nil, err
+					}
+					return android.ParseMapping(string(raw)), nil
+				})
+				if err != nil {
+					firstErr = err
+				} else if m != nil {
+					dones = append(dones, done)
+					text = m.Retrace(text)
+					resolved = true
+				}
+			}
+		}
+	}
+
+	attrs.PutStr(p.cfg.StackTraceAttributeKey, text)
+	if resolved {
+		attrs.PutBool(p.cfg.SymbolicatorFailureAttributeKey, false)
+	} else {
+		attrs.PutBool(p.cfg.SymbolicatorFailureAttributeKey, true)
+		if firstErr != nil {
+			attrs.PutStr(p.cfg.SymbolicatorErrorAttributeKey, firstErr.Error())
+		}
+	}
+	p.putProcessorMeta(attrs)
 }
 
 func (p *symbolicatorProcessor) languageAllowed(attrs, resource pcommon.Map) bool {
@@ -420,7 +542,7 @@ func (p *symbolicatorProcessor) symbolicateFrame(ctx context.Context, f stackFra
 	if p.cache.IsNegative(key) {
 		return frameResult{err: fmt.Errorf("no source map for %s", f.url)}
 	}
-	data, done, err := p.cache.Get(ctx, key, func(ctx context.Context) ([]byte, error) {
+	data, done, err := p.getBytes(ctx, key, func(ctx context.Context) (cacheEntry, error) {
 		fetchCtx, cancel := context.WithTimeout(ctx, p.cfg.Timeout)
 		defer cancel()
 		source, sourceMap, err := p.store.getSourceAndMap(fetchCtx, f.url, buildUUID)

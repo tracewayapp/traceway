@@ -64,15 +64,15 @@ The [CLI](./cli) is designed for agents first: JSON when piped, tables on a TTY,
 
 The skills are plain Markdown in [`skills/`](./skills), in the same MIT-licensed repo. No marketplace, no lock-in. [Learn more →](https://tracewayapp.com/product/agent-skills)
 
-## JavaScript Symbolication
+## Symbolication
 
-`app.min.js:1:63` tells you nothing. Traceway resolves minified production errors back to the original file, line, and function the moment they arrive.
+`app.min.js:1:63` tells you nothing. Traceway resolves minified production errors back to the original file, line, and function the moment they arrive, and the same engine does it for stripped native crashes: iOS and Swift against the build's dSYM, Android against its R8 `mapping.txt`, Dart and Flutter against their obfuscation map.
 
-The symbolicator is pure Go and built to keep up with ingest. Each source map compiles once into a binary `.tw` file and is memory-mapped from disk: under a microsecond to open a compiled map, p99 lookup under a millisecond on a cold cache, zero maps re-parsed after a restart. The corpus is a disk budget, not a RAM budget.
+The symbolicator is pure Go and built to keep up with ingest. Every debug artifact (a source map, a dSYM, an R8 mapping) compiles once into a binary `.tw` file and is memory-mapped from disk: under a microsecond to open a compiled map, p99 lookup under a millisecond on a cold cache, zero maps re-parsed after a restart. The corpus is a disk budget, not a RAM budget.
 
 The same engine ships as a standalone [OpenTelemetry Collector processor](./backend/app/symbolicator/otelprocessor), drop-in compatible with Honeycomb's `source_map_symbolicator`: same component type, same attribute contract, same config keys. Use it in your own pipeline, with or without Traceway behind it.
 
-Upload maps from CI with `npx traceway-sourcemaps --directory ./dist`. Benchmarks live in [`benchmarks/`](./benchmarks); run them on your fork. [Learn more →](https://tracewayapp.com/product/javascript-symbolication)
+Upload source maps from CI with `npx traceway-sourcemaps --directory ./dist`; dSYMs and R8 mappings post to the same endpoint. Benchmarks live in [`benchmarks/`](./benchmarks); run them on your fork. [Learn more →](https://tracewayapp.com/product/symbolication)
 
 ## Why Traceway
 

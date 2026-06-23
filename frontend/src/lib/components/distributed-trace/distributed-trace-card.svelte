@@ -8,17 +8,31 @@
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { formatDuration, getStatusColor, formatDateTime } from '$lib/utils/formatters';
 	import { getTimezone } from '$lib/state/timezone.svelte';
-	import { projectsState } from '$lib/state/projects.svelte';
 	import { ArrowRight, GitBranch } from 'lucide-svelte';
 	import type { DistributedTraceResponse, DistributedTraceNode } from '$lib/types/distributed-trace';
 
 	interface Props {
 		distributedTraceId: string;
 		currentExceptionHash?: string;
+		currentNodeId?: string;
 		recordedAt?: string;
 	}
 
-	let { distributedTraceId, currentExceptionHash, recordedAt }: Props = $props();
+	let { distributedTraceId, currentExceptionHash, currentNodeId, recordedAt }: Props = $props();
+
+	function isCurrentNode(node: DistributedTraceNode): boolean {
+		if (currentExceptionHash && node.traceType === 'exception') {
+			return node.exception?.exceptionHash === currentExceptionHash;
+		}
+		if (currentNodeId) {
+			return (
+				node.endpoint?.id === currentNodeId ||
+				node.task?.id === currentNodeId ||
+				node.aiTrace?.id === currentNodeId
+			);
+		}
+		return false;
+	}
 
 	const timezone = $derived(getTimezone());
 
@@ -42,15 +56,21 @@
 	}
 
 	function navigateToNode(node: DistributedTraceNode) {
-		projectsState.selectProject(node.projectId);
+		const project = `&projectId=${encodeURIComponent(node.projectId)}`;
 		if (node.traceType === 'task' && node.task) {
-			goto(`/tasks/${encodeURIComponent(node.task.taskName)}/${node.task.id}?preset=24h`);
+			goto(
+				`/tasks/${encodeURIComponent(node.task.taskName)}/${node.task.id}?preset=24h&t=${encodeURIComponent(node.task.recordedAt)}${project}`
+			);
 		} else if (node.traceType === 'ai_trace' && node.aiTrace) {
-			goto(`/ai-traces/${encodeURIComponent(node.aiTrace.traceName)}/${node.aiTrace.id}?preset=24h`);
+			goto(
+				`/ai-traces/${encodeURIComponent(node.aiTrace.traceName)}/${node.aiTrace.id}?preset=24h&t=${encodeURIComponent(node.aiTrace.recordedAt)}${project}`
+			);
 		} else if (node.traceType === 'exception' && node.exception) {
-			goto(`/issues/${node.exception.exceptionHash}?preset=24h`);
+			goto(`/issues/${node.exception.exceptionHash}?preset=24h${project}`);
 		} else if (node.endpoint) {
-			goto(`/endpoints/${encodeURIComponent(node.endpoint.endpoint)}/${node.endpoint.id}?preset=24h`);
+			goto(
+				`/endpoints/${encodeURIComponent(node.endpoint.endpoint)}/${node.endpoint.id}?preset=24h&t=${encodeURIComponent(node.endpoint.recordedAt)}${project}`
+			);
 		}
 	}
 
@@ -125,7 +145,7 @@
 								<Badge variant="destructive" class="shrink-0">Exception</Badge>
 							{/if}
 						</div>
-						{#if currentExceptionHash && node.traceType === 'exception' && node.exception?.exceptionHash === currentExceptionHash}
+						{#if isCurrentNode(node)}
 						<Badge class="bg-blue-500 hover:bg-blue-500 text-white">You're here</Badge>
 					{:else}
 						<Button variant="ghost" size="sm" onclick={() => navigateToNode(node)}>

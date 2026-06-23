@@ -1,0 +1,8 @@
+com.example.androdemo.PaymentDeclinedException: card declined for $30.59
+	at com.example.androdemo.Checkout.chargeCard(Checkout.kt:5)
+	at com.example.androdemo.Checkout.applyTax(Checkout.kt:10)
+	at com.example.androdemo.Checkout.checkout(Checkout.kt:18)
+	at com.example.androdemo.MainActivity.crashKotlin(MainActivity.kt:33)
+	at com.example.androdemo.MainActivity.onCreate$lambda$4$lambda$3(MainActivity.kt:22)
+	at android.view.View.performClick(View.java:7659)
+	at android.app.Activity.dispatchTouchEvent(Activity.java:4204)

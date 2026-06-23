@@ -1,61 +1,56 @@
 # Demo Shop
 
-A tiny, intentionally-buggy shop app for demoing Traceway. React (Vite) frontend + Go/Gin
-backend with in-memory SQLite. No auth, single shared cart. Three pages: products, cart, checkout.
+A tiny, intentionally-buggy shop app. React (Vite) frontend + Go/Gin backend with in-memory
+SQLite. No auth, single shared cart. Three pages: products, cart, checkout.
 
 The app is built to **look like it works** but be mostly **slow**, with a few actions that throw
 exceptions. Every intentional bug is cataloged in [`BUGS.md`](./BUGS.md).
 
+> **Traceway instrumentation has been removed** from both halves on purpose — it gets re-added
+> live during the demo. The bugs in [`BUGS.md`](./BUGS.md) are all still here; right now panics
+> are recovered by Gin's own middleware (still 500s) and frontend errors surface in the console
+> instead of being reported.
+
 ```
 shop/
+├── build-and-run.sh   build the frontend, embed it in the backend, compile + run
+├── DEMO.md            live-demo runbook (bugs first, then add Traceway + symbolication)
 ├── BUGS.md            the demo script (what's wrong and where)
-├── backend/           Go / Gin / SQLite, serves :8090, reports as "shop-demo"
-└── frontend/          React + Vite, serves :5175, proxies /api -> :8090
+├── backend/           Go / Gin / SQLite, serves the API + the built frontend on :8090
+└── frontend/          React + Vite source
 ```
 
 ## Prerequisites
 
-- A Traceway backend running locally on **:8082** (the `/api/report` ingestion endpoint).
-- A Traceway **project token** — create a project in the dashboard and copy its token.
 - Go 1.25+ with **CGO enabled** (`mattn/go-sqlite3` needs a C compiler; clang ships with macOS).
 - Node 18+ and npm.
 
-The backend and frontend share one connection string: `<token>@http://localhost:8082/api/report`.
-Use the **same token** on both so backend traces and frontend errors land in the same project.
-
-## Run the backend
+## Run
 
 ```bash
-cd backend
-go mod tidy                       # first time only
-TRACEWAY_ENDPOINT="<token>@http://localhost:8082/api/report" CGO_ENABLED=1 go run .
+./build-and-run.sh
 ```
 
-Serves on **http://localhost:8090**. Without `TRACEWAY_ENDPOINT` it falls back to a
-`default_token_change_me@...` placeholder and telemetry won't be accepted.
+The script `npm install`s and builds the frontend (with source maps), copies the built `dist/`
+into `backend/dist` (embedded into the Go binary at compile time via `//go:embed`), then builds
+and starts the backend. Everything is served from a single origin at **http://localhost:8090** —
+open it and click around. There is no separate frontend dev server and no CORS to configure.
 
-## Run the frontend
+For the live demo (show bugs first, then add Traceway and watch them get symbolicated on the
+dashboard), follow [`DEMO.md`](./DEMO.md).
+
+### Frontend dev server (optional)
+
+For hot-reload while editing the frontend, run Vite separately. It serves on **:5175** and
+proxies `/api/*` to the backend on `:8090`, so start the backend (via `./run.sh`) first.
 
 ```bash
 cd frontend
-npm install                       # first time only
-cp .env.example .env              # then set VITE_TW_CONNECTION to your token
+npm install
 npm run dev
 ```
 
-Serves on **http://localhost:5175**. The dev server proxies `/api/*` to the backend on `:8090`,
-so there is no CORS to configure. Open the URL and click around.
-
-`.env`:
-
-```
-VITE_TW_CONNECTION=<token>@http://localhost:8082/api/report
-VITE_API_BASE=/api
-```
-
-## Reproduce the telemetry
-
-With both halves running and Traceway up on :8082:
+## Reproduce the bugs
 
 ```bash
 # 1. Health
@@ -75,7 +70,7 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST localhost:8090/api/checkout \
   -H 'Content-Type: application/json' -d '{"name":"A","email":"a@b.c","card_last4":"4242"}'
 ```
 
-In the browser at http://localhost:5175:
+In the browser at http://localhost:8090:
 
 - **Products** load slowly (N+1). "Quick view" throws a frontend exception (#11). "Add to cart"
   can fail silently when the backend slow path 500s (#9).
@@ -83,13 +78,8 @@ In the browser at http://localhost:5175:
   by the error boundary (#10). "Place order" with an empty cart 500s (#6); with items it is slow
   (#7) and occasionally declined (#8, a 402).
 
-Then in the Traceway dashboard (:8082): find server **`shop-demo`** / version **`0.1.0`**.
-Transactions show slow `GET /api/products` with the N+1 DB-span fan-out; Exceptions show the
-nil-map panic, the index-out-of-range panic, the declined-card capture, and the three frontend
-errors. Cross-reference each against [`BUGS.md`](./BUGS.md).
-
 ## Notes
 
 - The in-memory SQLite DB is reseeded on every backend start, so the cart and orders reset on restart.
 - The slow/fast split is `rand.IntN(4) == 0` per request (see `backend/slow.go`) — about 1 in 4 fast.
-- Panics are recovered; the server stays up and returns 500 while still capturing the exception.
+- Panics are recovered, so the server stays up and returns 500.

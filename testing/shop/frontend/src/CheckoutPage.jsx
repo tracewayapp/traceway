@@ -1,6 +1,18 @@
 import React, { useState } from 'react'
-import { useTraceway, TracewayErrorBoundary } from '@tracewayapp/react'
 import { applyCoupon, checkout, formatPrice } from './api.js'
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { failed: false }
+  }
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children
+  }
+}
 
 function CouponBadge({ discount }) {
   return (
@@ -11,7 +23,6 @@ function CouponBadge({ discount }) {
 }
 
 export default function CheckoutPage({ onDone }) {
-  const { captureException } = useTraceway()
   const [code, setCode] = useState('')
   const [discount, setDiscount] = useState(undefined)
   const [couponError, setCouponError] = useState('')
@@ -26,7 +37,6 @@ export default function CheckoutPage({ onDone }) {
       const res = await applyCoupon(code)
       setDiscount({ percent: res.percent_off, cents: res.discount_cents })
     } catch (e) {
-      captureException(e)
       setCouponError(e.message)
       setDiscount(null)
     }
@@ -83,9 +93,9 @@ export default function CheckoutPage({ onDone }) {
         </div>
         {couponError && <div className="error-inline">{couponError}</div>}
         {discount !== undefined && (
-          <TracewayErrorBoundary fallback={<div className="error-inline">Could not display coupon.</div>}>
+          <ErrorBoundary fallback={<div className="error-inline">Could not display coupon.</div>}>
             <CouponBadge discount={discount} />
-          </TracewayErrorBoundary>
+          </ErrorBoundary>
         )}
       </section>
 

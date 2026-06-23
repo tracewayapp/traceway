@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from 'react'
-import { useTraceway } from '@tracewayapp/react'
 import { getProducts, addToCart, formatPrice } from './api.js'
 
 export default function ProductsPage({ onCartChanged }) {
-  const { captureException } = useTraceway()
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -41,8 +39,7 @@ export default function ProductsPage({ onCartChanged }) {
     try {
       const variant = p.variants.find((v) => v.default)
       setQuickView({ name: p.name, label: variant.label })
-    } catch (e) {
-      captureException(e)
+    } catch {
       setQuickView({ name: p.name, label: 'No variants available' })
     }
   }

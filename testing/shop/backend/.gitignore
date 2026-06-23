@@ -1,2 +1,4 @@
 /shop
 /shop-backend
+/dist/*
+!/dist/.gitkeep

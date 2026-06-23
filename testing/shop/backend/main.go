@@ -3,9 +3,6 @@ package main
 import (
 	"database/sql"
 	"net/http"
-	"os"
-
-	tracewaygin "go.tracewayapp.com/tracewaygin"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
@@ -16,21 +13,8 @@ var db *sql.DB
 func main() {
 	initDB()
 
-	endpoint := os.Getenv("TRACEWAY_ENDPOINT")
-	if endpoint == "" {
-		endpoint = "default_token_change_me@http://localhost:8082/api/report"
-	}
-
 	router := gin.Default()
-
 	router.Use(corsMiddleware())
-	router.Use(tracewaygin.New(
-		endpoint,
-		tracewaygin.WithDebug(true),
-		tracewaygin.WithServerName("shop-demo"),
-		tracewaygin.WithVersion("0.1.0"),
-		tracewaygin.WithOnErrorRecording(tracewaygin.RecordingUrl|tracewaygin.RecordingQuery|tracewaygin.RecordingHeader|tracewaygin.RecordingBody),
-	))
 
 	router.GET("/api/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -45,6 +29,8 @@ func main() {
 
 	router.POST("/api/coupon", applyCoupon)
 	router.POST("/api/checkout", checkout)
+
+	registerFrontend(router)
 
 	router.Run(":8090")
 }

@@ -15,6 +15,9 @@ import (
 type metricPointRepository struct{}
 
 func (r *metricPointRepository) InsertAsync(ctx context.Context, points []models.MetricPoint) error {
+	if len(points) == 0 {
+		return nil
+	}
 	return chdb.SendBatch("INSERT INTO metric_points (project_id, name, value, tags, recorded_at)", func(batch driver.Batch) error {
 		for _, p := range points {
 			if err := batch.Append(p.ProjectId, p.Name, p.Value, p.Tags, p.RecordedAt); err != nil {

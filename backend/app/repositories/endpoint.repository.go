@@ -18,6 +18,9 @@ import (
 type endpointRepository struct{}
 
 func (e *endpointRepository) InsertAsync(ctx context.Context, lines []models.Endpoint) error {
+	if len(lines) == 0 {
+		return nil
+	}
 	return chdb.SendBatch("INSERT INTO endpoints (id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, is_stream, is_root)", func(batch driver.Batch) error {
 		for _, t := range lines {
 			attributesJSON := "{}"

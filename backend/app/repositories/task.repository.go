@@ -18,6 +18,9 @@ import (
 type taskRepository struct{}
 
 func (e *taskRepository) InsertAsync(ctx context.Context, lines []models.Task) error {
+	if len(lines) == 0 {
+		return nil
+	}
 	return chdb.SendBatch("INSERT INTO tasks (id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, is_root)", func(batch driver.Batch) error {
 		for _, t := range lines {
 			attributesJSON := "{}"

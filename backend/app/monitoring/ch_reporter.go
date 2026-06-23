@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"strings"
 	"sync"
@@ -49,31 +48,21 @@ func transientCHError(err error) bool {
 	if err == nil {
 		return false
 	}
-	if errors.Is(err, io.EOF) ||
-		errors.Is(err, net.ErrClosed) ||
-		errors.Is(err, context.DeadlineExceeded) ||
-		errors.Is(err, context.Canceled) {
+	if chdb.IsConnError(err) {
+		return true
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 		return true
 	}
 	var netErr net.Error
 	if errors.As(err, &netErr) && netErr.Timeout() {
 		return true
 	}
-	msg := strings.ToLower(err.Error())
-	for _, s := range []string{"eof", "connection reset", "broken pipe", "use of closed", "connection refused", "reset by peer", "i/o timeout", "no route to host"} {
-		if strings.Contains(msg, s) {
-			return true
-		}
-	}
-	return false
+	return strings.Contains(strings.ToLower(err.Error()), "i/o timeout")
 }
 
 func withRetry(fn func() error) error {
-	err := fn()
-	if err != nil && transientCHError(err) {
-		return fn()
-	}
-	return err
+	return chdb.RetryOnConn(2, transientCHError, fn)
 }
 
 func captureMonitoringErr(err error) {

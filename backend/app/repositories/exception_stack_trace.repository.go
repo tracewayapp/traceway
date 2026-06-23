@@ -19,6 +19,9 @@ import (
 type exceptionStackTraceRepository struct{}
 
 func (e *exceptionStackTraceRepository) InsertAsync(ctx context.Context, lines []models.ExceptionStackTrace) error {
+	if len(lines) == 0 {
+		return nil
+	}
 	return chdb.SendBatch("INSERT INTO exception_stack_traces (id, project_id, trace_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, distributed_trace_id, session_id)", func(batch driver.Batch) error {
 		for _, est := range lines {
 			attributesJSON := "{}"

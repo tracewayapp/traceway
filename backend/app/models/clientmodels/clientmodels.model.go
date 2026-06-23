@@ -184,10 +184,12 @@ type ClientSessionRecording struct {
 	SessionId    string          `json:"sessionId,omitempty"`
 	SegmentIndex int32           `json:"segmentIndex,omitempty"`
 	Events       json.RawMessage `json:"events"`
-	// Logs and Actions are opaque to the backend — they ride into S3 alongside
-	// Events without ever being inspected. App console logs from session
-	// recordings are intentionally NOT inserted into the OTel logs ClickHouse
-	// table; they live exclusively inside the S3 recording file.
+	// Logs and Actions ride into S3 alongside Events. Actions are opaque to the
+	// backend; Logs are inspected only to source-map symbolicate the stack
+	// trace inside console.error lines (see symbolicateRecordingErrorLogs) for
+	// JS projects, then stored. App console logs from session recordings are
+	// intentionally NOT inserted into the OTel logs ClickHouse table; they live
+	// exclusively inside the S3 recording file.
 	Logs      json.RawMessage `json:"logs,omitempty"`
 	Actions   json.RawMessage `json:"actions,omitempty"`
 	StartedAt *time.Time      `json:"startedAt,omitempty"`

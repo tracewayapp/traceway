@@ -19,6 +19,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/recordings"
 	"github.com/tracewayapp/traceway/backend/app/repositories"
 	"github.com/tracewayapp/traceway/backend/app/services"
+	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/jsstack"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -35,6 +36,46 @@ func isEmptyRaw(r json.RawMessage) bool {
 	return bytes.Equal(trimmed, []byte("null")) ||
 		bytes.Equal(trimmed, []byte("[]")) ||
 		bytes.Equal(trimmed, []byte("{}"))
+}
+
+func symbolicateRecordingErrorLogs(c *gin.Context, projectId uuid.UUID, raw json.RawMessage) json.RawMessage {
+	var logs []map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &logs); err != nil {
+		return raw
+	}
+	changed := false
+	for _, entry := range logs {
+		var level string
+		if err := json.Unmarshal(entry["level"], &level); err != nil || !strings.EqualFold(level, "error") {
+			continue
+		}
+		var message string
+		if err := json.Unmarshal(entry["message"], &message); err != nil {
+			continue
+		}
+		canonical, ok := jsstack.Canonicalize(message)
+		if !ok {
+			continue
+		}
+		resolved := services.ResolveStackTrace(c, projectId, canonical, nil)
+		if resolved == canonical {
+			continue
+		}
+		encoded, err := json.Marshal(resolved)
+		if err != nil {
+			continue
+		}
+		entry["message"] = encoded
+		changed = true
+	}
+	if !changed {
+		return raw
+	}
+	out, err := json.Marshal(logs)
+	if err != nil {
+		return raw
+	}
+	return out
 }
 
 type ReportRequest struct {
@@ -193,6 +234,9 @@ func (e clientController) Report(c *gin.Context) {
 			}
 			if isEmptyRaw(sr.Events) && isEmptyRaw(sr.Logs) && isEmptyRaw(sr.Actions) {
 				continue
+			}
+			if resolveJs && !isEmptyRaw(sr.Logs) {
+				sr.Logs = symbolicateRecordingErrorLogs(c, projectId, sr.Logs)
 			}
 			body, err := json.Marshal(sr)
 			if err != nil {

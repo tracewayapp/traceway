@@ -67,6 +67,9 @@
 	function togglePlay() {
 		if (!videoEl) return;
 		if (videoEl.paused) {
+			if (videoEl.ended || videoEl.currentTime >= videoEl.duration - 0.1) {
+				videoEl.currentTime = 0;
+			}
 			videoEl.play();
 		} else {
 			videoEl.pause();
@@ -126,6 +129,7 @@
 		};
 		const onLoadedMetadata = () => {
 			duration = videoEl.duration;
+			videoEl.currentTime = videoEl.duration;
 		};
 		const onPlay = () => {
 			playing = true;
@@ -184,6 +188,10 @@
 			}
 		});
 
+		const firstTs = (events[0] as eventWithTime).timestamp;
+		const lastTs = (events[events.length - 1] as eventWithTime).timestamp;
+		player.goto(lastTs - firstTs, true);
+
 		resizeObserver = new ResizeObserver((entries) => {
 			for (const entry of entries) {
 				const newWidth = Math.round(entry.contentRect.width * 0.75);
@@ -230,7 +238,6 @@
 					bind:this={videoEl}
 					src={flutterVideoSrc}
 					playsinline
-					loop
 					onclick={togglePlay}
 				>
 					<track kind="captions" />
@@ -371,6 +378,8 @@
 		height: 6px !important;
 		background: var(--border) !important;
 		border-radius: 3px !important;
+		border-top: none !important;
+		border-bottom: none !important;
 	}
 
 	/* Progress fill */
@@ -379,13 +388,18 @@
 		border-radius: 3px !important;
 	}
 
+	/* Inactive-period markers */
+	.player-wrapper :global(.rr-progress > div:not(.rr-progress__step):not(.rr-progress__handler)) {
+		display: none !important;
+	}
+
 	/* Progress handle */
 	.player-wrapper :global(.rr-progress__handler) {
 		width: 14px !important;
 		height: 14px !important;
 		background: var(--chart-1) !important;
 		border-radius: 50% !important;
-		top: -0px !important;
+		top: 50% !important;
 	}
 
 	/* Buttons */

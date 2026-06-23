@@ -51,7 +51,7 @@ func checkout(c *gin.Context) {
 
 	if rand.IntN(6) == 0 {
 		traceway.CaptureExceptionWithContext(ctx, traceway.NewStackTraceErrorf("payment declined for card ****%s", req.CardLast4))
-		c.JSON(http.StatusPaymentRequired, gin.H{"error": "payment declined, please try another card"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "payment declined, please try another card"})
 		return
 	}
 

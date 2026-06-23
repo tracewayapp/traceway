@@ -31,7 +31,7 @@ func applyCoupon(c *gin.Context) {
 	if err := row.Scan(&percentOff, &active); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			c.Error(traceway.NewStackTraceErrorf("unknown coupon code: %s", req.Code))
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid coupon code"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid coupon code"})
 			return
 		}
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("lookup coupon: %w", err))

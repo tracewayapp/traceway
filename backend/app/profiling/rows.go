@@ -26,41 +26,55 @@ func BuildRows(projectId uuid.UUID, decoded []Decoded) ([]models.ProfileStack, [
 			})
 		}
 
-		byType := make(map[string][]Sample)
-		for _, s := range d.Samples {
-			byType[s.Type] = append(byType[s.Type], s)
+		traceId, spanId := "", ""
+		if d.Meta.TraceId != nil {
+			traceId = *d.Meta.TraceId
+		}
+		if d.Meta.SpanId != nil {
+			spanId = *d.Meta.SpanId
 		}
 
-		for typ, group := range byType {
-			profileId := uuid.New()
-			var total int64
-			for _, s := range group {
-				total += s.Value
-				samples = append(samples, models.ProfileSample{
+		profileByType := map[string]*models.Profile{}
+		var typeOrder []string
+		for _, s := range d.Samples {
+			p := profileByType[s.Type]
+			if p == nil {
+				p = &models.Profile{
+					Id:          uuid.New(),
 					ProjectId:   projectId,
-					ProfileId:   profileId,
+					RecordedAt:  d.Meta.Start,
+					Duration:    d.Meta.End.Sub(d.Meta.Start),
 					ServiceName: d.Meta.ServiceName,
-					Type:        typ,
-					Start:       d.Meta.Start,
-					End:         d.Meta.End,
-					StackHash:   s.StackHash,
-					Value:       s.Value,
+					ProfileType: s.Type,
 					ServerName:  d.Meta.ServerName,
 					AppVersion:  d.Meta.AppVersion,
-				})
+					Attributes:  d.Meta.Attributes,
+					TraceId:     traceId,
+					SpanId:      spanId,
+				}
+				profileByType[s.Type] = p
+				typeOrder = append(typeOrder, s.Type)
 			}
-			profiles = append(profiles, models.Profile{
-				Id:          profileId,
+			p.SampleCount++
+			p.TotalValue += s.Value
+			samples = append(samples, models.ProfileSample{
 				ProjectId:   projectId,
-				RecordedAt:  d.Meta.Start,
-				Duration:    d.Meta.End.Sub(d.Meta.Start),
+				ProfileId:   p.Id,
 				ServiceName: d.Meta.ServiceName,
-				ProfileType: typ,
-				SampleCount: uint64(len(group)),
-				TotalValue:  total,
+				Type:        s.Type,
+				Start:       d.Meta.Start,
+				End:         d.Meta.End,
+				StackHash:   s.StackHash,
+				Value:       s.Value,
 				ServerName:  d.Meta.ServerName,
 				AppVersion:  d.Meta.AppVersion,
+				TraceId:     traceId,
+				SpanId:      spanId,
 			})
+		}
+
+		for _, t := range typeOrder {
+			profiles = append(profiles, *profileByType[t])
 		}
 	}
 

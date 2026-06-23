@@ -68,15 +68,7 @@ func (e profileIngestController) Ingest(c *gin.Context) {
 	}
 
 	convertStart := time.Now()
-	var stacks []models.ProfileStack
-	var samples []models.ProfileSample
-	var profiles []models.Profile
-	for _, d := range decoded {
-		s, sm, p := profiling.BuildRows(d, projectId)
-		stacks = append(stacks, s...)
-		samples = append(samples, sm...)
-		profiles = append(profiles, p...)
-	}
+	stacks, samples, profiles := profiling.BuildRows(projectId, decoded)
 	convertMs := float64(time.Since(convertStart).Microseconds()) / 1000.0
 
 	insertStart := time.Now()

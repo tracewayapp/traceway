@@ -1,26 +1,10 @@
 package main
 
-import (
-	"database/sql"
-	"time"
-
-	sqlite3 "github.com/mattn/go-sqlite3"
-)
-
-func init() {
-	sql.Register("sqlite3_shop", &sqlite3.SQLiteDriver{
-		ConnectHook: func(conn *sqlite3.SQLiteConn) error {
-			return conn.RegisterFunc("sleep_ms", func(ms int64) int64 {
-				time.Sleep(time.Duration(ms) * time.Millisecond)
-				return ms
-			}, false)
-		},
-	})
-}
+import "database/sql"
 
 func initDB() {
 	var err error
-	db, err = sql.Open("sqlite3_shop", ":memory:")
+	db, err = sql.Open("sqlite3", ":memory:")
 	if err != nil {
 		panic(err)
 	}

@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"net/http"
+
+	traceway "go.tracewayapp.com"
+	tracewaydb "go.tracewayapp.com/tracewaydb"
 
 	"github.com/gin-gonic/gin"
 )
@@ -20,15 +22,19 @@ func applyCoupon(c *gin.Context) {
 		return
 	}
 
+	twdb := tracewaydb.NewTwDB(ctx, db)
+
+	traceway.GetAttributesFromContext(ctx).SetTag("coupon_code", req.Code)
+
 	var percentOff, active int
-	row := db.QueryRowContext(ctx, `SELECT percent_off, active FROM coupons WHERE code = ?`, req.Code)
+	row := twdb.QueryRowContext(ctx, `SELECT percent_off, active FROM coupons WHERE code = ?`, req.Code)
 	if err := row.Scan(&percentOff, &active); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			c.Error(fmt.Errorf("unknown coupon code: %s", req.Code))
+			c.Error(traceway.NewStackTraceErrorf("unknown coupon code: %s", req.Code))
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid coupon code"})
 			return
 		}
-		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("lookup coupon: %w", err))
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("lookup coupon: %w", err))
 		return
 	}
 	if active == 0 {
@@ -44,7 +50,7 @@ func applyCoupon(c *gin.Context) {
 		couponHits[req.Code]++
 	}
 
-	total := cartTotal(ctx, db)
+	total := cartTotal(ctx, twdb)
 	discount := total * percentOff / 100
 	c.JSON(http.StatusOK, gin.H{
 		"code":            req.Code,
@@ -54,8 +60,8 @@ func applyCoupon(c *gin.Context) {
 	})
 }
 
-func cartTotal(ctx context.Context, database *sql.DB) int {
-	row := database.QueryRowContext(ctx, `
+func cartTotal(ctx context.Context, twdb *tracewaydb.TwDB) int {
+	row := twdb.QueryRowContext(ctx, `
 		SELECT COALESCE(SUM(p.price_cents * ci.qty), 0)
 		FROM cart_items ci
 		JOIN products p ON p.id = ci.product_id`)

@@ -1,3 +1,5 @@
+import { captureExceptionWithAttributes } from '@tracewayapp/react'
+
 const BASE = import.meta.env.VITE_API_BASE || '/api'
 
 async function request(path, options) {
@@ -10,7 +12,18 @@ async function request(path, options) {
     } catch {
       detail = ''
     }
-    throw new Error(`Request to ${path} failed (${res.status})${detail ? ': ' + detail : ''}`)
+    const err = new Error(`Request to ${path} failed (${res.status})${detail ? ': ' + detail : ''}`)
+    const distributedTraceId = res.headers.get('traceway-trace-id') || undefined
+    captureExceptionWithAttributes(
+      err,
+      {
+        path,
+        method: options?.method || 'GET',
+        status: String(res.status)
+      },
+      distributedTraceId ? { distributedTraceId } : undefined
+    )
+    throw err
   }
   if (res.status === 204) return null
   return res.json()

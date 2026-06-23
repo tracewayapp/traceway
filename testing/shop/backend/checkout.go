@@ -5,6 +5,9 @@ import (
 	"math/rand/v2"
 	"net/http"
 
+	traceway "go.tracewayapp.com"
+	tracewaydb "go.tracewayapp.com/tracewaydb"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -16,13 +19,15 @@ func checkout(c *gin.Context) {
 		return
 	}
 
-	rows, err := db.QueryContext(ctx, `
+	twdb := tracewaydb.NewTwDB(ctx, db)
+
+	rows, err := twdb.QueryContext(ctx, `
 		SELECT ci.id, ci.product_id, p.name, p.price_cents, p.image_url, ci.qty
 		FROM cart_items ci
 		JOIN products p ON p.id = ci.product_id
 		ORDER BY ci.id`)
 	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("load cart for checkout: %w", err))
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("load cart for checkout: %w", err))
 		return
 	}
 	lines := []CartLine{}
@@ -30,7 +35,7 @@ func checkout(c *gin.Context) {
 		var l CartLine
 		if err := rows.Scan(&l.Id, &l.ProductId, &l.Name, &l.PriceCents, &l.ImageUrl, &l.Qty); err != nil {
 			rows.Close()
-			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("scan checkout line: %w", err))
+			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("scan checkout line: %w", err))
 			return
 		}
 		l.LineTotal = l.PriceCents * l.Qty
@@ -38,11 +43,14 @@ func checkout(c *gin.Context) {
 	}
 	rows.Close()
 
+	pay := traceway.StartSpan(ctx, "payment.charge")
 	if !fastPath() {
 		slowJitter(300, 1200)
 	}
+	pay.End()
 
 	if rand.IntN(6) == 0 {
+		traceway.CaptureExceptionWithContext(ctx, traceway.NewStackTraceErrorf("payment declined for card ****%s", req.CardLast4))
 		c.JSON(http.StatusPaymentRequired, gin.H{"error": "payment declined, please try another card"})
 		return
 	}
@@ -54,9 +62,12 @@ func checkout(c *gin.Context) {
 
 	firstItem := lines[0]
 
+	persist := traceway.StartSpan(ctx, "order.persist")
 	orderId := fmt.Sprintf("ORD-%d", rand.IntN(900000)+100000)
-	if _, err = db.ExecContext(ctx, `DELETE FROM cart_items`); err != nil {
-		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("clear cart: %w", err))
+	_, err = twdb.ExecContext(ctx, `DELETE FROM cart_items`)
+	persist.End()
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("clear cart: %w", err))
 		return
 	}
 

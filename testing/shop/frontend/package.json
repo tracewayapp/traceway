@@ -5,13 +5,17 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "postbuild": "if [ -f .env ]; then node --env-file=.env node_modules/@tracewayapp/sourcemap-upload/dist/index.js --directory ./dist; else echo '[traceway] no .env found, skipping source map upload'; fi",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tracewayapp/react": "^1.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@tracewayapp/bundler-plugin": "^1.2.0",
+    "@tracewayapp/sourcemap-upload": "^1.2.0",
     "@vitejs/plugin-react": "^4.3.4",
     "vite": "^7.0.0"
   }

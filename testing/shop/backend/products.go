@@ -3,17 +3,20 @@ package main
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"net/http"
+
+	traceway "go.tracewayapp.com"
+	tracewaydb "go.tracewayapp.com/tracewaydb"
 
 	"github.com/gin-gonic/gin"
 )
 
 func listProducts(c *gin.Context) {
 	ctx := c.Request.Context()
+	twdb := tracewaydb.NewTwDB(ctx, db)
 
 	if fastPath() {
-		rows, err := db.QueryContext(ctx, `
+		rows, err := twdb.QueryContext(ctx, `
 			SELECT p.id, p.name, p.description, p.price_cents, p.image_url, p.stock, p.category_id,
 			       c.name AS category, COUNT(r.id) AS review_count
 			FROM products p
@@ -22,7 +25,7 @@ func listProducts(c *gin.Context) {
 			GROUP BY p.id
 			ORDER BY p.id`)
 		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("list products (fast): %w", err))
+			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("list products (fast): %w", err))
 			return
 		}
 		products := []Product{}
@@ -30,7 +33,7 @@ func listProducts(c *gin.Context) {
 			var p Product
 			if err := rows.Scan(&p.Id, &p.Name, &p.Description, &p.PriceCents, &p.ImageUrl, &p.Stock, &p.CategoryId, &p.Category, &p.ReviewCount); err != nil {
 				rows.Close()
-				c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("scan product (fast): %w", err))
+				c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("scan product (fast): %w", err))
 				return
 			}
 			products = append(products, p)
@@ -40,9 +43,9 @@ func listProducts(c *gin.Context) {
 		return
 	}
 
-	rows, err := db.QueryContext(ctx, `SELECT id, name, description, price_cents, image_url, stock, category_id FROM products ORDER BY id`)
+	rows, err := twdb.QueryContext(ctx, `SELECT id, name, description, price_cents, image_url, stock, category_id FROM products ORDER BY id`)
 	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("list products: %w", err))
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("list products: %w", err))
 		return
 	}
 	products := []Product{}
@@ -50,7 +53,7 @@ func listProducts(c *gin.Context) {
 		var p Product
 		if err := rows.Scan(&p.Id, &p.Name, &p.Description, &p.PriceCents, &p.ImageUrl, &p.Stock, &p.CategoryId); err != nil {
 			rows.Close()
-			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("scan product: %w", err))
+			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("scan product: %w", err))
 			return
 		}
 		products = append(products, p)
@@ -58,11 +61,11 @@ func listProducts(c *gin.Context) {
 	rows.Close()
 
 	for i := range products {
-		slowJitter(15, 50)
-		catRow := db.QueryRowContext(ctx, `SELECT name FROM categories WHERE id = ?`, products[i].CategoryId)
+		slowJitter(900, 1100)
+		catRow := twdb.QueryRowContext(ctx, `SELECT name FROM categories WHERE id = ?`, products[i].CategoryId)
 		_ = catRow.Scan(&products[i].Category)
 
-		countRow := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM reviews WHERE product_id = ?`, products[i].Id)
+		countRow := twdb.QueryRowContext(ctx, `SELECT COUNT(*) FROM reviews WHERE product_id = ?`, products[i].Id)
 		_ = countRow.Scan(&products[i].ReviewCount)
 	}
 
@@ -72,25 +75,26 @@ func listProducts(c *gin.Context) {
 func getProduct(c *gin.Context) {
 	ctx := c.Request.Context()
 	id := c.Param("id")
+	twdb := tracewaydb.NewTwDB(ctx, db)
 
 	var detail ProductDetail
-	row := db.QueryRowContext(ctx, `SELECT id, name, description, price_cents, image_url, stock, category_id FROM products WHERE id = ?`, id)
+	row := twdb.QueryRowContext(ctx, `SELECT id, name, description, price_cents, image_url, stock, category_id FROM products WHERE id = ?`, id)
 	if err := row.Scan(&detail.Id, &detail.Name, &detail.Description, &detail.PriceCents, &detail.ImageUrl, &detail.Stock, &detail.CategoryId); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "product not found"})
 			return
 		}
-		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("get product: %w", err))
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("get product: %w", err))
 		return
 	}
 
-	catRow := db.QueryRowContext(ctx, `SELECT name FROM categories WHERE id = ?`, detail.CategoryId)
+	catRow := twdb.QueryRowContext(ctx, `SELECT name FROM categories WHERE id = ?`, detail.CategoryId)
 	_ = catRow.Scan(&detail.Category)
 
 	if fastPath() {
-		rows, err := db.QueryContext(ctx, `SELECT id, product_id, rating, body FROM reviews WHERE product_id = ? ORDER BY id`, detail.Id)
+		rows, err := twdb.QueryContext(ctx, `SELECT id, product_id, rating, body FROM reviews WHERE product_id = ? ORDER BY id`, detail.Id)
 		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("get reviews (fast): %w", err))
+			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("get reviews (fast): %w", err))
 			return
 		}
 		for rows.Next() {
@@ -105,9 +109,11 @@ func getProduct(c *gin.Context) {
 		return
 	}
 
-	idRows, err := db.QueryContext(ctx, `SELECT id FROM reviews WHERE product_id = ?`, detail.Id)
+	span := traceway.StartSpan(ctx, "load_reviews")
+	idRows, err := twdb.QueryContext(ctx, `SELECT id FROM reviews WHERE product_id = ?`, detail.Id)
 	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("list review ids: %w", err))
+		span.End()
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("list review ids: %w", err))
 		return
 	}
 	reviewIds := []int{}
@@ -120,15 +126,18 @@ func getProduct(c *gin.Context) {
 	idRows.Close()
 
 	for _, rid := range reviewIds {
-		slowJitter(10, 30)
+		slowJitter(150, 300)
 		var rv Review
-		rrow := db.QueryRowContext(ctx, `SELECT id, product_id, rating, body FROM reviews WHERE id = ?`, rid)
+		rrow := twdb.QueryRowContext(ctx, `SELECT id, product_id, rating, body FROM reviews WHERE id = ?`, rid)
 		if err := rrow.Scan(&rv.Id, &rv.ProductId, &rv.Rating, &rv.Body); err == nil {
 			detail.Reviews = append(detail.Reviews, rv)
 		}
 	}
+	span.End()
 
-	slowJitter(80, 200)
+	rec := traceway.StartSpan(ctx, "recommendations.fetch")
+	slowJitter(300, 700)
+	rec.End()
 
 	detail.ReviewCount = len(detail.Reviews)
 	c.JSON(http.StatusOK, detail)

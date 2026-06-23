@@ -3,34 +3,34 @@ package main
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"net/http"
+
+	traceway "go.tracewayapp.com"
+	tracewaydb "go.tracewayapp.com/tracewaydb"
 
 	"github.com/gin-gonic/gin"
 )
 
 func getCart(c *gin.Context) {
 	ctx := c.Request.Context()
+	twdb := tracewaydb.NewTwDB(ctx, db)
 	lines := []CartLine{}
 
-	var slept int
-	_ = db.QueryRowContext(ctx, `SELECT sleep_ms(?)`, 400).Scan(&slept)
-
 	if fastPath() {
-		rows, err := db.QueryContext(ctx, `
+		rows, err := twdb.QueryContext(ctx, `
 			SELECT ci.id, ci.product_id, p.name, p.price_cents, p.image_url, ci.qty
 			FROM cart_items ci
 			JOIN products p ON p.id = ci.product_id
 			ORDER BY ci.id`)
 		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("load cart (fast): %w", err))
+			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("load cart (fast): %w", err))
 			return
 		}
 		for rows.Next() {
 			var l CartLine
 			if err := rows.Scan(&l.Id, &l.ProductId, &l.Name, &l.PriceCents, &l.ImageUrl, &l.Qty); err != nil {
 				rows.Close()
-				c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("scan cart line (fast): %w", err))
+				c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("scan cart line (fast): %w", err))
 				return
 			}
 			l.LineTotal = l.PriceCents * l.Qty
@@ -38,16 +38,16 @@ func getCart(c *gin.Context) {
 		}
 		rows.Close()
 	} else {
-		rows, err := db.QueryContext(ctx, `SELECT id, product_id, qty FROM cart_items ORDER BY id`)
+		rows, err := twdb.QueryContext(ctx, `SELECT id, product_id, qty FROM cart_items ORDER BY id`)
 		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("load cart: %w", err))
+			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("load cart: %w", err))
 			return
 		}
 		for rows.Next() {
 			var l CartLine
 			if err := rows.Scan(&l.Id, &l.ProductId, &l.Qty); err != nil {
 				rows.Close()
-				c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("scan cart line: %w", err))
+				c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("scan cart line: %w", err))
 				return
 			}
 			lines = append(lines, l)
@@ -55,8 +55,8 @@ func getCart(c *gin.Context) {
 		rows.Close()
 
 		for i := range lines {
-			slowJitter(10, 40)
-			prow := db.QueryRowContext(ctx, `SELECT name, price_cents, image_url FROM products WHERE id = ?`, lines[i].ProductId)
+			slowJitter(150, 350)
+			prow := twdb.QueryRowContext(ctx, `SELECT name, price_cents, image_url FROM products WHERE id = ?`, lines[i].ProductId)
 			_ = prow.Scan(&lines[i].Name, &lines[i].PriceCents, &lines[i].ImageUrl)
 			lines[i].LineTotal = lines[i].PriceCents * lines[i].Qty
 		}
@@ -80,23 +80,27 @@ func addToCart(c *gin.Context) {
 		req.Qty = 1
 	}
 
+	twdb := tracewaydb.NewTwDB(ctx, db)
+
 	var existing int
-	prow := db.QueryRowContext(ctx, `SELECT id FROM products WHERE id = ?`, req.ProductId)
+	prow := twdb.QueryRowContext(ctx, `SELECT id FROM products WHERE id = ?`, req.ProductId)
 	if err := prow.Scan(&existing); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "product not found"})
 			return
 		}
-		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("lookup product: %w", err))
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("lookup product: %w", err))
 		return
 	}
 
 	if !fastPath() {
+		span := traceway.StartSpan(ctx, "inventory.check")
 		slowJitter(150, 500)
+		span.End()
 	}
 
-	if _, err := db.ExecContext(ctx, `INSERT INTO cart_items (product_id, qty) VALUES (?, ?)`, req.ProductId, req.Qty); err != nil {
-		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("add to cart: %w", err))
+	if _, err := twdb.ExecContext(ctx, `INSERT INTO cart_items (product_id, qty) VALUES (?, ?)`, req.ProductId, req.Qty); err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("add to cart: %w", err))
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"status": "added"})
@@ -105,14 +109,15 @@ func addToCart(c *gin.Context) {
 func removeFromCart(c *gin.Context) {
 	ctx := c.Request.Context()
 	id := c.Param("id")
+	twdb := tracewaydb.NewTwDB(ctx, db)
 
 	if !fastPath() {
 		slowJitter(50, 150)
 	}
 
-	res, err := db.ExecContext(ctx, `DELETE FROM cart_items WHERE id = ?`, id)
+	res, err := twdb.ExecContext(ctx, `DELETE FROM cart_items WHERE id = ?`, id)
 	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("remove from cart: %w", err))
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("remove from cart: %w", err))
 		return
 	}
 	affected, _ := res.RowsAffected()

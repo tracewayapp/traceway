@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
@@ -57,6 +58,18 @@ func pickDefault(v, alt int) int {
 		return alt
 	}
 	return v
+}
+
+// validateUUIDArg checks that id parses as a UUID. On failure it renders a
+// usage_error envelope to the command's stderr and returns the resulting
+// *cliError (callers should return it directly); on success it returns nil.
+// label names the argument in the message, e.g. "exception id" or "task id".
+func validateUUIDArg(cmd *cobra.Command, mode output.Mode, id, label string) error {
+	if _, err := uuid.Parse(id); err != nil {
+		return renderUsageError(cmd.ErrOrStderr(), mode,
+			fmt.Sprintf("invalid %s %q: must be a UUID", label, id), "")
+	}
+	return nil
 }
 
 // renderUsageError writes a usage_error envelope and returns a *cliError

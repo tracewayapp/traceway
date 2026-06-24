@@ -113,6 +113,23 @@ JSON shape: `{results: [{name, unit, series: {<tag-key>: [{timestamp, value}, ..
 
 If a real trace id was captured above, run `logs query --trace-id $TRACE --since 720h`. Assert exit 0 and `{data, pagination}` shape.
 
+### By-id detail commands (captured id + recordedAt)
+
+These all **require** a timestamp flag; capture the id and its `recordedAt` together from `exceptions show`, then exercise them. All read-only.
+
+1. Capture one occurrence's id + recordedAt (+ optional trace/session ids):
+   ```bash
+   OCC=$(./bin/traceway exceptions show "$HASH" --output json | jq -c '.occurrences[0]')
+   OID=$(jq -r '.id'                 <<<"$OCC")
+   OTS=$(jq -r '.recordedAt'         <<<"$OCC")
+   DT=$(jq -r '.distributedTraceId // empty' <<<"$OCC")
+   SID=$(jq -r '.sessionId // empty'         <<<"$OCC")
+   ```
+2. `exceptions occurrence $OID --recorded-at $OTS` — assert exit 0 and `.exception.id == $OID`.
+3. **Required-flag enforcement** (no live data needed): `exceptions occurrence $OID` with no `--recorded-at` → exit 2 `usage_error`; `--recorded-at notadate` → exit 2 `invalid_timestamp`; `endpoints show not-a-uuid --recorded-at $OTS` → exit 2 `usage_error`.
+4. If `$DT` is non-empty: `traces show $DT --recorded-at $OTS` → exit 0, `.nodes` is an array. If `$SID` is non-empty: `sessions show $SID --started-at $OTS` → exit 0, `.session` present.
+5. `endpoints show` / `tasks show` / `ai-traces show` need an id of their own type — capture one from a `traces show` node when available (`.nodes[].endpoint.id` + `.endpoint.recordedAt`, etc.); otherwise skip with reason `no <type> id captured`.
+
 ## TTY-vs-pipe default
 
 If `script` is available:
@@ -127,7 +144,7 @@ Mutating (skip with reason `forbidden verb`):
 `exceptions archive`, `exceptions unarchive`, `login`, `logout`, `profiles use` (local mutation), `projects use` (local mutation of `state.json`).
 
 Not in the CLI (skip with reason `subcommand not in CLI`) — kept so the report shows the gap if they ship:
-`endpoints show`, `sessions list`, `sessions show`, `traces show`, `ai-traces list`, `ai-traces show`.
+`tasks list`, `sessions list`, `ai-traces list`, `traces list`, `metrics discover`.
 
 ## Observation and reporting
 

@@ -32,12 +32,14 @@ Users paste dashboard URLs (`https://<instance>/<route>`) as references in any f
 | URL path | Identifies | How to fetch it |
 |---|---|---|
 | `/issues/<hash>` and `/issues/<hash>/events` | Exception group (hash = 16 hex chars) | `traceway exceptions show <hash>` |
-| `/issues/<hash>/<occurrenceId>` (UUID) | One occurrence within the group | `traceway exceptions show <hash> --output json \| jq '.occurrences[] \| select(.id=="<occurrenceId>")'`; occurrences are paginated, walk `--page` if not in the first page |
-| `/endpoints/<endpoint>` | Endpoint group; the segment is the URL-encoded endpoint name (`GET%20%2Fapi%2Fusers%2F%3Aid` is `GET /api/users/:id`) | Decode it, then `traceway endpoints list --search "<decoded name>"` (there is no `endpoints show`) |
-| `/endpoints/<endpoint>/<endpointId>` | One request (transaction) of that endpoint | No CLI for single transactions; fetch the group as above, correlate with `traceway logs query --trace-id <id>` if a trace ID is known from context |
-| `/tasks/<task>` and `/tasks/<task>/<taskId>` | Background task group / single run | No CLI; point the user at the dashboard Tasks page |
-| `/sessions/<sessionId>` | Session replay | No CLI; dashboard only. Occurrences reference sessions via their `sessionId` field |
-| `/ai-traces/<traceName>` and `/ai-traces/<traceName>/<traceId>` | AI trace group / single trace | No CLI; dashboard only |
+| `/issues/<hash>/<occurrenceId>` (UUID) | One occurrence within the group | `traceway exceptions occurrence <occurrenceId> --recorded-at <t>` where `t` is the URL's `?t=` param. Direct and fast; also returns the occurrence's `sessionId` and session recording. No URL? get `recordedAt` from `traceway exceptions show <hash>` occurrences |
+| `/endpoints/<endpoint>` | Endpoint group; the segment is the URL-encoded endpoint name (`GET%20%2Fapi%2Fusers%2F%3Aid` is `GET /api/users/:id`) | Decode it, then `traceway endpoints list --search "<decoded name>"` (the group has no id; `endpoints show` is for one request — next row) |
+| `/endpoints/<endpoint>/<endpointId>` | One request (transaction) of that endpoint | `traceway endpoints show <endpointId> --recorded-at <t>` (`t` = the URL's `?t=` param). Returns the request, its span waterfall, and any linked exception/messages |
+| `/tasks/<task>` | Background task group | No CLI for the group; for one run use the next row |
+| `/tasks/<task>/<taskId>` | Single task run | `traceway tasks show <taskId> --recorded-at <t>` (`t` = the URL's `?t=` param) |
+| `/sessions/<sessionId>` | Session (the exceptions that fired during it; replay stays dashboard-only) | `traceway sessions show <sessionId> --started-at <t>`. The URL has no `?t=`; use the session's start, the URL's `from=`, or a linked occurrence's `recordedAt` (it falls inside the window). Occurrences reference sessions via their `sessionId` |
+| `/ai-traces/<traceName>` | AI trace group | No CLI for the group; for one trace use the next row |
+| `/ai-traces/<traceName>/<traceId>` | Single AI trace | `traceway ai-traces show <traceId> --recorded-at <t>` (`t` = the URL's `?t=` param); returns token/cost stats + the conversation |
 | `/logs` | Logs page (its filters are not stored in the URL) | `traceway logs query` with flags taken from the user's description |
 | `/issues`, `/endpoints`, `/metrics`, `/` | List and dashboard pages | The matching `list` / `query` command |
 
@@ -46,6 +48,44 @@ Users paste dashboard URLs (`https://<instance>/<route>`) as references in any f
 - `preset` values `5m 30m 60m 3h 6h 12h 24h 3d 7d` map directly to `--since`; the CLI has no month unit, so map `1M` to `--since 30d` and `3M` to `--since 90d`.
 - `from`/`to` are ISO timestamps; pass via `--from`/`--to`, appending `Z` (or the correct offset) when missing, since the CLI requires RFC3339.
 - No time params means the page was on its default; pick `--since` per the ground rules.
+
+`preset`/`from`/`to` set the *window* for list/group views. Detail URLs additionally carry **`?t=<iso>`** — the single record's timestamp, URL-encoded. That `t` value is exactly what the by-id commands need as `--recorded-at` (or `--started-at` for sessions). See "Fast by-id lookups" next.
+
+## Fast by-id lookups (always pass the timestamp)
+
+The by-id detail commands — `exceptions occurrence`, `endpoints show`, `tasks show`, `ai-traces show`, `sessions show`, `traces show` — **require** the record's timestamp (`--recorded-at`, or `--started-at` for sessions). Telemetry tables are partitioned by day: with the timestamp the lookup is bounded to a small window and ClickHouse prunes to a few partitions; without it the server scans every partition (slow cold load). The flag is mandatory for exactly this reason — never omit it. It can be approximate (within ±24h), and you can recover or estimate it when it isn't handed to you; see "When you don't have the timestamp" below.
+
+Where the timestamp comes from, in order of preference:
+
+1. **A dashboard URL** — the `?t=<iso>` param is the record's `recordedAt`; URL-decode it and pass it verbatim. (Sessions have no `t`; use the session start, `from=`, or a linked occurrence's `recordedAt`.)
+2. **A list/group you already fetched** — every `exceptions show` occurrence carries `recordedAt`. Capture the id and its `recordedAt` together, then drill in.
+3. **A notification** — see below.
+
+Query order when you hold an id: resolve its `recordedAt` first (URL, group, or notification), then call the by-id command with it.
+
+### When you don't have the timestamp
+
+The flag is required, so you must supply *something* — but it can be approximate. The lookup window is **±24h** around what you pass (**±48h** for `traces show`), and if the record isn't in that window the server falls back to an unbounded scan. So a timestamp within a day of the truth stays fast; a wrong guess still returns the right record, just slower. Resolve it in this order:
+
+1. **Recover it from an API.** For an occurrence whose hash you know (e.g. `/issues/<hash>/<occurrenceId>` pasted without `?t=`), run `traceway exceptions show <hash>` and read that occurrence's `recordedAt` — the hash endpoint needs no timestamp. A group's `firstSeen`/`lastSeen` from `exceptions list` bound when its occurrences happened (`lastSeen` ≈ the most recent one).
+2. **Estimate from context.** A notification's send time, the issue's `firstSeen`/`lastSeen`, or the URL's `preset`/`from` window all put you inside ±24h — good enough for a fast lookup.
+3. **Ask the user.** If nothing pins it down (e.g. a bare occurrence/endpoint id with no hash, no time, and no list to recover from), ask roughly when it happened — "around when did this fire? within a day is enough" — and pass that. Don't invent a placeholder like "now" when the issue is old; that defeats the pruning and can miss the ±24h window entirely.
+
+## Resolving an issue notification
+
+Traceway issue notifications (email / Slack / webhook) embed everything for a direct, fast lookup. The body contains:
+
+- `Hash: <16-hex>` — the exception group → `traceway exceptions show <hash>`.
+- `Exception ID: <uuid>` — the specific occurrence.
+- `Occurred at: 2006-01-02 15:04:05 UTC` — the occurrence timestamp. **Convert to RFC3339**: replace the space with `T` and ` UTC` with `Z` (→ `2006-01-02T15:04:05Z`).
+- `View details: /issues/<hash>` — the deep link.
+
+So from a notification, go straight to the occurrence (fast), then pivot reusing the same timestamp:
+
+```bash
+traceway exceptions occurrence <Exception ID> --recorded-at <Occurred at → RFC3339> --output json
+# the result carries distributedTraceId and sessionId → traces show / sessions show below
+```
 
 ## Flow: Login
 
@@ -157,6 +197,19 @@ traceway exceptions show $HASH --output json | jq -r '.occurrences[0].distribute
   | xargs -I{} traceway logs query --trace-id {} --output json
 ```
 
+Pull the whole cross-service trace and the user's session, reusing the occurrence's `recordedAt` as the (mandatory) time hint so both lookups stay partition-bounded:
+
+```bash
+OCC=$(traceway exceptions show $HASH --output json | jq -c '.occurrences[0]')
+TS=$(jq -r '.recordedAt' <<<"$OCC")
+DT=$(jq -r '.distributedTraceId // empty' <<<"$OCC")
+SID=$(jq -r '.sessionId // empty' <<<"$OCC")
+[ -n "$DT" ]  && traceway traces show "$DT" --recorded-at "$TS"      # every endpoint/task/ai-trace/exception node across services
+[ -n "$SID" ] && traceway sessions show "$SID" --started-at "$TS"    # the session + the exceptions that fired in it
+```
+
+`traces show` is usually the single highest-value RCA call: it stitches one logical request together end to end across services.
+
 **Check metrics for systemic causes** (spikes lining up with `firstSeen` suggest saturation rather than a code bug):
 
 ```bash
@@ -192,13 +245,21 @@ For free-form requests ("what's broken in prod?", "is /api/checkout slow?", "sho
 | `traceway projects {list,use}` | List or select the active project |
 | `traceway exceptions list` | Grouped exceptions; `--search`, `--search-type text\|regex`, `--order-by lastSeen\|firstSeen\|count`, `--include-archived` |
 | `traceway exceptions show <hash>` | One group: full stack trace + occurrences |
+| `traceway exceptions occurrence <id> --recorded-at <t>` | One occurrence by id (fast): full detail + `sessionId` + recording |
 | `traceway exceptions archive/unarchive <hash>...` | Mutating; explicit user request + `--yes` only |
 | `traceway logs query` | Logs; `--search` (`--search-type body\|attribute`), `--service`, `--min-severity <n>`, `--trace-id` |
 | `traceway endpoints list` | Per-endpoint p50/p95/p99 and counts; `--search`, `--order-by impact\|count\|p95\|lastSeen` |
+| `traceway endpoints show <id> --recorded-at <t>` | One request by id: span waterfall + linked errors |
+| `traceway tasks show <id> --recorded-at <t>` | One background task run by id |
+| `traceway ai-traces show <id> --recorded-at <t>` | One AI trace by id + its conversation |
+| `traceway sessions show <id> --started-at <t>` | One session by id + the exceptions that fired in it |
+| `traceway traces show <id> --recorded-at <t>` | Distributed trace: every service node sharing the id |
 | `traceway metrics query --name <metric>` | Time series; `--aggregation`, `--tag`, `--group-by`, `--interval-minutes` |
 | `traceway profiles {list,use}`, `login`, `logout`, `version` | Profile and session management |
 
-Not implemented yet (do not fabricate flags; point the user at the web UI): `traces show`, `sessions list/show`, `ai-traces list/show`, `endpoints show`, `metrics list/discover`. Tasks have no CLI command either; the dashboard's Tasks page covers them.
+The by-id `show`/`occurrence` commands take their id from a dashboard URL, a notification, or an `exceptions show` occurrence — and **require** the record's timestamp (`--recorded-at` / `--started-at`); see "Fast by-id lookups" above.
+
+Not implemented yet (do not fabricate flags; point the user at the web UI): `list` verbs for `tasks` / `sessions` / `ai-traces` / `traces` (only by-id `show` exists for those), and `metrics list/discover`.
 
 ### Recipes
 

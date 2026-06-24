@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	exceptionsOrderBy   = []string{"lastSeen", "firstSeen", "count"}
+	exceptionsOrderBy     = []string{"lastSeen", "firstSeen", "count"}
 	exceptionsSearchTypes = []string{"text", "regex"}
 )
 
@@ -22,6 +22,7 @@ func newExceptionsCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newExceptionsListCmd())
 	cmd.AddCommand(newExceptionsShowCmd())
+	cmd.AddCommand(newExceptionsOccurrenceCmd())
 	cmd.AddCommand(newExceptionsArchiveCmd())
 	cmd.AddCommand(newExceptionsUnarchiveCmd())
 	return cmd
@@ -169,6 +170,86 @@ func runExceptionsShow(cmd *cobra.Command, args []string) error {
 	}
 }
 
+func newExceptionsOccurrenceCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "occurrence <exceptionId>",
+		Short: "Show one exception occurrence by id (fast, time-bounded)",
+		Long: `Show a single exception occurrence by its UUID.
+
+Unlike "exceptions show <hash>" (which groups by stack-trace hash and paginates
+occurrences), this resolves one occurrence directly and additionally returns its
+linked sessionId and an inline session recording.
+
+--recorded-at is REQUIRED. Occurrences live in a daily-partitioned table; the
+timestamp bounds the lookup to a window around it so ClickHouse prunes
+partitions instead of scanning all of them. Source it from the dashboard URL's
+t= param (/issues/<hash>/<id>?t=...), an "exceptions show" occurrence's
+recordedAt, or a notification's "Occurred at" (convert "2006-01-02 15:04:05 UTC"
+to RFC3339, i.e. "2006-01-02T15:04:05Z").`,
+		Args: cobra.ExactArgs(1),
+		RunE: runExceptionsOccurrence,
+	}
+	addTimestampFlag(cmd, "recorded-at", "Occurrence timestamp, RFC3339 (required; from the URL t= param or a notification's Occurred at)")
+	return cmd
+}
+
+func runExceptionsOccurrence(cmd *cobra.Command, args []string) error {
+	ctx := cmd.Context()
+	mode := output.ResolveMode(flagOutput, output.StdoutIsTerminal())
+
+	sess, err := loadSession()
+	if err != nil {
+		return renderSessionError(cmd.ErrOrStderr(), mode, err)
+	}
+	if err := validateUUIDArg(cmd, mode, args[0], "exception id"); err != nil {
+		return err
+	}
+	recordedAt, err := resolveTimestamp(cmd, "recorded-at")
+	if err != nil {
+		return renderTimestampError(cmd.ErrOrStderr(), mode, "recorded-at", err)
+	}
+
+	c := client.New(sess.URL, client.WithJWT(sess.JWT))
+	resp, err := c.GetExceptionById(ctx, sess.ProjectID, args[0], recordedAt)
+	if err != nil {
+		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
+	}
+
+	switch mode {
+	case output.ModeJSON:
+		return output.RenderJSON(cmd.OutOrStdout(), resp, output.ParseFieldsFlag(flagFields))
+	case output.ModeYAML:
+		return output.RenderYAML(cmd.OutOrStdout(), resp, output.ParseFieldsFlag(flagFields))
+	default:
+		occ := resp.Exception
+		if occ == nil {
+			_, err := fmt.Fprintln(cmd.OutOrStdout(), "No occurrence returned.")
+			return err
+		}
+		out := cmd.OutOrStdout()
+		_, _ = fmt.Fprintf(out,
+			"ID:           %s\nHASH:         %s\nRECORDED AT:  %s\nSERVER:       %s\nAPP VERSION:  %s\nTRACE TYPE:   %s\n",
+			occ.Id, occ.ExceptionHash,
+			occ.RecordedAt.Format("2006-01-02 15:04:05"),
+			pickStr(occ.ServerName, "-"),
+			pickStr(occ.AppVersion, "-"),
+			pickStr(occ.TraceType, "-"),
+		)
+		if occ.DistributedTraceId != nil {
+			_, _ = fmt.Fprintf(out, "TRACE ID:     %s\n", occ.DistributedTraceId.String())
+		}
+		sid := resp.SessionId
+		if sid == nil {
+			sid = occ.SessionId
+		}
+		if sid != nil {
+			_, _ = fmt.Fprintf(out, "SESSION ID:   %s\n", sid.String())
+		}
+		_, _ = fmt.Fprintf(out, "\nSTACK TRACE:\n%s\n", occ.StackTrace)
+		return nil
+	}
+}
+
 func newExceptionsArchiveCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "archive <hash> [<hash>...]",
@@ -253,4 +334,3 @@ func truncateHash(hash string, n int) string {
 	}
 	return hash[:n]
 }
-

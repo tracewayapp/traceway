@@ -52,13 +52,29 @@ traceway metrics query --name http.server.duration --aggregation avg --since 1h
 | `traceway projects {list,use}` | List or select the active project |
 | `traceway exceptions list` | Recent grouped exceptions |
 | `traceway exceptions show <hash>` | A single exception group + occurrences |
+| `traceway exceptions occurrence <id> --recorded-at <t>` | A single occurrence by id (+ `sessionId` and recording) |
 | `traceway exceptions archive <hash>...` | Archive one or more groups (mutating; needs `--yes` non-interactively) |
 | `traceway exceptions unarchive <hash>...` | Unarchive (mutating; needs `--yes` non-interactively) |
 | `traceway logs query` | Query logs with severity / service / search filters |
 | `traceway endpoints list` | Per-endpoint p50/p95/p99 stats |
+| `traceway endpoints show <id> --recorded-at <t>` | A single request (transaction) by id: spans + linked errors |
+| `traceway tasks show <id> --recorded-at <t>` | A single background task run by id |
+| `traceway ai-traces show <id> --recorded-at <t>` | A single AI trace by id + its conversation |
+| `traceway sessions show <id> --started-at <t>` | A single session by id + the exceptions that fired in it |
+| `traceway traces show <id> --recorded-at <t>` | A distributed trace: every service node sharing the id |
 | `traceway metrics query` | Time-series metric queries |
 
 Run `traceway <command> --help` for full per-command flags.
+
+### By-id detail lookups are time-bounded
+
+The `show` / `occurrence` commands take a UUID plus a **required** timestamp flag
+(`--recorded-at`, or `--started-at` for `sessions`). Telemetry tables are
+partitioned by day; the timestamp bounds the query to a window around the record
+so the lookup prunes partitions instead of scanning all of them. Get the id and
+its timestamp together — from a dashboard URL's `?t=` param, a notification's
+`Occurred at`, or a list/`exceptions show` row's `recordedAt`. Omitting the flag
+exits 2 (`usage_error`); a non-RFC3339 value exits 2 (`invalid_timestamp`).
 
 ## Profiles
 

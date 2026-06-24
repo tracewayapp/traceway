@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"time"
@@ -31,7 +32,7 @@ type ExceptionTrendPoint struct {
 // the body — the upstream RequireProjectAccess middleware reads it via
 // c.Query("projectId").
 type ListExceptionsRequest struct {
-	TimeRange       TimeRange        `json:"-"`          // serialized as fromDate/toDate via MarshalJSON
+	TimeRange       TimeRange        `json:"-"` // serialized as fromDate/toDate via MarshalJSON
 	Pagination      PaginationParams `json:"pagination"`
 	OrderBy         string           `json:"orderBy,omitempty"`
 	Search          string           `json:"search,omitempty"`
@@ -105,6 +106,30 @@ func (c *Client) GetException(ctx context.Context, projectID, hash string, page 
 	path := "/api/exception-stack-traces/" + url.PathEscape(hash) + "?projectId=" + url.QueryEscape(projectID)
 	var resp GetExceptionResponse
 	if err := c.do(ctx, http.MethodPost, path, getExceptionRequest{Pagination: page}, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// ExceptionByIdResponse is the body of POST
+// /api/exception-stack-traces/by-id/:exceptionId. Over a paginated `exceptions
+// show <hash>` occurrence it adds the linked sessionId and an inline
+// sessionRecording blob (passed through verbatim), and resolves directly
+// without walking pages.
+type ExceptionByIdResponse struct {
+	Exception        *ExceptionStackTrace `json:"exception"`
+	SessionId        *uuid.UUID           `json:"sessionId,omitempty"`
+	SessionRecording json.RawMessage      `json:"sessionRecording,omitempty"`
+}
+
+// GetExceptionById returns a single exception occurrence by its id. recordedAt
+// is the occurrence's recordedAt (from the URL's t= param, a notification's
+// "Occurred at", or an `exceptions show` occurrence) and is required for a
+// partition-pruned lookup.
+func (c *Client) GetExceptionById(ctx context.Context, projectID, id string, recordedAt time.Time) (*ExceptionByIdResponse, error) {
+	path := "/api/exception-stack-traces/by-id/" + url.PathEscape(id) + "?projectId=" + url.QueryEscape(projectID)
+	var resp ExceptionByIdResponse
+	if err := c.do(ctx, http.MethodPost, path, recordedAtBody{RecordedAt: recordedAt}, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

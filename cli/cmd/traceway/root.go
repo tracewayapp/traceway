@@ -6,11 +6,11 @@ import (
 
 // Global flag values, populated by Cobra at flag-parse time.
 var (
-	flagProfile  string
-	flagProject  string
-	flagOutput   string
-	flagFields   string
-	flagYes bool
+	flagProfile string
+	flagProject string
+	flagOutput  string
+	flagFields  string
+	flagYes     bool
 )
 
 func newRootCmd() *cobra.Command {
@@ -36,6 +36,10 @@ func newRootCmd() *cobra.Command {
 	cmd.AddCommand(newExceptionsCmd())
 	cmd.AddCommand(newLogsCmd())
 	cmd.AddCommand(newEndpointsCmd())
+	cmd.AddCommand(newTasksCmd())
+	cmd.AddCommand(newAiTracesCmd())
+	cmd.AddCommand(newSessionsCmd())
+	cmd.AddCommand(newTracesCmd())
 	cmd.AddCommand(newMetricsCmd())
 	cmd.AddCommand(newVersionCmd())
 

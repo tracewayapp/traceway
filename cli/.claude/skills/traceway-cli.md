@@ -117,6 +117,14 @@ traceway exceptions show <exceptionHash> [--page 1] [--page-size 20]
 
 Returns the exception group plus an array of recent `occurrences`. Each occurrence has at least `recordedAt`, `attributes`, and optional `distributedTraceId` / `sessionId` (verify the exact shape against your build — schema is still settling). A bogus hash exits with code `5` and `not_found`.
 
+```
+traceway exceptions occurrence <exceptionId> --recorded-at <RFC3339>
+```
+
+Resolves **one occurrence by its UUID** directly (vs. paging through `show`'s occurrences), and additionally returns its linked `sessionId` and an inline `sessionRecording`. Result shape: `{exception: {...}, sessionId?, sessionRecording?}`.
+
+`--recorded-at` is **required** — occurrences live in a daily-partitioned table, so the timestamp bounds the lookup and lets ClickHouse prune partitions instead of scanning all of them. Source it from the dashboard URL's `t=` param (`/issues/<hash>/<id>?t=...`), a notification's `Occurred at` (convert `2006-01-02 15:04:05 UTC` → `2006-01-02T15:04:05Z`), or an `exceptions show` occurrence's `recordedAt`. Omitting it exits 2 `usage_error`; a non-RFC3339 value exits 2 `invalid_timestamp`.
+
 **Forbidden without explicit instruction:** `exceptions archive` and `exceptions unarchive`. These are the only mutating exception subcommands in the current CLI — there is no `resolve` / `mute` yet.
 
 ### `logs`
@@ -168,7 +176,13 @@ traceway endpoints list [--since 24h]
 
 Returns endpoints with latency percentiles and request counts. Best for "what's slow?" questions.
 
-There is **no `endpoints show` subcommand** in the current CLI — only `list`. If a user asks for a per-endpoint breakdown, use `--search "<endpoint-name>"` against `list`.
+`endpoints list` returns **groups** (one row per route, no id). For a per-route breakdown, use `--search "<endpoint-name>"` against `list`.
+
+```
+traceway endpoints show <endpointId> --recorded-at <RFC3339>
+```
+
+For **one request (transaction)** by its UUID — the detail behind `/endpoints/<name>/<endpointId>`. Returns `{endpoint, spans, hasSpans, exception?, messages}`: the request row, its span waterfall, and any linked exception/messages. `--recorded-at` is **required** (same daily-partition reason as above); take it from the URL's `t=` param.
 
 Note `--order-by` does not include `p99`, `errorRate`, or `requests` as choices — the only sort fields right now are `impact`, `count`, `p95`, `lastSeen`. The default (`impact`) is usually what you want.
 
@@ -218,14 +232,26 @@ Result shape — `series` is a **map keyed by group tag**, not an array:
 
 With `--group-by direction` on a network metric, the `series` keys become `"receive"` and `"transmit"` instead of `"__all__"`.
 
+### `tasks`, `ai-traces`, `sessions`, `traces` — by-id detail
+
+These resources currently expose only a by-id `show` (no `list` verb). The id comes from a dashboard URL, a notification, or an `exceptions show` occurrence — not from the CLI itself. Each `show` **requires** the record's timestamp for a partition-pruned lookup.
+
+```
+traceway tasks show <taskId> --recorded-at <RFC3339>          # {task, spans, hasSpans, exception?, messages}
+traceway ai-traces show <traceId> --recorded-at <RFC3339>     # {aiTrace, conversation?}  (token/cost stats + stored conversation)
+traceway sessions show <sessionId> --started-at <RFC3339>     # {session, exceptions}     (uses --started-at, not --recorded-at)
+traceway traces show <distributedTraceId> --recorded-at <RFC3339>  # {distributedTraceId, nodes:[...]}
+```
+
+`traces show` is the cross-service waterfall: every endpoint/task/ai-trace/exception node sharing a `distributedTraceId`, across all projects you can see (the route scopes by your JWT, so it ignores the active project). It's the highest-value RCA call — feed it an occurrence's `distributedTraceId` plus that occurrence's `recordedAt`.
+
+`sessions show` takes `--started-at` because the sessions table is partitioned on `started_at`. The session URL carries no `t=`; use the session's start, the URL's `from=`, or a linked occurrence's `recordedAt` (it falls inside the ±24h window).
+
 ### Subcommands the CLI does not currently have
 
-These are commonly requested but **not implemented** in the current binary. If a user asks for them, say so — don't fabricate flags.
+Commonly requested but **not implemented**. If a user asks, say so — don't fabricate flags.
 
-- `traces show <traceId>` — span waterfall view. Trace IDs in `logs query` / `exceptions show` output are currently link-only.
-- `sessions list` / `sessions show` — session replay listings.
-- `ai-traces list` / `ai-traces show` — LLM observability.
-- `endpoints show <name>` — per-endpoint detail (use `endpoints list --search`).
+- `tasks list` / `sessions list` / `ai-traces list` / `traces list` — no list verbs; only by-id `show` (get the id from a URL, notification, or `exceptions show` occurrence).
 - `metrics list` / `metrics discover` — metric-name enumeration.
 
 ### `login` / `logout`
@@ -269,7 +295,7 @@ traceway logs query --since 15m --service api --min-severity 13 \
   --page 1 --output json | jq '.data[]? | {timestamp, body, traceId}'
 ```
 
-There is no `traces show` subcommand yet — once a trace ID is captured, the waterfall view has to be inspected via the web UI.
+Once you have a `distributedTraceId` from an occurrence or endpoint/task, pull the cross-service waterfall directly: `traceway traces show <distributedTraceId> --recorded-at <that node's recordedAt>` (see the by-id detail section above). It stitches every endpoint/task/ai-trace/exception node sharing the id into one timeline — usually the highest-value RCA call.
 
 ### "Show me errors for service X in the last hour"
 
@@ -323,7 +349,7 @@ If you see a panic, stack trace, or unhandled error in stderr, **stop** and repo
 
 1. **Bound your time windows.** Default to `--since 1h`. Never run a query without a time window — Traceway can fall back to all-time and return huge results.
 2. **Keep `--page-size` small.** 10–20 is usually enough for first-pass triage. Don't pull 500 rows into context.
-3. **Capture identifiers, don't repeat list calls.** When you find a useful hash / trace id / session id, save it to a shell variable and reuse.
+3. **Capture identifiers *with their timestamp*.** When you find a useful id (occurrence / endpoint / task / trace / session), save its `recordedAt` (or `startedAt`) alongside it. The by-id `show`/`occurrence` commands **require** that timestamp (`--recorded-at` / `--started-at`) — it bounds the ClickHouse lookup to a few daily partitions instead of a full scan, so the lookup stays fast. Sources: a dashboard URL's `?t=` param, a list/`show` row's `recordedAt`, or a notification's `Occurred at` (convert `2006-01-02 15:04:05 UTC` → `2006-01-02T15:04:05Z`). **No timestamp to hand?** It can be approximate — the server windows ±24h (±48h for `traces show`) and falls back to a full scan if the record isn't in the window, so within a day stays fast and a wrong guess still resolves (slower). Recover it (`exceptions show <hash>` lists occurrences with `recordedAt`; a group's `lastSeen`/`firstSeen` bound the time), estimate it from context (notification time, the issue's `lastSeen`, the URL's `from`/`preset`), or **ask the user** roughly when it happened. Don't pass "now" for an old issue — that misses the window.
 4. **Use `jq` aggressively.** Pull only the fields you need. A full exception group can be many KB; you usually want just `exceptionHash`, `count`, `lastSeen`, and the first line of the stack trace.
 5. **Read before you act.** When the user describes a problem, read several signals (exceptions + endpoints + recent logs) before forming a hypothesis. Single-source diagnoses are usually wrong.
 6. **Don't infer write actions.** "Look at this error" means show it, not archive it.

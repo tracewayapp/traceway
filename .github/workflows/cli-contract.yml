@@ -1,0 +1,41 @@
+name: CLI Contract
+
+# Boots the backend in SQLite mode and asserts the wire contract of every
+# endpoint the CLI calls (cli/test/contract). Runs on backend changes too,
+# since the point is to catch backend drift the CLI's mock-based unit tests
+# cannot. Equivalent local command: cd cli && just contract-test
+on:
+  push:
+    branches: [main]
+    paths:
+      - "cli/**"
+      - "backend/**"
+      - ".github/workflows/cli-contract.yml"
+  pull_request:
+    paths:
+      - "cli/**"
+      - "backend/**"
+      - ".github/workflows/cli-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cli/test/contract
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: cli/test/contract/go.mod
+          cache-dependency-path: cli/test/contract/go.sum
+
+      - name: Contract test
+        run: go test ./...

@@ -1,0 +1,14 @@
+hasSpans: bool
+messages[]: empty
+spans[]: empty
+task.appVersion: string
+task.attributes: null
+task.clientIP: string
+task.distributedTraceId: string
+task.duration: number
+task.id: string
+task.isRoot: bool
+task.projectId: string
+task.recordedAt: string
+task.serverName: string
+task.taskName: string

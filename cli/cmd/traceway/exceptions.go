@@ -56,6 +56,10 @@ func runExceptionsList(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return renderTimeRangeError(cmd.ErrOrStderr(), mode, err)
 	}
+	if err := validatePaginationFlags(cmd); err != nil {
+		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
+			paginationHint("traceway exceptions list"))
+	}
 	page := resolvePagination(cmd)
 	search, _ := cmd.Flags().GetString("search")
 	searchType, _ := cmd.Flags().GetString("search-type")
@@ -125,6 +129,10 @@ func runExceptionsShow(cmd *cobra.Command, args []string) error {
 	sess, err := loadSession()
 	if err != nil {
 		return renderSessionError(cmd.ErrOrStderr(), mode, err)
+	}
+	if err := validatePaginationFlags(cmd); err != nil {
+		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
+			paginationHint("traceway exceptions show"))
 	}
 	page := resolvePagination(cmd)
 	page.PageSize = pickDefault(page.PageSize, 20) // detail uses 20 by default

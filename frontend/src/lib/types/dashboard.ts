@@ -74,8 +74,8 @@ export type MetricQueryRequest = {
 };
 
 export type TimeSeriesPoint = {
-	Timestamp: string;
-	Value: number;
+	timestamp: string;
+	value: number;
 };
 
 export type MetricQueryResult = {

@@ -1,0 +1,4 @@
+results[].name: string
+results[].series.__all__[].timestamp: string
+results[].series.__all__[].value: number
+results[].unit: string

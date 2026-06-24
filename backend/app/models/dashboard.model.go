@@ -31,8 +31,9 @@ type DashboardResponse struct {
 	LastUpdated      time.Time         `json:"lastUpdated"`
 }
 
-// TimeSeriesPoint is used internally for querying time-bucketed data
+// TimeSeriesPoint is used internally for querying time-bucketed data and is
+// serialized directly in the /api/metrics/query response.
 type TimeSeriesPoint struct {
-	Timestamp time.Time
-	Value     float64
+	Timestamp time.Time `json:"timestamp"`
+	Value     float64   `json:"value"`
 }

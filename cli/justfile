@@ -9,6 +9,11 @@ test:
 smoke-test:
     gotestsum --format pkgname -- -tags smoke ./test/smoke/...
 
+# Boot the backend in SQLite mode and assert the CLI's wire contract for every
+# endpoint. Pass -- -update to regenerate the golden fingerprints in testdata/.
+contract-test *args:
+    cd test/contract && go test ./... {{args}}
+
 lint:
     golangci-lint run
 

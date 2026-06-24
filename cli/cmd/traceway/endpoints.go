@@ -49,6 +49,10 @@ func runEndpointsList(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return renderTimeRangeError(cmd.ErrOrStderr(), mode, err)
 	}
+	if err := validatePaginationFlags(cmd); err != nil {
+		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
+			paginationHint("traceway endpoints list"))
+	}
 	page := resolvePagination(cmd)
 	search, _ := cmd.Flags().GetString("search")
 	orderBy, _ := cmd.Flags().GetString("order-by")

@@ -90,8 +90,8 @@
 					newSeries.push({
 						key: label,
 						data: points.map((p) => ({
-							timestamp: new Date(p.Timestamp),
-							value: p.Value
+							timestamp: new Date(p.timestamp),
+							value: p.value
 						})),
 						color: colors[colorIdx % colors.length]
 					});

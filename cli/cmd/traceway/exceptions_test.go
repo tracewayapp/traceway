@@ -125,6 +125,26 @@ func TestExceptionsList_invalidTimeRange_writesEnvelope(t *testing.T) {
 	}
 }
 
+func TestExceptionsList_outOfRangePageSize_writesUsageError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		t.Error("server must not be hit when pagination is rejected locally")
+	}))
+	defer srv.Close()
+	seedSessionFor(t, srv.URL)
+
+	_, stderr, err := runCmd(t, "", "exceptions", "list", "--output", "json", "--page-size", "200")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var ce *cliError
+	if !errors.As(err, &ce) || ce.code != exitcode.Usage {
+		t.Fatalf("expected *cliError with exitcode.Usage, got %v", err)
+	}
+	if !strings.Contains(stderr.String(), "usage_error") {
+		t.Errorf("expected usage_error envelope, got: %s", stderr.String())
+	}
+}
+
 func TestExceptionsShow_passesHashInPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/exception-stack-traces/abc" {

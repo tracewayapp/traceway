@@ -1,0 +1,14 @@
+exception.appVersion: string
+exception.attributes: null
+exception.distributedTraceId: string
+exception.exceptionHash: string
+exception.id: string
+exception.isMessage: bool
+exception.projectId: string
+exception.recordedAt: string
+exception.serverName: string
+exception.sessionId: string
+exception.stackTrace: string
+exception.traceId: string
+exception.traceType: string
+sessionId: string

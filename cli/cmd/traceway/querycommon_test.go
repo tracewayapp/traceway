@@ -114,3 +114,37 @@ func TestResolvePagination_explicit(t *testing.T) {
 		t.Errorf("PageSize = %d, want 100", p.PageSize)
 	}
 }
+
+func TestValidatePaginationFlags(t *testing.T) {
+	cases := []struct {
+		name    string
+		args    []string
+		wantErr bool
+	}{
+		{"defaults", nil, false},
+		{"in-range", []string{"--page", "2", "--page-size", "50"}, false},
+		{"max-page-size", []string{"--page-size", "100"}, false},
+		{"min-page-size", []string{"--page-size", "1"}, false},
+		{"page-zero", []string{"--page", "0"}, true},
+		{"page-negative", []string{"--page", "-1"}, true},
+		{"page-size-zero", []string{"--page-size", "0"}, true},
+		{"page-size-over-max", []string{"--page-size", "101"}, true},
+		{"page-size-way-over", []string{"--page-size", "200"}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := &cobra.Command{Use: "fake"}
+			addPaginationFlags(cmd)
+			if err := cmd.ParseFlags(tc.args); err != nil {
+				t.Fatal(err)
+			}
+			err := validatePaginationFlags(cmd)
+			if tc.wantErr && err == nil {
+				t.Errorf("validatePaginationFlags(%v) = nil, want error", tc.args)
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("validatePaginationFlags(%v) = %v, want nil", tc.args, err)
+			}
+		})
+	}
+}

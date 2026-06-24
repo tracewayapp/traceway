@@ -33,6 +33,29 @@ func resolvePagination(cmd *cobra.Command) client.PaginationParams {
 	return client.PaginationParams{Page: page, PageSize: pageSize}
 }
 
+// validatePaginationFlags rejects --page/--page-size values the backend would
+// refuse (it binds page min=1, pageSize min=1,max=100). On violation it returns
+// an error formatted for the usage_error envelope's Message field; callers pass
+// it to renderUsageError. Mirrors validateEnumFlag so out-of-range pagination
+// surfaces a local usage error instead of a raw backend 400.
+func validatePaginationFlags(cmd *cobra.Command) error {
+	page, _ := cmd.Flags().GetInt("page")
+	pageSize, _ := cmd.Flags().GetInt("page-size")
+	if page < 1 {
+		return fmt.Errorf("--page must be 1 or greater")
+	}
+	if pageSize < 1 || pageSize > 100 {
+		return fmt.Errorf("--page-size must be between 1 and 100")
+	}
+	return nil
+}
+
+// paginationHint returns a usage_error hint showing the valid pagination bounds
+// for a command, e.g. "traceway exceptions list --page <1+> --page-size <1-100>".
+func paginationHint(cmdPath string) string {
+	return fmt.Sprintf("%s --page <1+> --page-size <1-100>", cmdPath)
+}
+
 // firstLine returns the first line of s, useful for fitting a stack trace
 // into a table column.
 func firstLine(s string) string {

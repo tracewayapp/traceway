@@ -1,0 +1,14 @@
+exceptions[].exceptionHash: string
+exceptions[].id: string
+exceptions[].isMessage: bool
+exceptions[].recordedAt: string
+exceptions[].stackTrace: string
+session.appVersion: string
+session.attributes: null
+session.clientIP: string
+session.distributedTraceId: string
+session.duration: number
+session.id: string
+session.projectId: string
+session.serverName: string
+session.startedAt: string

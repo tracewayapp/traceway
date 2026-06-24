@@ -1,0 +1,11 @@
+data[].count: number
+data[].exceptionHash: string
+data[].firstSeen: string
+data[].hourlyTrend[].count: number
+data[].hourlyTrend[].timestamp: string
+data[].lastSeen: string
+data[].stackTrace: string
+pagination.page: number
+pagination.pageSize: number
+pagination.total: number
+pagination.totalPages: number

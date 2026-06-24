@@ -1,0 +1,9 @@
+[].backendUrl: string
+[].createdAt: string
+[].dropHealthyHealthchecks: bool
+[].framework: string
+[].healthcheckPaths[]: empty
+[].id: string
+[].name: string
+[].organizationId: number
+[].token: string

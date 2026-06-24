@@ -53,6 +53,10 @@ func runLogsQuery(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return renderTimeRangeError(cmd.ErrOrStderr(), mode, err)
 	}
+	if err := validatePaginationFlags(cmd); err != nil {
+		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
+			paginationHint("traceway logs query"))
+	}
 	page := resolvePagination(cmd)
 	service, _ := cmd.Flags().GetString("service")
 	minSev, _ := cmd.Flags().GetUint8("min-severity")

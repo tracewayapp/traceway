@@ -140,6 +140,45 @@ func TestProfileRepository_GetFlameGraph_CounterMergesInstancesAndFiltersLabels(
 	}
 }
 
+func TestProfileRepository_GetFlameGraph_FiltersByDottedLabelKey(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	projectId := uuid.New()
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	from := base.Add(-time.Hour)
+	to := base.Add(time.Hour)
+
+	hashAB := profiling.HashFrames([]string{"a", "b"})
+	hashAC := profiling.HashFrames([]string{"a", "c"})
+	mustInsertStacks(t, ctx,
+		models.ProfileStack{ProjectId: projectId, ServiceName: "checkout", StackHash: hashAB, Stack: []string{"a", "b"}, LastSeen: base},
+		models.ProfileStack{ProjectId: projectId, ServiceName: "checkout", StackHash: hashAC, Stack: []string{"a", "c"}, LastSeen: base},
+	)
+	cpu := func(hash uint64, value int64, route string) models.ProfileSample {
+		return models.ProfileSample{
+			ProjectId: projectId, ProfileId: uuid.New(), ServiceName: "checkout",
+			Type: profiling.TypeCPUNanos, Start: base, End: base.Add(30 * time.Second),
+			StackHash: hash, Value: value, Labels: map[string]string{"http.route": route},
+		}
+	}
+	mustInsertSamples(t, ctx,
+		cpu(hashAB, 200, "GET /checkout"),
+		cpu(hashAC, 100, "GET /cart"),
+	)
+
+	rows, err := ProfileRepository.GetFlameGraph(ctx, projectId, "checkout", profiling.TypeCPUNanos, from, to, map[string]string{"http.route": "GET /checkout"})
+	if err != nil {
+		t.Fatalf("GetFlameGraph (dotted filter): %v", err)
+	}
+	got := flameValueByStack(rows)
+	if got["a;b"] != 200 {
+		t.Errorf("a;b = %d, want 200 (dotted-key filter must match in SQLite mode)", got["a;b"])
+	}
+	if _, ok := got["a;c"]; ok {
+		t.Errorf("http.route=GET /checkout must exclude the a;c stack, got %v", got)
+	}
+}
+
 func TestProfileRepository_GetFlameGraph_GaugeUsesLatestPerServer(t *testing.T) {
 	setupTestDB(t)
 	ctx := context.Background()

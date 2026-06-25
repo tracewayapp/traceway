@@ -12,9 +12,7 @@
 	import { projectsState } from '$lib/state/projects.svelte';
 	import PageHeader from '$lib/components/issues/page-header.svelte';
 	import FlameGraph from '$lib/components/profiles/flame-graph.svelte';
-	import ProfileLabelSelector, {
-		applyLabel
-	} from '$lib/components/profiles/profile-label-selector.svelte';
+	import TagFilter from '$lib/components/dashboard/tag-filter.svelte';
 	import { CalendarDate } from '@internationalized/date';
 	import {
 		PROFILE_TYPES,
@@ -136,8 +134,8 @@
 		loadData(true);
 	}
 
-	function handleLabelSelect(key: string, value: string | undefined) {
-		selectedLabels = applyLabel(selectedLabels, key, value);
+	function handleFilterChange(filters: Record<string, string>) {
+		selectedLabels = filters;
 		loadData(true);
 	}
 
@@ -243,10 +241,11 @@
 		</Tabs.List>
 	</Tabs.Root>
 
-	<ProfileLabelSelector
-		labels={availableLabels}
-		selected={selectedLabels}
-		onSelect={handleLabelSelect}
+	<TagFilter
+		tagKeys={Object.keys(availableLabels)}
+		activeFilters={selectedLabels}
+		onFilterChange={handleFilterChange}
+		onLoadTagValues={(key) => Promise.resolve(availableLabels[key] ?? [])}
 	/>
 
 	{#if loading}

@@ -23,12 +23,15 @@
 
     const tabTriggerClass = "-mb-px rounded-none border-b-2 border-transparent bg-transparent px-0 pb-2.5 pt-0 text-sm font-medium text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none";
 
+    const PROFILE_LABEL_KEY_REGEX = /^[a-zA-Z0-9._:-]+$/;
+
     let activeTab = $state('project');
     let projectName = $state('');
     let selectedFramework = $state<Framework>('gin');
     let dropHealthyHealthchecks = $state(true);
     let healthcheckPathsText = $state('');
     let showDefaultHealthcheckPaths = $state(false);
+    let profileLabelsText = $state('');
     let loading = $state(false);
     let error = $state('');
     let showDeleteConfirm = $state(false);
@@ -43,6 +46,7 @@
             selectedFramework = project.framework;
             dropHealthyHealthchecks = project.dropHealthyHealthchecks ?? true;
             healthcheckPathsText = (project.healthcheckPaths ?? []).join('\n');
+            profileLabelsText = (project.profileLabelAllowlist ?? []).join('\n');
             error = '';
         }
     });
@@ -67,9 +71,34 @@
 
     let subtitle = $derived(
         activeTab === 'healthchecks' ? 'Control which healthcheck requests are stored.'
+        : activeTab === 'profiles' ? 'Choose which pprof sample labels are recorded and searchable.'
         : activeTab === 'danger' ? 'Irreversible and destructive actions.'
         : ''
     );
+
+    let profileLabelKeys = $derived(
+        profileLabelsText
+            .split('\n')
+            .map((p) => p.trim())
+            .filter((p) => p.length > 0)
+    );
+
+    let profileLabelError = $derived.by(() => {
+        const keys = profileLabelKeys;
+        if (keys.length > 20) {
+            return 'At most 20 profile label keys are allowed.';
+        }
+        for (const key of keys) {
+            if (key.toLowerCase() === 'endpoint') continue;
+            if (key.length > 100) {
+                return 'Profile label keys must be at most 100 characters.';
+            }
+            if (!PROFILE_LABEL_KEY_REGEX.test(key)) {
+                return `"${key}" may only contain letters, numbers, and . _ : -`;
+            }
+        }
+        return '';
+    });
 
     async function handleSubmit(e: Event) {
         e.preventDefault();
@@ -87,8 +116,13 @@
             .map(p => p.trim())
             .filter(p => p.length > 0);
 
+        const profileLabelAllowlist = profileLabelsText
+            .split('\n')
+            .map(p => p.trim())
+            .filter(p => p.length > 0);
+
         try {
-            await projectsState.updateProject(project.id, projectName.trim(), selectedFramework, dropHealthyHealthchecks, healthcheckPaths);
+            await projectsState.updateProject(project.id, projectName.trim(), selectedFramework, dropHealthyHealthchecks, healthcheckPaths, profileLabelAllowlist);
             toast.success('Successfully updated the project', { position: 'top-center' });
             onOpenChange(false);
         } catch (err: any) {
@@ -132,6 +166,7 @@
             <Tabs.List class="h-auto w-full justify-start gap-4 rounded-none border-b bg-transparent p-0 pl-6 pt-0">
                 <Tabs.Trigger value="project" class={tabTriggerClass}>Project</Tabs.Trigger>
                 <Tabs.Trigger value="healthchecks" class={tabTriggerClass}>Healthchecks</Tabs.Trigger>
+                <Tabs.Trigger value="profiles" class={tabTriggerClass}>Profiles</Tabs.Trigger>
                 <Tabs.Trigger value="danger" class={tabTriggerClass}>Danger Zone</Tabs.Trigger>
             </Tabs.List>
         </Tabs.Root>
@@ -184,7 +219,7 @@
                             Select your framework for tailored integration code
                         </p>
                     </div>
-                {:else}
+                {:else if activeTab === 'healthchecks'}
                     <div class="flex items-start gap-2">
                         <Checkbox
                             checked={dropHealthyHealthchecks}
@@ -231,6 +266,40 @@
                             </p>
                         </div>
                     {/if}
+                {:else if activeTab === 'profiles'}
+                    <div class="space-y-2">
+                        <Label>Built-in label</Label>
+                        <div class="flex flex-wrap gap-1">
+                            <code class="rounded bg-muted px-1.5 py-0.5 text-xs">endpoint</code>
+                        </div>
+                        <p class="text-xs text-muted-foreground">
+                            The <code class="rounded bg-muted px-1 py-0.5 text-[0.7rem]">endpoint</code> label is always recorded and searchable.
+                        </p>
+                    </div>
+
+                    <div class="space-y-2">
+                        <Label for="edit-profile-labels">Additional profile labels</Label>
+                        <textarea
+                            id="edit-profile-labels"
+                            bind:value={profileLabelsText}
+                            disabled={loading}
+                            rows="3"
+                            placeholder={"tenant\nregion"}
+                            class="border-input bg-background dark:bg-input/30 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 flex w-full rounded-md border px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
+                        ></textarea>
+                        {#if profileLabelError}
+                            <p class="text-xs text-destructive flex items-center gap-1">
+                                <CircleAlert class="h-3.5 w-3.5 shrink-0" />
+                                {profileLabelError}
+                            </p>
+                        {/if}
+                        <p class="text-xs text-muted-foreground">
+                            One label key per line. These pprof sample labels are recorded at ingest and become searchable on the flame-graph page. Added keys only apply to profiles ingested afterward.
+                        </p>
+                        <p class="text-xs text-muted-foreground">
+                            Avoid high-cardinality keys like <code class="rounded bg-muted px-1 py-0.5 text-[0.7rem]">user_id</code> or <code class="rounded bg-muted px-1 py-0.5 text-[0.7rem]">request_id</code>: every distinct value is stored as a separate sample, which bloats storage and slows queries.
+                        </p>
+                    </div>
                 {/if}
 
                 <div class="flex justify-end gap-2 pt-2">

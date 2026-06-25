@@ -19,7 +19,8 @@ func setupProjectsTable(t *testing.T) {
 		source_map_token TEXT,
 		created_at DATETIME NOT NULL DEFAULT (datetime('now')),
 		drop_healthy_healthchecks INTEGER NOT NULL DEFAULT 1,
-		healthcheck_paths TEXT NOT NULL DEFAULT '[]'
+		healthcheck_paths TEXT NOT NULL DEFAULT '[]',
+		profile_label_allowlist TEXT NOT NULL DEFAULT '[]'
 	)`)
 	if err != nil {
 		t.Fatalf("failed to create projects table: %v", err)
@@ -60,7 +61,8 @@ func TestProjectHealthcheckFieldsRoundTrip(t *testing.T) {
 
 	disable := false
 	paths := []string{"/internal/probe", "/checks/*"}
-	updated, err := ProjectRepository.Update(tx, created.Id, "test-project", "gin", &disable, &paths)
+	labels := []string{"tenant", "region"}
+	updated, err := ProjectRepository.Update(tx, created.Id, "test-project", "gin", &disable, &paths, &labels)
 	if err != nil {
 		t.Fatalf("failed to update project: %v", err)
 	}
@@ -78,13 +80,19 @@ func TestProjectHealthcheckFieldsRoundTrip(t *testing.T) {
 	if len(found.HealthcheckPaths) != 2 || found.HealthcheckPaths[0] != "/internal/probe" || found.HealthcheckPaths[1] != "/checks/*" {
 		t.Errorf("HealthcheckPaths = %v, expected %v", found.HealthcheckPaths, paths)
 	}
+	if len(found.ProfileLabelAllowlist) != 2 || found.ProfileLabelAllowlist[0] != "tenant" || found.ProfileLabelAllowlist[1] != "region" {
+		t.Errorf("ProfileLabelAllowlist = %v, expected %v", found.ProfileLabelAllowlist, labels)
+	}
 
 	keepDrop := true
-	updated, err = ProjectRepository.Update(tx, created.Id, "renamed", "gin", &keepDrop, nil)
+	updated, err = ProjectRepository.Update(tx, created.Id, "renamed", "gin", &keepDrop, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to update project without paths: %v", err)
 	}
 	if len(updated.HealthcheckPaths) != 2 {
 		t.Errorf("nil healthcheckPaths should keep existing value, got %v", updated.HealthcheckPaths)
+	}
+	if len(updated.ProfileLabelAllowlist) != 2 {
+		t.Errorf("nil profileLabelAllowlist should keep existing value, got %v", updated.ProfileLabelAllowlist)
 	}
 }

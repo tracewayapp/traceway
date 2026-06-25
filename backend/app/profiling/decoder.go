@@ -12,6 +12,7 @@ type IngestContext struct {
 	ServerName         string
 	AppVersion         string
 	ReceivedAt         time.Time
+	LabelAllowlist     map[string]struct{}
 }
 
 type Decoder interface {

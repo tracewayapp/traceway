@@ -60,16 +60,26 @@ func (c *projectCache) Refresh(ctx context.Context) error {
 	return nil
 }
 
+func copyProject(proj *models.Project) *models.Project {
+	if proj == nil {
+		return nil
+	}
+	cp := *proj
+	cp.HealthcheckPaths = append(models.StringSlice(nil), proj.HealthcheckPaths...)
+	cp.ProfileLabelAllowlist = append(models.StringSlice(nil), proj.ProfileLabelAllowlist...)
+	return &cp
+}
+
 func (c *projectCache) GetByToken(token string) *models.Project {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.projects[token]
+	return copyProject(c.projects[token])
 }
 
 func (c *projectCache) GetById(id uuid.UUID) *models.Project {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.projectsById[id]
+	return copyProject(c.projectsById[id])
 }
 
 func (c *projectCache) GetAll() []*models.Project {
@@ -78,7 +88,7 @@ func (c *projectCache) GetAll() []*models.Project {
 
 	result := make([]*models.Project, 0, len(c.projectsById))
 	for _, proj := range c.projectsById {
-		result = append(result, proj)
+		result = append(result, copyProject(proj))
 	}
 
 	sort.Slice(result, func(i, j int) bool {
@@ -109,6 +119,7 @@ func (c *projectCache) UpdateProject(proj *models.Project) {
 	cached.Framework = proj.Framework
 	cached.DropHealthyHealthchecks = proj.DropHealthyHealthchecks
 	cached.HealthcheckPaths = proj.HealthcheckPaths
+	cached.ProfileLabelAllowlist = proj.ProfileLabelAllowlist
 }
 
 func (c *projectCache) RemoveProject(id uuid.UUID) {
@@ -128,7 +139,7 @@ func (c *projectCache) RemoveProject(id uuid.UUID) {
 func (c *projectCache) GetBySourceMapToken(token string) *models.Project {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.projectsBySourceMapToken[token]
+	return copyProject(c.projectsBySourceMapToken[token])
 }
 
 func (c *projectCache) UpdateSourceMapToken(projectId uuid.UUID, token string) {

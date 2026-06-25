@@ -295,13 +295,14 @@ func (r *profileRepository) GetFlameGraph(ctx context.Context, projectId uuid.UU
 
 func (r *profileRepository) distinctLabelValues(ctx context.Context, projectId uuid.UUID, service, profileType, key string, from, to time.Time) ([]string, error) {
 	results, err := lit.SelectNamed[labelValueRow](db.TelemetryDB,
-		`SELECT DISTINCT json_extract(labels, '$.' || :key) AS v
+		fmt.Sprintf(`SELECT DISTINCT json_extract(labels, '$."' || :key || '"') AS v
 		FROM profiling_samples
 		WHERE project_id = :project_id AND type = :type AND service_name = :service
 			AND start_time >= :from AND start_time <= :to
-			AND json_extract(labels, '$.' || :key) IS NOT NULL
-			AND json_extract(labels, '$.' || :key) != ''
-		ORDER BY v ASC`,
+			AND json_extract(labels, '$."' || :key || '"') IS NOT NULL
+			AND json_extract(labels, '$."' || :key || '"') != ''
+		ORDER BY v ASC
+		LIMIT %d`, profiling.MaxLabelValuesPerKey),
 		lit.P{"project_id": projectId, "type": profileType, "service": service, "key": key, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to)})
 	if err != nil {
 		return nil, err
@@ -329,7 +330,7 @@ func sqliteLabelFilter(qualifier string, filters map[string]string, params lit.P
 		pathKey := fmt.Sprintf("lblpath_%d", i)
 		valKey := fmt.Sprintf("lblval_%d", i)
 		clause += fmt.Sprintf(" AND json_extract(%slabels, :%s) = :%s", qualifier, pathKey, valKey)
-		params[pathKey] = "$." + k
+		params[pathKey] = "$.\"" + k + "\""
 		params[valKey] = filters[k]
 	}
 	return clause

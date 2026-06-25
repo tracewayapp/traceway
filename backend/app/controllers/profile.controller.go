@@ -2,11 +2,15 @@ package controllers
 
 import (
 	"net/http"
+	"slices"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tracewayapp/traceway/backend/app/cache"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/profiling"
 	"github.com/tracewayapp/traceway/backend/app/repositories"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	traceway "go.tracewayapp.com"
@@ -127,6 +131,20 @@ func (p profileController) GetFlameGraph(c *gin.Context) {
 		return
 	}
 
+	if len(request.Labels) > 0 {
+		var additional []string
+		if proj := cache.ProjectCache.GetById(projectId); proj != nil {
+			additional = proj.ProfileLabelAllowlist
+		}
+		allowed := profiling.LabelAllowKeys(additional)
+		for key := range request.Labels {
+			if utf8.RuneCountInString(key) > 100 || !slices.Contains(allowed, key) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "label filter key is not in the project's profile label allowlist"})
+				return
+			}
+		}
+	}
+
 	rows, err := repositories.ProfileRepository.GetFlameGraph(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate, request.Labels)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error loading flame graph: %w", err))
@@ -153,7 +171,12 @@ func (p profileController) DiscoverLabels(c *gin.Context) {
 		return
 	}
 
-	labels, err := repositories.ProfileRepository.DiscoverLabels(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate)
+	var additional []string
+	if proj := cache.ProjectCache.GetById(projectId); proj != nil {
+		additional = proj.ProfileLabelAllowlist
+	}
+
+	labels, err := repositories.ProfileRepository.DiscoverLabels(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate, profiling.LabelAllowKeys(additional))
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error discovering profile labels: %w", err))
 		return

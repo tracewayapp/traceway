@@ -15,6 +15,7 @@ var testIngest = IngestContext{
 	ServerName:         "pod-abc",
 	AppVersion:         "1.2.3",
 	ReceivedAt:         time.Unix(1_700_000_000, 0).UTC(),
+	LabelAllowlist:     NewLabelAllowSet(nil),
 }
 
 func fn(id uint64, name, file string) *profile.Function {

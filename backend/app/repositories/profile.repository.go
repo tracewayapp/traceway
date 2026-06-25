@@ -229,11 +229,12 @@ func (r *profileRepository) GetFlameGraph(ctx context.Context, projectId uuid.UU
 
 func (r *profileRepository) distinctLabelValues(ctx context.Context, projectId uuid.UUID, service, profileType, key string, from, to time.Time) ([]string, error) {
 	rows, err := chdb.Conn.Query(ctx,
-		`SELECT DISTINCT labels[?] AS v
+		fmt.Sprintf(`SELECT DISTINCT labels[?] AS v
 		FROM profiling_samples
 		WHERE project_id = ? AND type = ? AND service_name = ? AND start_time >= ? AND start_time <= ?
 			AND labels[?] != ''
-		ORDER BY v ASC`,
+		ORDER BY v ASC
+		LIMIT %d`, profiling.MaxLabelValuesPerKey),
 		key, projectId, profileType, service, from, to, key)
 	if err != nil {
 		return nil, err

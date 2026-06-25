@@ -63,7 +63,7 @@ func (PprofDecoder) Decode(ctx IngestContext, payload []byte) ([]Decoded, error)
 			continue
 		}
 		hash := HashFrames(frames)
-		sampleLabels := allowlistedLabels(s.Label)
+		sampleLabels := allowlistedLabels(s.Label, ctx.LabelAllowlist)
 		labelHash := labelFingerprint(sampleLabels)
 		for _, k := range kept {
 			if k.index >= len(s.Value) || s.Value[k.index] == 0 {

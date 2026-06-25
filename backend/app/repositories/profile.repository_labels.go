@@ -2,25 +2,45 @@ package repositories
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-const profileLabelEndpoint = "endpoint"
+const discoverLabelsTimeout = 10 * time.Second
 
-var allowedProfileLabels = []string{profileLabelEndpoint}
+func (r *profileRepository) DiscoverLabels(ctx context.Context, projectId uuid.UUID, service, profileType string, from, to time.Time, allowKeys []string) (map[string][]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, discoverLabelsTimeout)
+	defer cancel()
 
-func (r *profileRepository) DiscoverLabels(ctx context.Context, projectId uuid.UUID, service, profileType string, from, to time.Time) (map[string][]string, error) {
 	out := map[string][]string{}
-	for _, key := range allowedProfileLabels {
-		values, err := r.distinctLabelValues(ctx, projectId, service, profileType, key, from, to)
-		if err != nil {
-			return nil, err
-		}
-		if len(values) > 0 {
-			out[key] = values
-		}
+	var mu sync.Mutex
+	var firstErr error
+	var wg sync.WaitGroup
+
+	for _, key := range allowKeys {
+		wg.Add(1)
+		go func(key string) {
+			defer wg.Done()
+			values, err := r.distinctLabelValues(ctx, projectId, service, profileType, key, from, to)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				return
+			}
+			if len(values) > 0 {
+				out[key] = values
+			}
+		}(key)
+	}
+	wg.Wait()
+
+	if firstErr != nil {
+		return nil, firstErr
 	}
 	return out, nil
 }

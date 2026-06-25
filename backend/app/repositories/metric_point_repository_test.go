@@ -190,6 +190,30 @@ func TestMetricPointRepository_DiscoverTagValues(t *testing.T) {
 	}
 }
 
+func TestMetricPointRepository_DiscoverTagValues_DottedKey(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	projectId := uuid.New()
+	base := time.Now().UTC().Truncate(time.Hour)
+
+	points := []models.MetricPoint{
+		makeMetricPoint(projectId, "http.server.duration", 1.0, map[string]string{"http.route": "GET /a"}, base),
+		makeMetricPoint(projectId, "http.server.duration", 2.0, map[string]string{"http.route": "GET /b"}, base.Add(time.Minute)),
+		makeMetricPoint(projectId, "http.server.duration", 3.0, map[string]string{"http.route": "GET /a"}, base.Add(2*time.Minute)),
+	}
+	if err := MetricPointRepository.InsertAsync(ctx, points); err != nil {
+		t.Fatalf("InsertAsync failed: %v", err)
+	}
+
+	values, err := MetricPointRepository.DiscoverTagValues(ctx, projectId, "http.server.duration", "http.route", base.Add(-time.Minute), base.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("DiscoverTagValues failed: %v", err)
+	}
+	if len(values) != 2 || values[0] != "GET /a" || values[1] != "GET /b" {
+		t.Errorf("dotted tag values = %v, want [GET /a GET /b] (dotted key must round-trip in SQLite mode)", values)
+	}
+}
+
 func TestMetricPointRepository_GetAverageBetween(t *testing.T) {
 	setupTestDB(t)
 	ctx := context.Background()

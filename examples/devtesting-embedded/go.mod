@@ -65,6 +65,7 @@ require (
 	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/golang-migrate/migrate/v4 v4.19.1 // indirect
+	github.com/google/pprof v0.0.0-20260604005048-7023385849c0 // indirect
 	github.com/gorilla/mux v1.7.4 // indirect
 	github.com/gorilla/securecookie v1.1.2 // indirect
 	github.com/gorilla/sessions v1.4.0 // indirect
@@ -104,6 +105,8 @@ require (
 	go.opentelemetry.io/otel/metric v1.44.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.44.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect
+	go.opentelemetry.io/proto/otlp/collector/profiles/v1development v0.3.0 // indirect
+	go.opentelemetry.io/proto/otlp/profiles/v1development v0.3.0 // indirect
 	go.tracewayapp.com v1.0.4 // indirect
 	go.tracewayapp.com/tracewaygin v1.0.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect

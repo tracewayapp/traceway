@@ -19,6 +19,7 @@ type otlpBuilder struct {
 	functions   []*profilespb.Function
 	locations   []*profilespb.Location
 	stacks      []*profilespb.Stack
+	attributes  []*profilespb.KeyValueAndUnit
 	profiles    []*profilespb.Profile
 }
 
@@ -80,6 +81,15 @@ func (b *otlpBuilder) inlinedStack(rootFirst ...string) int32 {
 	return idx
 }
 
+func (b *otlpBuilder) attr(key, value string) int32 {
+	idx := int32(len(b.attributes))
+	b.attributes = append(b.attributes, &profilespb.KeyValueAndUnit{
+		KeyStrindex: b.str(key),
+		Value:       &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: value}},
+	})
+	return idx
+}
+
 func (b *otlpBuilder) profile(typeName, unit string, timeNanos, durNanos uint64, samples ...*profilespb.Sample) {
 	b.profiles = append(b.profiles, &profilespb.Profile{
 		SampleType:   &profilespb.ValueType{TypeStrindex: b.str(typeName), UnitStrindex: b.str(unit)},
@@ -100,10 +110,11 @@ func (b *otlpBuilder) build(t *testing.T) []byte {
 	}
 	req := &colprofilespb.ExportProfilesServiceRequest{
 		Dictionary: &profilespb.ProfilesDictionary{
-			StringTable:   b.strings,
-			FunctionTable: b.functions,
-			LocationTable: b.locations,
-			StackTable:    b.stacks,
+			StringTable:    b.strings,
+			FunctionTable:  b.functions,
+			LocationTable:  b.locations,
+			StackTable:     b.stacks,
+			AttributeTable: b.attributes,
 		},
 		ResourceProfiles: []*profilespb.ResourceProfiles{{
 			Resource: res,
@@ -121,6 +132,10 @@ func (b *otlpBuilder) build(t *testing.T) []byte {
 
 func otlpSample(stackIdx int32, value int64) *profilespb.Sample {
 	return &profilespb.Sample{StackIndex: stackIdx, Values: []int64{value}}
+}
+
+func otlpSampleAttr(stackIdx int32, value int64, attrIdxs ...int32) *profilespb.Sample {
+	return &profilespb.Sample{StackIndex: stackIdx, Values: []int64{value}, AttributeIndices: attrIdxs}
 }
 
 func decodeOTLPAll(t *testing.T, payload []byte) []Decoded {
@@ -392,6 +407,95 @@ func TestDecoderParity_PprofVsOTLP(t *testing.T) {
 		if otlpSmpl[k] != v {
 			t.Errorf("sample %+v: pprof=%d otlp=%d", k, v, otlpSmpl[k])
 		}
+	}
+}
+
+func TestOTLPDecoder_ExtractsAllowlistedLabels(t *testing.T) {
+	b := newOTLPBuilder()
+	b.serviceName = "checkout"
+	s := b.frameStack("main.main", "main.work")
+	epCheckout := b.attr("endpoint", "/checkout")
+	epCart := b.attr("endpoint", "/cart")
+	tenant := b.attr("tenant", "acme")
+	reqID := b.attr("request_id", "abc-123")
+	b.profile("cpu", "nanoseconds", 1_700_000_000_000_000_000, 1_000_000_000,
+		otlpSampleAttr(s, 300, epCheckout, tenant, reqID),
+		otlpSampleAttr(s, 100, epCart),
+		otlpSampleAttr(s, 50, epCheckout, tenant, reqID),
+	)
+
+	out, err := OTLPDecoder{}.Decode(IngestContext{
+		DefaultServiceName: "checkout",
+		ReceivedAt:         testIngest.ReceivedAt,
+		LabelAllowlist:     NewLabelAllowSet([]string{"tenant"}),
+	}, b.build(t))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+
+	var samples []Sample
+	for _, d := range out {
+		samples = append(samples, d.Samples...)
+	}
+	if len(samples) != 2 {
+		t.Fatalf("expected 2 label-separated samples, got %d", len(samples))
+	}
+	byEndpoint := map[string]Sample{}
+	for _, smp := range samples {
+		byEndpoint[smp.Labels[LabelEndpoint]] = smp
+	}
+	checkout := byEndpoint["/checkout"]
+	if checkout.Value != 350 {
+		t.Errorf("/checkout value = %d, want 350 (same stack+labels summed)", checkout.Value)
+	}
+	if checkout.Labels["tenant"] != "acme" {
+		t.Errorf("tenant label = %q, want acme (additional allowlisted key kept)", checkout.Labels["tenant"])
+	}
+	if _, ok := checkout.Labels["request_id"]; ok {
+		t.Errorf("non-allowlisted request_id must be dropped, got %v", checkout.Labels)
+	}
+	if byEndpoint["/cart"].Value != 100 {
+		t.Errorf("/cart value = %d, want 100", byEndpoint["/cart"].Value)
+	}
+	if got := len(flattenStacks(out)); got != 1 {
+		t.Errorf("unique stacks = %d, want 1 (label-separated samples still share the stack row)", got)
+	}
+}
+
+func TestOTLPDecoder_DropsNonStringAttributes(t *testing.T) {
+	b := newOTLPBuilder()
+	b.serviceName = "checkout"
+	s := b.frameStack("main.main", "main.work")
+	ep := b.attr("endpoint", "/checkout")
+	numIdx := int32(len(b.attributes))
+	b.attributes = append(b.attributes, &profilespb.KeyValueAndUnit{
+		KeyStrindex: b.str("request_count"),
+		Value:       &commonpb.AnyValue{Value: &commonpb.AnyValue_IntValue{IntValue: 42}},
+	})
+	b.profile("cpu", "nanoseconds", 1_700_000_000_000_000_000, 1_000_000_000,
+		otlpSampleAttr(s, 100, ep, numIdx),
+	)
+
+	out, err := OTLPDecoder{}.Decode(IngestContext{
+		DefaultServiceName: "checkout",
+		ReceivedAt:         testIngest.ReceivedAt,
+		LabelAllowlist:     NewLabelAllowSet([]string{"request_count"}),
+	}, b.build(t))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+
+	var labels map[string]string
+	for _, d := range out {
+		for _, smp := range d.Samples {
+			labels = smp.Labels
+		}
+	}
+	if labels[LabelEndpoint] != "/checkout" {
+		t.Errorf("labels = %v, want endpoint /checkout", labels)
+	}
+	if _, ok := labels["request_count"]; ok {
+		t.Errorf("non-string IntValue attribute must be dropped even when allowlisted, got %v", labels)
 	}
 }
 

@@ -59,7 +59,7 @@ func decodeProfile(ctx IngestContext, serviceName string, resolver *stackResolve
 		end = start.Add(time.Duration(dur))
 	}
 
-	values := make(map[uint64]int64)
+	values := make(map[dedupKey]*dedupValue)
 	stacks := make(map[uint64][]string)
 	for _, s := range p.Samples {
 		rs := resolver.lookup(s.StackIndex)
@@ -77,7 +77,14 @@ func decodeProfile(ctx IngestContext, serviceName string, resolver *stackResolve
 		if v == 0 {
 			continue
 		}
-		values[rs.hash] += v
+		labels := resolver.attributes(s.AttributeIndices, ctx.LabelAllowlist)
+		key := dedupKey{typ: internalType, stackHash: rs.hash, labelHash: labelFingerprint(labels)}
+		agg := values[key]
+		if agg == nil {
+			agg = &dedupValue{labels: labels}
+			values[key] = agg
+		}
+		agg.value += v
 		stacks[rs.hash] = rs.frames
 	}
 
@@ -93,8 +100,8 @@ func decodeProfile(ctx IngestContext, serviceName string, resolver *stackResolve
 	for hash, frames := range stacks {
 		decoded.Stacks = append(decoded.Stacks, Stack{Hash: hash, Frames: frames})
 	}
-	for hash, v := range values {
-		decoded.Samples = append(decoded.Samples, Sample{Type: internalType, StackHash: hash, Value: v})
+	for key, agg := range values {
+		decoded.Samples = append(decoded.Samples, Sample{Type: key.typ, StackHash: key.stackHash, Value: agg.value, Labels: agg.labels})
 	}
 	return decoded, true
 }
@@ -122,6 +129,38 @@ type stackResolver struct {
 
 func newStackResolver(dict *profilespb.ProfilesDictionary) *stackResolver {
 	return &stackResolver{dict: dict, cache: make(map[int32]resolvedStack)}
+}
+
+func (r *stackResolver) attributes(indices []int32, allow map[string]struct{}) map[string]string {
+	if len(indices) == 0 || len(allow) == 0 {
+		return nil
+	}
+	var out map[string]string
+	for _, idx := range indices {
+		if idx < 0 || int(idx) >= len(r.dict.AttributeTable) {
+			continue
+		}
+		kv := r.dict.AttributeTable[idx]
+		if kv == nil || kv.Value == nil {
+			continue
+		}
+		key := r.stringAt(kv.KeyStrindex)
+		if key == "" {
+			continue
+		}
+		if _, ok := allow[key]; !ok {
+			continue
+		}
+		sv, ok := kv.Value.Value.(*commonpb.AnyValue_StringValue)
+		if !ok {
+			continue
+		}
+		if out == nil {
+			out = make(map[string]string)
+		}
+		out[key] = sv.StringValue
+	}
+	return out
 }
 
 func (r *stackResolver) stringAt(i int32) string {

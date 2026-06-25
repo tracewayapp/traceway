@@ -5,6 +5,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/app/profiling"
 	"github.com/tracewayapp/traceway/backend/app/repositories"
 	"database/sql"
 	"fmt"
@@ -53,6 +54,35 @@ var validFrameworks = map[string]bool{
 // Project name validation regex: allows alphanumeric, spaces, hyphens, and underscores
 var projectNameRegex = regexp.MustCompile(`^[a-zA-Z0-9\s\-_]+$`)
 
+// Profile label key validation regex: letters, numbers, and . _ : -
+var profileLabelKeyRegex = regexp.MustCompile(`^[a-zA-Z0-9._:-]+$`)
+
+func cleanProfileLabelAllowlist(in []string) ([]string, string) {
+	if len(in) > 20 {
+		return nil, "At most 20 profile label keys are allowed"
+	}
+	cleaned := make([]string, 0, len(in))
+	seen := make(map[string]struct{})
+	for _, key := range in {
+		key = strings.TrimSpace(key)
+		if key == "" || strings.EqualFold(key, profiling.LabelEndpoint) {
+			continue
+		}
+		if utf8.RuneCountInString(key) > 100 {
+			return nil, "Profile label keys must be at most 100 characters"
+		}
+		if !profileLabelKeyRegex.MatchString(key) {
+			return nil, "Profile label keys may only contain letters, numbers, and . _ : -"
+		}
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		cleaned = append(cleaned, key)
+	}
+	return cleaned, ""
+}
+
 type projectController struct{}
 
 type CreateProjectRequest struct {
@@ -65,6 +95,7 @@ type UpdateProjectRequest struct {
 	Framework               string    `json:"framework" binding:"required"`
 	DropHealthyHealthchecks *bool     `json:"dropHealthyHealthchecks"`
 	HealthcheckPaths        *[]string `json:"healthcheckPaths"`
+	ProfileLabelAllowlist   *[]string `json:"profileLabelAllowlist"`
 }
 
 type DeleteProjectRequest struct {
@@ -191,6 +222,16 @@ func (p projectController) UpdateProject(c *gin.Context) {
 		healthcheckPaths = &cleaned
 	}
 
+	var profileLabelAllowlist *[]string
+	if request.ProfileLabelAllowlist != nil {
+		cleaned, errMsg := cleanProfileLabelAllowlist(*request.ProfileLabelAllowlist)
+		if errMsg != "" {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": errMsg})
+			return
+		}
+		profileLabelAllowlist = &cleaned
+	}
+
 	projectId, err := middleware.GetProjectId(c)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
@@ -198,7 +239,7 @@ func (p projectController) UpdateProject(c *gin.Context) {
 	}
 
 	project, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.Project, error) {
-		return repositories.ProjectRepository.Update(tx, projectId, request.Name, request.Framework, request.DropHealthyHealthchecks, healthcheckPaths)
+		return repositories.ProjectRepository.Update(tx, projectId, request.Name, request.Framework, request.DropHealthyHealthchecks, healthcheckPaths, profileLabelAllowlist)
 	})
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error updating project: %w", err))

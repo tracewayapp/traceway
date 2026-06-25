@@ -80,6 +80,7 @@ export interface Project {
     backendUrl: string;
     dropHealthyHealthchecks: boolean;
     healthcheckPaths: string[] | null;
+    profileLabelAllowlist: string[] | null;
 }
 
 export interface ProjectWithToken extends Project {
@@ -162,8 +163,8 @@ class ProjectsState {
         return response;
     }
 
-    async updateProject(id: string, name: string, framework: Framework, dropHealthyHealthchecks: boolean, healthcheckPaths: string[]): Promise<Project> {
-        const response = await api.put('/projects', { name, framework, dropHealthyHealthchecks, healthcheckPaths }, {
+    async updateProject(id: string, name: string, framework: Framework, dropHealthyHealthchecks: boolean, healthcheckPaths: string[], profileLabelAllowlist: string[]): Promise<Project> {
+        const response = await api.put('/projects', { name, framework, dropHealthyHealthchecks, healthcheckPaths, profileLabelAllowlist }, {
             projectId: id
         });
         await this.loadProjects();

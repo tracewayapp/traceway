@@ -278,16 +278,20 @@ func (o otelController) ExportProfiles(c *gin.Context) {
 		return
 	}
 
-	if project, exists := c.Get(middleware.ProjectContextKey); exists {
-		if p, ok := project.(*models.Project); ok && p.OrganizationId != nil {
-			if attrs := traceway.GetAttributesFromContext(c); attrs != nil {
-				attrs.SetTag("organization_id", fmt.Sprintf("%d", *p.OrganizationId))
-			}
-			if !hooks.CanReport(*p.OrganizationId) {
-				monitoring.RecordRateLimited(*p.OrganizationId)
-				c.AbortWithStatus(http.StatusTooManyRequests)
-				return
-			}
+	var project *models.Project
+	if projectAsAny, exists := c.Get(middleware.ProjectContextKey); exists {
+		if p, ok := projectAsAny.(*models.Project); ok {
+			project = p
+		}
+	}
+	if project != nil && project.OrganizationId != nil {
+		if attrs := traceway.GetAttributesFromContext(c); attrs != nil {
+			attrs.SetTag("organization_id", fmt.Sprintf("%d", *project.OrganizationId))
+		}
+		if !hooks.CanReport(*project.OrganizationId) {
+			monitoring.RecordRateLimited(*project.OrganizationId)
+			c.AbortWithStatus(http.StatusTooManyRequests)
+			return
 		}
 	}
 
@@ -297,10 +301,16 @@ func (o otelController) ExportProfiles(c *gin.Context) {
 		return
 	}
 
+	var labelAllowlist []string
+	if project != nil {
+		labelAllowlist = project.ProfileLabelAllowlist
+	}
+
 	convertStart := time.Now()
 	decoded, err := profiling.OTLPDecoder{}.Decode(profiling.IngestContext{
-		ProjectId:  projectId,
-		ReceivedAt: time.Now().UTC(),
+		ProjectId:      projectId,
+		ReceivedAt:     time.Now().UTC(),
+		LabelAllowlist: profiling.NewLabelAllowSet(labelAllowlist),
 	}, payload)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

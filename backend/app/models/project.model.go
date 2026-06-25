@@ -53,6 +53,7 @@ type Project struct {
 	SourceMapToken          *string     `json:"sourceMapToken,omitempty"`
 	DropHealthyHealthchecks bool        `json:"dropHealthyHealthchecks"`
 	HealthcheckPaths        StringSlice `json:"healthcheckPaths"`
+	ProfileLabelAllowlist   StringSlice `json:"profileLabelAllowlist"`
 }
 
 func (p Project) ToProjectWithBackendUrl() *ProjectWithBackendUrl {

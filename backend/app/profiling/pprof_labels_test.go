@@ -36,6 +36,35 @@ func TestPprofDecoder_KeepsOnlyAllowlistedLabels(t *testing.T) {
 	}
 }
 
+func TestPprofDecoder_HonorsAdditionalAllowlistedKeys(t *testing.T) {
+	main := fn(1, "main.main", "main.go")
+	lMain := loc(1, profile.Line{Function: main, Line: 10})
+	samples := []*profile.Sample{{
+		Location: []*profile.Location{lMain},
+		Value:    []int64{1, 100},
+		Label:    map[string][]string{"endpoint": {"/x"}, "tenant": {"acme"}, "request_id": {"abc"}},
+	}}
+	out, err := PprofDecoder{}.Decode(IngestContext{
+		DefaultServiceName: "checkout",
+		ReceivedAt:         testIngest.ReceivedAt,
+		LabelAllowlist:     NewLabelAllowSet([]string{"tenant"}),
+	}, labeledCPU(t, samples, []*profile.Function{main}, []*profile.Location{lMain}))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	cpu := sampleByType(out[0], TypeCPUNanos)
+	if len(cpu) != 1 {
+		t.Fatalf("expected 1 sample, got %d", len(cpu))
+	}
+	got := cpu[0].Labels
+	if got[LabelEndpoint] != "/x" || got["tenant"] != "acme" {
+		t.Errorf("labels = %v, want {endpoint:/x, tenant:acme} (built-in + additional allowlisted)", got)
+	}
+	if _, ok := got["request_id"]; ok {
+		t.Errorf("non-allowlisted request_id must be dropped, got %v", got)
+	}
+}
+
 func TestPprofDecoder_LabelsSeparateTheDedup(t *testing.T) {
 	main := fn(1, "main.main", "main.go")
 	work := fn(2, "main.work", "work.go")
@@ -98,5 +127,35 @@ func TestBuildRows_CarriesSampleLabels(t *testing.T) {
 	}
 	if samples[0].Labels[LabelEndpoint] != "/x" {
 		t.Errorf("ProfileSample.Labels = %v, want {endpoint:/x}", samples[0].Labels)
+	}
+}
+
+func TestPprofDecoder_DropsNumericLabels(t *testing.T) {
+	main := fn(1, "main.main", "main.go")
+	lMain := loc(1, profile.Line{Function: main, Line: 10})
+	samples := []*profile.Sample{{
+		Location: []*profile.Location{lMain},
+		Value:    []int64{1, 100},
+		Label:    map[string][]string{"endpoint": {"/x"}},
+		NumLabel: map[string][]int64{"request_count": {42}},
+	}}
+	out, err := PprofDecoder{}.Decode(IngestContext{
+		DefaultServiceName: "checkout",
+		ReceivedAt:         testIngest.ReceivedAt,
+		LabelAllowlist:     NewLabelAllowSet([]string{"request_count"}),
+	}, labeledCPU(t, samples, []*profile.Function{main}, []*profile.Location{lMain}))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	cpu := sampleByType(out[0], TypeCPUNanos)
+	if len(cpu) != 1 {
+		t.Fatalf("expected 1 sample, got %d", len(cpu))
+	}
+	got := cpu[0].Labels
+	if got[LabelEndpoint] != "/x" {
+		t.Errorf("labels = %v, want endpoint /x", got)
+	}
+	if _, ok := got["request_count"]; ok {
+		t.Errorf("numeric NumLabel must be dropped even when allowlisted, got %v", got)
 	}
 }

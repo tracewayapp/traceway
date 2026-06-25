@@ -3,6 +3,7 @@ package profiling
 import (
 	"hash/fnv"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -20,8 +21,27 @@ var keptSampleTypes = map[string]string{
 
 const LabelEndpoint = "endpoint"
 
-var allowedLabels = map[string]struct{}{
-	LabelEndpoint: {},
+const MaxLabelValuesPerKey = 1000
+
+func NewLabelAllowSet(additional []string) map[string]struct{} {
+	allow := map[string]struct{}{LabelEndpoint: {}}
+	for _, k := range additional {
+		k = strings.TrimSpace(k)
+		if k != "" {
+			allow[k] = struct{}{}
+		}
+	}
+	return allow
+}
+
+func LabelAllowKeys(additional []string) []string {
+	allow := NewLabelAllowSet(additional)
+	keys := make([]string, 0, len(allow))
+	for k := range allow {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func IsGauge(profileType string) bool {
@@ -66,10 +86,10 @@ func HashFrames(frames []string) uint64 {
 	return h.Sum64()
 }
 
-func allowlistedLabels(raw map[string][]string) map[string]string {
+func allowlistedLabels(raw map[string][]string, allow map[string]struct{}) map[string]string {
 	var out map[string]string
 	for k, v := range raw {
-		if _, ok := allowedLabels[k]; !ok {
+		if _, ok := allow[k]; !ok {
 			continue
 		}
 		if len(v) == 0 {

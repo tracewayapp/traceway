@@ -73,7 +73,7 @@ func (r *metricPointRepository) QueryTimeSeries(ctx context.Context, projectId u
 
 	selectClause := fmt.Sprintf("SELECT datetime((strftime('%%s', recorded_at) / %d) * %d, 'unixepoch') AS bucket", secs, secs)
 	if hasGroupBy {
-		selectClause += ", json_extract(tags, '$.' || :group_by) AS group_key"
+		selectClause += ", json_extract(tags, '$.\"' || :group_by || '\"') AS group_key"
 	}
 	selectClause += ", " + aggFunc + " AS agg_value FROM metric_points WHERE project_id = :project_id AND name = :name AND recorded_at >= :from AND recorded_at <= :to"
 
@@ -91,7 +91,7 @@ func (r *metricPointRepository) QueryTimeSeries(ctx context.Context, projectId u
 	for i, k := range sortedKeys(tagFilters) {
 		fk := fmt.Sprintf("fk_%d", i)
 		fv := fmt.Sprintf("fv_%d", i)
-		filterClauses += fmt.Sprintf(" AND json_extract(tags, '$.' || :%s) = :%s", fk, fv)
+		filterClauses += fmt.Sprintf(" AND json_extract(tags, '$.\"' || :%s || '\"') = :%s", fk, fv)
 		params[fk] = k
 		params[fv] = tagFilters[k]
 	}
@@ -201,11 +201,11 @@ func (r *metricPointRepository) DiscoverTagValues(ctx context.Context, projectId
 	lit.RegisterModel[tagValueRow](db.Driver)
 
 	results, err := lit.SelectNamed[tagValueRow](db.TelemetryDB,
-		`SELECT DISTINCT json_extract(tags, '$.' || :tag_key) AS tag_value
+		`SELECT DISTINCT json_extract(tags, '$."' || :tag_key || '"') AS tag_value
 		FROM metric_points
 		WHERE project_id = :project_id AND name = :name AND recorded_at >= :from AND recorded_at <= :to
-		AND json_extract(tags, '$.' || :tag_key) IS NOT NULL
-		AND json_extract(tags, '$.' || :tag_key) != ''
+		AND json_extract(tags, '$."' || :tag_key || '"') IS NOT NULL
+		AND json_extract(tags, '$."' || :tag_key || '"') != ''
 		ORDER BY tag_value ASC`,
 		lit.P{"project_id": projectId, "name": metricName, "tag_key": tagKey, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to)})
 	if err != nil {

@@ -56,12 +56,18 @@ func (e profileIngestController) Ingest(c *gin.Context) {
 		serviceName = project.Name
 	}
 
+	var labelAllowlist []string
+	if project != nil {
+		labelAllowlist = project.ProfileLabelAllowlist
+	}
+
 	ingestCtx := profiling.IngestContext{
 		ProjectId:          projectId,
 		DefaultServiceName: serviceName,
 		ServerName:         c.Query("serverName"),
 		AppVersion:         c.Query("appVersion"),
 		ReceivedAt:         time.Now().UTC(),
+		LabelAllowlist:     profiling.NewLabelAllowSet(labelAllowlist),
 	}
 
 	decoded, err := (profiling.PprofDecoder{}).Decode(ingestCtx, body)

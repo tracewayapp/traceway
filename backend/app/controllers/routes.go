@@ -98,7 +98,10 @@ func RegisterControllers(router *gin.RouterGroup) {
 
 	router.POST("/profiles/grouped", middleware.UseAppAuth, middleware.RequireProjectAccess, ProfileController.FindGroupedByService)
 	router.POST("/profiles/series", middleware.UseAppAuth, middleware.RequireProjectAccess, ProfileController.GetSeries)
+	router.POST("/profiles/types", middleware.UseAppAuth, middleware.RequireProjectAccess, ProfileController.DiscoverTypes)
 	router.POST("/profiles/flamegraph", middleware.UseAppAuth, middleware.RequireProjectAccess, ProfileController.GetFlameGraph)
+	router.POST("/profiles/top", middleware.UseAppAuth, middleware.RequireProjectAccess, ProfileController.GetTopFunctions)
+	router.POST("/profiles/pprof", middleware.UseAppAuth, middleware.RequireProjectAccess, ProfileController.DownloadPprof)
 	router.POST("/profiles/labels", middleware.UseAppAuth, middleware.RequireProjectAccess, ProfileController.DiscoverLabels)
 
 	router.POST("/ai-traces/grouped", middleware.UseAppAuth, middleware.RequireProjectAccess, AiTraceController.FindGroupedByTraceName)

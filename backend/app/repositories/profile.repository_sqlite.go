@@ -19,6 +19,8 @@ import (
 type profileGroupRow struct {
 	ServiceName  string     `lit:"service_name"`
 	ProfileType  string     `lit:"profile_type"`
+	Unit         string     `lit:"unit"`
+	IsGauge      int64      `lit:"is_gauge"`
 	ProfileCount int64      `lit:"profile_count"`
 	SampleCount  int64      `lit:"sample_count"`
 	TotalValue   int64      `lit:"total_value"`
@@ -29,14 +31,28 @@ type labelValueRow struct {
 	Value string `lit:"v"`
 }
 
+type profileTypeRow struct {
+	Type    string `lit:"type"`
+	Unit    string `lit:"unit"`
+	IsGauge int64  `lit:"is_gauge"`
+}
+
 func init() {
 	models.ExtensionModelRegistrations = append(models.ExtensionModelRegistrations, func(driver lit.Driver) {
 		lit.RegisterModel[profileGroupRow](driver)
 		lit.RegisterModel[labelValueRow](driver)
+		lit.RegisterModel[profileTypeRow](driver)
 	})
 }
 
 type profileRepository struct{}
+
+func boolToInt(b bool) int64 {
+	if b {
+		return 1
+	}
+	return 0
+}
 
 func (r *profileRepository) InsertStacksAsync(ctx context.Context, stacks []models.ProfileStack) error {
 	if len(stacks) == 0 {
@@ -85,12 +101,14 @@ func (r *profileRepository) InsertSamplesAsync(ctx context.Context, samples []mo
 	for _, s := range samples {
 		labelsVal, _ := NewSQLiteJSONMap(s.Labels).Value()
 		query, args, err := lit.ParseNamedQuery(db.Driver,
-			"INSERT INTO profiling_samples (project_id, profile_id, service_name, type, start_time, end_time, stack_hash, value, labels, server_name, app_version, trace_id, span_id) VALUES (:project_id, :profile_id, :service_name, :type, :start_time, :end_time, :stack_hash, :value, :labels, :server_name, :app_version, :trace_id, :span_id)",
+			"INSERT INTO profiling_samples (project_id, profile_id, service_name, type, unit, is_gauge, start_time, end_time, stack_hash, value, labels, server_name, app_version, trace_id, span_id) VALUES (:project_id, :profile_id, :service_name, :type, :unit, :is_gauge, :start_time, :end_time, :stack_hash, :value, :labels, :server_name, :app_version, :trace_id, :span_id)",
 			lit.P{
 				"project_id":   s.ProjectId,
 				"profile_id":   s.ProfileId,
 				"service_name": s.ServiceName,
 				"type":         s.Type,
+				"unit":         s.Unit,
+				"is_gauge":     boolToInt(s.IsGauge),
 				"start_time":   NewSQLiteTime(s.Start),
 				"end_time":     NewSQLiteTime(s.End),
 				"stack_hash":   int64(s.StackHash),
@@ -124,7 +142,7 @@ func (r *profileRepository) InsertProfilesAsync(ctx context.Context, profiles []
 	for _, p := range profiles {
 		attributesVal, _ := NewSQLiteJSONMap(p.Attributes).Value()
 		query, args, err := lit.ParseNamedQuery(db.Driver,
-			"INSERT INTO profiles (id, project_id, recorded_at, duration, service_name, profile_type, sample_count, total_value, server_name, app_version, attributes, storage_key, trace_id, span_id, distributed_trace_id) VALUES (:id, :project_id, :recorded_at, :duration, :service_name, :profile_type, :sample_count, :total_value, :server_name, :app_version, :attributes, :storage_key, :trace_id, :span_id, :distributed_trace_id)",
+			"INSERT INTO profiles (id, project_id, recorded_at, duration, service_name, profile_type, unit, is_gauge, sample_count, total_value, server_name, app_version, attributes, storage_key, trace_id, span_id, distributed_trace_id) VALUES (:id, :project_id, :recorded_at, :duration, :service_name, :profile_type, :unit, :is_gauge, :sample_count, :total_value, :server_name, :app_version, :attributes, :storage_key, :trace_id, :span_id, :distributed_trace_id)",
 			lit.P{
 				"id":                   p.Id,
 				"project_id":           p.ProjectId,
@@ -132,6 +150,8 @@ func (r *profileRepository) InsertProfilesAsync(ctx context.Context, profiles []
 				"duration":             int64(p.Duration),
 				"service_name":         p.ServiceName,
 				"profile_type":         p.ProfileType,
+				"unit":                 p.Unit,
+				"is_gauge":             boolToInt(p.IsGauge),
 				"sample_count":         int64(p.SampleCount),
 				"total_value":          p.TotalValue,
 				"server_name":          p.ServerName,
@@ -186,6 +206,8 @@ func (r *profileRepository) FindGroupedByService(ctx context.Context, projectId 
 	offset := (page - 1) * pageSize
 	rows, err := lit.SelectNamed[profileGroupRow](db.TelemetryDB,
 		fmt.Sprintf(`SELECT service_name, profile_type,
+			MAX(unit) AS unit,
+			MAX(is_gauge) AS is_gauge,
 			COUNT(*) AS profile_count,
 			SUM(sample_count) AS sample_count,
 			SUM(total_value) AS total_value,
@@ -205,6 +227,8 @@ func (r *profileRepository) FindGroupedByService(ctx context.Context, projectId 
 		groups = append(groups, models.ProfileGroup{
 			ServiceName:  row.ServiceName,
 			Type:         row.ProfileType,
+			Unit:         row.Unit,
+			IsGauge:      row.IsGauge != 0,
 			ProfileCount: row.ProfileCount,
 			SampleCount:  row.SampleCount,
 			TotalValue:   row.TotalValue,
@@ -214,13 +238,33 @@ func (r *profileRepository) FindGroupedByService(ctx context.Context, projectId 
 	return groups, total, nil
 }
 
-func (r *profileRepository) GetSeries(ctx context.Context, projectId uuid.UUID, service, profileType string, from, to time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
+func (r *profileRepository) DiscoverTypes(ctx context.Context, projectId uuid.UUID, service string, from, to time.Time) ([]models.ProfileTypeInfo, error) {
+	rows, err := lit.SelectNamed[profileTypeRow](db.TelemetryDB,
+		`SELECT type, MAX(unit) AS unit, MAX(is_gauge) AS is_gauge
+		FROM profiling_samples
+		WHERE project_id = :project_id AND service_name = :service
+			AND start_time >= :from AND start_time <= :to
+		GROUP BY type
+		ORDER BY type ASC`,
+		lit.P{"project_id": projectId, "service": service, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to)})
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]models.ProfileTypeInfo, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, models.ProfileTypeInfo{Type: row.Type, Unit: row.Unit, IsGauge: row.IsGauge != 0})
+	}
+	return out, nil
+}
+
+func (r *profileRepository) GetSeries(ctx context.Context, projectId uuid.UUID, service, profileType string, from, to time.Time, intervalMinutes int, isGauge bool) ([]models.TimeSeriesPoint, error) {
 	if intervalMinutes < 1 {
 		intervalMinutes = 1
 	}
 	secs := intervalMinutes * 60
 	agg := "SUM"
-	if profiling.IsGauge(profileType) {
+	if isGauge {
 		agg = "AVG"
 	}
 
@@ -238,13 +282,13 @@ func (r *profileRepository) GetSeries(ctx context.Context, projectId uuid.UUID, 
 	return timeSeriesResultsToPoints(results), nil
 }
 
-func (r *profileRepository) GetFlameGraph(ctx context.Context, projectId uuid.UUID, service, profileType string, from, to time.Time, labelFilters map[string]string) ([]models.ProfileStackValue, error) {
+func (r *profileRepository) GetFlameGraph(ctx context.Context, projectId uuid.UUID, service, profileType string, from, to time.Time, labelFilters map[string]string, isGauge bool) ([]models.ProfileStackValue, error) {
 	params := lit.P{"project_id": projectId, "type": profileType, "service": service, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to)}
 	bareFilter := sqliteLabelFilter("", labelFilters, params)
 	aliasFilter := sqliteLabelFilter("s.", labelFilters, params)
 
 	var query string
-	if profiling.IsGauge(profileType) {
+	if isGauge {
 		query = `WITH latest AS (
 			SELECT profile_id AS pid, MAX(start_time) AS mx
 			FROM profiling_samples

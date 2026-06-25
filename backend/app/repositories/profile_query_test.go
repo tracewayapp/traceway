@@ -57,9 +57,9 @@ func TestProfileRepository_FindGroupedByService(t *testing.T) {
 	to := base.Add(time.Hour)
 
 	mustInsertProfiles(t, ctx,
-		models.Profile{Id: uuid.New(), ProjectId: projectId, RecordedAt: base, ServiceName: "checkout", ProfileType: profiling.TypeCPUNanos, SampleCount: 2, TotalValue: 300},
-		models.Profile{Id: uuid.New(), ProjectId: projectId, RecordedAt: base.Add(time.Minute), ServiceName: "checkout", ProfileType: profiling.TypeCPUNanos, SampleCount: 1, TotalValue: 200},
-		models.Profile{Id: uuid.New(), ProjectId: projectId, RecordedAt: base, ServiceName: "checkout", ProfileType: profiling.TypeHeapInuseSpace, SampleCount: 3, TotalValue: 9000},
+		models.Profile{Id: uuid.New(), ProjectId: projectId, RecordedAt: base, ServiceName: "checkout", ProfileType: "cpu", SampleCount: 2, TotalValue: 300},
+		models.Profile{Id: uuid.New(), ProjectId: projectId, RecordedAt: base.Add(time.Minute), ServiceName: "checkout", ProfileType: "cpu", SampleCount: 1, TotalValue: 200},
+		models.Profile{Id: uuid.New(), ProjectId: projectId, RecordedAt: base, ServiceName: "checkout", ProfileType: "inuse_space", SampleCount: 3, TotalValue: 9000},
 	)
 
 	groups, total, err := ProfileRepository.FindGroupedByService(ctx, projectId, from, to, 1, 50, "total_value", "desc")
@@ -77,11 +77,11 @@ func TestProfileRepository_FindGroupedByService(t *testing.T) {
 		}
 		byType[g.Type] = g
 	}
-	cpu := byType[profiling.TypeCPUNanos]
+	cpu := byType["cpu"]
 	if cpu.ProfileCount != 2 || cpu.TotalValue != 500 || cpu.SampleCount != 3 {
 		t.Errorf("cpu group = %+v, want ProfileCount=2 TotalValue=500 SampleCount=3", cpu)
 	}
-	inuse := byType[profiling.TypeHeapInuseSpace]
+	inuse := byType["inuse_space"]
 	if inuse.ProfileCount != 1 || inuse.TotalValue != 9000 {
 		t.Errorf("inuse group = %+v, want ProfileCount=1 TotalValue=9000", inuse)
 	}
@@ -105,7 +105,7 @@ func TestProfileRepository_GetFlameGraph_CounterMergesInstancesAndFiltersLabels(
 	cpu := func(server string, hash uint64, value int64, env string) models.ProfileSample {
 		return models.ProfileSample{
 			ProjectId: projectId, ProfileId: uuid.New(), ServiceName: "checkout",
-			Type: profiling.TypeCPUNanos, Start: base, End: base.Add(30 * time.Second),
+			Type: "cpu", Start: base, End: base.Add(30 * time.Second),
 			StackHash: hash, Value: value, ServerName: server, Labels: map[string]string{"env": env},
 		}
 	}
@@ -115,7 +115,7 @@ func TestProfileRepository_GetFlameGraph_CounterMergesInstancesAndFiltersLabels(
 		cpu("pod-a", hashAC, 100, "dev"),
 	)
 
-	all, err := ProfileRepository.GetFlameGraph(ctx, projectId, "checkout", profiling.TypeCPUNanos, from, to, nil)
+	all, err := ProfileRepository.GetFlameGraph(ctx, projectId, "checkout", "cpu", from, to, nil, false)
 	if err != nil {
 		t.Fatalf("GetFlameGraph: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestProfileRepository_GetFlameGraph_CounterMergesInstancesAndFiltersLabels(
 		t.Errorf("a;c value = %d, want 100", got["a;c"])
 	}
 
-	prod, err := ProfileRepository.GetFlameGraph(ctx, projectId, "checkout", profiling.TypeCPUNanos, from, to, map[string]string{"env": "prod"})
+	prod, err := ProfileRepository.GetFlameGraph(ctx, projectId, "checkout", "cpu", from, to, map[string]string{"env": "prod"}, false)
 	if err != nil {
 		t.Fatalf("GetFlameGraph (filtered): %v", err)
 	}
@@ -157,7 +157,7 @@ func TestProfileRepository_GetFlameGraph_FiltersByDottedLabelKey(t *testing.T) {
 	cpu := func(hash uint64, value int64, route string) models.ProfileSample {
 		return models.ProfileSample{
 			ProjectId: projectId, ProfileId: uuid.New(), ServiceName: "checkout",
-			Type: profiling.TypeCPUNanos, Start: base, End: base.Add(30 * time.Second),
+			Type: "cpu", Start: base, End: base.Add(30 * time.Second),
 			StackHash: hash, Value: value, Labels: map[string]string{"http.route": route},
 		}
 	}
@@ -166,7 +166,7 @@ func TestProfileRepository_GetFlameGraph_FiltersByDottedLabelKey(t *testing.T) {
 		cpu(hashAC, 100, "GET /cart"),
 	)
 
-	rows, err := ProfileRepository.GetFlameGraph(ctx, projectId, "checkout", profiling.TypeCPUNanos, from, to, map[string]string{"http.route": "GET /checkout"})
+	rows, err := ProfileRepository.GetFlameGraph(ctx, projectId, "checkout", "cpu", from, to, map[string]string{"http.route": "GET /checkout"}, false)
 	if err != nil {
 		t.Fatalf("GetFlameGraph (dotted filter): %v", err)
 	}
@@ -195,7 +195,7 @@ func TestProfileRepository_GetFlameGraph_GaugeUsesLatestPerServer(t *testing.T) 
 	inuse := func(server string, start time.Time, value int64) models.ProfileSample {
 		return models.ProfileSample{
 			ProjectId: projectId, ProfileId: uuid.New(), ServiceName: "checkout",
-			Type: profiling.TypeHeapInuseSpace, Start: start, End: start,
+			Type: "inuse_space", Start: start, End: start,
 			StackHash: hashX, Value: value, ServerName: server,
 		}
 	}
@@ -207,7 +207,7 @@ func TestProfileRepository_GetFlameGraph_GaugeUsesLatestPerServer(t *testing.T) 
 		inuse("pod-b", t1, 50),
 	)
 
-	rows, err := ProfileRepository.GetFlameGraph(ctx, projectId, "checkout", profiling.TypeHeapInuseSpace, from, to, nil)
+	rows, err := ProfileRepository.GetFlameGraph(ctx, projectId, "checkout", "inuse_space", from, to, nil, true)
 	if err != nil {
 		t.Fatalf("GetFlameGraph (gauge): %v", err)
 	}
@@ -233,7 +233,7 @@ func TestProfileRepository_GetFlameGraph_GaugeDedupsTiedStartTimes(t *testing.T)
 	inuse := func(server string, start time.Time, value int64) models.ProfileSample {
 		return models.ProfileSample{
 			ProjectId: projectId, ProfileId: uuid.New(), ServiceName: "checkout",
-			Type: profiling.TypeHeapInuseSpace, Start: start, End: start,
+			Type: "inuse_space", Start: start, End: start,
 			StackHash: hashX, Value: value, ServerName: server,
 		}
 	}
@@ -243,7 +243,7 @@ func TestProfileRepository_GetFlameGraph_GaugeDedupsTiedStartTimes(t *testing.T)
 		inuse("pod-b", base, 50),
 	)
 
-	rows, err := ProfileRepository.GetFlameGraph(ctx, projectId, "checkout", profiling.TypeHeapInuseSpace, from, to, nil)
+	rows, err := ProfileRepository.GetFlameGraph(ctx, projectId, "checkout", "inuse_space", from, to, nil, true)
 	if err != nil {
 		t.Fatalf("GetFlameGraph (gauge ties): %v", err)
 	}
@@ -266,7 +266,7 @@ func TestProfileRepository_GetSeries_CounterSumsPerBucket(t *testing.T) {
 	sample := func(start time.Time, value int64) models.ProfileSample {
 		return models.ProfileSample{
 			ProjectId: projectId, ProfileId: uuid.New(), ServiceName: "checkout",
-			Type: profiling.TypeCPUNanos, Start: start, End: start, StackHash: hashX, Value: value,
+			Type: "cpu", Start: start, End: start, StackHash: hashX, Value: value,
 		}
 	}
 	mustInsertSamples(t, ctx,
@@ -275,7 +275,7 @@ func TestProfileRepository_GetSeries_CounterSumsPerBucket(t *testing.T) {
 		sample(h13.Add(10*time.Minute), 700),
 	)
 
-	points, err := ProfileRepository.GetSeries(ctx, projectId, "checkout", profiling.TypeCPUNanos, from, to, 60)
+	points, err := ProfileRepository.GetSeries(ctx, projectId, "checkout", "cpu", from, to, 60, false)
 	if err != nil {
 		t.Fatalf("GetSeries: %v", err)
 	}

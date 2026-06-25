@@ -45,10 +45,12 @@ func decodeProfile(ctx IngestContext, serviceName string, resolver *stackResolve
 	if p.SampleType == nil {
 		return Decoded{}, false
 	}
-	internalType, ok := keptSampleTypes[resolver.stringAt(p.SampleType.TypeStrindex)]
-	if !ok {
+	internalType := resolver.stringAt(p.SampleType.TypeStrindex)
+	if internalType == "" {
 		return Decoded{}, false
 	}
+	unit := resolver.stringAt(p.SampleType.UnitStrindex)
+	isGauge := gaugeFromName(internalType)
 
 	start := ctx.ReceivedAt
 	if p.TimeUnixNano > 0 {
@@ -101,7 +103,7 @@ func decodeProfile(ctx IngestContext, serviceName string, resolver *stackResolve
 		decoded.Stacks = append(decoded.Stacks, Stack{Hash: hash, Frames: frames})
 	}
 	for key, agg := range values {
-		decoded.Samples = append(decoded.Samples, Sample{Type: key.typ, StackHash: key.stackHash, Value: agg.value, Labels: agg.labels})
+		decoded.Samples = append(decoded.Samples, Sample{Type: key.typ, Unit: unit, IsGauge: isGauge, StackHash: key.stackHash, Value: agg.value, Labels: agg.labels})
 	}
 	return decoded, true
 }

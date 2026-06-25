@@ -1,0 +1,1 @@
+ALTER TABLE profiling_samples ADD COLUMN is_gauge INTEGER NOT NULL DEFAULT 0

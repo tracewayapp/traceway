@@ -74,8 +74,8 @@ func TestStampArchive(t *testing.T) {
 	t.Run("enabled stamps all rows with one key", func(t *testing.T) {
 		config.Config.ProfileArchiveRaw = "true"
 		profiles := []models.Profile{
-			{ProfileType: TypeHeapAllocSpace},
-			{ProfileType: TypeHeapInuseSpace},
+			{ProfileType: "alloc_space"},
+			{ProfileType: "inuse_space"},
 		}
 
 		key, ok := StampArchive(projectId, recordedAt, profiles)
@@ -98,7 +98,7 @@ func TestStampArchive(t *testing.T) {
 
 	t.Run("disabled is a no-op", func(t *testing.T) {
 		config.Config.ProfileArchiveRaw = "false"
-		profiles := []models.Profile{{ProfileType: TypeCPUNanos}}
+		profiles := []models.Profile{{ProfileType: "cpu"}}
 
 		key, ok := StampArchive(projectId, recordedAt, profiles)
 		if ok || key != "" {

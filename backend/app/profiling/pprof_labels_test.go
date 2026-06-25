@@ -26,7 +26,7 @@ func TestPprofDecoder_KeepsOnlyAllowlistedLabels(t *testing.T) {
 	}
 	d := decodeOne(t, labeledCPU(t, samples, []*profile.Function{main, work}, []*profile.Location{lMain, lWork}))
 
-	cpu := sampleByType(d, TypeCPUNanos)
+	cpu := sampleByType(d, "cpu")
 	if len(cpu) != 1 {
 		t.Fatalf("expected 1 sample, got %d", len(cpu))
 	}
@@ -52,7 +52,7 @@ func TestPprofDecoder_HonorsAdditionalAllowlistedKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Decode: %v", err)
 	}
-	cpu := sampleByType(out[0], TypeCPUNanos)
+	cpu := sampleByType(out[0], "cpu")
 	if len(cpu) != 1 {
 		t.Fatalf("expected 1 sample, got %d", len(cpu))
 	}
@@ -81,7 +81,7 @@ func TestPprofDecoder_LabelsSeparateTheDedup(t *testing.T) {
 	samples := []*profile.Sample{mk("/a", 100), mk("/b", 50), mk("/a", 25)}
 	d := decodeOne(t, labeledCPU(t, samples, []*profile.Function{main, work}, []*profile.Location{lMain, lWork}))
 
-	cpu := sampleByType(d, TypeCPUNanos)
+	cpu := sampleByType(d, "cpu")
 	if len(cpu) != 2 {
 		t.Fatalf("expected 2 samples (one per endpoint), got %d", len(cpu))
 	}
@@ -106,7 +106,7 @@ func TestPprofDecoder_NoLabelsStaysEmpty(t *testing.T) {
 	samples := []*profile.Sample{{Location: []*profile.Location{lMain}, Value: []int64{1, 100}}}
 	d := decodeOne(t, labeledCPU(t, samples, []*profile.Function{main}, []*profile.Location{lMain}))
 
-	cpu := sampleByType(d, TypeCPUNanos)
+	cpu := sampleByType(d, "cpu")
 	if len(cpu) != 1 {
 		t.Fatalf("expected 1 sample, got %d", len(cpu))
 	}
@@ -119,7 +119,7 @@ func TestBuildRows_CarriesSampleLabels(t *testing.T) {
 	decoded := []Decoded{{
 		Meta:    Meta{ServiceName: "svc"},
 		Stacks:  []Stack{{Hash: 1, Frames: []string{"main.main"}}},
-		Samples: []Sample{{Type: TypeCPUNanos, StackHash: 1, Value: 10, Labels: map[string]string{LabelEndpoint: "/x"}}},
+		Samples: []Sample{{Type: "cpu", StackHash: 1, Value: 10, Labels: map[string]string{LabelEndpoint: "/x"}}},
 	}}
 	_, samples, _ := BuildRows(uuid.New(), decoded)
 	if len(samples) != 1 {
@@ -147,7 +147,7 @@ func TestPprofDecoder_DropsNumericLabels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Decode: %v", err)
 	}
-	cpu := sampleByType(out[0], TypeCPUNanos)
+	cpu := sampleByType(out[0], "cpu")
 	if len(cpu) != 1 {
 		t.Fatalf("expected 1 sample, got %d", len(cpu))
 	}

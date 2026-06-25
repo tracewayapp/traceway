@@ -33,8 +33,8 @@ func TestBuildRows_SingleType(t *testing.T) {
 			{Hash: h2, Frames: []string{"main.main", "main.idle"}},
 		},
 		Samples: []Sample{
-			{Type: TypeCPUNanos, StackHash: h1, Value: 300},
-			{Type: TypeCPUNanos, StackHash: h2, Value: 100},
+			{Type: "cpu", StackHash: h1, Value: 300},
+			{Type: "cpu", StackHash: h2, Value: 100},
 		},
 	}
 
@@ -56,7 +56,7 @@ func TestBuildRows_SingleType(t *testing.T) {
 		t.Fatalf("profiles = %d, want 1", len(profiles))
 	}
 	p := profiles[0]
-	if p.ProfileType != TypeCPUNanos || p.SampleCount != 2 || p.TotalValue != 400 {
+	if p.ProfileType != "cpu" || p.SampleCount != 2 || p.TotalValue != 400 {
 		t.Errorf("profile = (%s, count=%d, total=%d), want (cpu, 2, 400)", p.ProfileType, p.SampleCount, p.TotalValue)
 	}
 	if p.ServiceName != "checkout" || p.ServerName != "pod-a" || p.AppVersion != "1.2.3" {
@@ -76,7 +76,7 @@ func TestBuildRows_SingleType(t *testing.T) {
 		if s.ProfileId != p.Id {
 			t.Errorf("sample ProfileId = %v, want %v", s.ProfileId, p.Id)
 		}
-		if s.Type != TypeCPUNanos || s.ProjectId != projectId || s.ServiceName != "checkout" {
+		if s.Type != "cpu" || s.ProjectId != projectId || s.ServiceName != "checkout" {
 			t.Errorf("sample fields wrong: %+v", s)
 		}
 		if !s.Start.Equal(start) || !s.End.Equal(d.Meta.End) {
@@ -94,8 +94,8 @@ func TestBuildRows_MultiTypeSplitsProfiles(t *testing.T) {
 		Meta:   Meta{ServiceName: "checkout", Start: start, End: start},
 		Stacks: []Stack{{Hash: h1, Frames: []string{"main.main", "main.work"}}},
 		Samples: []Sample{
-			{Type: TypeCPUNanos, StackHash: h1, Value: 300},
-			{Type: TypeHeapInuseSpace, StackHash: h1, Value: 2048},
+			{Type: "cpu", StackHash: h1, Value: 300},
+			{Type: "inuse_space", StackHash: h1, Value: 2048},
 		},
 	}
 
@@ -104,11 +104,11 @@ func TestBuildRows_MultiTypeSplitsProfiles(t *testing.T) {
 	if len(profiles) != 2 {
 		t.Fatalf("profiles = %d, want 2 (one per type)", len(profiles))
 	}
-	cpu, ok := profileByType(profiles, TypeCPUNanos)
+	cpu, ok := profileByType(profiles, "cpu")
 	if !ok {
 		t.Fatalf("no cpu profile row")
 	}
-	heap, ok := profileByType(profiles, TypeHeapInuseSpace)
+	heap, ok := profileByType(profiles, "inuse_space")
 	if !ok {
 		t.Fatalf("no heap profile row")
 	}
@@ -121,11 +121,11 @@ func TestBuildRows_MultiTypeSplitsProfiles(t *testing.T) {
 
 	for _, s := range samples {
 		switch s.Type {
-		case TypeCPUNanos:
+		case "cpu":
 			if s.ProfileId != cpu.Id {
 				t.Errorf("cpu sample linked to %v, want %v", s.ProfileId, cpu.Id)
 			}
-		case TypeHeapInuseSpace:
+		case "inuse_space":
 			if s.ProfileId != heap.Id {
 				t.Errorf("heap sample linked to %v, want %v", s.ProfileId, heap.Id)
 			}
@@ -150,8 +150,8 @@ func TestBuildRows_PerTypeProfileRowsCarryProvenance(t *testing.T) {
 			{Hash: 0xAA, Frames: []string{"main.main", "main.work"}},
 		},
 		Samples: []Sample{
-			{Type: TypeHeapAllocSpace, StackHash: 0xAA, Value: 4096},
-			{Type: TypeHeapInuseSpace, StackHash: 0xAA, Value: 2048},
+			{Type: "alloc_space", StackHash: 0xAA, Value: 4096},
+			{Type: "inuse_space", StackHash: 0xAA, Value: 2048},
 		},
 	}
 
@@ -177,10 +177,10 @@ func TestBuildRows_PerTypeProfileRowsCarryProvenance(t *testing.T) {
 			t.Errorf("profile %q SampleCount = %d, want 1", p.ProfileType, p.SampleCount)
 		}
 	}
-	if byType[TypeHeapAllocSpace].TotalValue != 4096 || byType[TypeHeapInuseSpace].TotalValue != 2048 {
-		t.Errorf("totals wrong: alloc=%d inuse=%d", byType[TypeHeapAllocSpace].TotalValue, byType[TypeHeapInuseSpace].TotalValue)
+	if byType["alloc_space"].TotalValue != 4096 || byType["inuse_space"].TotalValue != 2048 {
+		t.Errorf("totals wrong: alloc=%d inuse=%d", byType["alloc_space"].TotalValue, byType["inuse_space"].TotalValue)
 	}
-	if byType[TypeHeapAllocSpace].Id == byType[TypeHeapInuseSpace].Id {
+	if byType["alloc_space"].Id == byType["inuse_space"].Id {
 		t.Error("per-type profiles must have distinct ids")
 	}
 
@@ -200,12 +200,12 @@ func TestBuildRows_MergesAcrossDecodedBatch(t *testing.T) {
 	d1 := Decoded{
 		Meta:    Meta{ServiceName: "api", Start: start, End: start.Add(10 * time.Second)},
 		Stacks:  []Stack{{Hash: 1, Frames: []string{"main.main"}}},
-		Samples: []Sample{{Type: TypeCPUNanos, StackHash: 1, Value: 300}},
+		Samples: []Sample{{Type: "cpu", StackHash: 1, Value: 300}},
 	}
 	d2 := Decoded{
 		Meta:    Meta{ServiceName: "api", Start: start, End: start.Add(10 * time.Second)},
 		Stacks:  []Stack{{Hash: 2, Frames: []string{"main.main", "main.idle"}}},
-		Samples: []Sample{{Type: TypeCPUNanos, StackHash: 2, Value: 100}},
+		Samples: []Sample{{Type: "cpu", StackHash: 2, Value: 100}},
 	}
 
 	stacks, samples, profiles := BuildRows(projectId, []Decoded{d1, d2})

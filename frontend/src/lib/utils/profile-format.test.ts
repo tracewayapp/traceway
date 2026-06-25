@@ -1,66 +1,56 @@
 import { describe, it, expect } from 'vitest';
-import {
-	CPU_NANOS,
-	HEAP_INUSE,
-	HEAP_ALLOC,
-	getProfileTypeMeta,
-	formatProfileValue,
-	defaultProfileType
-} from './profile-format';
+import { formatValue, humanizeType, defaultProfileType } from './profile-format';
 
-describe('getProfileTypeMeta', () => {
-	it('returns meta for the CPU type', () => {
-		const meta = getProfileTypeMeta(CPU_NANOS);
-		expect(meta).toMatchObject({ category: 'cpu', unit: 'nanoseconds', isGauge: false });
-		expect(meta?.label).toBeTruthy();
+describe('formatValue', () => {
+	it('formats time units, normalizing to a readable scale', () => {
+		expect(formatValue('nanoseconds', 500)).toBe('500 ns');
+		expect(formatValue('nanoseconds', 1_500)).toBe('1.5 µs');
+		expect(formatValue('milliseconds', 1_500)).toBe('1.5 s');
+		expect(formatValue('microseconds', 2_000)).toBe('2 ms');
+		expect(formatValue('seconds', 3)).toBe('3 s');
 	});
 
-	it('marks heap in-use as a gauge', () => {
-		const meta = getProfileTypeMeta(HEAP_INUSE);
-		expect(meta).toMatchObject({ category: 'heap', unit: 'bytes', isGauge: true });
+	it('formats byte units', () => {
+		expect(formatValue('bytes', 512)).toBe('512 B');
+		expect(formatValue('bytes', 1024)).toBe('1 KB');
+		expect(formatValue('bytes', 1_048_576)).toBe('1 MB');
 	});
 
-	it('marks heap alloc as a counter (not a gauge)', () => {
-		const meta = getProfileTypeMeta(HEAP_ALLOC);
-		expect(meta).toMatchObject({ category: 'heap', unit: 'bytes', isGauge: false });
+	it('formats count-like units as localized integers', () => {
+		expect(formatValue('count', 1500)).toBe((1500).toLocaleString());
+		expect(formatValue('samples', 42)).toBe('42');
+		expect(formatValue('', 7)).toBe('7');
 	});
 
-	it('returns undefined for an unknown type', () => {
-		expect(getProfileTypeMeta('go:profile_mutex:contentions')).toBeUndefined();
+	it('falls back to a localized number plus the raw unit for unknown units', () => {
+		expect(formatValue('widgets', 1234)).toBe(`${(1234).toLocaleString()} widgets`);
 	});
 });
 
-describe('formatProfileValue', () => {
-	it('formats CPU nanoseconds across magnitudes', () => {
-		expect(formatProfileValue(CPU_NANOS, 500)).toBe('500 ns');
-		expect(formatProfileValue(CPU_NANOS, 1_500)).toBe('1.5 µs');
-		expect(formatProfileValue(CPU_NANOS, 1_500_000)).toBe('1.5 ms');
-		expect(formatProfileValue(CPU_NANOS, 2_000_000_000)).toBe('2 s');
-		expect(formatProfileValue(CPU_NANOS, 0)).toBe('0 ns');
+describe('humanizeType', () => {
+	it('uses short friendly labels for the well-known pprof names', () => {
+		expect(humanizeType('cpu')).toBe('CPU');
+		expect(humanizeType('inuse_space')).toBe('In-Use');
+		expect(humanizeType('goroutine')).toBe('Goroutines');
+		expect(humanizeType('lock')).toBe('Lock');
 	});
 
-	it('formats heap bytes across magnitudes', () => {
-		expect(formatProfileValue(HEAP_INUSE, 512)).toBe('512 B');
-		expect(formatProfileValue(HEAP_INUSE, 1024)).toBe('1 KB');
-		expect(formatProfileValue(HEAP_ALLOC, 1_048_576)).toBe('1 MB');
-		expect(formatProfileValue(HEAP_INUSE, 0)).toBe('0 B');
-	});
-
-	it('falls back to a localized number for unknown types', () => {
-		expect(formatProfileValue('go:profile_mystery:units', 1234)).toBe((1234).toLocaleString());
+	it('title-cases arbitrary cross-language type names', () => {
+		expect(humanizeType('async_profiler_wall')).toBe('Async Profiler Wall');
+		expect(humanizeType('jvm:heap_live')).toBe('Heap Live');
 	});
 });
 
 describe('defaultProfileType', () => {
-	it('prefers the CPU type when available', () => {
-		expect(defaultProfileType([HEAP_INUSE, CPU_NANOS, HEAP_ALLOC])).toBe(CPU_NANOS);
+	it('prefers cpu when present', () => {
+		expect(defaultProfileType(['inuse_space', 'cpu', 'lock'])).toBe('cpu');
 	});
 
-	it('falls back to the first available type when there is no CPU type', () => {
-		expect(defaultProfileType([HEAP_ALLOC, HEAP_INUSE])).toBe(HEAP_ALLOC);
+	it('falls back to the first available type', () => {
+		expect(defaultProfileType(['lock', 'wall'])).toBe('lock');
 	});
 
-	it('returns an empty string when nothing is available', () => {
+	it('returns empty string when nothing is available', () => {
 		expect(defaultProfileType([])).toBe('');
 	});
 });

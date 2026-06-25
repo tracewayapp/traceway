@@ -188,11 +188,11 @@ func TestOTLPDecoder_CPU_ExplodesDistinctStacks(t *testing.T) {
 
 	wantWork := HashFrames([]string{"main.main", "main.work"})
 	wantIdle := HashFrames([]string{"main.main", "main.idle"})
-	if samples[sampleKey{TypeCPUNanos, wantWork}] != 300 {
-		t.Errorf("main->work cpu = %d, want 300", samples[sampleKey{TypeCPUNanos, wantWork}])
+	if samples[sampleKey{"cpu", wantWork}] != 300 {
+		t.Errorf("main->work cpu = %d, want 300", samples[sampleKey{"cpu", wantWork}])
 	}
-	if samples[sampleKey{TypeCPUNanos, wantIdle}] != 100 {
-		t.Errorf("main->idle cpu = %d, want 100", samples[sampleKey{TypeCPUNanos, wantIdle}])
+	if samples[sampleKey{"cpu", wantIdle}] != 100 {
+		t.Errorf("main->idle cpu = %d, want 100", samples[sampleKey{"cpu", wantIdle}])
 	}
 	if got := stacks[wantWork]; len(got) != 2 || got[0] != "main.main" || got[1] != "main.work" {
 		t.Errorf("frames = %v, want [main.main main.work] (root-first)", got)
@@ -217,45 +217,111 @@ func TestOTLPDecoder_DedupesIdenticalStacks(t *testing.T) {
 		t.Fatalf("expected 1 deduped sample, got %d", len(samples))
 	}
 	want := HashFrames([]string{"main.main", "main.work"})
-	if samples[sampleKey{TypeCPUNanos, want}] != 250 {
-		t.Errorf("summed value = %d, want 250", samples[sampleKey{TypeCPUNanos, want}])
+	if samples[sampleKey{"cpu", want}] != 250 {
+		t.Errorf("summed value = %d, want 250", samples[sampleKey{"cpu", want}])
 	}
 }
 
-func TestOTLPDecoder_Heap_KeepsSpaceTypesOnly(t *testing.T) {
+func TestOTLPDecoder_Heap_KeepsObjectAndSpaceTypes(t *testing.T) {
 	b := newOTLPBuilder()
 	b.serviceName = "checkout"
 	s := b.frameStack("main.main", "main.allocate")
 	b.profile("inuse_space", "bytes", 1_700_000_000_000_000_000, 0, otlpSample(s, 2048))
 	b.profile("alloc_space", "bytes", 1_700_000_000_000_000_000, 0, otlpSample(s, 4096))
 	b.profile("inuse_objects", "count", 1_700_000_000_000_000_000, 0, otlpSample(s, 2))
+	b.profile("alloc_objects", "count", 1_700_000_000_000_000_000, 0, otlpSample(s, 5))
 
 	out := decodeOTLPAll(t, b.build(t))
 	samples := flattenSamples(out)
 
 	want := HashFrames([]string{"main.main", "main.allocate"})
-	if samples[sampleKey{TypeHeapInuseSpace, want}] != 2048 {
-		t.Errorf("inuse_space = %d, want 2048", samples[sampleKey{TypeHeapInuseSpace, want}])
+	expected := map[string]int64{
+		"inuse_space":   2048,
+		"alloc_space":   4096,
+		"inuse_objects": 2,
+		"alloc_objects": 5,
 	}
-	if samples[sampleKey{TypeHeapAllocSpace, want}] != 4096 {
-		t.Errorf("alloc_space = %d, want 4096", samples[sampleKey{TypeHeapAllocSpace, want}])
-	}
-	for k := range samples {
-		if k.typ != TypeHeapInuseSpace && k.typ != TypeHeapAllocSpace {
-			t.Errorf("unexpected sample type emitted: %q", k.typ)
+	for typ, wantValue := range expected {
+		if samples[sampleKey{typ, want}] != wantValue {
+			t.Errorf("%s = %d, want %d", typ, samples[sampleKey{typ, want}], wantValue)
 		}
+	}
+	if len(samples) != len(expected) {
+		t.Errorf("emitted %d sample types, want %d", len(samples), len(expected))
 	}
 }
 
-func TestOTLPDecoder_UnsupportedTypeYieldsNoSamples(t *testing.T) {
+func TestOTLPDecoder_GoroutineMutexBlock(t *testing.T) {
+	cases := []struct {
+		sampleTyp string
+		unit      string
+		internal  string
+	}{
+		{"goroutine", "count", "goroutine"},
+		{"mutex", "nanoseconds", "mutex"},
+		{"block", "nanoseconds", "block"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.sampleTyp, func(t *testing.T) {
+			b := newOTLPBuilder()
+			b.serviceName = "checkout"
+			s := b.frameStack("main.main", "sync.(*Mutex).Lock")
+			b.profile(tc.sampleTyp, tc.unit, 1_700_000_000_000_000_000, 0, otlpSample(s, 42))
+
+			out := decodeOTLPAll(t, b.build(t))
+			samples := flattenSamples(out)
+			want := HashFrames([]string{"main.main", "sync.(*Mutex).Lock"})
+			if samples[sampleKey{tc.internal, want}] != 42 {
+				t.Errorf("%s = %d, want 42", tc.internal, samples[sampleKey{tc.internal, want}])
+			}
+		})
+	}
+}
+
+func TestOTLPDecoder_KeepsArbitraryCrossLanguageType(t *testing.T) {
 	b := newOTLPBuilder()
 	b.serviceName = "checkout"
-	s := b.frameStack("main.main")
+	s := b.frameStack("main.main", "sync.(*Mutex).Lock")
+	b.profile("lock", "nanoseconds", 1_700_000_000_000_000_000, 0, otlpSample(s, 42))
+
+	out := decodeOTLPAll(t, b.build(t))
+	var got []Sample
+	for _, d := range out {
+		got = append(got, d.Samples...)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 sample for arbitrary type, got %d", len(got))
+	}
+	if got[0].Type != "lock" || got[0].Unit != "nanoseconds" || got[0].Value != 42 {
+		t.Errorf("sample = %+v, want type=lock unit=nanoseconds value=42", got[0])
+	}
+	if got[0].IsGauge {
+		t.Errorf("lock should not be a gauge by name heuristic")
+	}
+}
+
+func TestOTLPDecoder_GaugeFromNameForInuse(t *testing.T) {
+	b := newOTLPBuilder()
+	b.serviceName = "checkout"
+	s := b.frameStack("main.main", "main.alloc")
+	b.profile("inuse_space", "bytes", 1_700_000_000_000_000_000, 0, otlpSample(s, 2048))
 	b.profile("goroutine", "count", 1_700_000_000_000_000_000, 0, otlpSample(s, 7))
 
 	out := decodeOTLPAll(t, b.build(t))
-	if got := len(flattenSamples(out)); got != 0 {
-		t.Errorf("expected 0 samples for unsupported type, got %d", got)
+	byType := map[string]Sample{}
+	for _, d := range out {
+		for _, smp := range d.Samples {
+			byType[smp.Type] = smp
+		}
+	}
+	if !byType["inuse_space"].IsGauge {
+		t.Errorf("inuse_space should be a gauge (name heuristic)")
+	}
+	if !byType["goroutine"].IsGauge {
+		t.Errorf("goroutine should be a gauge (name heuristic)")
+	}
+	if byType["inuse_space"].Unit != "bytes" {
+		t.Errorf("inuse_space unit = %q, want bytes", byType["inuse_space"].Unit)
 	}
 }
 
@@ -269,8 +335,8 @@ func TestOTLPDecoder_TimestampsOnlySampleCountsTimestamps(t *testing.T) {
 	out := decodeOTLPAll(t, b.build(t))
 	samples := flattenSamples(out)
 	want := HashFrames([]string{"main.main", "main.work"})
-	if samples[sampleKey{TypeCPUNanos, want}] != 3 {
-		t.Errorf("value = %d, want 3 (one per timestamp when Values is empty)", samples[sampleKey{TypeCPUNanos, want}])
+	if samples[sampleKey{"cpu", want}] != 3 {
+		t.Errorf("value = %d, want 3 (one per timestamp when Values is empty)", samples[sampleKey{"cpu", want}])
 	}
 }
 
@@ -398,16 +464,26 @@ func TestDecoderParity_PprofVsOTLP(t *testing.T) {
 		t.Errorf("stack rows differ:\npprof=%v\notlp=%v", pprofStacks, otlpStacks)
 	}
 
-	pprofSmpl := flattenSamples([]Decoded{fromPprof})
-	otlpSmpl := flattenSamples(fromOTLP)
+	pprofSmpl := cpuOnly(flattenSamples([]Decoded{fromPprof}))
+	otlpSmpl := cpuOnly(flattenSamples(fromOTLP))
 	if len(pprofSmpl) != len(otlpSmpl) {
-		t.Fatalf("sample count differs: pprof=%d otlp=%d", len(pprofSmpl), len(otlpSmpl))
+		t.Fatalf("cpu sample count differs: pprof=%d otlp=%d", len(pprofSmpl), len(otlpSmpl))
 	}
 	for k, v := range pprofSmpl {
 		if otlpSmpl[k] != v {
 			t.Errorf("sample %+v: pprof=%d otlp=%d", k, v, otlpSmpl[k])
 		}
 	}
+}
+
+func cpuOnly(m map[sampleKey]int64) map[sampleKey]int64 {
+	out := map[sampleKey]int64{}
+	for k, v := range m {
+		if k.typ == "cpu" {
+			out[k] = v
+		}
+	}
+	return out
 }
 
 func TestOTLPDecoder_ExtractsAllowlistedLabels(t *testing.T) {

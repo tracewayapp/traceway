@@ -1,0 +1,1 @@
+ALTER TABLE profiling_samples ADD COLUMN IF NOT EXISTS is_gauge UInt8 DEFAULT 0

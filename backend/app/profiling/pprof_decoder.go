@@ -33,14 +33,20 @@ func (PprofDecoder) Decode(ctx IngestContext, payload []byte) ([]Decoded, error)
 	}
 
 	type keptType struct {
-		index int
-		typ   string
+		index   int
+		typ     string
+		unit    string
+		isGauge bool
 	}
 	var kept []keptType
+	typeMeta := map[string]keptType{}
 	for i, st := range p.SampleType {
-		if internal, ok := keptSampleTypes[st.Type]; ok {
-			kept = append(kept, keptType{index: i, typ: internal})
+		if st.Type == "" {
+			continue
 		}
+		k := keptType{index: i, typ: st.Type, unit: st.Unit, isGauge: gaugeFromName(st.Type)}
+		kept = append(kept, k)
+		typeMeta[st.Type] = k
 	}
 
 	meta := Meta{
@@ -85,8 +91,11 @@ func (PprofDecoder) Decode(ctx IngestContext, payload []byte) ([]Decoded, error)
 		decoded.Stacks = append(decoded.Stacks, Stack{Hash: hash, Frames: frames})
 	}
 	for key, agg := range values {
+		m := typeMeta[key.typ]
 		decoded.Samples = append(decoded.Samples, Sample{
 			Type:      key.typ,
+			Unit:      m.unit,
+			IsGauge:   m.isGauge,
 			StackHash: key.stackHash,
 			Value:     agg.value,
 			Labels:    agg.labels,

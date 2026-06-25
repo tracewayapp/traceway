@@ -104,7 +104,7 @@ func TestPprofDecoder_CPU_ExplodesDistinctStacks(t *testing.T) {
 
 	d := decodeOne(t, payload)
 
-	cpu := sampleByType(d, TypeCPUNanos)
+	cpu := sampleByType(d, "cpu")
 	if len(cpu) != 2 {
 		t.Fatalf("expected 2 cpu samples, got %d", len(cpu))
 	}
@@ -149,7 +149,7 @@ func TestPprofDecoder_DedupesIdenticalStacks(t *testing.T) {
 
 	d := decodeOne(t, payload)
 
-	cpu := sampleByType(d, TypeCPUNanos)
+	cpu := sampleByType(d, "cpu")
 	if len(cpu) != 1 {
 		t.Fatalf("expected 1 deduped cpu sample, got %d", len(cpu))
 	}
@@ -161,7 +161,7 @@ func TestPprofDecoder_DedupesIdenticalStacks(t *testing.T) {
 	}
 }
 
-func TestPprofDecoder_Heap_KeepsSpaceTypesOnly(t *testing.T) {
+func TestPprofDecoder_Heap_KeepsObjectAndSpaceTypes(t *testing.T) {
 	main := fn(1, "main.main", "main.go")
 	alloc := fn(2, "main.allocate", "alloc.go")
 	lMain := loc(1, profile.Line{Function: main, Line: 10})
@@ -185,18 +185,56 @@ func TestPprofDecoder_Heap_KeepsSpaceTypesOnly(t *testing.T) {
 	}
 	d := decodeOne(t, writeProfile(t, p))
 
-	inuse := sampleByType(d, TypeHeapInuseSpace)
-	allocS := sampleByType(d, TypeHeapAllocSpace)
-	if len(inuse) != 1 || inuse[0].Value != 2048 {
-		t.Errorf("inuse_space = %+v, want one sample value 2048", inuse)
+	want := map[string]int64{
+		"alloc_objects": 5,
+		"alloc_space":   4096,
+		"inuse_objects": 2,
+		"inuse_space":   2048,
 	}
-	if len(allocS) != 1 || allocS[0].Value != 4096 {
-		t.Errorf("alloc_space = %+v, want one sample value 4096", allocS)
-	}
-	for _, s := range d.Samples {
-		if s.Type != TypeHeapInuseSpace && s.Type != TypeHeapAllocSpace {
-			t.Errorf("unexpected sample type emitted: %q", s.Type)
+	for typ, wantValue := range want {
+		got := sampleByType(d, typ)
+		if len(got) != 1 || got[0].Value != wantValue {
+			t.Errorf("%s = %+v, want one sample value %d", typ, got, wantValue)
 		}
+	}
+	if len(d.Samples) != len(want) {
+		t.Errorf("emitted %d samples, want %d (all four heap types)", len(d.Samples), len(want))
+	}
+}
+
+func TestPprofDecoder_GoroutineMutexBlock(t *testing.T) {
+	main := fn(1, "main.main", "main.go")
+	wait := fn(2, "sync.(*Mutex).Lock", "mutex.go")
+	lMain := loc(1, profile.Line{Function: main, Line: 10})
+	lWait := loc(2, profile.Line{Function: wait, Line: 20})
+
+	cases := []struct {
+		name      string
+		sampleTyp string
+		unit      string
+		internal  string
+	}{
+		{"goroutine", "goroutine", "count", "goroutine"},
+		{"mutex", "mutex", "nanoseconds", "mutex"},
+		{"block", "block", "nanoseconds", "block"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &profile.Profile{
+				SampleType: []*profile.ValueType{{Type: tc.sampleTyp, Unit: tc.unit}},
+				PeriodType: &profile.ValueType{Type: tc.sampleTyp, Unit: tc.unit},
+				Period:     1,
+				TimeNanos:  1_700_000_000_000_000_000,
+				Sample:     []*profile.Sample{{Location: []*profile.Location{lWait, lMain}, Value: []int64{42}}},
+				Function:   []*profile.Function{main, wait},
+				Location:   []*profile.Location{lMain, lWait},
+			}
+			d := decodeOne(t, writeProfile(t, p))
+			got := sampleByType(d, tc.internal)
+			if len(got) != 1 || got[0].Value != 42 {
+				t.Errorf("%s = %+v, want one sample value 42", tc.internal, got)
+			}
+		})
 	}
 }
 
@@ -283,7 +321,7 @@ func TestPprofDecoder_DropsZeroValueSamples(t *testing.T) {
 	}
 	d := decodeOne(t, writeProfile(t, p))
 
-	inuse := sampleByType(d, TypeHeapInuseSpace)
+	inuse := sampleByType(d, "inuse_space")
 	if len(inuse) != 1 {
 		t.Fatalf("expected 1 inuse_space sample (zero dropped), got %d", len(inuse))
 	}
@@ -291,32 +329,60 @@ func TestPprofDecoder_DropsZeroValueSamples(t *testing.T) {
 	if inuse[0].StackHash != wantLive || inuse[0].Value != 4096 {
 		t.Errorf("inuse sample = %+v, want live stack value 4096", inuse[0])
 	}
-	if got := len(sampleByType(d, TypeHeapAllocSpace)); got != 2 {
+	if got := len(sampleByType(d, "alloc_space")); got != 2 {
 		t.Errorf("alloc_space samples = %d, want 2", got)
 	}
 }
 
-func TestPprofDecoder_UnsupportedTypesYieldNoSamples(t *testing.T) {
+func TestPprofDecoder_KeepsArbitraryTypeWithUnit(t *testing.T) {
 	main := fn(1, "main.main", "main.go")
 	lMain := loc(1, profile.Line{Function: main, Line: 10})
 	p := &profile.Profile{
-		SampleType: []*profile.ValueType{{Type: "goroutine", Unit: "count"}},
-		PeriodType: &profile.ValueType{Type: "goroutine", Unit: "count"},
+		SampleType: []*profile.ValueType{{Type: "threadcreate", Unit: "count"}},
+		PeriodType: &profile.ValueType{Type: "threadcreate", Unit: "count"},
 		Period:     1,
 		TimeNanos:  1_700_000_000_000_000_000,
 		Sample:     []*profile.Sample{{Location: []*profile.Location{lMain}, Value: []int64{7}}},
 		Function:   []*profile.Function{main},
 		Location:   []*profile.Location{lMain},
 	}
-	out, err := PprofDecoder{}.Decode(testIngest, writeProfile(t, p))
-	if err != nil {
-		t.Fatalf("unexpected error on unsupported profile: %v", err)
+	d := decodeOne(t, writeProfile(t, p))
+	got := sampleByType(d, "threadcreate")
+	if len(got) != 1 || got[0].Value != 7 {
+		t.Fatalf("threadcreate = %+v, want one sample value 7 (arbitrary types kept)", got)
 	}
-	if len(out) != 1 {
-		t.Fatalf("expected 1 decoded profile, got %d", len(out))
+	if got[0].Unit != "count" {
+		t.Errorf("threadcreate unit = %q, want count", got[0].Unit)
 	}
-	if len(out[0].Samples) != 0 {
-		t.Errorf("expected 0 samples for unsupported types, got %d", len(out[0].Samples))
+}
+
+func TestPprofDecoder_GaugeAndUnitFromHeapTypes(t *testing.T) {
+	main := fn(1, "main.main", "main.go")
+	alloc := fn(2, "main.allocate", "alloc.go")
+	lMain := loc(1, profile.Line{Function: main, Line: 10})
+	lAlloc := loc(2, profile.Line{Function: alloc, Line: 20})
+	p := &profile.Profile{
+		SampleType: []*profile.ValueType{
+			{Type: "alloc_space", Unit: "bytes"},
+			{Type: "inuse_space", Unit: "bytes"},
+		},
+		PeriodType: &profile.ValueType{Type: "space", Unit: "bytes"},
+		Period:     524288,
+		TimeNanos:  1_700_000_000_000_000_000,
+		Sample: []*profile.Sample{
+			{Location: []*profile.Location{lAlloc, lMain}, Value: []int64{4096, 2048}},
+		},
+		Function: []*profile.Function{main, alloc},
+		Location: []*profile.Location{lMain, lAlloc},
+	}
+	d := decodeOne(t, writeProfile(t, p))
+	inuse := sampleByType(d, "inuse_space")
+	alloc2 := sampleByType(d, "alloc_space")
+	if len(inuse) != 1 || !inuse[0].IsGauge || inuse[0].Unit != "bytes" {
+		t.Errorf("inuse_space = %+v, want gauge with unit bytes", inuse)
+	}
+	if len(alloc2) != 1 || alloc2[0].IsGauge {
+		t.Errorf("alloc_space = %+v, want counter (not gauge)", alloc2)
 	}
 }
 

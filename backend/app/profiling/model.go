@@ -7,16 +7,12 @@ import (
 	"time"
 )
 
-const (
-	TypeCPUNanos       = "go:profile_cpu:nanoseconds"
-	TypeHeapInuseSpace = "go:profile_heap:inuse_space"
-	TypeHeapAllocSpace = "go:profile_heap:alloc_space"
-)
-
-var keptSampleTypes = map[string]string{
-	"cpu":         TypeCPUNanos,
-	"inuse_space": TypeHeapInuseSpace,
-	"alloc_space": TypeHeapAllocSpace,
+func gaugeFromName(name string) bool {
+	n := strings.ToLower(name)
+	if n == "goroutine" || n == "goroutines" || n == "threads" {
+		return true
+	}
+	return strings.Contains(n, "inuse") || strings.Contains(n, "in_use") || strings.Contains(n, "live")
 }
 
 const LabelEndpoint = "endpoint"
@@ -44,10 +40,6 @@ func LabelAllowKeys(additional []string) []string {
 	return keys
 }
 
-func IsGauge(profileType string) bool {
-	return profileType == TypeHeapInuseSpace
-}
-
 type Stack struct {
 	Hash   uint64
 	Frames []string
@@ -55,6 +47,8 @@ type Stack struct {
 
 type Sample struct {
 	Type      string
+	Unit      string
+	IsGauge   bool
 	StackHash uint64
 	Value     int64
 	Labels    map[string]string

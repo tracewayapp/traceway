@@ -38,14 +38,16 @@ func setupProfilingDB(t *testing.T) {
 			last_seen DATETIME NOT NULL, UNIQUE(project_id, service_name, stack_hash))`,
 		`CREATE TABLE profiling_samples (
 			project_id TEXT NOT NULL, profile_id TEXT NOT NULL, service_name TEXT NOT NULL DEFAULT '',
-			type TEXT NOT NULL DEFAULT '', start_time DATETIME NOT NULL, end_time DATETIME NOT NULL,
+			type TEXT NOT NULL DEFAULT '', unit TEXT NOT NULL DEFAULT '', is_gauge INTEGER NOT NULL DEFAULT 0,
+			start_time DATETIME NOT NULL, end_time DATETIME NOT NULL,
 			stack_hash INTEGER NOT NULL, value INTEGER NOT NULL DEFAULT 0, labels TEXT NOT NULL DEFAULT '{}',
 			server_name TEXT NOT NULL DEFAULT '', app_version TEXT NOT NULL DEFAULT '',
 			trace_id TEXT NOT NULL DEFAULT '', span_id TEXT NOT NULL DEFAULT '')`,
 		`CREATE TABLE profiles (
 			id TEXT NOT NULL, project_id TEXT NOT NULL, recorded_at DATETIME NOT NULL,
 			duration INTEGER NOT NULL DEFAULT 0, service_name TEXT NOT NULL DEFAULT '',
-			profile_type TEXT NOT NULL DEFAULT '', sample_count INTEGER NOT NULL DEFAULT 0,
+			profile_type TEXT NOT NULL DEFAULT '', unit TEXT NOT NULL DEFAULT '', is_gauge INTEGER NOT NULL DEFAULT 0,
+			sample_count INTEGER NOT NULL DEFAULT 0,
 			total_value INTEGER NOT NULL DEFAULT 0, server_name TEXT NOT NULL DEFAULT '',
 			app_version TEXT NOT NULL DEFAULT '', attributes TEXT NOT NULL DEFAULT '{}',
 			storage_key TEXT NOT NULL DEFAULT '', trace_id TEXT NOT NULL DEFAULT '',
@@ -126,11 +128,11 @@ func TestProfileIngest_StoresExplodedRows(t *testing.T) {
 	if stacks != 2 {
 		t.Errorf("profiling_stacks = %d, want 2", stacks)
 	}
-	if samples != 2 {
-		t.Errorf("profiling_samples = %d, want 2", samples)
+	if samples != 4 {
+		t.Errorf("profiling_samples = %d, want 4 (samples + cpu types, 2 stacks each)", samples)
 	}
-	if profiles != 1 {
-		t.Errorf("profiles = %d, want 1 (cpu only)", profiles)
+	if profiles != 2 {
+		t.Errorf("profiles = %d, want 2 (one metadata row per sample type: samples + cpu)", profiles)
 	}
 
 	var service, server, version string

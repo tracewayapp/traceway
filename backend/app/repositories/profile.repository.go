@@ -41,7 +41,7 @@ func (r *profileRepository) InsertSamplesAsync(ctx context.Context, samples []mo
 		return nil
 	}
 	batch, err := chdb.Conn.PrepareBatch(chdb.BatchCtx(),
-		"INSERT INTO profiling_samples (project_id, profile_id, service_name, type, start_time, end_time, stack_hash, value, labels, server_name, app_version, trace_id, span_id)")
+		"INSERT INTO profiling_samples (project_id, profile_id, service_name, type, unit, is_gauge, start_time, end_time, stack_hash, value, labels, server_name, app_version, trace_id, span_id)")
 	if err != nil {
 		return err
 	}
@@ -51,7 +51,7 @@ func (r *profileRepository) InsertSamplesAsync(ctx context.Context, samples []mo
 			labels = map[string]string{}
 		}
 		if err := batch.Append(
-			s.ProjectId, s.ProfileId, s.ServiceName, s.Type, s.Start, s.End,
+			s.ProjectId, s.ProfileId, s.ServiceName, s.Type, s.Unit, boolToUInt8(s.IsGauge), s.Start, s.End,
 			s.StackHash, s.Value, labels, s.ServerName, s.AppVersion, s.TraceId, s.SpanId,
 		); err != nil {
 			return err
@@ -60,12 +60,19 @@ func (r *profileRepository) InsertSamplesAsync(ctx context.Context, samples []mo
 	return batch.Send()
 }
 
+func boolToUInt8(b bool) uint8 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 func (r *profileRepository) InsertProfilesAsync(ctx context.Context, profiles []models.Profile) error {
 	if len(profiles) == 0 {
 		return nil
 	}
 	batch, err := chdb.Conn.PrepareBatch(chdb.BatchCtx(),
-		"INSERT INTO profiles (id, project_id, recorded_at, duration, service_name, profile_type, sample_count, total_value, server_name, app_version, attributes, storage_key, trace_id, span_id, distributed_trace_id)")
+		"INSERT INTO profiles (id, project_id, recorded_at, duration, service_name, profile_type, unit, is_gauge, sample_count, total_value, server_name, app_version, attributes, storage_key, trace_id, span_id, distributed_trace_id)")
 	if err != nil {
 		return err
 	}
@@ -77,7 +84,7 @@ func (r *profileRepository) InsertProfilesAsync(ctx context.Context, profiles []
 			}
 		}
 		if err := batch.Append(
-			p.Id, p.ProjectId, p.RecordedAt, int64(p.Duration), p.ServiceName, p.ProfileType,
+			p.Id, p.ProjectId, p.RecordedAt, int64(p.Duration), p.ServiceName, p.ProfileType, p.Unit, boolToUInt8(p.IsGauge),
 			p.SampleCount, p.TotalValue, p.ServerName, p.AppVersion, attributesJSON, p.StorageKey,
 			p.TraceId, p.SpanId, p.DistributedTraceId,
 		); err != nil {
@@ -114,6 +121,8 @@ func (r *profileRepository) FindGroupedByService(ctx context.Context, projectId 
 	offset := (page - 1) * pageSize
 
 	query := fmt.Sprintf(`SELECT service_name, profile_type,
+			any(unit) AS unit,
+			max(is_gauge) AS is_gauge,
 			count() AS profile_count,
 			sum(sample_count) AS sample_count,
 			sum(total_value) AS total_value,
@@ -134,9 +143,11 @@ func (r *profileRepository) FindGroupedByService(ctx context.Context, projectId 
 	for rows.Next() {
 		var g models.ProfileGroup
 		var profileCount, sampleCount uint64
-		if err := rows.Scan(&g.ServiceName, &g.Type, &profileCount, &sampleCount, &g.TotalValue, &g.LastSeen); err != nil {
+		var isGauge uint8
+		if err := rows.Scan(&g.ServiceName, &g.Type, &g.Unit, &isGauge, &profileCount, &sampleCount, &g.TotalValue, &g.LastSeen); err != nil {
 			return nil, 0, err
 		}
+		g.IsGauge = isGauge != 0
 		g.ProfileCount = int64(profileCount)
 		g.SampleCount = int64(sampleCount)
 		groups = append(groups, g)
@@ -144,12 +155,37 @@ func (r *profileRepository) FindGroupedByService(ctx context.Context, projectId 
 	return groups, int64(count), nil
 }
 
-func (r *profileRepository) GetSeries(ctx context.Context, projectId uuid.UUID, service, profileType string, from, to time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
+func (r *profileRepository) DiscoverTypes(ctx context.Context, projectId uuid.UUID, service string, from, to time.Time) ([]models.ProfileTypeInfo, error) {
+	rows, err := chdb.Conn.Query(ctx,
+		`SELECT type, any(unit) AS unit, max(is_gauge) AS is_gauge
+		FROM profiling_samples
+		WHERE project_id = ? AND service_name = ? AND start_time >= ? AND start_time <= ?
+		GROUP BY type
+		ORDER BY type ASC`, projectId, service, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.ProfileTypeInfo
+	for rows.Next() {
+		var info models.ProfileTypeInfo
+		var isGauge uint8
+		if err := rows.Scan(&info.Type, &info.Unit, &isGauge); err != nil {
+			return nil, err
+		}
+		info.IsGauge = isGauge != 0
+		out = append(out, info)
+	}
+	return out, nil
+}
+
+func (r *profileRepository) GetSeries(ctx context.Context, projectId uuid.UUID, service, profileType string, from, to time.Time, intervalMinutes int, isGauge bool) ([]models.TimeSeriesPoint, error) {
 	if intervalMinutes < 1 {
 		intervalMinutes = 1
 	}
 	agg := "sum"
-	if profiling.IsGauge(profileType) {
+	if isGauge {
 		agg = "avg"
 	}
 
@@ -176,13 +212,13 @@ func (r *profileRepository) GetSeries(ctx context.Context, projectId uuid.UUID, 
 	return points, nil
 }
 
-func (r *profileRepository) GetFlameGraph(ctx context.Context, projectId uuid.UUID, service, profileType string, from, to time.Time, labelFilters map[string]string) ([]models.ProfileStackValue, error) {
+func (r *profileRepository) GetFlameGraph(ctx context.Context, projectId uuid.UUID, service, profileType string, from, to time.Time, labelFilters map[string]string, isGauge bool) ([]models.ProfileStackValue, error) {
 	bareFilter, bareArgs := chLabelFilter("", labelFilters)
 	aliasFilter, aliasArgs := chLabelFilter("s.", labelFilters)
 
 	var query string
 	var args []interface{}
-	if profiling.IsGauge(profileType) {
+	if isGauge {
 		query = `WITH latest AS (
 			SELECT argMax(profile_id, start_time) AS pid FROM profiling_samples
 			WHERE project_id = ? AND type = ? AND service_name = ? AND start_time >= ? AND start_time <= ?` + bareFilter + `

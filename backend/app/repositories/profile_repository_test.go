@@ -11,7 +11,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/profiling"
 )
 
 func TestProfileRepository_InsertAndReadBack(t *testing.T) {
@@ -38,7 +37,7 @@ func TestProfileRepository_InsertAndReadBack(t *testing.T) {
 
 	sample := models.ProfileSample{
 		ProjectId: projectId, ProfileId: profileId, ServiceName: "checkout",
-		Type: profiling.TypeCPUNanos, Start: now, End: now.Add(30 * time.Second),
+		Type: "cpu", Start: now, End: now.Add(30 * time.Second),
 		StackHash: hash, Value: 300, ServerName: "pod-a", AppVersion: "1.2.3",
 	}
 	if err := ProfileRepository.InsertSamplesAsync(ctx, []models.ProfileSample{sample}); err != nil {
@@ -47,7 +46,7 @@ func TestProfileRepository_InsertAndReadBack(t *testing.T) {
 
 	prof := models.Profile{
 		Id: profileId, ProjectId: projectId, RecordedAt: now, Duration: 30 * time.Second,
-		ServiceName: "checkout", ProfileType: profiling.TypeCPUNanos,
+		ServiceName: "checkout", ProfileType: "cpu",
 		SampleCount: 1, TotalValue: 300, ServerName: "pod-a", AppVersion: "1.2.3",
 	}
 	if err := ProfileRepository.InsertProfilesAsync(ctx, []models.Profile{prof}); err != nil {
@@ -85,8 +84,8 @@ func TestProfileRepository_InsertAndReadBack(t *testing.T) {
 		"SELECT type, value, stack_hash FROM profiling_samples LIMIT 1").Scan(&gotType, &gotValue, &gotSampleHash); err != nil {
 		t.Fatalf("read sample: %v", err)
 	}
-	if gotType != profiling.TypeCPUNanos || gotValue != 300 || uint64(gotSampleHash) != hash {
-		t.Errorf("sample = (%s,%d,%d), want (%s,300,%d)", gotType, gotValue, uint64(gotSampleHash), profiling.TypeCPUNanos, hash)
+	if gotType != "cpu" || gotValue != 300 || uint64(gotSampleHash) != hash {
+		t.Errorf("sample = (%s,%d,%d), want (%s,300,%d)", gotType, gotValue, uint64(gotSampleHash), "cpu", hash)
 	}
 
 	var gotTotal int64
@@ -95,7 +94,7 @@ func TestProfileRepository_InsertAndReadBack(t *testing.T) {
 		"SELECT profile_type, total_value FROM profiles WHERE id = ?", profileId.String()).Scan(&gotProfileType, &gotTotal); err != nil {
 		t.Fatalf("read profile: %v", err)
 	}
-	if gotProfileType != profiling.TypeCPUNanos || gotTotal != 300 {
-		t.Errorf("profile = (%s,%d), want (%s,300)", gotProfileType, gotTotal, profiling.TypeCPUNanos)
+	if gotProfileType != "cpu" || gotTotal != 300 {
+		t.Errorf("profile = (%s,%d), want (%s,300)", gotProfileType, gotTotal, "cpu")
 	}
 }

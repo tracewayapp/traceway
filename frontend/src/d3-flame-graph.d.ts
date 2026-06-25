@@ -3,7 +3,14 @@ declare module 'd3-flame-graph' {
 		name: string;
 		value: number;
 		self?: number;
+		delta?: number;
 		children?: FlameGraphNode[];
+	}
+
+	export interface FlameGraphHierarchyNode {
+		data: FlameGraphNode;
+		value: number;
+		parent: FlameGraphHierarchyNode | null;
 	}
 
 	export interface FlameGraph {
@@ -16,9 +23,11 @@ declare module 'd3-flame-graph' {
 		inverted(value: boolean): FlameGraph;
 		sort(value: boolean): FlameGraph;
 		selfValue(value: boolean): FlameGraph;
-		setColorMapper(fn: (node: unknown, originalColor: string) => string): FlameGraph;
-		label(fn: (node: { data: FlameGraphNode }) => string): FlameGraph;
-		onClick(fn: (node: unknown) => void): FlameGraph;
+		setColorMapper(
+			fn: (node: FlameGraphHierarchyNode, originalColor: string) => string
+		): FlameGraph;
+		label(fn: (node: FlameGraphHierarchyNode) => string): FlameGraph;
+		onClick(fn: (node: FlameGraphHierarchyNode) => void): FlameGraph;
 		resetZoom(): void;
 		search(term: string): void;
 		clear(): void;

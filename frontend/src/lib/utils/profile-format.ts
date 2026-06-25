@@ -1,28 +1,7 @@
-export const CPU_NANOS = 'go:profile_cpu:nanoseconds';
-export const HEAP_INUSE = 'go:profile_heap:inuse_space';
-export const HEAP_ALLOC = 'go:profile_heap:alloc_space';
-
-export type ProfileCategory = 'cpu' | 'heap';
-export type ProfileUnit = 'nanoseconds' | 'bytes';
-
-export interface ProfileTypeMeta {
+export interface ProfileTypeInfo {
 	type: string;
-	label: string;
-	category: ProfileCategory;
-	unit: ProfileUnit;
+	unit: string;
 	isGauge: boolean;
-}
-
-export const PROFILE_TYPES: ProfileTypeMeta[] = [
-	{ type: CPU_NANOS, label: 'CPU Time', category: 'cpu', unit: 'nanoseconds', isGauge: false },
-	{ type: HEAP_INUSE, label: 'Heap In-Use', category: 'heap', unit: 'bytes', isGauge: true },
-	{ type: HEAP_ALLOC, label: 'Heap Allocations', category: 'heap', unit: 'bytes', isGauge: false }
-];
-
-const TYPE_INDEX = new Map(PROFILE_TYPES.map((meta) => [meta.type, meta]));
-
-export function getProfileTypeMeta(type: string): ProfileTypeMeta | undefined {
-	return TYPE_INDEX.get(type);
 }
 
 function trim(value: number): string {
@@ -43,14 +22,58 @@ function formatBytes(bytes: number): string {
 	return `${trim(bytes / 1024 ** 3)} GB`;
 }
 
-export function formatProfileValue(type: string, value: number): string {
-	const meta = getProfileTypeMeta(type);
-	if (meta?.unit === 'nanoseconds') return formatNanoseconds(value);
-	if (meta?.unit === 'bytes') return formatBytes(value);
-	return value.toLocaleString();
+const TIME_TO_NS: Record<string, number> = {
+	nanoseconds: 1,
+	nanos: 1,
+	ns: 1,
+	microseconds: 1_000,
+	micros: 1_000,
+	us: 1_000,
+	µs: 1_000,
+	milliseconds: 1_000_000,
+	millis: 1_000_000,
+	ms: 1_000_000,
+	seconds: 1_000_000_000,
+	s: 1_000_000_000
+};
+
+const BYTE_UNITS = new Set(['bytes', 'byte', 'b']);
+const COUNT_UNITS = new Set(['count', 'samples', 'sample', 'frames', 'objects', 'goroutines', 'none', '']);
+
+export function formatValue(unit: string, value: number): string {
+	const u = (unit || '').toLowerCase();
+	if (u in TIME_TO_NS) return formatNanoseconds(value * TIME_TO_NS[u]);
+	if (BYTE_UNITS.has(u)) return formatBytes(value);
+	if (COUNT_UNITS.has(u)) return Math.round(value).toLocaleString();
+	return `${value.toLocaleString()} ${unit}`.trim();
 }
 
-export function defaultProfileType(availableTypes: string[]): string {
-	if (availableTypes.includes(CPU_NANOS)) return CPU_NANOS;
-	return availableTypes[0] ?? '';
+const KNOWN_LABELS: Record<string, string> = {
+	cpu: 'CPU',
+	inuse_space: 'In-Use',
+	alloc_space: 'Alloc',
+	inuse_objects: 'In-Use Obj',
+	alloc_objects: 'Alloc Obj',
+	goroutine: 'Goroutines',
+	mutex: 'Mutex',
+	block: 'Block',
+	samples: 'Samples',
+	wall: 'Wall',
+	lock: 'Lock'
+};
+
+export function humanizeType(type: string): string {
+	if (KNOWN_LABELS[type]) return KNOWN_LABELS[type];
+	const tail = type.includes(':') ? (type.split(':').pop() ?? type) : type;
+	return tail
+		.replace(/[._]/g, ' ')
+		.split(' ')
+		.filter(Boolean)
+		.map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+		.join(' ');
+}
+
+export function defaultProfileType(types: string[]): string {
+	if (types.includes('cpu')) return 'cpu';
+	return types[0] ?? '';
 }

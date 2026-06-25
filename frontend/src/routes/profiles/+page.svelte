@@ -2,7 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { api } from '$lib/api';
 	import { formatRelativeTime, toUTCISO, calendarDateTimeToLuxon } from '$lib/utils/formatters';
-	import { formatProfileValue, getProfileTypeMeta } from '$lib/utils/profile-format';
+	import { formatValue, humanizeType } from '$lib/utils/profile-format';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import * as Table from '$lib/components/ui/table';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
@@ -35,6 +35,8 @@
 	type ProfileGroup = {
 		serviceName: string;
 		type: string;
+		unit: string;
+		isGauge: boolean;
 		profileCount: number;
 		sampleCount: number;
 		totalValue: number;
@@ -128,7 +130,7 @@
 	}
 
 	function typeLabel(type: string): string {
-		return getProfileTypeMeta(type)?.label ?? type;
+		return humanizeType(type);
 	}
 
 	function detailHref(group: ProfileGroup): string {
@@ -302,7 +304,7 @@
 							<Table.Cell class="tabular-nums">{formatCount(group.profileCount)}</Table.Cell>
 							<Table.Cell class="tabular-nums">{formatCount(group.sampleCount)}</Table.Cell>
 							<Table.Cell class="font-mono text-sm tabular-nums">
-								{formatProfileValue(group.type, group.totalValue)}
+								{formatValue(group.unit, group.totalValue)}
 							</Table.Cell>
 							<Table.Cell class="text-sm text-muted-foreground">
 								{formatRelativeTime(group.lastSeen, timezone)}

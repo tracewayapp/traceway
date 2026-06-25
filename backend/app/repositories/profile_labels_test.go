@@ -29,16 +29,16 @@ func TestProfileRepository_DiscoverLabels(t *testing.T) {
 		}
 	}
 	mustInsertSamples(t, ctx,
-		sample(base, "checkout", profiling.TypeCPUNanos, map[string]string{"endpoint": "/a"}),
-		sample(base, "checkout", profiling.TypeCPUNanos, map[string]string{"endpoint": "/b"}),
-		sample(base, "checkout", profiling.TypeCPUNanos, map[string]string{"endpoint": "/a"}),
-		sample(base, "checkout", profiling.TypeCPUNanos, map[string]string{"endpoint": "", "region": "us"}),
-		sample(base.Add(-2*time.Hour), "checkout", profiling.TypeCPUNanos, map[string]string{"endpoint": "/before"}),
-		sample(base, "billing", profiling.TypeCPUNanos, map[string]string{"endpoint": "/other-service"}),
-		sample(base, "checkout", profiling.TypeHeapInuseSpace, map[string]string{"endpoint": "/other-type"}),
+		sample(base, "checkout", "cpu", map[string]string{"endpoint": "/a"}),
+		sample(base, "checkout", "cpu", map[string]string{"endpoint": "/b"}),
+		sample(base, "checkout", "cpu", map[string]string{"endpoint": "/a"}),
+		sample(base, "checkout", "cpu", map[string]string{"endpoint": "", "region": "us"}),
+		sample(base.Add(-2*time.Hour), "checkout", "cpu", map[string]string{"endpoint": "/before"}),
+		sample(base, "billing", "cpu", map[string]string{"endpoint": "/other-service"}),
+		sample(base, "checkout", "inuse_space", map[string]string{"endpoint": "/other-type"}),
 	)
 
-	labels, err := ProfileRepository.DiscoverLabels(ctx, projectId, "checkout", profiling.TypeCPUNanos, from, to, profiling.LabelAllowKeys(nil))
+	labels, err := ProfileRepository.DiscoverLabels(ctx, projectId, "checkout", "cpu", from, to, profiling.LabelAllowKeys(nil))
 	if err != nil {
 		t.Fatalf("DiscoverLabels: %v", err)
 	}
@@ -64,12 +64,12 @@ func TestProfileRepository_DiscoverLabels_NoValuesOmitsKey(t *testing.T) {
 	mustInsertSamples(t, ctx,
 		models.ProfileSample{
 			ProjectId: projectId, ProfileId: uuid.New(), ServiceName: "checkout",
-			Type: profiling.TypeCPUNanos, Start: base, End: base, StackHash: hashX, Value: 1,
+			Type: "cpu", Start: base, End: base, StackHash: hashX, Value: 1,
 			Labels: map[string]string{"endpoint": ""},
 		},
 	)
 
-	labels, err := ProfileRepository.DiscoverLabels(ctx, projectId, "checkout", profiling.TypeCPUNanos, from, to, profiling.LabelAllowKeys(nil))
+	labels, err := ProfileRepository.DiscoverLabels(ctx, projectId, "checkout", "cpu", from, to, profiling.LabelAllowKeys(nil))
 	if err != nil {
 		t.Fatalf("DiscoverLabels: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestProfileRepository_DiscoverLabels_DottedKey(t *testing.T) {
 	sample := func(labels map[string]string) models.ProfileSample {
 		return models.ProfileSample{
 			ProjectId: projectId, ProfileId: uuid.New(), ServiceName: "checkout",
-			Type: profiling.TypeCPUNanos, Start: base, End: base, StackHash: hashX, Value: 1, Labels: labels,
+			Type: "cpu", Start: base, End: base, StackHash: hashX, Value: 1, Labels: labels,
 		}
 	}
 	mustInsertSamples(t, ctx,
@@ -98,7 +98,7 @@ func TestProfileRepository_DiscoverLabels_DottedKey(t *testing.T) {
 		sample(map[string]string{"endpoint": "/y", "http.route": "GET /cart"}),
 	)
 
-	labels, err := ProfileRepository.DiscoverLabels(ctx, projectId, "checkout", profiling.TypeCPUNanos, from, to, profiling.LabelAllowKeys([]string{"http.route"}))
+	labels, err := ProfileRepository.DiscoverLabels(ctx, projectId, "checkout", "cpu", from, to, profiling.LabelAllowKeys([]string{"http.route"}))
 	if err != nil {
 		t.Fatalf("DiscoverLabels: %v", err)
 	}
@@ -122,13 +122,13 @@ func TestProfileRepository_DiscoverLabels_LimitsValuesPerKey(t *testing.T) {
 	for i := range total {
 		samples = append(samples, models.ProfileSample{
 			ProjectId: projectId, ProfileId: uuid.New(), ServiceName: "checkout",
-			Type: profiling.TypeCPUNanos, Start: base, End: base, StackHash: hashX, Value: 1,
+			Type: "cpu", Start: base, End: base, StackHash: hashX, Value: 1,
 			Labels: map[string]string{"endpoint": fmt.Sprintf("/e%05d", i)},
 		})
 	}
 	mustInsertSamples(t, ctx, samples...)
 
-	labels, err := ProfileRepository.DiscoverLabels(ctx, projectId, "checkout", profiling.TypeCPUNanos, from, to, profiling.LabelAllowKeys(nil))
+	labels, err := ProfileRepository.DiscoverLabels(ctx, projectId, "checkout", "cpu", from, to, profiling.LabelAllowKeys(nil))
 	if err != nil {
 		t.Fatalf("DiscoverLabels: %v", err)
 	}

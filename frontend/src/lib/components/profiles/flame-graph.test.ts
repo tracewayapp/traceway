@@ -21,7 +21,8 @@ vi.mock('d3-selection', () => {
 });
 
 import FlameGraph, { flameTooltipLabel } from './flame-graph.svelte';
-import { CPU_NANOS } from '$lib/utils/profile-format';
+
+const NS = 'nanoseconds';
 
 const tree = {
 	name: 'root',
@@ -31,14 +32,28 @@ const tree = {
 };
 
 describe('flameTooltipLabel', () => {
-	it('formats name, value and percentage of total', () => {
-		expect(flameTooltipLabel('main.work', 1_500_000, 4_000_000, CPU_NANOS)).toBe(
-			'main.work — 1.5 ms (37.5%)'
+	it('formats name, value, % of total and % of parent', () => {
+		expect(flameTooltipLabel('main.work', 1_500_000, 0, 3_000_000, 4_000_000, NS)).toBe(
+			'main.work · 1.5 ms (37.5% of total) · 50% of parent'
 		);
 	});
 
-	it('renders 0% instead of NaN when the total is zero', () => {
-		expect(flameTooltipLabel('main.work', 10, 0, CPU_NANOS)).toBe('main.work — 10 ns (0%)');
+	it('appends self time when a frame has non-leaf self', () => {
+		expect(flameTooltipLabel('main.serve', 100, 40, 200, 200, NS)).toBe(
+			'main.serve · 100 ns (50% of total) · 50% of parent · self 40 ns'
+		);
+	});
+
+	it('omits the self line for a leaf where self equals value', () => {
+		expect(flameTooltipLabel('main.leaf', 60, 60, 100, 100, NS)).toBe(
+			'main.leaf · 60 ns (60% of total) · 60% of parent'
+		);
+	});
+
+	it('renders 0% and no parent/self when the total and parent are zero', () => {
+		expect(flameTooltipLabel('main.work', 10, 0, 0, 0, NS)).toBe(
+			'main.work · 10 ns (0% of total)'
+		);
 	});
 });
 
@@ -49,22 +64,22 @@ describe('FlameGraph component', () => {
 	});
 
 	it('shows an empty state and does not render a chart when data is null', () => {
-		const { getByText } = render(FlameGraph, { props: { data: null, type: CPU_NANOS } });
+		const { getByText } = render(FlameGraph, { props: { data: null, unit: NS } });
 		expect(getByText(/no flame graph data/i)).toBeTruthy();
 		expect(flamegraphSpy).not.toHaveBeenCalled();
 	});
 
 	it('renders the d3 flame graph with the provided tree', () => {
-		render(FlameGraph, { props: { data: tree, type: CPU_NANOS } });
+		render(FlameGraph, { props: { data: tree, unit: NS } });
 		expect(flamegraphSpy).toHaveBeenCalled();
 		expect(datumSpy).toHaveBeenCalledWith(tree);
 	});
 
 	it('re-renders when the data prop changes', async () => {
-		const { rerender } = render(FlameGraph, { props: { data: tree, type: CPU_NANOS } });
+		const { rerender } = render(FlameGraph, { props: { data: tree, unit: NS } });
 		datumSpy.mockClear();
 		const next = { name: 'root', value: 50, self: 0, children: [] };
-		await rerender({ data: next, type: CPU_NANOS });
+		await rerender({ data: next, unit: NS });
 		expect(datumSpy).toHaveBeenCalledWith(next);
 	});
 });

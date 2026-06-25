@@ -1,0 +1,1 @@
+ALTER TABLE profiling_samples ADD COLUMN unit TEXT NOT NULL DEFAULT ''

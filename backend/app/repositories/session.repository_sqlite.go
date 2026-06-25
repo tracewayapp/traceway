@@ -220,14 +220,9 @@ func buildSessionFilterClauseSQLite(search string, filters []SessionAttributeFil
 		}
 		keyParam := fmt.Sprintf("attr_k_%d", i)
 		valParam := fmt.Sprintf("attr_v_%d", i)
-		// Build the JSON path inline (key is interpolated into a parameter)
-		// using json_extract's `$.path` syntax via concatenation, but SQLite
-		// requires the path string itself to be a literal — we build it via
-		// `'$.' || :key`. (`json_extract` accepts a path expression as a
-		// regular string, not a column reference.)
-		sb.WriteString(" AND json_extract(attributes, '$.' || :")
+		sb.WriteString(" AND json_extract(attributes, '$.\"' || :")
 		sb.WriteString(keyParam)
-		sb.WriteString(") = :")
+		sb.WriteString(" || '\"') = :")
 		sb.WriteString(valParam)
 		params[keyParam] = f.Key
 		params[valParam] = f.Value

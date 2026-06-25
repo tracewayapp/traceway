@@ -253,7 +253,7 @@ func (r *logRecordRepository) buildWhere(params LogSearchParams) (string, lit.P)
 		keyPH := fmt.Sprintf("attr_k%d", i)
 		valPH := fmt.Sprintf("attr_v%d", i)
 		clauses = append(clauses,
-			fmt.Sprintf("json_extract(%s, '$.' || :%s) = :%s", col, keyPH, valPH))
+			fmt.Sprintf("json_extract(%s, '$.\"' || :%s || '\"') = :%s", col, keyPH, valPH))
 		args[keyPH] = f.Key
 		args[valPH] = f.Value
 	}

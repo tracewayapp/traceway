@@ -248,6 +248,41 @@ CREATE TABLE IF NOT EXISTS profiles (
     distributed_trace_id TEXT DEFAULT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_profiles_project_recorded ON profiles(project_id, recorded_at);
+
+CREATE TABLE IF NOT EXISTS log_records (
+    id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    timestamp DATETIME NOT NULL,
+    trace_id TEXT NOT NULL DEFAULT '',
+    span_id TEXT NOT NULL DEFAULT '',
+    trace_flags INTEGER NOT NULL DEFAULT 0,
+    severity_text TEXT NOT NULL DEFAULT '',
+    severity_number INTEGER NOT NULL DEFAULT 0,
+    service_name TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    resource_schema_url TEXT NOT NULL DEFAULT '',
+    resource_attributes TEXT NOT NULL DEFAULT '{}',
+    scope_schema_url TEXT NOT NULL DEFAULT '',
+    scope_name TEXT NOT NULL DEFAULT '',
+    scope_version TEXT NOT NULL DEFAULT '',
+    scope_attributes TEXT NOT NULL DEFAULT '{}',
+    log_attributes TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_log_records_project_timestamp ON log_records(project_id, timestamp);
+
+CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT NOT NULL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    started_at DATETIME NOT NULL,
+    ended_at DATETIME,
+    duration INTEGER NOT NULL DEFAULT 0,
+    client_ip TEXT NOT NULL DEFAULT '',
+    attributes TEXT NOT NULL DEFAULT '{}',
+    app_version TEXT NOT NULL DEFAULT '',
+    server_name TEXT NOT NULL DEFAULT '',
+    distributed_trace_id TEXT DEFAULT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_project_started ON sessions(project_id, started_at);
 `
 
 	statements := splitStatements(ddl)

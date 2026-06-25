@@ -10,6 +10,7 @@ projects[].healthcheckPaths[]: empty
 projects[].id: string
 projects[].name: string
 projects[].organizationId: number
+projects[].profileLabelAllowlist[]: empty
 projects[].token: string
 token: string
 user.createdAt: string

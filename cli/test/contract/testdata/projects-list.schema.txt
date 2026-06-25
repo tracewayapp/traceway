@@ -6,4 +6,5 @@
 [].id: string
 [].name: string
 [].organizationId: number
+[].profileLabelAllowlist[]: empty
 [].token: string

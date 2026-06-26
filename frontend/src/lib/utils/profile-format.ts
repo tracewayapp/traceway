@@ -77,3 +77,18 @@ export function defaultProfileType(types: string[]): string {
 	if (types.includes('cpu')) return 'cpu';
 	return types[0] ?? '';
 }
+
+export function isTimeUnit(unit: string): boolean {
+	return (unit || '').toLowerCase() in TIME_TO_NS;
+}
+
+export function formatRate(unit: string, value: number): string {
+	const u = (unit || '').toLowerCase();
+	if (u in TIME_TO_NS) {
+		const cores = (value * TIME_TO_NS[u]) / 1_000_000_000;
+		return `${trim(cores)} cores`;
+	}
+	if (BYTE_UNITS.has(u)) return `${formatBytes(value)}/s`;
+	if (COUNT_UNITS.has(u)) return `${Math.round(value).toLocaleString()}/s`;
+	return `${value.toLocaleString()} ${unit}/s`.trim();
+}

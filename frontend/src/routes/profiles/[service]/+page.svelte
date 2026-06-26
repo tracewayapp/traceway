@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { api } from '$lib/api';
 	import { authState } from '$lib/state/auth.svelte';
 	import { toast } from 'svelte-sonner';
@@ -9,29 +9,34 @@
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import * as Select from '$lib/components/ui/select';
-	import { ArrowLeft, GitCompareArrows, Download } from '@lucide/svelte';
+	import { ArrowLeft, GitCompareArrows, Download, Layers, Gauge, X } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import PageHeader from '$lib/components/issues/page-header.svelte';
 	import FlameGraph from '$lib/components/profiles/flame-graph.svelte';
+	import ProfileSeriesChart, {
+		type SeriesPoint,
+		type SeriesGroup
+	} from '$lib/components/profiles/profile-series-chart.svelte';
 	import TopFunctionsTable, {
 		type FunctionStat
 	} from '$lib/components/profiles/top-functions-table.svelte';
 	import TagFilter from '$lib/components/dashboard/tag-filter.svelte';
 	import { mergeFlameTrees } from '$lib/utils/flame-diff';
+	import { collapseRecursion, buildSandwich } from '$lib/utils/flame-ops';
 	import { CalendarDate } from '@internationalized/date';
 	import {
 		defaultProfileType,
 		formatValue,
+		formatRate,
+		isTimeUnit,
 		humanizeType,
 		type ProfileTypeInfo
 	} from '$lib/utils/profile-format';
 	import {
 		presetMinutes,
 		getTimeRangeFromPreset,
-		parseTimeRangeFromUrl,
-		getResolvedTimeRange,
 		dateToCalendarDate,
 		dateToTimeString,
 		updateUrl
@@ -42,24 +47,36 @@
 
 	const timezone = $derived(getTimezone());
 
-	type SeriesPoint = { timestamp: string; value: number };
-
 	let { data } = $props();
 
 	let flameData = $state<FlameGraphNode | null>(null);
 	let series = $state<SeriesPoint[]>([]);
+	let breakdown = $state<SeriesGroup[]>([]);
 	let totalValue = $state(0);
 	let availableLabels = $state<Record<string, string[]>>({});
 	let selectedLabels = $state<Record<string, string>>({});
 	let topFunctions = $state<FunctionStat[]>([]);
+	let dimensions = $state<{ appVersions: string[]; serverNames: string[] }>({
+		appVersions: [],
+		serverNames: []
+	});
 	let loading = $state(true);
 	let error = $state('');
 	let notFound = $state(false);
 
+	let flameSearch = $state('');
+	let selectedFrame = $state<string | null>(null);
+	let collapseRecursionOn = $state(false);
+	let normalize = $state(false);
+	let groupBy = $state('');
+
 	let compareMode = $state(false);
 	let diffView = $state<'differential' | 'sidebyside'>('differential');
 	let baseFlameData = $state<FlameGraphNode | null>(null);
+	let baseTopFunctions = $state<FunctionStat[]>([]);
 	let diffData = $state<FlameGraphNode | null>(null);
+	let baseAppVersion = $state('');
+	let baseServerName = $state('');
 	let downloading = $state(false);
 
 	let availableTypes = $state<ProfileTypeInfo[]>([]);
@@ -126,6 +143,26 @@
 	const activeUnit = $derived(activeMeta?.unit ?? '');
 	const activeIsGauge = $derived(activeMeta?.isGauge ?? false);
 	const seriesPeak = $derived(series.reduce((max, p) => Math.max(max, p.value), 0));
+	const rateActive = $derived(normalize && !activeIsGauge);
+	const rateUnitIsTime = $derived(isTimeUnit(activeUnit));
+	const rateToggleLabel = $derived(rateUnitIsTime ? 'Cores' : 'Per second');
+
+	const mainFlame = $derived(
+		collapseRecursionOn && flameData ? collapseRecursion(flameData) : flameData
+	);
+	const sandwich = $derived.by(() =>
+		selectedFrame ? buildSandwich(flameData, selectedFrame) : null
+	);
+
+	const groupByOptions = $derived([
+		{ value: '', label: 'No grouping' },
+		{ value: 'app_version', label: 'App version' },
+		{ value: 'server_name', label: 'Server' },
+		...Object.keys(availableLabels).map((k) => ({ value: `label:${k}`, label: k }))
+	]);
+	const groupByLabel = $derived(
+		groupByOptions.find((o) => o.value === groupBy)?.label ?? 'No grouping'
+	);
 
 	function updateUrlParams(pushToHistory = true) {
 		const params: Record<string, string | undefined> = selectedPreset
@@ -140,7 +177,7 @@
 		const dt = calendarDateTimeToLuxon(
 			{ year: fromDate.year, month: fromDate.month, day: fromDate.day, hour, minute },
 			timezone
-		);
+		).startOf('minute');
 		return toUTCISO(dt);
 	}
 
@@ -161,6 +198,39 @@
 		return Math.max(1, Math.round(spanMinutes / 60));
 	}
 
+	function syncRangeFromUrl(): boolean {
+		if (typeof window === 'undefined') return false;
+		const params = new URLSearchParams(window.location.search);
+		const presetParam = params.get('preset');
+		const fromParam = params.get('from');
+		const toParam = params.get('to');
+		const typeParam = params.get('type');
+		if (typeParam) activeType = typeParam;
+
+		if (presetParam && presetMinutes[presetParam]) {
+			selectedPreset = presetParam;
+			return true;
+		}
+		if (fromParam && toParam) {
+			const fromDt = parseISO(fromParam, timezone);
+			const toDt = parseISO(toParam, timezone);
+			if (fromDt.isValid && toDt.isValid) {
+				selectedPreset = null;
+				fromDate = dateToCalendarDate(fromDt.toJSDate(), timezone);
+				fromTime = dateToTimeString(fromDt.toJSDate(), timezone);
+				toDate = dateToCalendarDate(toDt.toJSDate(), timezone);
+				toTime = dateToTimeString(toDt.toJSDate(), timezone);
+				return true;
+			}
+		}
+		return true;
+	}
+
+	function handlePopState() {
+		syncRangeFromUrl();
+		loadData(false);
+	}
+
 	function handleTimeRangeChange(
 		from: { date: CalendarDate; time: string },
 		to: { date: CalendarDate; time: string },
@@ -174,15 +244,33 @@
 		loadData(true);
 	}
 
+	function handleBrushSelect(fromIso: string, toIso: string) {
+		const fromDt = parseISO(fromIso, timezone);
+		const toDt = parseISO(toIso, timezone);
+		if (!fromDt.isValid || !toDt.isValid) return;
+		selectedPreset = null;
+		fromDate = dateToCalendarDate(fromDt.toJSDate(), timezone);
+		fromTime = dateToTimeString(fromDt.toJSDate(), timezone);
+		toDate = dateToCalendarDate(toDt.toJSDate(), timezone);
+		toTime = dateToTimeString(toDt.toJSDate(), timezone);
+		loadData(true);
+	}
+
 	function handleTypeChange(type: string) {
 		activeType = type;
 		selectedLabels = {};
+		groupBy = '';
+		selectedFrame = null;
 		loadData(true);
 	}
 
 	function handleFilterChange(filters: Record<string, string>) {
 		selectedLabels = filters;
 		loadData(true);
+	}
+
+	function focusFrame(name: string) {
+		flameSearch = name;
 	}
 
 	async function loadData(pushToHistory = true) {
@@ -200,13 +288,14 @@
 
 		const fromIso = getFromDateTimeUTC();
 		const toIso = getToDateTimeUTC();
+		const projectId = projectsState.currentProjectId ?? undefined;
 
 		try {
 			const types = (await api
 				.post(
 					'/profiles/types',
 					{ fromDate: fromIso, toDate: toIso, serviceName: data.service },
-					{ projectId: projectsState.currentProjectId ?? undefined }
+					{ projectId }
 				)
 				.catch(() => [])) as ProfileTypeInfo[];
 			availableTypes = types || [];
@@ -225,28 +314,37 @@
 				serviceName: data.service,
 				type: activeType
 			};
+			const interval = intervalMinutes(fromIso, toIso);
 
-			const [tree, points, labels, top] = await Promise.all([
-				api.post(
-					'/profiles/flamegraph',
-					{ ...body, isGauge, labels: selectedLabels },
-					{ projectId: projectsState.currentProjectId ?? undefined }
-				),
+			const [tree, points, labels, top, dims, groups] = await Promise.all([
+				api.post('/profiles/flamegraph', { ...body, isGauge, labels: selectedLabels }, { projectId }),
 				api.post(
 					'/profiles/series',
-					{ ...body, isGauge, intervalMinutes: intervalMinutes(fromIso, toIso) },
-					{ projectId: projectsState.currentProjectId ?? undefined }
+					{ ...body, isGauge, intervalMinutes: interval, labels: selectedLabels, normalize },
+					{ projectId }
 				),
-				api.post('/profiles/labels', body, {
-					projectId: projectsState.currentProjectId ?? undefined
-				}).catch(() => ({})),
+				api.post('/profiles/labels', body, { projectId }).catch(() => ({})),
 				api
-					.post(
-						'/profiles/top',
-						{ ...body, isGauge, labels: selectedLabels, limit: 25 },
-						{ projectId: projectsState.currentProjectId ?? undefined }
-					)
-					.catch(() => [])
+					.post('/profiles/top', { ...body, isGauge, labels: selectedLabels, limit: 100 }, { projectId })
+					.catch(() => []),
+				api.post('/profiles/dimensions', body, { projectId }).catch(() => ({})),
+				groupBy
+					? api
+							.post(
+								'/profiles/series/breakdown',
+								{
+									...body,
+									isGauge,
+									intervalMinutes: interval,
+									labels: selectedLabels,
+									normalize,
+									dimension: groupBy,
+									limit: 8
+								},
+								{ projectId }
+							)
+							.catch(() => [])
+					: Promise.resolve([])
 			]);
 
 			totalValue = tree?.value ?? 0;
@@ -254,6 +352,12 @@
 			series = points || [];
 			availableLabels = labels || {};
 			topFunctions = (top as FunctionStat[]) || [];
+			dimensions = {
+				appVersions: dims?.appVersions ?? [],
+				serverNames: dims?.serverNames ?? []
+			};
+			breakdown = (groups as SeriesGroup[]) || [];
+			if (selectedFrame && !flameData) selectedFrame = null;
 
 			if (compareMode) await loadCompare(isGauge);
 		} catch (e: any) {
@@ -277,7 +381,7 @@
 			calendarDateTimeToLuxon(
 				{ year: baseFromDate.year, month: baseFromDate.month, day: baseFromDate.day, hour, minute },
 				timezone
-			)
+			).startOf('minute')
 		);
 	}
 
@@ -295,24 +399,29 @@
 	}
 
 	async function loadCompare(isGauge: boolean) {
+		const projectId = projectsState.currentProjectId ?? undefined;
+		const baseBody = {
+			fromDate: baseRangeFromUTC(),
+			toDate: baseRangeToUTC(),
+			serviceName: data.service,
+			type: activeType,
+			isGauge,
+			labels: selectedLabels,
+			appVersion: baseAppVersion,
+			serverName: baseServerName
+		};
 		try {
-			const baseTree = await api.post(
-				'/profiles/flamegraph',
-				{
-					fromDate: baseRangeFromUTC(),
-					toDate: baseRangeToUTC(),
-					serviceName: data.service,
-					type: activeType,
-					isGauge,
-					labels: selectedLabels
-				},
-				{ projectId: projectsState.currentProjectId ?? undefined }
-			);
+			const [baseTree, baseTop] = await Promise.all([
+				api.post('/profiles/flamegraph', baseBody, { projectId }),
+				api.post('/profiles/top', { ...baseBody, limit: 100 }, { projectId }).catch(() => [])
+			]);
 			baseFlameData = baseTree?.children?.length ? baseTree : null;
+			baseTopFunctions = (baseTop as FunctionStat[]) || [];
 			diffData = mergeFlameTrees(baseFlameData, flameData);
 		} catch (e) {
 			console.error(e);
 			baseFlameData = null;
+			baseTopFunctions = [];
 			diffData = null;
 		}
 	}
@@ -378,19 +487,15 @@
 		}
 	}
 
-	const sparkPath = $derived.by(() => {
-		if (series.length < 2 || seriesPeak === 0) return '';
-		const step = 100 / (series.length - 1);
-		return series
-			.map(
-				(p, i) =>
-					`${i === 0 ? 'M' : 'L'} ${(i * step).toFixed(2)} ${(30 - (p.value / seriesPeak) * 28).toFixed(2)}`
-			)
-			.join(' ');
+	onMount(() => {
+		window.addEventListener('popstate', handlePopState);
+		loadData(false);
 	});
 
-	onMount(() => {
-		loadData(false);
+	onDestroy(() => {
+		if (typeof window !== 'undefined') {
+			window.removeEventListener('popstate', handlePopState);
+		}
 	});
 </script>
 
@@ -453,12 +558,53 @@
 		</Tabs.Root>
 	{/if}
 
-	<TagFilter
-		tagKeys={Object.keys(availableLabels)}
-		activeFilters={selectedLabels}
-		onFilterChange={handleFilterChange}
-		onLoadTagValues={(key) => Promise.resolve(availableLabels[key] ?? [])}
-	/>
+	<div class="flex flex-wrap items-center gap-2">
+		<TagFilter
+			tagKeys={Object.keys(availableLabels)}
+			activeFilters={selectedLabels}
+			onFilterChange={handleFilterChange}
+			onLoadTagValues={(key) => Promise.resolve(availableLabels[key] ?? [])}
+		/>
+
+		<div class="flex-1"></div>
+
+		<Select.Root
+			type="single"
+			value={groupBy}
+			onValueChange={(v) => {
+				groupBy = v ?? '';
+				loadData(false);
+			}}
+		>
+			<Select.Trigger size="sm" class="w-44" data-testid="group-by-select">
+				Group by: {groupByLabel}
+			</Select.Trigger>
+			<Select.Content>
+				{#each groupByOptions as opt (opt.value)}
+					<Select.Item value={opt.value}>{opt.label}</Select.Item>
+				{/each}
+			</Select.Content>
+		</Select.Root>
+
+		{#if !activeIsGauge}
+			<Button
+				variant={normalize ? 'secondary' : 'outline'}
+				size="sm"
+				aria-pressed={normalize}
+				onclick={() => {
+					normalize = !normalize;
+					loadData(false);
+				}}
+				data-testid="normalize-toggle"
+				title={rateUnitIsTime
+					? 'Show CPU as cores in use (CPU time per wall-second)'
+					: 'Show as a per-second rate'}
+			>
+				<Gauge class="h-4 w-4" />
+				{rateToggleLabel}
+			</Button>
+		{/if}
+	</div>
 
 	{#if loading}
 		<div class="flex items-center justify-center py-20">
@@ -474,7 +620,7 @@
 	{:else if error}
 		<ErrorDisplay status={400} title="Error" description={error} onRetry={() => loadData()} />
 	{:else}
-		<div class="grid gap-4 sm:grid-cols-3">
+		<div class="grid gap-4 sm:grid-cols-2">
 			<div class="rounded-lg border p-4">
 				<div class="text-sm text-muted-foreground">
 					Total {activeType ? humanizeType(activeType) : ''}
@@ -485,28 +631,31 @@
 			</div>
 			<div class="rounded-lg border p-4">
 				<div class="text-sm text-muted-foreground">
-					Peak {activeIsGauge ? '(avg/bucket)' : '(sum/bucket)'}
+					Peak {rateActive
+						? rateUnitIsTime
+							? '(utilization)'
+							: '(rate)'
+						: activeIsGauge
+							? '(avg/bucket)'
+							: '(sum/bucket)'}
 				</div>
 				<div class="text-2xl font-bold tabular-nums">
-					{formatValue(activeUnit, seriesPeak)}
+					{rateActive ? formatRate(activeUnit, seriesPeak) : formatValue(activeUnit, seriesPeak)}
 				</div>
 			</div>
-			<div class="rounded-lg border p-4">
-				<div class="text-sm text-muted-foreground">Trend</div>
-				{#if sparkPath}
-					<svg viewBox="0 0 100 30" preserveAspectRatio="none" class="mt-1 h-9 w-full text-primary">
-						<path
-							d={sparkPath}
-							fill="none"
-							stroke="currentColor"
-							stroke-width="1.5"
-							vector-effect="non-scaling-stroke"
-						/>
-					</svg>
-				{:else}
-					<div class="mt-1 text-sm text-muted-foreground">Not enough data</div>
-				{/if}
+		</div>
+
+		<div class="rounded-lg border p-4">
+			<div class="mb-1 text-sm text-muted-foreground">
+				Trend{groupBy ? ` · by ${groupByLabel.toLowerCase()}` : ''}
 			</div>
+			<ProfileSeriesChart
+				series={groupBy ? [] : series}
+				groups={groupBy ? breakdown : []}
+				unit={activeUnit}
+				isRate={rateActive}
+				onSelectRange={handleBrushSelect}
+			/>
 		</div>
 
 		<div class="space-y-3 rounded-lg border p-4">
@@ -522,17 +671,17 @@
 					Compare
 				</Button>
 
-				{#if compareMode}
-					<span class="text-xs text-muted-foreground">vs baseline</span>
-					<TimeRangePicker
-						bind:fromDate={baseFromDate}
-						bind:toDate={baseToDate}
-						bind:fromTime={baseFromTime}
-						bind:toTime={baseToTime}
-						bind:preset={baseSelectedPreset}
-						onApply={handleBaseRangeChange}
-					/>
-				{/if}
+				<Button
+					variant={collapseRecursionOn ? 'secondary' : 'outline'}
+					size="sm"
+					aria-pressed={collapseRecursionOn}
+					onclick={() => (collapseRecursionOn = !collapseRecursionOn)}
+					data-testid="collapse-recursion"
+					title="Collapse direct recursion in the flame graph"
+				>
+					<Layers class="h-4 w-4" />
+					Collapse recursion
+				</Button>
 
 				<div class="flex-1"></div>
 
@@ -569,6 +718,56 @@
 				</Button>
 			</div>
 
+			{#if compareMode}
+				<div class="flex flex-wrap items-center gap-2 rounded-md bg-muted/40 p-2">
+					<span class="text-xs font-medium text-muted-foreground">Baseline:</span>
+					<TimeRangePicker
+						bind:fromDate={baseFromDate}
+						bind:toDate={baseToDate}
+						bind:fromTime={baseFromTime}
+						bind:toTime={baseToTime}
+						bind:preset={baseSelectedPreset}
+						onApply={handleBaseRangeChange}
+					/>
+					<Select.Root
+						type="single"
+						value={baseAppVersion}
+						onValueChange={(v) => {
+							baseAppVersion = v ?? '';
+							loadCompare(activeIsGauge);
+						}}
+					>
+						<Select.Trigger size="sm" class="w-40" data-testid="base-app-version">
+							{baseAppVersion || 'All versions'}
+						</Select.Trigger>
+						<Select.Content>
+							<Select.Item value="">All versions</Select.Item>
+							{#each dimensions.appVersions as v (v)}
+								<Select.Item value={v}>{v}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
+					<Select.Root
+						type="single"
+						value={baseServerName}
+						onValueChange={(v) => {
+							baseServerName = v ?? '';
+							loadCompare(activeIsGauge);
+						}}
+					>
+						<Select.Trigger size="sm" class="w-40" data-testid="base-server">
+							{baseServerName || 'All servers'}
+						</Select.Trigger>
+						<Select.Content>
+							<Select.Item value="">All servers</Select.Item>
+							{#each dimensions.serverNames as s (s)}
+								<Select.Item value={s}>{s}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
+				</div>
+			{/if}
+
 			{#if compareMode && diffView === 'differential'}
 				<div class="flex items-center gap-4 text-xs text-muted-foreground">
 					<span class="inline-flex items-center gap-1.5">
@@ -589,14 +788,50 @@
 					</div>
 					<div>
 						<div class="mb-1 text-xs font-medium text-muted-foreground">Current</div>
-						<FlameGraph data={flameData} unit={activeUnit} controls={false} />
+						<FlameGraph data={mainFlame} unit={activeUnit} controls={false} />
 					</div>
 				</div>
 			{:else}
-				<FlameGraph data={flameData} unit={activeUnit} />
+				<FlameGraph
+					data={mainFlame}
+					unit={activeUnit}
+					bind:searchTerm={flameSearch}
+					onFrameSelect={(name) => (selectedFrame = name)}
+				/>
 			{/if}
 		</div>
 
-		<TopFunctionsTable rows={topFunctions} unit={activeUnit} />
+		{#if sandwich && !compareMode}
+			<div class="space-y-3 rounded-lg border p-4">
+				<div class="flex items-center justify-between gap-2">
+					<div class="min-w-0">
+						<div class="text-sm font-medium">Function detail</div>
+						<div class="truncate font-mono text-xs text-muted-foreground" title={sandwich.fn}>
+							{sandwich.fn} · {formatValue(activeUnit, sandwich.total)}
+						</div>
+					</div>
+					<Button variant="ghost" size="sm" onclick={() => (selectedFrame = null)} title="Close">
+						<X class="h-4 w-4" />
+					</Button>
+				</div>
+				<div class="grid gap-4 lg:grid-cols-2">
+					<div>
+						<div class="mb-1 text-xs font-medium text-muted-foreground">Callers</div>
+						<FlameGraph data={sandwich.callers} unit={activeUnit} controls={false} inverted={true} />
+					</div>
+					<div>
+						<div class="mb-1 text-xs font-medium text-muted-foreground">Callees</div>
+						<FlameGraph data={sandwich.callees} unit={activeUnit} controls={false} />
+					</div>
+				</div>
+			</div>
+		{/if}
+
+		<TopFunctionsTable
+			rows={topFunctions}
+			unit={activeUnit}
+			onSelect={focusFrame}
+			baselineRows={compareMode ? baseTopFunctions : undefined}
+		/>
 	{/if}
 </div>

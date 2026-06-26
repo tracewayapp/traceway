@@ -31,6 +31,7 @@ declare module 'd3-flame-graph' {
 		resetZoom(): void;
 		search(term: string): void;
 		clear(): void;
+		update(root?: FlameGraphNode): void;
 		destroy(): void;
 	}
 

@@ -147,11 +147,11 @@
                 const [toHour, toMinute] = toTime.split(':').map(Number);
                 tempFromDateTime = new CalendarDateTime(
                     fromDate.year, fromDate.month, fromDate.day,
-                    fromHour || 0, fromMinute || 0, 0
+                    Number.isFinite(fromHour) ? fromHour : 0, Number.isFinite(fromMinute) ? fromMinute : 0, 0
                 );
                 tempToDateTime = new CalendarDateTime(
                     toDate.year, toDate.month, toDate.day,
-                    toHour || 23, toMinute || 59, 0
+                    Number.isFinite(toHour) ? toHour : 23, Number.isFinite(toMinute) ? toMinute : 59, 0
                 );
             }
         }

@@ -37,11 +37,17 @@ type profileTypeRow struct {
 	IsGauge int64  `lit:"is_gauge"`
 }
 
+type profileDimValueRow struct {
+	Key   *string `lit:"k"`
+	Total float64 `lit:"tv"`
+}
+
 func init() {
 	models.ExtensionModelRegistrations = append(models.ExtensionModelRegistrations, func(driver lit.Driver) {
 		lit.RegisterModel[profileGroupRow](driver)
 		lit.RegisterModel[labelValueRow](driver)
 		lit.RegisterModel[profileTypeRow](driver)
+		lit.RegisterModel[profileDimValueRow](driver)
 	})
 }
 
@@ -172,14 +178,19 @@ func (r *profileRepository) InsertProfilesAsync(ctx context.Context, profiles []
 	return tx.Commit()
 }
 
-func (r *profileRepository) FindGroupedByService(ctx context.Context, projectId uuid.UUID, from, to time.Time, page, pageSize int, orderBy, sortDirection string) ([]models.ProfileGroup, int64, error) {
-	params := lit.P{"project_id": projectId, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to)}
+func (r *profileRepository) FindGroupedByService(ctx context.Context, projectId uuid.UUID, from, to time.Time, page, pageSize int, orderBy, sortDirection, search string) ([]models.ProfileGroup, int64, error) {
+	searchClause := ""
+	countParams := lit.P{"project_id": projectId, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to)}
+	if search != "" {
+		searchClause = " AND instr(lower(service_name), lower(:search)) > 0"
+		countParams["search"] = search
+	}
 
 	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
 		`SELECT COUNT(*) AS count FROM (
 			SELECT 1 FROM profiles
-			WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
-			GROUP BY service_name, profile_type)`, params)
+			WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to`+searchClause+`
+			GROUP BY service_name, profile_type)`, countParams)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -204,6 +215,10 @@ func (r *profileRepository) FindGroupedByService(ctx context.Context, projectId 
 	}
 
 	offset := (page - 1) * pageSize
+	pageParams := lit.P{"project_id": projectId, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to), "limit": pageSize, "offset": offset}
+	if search != "" {
+		pageParams["search"] = search
+	}
 	rows, err := lit.SelectNamed[profileGroupRow](db.TelemetryDB,
 		fmt.Sprintf(`SELECT service_name, profile_type,
 			MAX(unit) AS unit,
@@ -213,11 +228,11 @@ func (r *profileRepository) FindGroupedByService(ctx context.Context, projectId 
 			SUM(total_value) AS total_value,
 			MAX(recorded_at) AS last_seen
 		FROM profiles
-		WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
+		WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to`+searchClause+`
 		GROUP BY service_name, profile_type
 		ORDER BY %s %s
 		LIMIT :limit OFFSET :offset`, orderExpr, sortDir),
-		lit.P{"project_id": projectId, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to), "limit": pageSize, "offset": offset})
+		pageParams)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -235,7 +250,76 @@ func (r *profileRepository) FindGroupedByService(ctx context.Context, projectId 
 			LastSeen:     row.LastSeen.Time,
 		})
 	}
+
+	if err := r.fillSparklines(ctx, projectId, from, to, groups); err != nil {
+		return nil, 0, err
+	}
 	return groups, total, nil
+}
+
+func (r *profileRepository) fillSparklines(ctx context.Context, projectId uuid.UUID, from, to time.Time, groups []models.ProfileGroup) error {
+	if len(groups) == 0 {
+		return nil
+	}
+	const buckets = 16
+	bucketSecs := int(to.Sub(from).Seconds()) / buckets
+	if bucketSecs < 1 {
+		bucketSecs = 1
+	}
+	alignedFrom := (from.Unix() / int64(bucketSecs)) * int64(bucketSecs)
+
+	query, args, err := lit.ParseNamedQuery(db.Driver,
+		fmt.Sprintf(`SELECT service_name, profile_type,
+			CAST((strftime('%%s', recorded_at) / %d) * %d AS INTEGER) AS bucket,
+			CAST(SUM(total_value) AS REAL) AS v
+		FROM profiles
+		WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
+		GROUP BY service_name, profile_type, bucket`, bucketSecs, bucketSecs),
+		lit.P{"project_id": projectId, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to)})
+	if err != nil {
+		return err
+	}
+	sqlRows, err := db.TelemetryDB.QueryContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	defer sqlRows.Close()
+
+	acc := map[string][]float64{}
+	for sqlRows.Next() {
+		var service, ptype string
+		var bucketEpoch int64
+		var v float64
+		if err := sqlRows.Scan(&service, &ptype, &bucketEpoch, &v); err != nil {
+			return err
+		}
+		idx := int((bucketEpoch - alignedFrom) / int64(bucketSecs))
+		if idx < 0 {
+			idx = 0
+		}
+		if idx >= buckets {
+			idx = buckets - 1
+		}
+		key := service + "\x00" + ptype
+		arr, ok := acc[key]
+		if !ok {
+			arr = make([]float64, buckets)
+			acc[key] = arr
+		}
+		arr[idx] += v
+	}
+	if err := sqlRows.Err(); err != nil {
+		return err
+	}
+
+	for i := range groups {
+		if arr, ok := acc[groups[i].ServiceName+"\x00"+groups[i].Type]; ok {
+			groups[i].Sparkline = arr
+		} else {
+			groups[i].Sparkline = []float64{}
+		}
+	}
+	return nil
 }
 
 func (r *profileRepository) DiscoverTypes(ctx context.Context, projectId uuid.UUID, service string, from, to time.Time) ([]models.ProfileTypeInfo, error) {
@@ -258,7 +342,7 @@ func (r *profileRepository) DiscoverTypes(ctx context.Context, projectId uuid.UU
 	return out, nil
 }
 
-func (r *profileRepository) GetSeries(ctx context.Context, projectId uuid.UUID, service, profileType string, from, to time.Time, intervalMinutes int, isGauge bool) ([]models.TimeSeriesPoint, error) {
+func (r *profileRepository) GetSeries(ctx context.Context, projectId uuid.UUID, service, profileType string, from, to time.Time, intervalMinutes int, isGauge bool, labelFilters map[string]string, appVersion, serverName string, normalize bool) ([]models.TimeSeriesPoint, error) {
 	if intervalMinutes < 1 {
 		intervalMinutes = 1
 	}
@@ -268,24 +352,32 @@ func (r *profileRepository) GetSeries(ctx context.Context, projectId uuid.UUID, 
 		agg = "AVG"
 	}
 
+	params := lit.P{"project_id": projectId, "type": profileType, "service": service, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to)}
+	filter := sqliteLabelFilter("", labelFilters, params)
+	cohort := sqliteCohortFilter("", appVersion, serverName, params)
+
 	results, err := lit.SelectNamed[timeSeriesResult](db.TelemetryDB,
 		fmt.Sprintf(`SELECT datetime((strftime('%%s', start_time) / %d) * %d, 'unixepoch') AS bucket,
 			CAST(%s(value) AS REAL) AS agg_value
 		FROM profiling_samples
 		WHERE project_id = :project_id AND type = :type AND service_name = :service
-			AND start_time >= :from AND start_time <= :to
+			AND start_time >= :from AND start_time <= :to`+filter+cohort+`
 		GROUP BY bucket ORDER BY bucket ASC`, secs, secs, agg),
-		lit.P{"project_id": projectId, "type": profileType, "service": service, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to)})
+		params)
 	if err != nil {
 		return nil, err
 	}
-	return timeSeriesResultsToPoints(results), nil
+	points := timeSeriesResultsToPoints(results)
+	normalizeSeriesPoints(points, normalize, isGauge, intervalMinutes)
+	return points, nil
 }
 
-func (r *profileRepository) GetFlameGraph(ctx context.Context, projectId uuid.UUID, service, profileType string, from, to time.Time, labelFilters map[string]string, isGauge bool) ([]models.ProfileStackValue, error) {
+func (r *profileRepository) GetFlameGraph(ctx context.Context, projectId uuid.UUID, service, profileType string, from, to time.Time, labelFilters map[string]string, isGauge bool, appVersion, serverName string) ([]models.ProfileStackValue, error) {
 	params := lit.P{"project_id": projectId, "type": profileType, "service": service, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to)}
 	bareFilter := sqliteLabelFilter("", labelFilters, params)
 	aliasFilter := sqliteLabelFilter("s.", labelFilters, params)
+	bareCohort := sqliteCohortFilter("", appVersion, serverName, params)
+	aliasCohort := sqliteCohortFilter("s.", appVersion, serverName, params)
 
 	var query string
 	if isGauge {
@@ -293,22 +385,24 @@ func (r *profileRepository) GetFlameGraph(ctx context.Context, projectId uuid.UU
 			SELECT profile_id AS pid, MAX(start_time) AS mx
 			FROM profiling_samples
 			WHERE project_id = :project_id AND type = :type AND service_name = :service
-				AND start_time >= :from AND start_time <= :to` + bareFilter + `
+				AND start_time >= :from AND start_time <= :to` + bareFilter + bareCohort + `
 			GROUP BY server_name)
 		SELECT st.stack AS stack_json, CAST(SUM(s.value) AS INTEGER) AS v
 		FROM profiling_samples s
 		JOIN latest l ON l.pid = s.profile_id
 		JOIN profiling_stacks st ON st.project_id = s.project_id AND st.service_name = s.service_name AND st.stack_hash = s.stack_hash
 		WHERE s.project_id = :project_id AND s.type = :type AND s.service_name = :service
-			AND s.start_time >= :from AND s.start_time <= :to` + aliasFilter + `
-		GROUP BY s.stack_hash, st.stack`
+			AND s.start_time >= :from AND s.start_time <= :to` + aliasFilter + aliasCohort + `
+		GROUP BY s.stack_hash, st.stack
+		ORDER BY v DESC LIMIT 50000`
 	} else {
 		query = `SELECT st.stack AS stack_json, CAST(SUM(s.value) AS INTEGER) AS v
 		FROM profiling_samples s
 		JOIN profiling_stacks st ON st.project_id = s.project_id AND st.service_name = s.service_name AND st.stack_hash = s.stack_hash
 		WHERE s.project_id = :project_id AND s.type = :type AND s.service_name = :service
-			AND s.start_time >= :from AND s.start_time <= :to` + aliasFilter + `
-		GROUP BY s.stack_hash, st.stack`
+			AND s.start_time >= :from AND s.start_time <= :to` + aliasFilter + aliasCohort + `
+		GROUP BY s.stack_hash, st.stack
+		ORDER BY v DESC LIMIT 50000`
 	}
 
 	parsed, args, err := lit.ParseNamedQuery(db.Driver, query, params)
@@ -357,6 +451,121 @@ func (r *profileRepository) distinctLabelValues(ctx context.Context, projectId u
 		values = append(values, row.Value)
 	}
 	return values, nil
+}
+
+func (r *profileRepository) GetSeriesBreakdown(ctx context.Context, projectId uuid.UUID, service, profileType string, from, to time.Time, intervalMinutes int, isGauge bool, labelFilters map[string]string, appVersion, serverName string, normalize bool, dimension string, limit int) ([]models.ProfileSeriesGroup, error) {
+	if intervalMinutes < 1 {
+		intervalMinutes = 1
+	}
+	secs := intervalMinutes * 60
+	limit = clampBreakdownLimit(limit)
+	agg := "SUM"
+	if isGauge {
+		agg = "AVG"
+	}
+
+	params := lit.P{"project_id": projectId, "type": profileType, "service": service, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to), "limit": limit}
+	filter := sqliteLabelFilter("", labelFilters, params)
+	cohort := sqliteCohortFilter("", appVersion, serverName, params)
+	dimExpr, ok := sqliteDimExpr(dimension, params)
+	if !ok {
+		return nil, fmt.Errorf("unsupported breakdown dimension: %s", dimension)
+	}
+
+	topRows, err := lit.SelectNamed[profileDimValueRow](db.TelemetryDB,
+		fmt.Sprintf(`SELECT %s AS k, CAST(%s(value) AS REAL) AS tv
+		FROM profiling_samples
+		WHERE project_id = :project_id AND type = :type AND service_name = :service
+			AND start_time >= :from AND start_time <= :to`+filter+cohort+`
+			AND %s != ''
+		GROUP BY k ORDER BY tv DESC LIMIT :limit`, dimExpr, agg, dimExpr),
+		params)
+	if err != nil {
+		return nil, err
+	}
+
+	seriesQuery := fmt.Sprintf(`SELECT datetime((strftime('%%s', start_time) / %d) * %d, 'unixepoch') AS bucket,
+		CAST(%s(value) AS REAL) AS agg_value
+	FROM profiling_samples
+	WHERE project_id = :project_id AND type = :type AND service_name = :service
+		AND start_time >= :from AND start_time <= :to`+filter+cohort+`
+		AND %s = :dimval
+	GROUP BY bucket ORDER BY bucket ASC`, secs, secs, agg, dimExpr)
+
+	groups := make([]models.ProfileSeriesGroup, 0, len(topRows))
+	for _, row := range topRows {
+		if row.Key == nil {
+			continue
+		}
+		key := *row.Key
+		params["dimval"] = key
+		results, err := lit.SelectNamed[timeSeriesResult](db.TelemetryDB, seriesQuery, params)
+		if err != nil {
+			return nil, err
+		}
+		points := timeSeriesResultsToPoints(results)
+		normalizeSeriesPoints(points, normalize, isGauge, intervalMinutes)
+		groups = append(groups, models.ProfileSeriesGroup{Key: key, Points: points})
+	}
+	return groups, nil
+}
+
+func (r *profileRepository) DiscoverDimensions(ctx context.Context, projectId uuid.UUID, service, profileType string, from, to time.Time) ([]string, []string, error) {
+	appVersions, err := r.distinctDimensionValues(ctx, projectId, service, profileType, "app_version", from, to)
+	if err != nil {
+		return nil, nil, err
+	}
+	serverNames, err := r.distinctDimensionValues(ctx, projectId, service, profileType, "server_name", from, to)
+	if err != nil {
+		return nil, nil, err
+	}
+	return appVersions, serverNames, nil
+}
+
+func (r *profileRepository) distinctDimensionValues(ctx context.Context, projectId uuid.UUID, service, profileType, column string, from, to time.Time) ([]string, error) {
+	rows, err := lit.SelectNamed[labelValueRow](db.TelemetryDB,
+		fmt.Sprintf(`SELECT DISTINCT %s AS v
+		FROM profiling_samples
+		WHERE project_id = :project_id AND service_name = :service AND type = :type
+			AND start_time >= :from AND start_time <= :to AND %s != ''
+		ORDER BY %s ASC LIMIT 100`, column, column, column),
+		lit.P{"project_id": projectId, "service": service, "type": profileType, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to)})
+	if err != nil {
+		return nil, err
+	}
+	values := make([]string, 0, len(rows))
+	for _, row := range rows {
+		values = append(values, row.Value)
+	}
+	return values, nil
+}
+
+func sqliteCohortFilter(qualifier, appVersion, serverName string, params lit.P) string {
+	clause := ""
+	if appVersion != "" {
+		clause += fmt.Sprintf(" AND %sapp_version = :app_version", qualifier)
+		params["app_version"] = appVersion
+	}
+	if serverName != "" {
+		clause += fmt.Sprintf(" AND %sserver_name = :server_name", qualifier)
+		params["server_name"] = serverName
+	}
+	return clause
+}
+
+func sqliteDimExpr(dimension string, params lit.P) (string, bool) {
+	switch dimension {
+	case "app_version":
+		return "app_version", true
+	case "server_name":
+		return "server_name", true
+	}
+	key, ok := breakdownLabelKey(dimension)
+	if !ok || key == "" {
+		return "", false
+	}
+	params["dimpath"] = "$.\"" + key + "\""
+	return "json_extract(labels, :dimpath)", true
 }
 
 func sqliteLabelFilter(qualifier string, filters map[string]string, params lit.P) string {

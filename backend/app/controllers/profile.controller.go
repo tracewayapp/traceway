@@ -3,6 +3,7 @@ package controllers
 import (
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -24,16 +25,43 @@ type ProfileGroupedRequest struct {
 	ToDate        time.Time        `json:"toDate"`
 	OrderBy       string           `json:"orderBy"`
 	SortDirection string           `json:"sortDirection"`
+	Search        string           `json:"search"`
 	Pagination    PaginationParams `json:"pagination"`
 }
 
 type ProfileSeriesRequest struct {
-	FromDate        time.Time `json:"fromDate"`
-	ToDate          time.Time `json:"toDate"`
-	ServiceName     string    `json:"serviceName"`
-	Type            string    `json:"type"`
-	IsGauge         bool      `json:"isGauge"`
-	IntervalMinutes int       `json:"intervalMinutes"`
+	FromDate        time.Time         `json:"fromDate"`
+	ToDate          time.Time         `json:"toDate"`
+	ServiceName     string            `json:"serviceName"`
+	Type            string            `json:"type"`
+	IsGauge         bool              `json:"isGauge"`
+	IntervalMinutes int               `json:"intervalMinutes"`
+	Labels          map[string]string `json:"labels"`
+	AppVersion      string            `json:"appVersion"`
+	ServerName      string            `json:"serverName"`
+	Normalize       bool              `json:"normalize"`
+}
+
+type ProfileSeriesBreakdownRequest struct {
+	FromDate        time.Time         `json:"fromDate"`
+	ToDate          time.Time         `json:"toDate"`
+	ServiceName     string            `json:"serviceName"`
+	Type            string            `json:"type"`
+	IsGauge         bool              `json:"isGauge"`
+	IntervalMinutes int               `json:"intervalMinutes"`
+	Labels          map[string]string `json:"labels"`
+	AppVersion      string            `json:"appVersion"`
+	ServerName      string            `json:"serverName"`
+	Normalize       bool              `json:"normalize"`
+	Dimension       string            `json:"dimension"`
+	Limit           int               `json:"limit"`
+}
+
+type ProfileDimensionsRequest struct {
+	FromDate    time.Time `json:"fromDate"`
+	ToDate      time.Time `json:"toDate"`
+	ServiceName string    `json:"serviceName"`
+	Type        string    `json:"type"`
 }
 
 type ProfileFlameGraphRequest struct {
@@ -44,6 +72,8 @@ type ProfileFlameGraphRequest struct {
 	Unit        string            `json:"unit"`
 	IsGauge     bool              `json:"isGauge"`
 	Labels      map[string]string `json:"labels"`
+	AppVersion  string            `json:"appVersion"`
+	ServerName  string            `json:"serverName"`
 }
 
 type ProfileTypesRequest struct {
@@ -60,6 +90,8 @@ type ProfileTopFunctionsRequest struct {
 	IsGauge     bool              `json:"isGauge"`
 	Labels      map[string]string `json:"labels"`
 	Limit       int               `json:"limit"`
+	AppVersion  string            `json:"appVersion"`
+	ServerName  string            `json:"serverName"`
 }
 
 type ProfileLabelsRequest struct {
@@ -72,6 +104,11 @@ type ProfileLabelsRequest struct {
 type ProfileSeriesPoint struct {
 	Timestamp time.Time `json:"timestamp"`
 	Value     float64   `json:"value"`
+}
+
+type ProfileSeriesGroupResponse struct {
+	Key    string               `json:"key"`
+	Points []ProfileSeriesPoint `json:"points"`
 }
 
 func (p profileController) FindGroupedByService(c *gin.Context) {
@@ -87,7 +124,12 @@ func (p profileController) FindGroupedByService(c *gin.Context) {
 		return
 	}
 
-	groups, total, err := repositories.ProfileRepository.FindGroupedByService(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
+	search := strings.TrimSpace(request.Search)
+	if utf8.RuneCountInString(search) > 200 {
+		search = ""
+	}
+
+	groups, total, err := repositories.ProfileRepository.FindGroupedByService(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection, search)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error loading grouped profiles: %w", err))
 		return
@@ -120,8 +162,14 @@ func (p profileController) GetSeries(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "serviceName and type are required"})
 		return
 	}
+	if !validateProfileLabelFilters(c, projectId, request.Labels) {
+		return
+	}
+	if !validateProfileCohort(c, request.AppVersion, request.ServerName) {
+		return
+	}
 
-	points, err := repositories.ProfileRepository.GetSeries(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate, request.IntervalMinutes, request.IsGauge)
+	points, err := repositories.ProfileRepository.GetSeries(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate, request.IntervalMinutes, request.IsGauge, request.Labels, request.AppVersion, request.ServerName, request.Normalize)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error loading profile series: %w", err))
 		return
@@ -151,7 +199,15 @@ func (p profileController) DiscoverTypes(c *gin.Context) {
 		return
 	}
 
-	types, err := repositories.ProfileRepository.DiscoverTypes(c, projectId, request.ServiceName, request.FromDate, request.ToDate)
+	typesFrom := request.FromDate
+	if !request.ToDate.IsZero() {
+		typesFrom = request.ToDate.AddDate(0, 0, -30)
+		if request.FromDate.Before(typesFrom) {
+			typesFrom = request.FromDate
+		}
+	}
+
+	types, err := repositories.ProfileRepository.DiscoverTypes(c, projectId, request.ServiceName, typesFrom, request.ToDate)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error discovering profile types: %w", err))
 		return
@@ -182,8 +238,11 @@ func (p profileController) GetFlameGraph(c *gin.Context) {
 	if !validateProfileLabelFilters(c, projectId, request.Labels) {
 		return
 	}
+	if !validateProfileCohort(c, request.AppVersion, request.ServerName) {
+		return
+	}
 
-	rows, err := repositories.ProfileRepository.GetFlameGraph(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate, request.Labels, request.IsGauge)
+	rows, err := repositories.ProfileRepository.GetFlameGraph(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate, request.Labels, request.IsGauge, request.AppVersion, request.ServerName)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error loading flame graph: %w", err))
 		return
@@ -211,6 +270,9 @@ func (p profileController) GetTopFunctions(c *gin.Context) {
 	if !validateProfileLabelFilters(c, projectId, request.Labels) {
 		return
 	}
+	if !validateProfileCohort(c, request.AppVersion, request.ServerName) {
+		return
+	}
 
 	limit := request.Limit
 	if limit <= 0 {
@@ -220,7 +282,7 @@ func (p profileController) GetTopFunctions(c *gin.Context) {
 		limit = 200
 	}
 
-	rows, err := repositories.ProfileRepository.GetFlameGraph(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate, request.Labels, request.IsGauge)
+	rows, err := repositories.ProfileRepository.GetFlameGraph(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate, request.Labels, request.IsGauge, request.AppVersion, request.ServerName)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error loading top functions: %w", err))
 		return
@@ -248,8 +310,11 @@ func (p profileController) DownloadPprof(c *gin.Context) {
 	if !validateProfileLabelFilters(c, projectId, request.Labels) {
 		return
 	}
+	if !validateProfileCohort(c, request.AppVersion, request.ServerName) {
+		return
+	}
 
-	rows, err := repositories.ProfileRepository.GetFlameGraph(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate, request.Labels, request.IsGauge)
+	rows, err := repositories.ProfileRepository.GetFlameGraph(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate, request.Labels, request.IsGauge, request.AppVersion, request.ServerName)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error loading profile for export: %w", err))
 		return
@@ -301,6 +366,85 @@ func validateProfileLabelFilters(c *gin.Context, projectId uuid.UUID, labels map
 		}
 	}
 	return true
+}
+
+func validateProfileCohort(c *gin.Context, appVersion, serverName string) bool {
+	if utf8.RuneCountInString(appVersion) > 200 || utf8.RuneCountInString(serverName) > 200 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "appVersion and serverName must be at most 200 characters"})
+		return false
+	}
+	return true
+}
+
+func (p profileController) GetSeriesBreakdown(c *gin.Context) {
+	projectId, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return
+	}
+
+	var request ProfileSeriesBreakdownRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if request.ServiceName == "" || request.Type == "" || request.Dimension == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "serviceName, type and dimension are required"})
+		return
+	}
+	if !validateProfileLabelFilters(c, projectId, request.Labels) {
+		return
+	}
+	if !validateProfileCohort(c, request.AppVersion, request.ServerName) {
+		return
+	}
+
+	groups, err := repositories.ProfileRepository.GetSeriesBreakdown(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate, request.IntervalMinutes, request.IsGauge, request.Labels, request.AppVersion, request.ServerName, request.Normalize, request.Dimension, request.Limit)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error loading profile series breakdown: %w", err))
+		return
+	}
+
+	out := make([]ProfileSeriesGroupResponse, 0, len(groups))
+	for _, g := range groups {
+		points := make([]ProfileSeriesPoint, 0, len(g.Points))
+		for _, pt := range g.Points {
+			points = append(points, ProfileSeriesPoint{Timestamp: pt.Timestamp, Value: pt.Value})
+		}
+		out = append(out, ProfileSeriesGroupResponse{Key: g.Key, Points: points})
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+func (p profileController) DiscoverDimensions(c *gin.Context) {
+	projectId, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return
+	}
+
+	var request ProfileDimensionsRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if request.ServiceName == "" || request.Type == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "serviceName and type are required"})
+		return
+	}
+
+	appVersions, serverNames, err := repositories.ProfileRepository.DiscoverDimensions(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error discovering profile dimensions: %w", err))
+		return
+	}
+	if appVersions == nil {
+		appVersions = []string{}
+	}
+	if serverNames == nil {
+		serverNames = []string{}
+	}
+	c.JSON(http.StatusOK, gin.H{"appVersions": appVersions, "serverNames": serverNames})
 }
 
 func (p profileController) DiscoverLabels(c *gin.Context) {

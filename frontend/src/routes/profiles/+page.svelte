@@ -6,6 +6,7 @@
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import * as Table from '$lib/components/ui/table';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
+	import { SearchBar } from '$lib/components/ui/search-bar';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
 	import { PaginationFooter } from '$lib/components/ui/pagination-footer';
@@ -41,6 +42,7 @@
 		sampleCount: number;
 		totalValue: number;
 		lastSeen: string;
+		sparkline?: number[];
 	};
 
 	type SortField = 'profile_count' | 'sample_count' | 'total_value' | 'last_seen';
@@ -53,6 +55,21 @@
 	let pageSize = $state(50);
 	let total = $state(0);
 	let totalPages = $state(0);
+	let search = $state('');
+
+	function handleSearch() {
+		page = 1;
+		loadData(false);
+	}
+
+	function sparkPath(values: number[]): string {
+		if (!values || values.length < 2) return '';
+		const max = Math.max(...values, 1);
+		const step = 100 / (values.length - 1);
+		return values
+			.map((v, i) => `${i === 0 ? 'M' : 'L'} ${(i * step).toFixed(1)} ${(16 - (v / max) * 15).toFixed(1)}`)
+			.join(' ');
+	}
 
 	const initialUrlParams = parseTimeRangeFromUrl(timezone);
 	const initialRange = getResolvedTimeRange(initialUrlParams, timezone);
@@ -157,6 +174,7 @@
 				toDate: getToDateTimeUTC(),
 				orderBy,
 				sortDirection,
+				search,
 				pagination: { page, pageSize }
 			};
 
@@ -210,10 +228,10 @@
 </script>
 
 <div class="space-y-4">
-	<div class="flex flex-col gap-4 sm:flex-row sm:justify-between">
+	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 		<PageHeader title="Profiles" />
 
-		<div class="flex flex-col">
+		<div class="w-full sm:w-auto">
 			<TimeRangePicker
 				bind:fromDate
 				bind:toDate
@@ -225,12 +243,19 @@
 		</div>
 	</div>
 
+	<SearchBar
+		placeholder="Search services..."
+		bind:value={search}
+		onSearch={handleSearch}
+		disabled={loading}
+	/>
+
 	<div class="overflow-hidden rounded-md border">
 		<Table.Root>
 			{#if loading}
 				<Table.Body>
 					<Table.Row>
-						<Table.Cell colspan={6} class="h-48">
+						<Table.Cell colspan={7} class="h-48">
 							<div class="flex h-full items-center justify-center">
 								<LoadingCircle size="xlg" />
 							</div>
@@ -240,12 +265,12 @@
 			{:else if error}
 				<Table.Body>
 					<Table.Row>
-						<Table.Cell colspan={6} class="h-24 text-center text-red-500">{error}</Table.Cell>
+						<Table.Cell colspan={7} class="h-24 text-center text-red-500">{error}</Table.Cell>
 					</Table.Row>
 				</Table.Body>
 			{:else if groups.length === 0}
 				<Table.Body>
-					<TableEmptyState colspan={6} message="No profile data received yet" />
+					<TableEmptyState colspan={7} message="No profile data received yet" />
 				</Table.Body>
 			{:else}
 				<Table.Header>
@@ -283,6 +308,11 @@
 							class="w-[120px]"
 						/>
 						<TracewayTableHeader
+							label="Trend"
+							tooltip="Total trend across the selected range"
+							class="w-[120px]"
+						/>
+						<TracewayTableHeader
 							label="Last Seen"
 							tooltip="When this service last reported this profile type"
 							sortField="last_seen"
@@ -305,6 +335,25 @@
 							<Table.Cell class="tabular-nums">{formatCount(group.sampleCount)}</Table.Cell>
 							<Table.Cell class="font-mono text-sm tabular-nums">
 								{formatValue(group.unit, group.totalValue)}
+							</Table.Cell>
+							<Table.Cell>
+								{#if group.sparkline && group.sparkline.length > 1}
+									<svg
+										viewBox="0 0 100 16"
+										preserveAspectRatio="none"
+										class="h-5 w-24 text-primary"
+									>
+										<path
+											d={sparkPath(group.sparkline)}
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.5"
+											vector-effect="non-scaling-stroke"
+										/>
+									</svg>
+								{:else}
+									<span class="text-xs text-muted-foreground">—</span>
+								{/if}
 							</Table.Cell>
 							<Table.Cell class="text-sm text-muted-foreground">
 								{formatRelativeTime(group.lastSeen, timezone)}

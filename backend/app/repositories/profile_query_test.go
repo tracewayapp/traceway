@@ -62,7 +62,7 @@ func TestProfileRepository_FindGroupedByService(t *testing.T) {
 		models.Profile{Id: uuid.New(), ProjectId: projectId, RecordedAt: base, ServiceName: "checkout", ProfileType: "inuse_space", SampleCount: 3, TotalValue: 9000},
 	)
 
-	groups, total, err := ProfileRepository.FindGroupedByService(ctx, projectId, from, to, 1, 50, "total_value", "desc")
+	groups, total, err := ProfileRepository.FindGroupedByService(ctx, projectId, from, to, 1, 50, "total_value", "desc", "")
 	if err != nil {
 		t.Fatalf("FindGroupedByService: %v", err)
 	}
@@ -115,7 +115,7 @@ func TestProfileRepository_GetFlameGraph_CounterMergesInstancesAndFiltersLabels(
 		cpu("pod-a", hashAC, 100, "dev"),
 	)
 
-	all, err := ProfileRepository.GetFlameGraph(ctx, projectId, "checkout", "cpu", from, to, nil, false)
+	all, err := ProfileRepository.GetFlameGraph(ctx, projectId, "checkout", "cpu", from, to, nil, false, "", "")
 	if err != nil {
 		t.Fatalf("GetFlameGraph: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestProfileRepository_GetFlameGraph_CounterMergesInstancesAndFiltersLabels(
 		t.Errorf("a;c value = %d, want 100", got["a;c"])
 	}
 
-	prod, err := ProfileRepository.GetFlameGraph(ctx, projectId, "checkout", "cpu", from, to, map[string]string{"env": "prod"}, false)
+	prod, err := ProfileRepository.GetFlameGraph(ctx, projectId, "checkout", "cpu", from, to, map[string]string{"env": "prod"}, false, "", "")
 	if err != nil {
 		t.Fatalf("GetFlameGraph (filtered): %v", err)
 	}
@@ -166,7 +166,7 @@ func TestProfileRepository_GetFlameGraph_FiltersByDottedLabelKey(t *testing.T) {
 		cpu(hashAC, 100, "GET /cart"),
 	)
 
-	rows, err := ProfileRepository.GetFlameGraph(ctx, projectId, "checkout", "cpu", from, to, map[string]string{"http.route": "GET /checkout"}, false)
+	rows, err := ProfileRepository.GetFlameGraph(ctx, projectId, "checkout", "cpu", from, to, map[string]string{"http.route": "GET /checkout"}, false, "", "")
 	if err != nil {
 		t.Fatalf("GetFlameGraph (dotted filter): %v", err)
 	}
@@ -207,7 +207,7 @@ func TestProfileRepository_GetFlameGraph_GaugeUsesLatestPerServer(t *testing.T) 
 		inuse("pod-b", t1, 50),
 	)
 
-	rows, err := ProfileRepository.GetFlameGraph(ctx, projectId, "checkout", "inuse_space", from, to, nil, true)
+	rows, err := ProfileRepository.GetFlameGraph(ctx, projectId, "checkout", "inuse_space", from, to, nil, true, "", "")
 	if err != nil {
 		t.Fatalf("GetFlameGraph (gauge): %v", err)
 	}
@@ -243,7 +243,7 @@ func TestProfileRepository_GetFlameGraph_GaugeDedupsTiedStartTimes(t *testing.T)
 		inuse("pod-b", base, 50),
 	)
 
-	rows, err := ProfileRepository.GetFlameGraph(ctx, projectId, "checkout", "inuse_space", from, to, nil, true)
+	rows, err := ProfileRepository.GetFlameGraph(ctx, projectId, "checkout", "inuse_space", from, to, nil, true, "", "")
 	if err != nil {
 		t.Fatalf("GetFlameGraph (gauge ties): %v", err)
 	}
@@ -275,7 +275,7 @@ func TestProfileRepository_GetSeries_CounterSumsPerBucket(t *testing.T) {
 		sample(h13.Add(10*time.Minute), 700),
 	)
 
-	points, err := ProfileRepository.GetSeries(ctx, projectId, "checkout", "cpu", from, to, 60, false)
+	points, err := ProfileRepository.GetSeries(ctx, projectId, "checkout", "cpu", from, to, 60, false, nil, "", "", false)
 	if err != nil {
 		t.Fatalf("GetSeries: %v", err)
 	}

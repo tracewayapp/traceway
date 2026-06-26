@@ -41,6 +41,7 @@ type ProfileGroup struct {
 	SampleCount  int64     `json:"sampleCount" ch:"sample_count"`
 	TotalValue   int64     `json:"totalValue" ch:"total_value"`
 	LastSeen     time.Time `json:"lastSeen" ch:"last_seen"`
+	Sparkline    []float64 `json:"sparkline"`
 }
 
 type ProfileTypeInfo struct {
@@ -52,6 +53,11 @@ type ProfileTypeInfo struct {
 type ProfileStackValue struct {
 	Stack []string `json:"stack"`
 	Value int64    `json:"value"`
+}
+
+type ProfileSeriesGroup struct {
+	Key    string            `json:"key"`
+	Points []TimeSeriesPoint `json:"points"`
 }
 
 type Profile struct {

@@ -11,17 +11,29 @@
 <script lang="ts">
 	import * as Table from '$lib/components/ui/table';
 	import TracewayTableHeader from '$lib/components/ui/traceway-table-header/traceway-table-header.svelte';
+	import { Button } from '$lib/components/ui/button';
 	import { formatValue } from '$lib/utils/profile-format';
 
 	interface Props {
 		rows: FunctionStat[];
 		unit: string;
+		onSelect?: (name: string) => void;
+		baselineRows?: FunctionStat[];
 	}
 
-	let { rows, unit }: Props = $props();
+	let { rows, unit, onSelect, baselineRows }: Props = $props();
 
 	let sortField = $state<'flat' | 'cum'>('flat');
 	let sortDirection = $state<'asc' | 'desc'>('desc');
+	let expanded = $state(false);
+
+	const COLLAPSED = 15;
+
+	const baseFlat = $derived.by(() => {
+		const m = new Map<string, number>();
+		for (const r of baselineRows ?? []) m.set(r.name, r.flat);
+		return m;
+	});
 
 	function onSort(field: string) {
 		const next = field as 'flat' | 'cum';
@@ -41,8 +53,19 @@
 		return copy;
 	});
 
+	const visible = $derived(expanded ? sorted : sorted.slice(0, COLLAPSED));
+
 	function pct(value: number): string {
 		return `${Number(value.toFixed(1))}%`;
+	}
+
+	function deltaLabel(row: FunctionStat): { text: string; cls: string } {
+		const base = baseFlat.get(row.name) ?? 0;
+		const d = row.flat - base;
+		if (d === 0) return { text: '—', cls: 'text-muted-foreground' };
+		const sign = d > 0 ? '+' : '−';
+		const cls = d > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400';
+		return { text: `${sign}${formatValue(unit, Math.abs(d))}`, cls };
 	}
 </script>
 
@@ -62,6 +85,9 @@
 						{onSort}
 					/>
 					<TracewayTableHeader label="Flat %" align="right" />
+					{#if baselineRows}
+						<TracewayTableHeader label="Δ Flat" tooltip="Change in flat vs baseline" align="right" />
+					{/if}
 					<TracewayTableHeader
 						label="Cumulative"
 						tooltip="Time spent in this function and everything it calls"
@@ -75,8 +101,11 @@
 				</Table.Row>
 			</Table.Header>
 			<Table.Body>
-				{#each sorted as row (row.name)}
-					<Table.Row>
+				{#each visible as row (row.name)}
+					<Table.Row
+						class={onSelect ? 'cursor-pointer hover:bg-muted/50' : ''}
+						onclick={onSelect ? () => onSelect(row.name) : undefined}
+					>
 						<Table.Cell class="max-w-[28rem] truncate font-mono text-xs" title={row.name}>
 							{row.name}
 						</Table.Cell>
@@ -86,20 +115,31 @@
 						<Table.Cell class="text-right tabular-nums text-muted-foreground">
 							{pct(row.flatPct)}
 						</Table.Cell>
+						{#if baselineRows}
+							{@const d = deltaLabel(row)}
+							<Table.Cell class="text-right tabular-nums {d.cls}">{d.text}</Table.Cell>
+						{/if}
 						<Table.Cell class="text-right tabular-nums">
 							{formatValue(unit, row.cum)}
 						</Table.Cell>
 						<Table.Cell>
 							<div class="flex items-center justify-end gap-2">
-								<div class="h-1.5 w-16 overflow-hidden rounded bg-muted">
+								<div class="h-1.5 w-16 shrink-0 overflow-hidden rounded bg-muted">
 									<div class="h-full bg-primary" style="width: {Math.min(100, row.cumPct)}%"></div>
 								</div>
-								<span class="tabular-nums text-muted-foreground">{pct(row.cumPct)}</span>
+								<span class="w-12 text-right tabular-nums text-muted-foreground">{pct(row.cumPct)}</span>
 							</div>
 						</Table.Cell>
 					</Table.Row>
 				{/each}
 			</Table.Body>
 		</Table.Root>
+		{#if sorted.length > COLLAPSED}
+			<div class="border-t p-2 text-center">
+				<Button variant="ghost" size="sm" onclick={() => (expanded = !expanded)}>
+					{expanded ? 'Show less' : `Show all ${sorted.length}`}
+				</Button>
+			</div>
+		{/if}
 	</div>
 {/if}

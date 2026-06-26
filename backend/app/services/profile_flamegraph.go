@@ -6,6 +6,11 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models"
 )
 
+const (
+	maxFlameDepth = 256
+	maxFlameNodes = 60000
+)
+
 type FlameNode struct {
 	Name     string       `json:"name"`
 	Value    int64        `json:"value"`
@@ -16,11 +21,17 @@ type FlameNode struct {
 func FoldFlameGraph(stacks []models.ProfileStackValue) *FlameNode {
 	root := &FlameNode{Name: "root"}
 	childIndex := map[*FlameNode]map[string]*FlameNode{}
+	nodeCount := 0
 
 	for _, s := range stacks {
 		root.Value += s.Value
 		node := root
-		for i, frame := range s.Stack {
+		depth := len(s.Stack)
+		if depth > maxFlameDepth {
+			depth = maxFlameDepth
+		}
+		for i := 0; i < depth; i++ {
+			frame := s.Stack[i]
 			children, ok := childIndex[node]
 			if !ok {
 				children = map[string]*FlameNode{}
@@ -28,12 +39,16 @@ func FoldFlameGraph(stacks []models.ProfileStackValue) *FlameNode {
 			}
 			child, ok := children[frame]
 			if !ok {
+				if nodeCount >= maxFlameNodes {
+					break
+				}
 				child = &FlameNode{Name: frame}
 				children[frame] = child
 				node.Children = append(node.Children, child)
+				nodeCount++
 			}
 			child.Value += s.Value
-			if i == len(s.Stack)-1 {
+			if i == depth-1 {
 				child.Self += s.Value
 			}
 			node = child

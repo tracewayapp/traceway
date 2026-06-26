@@ -25,17 +25,6 @@
 		return parts.join(' · ');
 	}
 
-	export function packageColor(name: string): string {
-		const slash = name.lastIndexOf('/');
-		const afterSlash = slash >= 0 ? name.slice(slash + 1) : name;
-		const dot = afterSlash.indexOf('.');
-		const tail = dot >= 0 ? afterSlash.slice(0, dot) : afterSlash;
-		const key = slash >= 0 ? name.slice(0, slash + 1) + tail : tail;
-		let hash = 0;
-		for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) | 0;
-		return `hsl(${Math.abs(hash) % 360}, 45%, 55%)`;
-	}
-
 	export function diffColor(delta: number): string {
 		const mag = Math.min(1, Math.abs(delta));
 		if (delta > 0.001) return `hsl(8, ${Math.round(45 + mag * 45)}%, ${Math.round(68 - mag * 22)}%)`;
@@ -44,42 +33,55 @@
 		return 'hsl(220, 6%, 78%)';
 	}
 
-	function matchedSelf(node: FlameGraphNode, term: string): number {
-		let sum = node.name.toLowerCase().includes(term) ? (node.self ?? 0) : 0;
-		if (node.children) for (const c of node.children) sum += matchedSelf(c, term);
-		return sum;
+	export function flameDepth(node: FlameGraphNode): number {
+		if (!node.children || node.children.length === 0) return 0;
+		let max = 0;
+		for (const child of node.children) {
+			const d = flameDepth(child);
+			if (d > max) max = d;
+		}
+		return max + 1;
 	}
 </script>
 
 <script lang="ts">
 	import flamegraph, { type FlameGraph } from 'd3-flame-graph';
 	import { select } from 'd3-selection';
+	import { untrack } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
-	import { RotateCcw, FlipVertical2, Palette } from '@lucide/svelte';
+	import { RotateCcw, FlipVertical2 } from '@lucide/svelte';
 
 	interface Props {
 		data: FlameGraphNode | null;
 		unit: string;
 		diff?: boolean;
 		controls?: boolean;
+		searchTerm?: string;
+		inverted?: boolean;
+		onFrameSelect?: (name: string) => void;
 	}
 
-	let { data, unit, diff = false, controls = true }: Props = $props();
+	let {
+		data,
+		unit,
+		diff = false,
+		controls = true,
+		searchTerm = $bindable(''),
+		inverted: invertedProp = false,
+		onFrameSelect
+	}: Props = $props();
+
+	const CELL = 20;
 
 	let container = $state<HTMLDivElement>();
 	let width = $state(0);
 	let chart: FlameGraph | null = null;
 
-	let searchTerm = $state('');
-	let inverted = $state(false);
-	let colorByPackage = $state(true);
+	let inverted = $state(invertedProp);
 
-	const matchPct = $derived.by(() => {
-		const term = searchTerm.trim().toLowerCase();
-		if (!term || !data || !(data.value > 0)) return null;
-		return (matchedSelf(data, term) / data.value) * 100;
-	});
+	const contentHeight = $derived(data ? (flameDepth(data) + 1) * CELL : 0);
+	const svgShift = $derived(inverted ? 0 : -2 * CELL);
 
 	$effect(() => {
 		const el = container;
@@ -99,8 +101,8 @@
 		const currentUnit = unit;
 
 		const instance = flamegraph()
-			.width(width || el.clientWidth || 960)
-			.cellHeight(20)
+			.width(el.clientWidth || 960)
+			.cellHeight(CELL)
 			.minFrameSize(1)
 			.transitionDuration(200)
 			.sort(true)
@@ -119,12 +121,17 @@
 
 		if (diff) {
 			instance.setColorMapper((node) => diffColor(node.data.delta ?? 0));
-		} else if (colorByPackage) {
-			instance.setColorMapper((node) => packageColor(node.data.name));
+		}
+
+		if (onFrameSelect) {
+			instance.onClick((node) => onFrameSelect(node.data.name));
 		}
 
 		select(el).datum(data).call(instance);
 		chart = instance;
+
+		const active = untrack(() => searchTerm).trim();
+		if (active) instance.search(active);
 
 		return () => {
 			try {
@@ -135,6 +142,17 @@
 			select(el).selectAll('*').remove();
 			chart = null;
 		};
+	});
+
+	$effect(() => {
+		const w = width;
+		if (!chart || !w) return;
+		try {
+			chart.width(w);
+			chart.update();
+		} catch {
+			/* resize is best-effort */
+		}
 	});
 
 	$effect(() => {
@@ -157,8 +175,8 @@
 		No flame graph data for this range.
 	</div>
 {:else}
-	{#if controls}
-		<div class="mb-3 flex flex-wrap items-center gap-2">
+	<div class="mb-3 flex flex-wrap items-center gap-2">
+		{#if controls}
 			<Input
 				type="text"
 				placeholder="Search frames…"
@@ -166,22 +184,19 @@
 				data-testid="flame-search"
 				class="h-8 w-56"
 			/>
-			{#if matchPct !== null}
-				<span class="text-xs text-muted-foreground tabular-nums" data-testid="flame-match">
-					{Number(matchPct.toFixed(1))}% match
-				</span>
-			{/if}
-			<div class="flex-1"></div>
-			<Button
-				variant="outline"
-				size="sm"
-				onclick={resetZoom}
-				data-testid="flame-reset"
-				title="Reset zoom"
-			>
-				<RotateCcw class="h-4 w-4" />
-				Reset
-			</Button>
+		{/if}
+		<div class="flex-1"></div>
+		<Button
+			variant="outline"
+			size="sm"
+			onclick={resetZoom}
+			data-testid="flame-reset"
+			title="Reset zoom"
+		>
+			<RotateCcw class="h-4 w-4" />
+			Reset
+		</Button>
+		{#if controls}
 			<Button
 				variant={inverted ? 'secondary' : 'outline'}
 				size="sm"
@@ -193,25 +208,21 @@
 				<FlipVertical2 class="h-4 w-4" />
 				Icicle
 			</Button>
-			{#if !diff}
-				<Button
-					variant={colorByPackage ? 'secondary' : 'outline'}
-					size="sm"
-					aria-pressed={colorByPackage}
-					onclick={() => (colorByPackage = !colorByPackage)}
-					data-testid="flame-color"
-					title="Color frames by package"
-				>
-					<Palette class="h-4 w-4" />
-					Package colors
-				</Button>
-			{/if}
-		</div>
-	{/if}
-	<div bind:this={container} class="flame-graph w-full"></div>
+		{/if}
+	</div>
+	<div
+		bind:this={container}
+		class="flame-graph w-full overflow-hidden"
+		style="height: {contentHeight}px; --flame-svg-shift: {svgShift}px"
+	></div>
 {/if}
 
 <style>
+	:global(.flame-graph svg) {
+		display: block;
+		margin-top: var(--flame-svg-shift, 0);
+	}
+
 	:global(.flame-graph .d3-flame-graph rect) {
 		stroke: var(--background);
 		stroke-width: 0.5;

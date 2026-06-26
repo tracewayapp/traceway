@@ -2,3 +2,4 @@
 /shop-backend
 /dist/*
 !/dist/.gitkeep
+.env

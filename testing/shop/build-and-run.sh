@@ -20,4 +20,7 @@ cd backend
 CGO_ENABLED=1 go build -o shop .
 
 echo "==> Starting shop on http://localhost:8090"
+set -a
+[ -f .env ] && source .env
+set +a
 exec ./shop

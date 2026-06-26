@@ -37,7 +37,11 @@ export const metadata: Metadata = {
   description:
     "Traceway is an open-source APM built on OpenTelemetry. Complete observability: logs, traces, metrics, session replay, and exceptions, all connected. MIT licensed. Self-host free or run on Traceway Cloud.",
   icons: {
-    icon: "/favicon.ico",
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "any" },
+    ],
+    apple: "/apple-touch-icon.png",
   },
 };
 

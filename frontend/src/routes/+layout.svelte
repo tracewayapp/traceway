@@ -133,7 +133,7 @@
 	}
 </script>
 
-<svelte:head><link rel="icon" href="/favicon.ico" /></svelte:head>
+<svelte:head><title>Traceway</title></svelte:head>
 
 <Tooltip.Provider delayDuration={0}>
 <!-- This is not ideal, but because our layout is a top level route it can end up showing sidebar on the login page (after the login before the transition). -->

@@ -56,3 +56,80 @@ func TestListEndpoints_callsGroupedRoute(t *testing.T) {
 		t.Errorf("Impact = %v", resp.Data[0].Impact)
 	}
 }
+
+func TestGetEndpointChart_callsChartRoute(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/endpoints/chart" {
+			t.Errorf("path = %q (want chart)", r.URL.Path)
+		}
+		if r.URL.Query().Get("projectId") != "proj-1" {
+			t.Errorf("projectId = %q", r.URL.Query().Get("projectId"))
+		}
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body["fromDate"] == nil || body["toDate"] == nil {
+			t.Errorf("body missing fromDate/toDate: %v", body)
+		}
+		if body["metricType"] != "p95" {
+			t.Errorf("metricType = %v, want p95", body["metricType"])
+		}
+		if body["intervalMinutes"] != float64(60) {
+			t.Errorf("intervalMinutes = %v, want 60", body["intervalMinutes"])
+		}
+		_, _ = w.Write([]byte(`{
+			"endpoints":["GET /api/checkout","Other"],
+			"series":[
+				{"timestamp":"2026-06-25T12:00:00Z","endpoint":"GET /api/checkout","value":120.5},
+				{"timestamp":"2026-06-25T13:00:00Z","endpoint":"GET /api/checkout","value":480}
+			]
+		}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, WithJWT("tok"))
+	resp, err := c.GetEndpointChart(context.Background(), "proj-1", EndpointChartRequest{
+		TimeRange:       TimeRange{From: time.Now().Add(-24 * time.Hour), To: time.Now()},
+		MetricType:      "p95",
+		IntervalMinutes: 60,
+	})
+	if err != nil {
+		t.Fatalf("GetEndpointChart: %v", err)
+	}
+	if len(resp.Endpoints) != 2 || resp.Endpoints[0] != "GET /api/checkout" {
+		t.Errorf("Endpoints = %v", resp.Endpoints)
+	}
+	if len(resp.Series) != 2 {
+		t.Fatalf("got %d series points", len(resp.Series))
+	}
+	if resp.Series[1].Value != 480 || resp.Series[1].Endpoint != "GET /api/checkout" {
+		t.Errorf("series[1] = %+v", resp.Series[1])
+	}
+}
+
+func TestGetSlowEndpoint_callsSlowRoute(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("method = %q (want GET)", r.Method)
+		}
+		if r.URL.Path != "/api/endpoints/slow" {
+			t.Errorf("path = %q (want slow)", r.URL.Path)
+		}
+		if r.URL.Query().Get("projectId") != "proj-1" {
+			t.Errorf("projectId = %q", r.URL.Query().Get("projectId"))
+		}
+		if r.URL.Query().Get("endpoint") != "GET /api/users/:id" {
+			t.Errorf("endpoint = %q", r.URL.Query().Get("endpoint"))
+		}
+		_, _ = w.Write([]byte(`{"offsetMs":1500,"reason":"known heavy report"}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, WithJWT("tok"))
+	resp, err := c.GetSlowEndpoint(context.Background(), "proj-1", "GET /api/users/:id")
+	if err != nil {
+		t.Fatalf("GetSlowEndpoint: %v", err)
+	}
+	if resp.OffsetMs != 1500 || resp.Reason != "known heavy report" {
+		t.Errorf("resp = %+v", resp)
+	}
+}

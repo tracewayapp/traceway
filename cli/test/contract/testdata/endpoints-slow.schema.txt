@@ -1,0 +1,2 @@
+offsetMs: number
+reason: string

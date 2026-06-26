@@ -43,6 +43,12 @@ func checkout(c *gin.Context) {
 	}
 	rows.Close()
 
+	if len(lines) == 0 {
+		traceway.CaptureExceptionWithContext(ctx, traceway.NewStackTraceErrorf("checkout attempted with empty cart"))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "your cart is empty"})
+		return
+	}
+
 	pay := traceway.StartSpan(ctx, "payment.charge")
 	if !fastPath() {
 		slowJitter(300, 1200)

@@ -14,6 +14,7 @@
 	import { resolve } from '$app/paths';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import PageHeader from '$lib/components/issues/page-header.svelte';
+	import ExperimentalBanner from '$lib/components/profiles/experimental-banner.svelte';
 	import FlameGraph from '$lib/components/profiles/flame-graph.svelte';
 	import ProfileSeriesChart, {
 		type SeriesPoint,
@@ -519,6 +520,8 @@
 			/>
 		</div>
 	</div>
+
+	<ExperimentalBanner />
 
 	{#if availableTypes.length}
 		<Tabs.Root value={activeType} onValueChange={handleTypeChange}>

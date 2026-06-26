@@ -16,6 +16,7 @@
 	import { createRowClickHandler } from '$lib/utils/navigation';
 	import { resolve } from '$app/paths';
 	import PageHeader from '$lib/components/issues/page-header.svelte';
+	import ExperimentalBanner from '$lib/components/profiles/experimental-banner.svelte';
 	import {
 		getTimeRangeFromPreset,
 		dateToCalendarDate,
@@ -242,6 +243,8 @@
 			/>
 		</div>
 	</div>
+
+	<ExperimentalBanner />
 
 	<SearchBar
 		placeholder="Search services..."

@@ -61,7 +61,7 @@ func listProducts(c *gin.Context) {
 	rows.Close()
 
 	for i := range products {
-		slowJitter(900, 1100)
+		slowJitter(200, 300)
 		catRow := twdb.QueryRowContext(ctx, `SELECT name FROM categories WHERE id = ?`, products[i].CategoryId)
 		_ = catRow.Scan(&products[i].Category)
 

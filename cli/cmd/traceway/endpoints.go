@@ -13,12 +13,16 @@ import (
 
 var endpointsOrderBy = []string{"impact", "count", "p95", "lastSeen"}
 
+var endpointChartMetricTypes = []string{"total_time", "p50", "p95", "p99"}
+
 func newEndpointsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "endpoints",
 		Short: "Query HTTP endpoint performance",
 	}
 	cmd.AddCommand(newEndpointsListCmd())
+	cmd.AddCommand(newEndpointsChartCmd())
+	cmd.AddCommand(newEndpointsSlowCmd())
 	cmd.AddCommand(newEndpointsShowCmd())
 	return cmd
 }
@@ -97,6 +101,164 @@ func runEndpointsList(cmd *cobra.Command, _ []string) error {
 			)
 		}
 		return tw.Flush()
+	}
+}
+
+func newEndpointsChartCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "chart",
+		Short: "Endpoint latency bucketed over time (find when latency changed)",
+		Long: `Show endpoint latency as a time series, the curve behind /endpoints in the
+dashboard. The server returns the top 5 endpoints ranked by --metric-type plus
+an "Other" bucket, each bucketed by --interval-minutes, so you can read down the
+buckets to find when a latency jump started.
+
+This always returns the top endpoints by the chosen metric; it does not filter
+to one route. To track a specific endpoint that is not in the top 5, bisect
+"endpoints list --search <name>" over narrowing --from/--to windows instead.
+
+Values are in milliseconds. Use --output json for the full per-bucket series.`,
+		RunE: runEndpointsChart,
+	}
+	addTimeRangeFlags(cmd)
+	cmd.Flags().String("metric-type", "p95", "Metric to chart: total_time, p50, p95, p99")
+	cmd.Flags().Int("interval-minutes", 0, "Time bucket size in minutes (0 = server default of 5)")
+	return cmd
+}
+
+func runEndpointsChart(cmd *cobra.Command, _ []string) error {
+	ctx := cmd.Context()
+	mode := output.ResolveMode(flagOutput, output.StdoutIsTerminal())
+
+	sess, err := loadSession()
+	if err != nil {
+		return renderSessionError(cmd.ErrOrStderr(), mode, err)
+	}
+	tr, err := resolveTimeRange(cmd)
+	if err != nil {
+		return renderTimeRangeError(cmd.ErrOrStderr(), mode, err)
+	}
+	metricType, _ := cmd.Flags().GetString("metric-type")
+	if err := validateEnumFlag("--metric-type", metricType, endpointChartMetricTypes); err != nil {
+		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
+			enumFlagHint("traceway endpoints chart", "--metric-type", endpointChartMetricTypes))
+	}
+	intervalMin, _ := cmd.Flags().GetInt("interval-minutes")
+
+	c := client.New(sess.URL, client.WithJWT(sess.JWT))
+	resp, err := c.GetEndpointChart(ctx, sess.ProjectID, client.EndpointChartRequest{
+		TimeRange:       tr,
+		MetricType:      metricType,
+		IntervalMinutes: intervalMin,
+	})
+	if err != nil {
+		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
+	}
+
+	switch mode {
+	case output.ModeJSON:
+		return output.RenderJSON(cmd.OutOrStdout(), resp, output.ParseFieldsFlag(flagFields))
+	case output.ModeYAML:
+		return output.RenderYAML(cmd.OutOrStdout(), resp, output.ParseFieldsFlag(flagFields))
+	default:
+		return renderEndpointChartTable(cmd.OutOrStdout(), resp)
+	}
+}
+
+// renderEndpointChartTable prints a per-endpoint summary of the time series
+// (point count and min/max/latest value in ms), in the server's ranked order.
+// The full per-bucket series is only in --output json.
+func renderEndpointChartTable(out io.Writer, resp *client.EndpointChartResponse) error {
+	type seriesAgg struct {
+		points     int
+		min, max   float64
+		latest     float64
+		latestTime time.Time
+		seen       bool
+	}
+	byEndpoint := make(map[string]*seriesAgg, len(resp.Endpoints))
+	for _, p := range resp.Series {
+		a := byEndpoint[p.Endpoint]
+		if a == nil {
+			a = &seriesAgg{min: p.Value, max: p.Value}
+			byEndpoint[p.Endpoint] = a
+		}
+		a.points++
+		if p.Value < a.min {
+			a.min = p.Value
+		}
+		if p.Value > a.max {
+			a.max = p.Value
+		}
+		if !a.seen || p.Timestamp.After(a.latestTime) {
+			a.latest = p.Value
+			a.latestTime = p.Timestamp
+			a.seen = true
+		}
+	}
+
+	tw := output.NewTabWriter(out)
+	_, _ = fmt.Fprintln(tw, "ENDPOINT\tPOINTS\tMIN(ms)\tMAX(ms)\tLATEST(ms)")
+	for _, name := range resp.Endpoints {
+		a := byEndpoint[name]
+		if a == nil {
+			_, _ = fmt.Fprintf(tw, "%s\t0\t-\t-\t-\n", name)
+			continue
+		}
+		_, _ = fmt.Fprintf(tw, "%s\t%d\t%.1f\t%.1f\t%.1f\n", name, a.points, a.min, a.max, a.latest)
+	}
+	return tw.Flush()
+}
+
+func newEndpointsSlowCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "slow <endpoint>",
+		Short: "Show the user-configured slow allowance for one endpoint",
+		Long: `Report whether an endpoint has been marked slow by an operator, and by how
+much. The allowance (offsetMs) is added to the apdex and impact thresholds for
+that endpoint server-side, so latency up to the offset is an accepted baseline
+rather than a regression. The reason is the operator's note.
+
+An endpoint that was never marked slow returns offsetMs 0 and an empty reason.
+
+The offset shifts apdex/impact only; the raw p50/p95/p99 from "endpoints list"
+and "endpoints chart" are NOT adjusted by it. Pass the full route name, e.g.
+"GET /api/users/:id".`,
+		Args: cobra.ExactArgs(1),
+		RunE: runEndpointsSlow,
+	}
+	return cmd
+}
+
+func runEndpointsSlow(cmd *cobra.Command, args []string) error {
+	ctx := cmd.Context()
+	mode := output.ResolveMode(flagOutput, output.StdoutIsTerminal())
+
+	sess, err := loadSession()
+	if err != nil {
+		return renderSessionError(cmd.ErrOrStderr(), mode, err)
+	}
+
+	c := client.New(sess.URL, client.WithJWT(sess.JWT))
+	resp, err := c.GetSlowEndpoint(ctx, sess.ProjectID, args[0])
+	if err != nil {
+		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
+	}
+
+	switch mode {
+	case output.ModeJSON:
+		return output.RenderJSON(cmd.OutOrStdout(), resp, output.ParseFieldsFlag(flagFields))
+	case output.ModeYAML:
+		return output.RenderYAML(cmd.OutOrStdout(), resp, output.ParseFieldsFlag(flagFields))
+	default:
+		out := cmd.OutOrStdout()
+		if resp.OffsetMs == 0 && resp.Reason == "" {
+			_, _ = fmt.Fprintf(out, "ENDPOINT:   %s\nMARKED:     no (default thresholds)\n", args[0])
+			return nil
+		}
+		_, _ = fmt.Fprintf(out, "ENDPOINT:   %s\nMARKED:     yes\nALLOWANCE:  %dms\nREASON:     %s\n",
+			args[0], resp.OffsetMs, pickStr(resp.Reason, "-"))
+		return nil
 	}
 }
 

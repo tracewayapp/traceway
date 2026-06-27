@@ -62,6 +62,32 @@ func TestContract_endpointDetail(t *testing.T) {
 	goldenAssert(t, "endpoint-detail", rt.body)
 }
 
+func TestContract_endpointsChart(t *testing.T) {
+	c, rt := capturedClient()
+	resp, err := c.GetEndpointChart(context.Background(), projectID, client.EndpointChartRequest{
+		TimeRange:       timeWindow(),
+		MetricType:      "p95",
+		IntervalMinutes: 5,
+	})
+	if err != nil {
+		t.Fatalf("endpoints chart: %v", err)
+	}
+	if len(resp.Series) == 0 {
+		t.Fatal("expected seeded endpoint to produce a chart series point")
+	}
+	goldenAssert(t, "endpoints-chart", rt.body)
+}
+
+func TestContract_endpointsSlow(t *testing.T) {
+	c, rt := capturedClient()
+	// The seeded endpoint is not marked slow; the server still returns the
+	// {offsetMs, reason} shape (offsetMs 0), which is what the golden locks.
+	if _, err := c.GetSlowEndpoint(context.Background(), projectID, "GET /api/contract"); err != nil {
+		t.Fatalf("endpoints slow: %v", err)
+	}
+	goldenAssert(t, "endpoints-slow", rt.body)
+}
+
 func TestContract_exceptionsGrouped(t *testing.T) {
 	c, rt := capturedClient()
 	resp, err := c.ListExceptions(context.Background(), projectID, client.ListExceptionsRequest{

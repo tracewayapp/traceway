@@ -1,0 +1,4 @@
+endpoints[]: string
+series[].endpoint: string
+series[].timestamp: string
+series[].value: number

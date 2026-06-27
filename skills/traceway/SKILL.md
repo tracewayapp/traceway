@@ -11,6 +11,7 @@ Drive a Traceway instance from the terminal with the `traceway` CLI. The first w
 |---|---|
 | `/traceway login` | **Login**: install the CLI if missing, authenticate, select a project |
 | `/traceway debug <issue ref or bug description>` | **Debug**: resolve the issue and investigate to root cause |
+| `/traceway perf <endpoint or symptom>` | **Performance**: diagnose latency/slowness to root cause against a checklist of common bottlenecks |
 | `/traceway <anything else>` | **Query**: answer the observability question with CLI reads |
 | `/traceway` (no argument) | Ask what they want: log in, debug an issue, or run a query |
 
@@ -71,9 +72,13 @@ The flag is required, so you must supply *something* — but it can be approxima
 2. **Estimate from context.** A notification's send time, the issue's `firstSeen`/`lastSeen`, or the URL's `preset`/`from` window all put you inside ±24h — good enough for a fast lookup.
 3. **Ask the user.** If nothing pins it down (e.g. a bare occurrence/endpoint id with no hash, no time, and no list to recover from), ask roughly when it happened — "around when did this fire? within a day is enough" — and pass that. Don't invent a placeholder like "now" when the issue is old; that defeats the pruning and can miss the ±24h window entirely.
 
-## Resolving an issue notification
+## Resolving a notification
 
-Traceway issue notifications (email / Slack / webhook) embed everything for a direct, fast lookup. The body contains:
+Traceway notifications (email / Slack / webhook) come in two shapes. Read the body to tell them apart: an **exception** notification carries a `Hash:` and `Exception ID:`; a **performance** notification (latency, apdex, impact) names an endpoint and a threshold and has no hash. Webhook payloads also carry a `ruleType` field that names the rule exactly. Resolve each differently.
+
+### Exception notification
+
+The body embeds everything for a direct, fast lookup. It contains:
 
 - `Hash: <16-hex>` — the exception group → `traceway exceptions show <hash>`.
 - `Exception ID: <uuid>` — the specific occurrence.
@@ -86,6 +91,32 @@ So from a notification, go straight to the occurrence (fast), then pivot reusing
 traceway exceptions occurrence <Exception ID> --recorded-at <Occurred at → RFC3339> --output json
 # the result carries distributedTraceId and sessionId → traces show / sessions show below
 ```
+
+### Performance notification (an endpoint became slow or critical)
+
+These fire from latency/throughput rules, not from an error. There is no hash, no exception id, no occurrence to fetch. The webhook `ruleType` (or the subject wording) tells you which:
+
+| ruleType | Subject / body shape | Deep link |
+|---|---|---|
+| `endpoint_p95_threshold` / `endpoint_p99_threshold` | `P95 latency 1250ms on <endpoint>` · "reached 1250ms over the last N minutes (threshold: 1000ms)" | `/endpoints?from=<iso>&to=<iso>` |
+| `apdex_drop` | `Apdex dropped to 0.62 (threshold: 0.80)` · "across N requests over the last N minutes" | `/endpoints?from=<iso>&to=<iso>` |
+| `impact_score_critical\|high\|medium` | `Endpoint <endpoint> impact became critical` · "impact score: 0.82. Reason: <reason>" | `/endpoints?from=<iso>&to=<iso>` |
+| `metric_threshold` | `Metric <name> is <value> (threshold: gt 100)` | `/metrics?preset=1h` |
+
+What the body gives you: the **endpoint name** (parse it from the subject/body; it is not a separate field), the **metric/percentile**, the **current value**, the **threshold**, and the **lookback window**. The `/endpoints?from=&to=` link is only a ~3-minute window around the fire time, so treat the fire time as the onset hint, not the incident window.
+
+To resolve, hand straight to the **Performance flow** scoped to that endpoint, using the fire time as the time anchor:
+
+```bash
+# 1. confirm the alert against current stats for that endpoint
+traceway endpoints list --search "<endpoint>" --since 1h --output json | jq '.data[0] | {p50, p95, p99, count, impact, impactReason}'
+# 2. is this an accepted baseline? check whether an operator marked it slow
+traceway endpoints slow "<endpoint>" --output json    # {offsetMs, reason}; offsetMs 0 = not marked
+# 3. find when it crossed the threshold, then a slow trace (see Flow: Performance)
+traceway endpoints chart --metric-type p95 --since 6h --interval-minutes 15 --output json
+```
+
+Step 2 matters: an `impact_score_*` or `apdex_drop` alert is already offset-aware, but `endpoint_p95_threshold` / `endpoint_p99_threshold` fire on **raw** latency regardless of any slow-marking, so a marked-slow endpoint can alert on latency its operators have already accepted. See "Account for user-marked slow endpoints" in `performance.md`.
 
 ## Flow: Login
 
@@ -250,9 +281,26 @@ Summarize: symptom, evidence (exception hashes, log excerpts, metric anomalies),
 traceway exceptions archive <hash> --yes
 ```
 
+## Flow: Performance
+
+`/traceway perf <endpoint or symptom>`, or any request about slowness, high latency, p95/p99, or "why is X slow". Approach it as a senior performance engineer: quantify first, localize the cost to a span, confirm the cause against the checklist, separate code from saturation, then root cause. Reads only; never archive or mutate.
+
+For the full methodology and the bottleneck checklist (Select N+1, missing index, chatty IPC, connection-pool exhaustion, GC pauses, and ~20 more, each tied to the Traceway signal that confirms it), read `performance.md` in this skill directory. It is the authoritative reference.
+
+The loop, using the read commands documented in this skill:
+
+1. **Quantify and localize.** `traceway endpoints list --since 24h --order-by p95` (or `impact`). Read the latency shape first: p50 already high means every request pays it (systemic: query, index, algorithm); p99 much greater than p50 means a tail (contention, pool exhaustion, GC, retries, a flaky dependency). Note that `impact`/`impactReason` are offset-adjusted for marked-slow endpoints but the raw p50/p95/p99 are not.
+2. **Check the accepted baseline.** Before calling an endpoint slow, run `traceway endpoints slow "<endpoint>"`. A non-zero `offsetMs` means an operator accepted that much latency (with a `reason`), so only latency *beyond* the offset is a real regression; `offsetMs 0` means default thresholds apply. Skip this only for a clearly systemic, multi-endpoint slowdown.
+3. **Pinpoint when it started: adjust the window down.** Do not investigate the default window blindly; narrow it until it brackets the onset. `traceway endpoints chart --metric-type p95 --interval-minutes <n>` returns latency over time for the top endpoints (`{timestamp, endpoint, value}` in ms): read down one endpoint's buckets for the step where p95 jumps. Confirm the cause with `traceway metrics query --name <metric> --interval-minutes <n>` (the infra/runtime curve). For a specific route not in the top 5, bisect `traceway endpoints list --search <name> --from <a> --to <b>` over adjacent windows. See `performance.md`, "Pinpointing when the slowness started".
+4. **Get a representative slow trace.** `traceway endpoints show <endpointId> --recorded-at <t>` for one request's span waterfall, or `traceway traces show <distributedTraceId> --recorded-at <t>` for the cross-service timeline. Take the trace from inside the slow window you just found; find the long pole.
+5. **Match the long pole to the checklist.** Is the dominant span a database call, an external call, in-process compute, or a *gap* before work starts (queueing / lock wait / pool exhaustion)? Look it up in `performance.md`.
+6. **Separate code from saturation.** Pull infra/runtime metrics over the same window: `traceway metrics query --name system.cpu.utilization --aggregation max`, then `mem.used_pcnt`, `go.gc_pause`. A spike that lines up with the latency onset points at saturation, not a code bug.
+7. **Correlate with code and deploys.** With the onset time from step 3, check what shipped then: `git log --since '<onset - 30m>' --until '<onset + 30m>'` or the deploy history. A jump at a release is a regression; a gradual ramp with no deploy is data growth (N+1, missing index, no pagination).
+8. **Report.** The bottleneck, the evidence (endpoint percentiles, the onset time, the dominating span, any correlated metric anomaly), the root cause mapped to a checklist item, and a concrete fix, with the `endpoints show` / `traces show` references so the user can verify. If the endpoint is marked slow, state whether the latency exceeded the accepted offset.
+
 ## Flow: Query
 
-For free-form requests ("what's broken in prod?", "is /api/checkout slow?", "show errors for service X"), use the read commands directly.
+For free-form requests ("what's broken in prod?", "is /api/checkout slow?", "show errors for service X"), use the read commands directly. A request specifically about latency or slowness routes to the Performance flow above.
 
 ### Command reference
 
@@ -265,6 +313,8 @@ For free-form requests ("what's broken in prod?", "is /api/checkout slow?", "sho
 | `traceway exceptions archive/unarchive <hash>...` | Mutating; explicit user request + `--yes` only |
 | `traceway logs query` | Logs; `--search` (`--search-type body\|attribute`), `--service`, `--min-severity <n>`, `--trace-id` |
 | `traceway endpoints list` | Per-endpoint p50/p95/p99 and counts; `--search`, `--order-by impact\|count\|p95\|lastSeen` |
+| `traceway endpoints chart` | Latency over time for the top endpoints; `--metric-type total_time\|p50\|p95\|p99`, `--interval-minutes`. Use to find when latency changed |
+| `traceway endpoints slow <endpoint>` | Whether an operator marked this endpoint slow: `{offsetMs, reason}`. `offsetMs 0` = not marked. The offset is the accepted-latency baseline |
 | `traceway endpoints show <id> --recorded-at <t>` | One request by id: span waterfall + linked errors |
 | `traceway tasks show <id> --recorded-at <t>` | One background task run by id |
 | `traceway ai-traces show <id> --recorded-at <t>` | One AI trace by id + its conversation |

@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var couponHits = map[string]int{}
+var couponHits map[string]int
 
 func applyCoupon(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -43,12 +43,6 @@ func applyCoupon(c *gin.Context) {
 	}
 
 	couponHits[req.Code]++
-
-	if !fastPath() {
-		traceway.CaptureExceptionWithContext(ctx, traceway.NewStackTraceErrorf("coupon service timeout while applying %s", req.Code))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not apply coupon, please try again"})
-		return
-	}
 
 	total := cartTotal(ctx, twdb)
 	discount := total * percentOff / 100

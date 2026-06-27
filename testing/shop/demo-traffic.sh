@@ -42,7 +42,7 @@ printf '  '; for i in $(seq 1 18); do printf '%s ' "$(timed GET /api/products)";
 echo "== 2. Slow product detail, N+1 + recommendations span (#2) =="
 printf '  '; for id in 1 2 3 4 5 6 7 8; do printf 'id%s=%s ' "$id" "$(timed GET "/api/products/$id")"; done; echo
 
-echo "== 3. Coupon nil-map PANIC (#5) — POST /api/coupon SAVE10, ~75% -> 500 =="
+echo "== 3. Coupon nil-map PANIC (#5) — POST /api/coupon SAVE10, every call -> 500 =="
 codes=""; for i in $(seq 1 12); do codes+="$(hit POST /api/coupon '{"code":"SAVE10"}') "; done
 echo "  $codes"
 echo "  -> $(grep -o 500 <<<"$codes" | wc -l | tr -d ' ')/12 panicked (assignment to entry in nil map)"

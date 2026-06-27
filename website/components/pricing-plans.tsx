@@ -175,10 +175,7 @@ export function PricingPlans() {
             <ArrowRight className="h-4 w-4" />
           </Link>
 
-          <div
-            className="mt-7 pt-7"
-            style={{ borderTop: "1px solid var(--hair-2)" }}
-          >
+          <div className="pt-7">
             {plan.featuresLead ? (
               <div
                 className="mb-4 text-[12px] font-medium"
@@ -386,7 +383,7 @@ export function PlanComparison() {
             {PLAN_COLS.map((name, i) => (
               <div
                 key={name}
-                className="flex items-center justify-center px-3 pb-3 text-center text-[14px] font-semibold"
+                className="flex items-center justify-center px-3 pb-3 pt-2 text-center text-[14px] font-semibold"
                 style={{
                   color: i === HIGHLIGHT_COL ? "var(--a2)" : "var(--fg-0)",
                   background: i === HIGHLIGHT_COL ? HILITE : undefined,

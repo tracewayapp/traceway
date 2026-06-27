@@ -29,24 +29,36 @@ const ITEMS: Item[] = [
 
 export function ComplianceStrip() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div className="grid gap-5 sm:grid-cols-2">
       {ITEMS.map((item) => (
         <div
           key={item.name}
           className="flex items-start gap-4 rounded-2xl p-5"
-          style={{ background: "var(--ink-1)", border: "1px solid var(--hair)" }}
+          style={{
+            background: "var(--ink-0)",
+            border: "1px solid var(--hair-2)",
+            boxShadow:
+              "0 1px 2px rgba(10,14,24,0.04), 0 12px 30px -18px rgba(10,14,24,0.14)",
+          }}
         >
-          <div
-            className="grid size-10 shrink-0 place-items-center rounded-xl"
-            style={{ background: "var(--ink-3)", border: "1px solid var(--hair)" }}
-          >
-            <item.icon className="size-5" style={{ color: "var(--a2)" }} aria-hidden />
+          <div className="grid size-10 shrink-0 place-items-center rounded-xl">
+            <item.icon
+              className="size-5"
+              style={{ color: "var(--a2)" }}
+              aria-hidden
+            />
           </div>
           <div className="min-w-0">
-            <div className="text-[15px] font-semibold" style={{ color: "var(--fg-0)" }}>
+            <div
+              className="text-[15px] font-semibold"
+              style={{ color: "var(--fg-0)" }}
+            >
               {item.name}
             </div>
-            <p className="mt-0.5 text-[12.5px] leading-snug" style={{ color: "var(--fg-2)" }}>
+            <p
+              className="mt-0.5 text-[12.5px] leading-snug"
+              style={{ color: "var(--fg-2)" }}
+            >
               {item.detail}
             </p>
             <div className="mt-2.5">
@@ -61,7 +73,7 @@ export function ComplianceStrip() {
 
 function StatusPill({ status, label }: { status: Status; label: string }) {
   const isReady = status === "ready";
-  const tone = isReady ? "var(--ok)" : "var(--a4)";
+  const tone = "var(--ok)";
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium"
@@ -69,8 +81,7 @@ function StatusPill({ status, label }: { status: Status; label: string }) {
         fontFamily: "var(--font-mono)",
         letterSpacing: "0.04em",
         color: tone,
-        background: "var(--ink-2)",
-        border: "1px solid var(--hair)",
+        border: "1px solid var(--ok)",
       }}
     >
       <span className="relative flex size-1.5">

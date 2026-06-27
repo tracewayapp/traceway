@@ -29,10 +29,16 @@ export default function CloudPage() {
             managed by us.
           </p>
           <div className="hero-cta-row">
-            <Link href="https://cloud.tracewayapp.com/register" className="btn btn-accent">
+            <Link
+              href="https://cloud.tracewayapp.com/register"
+              className="btn btn-accent"
+            >
               Start Free <ArrowRight className="h-4 w-4" />
             </Link>
-            <Link href="https://docs.tracewayapp.com/cloud" className="btn btn-ghost">
+            <Link
+              href="https://docs.tracewayapp.com/cloud"
+              className="btn btn-ghost"
+            >
               How it works
             </Link>
           </div>
@@ -42,7 +48,7 @@ export default function CloudPage() {
       {/* Pricing */}
       {/* WHITE BAND: pricing + cost comparison render on white */}
       <div className="band-light">
-        <section className="wrap py-20">
+        <section className="wrap md:py-20! py-10!">
           <SectionHead align="center" title="Pricing that scales with you" />
           <PricingPlans />
         </section>
@@ -89,7 +95,11 @@ export default function CloudPage() {
       {/* FAQ, includes absorbed from home */}
       <section className="wrap pt-10 pb-24">
         <div className="max-w-3xl mx-auto">
-          <SectionHead align="center" eyebrow="FAQ" title="Cloud & pricing FAQ" />
+          <SectionHead
+            align="center"
+            eyebrow="FAQ"
+            title="Cloud & pricing FAQ"
+          />
           <div className="mt-4">
             <FaqList
               items={[
@@ -107,13 +117,13 @@ export default function CloudPage() {
                       </p>
                       <p>
                         Architecturally, Traceway uses ClickHouse columnar
-                        storage that compresses 1 million daily events into
-                        ~2-3 GB per month, keeping the per-GB rate low even at
-                        high volume. Everything is in one tool: endpoint
-                        performance analytics, exception tracking with automatic
-                        grouping and ranking, session replay, distributed
-                        tracing, metrics, logs, and AI observability, with a
-                        single bill instead of a separate meter per product.
+                        storage that compresses 1 million daily events into ~2-3
+                        GB per month, keeping the per-GB rate low even at high
+                        volume. Everything is in one tool: endpoint performance
+                        analytics, exception tracking with automatic grouping
+                        and ranking, session replay, distributed tracing,
+                        metrics, logs, and AI observability, with a single bill
+                        instead of a separate meter per product.
                       </p>
                     </>
                   ),

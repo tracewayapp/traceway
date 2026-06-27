@@ -156,7 +156,7 @@ The selected project is used implicitly by all subsequent commands.
 
 | Reference looks like | How to resolve |
 |---|---|
-| Dashboard URL | See "Resolving Dashboard URLs" above; for `/issues/...` URLs the path segment right after `/issues/` is the hash, and `?preset`/`?from`/`?to` give the time window |
+| Dashboard URL | See "Resolving Dashboard URLs" above; for `/issues/...` URLs the path segment right after `/issues/` is the hash, and `?preset`/`?from`/`?to` give the time window. **When a URL points at an issue, fix the LAST (most recent) occurrence of that issue — see step 2.** |
 | Bare 16-char hex string | Already the hash |
 | Anything else (title, error message, type, file name) | Search: `traceway exceptions list --since 7d --search "<text>"`; widen to `--since 30d` (and `--include-archived`) if empty |
 | No issue reference, just a bug description | Skip to triage below |
@@ -175,6 +175,22 @@ traceway exceptions show <hash>
 ```
 
 This is the high-value call: full stack trace, occurrence list with `recordedAt`, `attributes` (user IDs, app versions, request context), and optional `distributedTraceId` / `sessionId` per occurrence. `firstSeen` correlates with deploys: a group that first appeared right after a release points at that release's diff. A bogus hash exits 5 with `not_found`; fall back to search.
+
+**When the user gave an issue URL (or hash), fix the LAST occurrence — not "the group".** A single hash can bundle *several distinct errors*: the hash is computed from a normalized stack trace with the message stripped, so two unrelated failures that share their top frames (e.g. both captured at the same middleware/recovery frame) collapse into one group. The group's representative stack trace and `firstSeen` may belong to a different, now-dormant error than the one the user is looking at. Anchor on the most recent occurrence and fix that specific failure path:
+
+```bash
+# The occurrence the user actually wants: the latest one. Pin its exact message + attributes + trace.
+traceway exceptions show <hash> --output json \
+  | jq '.occurrences | sort_by(.recordedAt) | last
+        | {recordedAt, message: (.stackTrace | split("\n")[0]), attributes, traceId, distributedTraceId}'
+
+# Then confirm whether the group is homogeneous or mixed — distinct first lines = distinct bugs:
+traceway exceptions show <hash> --output json \
+  | jq -r '[.occurrences[].stackTrace | split("\n")[0]] | group_by(.)
+           | map("\(length)x \(.[0])") | .[]'
+```
+
+If the group is mixed, scope the fix to the last occurrence's error only; mention the other clusters in the report but do not fix them unless asked. The last occurrence's message and `attributes` (not the group's representative stack) define the failure to reproduce and fix — and its `recordedAt` is the time hint to pass to the by-id `traces show` / `sessions show` lookups below.
 
 ### 3. Triage and correlate (also the entry point for free-form bug descriptions)
 
@@ -223,8 +239,8 @@ The CLI also accepts `p50|p95|p99`, but the server has no quantile aggregation f
 
 1. Open the files and lines named in the stack trace and read the failing path.
 2. If the issue started at a known time, check what shipped then: `git log --since "<firstSeen>" --until "<firstSeen + 1h>"` or the deploy history.
-3. Form a hypothesis that explains ALL observations (error message, affected endpoint, timing, volume), not just the first stack frame.
-4. Propose or implement the fix per the user's instruction.
+3. Form a hypothesis that explains the targeted occurrence's full observation set (its message, affected endpoint, timing, volume) — not just the first stack frame. When a URL/hash anchored you to the last occurrence (step 2), explain *that* error; do not stretch one hypothesis to cover sibling clusters that merely share the hash.
+4. Propose or implement the fix per the user's instruction, scoped to the targeted occurrence's failure path.
 
 ### 5. Report and clean up
 

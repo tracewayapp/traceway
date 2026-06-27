@@ -40,12 +40,14 @@ Traceway is an **OpenTelemetry-native** observability platform that combines **l
 
 - **Logs** — Structured, trace-linked, sub-second search. Native OTLP/HTTP ingest from any OTel SDK.
 - **Traces** — End-to-end span waterfalls across every service. Click a log, jump to its span.
+- **Endpoints** — Per-route latency percentiles (P50/P95/P99), throughput, and error rate, ranked by Apdex and a 5-factor impact score.
 - **Metrics** — Host, runtime, and custom metrics. Any dimension, any chart, with custom widget groups.
 - **Exceptions** — SHA-256 normalized stack traces grouped into ranked issues. Source-mapped (webpack, esbuild, Vite).
+- **Profiling** _(experimental)_ — Flame graphs for CPU, heap, and goroutines with version-to-version diffing and a top-functions table. Ingests native Go pprof and OTLP profiles.
 - **Session Replay** — Watch what the user did right before the error. Available for web (any JS framework) and Flutter.
 - **AI Observability** — LLM cost, tokens, latency, and full conversations across providers (OpenRouter and any OTel-compatible AI gateway).
 
-Plus: configurable alerts (Slack / GitHub / email / webhook / Pushover / Telegram), Apdex + Impact-Score endpoint ranking, multi-tenant orgs with role-based access, and a per-endpoint slow-threshold override.
+Plus: background-task (job) monitoring, configurable alerts (Slack / GitHub / email / webhook / Pushover / Telegram), multi-tenant orgs with role-based access, and a per-endpoint slow-threshold override.
 
 ## AI-First
 
@@ -66,7 +68,7 @@ The skills are plain Markdown in [`skills/`](./skills), in the same MIT-licensed
 
 ## Symbolication
 
-`app.min.js:1:63` tells you nothing. Traceway resolves minified production errors back to the original file, line, and function the moment they arrive, and the same engine does it for stripped native crashes: iOS and Swift against the build's dSYM, Android against its R8 `mapping.txt`, Dart and Flutter against their obfuscation map.
+`app.min.js:1:63` tells you nothing. Traceway resolves minified production errors back to the original file, line, and function the moment they arrive, and the same engine does it for stripped and obfuscated mobile crashes: iOS and Swift against the build's dSYM, Android against its R8 `mapping.txt`, Dart and Flutter against their obfuscation map.
 
 The symbolicator is pure Go and built to keep up with ingest. Every debug artifact (a source map, a dSYM, an R8 mapping) compiles once into a binary `.tw` file and is memory-mapped from disk: under a microsecond to open a compiled map, p99 lookup under a millisecond on a cold cache, zero maps re-parsed after a restart. The corpus is a disk budget, not a RAM budget.
 
@@ -96,7 +98,7 @@ cd traceway && docker compose up -d
 
 Point any OTel SDK at `http://localhost/api/otel/v1/traces` (or `/metrics`, `/logs`) and traces start flowing. See the [self-hosting docs](https://docs.tracewayapp.com/server/docker-compose) for production deployment, TLS, and storage configuration.
 
-**Docker images are cryptographically signed.** See [DOCKER_SIGNATURES.md](./DOCKER_SIGNATURES.md) to verify images before deploying.
+**Docker images are cryptographically signed with Cosign.**
 
 ### Embedded mode (inside your Go app)
 
@@ -120,7 +122,7 @@ func main() {
 }
 ```
 
-Open `http://localhost:8082`, log in, and hit your app to see traces appear. Full walkthrough in the [embedded mode guide](https://docs.tracewayapp.com/learn/embedded-mode), or check the [working example](./examples/embedded-backend-otel).
+Open `http://localhost:8082`, log in, and hit your app to see traces appear. Full walkthrough in the [embedded mode guide](https://docs.tracewayapp.com/learn/embedded-mode), or check the working examples ([OTel exporter](./examples/embedded-backend-otel) or [Go client SDK](./examples/embedded-backend-go-client)).
 
 ## Supported Integrations
 
@@ -139,12 +141,14 @@ Traceway integrates with the tools you already use. Every integration ships trac
 <td align="center" width="150"><a href="https://docs.tracewayapp.com/client/fasthttp-middleware"><img src="./docs/public/fasthttp.png" height="28" alt="FastHTTP" /><br/><b>FastHTTP</b></a></td>
 <td align="center" width="150"><a href="https://docs.tracewayapp.com/client/http-middleware"><img src="./docs/public/stdlib.png" height="28" alt="net/http" /><br/><b>net/http</b></a></td>
 <td align="center" width="150"><a href="https://docs.tracewayapp.com/client/sdk"><img src="./docs/public/custom.png" height="28" alt="Go Generic" /><br/><b>Go Generic</b></a></td>
+<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/node-sdk"><img src="./docs/public/node.png" height="28" alt="Node.js" /><br/><b>Node.js</b></a></td>
 </tr>
 <tr>
-<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/node-sdk"><img src="./docs/public/node.png" height="28" alt="Node.js" /><br/><b>Node.js</b></a></td>
 <td align="center" width="150"><a href="https://docs.tracewayapp.com/client/nestjs"><img src="./docs/public/nestjs.png" height="28" alt="NestJS" /><br/><b>NestJS</b></a></td>
 <td align="center" width="150"><a href="https://docs.tracewayapp.com/client/hono"><img src="./docs/public/hono.png" height="28" alt="Hono" /><br/><b>Hono</b></a></td>
 <td align="center" width="150"><a href="https://docs.tracewayapp.com/client/symfony"><img src="./docs/public/symfony.png" height="28" alt="Symfony" /><br/><b>Symfony</b></a></td>
+<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/laravel"><img src="./docs/public/laravel.png" height="28" alt="Laravel" /><br/><b>Laravel</b></a></td>
+<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/django"><img src="./docs/public/django.png" height="28" alt="Django" /><br/><b>Django</b></a></td>
 <td align="center" width="150"><a href="https://docs.tracewayapp.com/client/cloudflare"><img src="./docs/public/cloudflare.png" height="28" alt="Cloudflare Workers" /><br/><b>Cloudflare</b></a></td>
 <td align="center" width="150"><a href="https://docs.tracewayapp.com/client/otel"><img src="./docs/public/otel.png" height="28" alt="OpenTelemetry" /><br/><b>OpenTelemetry</b></a></td>
 </tr>
@@ -175,6 +179,7 @@ Traceway integrates with the tools you already use. Every integration ships trac
 <tr>
 <td align="center" width="150"><a href="https://docs.tracewayapp.com/client/flutter"><img src="./docs/public/flutter.png" height="28" alt="Flutter" /><br/><b>Flutter</b></a></td>
 <td align="center" width="150"><a href="https://docs.tracewayapp.com/client/android"><img src="./docs/public/android.png" height="28" alt="Android" /><br/><b>Android</b></a></td>
+<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/ios"><img src="./docs/public/ios.png" height="28" alt="iOS" /><br/><b>iOS</b></a></td>
 <td align="center" width="150"><a href="https://docs.tracewayapp.com/client/react-native"><img src="./docs/public/react.png" height="28" alt="React Native" /><br/><b>React Native</b></a></td>
 </tr>
 </tbody>
@@ -222,7 +227,7 @@ Traceway integrates with the tools you already use. Every integration ships trac
 | `cli/`      | Agent-first `traceway` command line for querying exceptions, logs, endpoints, and metrics                                                                                                                                              |
 | `skills/`   | Agent skills (`/traceway-setup`, `/traceway`) for Claude Code, Cursor, Codex, and any SKILL.md-compatible agent                                                                                                                         |
 | `docs/`     | Documentation site (Nextra)                                                                                                                                                                                                             |
-| `examples/` | Working examples — [embedded mode](./examples/embedded-backend-otel) and OTel-instrumented apps ([Express](./examples/express-otel), [NestJS](./examples/nestjs-otel), [Next.js](./examples/nextjs-otel), [Hono](./examples/hono-otel)) |
+| `examples/` | Working examples — embedded mode ([OTel](./examples/embedded-backend-otel), [Go client](./examples/embedded-backend-go-client)) and OTel-instrumented apps ([Express](./examples/express-otel), [NestJS](./examples/nestjs-otel), [Next.js](./examples/nextjs-otel), [Hono](./examples/hono-otel)) |
 | `website/`  | Landing page                                                                                                                                                                                                                            |
 
 ## Build Tags
@@ -254,7 +259,7 @@ cd backend && go test -v -count=1 ./app/repositories/
 cd backend && go test -v -count=1 ./app/controllers/otelcontrollers/
 
 # Update OTEL golden files after intentional converter changes
-cd backend && go test -v -count=1 -args -update ./app/controllers/otelcontrollers/
+cd backend && go test -v -count=1 ./app/controllers/otelcontrollers/ -args -update
 ```
 
 ## Documentation

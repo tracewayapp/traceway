@@ -56,7 +56,8 @@ const PILLARS: NavItem[] = [
   },
   {
     title: "Exceptions / Stack Traces",
-    description: "Grouped, normalized, and paired with the replay that caused them.",
+    description:
+      "Grouped, normalized, and paired with the replay that caused them.",
     href: "/product/stack-traces",
     icon: Bug,
   },
@@ -136,7 +137,11 @@ export function SiteHeader() {
     >
       <div className="wrap flex h-16 items-center justify-between">
         <div className="flex items-center gap-6">
-          <Link href="/" className="flex items-center gap-2" aria-label="Traceway home">
+          <Link
+            href="/"
+            className="flex items-center gap-2"
+            aria-label="Traceway home"
+          >
             <Image
               src="/images/logo.png"
               alt="Traceway"
@@ -158,73 +163,123 @@ export function SiteHeader() {
                 className={cn(
                   "inline-flex items-center gap-1.5 h-9 px-3 rounded-md text-[14px] font-medium transition-colors",
                   "text-[color:var(--fg-1)] hover:text-[color:var(--fg-0)] hover:bg-[color:var(--ink-2)]",
-                  open && "text-[color:var(--fg-0)] bg-[color:var(--ink-2)]"
+                  open && "text-[color:var(--fg-0)] bg-[color:var(--ink-2)]",
                 )}
                 style={{ fontFamily: "var(--font-display)" }}
                 aria-expanded={open}
                 aria-haspopup="menu"
               >
-                Product
+                Solutions
                 <ChevronDown
-                  className={cn("size-3 transition-transform opacity-60", open && "rotate-180")}
+                  className={cn(
+                    "size-3 transition-transform opacity-60",
+                    open && "rotate-180",
+                  )}
                 />
               </button>
 
               <div
                 className={cn(
-                  "absolute top-full left-0 mt-2 pt-0 min-w-[720px] rounded-[12px]",
+                  "absolute top-full left-0 mt-2 w-[560px] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-[14px] lg:w-[860px]",
                   "transition-all duration-150",
-                  open ? "opacity-100 translate-y-0 pointer-events-auto" : "opacity-0 -translate-y-1 pointer-events-none"
+                  open
+                    ? "opacity-100 translate-y-0 pointer-events-auto"
+                    : "opacity-0 -translate-y-1 pointer-events-none",
                 )}
                 style={{
                   background: "var(--ink-2)",
                   border: "1px solid var(--hair-2)",
-                  boxShadow: "0 16px 40px -24px rgba(0,0,0,0.7)",
-                  padding: 24,
+                  boxShadow: "0 24px 50px -28px rgba(0,0,0,0.8)",
                 }}
                 role="menu"
               >
-                <div className="grid grid-cols-2 gap-8">
-                  <div>
-                    <div
-                      className="eyebrow"
-                      style={{ fontSize: 10.5, color: "var(--fg-3)", marginBottom: 14 }}
-                    >
-                      Observability pillars
+                <div className="grid grid-cols-2 gap-9 p-6 lg:grid-cols-[1fr_1fr_300px]">
+                  <NavColumn
+                    eyebrow="Platform"
+                    items={PILLARS}
+                    onNavigate={() => setOpen(false)}
+                  />
+                  <NavColumn
+                    eyebrow="Specialized"
+                    items={SPECIALIZED}
+                    onNavigate={() => setOpen(false)}
+                  />
+                  <Link
+                    href="/product/agent-skills"
+                    onClick={() => setOpen(false)}
+                    role="menuitem"
+                    className="group hidden overflow-hidden rounded-xl transition-colors lg:block"
+                    style={{
+                      background: "var(--ink-1)",
+                      border: "1px solid var(--hair)",
+                    }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src="/images/agent-skills-feature.jpg"
+                      alt=""
+                      className="block w-full"
+                      style={{
+                        height: 150,
+                        objectFit: "cover",
+                        objectPosition: "center top",
+                      }}
+                    />
+                    <div className="p-4">
+                      <MenuEyebrow>Featured</MenuEyebrow>
+                      <div
+                        className="mt-2 text-[15px] font-semibold"
+                        style={{
+                          fontFamily: "var(--font-body)",
+                          color: "var(--fg-0)",
+                          letterSpacing: "-0.01em",
+                        }}
+                      >
+                        Agent Skills
+                      </div>
+                      <p
+                        className="mt-1 text-[13px] leading-snug"
+                        style={{
+                          fontFamily: "var(--font-body)",
+                          color: "var(--fg-2)",
+                        }}
+                      >
+                        Your coding agent sets up Traceway and debugs production
+                        for you.
+                      </p>
                     </div>
-                    <div className="flex flex-col">
-                      {PILLARS.map((p) => (
-                        <MegaLink key={p.href} item={p} onClick={() => setOpen(false)} />
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <div
-                      className="eyebrow"
-                      style={{ fontSize: 10.5, color: "var(--fg-3)", marginBottom: 14 }}
-                    >
-                      Specialized
-                    </div>
-                    <div className="flex flex-col">
-                      {SPECIALIZED.map((p) => (
-                        <MegaLink key={p.href} item={p} onClick={() => setOpen(false)} />
-                      ))}
-                    </div>
-                  </div>
+                  </Link>
                 </div>
 
                 <div
-                  className="mt-4 pt-4 flex items-center justify-between"
-                  style={{ borderTop: "1px solid var(--hair)" }}
+                  className="flex items-center justify-between gap-4 px-6 py-4"
+                  style={{
+                    borderTop: "1px solid var(--hair)",
+                    background: "var(--ink-1)",
+                  }}
                 >
+                  <div>
+                    <MenuEyebrow>Open source</MenuEyebrow>
+                    <p
+                      className="mt-1 text-[13px]"
+                      style={{
+                        fontFamily: "var(--font-body)",
+                        color: "var(--fg-1)",
+                      }}
+                    >
+                      MIT-licensed. Self-host in minutes or start free in the
+                      cloud.
+                    </p>
+                  </div>
                   <Link
-                    href="https://docs.tracewayapp.com"
+                    href={GITHUB_URL}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[11px] tracking-[.08em] uppercase hover:text-[color:var(--a2)] transition-colors"
-                    style={{ fontFamily: "var(--font-mono)", color: "var(--fg-2)" }}
+                    onClick={() => setOpen(false)}
+                    className="btn btn-accent btn-sm shrink-0"
                   >
-                    Documentation →
+                    <Github className="h-4 w-4" />
+                    Star on GitHub
                   </Link>
                 </div>
               </div>
@@ -296,44 +351,43 @@ export function SiteHeader() {
   );
 }
 
-function MegaLink({
-  item,
-  onClick,
-}: {
-  item: NavItem;
-  onClick?: () => void;
-}) {
-  const Icon = item.icon;
+function MenuEyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <Link
-      href={item.href}
-      onClick={onClick}
-      className="group grid grid-cols-[32px_1fr] gap-3 items-start py-2 px-2.5 -mx-2.5 rounded-md transition-colors hover:bg-[color:rgba(255,255,255,0.04)]"
+    <div
+      className="text-[13.5px] font-medium uppercase tracking-[0.16em]"
+      style={{ fontFamily: "var(--font-mono)", color: "var(--fg-3)" }}
     >
-      <div
-        className="h-8 w-8 rounded-md grid place-items-center"
-        style={{
-          background: "rgba(255,255,255,0.04)",
-          border: "1px solid var(--hair)",
-          color: "var(--a2)",
-        }}
-      >
-        <Icon className="h-4 w-4" />
+      {children}
+    </div>
+  );
+}
+
+function NavColumn({
+  eyebrow,
+  items,
+  onNavigate,
+}: {
+  eyebrow: string;
+  items: NavItem[];
+  onNavigate?: () => void;
+}) {
+  return (
+    <div>
+      <MenuEyebrow>{eyebrow}</MenuEyebrow>
+      <div className="mt-5 flex flex-col">
+        {items.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={onNavigate}
+            role="menuitem"
+            className="-mx-2 block whitespace-nowrap rounded-md px-2 py-[9px] text-[15px] font-medium transition-colors text-[color:var(--fg-1)] hover:text-[color:var(--fg-0)] hover:bg-[color:rgba(255,255,255,0.04)]"
+            style={{ fontFamily: "var(--font-body)", letterSpacing: "-0.01em" }}
+          >
+            {item.title}
+          </Link>
+        ))}
       </div>
-      <div>
-        <div
-          className="text-[14px] font-medium leading-tight"
-          style={{ fontFamily: "var(--font-display)", color: "var(--fg-0)", letterSpacing: "-0.01em" }}
-        >
-          {item.title}
-        </div>
-        <div
-          className="text-[12px] mt-0.5 leading-snug"
-          style={{ color: "var(--fg-3)", fontFamily: "var(--font-mono)" }}
-        >
-          {item.description}
-        </div>
-      </div>
-    </Link>
+    </div>
   );
 }

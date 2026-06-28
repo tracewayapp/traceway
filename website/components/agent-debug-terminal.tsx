@@ -32,7 +32,18 @@ export function AgentDebugTerminal({ className }: { className?: string }) {
         </div>
 
         <div className="mt-1 grid grid-cols-[14px_1fr] gap-x-2">
-          <span className="text-ok">⏺</span>
+          <span
+            className="text-ok"
+            aria-hidden
+            style={{
+              display: "inline-block",
+              width: "9px",
+              height: "9px",
+              marginTop: "7px",
+              borderRadius: "100%",
+              backgroundColor: "currentColor",
+            }}
+          />
           <span className="whitespace-pre-wrap">
             <span className="text-fg-0">Bash</span>
             <span className="text-fg-2">
@@ -48,7 +59,18 @@ export function AgentDebugTerminal({ className }: { className?: string }) {
         </div>
 
         <div className="mt-1 grid grid-cols-[14px_1fr] gap-x-2">
-          <span className="text-ok">⏺</span>
+          <span
+            className="text-ok"
+            aria-hidden
+            style={{
+              display: "inline-block",
+              width: "9px",
+              height: "9px",
+              marginTop: "7px",
+              borderRadius: "100%",
+              backgroundColor: "currentColor",
+            }}
+          />
           <span className="whitespace-pre-wrap">
             <span className="text-fg-0">Bash</span>
             <span className="text-fg-2">
@@ -64,7 +86,18 @@ export function AgentDebugTerminal({ className }: { className?: string }) {
         </div>
 
         <div className="mt-1 grid grid-cols-[14px_1fr] gap-x-2">
-          <span className="text-ok">⏺</span>
+          <span
+            className="text-ok"
+            aria-hidden
+            style={{
+              display: "inline-block",
+              width: "9px",
+              height: "9px",
+              marginTop: "7px",
+              borderRadius: "100%",
+              backgroundColor: "currentColor",
+            }}
+          />
           <span className="whitespace-pre-wrap">
             <span className="text-fg-0">Read</span>
             <span className="text-fg-2">(src/checkout/session.ts)</span>
@@ -78,7 +111,18 @@ export function AgentDebugTerminal({ className }: { className?: string }) {
         </div>
 
         <div className="mt-1 grid grid-cols-[14px_1fr] gap-x-2">
-          <span className="text-fg-0">⏺</span>
+          <span
+            className="text-fg-0"
+            aria-hidden
+            style={{
+              display: "inline-block",
+              width: "9px",
+              height: "9px",
+              marginTop: "7px",
+              borderRadius: "100%",
+              backgroundColor: "currentColor",
+            }}
+          />
           <span className="whitespace-pre-wrap text-fg-1">
             Root cause: repeat purchase reuses an expired cart. Fix ready for
             review in src/checkout/session.ts:42.

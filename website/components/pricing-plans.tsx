@@ -291,7 +291,7 @@ const COMPARISON: CompareGroup[] = [
         values: ["3", "Unlimited", "Unlimited", "Unlimited", "Unlimited"],
       },
       {
-        label: "Data retention",
+        label: "Data retention*",
         values: ["7 days", "30 days", "90 days", "Custom", "Custom"],
       },
       {
@@ -462,6 +462,15 @@ export function PlanComparison() {
           </div>
         ))}
       </div>
+      <p
+        className="mx-auto mt-6 max-w-3xl px-3 text-center text-[12px]"
+        style={{ color: "var(--fg-3)", lineHeight: 1.55 }}
+      >
+        * Retention applies to exceptions, traces, spans, logs, and session
+        replay. Metrics are kept longer at reduced granularity (1-minute
+        resolution for 30 days, 1-hour rollups for 1 year), and continuous
+        profiling data is retained for 30 days on every plan.
+      </p>
     </div>
   );
 }

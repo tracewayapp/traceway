@@ -7,6 +7,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -68,6 +69,18 @@ func (c *invitationController) InviteUser(ctx *gin.Context) {
 	if totalCount >= maxMembersPerOrg {
 		ctx.JSON(http.StatusConflict, gin.H{"error": "Organization has reached the maximum number of members"})
 		return
+	}
+
+	if MemberLimitHook != nil {
+		if err := MemberLimitHook(tx, organizationId); err != nil {
+			var limitErr *LimitExceededError
+			if errors.As(err, &limitErr) {
+				ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": limitErr.Message})
+				return
+			}
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("member limit hook failed: %w", err))
+			return
+		}
 	}
 
 	inviter, err := repositories.UserRepository.FindById(tx, userId)

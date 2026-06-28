@@ -65,15 +65,17 @@ func (o otelController) ExportTraces(c *gin.Context) {
 		}
 	}
 
-	if project != nil && project.OrganizationId != nil {
+	orgId := 0
+	hasOrg := project != nil && project.OrganizationId != nil
+	if hasOrg {
+		orgId = *project.OrganizationId
 		if attrs := traceway.GetAttributesFromContext(c); attrs != nil {
-			attrs.SetTag("organization_id", fmt.Sprintf("%d", *project.OrganizationId))
+			attrs.SetTag("organization_id", fmt.Sprintf("%d", orgId))
 		}
-		if !hooks.CanReport(*project.OrganizationId) {
-			monitoring.RecordRateLimited(*project.OrganizationId)
-			c.AbortWithStatus(http.StatusTooManyRequests)
-			return
-		}
+	}
+	perm := hooks.IngestPermission{Exceptions: true, Data: true, Replay: true}
+	if hasOrg {
+		perm = hooks.IngestPermissionFor(orgId)
 	}
 	req, bodyBytes, err := decodeTraceRequest(c)
 	if err != nil {
@@ -88,6 +90,20 @@ func (o otelController) ExportTraces(c *gin.Context) {
 	endpoints, spans, droppedHealthchecks = services.FilterHealthchecks(project, endpoints, spans, exceptions)
 	if droppedHealthchecks > 0 {
 		monitoring.RecordHealthchecksDropped(monitoring.SignalTraces, droppedHealthchecks)
+	}
+
+	if !perm.Data {
+		endpoints = nil
+		tasks = nil
+		spans = nil
+		aiTraces = nil
+		aiConversations = nil
+	}
+	if !perm.Exceptions {
+		exceptions = nil
+	}
+	if hasOrg && (!perm.Data || !perm.Exceptions) {
+		monitoring.RecordRateLimited(orgId)
 	}
 
 	convertMs := msSince(convertStart)
@@ -152,16 +168,22 @@ func (o otelController) ExportTraces(c *gin.Context) {
 		aiTraceInfos = append(aiTraceInfos, hooks.AiTraceInfo{TraceName: at.TraceName, TotalCost: at.TotalCost})
 	}
 
-	if project != nil && project.OrganizationId != nil {
-		hooks.BroadcastReport(hooks.ReportEvent{
-			OrganizationId:  *project.OrganizationId,
-			ProjectId:       projectId,
-			EndpointCount:   len(endpoints),
-			ErrorCount:      len(exceptions),
-			TaskCount:       len(tasks),
-			ExceptionHashes: exceptionHashes,
-			AiTraces:        aiTraceInfos,
-		})
+	if hasOrg {
+		ev := hooks.ReportEvent{
+			OrganizationId: orgId,
+			ProjectId:      projectId,
+			AiTraces:       aiTraceInfos,
+		}
+		if perm.Data {
+			ev.EndpointCount = len(endpoints)
+			ev.TaskCount = len(tasks)
+			ev.TelemetryBytes = bodyBytes
+		}
+		if perm.Exceptions {
+			ev.ErrorCount = len(exceptions)
+			ev.ExceptionHashes = exceptionHashes
+		}
+		hooks.BroadcastReport(ev)
 	}
 
 	writeTraceResponse(c)
@@ -177,17 +199,20 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 		return
 	}
 
+	orgId := 0
+	hasOrg := false
 	if project, exists := c.Get(middleware.ProjectContextKey); exists {
 		if p, ok := project.(*models.Project); ok && p.OrganizationId != nil {
+			orgId = *p.OrganizationId
+			hasOrg = true
 			if attrs := traceway.GetAttributesFromContext(c); attrs != nil {
-				attrs.SetTag("organization_id", fmt.Sprintf("%d", *p.OrganizationId))
-			}
-			if !hooks.CanReport(*p.OrganizationId) {
-				monitoring.RecordRateLimited(*p.OrganizationId)
-				c.AbortWithStatus(http.StatusTooManyRequests)
-				return
+				attrs.SetTag("organization_id", fmt.Sprintf("%d", orgId))
 			}
 		}
+	}
+	perm := hooks.IngestPermission{Exceptions: true, Data: true, Replay: true}
+	if hasOrg {
+		perm = hooks.IngestPermissionFor(orgId)
 	}
 
 	req, bodyBytes, err := decodeMetricsRequest(c)
@@ -199,6 +224,14 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 	convertStart := time.Now()
 	result := convertMetricPoints(projectId, req)
 	convertMs := msSince(convertStart)
+
+	if !perm.Data {
+		result.Points = nil
+		result.Entries = nil
+		if hasOrg {
+			monitoring.RecordRateLimited(orgId)
+		}
+	}
 
 	insertMs := 0.0
 	if len(result.Points) > 0 {
@@ -216,6 +249,14 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 
 	monitoring.RecordIngestBatch(monitoring.SignalMetrics, "metric_points", convertMs, insertMs, len(result.Points), bodyBytes)
 
+	if hasOrg && perm.Data {
+		hooks.BroadcastReport(hooks.ReportEvent{
+			OrganizationId: orgId,
+			ProjectId:      projectId,
+			TelemetryBytes: bodyBytes,
+		})
+	}
+
 	writeMetricsResponse(c)
 }
 
@@ -229,18 +270,21 @@ func (o otelController) ExportLogs(c *gin.Context) {
 		return
 	}
 	var existingProject *models.Project
+	orgId := 0
+	hasOrg := false
 	if project, exists := c.Get(middleware.ProjectContextKey); exists {
 		if p, ok := project.(*models.Project); ok && p.OrganizationId != nil {
 			existingProject = p
+			orgId = *p.OrganizationId
+			hasOrg = true
 			if attrs := traceway.GetAttributesFromContext(c); attrs != nil {
-				attrs.SetTag("organization_id", fmt.Sprintf("%d", *p.OrganizationId))
-			}
-			if !hooks.CanReport(*p.OrganizationId) {
-				monitoring.RecordRateLimited(*p.OrganizationId)
-				c.AbortWithStatus(http.StatusTooManyRequests)
-				return
+				attrs.SetTag("organization_id", fmt.Sprintf("%d", orgId))
 			}
 		}
+	}
+	perm := hooks.IngestPermission{Exceptions: true, Data: true, Replay: true}
+	if hasOrg {
+		perm = hooks.IngestPermissionFor(orgId)
 	}
 
 	req, bodyBytes, err := decodeLogsRequest(c)
@@ -253,6 +297,13 @@ func (o otelController) ExportLogs(c *gin.Context) {
 	records := convertLogs(existingProject, c, projectId, req)
 	convertMs := msSince(convertStart)
 
+	if !perm.Data {
+		records = nil
+		if hasOrg {
+			monitoring.RecordRateLimited(orgId)
+		}
+	}
+
 	insertMs := 0.0
 	if len(records) > 0 {
 		insertStart := time.Now()
@@ -264,6 +315,14 @@ func (o otelController) ExportLogs(c *gin.Context) {
 	}
 
 	monitoring.RecordIngestBatch(monitoring.SignalLogs, "log_records", convertMs, insertMs, len(records), bodyBytes)
+
+	if hasOrg && perm.Data {
+		hooks.BroadcastReport(hooks.ReportEvent{
+			OrganizationId: orgId,
+			ProjectId:      projectId,
+			TelemetryBytes: bodyBytes,
+		})
+	}
 
 	writeLogsResponse(c)
 }
@@ -287,11 +346,6 @@ func (o otelController) ExportProfiles(c *gin.Context) {
 	if project != nil && project.OrganizationId != nil {
 		if attrs := traceway.GetAttributesFromContext(c); attrs != nil {
 			attrs.SetTag("organization_id", fmt.Sprintf("%d", *project.OrganizationId))
-		}
-		if !hooks.CanReport(*project.OrganizationId) {
-			monitoring.RecordRateLimited(*project.OrganizationId)
-			c.AbortWithStatus(http.StatusTooManyRequests)
-			return
 		}
 	}
 

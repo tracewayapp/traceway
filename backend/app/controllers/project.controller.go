@@ -8,6 +8,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/profiling"
 	"github.com/tracewayapp/traceway/backend/app/repositories"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -155,9 +156,19 @@ func (p projectController) CreateProject(c *gin.Context) {
 		if currentProject == nil || currentProject.OrganizationId == nil {
 			return nil, fmt.Errorf("current project has no organization")
 		}
+		if ProjectLimitHook != nil {
+			if err := ProjectLimitHook(tx, *currentProject.OrganizationId); err != nil {
+				return nil, err
+			}
+		}
 		return repositories.ProjectRepository.CreateWithOrganization(tx, request.Name, request.Framework, *currentProject.OrganizationId)
 	})
 	if err != nil {
+		var limitErr *LimitExceededError
+		if errors.As(err, &limitErr) {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": limitErr.Message})
+			return
+		}
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error creating a project: %w", err))
 		return
 	}

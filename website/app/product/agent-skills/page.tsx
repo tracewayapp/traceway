@@ -12,6 +12,7 @@ import { Eyebrow } from "@/components/eyebrow";
 import { Terminal } from "@/components/terminal";
 import { SkillInstallCommand } from "@/components/skill-install-command";
 import { AgentDebugTerminal } from "@/components/agent-debug-terminal";
+import { VideoPlayer } from "@/components/video-player";
 import { GITHUB_URL } from "@/lib/links";
 
 export const metadata: Metadata = {
@@ -86,6 +87,25 @@ export default function AgentSkillsPage() {
       </section>
 
       <div className="band-light">
+        <section className="wrap pt-15 pb-6">
+          <div className="mx-auto flex max-w-3xl flex-col items-center gap-4 text-center">
+            <h2>
+              See it <em>in action</em>
+            </h2>
+            <p className="muted max-w-[560px] text-pretty">
+              Watch an agent set up Traceway, pull production telemetry through
+              the CLI, and walk a bug all the way to its root cause.
+            </p>
+          </div>
+          <div className="mx-auto mt-12 max-w-4xl">
+            <VideoPlayer
+              src="/videos/agent-skills-demo.mp4"
+              poster="/videos/agent-skills-demo.jpg"
+            />
+          </div>
+        </section>
+      </div>
+      <div className="band-light">
         <section className="wrap">
           <div className="feature-row">
             <div className="feat-copy">
@@ -118,8 +138,8 @@ export default function AgentSkillsPage() {
               </h2>
               <p>
                 Built for non-interactive use: JSON output, stable errors, and
-                nothing that hangs waiting for input. Humans on a TTY still
-                get tables.
+                nothing that hangs waiting for input. Humans on a TTY still get
+                tables.
               </p>
               <ul className="feat-bullets">
                 <li>JSON when piped, tables on a TTY</li>
@@ -144,8 +164,7 @@ export default function AgentSkillsPage() {
                 {
                   ln: "2",
                   type: "mute",
-                  content:
-                    '{"hash":"82b58892","type":"TypeError","count":412}',
+                  content: '{"hash":"82b58892","type":"TypeError","count":412}',
                 },
                 {
                   ln: "3",
@@ -168,8 +187,8 @@ export default function AgentSkillsPage() {
                   type: "tx",
                   content: (
                     <>
-                      <span className="cmd">$</span> traceway exceptions
-                      archive 82b58892
+                      <span className="cmd">$</span> traceway exceptions archive
+                      82b58892
                     </>
                   ),
                 },
@@ -255,8 +274,8 @@ export default function AgentSkillsPage() {
             <h2>One format, every agent</h2>
             <p style={{ color: "var(--fg-1)", fontSize: 17 }}>
               Skills are plain Markdown in the open SKILL.md format. No
-              marketplace, no lock-in. They live in the same MIT-licensed
-              repo as Traceway itself.
+              marketplace, no lock-in. They live in the same MIT-licensed repo
+              as Traceway itself.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2">
               {AGENTS.map((agent) => (

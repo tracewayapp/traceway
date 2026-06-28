@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/tracewayapp/traceway/backend/app/hooks"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/monitoring"
@@ -34,14 +33,6 @@ func (e profileIngestController) Ingest(c *gin.Context) {
 	if projectAsAny, exists := c.Get(middleware.ProjectContextKey); exists {
 		if p, ok := projectAsAny.(*models.Project); ok {
 			project = p
-		}
-	}
-
-	if project != nil && project.OrganizationId != nil {
-		if !hooks.CanReport(*project.OrganizationId) {
-			monitoring.RecordRateLimited(*project.OrganizationId)
-			c.AbortWithStatus(http.StatusTooManyRequests)
-			return
 		}
 	}
 

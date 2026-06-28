@@ -61,10 +61,10 @@ export default defineConfig(({ mode }) => {
 			sourcemap: 'hidden'
 		},
 		resolve: {
-			dedupe: ['d3-scale', 'd3-array', 'lucide-svelte', 'svelte']
+			dedupe: ['d3-scale', 'd3-array', 'lucide-svelte', 'svelte', 'svelte-sonner']
 		},
 		optimizeDeps: {
-			include: ['d3-scale', 'd3-array', 'lucide-svelte']
+			include: ['d3-scale', 'd3-array', 'lucide-svelte', 'svelte-sonner']
 		},
 		server: {
 			proxy: {

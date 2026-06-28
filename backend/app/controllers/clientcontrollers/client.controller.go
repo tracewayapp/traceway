@@ -102,12 +102,10 @@ func (e clientController) Report(c *gin.Context) {
 		}
 	}
 
-	if project != nil && project.OrganizationId != nil {
-		if !hooks.CanReport(*project.OrganizationId) {
-			monitoring.RecordRateLimited(*project.OrganizationId)
-			c.AbortWithStatus(http.StatusTooManyRequests)
-			return
-		}
+	orgId := 0
+	hasOrg := project != nil && project.OrganizationId != nil
+	if hasOrg {
+		orgId = *project.OrganizationId
 	}
 
 	parseSpan := traceway.StartSpan(c, "report.parse_body")
@@ -269,6 +267,36 @@ func (e clientController) Report(c *gin.Context) {
 		monitoring.RecordHealthchecksDropped(monitoring.SignalNative, droppedHealthchecks)
 	}
 
+	perm := hooks.IngestPermission{Exceptions: true, Data: true, Replay: true}
+	if hasOrg {
+		perm = hooks.IngestPermissionFor(orgId)
+	}
+
+	recordingBytes := 0
+	for _, rw := range recordingsWork {
+		recordingBytes += len(rw.Body)
+	}
+	telemetryBytes := bodyBytes - recordingBytes
+	if telemetryBytes < 0 {
+		telemetryBytes = 0
+	}
+
+	if !perm.Exceptions {
+		exceptionStackTraceToInsert = nil
+	}
+	if !perm.Data {
+		endpointsToInsert = nil
+		tasksToInsert = nil
+		spansToInsert = nil
+		metricPointsToInsert = nil
+	}
+	if !perm.Replay {
+		recordingsWork = nil
+	}
+	if hasOrg && (!perm.Exceptions || !perm.Data) {
+		monitoring.RecordRateLimited(orgId)
+	}
+
 	convertMs := float64(time.Since(convertStart).Microseconds()) / 1000.0
 	insertStart := time.Now()
 
@@ -342,16 +370,25 @@ func (e clientController) Report(c *gin.Context) {
 		exceptionHashes = append(exceptionHashes, est.ExceptionHash)
 	}
 
-	if project != nil && project.OrganizationId != nil {
-		hooks.BroadcastReport(hooks.ReportEvent{
-			OrganizationId:  *project.OrganizationId,
-			ProjectId:       projectId,
-			EndpointCount:   len(endpointsToInsert),
-			ErrorCount:      len(exceptionStackTraceToInsert),
-			TaskCount:       len(tasksToInsert),
-			RecordingCount:  len(recordingsWork),
-			ExceptionHashes: exceptionHashes,
-		})
+	if hasOrg {
+		ev := hooks.ReportEvent{
+			OrganizationId: orgId,
+			ProjectId:      projectId,
+		}
+		if perm.Data {
+			ev.EndpointCount = len(endpointsToInsert)
+			ev.TaskCount = len(tasksToInsert)
+			ev.TelemetryBytes = telemetryBytes
+		}
+		if perm.Exceptions {
+			ev.ErrorCount = len(exceptionStackTraceToInsert)
+			ev.ExceptionHashes = exceptionHashes
+		}
+		if perm.Replay {
+			ev.RecordingCount = len(recordingsWork)
+			ev.RecordingBytes = recordingBytes
+		}
+		hooks.BroadcastReport(ev)
 	}
 
 	for _, rw := range recordingsWork {

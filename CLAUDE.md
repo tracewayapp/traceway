@@ -755,7 +755,7 @@ Retention is handled in three different ways depending on the deployment.
 | `metric_points` (raw) | **7 days** | `0034_add_ttl_metric_points.up.sql` |
 | `metric_points_1m` (1-min rollup) | **30 days** | `0035_add_ttl_metric_points_1m.up.sql` |
 | `metric_points_1h` (1-hour rollup) | **1 year** | `0036_add_ttl_metric_points_1h.up.sql` |
-| `log_records` | **30 days** | `0045_create_log_records.up.sql` |
+| `log_records` | **90 days** | `0075_increase_ttl_log_records.up.sql` (raised from 30d set in `0045_create_log_records.up.sql`) |
 | `profiling_samples` (the bulk) | **30 days** | `0068_add_ttl_profiling_samples.up.sql` |
 | `profiles` (slim metadata) | **30 days** | `0069_add_ttl_profiles.up.sql` |
 | `profiling_stacks` (dedup table) | **30 days** | `0070_add_ttl_profiling_stacks.up.sql` |

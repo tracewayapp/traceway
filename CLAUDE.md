@@ -744,6 +744,18 @@ for _, item := range items {
 - `SQLiteJSONMap` — implements `sql.Scanner`/`driver.Valuer` for `map[string]string` ↔ SQLite JSON TEXT
 - Row types (e.g., `endpointRow`, `taskRow`) wrap domain models with these types for lit compatibility
 
+#### DuckDB Telemetry Backend (self-hosted, opt-in)
+
+Built with `-tags duckdb` (`CGO_ENABLED=1` required), this is an alternative telemetry store for the same `DB_TYPE=sqlite` deployment: the **main DB stays SQLite** (`db.DB`, relational/config), while the **telemetry DB becomes DuckDB** (`db.TelemetryDB`, columnar). It exists because DuckDB's columnar engine is dramatically faster on the analytics/aggregation reads the dashboard issues — at 10M rows it clears read-probe thresholds that SQLite times out on. The three backends are selected by mutually-exclusive build tags: `pgch` (Postgres + ClickHouse), `!pgch && !duckdb` (dual SQLite), `duckdb && !pgch` (SQLite main + DuckDB telemetry).
+
+- **Driver:** `github.com/duckdb/duckdb-go/v2` (the official driver; marcboeker/go-duckdb is deprecated). Bundles prebuilt static libs for glibc only — **not musl/Alpine**, so the image uses Debian (`Dockerfile.duckdb`).
+- **Opened in** `backend/app/db/db_duckdb.go`: telemetry path is the SQLite path with `.db` swapped for `_telemetry.duckdb`. No `memory_limit`/`threads` overrides — DuckDB auto-tunes to the host. Exposes `db.DuckDBConnector` (needed for the Appender).
+- **Writes use the Appender API**, not `INSERT` (`duckdb.NewAppenderFromConn(conn, "", table)` → `AppendRow(...)` → `Close()` flushes). Upserts still go through `ExecContext` with `ON CONFLICT`. The Appender rejects typed `*string` for nullable VARCHAR — use `nullableString()` in `backend/app/repositories/duckdb_helpers.go` (returns untyped `nil` or the dereferenced value).
+- **`lit` placeholders:** `db.Driver` stays `lit.SQLite`, which emits `?` — DuckDB accepts these, so no separate driver was needed for reads.
+- **Migrations:** `backend/app/migrations/duckdb_telemetry/` (mirrors `sqlite_telemetry/` table-for-table; integer columns are `BIGINT`, JSON is `VARCHAR`, no secondary indexes since it's columnar).
+- **Dialect gotchas vs SQLite** (the read queries differ): native `quantile_cont(col, p)` for P50/P95/P99 instead of fetch-and-sort; `strftime('%s',col)`→`epoch(col)`; time bucketing via `time_bucket(to_seconds(N), col)`; `json_extract`→`json_extract_string`; `json_each`→`LATERAL unnest(json_keys(x))`; strict GROUP BY needs `ANY_VALUE`/`arg_max`; `SUM` returns HUGEINT (CAST to BIGINT); `CAST(.. AS REAL)`→`CAST(.. AS DOUBLE)`.
+- **Tests:** `testhelper_duckdb_test.go` (tagged `duckdb && !pgch`) provides `setupTestDB` so the entire existing telemetry test suite runs against an in-memory DuckDB.
+
 #### Data Retention
 
 Retention is handled in three different ways depending on the deployment.

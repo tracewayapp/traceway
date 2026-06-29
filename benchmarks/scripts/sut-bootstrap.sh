@@ -8,7 +8,7 @@
 # 5. Poll /health until 200.
 #
 # Usage: sut-bootstrap.sh <sut-public-ip> <mode>
-#   <mode>  sqlite | pgch
+#   <mode>  sqlite | duckdb | pgch | managed-ch
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

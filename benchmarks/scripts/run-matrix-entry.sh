@@ -6,7 +6,7 @@
 #
 # Usage: run-matrix-entry.sh <tier> <mode> <signal> <duration> <out-dir> [smoke] [async]
 #   <tier>      ccx13 | ccx23 | ccx33 | ccx43
-#   <mode>      sqlite | pgch
+#   <mode>      sqlite | duckdb | pgch | managed-ch
 #   <signal>    spans | metrics | logs
 #   <duration>  Loadgen total runtime, e.g. 30m, 3m
 #   <out-dir>   Directory to write <tier>-<mode>-<signal>.json into

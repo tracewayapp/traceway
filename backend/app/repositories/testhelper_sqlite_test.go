@@ -1,4 +1,4 @@
-//go:build !pgch
+//go:build !pgch && !duckdb
 
 package repositories
 

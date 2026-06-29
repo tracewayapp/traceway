@@ -1,9 +1,10 @@
-//go:build !pgch && !duckdb
+//go:build duckdb && !pgch
 
 package repositories
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -39,25 +40,6 @@ func init() {
 	})
 }
 
-func sessionToRow(s models.Session) sessionRow {
-	row := sessionRow{
-		Id:                 s.Id,
-		ProjectId:          s.ProjectId,
-		StartedAt:          NewSQLiteTime(s.StartedAt),
-		Duration:           s.Duration,
-		ClientIP:           s.ClientIP,
-		Attributes:         NewSQLiteJSONMap(s.Attributes),
-		AppVersion:         s.AppVersion,
-		ServerName:         s.ServerName,
-		DistributedTraceId: s.DistributedTraceId,
-	}
-	if s.EndedAt != nil {
-		t := NewSQLiteTime(*s.EndedAt)
-		row.EndedAt = &t
-	}
-	return row
-}
-
 func (row *sessionRow) toModel() models.Session {
 	s := models.Session{
 		Id:                 row.Id,
@@ -81,14 +63,17 @@ func (row *sessionRow) toModel() models.Session {
 
 type sessionRepository struct{}
 
+// Upsert uses DuckDB ON CONFLICT rather than the Appender because sessions carry a
+// PRIMARY KEY and existing rows are mutated (ended_at/duration) as more telemetry
+// arrives — the Appender is insert-only and cannot express the conflict update.
 func (r *sessionRepository) Upsert(ctx context.Context, sessions []models.Session) error {
 	if len(sessions) == 0 {
 		return nil
 	}
 	const stmt = `INSERT INTO sessions
 		(id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, distributed_trace_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
+		VALUES (:id, :project_id, :started_at, :ended_at, :duration, :client_ip, :attributes, :app_version, :server_name, :distributed_trace_id)
+		ON CONFLICT (id) DO UPDATE SET
 			ended_at = COALESCE(excluded.ended_at, sessions.ended_at),
 			duration = CASE WHEN excluded.duration > 0 THEN excluded.duration ELSE sessions.duration END,
 			attributes = excluded.attributes,
@@ -103,27 +88,40 @@ func (r *sessionRepository) Upsert(ctx context.Context, sessions []models.Sessio
 	defer tx.Rollback()
 
 	for _, s := range sessions {
-		row := sessionToRow(s)
-		attrs, err := row.Attributes.Value()
-		if err != nil {
-			return err
-		}
-		var endedAt interface{}
-		if row.EndedAt != nil {
-			v, err := row.EndedAt.Value()
+		attrs := "{}"
+		if len(s.Attributes) > 0 {
+			b, err := json.Marshal(s.Attributes)
 			if err != nil {
 				return err
 			}
-			endedAt = v
+			attrs = string(b)
 		}
-		startedAt, err := row.StartedAt.Value()
+		var endedAt *time.Time
+		if s.EndedAt != nil {
+			t := s.EndedAt.UTC()
+			endedAt = &t
+		}
+		var distTraceId *string
+		if s.DistributedTraceId != nil {
+			v := s.DistributedTraceId.String()
+			distTraceId = &v
+		}
+		query, args, err := lit.ParseNamedQuery(db.Driver, stmt, lit.P{
+			"id":                   s.Id.String(),
+			"project_id":           s.ProjectId.String(),
+			"started_at":           s.StartedAt.UTC(),
+			"ended_at":             endedAt,
+			"duration":             s.Duration,
+			"client_ip":            s.ClientIP,
+			"attributes":           attrs,
+			"app_version":          s.AppVersion,
+			"server_name":          s.ServerName,
+			"distributed_trace_id": distTraceId,
+		})
 		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, stmt,
-			row.Id, row.ProjectId, startedAt, endedAt, row.Duration,
-			row.ClientIP, attrs, row.AppVersion, row.ServerName, row.DistributedTraceId,
-		); err != nil {
+		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
 			return err
 		}
 	}
@@ -133,7 +131,7 @@ func (r *sessionRepository) Upsert(ctx context.Context, sessions []models.Sessio
 func (r *sessionRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {
 	result, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
 		"SELECT count(*) as count FROM sessions WHERE project_id = :project_id AND started_at >= :start AND started_at <= :end",
-		lit.P{"project_id": projectId, "start": NewSQLiteTime(start), "end": NewSQLiteTime(end)})
+		lit.P{"project_id": projectId, "start": start.UTC(), "end": end.UTC()})
 	if err != nil {
 		return 0, err
 	}
@@ -144,13 +142,13 @@ func (r *sessionRepository) CountBetween(ctx context.Context, projectId uuid.UUI
 }
 
 func (r *sessionRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string, search string, attributeFilters []SessionAttributeFilter) ([]models.Session, int64, error) {
-	whereExtra, extraParams := buildSessionFilterClauseSQLite(search, attributeFilters)
+	whereExtra, extraParams := buildSessionFilterClauseDuckDB(search, attributeFilters)
 
 	countQuery := "SELECT count(*) as count FROM sessions WHERE project_id = :project_id AND started_at >= :start AND started_at <= :end" + whereExtra
 	countParams := lit.P{
 		"project_id": projectId,
-		"start":      NewSQLiteTime(fromDate),
-		"end":        NewSQLiteTime(toDate),
+		"start":      fromDate.UTC(),
+		"end":        toDate.UTC(),
 	}
 	for k, v := range extraParams {
 		countParams[k] = v
@@ -181,8 +179,8 @@ func (r *sessionRepository) FindAll(ctx context.Context, projectId uuid.UUID, fr
 
 	queryParams := lit.P{
 		"project_id": projectId,
-		"start":      NewSQLiteTime(fromDate),
-		"end":        NewSQLiteTime(toDate),
+		"start":      fromDate.UTC(),
+		"end":        toDate.UTC(),
 		"limit":      pageSize,
 		"offset":     offset,
 	}
@@ -201,11 +199,11 @@ func (r *sessionRepository) FindAll(ctx context.Context, projectId uuid.UUID, fr
 	return sessions, count, nil
 }
 
-// buildSessionFilterClauseSQLite produces a WHERE fragment + named params
+// buildSessionFilterClauseDuckDB produces a WHERE fragment + named params
 // mirroring the ClickHouse helper: search must be a valid UUID for an exact
 // id match (anything else is ignored), and each attribute filter becomes an
-// exact match against `json_extract(attributes, '$.<key>')`.
-func buildSessionFilterClauseSQLite(search string, filters []SessionAttributeFilter) (string, lit.P) {
+// exact match against `json_extract_string(attributes, '$.<key>')`.
+func buildSessionFilterClauseDuckDB(search string, filters []SessionAttributeFilter) (string, lit.P) {
 	var sb strings.Builder
 	params := lit.P{}
 	if s := strings.TrimSpace(search); s != "" {
@@ -220,7 +218,7 @@ func buildSessionFilterClauseSQLite(search string, filters []SessionAttributeFil
 		}
 		keyParam := fmt.Sprintf("attr_k_%d", i)
 		valParam := fmt.Sprintf("attr_v_%d", i)
-		sb.WriteString(" AND json_extract(attributes, '$.\"' || :")
+		sb.WriteString(" AND json_extract_string(attributes, '$.\"' || :")
 		sb.WriteString(keyParam)
 		sb.WriteString(" || '\"') = :")
 		sb.WriteString(valParam)
@@ -236,8 +234,8 @@ func (r *sessionRepository) FindById(ctx context.Context, projectId, sessionId u
 	if startedAt != nil {
 		from, to := traceWindowBounds(*startedAt)
 		query += " AND started_at >= :from AND started_at <= :to"
-		params["from"] = NewSQLiteTime(from)
-		params["to"] = NewSQLiteTime(to)
+		params["from"] = from.UTC()
+		params["to"] = to.UTC()
 	}
 	query += " LIMIT 1"
 

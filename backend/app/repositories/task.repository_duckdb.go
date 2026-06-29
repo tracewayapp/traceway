@@ -1,14 +1,16 @@
-//go:build !pgch && !duckdb
+//go:build duckdb && !pgch
 
 package repositories
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/duckdb/duckdb-go/v2"
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/app/db"
@@ -31,17 +33,17 @@ type task struct {
 }
 
 type taskGroupRow struct {
-	TaskName    string  `lit:"task_name"`
-	Count       uint64  `lit:"count"`
-	AvgDuration float64 `lit:"avg_duration"`
-	LastSeen    string  `lit:"last_seen"`
-	HasRoot     bool    `lit:"has_root"`
-	HasNonRoot  bool    `lit:"has_non_root"`
+	TaskName    string    `lit:"task_name"`
+	Count       uint64    `lit:"count"`
+	AvgDuration float64   `lit:"avg_duration"`
+	LastSeen    time.Time `lit:"last_seen"`
+	HasRoot     bool      `lit:"has_root"`
+	HasNonRoot  bool      `lit:"has_non_root"`
 }
 
 type taskCountStatsRow struct {
-	Count       int64   `lit:"count"`
-	AvgDurMs    float64 `lit:"avg_dur_ms"`
+	Count    int64   `lit:"count"`
+	AvgDurMs float64 `lit:"avg_dur_ms"`
 }
 
 type durationValueRow struct {
@@ -55,23 +57,6 @@ func init() {
 		lit.RegisterModel[taskCountStatsRow](driver)
 		lit.RegisterModel[durationValueRow](driver)
 	})
-}
-
-func taskToRow(t models.Task) task {
-	return task{
-		Id:                 t.Id,
-		ProjectId:          t.ProjectId,
-		TaskName:           t.TaskName,
-		Duration:           int64(t.Duration),
-		RecordedAt:         NewSQLiteTime(t.RecordedAt),
-		ClientIP:           t.ClientIP,
-		Attributes:         NewSQLiteJSONMap(t.Attributes),
-		AppVersion:         t.AppVersion,
-		ServerName:         t.ServerName,
-		DistributedTraceId: t.DistributedTraceId,
-		SpanId:             t.SpanId,
-		IsRoot:             t.IsRoot,
-	}
 }
 
 func (r *task) toModel() models.Task {
@@ -101,26 +86,71 @@ func (e *taskRepository) InsertAsync(ctx context.Context, lines []models.Task) e
 		return nil
 	}
 
-	tx, err := db.TelemetryDB.BeginTx(ctx, nil)
+	conn, err := db.DuckDBConnector.Connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer conn.Close()
+
+	appender, err := duckdb.NewAppenderFromConn(conn, "", "tasks")
+	if err != nil {
+		return err
+	}
 
 	for _, t := range lines {
-		row := taskToRow(t)
-		if err := lit.InsertExistingUuid(tx, &row); err != nil {
+		attributesJSON := "{}"
+		if len(t.Attributes) > 0 {
+			b, err := json.Marshal(t.Attributes)
+			if err != nil {
+				appender.Close()
+				return err
+			}
+			attributesJSON = string(b)
+		}
+
+		var distributedTraceId *string
+		if t.DistributedTraceId != nil {
+			s := t.DistributedTraceId.String()
+			distributedTraceId = &s
+		}
+
+		var spanId *string
+		if t.SpanId != nil {
+			s := t.SpanId.String()
+			spanId = &s
+		}
+
+		isRoot := int64(0)
+		if t.IsRoot {
+			isRoot = 1
+		}
+
+		if err := appender.AppendRow(
+			t.Id.String(),
+			t.ProjectId.String(),
+			t.TaskName,
+			int64(t.Duration),
+			t.RecordedAt.UTC(),
+			t.ClientIP,
+			attributesJSON,
+			t.AppVersion,
+			t.ServerName,
+			nullableString(distributedTraceId),
+			nullableString(spanId),
+			isRoot,
+		); err != nil {
+			appender.Close()
 			return err
 		}
 	}
 
-	return tx.Commit()
+	return appender.Close()
 }
 
 func (e *taskRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {
 	result, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
 		"SELECT COUNT(*) AS count FROM tasks WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to",
-		lit.P{"project_id": projectId, "from": NewSQLiteTime(start), "to": NewSQLiteTime(end)})
+		lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()})
 	if err != nil {
 		return 0, err
 	}
@@ -133,7 +163,7 @@ func (e *taskRepository) CountBetween(ctx context.Context, projectId uuid.UUID, 
 func (e *taskRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string) ([]models.Task, int64, error) {
 	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
 		"SELECT COUNT(*) AS count FROM tasks WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to",
-		lit.P{"project_id": projectId, "from": NewSQLiteTime(fromDate), "to": NewSQLiteTime(toDate)})
+		lit.P{"project_id": projectId, "from": fromDate.UTC(), "to": toDate.UTC()})
 	if err != nil {
 		return nil, 0, err
 	}
@@ -153,7 +183,7 @@ func (e *taskRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromD
 		fmt.Sprintf(`SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id
 		FROM tasks WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
 		ORDER BY %s DESC LIMIT :limit OFFSET :offset`, orderBy),
-		lit.P{"project_id": projectId, "from": NewSQLiteTime(fromDate), "to": NewSQLiteTime(toDate), "limit": pageSize, "offset": offset})
+		lit.P{"project_id": projectId, "from": fromDate.UTC(), "to": toDate.UTC(), "limit": pageSize, "offset": offset})
 	if err != nil {
 		return nil, 0, err
 	}
@@ -167,7 +197,7 @@ func (e *taskRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromD
 }
 
 func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string, search string, rootFilter string) ([]models.TaskStats, int64, error) {
-	params := lit.P{"project_id": projectId, "from": NewSQLiteTime(fromDate), "to": NewSQLiteTime(toDate)}
+	params := lit.P{"project_id": projectId, "from": fromDate.UTC(), "to": toDate.UTC()}
 	whereClause := "project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to"
 	if search != "" {
 		whereClause += " AND INSTR(LOWER(task_name), LOWER(:search)) > 0"
@@ -196,7 +226,7 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 	offset := (page - 1) * pageSize
 
 	var baseQuery string
-	groupParams := lit.P{"project_id": projectId, "from": NewSQLiteTime(fromDate), "to": NewSQLiteTime(toDate)}
+	groupParams := lit.P{"project_id": projectId, "from": fromDate.UTC(), "to": toDate.UTC()}
 	if search != "" {
 		groupParams["search"] = search
 	}
@@ -233,14 +263,13 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 			return nil, 0, err
 		}
 
-		ls, _ := time.Parse(time.RFC3339Nano, g.LastSeen)
 		stats = append(stats, models.TaskStats{
 			TaskName:    g.TaskName,
 			Count:       g.Count,
 			P50Duration: time.Duration(computePercentile(durations, 0.5)),
 			P95Duration: time.Duration(computePercentile(durations, 0.95)),
 			AvgDuration: time.Duration(g.AvgDuration),
-			LastSeen:    ls,
+			LastSeen:    g.LastSeen,
 			HasRoot:     g.HasRoot,
 			HasNonRoot:  g.HasNonRoot,
 		})
@@ -288,7 +317,7 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 }
 
 func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID, taskName string, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.Task, int64, error) {
-	params := lit.P{"project_id": projectId, "task_name": taskName, "from": NewSQLiteTime(fromDate), "to": NewSQLiteTime(toDate)}
+	params := lit.P{"project_id": projectId, "task_name": taskName, "from": fromDate.UTC(), "to": toDate.UTC()}
 
 	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
 		"SELECT COUNT(*) AS count FROM tasks WHERE project_id = :project_id AND task_name = :task_name AND recorded_at >= :from AND recorded_at <= :to",
@@ -317,7 +346,7 @@ func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID
 		fmt.Sprintf(`SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id
 		FROM tasks WHERE project_id = :project_id AND task_name = :task_name AND recorded_at >= :from AND recorded_at <= :to
 		ORDER BY %s %s LIMIT :limit OFFSET :offset`, orderBy, sortDir),
-		lit.P{"project_id": projectId, "task_name": taskName, "from": NewSQLiteTime(fromDate), "to": NewSQLiteTime(toDate), "limit": pageSize, "offset": offset})
+		lit.P{"project_id": projectId, "task_name": taskName, "from": fromDate.UTC(), "to": toDate.UTC(), "limit": pageSize, "offset": offset})
 	if err != nil {
 		return nil, 0, err
 	}
@@ -337,8 +366,8 @@ func (e *taskRepository) FindById(ctx context.Context, projectId, taskId uuid.UU
 	if recordedAt != nil {
 		from, to := traceWindowBounds(*recordedAt)
 		query += ` AND recorded_at >= :from AND recorded_at <= :to`
-		params["from"] = NewSQLiteTime(from)
-		params["to"] = NewSQLiteTime(to)
+		params["from"] = from.UTC()
+		params["to"] = to.UTC()
 	}
 	query += ` LIMIT 1`
 
@@ -354,57 +383,41 @@ func (e *taskRepository) FindById(ctx context.Context, projectId, taskId uuid.UU
 }
 
 func (e *taskRepository) CountByHour(ctx context.Context, projectId uuid.UUID, start, end time.Time) ([]models.TimeSeriesPoint, error) {
-	results, err := lit.SelectNamed[timeSeriesResult](db.TelemetryDB,
-		`SELECT strftime('%Y-%m-%d %H:00:00', recorded_at) as bucket, CAST(COUNT(*) AS REAL) as agg_value
+	return queryTaskTimeSeries(ctx,
+		`SELECT time_bucket(to_seconds(3600), recorded_at) as bucket, CAST(COUNT(*) AS DOUBLE) as agg_value
 		FROM tasks WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
 		GROUP BY bucket ORDER BY bucket ASC`,
-		lit.P{"project_id": projectId, "from": NewSQLiteTime(start), "to": NewSQLiteTime(end)})
-	if err != nil {
-		return nil, err
-	}
-	return timeSeriesResultsToPoints(results), nil
+		lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()})
 }
 
 func (e *taskRepository) AvgDurationByHour(ctx context.Context, projectId uuid.UUID, start, end time.Time) ([]models.TimeSeriesPoint, error) {
-	results, err := lit.SelectNamed[timeSeriesResult](db.TelemetryDB,
-		`SELECT strftime('%Y-%m-%d %H:00:00', recorded_at) as bucket, AVG(duration) / 1000000.0 as agg_value
+	return queryTaskTimeSeries(ctx,
+		`SELECT time_bucket(to_seconds(3600), recorded_at) as bucket, AVG(duration) / 1000000.0 as agg_value
 		FROM tasks WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
 		GROUP BY bucket ORDER BY bucket ASC`,
-		lit.P{"project_id": projectId, "from": NewSQLiteTime(start), "to": NewSQLiteTime(end)})
-	if err != nil {
-		return nil, err
-	}
-	return timeSeriesResultsToPoints(results), nil
+		lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()})
 }
 
 func (e *taskRepository) CountByInterval(ctx context.Context, projectId uuid.UUID, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
 	secs := intervalMinutes * 60
-	results, err := lit.SelectNamed[timeSeriesResult](db.TelemetryDB,
-		fmt.Sprintf(`SELECT datetime((strftime('%%s', recorded_at) / %d) * %d, 'unixepoch') as bucket, CAST(COUNT(*) AS REAL) as agg_value
+	return queryTaskTimeSeries(ctx,
+		fmt.Sprintf(`SELECT time_bucket(to_seconds(%d), recorded_at) as bucket, CAST(COUNT(*) AS DOUBLE) as agg_value
 		FROM tasks WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
-		GROUP BY bucket ORDER BY bucket ASC`, secs, secs),
-		lit.P{"project_id": projectId, "from": NewSQLiteTime(start), "to": NewSQLiteTime(end)})
-	if err != nil {
-		return nil, err
-	}
-	return timeSeriesResultsToPoints(results), nil
+		GROUP BY bucket ORDER BY bucket ASC`, secs),
+		lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()})
 }
 
 func (e *taskRepository) AvgDurationByInterval(ctx context.Context, projectId uuid.UUID, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
 	secs := intervalMinutes * 60
-	results, err := lit.SelectNamed[timeSeriesResult](db.TelemetryDB,
-		fmt.Sprintf(`SELECT datetime((strftime('%%s', recorded_at) / %d) * %d, 'unixepoch') as bucket, AVG(duration) / 1000000.0 as agg_value
+	return queryTaskTimeSeries(ctx,
+		fmt.Sprintf(`SELECT time_bucket(to_seconds(%d), recorded_at) as bucket, AVG(duration) / 1000000.0 as agg_value
 		FROM tasks WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
-		GROUP BY bucket ORDER BY bucket ASC`, secs, secs),
-		lit.P{"project_id": projectId, "from": NewSQLiteTime(start), "to": NewSQLiteTime(end)})
-	if err != nil {
-		return nil, err
-	}
-	return timeSeriesResultsToPoints(results), nil
+		GROUP BY bucket ORDER BY bucket ASC`, secs),
+		lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()})
 }
 
 func (e *taskRepository) FindWorstTasks(ctx context.Context, projectId uuid.UUID, start, end time.Time, limit int) ([]models.TaskStats, error) {
-	params := lit.P{"project_id": projectId, "from": NewSQLiteTime(start), "to": NewSQLiteTime(end)}
+	params := lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()}
 
 	groups, err := lit.SelectNamed[taskGroupRow](db.TelemetryDB,
 		`SELECT task_name, COUNT(*) as count, AVG(duration) as avg_duration, MAX(recorded_at) as last_seen
@@ -422,14 +435,13 @@ func (e *taskRepository) FindWorstTasks(ctx context.Context, projectId uuid.UUID
 			return nil, err
 		}
 
-		ls, _ := time.Parse(time.RFC3339Nano, g.LastSeen)
 		stats = append(stats, models.TaskStats{
 			TaskName:    g.TaskName,
 			Count:       g.Count,
 			P50Duration: time.Duration(computePercentile(durations, 0.5)),
 			P95Duration: time.Duration(computePercentile(durations, 0.95)),
 			AvgDuration: time.Duration(g.AvgDuration),
-			LastSeen:    ls,
+			LastSeen:    g.LastSeen,
 		})
 	}
 
@@ -446,7 +458,7 @@ func (e *taskRepository) FindWorstTasks(ctx context.Context, projectId uuid.UUID
 }
 
 func (e *taskRepository) GetTaskStats(ctx context.Context, projectId uuid.UUID, taskName string, start, end time.Time) (*models.TaskDetailStats, error) {
-	params := lit.P{"project_id": projectId, "task_name": taskName, "from": NewSQLiteTime(start), "to": NewSQLiteTime(end)}
+	params := lit.P{"project_id": projectId, "task_name": taskName, "from": start.UTC(), "to": end.UTC()}
 
 	durationMinutes := end.Sub(start).Minutes()
 	if durationMinutes < 1 {
@@ -496,8 +508,8 @@ func (e *taskRepository) FindByDistributedTraceId(ctx context.Context, distribut
 	if recordedAt != nil {
 		from, to := distributedTraceWindowBounds(*recordedAt)
 		query += ` AND recorded_at >= :from AND recorded_at <= :to`
-		params["from"] = NewSQLiteTime(from)
-		params["to"] = NewSQLiteTime(to)
+		params["from"] = from.UTC()
+		params["to"] = to.UTC()
 	}
 	query += ` ORDER BY recorded_at ASC`
 
@@ -525,8 +537,8 @@ func (e *taskRepository) FindByDistributedTraceId(ctx context.Context, distribut
 
 func fetchSortedTaskDurations(ctx context.Context, projectId uuid.UUID, taskName string, from, to time.Time) ([]float64, error) {
 	results, err := lit.SelectNamed[durationValueRow](db.TelemetryDB,
-		"SELECT duration FROM tasks WHERE project_id = :project_id AND task_name = :task_name AND recorded_at >= :from AND recorded_at <= :to ORDER BY duration ASC",
-		lit.P{"project_id": projectId, "task_name": taskName, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to)})
+		"SELECT CAST(duration AS DOUBLE) AS duration FROM tasks WHERE project_id = :project_id AND task_name = :task_name AND recorded_at >= :from AND recorded_at <= :to ORDER BY duration ASC",
+		lit.P{"project_id": projectId, "task_name": taskName, "from": from.UTC(), "to": to.UTC()})
 	if err != nil {
 		return nil, err
 	}
@@ -535,6 +547,33 @@ func fetchSortedTaskDurations(ctx context.Context, projectId uuid.UUID, taskName
 		durations = append(durations, r.Duration)
 	}
 	return durations, nil
+}
+
+// queryTaskTimeSeries runs a time-bucketed aggregation and scans the bucket as a
+// native TIMESTAMP (time.Time) — DuckDB returns TIMESTAMP columns directly as
+// time.Time, so no string parsing of the bucket is needed (unlike the SQLite path).
+func queryTaskTimeSeries(ctx context.Context, query string, params lit.P) ([]models.TimeSeriesPoint, error) {
+	parsedQuery, args, err := lit.ParseNamedQuery(db.Driver, query, params)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := db.TelemetryDB.QueryContext(ctx, parsedQuery, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	points := make([]models.TimeSeriesPoint, 0)
+	for rows.Next() {
+		var bucket time.Time
+		var value float64
+		if err := rows.Scan(&bucket, &value); err != nil {
+			return nil, err
+		}
+		points = append(points, models.TimeSeriesPoint{Timestamp: bucket, Value: value})
+	}
+	return points, nil
 }
 
 var TaskRepository = taskRepository{}

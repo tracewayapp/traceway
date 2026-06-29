@@ -1,14 +1,16 @@
-//go:build !pgch && !duckdb
+//go:build duckdb && !pgch
 
 package repositories
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/duckdb/duckdb-go/v2"
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/app/db"
@@ -51,16 +53,16 @@ type aiTraceRow struct {
 }
 
 type groupedAiTraceRow struct {
-	TraceName       string  `lit:"trace_name"`
-	TotalCount      uint64  `lit:"total_count"`
-	AvgDuration     float64 `lit:"avg_duration"`
-	TotalTokens     int64   `lit:"total_tokens"`
-	TotalCost       float64 `lit:"total_cost"`
-	AvgInputTokens  float64 `lit:"avg_input_tokens"`
-	AvgOutputTokens float64 `lit:"avg_output_tokens"`
-	LastSeen        string  `lit:"last_seen"`
-	HasRoot         bool    `lit:"has_root"`
-	HasNonRoot      bool    `lit:"has_non_root"`
+	TraceName       string    `lit:"trace_name"`
+	TotalCount      uint64    `lit:"total_count"`
+	AvgDuration     float64   `lit:"avg_duration"`
+	TotalTokens     int64     `lit:"total_tokens"`
+	TotalCost       float64   `lit:"total_cost"`
+	AvgInputTokens  float64   `lit:"avg_input_tokens"`
+	AvgOutputTokens float64   `lit:"avg_output_tokens"`
+	LastSeen        time.Time `lit:"last_seen"`
+	HasRoot         bool      `lit:"has_root"`
+	HasNonRoot      bool      `lit:"has_non_root"`
 }
 
 type aiTraceDurationRow struct {
@@ -83,37 +85,6 @@ func init() {
 		lit.RegisterModel[aiTraceDurationRow](driver)
 		lit.RegisterModel[aiTraceDetailStatsRow](driver)
 	})
-}
-
-func aiTraceToRow(t models.AiTrace) aiTraceRow {
-	return aiTraceRow{
-		Id:                 t.Id,
-		ProjectId:          t.ProjectId,
-		RecordedAt:         NewSQLiteTime(t.RecordedAt),
-		Duration:           int64(t.Duration),
-		StatusCode:         t.StatusCode,
-		Model:              t.Model,
-		ResponseModel:      t.ResponseModel,
-		Provider:           t.Provider,
-		Operation:          t.Operation,
-		InputTokens:        t.InputTokens,
-		OutputTokens:       t.OutputTokens,
-		TotalTokens:        t.TotalTokens,
-		CachedTokens:       t.CachedTokens,
-		ReasoningTokens:    t.ReasoningTokens,
-		InputCost:          t.InputCost,
-		OutputCost:         t.OutputCost,
-		TotalCost:          t.TotalCost,
-		TraceName:          t.TraceName,
-		UserId:             t.UserId,
-		FinishReason:       t.FinishReason,
-		ServerName:         t.ServerName,
-		AppVersion:         t.AppVersion,
-		StorageKey:         t.StorageKey,
-		Attributes:         NewSQLiteJSONMap(t.Attributes),
-		DistributedTraceId: t.DistributedTraceId,
-		IsRoot:             t.IsRoot,
-	}
 }
 
 func (r *aiTraceRow) toModel() models.AiTrace {
@@ -157,23 +128,78 @@ func (r *aiTraceRepository) InsertAsync(ctx context.Context, lines []models.AiTr
 		return nil
 	}
 
-	tx, err := db.TelemetryDB.BeginTx(ctx, nil)
+	conn, err := db.DuckDBConnector.Connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer conn.Close()
+
+	appender, err := duckdb.NewAppenderFromConn(conn, "", "ai_traces")
+	if err != nil {
+		return err
+	}
 
 	for _, t := range lines {
-		row := aiTraceToRow(t)
-		if err := lit.InsertExistingUuid(tx, &row); err != nil {
+		attributesJSON := "{}"
+		if len(t.Attributes) > 0 {
+			b, err := json.Marshal(t.Attributes)
+			if err != nil {
+				appender.Close()
+				return err
+			}
+			attributesJSON = string(b)
+		}
+
+		var distributedTraceId *string
+		if t.DistributedTraceId != nil {
+			s := t.DistributedTraceId.String()
+			distributedTraceId = &s
+		}
+
+		isRoot := int64(0)
+		if t.IsRoot {
+			isRoot = 1
+		}
+
+		// Column order follows the ai_traces DDL exactly: is_root precedes distributed_trace_id.
+		if err := appender.AppendRow(
+			t.Id.String(),
+			t.ProjectId.String(),
+			t.RecordedAt.UTC(),
+			int64(t.Duration),
+			int64(t.StatusCode),
+			t.Model,
+			t.ResponseModel,
+			t.Provider,
+			t.Operation,
+			t.InputTokens,
+			t.OutputTokens,
+			t.TotalTokens,
+			t.CachedTokens,
+			t.ReasoningTokens,
+			t.InputCost,
+			t.OutputCost,
+			t.TotalCost,
+			t.TraceName,
+			t.UserId,
+			t.FinishReason,
+			t.ServerName,
+			t.AppVersion,
+			t.StorageKey,
+			attributesJSON,
+			isRoot,
+			nullableString(distributedTraceId),
+		); err != nil {
+			appender.Close()
 			return err
 		}
 	}
-	return tx.Commit()
+
+	return appender.Close()
 }
 
 func (r *aiTraceRepository) FindGroupedByTraceName(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy, sortDirection, search, rootFilter string) ([]models.AiTraceStats, int64, error) {
-	params := lit.P{"project_id": projectId, "from": NewSQLiteTime(fromDate), "to": NewSQLiteTime(toDate)}
+	params := lit.P{"project_id": projectId, "from": fromDate.UTC(), "to": toDate.UTC()}
 
 	whereClause := "project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to"
 	if search != "" {
@@ -211,9 +237,9 @@ func (r *aiTraceRepository) FindGroupedByTraceName(ctx context.Context, projectI
 	var stats []models.AiTraceStats
 	for _, row := range rows {
 		// Compute percentiles from raw durations for this trace_name
-		durationParams := lit.P{"project_id": projectId, "from": NewSQLiteTime(fromDate), "to": NewSQLiteTime(toDate), "trace_name": row.TraceName}
+		durationParams := lit.P{"project_id": projectId, "from": fromDate.UTC(), "to": toDate.UTC(), "trace_name": row.TraceName}
 		durationRows, err := lit.SelectNamed[aiTraceDurationRow](db.TelemetryDB,
-			`SELECT CAST(duration AS REAL) AS duration FROM ai_traces
+			`SELECT CAST(duration AS DOUBLE) AS duration FROM ai_traces
 			WHERE project_id = :project_id AND trace_name = :trace_name AND recorded_at >= :from AND recorded_at <= :to
 			ORDER BY duration ASC`, durationParams)
 		if err != nil {
@@ -225,8 +251,6 @@ func (r *aiTraceRepository) FindGroupedByTraceName(ctx context.Context, projectI
 			sortedDurations[i] = d.Duration
 		}
 
-		lastSeen, _ := time.Parse("2006-01-02 15:04:05", row.LastSeen)
-
 		stats = append(stats, models.AiTraceStats{
 			TraceName:       row.TraceName,
 			Count:           row.TotalCount,
@@ -237,7 +261,7 @@ func (r *aiTraceRepository) FindGroupedByTraceName(ctx context.Context, projectI
 			TotalCost:       row.TotalCost,
 			AvgInputTokens:  row.AvgInputTokens,
 			AvgOutputTokens: row.AvgOutputTokens,
-			LastSeen:        lastSeen,
+			LastSeen:        row.LastSeen,
 			HasRoot:         row.HasRoot,
 			HasNonRoot:      row.HasNonRoot,
 		})
@@ -280,7 +304,7 @@ func (r *aiTraceRepository) FindGroupedByTraceName(ctx context.Context, projectI
 }
 
 func (r *aiTraceRepository) FindByTraceName(ctx context.Context, projectId uuid.UUID, traceName string, fromDate, toDate time.Time, page, pageSize int, orderBy, sortDirection string) ([]models.AiTrace, int64, error) {
-	params := lit.P{"project_id": projectId, "trace_name": traceName, "from": NewSQLiteTime(fromDate), "to": NewSQLiteTime(toDate)}
+	params := lit.P{"project_id": projectId, "trace_name": traceName, "from": fromDate.UTC(), "to": toDate.UTC()}
 
 	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
 		"SELECT COUNT(*) AS count FROM ai_traces WHERE project_id = :project_id AND trace_name = :trace_name AND recorded_at >= :from AND recorded_at <= :to",
@@ -317,7 +341,7 @@ func (r *aiTraceRepository) FindByTraceName(ctx context.Context, projectId uuid.
 		FROM ai_traces
 		WHERE project_id = :project_id AND trace_name = :trace_name AND recorded_at >= :from AND recorded_at <= :to
 		ORDER BY %s %s LIMIT :limit OFFSET :offset`, orderBy, sortDir),
-		lit.P{"project_id": projectId, "trace_name": traceName, "from": NewSQLiteTime(fromDate), "to": NewSQLiteTime(toDate), "limit": pageSize, "offset": offset})
+		lit.P{"project_id": projectId, "trace_name": traceName, "from": fromDate.UTC(), "to": toDate.UTC(), "limit": pageSize, "offset": offset})
 	if err != nil {
 		return nil, 0, err
 	}
@@ -336,7 +360,7 @@ func (r *aiTraceRepository) GetTraceNameStats(ctx context.Context, projectId uui
 		durationMinutes = 1
 	}
 
-	params := lit.P{"project_id": projectId, "trace_name": traceName, "from": NewSQLiteTime(start), "to": NewSQLiteTime(end)}
+	params := lit.P{"project_id": projectId, "trace_name": traceName, "from": start.UTC(), "to": end.UTC()}
 
 	row, err := lit.SelectSingleNamed[aiTraceDetailStatsRow](db.TelemetryDB,
 		`SELECT COUNT(*) AS count,
@@ -365,7 +389,7 @@ func (r *aiTraceRepository) GetTraceNameStats(ctx context.Context, projectId uui
 
 	// Compute median and p95 from raw durations
 	durationRows, err := lit.SelectNamed[aiTraceDurationRow](db.TelemetryDB,
-		`SELECT CAST(duration AS REAL) / 1000000.0 AS duration FROM ai_traces
+		`SELECT CAST(duration AS DOUBLE) / 1000000.0 AS duration FROM ai_traces
 		WHERE project_id = :project_id AND trace_name = :trace_name AND recorded_at >= :from AND recorded_at <= :to
 		ORDER BY duration ASC`, params)
 	if err != nil {
@@ -395,8 +419,8 @@ func (r *aiTraceRepository) FindById(ctx context.Context, projectId, traceId uui
 	if recordedAt != nil {
 		from, to := traceWindowBounds(*recordedAt)
 		query += ` AND recorded_at >= :from AND recorded_at <= :to`
-		params["from"] = NewSQLiteTime(from)
-		params["to"] = NewSQLiteTime(to)
+		params["from"] = from.UTC()
+		params["to"] = to.UTC()
 	}
 	query += ` LIMIT 1`
 
@@ -432,8 +456,8 @@ func (r *aiTraceRepository) FindByDistributedTraceId(ctx context.Context, distri
 	if recordedAt != nil {
 		from, to := distributedTraceWindowBounds(*recordedAt)
 		query += ` AND recorded_at >= :from AND recorded_at <= :to`
-		params["from"] = NewSQLiteTime(from)
-		params["to"] = NewSQLiteTime(to)
+		params["from"] = from.UTC()
+		params["to"] = to.UTC()
 	}
 	query += ` ORDER BY recorded_at ASC`
 

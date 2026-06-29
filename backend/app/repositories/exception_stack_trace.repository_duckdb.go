@@ -1,15 +1,17 @@
-//go:build !pgch && !duckdb
+//go:build duckdb && !pgch
 
 package repositories
 
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/duckdb/duckdb-go/v2"
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/app/db"
@@ -38,19 +40,27 @@ func (exceptionRowNaming) GetTableNameFromStructName(string) string {
 	return "exception_stack_traces"
 }
 
+// In DuckDB the aggregated timestamp/count columns come back as native
+// TIMESTAMP/BIGINT values, so these fields scan via SQLiteTime / sql.NullTime
+// rather than the raw strings the SQLite driver returns.
 type exceptionGroupRow struct {
-	ExceptionHash string `lit:"exception_hash"`
-	StackTrace    string `lit:"stack_trace"`
-	LastSeen      string `lit:"last_seen"`
-	FirstSeen     string `lit:"first_seen"`
-	Count         uint64 `lit:"count"`
-	MaxArchivedAt *string `lit:"max_archived_at"`
+	ExceptionHash string       `lit:"exception_hash"`
+	StackTrace    string       `lit:"stack_trace"`
+	LastSeen      SQLiteTime   `lit:"last_seen"`
+	FirstSeen     SQLiteTime   `lit:"first_seen"`
+	Count         uint64       `lit:"count"`
+	MaxArchivedAt sql.NullTime `lit:"max_archived_at"`
 }
 
 type exceptionTrendRow struct {
-	Hash      string `lit:"exception_hash"`
-	Hour      string `lit:"hour"`
-	Count     uint64 `lit:"count"`
+	Hash  string     `lit:"exception_hash"`
+	Hour  SQLiteTime `lit:"hour"`
+	Count uint64     `lit:"count"`
+}
+
+type exceptionBucketRow struct {
+	Bucket SQLiteTime `lit:"bucket"`
+	Value  float64    `lit:"agg_value"`
 }
 
 func init() {
@@ -58,29 +68,8 @@ func init() {
 		lit.RegisterModelWithNaming[exceptionRow](driver, exceptionRowNaming{})
 		lit.RegisterModel[exceptionGroupRow](driver)
 		lit.RegisterModel[exceptionTrendRow](driver)
+		lit.RegisterModel[exceptionBucketRow](driver)
 	})
-}
-
-func exceptionToRow(est models.ExceptionStackTrace) exceptionRow {
-	traceType := est.TraceType
-	if traceType == "" {
-		traceType = "endpoint"
-	}
-	return exceptionRow{
-		Id:                 est.Id,
-		ProjectId:          est.ProjectId,
-		TraceId:            est.TraceId,
-		TraceType:          traceType,
-		ExceptionHash:      est.ExceptionHash,
-		StackTrace:         est.StackTrace,
-		RecordedAt:         NewSQLiteTime(est.RecordedAt),
-		Attributes:         NewSQLiteJSONMap(est.Attributes),
-		AppVersion:         est.AppVersion,
-		ServerName:         est.ServerName,
-		IsMessage:          est.IsMessage,
-		DistributedTraceId: est.DistributedTraceId,
-		SessionId:          est.SessionId,
-	}
 }
 
 func (r *exceptionRow) toModel() models.ExceptionStackTrace {
@@ -104,6 +93,14 @@ func (r *exceptionRow) toModel() models.ExceptionStackTrace {
 	return est
 }
 
+func exceptionBucketsToPoints(rows []*exceptionBucketRow) []models.TimeSeriesPoint {
+	points := make([]models.TimeSeriesPoint, 0, len(rows))
+	for _, row := range rows {
+		points = append(points, models.TimeSeriesPoint{Timestamp: row.Bucket.Time, Value: row.Value})
+	}
+	return points
+}
+
 type exceptionStackTraceRepository struct{}
 
 func (e *exceptionStackTraceRepository) InsertAsync(ctx context.Context, lines []models.ExceptionStackTrace) error {
@@ -111,26 +108,81 @@ func (e *exceptionStackTraceRepository) InsertAsync(ctx context.Context, lines [
 		return nil
 	}
 
-	tx, err := db.TelemetryDB.BeginTx(ctx, nil)
+	conn, err := db.DuckDBConnector.Connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer conn.Close()
+
+	appender, err := duckdb.NewAppenderFromConn(conn, "", "exception_stack_traces")
+	if err != nil {
+		return err
+	}
 
 	for _, est := range lines {
-		row := exceptionToRow(est)
-		if err := lit.InsertExistingUuid(tx, &row); err != nil {
+		traceType := est.TraceType
+		if traceType == "" {
+			traceType = "endpoint"
+		}
+
+		attributesJSON := "{}"
+		if len(est.Attributes) > 0 {
+			b, err := json.Marshal(est.Attributes)
+			if err != nil {
+				appender.Close()
+				return err
+			}
+			attributesJSON = string(b)
+		}
+
+		var traceId *string
+		if est.TraceId != nil {
+			v := est.TraceId.String()
+			traceId = &v
+		}
+		var distributedTraceId *string
+		if est.DistributedTraceId != nil {
+			v := est.DistributedTraceId.String()
+			distributedTraceId = &v
+		}
+		var sessionId *string
+		if est.SessionId != nil {
+			v := est.SessionId.String()
+			sessionId = &v
+		}
+
+		isMessage := int64(0)
+		if est.IsMessage {
+			isMessage = 1
+		}
+
+		if err := appender.AppendRow(
+			est.Id.String(),
+			est.ProjectId.String(),
+			nullableString(traceId),
+			traceType,
+			est.ExceptionHash,
+			est.StackTrace,
+			est.RecordedAt.UTC(),
+			attributesJSON,
+			est.AppVersion,
+			est.ServerName,
+			isMessage,
+			nullableString(distributedTraceId),
+			nullableString(sessionId),
+		); err != nil {
+			appender.Close()
 			return err
 		}
 	}
 
-	return tx.Commit()
+	return appender.Close()
 }
 
 func (e *exceptionStackTraceRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {
 	result, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
 		"SELECT COUNT(*) AS count FROM exception_stack_traces WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to",
-		lit.P{"project_id": projectId, "from": NewSQLiteTime(start), "to": NewSQLiteTime(end)})
+		lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()})
 	if err != nil {
 		return 0, err
 	}
@@ -154,7 +206,7 @@ func (e *exceptionStackTraceRepository) FindGrouped(ctx context.Context, project
 		orderBy = "count"
 	}
 
-	params := lit.P{"project_id": projectId, "from": NewSQLiteTime(fromDate), "to": NewSQLiteTime(toDate)}
+	params := lit.P{"project_id": projectId, "from": fromDate.UTC(), "to": toDate.UTC()}
 
 	whereClause := "e.project_id = :project_id AND e.recorded_at >= :from AND e.recorded_at <= :to"
 	if search != "" {
@@ -183,7 +235,7 @@ func (e *exceptionStackTraceRepository) FindGrouped(ctx context.Context, project
 		SELECT e.exception_hash, MAX(a.archived_at) as max_archived_at
 		FROM exception_stack_traces e ` + archiveSubquery + `
 		WHERE ` + whereClause + `
-		GROUP BY e.exception_hash` + havingClause + `)`
+		GROUP BY e.exception_hash` + havingClause + `) AS sub`
 
 	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB, countQuery, params)
 	if err != nil {
@@ -194,7 +246,7 @@ func (e *exceptionStackTraceRepository) FindGrouped(ctx context.Context, project
 		count = int64(countResult.Count)
 	}
 
-	fullQuery := `SELECT e.exception_hash, e.stack_trace, MAX(e.recorded_at) as last_seen, MIN(e.recorded_at) as first_seen, COUNT(*) as count, MAX(a.archived_at) as max_archived_at
+	fullQuery := `SELECT e.exception_hash, ANY_VALUE(e.stack_trace) as stack_trace, MAX(e.recorded_at) as last_seen, MIN(e.recorded_at) as first_seen, COUNT(*) as count, MAX(a.archived_at) as max_archived_at
 		FROM exception_stack_traces e ` + archiveSubquery + `
 		WHERE ` + whereClause + `
 		GROUP BY e.exception_hash` + havingClause + `
@@ -209,13 +261,11 @@ func (e *exceptionStackTraceRepository) FindGrouped(ctx context.Context, project
 
 	groups := make([]models.ExceptionGroup, 0, len(groupRows))
 	for _, g := range groupRows {
-		lastSeen, _ := time.Parse(time.RFC3339Nano, g.LastSeen)
-		firstSeen, _ := time.Parse(time.RFC3339Nano, g.FirstSeen)
 		groups = append(groups, models.ExceptionGroup{
 			ExceptionHash: g.ExceptionHash,
 			StackTrace:    g.StackTrace,
-			LastSeen:      lastSeen,
-			FirstSeen:     firstSeen,
+			LastSeen:      g.LastSeen.Time,
+			FirstSeen:     g.FirstSeen.Time,
 			Count:         g.Count,
 		})
 	}
@@ -228,7 +278,7 @@ func (e *exceptionStackTraceRepository) FindByHash(ctx context.Context, projectI
 	params := lit.P{"project_id": projectId, "exception_hash": exceptionHash}
 
 	groupRow, err := lit.SelectSingleNamed[exceptionGroupRow](db.TelemetryDB,
-		`SELECT exception_hash, stack_trace, MAX(recorded_at) as last_seen, MIN(recorded_at) as first_seen, COUNT(*) as count, NULL as max_archived_at
+		`SELECT exception_hash, ANY_VALUE(stack_trace) as stack_trace, MAX(recorded_at) as last_seen, MIN(recorded_at) as first_seen, COUNT(*) as count, NULL as max_archived_at
 		FROM exception_stack_traces WHERE project_id = :project_id AND exception_hash = :exception_hash
 		GROUP BY exception_hash`,
 		params)
@@ -242,13 +292,11 @@ func (e *exceptionStackTraceRepository) FindByHash(ctx context.Context, projectI
 		return nil, nil, 0, nil
 	}
 
-	lastSeen, _ := time.Parse(time.RFC3339Nano, groupRow.LastSeen)
-	firstSeen, _ := time.Parse(time.RFC3339Nano, groupRow.FirstSeen)
 	group := &models.ExceptionGroup{
 		ExceptionHash: groupRow.ExceptionHash,
 		StackTrace:    groupRow.StackTrace,
-		LastSeen:      lastSeen,
-		FirstSeen:     firstSeen,
+		LastSeen:      groupRow.LastSeen.Time,
+		FirstSeen:     groupRow.FirstSeen.Time,
 		Count:         groupRow.Count,
 	}
 
@@ -270,28 +318,28 @@ func (e *exceptionStackTraceRepository) FindByHash(ctx context.Context, projectI
 }
 
 func (e *exceptionStackTraceRepository) CountByHour(ctx context.Context, projectId uuid.UUID, start, end time.Time) ([]models.TimeSeriesPoint, error) {
-	results, err := lit.SelectNamed[timeSeriesResult](db.TelemetryDB,
-		`SELECT strftime('%Y-%m-%d %H:00:00', recorded_at) as bucket, CAST(COUNT(*) AS REAL) as agg_value
+	results, err := lit.SelectNamed[exceptionBucketRow](db.TelemetryDB,
+		`SELECT time_bucket(to_seconds(3600), recorded_at) as bucket, CAST(COUNT(*) AS DOUBLE) as agg_value
 		FROM exception_stack_traces WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
 		GROUP BY bucket ORDER BY bucket ASC`,
-		lit.P{"project_id": projectId, "from": NewSQLiteTime(start), "to": NewSQLiteTime(end)})
+		lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()})
 	if err != nil {
 		return nil, err
 	}
-	return timeSeriesResultsToPoints(results), nil
+	return exceptionBucketsToPoints(results), nil
 }
 
 func (e *exceptionStackTraceRepository) CountByInterval(ctx context.Context, projectId uuid.UUID, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
 	intervalSeconds := intervalMinutes * 60
-	results, err := lit.SelectNamed[timeSeriesResult](db.TelemetryDB,
-		fmt.Sprintf(`SELECT datetime((strftime('%%s', recorded_at) / %d) * %d, 'unixepoch') as bucket, CAST(COUNT(*) AS REAL) as agg_value
+	results, err := lit.SelectNamed[exceptionBucketRow](db.TelemetryDB,
+		fmt.Sprintf(`SELECT time_bucket(to_seconds(%d), recorded_at) as bucket, CAST(COUNT(*) AS DOUBLE) as agg_value
 		FROM exception_stack_traces WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
-		GROUP BY bucket ORDER BY bucket ASC`, intervalSeconds, intervalSeconds),
-		lit.P{"project_id": projectId, "from": NewSQLiteTime(start), "to": NewSQLiteTime(end)})
+		GROUP BY bucket ORDER BY bucket ASC`, intervalSeconds),
+		lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()})
 	if err != nil {
 		return nil, err
 	}
-	return timeSeriesResultsToPoints(results), nil
+	return exceptionBucketsToPoints(results), nil
 }
 
 func (e *exceptionStackTraceRepository) GetHourlyTrendForHashes(ctx context.Context, projectId uuid.UUID, hashes []string, start, end time.Time) (map[string][]models.ExceptionTrendPoint, error) {
@@ -299,7 +347,7 @@ func (e *exceptionStackTraceRepository) GetHourlyTrendForHashes(ctx context.Cont
 		return make(map[string][]models.ExceptionTrendPoint), nil
 	}
 
-	params := lit.P{"project_id": projectId, "from": NewSQLiteTime(start), "to": NewSQLiteTime(end)}
+	params := lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()}
 	placeholders := make([]string, len(hashes))
 	for i, h := range hashes {
 		key := fmt.Sprintf("hash_%d", i)
@@ -307,7 +355,7 @@ func (e *exceptionStackTraceRepository) GetHourlyTrendForHashes(ctx context.Cont
 		params[key] = h
 	}
 
-	query := `SELECT exception_hash, strftime('%Y-%m-%d %H:00:00', recorded_at) as hour, COUNT(*) as count
+	query := `SELECT exception_hash, time_bucket(to_seconds(3600), recorded_at) as hour, COUNT(*) as count
 		FROM exception_stack_traces
 		WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
 		AND exception_hash IN (` + strings.Join(placeholders, ",") + `)
@@ -320,9 +368,8 @@ func (e *exceptionStackTraceRepository) GetHourlyTrendForHashes(ctx context.Cont
 
 	result := make(map[string][]models.ExceptionTrendPoint)
 	for _, row := range trendRows {
-		ts, _ := time.Parse("2006-01-02 15:04:05", row.Hour)
 		result[row.Hash] = append(result[row.Hash], models.ExceptionTrendPoint{
-			Timestamp: ts,
+			Timestamp: row.Hour.Time,
 			Count:     row.Count,
 		})
 	}
@@ -335,10 +382,10 @@ func (e *exceptionStackTraceRepository) ArchiveByHashes(ctx context.Context, pro
 		return nil
 	}
 
-	now := NewSQLiteTime(time.Now().UTC())
+	now := time.Now().UTC()
 	for _, hash := range hashes {
 		query, args, err := lit.ParseNamedQuery(db.Driver,
-			"INSERT OR REPLACE INTO archived_exceptions (project_id, exception_hash, archived_at) VALUES (:project_id, :exception_hash, :archived_at)",
+			"INSERT INTO archived_exceptions (project_id, exception_hash, archived_at) VALUES (:project_id, :exception_hash, :archived_at) ON CONFLICT (project_id, exception_hash) DO UPDATE SET archived_at = excluded.archived_at",
 			lit.P{"project_id": projectId, "exception_hash": hash, "archived_at": now})
 		if err != nil {
 			return err
@@ -409,8 +456,8 @@ func (e *exceptionStackTraceRepository) FindAllByTraceId(ctx context.Context, pr
 	if recordedAt != nil {
 		from, to := traceWindowBounds(*recordedAt)
 		query += ` AND recorded_at >= :from AND recorded_at <= :to`
-		params["from"] = NewSQLiteTime(from)
-		params["to"] = NewSQLiteTime(to)
+		params["from"] = from.UTC()
+		params["to"] = to.UTC()
 	}
 	query += ` ORDER BY recorded_at ASC`
 
@@ -433,8 +480,8 @@ func (e *exceptionStackTraceRepository) FindById(ctx context.Context, projectId 
 	if recordedAt != nil {
 		from, to := traceWindowBounds(*recordedAt)
 		query += ` AND recorded_at >= :from AND recorded_at <= :to`
-		params["from"] = NewSQLiteTime(from)
-		params["to"] = NewSQLiteTime(to)
+		params["from"] = from.UTC()
+		params["to"] = to.UTC()
 	}
 	query += ` LIMIT 1`
 
@@ -466,8 +513,8 @@ func (e *exceptionStackTraceRepository) FindByDistributedTraceId(ctx context.Con
 	if recordedAt != nil {
 		from, to := distributedTraceWindowBounds(*recordedAt)
 		query += ` AND recorded_at >= :from AND recorded_at <= :to`
-		params["from"] = NewSQLiteTime(from)
-		params["to"] = NewSQLiteTime(to)
+		params["from"] = from.UTC()
+		params["to"] = to.UTC()
 	}
 	query += ` ORDER BY recorded_at ASC`
 

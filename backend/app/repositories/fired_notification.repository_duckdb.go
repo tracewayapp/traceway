@@ -1,4 +1,4 @@
-//go:build !pgch && !duckdb
+//go:build duckdb && !pgch
 
 package repositories
 
@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/duckdb/duckdb-go/v2"
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/app/db"
@@ -56,47 +57,39 @@ func init() {
 type firedNotificationRepository struct{}
 
 func (r *firedNotificationRepository) Insert(ctx context.Context, n FiredNotification) error {
-	row := firedNotificationRow{
-		ProjectId:   n.ProjectId,
-		RuleId:      n.RuleId,
-		RuleType:    n.RuleType,
-		RuleName:    n.RuleName,
-		ChannelType: n.ChannelType,
-		ChannelName: n.ChannelName,
-		Severity:    n.Severity,
-		Subject:     n.Subject,
-		Body:        n.Body,
-		Status:      n.Status,
-		ErrorMsg:    n.ErrorMsg,
-		Endpoint:    n.Endpoint,
-		URL:         n.URL,
-		FiredAt:     NewSQLiteTime(n.FiredAt),
-	}
-
-	query, args, err := lit.ParseNamedQuery(db.Driver,
-		`INSERT INTO fired_notifications (project_id, rule_id, rule_type, rule_name, channel_type, channel_name, severity, subject, body, status, error_message, endpoint, url, fired_at)
-		VALUES (:project_id, :rule_id, :rule_type, :rule_name, :channel_type, :channel_name, :severity, :subject, :body, :status, :error_message, :endpoint, :url, :fired_at)`,
-		lit.P{
-			"project_id":    row.ProjectId,
-			"rule_id":       row.RuleId,
-			"rule_type":     row.RuleType,
-			"rule_name":     row.RuleName,
-			"channel_type":  row.ChannelType,
-			"channel_name":  row.ChannelName,
-			"severity":      row.Severity,
-			"subject":       row.Subject,
-			"body":          row.Body,
-			"status":        row.Status,
-			"error_message": row.ErrorMsg,
-			"endpoint":      row.Endpoint,
-			"url":           row.URL,
-			"fired_at":      row.FiredAt,
-		})
+	conn, err := db.DuckDBConnector.Connect(ctx)
 	if err != nil {
 		return err
 	}
-	_, err = db.TelemetryDB.ExecContext(ctx, query, args...)
-	return err
+	defer conn.Close()
+
+	appender, err := duckdb.NewAppenderFromConn(conn, "", "fired_notifications")
+	if err != nil {
+		return err
+	}
+
+	// Column order matches the fired_notifications DDL: fired_at precedes url.
+	if err := appender.AppendRow(
+		n.ProjectId.String(),
+		int64(n.RuleId),
+		n.RuleType,
+		n.RuleName,
+		n.ChannelType,
+		n.ChannelName,
+		n.Severity,
+		n.Subject,
+		n.Body,
+		n.Status,
+		n.ErrorMsg,
+		n.Endpoint,
+		n.FiredAt.UTC(),
+		n.URL,
+	); err != nil {
+		appender.Close()
+		return err
+	}
+
+	return appender.Close()
 }
 
 func (r *firedNotificationRepository) FindByProject(ctx context.Context, projectId uuid.UUID, page int, pageSize int, search string, from *time.Time, to *time.Time) ([]*models.NotificationHistoryEntry, int64, error) {
@@ -110,11 +103,11 @@ func (r *firedNotificationRepository) FindByProject(ctx context.Context, project
 	}
 	if from != nil {
 		where += " AND fired_at >= ?"
-		args = append(args, from.UTC().Format(time.RFC3339Nano))
+		args = append(args, from.UTC())
 	}
 	if to != nil {
 		where += " AND fired_at <= ?"
-		args = append(args, to.UTC().Format(time.RFC3339Nano))
+		args = append(args, to.UTC())
 	}
 
 	var total int64

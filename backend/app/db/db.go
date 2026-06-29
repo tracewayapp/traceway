@@ -64,6 +64,7 @@ func GetDB() *sql.DB {
 }
 
 const TransactionContextKey = "dbTx"
+
 func GetTx(ctx context.Context) *sql.Tx {
 	if tx, ok := ctx.Value(TransactionContextKey).(*sql.Tx); ok {
 		return tx

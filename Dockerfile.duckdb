@@ -1,0 +1,75 @@
+# ==============================================================================
+# Traceway DuckDB Docker Image
+# Single binary serving API and Frontend with an embedded SQLite main DB and a
+# DuckDB telemetry DB. No external databases required. Optional S3 for blobs.
+#
+# Unlike Dockerfile.sqlite (pure Go, Alpine, CGO_ENABLED=0), DuckDB requires
+# CGO and links prebuilt glibc static libraries, so this image builds and runs
+# on Debian (glibc), not Alpine (musl).
+# ==============================================================================
+
+# ==============================================================================
+# Stage 1: Build Frontend
+# ==============================================================================
+FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend-builder
+
+WORKDIR /app/frontend
+
+COPY frontend/package.json frontend/package-lock.json ./
+
+RUN npm ci
+
+COPY frontend/ ./
+
+ENV CLOUD_MODE=false
+RUN npm run build
+
+# ==============================================================================
+# Stage 2: Build Backend with embedded frontend (duckdb tag = DuckDB telemetry)
+# Built natively (no cross-compile) because CGO cross-compilation against the
+# prebuilt DuckDB libraries is impractical; the benchmark SUT builds on-host.
+# ==============================================================================
+FROM golang:1.25-bookworm AS backend-builder
+
+WORKDIR /app/backend
+
+RUN apt-get update && apt-get install -y --no-install-recommends git build-essential && rm -rf /var/lib/apt/lists/*
+
+COPY backend/ ./
+
+COPY --from=frontend-builder /app/frontend/build ./static/frontend/
+
+RUN go mod edit -dropreplace=go.tracewayapp.com -dropreplace=go.tracewayapp.com/tracewaygin
+RUN go mod tidy
+RUN go mod download
+
+RUN CGO_ENABLED=1 go build -tags duckdb -ldflags="-s -w" -o /traceway ./cmd/traceway
+
+# ==============================================================================
+# Stage 3: Runtime image (Debian slim for glibc + libstdc++)
+# ==============================================================================
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata wget libstdc++6 && rm -rf /var/lib/apt/lists/*
+
+COPY --from=backend-builder /traceway /usr/local/bin/traceway
+
+RUN mkdir -p /data && chmod 755 /data
+
+WORKDIR /app
+
+# DB_TYPE=sqlite selects the embedded codepath; in a duckdb build that pairs a
+# SQLite main DB (SQLITE_PATH) with a DuckDB telemetry DB derived alongside it
+# (<path>_telemetry.duckdb). Both, plus local blob storage, live under /data.
+ENV GIN_MODE=release \
+    DB_TYPE=sqlite \
+    SQLITE_PATH=/data/traceway.db \
+    STORAGE_TYPE=local \
+    STORAGE_PATH=/data/storage
+
+EXPOSE 80 8082
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget -qO- http://localhost/health || exit 1
+
+ENTRYPOINT ["/usr/local/bin/traceway"]

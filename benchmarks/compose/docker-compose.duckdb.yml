@@ -1,0 +1,24 @@
+services:
+  traceway:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.duckdb
+    ports:
+      - "${BENCH_PORT:-8087}:80"
+    environment:
+      JWT_SECRET: "bench-jwt-secret-not-for-production-use-only-32chars+"
+      SQLITE_RETENTION_DAYS: "0"
+      SESSION_RECORDING_RETENTION_DAYS: "0"
+      GIN_MODE: "release"
+    volumes:
+      - traceway-bench-duckdb-data:/data
+    restart: on-failure:3
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+      retries: 20
+
+volumes:
+  traceway-bench-duckdb-data:

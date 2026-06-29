@@ -24,8 +24,8 @@ SUT_IP="$1"
 MODE="$2"
 
 case "${MODE}" in
-    sqlite|pgch|managed-ch) ;;
-    *) echo "mode must be sqlite, pgch, or managed-ch, got: ${MODE}" >&2; exit 2 ;;
+    sqlite|duckdb|pgch|managed-ch) ;;
+    *) echo "mode must be sqlite, duckdb, pgch, or managed-ch, got: ${MODE}" >&2; exit 2 ;;
 esac
 
 if [[ "${MODE}" == "managed-ch" ]]; then
@@ -58,6 +58,7 @@ bench_rsync \
     --exclude 'benchmarks/results' \
     --exclude 'traceway.db*' \
     --exclude 'traceway_telemetry.db*' \
+    --exclude 'traceway_telemetry.duckdb*' \
     --exclude 'backend/storage' \
     "${REPO_ROOT}/" "root@${SUT_IP}:/opt/traceway/"
 

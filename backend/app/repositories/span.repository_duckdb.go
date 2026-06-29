@@ -1,11 +1,13 @@
-//go:build !pgch && !duckdb
+//go:build duckdb && !pgch
 
 package repositories
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
+	"github.com/duckdb/duckdb-go/v2"
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/app/db"
@@ -28,20 +30,6 @@ func init() {
 	models.ExtensionModelRegistrations = append(models.ExtensionModelRegistrations, func(driver lit.Driver) {
 		lit.RegisterModel[span](driver)
 	})
-}
-
-func spanToRow(s models.Span) span {
-	return span{
-		Id:           s.Id,
-		TraceId:      s.TraceId,
-		ProjectId:    s.ProjectId,
-		Name:         s.Name,
-		StartTime:    NewSQLiteTime(s.StartTime),
-		Duration:     int64(s.Duration),
-		RecordedAt:   NewSQLiteTime(s.RecordedAt),
-		ParentSpanId: s.ParentSpanId,
-		Attributes:   NewSQLiteJSONMap(s.Attributes),
-	}
 }
 
 func (r *span) toModel() models.Span {
@@ -68,20 +56,51 @@ func (r *spanRepository) InsertAsync(ctx context.Context, spans []models.Span) e
 		return nil
 	}
 
-	tx, err := db.TelemetryDB.BeginTx(ctx, nil)
+	conn, err := db.DuckDBConnector.Connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer conn.Close()
+
+	appender, err := duckdb.NewAppenderFromConn(conn, "", "spans")
+	if err != nil {
+		return err
+	}
 
 	for _, s := range spans {
-		row := spanToRow(s)
-		if err := lit.InsertExistingUuid(tx, &row); err != nil {
+		attributesJSON := "{}"
+		if len(s.Attributes) > 0 {
+			b, err := json.Marshal(s.Attributes)
+			if err != nil {
+				appender.Close()
+				return err
+			}
+			attributesJSON = string(b)
+		}
+
+		var parentSpanId *string
+		if s.ParentSpanId != nil {
+			v := s.ParentSpanId.String()
+			parentSpanId = &v
+		}
+
+		if err := appender.AppendRow(
+			s.Id.String(),
+			s.TraceId.String(),
+			s.ProjectId.String(),
+			s.Name,
+			s.StartTime.UTC(),
+			int64(s.Duration),
+			s.RecordedAt.UTC(),
+			nullableString(parentSpanId),
+			attributesJSON,
+		); err != nil {
+			appender.Close()
 			return err
 		}
 	}
 
-	return tx.Commit()
+	return appender.Close()
 }
 
 func (r *spanRepository) FindByTraceId(ctx context.Context, projectId, traceId uuid.UUID, recordedAt *time.Time) ([]models.Span, error) {
@@ -92,8 +111,8 @@ func (r *spanRepository) FindByTraceId(ctx context.Context, projectId, traceId u
 	if recordedAt != nil {
 		from, to := traceWindowBounds(*recordedAt)
 		query += ` AND recorded_at >= :from AND recorded_at <= :to`
-		params["from"] = NewSQLiteTime(from)
-		params["to"] = NewSQLiteTime(to)
+		params["from"] = from.UTC()
+		params["to"] = to.UTC()
 	}
 	query += ` ORDER BY start_time ASC`
 

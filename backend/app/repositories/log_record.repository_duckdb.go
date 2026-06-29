@@ -1,13 +1,15 @@
-//go:build !pgch && !duckdb
+//go:build duckdb && !pgch
 
 package repositories
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/duckdb/duckdb-go/v2"
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
 
@@ -66,28 +68,6 @@ func init() {
 	})
 }
 
-func logRecordToRow(lr models.LogRecord) logRecord {
-	return logRecord{
-		Id:                 lr.Id,
-		ProjectId:          lr.ProjectId,
-		Timestamp:          NewSQLiteTime(lr.Timestamp),
-		TraceId:            lr.TraceId,
-		SpanId:             lr.SpanId,
-		TraceFlags:         lr.TraceFlags,
-		SeverityText:       lr.SeverityText,
-		SeverityNumber:     lr.SeverityNumber,
-		ServiceName:        lr.ServiceName,
-		Body:               lr.Body,
-		ResourceSchemaUrl:  lr.ResourceSchemaUrl,
-		ResourceAttributes: NewSQLiteJSONMap(lr.ResourceAttributes),
-		ScopeSchemaUrl:     lr.ScopeSchemaUrl,
-		ScopeName:          lr.ScopeName,
-		ScopeVersion:       lr.ScopeVersion,
-		ScopeAttributes:    NewSQLiteJSONMap(lr.ScopeAttributes),
-		LogAttributes:      NewSQLiteJSONMap(lr.LogAttributes),
-	}
-}
-
 func (r *logRecord) toModel() models.LogRecord {
 	lr := models.LogRecord{
 		Id:                r.Id,
@@ -124,19 +104,59 @@ func (r *logRecordRepository) InsertAsync(ctx context.Context, records []models.
 		return nil
 	}
 
-	tx, err := db.TelemetryDB.BeginTx(ctx, nil)
+	conn, err := db.DuckDBConnector.Connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer conn.Close()
+
+	appender, err := duckdb.NewAppenderFromConn(conn, "", "log_records")
+	if err != nil {
+		return err
+	}
 
 	for _, lr := range records {
-		row := logRecordToRow(lr)
-		if err := lit.InsertExistingUuid(tx, &row); err != nil {
+		resourceJSON, err := logRecordAttrJSON(lr.ResourceAttributes)
+		if err != nil {
+			appender.Close()
+			return err
+		}
+		scopeJSON, err := logRecordAttrJSON(lr.ScopeAttributes)
+		if err != nil {
+			appender.Close()
+			return err
+		}
+		logJSON, err := logRecordAttrJSON(lr.LogAttributes)
+		if err != nil {
+			appender.Close()
+			return err
+		}
+
+		if err := appender.AppendRow(
+			lr.Id.String(),
+			lr.ProjectId.String(),
+			lr.Timestamp.UTC(),
+			lr.TraceId,
+			lr.SpanId,
+			int64(lr.TraceFlags),
+			lr.SeverityText,
+			int64(lr.SeverityNumber),
+			lr.ServiceName,
+			lr.Body,
+			lr.ResourceSchemaUrl,
+			resourceJSON,
+			lr.ScopeSchemaUrl,
+			lr.ScopeName,
+			lr.ScopeVersion,
+			scopeJSON,
+			logJSON,
+		); err != nil {
+			appender.Close()
 			return err
 		}
 	}
-	return tx.Commit()
+
+	return appender.Close()
 }
 
 func (r *logRecordRepository) Search(ctx context.Context, params LogSearchParams) ([]models.LogRecord, int64, error) {
@@ -220,8 +240,8 @@ func (r *logRecordRepository) buildWhere(params LogSearchParams) (string, lit.P)
 	clauses := []string{"project_id = :project_id", "timestamp >= :from", "timestamp <= :to"}
 	args := lit.P{
 		"project_id": params.ProjectId,
-		"from":       NewSQLiteTime(params.FromDate),
-		"to":         NewSQLiteTime(params.ToDate),
+		"from":       params.FromDate.UTC(),
+		"to":         params.ToDate.UTC(),
 	}
 
 	if params.MinSeverity > 0 {
@@ -253,7 +273,7 @@ func (r *logRecordRepository) buildWhere(params LogSearchParams) (string, lit.P)
 		keyPH := fmt.Sprintf("attr_k%d", i)
 		valPH := fmt.Sprintf("attr_v%d", i)
 		clauses = append(clauses,
-			fmt.Sprintf("json_extract(%s, '$.\"' || :%s || '\"') = :%s", col, keyPH, valPH))
+			fmt.Sprintf("json_extract_string(%s, '$.\"' || :%s || '\"') = :%s", col, keyPH, valPH))
 		args[keyPH] = f.Key
 		args[valPH] = f.Value
 	}
@@ -300,6 +320,17 @@ func (r *logRecordRepository) resolveOrderBy(orderBy string) string {
 		return col
 	}
 	return "timestamp"
+}
+
+func logRecordAttrJSON(m map[string]string) (string, error) {
+	if len(m) == 0 {
+		return "{}", nil
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 var LogRecordRepository = logRecordRepository{}

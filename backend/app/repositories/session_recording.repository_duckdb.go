@@ -1,12 +1,12 @@
-//go:build !pgch && !duckdb
+//go:build duckdb && !pgch
 
 package repositories
 
 import (
 	"context"
 	"database/sql"
-	"errors"
 
+	"github.com/duckdb/duckdb-go/v2"
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/app/db"
@@ -36,28 +36,39 @@ func (r *sessionRecordingRepository) InsertAsync(ctx context.Context, recordings
 		return nil
 	}
 
-	tx, err := db.TelemetryDB.BeginTx(ctx, nil)
+	conn, err := db.DuckDBConnector.Connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer conn.Close()
+
+	appender, err := duckdb.NewAppenderFromConn(conn, "", "session_recordings")
+	if err != nil {
+		return err
+	}
 
 	for _, rec := range recordings {
-		row := sessionRecording{
-			Id:           rec.Id,
-			ProjectId:    rec.ProjectId,
-			ExceptionId:  rec.ExceptionId,
-			SessionId:    rec.SessionId,
-			SegmentIndex: rec.SegmentIndex,
-			FilePath:     rec.FilePath,
-			RecordedAt:   NewSQLiteTime(rec.RecordedAt),
+		var sessionId *string
+		if rec.SessionId != nil {
+			s := rec.SessionId.String()
+			sessionId = &s
 		}
-		if err := lit.InsertExistingUuid(tx, &row); err != nil {
+		// DDL column order: id, project_id, exception_id, file_path, recorded_at, session_id, segment_index
+		if err := appender.AppendRow(
+			rec.Id.String(),
+			rec.ProjectId.String(),
+			rec.ExceptionId.String(),
+			rec.FilePath,
+			rec.RecordedAt.UTC(),
+			nullableString(sessionId),
+			int64(rec.SegmentIndex),
+		); err != nil {
+			appender.Close()
 			return err
 		}
 	}
 
-	return tx.Commit()
+	return appender.Close()
 }
 
 func (r *sessionRecordingRepository) FindByExceptionId(ctx context.Context, projectId uuid.UUID, exceptionId uuid.UUID) (string, error) {
@@ -96,8 +107,5 @@ func (r *sessionRecordingRepository) FindBySessionId(ctx context.Context, projec
 	}
 	return out, nil
 }
-
-// Preserve original error contract: returns sql.ErrNoRows when not found
-var _ = errors.Is
 
 var SessionRecordingRepository = sessionRecordingRepository{}

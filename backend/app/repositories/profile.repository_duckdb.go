@@ -1,14 +1,16 @@
-//go:build !pgch && !duckdb
+//go:build duckdb && !pgch
 
 package repositories
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"sort"
 	"time"
 
+	"github.com/duckdb/duckdb-go/v2"
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/app/db"
@@ -53,7 +55,8 @@ func init() {
 
 type profileRepository struct{}
 
-func boolToInt(b bool) int64 {
+// profileBoolToInt avoids colliding with boolToInt helpers defined in other duckdb repos.
+func profileBoolToInt(b bool) int64 {
 	if b {
 		return 1
 	}
@@ -64,123 +67,149 @@ func (r *profileRepository) InsertStacksAsync(ctx context.Context, stacks []mode
 	if len(stacks) == 0 {
 		return nil
 	}
-	tx, err := db.TelemetryDB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
 
 	for _, s := range stacks {
-		stackJSON, err := json.Marshal(s.Stack)
-		if err != nil {
-			return err
+		stackJSON := "[]"
+		if len(s.Stack) > 0 {
+			b, err := json.Marshal(s.Stack)
+			if err != nil {
+				return err
+			}
+			stackJSON = string(b)
 		}
 		query, args, err := lit.ParseNamedQuery(db.Driver,
-			"INSERT OR REPLACE INTO profiling_stacks (project_id, service_name, stack_hash, stack, last_seen) VALUES (:project_id, :service_name, :stack_hash, :stack, :last_seen)",
+			"INSERT INTO profiling_stacks (project_id, service_name, stack_hash, stack, last_seen) VALUES (:project_id, :service_name, :stack_hash, :stack, :last_seen) ON CONFLICT (project_id, service_name, stack_hash) DO UPDATE SET last_seen = excluded.last_seen",
 			lit.P{
-				"project_id":   s.ProjectId,
+				"project_id":   s.ProjectId.String(),
 				"service_name": s.ServiceName,
 				"stack_hash":   int64(s.StackHash),
-				"stack":        string(stackJSON),
-				"last_seen":    NewSQLiteTime(s.LastSeen),
+				"stack":        stackJSON,
+				"last_seen":    s.LastSeen.UTC(),
 			})
 		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+		if _, err := db.TelemetryDB.ExecContext(ctx, query, args...); err != nil {
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (r *profileRepository) InsertSamplesAsync(ctx context.Context, samples []models.ProfileSample) error {
 	if len(samples) == 0 {
 		return nil
 	}
-	tx, err := db.TelemetryDB.BeginTx(ctx, nil)
+
+	conn, err := db.DuckDBConnector.Connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer conn.Close()
+
+	appender, err := duckdb.NewAppenderFromConn(conn, "", "profiling_samples")
+	if err != nil {
+		return err
+	}
 
 	for _, s := range samples {
-		labelsVal, _ := NewSQLiteJSONMap(s.Labels).Value()
-		query, args, err := lit.ParseNamedQuery(db.Driver,
-			"INSERT INTO profiling_samples (project_id, profile_id, service_name, type, unit, is_gauge, start_time, end_time, stack_hash, value, labels, server_name, app_version, trace_id, span_id) VALUES (:project_id, :profile_id, :service_name, :type, :unit, :is_gauge, :start_time, :end_time, :stack_hash, :value, :labels, :server_name, :app_version, :trace_id, :span_id)",
-			lit.P{
-				"project_id":   s.ProjectId,
-				"profile_id":   s.ProfileId,
-				"service_name": s.ServiceName,
-				"type":         s.Type,
-				"unit":         s.Unit,
-				"is_gauge":     boolToInt(s.IsGauge),
-				"start_time":   NewSQLiteTime(s.Start),
-				"end_time":     NewSQLiteTime(s.End),
-				"stack_hash":   int64(s.StackHash),
-				"value":        s.Value,
-				"labels":       labelsVal,
-				"server_name":  s.ServerName,
-				"app_version":  s.AppVersion,
-				"trace_id":     s.TraceId,
-				"span_id":      s.SpanId,
-			})
-		if err != nil {
-			return err
+		labelsJSON := "{}"
+		if len(s.Labels) > 0 {
+			b, err := json.Marshal(s.Labels)
+			if err != nil {
+				appender.Close()
+				return err
+			}
+			labelsJSON = string(b)
 		}
-		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+		if err := appender.AppendRow(
+			s.ProjectId.String(),
+			s.ProfileId.String(),
+			s.ServiceName,
+			s.Type,
+			s.Start.UTC(),
+			s.End.UTC(),
+			int64(s.StackHash),
+			s.Value,
+			labelsJSON,
+			s.ServerName,
+			s.AppVersion,
+			s.TraceId,
+			s.SpanId,
+			s.Unit,
+			profileBoolToInt(s.IsGauge),
+		); err != nil {
+			appender.Close()
 			return err
 		}
 	}
-	return tx.Commit()
+
+	return appender.Close()
 }
 
 func (r *profileRepository) InsertProfilesAsync(ctx context.Context, profiles []models.Profile) error {
 	if len(profiles) == 0 {
 		return nil
 	}
-	tx, err := db.TelemetryDB.BeginTx(ctx, nil)
+
+	conn, err := db.DuckDBConnector.Connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer conn.Close()
+
+	appender, err := duckdb.NewAppenderFromConn(conn, "", "profiles")
+	if err != nil {
+		return err
+	}
 
 	for _, p := range profiles {
-		attributesVal, _ := NewSQLiteJSONMap(p.Attributes).Value()
-		query, args, err := lit.ParseNamedQuery(db.Driver,
-			"INSERT INTO profiles (id, project_id, recorded_at, duration, service_name, profile_type, unit, is_gauge, sample_count, total_value, server_name, app_version, attributes, storage_key, trace_id, span_id, distributed_trace_id) VALUES (:id, :project_id, :recorded_at, :duration, :service_name, :profile_type, :unit, :is_gauge, :sample_count, :total_value, :server_name, :app_version, :attributes, :storage_key, :trace_id, :span_id, :distributed_trace_id)",
-			lit.P{
-				"id":                   p.Id,
-				"project_id":           p.ProjectId,
-				"recorded_at":          NewSQLiteTime(p.RecordedAt),
-				"duration":             int64(p.Duration),
-				"service_name":         p.ServiceName,
-				"profile_type":         p.ProfileType,
-				"unit":                 p.Unit,
-				"is_gauge":             boolToInt(p.IsGauge),
-				"sample_count":         int64(p.SampleCount),
-				"total_value":          p.TotalValue,
-				"server_name":          p.ServerName,
-				"app_version":          p.AppVersion,
-				"attributes":           attributesVal,
-				"storage_key":          p.StorageKey,
-				"trace_id":             p.TraceId,
-				"span_id":              p.SpanId,
-				"distributed_trace_id": p.DistributedTraceId,
-			})
-		if err != nil {
-			return err
+		attributesJSON := "{}"
+		if len(p.Attributes) > 0 {
+			b, err := json.Marshal(p.Attributes)
+			if err != nil {
+				appender.Close()
+				return err
+			}
+			attributesJSON = string(b)
 		}
-		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+
+		var distributedTraceId *string
+		if p.DistributedTraceId != nil {
+			v := p.DistributedTraceId.String()
+			distributedTraceId = &v
+		}
+
+		if err := appender.AppendRow(
+			p.Id.String(),
+			p.ProjectId.String(),
+			p.RecordedAt.UTC(),
+			int64(p.Duration),
+			p.ServiceName,
+			p.ProfileType,
+			int64(p.SampleCount),
+			p.TotalValue,
+			p.ServerName,
+			p.AppVersion,
+			attributesJSON,
+			p.StorageKey,
+			p.TraceId,
+			p.SpanId,
+			nullableString(distributedTraceId),
+			p.Unit,
+			profileBoolToInt(p.IsGauge),
+		); err != nil {
+			appender.Close()
 			return err
 		}
 	}
-	return tx.Commit()
+
+	return appender.Close()
 }
 
 func (r *profileRepository) FindGroupedByService(ctx context.Context, projectId uuid.UUID, from, to time.Time, page, pageSize int, orderBy, sortDirection, search string) ([]models.ProfileGroup, int64, error) {
 	searchClause := ""
-	countParams := lit.P{"project_id": projectId, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to)}
+	countParams := lit.P{"project_id": projectId, "from": from.UTC(), "to": to.UTC()}
 	if search != "" {
 		searchClause = " AND instr(lower(service_name), lower(:search)) > 0"
 		countParams["search"] = search
@@ -190,7 +219,7 @@ func (r *profileRepository) FindGroupedByService(ctx context.Context, projectId 
 		`SELECT COUNT(*) AS count FROM (
 			SELECT 1 FROM profiles
 			WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to`+searchClause+`
-			GROUP BY service_name, profile_type)`, countParams)
+			GROUP BY service_name, profile_type) AS sub`, countParams)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -215,7 +244,7 @@ func (r *profileRepository) FindGroupedByService(ctx context.Context, projectId 
 	}
 
 	offset := (page - 1) * pageSize
-	pageParams := lit.P{"project_id": projectId, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to), "limit": pageSize, "offset": offset}
+	pageParams := lit.P{"project_id": projectId, "from": from.UTC(), "to": to.UTC(), "limit": pageSize, "offset": offset}
 	if search != "" {
 		pageParams["search"] = search
 	}
@@ -270,12 +299,12 @@ func (r *profileRepository) fillSparklines(ctx context.Context, projectId uuid.U
 
 	query, args, err := lit.ParseNamedQuery(db.Driver,
 		fmt.Sprintf(`SELECT service_name, profile_type,
-			CAST((strftime('%%s', recorded_at) / %d) * %d AS INTEGER) AS bucket,
-			CAST(SUM(total_value) AS REAL) AS v
+			(CAST(epoch(recorded_at) AS BIGINT) // %d) * %d AS bucket,
+			CAST(SUM(total_value) AS DOUBLE) AS v
 		FROM profiles
 		WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
 		GROUP BY service_name, profile_type, bucket`, bucketSecs, bucketSecs),
-		lit.P{"project_id": projectId, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to)})
+		lit.P{"project_id": projectId, "from": from.UTC(), "to": to.UTC()})
 	if err != nil {
 		return err
 	}
@@ -330,7 +359,7 @@ func (r *profileRepository) DiscoverTypes(ctx context.Context, projectId uuid.UU
 			AND start_time >= :from AND start_time <= :to
 		GROUP BY type
 		ORDER BY type ASC`,
-		lit.P{"project_id": projectId, "service": service, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to)})
+		lit.P{"project_id": projectId, "service": service, "from": from.UTC(), "to": to.UTC()})
 	if err != nil {
 		return nil, err
 	}
@@ -352,42 +381,51 @@ func (r *profileRepository) GetSeries(ctx context.Context, projectId uuid.UUID, 
 		agg = "AVG"
 	}
 
-	params := lit.P{"project_id": projectId, "type": profileType, "service": service, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to)}
-	filter := sqliteLabelFilter("", labelFilters, params)
-	cohort := sqliteCohortFilter("", appVersion, serverName, params)
+	params := lit.P{"project_id": projectId, "type": profileType, "service": service, "from": from.UTC(), "to": to.UTC()}
+	filter := duckdbLabelFilter("", labelFilters, params)
+	cohort := duckdbCohortFilter("", appVersion, serverName, params)
 
-	results, err := lit.SelectNamed[timeSeriesResult](db.TelemetryDB,
-		fmt.Sprintf(`SELECT datetime((strftime('%%s', start_time) / %d) * %d, 'unixepoch') AS bucket,
-			CAST(%s(value) AS REAL) AS agg_value
+	query, args, err := lit.ParseNamedQuery(db.Driver,
+		fmt.Sprintf(`SELECT time_bucket(to_seconds(%d), start_time) AS bucket,
+			CAST(%s(value) AS DOUBLE) AS agg_value
 		FROM profiling_samples
 		WHERE project_id = :project_id AND type = :type AND service_name = :service
 			AND start_time >= :from AND start_time <= :to`+filter+cohort+`
-		GROUP BY bucket ORDER BY bucket ASC`, secs, secs, agg),
+		GROUP BY bucket ORDER BY bucket ASC`, secs, agg),
 		params)
 	if err != nil {
 		return nil, err
 	}
-	points := timeSeriesResultsToPoints(results)
+	sqlRows, err := db.TelemetryDB.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	points, err := scanProfileSeriesPoints(sqlRows)
+	if err != nil {
+		return nil, err
+	}
 	normalizeSeriesPoints(points, normalize, isGauge, intervalMinutes)
 	return points, nil
 }
 
 func (r *profileRepository) GetFlameGraph(ctx context.Context, projectId uuid.UUID, service, profileType string, from, to time.Time, labelFilters map[string]string, isGauge bool, appVersion, serverName string) ([]models.ProfileStackValue, error) {
-	params := lit.P{"project_id": projectId, "type": profileType, "service": service, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to)}
-	bareFilter := sqliteLabelFilter("", labelFilters, params)
-	aliasFilter := sqliteLabelFilter("s.", labelFilters, params)
-	bareCohort := sqliteCohortFilter("", appVersion, serverName, params)
-	aliasCohort := sqliteCohortFilter("s.", appVersion, serverName, params)
+	params := lit.P{"project_id": projectId, "type": profileType, "service": service, "from": from.UTC(), "to": to.UTC()}
+	bareFilter := duckdbLabelFilter("", labelFilters, params)
+	aliasFilter := duckdbLabelFilter("s.", labelFilters, params)
+	bareCohort := duckdbCohortFilter("", appVersion, serverName, params)
+	aliasCohort := duckdbCohortFilter("s.", appVersion, serverName, params)
 
 	var query string
 	if isGauge {
+		// arg_max picks the profile_id of the latest sample per server (one even on ties),
+		// matching SQLite's bare-column MIN/MAX semantics under DuckDB's strict GROUP BY.
 		query = `WITH latest AS (
-			SELECT profile_id AS pid, MAX(start_time) AS mx
+			SELECT arg_max(profile_id, start_time) AS pid
 			FROM profiling_samples
 			WHERE project_id = :project_id AND type = :type AND service_name = :service
 				AND start_time >= :from AND start_time <= :to` + bareFilter + bareCohort + `
 			GROUP BY server_name)
-		SELECT st.stack AS stack_json, CAST(SUM(s.value) AS INTEGER) AS v
+		SELECT st.stack AS stack_json, CAST(SUM(s.value) AS BIGINT) AS v
 		FROM profiling_samples s
 		JOIN latest l ON l.pid = s.profile_id
 		JOIN profiling_stacks st ON st.project_id = s.project_id AND st.service_name = s.service_name AND st.stack_hash = s.stack_hash
@@ -396,7 +434,7 @@ func (r *profileRepository) GetFlameGraph(ctx context.Context, projectId uuid.UU
 		GROUP BY s.stack_hash, st.stack
 		ORDER BY v DESC LIMIT 50000`
 	} else {
-		query = `SELECT st.stack AS stack_json, CAST(SUM(s.value) AS INTEGER) AS v
+		query = `SELECT st.stack AS stack_json, CAST(SUM(s.value) AS BIGINT) AS v
 		FROM profiling_samples s
 		JOIN profiling_stacks st ON st.project_id = s.project_id AND st.service_name = s.service_name AND st.stack_hash = s.stack_hash
 		WHERE s.project_id = :project_id AND s.type = :type AND s.service_name = :service
@@ -433,15 +471,15 @@ func (r *profileRepository) GetFlameGraph(ctx context.Context, projectId uuid.UU
 
 func (r *profileRepository) distinctLabelValues(ctx context.Context, projectId uuid.UUID, service, profileType, key string, from, to time.Time) ([]string, error) {
 	results, err := lit.SelectNamed[labelValueRow](db.TelemetryDB,
-		fmt.Sprintf(`SELECT DISTINCT json_extract(labels, '$."' || :key || '"') AS v
+		fmt.Sprintf(`SELECT DISTINCT json_extract_string(labels, '$."' || :key || '"') AS v
 		FROM profiling_samples
 		WHERE project_id = :project_id AND type = :type AND service_name = :service
 			AND start_time >= :from AND start_time <= :to
-			AND json_extract(labels, '$."' || :key || '"') IS NOT NULL
-			AND json_extract(labels, '$."' || :key || '"') != ''
+			AND json_extract_string(labels, '$."' || :key || '"') IS NOT NULL
+			AND json_extract_string(labels, '$."' || :key || '"') != ''
 		ORDER BY v ASC
 		LIMIT %d`, profiling.MaxLabelValuesPerKey),
-		lit.P{"project_id": projectId, "type": profileType, "service": service, "key": key, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to)})
+		lit.P{"project_id": projectId, "type": profileType, "service": service, "key": key, "from": from.UTC(), "to": to.UTC()})
 	if err != nil {
 		return nil, err
 	}
@@ -464,16 +502,16 @@ func (r *profileRepository) GetSeriesBreakdown(ctx context.Context, projectId uu
 		agg = "AVG"
 	}
 
-	params := lit.P{"project_id": projectId, "type": profileType, "service": service, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to), "limit": limit}
-	filter := sqliteLabelFilter("", labelFilters, params)
-	cohort := sqliteCohortFilter("", appVersion, serverName, params)
-	dimExpr, ok := sqliteDimExpr(dimension, params)
+	params := lit.P{"project_id": projectId, "type": profileType, "service": service, "from": from.UTC(), "to": to.UTC(), "limit": limit}
+	filter := duckdbLabelFilter("", labelFilters, params)
+	cohort := duckdbCohortFilter("", appVersion, serverName, params)
+	dimExpr, ok := duckdbDimExpr(dimension, params)
 	if !ok {
 		return nil, fmt.Errorf("unsupported breakdown dimension: %s", dimension)
 	}
 
 	topRows, err := lit.SelectNamed[profileDimValueRow](db.TelemetryDB,
-		fmt.Sprintf(`SELECT %s AS k, CAST(%s(value) AS REAL) AS tv
+		fmt.Sprintf(`SELECT %s AS k, CAST(%s(value) AS DOUBLE) AS tv
 		FROM profiling_samples
 		WHERE project_id = :project_id AND type = :type AND service_name = :service
 			AND start_time >= :from AND start_time <= :to`+filter+cohort+`
@@ -484,13 +522,13 @@ func (r *profileRepository) GetSeriesBreakdown(ctx context.Context, projectId uu
 		return nil, err
 	}
 
-	seriesQuery := fmt.Sprintf(`SELECT datetime((strftime('%%s', start_time) / %d) * %d, 'unixepoch') AS bucket,
-		CAST(%s(value) AS REAL) AS agg_value
+	seriesQuery := fmt.Sprintf(`SELECT time_bucket(to_seconds(%d), start_time) AS bucket,
+		CAST(%s(value) AS DOUBLE) AS agg_value
 	FROM profiling_samples
 	WHERE project_id = :project_id AND type = :type AND service_name = :service
 		AND start_time >= :from AND start_time <= :to`+filter+cohort+`
 		AND %s = :dimval
-	GROUP BY bucket ORDER BY bucket ASC`, secs, secs, agg, dimExpr)
+	GROUP BY bucket ORDER BY bucket ASC`, secs, agg, dimExpr)
 
 	groups := make([]models.ProfileSeriesGroup, 0, len(topRows))
 	for _, row := range topRows {
@@ -499,11 +537,18 @@ func (r *profileRepository) GetSeriesBreakdown(ctx context.Context, projectId uu
 		}
 		key := *row.Key
 		params["dimval"] = key
-		results, err := lit.SelectNamed[timeSeriesResult](db.TelemetryDB, seriesQuery, params)
+		parsed, args, err := lit.ParseNamedQuery(db.Driver, seriesQuery, params)
 		if err != nil {
 			return nil, err
 		}
-		points := timeSeriesResultsToPoints(results)
+		sqlRows, err := db.TelemetryDB.QueryContext(ctx, parsed, args...)
+		if err != nil {
+			return nil, err
+		}
+		points, err := scanProfileSeriesPoints(sqlRows)
+		if err != nil {
+			return nil, err
+		}
 		normalizeSeriesPoints(points, normalize, isGauge, intervalMinutes)
 		groups = append(groups, models.ProfileSeriesGroup{Key: key, Points: points})
 	}
@@ -529,7 +574,7 @@ func (r *profileRepository) distinctDimensionValues(ctx context.Context, project
 		WHERE project_id = :project_id AND service_name = :service AND type = :type
 			AND start_time >= :from AND start_time <= :to AND %s != ''
 		ORDER BY %s ASC LIMIT 100`, column, column, column),
-		lit.P{"project_id": projectId, "service": service, "type": profileType, "from": NewSQLiteTime(from), "to": NewSQLiteTime(to)})
+		lit.P{"project_id": projectId, "service": service, "type": profileType, "from": from.UTC(), "to": to.UTC()})
 	if err != nil {
 		return nil, err
 	}
@@ -540,7 +585,21 @@ func (r *profileRepository) distinctDimensionValues(ctx context.Context, project
 	return values, nil
 }
 
-func sqliteCohortFilter(qualifier, appVersion, serverName string, params lit.P) string {
+func scanProfileSeriesPoints(rows *sql.Rows) ([]models.TimeSeriesPoint, error) {
+	defer rows.Close()
+	points := make([]models.TimeSeriesPoint, 0)
+	for rows.Next() {
+		var bucket time.Time
+		var value float64
+		if err := rows.Scan(&bucket, &value); err != nil {
+			return nil, err
+		}
+		points = append(points, models.TimeSeriesPoint{Timestamp: bucket, Value: value})
+	}
+	return points, rows.Err()
+}
+
+func duckdbCohortFilter(qualifier, appVersion, serverName string, params lit.P) string {
 	clause := ""
 	if appVersion != "" {
 		clause += fmt.Sprintf(" AND %sapp_version = :app_version", qualifier)
@@ -553,7 +612,7 @@ func sqliteCohortFilter(qualifier, appVersion, serverName string, params lit.P) 
 	return clause
 }
 
-func sqliteDimExpr(dimension string, params lit.P) (string, bool) {
+func duckdbDimExpr(dimension string, params lit.P) (string, bool) {
 	switch dimension {
 	case "app_version":
 		return "app_version", true
@@ -565,10 +624,10 @@ func sqliteDimExpr(dimension string, params lit.P) (string, bool) {
 		return "", false
 	}
 	params["dimpath"] = "$.\"" + key + "\""
-	return "json_extract(labels, :dimpath)", true
+	return "json_extract_string(labels, :dimpath)", true
 }
 
-func sqliteLabelFilter(qualifier string, filters map[string]string, params lit.P) string {
+func duckdbLabelFilter(qualifier string, filters map[string]string, params lit.P) string {
 	if len(filters) == 0 {
 		return ""
 	}
@@ -582,7 +641,7 @@ func sqliteLabelFilter(qualifier string, filters map[string]string, params lit.P
 	for i, k := range keys {
 		pathKey := fmt.Sprintf("lblpath_%d", i)
 		valKey := fmt.Sprintf("lblval_%d", i)
-		clause += fmt.Sprintf(" AND json_extract(%slabels, :%s) = :%s", qualifier, pathKey, valKey)
+		clause += fmt.Sprintf(" AND json_extract_string(%slabels, :%s) = :%s", qualifier, pathKey, valKey)
 		params[pathKey] = "$.\"" + k + "\""
 		params[valKey] = filters[k]
 	}

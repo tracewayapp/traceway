@@ -4,6 +4,7 @@ package repositories
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -39,6 +40,8 @@ type taskGroupRow struct {
 	LastSeen    time.Time `lit:"last_seen"`
 	HasRoot     bool      `lit:"has_root"`
 	HasNonRoot  bool      `lit:"has_non_root"`
+	P50         float64   `lit:"p50"`
+	P95         float64   `lit:"p95"`
 }
 
 type taskCountStatsRow struct {
@@ -46,16 +49,11 @@ type taskCountStatsRow struct {
 	AvgDurMs float64 `lit:"avg_dur_ms"`
 }
 
-type durationValueRow struct {
-	Duration float64 `lit:"duration"`
-}
-
 func init() {
 	models.ExtensionModelRegistrations = append(models.ExtensionModelRegistrations, func(driver lit.Driver) {
 		lit.RegisterModel[task](driver)
 		lit.RegisterModel[taskGroupRow](driver)
 		lit.RegisterModel[taskCountStatsRow](driver)
-		lit.RegisterModel[durationValueRow](driver)
 	})
 }
 
@@ -232,7 +230,8 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 	}
 
 	groupedCols := `task_name, COUNT(*) as count, AVG(duration) as avg_duration, MAX(recorded_at) as last_seen,
-			MAX(is_root) as has_root, MAX(CASE WHEN is_root = 0 THEN 1 ELSE 0 END) as has_non_root`
+			MAX(is_root) as has_root, MAX(CASE WHEN is_root = 0 THEN 1 ELSE 0 END) as has_non_root,
+			quantile_cont(duration, 0.5) as p50, quantile_cont(duration, 0.95) as p95`
 
 	if needsGoSort {
 		baseQuery = `SELECT ` + groupedCols + `
@@ -258,16 +257,11 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 
 	var stats []models.TaskStats
 	for _, g := range groups {
-		durations, err := fetchSortedTaskDurations(ctx, projectId, g.TaskName, fromDate, toDate)
-		if err != nil {
-			return nil, 0, err
-		}
-
 		stats = append(stats, models.TaskStats{
 			TaskName:    g.TaskName,
 			Count:       g.Count,
-			P50Duration: time.Duration(computePercentile(durations, 0.5)),
-			P95Duration: time.Duration(computePercentile(durations, 0.95)),
+			P50Duration: time.Duration(g.P50),
+			P95Duration: time.Duration(g.P95),
 			AvgDuration: time.Duration(g.AvgDuration),
 			LastSeen:    g.LastSeen,
 			HasRoot:     g.HasRoot,
@@ -420,7 +414,8 @@ func (e *taskRepository) FindWorstTasks(ctx context.Context, projectId uuid.UUID
 	params := lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()}
 
 	groups, err := lit.SelectNamed[taskGroupRow](db.TelemetryDB,
-		`SELECT task_name, COUNT(*) as count, AVG(duration) as avg_duration, MAX(recorded_at) as last_seen
+		`SELECT task_name, COUNT(*) as count, AVG(duration) as avg_duration, MAX(recorded_at) as last_seen,
+		quantile_cont(duration, 0.5) as p50, quantile_cont(duration, 0.95) as p95
 		FROM tasks WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
 		GROUP BY task_name`,
 		params)
@@ -430,16 +425,11 @@ func (e *taskRepository) FindWorstTasks(ctx context.Context, projectId uuid.UUID
 
 	var stats []models.TaskStats
 	for _, g := range groups {
-		durations, err := fetchSortedTaskDurations(ctx, projectId, g.TaskName, start, end)
-		if err != nil {
-			return nil, err
-		}
-
 		stats = append(stats, models.TaskStats{
 			TaskName:    g.TaskName,
 			Count:       g.Count,
-			P50Duration: time.Duration(computePercentile(durations, 0.5)),
-			P95Duration: time.Duration(computePercentile(durations, 0.95)),
+			P50Duration: time.Duration(g.P50),
+			P95Duration: time.Duration(g.P95),
 			AvgDuration: time.Duration(g.AvgDuration),
 			LastSeen:    g.LastSeen,
 		})
@@ -475,8 +465,16 @@ func (e *taskRepository) GetTaskStats(ctx context.Context, projectId uuid.UUID, 
 		return &models.TaskDetailStats{}, nil
 	}
 
-	durations, err := fetchSortedTaskDurations(ctx, projectId, taskName, start, end)
+	pctQuery, pctArgs, err := lit.ParseNamedQuery(db.Driver,
+		`SELECT quantile_cont(duration, 0.5) AS p50, quantile_cont(duration, 0.95) AS p95, quantile_cont(duration, 0.99) AS p99
+		FROM tasks WHERE project_id = :project_id AND task_name = :task_name AND recorded_at >= :from AND recorded_at <= :to`,
+		params)
 	if err != nil {
+		return nil, err
+	}
+
+	var p50, p95, p99 sql.NullFloat64
+	if err := db.TelemetryDB.QueryRowContext(ctx, pctQuery, pctArgs...).Scan(&p50, &p95, &p99); err != nil {
 		return nil, err
 	}
 
@@ -485,9 +483,9 @@ func (e *taskRepository) GetTaskStats(ctx context.Context, projectId uuid.UUID, 
 	return &models.TaskDetailStats{
 		Count:          statsRow.Count,
 		AvgDuration:    statsRow.AvgDurMs,
-		MedianDuration: computePercentile(durations, 0.5) / nsToMs,
-		P95Duration:    computePercentile(durations, 0.95) / nsToMs,
-		P99Duration:    computePercentile(durations, 0.99) / nsToMs,
+		MedianDuration: p50.Float64 / nsToMs,
+		P95Duration:    p95.Float64 / nsToMs,
+		P99Duration:    p99.Float64 / nsToMs,
 		Throughput:     float64(statsRow.Count) / durationMinutes,
 	}, nil
 }
@@ -533,20 +531,6 @@ func (e *taskRepository) FindByDistributedTraceId(ctx context.Context, distribut
 		tasks = append(tasks, row.toModel())
 	}
 	return tasks, nil
-}
-
-func fetchSortedTaskDurations(ctx context.Context, projectId uuid.UUID, taskName string, from, to time.Time) ([]float64, error) {
-	results, err := lit.SelectNamed[durationValueRow](db.TelemetryDB,
-		"SELECT CAST(duration AS DOUBLE) AS duration FROM tasks WHERE project_id = :project_id AND task_name = :task_name AND recorded_at >= :from AND recorded_at <= :to ORDER BY duration ASC",
-		lit.P{"project_id": projectId, "task_name": taskName, "from": from.UTC(), "to": to.UTC()})
-	if err != nil {
-		return nil, err
-	}
-	durations := make([]float64, 0, len(results))
-	for _, r := range results {
-		durations = append(durations, r.Duration)
-	}
-	return durations, nil
 }
 
 // queryTaskTimeSeries runs a time-bucketed aggregation and scans the bucket as a

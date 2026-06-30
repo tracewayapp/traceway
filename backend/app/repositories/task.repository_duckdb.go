@@ -378,7 +378,7 @@ func (e *taskRepository) FindById(ctx context.Context, projectId, taskId uuid.UU
 
 func (e *taskRepository) CountByHour(ctx context.Context, projectId uuid.UUID, start, end time.Time) ([]models.TimeSeriesPoint, error) {
 	return queryTaskTimeSeries(ctx,
-		`SELECT time_bucket(to_seconds(3600), recorded_at) as bucket, CAST(COUNT(*) AS DOUBLE) as agg_value
+		`SELECT time_bucket(to_seconds(3600), recorded_at, TIMESTAMP '1970-01-01') as bucket, CAST(COUNT(*) AS DOUBLE) as agg_value
 		FROM tasks WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
 		GROUP BY bucket ORDER BY bucket ASC`,
 		lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()})
@@ -386,7 +386,7 @@ func (e *taskRepository) CountByHour(ctx context.Context, projectId uuid.UUID, s
 
 func (e *taskRepository) AvgDurationByHour(ctx context.Context, projectId uuid.UUID, start, end time.Time) ([]models.TimeSeriesPoint, error) {
 	return queryTaskTimeSeries(ctx,
-		`SELECT time_bucket(to_seconds(3600), recorded_at) as bucket, AVG(duration) / 1000000.0 as agg_value
+		`SELECT time_bucket(to_seconds(3600), recorded_at, TIMESTAMP '1970-01-01') as bucket, AVG(duration) / 1000000.0 as agg_value
 		FROM tasks WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
 		GROUP BY bucket ORDER BY bucket ASC`,
 		lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()})
@@ -395,7 +395,7 @@ func (e *taskRepository) AvgDurationByHour(ctx context.Context, projectId uuid.U
 func (e *taskRepository) CountByInterval(ctx context.Context, projectId uuid.UUID, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
 	secs := intervalMinutes * 60
 	return queryTaskTimeSeries(ctx,
-		fmt.Sprintf(`SELECT time_bucket(to_seconds(%d), recorded_at) as bucket, CAST(COUNT(*) AS DOUBLE) as agg_value
+		fmt.Sprintf(`SELECT time_bucket(to_seconds(%d), recorded_at, TIMESTAMP '1970-01-01') as bucket, CAST(COUNT(*) AS DOUBLE) as agg_value
 		FROM tasks WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
 		GROUP BY bucket ORDER BY bucket ASC`, secs),
 		lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()})
@@ -404,7 +404,7 @@ func (e *taskRepository) CountByInterval(ctx context.Context, projectId uuid.UUI
 func (e *taskRepository) AvgDurationByInterval(ctx context.Context, projectId uuid.UUID, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
 	secs := intervalMinutes * 60
 	return queryTaskTimeSeries(ctx,
-		fmt.Sprintf(`SELECT time_bucket(to_seconds(%d), recorded_at) as bucket, AVG(duration) / 1000000.0 as agg_value
+		fmt.Sprintf(`SELECT time_bucket(to_seconds(%d), recorded_at, TIMESTAMP '1970-01-01') as bucket, AVG(duration) / 1000000.0 as agg_value
 		FROM tasks WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
 		GROUP BY bucket ORDER BY bucket ASC`, secs),
 		lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()})

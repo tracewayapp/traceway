@@ -5,6 +5,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/duckdb/duckdb-go/v2"
@@ -15,6 +16,8 @@ import (
 // DuckDBConnector is retained so repositories can open a dedicated driver.Conn
 // for the Appender bulk-insert API, which is not reachable through database/sql.
 var DuckDBConnector *duckdb.Connector
+
+const duckDBMaxReadConns = 4
 
 func Init() error {
 	cfg := config.Config
@@ -51,15 +54,26 @@ func initDuckDB() error {
 }
 
 func openDuckDB(path string) error {
-	// No memory_limit/threads overrides: DuckDB auto-tunes to the host (threads
-	// = cores, memory_limit ~= 80% of RAM), which beats a fixed cap and keeps
-	// the benchmark honest across hardware tiers.
-	connector, err := duckdb.NewConnector(path, nil)
+	dsn := path
+	q := url.Values{}
+	if v := strings.TrimSpace(config.Config.DuckDBMemoryLimit); v != "" {
+		q.Set("memory_limit", v)
+	}
+	if v := strings.TrimSpace(config.Config.DuckDBThreads); v != "" {
+		q.Set("threads", v)
+	}
+	if len(q) > 0 {
+		dsn = path + "?" + q.Encode()
+	}
+
+	connector, err := duckdb.NewConnector(dsn, nil)
 	if err != nil {
 		return fmt.Errorf("failed to open duckdb at %s: %w", path, err)
 	}
 
 	d := sql.OpenDB(connector)
+	d.SetMaxOpenConns(duckDBMaxReadConns)
+	d.SetMaxIdleConns(duckDBMaxReadConns)
 	if err := d.Ping(); err != nil {
 		return fmt.Errorf("failed to ping duckdb at %s: %w", path, err)
 	}

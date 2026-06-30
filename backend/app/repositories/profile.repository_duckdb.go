@@ -386,7 +386,7 @@ func (r *profileRepository) GetSeries(ctx context.Context, projectId uuid.UUID, 
 	cohort := duckdbCohortFilter("", appVersion, serverName, params)
 
 	query, args, err := lit.ParseNamedQuery(db.Driver,
-		fmt.Sprintf(`SELECT time_bucket(to_seconds(%d), start_time) AS bucket,
+		fmt.Sprintf(`SELECT time_bucket(to_seconds(%d), start_time, TIMESTAMP '1970-01-01') AS bucket,
 			CAST(%s(value) AS DOUBLE) AS agg_value
 		FROM profiling_samples
 		WHERE project_id = :project_id AND type = :type AND service_name = :service
@@ -522,7 +522,7 @@ func (r *profileRepository) GetSeriesBreakdown(ctx context.Context, projectId uu
 		return nil, err
 	}
 
-	seriesQuery := fmt.Sprintf(`SELECT time_bucket(to_seconds(%d), start_time) AS bucket,
+	seriesQuery := fmt.Sprintf(`SELECT time_bucket(to_seconds(%d), start_time, TIMESTAMP '1970-01-01') AS bucket,
 		CAST(%s(value) AS DOUBLE) AS agg_value
 	FROM profiling_samples
 	WHERE project_id = :project_id AND type = :type AND service_name = :service

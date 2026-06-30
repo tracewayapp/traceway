@@ -75,7 +75,7 @@ func (r *metricPointRepository) QueryTimeSeries(ctx context.Context, projectId u
 	aggFunc := duckdbAggregationFunc(aggregation)
 	hasGroupBy := groupBy != ""
 
-	selectClause := fmt.Sprintf("SELECT time_bucket(to_seconds(%d), recorded_at) AS bucket", secs)
+	selectClause := fmt.Sprintf("SELECT time_bucket(to_seconds(%d), recorded_at, TIMESTAMP '1970-01-01') AS bucket", secs)
 	if hasGroupBy {
 		selectClause += ", json_extract_string(tags, '$.\"' || :group_by || '\"') AS group_key"
 	}
@@ -262,7 +262,7 @@ func (r *metricPointRepository) GetAverageByIntervalPerServer(ctx context.Contex
 	}
 
 	query := fmt.Sprintf(`SELECT
-		time_bucket(to_seconds(%d), recorded_at) AS bucket,
+		time_bucket(to_seconds(%d), recorded_at, TIMESTAMP '1970-01-01') AS bucket,
 		json_extract_string(tags, '$.server_name') AS sn,
 		avg(value) AS avg_value
 	FROM metric_points

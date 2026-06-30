@@ -479,7 +479,7 @@ func (e *endpointRepository) ErrorRateByHour(ctx context.Context, projectId uuid
 func (e *endpointRepository) CountByInterval(ctx context.Context, projectId uuid.UUID, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
 	secs := intervalMinutes * 60
 	results, err := lit.SelectNamed[timeSeriesResult](db.TelemetryDB,
-		fmt.Sprintf(`SELECT strftime(time_bucket(to_seconds(%d), recorded_at), '%%Y-%%m-%%d %%H:%%M:%%S') as bucket, CAST(COUNT(*) AS DOUBLE) as agg_value
+		fmt.Sprintf(`SELECT strftime(time_bucket(to_seconds(%d), recorded_at, TIMESTAMP '1970-01-01'), '%%Y-%%m-%%d %%H:%%M:%%S') as bucket, CAST(COUNT(*) AS DOUBLE) as agg_value
 		FROM endpoints WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
 		GROUP BY bucket ORDER BY bucket ASC`, secs),
 		lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()})
@@ -492,7 +492,7 @@ func (e *endpointRepository) CountByInterval(ctx context.Context, projectId uuid
 func (e *endpointRepository) AvgDurationByInterval(ctx context.Context, projectId uuid.UUID, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
 	secs := intervalMinutes * 60
 	results, err := lit.SelectNamed[timeSeriesResult](db.TelemetryDB,
-		fmt.Sprintf(`SELECT strftime(time_bucket(to_seconds(%d), recorded_at), '%%Y-%%m-%%d %%H:%%M:%%S') as bucket, AVG(duration) / 1000000.0 as agg_value
+		fmt.Sprintf(`SELECT strftime(time_bucket(to_seconds(%d), recorded_at, TIMESTAMP '1970-01-01'), '%%Y-%%m-%%d %%H:%%M:%%S') as bucket, AVG(duration) / 1000000.0 as agg_value
 		FROM endpoints WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to AND is_stream = 0
 		GROUP BY bucket ORDER BY bucket ASC`, secs),
 		lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()})
@@ -505,7 +505,7 @@ func (e *endpointRepository) AvgDurationByInterval(ctx context.Context, projectI
 func (e *endpointRepository) ErrorRateByInterval(ctx context.Context, projectId uuid.UUID, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
 	secs := intervalMinutes * 60
 	results, err := lit.SelectNamed[timeSeriesResult](db.TelemetryDB,
-		fmt.Sprintf(`SELECT strftime(time_bucket(to_seconds(%d), recorded_at), '%%Y-%%m-%%d %%H:%%M:%%S') as bucket,
+		fmt.Sprintf(`SELECT strftime(time_bucket(to_seconds(%d), recorded_at, TIMESTAMP '1970-01-01'), '%%Y-%%m-%%d %%H:%%M:%%S') as bucket,
 		SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as agg_value
 		FROM endpoints WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
 		GROUP BY bucket ORDER BY bucket ASC`, secs),
@@ -700,7 +700,7 @@ func (e *endpointRepository) GetEndpointStackedChart(ctx context.Context, projec
 	}
 
 	timeSeriesQuery := fmt.Sprintf(`SELECT
-		time_bucket(to_seconds(%d), recorded_at) as bucket,
+		time_bucket(to_seconds(%d), recorded_at, TIMESTAMP '1970-01-01') as bucket,
 		%s as endpoint_category,
 		%s as metric_value
 	FROM endpoints
@@ -767,7 +767,7 @@ func (e *endpointRepository) getStackedChartWithPercentiles(ctx context.Context,
 	caseExpr += "ELSE 'Other' END"
 
 	query := fmt.Sprintf(`SELECT
-		time_bucket(to_seconds(%d), recorded_at) as bucket,
+		time_bucket(to_seconds(%d), recorded_at, TIMESTAMP '1970-01-01') as bucket,
 		%s as endpoint_category,
 		quantile_cont(duration, %g) / 1000000.0 as metric_value
 	FROM endpoints

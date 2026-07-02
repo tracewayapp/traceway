@@ -28,10 +28,15 @@ type distinctServerResult struct {
 	ServerName string `lit:"sn"`
 }
 
+type tagValueRow struct {
+	TagValue string `lit:"tag_value"`
+}
+
 func init() {
 	models.ExtensionModelRegistrations = append(models.ExtensionModelRegistrations, func(driver lit.Driver) {
 		lit.RegisterModel[avgResult](driver)
 		lit.RegisterModel[distinctServerResult](driver)
+		lit.RegisterModel[tagValueRow](driver)
 	})
 }
 
@@ -194,11 +199,6 @@ func (r *metricPointRepository) DiscoverMetrics(ctx context.Context, projectId u
 }
 
 func (r *metricPointRepository) DiscoverTagValues(ctx context.Context, projectId uuid.UUID, metricName, tagKey string, from, to time.Time) ([]string, error) {
-	type tagValueRow struct {
-		TagValue string `lit:"tag_value"`
-	}
-	lit.RegisterModel[tagValueRow](db.Driver)
-
 	results, err := lit.SelectNamed[tagValueRow](db.TelemetryDB,
 		`SELECT DISTINCT json_extract_string(tags, '$."' || :tag_key || '"') AS tag_value
 		FROM metric_points

@@ -393,7 +393,7 @@ func (r *aiTraceRepository) GetTraceNameStats(ctx context.Context, projectId uui
 		WHERE project_id = :project_id AND trace_name = :trace_name AND recorded_at >= :from AND recorded_at <= :to
 		ORDER BY duration ASC`, params)
 	if err != nil {
-		return stats, nil
+		return nil, err
 	}
 
 	sortedDurations := make([]float64, len(durationRows))

@@ -1,5 +1,7 @@
 # CLI Authentication
 
+import { Callout } from "nextra/components";
+
 The `traceway` CLI and the dashboard share the same accounts, but the CLI signs in with its own OAuth-style flows rather than storing your dashboard password. There are three ways to log in, plus long-lived **personal access tokens** for automation.
 
 ## Browser device login (default)
@@ -27,7 +29,7 @@ traceway login --username you@example.com  # implies --password
 traceway login --password-stdin            # reads the password from stdin
 ```
 
-Password logins are not refreshable — when the token expires you log in again.
+Password logins are not refreshable: when the token expires you log in again.
 
 ## Personal access tokens
 
@@ -49,6 +51,37 @@ traceway logout
 
 For device logins this revokes the refresh-token family server-side (so it can't be refreshed again) and then removes the local credentials. Revoking a PAT is done from the dashboard.
 
-## Self-hosted note
+## Self-hosting: configuring authentication
 
-The device-login verification URL and the OAuth discovery documents (`/.well-known/oauth-authorization-server`, `/.well-known/oauth-protected-resource`) use `APP_BASE_URL` as the server's public origin. If it isn't set, the server derives the origin from the incoming request (`Host` / `X-Forwarded-*`). Set `APP_BASE_URL` explicitly when the server sits behind a proxy that rewrites the Host header, so the printed URL points where users can actually reach it.
+The CLI and MCP device flow work against any Traceway instance with no extra setup; the endpoints are always registered. Two server settings shape whether it is safe and where the login URLs point.
+
+### Set a strong `JWT_SECRET`
+
+<Callout type="warning">
+  `JWT_SECRET` is what makes authentication safe. It signs **every** token the server issues: dashboard sessions and the short-lived access tokens the CLI and MCP server receive from the device flow. Anyone who knows it can forge a valid token for any user and take over any account. Set it to a strong, unique value you keep out of source control, and **never expose an instance that is still using a default**.
+</Callout>
+
+Generate one and pass it as an environment variable:
+
+```bash
+openssl rand -hex 32   # use the output as JWT_SECRET
+```
+
+- Minimum length is 32 characters; the server refuses to start with a shorter secret.
+- The **All-in-One image ships a built-in default** so it can boot with zero config. That default is public, so override `JWT_SECRET` before you put the instance on a network anyone else can reach. Every other deployment guide already requires you to set it.
+- Keep it **stable**. Rotating it logs out active dashboard sessions (users sign in again). CLI logins and personal access tokens are opaque, database-backed credentials, so those keep working: a CLI simply refreshes into a token signed with the new secret on its next call.
+
+`OAUTH_SESSION_SECRET` falls back to `JWT_SECRET` when unset; set it separately only if you want to rotate the OAuth cookie secret independently.
+
+### Set `APP_BASE_URL` to your public origin
+
+`APP_BASE_URL` becomes the OAuth **issuer**, the base of the device-login verification URL the CLI prints, and the origin advertised in the discovery documents below. If it is unset the server derives the origin per-request from the `Host` / `X-Forwarded-*` headers, which is fine for direct access. Set it explicitly when the server sits behind a proxy that rewrites the `Host` header, so the printed URL points where users can actually reach it.
+
+### Discovery endpoints
+
+Spec-compliant clients, including the MCP server, self-configure from two documents served at the origin root, so you never hard-code endpoints:
+
+- `GET /.well-known/oauth-authorization-server`: [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) authorization-server metadata (issuer, token and device-authorization endpoints, supported grants).
+- `GET /.well-known/oauth-protected-resource`: [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) protected-resource metadata.
+
+Both derive their URLs from `APP_BASE_URL` (or the request headers when it is unset). No additional configuration is required.

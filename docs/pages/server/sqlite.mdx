@@ -58,7 +58,7 @@ If `STORAGE_TYPE` is unset (or set to `local`), blobs are written to `/data/stor
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `JWT_SECRET` | *(required)* | JWT signing secret, minimum 32 characters |
+| `JWT_SECRET` | *(required)* | Signs all authentication tokens (dashboard sessions and CLI/MCP device logins). Use a strong, unique secret of at least 32 characters (`openssl rand -hex 32`) and keep it stable. See [CLI Authentication](/learn/cli-auth#set-a-strong-jwt_secret). |
 | `APP_BASE_URL` | *(unset)* | Public URL of your instance. Used for SDK setup snippets, password-reset emails, OAuth callback URLs, and the CLI/MCP OAuth issuer plus device-login verification URL. If unset, the device-auth and `/.well-known` endpoints derive it per-request from the `Host` / `X-Forwarded-*` headers. See [CLI Authentication](/learn/cli-auth) |
 | `SQLITE_PATH` | `/data/traceway.db` | Main SQLite file. Telemetry DB is derived as `<path>_telemetry.db` |
 | `STORAGE_TYPE` | `local` | Blob storage backend. `local` or `s3` |

@@ -175,7 +175,7 @@ Point your SDK's connection string at your Traceway domain:
 | `POSTGRES_USERNAME` | `traceway` | PostgreSQL username |
 | `POSTGRES_PASSWORD` | *(from env)* | PostgreSQL password |
 | `POSTGRES_SSLMODE` | `disable` | PostgreSQL SSL mode |
-| `JWT_SECRET` | *(from env)* | JWT signing secret (min 32 chars) |
+| `JWT_SECRET` | *(from env)* | Signs all authentication tokens (dashboard sessions and CLI/MCP device logins). Use a strong, unique secret of at least 32 chars; keep it stable. See [CLI Authentication](/learn/cli-auth#set-a-strong-jwt_secret). |
 | `GOOGLE_CLIENT_ID` | *(unset)* | Optional. Google OAuth client ID. Setting both Google variables enables the **Continue with Google** button. See the [SSO guide](/learn/sso). |
 | `GOOGLE_CLIENT_SECRET` | *(unset)* | Optional. Google OAuth client secret. |
 | `GITHUB_CLIENT_ID` | *(unset)* | Optional. GitHub OAuth App client ID. Setting both GitHub variables enables the **Continue with GitHub** button. |

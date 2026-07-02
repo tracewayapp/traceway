@@ -56,7 +56,7 @@ Then use `traceway:minimal` instead of `ghcr.io/tracewayapp/traceway:minimal` in
 | `POSTGRES_USERNAME` | PostgreSQL username | `traceway` |
 | `POSTGRES_PASSWORD` | PostgreSQL password | `password` |
 | `POSTGRES_SSLMODE` | PostgreSQL SSL mode | `disable` |
-| `JWT_SECRET` | JWT signing secret (min 32 chars) | `your-secret-here` |
+| `JWT_SECRET` | Signs all authentication tokens (dashboard sessions and CLI/MCP device logins). Use a strong, unique secret of at least 32 chars; keep it stable. See [CLI Authentication](/learn/cli-auth#set-a-strong-jwt_secret). | `your-secret-here` |
 | `APP_BASE_URL` | Public URL of your instance. Used for SDK setup instructions, email links, OAuth callback URLs, and the CLI/MCP OAuth issuer plus device-login verification URL. If unset, derived per-request from `Host` / `X-Forwarded-*`. | `https://traceway.example.com` |
 | `STORAGE_TYPE` | Blob storage backend for source maps, session recordings, and AI traces: `local` (default) or `s3`. See [Blob Storage](/server/storage) for the S3 variables. | `local` |
 | `STORAGE_PATH` | Folder for local blob storage. Defaults to `./storage`, which is `/app/storage` in this image. Mount a volume there. Ignored when `STORAGE_TYPE=s3`. | `/app/storage` |

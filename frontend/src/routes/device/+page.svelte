@@ -52,6 +52,9 @@
 				headers: { Authorization: `Bearer ${authState.token}` }
 			});
 			if (res.status === 401) {
+				// The stored session is dead; clear it or the login page's
+				// authenticated-redirect bounces us to / and loses the code.
+				authState.logout();
 				loginRedirect();
 				return;
 			}
@@ -100,6 +103,7 @@
 			});
 			if (!res.ok) {
 				if (res.status === 401) {
+					authState.logout();
 					loginRedirect();
 					return;
 				}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,7 +18,12 @@ type Client struct {
 	HTTPClient *http.Client
 	JWT        string
 	UserAgent  string
+	refresher  Refresher
 }
+
+// Refresher returns a fresh access token (JWT) when the current one is
+// rejected. do() invokes it at most once per request, on a 401, then retries.
+type Refresher func(ctx context.Context) (string, error)
 
 // Option mutates a Client during construction.
 type Option func(*Client)
@@ -46,33 +52,68 @@ func WithJWT(jwt string) Option {
 	return func(c *Client) { c.JWT = jwt }
 }
 
+// WithRefresher enables transparent access-token refresh: on a 401, do()
+// calls the refresher for a new token and retries the request once.
+func WithRefresher(r Refresher) Option {
+	return func(c *Client) { c.refresher = r }
+}
+
 // do is the internal HTTP transport. It JSON-encodes body (if non-nil),
 // JSON-decodes the response into out (if non-nil), and maps non-2xx status
 // codes to typed errors.
 func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
-	var reqBody io.Reader
+	var buf []byte
 	if body != nil {
-		buf, err := json.Marshal(body)
+		b, err := json.Marshal(body)
 		if err != nil {
 			return fmt.Errorf("encoding request body: %w", err)
 		}
-		reqBody = bytes.NewReader(buf)
+		buf = b
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+path, reqBody)
-	if err != nil {
-		return fmt.Errorf("building request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", c.UserAgent)
-	if c.JWT != "" {
-		req.Header.Set("Authorization", "Bearer "+c.JWT)
+	attempt := func() (*http.Response, error) {
+		var reqBody io.Reader
+		if buf != nil {
+			reqBody = bytes.NewReader(buf)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+path, reqBody)
+		if err != nil {
+			return nil, fmt.Errorf("building request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("User-Agent", c.UserAgent)
+		if c.JWT != "" {
+			req.Header.Set("Authorization", "Bearer "+c.JWT)
+		}
+		return c.HTTPClient.Do(req)
 	}
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := attempt()
 	if err != nil {
 		return err
+	}
+
+	if resp.StatusCode == http.StatusUnauthorized && c.refresher != nil {
+		resp.Body.Close()
+		newJWT, refreshErr := c.refresher(ctx)
+		if refreshErr != nil {
+			// Only a dead session maps to ErrUnauthorized ("log in again").
+			// Anything else (server error, network failure) must surface as
+			// itself, or a transient outage reads as an expired login.
+			if errors.Is(refreshErr, ErrUnauthorized) || errors.Is(refreshErr, ErrInvalidGrant) {
+				return ErrUnauthorized
+			}
+			return fmt.Errorf("refreshing the session after a 401: %w", refreshErr)
+		}
+		if newJWT == "" {
+			return ErrUnauthorized
+		}
+		c.JWT = newJWT
+		resp, err = attempt()
+		if err != nil {
+			return err
+		}
 	}
 	defer resp.Body.Close()
 

@@ -74,7 +74,7 @@ func runLogsQuery(cmd *cobra.Command, _ []string) error {
 			enumFlagHint("traceway logs query", "--sort-direction", sortDirections))
 	}
 
-	c := client.New(sess.URL, client.WithJWT(sess.JWT))
+	c := sess.Client()
 	resp, err := c.QueryLogs(ctx, sess.ProjectID, client.QueryLogsRequest{
 		TimeRange:     tr,
 		Pagination:    page,

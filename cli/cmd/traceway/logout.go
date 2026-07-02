@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -9,6 +10,7 @@ import (
 	"github.com/tracewayapp/traceway/cli/internal/exitcode"
 	"github.com/tracewayapp/traceway/cli/internal/output"
 	"github.com/tracewayapp/traceway/cli/internal/state"
+	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
 
 func newLogoutCmd() *cobra.Command {
@@ -31,8 +33,8 @@ func runLogout(cmd *cobra.Command, _ []string) error {
 
 	name := resolveProfileName(st)
 
-	_, inCfg := cfg.Profiles[name]
-	_, inState := st.Profiles[name]
+	cp, inCfg := cfg.Profiles[name]
+	sp, inState := st.Profiles[name]
 	if !inCfg && !inState {
 		mode := output.ResolveMode(flagOutput, output.StdoutIsTerminal())
 		_ = output.RenderError(cmd.ErrOrStderr(), mode, output.ErrorEnvelope{
@@ -41,6 +43,17 @@ func runLogout(cmd *cobra.Command, _ []string) error {
 			ExitCode: exitcode.Auth,
 		})
 		return newCLIError(exitcode.Auth, "no_profile")
+	}
+
+	// Best-effort server-side revoke of the device session before we drop the
+	// local credentials. Errors are ignored: local logout must always succeed,
+	// even offline.
+	if sp.CredentialKind == state.KindDevice && sp.RefreshToken != "" && cp.URL != "" {
+		ctx := cmd.Context()
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		_ = client.New(cp.URL).Logout(ctx, sp.RefreshToken)
 	}
 
 	delete(cfg.Profiles, name)

@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"time"
+
 	"github.com/tracewayapp/traceway/backend/app/config"
 	"github.com/tracewayapp/traceway/backend/app/controllers/clientcontrollers"
 	"github.com/tracewayapp/traceway/backend/app/controllers/otelcontrollers"
@@ -128,6 +130,22 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.GET("/auth/start/:provider", middleware.Transactional, OAuthController.Begin)
 	router.GET("/auth/callback/:provider", middleware.Transactional, OAuthController.Callback)
 	router.POST("/auth/finish-setup", middleware.UseAppAuth, middleware.Transactional, OAuthController.FinishSetup)
+
+	router.POST("/auth/device/authorize", middleware.RateLimitPerIP(10, time.Minute), DeviceAuthController.Authorize)
+	router.POST("/auth/device/token", DeviceAuthController.Token)
+	router.POST("/auth/token", DeviceAuthController.Token)
+	router.POST("/auth/logout", DeviceAuthController.Logout)
+	router.GET("/device", middleware.UseAppAuth, DeviceAuthController.Lookup)
+	router.POST("/device/approve", middleware.UseAppAuth, middleware.Transactional, DeviceAuthController.Approve)
+	router.POST("/device/deny", middleware.UseAppAuth, middleware.Transactional, DeviceAuthController.Deny)
+
+	router.POST("/personal-access-tokens", middleware.UseAppAuth, middleware.Transactional, PATController.Create)
+	router.GET("/personal-access-tokens", middleware.UseAppAuth, PATController.List)
+	router.DELETE("/personal-access-tokens/:id", middleware.UseAppAuth, middleware.Transactional, PATController.Revoke)
+
+	// The OAuth discovery documents (/.well-known/oauth-*) are registered on the
+	// root engine in cmd/run.go, not here: RFC 8414 / RFC 9728 clients fetch them
+	// at the origin root, not under /api.
 
 	if config.Config.CloudMode != "true" {
 		router.GET("/has-organizations", middleware.Transactional, AuthController.HasOrganizations)

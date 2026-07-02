@@ -29,6 +29,8 @@ Check an installed binary with `traceway version` (or `traceway --version`). Sou
 
 ```bash
 # 1. log in (creates ~/.config/traceway/config.json + ~/.local/state/traceway/state.json)
+#    Default: browser device login — prints a URL + short code, you approve in the
+#    browser, and the CLI receives a token that auto-refreshes.
 traceway login --url https://cloud.traceway.com
 
 # 2. pick a project (one-time; future calls use it implicitly)
@@ -46,8 +48,8 @@ traceway metrics query --name http.server.duration --aggregation avg --since 1h
 
 | Command | Purpose |
 |---|---|
-| `traceway login` | Authenticate and store the JWT |
-| `traceway logout` | Forget the stored JWT for a profile |
+| `traceway login` | Authenticate and store a token. Three modes: default browser **device flow** (auto-refreshing); `--password` (email + password, or `--password-stdin`; passing `--username` implies this mode); `--token` / `--token-stdin` (store a personal access token). The device flow needs an interactive terminal — in CI use `--token` or `--password`, or pass `--no-browser` to drive it manually. |
+| `traceway logout` | Revoke the session server-side (device logins) and forget the stored credentials for a profile |
 | `traceway profiles {list,use}` | Manage multiple Traceway accounts/instances |
 | `traceway projects {list,use}` | List or select the active project |
 | `traceway exceptions list` | Recent grouped exceptions |

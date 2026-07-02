@@ -47,7 +47,7 @@ export function getInstallCommand(framework: Framework): string {
 		case 'flutter':
 			return 'flutter pub add traceway';
 		case 'android':
-			return 'implementation("com.tracewayapp:traceway:1.0.0")';
+			return 'implementation("com.tracewayapp:traceway:1.0.1")';
 		case 'ios':
 			return '.package(url: "https://github.com/tracewayapp/traceway-ios.git", from: "0.1.0")';
 		case 'custom':

@@ -30,11 +30,19 @@ func InitJWT() error {
 }
 
 func GenerateToken(userId int, email string) (string, error) {
+	return generateToken(userId, email, 7*24*time.Hour)
+}
+
+func GenerateAccessToken(userId int, email string, ttl time.Duration) (string, error) {
+	return generateToken(userId, email, ttl)
+}
+
+func generateToken(userId int, email string, ttl time.Duration) (string, error) {
 	claims := JWTClaims{
 		UserId: userId,
 		Email:  email,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(ttl)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
 		},

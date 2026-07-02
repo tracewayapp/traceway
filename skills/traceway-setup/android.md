@@ -105,7 +105,8 @@ android {
 }
 
 traceway {
-  uploadToken = "<upload-token>"        // prefer a Gradle property / env var in CI
+  // The plugin reads no environment variables itself — wire the secret in here.
+  uploadToken = System.getenv("TRACEWAY_UPLOAD_TOKEN") ?: ""
   url = "https://<instance>"            // instance base URL
   autoUpload = false                    // true runs upload after assembleRelease
   // proguardUuid = "..."               // optional: pin the build UUID yourself
@@ -131,7 +132,7 @@ Traceway.init(
 ./gradlew assembleRelease uploadReleaseTracewaySymbols
 ```
 
-With `autoUpload = true` the upload runs automatically after `assembleRelease`. Keep the upload token in a secret and feed it through the environment or a Gradle property rather than the literal above:
+With `autoUpload = true` the upload runs automatically after `assembleRelease`. Keep the upload token in a CI secret — the `System.getenv` wiring in the `traceway { ... }` block above is what feeds it to the plugin (there is no built-in environment lookup):
 
 ```bash
 TRACEWAY_UPLOAD_TOKEN=<upload-token> ./gradlew assembleRelease uploadReleaseTracewaySymbols

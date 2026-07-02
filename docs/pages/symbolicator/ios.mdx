@@ -3,12 +3,14 @@
 For iOS, the debug info is the build's `.dSYM` (a Mach-O wrapper around DWARF). A stripped Swift or Objective-C release build keeps no function names or line tables in the shipped binary, so a crash reports against raw machine code. Each frame carries the image's Mach-O UUID, an offset into that image, and the image name:
 
 ```
-Fatal error: Unexpectedly found nil while unwrapping an Optional value
+Fatal Signal SIGTRAP (5)
+*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+os: ios arch: arm64
 #00 8a5f0c2e1b7d4f93a6e0c8b1d2f3a4b5 0x00000000000a1340 MyApp
 #01 8a5f0c2e1b7d4f93a6e0c8b1d2f3a4b5 0x00000000000a2d10 MyApp
 ```
 
-The offset is image-relative (the frame address minus the image's load address), so it is independent of where the dynamic linker slid the image at runtime. With the build's `.dSYM` uploaded, that resolves into named source frames, inline calls expanded:
+Everything above the `*** …` separator is the error preamble, preserved verbatim in the symbolicated output. The `os: … arch: …` line picks the dSYM architecture slice to resolve against (`arm64` when absent). The offset is image-relative (the frame address minus the image's load address), so it is independent of where the dynamic linker slid the image at runtime. With the build's `.dSYM` uploaded, that resolves into named source frames, inline calls expanded:
 
 ```
 #0  ProfileViewModel.load() (ProfileViewModel.swift:88:14)
@@ -70,7 +72,7 @@ Unlike the Dart upload, iOS needs no `arch` or `debug_id` form fields. The backe
 iossymbols/{projectId}/{uuid}.dsym
 ```
 
-Because the key is content-addressed, releases never collide and re-uploading the same build is idempotent. The response reports how many entries were stored:
+Because the key is content-addressed, releases never collide and re-uploading the same build is idempotent. The response reports how many uploaded files were accepted — a fat dSYM counts once, even though it stores one entry per slice:
 
 ```json
 { "uploaded": 2 }
@@ -95,6 +97,8 @@ The parser pulls three things from each frame:
 | image | the trailing image name | grouping frames by image |
 
 A trace that is already symbolic, or carries no recognizable iOS frames, passes through untouched.
+
+When crafting traces by hand (a custom sender, CI tooling), include the `*** …` separator line between the error message and the frames, as the Traceway iOS SDK does. The symbolicated output preserves everything above the first `***` line as the error preamble — without a separator, the entire raw trace (frame lines included) is treated as preamble and carried into the resolved output verbatim, duplicating the frames.
 
 ## How an offset resolves
 

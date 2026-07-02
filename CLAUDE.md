@@ -239,6 +239,7 @@ if err != nil {
 ### Environment Variables (Backend)
 ```
 JWT_SECRET=<min 32 char secret for JWT signing>
+APP_BASE_URL=                         # public origin of this server (e.g. https://traceway.example.com). Used as the OAuth issuer / device verification URL and SSO redirect base. If unset, the device-auth + well-known endpoints derive it per-request from the Host / X-Forwarded-* headers; set it explicitly behind a proxy that doesn't forward Host.
 CLICKHOUSE_SERVER=localhost:9000
 CLICKHOUSE_DATABASE=traceway
 CLICKHOUSE_USERNAME=default
@@ -286,6 +287,13 @@ Dashboard ← [SvelteKit Frontend] ← JSON API ← Gin Controllers
 Two-tier system:
 1. **Client Auth**: Project bearer tokens (SDK telemetry via `Authorization: Bearer <project_token>`)
 2. **App Auth**: JWT-based user authentication (dashboard via `Authorization: Bearer <jwt_token>`)
+
+**App Auth credentials.** `UseAppAuth` accepts three credential shapes on the `Authorization: Bearer` header:
+- **Dashboard JWT** — issued by `/api/login` / SSO (7-day expiry).
+- **Personal access token (PAT)** — opaque `twp_`-prefixed token; looked up by SHA-256 hash in `personal_access_tokens`, resolves to its user. Created/listed/revoked from the account page (`/api/personal-access-tokens*`). Non-expiring or with an optional TTL; `last_used_at` is touched (throttled to 1/min, off the request path).
+- **Device-flow access token** — a short-lived (15-min) JWT minted by the CLI's OAuth device flow.
+
+**CLI / OAuth device flow** (`backend/app/services/authserver/`, controllers `device_auth.controller.go` / `wellknown.controller.go` / `pat.controller.go`): RFC 8628 device authorization grant plus rotating refresh tokens. `traceway login` (default) → `POST /api/auth/device/authorize` (client_id allowlisted, per-IP rate-limited, opportunistically prunes expired rows) → user approves at `/device` → the CLI polls `POST /api/auth/device/token` (grant `device_code`; `/api/auth/token` is an equivalent alias) which issues a 15-min access token + 90-day rotating refresh token (family-tracked in `refresh_tokens`). Refresh (`grant_type=refresh_token`) rotates the token atomically and revokes the whole family on genuine reuse; within a 30s grace window a benign concurrent retry is answered with the same rotated token set (from an in-memory rotation cache) instead of `invalid_grant`. `POST /api/auth/logout` revokes a family server-side. Tokens are stored SHA-256-hashed. The grant endpoints **self-manage their transactions** via `db.ExecuteTransaction` (not `middleware.Transactional`) because OAuth returns 400 for normal flow control (`authorization_pending`, reuse-revoke) and those side effects must still commit. `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource` are served at the **origin root** (registered in `cmd/run.go`, not the `/api` group) per RFC 8414 / 9728. The metadata currently advertises only the `device_code` + `refresh_token` grants; authorization-code + PKCE is a future addition for the MCP server.
 
 ---
 
@@ -553,6 +561,26 @@ backend/
 | GET | `/api/password-reset/:token` | None | Validate reset token |
 | POST | `/api/password-reset/:token` | None | Reset password with token |
 
+**CLI Device Auth & OAuth** (see the Authentication section above)
+| Method | Endpoint | Auth | Purpose |
+|--------|----------|------|---------|
+| POST | `/api/auth/device/authorize` | None | Start device flow; returns device/user code + verification URL |
+| POST | `/api/auth/device/token` | None | Poll for the token (grant `device_code`); also accepts `refresh_token` |
+| POST | `/api/auth/token` | None | Token endpoint: `device_code` or `refresh_token` grant (JSON or form-encoded) |
+| POST | `/api/auth/logout` | None | Revoke the presented refresh token's family (idempotent) |
+| GET | `/api/device` | App | Look up a user code for the approval screen |
+| POST | `/api/device/approve` | App | Approve a pending device authorization (tokens carry only the approving user's own role, so no write guard) |
+| POST | `/api/device/deny` | App | Deny a pending device authorization |
+| GET | `/.well-known/oauth-authorization-server` | None | RFC 8414 metadata (served at origin root, not `/api`) |
+| GET | `/.well-known/oauth-protected-resource` | None | RFC 9728 metadata (served at origin root, not `/api`) |
+
+**Personal Access Tokens**
+| Method | Endpoint | Auth | Purpose |
+|--------|----------|------|---------|
+| POST | `/api/personal-access-tokens` | App | Create a PAT (returns the `twp_` token once) |
+| GET | `/api/personal-access-tokens` | App | List the current user's active PATs |
+| DELETE | `/api/personal-access-tokens/:id` | App | Revoke a PAT |
+
 **Projects**
 | Method | Endpoint | Auth | Purpose |
 |--------|----------|------|---------|
@@ -746,7 +774,9 @@ for _, item := range items {
 
 #### Data Retention
 
-Retention is handled in three different ways depending on the deployment.
+Retention is handled in several different ways depending on the deployment.
+
+**0. Main-DB auth prune — `retention.Start` worker** (`backend/app/retention/auth_tokens.go` + `oauth_sessions.go`, sharing `startDBPruneWorker` in `prune_worker.go`). Runs in **all modes** (Postgres and SQLite) against `db.DB`: once at startup, then every 24h, deleting expired/consumed auth rows. `auth_tokens` prunes expired `device_authorizations` (also pruned opportunistically on every `/api/auth/device/authorize` call, so the daily worker is a backstop there), `refresh_tokens` that are expired, revoked, or used more than 30 days ago (used rows are kept a month for replay detection, then dropped to bound per-user growth), plus revoked-or-expired `personal_access_tokens` (PAT expiry was otherwise only enforced lazily at read time). `oauth_sessions` prunes expired SSO login sessions. No env var — always on. (Refresh-token families and PATs also have explicit revoke paths: `POST /api/auth/logout` and the account PAT UI.)
 
 **1. ClickHouse — `TTL` clauses on the table itself.** Only a few tables have a TTL; everything else is kept indefinitely (operators can drop monthly partitions manually if needed).
 

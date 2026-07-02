@@ -1,0 +1,54 @@
+# CLI Authentication
+
+The `traceway` CLI and the dashboard share the same accounts, but the CLI signs in with its own OAuth-style flows rather than storing your dashboard password. There are three ways to log in, plus long-lived **personal access tokens** for automation.
+
+## Browser device login (default)
+
+Running `traceway login` with no flags starts a [device authorization](https://datatracker.ietf.org/doc/html/rfc8628) flow:
+
+```
+traceway login ──► POST /api/auth/device/authorize
+                   └─► CLI prints a URL + short code (XXXX-XXXX)
+                       └─► you open the URL, sign in, approve the code at /device
+                           └─► CLI polls POST /api/auth/device/token (grant device_code)
+                               └─► receives a 15-min access token + a rotating
+                                   90-day refresh token, stored locally (0600)
+```
+
+The CLI refreshes the access token automatically when it expires, rotating the refresh token each time. You stay logged in for up to 90 days of inactivity without re-entering anything.
+
+The device flow needs an interactive terminal (someone has to approve the code). In CI or scripts, use a personal access token or password login instead; on a headless box you can pass `--no-browser` and approve the code from another device.
+
+## Password login
+
+```bash
+traceway login --password                  # prompts for email + password
+traceway login --username you@example.com  # implies --password
+traceway login --password-stdin            # reads the password from stdin
+```
+
+Password logins are not refreshable — when the token expires you log in again.
+
+## Personal access tokens
+
+Create a token from the dashboard (**Account → Personal access tokens**), then:
+
+```bash
+traceway login --token twp_xxxxxxxxxxxx
+# or
+echo "twp_xxxxxxxxxxxx" | traceway login --token-stdin
+```
+
+PATs are the right choice for CI and long-running automation. They're shown once at creation, carry an optional expiry, and can be revoked at any time from the same dashboard page. The backend accepts a `twp_`-prefixed token anywhere it accepts a dashboard token.
+
+## Logging out
+
+```bash
+traceway logout
+```
+
+For device logins this revokes the refresh-token family server-side (so it can't be refreshed again) and then removes the local credentials. Revoking a PAT is done from the dashboard.
+
+## Self-hosted note
+
+The device-login verification URL and the OAuth discovery documents (`/.well-known/oauth-authorization-server`, `/.well-known/oauth-protected-resource`) use `APP_BASE_URL` as the server's public origin. If it isn't set, the server derives the origin from the incoming request (`Host` / `X-Forwarded-*`). Set `APP_BASE_URL` explicitly when the server sits behind a proxy that rewrites the Host header, so the printed URL points where users can actually reach it.

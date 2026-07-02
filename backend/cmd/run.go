@@ -198,6 +198,13 @@ func Run(opts ...Option) {
 		ctx.JSON(200, gin.H{"version": "0.0.1"})
 	})
 
+	// OAuth discovery documents must live at the origin root (RFC 8414 / RFC
+	// 9728), not under /api, so metadata-driven clients (and the future MCP
+	// integration) can find them. Registered before the SPA NoRoute fallback so
+	// they aren't shadowed by index.html.
+	router.GET("/.well-known/oauth-authorization-server", controllers.WellKnownController.AuthorizationServer)
+	router.GET("/.well-known/oauth-protected-resource", controllers.WellKnownController.ProtectedResource)
+
 	apiOnly := cfg.APIOnly == "true"
 
 	if apiOnly {

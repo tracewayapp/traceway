@@ -71,7 +71,7 @@ func runMetricsQuery(cmd *cobra.Command, _ []string) error {
 			"use --tag key=value (repeatable)")
 	}
 
-	c := client.New(sess.URL, client.WithJWT(sess.JWT))
+	c := sess.Client()
 	resp, err := c.QueryMetrics(ctx, sess.ProjectID, client.QueryMetricsRequest{
 		TimeRange:       tr,
 		IntervalMinutes: intervalMin,

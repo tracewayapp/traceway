@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tracewayapp/traceway/cli/internal/output"
-	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
 
 func newSessionsCmd() *cobra.Command {
@@ -54,7 +53,7 @@ func runSessionsShow(cmd *cobra.Command, args []string) error {
 		return renderTimestampError(cmd.ErrOrStderr(), mode, "started-at", err)
 	}
 
-	c := client.New(sess.URL, client.WithJWT(sess.JWT))
+	c := sess.Client()
 	resp, err := c.GetSession(ctx, sess.ProjectID, args[0], startedAt)
 	if err != nil {
 		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)

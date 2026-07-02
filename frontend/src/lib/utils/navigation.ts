@@ -1,5 +1,41 @@
 import { goto } from '$app/navigation';
 
+// Only allow same-origin, absolute-path redirects. Reject absolute URLs
+// (https://evil.com), protocol-relative (//evil.com), and backslash tricks
+// (/\evil.com) so returnTo can't be used as an open redirect.
+export function safeLocalPath(raw: string | null): string {
+	if (!raw) return '/';
+	let decoded: string;
+	try {
+		decoded = decodeURIComponent(raw);
+	} catch {
+		return '/';
+	}
+	if (!decoded.startsWith('/') || decoded.startsWith('//') || decoded.startsWith('/\\')) {
+		return '/';
+	}
+	return decoded;
+}
+
+// SSO logins bounce through the provider and land on /auth/callback, losing
+// any ?returnTo= the login page had. Stash it in sessionStorage before leaving
+// and consume it when the callback (or finish-setup) decides where to land.
+const SSO_RETURN_TO_KEY = 'traceway_sso_return_to';
+
+export function stashSsoReturnTo(path: string | null) {
+	if (path) {
+		sessionStorage.setItem(SSO_RETURN_TO_KEY, path);
+	} else {
+		sessionStorage.removeItem(SSO_RETURN_TO_KEY);
+	}
+}
+
+export function consumeSsoReturnTo(): string | null {
+	const path = sessionStorage.getItem(SSO_RETURN_TO_KEY);
+	sessionStorage.removeItem(SSO_RETURN_TO_KEY);
+	return path;
+}
+
 export function addStickyParamsToHref(href: string, ...stickyParams: string[]) {
 	const currentParams = new URLSearchParams(window.location.search);
 	const url = new URL(href, window.location.origin);

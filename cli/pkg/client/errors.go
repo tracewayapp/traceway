@@ -15,6 +15,12 @@ var (
 	ErrForbidden    = errors.New("forbidden (403)")
 	ErrNotFound     = errors.New("not found (404)")
 	ErrRateLimited  = errors.New("rate limited (429)")
+
+	ErrAuthorizationPending = errors.New("authorization_pending")
+	ErrSlowDown             = errors.New("slow_down")
+	ErrAccessDenied         = errors.New("access_denied")
+	ErrExpiredToken         = errors.New("expired_token")
+	ErrInvalidGrant         = errors.New("invalid_grant")
 )
 
 // APIError is returned for any non-2xx response that isn't covered by a sentinel.

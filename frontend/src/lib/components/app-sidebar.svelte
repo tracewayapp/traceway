@@ -14,7 +14,8 @@
 		Gauge,
 		ListEnd,
 		Settings,
-		BookOpen
+		BookOpen,
+		KeyRound
 	} from '@lucide/svelte';
 	import { themeState } from '$lib/state/theme.svelte';
 	import { projectsState, isFrontendFramework, isCloudflareFramework } from '$lib/state/projects.svelte';
@@ -66,6 +67,7 @@
 	);
 
 	const allSidebarItemsBottom: SidebarItem[] = [
+		{ Icon: KeyRound, href: '/account', title: 'Account', stickyParams: [] },
 		{
 			Icon: BookOpen,
 			href: 'https://docs.tracewayapp.com',

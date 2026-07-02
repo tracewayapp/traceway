@@ -25,53 +25,74 @@ var (
 	loginURL          string
 	loginUsername     string
 	loginPasswordFile bool
+	loginPassword     bool
+	loginToken        string
+	loginTokenStdin   bool
+	loginNoBrowser    bool
 )
 
 func newLoginCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "login",
-		Short: "Authenticate against a Traceway instance and store the JWT",
-		RunE:  runLogin,
+		Short: "Authenticate against a Traceway instance and store the token",
+		Long: "Authenticate against a Traceway instance and store the token.\n\n" +
+			"By default this starts a browser device-login flow: the CLI prints a URL\n" +
+			"and a short code, you approve in your browser, and the CLI receives a token.\n" +
+			"Use --password for email/password login, or --token to store a personal\n" +
+			"access token.",
+		RunE: runLogin,
 	}
 	cmd.Flags().StringVar(&loginURL, "url", "", "Traceway base URL (default: existing or "+defaultURL+")")
-	cmd.Flags().StringVar(&loginUsername, "username", "", "Email address (default: existing or interactive prompt)")
-	cmd.Flags().BoolVar(&loginPasswordFile, "password-stdin", false, "Read password from stdin instead of prompting")
+	cmd.Flags().StringVar(&loginUsername, "username", "", "Email address for password login, implies --password (default: existing or interactive prompt)")
+	cmd.Flags().BoolVar(&loginPasswordFile, "password-stdin", false, "Read password from stdin (implies --password)")
+	cmd.Flags().BoolVar(&loginPassword, "password", false, "Authenticate with email + password instead of the browser device flow")
+	cmd.Flags().StringVar(&loginToken, "token", "", "Authenticate with a personal access token")
+	cmd.Flags().BoolVar(&loginTokenStdin, "token-stdin", false, "Read a personal access token from stdin")
+	cmd.Flags().BoolVar(&loginNoBrowser, "no-browser", false, "Do not attempt to open a browser during the device flow")
 	return cmd
 }
 
 func runLogin(cmd *cobra.Command, _ []string) error {
+	mode := output.ResolveMode(flagOutput, output.StdoutIsTerminal())
+
+	tokenMode := loginToken != "" || loginTokenStdin
+	// --username selected the password flow before the device flow became the
+	// default; keep it doing so instead of silently ignoring it for auth.
+	passwordMode := loginPassword || loginPasswordFile || loginUsername != ""
+
+	if tokenMode && passwordMode {
+		return renderUsageError(cmd.ErrOrStderr(), mode, "choose one of --token or --password/--username, not both", "traceway login --help")
+	}
+	if loginToken != "" && loginTokenStdin {
+		return renderUsageError(cmd.ErrOrStderr(), mode, "choose one of --token or --token-stdin, not both", "traceway login --help")
+	}
+
+	switch {
+	case tokenMode:
+		return runLoginToken(cmd)
+	case passwordMode:
+		return runLoginPassword(cmd)
+	default:
+		return runLoginWeb(cmd)
+	}
+}
+
+func runLoginPassword(cmd *cobra.Command) error {
 	ctx := cmd.Context()
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	mode := output.ResolveMode(flagOutput, output.StdoutIsTerminal())
 
-	cfg, err := config.Load()
+	cfg, st, profileName, url, err := loadLoginContext()
 	if err != nil {
 		return err
-	}
-	st, err := state.Load()
-	if err != nil {
-		return err
-	}
-
-	profileName := resolveProfileName(st)
-
-	existingCfg, hasCfg := cfg.Profiles[profileName]
-	existingState, hasState := st.Profiles[profileName]
-
-	url := loginURL
-	if url == "" {
-		if hasCfg {
-			url = existingCfg.URL
-		} else {
-			url = defaultURL
-		}
 	}
 
 	username := loginUsername
 	if username == "" {
-		if hasCfg {
-			username = existingCfg.Username
+		if existing, ok := cfg.Profiles[profileName]; ok {
+			username = existing.Username
 		}
 		if username == "" {
 			username, err = promptUsername(cmd.InOrStdin(), cmd.OutOrStdout())
@@ -86,46 +107,42 @@ func runLogin(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	mode := output.ResolveMode(flagOutput, output.StdoutIsTerminal())
-	c := client.New(url)
-	jwt, err := c.Login(ctx, username, password)
+	jwt, err := client.New(url).Login(ctx, username, password)
 	if err != nil {
 		return renderAPIError(cmd.ErrOrStderr(), mode, err, true)
 	}
 
-	if cfg.Profiles == nil {
-		cfg.Profiles = map[string]config.Profile{}
-	}
-	cfg.Profiles[profileName] = config.Profile{
-		URL:      url,
-		Username: username,
-	}
-
-	if st.Profiles == nil {
-		st.Profiles = map[string]state.ProfileState{}
-	}
-	currentProject := ""
-	if hasState {
-		currentProject = existingState.CurrentProjectID
-	}
-	st.Profiles[profileName] = state.ProfileState{
-		JWT:              jwt,
-		CurrentProjectID: currentProject,
-	}
-	// First profile ever → set CurrentProfile pointer. Don't override on subsequent logins.
-	if st.CurrentProfile == "" {
-		st.CurrentProfile = profileName
-	}
-
-	if err := cfg.Save(); err != nil {
-		return err
-	}
-	if err := st.Save(); err != nil {
+	if err := saveProfileCredentials(cfg, st, profileName, url, username, credential{Kind: state.KindPassword, AccessToken: jwt}); err != nil {
 		return err
 	}
 
 	_, err = fmt.Fprintf(cmd.OutOrStdout(), "Logged in as %s on %s (profile: %s)\n", username, url, profileName)
 	return err
+}
+
+// loadLoginContext loads config + state and resolves the active profile name
+// and base URL, shared by all login paths.
+func loadLoginContext() (*config.Config, *state.State, string, string, error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, nil, "", "", err
+	}
+	st, err := state.Load()
+	if err != nil {
+		return nil, nil, "", "", err
+	}
+
+	profileName := resolveProfileName(st)
+
+	url := loginURL
+	if url == "" {
+		if existing, ok := cfg.Profiles[profileName]; ok && existing.URL != "" {
+			url = existing.URL
+		} else {
+			url = defaultURL
+		}
+	}
+	return cfg, st, profileName, url, nil
 }
 
 func promptUsername(in io.Reader, out io.Writer) (string, error) {

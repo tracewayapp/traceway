@@ -70,7 +70,7 @@ func runEndpointsList(cmd *cobra.Command, _ []string) error {
 			enumFlagHint("traceway endpoints list", "--sort-direction", sortDirections))
 	}
 
-	c := client.New(sess.URL, client.WithJWT(sess.JWT))
+	c := sess.Client()
 	resp, err := c.ListEndpoints(ctx, sess.ProjectID, client.ListEndpointsRequest{
 		TimeRange:     tr,
 		Pagination:    page,
@@ -145,7 +145,7 @@ func runEndpointsChart(cmd *cobra.Command, _ []string) error {
 	}
 	intervalMin, _ := cmd.Flags().GetInt("interval-minutes")
 
-	c := client.New(sess.URL, client.WithJWT(sess.JWT))
+	c := sess.Client()
 	resp, err := c.GetEndpointChart(ctx, sess.ProjectID, client.EndpointChartRequest{
 		TimeRange:       tr,
 		MetricType:      metricType,
@@ -239,7 +239,7 @@ func runEndpointsSlow(cmd *cobra.Command, args []string) error {
 		return renderSessionError(cmd.ErrOrStderr(), mode, err)
 	}
 
-	c := client.New(sess.URL, client.WithJWT(sess.JWT))
+	c := sess.Client()
 	resp, err := c.GetSlowEndpoint(ctx, sess.ProjectID, args[0])
 	if err != nil {
 		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
@@ -300,7 +300,7 @@ func runEndpointsShow(cmd *cobra.Command, args []string) error {
 		return renderTimestampError(cmd.ErrOrStderr(), mode, "recorded-at", err)
 	}
 
-	c := client.New(sess.URL, client.WithJWT(sess.JWT))
+	c := sess.Client()
 	resp, err := c.GetEndpoint(ctx, sess.ProjectID, args[0], recordedAt)
 	if err != nil {
 		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)

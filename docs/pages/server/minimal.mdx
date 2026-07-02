@@ -57,7 +57,7 @@ Then use `traceway:minimal` instead of `ghcr.io/tracewayapp/traceway:minimal` in
 | `POSTGRES_PASSWORD` | PostgreSQL password | `password` |
 | `POSTGRES_SSLMODE` | PostgreSQL SSL mode | `disable` |
 | `JWT_SECRET` | JWT signing secret (min 32 chars) | `your-secret-here` |
-| `APP_BASE_URL` | Public URL of your instance. Used for SDK setup instructions, email links, and OAuth callback URLs. | `https://traceway.example.com` |
+| `APP_BASE_URL` | Public URL of your instance. Used for SDK setup instructions, email links, OAuth callback URLs, and the CLI/MCP OAuth issuer plus device-login verification URL. If unset, derived per-request from `Host` / `X-Forwarded-*`. | `https://traceway.example.com` |
 | `STORAGE_TYPE` | Blob storage backend for source maps, session recordings, and AI traces: `local` (default) or `s3`. See [Blob Storage](/server/storage) for the S3 variables. | `local` |
 | `STORAGE_PATH` | Folder for local blob storage. Defaults to `./storage`, which is `/app/storage` in this image. Mount a volume there. Ignored when `STORAGE_TYPE=s3`. | `/app/storage` |
 | `SESSION_RECORDING_RETENTION_DAYS` | Days to keep on-disk session recordings under `STORAGE_PATH/recordings/`. Defaults to `30`. Worker runs hourly and on startup. `0` disables; no effect when `STORAGE_TYPE=s3`. | `30` |

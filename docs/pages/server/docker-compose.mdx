@@ -99,7 +99,7 @@ Edit the environment variables in your compose file as needed:
 | `POSTGRES_PASSWORD` | `traceway` | PostgreSQL password |
 | `POSTGRES_SSLMODE` | `disable` | PostgreSQL SSL mode |
 | `JWT_SECRET` | `change-this-to-a-secure-secret-at-least-32-chars` | JWT signing secret (min 32 chars) |
-| `APP_BASE_URL` | *(none)* | Public URL of your Traceway instance (e.g. `https://traceway.example.com`). Used for SDK setup instructions, email links, and OAuth callback URLs. |
+| `APP_BASE_URL` | *(none)* | Public URL of your Traceway instance (e.g. `https://traceway.example.com`). Used for SDK setup instructions, email links, OAuth callback URLs, and the CLI/MCP OAuth issuer plus device-login verification URL. If unset, the device-auth and `/.well-known` endpoints derive it per-request from the `Host` / `X-Forwarded-*` headers; set it explicitly behind a proxy that rewrites `Host`. See [CLI Authentication](/learn/cli-auth). |
 | `STORAGE_TYPE` | `local` | Blob storage backend for source maps, session recordings, and AI traces: `local` or `s3`. See [Blob Storage](/server/storage) for the S3 variables. |
 | `STORAGE_PATH` | `./storage` | Folder for local blob storage, `/app/storage` in the minimal image. Mount a volume there. Ignored when `STORAGE_TYPE=s3`. |
 | `SESSION_RECORDING_RETENTION_DAYS` | `30` | Days to keep session recording files on disk under `STORAGE_PATH/recordings/`. A worker deletes older files hourly and on startup. No effect when `STORAGE_TYPE=s3`. Set to `0` to disable. |

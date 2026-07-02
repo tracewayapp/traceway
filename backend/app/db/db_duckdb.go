@@ -80,5 +80,6 @@ func openDuckDB(path string) error {
 
 	DuckDBConnector = connector
 	TelemetryDB = d
+	telemetryIsDuckDB = true
 	return nil
 }

@@ -15,8 +15,14 @@ var DB *sql.DB          // PostgreSQL-replacement: relational/config data (trans
 var TelemetryDB *sql.DB // ClickHouse-replacement: append-only telemetry data (non-transactional)
 var Driver lit.Driver = lit.PostgreSQL
 
+var telemetryIsDuckDB bool
+
 func IsSQLite() bool {
 	return Driver == lit.SQLite
+}
+
+func IsDuckDBTelemetry() bool {
+	return telemetryIsDuckDB
 }
 
 func initPostgres() error {

@@ -78,6 +78,9 @@ func runSQLiteRetention(ctx context.Context, days int) {
 }
 
 func reclaimTelemetryDisk(ctx context.Context) {
+	if db.IsDuckDBTelemetry() {
+		return
+	}
 	for _, stmt := range []string{
 		"PRAGMA incremental_vacuum",
 		"PRAGMA optimize",

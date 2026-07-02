@@ -361,12 +361,12 @@ func evaluateNoData(ctx context.Context, rule *models.NotificationRule, projectI
 	if cfg.DataType == "any" {
 		tables := []string{"endpoints", "exception_stack_traces", "metric_points", "tasks"}
 		for _, t := range tables {
-			var maxTs string
+			var maxTs sql.NullString
 			err := db.TelemetryDB.QueryRowContext(ctx,
-				fmt.Sprintf("SELECT COALESCE(MAX(recorded_at), '') FROM %s WHERE project_id = ?", t),
+				fmt.Sprintf("SELECT MAX(recorded_at) FROM %s WHERE project_id = ?", t),
 				pid).Scan(&maxTs)
-			if err == nil && maxTs != "" {
-				if parsed, pErr := time.Parse(time.RFC3339Nano, maxTs); pErr == nil && parsed.After(threshold) {
+			if err == nil && maxTs.Valid && maxTs.String != "" {
+				if parsed, pErr := time.Parse(time.RFC3339Nano, maxTs.String); pErr == nil && parsed.After(threshold) {
 					return &EvalResult{Fired: false}, nil
 				}
 			}
@@ -390,16 +390,16 @@ func evaluateNoData(ctx context.Context, rule *models.NotificationRule, projectI
 		return nil, fmt.Errorf("unknown data type: %s", cfg.DataType)
 	}
 
-	var maxTs string
+	var maxTs sql.NullString
 	err := db.TelemetryDB.QueryRowContext(ctx,
-		fmt.Sprintf("SELECT COALESCE(MAX(recorded_at), '') FROM %s WHERE project_id = ?", table),
+		fmt.Sprintf("SELECT MAX(recorded_at) FROM %s WHERE project_id = ?", table),
 		pid).Scan(&maxTs)
 	if err != nil {
 		return nil, err
 	}
 
-	if maxTs != "" {
-		if parsed, pErr := time.Parse(time.RFC3339Nano, maxTs); pErr == nil && parsed.After(threshold) {
+	if maxTs.Valid && maxTs.String != "" {
+		if parsed, pErr := time.Parse(time.RFC3339Nano, maxTs.String); pErr == nil && parsed.After(threshold) {
 			return &EvalResult{Fired: false}, nil
 		}
 	}

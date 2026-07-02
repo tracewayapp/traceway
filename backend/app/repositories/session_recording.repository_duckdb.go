@@ -63,8 +63,7 @@ func (r *sessionRecordingRepository) InsertAsync(ctx context.Context, recordings
 			nullableString(sessionId),
 			int64(rec.SegmentIndex),
 		); err != nil {
-			appender.Close()
-			return err
+			captureDroppedRow("session_recordings", err)
 		}
 	}
 

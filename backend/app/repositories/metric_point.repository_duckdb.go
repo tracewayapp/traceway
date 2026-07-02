@@ -61,14 +61,13 @@ func (r *metricPointRepository) InsertAsync(ctx context.Context, points []models
 		if len(p.Tags) > 0 {
 			b, err := json.Marshal(p.Tags)
 			if err != nil {
-				appender.Close()
-				return err
+				captureDroppedRow("metric_points", err)
+				continue
 			}
 			tagsJSON = string(b)
 		}
 		if err := appender.AppendRow(p.ProjectId.String(), p.Name, p.Value, tagsJSON, p.RecordedAt.UTC()); err != nil {
-			appender.Close()
-			return err
+			captureDroppedRow("metric_points", err)
 		}
 	}
 
@@ -80,7 +79,7 @@ func (r *metricPointRepository) QueryTimeSeries(ctx context.Context, projectId u
 	aggFunc := duckdbAggregationFunc(aggregation)
 	hasGroupBy := groupBy != ""
 
-	selectClause := fmt.Sprintf("SELECT time_bucket(to_seconds(%d), recorded_at, TIMESTAMP '1970-01-01') AS bucket", secs)
+	selectClause := "SELECT " + timeBucketExpr("recorded_at", secs) + " AS bucket"
 	if hasGroupBy {
 		selectClause += ", json_extract_string(tags, '$.\"' || :group_by || '\"') AS group_key"
 	}
@@ -262,11 +261,11 @@ func (r *metricPointRepository) GetAverageByIntervalPerServer(ctx context.Contex
 	}
 
 	query := fmt.Sprintf(`SELECT
-		time_bucket(to_seconds(%d), recorded_at, TIMESTAMP '1970-01-01') AS bucket,
+		%s AS bucket,
 		json_extract_string(tags, '$.server_name') AS sn,
 		avg(value) AS avg_value
 	FROM metric_points
-	WHERE project_id = :project_id AND name = :name AND recorded_at >= :from AND recorded_at <= :to`, secs)
+	WHERE project_id = :project_id AND name = :name AND recorded_at >= :from AND recorded_at <= :to`, timeBucketExpr("recorded_at", secs))
 
 	if len(servers) > 0 {
 		placeholders := make([]string, len(servers))

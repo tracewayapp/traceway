@@ -68,6 +68,12 @@ func (r *profileRepository) InsertStacksAsync(ctx context.Context, stacks []mode
 		return nil
 	}
 
+	tx, err := db.TelemetryDB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	for _, s := range stacks {
 		stackJSON := "[]"
 		if len(s.Stack) > 0 {
@@ -89,11 +95,11 @@ func (r *profileRepository) InsertStacksAsync(ctx context.Context, stacks []mode
 		if err != nil {
 			return err
 		}
-		if _, err := db.TelemetryDB.ExecContext(ctx, query, args...); err != nil {
+		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
 			return err
 		}
 	}
-	return nil
+	return tx.Commit()
 }
 
 func (r *profileRepository) InsertSamplesAsync(ctx context.Context, samples []models.ProfileSample) error {
@@ -117,8 +123,8 @@ func (r *profileRepository) InsertSamplesAsync(ctx context.Context, samples []mo
 		if len(s.Labels) > 0 {
 			b, err := json.Marshal(s.Labels)
 			if err != nil {
-				appender.Close()
-				return err
+				captureDroppedRow("profiling_samples", err)
+				continue
 			}
 			labelsJSON = string(b)
 		}
@@ -139,8 +145,7 @@ func (r *profileRepository) InsertSamplesAsync(ctx context.Context, samples []mo
 			s.Unit,
 			profileBoolToInt(s.IsGauge),
 		); err != nil {
-			appender.Close()
-			return err
+			captureDroppedRow("profiling_samples", err)
 		}
 	}
 
@@ -168,8 +173,8 @@ func (r *profileRepository) InsertProfilesAsync(ctx context.Context, profiles []
 		if len(p.Attributes) > 0 {
 			b, err := json.Marshal(p.Attributes)
 			if err != nil {
-				appender.Close()
-				return err
+				captureDroppedRow("profiles", err)
+				continue
 			}
 			attributesJSON = string(b)
 		}
@@ -199,8 +204,7 @@ func (r *profileRepository) InsertProfilesAsync(ctx context.Context, profiles []
 			p.Unit,
 			profileBoolToInt(p.IsGauge),
 		); err != nil {
-			appender.Close()
-			return err
+			captureDroppedRow("profiles", err)
 		}
 	}
 
@@ -386,12 +390,12 @@ func (r *profileRepository) GetSeries(ctx context.Context, projectId uuid.UUID, 
 	cohort := duckdbCohortFilter("", appVersion, serverName, params)
 
 	query, args, err := lit.ParseNamedQuery(db.Driver,
-		fmt.Sprintf(`SELECT time_bucket(to_seconds(%d), start_time, TIMESTAMP '1970-01-01') AS bucket,
+		fmt.Sprintf(`SELECT %s AS bucket,
 			CAST(%s(value) AS DOUBLE) AS agg_value
 		FROM profiling_samples
 		WHERE project_id = :project_id AND type = :type AND service_name = :service
 			AND start_time >= :from AND start_time <= :to`+filter+cohort+`
-		GROUP BY bucket ORDER BY bucket ASC`, secs, agg),
+		GROUP BY bucket ORDER BY bucket ASC`, timeBucketExpr("start_time", secs), agg),
 		params)
 	if err != nil {
 		return nil, err
@@ -522,13 +526,13 @@ func (r *profileRepository) GetSeriesBreakdown(ctx context.Context, projectId uu
 		return nil, err
 	}
 
-	seriesQuery := fmt.Sprintf(`SELECT time_bucket(to_seconds(%d), start_time, TIMESTAMP '1970-01-01') AS bucket,
+	seriesQuery := fmt.Sprintf(`SELECT %s AS bucket,
 		CAST(%s(value) AS DOUBLE) AS agg_value
 	FROM profiling_samples
 	WHERE project_id = :project_id AND type = :type AND service_name = :service
 		AND start_time >= :from AND start_time <= :to`+filter+cohort+`
 		AND %s = :dimval
-	GROUP BY bucket ORDER BY bucket ASC`, secs, agg, dimExpr)
+	GROUP BY bucket ORDER BY bucket ASC`, timeBucketExpr("start_time", secs), agg, dimExpr)
 
 	groups := make([]models.ProfileSeriesGroup, 0, len(topRows))
 	for _, row := range topRows {

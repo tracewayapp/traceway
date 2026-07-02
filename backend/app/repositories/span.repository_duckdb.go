@@ -72,8 +72,8 @@ func (r *spanRepository) InsertAsync(ctx context.Context, spans []models.Span) e
 		if len(s.Attributes) > 0 {
 			b, err := json.Marshal(s.Attributes)
 			if err != nil {
-				appender.Close()
-				return err
+				captureDroppedRow("spans", err)
+				continue
 			}
 			attributesJSON = string(b)
 		}
@@ -95,8 +95,7 @@ func (r *spanRepository) InsertAsync(ctx context.Context, spans []models.Span) e
 			nullableString(parentSpanId),
 			attributesJSON,
 		); err != nil {
-			appender.Close()
-			return err
+			captureDroppedRow("spans", err)
 		}
 	}
 

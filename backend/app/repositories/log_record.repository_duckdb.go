@@ -118,18 +118,18 @@ func (r *logRecordRepository) InsertAsync(ctx context.Context, records []models.
 	for _, lr := range records {
 		resourceJSON, err := logRecordAttrJSON(lr.ResourceAttributes)
 		if err != nil {
-			appender.Close()
-			return err
+			captureDroppedRow("log_records", err)
+			continue
 		}
 		scopeJSON, err := logRecordAttrJSON(lr.ScopeAttributes)
 		if err != nil {
-			appender.Close()
-			return err
+			captureDroppedRow("log_records", err)
+			continue
 		}
 		logJSON, err := logRecordAttrJSON(lr.LogAttributes)
 		if err != nil {
-			appender.Close()
-			return err
+			captureDroppedRow("log_records", err)
+			continue
 		}
 
 		if err := appender.AppendRow(
@@ -151,8 +151,7 @@ func (r *logRecordRepository) InsertAsync(ctx context.Context, records []models.
 			scopeJSON,
 			logJSON,
 		); err != nil {
-			appender.Close()
-			return err
+			captureDroppedRow("log_records", err)
 		}
 	}
 

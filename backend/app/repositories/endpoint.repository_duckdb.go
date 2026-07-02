@@ -147,8 +147,8 @@ func (e *endpointRepository) InsertAsync(ctx context.Context, lines []models.End
 		if len(ep.Attributes) > 0 {
 			b, err := json.Marshal(ep.Attributes)
 			if err != nil {
-				appender.Close()
-				return err
+				captureDroppedRow("endpoints", err)
+				continue
 			}
 			attributesJSON = string(b)
 		}
@@ -190,8 +190,7 @@ func (e *endpointRepository) InsertAsync(ctx context.Context, lines []models.End
 			isStream,
 			isRoot,
 		); err != nil {
-			appender.Close()
-			return err
+			captureDroppedRow("endpoints", err)
 		}
 	}
 
@@ -477,11 +476,10 @@ func (e *endpointRepository) ErrorRateByHour(ctx context.Context, projectId uuid
 }
 
 func (e *endpointRepository) CountByInterval(ctx context.Context, projectId uuid.UUID, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
-	secs := intervalMinutes * 60
 	results, err := lit.SelectNamed[timeSeriesResult](db.TelemetryDB,
-		fmt.Sprintf(`SELECT strftime(time_bucket(to_seconds(%d), recorded_at, TIMESTAMP '1970-01-01'), '%%Y-%%m-%%d %%H:%%M:%%S') as bucket, CAST(COUNT(*) AS DOUBLE) as agg_value
+		fmt.Sprintf(`SELECT strftime(%s, '%%Y-%%m-%%d %%H:%%M:%%S') as bucket, CAST(COUNT(*) AS DOUBLE) as agg_value
 		FROM endpoints WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
-		GROUP BY bucket ORDER BY bucket ASC`, secs),
+		GROUP BY bucket ORDER BY bucket ASC`, timeBucketExpr("recorded_at", intervalMinutes*60)),
 		lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()})
 	if err != nil {
 		return nil, err
@@ -490,11 +488,10 @@ func (e *endpointRepository) CountByInterval(ctx context.Context, projectId uuid
 }
 
 func (e *endpointRepository) AvgDurationByInterval(ctx context.Context, projectId uuid.UUID, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
-	secs := intervalMinutes * 60
 	results, err := lit.SelectNamed[timeSeriesResult](db.TelemetryDB,
-		fmt.Sprintf(`SELECT strftime(time_bucket(to_seconds(%d), recorded_at, TIMESTAMP '1970-01-01'), '%%Y-%%m-%%d %%H:%%M:%%S') as bucket, AVG(duration) / 1000000.0 as agg_value
+		fmt.Sprintf(`SELECT strftime(%s, '%%Y-%%m-%%d %%H:%%M:%%S') as bucket, AVG(duration) / 1000000.0 as agg_value
 		FROM endpoints WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to AND is_stream = 0
-		GROUP BY bucket ORDER BY bucket ASC`, secs),
+		GROUP BY bucket ORDER BY bucket ASC`, timeBucketExpr("recorded_at", intervalMinutes*60)),
 		lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()})
 	if err != nil {
 		return nil, err
@@ -503,12 +500,11 @@ func (e *endpointRepository) AvgDurationByInterval(ctx context.Context, projectI
 }
 
 func (e *endpointRepository) ErrorRateByInterval(ctx context.Context, projectId uuid.UUID, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
-	secs := intervalMinutes * 60
 	results, err := lit.SelectNamed[timeSeriesResult](db.TelemetryDB,
-		fmt.Sprintf(`SELECT strftime(time_bucket(to_seconds(%d), recorded_at, TIMESTAMP '1970-01-01'), '%%Y-%%m-%%d %%H:%%M:%%S') as bucket,
+		fmt.Sprintf(`SELECT strftime(%s, '%%Y-%%m-%%d %%H:%%M:%%S') as bucket,
 		SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as agg_value
 		FROM endpoints WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
-		GROUP BY bucket ORDER BY bucket ASC`, secs),
+		GROUP BY bucket ORDER BY bucket ASC`, timeBucketExpr("recorded_at", intervalMinutes*60)),
 		lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()})
 	if err != nil {
 		return nil, err
@@ -700,13 +696,13 @@ func (e *endpointRepository) GetEndpointStackedChart(ctx context.Context, projec
 	}
 
 	timeSeriesQuery := fmt.Sprintf(`SELECT
-		time_bucket(to_seconds(%d), recorded_at, TIMESTAMP '1970-01-01') as bucket,
+		%s as bucket,
 		%s as endpoint_category,
 		%s as metric_value
 	FROM endpoints
 	WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to AND is_stream = 0
 	GROUP BY bucket, endpoint_category
-	ORDER BY bucket ASC, endpoint_category ASC`, secs, caseExpr, metricExpr)
+	ORDER BY bucket ASC, endpoint_category ASC`, timeBucketExpr("recorded_at", secs), caseExpr, metricExpr)
 
 	parsedQuery, args, err := lit.ParseNamedQuery(db.Driver, timeSeriesQuery, params)
 	if err != nil {
@@ -767,13 +763,13 @@ func (e *endpointRepository) getStackedChartWithPercentiles(ctx context.Context,
 	caseExpr += "ELSE 'Other' END"
 
 	query := fmt.Sprintf(`SELECT
-		time_bucket(to_seconds(%d), recorded_at, TIMESTAMP '1970-01-01') as bucket,
+		%s as bucket,
 		%s as endpoint_category,
 		quantile_cont(duration, %g) / 1000000.0 as metric_value
 	FROM endpoints
 	WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to AND is_stream = 0
 	GROUP BY bucket, endpoint_category
-	ORDER BY bucket ASC, endpoint_category ASC`, bucketSecs, caseExpr, percentile)
+	ORDER BY bucket ASC, endpoint_category ASC`, timeBucketExpr("recorded_at", bucketSecs), caseExpr, percentile)
 
 	parsedQuery, args, err := lit.ParseNamedQuery(db.Driver, query, params)
 	if err != nil {

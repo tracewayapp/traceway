@@ -129,8 +129,8 @@ func (e *exceptionStackTraceRepository) InsertAsync(ctx context.Context, lines [
 		if len(est.Attributes) > 0 {
 			b, err := json.Marshal(est.Attributes)
 			if err != nil {
-				appender.Close()
-				return err
+				captureDroppedRow("exception_stack_traces", err)
+				continue
 			}
 			attributesJSON = string(b)
 		}
@@ -171,8 +171,7 @@ func (e *exceptionStackTraceRepository) InsertAsync(ctx context.Context, lines [
 			nullableString(distributedTraceId),
 			nullableString(sessionId),
 		); err != nil {
-			appender.Close()
-			return err
+			captureDroppedRow("exception_stack_traces", err)
 		}
 	}
 
@@ -319,7 +318,7 @@ func (e *exceptionStackTraceRepository) FindByHash(ctx context.Context, projectI
 
 func (e *exceptionStackTraceRepository) CountByHour(ctx context.Context, projectId uuid.UUID, start, end time.Time) ([]models.TimeSeriesPoint, error) {
 	results, err := lit.SelectNamed[exceptionBucketRow](db.TelemetryDB,
-		`SELECT time_bucket(to_seconds(3600), recorded_at, TIMESTAMP '1970-01-01') as bucket, CAST(COUNT(*) AS DOUBLE) as agg_value
+		`SELECT `+timeBucketExpr("recorded_at", 3600)+` as bucket, CAST(COUNT(*) AS DOUBLE) as agg_value
 		FROM exception_stack_traces WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
 		GROUP BY bucket ORDER BY bucket ASC`,
 		lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()})
@@ -330,11 +329,10 @@ func (e *exceptionStackTraceRepository) CountByHour(ctx context.Context, project
 }
 
 func (e *exceptionStackTraceRepository) CountByInterval(ctx context.Context, projectId uuid.UUID, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
-	intervalSeconds := intervalMinutes * 60
 	results, err := lit.SelectNamed[exceptionBucketRow](db.TelemetryDB,
-		fmt.Sprintf(`SELECT time_bucket(to_seconds(%d), recorded_at, TIMESTAMP '1970-01-01') as bucket, CAST(COUNT(*) AS DOUBLE) as agg_value
+		`SELECT `+timeBucketExpr("recorded_at", intervalMinutes*60)+` as bucket, CAST(COUNT(*) AS DOUBLE) as agg_value
 		FROM exception_stack_traces WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
-		GROUP BY bucket ORDER BY bucket ASC`, intervalSeconds),
+		GROUP BY bucket ORDER BY bucket ASC`,
 		lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()})
 	if err != nil {
 		return nil, err
@@ -355,7 +353,7 @@ func (e *exceptionStackTraceRepository) GetHourlyTrendForHashes(ctx context.Cont
 		params[key] = h
 	}
 
-	query := `SELECT exception_hash, time_bucket(to_seconds(3600), recorded_at, TIMESTAMP '1970-01-01') as hour, COUNT(*) as count
+	query := `SELECT exception_hash, ` + timeBucketExpr("recorded_at", 3600) + ` as hour, COUNT(*) as count
 		FROM exception_stack_traces
 		WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
 		AND exception_hash IN (` + strings.Join(placeholders, ",") + `)

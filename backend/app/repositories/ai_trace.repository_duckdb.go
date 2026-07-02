@@ -56,6 +56,8 @@ type groupedAiTraceRow struct {
 	TraceName       string    `lit:"trace_name"`
 	TotalCount      uint64    `lit:"total_count"`
 	AvgDuration     float64   `lit:"avg_duration"`
+	P50Duration     float64   `lit:"p50_duration"`
+	P95Duration     float64   `lit:"p95_duration"`
 	TotalTokens     int64     `lit:"total_tokens"`
 	TotalCost       float64   `lit:"total_cost"`
 	AvgInputTokens  float64   `lit:"avg_input_tokens"`
@@ -65,24 +67,21 @@ type groupedAiTraceRow struct {
 	HasNonRoot      bool      `lit:"has_non_root"`
 }
 
-type aiTraceDurationRow struct {
-	Duration float64 `lit:"duration"`
-}
-
 type aiTraceDetailStatsRow struct {
-	Count           int64   `lit:"count"`
-	AvgDurationMs   float64 `lit:"avg_duration_ms"`
-	TotalTokens     int64   `lit:"total_tokens"`
-	TotalCost       float64 `lit:"total_cost"`
-	AvgInputTokens  float64 `lit:"avg_input_tokens"`
-	AvgOutputTokens float64 `lit:"avg_output_tokens"`
+	Count            int64   `lit:"count"`
+	AvgDurationMs    float64 `lit:"avg_duration_ms"`
+	MedianDurationMs float64 `lit:"median_duration_ms"`
+	P95DurationMs    float64 `lit:"p95_duration_ms"`
+	TotalTokens      int64   `lit:"total_tokens"`
+	TotalCost        float64 `lit:"total_cost"`
+	AvgInputTokens   float64 `lit:"avg_input_tokens"`
+	AvgOutputTokens  float64 `lit:"avg_output_tokens"`
 }
 
 func init() {
 	models.ExtensionModelRegistrations = append(models.ExtensionModelRegistrations, func(driver lit.Driver) {
 		lit.RegisterModelWithNaming[aiTraceRow](driver, aiTraceRowNaming{})
 		lit.RegisterModel[groupedAiTraceRow](driver)
-		lit.RegisterModel[aiTraceDurationRow](driver)
 		lit.RegisterModel[aiTraceDetailStatsRow](driver)
 	})
 }
@@ -144,8 +143,8 @@ func (r *aiTraceRepository) InsertAsync(ctx context.Context, lines []models.AiTr
 		if len(t.Attributes) > 0 {
 			b, err := json.Marshal(t.Attributes)
 			if err != nil {
-				appender.Close()
-				return err
+				captureDroppedRow("ai_traces", err)
+				continue
 			}
 			attributesJSON = string(b)
 		}
@@ -190,8 +189,7 @@ func (r *aiTraceRepository) InsertAsync(ctx context.Context, lines []models.AiTr
 			isRoot,
 			nullableString(distributedTraceId),
 		); err != nil {
-			appender.Close()
-			return err
+			captureDroppedRow("ai_traces", err)
 		}
 	}
 
@@ -221,7 +219,9 @@ func (r *aiTraceRepository) FindGroupedByTraceName(ctx context.Context, projectI
 	rows, err := lit.SelectNamed[groupedAiTraceRow](db.TelemetryDB,
 		`SELECT trace_name, COUNT(*) AS total_count,
 			AVG(duration) AS avg_duration,
-			SUM(total_tokens) AS total_tokens,
+			quantile_cont(duration, 0.50) AS p50_duration,
+			quantile_cont(duration, 0.95) AS p95_duration,
+			CAST(SUM(total_tokens) AS BIGINT) AS total_tokens,
 			SUM(total_cost) AS total_cost,
 			AVG(input_tokens) AS avg_input_tokens,
 			AVG(output_tokens) AS avg_output_tokens,
@@ -236,26 +236,11 @@ func (r *aiTraceRepository) FindGroupedByTraceName(ctx context.Context, projectI
 
 	var stats []models.AiTraceStats
 	for _, row := range rows {
-		// Compute percentiles from raw durations for this trace_name
-		durationParams := lit.P{"project_id": projectId, "from": fromDate.UTC(), "to": toDate.UTC(), "trace_name": row.TraceName}
-		durationRows, err := lit.SelectNamed[aiTraceDurationRow](db.TelemetryDB,
-			`SELECT CAST(duration AS DOUBLE) AS duration FROM ai_traces
-			WHERE project_id = :project_id AND trace_name = :trace_name AND recorded_at >= :from AND recorded_at <= :to
-			ORDER BY duration ASC`, durationParams)
-		if err != nil {
-			return nil, 0, err
-		}
-
-		sortedDurations := make([]float64, len(durationRows))
-		for i, d := range durationRows {
-			sortedDurations[i] = d.Duration
-		}
-
 		stats = append(stats, models.AiTraceStats{
 			TraceName:       row.TraceName,
 			Count:           row.TotalCount,
-			P50Duration:     time.Duration(computePercentile(sortedDurations, 0.5)),
-			P95Duration:     time.Duration(computePercentile(sortedDurations, 0.95)),
+			P50Duration:     time.Duration(row.P50Duration),
+			P95Duration:     time.Duration(row.P95Duration),
 			AvgDuration:     time.Duration(row.AvgDuration),
 			TotalTokens:     row.TotalTokens,
 			TotalCost:       row.TotalCost,
@@ -267,7 +252,6 @@ func (r *aiTraceRepository) FindGroupedByTraceName(ctx context.Context, projectI
 		})
 	}
 
-	// Sort results
 	orderByMap := map[string]func(i, j int) bool{
 		"count":        func(i, j int) bool { return stats[i].Count > stats[j].Count },
 		"p50_duration": func(i, j int) bool { return stats[i].P50Duration > stats[j].P50Duration },
@@ -289,7 +273,6 @@ func (r *aiTraceRepository) FindGroupedByTraceName(ctx context.Context, projectI
 	}
 	sort.Slice(stats, sortFn)
 
-	// Paginate
 	offset := (page - 1) * pageSize
 	end := offset + pageSize
 	if offset > len(stats) {
@@ -365,6 +348,8 @@ func (r *aiTraceRepository) GetTraceNameStats(ctx context.Context, projectId uui
 	row, err := lit.SelectSingleNamed[aiTraceDetailStatsRow](db.TelemetryDB,
 		`SELECT COUNT(*) AS count,
 			CASE WHEN COUNT(*) > 0 THEN AVG(duration) / 1000000.0 ELSE 0 END AS avg_duration_ms,
+			COALESCE(quantile_cont(duration, 0.50) / 1000000.0, 0) AS median_duration_ms,
+			COALESCE(quantile_cont(duration, 0.95) / 1000000.0, 0) AS p95_duration_ms,
 			SUM(total_tokens) AS total_tokens,
 			SUM(total_cost) AS total_cost,
 			AVG(input_tokens) AS avg_input_tokens,
@@ -380,28 +365,14 @@ func (r *aiTraceRepository) GetTraceNameStats(ctx context.Context, projectId uui
 	if row != nil {
 		stats.Count = row.Count
 		stats.AvgDuration = row.AvgDurationMs
+		stats.MedianDuration = row.MedianDurationMs
+		stats.P95Duration = row.P95DurationMs
 		stats.TotalTokens = row.TotalTokens
 		stats.TotalCost = row.TotalCost
 		stats.AvgInputTokens = row.AvgInputTokens
 		stats.AvgOutputTokens = row.AvgOutputTokens
 		stats.Throughput = float64(row.Count) / durationMinutes
 	}
-
-	// Compute median and p95 from raw durations
-	durationRows, err := lit.SelectNamed[aiTraceDurationRow](db.TelemetryDB,
-		`SELECT CAST(duration AS DOUBLE) / 1000000.0 AS duration FROM ai_traces
-		WHERE project_id = :project_id AND trace_name = :trace_name AND recorded_at >= :from AND recorded_at <= :to
-		ORDER BY duration ASC`, params)
-	if err != nil {
-		return nil, err
-	}
-
-	sortedDurations := make([]float64, len(durationRows))
-	for i, d := range durationRows {
-		sortedDurations[i] = d.Duration
-	}
-	stats.MedianDuration = computePercentile(sortedDurations, 0.5)
-	stats.P95Duration = computePercentile(sortedDurations, 0.95)
 
 	return stats, nil
 }

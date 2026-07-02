@@ -5,8 +5,11 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
+
+	traceway "go.tracewayapp.com"
 
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
@@ -169,9 +172,14 @@ func RevokeByToken(presented string) error {
 
 // revokeFamily revokes a token family in its own committed transaction. It is
 // used on the error paths of RotateRefresh, where the rotation transaction has
-// rolled back but the revoke must persist.
+// rolled back but the revoke must persist. A failed revoke must not change the
+// caller's invalid_grant response, but it is a security-relevant write, so it
+// is reported instead of discarded.
 func revokeFamily(familyId string) {
-	_, _ = db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
+	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
 		return struct{}{}, repositories.RefreshTokenRepository.RevokeFamily(tx, familyId)
 	})
+	if err != nil {
+		traceway.CaptureException(fmt.Errorf("revoking refresh-token family %s after reuse detection: %w", familyId, err))
+	}
 }

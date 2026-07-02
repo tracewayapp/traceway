@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -27,8 +28,13 @@ func (c *patController) Create(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
-	if strings.TrimSpace(req.Name) == "" {
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Name is required"})
+		return
+	}
+	if utf8.RuneCountInString(name) > 100 {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Name must be 100 characters or fewer"})
 		return
 	}
 
@@ -42,14 +48,14 @@ func (c *patController) Create(ctx *gin.Context) {
 		expiresAt = &t
 	}
 
-	if err := repositories.PersonalAccessTokenRepository.Create(tx, id, token, prefix, userId, strings.TrimSpace(req.Name), expiresAt); err != nil {
+	if err := repositories.PersonalAccessTokenRepository.Create(tx, id, token, prefix, userId, name, expiresAt); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("create pat: %w", err))
 		return
 	}
 
 	ctx.JSON(http.StatusCreated, models.CreatePATResponse{
 		Id:        id,
-		Name:      strings.TrimSpace(req.Name),
+		Name:      name,
 		Prefix:    prefix,
 		Token:     token,
 		CreatedAt: time.Now().UTC(),

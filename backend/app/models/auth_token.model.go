@@ -76,7 +76,7 @@ type DeviceLookupResponse struct {
 }
 
 type CreatePATRequest struct {
-	Name          string `json:"name" binding:"required,min=1,max=100"`
+	Name          string `json:"name"`
 	ExpiresInDays *int   `json:"expiresInDays"`
 }
 

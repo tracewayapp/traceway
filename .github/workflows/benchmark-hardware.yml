@@ -33,6 +33,11 @@ on:
         description: 'Hetzner datacenter (nbg1, fsn1, hel1, ash, hil)'
         required: true
         default: 'nbg1'
+      commit_results:
+        description: 'Commit results to main (REPLACES the whole scenario results folder with only this dispatch''s entries). Set false for exploratory or partial-matrix runs — results and charts are still uploaded as workflow artifacts.'
+        required: true
+        type: boolean
+        default: true
       async_insert:
         description: 'When true, sets CH_ASYNC_INSERT=1 on the SUT for this dispatch. Result files gain a -async suffix so paired bars can be rendered alongside the default (off) pass.'
         required: true
@@ -207,7 +212,14 @@ jobs:
           pip install --quiet matplotlib
           python3 benchmarks/scripts/chart.py "${{ steps.stage.outputs.dst }}"
 
+      - name: Upload aggregate results + charts
+        uses: actions/upload-artifact@v4
+        with:
+          name: aggregate-${{ github.event.inputs.scenario }}
+          path: ${{ steps.stage.outputs.dst }}
+
       - name: Commit results
+        if: ${{ github.event.inputs.commit_results == 'true' }}
         run: |
           set -euo pipefail
           git config user.name "traceway-bot"

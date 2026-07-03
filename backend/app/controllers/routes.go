@@ -139,6 +139,11 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/device/approve", middleware.UseAppAuth, middleware.Transactional, DeviceAuthController.Approve)
 	router.POST("/device/deny", middleware.UseAppAuth, middleware.Transactional, DeviceAuthController.Deny)
 
+	router.POST("/oauth/register", middleware.RateLimitPerIP(10, time.Minute), middleware.Transactional, OauthAuthorizeController.Register)
+	router.GET("/oauth/client", middleware.UseAppAuth, OauthAuthorizeController.Lookup)
+	router.POST("/oauth/approve", middleware.UseAppAuth, middleware.Transactional, OauthAuthorizeController.Approve)
+	router.POST("/oauth/deny", middleware.UseAppAuth, OauthAuthorizeController.Deny)
+
 	router.POST("/personal-access-tokens", middleware.UseAppAuth, middleware.Transactional, PATController.Create)
 	router.GET("/personal-access-tokens", middleware.UseAppAuth, PATController.List)
 	router.DELETE("/personal-access-tokens/:id", middleware.UseAppAuth, middleware.Transactional, PATController.Revoke)

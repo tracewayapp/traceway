@@ -38,4 +38,4 @@ gen-skills-check:
     diff -u ../skills/traceway/performance.md "$tmp/performance.md"
 
 # Run everything that should pass before a commit
-check: lint test vulncheck gen-skills-check
+check: lint test vulncheck gen-skills-check contract-test

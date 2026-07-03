@@ -37,6 +37,9 @@ func Resolve(since, from, to string) (client.TimeRange, error) {
 		if err != nil {
 			return client.TimeRange{}, fmt.Errorf("%w: to: %v", ErrInvalid, err)
 		}
+		if !toT.After(fromT) {
+			return client.TimeRange{}, fmt.Errorf("%w: from must be before to", ErrInvalid)
+		}
 		return client.TimeRangeFromExplicit(fromT, toT), nil
 	}
 
@@ -65,5 +68,12 @@ func ParseRelativeDuration(s string) (time.Duration, error) {
 		}
 		return time.Duration(n) * 24 * time.Hour, nil
 	}
-	return time.ParseDuration(s)
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, err
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("invalid duration %q: must be positive", s)
+	}
+	return d, nil
 }

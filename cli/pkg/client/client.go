@@ -63,6 +63,20 @@ func WithJWT(jwt string) Option {
 	return func(c *Client) { c.JWT = jwt }
 }
 
+// WithBearer returns a Client that presents the given bearer token instead of
+// this client's stored credential. The returned client shares the HTTP
+// transport and base URL but has no refresher: the caller owns the token's
+// lifecycle. Used by HTTP-mounted MCP servers to forward each request's own
+// Authorization header.
+func (c *Client) WithBearer(token string) *Client {
+	return &Client{
+		BaseURL:    c.BaseURL,
+		HTTPClient: c.HTTPClient,
+		JWT:        token,
+		UserAgent:  c.UserAgent,
+	}
+}
+
 // WithRefresher enables transparent access-token refresh: on a 401, do()
 // calls the refresher for a new token and retries the request once.
 func WithRefresher(r Refresher) Option {

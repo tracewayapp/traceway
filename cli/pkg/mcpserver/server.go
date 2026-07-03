@@ -24,7 +24,9 @@ type Config struct {
 	// DefaultProjectID is used when a tool call passes no project_id. May be
 	// empty: list_projects still works and every tool accepts project_id.
 	DefaultProjectID string
-	// InstanceURL is the Traceway instance origin, used in guidance text.
+	// InstanceURL is the Traceway instance origin, appended to the server
+	// instructions so clients can validate pasted dashboard URLs and produce
+	// links. May be empty.
 	InstanceURL string
 	// Version is the traceway build version reported to MCP clients.
 	Version string
@@ -33,6 +35,12 @@ type Config struct {
 	// bearer) and what actually fixes a dead one; empty falls back to the
 	// CLI-session advice.
 	AuthHint string
+	// PerRequestBearer forwards each tool call's own Authorization header to
+	// the API instead of Client's stored credential. HTTP mounts set it so a
+	// session keeps working when the MCP client rotates its access token
+	// mid-session; stdio servers leave it off (their requests carry no
+	// headers).
+	PerRequestBearer bool
 }
 
 // New builds an MCP server with the full Traceway tool/prompt/resource
@@ -42,9 +50,13 @@ func New(cfg Config) *mcp.Server {
 	if version == "" {
 		version = "dev"
 	}
+	instructions := knowledge.MustRead("instructions.md")
+	if cfg.InstanceURL != "" {
+		instructions += "\n\nThe connected Traceway instance is " + cfg.InstanceURL + ". Dashboard URLs the user pastes should match this origin, and when citing a record for the user, link it there (e.g. " + cfg.InstanceURL + "/issues/<hash>)."
+	}
 	srv := mcp.NewServer(
 		&mcp.Implementation{Name: "traceway", Title: "Traceway", Version: version},
-		&mcp.ServerOptions{Instructions: knowledge.MustRead("instructions.md")},
+		&mcp.ServerOptions{Instructions: instructions},
 	)
 	s := &server{cfg: cfg}
 	s.addTools(srv)

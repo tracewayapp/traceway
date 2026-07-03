@@ -82,6 +82,9 @@ func TestListTools_surfaceAndAnnotations(t *testing.T) {
 	}
 	got := map[string]bool{}
 	for _, tool := range res.Tools {
+		if tool.OutputSchema == nil {
+			t.Errorf("tool %s has no output schema", tool.Name)
+		}
 		if tool.Annotations == nil {
 			t.Errorf("tool %s has no annotations", tool.Name)
 			continue
@@ -108,6 +111,9 @@ func TestInitialize_carriesInstructions(t *testing.T) {
 	init := cs.InitializeResult()
 	if init == nil || !strings.Contains(init.Instructions, "Ground rules") {
 		t.Fatalf("instructions missing or unexpected: %+v", init)
+	}
+	if !strings.Contains(init.Instructions, "The connected Traceway instance is http") {
+		t.Errorf("instructions should name the instance origin: %s", init.Instructions)
 	}
 }
 
@@ -145,6 +151,9 @@ func TestListExceptions_wireShapeAndDefaults(t *testing.T) {
 	}
 	if !strings.Contains(resultText(t, res), "abc123def4567890") {
 		t.Errorf("result text missing fixture hash: %s", resultText(t, res))
+	}
+	if res.StructuredContent == nil {
+		t.Error("result should carry structuredContent")
 	}
 }
 
@@ -325,6 +334,40 @@ func TestArchiveExceptions_hitsArchiveRoute(t *testing.T) {
 	res = callTool(t, cs, "archive_exceptions", map[string]any{"hashes": []string{}})
 	if !res.IsError {
 		t.Fatal("empty hashes should be rejected")
+	}
+}
+
+func TestPerRequestBearer_forwardsCallHeader(t *testing.T) {
+	var gotAuth string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	t.Cleanup(ts.Close)
+
+	s := &server{cfg: Config{Client: client.New(ts.URL, client.WithJWT("session-token")), PerRequestBearer: true}}
+	req := &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: http.Header{"Authorization": []string{"Bearer per-request-token"}}}}
+	if _, err := s.client(req).ListProjects(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if gotAuth != "Bearer per-request-token" {
+		t.Errorf("Authorization = %q, want the per-request token", gotAuth)
+	}
+
+	if _, err := s.client(&mcp.CallToolRequest{}).ListProjects(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if gotAuth != "Bearer session-token" {
+		t.Errorf("Authorization = %q, want the session token when no header is present", gotAuth)
+	}
+
+	off := &server{cfg: Config{Client: client.New(ts.URL, client.WithJWT("session-token"))}}
+	if _, err := off.client(req).ListProjects(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if gotAuth != "Bearer session-token" {
+		t.Errorf("Authorization = %q, want the session token when PerRequestBearer is off", gotAuth)
 	}
 }
 

@@ -53,6 +53,10 @@ type TokenRequest struct {
 	DeviceCode   string `json:"device_code" form:"device_code"`
 	RefreshToken string `json:"refresh_token" form:"refresh_token"`
 	ClientId     string `json:"client_id" form:"client_id"`
+	Code         string `json:"code" form:"code"`
+	CodeVerifier string `json:"code_verifier" form:"code_verifier"`
+	RedirectUri  string `json:"redirect_uri" form:"redirect_uri"`
+	Resource     string `json:"resource" form:"resource"`
 }
 
 type TokenSetResponse struct {
@@ -73,6 +77,61 @@ type DeviceLookupResponse struct {
 	ClientName  string    `json:"clientName"`
 	RequestedAt time.Time `json:"requestedAt"`
 	ExpiresAt   time.Time `json:"expiresAt"`
+}
+
+type OauthClient struct {
+	Id           string
+	Name         string
+	RedirectUris []string
+	CreatedAt    time.Time
+}
+
+type AuthorizationCode struct {
+	CodeHash      string
+	ClientId      string
+	UserId        int
+	RedirectUri   string
+	CodeChallenge string
+	ExpiresAt     time.Time
+	CreatedAt     time.Time
+}
+
+type RegisterClientRequest struct {
+	ClientName   string   `json:"client_name"`
+	RedirectUris []string `json:"redirect_uris"`
+}
+
+type RegisterClientResponse struct {
+	ClientId                string   `json:"client_id"`
+	ClientName              string   `json:"client_name"`
+	RedirectUris            []string `json:"redirect_uris"`
+	GrantTypes              []string `json:"grant_types"`
+	ResponseTypes           []string `json:"response_types"`
+	TokenEndpointAuthMethod string   `json:"token_endpoint_auth_method"`
+	ClientIdIssuedAt        int64    `json:"client_id_issued_at"`
+}
+
+type AuthorizeApproveRequest struct {
+	ClientId            string `json:"client_id"`
+	RedirectUri         string `json:"redirect_uri"`
+	State               string `json:"state"`
+	CodeChallenge       string `json:"code_challenge"`
+	CodeChallengeMethod string `json:"code_challenge_method"`
+	Resource            string `json:"resource"`
+}
+
+type AuthorizeDenyRequest struct {
+	ClientId    string `json:"client_id"`
+	RedirectUri string `json:"redirect_uri"`
+	State       string `json:"state"`
+}
+
+type AuthorizeRedirectResponse struct {
+	RedirectTo string `json:"redirectTo"`
+}
+
+type OauthClientLookupResponse struct {
+	ClientName string `json:"clientName"`
 }
 
 type CreatePATRequest struct {

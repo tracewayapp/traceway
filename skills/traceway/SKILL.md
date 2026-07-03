@@ -287,7 +287,7 @@ traceway exceptions archive <hash> --yes
 
 `/traceway perf <endpoint or symptom>`, or any request about slowness, high latency, p95/p99, or "why is X slow". Approach it as a senior performance engineer: quantify first, localize the cost to a span, confirm the cause against the checklist, separate code from saturation, then root cause. Reads only; never archive or mutate.
 
-For the full methodology and the bottleneck checklist (Select N+1, missing index, chatty IPC, connection-pool exhaustion, GC pauses, and ~20 more, each tied to the Traceway signal that confirms it), read `performance.md` in this skill directory. It is the authoritative reference.
+For the full methodology and the bottleneck checklist (Select N+1, missing index, chatty IPC, connection-pool exhaustion, GC pauses, and ~20 more, each tied to the Traceway signal that confirms it), read `performance.md` in this skill directory (over MCP: the `traceway://knowledge/performance` resource). It is the authoritative reference.
 
 The loop, using the read commands documented in this skill:
 

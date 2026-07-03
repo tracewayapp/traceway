@@ -161,6 +161,13 @@ Traceway debugging playbooks as MCP resources (`traceway://knowledge/*`) and
 prompts (`debug_issue`, `investigate_performance`, `whats_broken`,
 `resolve_notification`).
 
+Every tool declares an output schema, so results come back as validated
+`structuredContent`. The same server is also mounted by the backend itself as
+a remote MCP server at `https://<instance>/mcp` (streamable HTTP, OAuth
+authorization-code + PKCE with dynamic client registration, or a `twp_` PAT
+as the bearer token) - `claude mcp add --transport http traceway
+https://<instance>/mcp` needs no local install at all.
+
 The implementation lives in `pkg/mcpserver` (importable, transport-agnostic;
 the stdio command is a thin wrapper). The playbook markdown in
 `pkg/mcpserver/knowledge/` is the canonical source for the published

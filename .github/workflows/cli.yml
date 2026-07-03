@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - "cli/**"
+      - "backend/**"
       - "skills/traceway/**"
       - ".github/workflows/cli.yml"
   pull_request:
     paths:
       - "cli/**"
+      - "backend/**"
       - "skills/traceway/**"
       - ".github/workflows/cli.yml"
 
@@ -30,13 +32,23 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: cli/go.mod
-          cache-dependency-path: cli/go.sum
+          cache-dependency-path: |
+            cli/go.sum
+            cli/test/contract/go.sum
 
       - name: Build
         run: go build ./...
 
       - name: Test
         run: go test ./...
+
+      # Boots the real backend in-process (SQLite) and drives every endpoint,
+      # every MCP tool (validating tool results against their output schemas),
+      # and the full OAuth authorization-code + PKCE flow end to end. This is
+      # what catches CLI<->backend wire drift and schema drift.
+      - name: Contract tests
+        run: go test ./...
+        working-directory: cli/test/contract
 
       - name: Skill drift check
         run: |

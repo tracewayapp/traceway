@@ -18,7 +18,7 @@ type listExceptionsIn struct {
 	IncludeArchived bool   `json:"include_archived,omitempty" jsonschema:"Include archived exception groups."`
 }
 
-func (s *server) listExceptions(ctx context.Context, _ *mcp.CallToolRequest, in listExceptionsIn) (*mcp.CallToolResult, any, error) {
+func (s *server) listExceptions(ctx context.Context, req *mcp.CallToolRequest, in listExceptionsIn) (*mcp.CallToolResult, any, error) {
 	projectID, err := s.project(in.ProjectID)
 	if err != nil {
 		return nil, nil, err
@@ -37,7 +37,7 @@ func (s *server) listExceptions(ctx context.Context, _ *mcp.CallToolRequest, in 
 	if err := validateEnum("order_by", in.OrderBy, client.ExceptionsOrderByValues); err != nil {
 		return nil, nil, err
 	}
-	resp, err := s.cfg.Client.ListExceptions(ctx, projectID, client.ListExceptionsRequest{
+	resp, err := s.client(req).ListExceptions(ctx, projectID, client.ListExceptionsRequest{
 		TimeRange:       tr,
 		Pagination:      page,
 		Search:          in.Search,
@@ -57,7 +57,7 @@ type getExceptionIn struct {
 	Hash string `json:"hash" jsonschema:"The exception group's hash: 16 hex characters, from list_exceptions or the /issues/<hash> dashboard URL path."`
 }
 
-func (s *server) getException(ctx context.Context, _ *mcp.CallToolRequest, in getExceptionIn) (*mcp.CallToolResult, any, error) {
+func (s *server) getException(ctx context.Context, req *mcp.CallToolRequest, in getExceptionIn) (*mcp.CallToolResult, any, error) {
 	projectID, err := s.project(in.ProjectID)
 	if err != nil {
 		return nil, nil, err
@@ -66,7 +66,7 @@ func (s *server) getException(ctx context.Context, _ *mcp.CallToolRequest, in ge
 	if err != nil {
 		return nil, nil, err
 	}
-	resp, err := s.cfg.Client.GetException(ctx, projectID, in.Hash, page)
+	resp, err := s.client(req).GetException(ctx, projectID, in.Hash, page)
 	if err != nil {
 		return nil, nil, s.apiErr(err)
 	}
@@ -79,7 +79,7 @@ type getExceptionOccurrenceIn struct {
 	RecordedAt string `json:"recorded_at" jsonschema:"REQUIRED for a fast lookup: the record's timestamp, RFC3339. Approximate is fine (within 24h). Recover it from the dashboard URL's ?t= param, an occurrence's recordedAt, or a notification's Occurred at; see traceway://knowledge/timestamps. Never pass the current time for an old record."`
 }
 
-func (s *server) getExceptionOccurrence(ctx context.Context, _ *mcp.CallToolRequest, in getExceptionOccurrenceIn) (*mcp.CallToolResult, any, error) {
+func (s *server) getExceptionOccurrence(ctx context.Context, req *mcp.CallToolRequest, in getExceptionOccurrenceIn) (*mcp.CallToolResult, any, error) {
 	projectID, err := s.project(in.ProjectID)
 	if err != nil {
 		return nil, nil, err
@@ -91,7 +91,7 @@ func (s *server) getExceptionOccurrence(ctx context.Context, _ *mcp.CallToolRequ
 	if err != nil {
 		return nil, nil, err
 	}
-	resp, err := s.cfg.Client.GetExceptionById(ctx, projectID, in.ID, recordedAt)
+	resp, err := s.client(req).GetExceptionById(ctx, projectID, in.ID, recordedAt)
 	if err != nil {
 		return nil, nil, s.apiErr(err)
 	}
@@ -108,7 +108,7 @@ type archiveResult struct {
 	Hashes []string `json:"hashes"`
 }
 
-func (s *server) archiveExceptions(ctx context.Context, _ *mcp.CallToolRequest, in archiveIn) (*mcp.CallToolResult, any, error) {
+func (s *server) archiveExceptions(ctx context.Context, req *mcp.CallToolRequest, in archiveIn) (*mcp.CallToolResult, any, error) {
 	projectID, err := s.project(in.ProjectID)
 	if err != nil {
 		return nil, nil, err
@@ -116,13 +116,13 @@ func (s *server) archiveExceptions(ctx context.Context, _ *mcp.CallToolRequest, 
 	if len(in.Hashes) == 0 {
 		return nil, nil, usageErrf("hashes must contain at least one exception hash")
 	}
-	if err := s.cfg.Client.ArchiveExceptions(ctx, projectID, in.Hashes); err != nil {
+	if err := s.client(req).ArchiveExceptions(ctx, projectID, in.Hashes); err != nil {
 		return nil, nil, s.apiErr(err)
 	}
 	return nil, archiveResult{Status: "archived", Hashes: in.Hashes}, nil
 }
 
-func (s *server) unarchiveExceptions(ctx context.Context, _ *mcp.CallToolRequest, in archiveIn) (*mcp.CallToolResult, any, error) {
+func (s *server) unarchiveExceptions(ctx context.Context, req *mcp.CallToolRequest, in archiveIn) (*mcp.CallToolResult, any, error) {
 	projectID, err := s.project(in.ProjectID)
 	if err != nil {
 		return nil, nil, err
@@ -130,7 +130,7 @@ func (s *server) unarchiveExceptions(ctx context.Context, _ *mcp.CallToolRequest
 	if len(in.Hashes) == 0 {
 		return nil, nil, usageErrf("hashes must contain at least one exception hash")
 	}
-	if err := s.cfg.Client.UnarchiveExceptions(ctx, projectID, in.Hashes); err != nil {
+	if err := s.client(req).UnarchiveExceptions(ctx, projectID, in.Hashes); err != nil {
 		return nil, nil, s.apiErr(err)
 	}
 	return nil, archiveResult{Status: "unarchived", Hashes: in.Hashes}, nil

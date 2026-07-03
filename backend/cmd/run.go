@@ -23,6 +23,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/recordings"
 	"github.com/tracewayapp/traceway/backend/app/retention"
 	"github.com/tracewayapp/traceway/backend/app/services"
+	"github.com/tracewayapp/traceway/backend/app/services/mcpmount"
 	"github.com/tracewayapp/traceway/backend/app/sourcemapbackfill"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/scopes"
@@ -204,6 +205,14 @@ func Run(opts ...Option) {
 	// they aren't shadowed by index.html.
 	router.GET("/.well-known/oauth-authorization-server", controllers.WellKnownController.AuthorizationServer)
 	router.GET("/.well-known/oauth-protected-resource", controllers.WellKnownController.ProtectedResource)
+
+	// The MCP server also lives at the origin root: its resource identifier is
+	// <origin>/mcp, matching the protected-resource metadata above. Streamable
+	// HTTP uses GET (SSE stream), POST (messages), and DELETE (session end).
+	mcpHandler := mcpmount.GinHandler(router, "0.0.1")
+	router.GET(mcpmount.Path, mcpHandler)
+	router.POST(mcpmount.Path, mcpHandler)
+	router.DELETE(mcpmount.Path, mcpHandler)
 
 	apiOnly := cfg.APIOnly == "true"
 

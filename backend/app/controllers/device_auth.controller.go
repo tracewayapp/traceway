@@ -64,6 +64,17 @@ func (c *deviceAuthController) Token(ctx *gin.Context) {
 			return
 		}
 		ctx.JSON(http.StatusOK, ts)
+	case "authorization_code":
+		if err := authserver.ValidateResource(req.Resource, authserver.IssuerBaseURLFromRequest(ctx)); err != nil {
+			writeOAuthGrantError(ctx, err)
+			return
+		}
+		ts, err := authserver.RedeemAuthorizationCode(req.ClientId, req.Code, req.CodeVerifier, req.RedirectUri)
+		if err != nil {
+			writeOAuthGrantError(ctx, err)
+			return
+		}
+		ctx.JSON(http.StatusOK, ts)
 	default:
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "unsupported_grant_type"})
 	}
@@ -172,6 +183,8 @@ func writeOAuthGrantError(ctx *gin.Context, err error) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "expired_token"})
 	case errors.Is(err, authserver.ErrInvalidGrant):
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_grant"})
+	case errors.Is(err, authserver.ErrInvalidTarget):
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_target"})
 	default:
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("token grant: %w", err))
 	}

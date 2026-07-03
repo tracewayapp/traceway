@@ -41,6 +41,8 @@ func TestParseRelativeDuration_invalidInputs(t *testing.T) {
 		"d",
 		"notaduration",
 		"",
+		"0s",
+		"-1h",
 	}
 	for _, in := range cases {
 		t.Run(in, func(t *testing.T) {
@@ -88,6 +90,9 @@ func TestResolve_invalidCombinationsWrapErrInvalid(t *testing.T) {
 		{"bad from", "", "not-a-date", "2026-05-13T23:59:59Z"},
 		{"bad to", "", "2026-05-13T00:00:00Z", "not-a-date"},
 		{"bad since", "notaduration", "", ""},
+		{"negative since", "-1h", "", ""},
+		{"from after to", "", "2026-05-13T23:59:59Z", "2026-05-13T00:00:00Z"},
+		{"from equal to to", "", "2026-05-13T00:00:00Z", "2026-05-13T00:00:00Z"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

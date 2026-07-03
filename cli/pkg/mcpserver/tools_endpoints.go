@@ -17,7 +17,7 @@ type listEndpointsIn struct {
 	SortDirection string `json:"sort_direction,omitempty" jsonschema:"asc or desc (default)."`
 }
 
-func (s *server) listEndpoints(ctx context.Context, _ *mcp.CallToolRequest, in listEndpointsIn) (*mcp.CallToolResult, any, error) {
+func (s *server) listEndpoints(ctx context.Context, req *mcp.CallToolRequest, in listEndpointsIn) (*mcp.CallToolResult, any, error) {
 	projectID, err := s.project(in.ProjectID)
 	if err != nil {
 		return nil, nil, err
@@ -36,7 +36,7 @@ func (s *server) listEndpoints(ctx context.Context, _ *mcp.CallToolRequest, in l
 	if err := validateEnum("sort_direction", in.SortDirection, client.SortDirections); err != nil {
 		return nil, nil, err
 	}
-	resp, err := s.cfg.Client.ListEndpoints(ctx, projectID, client.ListEndpointsRequest{
+	resp, err := s.client(req).ListEndpoints(ctx, projectID, client.ListEndpointsRequest{
 		TimeRange:     tr,
 		Pagination:    page,
 		Search:        in.Search,
@@ -55,7 +55,7 @@ type getEndpointRequestIn struct {
 	RecordedAt string `json:"recorded_at" jsonschema:"REQUIRED for a fast lookup: the record's timestamp, RFC3339. Approximate is fine (within 24h). Recover it from the dashboard URL's ?t= param or the trace node; see traceway://knowledge/timestamps. Never pass the current time for an old record."`
 }
 
-func (s *server) getEndpointRequest(ctx context.Context, _ *mcp.CallToolRequest, in getEndpointRequestIn) (*mcp.CallToolResult, any, error) {
+func (s *server) getEndpointRequest(ctx context.Context, req *mcp.CallToolRequest, in getEndpointRequestIn) (*mcp.CallToolResult, any, error) {
 	projectID, err := s.project(in.ProjectID)
 	if err != nil {
 		return nil, nil, err
@@ -67,7 +67,7 @@ func (s *server) getEndpointRequest(ctx context.Context, _ *mcp.CallToolRequest,
 	if err != nil {
 		return nil, nil, err
 	}
-	resp, err := s.cfg.Client.GetEndpoint(ctx, projectID, in.ID, recordedAt)
+	resp, err := s.client(req).GetEndpoint(ctx, projectID, in.ID, recordedAt)
 	if err != nil {
 		return nil, nil, s.apiErr(err)
 	}
@@ -81,7 +81,7 @@ type endpointsChartIn struct {
 	IntervalMinutes int    `json:"interval_minutes,omitempty" jsonschema:"Bucket size in minutes. Default is the server's (5). Use a coarse interval over a wide window first, then re-run the suspect span with a finer one."`
 }
 
-func (s *server) endpointsChart(ctx context.Context, _ *mcp.CallToolRequest, in endpointsChartIn) (*mcp.CallToolResult, any, error) {
+func (s *server) endpointsChart(ctx context.Context, req *mcp.CallToolRequest, in endpointsChartIn) (*mcp.CallToolResult, any, error) {
 	projectID, err := s.project(in.ProjectID)
 	if err != nil {
 		return nil, nil, err
@@ -96,7 +96,7 @@ func (s *server) endpointsChart(ctx context.Context, _ *mcp.CallToolRequest, in 
 	if in.IntervalMinutes < 0 {
 		return nil, nil, usageErrf("interval_minutes must be 0 (server default) or positive")
 	}
-	resp, err := s.cfg.Client.GetEndpointChart(ctx, projectID, client.EndpointChartRequest{
+	resp, err := s.client(req).GetEndpointChart(ctx, projectID, client.EndpointChartRequest{
 		TimeRange:       tr,
 		MetricType:      pickStr(in.MetricType, "p95"),
 		IntervalMinutes: in.IntervalMinutes,
@@ -112,7 +112,7 @@ type getSlowEndpointConfigIn struct {
 	Endpoint string `json:"endpoint" jsonschema:"The endpoint name exactly as listed, e.g. GET /api/reports/export. URL-decode names taken from dashboard URLs first."`
 }
 
-func (s *server) getSlowEndpointConfig(ctx context.Context, _ *mcp.CallToolRequest, in getSlowEndpointConfigIn) (*mcp.CallToolResult, any, error) {
+func (s *server) getSlowEndpointConfig(ctx context.Context, req *mcp.CallToolRequest, in getSlowEndpointConfigIn) (*mcp.CallToolResult, any, error) {
 	projectID, err := s.project(in.ProjectID)
 	if err != nil {
 		return nil, nil, err
@@ -120,7 +120,7 @@ func (s *server) getSlowEndpointConfig(ctx context.Context, _ *mcp.CallToolReque
 	if in.Endpoint == "" {
 		return nil, nil, usageErrf("endpoint is required: the endpoint name exactly as returned by list_endpoints")
 	}
-	resp, err := s.cfg.Client.GetSlowEndpoint(ctx, projectID, in.Endpoint)
+	resp, err := s.client(req).GetSlowEndpoint(ctx, projectID, in.Endpoint)
 	if err != nil {
 		return nil, nil, s.apiErr(err)
 	}

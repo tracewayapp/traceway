@@ -24,7 +24,7 @@ type queryMetricsIn struct {
 	Queries         []metricQueryIn `json:"queries" jsonschema:"One or more metric queries to run over the same window."`
 }
 
-func (s *server) queryMetrics(ctx context.Context, _ *mcp.CallToolRequest, in queryMetricsIn) (*mcp.CallToolResult, any, error) {
+func (s *server) queryMetrics(ctx context.Context, req *mcp.CallToolRequest, in queryMetricsIn) (*mcp.CallToolResult, any, error) {
 	projectID, err := s.project(in.ProjectID)
 	if err != nil {
 		return nil, nil, err
@@ -57,7 +57,7 @@ func (s *server) queryMetrics(ctx context.Context, _ *mcp.CallToolRequest, in qu
 			GroupBy:     q.GroupBy,
 		})
 	}
-	resp, err := s.cfg.Client.QueryMetrics(ctx, projectID, client.QueryMetricsRequest{
+	resp, err := s.client(req).QueryMetrics(ctx, projectID, client.QueryMetricsRequest{
 		TimeRange:       tr,
 		IntervalMinutes: in.IntervalMinutes,
 		Queries:         items,

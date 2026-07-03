@@ -20,7 +20,7 @@ type queryLogsIn struct {
 	SortDirection string `json:"sort_direction,omitempty" jsonschema:"asc or desc (default) by timestamp."`
 }
 
-func (s *server) queryLogs(ctx context.Context, _ *mcp.CallToolRequest, in queryLogsIn) (*mcp.CallToolResult, any, error) {
+func (s *server) queryLogs(ctx context.Context, req *mcp.CallToolRequest, in queryLogsIn) (*mcp.CallToolResult, any, error) {
 	projectID, err := s.project(in.ProjectID)
 	if err != nil {
 		return nil, nil, err
@@ -39,7 +39,7 @@ func (s *server) queryLogs(ctx context.Context, _ *mcp.CallToolRequest, in query
 	if err := validateEnum("sort_direction", in.SortDirection, client.SortDirections); err != nil {
 		return nil, nil, err
 	}
-	resp, err := s.cfg.Client.QueryLogs(ctx, projectID, client.QueryLogsRequest{
+	resp, err := s.client(req).QueryLogs(ctx, projectID, client.QueryLogsRequest{
 		TimeRange:     tr,
 		Pagination:    page,
 		Search:        in.Search,

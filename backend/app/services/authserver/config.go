@@ -1,6 +1,7 @@
 package authserver
 
 import (
+	"net/http"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ const (
 	refreshTokenTTL    = 90 * 24 * time.Hour
 	deviceCodeTTL      = 10 * time.Minute
 	devicePollInterval = 5 * time.Second
+	authCodeTTL        = 5 * time.Minute
 	cliClientID        = "traceway-cli"
 	mcpClientID        = "traceway-mcp"
 
@@ -38,20 +40,29 @@ func IssuerBaseURL() string {
 // X-Forwarded-Host from a fronting reverse proxy, falling back to the request's
 // own scheme and Host. The returned value has no trailing slash.
 func IssuerBaseURLFromRequest(c *gin.Context) string {
+	if c.Request == nil {
+		return IssuerBaseURL()
+	}
+	return IssuerBaseURLFromHTTPRequest(c.Request)
+}
+
+// IssuerBaseURLFromHTTPRequest is IssuerBaseURLFromRequest for handlers that
+// run outside gin (the MCP mount's streamable HTTP handler).
+func IssuerBaseURLFromHTTPRequest(r *http.Request) string {
 	if base := IssuerBaseURL(); base != "" {
 		return base
 	}
 
 	scheme := "http"
-	if proto := firstForwardedValue(c.GetHeader("X-Forwarded-Proto")); proto != "" {
+	if proto := firstForwardedValue(r.Header.Get("X-Forwarded-Proto")); proto != "" {
 		scheme = proto
-	} else if c.Request != nil && c.Request.TLS != nil {
+	} else if r.TLS != nil {
 		scheme = "https"
 	}
 
-	host := firstForwardedValue(c.GetHeader("X-Forwarded-Host"))
-	if host == "" && c.Request != nil {
-		host = c.Request.Host
+	host := firstForwardedValue(r.Header.Get("X-Forwarded-Host"))
+	if host == "" {
+		host = r.Host
 	}
 	if host == "" {
 		return ""

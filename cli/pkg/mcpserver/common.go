@@ -43,6 +43,23 @@ func (s *server) apiErr(err error) error {
 	return fmt.Errorf("error=%s: %s", c.Code, c.Message)
 }
 
+// client resolves the API client for one tool call: with PerRequestBearer,
+// the call's own Authorization header wins over the session client.
+func (s *server) client(req *mcp.CallToolRequest) *client.Client {
+	if !s.cfg.PerRequestBearer || req == nil {
+		return s.cfg.Client
+	}
+	extra := req.GetExtra()
+	if extra == nil || extra.Header == nil {
+		return s.cfg.Client
+	}
+	fields := strings.Fields(extra.Header.Get("Authorization"))
+	if len(fields) != 2 || !strings.EqualFold(fields[0], "bearer") {
+		return s.cfg.Client
+	}
+	return s.cfg.Client.WithBearer(fields[1])
+}
+
 // project resolves the effective project id: the per-call param wins, then
 // the session default.
 func (s *server) project(override string) (string, error) {

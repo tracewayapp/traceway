@@ -18,8 +18,8 @@ type projectOut struct {
 	Name string `json:"name"`
 }
 
-func (s *server) listProjects(ctx context.Context, _ *mcp.CallToolRequest, _ emptyIn) (*mcp.CallToolResult, any, error) {
-	projects, err := s.cfg.Client.ListProjects(ctx)
+func (s *server) listProjects(ctx context.Context, req *mcp.CallToolRequest, _ emptyIn) (*mcp.CallToolResult, any, error) {
+	projects, err := s.client(req).ListProjects(ctx)
 	if err != nil {
 		return nil, nil, s.apiErr(err)
 	}

@@ -187,6 +187,21 @@ jobs:
           echo "dst=${dst}" >> "$GITHUB_OUTPUT"
           ls -la "${dst}"
 
+          # Committing replaces the scenario folder wholesale, so a dispatch
+          # where some matrix entries failed (quota, OOM, flake) would push a
+          # PARTIAL result set to main, silently deleting the published JSONs
+          # for the missing entries. Fail instead: the per-entry artifacts are
+          # already uploaded, and a clean re-dispatch is cheap.
+          count_csv() { tr ',' '\n' <<<"$1" | sed 's/ //g' | grep -c . ; }
+          expected=$(( $(count_csv "${{ github.event.inputs.tiers }}") \
+                     * $(count_csv "${{ github.event.inputs.modes }}") \
+                     * $(count_csv "${{ github.event.inputs.signals }}") ))
+          staged=$(find "${dst}" -name '*.json' | wc -l | tr -d ' ')
+          if [[ "${staged}" -lt "${expected}" ]]; then
+              echo "only ${staged}/${expected} matrix entries produced results — refusing to commit a partial set to main" >&2
+              exit 1
+          fi
+
       - name: Render charts
         run: |
           pip install --quiet matplotlib

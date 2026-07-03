@@ -43,8 +43,6 @@ func (s *server) apiErr(err error) error {
 	return fmt.Errorf("error=%s: %s", c.Code, c.Message)
 }
 
-// client resolves the API client for one tool call: with PerRequestBearer,
-// the call's own Authorization header wins over the session client.
 func (s *server) client(req *mcp.CallToolRequest) *client.Client {
 	if !s.cfg.PerRequestBearer || req == nil {
 		return s.cfg.Client

@@ -46,8 +46,6 @@ func IssuerBaseURLFromRequest(c *gin.Context) string {
 	return IssuerBaseURLFromHTTPRequest(c.Request)
 }
 
-// IssuerBaseURLFromHTTPRequest is IssuerBaseURLFromRequest for handlers that
-// run outside gin (the MCP mount's streamable HTTP handler).
 func IssuerBaseURLFromHTTPRequest(r *http.Request) string {
 	if base := IssuerBaseURL(); base != "" {
 		return base

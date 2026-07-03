@@ -16,11 +16,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// These tests drive the remote MCP story end to end against the booted
-// backend: RFC 8414 discovery, RFC 7591 registration, the authorization-code
-// + PKCE grant (with the consent step exercised at the API level, exactly as
-// the SPA consent page performs it), and finally a live MCP session over the
-// streamable HTTP mount using the minted access token.
 
 func doJSON(t *testing.T, method, path, token string, body any) (int, http.Header, map[string]any) {
 	t.Helper()
@@ -82,8 +77,6 @@ func registerOAuthClient(t *testing.T, redirectURI string) string {
 	return clientID
 }
 
-// approveAndGetCode performs the consent step as the SPA does and returns the
-// authorization code from the validated redirect.
 func approveAndGetCode(t *testing.T, clientID, redirectURI, challenge, state string) string {
 	t.Helper()
 	status, _, body := doJSON(t, http.MethodPost, "/api/oauth/approve", jwtToken, map[string]any{
@@ -329,7 +322,6 @@ func TestContract_mcpOverStreamableHTTP(t *testing.T) {
 		return sb.String()
 	}
 
-	// The mount is multi-project: no default project, so the tool must say so.
 	noProject := call("list_exceptions", nil)
 	if !noProject.IsError || !strings.Contains(text(noProject), "no_project") {
 		t.Errorf("missing project should be a no_project tool error, got %s", text(noProject))

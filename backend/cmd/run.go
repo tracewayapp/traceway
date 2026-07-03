@@ -206,9 +206,6 @@ func Run(opts ...Option) {
 	router.GET("/.well-known/oauth-authorization-server", controllers.WellKnownController.AuthorizationServer)
 	router.GET("/.well-known/oauth-protected-resource", controllers.WellKnownController.ProtectedResource)
 
-	// The MCP server also lives at the origin root: its resource identifier is
-	// <origin>/mcp, matching the protected-resource metadata above. Streamable
-	// HTTP uses GET (SSE stream), POST (messages), and DELETE (session end).
 	mcpHandler := mcpmount.GinHandler(router, "0.0.1")
 	router.GET(mcpmount.Path, mcpHandler)
 	router.POST(mcpmount.Path, mcpHandler)

@@ -12,9 +12,6 @@ type wellKnownController struct{}
 
 func (c *wellKnownController) AuthorizationServer(ctx *gin.Context) {
 	issuer := authserver.IssuerBaseURLFromRequest(ctx)
-	// The authorization endpoint is the SPA consent page: it parses the query
-	// params client-side and drives the /api/oauth/approve|deny endpoints, so
-	// the SPA fallback route serves it like /device.
 	ctx.JSON(http.StatusOK, gin.H{
 		"issuer":                                issuer,
 		"authorization_endpoint":                issuer + "/oauth/authorize",

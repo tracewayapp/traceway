@@ -12,9 +12,6 @@ import (
 
 type oauthClientRepository struct{}
 
-// Create stores a dynamically registered OAuth client. The redirect URIs are
-// serialized as a JSON array: they are only ever read back as a whole set for
-// exact-match validation, never queried individually.
 func (r *oauthClientRepository) Create(ex lit.Executor, client *models.OauthClient) error {
 	uris, err := json.Marshal(client.RedirectUris)
 	if err != nil {

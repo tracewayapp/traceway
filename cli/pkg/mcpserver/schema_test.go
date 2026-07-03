@@ -9,11 +9,6 @@ import (
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
 
-// TestOutSchema_matchesMarshaledShape validates a marshaled response against
-// its generated schema, covering the tricky encodings: uuid.UUID as string,
-// nil maps as null, nil pointer structs as null, and json.RawMessage as
-// arbitrary JSON. The contract suite covers the same end to end against a
-// real backend; this pins the mechanism without one.
 func TestOutSchema_matchesMarshaledShape(t *testing.T) {
 	traceID := uuid.New()
 	resp := client.EndpointDetailResponse{

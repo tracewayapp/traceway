@@ -66,8 +66,6 @@ func (r *authorizationCodeRepository) FindByCode(ex lit.Executor, code string) (
 	return &c, nil
 }
 
-// Delete removes a code by its plaintext value. The rows-affected result is
-// the single-use guard: 0 means another request already redeemed it.
 func (r *authorizationCodeRepository) Delete(ex lit.Executor, code string) (int64, error) {
 	query, args, err := lit.ParseNamedQuery(
 		db.Driver,

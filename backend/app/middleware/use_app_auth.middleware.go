@@ -46,22 +46,14 @@ func InitUseAppAuth() {
 	}
 }
 
-// ErrInvalidBearer marks a well-formed but unacceptable credential (unknown
-// PAT, bad or expired JWT). Anything else out of AuthenticateBearer is a
-// server-side failure.
 var ErrInvalidBearer = errors.New("invalid bearer token")
 
-// BearerIdentity is the resolved principal behind a bearer credential.
-// Expires is zero when the credential has no intrinsic expiry (a
-// non-expiring PAT).
 type BearerIdentity struct {
 	UserId  int
 	Email   string
 	Expires time.Time
 }
 
-// AuthenticateBearer resolves a bearer credential (PAT or JWT) to its user.
-// It is the shared core of UseAppAuth and the MCP mount's token verifier.
 func AuthenticateBearer(tokenString string) (*BearerIdentity, error) {
 	if strings.HasPrefix(tokenString, "twp_") {
 		pat, err := repositories.PersonalAccessTokenRepository.FindActiveByToken(db.DB, tokenString)
@@ -72,9 +64,6 @@ func AuthenticateBearer(tokenString string) (*BearerIdentity, error) {
 			return nil, ErrInvalidBearer
 		}
 		touchPersonalAccessToken(pat)
-		// FindActiveByToken already rejects expired PATs; the row's own expiry
-		// (if any) is not surfaced, so Expires stays zero and callers that
-		// need a horizon (the MCP mount) synthesize a short one.
 		return &BearerIdentity{UserId: pat.UserId, Email: pat.Email}, nil
 	}
 

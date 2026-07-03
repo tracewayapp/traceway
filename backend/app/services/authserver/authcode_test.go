@@ -209,7 +209,6 @@ func TestApproveAuthorization_validation(t *testing.T) {
 		t.Errorf("foreign resource: got %v", err)
 	}
 
-	// Loopback redirect URIs match on any port (RFC 8252 section 7.3).
 	if err := run(func(r *models.AuthorizeApproveRequest) { r.RedirectUri = "http://127.0.0.1:60999/callback" }); err != nil {
 		t.Errorf("loopback port change should be allowed: %v", err)
 	}

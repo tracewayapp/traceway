@@ -16,9 +16,6 @@ import (
 
 type oauthAuthorizeController struct{}
 
-// Register is the RFC 7591 dynamic client registration endpoint. It is
-// unauthenticated by design (MCP clients register before any user is
-// involved) and rate limited per IP at the route.
 func (c *oauthAuthorizeController) Register(ctx *gin.Context) {
 	setTokenResponseHeaders(ctx)
 
@@ -52,8 +49,6 @@ func (c *oauthAuthorizeController) Register(ctx *gin.Context) {
 	})
 }
 
-// Lookup resolves a client id to its display name for the consent page. It
-// requires app auth so registrations cannot be enumerated anonymously.
 func (c *oauthAuthorizeController) Lookup(ctx *gin.Context) {
 	clientId := ctx.Query("client_id")
 	if clientId == "" {
@@ -73,10 +68,6 @@ func (c *oauthAuthorizeController) Lookup(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, models.OauthClientLookupResponse{ClientName: client.Name})
 }
 
-// Approve mints the authorization code for the logged-in user and returns
-// the redirect the consent page should navigate to. The redirect target is
-// validated server-side against the client's registered URIs, so the SPA can
-// follow it blindly.
 func (c *oauthAuthorizeController) Approve(ctx *gin.Context) {
 	var req models.AuthorizeApproveRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {

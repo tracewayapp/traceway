@@ -29,16 +29,8 @@ var (
 	ErrInvalidClientMetadata = errors.New("invalid_client_metadata")
 )
 
-// codeChallengePattern is the RFC 7636 charset for both the S256 challenge
-// (43 chars of base64url) and the verifier (43-128 chars).
 var codeChallengePattern = regexp.MustCompile(`^[A-Za-z0-9._~-]{43,128}$`)
 
-// RegisterClient stores a dynamically registered public client (RFC 7591).
-// Registration is open (the endpoint is rate limited per IP): MCP clients
-// register themselves before starting the authorization-code flow. Every
-// client is public (no secret) and PKCE is mandatory, so a registration by
-// itself grants nothing; the user still approves each authorization on the
-// consent page, which shows the self-asserted client name as untrusted.
 func RegisterClient(tx *sql.Tx, name string, redirectURIs []string) (*models.OauthClient, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || utf8.RuneCountInString(name) > 100 {
@@ -65,9 +57,6 @@ func RegisterClient(tx *sql.Tx, name string, redirectURIs []string) (*models.Oau
 	return client, nil
 }
 
-// validateRedirectURI enforces RFC 8252 rules for public clients: https and
-// private-use (custom) schemes are allowed anywhere; plain http only on
-// loopback hosts. Fragments are forbidden by RFC 6749 §3.1.2.
 func validateRedirectURI(raw string) error {
 	if raw == "" || len(raw) > 2048 {
 		return fmt.Errorf("redirect_uri must be a non-empty URL of at most 2048 characters")
@@ -99,10 +88,6 @@ func isLoopbackHost(hostname string) bool {
 	return hostname == "localhost" || hostname == "127.0.0.1" || hostname == "::1"
 }
 
-// redirectURIMatches reports whether a presented redirect_uri is allowed for
-// the client: exact match against a registered URI, except that loopback http
-// URIs match with any port (RFC 8252 §7.3: native apps bind an ephemeral
-// port per flow).
 func redirectURIMatches(registered []string, presented string) bool {
 	for _, reg := range registered {
 		if reg == presented {
@@ -125,9 +110,6 @@ func redirectURIMatches(registered []string, presented string) bool {
 	return false
 }
 
-// ValidateResource enforces RFC 8707 for the MCP flow: when the client names
-// the resource it wants the token for, it must be this deployment. An empty
-// resource is fine (the token is origin-wide either way).
 func ValidateResource(resource, issuer string) error {
 	if resource == "" {
 		return nil
@@ -149,11 +131,6 @@ func ValidateResource(resource, issuer string) error {
 	return nil
 }
 
-// ApproveAuthorization validates an authorization request and mints the
-// single-use code, bound to the approving user. It runs under the
-// Transactional middleware (commits on the 200 that carries the redirect).
-// The state parameter is never stored: the consent page passes it through
-// and it rides back on the redirect only.
 func ApproveAuthorization(tx *sql.Tx, userId int, req models.AuthorizeApproveRequest, issuer string) (string, error) {
 	client, err := validateAuthorizeTarget(tx, req.ClientId, req.RedirectUri)
 	if err != nil {
@@ -182,9 +159,6 @@ func ApproveAuthorization(tx *sql.Tx, userId int, req models.AuthorizeApproveReq
 	return appendRedirectParams(req.RedirectUri, url.Values{"code": {code}}, req.State), nil
 }
 
-// DenyAuthorization validates the client and redirect target, then returns
-// the error redirect. Validating first keeps the deny path from becoming an
-// open redirector.
 func DenyAuthorization(ex lit.Executor, clientId, redirectUri, state string) (string, error) {
 	if _, err := validateAuthorizeTarget(ex, clientId, redirectUri); err != nil {
 		return "", err
@@ -192,8 +166,6 @@ func DenyAuthorization(ex lit.Executor, clientId, redirectUri, state string) (st
 	return appendRedirectParams(redirectUri, url.Values{"error": {"access_denied"}}, state), nil
 }
 
-// LookupClient resolves a registered client for the consent page. A nil
-// result means the client id is unknown.
 func LookupClient(ex lit.Executor, clientId string) (*models.OauthClient, error) {
 	if clientId == "" {
 		return nil, nil
@@ -229,13 +201,6 @@ func appendRedirectParams(redirectUri string, params url.Values, state string) s
 	return redirectUri + sep + params.Encode()
 }
 
-// RedeemAuthorizationCode exchanges a code plus PKCE verifier for a token
-// set. It owns its own transactions for the same reason PollDeviceToken does
-// (the token endpoint returns 400 for flow control), and it consumes the code
-// in a transaction of its own so the single-use delete commits even when the
-// exchange then fails: a wrong verifier must not leave the code retryable.
-// Every failure is invalid_grant: distinguishing wrong-verifier from expired
-// from replayed would only help an attacker.
 func RedeemAuthorizationCode(clientId, code, verifier, redirectUri string) (*models.TokenSetResponse, error) {
 	if clientId == "" || code == "" || verifier == "" || redirectUri == "" {
 		return nil, ErrInvalidGrant
@@ -249,8 +214,6 @@ func RedeemAuthorizationCode(clientId, code, verifier, redirectUri string) (*mod
 		if ac == nil {
 			return nil, nil
 		}
-		// The rows-affected guard means a concurrent duplicate exchange
-		// cannot mint a second token set for the same code.
 		deleted, err := repositories.AuthorizationCodeRepository.Delete(tx, code)
 		if err != nil {
 			return nil, err

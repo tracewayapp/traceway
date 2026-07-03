@@ -53,8 +53,6 @@
 				headers: { Authorization: `Bearer ${authState.token}` }
 			});
 			if (res.status === 401) {
-				// The stored session is dead; clear it or the login page's
-				// authenticated-redirect bounces us to / and loses the request.
 				authState.logout();
 				loginRedirect();
 				return;
@@ -111,8 +109,6 @@
 			}
 			const data = await res.json();
 			status = 'redirecting';
-			// The redirect target is validated server-side against the client's
-			// registered URIs, so it is safe to follow.
 			window.location.href = data.redirectTo;
 		} catch {
 			status = 'error';

@@ -34,12 +34,7 @@ type Config struct {
 	// knows how credentials were supplied (CLI session, env token, HTTP
 	// bearer) and what actually fixes a dead one; empty falls back to the
 	// CLI-session advice.
-	AuthHint string
-	// PerRequestBearer forwards each tool call's own Authorization header to
-	// the API instead of Client's stored credential. HTTP mounts set it so a
-	// session keeps working when the MCP client rotates its access token
-	// mid-session; stdio servers leave it off (their requests carry no
-	// headers).
+	AuthHint         string
 	PerRequestBearer bool
 }
 

@@ -52,7 +52,7 @@ var logBodies = []string{
 type logsSender struct{}
 
 func (logsSender) Name() string { return "logs" }
-func (logsSender) Path() string { return "/api/otel/v1/logs" }
+func (logsSender) Path() string { return "/v1/logs" }
 
 func (logsSender) BuildBody(rng *mathrand.Rand, batchSize int) ([]byte, error) {
 	now := time.Now().UTC()

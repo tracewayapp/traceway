@@ -5,8 +5,8 @@ import (
 	mathrand "math/rand"
 	"time"
 
-	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/protobuf/proto"
@@ -36,7 +36,7 @@ var endpointPaths = []struct {
 type spansSender struct{}
 
 func (spansSender) Name() string { return "spans" }
-func (spansSender) Path() string { return "/api/otel/v1/traces" }
+func (spansSender) Path() string { return "/v1/traces" }
 
 func (spansSender) BuildBody(rng *mathrand.Rand, batchSize int) ([]byte, error) {
 	now := time.Now().UTC()

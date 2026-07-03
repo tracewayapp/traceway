@@ -19,6 +19,10 @@ import (
 // protobuf body and parsing the partial-success response — to implementations.
 type signalSender interface {
 	Name() string
+	// Path is the OTLP-standard signal suffix (/v1/traces etc); the full URL is
+	// target + --otlp-path-prefix + Path, so the same senders work against
+	// Traceway (/api/otel) and standalone collectors like VictoriaMetrics
+	// (/opentelemetry).
 	Path() string
 	BuildBody(rng *rand.Rand, batchSize int) ([]byte, error)
 	ParseRejected(respBody []byte) int
@@ -79,14 +83,16 @@ func sendOneOTLP(
 		return
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.target+sender.Path(), bytes.NewReader(gz))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.target+cfg.otlpPathPrefix+sender.Path(), bytes.NewReader(gz))
 	if err != nil {
 		stats.Record(0, err)
 		return
 	}
 	req.Header.Set("Content-Type", "application/x-protobuf")
 	req.Header.Set("Content-Encoding", "gzip")
-	req.Header.Set("Authorization", "Bearer "+cfg.projectToken)
+	if cfg.projectToken != "" {
+		req.Header.Set("Authorization", "Bearer "+cfg.projectToken)
+	}
 
 	attemptedItems.Add(int64(batchSize))
 

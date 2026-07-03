@@ -32,7 +32,7 @@ var metricNames = []string{
 type metricsSender struct{}
 
 func (metricsSender) Name() string { return "metrics" }
-func (metricsSender) Path() string { return "/api/otel/v1/metrics" }
+func (metricsSender) Path() string { return "/v1/metrics" }
 
 func (metricsSender) BuildBody(rng *mathrand.Rand, batchSize int) ([]byte, error) {
 	now := time.Now().UTC()

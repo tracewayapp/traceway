@@ -6,7 +6,8 @@
 #
 # Usage: run-matrix-entry.sh <tier> <mode> <signal> <duration> <out-dir> [smoke] [async]
 #   <tier>      ccx13 | ccx23 | ccx33 | ccx43
-#   <mode>      sqlite | pgch
+#   <mode>      sqlite | pgch | managed-ch | victoria (standalone VictoriaMetrics,
+#               no Traceway — metrics signal + throughput scenario only)
 #   <signal>    spans | metrics | logs
 #   <duration>  Loadgen total runtime, e.g. 30m, 3m
 #   <out-dir>   Directory to write <tier>-<mode>-<signal>.json into
@@ -36,6 +37,17 @@ case "${SCENARIO}" in
     throughput|read-probe) ;;
     *) echo "invalid BENCH_SCENARIO '${SCENARIO}' (expected throughput|read-probe)" >&2; exit 2 ;;
 esac
+
+# Standalone VictoriaMetrics only ingests OTLP metrics (spans/logs are separate
+# VictoriaTraces/VictoriaLogs products) and has no Traceway dashboard to probe.
+if [[ "${MODE}" == "victoria" ]]; then
+    if [[ "${SIGNAL}" != "metrics" ]]; then
+        echo "mode=victoria supports signal=metrics only (got '${SIGNAL}')" >&2; exit 2
+    fi
+    if [[ "${SCENARIO}" != "throughput" ]]; then
+        echo "mode=victoria supports scenario=throughput only (got '${SCENARIO}')" >&2; exit 2
+    fi
+fi
 
 # Hetzner caps server names at 63 chars; the prefix `bench-loadgen-` eats 14,
 # so the RUN_ID must stay <= 49 chars. Abbreviate the scenario to keep margin
@@ -79,6 +91,9 @@ fi
 
 # 3. Run the loadgen, pulling JSON back into OUT_DIR.
 extra_args=( --scenario "${SCENARIO}" )
+if [[ "${MODE}" == "victoria" ]]; then
+    extra_args+=( --otlp-path-prefix /opentelemetry )
+fi
 if [[ "${SMOKE}" == "smoke" ]]; then
     if [[ "${SCENARIO}" == "read-probe" ]]; then
         extra_args+=( --fill-levels 100000,1000000 --settle-seconds 5s )

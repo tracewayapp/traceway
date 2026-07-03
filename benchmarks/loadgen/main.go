@@ -15,20 +15,21 @@ import (
 )
 
 type config struct {
-	target             string
-	projectToken       string
-	jwt                string
-	projectId          string
-	signal             string
-	scenario           string
-	duration           time.Duration
-	stepDuration       time.Duration
-	phase1BatchSizes   []int
-	phase2RequestRates []float64
-	phase3RequestRates []float64
-	phase1FixedRate    float64
-	phase2BatchCap     int
-	phase3BatchSize    int
+	target                    string
+	otlpPathPrefix            string
+	projectToken              string
+	jwt                       string
+	projectId                 string
+	signal                    string
+	scenario                  string
+	duration                  time.Duration
+	stepDuration              time.Duration
+	phase1BatchSizes          []int
+	phase2RequestRates        []float64
+	phase3RequestRates        []float64
+	phase1FixedRate           float64
+	phase2BatchCap            int
+	phase3BatchSize           int
 	ingestErrThreshold        float64
 	softCliffRatio            float64
 	stepDrainSeconds          time.Duration
@@ -37,14 +38,14 @@ type config struct {
 	sutHealthTimeoutSeconds   time.Duration
 	phase2BisectMaxSteps      int
 	phase2BisectTolerance     float64
-	fillLevels         []int64
-	readThresholdMs    int
-	settleSeconds      time.Duration
-	fillBatchSize      int
-	fillRequestRate    float64
-	reportOut          string
-	tier               string
-	mode               string
+	fillLevels                []int64
+	readThresholdMs           int
+	settleSeconds             time.Duration
+	fillBatchSize             int
+	fillRequestRate           float64
+	reportOut                 string
+	tier                      string
+	mode                      string
 }
 
 func main() {
@@ -57,7 +58,8 @@ func main() {
 	)
 
 	flag.StringVar(&cfg.target, "target", "", "Base URL of the system under test (e.g. http://10.0.0.2 or http://localhost:8087)")
-	flag.StringVar(&cfg.projectToken, "token", "", "Project bearer token for OTLP ingest endpoints")
+	flag.StringVar(&cfg.otlpPathPrefix, "otlp-path-prefix", "/api/otel", "Prefix prepended to the OTLP signal path (/v1/traces etc). Use /opentelemetry for a standalone VictoriaMetrics target.")
+	flag.StringVar(&cfg.projectToken, "token", "", "Project bearer token for OTLP ingest endpoints. Empty skips the Authorization header (standalone unauthenticated targets like VictoriaMetrics).")
 	flag.StringVar(&cfg.jwt, "jwt", "", "JWT for read endpoints (required when --scenario=read-probe)")
 	flag.StringVar(&cfg.projectId, "project-id", "", "Project UUID for read endpoints (required when --scenario=read-probe)")
 	flag.StringVar(&cfg.signal, "signal", "", "Which signal to benchmark: spans | metrics | logs (required)")
@@ -88,8 +90,8 @@ func main() {
 	flag.StringVar(&cfg.mode, "mode", "unknown", "DB mode label embedded in output (sqlite | pgch)")
 	flag.Parse()
 
-	if cfg.target == "" || cfg.projectToken == "" || cfg.reportOut == "" || cfg.signal == "" {
-		fmt.Fprintln(os.Stderr, "missing required flag: --target, --token, --signal, --report-out")
+	if cfg.target == "" || cfg.reportOut == "" || cfg.signal == "" {
+		fmt.Fprintln(os.Stderr, "missing required flag: --target, --signal, --report-out")
 		flag.Usage()
 		os.Exit(2)
 	}

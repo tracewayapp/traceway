@@ -16,10 +16,19 @@ Three signals are tested in separate matrix entries:
 - **metrics** → `POST /api/otel/v1/metrics` (`ExportMetricsServiceRequest`, Gauge data points)
 - **logs** → `POST /api/otel/v1/logs` (`ExportLogsServiceRequest`)
 
-Three DB modes are supported:
+Four DB modes are supported:
 - **sqlite** — single-binary Traceway with embedded SQLite (`Dockerfile.sqlite`).
 - **pgch** — full ClickHouse + Postgres stack, all in Docker on the SUT (`Dockerfile.minimal`).
 - **managed-ch** — `Dockerfile.minimal` pointed at an externally-hosted ClickHouse (ClickHouse Cloud, Aiven, Altinity, etc.) via env vars. Postgres still runs locally in the SUT's Docker. See [Running against managed ClickHouse](#running-against-managed-clickhouse).
+- **victoria** — standalone VictoriaMetrics, **no Traceway in front**. The
+  loadgen posts the same OTLP metric batches straight to VM's native endpoint
+  (`/opentelemetry/v1/metrics`, unauthenticated). This is the "speed of light"
+  reference for the metrics signal: what a purpose-built TSDB sustains on
+  identical hardware and traffic. Metrics + throughput scenario only — VM does
+  not ingest OTLP spans/logs (separate VictoriaTraces/VictoriaLogs products)
+  and there is no Traceway dashboard to read-probe. Don't read the gap vs the
+  traceway modes as pure overhead: part of it is auth, multi-tenancy, and one
+  binary handling every signal type.
 
 Four hardware tiers, all Hetzner CCX (dedicated vCPU) so neighbor noise doesn't
 pollute the latency signal:

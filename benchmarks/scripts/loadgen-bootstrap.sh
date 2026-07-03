@@ -21,11 +21,21 @@ shift 8
 # 1. Seed a project on the SUT (over its PUBLIC IP from the orchestrator). The
 #    project token + JWT + project id are then handed to the loadgen, which
 #    talks to the SUT over the PRIVATE network for the actual benchmark.
-echo "seeding project via http://${SUT_PUBLIC_IP}/api/register" >&2
-SEED_JSON=$("${SCRIPT_DIR}/seed-project.sh" "http://${SUT_PUBLIC_IP}")
-JWT=$(printf '%s' "${SEED_JSON}" | jq -r '.jwt')
-TOKEN=$(printf '%s' "${SEED_JSON}" | jq -r '.projectToken')
-PROJECT_ID=$(printf '%s' "${SEED_JSON}" | jq -r '.projectId')
+#    Standalone VictoriaMetrics has no /api/register and no auth — empty
+#    credentials make the loadgen skip the Authorization header, and the empty
+#    JWT short-circuits its /api/health/deep merge-idle polling.
+if [[ "${MODE}" == "victoria" ]]; then
+    echo "mode=victoria: skipping project seeding (unauthenticated standalone target)" >&2
+    JWT=""
+    TOKEN=""
+    PROJECT_ID=""
+else
+    echo "seeding project via http://${SUT_PUBLIC_IP}/api/register" >&2
+    SEED_JSON=$("${SCRIPT_DIR}/seed-project.sh" "http://${SUT_PUBLIC_IP}")
+    JWT=$(printf '%s' "${SEED_JSON}" | jq -r '.jwt')
+    TOKEN=$(printf '%s' "${SEED_JSON}" | jq -r '.projectToken')
+    PROJECT_ID=$(printf '%s' "${SEED_JSON}" | jq -r '.projectId')
+fi
 
 # 2. Wait for SSH on the loadgen box and detect its arch so we cross-compile
 #    correctly (CAX* tiers are arm64, CX*/CPX* are amd64).

@@ -1,0 +1,23 @@
+# Standalone VictoriaMetrics — the "speed of light" reference for the metrics
+# signal. No Traceway in front: the loadgen posts OTLP straight to VM's native
+# endpoint (/opentelemetry/v1/metrics), so this measures what a purpose-built
+# TSDB sustains on the same hardware and traffic shape as the traceway modes.
+# Metrics only; VM does not ingest OTLP spans or logs (those are separate
+# products, VictoriaTraces / VictoriaLogs).
+#
+# No container healthcheck: the VM image is scratch-based (no shell/wget).
+# sut-bootstrap.sh polls http://<sut>/health externally, which VM serves.
+services:
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.115.0
+    command:
+      - "-retentionPeriod=1"
+      - "-httpListenAddr=:8428"
+    ports:
+      - "${BENCH_PORT:-8087}:8428"
+    volumes:
+      - victoria-bench-data:/victoria-metrics-data
+    restart: on-failure:3
+
+volumes:
+  victoria-bench-data:

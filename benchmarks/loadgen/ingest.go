@@ -85,12 +85,16 @@ func (i *ingester) SetRequestRate(rps float64) {
 		rps = 0.001
 	}
 	i.limiter.SetLimit(rate.Limit(rps))
+	i.limiter.SetBurst(burstFor(rps))
+	i.requestRate.Store(int64(rps * 1000))
+}
+
+func burstFor(rps float64) int {
 	burst := int(rps) + 1
 	if burst < 1 {
 		burst = 1
 	}
-	i.limiter.SetBurst(burst)
-	i.requestRate.Store(int64(rps * 1000))
+	return burst
 }
 
 func (i *ingester) RequestRate() float64 {
@@ -110,6 +114,19 @@ func (i *ingester) SnapshotAndResetItems() (attempted, rejected int64) {
 // across step boundaries; the limiter loop uses a derived acceptCtx that
 // StopAccepting can cancel independently.
 func (i *ingester) Start(ctx context.Context) {
+	// Rebuild the limiter so each step starts debt-free. Stopping a step
+	// mass-cancels every worker blocked in limiter.Wait, and canceled
+	// reservations do not restore tokens already consumed by later queued
+	// reservations — at low rates that leaves up to workers/rate seconds
+	// (e.g. 150 workers at 5 req/s = 30s) of debt on the shared limiter,
+	// silently eating the head of the next step. Safe to reassign here:
+	// the previous step's Stop() has already joined all workers.
+	rps := i.RequestRate()
+	if rps <= 0 {
+		rps = 1 // Start before any SetRequestRate — match the constructor's default
+	}
+	i.limiter = rate.NewLimiter(rate.Limit(rps), burstFor(rps))
+
 	acceptCtx, cancelAccept := context.WithCancel(ctx)
 	wg := &sync.WaitGroup{}
 	i.acceptCancel = cancelAccept

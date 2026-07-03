@@ -27,13 +27,15 @@ from matplotlib.patches import Patch, Rectangle
 
 
 TIER_ORDER = ["ccx13", "ccx23", "ccx33", "ccx43"]
-MODE_ORDER = ["sqlite", "pgch", "managed-ch"]
+MODE_ORDER = ["sqlite", "pgch", "managed-ch", "victoria"]
 SIGNALS = ["spans", "metrics", "logs"]
 
 MODE_COLORS = {
     "sqlite": "#4f9fff",
     "pgch": "#ff9f4f",
     "managed-ch": "#7c4fff",
+    # standalone VictoriaMetrics reference (no Traceway in front)
+    "victoria": "#3fbf7f",
 }
 SIGNAL_COLORS = {
     "spans": "#1f77b4",

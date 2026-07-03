@@ -20,5 +20,22 @@ lint:
 vulncheck:
     govulncheck ./...
 
+# Regenerate the published skill (skills/traceway/) from the canonical
+# knowledge chunks in pkg/mcpserver/knowledge.
+gen-skills:
+    go run ./tools/skillgen
+
+# Fail if the generated skill has drifted from the knowledge chunks. Generates
+# into a temp dir and diffs, so uncommitted edits in skills/traceway are never
+# overwritten by the check itself.
+gen-skills-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    go run ./tools/skillgen "$tmp" >/dev/null
+    diff -u ../skills/traceway/SKILL.md "$tmp/SKILL.md"
+    diff -u ../skills/traceway/performance.md "$tmp/performance.md"
+
 # Run everything that should pass before a commit
-check: lint test vulncheck
+check: lint test vulncheck gen-skills-check

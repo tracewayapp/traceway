@@ -16,6 +16,7 @@
   "alerts": "Alerts",
   "sso": "SSO",
   "cli-auth": "CLI Authentication",
+  "mcp": "MCP Server",
   "embedded-mode": "Embedded Mode",
   "otel-agent": "OTel Agent",
   "build-tags": "Build Tags",

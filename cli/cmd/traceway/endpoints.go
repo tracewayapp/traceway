@@ -11,9 +11,9 @@ import (
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
 
-var endpointsOrderBy = []string{"impact", "count", "p95", "lastSeen"}
+var endpointsOrderBy = client.EndpointsOrderByValues
 
-var endpointChartMetricTypes = []string{"total_time", "p50", "p95", "p99"}
+var endpointChartMetricTypes = client.EndpointChartMetricTypes
 
 func newEndpointsCmd() *cobra.Command {
 	cmd := &cobra.Command{

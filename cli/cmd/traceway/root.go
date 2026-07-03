@@ -41,6 +41,7 @@ func newRootCmd() *cobra.Command {
 	cmd.AddCommand(newSessionsCmd())
 	cmd.AddCommand(newTracesCmd())
 	cmd.AddCommand(newMetricsCmd())
+	cmd.AddCommand(newMcpCmd())
 	cmd.AddCommand(newVersionCmd())
 
 	return cmd

@@ -9,20 +9,31 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
-// Client talks to a Traceway HTTP API.
+// Client talks to a Traceway HTTP API. It is safe for concurrent use: JWT
+// reads and the refresh path are serialized internally (long-lived consumers
+// like the MCP server dispatch requests in parallel). Do not mutate JWT
+// directly after construction; it is owned by the refresh path.
 type Client struct {
 	BaseURL    string
 	HTTPClient *http.Client
 	JWT        string
 	UserAgent  string
 	refresher  Refresher
+
+	// mu guards JWT and serializes the refresher so concurrent 401s cannot
+	// double-spend a single-use refresh token: the losers of the race adopt
+	// the winner's token instead of calling the refresher again.
+	mu sync.Mutex
 }
 
 // Refresher returns a fresh access token (JWT) when the current one is
 // rejected. do() invokes it at most once per request, on a 401, then retries.
+// Invocations are serialized by the Client, so a Refresher never runs
+// concurrently with itself on the same Client.
 type Refresher func(ctx context.Context) (string, error)
 
 // Option mutates a Client during construction.
@@ -71,7 +82,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		buf = b
 	}
 
-	attempt := func() (*http.Response, error) {
+	attempt := func(jwt string) (*http.Response, error) {
 		var reqBody io.Reader
 		if buf != nil {
 			reqBody = bytes.NewReader(buf)
@@ -83,20 +94,21 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json")
 		req.Header.Set("User-Agent", c.UserAgent)
-		if c.JWT != "" {
-			req.Header.Set("Authorization", "Bearer "+c.JWT)
+		if jwt != "" {
+			req.Header.Set("Authorization", "Bearer "+jwt)
 		}
 		return c.HTTPClient.Do(req)
 	}
 
-	resp, err := attempt()
+	jwt := c.currentJWT()
+	resp, err := attempt(jwt)
 	if err != nil {
 		return err
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized && c.refresher != nil {
 		resp.Body.Close()
-		newJWT, refreshErr := c.refresher(ctx)
+		newJWT, refreshErr := c.refreshAfter401(ctx, jwt)
 		if refreshErr != nil {
 			// Only a dead session maps to ErrUnauthorized ("log in again").
 			// Anything else (server error, network failure) must surface as
@@ -109,8 +121,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		if newJWT == "" {
 			return ErrUnauthorized
 		}
-		c.JWT = newJWT
-		resp, err = attempt()
+		resp, err = attempt(newJWT)
 		if err != nil {
 			return err
 		}
@@ -139,6 +150,33 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	}
 	respBody, _ := io.ReadAll(resp.Body)
 	return &APIError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(respBody))}
+}
+
+func (c *Client) currentJWT() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.JWT
+}
+
+// refreshAfter401 serializes token refresh across concurrent requests.
+// rejected is the token the failed request presented: if another goroutine
+// already swapped it for a fresh one, that token is adopted without spending
+// the (single-use) refresh token again. The refresher runs while the lock is
+// held, so concurrent 401s queue here and each sees the winner's result.
+func (c *Client) refreshAfter401(ctx context.Context, rejected string) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.JWT != "" && c.JWT != rejected {
+		return c.JWT, nil
+	}
+	newJWT, err := c.refresher(ctx)
+	if err != nil {
+		return "", err
+	}
+	if newJWT != "" {
+		c.JWT = newJWT
+	}
+	return newJWT, nil
 }
 
 // jsonMarshalNoHTMLEscape is a json.Marshal that doesn't escape <, >, & in

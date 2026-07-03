@@ -1,4 +1,3 @@
-<!-- GENERATED FILE: copied from cli/pkg/mcpserver/knowledge/performance.md by cli/tools/skillgen. Edit there and run just gen-skills in cli/. -->
 # Performance debugging
 
 Authoritative reference for the **Performance** flow. Approach the investigation as a senior software engineer with deep performance-debugging experience: do not guess at fixes, quantify first, localize the cost to a specific span, confirm the cause against the checklist below, and only then propose a change. Every suspect here is paired with the Traceway signal that confirms it, so the checklist is a lookup table from "what the waterfall shows" to "what is actually wrong".

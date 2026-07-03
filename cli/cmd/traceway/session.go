@@ -38,6 +38,13 @@ var (
 // "you need to configure something" failures so callers can render the
 // matching error envelope.
 func loadSession() (*session, error) {
+	return loadSessionOpts(true)
+}
+
+// loadSessionOpts is loadSession with the project requirement optional: the
+// MCP server is usable without a current project (list_projects works and
+// every tool accepts project_id), so it passes requireProject=false.
+func loadSessionOpts(requireProject bool) (*session, error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, fmt.Errorf("loading config: %w", err)
@@ -62,7 +69,7 @@ func loadSession() (*session, error) {
 	if projectID == "" {
 		projectID = sp.CurrentProjectID
 	}
-	if projectID == "" {
+	if projectID == "" && requireProject {
 		return nil, fmt.Errorf("%w: profile %q has no current project", errSessionNoProject, name)
 	}
 

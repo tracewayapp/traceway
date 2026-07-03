@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	logsSearchTypes    = []string{"body", "attribute"}
-	sortDirections     = []string{"asc", "desc"}
+	logsSearchTypes = client.LogsSearchTypes
+	sortDirections  = client.SortDirections
 )
 
 func newLogsCmd() *cobra.Command {

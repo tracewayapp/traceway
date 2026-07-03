@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	exceptionsOrderBy     = []string{"lastSeen", "firstSeen", "count"}
-	exceptionsSearchTypes = []string{"text", "regex"}
+	exceptionsOrderBy     = client.ExceptionsOrderByValues
+	exceptionsSearchTypes = client.ExceptionsSearchTypes
 )
 
 func newExceptionsCmd() *cobra.Command {

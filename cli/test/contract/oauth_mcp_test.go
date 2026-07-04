@@ -16,7 +16,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-
 func doJSON(t *testing.T, method, path, token string, body any) (int, http.Header, map[string]any) {
 	t.Helper()
 	var payload *bytes.Reader
@@ -157,6 +156,28 @@ func TestContract_oauthServerMetadata(t *testing.T) {
 	responses, _ := body["response_types_supported"].([]any)
 	if !slices.Contains(responses, any("code")) {
 		t.Errorf("response_types_supported missing code: %v", responses)
+	}
+}
+
+func TestContract_protectedResourceMetadata(t *testing.T) {
+	status, _, body := doJSON(t, http.MethodGet, "/.well-known/oauth-protected-resource", "", nil)
+	if status != http.StatusOK {
+		t.Fatalf("metadata: status %d", status)
+	}
+	if body["resource"] != baseURL {
+		t.Errorf("resource = %v, want %v", body["resource"], baseURL)
+	}
+
+	status, _, body = doJSON(t, http.MethodGet, "/.well-known/oauth-protected-resource/mcp", "", nil)
+	if status != http.StatusOK {
+		t.Fatalf("path-inserted metadata: status %d", status)
+	}
+	if body["resource"] != baseURL+"/mcp" {
+		t.Errorf("path-inserted resource = %v, want %v", body["resource"], baseURL+"/mcp")
+	}
+	servers, _ := body["authorization_servers"].([]any)
+	if !slices.Contains(servers, any(baseURL)) {
+		t.Errorf("authorization_servers missing issuer: %v", servers)
 	}
 }
 

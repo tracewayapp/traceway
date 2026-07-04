@@ -54,18 +54,23 @@ func runMcp(cmd *cobra.Command, _ []string) error {
 }
 
 // isClientDisconnect reports whether the server stopped because the client
-// closed stdin, the normal way a stdio MCP server exits. The SDK does not
-// always wrap the disconnect io.EOF, so match it textually, but never
+// closed stdin, the normal way a stdio MCP server exits. The SDK types most
+// disconnects (io.EOF or mcp.ErrConnectionClosed wraps), but its jsonrpc2
+// shutdown path stringifies the EOF behind an internal sentinel as
+// "server is closing: EOF", so that one shape is matched textually. Never
 // swallow an io.ErrUnexpectedEOF: a truncated frame is a real failure.
 func isClientDisconnect(err error) bool {
-	if errors.Is(err, io.EOF) {
-		return true
-	}
 	if errors.Is(err, io.ErrUnexpectedEOF) {
 		return false
 	}
+	if errors.Is(err, io.EOF) || errors.Is(err, mcp.ErrConnectionClosed) {
+		return true
+	}
 	msg := err.Error()
-	return strings.HasSuffix(msg, io.EOF.Error()) && !strings.HasSuffix(msg, io.ErrUnexpectedEOF.Error())
+	if msg == io.EOF.Error() {
+		return true
+	}
+	return strings.HasPrefix(msg, "server is closing") && strings.HasSuffix(msg, ": "+io.EOF.Error())
 }
 
 // resolveMcpConfig picks the credential source: an explicit --profile always

@@ -16,6 +16,7 @@ import {
   Smartphone,
   Bot,
   Braces,
+  Plug,
 } from "lucide-react";
 import { MobileNav } from "@/components/mobile-nav";
 import { DiscordIcon } from "@/components/discord-icon";
@@ -69,6 +70,12 @@ const SPECIALIZED: NavItem[] = [
     description: "Your AI agent debugs with Traceway.",
     href: "/product/agent-skills",
     icon: Bot,
+  },
+  {
+    title: "MCP Server",
+    description: "Connect any MCP client to your instance.",
+    href: "/product/mcp",
+    icon: Plug,
   },
   {
     title: "AI Tracing",

@@ -17,6 +17,7 @@ func TestParseRelativeDuration_validInputs(t *testing.T) {
 		{"30d", 720 * time.Hour},
 		{"1d", 24 * time.Hour},
 		{"30m", 30 * time.Minute},
+		{"0s", 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.in, func(t *testing.T) {
@@ -41,7 +42,6 @@ func TestParseRelativeDuration_invalidInputs(t *testing.T) {
 		"d",
 		"notaduration",
 		"",
-		"0s",
 		"-1h",
 	}
 	for _, in := range cases {
@@ -79,6 +79,16 @@ func TestResolve_explicitFromTo(t *testing.T) {
 	}
 }
 
+func TestResolve_fromEqualToToIsAccepted(t *testing.T) {
+	tr, err := Resolve("", "2026-05-13T00:00:00Z", "2026-05-13T00:00:00Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tr.From.Equal(tr.To) {
+		t.Errorf("From = %v, To = %v, want equal", tr.From, tr.To)
+	}
+}
+
 func TestResolve_invalidCombinationsWrapErrInvalid(t *testing.T) {
 	cases := []struct {
 		name            string
@@ -92,7 +102,6 @@ func TestResolve_invalidCombinationsWrapErrInvalid(t *testing.T) {
 		{"bad since", "notaduration", "", ""},
 		{"negative since", "-1h", "", ""},
 		{"from after to", "", "2026-05-13T23:59:59Z", "2026-05-13T00:00:00Z"},
-		{"from equal to to", "", "2026-05-13T00:00:00Z", "2026-05-13T00:00:00Z"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

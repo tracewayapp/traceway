@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"cmp"
 	"context"
 	"slices"
 	"strings"
@@ -52,7 +53,7 @@ func (s *server) queryMetrics(ctx context.Context, req *mcp.CallToolRequest, in 
 		}
 		items = append(items, client.MetricQueryItem{
 			Name:        q.Name,
-			Aggregation: pickStr(q.Aggregation, "avg"),
+			Aggregation: cmp.Or(q.Aggregation, "avg"),
 			TagFilters:  q.TagFilters,
 			GroupBy:     q.GroupBy,
 		})

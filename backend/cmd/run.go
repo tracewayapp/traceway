@@ -205,6 +205,7 @@ func Run(opts ...Option) {
 	// they aren't shadowed by index.html.
 	router.GET("/.well-known/oauth-authorization-server", controllers.WellKnownController.AuthorizationServer)
 	router.GET("/.well-known/oauth-protected-resource", controllers.WellKnownController.ProtectedResource)
+	router.GET("/.well-known/oauth-protected-resource"+mcpmount.Path, controllers.WellKnownController.ProtectedResourceMCP)
 
 	mcpHandler := mcpmount.GinHandler(router, "0.0.1")
 	router.GET(mcpmount.Path, mcpHandler)

@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/tracewayapp/traceway/backend/app/services/authserver"
+	"github.com/tracewayapp/traceway/backend/app/services/mcpmount"
 )
 
 type wellKnownController struct{}
@@ -29,6 +30,14 @@ func (c *wellKnownController) ProtectedResource(ctx *gin.Context) {
 	issuer := authserver.IssuerBaseURLFromRequest(ctx)
 	ctx.JSON(http.StatusOK, gin.H{
 		"resource":              issuer,
+		"authorization_servers": []string{issuer},
+	})
+}
+
+func (c *wellKnownController) ProtectedResourceMCP(ctx *gin.Context) {
+	issuer := authserver.IssuerBaseURLFromRequest(ctx)
+	ctx.JSON(http.StatusOK, gin.H{
+		"resource":              issuer + mcpmount.Path,
 		"authorization_servers": []string{issuer},
 	})
 }

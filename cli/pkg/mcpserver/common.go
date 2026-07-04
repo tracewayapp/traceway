@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -145,6 +146,15 @@ func validateUUID(param, value string) error {
 	return nil
 }
 
+var exceptionHashPattern = regexp.MustCompile(`^[0-9a-f]{16}$`)
+
+func validateHash(param, value string) error {
+	if !exceptionHashPattern.MatchString(value) {
+		return usageErrf("invalid %s %q: must be 16 lowercase hex characters, from list_exceptions or an /issues/<hash> dashboard URL", param, value)
+	}
+	return nil
+}
+
 func readOnly() *mcp.ToolAnnotations {
 	return &mcp.ToolAnnotations{ReadOnlyHint: true}
 }
@@ -154,12 +164,4 @@ func readOnly() *mcp.ToolAnnotations {
 func mutating() *mcp.ToolAnnotations {
 	nonDestructive := false
 	return &mcp.ToolAnnotations{DestructiveHint: &nonDestructive, IdempotentHint: true}
-}
-
-// pickStr returns alt if s is empty, else s.
-func pickStr(s, alt string) string {
-	if s == "" {
-		return alt
-	}
-	return s
 }

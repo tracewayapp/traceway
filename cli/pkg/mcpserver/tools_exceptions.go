@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"cmp"
 	"context"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -41,8 +42,8 @@ func (s *server) listExceptions(ctx context.Context, req *mcp.CallToolRequest, i
 		TimeRange:       tr,
 		Pagination:      page,
 		Search:          in.Search,
-		SearchType:      pickStr(in.SearchType, "text"),
-		OrderBy:         pickStr(in.OrderBy, "lastSeen"),
+		SearchType:      cmp.Or(in.SearchType, "text"),
+		OrderBy:         cmp.Or(in.OrderBy, "lastSeen"),
 		IncludeArchived: in.IncludeArchived,
 	})
 	if err != nil {
@@ -64,6 +65,9 @@ func (s *server) getException(ctx context.Context, req *mcp.CallToolRequest, in 
 	}
 	page, err := in.pageIn.resolve()
 	if err != nil {
+		return nil, nil, err
+	}
+	if err := validateHash("hash", in.Hash); err != nil {
 		return nil, nil, err
 	}
 	resp, err := s.client(req).GetException(ctx, projectID, in.Hash, page)

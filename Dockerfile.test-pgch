@@ -3,7 +3,7 @@
 # Runs ClickHouse + PostgreSQL + Go tests in a single container
 # ==============================================================================
 
-FROM golang:1.25-bookworm
+FROM golang:1.26-bookworm
 
 # Install PostgreSQL + ClickHouse
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -25,8 +25,10 @@ RUN curl -fsSL https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key |
 # Copy backend source
 WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
+COPY cli/go.mod cli/go.sum /app/cli/
 RUN go mod download
 COPY backend/ ./
+COPY cli/ /app/cli/
 
 # Copy the entrypoint
 COPY scripts/test-pgch-entrypoint.sh /entrypoint.sh

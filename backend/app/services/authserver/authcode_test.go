@@ -70,6 +70,12 @@ func TestRegisterClient_validation(t *testing.T) {
 		{"fragment", []string{"https://app.example.com/cb#frag"}},
 		{"relative", []string{"/callback"}},
 		{"empty", []string{""}},
+		{"javascript scheme", []string{"javascript:alert(1)"}},
+		{"data scheme", []string{"data:text/html,x"}},
+		{"vbscript scheme", []string{"vbscript:msgbox(1)"}},
+		{"file scheme", []string{"file:///etc/passwd"}},
+		{"blob scheme", []string{"blob:https://evil.example.com/x"}},
+		{"about scheme", []string{"about:blank"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -89,6 +95,52 @@ func TestRegisterClient_validation(t *testing.T) {
 	}
 	if len(loaded.RedirectUris) != 3 || loaded.Name != "Test MCP Client" {
 		t.Fatalf("client round trip mismatch: %+v", loaded)
+	}
+}
+
+func TestAuthCode_failedExchangeBurnsCode(t *testing.T) {
+	setupAuthDB(t)
+	client := registerTestClient(t)
+
+	redirectTo := approve(t, models.AuthorizeApproveRequest{
+		ClientId:            client.Id,
+		RedirectUri:         "http://127.0.0.1:8123/callback",
+		CodeChallenge:       testChallenge(testVerifier),
+		CodeChallengeMethod: "S256",
+	})
+	code, _ := codeFromRedirect(t, redirectTo)
+
+	if _, err := RedeemAuthorizationCode(client.Id, code, "wrong-verifier-wrong-verifier-wrong-verifier-x", "http://127.0.0.1:8123/callback"); !errors.Is(err, ErrInvalidGrant) {
+		t.Fatalf("wrong verifier should be invalid_grant, got %v", err)
+	}
+	if _, err := RedeemAuthorizationCode(client.Id, code, testVerifier, "http://127.0.0.1:8123/callback"); !errors.Is(err, ErrInvalidGrant) {
+		t.Errorf("code should be consumed by the failed exchange, got %v", err)
+	}
+}
+
+func TestValidateResource_portNormalization(t *testing.T) {
+	cases := []struct {
+		name             string
+		resource, issuer string
+		wantErr          bool
+	}{
+		{"explicit default https port on resource", "https://traceway.example.com:443/mcp", "https://traceway.example.com", false},
+		{"explicit default https port on issuer", "https://traceway.example.com/mcp", "https://traceway.example.com:443", false},
+		{"explicit default http port", "http://localhost:80/mcp", "http://localhost", false},
+		{"matching non-default port", "https://traceway.example.com:8443/mcp", "https://traceway.example.com:8443", false},
+		{"non-default port mismatch", "https://traceway.example.com:8443/mcp", "https://traceway.example.com", true},
+		{"different host", "https://evil.example.com/mcp", "https://traceway.example.com", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateResource(tc.resource, tc.issuer)
+			if tc.wantErr && !errors.Is(err, ErrInvalidTarget) {
+				t.Errorf("ValidateResource(%q, %q) = %v, want ErrInvalidTarget", tc.resource, tc.issuer, err)
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("ValidateResource(%q, %q) = %v, want nil", tc.resource, tc.issuer, err)
+			}
+		})
 	}
 }
 

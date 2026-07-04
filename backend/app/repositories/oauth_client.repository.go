@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/app/db"
@@ -65,6 +66,26 @@ func (r *oauthClientRepository) FindById(ex lit.Executor, id string) (*models.Oa
 		return nil, err
 	}
 	return &c, nil
+}
+
+const staleOauthClientRetention = 30 * 24 * time.Hour
+
+func (r *oauthClientRepository) PruneStale(ex lit.Executor, now time.Time) (int64, error) {
+	query, args, err := lit.ParseNamedQuery(
+		db.Driver,
+		`DELETE FROM oauth_clients WHERE created_at < :cutoff
+			AND NOT EXISTS (SELECT 1 FROM refresh_tokens WHERE refresh_tokens.client_id = oauth_clients.id)
+			AND NOT EXISTS (SELECT 1 FROM authorization_codes WHERE authorization_codes.client_id = oauth_clients.id)`,
+		lit.P{"cutoff": formatAuthTime(now.Add(-staleOauthClientRetention))},
+	)
+	if err != nil {
+		return 0, err
+	}
+	res, err := ex.Exec(query, args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 var OauthClientRepository = oauthClientRepository{}

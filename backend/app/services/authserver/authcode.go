@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -80,8 +81,21 @@ func validateRedirectURI(raw string) error {
 		if !isLoopbackHost(u.Hostname()) {
 			return fmt.Errorf("redirect_uri %q: http is only allowed for loopback addresses", raw)
 		}
+	default:
+		if forbiddenRedirectSchemes[u.Scheme] {
+			return fmt.Errorf("redirect_uri %q: scheme %q is not allowed", raw, u.Scheme)
+		}
 	}
 	return nil
+}
+
+var forbiddenRedirectSchemes = map[string]bool{
+	"javascript": true,
+	"data":       true,
+	"vbscript":   true,
+	"file":       true,
+	"blob":       true,
+	"about":      true,
 }
 
 func isLoopbackHost(hostname string) bool {
@@ -89,10 +103,8 @@ func isLoopbackHost(hostname string) bool {
 }
 
 func redirectURIMatches(registered []string, presented string) bool {
-	for _, reg := range registered {
-		if reg == presented {
-			return true
-		}
+	if slices.Contains(registered, presented) {
+		return true
 	}
 	p, err := url.Parse(presented)
 	if err != nil || p.Scheme != "http" || !isLoopbackHost(p.Hostname()) {
@@ -125,10 +137,19 @@ func ValidateResource(resource, issuer string) error {
 	if err != nil {
 		return ErrInvalidTarget
 	}
-	if !strings.EqualFold(r.Scheme, i.Scheme) || !strings.EqualFold(r.Host, i.Host) {
+	if !strings.EqualFold(r.Scheme, i.Scheme) || normalizedHostPort(r) != normalizedHostPort(i) {
 		return ErrInvalidTarget
 	}
 	return nil
+}
+
+func normalizedHostPort(u *url.URL) string {
+	host := strings.ToLower(u.Hostname())
+	port := u.Port()
+	if port == "" || (u.Scheme == "https" && port == "443") || (u.Scheme == "http" && port == "80") {
+		return host
+	}
+	return host + ":" + port
 }
 
 func ApproveAuthorization(tx *sql.Tx, userId int, req models.AuthorizeApproveRequest, issuer string) (string, error) {
@@ -206,46 +227,48 @@ func RedeemAuthorizationCode(clientId, code, verifier, redirectUri string) (*mod
 		return nil, ErrInvalidGrant
 	}
 
-	ac, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.AuthorizationCode, error) {
+	type redeemOutcome struct {
+		tokens   *models.TokenSetResponse
+		grantErr error
+	}
+	out, err := db.ExecuteTransaction(func(tx *sql.Tx) (redeemOutcome, error) {
 		ac, err := repositories.AuthorizationCodeRepository.FindByCode(tx, code)
 		if err != nil {
-			return nil, err
+			return redeemOutcome{}, err
 		}
 		if ac == nil {
-			return nil, nil
+			return redeemOutcome{grantErr: ErrInvalidGrant}, nil
 		}
 		deleted, err := repositories.AuthorizationCodeRepository.Delete(tx, code)
 		if err != nil {
-			return nil, err
+			return redeemOutcome{}, err
 		}
 		if deleted == 0 {
-			return nil, nil
+			return redeemOutcome{grantErr: ErrInvalidGrant}, nil
 		}
-		return ac, nil
+		if time.Now().After(ac.ExpiresAt) || ac.ClientId != clientId || ac.RedirectUri != redirectUri || !verifyPKCE(ac.CodeChallenge, verifier) {
+			return redeemOutcome{grantErr: ErrInvalidGrant}, nil
+		}
+		user, err := repositories.UserRepository.FindById(tx, ac.UserId)
+		if err != nil {
+			return redeemOutcome{}, err
+		}
+		if user == nil {
+			return redeemOutcome{grantErr: ErrInvalidGrant}, nil
+		}
+		tokens, err := IssueTokenSet(tx, ac.UserId, user.Email, clientId)
+		if err != nil {
+			return redeemOutcome{}, err
+		}
+		return redeemOutcome{tokens: tokens}, nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	if ac == nil || time.Now().After(ac.ExpiresAt) {
-		return nil, ErrInvalidGrant
+	if out.grantErr != nil {
+		return nil, out.grantErr
 	}
-	if ac.ClientId != clientId || ac.RedirectUri != redirectUri {
-		return nil, ErrInvalidGrant
-	}
-	if !verifyPKCE(ac.CodeChallenge, verifier) {
-		return nil, ErrInvalidGrant
-	}
-
-	return db.ExecuteTransaction(func(tx *sql.Tx) (*models.TokenSetResponse, error) {
-		user, err := repositories.UserRepository.FindById(tx, ac.UserId)
-		if err != nil {
-			return nil, err
-		}
-		if user == nil {
-			return nil, ErrInvalidGrant
-		}
-		return IssueTokenSet(tx, ac.UserId, user.Email, clientId)
-	})
+	return out.tokens, nil
 }
 
 func verifyPKCE(challenge, verifier string) bool {

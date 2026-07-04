@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"cmp"
 	"context"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -40,8 +41,8 @@ func (s *server) listEndpoints(ctx context.Context, req *mcp.CallToolRequest, in
 		TimeRange:     tr,
 		Pagination:    page,
 		Search:        in.Search,
-		OrderBy:       pickStr(in.OrderBy, "impact"),
-		SortDirection: pickStr(in.SortDirection, "desc"),
+		OrderBy:       cmp.Or(in.OrderBy, "impact"),
+		SortDirection: cmp.Or(in.SortDirection, "desc"),
 	})
 	if err != nil {
 		return nil, nil, s.apiErr(err)
@@ -98,7 +99,7 @@ func (s *server) endpointsChart(ctx context.Context, req *mcp.CallToolRequest, i
 	}
 	resp, err := s.client(req).GetEndpointChart(ctx, projectID, client.EndpointChartRequest{
 		TimeRange:       tr,
-		MetricType:      pickStr(in.MetricType, "p95"),
+		MetricType:      cmp.Or(in.MetricType, "p95"),
 		IntervalMinutes: in.IntervalMinutes,
 	})
 	if err != nil {

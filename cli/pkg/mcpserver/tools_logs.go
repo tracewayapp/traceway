@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"cmp"
 	"context"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -43,12 +44,12 @@ func (s *server) queryLogs(ctx context.Context, req *mcp.CallToolRequest, in que
 		TimeRange:     tr,
 		Pagination:    page,
 		Search:        in.Search,
-		SearchType:    pickStr(in.SearchType, "body"),
+		SearchType:    cmp.Or(in.SearchType, "body"),
 		MinSeverity:   in.MinSeverity,
 		ServiceName:   in.ServiceName,
 		TraceId:       in.TraceID,
 		OrderBy:       "timestamp",
-		SortDirection: pickStr(in.SortDirection, "desc"),
+		SortDirection: cmp.Or(in.SortDirection, "desc"),
 	})
 	if err != nil {
 		return nil, nil, s.apiErr(err)

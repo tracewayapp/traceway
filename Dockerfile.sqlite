@@ -23,13 +23,14 @@ RUN npm run build
 # ==============================================================================
 # Stage 2: Build Backend with embedded frontend (no pgch tag = SQLite mode)
 # ==============================================================================
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS backend-builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS backend-builder
 
 WORKDIR /app/backend
 
 RUN apk add --no-cache git
 
 COPY backend/ ./
+COPY cli/ /app/cli/
 
 COPY --from=frontend-builder /app/frontend/build ./static/frontend/
 

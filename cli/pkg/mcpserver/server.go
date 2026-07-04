@@ -6,6 +6,8 @@
 package mcpserver
 
 import (
+	"sync"
+
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/tracewayapp/traceway/cli/pkg/client"
@@ -38,6 +40,23 @@ type Config struct {
 	PerRequestBearer bool
 }
 
+var baseInstructions = sync.OnceValue(func() string {
+	return knowledge.MustRead("instructions.md")
+})
+
+// sharedSchemaCache warms an mcp.SchemaCache once, by registering the full
+// tool surface against a throwaway server, so concurrent per-session New
+// calls only ever read fully-resolved schemas and never race on Resolve.
+var sharedSchemaCache = sync.OnceValue(func() *mcp.SchemaCache {
+	cache := mcp.NewSchemaCache()
+	warm := mcp.NewServer(
+		&mcp.Implementation{Name: "traceway", Title: "Traceway", Version: "warmup"},
+		&mcp.ServerOptions{SchemaCache: cache},
+	)
+	(&server{}).addTools(warm)
+	return cache
+})
+
 // New builds an MCP server with the full Traceway tool/prompt/resource
 // surface registered. The returned server is ready to Run on any transport.
 func New(cfg Config) *mcp.Server {
@@ -45,13 +64,13 @@ func New(cfg Config) *mcp.Server {
 	if version == "" {
 		version = "dev"
 	}
-	instructions := knowledge.MustRead("instructions.md")
+	instructions := baseInstructions()
 	if cfg.InstanceURL != "" {
 		instructions += "\n\nThe connected Traceway instance is " + cfg.InstanceURL + ". Dashboard URLs the user pastes should match this origin, and when citing a record for the user, link it there (e.g. " + cfg.InstanceURL + "/issues/<hash>)."
 	}
 	srv := mcp.NewServer(
 		&mcp.Implementation{Name: "traceway", Title: "Traceway", Version: version},
-		&mcp.ServerOptions{Instructions: instructions},
+		&mcp.ServerOptions{Instructions: instructions, SchemaCache: sharedSchemaCache()},
 	)
 	s := &server{cfg: cfg}
 	s.addTools(srv)

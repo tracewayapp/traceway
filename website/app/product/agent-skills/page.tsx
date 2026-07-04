@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { Bot } from "lucide-react";
+import { Bot, Plug, ArrowRight } from "lucide-react";
 
 import { Chip } from "@/components/chip";
 import { SectionHead } from "@/components/section-head";
@@ -286,6 +286,38 @@ export default function AgentSkillsPage() {
             </div>
           </div>
         </section>
+
+        <section className="wrap pb-16">
+          <Link
+            href="/product/mcp"
+            className="group mx-auto flex max-w-3xl flex-col items-start gap-4 rounded-2xl p-8 transition-colors sm:flex-row sm:items-center sm:justify-between"
+            style={{
+              background: "var(--ink-1)",
+              border: "1px solid var(--hair)",
+            }}
+          >
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <Plug className="h-4 w-4 text-a2" />
+                <span className="font-mono text-[0.6875rem] uppercase tracking-[0.14em] text-fg-3">
+                  Also available
+                </span>
+              </div>
+              <p className="text-lg font-semibold text-fg-0">
+                Prefer live tools? Traceway speaks MCP.
+              </p>
+              <p className="muted max-w-[48ch] text-pretty">
+                Connect Claude Code, Cursor, or any MCP client straight to your
+                instance over OAuth. The same telemetry, exposed as MCP tools,
+                prompts, and resources.
+              </p>
+            </div>
+            <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-[0.8125rem] text-a2 transition-transform group-hover:translate-x-0.5">
+              Explore the MCP server
+              <ArrowRight className="h-4 w-4" />
+            </span>
+          </Link>
+        </section>
       </div>
 
       <FinalCTA
@@ -347,6 +379,25 @@ export default function AgentSkillsPage() {
                 {
                   q: "Do I need the CLI installed first?",
                   a: "No. The /traceway skill installs and authenticates it before running its first query.",
+                },
+                {
+                  q: "Is there an MCP server too?",
+                  a: (
+                    <>
+                      <p>
+                        Yes. Traceway also ships a Model Context Protocol server:
+                        remote over OAuth at{" "}
+                        <code>https://your-instance/mcp</code>, or local on stdio
+                        via <code>traceway mcp</code>. Skills drive the CLI; MCP
+                        gives the agent live tools.
+                      </p>
+                      <p>
+                        <Link href="/product/mcp" className="text-a2 hover:underline">
+                          See the MCP server →
+                        </Link>
+                      </p>
+                    </>
+                  ),
                 },
               ]}
             />

@@ -199,18 +199,15 @@ func Run(opts ...Option) {
 		ctx.JSON(200, gin.H{"version": "0.0.1"})
 	})
 
-	// OAuth discovery documents must live at the origin root (RFC 8414 / RFC
-	// 9728), not under /api, so metadata-driven clients (and the future MCP
-	// integration) can find them. Registered before the SPA NoRoute fallback so
-	// they aren't shadowed by index.html.
-	router.GET("/.well-known/oauth-authorization-server", controllers.WellKnownController.AuthorizationServer)
-	router.GET("/.well-known/oauth-protected-resource", controllers.WellKnownController.ProtectedResource)
-	router.GET("/.well-known/oauth-protected-resource"+mcpmount.Path, controllers.WellKnownController.ProtectedResourceMCP)
+	wellKnown := []string{http.MethodGet, http.MethodOptions}
+	router.Match(wellKnown, "/.well-known/oauth-authorization-server", middleware.WellKnownCors, controllers.WellKnownController.AuthorizationServer)
+	router.Match(wellKnown, "/.well-known/oauth-protected-resource", middleware.WellKnownCors, controllers.WellKnownController.ProtectedResource)
+	router.Match(wellKnown, "/.well-known/oauth-protected-resource"+mcpmount.Path, middleware.WellKnownCors, controllers.WellKnownController.ProtectedResourceMCP)
 
 	mcpHandler := mcpmount.GinHandler(router, "0.0.1")
-	router.GET(mcpmount.Path, mcpHandler)
-	router.POST(mcpmount.Path, mcpHandler)
-	router.DELETE(mcpmount.Path, mcpHandler)
+	mcpMethods := []string{http.MethodGet, http.MethodPost, http.MethodDelete, http.MethodOptions}
+	router.Match(mcpMethods, mcpmount.Path, middleware.MCPCors, mcpHandler)
+	router.Match(mcpMethods, mcpmount.Path+"/", middleware.MCPCors, mcpHandler)
 
 	apiOnly := cfg.APIOnly == "true"
 

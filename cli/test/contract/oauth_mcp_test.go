@@ -274,6 +274,72 @@ func TestContract_authorizeValidationAndDeny(t *testing.T) {
 	}
 }
 
+func TestContract_mcpCors(t *testing.T) {
+	for _, path := range []string{
+		"/mcp",
+		"/mcp/",
+		"/.well-known/oauth-protected-resource",
+		"/.well-known/oauth-protected-resource/mcp",
+		"/.well-known/oauth-authorization-server",
+		"/api/oauth/register",
+		"/api/auth/token",
+		"/api/auth/device/authorize",
+		"/api/auth/device/token",
+		"/api/auth/logout",
+	} {
+		req, err := http.NewRequest(http.MethodOptions, baseURL+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Origin", "https://inspector.example.com")
+		req.Header.Set("Access-Control-Request-Method", http.MethodPost)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("OPTIONS %s: %v", path, err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusNoContent {
+			t.Errorf("OPTIONS %s: status %d, want 204", path, res.StatusCode)
+		}
+		if got := res.Header.Get("Access-Control-Allow-Origin"); got != "*" {
+			t.Errorf("OPTIONS %s: Access-Control-Allow-Origin = %q, want *", path, got)
+		}
+	}
+
+	req, err := http.NewRequest(http.MethodGet, baseURL+"/mcp", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Origin", "https://inspector.example.com")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET /mcp: %v", err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Errorf("GET /mcp without token: status %d, want 401", res.StatusCode)
+	}
+	if got := res.Header.Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Errorf("GET /mcp: Access-Control-Allow-Origin = %q, want *", got)
+	}
+	expose := res.Header.Get("Access-Control-Expose-Headers")
+	if !strings.Contains(expose, "Mcp-Session-Id") || !strings.Contains(expose, "WWW-Authenticate") {
+		t.Errorf("GET /mcp: Access-Control-Expose-Headers = %q, want Mcp-Session-Id and WWW-Authenticate", expose)
+	}
+
+	res, err = http.Get(baseURL + "/.well-known/oauth-authorization-server")
+	if err != nil {
+		t.Fatalf("GET authorization-server metadata: %v", err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Errorf("GET authorization-server metadata: status %d, want 200", res.StatusCode)
+	}
+	if got := res.Header.Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Errorf("GET authorization-server metadata: Access-Control-Allow-Origin = %q, want *", got)
+	}
+}
+
 type bearerTransport struct {
 	token string
 }
@@ -293,8 +359,8 @@ func TestContract_mcpOverStreamableHTTP(t *testing.T) {
 	if res.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated /mcp should 401, got %d", res.StatusCode)
 	}
-	if challenge := res.Header.Get("WWW-Authenticate"); !strings.Contains(challenge, "/.well-known/oauth-protected-resource") {
-		t.Fatalf("401 must carry the resource metadata challenge, got %q", challenge)
+	if challenge := res.Header.Get("WWW-Authenticate"); !strings.Contains(challenge, "/.well-known/oauth-protected-resource/mcp") {
+		t.Fatalf("401 must point at the /mcp resource metadata (RFC 9728), got %q", challenge)
 	}
 
 	token := oauthAccessToken(t)

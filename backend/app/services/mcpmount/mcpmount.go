@@ -47,7 +47,7 @@ func GinHandler(engine *gin.Engine, version string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		issuer := authserver.IssuerBaseURLFromRequest(c)
 		requireBearer := auth.RequireBearerToken(identities.verifyBearer, &auth.RequireBearerTokenOptions{
-			ResourceMetadataURL: issuer + "/.well-known/oauth-protected-resource",
+			ResourceMetadataURL: issuer + "/.well-known/oauth-protected-resource" + Path,
 		})
 		requireBearer(streamable).ServeHTTP(c.Writer, c.Request)
 		c.Abort()

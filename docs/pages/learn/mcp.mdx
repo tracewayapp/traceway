@@ -17,7 +17,7 @@ On first use the client discovers the OAuth metadata, registers itself (RFC 7591
 
 Non-OAuth clients (or CI) can instead send a personal access token directly: `Authorization: Bearer twp_...` on every request.
 
-Two things differ from the local server: there is no default project (pass `project_id`, or let the model call `list_projects` first), and an unauthenticated request gets a `401` with a `WWW-Authenticate` challenge pointing at `/.well-known/oauth-protected-resource`, which is how spec-compliant clients find the login flow.
+Two things differ from the local server: there is no default project (pass `project_id`, or let the model call `list_projects` first), and an unauthenticated request gets a `401` with a `WWW-Authenticate` challenge pointing at `/.well-known/oauth-protected-resource/mcp`, which is how spec-compliant clients find the login flow. The discovery documents and the `/mcp` endpoint answer CORS preflights, so browser-based clients (like the MCP Inspector auth debugger) can reach them too.
 
 ## Local server (CLI session)
 

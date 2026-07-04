@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/tracewayapp/traceway/backend/app/config"
@@ -12,6 +13,8 @@ import (
 )
 
 var ExtensionRoutes []func(router *gin.RouterGroup)
+
+var postPreflight = []string{http.MethodPost, http.MethodOptions}
 
 type PaginationParams struct {
 	Page     int `json:"page" binding:"min=1"`
@@ -131,15 +134,15 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.GET("/auth/callback/:provider", middleware.Transactional, OAuthController.Callback)
 	router.POST("/auth/finish-setup", middleware.UseAppAuth, middleware.Transactional, OAuthController.FinishSetup)
 
-	router.POST("/auth/device/authorize", middleware.RateLimitPerIP(10, time.Minute), DeviceAuthController.Authorize)
-	router.POST("/auth/device/token", DeviceAuthController.Token)
-	router.POST("/auth/token", DeviceAuthController.Token)
-	router.POST("/auth/logout", DeviceAuthController.Logout)
+	router.Match(postPreflight, "/auth/device/authorize", middleware.OAuthCors, middleware.RateLimitPerIP(10, time.Minute), DeviceAuthController.Authorize)
+	router.Match(postPreflight, "/auth/device/token", middleware.OAuthCors, DeviceAuthController.Token)
+	router.Match(postPreflight, "/auth/token", middleware.OAuthCors, DeviceAuthController.Token)
+	router.Match(postPreflight, "/auth/logout", middleware.OAuthCors, DeviceAuthController.Logout)
 	router.GET("/device", middleware.UseAppAuth, DeviceAuthController.Lookup)
 	router.POST("/device/approve", middleware.UseAppAuth, middleware.Transactional, DeviceAuthController.Approve)
 	router.POST("/device/deny", middleware.UseAppAuth, middleware.Transactional, DeviceAuthController.Deny)
 
-	router.POST("/oauth/register", middleware.RateLimitPerIP(10, time.Minute), middleware.Transactional, OauthAuthorizeController.Register)
+	router.Match(postPreflight, "/oauth/register", middleware.OAuthCors, middleware.RateLimitPerIP(10, time.Minute), middleware.Transactional, OauthAuthorizeController.Register)
 	router.GET("/oauth/client", middleware.UseAppAuth, OauthAuthorizeController.Lookup)
 	router.POST("/oauth/approve", middleware.UseAppAuth, middleware.Transactional, OauthAuthorizeController.Approve)
 	router.POST("/oauth/deny", middleware.UseAppAuth, OauthAuthorizeController.Deny)

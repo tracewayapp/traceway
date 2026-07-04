@@ -92,12 +92,12 @@
 
 <div class="space-y-6">
     <Card class="pb-0">
-        <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-4">
-            <div>
+        <CardHeader class="flex flex-row items-start justify-between gap-4 space-y-0 pb-4">
+            <div class="min-w-0 space-y-1.5">
                 <CardTitle>Team Members</CardTitle>
                 <CardDescription>Manage your organization's team members</CardDescription>
             </div>
-            <Button variant="outline" onclick={() => showInviteDialog = true} disabled={!canInvite}>
+            <Button variant="outline" class="shrink-0" onclick={() => showInviteDialog = true} disabled={!canInvite}>
                 <UserPlus class="mr-2 h-4 w-4" />
                 Invite User
             </Button>

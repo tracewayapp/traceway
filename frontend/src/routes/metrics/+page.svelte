@@ -22,7 +22,7 @@
 		updateUrl
 	} from '$lib/utils/url-params';
 	import { CalendarDate } from '@internationalized/date';
-	import { Trash2, Plus, RefreshCw, CircleAlert, EllipsisVertical, Sparkles } from 'lucide-svelte';
+	import { Trash2, Plus, Pencil, Check, RefreshCw, CircleAlert, EllipsisVertical, Sparkles } from 'lucide-svelte';
 	import * as Alert from '$lib/components/ui/alert';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { toast } from 'svelte-sonner';
@@ -68,6 +68,11 @@
 	let showDeleteDialog = $state(false);
 	let deleting = $state(false);
 	let deleteError = $state('');
+
+	let showRenameDialog = $state(false);
+	let renameName = $state('');
+	let renaming = $state(false);
+	let renameError = $state('');
 
 	let showWidgetConfig = $state(false);
 	let editingWidget = $state<Widget | null>(null);
@@ -248,6 +253,37 @@
 		}
 	}
 
+	function openRenameDialog() {
+		renameName = activeGroup?.name ?? activeTabName;
+		renameError = '';
+		showRenameDialog = true;
+	}
+
+	async function renameWidgetGroup() {
+		if (!activeGroup) return;
+		renaming = true;
+		renameError = '';
+		try {
+			await api.put(
+				`/widget-groups/${activeGroup.id}`,
+				{ name: renameName, description: activeGroup.description },
+				{ projectId: projectsState.currentProjectId ?? undefined }
+			);
+			toast.success('Successfully updated the Widget Group', { position: 'top-center' });
+			showRenameDialog = false;
+			activeGroup.name = renameName;
+			await loadWidgetGroups();
+		} catch (e: any) {
+			if (e?.status === 422) {
+				renameError = e.message;
+			} else {
+				console.error('Failed to rename widget group:', e);
+			}
+		} finally {
+			renaming = false;
+		}
+	}
+
 	async function deleteWidgetGroup() {
 		if (!activeGroup) return;
 		deleting = true;
@@ -375,18 +411,43 @@
 		}
 	}
 
-	async function handleMoveWidget(widgetId: number, offset: number) {
+	async function handleReorderWidgets(widgetIds: number[]) {
 		if (!activeGroup) return;
+		const previousPositions = new Map(activeGroup.widgets.map((w) => [w.id, w.position]));
+		for (const w of activeGroup.widgets) {
+			w.position = widgetIds.indexOf(w.id);
+		}
 		try {
 			await api.put(
-				`/widget-groups/${activeGroup.id}/widgets/${widgetId}/move`,
-				{ offset },
+				`/widget-groups/${activeGroup.id}/reorder`,
+				{ widgetIds },
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
+		} catch (e: any) {
+			for (const w of activeGroup.widgets) {
+				w.position = previousPositions.get(w.id) ?? w.position;
+			}
+			toast.error(e?.message || 'Failed to reorder widgets', { position: 'top-center' });
 			await loadGroupWidgets(activeTabId);
-			toast.success('Successfully moved the Widget', { position: 'top-center' });
-		} catch (e) {
-			console.error('Failed to move widget:', e);
+		}
+	}
+
+	async function handleDuplicateWidget(widget: Widget) {
+		if (!activeGroup) return;
+		try {
+			await api.post(
+				`/widget-groups/${activeGroup.id}/widgets`,
+				{
+					title: `${widget.title} (copy)`,
+					widgetType: widget.widgetType,
+					config: widget.config
+				},
+				{ projectId: projectsState.currentProjectId ?? undefined }
+			);
+			toast.success('Successfully duplicated the Widget', { position: 'top-center' });
+			await loadGroupWidgets(activeTabId);
+		} catch (e: any) {
+			toast.error(e?.message || 'Failed to duplicate widget', { position: 'top-center' });
 		}
 	}
 
@@ -526,6 +587,11 @@
 											{/snippet}
 										</DropdownMenu.Trigger>
 										<DropdownMenu.Content align="start">
+											<DropdownMenu.Item onclick={openRenameDialog}>
+												<Pencil class="mr-2 h-4 w-4" />
+												Rename Group
+											</DropdownMenu.Item>
+											<DropdownMenu.Separator />
 											<DropdownMenu.Item
 												class="text-destructive"
 												onclick={() => (showDeleteDialog = true)}
@@ -554,6 +620,11 @@
 							<EllipsisVertical class="h-4 w-4" />
 						</DropdownMenu.Trigger>
 						<DropdownMenu.Content align="end">
+							<DropdownMenu.Item onclick={openRenameDialog}>
+								<Pencil class="mr-2 h-4 w-4" />
+								Rename Group
+							</DropdownMenu.Item>
+							<DropdownMenu.Separator />
 							<DropdownMenu.Item class="text-destructive" onclick={() => (showDeleteDialog = true)}>
 								<Trash2 class="mr-2 h-4 w-4" />
 								Delete Group
@@ -587,7 +658,8 @@
 							timeDomain={sharedTimeDomain}
 							onEditWidget={openEditWidget}
 							onDeleteWidget={openDeleteWidgetDialog}
-							onMoveWidget={handleMoveWidget}
+							onReorderWidgets={handleReorderWidgets}
+							onDuplicateWidget={handleDuplicateWidget}
 							onAddWidget={openAddWidget}
 							onToggleStar={handleToggleStar}
 							onRangeSelect={handleChartRangeSelect}
@@ -639,6 +711,43 @@
 			<Button variant="outline" onclick={() => (showCreateDialog = false)}>Cancel</Button>
 			<Button onclick={createWidgetGroup} disabled={creating}>
 				{#if creating}Creating...{:else}<Plus class="mr-1 h-4 w-4" /> New Widget Group{/if}
+			</Button>
+		</AlertDialog.Footer>
+	</AlertDialog.Content>
+</AlertDialog.Root>
+
+<AlertDialog.Root
+	bind:open={showRenameDialog}
+	onOpenChange={(o) => {
+		if (!o) renameError = '';
+	}}
+>
+	<AlertDialog.Content interactOutsideBehavior="close">
+		<AlertDialog.Header>
+			<AlertDialog.Title>Rename Widget Group</AlertDialog.Title>
+		</AlertDialog.Header>
+		{#if renameError}
+			<Alert.Root variant="destructive" class="border-red-200 bg-red-50">
+				<CircleAlert class="h-4 w-4 text-red-700" />
+				<Alert.Title class="text-red-800">Error</Alert.Title>
+				<Alert.Description class="text-red-700">{renameError}</Alert.Description>
+			</Alert.Root>
+		{/if}
+		<div class="space-y-4">
+			<div>
+				<label class="text-sm font-medium" for="rename-group-name">Name</label>
+				<Input
+					id="rename-group-name"
+					bind:value={renameName}
+					placeholder="My Group"
+					maxlength={12}
+				/>
+			</div>
+		</div>
+		<AlertDialog.Footer>
+			<Button variant="outline" onclick={() => (showRenameDialog = false)}>Cancel</Button>
+			<Button onclick={renameWidgetGroup} disabled={renaming}>
+				{#if renaming}Updating...{:else}<Check class="mr-1 h-4 w-4" /> Update Widget Group{/if}
 			</Button>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>

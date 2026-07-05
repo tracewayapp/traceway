@@ -264,6 +264,84 @@ func (c *widgetController) Move(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"moved": true})
 }
 
+type ReorderWidgetsRequest struct {
+	WidgetIds []int `json:"widgetIds" binding:"required,min=1"`
+}
+
+func (c *widgetController) Reorder(ctx *gin.Context) {
+	projectId, err := middleware.GetProjectId(ctx)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return
+	}
+
+	groupIdStr := ctx.Param("id")
+	groupId, err := strconv.Atoi(groupIdStr)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid widget group id"})
+		return
+	}
+
+	var req ReorderWidgetsRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	tx := db.GetTx(ctx)
+
+	group, err := repositories.WidgetGroupRepository.FindById(tx, groupId)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to reorder widgets: %w", err))
+		return
+	}
+	if group == nil || group.ProjectId != projectId {
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "Widget group not found"})
+		return
+	}
+
+	allWidgets, err := repositories.WidgetGroupRepository.FindWidgetsByGroup(tx, groupId)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to reorder widgets: %w", err))
+		return
+	}
+
+	byId := make(map[int]*models.WidgetGroupWidget, len(allWidgets))
+	for _, w := range allWidgets {
+		byId[w.Id] = w
+	}
+
+	if len(req.WidgetIds) != len(allWidgets) {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "The widget list is out of date. Please refresh and try again."})
+		return
+	}
+
+	seen := make(map[int]bool, len(req.WidgetIds))
+	for _, id := range req.WidgetIds {
+		if byId[id] == nil || seen[id] {
+			ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "The widget list is out of date. Please refresh and try again."})
+			return
+		}
+		seen[id] = true
+	}
+
+	now := time.Now().UTC()
+	for position, id := range req.WidgetIds {
+		w := byId[id]
+		if w.Position == position {
+			continue
+		}
+		w.Position = position
+		w.UpdatedAt = now
+		if err := repositories.WidgetGroupRepository.UpdateWidget(tx, w); err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to reorder widgets: %w", err))
+			return
+		}
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"reordered": true})
+}
+
 func (c *widgetController) Delete(ctx *gin.Context) {
 	projectId, err := middleware.GetProjectId(ctx)
 	if err != nil {

@@ -163,6 +163,33 @@
 			s.data.map((p) => ({ timestamp: p.timestamp, endpoint: s.key, value: p.value }))
 		)
 	);
+
+	// Widen the y-axis gutter to fit the largest tick label (e.g. "139.7 GB"),
+	// which the charts' fixed default would clip
+	const axisMaxValue = $derived.by(() => {
+		if (widget.widgetType === 'stacked_area') {
+			const sums = new Map<number, number>();
+			for (const s of visibleSeries) {
+				for (const p of s.data) {
+					const t = p.timestamp.getTime();
+					sums.set(t, (sums.get(t) ?? 0) + p.value);
+				}
+			}
+			return sums.size > 0 ? Math.max(...sums.values()) * 1.1 : 0;
+		}
+		let m = 0;
+		for (const s of visibleSeries) {
+			for (const p of s.data) {
+				if (p.value > m) m = p.value;
+			}
+		}
+		return m * 1.1;
+	});
+
+	const chartPadding = $derived.by(() => {
+		const label = formatMetricLabel(axisMaxValue || 0, effectiveUnit);
+		return { top: 10, right: 4, bottom: 20, left: Math.max(45, Math.round(label.length * 6.5) + 16) };
+	});
 </script>
 
 <div class="flex h-full w-full min-h-[200px] flex-col">
@@ -204,7 +231,7 @@
 				series={visibleSeries}
 				xDomain={timeDomain ?? undefined}
 				height={chartHeight}
-				padding={{ top: 10, right: 4, bottom: 20, left: 45 }}
+				padding={chartPadding}
 				{onRangeSelect}
 				data={visibleSeries[0]?.data ?? []}
 				areaFill={true}
@@ -225,7 +252,7 @@
 				endpoints={visibleSeries.map((s) => s.key)}
 				series={stackedPoints}
 				height={chartHeight}
-				padding={{ top: 10, right: 4, bottom: 20, left: 45 }}
+				padding={chartPadding}
 				unit={effectiveUnit}
 				formatValue={(v) => formatMetricLabel(v, effectiveUnit)}
 				{onRangeSelect}
@@ -242,7 +269,7 @@
 			series={visibleSeries}
 			xDomain={timeDomain ?? undefined}
 			height={chartHeight}
-			padding={{ top: 10, right: 4, bottom: 20, left: 45 }}
+			padding={chartPadding}
 			{onRangeSelect}
 			data={visibleSeries[0]?.data ?? []}
 			unit={effectiveUnit}

@@ -171,7 +171,7 @@
 						</div>
 					</div>
 				</Card.Header>
-				<Card.Content class="p-1">
+				<Card.Content class="min-h-0 flex-1 p-1">
 					<WidgetRenderer
 						{widget}
 						{fromDateUTC}

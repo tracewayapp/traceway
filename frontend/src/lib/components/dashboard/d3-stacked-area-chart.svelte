@@ -379,7 +379,7 @@
 							class="text-muted-foreground"
 							font-size="10"
 						>
-							{formatYLabel(tick)}
+							{formatValue ? formatValue(tick) : formatYLabel(tick)}
 						</text>
 					{/each}
 

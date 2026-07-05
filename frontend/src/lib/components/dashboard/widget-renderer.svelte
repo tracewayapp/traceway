@@ -64,8 +64,12 @@
 
 	const effectiveUnit = $derived(widget.config.unit ?? resolvedUnit);
 
+	// Fallbacks for the first render; once mounted the chart fills the measured card space
 	const chartHeights: Record<string, number> = { sm: 200, md: 300, lg: 420 };
-	const chartHeight = $derived(chartHeights[widget.config.size ?? 'sm'] ?? chartHeights.sm);
+	let chartAreaHeight = $state(0);
+	const chartHeight = $derived(
+		chartAreaHeight > 0 ? chartAreaHeight : (chartHeights[widget.config.size ?? 'sm'] ?? 200)
+	);
 
 	let hiddenSeries = new SvelteSet<string>();
 	const visibleSeries = $derived(series.filter((s) => !hiddenSeries.has(s.key)));
@@ -161,7 +165,8 @@
 	);
 </script>
 
-<div class="h-full w-full min-h-[200px]">
+<div class="flex h-full w-full min-h-[200px] flex-col">
+	<div class="min-h-0 w-full flex-1" bind:clientHeight={chartAreaHeight}>
 	{#if loading}
 		<div class="flex h-full items-center justify-center">
 			<LoadingCircle size="md" />
@@ -251,6 +256,7 @@
 			No data
 		</div>
 	{/if}
+	</div>
 
 	{#if legendVisible && !loading}
 		<div class="flex flex-wrap gap-x-3 gap-y-1 px-2 pt-1">

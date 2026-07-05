@@ -1,6 +1,6 @@
 ---
 name: traceway
-description: 'Operate a Traceway observability instance through the traceway CLI: log in, query exceptions, logs, endpoints, and metrics, and debug production issues down to root cause. Use when the user invokes /traceway with a subcommand, e.g. "/traceway login", "/traceway debug issue <hash|url|title>", "/traceway what''s broken in prod", or whenever they want to investigate errors, crashes, slowness, or logs from an app monitored by Traceway.'
+description: 'Operate a Traceway observability instance through the traceway CLI: log in, query exceptions, logs, endpoints, background tasks, sessions, AI traces, and metrics, and debug production issues down to root cause. Use when the user invokes /traceway with a subcommand, e.g. "/traceway login", "/traceway debug issue <hash|url|title>", "/traceway what''s broken in prod", or whenever they want to investigate errors, crashes, slowness, logs, or task/LLM behavior from an app monitored by Traceway.'
 ---
 
 # Traceway
@@ -22,7 +22,7 @@ Drive a Traceway instance from the terminal with the `traceway` CLI. The first w
 - **Reads are safe**: any `list` / `show` / `query` subcommand may run freely; they never mutate server state.
 - **Writes require explicit user instruction**: `exceptions archive` / `unarchive` are the only mutating data commands; only run them when the user asks by name, with `--yes` in non-interactive contexts. "Look at this error" means read it, not archive it.
 - **Output**: piped output defaults to JSON (table on a TTY). Prefer JSON + `jq`, and `--fields a,b,c` to trim responses. Keep `--page-size` at 10 to 20 for triage.
-- **Time windows**: always bound queries, default `--since 1h` for "now" questions, `--since 24h` otherwise. `--since` accepts `s`, `m`, `h`, lowercase `Nd` (no `1w`, no `7d2h`). Absolute windows via `--from` / `--to` (RFC3339).
+- **Time windows**: always bound queries, default `--since 1h` for "now" questions, `--since 24h` otherwise. `--since` accepts `s`, `m`, `h`, lowercase `Nd` (no `1w`, no `7d2h`). Absolute windows via `--from` / `--to` (RFC3339). Exception: `metrics list` defaults to the server's 7-day discovery window, which is what you want.
 - **Exit codes**: 0 ok, 1 generic/API, 2 usage, 3 connection, 4 auth, 5 not found, 6 rate limited, 7 server 5xx. Errors emit `{"error":"<stable_id>","message":"...","hint":"...","exit_code":N}` on stderr; branch on the `error` field.
 - On exit code 4 (auth), do not run `traceway login` yourself; switch to the Login flow and let the user enter credentials.
 
@@ -36,13 +36,13 @@ Users paste dashboard URLs (`https://<instance>/<route>`) as references in any f
 | `/issues/<hash>/<occurrenceId>` (UUID) | One occurrence within the group | `traceway exceptions occurrence <occurrenceId> --recorded-at <t>` where `t` is the URL's `?t=` param. Direct and fast; also returns the occurrence's `sessionId` and session recording. No URL? get `recordedAt` from `traceway exceptions show <hash>` occurrences |
 | `/endpoints/<endpoint>` | Endpoint group; the segment is the URL-encoded endpoint name (`GET%20%2Fapi%2Fusers%2F%3Aid` is `GET /api/users/:id`) | Decode it, then `traceway endpoints list --search "<decoded name>"` (the group has no id; `endpoints show` is for one request — next row) |
 | `/endpoints/<endpoint>/<endpointId>` | One request (transaction) of that endpoint | `traceway endpoints show <endpointId> --recorded-at <t>` (`t` = the URL's `?t=` param). Returns the request, its span waterfall, and any linked exception/messages |
-| `/tasks/<task>` | Background task group | No CLI for the group; for one run use the next row |
+| `/tasks/<task>` | Background task group; the segment is the URL-encoded task name | Decode it, then `traceway tasks runs --task "<decoded name>"` (runs + aggregate stats); `traceway tasks list --search "<decoded name>"` for the group row |
 | `/tasks/<task>/<taskId>` | Single task run | `traceway tasks show <taskId> --recorded-at <t>` (`t` = the URL's `?t=` param) |
 | `/sessions/<sessionId>` | Session (the exceptions that fired during it; replay stays dashboard-only) | `traceway sessions show <sessionId> --started-at <t>`. The URL has no `?t=`; use the session's start, the URL's `from=`, or a linked occurrence's `recordedAt` (it falls inside the window). Occurrences reference sessions via their `sessionId` |
-| `/ai-traces/<traceName>` | AI trace group | No CLI for the group; for one trace use the next row |
+| `/ai-traces/<traceName>` | AI trace group | `traceway ai-traces list --search "<decoded name>"` for the group's token/cost stats; for one trace use the next row |
 | `/ai-traces/<traceName>/<traceId>` | Single AI trace | `traceway ai-traces show <traceId> --recorded-at <t>` (`t` = the URL's `?t=` param); returns token/cost stats + the conversation |
 | `/logs` | Logs page (its filters are not stored in the URL) | `traceway logs query` with flags taken from the user's description |
-| `/issues`, `/endpoints`, `/metrics`, `/` | List and dashboard pages | The matching `list` / `query` command |
+| `/issues`, `/endpoints`, `/tasks`, `/sessions`, `/ai-traces`, `/metrics`, `/` | List and dashboard pages | The matching `list` / `query` command |
 
 **Time window**: most dashboard URLs carry `?preset=<p>` or `?from=<iso>&to=<iso>` (sticky across pages); honor them instead of the default window.
 
@@ -229,20 +229,24 @@ From the description extract symptom, affected endpoint/feature, and time window
 
 ```bash
 traceway exceptions list --since 24h --order-by lastSeen        # what is erroring (firstSeen for regressions, count for volume)
-traceway logs query --since 24h --min-severity 17               # errors and worse
+traceway logs query --since 24h --min-severity error            # errors and worse (names or OTel numbers both work)
 traceway logs query --since 24h --search "payment declined"     # search log bodies
-traceway logs query --since 24h --service checkout-api --min-severity 13
+traceway logs query --since 24h --service checkout-api --min-severity warn
+traceway logs query --since 24h --attr user.id=42 --min-severity error   # by log attribute; resource:/scope:/log: prefix picks the map
 traceway endpoints list --since 24h --search "checkout"         # latency p50/p95/p99 and error counts, --order-by impact|count|p95|lastSeen
+traceway tasks list --since 24h --order-by p95                  # background tasks grouped by name; --order-by impact|count|p50|p95|avg|lastSeen
 ```
 
-Severity is an OTel number, not a name: 1 TRACE, 5 DEBUG, 9 INFO, 13 WARN, 17 ERROR, 21 FATAL. The flag is `--min-severity 17`, never `--severity error`.
+`--min-severity` accepts a name (`trace`, `debug`, `info`, `warn`, `error`, `fatal`) or the OTel number (1, 5, 9, 13, 17, 21).
 
 **Correlate by trace**: when an occurrence or log line carries a trace ID, pull the whole request timeline; this is usually the fastest route to a root cause:
 
 ```bash
 traceway exceptions show $HASH --output json | jq -r '.occurrences[0].distributedTraceId' \
-  | xargs -I{} traceway logs query --trace-id {} --output json
+  | xargs -I{} traceway logs query --distributed-trace-id {} --output json
 ```
+
+`--distributed-trace-id` takes the UUID and returns the logs of *every* OTel trace under it, across services (`--exclude-trace-id <otel-id>` drops one noisy member). Plain `--trace-id` is for a single OTel trace id from a log line.
 
 Pull the whole cross-service trace and the user's session, reusing the occurrence's `recordedAt` as the (mandatory) time hint so both lookups stay partition-bounded:
 
@@ -260,11 +264,14 @@ SID=$(jq -r '.sessionId // empty' <<<"$OCC")
 **Check metrics for systemic causes** (spikes lining up with `firstSeen` suggest saturation rather than a code bug):
 
 ```bash
+traceway metrics list                            # discover names, tag keys, units first — do not guess names
+traceway metrics tags <name>                     # the metric's tag keys; add a key for its values
+traceway metrics tags <name> <key>               # e.g. values for host → plug into --tag/--group-by
 traceway metrics query --name system.cpu.utilization --aggregation max --since 24h
 traceway metrics query --name <name> --aggregation avg|sum|count|min|max [--tag key=value] [--group-by <tag>]
 ```
 
-The CLI also accepts `p50|p95|p99`, but the server has no quantile aggregation for metric points and silently computes `avg` for them — never present those as percentiles. Latency percentiles come from `traceway endpoints list`, computed from raw request durations. There is no `metrics list`; a bogus name returns an empty `series: {}` cleanly, so probing names is safe. Host metrics from the Traceway OTel Agent live under `system.*` names, and OTLP histogram metrics are stored as two series, `<name>.avg` and `<name>.count`.
+Discovery first: `metrics list` (server-default 7-day window) shows what exists, so query only names it returned. The CLI also accepts `p50|p95|p99` aggregations, but the server has no quantile aggregation for metric points and silently computes `avg` for them — never present those as percentiles. Latency percentiles come from `traceway endpoints list`, computed from raw request durations. Host metrics from the Traceway OTel Agent live under `system.*` names, and OTLP histogram metrics are stored as two series, `<name>.avg` and `<name>.count`.
 
 ### 4. Correlate with the code
 
@@ -311,21 +318,27 @@ For free-form requests ("what's broken in prod?", "is /api/checkout slow?", "sho
 | `traceway exceptions show <hash>` | One group: full stack trace + occurrences |
 | `traceway exceptions occurrence <id> --recorded-at <t>` | One occurrence by id (fast): full detail + `sessionId` + recording |
 | `traceway exceptions archive/unarchive <hash>...` | Mutating; explicit user request + `--yes` only |
-| `traceway logs query` | Logs; `--search` (`--search-type body\|attribute`), `--service`, `--min-severity <n>`, `--trace-id` |
+| `traceway logs query` | Logs; `--search` (`--search-type body\|attribute`), `--service`, `--min-severity <n\|name>`, `--attr [resource:\|scope:\|log:]key=value`, `--trace-id`, `--distributed-trace-id` (+ `--exclude-trace-id`) |
 | `traceway endpoints list` | Per-endpoint p50/p95/p99 and counts; `--search`, `--order-by impact\|count\|p95\|lastSeen` |
 | `traceway endpoints chart` | Latency over time for the top endpoints; `--metric-type total_time\|p50\|p95\|p99`, `--interval-minutes`. Use to find when latency changed |
 | `traceway endpoints slow <endpoint>` | Whether an operator marked this endpoint slow: `{offsetMs, reason}`. `offsetMs 0` = not marked. The offset is the accepted-latency baseline |
 | `traceway endpoints show <id> --recorded-at <t>` | One request by id: span waterfall + linked errors |
+| `traceway tasks list` | Tasks grouped by name: counts + p50/p95/avg; `--search`, `--order-by impact\|count\|p50\|p95\|avg\|lastSeen`, `--root-filter all\|root\|non-root` |
+| `traceway tasks runs [--task <name>]` | Individual runs (id + recordedAt feed `tasks show`); with `--task` adds aggregate stats (avg/median/p95/p99 ms, throughput/min) |
 | `traceway tasks show <id> --recorded-at <t>` | One background task run by id |
+| `traceway ai-traces list` | AI traces grouped by name: counts, tokens, cost, durations; `--order-by count\|p50\|p95\|avg\|totalTokens\|totalCost\|lastSeen` (default totalCost), `--search`, `--root-filter` |
 | `traceway ai-traces show <id> --recorded-at <t>` | One AI trace by id + its conversation |
+| `traceway sessions list` | Sessions, newest first (id + startedAt feed `sessions show`); `--attr key=value`, `--order-by startedAt\|duration` |
 | `traceway sessions show <id> --started-at <t>` | One session by id + the exceptions that fired in it |
 | `traceway traces show <id> --recorded-at <t>` | Distributed trace: every service node sharing the id |
+| `traceway metrics list` | Discover metric names, tag keys, type/unit; `--search` (client-side), default window 7d |
+| `traceway metrics tags <name> [<key>]` | A metric's tag keys, or the observed values of one key |
 | `traceway metrics query --name <metric>` | Time series; `--aggregation`, `--tag`, `--group-by`, `--interval-minutes` |
 | `traceway profiles {list,use}`, `login`, `logout`, `version` | Profile and session management |
 
-The by-id `show`/`occurrence` commands take their id from a dashboard URL, a notification, or an `exceptions show` occurrence — and **require** the record's timestamp (`--recorded-at` / `--started-at`); see "Fast by-id lookups" above.
+The by-id `show`/`occurrence` commands take their id from a dashboard URL, a notification, or a `list`/`runs` row — and **require** the record's timestamp (`--recorded-at` / `--started-at`); see "Fast by-id lookups" above. The `list`/`runs` tables print timestamps in RFC3339 exactly so they can be passed straight back.
 
-Not implemented yet (do not fabricate flags; point the user at the web UI): `list` verbs for `tasks` / `sessions` / `ai-traces` / `traces` (only by-id `show` exists for those), and `metrics list/discover`.
+Not implemented yet (do not fabricate flags; point the user at the web UI): a `list` verb for `traces` (distributed traces are only reachable by id via `traces show`), and session replay.
 
 ### Recipes
 
@@ -343,8 +356,26 @@ traceway exceptions list --from 2026-06-11T13:00:00Z --to "$(date -u +%Y-%m-%dT%
 traceway endpoints list --since 1h --order-by p95 --page-size 1 --output json | jq '.data[0]'
 
 # Errors for one service (exceptions --search is free text, not a service filter; use logs)
-traceway logs query --service checkout-api --min-severity 17 --since 1h --output json \
+traceway logs query --service checkout-api --min-severity error --since 1h --output json \
   | jq '.data[]? | {timestamp, body, traceId}'
+
+# Which background tasks are busy and erratic (impact = count * p95-p50 spread)
+traceway tasks list --since 24h --order-by impact --output json \
+  | jq '.data[]? | {taskName, count, p50Duration, p95Duration, lastSeen}'
+
+# Drill into one task's runs, then one run's spans
+traceway tasks runs --task "nightly-sync" --since 24h --output json \
+  | jq '{stats, worst: (.data | sort_by(.duration) | last | {id, recordedAt, duration})}'
+# → traceway tasks show <id> --recorded-at <recordedAt>
+
+# What is this app spending on LLM calls
+traceway ai-traces list --since 7d --order-by totalCost --output json \
+  | jq '.data[]? | {traceName, count, totalTokens, totalCost}'
+
+# Query a metric without guessing names: discover, inspect tags, then query
+traceway metrics list --search cpu
+traceway metrics tags system.cpu.utilization host
+traceway metrics query --name system.cpu.utilization --aggregation max --group-by host --since 6h
 ```
 
 Empty results (`data: null` or `data: []`) are not errors: widen the window, re-check the active project (`traceway projects list`), and if the app was never connected to Traceway, set it up first (the `traceway-setup` skill).

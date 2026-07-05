@@ -1,0 +1,2 @@
+metrics[].name: string
+metrics[].tagKeys[]: string

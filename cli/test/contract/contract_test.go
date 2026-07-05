@@ -233,3 +233,112 @@ func hasMetricValue(resp *client.QueryMetricsResponse, want float64) bool {
 	}
 	return false
 }
+
+func TestContract_tasksGrouped(t *testing.T) {
+	c, rt := capturedClient()
+	resp, err := c.ListTasks(context.Background(), projectID, client.ListTasksRequest{
+		TimeRange:  timeWindow(),
+		Pagination: client.PaginationParams{Page: 1, PageSize: 50},
+		OrderBy:    "impact",
+	})
+	if err != nil {
+		t.Fatalf("tasks grouped: %v", err)
+	}
+	if len(resp.Data) == 0 {
+		t.Fatal("expected seeded task in response")
+	}
+	goldenAssert(t, "tasks-grouped", rt.body)
+}
+
+func TestContract_taskRuns(t *testing.T) {
+	c, rt := capturedClient()
+	resp, err := c.ListTaskRuns(context.Background(), projectID, "", client.ListTaskRunsRequest{
+		TimeRange:  timeWindow(),
+		Pagination: client.PaginationParams{Page: 1, PageSize: 50},
+	})
+	if err != nil {
+		t.Fatalf("task runs: %v", err)
+	}
+	if len(resp.Data) == 0 {
+		t.Fatal("expected seeded task run in response")
+	}
+	goldenAssert(t, "tasks-list", rt.body)
+}
+
+func TestContract_taskRunsScoped(t *testing.T) {
+	c, rt := capturedClient()
+	resp, err := c.ListTaskRuns(context.Background(), projectID, "contract-task", client.ListTaskRunsRequest{
+		TimeRange:  timeWindow(),
+		Pagination: client.PaginationParams{Page: 1, PageSize: 50},
+	})
+	if err != nil {
+		t.Fatalf("task runs scoped: %v", err)
+	}
+	if len(resp.Data) == 0 {
+		t.Fatal("expected seeded task run in response")
+	}
+	if resp.Stats == nil {
+		t.Fatal("expected aggregate stats when scoped to a task name")
+	}
+	goldenAssert(t, "tasks-by-name", rt.body)
+}
+
+func TestContract_metricsDiscover(t *testing.T) {
+	c, rt := capturedClient()
+	resp, err := c.DiscoverMetrics(context.Background(), projectID, timeWindow())
+	if err != nil {
+		t.Fatalf("metrics discover: %v", err)
+	}
+	found := false
+	for _, m := range resp.Metrics {
+		if m.Name == seedMetricName {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected seeded metric %q in discover response", seedMetricName)
+	}
+	goldenAssert(t, "metrics-discover", rt.body)
+}
+
+func TestContract_metricsDiscoverTags(t *testing.T) {
+	c, rt := capturedClient()
+	resp, err := c.DiscoverMetricTagValues(context.Background(), projectID, seedMetricName, "host")
+	if err != nil {
+		t.Fatalf("metrics discover tags: %v", err)
+	}
+	if len(resp.Values) == 0 {
+		t.Fatal("expected seeded tag value in response")
+	}
+	goldenAssert(t, "metrics-discover-tags", rt.body)
+}
+
+func TestContract_sessionsList(t *testing.T) {
+	c, rt := capturedClient()
+	resp, err := c.ListSessions(context.Background(), projectID, client.ListSessionsRequest{
+		TimeRange:  timeWindow(),
+		Pagination: client.PaginationParams{Page: 1, PageSize: 50},
+	})
+	if err != nil {
+		t.Fatalf("sessions list: %v", err)
+	}
+	if len(resp.Data) == 0 {
+		t.Fatal("expected seeded session in response")
+	}
+	goldenAssert(t, "sessions-list", rt.body)
+}
+
+func TestContract_aiTracesGrouped(t *testing.T) {
+	c, rt := capturedClient()
+	resp, err := c.ListAiTraces(context.Background(), projectID, client.ListAiTracesRequest{
+		TimeRange:  timeWindow(),
+		Pagination: client.PaginationParams{Page: 1, PageSize: 50},
+	})
+	if err != nil {
+		t.Fatalf("ai traces grouped: %v", err)
+	}
+	if len(resp.Data) == 0 {
+		t.Fatal("expected seeded ai trace in response")
+	}
+	goldenAssert(t, "ai-traces-grouped", rt.body)
+}

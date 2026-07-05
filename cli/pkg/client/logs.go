@@ -25,17 +25,32 @@ type LogRecord struct {
 	LogAttributes      map[string]string `json:"logAttributes,omitempty"`
 }
 
-// QueryLogsRequest is the body for POST /api/logs.
+// LogAttributeFilter matches one entry of the upstream attributeFilters —
+// an exact key=value match against one of the three attribute maps. Scope is
+// "resource", "scope", or "log".
+type LogAttributeFilter struct {
+	Scope string `json:"scope"`
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+// QueryLogsRequest is the body for POST /api/logs. DistributedTraceId filters
+// to every OTel trace under one distributed trace (the server resolves the
+// member trace ids first); ExcludeTraceId drops one of those member traces and
+// is only honored together with DistributedTraceId.
 type QueryLogsRequest struct {
-	TimeRange     TimeRange        `json:"-"`
-	Pagination    PaginationParams `json:"pagination"`
-	OrderBy       string           `json:"orderBy,omitempty"`
-	SortDirection string           `json:"sortDirection,omitempty"`
-	Search        string           `json:"search,omitempty"`
-	SearchType    string           `json:"searchType,omitempty"`
-	MinSeverity   uint8            `json:"minSeverity,omitempty"`
-	ServiceName   string           `json:"serviceName,omitempty"`
-	TraceId       string           `json:"traceId,omitempty"`
+	TimeRange          TimeRange            `json:"-"`
+	Pagination         PaginationParams     `json:"pagination"`
+	OrderBy            string               `json:"orderBy,omitempty"`
+	SortDirection      string               `json:"sortDirection,omitempty"`
+	Search             string               `json:"search,omitempty"`
+	SearchType         string               `json:"searchType,omitempty"`
+	MinSeverity        uint8                `json:"minSeverity,omitempty"`
+	ServiceName        string               `json:"serviceName,omitempty"`
+	TraceId            string               `json:"traceId,omitempty"`
+	DistributedTraceId string               `json:"distributedTraceId,omitempty"`
+	ExcludeTraceId     string               `json:"excludeTraceId,omitempty"`
+	AttributeFilters   []LogAttributeFilter `json:"attributeFilters,omitempty"`
 }
 
 // MarshalJSON expands TimeRange into top-level fromDate/toDate.

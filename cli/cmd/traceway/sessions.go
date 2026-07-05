@@ -2,20 +2,139 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/tracewayapp/traceway/cli/internal/output"
+	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
+
+// sessionsOrderBy maps the user-facing --order-by values to the server's
+// snake_case field names for POST /api/sessions.
+var sessionsOrderBy = map[string]string{
+	"startedAt": "started_at",
+	"duration":  "duration",
+}
+
+var sessionsOrderByValues = []string{"startedAt", "duration"}
 
 func newSessionsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sessions",
 		Short: "Inspect user sessions",
 	}
+	cmd.AddCommand(newSessionsListCmd())
 	cmd.AddCommand(newSessionsShowCmd())
 	return cmd
+}
+
+func newSessionsListCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List user sessions",
+		Long: `List user sessions in the window, newest first — the list behind /sessions.
+
+Each row's id and startedAt feed the by-id detail lookup:
+"sessions show <id> --started-at <startedAt>".
+
+--attr filters on session attributes with an exact key=value match
+(repeatable; filters AND together). Session replay stays dashboard-only.`,
+		RunE: runSessionsList,
+	}
+	addTimeRangeFlags(cmd)
+	addPaginationFlags(cmd)
+	cmd.Flags().String("search", "", "Free-text search filter")
+	cmd.Flags().StringArray("attr", nil, "Attribute filter as key=value (repeatable)")
+	cmd.Flags().String("order-by", "startedAt", "Sort field (startedAt, duration)")
+	cmd.Flags().String("sort-direction", "desc", "Sort direction: asc or desc")
+	return cmd
+}
+
+func runSessionsList(cmd *cobra.Command, _ []string) error {
+	ctx := cmd.Context()
+	mode := output.ResolveMode(flagOutput, output.StdoutIsTerminal())
+
+	sess, err := loadSession()
+	if err != nil {
+		return renderSessionError(cmd.ErrOrStderr(), mode, err)
+	}
+	tr, err := resolveTimeRange(cmd)
+	if err != nil {
+		return renderTimeRangeError(cmd.ErrOrStderr(), mode, err)
+	}
+	if err := validatePaginationFlags(cmd); err != nil {
+		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
+			paginationHint("traceway sessions list"))
+	}
+	page := resolvePagination(cmd)
+	search, _ := cmd.Flags().GetString("search")
+	orderBy, _ := cmd.Flags().GetString("order-by")
+	if err := validateEnumFlag("--order-by", orderBy, sessionsOrderByValues); err != nil {
+		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
+			enumFlagHint("traceway sessions list", "--order-by", sessionsOrderByValues))
+	}
+	sortDir, _ := cmd.Flags().GetString("sort-direction")
+	if err := validateEnumFlag("--sort-direction", sortDir, sortDirections); err != nil {
+		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
+			enumFlagHint("traceway sessions list", "--sort-direction", sortDirections))
+	}
+	attrRaw, _ := cmd.Flags().GetStringArray("attr")
+	attrFilters, err := parseSessionAttrFilters(attrRaw)
+	if err != nil {
+		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
+			"use --attr key=value (repeatable)")
+	}
+
+	c := sess.Client()
+	resp, err := c.ListSessions(ctx, sess.ProjectID, client.ListSessionsRequest{
+		TimeRange:        tr,
+		Pagination:       page,
+		Search:           search,
+		OrderBy:          sessionsOrderBy[orderBy],
+		SortDirection:    sortDir,
+		AttributeFilters: attrFilters,
+	})
+	if err != nil {
+		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
+	}
+
+	switch mode {
+	case output.ModeJSON:
+		return output.RenderJSON(cmd.OutOrStdout(), resp, output.ParseFieldsFlag(flagFields))
+	case output.ModeYAML:
+		return output.RenderYAML(cmd.OutOrStdout(), resp, output.ParseFieldsFlag(flagFields))
+	default:
+		tw := output.NewTabWriter(cmd.OutOrStdout())
+		_, _ = fmt.Fprintln(tw, "ID\tSTARTED AT\tDURATION\tAPP VERSION\tSERVER")
+		for _, s := range resp.Data {
+			_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+				s.Id,
+				s.StartedAt.Format("2006-01-02T15:04:05Z07:00"),
+				formatDuration(time.Duration(s.Duration)),
+				pickStr(s.AppVersion, "-"), pickStr(s.ServerName, "-"),
+			)
+		}
+		return tw.Flush()
+	}
+}
+
+// parseSessionAttrFilters parses --attr values of the form key=value.
+// Sessions have a single attribute map, so no scope prefix.
+func parseSessionAttrFilters(in []string) ([]client.SessionAttributeFilter, error) {
+	if len(in) == 0 {
+		return nil, nil
+	}
+	out := make([]client.SessionAttributeFilter, 0, len(in))
+	for _, item := range in {
+		key, value, ok := strings.Cut(item, "=")
+		if !ok || key == "" {
+			return nil, fmt.Errorf("invalid --attr %q: expected key=value", item)
+		}
+		out = append(out, client.SessionAttributeFilter{Key: key, Value: value})
+	}
+	return out, nil
 }
 
 func newSessionsShowCmd() *cobra.Command {

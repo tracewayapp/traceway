@@ -126,7 +126,7 @@ func seedTelemetry(ctx context.Context, projectIDStr string, at time.Time) error
 		ProjectId:  pid,
 		Name:       seedMetricName,
 		Value:      seedMetricVal,
-		Tags:       map[string]string{},
+		Tags:       map[string]string{"host": "contract-host"},
 		RecordedAt: at,
 	}
 	if err := repositories.MetricPointRepository.InsertAsync(ctx, []models.MetricPoint{metric}); err != nil {

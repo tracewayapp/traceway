@@ -64,3 +64,51 @@ func (c *Client) QueryMetrics(ctx context.Context, projectID string, req QueryMe
 	}
 	return &resp, nil
 }
+
+// DiscoveredMetric matches the upstream models.DiscoveredMetric — one metric
+// name seen in the window, with the tag keys observed on it. MetricType and
+// Unit come from the project's metric registry and may be empty.
+type DiscoveredMetric struct {
+	Name       string   `json:"name"`
+	TagKeys    []string `json:"tagKeys"`
+	MetricType string   `json:"metricType,omitempty"`
+	Unit       string   `json:"unit,omitempty"`
+}
+
+// DiscoverMetricsResponse is the body of GET /api/metrics/discover.
+type DiscoverMetricsResponse struct {
+	Metrics []DiscoveredMetric `json:"metrics"`
+}
+
+// DiscoverMetrics lists the metric names (with tag keys and registry metadata)
+// that received points in the window. A zero TimeRange omits from/to and uses
+// the server default of the last 7 days.
+func (c *Client) DiscoverMetrics(ctx context.Context, projectID string, tr TimeRange) (*DiscoverMetricsResponse, error) {
+	path := "/api/metrics/discover?projectId=" + url.QueryEscape(projectID)
+	if !tr.From.IsZero() {
+		path += "&from=" + url.QueryEscape(tr.From.Format(time.RFC3339)) +
+			"&to=" + url.QueryEscape(tr.To.Format(time.RFC3339))
+	}
+	var resp DiscoverMetricsResponse
+	if err := c.do(ctx, http.MethodGet, path, nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// MetricTagValuesResponse is the body of GET /api/metrics/discover/tags.
+type MetricTagValuesResponse struct {
+	Values []string `json:"values"`
+}
+
+// DiscoverMetricTagValues lists the values observed for one tag key of one
+// metric. The server always scans the last 7 days for this endpoint.
+func (c *Client) DiscoverMetricTagValues(ctx context.Context, projectID, name, key string) (*MetricTagValuesResponse, error) {
+	path := "/api/metrics/discover/tags?projectId=" + url.QueryEscape(projectID) +
+		"&name=" + url.QueryEscape(name) + "&key=" + url.QueryEscape(key)
+	var resp MetricTagValuesResponse
+	if err := c.do(ctx, http.MethodGet, path, nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}

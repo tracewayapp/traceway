@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/tracewayapp/traceway/cli/internal/exitcode"
 	"github.com/tracewayapp/traceway/cli/internal/output"
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
@@ -19,8 +20,160 @@ func newMetricsCmd() *cobra.Command {
 		Use:   "metrics",
 		Short: "Query metric time series",
 	}
+	cmd.AddCommand(newMetricsListCmd())
+	cmd.AddCommand(newMetricsTagsCmd())
 	cmd.AddCommand(newMetricsQueryCmd())
 	return cmd
+}
+
+func newMetricsListCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "Discover metric names, tag keys, and units",
+		Long: `List the metric names that received data points in the window, with the tag
+keys observed on each and the type/unit from the project's metric registry
+(when set). Use this before "metrics query" instead of guessing names.
+
+Unlike other commands the default window is the server's: the last 7 days.
+Pass --since/--from/--to to narrow it.`,
+		RunE: runMetricsList,
+	}
+	addTimeRangeFlags(cmd)
+	cmd.Flags().String("search", "", "Substring filter on metric names (applied client-side)")
+	return cmd
+}
+
+func runMetricsList(cmd *cobra.Command, _ []string) error {
+	ctx := cmd.Context()
+	mode := output.ResolveMode(flagOutput, output.StdoutIsTerminal())
+
+	sess, err := loadSession()
+	if err != nil {
+		return renderSessionError(cmd.ErrOrStderr(), mode, err)
+	}
+	// Zero TimeRange = let the server default to 7d, which suits discovery
+	// better than the CLI's usual 1h.
+	var tr client.TimeRange
+	if cmd.Flags().Changed("since") || cmd.Flags().Changed("from") || cmd.Flags().Changed("to") {
+		tr, err = resolveTimeRange(cmd)
+		if err != nil {
+			return renderTimeRangeError(cmd.ErrOrStderr(), mode, err)
+		}
+	}
+	search, _ := cmd.Flags().GetString("search")
+
+	c := sess.Client()
+	resp, err := c.DiscoverMetrics(ctx, sess.ProjectID, tr)
+	if err != nil {
+		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
+	}
+	if search != "" {
+		filtered := resp.Metrics[:0]
+		for _, m := range resp.Metrics {
+			if strings.Contains(m.Name, search) {
+				filtered = append(filtered, m)
+			}
+		}
+		resp.Metrics = filtered
+	}
+
+	switch mode {
+	case output.ModeJSON:
+		return output.RenderJSON(cmd.OutOrStdout(), resp, output.ParseFieldsFlag(flagFields))
+	case output.ModeYAML:
+		return output.RenderYAML(cmd.OutOrStdout(), resp, output.ParseFieldsFlag(flagFields))
+	default:
+		tw := output.NewTabWriter(cmd.OutOrStdout())
+		_, _ = fmt.Fprintln(tw, "NAME\tTYPE\tUNIT\tTAG KEYS")
+		for _, m := range resp.Metrics {
+			tagKeys := "-"
+			if len(m.TagKeys) > 0 {
+				tagKeys = strings.Join(m.TagKeys, ",")
+			}
+			_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
+				m.Name, pickStr(m.MetricType, "-"), pickStr(m.Unit, "-"), tagKeys)
+		}
+		return tw.Flush()
+	}
+}
+
+func newMetricsTagsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "tags <metric-name> [<tag-key>]",
+		Short: "Discover a metric's tag keys, or the values of one tag key",
+		Long: `With one argument, list the tag keys observed on the metric. With a tag key as
+the second argument, list the values observed for it — ready to plug into
+"metrics query --tag key=value" or "--group-by key".
+
+Both forms scan the server's discovery window (the last 7 days).`,
+		Args: cobra.RangeArgs(1, 2),
+		RunE: runMetricsTags,
+	}
+	return cmd
+}
+
+func runMetricsTags(cmd *cobra.Command, args []string) error {
+	ctx := cmd.Context()
+	mode := output.ResolveMode(flagOutput, output.StdoutIsTerminal())
+
+	sess, err := loadSession()
+	if err != nil {
+		return renderSessionError(cmd.ErrOrStderr(), mode, err)
+	}
+	c := sess.Client()
+	name := args[0]
+
+	if len(args) == 2 {
+		resp, err := c.DiscoverMetricTagValues(ctx, sess.ProjectID, name, args[1])
+		if err != nil {
+			return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
+		}
+		switch mode {
+		case output.ModeJSON:
+			return output.RenderJSON(cmd.OutOrStdout(), resp, output.ParseFieldsFlag(flagFields))
+		case output.ModeYAML:
+			return output.RenderYAML(cmd.OutOrStdout(), resp, output.ParseFieldsFlag(flagFields))
+		default:
+			out := cmd.OutOrStdout()
+			for _, v := range resp.Values {
+				_, _ = fmt.Fprintln(out, v)
+			}
+			return nil
+		}
+	}
+
+	resp, err := c.DiscoverMetrics(ctx, sess.ProjectID, client.TimeRange{})
+	if err != nil {
+		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
+	}
+	for _, m := range resp.Metrics {
+		if m.Name != name {
+			continue
+		}
+		keys := struct {
+			Name    string   `json:"name"`
+			TagKeys []string `json:"tagKeys"`
+		}{m.Name, m.TagKeys}
+		switch mode {
+		case output.ModeJSON:
+			return output.RenderJSON(cmd.OutOrStdout(), keys, output.ParseFieldsFlag(flagFields))
+		case output.ModeYAML:
+			return output.RenderYAML(cmd.OutOrStdout(), keys, output.ParseFieldsFlag(flagFields))
+		default:
+			out := cmd.OutOrStdout()
+			for _, k := range m.TagKeys {
+				_, _ = fmt.Fprintln(out, k)
+			}
+			return nil
+		}
+	}
+	_ = output.RenderError(cmd.ErrOrStderr(), mode, output.ErrorEnvelope{
+		Code:     "not_found",
+		Message:  fmt.Sprintf("metric %q not seen in the discovery window", name),
+		Hint:     "traceway metrics list",
+		ExitCode: exitcode.NotFound,
+	})
+	return newCLIError(exitcode.NotFound, "not_found")
 }
 
 func newMetricsQueryCmd() *cobra.Command {

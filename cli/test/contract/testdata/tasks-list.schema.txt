@@ -1,0 +1,15 @@
+data[].appVersion: string
+data[].attributes: null
+data[].clientIP: string
+data[].distributedTraceId: string
+data[].duration: number
+data[].id: string
+data[].isRoot: bool
+data[].projectId: string
+data[].recordedAt: string
+data[].serverName: string
+data[].taskName: string
+pagination.page: number
+pagination.pageSize: number
+pagination.total: number
+pagination.totalPages: number

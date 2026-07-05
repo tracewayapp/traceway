@@ -1,6 +1,6 @@
 # traceway-cli
 
-A Go CLI for the [Traceway](https://github.com/tracewayapp/traceway) observability platform — exceptions, logs, endpoints, metrics. Designed to be **first-class for both LLMs (invoking via shell tools) and humans** (with `gh`-style ergonomics).
+A Go CLI for the [Traceway](https://github.com/tracewayapp/traceway) observability platform — exceptions, logs, endpoints, background tasks, sessions, AI traces, metrics. Designed to be **first-class for both LLMs (invoking via shell tools) and humans** (with `gh`-style ergonomics).
 
 ## Install
 
@@ -57,13 +57,19 @@ traceway metrics query --name http.server.duration --aggregation avg --since 1h
 | `traceway exceptions occurrence <id> --recorded-at <t>` | A single occurrence by id (+ `sessionId` and recording) |
 | `traceway exceptions archive <hash>...` | Archive one or more groups (mutating; needs `--yes` non-interactively) |
 | `traceway exceptions unarchive <hash>...` | Unarchive (mutating; needs `--yes` non-interactively) |
-| `traceway logs query` | Query logs with severity / service / search filters |
+| `traceway logs query` | Query logs with severity / service / attribute / trace / search filters |
 | `traceway endpoints list` | Per-endpoint p50/p95/p99 stats |
 | `traceway endpoints show <id> --recorded-at <t>` | A single request (transaction) by id: spans + linked errors |
+| `traceway tasks list` | Background tasks grouped by name: counts + p50/p95/avg durations |
+| `traceway tasks runs [--task <name>]` | Individual task runs; with `--task` includes aggregate stats |
 | `traceway tasks show <id> --recorded-at <t>` | A single background task run by id |
+| `traceway ai-traces list` | AI traces grouped by name: counts, tokens, cost, durations |
 | `traceway ai-traces show <id> --recorded-at <t>` | A single AI trace by id + its conversation |
+| `traceway sessions list` | User sessions, newest first |
 | `traceway sessions show <id> --started-at <t>` | A single session by id + the exceptions that fired in it |
 | `traceway traces show <id> --recorded-at <t>` | A distributed trace: every service node sharing the id |
+| `traceway metrics list` | Discover metric names, tag keys, and units |
+| `traceway metrics tags <name> [<key>]` | A metric's tag keys, or the values of one key |
 | `traceway metrics query` | Time-series metric queries |
 
 Run `traceway <command> --help` for full per-command flags.

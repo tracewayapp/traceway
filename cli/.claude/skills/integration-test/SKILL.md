@@ -1,6 +1,6 @@
 ---
 name: integration-test
-description: Run a live-instance verification of traceway-cli that goes beyond the Go smoke suite — exercises real-data detail endpoints, TTY-default rendering, adaptive metric-name discovery, and emits a human-readable coverage report. Invoke ONLY when the user explicitly asks (e.g. "run integration tests", "verify the CLI against stormwind"). Never invoke automatically after edits or commits. Assumes the user is already authenticated and a default project is configured.
+description: Run a live-instance verification of traceway-cli that goes beyond the Go smoke suite — exercises real-data detail endpoints, list→drill-in chains (tasks, sessions), discovery-driven metric probing, TTY-default rendering, and emits a human-readable coverage report. Invoke ONLY when the user explicitly asks (e.g. "run integration tests", "verify the CLI against stormwind"). Never invoke automatically after edits or commits. Assumes the user is already authenticated and a default project is configured.
 ---
 
 # integration-test — traceway-cli
@@ -28,10 +28,11 @@ The `just smoke-test` target (`test/smoke/*_test.go`, build tag `smoke`) is the 
 What this skill adds beyond `just smoke-test`:
 
 1. **Real-data detail endpoints** — `exceptions show <captured-hash>`, populated `metrics query --name <real>` with every aggregation + group-by.
-2. **Adaptive metric-name discovery** — walk a candidate list until one populates.
-3. **TTY-vs-pipe default** — table rendering to a real terminal.
-4. **Coverage matrix report** — a human-readable artifact, on demand.
-5. **Safety doctrine** — the forbidden-verb blocklist and `confirmMutation` env hygiene, applied to every probe.
+2. **Discovery-driven metric probing** — `metrics list` / `metrics tags` feed real names and tag keys into `metrics query`.
+3. **List → drill-in chains on real data** — `tasks list` → `tasks runs --task` → `tasks show`; `sessions list` → `sessions show`.
+4. **TTY-vs-pipe default** — table rendering to a real terminal.
+5. **Coverage matrix report** — a human-readable artifact, on demand.
+6. **Safety doctrine** — the forbidden-verb blocklist and `confirmMutation` env hygiene, applied to every probe.
 
 ## Hard constraints
 
@@ -85,33 +86,52 @@ Run in order. Stop if any fails.
 2. With a real hash: three output formats + `--help`. JSON shape: `{group: {...}, occurrences: [...], pagination: {...}}` — assert `.group and .occurrences`.
 3. Capture `.occurrences[0].traceId` if present for the logs probe below.
 
-### `metrics query --name <real-metric>` (adaptive)
+### `metrics list` / `metrics tags` → `metrics query` (discovery-driven)
 
-Probe these names in order until one returns a populated `series`:
+Discover instead of guessing:
 
-```
-system.cpu.utilization
-system.network.io
-system.network.errors
-system.network.dropped
-http.server.duration
-traceway.requests
+```bash
+MJSON=$(./bin/traceway metrics list --output json)                 # server-default 7d window
+MNAME=$(jq -r 'first(.metrics[] | select(.tagKeys | length > 0) | .name) // .metrics[0].name // empty' <<<"$MJSON")
+MKEY=$(jq -r "first(.metrics[] | select(.name == \"$MNAME\") | .tagKeys[0]) // empty" <<<"$MJSON")
 ```
 
-If none populates, skip the live block with reason `no live metric name found`.
+If `metrics list` is empty for every project, skip the live block with reason `no metrics discovered`.
 
-For the first metric that populates:
+Probe `metrics list` itself (json/table, `--since 24h`, `--search`), then `metrics tags $MNAME` (keys form), `metrics tags $MNAME $MKEY` (values form, expect ≥1 value), and `metrics tags no.such.metric.zzz` → exit 5 `not_found`.
+
+For the discovered metric:
 
 - Three output formats + `--help`.
 - All aggregations: `avg`, `sum`, `count`, `min`, `max`, `p50`, `p95`, `p99`.
 - `--interval-minutes 15`.
-- `--group-by direction` for network metrics (splits `__all__` into `receive`/`transmit`).
+- `--group-by $MKEY` when a tag key was discovered (splits `__all__` into per-value series).
 
-JSON shape: `{results: [{name, unit, series: {<tag-key>: [{timestamp, value}, ...]}}]}` — `series` is a map keyed by group tag, default key `__all__`.
+JSON shapes: `metrics list` → `{metrics: [{name, tagKeys, metricType?, unit?}]}`; `metrics tags <n> <k>` → `{values: [...]}`; `metrics query` → `{results: [{name, unit, series: {<tag-key>: [{timestamp, value}, ...]}}]}` — `series` is a map keyed by group tag, default key `__all__`.
 
-### `logs query --trace-id <captured>`
+### `logs query --trace-id <captured>` + new filter flags
 
-If a real trace id was captured above, run `logs query --trace-id $TRACE --since 720h`. Assert exit 0 and `{data, pagination}` shape.
+If a real trace id was captured above, run `logs query --trace-id $TRACE --since 720h`. Assert exit 0 and `{data, pagination}` shape. **Empty results (`data: null`, `total: 0`) with exit 0 are a pass** — assert the envelope, not row counts, unless the probe seeded its own capture.
+
+Also probe (no captured data needed for the error cases):
+
+- `--min-severity error` and `--min-severity 17` → both exit 0; `--min-severity severe` → exit 2 `usage_error`. Sanity-check monotonicity when data exists: `total` at `trace` ≥ `warn` ≥ `error`.
+- `--attr`: capture one real key from a log record's `resourceAttributes`, then `--attr "resource:$KEY=$VAL"` → expect ≥1 row (it matched itself). `--attr "span:k=v"` → exit 2 (bad scope).
+- `--distributed-trace-id $DT` (from the occurrence, when captured) → exit 0, envelope shape. `--distributed-trace-id not-a-uuid` → exit 2. `--exclude-trace-id` without `--distributed-trace-id` → exit 2.
+
+### `tasks list` → `tasks runs` → `tasks show` (chain on real data)
+
+1. `tasks list --since 720h` (json/table/yaml; `--order-by p95`; `--root-filter root`; bogus `--order-by p95_duration` → exit 2 — the CLI takes camelCase names, not the wire's snake_case). Shape: `{data: [{taskName, count, p50Duration, ...}], pagination}`. If empty across all projects, skip the chain with reason `no tasks found`.
+2. Capture `TASKNAME` from the first row. `tasks runs --task "$TASKNAME"` → assert `.stats.count >= 1` and every row's `taskName` matches; table form prints the stats block (THROUGHPUT line). Plain `tasks runs` (no `--task`) → rows without stats.
+3. Capture `.data[0].id` + `.data[0].recordedAt` from the runs output and feed them straight into `tasks show <id> --recorded-at <ts>` → assert `.task.id` echoes.
+
+### `sessions list` → `sessions show`
+
+`sessions list --since 720h` (json/table; `--order-by duration`). Shape: `{data: [{id, startedAt, ...}], pagination}`. Feed `.data[0].id` + `.data[0].startedAt` into `sessions show <id> --started-at <ts>` → assert `.session` present. Skip with reason `no sessions found` when empty everywhere.
+
+### `ai-traces list`
+
+`ai-traces list --since 720h` (json/table; `--order-by totalTokens`). Shape: `{data: [{traceName, count, totalTokens, totalCost, ...}], pagination}`. Skip with reason `no AI traces found` when empty everywhere.
 
 ### By-id detail commands (captured id + recordedAt)
 
@@ -143,8 +163,8 @@ Expect a table. Piping without `script` should yield JSON. Mark as "not verified
 Mutating (skip with reason `forbidden verb`):
 `exceptions archive`, `exceptions unarchive`, `login`, `logout`, `profiles use` (local mutation), `projects use` (local mutation of `state.json`).
 
-Not in the CLI (skip with reason `subcommand not in CLI`) — kept so the report shows the gap if they ship:
-`tasks list`, `sessions list`, `ai-traces list`, `traces list`, `metrics discover`.
+Not in the CLI (skip with reason `subcommand not in CLI`) — kept so the report shows the gap if it ships:
+`traces list`.
 
 ## Observation and reporting
 

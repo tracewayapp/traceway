@@ -114,13 +114,13 @@
 			ondrop={(e) => handleDrop(e, i)}
 		>
 			<Card.Root
-				class="h-full gap-0 {minHeightClass[widget.config?.size ?? 'sm'] ?? 'min-h-[240px]'} transition-opacity {dragIndex === i ? 'opacity-40' : ''} {dropIndex === i && dragIndex !== null && dragIndex !== i ? 'ring-2 ring-primary' : ''}"
+				class="group h-full gap-0 {minHeightClass[widget.config?.size ?? 'sm'] ?? 'min-h-[240px]'} transition-opacity {dragIndex === i ? 'opacity-40' : ''} {dropIndex === i && dragIndex !== null && dragIndex !== i ? 'ring-2 ring-primary' : ''}"
 			>
 				<Card.Header class="pr-2 pb-1">
 					<div class="flex items-center justify-between">
 						<div class="flex min-w-0 items-center gap-1">
 							<span
-								class="-ml-1 inline-flex h-7 w-5 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground/60 hover:text-foreground active:cursor-grabbing"
+								class="-ml-1 inline-flex h-7 w-5 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground/60 opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 active:cursor-grabbing"
 								title="Drag to reorder"
 								role="button"
 								tabindex={-1}

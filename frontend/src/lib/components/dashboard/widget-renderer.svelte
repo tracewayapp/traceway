@@ -9,7 +9,7 @@
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import type { MetricTrendPoint, MetricQueryResponse } from '$lib/types/dashboard';
-	import { formatMetricLabel } from '$lib/utils/metric-format';
+	import { formatMetricLabel, formatMetricValue } from '$lib/utils/metric-format';
 
 	type WidgetSource = {
 		type: 'metric';
@@ -187,8 +187,10 @@
 	});
 
 	const chartPadding = $derived.by(() => {
-		const label = formatMetricLabel(axisMaxValue || 0, effectiveUnit);
-		return { top: 10, right: 4, bottom: 20, left: Math.max(45, Math.round(label.length * 6.5) + 16) };
+		// Ticks show the scaled number; the unit renders once above the axis
+		const { text, unit: axisUnit } = formatMetricValue(axisMaxValue || 0, effectiveUnit);
+		const chars = Math.max(text.length, axisUnit.length);
+		return { top: 10, right: 4, bottom: 20, left: Math.max(45, Math.round(chars * 6.5) + 16) };
 	});
 </script>
 

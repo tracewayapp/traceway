@@ -62,12 +62,24 @@
 	});
 
 	const sortedWidgets = $derived([...widgets].sort((a, b) => a.position - b.position));
+
+	// Static maps — Tailwind can't extract dynamically-built class names
+	const colSpanClass: Record<number, string> = {
+		1: 'md:col-span-1',
+		2: 'md:col-span-2',
+		3: 'md:col-span-3'
+	};
+	const minHeightClass: Record<string, string> = {
+		sm: 'min-h-[240px]',
+		md: 'min-h-[340px]',
+		lg: 'min-h-[460px]'
+	};
 </script>
 
 <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
 	{#each sortedWidgets as widget, i (widget.id)}
-		<div>
-			<Card.Root class="h-full gap-0">
+		<div class={colSpanClass[widget.config?.colSpan ?? 1] ?? 'md:col-span-1'}>
+			<Card.Root class="h-full gap-0 {minHeightClass[widget.config?.size ?? 'sm'] ?? 'min-h-[240px]'}">
 				<Card.Header class="pr-2 pb-1">
 					<div class="flex items-center justify-between">
 						<Card.Title class="text-sm font-medium">{widget.title}{#if widget.config?.unit}<span class="text-xs font-normal text-muted-foreground"> ({widget.config.unit})</span>{/if}</Card.Title>

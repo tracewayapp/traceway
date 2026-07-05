@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
+	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Select from '$lib/components/ui/select';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import TagFilter from './tag-filter.svelte';
@@ -16,7 +17,16 @@
 		aggregation: string;
 		tagFilters?: Record<string, string>;
 		groupBy?: string;
+		label?: string;
 	};
+
+	const CHART_TYPES = ['line_chart', 'area_chart', 'stacked_area'];
+
+	function legendFromConfig(config: any): 'auto' | 'on' | 'off' {
+		if (config?.showLegend === true) return 'on';
+		if (config?.showLegend === false) return 'off';
+		return 'auto';
+	}
 
 	let {
 		open = $bindable(false),
@@ -41,6 +51,10 @@
 	let sources = $state<WidgetSource[]>(
 		widget?.config?.sources ?? [{ type: 'metric', name: '', aggregation: 'avg' }]
 	);
+	let colSpan = $state<number>(widget?.config?.colSpan ?? 1);
+	let size = $state<string>(widget?.config?.size ?? 'sm');
+	let legend = $state<'auto' | 'on' | 'off'>(legendFromConfig(widget?.config));
+	let showSparkline = $state(!!widget?.config?.showSparkline);
 
 	$effect(() => {
 		if (open) {
@@ -51,6 +65,10 @@
 			sources = widget?.config?.sources
 				? [...widget.config.sources]
 				: [{ type: 'metric', name: '', aggregation: 'avg' }];
+			colSpan = widget?.config?.colSpan ?? 1;
+			size = widget?.config?.size ?? 'sm';
+			legend = legendFromConfig(widget?.config);
+			showSparkline = !!widget?.config?.showSparkline;
 		}
 	});
 
@@ -84,10 +102,19 @@
 	}
 
 	function handleSave() {
-		const validSources = sources.filter((s: WidgetSource) => s.name);
+		const validSources = sources
+			.filter((s: WidgetSource) => s.name)
+			.map((s: WidgetSource) => {
+				const { label, ...rest } = s;
+				return label?.trim() ? { ...rest, label: label.trim() } : rest;
+			});
 		const displayTitle = title.trim() || validSources[0]?.name || '';
 		const config: Record<string, any> = { sources: validSources };
 		if (unit) config.unit = unit;
+		if (colSpan !== 1) config.colSpan = colSpan;
+		if (size !== 'sm') config.size = size;
+		if (CHART_TYPES.includes(widgetType) && legend !== 'auto') config.showLegend = legend === 'on';
+		if (widgetType === 'single_value' && showSparkline) config.showSparkline = true;
 		onSave({
 			title: displayTitle,
 			widgetType,
@@ -129,17 +156,98 @@
 					}}
 				>
 					<Select.Trigger>
-						{({ line_chart: 'Line Chart', area_chart: 'Area Chart', bar_chart: 'Bar Chart', single_value: 'Single Value', table: 'Table' } as Record<string, string>)[widgetType] ?? widgetType}
+						{({ line_chart: 'Line Chart', area_chart: 'Area Chart', stacked_area: 'Stacked Area', bar_chart: 'Bar Chart', single_value: 'Single Value', table: 'Table' } as Record<string, string>)[widgetType] ?? widgetType}
 					</Select.Trigger>
 					<Select.Content>
 						<Select.Item value="line_chart">Line Chart</Select.Item>
 						<Select.Item value="area_chart">Area Chart</Select.Item>
+						<Select.Item value="stacked_area">Stacked Area</Select.Item>
 						<Select.Item value="bar_chart">Bar Chart</Select.Item>
 						<Select.Item value="single_value">Single Value</Select.Item>
 						<Select.Item value="table">Table</Select.Item>
 					</Select.Content>
 				</Select.Root>
 			</div>
+
+			<div class="grid grid-cols-2 gap-2">
+				<div>
+					<label class="text-sm font-medium">Width</label>
+					<Select.Root
+						type="single"
+						value={String(colSpan)}
+						onValueChange={(v) => {
+							if (v) colSpan = Number(v);
+						}}
+					>
+						<Select.Trigger>
+							{({ '1': '1 column', '2': '2 columns', '3': '3 columns (full)' } as Record<string, string>)[String(colSpan)]}
+						</Select.Trigger>
+						<Select.Content>
+							<Select.Item value="1">1 column</Select.Item>
+							<Select.Item value="2">2 columns</Select.Item>
+							<Select.Item value="3">3 columns (full)</Select.Item>
+						</Select.Content>
+					</Select.Root>
+				</div>
+				<div>
+					<label class="text-sm font-medium">Height</label>
+					<Select.Root
+						type="single"
+						value={size}
+						onValueChange={(v) => {
+							if (v) size = v;
+						}}
+					>
+						<Select.Trigger>
+							{({ sm: 'Small', md: 'Medium', lg: 'Large' } as Record<string, string>)[size]}
+						</Select.Trigger>
+						<Select.Content>
+							<Select.Item value="sm">Small</Select.Item>
+							<Select.Item value="md">Medium</Select.Item>
+							<Select.Item value="lg">Large</Select.Item>
+						</Select.Content>
+					</Select.Root>
+				</div>
+			</div>
+
+			{#if CHART_TYPES.includes(widgetType)}
+				<div>
+					<label class="text-sm font-medium">Legend</label>
+					<Select.Root
+						type="single"
+						value={legend}
+						onValueChange={(v) => {
+							if (v) legend = v as 'auto' | 'on' | 'off';
+						}}
+					>
+						<Select.Trigger>
+							{({ auto: 'Auto (when multiple series)', on: 'Always', off: 'Never' } as Record<string, string>)[legend]}
+						</Select.Trigger>
+						<Select.Content>
+							<Select.Item value="auto">Auto (when multiple series)</Select.Item>
+							<Select.Item value="on">Always</Select.Item>
+							<Select.Item value="off">Never</Select.Item>
+						</Select.Content>
+					</Select.Root>
+				</div>
+			{/if}
+
+			{#if widgetType === 'single_value'}
+				<div class="flex items-center gap-2">
+					<Checkbox
+						checked={showSparkline}
+						onCheckedChange={(c) => (showSparkline = c === true)}
+						aria-label="Show sparkline"
+					/>
+					<button
+						type="button"
+						class="cursor-pointer text-sm font-medium"
+						onclick={() => (showSparkline = !showSparkline)}
+					>
+						Show sparkline
+					</button>
+				</div>
+			{/if}
 
 			<div>
 				<label class="text-sm font-medium" for="widget-unit">Unit (optional)</label>
@@ -187,6 +295,12 @@
 							</Select.Content>
 						</Select.Root>
 					</div>
+
+					<Input
+						bind:value={sources[i].label}
+						placeholder="Label (optional, defaults to metric name)"
+						class="h-8 text-xs"
+					/>
 
 					{#if source.name && getMetricTagKeys(source.name).length > 0}
 						<div class="space-y-1">

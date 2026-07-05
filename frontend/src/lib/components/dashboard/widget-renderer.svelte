@@ -1,7 +1,10 @@
 <script lang="ts">
 	import D3LineChart from './d3-line-chart.svelte';
 	import D3HorizontalBarChart from './d3-horizontal-bar-chart.svelte';
+	import D3StackedAreaChart from './d3-stacked-area-chart.svelte';
 	import WidgetTable from './widget-table.svelte';
+	import Sparkline from './sparkline.svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { api } from '$lib/api';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
@@ -14,6 +17,7 @@
 		tagFilters?: Record<string, string>;
 		aggregation: string;
 		groupBy?: string;
+		label?: string;
 	};
 
 	type WidgetConfig = {
@@ -21,6 +25,9 @@
 		yAxisLabel?: string;
 		showLegend?: boolean;
 		unit?: string;
+		colSpan?: 1 | 2 | 3;
+		size?: 'sm' | 'md' | 'lg';
+		showSparkline?: boolean;
 	};
 
 	let {
@@ -57,6 +64,27 @@
 
 	const effectiveUnit = $derived(widget.config.unit ?? resolvedUnit);
 
+	const chartHeights: Record<string, number> = { sm: 200, md: 300, lg: 420 };
+	const chartHeight = $derived(chartHeights[widget.config.size ?? 'sm'] ?? chartHeights.sm);
+
+	let hiddenSeries = new SvelteSet<string>();
+	const visibleSeries = $derived(series.filter((s) => !hiddenSeries.has(s.key)));
+
+	function toggleSeries(key: string) {
+		if (hiddenSeries.has(key)) {
+			hiddenSeries.delete(key);
+		} else {
+			hiddenSeries.add(key);
+		}
+	}
+
+	const legendVisible = $derived(
+		['line_chart', 'area_chart', 'stacked_area'].includes(widget.widgetType) &&
+			series.length > 0 &&
+			(widget.config.showLegend === true ||
+				(widget.config.showLegend !== false && series.length > 1))
+	);
+
 	async function loadData() {
 		const sources = widget.config.sources;
 		if (!sources || sources.length === 0) {
@@ -83,10 +111,11 @@
 			);
 
 			const units = new Set<string>();
-			for (const result of response.results) {
+			for (const [idx, result] of response.results.entries()) {
 				if (result.unit) units.add(result.unit);
+				const baseName = sources[idx]?.label?.trim() || result.name;
 				for (const [key, points] of Object.entries(result.series)) {
-					const label = Object.keys(result.series).length > 1 ? `${result.name} (${key})` : result.name;
+					const label = Object.keys(result.series).length > 1 ? `${baseName} (${key})` : baseName;
 					newSeries.push({
 						key: label,
 						data: points.map((p) => ({
@@ -124,6 +153,12 @@
 			value: s.data.length > 0 ? s.data[s.data.length - 1].value : 0
 		}))
 	);
+
+	const stackedPoints = $derived(
+		visibleSeries.flatMap((s) =>
+			s.data.map((p) => ({ timestamp: p.timestamp, endpoint: s.key, value: p.value }))
+		)
+	);
 </script>
 
 <div class="h-full w-full min-h-[200px]">
@@ -132,14 +167,19 @@
 			<LoadingCircle size="md" />
 		</div>
 	{:else if widget.widgetType === 'single_value'}
-		<div class="flex h-full flex-col items-center justify-center">
+		<div class="flex h-full flex-col items-center justify-center gap-2">
 			<span class="text-3xl font-bold">
 				{singleValue !== null ? formatMetricLabel(singleValue, effectiveUnit) : '-'}
 			</span>
+			{#if widget.config.showSparkline && series[0]?.data && series[0].data.length > 1}
+				<div class="w-full px-6">
+					<Sparkline data={series[0].data} color={series[0].color} />
+				</div>
+			{/if}
 		</div>
 	{:else if widget.widgetType === 'bar_chart'}
 		{#if barData.length > 0}
-			<D3HorizontalBarChart data={barData} height={200} unit={effectiveUnit} formatValue={(v) => formatMetricLabel(v, effectiveUnit)} />
+			<D3HorizontalBarChart data={barData} height={chartHeight} unit={effectiveUnit} formatValue={(v) => formatMetricLabel(v, effectiveUnit)} />
 		{:else}
 			<div class="flex h-full items-center justify-center text-sm text-muted-foreground">
 				No data
@@ -156,12 +196,12 @@
 	{:else if widget.widgetType === 'area_chart'}
 		{#if series.length > 0}
 			<D3LineChart
-				{series}
+				series={visibleSeries}
 				xDomain={timeDomain ?? undefined}
-				height={200}
+				height={chartHeight}
 				padding={{ top: 10, right: 4, bottom: 20, left: 45 }}
 				{onRangeSelect}
-				data={series[0]?.data ?? []}
+				data={visibleSeries[0]?.data ?? []}
 				areaFill={true}
 				unit={effectiveUnit}
 				formatValue={(v) => formatMetricLabel(v, effectiveUnit)}
@@ -174,14 +214,32 @@
 				No data
 			</div>
 		{/if}
+	{:else if widget.widgetType === 'stacked_area'}
+		{#if series.length > 0}
+			<D3StackedAreaChart
+				endpoints={visibleSeries.map((s) => s.key)}
+				series={stackedPoints}
+				height={chartHeight}
+				padding={{ top: 10, right: 4, bottom: 20, left: 45 }}
+				unit={effectiveUnit}
+				formatValue={(v) => formatMetricLabel(v, effectiveUnit)}
+				{onRangeSelect}
+				colors={visibleSeries.map((s) => s.color)}
+				showBuiltinLegend={false}
+			/>
+		{:else}
+			<div class="flex h-full items-center justify-center text-sm text-muted-foreground">
+				No data
+			</div>
+		{/if}
 	{:else if series.length > 0}
 		<D3LineChart
-			{series}
+			series={visibleSeries}
 			xDomain={timeDomain ?? undefined}
-			height={200}
+			height={chartHeight}
 			padding={{ top: 10, right: 4, bottom: 20, left: 45 }}
 			{onRangeSelect}
-			data={series[0]?.data ?? []}
+			data={visibleSeries[0]?.data ?? []}
 			unit={effectiveUnit}
 			formatValue={(v) => formatMetricLabel(v, effectiveUnit)}
 			{sharedHoverTime}
@@ -191,6 +249,22 @@
 	{:else}
 		<div class="flex h-full items-center justify-center text-sm text-muted-foreground">
 			No data
+		</div>
+	{/if}
+
+	{#if legendVisible && !loading}
+		<div class="flex flex-wrap gap-x-3 gap-y-1 px-2 pt-1">
+			{#each series as s (s.key)}
+				<button
+					type="button"
+					class="flex items-center gap-1.5 text-xs transition-opacity {hiddenSeries.has(s.key) ? 'opacity-40' : ''}"
+					onclick={() => toggleSeries(s.key)}
+					title={s.key}
+				>
+					<span class="h-2 w-2 flex-shrink-0 rounded-full" style="background-color: {s.color};"></span>
+					<span class="max-w-[180px] truncate text-muted-foreground {hiddenSeries.has(s.key) ? 'line-through' : ''}">{s.key}</span>
+				</button>
+			{/each}
 		</div>
 	{/if}
 </div>

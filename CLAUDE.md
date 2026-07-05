@@ -616,7 +616,7 @@ backend/
 | DELETE | `/api/widget-groups/:id` | App+Write | Delete widget group |
 | POST | `/api/widget-groups/:id/widgets` | App+Write | Add widget |
 | PUT | `/api/widget-groups/:id/widgets/:wid` | App+Write | Update widget |
-| PUT | `/api/widget-groups/:id/widgets/:wid/move` | App+Write | Reorder widget |
+| PUT | `/api/widget-groups/:id/reorder` | App+Write | Reorder widgets (explicit id order) |
 | DELETE | `/api/widget-groups/:id/widgets/:wid` | App+Write | Delete widget |
 
 **Endpoints**

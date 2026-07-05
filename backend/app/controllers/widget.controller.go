@@ -3,7 +3,6 @@ package controllers
 import (
 	"encoding/json"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -171,97 +170,6 @@ func (c *widgetController) Update(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, widget)
-}
-
-type MoveWidgetRequest struct {
-	Offset int `json:"offset" binding:"required"`
-}
-
-func (c *widgetController) Move(ctx *gin.Context) {
-	projectId, err := middleware.GetProjectId(ctx)
-	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
-		return
-	}
-
-	groupIdStr := ctx.Param("id")
-	groupId, err := strconv.Atoi(groupIdStr)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid widget group id"})
-		return
-	}
-
-	widgetIdStr := ctx.Param("wid")
-	widgetId, err := strconv.Atoi(widgetIdStr)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid widget id"})
-		return
-	}
-
-	var req MoveWidgetRequest
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
-	}
-
-	tx := db.GetTx(ctx)
-
-	group, err := repositories.WidgetGroupRepository.FindById(tx, groupId)
-	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to move widget: %w", err))
-		return
-	}
-	if group == nil || group.ProjectId != projectId {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "Widget group not found"})
-		return
-	}
-
-	allWidgets, err := repositories.WidgetGroupRepository.FindWidgetsByGroup(tx, groupId)
-	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to move widget: %w", err))
-		return
-	}
-
-	sort.Slice(allWidgets, func(i, j int) bool {
-		return allWidgets[i].Position < allWidgets[j].Position
-	})
-
-	currentIndex := -1
-	for i, w := range allWidgets {
-		if w.Id == widgetId {
-			currentIndex = i
-			break
-		}
-	}
-	if currentIndex == -1 {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "Widget not found"})
-		return
-	}
-
-	targetIndex := currentIndex + req.Offset
-	if targetIndex < 0 || targetIndex >= len(allWidgets) {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "cannot move beyond boundary"})
-		return
-	}
-
-	widget := allWidgets[currentIndex]
-	targetWidget := allWidgets[targetIndex]
-
-	now := time.Now().UTC()
-	widget.Position, targetWidget.Position = targetWidget.Position, widget.Position
-	widget.UpdatedAt = now
-	targetWidget.UpdatedAt = now
-
-	if err := repositories.WidgetGroupRepository.UpdateWidget(tx, targetWidget); err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to move widget: %w", err))
-		return
-	}
-	if err := repositories.WidgetGroupRepository.UpdateWidget(tx, widget); err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to move widget: %w", err))
-		return
-	}
-
-	ctx.JSON(http.StatusOK, gin.H{"moved": true})
 }
 
 type ReorderWidgetsRequest struct {

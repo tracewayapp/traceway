@@ -103,12 +103,14 @@ if [[ "${SCENARIO}" == "read-probe" ]]; then
     fi
 fi
 
-# SQLite has no merge-idle equivalent — /health/deep returns chReachable=false
-# and waitForMergesIdle skips immediately. Compensate with a longer per-step
-# drain and a fixed inter-phase cooldown so the SUT can finish digesting
-# Phase 1's wake (zombie goroutines + WAL checkpoint) before Phase 2 starts.
-# Without this, Phase 1 step-cliff contaminates Phase 2's first step.
-if [[ "${MODE}" == "sqlite" && "${SCENARIO}" == "throughput" && "${SMOKE}" != "smoke" ]]; then
+# SQLite and DuckDB have no merge-idle equivalent — /health/deep returns
+# chReachable=false and waitForMergesIdle skips immediately. Compensate with a
+# longer per-step drain and a fixed inter-phase cooldown so the SUT can finish
+# digesting Phase 1's wake (zombie goroutines + WAL checkpoint) before Phase 2
+# starts. Without this, Phase 1 step-cliff contaminates Phase 2's first step —
+# observed on DuckDB as a phase-2 "no requests completed" wipeout while its
+# post-phase-1 checkpoint stalled the synchronous ingest path.
+if [[ ( "${MODE}" == "sqlite" || "${MODE}" == "duckdb" ) && "${SCENARIO}" == "throughput" && "${SMOKE}" != "smoke" ]]; then
     extra_args+=( --step-drain-seconds 60s --inter-phase-cooldown-seconds 60s )
 fi
 

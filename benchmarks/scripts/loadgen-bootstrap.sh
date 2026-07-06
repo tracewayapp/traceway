@@ -73,17 +73,23 @@ echo "running loadgen on ${LG_IP} -> http://${SUT_PRIVATE_IP} (tier=${TIER} mode
 # everything up to the last completed step. We must scp regardless of the
 # loadgen's exit status to avoid losing that partial data.
 loadgen_rc=0
-bench_ssh "${LG_IP}" /root/loadgen/loadgen \
-    --target "http://${SUT_PRIVATE_IP}" \
-    --token "${TOKEN}" \
-    --jwt "${JWT}" \
-    --project-id "${PROJECT_ID}" \
-    --signal "${SIGNAL}" \
-    --duration "${DURATION}" \
-    --tier "${TIER}" \
-    --mode "${MODE}" \
-    --report-out /root/loadgen/result.json \
-    "$@" || loadgen_rc=$?
+loadgen_args=(
+    --target "http://${SUT_PRIVATE_IP}"
+    --signal "${SIGNAL}"
+    --duration "${DURATION}"
+    --tier "${TIER}"
+    --mode "${MODE}"
+    --report-out /root/loadgen/result.json
+)
+# Only pass credential flags when set. bench_ssh runs the loadgen through ssh,
+# which flattens the remote command into one string and drops empty arguments —
+# an empty --token/--jwt/--project-id would let the following flag be swallowed
+# as its value, truncating the argv (breaks unauthenticated targets like
+# standalone VictoriaMetrics, where all three are intentionally empty).
+[[ -n "${TOKEN}" ]]      && loadgen_args+=( --token "${TOKEN}" )
+[[ -n "${JWT}" ]]        && loadgen_args+=( --jwt "${JWT}" )
+[[ -n "${PROJECT_ID}" ]] && loadgen_args+=( --project-id "${PROJECT_ID}" )
+bench_ssh "${LG_IP}" /root/loadgen/loadgen "${loadgen_args[@]}" "$@" || loadgen_rc=$?
 
 if [[ "${loadgen_rc}" -ne 0 ]]; then
     echo "loadgen exited with status ${loadgen_rc} — attempting to fetch any partial result.json from the loadgen box" >&2

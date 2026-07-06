@@ -25,7 +25,7 @@ ENV CLOUD_MODE=false
 RUN npm run build
 
 # ==============================================================================
-# Stage 2: Build Backend with embedded frontend (duckdb tag = DuckDB telemetry)
+# Stage 2: Build Backend with embedded frontend (telemetry_duckdb tag = DuckDB telemetry)
 # Built natively (no cross-compile) because CGO cross-compilation against the
 # prebuilt DuckDB libraries is impractical; the benchmark SUT builds on-host.
 # ==============================================================================
@@ -43,7 +43,7 @@ RUN go mod edit -dropreplace=go.tracewayapp.com -dropreplace=go.tracewayapp.com/
 RUN go mod tidy
 RUN go mod download
 
-RUN CGO_ENABLED=1 go build -tags duckdb -ldflags="-s -w" -o /traceway ./cmd/traceway
+RUN CGO_ENABLED=1 go build -tags telemetry_duckdb -ldflags="-s -w" -o /traceway ./cmd/traceway
 
 # ==============================================================================
 # Stage 3: Runtime image (Debian slim for glibc + libstdc++)
@@ -58,7 +58,7 @@ RUN mkdir -p /data && chmod 755 /data
 
 WORKDIR /app
 
-# DB_TYPE=sqlite selects the embedded codepath; in a duckdb build that pairs a
+# DB_TYPE=sqlite selects the embedded codepath; in a telemetry_duckdb build that pairs a
 # SQLite main DB (SQLITE_PATH) with a DuckDB telemetry DB derived alongside it
 # (<path>_telemetry.duckdb). Both, plus local blob storage, live under /data.
 ENV GIN_MODE=release \

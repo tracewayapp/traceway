@@ -7,7 +7,7 @@ How much CPU, RAM, and disk Traceway needs depends almost entirely on **which st
 There are two shapes:
 
 - **SQLite mode** (single binary, zero external dependencies). The whole stack is one process. This is the lightweight option.
-- **ClickHouse + PostgreSQL mode** (`pgch`). ClickHouse is built to use a lot of RAM for caches and merges, so this is the heavier option that scales much further.
+- **ClickHouse + PostgreSQL mode** (`oltp_pg telemetry_ch` build tags). ClickHouse is built to use a lot of RAM for caches and merges, so this is the heavier option that scales much further.
 
 ## TL;DR
 
@@ -61,7 +61,7 @@ SQLite stores telemetry on local disk, so disk is the resource to watch, not RAM
 
 ## ClickHouse + PostgreSQL mode
 
-The [Docker Compose](/server/docker-compose), [all-in-one](/server/all-in-one), and [minimal](/server/minimal) deployments run the `pgch` build against ClickHouse (telemetry) and PostgreSQL (config). Here the hardware floor is set by **ClickHouse**, not by the Traceway backend.
+The [Docker Compose](/server/docker-compose), [all-in-one](/server/all-in-one), and [minimal](/server/minimal) deployments run the `oltp_pg telemetry_ch` build against ClickHouse (telemetry) and PostgreSQL (config). Here the hardware floor is set by **ClickHouse**, not by the Traceway backend.
 
 ClickHouse is designed to use memory aggressively. In the bundled config it claims up to **80% of host RAM** (`max_server_memory_usage_to_ram_ratio = 0.8`) for query and merge buffers, and reserves a multi-GB mark cache. Plan around that, not around the Go process:
 

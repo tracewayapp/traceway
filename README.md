@@ -236,18 +236,24 @@ Traceway integrates with the tools you already use. Every integration ships trac
 
 ## Build Tags
 
-| Tag         | Purpose                                                                                                         |
-| ----------- | --------------------------------------------------------------------------------------------------------------- |
-| _(none)_    | SQLite storage — embedded mode, zero dependencies. This is the default.                                         |
-| `pgch`      | ClickHouse + PostgreSQL storage — standalone server mode.                                                       |
-| `localdist` | Embeds frontend from `static/dist/` instead of `static/frontend/`. Used by traceway-cloud to inject billing UI. |
+Storage is selected on two axes — the telemetry store and the OLTP (relational) store:
+
+| Tag                | Purpose                                                                                                         |
+| ------------------ | --------------------------------------------------------------------------------------------------------------- |
+| _(none)_           | SQLite storage on both axes — embedded mode, zero dependencies. This is the default.                            |
+| `telemetry_duckdb` | DuckDB telemetry store — embedded mode with a columnar engine. Requires `CGO_ENABLED=1`.                        |
+| `oltp_pg telemetry_ch` | ClickHouse (telemetry) + PostgreSQL (config) — standalone server mode.                                      |
+| `localdist`        | Embeds frontend from `static/dist/` instead of `static/frontend/`. Used by traceway-cloud to inject billing UI. |
 
 ```bash
 # Embedded mode (SQLite, default)
 cd backend && go build ./cmd/traceway
 
+# Embedded mode with DuckDB telemetry
+cd backend && CGO_ENABLED=1 go build -tags telemetry_duckdb ./cmd/traceway
+
 # Standalone server (ClickHouse + PostgreSQL)
-cd backend && go build -tags pgch ./cmd/traceway
+cd backend && go build -tags "oltp_pg telemetry_ch" ./cmd/traceway
 ```
 
 ## Running Tests
@@ -258,6 +264,9 @@ cd backend && go test -v -count=1 ./app/repositories/
 
 # ClickHouse + PostgreSQL tests (requires Docker)
 ./scripts/test-backend-pgch.sh
+
+# DuckDB telemetry tests
+cd backend && CGO_ENABLED=1 go test -tags telemetry_duckdb -v -count=1 ./app/repositories/
 
 # OTEL trace converter tests (no DB required)
 cd backend && go test -v -count=1 ./app/controllers/otelcontrollers/

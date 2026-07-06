@@ -1,0 +1,488 @@
+//go:build telemetry_ch
+
+package clickhouse
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"github.com/tracewayapp/traceway/backend/app/chdb"
+	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"time"
+
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/google/uuid"
+)
+
+type taskRepository struct{}
+
+func (e *taskRepository) InsertAsync(ctx context.Context, lines []models.Task) error {
+	if len(lines) == 0 {
+		return nil
+	}
+	return chdb.SendBatch("INSERT INTO tasks (id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, is_root)", func(batch driver.Batch) error {
+		for _, t := range lines {
+			attributesJSON := "{}"
+			if len(t.Attributes) != 0 {
+				if attributesBytes, err := json.Marshal(t.Attributes); err == nil {
+					attributesJSON = string(attributesBytes)
+				}
+			}
+			isRoot := uint8(0)
+			if t.IsRoot {
+				isRoot = 1
+			}
+			if err := batch.Append(t.Id, t.ProjectId, t.TaskName, int64(t.Duration), t.RecordedAt, t.ClientIP, attributesJSON, t.AppVersion, t.ServerName, t.DistributedTraceId, t.SpanId, isRoot); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (e *taskRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {
+	var count uint64
+	err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM tasks WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, start, end).Scan(&count)
+	return int64(count), err
+}
+
+func (e *taskRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string) ([]models.Task, int64, error) {
+	var count uint64
+	err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM tasks WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, fromDate, toDate).Scan(&count)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	offset := (page - 1) * pageSize
+
+	allowedOrderBy := map[string]bool{
+		"recorded_at": true,
+		"duration":    true,
+	}
+
+	if !allowedOrderBy[orderBy] {
+		orderBy = "recorded_at"
+	}
+
+	query := "SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id FROM tasks WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " DESC LIMIT ? OFFSET ?"
+	rows, err := chdb.Conn.Query(ctx, query, projectId, fromDate, toDate, pageSize, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var tasks []models.Task
+	for rows.Next() {
+		var t models.Task
+		var attributesJSON string
+		if err := rows.Scan(&t.Id, &t.ProjectId, &t.TaskName, &t.Duration, &t.RecordedAt, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.DistributedTraceId); err != nil {
+			return nil, 0, err
+		}
+		if attributesJSON != "" && attributesJSON != "{}" {
+			if err := json.Unmarshal([]byte(attributesJSON), &t.Attributes); err != nil {
+				t.Attributes = nil
+			}
+		}
+		tasks = append(tasks, t)
+	}
+
+	return tasks, int64(count), nil
+}
+
+func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string, search string, rootFilter string) ([]models.TaskStats, int64, error) {
+	whereClause := "project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
+	args := []interface{}{projectId, fromDate, toDate}
+	if search != "" {
+		whereClause += " AND positionCaseInsensitive(task_name, ?) > 0"
+		args = append(args, search)
+	}
+	switch rootFilter {
+	case "root":
+		whereClause += " AND is_root = 1"
+	case "non_root":
+		whereClause += " AND is_root = 0"
+	}
+
+	var count uint64
+	err := chdb.Conn.QueryRow(ctx, "SELECT uniq(task_name) FROM tasks WHERE "+whereClause, args...).Scan(&count)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	offset := (page - 1) * pageSize
+
+	// Map frontend field names to SQL expressions
+	orderByMap := map[string]string{
+		"count":        "count",
+		"p50_duration": "p50_duration",
+		"p95_duration": "p95_duration",
+		"avg_duration": "avg_duration",
+		"last_seen":    "last_seen",
+		"impact":       "count * (p95_duration - p50_duration)",
+	}
+
+	orderExpr, ok := orderByMap[orderBy]
+	if !ok {
+		orderExpr = orderByMap["impact"] // Default to impact expression
+	}
+
+	// Validate sort direction
+	sortDir := "DESC"
+	if sortDirection == "asc" {
+		sortDir = "ASC"
+	}
+
+	query := `SELECT
+		task_name,
+		count() as count,
+		quantile(0.5)(duration) as p50_duration,
+		quantile(0.95)(duration) as p95_duration,
+		avg(duration) as avg_duration,
+		max(recorded_at) as last_seen,
+		max(is_root) as has_root,
+		max(if(is_root = 0, 1, 0)) as has_non_root
+	FROM tasks
+	WHERE ` + whereClause + `
+	GROUP BY task_name
+	ORDER BY ` + orderExpr + ` ` + sortDir + `
+	LIMIT ? OFFSET ?`
+
+	queryArgs := append(args, pageSize, offset)
+	rows, err := chdb.Conn.Query(ctx, query, queryArgs...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var stats []models.TaskStats
+	for rows.Next() {
+		var s models.TaskStats
+		var p50, p95, avg float64
+		var hasRoot, hasNonRoot uint8
+		if err := rows.Scan(&s.TaskName, &s.Count, &p50, &p95, &avg, &s.LastSeen, &hasRoot, &hasNonRoot); err != nil {
+			return nil, 0, err
+		}
+		s.P50Duration = time.Duration(p50)
+		s.P95Duration = time.Duration(p95)
+		s.AvgDuration = time.Duration(avg)
+		s.HasRoot = hasRoot == 1
+		s.HasNonRoot = hasNonRoot == 1
+		stats = append(stats, s)
+	}
+
+	return stats, int64(count), nil
+}
+
+func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID, taskName string, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.Task, int64, error) {
+	var count uint64
+	err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM tasks WHERE project_id = ? AND task_name = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, taskName, fromDate, toDate).Scan(&count)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	offset := (page - 1) * pageSize
+
+	allowedOrderBy := map[string]bool{
+		"recorded_at": true,
+		"duration":    true,
+	}
+
+	if !allowedOrderBy[orderBy] {
+		orderBy = "recorded_at"
+	}
+
+	// Validate sort direction
+	sortDir := "DESC"
+	if sortDirection == "asc" {
+		sortDir = "ASC"
+	}
+
+	query := "SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id FROM tasks WHERE project_id = ? AND task_name = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " " + sortDir + " LIMIT ? OFFSET ?"
+	rows, err := chdb.Conn.Query(ctx, query, projectId, taskName, fromDate, toDate, pageSize, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var tasks []models.Task
+	for rows.Next() {
+		var t models.Task
+		var attributesJSON string
+		if err := rows.Scan(&t.Id, &t.ProjectId, &t.TaskName, &t.Duration, &t.RecordedAt, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.DistributedTraceId); err != nil {
+			return nil, 0, err
+		}
+		if attributesJSON != "" && attributesJSON != "{}" {
+			if err := json.Unmarshal([]byte(attributesJSON), &t.Attributes); err != nil {
+				t.Attributes = nil
+			}
+		}
+		tasks = append(tasks, t)
+	}
+
+	return tasks, int64(count), nil
+}
+
+// FindById returns a single task by ID
+func (e *taskRepository) FindById(ctx context.Context, projectId, taskId uuid.UUID, recordedAt *time.Time) (*models.Task, error) {
+	query := `SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, is_root
+		FROM tasks
+		WHERE project_id = ? AND id = ?`
+	args := []any{projectId, taskId}
+	if recordedAt != nil {
+		from, to := shared.TraceWindowBounds(*recordedAt)
+		query += ` AND recorded_at >= ? AND recorded_at <= ?`
+		args = append(args, from, to)
+	}
+	query += ` LIMIT 1`
+
+	var t models.Task
+	var attributesJSON string
+	var isRoot uint8
+
+	err := chdb.Conn.QueryRow(ctx, query, args...).Scan(
+		&t.Id, &t.ProjectId, &t.TaskName, &t.Duration, &t.RecordedAt,
+		&t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.DistributedTraceId, &t.SpanId, &isRoot)
+	t.IsRoot = isRoot == 1
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	if attributesJSON != "" && attributesJSON != "{}" {
+		if err := json.Unmarshal([]byte(attributesJSON), &t.Attributes); err != nil {
+			t.Attributes = nil
+		}
+	}
+
+	return &t, nil
+}
+
+// CountByHour returns task counts grouped by hour
+func (e *taskRepository) CountByHour(ctx context.Context, projectId uuid.UUID, start, end time.Time) ([]models.TimeSeriesPoint, error) {
+	query := `SELECT
+		toStartOfHour(recorded_at) as hour,
+		toFloat64(count()) as count
+	FROM tasks
+	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
+	GROUP BY hour
+	ORDER BY hour ASC`
+
+	rows, err := chdb.Conn.Query(ctx, query, projectId, start, end)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var points []models.TimeSeriesPoint
+	for rows.Next() {
+		var p models.TimeSeriesPoint
+		if err := rows.Scan(&p.Timestamp, &p.Value); err != nil {
+			return nil, err
+		}
+		points = append(points, p)
+	}
+
+	return points, nil
+}
+
+// AvgDurationByHour returns average duration in ms grouped by hour
+func (e *taskRepository) AvgDurationByHour(ctx context.Context, projectId uuid.UUID, start, end time.Time) ([]models.TimeSeriesPoint, error) {
+	query := `SELECT
+		toStartOfHour(recorded_at) as hour,
+		avg(duration) / 1000000 as avg_duration_ms
+	FROM tasks
+	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
+	GROUP BY hour
+	ORDER BY hour ASC`
+
+	rows, err := chdb.Conn.Query(ctx, query, projectId, start, end)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var points []models.TimeSeriesPoint
+	for rows.Next() {
+		var p models.TimeSeriesPoint
+		if err := rows.Scan(&p.Timestamp, &p.Value); err != nil {
+			return nil, err
+		}
+		points = append(points, p)
+	}
+
+	return points, nil
+}
+
+// CountByInterval returns task counts grouped by configurable interval in minutes
+func (e *taskRepository) CountByInterval(ctx context.Context, projectId uuid.UUID, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
+	query := `SELECT
+		toStartOfInterval(recorded_at, INTERVAL ? MINUTE) as bucket,
+		toFloat64(count()) as count
+	FROM tasks
+	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
+	GROUP BY bucket
+	ORDER BY bucket ASC`
+
+	rows, err := chdb.Conn.Query(ctx, query, intervalMinutes, projectId, start, end)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var points []models.TimeSeriesPoint
+	for rows.Next() {
+		var p models.TimeSeriesPoint
+		if err := rows.Scan(&p.Timestamp, &p.Value); err != nil {
+			return nil, err
+		}
+		points = append(points, p)
+	}
+
+	return points, nil
+}
+
+// AvgDurationByInterval returns average duration in ms grouped by configurable interval
+func (e *taskRepository) AvgDurationByInterval(ctx context.Context, projectId uuid.UUID, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
+	query := `SELECT
+		toStartOfInterval(recorded_at, INTERVAL ? MINUTE) as bucket,
+		avg(duration) / 1000000 as avg_duration_ms
+	FROM tasks
+	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
+	GROUP BY bucket
+	ORDER BY bucket ASC`
+
+	rows, err := chdb.Conn.Query(ctx, query, intervalMinutes, projectId, start, end)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var points []models.TimeSeriesPoint
+	for rows.Next() {
+		var p models.TimeSeriesPoint
+		if err := rows.Scan(&p.Timestamp, &p.Value); err != nil {
+			return nil, err
+		}
+		points = append(points, p)
+	}
+
+	return points, nil
+}
+
+// FindWorstTasks returns tasks ordered by impact score (count * variance)
+func (e *taskRepository) FindWorstTasks(ctx context.Context, projectId uuid.UUID, start, end time.Time, limit int) ([]models.TaskStats, error) {
+	query := `SELECT
+		task_name,
+		count() as count,
+		quantile(0.5)(duration) as p50_duration,
+		quantile(0.95)(duration) as p95_duration,
+		avg(duration) as avg_duration,
+		max(recorded_at) as last_seen
+	FROM tasks
+	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
+	GROUP BY task_name
+	ORDER BY count * (p95_duration - p50_duration) DESC
+	LIMIT ?`
+
+	rows, err := chdb.Conn.Query(ctx, query, projectId, start, end, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var stats []models.TaskStats
+	for rows.Next() {
+		var s models.TaskStats
+		var p50, p95, avg float64
+		if err := rows.Scan(&s.TaskName, &s.Count, &p50, &p95, &avg, &s.LastSeen); err != nil {
+			return nil, err
+		}
+		s.P50Duration = time.Duration(p50)
+		s.P95Duration = time.Duration(p95)
+		s.AvgDuration = time.Duration(avg)
+		stats = append(stats, s)
+	}
+
+	return stats, nil
+}
+
+// GetTaskStats returns aggregate statistics for a specific task
+func (e *taskRepository) GetTaskStats(ctx context.Context, projectId uuid.UUID, taskName string, start, end time.Time) (*models.TaskDetailStats, error) {
+	// Calculate time range duration for throughput calculation
+	durationMinutes := end.Sub(start).Minutes()
+	if durationMinutes < 1 {
+		durationMinutes = 1
+	}
+
+	query := `SELECT
+		count() as count,
+		avg(duration) / 1000000 as avg_duration_ms,
+		quantile(0.5)(duration) / 1000000 as p50_duration_ms,
+		quantile(0.95)(duration) / 1000000 as p95_duration_ms,
+		quantile(0.99)(duration) / 1000000 as p99_duration_ms
+	FROM tasks
+	WHERE project_id = ? AND task_name = ? AND recorded_at >= ? AND recorded_at <= ?`
+
+	var stats models.TaskDetailStats
+	var count uint64
+
+	err := chdb.Conn.QueryRow(ctx, query, projectId, taskName, start, end).Scan(
+		&count,
+		&stats.AvgDuration,
+		&stats.MedianDuration,
+		&stats.P95Duration,
+		&stats.P99Duration,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	stats.Count = int64(count)
+	// Calculate throughput (tasks per minute)
+	stats.Throughput = float64(count) / durationMinutes
+
+	return &stats, nil
+}
+
+func (e *taskRepository) FindByDistributedTraceId(ctx context.Context, distributedTraceId uuid.UUID, projectIds []uuid.UUID, recordedAt *time.Time) ([]models.Task, error) {
+	query := `SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id
+		FROM tasks
+		WHERE distributed_trace_id = ? AND project_id IN (?)`
+	args := []any{distributedTraceId, projectIds}
+	if recordedAt != nil {
+		from, to := shared.DistributedTraceWindowBounds(*recordedAt)
+		query += ` AND recorded_at >= ? AND recorded_at <= ?`
+		args = append(args, from, to)
+	}
+	query += ` ORDER BY recorded_at ASC`
+
+	rows, err := chdb.Conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tasks []models.Task
+	for rows.Next() {
+		var t models.Task
+		var attributesJSON string
+		if err := rows.Scan(&t.Id, &t.ProjectId, &t.TaskName, &t.Duration, &t.RecordedAt,
+			&t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.DistributedTraceId); err != nil {
+			return nil, err
+		}
+		if attributesJSON != "" && attributesJSON != "{}" {
+			if err := json.Unmarshal([]byte(attributesJSON), &t.Attributes); err != nil {
+				t.Attributes = nil
+			}
+		}
+		tasks = append(tasks, t)
+	}
+	return tasks, nil
+}
+
+var TaskRepository = &taskRepository{}

@@ -35,7 +35,7 @@ RUN go mod edit -dropreplace=go.tracewayapp.com -dropreplace=go.tracewayapp.com/
 RUN go mod tidy
 RUN go mod download
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags "pgch" -ldflags="-s -w" -o /traceway ./cmd/traceway
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags "oltp_pg telemetry_ch" -ldflags="-s -w" -o /traceway ./cmd/traceway
 
 # ==============================================================================
 # Stage 3: ClickHouse binary source

@@ -21,6 +21,15 @@ func IsSQLite() bool {
 	return Driver == lit.SQLite
 }
 
+// Init opens the main (OLTP) database selected by the oltp_* build axis, then
+// the telemetry database selected by the telemetry_* build axis.
+func Init() error {
+	if err := initMainDB(); err != nil {
+		return err
+	}
+	return initTelemetryDB()
+}
+
 func IsDuckDBTelemetry() bool {
 	return telemetryIsDuckDB
 }

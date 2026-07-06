@@ -1,4 +1,4 @@
-//go:build duckdb && !pgch
+//go:build telemetry_duckdb
 
 package repositories
 
@@ -43,7 +43,7 @@ func setupDuckDB(t *testing.T) {
 func TestDuckDBMetricPointsRoundTrip(t *testing.T) {
 	setupDuckDB(t)
 	ctx := context.Background()
-	repo := &metricPointRepository{}
+	repo := MetricPointRepository
 
 	project := uuid.New()
 	base := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)

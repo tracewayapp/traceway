@@ -61,4 +61,4 @@ TEST_POSTGRES_HOST=localhost \
 TEST_POSTGRES_DATABASE=traceway_test \
 TEST_POSTGRES_USERNAME=traceway \
 TEST_POSTGRES_PASSWORD=traceway \
-go test -tags pgch -v -count=1 ./app/repositories/
+go test -tags "oltp_pg telemetry_ch" -v -count=1 ./app/repositories/

@@ -1,14 +1,41 @@
 # Build Tags
 
-The Traceway backend uses Go build tags to switch between storage backends and to embed the frontend.
+The Traceway backend uses Go build tags to switch between storage backends and to embed the frontend. Storage is selected on two independent axes: the **telemetry** store (high-volume, append-only data) and the **OLTP** store (relational/config data).
 
 ## Tags
 
+### Telemetry axis
+
 | Tag | Purpose |
 |-----|---------|
-| *(none)* | **SQLite** storage — embedded mode, zero external dependencies. This is the default. |
-| `pgch` | **ClickHouse + PostgreSQL** storage — standalone server mode. |
+| *(none)* / `telemetry_sqlite` | **SQLite** telemetry store — embedded mode. This is the default; `telemetry_sqlite` is accepted as an explicit no-op spelling. |
+| `telemetry_duckdb` | **DuckDB** telemetry store — embedded mode with a columnar engine for much faster dashboard analytics. Requires `CGO_ENABLED=1`. |
+| `telemetry_ch` | **ClickHouse** telemetry store — standalone server mode. |
+
+### OLTP axis
+
+| Tag | Purpose |
+|-----|---------|
+| *(none)* / `oltp_sqlite` | **SQLite** main database. This is the default; `oltp_sqlite` is accepted as an explicit no-op spelling. |
+| `oltp_pg` | **PostgreSQL** main database — standalone server mode. |
+
+### Other
+
+| Tag | Purpose |
+|-----|---------|
 | `localdist` | Embeds frontend from `static/dist/` instead of `static/frontend/`. Used by traceway-cloud to inject billing UI into the frontend build. Not needed for open-source builds. |
+
+## Supported combinations
+
+Only three combinations are supported, enforced by compile-time guard files in `backend/app/db/` — an unsupported combination fails the build with a descriptive identifier in the error message:
+
+| Mode | Tags | Databases |
+|------|------|-----------|
+| Embedded (default) | *(none)* | SQLite main + SQLite telemetry |
+| Embedded, columnar telemetry | `telemetry_duckdb` | SQLite main + DuckDB telemetry |
+| Standalone server | `oltp_pg telemetry_ch` | PostgreSQL main + ClickHouse telemetry |
+
+The legacy `pgch` and `duckdb` tags were renamed to this scheme; passing them fails the build with a message pointing at the new tags, so a stale invocation cannot silently produce the wrong binary.
 
 ## Building
 
@@ -22,20 +49,28 @@ cd backend && go build ./cmd/traceway
 
 This is what library consumers get when they `go get github.com/tracewayapp/traceway/backend` and call `tracewaybackend.Run()`.
 
+### Embedded mode with DuckDB telemetry
+
+```bash
+cd backend && CGO_ENABLED=1 go build -tags telemetry_duckdb ./cmd/traceway
+```
+
+DuckDB links prebuilt glibc static libraries, so this build needs CGO and a glibc-based image (Debian, not Alpine) when containerized — see `Dockerfile.duckdb`.
+
 ### Standalone server (ClickHouse + PostgreSQL)
 
 ```bash
-cd backend && go build -tags pgch ./cmd/traceway
+cd backend && go build -tags "oltp_pg telemetry_ch" ./cmd/traceway
 ```
 
 Requires `CLICKHOUSE_SERVER`, `POSTGRES_HOST`, and the other environment variables to be configured.
 
 ### Docker image
 
-The Dockerfiles build the frontend and embed it into the Go binary with the `pgch` tag:
+The Dockerfiles build the frontend and embed it into the Go binary with the standalone tags:
 
 ```bash
-go build -tags pgch ./cmd/traceway
+go build -tags "oltp_pg telemetry_ch" ./cmd/traceway
 ```
 
 The frontend is embedded from `static/frontend/` which the Docker build populates from the SvelteKit build output. You don't need to embed the frontend for local development — run the frontend dev server separately with `cd frontend && npm run dev`.
@@ -48,10 +83,16 @@ The frontend is embedded from `static/frontend/` which the Docker build populate
 cd backend && go test -v -count=1 ./app/repositories/
 ```
 
+### DuckDB tests
+
+```bash
+cd backend && CGO_ENABLED=1 go test -tags telemetry_duckdb -v -count=1 ./app/repositories/
+```
+
 ### ClickHouse tests
 
 ```bash
-cd backend && TEST_CLICKHOUSE_SERVER=localhost:9000 go test -tags pgch -v ./app/repositories/
+cd backend && TEST_CLICKHOUSE_SERVER=localhost:9000 go test -tags "oltp_pg telemetry_ch" -v ./app/repositories/
 ```
 
-Without `TEST_CLICKHOUSE_SERVER` set, the `pgch` tests skip cleanly.
+Without `TEST_CLICKHOUSE_SERVER` set, the ClickHouse tests skip cleanly.

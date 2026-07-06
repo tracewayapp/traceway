@@ -1,0 +1,311 @@
+//go:build telemetry_duckdb
+
+package duckdb
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
+	"strings"
+
+	"github.com/duckdb/duckdb-go/v2"
+	"github.com/google/uuid"
+	"github.com/tracewayapp/lit/v2"
+
+	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/app/models"
+)
+
+type logRecord struct {
+	Id                 uuid.UUID                 `lit:"id"`
+	ProjectId          uuid.UUID                 `lit:"project_id"`
+	Timestamp          sqlitetypes.SQLiteTime    `lit:"timestamp"`
+	TraceId            string                    `lit:"trace_id"`
+	SpanId             string                    `lit:"span_id"`
+	TraceFlags         uint8                     `lit:"trace_flags"`
+	SeverityText       string                    `lit:"severity_text"`
+	SeverityNumber     uint8                     `lit:"severity_number"`
+	ServiceName        string                    `lit:"service_name"`
+	Body               string                    `lit:"body"`
+	ResourceSchemaUrl  string                    `lit:"resource_schema_url"`
+	ResourceAttributes sqlitetypes.SQLiteJSONMap `lit:"resource_attributes"`
+	ScopeSchemaUrl     string                    `lit:"scope_schema_url"`
+	ScopeName          string                    `lit:"scope_name"`
+	ScopeVersion       string                    `lit:"scope_version"`
+	ScopeAttributes    sqlitetypes.SQLiteJSONMap `lit:"scope_attributes"`
+	LogAttributes      sqlitetypes.SQLiteJSONMap `lit:"log_attributes"`
+}
+
+func init() {
+	models.ExtensionModelRegistrations = append(models.ExtensionModelRegistrations, func(driver lit.Driver) {
+		lit.RegisterModel[logRecord](driver)
+	})
+}
+
+func (r *logRecord) toModel() models.LogRecord {
+	lr := models.LogRecord{
+		Id:                r.Id,
+		ProjectId:         r.ProjectId,
+		Timestamp:         r.Timestamp.Time,
+		TraceId:           r.TraceId,
+		SpanId:            r.SpanId,
+		TraceFlags:        r.TraceFlags,
+		SeverityText:      r.SeverityText,
+		SeverityNumber:    r.SeverityNumber,
+		ServiceName:       r.ServiceName,
+		Body:              r.Body,
+		ResourceSchemaUrl: r.ResourceSchemaUrl,
+		ScopeSchemaUrl:    r.ScopeSchemaUrl,
+		ScopeName:         r.ScopeName,
+		ScopeVersion:      r.ScopeVersion,
+	}
+	if r.ResourceAttributes != nil {
+		lr.ResourceAttributes = map[string]string(r.ResourceAttributes)
+	}
+	if r.ScopeAttributes != nil {
+		lr.ScopeAttributes = map[string]string(r.ScopeAttributes)
+	}
+	if r.LogAttributes != nil {
+		lr.LogAttributes = map[string]string(r.LogAttributes)
+	}
+	return lr
+}
+
+type logRecordRepository struct{}
+
+func (r *logRecordRepository) InsertAsync(ctx context.Context, records []models.LogRecord) error {
+	if len(records) == 0 {
+		return nil
+	}
+
+	conn, err := db.DuckDBConnector.Connect(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	appender, err := duckdb.NewAppenderFromConn(conn, "", "log_records")
+	if err != nil {
+		return err
+	}
+
+	for _, lr := range records {
+		resourceJSON, err := logRecordAttrJSON(lr.ResourceAttributes)
+		if err != nil {
+			captureDroppedRow("log_records", err)
+			continue
+		}
+		scopeJSON, err := logRecordAttrJSON(lr.ScopeAttributes)
+		if err != nil {
+			captureDroppedRow("log_records", err)
+			continue
+		}
+		logJSON, err := logRecordAttrJSON(lr.LogAttributes)
+		if err != nil {
+			captureDroppedRow("log_records", err)
+			continue
+		}
+
+		if err := appender.AppendRow(
+			lr.Id.String(),
+			lr.ProjectId.String(),
+			lr.Timestamp.UTC(),
+			lr.TraceId,
+			lr.SpanId,
+			int64(lr.TraceFlags),
+			lr.SeverityText,
+			int64(lr.SeverityNumber),
+			lr.ServiceName,
+			lr.Body,
+			lr.ResourceSchemaUrl,
+			resourceJSON,
+			lr.ScopeSchemaUrl,
+			lr.ScopeName,
+			lr.ScopeVersion,
+			scopeJSON,
+			logJSON,
+		); err != nil {
+			captureDroppedRow("log_records", err)
+		}
+	}
+
+	return appender.Close()
+}
+
+func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearchParams) ([]models.LogRecord, int64, error) {
+	where, args := r.buildWhere(params)
+
+	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+		"SELECT COUNT(*) AS count FROM log_records WHERE "+where, args)
+	if err != nil {
+		return nil, 0, err
+	}
+	count := int64(0)
+	if countResult != nil {
+		count = int64(countResult.Count)
+	}
+	if count == 0 {
+		return nil, 0, nil
+	}
+
+	orderBy := r.resolveOrderBy(params.OrderBy)
+	direction := "DESC"
+	if strings.EqualFold(params.SortDirection, "asc") {
+		direction = "ASC"
+	}
+
+	if params.PageSize <= 0 {
+		params.PageSize = 50
+	}
+	if params.Page <= 0 {
+		params.Page = 1
+	}
+	offset := (params.Page - 1) * params.PageSize
+
+	args["limit"] = params.PageSize
+	args["offset"] = offset
+
+	query := fmt.Sprintf(`SELECT id, project_id, timestamp, trace_id, span_id, trace_flags,
+		severity_text, severity_number, service_name, body,
+		resource_schema_url, resource_attributes,
+		scope_schema_url, scope_name, scope_version, scope_attributes,
+		log_attributes
+	FROM log_records
+	WHERE %s
+	ORDER BY %s %s
+	LIMIT :limit OFFSET :offset`, where, orderBy, direction)
+
+	rows, err := lit.SelectNamed[logRecord](db.TelemetryDB, query, args)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	records := make([]models.LogRecord, 0, len(rows))
+	for _, row := range rows {
+		records = append(records, row.toModel())
+	}
+	return records, count, nil
+}
+
+func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.UUID, traceId string) ([]models.LogRecord, error) {
+	rows, err := lit.SelectNamed[logRecord](db.TelemetryDB,
+		`SELECT id, project_id, timestamp, trace_id, span_id, trace_flags,
+			severity_text, severity_number, service_name, body,
+			resource_schema_url, resource_attributes,
+			scope_schema_url, scope_name, scope_version, scope_attributes,
+			log_attributes
+		FROM log_records
+		WHERE project_id = :project_id AND trace_id = :trace_id
+		ORDER BY timestamp ASC`,
+		lit.P{"project_id": projectId, "trace_id": traceId})
+	if err != nil {
+		return nil, err
+	}
+
+	records := make([]models.LogRecord, 0, len(rows))
+	for _, row := range rows {
+		records = append(records, row.toModel())
+	}
+	return records, nil
+}
+
+func (r *logRecordRepository) buildWhere(params shared.LogSearchParams) (string, lit.P) {
+	clauses := []string{"project_id = :project_id", "timestamp >= :from", "timestamp <= :to"}
+	args := lit.P{
+		"project_id": params.ProjectId,
+		"from":       params.FromDate.UTC(),
+		"to":         params.ToDate.UTC(),
+	}
+
+	if params.MinSeverity > 0 {
+		clauses = append(clauses, "severity_number >= :min_severity")
+		args["min_severity"] = params.MinSeverity
+	}
+	if params.ServiceName != "" {
+		clauses = append(clauses, "service_name = :service_name")
+		args["service_name"] = params.ServiceName
+	}
+	if len(params.TraceIds) > 0 {
+		placeholders := make([]string, len(params.TraceIds))
+		for i, tid := range params.TraceIds {
+			key := fmt.Sprintf("tid%d", i)
+			placeholders[i] = ":" + key
+			args[key] = tid
+		}
+		clauses = append(clauses, "trace_id IN ("+strings.Join(placeholders, ", ")+")")
+	} else if params.TraceId != "" {
+		clauses = append(clauses, "trace_id = :trace_id")
+		args["trace_id"] = params.TraceId
+	}
+
+	for i, f := range params.AttributeFilters {
+		col := attrColumn(f.Scope)
+		if col == "" {
+			continue
+		}
+		keyPH := fmt.Sprintf("attr_k%d", i)
+		valPH := fmt.Sprintf("attr_v%d", i)
+		clauses = append(clauses,
+			fmt.Sprintf("json_extract_string(%s, '$.\"' || :%s || '\"') = :%s", col, keyPH, valPH))
+		args[keyPH] = f.Key
+		args[valPH] = f.Value
+	}
+
+	if params.Search != "" {
+		switch params.SearchType {
+		case "service":
+			clauses = append(clauses, "INSTR(LOWER(service_name), LOWER(:search)) > 0")
+			args["search"] = params.Search
+		case "trace":
+			if _, exists := args["trace_id"]; !exists {
+				clauses = append(clauses, "trace_id = :search")
+				args["search"] = params.Search
+			}
+		default:
+			clauses = append(clauses, "INSTR(LOWER(body), LOWER(:search)) > 0")
+			args["search"] = params.Search
+		}
+	}
+
+	return strings.Join(clauses, " AND "), args
+}
+
+func attrColumn(scope string) string {
+	switch scope {
+	case "resource":
+		return "resource_attributes"
+	case "scope":
+		return "scope_attributes"
+	case "log":
+		return "log_attributes"
+	default:
+		return ""
+	}
+}
+
+func (r *logRecordRepository) resolveOrderBy(orderBy string) string {
+	allowed := map[string]string{
+		"timestamp":       "timestamp",
+		"severity_number": "severity_number",
+		"service_name":    "service_name",
+	}
+	if col, ok := allowed[orderBy]; ok {
+		return col
+	}
+	return "timestamp"
+}
+
+func logRecordAttrJSON(m map[string]string) (string, error) {
+	if len(m) == 0 {
+		return "{}", nil
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+var LogRecordRepository = &logRecordRepository{}

@@ -1,4 +1,4 @@
-//go:build !pgch && !duckdb
+//go:build !telemetry_ch && !telemetry_duckdb
 
 package repositories
 

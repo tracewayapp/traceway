@@ -21,7 +21,7 @@ ENV CLOUD_MODE=false
 RUN npm run build
 
 # ==============================================================================
-# Stage 2: Build Backend with embedded frontend (no pgch tag = SQLite mode)
+# Stage 2: Build Backend with embedded frontend (no storage tags = SQLite mode)
 # ==============================================================================
 FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS backend-builder
 
@@ -37,8 +37,8 @@ RUN go mod edit -dropreplace=go.tracewayapp.com -dropreplace=go.tracewayapp.com/
 RUN go mod tidy
 RUN go mod download
 
-# Build WITHOUT the pgch tag so the SQLite codepath in app/db/db_sqlite.go
-# is selected. modernc.org/sqlite is pure Go, so CGO_ENABLED=0 is fine.
+# Build WITHOUT storage tags so the SQLite codepaths in app/db/db_oltp_sqlite.go
+# and db_telemetry_sqlite.go are selected. modernc.org/sqlite is pure Go, so CGO_ENABLED=0 is fine.
 ARG TARGETOS
 ARG TARGETARCH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags="-s -w" -o /traceway ./cmd/traceway

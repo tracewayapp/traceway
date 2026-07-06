@@ -46,7 +46,7 @@ RUN go mod tidy
 RUN go mod download
 
 # Build with embedded static files
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags "pgch" -ldflags="-s -w" -o /traceway ./cmd/traceway
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags "oltp_pg telemetry_ch" -ldflags="-s -w" -o /traceway ./cmd/traceway
 
 # ==============================================================================
 # Stage 3: Minimal runtime image

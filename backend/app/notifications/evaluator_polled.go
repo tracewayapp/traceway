@@ -1,4 +1,4 @@
-//go:build pgch
+//go:build telemetry_ch
 
 package notifications
 

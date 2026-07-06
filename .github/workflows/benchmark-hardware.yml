@@ -55,6 +55,10 @@ on:
         description: 'Read-probe fill phase request rate override (default 100 req/s). Combined with fill_batch_size sets total ingest rate. Lower together for SQLite to keep step-target overshoot small. Ignored unless scenario=read-probe.'
         required: false
         default: ''
+      loadgen_extra_args:
+        description: 'Free-form flags appended to the loadgen invocation, e.g. "--phase2-request-rates 25,40,55,70,85,100" to pin a throughput cliff at finer granularity. Space-separated; a repeated flag overrides the default. Leave empty for none.'
+        required: false
+        default: ''
 
 concurrency:
   group: benchmark-hardware
@@ -108,6 +112,7 @@ jobs:
       LOADGEN_TIER: ${{ github.event.inputs.loadgen_tier }}
       BENCH_FILL_BATCH_SIZE: ${{ github.event.inputs.fill_batch_size }}
       BENCH_FILL_REQUEST_RATE: ${{ github.event.inputs.fill_request_rate }}
+      BENCH_LOADGEN_EXTRA_ARGS: ${{ github.event.inputs.loadgen_extra_args }}
       # Managed-ClickHouse credentials. Used only when modes contains
       # managed-ch; empty for sqlite/pgch entries (harmless — sut-bootstrap
       # only validates them when MODE=managed-ch).

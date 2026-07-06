@@ -127,6 +127,14 @@ if [[ "${MODE}" == "sqlite" && "${SCENARIO}" == "throughput" && "${SMOKE}" != "s
     extra_args+=( --step-drain-seconds 60s --inter-phase-cooldown-seconds 60s )
 fi
 
+# Free-form loadgen flag overrides (e.g. "--phase2-request-rates 25,40,55,70,85,100"
+# to pin a cliff at finer granularity). Appended last so a repeated flag wins
+# over any default set above. Space-separated; not for values containing spaces.
+if [[ -n "${BENCH_LOADGEN_EXTRA_ARGS:-}" ]]; then
+    read -ra _loadgen_extra <<< "${BENCH_LOADGEN_EXTRA_ARGS}"
+    extra_args+=( "${_loadgen_extra[@]}" )
+fi
+
 OUT_PATH="${OUT_DIR}/${TIER}-${MODE}-${SIGNAL}-${SCENARIO}${async_suffix}.json"
 "${SCRIPT_DIR}/loadgen-bootstrap.sh" \
     "${LOADGEN_PUBLIC_IP}" \

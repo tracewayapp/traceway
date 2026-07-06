@@ -19,6 +19,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "${SCRIPT_DIR}/_ssh.sh"
 
 if [[ $# -lt 5 ]]; then
     echo "usage: $0 <tier> <mode> <signal> <duration> <out-dir> [smoke] [async]" >&2
@@ -146,6 +147,56 @@ OUT_PATH="${OUT_DIR}/${TIER}-${MODE}-${SIGNAL}-${SCENARIO}${async_suffix}.json"
     "${SIGNAL}" \
     "${OUT_PATH}" \
     "${extra_args[@]}"
+
+# VM-only on-disk / compression measurement. VM runs the throughput scenario
+# (it has no Traceway dashboard, so read-probe is guarded off), and unlike a
+# cross-backend comparison we don't need fixed row counts here: VM reports its
+# own stored-sample count in /metrics (vm_rows), so bytesOnDisk / storedRows is
+# an exact bytes-per-sample regardless of how much was ingested. To avoid
+# counting un-merged parts, force_merge and wait for the active-merge gauge to
+# drain before sizing; `du` runs from a throwaway alpine container mounting VM's
+# data volume, since the VM image is scratch-based (no du of its own). If the
+# vm_active_merges metric name ever changes, the loop just waits the full
+# timeout then measures - never worse than a fixed settle. All non-fatal.
+DISK_COMPACT_WAIT="${BENCH_DISK_COMPACT_WAIT:-300}"
+if [[ "${MODE}" == "victoria" && -f "${OUT_PATH}" ]]; then
+    echo "measuring VM on-disk size (force_merge + up to ${DISK_COMPACT_WAIT}s compaction wait)" >&2
+    disk_remote="set -e
+curl -sf -X POST 'http://localhost:80/internal/force_merge' >/dev/null 2>&1 || true
+deadline=\$(( \$(date +%s) + ${DISK_COMPACT_WAIT} ))
+while [ \"\$(date +%s)\" -lt \"\$deadline\" ]; do
+    m=\$(curl -s 'http://localhost:80/metrics')
+    present=\$(printf '%s' \"\$m\" | grep -c '^vm_active_merges' || true)
+    active=\$(printf '%s' \"\$m\" | awk '/^vm_active_merges/{s+=\$2} END{print s+0}')
+    [ \"\$present\" -gt 0 ] && [ \"\$active\" = '0' ] && break
+    sleep 10
+done
+sleep 2
+rows=\$(curl -s 'http://localhost:80/metrics' | awk '/^vm_rows{type=\"storage\//{s+=\$2} END{print s+0}')
+vol=\$(docker volume ls --format '{{.Name}}' | grep -E 'victoria-bench-data' | head -1)
+[ -n \"\$vol\" ] || { echo 'no matching volume' >&2; exit 3; }
+bytes=\$(docker run --rm -v \"\$vol\":/t alpine:3.20 du -sb /t | awk '{print \$1}')
+echo \"\$bytes \$rows\""
+    disk_out="$(bench_ssh "${SUT_PUBLIC_IP}" "${disk_remote}" 2>/dev/null | tail -1 || true)"
+    disk_bytes="${disk_out%% *}"
+    disk_rows="${disk_out##* }"
+    if [[ "${disk_bytes}" =~ ^[0-9]+$ ]]; then
+        [[ "${disk_rows}" =~ ^[0-9]+$ ]] || disk_rows=0
+        tmp_disk="$(mktemp)"
+        if jq --argjson b "${disk_bytes}" --argjson r "${disk_rows}" \
+              '. + {bytesOnDisk: $b, storedRows: $r, diskForceMerged: true}' \
+              "${OUT_PATH}" > "${tmp_disk}"; then
+            mv "${tmp_disk}" "${OUT_PATH}"
+            bps="n/a"; [[ "${disk_rows}" -gt 0 ]] && bps="$(awk -v b="${disk_bytes}" -v r="${disk_rows}" 'BEGIN{printf "%.2f", b/r}')"
+            echo "disk: victoria = ${disk_bytes} bytes over ${disk_rows} stored samples (${bps} bytes/sample, post force_merge)" >&2
+        else
+            rm -f "${tmp_disk}"
+            echo "disk: jq patch failed (non-fatal)" >&2
+        fi
+    else
+        echo "disk: measurement failed (got '${disk_out}', non-fatal)" >&2
+    fi
+fi
 
 # Trap handles teardown — no explicit call needed.
 echo "matrix entry ${TIER}-${MODE}-${SIGNAL}-${SCENARIO}${async_suffix} complete -> ${OUT_PATH}" >&2

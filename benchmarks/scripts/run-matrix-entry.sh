@@ -161,23 +161,31 @@ OUT_PATH="${OUT_DIR}/${TIER}-${MODE}-${SIGNAL}-${SCENARIO}${async_suffix}.json"
 DISK_COMPACT_WAIT="${BENCH_DISK_COMPACT_WAIT:-300}"
 if [[ "${MODE}" == "victoria" && -f "${OUT_PATH}" ]]; then
     echo "measuring VM on-disk size (force_merge + up to ${DISK_COMPACT_WAIT}s compaction wait)" >&2
-    disk_remote="set -e
-curl -sf -X POST 'http://localhost:80/internal/force_merge' >/dev/null 2>&1 || true
+    # No `set -e` in the remote script: a run that killed VM (e.g. a rate step
+    # past the cliff) leaves /metrics refusing connections, and under set -e
+    # the first failed curl aborted the whole measurement with empty output.
+    # Instead probe liveness explicitly and report a reason on stderr.
+    disk_remote="if ! curl -s --max-time 10 'http://localhost:80/metrics' >/dev/null 2>&1; then
+    echo 'VM not responding on /metrics — skipping disk measurement (SUT likely crashed during the run)' >&2
+    exit 4
+fi
+curl -s --max-time 30 -X POST 'http://localhost:80/internal/force_merge' >/dev/null 2>&1 || true
 deadline=\$(( \$(date +%s) + ${DISK_COMPACT_WAIT} ))
 while [ \"\$(date +%s)\" -lt \"\$deadline\" ]; do
-    m=\$(curl -s 'http://localhost:80/metrics')
+    m=\$(curl -s --max-time 10 'http://localhost:80/metrics' || true)
     present=\$(printf '%s' \"\$m\" | grep -c '^vm_active_merges' || true)
     active=\$(printf '%s' \"\$m\" | awk '/^vm_active_merges/{s+=\$2} END{print s+0}')
     [ \"\$present\" -gt 0 ] && [ \"\$active\" = '0' ] && break
     sleep 10
 done
 sleep 2
-rows=\$(curl -s 'http://localhost:80/metrics' | awk '/^vm_rows{type=\"storage\//{s+=\$2} END{print s+0}')
+rows=\$(curl -s --max-time 10 'http://localhost:80/metrics' | awk '/^vm_rows{type=\"storage\//{s+=\$2} END{print s+0}')
 vol=\$(docker volume ls --format '{{.Name}}' | grep -E 'victoria-bench-data' | head -1)
-[ -n \"\$vol\" ] || { echo 'no matching volume' >&2; exit 3; }
+if [ -z \"\$vol\" ]; then echo 'no matching volume' >&2; exit 3; fi
 bytes=\$(docker run --rm -v \"\$vol\":/t alpine:3.20 du -sb /t | awk '{print \$1}')
+if [ -z \"\$bytes\" ]; then echo 'du produced no output' >&2; exit 5; fi
 echo \"\$bytes \$rows\""
-    disk_out="$(bench_ssh "${SUT_PUBLIC_IP}" "${disk_remote}" 2>/dev/null | tail -1 || true)"
+    disk_out="$(bench_ssh "${SUT_PUBLIC_IP}" "${disk_remote}" | tail -1 || true)"
     disk_bytes="${disk_out%% *}"
     disk_rows="${disk_out##* }"
     if [[ "${disk_bytes}" =~ ^[0-9]+$ ]]; then

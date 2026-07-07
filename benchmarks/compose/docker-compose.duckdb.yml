@@ -10,6 +10,10 @@ services:
       SQLITE_RETENTION_DAYS: "0"
       SESSION_RECORDING_RETENTION_DAYS: "0"
       DUCKDB_CHECKPOINT_THRESHOLD: "${DUCKDB_CHECKPOINT_THRESHOLD:-256MB}"
+      # Without a cap DuckDB assumes ~80% of host RAM for itself and the Go
+      # ingest path OOM-storms the whole box under fat-batch load — observed
+      # taking dockerd down with it on ccx13.
+      DUCKDB_MEMORY_LIMIT: "${DUCKDB_MEMORY_LIMIT:-4GB}"
       GIN_MODE: "release"
     volumes:
       - traceway-bench-duckdb-data:/data

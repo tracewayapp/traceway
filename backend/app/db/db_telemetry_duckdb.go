@@ -41,17 +41,19 @@ func initTelemetryDB() error {
 }
 
 func openDuckDB(path string) error {
-	dsn := path
 	q := url.Values{}
+	// Safe to drop: every telemetry read query has an explicit ORDER BY.
+	q.Set("preserve_insertion_order", "false")
 	if v := strings.TrimSpace(config.Config.DuckDBMemoryLimit); v != "" {
 		q.Set("memory_limit", v)
 	}
 	if v := strings.TrimSpace(config.Config.DuckDBThreads); v != "" {
 		q.Set("threads", v)
 	}
-	if len(q) > 0 {
-		dsn = path + "?" + q.Encode()
+	if v := strings.TrimSpace(config.Config.DuckDBCheckpointThreshold); v != "" {
+		q.Set("checkpoint_threshold", v)
 	}
+	dsn := path + "?" + q.Encode()
 
 	connector, err := duckdb.NewConnector(dsn, nil)
 	if err != nil {

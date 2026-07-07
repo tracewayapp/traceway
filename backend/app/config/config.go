@@ -14,8 +14,9 @@ type Cfg struct {
 	PostgresSSLMode  string
 	SQLitePath       string
 
-	DuckDBMemoryLimit string
-	DuckDBThreads     string
+	DuckDBMemoryLimit         string
+	DuckDBThreads             string
+	DuckDBCheckpointThreshold string
 
 	ClickhouseServer   string
 	ClickhouseDatabase string
@@ -101,8 +102,9 @@ func LoadFromEnv() *Cfg {
 		PostgresSSLMode:  os.Getenv("POSTGRES_SSLMODE"),
 		SQLitePath:       os.Getenv("SQLITE_PATH"),
 
-		DuckDBMemoryLimit: os.Getenv("DUCKDB_MEMORY_LIMIT"),
-		DuckDBThreads:     os.Getenv("DUCKDB_THREADS"),
+		DuckDBMemoryLimit:         os.Getenv("DUCKDB_MEMORY_LIMIT"),
+		DuckDBThreads:             os.Getenv("DUCKDB_THREADS"),
+		DuckDBCheckpointThreshold: os.Getenv("DUCKDB_CHECKPOINT_THRESHOLD"),
 
 		ClickhouseServer:   os.Getenv("CLICKHOUSE_SERVER"),
 		ClickhouseDatabase: os.Getenv("CLICKHOUSE_DATABASE"),

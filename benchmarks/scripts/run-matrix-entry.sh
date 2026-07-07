@@ -127,14 +127,24 @@ OUT_PATH="${OUT_DIR}/${TIER}-${MODE}-${SIGNAL}-${SCENARIO}${async_suffix}.json"
     "${OUT_PATH}" \
     "${extra_args[@]}"
 
-if [[ "${MODE}" == "duckdb" && "${SCENARIO}" == "throughput" && -f "${OUT_PATH}" ]]; then
-    disk_rows="$(jq '[.phase1.steps[]?, .phase2.steps[]?, .phase3.steps[]? | (.ingest.ok // 0) * (.batchSize // 0)] | add // 0' "${OUT_PATH}")"
-    echo "measuring DuckDB on-disk size (rows ingested per result JSON: ${disk_rows})" >&2
-    disk_remote="vol=\$(docker volume ls --format '{{.Name}}' | grep -E 'duckdb-data' | head -1)
+if [[ ( "${MODE}" == "sqlite" || "${MODE}" == "duckdb" ) && -f "${OUT_PATH}" ]]; then
+    if [[ "${SCENARIO}" == "read-probe" ]]; then
+        # rowsIngested is cumulative per step, so max = total.
+        disk_rows="$(jq '[.readProbe.steps[]?.rowsIngested] | max // 0' "${OUT_PATH}")"
+    else
+        disk_rows="$(jq '[.phase1.steps[]?, .phase2.steps[]?, .phase3.steps[]? | (.ingest.ok // 0) * (.batchSize // 0)] | add // 0' "${OUT_PATH}")"
+    fi
+    case "${MODE}" in
+        sqlite) disk_glob='/t/*_telemetry.db*' ;;
+        duckdb) disk_glob='/t/*_telemetry.duckdb*' ;;
+    esac
+    echo "measuring ${MODE} telemetry on-disk size (rows ingested per result JSON: ${disk_rows})" >&2
+    # busybox du has no -b, so measure in KB and convert.
+    disk_remote="vol=\$(docker volume ls --format '{{.Name}}' | grep -E '${MODE}-data' | head -1)
 if [ -z \"\$vol\" ]; then echo 'no matching volume' >&2; exit 3; fi
-bytes=\$(docker run --rm -v \"\$vol\":/t alpine:3.20 sh -c 'du -cb /t/*_telemetry.duckdb* 2>/dev/null | tail -1' | awk '{print \$1}')
-if [ -z \"\$bytes\" ]; then echo 'du produced no output (telemetry file missing?)' >&2; exit 5; fi
-echo \"\$bytes\""
+kb=\$(docker run --rm -v \"\$vol\":/t alpine:3.20 sh -c 'du -ck ${disk_glob} 2>/dev/null | tail -1' | awk '{print \$1}')
+if [ -z \"\$kb\" ]; then echo 'du produced no output (telemetry file missing?)' >&2; exit 5; fi
+echo \$((kb * 1024))"
     disk_bytes="$(bench_ssh "${SUT_PUBLIC_IP}" "${disk_remote}" | tail -1 || true)"
     if [[ "${disk_bytes}" =~ ^[0-9]+$ ]]; then
         [[ "${disk_rows}" =~ ^[0-9]+$ ]] || disk_rows=0
@@ -144,7 +154,7 @@ echo \"\$bytes\""
               "${OUT_PATH}" > "${tmp_disk}"; then
             mv "${tmp_disk}" "${OUT_PATH}"
             bps="n/a"; [[ "${disk_rows}" -gt 0 ]] && bps="$(awk -v b="${disk_bytes}" -v r="${disk_rows}" 'BEGIN{printf "%.2f", b/r}')"
-            echo "disk: duckdb telemetry = ${disk_bytes} bytes over ${disk_rows} ingested items (${bps} bytes/item)" >&2
+            echo "disk: ${MODE} telemetry = ${disk_bytes} bytes over ${disk_rows} ingested items (${bps} bytes/item)" >&2
         else
             rm -f "${tmp_disk}"
             echo "disk: jq patch failed (non-fatal)" >&2

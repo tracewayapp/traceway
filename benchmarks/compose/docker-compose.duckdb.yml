@@ -9,6 +9,7 @@ services:
       JWT_SECRET: "bench-jwt-secret-not-for-production-use-only-32chars+"
       SQLITE_RETENTION_DAYS: "0"
       SESSION_RECORDING_RETENTION_DAYS: "0"
+      DUCKDB_CHECKPOINT_THRESHOLD: "${DUCKDB_CHECKPOINT_THRESHOLD:-256MB}"
       GIN_MODE: "release"
     volumes:
       - traceway-bench-duckdb-data:/data

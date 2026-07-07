@@ -50,13 +50,18 @@ on:
         description: 'Read-probe fill phase request rate override (default 100 req/s). Combined with fill_batch_size sets total ingest rate. Lower together for SQLite to keep step-target overshoot small. Ignored unless scenario=read-probe.'
         required: false
         default: ''
+      commit_results:
+        description: 'Commit results to the dispatched ref (REPLACES the whole scenario results folder with only this dispatch''s entries). Set false for exploratory or partial-matrix runs — per-entry result JSONs are still available as the matrix jobs'' workflow artifacts.'
+        required: true
+        type: boolean
+        default: true
 
 concurrency:
   group: benchmark-hardware
   cancel-in-progress: false
 
 permissions:
-  contents: write    # aggregate job commits the results back to main
+  contents: write    # aggregate job commits the results back to the dispatched ref
 
 jobs:
   setup:
@@ -187,12 +192,28 @@ jobs:
           echo "dst=${dst}" >> "$GITHUB_OUTPUT"
           ls -la "${dst}"
 
+          # Committing replaces the scenario folder wholesale, so a dispatch
+          # where some matrix entries failed (quota, OOM, flake) would push a
+          # PARTIAL result set, silently deleting the published JSONs for the
+          # missing entries. Fail instead: the per-entry artifacts are already
+          # uploaded, and a clean re-dispatch is cheap.
+          count_csv() { tr ',' '\n' <<<"$1" | sed 's/ //g' | grep -c . ; }
+          expected=$(( $(count_csv "${{ github.event.inputs.tiers }}") \
+                     * $(count_csv "${{ github.event.inputs.modes }}") \
+                     * $(count_csv "${{ github.event.inputs.signals }}") ))
+          staged=$(find "${dst}" -name '*.json' | wc -l | tr -d ' ')
+          if [[ "${staged}" -lt "${expected}" ]]; then
+              echo "only ${staged}/${expected} matrix entries produced results — refusing to commit a partial set" >&2
+              exit 1
+          fi
+
       - name: Render charts
         run: |
           pip install --quiet matplotlib
           python3 benchmarks/scripts/chart.py "${{ steps.stage.outputs.dst }}"
 
       - name: Commit results
+        if: ${{ github.event.inputs.commit_results == 'true' }}
         run: |
           set -euo pipefail
           git config user.name "traceway-bot"
@@ -207,9 +228,12 @@ jobs:
           tmp_staged="$(mktemp -d)/staged"
           cp -a "${staged}" "${tmp_staged}"
 
-          echo "syncing checkout to latest origin/main before committing"
-          git fetch origin main
-          git reset --hard origin/main
+          # Sync to the DISPATCHED ref, not main — a branch dispatch that
+          # resets to origin/main commits main+1 onto the branch and the
+          # push is rejected as non-fast-forward.
+          echo "syncing checkout to latest origin/${GITHUB_REF_NAME} before committing"
+          git fetch origin "${GITHUB_REF_NAME}"
+          git reset --hard "origin/${GITHUB_REF_NAME}"
 
           # Wipe whatever main had at this scenario folder (probably a prior
           # dispatch of the SAME scenario) and replace it with this
@@ -230,5 +254,5 @@ jobs:
             exit 0
           fi
           git commit -m "bench: ${{ github.event.inputs.scenario }} $(date -u +%Y-%m-%d)"
-          git pull --rebase origin main
+          git pull --rebase origin "${GITHUB_REF_NAME}"
           git push

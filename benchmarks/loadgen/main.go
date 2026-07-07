@@ -176,6 +176,7 @@ func main() {
 	writeCheckpoint := func() {
 		out.EndedAt = time.Now().UTC().Format(time.RFC3339)
 		out.ChRestarted = chRestarted.Load()
+		out.SutDied = sutDied.Load()
 		out.computeHeadline()
 		if err := writeReportAtomic(cfg.reportOut, &out); err != nil {
 			fmt.Fprintf(os.Stderr, "checkpoint write failed: %v\n", err)
@@ -204,6 +205,9 @@ func main() {
 		// phases — the final writeCheckpoint after the switch captures
 		// whatever data was collected up to this point.
 		if err := waitForSutHealthy(ctx, cfg.target, cfg.sutHealthTimeoutSeconds); err != nil {
+			if ctx.Err() == nil {
+				sutDied.Store(true)
+			}
 			fmt.Fprintf(stderrPrefix(), "SUT unhealthy after Phase 1 cooldown — skipping Phase 2/3: %v\n", err)
 			break
 		}
@@ -225,6 +229,9 @@ func main() {
 			waitForMergesIdle(ctx, cfg, httpClient, "phase 2 -> phase 3")
 		}
 		if err := waitForSutHealthy(ctx, cfg.target, cfg.sutHealthTimeoutSeconds); err != nil {
+			if ctx.Err() == nil {
+				sutDied.Store(true)
+			}
 			fmt.Fprintf(stderrPrefix(), "SUT unhealthy after Phase 2 cooldown — skipping Phase 3: %v\n", err)
 			break
 		}
@@ -257,6 +264,10 @@ func main() {
 	if chRestarted.Load() {
 		fmt.Fprintln(os.Stderr, "FAILED: ClickHouse restarted during the run; treating result as invalid")
 		os.Exit(1)
+	}
+	// Exit 0 unlike chRestarted: passing steps are still a valid lower bound.
+	if sutDied.Load() {
+		fmt.Fprintln(os.Stderr, "WARNING: SUT died after a failed step and never recovered; headline is a lower bound (cliff not bisected)")
 	}
 }
 

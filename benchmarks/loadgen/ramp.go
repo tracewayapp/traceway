@@ -15,6 +15,7 @@ import (
 var (
 	lastCHUptime atomic.Int64
 	chRestarted  atomic.Bool
+	sutDied      atomic.Bool
 )
 
 type stepResult struct {
@@ -53,6 +54,9 @@ type finalReport struct {
 	MaxSustainableItemsPerSec float64          `json:"maxSustainableItemsPerSec,omitempty"`
 	MaxFillLevelPassed        int64            `json:"maxFillLevelPassed,omitempty"`
 	ChRestarted               bool             `json:"chRestarted,omitempty"`
+	// SutDied: passing steps stay valid but the headline is only a lower
+	// bound — the cliff was never bisected.
+	SutDied bool `json:"sutDied,omitempty"`
 }
 
 func (r *finalReport) computeHeadline() {
@@ -189,6 +193,9 @@ func runRateRamp(ctx context.Context, cfg config, ing *ingester, ingest *latency
 		}
 		if !s.Passed {
 			firstFailRate = rate
+			if !ensureSutRecovered(ctx, cfg, logPrefix) {
+				return res
+			}
 			break
 		}
 	}
@@ -222,10 +229,29 @@ func runRateRamp(ctx context.Context, cfg config, ing *ingester, ingest *latency
 			if checkpoint != nil {
 				checkpoint(res)
 			}
+			if !s.Passed && !ensureSutRecovered(ctx, cfg, logPrefix) {
+				break
+			}
 		}
 	}
 
 	return res
+}
+
+// ensureSutRecovered gates only failed steps — a crash can hide there, while
+// a passing step proves liveness. Without it, one fatal step leaves the rest
+// of the bisect firing at a dead server and converging to the last pass
+// instead of the real cliff.
+func ensureSutRecovered(ctx context.Context, cfg config, logPrefix string) bool {
+	if err := waitForSutHealthy(ctx, cfg.target, cfg.sutHealthTimeoutSeconds); err != nil {
+		// A canceled ctx is the run deadline, not a verdict on the SUT.
+		if ctx.Err() == nil {
+			sutDied.Store(true)
+			fmt.Fprintf(stderrPrefix(), "%s: SUT did not recover after failed step — ending phase, results are lower bounds: %v\n", logPrefix, err)
+		}
+		return false
+	}
+	return true
 }
 
 // runOneStep resizes the worker pool for the new rate, holds the step for

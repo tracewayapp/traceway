@@ -164,5 +164,26 @@ echo \$((kb * 1024))"
     fi
 fi
 
+# Post-mortem before teardown deletes the server — after that, an OOM kill and
+# a crash loop are indistinguishable.
+if [[ -f "${OUT_PATH}" ]]; then
+    sut_state_remote="cid=\$(docker ps -aq --filter 'name=traceway' | head -1)
+if [ -z \"\$cid\" ]; then echo '{}'; exit 0; fi
+docker inspect --format '{\"status\":\"{{.State.Status}}\",\"oomKilled\":{{.State.OOMKilled}},\"exitCode\":{{.State.ExitCode}},\"restartCount\":{{.RestartCount}}}' \"\$cid\""
+    sut_state="$(bench_ssh "${SUT_PUBLIC_IP}" "${sut_state_remote}" | tail -1 || echo '{}')"
+    if jq -e . >/dev/null 2>&1 <<< "${sut_state}"; then
+        tmp_state="$(mktemp)"
+        if jq --argjson s "${sut_state}" '. + {sutContainer: $s}' "${OUT_PATH}" > "${tmp_state}"; then
+            mv "${tmp_state}" "${OUT_PATH}"
+            echo "sut container state: ${sut_state}" >&2
+        else
+            rm -f "${tmp_state}"
+        fi
+    else
+        echo "sut container state capture failed (non-fatal): ${sut_state}" >&2
+    fi
+    bench_ssh "${SUT_PUBLIC_IP}" "cid=\$(docker ps -aq --filter 'name=traceway' | head -1); [ -n \"\$cid\" ] && docker logs --tail 30 \"\$cid\" 2>&1 | sed 's/^/sut-log: /'" >&2 || true
+fi
+
 # Trap handles teardown — no explicit call needed.
 echo "matrix entry ${TIER}-${MODE}-${SIGNAL}-${SCENARIO}${async_suffix} complete -> ${OUT_PATH}" >&2

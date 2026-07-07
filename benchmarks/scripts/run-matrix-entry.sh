@@ -18,6 +18,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "${SCRIPT_DIR}/_ssh.sh"
 
 if [[ $# -lt 5 ]]; then
     echo "usage: $0 <tier> <mode> <signal> <duration> <out-dir> [smoke] [async]" >&2
@@ -125,6 +126,33 @@ OUT_PATH="${OUT_DIR}/${TIER}-${MODE}-${SIGNAL}-${SCENARIO}${async_suffix}.json"
     "${SIGNAL}" \
     "${OUT_PATH}" \
     "${extra_args[@]}"
+
+if [[ "${MODE}" == "duckdb" && "${SCENARIO}" == "throughput" && -f "${OUT_PATH}" ]]; then
+    disk_rows="$(jq '[.phase1.steps[]?, .phase2.steps[]?, .phase3.steps[]? | (.ingest.ok // 0) * (.batchSize // 0)] | add // 0' "${OUT_PATH}")"
+    echo "measuring DuckDB on-disk size (rows ingested per result JSON: ${disk_rows})" >&2
+    disk_remote="vol=\$(docker volume ls --format '{{.Name}}' | grep -E 'duckdb-data' | head -1)
+if [ -z \"\$vol\" ]; then echo 'no matching volume' >&2; exit 3; fi
+bytes=\$(docker run --rm -v \"\$vol\":/t alpine:3.20 sh -c 'du -cb /t/*_telemetry.duckdb* 2>/dev/null | tail -1' | awk '{print \$1}')
+if [ -z \"\$bytes\" ]; then echo 'du produced no output (telemetry file missing?)' >&2; exit 5; fi
+echo \"\$bytes\""
+    disk_bytes="$(bench_ssh "${SUT_PUBLIC_IP}" "${disk_remote}" | tail -1 || true)"
+    if [[ "${disk_bytes}" =~ ^[0-9]+$ ]]; then
+        [[ "${disk_rows}" =~ ^[0-9]+$ ]] || disk_rows=0
+        tmp_disk="$(mktemp)"
+        if jq --argjson b "${disk_bytes}" --argjson r "${disk_rows}" \
+              '. + {bytesOnDisk: $b, storedRows: $r}' \
+              "${OUT_PATH}" > "${tmp_disk}"; then
+            mv "${tmp_disk}" "${OUT_PATH}"
+            bps="n/a"; [[ "${disk_rows}" -gt 0 ]] && bps="$(awk -v b="${disk_bytes}" -v r="${disk_rows}" 'BEGIN{printf "%.2f", b/r}')"
+            echo "disk: duckdb telemetry = ${disk_bytes} bytes over ${disk_rows} ingested items (${bps} bytes/item)" >&2
+        else
+            rm -f "${tmp_disk}"
+            echo "disk: jq patch failed (non-fatal)" >&2
+        fi
+    else
+        echo "disk: measurement failed (got '${disk_bytes}', non-fatal)" >&2
+    fi
+fi
 
 # Trap handles teardown — no explicit call needed.
 echo "matrix entry ${TIER}-${MODE}-${SIGNAL}-${SCENARIO}${async_suffix} complete -> ${OUT_PATH}" >&2

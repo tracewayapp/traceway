@@ -66,7 +66,7 @@ func (r *metricPointRepository) InsertAsync(ctx context.Context, points []models
 			}
 			tagsJSON = string(b)
 		}
-		if err := appender.AppendRow(p.ProjectId.String(), p.Name, p.Value, tagsJSON, p.RecordedAt.UTC()); err != nil {
+		if err := appender.AppendRow(p.ProjectId.String(), p.Name, p.Value, tagsJSON, p.RecordedAt.UTC(), p.Tags["server_name"]); err != nil {
 			captureDroppedRow("metric_points", err)
 		}
 	}
@@ -232,11 +232,10 @@ func (r *metricPointRepository) GetAverageBetween(ctx context.Context, projectId
 
 func (r *metricPointRepository) GetDistinctServers(ctx context.Context, projectId uuid.UUID, start, end time.Time) ([]string, error) {
 	results, err := lit.SelectNamed[distinctServerResult](db.TelemetryDB,
-		`SELECT DISTINCT json_extract_string(tags, '$.server_name') AS sn
+		`SELECT DISTINCT server_name AS sn
 		FROM metric_points
 		WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
-		AND json_extract_string(tags, '$.server_name') IS NOT NULL
-		AND json_extract_string(tags, '$.server_name') != ''
+		AND server_name != ''
 		ORDER BY sn ASC`,
 		lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()})
 	if err != nil {
@@ -262,7 +261,7 @@ func (r *metricPointRepository) GetAverageByIntervalPerServer(ctx context.Contex
 
 	query := fmt.Sprintf(`SELECT
 		%s AS bucket,
-		json_extract_string(tags, '$.server_name') AS sn,
+		server_name AS sn,
 		avg(value) AS avg_value
 	FROM metric_points
 	WHERE project_id = :project_id AND name = :name AND recorded_at >= :from AND recorded_at <= :to`, timeBucketExpr("recorded_at", secs))
@@ -274,9 +273,9 @@ func (r *metricPointRepository) GetAverageByIntervalPerServer(ctx context.Contex
 			placeholders[i] = ":" + key
 			params[key] = s
 		}
-		query += " AND json_extract_string(tags, '$.server_name') IN (" + strings.Join(placeholders, ", ") + ")"
+		query += " AND server_name IN (" + strings.Join(placeholders, ", ") + ")"
 	} else {
-		query += " AND json_extract_string(tags, '$.server_name') IS NOT NULL AND json_extract_string(tags, '$.server_name') != ''"
+		query += " AND server_name != ''"
 	}
 
 	query += " GROUP BY bucket, sn ORDER BY bucket ASC, sn ASC"

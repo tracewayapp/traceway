@@ -97,6 +97,18 @@ func TestExceptionRepository_FindGrouped(t *testing.T) {
 	if groups[0].Count != 3 {
 		t.Errorf("expected count 3, got %d", groups[0].Count)
 	}
+
+	// A page past the last group must still report the full total.
+	groups, total, err = ExceptionStackTraceRepository.FindGrouped(ctx, projectId, now.Add(-time.Hour), now.Add(time.Hour), 5, 10, "count", "", "", false)
+	if err != nil {
+		t.Fatalf("FindGrouped page-past-end failed: %v", err)
+	}
+	if total != 2 {
+		t.Errorf("expected total 2 on page past end, got %d", total)
+	}
+	if len(groups) != 0 {
+		t.Errorf("expected 0 group entries on page past end, got %d", len(groups))
+	}
 }
 
 func TestExceptionRepository_FindGrouped_Search(t *testing.T) {

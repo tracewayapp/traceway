@@ -27,7 +27,8 @@ func setupDuckDB(t *testing.T) {
 		name VARCHAR NOT NULL DEFAULT '',
 		value DOUBLE NOT NULL DEFAULT 0,
 		tags VARCHAR NOT NULL DEFAULT '{}',
-		recorded_at TIMESTAMP NOT NULL
+		recorded_at TIMESTAMP NOT NULL,
+		server_name VARCHAR NOT NULL DEFAULT ''
 	)`); err != nil {
 		t.Fatalf("create table: %v", err)
 	}

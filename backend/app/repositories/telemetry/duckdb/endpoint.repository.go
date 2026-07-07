@@ -259,16 +259,6 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 	}
 	whereClause += rootFilterClause("e.is_root", rootFilter)
 
-	countQuery := "SELECT COUNT(DISTINCT e.endpoint) AS count FROM endpoints e WHERE " + whereClause
-	totalResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB, countQuery, params)
-	if err != nil {
-		return nil, 0, err
-	}
-	totalEndpoints := int64(0)
-	if totalResult != nil {
-		totalEndpoints = int64(totalResult.Count)
-	}
-
 	groupQuery := `SELECT
 		e.endpoint,
 		COUNT(*) as total_count,
@@ -360,6 +350,10 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 	}
 
 	sortEndpointStats(stats, orderBy, sortDirection)
+
+	// Pagination is in-Go, so the group query already returned every group —
+	// no separate COUNT(DISTINCT) scan needed.
+	totalEndpoints := int64(len(stats))
 
 	start := (page - 1) * pageSize
 	if start > len(stats) {

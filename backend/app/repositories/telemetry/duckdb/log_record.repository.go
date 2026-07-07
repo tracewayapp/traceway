@@ -36,6 +36,7 @@ type logRecord struct {
 	ScopeVersion       string                    `lit:"scope_version"`
 	ScopeAttributes    sqlitetypes.SQLiteJSONMap `lit:"scope_attributes"`
 	LogAttributes      sqlitetypes.SQLiteJSONMap `lit:"log_attributes"`
+	Total              int64                     `lit:"total"`
 }
 
 func init() {
@@ -137,19 +138,6 @@ func (r *logRecordRepository) InsertAsync(ctx context.Context, records []models.
 func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearchParams) ([]models.LogRecord, int64, error) {
 	where, args := r.buildWhere(params)
 
-	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
-		"SELECT COUNT(*) AS count FROM log_records WHERE "+where, args)
-	if err != nil {
-		return nil, 0, err
-	}
-	count := int64(0)
-	if countResult != nil {
-		count = int64(countResult.Count)
-	}
-	if count == 0 {
-		return nil, 0, nil
-	}
-
 	orderBy := r.resolveOrderBy(params.OrderBy)
 	direction := "DESC"
 	if strings.EqualFold(params.SortDirection, "asc") {
@@ -167,11 +155,13 @@ func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearc
 	args["limit"] = params.PageSize
 	args["offset"] = offset
 
+	// COUNT(*) OVER () counts the filtered rows before LIMIT, so one scan
+	// yields both the page and the total.
 	query := fmt.Sprintf(`SELECT id, project_id, timestamp, trace_id, span_id, trace_flags,
 		severity_text, severity_number, service_name, body,
 		resource_schema_url, resource_attributes,
 		scope_schema_url, scope_name, scope_version, scope_attributes,
-		log_attributes
+		log_attributes, COUNT(*) OVER () AS total
 	FROM log_records
 	WHERE %s
 	ORDER BY %s %s
@@ -180,6 +170,22 @@ func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearc
 	rows, err := lit.SelectNamed[logRecord](db.TelemetryDB, query, args)
 	if err != nil {
 		return nil, 0, err
+	}
+
+	count := int64(0)
+	if len(rows) > 0 {
+		count = rows[0].Total
+	} else if params.Page > 1 {
+		// An offset past the last row returns no rows and thus no window
+		// total; only then fall back to a separate count scan.
+		countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+			"SELECT COUNT(*) AS count FROM log_records WHERE "+where, args)
+		if err != nil {
+			return nil, 0, err
+		}
+		if countResult != nil {
+			count = int64(countResult.Count)
+		}
 	}
 
 	records := make([]models.LogRecord, 0, len(rows))

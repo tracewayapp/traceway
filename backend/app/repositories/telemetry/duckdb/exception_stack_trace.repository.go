@@ -52,6 +52,7 @@ type exceptionGroupRow struct {
 	FirstSeen     sqlitetypes.SQLiteTime `lit:"first_seen"`
 	Count         uint64                 `lit:"count"`
 	MaxArchivedAt sql.NullTime           `lit:"max_archived_at"`
+	Total         int64                  `lit:"total"`
 }
 
 type exceptionTrendRow struct {
@@ -232,22 +233,9 @@ func (e *exceptionStackTraceRepository) FindGrouped(ctx context.Context, project
 	) a ON e.exception_hash = a.exception_hash`
 	params["archive_project_id"] = projectId
 
-	countQuery := `SELECT COUNT(*) AS count FROM (
-		SELECT e.exception_hash, MAX(a.archived_at) as max_archived_at
-		FROM exception_stack_traces e ` + archiveSubquery + `
-		WHERE ` + whereClause + `
-		GROUP BY e.exception_hash` + havingClause + `) AS sub`
-
-	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB, countQuery, params)
-	if err != nil {
-		return nil, 0, err
-	}
-	count := int64(0)
-	if countResult != nil {
-		count = int64(countResult.Count)
-	}
-
-	fullQuery := `SELECT e.exception_hash, ANY_VALUE(e.stack_trace) as stack_trace, MAX(e.recorded_at) as last_seen, MIN(e.recorded_at) as first_seen, COUNT(*) as count, MAX(a.archived_at) as max_archived_at
+	// COUNT(*) OVER () is evaluated on the post-GROUP BY/HAVING rows before
+	// LIMIT, so one scan yields both the page and the total group count.
+	fullQuery := `SELECT e.exception_hash, ANY_VALUE(e.stack_trace) as stack_trace, MAX(e.recorded_at) as last_seen, MIN(e.recorded_at) as first_seen, COUNT(*) as count, MAX(a.archived_at) as max_archived_at, COUNT(*) OVER () as total
 		FROM exception_stack_traces e ` + archiveSubquery + `
 		WHERE ` + whereClause + `
 		GROUP BY e.exception_hash` + havingClause + `
@@ -258,6 +246,27 @@ func (e *exceptionStackTraceRepository) FindGrouped(ctx context.Context, project
 	groupRows, err := lit.SelectNamed[exceptionGroupRow](db.TelemetryDB, fullQuery, params)
 	if err != nil {
 		return nil, 0, err
+	}
+
+	count := int64(0)
+	if len(groupRows) > 0 {
+		count = groupRows[0].Total
+	} else if page > 1 {
+		// An offset past the last group returns no rows and thus no window
+		// total; only then fall back to a separate count scan.
+		countQuery := `SELECT COUNT(*) AS count FROM (
+			SELECT e.exception_hash, MAX(a.archived_at) as max_archived_at
+			FROM exception_stack_traces e ` + archiveSubquery + `
+			WHERE ` + whereClause + `
+			GROUP BY e.exception_hash` + havingClause + `) AS sub`
+
+		countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB, countQuery, params)
+		if err != nil {
+			return nil, 0, err
+		}
+		if countResult != nil {
+			count = int64(countResult.Count)
+		}
 	}
 
 	groups := make([]models.ExceptionGroup, 0, len(groupRows))

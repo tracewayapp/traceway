@@ -1,0 +1,102 @@
+{
+  "tier": "ccx13",
+  "mode": "sqlite",
+  "signal": "spans",
+  "scenario": "read-probe",
+  "startedAt": "2026-07-07T21:06:27Z",
+  "endedAt": "2026-07-07T21:07:48Z",
+  "readProbe": {
+    "endpoints": [
+      {
+        "name": "endpoints-grouped",
+        "path": "/api/endpoints/grouped"
+      },
+      {
+        "name": "endpoints-chart",
+        "path": "/api/endpoints/chart"
+      },
+      {
+        "name": "exception-stack-traces",
+        "path": "/api/exception-stack-traces"
+      }
+    ],
+    "readPath": "/api/endpoints/grouped",
+    "readThresholdMs": 5000,
+    "settleSeconds": 10,
+    "fillBatchSize": 1024,
+    "fillRequestRate": 25,
+    "steps": [
+      {
+        "fillLevelTarget": 100000,
+        "rowsIngested": 103424,
+        "ingestSecondsElapsed": 4.032938702,
+        "probes": [
+          {
+            "name": "endpoints-grouped",
+            "path": "/api/endpoints/grouped",
+            "latencyMs": 2457.987432,
+            "ok": true
+          },
+          {
+            "name": "endpoints-chart",
+            "path": "/api/endpoints/chart",
+            "latencyMs": 2553.24691,
+            "ok": true
+          },
+          {
+            "name": "exception-stack-traces",
+            "path": "/api/exception-stack-traces",
+            "latencyMs": 1.336636,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 2457.987432,
+        "readLatencyMs": 2457.987432,
+        "readOk": true,
+        "passed": true
+      },
+      {
+        "fillLevelTarget": 1000000,
+        "rowsIngested": 1003520,
+        "ingestSecondsElapsed": 40.417494113,
+        "probes": [
+          {
+            "name": "endpoints-grouped",
+            "path": "/api/endpoints/grouped",
+            "latencyMs": 6005.140176,
+            "ok": false,
+            "error": "Post \"http://10.0.0.2/api/endpoints/grouped?projectId=655e3531-1d65-4715-a245-cf8c6b42cb02\": context deadline exceeded"
+          },
+          {
+            "name": "endpoints-chart",
+            "path": "/api/endpoints/chart",
+            "latencyMs": 6005.221958,
+            "ok": false,
+            "error": "Post \"http://10.0.0.2/api/endpoints/chart?projectId=655e3531-1d65-4715-a245-cf8c6b42cb02\": context deadline exceeded"
+          },
+          {
+            "name": "exception-stack-traces",
+            "path": "/api/exception-stack-traces",
+            "latencyMs": 24.637038999999998,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 6005.140176,
+        "readLatencyMs": 6005.140176,
+        "readOk": false,
+        "passed": false,
+        "failReason": "probe endpoints-grouped failed: Post \"http://10.0.0.2/api/endpoints/grouped?projectId=655e3531-1d65-4715-a245-cf8c6b42cb02\": context deadline exceeded (latency 6005ms)"
+      }
+    ],
+    "maxFillLevelPassed": 100000
+  },
+  "maxFillLevelPassed": 100000,
+  "bytesOnDisk": 639741952,
+  "storedRows": 1003520,
+  "sutContainer": {
+    "status": "running",
+    "oomKilled": false,
+    "exitCode": 0,
+    "restartCount": 0
+  }
+}

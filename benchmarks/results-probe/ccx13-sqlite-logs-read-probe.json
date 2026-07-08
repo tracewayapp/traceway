@@ -1,0 +1,101 @@
+{
+  "tier": "ccx13",
+  "mode": "sqlite",
+  "signal": "logs",
+  "scenario": "read-probe",
+  "startedAt": "2026-07-07T21:20:17Z",
+  "endedAt": "2026-07-07T21:22:04Z",
+  "readProbe": {
+    "endpoints": [
+      {
+        "name": "logs-severity-error",
+        "path": "/api/logs"
+      },
+      {
+        "name": "logs-body-search",
+        "path": "/api/logs"
+      },
+      {
+        "name": "logs-trace-id",
+        "path": "/api/logs"
+      }
+    ],
+    "readPath": "/api/logs",
+    "readThresholdMs": 5000,
+    "settleSeconds": 10,
+    "fillBatchSize": 1024,
+    "fillRequestRate": 25,
+    "steps": [
+      {
+        "fillLevelTarget": 100000,
+        "rowsIngested": 102400,
+        "ingestSecondsElapsed": 6.424484046,
+        "probes": [
+          {
+            "name": "logs-severity-error",
+            "path": "/api/logs",
+            "latencyMs": 132.37173299999998,
+            "ok": true
+          },
+          {
+            "name": "logs-body-search",
+            "path": "/api/logs",
+            "latencyMs": 113.021573,
+            "ok": true
+          },
+          {
+            "name": "logs-trace-id",
+            "path": "/api/logs",
+            "latencyMs": 82.677436,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 113.021573,
+        "readLatencyMs": 113.021573,
+        "readOk": true,
+        "passed": true
+      },
+      {
+        "fillLevelTarget": 1000000,
+        "rowsIngested": 1002496,
+        "ingestSecondsElapsed": 71.361521967,
+        "probes": [
+          {
+            "name": "logs-severity-error",
+            "path": "/api/logs",
+            "latencyMs": 6005.168973,
+            "ok": false,
+            "error": "Post \"http://10.0.0.2/api/logs?projectId=7bab3185-dad5-4756-8960-3750c0fb5d0f\": context deadline exceeded"
+          },
+          {
+            "name": "logs-body-search",
+            "path": "/api/logs",
+            "latencyMs": 1962.6688639999998,
+            "ok": true
+          },
+          {
+            "name": "logs-trace-id",
+            "path": "/api/logs",
+            "latencyMs": 1494.24592,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 1962.6688639999998,
+        "readLatencyMs": 1962.6688639999998,
+        "readOk": false,
+        "passed": false,
+        "failReason": "probe logs-severity-error failed: Post \"http://10.0.0.2/api/logs?projectId=7bab3185-dad5-4756-8960-3750c0fb5d0f\": context deadline exceeded (latency 6005ms)"
+      }
+    ],
+    "maxFillLevelPassed": 100000
+  },
+  "maxFillLevelPassed": 100000,
+  "bytesOnDisk": 11923791872,
+  "storedRows": 1002496,
+  "sutContainer": {
+    "status": "running",
+    "oomKilled": false,
+    "exitCode": 0,
+    "restartCount": 0
+  }
+}

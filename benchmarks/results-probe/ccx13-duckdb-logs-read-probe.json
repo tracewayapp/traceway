@@ -1,0 +1,159 @@
+{
+  "tier": "ccx13",
+  "mode": "duckdb",
+  "signal": "logs",
+  "scenario": "read-probe",
+  "startedAt": "2026-07-08T00:00:08Z",
+  "endedAt": "2026-07-08T01:06:34Z",
+  "readProbe": {
+    "endpoints": [
+      {
+        "name": "logs-severity-error",
+        "path": "/api/logs"
+      },
+      {
+        "name": "logs-body-search",
+        "path": "/api/logs"
+      },
+      {
+        "name": "logs-trace-id",
+        "path": "/api/logs"
+      }
+    ],
+    "readPath": "/api/logs",
+    "readThresholdMs": 5000,
+    "settleSeconds": 10,
+    "fillBatchSize": 1024,
+    "fillRequestRate": 25,
+    "steps": [
+      {
+        "fillLevelTarget": 100000,
+        "rowsIngested": 103424,
+        "ingestSecondsElapsed": 4.023492085,
+        "probes": [
+          {
+            "name": "logs-severity-error",
+            "path": "/api/logs",
+            "latencyMs": 57.77175,
+            "ok": true
+          },
+          {
+            "name": "logs-body-search",
+            "path": "/api/logs",
+            "latencyMs": 29.036113,
+            "ok": true
+          },
+          {
+            "name": "logs-trace-id",
+            "path": "/api/logs",
+            "latencyMs": 2.082321,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 29.036113,
+        "readLatencyMs": 29.036113,
+        "readOk": true,
+        "passed": true
+      },
+      {
+        "fillLevelTarget": 1000000,
+        "rowsIngested": 1003520,
+        "ingestSecondsElapsed": 45.42349655,
+        "probes": [
+          {
+            "name": "logs-severity-error",
+            "path": "/api/logs",
+            "latencyMs": 228.689105,
+            "ok": true
+          },
+          {
+            "name": "logs-body-search",
+            "path": "/api/logs",
+            "latencyMs": 87.259156,
+            "ok": true
+          },
+          {
+            "name": "logs-trace-id",
+            "path": "/api/logs",
+            "latencyMs": 1.957015,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 87.259156,
+        "readLatencyMs": 87.259156,
+        "readOk": true,
+        "passed": true
+      },
+      {
+        "fillLevelTarget": 10000000,
+        "rowsIngested": 10003456,
+        "ingestSecondsElapsed": 361.601548157,
+        "probes": [
+          {
+            "name": "logs-severity-error",
+            "path": "/api/logs",
+            "latencyMs": 2511.199047,
+            "ok": true
+          },
+          {
+            "name": "logs-body-search",
+            "path": "/api/logs",
+            "latencyMs": 92.255408,
+            "ok": true
+          },
+          {
+            "name": "logs-trace-id",
+            "path": "/api/logs",
+            "latencyMs": 2.372122,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 92.255408,
+        "readLatencyMs": 92.255408,
+        "readOk": true,
+        "passed": true
+      },
+      {
+        "fillLevelTarget": 100000000,
+        "rowsIngested": 100003840,
+        "ingestSecondsElapsed": 3523.417251439,
+        "probes": [
+          {
+            "name": "logs-severity-error",
+            "path": "/api/logs",
+            "latencyMs": 6005.157835,
+            "ok": false,
+            "error": "Post \"http://10.0.0.2/api/logs?projectId=6615690e-7bc2-4233-a742-3726e1e8638f\": context deadline exceeded"
+          },
+          {
+            "name": "logs-body-search",
+            "path": "/api/logs",
+            "latencyMs": 2217.7383179999997,
+            "ok": true
+          },
+          {
+            "name": "logs-trace-id",
+            "path": "/api/logs",
+            "latencyMs": 2.428939,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 2217.7383179999997,
+        "readLatencyMs": 2217.7383179999997,
+        "readOk": false,
+        "passed": false,
+        "failReason": "probe logs-severity-error failed: Post \"http://10.0.0.2/api/logs?projectId=6615690e-7bc2-4233-a742-3726e1e8638f\": context deadline exceeded (latency 6005ms)"
+      }
+    ],
+    "maxFillLevelPassed": 10000000
+  },
+  "maxFillLevelPassed": 10000000,
+  "bytesOnDisk": 9472544768,
+  "storedRows": 100003840,
+  "sutContainer": {
+    "status": "running",
+    "oomKilled": false,
+    "exitCode": 0,
+    "restartCount": 0
+  }
+}

@@ -1,0 +1,159 @@
+{
+  "tier": "ccx13",
+  "mode": "duckdb",
+  "signal": "metrics",
+  "scenario": "read-probe",
+  "startedAt": "2026-07-07T22:47:35Z",
+  "endedAt": "2026-07-07T23:54:06Z",
+  "readProbe": {
+    "endpoints": [
+      {
+        "name": "metrics-server",
+        "path": "/api/metrics/server"
+      },
+      {
+        "name": "metrics-application",
+        "path": "/api/metrics/application"
+      },
+      {
+        "name": "dashboard",
+        "path": "/api/dashboard"
+      }
+    ],
+    "readPath": "/api/metrics/server",
+    "readThresholdMs": 5000,
+    "settleSeconds": 10,
+    "fillBatchSize": 1024,
+    "fillRequestRate": 25,
+    "steps": [
+      {
+        "fillLevelTarget": 100000,
+        "rowsIngested": 102400,
+        "ingestSecondsElapsed": 4.001673444,
+        "probes": [
+          {
+            "name": "metrics-server",
+            "path": "/api/metrics/server",
+            "latencyMs": 57.543692,
+            "ok": true
+          },
+          {
+            "name": "metrics-application",
+            "path": "/api/metrics/application",
+            "latencyMs": 36.155142,
+            "ok": true
+          },
+          {
+            "name": "dashboard",
+            "path": "/api/dashboard",
+            "latencyMs": 50.675034000000004,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 50.675034000000004,
+        "readLatencyMs": 50.675034000000004,
+        "readOk": true,
+        "passed": true
+      },
+      {
+        "fillLevelTarget": 1000000,
+        "rowsIngested": 1002496,
+        "ingestSecondsElapsed": 45.401081445,
+        "probes": [
+          {
+            "name": "metrics-server",
+            "path": "/api/metrics/server",
+            "latencyMs": 122.57776,
+            "ok": true
+          },
+          {
+            "name": "metrics-application",
+            "path": "/api/metrics/application",
+            "latencyMs": 111.18352200000001,
+            "ok": true
+          },
+          {
+            "name": "dashboard",
+            "path": "/api/dashboard",
+            "latencyMs": 182.107201,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 122.57776,
+        "readLatencyMs": 122.57776,
+        "readOk": true,
+        "passed": true
+      },
+      {
+        "fillLevelTarget": 10000000,
+        "rowsIngested": 10004480,
+        "ingestSecondsElapsed": 361.601708825,
+        "probes": [
+          {
+            "name": "metrics-server",
+            "path": "/api/metrics/server",
+            "latencyMs": 376.102003,
+            "ok": true
+          },
+          {
+            "name": "metrics-application",
+            "path": "/api/metrics/application",
+            "latencyMs": 439.467897,
+            "ok": true
+          },
+          {
+            "name": "dashboard",
+            "path": "/api/dashboard",
+            "latencyMs": 725.396117,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 439.467897,
+        "readLatencyMs": 439.467897,
+        "readOk": true,
+        "passed": true
+      },
+      {
+        "fillLevelTarget": 100000000,
+        "rowsIngested": 100002816,
+        "ingestSecondsElapsed": 3524.401600423,
+        "probes": [
+          {
+            "name": "metrics-server",
+            "path": "/api/metrics/server",
+            "latencyMs": 3103.252748,
+            "ok": true
+          },
+          {
+            "name": "metrics-application",
+            "path": "/api/metrics/application",
+            "latencyMs": 3904.563088,
+            "ok": true
+          },
+          {
+            "name": "dashboard",
+            "path": "/api/dashboard",
+            "latencyMs": 6003.330427,
+            "ok": false,
+            "error": "Get \"http://10.0.0.2/api/dashboard?fromDate=2026-07-06T23%3A54%3A00Z&projectId=c3fb46ac-b78c-4b09-a38c-888acde8d5fe&toDate=2026-07-07T23%3A54%3A00Z\": context deadline exceeded"
+          }
+        ],
+        "medianLatencyMs": 3904.563088,
+        "readLatencyMs": 3904.563088,
+        "readOk": false,
+        "passed": false,
+        "failReason": "probe dashboard failed: Get \"http://10.0.0.2/api/dashboard?fromDate=2026-07-06T23%3A54%3A00Z&projectId=c3fb46ac-b78c-4b09-a38c-888acde8d5fe&toDate=2026-07-07T23%3A54%3A00Z\": context deadline exceeded (latency 6003ms)"
+      }
+    ],
+    "maxFillLevelPassed": 10000000
+  },
+  "maxFillLevelPassed": 10000000,
+  "bytesOnDisk": 1195753472,
+  "storedRows": 100002816,
+  "sutContainer": {
+    "status": "running",
+    "oomKilled": false,
+    "exitCode": 0,
+    "restartCount": 0
+  }
+}

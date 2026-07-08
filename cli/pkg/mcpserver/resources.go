@@ -2,7 +2,6 @@ package mcpserver
 
 import (
 	"context"
-	"sync"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -52,17 +51,9 @@ var knowledgeResources = []struct {
 	},
 }
 
-var knowledgeTexts = sync.OnceValue(func() map[string]string {
-	texts := make(map[string]string, len(knowledgeResources))
-	for _, r := range knowledgeResources {
-		texts[r.file] = knowledge.MustRead(r.file)
-	}
-	return texts
-})
-
 func addResources(srv *mcp.Server) {
 	for _, r := range knowledgeResources {
-		text := knowledgeTexts()[r.file]
+		text := knowledge.MustRead(r.file)
 		uri := r.uri
 		srv.AddResource(&mcp.Resource{
 			URI:         uri,

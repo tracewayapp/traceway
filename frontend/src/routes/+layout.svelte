@@ -50,10 +50,6 @@
 		return PUBLIC_PATHS.has(pathname) || pathname.startsWith('/accept-invitation');
 	}
 
-	function isProjectScopedPath(pathname: string): boolean {
-		return !isPublicPath(pathname);
-	}
-
 	// Track navigation depth for smart back buttons
 	let lastPathname = '';
 	afterNavigate((navigation) => {
@@ -77,7 +73,7 @@
 		// button, reloads, and shared links all resolve to the right project.
 		if (
 			authState.isAuthenticated &&
-			isProjectScopedPath(newPathname) &&
+			!isPublicPath(newPathname) &&
 			projectsState.currentProjectId &&
 			!newUrl.searchParams.get('projectId')
 		) {

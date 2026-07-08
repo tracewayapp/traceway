@@ -40,10 +40,6 @@ type Config struct {
 	PerRequestBearer bool
 }
 
-var baseInstructions = sync.OnceValue(func() string {
-	return knowledge.MustRead("instructions.md")
-})
-
 // sharedSchemaCache warms an mcp.SchemaCache once, by registering the full
 // tool surface against a throwaway server, so concurrent per-session New
 // calls only ever read fully-resolved schemas and never race on Resolve.
@@ -64,7 +60,7 @@ func New(cfg Config) *mcp.Server {
 	if version == "" {
 		version = "dev"
 	}
-	instructions := baseInstructions()
+	instructions := knowledge.MustRead("instructions.md")
 	if cfg.InstanceURL != "" {
 		instructions += "\n\nThe connected Traceway instance is " + cfg.InstanceURL + ". Dashboard URLs the user pastes should match this origin, and when citing a record for the user, link it there (e.g. " + cfg.InstanceURL + "/issues/<hash>)."
 	}

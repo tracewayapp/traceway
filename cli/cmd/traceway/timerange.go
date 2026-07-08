@@ -15,11 +15,6 @@ import (
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
 
-// errInvalidTimeRange is returned for any malformed combination of
-// --since / --from / --to. Callers map this to the invalid_time_range
-// error envelope code with exit 2 (usage).
-var errInvalidTimeRange = timerange.ErrInvalid
-
 // addTimeRangeFlags registers --since, --from, --to on the given command.
 // The default (no flags) is "since 1h".
 func addTimeRangeFlags(cmd *cobra.Command) {
@@ -40,7 +35,7 @@ func resolveTimeRange(cmd *cobra.Command) (client.TimeRange, error) {
 	return timerange.Resolve(since, from, to)
 }
 
-// renderTimeRangeError maps errInvalidTimeRange (from resolveTimeRange) to an envelope.
+// renderTimeRangeError maps timerange.ErrInvalid (from resolveTimeRange) to an envelope.
 func renderTimeRangeError(errOut io.Writer, mode output.Mode, err error) error {
 	_ = output.RenderError(errOut, mode, output.ErrorEnvelope{
 		Code:     "invalid_time_range",

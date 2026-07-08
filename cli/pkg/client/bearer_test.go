@@ -36,8 +36,8 @@ func TestWithBearer_presentsOwnTokenWithoutRefresher(t *testing.T) {
 	if gotAuth != "Bearer derived" {
 		t.Errorf("Authorization = %q, want the derived token", gotAuth)
 	}
-	if base.currentJWT() != "base" {
-		t.Errorf("base client JWT changed to %q", base.currentJWT())
+	if base.JWT != "base" {
+		t.Errorf("base client JWT changed to %q", base.JWT)
 	}
 
 	rejected := base.WithBearer("wrong")

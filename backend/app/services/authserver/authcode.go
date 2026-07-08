@@ -187,13 +187,6 @@ func DenyAuthorization(ex lit.Executor, clientId, redirectUri, state string) (st
 	return appendRedirectParams(redirectUri, url.Values{"error": {"access_denied"}}, state), nil
 }
 
-func LookupClient(ex lit.Executor, clientId string) (*models.OauthClient, error) {
-	if clientId == "" {
-		return nil, nil
-	}
-	return repositories.OauthClientRepository.FindById(ex, clientId)
-}
-
 func validateAuthorizeTarget(ex lit.Executor, clientId, redirectUri string) (*models.OauthClient, error) {
 	if clientId == "" {
 		return nil, ErrUnknownClient
@@ -222,7 +215,10 @@ func appendRedirectParams(redirectUri string, params url.Values, state string) s
 	return redirectUri + sep + params.Encode()
 }
 
-func RedeemAuthorizationCode(clientId, code, verifier, redirectUri string) (*models.TokenSetResponse, error) {
+func RedeemAuthorizationCode(clientId, code, verifier, redirectUri, resource, issuer string) (*models.TokenSetResponse, error) {
+	if err := ValidateResource(resource, issuer); err != nil {
+		return nil, err
+	}
 	if clientId == "" || code == "" || verifier == "" || redirectUri == "" {
 		return nil, ErrInvalidGrant
 	}

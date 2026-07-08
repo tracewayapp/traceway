@@ -109,7 +109,9 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		return c.HTTPClient.Do(req)
 	}
 
-	jwt := c.currentJWT()
+	c.mu.Lock()
+	jwt := c.JWT
+	c.mu.Unlock()
 	resp, err := attempt(jwt)
 	if err != nil {
 		return err
@@ -159,12 +161,6 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	}
 	respBody, _ := io.ReadAll(resp.Body)
 	return &APIError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(respBody))}
-}
-
-func (c *Client) currentJWT() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.JWT
 }
 
 // refreshAfter401 serializes token refresh across concurrent requests.

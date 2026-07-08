@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"net/http"
@@ -21,21 +20,8 @@ const UserEmailContextKey = "userEmail"
 
 const patTouchInterval = time.Minute
 
-type verifiedBearerKey struct{}
-
-func ContextWithVerifiedBearer(ctx context.Context, identity *BearerIdentity) context.Context {
-	return context.WithValue(ctx, verifiedBearerKey{}, identity)
-}
-
 func InitUseAppAuth() {
 	UseAppAuth = func(c *gin.Context) {
-		if identity, ok := c.Request.Context().Value(verifiedBearerKey{}).(*BearerIdentity); ok {
-			c.Set(UserIdContextKey, identity.UserId)
-			c.Set(UserEmailContextKey, identity.Email)
-			c.Next()
-			return
-		}
-
 		authHeader := c.GetHeader("Authorization")
 
 		if !strings.HasPrefix(authHeader, "Bearer ") {

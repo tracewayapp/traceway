@@ -148,13 +148,6 @@ func validateUUID(param, value string) error {
 
 var exceptionHashPattern = regexp.MustCompile(`^[0-9a-f]{16}$`)
 
-func validateHash(param, value string) error {
-	if !exceptionHashPattern.MatchString(value) {
-		return usageErrf("invalid %s %q: must be 16 lowercase hex characters, from list_exceptions or an /issues/<hash> dashboard URL", param, value)
-	}
-	return nil
-}
-
 func readOnly() *mcp.ToolAnnotations {
 	return &mcp.ToolAnnotations{ReadOnlyHint: true}
 }

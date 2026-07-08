@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/tracewayapp/traceway/cli/internal/timerange"
 )
 
 // helper to build a fake command with the time-range flags wired
@@ -149,7 +151,7 @@ func TestResolveTimeRange_invalidSinceStillWrapsErrInvalidTimeRange(t *testing.T
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !errors.Is(err, errInvalidTimeRange) {
-		t.Errorf("error %v should wrap errInvalidTimeRange", err)
+	if !errors.Is(err, timerange.ErrInvalid) {
+		t.Errorf("error %v should wrap timerange.ErrInvalid", err)
 	}
 }

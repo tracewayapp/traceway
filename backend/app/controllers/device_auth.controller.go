@@ -65,11 +65,7 @@ func (c *deviceAuthController) Token(ctx *gin.Context) {
 		}
 		ctx.JSON(http.StatusOK, ts)
 	case "authorization_code":
-		if err := authserver.ValidateResource(req.Resource, authserver.IssuerBaseURLFromRequest(ctx)); err != nil {
-			writeOAuthGrantError(ctx, err)
-			return
-		}
-		ts, err := authserver.RedeemAuthorizationCode(req.ClientId, req.Code, req.CodeVerifier, req.RedirectUri)
+		ts, err := authserver.RedeemAuthorizationCode(req.ClientId, req.Code, req.CodeVerifier, req.RedirectUri, req.Resource, authserver.IssuerBaseURLFromRequest(ctx))
 		if err != nil {
 			writeOAuthGrantError(ctx, err)
 			return

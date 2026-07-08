@@ -67,8 +67,8 @@ func (s *server) getException(ctx context.Context, req *mcp.CallToolRequest, in 
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := validateHash("hash", in.Hash); err != nil {
-		return nil, nil, err
+	if !exceptionHashPattern.MatchString(in.Hash) {
+		return nil, nil, usageErrf("invalid hash %q: must be 16 lowercase hex characters, from list_exceptions or an /issues/<hash> dashboard URL", in.Hash)
 	}
 	resp, err := s.client(req).GetException(ctx, projectID, in.Hash, page)
 	if err != nil {

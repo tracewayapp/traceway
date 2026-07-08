@@ -1,0 +1,93 @@
+# How a tool call travels: MCP client -> /mcp -> tools -> in-process loopback
+# into the same Gin handlers the dashboard uses -> telemetry store.
+# Theme block is the shared Traceway brand palette (canonical copy:
+# diagrams/traceway.yaml) inlined so the scene renders with a stock isotopo.
+canvas: { background: "#05070C", padding: 76 }
+theme:
+  text: { family: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace", size: 11, weight: "500", color: "#8A93A6" }
+  presets:
+    hero:
+      stroke: { color: "#8B78FF", width: 1.7 }
+      palette: { left: "#150E33", right: "#1C1345" }
+      faces:
+        top: { fill: { kind: linearGradient, angle: 135, stops: [ { offset: 0, color: "#2C2160" }, { offset: 1, color: "#150D33" } ] } }
+      effects: { cornerRadius: 12, faceSplit: true, opacity: 0.94, dropShadow: { dx: 0, dy: 14, blur: 26, color: "#00000099" }, backglow: { color: "#7C5CFF", radius: 74, opacity: 0.55 } }
+      text: { color: "#ECE9FF" }
+    tray:
+      stroke: { color: "#2A3346", width: 1.4 }
+      palette: { left: "#070A12", right: "#0A0E18" }
+      faces:
+        top: { fill: { kind: linearGradient, angle: 135, stops: [ { offset: 0, color: "#0E1320" }, { offset: 1, color: "#080B14" } ] } }
+      effects: { cornerRadius: 12, faceSplit: true, opacity: 0.6, dropShadow: { dx: 0, dy: 14, blur: 26, color: "#00000099" } }
+      text: { color: "#7E8798" }
+    chip:
+      stroke: { color: "#3A4560", width: 1.3 }
+      palette: { left: "#0C111B", right: "#131926" }
+      faces:
+        top: { fill: { kind: linearGradient, angle: 135, stops: [ { offset: 0, color: "#171D2B" }, { offset: 1, color: "#10151F" } ] } }
+      effects: { cornerRadius: 8, faceSplit: true, opacity: 0.95, dropShadow: { dx: 0, dy: 6, blur: 12, color: "#00000077" } }
+      text: { color: "#C9D0DD" }
+
+nodes:
+  scene:
+    shape: composite
+    parts:
+      # ============ HERO: the /mcp endpoint ============
+      - id: mcp
+        preset: hero
+        shape: rectangle
+        geom: { w: 210, d: 134, h: 32 }
+        icon: "iso://glyph/bolt/ECE9FF"
+        label: "Traceway · /mcp"
+
+      # ============ MCP client (left) ============
+      - id: client
+        offset: { wx: -318, wy: -10 }
+        preset: chip
+        shape: rectangle
+        geom: { w: 128, d: 76, h: 20 }
+        icon: "iso://glyph/agent/light"
+        label: "MCP client"
+
+      # ============ The tool layer (top-right) ============
+      - id: srv
+        offset: { wx: 344, wy: -292 }
+        preset: tray
+        shape: group
+        label: "mcpserver · same package as the CLI"
+        layout: { mode: column, gap: 0.7, padding: 1.35 }
+        parts:
+          - { id: tools, preset: chip, shape: rectangle, geom: { w: 130, d: 68, h: 18 }, icon: "iso://glyph/gauge/light",    label: "16 tools · schemas" }
+          - { id: know,  preset: chip, shape: rectangle, geom: { w: 130, d: 68, h: 18 }, icon: "iso://glyph/doc/light",      label: "prompts + knowledge" }
+
+      # ============ Loopback into the same process (bottom-right) ============
+      - id: gin
+        offset: { wx: 250, wy: 292 }
+        preset: tray
+        shape: group
+        label: "same process · no network hop"
+        layout: { mode: row, gap: 0.8, padding: 1.35 }
+        parts:
+          - { id: auth, preset: chip, shape: rectangle, geom: { w: 110, d: 70, h: 18 }, icon: "iso://glyph/shield/light", label: "auth middleware" }
+          - { id: api,  preset: chip, shape: rectangle, geom: { w: 110, d: 70, h: 18 }, icon: "iso://glyph/code/light",   label: "/api handlers" }
+
+      # ============ Telemetry stores (bottom-left) ============
+      - id: stores
+        offset: { wx: -260, wy: 292 }
+        preset: tray
+        shape: group
+        label: "your telemetry"
+        layout: { mode: row, gap: 0.8, padding: 1.35 }
+        parts:
+          - { id: ch, preset: chip, shape: cylinder, geom: { w: 94, d: 94, h: 30 }, icon: "iso://si/clickhouse/light",   label: "ClickHouse" }
+          - { id: sq, preset: chip, shape: cylinder, geom: { w: 94, d: 94, h: 30 }, icon: "iso://glyph/database/light",  label: "SQLite" }
+
+    connectors:
+      # client speaks streamable HTTP to the endpoint
+      - { from: client, to: mcp, routing: orthogonal, arrow: triangle, stroke: { color: "#4FC8E8", width: 2.4, gradient: { from: "#00D4FF", to: "#7C5CFF" } } }
+      # the endpoint dispatches into the tool layer
+      - { from: mcp, to: srv, routing: orthogonal, arrow: triangle, stroke: { color: "#4FC8E8", width: 2.4, gradient: { from: "#00D4FF", to: "#7C5CFF" } } }
+      # tools call the API through the in-process loopback (dashed = no socket)
+      - { from: srv, to: gin, routing: orthogonal, arrow: triangle, stroke: { color: "#4FC8E8", width: 2.0, dash: "6 5", gradient: { from: "#00D4FF", to: "#7C5CFF" } } }
+      # handlers read the stores (dashed grey = read-only)
+      - { from: gin, to: stores, routing: orthogonal, arrow: triangle, stroke: { color: "#5A6EA0", width: 1.6, dash: "5 5" } }

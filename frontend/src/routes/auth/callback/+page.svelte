@@ -3,6 +3,7 @@
     import { onMount } from 'svelte';
     import { authState } from '$lib/state/auth.svelte';
     import { projectsState } from '$lib/state/projects.svelte';
+    import { consumeSsoReturnTo, safeLocalPath } from '$lib/utils/navigation';
     import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
     import { CircleAlert } from "@lucide/svelte";
     import { LoadingCircle } from '$lib/components/ui/loading-circle';
@@ -26,6 +27,7 @@
         authState.setToken(token);
 
         if (needsSetup) {
+            // Leave the stashed returnTo in place: finish-setup consumes it.
             goto('/finish-setup');
             return;
         }
@@ -40,7 +42,7 @@
             const data = await response.json();
             authState.setOrganizations(data.organizations || []);
             projectsState.setProjects(data.projects || []);
-            goto('/');
+            goto(safeLocalPath(consumeSsoReturnTo()));
         } catch {
             authState.logout();
             error = 'Failed to load your account. Please try logging in again.';

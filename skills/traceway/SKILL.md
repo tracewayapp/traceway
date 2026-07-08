@@ -2,6 +2,7 @@
 name: traceway
 description: 'Operate a Traceway observability instance through the traceway CLI: log in, query exceptions, logs, endpoints, and metrics, and debug production issues down to root cause. Use when the user invokes /traceway with a subcommand, e.g. "/traceway login", "/traceway debug issue <hash|url|title>", "/traceway what''s broken in prod", or whenever they want to investigate errors, crashes, slowness, or logs from an app monitored by Traceway.'
 ---
+<!-- GENERATED FILE: assembled from cli/pkg/mcpserver/knowledge by cli/tools/skillgen. Edit the chunks there and run just gen-skills in cli/. -->
 
 # Traceway
 
@@ -16,6 +17,7 @@ Drive a Traceway instance from the terminal with the `traceway` CLI. The first w
 | `/traceway` (no argument) | Ask what they want: log in, debug an issue, or run a query |
 
 > The CLI is under active development. If a flag documented here does not appear in `traceway <command> --help`, trust the binary.
+> If a `traceway` MCP server is connected, prefer its tools over shelling out to the CLI: they wrap the same API with the same semantics, and this skill's knowledge is available as its resources. The server is this same binary (`traceway mcp`).
 
 ## Ground Rules (All Flows)
 
@@ -285,7 +287,7 @@ traceway exceptions archive <hash> --yes
 
 `/traceway perf <endpoint or symptom>`, or any request about slowness, high latency, p95/p99, or "why is X slow". Approach it as a senior performance engineer: quantify first, localize the cost to a span, confirm the cause against the checklist, separate code from saturation, then root cause. Reads only; never archive or mutate.
 
-For the full methodology and the bottleneck checklist (Select N+1, missing index, chatty IPC, connection-pool exhaustion, GC pauses, and ~20 more, each tied to the Traceway signal that confirms it), read `performance.md` in this skill directory. It is the authoritative reference.
+For the full methodology and the bottleneck checklist (Select N+1, missing index, chatty IPC, connection-pool exhaustion, GC pauses, and ~20 more, each tied to the Traceway signal that confirms it), read `performance.md` in this skill directory (over MCP: the `traceway://knowledge/performance` resource). It is the authoritative reference.
 
 The loop, using the read commands documented in this skill:
 

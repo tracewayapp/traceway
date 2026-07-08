@@ -18,9 +18,20 @@ type State struct {
 	Profiles       map[string]ProfileState `json:"profiles"`
 }
 
+// Credential kinds stored on ProfileState.CredentialKind. An empty value is
+// treated as a legacy password login (non-refreshable).
+const (
+	KindPassword = "password"
+	KindDevice   = "device"
+	KindPAT      = "pat"
+)
+
 // ProfileState holds runtime state for a single Traceway profile.
 type ProfileState struct {
 	JWT              string `json:"jwt"`
+	RefreshToken     string `json:"refresh_token,omitempty"`
+	TokenExpiresAt   int64  `json:"token_expires_at,omitempty"`
+	CredentialKind   string `json:"credential_kind,omitempty"`
 	CurrentProjectID string `json:"current_project_id,omitempty"`
 }
 

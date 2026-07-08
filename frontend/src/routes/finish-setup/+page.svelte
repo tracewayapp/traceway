@@ -12,6 +12,7 @@
     import { projectsState, type Framework } from '$lib/state/projects.svelte';
     import { themeState } from '$lib/state/theme.svelte';
     import FrameworkCombobox from '$lib/components/framework-combobox.svelte';
+    import { consumeSsoReturnTo, safeLocalPath } from '$lib/utils/navigation';
 
     const DEFAULT_FRAMEWORK: Framework = 'gin';
 
@@ -52,7 +53,7 @@
             authState.setToken(data.token);
             authState.setOrganizations(data.organizations || []);
             projectsState.setProjects(data.projects);
-            goto('/');
+            goto(safeLocalPath(consumeSsoReturnTo()));
         } catch (e) {
             error = e instanceof Error ? e.message : 'Setup failed';
         } finally {

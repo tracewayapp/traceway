@@ -12,6 +12,7 @@
     import { themeState } from '$lib/state/theme.svelte';
 	import { toast } from 'svelte-sonner';
     import OauthButtons from '$lib/components/oauth-buttons.svelte';
+    import { safeLocalPath } from '$lib/utils/navigation';
 
     const ERROR_MESSAGES: Record<string, string> = {
         oauth_failed: 'Sign-in failed. Please try again.',
@@ -86,9 +87,8 @@
             authState.setOrganizations(data.organizations || []);
             projectsState.setProjects(data.projects);
 
-            // Redirect to returnTo if provided, otherwise go to dashboard
-            const redirectTo = returnTo ? decodeURIComponent(returnTo) : '/';
-            goto(redirectTo);
+            // Redirect to returnTo if provided (validated same-origin), otherwise dashboard
+            goto(safeLocalPath(returnTo));
         } catch (e) {
             error = e instanceof Error ? e.message : 'Invalid email or password';
         } finally {

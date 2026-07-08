@@ -41,13 +41,13 @@
 		'/auth/callback',
 		'/finish-setup',
 		'/forgot-password',
-		'/reset-password'
+		'/reset-password',
+		'/device',
+		'/oauth/authorize'
 	]);
 
-	function isProjectScopedPath(pathname: string): boolean {
-		if (PUBLIC_PATHS.has(pathname)) return false;
-		if (pathname.startsWith('/accept-invitation')) return false;
-		return true;
+	function isPublicPath(pathname: string): boolean {
+		return PUBLIC_PATHS.has(pathname) || pathname.startsWith('/accept-invitation');
 	}
 
 	// Track navigation depth for smart back buttons
@@ -73,7 +73,7 @@
 		// button, reloads, and shared links all resolve to the right project.
 		if (
 			authState.isAuthenticated &&
-			isProjectScopedPath(newPathname) &&
+			!isPublicPath(newPathname) &&
 			projectsState.currentProjectId &&
 			!newUrl.searchParams.get('projectId')
 		) {
@@ -138,7 +138,7 @@
 <Tooltip.Provider delayDuration={0}>
 <!-- This is not ideal, but because our layout is a top level route it can end up showing sidebar on the login page (after the login before the transition). -->
 <!-- We could consider moving this to a lower level layout for the actual app, for now it's just a path check -->
-{#if authState.isAuthenticated && page.url.pathname !== '/login' && page.url.pathname !== '/register' && page.url.pathname !== '/auth/callback' && page.url.pathname !== '/finish-setup' && page.url.pathname !== '/forgot-password' && page.url.pathname !== '/reset-password' && !page.url.pathname.startsWith('/accept-invitation')}
+{#if authState.isAuthenticated && !isPublicPath(page.url.pathname)}
 	<Sidebar.SidebarProvider>
 		<AppSidebar />
 		<Sidebar.SidebarInset>
@@ -235,7 +235,7 @@
 
 	<Toaster position="bottom-right" />
 {:else}
-	{#if page.url.pathname === '/login' || page.url.pathname === '/register' || page.url.pathname === '/auth/callback' || page.url.pathname === '/finish-setup' || page.url.pathname === '/forgot-password' || page.url.pathname === '/reset-password' || page.url.pathname.startsWith('/accept-invitation')}
+	{#if isPublicPath(page.url.pathname)}
 		<main class="h-screen w-screen">
 			{@render children()}
 		</main>

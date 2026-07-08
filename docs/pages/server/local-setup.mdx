@@ -61,7 +61,7 @@ POSTGRES_SSLMODE=disable
 
 | Variable | Description |
 |----------|-------------|
-| `JWT_SECRET` | Secret key for signing JWT tokens. Must be at least 32 characters. |
+| `JWT_SECRET` | Signs all authentication tokens (dashboard sessions and CLI/MCP device logins). Must be at least 32 characters; use a strong, unique secret and keep it stable. See [CLI Authentication](/learn/cli-auth#set-a-strong-jwt_secret). |
 | `CLICKHOUSE_SERVER` | ClickHouse server address (host:port) |
 | `CLICKHOUSE_DATABASE` | ClickHouse database name |
 | `CLICKHOUSE_USERNAME` | ClickHouse username |
@@ -73,7 +73,7 @@ POSTGRES_SSLMODE=disable
 | `POSTGRES_USERNAME` | PostgreSQL username |
 | `POSTGRES_PASSWORD` | PostgreSQL password |
 | `POSTGRES_SSLMODE` | PostgreSQL SSL mode (`disable`, `require`, etc.) |
-| `APP_BASE_URL` | Public URL of your Traceway instance. Used for SDK connection instructions, email links, and OAuth callback URLs. For local dev set this to `http://localhost:5173` so OAuth callbacks land on the Vite dev server (which proxies `/api` back to the Go backend). |
+| `APP_BASE_URL` | Public URL of your Traceway instance. Used for SDK connection instructions, email links, OAuth callback URLs, and the CLI/MCP OAuth issuer plus device-login verification URL. For local dev set this to `http://localhost:5173` so OAuth callbacks land on the Vite dev server (which proxies `/api` back to the Go backend). |
 | `GOOGLE_CLIENT_ID` | Optional. Google OAuth client ID. Setting both Google variables enables the **Continue with Google** button. See the [SSO guide](/learn/sso). |
 | `GOOGLE_CLIENT_SECRET` | Optional. Google OAuth client secret. |
 | `GITHUB_CLIENT_ID` | Optional. GitHub OAuth App client ID. Setting both GitHub variables enables the **Continue with GitHub** button. See the [SSO guide](/learn/sso). |

@@ -1,9 +1,16 @@
 package middleware
 
 import (
-	"github.com/tracewayapp/traceway/backend/app/services"
+	"database/sql"
+	"errors"
 	"net/http"
 	"strings"
+	"time"
+
+	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/services"
+	traceway "go.tracewayapp.com"
 
 	"github.com/gin-gonic/gin"
 )
@@ -11,7 +18,7 @@ import (
 const UserIdContextKey = "userId"
 const UserEmailContextKey = "userEmail"
 
-var UseAppAuth func(c *gin.Context)
+const patTouchInterval = time.Minute
 
 func InitUseAppAuth() {
 	UseAppAuth = func(c *gin.Context) {
@@ -22,20 +29,70 @@ func InitUseAppAuth() {
 			return
 		}
 
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-
-		claims, err := services.ValidateToken(tokenString)
+		identity, err := AuthenticateBearer(strings.TrimPrefix(authHeader, "Bearer "))
 		if err != nil {
-			c.AbortWithStatus(http.StatusUnauthorized)
+			if errors.Is(err, ErrInvalidBearer) {
+				c.AbortWithStatus(http.StatusUnauthorized)
+				return
+			}
+			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("bearer auth failed: %w", err))
 			return
 		}
 
-		c.Set(UserIdContextKey, claims.UserId)
-		c.Set(UserEmailContextKey, claims.Email)
+		c.Set(UserIdContextKey, identity.UserId)
+		c.Set(UserEmailContextKey, identity.Email)
 
 		c.Next()
 	}
 }
+
+var ErrInvalidBearer = errors.New("invalid bearer token")
+
+type BearerIdentity struct {
+	UserId  int
+	Email   string
+	Expires time.Time
+}
+
+func AuthenticateBearer(tokenString string) (*BearerIdentity, error) {
+	if strings.HasPrefix(tokenString, "twp_") {
+		pat, err := repositories.PersonalAccessTokenRepository.FindActiveByToken(db.DB, tokenString)
+		if err != nil {
+			return nil, err
+		}
+		if pat == nil {
+			return nil, ErrInvalidBearer
+		}
+		touchPersonalAccessToken(pat)
+		return &BearerIdentity{UserId: pat.UserId, Email: pat.Email}, nil
+	}
+
+	claims, err := services.ValidateToken(tokenString)
+	if err != nil {
+		return nil, ErrInvalidBearer
+	}
+	identity := &BearerIdentity{UserId: claims.UserId, Email: claims.Email}
+	if claims.ExpiresAt != nil {
+		identity.Expires = claims.ExpiresAt.Time
+	}
+	return identity, nil
+}
+
+func touchPersonalAccessToken(pat *repositories.ActivePAT) {
+	now := time.Now()
+	if pat.LastUsedAt != nil && now.Sub(*pat.LastUsedAt) < patTouchInterval {
+		return
+	}
+
+	go func() {
+		defer traceway.Recover()
+		_, _ = db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
+			return struct{}{}, repositories.PersonalAccessTokenRepository.TouchLastUsed(tx, pat.Id, now)
+		})
+	}()
+}
+
+var UseAppAuth func(c *gin.Context)
 
 func GetUserId(c *gin.Context) int {
 	if id, exists := c.Get(UserIdContextKey); exists {

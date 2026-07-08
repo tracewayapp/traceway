@@ -1,0 +1,80 @@
+---
+title: "The MCP server was the easy part"
+date: "2026-07-08"
+category: "engineering"
+description: "Traceway now speaks MCP: a remote server with OAuth login built in, and a local stdio one that rides the CLI session. How it works, the three ways to authenticate, and when I'd still reach for the CLI instead."
+---
+
+Before we get into it, the usual disclosure: I'm the person building Traceway. Everything below is open source and in the [Traceway](https://github.com/tracewayapp/traceway) repo.
+
+Traceway now speaks MCP. Point Claude Code, Claude Desktop, or Cursor at your instance and the agent reads the same production data your dashboard shows: exceptions, logs, endpoint latency, traces, metrics. It can find the deploy where p95 doubled, pull the stack trace, and walk the span waterfall, all without you copy-pasting a single screenshot into a chat window.
+
+The interesting part is that the MCP server itself was the quick part. It's sixteen tools, and every one of them is a thin wrapper around an API call that already existed, because the `traceway` CLI makes the exact same calls. The real work went into everything around it: the OAuth server, the consent screen, the token lifecycle. So that's how I'll tell it. The easy part first.
+
+## Sixteen tools and a client I already had
+
+The server lives in one Go package, and it's deliberately boring. Each tool wraps one call on the same API client the CLI commands use, declares a JSON schema for its output, and returns validated structured content next to the plain text. Fourteen of the sixteen are read-only and annotated as such. The other two archive and unarchive exceptions, they undo each other, and their descriptions tell the agent to only touch them when a human asks by name. "Look at this error" means read it, not archive it.
+
+The debugging knowledge ships inside the server too. Four prompts (`debug_issue`, `investigate_performance`, `whats_broken`, `resolve_notification`) and nine short knowledge documents cover things a model gets wrong on its own: always bound queries in time, recover a record's timestamp from the dashboard URL before guessing, which tool replaces which CLI command. More on where those documents come from at the end, because they're the reason this whole thing stays maintainable.
+
+## One process, no second service
+
+Here's the part I like. The remote server isn't a sidecar. Your existing Traceway backend serves it at `/mcp`, and internally the tool layer talks to the API through a loopback transport: a custom `RoundTripper` that hands the request straight to the same Gin engine, in process, no socket, no internal port, no network hop.
+
+![How a tool call travels through one process](/diagrams/mcp-under-the-hood.svg)
+
+Every tool call still enters the API through the front door. The caller's bearer token rides along on each loopback request, the same auth middleware validates it, and the same project-access checks run. The MCP layer holds no special powers; if your token can't see a project in the dashboard, it can't see it through a tool either. I got the multi-user isolation test for free: two people hitting `/mcp` at once are just two bearer tokens flowing through the same middleware that already handles two browser tabs.
+
+One binary, three surfaces. The CLI, the stdio MCP server, and the remote MCP server are the same code reading the same API.
+
+## Three ways in
+
+Now the hard part. An MCP endpoint that can read your production errors needs real authentication, and MCP clients expect to set that up themselves. The spec leans on OAuth, and OAuth is where the time went.
+
+![Three credentials, one door](/diagrams/mcp-auth-paths.svg)
+
+**OAuth, where the client does the work.** Add the server in Claude Code and watch what happens:
+
+```bash
+claude mcp add --transport http traceway https://<your-instance>/mcp
+```
+
+The first request has no token, so the backend answers 401 with a `WWW-Authenticate` header pointing at a discovery document. From there the client finds the authorization server metadata, registers *itself* as an OAuth client (RFC 7591 dynamic client registration, no admin screen, no client secret to paste), and opens your browser on a consent page served by your own instance. You click Approve. The client exchanges the resulting code for tokens and starts calling tools. Nothing was installed and nobody configured anything.
+
+Under the hood that exchange is the authorization-code grant with PKCE, S256 only. PKCE is a small trick: the client invents a secret, sends only its hash with the authorization request, then must present the original secret at the token endpoint. Whoever steals the code mid-flight can't redeem it without the secret that never left the client. The codes themselves are single-use, expire in five minutes, and are stored as SHA-256 hashes; a failed exchange burns the code anyway. What you get back is a 15-minute access token plus a refresh token that rotates on every use and lives at most 90 days. Replay an already-spent refresh token and the server revokes the whole token family, on the theory that someone else is holding your credentials.
+
+**Personal access tokens, for everything headless.** CI jobs and clients that don't do OAuth send a `twp_` token as a plain bearer header. You mint them on your account page, give them an optional expiry, and revoke them from the same screen. Also stored hashed, because a token table is a target.
+
+**The device flow, for terminals.** `traceway login` shows you a short code, you approve it in the browser, and the CLI holds the same rotating refresh token an OAuth client would. This one predates MCP, but the `/mcp` endpoint accepts its tokens too, since all three credentials go through one bearer-auth path.
+
+## The local server
+
+If you already use the CLI there's a second way to run the whole thing, no HTTP transport involved:
+
+```bash
+claude mcp add traceway -- traceway mcp
+```
+
+The CLI doubles as a stdio MCP server. It reuses your CLI session, refreshes tokens the same way, and inherits your current project, so tools don't need a `project_id` on every call. In a container, skip the session and set `TRACEWAY_URL` and `TRACEWAY_TOKEN` (a personal access token) in the environment. If you're not logged in it exits immediately and tells you how to fix it, instead of leaving the agent talking to a server that can't answer.
+
+## So when would I not use MCP?
+
+Honest answer: whenever the agent has a shell.
+
+![One knowledge source, two paths, same instance](/diagrams/mcp-shell-or-not.svg)
+
+In Claude Code I run the Traceway *skill* with the CLI. Two reasons.
+
+First, context. Sixteen tool definitions with their schemas ride along in every conversation, used or not. That's a real tax on the context window. A skill is one paragraph until the agent actually needs it, and then it loads exactly the playbook it wants. Same knowledge, paid for only when it's used.
+
+Second, composition. A shell agent can pipe `traceway exceptions list --output json` through `jq`, cross-reference the result with `git log`, and grep the codebase for the function in the stack trace, all in one breath. Tools don't compose like that. A tool result lands in the conversation and the model has to carry it by hand to the next call.
+
+So the rule I actually follow is one question: **can the agent run commands?** Yes: skill plus CLI, it's lighter and it composes. No, which is Claude Desktop, claude.ai in the browser, IDE chat panels, or a teammate who will never install a binary: the remote MCP server, because OAuth makes the setup self-service and there's nothing to install.
+
+The trap with shipping both would be maintaining two brains that drift apart. That's the one thing I refused to do. The skill files and the MCP prompts and resources are generated from the same knowledge documents in the repo, and CI fails if a regeneration would change the committed skill. The CLI skill and the MCP server can't disagree, because there's nothing to disagree about. One source, rendered twice.
+
+If you want to try it, the [MCP docs](https://docs.tracewayapp.com/learn/mcp) have the copy-paste setup for Claude Code, Claude Desktop, and Cursor, remote and local both.
+
+---
+
+*I'm building this in the open. Traceway is MIT-licensed and OpenTelemetry-native, and everything described here ships with it. If you wire an agent up to your instance and it finds something your dashboards missed, I genuinely want to hear about it: dusan@tracewayapp.com.*

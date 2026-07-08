@@ -1,0 +1,86 @@
+# Traceway home hero ornament. The platform sits in the center; six signals,
+# each in its own accent color, ring it and connect inward with matching
+# strokes. Transparent canvas (no background) so the SVG can overlap the hero
+# screenshot on the home page. Text theme matches the shared Traceway brand
+# palette (canonical copy: diagrams/traceway.yaml).
+canvas: { padding: 56 }
+theme:
+  text: { family: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace", size: 11, weight: "500", color: "#8A93A6" }
+  presets:
+    hero:
+      stroke: { color: "#8B78FF", width: 1.7 }
+      palette: { left: "#150E33", right: "#1C1345" }
+      faces:
+        top: { fill: { kind: linearGradient, angle: 135, stops: [ { offset: 0, color: "#2C2160" }, { offset: 1, color: "#150D33" } ] } }
+      effects: { cornerRadius: 12, faceSplit: true, opacity: 0.94, dropShadow: { dx: 0, dy: 14, blur: 26, color: "#00000099" }, backglow: { color: "#7C5CFF", radius: 52, opacity: 0.3 } }
+      text: { color: "#ECE9FF" }
+    sig-cyan:
+      stroke: { color: "#00D4FF", width: 1.4 }
+      palette: { left: "#051D28", right: "#082633" }
+      faces:
+        top: { fill: { kind: linearGradient, angle: 135, stops: [ { offset: 0, color: "#0C3344" }, { offset: 1, color: "#06202C" } ] } }
+      effects: { cornerRadius: 10, faceSplit: true, opacity: 0.96, dropShadow: { dx: 0, dy: 8, blur: 16, color: "#00000088" }, backglow: { color: "#00D4FF", radius: 22, opacity: 0.16 } }
+      text: { color: "#D9F6FF" }
+    sig-indigo:
+      stroke: { color: "#8B78FF", width: 1.4 }
+      palette: { left: "#120C2E", right: "#1A1240" }
+      faces:
+        top: { fill: { kind: linearGradient, angle: 135, stops: [ { offset: 0, color: "#241A52" }, { offset: 1, color: "#150E33" } ] } }
+      effects: { cornerRadius: 10, faceSplit: true, opacity: 0.96, dropShadow: { dx: 0, dy: 8, blur: 16, color: "#00000088" }, backglow: { color: "#7C5CFF", radius: 22, opacity: 0.16 } }
+      text: { color: "#ECE9FF" }
+    sig-green:
+      stroke: { color: "#2DE0A7", width: 1.4 }
+      palette: { left: "#05201A", right: "#082E24" }
+      faces:
+        top: { fill: { kind: linearGradient, angle: 135, stops: [ { offset: 0, color: "#0B3A2C" }, { offset: 1, color: "#06231B" } ] } }
+      effects: { cornerRadius: 10, faceSplit: true, opacity: 0.96, dropShadow: { dx: 0, dy: 8, blur: 16, color: "#00000088" }, backglow: { color: "#2DE0A7", radius: 22, opacity: 0.16 } }
+      text: { color: "#DCFCEF" }
+    sig-pink:
+      stroke: { color: "#FF5C8A", width: 1.4 }
+      palette: { left: "#220A13", right: "#30101B" }
+      faces:
+        top: { fill: { kind: linearGradient, angle: 135, stops: [ { offset: 0, color: "#401524" }, { offset: 1, color: "#260C15" } ] } }
+      effects: { cornerRadius: 10, faceSplit: true, opacity: 0.96, dropShadow: { dx: 0, dy: 8, blur: 16, color: "#00000088" }, backglow: { color: "#FF5C8A", radius: 22, opacity: 0.16 } }
+      text: { color: "#FFE1EA" }
+    sig-amber:
+      stroke: { color: "#FFB224", width: 1.4 }
+      palette: { left: "#201705", right: "#2E2108" }
+      faces:
+        top: { fill: { kind: linearGradient, angle: 135, stops: [ { offset: 0, color: "#3D2C0A" }, { offset: 1, color: "#241A06" } ] } }
+      effects: { cornerRadius: 10, faceSplit: true, opacity: 0.96, dropShadow: { dx: 0, dy: 8, blur: 16, color: "#00000088" }, backglow: { color: "#FFB224", radius: 22, opacity: 0.16 } }
+      text: { color: "#FFF0D4" }
+    sig-fuchsia:
+      stroke: { color: "#D75CFF", width: 1.4 }
+      palette: { left: "#1C0A28", right: "#2A1038" }
+      faces:
+        top: { fill: { kind: linearGradient, angle: 135, stops: [ { offset: 0, color: "#36154A" }, { offset: 1, color: "#200C2C" } ] } }
+      effects: { cornerRadius: 10, faceSplit: true, opacity: 0.96, dropShadow: { dx: 0, dy: 8, blur: 16, color: "#00000088" }, backglow: { color: "#D75CFF", radius: 22, opacity: 0.16 } }
+      text: { color: "#F5DFFF" }
+
+nodes:
+  scene:
+    shape: composite
+    parts:
+      # ============ HERO: the platform ============
+      - id: traceway
+        preset: hero
+        shape: rectangle
+        geom: { w: 216, d: 140, h: 34 }
+        icon: "iso://glyph/bolt/ECE9FF"
+        label: "Traceway"
+
+      # ============ Signals: hue-wheel ring around the platform ============
+      - { id: replay,  offset: { wx: 157,  wy: -229 }, preset: sig-pink,    shape: rectangle, geom: { w: 112, d: 70, h: 20 }, icon: "iso://glyph/browser/FFE1EA",  label: "Replay" }
+      - { id: errors,  offset: { wx: -83,  wy: -187 }, preset: sig-amber,   shape: rectangle, geom: { w: 112, d: 70, h: 20 }, icon: "iso://glyph/bell/FFF0D4",     label: "Errors" }
+      - { id: metrics, offset: { wx: -240, wy: 43 },   preset: sig-green,   shape: rectangle, geom: { w: 112, d: 70, h: 20 }, icon: "iso://glyph/chart/DCFCEF",    label: "Metrics" }
+      - { id: logs,    offset: { wx: -157, wy: 229 },  preset: sig-cyan,    shape: rectangle, geom: { w: 112, d: 70, h: 20 }, icon: "iso://glyph/doc/D9F6FF",      label: "Logs" }
+      - { id: traces,  offset: { wx: 130,  wy: 200 },  preset: sig-indigo,  shape: rectangle, geom: { w: 112, d: 70, h: 20 }, icon: "iso://glyph/graph/ECE9FF",    label: "Traces" }
+      - { id: ai,      offset: { wx: 280,  wy: -50 },  preset: sig-fuchsia, shape: rectangle, geom: { w: 112, d: 70, h: 20 }, icon: "iso://glyph/sparkles/F5DFFF", label: "AI traces" }
+
+    connectors:
+      - { from: logs,    to: traceway, routing: bezier, arrow: triangle, stroke: { color: "#00D4FF", width: 2 } }
+      - { from: traces,  to: traceway, routing: bezier, arrow: triangle, stroke: { color: "#8B78FF", width: 2 } }
+      - { from: metrics, to: traceway, routing: bezier, arrow: triangle, stroke: { color: "#2DE0A7", width: 2 } }
+      - { from: replay,  to: traceway, routing: bezier, arrow: triangle, stroke: { color: "#FF5C8A", width: 2 } }
+      - { from: errors,  to: traceway, routing: bezier, arrow: triangle, stroke: { color: "#FFB224", width: 2 } }
+      - { from: ai,      to: traceway, routing: bezier, arrow: triangle, stroke: { color: "#D75CFF", width: 2 } }

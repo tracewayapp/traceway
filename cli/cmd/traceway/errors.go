@@ -3,8 +3,8 @@ package main
 import (
 	"errors"
 	"io"
-	"net/url"
 
+	"github.com/tracewayapp/traceway/cli/internal/errclass"
 	"github.com/tracewayapp/traceway/cli/internal/exitcode"
 	"github.com/tracewayapp/traceway/cli/internal/output"
 	"github.com/tracewayapp/traceway/cli/pkg/client"
@@ -38,63 +38,24 @@ func renderAPIError(errOut io.Writer, mode output.Mode, err error, loginContext 
 	return newCLIError(env.ExitCode, env.Code)
 }
 
+// classifyError delegates to internal/errclass (shared with the MCP server)
+// and layers on the CLI-only context: a login-command 401 means bad
+// credentials, and an explicit --profile belongs in the re-login hint.
 func classifyError(err error, loginContext bool) output.ErrorEnvelope {
-	switch {
-	case errors.Is(err, client.ErrUnauthorized):
-		if loginContext {
-			return output.ErrorEnvelope{
-				Code: "not_authenticated", Message: "invalid email or password",
-				ExitCode: exitcode.Auth,
-			}
-		}
-		hint := "traceway login"
-		if flagProfile != "" {
-			hint = "traceway login --profile " + flagProfile
-		}
+	if loginContext && errors.Is(err, client.ErrUnauthorized) {
 		return output.ErrorEnvelope{
-			Code: "token_expired", Message: "session expired or invalid",
-			Hint:     hint,
+			Code: "not_authenticated", Message: "invalid email or password",
 			ExitCode: exitcode.Auth,
 		}
-	case errors.Is(err, client.ErrForbidden):
-		return output.ErrorEnvelope{
-			Code: "forbidden", Message: "permission denied",
-			ExitCode: exitcode.Auth,
-		}
-	case errors.Is(err, client.ErrNotFound):
-		return output.ErrorEnvelope{
-			Code: "not_found", Message: "resource not found",
-			ExitCode: exitcode.NotFound,
-		}
-	case errors.Is(err, client.ErrRateLimited):
-		return output.ErrorEnvelope{
-			Code: "rate_limited", Message: "rate limit exceeded — slow down or retry later",
-			ExitCode: exitcode.RateLimited,
-		}
 	}
-	var apiErr *client.APIError
-	if errors.As(err, &apiErr) {
-		if apiErr.StatusCode >= 500 {
-			return output.ErrorEnvelope{
-				Code: "server_error", Message: apiErr.Error(),
-				ExitCode: exitcode.Server,
-			}
-		}
-		return output.ErrorEnvelope{
-			Code: "api_error", Message: apiErr.Error(),
-			ExitCode: exitcode.Generic,
-		}
-	}
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
-		return output.ErrorEnvelope{
-			Code: "connection_failed", Message: urlErr.Error(),
-			Hint:     "check that the Traceway URL is reachable and the network is up",
-			ExitCode: exitcode.Connection,
-		}
+	c := errclass.Classify(err)
+	if c.Code == "token_expired" && flagProfile != "" {
+		c.Hint = "traceway login --profile " + flagProfile
 	}
 	return output.ErrorEnvelope{
-		Code: "internal", Message: err.Error(),
-		ExitCode: exitcode.Generic,
+		Code:     c.Code,
+		Message:  c.Message,
+		Hint:     c.Hint,
+		ExitCode: c.ExitCode,
 	}
 }

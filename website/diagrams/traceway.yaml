@@ -1,0 +1,38 @@
+# Traceway brand theme for iso-topology.
+# Deep ink stage matching the site's --ink-0 background, ONE glowing electric-indigo
+# hero (--a1 #7c5cff), hairline ink trays/chips, and cyan→indigo flow connectors
+# (--a2 #00d4ff → --a1). JetBrains Mono labels to match --font-display.
+# Load with:  isotopo render --theme traceway  (after copying into iso-topology/themes/)
+# or in-DSL:  theme: { use: traceway }
+description: "deep ink stage, indigo-glass hero, cyan→indigo flows — Traceway brand"
+canvas: { background: "#05070C", padding: 76 }
+theme:
+  text: { family: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace", size: 12, weight: "500", color: "#8A93A6" }
+  roles:
+    # ---- the one glowing element: electric-indigo glass hero ----
+    hero:
+      stroke: { color: "#8B78FF", width: 1.7 }
+      palette: { left: "#150E33", right: "#1C1345" }
+      faces:
+        top: { fill: { kind: linearGradient, angle: 135, stops: [ { offset: 0, color: "#2C2160" }, { offset: 1, color: "#150D33" } ] } }
+      effects: { cornerRadius: 12, faceSplit: true, opacity: 0.94, dropShadow: { dx: 0, dy: 14, blur: 26, color: "#00000099" }, backglow: { color: "#7C5CFF", radius: 74, opacity: 0.55 } }
+      text: { color: "#ECE9FF" }
+    # ---- hairline dark category panel (low fill, reads as ink-0/ink-1) ----
+    tray:
+      stroke: { color: "#2A3346", width: 1.4 }
+      palette: { left: "#070A12", right: "#0A0E18" }
+      faces:
+        top: { fill: { kind: linearGradient, angle: 135, stops: [ { offset: 0, color: "#0E1320" }, { offset: 1, color: "#080B14" } ] } }
+      effects: { cornerRadius: 12, faceSplit: true, opacity: 0.6, dropShadow: { dx: 0, dy: 14, blur: 26, color: "#00000099" } }
+      text: { color: "#7E8798" }
+    # ---- the workhorse: ink-3 glass tile ----
+    chip:
+      stroke: { color: "#3A4560", width: 1.3 }
+      palette: { left: "#0C111B", right: "#131926" }
+      faces:
+        top: { fill: { kind: linearGradient, angle: 135, stops: [ { offset: 0, color: "#171D2B" }, { offset: 1, color: "#10151F" } ] } }
+      effects: { cornerRadius: 8, faceSplit: true, opacity: 0.95, dropShadow: { dx: 0, dy: 6, blur: 12, color: "#00000077" } }
+      text: { color: "#C9D0DD" }
+  roleGeoms:
+    hero: { w: 210, d: 140, h: 34 }
+    chip: { w: 96, d: 80, h: 20 }

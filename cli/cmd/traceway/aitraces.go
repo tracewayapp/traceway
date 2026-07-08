@@ -6,7 +6,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tracewayapp/traceway/cli/internal/output"
-	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
 
 func newAiTracesCmd() *cobra.Command {
@@ -53,7 +52,7 @@ func runAiTracesShow(cmd *cobra.Command, args []string) error {
 		return renderTimestampError(cmd.ErrOrStderr(), mode, "recorded-at", err)
 	}
 
-	c := client.New(sess.URL, client.WithJWT(sess.JWT))
+	c := sess.Client()
 	resp, err := c.GetAiTrace(ctx, sess.ProjectID, args[0], recordedAt)
 	if err != nil {
 		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)

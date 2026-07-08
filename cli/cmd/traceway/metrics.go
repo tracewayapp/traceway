@@ -12,7 +12,7 @@ import (
 
 // metricAggregations is the canonical list of aggregations the server accepts.
 // Kept in lockstep with the --aggregation flag's help text.
-var metricAggregations = []string{"avg", "sum", "count", "min", "max", "p50", "p95", "p99"}
+var metricAggregations = client.MetricAggregations
 
 func newMetricsCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -71,7 +71,7 @@ func runMetricsQuery(cmd *cobra.Command, _ []string) error {
 			"use --tag key=value (repeatable)")
 	}
 
-	c := client.New(sess.URL, client.WithJWT(sess.JWT))
+	c := sess.Client()
 	resp, err := c.QueryMetrics(ctx, sess.ProjectID, client.QueryMetricsRequest{
 		TimeRange:       tr,
 		IntervalMinutes: intervalMin,

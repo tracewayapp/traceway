@@ -1,6 +1,9 @@
 package controllers
 
 import (
+	"net/http"
+	"time"
+
 	"github.com/tracewayapp/traceway/backend/app/config"
 	"github.com/tracewayapp/traceway/backend/app/controllers/clientcontrollers"
 	"github.com/tracewayapp/traceway/backend/app/controllers/otelcontrollers"
@@ -10,6 +13,8 @@ import (
 )
 
 var ExtensionRoutes []func(router *gin.RouterGroup)
+
+var postPreflight = []string{http.MethodPost, http.MethodOptions}
 
 type PaginationParams struct {
 	Page     int `json:"page" binding:"min=1"`
@@ -128,6 +133,27 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.GET("/auth/start/:provider", middleware.Transactional, OAuthController.Begin)
 	router.GET("/auth/callback/:provider", middleware.Transactional, OAuthController.Callback)
 	router.POST("/auth/finish-setup", middleware.UseAppAuth, middleware.Transactional, OAuthController.FinishSetup)
+
+	router.Match(postPreflight, "/auth/device/authorize", middleware.OAuthCors, middleware.RateLimitPerIP(10, time.Minute), DeviceAuthController.Authorize)
+	router.Match(postPreflight, "/auth/device/token", middleware.OAuthCors, DeviceAuthController.Token)
+	router.Match(postPreflight, "/auth/token", middleware.OAuthCors, DeviceAuthController.Token)
+	router.Match(postPreflight, "/auth/logout", middleware.OAuthCors, DeviceAuthController.Logout)
+	router.GET("/device", middleware.UseAppAuth, DeviceAuthController.Lookup)
+	router.POST("/device/approve", middleware.UseAppAuth, middleware.Transactional, DeviceAuthController.Approve)
+	router.POST("/device/deny", middleware.UseAppAuth, middleware.Transactional, DeviceAuthController.Deny)
+
+	router.Match(postPreflight, "/oauth/register", middleware.OAuthCors, middleware.RateLimitPerIP(10, time.Minute), middleware.Transactional, OauthAuthorizeController.Register)
+	router.GET("/oauth/client", middleware.UseAppAuth, OauthAuthorizeController.Lookup)
+	router.POST("/oauth/approve", middleware.UseAppAuth, middleware.Transactional, OauthAuthorizeController.Approve)
+	router.POST("/oauth/deny", middleware.UseAppAuth, OauthAuthorizeController.Deny)
+
+	router.POST("/personal-access-tokens", middleware.UseAppAuth, middleware.Transactional, PATController.Create)
+	router.GET("/personal-access-tokens", middleware.UseAppAuth, PATController.List)
+	router.DELETE("/personal-access-tokens/:id", middleware.UseAppAuth, middleware.Transactional, PATController.Revoke)
+
+	// The OAuth discovery documents (/.well-known/oauth-*) are registered on the
+	// root engine in cmd/run.go, not here: RFC 8414 / RFC 9728 clients fetch them
+	// at the origin root, not under /api.
 
 	if config.Config.CloudMode != "true" {
 		router.GET("/has-organizations", middleware.Transactional, AuthController.HasOrganizations)

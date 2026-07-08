@@ -1,0 +1,97 @@
+# MCP Server
+
+Traceway speaks [MCP](https://modelcontextprotocol.io) in two ways: the `traceway` CLI doubles as a **local stdio server** (`traceway mcp`), and every backend serves the same tools as a **remote server** at `https://<your-instance>/mcp` with OAuth login built in. Either way, MCP clients like Claude Code, Claude Desktop, and Cursor can investigate your production errors, logs, latency, and metrics directly.
+
+The server is a thin layer over the same API client the CLI uses, and it ships the same operator playbooks the Traceway skill contains, exposed as MCP resources and prompts. One binary, one login, three surfaces.
+
+## Remote server (zero install)
+
+Point any streamable-HTTP MCP client at your instance and it handles login itself:
+
+```bash
+# Claude Code
+claude mcp add --transport http traceway https://<your-instance>/mcp
+```
+
+On first use the client discovers the OAuth metadata, registers itself (RFC 7591 dynamic client registration), and opens your browser on the instance's consent page. Approve, and the client holds a short-lived access token plus a rotating refresh token; nothing to install or configure on the host.
+
+Non-OAuth clients (or CI) can instead send a personal access token directly: `Authorization: Bearer twp_...` on every request.
+
+Two things differ from the local server: there is no default project (pass `project_id`, or let the model call `list_projects` first), and an unauthenticated request gets a `401` with a `WWW-Authenticate` challenge pointing at `/.well-known/oauth-protected-resource/mcp`, which is how spec-compliant clients find the login flow. The discovery documents and the `/mcp` endpoint answer CORS preflights, so browser-based clients (like the MCP Inspector auth debugger) can reach them too.
+
+## Local server (CLI session)
+
+Log in and pick a default project once, in a terminal:
+
+```bash
+traceway login --url https://<your-instance>
+traceway projects use <project-id>
+```
+
+Then register the server with your MCP client:
+
+```bash
+# Claude Code
+claude mcp add traceway -- traceway mcp
+```
+
+For Claude Desktop, Cursor, or any other client, the command is `traceway` with the single argument `mcp`:
+
+```json
+{
+  "mcpServers": {
+    "traceway": {
+      "command": "traceway",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+The server reuses the CLI session (including automatic token refresh for device logins) and the CLI's current project. If you are not logged in, `traceway mcp` exits immediately with instructions; log in in a terminal and reconnect.
+
+## Headless use (CI, containers)
+
+Skip the CLI session entirely with environment variables:
+
+| Variable | Purpose |
+|---|---|
+| `TRACEWAY_URL` | Instance origin, e.g. `https://traceway.example.com` |
+| `TRACEWAY_TOKEN` | A personal access token (`twp_...`, see [CLI Authentication](/learn/cli-auth)) |
+| `TRACEWAY_PROJECT` | Optional default project id |
+
+## Tools
+
+Every tool wraps one API call and declares an output schema, so results come back as validated `structuredContent` alongside the JSON text. All read tools are annotated read-only; only the two archive tools mutate anything, and their descriptions instruct agents to use them solely on explicit request.
+
+| Tool | Purpose |
+|---|---|
+| `list_projects` | Projects you can access (also the auth smoke check) |
+| `list_exceptions` | Grouped exceptions in a window |
+| `get_exception` | One group by hash: stack trace + occurrences |
+| `get_exception_occurrence` | One occurrence by id |
+| `query_logs` | Log search (severity, service, text, trace id) |
+| `list_endpoints` | Per-endpoint p50/p95/p99, counts, impact |
+| `get_endpoint_request` | One request: span waterfall + linked errors |
+| `endpoints_chart` | Latency over time (find when it changed) |
+| `get_slow_endpoint_config` | Operator-accepted latency baseline |
+| `query_metrics` | Time-bucketed metric series |
+| `get_task` / `get_ai_trace` / `get_session` / `get_trace` | By-id detail lookups |
+| `archive_exceptions` / `unarchive_exceptions` | The only mutating tools |
+
+Project selection is per call: every project-scoped tool accepts a `project_id` parameter and falls back to the CLI's current project.
+
+The by-id detail tools require the record's timestamp (`recorded_at`, or `started_at` for sessions) so lookups stay partition-pruned and fast, exactly like the CLI's `--recorded-at` flags. The tool descriptions teach agents where to recover it (dashboard URL `?t=` params, occurrence lists, notifications).
+
+## Prompts and resources
+
+The debugging knowledge lives in the server, not in the client:
+
+- **Prompts**: `debug_issue`, `investigate_performance`, `whats_broken`, and `resolve_notification` render the full investigation playbooks with your argument inlined.
+- **Resources**: `traceway://knowledge/*` documents cover the debug flow, the performance bottleneck checklist, dashboard URL resolution, timestamp recovery, notification handling, and a CLI-to-tool map.
+
+These are the same documents the Traceway Claude Code skill is generated from, so the CLI skill and the MCP server never disagree.
+
+## Errors
+
+Tool errors carry the CLI's stable error codes in the text, formatted as `error=<code>: <message>. Hint: <hint>`, so agents can branch on `token_expired`, `not_found`, `rate_limited`, `no_project`, and friends.

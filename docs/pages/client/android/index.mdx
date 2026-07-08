@@ -117,12 +117,19 @@ Every `println` and any other write to `System.out` / `System.err` is mirrored i
 Calls that go straight to `android.util.Log` bypass `System.out` and are **not** captured automatically. To pick up Logcat lines, install a Timber tree (or any other logger) that calls `TracewayClient.instance?.recordLog(message, level)`:
 
 ```kotlin
+import android.util.Log
 import com.tracewayapp.traceway.TracewayClient
 import timber.log.Timber
 
 Timber.plant(object : Timber.Tree() {
     override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
-        TracewayClient.instance?.recordLog(message, level = priority.toLogLevel())
+        val level = when (priority) {
+            Log.VERBOSE, Log.DEBUG -> "debug"
+            Log.WARN -> "warn"
+            Log.ERROR, Log.ASSERT -> "error"
+            else -> "info"
+        }
+        TracewayClient.instance?.recordLog(message, level = level)
     }
 })
 ```

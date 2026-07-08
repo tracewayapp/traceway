@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/tracewayapp/traceway/cli/internal/timerange"
 )
 
 // helper to build a fake command with the time-range flags wired
@@ -114,51 +116,6 @@ func TestResolveTimeRange_invalidSinceDuration(t *testing.T) {
 	}
 }
 
-func TestParseRelativeDuration_validInputs(t *testing.T) {
-	cases := []struct {
-		in   string
-		want time.Duration
-	}{
-		{"1h", time.Hour},
-		{"24h", 24 * time.Hour},
-		{"7d", 168 * time.Hour},
-		{"30d", 720 * time.Hour},
-		{"1d", 24 * time.Hour},
-		{"30m", 30 * time.Minute},
-	}
-	for _, tc := range cases {
-		t.Run(tc.in, func(t *testing.T) {
-			got, err := parseRelativeDuration(tc.in)
-			if err != nil {
-				t.Fatalf("parseRelativeDuration(%q) error: %v", tc.in, err)
-			}
-			if got != tc.want {
-				t.Errorf("parseRelativeDuration(%q) = %v, want %v", tc.in, got, tc.want)
-			}
-		})
-	}
-}
-
-func TestParseRelativeDuration_invalidInputs(t *testing.T) {
-	cases := []string{
-		"0d",
-		"-1d",
-		"7days",
-		"7D",
-		"7d2h",
-		"d",
-		"notaduration",
-		"",
-	}
-	for _, in := range cases {
-		t.Run(in, func(t *testing.T) {
-			if _, err := parseRelativeDuration(in); err == nil {
-				t.Errorf("parseRelativeDuration(%q) expected error, got nil", in)
-			}
-		})
-	}
-}
-
 func TestResolveTimeRange_sinceDays(t *testing.T) {
 	cmd := newCmdWithTimeFlags(t)
 	if err := cmd.ParseFlags([]string{"--since", "7d"}); err != nil {
@@ -194,7 +151,7 @@ func TestResolveTimeRange_invalidSinceStillWrapsErrInvalidTimeRange(t *testing.T
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !errors.Is(err, errInvalidTimeRange) {
-		t.Errorf("error %v should wrap errInvalidTimeRange", err)
+	if !errors.Is(err, timerange.ErrInvalid) {
+		t.Errorf("error %v should wrap timerange.ErrInvalid", err)
 	}
 }

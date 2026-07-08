@@ -1,5 +1,7 @@
 # All-in-One Container
 
+import { Callout } from "nextra/components";
+
 Single Docker container with ClickHouse, PostgreSQL, and the Go backend managed by supervisord. Best for simple setups where you want everything in one place.
 
 ## Quick Start
@@ -40,6 +42,10 @@ docker run -d --name traceway \
 
 All environment variables have working defaults, no configuration required. Override as needed:
 
+<Callout type="warning">
+  **Set `JWT_SECRET` before exposing this image to anyone else.** It signs every authentication token (dashboard sessions and CLI/MCP device logins), so the built-in default, which is public, lets anyone forge a token for any account. Generate a strong secret with `openssl rand -hex 32`. See [CLI Authentication](/learn/cli-auth#set-a-strong-jwt_secret).
+</Callout>
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CLICKHOUSE_SERVER` | `localhost:9000` | ClickHouse host:port |
@@ -53,9 +59,9 @@ All environment variables have working defaults, no configuration required. Over
 | `POSTGRES_USERNAME` | `traceway` | PostgreSQL username |
 | `POSTGRES_PASSWORD` | *(empty)* | PostgreSQL password |
 | `POSTGRES_SSLMODE` | `disable` | PostgreSQL SSL mode |
-| `JWT_SECRET` | *(built-in default)* | JWT signing secret (min 32 chars) |
+| `JWT_SECRET` | *(built-in default, **override in production**)* | Signs all authentication tokens: dashboard sessions and CLI/MCP device logins. The built-in default is public; set a strong unique secret (min 32 chars, `openssl rand -hex 32`) and keep it stable. See [CLI Authentication](/learn/cli-auth#set-a-strong-jwt_secret). |
 | `GIN_MODE` | `release` | Gin framework mode |
-| `APP_BASE_URL` | *(none)* | Public URL of your Traceway instance (e.g. `https://traceway.example.com`). Used for SDK setup instructions, email links, and OAuth callback URLs. |
+| `APP_BASE_URL` | *(none)* | Public URL of your Traceway instance (e.g. `https://traceway.example.com`). Used for SDK setup instructions, email links, OAuth callback URLs, and the CLI/MCP OAuth issuer plus device-login verification URL. If unset, the device-auth and `/.well-known` endpoints derive it per-request from the `Host` / `X-Forwarded-*` headers; set it explicitly behind a proxy that rewrites `Host`. See [CLI Authentication](/learn/cli-auth). |
 | `STORAGE_TYPE` | `local` | Blob storage backend for source maps, session recordings, and AI traces: `local` or `s3`. See [Blob Storage](/server/storage) for the S3 variables. |
 | `STORAGE_PATH` | `./storage` | Folder for local blob storage, `/app/storage` in this image. Mount a volume there. Ignored when `STORAGE_TYPE=s3`. |
 | `SESSION_RECORDING_RETENTION_DAYS` | `30` | Days to keep session recording files on disk under `STORAGE_PATH/recordings/`. Files older than the TTL are deleted hourly and on startup. No effect when `STORAGE_TYPE=s3`. Set to `0` to disable. |

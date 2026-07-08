@@ -1,6 +1,6 @@
 module github.com/tracewayapp/traceway/backend
 
-go 1.25.1
+go 1.26.2
 
 require (
 	cloud.google.com/go/storage v1.56.0
@@ -11,13 +11,15 @@ require (
 	github.com/coreos/go-systemd/v22 v22.6.0
 	github.com/dop251/goja v0.0.0-20260607120635-348e6bea910d
 	github.com/duckdb/duckdb-go/v2 v2.10504.0
-	github.com/golang-jwt/jwt/v5 v5.3.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/pprof v0.0.0-20260604005048-7023385849c0
 	github.com/gorilla/securecookie v1.1.2
 	github.com/gorilla/sessions v1.4.0
 	github.com/lib/pq v1.10.9
 	github.com/markbates/goth v1.82.0
+	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/tracewayapp/lit/v2 v2.0.2
+	github.com/tracewayapp/traceway/cli v0.0.0-00010101000000-000000000000
 	go.opentelemetry.io/collector/component v1.60.0
 	go.opentelemetry.io/collector/component/componenttest v0.154.0
 	go.opentelemetry.io/collector/consumer v1.60.0
@@ -65,6 +67,7 @@ require (
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/google/flatbuffers v25.12.19+incompatible // indirect
+	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.6 // indirect
 	github.com/googleapis/gax-go/v2 v2.15.0 // indirect
@@ -76,8 +79,10 @@ require (
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.6.0 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
+	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/collector/component/componentstatus v0.154.0 // indirect
@@ -184,3 +189,5 @@ require (
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 )
+
+replace github.com/tracewayapp/traceway/cli => ../cli

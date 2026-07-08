@@ -18,8 +18,9 @@ backend/vendor
 # Build artifacts (will be rebuilt in Docker)
 frontend/build
 
-# Documentation
+# Documentation (keep the CLI knowledge chunks: go:embed needs them)
 *.md
+!cli/pkg/mcpserver/knowledge/*.md
 
 # Environment files (use .env.docker instead)
 backend/.env

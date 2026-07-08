@@ -5,10 +5,14 @@ on:
     branches: [main]
     paths:
       - "cli/**"
+      - "backend/**"
+      - "skills/traceway/**"
       - ".github/workflows/cli.yml"
   pull_request:
     paths:
       - "cli/**"
+      - "backend/**"
+      - "skills/traceway/**"
       - ".github/workflows/cli.yml"
 
 permissions:
@@ -28,10 +32,21 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: cli/go.mod
-          cache-dependency-path: cli/go.sum
+          cache-dependency-path: |
+            cli/go.sum
+            cli/test/contract/go.sum
 
       - name: Build
         run: go build ./...
 
       - name: Test
         run: go test ./...
+
+      - name: Contract tests
+        run: go test ./...
+        working-directory: cli/test/contract
+
+      - name: Skill drift check
+        run: |
+          go run ./tools/skillgen
+          git diff --exit-code ../skills/traceway

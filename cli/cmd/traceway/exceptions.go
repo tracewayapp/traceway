@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	exceptionsOrderBy     = []string{"lastSeen", "firstSeen", "count"}
-	exceptionsSearchTypes = []string{"text", "regex"}
+	exceptionsOrderBy     = client.ExceptionsOrderByValues
+	exceptionsSearchTypes = client.ExceptionsSearchTypes
 )
 
 func newExceptionsCmd() *cobra.Command {
@@ -74,7 +74,7 @@ func runExceptionsList(cmd *cobra.Command, _ []string) error {
 			enumFlagHint("traceway exceptions list", "--order-by", exceptionsOrderBy))
 	}
 
-	c := client.New(sess.URL, client.WithJWT(sess.JWT))
+	c := sess.Client()
 	resp, err := c.ListExceptions(ctx, sess.ProjectID, client.ListExceptionsRequest{
 		TimeRange:       tr,
 		Pagination:      page,
@@ -137,7 +137,7 @@ func runExceptionsShow(cmd *cobra.Command, args []string) error {
 	page := resolvePagination(cmd)
 	page.PageSize = pickDefault(page.PageSize, 20) // detail uses 20 by default
 
-	c := client.New(sess.URL, client.WithJWT(sess.JWT))
+	c := sess.Client()
 	resp, err := c.GetException(ctx, sess.ProjectID, args[0], page)
 	if err != nil {
 		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
@@ -217,7 +217,7 @@ func runExceptionsOccurrence(cmd *cobra.Command, args []string) error {
 		return renderTimestampError(cmd.ErrOrStderr(), mode, "recorded-at", err)
 	}
 
-	c := client.New(sess.URL, client.WithJWT(sess.JWT))
+	c := sess.Client()
 	resp, err := c.GetExceptionById(ctx, sess.ProjectID, args[0], recordedAt)
 	if err != nil {
 		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
@@ -313,7 +313,7 @@ func runExceptionsMutation(
 		return err
 	}
 
-	c := client.New(sess.URL, client.WithJWT(sess.JWT))
+	c := sess.Client()
 	if err := doIt(c, ctx, sess.ProjectID, hashes); err != nil {
 		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
 	}

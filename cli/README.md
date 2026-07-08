@@ -29,6 +29,8 @@ Check an installed binary with `traceway version` (or `traceway --version`). Sou
 
 ```bash
 # 1. log in (creates ~/.config/traceway/config.json + ~/.local/state/traceway/state.json)
+#    Default: browser device login — prints a URL + short code, you approve in the
+#    browser, and the CLI receives a token that auto-refreshes.
 traceway login --url https://cloud.traceway.com
 
 # 2. pick a project (one-time; future calls use it implicitly)
@@ -46,8 +48,8 @@ traceway metrics query --name http.server.duration --aggregation avg --since 1h
 
 | Command | Purpose |
 |---|---|
-| `traceway login` | Authenticate and store the JWT |
-| `traceway logout` | Forget the stored JWT for a profile |
+| `traceway login` | Authenticate and store a token. Three modes: default browser **device flow** (auto-refreshing); `--password` (email + password, or `--password-stdin`; passing `--username` implies this mode); `--token` / `--token-stdin` (store a personal access token). The device flow needs an interactive terminal — in CI use `--token` or `--password`, or pass `--no-browser` to drive it manually. |
+| `traceway logout` | Revoke the session server-side (device logins) and forget the stored credentials for a profile |
 | `traceway profiles {list,use}` | Manage multiple Traceway accounts/instances |
 | `traceway projects {list,use}` | List or select the active project |
 | `traceway exceptions list` | Recent grouped exceptions |
@@ -63,6 +65,7 @@ traceway metrics query --name http.server.duration --aggregation avg --since 1h
 | `traceway sessions show <id> --started-at <t>` | A single session by id + the exceptions that fired in it |
 | `traceway traces show <id> --recorded-at <t>` | A distributed trace: every service node sharing the id |
 | `traceway metrics query` | Time-series metric queries |
+| `traceway mcp` | Serve the MCP server over stdio (see "MCP server" below) |
 
 Run `traceway <command> --help` for full per-command flags.
 
@@ -136,6 +139,41 @@ The `error` field is a stable snake_case identifier. LLMs/scripts can branch on 
 
 Calling a mutating command from a non-TTY context (script, LLM tool call) without one of the opt-ins fails immediately with `usage_error` (exit 2) — no hung prompts.
 
+## MCP server
+
+`traceway mcp` serves the whole query/debug surface as an MCP server on stdio,
+for MCP clients like Claude Code, Claude Desktop, and Cursor:
+
+```bash
+claude mcp add traceway -- traceway mcp
+```
+
+It reuses the CLI session (credentials, token refresh, current project); run
+`traceway login` and `traceway projects use` first. Without a login it exits
+immediately with instructions (a stdio server has no TTY to prompt on). For
+headless use set `TRACEWAY_URL` + `TRACEWAY_TOKEN` (a `twp_` personal access
+token), plus optional `TRACEWAY_PROJECT`, and no CLI session is needed.
+
+Each CLI query command maps 1:1 to a tool (`exceptions list` becomes
+`list_exceptions`, and so on); only `archive_exceptions`/`unarchive_exceptions`
+mutate, and they are annotated accordingly. The server also exposes the
+Traceway debugging playbooks as MCP resources (`traceway://knowledge/*`) and
+prompts (`debug_issue`, `investigate_performance`, `whats_broken`,
+`resolve_notification`).
+
+Every tool declares an output schema, so results come back as validated
+`structuredContent`. The same server is also mounted by the backend itself as
+a remote MCP server at `https://<instance>/mcp` (streamable HTTP, OAuth
+authorization-code + PKCE with dynamic client registration, or a `twp_` PAT
+as the bearer token) - `claude mcp add --transport http traceway
+https://<instance>/mcp` needs no local install at all.
+
+The implementation lives in `pkg/mcpserver` (importable, transport-agnostic;
+the stdio command is a thin wrapper). The playbook markdown in
+`pkg/mcpserver/knowledge/` is the canonical source for the published
+`skills/traceway` Claude Code skill: edit the chunks, then run
+`just gen-skills` (drift is CI-checked).
+
 ## Smoke testing
 
 Unit/CLI tests run by default and never touch a network:
@@ -162,4 +200,4 @@ If any of those vars is missing, the smoke tests skip cleanly rather than fail.
 just check   # lint + test + vulncheck
 ```
 
-The library at `pkg/client` deliberately has zero CLI dependencies — it's importable directly by other Go programs (e.g. a future MCP server).
+The library at `pkg/client` deliberately has zero CLI dependencies — it's importable directly by other Go programs. The MCP server (`pkg/mcpserver`) is its first such consumer and must stay out of `pkg/client`'s dependency graph.

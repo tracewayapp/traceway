@@ -1,0 +1,82 @@
+# The decision in one picture: agents with a shell take the skill + CLI path,
+# agents without one take /mcp. Both are generated from the same knowledge
+# files, both end at the same instance.
+# Theme block is the shared Traceway brand palette (canonical copy:
+# diagrams/traceway.yaml) inlined so the scene renders with a stock isotopo.
+canvas: { background: "#05070C", padding: 76 }
+theme:
+  text: { family: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace", size: 11, weight: "500", color: "#8A93A6" }
+  presets:
+    hero:
+      stroke: { color: "#8B78FF", width: 1.7 }
+      palette: { left: "#150E33", right: "#1C1345" }
+      faces:
+        top: { fill: { kind: linearGradient, angle: 135, stops: [ { offset: 0, color: "#2C2160" }, { offset: 1, color: "#150D33" } ] } }
+      effects: { cornerRadius: 12, faceSplit: true, opacity: 0.94, dropShadow: { dx: 0, dy: 14, blur: 26, color: "#00000099" }, backglow: { color: "#7C5CFF", radius: 74, opacity: 0.55 } }
+      text: { color: "#ECE9FF" }
+    tray:
+      stroke: { color: "#2A3346", width: 1.4 }
+      palette: { left: "#070A12", right: "#0A0E18" }
+      faces:
+        top: { fill: { kind: linearGradient, angle: 135, stops: [ { offset: 0, color: "#0E1320" }, { offset: 1, color: "#080B14" } ] } }
+      effects: { cornerRadius: 12, faceSplit: true, opacity: 0.6, dropShadow: { dx: 0, dy: 14, blur: 26, color: "#00000099" } }
+      text: { color: "#7E8798" }
+    chip:
+      stroke: { color: "#3A4560", width: 1.3 }
+      palette: { left: "#0C111B", right: "#131926" }
+      faces:
+        top: { fill: { kind: linearGradient, angle: 135, stops: [ { offset: 0, color: "#171D2B" }, { offset: 1, color: "#10151F" } ] } }
+      effects: { cornerRadius: 8, faceSplit: true, opacity: 0.95, dropShadow: { dx: 0, dy: 6, blur: 12, color: "#00000077" } }
+      text: { color: "#C9D0DD" }
+
+nodes:
+  scene:
+    shape: composite
+    parts:
+      # ============ HERO: the instance both paths land on (bottom-center) ============
+      - id: instance
+        offset: { wx: 0, wy: 330 }
+        preset: hero
+        shape: rectangle
+        geom: { w: 220, d: 134, h: 32 }
+        icon: "iso://glyph/gauge/ECE9FF"
+        label: "your Traceway instance"
+
+      # ============ One knowledge source (top-center) ============
+      - id: knowledge
+        offset: { wx: 0, wy: -330 }
+        preset: chip
+        shape: rectangle
+        geom: { w: 150, d: 78, h: 20 }
+        icon: "iso://glyph/doc/D9F6FF"
+        label: "knowledge/ · one source"
+
+      # ============ Shell path (left) ============
+      - id: shellpath
+        offset: { wx: -330, wy: 0 }
+        preset: tray
+        shape: group
+        label: "agent with a shell"
+        layout: { mode: column, gap: 0.7, padding: 1.35 }
+        parts:
+          - { id: skill, preset: chip, shape: rectangle, geom: { w: 126, d: 66, h: 18 }, icon: "iso://glyph/sparkles/F5DFFF", label: "Traceway skill" }
+          - { id: cli,   preset: chip, shape: rectangle, geom: { w: 126, d: 66, h: 18 }, icon: "iso://glyph/terminal/light",  label: "traceway CLI" }
+
+      # ============ No-shell path (right) ============
+      - id: noshell
+        offset: { wx: 330, wy: 0 }
+        preset: tray
+        shape: group
+        label: "agent without a shell"
+        layout: { mode: column, gap: 0.7, padding: 1.35 }
+        parts:
+          - { id: desktop, preset: chip, shape: rectangle, geom: { w: 126, d: 66, h: 18 }, icon: "iso://glyph/chat/light", label: "Desktop · web · IDE" }
+          - { id: remote,  preset: chip, shape: rectangle, geom: { w: 126, d: 66, h: 18 }, icon: "iso://glyph/bolt/light", label: "/mcp · OAuth" }
+
+    connectors:
+      # the same knowledge files generate both surfaces (dashed = build time)
+      - { from: knowledge, to: shellpath, routing: orthogonal, arrow: triangle, stroke: { color: "#5A6EA0", width: 1.6, dash: "5 5" } }
+      - { from: knowledge, to: noshell,   routing: orthogonal, arrow: triangle, stroke: { color: "#5A6EA0", width: 1.6, dash: "5 5" } }
+      # both paths land on the same instance (glowing runtime flows)
+      - { from: shellpath, to: instance, routing: orthogonal, arrow: triangle, stroke: { color: "#4FC8E8", width: 2.4, gradient: { from: "#00D4FF", to: "#7C5CFF" } } }
+      - { from: noshell,   to: instance, routing: orthogonal, arrow: triangle, stroke: { color: "#4FC8E8", width: 2.4, gradient: { from: "#00D4FF", to: "#7C5CFF" } } }

@@ -22,13 +22,14 @@ RUN npm run build
 # ==============================================================================
 # Stage 2: Build Backend with embedded frontend
 # ==============================================================================
-FROM golang:1.25-alpine AS backend-builder
+FROM golang:1.26-alpine AS backend-builder
 
 WORKDIR /app/backend
 
 RUN apk add --no-cache git
 
 COPY backend/ ./
+COPY cli/ /app/cli/
 COPY --from=frontend-builder /app/frontend/build ./static/frontend/
 
 RUN go mod edit -dropreplace=go.tracewayapp.com -dropreplace=go.tracewayapp.com/tracewaygin

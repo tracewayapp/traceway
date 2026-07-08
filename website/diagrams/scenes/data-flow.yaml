@@ -1,0 +1,89 @@
+# Traceway full-stack data flow.
+# Your apps emit telemetry over OpenTelemetry / the Traceway SDKs; the backend
+# ingests it, stores it in ClickHouse + Postgres, and serves it back to the
+# dashboard, alerts, and agents. Theme block = the shared Traceway brand palette
+# (canonical copy: diagrams/traceway.yaml), inlined for a stock isotopo binary.
+canvas: { background: "#05070C", padding: 76 }
+theme:
+  text: { family: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace", size: 11, weight: "500", color: "#8A93A6" }
+  presets:
+    hero:
+      stroke: { color: "#8B78FF", width: 1.7 }
+      palette: { left: "#150E33", right: "#1C1345" }
+      faces:
+        top: { fill: { kind: linearGradient, angle: 135, stops: [ { offset: 0, color: "#2C2160" }, { offset: 1, color: "#150D33" } ] } }
+      effects: { cornerRadius: 12, faceSplit: true, opacity: 0.94, dropShadow: { dx: 0, dy: 14, blur: 26, color: "#00000099" }, backglow: { color: "#7C5CFF", radius: 78, opacity: 0.55 } }
+      text: { color: "#ECE9FF" }
+    tray:
+      stroke: { color: "#2A3346", width: 1.4 }
+      palette: { left: "#070A12", right: "#0A0E18" }
+      faces:
+        top: { fill: { kind: linearGradient, angle: 135, stops: [ { offset: 0, color: "#0E1320" }, { offset: 1, color: "#080B14" } ] } }
+      effects: { cornerRadius: 12, faceSplit: true, opacity: 0.6, dropShadow: { dx: 0, dy: 14, blur: 26, color: "#00000099" } }
+      text: { color: "#7E8798" }
+    chip:
+      stroke: { color: "#3A4560", width: 1.3 }
+      palette: { left: "#0C111B", right: "#131926" }
+      faces:
+        top: { fill: { kind: linearGradient, angle: 135, stops: [ { offset: 0, color: "#171D2B" }, { offset: 1, color: "#10151F" } ] } }
+      effects: { cornerRadius: 8, faceSplit: true, opacity: 0.95, dropShadow: { dx: 0, dy: 6, blur: 12, color: "#00000077" } }
+      text: { color: "#C9D0DD" }
+
+nodes:
+  scene:
+    shape: composite
+    parts:
+      # ============ HERO: the backend ============
+      - id: backend
+        preset: hero
+        shape: rectangle
+        geom: { w: 214, d: 150, h: 36 }
+        icon: "iso://glyph/gauge/ECE9FF"
+        label: "Traceway"
+
+      # ============ Your apps (left) ============
+      - id: apps
+        offset: { wx: -352, wy: -18 }
+        preset: tray
+        shape: group
+        label: "Your apps · SDKs"
+        layout: { mode: grid, cols: 2, gap: 0.7, padding: 1.25 }
+        parts:
+          - { id: go,   preset: chip, shape: rectangle, geom: { w: 96, d: 62, h: 18 }, icon: "iso://si/go/light",         label: "Go" }
+          - { id: node, preset: chip, shape: rectangle, geom: { w: 96, d: 62, h: 18 }, icon: "iso://si/nodedotjs/light",  label: "Node.js" }
+          - { id: py,   preset: chip, shape: rectangle, geom: { w: 96, d: 62, h: 18 }, icon: "iso://si/python/light",     label: "Python" }
+          - { id: php,  preset: chip, shape: rectangle, geom: { w: 96, d: 62, h: 18 }, icon: "iso://si/php/light",        label: "PHP" }
+          - { id: rct,  preset: chip, shape: rectangle, geom: { w: 96, d: 62, h: 18 }, icon: "iso://si/react/light",      label: "React" }
+          - { id: swz,  preset: chip, shape: rectangle, geom: { w: 96, d: 62, h: 18 }, icon: "iso://si/swift/light",      label: "Swift" }
+
+      # ============ Stores (bottom) ============
+      - id: stores
+        offset: { wx: 232, wy: 300 }
+        preset: tray
+        shape: group
+        label: "Store"
+        layout: { mode: row, gap: 0.85, padding: 1.35 }
+        parts:
+          - { id: ch, preset: chip, shape: cylinder, geom: { w: 96, d: 96, h: 32 }, icon: "iso://si/clickhouse/light",   label: "ClickHouse" }
+          - { id: pg, preset: chip, shape: cylinder, geom: { w: 96, d: 96, h: 32 }, icon: "iso://si/postgresql/light",   label: "Postgres" }
+
+      # ============ Consume (top-right) ============
+      - id: consume
+        offset: { wx: 360, wy: -300 }
+        preset: tray
+        shape: group
+        label: "Explore"
+        layout: { mode: grid, cols: 2, gap: 0.7, padding: 1.25 }
+        parts:
+          - { id: dash,  preset: chip, shape: rectangle, geom: { w: 104, d: 64, h: 18 }, icon: "iso://glyph/browser/light", label: "Dashboard" }
+          - { id: alert, preset: chip, shape: rectangle, geom: { w: 104, d: 64, h: 18 }, icon: "iso://glyph/bell/light",    label: "Alerts" }
+          - { id: agent, preset: chip, shape: rectangle, geom: { w: 104, d: 64, h: 18 }, icon: "iso://glyph/agent/light",   label: "Agents · MCP" }
+          - { id: api,   preset: chip, shape: rectangle, geom: { w: 104, d: 64, h: 18 }, icon: "iso://glyph/terminal/light",label: "CLI" }
+
+    connectors:
+      # apps emit telemetry (glowing cyan→indigo flow)
+      - { from: apps, to: backend, routing: orthogonal, arrow: triangle, label: "OTLP · SDK", stroke: { color: "#4FC8E8", width: 2.4, gradient: { from: "#00D4FF", to: "#7C5CFF" } } }
+      # backend persists to the stores
+      - { from: backend, to: stores, routing: orthogonal, arrow: triangle, stroke: { color: "#5A6EA0", width: 1.8 } }
+      # backend serves the explore surfaces (glowing flow)
+      - { from: backend, to: consume, routing: orthogonal, arrow: triangle, stroke: { color: "#4FC8E8", width: 2.4, gradient: { from: "#7C5CFF", to: "#00D4FF" } } }

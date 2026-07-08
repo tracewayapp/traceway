@@ -1,6 +1,7 @@
 <script lang="ts">
     import { Button } from "$lib/components/ui/button";
     import { onMount } from 'svelte';
+    import { stashSsoReturnTo } from '$lib/utils/navigation';
 
     let { passwordLoginEnabled = $bindable(true), loaded = $bindable(false) } = $props();
 
@@ -24,6 +25,7 @@
     });
 
     function start(provider: string) {
+        stashSsoReturnTo(new URLSearchParams(window.location.search).get('returnTo'));
         window.location.href = `/api/auth/start/${provider}`;
     }
 

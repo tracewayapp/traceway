@@ -9,7 +9,6 @@ import (
 	"github.com/tracewayapp/traceway/cli/internal/exitcode"
 	"github.com/tracewayapp/traceway/cli/internal/output"
 	"github.com/tracewayapp/traceway/cli/internal/state"
-	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
 
 func newProjectsCmd() *cobra.Command {
@@ -67,7 +66,7 @@ func runProjectsList(cmd *cobra.Command, _ []string) error {
 		return newCLIError(exitcode.Auth, "not_authenticated")
 	}
 
-	c := client.New(cfgProfile.URL, client.WithJWT(stateProfile.JWT))
+	c := newRefreshingClient(cfgProfile.URL, profileName, stateProfile.JWT, stateProfile.RefreshToken, stateProfile.CredentialKind)
 	projects, err := c.ListProjects(ctx)
 	if err != nil {
 		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)

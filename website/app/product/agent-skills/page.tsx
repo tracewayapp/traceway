@@ -240,9 +240,18 @@ export default function AgentSkillsPage() {
             your project, the other queries and debugs it.
           </p>
 
-          <dl className="mt-14 grid gap-12 md:grid-cols-2">
+          <dl className="mt-14 grid gap-6 md:grid-cols-2">
             {SKILLS.map((skill) => (
-              <div key={skill.name} className="border-t border-hair pt-8">
+              <div
+                key={skill.name}
+                className="rounded-2xl p-8"
+                style={{
+                  background: "var(--ink-0)",
+                  border: "1px solid var(--hair-2)",
+                  boxShadow:
+                    "0 1px 2px rgba(10,14,24,0.04), 0 12px 30px -18px rgba(10,14,24,0.14)",
+                }}
+              >
                 <dt>
                   <p className="font-mono text-[0.6875rem] uppercase tracking-[0.14em] text-fg-3">
                     {skill.label}
@@ -292,8 +301,10 @@ export default function AgentSkillsPage() {
             href="/product/mcp"
             className="group mx-auto flex max-w-3xl flex-col items-start gap-4 rounded-2xl p-8 transition-colors sm:flex-row sm:items-center sm:justify-between"
             style={{
-              background: "var(--ink-1)",
-              border: "1px solid var(--hair)",
+              background: "var(--ink-0)",
+              border: "1px solid var(--hair-2)",
+              boxShadow:
+                "0 1px 2px rgba(10,14,24,0.04), 0 12px 30px -18px rgba(10,14,24,0.14)",
             }}
           >
             <div className="flex flex-col gap-2">

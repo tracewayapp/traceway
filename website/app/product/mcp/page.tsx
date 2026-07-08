@@ -8,6 +8,7 @@ import { FaqList } from "@/components/faq-list";
 import { FinalCTA } from "@/components/final-cta";
 import { AuroraBackground } from "@/components/aurora-background";
 import { Eyebrow } from "@/components/eyebrow";
+import { IsoDiagram } from "@/components/iso-diagram";
 import { Terminal } from "@/components/terminal";
 import { CopyCommand } from "@/components/copy-command";
 import { GITHUB_URL } from "@/lib/links";
@@ -80,7 +81,7 @@ export default function McpPage() {
               <CopyCommand
                 size="lg"
                 className="w-full"
-                command="claude mcp add --transport http traceway https://your-instance/mcp"
+                command="claude mcp add --transport http traceway https://cloud.tracewayapp.com/mcp"
               />
             </div>
             <p className="dim mt-5 font-mono text-[0.75rem]">
@@ -98,6 +99,15 @@ export default function McpPage() {
             </p>
           </div>
         </div>
+      </section>
+
+      <section className="wrap relative z-10 pb-16 -mt-2">
+        <IsoDiagram
+          src="/diagrams/mcp-flow.svg"
+          alt="Traceway MCP architecture: MCP clients authenticate over OAuth and query production errors, performance, and signals through the /mcp endpoint, backed by ClickHouse and Postgres."
+          maxWidth={1040}
+          priority
+        />
       </section>
 
       <div className="band-light">
@@ -131,7 +141,7 @@ export default function McpPage() {
                   content: (
                     <>
                       <span className="cmd">$</span> claude mcp add --transport
-                      http traceway https://your-instance/mcp
+                      http traceway https://cloud.tracewayapp.com/mcp
                     </>
                   ),
                 },
@@ -240,9 +250,18 @@ export default function McpPage() {
             archive tools mutate anything, and only when you ask for it by name.
           </p>
 
-          <dl className="mt-14 grid gap-x-12 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
+          <dl className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {TOOL_GROUPS.map((group) => (
-              <div key={group.label} className="border-t border-hair pt-6">
+              <div
+                key={group.label}
+                className="rounded-2xl p-6"
+                style={{
+                  background: "var(--ink-0)",
+                  border: "1px solid var(--hair-2)",
+                  boxShadow:
+                    "0 1px 2px rgba(10,14,24,0.04), 0 12px 30px -18px rgba(10,14,24,0.14)",
+                }}
+              >
                 <dt>
                   <p className="font-mono text-[0.6875rem] uppercase tracking-[0.14em] text-fg-3">
                     {group.label}
@@ -397,8 +416,13 @@ function FeatureCard({
 }) {
   return (
     <div
-      className="rounded-xl p-6"
-      style={{ background: "var(--ink-1)", border: "1px solid var(--hair)" }}
+      className="rounded-2xl p-6"
+      style={{
+        background: "var(--ink-0)",
+        border: "1px solid var(--hair-2)",
+        boxShadow:
+          "0 1px 2px rgba(10,14,24,0.04), 0 12px 30px -18px rgba(10,14,24,0.14)",
+      }}
     >
       <div className="text-a2">{icon}</div>
       <h3 className="mt-4 text-[1.0625rem] font-semibold text-fg-0">{title}</h3>

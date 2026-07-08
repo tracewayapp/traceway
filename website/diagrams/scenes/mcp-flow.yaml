@@ -1,0 +1,86 @@
+# Traceway MCP server — architecture flow.
+# Any MCP client logs in over OAuth and queries production telemetry through
+# the /mcp endpoint. Theme block is the shared Traceway brand palette
+# (canonical copy: diagrams/traceway.yaml) inlined so the scene renders with a
+# stock `isotopo` binary.
+canvas: { background: "#05070C", padding: 76 }
+theme:
+  text: { family: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace", size: 11, weight: "500", color: "#8A93A6" }
+  presets:
+    hero:
+      stroke: { color: "#8B78FF", width: 1.7 }
+      palette: { left: "#150E33", right: "#1C1345" }
+      faces:
+        top: { fill: { kind: linearGradient, angle: 135, stops: [ { offset: 0, color: "#2C2160" }, { offset: 1, color: "#150D33" } ] } }
+      effects: { cornerRadius: 12, faceSplit: true, opacity: 0.94, dropShadow: { dx: 0, dy: 14, blur: 26, color: "#00000099" }, backglow: { color: "#7C5CFF", radius: 74, opacity: 0.55 } }
+      text: { color: "#ECE9FF" }
+    tray:
+      stroke: { color: "#2A3346", width: 1.4 }
+      palette: { left: "#070A12", right: "#0A0E18" }
+      faces:
+        top: { fill: { kind: linearGradient, angle: 135, stops: [ { offset: 0, color: "#0E1320" }, { offset: 1, color: "#080B14" } ] } }
+      effects: { cornerRadius: 12, faceSplit: true, opacity: 0.6, dropShadow: { dx: 0, dy: 14, blur: 26, color: "#00000099" } }
+      text: { color: "#7E8798" }
+    chip:
+      stroke: { color: "#3A4560", width: 1.3 }
+      palette: { left: "#0C111B", right: "#131926" }
+      faces:
+        top: { fill: { kind: linearGradient, angle: 135, stops: [ { offset: 0, color: "#171D2B" }, { offset: 1, color: "#10151F" } ] } }
+      effects: { cornerRadius: 8, faceSplit: true, opacity: 0.95, dropShadow: { dx: 0, dy: 6, blur: 12, color: "#00000077" } }
+      text: { color: "#C9D0DD" }
+
+nodes:
+  scene:
+    shape: composite
+    parts:
+      # ============ HERO: the /mcp server ============
+      - id: mcp
+        preset: hero
+        shape: rectangle
+        geom: { w: 210, d: 134, h: 32 }
+        icon: "iso://glyph/bolt/ECE9FF"
+        label: "Traceway · /mcp"
+
+      # ============ MCP clients (left) ============
+      - id: clients
+        offset: { wx: -318, wy: -10 }
+        preset: tray
+        shape: group
+        label: "MCP clients"
+        layout: { mode: column, gap: 0.7, padding: 1.35 }
+        parts:
+          - { id: cc,   preset: chip, shape: rectangle, geom: { w: 116, d: 68, h: 18 }, icon: "iso://si/anthropic/8B78FF", label: "Claude Code" }
+          - { id: cur,  preset: chip, shape: rectangle, geom: { w: 116, d: 68, h: 18 }, icon: "iso://glyph/code/light",     label: "Cursor" }
+          - { id: desk, preset: chip, shape: rectangle, geom: { w: 116, d: 68, h: 18 }, icon: "iso://glyph/chat/light",     label: "Claude Desktop" }
+
+      # ============ Tools (top-right) ============
+      - id: tools
+        offset: { wx: 344, wy: -292 }
+        preset: tray
+        shape: group
+        label: "16 tools · read-only"
+        layout: { mode: grid, cols: 2, gap: 0.7, padding: 1.25 }
+        parts:
+          - { id: errs,  preset: chip, shape: rectangle, geom: { w: 104, d: 66, h: 18 }, icon: "iso://glyph/bell/light",  label: "Errors" }
+          - { id: perf,  preset: chip, shape: rectangle, geom: { w: 104, d: 66, h: 18 }, icon: "iso://glyph/gauge/light", label: "Performance" }
+          - { id: sig,   preset: chip, shape: rectangle, geom: { w: 104, d: 66, h: 18 }, icon: "iso://glyph/graph/light", label: "Signals" }
+          - { id: proj,  preset: chip, shape: rectangle, geom: { w: 104, d: 66, h: 18 }, icon: "iso://glyph/layers/light",label: "Projects" }
+
+      # ============ Telemetry stores (bottom) ============
+      - id: stores
+        offset: { wx: 250, wy: 292 }
+        preset: tray
+        shape: group
+        label: "Your telemetry"
+        layout: { mode: row, gap: 0.8, padding: 1.35 }
+        parts:
+          - { id: ch, preset: chip, shape: cylinder, geom: { w: 94, d: 94, h: 30 }, icon: "iso://si/clickhouse/light",  label: "ClickHouse" }
+          - { id: pg, preset: chip, shape: cylinder, geom: { w: 94, d: 94, h: 30 }, icon: "iso://si/postgresql/light", label: "Postgres" }
+
+    connectors:
+      # clients authenticate + call the server (glowing cyan→indigo flow)
+      - { from: clients, to: mcp, routing: orthogonal, arrow: triangle, stroke: { color: "#4FC8E8", width: 2.4, gradient: { from: "#00D4FF", to: "#7C5CFF" } } }
+      # server exposes tools
+      - { from: mcp, to: tools, routing: orthogonal, arrow: triangle, stroke: { color: "#4FC8E8", width: 2.4, gradient: { from: "#00D4FF", to: "#7C5CFF" } } }
+      # tools read telemetry (dashed = read-only)
+      - { from: tools, to: stores, routing: orthogonal, arrow: triangle, stroke: { color: "#5A6EA0", width: 1.6, dash: "5 5" } }

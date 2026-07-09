@@ -126,7 +126,7 @@ Hard crashes are intercepted with POSIX signal handlers. When the **Xcode debugg
 
 Release crash reports arrive as bare instruction addresses against each loaded binary image. They stay unreadable until Traceway resolves them server-side against the build's **dSYM** debug symbols (the Apple equivalent of JavaScript source maps). Upload the dSYMs on every release build; a crash only resolves against the exact build it came from.
 
-**Token.** Symbol uploads authenticate with the dedicated **upload token** (Connection page > Source Maps / Symbol Upload), NOT the project token from the connection string. Get it from Step 0; it is a CI secret, never committed. `readonly` members cannot generate one. The upload endpoint is `https://<instance>/api/symbols/upload`.
+**Token.** Symbol uploads authenticate with the dedicated **upload token** (Connection page > Source Maps / Symbol Upload), NOT the project token from the connection string. Get it from Step 1; it is a CI secret, never committed. `readonly` members cannot generate one. The upload endpoint is `https://<instance>/api/symbols/upload`.
 
 **Produce dSYMs.** The build must emit dSYMs: set `DEBUG_INFORMATION_FORMAT = dwarf-with-dsym` for the Release configuration (this is already the default for Archive builds). Without it there are no dSYMs to upload.
 
@@ -168,7 +168,7 @@ Self-hosted instances must have blob storage (S3 or a persistent volume) configu
 
 ## Non-Swift apps: OpenTelemetry into Traceway
 
-For an iOS/Apple app that is not a Swift app the SDK targets (Objective-C only, a cross-platform stack with no Traceway mobile SDK, or a codebase already standardized on OpenTelemetry), there is no native Traceway SDK. Use an OpenTelemetry distribution such as **Honeycomb's** and repoint its OTLP exporter at Traceway. This is the same OTLP/HTTP path the backend uses (Step 2), so all the rules in `data-model.md` apply.
+For an iOS/Apple app that is not a Swift app the SDK targets (Objective-C only, a cross-platform stack with no Traceway mobile SDK, or a codebase already standardized on OpenTelemetry), there is no native Traceway SDK. Use an OpenTelemetry distribution such as **Honeycomb's** and repoint its OTLP exporter at Traceway. This is the same OTLP/HTTP path the backend uses (Step 3), so all the rules in `data-model.md` apply.
 
 A Honeycomb-style distro is configured with an API key plus an endpoint. Override both so the data lands in Traceway instead of Honeycomb:
 

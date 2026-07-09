@@ -1,13 +1,35 @@
 ---
 name: traceway-setup
-description: Connect a project to a Traceway instance so it reports endpoints, spans, errors, background tasks, AI traces, and metrics. Backends use OpenTelemetry over OTLP/HTTP, frontends and mobile apps (including native iOS/Swift) use the Traceway SDKs, and host metrics use the Traceway OTel Agent. Use when the user wants to add Traceway (or OpenTelemetry tracing that exports to Traceway) to a backend, frontend, full-stack, mobile, or iOS/Swift project. Accepts a project token and instance URL, e.g. "/traceway-setup with token abc123".
+description: Connect a project to a Traceway instance so it reports endpoints, spans, errors, background tasks, AI traces, and metrics. Backends use OpenTelemetry over OTLP/HTTP, frontends and mobile apps (including native iOS/Swift) use the Traceway SDKs, and host metrics use the Traceway OTel Agent. In a repo with several sub-projects (e.g. frontend + backend folders) it maps each deployable to its own Traceway project and offers a picker. Use when the user wants to add Traceway (or OpenTelemetry tracing that exports to Traceway) to a backend, frontend, full-stack, mobile, or iOS/Swift project. Accepts a project token and instance URL, e.g. "/traceway-setup with token abc123".
 ---
 
 # Set Up Traceway in a Project
 
 Connect an existing project to a Traceway instance so it reports endpoints, spans, errors, background tasks, AI traces, and metrics.
 
-## Step 0: Gather Connection Info
+## Step 0: Map the Repo to Traceway Projects
+
+The very first thing to do, before gathering tokens or touching code: figure out what this repo actually contains. List the top-level sub-folders (plus `apps/*`, `packages/*`, `services/*` in monorepos) and classify every folder that has its own dependency manifest (`package.json`, `go.mod`, `composer.json`, `requirements.txt`/`pyproject.toml`, `pubspec.yaml`, `build.gradle`, `Package.swift`/`*.xcodeproj`) as one of:
+
+- **A separate deployable project**: a browser SPA in `frontend/`, an API server in `backend/`, a queue worker in `services/emails/`, a mobile app in `mobile/`. Each of these gets its own Traceway project.
+- **Part of one app**: shared libraries, infra/tooling folders, and full-stack framework apps (Next.js, SvelteKit, Remix) whose server and browser code ship as one deployable. These are never split.
+
+**One Traceway project per deployable sub-project; never share one token across sub-projects.** The two sides get fundamentally different setups, and this is what to tell the customer when explaining the split:
+
+- **Frontend projects** use the Traceway browser SDK and get **session replay** (same as Flutter), plus web vitals, error capture, and source-map symbolication.
+- **Backend projects** get a different setup altogether: OpenTelemetry over OTLP/HTTP, with endpoints, spans, background tasks, AI traces, and host metrics.
+
+The framework picked when the Traceway project is created drives its dashboard features (session replay only exists on frontend/Flutter projects), so a mixed project scrambles both views.
+
+**If the skill was run at the root of a multi-project repo**, report what was found and present a project picker before doing anything else, for example:
+
+> This repo contains 2 separate projects: `frontend/` (React SPA) and `backend/` (Go API). Each needs its own Traceway project, configured separately: the frontend gets session replay through the Traceway SDK (same as Flutter), while the backend gets a completely different OpenTelemetry setup. Which one should we set up first?
+
+Offer one option per detected sub-project plus "all of them, one at a time" (use the ask-user UI if available, otherwise a numbered list). Configure the chosen sub-project end to end (Steps 1 to 7) before starting the next; each one needs its own project token from Step 1. If a token was already provided in the invocation, it belongs to exactly one Traceway project: ask which sub-project that project was created for and start there.
+
+Single-project repos (including full-stack JS apps) skip the picker and continue.
+
+## Step 1: Gather Connection Info
 
 | Value | Example | Where to find it |
 |---|---|---|
@@ -19,10 +41,12 @@ Instance URL and project token may be provided in the invocation (e.g. `/tracewa
 
 1. Check for existing `TRACEWAY_URL` / `TRACEWAY_TOKEN` environment variables or `.env` entries in the project.
 2. Still missing: ask the user whether they already have a Traceway account.
-   - **Yes**: ask them to open their Traceway dashboard, go to the project's **Connection** page, and paste the instance URL and project token here. If no project exists yet for this app, have them create one first, picking the framework that matches this codebase.
+   - **Yes**: ask them to open their Traceway dashboard, go to the project's **Connection** page, and paste the instance URL and project token here. If no project exists yet for this app, have them create one first, picking the framework that matches the sub-project being configured (the framework choice is what enables frontend features like session replay).
    - **No**: send them to the register page to create an account: https://cloud.tracewayapp.com/register (or `https://<their-instance>/register` if they are self-hosting). After registering and creating a project, the Connection page shows the token; ask them to paste the URL and token here.
 
 Do not proceed without real values. Never invent placeholder values in committed code; wire everything through environment variables.
+
+When configuring several sub-projects from Step 0, repeat this step for each one: every sub-project gets its own Traceway project and token.
 
 ## Integration Paths
 
@@ -34,6 +58,8 @@ Pick the path by project type. This is not negotiable per framework; it is how T
 | **Frontend** (browser SPA) | Traceway `@tracewayapp/<framework>` SDK + bundler plugin + source map upload (see "Frontend and Mobile" below). |
 | **Full-stack JS** (Next.js, SvelteKit, Remix) | BOTH: server side via OpenTelemetry AND browser side via the frontend SDK. |
 | **Mobile** (Flutter, React Native, Android, native Swift iOS) | The Traceway platform SDK. Never OTel. Sole exception: a non-Swift iOS/Apple app has no native SDK, so it uses an OTel library (e.g. Honeycomb) exporting to Traceway like a backend (see "Frontend and Mobile"). |
+
+In a repo with several deployable sub-projects, these paths apply per sub-project, each reporting to its own Traceway project (Step 0).
 
 Two hard rules apply to every backend integration:
 
@@ -54,17 +80,17 @@ Two hard rules apply to every backend integration:
 
 For the exact classification rules, endpoint naming, metric conversion, and all the quirks, read `data-model.md` in this skill directory. It is the authoritative reference.
 
-## Step 1: Analyze the Architecture
+## Step 2: Analyze the Architecture
 
-Before changing anything, build a picture of what needs instrumenting:
+Before changing anything, build a picture of what needs instrumenting in the sub-project being configured:
 
 1. **Frameworks and languages**: detect them by reading `package.json` (Node.js), `go.mod` (Go), `composer.json` (PHP), `requirements.txt`/`pyproject.toml` (Python), `pubspec.yaml` (Flutter), `build.gradle` (Android), `Package.swift` / `*.xcodeproj` / `*.xcworkspace` / `Podfile` (iOS/Swift; note whether the sources are Swift or Objective-C, which picks the path in "Frontend and Mobile"), or asking the user.
-2. **Services and entry points**: in a monorepo, list each deployable service and its entry point. Each service that should report to Traceway needs its own integration, and usually its own project token (ask the user before reusing one token across services).
-3. **Background work**: find cron jobs, queue consumers, schedulers, CLI commands, and long-running workers. These must be instrumented as Tasks (Step 3).
-4. **AI/LLM usage**: check dependencies for `openai`, `@anthropic-ai/sdk`, `anthropic`, `langchain` / `@langchain/*`, `ai` (Vercel AI SDK), `litellm`, `google-generativeai`, `cohere`, `openrouter`. If any are present, Step 4 applies.
-5. **Deployment signals**: note Dockerfiles, `docker-compose.yml`, Kubernetes manifests, Helm charts, deploy/provisioning scripts, `fly.toml`, `vercel.json`, Procfiles. You will use these in Step 5 to set up server metrics.
+2. **Services and entry points**: list the deployable's entry points. If this pass surfaces additional deployables that Step 0 missed, go back to the picker: each one is its own Traceway project with its own token, never a shared one.
+3. **Background work**: find cron jobs, queue consumers, schedulers, CLI commands, and long-running workers. These must be instrumented as Tasks (Step 4).
+4. **AI/LLM usage**: check dependencies for `openai`, `@anthropic-ai/sdk`, `anthropic`, `langchain` / `@langchain/*`, `ai` (Vercel AI SDK), `litellm`, `google-generativeai`, `cohere`, `openrouter`. If any are present, Step 5 applies.
+5. **Deployment signals**: note Dockerfiles, `docker-compose.yml`, Kubernetes manifests, Helm charts, deploy/provisioning scripts, `fly.toml`, `vercel.json`, Procfiles. You will use these in Step 6 to set up server metrics.
 
-## Step 2: Backend OTel Setup
+## Step 3: Backend OTel Setup
 
 The same shape in every language:
 
@@ -155,11 +181,11 @@ span?.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
 
 ### If the user explicitly asks for the Traceway Go SDK
 
-Only on explicit request, instead of OTel: `go get go.tracewayapp.com/tracewaygin` (or `tracewaychi`, `tracewayfiber`, `tracewayfasthttp`, `tracewayhttp`), add the middleware with connection string `<project-token>@https://<instance>/api/report`. Trade-off: the Go SDK natively emits the built-in system metric names (`cpu.used_pcnt`, `mem.used`, `go.*`) that populate the dashboard's built-in charts; on the OTel path those charts stay empty and host metrics come from the Traceway OTel Agent (Step 5).
+Only on explicit request, instead of OTel: `go get go.tracewayapp.com/tracewaygin` (or `tracewaychi`, `tracewayfiber`, `tracewayfasthttp`, `tracewayhttp`), add the middleware with connection string `<project-token>@https://<instance>/api/report`. Trade-off: the Go SDK natively emits the built-in system metric names (`cpu.used_pcnt`, `mem.used`, `go.*`) that populate the dashboard's built-in charts; on the OTel path those charts stay empty and host metrics come from the Traceway OTel Agent (Step 6).
 
-## Step 3: Background Tasks (Boundaries and Labeling)
+## Step 4: Background Tasks (Boundaries and Labeling)
 
-If Step 1 found background work, instrument it as Tasks. The rules:
+If Step 2 found background work, instrument it as Tasks. The rules:
 
 - **Boundary: one Task = one execution of a unit of background work.** A whole cron job run is one task. One queue message or job is one task. One CLI command invocation is one task. Per-item work inside a run (each email in a batch, each row in an import) is a child span of the task span, never a separate `CONSUMER` span.
 - **Do not double-wrap.** If a library's auto-instrumentation already emits `CONSUMER` spans (Kafka, RabbitMQ, Symfony Messenger consumers), wrapping them again creates duplicate Task entries.
@@ -193,9 +219,9 @@ async function runScheduledJob() {
 
 (Go: `tracer.Start(ctx, "cleanup-expired-sessions", trace.WithSpanKind(trace.SpanKindConsumer))`.)
 
-## Step 4: AI Traces
+## Step 5: AI Traces
 
-If Step 1 found AI/LLM dependencies, instrument the model calls. Any span carrying at least one `gen_ai.*` attribute is promoted to an **AI Trace**; since calls usually happen inside a request or task, the span is naturally a child and stays linked to its Endpoint/Task by trace ID.
+If Step 2 found AI/LLM dependencies, instrument the model calls. Any span carrying at least one `gen_ai.*` attribute is promoted to an **AI Trace**; since calls usually happen inside a request or task, the span is naturally a child and stays linked to its Endpoint/Task by trace ID.
 
 Boundaries: **one span per model call** (one provider API request = one AI Trace row). A multi-step agent run is multiple spans sharing a stable `trace.name` (same labeling discipline as task names: no IDs or timestamps). For streaming, end the span when the stream finishes. Set `user.id` to break down usage and cost per user.
 
@@ -235,28 +261,28 @@ Zero-code path for OpenRouter users: in OpenRouter Settings -> Observability, ad
 
 ## Frontend and Mobile
 
-Frontend and mobile projects do NOT use OTel; they use the Traceway SDKs reporting to `/api/report` with connection string `<project-token>@https://<instance>/api/report`.
+Frontend and mobile projects do NOT use OTel; they use the Traceway SDKs reporting to `/api/report` with connection string `<project-token>@https://<instance>/api/report`. When the frontend lives next to a backend in the same repo, it is a separate Traceway project with its own token (Step 0).
 
 **Browser** (React / Vue / Svelte / jQuery / plain JS), three pieces, all expected:
 
 1. **SDK**: `npm install @tracewayapp/react` (or `vue`, `svelte`, `jquery`, `frontend` for plain JS) and initialize with the connection string (React: wrap the app in `<TracewayProvider connectionString="...">`). Captures errors, web vitals, and session replay.
 2. **Bundler plugin**: `npm install -D @tracewayapp/bundler-plugin`, then add `tracewayDebugIds()` from `@tracewayapp/bundler-plugin/vite` (or `/rollup`, or `TracewayDebugIdsWebpackPlugin` from `/webpack`) to the bundler config, with source maps enabled (`build.sourcemap: true` / `devtool: "source-map"`).
-3. **Source map upload**: `npm install -D @tracewayapp/sourcemap-upload`, then run `traceway-sourcemaps --url <instance> --token <source-map-upload-token> --directory ./dist` as a postbuild or CI step (env vars: `TRACEWAY_URL`, `TRACEWAY_SOURCEMAP_TOKEN`). The upload token comes from Step 0 and is a CI secret, never committed.
+3. **Source map upload**: `npm install -D @tracewayapp/sourcemap-upload`, then run `traceway-sourcemaps --url <instance> --token <source-map-upload-token> --directory ./dist` as a postbuild or CI step (env vars: `TRACEWAY_URL`, `TRACEWAY_SOURCEMAP_TOKEN`). The upload token comes from Step 1 and is a CI secret, never committed.
 
 For the per-framework init code (plain JS, React, Vue, Svelte/SvelteKit, jQuery), the shared SDK options, error filtering, custom attributes, distributed tracing, and the full debug-ID + source map pipeline, read `frontend-js.md` in this skill directory. Online docs: https://docs.tracewayapp.com/client/react (or `vue`, `svelte`, `jquery`, `js-sdk`).
 
-**Full-stack JS** (Next.js, SvelteKit, Remix): both sides. Server side follows Step 2 (verify `http.route` grouping; set it manually in a server hook where the auto-instrumentation does not know the router). Browser side follows the three pieces above.
+**Full-stack JS** (Next.js, SvelteKit, Remix): both sides, one Traceway project (it is a single deployable, not a multi-project split). Server side follows Step 3 (verify `http.route` grouping; set it manually in a server hook where the auto-instrumentation does not know the router). Browser side follows the three pieces above.
 
 **Mobile**, always the platform SDK, never OTel:
 
-- **Flutter**: `flutter pub add traceway`, then `Traceway.run(connectionString: '<token>@https://<instance>/api/report', child: MyApp())`. Then check whether the release build is obfuscated (`--obfuscate --split-debug-info`): if it is, production crash stack traces arrive obfuscated and stay unreadable until the build's `.symbols` files are uploaded, so ask the user for the upload token (Step 0) and wire up the symbol upload. For options, platform permissions, the navigator observer, screen recording, privacy masking, the obfuscation check and symbol upload, and the Flutter web caveat, read `flutter.md` in this skill directory. Docs: https://docs.tracewayapp.com/client/flutter
+- **Flutter**: `flutter pub add traceway`, then `Traceway.run(connectionString: '<token>@https://<instance>/api/report', child: MyApp())`. Then check whether the release build is obfuscated (`--obfuscate --split-debug-info`): if it is, production crash stack traces arrive obfuscated and stay unreadable until the build's `.symbols` files are uploaded, so ask the user for the upload token (Step 1) and wire up the symbol upload. For options, platform permissions, the navigator observer, screen recording, privacy masking, the obfuscation check and symbol upload, and the Flutter web caveat, read `flutter.md` in this skill directory. Docs: https://docs.tracewayapp.com/client/flutter
 - **React Native**: `npm install @tracewayapp/react-native`, wrap the app in `TracewayProvider`. Docs: https://docs.tracewayapp.com/client/react-native
-- **Android** (native Kotlin/Java): add `implementation("com.tracewayapp:traceway:1.0.1")` from Maven Central and call `Traceway.init(application = this, connectionString = "<token>@https://<instance>/api/report", options = TracewayOptions(version = "1.0.0"))` from `Application.onCreate()` (register the `Application` class and add the `INTERNET` permission in the manifest). It captures every uncaught Java/Kotlin exception on every thread plus manual `Traceway.captureException(...)`; errors and crashes only, no session replay. Release builds run R8, so production crashes arrive with renamed classes and rewritten line numbers and stay unreadable until the build's `mapping.txt` is uploaded: apply the `com.tracewayapp.symbols` Gradle plugin (`version "1.0.1"`, resolved from `mavenCentral()`), which injects `BuildConfig.TRACEWAY_PROGUARD_UUID` and uploads the mapping with the upload token (Step 0); pass that UUID into `TracewayOptions(proguardUuid = ...)` so each crash matches its mapping. For init code, options, the manifest, and the full Gradle plugin setup, read `android.md` in this skill directory. Docs: https://docs.tracewayapp.com/client/android
-- **iOS / Swift** (native SwiftUI or UIKit): add the Traceway iOS SDK via Swift Package Manager (`https://github.com/tracewayapp/traceway-ios.git`) and call `Traceway.start(connectionString: "<token>@https://<instance>/api/report", options: TracewayOptions(version: "1.0.0"))` as early as possible. It captures uncaught `NSException`s and fatal signals (hard crashes upload on the next launch) plus manual `Traceway.capture(...)`; it reports errors and crashes only (no session replay). Release crashes arrive as bare addresses until the build's dSYMs are uploaded, so set up dSYM upload with the upload token (Step 0). For init code, options, the debugger caveat, and dSYM upload, read `ios.md` in this skill directory. **If the app is NOT a Swift app** (Objective-C only, a cross-platform stack with no Traceway mobile SDK, or a team standardized on OpenTelemetry), there is no native SDK: use an OTel distribution like Honeycomb with its exporter pointed at `<instance>/api/otel` and a `Authorization: Bearer <project-token>` header, exactly like a backend (Step 2). The non-Swift path is also in `ios.md`.
+- **Android** (native Kotlin/Java): add `implementation("com.tracewayapp:traceway:1.0.1")` from Maven Central and call `Traceway.init(application = this, connectionString = "<token>@https://<instance>/api/report", options = TracewayOptions(version = "1.0.0"))` from `Application.onCreate()` (register the `Application` class and add the `INTERNET` permission in the manifest). It captures every uncaught Java/Kotlin exception on every thread plus manual `Traceway.captureException(...)`; errors and crashes only, no session replay. Release builds run R8, so production crashes arrive with renamed classes and rewritten line numbers and stay unreadable until the build's `mapping.txt` is uploaded: apply the `com.tracewayapp.symbols` Gradle plugin (`version "1.0.1"`, resolved from `mavenCentral()`), which injects `BuildConfig.TRACEWAY_PROGUARD_UUID` and uploads the mapping with the upload token (Step 1); pass that UUID into `TracewayOptions(proguardUuid = ...)` so each crash matches its mapping. For init code, options, the manifest, and the full Gradle plugin setup, read `android.md` in this skill directory. Docs: https://docs.tracewayapp.com/client/android
+- **iOS / Swift** (native SwiftUI or UIKit): add the Traceway iOS SDK via Swift Package Manager (`https://github.com/tracewayapp/traceway-ios.git`) and call `Traceway.start(connectionString: "<token>@https://<instance>/api/report", options: TracewayOptions(version: "1.0.0"))` as early as possible. It captures uncaught `NSException`s and fatal signals (hard crashes upload on the next launch) plus manual `Traceway.capture(...)`; it reports errors and crashes only (no session replay). Release crashes arrive as bare addresses until the build's dSYMs are uploaded, so set up dSYM upload with the upload token (Step 1). For init code, options, the debugger caveat, and dSYM upload, read `ios.md` in this skill directory. **If the app is NOT a Swift app** (Objective-C only, a cross-platform stack with no Traceway mobile SDK, or a team standardized on OpenTelemetry), there is no native SDK: use an OTel distribution like Honeycomb with its exporter pointed at `<instance>/api/otel` and a `Authorization: Bearer <project-token>` header, exactly like a backend (Step 3). The non-Swift path is also in `ios.md`.
 
-## Step 5: Deployment and Server Metrics
+## Step 6: Deployment and Server Metrics
 
-After the code-side integration is in place, ask the user two questions (pre-fill your best guess from the deployment signals found in Step 1 and let them confirm):
+After the code-side integration is in place, ask the user two questions (pre-fill your best guess from the deployment signals found in Step 2 and let them confirm):
 
 1. **How is this project deployed?** Docker on a VM / directly on a VM or bare metal / Kubernetes / serverless or PaaS.
 2. **Do you want server (host) metrics tracked in Traceway?** CPU, memory, disk, filesystem, network of the machine running the app.
@@ -264,7 +290,7 @@ After the code-side integration is in place, ask the user two questions (pre-fil
 | Deployment | Wants host metrics | What to do |
 |---|---|---|
 | Docker on a VM, or directly on a VM/host | Yes | Install the **Traceway OTel Agent** on the host (below). For Docker deploys this is the default; the agent goes on the host, not in a container. |
-| Kubernetes | Any | Agent not applicable (host service, no Docker image or K8s manifests by design). In-process app metrics still flow via the OTLP metrics exporter from Step 2. |
+| Kubernetes | Any | Agent not applicable (host service, no Docker image or K8s manifests by design). In-process app metrics still flow via the OTLP metrics exporter from Step 3. |
 | Serverless / PaaS | Any | No host to install on; skip. |
 | Anything | No | Skip. |
 
@@ -285,7 +311,7 @@ curl -fsSL https://install.tracewayapp.com/install.sh | \
 
 Metrics arrive within ~60s under their hostmetrics names (`system.cpu.utilization`, `system.memory.usage`, ...), tagged with `service.name` and `host.name`. They are chartable via custom widgets; they do NOT populate the built-in CPU/memory charts (those read the Go SDK's exact names). Agent repo: https://github.com/tracewayapp/traceway-otel-agent
 
-## Step 6: Verify
+## Step 7: Verify
 
 1. Start the app and hit a few endpoints (or trigger an error on purpose).
 2. Check the Traceway dashboard:
@@ -293,7 +319,7 @@ Metrics arrive within ~60s under their hostmetrics names (`system.cpu.utilizatio
    - **Issues page**: thrown errors appear with stack traces. For frontend projects, stack traces are symbolicated to original files and lines; for obfuscated Flutter builds, they resolve once the build's `.symbols` files have been uploaded; for native iOS Release crashes, they resolve to symbol names and `file:line` once the build's dSYMs have been uploaded.
    - **Endpoint detail -> Spans tab**: database queries and outgoing calls appear as children.
    - **Tasks page**: after triggering each background job once, it appears under one stable name.
-   - **AI Traces page** (if Step 4 applied): model calls appear with token counts and cost.
+   - **AI Traces page** (if Step 5 applied): model calls appear with token counts and cost.
    - **Metrics** (if the agent was installed): host metrics arrive within about 60 seconds.
 3. If the `traceway` CLI is installed and authenticated, verify from the terminal instead:
    ```bash
@@ -301,3 +327,4 @@ Metrics arrive within ~60s under their hostmetrics names (`system.cpu.utilizatio
    traceway exceptions list --since 15m
    traceway metrics query --name system.cpu.utilization --since 15m
    ```
+4. If Step 0 found more sub-projects to configure, return to the picker and repeat from Step 1 for the next one with its own project token.

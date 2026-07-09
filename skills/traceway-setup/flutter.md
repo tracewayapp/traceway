@@ -125,7 +125,7 @@ A plain `flutter build --release` keeps enough symbol information that crash sta
 
 **First, check whether the build is obfuscated.** Look at how release artifacts are produced (the `flutter build` invocations in CI under `.github/`, in `fastlane/`, in a `Makefile`, or in shell scripts) and ask the user how they build for release. If neither `--obfuscate` nor `--split-debug-info` is passed, stack traces are already readable and symbol upload is unnecessary; skip the rest of this section. If obfuscation is (or will be) used, set up the upload.
 
-**Then ask for the upload token.** Symbol uploads authenticate with the dedicated upload token (Connection page > Symbol Upload, the same token shown under Source Maps), NOT the project token from the connection string. Get it from Step 0; it is a CI secret, never committed. `readonly` members cannot generate one.
+**Then ask for the upload token.** Symbol uploads authenticate with the dedicated upload token (Connection page > Symbol Upload, the same token shown under Source Maps), NOT the project token from the connection string. Get it from Step 1; it is a CI secret, never committed. `readonly` members cannot generate one.
 
 The `traceway` package ships an uploader (`dart run traceway:upload_symbols`) that finds the `.symbols` files, derives each one's architecture and debug ID, and posts them. Configure it once, then run it on every release.
 

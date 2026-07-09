@@ -77,7 +77,7 @@ The last ~10 seconds of logs and actions ride along with each captured exception
 
 A release build with `minifyEnabled true` runs R8, which renames classes and methods and rewrites the line-number table, so production crash traces arrive obfuscated and stay unreadable until Traceway retraces them server-side against the build's `mapping.txt` (the Android equivalent of a JavaScript source map). Set this up whenever the app ships a minified release.
 
-**Token.** Symbol uploads authenticate with the dedicated **upload token** (Connection page > Source Maps / Symbol Upload), NOT the project token from the connection string. Get it from Step 0; it is a CI secret, never committed. `readonly` members cannot generate one. Using the connection-string token here is rejected with a 401.
+**Token.** Symbol uploads authenticate with the dedicated **upload token** (Connection page > Source Maps / Symbol Upload), NOT the project token from the connection string. Get it from Step 1; it is a CI secret, never committed. `readonly` members cannot generate one. Using the connection-string token here is rejected with a 401.
 
 **Apply the plugin.** It is published to Maven Central, so add `mavenCentral()` to the `pluginManagement` repositories in `settings.gradle.kts`:
 

@@ -11,7 +11,7 @@ import (
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
 	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 )
 
 // dbSessionStore is a gorilla/sessions.Store backed by the main transactional
@@ -67,7 +67,7 @@ func (s *dbSessionStore) New(r *http.Request, name string) (*sessions.Session, e
 	if tx == nil {
 		return session, errNoTransaction
 	}
-	data, err := repositories.OAuthSessionRepository.Get(tx, id)
+	data, err := transactional.OAuthSessionRepository.Get(tx, id)
 	if err != nil || data == nil {
 		return session, nil
 	}
@@ -88,7 +88,7 @@ func (s *dbSessionStore) Save(r *http.Request, w http.ResponseWriter, session *s
 
 	if session.Options != nil && session.Options.MaxAge < 0 {
 		if session.ID != "" {
-			if err := repositories.OAuthSessionRepository.Delete(tx, session.ID); err != nil {
+			if err := transactional.OAuthSessionRepository.Delete(tx, session.ID); err != nil {
 				return err
 			}
 		}
@@ -110,7 +110,7 @@ func (s *dbSessionStore) Save(r *http.Request, w http.ResponseWriter, session *s
 	}
 
 	expires := time.Now().UTC().Add(time.Duration(session.Options.MaxAge) * time.Second)
-	if err := repositories.OAuthSessionRepository.Save(tx, session.ID, []byte(encoded), expires); err != nil {
+	if err := transactional.OAuthSessionRepository.Save(tx, session.ID, []byte(encoded), expires); err != nil {
 		return err
 	}
 

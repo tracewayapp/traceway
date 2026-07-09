@@ -7,7 +7,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/config"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/services"
 
 	"github.com/google/uuid"
@@ -20,7 +20,7 @@ func seed(opts *options) error {
 	}
 
 	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
-		existing, err := repositories.UserRepository.FindByEmail(tx, opts.defaultUser.email)
+		existing, err := transactional.UserRepository.FindByEmail(tx, opts.defaultUser.email)
 		if err != nil {
 			return struct{}{}, err
 		}
@@ -34,17 +34,17 @@ func seed(opts *options) error {
 			return struct{}{}, err
 		}
 
-		user, err := repositories.UserRepository.Create(tx, opts.defaultUser.email, "Admin", hash)
+		user, err := transactional.UserRepository.Create(tx, opts.defaultUser.email, "Admin", hash)
 		if err != nil {
 			return struct{}{}, err
 		}
 
-		org, err := repositories.OrganizationRepository.Create(tx, "Default", "UTC")
+		org, err := transactional.OrganizationRepository.Create(tx, "Default", "UTC")
 		if err != nil {
 			return struct{}{}, err
 		}
 
-		_, err = repositories.OrganizationRepository.AddUser(tx, org.Id, user.Id, "owner")
+		_, err = transactional.OrganizationRepository.AddUser(tx, org.Id, user.Id, "owner")
 		if err != nil {
 			return struct{}{}, err
 		}

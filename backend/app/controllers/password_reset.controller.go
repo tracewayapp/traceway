@@ -1,12 +1,12 @@
 package controllers
 
 import (
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
-	"github.com/tracewayapp/traceway/backend/app/services"
 	"database/sql"
 	"fmt"
+	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/app/services"
 	"net/http"
 	"time"
 
@@ -29,7 +29,7 @@ func (c *passwordResetController) ForgotPassword(ctx *gin.Context) {
 		return
 	}
 
-	user, err := repositories.UserRepository.FindByEmail(tx, request.Email)
+	user, err := transactional.UserRepository.FindByEmail(tx, request.Email)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to find user: %w", err))
 		return
@@ -48,7 +48,7 @@ func (c *passwordResetController) ForgotPassword(ctx *gin.Context) {
 	token := uuid.New().String()
 	expiresAt := time.Now().Add(resetTokenExpiry)
 
-	err = repositories.UserRepository.SetPasswordResetToken(tx, user.Id, token, expiresAt)
+	err = transactional.UserRepository.SetPasswordResetToken(tx, user.Id, token, expiresAt)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to set reset token: %w", err))
 		return
@@ -67,7 +67,7 @@ func (c *passwordResetController) ValidateToken(ctx *gin.Context) {
 	token := ctx.Param("token")
 
 	user, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.User, error) {
-		return repositories.UserRepository.FindByPasswordResetToken(tx, token)
+		return transactional.UserRepository.FindByPasswordResetToken(tx, token)
 	})
 
 	if err != nil {
@@ -101,7 +101,7 @@ func (c *passwordResetController) ResetPassword(ctx *gin.Context) {
 		return
 	}
 
-	user, err := repositories.UserRepository.FindByPasswordResetToken(tx, token)
+	user, err := transactional.UserRepository.FindByPasswordResetToken(tx, token)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to find user: %w", err))
 		return
@@ -123,13 +123,13 @@ func (c *passwordResetController) ResetPassword(ctx *gin.Context) {
 		return
 	}
 
-	err = repositories.UserRepository.UpdatePassword(tx, user.Id, hashedPassword)
+	err = transactional.UserRepository.UpdatePassword(tx, user.Id, hashedPassword)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to update password: %w", err))
 		return
 	}
 
-	err = repositories.UserRepository.ClearPasswordResetToken(tx, user.Id)
+	err = transactional.UserRepository.ClearPasswordResetToken(tx, user.Id)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to clear reset token: %w", err))
 		return

@@ -6,7 +6,7 @@ import (
 
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -59,9 +59,9 @@ func (t taskDetailController) GetTaskDetail(c *gin.Context) {
 
 	// Get task
 	span := traceway.StartSpan(c, "loading task")
-	task, err := repositories.TaskRepository.FindById(c, projectId, taskId, request.RecordedAt)
+	task, err := telemetry.TaskRepository.FindById(c, projectId, taskId, request.RecordedAt)
 	if task == nil && err == nil && request.RecordedAt != nil {
-		task, err = repositories.TaskRepository.FindById(c, projectId, taskId, nil)
+		task, err = telemetry.TaskRepository.FindById(c, projectId, taskId, nil)
 	}
 	span.End()
 	if err != nil {
@@ -77,7 +77,7 @@ func (t taskDetailController) GetTaskDetail(c *gin.Context) {
 
 	// Get spans (flat list ordered by start_time)
 	span = traceway.StartSpan(c, "loading spans")
-	spans, err := repositories.SpanRepository.FindByTraceId(c, projectId, taskId, &recordedAt)
+	spans, err := telemetry.SpanRepository.FindByTraceId(c, projectId, taskId, &recordedAt)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading spans: %w", err))
@@ -89,7 +89,7 @@ func (t taskDetailController) GetTaskDetail(c *gin.Context) {
 	var messages []TaskMessageInfo
 
 	span = traceway.StartSpan(c, "loading exceptions")
-	allExceptions, err := repositories.ExceptionStackTraceRepository.FindAllByTraceId(c, projectId, taskId, &recordedAt)
+	allExceptions, err := telemetry.ExceptionStackTraceRepository.FindAllByTraceId(c, projectId, taskId, &recordedAt)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading allExceptions: %w", err))

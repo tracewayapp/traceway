@@ -17,7 +17,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models/clientmodels"
 	"github.com/tracewayapp/traceway/backend/app/monitoring"
 	"github.com/tracewayapp/traceway/backend/app/recordings"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/jsstack"
 
@@ -302,7 +302,7 @@ func (e clientController) Report(c *gin.Context) {
 
 	if len(endpointsToInsert) > 0 {
 		insertSpan := traceway.StartSpan(c, "report.insert.endpoints")
-		err := repositories.EndpointRepository.InsertAsync(c, endpointsToInsert)
+		err := telemetry.EndpointRepository.InsertAsync(c, endpointsToInsert)
 		insertSpan.End()
 		if err != nil {
 			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting endpointsToInsert: %w", err))
@@ -312,7 +312,7 @@ func (e clientController) Report(c *gin.Context) {
 
 	if len(tasksToInsert) > 0 {
 		insertSpan := traceway.StartSpan(c, "report.insert.tasks")
-		err := repositories.TaskRepository.InsertAsync(c, tasksToInsert)
+		err := telemetry.TaskRepository.InsertAsync(c, tasksToInsert)
 		insertSpan.End()
 		if err != nil {
 			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting tasksToInsert: %w", err))
@@ -322,7 +322,7 @@ func (e clientController) Report(c *gin.Context) {
 
 	if len(sessionsToUpsert) > 0 {
 		insertSpan := traceway.StartSpan(c, "report.upsert.sessions")
-		err := repositories.SessionRepository.Upsert(c, sessionsToUpsert)
+		err := telemetry.SessionRepository.Upsert(c, sessionsToUpsert)
 		insertSpan.End()
 		if err != nil {
 			c.AbortWithError(500, traceway.NewStackTraceErrorf("error upserting sessions: %w", err))
@@ -331,7 +331,7 @@ func (e clientController) Report(c *gin.Context) {
 	}
 
 	exceptionInsertSpan := traceway.StartSpan(c, "report.insert.exceptions")
-	err = repositories.ExceptionStackTraceRepository.InsertAsync(c, exceptionStackTraceToInsert)
+	err = telemetry.ExceptionStackTraceRepository.InsertAsync(c, exceptionStackTraceToInsert)
 	exceptionInsertSpan.End()
 
 	if err != nil {
@@ -341,7 +341,7 @@ func (e clientController) Report(c *gin.Context) {
 
 	if len(metricPointsToInsert) > 0 {
 		insertSpan := traceway.StartSpan(c, "report.insert.metric_points")
-		err := repositories.MetricPointRepository.InsertAsync(c, metricPointsToInsert)
+		err := telemetry.MetricPointRepository.InsertAsync(c, metricPointsToInsert)
 		insertSpan.End()
 		if err != nil {
 			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting metricPointsToInsert: %w", err))
@@ -353,7 +353,7 @@ func (e clientController) Report(c *gin.Context) {
 	}
 
 	spanInsertSpan := traceway.StartSpan(c, "report.insert.spans")
-	err = repositories.SpanRepository.InsertAsync(c, spansToInsert)
+	err = telemetry.SpanRepository.InsertAsync(c, spansToInsert)
 	spanInsertSpan.End()
 
 	if err != nil {

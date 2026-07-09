@@ -9,7 +9,8 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 
 	"github.com/gin-gonic/gin"
 	traceway "go.tracewayapp.com"
@@ -60,7 +61,7 @@ func (c *metricQueryController) Query(ctx *gin.Context) {
 
 	unitMap := make(map[string]string)
 	registry, regErr := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.MetricRegistry, error) {
-		return repositories.MetricRegistryRepository.FindByProject(tx, projectId)
+		return transactional.MetricRegistryRepository.FindByProject(tx, projectId)
 	})
 	if regErr != nil {
 		traceway.CaptureException(fmt.Errorf("failed to load metric registry for query: %w", regErr))
@@ -86,7 +87,7 @@ func (c *metricQueryController) Query(ctx *gin.Context) {
 			spanName += fmt.Sprintf(" filters=%d", len(q.TagFilters))
 		}
 		span := traceway.StartSpan(ctx, spanName)
-		series, err := repositories.MetricPointRepository.QueryTimeSeries(
+		series, err := telemetry.MetricPointRepository.QueryTimeSeries(
 			ctx, projectId, q.Name, req.From, req.To,
 			req.IntervalMinutes, agg, q.TagFilters, q.GroupBy,
 		)
@@ -137,7 +138,7 @@ func (c *metricQueryController) Discover(ctx *gin.Context) {
 	}
 
 	span := traceway.StartSpan(ctx, "discover metrics")
-	discovered, err := repositories.MetricPointRepository.DiscoverMetrics(ctx, projectId, from, to)
+	discovered, err := telemetry.MetricPointRepository.DiscoverMetrics(ctx, projectId, from, to)
 	span.End()
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to discover metrics: %w", err))
@@ -145,7 +146,7 @@ func (c *metricQueryController) Discover(ctx *gin.Context) {
 	}
 
 	registry, regErr := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.MetricRegistry, error) {
-		return repositories.MetricRegistryRepository.FindByProject(tx, projectId)
+		return transactional.MetricRegistryRepository.FindByProject(tx, projectId)
 	})
 
 	if regErr != nil {
@@ -185,7 +186,7 @@ func (c *metricQueryController) DiscoverTags(ctx *gin.Context) {
 	to := time.Now()
 
 	span := traceway.StartSpan(ctx, fmt.Sprintf("discover tag values: %s.%s", name, key))
-	values, err := repositories.MetricPointRepository.DiscoverTagValues(ctx, projectId, name, key, from, to)
+	values, err := telemetry.MetricPointRepository.DiscoverTagValues(ctx, projectId, name, key, from, to)
 	span.End()
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to discover tag values: %w", err))
@@ -219,7 +220,7 @@ func (c *metricQueryController) UpdateRegistry(ctx *gin.Context) {
 	}
 
 	updated, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.MetricRegistry, error) {
-		entry, err := repositories.MetricRegistryRepository.FindByProjectAndName(tx, projectId, req.Name)
+		entry, err := transactional.MetricRegistryRepository.FindByProjectAndName(tx, projectId, req.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -233,7 +234,7 @@ func (c *metricQueryController) UpdateRegistry(ctx *gin.Context) {
 			entry.Unit = req.Unit
 		}
 		entry.Description = req.Description
-		if err := repositories.MetricRegistryRepository.Update(tx, entry); err != nil {
+		if err := transactional.MetricRegistryRepository.Update(tx, entry); err != nil {
 			return nil, err
 		}
 		return entry, nil

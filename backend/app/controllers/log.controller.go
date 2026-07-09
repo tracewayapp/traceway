@@ -12,7 +12,7 @@ import (
 
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 )
 
 type logController struct{}
@@ -81,19 +81,19 @@ func (l logController) List(c *gin.Context) {
 		}
 	}
 
-	attrFilters := make([]repositories.LogAttributeFilter, 0, len(request.AttributeFilters))
+	attrFilters := make([]telemetry.LogAttributeFilter, 0, len(request.AttributeFilters))
 	for _, f := range request.AttributeFilters {
 		if f.Key == "" || f.Scope == "" {
 			continue
 		}
-		attrFilters = append(attrFilters, repositories.LogAttributeFilter{
+		attrFilters = append(attrFilters, telemetry.LogAttributeFilter{
 			Scope: f.Scope,
 			Key:   f.Key,
 			Value: f.Value,
 		})
 	}
 
-	params := repositories.LogSearchParams{
+	params := telemetry.LogSearchParams{
 		ProjectId:        projectId,
 		FromDate:         request.FromDate,
 		ToDate:           request.ToDate,
@@ -137,7 +137,7 @@ func (l logController) List(c *gin.Context) {
 	}
 
 	span := traceway.StartSpan(c, "loading logs")
-	records, total, err := repositories.LogRecordRepository.Search(c, params)
+	records, total, err := telemetry.LogRecordRepository.Search(c, params)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading logs: %w", err))
@@ -163,15 +163,15 @@ func (l logController) resolveDistributedTraceIds(ctx context.Context, dtid uuid
 		recordedAtHint = &recordedAt
 	}
 
-	endpoints, err := repositories.EndpointRepository.FindByDistributedTraceId(ctx, dtid, projectIds, recordedAtHint)
+	endpoints, err := telemetry.EndpointRepository.FindByDistributedTraceId(ctx, dtid, projectIds, recordedAtHint)
 	if err != nil {
 		return nil, err
 	}
-	tasks, err := repositories.TaskRepository.FindByDistributedTraceId(ctx, dtid, projectIds, recordedAtHint)
+	tasks, err := telemetry.TaskRepository.FindByDistributedTraceId(ctx, dtid, projectIds, recordedAtHint)
 	if err != nil {
 		return nil, err
 	}
-	aiTraces, err := repositories.AiTraceRepository.FindByDistributedTraceId(ctx, dtid, projectIds, recordedAtHint)
+	aiTraces, err := telemetry.AiTraceRepository.FindByDistributedTraceId(ctx, dtid, projectIds, recordedAtHint)
 	if err != nil {
 		return nil, err
 	}

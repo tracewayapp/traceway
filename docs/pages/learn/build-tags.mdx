@@ -1,6 +1,6 @@
 # Build Tags
 
-The Traceway backend uses Go build tags to switch between storage backends and to embed the frontend. Storage is selected on two independent axes: the **telemetry** store (high-volume, append-only data) and the **OLTP** store (relational/config data).
+The Traceway backend uses Go build tags to switch between storage backends and to embed the frontend. Storage is selected on two independent axes: the **telemetry** store (high-volume, append-only data) and the **transactional** store (relational/config data).
 
 ## Tags
 
@@ -12,12 +12,12 @@ The Traceway backend uses Go build tags to switch between storage backends and t
 | `telemetry_duckdb` | **DuckDB** telemetry store — embedded mode with a columnar engine for much faster dashboard analytics. Requires `CGO_ENABLED=1`. |
 | `telemetry_ch` | **ClickHouse** telemetry store — standalone server mode. |
 
-### OLTP axis
+### Transactional axis
 
 | Tag | Purpose |
 |-----|---------|
-| *(none)* / `oltp_sqlite` | **SQLite** main database. This is the default; `oltp_sqlite` is accepted as an explicit no-op spelling. |
-| `oltp_pg` | **PostgreSQL** main database — standalone server mode. |
+| *(none)* / `transactional_sqlite` | **SQLite** main database. This is the default; `transactional_sqlite` is accepted as an explicit no-op spelling. |
+| `transactional_pg` | **PostgreSQL** main database — standalone server mode. |
 
 ### Other
 
@@ -33,7 +33,7 @@ Only three combinations are supported, enforced by compile-time guard files in `
 |------|------|-----------|
 | Embedded (default) | *(none)* | SQLite main + SQLite telemetry |
 | Embedded, columnar telemetry | `telemetry_duckdb` | SQLite main + DuckDB telemetry |
-| Standalone server | `oltp_pg telemetry_ch` | PostgreSQL main + ClickHouse telemetry |
+| Standalone server | `transactional_pg telemetry_ch` | PostgreSQL main + ClickHouse telemetry |
 
 The legacy `pgch` and `duckdb` tags were renamed to this scheme; passing them fails the build with a message pointing at the new tags, so a stale invocation cannot silently produce the wrong binary.
 
@@ -60,7 +60,7 @@ DuckDB links prebuilt glibc static libraries, so this build needs CGO and a glib
 ### Standalone server (ClickHouse + PostgreSQL)
 
 ```bash
-cd backend && go build -tags "oltp_pg telemetry_ch" ./cmd/traceway
+cd backend && go build -tags "transactional_pg telemetry_ch" ./cmd/traceway
 ```
 
 Requires `CLICKHOUSE_SERVER`, `POSTGRES_HOST`, and the other environment variables to be configured.
@@ -70,7 +70,7 @@ Requires `CLICKHOUSE_SERVER`, `POSTGRES_HOST`, and the other environment variabl
 The Dockerfiles build the frontend and embed it into the Go binary with the standalone tags:
 
 ```bash
-go build -tags "oltp_pg telemetry_ch" ./cmd/traceway
+go build -tags "transactional_pg telemetry_ch" ./cmd/traceway
 ```
 
 The frontend is embedded from `static/frontend/` which the Docker build populates from the SvelteKit build output. You don't need to embed the frontend for local development — run the frontend dev server separately with `cd frontend && npm run dev`.
@@ -80,19 +80,19 @@ The frontend is embedded from `static/frontend/` which the Docker build populate
 ### SQLite tests (default)
 
 ```bash
-cd backend && go test -v -count=1 ./app/repositories/
+cd backend && go test -v -count=1 ./app/repositories/...
 ```
 
 ### DuckDB tests
 
 ```bash
-cd backend && CGO_ENABLED=1 go test -tags telemetry_duckdb -v -count=1 ./app/repositories/
+cd backend && CGO_ENABLED=1 go test -tags telemetry_duckdb -v -count=1 ./app/repositories/...
 ```
 
 ### ClickHouse tests
 
 ```bash
-cd backend && TEST_CLICKHOUSE_SERVER=localhost:9000 go test -tags "oltp_pg telemetry_ch" -v ./app/repositories/
+cd backend && TEST_CLICKHOUSE_SERVER=localhost:9000 go test -tags "transactional_pg telemetry_ch" -v ./app/repositories/...
 ```
 
 Without `TEST_CLICKHOUSE_SERVER` set, the ClickHouse tests skip cleanly.

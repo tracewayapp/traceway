@@ -64,7 +64,7 @@ Traceway uses Go build tags to switch between storage backends:
 |-----|---------|
 | *(none)* | **SQLite** — embedded mode, zero dependencies. This is the default. |
 | `telemetry_duckdb` | **DuckDB telemetry** — embedded mode with a columnar telemetry store. Requires `CGO_ENABLED=1`. |
-| `oltp_pg telemetry_ch` | **ClickHouse + PostgreSQL** — standalone server mode. |
+| `transactional_pg telemetry_ch` | **ClickHouse + PostgreSQL** — standalone server mode. |
 | `localdist` | Embeds the pre-built frontend into the Go binary. Used in Docker builds. |
 
 See the [Build Tags](/learn/build-tags) page for more details.
@@ -89,8 +89,8 @@ If you're working on ClickHouse or PostgreSQL-specific code, see the [Local Setu
 
 ```bash
 cd backend
-go build -tags "oltp_pg telemetry_ch" ./...
-go run -tags "oltp_pg telemetry_ch" ./cmd/traceway
+go build -tags "transactional_pg telemetry_ch" ./...
+go run -tags "transactional_pg telemetry_ch" ./cmd/traceway
 ```
 
 ### Frontend
@@ -119,7 +119,7 @@ These run without any external dependencies:
 
 ```bash
 cd backend
-go test -v -count=1 ./app/repositories/
+go test -v -count=1 ./app/repositories/...
 ```
 
 ### ClickHouse + PostgreSQL tests (via Docker)
@@ -130,7 +130,7 @@ The full ClickHouse + PostgreSQL test suite runs both databases inside a Docker 
 ./scripts/test-backend-pgch.sh
 ```
 
-This builds a Docker image with both databases, applies all migrations, and runs the test suite with `-tags "oltp_pg telemetry_ch"`. All tests should pass.
+This builds a Docker image with both databases, applies all migrations, and runs the test suite with `-tags "transactional_pg telemetry_ch"`. All tests should pass.
 
 <Callout type="info">
   Without Docker, you can run the ClickHouse + PostgreSQL tests against local databases by setting environment variables:
@@ -143,7 +143,7 @@ This builds a Docker image with both databases, applies all migrations, and runs
   TEST_POSTGRES_DATABASE=traceway_test \
   TEST_POSTGRES_USERNAME=traceway \
   TEST_POSTGRES_PASSWORD=traceway \
-  go test -tags "oltp_pg telemetry_ch" -v -count=1 ./app/repositories/
+  go test -tags "transactional_pg telemetry_ch" -v -count=1 ./app/repositories/...
   ```
 
   Without `TEST_CLICKHOUSE_SERVER` set, the ClickHouse tests skip cleanly.
@@ -201,7 +201,7 @@ Two separate auth systems:
 
 ### Backend Patterns
 
-**Repositories** are singletons (`var FooRepository = &fooRepository{}`). Telemetry repositories have one implementation per backend under `backend/app/repositories/telemetry/{clickhouse,sqlite,duckdb}/`, selected by the `telemetry_*` build tags and re-exported through the `repositories` package so callers never import a backend package directly.
+**Repositories** are singletons (`var FooRepository = &fooRepository{}`) organized on the two storage axes. Telemetry repositories have one implementation per backend under `backend/app/repositories/telemetry/{clickhouse,sqlite,duckdb}/`, selected by the `telemetry_*` build tags; transactional (relational) repositories live under `backend/app/repositories/transactional/{pg,sqlite}/`, selected by the `transactional_*` build tags. Each axis is re-exported through its facade package — callers import `app/repositories/telemetry` or `app/repositories/transactional` (e.g. `telemetry.SpanRepository`, `transactional.UserRepository`) and never a backend package directly.
 
 **Controllers** use the Gin framework. PostgreSQL operations go through `middleware.Transactional` for automatic commit/rollback.
 
@@ -249,14 +249,14 @@ git checkout -b your-feature upstream/main
 ```bash
 cd backend
 go build ./...                                    # SQLite (default)
-go build -tags "oltp_pg telemetry_ch" ./...       # ClickHouse + PostgreSQL
+go build -tags "transactional_pg telemetry_ch" ./...       # ClickHouse + PostgreSQL
 CGO_ENABLED=1 go build -tags telemetry_duckdb ./...   # DuckDB telemetry
 ```
 
 2. **Run the SQLite tests**:
 
 ```bash
-go test -v -count=1 ./app/repositories/
+go test -v -count=1 ./app/repositories/...
 ```
 
 3. **Run the OTEL converter tests** if you changed any OTEL parsing code:

@@ -13,7 +13,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/services/authserver"
 )
 
@@ -48,7 +48,7 @@ func (c *patController) Create(ctx *gin.Context) {
 		expiresAt = &t
 	}
 
-	if err := repositories.PersonalAccessTokenRepository.Create(tx, id, token, prefix, userId, name, expiresAt); err != nil {
+	if err := transactional.PersonalAccessTokenRepository.Create(tx, id, token, prefix, userId, name, expiresAt); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("create pat: %w", err))
 		return
 	}
@@ -66,7 +66,7 @@ func (c *patController) Create(ctx *gin.Context) {
 func (c *patController) List(ctx *gin.Context) {
 	userId := middleware.GetUserId(ctx)
 
-	tokens, err := repositories.PersonalAccessTokenRepository.ListByUser(db.DB, userId)
+	tokens, err := transactional.PersonalAccessTokenRepository.ListByUser(db.DB, userId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("list pats: %w", err))
 		return
@@ -79,7 +79,7 @@ func (c *patController) Revoke(ctx *gin.Context) {
 	userId := middleware.GetUserId(ctx)
 	id := ctx.Param("id")
 
-	rows, err := repositories.PersonalAccessTokenRepository.Revoke(tx, id, userId)
+	rows, err := transactional.PersonalAccessTokenRepository.Revoke(tx, id, userId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("revoke pat: %w", err))
 		return

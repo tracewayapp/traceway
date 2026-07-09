@@ -11,7 +11,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/services/authserver"
 )
 
@@ -100,7 +100,7 @@ func (c *deviceAuthController) Lookup(ctx *gin.Context) {
 		return
 	}
 
-	da, err := repositories.DeviceAuthorizationRepository.FindByUserCode(db.DB, userCode)
+	da, err := transactional.DeviceAuthorizationRepository.FindByUserCode(db.DB, userCode)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("device lookup: %w", err))
 		return

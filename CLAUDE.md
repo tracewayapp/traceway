@@ -86,7 +86,7 @@ All PostgreSQL operations should use `ExecuteTransaction` for automatic commit/r
 
 project, err := pgdb.ExecuteTransaction(func(tx *sql.Tx) (*models.Project, error) {
     // All repository calls receive the transaction
-    return repositories.ProjectRepository.FindById(tx, id)
+    return transactional.ProjectRepository.FindById(tx, id)
 })
 ```
 
@@ -103,7 +103,7 @@ func (c *AuthController) Register(ctx *gin.Context) {
     tx := middleware.GetTx(ctx)  // Get transaction from context
 
     // Use tx for all repository calls
-    user, err := repositories.UserRepository.FindByEmail(tx, email)
+    user, err := transactional.UserRepository.FindByEmail(tx, email)
     if err != nil {
         ctx.JSON(500, gin.H{"error": err.Error()})
         return  // Transaction auto-rolls back on non-success status
@@ -201,7 +201,7 @@ func (r *userRepository) CountByOrganization(tx *sql.Tx, orgID uuid.UUID) (int, 
 
 ```go
 // CORRECT - check for nil
-user, err := repositories.UserRepository.FindByEmail(tx, email)
+user, err := transactional.UserRepository.FindByEmail(tx, email)
 if err != nil {
     return nil, err  // actual database error
 }
@@ -211,7 +211,7 @@ if user == nil {
 }
 
 // WRONG - do not use sql.ErrNoRows with lit
-user, err := repositories.UserRepository.FindByEmail(tx, email)
+user, err := transactional.UserRepository.FindByEmail(tx, email)
 if err == sql.ErrNoRows {  // This won't work with lit!
     // ...
 }
@@ -777,14 +777,14 @@ for _, item := range items {
 - `backend/app/migrations/sqlite/` — runs on `db.DB` (main)
 - `backend/app/migrations/sqlite_telemetry/` — runs on `db.TelemetryDB` (telemetry)
 
-**SQLite-specific type helpers** (`backend/app/repositories/sqlite_types.go`):
+**SQLite-specific type helpers** (`backend/app/repositories/telemetry/sqlitetypes/`):
 - `SQLiteTime` — implements `sql.Scanner`/`driver.Valuer` for `time.Time` ↔ SQLite TEXT
 - `SQLiteJSONMap` — implements `sql.Scanner`/`driver.Valuer` for `map[string]string` ↔ SQLite JSON TEXT
 - Row types (e.g., `endpointRow`, `taskRow`) wrap domain models with these types for lit compatibility
 
 #### DuckDB Telemetry Backend (self-hosted, opt-in)
 
-Built with `-tags telemetry_duckdb` (`CGO_ENABLED=1` required), this is an alternative telemetry store for the same `DB_TYPE=sqlite` deployment: the **main DB stays SQLite** (`db.DB`, relational/config), while the **telemetry DB becomes DuckDB** (`db.TelemetryDB`, columnar). It exists because DuckDB's columnar engine is dramatically faster on the analytics/aggregation reads the dashboard issues — at 10M rows it clears read-probe thresholds that SQLite times out on. Backends are selected on two build-tag axes: `telemetry_ch` / `telemetry_duckdb` / *(none = SQLite telemetry)* for the telemetry store and `oltp_pg` / *(none = SQLite main)* for the relational store. Only three combinations are supported — *(no tags)* dual SQLite, `telemetry_duckdb`, and `oltp_pg telemetry_ch` — enforced by compile-time guard files in `backend/app/db/` (stale `pgch`/`duckdb` tags also fail with a rename message). Telemetry repositories live in per-backend packages `backend/app/repositories/telemetry/{clickhouse,sqlite,duckdb}/`, re-exported as singletons through tag-guarded facade files in the `repositories` package (`telemetry_ch.go` / `telemetry_sqlite.go` / `telemetry_duckdb.go`); helpers shared by all backends are in `telemetry/shared/`, and the SQLite scan/value types shared by the sqlite+duckdb backends are in `telemetry/sqlitetypes/`.
+Built with `-tags telemetry_duckdb` (`CGO_ENABLED=1` required), this is an alternative telemetry store for the same `DB_TYPE=sqlite` deployment: the **main DB stays SQLite** (`db.DB`, relational/config), while the **telemetry DB becomes DuckDB** (`db.TelemetryDB`, columnar). It exists because DuckDB's columnar engine is dramatically faster on the analytics/aggregation reads the dashboard issues — at 10M rows it clears read-probe thresholds that SQLite times out on. Backends are selected on two build-tag axes: `telemetry_ch` / `telemetry_duckdb` / *(none = SQLite telemetry)* for the telemetry store and `transactional_pg` / *(none = SQLite main)* for the relational store. Only three combinations are supported — *(no tags)* dual SQLite, `telemetry_duckdb`, and `transactional_pg telemetry_ch` — enforced by compile-time guard files in `backend/app/db/` (stale `pgch`/`duckdb`/`oltp_*` tags also fail with a rename message). Repositories are organized on the same two axes: telemetry repositories live in per-backend packages `backend/app/repositories/telemetry/{clickhouse,sqlite,duckdb}/` and transactional (relational) repositories in `backend/app/repositories/transactional/{pg,sqlite}/`, each re-exported as singletons through tag-guarded facade files at the axis package root (`telemetry/telemetry_ch.go` etc., `transactional/transactional_pg.go` etc.). Consumers import the facade packages — `telemetry.SpanRepository`, `transactional.UserRepository` — never a backend package directly. Helpers shared by all telemetry backends are in `telemetry/shared/`, the SQLite scan/value types shared by the sqlite+duckdb backends are in `telemetry/sqlitetypes/`, and helpers/types shared by the transactional backends (auth-token hashing/time formats, facade-crossing structs) are in `transactional/shared/`. The `transactional/pg` and `transactional/sqlite` implementations are intentionally kept dialect-neutral (lit `:name` queries rendered per `db.Driver`) — the default build can still run Postgres at runtime via `DB_TYPE`.
 
 - **Driver:** `github.com/duckdb/duckdb-go/v2` (the official driver; marcboeker/go-duckdb is deprecated). Bundles prebuilt static libs for glibc only — **not musl/Alpine**, so the image uses Debian (`Dockerfile.duckdb`).
 - **Opened in** `backend/app/db/db_telemetry_duckdb.go`: telemetry path is the SQLite path with `.db` swapped for `_telemetry.duckdb`. By default DuckDB auto-tunes to the host; `DUCKDB_MEMORY_LIMIT`/`DUCKDB_THREADS`/`DUCKDB_CHECKPOINT_THRESHOLD` (passed through as DSN config options) let operators cap memory/threads so a memory-capped container doesn't read the host's RAM and OOM-kill the backend, and raise the WAL checkpoint threshold (default 16MB) so sustained Appender ingest isn't stalled by frequent checkpoints. `preserve_insertion_order=false` is always set — telemetry reads all have explicit ORDER BY, and dropping the guarantee lets DuckDB parallelize bulk loads and large scans with less memory. The read pool is bounded (`SetMaxOpenConns(duckDBMaxReadConns)`) since each DuckDB connection can use all threads + its own query memory; Appender writes use their own `DuckDBConnector.Connect()` connections and bypass that cap. Exposes `db.DuckDBConnector` (needed for the Appender).
@@ -792,7 +792,7 @@ Built with `-tags telemetry_duckdb` (`CGO_ENABLED=1` required), this is an alter
 - **`lit` placeholders:** `db.Driver` stays `lit.SQLite`, which emits `?` — DuckDB accepts these, so no separate driver was needed for reads.
 - **Migrations:** `backend/app/migrations/duckdb_telemetry/` (mirrors `sqlite_telemetry/` table-for-table; integer columns are `BIGINT`, JSON is `VARCHAR`, no secondary indexes since it's columnar).
 - **Dialect gotchas vs SQLite** (the read queries differ): native `quantile_cont(col, p)` for P50/P95/P99 instead of fetch-and-sort; `strftime('%s',col)`→`epoch(col)`; time bucketing via `time_bucket(to_seconds(N), col, TIMESTAMP '1970-01-01')` — the explicit epoch origin is required because DuckDB anchors sub-day buckets at 2000-01-03 by default, which would misalign chart buckets against the SQLite backend's epoch-floored buckets for any interval that doesn't evenly divide a day; `json_extract`→`json_extract_string`; `json_each`→`LATERAL unnest(json_keys(x))`; strict GROUP BY needs `ANY_VALUE`/`arg_max`; `SUM` returns HUGEINT (CAST to BIGINT); `CAST(.. AS REAL)`→`CAST(.. AS DOUBLE)`.
-- **Tests:** `testhelper_duckdb_test.go` (tagged `telemetry_duckdb`) provides `setupTestDB` so the entire existing telemetry test suite runs against an in-memory DuckDB.
+- **Tests:** `backend/app/repositories/telemetry/testhelper_duckdb_test.go` (tagged `telemetry_duckdb`) provides `setupTestDB` so the entire existing telemetry test suite runs against an in-memory DuckDB.
 
 #### Data Retention
 
@@ -952,17 +952,17 @@ The backend normalizes stack traces before hashing to group identical errors des
 ### Repository Patterns
 
 #### Singleton Pattern
-Repositories are exported as package-level singletons for simple access:
+Repositories are exported as package-level singletons, re-exported per storage axis through the facade packages `app/repositories/transactional` and `app/repositories/telemetry`:
 ```go
-// backend/app/repositories/users.go
+// backend/app/repositories/transactional/sqlite/user.repository.go (and the pg/ twin)
 var UserRepository = userRepository{}
 
-// backend/app/repositories/projects.go
-var ProjectRepository = projectRepository{}
+// backend/app/repositories/transactional/transactional_sqlite.go (tag-guarded facade)
+var UserRepository = sqliterepo.UserRepository
 
 // Usage in controllers
-user, err := repositories.UserRepository.FindByEmail(tx, email)
-project, err := repositories.ProjectRepository.FindById(tx, id)
+user, err := transactional.UserRepository.FindByEmail(tx, email)
+spans, err := telemetry.SpanRepository.FindByTraceId(projectId, traceId)
 ```
 
 #### Batch Insert (ClickHouse)

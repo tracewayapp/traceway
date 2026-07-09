@@ -11,7 +11,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/services/authserver"
 )
 
@@ -57,7 +57,7 @@ func (c *oauthAuthorizeController) Lookup(ctx *gin.Context) {
 		return
 	}
 
-	client, err := repositories.OauthClientRepository.FindById(db.DB, clientId)
+	client, err := transactional.OauthClientRepository.FindById(db.DB, clientId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("oauth client lookup: %w", err))
 		return

@@ -1,0 +1,225 @@
+{
+  "tier": "ccx13",
+  "mode": "duckdb",
+  "signal": "logs",
+  "scenario": "throughput",
+  "startedAt": "2026-07-07T19:40:24Z",
+  "endedAt": "2026-07-07T20:00:59Z",
+  "phase1": {
+    "kind": "batch-size-ramp",
+    "fixedRequestRate": 5,
+    "steps": [
+      {
+        "step": 1,
+        "batchSize": 256,
+        "requestRate": 5,
+        "attemptedItemsPerSec": 1281.91353089505,
+        "actualItemsPerSec": 1281.91353089505,
+        "rejected": 0,
+        "ingest": {
+          "p50": 17.846491999999998,
+          "p95": 20.407358000000002,
+          "p99": 25.095268,
+          "ok": 601,
+          "errors": 0,
+          "errRate": 0
+        },
+        "ch": {
+          "reachable": false,
+          "uptimeSec": 0,
+          "partsCount": 0,
+          "activeMerges": 0,
+          "longestMergeSec": 0
+        },
+        "passed": true
+      },
+      {
+        "step": 2,
+        "batchSize": 1024,
+        "requestRate": 5,
+        "attemptedItemsPerSec": 3864.451184968785,
+        "actualItemsPerSec": 3864.451184968785,
+        "rejected": 0,
+        "ingest": {
+          "p50": 41.621116,
+          "p95": 46.387957,
+          "p99": 62.342953,
+          "ok": 453,
+          "errors": 0,
+          "errRate": 0
+        },
+        "ch": {
+          "reachable": false,
+          "uptimeSec": 0,
+          "partsCount": 0,
+          "activeMerges": 0,
+          "longestMergeSec": 0
+        },
+        "passed": true
+      },
+      {
+        "step": 3,
+        "batchSize": 4096,
+        "requestRate": 5,
+        "attemptedItemsPerSec": 15519.703633766136,
+        "actualItemsPerSec": 15519.703633766136,
+        "rejected": 0,
+        "ingest": {
+          "p50": 93.896676,
+          "p95": 116.030599,
+          "p99": 947.302201,
+          "ok": 455,
+          "errors": 0,
+          "errRate": 0
+        },
+        "ch": {
+          "reachable": false,
+          "uptimeSec": 0,
+          "partsCount": 0,
+          "activeMerges": 0,
+          "longestMergeSec": 0
+        },
+        "passed": true
+      },
+      {
+        "step": 4,
+        "batchSize": 8192,
+        "requestRate": 5,
+        "attemptedItemsPerSec": 30976.16829178674,
+        "actualItemsPerSec": 30976.16829178674,
+        "rejected": 0,
+        "ingest": {
+          "p50": 140.765685,
+          "p95": 1209.976789,
+          "p99": 1631.957347,
+          "ok": 454,
+          "errors": 0,
+          "errRate": 0
+        },
+        "ch": {
+          "reachable": false,
+          "uptimeSec": 0,
+          "partsCount": 0,
+          "activeMerges": 0,
+          "longestMergeSec": 0
+        },
+        "passed": true
+      },
+      {
+        "step": 5,
+        "batchSize": 16384,
+        "requestRate": 5,
+        "attemptedItemsPerSec": 58127.29353342845,
+        "actualItemsPerSec": 58127.29353342845,
+        "rejected": 0,
+        "ingest": {
+          "p50": 6947.511414,
+          "p95": 11981.798648,
+          "p99": 13283.940039000001,
+          "ok": 454,
+          "errors": 0,
+          "errRate": 0
+        },
+        "ch": {
+          "reachable": false,
+          "uptimeSec": 0,
+          "partsCount": 0,
+          "activeMerges": 0,
+          "longestMergeSec": 0
+        },
+        "passed": true
+      }
+    ],
+    "maxBatchSize": 16384
+  },
+  "phase2": {
+    "kind": "request-rate-ramp",
+    "fixedBatchSize": 16384,
+    "steps": [
+      {
+        "step": 1,
+        "batchSize": 16384,
+        "requestRate": 1,
+        "attemptedItemsPerSec": 16602.36093854922,
+        "actualItemsPerSec": 16602.36093854922,
+        "rejected": 0,
+        "ingest": {
+          "p50": 265.486626,
+          "p95": 333.465368,
+          "p99": 1191.6555019999998,
+          "ok": 122,
+          "errors": 0,
+          "errRate": 0
+        },
+        "ch": {
+          "reachable": false,
+          "uptimeSec": 0,
+          "partsCount": 0,
+          "activeMerges": 0,
+          "longestMergeSec": 0
+        },
+        "passed": true
+      },
+      {
+        "step": 2,
+        "batchSize": 16384,
+        "requestRate": 5,
+        "attemptedItemsPerSec": 73324.35181263679,
+        "actualItemsPerSec": 73324.35181263679,
+        "rejected": 0,
+        "ingest": {
+          "p50": 4735.094056999999,
+          "p95": 11128.796294000002,
+          "p99": 12788.439149,
+          "ok": 571,
+          "errors": 0,
+          "errRate": 0
+        },
+        "ch": {
+          "reachable": false,
+          "uptimeSec": 0,
+          "partsCount": 0,
+          "activeMerges": 0,
+          "longestMergeSec": 0
+        },
+        "passed": true
+      },
+      {
+        "step": 3,
+        "batchSize": 16384,
+        "requestRate": 25,
+        "attemptedItemsPerSec": 283662.22604873154,
+        "actualItemsPerSec": 2951.1259472402367,
+        "rejected": 0,
+        "ingest": {
+          "p50": 6405.092142,
+          "p95": 12275.345048000001,
+          "p99": 13479.974675,
+          "ok": 25,
+          "errors": 2378,
+          "errRate": 0.9895963379109447
+        },
+        "ch": {
+          "reachable": false,
+          "uptimeSec": 0,
+          "partsCount": 0,
+          "activeMerges": 0,
+          "longestMergeSec": 0
+        },
+        "passed": false,
+        "failReason": "combined error rate 98.96% (http 98.96% + rejected 0.00%) > 5.00% threshold"
+      }
+    ],
+    "maxRequestRate": 5
+  },
+  "maxSustainableItemsPerSec": 73324.35181263679,
+  "sutDied": true,
+  "bytesOnDisk": 2481840128,
+  "storedRows": 25402624,
+  "sutContainer": {
+    "status": "exited",
+    "oomKilled": true,
+    "exitCode": 137,
+    "restartCount": 3
+  }
+}

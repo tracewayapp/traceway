@@ -9,7 +9,7 @@ import (
 
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 )
 
 func CollectUniqueMetricNames(points []models.MetricPoint) []string {
@@ -26,16 +26,16 @@ func CollectUniqueMetricNames(points []models.MetricPoint) []string {
 
 func AutoRegisterMetrics(projectId uuid.UUID, names []string) {
 	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
-		return struct{}{}, repositories.MetricRegistryRepository.EnsureRegistered(tx, projectId, names)
+		return struct{}{}, transactional.MetricRegistryRepository.EnsureRegistered(tx, projectId, names)
 	})
 	if err != nil {
 		traceway.CaptureException(fmt.Errorf("failed to auto-register metrics: %w", err))
 	}
 }
 
-func AutoRegisterMetricsWithUnits(projectId uuid.UUID, entries []repositories.MetricRegistrationEntry) {
+func AutoRegisterMetricsWithUnits(projectId uuid.UUID, entries []transactional.MetricRegistrationEntry) {
 	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
-		return struct{}{}, repositories.MetricRegistryRepository.EnsureRegisteredWithUnits(tx, projectId, entries)
+		return struct{}{}, transactional.MetricRegistryRepository.EnsureRegisteredWithUnits(tx, projectId, entries)
 	})
 	if err != nil {
 		traceway.CaptureException(fmt.Errorf("failed to auto-register OTLP metrics: %w", err))

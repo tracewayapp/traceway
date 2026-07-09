@@ -9,7 +9,7 @@ import (
 
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 
 	"github.com/google/uuid"
 )
@@ -34,7 +34,7 @@ func (c *projectCache) Init(ctx context.Context) error {
 
 func (c *projectCache) Refresh(ctx context.Context) error {
 	projects, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.Project, error) {
-		return repositories.ProjectRepository.FindAll(tx)
+		return transactional.ProjectRepository.FindAll(tx)
 	})
 	if err != nil {
 		return err

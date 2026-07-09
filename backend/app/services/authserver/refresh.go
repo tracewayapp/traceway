@@ -13,7 +13,7 @@ import (
 
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 )
 
 var ErrInvalidGrant = errors.New("invalid_grant")
@@ -88,7 +88,7 @@ var (
 // recovers) from a genuine replay of a long-since-rotated token (family
 // revoked).
 func RotateRefresh(presented string) (*models.TokenSetResponse, error) {
-	rt, err := repositories.RefreshTokenRepository.FindByToken(db.DB, presented)
+	rt, err := transactional.RefreshTokenRepository.FindByToken(db.DB, presented)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +106,7 @@ func RotateRefresh(presented string) (*models.TokenSetResponse, error) {
 	}
 
 	ts, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.TokenSetResponse, error) {
-		affected, err := repositories.RefreshTokenRepository.MarkUsedIfUnused(tx, presented, time.Now())
+		affected, err := transactional.RefreshTokenRepository.MarkUsedIfUnused(tx, presented, time.Now())
 		if err != nil {
 			return nil, err
 		}
@@ -115,7 +115,7 @@ func RotateRefresh(presented string) (*models.TokenSetResponse, error) {
 			// this write. Re-read inside the transaction to classify it, then
 			// signal via a sentinel so the family revoke happens in a committed
 			// transaction rather than this one (which rolls back on error).
-			current, err := repositories.RefreshTokenRepository.FindByToken(tx, presented)
+			current, err := transactional.RefreshTokenRepository.FindByToken(tx, presented)
 			if err != nil {
 				return nil, err
 			}
@@ -125,7 +125,7 @@ func RotateRefresh(presented string) (*models.TokenSetResponse, error) {
 			return nil, errReplay
 		}
 
-		user, err := repositories.UserRepository.FindById(tx, rt.UserId)
+		user, err := transactional.UserRepository.FindById(tx, rt.UserId)
 		if err != nil {
 			return nil, err
 		}
@@ -157,7 +157,7 @@ func RotateRefresh(presented string) (*models.TokenSetResponse, error) {
 // self-manages its transaction because the endpoint may return a non-2xx that
 // the Transactional middleware would otherwise roll back.
 func RevokeByToken(presented string) error {
-	rt, err := repositories.RefreshTokenRepository.FindByToken(db.DB, presented)
+	rt, err := transactional.RefreshTokenRepository.FindByToken(db.DB, presented)
 	if err != nil {
 		return err
 	}
@@ -165,7 +165,7 @@ func RevokeByToken(presented string) error {
 		return nil
 	}
 	_, err = db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
-		return struct{}{}, repositories.RefreshTokenRepository.RevokeFamily(tx, rt.FamilyId)
+		return struct{}{}, transactional.RefreshTokenRepository.RevokeFamily(tx, rt.FamilyId)
 	})
 	return err
 }
@@ -177,7 +177,7 @@ func RevokeByToken(presented string) error {
 // is reported instead of discarded.
 func revokeFamily(familyId string) {
 	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
-		return struct{}{}, repositories.RefreshTokenRepository.RevokeFamily(tx, familyId)
+		return struct{}{}, transactional.RefreshTokenRepository.RevokeFamily(tx, familyId)
 	})
 	if err != nil {
 		traceway.CaptureException(fmt.Errorf("revoking refresh-token family %s after reuse detection: %w", familyId, err))

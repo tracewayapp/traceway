@@ -1,4 +1,4 @@
-//go:build !pgch
+//go:build !telemetry_ch && !telemetry_duckdb
 
 package authserver
 
@@ -14,7 +14,7 @@ import (
 
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 )
 
 const testVerifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
@@ -89,7 +89,7 @@ func TestRegisterClient_validation(t *testing.T) {
 	}
 
 	client := registerTestClient(t, "https://claude.ai/api/mcp/auth_callback", "http://localhost:3000/cb", "cursor://anysphere.cursor-mcp/callback")
-	loaded, err := repositories.OauthClientRepository.FindById(db.DB, client.Id)
+	loaded, err := transactional.OauthClientRepository.FindById(db.DB, client.Id)
 	if err != nil || loaded == nil {
 		t.Fatalf("reload client: %v, %v", loaded, err)
 	}
@@ -211,7 +211,7 @@ func TestAuthCode_expiredCodeRejected(t *testing.T) {
 	client := registerTestClient(t)
 
 	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
-		return struct{}{}, repositories.AuthorizationCodeRepository.Create(
+		return struct{}{}, transactional.AuthorizationCodeRepository.Create(
 			tx, "twa_expired", client.Id, 1, "http://127.0.0.1:8123/callback", testChallenge(testVerifier), time.Now().Add(-time.Minute))
 	})
 	if err != nil {
@@ -221,7 +221,7 @@ func TestAuthCode_expiredCodeRejected(t *testing.T) {
 	if _, err := RedeemAuthorizationCode(client.Id, "twa_expired", testVerifier, "http://127.0.0.1:8123/callback", "", ""); !errors.Is(err, ErrInvalidGrant) {
 		t.Fatalf("expired code should be invalid_grant, got %v", err)
 	}
-	if got, _ := repositories.AuthorizationCodeRepository.FindByCode(db.DB, "twa_expired"); got != nil {
+	if got, _ := transactional.AuthorizationCodeRepository.FindByCode(db.DB, "twa_expired"); got != nil {
 		t.Fatal("expired code should be consumed even on a failed exchange")
 	}
 }
@@ -305,22 +305,22 @@ func TestAuthorizationCodeRepository_PruneExpired(t *testing.T) {
 	client := registerTestClient(t)
 
 	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
-		if err := repositories.AuthorizationCodeRepository.Create(tx, "twa_live", client.Id, 1, "http://127.0.0.1:1/cb", testChallenge(testVerifier), time.Now().Add(time.Minute)); err != nil {
+		if err := transactional.AuthorizationCodeRepository.Create(tx, "twa_live", client.Id, 1, "http://127.0.0.1:1/cb", testChallenge(testVerifier), time.Now().Add(time.Minute)); err != nil {
 			return struct{}{}, err
 		}
-		return struct{}{}, repositories.AuthorizationCodeRepository.Create(tx, "twa_dead", client.Id, 1, "http://127.0.0.1:1/cb", testChallenge(testVerifier), time.Now().Add(-time.Minute))
+		return struct{}{}, transactional.AuthorizationCodeRepository.Create(tx, "twa_dead", client.Id, 1, "http://127.0.0.1:1/cb", testChallenge(testVerifier), time.Now().Add(-time.Minute))
 	})
 	if err != nil {
 		t.Fatalf("seed codes: %v", err)
 	}
 
 	pruned, err := db.ExecuteTransaction(func(tx *sql.Tx) (int64, error) {
-		return repositories.AuthorizationCodeRepository.PruneExpired(tx, time.Now())
+		return transactional.AuthorizationCodeRepository.PruneExpired(tx, time.Now())
 	})
 	if err != nil || pruned != 1 {
 		t.Fatalf("prune = %d, %v; want 1, nil", pruned, err)
 	}
-	if live, _ := repositories.AuthorizationCodeRepository.FindByCode(db.DB, "twa_live"); live == nil {
+	if live, _ := transactional.AuthorizationCodeRepository.FindByCode(db.DB, "twa_live"); live == nil {
 		t.Fatal("live code should survive the prune")
 	}
 }

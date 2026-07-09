@@ -1,11 +1,11 @@
 package controllers
 
 import (
+	"database/sql"
+	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
-	"database/sql"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"net/http"
 	"time"
 
@@ -26,17 +26,17 @@ func (c *organizationController) GetSettings(ctx *gin.Context) {
 	}
 
 	data, err := db.ExecuteTransaction(func(tx *sql.Tx) (*settingsData, error) {
-		org, err := repositories.OrganizationRepository.FindById(tx, organizationId)
+		org, err := transactional.OrganizationRepository.FindById(tx, organizationId)
 		if err != nil {
 			return nil, err
 		}
 
-		members, err := repositories.OrganizationRepository.GetMembersWithDetails(tx, organizationId)
+		members, err := transactional.OrganizationRepository.GetMembersWithDetails(tx, organizationId)
 		if err != nil {
 			return nil, err
 		}
 
-		invitations, err := repositories.InvitationRepository.FindByOrganization(tx, organizationId)
+		invitations, err := transactional.InvitationRepository.FindByOrganization(tx, organizationId)
 		if err != nil {
 			return nil, err
 		}
@@ -70,7 +70,7 @@ func (c *organizationController) GetMembers(ctx *gin.Context) {
 	organizationId := middleware.GetOrganizationId(ctx)
 
 	members, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.OrganizationMember, error) {
-		return repositories.OrganizationRepository.GetMembersWithDetails(tx, organizationId)
+		return transactional.OrganizationRepository.GetMembersWithDetails(tx, organizationId)
 	})
 
 	if err != nil {
@@ -101,7 +101,7 @@ func (c *organizationController) UpdateSettings(ctx *gin.Context) {
 		return
 	}
 
-	err = repositories.OrganizationRepository.UpdateTimezone(tx, organizationId, req.Timezone)
+	err = transactional.OrganizationRepository.UpdateTimezone(tx, organizationId, req.Timezone)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to update settings: %w", err))
 		return

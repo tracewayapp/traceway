@@ -38,7 +38,7 @@ RUN go mod edit -dropreplace=go.tracewayapp.com -dropreplace=go.tracewayapp.com/
 RUN go mod tidy
 RUN go mod download
 
-# Build WITHOUT storage tags so the SQLite codepaths in app/db/db_oltp_sqlite.go
+# Build WITHOUT storage tags so the SQLite codepaths in app/db/db_transactional_sqlite.go
 # and db_telemetry_sqlite.go are selected. modernc.org/sqlite is pure Go, so CGO_ENABLED=0 is fine.
 ARG TARGETOS
 ARG TARGETARCH

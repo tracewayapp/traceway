@@ -3,7 +3,7 @@ package controllers
 import (
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"net/http"
 	"time"
 
@@ -27,13 +27,13 @@ func (e metricRecordController) FindHomepageStats(c *gin.Context) {
 
 	// requests
 	span := traceway.StartSpan(c, "loading requests stats")
-	requestsNow, err := repositories.EndpointRepository.CountBetween(c, projectId, oneDayAgo, now)
+	requestsNow, err := telemetry.EndpointRepository.CountBetween(c, projectId, oneDayAgo, now)
 	if err != nil {
 		span.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading requestsNow: %w", err))
 		return
 	}
-	requestsPrev, err := repositories.EndpointRepository.CountBetween(c, projectId, twoDaysAgo, oneDayAgo)
+	requestsPrev, err := telemetry.EndpointRepository.CountBetween(c, projectId, twoDaysAgo, oneDayAgo)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading requestsPrev: %w", err))
@@ -42,13 +42,13 @@ func (e metricRecordController) FindHomepageStats(c *gin.Context) {
 
 	// exceptions
 	span = traceway.StartSpan(c, "loading exceptions stats")
-	exceptionsNow, err := repositories.ExceptionStackTraceRepository.CountBetween(c, projectId, oneDayAgo, now)
+	exceptionsNow, err := telemetry.ExceptionStackTraceRepository.CountBetween(c, projectId, oneDayAgo, now)
 	if err != nil {
 		span.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading exceptionsNow: %w", err))
 		return
 	}
-	exceptionsPrev, err := repositories.ExceptionStackTraceRepository.CountBetween(c, projectId, twoDaysAgo, oneDayAgo)
+	exceptionsPrev, err := telemetry.ExceptionStackTraceRepository.CountBetween(c, projectId, twoDaysAgo, oneDayAgo)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading exceptionsPrev: %w", err))
@@ -57,13 +57,13 @@ func (e metricRecordController) FindHomepageStats(c *gin.Context) {
 
 	// ram usage last 24h vs previous 24h
 	span = traceway.StartSpan(c, "loading ram usage")
-	ramNow, err := repositories.MetricPointRepository.GetAverageBetween(c, projectId, models.MetricNameMemoryUsage, oneDayAgo, now)
+	ramNow, err := telemetry.MetricPointRepository.GetAverageBetween(c, projectId, models.MetricNameMemoryUsage, oneDayAgo, now)
 	if err != nil {
 		span.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading ramNow: %w", err))
 		return
 	}
-	ramPrev, err := repositories.MetricPointRepository.GetAverageBetween(c, projectId, models.MetricNameMemoryUsage, twoDaysAgo, oneDayAgo)
+	ramPrev, err := telemetry.MetricPointRepository.GetAverageBetween(c, projectId, models.MetricNameMemoryUsage, twoDaysAgo, oneDayAgo)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading ramPrev: %w", err))
@@ -72,13 +72,13 @@ func (e metricRecordController) FindHomepageStats(c *gin.Context) {
 
 	// memory usage last 24h vs previous 24h
 	span = traceway.StartSpan(c, "loading cpu usage")
-	cpuNow, err := repositories.MetricPointRepository.GetAverageBetween(c, projectId, models.MetricNameCpuUsage, oneDayAgo, now)
+	cpuNow, err := telemetry.MetricPointRepository.GetAverageBetween(c, projectId, models.MetricNameCpuUsage, oneDayAgo, now)
 	if err != nil {
 		span.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading cpuNow: %w", err))
 		return
 	}
-	cpuPrev, err := repositories.MetricPointRepository.GetAverageBetween(c, projectId, models.MetricNameCpuUsage, twoDaysAgo, oneDayAgo)
+	cpuPrev, err := telemetry.MetricPointRepository.GetAverageBetween(c, projectId, models.MetricNameCpuUsage, twoDaysAgo, oneDayAgo)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading cpuPrev: %w", err))

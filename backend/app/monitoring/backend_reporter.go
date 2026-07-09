@@ -7,7 +7,7 @@ import (
 	traceway "go.tracewayapp.com"
 
 	"github.com/tracewayapp/traceway/backend/app/cache"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/services"
 )
 
@@ -94,7 +94,7 @@ func reportBackendOnce(b *backendBaselines) {
 	b.first = false
 
 	traceway.CaptureMetric("traceway.cache.projects.entries", float64(cache.ProjectCache.Entries()))
-	traceway.CaptureMetric("traceway.cache.metric_registry.entries", float64(repositories.MetricRegistryRepository.KnownCount()))
+	traceway.CaptureMetric("traceway.cache.metric_registry.entries", float64(transactional.MetricRegistryRepository.KnownCount()))
 }
 
 // Guards against counter resets across process/CH restart producing a huge

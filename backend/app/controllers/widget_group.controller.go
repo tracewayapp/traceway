@@ -11,7 +11,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -29,13 +29,13 @@ func (c *widgetGroupController) List(ctx *gin.Context) {
 
 	tx := db.GetTx(ctx)
 
-	list, err := repositories.WidgetGroupRepository.FindByProject(tx, projectId)
+	list, err := transactional.WidgetGroupRepository.FindByProject(tx, projectId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to list widget groups: %w", err))
 		return
 	}
 
-	project, err := repositories.ProjectRepository.FindById(tx, projectId)
+	project, err := transactional.ProjectRepository.FindById(tx, projectId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to find project: %w", err))
 		return
@@ -62,7 +62,7 @@ func (c *widgetGroupController) PopulateDefaults(ctx *gin.Context) {
 
 	tx := db.GetTx(ctx)
 
-	existing, err := repositories.WidgetGroupRepository.FindByProject(tx, projectId)
+	existing, err := transactional.WidgetGroupRepository.FindByProject(tx, projectId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to list widget groups: %w", err))
 		return
@@ -77,7 +77,7 @@ func (c *widgetGroupController) PopulateDefaults(ctx *gin.Context) {
 		return
 	}
 
-	list, err := repositories.WidgetGroupRepository.FindByProject(tx, projectId)
+	list, err := transactional.WidgetGroupRepository.FindByProject(tx, projectId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to list widget groups: %w", err))
 		return
@@ -116,7 +116,7 @@ func (c *widgetGroupController) Create(ctx *gin.Context) {
 
 	tx := db.GetTx(ctx)
 
-	existing, err := repositories.WidgetGroupRepository.FindByProject(tx, projectId)
+	existing, err := transactional.WidgetGroupRepository.FindByProject(tx, projectId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to check duplicate widget group name: %w", err))
 		return
@@ -143,7 +143,7 @@ func (c *widgetGroupController) Create(ctx *gin.Context) {
 		CreatedAt:   time.Now().UTC(),
 		UpdatedAt:   time.Now().UTC(),
 	}
-	id, err := repositories.WidgetGroupRepository.Create(tx, g)
+	id, err := transactional.WidgetGroupRepository.Create(tx, g)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to create widget group: %w", err))
 		return
@@ -169,7 +169,7 @@ func (c *widgetGroupController) GetWithWidgets(ctx *gin.Context) {
 
 	tx := db.GetTx(ctx)
 
-	group, err := repositories.WidgetGroupRepository.FindById(tx, id)
+	group, err := transactional.WidgetGroupRepository.FindById(tx, id)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to get widget group: %w", err))
 		return
@@ -179,7 +179,7 @@ func (c *widgetGroupController) GetWithWidgets(ctx *gin.Context) {
 		return
 	}
 
-	widgets, err := repositories.WidgetGroupRepository.FindWidgetsByGroup(tx, id)
+	widgets, err := transactional.WidgetGroupRepository.FindWidgetsByGroup(tx, id)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to get widget group widgets: %w", err))
 		return
@@ -228,7 +228,7 @@ func (c *widgetGroupController) Update(ctx *gin.Context) {
 
 	tx := db.GetTx(ctx)
 
-	existing, err := repositories.WidgetGroupRepository.FindById(tx, id)
+	existing, err := transactional.WidgetGroupRepository.FindById(tx, id)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to update widget group: %w", err))
 		return
@@ -238,7 +238,7 @@ func (c *widgetGroupController) Update(ctx *gin.Context) {
 		return
 	}
 
-	allGroups, err := repositories.WidgetGroupRepository.FindByProject(tx, projectId)
+	allGroups, err := transactional.WidgetGroupRepository.FindByProject(tx, projectId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to check duplicate widget group name: %w", err))
 		return
@@ -254,7 +254,7 @@ func (c *widgetGroupController) Update(ctx *gin.Context) {
 	existing.Description = req.Description
 	existing.UpdatedAt = time.Now().UTC()
 
-	if err := repositories.WidgetGroupRepository.Update(tx, existing); err != nil {
+	if err := transactional.WidgetGroupRepository.Update(tx, existing); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to update widget group: %w", err))
 		return
 	}
@@ -278,7 +278,7 @@ func (c *widgetGroupController) Delete(ctx *gin.Context) {
 
 	tx := db.GetTx(ctx)
 
-	existing, err := repositories.WidgetGroupRepository.FindById(tx, id)
+	existing, err := transactional.WidgetGroupRepository.FindById(tx, id)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to delete widget group: %w", err))
 		return
@@ -292,12 +292,12 @@ func (c *widgetGroupController) Delete(ctx *gin.Context) {
 	// then the group itself. Don't lean on the FK cascade — explicit deletes
 	// are easier to audit and survive future schema migrations that might
 	// drop or alter the cascade rule.
-	if err := repositories.WidgetGroupRepository.DeleteWidgetsByGroup(tx, id); err != nil {
+	if err := transactional.WidgetGroupRepository.DeleteWidgetsByGroup(tx, id); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to delete widget group widgets: %w", err))
 		return
 	}
 
-	if err := repositories.WidgetGroupRepository.Delete(tx, id); err != nil {
+	if err := transactional.WidgetGroupRepository.Delete(tx, id); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to delete widget group: %w", err))
 		return
 	}
@@ -306,7 +306,7 @@ func (c *widgetGroupController) Delete(ctx *gin.Context) {
 }
 
 func ensureDefaultWidgetGroups(tx *sql.Tx, projectId uuid.UUID) error {
-	project, err := repositories.ProjectRepository.FindById(tx, projectId)
+	project, err := transactional.ProjectRepository.FindById(tx, projectId)
 	if err != nil {
 		return err
 	}
@@ -411,7 +411,7 @@ func ensureDefaultWidgetGroups(tx *sql.Tx, projectId uuid.UUID) error {
 			CreatedAt: now,
 			UpdatedAt: now,
 		}
-		groupId, err := repositories.WidgetGroupRepository.Create(tx, g)
+		groupId, err := transactional.WidgetGroupRepository.Create(tx, g)
 		if err != nil {
 			return err
 		}
@@ -431,7 +431,7 @@ func ensureDefaultWidgetGroups(tx *sql.Tx, projectId uuid.UUID) error {
 				CreatedAt:     now,
 				UpdatedAt:     now,
 			}
-			if _, err := repositories.WidgetGroupRepository.CreateWidget(tx, widget); err != nil {
+			if _, err := transactional.WidgetGroupRepository.CreateWidget(tx, widget); err != nil {
 				return err
 			}
 		}

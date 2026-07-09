@@ -10,7 +10,8 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/config"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	traceway "go.tracewayapp.com"
 )
 
@@ -33,7 +34,7 @@ func pollInterval() time.Duration {
 }
 
 func seedCooldowns(ctx context.Context) {
-	entries, err := repositories.FiredNotificationRepository.FindLastFiredPerRule(ctx)
+	entries, err := telemetry.FiredNotificationRepository.FindLastFiredPerRule(ctx)
 	if err != nil {
 		traceway.CaptureException(fmt.Errorf("failed to seed notification cooldowns: %w", err))
 		return
@@ -59,7 +60,7 @@ func startPolledLoop(ctx context.Context) {
 
 func evaluatePolledRules(ctx context.Context) {
 	rules, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.NotificationRuleWithChannel, error) {
-		return repositories.NotificationRuleRepository.FindEnabledPolledRules(tx)
+		return transactional.NotificationRuleRepository.FindEnabledPolledRules(tx)
 	})
 	if err != nil {
 		traceway.CaptureException(fmt.Errorf("failed to load polled notification rules: %w", err))

@@ -13,7 +13,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/profiling"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	traceway "go.tracewayapp.com"
 )
@@ -129,7 +129,7 @@ func (p profileController) FindGroupedByService(c *gin.Context) {
 		search = ""
 	}
 
-	groups, total, err := repositories.ProfileRepository.FindGroupedByService(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection, search)
+	groups, total, err := telemetry.ProfileRepository.FindGroupedByService(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection, search)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error loading grouped profiles: %w", err))
 		return
@@ -169,7 +169,7 @@ func (p profileController) GetSeries(c *gin.Context) {
 		return
 	}
 
-	points, err := repositories.ProfileRepository.GetSeries(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate, request.IntervalMinutes, request.IsGauge, request.Labels, request.AppVersion, request.ServerName, request.Normalize)
+	points, err := telemetry.ProfileRepository.GetSeries(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate, request.IntervalMinutes, request.IsGauge, request.Labels, request.AppVersion, request.ServerName, request.Normalize)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error loading profile series: %w", err))
 		return
@@ -207,7 +207,7 @@ func (p profileController) DiscoverTypes(c *gin.Context) {
 		}
 	}
 
-	types, err := repositories.ProfileRepository.DiscoverTypes(c, projectId, request.ServiceName, typesFrom, request.ToDate)
+	types, err := telemetry.ProfileRepository.DiscoverTypes(c, projectId, request.ServiceName, typesFrom, request.ToDate)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error discovering profile types: %w", err))
 		return
@@ -242,7 +242,7 @@ func (p profileController) GetFlameGraph(c *gin.Context) {
 		return
 	}
 
-	rows, err := repositories.ProfileRepository.GetFlameGraph(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate, request.Labels, request.IsGauge, request.AppVersion, request.ServerName)
+	rows, err := telemetry.ProfileRepository.GetFlameGraph(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate, request.Labels, request.IsGauge, request.AppVersion, request.ServerName)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error loading flame graph: %w", err))
 		return
@@ -282,7 +282,7 @@ func (p profileController) GetTopFunctions(c *gin.Context) {
 		limit = 200
 	}
 
-	rows, err := repositories.ProfileRepository.GetFlameGraph(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate, request.Labels, request.IsGauge, request.AppVersion, request.ServerName)
+	rows, err := telemetry.ProfileRepository.GetFlameGraph(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate, request.Labels, request.IsGauge, request.AppVersion, request.ServerName)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error loading top functions: %w", err))
 		return
@@ -314,7 +314,7 @@ func (p profileController) DownloadPprof(c *gin.Context) {
 		return
 	}
 
-	rows, err := repositories.ProfileRepository.GetFlameGraph(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate, request.Labels, request.IsGauge, request.AppVersion, request.ServerName)
+	rows, err := telemetry.ProfileRepository.GetFlameGraph(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate, request.Labels, request.IsGauge, request.AppVersion, request.ServerName)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error loading profile for export: %w", err))
 		return
@@ -399,7 +399,7 @@ func (p profileController) GetSeriesBreakdown(c *gin.Context) {
 		return
 	}
 
-	groups, err := repositories.ProfileRepository.GetSeriesBreakdown(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate, request.IntervalMinutes, request.IsGauge, request.Labels, request.AppVersion, request.ServerName, request.Normalize, request.Dimension, request.Limit)
+	groups, err := telemetry.ProfileRepository.GetSeriesBreakdown(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate, request.IntervalMinutes, request.IsGauge, request.Labels, request.AppVersion, request.ServerName, request.Normalize, request.Dimension, request.Limit)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error loading profile series breakdown: %w", err))
 		return
@@ -433,7 +433,7 @@ func (p profileController) DiscoverDimensions(c *gin.Context) {
 		return
 	}
 
-	appVersions, serverNames, err := repositories.ProfileRepository.DiscoverDimensions(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate)
+	appVersions, serverNames, err := telemetry.ProfileRepository.DiscoverDimensions(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error discovering profile dimensions: %w", err))
 		return
@@ -469,7 +469,7 @@ func (p profileController) DiscoverLabels(c *gin.Context) {
 		additional = proj.ProfileLabelAllowlist
 	}
 
-	labels, err := repositories.ProfileRepository.DiscoverLabels(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate, profiling.LabelAllowKeys(additional))
+	labels, err := telemetry.ProfileRepository.DiscoverLabels(c, projectId, request.ServiceName, request.Type, request.FromDate, request.ToDate, profiling.LabelAllowKeys(additional))
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error discovering profile labels: %w", err))
 		return

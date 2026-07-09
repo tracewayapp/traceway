@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 )
 
 const minImpactThreshold = 0.25
@@ -121,7 +121,7 @@ func evaluateImpactScore(ctx context.Context, rule *models.NotificationRule, pro
 		if prevSet[ep] {
 			continue
 		}
-		reason := repositories.ComputeImpactReason(
+		reason := telemetry.ComputeImpactReason(
 			ep, data.totalCount, data.satisfied, data.tolerating,
 			data.bad, data.clientErrors, data.p99, data.offsetMs,
 		)

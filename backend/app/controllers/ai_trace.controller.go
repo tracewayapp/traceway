@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	traceway "go.tracewayapp.com"
 )
@@ -63,7 +63,7 @@ func (a aiTraceController) FindGroupedByTraceName(c *gin.Context) {
 		return
 	}
 
-	stats, total, err := repositories.AiTraceRepository.FindGroupedByTraceName(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection, request.Search, request.RootFilter)
+	stats, total, err := telemetry.AiTraceRepository.FindGroupedByTraceName(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection, request.Search, request.RootFilter)
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading ai trace stats: %w", err))
 		return
@@ -104,13 +104,13 @@ func (a aiTraceController) FindByTraceName(c *gin.Context) {
 		return
 	}
 
-	traces, total, err := repositories.AiTraceRepository.FindByTraceName(c, projectId, traceName, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
+	traces, total, err := telemetry.AiTraceRepository.FindByTraceName(c, projectId, traceName, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading ai traces: %w", err))
 		return
 	}
 
-	stats, err := repositories.AiTraceRepository.GetTraceNameStats(c, projectId, traceName, request.FromDate, request.ToDate)
+	stats, err := telemetry.AiTraceRepository.GetTraceNameStats(c, projectId, traceName, request.FromDate, request.ToDate)
 	if err != nil {
 		stats = nil
 	}
@@ -143,9 +143,9 @@ func (a aiTraceController) GetAiTraceDetail(c *gin.Context) {
 	var request aiTraceDetailRequest
 	_ = c.ShouldBindJSON(&request)
 
-	aiTrace, err := repositories.AiTraceRepository.FindById(c, projectId, traceId, request.RecordedAt)
+	aiTrace, err := telemetry.AiTraceRepository.FindById(c, projectId, traceId, request.RecordedAt)
 	if aiTrace == nil && err == nil && request.RecordedAt != nil {
-		aiTrace, err = repositories.AiTraceRepository.FindById(c, projectId, traceId, nil)
+		aiTrace, err = telemetry.AiTraceRepository.FindById(c, projectId, traceId, nil)
 	}
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error loading ai trace: %w", err))

@@ -9,7 +9,7 @@ import (
 
 	"github.com/tracewayapp/traceway/backend/app/controllers/clientcontrollers"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 )
 
 // Seeded ids, set by seedTelemetry and used to address the by-id detail
@@ -68,7 +68,7 @@ func seedTelemetry(ctx context.Context, projectIDStr string, at time.Time) error
 		SpanId:             &seedSpanID,
 		IsRoot:             true,
 	}
-	if err := repositories.EndpointRepository.InsertAsync(ctx, []models.Endpoint{endpoint}); err != nil {
+	if err := telemetry.EndpointRepository.InsertAsync(ctx, []models.Endpoint{endpoint}); err != nil {
 		return fmt.Errorf("endpoint: %w", err)
 	}
 
@@ -85,7 +85,7 @@ func seedTelemetry(ctx context.Context, projectIDStr string, at time.Time) error
 		DistributedTraceId: &seedTraceID,
 		IsRoot:             true,
 	}
-	if err := repositories.TaskRepository.InsertAsync(ctx, []models.Task{task}); err != nil {
+	if err := telemetry.TaskRepository.InsertAsync(ctx, []models.Task{task}); err != nil {
 		return fmt.Errorf("task: %w", err)
 	}
 
@@ -104,7 +104,7 @@ func seedTelemetry(ctx context.Context, projectIDStr string, at time.Time) error
 		DistributedTraceId: &seedTraceID,
 		SessionId:          &seedSessionID,
 	}
-	if err := repositories.ExceptionStackTraceRepository.InsertAsync(ctx, []models.ExceptionStackTrace{exception}); err != nil {
+	if err := telemetry.ExceptionStackTraceRepository.InsertAsync(ctx, []models.ExceptionStackTrace{exception}); err != nil {
 		return fmt.Errorf("exception: %w", err)
 	}
 
@@ -118,7 +118,7 @@ func seedTelemetry(ctx context.Context, projectIDStr string, at time.Time) error
 		RecordedAt: at,
 		Attributes: map[string]string{},
 	}
-	if err := repositories.SpanRepository.InsertAsync(ctx, []models.Span{span}); err != nil {
+	if err := telemetry.SpanRepository.InsertAsync(ctx, []models.Span{span}); err != nil {
 		return fmt.Errorf("span: %w", err)
 	}
 
@@ -129,7 +129,7 @@ func seedTelemetry(ctx context.Context, projectIDStr string, at time.Time) error
 		Tags:       map[string]string{},
 		RecordedAt: at,
 	}
-	if err := repositories.MetricPointRepository.InsertAsync(ctx, []models.MetricPoint{metric}); err != nil {
+	if err := telemetry.MetricPointRepository.InsertAsync(ctx, []models.MetricPoint{metric}); err != nil {
 		return fmt.Errorf("metric: %w", err)
 	}
 
@@ -144,7 +144,7 @@ func seedTelemetry(ctx context.Context, projectIDStr string, at time.Time) error
 		ServerName:         "contract-host",
 		DistributedTraceId: &seedTraceID,
 	}
-	if err := repositories.SessionRepository.Upsert(ctx, []models.Session{session}); err != nil {
+	if err := telemetry.SessionRepository.Upsert(ctx, []models.Session{session}); err != nil {
 		return fmt.Errorf("session: %w", err)
 	}
 
@@ -167,7 +167,7 @@ func seedTelemetry(ctx context.Context, projectIDStr string, at time.Time) error
 		DistributedTraceId: &seedTraceID,
 		IsRoot:             true,
 	}
-	if err := repositories.AiTraceRepository.InsertAsync(ctx, []models.AiTrace{aiTrace}); err != nil {
+	if err := telemetry.AiTraceRepository.InsertAsync(ctx, []models.AiTrace{aiTrace}); err != nil {
 		return fmt.Errorf("ai trace: %w", err)
 	}
 
@@ -183,7 +183,7 @@ func seedTelemetry(ctx context.Context, projectIDStr string, at time.Time) error
 		ScopeAttributes:    map[string]string{},
 		LogAttributes:      map[string]string{},
 	}
-	if err := repositories.LogRecordRepository.InsertAsync(ctx, []models.LogRecord{logRecord}); err != nil {
+	if err := telemetry.LogRecordRepository.InsertAsync(ctx, []models.LogRecord{logRecord}); err != nil {
 		return fmt.Errorf("log: %w", err)
 	}
 

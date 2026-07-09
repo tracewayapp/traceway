@@ -1,14 +1,14 @@
 package controllers
 
 import (
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
-	"github.com/tracewayapp/traceway/backend/app/services"
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/app/middleware"
+	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/app/services"
 	"net/http"
 	"strconv"
 	"time"
@@ -33,7 +33,7 @@ func (c *invitationController) InviteUser(ctx *gin.Context) {
 		return
 	}
 
-	isMember, err := repositories.OrganizationRepository.IsUserMemberByEmail(tx, organizationId, request.Email)
+	isMember, err := transactional.OrganizationRepository.IsUserMemberByEmail(tx, organizationId, request.Email)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to check membership: %w", err))
 		return
@@ -43,7 +43,7 @@ func (c *invitationController) InviteUser(ctx *gin.Context) {
 		return
 	}
 
-	hasPending, err := repositories.InvitationRepository.HasPendingInvitation(tx, request.Email, organizationId)
+	hasPending, err := transactional.InvitationRepository.HasPendingInvitation(tx, request.Email, organizationId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to check pending invitations: %w", err))
 		return
@@ -53,13 +53,13 @@ func (c *invitationController) InviteUser(ctx *gin.Context) {
 		return
 	}
 
-	memberCount, err := repositories.OrganizationRepository.CountMembers(tx, organizationId)
+	memberCount, err := transactional.OrganizationRepository.CountMembers(tx, organizationId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to count members: %w", err))
 		return
 	}
 
-	invitations, err := repositories.InvitationRepository.FindByOrganization(tx, organizationId)
+	invitations, err := transactional.InvitationRepository.FindByOrganization(tx, organizationId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to count invitations: %w", err))
 		return
@@ -83,20 +83,20 @@ func (c *invitationController) InviteUser(ctx *gin.Context) {
 		}
 	}
 
-	inviter, err := repositories.UserRepository.FindById(tx, userId)
+	inviter, err := transactional.UserRepository.FindById(tx, userId)
 	if err != nil || inviter == nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to get inviter info: %w", err))
 		return
 	}
 
-	org, err := repositories.OrganizationRepository.FindById(tx, organizationId)
+	org, err := transactional.OrganizationRepository.FindById(tx, organizationId)
 	if err != nil || org == nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to get organization info: %w", err))
 		return
 	}
 
 	expiresAt := time.Now().AddDate(0, 0, invitationExpiryDays)
-	invitation, err := repositories.InvitationRepository.Create(tx, organizationId, request.Email, request.Role, userId, expiresAt)
+	invitation, err := transactional.InvitationRepository.Create(tx, organizationId, request.Email, request.Role, userId, expiresAt)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to create invitation: %w", err))
 		return
@@ -115,7 +115,7 @@ func (c *invitationController) ListInvitations(ctx *gin.Context) {
 	organizationId := middleware.GetOrganizationId(ctx)
 
 	invitations, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.InvitationWithInviter, error) {
-		return repositories.InvitationRepository.FindByOrganization(tx, organizationId)
+		return transactional.InvitationRepository.FindByOrganization(tx, organizationId)
 	})
 
 	if err != nil {
@@ -136,7 +136,7 @@ func (c *invitationController) RevokeInvitation(ctx *gin.Context) {
 		return
 	}
 
-	invitation, err := repositories.InvitationRepository.FindById(tx, invitationId)
+	invitation, err := transactional.InvitationRepository.FindById(tx, invitationId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to find invitation: %w", err))
 		return
@@ -150,7 +150,7 @@ func (c *invitationController) RevokeInvitation(ctx *gin.Context) {
 		return
 	}
 
-	err = repositories.InvitationRepository.Delete(tx, invitationId)
+	err = transactional.InvitationRepository.Delete(tx, invitationId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to revoke invitation: %w", err))
 		return
@@ -170,7 +170,7 @@ func (c *invitationController) GetInvitationInfo(ctx *gin.Context) {
 	}
 
 	data, err := db.ExecuteTransaction(func(tx *sql.Tx) (*invitationInfo, error) {
-		invitation, err := repositories.InvitationRepository.FindByToken(tx, token)
+		invitation, err := transactional.InvitationRepository.FindByToken(tx, token)
 		if err != nil {
 			return nil, err
 		}
@@ -178,17 +178,17 @@ func (c *invitationController) GetInvitationInfo(ctx *gin.Context) {
 			return nil, nil
 		}
 
-		org, err := repositories.OrganizationRepository.FindById(tx, invitation.OrganizationId)
+		org, err := transactional.OrganizationRepository.FindById(tx, invitation.OrganizationId)
 		if err != nil {
 			return nil, err
 		}
 
-		inviter, err := repositories.UserRepository.FindById(tx, invitation.InvitedBy)
+		inviter, err := transactional.UserRepository.FindById(tx, invitation.InvitedBy)
 		if err != nil {
 			return nil, err
 		}
 
-		userExists, err := repositories.UserRepository.EmailExists(tx, invitation.Email)
+		userExists, err := transactional.UserRepository.EmailExists(tx, invitation.Email)
 		if err != nil {
 			return nil, err
 		}
@@ -240,7 +240,7 @@ func (c *invitationController) AcceptInvitation(ctx *gin.Context) {
 		return
 	}
 
-	invitation, err := repositories.InvitationRepository.FindByToken(tx, token)
+	invitation, err := transactional.InvitationRepository.FindByToken(tx, token)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to load invitation: %w", err))
 		return
@@ -260,7 +260,7 @@ func (c *invitationController) AcceptInvitation(ctx *gin.Context) {
 		return
 	}
 
-	existingUser, err := repositories.UserRepository.FindByEmail(tx, invitation.Email)
+	existingUser, err := transactional.UserRepository.FindByEmail(tx, invitation.Email)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to check user: %w", err))
 		return
@@ -276,13 +276,13 @@ func (c *invitationController) AcceptInvitation(ctx *gin.Context) {
 		return
 	}
 
-	user, err := repositories.UserRepository.Create(tx, invitation.Email, request.Name, hashedPassword)
+	user, err := transactional.UserRepository.Create(tx, invitation.Email, request.Name, hashedPassword)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to create user: %w", err))
 		return
 	}
 
-	_, err = repositories.OrganizationRepository.AddUser(tx, invitation.OrganizationId, user.Id, invitation.Role)
+	_, err = transactional.OrganizationRepository.AddUser(tx, invitation.OrganizationId, user.Id, invitation.Role)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to add user to organization: %w", err))
 		return
@@ -292,7 +292,7 @@ func (c *invitationController) AcceptInvitation(ctx *gin.Context) {
 	invitation.AcceptedAt = &now
 	invitation.Status = "accepted"
 
-	err = repositories.InvitationRepository.Update(tx, invitation)
+	err = transactional.InvitationRepository.Update(tx, invitation)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to update invitation: %w", err))
 		return
@@ -304,7 +304,7 @@ func (c *invitationController) AcceptInvitation(ctx *gin.Context) {
 		return
 	}
 
-	projects, err := repositories.ProjectRepository.FindAllWithBackendUrlByUserId(tx, user.Id)
+	projects, err := transactional.ProjectRepository.FindAllWithBackendUrlByUserId(tx, user.Id)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to load projects: %w", err))
 		return
@@ -323,7 +323,7 @@ func (c *invitationController) AcceptExistingUser(ctx *gin.Context) {
 	userId := middleware.GetUserId(ctx)
 	userEmail := middleware.GetUserEmail(ctx)
 
-	invitation, err := repositories.InvitationRepository.FindByToken(tx, token)
+	invitation, err := transactional.InvitationRepository.FindByToken(tx, token)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to load invitation: %w", err))
 		return
@@ -348,7 +348,7 @@ func (c *invitationController) AcceptExistingUser(ctx *gin.Context) {
 		return
 	}
 
-	isMember, err := repositories.OrganizationRepository.IsUserMember(tx, invitation.OrganizationId, userId)
+	isMember, err := transactional.OrganizationRepository.IsUserMember(tx, invitation.OrganizationId, userId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to check membership: %w", err))
 		return
@@ -358,7 +358,7 @@ func (c *invitationController) AcceptExistingUser(ctx *gin.Context) {
 		return
 	}
 
-	_, err = repositories.OrganizationRepository.AddUser(tx, invitation.OrganizationId, userId, invitation.Role)
+	_, err = transactional.OrganizationRepository.AddUser(tx, invitation.OrganizationId, userId, invitation.Role)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to add you to organization: %w", err))
 		return
@@ -368,13 +368,13 @@ func (c *invitationController) AcceptExistingUser(ctx *gin.Context) {
 	invitation.AcceptedAt = &now
 	invitation.Status = "accepted"
 
-	err = repositories.InvitationRepository.Update(tx, invitation)
+	err = transactional.InvitationRepository.Update(tx, invitation)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to update invitation: %w", err))
 		return
 	}
 
-	projects, err := repositories.ProjectRepository.FindAllWithBackendUrlByUserId(tx, userId)
+	projects, err := transactional.ProjectRepository.FindAllWithBackendUrlByUserId(tx, userId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to load projects: %w", err))
 		return

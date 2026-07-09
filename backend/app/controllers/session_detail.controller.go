@@ -8,7 +8,7 @@ import (
 
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 
 	"github.com/gin-gonic/gin"
@@ -64,9 +64,9 @@ func (s sessionDetailController) GetSessionDetail(c *gin.Context) {
 	_ = c.ShouldBindJSON(&request)
 
 	span := traceway.StartSpan(c, "loading session")
-	session, err := repositories.SessionRepository.FindById(c, projectId, sessionId, request.StartedAt)
+	session, err := telemetry.SessionRepository.FindById(c, projectId, sessionId, request.StartedAt)
 	if session == nil && err == nil && request.StartedAt != nil {
-		session, err = repositories.SessionRepository.FindById(c, projectId, sessionId, nil)
+		session, err = telemetry.SessionRepository.FindById(c, projectId, sessionId, nil)
 	}
 	span.End()
 	if err != nil {
@@ -79,7 +79,7 @@ func (s sessionDetailController) GetSessionDetail(c *gin.Context) {
 	}
 
 	span = traceway.StartSpan(c, "loading session exceptions")
-	exceptions, err := repositories.ExceptionStackTraceRepository.FindAllBySessionId(c, projectId, sessionId)
+	exceptions, err := telemetry.ExceptionStackTraceRepository.FindAllBySessionId(c, projectId, sessionId)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading session exceptions: %w", err))
@@ -117,7 +117,7 @@ func (s sessionDetailController) GetSessionRecording(c *gin.Context) {
 	}
 
 	span := traceway.StartSpan(c, "loading session segments")
-	segments, err := repositories.SessionRecordingRepository.FindBySessionId(c, projectId, sessionId)
+	segments, err := telemetry.SessionRecordingRepository.FindBySessionId(c, projectId, sessionId)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading session segments: %w", err))

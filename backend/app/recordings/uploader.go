@@ -12,7 +12,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/config"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/monitoring"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	traceway "go.tracewayapp.com"
 )
@@ -193,7 +193,7 @@ func (p *pool) batcher(ctx context.Context) {
 		if len(batch) == 0 {
 			return
 		}
-		if err := repositories.SessionRecordingRepository.InsertAsync(ctx, batch); err != nil {
+		if err := telemetry.SessionRecordingRepository.InsertAsync(ctx, batch); err != nil {
 			p.failed.Add(uint64(len(batch)))
 			traceway.CaptureException(traceway.NewStackTraceErrorf("failed to insert batch of %d session recording rows: %w", len(batch), err))
 		}
@@ -262,4 +262,3 @@ func (p *pool) metricsLoop(ctx context.Context) {
 		}
 	}
 }
-

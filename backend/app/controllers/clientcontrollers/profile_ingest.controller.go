@@ -12,7 +12,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/monitoring"
 	"github.com/tracewayapp/traceway/backend/app/profiling"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	traceway "go.tracewayapp.com"
 )
@@ -73,15 +73,15 @@ func (e profileIngestController) Ingest(c *gin.Context) {
 	convertMs := float64(time.Since(convertStart).Microseconds()) / 1000.0
 
 	insertStart := time.Now()
-	if err := repositories.ProfileRepository.InsertStacksAsync(c, stacks); err != nil {
+	if err := telemetry.ProfileRepository.InsertStacksAsync(c, stacks); err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error inserting profiling stacks: %w", err))
 		return
 	}
-	if err := repositories.ProfileRepository.InsertSamplesAsync(c, samples); err != nil {
+	if err := telemetry.ProfileRepository.InsertSamplesAsync(c, samples); err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error inserting profiling samples: %w", err))
 		return
 	}
-	if err := repositories.ProfileRepository.InsertProfilesAsync(c, profiles); err != nil {
+	if err := telemetry.ProfileRepository.InsertProfilesAsync(c, profiles); err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error inserting profiles: %w", err))
 		return
 	}

@@ -13,7 +13,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/monitoring"
 	"github.com/tracewayapp/traceway/backend/app/profiling"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/jsstack"
@@ -111,31 +111,31 @@ func (o otelController) ExportTraces(c *gin.Context) {
 	insertStart := time.Now()
 
 	if len(endpoints) > 0 {
-		if err := repositories.EndpointRepository.InsertAsync(c, endpoints); err != nil {
+		if err := telemetry.EndpointRepository.InsertAsync(c, endpoints); err != nil {
 			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL endpoints: %w", err))
 			return
 		}
 	}
 
 	if len(tasks) > 0 {
-		if err := repositories.TaskRepository.InsertAsync(c, tasks); err != nil {
+		if err := telemetry.TaskRepository.InsertAsync(c, tasks); err != nil {
 			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL tasks: %w", err))
 			return
 		}
 	}
 
-	if err := repositories.ExceptionStackTraceRepository.InsertAsync(c, exceptions); err != nil {
+	if err := telemetry.ExceptionStackTraceRepository.InsertAsync(c, exceptions); err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL exceptions: %w", err))
 		return
 	}
 
-	if err := repositories.SpanRepository.InsertAsync(c, spans); err != nil {
+	if err := telemetry.SpanRepository.InsertAsync(c, spans); err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL spans: %w", err))
 		return
 	}
 
 	if len(aiTraces) > 0 {
-		if err := repositories.AiTraceRepository.InsertAsync(c, aiTraces); err != nil {
+		if err := telemetry.AiTraceRepository.InsertAsync(c, aiTraces); err != nil {
 			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL ai traces: %w", err))
 			return
 		}
@@ -236,7 +236,7 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 	insertMs := 0.0
 	if len(result.Points) > 0 {
 		insertStart := time.Now()
-		if err := repositories.MetricPointRepository.InsertAsync(c, result.Points); err != nil {
+		if err := telemetry.MetricPointRepository.InsertAsync(c, result.Points); err != nil {
 			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL metric points: %w", err))
 			return
 		}
@@ -307,7 +307,7 @@ func (o otelController) ExportLogs(c *gin.Context) {
 	insertMs := 0.0
 	if len(records) > 0 {
 		insertStart := time.Now()
-		if err := repositories.LogRecordRepository.InsertAsync(c, records); err != nil {
+		if err := telemetry.LogRecordRepository.InsertAsync(c, records); err != nil {
 			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL log records: %w", err))
 			return
 		}
@@ -374,15 +374,15 @@ func (o otelController) ExportProfiles(c *gin.Context) {
 	convertMs := msSince(convertStart)
 
 	insertStart := time.Now()
-	if err := repositories.ProfileRepository.InsertStacksAsync(c, stacks); err != nil {
+	if err := telemetry.ProfileRepository.InsertStacksAsync(c, stacks); err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL profiling stacks: %w", err))
 		return
 	}
-	if err := repositories.ProfileRepository.InsertSamplesAsync(c, samples); err != nil {
+	if err := telemetry.ProfileRepository.InsertSamplesAsync(c, samples); err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL profiling samples: %w", err))
 		return
 	}
-	if err := repositories.ProfileRepository.InsertProfilesAsync(c, profiles); err != nil {
+	if err := telemetry.ProfileRepository.InsertProfilesAsync(c, profiles); err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL profiles: %w", err))
 		return
 	}

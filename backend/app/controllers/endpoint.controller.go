@@ -1,11 +1,11 @@
 package controllers
 
 import (
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
 	"database/sql"
 	"errors"
+	"github.com/tracewayapp/traceway/backend/app/middleware"
+	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"net/http"
 	"net/url"
 	"time"
@@ -61,7 +61,7 @@ func (e endpointController) FindAllEndpoints(c *gin.Context) {
 	}
 
 	span := traceway.StartSpan(c, "loading endpoints")
-	endpoints, total, err := repositories.EndpointRepository.FindAll(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy)
+	endpoints, total, err := telemetry.EndpointRepository.FindAll(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading endpoints: %w", err))
@@ -93,7 +93,7 @@ func (e endpointController) FindGroupedByEndpoint(c *gin.Context) {
 	}
 
 	span := traceway.StartSpan(c, "loading grouped endpoints")
-	stats, total, err := repositories.EndpointRepository.FindGroupedByEndpoint(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection, request.Search, request.RootFilter)
+	stats, total, err := telemetry.EndpointRepository.FindGroupedByEndpoint(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection, request.Search, request.RootFilter)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading stats: %w", err))
@@ -137,7 +137,7 @@ func (e endpointController) FindByEndpoint(c *gin.Context) {
 	}
 
 	span := traceway.StartSpan(c, "loading endpoint instances")
-	endpoints, total, err := repositories.EndpointRepository.FindByEndpoint(c, projectId, endpoint, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
+	endpoints, total, err := telemetry.EndpointRepository.FindByEndpoint(c, projectId, endpoint, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading endpoints: %w", err))
@@ -146,7 +146,7 @@ func (e endpointController) FindByEndpoint(c *gin.Context) {
 
 	// Get aggregate stats for this endpoint
 	span = traceway.StartSpan(c, "loading endpoint stats")
-	stats, err := repositories.EndpointRepository.GetEndpointStats(c, projectId, endpoint, request.FromDate, request.ToDate)
+	stats, err := telemetry.EndpointRepository.GetEndpointStats(c, projectId, endpoint, request.FromDate, request.ToDate)
 	span.End()
 	if err != nil {
 		// Don't fail the request if stats fail, just return nil stats
@@ -189,7 +189,7 @@ func (e endpointController) GetStackedChart(c *gin.Context) {
 	}
 
 	span := traceway.StartSpan(c, "loading stacked chart")
-	data, err := repositories.EndpointRepository.GetEndpointStackedChart(c, projectId, request.FromDate, request.ToDate, request.IntervalMinutes, request.MetricType)
+	data, err := telemetry.EndpointRepository.GetEndpointStackedChart(c, projectId, request.FromDate, request.ToDate, request.IntervalMinutes, request.MetricType)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading stacked chart data: %w", err))
@@ -217,7 +217,7 @@ func (e endpointController) GetSlowEndpoint(c *gin.Context) {
 		endpoint = rawEndpoint
 	}
 
-	offsetMs, reason, err := repositories.EndpointRepository.GetSlowEndpoint(c, projectId, endpoint)
+	offsetMs, reason, err := telemetry.EndpointRepository.GetSlowEndpoint(c, projectId, endpoint)
 	if errors.Is(err, sql.ErrNoRows) {
 		c.JSON(http.StatusOK, gin.H{"offsetMs": 0, "reason": ""})
 		return
@@ -249,7 +249,7 @@ func (e endpointController) SetSlowEndpoint(c *gin.Context) {
 		return
 	}
 
-	if err := repositories.EndpointRepository.UpsertSlowEndpoint(c, projectId, request.Endpoint, request.OffsetMs, request.Reason); err != nil {
+	if err := telemetry.EndpointRepository.UpsertSlowEndpoint(c, projectId, request.Endpoint, request.OffsetMs, request.Reason); err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error saving slow endpoint: %w", err))
 		return
 	}

@@ -19,7 +19,7 @@ import (
 
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 )
 
 var (
@@ -52,7 +52,7 @@ func RegisterClient(tx *sql.Tx, name string, redirectURIs []string) (*models.Oau
 		RedirectUris: redirectURIs,
 		CreatedAt:    time.Now().UTC(),
 	}
-	if err := repositories.OauthClientRepository.Create(tx, client); err != nil {
+	if err := transactional.OauthClientRepository.Create(tx, client); err != nil {
 		return nil, err
 	}
 	return client, nil
@@ -170,11 +170,11 @@ func ApproveAuthorization(tx *sql.Tx, userId int, req models.AuthorizeApproveReq
 		return "", err
 	}
 
-	if _, err := repositories.AuthorizationCodeRepository.PruneExpired(tx, time.Now()); err != nil {
+	if _, err := transactional.AuthorizationCodeRepository.PruneExpired(tx, time.Now()); err != nil {
 		return "", err
 	}
 	code := newOpaqueToken("twa_")
-	if err := repositories.AuthorizationCodeRepository.Create(tx, code, client.Id, userId, req.RedirectUri, req.CodeChallenge, time.Now().Add(authCodeTTL)); err != nil {
+	if err := transactional.AuthorizationCodeRepository.Create(tx, code, client.Id, userId, req.RedirectUri, req.CodeChallenge, time.Now().Add(authCodeTTL)); err != nil {
 		return "", err
 	}
 	return appendRedirectParams(req.RedirectUri, url.Values{"code": {code}}, req.State), nil
@@ -191,7 +191,7 @@ func validateAuthorizeTarget(ex lit.Executor, clientId, redirectUri string) (*mo
 	if clientId == "" {
 		return nil, ErrUnknownClient
 	}
-	client, err := repositories.OauthClientRepository.FindById(ex, clientId)
+	client, err := transactional.OauthClientRepository.FindById(ex, clientId)
 	if err != nil {
 		return nil, err
 	}
@@ -228,14 +228,14 @@ func RedeemAuthorizationCode(clientId, code, verifier, redirectUri, resource, is
 		grantErr error
 	}
 	out, err := db.ExecuteTransaction(func(tx *sql.Tx) (redeemOutcome, error) {
-		ac, err := repositories.AuthorizationCodeRepository.FindByCode(tx, code)
+		ac, err := transactional.AuthorizationCodeRepository.FindByCode(tx, code)
 		if err != nil {
 			return redeemOutcome{}, err
 		}
 		if ac == nil {
 			return redeemOutcome{grantErr: ErrInvalidGrant}, nil
 		}
-		deleted, err := repositories.AuthorizationCodeRepository.Delete(tx, code)
+		deleted, err := transactional.AuthorizationCodeRepository.Delete(tx, code)
 		if err != nil {
 			return redeemOutcome{}, err
 		}
@@ -245,7 +245,7 @@ func RedeemAuthorizationCode(clientId, code, verifier, redirectUri, resource, is
 		if time.Now().After(ac.ExpiresAt) || ac.ClientId != clientId || ac.RedirectUri != redirectUri || !verifyPKCE(ac.CodeChallenge, verifier) {
 			return redeemOutcome{grantErr: ErrInvalidGrant}, nil
 		}
-		user, err := repositories.UserRepository.FindById(tx, ac.UserId)
+		user, err := transactional.UserRepository.FindById(tx, ac.UserId)
 		if err != nil {
 			return redeemOutcome{}, err
 		}

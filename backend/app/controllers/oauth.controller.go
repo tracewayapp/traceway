@@ -14,7 +14,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/services"
 
 	"github.com/gin-gonic/gin"
@@ -98,7 +98,7 @@ func (a oauthController) Callback(c *gin.Context) {
 		mappedRole = services.OAuthService.ResolveRole(gothUser.RawData)
 	}
 
-	memberships, err := repositories.OrganizationRepository.FindByUserIdWithRoles(tx, user.Id)
+	memberships, err := transactional.OrganizationRepository.FindByUserIdWithRoles(tx, user.Id)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("OAuth callback: load memberships: %w", err))
 		return
@@ -116,7 +116,7 @@ func (a oauthController) Callback(c *gin.Context) {
 			if mappedRole != "" {
 				role = mappedRole
 			}
-			if _, err := repositories.OrganizationRepository.AddUser(tx, org.Id, user.Id, role); err != nil {
+			if _, err := transactional.OrganizationRepository.AddUser(tx, org.Id, user.Id, role); err != nil {
 				c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("OAuth callback: auto-join org: %w", err))
 				return
 			}
@@ -127,7 +127,7 @@ func (a oauthController) Callback(c *gin.Context) {
 			if m.Role == "owner" {
 				continue
 			}
-			if err := repositories.OrganizationRepository.UpdateUserRole(tx, m.Id, user.Id, mappedRole); err != nil {
+			if err := transactional.OrganizationRepository.UpdateUserRole(tx, m.Id, user.Id, mappedRole); err != nil {
 				c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("OAuth callback: sync mapped role: %w", err))
 				return
 			}
@@ -151,7 +151,7 @@ func (a oauthController) Callback(c *gin.Context) {
 func (a oauthController) findOrCreateUser(c *gin.Context, provider string, gothUser goth.User) (*models.User, error) {
 	tracewayTx := db.GetTx(c)
 
-	user, err := repositories.UserRepository.FindByOAuth(tracewayTx, provider, gothUser.UserID)
+	user, err := transactional.UserRepository.FindByOAuth(tracewayTx, provider, gothUser.UserID)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("OAuth callback: lookup by provider: %w", err))
 		return nil, err
@@ -160,14 +160,14 @@ func (a oauthController) findOrCreateUser(c *gin.Context, provider string, gothU
 		return user, nil
 	}
 
-	existing, err := repositories.UserRepository.FindByEmailIgnoreCase(tracewayTx, gothUser.Email)
+	existing, err := transactional.UserRepository.FindByEmailIgnoreCase(tracewayTx, gothUser.Email)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("OAuth callback: lookup by email: %w", err))
 		return nil, err
 	}
 
 	if existing != nil {
-		if err := repositories.UserRepository.LinkOAuth(tracewayTx, existing.Id, provider, gothUser.UserID, gothUser.AvatarURL); err != nil {
+		if err := transactional.UserRepository.LinkOAuth(tracewayTx, existing.Id, provider, gothUser.UserID, gothUser.AvatarURL); err != nil {
 			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("OAuth callback: link provider: %w", err))
 			return nil, err
 		}
@@ -176,7 +176,7 @@ func (a oauthController) findOrCreateUser(c *gin.Context, provider string, gothU
 
 	oidcAutoCreate := provider == "oidc" && services.OAuthService.OIDCAutoCreateEnabled()
 	if config.Config.CloudMode != "true" && !oidcAutoCreate {
-		hasOrg, err := repositories.OrganizationRepository.HasOrganizations(tracewayTx)
+		hasOrg, err := transactional.OrganizationRepository.HasOrganizations(tracewayTx)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("OAuth callback: count orgs: %w", err))
 			return nil, err
@@ -195,7 +195,7 @@ func (a oauthController) findOrCreateUser(c *gin.Context, provider string, gothU
 		name = gothUser.Email
 	}
 
-	created, err := repositories.UserRepository.CreateOAuth(tracewayTx, gothUser.Email, name, provider, gothUser.UserID, gothUser.AvatarURL)
+	created, err := transactional.UserRepository.CreateOAuth(tracewayTx, gothUser.Email, name, provider, gothUser.UserID, gothUser.AvatarURL)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("OAuth callback: create user: %w", err))
 		return nil, err
@@ -224,7 +224,7 @@ func (a oauthController) FinishSetup(c *gin.Context) {
 
 	tx := db.GetTx(c)
 
-	user, err := repositories.UserRepository.FindById(tx, userId)
+	user, err := transactional.UserRepository.FindById(tx, userId)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("FinishSetup: load user: %w", err))
 		return
@@ -234,7 +234,7 @@ func (a oauthController) FinishSetup(c *gin.Context) {
 		return
 	}
 
-	memberships, err := repositories.OrganizationRepository.FindByUserIdWithRoles(tx, user.Id)
+	memberships, err := transactional.OrganizationRepository.FindByUserIdWithRoles(tx, user.Id)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("FinishSetup: load memberships: %w", err))
 		return
@@ -245,7 +245,7 @@ func (a oauthController) FinishSetup(c *gin.Context) {
 	}
 
 	if config.Config.CloudMode != "true" {
-		hasOrg, err := repositories.OrganizationRepository.HasOrganizations(tx)
+		hasOrg, err := transactional.OrganizationRepository.HasOrganizations(tx)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("FinishSetup: count orgs: %w", err))
 			return
@@ -256,13 +256,13 @@ func (a oauthController) FinishSetup(c *gin.Context) {
 		}
 	}
 
-	org, err := repositories.OrganizationRepository.Create(tx, request.OrganizationName, request.Timezone)
+	org, err := transactional.OrganizationRepository.Create(tx, request.OrganizationName, request.Timezone)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("FinishSetup: create org: %w", err))
 		return
 	}
 
-	if _, err := repositories.OrganizationRepository.AddUser(tx, org.Id, user.Id, "owner"); err != nil {
+	if _, err := transactional.OrganizationRepository.AddUser(tx, org.Id, user.Id, "owner"); err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("FinishSetup: add user to org: %w", err))
 		return
 	}
@@ -274,7 +274,7 @@ func (a oauthController) FinishSetup(c *gin.Context) {
 		}
 	}
 
-	project, err := repositories.ProjectRepository.CreateWithOrganization(tx, request.ProjectName, request.Framework, org.Id)
+	project, err := transactional.ProjectRepository.CreateWithOrganization(tx, request.ProjectName, request.Framework, org.Id)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("FinishSetup: create project: %w", err))
 		return
@@ -294,13 +294,13 @@ func (a oauthController) FinishSetup(c *gin.Context) {
 		return
 	}
 
-	projects, err := repositories.ProjectRepository.FindAllWithBackendUrlByUserId(tx, user.Id)
+	projects, err := transactional.ProjectRepository.FindAllWithBackendUrlByUserId(tx, user.Id)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("FinishSetup: load projects: %w", err))
 		return
 	}
 
-	organizations, err := repositories.OrganizationRepository.FindByUserIdWithRoles(tx, user.Id)
+	organizations, err := transactional.OrganizationRepository.FindByUserIdWithRoles(tx, user.Id)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("FinishSetup: load orgs: %w", err))
 		return
@@ -324,7 +324,7 @@ func (a oauthController) resolveOIDCOrg(tx *sql.Tx, rawData map[string]interface
 	if claim := services.OAuthService.OIDCOrgClaim(); claim != "" {
 		if val, ok := rawData[claim]; ok {
 			if orgName, ok := val.(string); ok && orgName != "" {
-				org, err := repositories.OrganizationRepository.FindByName(tx, orgName)
+				org, err := transactional.OrganizationRepository.FindByName(tx, orgName)
 				if err != nil {
 					return nil, err
 				}
@@ -334,7 +334,7 @@ func (a oauthController) resolveOIDCOrg(tx *sql.Tx, rawData map[string]interface
 			}
 		}
 	}
-	return repositories.OrganizationRepository.FindFirst(tx)
+	return transactional.OrganizationRepository.FindFirst(tx)
 }
 
 func externalToGothProvider(provider string) string {

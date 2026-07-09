@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/services"
 )
 
@@ -55,7 +55,7 @@ func issueTokenSetWithFamily(tx *sql.Tx, userId int, email, clientId, familyId s
 	}
 
 	refresh := newOpaqueToken("twr_")
-	if err := repositories.RefreshTokenRepository.Insert(tx, refresh, familyId, userId, clientId, time.Now().Add(refreshTokenTTL)); err != nil {
+	if err := transactional.RefreshTokenRepository.Insert(tx, refresh, familyId, userId, clientId, time.Now().Add(refreshTokenTTL)); err != nil {
 		return nil, err
 	}
 

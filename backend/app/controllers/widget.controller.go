@@ -11,7 +11,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 
 	"github.com/gin-gonic/gin"
 	traceway "go.tracewayapp.com"
@@ -61,7 +61,7 @@ func (c *widgetController) Add(ctx *gin.Context) {
 
 	tx := db.GetTx(ctx)
 
-	group, err := repositories.WidgetGroupRepository.FindById(tx, groupId)
+	group, err := transactional.WidgetGroupRepository.FindById(tx, groupId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to add widget: %w", err))
 		return
@@ -71,7 +71,7 @@ func (c *widgetController) Add(ctx *gin.Context) {
 		return
 	}
 
-	existing, err := repositories.WidgetGroupRepository.FindWidgetsByGroup(tx, groupId)
+	existing, err := transactional.WidgetGroupRepository.FindWidgetsByGroup(tx, groupId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to add widget: %w", err))
 		return
@@ -86,7 +86,7 @@ func (c *widgetController) Add(ctx *gin.Context) {
 		CreatedAt:     time.Now().UTC(),
 		UpdatedAt:     time.Now().UTC(),
 	}
-	id, err := repositories.WidgetGroupRepository.CreateWidget(tx, w)
+	id, err := transactional.WidgetGroupRepository.CreateWidget(tx, w)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to add widget: %w", err))
 		return
@@ -138,7 +138,7 @@ func (c *widgetController) Update(ctx *gin.Context) {
 
 	tx := db.GetTx(ctx)
 
-	group, err := repositories.WidgetGroupRepository.FindById(tx, groupId)
+	group, err := transactional.WidgetGroupRepository.FindById(tx, groupId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to update widget: %w", err))
 		return
@@ -148,7 +148,7 @@ func (c *widgetController) Update(ctx *gin.Context) {
 		return
 	}
 
-	widget, err := repositories.WidgetGroupRepository.FindWidgetById(tx, widgetId)
+	widget, err := transactional.WidgetGroupRepository.FindWidgetById(tx, widgetId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to update widget: %w", err))
 		return
@@ -165,7 +165,7 @@ func (c *widgetController) Update(ctx *gin.Context) {
 	}
 	widget.UpdatedAt = time.Now().UTC()
 
-	if err := repositories.WidgetGroupRepository.UpdateWidget(tx, widget); err != nil {
+	if err := transactional.WidgetGroupRepository.UpdateWidget(tx, widget); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to update widget: %w", err))
 		return
 	}
@@ -206,7 +206,7 @@ func (c *widgetController) Move(ctx *gin.Context) {
 
 	tx := db.GetTx(ctx)
 
-	group, err := repositories.WidgetGroupRepository.FindById(tx, groupId)
+	group, err := transactional.WidgetGroupRepository.FindById(tx, groupId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to move widget: %w", err))
 		return
@@ -216,7 +216,7 @@ func (c *widgetController) Move(ctx *gin.Context) {
 		return
 	}
 
-	allWidgets, err := repositories.WidgetGroupRepository.FindWidgetsByGroup(tx, groupId)
+	allWidgets, err := transactional.WidgetGroupRepository.FindWidgetsByGroup(tx, groupId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to move widget: %w", err))
 		return
@@ -252,11 +252,11 @@ func (c *widgetController) Move(ctx *gin.Context) {
 	widget.UpdatedAt = now
 	targetWidget.UpdatedAt = now
 
-	if err := repositories.WidgetGroupRepository.UpdateWidget(tx, targetWidget); err != nil {
+	if err := transactional.WidgetGroupRepository.UpdateWidget(tx, targetWidget); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to move widget: %w", err))
 		return
 	}
-	if err := repositories.WidgetGroupRepository.UpdateWidget(tx, widget); err != nil {
+	if err := transactional.WidgetGroupRepository.UpdateWidget(tx, widget); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to move widget: %w", err))
 		return
 	}
@@ -287,7 +287,7 @@ func (c *widgetController) Delete(ctx *gin.Context) {
 
 	tx := db.GetTx(ctx)
 
-	group, err := repositories.WidgetGroupRepository.FindById(tx, groupId)
+	group, err := transactional.WidgetGroupRepository.FindById(tx, groupId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to delete widget: %w", err))
 		return
@@ -297,7 +297,7 @@ func (c *widgetController) Delete(ctx *gin.Context) {
 		return
 	}
 
-	widget, err := repositories.WidgetGroupRepository.FindWidgetById(tx, widgetId)
+	widget, err := transactional.WidgetGroupRepository.FindWidgetById(tx, widgetId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to delete widget: %w", err))
 		return
@@ -307,7 +307,7 @@ func (c *widgetController) Delete(ctx *gin.Context) {
 		return
 	}
 
-	if err := repositories.WidgetGroupRepository.DeleteWidget(tx, widgetId); err != nil {
+	if err := transactional.WidgetGroupRepository.DeleteWidget(tx, widgetId); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to delete widget: %w", err))
 		return
 	}
@@ -338,7 +338,7 @@ func (c *widgetController) ToggleStar(ctx *gin.Context) {
 
 	tx := db.GetTx(ctx)
 
-	group, err := repositories.WidgetGroupRepository.FindById(tx, groupId)
+	group, err := transactional.WidgetGroupRepository.FindById(tx, groupId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to toggle star: %w", err))
 		return
@@ -348,7 +348,7 @@ func (c *widgetController) ToggleStar(ctx *gin.Context) {
 		return
 	}
 
-	widget, err := repositories.WidgetGroupRepository.FindWidgetById(tx, widgetId)
+	widget, err := transactional.WidgetGroupRepository.FindWidgetById(tx, widgetId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to toggle star: %w", err))
 		return
@@ -361,7 +361,7 @@ func (c *widgetController) ToggleStar(ctx *gin.Context) {
 	widget.IsStarred = !widget.IsStarred
 	widget.UpdatedAt = time.Now().UTC()
 
-	if err := repositories.WidgetGroupRepository.UpdateWidget(tx, widget); err != nil {
+	if err := transactional.WidgetGroupRepository.UpdateWidget(tx, widget); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to toggle star: %w", err))
 		return
 	}
@@ -378,7 +378,7 @@ func (c *widgetController) ListStarred(ctx *gin.Context) {
 
 	tx := db.GetTx(ctx)
 
-	widgets, err := repositories.WidgetGroupRepository.FindStarredWidgetsByProject(tx, projectId)
+	widgets, err := transactional.WidgetGroupRepository.FindStarredWidgetsByProject(tx, projectId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to list starred widgets: %w", err))
 		return

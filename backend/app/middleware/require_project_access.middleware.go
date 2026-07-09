@@ -1,9 +1,9 @@
 package middleware
 
 import (
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
 	"database/sql"
+	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -31,7 +31,7 @@ func InitRequireProjectAccess() {
 		}
 
 		hasAccess, err := db.ExecuteTransaction(func(tx *sql.Tx) (bool, error) {
-			return repositories.ProjectRepository.UserHasAccess(tx, projectId, userId)
+			return transactional.ProjectRepository.UserHasAccess(tx, projectId, userId)
 		})
 
 		if err != nil {

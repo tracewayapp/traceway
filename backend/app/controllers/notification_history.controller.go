@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	traceway "go.tracewayapp.com"
 )
 
@@ -54,7 +54,7 @@ func (ctrl *notificationHistoryController) List(ctx *gin.Context) {
 		toTime = &t
 	}
 
-	items, total, err := repositories.FiredNotificationRepository.FindByProject(ctx.Request.Context(), projectId, page, pageSize, request.Search, fromTime, toTime)
+	items, total, err := telemetry.FiredNotificationRepository.FindByProject(ctx.Request.Context(), projectId, page, pageSize, request.Search, fromTime, toTime)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to list notification history: %w", err))
 		return

@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 )
 
 type EvalResult struct {
@@ -44,8 +44,8 @@ var polledEvaluators = map[string]RuleEvaluator{
 
 type errorRateConfig struct {
 	ThresholdPercent float64 `json:"thresholdPercent"`
-	LookbackMinutes int     `json:"lookbackMinutes"`
-	MinRequests     int     `json:"minRequests"`
+	LookbackMinutes  int     `json:"lookbackMinutes"`
+	MinRequests      int     `json:"minRequests"`
 }
 
 func evaluateErrorRateThreshold(ctx context.Context, rule *models.NotificationRule, projectId uuid.UUID) (*EvalResult, error) {
@@ -732,7 +732,7 @@ func computeImpactEndpoints(ctx context.Context, projectId uuid.UUID, minRequest
 	for _, c := range candidates {
 		c.p99 = p99s[c.endpoint]
 
-		impact := repositories.ComputeImpactScore(c.endpoint, c.totalCount, c.satisfied, c.tolerating, c.bad, c.clientErrors, c.p99, c.offsetMs)
+		impact := telemetry.ComputeImpactScore(c.endpoint, c.totalCount, c.satisfied, c.tolerating, c.bad, c.clientErrors, c.p99, c.offsetMs)
 		if impact >= minImpactThreshold {
 			c.impact = impact
 			result = append(result, c)

@@ -12,7 +12,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/notifications"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	traceway "go.tracewayapp.com"
 )
 
@@ -46,7 +46,7 @@ func (ctrl *notificationRuleController) List(ctx *gin.Context) {
 	}
 
 	tx := db.GetTx(ctx)
-	rules, err := repositories.NotificationRuleRepository.FindByProjectWithChannel(tx, projectId)
+	rules, err := transactional.NotificationRuleRepository.FindByProjectWithChannel(tx, projectId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to list notification rules: %w", err))
 		return
@@ -107,7 +107,7 @@ func (ctrl *notificationRuleController) Create(ctx *gin.Context) {
 
 	tx := db.GetTx(ctx)
 
-	channel, err := repositories.NotificationChannelRepository.FindById(tx, req.ChannelId)
+	channel, err := transactional.NotificationChannelRepository.FindById(tx, req.ChannelId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to find notification channel: %w", err))
 		return
@@ -142,7 +142,7 @@ func (ctrl *notificationRuleController) Create(ctx *gin.Context) {
 		UpdatedAt:       now,
 	}
 
-	id, err := repositories.NotificationRuleRepository.Create(tx, rule)
+	id, err := transactional.NotificationRuleRepository.Create(tx, rule)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to create notification rule: %w", err))
 		return
@@ -192,7 +192,7 @@ func (ctrl *notificationRuleController) Update(ctx *gin.Context) {
 
 	tx := db.GetTx(ctx)
 
-	existing, err := repositories.NotificationRuleRepository.FindById(tx, id)
+	existing, err := transactional.NotificationRuleRepository.FindById(tx, id)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to find notification rule: %w", err))
 		return
@@ -202,7 +202,7 @@ func (ctrl *notificationRuleController) Update(ctx *gin.Context) {
 		return
 	}
 
-	channel, err := repositories.NotificationChannelRepository.FindById(tx, req.ChannelId)
+	channel, err := transactional.NotificationChannelRepository.FindById(tx, req.ChannelId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to find notification channel: %w", err))
 		return
@@ -225,7 +225,7 @@ func (ctrl *notificationRuleController) Update(ctx *gin.Context) {
 	existing.Severity = req.Severity
 	existing.UpdatedAt = time.Now().UTC()
 
-	if err := repositories.NotificationRuleRepository.Update(tx, existing); err != nil {
+	if err := transactional.NotificationRuleRepository.Update(tx, existing); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to update notification rule: %w", err))
 		return
 	}
@@ -249,7 +249,7 @@ func (ctrl *notificationRuleController) Delete(ctx *gin.Context) {
 	}
 
 	tx := db.GetTx(ctx)
-	existing, err := repositories.NotificationRuleRepository.FindById(tx, id)
+	existing, err := transactional.NotificationRuleRepository.FindById(tx, id)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to delete notification rule: %w", err))
 		return
@@ -259,7 +259,7 @@ func (ctrl *notificationRuleController) Delete(ctx *gin.Context) {
 		return
 	}
 
-	if err := repositories.NotificationRuleRepository.Delete(tx, id); err != nil {
+	if err := transactional.NotificationRuleRepository.Delete(tx, id); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to delete notification rule: %w", err))
 		return
 	}
@@ -283,7 +283,7 @@ func (ctrl *notificationRuleController) Toggle(ctx *gin.Context) {
 	}
 
 	tx := db.GetTx(ctx)
-	existing, err := repositories.NotificationRuleRepository.FindById(tx, id)
+	existing, err := transactional.NotificationRuleRepository.FindById(tx, id)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to find notification rule: %w", err))
 		return
@@ -294,7 +294,7 @@ func (ctrl *notificationRuleController) Toggle(ctx *gin.Context) {
 	}
 
 	newEnabled := !existing.Enabled
-	if err := repositories.NotificationRuleRepository.UpdateEnabled(tx, id, newEnabled); err != nil {
+	if err := transactional.NotificationRuleRepository.UpdateEnabled(tx, id, newEnabled); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to toggle notification rule: %w", err))
 		return
 	}
@@ -328,7 +328,7 @@ func (ctrl *notificationRuleController) Snooze(ctx *gin.Context) {
 	}
 
 	tx := db.GetTx(ctx)
-	existing, err := repositories.NotificationRuleRepository.FindById(tx, id)
+	existing, err := transactional.NotificationRuleRepository.FindById(tx, id)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to find notification rule: %w", err))
 		return
@@ -344,7 +344,7 @@ func (ctrl *notificationRuleController) Snooze(ctx *gin.Context) {
 		snoozedUntil = &t
 	}
 
-	if err := repositories.NotificationRuleRepository.UpdateSnoozedUntil(tx, id, snoozedUntil); err != nil {
+	if err := transactional.NotificationRuleRepository.UpdateSnoozedUntil(tx, id, snoozedUntil); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to snooze notification rule: %w", err))
 		return
 	}

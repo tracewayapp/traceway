@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	traceway "go.tracewayapp.com"
 
@@ -56,7 +56,7 @@ type BearerIdentity struct {
 
 func AuthenticateBearer(tokenString string) (*BearerIdentity, error) {
 	if strings.HasPrefix(tokenString, "twp_") {
-		pat, err := repositories.PersonalAccessTokenRepository.FindActiveByToken(db.DB, tokenString)
+		pat, err := transactional.PersonalAccessTokenRepository.FindActiveByToken(db.DB, tokenString)
 		if err != nil {
 			return nil, err
 		}
@@ -78,7 +78,7 @@ func AuthenticateBearer(tokenString string) (*BearerIdentity, error) {
 	return identity, nil
 }
 
-func touchPersonalAccessToken(pat *repositories.ActivePAT) {
+func touchPersonalAccessToken(pat *transactional.ActivePAT) {
 	now := time.Now()
 	if pat.LastUsedAt != nil && now.Sub(*pat.LastUsedAt) < patTouchInterval {
 		return
@@ -87,7 +87,7 @@ func touchPersonalAccessToken(pat *repositories.ActivePAT) {
 	go func() {
 		defer traceway.Recover()
 		_, _ = db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
-			return struct{}{}, repositories.PersonalAccessTokenRepository.TouchLastUsed(tx, pat.Id, now)
+			return struct{}{}, transactional.PersonalAccessTokenRepository.TouchLastUsed(tx, pat.Id, now)
 		})
 	}()
 }

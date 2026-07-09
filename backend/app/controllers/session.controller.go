@@ -6,7 +6,7 @@ import (
 
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 
 	"github.com/gin-gonic/gin"
 	traceway "go.tracewayapp.com"
@@ -42,16 +42,16 @@ func (s sessionController) FindAllSessions(c *gin.Context) {
 		return
 	}
 
-	filters := make([]repositories.SessionAttributeFilter, 0, len(request.AttributeFilters))
+	filters := make([]telemetry.SessionAttributeFilter, 0, len(request.AttributeFilters))
 	for _, f := range request.AttributeFilters {
 		if f.Key == "" {
 			continue
 		}
-		filters = append(filters, repositories.SessionAttributeFilter{Key: f.Key, Value: f.Value})
+		filters = append(filters, telemetry.SessionAttributeFilter{Key: f.Key, Value: f.Value})
 	}
 
 	span := traceway.StartSpan(c, "loading sessions")
-	sessions, total, err := repositories.SessionRepository.FindAll(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection, request.Search, filters)
+	sessions, total, err := telemetry.SessionRepository.FindAll(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection, request.Search, filters)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading sessions: %w", err))

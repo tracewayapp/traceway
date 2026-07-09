@@ -10,7 +10,8 @@ import (
 
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	traceway "go.tracewayapp.com"
 )
 
@@ -24,7 +25,7 @@ func sanitizeForDB(s string) string {
 
 func dispatch(rule *models.NotificationRuleWithChannel, msg Message) {
 	channel, dbErr := db.ExecuteTransaction(func(tx *sql.Tx) (*models.NotificationChannel, error) {
-		return repositories.NotificationChannelRepository.FindById(tx, rule.ChannelId)
+		return transactional.NotificationChannelRepository.FindById(tx, rule.ChannelId)
 	})
 	if dbErr != nil || channel == nil {
 		recordFiredNotification(rule, msg, "failed", "failed to load channel")
@@ -61,7 +62,7 @@ func recordFiredNotification(rule *models.NotificationRuleWithChannel, msg Messa
 	go func() {
 		defer traceway.Recover()
 
-		err := repositories.FiredNotificationRepository.Insert(context.Background(), repositories.FiredNotification{
+		err := telemetry.FiredNotificationRepository.Insert(context.Background(), telemetry.FiredNotification{
 			ProjectId:   rule.ProjectId,
 			RuleId:      rule.Id,
 			RuleType:    rule.RuleType,
@@ -82,4 +83,3 @@ func recordFiredNotification(rule *models.NotificationRuleWithChannel, msg Messa
 		}
 	}()
 }
-

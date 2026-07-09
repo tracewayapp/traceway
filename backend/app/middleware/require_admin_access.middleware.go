@@ -1,9 +1,9 @@
 package middleware
 
 import (
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
 	"database/sql"
+	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"net/http"
 	"strconv"
 
@@ -32,7 +32,7 @@ func InitRequireAdminAccess() {
 		}
 
 		role, err := db.ExecuteTransaction(func(tx *sql.Tx) (string, error) {
-			return repositories.OrganizationRepository.GetUserRole(tx, organizationId, userId)
+			return transactional.OrganizationRepository.GetUserRole(tx, organizationId, userId)
 		})
 
 		if err != nil {

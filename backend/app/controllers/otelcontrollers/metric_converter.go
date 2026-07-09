@@ -2,7 +2,7 @@ package otelcontrollers
 
 import (
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 
 	"github.com/google/uuid"
 	colmetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
@@ -12,7 +12,7 @@ import (
 
 type convertedMetrics struct {
 	Points  []models.MetricPoint
-	Entries []repositories.MetricRegistrationEntry
+	Entries []transactional.MetricRegistrationEntry
 }
 
 // processResourceAttrAllowlist names the OTel Resource attributes we lift
@@ -31,7 +31,7 @@ var processResourceAttrAllowlist = []string{
 
 func convertMetricPoints(projectId uuid.UUID, req *colmetricspb.ExportMetricsServiceRequest) convertedMetrics {
 	var points []models.MetricPoint
-	seenEntries := make(map[string]repositories.MetricRegistrationEntry)
+	seenEntries := make(map[string]transactional.MetricRegistrationEntry)
 
 	for _, rm := range req.ResourceMetrics {
 		resAttrs := rm.GetResource().GetAttributes()
@@ -47,7 +47,7 @@ func convertMetricPoints(projectId uuid.UUID, req *colmetricspb.ExportMetricsSer
 				case *metricspb.Metric_Gauge:
 					points = appendNumberDataPoints(points, projectId, name, sn, resTags, data.Gauge.GetDataPoints())
 					if _, ok := seenEntries[name]; !ok {
-						seenEntries[name] = repositories.MetricRegistrationEntry{
+						seenEntries[name] = transactional.MetricRegistrationEntry{
 							Name:       name,
 							Unit:       unit,
 							MetricType: "gauge",
@@ -60,7 +60,7 @@ func convertMetricPoints(projectId uuid.UUID, req *colmetricspb.ExportMetricsSer
 						if data.Sum.IsMonotonic {
 							mt = "counter"
 						}
-						seenEntries[name] = repositories.MetricRegistrationEntry{
+						seenEntries[name] = transactional.MetricRegistrationEntry{
 							Name:       name,
 							Unit:       unit,
 							MetricType: mt,
@@ -90,14 +90,14 @@ func convertMetricPoints(projectId uuid.UUID, req *colmetricspb.ExportMetricsSer
 					avgName := name + ".avg"
 					countName := name + ".count"
 					if _, ok := seenEntries[avgName]; !ok {
-						seenEntries[avgName] = repositories.MetricRegistrationEntry{
+						seenEntries[avgName] = transactional.MetricRegistrationEntry{
 							Name:       avgName,
 							Unit:       unit,
 							MetricType: "gauge",
 						}
 					}
 					if _, ok := seenEntries[countName]; !ok {
-						seenEntries[countName] = repositories.MetricRegistrationEntry{
+						seenEntries[countName] = transactional.MetricRegistrationEntry{
 							Name:       countName,
 							Unit:       "count",
 							MetricType: "counter",
@@ -108,7 +108,7 @@ func convertMetricPoints(projectId uuid.UUID, req *colmetricspb.ExportMetricsSer
 		}
 	}
 
-	entries := make([]repositories.MetricRegistrationEntry, 0, len(seenEntries))
+	entries := make([]transactional.MetricRegistrationEntry, 0, len(seenEntries))
 	for _, e := range seenEntries {
 		entries = append(entries, e)
 	}

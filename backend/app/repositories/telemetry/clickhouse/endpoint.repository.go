@@ -654,7 +654,7 @@ func (e *endpointRepository) GetEndpointStats(ctx context.Context, projectId uui
 			countIf(duration <= 500000000 AND status_code < 500 AND is_stream = 0) +
 			(countIf(duration > 500000000 AND duration <= 2000000000 AND status_code < 500 AND is_stream = 0) * 0.5),
 			0) as satisfied_tolerating,
-		max(is_stream) as is_stream,
+		max(is_stream) as has_stream,
 		countIf(is_stream = 0) as non_stream_count
 	FROM endpoints
 	WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ?`

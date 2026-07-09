@@ -5,13 +5,13 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 )
 
 const oauthSessionsPruneInterval = 24 * time.Hour
 
 func startOAuthSessionsPrune(ctx context.Context) {
 	startDBPruneWorker(ctx, "oauth_sessions", oauthSessionsPruneInterval, func(tx *sql.Tx) (int64, error) {
-		return repositories.OAuthSessionRepository.PruneExpired(tx, time.Now().UTC())
+		return transactional.OAuthSessionRepository.PruneExpired(tx, time.Now().UTC())
 	})
 }

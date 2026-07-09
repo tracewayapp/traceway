@@ -8,7 +8,7 @@ import (
 
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 )
 
 var (
@@ -46,10 +46,10 @@ func CreateDeviceAuth(clientId, baseURL string) (*models.DeviceAuthorizeResponse
 	// never accumulate more than one device-code TTL's worth of rows between
 	// the daily prune-worker runs.
 	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
-		if _, err := repositories.DeviceAuthorizationRepository.PruneExpired(tx, time.Now()); err != nil {
+		if _, err := transactional.DeviceAuthorizationRepository.PruneExpired(tx, time.Now()); err != nil {
 			return struct{}{}, err
 		}
-		return struct{}{}, repositories.DeviceAuthorizationRepository.Create(tx, deviceCode, userCode, clientId, interval, time.Now().Add(ttl))
+		return struct{}{}, transactional.DeviceAuthorizationRepository.Create(tx, deviceCode, userCode, clientId, interval, time.Now().Add(ttl))
 	})
 	if err != nil {
 		return nil, err
@@ -70,7 +70,7 @@ func CreateDeviceAuth(clientId, baseURL string) (*models.DeviceAuthorizeResponse
 // 400 for normal flow control (pending/slow_down), so it cannot rely on the
 // request-scoped Transactional middleware (which only commits on 2xx).
 func PollDeviceToken(deviceCode string) (*models.TokenSetResponse, error) {
-	da, err := repositories.DeviceAuthorizationRepository.FindByDeviceCode(db.DB, deviceCode)
+	da, err := transactional.DeviceAuthorizationRepository.FindByDeviceCode(db.DB, deviceCode)
 	if err != nil {
 		return nil, err
 	}
@@ -89,14 +89,14 @@ func PollDeviceToken(deviceCode string) (*models.TokenSetResponse, error) {
 			// Consume the device code first: a device code is single-use, so if
 			// the row is already gone another concurrent poll redeemed it and we
 			// must not mint a second token set for the same code.
-			deleted, err := repositories.DeviceAuthorizationRepository.Delete(tx, deviceCode)
+			deleted, err := transactional.DeviceAuthorizationRepository.Delete(tx, deviceCode)
 			if err != nil {
 				return nil, err
 			}
 			if deleted == 0 {
 				return nil, ErrExpiredToken
 			}
-			user, err := repositories.UserRepository.FindById(tx, *da.UserId)
+			user, err := transactional.UserRepository.FindById(tx, *da.UserId)
 			if err != nil {
 				return nil, err
 			}
@@ -113,7 +113,7 @@ func PollDeviceToken(deviceCode string) (*models.TokenSetResponse, error) {
 			interval = da.IntervalSeconds + 5
 		}
 		_, _ = db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
-			return struct{}{}, repositories.DeviceAuthorizationRepository.MarkPolled(tx, deviceCode, now, interval)
+			return struct{}{}, transactional.DeviceAuthorizationRepository.MarkPolled(tx, deviceCode, now, interval)
 		})
 		if slow {
 			return nil, ErrSlowDown
@@ -124,13 +124,13 @@ func PollDeviceToken(deviceCode string) (*models.TokenSetResponse, error) {
 
 func Approve(tx *sql.Tx, userCode string, userId int) error {
 	return resolveDevice(tx, userCode, func(canonicalCode string) (int64, error) {
-		return repositories.DeviceAuthorizationRepository.Approve(tx, canonicalCode, userId)
+		return transactional.DeviceAuthorizationRepository.Approve(tx, canonicalCode, userId)
 	})
 }
 
 func Deny(tx *sql.Tx, userCode string) error {
 	return resolveDevice(tx, userCode, func(canonicalCode string) (int64, error) {
-		return repositories.DeviceAuthorizationRepository.Deny(tx, canonicalCode)
+		return transactional.DeviceAuthorizationRepository.Deny(tx, canonicalCode)
 	})
 }
 
@@ -139,7 +139,7 @@ func Deny(tx *sql.Tx, userCode string) error {
 // the approval "succeed" would only mislead the user), and so the status
 // update runs against the stored canonical user code.
 func resolveDevice(tx *sql.Tx, userCode string, update func(canonicalCode string) (int64, error)) error {
-	da, err := repositories.DeviceAuthorizationRepository.FindByUserCode(tx, userCode)
+	da, err := transactional.DeviceAuthorizationRepository.FindByUserCode(tx, userCode)
 	if err != nil {
 		return err
 	}

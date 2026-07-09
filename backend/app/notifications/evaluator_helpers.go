@@ -12,7 +12,8 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/hooks"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	traceway "go.tracewayapp.com"
 )
 
@@ -33,7 +34,7 @@ func evaluateEventRules(event hooks.ReportEvent) {
 	defer traceway.Recover()
 
 	rules, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.NotificationRuleWithChannel, error) {
-		return repositories.NotificationRuleRepository.FindEnabledEventRules(tx, event.ProjectId)
+		return transactional.NotificationRuleRepository.FindEnabledEventRules(tx, event.ProjectId)
 	})
 	if err != nil {
 		traceway.CaptureException(fmt.Errorf("failed to load event notification rules: %w", err))
@@ -126,9 +127,9 @@ func resolveTraceName(ctx context.Context, projectId uuid.UUID, traceId *uuid.UU
 	}
 	switch traceType {
 	case "task":
-		task, err := repositories.TaskRepository.FindById(ctx, projectId, *traceId, recordedAt)
+		task, err := telemetry.TaskRepository.FindById(ctx, projectId, *traceId, recordedAt)
 		if task == nil && err == nil && recordedAt != nil {
-			task, err = repositories.TaskRepository.FindById(ctx, projectId, *traceId, nil)
+			task, err = telemetry.TaskRepository.FindById(ctx, projectId, *traceId, nil)
 		}
 		if err != nil {
 			traceway.CaptureException(fmt.Errorf("failed to resolve task name for notification: %w", err))
@@ -139,9 +140,9 @@ func resolveTraceName(ctx context.Context, projectId uuid.UUID, traceId *uuid.UU
 		}
 		return task.TaskName
 	case "ai_trace":
-		trace, err := repositories.AiTraceRepository.FindById(ctx, projectId, *traceId, recordedAt)
+		trace, err := telemetry.AiTraceRepository.FindById(ctx, projectId, *traceId, recordedAt)
 		if trace == nil && err == nil && recordedAt != nil {
-			trace, err = repositories.AiTraceRepository.FindById(ctx, projectId, *traceId, nil)
+			trace, err = telemetry.AiTraceRepository.FindById(ctx, projectId, *traceId, nil)
 		}
 		if err != nil {
 			traceway.CaptureException(fmt.Errorf("failed to resolve ai trace name for notification: %w", err))
@@ -152,9 +153,9 @@ func resolveTraceName(ctx context.Context, projectId uuid.UUID, traceId *uuid.UU
 		}
 		return trace.TraceName
 	default:
-		endpoint, err := repositories.EndpointRepository.FindById(ctx, projectId, *traceId, recordedAt)
+		endpoint, err := telemetry.EndpointRepository.FindById(ctx, projectId, *traceId, recordedAt)
 		if endpoint == nil && err == nil && recordedAt != nil {
-			endpoint, err = repositories.EndpointRepository.FindById(ctx, projectId, *traceId, nil)
+			endpoint, err = telemetry.EndpointRepository.FindById(ctx, projectId, *traceId, nil)
 		}
 		if err != nil {
 			traceway.CaptureException(fmt.Errorf("failed to resolve endpoint name for notification: %w", err))
@@ -169,7 +170,7 @@ func resolveTraceName(ctx context.Context, projectId uuid.UUID, traceId *uuid.UU
 
 func getProjectName(projectId uuid.UUID) string {
 	project, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.Project, error) {
-		return repositories.ProjectRepository.FindById(tx, projectId)
+		return transactional.ProjectRepository.FindById(tx, projectId)
 	})
 	if err != nil || project == nil {
 		return ""

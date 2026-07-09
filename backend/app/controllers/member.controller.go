@@ -4,7 +4,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"net/http"
 	"strconv"
 
@@ -32,7 +32,7 @@ func (c *memberController) UpdateRole(ctx *gin.Context) {
 		return
 	}
 
-	targetRole, err := repositories.OrganizationRepository.GetUserRole(tx, organizationId, targetUserId)
+	targetRole, err := transactional.OrganizationRepository.GetUserRole(tx, organizationId, targetUserId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to get user role: %w", err))
 		return
@@ -57,7 +57,7 @@ func (c *memberController) UpdateRole(ctx *gin.Context) {
 		return
 	}
 
-	err = repositories.OrganizationRepository.UpdateUserRole(tx, organizationId, targetUserId, request.Role)
+	err = transactional.OrganizationRepository.UpdateUserRole(tx, organizationId, targetUserId, request.Role)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to update role: %w", err))
 		return
@@ -82,7 +82,7 @@ func (c *memberController) RemoveMember(ctx *gin.Context) {
 		return
 	}
 
-	targetRole, err := repositories.OrganizationRepository.GetUserRole(tx, organizationId, targetUserId)
+	targetRole, err := transactional.OrganizationRepository.GetUserRole(tx, organizationId, targetUserId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to get user role: %w", err))
 		return
@@ -97,7 +97,7 @@ func (c *memberController) RemoveMember(ctx *gin.Context) {
 		return
 	}
 
-	err = repositories.OrganizationRepository.RemoveUser(tx, organizationId, targetUserId)
+	err = transactional.OrganizationRepository.RemoveUser(tx, organizationId, targetUserId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to remove member: %w", err))
 		return

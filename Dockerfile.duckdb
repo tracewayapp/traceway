@@ -29,7 +29,7 @@ RUN npm run build
 # Built natively (no cross-compile) because CGO cross-compilation against the
 # prebuilt DuckDB libraries is impractical; the benchmark SUT builds on-host.
 # ==============================================================================
-FROM golang:1.25-bookworm AS backend-builder
+FROM golang:1.26-bookworm AS backend-builder
 
 WORKDIR /app/backend
 

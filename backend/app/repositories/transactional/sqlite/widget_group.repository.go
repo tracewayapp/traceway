@@ -45,7 +45,21 @@ func (r *widgetGroupRepository) Delete(tx *sql.Tx, id int) error {
 func (r *widgetGroupRepository) FindWidgetsByGroup(tx *sql.Tx, widgetGroupId int) ([]*models.WidgetGroupWidget, error) {
 	return lit.SelectNamed[models.WidgetGroupWidget](
 		tx,
-		"SELECT id, widget_group_id, title, widget_type, config, position, is_starred, created_at, updated_at FROM widget_group_widgets WHERE widget_group_id = :wg_id ORDER BY position ASC",
+		"SELECT id, widget_group_id, title, widget_type, config, position, created_at, updated_at FROM widget_group_widgets WHERE widget_group_id = :wg_id ORDER BY position ASC",
+		lit.P{"wg_id": widgetGroupId},
+	)
+}
+
+func (r *widgetGroupRepository) FindWidgetsByGroupWithStar(tx *sql.Tx, widgetGroupId int) ([]*models.WidgetGroupWidgetWithStar, error) {
+	return lit.SelectNamed[models.WidgetGroupWidgetWithStar](
+		tx,
+		`SELECT wgw.id, wgw.widget_group_id, wgw.title, wgw.widget_type, wgw.config, wgw.position,
+			(sw.id IS NOT NULL) AS is_starred,
+			wgw.created_at, wgw.updated_at
+		FROM widget_group_widgets wgw
+		LEFT JOIN starred_widgets sw ON sw.widget_id = wgw.id
+		WHERE wgw.widget_group_id = :wg_id
+		ORDER BY wgw.position ASC`,
 		lit.P{"wg_id": widgetGroupId},
 	)
 }
@@ -53,20 +67,84 @@ func (r *widgetGroupRepository) FindWidgetsByGroup(tx *sql.Tx, widgetGroupId int
 func (r *widgetGroupRepository) FindWidgetById(tx *sql.Tx, id int) (*models.WidgetGroupWidget, error) {
 	return lit.SelectSingleNamed[models.WidgetGroupWidget](
 		tx,
-		"SELECT id, widget_group_id, title, widget_type, config, position, is_starred, created_at, updated_at FROM widget_group_widgets WHERE id = :id",
+		"SELECT id, widget_group_id, title, widget_type, config, position, created_at, updated_at FROM widget_group_widgets WHERE id = :id",
 		lit.P{"id": id},
 	)
 }
 
-func (r *widgetGroupRepository) FindStarredWidgetsByProject(tx *sql.Tx, projectId uuid.UUID) ([]*models.WidgetGroupWidget, error) {
-	return lit.SelectNamed[models.WidgetGroupWidget](
+func (r *widgetGroupRepository) FindStarredWidgetsByProject(tx *sql.Tx, projectId uuid.UUID) ([]*models.StarredWidgetWithHome, error) {
+	return lit.SelectNamed[models.StarredWidgetWithHome](
 		tx,
-		`SELECT wgw.id, wgw.widget_group_id, wgw.title, wgw.widget_type, wgw.config, wgw.position, wgw.is_starred, wgw.created_at, wgw.updated_at
-		FROM widget_group_widgets wgw
+		`SELECT wgw.id, wgw.widget_group_id, wgw.title, wgw.widget_type, wgw.config, wgw.position,
+			sw.position AS home_position, sw.col_span AS home_col_span, sw.size AS home_size,
+			wgw.created_at, wgw.updated_at
+		FROM starred_widgets sw
+		JOIN widget_group_widgets wgw ON wgw.id = sw.widget_id
 		JOIN widget_groups wg ON wg.id = wgw.widget_group_id
-		WHERE wg.project_id = :project_id AND wgw.is_starred = :starred
-		ORDER BY wgw.updated_at DESC`,
-		lit.P{"project_id": projectId, "starred": true},
+		WHERE wg.project_id = :project_id
+		ORDER BY sw.position ASC, sw.id ASC`,
+		lit.P{"project_id": projectId},
+	)
+}
+
+func (r *widgetGroupRepository) FindStarredByProject(tx *sql.Tx, projectId uuid.UUID) ([]*models.StarredWidget, error) {
+	return lit.SelectNamed[models.StarredWidget](
+		tx,
+		`SELECT sw.id, sw.widget_id, sw.position, sw.col_span, sw.size, sw.created_at
+		FROM starred_widgets sw
+		JOIN widget_group_widgets wgw ON wgw.id = sw.widget_id
+		JOIN widget_groups wg ON wg.id = wgw.widget_group_id
+		WHERE wg.project_id = :project_id
+		ORDER BY sw.position ASC, sw.id ASC`,
+		lit.P{"project_id": projectId},
+	)
+}
+
+func (r *widgetGroupRepository) FindStarredByWidgetId(tx *sql.Tx, projectId uuid.UUID, widgetId int) (*models.StarredWidget, error) {
+	return lit.SelectSingleNamed[models.StarredWidget](
+		tx,
+		`SELECT sw.id, sw.widget_id, sw.position, sw.col_span, sw.size, sw.created_at
+		FROM starred_widgets sw
+		JOIN widget_group_widgets wgw ON wgw.id = sw.widget_id
+		JOIN widget_groups wg ON wg.id = wgw.widget_group_id
+		WHERE sw.widget_id = :widget_id AND wg.project_id = :project_id`,
+		lit.P{"widget_id": widgetId, "project_id": projectId},
+	)
+}
+
+func (r *widgetGroupRepository) CreateStarred(tx *sql.Tx, starred *models.StarredWidget) error {
+	query, args, err := lit.ParseNamedQuery(
+		db.Driver,
+		`INSERT INTO starred_widgets (widget_id, position, col_span, size, created_at)
+		VALUES (:widget_id, :position, :col_span, :size, :created_at)
+		ON CONFLICT (widget_id) DO NOTHING`,
+		lit.P{
+			"widget_id":  starred.WidgetId,
+			"position":   starred.Position,
+			"col_span":   starred.ColSpan,
+			"size":       starred.Size,
+			"created_at": starred.CreatedAt,
+		},
+	)
+	if err != nil {
+		return err
+	}
+	return lit.UpdateNative(tx, query, args...)
+}
+
+func (r *widgetGroupRepository) UpdateStarred(tx *sql.Tx, starred *models.StarredWidget) error {
+	return lit.UpdateNamed(tx, starred, "id = :id", lit.P{"id": starred.Id})
+}
+
+func (r *widgetGroupRepository) DeleteStarredByWidgetId(tx *sql.Tx, widgetId int) error {
+	return lit.DeleteNamed(db.Driver, tx, "DELETE FROM starred_widgets WHERE widget_id = :widget_id", lit.P{"widget_id": widgetId})
+}
+
+func (r *widgetGroupRepository) DeleteStarredByGroup(tx *sql.Tx, widgetGroupId int) error {
+	return lit.DeleteNamed(
+		db.Driver, tx,
+		"DELETE FROM starred_widgets WHERE widget_id IN (SELECT id FROM widget_group_widgets WHERE widget_group_id = :wg_id)",
+		lit.P{"wg_id": widgetGroupId},
 	)
 }
 

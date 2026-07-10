@@ -356,7 +356,7 @@ func (c *widgetController) ToggleStar(ctx *gin.Context) {
 	}
 
 	if starred != nil {
-		if err := repositories.WidgetGroupRepository.DeleteStarredByWidgetId(tx, widgetId); err != nil {
+		if err := transactional.WidgetGroupRepository.DeleteStarredByWidgetId(tx, widgetId); err != nil {
 			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to toggle star: %w", err))
 			return
 		}
@@ -364,7 +364,7 @@ func (c *widgetController) ToggleStar(ctx *gin.Context) {
 		return
 	}
 
-	allStarred, err := repositories.WidgetGroupRepository.FindStarredByProject(tx, projectId)
+	allStarred, err := transactional.WidgetGroupRepository.FindStarredByProject(tx, projectId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to toggle star: %w", err))
 		return
@@ -396,7 +396,7 @@ func (c *widgetController) ToggleStar(ctx *gin.Context) {
 		Size:      cfg.Size,
 		CreatedAt: time.Now().UTC(),
 	}
-	if err := repositories.WidgetGroupRepository.CreateStarred(tx, row); err != nil {
+	if err := transactional.WidgetGroupRepository.CreateStarred(tx, row); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to toggle star: %w", err))
 		return
 	}
@@ -441,7 +441,7 @@ func (c *widgetController) ReorderStarred(ctx *gin.Context) {
 
 	tx := db.GetTx(ctx)
 
-	starred, err := repositories.WidgetGroupRepository.FindStarredByProject(tx, projectId)
+	starred, err := transactional.WidgetGroupRepository.FindStarredByProject(tx, projectId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to reorder starred widgets: %w", err))
 		return
@@ -472,7 +472,7 @@ func (c *widgetController) ReorderStarred(ctx *gin.Context) {
 			continue
 		}
 		s.Position = position
-		if err := repositories.WidgetGroupRepository.UpdateStarred(tx, s); err != nil {
+		if err := transactional.WidgetGroupRepository.UpdateStarred(tx, s); err != nil {
 			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to reorder starred widgets: %w", err))
 			return
 		}
@@ -517,7 +517,7 @@ func (c *widgetController) UpdateStarredLayout(ctx *gin.Context) {
 
 	tx := db.GetTx(ctx)
 
-	starred, err := repositories.WidgetGroupRepository.FindStarredByWidgetId(tx, projectId, widgetId)
+	starred, err := transactional.WidgetGroupRepository.FindStarredByWidgetId(tx, projectId, widgetId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to update starred widget layout: %w", err))
 		return
@@ -530,7 +530,7 @@ func (c *widgetController) UpdateStarredLayout(ctx *gin.Context) {
 	starred.ColSpan = req.ColSpan
 	starred.Size = req.Size
 
-	if err := repositories.WidgetGroupRepository.UpdateStarred(tx, starred); err != nil {
+	if err := transactional.WidgetGroupRepository.UpdateStarred(tx, starred); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to update starred widget layout: %w", err))
 		return
 	}

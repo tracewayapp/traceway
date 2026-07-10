@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS starred_widgets (
+    id SERIAL PRIMARY KEY,
+    widget_id INTEGER NOT NULL UNIQUE REFERENCES widget_group_widgets(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL DEFAULT 0,
+    col_span INTEGER NOT NULL DEFAULT 1,
+    size VARCHAR(10) NOT NULL DEFAULT 'sm',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

@@ -3,7 +3,7 @@
 	import { stack, area, stackOrderReverse } from 'd3-shape';
 	import { min, max } from 'd3-array';
 	import { formatDateTime } from '$lib/utils/formatters';
-	import { formatMetricValue } from '$lib/utils/metric-format';
+	import { getMetricAxisScale, formatAxisTick } from '$lib/utils/metric-format';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 
 	type DataPoint = {
@@ -164,23 +164,24 @@
 	// Generate Y axis ticks
 	const yTicks = $derived(() => yScale.ticks(4));
 
-	// Format Y axis label — scaled number only; the unit is shown once above the axis
+	const axisScale = $derived.by(() => {
+		if (!unit) return null;
+		const ticks = yTicks();
+		if (ticks.length === 0) return null;
+		return getMetricAxisScale(ticks[ticks.length - 1], unit);
+	});
+
+	const yAxisUnit = $derived(() => axisScale?.unit ?? '');
+
 	function formatYLabel(value: number): string {
-		if (unit) {
-			return formatMetricValue(value, unit).text;
+		if (axisScale) {
+			return formatAxisTick(value, axisScale.divisor);
 		}
 		if (value >= 1000000) return (value / 1000000).toFixed(1) + 'M';
 		if (value >= 1000) return (value / 1000).toFixed(1) + 'k';
 		if (Number.isInteger(value)) return value.toString();
 		return value.toFixed(1);
 	}
-
-	const yAxisUnit = $derived(() => {
-		if (!unit) return '';
-		const ticks = yTicks();
-		if (ticks.length === 0) return unit;
-		return formatMetricValue(ticks[ticks.length - 1], unit).unit;
-	});
 
 	// Generate stacked area paths
 	const stackedAreas = $derived(() => {

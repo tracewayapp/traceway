@@ -115,13 +115,19 @@
 			);
 
 			const units = new Set<string>();
+			const usedKeys = new Set<string>();
 			for (const [idx, result] of response.results.entries()) {
 				if (result.unit) units.add(result.unit);
 				const baseName = sources[idx]?.label?.trim() || result.name;
 				for (const [key, points] of Object.entries(result.series)) {
 					const label = Object.keys(result.series).length > 1 ? `${baseName} (${key})` : baseName;
+					let uniqueKey = label;
+					for (let n = 2; usedKeys.has(uniqueKey); n++) {
+						uniqueKey = `${label} (${n})`;
+					}
+					usedKeys.add(uniqueKey);
 					newSeries.push({
-						key: label,
+						key: uniqueKey,
 						data: points.map((p) => ({
 							timestamp: new Date(p.timestamp),
 							value: p.value
@@ -135,8 +141,11 @@
 			resolvedUnit = units.size === 1 ? [...units][0] : '';
 			series = newSeries;
 
-			if (widget.widgetType === 'single_value' && newSeries.length > 0 && newSeries[0].data.length > 0) {
-				singleValue = newSeries[0].data[newSeries[0].data.length - 1].value;
+			if (widget.widgetType === 'single_value') {
+				singleValue =
+					newSeries.length > 0 && newSeries[0].data.length > 0
+						? newSeries[0].data[newSeries[0].data.length - 1].value
+						: null;
 			}
 		} catch {
 			// keep empty

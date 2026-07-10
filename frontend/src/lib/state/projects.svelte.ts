@@ -105,6 +105,12 @@ class ProjectsState {
         return authState.canManageOrganization(organizationId);
     });
 
+    canWriteCurrentProject = $derived.by(() => {
+        const organizationId = this.currentProject?.organizationId;
+        if (!organizationId) return true;
+        return authState.getRoleForOrganization(organizationId) !== 'readonly';
+    });
+
     constructor() {
         $effect.root(() => {
             $effect(() => {

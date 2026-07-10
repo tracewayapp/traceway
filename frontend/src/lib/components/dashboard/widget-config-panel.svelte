@@ -51,8 +51,6 @@
 	let sources = $state<WidgetSource[]>(
 		widget?.config?.sources ?? [{ type: 'metric', name: '', aggregation: 'avg' }]
 	);
-	let colSpan = $state<number>(widget?.config?.colSpan ?? 1);
-	let size = $state<string>(widget?.config?.size ?? 'sm');
 	let legend = $state<'auto' | 'on' | 'off'>(legendFromConfig(widget?.config));
 	let showSparkline = $state(!!widget?.config?.showSparkline);
 
@@ -65,8 +63,6 @@
 			sources = widget?.config?.sources
 				? [...widget.config.sources]
 				: [{ type: 'metric', name: '', aggregation: 'avg' }];
-			colSpan = widget?.config?.colSpan ?? 1;
-			size = widget?.config?.size ?? 'sm';
 			legend = legendFromConfig(widget?.config);
 			showSparkline = !!widget?.config?.showSparkline;
 		}
@@ -111,8 +107,8 @@
 		const displayTitle = title.trim() || validSources[0]?.name || '';
 		const config: Record<string, any> = { sources: validSources };
 		if (unit) config.unit = unit;
-		if (colSpan !== 1) config.colSpan = colSpan;
-		if (size !== 'sm') config.size = size;
+		if (widget?.config?.colSpan != null) config.colSpan = widget.config.colSpan;
+		if (widget?.config?.size != null) config.size = widget.config.size;
 		if (CHART_TYPES.includes(widgetType) && legend !== 'auto') config.showLegend = legend === 'on';
 		if (widgetType === 'single_value' && showSparkline) config.showSparkline = true;
 		onSave({
@@ -167,47 +163,6 @@
 						<Select.Item value="table">Table</Select.Item>
 					</Select.Content>
 				</Select.Root>
-			</div>
-
-			<div class="grid grid-cols-2 gap-2">
-				<div>
-					<label class="text-sm font-medium">Width</label>
-					<Select.Root
-						type="single"
-						value={String(colSpan)}
-						onValueChange={(v) => {
-							if (v) colSpan = Number(v);
-						}}
-					>
-						<Select.Trigger>
-							{({ '1': '1 column', '2': '2 columns', '3': '3 columns (full)' } as Record<string, string>)[String(colSpan)]}
-						</Select.Trigger>
-						<Select.Content>
-							<Select.Item value="1">1 column</Select.Item>
-							<Select.Item value="2">2 columns</Select.Item>
-							<Select.Item value="3">3 columns (full)</Select.Item>
-						</Select.Content>
-					</Select.Root>
-				</div>
-				<div>
-					<label class="text-sm font-medium">Height</label>
-					<Select.Root
-						type="single"
-						value={size}
-						onValueChange={(v) => {
-							if (v) size = v;
-						}}
-					>
-						<Select.Trigger>
-							{({ sm: 'Small', md: 'Medium', lg: 'Large' } as Record<string, string>)[size]}
-						</Select.Trigger>
-						<Select.Content>
-							<Select.Item value="sm">Small</Select.Item>
-							<Select.Item value="md">Medium</Select.Item>
-							<Select.Item value="lg">Large</Select.Item>
-						</Select.Content>
-					</Select.Root>
-				</div>
 			</div>
 
 			{#if CHART_TYPES.includes(widgetType)}

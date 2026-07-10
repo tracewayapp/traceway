@@ -407,7 +407,9 @@
 			);
 		} catch (e: any) {
 			target.isStarred = previous;
-			toast.error(e?.message || 'Failed to update star', { position: 'top-center' });
+			if (e?.status !== 403) {
+				toast.error(e?.message || 'Failed to update star', { position: 'top-center' });
+			}
 		}
 	}
 
@@ -427,7 +429,9 @@
 			for (const w of activeGroup.widgets) {
 				w.position = previousPositions.get(w.id) ?? w.position;
 			}
-			toast.error(e?.message || 'Failed to reorder widgets', { position: 'top-center' });
+			if (e?.status !== 403) {
+				toast.error(e?.message || 'Failed to reorder widgets', { position: 'top-center' });
+			}
 			await loadGroupWidgets(activeTabId);
 		}
 	}
@@ -447,7 +451,29 @@
 			toast.success('Successfully duplicated the Widget', { position: 'top-center' });
 			await loadGroupWidgets(activeTabId);
 		} catch (e: any) {
-			toast.error(e?.message || 'Failed to duplicate widget', { position: 'top-center' });
+			if (e?.status !== 403) {
+				toast.error(e?.message || 'Failed to duplicate widget', { position: 'top-center' });
+			}
+		}
+	}
+
+	async function handleResizeWidget(widget: Widget, layout: { colSpan: number; size: string }) {
+		if (!activeGroup) return;
+		const target = activeGroup.widgets?.find((w) => w.id === widget.id);
+		if (!target) return;
+		const previousConfig = target.config;
+		target.config = { ...(target.config ?? {}), colSpan: layout.colSpan, size: layout.size };
+		try {
+			await api.put(
+				`/widget-groups/${activeGroup.id}/widgets/${widget.id}`,
+				{ title: target.title, widgetType: target.widgetType, config: target.config },
+				{ projectId: projectsState.currentProjectId ?? undefined }
+			);
+		} catch (e: any) {
+			target.config = previousConfig;
+			if (e?.status !== 403) {
+				toast.error(e?.message || 'Failed to resize widget', { position: 'top-center' });
+			}
 		}
 	}
 
@@ -660,6 +686,7 @@
 							onDeleteWidget={openDeleteWidgetDialog}
 							onReorderWidgets={handleReorderWidgets}
 							onDuplicateWidget={handleDuplicateWidget}
+							onResizeWidget={handleResizeWidget}
 							onAddWidget={openAddWidget}
 							onToggleStar={handleToggleStar}
 							onRangeSelect={handleChartRangeSelect}

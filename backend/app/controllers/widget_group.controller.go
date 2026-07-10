@@ -179,13 +179,13 @@ func (c *widgetGroupController) GetWithWidgets(ctx *gin.Context) {
 		return
 	}
 
-	widgets, err := transactional.WidgetGroupRepository.FindWidgetsByGroup(tx, id)
+	widgets, err := transactional.WidgetGroupRepository.FindWidgetsByGroupWithStar(tx, id)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to get widget group widgets: %w", err))
 		return
 	}
 
-	widgetSlice := []models.WidgetGroupWidget{}
+	widgetSlice := []models.WidgetGroupWidgetWithStar{}
 	for _, w := range widgets {
 		widgetSlice = append(widgetSlice, *w)
 	}
@@ -292,6 +292,11 @@ func (c *widgetGroupController) Delete(ctx *gin.Context) {
 	// then the group itself. Don't lean on the FK cascade — explicit deletes
 	// are easier to audit and survive future schema migrations that might
 	// drop or alter the cascade rule.
+	if err := transactional.WidgetGroupRepository.DeleteStarredByGroup(tx, id); err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to delete widget group starred widgets: %w", err))
+		return
+	}
+
 	if err := transactional.WidgetGroupRepository.DeleteWidgetsByGroup(tx, id); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to delete widget group widgets: %w", err))
 		return

@@ -43,6 +43,12 @@ async function request(method: string, endpoint: string, data?: unknown, options
     }
 
     if (response.status === 403) {
+        if (method !== 'GET') {
+            toast.warning("You don't have permission to perform this action", { position: 'top-center' });
+            const error = new Error('Forbidden') as Error & { status: number };
+            error.status = 403;
+            throw error;
+        }
         const currentPath = window.location.pathname;
         if (currentPath === '/' || currentPath === '') {
             authState.logout();

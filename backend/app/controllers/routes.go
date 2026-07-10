@@ -80,9 +80,12 @@ func RegisterControllers(router *gin.RouterGroup) {
 
 	router.POST("/widget-groups/:id/widgets", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, WidgetController.Add)
 	router.PUT("/widget-groups/:id/widgets/:wid", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, WidgetController.Update)
-	router.PUT("/widget-groups/:id/widgets/:wid/move", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, WidgetController.Move)
+	router.PUT("/widget-groups/:id/reorder", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, WidgetController.Reorder)
 	router.PUT("/widget-groups/:id/widgets/:wid/star", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, WidgetController.ToggleStar)
 	router.DELETE("/widget-groups/:id/widgets/:wid", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, WidgetController.Delete)
+
+	router.PUT("/starred-widgets/reorder", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, WidgetController.ReorderStarred)
+	router.PUT("/starred-widgets/:wid", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, WidgetController.UpdateStarredLayout)
 
 	router.POST("/endpoints", middleware.UseAppAuth, middleware.RequireProjectAccess, EndpointController.FindAllEndpoints)
 	router.POST("/endpoints/grouped", middleware.UseAppAuth, middleware.RequireProjectAccess, EndpointController.FindGroupedByEndpoint)

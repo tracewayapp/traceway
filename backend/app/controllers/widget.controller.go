@@ -3,7 +3,6 @@ package controllers
 import (
 	"encoding/json"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -173,11 +172,11 @@ func (c *widgetController) Update(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, widget)
 }
 
-type MoveWidgetRequest struct {
-	Offset int `json:"offset" binding:"required"`
+type ReorderWidgetsRequest struct {
+	WidgetIds []int `json:"widgetIds" binding:"required,min=1"`
 }
 
-func (c *widgetController) Move(ctx *gin.Context) {
+func (c *widgetController) Reorder(ctx *gin.Context) {
 	projectId, err := middleware.GetProjectId(ctx)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
@@ -191,14 +190,7 @@ func (c *widgetController) Move(ctx *gin.Context) {
 		return
 	}
 
-	widgetIdStr := ctx.Param("wid")
-	widgetId, err := strconv.Atoi(widgetIdStr)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid widget id"})
-		return
-	}
-
-	var req MoveWidgetRequest
+	var req ReorderWidgetsRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
@@ -208,7 +200,7 @@ func (c *widgetController) Move(ctx *gin.Context) {
 
 	group, err := transactional.WidgetGroupRepository.FindById(tx, groupId)
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to move widget: %w", err))
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to reorder widgets: %w", err))
 		return
 	}
 	if group == nil || group.ProjectId != projectId {
@@ -218,50 +210,44 @@ func (c *widgetController) Move(ctx *gin.Context) {
 
 	allWidgets, err := transactional.WidgetGroupRepository.FindWidgetsByGroup(tx, groupId)
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to move widget: %w", err))
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to reorder widgets: %w", err))
 		return
 	}
 
-	sort.Slice(allWidgets, func(i, j int) bool {
-		return allWidgets[i].Position < allWidgets[j].Position
-	})
+	byId := make(map[int]*models.WidgetGroupWidget, len(allWidgets))
+	for _, w := range allWidgets {
+		byId[w.Id] = w
+	}
 
-	currentIndex := -1
-	for i, w := range allWidgets {
-		if w.Id == widgetId {
-			currentIndex = i
-			break
+	if len(req.WidgetIds) != len(allWidgets) {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "The widget list is out of date. Please refresh and try again."})
+		return
+	}
+
+	seen := make(map[int]bool, len(req.WidgetIds))
+	for _, id := range req.WidgetIds {
+		if byId[id] == nil || seen[id] {
+			ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "The widget list is out of date. Please refresh and try again."})
+			return
 		}
+		seen[id] = true
 	}
-	if currentIndex == -1 {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "Widget not found"})
-		return
-	}
-
-	targetIndex := currentIndex + req.Offset
-	if targetIndex < 0 || targetIndex >= len(allWidgets) {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "cannot move beyond boundary"})
-		return
-	}
-
-	widget := allWidgets[currentIndex]
-	targetWidget := allWidgets[targetIndex]
 
 	now := time.Now().UTC()
-	widget.Position, targetWidget.Position = targetWidget.Position, widget.Position
-	widget.UpdatedAt = now
-	targetWidget.UpdatedAt = now
-
-	if err := transactional.WidgetGroupRepository.UpdateWidget(tx, targetWidget); err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to move widget: %w", err))
-		return
+	for position, id := range req.WidgetIds {
+		w := byId[id]
+		if w.Position == position {
+			continue
+		}
+		w.Position = position
+		w.UpdatedAt = now
+		if err := transactional.WidgetGroupRepository.UpdateWidget(tx, w); err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to reorder widgets: %w", err))
+			return
+		}
 	}
-	if err := transactional.WidgetGroupRepository.UpdateWidget(tx, widget); err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to move widget: %w", err))
-		return
-	}
 
-	ctx.JSON(http.StatusOK, gin.H{"moved": true})
+	ctx.JSON(http.StatusOK, gin.H{"reordered": true})
 }
 
 func (c *widgetController) Delete(ctx *gin.Context) {
@@ -304,6 +290,11 @@ func (c *widgetController) Delete(ctx *gin.Context) {
 	}
 	if widget == nil || widget.WidgetGroupId != groupId {
 		ctx.JSON(http.StatusOK, gin.H{"deleted": true})
+		return
+	}
+
+	if err := transactional.WidgetGroupRepository.DeleteStarredByWidgetId(tx, widgetId); err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to delete widget: %w", err))
 		return
 	}
 
@@ -358,15 +349,59 @@ func (c *widgetController) ToggleStar(ctx *gin.Context) {
 		return
 	}
 
-	widget.IsStarred = !widget.IsStarred
-	widget.UpdatedAt = time.Now().UTC()
-
-	if err := transactional.WidgetGroupRepository.UpdateWidget(tx, widget); err != nil {
+	starred, err := transactional.WidgetGroupRepository.FindStarredByWidgetId(tx, projectId, widgetId)
+	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to toggle star: %w", err))
 		return
 	}
 
-	ctx.JSON(http.StatusOK, widget)
+	if starred != nil {
+		if err := repositories.WidgetGroupRepository.DeleteStarredByWidgetId(tx, widgetId); err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to toggle star: %w", err))
+			return
+		}
+		ctx.JSON(http.StatusOK, gin.H{"id": widgetId, "isStarred": false})
+		return
+	}
+
+	allStarred, err := repositories.WidgetGroupRepository.FindStarredByProject(tx, projectId)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to toggle star: %w", err))
+		return
+	}
+
+	var cfg struct {
+		ColSpan int    `json:"colSpan"`
+		Size    string `json:"size"`
+	}
+	_ = json.Unmarshal(widget.Config, &cfg)
+	if cfg.ColSpan < 1 || cfg.ColSpan > 3 {
+		cfg.ColSpan = 1
+	}
+	if cfg.Size != "sm" && cfg.Size != "md" && cfg.Size != "lg" {
+		cfg.Size = "sm"
+	}
+
+	nextPosition := 0
+	for _, s := range allStarred {
+		if s.Position >= nextPosition {
+			nextPosition = s.Position + 1
+		}
+	}
+
+	row := &models.StarredWidget{
+		WidgetId:  widgetId,
+		Position:  nextPosition,
+		ColSpan:   cfg.ColSpan,
+		Size:      cfg.Size,
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := repositories.WidgetGroupRepository.CreateStarred(tx, row); err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to toggle star: %w", err))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"id": widgetId, "isStarred": true})
 }
 
 func (c *widgetController) ListStarred(ctx *gin.Context) {
@@ -385,10 +420,122 @@ func (c *widgetController) ListStarred(ctx *gin.Context) {
 	}
 
 	if widgets == nil {
-		widgets = []*models.WidgetGroupWidget{}
+		widgets = []*models.StarredWidgetWithHome{}
 	}
 
 	ctx.JSON(http.StatusOK, widgets)
+}
+
+func (c *widgetController) ReorderStarred(ctx *gin.Context) {
+	projectId, err := middleware.GetProjectId(ctx)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return
+	}
+
+	var req ReorderWidgetsRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	tx := db.GetTx(ctx)
+
+	starred, err := repositories.WidgetGroupRepository.FindStarredByProject(tx, projectId)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to reorder starred widgets: %w", err))
+		return
+	}
+
+	byWidgetId := make(map[int]*models.StarredWidget, len(starred))
+	for _, s := range starred {
+		byWidgetId[s.WidgetId] = s
+	}
+
+	if len(req.WidgetIds) != len(starred) {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "The widget list is out of date. Please refresh and try again."})
+		return
+	}
+
+	seen := make(map[int]bool, len(req.WidgetIds))
+	for _, id := range req.WidgetIds {
+		if byWidgetId[id] == nil || seen[id] {
+			ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "The widget list is out of date. Please refresh and try again."})
+			return
+		}
+		seen[id] = true
+	}
+
+	for position, id := range req.WidgetIds {
+		s := byWidgetId[id]
+		if s.Position == position {
+			continue
+		}
+		s.Position = position
+		if err := repositories.WidgetGroupRepository.UpdateStarred(tx, s); err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to reorder starred widgets: %w", err))
+			return
+		}
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"reordered": true})
+}
+
+type UpdateStarredLayoutRequest struct {
+	ColSpan int    `json:"colSpan"`
+	Size    string `json:"size"`
+}
+
+func (c *widgetController) UpdateStarredLayout(ctx *gin.Context) {
+	projectId, err := middleware.GetProjectId(ctx)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return
+	}
+
+	widgetIdStr := ctx.Param("wid")
+	widgetId, err := strconv.Atoi(widgetIdStr)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid widget id"})
+		return
+	}
+
+	var req UpdateStarredLayoutRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	if req.ColSpan < 1 || req.ColSpan > 3 {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Width must be between 1 and 3 columns."})
+		return
+	}
+	if req.Size != "sm" && req.Size != "md" && req.Size != "lg" {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Height must be one of: sm, md, lg."})
+		return
+	}
+
+	tx := db.GetTx(ctx)
+
+	starred, err := repositories.WidgetGroupRepository.FindStarredByWidgetId(tx, projectId, widgetId)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to update starred widget layout: %w", err))
+		return
+	}
+	if starred == nil {
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "Starred widget not found"})
+		return
+	}
+
+	starred.ColSpan = req.ColSpan
+	starred.Size = req.Size
+
+	if err := repositories.WidgetGroupRepository.UpdateStarred(tx, starred); err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to update starred widget layout: %w", err))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, starred)
 }
 
 func validateWidgetConfig(raw json.RawMessage) string {

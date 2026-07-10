@@ -626,8 +626,12 @@ backend/
 | DELETE | `/api/widget-groups/:id` | App+Write | Delete widget group |
 | POST | `/api/widget-groups/:id/widgets` | App+Write | Add widget |
 | PUT | `/api/widget-groups/:id/widgets/:wid` | App+Write | Update widget |
-| PUT | `/api/widget-groups/:id/widgets/:wid/move` | App+Write | Reorder widget |
+| PUT | `/api/widget-groups/:id/reorder` | App+Write | Reorder widgets (explicit id order) |
+| PUT | `/api/widget-groups/:id/widgets/:wid/star` | App+Write | Star/unstar widget for the homepage |
 | DELETE | `/api/widget-groups/:id/widgets/:wid` | App+Write | Delete widget |
+| GET | `/api/widget-groups/starred` | App | List starred widgets with homepage layout |
+| PUT | `/api/starred-widgets/reorder` | App+Write | Reorder homepage starred widgets (explicit id order) |
+| PUT | `/api/starred-widgets/:wid` | App+Write | Update homepage layout (colSpan/size) of a starred widget |
 
 **Endpoints**
 | Method | Endpoint | Auth | Purpose |
@@ -732,6 +736,7 @@ func (c *ReportController) Report(ctx *gin.Context) {
 | `metric_registry` | Custom metric definitions (type, unit, description) |
 | `widget_groups` | Dashboard widget groups (name, default flag) |
 | `widget_group_widgets` | Individual widgets within groups (type, config, position) |
+| `starred_widgets` | Homepage layout for starred widgets (position, col_span, size per widget) |
 
 #### ClickHouse vs PostgreSQL Decision Guide
 - **PostgreSQL**: Relational/config data needing ACID, frequent updates, JOINs, low volume (users, organizations, projects, invitations, widgets, source maps, metric registry)
@@ -749,7 +754,7 @@ In SQLite mode (`DB_TYPE=sqlite`), the backend uses **two separate SQLite databa
 
 **Main DB tables** (`db.DB` — transactional, uses lit with `*sql.Tx`):
 - `users`, `organizations`, `organization_users`, `projects`, `invitations`
-- `source_maps`, `metric_registry`, `widget_groups`, `widget_group_widgets`
+- `source_maps`, `metric_registry`, `widget_groups`, `widget_group_widgets`, `starred_widgets`
 - `notification_channels`, `notification_rules`
 
 **Telemetry DB tables** (`db.TelemetryDB` — non-transactional, uses lit with `db.TelemetryDB` directly):

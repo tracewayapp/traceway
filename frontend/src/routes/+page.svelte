@@ -19,7 +19,7 @@
 		Unplug
 	} from 'lucide-svelte';
 	import * as Card from '$lib/components/ui/card';
-	import WidgetRenderer from '$lib/components/dashboard/widget-renderer.svelte';
+	import WidgetGrid from '$lib/components/dashboard/widget-grid.svelte';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { ImpactBadge } from '$lib/components/ui/impact-badge';
 	import { ViewAllTableRow } from '$lib/components/ui/view-all-table-row';
@@ -97,12 +97,25 @@
 		hasData: boolean;
 	};
 
+	type StarredWidgetResponse = {
+		id: number;
+		widgetGroupId: number;
+		title: string;
+		widgetType: string;
+		config: any;
+		position: number;
+		homePosition: number;
+		homeColSpan: number;
+		homeSize: string;
+	};
+
 	type StarredWidget = {
 		id: number;
 		widgetGroupId: number;
 		title: string;
 		widgetType: string;
 		config: any;
+		position: number;
 		isStarred: boolean;
 	};
 
@@ -294,7 +307,15 @@ service:
 				api.get('/widget-groups/starred', { projectId }).catch(() => [])
 			]);
 			data = overview;
-			starredWidgets = (starred as StarredWidget[]) ?? [];
+			starredWidgets = ((starred as StarredWidgetResponse[]) ?? []).map((w) => ({
+				id: w.id,
+				widgetGroupId: w.widgetGroupId,
+				title: w.title,
+				widgetType: w.widgetType,
+				config: { ...w.config, colSpan: w.homeColSpan, size: w.homeSize },
+				position: w.homePosition,
+				isStarred: true
+			}));
 		} catch (e: any) {
 			errorStatus = e.status || 0;
 			error = e.message || 'Failed to load dashboard data';
@@ -302,6 +323,69 @@ service:
 		} finally {
 			if (showFullPageLoading) {
 				loading = false;
+			}
+		}
+	}
+
+	async function handleReorderStarred(widgetIds: number[]) {
+		const previousPositions = new Map(starredWidgets.map((w) => [w.id, w.position]));
+		for (const w of starredWidgets) {
+			w.position = widgetIds.indexOf(w.id);
+		}
+		try {
+			await api.put(
+				'/starred-widgets/reorder',
+				{ widgetIds },
+				{ projectId: projectsState.currentProjectId ?? undefined }
+			);
+		} catch (e: any) {
+			for (const w of starredWidgets) {
+				w.position = previousPositions.get(w.id) ?? w.position;
+			}
+			if (e?.status !== 403) {
+				toast.error(e?.message || 'Failed to reorder widgets', { position: 'top-center' });
+			}
+			await loadDashboard(false);
+		}
+	}
+
+	async function handleResizeStarred(
+		widget: { id: number },
+		layout: { colSpan: number; size: string }
+	) {
+		const target = starredWidgets.find((w) => w.id === widget.id);
+		if (!target) return;
+		const previous = { colSpan: target.config.colSpan, size: target.config.size };
+		target.config.colSpan = layout.colSpan;
+		target.config.size = layout.size;
+		try {
+			await api.put(`/starred-widgets/${widget.id}`, layout, {
+				projectId: projectsState.currentProjectId ?? undefined
+			});
+		} catch (e: any) {
+			target.config.colSpan = previous.colSpan;
+			target.config.size = previous.size;
+			if (e?.status !== 403) {
+				toast.error(e?.message || 'Failed to resize widget', { position: 'top-center' });
+			}
+		}
+	}
+
+	async function handleUnstar(widget: { id: number }) {
+		const target = starredWidgets.find((w) => w.id === widget.id);
+		if (!target) return;
+		const previous = starredWidgets;
+		starredWidgets = starredWidgets.filter((w) => w.id !== widget.id);
+		try {
+			await api.put(
+				`/widget-groups/${target.widgetGroupId}/widgets/${target.id}/star`,
+				{},
+				{ projectId: projectsState.currentProjectId ?? undefined }
+			);
+		} catch (e: any) {
+			starredWidgets = previous;
+			if (e?.status !== 403) {
+				toast.error(e?.message || 'Failed to unstar widget', { position: 'top-center' });
 			}
 		}
 	}
@@ -779,29 +863,15 @@ service:
 							</Tooltip.Content>
 						</Tooltip.Root>
 					</div>
-					<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-						{#each starredWidgets as widget (widget.id)}
-							<Card.Root class="h-full gap-0">
-								<Card.Header class="pr-2 pb-1">
-									<Card.Title class="text-sm font-medium"
-										>{widget.title}{#if widget.config?.unit}<span
-												class="text-xs font-normal text-muted-foreground"
-											>
-												({widget.config.unit})</span
-											>{/if}</Card.Title
-									>
-								</Card.Header>
-								<Card.Content class="p-1">
-									<WidgetRenderer
-										{widget}
-										fromDateUTC={starredFromUTC}
-										toDateUTC={starredToUTC}
-										timeDomain={null}
-									/>
-								</Card.Content>
-							</Card.Root>
-						{/each}
-					</div>
+					<WidgetGrid
+						widgets={starredWidgets}
+						fromDateUTC={starredFromUTC}
+						toDateUTC={starredToUTC}
+						timeDomain={null}
+						onReorderWidgets={projectsState.canWriteCurrentProject ? handleReorderStarred : undefined}
+						onResizeWidget={projectsState.canWriteCurrentProject ? handleResizeStarred : undefined}
+						onToggleStar={projectsState.canWriteCurrentProject ? handleUnstar : undefined}
+					/>
 				</div>
 			{/if}
 			{#if !isFrontend}

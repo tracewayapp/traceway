@@ -79,3 +79,78 @@ export function formatMetricLabel(value: number, unit: string): string {
 	if (!result.unit) return result.text;
 	return `${result.text} ${result.unit}`;
 }
+
+type AxisScale = { divisor: number; unit: string };
+
+export function getMetricAxisScale(maxValue: number, unit: string): AxisScale {
+	if (unit === '1') {
+		return { divisor: 0.01, unit: '%' };
+	}
+
+	if (unit === 'By') {
+		return getMetricAxisScale(maxValue, 'B');
+	}
+
+	if (unit.length > 2 && unit.startsWith('{') && unit.endsWith('}')) {
+		return getMetricAxisScale(maxValue, 'count');
+	}
+
+	if (unit === '%') {
+		return { divisor: 1, unit: '%' };
+	}
+
+	if (unit === 'ms') {
+		if (maxValue < 1) return { divisor: 0.001, unit: 'µs' };
+		if (maxValue < 1000) return { divisor: 1, unit: 'ms' };
+		return { divisor: 1000, unit: 's' };
+	}
+
+	if (unit === 'ns') {
+		if (maxValue < 1000) return { divisor: 1, unit: 'ns' };
+		if (maxValue < 1_000_000) return { divisor: 1000, unit: 'µs' };
+		if (maxValue < 1_000_000_000) return { divisor: 1_000_000, unit: 'ms' };
+		return { divisor: 1_000_000_000, unit: 's' };
+	}
+
+	if (unit === 's') {
+		if (maxValue < 0.001) return { divisor: 0.000001, unit: 'µs' };
+		if (maxValue < 1) return { divisor: 0.001, unit: 'ms' };
+		if (maxValue < 60) return { divisor: 1, unit: 's' };
+		if (maxValue < 3600) return { divisor: 60, unit: 'min' };
+		return { divisor: 3600, unit: 'h' };
+	}
+
+	if (unit === 'MB') {
+		if (maxValue < 1) return { divisor: 1 / 1024, unit: 'KB' };
+		if (maxValue >= 1024) return { divisor: 1024, unit: 'GB' };
+		return { divisor: 1, unit: 'MB' };
+	}
+
+	if (unit === 'GB') {
+		if (maxValue < 1) return { divisor: 1 / 1024, unit: 'MB' };
+		if (maxValue >= 1024) return { divisor: 1024, unit: 'TB' };
+		return { divisor: 1, unit: 'GB' };
+	}
+
+	if (unit === 'bytes' || unit === 'B') {
+		if (maxValue < 1024) return { divisor: 1, unit: 'B' };
+		if (maxValue < 1024 * 1024) return { divisor: 1024, unit: 'KB' };
+		if (maxValue < 1024 * 1024 * 1024) return { divisor: 1024 * 1024, unit: 'MB' };
+		return { divisor: 1024 * 1024 * 1024, unit: 'GB' };
+	}
+
+	if (unit === 'count' || unit === '') {
+		if (maxValue >= 1_000_000) return { divisor: 1_000_000, unit: 'M' };
+		if (maxValue >= 1_000) return { divisor: 1_000, unit: 'K' };
+		return { divisor: 1, unit: '' };
+	}
+
+	return { divisor: 1, unit };
+}
+
+export function formatAxisTick(value: number, divisor: number): string {
+	const scaled = value / divisor;
+	if (Number.isInteger(scaled)) return scaled.toString();
+	if (scaled !== 0 && Math.abs(scaled) < 0.1) return scaled.toFixed(2);
+	return scaled.toFixed(1);
+}

@@ -772,11 +772,9 @@ func (e *endpointRepository) GetEndpointStackedChart(ctx context.Context, projec
 		metricExpr = "quantile(0.5)(duration) / 1000000"
 	}
 
-	// Build CASE expression for categorizing endpoints
 	caseExpr := "multiIf("
-	for i, ep := range topEndpoints {
-		caseExpr += "endpoint = ?, '" + ep + "', "
-		_ = i // use index in iteration
+	for range topEndpoints {
+		caseExpr += "endpoint = ?, ?, "
 	}
 	caseExpr += "'Other')"
 
@@ -789,11 +787,10 @@ func (e *endpointRepository) GetEndpointStackedChart(ctx context.Context, projec
 	GROUP BY bucket, endpoint_category
 	ORDER BY bucket ASC, endpoint_category ASC`
 
-	// Build args: interval, top endpoints for CASE, then project_id, start, end
-	args := make([]interface{}, 0, len(topEndpoints)+4)
+	args := make([]interface{}, 0, len(topEndpoints)*2+4)
 	args = append(args, intervalMinutes)
 	for _, ep := range topEndpoints {
-		args = append(args, ep)
+		args = append(args, ep, ep)
 	}
 	args = append(args, projectId, start, end)
 

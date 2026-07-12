@@ -4,7 +4,6 @@ package duckdb
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
@@ -129,73 +128,57 @@ func (r *aiTraceRepository) InsertAsync(ctx context.Context, lines []models.AiTr
 		return nil
 	}
 
-	conn, err := db.DuckDBConnector.Connect(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
+	return withAppender(ctx, "ai_traces", func(appender *duckdb.Appender) {
 
-	appender, err := duckdb.NewAppenderFromConn(conn, "", "ai_traces")
-	if err != nil {
-		return err
-	}
-
-	for _, t := range lines {
-		attributesJSON := "{}"
-		if len(t.Attributes) > 0 {
-			b, err := json.Marshal(t.Attributes)
+		for _, t := range lines {
+			attributesJSON, err := attrJSON(t.Attributes)
 			if err != nil {
 				captureDroppedRow("ai_traces", err)
 				continue
 			}
-			attributesJSON = string(b)
+
+			var distributedTraceId *string
+			if t.DistributedTraceId != nil {
+				s := t.DistributedTraceId.String()
+				distributedTraceId = &s
+			}
+
+			isRoot := boolToInt(t.IsRoot)
+
+			// Column order follows the ai_traces DDL exactly: is_root precedes distributed_trace_id.
+			if err := appender.AppendRow(
+				t.Id.String(),
+				t.ProjectId.String(),
+				t.RecordedAt.UTC(),
+				int64(t.Duration),
+				int64(t.StatusCode),
+				t.Model,
+				t.ResponseModel,
+				t.Provider,
+				t.Operation,
+				t.InputTokens,
+				t.OutputTokens,
+				t.TotalTokens,
+				t.CachedTokens,
+				t.ReasoningTokens,
+				t.InputCost,
+				t.OutputCost,
+				t.TotalCost,
+				t.TraceName,
+				t.UserId,
+				t.FinishReason,
+				t.ServerName,
+				t.AppVersion,
+				t.StorageKey,
+				attributesJSON,
+				isRoot,
+				nullableString(distributedTraceId),
+			); err != nil {
+				captureDroppedRow("ai_traces", err)
+			}
 		}
 
-		var distributedTraceId *string
-		if t.DistributedTraceId != nil {
-			s := t.DistributedTraceId.String()
-			distributedTraceId = &s
-		}
-
-		isRoot := int64(0)
-		if t.IsRoot {
-			isRoot = 1
-		}
-
-		// Column order follows the ai_traces DDL exactly: is_root precedes distributed_trace_id.
-		if err := appender.AppendRow(
-			t.Id.String(),
-			t.ProjectId.String(),
-			t.RecordedAt.UTC(),
-			int64(t.Duration),
-			int64(t.StatusCode),
-			t.Model,
-			t.ResponseModel,
-			t.Provider,
-			t.Operation,
-			t.InputTokens,
-			t.OutputTokens,
-			t.TotalTokens,
-			t.CachedTokens,
-			t.ReasoningTokens,
-			t.InputCost,
-			t.OutputCost,
-			t.TotalCost,
-			t.TraceName,
-			t.UserId,
-			t.FinishReason,
-			t.ServerName,
-			t.AppVersion,
-			t.StorageKey,
-			attributesJSON,
-			isRoot,
-			nullableString(distributedTraceId),
-		); err != nil {
-			captureDroppedRow("ai_traces", err)
-		}
-	}
-
-	return appender.Close()
+	})
 }
 
 func (r *aiTraceRepository) FindGroupedByTraceName(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy, sortDirection, search, rootFilter string) ([]models.AiTraceStats, int64, error) {
@@ -206,7 +189,7 @@ func (r *aiTraceRepository) FindGroupedByTraceName(ctx context.Context, projectI
 		whereClause += " AND INSTR(LOWER(trace_name), LOWER(:search)) > 0"
 		params["search"] = search
 	}
-	whereClause += rootFilterClause("is_root", rootFilter)
+	whereClause += shared.RootFilterClause("is_root", rootFilter)
 
 	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
 		"SELECT COUNT(DISTINCT trace_name) AS count FROM ai_traces WHERE "+whereClause, params)

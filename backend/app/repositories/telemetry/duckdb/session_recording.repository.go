@@ -5,6 +5,8 @@ package duckdb
 import (
 	"context"
 	"database/sql"
+	"fmt"
+
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
 
 	"github.com/duckdb/duckdb-go/v2"
@@ -37,38 +39,39 @@ func (r *sessionRecordingRepository) InsertAsync(ctx context.Context, recordings
 		return nil
 	}
 
-	conn, err := db.DuckDBConnector.Connect(ctx)
+	// Unlike the other telemetry tables, dropped rows must surface as an error:
+	// the recordings uploader counts an InsertAsync failure in its failed metric,
+	// and a silently missing row means an orphaned blob in storage.
+	dropped := 0
+	err := withAppender(ctx, "session_recordings", func(appender *duckdb.Appender) {
+		for _, rec := range recordings {
+			var sessionId *string
+			if rec.SessionId != nil {
+				s := rec.SessionId.String()
+				sessionId = &s
+			}
+			// DDL column order: id, project_id, exception_id, file_path, recorded_at, session_id, segment_index
+			if err := appender.AppendRow(
+				rec.Id.String(),
+				rec.ProjectId.String(),
+				rec.ExceptionId.String(),
+				rec.FilePath,
+				rec.RecordedAt.UTC(),
+				nullableString(sessionId),
+				int64(rec.SegmentIndex),
+			); err != nil {
+				captureDroppedRow("session_recordings", err)
+				dropped++
+			}
+		}
+	})
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
-
-	appender, err := duckdb.NewAppenderFromConn(conn, "", "session_recordings")
-	if err != nil {
-		return err
+	if dropped > 0 {
+		return fmt.Errorf("session_recordings insert: dropped %d of %d rows", dropped, len(recordings))
 	}
-
-	for _, rec := range recordings {
-		var sessionId *string
-		if rec.SessionId != nil {
-			s := rec.SessionId.String()
-			sessionId = &s
-		}
-		// DDL column order: id, project_id, exception_id, file_path, recorded_at, session_id, segment_index
-		if err := appender.AppendRow(
-			rec.Id.String(),
-			rec.ProjectId.String(),
-			rec.ExceptionId.String(),
-			rec.FilePath,
-			rec.RecordedAt.UTC(),
-			nullableString(sessionId),
-			int64(rec.SegmentIndex),
-		); err != nil {
-			captureDroppedRow("session_recordings", err)
-		}
-	}
-
-	return appender.Close()
+	return nil
 }
 
 func (r *sessionRecordingRepository) FindByExceptionId(ctx context.Context, projectId uuid.UUID, exceptionId uuid.UUID) (string, error) {

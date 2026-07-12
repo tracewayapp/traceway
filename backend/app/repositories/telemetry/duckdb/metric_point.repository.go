@@ -5,9 +5,7 @@ package duckdb
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -16,6 +14,7 @@ import (
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 )
 
 type metricPointRepository struct{}
@@ -45,33 +44,20 @@ func (r *metricPointRepository) InsertAsync(ctx context.Context, points []models
 		return nil
 	}
 
-	conn, err := db.DuckDBConnector.Connect(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
+	return withAppender(ctx, "metric_points", func(appender *duckdb.Appender) {
 
-	appender, err := duckdb.NewAppenderFromConn(conn, "", "metric_points")
-	if err != nil {
-		return err
-	}
-
-	for _, p := range points {
-		tagsJSON := "{}"
-		if len(p.Tags) > 0 {
-			b, err := json.Marshal(p.Tags)
+		for _, p := range points {
+			tagsJSON, err := attrJSON(p.Tags)
 			if err != nil {
 				captureDroppedRow("metric_points", err)
 				continue
 			}
-			tagsJSON = string(b)
+			if err := appender.AppendRow(p.ProjectId.String(), p.Name, p.Value, tagsJSON, p.RecordedAt.UTC(), p.Tags["server_name"]); err != nil {
+				captureDroppedRow("metric_points", err)
+			}
 		}
-		if err := appender.AppendRow(p.ProjectId.String(), p.Name, p.Value, tagsJSON, p.RecordedAt.UTC(), p.Tags["server_name"]); err != nil {
-			captureDroppedRow("metric_points", err)
-		}
-	}
 
-	return appender.Close()
+	})
 }
 
 func (r *metricPointRepository) QueryTimeSeries(ctx context.Context, projectId uuid.UUID, name string, from, to time.Time, intervalMinutes int, aggregation string, tagFilters map[string]string, groupBy string) (map[string][]models.TimeSeriesPoint, error) {
@@ -96,7 +82,7 @@ func (r *metricPointRepository) QueryTimeSeries(ctx context.Context, projectId u
 	}
 
 	filterClauses := ""
-	for i, k := range sortedKeys(tagFilters) {
+	for i, k := range shared.SortedKeys(tagFilters) {
 		fk := fmt.Sprintf("fk_%d", i)
 		fv := fmt.Sprintf("fv_%d", i)
 		filterClauses += fmt.Sprintf(" AND json_extract_string(tags, '$.\"' || :%s || '\"') = :%s", fk, fv)
@@ -321,15 +307,6 @@ func duckdbAggregationFunc(agg string) string {
 	default:
 		return "avg(value)"
 	}
-}
-
-func sortedKeys(m map[string]string) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }
 
 var MetricPointRepository = &metricPointRepository{}

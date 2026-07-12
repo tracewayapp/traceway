@@ -5,6 +5,8 @@ package telemetry
 import (
 	"database/sql"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -57,17 +59,33 @@ func setupTestDB(t *testing.T) {
 }
 
 func runDuckDBTelemetryMigrations(telemetryDB *sql.DB) error {
-	content, err := os.ReadFile("../../migrations/duckdb_telemetry/0001_telemetry_tables.up.sql")
+	// Apply every migration in order, like the production runner, so tests
+	// keep seeing the full schema when migrations beyond 0001 are added.
+	const dir = "../../migrations/duckdb_telemetry"
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
 	}
-	for _, stmt := range strings.Split(string(content), ";") {
-		stmt = strings.TrimSpace(stmt)
-		if stmt == "" {
-			continue
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".up.sql") {
+			names = append(names, e.Name())
 		}
-		if _, err := telemetryDB.Exec(stmt); err != nil {
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		content, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
 			return err
+		}
+		for _, stmt := range strings.Split(string(content), ";") {
+			stmt = strings.TrimSpace(stmt)
+			if stmt == "" {
+				continue
+			}
+			if _, err := telemetryDB.Exec(stmt); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

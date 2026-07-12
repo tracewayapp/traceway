@@ -5,8 +5,6 @@ package duckdb
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
@@ -111,74 +109,58 @@ func (e *exceptionStackTraceRepository) InsertAsync(ctx context.Context, lines [
 		return nil
 	}
 
-	conn, err := db.DuckDBConnector.Connect(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
+	return withAppender(ctx, "exception_stack_traces", func(appender *duckdb.Appender) {
 
-	appender, err := duckdb.NewAppenderFromConn(conn, "", "exception_stack_traces")
-	if err != nil {
-		return err
-	}
+		for _, est := range lines {
+			traceType := est.TraceType
+			if traceType == "" {
+				traceType = "endpoint"
+			}
 
-	for _, est := range lines {
-		traceType := est.TraceType
-		if traceType == "" {
-			traceType = "endpoint"
-		}
-
-		attributesJSON := "{}"
-		if len(est.Attributes) > 0 {
-			b, err := json.Marshal(est.Attributes)
+			attributesJSON, err := attrJSON(est.Attributes)
 			if err != nil {
 				captureDroppedRow("exception_stack_traces", err)
 				continue
 			}
-			attributesJSON = string(b)
+
+			var traceId *string
+			if est.TraceId != nil {
+				v := est.TraceId.String()
+				traceId = &v
+			}
+			var distributedTraceId *string
+			if est.DistributedTraceId != nil {
+				v := est.DistributedTraceId.String()
+				distributedTraceId = &v
+			}
+			var sessionId *string
+			if est.SessionId != nil {
+				v := est.SessionId.String()
+				sessionId = &v
+			}
+
+			isMessage := boolToInt(est.IsMessage)
+
+			if err := appender.AppendRow(
+				est.Id.String(),
+				est.ProjectId.String(),
+				nullableString(traceId),
+				traceType,
+				est.ExceptionHash,
+				est.StackTrace,
+				est.RecordedAt.UTC(),
+				attributesJSON,
+				est.AppVersion,
+				est.ServerName,
+				isMessage,
+				nullableString(distributedTraceId),
+				nullableString(sessionId),
+			); err != nil {
+				captureDroppedRow("exception_stack_traces", err)
+			}
 		}
 
-		var traceId *string
-		if est.TraceId != nil {
-			v := est.TraceId.String()
-			traceId = &v
-		}
-		var distributedTraceId *string
-		if est.DistributedTraceId != nil {
-			v := est.DistributedTraceId.String()
-			distributedTraceId = &v
-		}
-		var sessionId *string
-		if est.SessionId != nil {
-			v := est.SessionId.String()
-			sessionId = &v
-		}
-
-		isMessage := int64(0)
-		if est.IsMessage {
-			isMessage = 1
-		}
-
-		if err := appender.AppendRow(
-			est.Id.String(),
-			est.ProjectId.String(),
-			nullableString(traceId),
-			traceType,
-			est.ExceptionHash,
-			est.StackTrace,
-			est.RecordedAt.UTC(),
-			attributesJSON,
-			est.AppVersion,
-			est.ServerName,
-			isMessage,
-			nullableString(distributedTraceId),
-			nullableString(sessionId),
-		); err != nil {
-			captureDroppedRow("exception_stack_traces", err)
-		}
-	}
-
-	return appender.Close()
+	})
 }
 
 func (e *exceptionStackTraceRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {
@@ -293,9 +275,6 @@ func (e *exceptionStackTraceRepository) FindByHash(ctx context.Context, projectI
 		GROUP BY exception_hash`,
 		params)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil, 0, nil
-		}
 		return nil, nil, 0, err
 	}
 	if groupRow == nil {
@@ -391,6 +370,14 @@ func (e *exceptionStackTraceRepository) ArchiveByHashes(ctx context.Context, pro
 		return nil
 	}
 
+	// One transaction for the whole batch — per-statement autocommit costs a
+	// WAL checkpoint per hash on DuckDB (see InsertStacksAsync).
+	tx, err := db.TelemetryDB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	now := time.Now().UTC()
 	for _, hash := range hashes {
 		query, args, err := lit.ParseNamedQuery(db.Driver,
@@ -399,12 +386,12 @@ func (e *exceptionStackTraceRepository) ArchiveByHashes(ctx context.Context, pro
 		if err != nil {
 			return err
 		}
-		if _, err := db.TelemetryDB.ExecContext(ctx, query, args...); err != nil {
+		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
 			return err
 		}
 	}
 
-	return nil
+	return tx.Commit()
 }
 
 func (e *exceptionStackTraceRepository) UnarchiveByHashes(ctx context.Context, projectId uuid.UUID, hashes []string) error {

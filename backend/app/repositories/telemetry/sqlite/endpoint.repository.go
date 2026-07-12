@@ -140,17 +140,6 @@ func (r *endpoint) toModel() models.Endpoint {
 // rootFilterClause returns a SQL fragment ("", " AND <col> = 1", " AND <col> = 0")
 // to splice into a WHERE clause based on the rootFilter param. Accepts "all" |
 // "root" | "non_root"; defaults to "all" (no filter).
-func rootFilterClause(qualifiedCol, rootFilter string) string {
-	switch rootFilter {
-	case "root":
-		return " AND " + qualifiedCol + " = 1"
-	case "non_root":
-		return " AND " + qualifiedCol + " = 0"
-	default:
-		return ""
-	}
-}
-
 type endpointRepository struct{}
 
 func (e *endpointRepository) InsertAsync(ctx context.Context, lines []models.Endpoint) error {
@@ -233,7 +222,7 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 		whereClause += " AND INSTR(LOWER(e.endpoint), LOWER(:search)) > 0"
 		params["search"] = search
 	}
-	whereClause += rootFilterClause("e.is_root", rootFilter)
+	whereClause += shared.RootFilterClause("e.is_root", rootFilter)
 
 	countQuery := "SELECT COUNT(DISTINCT e.endpoint) AS count FROM endpoints e WHERE " + whereClause
 	totalResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB, countQuery, params)

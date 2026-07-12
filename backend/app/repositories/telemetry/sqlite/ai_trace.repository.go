@@ -182,7 +182,7 @@ func (r *aiTraceRepository) FindGroupedByTraceName(ctx context.Context, projectI
 		whereClause += " AND INSTR(LOWER(trace_name), LOWER(:search)) > 0"
 		params["search"] = search
 	}
-	whereClause += rootFilterClause("is_root", rootFilter)
+	whereClause += shared.RootFilterClause("is_root", rootFilter)
 
 	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
 		"SELECT COUNT(DISTINCT trace_name) AS count FROM ai_traces WHERE "+whereClause, params)

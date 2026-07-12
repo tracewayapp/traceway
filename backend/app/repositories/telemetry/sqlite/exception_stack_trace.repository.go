@@ -4,8 +4,6 @@ package sqlite
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
@@ -235,9 +233,6 @@ func (e *exceptionStackTraceRepository) FindByHash(ctx context.Context, projectI
 		GROUP BY exception_hash`,
 		params)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil, 0, nil
-		}
 		return nil, nil, 0, err
 	}
 	if groupRow == nil {

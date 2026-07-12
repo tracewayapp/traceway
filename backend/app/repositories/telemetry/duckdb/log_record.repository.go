@@ -4,7 +4,6 @@ package duckdb
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
@@ -81,58 +80,49 @@ func (r *logRecordRepository) InsertAsync(ctx context.Context, records []models.
 		return nil
 	}
 
-	conn, err := db.DuckDBConnector.Connect(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
+	return withAppender(ctx, "log_records", func(appender *duckdb.Appender) {
 
-	appender, err := duckdb.NewAppenderFromConn(conn, "", "log_records")
-	if err != nil {
-		return err
-	}
+		for _, lr := range records {
+			resourceJSON, err := attrJSON(lr.ResourceAttributes)
+			if err != nil {
+				captureDroppedRow("log_records", err)
+				continue
+			}
+			scopeJSON, err := attrJSON(lr.ScopeAttributes)
+			if err != nil {
+				captureDroppedRow("log_records", err)
+				continue
+			}
+			logJSON, err := attrJSON(lr.LogAttributes)
+			if err != nil {
+				captureDroppedRow("log_records", err)
+				continue
+			}
 
-	for _, lr := range records {
-		resourceJSON, err := logRecordAttrJSON(lr.ResourceAttributes)
-		if err != nil {
-			captureDroppedRow("log_records", err)
-			continue
-		}
-		scopeJSON, err := logRecordAttrJSON(lr.ScopeAttributes)
-		if err != nil {
-			captureDroppedRow("log_records", err)
-			continue
-		}
-		logJSON, err := logRecordAttrJSON(lr.LogAttributes)
-		if err != nil {
-			captureDroppedRow("log_records", err)
-			continue
+			if err := appender.AppendRow(
+				lr.Id.String(),
+				lr.ProjectId.String(),
+				lr.Timestamp.UTC(),
+				lr.TraceId,
+				lr.SpanId,
+				int64(lr.TraceFlags),
+				lr.SeverityText,
+				int64(lr.SeverityNumber),
+				lr.ServiceName,
+				lr.Body,
+				lr.ResourceSchemaUrl,
+				resourceJSON,
+				lr.ScopeSchemaUrl,
+				lr.ScopeName,
+				lr.ScopeVersion,
+				scopeJSON,
+				logJSON,
+			); err != nil {
+				captureDroppedRow("log_records", err)
+			}
 		}
 
-		if err := appender.AppendRow(
-			lr.Id.String(),
-			lr.ProjectId.String(),
-			lr.Timestamp.UTC(),
-			lr.TraceId,
-			lr.SpanId,
-			int64(lr.TraceFlags),
-			lr.SeverityText,
-			int64(lr.SeverityNumber),
-			lr.ServiceName,
-			lr.Body,
-			lr.ResourceSchemaUrl,
-			resourceJSON,
-			lr.ScopeSchemaUrl,
-			lr.ScopeName,
-			lr.ScopeVersion,
-			scopeJSON,
-			logJSON,
-		); err != nil {
-			captureDroppedRow("log_records", err)
-		}
-	}
-
-	return appender.Close()
+	})
 }
 
 func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearchParams) ([]models.LogRecord, int64, error) {
@@ -301,17 +291,6 @@ func (r *logRecordRepository) resolveOrderBy(orderBy string) string {
 		return col
 	}
 	return "timestamp"
-}
-
-func logRecordAttrJSON(m map[string]string) (string, error) {
-	if len(m) == 0 {
-		return "{}", nil
-	}
-	b, err := json.Marshal(m)
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
 }
 
 var LogRecordRepository = &logRecordRepository{}

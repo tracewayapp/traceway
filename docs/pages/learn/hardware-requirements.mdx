@@ -2,11 +2,12 @@
 
 import { Callout } from "nextra/components";
 
-How much CPU, RAM, and disk Traceway needs depends almost entirely on **which storage backend you run**. The backend ships as a single static Go binary (CGO disabled, frontend embedded), so the binary itself is cheap. What costs memory is the database next to it.
+How much CPU, RAM, and disk Traceway needs depends almost entirely on **which storage backend you run**. The backend ships as a single Go binary with the frontend embedded (static and CGO-free except in DuckDB mode, which links the DuckDB engine), so the binary itself is cheap. What costs memory is the database next to it.
 
-There are two shapes:
+There are three shapes:
 
 - **SQLite mode** (single binary, zero external dependencies). The whole stack is one process. This is the lightweight option.
+- **DuckDB mode** (`telemetry_duckdb` build tag, CGO required). Still a single container with zero external dependencies, but the telemetry store is DuckDB's columnar engine, which holds 10 to 100 times more queryable rows than SQLite on the same box. The catch: DuckDB sizes itself from host RAM, so memory-capped containers must set `DUCKDB_MEMORY_LIMIT`.
 - **ClickHouse + PostgreSQL mode** (`transactional_pg telemetry_ch` build tags). ClickHouse is built to use a lot of RAM for caches and merges, so this is the heavier option that scales much further.
 
 ## TL;DR
@@ -14,6 +15,7 @@ There are two shapes:
 | Deployment | Minimum to start | Comfortable | Notes |
 |------------|------------------|-------------|-------|
 | **SQLite** (single binary) | 1 vCPU, 512 MB RAM | 2 vCPU, 1 to 2 GB RAM | The backend process idles at ~30 MB RSS. Memory grows with the SQLite page cache and source map cache, both capped. |
+| **DuckDB** (single container) | 2 vCPU, 2 GB RAM, `DUCKDB_MEMORY_LIMIT` set | 2 to 4 vCPU, 4 to 8 GB RAM | DuckDB auto-tunes to ~80% of what it thinks is host RAM. In a memory-capped container it reads the host, not the cgroup, so set `DUCKDB_MEMORY_LIMIT` explicitly or the backend gets OOM-killed under ingest. |
 | **ClickHouse + PostgreSQL** | 2 vCPU, 4 GB RAM | 4 vCPU, 8 GB+ RAM | ClickHouse is the floor here, not Traceway. It claims up to 80% of host RAM by design. |
 
 If you just want "the smallest box that runs it," that is the SQLite deployment, and it is genuinely small. The Go process is not where your money goes.
@@ -59,6 +61,19 @@ We benchmark the single-binary SQLite build on dedicated Hetzner CCX instances, 
 
 SQLite stores telemetry on local disk, so disk is the resource to watch, not RAM. Size it for your retention window. Telemetry rows are pruned by a background worker (`SQLITE_RETENTION_DAYS`, default 30); see [Data retention on the SQLite page](/server/sqlite#configuration). Blob storage (source maps, session recordings, AI traces) lives under the same `/data` volume unless you offload it to S3.
 
+## DuckDB mode (the small one that reads big)
+
+The DuckDB deployment (`Dockerfile.duckdb`) keeps the single-container shape: the main DB stays SQLite, only the telemetry store becomes DuckDB. You get the same zero-dependency operations with dramatically more read headroom - on a 2 vCPU / 8 GB box the metrics dashboard stays under the 5 s threshold at 100M stored points, where SQLite cliffs around 1M.
+
+Two things differ from the SQLite sizing story:
+
+- **Memory is the knob to set, not to ignore.** DuckDB auto-tunes its memory budget to ~80% of RAM, and inside a container it sees the host's RAM, not the container limit. On any memory-capped deployment, set `DUCKDB_MEMORY_LIMIT` (for example `2GB` on a 4 GB container) and optionally `DUCKDB_THREADS`. An uncapped DuckDB on a capped container is the one configuration that reliably OOM-kills the backend.
+- **The image is Debian, not Alpine.** The DuckDB driver bundles glibc static libraries, so this build cannot run on musl-based images.
+
+Under sustained ingest, `DUCKDB_CHECKPOINT_THRESHOLD` (default 16MB) can be raised to reduce WAL checkpoint stalls at the cost of a larger WAL and longer restart replay.
+
+Disk behaves like the SQLite story above (same retention worker, same `/data` volume), but columnar compression makes the telemetry file several times smaller for the same rows.
+
 ## ClickHouse + PostgreSQL mode
 
 The [Docker Compose](/server/docker-compose), [all-in-one](/server/all-in-one), and [minimal](/server/minimal) deployments run the `transactional_pg telemetry_ch` build against ClickHouse (telemetry) and PostgreSQL (config). Here the hardware floor is set by **ClickHouse**, not by the Traceway backend.
@@ -84,6 +99,7 @@ If you are sizing a small box, these are the knobs that matter. Every one has a 
 | Source map cache (in memory) | 500 MB cap, 200 resolvers | `SOURCEMAP_CACHE_MAX_BYTES_MB`, `SOURCEMAP_CACHE_MAX_ENTRIES` | JS/TS projects that upload source maps. On a 1 to 2 GB box, set the cap to `100`. |
 | Source map cache (disk tier) | off | `SOURCEMAP_CACHE_TYPE=disk`, `SOURCEMAP_DISK_CACHE_MAX_MB` (2048) | Many active maps, or multiple backend instances. Moves `.tw` resolvers to memory-mapped files. |
 | SQLite page cache | ~512 MB cap | `cache_size` pragma | SQLite mode under sustained ingest. A ceiling, grown on demand. |
+| DuckDB memory budget | ~80% of host RAM | `DUCKDB_MEMORY_LIMIT`, `DUCKDB_THREADS` | DuckDB mode. Mandatory in memory-capped containers - DuckDB sizes itself from the host, not the cgroup. |
 | Session-recording uploader | 32 workers, 2048 queue | `SESSION_RECORDING_UPLOAD_WORKERS`, `SESSION_RECORDING_UPLOAD_QUEUE_SIZE` | Browser/mobile session replay. Set workers to `0` to disable entirely. |
 
 On a memory-constrained host, the single most effective change is lowering `SOURCEMAP_CACHE_MAX_BYTES_MB`. The source map cache is the largest tunable consumer, because resolving a minified stack frame means holding a built resolver in memory.
@@ -100,5 +116,6 @@ On a memory-constrained host, the single most effective change is lowering `SOUR
 
 - **"I want the cheapest thing that runs."** SQLite mode, 1 vCPU / 512 MB. It idles around 30 MB and the caches are capped.
 - **"Small production app, some JS source maps."** SQLite mode, 2 vCPU / 1 to 2 GB, source map cap at 100 to 250 MB.
+- **"Single container, but the dashboards got slow as data grew."** DuckDB mode, 2 to 4 vCPU / 4 to 8 GB, with `DUCKDB_MEMORY_LIMIT` set to roughly half the container's RAM.
 - **"High ingest, long retention, want it to scale."** ClickHouse + PostgreSQL, 4 vCPU / 8 GB+, and size ClickHouse first.
 - **"It's getting slow."** Don't guess. Turn on [self-monitoring](/server/capacity-monitoring) and let the metrics tell you whether to scale ClickHouse, scale the backend, or buffer ingestion.

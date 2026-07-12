@@ -175,7 +175,7 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 		whereClause += " AND INSTR(LOWER(task_name), LOWER(:search)) > 0"
 		params["search"] = search
 	}
-	whereClause += rootFilterClause("is_root", rootFilter)
+	whereClause += shared.RootFilterClause("is_root", rootFilter)
 
 	totalResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
 		"SELECT COUNT(DISTINCT task_name) AS count FROM tasks WHERE "+whereClause,

@@ -5,7 +5,6 @@ package duckdb
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
@@ -114,17 +113,6 @@ func (r *endpoint) toModel() models.Endpoint {
 // rootFilterClause returns a SQL fragment ("", " AND <col> = 1", " AND <col> = 0")
 // to splice into a WHERE clause based on the rootFilter param. Accepts "all" |
 // "root" | "non_root"; defaults to "all" (no filter).
-func rootFilterClause(qualifiedCol, rootFilter string) string {
-	switch rootFilter {
-	case "root":
-		return " AND " + qualifiedCol + " = 1"
-	case "non_root":
-		return " AND " + qualifiedCol + " = 0"
-	default:
-		return ""
-	}
-}
-
 type endpointRepository struct{}
 
 func (e *endpointRepository) InsertAsync(ctx context.Context, lines []models.Endpoint) error {
@@ -132,70 +120,51 @@ func (e *endpointRepository) InsertAsync(ctx context.Context, lines []models.End
 		return nil
 	}
 
-	conn, err := db.DuckDBConnector.Connect(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
+	return withAppender(ctx, "endpoints", func(appender *duckdb.Appender) {
 
-	appender, err := duckdb.NewAppenderFromConn(conn, "", "endpoints")
-	if err != nil {
-		return err
-	}
-
-	for _, ep := range lines {
-		attributesJSON := "{}"
-		if len(ep.Attributes) > 0 {
-			b, err := json.Marshal(ep.Attributes)
+		for _, ep := range lines {
+			attributesJSON, err := attrJSON(ep.Attributes)
 			if err != nil {
 				captureDroppedRow("endpoints", err)
 				continue
 			}
-			attributesJSON = string(b)
+
+			var distributedTraceId *string
+			if ep.DistributedTraceId != nil {
+				v := ep.DistributedTraceId.String()
+				distributedTraceId = &v
+			}
+			var spanId *string
+			if ep.SpanId != nil {
+				v := ep.SpanId.String()
+				spanId = &v
+			}
+
+			isStream := boolToInt(ep.IsStream)
+			isRoot := boolToInt(ep.IsRoot)
+
+			if err := appender.AppendRow(
+				ep.Id.String(),
+				ep.ProjectId.String(),
+				ep.Endpoint,
+				int64(ep.Duration),
+				ep.RecordedAt.UTC(),
+				int64(ep.StatusCode),
+				int64(ep.BodySize),
+				ep.ClientIP,
+				attributesJSON,
+				ep.AppVersion,
+				ep.ServerName,
+				nullableString(distributedTraceId),
+				nullableString(spanId),
+				isStream,
+				isRoot,
+			); err != nil {
+				captureDroppedRow("endpoints", err)
+			}
 		}
 
-		var distributedTraceId *string
-		if ep.DistributedTraceId != nil {
-			v := ep.DistributedTraceId.String()
-			distributedTraceId = &v
-		}
-		var spanId *string
-		if ep.SpanId != nil {
-			v := ep.SpanId.String()
-			spanId = &v
-		}
-
-		isStream := int64(0)
-		if ep.IsStream {
-			isStream = 1
-		}
-		isRoot := int64(0)
-		if ep.IsRoot {
-			isRoot = 1
-		}
-
-		if err := appender.AppendRow(
-			ep.Id.String(),
-			ep.ProjectId.String(),
-			ep.Endpoint,
-			int64(ep.Duration),
-			ep.RecordedAt.UTC(),
-			int64(ep.StatusCode),
-			int64(ep.BodySize),
-			ep.ClientIP,
-			attributesJSON,
-			ep.AppVersion,
-			ep.ServerName,
-			nullableString(distributedTraceId),
-			nullableString(spanId),
-			isStream,
-			isRoot,
-		); err != nil {
-			captureDroppedRow("endpoints", err)
-		}
-	}
-
-	return appender.Close()
+	})
 }
 
 func (e *endpointRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {
@@ -257,7 +226,7 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 		whereClause += " AND INSTR(LOWER(e.endpoint), LOWER(:search)) > 0"
 		params["search"] = search
 	}
-	whereClause += rootFilterClause("e.is_root", rootFilter)
+	whereClause += shared.RootFilterClause("e.is_root", rootFilter)
 
 	groupQuery := `SELECT
 		e.endpoint,

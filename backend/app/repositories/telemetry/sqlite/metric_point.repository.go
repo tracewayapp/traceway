@@ -14,6 +14,7 @@ import (
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 )
 
 type metricPointRepository struct{}
@@ -89,7 +90,7 @@ func (r *metricPointRepository) QueryTimeSeries(ctx context.Context, projectId u
 	}
 
 	filterClauses := ""
-	for i, k := range sortedKeys(tagFilters) {
+	for i, k := range shared.SortedKeys(tagFilters) {
 		fk := fmt.Sprintf("fk_%d", i)
 		fv := fmt.Sprintf("fv_%d", i)
 		filterClauses += fmt.Sprintf(" AND json_extract(tags, '$.\"' || :%s || '\"') = :%s", fk, fv)
@@ -330,14 +331,6 @@ func sqliteAggregationFunc(agg string) string {
 	default:
 		return "avg(value)"
 	}
-}
-
-func sortedKeys(m map[string]string) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	return keys
 }
 
 var MetricPointRepository = &metricPointRepository{}

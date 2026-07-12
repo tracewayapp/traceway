@@ -4,7 +4,6 @@ package duckdb
 
 import (
 	"context"
-	"encoding/json"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
 	"time"
@@ -58,50 +57,37 @@ func (r *spanRepository) InsertAsync(ctx context.Context, spans []models.Span) e
 		return nil
 	}
 
-	conn, err := db.DuckDBConnector.Connect(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
+	return withAppender(ctx, "spans", func(appender *duckdb.Appender) {
 
-	appender, err := duckdb.NewAppenderFromConn(conn, "", "spans")
-	if err != nil {
-		return err
-	}
-
-	for _, s := range spans {
-		attributesJSON := "{}"
-		if len(s.Attributes) > 0 {
-			b, err := json.Marshal(s.Attributes)
+		for _, s := range spans {
+			attributesJSON, err := attrJSON(s.Attributes)
 			if err != nil {
 				captureDroppedRow("spans", err)
 				continue
 			}
-			attributesJSON = string(b)
+
+			var parentSpanId *string
+			if s.ParentSpanId != nil {
+				v := s.ParentSpanId.String()
+				parentSpanId = &v
+			}
+
+			if err := appender.AppendRow(
+				s.Id.String(),
+				s.TraceId.String(),
+				s.ProjectId.String(),
+				s.Name,
+				s.StartTime.UTC(),
+				int64(s.Duration),
+				s.RecordedAt.UTC(),
+				nullableString(parentSpanId),
+				attributesJSON,
+			); err != nil {
+				captureDroppedRow("spans", err)
+			}
 		}
 
-		var parentSpanId *string
-		if s.ParentSpanId != nil {
-			v := s.ParentSpanId.String()
-			parentSpanId = &v
-		}
-
-		if err := appender.AppendRow(
-			s.Id.String(),
-			s.TraceId.String(),
-			s.ProjectId.String(),
-			s.Name,
-			s.StartTime.UTC(),
-			int64(s.Duration),
-			s.RecordedAt.UTC(),
-			nullableString(parentSpanId),
-			attributesJSON,
-		); err != nil {
-			captureDroppedRow("spans", err)
-		}
-	}
-
-	return appender.Close()
+	})
 }
 
 func (r *spanRepository) FindByTraceId(ctx context.Context, projectId, traceId uuid.UUID, recordedAt *time.Time) ([]models.Span, error) {

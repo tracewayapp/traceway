@@ -57,14 +57,6 @@ func init() {
 
 type profileRepository struct{}
 
-// profileBoolToInt avoids colliding with boolToInt helpers defined in other duckdb repos.
-func profileBoolToInt(b bool) int64 {
-	if b {
-		return 1
-	}
-	return 0
-}
-
 func (r *profileRepository) InsertStacksAsync(ctx context.Context, stacks []models.ProfileStack) error {
 	if len(stacks) == 0 {
 		return nil
@@ -109,49 +101,36 @@ func (r *profileRepository) InsertSamplesAsync(ctx context.Context, samples []mo
 		return nil
 	}
 
-	conn, err := db.DuckDBConnector.Connect(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
+	return withAppender(ctx, "profiling_samples", func(appender *duckdb.Appender) {
 
-	appender, err := duckdb.NewAppenderFromConn(conn, "", "profiling_samples")
-	if err != nil {
-		return err
-	}
-
-	for _, s := range samples {
-		labelsJSON := "{}"
-		if len(s.Labels) > 0 {
-			b, err := json.Marshal(s.Labels)
+		for _, s := range samples {
+			labelsJSON, err := attrJSON(s.Labels)
 			if err != nil {
 				captureDroppedRow("profiling_samples", err)
 				continue
 			}
-			labelsJSON = string(b)
+			if err := appender.AppendRow(
+				s.ProjectId.String(),
+				s.ProfileId.String(),
+				s.ServiceName,
+				s.Type,
+				s.Start.UTC(),
+				s.End.UTC(),
+				int64(s.StackHash),
+				s.Value,
+				labelsJSON,
+				s.ServerName,
+				s.AppVersion,
+				s.TraceId,
+				s.SpanId,
+				s.Unit,
+				boolToInt(s.IsGauge),
+			); err != nil {
+				captureDroppedRow("profiling_samples", err)
+			}
 		}
-		if err := appender.AppendRow(
-			s.ProjectId.String(),
-			s.ProfileId.String(),
-			s.ServiceName,
-			s.Type,
-			s.Start.UTC(),
-			s.End.UTC(),
-			int64(s.StackHash),
-			s.Value,
-			labelsJSON,
-			s.ServerName,
-			s.AppVersion,
-			s.TraceId,
-			s.SpanId,
-			s.Unit,
-			profileBoolToInt(s.IsGauge),
-		); err != nil {
-			captureDroppedRow("profiling_samples", err)
-		}
-	}
 
-	return appender.Close()
+	})
 }
 
 func (r *profileRepository) InsertProfilesAsync(ctx context.Context, profiles []models.Profile) error {
@@ -159,58 +138,45 @@ func (r *profileRepository) InsertProfilesAsync(ctx context.Context, profiles []
 		return nil
 	}
 
-	conn, err := db.DuckDBConnector.Connect(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
+	return withAppender(ctx, "profiles", func(appender *duckdb.Appender) {
 
-	appender, err := duckdb.NewAppenderFromConn(conn, "", "profiles")
-	if err != nil {
-		return err
-	}
-
-	for _, p := range profiles {
-		attributesJSON := "{}"
-		if len(p.Attributes) > 0 {
-			b, err := json.Marshal(p.Attributes)
+		for _, p := range profiles {
+			attributesJSON, err := attrJSON(p.Attributes)
 			if err != nil {
 				captureDroppedRow("profiles", err)
 				continue
 			}
-			attributesJSON = string(b)
+
+			var distributedTraceId *string
+			if p.DistributedTraceId != nil {
+				v := p.DistributedTraceId.String()
+				distributedTraceId = &v
+			}
+
+			if err := appender.AppendRow(
+				p.Id.String(),
+				p.ProjectId.String(),
+				p.RecordedAt.UTC(),
+				int64(p.Duration),
+				p.ServiceName,
+				p.ProfileType,
+				int64(p.SampleCount),
+				p.TotalValue,
+				p.ServerName,
+				p.AppVersion,
+				attributesJSON,
+				p.StorageKey,
+				p.TraceId,
+				p.SpanId,
+				nullableString(distributedTraceId),
+				p.Unit,
+				boolToInt(p.IsGauge),
+			); err != nil {
+				captureDroppedRow("profiles", err)
+			}
 		}
 
-		var distributedTraceId *string
-		if p.DistributedTraceId != nil {
-			v := p.DistributedTraceId.String()
-			distributedTraceId = &v
-		}
-
-		if err := appender.AppendRow(
-			p.Id.String(),
-			p.ProjectId.String(),
-			p.RecordedAt.UTC(),
-			int64(p.Duration),
-			p.ServiceName,
-			p.ProfileType,
-			int64(p.SampleCount),
-			p.TotalValue,
-			p.ServerName,
-			p.AppVersion,
-			attributesJSON,
-			p.StorageKey,
-			p.TraceId,
-			p.SpanId,
-			nullableString(distributedTraceId),
-			p.Unit,
-			profileBoolToInt(p.IsGauge),
-		); err != nil {
-			captureDroppedRow("profiles", err)
-		}
-	}
-
-	return appender.Close()
+	})
 }
 
 func (r *profileRepository) FindGroupedByService(ctx context.Context, projectId uuid.UUID, from, to time.Time, page, pageSize int, orderBy, sortDirection, search string) ([]models.ProfileGroup, int64, error) {

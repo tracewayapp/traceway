@@ -5,7 +5,6 @@ package duckdb
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
@@ -86,64 +85,48 @@ func (e *taskRepository) InsertAsync(ctx context.Context, lines []models.Task) e
 		return nil
 	}
 
-	conn, err := db.DuckDBConnector.Connect(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
+	return withAppender(ctx, "tasks", func(appender *duckdb.Appender) {
 
-	appender, err := duckdb.NewAppenderFromConn(conn, "", "tasks")
-	if err != nil {
-		return err
-	}
-
-	for _, t := range lines {
-		attributesJSON := "{}"
-		if len(t.Attributes) > 0 {
-			b, err := json.Marshal(t.Attributes)
+		for _, t := range lines {
+			attributesJSON, err := attrJSON(t.Attributes)
 			if err != nil {
 				captureDroppedRow("tasks", err)
 				continue
 			}
-			attributesJSON = string(b)
+
+			var distributedTraceId *string
+			if t.DistributedTraceId != nil {
+				s := t.DistributedTraceId.String()
+				distributedTraceId = &s
+			}
+
+			var spanId *string
+			if t.SpanId != nil {
+				s := t.SpanId.String()
+				spanId = &s
+			}
+
+			isRoot := boolToInt(t.IsRoot)
+
+			if err := appender.AppendRow(
+				t.Id.String(),
+				t.ProjectId.String(),
+				t.TaskName,
+				int64(t.Duration),
+				t.RecordedAt.UTC(),
+				t.ClientIP,
+				attributesJSON,
+				t.AppVersion,
+				t.ServerName,
+				nullableString(distributedTraceId),
+				nullableString(spanId),
+				isRoot,
+			); err != nil {
+				captureDroppedRow("tasks", err)
+			}
 		}
 
-		var distributedTraceId *string
-		if t.DistributedTraceId != nil {
-			s := t.DistributedTraceId.String()
-			distributedTraceId = &s
-		}
-
-		var spanId *string
-		if t.SpanId != nil {
-			s := t.SpanId.String()
-			spanId = &s
-		}
-
-		isRoot := int64(0)
-		if t.IsRoot {
-			isRoot = 1
-		}
-
-		if err := appender.AppendRow(
-			t.Id.String(),
-			t.ProjectId.String(),
-			t.TaskName,
-			int64(t.Duration),
-			t.RecordedAt.UTC(),
-			t.ClientIP,
-			attributesJSON,
-			t.AppVersion,
-			t.ServerName,
-			nullableString(distributedTraceId),
-			nullableString(spanId),
-			isRoot,
-		); err != nil {
-			captureDroppedRow("tasks", err)
-		}
-	}
-
-	return appender.Close()
+	})
 }
 
 func (e *taskRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {
@@ -202,20 +185,25 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 		whereClause += " AND INSTR(LOWER(task_name), LOWER(:search)) > 0"
 		params["search"] = search
 	}
-	whereClause += rootFilterClause("is_root", rootFilter)
-
-	totalResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
-		"SELECT COUNT(DISTINCT task_name) AS count FROM tasks WHERE "+whereClause,
-		params)
-	if err != nil {
-		return nil, 0, err
-	}
-	totalCount := int64(0)
-	if totalResult != nil {
-		totalCount = int64(totalResult.Count)
-	}
+	whereClause += shared.RootFilterClause("is_root", rootFilter)
 
 	needsGoSort := orderBy == "p50_duration" || orderBy == "p95_duration" || orderBy == "impact"
+
+	// The Go-sort path fetches every group, so the total falls out of the
+	// result set; the COUNT(DISTINCT) pre-scan is only needed when the
+	// database paginates.
+	totalCount := int64(0)
+	if !needsGoSort {
+		totalResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+			"SELECT COUNT(DISTINCT task_name) AS count FROM tasks WHERE "+whereClause,
+			params)
+		if err != nil {
+			return nil, 0, err
+		}
+		if totalResult != nil {
+			totalCount = int64(totalResult.Count)
+		}
+	}
 
 	sortDir := "DESC"
 	if sortDirection == "asc" {
@@ -225,10 +213,6 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 	offset := (page - 1) * pageSize
 
 	var baseQuery string
-	groupParams := lit.P{"project_id": projectId, "from": fromDate.UTC(), "to": toDate.UTC()}
-	if search != "" {
-		groupParams["search"] = search
-	}
 
 	groupedCols := `task_name, COUNT(*) as count, AVG(duration) as avg_duration, MAX(recorded_at) as last_seen,
 			MAX(is_root) as has_root, MAX(CASE WHEN is_root = 0 THEN 1 ELSE 0 END) as has_non_root,
@@ -247,11 +231,11 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 		baseQuery = fmt.Sprintf(`SELECT `+groupedCols+`
 			FROM tasks WHERE `+whereClause+`
 			GROUP BY task_name ORDER BY %s %s LIMIT :limit OFFSET :offset`, expr, sortDir)
-		groupParams["limit"] = pageSize
-		groupParams["offset"] = offset
+		params["limit"] = pageSize
+		params["offset"] = offset
 	}
 
-	groups, err := lit.SelectNamed[taskGroupRow](db.TelemetryDB, baseQuery, groupParams)
+	groups, err := lit.SelectNamed[taskGroupRow](db.TelemetryDB, baseQuery, params)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -271,6 +255,7 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 	}
 
 	if needsGoSort {
+		totalCount = int64(len(stats))
 		switch orderBy {
 		case "p50_duration":
 			sort.Slice(stats, func(i, j int) bool {

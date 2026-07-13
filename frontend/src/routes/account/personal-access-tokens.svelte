@@ -39,7 +39,7 @@
 		revoking = true;
 		try {
 			await personalAccessTokensState.revoke(tokenToRevoke.id);
-			toast.success('Successfully revoked the token', { position: 'top-center' });
+			toast.success('Successfully revoked the Token', { position: 'top-center' });
 			tokenToRevoke = null;
 		} catch (e: unknown) {
 			toast.error(e instanceof Error ? e.message : 'Failed to revoke token');
@@ -57,9 +57,9 @@
 				Authenticate the Traceway CLI or scripts without a browser. Treat tokens like passwords.
 			</CardDescription>
 		</div>
-		<Button variant="outline" class="shrink-0" onclick={() => (showCreate = true)}>
+		<Button variant="success" class="shrink-0" onclick={() => (showCreate = true)}>
 			<Plus class="mr-2 h-4 w-4" />
-			Create token
+			New Token
 		</Button>
 	</CardHeader>
 	<CardContent class="p-0">
@@ -125,7 +125,7 @@
 <AlertDialog.Root open={tokenToRevoke !== null} onOpenChange={(open) => { if (!open) tokenToRevoke = null; }}>
 	<AlertDialog.Content>
 		<AlertDialog.Header>
-			<AlertDialog.Title>Revoke token</AlertDialog.Title>
+			<AlertDialog.Title>Revoke Token</AlertDialog.Title>
 			<AlertDialog.Description>
 				This permanently revokes {tokenToRevoke?.name ? `"${tokenToRevoke.name}"` : 'this token'}. Any
 				CLI or script using it will stop working immediately.
@@ -134,7 +134,8 @@
 		<AlertDialog.Footer>
 			<AlertDialog.Cancel disabled={revoking}>Cancel</AlertDialog.Cancel>
 			<Button variant="destructive" onclick={confirmRevoke} disabled={revoking}>
-				{revoking ? 'Revoking…' : 'Revoke token'}
+				<Trash2 class="mr-2 h-4 w-4" />
+				{revoking ? 'Revoking…' : 'Revoke Token'}
 			</Button>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>

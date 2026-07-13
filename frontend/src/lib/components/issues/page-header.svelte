@@ -21,13 +21,13 @@
     {/if}
     <div>
         <div class="flex flex-wrap items-center gap-2">
-            <h2 class="font-mono text-2xl font-bold tracking-tight break-all">
+            <h2 class="text-3xl font-semibold tracking-tight text-balance break-words">
                 {title}
             </h2>
             {#if trailing}{@render trailing()}{/if}
         </div>
         {#if subtitle}
-            <p class="text-muted-foreground text-sm">{subtitle}</p>
+            <p class="text-muted-foreground mt-1 font-mono text-sm">{subtitle}</p>
         {/if}
     </div>
 </div>

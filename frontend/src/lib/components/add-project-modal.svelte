@@ -4,7 +4,7 @@
     import { Input } from "$lib/components/ui/input";
     import { Label } from "$lib/components/ui/label";
     import { projectsState, getFrameworkLabel, type ProjectWithToken, type Framework } from '$lib/state/projects.svelte';
-    import { Copy, Check, ExternalLink } from 'lucide-svelte';
+    import { Copy, Check, ExternalLink, Plus } from 'lucide-svelte';
     import FrameworkIcon from './framework-icon.svelte';
     import FrameworkCombobox from './framework-combobox.svelte';
 
@@ -25,10 +25,6 @@
 
     async function handleSubmit(e: Event) {
         e.preventDefault();
-        if (!projectName.trim()) {
-            error = 'Project name is required';
-            return;
-        }
 
         loading = true;
         error = '';
@@ -75,7 +71,7 @@
                 {#if createdProject}
                     Project Created!
                 {:else}
-                    Create New Project
+                    New Project
                 {/if}
             </Sheet.Title>
             <Sheet.Description>
@@ -168,11 +164,12 @@
                     <Button type="button" variant="outline" onclick={handleClose} disabled={loading}>
                         Cancel
                     </Button>
-                    <Button type="submit" disabled={loading || !projectName.trim()}>
+                    <Button type="submit" variant="success" disabled={loading}>
                         {#if loading}
                             Creating...
                         {:else}
-                            Create Project
+                            <Plus class="mr-2 h-4 w-4" />
+                            New Project
                         {/if}
                     </Button>
                 </div>

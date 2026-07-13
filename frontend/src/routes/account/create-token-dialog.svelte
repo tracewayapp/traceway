@@ -31,7 +31,7 @@
 			const days = parseInt(expiry, 10);
 			const res = await personalAccessTokensState.create(name.trim(), days > 0 ? days : null);
 			createdToken = res.token;
-			toast.success('Successfully created the token', { position: 'top-center' });
+			toast.success('Successfully created the Token', { position: 'top-center' });
 		} catch (e: unknown) {
 			error = e instanceof Error ? e.message : 'Failed to create token';
 		} finally {
@@ -71,7 +71,7 @@
 			</AlertDialog.Footer>
 		{:else}
 			<AlertDialog.Header>
-				<AlertDialog.Title>Create personal access token</AlertDialog.Title>
+				<AlertDialog.Title>New Token</AlertDialog.Title>
 				<AlertDialog.Description>
 					Use this token to authenticate the Traceway CLI or scripts.
 				</AlertDialog.Description>
@@ -100,9 +100,9 @@
 			</form>
 			<AlertDialog.Footer>
 				<AlertDialog.Cancel disabled={loading}>Cancel</AlertDialog.Cancel>
-				<Button onclick={handleCreate} disabled={loading}>
+				<Button variant="success" onclick={handleCreate} disabled={loading}>
 					<Plus class="mr-2 h-4 w-4" />
-					{loading ? 'Creating…' : 'Create token'}
+					{loading ? 'Creating…' : 'New Token'}
 				</Button>
 			</AlertDialog.Footer>
 		{/if}

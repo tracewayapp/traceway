@@ -532,7 +532,7 @@
 
 		<AlertDialog.Footer>
 			<AlertDialog.Cancel disabled={loading}>Cancel</AlertDialog.Cancel>
-			<Button onclick={handleSubmit} disabled={loading}>
+			<Button variant={isEditing ? 'default' : 'success'} onclick={handleSubmit} disabled={loading}>
 				{#if isEditing}
 					<Check class="mr-2 h-4 w-4" />
 					{#if loading}

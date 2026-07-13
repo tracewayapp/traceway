@@ -123,7 +123,7 @@
 
         try {
             await projectsState.updateProject(project.id, projectName.trim(), selectedFramework, dropHealthyHealthchecks, healthcheckPaths, profileLabelAllowlist);
-            toast.success('Successfully updated the project', { position: 'top-center' });
+            toast.success('Successfully updated the Project', { position: 'top-center' });
             onOpenChange(false);
         } catch (err: any) {
             error = err instanceof Error ? err.message : 'Failed to update project';
@@ -138,7 +138,7 @@
         deleting = true;
         try {
             await projectsState.deleteProject(project.id, project.name);
-            toast.success('Successfully deleted the project', { position: 'top-center' });
+            toast.success('Successfully deleted the Project', { position: 'top-center' });
             showDeleteConfirm = false;
             onOpenChange(false);
             goto('/');
@@ -372,6 +372,7 @@
                 Cancel
             </Button>
             <Button variant="destructive" onclick={handleDelete} disabled={deleting || !deleteConfirmMatches}>
+                <Trash2 class="mr-2 h-4 w-4" />
                 {deleting ? 'Deleting...' : 'Delete Project'}
             </Button>
         </AlertDialog.Footer>

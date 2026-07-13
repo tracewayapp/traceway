@@ -7,6 +7,7 @@
     import { Label } from "$lib/components/ui/label";
     import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "$lib/components/ui/card";
     import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
+    import { ErrorAlert } from "$lib/components/ui/error-alert";
     import { CircleAlert, Check } from "@lucide/svelte";
     import { authState } from '$lib/state/auth.svelte';
     import { projectsState } from '$lib/state/projects.svelte';
@@ -170,13 +171,7 @@
                     <p class="text-center text-muted-foreground">Redirecting to dashboard...</p>
                 </div>
             {:else if error && !invitationInfo}
-                <Alert variant="destructive" class="bg-red-50 border-red-200">
-                    <CircleAlert class="h-4 w-4 text-red-700" />
-                    <AlertTitle class="text-red-800">Error</AlertTitle>
-                    <AlertDescription class="text-red-700">
-                        {error}
-                    </AlertDescription>
-                </Alert>
+                <ErrorAlert {error} />
                 <div class="mt-4 text-center">
                     <Button variant="outline" onclick={() => goto('/login')}>
                         Go to Login
@@ -189,12 +184,7 @@
                     </div>
 
                     {#if error}
-                        <Alert variant="destructive" class="bg-red-50 border-red-200">
-                            <CircleAlert class="h-4 w-4 text-red-700" />
-                            <AlertDescription class="text-red-700">
-                                {error}
-                            </AlertDescription>
-                        </Alert>
+                        <ErrorAlert {error} />
                     {/if}
 
                     {#if invitationInfo.existsAsUser}

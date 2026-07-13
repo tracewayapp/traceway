@@ -15,7 +15,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
-	import { ArrowLeft, Snail } from '@lucide/svelte';
+	import { ArrowLeft, Check, Snail } from '@lucide/svelte';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
 	import { CalendarDate } from '@internationalized/date';
@@ -305,7 +305,7 @@
 			offsetMs = Math.max(0, value);
 			reason = reasonInput;
 			showSlowDialog = false;
-			toast.success('Expected performance updated');
+			toast.success('Successfully updated the Expected Performance', { position: 'top-center' });
 		} catch (e: any) {
 			toast.error(e.message || 'Failed to save');
 		} finally {
@@ -392,7 +392,7 @@
 
 			<div class="flex items-start gap-2">
 				{#if !stats?.isStream}
-					<Button variant="outline" size="sm" onclick={() => { offsetInput = offsetMs > 0 ? String(offsetMs) : ''; reasonInput = reason; showSlowDialog = true; }}>
+					<Button variant="outline" onclick={() => { offsetInput = offsetMs > 0 ? String(offsetMs) : ''; reasonInput = reason; showSlowDialog = true; }}>
 						<Snail class="h-4 w-4" />
 						{offsetMs > 0 ? `+${offsetMs}ms offset` : 'Expected Performance'}
 					</Button>
@@ -618,7 +618,8 @@
 		<AlertDialog.Footer>
 			<Button variant="outline" onclick={() => showSlowDialog = false} disabled={slowLoading}>Cancel</Button>
 			<Button onclick={saveSlowEndpoint} disabled={slowLoading}>
-				{slowLoading ? 'Saving...' : 'Save'}
+				<Check class="mr-2 h-4 w-4" />
+				{slowLoading ? 'Updating...' : 'Update Expected Performance'}
 			</Button>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>

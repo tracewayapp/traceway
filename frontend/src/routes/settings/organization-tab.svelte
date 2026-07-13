@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { Check } from "@lucide/svelte";
     import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "$lib/components/ui/card";
     import { Label } from "$lib/components/ui/label";
     import { Button } from "$lib/components/ui/button";
@@ -134,7 +135,8 @@
                                 </Select.Root>
                                 {#if hasChanges}
                                     <Button onclick={handleSave} disabled={saving} size="sm">
-                                        {saving ? 'Saving...' : 'Save'}
+                                        <Check class="mr-1 h-4 w-4" />
+                                        {saving ? 'Updating...' : 'Update Timezone'}
                                     </Button>
                                 {/if}
                             </div>

@@ -87,7 +87,7 @@ func cleanProfileLabelAllowlist(in []string) ([]string, string) {
 type projectController struct{}
 
 type CreateProjectRequest struct {
-	Name      string `json:"name" binding:"required"`
+	Name      string `json:"name"`
 	Framework string `json:"framework" binding:"required"`
 }
 
@@ -128,17 +128,17 @@ func (p projectController) CreateProject(c *gin.Context) {
 	// Validate project name
 	nameLen := utf8.RuneCountInString(request.Name)
 	if nameLen < 1 || nameLen > 100 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Project name must be between 1 and 100 characters"})
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Project name must be between 1 and 100 characters"})
 		return
 	}
 	if !projectNameRegex.MatchString(request.Name) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Project name can only contain letters, numbers, spaces, hyphens, and underscores"})
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Project name can only contain letters, numbers, spaces, hyphens, and underscores"})
 		return
 	}
 
 	if !validFrameworks[request.Framework] {
 		traceway.CaptureMessage("Invalid framework received: " + request.Framework)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Framework must be one of: gin, fiber, chi, fasthttp, stdlib, custom, react, svelte, vuejs, jquery, react-native, hono, cloudflare, opentelemetry, symfony, laravel, django, flutter, android, ios"})
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Framework must be one of: gin, fiber, chi, fasthttp, stdlib, custom, react, svelte, vuejs, jquery, react-native, hono, cloudflare, opentelemetry, symfony, laravel, django, flutter, android, ios"})
 		return
 	}
 

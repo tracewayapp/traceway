@@ -18,6 +18,7 @@
     import { SearchBar } from "$lib/components/ui/search-bar";
     import { RootFilter } from "$lib/components/ui/root-filter";
     import { NonRootChip } from "$lib/components/ui/non-root-chip";
+    import EndpointName from "$lib/components/endpoint-name.svelte";
     import { browser } from '$app/environment';
     import { CalendarDate } from "@internationalized/date";
     import { projectsState } from '$lib/state/projects.svelte';
@@ -564,7 +565,7 @@
                     >
                         <Table.Cell class="font-mono text-sm max-w-[50%] break-all whitespace-normal">
                             <span class="inline-flex items-center gap-2">
-                                {endpoint.endpoint}
+                                <span><EndpointName endpoint={endpoint.endpoint} /></span>
                                 {#if endpoint.isStream}
                                     <Badge variant="outline" class="font-sans text-xs" title="Streaming response (SSE / WebSocket / long-poll). Excluded from latency, Apdex, and impact scoring.">Stream</Badge>
                                 {/if}

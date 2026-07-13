@@ -466,11 +466,11 @@
 			</Tabs.List>
 		</Tabs.Root>
 		{#if activeTab === 'channels'}
-			<Button size="sm" onclick={openNewChannel}>
+			<Button size="sm" variant="success" onclick={openNewChannel}>
 				<Plus class="mr-1 h-4 w-4" /> New Channel
 			</Button>
 		{:else if activeTab === 'rules'}
-			<Button size="sm" onclick={openNewRule}>
+			<Button size="sm" variant="success" onclick={openNewRule}>
 				<Plus class="mr-1 h-4 w-4" /> New Rule
 			</Button>
 		{/if}
@@ -489,7 +489,7 @@
 				class="flex flex-col items-center justify-center rounded-md bg-muted py-20 text-center text-muted-foreground"
 			>
 				<p class="mb-4">No channels yet. Create one to get started.</p>
-				<Button onclick={openNewChannel}>
+				<Button variant="success" onclick={openNewChannel}>
 					<Plus class="mr-1 h-4 w-4" />
 					Create your first Channel
 				</Button>
@@ -568,7 +568,7 @@
 				class="flex flex-col items-center justify-center rounded-md bg-muted py-20 text-center text-muted-foreground"
 			>
 				<p class="mb-4">No rules yet. Create one to get started.</p>
-				<Button onclick={openNewRule}>
+				<Button variant="success" onclick={openNewRule}>
 					<Plus class="mr-1 h-4 w-4" />
 					Create your first Rule
 				</Button>
@@ -651,7 +651,7 @@
 			</div>
 		{/if}
 	{:else if activeTab === 'history'}
-		<div class="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center sm:justify-between">
+		<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 			<SearchBar
 				placeholder="Search Historic Alerts..."
 				bind:value={searchQuery}
@@ -787,7 +787,10 @@
 		</AlertDialog.Header>
 		<AlertDialog.Footer>
 			<Button variant="outline" onclick={() => (showDeleteChannelDialog = false)}>Cancel</Button>
-			<Button variant="destructive" onclick={deleteChannel}>Delete</Button>
+			<Button variant="destructive" onclick={deleteChannel}>
+				<Trash2 class="mr-1 h-4 w-4" />
+				Delete Channel
+			</Button>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
 </AlertDialog.Root>
@@ -802,7 +805,10 @@
 		</AlertDialog.Header>
 		<AlertDialog.Footer>
 			<Button variant="outline" onclick={() => (showDeleteRuleDialog = false)}>Cancel</Button>
-			<Button variant="destructive" onclick={deleteRule}>Delete</Button>
+			<Button variant="destructive" onclick={deleteRule}>
+				<Trash2 class="mr-1 h-4 w-4" />
+				Delete Rule
+			</Button>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
 </AlertDialog.Root>

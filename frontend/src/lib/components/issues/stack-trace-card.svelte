@@ -121,12 +121,16 @@
 	<Card.Content class="pb-2">
 		{#if usePretty}
 			<div class="overflow-hidden rounded-md border">
-				<div class="flex items-center justify-between gap-3 border-b bg-muted/50 px-4 py-2.5">
+				<div class="flex items-center justify-between gap-3 border-b bg-muted/50 px-4 py-3">
 					{#if viewMode === 'formatted' && parsed.errorMessage}
+						{@const messageColon = parsed.errorMessage.indexOf(':')}
 						<p
-							class="min-w-0 flex-1 font-mono text-sm font-medium break-words whitespace-pre-wrap text-foreground"
+							class="min-w-0 flex-1 font-mono text-[15px]/6 break-words whitespace-pre-wrap text-foreground"
 						>
-							{parsed.errorMessage}
+							{#if messageColon > 0}<span
+									class="font-semibold text-rose-600 dark:text-rose-400"
+									>{parsed.errorMessage.slice(0, messageColon)}</span
+								>{parsed.errorMessage.slice(messageColon)}{:else}{parsed.errorMessage}{/if}
 						</p>
 					{:else}
 						<div class="flex-1"></div>
@@ -146,11 +150,13 @@
 							{#if group.type === 'app'}
 								{@const f = formatFrame(group.frame)}
 								<li
-									class="flex flex-wrap items-baseline gap-x-1.5 px-4 py-2 font-mono text-sm tabular-nums"
+									class="flex flex-wrap items-baseline gap-x-1.5 px-4 py-2.5 font-mono text-sm tabular-nums"
 									title={f.raw}
 								>
 									<span class="min-w-0 break-all text-muted-foreground"
-										>{f.dir}<span class="font-medium text-foreground">{f.file}</span></span
+										>{f.dir}<span class="font-medium text-blue-600 dark:text-blue-400"
+											>{f.file}</span
+										></span
 									>
 									{#if f.fn}
 										<span class="text-muted-foreground/70">in</span>
@@ -158,7 +164,7 @@
 									{/if}
 									{#if f.lineCol}
 										<span class="text-muted-foreground/70">at line</span>
-										<span class="text-foreground">{f.lineCol}</span>
+										<span class="font-medium text-amber-600 dark:text-amber-400">{f.lineCol}</span>
 									{/if}
 								</li>
 							{:else}

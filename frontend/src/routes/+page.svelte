@@ -22,6 +22,7 @@
 	import WidgetGrid from '$lib/components/dashboard/widget-grid.svelte';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { ImpactBadge } from '$lib/components/ui/impact-badge';
+	import EndpointName from '$lib/components/endpoint-name.svelte';
 	import { ViewAllTableRow } from '$lib/components/ui/view-all-table-row';
 	import { api } from '$lib/api';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
@@ -938,7 +939,7 @@ service:
 												class="max-w-[300px] truncate py-3 font-mono text-sm"
 												title={endpoint.endpoint}
 											>
-												{endpoint.endpoint}
+												<EndpointName endpoint={endpoint.endpoint} />
 											</Table.Cell>
 											<Table.Cell class="py-3 text-right tabular-nums">
 												{endpoint.count.toLocaleString()}
@@ -1030,12 +1031,23 @@ service:
 							</Table.Header>
 							<Table.Body>
 								{#each data.recentIssues as issue}
+									{@const issueFirstLine = issue.stackTrace.split('\n')[0]}
+									{@const issueColon = issueFirstLine.indexOf(':')}
 									<Table.Row
 										class="cursor-pointer hover:bg-muted/50"
 										onclick={createRowClickHandler(`/issues/${issue.exceptionHash}`)}
 									>
-										<Table.Cell class="py-3 font-mono text-sm" title={issue.stackTrace}>
-											{truncateStackTrace(issue.stackTrace)}
+										<Table.Cell class="max-w-[480px] py-3" title={issue.stackTrace}>
+											<div class="min-w-0">
+												<div class="truncate text-[15px]/6 font-semibold text-foreground">
+													{issueColon > 0 ? issueFirstLine.slice(0, issueColon) : issueFirstLine}
+												</div>
+												{#if issueColon > 0}
+													<div class="truncate text-sm text-muted-foreground">
+														{issueFirstLine.slice(issueColon + 1).trim()}
+													</div>
+												{/if}
+											</div>
 										</Table.Cell>
 										<Table.Cell class="py-3 text-right font-medium tabular-nums">
 											{issue.count}

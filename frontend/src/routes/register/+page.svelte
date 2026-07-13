@@ -6,6 +6,7 @@
     import { Label } from "$lib/components/ui/label";
     import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "$lib/components/ui/card";
     import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
+    import { ErrorAlert } from "$lib/components/ui/error-alert";
     import * as Select from "$lib/components/ui/select";
     import { CircleAlert, Check } from "@lucide/svelte";
     import { authState } from '$lib/state/auth.svelte';
@@ -147,13 +148,7 @@
         </CardHeader>
         <CardContent>
             {#if error}
-                <Alert variant="destructive" class="mb-4 bg-red-50 border-red-200">
-                    <CircleAlert class="h-4 w-4 text-red-700" />
-                    <AlertTitle class="text-red-800">Error</AlertTitle>
-                    <AlertDescription class="text-red-700">
-                        {error}
-                    </AlertDescription>
-                </Alert>
+                <ErrorAlert {error} class="mb-4" />
             {/if}
             <OauthButtons bind:passwordLoginEnabled bind:loaded={providersLoaded} />
             {#if providersLoaded && passwordLoginEnabled}

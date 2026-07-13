@@ -444,8 +444,12 @@
 									aria-label="Select row"
 								/>
 							</Table.Cell>
+							{@const firstLine = exception.stackTrace.split('\n')[0]}
+							{@const colonIndex = firstLine.indexOf(':')}
+							{@const errorType = colonIndex > 0 ? firstLine.slice(0, colonIndex) : firstLine}
+							{@const errorMessage = colonIndex > 0 ? firstLine.slice(colonIndex + 1).trim() : ''}
 							<Table.Cell
-								class="max-w-[400px] truncate font-mono text-sm"
+								class="max-w-[520px] py-3"
 								title={exception.stackTrace}
 								onclick={createRowClickHandler(
 									`/issues/${exception.exceptionHash}`,
@@ -454,7 +458,14 @@
 									'to'
 								)}
 							>
-								<span class="text-foreground">{exception.stackTrace.split('\n')[0]}</span>
+								<div class="min-w-0">
+									<div class="truncate text-[15px]/6 font-semibold text-foreground group-hover:text-primary dark:group-hover:text-blue-300">
+										{errorType}
+									</div>
+									{#if errorMessage}
+										<div class="truncate text-sm text-muted-foreground">{errorMessage}</div>
+									{/if}
+								</div>
 							</Table.Cell>
 							<Table.Cell
 								onclick={createRowClickHandler(
@@ -467,7 +478,7 @@
 								<IssueTrendChart trend={exception.hourlyTrend || []} />
 							</Table.Cell>
 							<Table.Cell
-								class="text-right font-medium tabular-nums"
+								class="text-right text-[15px] font-semibold tabular-nums"
 								onclick={createRowClickHandler(
 									`/issues/${exception.exceptionHash}`,
 									'preset',
@@ -478,7 +489,7 @@
 								{exception.count.toLocaleString()}
 							</Table.Cell>
 							<Table.Cell
-								class="text-muted-foreground"
+								class="text-muted-foreground tabular-nums"
 								onclick={createRowClickHandler(
 									`/issues/${exception.exceptionHash}`,
 									'preset',

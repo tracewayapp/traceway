@@ -9,6 +9,7 @@
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { Plus, Check, CircleAlert } from 'lucide-svelte';
 	import * as Alert from '$lib/components/ui/alert';
+	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import type { DiscoveredMetric } from '$lib/types/dashboard';
 
 	type WidgetSource = {
@@ -127,15 +128,9 @@
 <AlertDialog.Root bind:open>
 	<AlertDialog.Content class="max-w-xl" interactOutsideBehavior="close">
 		<AlertDialog.Header>
-			<AlertDialog.Title>{widget?.id ? 'Edit Widget' : 'Add Widget'}</AlertDialog.Title>
+			<AlertDialog.Title>{widget?.id ? 'Edit Widget' : 'New Widget'}</AlertDialog.Title>
 		</AlertDialog.Header>
-		{#if error}
-			<Alert.Root variant="destructive" class="bg-red-50 border-red-200">
-				<CircleAlert class="h-4 w-4 text-red-700" />
-				<Alert.Title class="text-red-800">Error</Alert.Title>
-				<Alert.Description class="text-red-700">{error}</Alert.Description>
-			</Alert.Root>
-		{/if}
+		<ErrorAlert {error} />
 		<div class="space-y-4">
 			<div>
 				<label class="text-sm font-medium" for="widget-title">Title (optional)</label>
@@ -296,8 +291,8 @@
 		</div>
 		<AlertDialog.Footer>
 			<Button variant="outline" onclick={handleClose}>Cancel</Button>
-			<Button onclick={handleSave}>
-				{#if widget?.id}<Check class="mr-1 h-4 w-4" /> Update Widget{:else}<Plus class="mr-1 h-4 w-4" /> Add Widget{/if}
+			<Button variant={widget?.id ? 'default' : 'success'} onclick={handleSave}>
+				{#if widget?.id}<Check class="mr-1 h-4 w-4" /> Update Widget{:else}<Plus class="mr-1 h-4 w-4" /> New Widget{/if}
 			</Button>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>

@@ -184,7 +184,7 @@
 									aria-label={widget.isStarred ? 'Unstar widget' : 'Star widget'}
 									title={widget.isStarred ? 'Unstar' : 'Star'}
 									class="inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted {widget.isStarred
-										? 'text-yellow-500 hover:text-yellow-600'
+										? 'text-yellow-400 hover:text-yellow-500'
 										: 'text-muted-foreground hover:text-foreground'}"
 									onclick={() => onToggleStar?.(widget)}
 								>

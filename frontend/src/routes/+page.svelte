@@ -859,7 +859,7 @@ service:
 				<div>
 					<div class="items-bottom mb-4 flex gap-1">
 						<div class="mr-2 flex h-8 w-8 items-center justify-center rounded-md bg-yellow-500/10">
-							<Star class="h-5 w-5 fill-yellow-500 text-yellow-500" />
+							<Star class="h-5 w-5 fill-yellow-400 text-yellow-400" />
 						</div>
 						<h2 class="text-2xl font-bold tracking-tight">Starred</h2>
 						<Tooltip.Root>

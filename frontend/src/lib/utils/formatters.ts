@@ -2,9 +2,7 @@ import { DateTime } from 'luxon';
 import { getTimezone } from '$lib/state/timezone.svelte';
 
 export function preciseTimeMs(isoString: string): number {
-	const match = isoString.match(
-		/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?Z$/
-	);
+	const match = isoString.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?Z$/);
 	if (!match) return new Date(isoString).getTime();
 
 	const [, year, month, day, hour, minute, second, frac] = match;
@@ -38,7 +36,7 @@ export function formatDurationMs(ms: number): string {
 export function getStatusColor(statusCode: number): string {
 	if (statusCode >= 200 && statusCode < 300) return 'text-green-500';
 	if (statusCode >= 300 && statusCode < 400) return 'text-blue-500';
-	if (statusCode >= 400 && statusCode < 500) return 'text-yellow-500';
+	if (statusCode >= 400 && statusCode < 500) return 'text-yellow-400';
 	return 'text-red-500';
 }
 
@@ -109,8 +107,6 @@ export function getNow(timezone?: string): DateTime {
 	const tz = timezone ?? getTimezone();
 	return DateTime.now().setZone(tz);
 }
-
-
 
 export function luxonToCalendarDateTime(dt: DateTime): {
 	year: number;

@@ -3,6 +3,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import * as Select from '$lib/components/ui/select';
 	import { Plus, Check, TriangleAlert } from '@lucide/svelte';
 	import * as Alert from '$lib/components/ui/alert';
@@ -380,6 +381,8 @@
 			}}
 			class="space-y-4"
 		>
+			<ErrorAlert {error} />
+
 			<div class="space-y-2">
 				<Label for="rule-name">Name</Label>
 				<Input
@@ -794,9 +797,6 @@
 				</Select.Root>
 			</div>
 
-			{#if error}
-				<p class="text-sm text-destructive">{error}</p>
-			{/if}
 		</form>
 
 		<AlertDialog.Footer>

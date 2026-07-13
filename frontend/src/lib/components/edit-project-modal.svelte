@@ -5,6 +5,7 @@
     import { Button } from "$lib/components/ui/button";
     import { Input } from "$lib/components/ui/input";
     import { Label } from "$lib/components/ui/label";
+    import { ErrorAlert } from "$lib/components/ui/error-alert";
     import { Checkbox } from "$lib/components/ui/checkbox";
     import { DEFAULT_HEALTHCHECK_PATHS } from '$lib/utils/healthcheck';
     import { projectsState, type Project, type Framework } from '$lib/state/projects.svelte';
@@ -191,11 +192,7 @@
             </div>
         {:else}
             <form onsubmit={handleSubmit} class="px-6 pb-6 space-y-5">
-                {#if error}
-                    <div class="rounded-md bg-destructive/10 border border-destructive/20 p-3">
-                        <p class="text-sm text-destructive">{error}</p>
-                    </div>
-                {/if}
+                <ErrorAlert {error} />
 
                 {#if activeTab === 'project'}
                     <div class="space-y-2">

@@ -118,7 +118,7 @@
 			</Card.Description>
 		{/if}
 	</Card.Header>
-	<Card.Content class="pb-2">
+	<Card.Content>
 		{#if usePretty}
 			<div class="overflow-hidden rounded-md border">
 				<div class="flex items-center justify-between gap-3 border-b bg-muted/50 px-4 py-3">

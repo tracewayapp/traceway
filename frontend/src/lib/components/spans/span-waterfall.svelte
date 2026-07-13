@@ -116,7 +116,7 @@
 
 		{#if isHovered}
 			<div
-				class="pointer-events-none absolute top-[28px] bottom-0 border-l border-gray-300"
+				class="pointer-events-none absolute top-[28px] bottom-0 border-l border-border"
 				style="left: {tooltipX + nameColumnWidth}px"
 			></div>
 			<div class="absolute top-[1px] -translate-x-1/2" style="left: {tooltipX + nameColumnWidth}px">

@@ -22,7 +22,7 @@
 {#if messages.length > 0}
 	<Alert
 		variant="destructive"
-		class="rounded-sm border-destructive bg-destructive text-white has-[>svg]:grid-cols-[calc(var(--spacing)*5)_1fr] *:data-[slot=alert-description]:text-white/90 [&>svg]:size-5 {className ??
+		class="rounded-sm border-red-400 bg-red-500 text-white has-[>svg]:grid-cols-[calc(var(--spacing)*5)_1fr] *:data-[slot=alert-description]:text-white/90 [&>svg]:size-5 {className ??
 			''}"
 	>
 		<CircleAlert />

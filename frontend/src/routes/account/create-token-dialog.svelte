@@ -5,6 +5,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import * as Select from '$lib/components/ui/select';
 	import { Plus, TriangleAlert } from '@lucide/svelte';
+	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { toast } from 'svelte-sonner';
 	import CopyableInline from '$lib/components/setup/copyable-inline.svelte';
 	import { personalAccessTokensState } from '$lib/state/personal-access-tokens.svelte';
@@ -77,6 +78,7 @@
 				</AlertDialog.Description>
 			</AlertDialog.Header>
 			<form onsubmit={(e) => { e.preventDefault(); handleCreate(); }} class="space-y-4">
+				<ErrorAlert {error} />
 				<div class="space-y-2">
 					<Label for="token-name">Name</Label>
 					<Input id="token-name" bind:value={name} placeholder="e.g. laptop CLI" required />
@@ -94,9 +96,6 @@
 						</Select.Content>
 					</Select.Root>
 				</div>
-				{#if error}
-					<p class="text-sm text-destructive">{error}</p>
-				{/if}
 			</form>
 			<AlertDialog.Footer>
 				<AlertDialog.Cancel disabled={loading}>Cancel</AlertDialog.Cancel>

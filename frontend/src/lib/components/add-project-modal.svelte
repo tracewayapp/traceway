@@ -3,6 +3,7 @@
     import { Button } from "$lib/components/ui/button";
     import { Input } from "$lib/components/ui/input";
     import { Label } from "$lib/components/ui/label";
+    import { ErrorAlert } from "$lib/components/ui/error-alert";
     import { projectsState, getFrameworkLabel, type ProjectWithToken, type Framework } from '$lib/state/projects.svelte';
     import { Copy, Check, ExternalLink, Plus } from 'lucide-svelte';
     import FrameworkIcon from './framework-icon.svelte';
@@ -132,6 +133,8 @@
             </div>
         {:else}
             <form onsubmit={handleSubmit} class="px-6 py-6 space-y-5">
+                <ErrorAlert {error} />
+
                 <div class="space-y-2">
                     <Label for="project-name">Project Name</Label>
                     <Input
@@ -153,12 +156,6 @@
                         Select your framework for tailored integration code
                     </p>
                 </div>
-
-                {#if error}
-                    <div class="rounded-md bg-destructive/10 border border-destructive/20 p-3">
-                        <p class="text-sm text-destructive">{error}</p>
-                    </div>
-                {/if}
 
                 <div class="flex justify-end gap-2 pt-2">
                     <Button type="button" variant="outline" onclick={handleClose} disabled={loading}>

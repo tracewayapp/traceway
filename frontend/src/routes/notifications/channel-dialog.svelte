@@ -3,6 +3,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import * as Select from '$lib/components/ui/select';
 	import { Plus, Check, Trash2 } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
@@ -281,6 +282,8 @@
 			}}
 			class="space-y-4"
 		>
+			<ErrorAlert {error} />
+
 			<div class="space-y-2">
 				<Label for="channel-name">Name</Label>
 				<Input id="channel-name" bind:value={name} placeholder="e.g. Team Slack" required />
@@ -525,9 +528,6 @@
 				</div>
 			{/if}
 
-			{#if error}
-				<p class="text-sm text-destructive">{error}</p>
-			{/if}
 		</form>
 
 		<AlertDialog.Footer>

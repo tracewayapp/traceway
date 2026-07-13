@@ -3,6 +3,7 @@
     import { Button } from "$lib/components/ui/button";
     import { Input } from "$lib/components/ui/input";
     import { Label } from "$lib/components/ui/label";
+    import { ErrorAlert } from "$lib/components/ui/error-alert";
     import * as Select from "$lib/components/ui/select";
     import { Plus } from "@lucide/svelte";
     import { toast } from 'svelte-sonner';
@@ -69,6 +70,8 @@
         </AlertDialog.Header>
 
         <form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }} class="space-y-4 py-4">
+            <ErrorAlert {error} />
+
             <div class="space-y-2">
                 <Label for="email">Email Address</Label>
                 <Input
@@ -99,9 +102,6 @@
                 </Select.Root>
             </div>
 
-            {#if error}
-                <p class="text-sm text-destructive">{error}</p>
-            {/if}
         </form>
 
         <AlertDialog.Footer>

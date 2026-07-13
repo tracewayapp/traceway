@@ -10,6 +10,6 @@
 	}: WithElementRef<HTMLAttributes<HTMLDivElement>> = $props();
 </script>
 
-<div bind:this={ref} data-slot="card-content" class={cn("px-6", className)} {...restProps}>
+<div bind:this={ref} data-slot="card-content" class={cn("px-4", className)} {...restProps}>
 	{@render children?.()}
 </div>

@@ -9,9 +9,10 @@
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import * as Select from '$lib/components/ui/select';
-	import { ArrowLeft, GitCompareArrows, Download, Layers, Gauge, X } from '@lucide/svelte';
+	import { GitCompareArrows, Download, Layers, Gauge, X } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import PageHeader from '$lib/components/issues/page-header.svelte';
 	import ExperimentalBanner from '$lib/components/profiles/experimental-banner.svelte';
@@ -510,12 +511,11 @@
 
 <div class="space-y-4">
 	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-		<div class="flex items-center gap-3">
-			<Button variant="ghost" size="sm" onclick={() => goto(resolve('/profiles'))}>
-				<ArrowLeft class="h-4 w-4" />
-			</Button>
-			<PageHeader title={data.service} subtitle="Profiles" />
-		</div>
+		<PageHeader
+			title={data.service}
+			subtitle="Profiles"
+			onBack={createSmartBackHandler({ fallbackPath: resolve('/profiles') })}
+		/>
 
 		<div class="flex flex-col">
 			<TimeRangePicker

@@ -450,7 +450,6 @@
 							{@const errorMessage = colonIndex > 0 ? firstLine.slice(colonIndex + 1).trim() : ''}
 							<Table.Cell
 								class="max-w-[520px] py-3"
-								title={exception.stackTrace}
 								onclick={createRowClickHandler(
 									`/issues/${exception.exceptionHash}`,
 									'preset',

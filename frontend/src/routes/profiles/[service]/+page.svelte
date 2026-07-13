@@ -318,7 +318,11 @@
 			const interval = intervalMinutes(fromIso, toIso);
 
 			const [tree, points, labels, top, dims, groups] = await Promise.all([
-				api.post('/profiles/flamegraph', { ...body, isGauge, labels: selectedLabels }, { projectId }),
+				api.post(
+					'/profiles/flamegraph',
+					{ ...body, isGauge, labels: selectedLabels },
+					{ projectId }
+				),
 				api.post(
 					'/profiles/series',
 					{ ...body, isGauge, intervalMinutes: interval, labels: selectedLabels, normalize },
@@ -326,7 +330,11 @@
 				),
 				api.post('/profiles/labels', body, { projectId }).catch(() => ({})),
 				api
-					.post('/profiles/top', { ...body, isGauge, labels: selectedLabels, limit: 100 }, { projectId })
+					.post(
+						'/profiles/top',
+						{ ...body, isGauge, labels: selectedLabels, limit: 100 },
+						{ projectId }
+					)
 					.catch(() => []),
 				api.post('/profiles/dimensions', body, { projectId }).catch(() => ({})),
 				groupBy
@@ -624,7 +632,7 @@
 		<ErrorDisplay status={400} title="Error" description={error} onRetry={() => loadData()} />
 	{:else}
 		<div class="grid gap-4 sm:grid-cols-2">
-			<div class="rounded-lg border p-4">
+			<div class="rounded-md border p-4">
 				<div class="text-sm text-muted-foreground">
 					Total {activeType ? humanizeType(activeType) : ''}
 				</div>
@@ -632,7 +640,7 @@
 					{formatValue(activeUnit, totalValue)}
 				</div>
 			</div>
-			<div class="rounded-lg border p-4">
+			<div class="rounded-md border p-4">
 				<div class="text-sm text-muted-foreground">
 					Peak {rateActive
 						? rateUnitIsTime
@@ -648,7 +656,7 @@
 			</div>
 		</div>
 
-		<div class="rounded-lg border p-4">
+		<div class="rounded-md border p-4">
 			<div class="mb-1 text-sm text-muted-foreground">
 				Trend{groupBy ? ` · by ${groupByLabel.toLowerCase()}` : ''}
 			</div>
@@ -661,7 +669,7 @@
 			/>
 		</div>
 
-		<div class="space-y-3 rounded-lg border p-4">
+		<div class="space-y-3 rounded-md border p-4">
 			<div class="flex flex-wrap items-center gap-2">
 				<Button
 					variant={compareMode ? 'secondary' : 'outline'}
@@ -805,7 +813,7 @@
 		</div>
 
 		{#if sandwich && !compareMode}
-			<div class="space-y-3 rounded-lg border p-4">
+			<div class="space-y-3 rounded-md border p-4">
 				<div class="flex items-center justify-between gap-2">
 					<div class="min-w-0">
 						<div class="text-sm font-medium">Function detail</div>
@@ -820,7 +828,12 @@
 				<div class="grid gap-4 lg:grid-cols-2">
 					<div>
 						<div class="mb-1 text-xs font-medium text-muted-foreground">Callers</div>
-						<FlameGraph data={sandwich.callers} unit={activeUnit} controls={false} inverted={true} />
+						<FlameGraph
+							data={sandwich.callers}
+							unit={activeUnit}
+							controls={false}
+							inverted={true}
+						/>
 					</div>
 					<div>
 						<div class="mb-1 text-xs font-medium text-muted-foreground">Callees</div>

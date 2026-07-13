@@ -127,8 +127,7 @@
 						<p
 							class="min-w-0 flex-1 font-mono text-[15px]/6 break-words whitespace-pre-wrap text-foreground"
 						>
-							{#if messageColon > 0}<span
-									class="font-semibold text-rose-600 dark:text-rose-400"
+							{#if messageColon > 0}<span class="font-semibold text-rose-600 dark:text-rose-400"
 									>{parsed.errorMessage.slice(0, messageColon)}</span
 								>{parsed.errorMessage.slice(messageColon)}{:else}{parsed.errorMessage}{/if}
 						</p>
@@ -227,7 +226,7 @@
 				{/if}
 			</div>
 		{:else}
-			<div class="overflow-x-auto rounded-lg border bg-muted/40">
+			<div class="overflow-x-auto rounded-md border bg-muted/40">
 				<pre
 					class="w-fit min-w-full p-4 font-mono text-sm whitespace-pre text-foreground">{stackTrace}</pre>
 			</div>

@@ -320,7 +320,7 @@
 <div class="space-y-4">
 	<!-- Row 1: Title + TimeRangePicker -->
 	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-		<h2 class="text-2xl font-bold tracking-tight">Issues</h2>
+		<h2 class="text-3xl font-semibold tracking-tight">Issues</h2>
 		<div class="w-full sm:w-auto">
 			<TimeRangePicker
 				bind:fromDate
@@ -346,7 +346,7 @@
 	<!-- Archive Toolbar - shown when items selected -->
 	{#if selectedCount > 0}
 		<div
-			class="flex animate-in items-center gap-3 rounded-lg border bg-muted/50 p-3 duration-200 fade-in slide-in-from-top-1"
+			class="flex animate-in items-center gap-3 rounded-md border bg-muted/50 p-3 duration-200 fade-in slide-in-from-top-1"
 		>
 			<span class="text-sm font-medium"
 				>{selectedCount} issue{selectedCount === 1 ? '' : 's'} selected</span
@@ -459,7 +459,9 @@
 								)}
 							>
 								<div class="min-w-0">
-									<div class="truncate text-[15px]/6 font-semibold text-foreground group-hover:text-primary dark:group-hover:text-blue-300">
+									<div
+										class="truncate text-[15px]/6 font-semibold text-foreground group-hover:text-primary dark:group-hover:text-blue-300"
+									>
 										{errorType}
 									</div>
 									{#if errorMessage}

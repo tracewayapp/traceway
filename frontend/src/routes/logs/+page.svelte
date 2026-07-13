@@ -380,7 +380,7 @@
 
 <div class="space-y-4">
 	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-		<h2 class="text-2xl font-bold tracking-tight">Logs</h2>
+		<h2 class="text-3xl font-semibold tracking-tight">Logs</h2>
 		<div class="w-full sm:w-auto">
 			<TimeRangePicker
 				bind:fromDate

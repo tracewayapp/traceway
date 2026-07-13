@@ -452,9 +452,9 @@
 	});
 </script>
 
-<div class="space-y-2">
+<div class="space-y-4">
 	<div>
-		<h1 class="text-2xl font-semibold tracking-tight">Alerts</h1>
+		<h1 class="text-3xl font-semibold tracking-tight">Alerts</h1>
 	</div>
 
 	<div class="flex items-center justify-between">

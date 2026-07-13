@@ -383,7 +383,7 @@
 										{/each}
 										{#if getMessageText(msg.content)}
 											<div
-												class="rounded-lg px-3 py-2 text-sm break-words whitespace-pre-wrap
+												class="rounded-md px-3 py-2 text-sm break-words whitespace-pre-wrap
 												{msg.role === 'user'
 													? 'bg-primary/10'
 													: msg.role === 'system'

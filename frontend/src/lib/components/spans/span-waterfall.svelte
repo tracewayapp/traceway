@@ -70,7 +70,7 @@
 	let timelineElement: HTMLDivElement;
 </script>
 
-<ScrollArea orientation="horizontal" class="p-relative rounded-lg border border-border">
+<ScrollArea orientation="horizontal" class="p-relative rounded-md border border-border">
 	<div class="relative overflow-hidden">
 		<!-- Header -->
 		<div class="flex border-b border-border bg-muted/30">

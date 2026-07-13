@@ -163,7 +163,17 @@
 		projectWithToken ? getCodeLanguage(projectWithToken.framework) : ('go' as const)
 	);
 
-	const highlightLanguage = $derived(codeLanguage === 'javascript' ? javascript : codeLanguage === 'php' ? php : codeLanguage === 'python' ? python : codeLanguage === 'bash' ? bash : go);
+	const highlightLanguage = $derived(
+		codeLanguage === 'javascript'
+			? javascript
+			: codeLanguage === 'php'
+				? php
+				: codeLanguage === 'python'
+					? python
+					: codeLanguage === 'bash'
+						? bash
+						: go
+	);
 
 	const testingRouteCode = $derived(getTestingRouteCode(projectWithToken?.framework));
 	const testingRouteCode2 = $derived(getTestingRouteCode2(projectWithToken?.framework));
@@ -538,7 +548,7 @@ service:
 									</Button>
 								</div>
 								<div
-									class="overflow-x-auto rounded-lg text-sm {themeState.isDark
+									class="overflow-x-auto rounded-md text-sm {themeState.isDark
 										? 'dark-code'
 										: 'light-code'}"
 								>
@@ -579,10 +589,7 @@ service:
 						</div>
 					</div>
 				{:else if isOtelGeneric}
-					<OtelSetupSteps
-						backendUrl={projectWithToken.backendUrl}
-						token={projectWithToken.token}
-					/>
+					<OtelSetupSteps backendUrl={projectWithToken.backendUrl} token={projectWithToken.token} />
 				{:else if isOtel}
 					<!-- OTel Step 1: Install an OTel SDK -->
 					<div class="rounded-md border bg-card">
@@ -699,7 +706,7 @@ service:
 									</Button>
 								</div>
 								<div
-									class="overflow-x-auto rounded-lg text-sm {themeState.isDark
+									class="overflow-x-auto rounded-md text-sm {themeState.isDark
 										? 'dark-code'
 										: 'light-code'}"
 								>
@@ -740,7 +747,7 @@ service:
 									</Button>
 								</div>
 								<div
-									class="overflow-x-auto rounded-lg text-sm {themeState.isDark
+									class="overflow-x-auto rounded-md text-sm {themeState.isDark
 										? 'dark-code'
 										: 'light-code'}"
 								>
@@ -781,7 +788,7 @@ service:
 									</Button>
 								</div>
 								<div
-									class="overflow-x-auto rounded-lg text-sm {themeState.isDark
+									class="overflow-x-auto rounded-md text-sm {themeState.isDark
 										? 'dark-code'
 										: 'light-code'}"
 								>
@@ -790,28 +797,28 @@ service:
 							</div>
 
 							{#if testingRouteCode2}
-							<div class="flex justify-center p-2 italic">or</div>
+								<div class="flex justify-center p-2 italic">or</div>
 
-							<div class="relative">
-								<div class="absolute top-2 right-2 z-10">
-									<Button variant="outline" size="sm" onclick={copyTesting2}>
-										{#if copiedTesting2}
-											<Check class="mr-2 h-4 w-4 text-green-500" />
-											Copied!
-										{:else}
-											<Copy class="mr-2 h-4 w-4" />
-											Copy
-										{/if}
-									</Button>
+								<div class="relative">
+									<div class="absolute top-2 right-2 z-10">
+										<Button variant="outline" size="sm" onclick={copyTesting2}>
+											{#if copiedTesting2}
+												<Check class="mr-2 h-4 w-4 text-green-500" />
+												Copied!
+											{:else}
+												<Copy class="mr-2 h-4 w-4" />
+												Copy
+											{/if}
+										</Button>
+									</div>
+									<div
+										class="overflow-x-auto rounded-md text-sm {themeState.isDark
+											? 'dark-code'
+											: 'light-code'}"
+									>
+										<Highlight language={highlightLanguage} code={testingRouteCode2} />
+									</div>
 								</div>
-								<div
-									class="overflow-x-auto rounded-lg text-sm {themeState.isDark
-										? 'dark-code'
-										: 'light-code'}"
-								>
-									<Highlight language={highlightLanguage} code={testingRouteCode2} />
-								</div>
-							</div>
 							{/if}
 						</div>
 					</div>
@@ -869,7 +876,9 @@ service:
 						fromDateUTC={starredFromUTC}
 						toDateUTC={starredToUTC}
 						timeDomain={null}
-						onReorderWidgets={projectsState.canWriteCurrentProject ? handleReorderStarred : undefined}
+						onReorderWidgets={projectsState.canWriteCurrentProject
+							? handleReorderStarred
+							: undefined}
 						onResizeWidget={projectsState.canWriteCurrentProject ? handleResizeStarred : undefined}
 						onToggleStar={projectsState.canWriteCurrentProject ? handleUnstar : undefined}
 					/>

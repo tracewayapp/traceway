@@ -171,7 +171,7 @@ service:
 
 <div class="space-y-4">
 	<div>
-		<h2 class="text-2xl font-bold tracking-tight">Connection</h2>
+		<h2 class="text-3xl font-semibold tracking-tight">Connection</h2>
 		<p class="text-muted-foreground">Connect your application to Traceway using the SDK</p>
 	</div>
 
@@ -267,7 +267,7 @@ service:
 									</Button>
 								</div>
 								<div
-									class="overflow-x-auto rounded-lg text-sm {themeState.isDark
+									class="overflow-x-auto rounded-md text-sm {themeState.isDark
 										? 'dark-code'
 										: 'light-code'}"
 								>
@@ -318,7 +318,7 @@ service:
 							</Button>
 						</div>
 						<div
-							class="overflow-x-auto rounded-lg text-sm {themeState.isDark
+							class="overflow-x-auto rounded-md text-sm {themeState.isDark
 								? 'dark-code'
 								: 'light-code'}"
 						>
@@ -347,7 +347,7 @@ service:
 							</Button>
 						</div>
 						<div
-							class="overflow-x-auto rounded-lg text-sm {themeState.isDark
+							class="overflow-x-auto rounded-md text-sm {themeState.isDark
 								? 'dark-code'
 								: 'light-code'}"
 						>

@@ -91,7 +91,7 @@ span.End()`;
 		<div class="mb-4 w-full max-w-xl text-left">
 			<p class="mb-2 text-xs text-muted-foreground">Example usage:</p>
 			<div
-				class="overflow-hidden rounded-lg text-sm {themeState.isDark ? 'dark-code' : 'light-code'}"
+				class="overflow-hidden rounded-md text-sm {themeState.isDark ? 'dark-code' : 'light-code'}"
 			>
 				<Highlight language={go} code={codeExample} />
 			</div>

@@ -214,7 +214,7 @@ service:
 				<CardContent>
 					<div class="space-y-6">
 						<div>
-							<p class="mb-2 text-sm font-medium">Step 1 — OTLP Traces Endpoint</p>
+							<p class="mb-2 text-sm font-medium">Step 1: OTLP Traces Endpoint</p>
 							<p class="mb-2 text-xs text-muted-foreground">
 								Enter this URL when creating your OTLP destination in the Cloudflare dashboard.
 							</p>
@@ -232,7 +232,7 @@ service:
 							</div>
 						</div>
 						<div>
-							<p class="mb-2 text-sm font-medium">Step 2 — Authorization Header</p>
+							<p class="mb-2 text-sm font-medium">Step 2: Authorization Header</p>
 							<p class="mb-2 text-xs text-muted-foreground">
 								Add this as an authorization header in your OTLP destination settings.
 							</p>
@@ -250,7 +250,7 @@ service:
 							</div>
 						</div>
 						<div>
-							<p class="mb-2 text-sm font-medium">Step 3 — wrangler.jsonc</p>
+							<p class="mb-2 text-sm font-medium">Step 3: wrangler.jsonc</p>
 							<p class="mb-2 text-xs text-muted-foreground">
 								Enable observability traces in your wrangler.jsonc configuration file.
 							</p>
@@ -276,7 +276,7 @@ service:
 							</div>
 						</div>
 						<div>
-							<p class="mb-2 text-sm font-medium">Step 4 — Deploy</p>
+							<p class="mb-2 text-sm font-medium">Step 4: Deploy</p>
 							<div class="flex items-center gap-2">
 								<code class="flex-1 rounded-md bg-muted px-3 py-2 font-mono text-sm break-all"
 									>npx wrangler deploy</code

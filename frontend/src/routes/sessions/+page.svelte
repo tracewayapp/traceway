@@ -413,12 +413,12 @@
             </Table.Body>
             {:else if sessions.length === 0}
             <Table.Body>
-                <TableEmptyState colspan={4} message="No sessions recorded yet — enable recordAllSessions in the SDK to start capturing them." />
+                <TableEmptyState colspan={4} message="No sessions recorded yet. Enable recordAllSessions in the SDK to start capturing them." />
             </Table.Body>
             {:else}
             <Table.Header>
                 <Table.Row>
-                    <TracewayTableHeader label="Session" tooltip="Session UUID — open to play back the recording" />
+                    <TracewayTableHeader label="Session" tooltip="Session UUID. Open to play back the recording." />
                     <TracewayTableHeader
                         label="Started"
                         tooltip="When the session began"

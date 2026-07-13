@@ -324,7 +324,7 @@ $kernel->terminate($request, $response);`;
 
 		case 'laravel':
 			return `<?php
-// .env  — point the OTLP exporter at Traceway
+// .env  - point the OTLP exporter at Traceway
 //
 // OTEL_SERVICE_NAME=my-laravel-app
 // OTEL_TRACES_EXPORTER=otlp
@@ -337,14 +337,14 @@ $kernel->terminate($request, $response);`;
 // Optional: send Laravel logs to Traceway via the auto-injected 'otlp' channel
 // LOG_CHANNEL=otlp
 
-// That's it — keepsuit/laravel-opentelemetry's service provider auto-registers
+// That's it - keepsuit/laravel-opentelemetry's service provider auto-registers
 // TraceRequestMiddleware as a global middleware, so every HTTP request, DB query,
 // queued job, Redis call, cache op, view render and outbound Http:: call is
 // traced automatically. Open config/opentelemetry.php to tune which
 // instrumentations are enabled.`;
 
 		case 'django':
-			return `# .env  — point the OTLP exporter at Traceway
+			return `# .env  - point the OTLP exporter at Traceway
 #
 # OTEL_SERVICE_NAME=my-django-app
 # OTEL_TRACES_EXPORTER=otlp
@@ -355,7 +355,7 @@ $kernel->terminate($request, $response);`;
 # OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer%20${token || 'YOUR_TOKEN'}
 # OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true
 
-# Then launch Django through the OTel agent — no code changes needed:
+# Then launch Django through the OTel agent - no code changes needed:
 #
 #   opentelemetry-instrument python manage.py runserver
 #   opentelemetry-instrument gunicorn myproject.wsgi:application

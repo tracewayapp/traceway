@@ -373,7 +373,7 @@
 								<Badge variant="outline" class="font-sans">Stream</Badge>
 							</Tooltip.Trigger>
 							<Tooltip.Content side="bottom" class="max-w-xs">
-								Streaming endpoint — latency metrics aren't tracked.
+								Streaming endpoint. Latency metrics aren't tracked.
 							</Tooltip.Content>
 						</Tooltip.Root>
 					{/if}

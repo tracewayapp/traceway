@@ -10,7 +10,7 @@
 >
 	<FlaskConical class="size-4 shrink-0 text-blue-600 dark:text-blue-400" />
 	<span class="min-w-0 flex-1">
-		Profiles is experimental — we're actively building out continuous profiling and would love your
+		Profiles is experimental. We're actively building out continuous profiling and would love your
 		feedback.
 	</span>
 	<Button

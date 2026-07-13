@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as Alert from '$lib/components/ui/alert';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -61,11 +62,15 @@
 				</AlertDialog.Description>
 			</AlertDialog.Header>
 			<div class="space-y-3">
+				<Alert.Root
+					class="border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200"
+				>
+					<TriangleAlert class="text-amber-600 dark:text-amber-400" />
+					<Alert.Description class="text-amber-800 dark:text-amber-300">
+						Store it somewhere safe. This is the only time it will be shown.
+					</Alert.Description>
+				</Alert.Root>
 				<CopyableInline value={createdToken} />
-				<p class="flex items-center gap-2 text-sm text-amber-600">
-					<TriangleAlert class="h-4 w-4 shrink-0" />
-					Store it somewhere safe — this is the only time it will be shown.
-				</p>
 			</div>
 			<AlertDialog.Footer>
 				<Button onclick={() => handleOpenChange(false)}>Done</Button>

@@ -121,7 +121,7 @@
 		{ value: 'lg', label: 'Large' }
 	];
 
-	// Static maps — Tailwind can't extract dynamically-built class names
+	// Static maps - Tailwind can't extract dynamically-built class names
 	const colSpanClass: Record<number, string> = {
 		1: 'md:col-span-1',
 		2: 'md:col-span-2',

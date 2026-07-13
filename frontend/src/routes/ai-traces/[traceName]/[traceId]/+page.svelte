@@ -91,7 +91,7 @@
 
 		const messages: ChatMessage[] = [];
 
-		// Extract input messages — could be {messages: [...]} or just [...]
+		// Extract input messages - could be {messages: [...]} or just [...]
 		const inputMessages =
 			inputParsed?.messages ?? (Array.isArray(inputParsed) ? inputParsed : null);
 		if (!Array.isArray(inputMessages)) return null;

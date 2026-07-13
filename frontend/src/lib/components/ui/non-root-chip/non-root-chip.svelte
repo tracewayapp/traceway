@@ -11,8 +11,8 @@
 	const label = $derived(mixed ? 'Mixed' : 'Non Root');
 	const tooltip = $derived(
 		mixed
-			? 'Some runs were triggered by another trace — see the distributed trace view.'
-			: 'Triggered by another trace — see the distributed trace view.'
+			? 'Some runs were triggered by another trace. See the distributed trace view.'
+			: 'Triggered by another trace. See the distributed trace view.'
 	);
 </script>
 

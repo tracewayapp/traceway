@@ -47,7 +47,7 @@
         $effect(() => {
             if (!providersLoaded) return;
 
-            // Password login is disabled — this page is inaccessible, send to login.
+            // Password login is disabled - this page is inaccessible, send to login.
             if (!passwordLoginEnabled) {
                 goto("/login");
                 return;

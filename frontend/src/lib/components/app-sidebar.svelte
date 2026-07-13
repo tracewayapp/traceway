@@ -34,7 +34,7 @@
 
 	const hiddenForFrontend = new Set(['Dashboard', 'Logs', 'Endpoints', 'Tasks', 'Profiles', 'Metrics', 'AI Traces']);
 	const hiddenForCloudflare = new Set(['Metrics']);
-	// Items that only make sense for frontend (browser) projects — dropped from
+	// Items that only make sense for frontend (browser) projects - dropped from
 	// the sidebar for any other framework, so a Go backend project doesn't
 	// surface a Sessions tab that can never be populated.
 	const frontendOnly = new Set(['Sessions']);

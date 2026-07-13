@@ -323,7 +323,7 @@
 	}
 
 	function handleSeverityChange(value: string) {
-		// Keep severity as pending query state — applied on the next Go press,
+		// Keep severity as pending query state - applied on the next Go press,
 		// same as the search input. Avoids triggering a re-fetch on every
 		// dropdown change.
 		minSeverity = Number(value) || 0;

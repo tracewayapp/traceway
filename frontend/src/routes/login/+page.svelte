@@ -41,7 +41,7 @@
 
     if (!__CLOUD_MODE__) {
         $effect(() => {
-            // Wait for providers to load — if password login is disabled, skip the /register redirect.
+            // Wait for providers to load - if password login is disabled, skip the /register redirect.
             if (!providersLoaded) return;
             if (!passwordLoginEnabled) return;
 

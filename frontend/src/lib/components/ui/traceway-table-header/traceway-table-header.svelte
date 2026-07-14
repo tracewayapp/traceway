@@ -38,7 +38,7 @@
 			<Button
 				variant="ghost"
 				size="sm"
-				class={cn("h-8 font-medium", !alignRight && "-ml-3")}
+				class={cn("h-8 text-[15px] font-medium", !alignRight && "-ml-3")}
 				onclick={() => onSort?.(sortField!)}
 			>
 				{label}

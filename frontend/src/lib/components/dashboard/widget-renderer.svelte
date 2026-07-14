@@ -60,7 +60,7 @@
 	let singleValue = $state<number | null>(null);
 	let resolvedUnit = $state('');
 
-	const colors = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899'];
+	const colors = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)', 'var(--crit)'];
 
 	const effectiveUnit = $derived(widget.config.unit ?? resolvedUnit);
 

@@ -2,7 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { Globe, Play, Pause, Maximize, Minimize } from 'lucide-svelte';
 	import type { eventWithTime } from '@rrweb/types';
-	// Static side-effect import — keeps the rrweb-player stylesheet attached
+	// Static side-effect import - keeps the rrweb-player stylesheet attached
 	// to the page for the lifetime of the SPA, even across mount/unmount cycles.
 	// A dynamic import inside onMount would let Vite's HMR dispose the style
 	// node when the component unmounts, leaving the next mount with no

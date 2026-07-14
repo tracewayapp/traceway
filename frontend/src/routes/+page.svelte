@@ -22,6 +22,7 @@
 	import WidgetGrid from '$lib/components/dashboard/widget-grid.svelte';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { ImpactBadge } from '$lib/components/ui/impact-badge';
+	import EndpointName from '$lib/components/endpoint-name.svelte';
 	import { ViewAllTableRow } from '$lib/components/ui/view-all-table-row';
 	import { api } from '$lib/api';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
@@ -162,7 +163,17 @@
 		projectWithToken ? getCodeLanguage(projectWithToken.framework) : ('go' as const)
 	);
 
-	const highlightLanguage = $derived(codeLanguage === 'javascript' ? javascript : codeLanguage === 'php' ? php : codeLanguage === 'python' ? python : codeLanguage === 'bash' ? bash : go);
+	const highlightLanguage = $derived(
+		codeLanguage === 'javascript'
+			? javascript
+			: codeLanguage === 'php'
+				? php
+				: codeLanguage === 'python'
+					? python
+					: codeLanguage === 'bash'
+						? bash
+						: go
+	);
 
 	const testingRouteCode = $derived(getTestingRouteCode(projectWithToken?.framework));
 	const testingRouteCode2 = $derived(getTestingRouteCode2(projectWithToken?.framework));
@@ -537,7 +548,7 @@ service:
 									</Button>
 								</div>
 								<div
-									class="overflow-x-auto rounded-lg text-sm {themeState.isDark
+									class="overflow-x-auto rounded-md text-sm {themeState.isDark
 										? 'dark-code'
 										: 'light-code'}"
 								>
@@ -578,10 +589,7 @@ service:
 						</div>
 					</div>
 				{:else if isOtelGeneric}
-					<OtelSetupSteps
-						backendUrl={projectWithToken.backendUrl}
-						token={projectWithToken.token}
-					/>
+					<OtelSetupSteps backendUrl={projectWithToken.backendUrl} token={projectWithToken.token} />
 				{:else if isOtel}
 					<!-- OTel Step 1: Install an OTel SDK -->
 					<div class="rounded-md border bg-card">
@@ -698,7 +706,7 @@ service:
 									</Button>
 								</div>
 								<div
-									class="overflow-x-auto rounded-lg text-sm {themeState.isDark
+									class="overflow-x-auto rounded-md text-sm {themeState.isDark
 										? 'dark-code'
 										: 'light-code'}"
 								>
@@ -739,7 +747,7 @@ service:
 									</Button>
 								</div>
 								<div
-									class="overflow-x-auto rounded-lg text-sm {themeState.isDark
+									class="overflow-x-auto rounded-md text-sm {themeState.isDark
 										? 'dark-code'
 										: 'light-code'}"
 								>
@@ -780,7 +788,7 @@ service:
 									</Button>
 								</div>
 								<div
-									class="overflow-x-auto rounded-lg text-sm {themeState.isDark
+									class="overflow-x-auto rounded-md text-sm {themeState.isDark
 										? 'dark-code'
 										: 'light-code'}"
 								>
@@ -789,28 +797,28 @@ service:
 							</div>
 
 							{#if testingRouteCode2}
-							<div class="flex justify-center p-2 italic">or</div>
+								<div class="flex justify-center p-2 italic">or</div>
 
-							<div class="relative">
-								<div class="absolute top-2 right-2 z-10">
-									<Button variant="outline" size="sm" onclick={copyTesting2}>
-										{#if copiedTesting2}
-											<Check class="mr-2 h-4 w-4 text-green-500" />
-											Copied!
-										{:else}
-											<Copy class="mr-2 h-4 w-4" />
-											Copy
-										{/if}
-									</Button>
+								<div class="relative">
+									<div class="absolute top-2 right-2 z-10">
+										<Button variant="outline" size="sm" onclick={copyTesting2}>
+											{#if copiedTesting2}
+												<Check class="mr-2 h-4 w-4 text-green-500" />
+												Copied!
+											{:else}
+												<Copy class="mr-2 h-4 w-4" />
+												Copy
+											{/if}
+										</Button>
+									</div>
+									<div
+										class="overflow-x-auto rounded-md text-sm {themeState.isDark
+											? 'dark-code'
+											: 'light-code'}"
+									>
+										<Highlight language={highlightLanguage} code={testingRouteCode2} />
+									</div>
 								</div>
-								<div
-									class="overflow-x-auto rounded-lg text-sm {themeState.isDark
-										? 'dark-code'
-										: 'light-code'}"
-								>
-									<Highlight language={highlightLanguage} code={testingRouteCode2} />
-								</div>
-							</div>
 							{/if}
 						</div>
 					</div>
@@ -851,7 +859,7 @@ service:
 				<div>
 					<div class="items-bottom mb-4 flex gap-1">
 						<div class="mr-2 flex h-8 w-8 items-center justify-center rounded-md bg-yellow-500/10">
-							<Star class="h-5 w-5 fill-yellow-500 text-yellow-500" />
+							<Star class="h-5 w-5 fill-yellow-400 text-yellow-400" />
 						</div>
 						<h2 class="text-2xl font-bold tracking-tight">Starred</h2>
 						<Tooltip.Root>
@@ -868,7 +876,9 @@ service:
 						fromDateUTC={starredFromUTC}
 						toDateUTC={starredToUTC}
 						timeDomain={null}
-						onReorderWidgets={projectsState.canWriteCurrentProject ? handleReorderStarred : undefined}
+						onReorderWidgets={projectsState.canWriteCurrentProject
+							? handleReorderStarred
+							: undefined}
 						onResizeWidget={projectsState.canWriteCurrentProject ? handleResizeStarred : undefined}
 						onToggleStar={projectsState.canWriteCurrentProject ? handleUnstar : undefined}
 					/>
@@ -938,7 +948,7 @@ service:
 												class="max-w-[300px] truncate py-3 font-mono text-sm"
 												title={endpoint.endpoint}
 											>
-												{endpoint.endpoint}
+												<EndpointName endpoint={endpoint.endpoint} />
 											</Table.Cell>
 											<Table.Cell class="py-3 text-right tabular-nums">
 												{endpoint.count.toLocaleString()}
@@ -1030,12 +1040,23 @@ service:
 							</Table.Header>
 							<Table.Body>
 								{#each data.recentIssues as issue}
+									{@const issueFirstLine = issue.stackTrace.split('\n')[0]}
+									{@const issueColon = issueFirstLine.indexOf(':')}
 									<Table.Row
 										class="cursor-pointer hover:bg-muted/50"
 										onclick={createRowClickHandler(`/issues/${issue.exceptionHash}`)}
 									>
-										<Table.Cell class="py-3 font-mono text-sm" title={issue.stackTrace}>
-											{truncateStackTrace(issue.stackTrace)}
+										<Table.Cell class="max-w-[480px] py-3" title={issue.stackTrace}>
+											<div class="min-w-0">
+												<div class="truncate text-[15px]/6 font-semibold text-foreground">
+													{issueColon > 0 ? issueFirstLine.slice(0, issueColon) : issueFirstLine}
+												</div>
+												{#if issueColon > 0}
+													<div class="truncate text-sm text-muted-foreground">
+														{issueFirstLine.slice(issueColon + 1).trim()}
+													</div>
+												{/if}
+											</div>
 										</Table.Cell>
 										<Table.Cell class="py-3 text-right font-medium tabular-nums">
 											{issue.count}

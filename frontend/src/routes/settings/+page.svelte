@@ -54,9 +54,9 @@
     });
 </script>
 
-<div class="space-y-6">
+<div class="space-y-4">
     <div>
-        <h1 class="text-2xl font-semibold tracking-tight">Settings</h1>
+        <h1 class="text-3xl font-semibold tracking-tight">Settings</h1>
     </div>
 
     {#if loading}
@@ -68,7 +68,7 @@
             {error}
         </div>
     {:else}
-        <div class="space-y-6">
+        <div class="space-y-4">
             <OrganizationTab />
             <UsersTab organizationId={currentOrganizationId!} />
             {#if BillingTab}

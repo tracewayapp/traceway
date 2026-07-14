@@ -64,13 +64,14 @@
 		const d = row.flat - base;
 		if (d === 0) return { text: '—', cls: 'text-muted-foreground' };
 		const sign = d > 0 ? '+' : '−';
-		const cls = d > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400';
+		const cls =
+			d > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400';
 		return { text: `${sign}${formatValue(unit, Math.abs(d))}`, cls };
 	}
 </script>
 
 {#if rows.length}
-	<div class="overflow-hidden rounded-lg border" data-testid="top-functions">
+	<div class="overflow-hidden rounded-md border" data-testid="top-functions">
 		<Table.Root>
 			<Table.Header>
 				<Table.Row>
@@ -86,7 +87,11 @@
 					/>
 					<TracewayTableHeader label="Flat %" align="right" />
 					{#if baselineRows}
-						<TracewayTableHeader label="Δ Flat" tooltip="Change in flat vs baseline" align="right" />
+						<TracewayTableHeader
+							label="Δ Flat"
+							tooltip="Change in flat vs baseline"
+							align="right"
+						/>
 					{/if}
 					<TracewayTableHeader
 						label="Cumulative"
@@ -112,7 +117,7 @@
 						<Table.Cell class="text-right tabular-nums">
 							{formatValue(unit, row.flat)}
 						</Table.Cell>
-						<Table.Cell class="text-right tabular-nums text-muted-foreground">
+						<Table.Cell class="text-right text-muted-foreground tabular-nums">
 							{pct(row.flatPct)}
 						</Table.Cell>
 						{#if baselineRows}
@@ -127,7 +132,9 @@
 								<div class="h-1.5 w-16 shrink-0 overflow-hidden rounded bg-muted">
 									<div class="h-full bg-primary" style="width: {Math.min(100, row.cumPct)}%"></div>
 								</div>
-								<span class="w-12 text-right tabular-nums text-muted-foreground">{pct(row.cumPct)}</span>
+								<span class="w-12 text-right text-muted-foreground tabular-nums"
+									>{pct(row.cumPct)}</span
+								>
 							</div>
 						</Table.Cell>
 					</Table.Row>

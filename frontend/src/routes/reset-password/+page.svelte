@@ -6,6 +6,7 @@
     import { Label } from "$lib/components/ui/label";
     import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "$lib/components/ui/card";
     import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
+    import { ErrorAlert } from "$lib/components/ui/error-alert";
     import { CircleAlert, CircleCheck, Loader2 } from "@lucide/svelte";
     import { themeState } from '$lib/state/theme.svelte';
 
@@ -107,10 +108,10 @@
                     <p class="mt-4 text-sm text-muted-foreground">Validating reset link...</p>
                 </div>
             {:else if !tokenValid}
-                <Alert variant="destructive" class="bg-red-50 border-red-200">
-                    <CircleAlert class="h-4 w-4 text-red-700" />
-                    <AlertTitle class="text-red-800">Invalid Link</AlertTitle>
-                    <AlertDescription class="text-red-700">
+                <Alert variant="destructive">
+                    <CircleAlert class="h-4 w-4" />
+                    <AlertTitle>Invalid Link</AlertTitle>
+                    <AlertDescription>
                         This password reset link is invalid or has expired. Please request a new one.
                     </AlertDescription>
                 </Alert>
@@ -124,13 +125,7 @@
                 </Alert>
             {:else}
                 {#if error}
-                    <Alert variant="destructive" class="mb-4 bg-red-50 border-red-200">
-                        <CircleAlert class="h-4 w-4 text-red-700" />
-                        <AlertTitle class="text-red-800">Error</AlertTitle>
-                        <AlertDescription class="text-red-700">
-                            {error}
-                        </AlertDescription>
-                    </Alert>
+                    <ErrorAlert {error} class="mb-4" />
                 {/if}
                 <p class="text-sm text-muted-foreground mb-4">
                     Enter a new password for your account.

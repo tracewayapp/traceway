@@ -1,7 +1,7 @@
 {
 	"name": "frontend",
 	"private": true,
-	"version": "1.8.16",
+	"version": "1.8.17",
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
@@ -58,6 +58,7 @@
 		"vitest": "^4.1.9"
 	},
 	"dependencies": {
+		"@fontsource-variable/inter": "^5.2.8",
 		"@fontsource/ibm-plex-mono": "^5.2.7",
 		"@fontsource/jetbrains-mono": "^5.2.8",
 		"@sveltejs/svelte-json-tree": "^2.2.1",

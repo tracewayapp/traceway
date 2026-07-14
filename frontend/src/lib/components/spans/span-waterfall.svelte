@@ -70,7 +70,7 @@
 	let timelineElement: HTMLDivElement;
 </script>
 
-<ScrollArea orientation="horizontal" class="p-relative rounded-lg border border-border">
+<ScrollArea orientation="horizontal" class="p-relative rounded-md border border-border">
 	<div class="relative overflow-hidden">
 		<!-- Header -->
 		<div class="flex border-b border-border bg-muted/30">
@@ -116,7 +116,7 @@
 
 		{#if isHovered}
 			<div
-				class="pointer-events-none absolute top-[28px] bottom-0 border-l border-gray-300"
+				class="pointer-events-none absolute top-[28px] bottom-0 border-l border-border"
 				style="left: {tooltipX + nameColumnWidth}px"
 			></div>
 			<div class="absolute top-[1px] -translate-x-1/2" style="left: {tooltipX + nameColumnWidth}px">

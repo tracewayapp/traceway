@@ -29,7 +29,7 @@
 		</Button>
 	</div>
 	<code
-		class="block rounded-lg bg-muted py-3 pr-24 pl-4 font-mono text-sm break-words whitespace-pre-wrap text-foreground"
+		class="block rounded-md bg-muted py-3 pr-24 pl-4 font-mono text-sm break-words whitespace-pre-wrap text-foreground"
 	>
 		{#each parts as part, i (i)}
 			{#if part.bold}

@@ -24,6 +24,7 @@
 	import { CalendarDate } from '@internationalized/date';
 	import { Trash2, Plus, Pencil, Check, RefreshCw, CircleAlert, EllipsisVertical, Sparkles } from 'lucide-svelte';
 	import * as Alert from '$lib/components/ui/alert';
+	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { toast } from 'svelte-sonner';
 	import type { DiscoveredMetric } from '$lib/types/dashboard';
@@ -237,7 +238,7 @@
 				{ name: newName },
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
-			toast.success('Successfully created a new Widget Group', { position: 'top-center' });
+			toast.success('Successfully created the Widget Group', { position: 'top-center' });
 			showCreateDialog = false;
 			newName = '';
 			await loadWidgetGroups();
@@ -491,7 +492,7 @@
 				await api.post(`/widget-groups/${activeGroup.id}/widgets`, data, {
 					projectId: projectsState.currentProjectId ?? undefined
 				});
-				toast.success('Successfully added the Widget', { position: 'top-center' });
+				toast.success('Successfully created the Widget', { position: 'top-center' });
 			}
 			showWidgetConfig = false;
 			editingWidget = null;
@@ -524,8 +525,8 @@
 </script>
 
 <div class="space-y-4">
-	<div class="mb-2 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-		<h2 class="text-2xl font-bold tracking-tight">Metrics</h2>
+	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+		<h2 class="text-3xl font-semibold tracking-tight">Metrics</h2>
 		<div class="flex items-center gap-2">
 			<TimeRangePicker
 				bind:fromDate
@@ -558,7 +559,7 @@
 								: 'Populate default charts'}
 					</Button>
 				{/if}
-				<Button variant="outline" onclick={() => (showCreateDialog = true)}>
+				<Button variant="success" onclick={() => (showCreateDialog = true)}>
 					<Plus class="mr-1 h-4 w-4" />
 					Create your own Widget Group
 				</Button>
@@ -721,13 +722,7 @@
 		<AlertDialog.Header>
 			<AlertDialog.Title>New Widget Group</AlertDialog.Title>
 		</AlertDialog.Header>
-		{#if createError}
-			<Alert.Root variant="destructive" class="border-red-200 bg-red-50">
-				<CircleAlert class="h-4 w-4 text-red-700" />
-				<Alert.Title class="text-red-800">Error</Alert.Title>
-				<Alert.Description class="text-red-700">{createError}</Alert.Description>
-			</Alert.Root>
-		{/if}
+		<ErrorAlert error={createError} />
 		<div class="space-y-4">
 			<div>
 				<label class="text-sm font-medium" for="new-group-name">Name</label>
@@ -736,7 +731,7 @@
 		</div>
 		<AlertDialog.Footer>
 			<Button variant="outline" onclick={() => (showCreateDialog = false)}>Cancel</Button>
-			<Button onclick={createWidgetGroup} disabled={creating}>
+			<Button variant="success" onclick={createWidgetGroup} disabled={creating}>
 				{#if creating}Creating...{:else}<Plus class="mr-1 h-4 w-4" /> New Widget Group{/if}
 			</Button>
 		</AlertDialog.Footer>
@@ -753,13 +748,7 @@
 		<AlertDialog.Header>
 			<AlertDialog.Title>Rename Widget Group</AlertDialog.Title>
 		</AlertDialog.Header>
-		{#if renameError}
-			<Alert.Root variant="destructive" class="border-red-200 bg-red-50">
-				<CircleAlert class="h-4 w-4 text-red-700" />
-				<Alert.Title class="text-red-800">Error</Alert.Title>
-				<Alert.Description class="text-red-700">{renameError}</Alert.Description>
-			</Alert.Root>
-		{/if}
+		<ErrorAlert error={renameError} />
 		<div class="space-y-4">
 			<div>
 				<label class="text-sm font-medium" for="rename-group-name">Name</label>
@@ -794,19 +783,14 @@
 				group. This action cannot be undone.
 			</AlertDialog.Description>
 		</AlertDialog.Header>
-		{#if deleteError}
-			<Alert.Root variant="destructive" class="border-red-200 bg-red-50">
-				<CircleAlert class="h-4 w-4 text-red-700" />
-				<Alert.Title class="text-red-800">Error</Alert.Title>
-				<Alert.Description class="text-red-700">{deleteError}</Alert.Description>
-			</Alert.Root>
-		{/if}
+		<ErrorAlert error={deleteError} />
 		<AlertDialog.Footer>
 			<Button variant="outline" onclick={() => (showDeleteDialog = false)} disabled={deleting}
 				>Cancel</Button
 			>
 			<Button variant="destructive" onclick={deleteWidgetGroup} disabled={deleting}>
-				{deleting ? 'Deleting...' : 'Delete'}
+				<Trash2 class="mr-1 h-4 w-4" />
+				{deleting ? 'Deleting...' : 'Delete Widget Group'}
 			</Button>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
@@ -825,13 +809,7 @@
 				Are you sure you want to delete "{deletingWidget?.title}"? This action cannot be undone.
 			</AlertDialog.Description>
 		</AlertDialog.Header>
-		{#if deleteWidgetError}
-			<Alert.Root variant="destructive" class="border-red-200 bg-red-50">
-				<CircleAlert class="h-4 w-4 text-red-700" />
-				<Alert.Title class="text-red-800">Error</Alert.Title>
-				<Alert.Description class="text-red-700">{deleteWidgetError}</Alert.Description>
-			</Alert.Root>
-		{/if}
+		<ErrorAlert error={deleteWidgetError} />
 		<AlertDialog.Footer>
 			<Button
 				variant="outline"
@@ -839,7 +817,8 @@
 				disabled={deletingWidgetLoading}>Cancel</Button
 			>
 			<Button variant="destructive" onclick={confirmDeleteWidget} disabled={deletingWidgetLoading}>
-				{deletingWidgetLoading ? 'Deleting...' : 'Delete'}
+				<Trash2 class="mr-1 h-4 w-4" />
+				{deletingWidgetLoading ? 'Deleting...' : 'Delete Widget'}
 			</Button>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>

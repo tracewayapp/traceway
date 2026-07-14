@@ -5,6 +5,7 @@
     import { projectsState } from '$lib/state/projects.svelte';
     import { consumeSsoReturnTo, safeLocalPath } from '$lib/utils/navigation';
     import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
+    import { ErrorAlert } from "$lib/components/ui/error-alert";
     import { CircleAlert } from "@lucide/svelte";
     import { LoadingCircle } from '$lib/components/ui/loading-circle';
 
@@ -53,11 +54,7 @@
 
 <div class="flex h-screen w-full items-center justify-center px-4">
     {#if error}
-        <Alert variant="destructive" class="max-w-md bg-red-50 border-red-200">
-            <CircleAlert class="h-4 w-4 text-red-700" />
-            <AlertTitle class="text-red-800">Error</AlertTitle>
-            <AlertDescription class="text-red-700">{error}</AlertDescription>
-        </Alert>
+        <ErrorAlert {error} class="max-w-md" />
     {:else}
         <LoadingCircle size="xlg" />
     {/if}

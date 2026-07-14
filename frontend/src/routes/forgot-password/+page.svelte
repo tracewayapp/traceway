@@ -4,6 +4,7 @@
     import { Label } from "$lib/components/ui/label";
     import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "$lib/components/ui/card";
     import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
+    import { ErrorAlert } from "$lib/components/ui/error-alert";
     import { CircleAlert, CircleCheck } from "@lucide/svelte";
     import { themeState } from '$lib/state/theme.svelte';
 
@@ -63,13 +64,7 @@
                 </Alert>
             {:else}
                 {#if error}
-                    <Alert variant="destructive" class="mb-4 bg-red-50 border-red-200">
-                        <CircleAlert class="h-4 w-4 text-red-700" />
-                        <AlertTitle class="text-red-800">Error</AlertTitle>
-                        <AlertDescription class="text-red-700">
-                            {error}
-                        </AlertDescription>
-                    </Alert>
+                    <ErrorAlert {error} class="mb-4" />
                 {/if}
                 <p class="text-sm text-muted-foreground mb-4">
                     Enter your email address and we'll send you a link to reset your password.

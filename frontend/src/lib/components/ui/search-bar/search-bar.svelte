@@ -39,10 +39,10 @@
 	const typeLabel = $derived(typeOptions.find((o) => o.value === typeValue)?.label ?? '');
 </script>
 
-<div class="-mt-2 flex">
+<div class="flex">
 	<Input
 		{placeholder}
-		class="h-9 w-[250px] rounded-r-none border-r-0 shadow-none focus-visible:border-r focus-visible:border-sidebar-accent focus-visible:ring-0 lg:w-[320px]"
+		class="h-9 w-[250px] rounded-r-none border-r-0 shadow-none focus-visible:border-r focus-visible:border-ring focus-visible:ring-0 lg:w-[320px]"
 		bind:value
 		onkeydown={(e) => {
 			if (e.key === 'Enter') onSearch();

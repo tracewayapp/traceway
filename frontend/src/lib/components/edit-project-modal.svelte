@@ -5,6 +5,7 @@
     import { Button } from "$lib/components/ui/button";
     import { Input } from "$lib/components/ui/input";
     import { Label } from "$lib/components/ui/label";
+    import { ErrorAlert } from "$lib/components/ui/error-alert";
     import { Checkbox } from "$lib/components/ui/checkbox";
     import { DEFAULT_HEALTHCHECK_PATHS } from '$lib/utils/healthcheck';
     import { projectsState, type Project, type Framework } from '$lib/state/projects.svelte';
@@ -123,7 +124,7 @@
 
         try {
             await projectsState.updateProject(project.id, projectName.trim(), selectedFramework, dropHealthyHealthchecks, healthcheckPaths, profileLabelAllowlist);
-            toast.success('Successfully updated the project', { position: 'top-center' });
+            toast.success('Successfully updated the Project', { position: 'top-center' });
             onOpenChange(false);
         } catch (err: any) {
             error = err instanceof Error ? err.message : 'Failed to update project';
@@ -138,7 +139,7 @@
         deleting = true;
         try {
             await projectsState.deleteProject(project.id, project.name);
-            toast.success('Successfully deleted the project', { position: 'top-center' });
+            toast.success('Successfully deleted the Project', { position: 'top-center' });
             showDeleteConfirm = false;
             onOpenChange(false);
             goto('/');
@@ -191,11 +192,7 @@
             </div>
         {:else}
             <form onsubmit={handleSubmit} class="px-6 pb-6 space-y-5">
-                {#if error}
-                    <div class="rounded-md bg-destructive/10 border border-destructive/20 p-3">
-                        <p class="text-sm text-destructive">{error}</p>
-                    </div>
-                {/if}
+                <ErrorAlert {error} />
 
                 {#if activeTab === 'project'}
                     <div class="space-y-2">
@@ -372,6 +369,7 @@
                 Cancel
             </Button>
             <Button variant="destructive" onclick={handleDelete} disabled={deleting || !deleteConfirmMatches}>
+                <Trash2 class="mr-2 h-4 w-4" />
                 {deleting ? 'Deleting...' : 'Delete Project'}
             </Button>
         </AlertDialog.Footer>

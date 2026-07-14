@@ -3,8 +3,9 @@
     import { Button } from "$lib/components/ui/button";
     import { Input } from "$lib/components/ui/input";
     import { Label } from "$lib/components/ui/label";
+    import { ErrorAlert } from "$lib/components/ui/error-alert";
     import * as Select from "$lib/components/ui/select";
-    import { UserPlus } from "@lucide/svelte";
+    import { Plus } from "@lucide/svelte";
     import { toast } from 'svelte-sonner';
     import { organizationState } from '$lib/state/organization.svelte';
 
@@ -37,7 +38,7 @@
 
         try {
             await organizationState.inviteUser(organizationId, email, role);
-            toast.success('Invitation sent', { position: 'top-center' });
+            toast.success('Successfully created the Invitation', { position: 'top-center' });
             email = '';
             role = 'user';
             open = false;
@@ -62,13 +63,15 @@
 <AlertDialog.Root {open} onOpenChange={handleOpenChange}>
     <AlertDialog.Content class="max-w-md">
         <AlertDialog.Header>
-            <AlertDialog.Title>Invite Team Member</AlertDialog.Title>
+            <AlertDialog.Title>New Invitation</AlertDialog.Title>
             <AlertDialog.Description>
                 Send an invitation to join your organization
             </AlertDialog.Description>
         </AlertDialog.Header>
 
         <form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }} class="space-y-4 py-4">
+            <ErrorAlert {error} />
+
             <div class="space-y-2">
                 <Label for="email">Email Address</Label>
                 <Input
@@ -99,19 +102,16 @@
                 </Select.Root>
             </div>
 
-            {#if error}
-                <p class="text-sm text-destructive">{error}</p>
-            {/if}
         </form>
 
         <AlertDialog.Footer>
             <AlertDialog.Cancel disabled={loading}>Cancel</AlertDialog.Cancel>
-            <Button onclick={handleSubmit} disabled={loading}>
-                <UserPlus class="mr-2 h-4 w-4" />
+            <Button variant="success" onclick={handleSubmit} disabled={loading}>
+                <Plus class="mr-2 h-4 w-4" />
                 {#if loading}
-                    Inviting...
+                    Creating...
                 {:else}
-                    Invite User
+                    New Invitation
                 {/if}
             </Button>
         </AlertDialog.Footer>

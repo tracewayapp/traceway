@@ -48,14 +48,14 @@
 				return { bg: 'bg-muted', text: 'text-muted-foreground', label: 'TRACE' };
 			case 'DEBUG':
 				return {
-					bg: 'bg-blue-500/15',
-					text: 'text-blue-600 dark:text-blue-400',
+					bg: 'bg-violet-500/15',
+					text: 'text-violet-600 dark:text-violet-400',
 					label: 'DEBUG'
 				};
 			case 'INFO':
 				return {
-					bg: 'bg-slate-500/15',
-					text: 'text-slate-600 dark:text-slate-300',
+					bg: 'bg-sky-500/15',
+					text: 'text-sky-600 dark:text-sky-400',
 					label: 'INFO'
 				};
 			case 'WARN':

@@ -320,7 +320,7 @@
 <div class="space-y-4">
 	<!-- Row 1: Title + TimeRangePicker -->
 	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-		<h2 class="text-2xl font-bold tracking-tight">Issues</h2>
+		<h2 class="text-3xl font-semibold tracking-tight">Issues</h2>
 		<div class="w-full sm:w-auto">
 			<TimeRangePicker
 				bind:fromDate
@@ -346,7 +346,7 @@
 	<!-- Archive Toolbar - shown when items selected -->
 	{#if selectedCount > 0}
 		<div
-			class="flex animate-in items-center gap-3 rounded-lg border bg-muted/50 p-3 duration-200 fade-in slide-in-from-top-1"
+			class="flex animate-in items-center gap-3 rounded-md border bg-muted/50 p-3 duration-200 fade-in slide-in-from-top-1"
 		>
 			<span class="text-sm font-medium"
 				>{selectedCount} issue{selectedCount === 1 ? '' : 's'} selected</span
@@ -444,9 +444,12 @@
 									aria-label="Select row"
 								/>
 							</Table.Cell>
+							{@const firstLine = exception.stackTrace.split('\n')[0]}
+							{@const colonIndex = firstLine.indexOf(':')}
+							{@const errorType = colonIndex > 0 ? firstLine.slice(0, colonIndex) : firstLine}
+							{@const errorMessage = colonIndex > 0 ? firstLine.slice(colonIndex + 1).trim() : ''}
 							<Table.Cell
-								class="max-w-[400px] truncate font-mono text-sm"
-								title={exception.stackTrace}
+								class="max-w-[520px] py-3"
 								onclick={createRowClickHandler(
 									`/issues/${exception.exceptionHash}`,
 									'preset',
@@ -454,7 +457,16 @@
 									'to'
 								)}
 							>
-								<span class="text-foreground">{exception.stackTrace.split('\n')[0]}</span>
+								<div class="min-w-0">
+									<div
+										class="truncate text-[15px]/6 font-semibold text-foreground group-hover:text-primary dark:group-hover:text-blue-300"
+									>
+										{errorType}
+									</div>
+									{#if errorMessage}
+										<div class="truncate text-sm text-muted-foreground">{errorMessage}</div>
+									{/if}
+								</div>
 							</Table.Cell>
 							<Table.Cell
 								onclick={createRowClickHandler(
@@ -467,7 +479,7 @@
 								<IssueTrendChart trend={exception.hourlyTrend || []} />
 							</Table.Cell>
 							<Table.Cell
-								class="text-right font-medium tabular-nums"
+								class="text-right text-[15px] font-semibold tabular-nums"
 								onclick={createRowClickHandler(
 									`/issues/${exception.exceptionHash}`,
 									'preset',
@@ -478,7 +490,7 @@
 								{exception.count.toLocaleString()}
 							</Table.Cell>
 							<Table.Cell
-								class="text-muted-foreground"
+								class="text-muted-foreground tabular-nums"
 								onclick={createRowClickHandler(
 									`/issues/${exception.exceptionHash}`,
 									'preset',

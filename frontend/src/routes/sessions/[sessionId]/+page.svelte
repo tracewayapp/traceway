@@ -7,6 +7,7 @@
     import { projectsState } from '$lib/state/projects.svelte';
     import { getTimezone } from '$lib/state/timezone.svelte';
     import { formatDuration, formatDateTime } from '$lib/utils/formatters';
+    import { createSmartBackHandler } from '$lib/utils/back-navigation';
     import * as Card from '$lib/components/ui/card';
     import * as Table from '$lib/components/ui/table';
     import * as Tabs from '$lib/components/ui/tabs';
@@ -116,7 +117,7 @@
 </script>
 
 <div class="space-y-4">
-    <PageHeader title="Session" />
+    <PageHeader title="Session" onBack={createSmartBackHandler({ fallbackPath: resolve('/sessions') })} />
 
     {#if loading}
         <div class="flex justify-center items-center h-64">

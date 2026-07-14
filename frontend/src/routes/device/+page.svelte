@@ -7,6 +7,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert';
+	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { CircleAlert, Check, ShieldCheck } from '@lucide/svelte';
 	import { authState } from '$lib/state/auth.svelte';
 	import { themeState } from '$lib/state/theme.svelte';
@@ -213,18 +214,18 @@
 					<AlertDescription>The device login was denied. You can close this page.</AlertDescription>
 				</Alert>
 			{:else if status === 'notFound'}
-				<Alert variant="destructive" class="border-red-200 bg-red-50">
-					<CircleAlert class="h-4 w-4 text-red-700" />
-					<AlertTitle class="text-red-800">Code not found</AlertTitle>
-					<AlertDescription class="text-red-700">
+				<Alert variant="destructive">
+					<CircleAlert class="h-4 w-4" />
+					<AlertTitle>Code not found</AlertTitle>
+					<AlertDescription>
 						We couldn't find that code. Start a new login from your terminal.
 					</AlertDescription>
 				</Alert>
 			{:else if status === 'expired'}
-				<Alert variant="destructive" class="border-red-200 bg-red-50">
-					<CircleAlert class="h-4 w-4 text-red-700" />
-					<AlertTitle class="text-red-800">Code expired</AlertTitle>
-					<AlertDescription class="text-red-700">
+				<Alert variant="destructive">
+					<CircleAlert class="h-4 w-4" />
+					<AlertTitle>Code expired</AlertTitle>
+					<AlertDescription>
 						This login request has expired. Start a new login from your terminal.
 					</AlertDescription>
 				</Alert>
@@ -235,11 +236,7 @@
 					<AlertDescription>This login request was already approved or denied.</AlertDescription>
 				</Alert>
 			{:else}
-				<Alert variant="destructive" class="border-red-200 bg-red-50">
-					<CircleAlert class="h-4 w-4 text-red-700" />
-					<AlertTitle class="text-red-800">Something went wrong</AlertTitle>
-					<AlertDescription class="text-red-700">{error || 'Please try again.'}</AlertDescription>
-				</Alert>
+				<ErrorAlert title="Something went wrong" error={error || 'Please try again.'} />
 			{/if}
 		</CardContent>
 	</Card>

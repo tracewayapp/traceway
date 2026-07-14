@@ -60,19 +60,19 @@
 	});
 </script>
 
-<div class="relative h-7 w-44 flex-shrink-0">
+<div class="relative h-8 w-44 flex-shrink-0">
 	<!-- Solid bottom line -->
-	<div class="absolute left-0 right-7 bottom-0 border-t border-muted-foreground/40"></div>
+	<div class="absolute left-0 right-7 bottom-0 border-t border-muted-foreground/30"></div>
 
 	<!-- Dashed line at actual max -->
 	{#if actualMax() > 0}
 		<div
 			class="absolute left-0 right-7 h-[1px]"
-			style="bottom: {linePositionPct()}%; background: repeating-linear-gradient(to right, var(--muted-foreground) 0, var(--muted-foreground) 4px, transparent 4px, transparent 7px); opacity: 0.5;"
+			style="bottom: {linePositionPct()}%; background: repeating-linear-gradient(to right, var(--muted-foreground) 0, var(--muted-foreground) 4px, transparent 4px, transparent 7px); opacity: 0.4;"
 		></div>
 		<!-- Max count label -->
 		<span
-			class="absolute right-1 text-[10px] w-[20px] text-muted-foreground tabular-nums"
+			class="absolute right-1 text-[10px] w-[20px] font-medium text-muted-foreground tabular-nums"
 			style="bottom: calc({linePositionPct()}% - 6px);"
 		>
 			{actualMax() > 999 ? (actualMax()/1000).toFixed(1) + "k" : actualMax()}
@@ -80,15 +80,20 @@
 	{/if}
 
 	<!-- Bars container -->
-	<div class="absolute inset-0 right-7 flex items-end gap-[1px]">
+	<div class="absolute inset-0 right-7 flex items-end gap-[2px]">
 		{#each hourlyData() as point, i (i)}
 			{@const heightPct = scaleMax() > 0 ? (point.count / scaleMax()) * 100 : 0}
 			{@const hasEvents = point.count > 0}
+			{@const isPeak = hasEvents && point.count === actualMax()}
 			<Tooltip.Root>
 				<Tooltip.Trigger class="flex-1 h-full flex items-end justify-center">
 					<div
-						class="w-full max-w-[4px] rounded-[1px] transition-colors {hasEvents ? 'hover:opacity-80' : ''}"
-						style="height: {Math.max(2, heightPct)}%;{hasEvents ? ' background-color: var(--trend-bar);' : ''}"
+						class="w-full max-w-[5px] rounded-[2px] {hasEvents
+							? isPeak
+								? 'bg-pink-500 hover:opacity-80 dark:bg-pink-400'
+								: 'bg-(--trend-bar) hover:opacity-80'
+							: 'bg-foreground/10'}"
+						style="height: {Math.max(hasEvents ? 8 : 3, heightPct)}%;"
 					></div>
 				</Tooltip.Trigger>
 				<Tooltip.Content side="top" class="py-2 px-3 !animate-none !transition-none">

@@ -5,7 +5,7 @@
     import * as Select from "$lib/components/ui/select";
     import * as AlertDialog from "$lib/components/ui/alert-dialog";
     import { Badge } from "$lib/components/ui/badge";
-    import { UserPlus, Trash2 } from "@lucide/svelte";
+    import { Plus, Trash2 } from "@lucide/svelte";
     import { toast } from 'svelte-sonner';
     import { organizationState, type OrganizationMember, type Invitation } from '$lib/state/organization.svelte';
     import { authState } from '$lib/state/auth.svelte';
@@ -37,7 +37,7 @@
         processingRoleChange = userId;
         try {
             await organizationState.updateMemberRole(organizationId, userId, newRole);
-            toast.success('Role updated', { position: 'top-center' });
+            toast.success('Successfully updated the Role', { position: 'top-center' });
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'Failed to update role', { position: 'top-center' });
         } finally {
@@ -97,9 +97,9 @@
                 <CardTitle>Team Members</CardTitle>
                 <CardDescription>Manage your organization's team members</CardDescription>
             </div>
-            <Button variant="outline" class="shrink-0" onclick={() => showInviteDialog = true} disabled={!canInvite}>
-                <UserPlus class="mr-2 h-4 w-4" />
-                Invite User
+            <Button variant="success" class="shrink-0" onclick={() => showInviteDialog = true} disabled={!canInvite}>
+                <Plus class="mr-2 h-4 w-4" />
+                New Invitation
             </Button>
         </CardHeader>
         <CardContent class="p-0">
@@ -237,8 +237,9 @@
         </AlertDialog.Header>
         <AlertDialog.Footer>
             <AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
-            <AlertDialog.Action onclick={handleRemoveMember}>
-                Remove
+            <AlertDialog.Action variant="destructive" onclick={handleRemoveMember}>
+                <Trash2 class="mr-2 h-4 w-4" />
+                Remove Member
             </AlertDialog.Action>
         </AlertDialog.Footer>
     </AlertDialog.Content>
@@ -254,8 +255,9 @@
         </AlertDialog.Header>
         <AlertDialog.Footer>
             <AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
-            <AlertDialog.Action onclick={handleRevokeInvitation}>
-                Revoke
+            <AlertDialog.Action variant="destructive" onclick={handleRevokeInvitation}>
+                <Trash2 class="mr-2 h-4 w-4" />
+                Revoke Invitation
             </AlertDialog.Action>
         </AlertDialog.Footer>
     </AlertDialog.Content>

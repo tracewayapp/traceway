@@ -5,6 +5,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert';
+	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { CircleAlert, ShieldCheck } from '@lucide/svelte';
 	import { authState } from '$lib/state/auth.svelte';
 	import { themeState } from '$lib/state/theme.svelte';
@@ -180,29 +181,25 @@
 					</div>
 				</div>
 			{:else if status === 'invalid'}
-				<Alert variant="destructive" class="border-red-200 bg-red-50">
-					<CircleAlert class="h-4 w-4 text-red-700" />
-					<AlertTitle class="text-red-800">Invalid authorization request</AlertTitle>
-					<AlertDescription class="text-red-700">
+				<Alert variant="destructive">
+					<CircleAlert class="h-4 w-4" />
+					<AlertTitle>Invalid authorization request</AlertTitle>
+					<AlertDescription>
 						The request is missing required parameters or uses an unsupported flow. Restart the
 						connection from your application.
 					</AlertDescription>
 				</Alert>
 			{:else if status === 'unknownClient'}
-				<Alert variant="destructive" class="border-red-200 bg-red-50">
-					<CircleAlert class="h-4 w-4 text-red-700" />
-					<AlertTitle class="text-red-800">Unknown application</AlertTitle>
-					<AlertDescription class="text-red-700">
+				<Alert variant="destructive">
+					<CircleAlert class="h-4 w-4" />
+					<AlertTitle>Unknown application</AlertTitle>
+					<AlertDescription>
 						We don't recognize the application making this request. Restart the connection from
 						your application.
 					</AlertDescription>
 				</Alert>
 			{:else}
-				<Alert variant="destructive" class="border-red-200 bg-red-50">
-					<CircleAlert class="h-4 w-4 text-red-700" />
-					<AlertTitle class="text-red-800">Something went wrong</AlertTitle>
-					<AlertDescription class="text-red-700">{error || 'Please try again.'}</AlertDescription>
-				</Alert>
+				<ErrorAlert title="Something went wrong" error={error || 'Please try again.'} />
 			{/if}
 		</CardContent>
 	</Card>

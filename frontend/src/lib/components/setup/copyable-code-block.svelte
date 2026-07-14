@@ -34,7 +34,7 @@
 		</Button>
 	</div>
 	<div
-		class="overflow-x-auto rounded-lg text-sm {wrap ? 'wrap-code' : ''} {themeState.isDark
+		class="overflow-x-auto rounded-md text-sm {wrap ? 'wrap-code' : ''} {themeState.isDark
 			? 'dark-code'
 			: 'light-code'}"
 	>

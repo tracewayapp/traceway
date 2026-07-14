@@ -31,6 +31,9 @@
 	let { children } = $props();
 	let showAddProjectModal = $state(false);
 	let showEditProjectModal = $state(false);
+
+	const SIDEBAR_OPEN_KEY = 'traceway_sidebar_open';
+	let sidebarOpen = $state(localStorage.getItem(SIDEBAR_OPEN_KEY) !== 'false');
 	let CrossSiteNotificationBanner = $state<Component<{ organizationId: number }> | null>(null);
 
 	const bannerOrganizationId = $derived(projectsState.currentProject?.organizationId ?? null);
@@ -139,7 +142,10 @@
 <!-- This is not ideal, but because our layout is a top level route it can end up showing sidebar on the login page (after the login before the transition). -->
 <!-- We could consider moving this to a lower level layout for the actual app, for now it's just a path check -->
 {#if authState.isAuthenticated && !isPublicPath(page.url.pathname)}
-	<Sidebar.SidebarProvider>
+	<Sidebar.SidebarProvider
+		bind:open={sidebarOpen}
+		onOpenChange={(open) => localStorage.setItem(SIDEBAR_OPEN_KEY, String(open))}
+	>
 		<AppSidebar />
 		<Sidebar.SidebarInset>
 			<header class="flex h-12 shrink-0 items-center gap-2 border-b bg-white px-2 dark:bg-transparent">

@@ -186,6 +186,7 @@ func Run(opts ...Option) {
 
 		monitoring.StartClickHouseReporter(ctx)
 		monitoring.StartBackendReporter(ctx)
+		monitoring.StartTelemetryDBReporter(ctx)
 	}
 
 	router.GET("/health", func(c *gin.Context) {

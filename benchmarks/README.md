@@ -154,9 +154,20 @@ Per matrix entry (one tier × one mode × one signal):
      Measures the SUT under "thousands of small batches/sec from a real
      SDK fleet" load, which stresses the HTTP/auth/decode/queue path more
      than the raw insert path Phase 2 measures.
-6. A step "fails" when **either**:
+6. A step "fails" when **any** of:
    - combined error rate (HTTP failures + OTLP `PartialSuccess` rejected items)
      exceeds `--ingest-err-threshold` (default 5%), **or**
+   - the SUT silently dropped rows mid-step: the loadgen polls
+     `/api/health/deep` before and after each step and any positive
+     `droppedRowsTotal` delta fails the step, since throughput built on
+     acked-but-discarded items is not real ingested throughput (DuckDB drops
+     rows its appender rejects instead of erroring the request; SQLite and
+     ClickHouse report 0 here). The end-of-step snapshot lands in the step
+     JSON as `sutIngest`, including DuckDB db/WAL file sizes and engine
+     memory, so a latency cliff can be correlated with WAL growth or memory
+     pressure after the fact. Read-probe fills record the same counter as
+     `droppedRows` per fill level (the true table size is `rowsIngested`
+     minus `droppedRows`), **or**
    - the *achieved* request rate falls below `--soft-cliff-ratio` × target rate
      (default 70%) — meaning the workers can't keep up with the limiter, the
      SUT has cliffed on latency, and we'd be erroring out one step later anyway.

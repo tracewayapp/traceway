@@ -440,7 +440,7 @@ func (e *taskRepository) GetTaskStats(ctx context.Context, projectId uuid.UUID, 
 	}
 
 	statsRow, err := lit.SelectSingleNamed[taskCountStatsRow](db.TelemetryDB,
-		"SELECT COUNT(*) AS count, AVG(duration) / 1000000.0 AS avg_dur_ms FROM tasks WHERE project_id = :project_id AND task_name = :task_name AND recorded_at >= :from AND recorded_at <= :to",
+		"SELECT COUNT(*) AS count, CASE WHEN COUNT(*) > 0 THEN AVG(duration) / 1000000.0 ELSE 0 END AS avg_dur_ms FROM tasks WHERE project_id = :project_id AND task_name = :task_name AND recorded_at >= :from AND recorded_at <= :to",
 		params)
 	if err != nil {
 		return nil, err

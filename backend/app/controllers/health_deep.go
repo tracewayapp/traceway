@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tracewayapp/traceway/backend/app/db"
 )
 
 type healthDeepController struct{}
@@ -29,11 +30,30 @@ type HealthDeepResponse struct {
 	ErrorsRecent     []CHError    `json:"errorsRecent,omitempty"`
 	MemoryUsageBytes int64        `json:"memoryUsageBytes,omitempty"`
 	MemoryTotalBytes int64        `json:"memoryTotalBytes,omitempty"`
+
+	TelemetryBackend string                   `json:"telemetryBackend"`
+	DroppedRows      map[string]uint64        `json:"droppedRows"`
+	DroppedRowsTotal uint64                   `json:"droppedRowsTotal"`
+	InsertFailures   uint64                   `json:"insertFailures"`
+	Engine           *db.TelemetryEngineStats `json:"engine,omitempty"`
 }
 
+// 503 means the configured telemetry backend is down. On the embedded
+// backends chReachable stays false with a 200, which is what the loadgen's
+// merge-idle fast path keys on.
 func (h healthDeepController) Get(c *gin.Context) {
 	resp := fetchCHHealth(c.Request.Context())
-	if !resp.CHReachable {
+
+	dropped, droppedTotal, insertFailures := db.GetTelemetryIngestCounters()
+	resp.TelemetryBackend = db.TelemetryBackendName()
+	resp.DroppedRows = dropped
+	resp.DroppedRowsTotal = droppedTotal
+	resp.InsertFailures = insertFailures
+	if engine, ok := db.GetTelemetryEngineStats(c.Request.Context()); ok {
+		resp.Engine = &engine
+	}
+
+	if resp.TelemetryBackend == "clickhouse" && !resp.CHReachable {
 		c.JSON(http.StatusServiceUnavailable, resp)
 		return
 	}

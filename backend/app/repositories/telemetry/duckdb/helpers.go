@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/duckdb/duckdb-go/v2"
 	"github.com/tracewayapp/traceway/backend/app/db"
@@ -22,8 +24,30 @@ func nullableString(s *string) any {
 	return *s
 }
 
+const dropReportInterval = time.Minute
+
+var (
+	dropReportMu       sync.Mutex
+	droppedSinceReport = map[string]uint64{}
+	lastDropReportAt   = map[string]time.Time{}
+)
+
 func captureDroppedRow(table string, err error) {
-	traceway.CaptureException(fmt.Errorf("duckdb %s insert: dropping row: %w", table, err))
+	db.RecordTelemetryRowDropped(table)
+
+	var report uint64
+	dropReportMu.Lock()
+	droppedSinceReport[table]++
+	if time.Since(lastDropReportAt[table]) >= dropReportInterval {
+		report = droppedSinceReport[table]
+		droppedSinceReport[table] = 0
+		lastDropReportAt[table] = time.Now()
+	}
+	dropReportMu.Unlock()
+
+	if report > 0 {
+		traceway.CaptureException(fmt.Errorf("duckdb %s insert: dropped %d rows since last report, latest: %w", table, report, err))
+	}
 }
 
 func timeBucketExpr(column string, intervalSeconds int) string {
@@ -54,14 +78,20 @@ func attrJSON(m map[string]string) (string, error) {
 func withAppender(ctx context.Context, table string, fn func(*duckdb.Appender)) error {
 	conn, err := db.DuckDBConnector.Connect(ctx)
 	if err != nil {
+		db.RecordTelemetryInsertFailure()
 		return err
 	}
 	defer conn.Close()
 
 	appender, err := duckdb.NewAppenderFromConn(conn, "", table)
 	if err != nil {
+		db.RecordTelemetryInsertFailure()
 		return err
 	}
 	fn(appender)
-	return appender.Close()
+	if err := appender.Close(); err != nil {
+		db.RecordTelemetryInsertFailure()
+		return err
+	}
+	return nil
 }

@@ -44,6 +44,27 @@ func makeTask(projectId uuid.UUID, taskName string, duration time.Duration, reco
 	}
 }
 
+func makeAiTrace(projectId uuid.UUID, traceName string, duration time.Duration, totalTokens int64, totalCost float64, recordedAt time.Time) models.AiTrace {
+	return models.AiTrace{
+		Id:           uuid.New(),
+		ProjectId:    projectId,
+		RecordedAt:   recordedAt,
+		Duration:     duration,
+		StatusCode:   200,
+		Model:        "test-model",
+		Provider:     "test-provider",
+		Operation:    "chat",
+		InputTokens:  totalTokens / 2,
+		OutputTokens: totalTokens - totalTokens/2,
+		TotalTokens:  totalTokens,
+		TotalCost:    totalCost,
+		TraceName:    traceName,
+		ServerName:   "test-server",
+		AppVersion:   "1.0.0",
+		IsRoot:       true,
+	}
+}
+
 func makeException(projectId uuid.UUID, hash, stackTrace string, recordedAt time.Time) models.ExceptionStackTrace {
 	return models.ExceptionStackTrace{
 		Id:            uuid.New(),

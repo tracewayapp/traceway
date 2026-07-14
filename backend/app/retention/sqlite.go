@@ -79,6 +79,9 @@ func runSQLiteRetention(ctx context.Context, days int) {
 
 func reclaimTelemetryDisk(ctx context.Context) {
 	if db.IsDuckDBTelemetry() {
+		if _, err := db.TelemetryDB.ExecContext(ctx, "CHECKPOINT"); err != nil {
+			traceway.CaptureException(fmt.Errorf("retention: telemetry maintenance %q failed: %w", "CHECKPOINT", err))
+		}
 		return
 	}
 	for _, stmt := range []string{

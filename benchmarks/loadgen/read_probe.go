@@ -21,11 +21,15 @@ type endpointProbeResult struct {
 }
 
 type readProbeStep struct {
-	FillLevelTarget      int64                 `json:"fillLevelTarget"`
-	RowsIngested         int64                 `json:"rowsIngested"`
-	IngestSecondsElapsed float64               `json:"ingestSecondsElapsed"`
-	Probes               []endpointProbeResult `json:"probes"`
-	MedianLatencyMs      float64               `json:"medianLatencyMs"`
+	FillLevelTarget      int64   `json:"fillLevelTarget"`
+	RowsIngested         int64   `json:"rowsIngested"`
+	IngestSecondsElapsed float64 `json:"ingestSecondsElapsed"`
+	// DroppedRows is cumulative since scenario start, mirroring RowsIngested.
+	// Nonzero means the SUT silently discarded rows during fill, so the true
+	// table size is RowsIngested minus DroppedRows.
+	DroppedRows     int64                 `json:"droppedRows,omitempty"`
+	Probes          []endpointProbeResult `json:"probes"`
+	MedianLatencyMs float64               `json:"medianLatencyMs"`
 	// Back-compat: equals MedianLatencyMs and AND-of-all-probe-Ok respectively.
 	// Existing chart.py renderers (and post-1 readers) consume these.
 	ReadLatencyMs float64 `json:"readLatencyMs"`
@@ -86,6 +90,8 @@ func runReadProbe(ctx context.Context, cfg config, ing *ingester, ingestStats *l
 	ing.SnapshotAndResetItems()
 	ingestStats.SnapshotAndReset()
 
+	_, sutStatsBase := fetchDeepHealth(ctx, cfg, client)
+
 	var totalIngested int64
 
 	for _, target := range cfg.fillLevels {
@@ -107,6 +113,15 @@ func runReadProbe(ctx context.Context, cfg config, ing *ingester, ingestStats *l
 		extraAttempted, _ := ing.SnapshotAndResetItems()
 		totalIngested += extraAttempted
 		step.RowsIngested = totalIngested
+
+		if sutStatsBase.Reachable {
+			if _, cur := fetchDeepHealth(ctx, cfg, client); cur.Reachable {
+				if dropped := cur.DroppedRowsTotal - sutStatsBase.DroppedRowsTotal; dropped > 0 {
+					step.DroppedRows = dropped
+					fmt.Fprintf(stderrPrefix(), "read-probe: SUT silently dropped %d rows during fill; true table size is below the fill target\n", dropped)
+				}
+			}
+		}
 
 		fmt.Fprintf(stderrPrefix(), "read-probe fill=%d rows reached in %.1fs (signal=%s) — settling %ds\n",
 			step.RowsIngested, step.IngestSecondsElapsed, cfg.signal, res.SettleSeconds)

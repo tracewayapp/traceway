@@ -335,10 +335,10 @@ func (r *aiTraceRepository) GetTraceNameStats(ctx context.Context, projectId uui
 			CASE WHEN COUNT(*) > 0 THEN AVG(duration) / 1000000.0 ELSE 0 END AS avg_duration_ms,
 			COALESCE(quantile_cont(duration, 0.50) / 1000000.0, 0) AS median_duration_ms,
 			COALESCE(quantile_cont(duration, 0.95) / 1000000.0, 0) AS p95_duration_ms,
-			SUM(total_tokens) AS total_tokens,
-			SUM(total_cost) AS total_cost,
-			AVG(input_tokens) AS avg_input_tokens,
-			AVG(output_tokens) AS avg_output_tokens
+			COALESCE(CAST(SUM(total_tokens) AS BIGINT), 0) AS total_tokens,
+			COALESCE(SUM(total_cost), 0) AS total_cost,
+			COALESCE(AVG(input_tokens), 0) AS avg_input_tokens,
+			COALESCE(AVG(output_tokens), 0) AS avg_output_tokens
 		FROM ai_traces
 		WHERE project_id = :project_id AND trace_name = :trace_name AND recorded_at >= :from AND recorded_at <= :to`,
 		params)

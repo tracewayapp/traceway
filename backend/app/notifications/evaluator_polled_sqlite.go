@@ -703,14 +703,20 @@ func computeImpactEndpoints(ctx context.Context, projectId uuid.UUID, minRequest
 		return nil, nil
 	}
 
-	p99s := make(map[string]float64, len(candidates))
-	pRows, err := db.TelemetryDB.QueryContext(ctx, `SELECT endpoint, duration FROM (
+	p99Query := `SELECT endpoint, duration FROM (
 		SELECT endpoint, duration,
 			ROW_NUMBER() OVER (PARTITION BY endpoint ORDER BY duration) AS rn,
 			COUNT(*) OVER (PARTITION BY endpoint) AS cnt
 		FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? AND is_stream = 0
-	) WHERE rn = CAST(0.99 * (cnt - 1) AS INTEGER) + 1`,
-		pid, fromStr, nowStr)
+	) WHERE rn = CAST(0.99 * (cnt - 1) AS INTEGER) + 1`
+	if db.IsDuckDBTelemetry() {
+		p99Query = `SELECT endpoint, CAST(quantile_cont(duration, 0.99) AS BIGINT) as duration
+		FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? AND is_stream = 0
+		GROUP BY endpoint`
+	}
+
+	p99s := make(map[string]float64, len(candidates))
+	pRows, err := db.TelemetryDB.QueryContext(ctx, p99Query, pid, fromStr, nowStr)
 	if err != nil {
 		return nil, err
 	}

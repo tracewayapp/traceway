@@ -582,7 +582,7 @@ func (e *endpointRepository) GetEndpointStats(ctx context.Context, projectId uui
 	}
 
 	isStreamRow, err := lit.SelectSingleNamed[isStreamFlagRow](db.TelemetryDB,
-		`SELECT MAX(is_stream) as is_stream FROM endpoints WHERE project_id = :project_id AND endpoint = :endpoint AND recorded_at >= :from AND recorded_at <= :to`,
+		`SELECT COALESCE(MAX(is_stream), 0) as is_stream FROM endpoints WHERE project_id = :project_id AND endpoint = :endpoint AND recorded_at >= :from AND recorded_at <= :to`,
 		params)
 	if err != nil {
 		return nil, err

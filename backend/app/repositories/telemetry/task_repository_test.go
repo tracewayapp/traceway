@@ -427,3 +427,17 @@ func TestTaskRepository_InsertEmpty(t *testing.T) {
 		t.Fatalf("InsertAsync with empty slice should not error: %v", err)
 	}
 }
+
+func TestTaskRepository_GetTaskStats_EmptyWindow(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	stats, err := TaskRepository.GetTaskStats(ctx, uuid.New(), "missing.task", now.Add(-time.Hour), now)
+	if err != nil {
+		t.Fatalf("GetTaskStats failed: %v", err)
+	}
+	if stats.Count != 0 {
+		t.Errorf("expected count 0, got %d", stats.Count)
+	}
+}

@@ -450,3 +450,20 @@ func TestEndpointRepository_InsertEmpty(t *testing.T) {
 		t.Fatalf("InsertAsync with empty slice should not error: %v", err)
 	}
 }
+
+func TestEndpointRepository_GetEndpointStats_EmptyWindow(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	stats, err := EndpointRepository.GetEndpointStats(ctx, uuid.New(), "GET /api/none", now.Add(-time.Hour), now)
+	if err != nil {
+		t.Fatalf("GetEndpointStats failed: %v", err)
+	}
+	if stats.Count != 0 {
+		t.Errorf("expected count 0, got %d", stats.Count)
+	}
+	if stats.IsStream {
+		t.Errorf("expected IsStream false for empty window")
+	}
+}

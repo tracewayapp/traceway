@@ -345,7 +345,7 @@ func waitForMergesIdle(ctx context.Context, cfg config, client *http.Client, lab
 	// and there are no merges to wait for. Without this fast-path the loop
 	// would burn the full --max-merge-idle-wait (default 5m) between every
 	// phase doing nothing useful.
-	if first := fetchCHSnapshot(ctx, cfg, client); !first.Reachable {
+	if first, _ := fetchDeepHealth(ctx, cfg, client); !first.Reachable {
 		fmt.Fprintf(stderrPrefix(), "merge-idle [%s]: CH not reachable (sqlite mode or backend down) — skipping wait\n", label)
 		return
 	}
@@ -361,7 +361,7 @@ func waitForMergesIdle(ctx context.Context, cfg config, client *http.Client, lab
 		if ctx.Err() != nil {
 			return
 		}
-		snap := fetchCHSnapshot(ctx, cfg, client)
+		snap, _ := fetchDeepHealth(ctx, cfg, client)
 		fmt.Fprintf(stderrPrefix(), "merge-idle [%s]: reachable=%t activeMerges=%d partsCount=%d longestMerge=%.1fs\n",
 			label, snap.Reachable, snap.ActiveMerges, snap.PartsCount, snap.LongestMergeSec)
 

@@ -577,8 +577,8 @@ func (e *endpointRepository) GetEndpointStats(ctx context.Context, projectId uui
 			COUNT(*) as count,
 			CASE WHEN COUNT(*) > 0 THEN AVG(duration) / 1000000.0 ELSE 0 END as avg_duration_ms,
 			CASE WHEN COUNT(*) > 0 THEN SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) ELSE 0 END as error_rate,
-			SUM(CASE WHEN duration <= 500000000 AND status_code < 500 THEN 1 ELSE 0 END) +
-				SUM(CASE WHEN duration > 500000000 AND duration <= 2000000000 AND status_code < 500 THEN 1 ELSE 0 END) * 0.5 as satisfied_tolerating
+			COALESCE(SUM(CASE WHEN duration <= 500000000 AND status_code < 500 THEN 1 ELSE 0 END) +
+				SUM(CASE WHEN duration > 500000000 AND duration <= 2000000000 AND status_code < 500 THEN 1 ELSE 0 END) * 0.5, 0) as satisfied_tolerating
 		FROM endpoints WHERE project_id = :project_id AND endpoint = :endpoint AND recorded_at >= :from AND recorded_at <= :to`,
 		params)
 	if err != nil {
@@ -589,7 +589,7 @@ func (e *endpointRepository) GetEndpointStats(ctx context.Context, projectId uui
 	}
 
 	isStreamRow, err := lit.SelectSingleNamed[isStreamFlagRow](db.TelemetryDB,
-		`SELECT MAX(is_stream) as is_stream FROM endpoints WHERE project_id = :project_id AND endpoint = :endpoint AND recorded_at >= :from AND recorded_at <= :to`,
+		`SELECT COALESCE(MAX(is_stream), 0) as is_stream FROM endpoints WHERE project_id = :project_id AND endpoint = :endpoint AND recorded_at >= :from AND recorded_at <= :to`,
 		params)
 	if err != nil {
 		return nil, err

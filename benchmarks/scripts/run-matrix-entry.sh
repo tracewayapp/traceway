@@ -102,6 +102,11 @@ if [[ "${SCENARIO}" == "read-probe" ]]; then
     if [[ -n "${BENCH_FILL_REQUEST_RATE:-}" ]]; then
         extra_args+=( --fill-request-rate "${BENCH_FILL_REQUEST_RATE}" )
     fi
+    # Custom fill ladder (e.g. 10000000,100000000,1000000000 to probe 1B).
+    # Appended after any smoke override, so the explicit request wins.
+    if [[ -n "${BENCH_FILL_LEVELS:-}" ]]; then
+        extra_args+=( --fill-levels "${BENCH_FILL_LEVELS}" )
+    fi
 fi
 
 # SQLite and DuckDB have no merge-idle equivalent — /health/deep returns

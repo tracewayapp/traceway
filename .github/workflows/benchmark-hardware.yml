@@ -50,6 +50,10 @@ on:
         description: 'Read-probe fill phase request rate override (default 100 req/s). Combined with fill_batch_size sets total ingest rate. Lower together for SQLite to keep step-target overshoot small. Ignored unless scenario=read-probe.'
         required: false
         default: ''
+      fill_levels:
+        description: 'Read-probe fill ladder override, comma-separated row counts (default 100000,1000000,10000000,100000000). e.g. 10000000,100000000,1000000000 to probe 1B — raise duration to cover the fill, it is a hard cap on the whole run. Ignored unless scenario=read-probe.'
+        required: false
+        default: ''
       commit_results:
         description: 'Commit results to the dispatched ref (REPLACES the whole scenario results folder with only this dispatch''s entries). Set false for exploratory or partial-matrix runs — per-entry result JSONs are still available as the matrix jobs'' workflow artifacts.'
         required: true
@@ -108,6 +112,7 @@ jobs:
       LOADGEN_TIER: ${{ github.event.inputs.loadgen_tier }}
       BENCH_FILL_BATCH_SIZE: ${{ github.event.inputs.fill_batch_size }}
       BENCH_FILL_REQUEST_RATE: ${{ github.event.inputs.fill_request_rate }}
+      BENCH_FILL_LEVELS: ${{ github.event.inputs.fill_levels }}
       # Managed-ClickHouse credentials. Used only when modes contains
       # managed-ch; empty for sqlite/pgch entries (harmless — sut-bootstrap
       # only validates them when MODE=managed-ch).

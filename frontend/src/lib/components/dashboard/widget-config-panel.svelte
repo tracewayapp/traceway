@@ -5,9 +5,10 @@
 	import * as Select from '$lib/components/ui/select';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import TagFilter from './tag-filter.svelte';
+	import { THRESHOLD_COLOR_NAMES, resolveThresholdColor } from './gauge-thresholds';
 	import { api } from '$lib/api';
 	import { projectsState } from '$lib/state/projects.svelte';
-	import { Plus, Check, CircleAlert } from 'lucide-svelte';
+	import { Plus, Check, CircleAlert, X } from 'lucide-svelte';
 	import * as Alert from '$lib/components/ui/alert';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import type { DiscoveredMetric } from '$lib/types/dashboard';
@@ -27,6 +28,20 @@
 		if (config?.showLegend === true) return 'on';
 		if (config?.showLegend === false) return 'off';
 		return 'auto';
+	}
+
+	function thresholdsFromConfig(
+		config: any,
+		savedType: string | undefined
+	): Array<{ value: string; color: string }> {
+		if (Array.isArray(config?.thresholds) && config.thresholds.length > 0) {
+			return config.thresholds.map((t: { value: number; color: string }) => ({
+				value: String(t.value),
+				color: t.color
+			}));
+		}
+		if (savedType === 'single_value') return [];
+		return [{ value: '80', color: 'red' }];
 	}
 
 	let {
@@ -54,6 +69,12 @@
 	);
 	let legend = $state<'auto' | 'on' | 'off'>(legendFromConfig(widget?.config));
 	let showSparkline = $state(!!widget?.config?.showSparkline);
+	let gaugeMin = $state(widget?.config?.min != null ? String(widget.config.min) : '0');
+	let gaugeMax = $state(widget?.config?.max != null ? String(widget.config.max) : '100');
+	let baseColor = $state(widget?.config?.baseColor ?? 'green');
+	let thresholds = $state<Array<{ value: string; color: string }>>(
+		thresholdsFromConfig(widget?.config, widget?.widgetType)
+	);
 
 	$effect(() => {
 		if (open) {
@@ -66,8 +87,27 @@
 				: [{ type: 'metric', name: '', aggregation: 'avg' }];
 			legend = legendFromConfig(widget?.config);
 			showSparkline = !!widget?.config?.showSparkline;
+			gaugeMin = widget?.config?.min != null ? String(widget.config.min) : '0';
+			gaugeMax = widget?.config?.max != null ? String(widget.config.max) : '100';
+			baseColor = widget?.config?.baseColor ?? 'green';
+			thresholds = thresholdsFromConfig(widget?.config, widget?.widgetType);
 		}
 	});
+
+	function addThreshold() {
+		const values = thresholds
+			.map((t) => parseFloat(t.value))
+			.filter((v) => Number.isFinite(v));
+		const nextValue = values.length > 0 ? Math.max(...values) + 10 : 80;
+		const usedColors = new Set(thresholds.map((t) => t.color));
+		const nextColor =
+			['red', 'yellow', 'orange', 'blue', 'green'].find((c) => !usedColors.has(c)) ?? 'red';
+		thresholds = [...thresholds, { value: String(nextValue), color: nextColor }];
+	}
+
+	function removeThreshold(index: number) {
+		thresholds = thresholds.filter((_, i) => i !== index);
+	}
 
 	function getMetricTagKeys(metricName: string): string[] {
 		const m = availableMetrics.find((m: DiscoveredMetric) => m.name === metricName);
@@ -112,6 +152,20 @@
 		if (widget?.config?.size != null) config.size = widget.config.size;
 		if (CHART_TYPES.includes(widgetType) && legend !== 'auto') config.showLegend = legend === 'on';
 		if (widgetType === 'single_value' && showSparkline) config.showSparkline = true;
+		if (widgetType === 'gauge') {
+			const minValue = parseFloat(gaugeMin);
+			const maxValue = parseFloat(gaugeMax);
+			config.min = Number.isFinite(minValue) ? minValue : 0;
+			config.max = Number.isFinite(maxValue) ? maxValue : 100;
+		}
+		if (widgetType === 'gauge' || widgetType === 'single_value') {
+			if (baseColor !== 'green') config.baseColor = baseColor;
+			const steps = thresholds
+				.map((t) => ({ value: parseFloat(t.value), color: t.color }))
+				.filter((t) => Number.isFinite(t.value))
+				.sort((a, b) => a.value - b.value);
+			if (steps.length > 0) config.thresholds = steps;
+		}
 		onSave({
 			title: displayTitle,
 			widgetType,
@@ -147,7 +201,7 @@
 					}}
 				>
 					<Select.Trigger>
-						{({ line_chart: 'Line Chart', area_chart: 'Area Chart', stacked_area: 'Stacked Area', bar_chart: 'Bar Chart', single_value: 'Single Value', table: 'Table' } as Record<string, string>)[widgetType] ?? widgetType}
+						{({ line_chart: 'Line Chart', area_chart: 'Area Chart', stacked_area: 'Stacked Area', bar_chart: 'Bar Chart', single_value: 'Single Value', gauge: 'Gauge', table: 'Table' } as Record<string, string>)[widgetType] ?? widgetType}
 					</Select.Trigger>
 					<Select.Content>
 						<Select.Item value="line_chart">Line Chart</Select.Item>
@@ -155,6 +209,7 @@
 						<Select.Item value="stacked_area">Stacked Area</Select.Item>
 						<Select.Item value="bar_chart">Bar Chart</Select.Item>
 						<Select.Item value="single_value">Single Value</Select.Item>
+						<Select.Item value="gauge">Gauge</Select.Item>
 						<Select.Item value="table">Table</Select.Item>
 					</Select.Content>
 				</Select.Root>
@@ -196,6 +251,78 @@
 					>
 						Show sparkline
 					</button>
+				</div>
+			{/if}
+
+			{#if widgetType === 'gauge'}
+				<div class="grid grid-cols-2 gap-2">
+					<div>
+						<label class="text-sm font-medium" for="gauge-min">Min</label>
+						<Input id="gauge-min" type="number" bind:value={gaugeMin} />
+					</div>
+					<div>
+						<label class="text-sm font-medium" for="gauge-max">Max</label>
+						<Input id="gauge-max" type="number" bind:value={gaugeMax} />
+					</div>
+				</div>
+			{/if}
+
+			{#if widgetType === 'gauge' || widgetType === 'single_value'}
+				<div>
+					<span class="text-sm font-medium">Thresholds</span>
+					<p class="text-xs text-muted-foreground mb-2">
+						The value takes the color of the highest threshold it crosses
+					</p>
+					<div class="space-y-2">
+						{#each thresholds as threshold, i}
+							<div class="flex items-center gap-2">
+								<Input
+									type="number"
+									bind:value={thresholds[i].value}
+									class="h-8 w-28 text-xs"
+								/>
+								<div class="flex items-center gap-1.5">
+									{#each THRESHOLD_COLOR_NAMES as colorName}
+										<button
+											type="button"
+											class="h-5 w-5 cursor-pointer rounded-full transition-transform {threshold.color === colorName ? 'ring-2 ring-ring ring-offset-2 ring-offset-background' : 'opacity-50 hover:opacity-100'}"
+											style="background-color: {resolveThresholdColor(colorName)};"
+											aria-label={colorName}
+											title={colorName}
+											onclick={() => (thresholds[i].color = colorName)}
+										></button>
+									{/each}
+								</div>
+								<Button
+									variant="ghost"
+									size="icon"
+									class="h-8 w-8"
+									aria-label="Remove threshold"
+									onclick={() => removeThreshold(i)}
+								>
+									<X class="h-4 w-4" />
+								</Button>
+							</div>
+						{/each}
+						<div class="flex items-center gap-2">
+							<span class="w-28 px-3 text-xs text-muted-foreground">Base</span>
+							<div class="flex items-center gap-1.5">
+								{#each THRESHOLD_COLOR_NAMES as colorName}
+									<button
+										type="button"
+										class="h-5 w-5 cursor-pointer rounded-full transition-transform {baseColor === colorName ? 'ring-2 ring-ring ring-offset-2 ring-offset-background' : 'opacity-50 hover:opacity-100'}"
+										style="background-color: {resolveThresholdColor(colorName)};"
+										aria-label={colorName}
+										title={colorName}
+										onclick={() => (baseColor = colorName)}
+									></button>
+								{/each}
+							</div>
+						</div>
+					</div>
+					<Button variant="outline" size="sm" class="mt-2" onclick={addThreshold}>
+						<Plus class="mr-1 h-3.5 w-3.5" /> Add Threshold
+					</Button>
 				</div>
 			{/if}
 

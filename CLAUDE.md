@@ -1252,37 +1252,52 @@ traceway.Init(appName, connectionString,
 
 ### Data Format (Frame)
 
-The SDK sends data as gzipped JSON:
+The SDK sends data as gzipped JSON. The wire shape is `ReportRequest` in `backend/app/controllers/clientcontrollers/client.controller.go` wrapping `CollectionFrame` from `backend/app/models/clientmodels/`:
+
 ```json
 {
-  "app": "myapp",
-  "transactions": [
+  "appVersion": "1.2.3",
+  "serverName": "myapp-host-1",
+  "collectionFrames": [
     {
-      "trace_id": "abc123",
-      "endpoint": "GET /api/users",
-      "duration_ms": 45.2,
-      "status_code": 200,
-      "timestamp": "2024-01-15T10:30:00Z"
-    }
-  ],
-  "exceptions": [
-    {
-      "type": "RuntimeError",
-      "value": "connection refused",
-      "stacktrace": "...",
-      "tags": {"user_id": "123"},
-      "timestamp": "2024-01-15T10:30:00Z"
-    }
-  ],
-  "metrics": [
-    {
-      "name": "cpu.used_pcnt",
-      "value": 45.2,
-      "timestamp": "2024-01-15T10:30:00Z"
+      "traces": [
+        {
+          "id": "5b8e1a2f-3c4d-4e5f-8a9b-0c1d2e3f4a5b",
+          "endpoint": "GET /api/users",
+          "duration": 45200000,
+          "statusCode": 200,
+          "recordedAt": "2024-01-15T10:30:00Z",
+          "isTask": false,
+          "attributes": {},
+          "spans": []
+        }
+      ],
+      "stackTraces": [
+        {
+          "stackTrace": "RuntimeError: connection refused\n  at ...",
+          "recordedAt": "2024-01-15T10:30:00Z",
+          "attributes": {"user_id": "123"},
+          "isMessage": false,
+          "isTask": false
+        }
+      ],
+      "metrics": [
+        {
+          "name": "cpu.used_pcnt",
+          "value": 45.2,
+          "recordedAt": "2024-01-15T10:30:00Z",
+          "tags": {}
+        }
+      ]
     }
   ]
 }
 ```
+
+Notes:
+- Timestamps are `recordedAt` (RFC 3339), never `timestamp`. `duration` is a Go `time.Duration`, i.e. integer nanoseconds (45200000 = 45.2ms).
+- Endpoints vs tasks share the `traces` array, split by `isTask`. `CollectionFrame` also carries `sessionRecordings` and `sessions`.
+- **Unknown fields are silently ignored**: a payload in the wrong shape (e.g. top-level `metrics`) still returns 200 but inserts nothing. When hand-crafting test payloads, confirm ingestion landed via `POST /api/metrics/query` (or the relevant list endpoint) instead of trusting the status code.
 
 ---
 

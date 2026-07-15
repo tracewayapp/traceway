@@ -2,8 +2,10 @@
 	import D3LineChart from './d3-line-chart.svelte';
 	import D3HorizontalBarChart from './d3-horizontal-bar-chart.svelte';
 	import D3StackedAreaChart from './d3-stacked-area-chart.svelte';
+	import D3Gauge from './d3-gauge.svelte';
 	import WidgetTable from './widget-table.svelte';
 	import Sparkline from './sparkline.svelte';
+	import { activeThresholdColor, type ThresholdStep } from './gauge-thresholds';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { api } from '$lib/api';
 	import { projectsState } from '$lib/state/projects.svelte';
@@ -28,6 +30,10 @@
 		colSpan?: 1 | 2 | 3;
 		size?: 'sm' | 'md' | 'lg';
 		showSparkline?: boolean;
+		min?: number;
+		max?: number;
+		baseColor?: string;
+		thresholds?: ThresholdStep[];
 	};
 
 	let {
@@ -81,6 +87,14 @@
 			hiddenSeries.add(key);
 		}
 	}
+
+	const singleValueColor = $derived(
+		widget.widgetType === 'single_value' &&
+			singleValue !== null &&
+			(widget.config.thresholds?.length || widget.config.baseColor)
+			? activeThresholdColor(singleValue, widget.config.baseColor, widget.config.thresholds)
+			: null
+	);
 
 	const legendVisible = $derived(
 		['line_chart', 'area_chart', 'stacked_area'].includes(widget.widgetType) &&
@@ -141,7 +155,7 @@
 			resolvedUnit = units.size === 1 ? [...units][0] : '';
 			series = newSeries;
 
-			if (widget.widgetType === 'single_value') {
+			if (widget.widgetType === 'single_value' || widget.widgetType === 'gauge') {
 				singleValue =
 					newSeries.length > 0 && newSeries[0].data.length > 0
 						? newSeries[0].data[newSeries[0].data.length - 1].value
@@ -211,15 +225,30 @@
 		</div>
 	{:else if widget.widgetType === 'single_value'}
 		<div class="flex h-full flex-col items-center justify-center gap-2">
-			<span class="text-3xl font-bold">
+			<span class="text-3xl font-bold" style={singleValueColor ? `color: ${singleValueColor};` : ''}>
 				{singleValue !== null ? formatMetricLabel(singleValue, effectiveUnit) : '-'}
 			</span>
 			{#if widget.config.showSparkline && series[0]?.data && series[0].data.length > 1}
 				<div class="w-full px-6">
-					<Sparkline data={series[0].data} color={series[0].color} />
+					<Sparkline data={series[0].data} color={singleValueColor ?? series[0].color} />
 				</div>
 			{/if}
 		</div>
+	{:else if widget.widgetType === 'gauge'}
+		{#if singleValue !== null}
+			<D3Gauge
+				value={singleValue}
+				min={widget.config.min ?? 0}
+				max={widget.config.max ?? 100}
+				baseColor={widget.config.baseColor}
+				thresholds={widget.config.thresholds}
+				formatValue={(v) => formatMetricLabel(v, effectiveUnit)}
+			/>
+		{:else}
+			<div class="flex h-full items-center justify-center text-sm text-muted-foreground">
+				No data
+			</div>
+		{/if}
 	{:else if widget.widgetType === 'bar_chart'}
 		{#if barData.length > 0}
 			<D3HorizontalBarChart data={barData} height={chartHeight} unit={effectiveUnit} formatValue={(v) => formatMetricLabel(v, effectiveUnit)} />

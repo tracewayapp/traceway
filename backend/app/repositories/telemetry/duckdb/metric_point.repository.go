@@ -304,6 +304,8 @@ func duckdbAggregationFunc(agg string) string {
 		return "sum(value)"
 	case "count":
 		return "CAST(COUNT(*) AS DOUBLE)"
+	case "last":
+		return "arg_max(value, recorded_at)"
 	default:
 		return "avg(value)"
 	}

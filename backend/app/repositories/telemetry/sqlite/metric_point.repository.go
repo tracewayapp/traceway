@@ -72,12 +72,17 @@ func (r *metricPointRepository) QueryTimeSeries(ctx context.Context, projectId u
 	secs := intervalMinutes * 60
 	aggFunc := sqliteAggregationFunc(aggregation)
 	hasGroupBy := groupBy != ""
+	isLast := aggregation == "last"
 
 	selectClause := fmt.Sprintf("SELECT datetime((strftime('%%s', recorded_at) / %d) * %d, 'unixepoch') AS bucket", secs, secs)
 	if hasGroupBy {
 		selectClause += ", json_extract(tags, '$.\"' || :group_by || '\"') AS group_key"
 	}
-	selectClause += ", " + aggFunc + " AS agg_value FROM metric_points WHERE project_id = :project_id AND name = :name AND recorded_at >= :from AND recorded_at <= :to"
+	selectClause += ", " + aggFunc + " AS agg_value"
+	if isLast {
+		selectClause += ", max(recorded_at) AS last_ts"
+	}
+	selectClause += " FROM metric_points WHERE project_id = :project_id AND name = :name AND recorded_at >= :from AND recorded_at <= :to"
 
 	params := lit.P{
 		"project_id": projectId,
@@ -119,20 +124,23 @@ func (r *metricPointRepository) QueryTimeSeries(ctx context.Context, projectId u
 	for rows.Next() {
 		var bucketStr string
 		var value float64
+		var groupKeyNullable *string
+		var lastTs string
 		groupKey := "__all__"
 
+		targets := []any{&bucketStr}
 		if hasGroupBy {
-			var groupKeyNullable *string
-			if err := rows.Scan(&bucketStr, &groupKeyNullable, &value); err != nil {
-				return nil, err
-			}
-			if groupKeyNullable != nil {
-				groupKey = *groupKeyNullable
-			}
-		} else {
-			if err := rows.Scan(&bucketStr, &value); err != nil {
-				return nil, err
-			}
+			targets = append(targets, &groupKeyNullable)
+		}
+		targets = append(targets, &value)
+		if isLast {
+			targets = append(targets, &lastTs)
+		}
+		if err := rows.Scan(targets...); err != nil {
+			return nil, err
+		}
+		if groupKeyNullable != nil {
+			groupKey = *groupKeyNullable
 		}
 
 		bucket, err := time.Parse("2006-01-02 15:04:05", bucketStr)
@@ -328,6 +336,8 @@ func sqliteAggregationFunc(agg string) string {
 		return "sum(value)"
 	case "count":
 		return "CAST(COUNT(*) AS REAL)"
+	case "last":
+		return "value"
 	default:
 		return "avg(value)"
 	}

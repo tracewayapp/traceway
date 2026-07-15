@@ -336,3 +336,65 @@ func TestMetricPointRepository_QueryTimeSeries_Aggregations(t *testing.T) {
 	series = result["__all__"]
 	assertApproxEqual(t, "sum", series[0].Value, 600.0, 0.1)
 }
+
+func TestMetricPointRepository_QueryTimeSeries_LastAggregation(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	projectId := uuid.New()
+	base := time.Now().UTC().Truncate(time.Hour)
+
+	points := []models.MetricPoint{
+		makeMetricPoint(projectId, "response_time", 100.0, nil, base),
+		makeMetricPoint(projectId, "response_time", 300.0, nil, base.Add(time.Minute)),
+		makeMetricPoint(projectId, "response_time", 250.0, nil, base.Add(2*time.Minute)),
+	}
+
+	if err := MetricPointRepository.InsertAsync(ctx, points); err != nil {
+		t.Fatalf("InsertAsync failed: %v", err)
+	}
+
+	from := base.Add(-time.Minute)
+	to := base.Add(time.Hour)
+
+	result, err := MetricPointRepository.QueryTimeSeries(ctx, projectId, "response_time", from, to, 60, "last", nil, "")
+	if err != nil {
+		t.Fatalf("QueryTimeSeries last failed: %v", err)
+	}
+	series := result["__all__"]
+	if len(series) != 1 {
+		t.Fatalf("expected 1 bucket, got %d", len(series))
+	}
+	assertApproxEqual(t, "last", series[0].Value, 250.0, 0.1)
+}
+
+func TestMetricPointRepository_QueryTimeSeries_LastAggregationWithGroupBy(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	projectId := uuid.New()
+	base := time.Now().UTC().Truncate(time.Hour)
+
+	points := []models.MetricPoint{
+		makeMetricPoint(projectId, "disk.used", 10.0, map[string]string{"disk": "sda"}, base),
+		makeMetricPoint(projectId, "disk.used", 50.0, map[string]string{"disk": "sda"}, base.Add(time.Minute)),
+		makeMetricPoint(projectId, "disk.used", 40.0, map[string]string{"disk": "sda"}, base.Add(2*time.Minute)),
+		makeMetricPoint(projectId, "disk.used", 90.0, map[string]string{"disk": "sdb"}, base.Add(time.Minute)),
+		makeMetricPoint(projectId, "disk.used", 70.0, map[string]string{"disk": "sdb"}, base.Add(3*time.Minute)),
+	}
+
+	if err := MetricPointRepository.InsertAsync(ctx, points); err != nil {
+		t.Fatalf("InsertAsync failed: %v", err)
+	}
+
+	from := base.Add(-time.Minute)
+	to := base.Add(time.Hour)
+
+	result, err := MetricPointRepository.QueryTimeSeries(ctx, projectId, "disk.used", from, to, 60, "last", nil, "disk")
+	if err != nil {
+		t.Fatalf("QueryTimeSeries last with groupBy failed: %v", err)
+	}
+	if len(result["sda"]) != 1 || len(result["sdb"]) != 1 {
+		t.Fatalf("expected 1 bucket per group, got sda=%d sdb=%d", len(result["sda"]), len(result["sdb"]))
+	}
+	assertApproxEqual(t, "last sda", result["sda"][0].Value, 40.0, 0.1)
+	assertApproxEqual(t, "last sdb", result["sdb"][0].Value, 70.0, 0.1)
+}

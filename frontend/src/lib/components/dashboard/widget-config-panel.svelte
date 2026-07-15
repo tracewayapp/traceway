@@ -3,13 +3,12 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Select from '$lib/components/ui/select';
-	import * as AlertDialog from '$lib/components/ui/alert-dialog';
+	import * as Sheet from '$lib/components/ui/sheet';
 	import TagFilter from './tag-filter.svelte';
 	import { THRESHOLD_COLOR_NAMES, resolveThresholdColor } from './gauge-thresholds';
 	import { api } from '$lib/api';
 	import { projectsState } from '$lib/state/projects.svelte';
-	import { Plus, Check, CircleAlert, X } from 'lucide-svelte';
-	import * as Alert from '$lib/components/ui/alert';
+	import { Plus, Check, X } from 'lucide-svelte';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import type { DiscoveredMetric } from '$lib/types/dashboard';
 
@@ -109,6 +108,21 @@
 		thresholds = thresholds.filter((_, i) => i !== index);
 	}
 
+	function handleTypeChange(newType: string) {
+		const wasValueType = widgetType === 'gauge' || widgetType === 'single_value';
+		const isValueType = newType === 'gauge' || newType === 'single_value';
+		widgetType = newType;
+		if (isValueType && !wasValueType) {
+			for (const s of sources) {
+				if (s.aggregation === 'avg') s.aggregation = 'last';
+			}
+		} else if (!isValueType && wasValueType) {
+			for (const s of sources) {
+				if (s.aggregation === 'last') s.aggregation = 'avg';
+			}
+		}
+	}
+
 	function getMetricTagKeys(metricName: string): string[] {
 		const m = availableMetrics.find((m: DiscoveredMetric) => m.name === metricName);
 		return m?.tagKeys ?? [];
@@ -179,13 +193,18 @@
 	}
 </script>
 
-<AlertDialog.Root bind:open>
-	<AlertDialog.Content class="max-w-xl" interactOutsideBehavior="close">
-		<AlertDialog.Header>
-			<AlertDialog.Title>{widget?.id ? 'Edit Widget' : 'New Widget'}</AlertDialog.Title>
-		</AlertDialog.Header>
-		<ErrorAlert {error} />
-		<div class="space-y-4">
+<Sheet.Root
+	bind:open
+	onOpenChange={(v) => {
+		if (!v) onCancel();
+	}}
+>
+	<Sheet.Content side="right" class="w-full gap-0 sm:max-w-[520px]">
+		<Sheet.Header class="border-b px-6">
+			<Sheet.Title>{widget?.id ? 'Edit Widget' : 'New Widget'}</Sheet.Title>
+		</Sheet.Header>
+		<div class="flex-1 space-y-4 overflow-y-auto px-6 py-4">
+			<ErrorAlert {error} />
 			<div>
 				<label class="text-sm font-medium" for="widget-title">Title (optional)</label>
 				<Input id="widget-title" bind:value={title} placeholder="Defaults to metric name" />
@@ -197,7 +216,7 @@
 					type="single"
 					value={widgetType}
 					onValueChange={(v) => {
-						if (v) widgetType = v;
+						if (v) handleTypeChange(v);
 					}}
 				>
 					<Select.Trigger>
@@ -364,6 +383,7 @@
 						>
 							<Select.Trigger class="w-20">{source.aggregation}</Select.Trigger>
 							<Select.Content>
+								<Select.Item value="last">last</Select.Item>
 								<Select.Item value="avg">avg</Select.Item>
 								<Select.Item value="min">min</Select.Item>
 								<Select.Item value="max">max</Select.Item>
@@ -416,11 +436,11 @@
 				</div>
 			{/each}
 		</div>
-		<AlertDialog.Footer>
+		<Sheet.Footer class="flex-row justify-end border-t px-6">
 			<Button variant="outline" onclick={handleClose}>Cancel</Button>
 			<Button variant={widget?.id ? 'default' : 'success'} onclick={handleSave}>
 				{#if widget?.id}<Check class="mr-1 h-4 w-4" /> Update Widget{:else}<Plus class="mr-1 h-4 w-4" /> New Widget{/if}
 			</Button>
-		</AlertDialog.Footer>
-	</AlertDialog.Content>
-</AlertDialog.Root>
+		</Sheet.Footer>
+	</Sheet.Content>
+</Sheet.Root>

@@ -30,6 +30,9 @@ func (r *metricPointRepository) InsertAsync(ctx context.Context, points []models
 
 func (r *metricPointRepository) QueryTimeSeries(ctx context.Context, projectId uuid.UUID, name string, from, to time.Time, intervalMinutes int, aggregation string, tagFilters map[string]string, groupBy string) (map[string][]models.TimeSeriesPoint, error) {
 	table := selectTable(to.Sub(from))
+	if aggregation == "last" {
+		table = "metric_points"
+	}
 
 	aggFunc := aggregationFunc(aggregation, table)
 
@@ -162,6 +165,8 @@ func aggregationFunc(agg string, table string) string {
 			return "sum(value)"
 		case "count":
 			return "toFloat64(count())"
+		case "last":
+			return "argMax(value, recorded_at)"
 		default:
 			return "avg(value)"
 		}

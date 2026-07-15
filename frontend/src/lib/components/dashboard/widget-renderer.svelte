@@ -77,6 +77,24 @@
 		chartAreaHeight > 0 ? chartAreaHeight : (chartHeights[widget.config.size ?? 'sm'] ?? 200)
 	);
 
+	function reduceSeries(points: MetricTrendPoint[], aggregation: string): number | null {
+		if (points.length === 0) return null;
+		const values = points.map((p) => p.value);
+		switch (aggregation) {
+			case 'max':
+				return Math.max(...values);
+			case 'min':
+				return Math.min(...values);
+			case 'sum':
+			case 'count':
+				return values.reduce((a, b) => a + b, 0);
+			case 'avg':
+				return values.reduce((a, b) => a + b, 0) / values.length;
+			default:
+				return values[values.length - 1];
+		}
+	}
+
 	let hiddenSeries = new SvelteSet<string>();
 	const visibleSeries = $derived(series.filter((s) => !hiddenSeries.has(s.key)));
 
@@ -156,10 +174,8 @@
 			series = newSeries;
 
 			if (widget.widgetType === 'single_value' || widget.widgetType === 'gauge') {
-				singleValue =
-					newSeries.length > 0 && newSeries[0].data.length > 0
-						? newSeries[0].data[newSeries[0].data.length - 1].value
-						: null;
+				const aggregation = widget.config.sources?.[0]?.aggregation || 'avg';
+				singleValue = newSeries.length > 0 ? reduceSeries(newSeries[0].data, aggregation) : null;
 			}
 		} catch {
 			// keep empty

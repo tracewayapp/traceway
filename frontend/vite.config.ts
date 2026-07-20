@@ -34,11 +34,13 @@ function injectBillingSource(): Plugin {
 		name: 'inject-billing-source',
 		enforce: 'pre',
 		transform(code, id) {
-			if (id.endsWith('.css') && code.includes('@source "$BILLING_PATH"')) {
+			// Quote-agnostic: prettier (singleQuote) rewrites the placeholder's quotes in CSS
+			const placeholder = /@source\s+(['"])\$BILLING_PATH\1;?/;
+			if (id.endsWith('.css') && placeholder.test(code)) {
 				if (billingExists) {
-					return code.replace('@source "$BILLING_PATH"', `@source "${resolvedBillingPath}"`);
+					return code.replace(placeholder, `@source "${resolvedBillingPath}";`);
 				} else {
-					return code.replace('@source "$BILLING_PATH";', '');
+					return code.replace(placeholder, '');
 				}
 			}
 		}

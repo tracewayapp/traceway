@@ -2,8 +2,14 @@ package db
 
 import (
 	"context"
+	"errors"
 	"sync"
 )
+
+// ErrIngestQueueFull is returned by telemetry insert methods when the
+// background write queue for a table is at capacity. Controllers map it to
+// 503 + Retry-After so the client retries — the data was never acked.
+var ErrIngestQueueFull = errors.New("telemetry ingest write queue full")
 
 type TelemetryEngineStats struct {
 	DBSizeBytes       int64 `json:"dbSizeBytes"`
@@ -58,6 +64,27 @@ func RecordTelemetryRowDropped(table string) {
 	telemetryIngestMu.Lock()
 	telemetryDroppedRows[table]++
 	telemetryIngestMu.Unlock()
+}
+
+// RecordTelemetryRowsDropped counts a bulk loss, e.g. a failed background
+// flush discarding rows that were already acked to the client.
+func RecordTelemetryRowsDropped(table string, n uint64) {
+	telemetryIngestMu.Lock()
+	telemetryDroppedRows[table] += n
+	telemetryIngestMu.Unlock()
+}
+
+var telemetryWriteQueueDepthFn func() map[string]int
+
+func SetTelemetryWriteQueueDepthFn(fn func() map[string]int) {
+	telemetryWriteQueueDepthFn = fn
+}
+
+func GetTelemetryWriteQueueDepths() (map[string]int, bool) {
+	if telemetryWriteQueueDepthFn == nil {
+		return nil, false
+	}
+	return telemetryWriteQueueDepthFn(), true
 }
 
 func RecordTelemetryInsertFailure() {

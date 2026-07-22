@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"strconv"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/monitoring"
 	"github.com/tracewayapp/traceway/backend/app/notifications"
 	"github.com/tracewayapp/traceway/backend/app/recordings"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/retention"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/services/mcpmount"
@@ -151,10 +153,23 @@ func Run(opts ...Option) {
 		hook(ctx)
 	}
 
+	telemetry.StartWriters(ctx)
 	notifications.StartEvaluator(ctx)
 	retention.Start(ctx)
 	recordings.Start(ctx)
 	sourcemapbackfill.Start(ctx)
+
+	// Opt-in pprof for profiling ingest under load. Localhost only; gin does
+	// not use http.DefaultServeMux, so the pprof handlers are unreachable
+	// through the public router.
+	if pprofPort := strings.TrimSpace(cfg.PprofPort); pprofPort != "" {
+		go func() {
+			defer traceway.Recover()
+			if err := http.ListenAndServe("127.0.0.1:"+pprofPort, nil); err != nil {
+				traceway.CaptureException(fmt.Errorf("pprof server on port %s: %w", pprofPort, err))
+			}
+		}()
+	}
 
 	var router *gin.Engine
 	if o != nil && o.disableLogging {

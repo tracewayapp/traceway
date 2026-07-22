@@ -4,11 +4,11 @@ package duckdb
 
 import (
 	"context"
+	"database/sql/driver"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
 	"time"
 
-	"github.com/duckdb/duckdb-go/v2"
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/app/db"
@@ -52,42 +52,38 @@ func (r *span) toModel() models.Span {
 
 type spanRepository struct{}
 
-func (r *spanRepository) InsertAsync(ctx context.Context, spans []models.Span) error {
-	if len(spans) == 0 {
-		return nil
-	}
-
-	return withAppender(ctx, "spans", func(appender *duckdb.Appender) {
-
-		for _, s := range spans {
-			attributesJSON, err := attrJSON(s.Attributes)
-			if err != nil {
-				captureDroppedRow("spans", err)
-				continue
-			}
-
-			var parentSpanId *string
-			if s.ParentSpanId != nil {
-				v := s.ParentSpanId.String()
-				parentSpanId = &v
-			}
-
-			if err := appender.AppendRow(
-				s.Id.String(),
-				s.TraceId.String(),
-				s.ProjectId.String(),
-				s.Name,
-				s.StartTime.UTC(),
-				int64(s.Duration),
-				s.RecordedAt.UTC(),
-				nullableString(parentSpanId),
-				attributesJSON,
-			); err != nil {
-				captureDroppedRow("spans", err)
-			}
+func convertSpans(spans []models.Span) [][]driver.Value {
+	rows := make([][]driver.Value, 0, len(spans))
+	for _, s := range spans {
+		attributesJSON, err := attrJSON(s.Attributes)
+		if err != nil {
+			captureDroppedRow("spans", err)
+			continue
 		}
 
-	})
+		var parentSpanId *string
+		if s.ParentSpanId != nil {
+			v := s.ParentSpanId.String()
+			parentSpanId = &v
+		}
+
+		rows = append(rows, []driver.Value{
+			s.Id.String(),
+			s.TraceId.String(),
+			s.ProjectId.String(),
+			s.Name,
+			s.StartTime.UTC(),
+			int64(s.Duration),
+			s.RecordedAt.UTC(),
+			nullableString(parentSpanId),
+			attributesJSON,
+		})
+	}
+	return rows
+}
+
+func (r *spanRepository) InsertAsync(ctx context.Context, spans []models.Span) error {
+	return insertRows(ctx, "spans", convertSpans(spans))
 }
 
 func (r *spanRepository) FindByTraceId(ctx context.Context, projectId, traceId uuid.UUID, recordedAt *time.Time) ([]models.Span, error) {

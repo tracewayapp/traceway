@@ -5,11 +5,11 @@ package duckdb
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/duckdb/duckdb-go/v2"
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/app/db"
@@ -39,25 +39,21 @@ func init() {
 	})
 }
 
-func (r *metricPointRepository) InsertAsync(ctx context.Context, points []models.MetricPoint) error {
-	if len(points) == 0 {
-		return nil
-	}
-
-	return withAppender(ctx, "metric_points", func(appender *duckdb.Appender) {
-
-		for _, p := range points {
-			tagsJSON, err := attrJSON(p.Tags)
-			if err != nil {
-				captureDroppedRow("metric_points", err)
-				continue
-			}
-			if err := appender.AppendRow(p.ProjectId.String(), p.Name, p.Value, tagsJSON, p.RecordedAt.UTC(), p.Tags["server_name"]); err != nil {
-				captureDroppedRow("metric_points", err)
-			}
+func convertMetricPoints(points []models.MetricPoint) [][]driver.Value {
+	rows := make([][]driver.Value, 0, len(points))
+	for _, p := range points {
+		tagsJSON, err := attrJSON(p.Tags)
+		if err != nil {
+			captureDroppedRow("metric_points", err)
+			continue
 		}
+		rows = append(rows, []driver.Value{p.ProjectId.String(), p.Name, p.Value, tagsJSON, p.RecordedAt.UTC(), p.Tags["server_name"]})
+	}
+	return rows
+}
 
-	})
+func (r *metricPointRepository) InsertAsync(ctx context.Context, points []models.MetricPoint) error {
+	return insertRows(ctx, "metric_points", convertMetricPoints(points))
 }
 
 func (r *metricPointRepository) QueryTimeSeries(ctx context.Context, projectId uuid.UUID, name string, from, to time.Time, intervalMinutes int, aggregation string, tagFilters map[string]string, groupBy string) (map[string][]models.TimeSeriesPoint, error) {

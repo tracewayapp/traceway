@@ -305,7 +305,7 @@ func (e clientController) Report(c *gin.Context) {
 		err := telemetry.EndpointRepository.InsertAsync(c, endpointsToInsert)
 		insertSpan.End()
 		if err != nil {
-			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting endpointsToInsert: %w", err))
+			abortIngestInsertError(c, err, "endpointsToInsert")
 			return
 		}
 	}
@@ -315,7 +315,7 @@ func (e clientController) Report(c *gin.Context) {
 		err := telemetry.TaskRepository.InsertAsync(c, tasksToInsert)
 		insertSpan.End()
 		if err != nil {
-			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting tasksToInsert: %w", err))
+			abortIngestInsertError(c, err, "tasksToInsert")
 			return
 		}
 	}
@@ -344,7 +344,7 @@ func (e clientController) Report(c *gin.Context) {
 		err := telemetry.MetricPointRepository.InsertAsync(c, metricPointsToInsert)
 		insertSpan.End()
 		if err != nil {
-			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting metricPointsToInsert: %w", err))
+			abortIngestInsertError(c, err, "metricPointsToInsert")
 			return
 		}
 
@@ -357,7 +357,7 @@ func (e clientController) Report(c *gin.Context) {
 	spanInsertSpan.End()
 
 	if err != nil {
-		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting spansToInsert: %w", err))
+		abortIngestInsertError(c, err, "spansToInsert")
 		return
 	}
 

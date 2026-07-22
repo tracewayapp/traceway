@@ -32,6 +32,25 @@ var (
 	lastDropReportAt   = map[string]time.Time{}
 )
 
+// captureFlushFailure reports background-writer connect/flush failures with
+// the same 1-minute-per-table rate limit as captureDroppedRow, keyed
+// separately so a drop storm can't mask a flush failure.
+func captureFlushFailure(table string, lostRows int, err error) {
+	key := table + ":flush"
+
+	var report bool
+	dropReportMu.Lock()
+	if time.Since(lastDropReportAt[key]) >= dropReportInterval {
+		lastDropReportAt[key] = time.Now()
+		report = true
+	}
+	dropReportMu.Unlock()
+
+	if report {
+		traceway.CaptureException(fmt.Errorf("duckdb %s background writer: %d acked rows lost, latest: %w", table, lostRows, err))
+	}
+}
+
 func captureDroppedRow(table string, err error) {
 	db.RecordTelemetryRowDropped(table)
 

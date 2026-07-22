@@ -5,6 +5,7 @@ package duckdb
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
@@ -12,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/duckdb/duckdb-go/v2"
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/app/db"
@@ -80,53 +80,47 @@ func (r *task) toModel() models.Task {
 
 type taskRepository struct{}
 
-func (e *taskRepository) InsertAsync(ctx context.Context, lines []models.Task) error {
-	if len(lines) == 0 {
-		return nil
-	}
-
-	return withAppender(ctx, "tasks", func(appender *duckdb.Appender) {
-
-		for _, t := range lines {
-			attributesJSON, err := attrJSON(t.Attributes)
-			if err != nil {
-				captureDroppedRow("tasks", err)
-				continue
-			}
-
-			var distributedTraceId *string
-			if t.DistributedTraceId != nil {
-				s := t.DistributedTraceId.String()
-				distributedTraceId = &s
-			}
-
-			var spanId *string
-			if t.SpanId != nil {
-				s := t.SpanId.String()
-				spanId = &s
-			}
-
-			isRoot := boolToInt(t.IsRoot)
-
-			if err := appender.AppendRow(
-				t.Id.String(),
-				t.ProjectId.String(),
-				t.TaskName,
-				int64(t.Duration),
-				t.RecordedAt.UTC(),
-				t.ClientIP,
-				attributesJSON,
-				t.AppVersion,
-				t.ServerName,
-				nullableString(distributedTraceId),
-				nullableString(spanId),
-				isRoot,
-			); err != nil {
-				captureDroppedRow("tasks", err)
-			}
+func convertTasks(lines []models.Task) [][]driver.Value {
+	rows := make([][]driver.Value, 0, len(lines))
+	for _, t := range lines {
+		attributesJSON, err := attrJSON(t.Attributes)
+		if err != nil {
+			captureDroppedRow("tasks", err)
+			continue
 		}
 
-	})
+		var distributedTraceId *string
+		if t.DistributedTraceId != nil {
+			s := t.DistributedTraceId.String()
+			distributedTraceId = &s
+		}
+
+		var spanId *string
+		if t.SpanId != nil {
+			s := t.SpanId.String()
+			spanId = &s
+		}
+
+		rows = append(rows, []driver.Value{
+			t.Id.String(),
+			t.ProjectId.String(),
+			t.TaskName,
+			int64(t.Duration),
+			t.RecordedAt.UTC(),
+			t.ClientIP,
+			attributesJSON,
+			t.AppVersion,
+			t.ServerName,
+			nullableString(distributedTraceId),
+			nullableString(spanId),
+			boolToInt(t.IsRoot),
+		})
+	}
+	return rows
+}
+
+func (e *taskRepository) InsertAsync(ctx context.Context, lines []models.Task) error {
+	return insertRows(ctx, "tasks", convertTasks(lines))
 }
 
 func (e *taskRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {

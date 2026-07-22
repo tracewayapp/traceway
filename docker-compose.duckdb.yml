@@ -14,9 +14,18 @@ services:
       # container's RAM or the backend gets OOM-killed under ingest.
       DUCKDB_MEMORY_LIMIT: "2GB"
       # DUCKDB_THREADS: "4"
-      # Raise under sustained ingest to reduce WAL checkpoint stalls; costs a
-      # larger WAL and longer restart replay. DuckDB default is 16MB.
+      # WAL checkpoint threshold. The backend defaults to 256MB (DuckDB's own
+      # 16MB default stalls sustained ingest); lower it if restart replay time
+      # matters more than ingest throughput.
       # DUCKDB_CHECKPOINT_THRESHOLD: "256MB"
+
+      # Background write batcher for the hot telemetry tables. Defaults:
+      # queue 131072 rows per table, flush at 32768 rows or 100ms. A 200 on
+      # ingest means "accepted into the bounded queue"; a full queue answers
+      # 503 + Retry-After and the SDK retries.
+      # DUCKDB_WRITE_QUEUE_ROWS: "131072"
+      # DUCKDB_WRITE_FLUSH_ROWS: "32768"
+      # DUCKDB_WRITE_FLUSH_INTERVAL_MS: "100"
 
       # Optional retention knobs. Defaults are 30 days; set to "0" to disable.
       # SQLITE_RETENTION_DAYS prunes telemetry rows (DuckDB telemetry included);

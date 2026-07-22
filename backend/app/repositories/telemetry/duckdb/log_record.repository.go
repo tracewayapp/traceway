@@ -4,12 +4,12 @@ package duckdb
 
 import (
 	"context"
+	"database/sql/driver"
 	"fmt"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
 	"strings"
 
-	"github.com/duckdb/duckdb-go/v2"
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
 
@@ -75,54 +75,50 @@ func (r *logRecord) toModel() models.LogRecord {
 
 type logRecordRepository struct{}
 
-func (r *logRecordRepository) InsertAsync(ctx context.Context, records []models.LogRecord) error {
-	if len(records) == 0 {
-		return nil
-	}
-
-	return withAppender(ctx, "log_records", func(appender *duckdb.Appender) {
-
-		for _, lr := range records {
-			resourceJSON, err := attrJSON(lr.ResourceAttributes)
-			if err != nil {
-				captureDroppedRow("log_records", err)
-				continue
-			}
-			scopeJSON, err := attrJSON(lr.ScopeAttributes)
-			if err != nil {
-				captureDroppedRow("log_records", err)
-				continue
-			}
-			logJSON, err := attrJSON(lr.LogAttributes)
-			if err != nil {
-				captureDroppedRow("log_records", err)
-				continue
-			}
-
-			if err := appender.AppendRow(
-				lr.Id.String(),
-				lr.ProjectId.String(),
-				lr.Timestamp.UTC(),
-				lr.TraceId,
-				lr.SpanId,
-				int64(lr.TraceFlags),
-				lr.SeverityText,
-				int64(lr.SeverityNumber),
-				lr.ServiceName,
-				lr.Body,
-				lr.ResourceSchemaUrl,
-				resourceJSON,
-				lr.ScopeSchemaUrl,
-				lr.ScopeName,
-				lr.ScopeVersion,
-				scopeJSON,
-				logJSON,
-			); err != nil {
-				captureDroppedRow("log_records", err)
-			}
+func convertLogRecords(records []models.LogRecord) [][]driver.Value {
+	rows := make([][]driver.Value, 0, len(records))
+	for _, lr := range records {
+		resourceJSON, err := attrJSON(lr.ResourceAttributes)
+		if err != nil {
+			captureDroppedRow("log_records", err)
+			continue
+		}
+		scopeJSON, err := attrJSON(lr.ScopeAttributes)
+		if err != nil {
+			captureDroppedRow("log_records", err)
+			continue
+		}
+		logJSON, err := attrJSON(lr.LogAttributes)
+		if err != nil {
+			captureDroppedRow("log_records", err)
+			continue
 		}
 
-	})
+		rows = append(rows, []driver.Value{
+			lr.Id.String(),
+			lr.ProjectId.String(),
+			lr.Timestamp.UTC(),
+			lr.TraceId,
+			lr.SpanId,
+			int64(lr.TraceFlags),
+			lr.SeverityText,
+			int64(lr.SeverityNumber),
+			lr.ServiceName,
+			lr.Body,
+			lr.ResourceSchemaUrl,
+			resourceJSON,
+			lr.ScopeSchemaUrl,
+			lr.ScopeName,
+			lr.ScopeVersion,
+			scopeJSON,
+			logJSON,
+		})
+	}
+	return rows
+}
+
+func (r *logRecordRepository) InsertAsync(ctx context.Context, records []models.LogRecord) error {
+	return insertRows(ctx, "log_records", convertLogRecords(records))
 }
 
 func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearchParams) ([]models.LogRecord, int64, error) {

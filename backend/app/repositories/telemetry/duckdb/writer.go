@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql/driver"
 	"fmt"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -44,12 +45,17 @@ type writeReq struct {
 	done chan struct{}
 }
 
-// tableWriter owns one table's queue. The connection and Appender are touched
-// exclusively by the writer goroutine — the duckdb Appender is not
-// thread-safe; all cross-goroutine interaction goes through ch.
+// tableWriter owns one table's queue, sharded across a small pool of writer
+// goroutines (VictoriaMetrics-style: drain concurrency sized to CPU). Each
+// goroutine owns one channel and one connection + Appender exclusively — the
+// duckdb Appender is not thread-safe; all cross-goroutine interaction goes
+// through the channels. Batches are round-robined across the shards, so
+// per-channel FIFO still guarantees a barrier sent to every shard flushes
+// everything enqueued before it.
 type tableWriter struct {
 	table         string
-	ch            chan writeReq
+	chans         []chan writeReq
+	next          atomic.Uint64
 	maxQueueRows  int64
 	flushRows     int
 	flushInterval time.Duration
@@ -78,6 +84,22 @@ type WriterOptions struct {
 	QueueRows     int
 	FlushRows     int
 	FlushInterval time.Duration
+	Writers       int
+}
+
+// defaultWritersPerTable mirrors the admission gate's old concurrency
+// (2×CPU), which is also VictoriaMetrics' default insert concurrency — the
+// single-writer v1 measurably under-drained bulk ingest vs the old
+// per-request appenders.
+func defaultWritersPerTable() int {
+	n := runtime.NumCPU() * 2
+	if n < 2 {
+		n = 2
+	}
+	if n > 8 {
+		n = 8
+	}
+	return n
 }
 
 // StartWriters starts one background writer per batched table. Idempotent.
@@ -94,6 +116,9 @@ func StartWriters(ctx context.Context, opts WriterOptions) {
 	if opts.FlushInterval <= 0 {
 		opts.FlushInterval = defaultWriteFlushInterval
 	}
+	if opts.Writers <= 0 {
+		opts.Writers = defaultWritersPerTable()
+	}
 
 	// Derive a cancelable context so StopWriters works even though the
 	// server passes context.Background().
@@ -101,18 +126,22 @@ func StartWriters(ctx context.Context, opts WriterOptions) {
 	ws := &writerSet{byTable: make(map[string]*tableWriter, len(batchedTables)), cancel: cancel}
 	for _, table := range batchedTables {
 		w := &tableWriter{
-			table: table,
-			// Every data batch carries >=1 row, so admitted batches <=
-			// admitted rows <= maxQueueRows; the slack absorbs concurrent
-			// zero-row barriers. An admitted send therefore never blocks.
-			ch:            make(chan writeReq, opts.QueueRows+16),
+			table:         table,
+			chans:         make([]chan writeReq, opts.Writers),
 			maxQueueRows:  int64(opts.QueueRows),
 			flushRows:     opts.FlushRows,
 			flushInterval: opts.FlushInterval,
 		}
+		for i := range w.chans {
+			// Every data batch carries >=1 row, so admitted batches <=
+			// admitted rows <= maxQueueRows regardless of how round-robin
+			// distributes them; the slack absorbs concurrent zero-row
+			// barriers. An admitted send therefore never blocks.
+			w.chans[i] = make(chan writeReq, opts.QueueRows+16)
+			ws.wg.Add(1)
+			go w.runLoop(ctx, w.chans[i], &ws.wg)
+		}
 		ws.byTable[table] = w
-		ws.wg.Add(1)
-		go w.runLoop(ctx, &ws.wg)
 	}
 	if !activeWriters.CompareAndSwap(nil, ws) {
 		cancel()
@@ -150,14 +179,16 @@ func FlushWriters(ctx context.Context) error {
 	if ws == nil {
 		return nil
 	}
-	barriers := make([]chan struct{}, 0, len(ws.byTable))
+	var barriers []chan struct{}
 	for _, w := range ws.byTable {
-		done := make(chan struct{})
-		select {
-		case w.ch <- writeReq{done: done}:
-			barriers = append(barriers, done)
-		case <-ctx.Done():
-			return ctx.Err()
+		for _, ch := range w.chans {
+			done := make(chan struct{})
+			select {
+			case ch <- writeReq{done: done}:
+				barriers = append(barriers, done)
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 		}
 	}
 	for _, done := range barriers {
@@ -202,16 +233,16 @@ func (w *tableWriter) enqueue(rows [][]driver.Value) error {
 		return db.ErrIngestQueueFull
 	}
 	w.enqueuedRows.Add(uint64(n))
-	w.ch <- writeReq{rows: rows}
+	w.chans[w.next.Add(1)%uint64(len(w.chans))] <- writeReq{rows: rows}
 	return nil
 }
 
 // runLoop restarts runOnce after a panic instead of dying: a dead writer
-// would strand a full queue into permanent 503s for its table.
-func (w *tableWriter) runLoop(ctx context.Context, wg *sync.WaitGroup) {
+// would strand its shard of the queue into permanent 503s for the table.
+func (w *tableWriter) runLoop(ctx context.Context, ch chan writeReq, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for {
-		if done := w.runOnce(ctx); done {
+		if done := w.runOnce(ctx, ch); done {
 			return
 		}
 		select {
@@ -222,7 +253,7 @@ func (w *tableWriter) runLoop(ctx context.Context, wg *sync.WaitGroup) {
 	}
 }
 
-func (w *tableWriter) runOnce(ctx context.Context) (done bool) {
+func (w *tableWriter) runOnce(ctx context.Context, ch chan writeReq) (done bool) {
 	var (
 		conn       driver.Conn
 		appender   *duckdb.Appender
@@ -314,7 +345,7 @@ func (w *tableWriter) runOnce(ctx context.Context) (done bool) {
 			// rows. In production nothing cancels this context.
 			flush()
 			return true
-		case req := <-w.ch:
+		case req := <-ch:
 			if req.done != nil {
 				flush()
 				if timerActive {

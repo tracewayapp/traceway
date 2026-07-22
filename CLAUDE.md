@@ -259,6 +259,7 @@ DUCKDB_CHECKPOINT_THRESHOLD=          # WAL checkpoint threshold. Unset = 256MB 
 DUCKDB_WRITE_QUEUE_ROWS=131072        # background write batcher: per-table queue capacity in rows. A full queue answers 503 + Retry-After (load shedding before the ack).
 DUCKDB_WRITE_FLUSH_ROWS=32768         # flush the per-table appender after this many rows
 DUCKDB_WRITE_FLUSH_INTERVAL_MS=100    # ...or after this age, whichever first. Bounds read-lag and the acked-data loss window on crash.
+DUCKDB_WRITE_WRITERS=                 # writer goroutines per hot table. Unset = 2 x CPU cores, capped at 8 (VictoriaMetrics-style drain concurrency).
 
 # Ingest admission gate (all telemetry ingest endpoints: /api/report, /api/profiles/ingest, /api/otel/*)
 INGEST_MAX_CONCURRENT=                # max concurrently processed ingest requests. Unset = 2×CPU cores, min 4. Bounds ingest memory so overload sheds load with 503s instead of the process being OOM-killed (on DuckDB an OOM death is followed by a minutes-long WAL-replay stall on restart).

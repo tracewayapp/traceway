@@ -1,11 +1,13 @@
 package otelcontrollers
 
 import (
+	"bytes"
 	"compress/gzip"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	collogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
@@ -18,17 +20,48 @@ import (
 
 const maxBodySize = 10 * 1024 * 1024 // 10MB
 
-func readBody(c *gin.Context) ([]byte, error) {
+// The decode path runs for every OTLP request; pooling the gzip reader and
+// the decompressed-body buffer removes a reader setup and the io.ReadAll
+// realloc ladder per request. Pooled memory never escapes this file: the
+// body bytes are only valid until release() and proto/protojson unmarshal
+// copies what it keeps.
+var (
+	gzipReaderPool sync.Pool
+	bodyBufPool    = sync.Pool{New: func() any { return new(bytes.Buffer) }}
+)
+
+func readBody(c *gin.Context) (body []byte, release func(), err error) {
 	var reader io.Reader = c.Request.Body
 	if strings.EqualFold(c.GetHeader("Content-Encoding"), "gzip") {
-		gr, err := gzip.NewReader(c.Request.Body)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create gzip reader: %w", err)
+		var gr *gzip.Reader
+		if pooled, ok := gzipReaderPool.Get().(*gzip.Reader); ok {
+			gr = pooled
+			err = gr.Reset(c.Request.Body)
+		} else {
+			gr, err = gzip.NewReader(c.Request.Body)
 		}
-		defer gr.Close()
+		if err != nil {
+			if gr != nil {
+				gzipReaderPool.Put(gr)
+			}
+			return nil, nil, fmt.Errorf("failed to create gzip reader: %w", err)
+		}
+		// The body is fully consumed below, so the reader can go back to
+		// the pool before returning.
+		defer func() {
+			gr.Close()
+			gzipReaderPool.Put(gr)
+		}()
 		reader = gr
 	}
-	return io.ReadAll(io.LimitReader(reader, maxBodySize))
+
+	buf := bodyBufPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	if _, err := buf.ReadFrom(io.LimitReader(reader, maxBodySize)); err != nil {
+		bodyBufPool.Put(buf)
+		return nil, nil, err
+	}
+	return buf.Bytes(), func() { bodyBufPool.Put(buf) }, nil
 }
 
 func isProtobuf(c *gin.Context) bool {
@@ -37,10 +70,11 @@ func isProtobuf(c *gin.Context) bool {
 }
 
 func decodeTraceRequest(c *gin.Context) (*coltracepb.ExportTraceServiceRequest, int, error) {
-	body, err := readBody(c)
+	body, release, err := readBody(c)
 	if err != nil {
 		return nil, 0, err
 	}
+	defer release()
 	req := &coltracepb.ExportTraceServiceRequest{}
 	if isProtobuf(c) {
 		if err := proto.Unmarshal(body, req); err != nil {
@@ -55,10 +89,11 @@ func decodeTraceRequest(c *gin.Context) (*coltracepb.ExportTraceServiceRequest, 
 }
 
 func decodeMetricsRequest(c *gin.Context) (*colmetricspb.ExportMetricsServiceRequest, int, error) {
-	body, err := readBody(c)
+	body, release, err := readBody(c)
 	if err != nil {
 		return nil, 0, err
 	}
+	defer release()
 	req := &colmetricspb.ExportMetricsServiceRequest{}
 	if isProtobuf(c) {
 		if err := proto.Unmarshal(body, req); err != nil {
@@ -95,12 +130,15 @@ func writeMetricsResponse(c *gin.Context) {
 }
 
 func decodeProfilesPayload(c *gin.Context) ([]byte, int, error) {
-	body, err := readBody(c)
+	body, release, err := readBody(c)
 	if err != nil {
 		return nil, 0, err
 	}
+	defer release()
 	if isProtobuf(c) {
-		return body, len(body), nil
+		// The payload escapes to the profiling pipeline, so it must own its
+		// bytes — the pooled buffer is reused after release.
+		return bytes.Clone(body), len(body), nil
 	}
 	req := &colprofilespb.ExportProfilesServiceRequest{}
 	if err := protojson.Unmarshal(body, req); err != nil {
@@ -125,10 +163,11 @@ func writeProfilesResponse(c *gin.Context) {
 }
 
 func decodeLogsRequest(c *gin.Context) (*collogspb.ExportLogsServiceRequest, int, error) {
-	body, err := readBody(c)
+	body, release, err := readBody(c)
 	if err != nil {
 		return nil, 0, err
 	}
+	defer release()
 	req := &collogspb.ExportLogsServiceRequest{}
 	if isProtobuf(c) {
 		if err := proto.Unmarshal(body, req); err != nil {

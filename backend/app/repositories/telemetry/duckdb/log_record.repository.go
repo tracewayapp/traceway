@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
+	"reflect"
 	"strings"
 
 	"github.com/google/uuid"
@@ -75,15 +76,44 @@ func (r *logRecord) toModel() models.LogRecord {
 
 type logRecordRepository struct{}
 
+// attrJSONMemo caches the marshal of the last-seen attribute map by map
+// identity. The OTLP logs converter builds one resource-attributes map and
+// one scope-attributes map per resource/scope and assigns the same map to
+// every record under it, so a 16k-record batch otherwise re-marshals an
+// identical map 16k times per level. Identity (not content) comparison is
+// safe because the converter never mutates the maps after building them.
+type attrJSONMemo struct {
+	last     uintptr
+	lastJSON string
+	valid    bool
+}
+
+func (m *attrJSONMemo) json(attrs map[string]string) (string, error) {
+	if len(attrs) == 0 {
+		return "{}", nil
+	}
+	p := reflect.ValueOf(attrs).Pointer()
+	if m.valid && p == m.last {
+		return m.lastJSON, nil
+	}
+	s, err := attrJSON(attrs)
+	if err != nil {
+		return "", err
+	}
+	m.last, m.lastJSON, m.valid = p, s, true
+	return s, nil
+}
+
 func convertLogRecords(records []models.LogRecord) [][]driver.Value {
 	rows := make([][]driver.Value, 0, len(records))
+	var resourceMemo, scopeMemo attrJSONMemo
 	for _, lr := range records {
-		resourceJSON, err := attrJSON(lr.ResourceAttributes)
+		resourceJSON, err := resourceMemo.json(lr.ResourceAttributes)
 		if err != nil {
 			captureDroppedRow("log_records", err)
 			continue
 		}
-		scopeJSON, err := attrJSON(lr.ScopeAttributes)
+		scopeJSON, err := scopeMemo.json(lr.ScopeAttributes)
 		if err != nil {
 			captureDroppedRow("log_records", err)
 			continue

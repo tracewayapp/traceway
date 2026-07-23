@@ -32,6 +32,14 @@ const (
 	defaultWriteFlushRows     = 32768
 	defaultWriteFlushInterval = 100 * time.Millisecond
 
+	// How long enqueue waits for queue space before the 503. VictoriaMetrics
+	// queues inserts up to a full minute (insert.maxQueueDuration); without a
+	// wait, sub-second ingest bursts overrun the queue and turn into 503s at
+	// rates the writers sustain on average (v2 benchmarks: every failing
+	// step showed 5-10% instant rejects while drain kept up).
+	defaultWriteQueueWait = 2 * time.Second
+	writeQueueWaitPoll    = 10 * time.Millisecond
+
 	writerReconnectMinBackoff = 100 * time.Millisecond
 	writerReconnectMaxBackoff = 5 * time.Second
 )
@@ -59,6 +67,7 @@ type tableWriter struct {
 	maxQueueRows  int64
 	flushRows     int
 	flushInterval time.Duration
+	queueWait     time.Duration
 
 	// pendingRows counts rows admitted but not yet flushed (queued +
 	// appended-unflushed). It is decremented after the flush, not after the
@@ -85,6 +94,9 @@ type WriterOptions struct {
 	FlushRows     int
 	FlushInterval time.Duration
 	Writers       int
+	// QueueWait is how long enqueue blocks for space before rejecting.
+	// Zero means the default; negative disables the wait (tests).
+	QueueWait time.Duration
 }
 
 // defaultWritersPerTable mirrors the admission gate's old concurrency
@@ -119,6 +131,9 @@ func StartWriters(ctx context.Context, opts WriterOptions) {
 	if opts.Writers <= 0 {
 		opts.Writers = defaultWritersPerTable()
 	}
+	if opts.QueueWait == 0 {
+		opts.QueueWait = defaultWriteQueueWait
+	}
 
 	// Derive a cancelable context so StopWriters works even though the
 	// server passes context.Background().
@@ -131,6 +146,7 @@ func StartWriters(ctx context.Context, opts WriterOptions) {
 			maxQueueRows:  int64(opts.QueueRows),
 			flushRows:     opts.FlushRows,
 			flushInterval: opts.FlushInterval,
+			queueWait:     opts.QueueWait,
 		}
 		for i := range w.chans {
 			// Every data batch carries >=1 row, so admitted batches <=
@@ -210,7 +226,7 @@ func insertRows(ctx context.Context, table string, rows [][]driver.Value) error 
 	}
 	if ws := activeWriters.Load(); ws != nil {
 		if w, ok := ws.byTable[table]; ok {
-			return w.enqueue(rows)
+			return w.enqueue(ctx, rows)
 		}
 	}
 	return appendRowsSync(ctx, table, rows)
@@ -226,15 +242,47 @@ func appendRowsSync(ctx context.Context, table string, rows [][]driver.Value) er
 	})
 }
 
-func (w *tableWriter) enqueue(rows [][]driver.Value) error {
+func (w *tableWriter) enqueue(ctx context.Context, rows [][]driver.Value) error {
 	n := int64(len(rows))
-	if w.pendingRows.Add(n) > w.maxQueueRows {
-		w.pendingRows.Add(-n)
+	if w.admit(n) {
+		w.send(rows, n)
+		return nil
+	}
+	if w.queueWait <= 0 {
 		return db.ErrIngestQueueFull
 	}
+	// The queue is a fraction of a second deep at peak rates; waiting briefly
+	// absorbs ingest bursts that the writers sustain on average, and costs no
+	// extra memory (the decoded batch exists either way, bounded upstream by
+	// the admission gate). Only a genuinely stalled writer still 503s.
+	deadline := time.Now().Add(w.queueWait)
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(writeQueueWaitPoll):
+		}
+		if w.admit(n) {
+			w.send(rows, n)
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return db.ErrIngestQueueFull
+		}
+	}
+}
+
+func (w *tableWriter) admit(n int64) bool {
+	if w.pendingRows.Add(n) > w.maxQueueRows {
+		w.pendingRows.Add(-n)
+		return false
+	}
+	return true
+}
+
+func (w *tableWriter) send(rows [][]driver.Value, n int64) {
 	w.enqueuedRows.Add(uint64(n))
 	w.chans[w.next.Add(1)%uint64(len(w.chans))] <- writeReq{rows: rows}
-	return nil
 }
 
 // runLoop restarts runOnce after a panic instead of dying: a dead writer

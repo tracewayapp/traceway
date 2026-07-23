@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/duckdb/duckdb-go/v2"
+	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	traceway "go.tracewayapp.com"
 )
@@ -22,6 +23,20 @@ func nullableString(s *string) any {
 		return nil
 	}
 	return *s
+}
+
+// duckUUID converts to the driver's native UUID value: a zero-alloc
+// [16]byte-to-[16]byte conversion, vs the 36-byte string uuid.String()
+// allocates for VARCHAR columns.
+func duckUUID(u uuid.UUID) duckdb.UUID {
+	return duckdb.UUID(u)
+}
+
+func nullableUUID(u *uuid.UUID) any {
+	if u == nil {
+		return nil
+	}
+	return duckdb.UUID(*u)
 }
 
 const dropReportInterval = time.Minute

@@ -38,6 +38,9 @@ func StartWriters(ctx context.Context) {
 	if ms := parsePositiveInt(config.Config.DuckDBWriteFlushIntervalMS); ms > 0 {
 		opts.FlushInterval = time.Duration(ms) * time.Millisecond
 	}
+	if ms := parsePositiveInt(config.Config.DuckDBWriteQueueWaitMS); ms > 0 {
+		opts.QueueWait = time.Duration(ms) * time.Millisecond
+	}
 	duckdbrepo.StartWriters(ctx, opts)
 }
 

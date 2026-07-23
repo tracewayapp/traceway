@@ -61,21 +61,15 @@ func convertSpans(spans []models.Span) [][]driver.Value {
 			continue
 		}
 
-		var parentSpanId *string
-		if s.ParentSpanId != nil {
-			v := s.ParentSpanId.String()
-			parentSpanId = &v
-		}
-
 		rows = append(rows, []driver.Value{
-			s.Id.String(),
-			s.TraceId.String(),
-			s.ProjectId.String(),
+			duckUUID(s.Id),
+			duckUUID(s.TraceId),
+			duckUUID(s.ProjectId),
 			s.Name,
 			s.StartTime.UTC(),
 			int64(s.Duration),
 			s.RecordedAt.UTC(),
-			nullableString(parentSpanId),
+			nullableUUID(s.ParentSpanId),
 			attributesJSON,
 		})
 	}

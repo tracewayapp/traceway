@@ -27,6 +27,7 @@ services:
       # DUCKDB_WRITE_FLUSH_ROWS: "32768"
       # DUCKDB_WRITE_FLUSH_INTERVAL_MS: "100"
       # DUCKDB_WRITE_WRITERS: "4"
+      # DUCKDB_WRITE_QUEUE_WAIT_MS: "2000"
 
       # Optional retention knobs. Defaults are 30 days; set to "0" to disable.
       # SQLITE_RETENTION_DAYS prunes telemetry rows (DuckDB telemetry included);

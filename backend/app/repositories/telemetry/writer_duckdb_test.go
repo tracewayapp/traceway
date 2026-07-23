@@ -85,7 +85,9 @@ func TestWriterAgeFlush(t *testing.T) {
 
 func TestWriterQueueFull(t *testing.T) {
 	setupTestDB(t)
-	startTestWriters(t, duckdbrepo.WriterOptions{QueueRows: 10, FlushRows: 1 << 20, FlushInterval: time.Hour})
+	// Negative QueueWait disables the bounded wait so the rejection is
+	// deterministic and immediate.
+	startTestWriters(t, duckdbrepo.WriterOptions{QueueRows: 10, FlushRows: 1 << 20, FlushInterval: time.Hour, QueueWait: -1})
 
 	ctx := context.Background()
 	projectId := uuid.New()

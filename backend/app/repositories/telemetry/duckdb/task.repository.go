@@ -89,21 +89,9 @@ func convertTasks(lines []models.Task) [][]driver.Value {
 			continue
 		}
 
-		var distributedTraceId *string
-		if t.DistributedTraceId != nil {
-			s := t.DistributedTraceId.String()
-			distributedTraceId = &s
-		}
-
-		var spanId *string
-		if t.SpanId != nil {
-			s := t.SpanId.String()
-			spanId = &s
-		}
-
 		rows = append(rows, []driver.Value{
-			t.Id.String(),
-			t.ProjectId.String(),
+			duckUUID(t.Id),
+			duckUUID(t.ProjectId),
 			t.TaskName,
 			int64(t.Duration),
 			t.RecordedAt.UTC(),
@@ -111,8 +99,8 @@ func convertTasks(lines []models.Task) [][]driver.Value {
 			attributesJSON,
 			t.AppVersion,
 			t.ServerName,
-			nullableString(distributedTraceId),
-			nullableString(spanId),
+			nullableUUID(t.DistributedTraceId),
+			nullableUUID(t.SpanId),
 			boolToInt(t.IsRoot),
 		})
 	}

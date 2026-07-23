@@ -47,7 +47,7 @@ func convertMetricPoints(points []models.MetricPoint) [][]driver.Value {
 			captureDroppedRow("metric_points", err)
 			continue
 		}
-		rows = append(rows, []driver.Value{p.ProjectId.String(), p.Name, p.Value, tagsJSON, p.RecordedAt.UTC(), p.Tags["server_name"]})
+		rows = append(rows, []driver.Value{duckUUID(p.ProjectId), p.Name, p.Value, tagsJSON, p.RecordedAt.UTC(), p.Tags["server_name"]})
 	}
 	return rows
 }

@@ -95,8 +95,8 @@ func convertLogRecords(records []models.LogRecord) [][]driver.Value {
 		}
 
 		rows = append(rows, []driver.Value{
-			lr.Id.String(),
-			lr.ProjectId.String(),
+			duckUUID(lr.Id),
+			duckUUID(lr.ProjectId),
 			lr.Timestamp.UTC(),
 			lr.TraceId,
 			lr.SpanId,

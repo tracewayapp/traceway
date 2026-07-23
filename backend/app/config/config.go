@@ -21,6 +21,7 @@ type Cfg struct {
 	DuckDBWriteFlushRows       string
 	DuckDBWriteFlushIntervalMS string
 	DuckDBWriteWriters         string
+	DuckDBWriteQueueWaitMS     string
 
 	ClickhouseServer   string
 	ClickhouseDatabase string
@@ -114,6 +115,7 @@ func LoadFromEnv() *Cfg {
 		DuckDBWriteFlushRows:       os.Getenv("DUCKDB_WRITE_FLUSH_ROWS"),
 		DuckDBWriteFlushIntervalMS: os.Getenv("DUCKDB_WRITE_FLUSH_INTERVAL_MS"),
 		DuckDBWriteWriters:         os.Getenv("DUCKDB_WRITE_WRITERS"),
+		DuckDBWriteQueueWaitMS:     os.Getenv("DUCKDB_WRITE_QUEUE_WAIT_MS"),
 
 		ClickhouseServer:   os.Getenv("CLICKHOUSE_SERVER"),
 		ClickhouseDatabase: os.Getenv("CLICKHOUSE_DATABASE"),

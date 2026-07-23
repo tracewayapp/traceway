@@ -124,20 +124,9 @@ func convertEndpoints(lines []models.Endpoint) [][]driver.Value {
 			continue
 		}
 
-		var distributedTraceId *string
-		if ep.DistributedTraceId != nil {
-			v := ep.DistributedTraceId.String()
-			distributedTraceId = &v
-		}
-		var spanId *string
-		if ep.SpanId != nil {
-			v := ep.SpanId.String()
-			spanId = &v
-		}
-
 		rows = append(rows, []driver.Value{
-			ep.Id.String(),
-			ep.ProjectId.String(),
+			duckUUID(ep.Id),
+			duckUUID(ep.ProjectId),
 			ep.Endpoint,
 			int64(ep.Duration),
 			ep.RecordedAt.UTC(),
@@ -147,8 +136,8 @@ func convertEndpoints(lines []models.Endpoint) [][]driver.Value {
 			attributesJSON,
 			ep.AppVersion,
 			ep.ServerName,
-			nullableString(distributedTraceId),
-			nullableString(spanId),
+			nullableUUID(ep.DistributedTraceId),
+			nullableUUID(ep.SpanId),
 			boolToInt(ep.IsStream),
 			boolToInt(ep.IsRoot),
 		})

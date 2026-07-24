@@ -1,0 +1,161 @@
+{
+  "tier": "ccx13",
+  "mode": "duckdb",
+  "signal": "metrics",
+  "scenario": "read-probe",
+  "startedAt": "2026-07-24T06:55:24Z",
+  "endedAt": "2026-07-24T07:01:38Z",
+  "readProbe": {
+    "endpoints": [
+      {
+        "name": "metrics-server",
+        "path": "/api/metrics/server"
+      },
+      {
+        "name": "metrics-application",
+        "path": "/api/metrics/application"
+      },
+      {
+        "name": "dashboard",
+        "path": "/api/dashboard"
+      }
+    ],
+    "readPath": "/api/metrics/server",
+    "readThresholdMs": 5000,
+    "settleSeconds": 10,
+    "fillBatchSize": 8192,
+    "fillRequestRate": 100,
+    "steps": [
+      {
+        "fillLevelTarget": 100000,
+        "rowsIngested": 335872,
+        "ingestSecondsElapsed": 0.849677645,
+        "digestSeconds": 10.011681824,
+        "probes": [
+          {
+            "name": "metrics-server",
+            "path": "/api/metrics/server",
+            "latencyMs": 67.58833899999999,
+            "ok": true
+          },
+          {
+            "name": "metrics-application",
+            "path": "/api/metrics/application",
+            "latencyMs": 42.685781999999996,
+            "ok": true
+          },
+          {
+            "name": "dashboard",
+            "path": "/api/dashboard",
+            "latencyMs": 53.966068,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 53.966068,
+        "readLatencyMs": 53.966068,
+        "readOk": true,
+        "passed": true
+      },
+      {
+        "fillLevelTarget": 1000000,
+        "rowsIngested": 2629632,
+        "ingestSecondsElapsed": 6.2909816020000004,
+        "digestSeconds": 10.008245742,
+        "probes": [
+          {
+            "name": "metrics-server",
+            "path": "/api/metrics/server",
+            "latencyMs": 106.77756400000001,
+            "ok": true
+          },
+          {
+            "name": "metrics-application",
+            "path": "/api/metrics/application",
+            "latencyMs": 94.885837,
+            "ok": true
+          },
+          {
+            "name": "dashboard",
+            "path": "/api/dashboard",
+            "latencyMs": 151.901535,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 106.77756400000001,
+        "readLatencyMs": 106.77756400000001,
+        "readOk": true,
+        "passed": true
+      },
+      {
+        "fillLevelTarget": 10000000,
+        "rowsIngested": 11911168,
+        "ingestSecondsElapsed": 25.483391737,
+        "digestSeconds": 10.009067168,
+        "probes": [
+          {
+            "name": "metrics-server",
+            "path": "/api/metrics/server",
+            "latencyMs": 284.146654,
+            "ok": true
+          },
+          {
+            "name": "metrics-application",
+            "path": "/api/metrics/application",
+            "latencyMs": 314.309554,
+            "ok": true
+          },
+          {
+            "name": "dashboard",
+            "path": "/api/dashboard",
+            "latencyMs": 525.838686,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 314.309554,
+        "readLatencyMs": 314.309554,
+        "readOk": true,
+        "passed": true
+      },
+      {
+        "fillLevelTarget": 100000000,
+        "rowsIngested": 101859328,
+        "ingestSecondsElapsed": 250.727120699,
+        "digestSeconds": 10.012139145,
+        "probes": [
+          {
+            "name": "metrics-server",
+            "path": "/api/metrics/server",
+            "latencyMs": 1981.1406570000001,
+            "ok": true
+          },
+          {
+            "name": "metrics-application",
+            "path": "/api/metrics/application",
+            "latencyMs": 2490.6079640000003,
+            "ok": true
+          },
+          {
+            "name": "dashboard",
+            "path": "/api/dashboard",
+            "latencyMs": 4066.8014780000003,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 2490.6079640000003,
+        "readLatencyMs": 2490.6079640000003,
+        "readOk": true,
+        "passed": true
+      }
+    ],
+    "maxFillLevelPassed": 100000000
+  },
+  "maxFillLevelPassed": 100000000,
+  "bytesOnDisk": 1244991488,
+  "storedRows": 101859328,
+  "sutContainer": {
+    "status": "running",
+    "oomKilled": false,
+    "exitCode": 0,
+    "restartCount": 0
+  }
+}

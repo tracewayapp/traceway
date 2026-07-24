@@ -1,14 +1,12 @@
 package middleware
 
 import (
-	"net/http"
 	"os"
 	"runtime"
 	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/tracewayapp/traceway/backend/app/db"
 )
 
 // The telemetry ingest path decompresses and decodes every request body it
@@ -31,9 +29,7 @@ func newIngestAdmission(capacity int, wait time.Duration) gin.HandlerFunc {
 			select {
 			case slots <- struct{}{}:
 			case <-timer.C:
-				db.RecordIngestRejected()
-				c.Header("Retry-After", "2")
-				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "ingest saturated, retry later"})
+				AbortIngestSaturated(c, 2)
 				return
 			case <-c.Request.Context().Done():
 				c.Abort()

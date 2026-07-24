@@ -62,7 +62,11 @@ func captureFlushFailure(table string, lostRows int, err error) {
 	dropReportMu.Unlock()
 
 	if report {
-		traceway.CaptureException(fmt.Errorf("duckdb %s background writer: %d acked rows lost, latest: %w", table, lostRows, err))
+		if lostRows > 0 {
+			traceway.CaptureException(fmt.Errorf("duckdb %s background writer: %d acked rows lost, latest: %w", table, lostRows, err))
+		} else {
+			traceway.CaptureException(fmt.Errorf("duckdb %s background writer: connect/appender setup failing, no rows lost yet, latest: %w", table, err))
+		}
 	}
 }
 

@@ -134,6 +134,9 @@ func StartWriters(ctx context.Context, opts WriterOptions) {
 	if opts.QueueWait == 0 {
 		opts.QueueWait = defaultWriteQueueWait
 	}
+	if opts.QueueWait > 0 {
+		db.SetIngestQueueRetryAfter(opts.QueueWait)
+	}
 
 	// Derive a cancelable context so StopWriters works even though the
 	// server passes context.Background().
@@ -256,11 +259,13 @@ func (w *tableWriter) enqueue(ctx context.Context, rows [][]driver.Value) error 
 	// extra memory (the decoded batch exists either way, bounded upstream by
 	// the admission gate). Only a genuinely stalled writer still 503s.
 	deadline := time.Now().Add(w.queueWait)
+	poll := time.NewTimer(writeQueueWaitPoll)
+	defer poll.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(writeQueueWaitPoll):
+		case <-poll.C:
 		}
 		if w.admit(n) {
 			w.send(rows, n)
@@ -269,6 +274,7 @@ func (w *tableWriter) enqueue(ctx context.Context, rows [][]driver.Value) error 
 		if time.Now().After(deadline) {
 			return db.ErrIngestQueueFull
 		}
+		poll.Reset(writeQueueWaitPoll)
 	}
 }
 
@@ -306,6 +312,7 @@ func (w *tableWriter) runOnce(ctx context.Context, ch chan writeReq) (done bool)
 		conn       driver.Conn
 		appender   *duckdb.Appender
 		sinceFlush int
+		barrier    chan struct{}
 	)
 	defer func() {
 		if r := recover(); r != nil {
@@ -317,6 +324,10 @@ func (w *tableWriter) runOnce(ctx context.Context, ch chan writeReq) (done bool)
 				// The unflushed rows were just counted as dropped; Clear so
 				// the deferred Close below can't half-commit them.
 				appender.Clear()
+			}
+			if barrier != nil {
+				// Left open, FlushWriters would hang until its ctx deadline.
+				close(barrier)
 			}
 			done = false
 		}
@@ -395,6 +406,7 @@ func (w *tableWriter) runOnce(ctx context.Context, ch chan writeReq) (done bool)
 			return true
 		case req := <-ch:
 			if req.done != nil {
+				barrier = req.done
 				flush()
 				if timerActive {
 					if !timer.Stop() {
@@ -403,6 +415,7 @@ func (w *tableWriter) runOnce(ctx context.Context, ch chan writeReq) (done bool)
 					timerActive = false
 				}
 				close(req.done)
+				barrier = nil
 				continue
 			}
 			if !ensure() {
@@ -411,14 +424,14 @@ func (w *tableWriter) runOnce(ctx context.Context, ch chan writeReq) (done bool)
 				w.dropUnflushed(len(req.rows), ctx.Err())
 				return true
 			}
+			// Counted before the append loop so a panic mid-append settles
+			// these rows in the recover instead of leaking queue budget.
+			sinceFlush += len(req.rows)
 			for _, row := range req.rows {
 				if err := appender.AppendRow(row...); err != nil {
 					captureDroppedRow(w.table, err)
 				}
 			}
-			// Dropped rows still count toward sinceFlush/pendingRows until
-			// the flush settles the batch; they were admitted at enqueue.
-			sinceFlush += len(req.rows)
 			if sinceFlush >= w.flushRows {
 				flush()
 				if timerActive {

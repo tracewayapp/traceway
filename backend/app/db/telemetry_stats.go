@@ -4,12 +4,33 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // ErrIngestQueueFull is returned by telemetry insert methods when the
 // background write queue for a table is at capacity. Controllers map it to
 // 503 + Retry-After so the client retries — the data was never acked.
 var ErrIngestQueueFull = errors.New("telemetry ingest write queue full")
+
+// Retry-After hint for the queue-full 503; the DuckDB writers set it from
+// their configured queue wait. Zero means unset, the getter falls back to 2s.
+var ingestQueueRetryAfterSeconds atomic.Int64
+
+func SetIngestQueueRetryAfter(wait time.Duration) {
+	secs := int64((wait + time.Second - 1) / time.Second)
+	if secs < 1 {
+		secs = 1
+	}
+	ingestQueueRetryAfterSeconds.Store(secs)
+}
+
+func IngestQueueRetryAfterSeconds() int {
+	if s := ingestQueueRetryAfterSeconds.Load(); s > 0 {
+		return int(s)
+	}
+	return 2
+}
 
 type TelemetryEngineStats struct {
 	DBSizeBytes       int64 `json:"dbSizeBytes"`
@@ -74,17 +95,23 @@ func RecordTelemetryRowsDropped(table string, n uint64) {
 	telemetryIngestMu.Unlock()
 }
 
+// Locked because tests start/stop writers at runtime; production sets it once.
 var telemetryWriteQueueDepthFn func() map[string]int
 
 func SetTelemetryWriteQueueDepthFn(fn func() map[string]int) {
+	telemetryIngestMu.Lock()
 	telemetryWriteQueueDepthFn = fn
+	telemetryIngestMu.Unlock()
 }
 
 func GetTelemetryWriteQueueDepths() (map[string]int, bool) {
-	if telemetryWriteQueueDepthFn == nil {
+	telemetryIngestMu.Lock()
+	fn := telemetryWriteQueueDepthFn
+	telemetryIngestMu.Unlock()
+	if fn == nil {
 		return nil, false
 	}
-	return telemetryWriteQueueDepthFn(), true
+	return fn(), true
 }
 
 func RecordTelemetryInsertFailure() {

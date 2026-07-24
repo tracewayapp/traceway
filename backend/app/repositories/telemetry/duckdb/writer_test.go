@@ -35,8 +35,10 @@ func TestWriterPoisonRowDropped(t *testing.T) {
 		t.Fatalf("failed to create spans table: %v", err)
 	}
 
+	prevConnector, prevDB := db.DuckDBConnector, db.TelemetryDB
 	db.DuckDBConnector = connector
 	db.TelemetryDB = sqlDB
+	t.Cleanup(func() { db.DuckDBConnector, db.TelemetryDB = prevConnector, prevDB })
 
 	StartWriters(context.Background(), WriterOptions{FlushRows: 1 << 20, FlushInterval: time.Hour})
 	t.Cleanup(StopWriters)

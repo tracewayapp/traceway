@@ -305,7 +305,7 @@ func (e clientController) Report(c *gin.Context) {
 		err := telemetry.EndpointRepository.InsertAsync(c, endpointsToInsert)
 		insertSpan.End()
 		if err != nil {
-			abortIngestInsertError(c, err, "endpointsToInsert")
+			middleware.AbortIngestInsertError(c, err, "endpointsToInsert")
 			return
 		}
 	}
@@ -315,7 +315,7 @@ func (e clientController) Report(c *gin.Context) {
 		err := telemetry.TaskRepository.InsertAsync(c, tasksToInsert)
 		insertSpan.End()
 		if err != nil {
-			abortIngestInsertError(c, err, "tasksToInsert")
+			middleware.AbortIngestInsertError(c, err, "tasksToInsert")
 			return
 		}
 	}
@@ -344,7 +344,7 @@ func (e clientController) Report(c *gin.Context) {
 		err := telemetry.MetricPointRepository.InsertAsync(c, metricPointsToInsert)
 		insertSpan.End()
 		if err != nil {
-			abortIngestInsertError(c, err, "metricPointsToInsert")
+			middleware.AbortIngestInsertError(c, err, "metricPointsToInsert")
 			return
 		}
 
@@ -357,7 +357,7 @@ func (e clientController) Report(c *gin.Context) {
 	spanInsertSpan.End()
 
 	if err != nil {
-		abortIngestInsertError(c, err, "spansToInsert")
+		middleware.AbortIngestInsertError(c, err, "spansToInsert")
 		return
 	}
 

@@ -189,6 +189,12 @@ export default function McpPage() {
                 stdio. It reuses your CLI session and refreshes device-login
                 tokens automatically.
               </p>
+              <p>
+                New to the CLI? Installation, usage, and login live on the{" "}
+                <Link href="/product/cli" className="text-a2 hover:underline">
+                  CLI page →
+                </Link>
+              </p>
               <ul className="feat-bullets">
                 <li>One binary, no extra daemon</li>
                 <li>Reuses your CLI login and current project</li>

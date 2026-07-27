@@ -18,29 +18,97 @@
 				}
 			} catch (e) {}
 		</script>
+		<style>
+			#splash {
+				position: fixed;
+				inset: 0;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				color: #71717a;
+				pointer-events: none;
+			}
+			html.dark #splash {
+				color: #fff;
+			}
+			#splash svg {
+				width: 4.5rem;
+				height: 4.5rem;
+			}
+			#splash .outer-ring {
+				animation: splash-spin 3s linear infinite;
+				transform-origin: 250px 250px;
+			}
+			#splash .middle-ring {
+				animation: splash-spin-reverse 2s linear infinite;
+				transform-origin: 250px 250px;
+			}
+			#splash .inner-ring {
+				animation: splash-spin 1.2s linear infinite;
+				transform-origin: 250px 250px;
+			}
+			@keyframes splash-spin {
+				from {
+					transform: rotate(0deg);
+				}
+				to {
+					transform: rotate(360deg);
+				}
+			}
+			@keyframes splash-spin-reverse {
+				from {
+					transform: rotate(0deg);
+				}
+				to {
+					transform: rotate(-360deg);
+				}
+			}
+		</style>
 		
-		<link rel="modulepreload" href="./_app/immutable/entry/start.DztOe_xF.js">
-		<link rel="modulepreload" href="./_app/immutable/chunks/CyWkEH_W.js">
-		<link rel="modulepreload" href="./_app/immutable/chunks/DzkRbV4D.js">
-		<link rel="modulepreload" href="./_app/immutable/chunks/ERr7xZ3b.js">
-		<link rel="modulepreload" href="./_app/immutable/entry/app.DdLTr9tZ.js">
+		<link rel="modulepreload" href="./_app/immutable/entry/start.CKxLrt68.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/CX7t9rO0.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/Bxoumiej.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/DiihFn95.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/DIeogL5L.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/BUApaBEI.js">
+		<link rel="modulepreload" href="./_app/immutable/entry/app.pA9txn69.js">
 		<link rel="modulepreload" href="./_app/immutable/chunks/PPVm8Dsz.js">
-		<link rel="modulepreload" href="./_app/immutable/chunks/Dxg4oJsB.js">
-		<link rel="modulepreload" href="./_app/immutable/chunks/CbMPW5RK.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/DsnmJJEf.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/bsZaOFxn.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/CEDDkvcZ.js">
 	</head>
 	<body data-sveltekit-preload-data="hover">
+		<div id="splash">
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">
+				<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="31.25">
+					<g class="outer-ring">
+						<path
+							d="M250 41.67c115.06 0 208.33 93.27 208.33 208.33c0 37.94-10.15 73.54-27.88 104.17M104.17 101.23A207.71 207.71 0 0 0 41.67 250c0 115.06 93.27 208.33 208.33 208.33c37.94 0 73.54-10.15 104.17-27.88"
+						/>
+					</g>
+					<g class="middle-ring">
+						<path
+							d="M104.17 250c0 30.98 9.67 59.71 26.15 83.33M250 104.17a145.83 145.83 0 1 1-62.5 277.63"
+						/>
+					</g>
+					<g class="inner-ring">
+						<path d="M250 333.33a83.33 83.33 0 0 0 0-166.67" />
+					</g>
+				</g>
+			</svg>
+		</div>
 		<div style="display: contents">
 			<script>
 				{
-					__sveltekit_1sqhc6w = {
+					__sveltekit_s6b52z = {
 						base: new URL(".", location).pathname.slice(0, -1)
 					};
 
 					const element = document.currentScript.parentElement;
 
 					Promise.all([
-						import("./_app/immutable/entry/start.DztOe_xF.js"),
-						import("./_app/immutable/entry/app.DdLTr9tZ.js")
+						import("./_app/immutable/entry/start.CKxLrt68.js"),
+						import("./_app/immutable/entry/app.pA9txn69.js")
 					]).then(([kit, app]) => {
 						kit.start(app, element);
 					});

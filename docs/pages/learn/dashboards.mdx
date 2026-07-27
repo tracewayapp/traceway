@@ -1,0 +1,117 @@
+# Dashboards
+
+Dashboards visualize your metrics as tabs of chart widgets. A dashboard belongs to your **organization**, not to a single project: you build it once and apply it to any number of projects, and edits show up everywhere it is applied. Every dashboard is a plain JSON document underneath, so you can edit, export, import, and version-control them as code.
+
+<img src="/dashboards/dashboards-page.png" alt="The Dashboards page" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+## The Dashboards page
+
+Each tab on the Dashboards page is one dashboard applied to the current project. A project with no dashboards yet shows a single **Browse Dashboards & Templates** button that opens the command palette described below. The active tab's menu holds everything you can do with a dashboard:
+
+<img src="/dashboards/dashboards-menu.png" alt="Dashboard menu" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+- **Rename Dashboard**: names are unique within the organization
+- **Edit as JSON**: edit the whole dashboard as one document
+- **Export JSON**: download the dashboard for versioning or sharing
+- **Apply to Projects**: choose which projects show this dashboard
+- **Remove from this Project**: unassign it here; it stays available everywhere else
+- **Delete Dashboard**: remove it from every project, permanently
+
+## Adding dashboards: the command palette
+
+Press <kbd>⌘K</kbd> (<kbd>Ctrl K</kbd> on Windows/Linux), or click **Add or find dashboards...** in the header. One search box covers your organization's dashboards, the built-in template marketplace, and every metric name seen across your organization's projects:
+
+<img src="/dashboards/dashboards-palette.png" alt="Command palette" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+- Selecting one of **your dashboards** applies it to the current project (dashboards from another organization are copied)
+- Selecting a **template** installs it as a new dashboard in your organization
+- Selecting a **metric** opens the widget editor prefilled with that metric on the active dashboard
+
+## Built-in templates
+
+Templates are ready-made dashboards you install and then customize freely. The marketplace ships with:
+
+| Template | Category | Source of the metrics |
+| --- | --- | --- |
+| OTelemetry Server Agent | server | [Traceway OTel Agent](/learn/otel-agent) host CPU, memory, disk and network metrics |
+| Go Application | go | Go SDK runtime and process metrics (goroutines, heap, GC, CPU, memory) |
+| Traceway ClickHouse | traceway | A monitored Traceway instance's `traceway.ch.*` metrics |
+| Traceway DuckDB | traceway | A monitored Traceway instance's `traceway.duckdb.*` metrics |
+
+<img src="/dashboards/dashboards-palette-templates.png" alt="Templates in the command palette" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+Widgets can group series by resource tags such as `container.name`, `k8s.pod.name`, `k8s.node.name`, or `postgresql.database.name`, so one widget shows one line per container, pod, node, or database. Point the matching OpenTelemetry Collector receiver at your Traceway project's OTLP endpoint and build widgets on the metrics it reports.
+
+## Dashboards as code
+
+Every dashboard is a single JSON document. Widget order in the array is the display order, and each widget carries its own config:
+
+```json
+{
+  "schemaVersion": 1,
+  "name": "Server",
+  "widgets": [
+    {
+      "id": "w_6f8d9c6d",
+      "title": "CPU Utilization",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          { "type": "metric", "name": "system.cpu.utilization", "aggregation": "avg" }
+        ]
+      }
+    }
+  ]
+}
+```
+
+**Edit as JSON** gives you the document in place, validated on save:
+
+<img src="/dashboards/dashboards-edit-json.png" alt="Edit as JSON" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+**Export/Import** round-trips the same document. Import accepts a single dashboard or a whole-organization bundle, and the API supports an upsert mode that matches dashboards by name, so a CI job can keep dashboards in sync from files in your repository:
+
+```bash
+curl -X POST "$TRACEWAY_URL/api/dashboards/import?projectId=$PROJECT_ID" \
+  -H "Authorization: Bearer $TRACEWAY_PAT" \
+  -H "Content-Type: application/json" \
+  -d "{\"mode\": \"upsert\", \"data\": $(cat system.dashboard.json)}"
+```
+
+Widget `id`s are server-generated stable strings; keep them when editing so homepage stars survive, or omit them and they are regenerated.
+
+## Applying across projects
+
+**Apply to Projects** controls exactly which projects show a dashboard. Because the definition is shared, a fix made in one project is instantly live in all of them. Unchecking a project only removes it from that project's tabs.
+
+<img src="/dashboards/dashboards-apply.png" alt="Apply to Projects" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+## Importing from Grafana
+
+Paste any Grafana dashboard JSON export and Traceway converts it on a best-effort basis: `timeseries`/`graph` panels become line charts, `stat` becomes a single value, `gauge` stays a gauge, and Prometheus queries are unwrapped into metric sources (metric name, exact label matchers, `by (...)` grouping, aggregation).
+
+<img src="/dashboards/dashboards-grafana-import.png" alt="Grafana import" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+Anything that cannot be converted faithfully is reported instead of silently dropped: `rate()` approximations, unsupported panel types, regex matchers, non-Prometheus queries.
+
+<img src="/dashboards/dashboards-grafana-warnings.png" alt="Grafana conversion warnings" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+## Widgets
+
+| Type | Best For |
+| --- | --- |
+| Line Chart | Trends over time (CPU usage, request rate) |
+| Area Chart | Volume over time with filled area |
+| Stacked Area | Composition of a total across series |
+| Bar Chart | Comparing values across time intervals |
+| Single Value | Current or aggregated value at a glance |
+| Gauge | A value against thresholds |
+| Table | Tabular view of metric values |
+
+Each widget has one or more **sources**: a metric name (auto-discovered from your project), an aggregation (`avg`, `min`, `max`, `sum`, `count`, `last`), optional tag filters, and an optional group-by that splits the chart into one series per tag value. Multiple sources overlay on the same chart.
+
+<img src="/dashboards/dashboards-new-widget.png" alt="Widget editor" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+## Starring widgets
+
+The star on any widget pins it to that project's homepage, where you can resize and reorder your starred set. Stars are per project, so each project curates its own homepage even when dashboards are shared.

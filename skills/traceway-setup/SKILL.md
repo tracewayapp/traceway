@@ -22,17 +22,21 @@ Instance URL and project token may be provided in the invocation (e.g. `/tracewa
    - **Yes**: ask them to open their Traceway dashboard, go to the project's **Connection** page, and paste the instance URL and project token here. If no project exists yet for this app, have them create one first, picking the framework that matches this codebase.
    - **No**: send them to the register page to create an account: https://cloud.tracewayapp.com/register (or `https://<their-instance>/register` if they are self-hosting). After registering and creating a project, the Connection page shows the token; ask them to paste the URL and token here.
 
+**One Traceway project per part of the application.** Each separately deployed part gets its own Traceway project and token: a browser frontend is one project, its backend API is another (OTel) project, a mobile app a third. Do not funnel two parts through one token; mixing browser and server telemetry in one project muddles the dashboards and the framework-specific connection instructions.
+
+**Analyze every token you receive.** A token is opaque, so establish what it represents: ask the user (or have them check the Connection page) which Traceway project it is from and which framework was picked when that project was created. That framework tells you which part of the codebase the token is for (`react`/`vuejs`/`svelte` is the browser side, `opentelemetry`/`express`/`gin`/... is a backend service, `nextjs` is settled by the production-role analysis in Step 1). If Step 1 finds more instrumentable parts than you have tokens, ask the user to create one Traceway project per missing part (picking the matching framework) and paste each token here; never stretch one token across parts.
+
 Do not proceed without real values. Never invent placeholder values in committed code; wire everything through environment variables.
 
 ## Integration Paths
 
-Pick the path by project type. This is not negotiable per framework; it is how Traceway is designed to receive data:
+Pick the path by project type, and pick the project type from the Step 1 analysis, never from the framework name alone (a Next.js repo can be a full-stack app or just the frontend of a separate backend). Per path, this is not negotiable per framework; it is how Traceway is designed to receive data:
 
 | Project type | Path |
 |---|---|
 | **Backend** (any language) | OpenTelemetry, exporting OTLP/HTTP to `<instance>/api/otel/v1/*`. Always, including Go. The native Traceway Go SDK is used only when the user explicitly asks for it. |
-| **Frontend** (browser SPA) | Traceway `@tracewayapp/<framework>` SDK + bundler plugin + source map upload (see "Frontend and Mobile" below). |
-| **Full-stack JS** (Next.js, SvelteKit, Remix) | BOTH: server side via OpenTelemetry AND browser side via the frontend SDK. |
+| **Frontend** (browser SPA, or a JS meta-framework running frontend-only in production) | Traceway `@tracewayapp/<framework>` SDK + bundler plugin + source map upload (see "Frontend and Mobile" below). |
+| **Full-stack JS** (Next.js, SvelteKit, Remix, actually serving its API/SSR in production per Step 1) | BOTH sides, each under its own Traceway project: server side via OpenTelemetry AND browser side via the frontend SDK. |
 | **Mobile** (Flutter, React Native, Android, native Swift iOS) | The Traceway platform SDK. Never OTel. Sole exception: a non-Swift iOS/Apple app has no native SDK, so it uses an OTel library (e.g. Honeycomb) exporting to Traceway like a backend (see "Frontend and Mobile"). |
 
 Two hard rules apply to every backend integration:
@@ -59,10 +63,15 @@ For the exact classification rules, endpoint naming, metric conversion, and all 
 Before changing anything, build a picture of what needs instrumenting:
 
 1. **Frameworks and languages**: detect them by reading `package.json` (Node.js), `go.mod` (Go), `composer.json` (PHP), `requirements.txt`/`pyproject.toml` (Python), `pubspec.yaml` (Flutter), `build.gradle` (Android), `Package.swift` / `*.xcodeproj` / `*.xcworkspace` / `Podfile` (iOS/Swift; note whether the sources are Swift or Objective-C, which picks the path in "Frontend and Mobile"), or asking the user.
-2. **Services and entry points**: in a monorepo, list each deployable service and its entry point. Each service that should report to Traceway needs its own integration, and usually its own project token (ask the user before reusing one token across services).
-3. **Background work**: find cron jobs, queue consumers, schedulers, CLI commands, and long-running workers. These must be instrumented as Tasks (Step 3).
-4. **AI/LLM usage**: check dependencies for `openai`, `@anthropic-ai/sdk`, `anthropic`, `langchain` / `@langchain/*`, `ai` (Vercel AI SDK), `litellm`, `google-generativeai`, `cohere`, `openrouter`. If any are present, Step 4 applies.
-5. **Deployment signals**: note Dockerfiles, `docker-compose.yml`, Kubernetes manifests, Helm charts, deploy/provisioning scripts, `fly.toml`, `vercel.json`, Procfiles. You will use these in Step 5 to set up server metrics.
+2. **Production role of JS meta-frameworks** (Next.js, SvelteKit, Remix, Nuxt): never assume full-stack; determine how the app actually runs in production before picking a path.
+   - **Frontend-only signals** (Next.js): `output: 'export'` in `next.config.*` (static export, there is no server in production); no API routes (`app/api/**/route.*`, `pages/api/*`) or only trivial ones; no `'use server'` server actions; `rewrites`/proxy config or a `NEXT_PUBLIC_API_URL`-style env var pointing the browser at an external API; a separate backend service in this repo, another repo, or another language; static hosting in the deploy config (S3/CloudFront, GitHub Pages, nginx serving `out/`).
+   - **Full-stack signals**: API routes with real logic, server actions, database clients imported in server code, SSR reading its own data layer, `next start` or standalone output in the deploy config.
+   - **Mixed or unclear**: ask the user how the app is deployed in production and whether the framework's server side does anything worth tracking.
+   Frontend-only means integrate ONLY the browser side with the frontend SDK (React for Next.js); do not add OTel or instrument the framework's server side. The separate backend is its own part with its own Traceway project and its own Step 2 integration.
+3. **Services and entry points**: in a monorepo, list each deployable service and its entry point. Each part that should report to Traceway gets its own integration and its own project token, per the one-project-per-part rule in Step 0; ask the user for the missing tokens instead of reusing one across parts.
+4. **Background work**: find cron jobs, queue consumers, schedulers, CLI commands, and long-running workers. These must be instrumented as Tasks (Step 3).
+5. **AI/LLM usage**: check dependencies for `openai`, `@anthropic-ai/sdk`, `anthropic`, `langchain` / `@langchain/*`, `ai` (Vercel AI SDK), `litellm`, `google-generativeai`, `cohere`, `openrouter`. If any are present, Step 4 applies.
+6. **Deployment signals**: note Dockerfiles, `docker-compose.yml`, Kubernetes manifests, Helm charts, deploy/provisioning scripts, `fly.toml`, `vercel.json`, Procfiles. You will use these in Step 5 to set up server metrics.
 
 ## Step 2: Backend OTel Setup
 
@@ -245,7 +254,7 @@ Frontend and mobile projects do NOT use OTel; they use the Traceway SDKs reporti
 
 For the per-framework init code (plain JS, React, Vue, Svelte/SvelteKit, jQuery), the shared SDK options, error filtering, custom attributes, distributed tracing, and the full debug-ID + source map pipeline, read `frontend-js.md` in this skill directory. Online docs: https://docs.tracewayapp.com/client/react (or `vue`, `svelte`, `jquery`, `js-sdk`).
 
-**Full-stack JS** (Next.js, SvelteKit, Remix): both sides. Server side follows Step 2 (verify `http.route` grouping; set it manually in a server hook where the auto-instrumentation does not know the router). Browser side follows the three pieces above.
+**Full-stack JS** (Next.js, SvelteKit, Remix): only when Step 1 confirmed the framework's server actually serves the app in production. A frontend-only deployment (static export, or the API lives in a separate backend) gets just the browser pieces above and no server-side instrumentation; the separate backend follows Step 2 as its own part. When it is genuinely full-stack, integrate both sides, each under its own Traceway project (Step 0): server side follows Step 2 with the backend project's token (verify `http.route` grouping; set it manually in a server hook where the auto-instrumentation does not know the router), browser side follows the three pieces above with the frontend project's token.
 
 **Mobile**, always the platform SDK, never OTel:
 

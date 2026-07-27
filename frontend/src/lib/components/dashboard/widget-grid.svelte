@@ -18,7 +18,7 @@
 	import WidgetRenderer from './widget-renderer.svelte';
 
 	type Widget = {
-		id: number;
+		id: number | string;
 		title: string;
 		widgetType: string;
 		config: any;
@@ -46,7 +46,7 @@
 		timeDomain: [Date, Date] | null;
 		onEditWidget?: (widget: Widget) => void;
 		onDeleteWidget?: (widget: Widget) => void;
-		onReorderWidgets?: (widgetIds: number[]) => void;
+		onReorderWidgets?: (widgetIds: (number | string)[]) => void;
 		onDuplicateWidget?: (widget: Widget) => void;
 		onResizeWidget?: (widget: Widget, layout: { colSpan: number; size: string }) => void;
 		onAddWidget?: () => void;

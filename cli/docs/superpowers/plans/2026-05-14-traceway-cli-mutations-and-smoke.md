@@ -1162,7 +1162,7 @@ go build -o bin/traceway ./cmd/traceway
 
 ```bash
 # 1. log in (creates ~/.config/traceway/config.json + ~/.local/state/traceway/state.json)
-traceway login --url https://cloud.traceway.com
+traceway login --url https://cloud.tracewayapp.com
 
 # 2. pick a project (one-time; future calls use it implicitly)
 traceway projects list

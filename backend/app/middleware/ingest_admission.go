@@ -4,6 +4,7 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -63,4 +64,13 @@ func ingestWaitFromEnv() time.Duration {
 	return 5 * time.Second
 }
 
-var IngestAdmission = newIngestAdmission(ingestCapacityFromEnv(), ingestWaitFromEnv())
+// The gate is built on first use, not at package init: godotenv.Load() runs
+// inside run(), after package-level vars initialize, so reading the env here
+// eagerly would silently ignore INGEST_* values set via a .env file.
+var ingestAdmission = sync.OnceValue(func() gin.HandlerFunc {
+	return newIngestAdmission(ingestCapacityFromEnv(), ingestWaitFromEnv())
+})
+
+func IngestAdmission(c *gin.Context) {
+	ingestAdmission()(c)
+}

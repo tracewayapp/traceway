@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS dashboard_templates (
+    id SERIAL PRIMARY KEY,
+    key VARCHAR(100) NOT NULL UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    category VARCHAR(50) NOT NULL,
+    definition JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)

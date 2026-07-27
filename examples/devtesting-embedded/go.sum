@@ -355,6 +355,10 @@ go.opentelemetry.io/proto/otlp/collector/profiles/v1development v0.3.0 h1:AWBLtJ
 go.opentelemetry.io/proto/otlp/collector/profiles/v1development v0.3.0/go.mod h1:kCdbxyM9kfmv3v4ZQzZ2pACxoQ6lE0IsjP+UcZwQnr4=
 go.opentelemetry.io/proto/otlp/profiles/v1development v0.3.0 h1:ZQs05qo3Yh4KUHeVH6v89xErwmsvgA/cLX2/w5Ikp+k=
 go.opentelemetry.io/proto/otlp/profiles/v1development v0.3.0/go.mod h1:3iiRVKaCfVo0UI1ZaSMm5WbCBbINRqVlD9SUmvyBNrY=
+go.tracewayapp.com v1.0.4 h1:n9O1OQDRDNPwCBnb7kNd+DutcVoPj9uLn+c9n4M7qzM=
+go.tracewayapp.com v1.0.4/go.mod h1:sFMbWkA2TbT1OW6Hx+6jMDum2yt96irUXpC5lymblyc=
+go.tracewayapp.com/tracewaygin v1.0.2 h1:MRAvtOKz0zceoe1Ee7pl5eciSerc+gIogC7oWJaKQf8=
+go.tracewayapp.com/tracewaygin v1.0.2/go.mod h1:p/26TIhpfte86Gp3QJpA8Q72pJShFXX1jogIiKG2LXQ=
 go.uber.org/goleak v1.3.0 h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=
 go.uber.org/goleak v1.3.0/go.mod h1:CoHD4mav9JJNrW/WLlf7HGZPjdw8EucARQHekz1X6bE=
 go.uber.org/mock v0.6.0 h1:hyF9dfmbgIX5EfOdasqLsWD6xqpNZlXblLB/Dbnwv3Y=

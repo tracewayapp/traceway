@@ -81,23 +81,23 @@ export default function MetricsPage() {
           />
         </section>
 
-        {/* Widget groups */}
+        {/* Dashboards */}
         <section className="wrap">
           <FeatureRow
-            eyebrow="Widget groups"
+            eyebrow="Dashboards"
             title={
               <>
                 Dashboards that match <em>your team&apos;s mental model</em>
               </>
             }
-            description="Pick metrics, pick charts, group them into widget pages. No query language required; filters, tag breakdowns, and rollups are all declarative."
+            description="Build a dashboard once and apply it across every project in your organization. Each dashboard is a plain JSON document, so you can edit it as code, keep it in your repo, or import the Grafana dashboards you already have."
             bullets={[
-              "Drag-to-add charts",
-              "Group widgets by feature, service, or team",
-              "Per-metric filters and rollups",
-              "Set default dashboards per organization",
+              "One dashboard, applied across projects",
+              "Template marketplace: OTel host agent, Go runtime, ClickHouse, DuckDB",
+              "Import existing Grafana dashboards",
+              "Search and add anything with ⌘K",
             ]}
-            image={{ src: "/images/metrics-widget-groups.png", alt: "Widget groups dashboard" }}
+            image={{ src: "/images/metrics-dashboards.png", alt: "Traceway dashboards" }}
           />
         </section>
       </div>
@@ -174,7 +174,7 @@ export default function MetricsPage() {
                 },
                 {
                   q: "Can I query metrics by tag or dimension?",
-                  a: "Yes. Every tag becomes a facet you can filter on; widget groups let you build per-dimension chart panels. For example, a `plan` tag on a signups metric lets you chart signups broken down by plan, region, or tenant.",
+                  a: "Yes. Every tag becomes a facet you can filter on; dashboards let you build per-dimension chart panels. For example, a `plan` tag on a signups metric lets you chart signups broken down by plan, region, or tenant.",
                 },
               ]}
             />

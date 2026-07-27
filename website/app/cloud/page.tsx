@@ -35,12 +35,6 @@ export default function CloudPage() {
             >
               Start Free <ArrowRight className="h-4 w-4" />
             </Link>
-            <Link
-              href="https://docs.tracewayapp.com/cloud"
-              className="btn btn-ghost"
-            >
-              How it works
-            </Link>
           </div>
         </div>
       </section>

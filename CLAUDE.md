@@ -16,7 +16,7 @@ Traceway is an error tracking and monitoring platform consisting of:
 
 - **No pointless comments**: Do not add comments that simply describe what the code does. The code should be self-explanatory. Only add comments when explaining non-obvious "why" decisions.
 - **No `py-4` in dialog form content**: Do not add `py-4` on the content wrapper inside `AlertDialog` or `Dialog` components — it creates too much blank space between the form and the action buttons.
-- **Dialog button labels & toasts**: For form dialogs, use descriptive button labels with icons instead of generic "Create"/"Update". The `{Entity}` is always a platform entity, capitalized (Project, Widget, Widget Group, Channel, Rule, Token, Invitation, ...). Create actions: `<Plus icon> New {Entity}` with `variant="success"`. Update actions: `<Check icon> Update {Entity}` with the default (primary) variant. Delete/revoke/remove confirm buttons: `<Trash2 icon> Delete {Entity}` (or `Revoke {Entity}` / `Remove {Entity}`) with `variant="destructive"`. After success, show `toast.success('Successfully created the {Entity}', { position: 'top-center' })` for creates and `'Successfully updated the {Entity}'` for updates. The button should only be `disabled` during the loading state — never disable it to enforce validation; let the backend return 422 and show the error in the dialog instead.
+- **Dialog button labels & toasts**: For form dialogs, use descriptive button labels with icons instead of generic "Create"/"Update". The `{Entity}` is always a platform entity, capitalized (Project, Widget, Dashboard, Channel, Rule, Token, Invitation, ...). Create actions: `<Plus icon> New {Entity}` with `variant="success"`. Update actions: `<Check icon> Update {Entity}` with the default (primary) variant. Delete/revoke/remove confirm buttons: `<Trash2 icon> Delete {Entity}` (or `Revoke {Entity}` / `Remove {Entity}`) with `variant="destructive"`. After success, show `toast.success('Successfully created the {Entity}', { position: 'top-center' })` for creates and `'Successfully updated the {Entity}'` for updates. The button should only be `disabled` during the loading state — never disable it to enforce validation; let the backend return 422 and show the error in the dialog instead.
 
 ---
 
@@ -255,19 +255,11 @@ POSTGRES_SSLMODE=disable
 # DuckDB telemetry backend (only with -tags telemetry_duckdb build; see "DuckDB Telemetry Backend" below)
 DUCKDB_MEMORY_LIMIT=                  # e.g. 4GB. Unset = DuckDB auto-tunes (~80% RAM). Set explicitly in memory-capped containers to avoid OOM.
 DUCKDB_THREADS=                       # e.g. 4. Unset = DuckDB auto-tunes (= cores). Cap in constrained/shared environments.
-DUCKDB_CHECKPOINT_THRESHOLD=          # WAL checkpoint threshold. Unset = 256MB (backend default; DuckDB's own 16MB default stalls sustained ingest). Lower it if restart replay time matters more than ingest throughput.
-DUCKDB_WRITE_QUEUE_ROWS=131072        # background write batcher: per-table queue capacity in rows. A full queue answers 503 + Retry-After (load shedding before the ack).
-DUCKDB_WRITE_FLUSH_ROWS=32768         # flush the per-table appender after this many rows
-DUCKDB_WRITE_FLUSH_INTERVAL_MS=100    # ...or after this age, whichever first. Bounds read-lag and the acked-data loss window on crash.
-DUCKDB_WRITE_WRITERS=                 # writer goroutines per hot table. Unset = 2 x CPU cores, capped at 8 (VictoriaMetrics-style drain concurrency).
-DUCKDB_WRITE_QUEUE_WAIT_MS=2000       # how long enqueue waits for queue space before the 503 (VictoriaMetrics-style insert queueing). Bursts the writers sustain on average are absorbed instead of rejected.
+DUCKDB_CHECKPOINT_THRESHOLD=          # e.g. 256MB. Unset = DuckDB default (16MB). Raise under sustained ingest to reduce WAL checkpoint stalls; costs a larger WAL and longer restart replay.
 
 # Ingest admission gate (all telemetry ingest endpoints: /api/report, /api/profiles/ingest, /api/otel/*)
 INGEST_MAX_CONCURRENT=                # max concurrently processed ingest requests. Unset = 2×CPU cores, min 4. Bounds ingest memory so overload sheds load with 503s instead of the process being OOM-killed (on DuckDB an OOM death is followed by a minutes-long WAL-replay stall on restart).
 INGEST_ADMISSION_WAIT_SECONDS=5       # how long a request may wait for a slot before the 503 + Retry-After; 0 = reject immediately when saturated
-
-# Profiling (opt-in)
-PPROF_PORT=                           # e.g. 6060. Serves net/http/pprof on 127.0.0.1:<port> (localhost only; unreachable through the public router). Unset = disabled.
 
 # Notifications
 NOTIFICATION_POLL_SECONDS=60          # polled rule evaluation interval; minimum 5, invalid values fall back to 60
@@ -496,7 +488,7 @@ const handleClick = createRowClickHandler('/issues/abc123', 'preset', 'from', 't
 /endpoints/[endpoint]       Single endpoint details
 /tasks                      Background tasks list
 /tasks/[task]               Single task details
-/metrics                    System metrics dashboard (CPU, memory, etc.)
+/dashboards                 Dashboards page (tabs of org dashboards; /metrics redirects here)
 /connection                 SDK integration guide
 ```
 
@@ -628,22 +620,40 @@ backend/
 | GET | `/api/metrics/discover/tags` | App | Discover metric tags |
 | PUT | `/api/metrics/registry` | App+Write | Update metric registry entry |
 
-**Widget Groups & Widgets**
+**Dashboards & Templates**
+
+Dashboards are org-owned JSON documents (`{schemaVersion, widgets: [{id, title, widgetType, config}]}`, widget ids are server-generated `w_xxxxxxxx` strings, array order = display order) applied to projects via `project_dashboards`. Dashboard mutations require org role above `readonly` (checked in-handler); project-scoped routes (list/star/reorder/populate) use the standard middleware chains; apply/unapply also check the effective role of each affected project. The old per-project widget-group tables are converted once at startup by `backfill.RunDashboards` (advisory-locked on PG) and retained for rollback.
+
 | Method | Endpoint | Auth | Purpose |
 |--------|----------|------|---------|
-| GET | `/api/widget-groups` | App | List widget groups |
-| POST | `/api/widget-groups` | App+Write | Create widget group |
-| GET | `/api/widget-groups/:id` | App | Get group with widgets |
-| PUT | `/api/widget-groups/:id` | App+Write | Update widget group |
-| DELETE | `/api/widget-groups/:id` | App+Write | Delete widget group |
-| POST | `/api/widget-groups/:id/widgets` | App+Write | Add widget |
-| PUT | `/api/widget-groups/:id/widgets/:wid` | App+Write | Update widget |
-| PUT | `/api/widget-groups/:id/reorder` | App+Write | Reorder widgets (explicit id order) |
-| PUT | `/api/widget-groups/:id/widgets/:wid/star` | App+Write | Star/unstar widget for the homepage |
-| DELETE | `/api/widget-groups/:id/widgets/:wid` | App+Write | Delete widget |
-| GET | `/api/widget-groups/starred` | App | List starred widgets with homepage layout |
-| PUT | `/api/starred-widgets/reorder` | App+Write | Reorder homepage starred widgets (explicit id order) |
-| PUT | `/api/starred-widgets/:wid` | App+Write | Update homepage layout (colSpan/size) of a starred widget |
+| GET | `/api/dashboards` | App | Dashboards applied to the project (tab order) |
+| GET | `/api/dashboards/library` | App | All dashboards across the user's orgs with applied project ids |
+| POST | `/api/dashboards` | App | Create in org (auto-applies to current project unless `applyToProjectIds` given) |
+| GET | `/api/dashboards/:id` | App | Meta + widgets (+ per-project `isStarred`, `appliedProjectIds`) |
+| PUT | `/api/dashboards/:id` | App | Update name/description and/or full `definition` (the as-code path) |
+| DELETE | `/api/dashboards/:id` | App | Delete everywhere (assignments + stars cascade) |
+| PUT | `/api/dashboards/:id/apply` | App | Set the full project assignment list |
+| DELETE | `/api/dashboards/:id/apply/:projectId` | App | Unassign from one project |
+| POST | `/api/dashboards/:id/copy` | App | Copy (also cross-org) with optional apply |
+| PUT | `/api/dashboards/reorder` | App+Write | Tab order for a project (explicit id order) |
+| POST | `/api/dashboards/:id/widgets` | App | Add widget |
+| PUT | `/api/dashboards/:id/widgets/reorder` | App | Reorder widgets (explicit id order) |
+| PUT | `/api/dashboards/:id/widgets/:wid` | App | Update widget |
+| DELETE | `/api/dashboards/:id/widgets/:wid` | App | Delete widget (+ its stars) |
+| PUT | `/api/dashboards/:id/widgets/:wid/star` | App+Write | Star/unstar for the project homepage |
+| GET | `/api/dashboards/starred` | App | Starred widgets with homepage layout |
+| PUT | `/api/starred-widgets/reorder` | App+Write | Reorder homepage starred widgets (`{ids}` = starred row ids) |
+| PUT | `/api/starred-widgets/:id` | App+Write | Update homepage layout (colSpan/size) |
+| GET | `/api/dashboards/:id/export` | App | Export one dashboard as JSON |
+| GET | `/api/dashboards/export?organizationId=` | App | Export the org bundle |
+| POST | `/api/dashboards/import` | App | Import doc/bundle (`mode: create\|upsert`, upsert matches by name) |
+| POST | `/api/dashboards/import/grafana` | App | Convert a Grafana export (best-effort, returns `warnings[]`) |
+| GET | `/api/dashboard-templates` | App | Marketplace list/search (`search`, `category` params) |
+| POST | `/api/dashboard-templates/:key/install` | App | Copy a template into the org and apply |
+| POST | `/api/dashboards/populate-defaults` | App+Write | Install the framework-default template set for an empty project |
+| GET | `/api/metrics/discover/org` | App | Metric names across all org projects (command palette) |
+
+Templates are DB rows seeded by migrations (`traceway-otel-agent` for the OTel host agent, `golang` for Go SDK apps, `traceway-clickhouse`/`traceway-duckdb` for the telemetry stores of a monitored Traceway instance; SQLite emits no store-specific metrics so it has no template); cloud can insert more rows without a release. The OTLP metric ingest allowlists per-resource grouping tags (`container.name`, `k8s.pod.name`, `k8s.node.name`, `postgresql.database.name`, ...) in `otelcontrollers/metric_converter.go` for custom widgets.
 
 **Endpoints**
 | Method | Endpoint | Auth | Purpose |
@@ -749,9 +759,11 @@ func (c *ReportController) Report(ctx *gin.Context) {
 | `invitations` | Team invitations with token, role, expiry |
 | `source_maps` | Uploaded source map files (project, version, storage key) |
 | `metric_registry` | Custom metric definitions (type, unit, description) |
-| `widget_groups` | Dashboard widget groups (name, default flag) |
-| `widget_group_widgets` | Individual widgets within groups (type, config, position) |
-| `starred_widgets` | Homepage layout for starred widgets (position, col_span, size per widget) |
+| `dashboards` | Org-owned dashboards (name, JSONB definition with widgets, template provenance) |
+| `project_dashboards` | Which projects show a dashboard, and tab order |
+| `dashboard_templates` | Marketplace templates (key, category, definition), seeded by migrations |
+| `starred_dashboard_widgets` | Homepage layout per project (dashboard id + widget id, position, col_span, size) |
+| `widget_groups` / `widget_group_widgets` / `starred_widgets` | Legacy pre-dashboards tables, retained read-only for rollback until a follow-up drop |
 
 #### ClickHouse vs PostgreSQL Decision Guide
 - **PostgreSQL**: Relational/config data needing ACID, frequent updates, JOINs, low volume (users, organizations, projects, invitations, widgets, source maps, metric registry)
@@ -769,7 +781,7 @@ In SQLite mode (`DB_TYPE=sqlite`), the backend uses **two separate SQLite databa
 
 **Main DB tables** (`db.DB` — transactional, uses lit with `*sql.Tx`):
 - `users`, `organizations`, `organization_users`, `projects`, `invitations`
-- `source_maps`, `metric_registry`, `widget_groups`, `widget_group_widgets`, `starred_widgets`
+- `source_maps`, `metric_registry`, `dashboards`, `project_dashboards`, `dashboard_templates`, `starred_dashboard_widgets` (plus the legacy `widget_groups`/`widget_group_widgets`/`starred_widgets`)
 - `notification_channels`, `notification_rules`
 
 **Telemetry DB tables** (`db.TelemetryDB` — non-transactional, uses lit with `db.TelemetryDB` directly):
@@ -807,9 +819,9 @@ for _, item := range items {
 Built with `-tags telemetry_duckdb` (`CGO_ENABLED=1` required), this is an alternative telemetry store for the same `DB_TYPE=sqlite` deployment: the **main DB stays SQLite** (`db.DB`, relational/config), while the **telemetry DB becomes DuckDB** (`db.TelemetryDB`, columnar). It exists because DuckDB's columnar engine is dramatically faster on the analytics/aggregation reads the dashboard issues — at 10M rows it clears read-probe thresholds that SQLite times out on. Backends are selected on two build-tag axes: `telemetry_ch` / `telemetry_duckdb` / *(none = SQLite telemetry)* for the telemetry store and `transactional_pg` / *(none = SQLite main)* for the relational store. Only three combinations are supported — *(no tags)* dual SQLite, `telemetry_duckdb`, and `transactional_pg telemetry_ch` — enforced by compile-time guard files in `backend/app/db/` (stale `pgch`/`duckdb`/`oltp_*` tags also fail with a rename message). Repositories are organized on the same two axes: telemetry repositories live in per-backend packages `backend/app/repositories/telemetry/{clickhouse,sqlite,duckdb}/` and transactional (relational) repositories in `backend/app/repositories/transactional/{pg,sqlite}/`, each re-exported as singletons through tag-guarded facade files at the axis package root (`telemetry/telemetry_ch.go` etc., `transactional/transactional_pg.go` etc.). Consumers import the facade packages — `telemetry.SpanRepository`, `transactional.UserRepository` — never a backend package directly. Helpers shared by all telemetry backends are in `telemetry/shared/`, the SQLite scan/value types shared by the sqlite+duckdb backends are in `telemetry/sqlitetypes/`, and helpers/types shared by the transactional backends (auth-token hashing/time formats, facade-crossing structs) are in `transactional/shared/`. The `transactional/pg` and `transactional/sqlite` implementations are intentionally kept dialect-neutral (lit `:name` queries rendered per `db.Driver`), enforced byte-for-byte by `transactional/parity_test.go`. Running Postgres requires the `transactional_pg` build: the default build's migration runner applies SQLite-dialect migrations unconditionally, so `DB_TYPE=postgres` without the tag is not a supported combination.
 
 - **Driver:** `github.com/duckdb/duckdb-go/v2` (the official driver; marcboeker/go-duckdb is deprecated). Bundles prebuilt static libs for glibc only — **not musl/Alpine**, so the image uses Debian (`Dockerfile.duckdb`).
-- **Opened in** `backend/app/db/db_telemetry_duckdb.go`: telemetry path is the SQLite path with `.db` swapped for `_telemetry.duckdb`. By default DuckDB auto-tunes to the host; `DUCKDB_MEMORY_LIMIT`/`DUCKDB_THREADS`/`DUCKDB_CHECKPOINT_THRESHOLD` (passed through as DSN config options) let operators cap memory/threads so a memory-capped container doesn't read the host's RAM and OOM-kill the backend, and tune the WAL checkpoint threshold (backend default 256MB; DuckDB's own default of 16MB stalls sustained Appender ingest with frequent checkpoints). `preserve_insertion_order=false` is always set — telemetry reads all have explicit ORDER BY, and dropping the guarantee lets DuckDB parallelize bulk loads and large scans with less memory. The read pool is bounded (`SetMaxOpenConns(duckDBMaxReadConns)`) since each DuckDB connection can use all threads + its own query memory; Appender writes use their own `DuckDBConnector.Connect()` connections and bypass that cap. Exposes `db.DuckDBConnector` (needed for the Appender).
-- **Writes use the Appender API**, not `INSERT` (`duckdb.NewAppenderFromConn(conn, "", table)` → `AppendRow(...)` → `Close()` flushes). The five hot tables (`spans`, `metric_points`, `log_records`, `endpoints`, `tasks`) additionally go through a **background write batcher** (`telemetry/duckdb/writer.go`, started via `telemetry.StartWriters` in `cmd/run.go`): the request goroutine converts models to rows and enqueues onto a bounded per-table queue, one writer goroutine per table owns a persistent connection + Appender and flushes at `DUCKDB_WRITE_FLUSH_ROWS`/`DUCKDB_WRITE_FLUSH_INTERVAL_MS`. A 200 therefore means "accepted into the queue" (OTel-Collector-style ack-before-durable, loss window ≤ one flush); a full queue returns `db.ErrIngestQueueFull`, which controllers map to 503 + Retry-After (`middleware.AbortIngestInsertError`; the Retry-After hint tracks the configured queue wait) — overload is shed before the ack, acked rows are never silently dropped. `telemetry.FlushWriters` is a barrier used by the notification event evaluator (it reads back just-ingested rows) and tests; when writers aren't started (tests), `InsertAsync` falls back to the synchronous per-request appender. The other tables stay synchronous: `exception_stack_traces` (evaluator read-back), `sessions`/`profiling_stacks` (ordering-sensitive upserts), and the low-volume rest. Upserts still go through `ExecContext` with `ON CONFLICT`. The Appender rejects typed `*string` for nullable VARCHAR — use `nullableString()` in `backend/app/repositories/telemetry/duckdb/helpers.go` (returns untyped `nil` or the dereferenced value).
-- **Write-path observability:** a row the Appender rejects is dropped rather than failing the whole frame (the SQLite backend 500s instead), so a poison row cannot wedge the SDK's retry loop. Every drop increments a per-table counter (`db.RecordTelemetryRowDropped`) and fires a rate-limited (1/min per table) `traceway.CaptureException`; Appender flush/connect failures still propagate to the request (500, SDK retries) and increment an insert-failure counter. `GET /api/health/deep` (App auth, all telemetry backends) exposes `telemetryBackend`, `droppedRows` per table, `droppedRowsTotal`, `insertFailures`, and on DuckDB an `engine` object (db/WAL file bytes, `duckdb_memory()` usage, read-pool in-use/wait stats) alongside its existing ClickHouse fields; it 503s only when the configured telemetry backend is ClickHouse and CH is unreachable (the embedded backends answer 200 with `chReachable:false`). The benchmark loadgen polls it before/after every ramp step and fails any step whose drop delta is nonzero; read-probe fills record cumulative `droppedRows` per fill level. When `MONITORING_TRACEWAY_URL` is set, `monitoring.StartTelemetryDBReporter` also emits `traceway.duckdb.*` metrics every 10s: `rows_dropped.delta`, `insert_failures.delta`, `db_size_mb`, `wal_size_mb`, `memory_used_mb`, `read_pool.in_use`, `read_pool.wait_count.delta`, `read_pool.wait_ms.delta`. The hourly retention worker issues a `CHECKPOINT` after its deletes so retention actually reclaims disk (DuckDB otherwise defers reclamation to the WAL checkpoint threshold).
+- **Opened in** `backend/app/db/db_telemetry_duckdb.go`: telemetry path is the SQLite path with `.db` swapped for `_telemetry.duckdb`. By default DuckDB auto-tunes to the host; `DUCKDB_MEMORY_LIMIT`/`DUCKDB_THREADS`/`DUCKDB_CHECKPOINT_THRESHOLD` (passed through as DSN config options) let operators cap memory/threads so a memory-capped container doesn't read the host's RAM and OOM-kill the backend, and raise the WAL checkpoint threshold (default 16MB) so sustained Appender ingest isn't stalled by frequent checkpoints. `preserve_insertion_order=false` is always set — telemetry reads all have explicit ORDER BY, and dropping the guarantee lets DuckDB parallelize bulk loads and large scans with less memory. The read pool is bounded (`SetMaxOpenConns(duckDBMaxReadConns)`) since each DuckDB connection can use all threads + its own query memory; Appender writes use their own `DuckDBConnector.Connect()` connections and bypass that cap. Exposes `db.DuckDBConnector` (needed for the Appender).
+- **Writes use the Appender API**, not `INSERT` (`duckdb.NewAppenderFromConn(conn, "", table)` → `AppendRow(...)` → `Close()` flushes). Upserts still go through `ExecContext` with `ON CONFLICT`. The Appender rejects typed `*string` for nullable VARCHAR — use `nullableString()` in `backend/app/repositories/telemetry/duckdb/helpers.go` (returns untyped `nil` or the dereferenced value).
+- **Write-path observability:** a row the Appender rejects is dropped rather than failing the whole frame (the SQLite backend 500s instead), so a poison row cannot wedge the SDK's retry loop. Every drop increments a per-table counter (`db.RecordTelemetryRowDropped`) and fires a rate-limited (1/min per table) `traceway.CaptureException`; Appender flush/connect failures still propagate to the request (500, SDK retries) and increment an insert-failure counter. `GET /api/health/deep` (App auth, all telemetry backends) exposes `telemetryBackend`, `droppedRows` per table, `droppedRowsTotal`, `insertFailures`, `ingestRejected` (requests turned away by the ingest admission gate), and on DuckDB an `engine` object (db/WAL file bytes, `duckdb_memory()` usage, read-pool in-use/wait stats) alongside its existing ClickHouse fields; it 503s only when the configured telemetry backend is ClickHouse and CH is unreachable (the embedded backends answer 200 with `chReachable:false`). The benchmark loadgen polls it before/after every ramp step and fails any step whose drop delta is nonzero; read-probe fills record cumulative `droppedRows` per fill level. When `MONITORING_TRACEWAY_URL` is set, `monitoring.StartTelemetryDBReporter` also emits `traceway.duckdb.*` metrics every 10s: `rows_dropped.delta`, `insert_failures.delta`, `db_size_mb`, `wal_size_mb`, `memory_used_mb`, `read_pool.in_use`, `read_pool.wait_count.delta`, `read_pool.wait_ms.delta`. The hourly retention worker issues a `CHECKPOINT` after its deletes so retention actually reclaims disk (DuckDB otherwise defers reclamation to the WAL checkpoint threshold).
 - **`lit` placeholders:** `db.Driver` stays `lit.SQLite`, which emits `?` — DuckDB accepts these, so no separate driver was needed for reads.
 - **Migrations:** `backend/app/migrations/duckdb_telemetry/` (mirrors `sqlite_telemetry/` table-for-table; integer columns are `BIGINT`, JSON is `VARCHAR`, no secondary indexes since it's columnar).
 - **Dialect gotchas vs SQLite** (the read queries differ): native `quantile_cont(col, p)` for P50/P95/P99 instead of fetch-and-sort; `strftime('%s',col)`→`epoch(col)`; time bucketing via `time_bucket(to_seconds(N), col, TIMESTAMP '1970-01-01')` — the explicit epoch origin is required because DuckDB anchors sub-day buckets at 2000-01-03 by default, which would misalign chart buckets against the SQLite backend's epoch-floored buckets for any interval that doesn't evenly divide a day; `json_extract`→`json_extract_string`; `json_each`→`LATERAL unnest(json_keys(x))`; strict GROUP BY needs `ANY_VALUE`/`arg_max`; `SUM` returns HUGEINT (CAST to BIGINT); `CAST(.. AS REAL)`→`CAST(.. AS DOUBLE)`.

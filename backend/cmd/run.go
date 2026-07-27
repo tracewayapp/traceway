@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tracewayapp/traceway/backend/app/backfill"
 	"github.com/tracewayapp/traceway/backend/app/cache"
 	"github.com/tracewayapp/traceway/backend/app/chdb"
 	"github.com/tracewayapp/traceway/backend/app/config"
@@ -102,6 +103,10 @@ func Run(opts ...Option) {
 	err = migrations.Run(cfg.DBType)
 	if err != nil {
 		panic(fmt.Errorf("migrations run failed: %w", err))
+	}
+
+	if err := backfill.RunDashboards(); err != nil {
+		panic(fmt.Errorf("dashboards backfill failed: %w", err))
 	}
 
 	if o != nil {

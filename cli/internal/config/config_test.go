@@ -82,7 +82,7 @@ func TestSave_writesAtomicallyWith0600(t *testing.T) {
 	cfg := &Config{
 		Profiles: map[string]Profile{
 			"default": {
-				URL:      "https://cloud.traceway.com",
+				URL:      "https://cloud.tracewayapp.com",
 				Username: "fred@example.com",
 			},
 		},

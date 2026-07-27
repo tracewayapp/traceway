@@ -1,14 +1,35 @@
+<script lang="ts" module>
+	export type AttributeFilterState = 'none' | 'include' | 'exclude';
+</script>
+
 <script lang="ts">
 	import JSONTree from '@sveltejs/svelte-json-tree';
-	import { Copy, Check } from 'lucide-svelte';
+	import { Copy, Check, Filter, FilterX } from 'lucide-svelte';
 
 	let {
 		title,
-		value
+		value,
+		filterState = 'none',
+		onFilterToggle
 	}: {
 		title: string;
 		value: string;
+		filterState?: AttributeFilterState;
+		onFilterToggle?: () => void;
 	} = $props();
+
+	// Hidden-until-hover only where hovering exists: always visible on small
+	// screens and coarse (touch) pointers, hover-revealed on md+ fine pointers.
+	const hoverRevealClass =
+		'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100 md:pointer-coarse:opacity-100';
+
+	const filterTitle = $derived(
+		filterState === 'none'
+			? 'Filter by this value'
+			: filterState === 'include'
+				? 'Filtering by this value — click to clear'
+				: 'Excluding this value — click to clear'
+	);
 
 	let copied = $state(false);
 	let showFull = $state(false);
@@ -45,17 +66,36 @@
 <div class="group relative flex flex-col gap-1 rounded-md bg-muted p-3">
 	<div class="flex items-center justify-between">
 		<span class="text-xs font-medium text-muted-foreground">{title}</span>
-		<button
-			onclick={copyToClipboard}
-			class="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
-			title="Copy to clipboard"
-		>
-			{#if copied}
-				<Check class="h-3.5 w-3.5 text-green-500" />
-			{:else}
-				<Copy class="h-3.5 w-3.5" />
+		<div class="flex items-center gap-2">
+			{#if onFilterToggle}
+				<button
+					onclick={onFilterToggle}
+					class="transition-opacity {filterState === 'none'
+						? `${hoverRevealClass} text-muted-foreground hover:text-foreground`
+						: filterState === 'include'
+							? 'text-blue-500 dark:text-blue-400'
+							: 'text-red-500'}"
+					title={filterTitle}
+				>
+					{#if filterState === 'exclude'}
+						<FilterX class="h-3.5 w-3.5" />
+					{:else}
+						<Filter class="h-3.5 w-3.5 {filterState === 'include' ? 'fill-current' : ''}" />
+					{/if}
+				</button>
 			{/if}
-		</button>
+			<button
+				onclick={copyToClipboard}
+				class="{hoverRevealClass} transition-opacity text-muted-foreground hover:text-foreground"
+				title="Copy to clipboard"
+			>
+				{#if copied}
+					<Check class="h-3.5 w-3.5 text-green-500" />
+				{:else}
+					<Copy class="h-3.5 w-3.5" />
+				{/if}
+			</button>
+		</div>
 	</div>
 	{#if parsedJson()}
 		<div class="json-tree-container whitespace-normal overflow-x-auto">

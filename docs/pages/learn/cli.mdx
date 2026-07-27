@@ -1,0 +1,147 @@
+# CLI
+
+import { Callout } from "nextra/components";
+
+`traceway` is a command-line client for the Traceway HTTP API — exceptions, logs, endpoints, tasks, traces, and metrics from a terminal. It is designed to be first-class for both humans (with `gh`-style ergonomics) and LLM agents invoking it via shell tools: JSON output when piped, stable error identifiers and exit codes, and nothing that hangs waiting for input. For a quick tour, see the [CLI product page](https://tracewayapp.com/product/cli).
+
+## Installation
+
+### One-line install (macOS, Linux)
+
+```bash
+curl -fsSL https://cli.tracewayapp.com/install.sh | sh
+```
+
+The installer detects your OS and architecture, downloads the latest CLI release from GitHub, verifies its sha256 checksum, and installs `traceway` to `/usr/local/bin` (when writable) or `~/.local/bin` — no sudo. Two environment variables tweak it: `TRACEWAY_CLI_VERSION` pins a version (e.g. `1.9.3`) and `TRACEWAY_INSTALL_DIR` overrides the target directory.
+
+### Prebuilt binaries
+
+Every release publishes prebuilt binaries at [github.com/tracewayapp/traceway/releases](https://github.com/tracewayapp/traceway/releases) under the matching `CLI vX.Y.Z` tag — the CLI version tracks the backend release. Download the archive for your platform (`traceway_<version>_<os>_<arch>.tar.gz`, or `.zip` on Windows), extract it, and put `traceway` on your `PATH`. This is also the route for Windows, which the install script doesn't cover.
+
+### From source
+
+The `cli/` directory of the [main repo](https://github.com/tracewayapp/traceway) ships a Nix dev shell with everything needed:
+
+```bash
+cd cli
+nix develop
+just build         # produces ./bin/traceway
+```
+
+Or with vanilla Go:
+
+```bash
+go build -o bin/traceway ./cmd/traceway
+```
+
+Verify an installed binary with `traceway version` (source builds report `dev`).
+
+## Quick start
+
+```bash
+# 1. log in — prints a URL + short code, you approve in the browser
+traceway login --url https://cloud.tracewayapp.com
+
+# 2. pick a project (one-time; future calls use it implicitly)
+traceway projects list
+traceway projects use <project-id>
+
+# 3. ask questions
+traceway exceptions list --since 24h
+traceway logs query --since 1h --search "OutOfMemory"
+traceway endpoints list --since 1h
+traceway metrics query --name http.server.duration --aggregation avg --since 1h
+```
+
+The default `traceway login` runs a browser device flow with an auto-refreshing token, so you stay logged in for up to 90 days of inactivity. Password login (`--password`) and personal access tokens (`--token`) are also supported — see [CLI Authentication](/learn/cli-auth) for all three modes, and for what to use in CI.
+
+## Commands
+
+| Command | Purpose |
+|---|---|
+| `traceway login` | Authenticate and store a token (device flow, `--password`, or `--token`) |
+| `traceway logout` | Revoke the session server-side and forget stored credentials |
+| `traceway profiles {list,use}` | Manage multiple Traceway accounts/instances |
+| `traceway projects {list,use}` | List or select the active project |
+| `traceway exceptions list` | Recent grouped exceptions |
+| `traceway exceptions show <hash>` | A single exception group + occurrences |
+| `traceway exceptions occurrence <id> --recorded-at <t>` | A single occurrence by id (+ `sessionId` and recording) |
+| `traceway exceptions archive <hash>...` | Archive one or more groups (mutating; needs `--yes` non-interactively) |
+| `traceway exceptions unarchive <hash>...` | Unarchive (mutating; needs `--yes` non-interactively) |
+| `traceway logs query` | Query logs with severity / service / search filters |
+| `traceway endpoints list` | Per-endpoint p50/p95/p99 stats |
+| `traceway endpoints show <id> --recorded-at <t>` | A single request (transaction) by id: spans + linked errors |
+| `traceway tasks show <id> --recorded-at <t>` | A single background task run by id |
+| `traceway ai-traces show <id> --recorded-at <t>` | A single AI trace by id + its conversation |
+| `traceway sessions show <id> --started-at <t>` | A single session by id + the exceptions that fired in it |
+| `traceway traces show <id> --recorded-at <t>` | A distributed trace: every service node sharing the id |
+| `traceway metrics query` | Time-series metric queries |
+| `traceway mcp` | Serve the [MCP server](/learn/mcp) over stdio |
+
+Run `traceway <command> --help` for full per-command flags.
+
+<Callout type="info">
+  The `show` / `occurrence` commands take a UUID plus a **required** timestamp flag (`--recorded-at`, or `--started-at` for `sessions`). Telemetry tables are partitioned by day; the timestamp bounds the query so the lookup prunes partitions instead of scanning all of them. Get the id and its timestamp together — from a dashboard URL's `?t=` param, a notification's `Occurred at`, or a list row's `recordedAt`. Omitting the flag exits 2 (`usage_error`).
+</Callout>
+
+## Profiles
+
+Multiple Traceway instances or accounts coexist via profiles. Configuration (URL, username) lives in `$XDG_CONFIG_HOME/traceway/config.json` so it can be checked in or managed declaratively; credentials and the active project live in `$XDG_STATE_HOME/traceway/state.json`.
+
+```bash
+traceway login --url https://traceway.example.com --profile work
+traceway profiles list
+traceway profiles use work
+traceway --profile personal exceptions list   # one-off override
+```
+
+## Output formats
+
+The `--output` flag picks the format. The default is `table` on a TTY and `json` otherwise — piping always gets machine-readable output.
+
+| Format | Use |
+|---|---|
+| `table` | Human-friendly columns (default on TTY) |
+| `json` | Compact JSON, one record per line (default when stdout isn't a TTY) |
+| `yaml` | YAML rendering of the same data |
+
+`--fields a,b,c` projects list responses to just those keys:
+
+```bash
+traceway exceptions list --output json --fields exceptionHash,count,lastSeen
+```
+
+## Errors and exit codes
+
+Every error writes a stable JSON envelope to stderr (in `json` / `yaml` modes — prose in `table` mode):
+
+```json
+{"error":"token_expired","message":"session expired or invalid","hint":"traceway login","exit_code":4}
+```
+
+The `error` field is a stable snake_case identifier that scripts and LLMs can branch on. Exit codes:
+
+| Exit | Meaning |
+|---|---|
+| 0 | Success |
+| 1 | Generic / API error |
+| 2 | Usage error (bad flags, missing confirmation, invalid time range) |
+| 3 | Connection failure |
+| 4 | Auth failure (`not_authenticated`, `token_expired`, `forbidden`) |
+| 5 | Not found |
+| 6 | Rate limited |
+| 7 | Server (5xx) |
+
+## Mutations require confirmation
+
+`exceptions archive` and `exceptions unarchive` are the only commands that change server state, and they require explicit consent:
+
+- Pass `--yes` to skip the prompt.
+- Or set `TRACEWAY_ASSUME_YES=1` in the environment.
+- Or run interactively and answer the `Continue? [y/N]` prompt.
+
+Calling a mutating command from a non-TTY context (script, LLM tool call) without one of the opt-ins fails immediately with `usage_error` (exit 2) — no hung prompts.
+
+## MCP server
+
+`traceway mcp` serves the whole query/debug surface as an MCP server on stdio for clients like Claude Code, Claude Desktop, and Cursor, reusing the CLI session and current project. See [MCP Server](/learn/mcp) for the stdio setup, the zero-install remote server every backend hosts at `/mcp`, and headless use via `TRACEWAY_URL` + `TRACEWAY_TOKEN`.

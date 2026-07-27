@@ -132,7 +132,13 @@ If it prints a version, skip to authentication.
 
 ### 2. Install if missing
 
-Prebuilt binaries are on the [tracewayapp/traceway releases page](https://github.com/tracewayapp/traceway/releases) under `cli/vX.Y.Z` tags (the latest release may be a Backend release, so filter for CLI tags):
+On POSIX systems (Linux, macOS), use the install script:
+
+```bash
+curl -fsSL https://cli.tracewayapp.com/install.sh | sh
+```
+
+If the script cannot be used, install manually: prebuilt binaries are on the [tracewayapp/traceway releases page](https://github.com/tracewayapp/traceway/releases) under `cli/vX.Y.Z` tags (the latest release may be a Backend release, so filter for CLI tags):
 
 ```bash
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')

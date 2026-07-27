@@ -28,9 +28,10 @@ type FiredNotification struct {
 // query (Map columns with bloom-filter indexes on ClickHouse, JSON on
 // SQLite/DuckDB).
 type LogAttributeFilter struct {
-	Scope string
-	Key   string
-	Value string
+	Scope   string
+	Key     string
+	Value   string
+	Exclude bool
 }
 
 type LogSearchParams struct {
@@ -43,6 +44,9 @@ type LogSearchParams struct {
 	ServiceName      string
 	TraceId          string
 	TraceIds         []string
+	SpanId           string
+	ScopeName        string
+	Body             string
 	AttributeFilters []LogAttributeFilter
 	OrderBy          string
 	SortDirection    string

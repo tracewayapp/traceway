@@ -247,7 +247,7 @@ Each command is ~30–40 lines of glue.
 ### Flow A — `traceway login [--profile X] [--url ...]`
 
 1. Resolve profile name (`--profile`, default `default`).
-2. Load config; if profile exists, prompt with saved URL and username as defaults; otherwise prompt fresh (URL defaults to `--url` if set, else `https://cloud.traceway.com`).
+2. Load config; if profile exists, prompt with saved URL and username as defaults; otherwise prompt fresh (URL defaults to `--url` if set, else `https://cloud.tracewayapp.com`).
 3. Read password (no echo) via `golang.org/x/term.ReadPassword`. `--password-stdin` reads from stdin instead (LLM-friendly).
 4. Call `client.Login(URL, email, password)` → JWT.
 5. Save profile `{URL, Username, JWT, CurrentProjectID=""}`. If this is the only profile, set `CurrentProfile` to its name.

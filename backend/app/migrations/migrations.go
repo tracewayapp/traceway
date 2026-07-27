@@ -59,7 +59,7 @@ func runMigrationsOn(target *sql.DB, fsys embed.FS, dir, trackingTable, createTr
 			return fmt.Errorf("failed to read migration file %s: %w", file, err)
 		}
 
-		statements := strings.Split(string(content), ";")
+		statements := splitStatements(string(content))
 		for _, stmt := range statements {
 			stmt = strings.TrimSpace(stmt)
 			if stmt == "" {
@@ -76,4 +76,49 @@ func runMigrationsOn(target *sql.DB, fsys embed.FS, dir, trackingTable, createTr
 	}
 
 	return nil
+}
+
+func splitStatements(content string) []string {
+	var statements []string
+	var current strings.Builder
+	inSingle := false
+	inDouble := false
+	for i := 0; i < len(content); i++ {
+		ch := content[i]
+		switch {
+		case inSingle:
+			current.WriteByte(ch)
+			if ch == '\'' {
+				if i+1 < len(content) && content[i+1] == '\'' {
+					current.WriteByte(content[i+1])
+					i++
+				} else {
+					inSingle = false
+				}
+			}
+		case inDouble:
+			current.WriteByte(ch)
+			if ch == '"' {
+				if i+1 < len(content) && content[i+1] == '"' {
+					current.WriteByte(content[i+1])
+					i++
+				} else {
+					inDouble = false
+				}
+			}
+		case ch == '\'':
+			inSingle = true
+			current.WriteByte(ch)
+		case ch == '"':
+			inDouble = true
+			current.WriteByte(ch)
+		case ch == ';':
+			statements = append(statements, current.String())
+			current.Reset()
+		default:
+			current.WriteByte(ch)
+		}
+	}
+	statements = append(statements, current.String())
+	return statements
 }

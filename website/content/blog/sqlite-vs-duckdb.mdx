@@ -8,7 +8,7 @@ description: "Same $16.49/month server, same Traceway binary, two embedded datab
 
 ## TL;DR
 
-I spent six days pointing post 2's benchmark at a second build of Traceway, and I went in expecting a respectable columnar-database win: maybe 2x on writes, dashboards surviving 10x the rows. Same Hetzner CCX13 as [post 1](/blog/sqlite-observability-stack) and [post 2](/blog/break-sqlite-traceway): $16.49/month, 2 dedicated AMD vCPU, 8 GB RAM, 80 GB NVMe. Two builds of the same Traceway binary: the SQLite build post 2 measured, and the DuckDB build, where relational data stays in SQLite and telemetry moves to DuckDB's columnar engine. Same loadgen, same scenarios, same pass/fail rules.
+I spent six days working on and running a benchmark of observability data on DuckDB. I've done this with SQLite in [the last blog post](/blog/break-sqlite-traceway) and I really wanted to see how DuckDB compares on a cheap CCX13 Hetzner instance. The way I've done the measurements is by implementing DuckDB as a valid storage engine for Traceway and then running its benchmarking suite. The benchmarks show that DuckDB's columnar engine is able to query 100x more data points without any major backend changes. The write throughput is also 3x to 15x higher. The result is that you can now self-host the full OTel stack that can handle a large data volume on a pretty small server. Keep reading to find out how I've done the measurements!
 
 This is what came back:
 

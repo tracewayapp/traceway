@@ -261,6 +261,18 @@ func (r *logRecordRepository) buildWhere(params shared.LogSearchParams) (string,
 		clauses = append(clauses, "trace_id = :trace_id")
 		args["trace_id"] = params.TraceId
 	}
+	if params.SpanId != "" {
+		clauses = append(clauses, "span_id = :span_id")
+		args["span_id"] = params.SpanId
+	}
+	if params.ScopeName != "" {
+		clauses = append(clauses, "scope_name = :scope_name")
+		args["scope_name"] = params.ScopeName
+	}
+	if params.Body != "" {
+		clauses = append(clauses, "body = :body")
+		args["body"] = params.Body
+	}
 
 	for i, f := range params.AttributeFilters {
 		col := attrColumn(f.Scope)
@@ -269,8 +281,15 @@ func (r *logRecordRepository) buildWhere(params shared.LogSearchParams) (string,
 		}
 		keyPH := fmt.Sprintf("attr_k%d", i)
 		valPH := fmt.Sprintf("attr_v%d", i)
-		clauses = append(clauses,
-			fmt.Sprintf("json_extract_string(%s, '$.\"' || :%s || '\"') = :%s", col, keyPH, valPH))
+		if f.Exclude {
+			// COALESCE keeps rows that don't carry the attribute at all
+			// (json_extract_string yields NULL there, and NULL != value is NULL).
+			clauses = append(clauses,
+				fmt.Sprintf("COALESCE(json_extract_string(%s, '$.\"' || :%s || '\"'), '') != :%s", col, keyPH, valPH))
+		} else {
+			clauses = append(clauses,
+				fmt.Sprintf("json_extract_string(%s, '$.\"' || :%s || '\"') = :%s", col, keyPH, valPH))
+		}
 		args[keyPH] = f.Key
 		args[valPH] = f.Value
 	}

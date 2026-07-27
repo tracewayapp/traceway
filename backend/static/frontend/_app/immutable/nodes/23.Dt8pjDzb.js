@@ -1,0 +1,1 @@
+import{r as e}from"../chunks/hp4PFHFv.js";import"../chunks/DsnmJJEf.js";import"../chunks/69_IOA4Y.js";const r=({url:o})=>{throw e(301,"/dashboards"+o.search)},c=Object.freeze(Object.defineProperty({__proto__:null,load:r},Symbol.toStringTag,{value:"Module"}));function p(o){}export{p as component,c as universal};

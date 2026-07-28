@@ -76,7 +76,17 @@ func (a oauthController) Callback(c *gin.Context) {
 	req := c.Request.WithContext(context.WithValue(c.Request.Context(), gothic.ProviderParamKey, externalToGothProvider(provider)))
 	gothUser, err := gothic.CompleteUserAuth(c.Writer, req)
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("OAuth complete failed (provider=%s): %w", provider, err))
+		// A missing session or state mismatch is an expected, client-driven
+		// outcome — not a server fault: the callback was reached without the
+		// short-lived session that Begin writes (the user took too long at the
+		// provider, the callback URL was replayed/bookmarked after the session
+		// was consumed or expired, or a scanner hit it directly). It's the OAuth
+		// equivalent of a failed login, so redirect but don't report it as an
+		// exception. Only genuinely unexpected failures (token exchange, provider
+		// errors) are worth capturing.
+		if !isExpectedOAuthAuthError(err) {
+			traceway.CaptureException(fmt.Errorf("OAuth complete failed (provider=%s): %w", provider, err))
+		}
 		a.redirectError(c, "oauth_failed")
 		return
 	}
@@ -313,6 +323,25 @@ func (a oauthController) FinishSetup(c *gin.Context) {
 		Projects:      projects,
 		Organizations: organizations,
 	})
+}
+
+// isExpectedOAuthAuthError reports whether err from gothic.CompleteUserAuth is a
+// benign, client-driven auth failure rather than a server fault. gothic returns
+// these as plain error strings (no sentinel/typed errors), so matching on the
+// message is the only option:
+//   - "could not find a matching session for this request": the callback lacked
+//     the short-lived session Begin wrote (expired, replayed, or hit directly).
+//   - "state token mismatch": CSRF/state check failed on a stale or forged callback.
+//
+// Both are surfaced to the user as an oauth_failed redirect and must not page as
+// server exceptions.
+func isExpectedOAuthAuthError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "could not find a matching session for this request") ||
+		strings.Contains(msg, "state token mismatch")
 }
 
 func (a oauthController) redirectError(c *gin.Context, code string) {

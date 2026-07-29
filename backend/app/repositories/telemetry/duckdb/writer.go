@@ -178,8 +178,8 @@ func StartWriters(ctx context.Context, opts WriterOptions) {
 	})
 }
 
-// StopWriters flushes and stops all writers. Needed by tests, which swap the
-// global DuckDB connector between cases.
+// StopWriters drains, flushes, and stops all writers. Called on graceful
+// shutdown after the HTTP servers have drained, and by tests.
 func StopWriters() {
 	ws := activeWriters.Swap(nil)
 	if ws == nil {
@@ -390,6 +390,43 @@ func (w *tableWriter) runOnce(ctx context.Context, ch chan writeReq) (done bool)
 		sinceFlush = 0
 	}
 
+	// Counted before the append loop so a panic mid-append settles these
+	// rows in the recover instead of leaking queue budget.
+	appendReq := func(rows [][]driver.Value) {
+		sinceFlush += len(rows)
+		for _, row := range rows {
+			if err := appender.AppendRow(row...); err != nil {
+				captureDroppedRow(w.table, err)
+			}
+		}
+	}
+
+	// drain empties this shard's channel and flushes on shutdown. Nothing
+	// enqueues concurrently — StopWriters runs after the HTTP servers have
+	// drained. With the DB unreachable the remainder is dropped counted.
+	drain := func() {
+		for {
+			select {
+			case req := <-ch:
+				if req.done != nil {
+					barrier = req.done
+					flush()
+					close(req.done)
+					barrier = nil
+					continue
+				}
+				if !ensure() {
+					w.dropUnflushed(len(req.rows), ctx.Err())
+					continue
+				}
+				appendReq(req.rows)
+			default:
+				flush()
+				return
+			}
+		}
+	}
+
 	timer := time.NewTimer(w.flushInterval)
 	if !timer.Stop() {
 		<-timer.C
@@ -400,9 +437,7 @@ func (w *tableWriter) runOnce(ctx context.Context, ch chan writeReq) (done bool)
 	for {
 		select {
 		case <-ctx.Done():
-			// Best-effort final flush so StopWriters (tests) doesn't lose
-			// rows. In production nothing cancels this context.
-			flush()
+			drain()
 			return true
 		case req := <-ch:
 			if req.done != nil {
@@ -419,19 +454,11 @@ func (w *tableWriter) runOnce(ctx context.Context, ch chan writeReq) (done bool)
 				continue
 			}
 			if !ensure() {
-				// Shutdown while reconnecting: the admitted rows are dropped
-				// with the process; nothing to flush.
 				w.dropUnflushed(len(req.rows), ctx.Err())
+				drain()
 				return true
 			}
-			// Counted before the append loop so a panic mid-append settles
-			// these rows in the recover instead of leaking queue budget.
-			sinceFlush += len(req.rows)
-			for _, row := range req.rows {
-				if err := appender.AppendRow(row...); err != nil {
-					captureDroppedRow(w.table, err)
-				}
-			}
+			appendReq(req.rows)
 			if sinceFlush >= w.flushRows {
 				flush()
 				if timerActive {

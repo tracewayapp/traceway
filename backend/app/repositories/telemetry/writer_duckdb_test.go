@@ -130,6 +130,41 @@ func TestWriterQueueFull(t *testing.T) {
 	}
 }
 
+// Pins the graceful-shutdown guarantee: rows sitting in the queue when
+// StopWriters runs are drained and flushed, not dropped — a clean restart
+// must not lose acked rows.
+func TestWriterStopDrainsQueue(t *testing.T) {
+	setupTestDB(t)
+	// Huge thresholds so neither size nor age can flush; only the shutdown
+	// drain can persist the rows. Several batches so every shard has some.
+	startTestWriters(t, duckdbrepo.WriterOptions{FlushRows: 1 << 20, FlushInterval: time.Hour})
+
+	ctx := context.Background()
+	projectId := uuid.New()
+	traceId := uuid.New()
+	now := truncateMs(time.Now().UTC())
+
+	const batches = 20
+	for i := 0; i < batches; i++ {
+		err := SpanRepository.InsertAsync(ctx, []models.Span{
+			makeSpan(projectId, traceId, "db.query", now.Add(time.Duration(i)*time.Millisecond), time.Millisecond),
+		})
+		if err != nil {
+			t.Fatalf("InsertAsync failed: %v", err)
+		}
+	}
+
+	duckdbrepo.StopWriters()
+
+	found, err := SpanRepository.FindByTraceId(ctx, projectId, traceId, nil)
+	if err != nil {
+		t.Fatalf("FindByTraceId failed: %v", err)
+	}
+	if len(found) != batches {
+		t.Fatalf("expected %d spans after StopWriters drain, got %d", batches, len(found))
+	}
+}
+
 // Pins the synchronous fallback: with no writers started, InsertAsync must be
 // immediately visible, which is what the rest of the test suite relies on.
 func TestWriterFallbackWhenNotStarted(t *testing.T) {

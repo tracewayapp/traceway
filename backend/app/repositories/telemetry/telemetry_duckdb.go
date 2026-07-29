@@ -49,6 +49,12 @@ func FlushWriters(ctx context.Context) error {
 	return duckdbrepo.FlushWriters(ctx)
 }
 
+// StopWriters drains and stops the background writers, flushing everything
+// already enqueued.
+func StopWriters() {
+	duckdbrepo.StopWriters()
+}
+
 func parsePositiveInt(v string) int {
 	n, err := strconv.Atoi(strings.TrimSpace(v))
 	if err != nil || n <= 0 {

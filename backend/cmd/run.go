@@ -2,13 +2,16 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/tracewayapp/traceway/backend/app/backfill"
@@ -262,27 +265,60 @@ func Run(opts ...Option) {
 		panic(fmt.Errorf("ports env variable is invalid - no ports found"))
 	}
 
-	if len(portsList) > 1 {
-		for i := 1; i < len(portsList); i++ {
-			if len(portsList[i]) == 0 {
-				continue
+	// Explicit http.Servers instead of router.Run so SIGTERM/SIGINT can
+	// drain in-flight requests and then flush the telemetry write queues —
+	// otherwise every restart drops the acked rows sitting in the DuckDB
+	// write queues. Extra-port failures stay non-fatal; a primary-port
+	// failure still aborts startup.
+	var servers []*http.Server
+	primaryErr := make(chan error, 1)
+	startServer := func(port string, primary bool) {
+		srv := &http.Server{Addr: ":" + port, Handler: router.Handler()}
+		servers = append(servers, srv)
+		go func() {
+			defer traceway.Recover()
+			config.Logln("Starting server on :" + port)
+			err := srv.ListenAndServe()
+			if err == nil || errors.Is(err, http.ErrServerClosed) {
+				return
 			}
-			go func() {
-				defer traceway.Recover()
-
-				port := ":" + portsList[i]
-				config.Logln("Starting server on " + port)
-				if err := router.Run(port); err != nil {
-					panic(fmt.Errorf("Error starting server on port %s: %v", port, err))
-				}
-			}()
+			err = fmt.Errorf("error starting server on port %s: %w", port, err)
+			if primary {
+				primaryErr <- err
+			} else {
+				traceway.CaptureException(err)
+			}
+		}()
+	}
+	for i := 1; i < len(portsList); i++ {
+		if len(portsList[i]) == 0 {
+			continue
 		}
+		startServer(portsList[i], false)
 	}
 
 	notifySystemd()
-	if err := router.Run(":" + portsList[0]); err != nil {
-		panic(fmt.Errorf("Error starting server on port %s: %v", portsList[0], err))
+	startServer(portsList[0], true)
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	select {
+	case err := <-primaryErr:
+		panic(err)
+	case sig := <-quit:
+		config.Logln("Received " + sig.String() + ", shutting down")
 	}
+
+	// Bounded so a long-lived streaming connection (MCP) can't stall the
+	// shutdown; the writers still get their flush after ctx expiry.
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelShutdown()
+	for _, srv := range servers {
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			traceway.CaptureException(fmt.Errorf("http server shutdown on %s: %w", srv.Addr, err))
+		}
+	}
+	telemetry.StopWriters()
 }
 
 func applyEnvOverrides(cfg *config.Cfg) {

@@ -29,3 +29,6 @@ func StartWriters(ctx context.Context) {}
 // FlushWriters is a no-op: ClickHouse inserts are visible when InsertAsync
 // returns.
 func FlushWriters(ctx context.Context) error { return nil }
+
+// StopWriters is a no-op: there are no background writers.
+func StopWriters() {}

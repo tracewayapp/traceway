@@ -4,12 +4,12 @@ package duckdb
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/duckdb/duckdb-go/v2"
+	gojson "github.com/goccy/go-json"
 	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	traceway "go.tracewayapp.com"
@@ -103,7 +103,7 @@ func attrJSON(m map[string]string) (string, error) {
 	if len(m) == 0 {
 		return "{}", nil
 	}
-	b, err := json.Marshal(m)
+	b, err := gojson.Marshal(m)
 	if err != nil {
 		return "", err
 	}

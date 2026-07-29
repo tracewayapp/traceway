@@ -4,14 +4,18 @@
 	import { authState } from '$lib/state/auth.svelte';
 	import { projectsState, type Project } from '$lib/state/projects.svelte';
 	import { themeState, initTheme, toggleTheme } from '$lib/state/theme.svelte';
+	import { getTimezone } from '$lib/state/timezone.svelte';
+	import { DateTime } from 'luxon';
 	import { incrementNavDepth, decrementNavDepth } from '$lib/utils/back-navigation';
 	import AppSidebar from '$lib/components/app-sidebar.svelte';
 	import AddProjectModal from '$lib/components/add-project-modal.svelte';
 	import EditProjectModal from '$lib/components/edit-project-modal.svelte';
+	import DashboardCommand from '$lib/components/dashboard/dashboard-command.svelte';
 	import FrameworkIcon from '$lib/components/framework-icon.svelte';
 	import * as Sidebar from '$lib/components/ui/sidebar';
 	import { Button } from '$lib/components/ui/button';
 	import { Sun, Moon, LogOut, Plus, Check, Pencil } from '@lucide/svelte';
+	import { WarningCallout } from '$lib/components/ui/warning-callout';
 	import { onMount } from 'svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { ChevronDown } from 'lucide-svelte';
@@ -31,12 +35,45 @@
 	let { children } = $props();
 	let showAddProjectModal = $state(false);
 	let showEditProjectModal = $state(false);
+	let showCommandPalette = $state(false);
+
+	const isMacPlatform = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform);
+
+	function handleGlobalKeydown(e: KeyboardEvent) {
+		if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+			if (!authState.isAuthenticated || isPublicPath(page.url.pathname)) return;
+			if (isMacPlatform && !e.metaKey) return;
+			if (page.url.pathname === '/dashboards') return;
+			e.preventDefault();
+			showCommandPalette = !showCommandPalette;
+		}
+	}
 
 	const SIDEBAR_OPEN_KEY = 'traceway_sidebar_open';
 	let sidebarOpen = $state(localStorage.getItem(SIDEBAR_OPEN_KEY) !== 'false');
 	let CrossSiteNotificationBanner = $state<Component<{ organizationId: number }> | null>(null);
 
 	const bannerOrganizationId = $derived(projectsState.currentProject?.organizationId ?? null);
+
+	// Warn when the browser's timezone renders times differently from the
+	// organization's timezone (all timestamps are shown in the org timezone).
+	// Compare offsets, not zone names — Europe/Berlin vs Europe/Belgrade is
+	// not a mismatch worth warning about.
+	const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+	const orgZone = $derived(getTimezone());
+	const timezoneMismatch = $derived.by(() => {
+		if (!orgZone || orgZone === browserZone) return false;
+		const now = Date.now();
+		return (
+			DateTime.fromMillis(now, { zone: orgZone }).offset !==
+			DateTime.fromMillis(now, { zone: browserZone }).offset
+		);
+	});
+
+	function zoneLabel(zone: string): string {
+		if (zone === 'UTC') return 'UTC';
+		return `${zone}, UTC${DateTime.now().setZone(zone).toFormat('Z')}`;
+	}
 
 	const PUBLIC_PATHS = new Set([
 		'/login',
@@ -52,6 +89,17 @@
 	function isPublicPath(pathname: string): boolean {
 		return PUBLIC_PATHS.has(pathname) || pathname.startsWith('/accept-invitation');
 	}
+
+	// An unauthenticated visit to a protected path matches neither layout
+	// branch below and would render a blank page; send it to login instead,
+	// carrying the original URL so login can return there.
+	$effect(() => {
+		if (!authState.isAuthenticated && !isPublicPath(page.url.pathname)) {
+			const returnTo = page.url.pathname + page.url.search;
+			// eslint-disable-next-line svelte/no-navigation-without-resolve
+			goto(`/login?returnTo=${encodeURIComponent(returnTo)}`, { replaceState: true });
+		}
+	});
 
 	// Track navigation depth for smart back buttons
 	let lastPathname = '';
@@ -91,6 +139,7 @@
 	});
 
 	onMount(() => {
+		document.getElementById('splash')?.remove();
 		initTheme();
 		(window as any).captureException = captureException;
 
@@ -153,6 +202,8 @@
 </script>
 
 <svelte:head><title>Traceway</title></svelte:head>
+
+<svelte:window onkeydown={handleGlobalKeydown} />
 
 {#snippet projectItem(project: Project, indent: boolean)}
 	<DropdownMenu.Item
@@ -248,6 +299,15 @@
 				</div>
 			</header>
 			<main class="min-w-0 flex-1 p-4">
+				{#if timezoneMismatch}
+					<WarningCallout
+						class="mb-4"
+						title="Your browser's timezone differs from the organization's"
+					>
+						All times are shown in the organization's timezone ({zoneLabel(orgZone)}). Your
+						browser is on {zoneLabel(browserZone)}.
+					</WarningCallout>
+				{/if}
 				{#if CrossSiteNotificationBanner && bannerOrganizationId !== null}
 					<div class="mb-4">
 						<CrossSiteNotificationBanner organizationId={bannerOrganizationId} />
@@ -269,6 +329,8 @@
 		onOpenChange={(open) => (showEditProjectModal = open)}
 		project={projectsState.currentProject}
 	/>
+
+	<DashboardCommand bind:open={showCommandPalette} />
 
 	<Toaster position="bottom-right" />
 {:else}

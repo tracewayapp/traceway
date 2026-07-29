@@ -41,6 +41,22 @@ func evaluateEventRules(event hooks.ReportEvent) {
 		return
 	}
 
+	if len(rules) == 0 {
+		return
+	}
+
+	// The rules below read back rows the triggering request just ingested
+	// (exception details, endpoints/tasks by id). On the DuckDB backend those
+	// inserts sit in the background write queue for up to the flush interval,
+	// so force a flush first; no-op on the other backends. Bounded so a
+	// stalled writer degrades the notification content instead of leaking
+	// this goroutine.
+	flushCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	if err := telemetry.FlushWriters(flushCtx); err != nil {
+		traceway.CaptureException(fmt.Errorf("notification evaluator: telemetry flush barrier: %w", err))
+	}
+	cancel()
+
 	ctx := context.Background()
 
 	for _, rule := range rules {

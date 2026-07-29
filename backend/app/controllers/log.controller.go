@@ -20,9 +20,10 @@ type logController struct{}
 var LogController = logController{}
 
 type LogAttributeFilterRequest struct {
-	Scope string `json:"scope"` // "resource" | "scope" | "log"
-	Key   string `json:"key"`
-	Value string `json:"value"`
+	Scope   string `json:"scope"` // "resource" | "scope" | "log"
+	Key     string `json:"key"`
+	Value   string `json:"value"`
+	Exclude bool   `json:"exclude"`
 }
 
 type LogSearchRequest struct {
@@ -35,6 +36,9 @@ type LogSearchRequest struct {
 	MinSeverity        uint8                       `json:"minSeverity"`
 	ServiceName        string                      `json:"serviceName"`
 	TraceId            string                      `json:"traceId"`
+	SpanId             string                      `json:"spanId"`
+	ScopeName          string                      `json:"scopeName"`
+	Body               string                      `json:"body"`
 	DistributedTraceId string                      `json:"distributedTraceId"`
 	ExcludeTraceId     string                      `json:"excludeTraceId"`
 	AttributeFilters   []LogAttributeFilterRequest `json:"attributeFilters"`
@@ -43,8 +47,10 @@ type LogSearchRequest struct {
 
 // Max time range allowed for body search without any other selector. Keeps a
 // naïve "find all logs containing 'error' for the past 30 days" query from
-// scanning the full body column.
-const bodySearchUnscopedMaxRange = 24 * time.Hour
+// scanning the full body column. The slack matters: the frontend's "24h"
+// preset rounds the range end up to the end of the current minute, so the
+// received range is slightly over 24h and must not trip the gate.
+const bodySearchUnscopedMaxRange = 24*time.Hour + 5*time.Minute
 
 func (l logController) List(c *gin.Context) {
 	projectId, err := middleware.GetProjectId(c)
@@ -70,6 +76,9 @@ func (l logController) List(c *gin.Context) {
 		hasSelector := request.MinSeverity > 0 ||
 			request.ServiceName != "" ||
 			request.TraceId != "" ||
+			request.SpanId != "" ||
+			request.ScopeName != "" ||
+			request.Body != "" ||
 			request.DistributedTraceId != "" ||
 			len(request.AttributeFilters) > 0
 		rangeTooWide := request.ToDate.Sub(request.FromDate) > bodySearchUnscopedMaxRange
@@ -87,9 +96,10 @@ func (l logController) List(c *gin.Context) {
 			continue
 		}
 		attrFilters = append(attrFilters, telemetry.LogAttributeFilter{
-			Scope: f.Scope,
-			Key:   f.Key,
-			Value: f.Value,
+			Scope:   f.Scope,
+			Key:     f.Key,
+			Value:   f.Value,
+			Exclude: f.Exclude,
 		})
 	}
 
@@ -102,6 +112,9 @@ func (l logController) List(c *gin.Context) {
 		MinSeverity:      request.MinSeverity,
 		ServiceName:      request.ServiceName,
 		TraceId:          request.TraceId,
+		SpanId:           request.SpanId,
+		ScopeName:        request.ScopeName,
+		Body:             request.Body,
 		AttributeFilters: attrFilters,
 		OrderBy:          request.OrderBy,
 		SortDirection:    request.SortDirection,

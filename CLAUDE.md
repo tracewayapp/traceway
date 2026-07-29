@@ -16,7 +16,7 @@ Traceway is an error tracking and monitoring platform consisting of:
 
 - **No pointless comments**: Do not add comments that simply describe what the code does. The code should be self-explanatory. Only add comments when explaining non-obvious "why" decisions.
 - **No `py-4` in dialog form content**: Do not add `py-4` on the content wrapper inside `AlertDialog` or `Dialog` components — it creates too much blank space between the form and the action buttons.
-- **Dialog button labels & toasts**: For form dialogs, use descriptive button labels with icons instead of generic "Create"/"Update". The `{Entity}` is always a platform entity, capitalized (Project, Widget, Widget Group, Channel, Rule, Token, Invitation, ...). Create actions: `<Plus icon> New {Entity}` with `variant="success"`. Update actions: `<Check icon> Update {Entity}` with the default (primary) variant. Delete/revoke/remove confirm buttons: `<Trash2 icon> Delete {Entity}` (or `Revoke {Entity}` / `Remove {Entity}`) with `variant="destructive"`. After success, show `toast.success('Successfully created the {Entity}', { position: 'top-center' })` for creates and `'Successfully updated the {Entity}'` for updates. The button should only be `disabled` during the loading state — never disable it to enforce validation; let the backend return 422 and show the error in the dialog instead.
+- **Dialog button labels & toasts**: For form dialogs, use descriptive button labels with icons instead of generic "Create"/"Update". The `{Entity}` is always a platform entity, capitalized (Project, Widget, Dashboard, Channel, Rule, Token, Invitation, ...). Create actions: `<Plus icon> New {Entity}` with `variant="success"`. Update actions: `<Check icon> Update {Entity}` with the default (primary) variant. Delete/revoke/remove confirm buttons: `<Trash2 icon> Delete {Entity}` (or `Revoke {Entity}` / `Remove {Entity}`) with `variant="destructive"`. After success, show `toast.success('Successfully created the {Entity}', { position: 'top-center' })` for creates and `'Successfully updated the {Entity}'` for updates. The button should only be `disabled` during the loading state — never disable it to enforce validation; let the backend return 422 and show the error in the dialog instead.
 
 ---
 
@@ -488,7 +488,7 @@ const handleClick = createRowClickHandler('/issues/abc123', 'preset', 'from', 't
 /endpoints/[endpoint]       Single endpoint details
 /tasks                      Background tasks list
 /tasks/[task]               Single task details
-/metrics                    System metrics dashboard (CPU, memory, etc.)
+/dashboards                 Dashboards page (tabs of org dashboards; /metrics redirects here)
 /connection                 SDK integration guide
 ```
 
@@ -620,22 +620,40 @@ backend/
 | GET | `/api/metrics/discover/tags` | App | Discover metric tags |
 | PUT | `/api/metrics/registry` | App+Write | Update metric registry entry |
 
-**Widget Groups & Widgets**
+**Dashboards & Templates**
+
+Dashboards are org-owned JSON documents (`{schemaVersion, widgets: [{id, title, widgetType, config}]}`, widget ids are server-generated `w_xxxxxxxx` strings, array order = display order) applied to projects via `project_dashboards`. Dashboard mutations require org role above `readonly` (checked in-handler); project-scoped routes (list/star/reorder/populate) use the standard middleware chains; apply/unapply also check the effective role of each affected project. The old per-project widget-group tables are converted once at startup by `backfill.RunDashboards` (advisory-locked on PG) and retained for rollback.
+
 | Method | Endpoint | Auth | Purpose |
 |--------|----------|------|---------|
-| GET | `/api/widget-groups` | App | List widget groups |
-| POST | `/api/widget-groups` | App+Write | Create widget group |
-| GET | `/api/widget-groups/:id` | App | Get group with widgets |
-| PUT | `/api/widget-groups/:id` | App+Write | Update widget group |
-| DELETE | `/api/widget-groups/:id` | App+Write | Delete widget group |
-| POST | `/api/widget-groups/:id/widgets` | App+Write | Add widget |
-| PUT | `/api/widget-groups/:id/widgets/:wid` | App+Write | Update widget |
-| PUT | `/api/widget-groups/:id/reorder` | App+Write | Reorder widgets (explicit id order) |
-| PUT | `/api/widget-groups/:id/widgets/:wid/star` | App+Write | Star/unstar widget for the homepage |
-| DELETE | `/api/widget-groups/:id/widgets/:wid` | App+Write | Delete widget |
-| GET | `/api/widget-groups/starred` | App | List starred widgets with homepage layout |
-| PUT | `/api/starred-widgets/reorder` | App+Write | Reorder homepage starred widgets (explicit id order) |
-| PUT | `/api/starred-widgets/:wid` | App+Write | Update homepage layout (colSpan/size) of a starred widget |
+| GET | `/api/dashboards` | App | Dashboards applied to the project (tab order) |
+| GET | `/api/dashboards/library` | App | All dashboards across the user's orgs with applied project ids |
+| POST | `/api/dashboards` | App | Create in org (auto-applies to current project unless `applyToProjectIds` given) |
+| GET | `/api/dashboards/:id` | App | Meta + widgets (+ per-project `isStarred`, `appliedProjectIds`) |
+| PUT | `/api/dashboards/:id` | App | Update name/description and/or full `definition` (the as-code path) |
+| DELETE | `/api/dashboards/:id` | App | Delete everywhere (assignments + stars cascade) |
+| PUT | `/api/dashboards/:id/apply` | App | Set the full project assignment list |
+| DELETE | `/api/dashboards/:id/apply/:projectId` | App | Unassign from one project |
+| POST | `/api/dashboards/:id/copy` | App | Copy (also cross-org) with optional apply |
+| PUT | `/api/dashboards/reorder` | App+Write | Tab order for a project (explicit id order) |
+| POST | `/api/dashboards/:id/widgets` | App | Add widget |
+| PUT | `/api/dashboards/:id/widgets/reorder` | App | Reorder widgets (explicit id order) |
+| PUT | `/api/dashboards/:id/widgets/:wid` | App | Update widget |
+| DELETE | `/api/dashboards/:id/widgets/:wid` | App | Delete widget (+ its stars) |
+| PUT | `/api/dashboards/:id/widgets/:wid/star` | App+Write | Star/unstar for the project homepage |
+| GET | `/api/dashboards/starred` | App | Starred widgets with homepage layout |
+| PUT | `/api/starred-widgets/reorder` | App+Write | Reorder homepage starred widgets (`{ids}` = starred row ids) |
+| PUT | `/api/starred-widgets/:id` | App+Write | Update homepage layout (colSpan/size) |
+| GET | `/api/dashboards/:id/export` | App | Export one dashboard as JSON |
+| GET | `/api/dashboards/export?organizationId=` | App | Export the org bundle |
+| POST | `/api/dashboards/import` | App | Import doc/bundle (`mode: create\|upsert`, upsert matches by name) |
+| POST | `/api/dashboards/import/grafana` | App | Convert a Grafana export (best-effort, returns `warnings[]`) |
+| GET | `/api/dashboard-templates` | App | Marketplace list/search (`search`, `category` params) |
+| POST | `/api/dashboard-templates/:key/install` | App | Copy a template into the org and apply |
+| POST | `/api/dashboards/populate-defaults` | App+Write | Install the framework-default template set for an empty project |
+| GET | `/api/metrics/discover/org` | App | Metric names across all org projects (command palette) |
+
+Templates are DB rows seeded by migrations (`traceway-otel-agent` for the OTel host agent, `golang` for Go SDK apps, `traceway-clickhouse`/`traceway-duckdb` for the telemetry stores of a monitored Traceway instance; SQLite emits no store-specific metrics so it has no template); cloud can insert more rows without a release. The OTLP metric ingest allowlists per-resource grouping tags (`container.name`, `k8s.pod.name`, `k8s.node.name`, `postgresql.database.name`, ...) in `otelcontrollers/metric_converter.go` for custom widgets.
 
 **Endpoints**
 | Method | Endpoint | Auth | Purpose |
@@ -741,9 +759,11 @@ func (c *ReportController) Report(ctx *gin.Context) {
 | `invitations` | Team invitations with token, role, expiry |
 | `source_maps` | Uploaded source map files (project, version, storage key) |
 | `metric_registry` | Custom metric definitions (type, unit, description) |
-| `widget_groups` | Dashboard widget groups (name, default flag) |
-| `widget_group_widgets` | Individual widgets within groups (type, config, position) |
-| `starred_widgets` | Homepage layout for starred widgets (position, col_span, size per widget) |
+| `dashboards` | Org-owned dashboards (name, JSONB definition with widgets, template provenance) |
+| `project_dashboards` | Which projects show a dashboard, and tab order |
+| `dashboard_templates` | Marketplace templates (key, category, definition), seeded by migrations |
+| `starred_dashboard_widgets` | Homepage layout per project (dashboard id + widget id, position, col_span, size) |
+| `widget_groups` / `widget_group_widgets` / `starred_widgets` | Legacy pre-dashboards tables, retained read-only for rollback until a follow-up drop |
 
 #### ClickHouse vs PostgreSQL Decision Guide
 - **PostgreSQL**: Relational/config data needing ACID, frequent updates, JOINs, low volume (users, organizations, projects, invitations, widgets, source maps, metric registry)
@@ -761,7 +781,7 @@ In SQLite mode (`DB_TYPE=sqlite`), the backend uses **two separate SQLite databa
 
 **Main DB tables** (`db.DB` — transactional, uses lit with `*sql.Tx`):
 - `users`, `organizations`, `organization_users`, `projects`, `invitations`
-- `source_maps`, `metric_registry`, `widget_groups`, `widget_group_widgets`, `starred_widgets`
+- `source_maps`, `metric_registry`, `dashboards`, `project_dashboards`, `dashboard_templates`, `starred_dashboard_widgets` (plus the legacy `widget_groups`/`widget_group_widgets`/`starred_widgets`)
 - `notification_channels`, `notification_rules`
 
 **Telemetry DB tables** (`db.TelemetryDB` — non-transactional, uses lit with `db.TelemetryDB` directly):

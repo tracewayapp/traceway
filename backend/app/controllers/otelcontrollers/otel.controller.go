@@ -112,14 +112,14 @@ func (o otelController) ExportTraces(c *gin.Context) {
 
 	if len(endpoints) > 0 {
 		if err := telemetry.EndpointRepository.InsertAsync(c, endpoints); err != nil {
-			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL endpoints: %w", err))
+			middleware.AbortIngestInsertError(c, err, "OTEL endpoints")
 			return
 		}
 	}
 
 	if len(tasks) > 0 {
 		if err := telemetry.TaskRepository.InsertAsync(c, tasks); err != nil {
-			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL tasks: %w", err))
+			middleware.AbortIngestInsertError(c, err, "OTEL tasks")
 			return
 		}
 	}
@@ -130,7 +130,7 @@ func (o otelController) ExportTraces(c *gin.Context) {
 	}
 
 	if err := telemetry.SpanRepository.InsertAsync(c, spans); err != nil {
-		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL spans: %w", err))
+		middleware.AbortIngestInsertError(c, err, "OTEL spans")
 		return
 	}
 
@@ -237,7 +237,7 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 	if len(result.Points) > 0 {
 		insertStart := time.Now()
 		if err := telemetry.MetricPointRepository.InsertAsync(c, result.Points); err != nil {
-			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL metric points: %w", err))
+			middleware.AbortIngestInsertError(c, err, "OTEL metric points")
 			return
 		}
 		insertMs = msSince(insertStart)
@@ -308,7 +308,7 @@ func (o otelController) ExportLogs(c *gin.Context) {
 	if len(records) > 0 {
 		insertStart := time.Now()
 		if err := telemetry.LogRecordRepository.InsertAsync(c, records); err != nil {
-			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL log records: %w", err))
+			middleware.AbortIngestInsertError(c, err, "OTEL log records")
 			return
 		}
 		insertMs = msSince(insertStart)

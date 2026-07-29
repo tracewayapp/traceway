@@ -9,19 +9,37 @@
 		scopeAttributes?: Record<string, string> | null;
 		logAttributes?: Record<string, string> | null;
 	};
+
+	export type MetaFilterField = 'body' | 'traceId' | 'spanId' | 'scopeName';
 </script>
 
 <script lang="ts">
 	import * as Table from '$lib/components/ui/table';
 	import { AttributesGrid, AttributesView } from '$lib/components/ui/attributes-grid';
+	import type { AttributeFilterState } from '$lib/components/ui/attributes-grid';
 
 	let {
 		log,
-		colspan
+		colspan,
+		filterStateFor,
+		onFilterToggle,
+		metaFilterStateFor,
+		onMetaFilterToggle
 	}: {
 		log: ExpandedLogRecord;
 		colspan: number;
+		filterStateFor?: (key: string, value: string) => AttributeFilterState;
+		onFilterToggle?: (key: string, value: string) => void;
+		metaFilterStateFor?: (field: MetaFilterField, value: string) => AttributeFilterState;
+		onMetaFilterToggle?: (field: MetaFilterField, value: string) => void;
 	} = $props();
+
+	function metaTileProps(field: MetaFilterField, value: string) {
+		return {
+			filterState: metaFilterStateFor?.(field, value) ?? 'none',
+			onFilterToggle: onMetaFilterToggle ? () => onMetaFilterToggle(field, value) : undefined
+		};
+	}
 
 	function mergedAttributes(): Record<string, string> {
 		const out: Record<string, string> = {};
@@ -52,23 +70,38 @@
 		<div class="space-y-3">
 			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
 				<div class="sm:col-span-2 md:col-span-3">
-					<AttributesView title="Body" value={log.body} />
+					<AttributesView title="Body" value={log.body} {...metaTileProps('body', log.body)} />
 				</div>
 				{#if log.traceId}
-					<AttributesView title="Trace ID" value={log.traceId} />
+					<AttributesView
+						title="Trace ID"
+						value={log.traceId}
+						{...metaTileProps('traceId', log.traceId)}
+					/>
 				{/if}
 				{#if log.spanId}
-					<AttributesView title="Span ID" value={log.spanId} />
+					<AttributesView
+						title="Span ID"
+						value={log.spanId}
+						{...metaTileProps('spanId', log.spanId)}
+					/>
 				{/if}
 				{#if log.scopeName}
+					<!-- The tile shows name@version, but the filter matches scope_name. -->
 					<AttributesView
 						title="Scope"
 						value={log.scopeName + (log.scopeVersion ? `@${log.scopeVersion}` : '')}
+						{...metaTileProps('scopeName', log.scopeName)}
 					/>
 				{/if}
 			</div>
 			{#if hasAttributes()}
-				<AttributesGrid attributes={mergedAttributes()} collapsedCount={6} />
+				<AttributesGrid
+					attributes={mergedAttributes()}
+					collapsedCount={6}
+					{filterStateFor}
+					{onFilterToggle}
+				/>
 			{/if}
 		</div>
 	</Table.Cell>

@@ -520,7 +520,7 @@ func TestSave_writesAtomicallyWith0600(t *testing.T) {
 		CurrentProfile: "default",
 		Profiles: map[string]Profile{
 			"default": {
-				URL:      "https://cloud.traceway.com",
+				URL:      "https://cloud.tracewayapp.com",
 				Username: "fred@example.com",
 				JWT:      "tok",
 			},
@@ -2728,7 +2728,7 @@ import (
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
 
-const defaultURL = "https://cloud.traceway.com"
+const defaultURL = "https://cloud.tracewayapp.com"
 
 // login-specific flag values
 var (

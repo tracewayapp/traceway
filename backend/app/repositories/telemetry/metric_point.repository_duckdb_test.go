@@ -23,7 +23,7 @@ func setupDuckDB(t *testing.T) {
 	}
 	telemetry := sql.OpenDB(connector)
 	if _, err := telemetry.Exec(`CREATE TABLE metric_points (
-		project_id VARCHAR NOT NULL,
+		project_id UUID NOT NULL,
 		name VARCHAR NOT NULL DEFAULT '',
 		value DOUBLE NOT NULL DEFAULT 0,
 		tags VARCHAR NOT NULL DEFAULT '{}',

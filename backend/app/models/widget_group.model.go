@@ -19,14 +19,14 @@ type WidgetGroup struct {
 }
 
 type WidgetGroupWidget struct {
-	Id            int             `json:"id" lit:"id"`
-	WidgetGroupId int             `json:"widgetGroupId" lit:"widget_group_id"`
-	Title         string          `json:"title" lit:"title"`
-	WidgetType    string          `json:"widgetType" lit:"widget_type"`
-	Config        json.RawMessage `json:"config" lit:"config"`
-	Position      int             `json:"position" lit:"position"`
-	CreatedAt     time.Time       `json:"createdAt" lit:"created_at"`
-	UpdatedAt     time.Time       `json:"updatedAt" lit:"updated_at"`
+	Id            int       `json:"id" lit:"id"`
+	WidgetGroupId int       `json:"widgetGroupId" lit:"widget_group_id"`
+	Title         string    `json:"title" lit:"title"`
+	WidgetType    string    `json:"widgetType" lit:"widget_type"`
+	Config        JSONText  `json:"config" lit:"config"`
+	Position      int       `json:"position" lit:"position"`
+	CreatedAt     time.Time `json:"createdAt" lit:"created_at"`
+	UpdatedAt     time.Time `json:"updatedAt" lit:"updated_at"`
 }
 
 type WidgetGroupWidgetWithStar struct {

@@ -52,7 +52,7 @@
 		onCancel
 	} = $props<{
 		open: boolean;
-		widget: { id?: number; title: string; widgetType: string; config: any } | null;
+		widget: { id?: number | string; title: string; widgetType: string; config: any } | null;
 		availableMetrics: DiscoveredMetric[];
 		error?: string;
 		onSave: (data: { title: string; widgetType: string; config: any }) => void;

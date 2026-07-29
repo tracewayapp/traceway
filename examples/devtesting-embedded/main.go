@@ -326,6 +326,38 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
+	router.GET("/api/test-template-logs", func(c *gin.Context) {
+		ctx := c.Request.Context()
+		for i := 0; i < 3; i++ {
+			requestId := uuid.NewString()
+			backendSvc.log(ctx, otellog.SeverityDebug, "DEBUG",
+				"Incoming call received.ProviderClientId: {ProviderClientId}, CallerId: {CallerId}, Method: {Method}, RequestId: {RequestId}",
+				otellog.String("ProviderClientId", "[Devices, dusan-macbook, 1, rpc]"),
+				otellog.String("CallerId", "[Portal, web-6f2c, 0, rpc]"),
+				otellog.String("Method", "EnterManualMode"),
+				otellog.String("RequestId", requestId),
+			)
+			backendSvc.log(ctx, otellog.SeverityDebug, "DEBUG",
+				"Call handled successfully.ProviderClientId: {ProviderClientId},RequestId: {RequestId},Method: {MethodIdentity}",
+				otellog.String("ProviderClientId", "[Devices, dusan-macbook, 1, rpc]"),
+				otellog.String("RequestId", requestId),
+				otellog.String("MethodIdentity", "MethodIdentity { Namespace = MqttComm.Devices, Name = EnterManualMode }"),
+			)
+		}
+		// Format spec after the name + a non-string attribute value.
+		backendSvc.log(ctx, otellog.SeverityWarn, "WARN",
+			"Slow provider response.Provider: {Provider}, Elapsed: {ElapsedMs:N0}ms",
+			otellog.String("Provider", "Devices"),
+			otellog.Int("ElapsedMs", 1874),
+		)
+		// {MaxAttempts} has no matching attribute and must render literally.
+		backendSvc.log(ctx, otellog.SeverityInfo, "INFO",
+			"Retrying delivery.Attempt: {Attempt} of {MaxAttempts}",
+			otellog.String("Attempt", "2"),
+		)
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
 	router.GET("/api/test-sse", func(c *gin.Context) {
 		span := trace.SpanFromContext(c.Request.Context())
 		span.SetAttributes(attribute.Bool("traceway.is_stream", true))
@@ -360,6 +392,7 @@ func main() {
 	fmt.Printf("    curl http://localhost:%d/api/test-distributed-logs\n", appPort)
 	fmt.Printf("    curl http://localhost:%d/api/test-long-attributes\n", appPort)
 	fmt.Printf("    curl http://localhost:%d/api/test-long-log-attributes\n", appPort)
+	fmt.Printf("    curl http://localhost:%d/api/test-template-logs\n", appPort)
 	fmt.Println()
 	fmt.Println("  Streaming endpoints (is_stream — expect a 'Stream' badge):")
 	fmt.Printf("    curl -N http://localhost:%d/api/test-sse\n", appPort)

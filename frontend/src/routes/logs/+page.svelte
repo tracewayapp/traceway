@@ -18,6 +18,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import ExpandedLogRow from '$lib/components/trace-logs/expanded-log-row.svelte';
+	import LogMessage from '$lib/components/trace-logs/log-message.svelte';
 	import { Plus, X } from '@lucide/svelte';
 	import { CalendarDate } from '@internationalized/date';
 	import {
@@ -76,21 +77,28 @@
 		scope: 'resource' | 'scope' | 'log';
 		key: string;
 		value: string;
+		exclude: boolean;
 	};
 
-	// Parse `resource.service.name=backend-service` (or scope.*/log.*) into a
-	// structured filter. Returns null if the input doesn't match the shape.
+	// Parse `resource.service.name=backend-service` or `log.method!=Enter`
+	// (scope.*/log.* likewise) into a structured filter. Returns null if the
+	// input doesn't match the shape.
 	function parseAttributeFilter(input: string): AttributeFilter | null {
 		const trimmed = input.trim();
-		const m = trimmed.match(/^(resource|scope|log)\.([^=]+)=(.*)$/);
+		const m = trimmed.match(/^(resource|scope|log)\.([^=]+?)(!=|=)(.*)$/);
 		if (!m) return null;
 		const key = m[2].trim();
 		if (!key) return null;
-		return { scope: m[1] as AttributeFilter['scope'], key, value: m[3] };
+		return {
+			scope: m[1] as AttributeFilter['scope'],
+			key,
+			value: m[4],
+			exclude: m[3] === '!='
+		};
 	}
 
 	function formatAttributeFilter(f: AttributeFilter): string {
-		return `${f.scope}.${f.key}=${f.value}`;
+		return `${f.scope}.${f.key}${f.exclude ? '!=' : '='}${f.value}`;
 	}
 
 	function parseLogsUrlParams() {
@@ -104,6 +112,9 @@
 				minSeverity: 0,
 				serviceName: '',
 				traceId: '',
+				spanId: '',
+				scopeName: '',
+				body: '',
 				attributeFilters: [] as AttributeFilter[]
 			};
 		}
@@ -122,6 +133,9 @@
 			minSeverity: Number.isFinite(minSev) ? minSev : 0,
 			serviceName: params.get('service') || '',
 			traceId: params.get('traceId') || '',
+			spanId: params.get('spanId') || '',
+			scopeName: params.get('scopeName') || '',
+			body: params.get('body') || '',
 			attributeFilters: attrs
 		};
 	}
@@ -140,6 +154,9 @@
 	let minSeverity = $state<number>(initialUrlParams.minSeverity);
 	let serviceName = $state(initialUrlParams.serviceName);
 	let traceIdFilter = $state(initialUrlParams.traceId);
+	let spanIdFilter = $state(initialUrlParams.spanId);
+	let scopeNameFilter = $state(initialUrlParams.scopeName);
+	let bodyFilter = $state(initialUrlParams.body);
 	let attributeFilters = $state<AttributeFilter[]>(initialUrlParams.attributeFilters);
 
 	// Add-filter dialog
@@ -162,15 +179,115 @@
 			dialogError = 'Key must start with resource., scope., or log.';
 			return;
 		}
+		addAttributeFilter(parsed);
+		addFilterOpen = false;
+	}
+
+	function addAttributeFilter(filter: AttributeFilter) {
 		const dup = attributeFilters.some(
-			(f) => f.scope === parsed.scope && f.key === parsed.key && f.value === parsed.value
+			(f) =>
+				f.scope === filter.scope &&
+				f.key === filter.key &&
+				f.value === filter.value &&
+				f.exclude === filter.exclude
 		);
 		if (!dup) {
-			attributeFilters = [...attributeFilters, parsed];
+			attributeFilters = [...attributeFilters, filter];
 		}
-		addFilterOpen = false;
 		page = 1;
 		loadData(true);
+	}
+
+	// Displayed attribute keys are prefixed `resource.` / `scope.`; log
+	// attributes are unprefixed.
+	function displayKeyToFilter(displayKey: string): { scope: AttributeFilter['scope']; key: string } {
+		if (displayKey.startsWith('resource.')) {
+			return { scope: 'resource', key: displayKey.slice('resource.'.length) };
+		}
+		if (displayKey.startsWith('scope.')) {
+			return { scope: 'scope', key: displayKey.slice('scope.'.length) };
+		}
+		return { scope: 'log', key: displayKey };
+	}
+
+	function attributeFilterState(
+		displayKey: string,
+		value: string
+	): 'none' | 'include' | 'exclude' {
+		const { scope, key } = displayKeyToFilter(displayKey);
+		const f = attributeFilters.find(
+			(f) => f.scope === scope && f.key === key && f.value === value
+		);
+		if (!f) return 'none';
+		return f.exclude ? 'exclude' : 'include';
+	}
+
+	// Toggle from an attribute tile in the expanded log row: on/off. An active
+	// filter of either kind (include, or exclude via a hand-edited URL) clears.
+	function toggleAttributeFilter(displayKey: string, value: string) {
+		const { scope, key } = displayKeyToFilter(displayKey);
+		const existing = attributeFilters.findIndex(
+			(f) => f.scope === scope && f.key === key && f.value === value
+		);
+		if (existing === -1) {
+			attributeFilters = [...attributeFilters, { scope, key, value, exclude: false }];
+		} else {
+			attributeFilters = attributeFilters.filter((_, i) => i !== existing);
+		}
+		page = 1;
+		loadData(true);
+	}
+
+	// Filters for the fixed tiles of the expanded row (Body / Trace ID /
+	// Span ID / Scope), backed by their dedicated query params rather than
+	// attribute filters.
+	type MetaFilterField = 'body' | 'traceId' | 'spanId' | 'scopeName';
+
+	function metaFilterState(field: MetaFilterField, value: string): 'none' | 'include' {
+		switch (field) {
+			case 'body':
+				return bodyFilter === value ? 'include' : 'none';
+			case 'traceId':
+				return traceIdFilter === value ? 'include' : 'none';
+			case 'spanId':
+				return spanIdFilter === value ? 'include' : 'none';
+			case 'scopeName':
+				return scopeNameFilter === value ? 'include' : 'none';
+		}
+	}
+
+	function toggleMetaFilter(field: MetaFilterField, value: string) {
+		const active = metaFilterState(field, value) === 'include';
+		switch (field) {
+			case 'body':
+				bodyFilter = active ? '' : value;
+				break;
+			case 'traceId':
+				traceIdFilter = active ? '' : value;
+				break;
+			case 'spanId':
+				spanIdFilter = active ? '' : value;
+				break;
+			case 'scopeName':
+				scopeNameFilter = active ? '' : value;
+				break;
+		}
+		page = 1;
+		loadData(true);
+	}
+
+	// Pills for the active meta filters, shown next to the attribute chips.
+	const metaFilterChips = $derived([
+		...(bodyFilter ? [{ field: 'body' as const, label: 'body', value: bodyFilter }] : []),
+		...(traceIdFilter ? [{ field: 'traceId' as const, label: 'trace_id', value: traceIdFilter }] : []),
+		...(spanIdFilter ? [{ field: 'spanId' as const, label: 'span_id', value: spanIdFilter }] : []),
+		...(scopeNameFilter
+			? [{ field: 'scopeName' as const, label: 'scope', value: scopeNameFilter }]
+			: [])
+	]);
+
+	function shortenChipValue(value: string): string {
+		return value.length > 20 ? value.slice(0, 18) + '…' : value;
 	}
 
 	function handleDialogKeydown(e: KeyboardEvent) {
@@ -232,6 +349,9 @@
 		if (minSeverity > 0) urlParams.set('minSeverity', String(minSeverity));
 		if (serviceName.trim()) urlParams.set('service', serviceName.trim());
 		if (traceIdFilter.trim()) urlParams.set('traceId', traceIdFilter.trim());
+		if (spanIdFilter.trim()) urlParams.set('spanId', spanIdFilter.trim());
+		if (scopeNameFilter.trim()) urlParams.set('scopeName', scopeNameFilter.trim());
+		if (bodyFilter) urlParams.set('body', bodyFilter);
 		for (const f of attributeFilters) {
 			urlParams.append('attr', formatAttributeFilter(f));
 		}
@@ -272,6 +392,9 @@
 				minSeverity,
 				serviceName: serviceName.trim(),
 				traceId: traceIdFilter.trim(),
+				spanId: spanIdFilter.trim(),
+				scopeName: scopeNameFilter.trim(),
+				body: bodyFilter,
 				attributeFilters
 			};
 
@@ -351,6 +474,9 @@
 		minSeverity = urlParams.minSeverity;
 		serviceName = urlParams.serviceName;
 		traceIdFilter = urlParams.traceId;
+		spanIdFilter = urlParams.spanId;
+		scopeNameFilter = urlParams.scopeName;
+		bodyFilter = urlParams.body;
 		attributeFilters = urlParams.attributeFilters;
 		page = 1;
 		loadData(false);
@@ -358,12 +484,6 @@
 
 	function toggleExpanded(id: string) {
 		expandedId = expandedId === id ? null : id;
-	}
-
-	function firstLine(body: string): string {
-		if (!body) return '';
-		const nl = body.indexOf('\n');
-		return nl === -1 ? body : body.slice(0, nl);
 	}
 
 	onMount(() => {
@@ -431,12 +551,27 @@
 			<Plus class="h-3 w-3" />
 			Add filter
 		</button>
+		{#each metaFilterChips as chip (chip.field)}
+			<span class="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-mono">
+				<span class="text-muted-foreground">{chip.label}</span>
+				<span>=</span>
+				<span title={chip.value}>{shortenChipValue(chip.value)}</span>
+				<button
+					type="button"
+					aria-label="Remove filter"
+					class="ml-1 text-muted-foreground hover:text-foreground"
+					onclick={() => toggleMetaFilter(chip.field, chip.value)}
+				>
+					<X class="h-3 w-3" />
+				</button>
+			</span>
+		{/each}
 		{#each attributeFilters as f, i (i)}
 			<span
 				class="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-mono"
 			>
 				<span class="text-muted-foreground">{f.scope}.{f.key}</span>
-				<span>=</span>
+				<span class={f.exclude ? 'text-red-500' : ''}>{f.exclude ? '!=' : '='}</span>
 				<span>{f.value}</span>
 				<button
 					type="button"
@@ -567,7 +702,7 @@
 								/>
 							</Table.Cell>
 							<Table.Cell class="max-w-[600px] truncate font-mono text-sm">
-								{firstLine(log.body)}
+								<LogMessage body={log.body} attributes={log.logAttributes} />
 							</Table.Cell>
 							<Table.Cell class="truncate text-muted-foreground">
 								{log.serviceName || '—'}
@@ -583,7 +718,14 @@
 							</Table.Cell>
 						</Table.Row>
 						{#if expandedId === log.id}
-							<ExpandedLogRow {log} colspan={5} />
+							<ExpandedLogRow
+								{log}
+								colspan={5}
+								filterStateFor={attributeFilterState}
+								onFilterToggle={toggleAttributeFilter}
+								metaFilterStateFor={metaFilterState}
+								onMetaFilterToggle={toggleMetaFilter}
+							/>
 						{/if}
 					{/each}
 				</Table.Body>

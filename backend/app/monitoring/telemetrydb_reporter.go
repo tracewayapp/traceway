@@ -67,6 +67,15 @@ func reportTelemetryDBOnce(ctx context.Context, b *telemetryDBBaselines) {
 	traceway.CaptureMetric("traceway.duckdb.wal_size_mb", float64(engine.WALSizeBytes)/1024.0/1024.0)
 	traceway.CaptureMetric("traceway.duckdb.memory_used_mb", float64(engine.MemoryUsedBytes)/1024.0/1024.0)
 	traceway.CaptureMetric("traceway.duckdb.read_pool.in_use", float64(engine.ReadPoolInUse))
+
+	if depths, ok := db.GetTelemetryWriteQueueDepths(); ok {
+		total := 0
+		for table, depth := range depths {
+			total += depth
+			traceway.CaptureMetric("traceway.duckdb.write_queue."+table, float64(depth))
+		}
+		traceway.CaptureMetric("traceway.duckdb.write_queue.depth", float64(total))
+	}
 }
 
 func safeDeltaInt64(prev, cur int64) int64 {

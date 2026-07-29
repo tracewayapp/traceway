@@ -5,6 +5,7 @@ package duckdb
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
@@ -12,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/duckdb/duckdb-go/v2"
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/app/db"
@@ -115,56 +115,38 @@ func (r *endpoint) toModel() models.Endpoint {
 // "root" | "non_root"; defaults to "all" (no filter).
 type endpointRepository struct{}
 
-func (e *endpointRepository) InsertAsync(ctx context.Context, lines []models.Endpoint) error {
-	if len(lines) == 0 {
-		return nil
-	}
-
-	return withAppender(ctx, "endpoints", func(appender *duckdb.Appender) {
-
-		for _, ep := range lines {
-			attributesJSON, err := attrJSON(ep.Attributes)
-			if err != nil {
-				captureDroppedRow("endpoints", err)
-				continue
-			}
-
-			var distributedTraceId *string
-			if ep.DistributedTraceId != nil {
-				v := ep.DistributedTraceId.String()
-				distributedTraceId = &v
-			}
-			var spanId *string
-			if ep.SpanId != nil {
-				v := ep.SpanId.String()
-				spanId = &v
-			}
-
-			isStream := boolToInt(ep.IsStream)
-			isRoot := boolToInt(ep.IsRoot)
-
-			if err := appender.AppendRow(
-				ep.Id.String(),
-				ep.ProjectId.String(),
-				ep.Endpoint,
-				int64(ep.Duration),
-				ep.RecordedAt.UTC(),
-				int64(ep.StatusCode),
-				int64(ep.BodySize),
-				ep.ClientIP,
-				attributesJSON,
-				ep.AppVersion,
-				ep.ServerName,
-				nullableString(distributedTraceId),
-				nullableString(spanId),
-				isStream,
-				isRoot,
-			); err != nil {
-				captureDroppedRow("endpoints", err)
-			}
+func convertEndpoints(lines []models.Endpoint) [][]driver.Value {
+	rows := make([][]driver.Value, 0, len(lines))
+	for _, ep := range lines {
+		attributesJSON, err := attrJSON(ep.Attributes)
+		if err != nil {
+			captureDroppedRow("endpoints", err)
+			continue
 		}
 
-	})
+		rows = append(rows, []driver.Value{
+			duckUUID(ep.Id),
+			duckUUID(ep.ProjectId),
+			ep.Endpoint,
+			int64(ep.Duration),
+			ep.RecordedAt.UTC(),
+			int64(ep.StatusCode),
+			int64(ep.BodySize),
+			ep.ClientIP,
+			attributesJSON,
+			ep.AppVersion,
+			ep.ServerName,
+			nullableUUID(ep.DistributedTraceId),
+			nullableUUID(ep.SpanId),
+			boolToInt(ep.IsStream),
+			boolToInt(ep.IsRoot),
+		})
+	}
+	return rows
+}
+
+func (e *endpointRepository) InsertAsync(ctx context.Context, lines []models.Endpoint) error {
+	return insertRows(ctx, "endpoints", convertEndpoints(lines))
 }
 
 func (e *endpointRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {

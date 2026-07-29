@@ -4,12 +4,13 @@ package duckdb
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/duckdb/duckdb-go/v2"
+	gojson "github.com/goccy/go-json"
+	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	traceway "go.tracewayapp.com"
 )
@@ -24,6 +25,20 @@ func nullableString(s *string) any {
 	return *s
 }
 
+// duckUUID converts to the driver's native UUID value: a zero-alloc
+// [16]byte-to-[16]byte conversion, vs the 36-byte string uuid.String()
+// allocates for VARCHAR columns.
+func duckUUID(u uuid.UUID) duckdb.UUID {
+	return duckdb.UUID(u)
+}
+
+func nullableUUID(u *uuid.UUID) any {
+	if u == nil {
+		return nil
+	}
+	return duckdb.UUID(*u)
+}
+
 const dropReportInterval = time.Minute
 
 var (
@@ -31,6 +46,29 @@ var (
 	droppedSinceReport = map[string]uint64{}
 	lastDropReportAt   = map[string]time.Time{}
 )
+
+// captureFlushFailure reports background-writer connect/flush failures with
+// the same 1-minute-per-table rate limit as captureDroppedRow, keyed
+// separately so a drop storm can't mask a flush failure.
+func captureFlushFailure(table string, lostRows int, err error) {
+	key := table + ":flush"
+
+	var report bool
+	dropReportMu.Lock()
+	if time.Since(lastDropReportAt[key]) >= dropReportInterval {
+		lastDropReportAt[key] = time.Now()
+		report = true
+	}
+	dropReportMu.Unlock()
+
+	if report {
+		if lostRows > 0 {
+			traceway.CaptureException(fmt.Errorf("duckdb %s background writer: %d acked rows lost, latest: %w", table, lostRows, err))
+		} else {
+			traceway.CaptureException(fmt.Errorf("duckdb %s background writer: connect/appender setup failing, no rows lost yet, latest: %w", table, err))
+		}
+	}
+}
 
 func captureDroppedRow(table string, err error) {
 	db.RecordTelemetryRowDropped(table)
@@ -65,7 +103,7 @@ func attrJSON(m map[string]string) (string, error) {
 	if len(m) == 0 {
 		return "{}", nil
 	}
-	b, err := json.Marshal(m)
+	b, err := gojson.Marshal(m)
 	if err != nil {
 		return "", err
 	}

@@ -36,46 +36,11 @@ Common tags include:
 
 Tags are captured via `CaptureMetricWithTags` in the Go SDK, or as resource attributes in OpenTelemetry.
 
-## The Metrics Dashboard
+## Visualizing Metrics
 
-The metrics dashboard organizes your data into **widget groups** and **widgets**.
+Metrics are visualized on [Dashboards](/learn/dashboards): organization-owned, JSON-defined tabs of chart widgets that you can apply to any of your projects, install from the built-in template marketplace (host metrics, Go runtime, Traceway self-monitoring), or import from Grafana.
 
-<img src="/metrics.png" alt="Metrics Dashboard" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
-
-### Widget Groups
-
-Widget groups are named tabs that organize related widgets together. When you create a Go or Node.js project, default groups are created automatically with system metric widgets. OpenTelemetry projects start with a blank dashboard — you create groups as needed.
-
-You can create, rename, and delete widget groups from the dashboard.
-
-### Widgets
-
-Widgets are individual chart cards within a group. Each widget displays one or more metric sources as a visualization.
-
-## Widget Types
-
-| Type         | Best For                                           |
-| ------------ | -------------------------------------------------- |
-| Line Chart   | Trends over time (CPU usage, request rate)         |
-| Area Chart   | Volume over time with filled area                  |
-| Bar Chart    | Comparing values across time intervals             |
-| Single Value | Current or aggregated value at a glance            |
-| Table        | Tabular view of metric values                      |
-
-## Widget Configuration
-
-Each widget contains one or more **sources**. Each source specifies:
-
-| Setting      | Description                                                                 |
-| ------------ | --------------------------------------------------------------------------- |
-| Metric Name  | Selected from auto-discovered metrics in your project                       |
-| Aggregation  | How values are combined: `avg`, `min`, `max`, `sum`, or `count`             |
-| Tag Filters  | Narrow to specific tag values (e.g. `server_name = web-1`)                  |
-| Group By     | Split into separate series per tag value (e.g. one line per `server_name`)  |
-
-Multiple sources on the same widget overlay their series on the same chart, useful for comparing related metrics side by side.
-
-<img src="/new-widget-dialog.png" alt="Widget configuration dialog" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+<img src="/dashboards/dashboards-page.png" alt="Dashboards page" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
 ## Time Range
 
@@ -94,10 +59,12 @@ This keeps queries fast regardless of the time window.
 
 ## Creating Your First Dashboard
 
-1. **Create a widget group** — Click the **+** button next to the existing tabs and give it a name
-2. **Add a widget** — Click **Add Widget**, pick a metric from the dropdown, choose an aggregation, and optionally add tag filters or a group-by
+1. **Open the Dashboards page** and press <kbd>⌘K</kbd> (or click **Add or find dashboards...**) to install a template, pick up a dashboard from another project, or create a blank one
+2. **Add a widget** — Click **Add Metric Widget**, pick a metric from the dropdown, choose an aggregation, and optionally add tag filters or a group-by
 3. **Adjust the time range** — Use the preset buttons or select a custom range to see the data window you need
 4. **Interact** — Hover over data points for exact values, drag-select a region to zoom in, and use the widget menu to move, edit, or delete widgets
+
+See [Dashboards](/learn/dashboards) for applying dashboards across projects, editing them as JSON, and importing from Grafana.
 
 ## Host-level metrics
 

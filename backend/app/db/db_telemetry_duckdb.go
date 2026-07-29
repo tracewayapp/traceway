@@ -54,9 +54,14 @@ func openDuckDB(path string) error {
 	if v := strings.TrimSpace(config.Config.DuckDBThreads); v != "" {
 		q.Set("threads", v)
 	}
-	if v := strings.TrimSpace(config.Config.DuckDBCheckpointThreshold); v != "" {
-		q.Set("checkpoint_threshold", v)
+	// DuckDB's own default (16MB) stalls sustained Appender ingest with
+	// frequent WAL checkpoints; the benchmark campaign ran 256MB, so that is
+	// the shipped default. Costs a larger WAL and longer restart replay.
+	checkpointThreshold := strings.TrimSpace(config.Config.DuckDBCheckpointThreshold)
+	if checkpointThreshold == "" {
+		checkpointThreshold = "256MB"
 	}
+	q.Set("checkpoint_threshold", checkpointThreshold)
 	dsn := path + "?" + q.Encode()
 
 	connector, err := duckdb.NewConnector(dsn, nil)

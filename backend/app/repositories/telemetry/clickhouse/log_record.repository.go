@@ -208,13 +208,31 @@ func (r *logRecordRepository) buildWhere(params shared.LogSearchParams) (string,
 		clauses = append(clauses, "trace_id = ?")
 		args = append(args, params.TraceId)
 	}
+	if params.SpanId != "" {
+		clauses = append(clauses, "span_id = ?")
+		args = append(args, params.SpanId)
+	}
+	if params.ScopeName != "" {
+		clauses = append(clauses, "scope_name = ?")
+		args = append(args, params.ScopeName)
+	}
+	if params.Body != "" {
+		clauses = append(clauses, "body = ?")
+		args = append(args, params.Body)
+	}
 
 	for _, f := range params.AttributeFilters {
 		col := attrColumn(f.Scope)
 		if col == "" {
 			continue
 		}
-		clauses = append(clauses, col+"[?] = ?")
+		op := "="
+		if f.Exclude {
+			// Map columns default missing keys to '', so != also keeps rows
+			// that don't carry the attribute at all.
+			op = "!="
+		}
+		clauses = append(clauses, col+"[?] "+op+" ?")
 		args = append(args, f.Key, f.Value)
 	}
 

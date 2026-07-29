@@ -43,10 +43,10 @@
 		'Endpoints',
 		'Tasks',
 		'Profiles',
-		'Metrics',
+		'Dashboards',
 		'AI Traces'
 	]);
-	const hiddenForCloudflare = new Set(['Metrics']);
+	const hiddenForCloudflare = new Set(['Dashboards']);
 	// Items that only make sense for frontend (browser) projects - dropped from
 	// the sidebar for any other framework, so a Go backend project doesn't
 	// surface a Sessions tab that can never be populated.
@@ -68,8 +68,8 @@
 		},
 		{
 			Icon: ChartNoAxesCombined,
-			href: '/metrics',
-			title: 'Metrics',
+			href: '/dashboards',
+			title: 'Dashboards',
 			stickyParams: ['preset', 'from', 'to']
 		},
 		{ Icon: Bell, href: '/notifications', title: 'Alerts', stickyParams: ['preset', 'from', 'to'] },

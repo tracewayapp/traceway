@@ -2,14 +2,19 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
+	"github.com/tracewayapp/traceway/backend/app/backfill"
 	"github.com/tracewayapp/traceway/backend/app/cache"
 	"github.com/tracewayapp/traceway/backend/app/chdb"
 	"github.com/tracewayapp/traceway/backend/app/config"
@@ -21,6 +26,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/monitoring"
 	"github.com/tracewayapp/traceway/backend/app/notifications"
 	"github.com/tracewayapp/traceway/backend/app/recordings"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/retention"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/services/mcpmount"
@@ -102,6 +108,10 @@ func Run(opts ...Option) {
 		panic(fmt.Errorf("migrations run failed: %w", err))
 	}
 
+	if err := backfill.RunDashboards(); err != nil {
+		panic(fmt.Errorf("dashboards backfill failed: %w", err))
+	}
+
 	if o != nil {
 		if err := seed(o); err != nil {
 			panic(fmt.Errorf("seeding failed: %w", err))
@@ -151,10 +161,23 @@ func Run(opts ...Option) {
 		hook(ctx)
 	}
 
+	telemetry.StartWriters(ctx)
 	notifications.StartEvaluator(ctx)
 	retention.Start(ctx)
 	recordings.Start(ctx)
 	sourcemapbackfill.Start(ctx)
+
+	// Opt-in pprof for profiling ingest under load. Localhost only; gin does
+	// not use http.DefaultServeMux, so the pprof handlers are unreachable
+	// through the public router.
+	if pprofPort := strings.TrimSpace(cfg.PprofPort); pprofPort != "" {
+		go func() {
+			defer traceway.Recover()
+			if err := http.ListenAndServe("127.0.0.1:"+pprofPort, nil); err != nil {
+				traceway.CaptureException(fmt.Errorf("pprof server on port %s: %w", pprofPort, err))
+			}
+		}()
+	}
 
 	var router *gin.Engine
 	if o != nil && o.disableLogging {
@@ -242,27 +265,60 @@ func Run(opts ...Option) {
 		panic(fmt.Errorf("ports env variable is invalid - no ports found"))
 	}
 
-	if len(portsList) > 1 {
-		for i := 1; i < len(portsList); i++ {
-			if len(portsList[i]) == 0 {
-				continue
+	// Explicit http.Servers instead of router.Run so SIGTERM/SIGINT can
+	// drain in-flight requests and then flush the telemetry write queues —
+	// otherwise every restart drops the acked rows sitting in the DuckDB
+	// write queues. Extra-port failures stay non-fatal; a primary-port
+	// failure still aborts startup.
+	var servers []*http.Server
+	primaryErr := make(chan error, 1)
+	startServer := func(port string, primary bool) {
+		srv := &http.Server{Addr: ":" + port, Handler: router.Handler()}
+		servers = append(servers, srv)
+		go func() {
+			defer traceway.Recover()
+			config.Logln("Starting server on :" + port)
+			err := srv.ListenAndServe()
+			if err == nil || errors.Is(err, http.ErrServerClosed) {
+				return
 			}
-			go func() {
-				defer traceway.Recover()
-
-				port := ":" + portsList[i]
-				config.Logln("Starting server on " + port)
-				if err := router.Run(port); err != nil {
-					panic(fmt.Errorf("Error starting server on port %s: %v", port, err))
-				}
-			}()
+			err = fmt.Errorf("error starting server on port %s: %w", port, err)
+			if primary {
+				primaryErr <- err
+			} else {
+				traceway.CaptureException(err)
+			}
+		}()
+	}
+	for i := 1; i < len(portsList); i++ {
+		if len(portsList[i]) == 0 {
+			continue
 		}
+		startServer(portsList[i], false)
 	}
 
 	notifySystemd()
-	if err := router.Run(":" + portsList[0]); err != nil {
-		panic(fmt.Errorf("Error starting server on port %s: %v", portsList[0], err))
+	startServer(portsList[0], true)
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	select {
+	case err := <-primaryErr:
+		panic(err)
+	case sig := <-quit:
+		config.Logln("Received " + sig.String() + ", shutting down")
 	}
+
+	// Bounded so a long-lived streaming connection (MCP) can't stall the
+	// shutdown; the writers still get their flush after ctx expiry.
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelShutdown()
+	for _, srv := range servers {
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			traceway.CaptureException(fmt.Errorf("http server shutdown on %s: %w", srv.Addr, err))
+		}
+	}
+	telemetry.StopWriters()
 }
 
 func applyEnvOverrides(cfg *config.Cfg) {

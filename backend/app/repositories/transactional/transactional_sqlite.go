@@ -6,6 +6,8 @@ import sqliterepo "github.com/tracewayapp/traceway/backend/app/repositories/tran
 
 var (
 	AuthorizationCodeRepository   = sqliterepo.AuthorizationCodeRepository
+	DashboardRepository           = sqliterepo.DashboardRepository
+	DashboardTemplateRepository   = sqliterepo.DashboardTemplateRepository
 	DeviceAuthorizationRepository = sqliterepo.DeviceAuthorizationRepository
 	InvitationRepository          = sqliterepo.InvitationRepository
 	MetricRegistryRepository      = sqliterepo.MetricRegistryRepository
@@ -19,5 +21,4 @@ var (
 	ProjectUserRoleRepository     = sqliterepo.ProjectUserRoleRepository
 	RefreshTokenRepository        = sqliterepo.RefreshTokenRepository
 	UserRepository                = sqliterepo.UserRepository
-	WidgetGroupRepository         = sqliterepo.WidgetGroupRepository
 )

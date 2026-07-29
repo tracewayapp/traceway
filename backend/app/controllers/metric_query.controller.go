@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/tracewayapp/traceway/backend/app/db"
@@ -13,6 +14,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	traceway "go.tracewayapp.com"
 )
 
@@ -166,6 +168,86 @@ func (c *metricQueryController) Discover(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, DiscoverResponse{Metrics: discovered})
+}
+
+const discoverOrgMaxProjects = 25
+
+type OrgDiscoveredMetric struct {
+	Name       string      `json:"name"`
+	TagKeys    []string    `json:"tagKeys"`
+	MetricType string      `json:"metricType,omitempty"`
+	Unit       string      `json:"unit,omitempty"`
+	ProjectIds []uuid.UUID `json:"projectIds"`
+}
+
+func (c *metricQueryController) DiscoverOrg(ctx *gin.Context) {
+	organizationId, err := strconv.Atoi(ctx.Query("organizationId"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "organizationId query param is required"})
+		return
+	}
+
+	userId := middleware.GetUserId(ctx)
+	projects, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.Project, error) {
+		role, err := transactional.OrganizationRepository.GetUserRole(tx, organizationId, userId)
+		if err != nil {
+			return nil, err
+		}
+		if role == "" {
+			return nil, nil
+		}
+		return transactional.ProjectRepository.FindByOrganizationId(tx, organizationId)
+	})
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to list organization projects: %w", err))
+		return
+	}
+	if projects == nil {
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "Organization not found"})
+		return
+	}
+	truncated := false
+	if len(projects) > discoverOrgMaxProjects {
+		projects = projects[:discoverOrgMaxProjects]
+		truncated = true
+	}
+
+	from := time.Now().AddDate(0, 0, -7)
+	to := time.Now()
+
+	merged := map[string]*OrgDiscoveredMetric{}
+	order := []string{}
+	for _, project := range projects {
+		span := traceway.StartSpan(ctx, fmt.Sprintf("discover metrics: project %s", project.Id))
+		discovered, err := telemetry.MetricPointRepository.DiscoverMetrics(ctx, project.Id, from, to)
+		span.End()
+		if err != nil {
+			traceway.CaptureException(fmt.Errorf("failed to discover metrics for project %s: %w", project.Id, err))
+			continue
+		}
+		for _, m := range discovered {
+			entry := merged[m.Name]
+			if entry == nil {
+				entry = &OrgDiscoveredMetric{Name: m.Name, TagKeys: m.TagKeys, MetricType: m.MetricType, Unit: m.Unit, ProjectIds: []uuid.UUID{}}
+				merged[m.Name] = entry
+				order = append(order, m.Name)
+			}
+			entry.ProjectIds = append(entry.ProjectIds, project.Id)
+			if entry.Unit == "" {
+				entry.Unit = m.Unit
+			}
+			if entry.MetricType == "" {
+				entry.MetricType = m.MetricType
+			}
+		}
+	}
+
+	metrics := make([]OrgDiscoveredMetric, 0, len(order))
+	for _, name := range order {
+		metrics = append(metrics, *merged[name])
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"metrics": metrics, "truncated": truncated})
 }
 
 func (c *metricQueryController) DiscoverTags(ctx *gin.Context) {

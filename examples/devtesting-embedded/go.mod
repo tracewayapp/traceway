@@ -156,6 +156,4 @@ require (
 replace (
 	github.com/tracewayapp/traceway/backend => /Users/dusanstanojevic/Documents/workspace/traceway/backend
 	github.com/tracewayapp/traceway/cli => /Users/dusanstanojevic/Documents/workspace/traceway/cli
-	go.tracewayapp.com => /Users/dusanstanojevic/Documents/workspace/go-client
-	go.tracewayapp.com/tracewaygin => /Users/dusanstanojevic/Documents/workspace/go-client/tracewaygin
 )

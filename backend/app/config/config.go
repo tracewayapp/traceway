@@ -14,9 +14,14 @@ type Cfg struct {
 	PostgresSSLMode  string
 	SQLitePath       string
 
-	DuckDBMemoryLimit         string
-	DuckDBThreads             string
-	DuckDBCheckpointThreshold string
+	DuckDBMemoryLimit          string
+	DuckDBThreads              string
+	DuckDBCheckpointThreshold  string
+	DuckDBWriteQueueRows       string
+	DuckDBWriteFlushRows       string
+	DuckDBWriteFlushIntervalMS string
+	DuckDBWriteWriters         string
+	DuckDBWriteQueueWaitMS     string
 
 	ClickhouseServer   string
 	ClickhouseDatabase string
@@ -61,6 +66,7 @@ type Cfg struct {
 	MonitoringTracewayURL string
 	APIOnly               string
 	Ports                 string
+	PprofPort             string
 	TurnstileSecretKey    string
 
 	GoogleClientID     string
@@ -102,9 +108,14 @@ func LoadFromEnv() *Cfg {
 		PostgresSSLMode:  os.Getenv("POSTGRES_SSLMODE"),
 		SQLitePath:       os.Getenv("SQLITE_PATH"),
 
-		DuckDBMemoryLimit:         os.Getenv("DUCKDB_MEMORY_LIMIT"),
-		DuckDBThreads:             os.Getenv("DUCKDB_THREADS"),
-		DuckDBCheckpointThreshold: os.Getenv("DUCKDB_CHECKPOINT_THRESHOLD"),
+		DuckDBMemoryLimit:          os.Getenv("DUCKDB_MEMORY_LIMIT"),
+		DuckDBThreads:              os.Getenv("DUCKDB_THREADS"),
+		DuckDBCheckpointThreshold:  os.Getenv("DUCKDB_CHECKPOINT_THRESHOLD"),
+		DuckDBWriteQueueRows:       os.Getenv("DUCKDB_WRITE_QUEUE_ROWS"),
+		DuckDBWriteFlushRows:       os.Getenv("DUCKDB_WRITE_FLUSH_ROWS"),
+		DuckDBWriteFlushIntervalMS: os.Getenv("DUCKDB_WRITE_FLUSH_INTERVAL_MS"),
+		DuckDBWriteWriters:         os.Getenv("DUCKDB_WRITE_WRITERS"),
+		DuckDBWriteQueueWaitMS:     os.Getenv("DUCKDB_WRITE_QUEUE_WAIT_MS"),
 
 		ClickhouseServer:   os.Getenv("CLICKHOUSE_SERVER"),
 		ClickhouseDatabase: os.Getenv("CLICKHOUSE_DATABASE"),
@@ -149,6 +160,7 @@ func LoadFromEnv() *Cfg {
 		MonitoringTracewayURL: os.Getenv("MONITORING_TRACEWAY_URL"),
 		APIOnly:               os.Getenv("API_ONLY"),
 		Ports:                 os.Getenv("PORTS"),
+		PprofPort:             os.Getenv("PPROF_PORT"),
 		TurnstileSecretKey:    os.Getenv("TURNSTILE_SECRET_KEY"),
 
 		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),

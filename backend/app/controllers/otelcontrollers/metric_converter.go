@@ -19,14 +19,24 @@ type convertedMetrics struct {
 // onto each metric point's tags. Necessary because the hostmetrics process
 // scraper distinguishes per-process metrics via Resource attributes (one
 // ResourceMetrics per process), not data-point attributes — without this,
-// every process.* point looks identical save for the value. The list is an
-// allowlist rather than a passthrough so other receivers can't blow up
+// every process.* point looks identical save for the value. The same applies
+// to the docker_stats, kubeletstats and postgresql receivers, whose
+// container/pod/node/database identity also lives on the Resource. The list
+// is an allowlist rather than a passthrough so other receivers can't blow up
 // metric_points cardinality with arbitrary resource attrs.
 var processResourceAttrAllowlist = []string{
 	"process.pid",
 	"process.executable.name",
 	"process.command_line",
 	"process.owner",
+	"container.name",
+	"container.image.name",
+	"k8s.pod.name",
+	"k8s.namespace.name",
+	"k8s.node.name",
+	"k8s.deployment.name",
+	"k8s.container.name",
+	"postgresql.database.name",
 }
 
 func convertMetricPoints(projectId uuid.UUID, req *colmetricspb.ExportMetricsServiceRequest) convertedMetrics {

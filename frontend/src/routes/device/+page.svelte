@@ -7,6 +7,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert';
+	import { WarningCallout } from '$lib/components/ui/warning-callout';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { CircleAlert, Check, ShieldCheck } from '@lucide/svelte';
 	import { authState } from '$lib/state/auth.svelte';
@@ -214,21 +215,13 @@
 					<AlertDescription>The device login was denied. You can close this page.</AlertDescription>
 				</Alert>
 			{:else if status === 'notFound'}
-				<Alert variant="destructive">
-					<CircleAlert class="h-4 w-4" />
-					<AlertTitle>Code not found</AlertTitle>
-					<AlertDescription>
-						We couldn't find that code. Start a new login from your terminal.
-					</AlertDescription>
-				</Alert>
+				<WarningCallout variant="destructive" title="Code not found">
+					We couldn't find that code. Start a new login from your terminal.
+				</WarningCallout>
 			{:else if status === 'expired'}
-				<Alert variant="destructive">
-					<CircleAlert class="h-4 w-4" />
-					<AlertTitle>Code expired</AlertTitle>
-					<AlertDescription>
-						This login request has expired. Start a new login from your terminal.
-					</AlertDescription>
-				</Alert>
+				<WarningCallout variant="destructive" title="Code expired">
+					This login request has expired. Start a new login from your terminal.
+				</WarningCallout>
 			{:else if status === 'alreadyHandled'}
 				<Alert>
 					<CircleAlert class="h-4 w-4" />

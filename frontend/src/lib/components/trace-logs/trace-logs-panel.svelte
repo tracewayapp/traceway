@@ -7,6 +7,7 @@
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { SeverityBadge } from '$lib/components/ui/severity-badge';
 	import ExpandedLogRow from './expanded-log-row.svelte';
+	import LogMessage from './log-message.svelte';
 	import { formatDateTime } from '$lib/utils/formatters';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import { spanIdUuidToHex } from '$lib/utils/span-id';
@@ -157,12 +158,6 @@
 		expandedId = expandedId === id ? null : id;
 	}
 
-	function firstLine(body: string): string {
-		if (!body) return '';
-		const nl = body.indexOf('\n');
-		return nl === -1 ? body : body.slice(0, nl);
-	}
-
 	onMount(() => {
 		loadTraceLogs();
 	});
@@ -223,7 +218,7 @@
 										/>
 									</Table.Cell>
 									<Table.Cell class="max-w-[600px] truncate py-1.5 font-mono text-xs">
-										{firstLine(log.body)}
+										<LogMessage body={log.body} attributes={log.logAttributes} />
 									</Table.Cell>
 									<Table.Cell class="py-1.5 pr-6">
 										{#if spanName}
@@ -290,7 +285,7 @@
 											/>
 										</Table.Cell>
 										<Table.Cell class="max-w-[500px] truncate py-1.5 font-mono text-xs">
-											{firstLine(log.body)}
+											<LogMessage body={log.body} attributes={log.logAttributes} />
 										</Table.Cell>
 										<Table.Cell class="py-1.5 text-xs text-muted-foreground">
 											{log.serviceName || '—'}

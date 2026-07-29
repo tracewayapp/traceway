@@ -44,9 +44,12 @@ async function request(method: string, endpoint: string, data?: unknown, options
 
     if (response.status === 403) {
         if (method !== 'GET') {
-            toast.warning("You don't have permission to perform this action", { position: 'top-center' });
-            const error = new Error('Forbidden') as Error & { status: number };
+            const body = await response.json().catch(() => ({}));
+            const message = body.error || "You don't have permission to perform this action";
+            toast.error(message, { position: 'top-center' });
+            const error = new Error(message) as Error & { status: number; body?: unknown };
             error.status = 403;
+            error.body = body;
             throw error;
         }
         const currentPath = window.location.pathname;
@@ -62,8 +65,9 @@ async function request(method: string, endpoint: string, data?: unknown, options
 
     if (response.status === 422) {
         const body = await response.json().catch(() => ({}));
-        const error = new Error(body.error || 'Validation failed') as Error & { status: number };
+        const error = new Error(body.error || 'Validation failed') as Error & { status: number; body?: unknown };
         error.status = 422;
+        error.body = body;
         throw error;
     }
 

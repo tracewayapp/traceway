@@ -2,7 +2,11 @@
 
 package telemetry
 
-import sqliterepo "github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlite"
+import (
+	"context"
+
+	sqliterepo "github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlite"
+)
 
 var (
 	AiTraceRepository             = sqliterepo.AiTraceRepository
@@ -17,3 +21,12 @@ var (
 	SpanRepository                = sqliterepo.SpanRepository
 	TaskRepository                = sqliterepo.TaskRepository
 )
+
+// StartWriters is a no-op: the SQLite backend inserts synchronously.
+func StartWriters(ctx context.Context) {}
+
+// FlushWriters is a no-op: SQLite inserts are visible when InsertAsync returns.
+func FlushWriters(ctx context.Context) error { return nil }
+
+// StopWriters is a no-op: there are no background writers.
+func StopWriters() {}

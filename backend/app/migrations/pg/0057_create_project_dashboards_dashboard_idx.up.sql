@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS idx_project_dashboards_dashboard_id ON project_dashboards(dashboard_id)

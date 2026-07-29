@@ -100,11 +100,11 @@
 
 	type StarredWidgetResponse = {
 		id: number;
-		widgetGroupId: number;
+		dashboardId: number;
+		widgetId: string;
 		title: string;
 		widgetType: string;
 		config: any;
-		position: number;
 		homePosition: number;
 		homeColSpan: number;
 		homeSize: string;
@@ -112,7 +112,8 @@
 
 	type StarredWidget = {
 		id: number;
-		widgetGroupId: number;
+		dashboardId: number;
+		widgetId: string;
 		title: string;
 		widgetType: string;
 		config: any;
@@ -315,12 +316,13 @@ service:
 			starredToUTC = new Date().toISOString();
 			const [overview, starred] = await Promise.all([
 				api.get('/dashboard/overview', { projectId }),
-				api.get('/widget-groups/starred', { projectId }).catch(() => [])
+				api.get('/dashboards/starred', { projectId }).catch(() => [])
 			]);
 			data = overview;
 			starredWidgets = ((starred as StarredWidgetResponse[]) ?? []).map((w) => ({
 				id: w.id,
-				widgetGroupId: w.widgetGroupId,
+				dashboardId: w.dashboardId,
+				widgetId: w.widgetId,
 				title: w.title,
 				widgetType: w.widgetType,
 				config: { ...w.config, colSpan: w.homeColSpan, size: w.homeSize },
@@ -338,15 +340,16 @@ service:
 		}
 	}
 
-	async function handleReorderStarred(widgetIds: number[]) {
+	async function handleReorderStarred(reorderedIds: (number | string)[]) {
+		const ids = reorderedIds.map(Number);
 		const previousPositions = new Map(starredWidgets.map((w) => [w.id, w.position]));
 		for (const w of starredWidgets) {
-			w.position = widgetIds.indexOf(w.id);
+			w.position = ids.indexOf(w.id);
 		}
 		try {
 			await api.put(
 				'/starred-widgets/reorder',
-				{ widgetIds },
+				{ ids },
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
 		} catch (e: any) {
@@ -361,16 +364,16 @@ service:
 	}
 
 	async function handleResizeStarred(
-		widget: { id: number },
+		widget: { id: number | string },
 		layout: { colSpan: number; size: string }
 	) {
-		const target = starredWidgets.find((w) => w.id === widget.id);
+		const target = starredWidgets.find((w) => w.id === Number(widget.id));
 		if (!target) return;
 		const previous = { colSpan: target.config.colSpan, size: target.config.size };
 		target.config.colSpan = layout.colSpan;
 		target.config.size = layout.size;
 		try {
-			await api.put(`/starred-widgets/${widget.id}`, layout, {
+			await api.put(`/starred-widgets/${target.id}`, layout, {
 				projectId: projectsState.currentProjectId ?? undefined
 			});
 		} catch (e: any) {
@@ -382,14 +385,14 @@ service:
 		}
 	}
 
-	async function handleUnstar(widget: { id: number }) {
-		const target = starredWidgets.find((w) => w.id === widget.id);
+	async function handleUnstar(widget: { id: number | string }) {
+		const target = starredWidgets.find((w) => w.id === Number(widget.id));
 		if (!target) return;
 		const previous = starredWidgets;
-		starredWidgets = starredWidgets.filter((w) => w.id !== widget.id);
+		starredWidgets = starredWidgets.filter((w) => w.id !== target.id);
 		try {
 			await api.put(
-				`/widget-groups/${target.widgetGroupId}/widgets/${target.id}/star`,
+				`/dashboards/${target.dashboardId}/widgets/${target.widgetId}/star`,
 				{},
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
@@ -867,7 +870,7 @@ service:
 								<CircleQuestionMark class="h-4 w-4 text-muted-foreground/60" />
 							</Tooltip.Trigger>
 							<Tooltip.Content>
-								<p>Widgets you've starred from the Metrics page (last 24h)</p>
+								<p>Widgets you've starred from the Dashboards page (last 24h)</p>
 							</Tooltip.Content>
 						</Tooltip.Root>
 					</div>
@@ -876,11 +879,9 @@ service:
 						fromDateUTC={starredFromUTC}
 						toDateUTC={starredToUTC}
 						timeDomain={null}
-						onReorderWidgets={projectsState.canWriteCurrentProject
-							? handleReorderStarred
-							: undefined}
-						onResizeWidget={projectsState.canWriteCurrentProject ? handleResizeStarred : undefined}
-						onToggleStar={projectsState.canWriteCurrentProject ? handleUnstar : undefined}
+						onReorderWidgets={handleReorderStarred}
+						onResizeWidget={handleResizeStarred}
+						onToggleStar={handleUnstar}
 					/>
 				</div>
 			{/if}

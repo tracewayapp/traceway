@@ -272,6 +272,8 @@ func (p *projectRepository) Delete(tx *sql.Tx, id uuid.UUID) error {
 		"notification_rules",
 		"notification_channels",
 		"widget_groups",
+		"project_dashboards",
+		"starred_dashboard_widgets",
 		"source_maps",
 		"metric_registry",
 		"project_user_roles",

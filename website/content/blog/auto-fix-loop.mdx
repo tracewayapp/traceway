@@ -1,0 +1,304 @@
+---
+title: "How to build an AI SRE agent [Part 1]"
+date: "2026-07-29"
+category: "engineering"
+author: "dusan"
+description: "A beginer friendly walkthrough for building your first AI SRE agent: in this tutorial we'll catch a production error, open an issue, and setup an automatic workflow that runs Claude Code to investigate it and fix the root cause, after it's done it will open a PR linked to the original bug or it will leave a comment as to why this could not be automatically addressed."
+---
+
+> Before we get into it, the usual disclosure: I'm the person building Traceway. Everything below is open source and in the [Traceway](https://github.com/tracewayapp/traceway) repo.
+
+# Intro
+
+We'll define an AI agent as a tool that uses an LLM to reason, plan and acomplish tasks by calling available tools. An AI SRE agent will be an automated tasks that we will trigger when an issue is detected, it will use our telemetry data to reason about the issue and it will attempt to fix it. The final result will be an explanation of why this cannot be automatically addressed without user input OR it will be an actual code fix. The tools we will use for this are GitHub Issues and Actions as well as Traceway (but you can use any other Telemetry platform that gives you observability data access).
+
+Now that we have an idea of what we're building there are a few questions we need to answer:
+
+- How will we trigger the AI SRE agent?
+- How will the AI SRE agent access our telemetry data?
+- How will the AI SRE agent notify us when the task is completed?
+
+## The Trigger
+
+In this tutorial the trigger will be opening a GitHub issue with the 'traceway' label. This is trivial to setup within Traceway by using Traceway's GitHub notification channel. Here is how to configure it:
+
+In the dashboard, go to **Alerts → Channels** and add a **GitHub** channel. It takes a fine-grained GitHub personal access token with issue write permission on your repo, the owner and repo name, and a list of labels. Put `traceway` in the labels field. This matters more than it looks: the channel applies exactly the labels you configure, nothing is automatic, and that label is the tripwire the workflow listens for. If the labels field is empty, issues still get created and the workflow never fires, silently. Don't reuse a label humans also apply by hand.
+
+<img
+  src="/blog/auto-fix-loop/img1-github-channel.webp"
+  alt="New Channel dialog configured with the GitHub type, a personal access token, the repository owner and name, and the traceway label"
+  width="320px"
+/>
+
+Then add a rule: type **New Issue**, attached to that channel. This is what actually gets Traceway to notify your channel when a New Issue shows up.
+
+<img
+  src="/blog/auto-fix-loop/img2-github-rule.webp"
+  alt="New Rule dialog with the New Issue rule type attached to the GitHub channel, ignore patterns, a 15 minute cooldown, and critical severity"
+  width="320px"
+/>
+
+With this setup new exceptions will automatically create a GitHub issue on our behalf when the exception shows up. 
+
+Our agent will execute as a GitHub Action. To setup our trigger we will do:
+
+```yaml
+name: Traceway auto-fix
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  fix:
+    if: github.event.label.name == 'traceway' && github.event.issue.user.login == 'dusanstanojeviccs'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: traceway-fix-${{ github.event.issue.number }}
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+
+... more to come, keep reading
+```
+
+The key line to pay attention to is the 'if:' on line 9. We are limitting the trigger to be a new issue with the label 'traceway' AND we are limiting it to be our specific user, in this case me. The reason for this is that Traceway repo is a public project, without the author of the issue being locked anybody could create an issue with the traceway label, trigger the taks and use precious tokens, or worse attempt to inject malicious prompts (more on this later).
+
+## Telemetry Access
+
+From now on, the first occurrence of any new exception hash creates an issue that looks like this:
+
+```
+[traceway-cloud] New error: *fmt.wrapError
+
+A new error has been detected: *fmt.wrapError
+
+Exception ID: f05d86a5-9135-4cd6-b11d-b9338fed98ee
+Hash: 2e16546cedb34a03
+Occurred at: 2026-07-28 05:13:40 UTC
+Server: ip-172-31-39-42
+
+Stack trace:
+*fmt.wrapError: OAuth complete failed (provider=github): could not find
+a matching session for this request
+oauthController.Callback()
+    .../backend/app/controllers/oauth.controller.go:79
+  ...
+
+View details: /issues/2e16546cedb34a03
+```
+
+That's a real one from our production, and those three lines in the middle matter. `Hash` identifies the exception group, `Exception ID` plus `Occurred at` identifies the exact occurrence, the key is to make sure that your notification carries enough information for the AI agent to know how to access it. For example, in case of SLIs you will want to be very specific as to which SLI was broken, how and when.
+
+We don't have to worry about those things with Traceway as it already provides this info by default and the Traceway skill we will let the agent use already knows how to parse all of them out of a notification body.
+
+To let the agent access this data Traceway exposes 2 paths:
+- CLI + Skill
+- MCP
+
+For the sake of keeping this tutorial light we'll use the CLI + Skill setup. The CLI will expose read only view of the telemetry data stored in Traceway and the skill will explain to our LLM how to use it to look for the root cause of the issue.
+
+To set this up with our previous GitHub action we will add cli install and login as steps:
+
+```yaml
+- name: Install the Traceway CLI
+  run: curl -fsSL https://cli.tracewayapp.com/install.sh | sh
+
+- name: Log in to Traceway
+  run: |
+    printf '%s' "${{ secrets.TRACEWAY_TOKEN }}" | \
+      traceway login --url "https://cloud.tracewayapp.com" --token-stdin
+    traceway projects use "${{ vars.TRACEWAY_PROJECT_ID }}"
+```
+
+## Running the LLM (Finally)
+
+Now that we have a trigger and we have access to the telemetry data it's time to start Claude (yayy!!1).
+
+To do this we will add another step to our GitHub workflow:
+
+```yaml
+- name: Investigate and fix
+  uses: anthropics/claude-code-action@v1
+  with:
+    anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+    plugin_marketplaces: |
+      https://github.com/tracewayapp/traceway.git
+    plugins: |
+      tw@traceway
+    claude_args: |
+      --model claude-opus-4-8
+      --effort xhigh
+      --allowedTools "Bash(traceway:*),Bash(jq:*),Bash(go:*),Read,Edit,Write,Glob,Grep"
+      --max-turns 60
+    prompt: |
+... don't be too hasty we'll get to the prompt ...
+```
+
+This step is awesome, it triggers claude code with the Opus 4.8 model and the effort set to xhigh. The key parts here are the limited tools, we're only giving our llm access to a few key tools so that it can edit the code. We are NOT giving it access to mess with GitHub. We want to limit the exposure and the possible injection vector. We don't control fully what exeptions get thrown, what spans/attrs get created in our system and we don't want to give the llm any permissions that might be destructive. It will do it's work in the repo, post it's results in the Action and then the next step will deterministically decide what to do with those results. 
+
+Also note that we're only doing max-turns 60 forcing it to complete it's work.
+
+
+## The Prompt (do not make mistakes)
+
+The prompt is honestly pretty basic, it tells the LLM what to do. The LLM will use your repos `claude.md` file but as I've came to learn the hard way it can ignore it. The `claude.md` file is more like a suggestion, the prompt is much more likely to be followed. Here is what our prompt looks like:
+
+```
+Traceway detected a production error and opened issue
+#${{ github.event.issue.number }} in this repository. The full
+notification is between the markers below.
+
+--- TRACEWAY NOTIFICATION ---
+${{ github.event.issue.title }}
+
+${{ github.event.issue.body }}
+--- END NOTIFICATION ---
+
+Investigate this with the traceway skill from the tw plugin:
+invoke the skill and follow its Debug flow, treating the
+notification above as the issue reference. The skill knows how to
+extract the Hash, Exception ID, and Occurred-at timestamp from a
+Traceway notification, resolve the "View details" URL, and drill
+from the occurrence into traces, sessions, and logs. The traceway
+CLI is already installed and authenticated against the correct
+project; never run `traceway login`.
+
+You have NO access to git or gh, and you must not attempt to
+commit, push, or call any network tool. A later workflow step
+handles all of that. Your job is only to investigate, edit files
+in the working tree if a fix is warranted, and write a report.
+
+If the investigation ties the root cause to code in this
+repository, fix the cause, not the symptom. Keep the diff
+minimal. Run the relevant Go tests for the packages you touch.
+If you cannot tie the root cause to code with confidence, do NOT
+guess a fix; leave the working tree untouched.
+
+Do not add code comments explaining your change, why it is
+correct, or what the error was. The diff must read like the
+surrounding code, following the repository's CLAUDE.md style
+rules. ALL explanation belongs in the report file, none of it in
+the code.
+
+When you are done, write your report to the file
+"$RUNNER_TEMP/fix-report.md" in exactly this format:
+
+Line 1: "STATUS: fixed" if you applied a fix, "STATUS: analysis"
+if you investigated but did not change code, or "STATUS: no-hash"
+if the notification contained no Hash (for example a channel test
+notification).
+Line 2: "HASH: <the exception hash>" or "HASH: none".
+Line 3 onward: your root cause analysis in markdown. If STATUS is
+fixed, explain the root cause, the fix, and how you verified it,
+and include the "View details" link from the notification. This
+text becomes the pull request description or the issue comment,
+so write it for a human reviewer.
+
+The report file is mandatory. Write it even when you change
+nothing.
+
+Never create helper scripts, notes, or any other scratch files
+inside the repository working tree; everything that ships in the
+working tree becomes part of the pull request. Use $RUNNER_TEMP
+for anything temporary.
+```
+
+# The task has completed (PR)
+
+Now we have a few more steps to go. We need to decide if the agent was able to fix the issue or not. If the fix was straight forward we'll open a PR if not we will leave a comment on the GitHub issue.
+
+Here are the steps we'll use for that:
+
+```yaml
+- name: Save diff and report as artifact
+  if: always()
+  run: |
+    mkdir -p "$RUNNER_TEMP/artifact"
+    cp "$RUNNER_TEMP/fix-report.md" "$RUNNER_TEMP/artifact/" 2>/dev/null || true
+    git add -A
+    git diff HEAD > "$RUNNER_TEMP/artifact/fix.patch" || true
+    git status --porcelain > "$RUNNER_TEMP/artifact/changed-files.txt" || true
+
+- uses: actions/upload-artifact@v4
+  if: always()
+  with:
+    name: traceway-fix-issue-${{ github.event.issue.number }}
+    path: ${{ runner.temp }}/artifact
+    if-no-files-found: ignore
+
+- name: Publish result
+  env:
+    GH_TOKEN: ${{ secrets.GH_PUSH_TOKEN }}
+    ISSUE: ${{ github.event.issue.number }}
+  run: |
+    REPORT="$RUNNER_TEMP/fix-report.md"
+    if [ ! -f "$REPORT" ]; then
+      gh issue comment "$ISSUE" --body "The auto-fix agent finished without producing a report. Check the workflow run log."
+      exit 1
+    fi
+
+    STATUS=$(sed -n '1s/^STATUS: *//p' "$REPORT")
+    HASH=$(sed -n '2s/^HASH: *//p' "$REPORT")
+    BODY=$(tail -n +3 "$REPORT")
+
+    if [ "$STATUS" = "fixed" ] && ! echo "$HASH" | grep -Eq '^[0-9a-f]{16}$'; then
+      gh issue comment "$ISSUE" --body "The agent reported a fix but an invalid hash ('$HASH'); not opening a PR. Check the run log."
+      exit 1
+    fi
+
+    if [ "$STATUS" = "fixed" ] && [ -n "$(git status --porcelain)" ]; then
+      git config user.name "github-actions[bot]"
+      git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      gh auth setup-git
+      BRANCH="traceway/fix-$HASH"
+      git checkout -b "$BRANCH"
+      git add -A
+      git commit -m "Fix production error $HASH"
+      git push -u origin "$BRANCH"
+      { echo "Fixes #$ISSUE"; echo; echo "$BODY"; } | \
+        gh pr create --title "Auto-fix: traceway $HASH (issue #$ISSUE)" --head "$BRANCH" --body-file -
+      traceway exceptions archive "$HASH" --yes
+    else
+      { echo "Auto-fix agent report (no PR opened):"; echo; echo "$BODY"; } | \
+        gh issue comment "$ISSUE" --body-file -
+    fi
+```
+
+## The Results
+
+I've ran this a few times. 
+
+The first time the result was a PR, you can find it [here](https://github.com/tracewayapp/traceway/pull/279). I really liked the approach, removing the escalation from a behavior that can be triggered by bots/waiting too long to auth. What I really dissliked was the code that was written, pointless comments and a function that could literally just be a direct if statement. It's the solution I would go for but not the code I would have written.
+
+So I tried again, this time the result was not a PR but a GitHub issue comment. The agent decided that it does understand the issue but that it's unsure if lowering the reporting level is the right fix.
+
+I found this to be really interesting, two runs of the exact same problem but completely different results.
+
+The full workflow is [located here](https://github.com/tracewayapp/traceway/blob/main/.github/workflows/traceway-autofix.yml). The issue used for testing is [here](https://github.com/tracewayapp/traceway/issues/278) and the PR one of the runs opened is [here](https://github.com/tracewayapp/traceway/pull/279). To setup the same workflow you will need these configured in your repository settings:
+
+| Name | Kind | What it is | Where to get it |
+| --- | --- | --- | --- |
+| `ANTHROPIC_API_KEY` | Secret | The API key Claude Code uses, this is the one that costs money so set a spend limit on it | [Anthropic Console](https://console.anthropic.com) under API keys |
+| `TRACEWAY_TOKEN` | Secret | A personal access token (`twp_...`) the CLI uses to read your telemetry, shown only once so copy it right away | Traceway dashboard, **Account → Personal access tokens** |
+| `TRACEWAY_PROJECT_ID` | Variable | The ID of the project your app reports into, it's just an address so it doesn't need to be a secret | The `projectId` query param in your Traceway dashboard URL |
+
+---
+
+## Reflection
+
+This is by no means a production level AI SRE agent that you should implement today, but it is the start of one.
+
+While building it I had to start thinking about whole new sets of issues, primarily around security. Limiting the ability for the agent to be ran by anyone with a GitHub account as well as limiting the llms access to run commands that could be dangerous and having those done in deterministic steps with care was crucial.
+
+Another thing that I did not expect was that the agent made two completely different decisions in two separate runs and decided to ignore the claude.md instructions on how to write code leading to pretty mid results. Focusing on driving outcomes will be next,  evaluating the changes done to the prompt/tooling/steps/skills will probably play a much larger role than the changes themselves. Having a non deterministic system and trying to improve upon it will obviously require a lot of measurements.
+
+The final thing that this litle experiment left me thinking about is the observability piece of the agent itself. I spent a total of ~10$ across 3-4 runs of the agent, it was easy to track and to check what the agent was doing. Running this at scale would be a completely different beast. The gen ai spec in otel is done and having great support for it in Traceway is on my roadmap, building a better agent will help me make sure it's implemented well.
+
+---
+
+_I'm building this in the open. Traceway is MIT-licensed and OpenTelemetry-native, and everything described here ships with it. If you wire this loop up and an agent fixes a real bug while you were asleep, I genuinely want to hear about it: dusan@tracewayapp.com._

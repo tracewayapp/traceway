@@ -1078,7 +1078,8 @@
     font-size: 19px;
     line-height: 1.7;
     letter-spacing: 0;
-    color: var(--fg-1);
+    font-style: italic;
+    color: var(--fg-2);
   }
   .blog-body p,
   .blog-body li {
@@ -1205,16 +1206,15 @@
     -webkit-box-decoration-break: clone;
   }
 
-  /* Callout / aside: a styled markdown blockquote (> in MDX). */
+  /* Quote / aside: a markdown blockquote (> in MDX). */
   .blog-body blockquote {
-    margin: 24px 0;
-    padding: 16px 20px;
-    border-left: 3px solid var(--a1);
-    background: color-mix(in oklab, var(--a1) 9%, transparent);
-    border-radius: 0 var(--radius) var(--radius) 0;
+    margin: 28px 0;
+    padding: 4px 0 4px 22px;
+    border-left: 3px solid var(--hair-2);
   }
   .blog-body blockquote p {
     margin: 0;
+    font-style: italic;
     color: var(--fg-1);
   }
   .blog-body blockquote p + p {

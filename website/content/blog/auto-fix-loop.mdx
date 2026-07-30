@@ -3,14 +3,14 @@ title: "How to build an AI SRE agent [Part 1]"
 date: "2026-07-29"
 category: "engineering"
 author: "dusan"
-description: "A beginer friendly walkthrough for building your first AI SRE agent: in this tutorial we'll catch a production error, open an issue, and setup an automatic workflow that runs Claude Code to investigate it and fix the root cause, after it's done it will open a PR linked to the original bug or it will leave a comment as to why this could not be automatically addressed."
+description: "A beginner-friendly walkthrough for building your first AI SRE agent. In this tutorial we'll catch a production error, open an issue, and set up an automatic workflow that runs Claude Code to investigate and fix the root cause. When it's done it will open a PR linked to the original bug, or leave a comment explaining why the issue could not be automatically addressed."
 ---
 
 > Before we get into it, the usual disclosure: I'm the person building Traceway. Everything below is open source and in the [Traceway](https://github.com/tracewayapp/traceway) repo.
 
-# Intro
+## Intro
 
-We'll define an AI agent as a tool that uses an LLM to reason, plan and acomplish tasks by calling available tools. An AI SRE agent will be an automated tasks that we will trigger when an issue is detected, it will use our telemetry data to reason about the issue and it will attempt to fix it. The final result will be an explanation of why this cannot be automatically addressed without user input OR it will be an actual code fix. The tools we will use for this are GitHub Issues and Actions as well as Traceway (but you can use any other Telemetry platform that gives you observability data access).
+We'll define an AI agent as a tool that uses an LLM to reason, plan and accomplish tasks by calling available tools. Our AI SRE agent will be an automated task triggered when an issue is detected. It will use our telemetry data to reason about the issue and attempt to fix it. The final result will be an explanation of why this cannot be automatically addressed without user input OR it will be an actual code fix. The tools we will use for this are GitHub Issues and Actions as well as Traceway (but you can use any other telemetry platform that gives you observability data access).
 
 Now that we have an idea of what we're building there are a few questions we need to answer:
 
@@ -20,9 +20,9 @@ Now that we have an idea of what we're building there are a few questions we nee
 
 ## The Trigger
 
-In this tutorial the trigger will be opening a GitHub issue with the 'traceway' label. This is trivial to setup within Traceway by using Traceway's GitHub notification channel. Here is how to configure it:
+In this tutorial the trigger will be opening a GitHub issue with the 'traceway' label. This is trivial to set up within Traceway by using Traceway's GitHub notification channel. Here is how to configure it:
 
-In the dashboard, go to **Alerts → Channels** and add a **GitHub** channel. It takes a fine-grained GitHub personal access token with issue write permission on your repo, the owner and repo name, and a list of labels. Put `traceway` in the labels field. This matters more than it looks: the channel applies exactly the labels you configure, nothing is automatic, and that label is the tripwire the workflow listens for. If the labels field is empty, issues still get created and the workflow never fires, silently. Don't reuse a label humans also apply by hand.
+In the dashboard, go to **Alerts → Channels** and add a **GitHub** channel. It takes a fine-grained GitHub personal access token with issue write permission on your repo, the owner and repo name, and a list of labels. Put `traceway` in the labels field. This matters more than it seems: the channel applies exactly the labels you configure, nothing is automatic, and that label is the tripwire the workflow listens for. If the labels field is empty, issues still get created and the workflow never fires, silently. Don't reuse a label humans also apply by hand.
 
 <img
   src="/blog/auto-fix-loop/img1-github-channel.webp"
@@ -38,9 +38,9 @@ Then add a rule: type **New Issue**, attached to that channel. This is what actu
   width="320px"
 />
 
-With this setup new exceptions will automatically create a GitHub issue on our behalf when the exception shows up. 
+With this setup, every new exception will automatically create a GitHub issue on our behalf.
 
-Our agent will execute as a GitHub Action. To setup our trigger we will do:
+Our agent will execute as a GitHub Action. To set up our trigger we will do:
 
 ```yaml
 name: Traceway auto-fix
@@ -66,7 +66,7 @@ jobs:
 ... more to come, keep reading
 ```
 
-The key line to pay attention to is the 'if:' on line 9. We are limitting the trigger to be a new issue with the label 'traceway' AND we are limiting it to be our specific user, in this case me. The reason for this is that Traceway repo is a public project, without the author of the issue being locked anybody could create an issue with the traceway label, trigger the taks and use precious tokens, or worse attempt to inject malicious prompts (more on this later).
+The key line to pay attention to is the 'if:' on line 9. We are limiting the trigger to be a new issue with the label 'traceway' AND we are limiting it to be our specific user, in this case me. The reason for this is that the Traceway repo is public. Without locking the trigger to a specific author, anybody could create an issue with the traceway label, trigger the task and burn precious tokens, or worse, attempt to inject malicious prompts (more on this later).
 
 ## Telemetry Access
 
@@ -92,17 +92,17 @@ oauthController.Callback()
 View details: /issues/2e16546cedb34a03
 ```
 
-That's a real one from our production, and those three lines in the middle matter. `Hash` identifies the exception group, `Exception ID` plus `Occurred at` identifies the exact occurrence, the key is to make sure that your notification carries enough information for the AI agent to know how to access it. For example, in case of SLIs you will want to be very specific as to which SLI was broken, how and when.
+That's a real one from our production, and those three lines in the middle matter. `Hash` identifies the exception group, `Exception ID` plus `Occurred at` identifies the exact occurrence. The key is to make sure your notification carries enough information for the AI agent to know how to access it. For example, in the case of SLIs you will want to be very specific as to which SLI was broken, how and when.
 
-We don't have to worry about those things with Traceway as it already provides this info by default and the Traceway skill we will let the agent use already knows how to parse all of them out of a notification body.
+We don't have to worry about those things with Traceway as it already provides this info by default and the Traceway skill we will let the agent use knows how to parse all of them out of a notification body.
 
-To let the agent access this data Traceway exposes 2 paths:
+To let the agent access this data Traceway exposes two paths:
 - CLI + Skill
 - MCP
 
-For the sake of keeping this tutorial light we'll use the CLI + Skill setup. The CLI will expose read only view of the telemetry data stored in Traceway and the skill will explain to our LLM how to use it to look for the root cause of the issue.
+For the sake of keeping this tutorial light we'll use the CLI + Skill setup. The CLI will expose a read-only view of the telemetry data stored in Traceway and the skill will explain to our LLM how to use it to look for the root cause of the issue.
 
-To set this up with our previous GitHub action we will add cli install and login as steps:
+To set this up with our previous GitHub action we will add CLI install and login as steps:
 
 ```yaml
 - name: Install the Traceway CLI
@@ -139,14 +139,14 @@ To do this we will add another step to our GitHub workflow:
 ... don't be too hasty we'll get to the prompt ...
 ```
 
-This step is awesome, it triggers claude code with the Opus 4.8 model and the effort set to xhigh. The key parts here are the limited tools, we're only giving our llm access to a few key tools so that it can edit the code. We are NOT giving it access to mess with GitHub. We want to limit the exposure and the possible injection vector. We don't control fully what exeptions get thrown, what spans/attrs get created in our system and we don't want to give the llm any permissions that might be destructive. It will do it's work in the repo, post it's results in the Action and then the next step will deterministically decide what to do with those results. 
+This step is awesome, it triggers Claude Code with the Opus 4.8 model and the effort set to xhigh. The key part here is the tool allowlist: we're only giving the LLM the handful of tools it needs to investigate and edit code. We are NOT giving it access to mess with GitHub. We want to limit the exposure and the possible injection vector. We don't control fully what exceptions get thrown, what spans/attrs get created in our system and we don't want to give the LLM any permissions that might be destructive. It will do its work in the repo, post its results in the Action and then the next step will deterministically decide what to do with those results.
 
-Also note that we're only doing max-turns 60 forcing it to complete it's work.
+Also note the max-turns 60 cap: if the agent hasn't finished by then the run is cut off, so a stuck loop can't burn tokens indefinitely.
 
 
 ## The Prompt (do not make mistakes)
 
-The prompt is honestly pretty basic, it tells the LLM what to do. The LLM will use your repos `claude.md` file but as I've came to learn the hard way it can ignore it. The `claude.md` file is more like a suggestion, the prompt is much more likely to be followed. Here is what our prompt looks like:
+The prompt is honestly pretty basic, it tells the LLM what to do. The LLM will use your repo's `CLAUDE.md` file but as I've come to learn the hard way it can ignore it. The `CLAUDE.md` file is more like a suggestion, the prompt is much more likely to be followed. Here is what our prompt looks like:
 
 ```
 Traceway detected a production error and opened issue
@@ -208,9 +208,9 @@ working tree becomes part of the pull request. Use $RUNNER_TEMP
 for anything temporary.
 ```
 
-# The task has completed (PR)
+## Handling the result (PR or comment)
 
-Now we have a few more steps to go. We need to decide if the agent was able to fix the issue or not. If the fix was straight forward we'll open a PR if not we will leave a comment on the GitHub issue.
+Now we have a few more steps to go. We need to decide if the agent was able to fix the issue or not. If the fix was straightforward we'll open a PR. If not, we'll leave a comment on the GitHub issue.
 
 Here are the steps we'll use for that:
 
@@ -271,15 +271,15 @@ Here are the steps we'll use for that:
 
 ## The Results
 
-I've ran this a few times. 
+I've run this a few times.
 
-The first time the result was a PR, you can find it [here](https://github.com/tracewayapp/traceway/pull/279). I really liked the approach, removing the escalation from a behavior that can be triggered by bots/waiting too long to auth. What I really dissliked was the code that was written, pointless comments and a function that could literally just be a direct if statement. It's the solution I would go for but not the code I would have written.
+The first time the result was a PR, you can find it [here](https://github.com/tracewayapp/traceway/pull/279). I really liked the approach: it stopped escalating an error that can be triggered by bots or by users simply waiting too long to authenticate. What I really disliked was the code that was written, pointless comments and a function that could literally just be a direct if statement. It's the solution I would go for but not the code I would have written.
 
-So I tried again, this time the result was not a PR but a GitHub issue comment. The agent decided that it does understand the issue but that it's unsure if lowering the reporting level is the right fix.
+So I tried again, this time the result was not a PR but a GitHub issue comment. The agent decided that it understood the issue but was unsure whether lowering the reporting level was the right fix.
 
 I found this to be really interesting, two runs of the exact same problem but completely different results.
 
-The full workflow is [located here](https://github.com/tracewayapp/traceway/blob/main/.github/workflows/traceway-autofix.yml). The issue used for testing is [here](https://github.com/tracewayapp/traceway/issues/278) and the PR one of the runs opened is [here](https://github.com/tracewayapp/traceway/pull/279). To setup the same workflow you will need these configured in your repository settings:
+The full workflow is [located here](https://github.com/tracewayapp/traceway/blob/main/.github/workflows/traceway-autofix.yml). The issue used for testing is [here](https://github.com/tracewayapp/traceway/issues/278) and the PR one of the runs opened is [here](https://github.com/tracewayapp/traceway/pull/279). To set up the same workflow you will need these configured in your repository settings:
 
 | Name | Kind | What it is | Where to get it |
 | --- | --- | --- | --- |
@@ -293,11 +293,11 @@ The full workflow is [located here](https://github.com/tracewayapp/traceway/blob
 
 This is by no means a production level AI SRE agent that you should implement today, but it is the start of one.
 
-While building it I had to start thinking about whole new sets of issues, primarily around security. Limiting the ability for the agent to be ran by anyone with a GitHub account as well as limiting the llms access to run commands that could be dangerous and having those done in deterministic steps with care was crucial.
+While building it I had to start thinking about whole new sets of issues, primarily around security. It was crucial to limit who can trigger the agent, restrict the LLM to commands that can't do damage, and move everything dangerous into deterministic workflow steps.
 
-Another thing that I did not expect was that the agent made two completely different decisions in two separate runs and decided to ignore the claude.md instructions on how to write code leading to pretty mid results. Focusing on driving outcomes will be next,  evaluating the changes done to the prompt/tooling/steps/skills will probably play a much larger role than the changes themselves. Having a non deterministic system and trying to improve upon it will obviously require a lot of measurements.
+Another thing that I did not expect was that the agent made two completely different decisions in two separate runs and decided to ignore the CLAUDE.md instructions on how to write code leading to pretty mediocre results. Focusing on driving outcomes will be next, evaluating the changes done to the prompt/tooling/steps/skills will probably play a much larger role than the changes themselves. Having a non deterministic system and trying to improve upon it will obviously require a lot of measurements.
 
-The final thing that this litle experiment left me thinking about is the observability piece of the agent itself. I spent a total of ~10$ across 3-4 runs of the agent, it was easy to track and to check what the agent was doing. Running this at scale would be a completely different beast. The gen ai spec in otel is done and having great support for it in Traceway is on my roadmap, building a better agent will help me make sure it's implemented well.
+The final thing that this little experiment left me thinking about is the observability piece of the agent itself. I spent a total of ~$10 across 3-4 runs of the agent, it was easy to track and to check what the agent was doing. Running this at scale would be a completely different beast. The GenAI spec in OTel is done and having great support for it in Traceway is on my roadmap, building a better agent will help me make sure it's implemented well.
 
 ---
 

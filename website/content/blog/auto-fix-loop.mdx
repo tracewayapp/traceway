@@ -139,7 +139,7 @@ To do this we will add another step to our GitHub workflow:
 ... don't be too hasty we'll get to the prompt ...
 ```
 
-This step is awesome, it triggers Claude Code with the Opus 4.8 model and the effort set to xhigh. The key part here is the tool allowlist: we're only giving the LLM the handful of tools it needs to investigate and edit code. We are NOT giving it access to mess with GitHub. We want to limit the exposure and the possible injection vector. We don't control fully what exceptions get thrown, what spans/attrs get created in our system and we don't want to give the LLM any permissions that might be destructive. It will do its work in the repo, post its results in the Action and then the next step will deterministically decide what to do with those results.
+This step is awesome, it triggers Claude Code with the Opus 4.8 model and the effort set to xhigh. The key part here is the tool allowlist: we're only giving the LLM the handful of tools it needs to investigate and edit code. We are NOT giving it access to mess with GitHub. We want to limit the exposure and the possible injection vector. We don't fully control what exceptions get thrown, what spans/attributes get created in our system and we don't want to give the LLM any permissions that might be destructive. It will do its work in the repo, post its results in the Action and then the next step will deterministically decide what to do with those results.
 
 Also note the max-turns 60 cap: if the agent hasn't finished by then the run is cut off, so a stuck loop can't burn tokens indefinitely.
 
@@ -273,7 +273,7 @@ Here are the steps we'll use for that:
 
 I've run this a few times.
 
-The first time the result was a PR, you can find it [here](https://github.com/tracewayapp/traceway/pull/279). I really liked the approach: it stopped escalating an error that can be triggered by bots or by users simply waiting too long to authenticate. What I really disliked was the code that was written, pointless comments and a function that could literally just be a direct if statement. It's the solution I would go for but not the code I would have written.
+The first time the result was a PR, which you can find [here](https://github.com/tracewayapp/traceway/pull/279). I really liked the approach: it stopped escalating an error that can be triggered by bots or by users simply waiting too long to authenticate. What I really disliked was the code that was written, pointless comments and a function that could literally just be a direct if statement. It's the solution I would go for but not the code I would have written.
 
 So I tried again, this time the result was not a PR but a GitHub issue comment. The agent decided that it understood the issue but was unsure whether lowering the reporting level was the right fix.
 

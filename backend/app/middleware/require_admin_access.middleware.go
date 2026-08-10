@@ -17,15 +17,23 @@ const UserOrgRoleContextKey = "userOrgRole"
 var RequireAdminAccess gin.HandlerFunc
 
 func InitRequireAdminAccess() {
-	RequireAdminAccess = func(c *gin.Context) {
+	RequireAdminAccess = requireOrgRole(func(role string) bool {
+		return role == "owner" || role == "admin"
+	}, "Admin or owner access required")
+}
+
+// requireOrgRole builds middleware that resolves the caller's role in the
+// :organizationId organization and rejects with 403 when permitted returns
+// false. Sets OrganizationIdContextKey and UserOrgRoleContextKey.
+func requireOrgRole(permitted func(role string) bool, denialMessage string) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		userId := GetUserId(c)
 		if userId == 0 {
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
 
-		organizationIdStr := c.Param("organizationId")
-		organizationId, err := strconv.Atoi(organizationIdStr)
+		organizationId, err := strconv.Atoi(c.Param("organizationId"))
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid organization ID"})
 			return
@@ -40,8 +48,8 @@ func InitRequireAdminAccess() {
 			return
 		}
 
-		if role != "owner" && role != "admin" {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Admin or owner access required"})
+		if !permitted(role) {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": denialMessage})
 			return
 		}
 

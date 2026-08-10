@@ -1,10 +1,13 @@
 package controllers
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/app/outbox"
+	traceway "go.tracewayapp.com"
 )
 
 type healthDeepController struct{}
@@ -37,6 +40,7 @@ type HealthDeepResponse struct {
 	InsertFailures   uint64                   `json:"insertFailures"`
 	IngestRejected   uint64                   `json:"ingestRejected"`
 	Engine           *db.TelemetryEngineStats `json:"engine,omitempty"`
+	Outbox           *outbox.HealthStats      `json:"outbox,omitempty"`
 }
 
 // 503 means the configured telemetry backend is down. On the embedded
@@ -53,6 +57,12 @@ func (h healthDeepController) Get(c *gin.Context) {
 	resp.IngestRejected = db.GetIngestRejects()
 	if engine, ok := db.GetTelemetryEngineStats(c.Request.Context()); ok {
 		resp.Engine = &engine
+	}
+	// Best-effort: health must not 500 because the main DB hiccuped.
+	if outboxStats, err := outbox.HealthSnapshot(); err == nil {
+		resp.Outbox = outboxStats
+	} else {
+		traceway.CaptureException(fmt.Errorf("failed to load outbox health: %w", err))
 	}
 
 	if resp.TelemetryBackend == "clickhouse" && !resp.CHReachable {

@@ -4,6 +4,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/oncall"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"net/http"
 	"strconv"
@@ -107,6 +108,18 @@ func (c *memberController) RemoveMember(ctx *gin.Context) {
 	err = transactional.ProjectUserRoleRepository.DeleteByOrganizationAndUser(tx, organizationId, targetUserId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to remove member project roles: %w", err))
+		return
+	}
+
+	err = transactional.TeamRepository.RemoveUserFromOrgTeams(tx, organizationId, targetUserId)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to remove member from teams: %w", err))
+		return
+	}
+
+	err = oncall.RemoveUserFromOrgSchedules(tx, organizationId, targetUserId)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to remove member from on-call schedules: %w", err))
 		return
 	}
 

@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import * as Sidebar from '$lib/components/ui/sidebar';
 	import { useSidebar } from '$lib/components/ui/sidebar';
+	import { oncallState } from '$lib/state/oncall.svelte';
 	import {
 		Bell,
 		Workflow,
@@ -13,6 +15,7 @@
 		Flame,
 		Gauge,
 		ListEnd,
+		PhoneCall,
 		Settings,
 		BookOpen,
 		KeyRound
@@ -73,6 +76,7 @@
 			stickyParams: ['preset', 'from', 'to']
 		},
 		{ Icon: Bell, href: '/notifications', title: 'Alerts', stickyParams: ['preset', 'from', 'to'] },
+		{ Icon: PhoneCall, href: '/on-call', title: 'On-Call', stickyParams: [] },
 		{ Icon: Link2, href: '/connection', title: 'Connection', stickyParams: [] }
 	];
 
@@ -104,6 +108,12 @@
 	);
 
 	const sidebar = useSidebar();
+
+	onMount(() => {
+		oncallState.refreshOpenCount();
+		const interval = setInterval(() => oncallState.refreshOpenCount(), 60000);
+		return () => clearInterval(interval);
+	});
 
 	function navFlyoutProps(active: boolean) {
 		return {
@@ -163,6 +173,13 @@
 								<sidebarItem.Icon />
 								<span>{sidebarItem.title}</span>
 							</Sidebar.SidebarMenuButton>
+							{#if sidebarItem.title === 'On-Call' && oncallState.openPagesCount > 0}
+								<Sidebar.MenuBadge
+									class="rounded-full bg-destructive text-[10px] text-white peer-hover/menu-button:text-white peer-data-[active=true]/menu-button:text-white"
+								>
+									{oncallState.openPagesCount}
+								</Sidebar.MenuBadge>
+							{/if}
 						</Sidebar.SidebarMenuItem>
 					{/each}
 				</Sidebar.SidebarMenu>

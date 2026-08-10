@@ -215,6 +215,55 @@ func RegisterControllers(router *gin.RouterGroup) {
 
 	router.POST("/notification-history", middleware.UseAppAuth, middleware.RequireProjectAccess, NotificationHistoryController.List)
 
+	router.GET("/organizations/:organizationId/teams", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, TeamController.List)
+	router.POST("/organizations/:organizationId/teams", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, TeamController.Create)
+	router.PUT("/organizations/:organizationId/teams/:teamId", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, TeamController.Update)
+	router.DELETE("/organizations/:organizationId/teams/:teamId", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, TeamController.Delete)
+	router.PUT("/organizations/:organizationId/teams/:teamId/members", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, TeamController.SetMembers)
+	router.PUT("/organizations/:organizationId/teams/:teamId/projects", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, TeamController.SetProjects)
+
+	router.GET("/organizations/:organizationId/schedules", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, OncallController.ListSchedules)
+	router.POST("/organizations/:organizationId/schedules", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, OncallController.CreateSchedule)
+	router.GET("/organizations/:organizationId/schedules/:scheduleId", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, OncallController.GetSchedule)
+	router.PUT("/organizations/:organizationId/schedules/:scheduleId", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, OncallController.UpdateSchedule)
+	router.DELETE("/organizations/:organizationId/schedules/:scheduleId", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, OncallController.DeleteSchedule)
+	router.GET("/organizations/:organizationId/schedules/:scheduleId/timeline", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, OncallController.Timeline)
+	router.POST("/organizations/:organizationId/schedules/:scheduleId/overrides", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, OncallController.CreateOverride)
+	router.DELETE("/organizations/:organizationId/schedules/:scheduleId/overrides/:overrideId", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, OncallController.DeleteOverride)
+	router.GET("/organizations/:organizationId/oncall/now", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, OncallController.Now)
+	router.GET("/oncall/current", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, OncallController.Current)
+
+	router.GET("/escalation-policies", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, EscalationPolicyController.ListForProject)
+	router.GET("/organizations/:organizationId/escalation-policies", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, EscalationPolicyController.ListForOrganization)
+	router.POST("/organizations/:organizationId/escalation-policies", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, EscalationPolicyController.Create)
+	router.PUT("/organizations/:organizationId/escalation-policies/:id", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, EscalationPolicyController.Update)
+	router.DELETE("/organizations/:organizationId/escalation-policies/:id", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, EscalationPolicyController.Delete)
+
+	router.POST("/pages", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.List)
+	router.GET("/pages/open-count", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.OpenCount)
+	router.GET("/pages/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.Get)
+	router.POST("/pages/:id/acknowledge", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.Acknowledge)
+	router.POST("/pages/:id/resolve", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.Resolve)
+
+	router.GET("/contact-methods", middleware.UseAppAuth, middleware.Transactional, ContactMethodController.List)
+	router.POST("/contact-methods", middleware.UseAppAuth, middleware.RateLimitPerUser(20, 10*time.Minute), middleware.Transactional, ContactMethodController.Create)
+	router.PUT("/contact-methods/:id", middleware.UseAppAuth, middleware.RateLimitPerUser(30, 10*time.Minute), middleware.Transactional, ContactMethodController.Update)
+	router.DELETE("/contact-methods/:id", middleware.UseAppAuth, middleware.Transactional, ContactMethodController.Delete)
+	// Rate limited like the mutating routes: a contact method can point at any
+	// address/number/webhook, so an uncapped test button is an outbound relay.
+	router.POST("/contact-methods/:id/test", middleware.UseAppAuth, middleware.RateLimitPerUser(10, 10*time.Minute), ContactMethodController.Test)
+	// No Transactional: Verify answers 422 for a wrong code, and the consumed
+	// attempt must still commit, so it manages its own transactions (the same
+	// reason the OAuth grant endpoints do).
+	router.POST("/contact-methods/:id/verify", middleware.UseAppAuth, middleware.RateLimitPerUser(10, time.Minute), ContactMethodController.Verify)
+	router.POST("/contact-methods/:id/resend-code", middleware.UseAppAuth, middleware.RateLimitPerUser(3, 5*time.Minute), middleware.Transactional, ContactMethodController.ResendCode)
+
+	router.GET("/user-notification-rules", middleware.UseAppAuth, middleware.Transactional, UserNotificationRuleController.Get)
+	router.PUT("/user-notification-rules", middleware.UseAppAuth, middleware.Transactional, UserNotificationRuleController.Put)
+
+	router.GET("/ack/:token", middleware.RateLimitPerIP(30, time.Minute), middleware.Transactional, AckController.Get)
+	router.POST("/ack/:token", middleware.RateLimitPerIP(10, time.Minute), middleware.Transactional, AckController.Acknowledge)
+
 	for _, register := range ExtensionRoutes {
 		register(router)
 	}

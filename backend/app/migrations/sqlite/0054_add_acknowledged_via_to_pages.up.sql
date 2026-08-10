@@ -1,0 +1,1 @@
+ALTER TABLE pages ADD COLUMN acknowledged_via TEXT NOT NULL DEFAULT ''

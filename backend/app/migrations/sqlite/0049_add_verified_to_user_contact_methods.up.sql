@@ -1,0 +1,1 @@
+ALTER TABLE user_contact_methods ADD COLUMN verified INTEGER NOT NULL DEFAULT 1

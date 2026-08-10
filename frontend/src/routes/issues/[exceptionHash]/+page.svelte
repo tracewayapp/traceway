@@ -10,6 +10,7 @@
 	import { StackTraceCard, EventCard, EventsTable, PageHeader } from '$lib/components/issues';
 	import { toast } from 'svelte-sonner';
 	import ArchiveConfirmationDialog from '$lib/components/archive-confirmation-dialog.svelte';
+	import OncallOwner from '$lib/components/traceway/oncall-owner.svelte';
 	import Archive from '@lucide/svelte/icons/archive';
 	import type {
 		ExceptionGroup,
@@ -146,6 +147,7 @@
 			subtitle="Exception Hash: {exceptionHash}"
 			onBack={createSmartBackHandler({ fallbackPath: resolve('/issues') })}
 		/>
+		<OncallOwner />
 	</div>
 
 	{#if loading && !group}

@@ -91,9 +91,10 @@ func evaluateAiTraceCostEvent(rule *models.NotificationRuleWithChannel, event ho
 		if dedup.isDuplicate(dedupKey, time.Duration(rule.CooldownMinutes)*time.Minute) {
 			continue
 		}
-		dedup.record(dedupKey)
-
 		msg := buildAiTraceCostMessage(at.TraceName, at.TotalCost, cfg.ThresholdCost, projectName)
+		// Record before dispatch: a persistently failing dispatch retries once
+		// per cooldown window, never on every ingest event.
+		dedup.record(dedupKey)
 		dispatch(rule, msg)
 	}
 }

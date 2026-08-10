@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS project_teams (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    created_at DATETIME NOT NULL,
+    UNIQUE(project_id)
+);

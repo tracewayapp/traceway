@@ -22,6 +22,7 @@ func Start(ctx context.Context) {
 	startProfileArchiveDiskCleanup(ctx, parseRetentionDays(cfg.ProfileRetentionDays))
 	startOAuthSessionsPrune(ctx)
 	startAuthTokensPrune(ctx)
+	startOutboxPrune(ctx)
 }
 
 func parseRetentionDays(value string) int {

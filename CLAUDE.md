@@ -263,6 +263,8 @@ INGEST_ADMISSION_WAIT_SECONDS=5       # how long a request may wait for a slot b
 
 # Notifications
 NOTIFICATION_POLL_SECONDS=60          # polled rule evaluation interval; minimum 5, invalid values fall back to 60
+ONCALL_POLL_SECONDS=30                # on-call escalation worker interval; minimum 5, invalid values fall back to 30. Kept separate from NOTIFICATION_POLL_SECONDS so raising rule-evaluation intervals never delays paging. A buffered Wake() channel makes freshly opened pages notify L1 near-instantly regardless of this interval.
+OUTBOX_POLL_SECONDS=15                # notification outbox drain interval; minimum 5, invalid values fall back to 15. The outbox (backend/app/outbox, notification_outbox table in the main DB) is the persist-then-send layer for ALL notifications: rule dispatch and the escalator only enqueue (with an adapter-config snapshot) inside their transactions; the drain worker sends with retries (backoff 1m/5m/15m/60m, 5 attempts, then terminal failed + CaptureException). Crash-safe at-least-once: stale 'sending' rows are reclaimed after 5 min, cancelled rows can never resurrect (guarded status transitions), ack/resolve cancels queued page deliveries via outbox.CancelByKey. Cooldown and event-rule dedup record at enqueue commit (the durable promise), and fired_notifications is written at the terminal outcome. /api/health/deep exposes an `outbox` block; `traceway.outbox.*` metrics are emitted when monitoring is on; terminal rows are pruned daily (sent/cancelled 7d, failed 30d).
 
 # Retention (see "Data Retention" section below)
 SQLITE_RETENTION_DAYS=30              # 0 to disable; only applies in SQLite mode
@@ -703,6 +705,37 @@ Templates are DB rows seeded by migrations (`traceway-otel-agent` for the OTel h
 | GET | `/api/invitations/:token` | None | Get invitation info |
 | POST | `/api/invitations/:token/accept` | None | Accept (new user) |
 | POST | `/api/invitations/:token/accept-existing` | App | Accept (existing user) |
+
+**On-Call** (teams, schedules, escalation policies, pages)
+
+Org-scoped entities in the main DB. Teams (`teams`/`team_members`) own projects one-to-one (`project_teams`, unique on project_id). Schedules (`oncall_schedules`) store PagerDuty-style calendar layers as a JSON `definition` document (rotations daily/weekly/custom, handoff time/day, time-of-day and day-of-week restrictions); one-off overrides are normalized rows (`oncall_overrides`). The pure resolution engine lives in `backend/app/oncall/` (`ResolveRange`/`ResolveAt`, tz-aware calendar math, later layer wins, overrides trump all). Both apply the same stacking, so a schedule puts exactly one person on call at any instant: `ResolveAt` is `ResolveRange` over a single instant, and paging a whole schedule stack (waking the person an override was meant to relieve) is the bug it exists to prevent. Escalation policies (`escalation_policies`) hold JSON steps (`targets` schedule/user/team/channel + `delayMinutes`, `repeatCount`); rules page on-call via the `escalation` notification channel type (config `{"policyId"}`), special-cased in `notifications/dispatch.go` through `RegisterPageOpener` (wired in `cmd/run.go`). A fired rule opens a `pages` row (dedup key `ruleId|dedupToken` with a partial unique index while unresolved; rules without a dedup token dedup at rule level; refires bump `event_count` and never reset the escalation clock). The escalator worker (`oncall/escalator.go`, `ONCALL_POLL_SECONDS`) claims due pages in a transaction (pg advisory lock 824737002 for multi-instance), inserts `page_notifications` rows, resolves targets to users, delivers via each user's `user_contact_methods` (email/slack/pushover/telegram adapter configs; account-email fallback always), then escalates level by level until ack/resolve or exhaustion. `RequireOrganizationAccess` middleware (any org role) gates member-level reads; mutations are org-admin; page acknowledge deliberately requires no write access.
+
+| Method | Endpoint | Auth | Purpose |
+|--------|----------|------|---------|
+| GET/POST | `/api/organizations/:organizationId/teams` | Member / Admin | List (with members+projects) / create |
+| PUT/DELETE | `/api/organizations/:organizationId/teams/:teamId` | Admin | Update / delete |
+| PUT | `.../teams/:teamId/members`, `.../teams/:teamId/projects` | Admin | Replace ordered members / owned projects |
+| GET/POST | `/api/organizations/:organizationId/schedules` | Member / Admin | List / create |
+| GET/PUT/DELETE | `.../schedules/:scheduleId` | Member / Admin / Admin | Detail+overrides / whole-document update / delete |
+| GET | `.../schedules/:scheduleId/timeline?from=&to=` | Member | Rendered per-layer + final shifts (max 62 days) |
+| POST/DELETE | `.../schedules/:scheduleId/overrides(/:overrideId)` | Member | Create (any member, max 30d) / delete (creator, covered user, or admin) |
+| GET | `/api/organizations/:organizationId/oncall/now` | Member | Overview: per team/schedule current + next on-call |
+| GET | `/api/oncall/current?projectId=` | App | Owning team + current on-call for a project (issue page) |
+| GET | `/api/escalation-policies` | App | Policies of the project's org (channel dialog picker) |
+| GET/POST | `/api/organizations/:organizationId/escalation-policies` | Member / Admin | List / create |
+| PUT/DELETE | `.../escalation-policies/:id` | Admin | Update / delete (422 while referenced by a channel) |
+| POST | `/api/pages` | App | List (POST-body: status open/acknowledged/resolved/active + pagination) |
+| GET | `/api/pages/:id` | App | Detail + delivery log |
+| POST | `/api/pages/:id/acknowledge` | App (no write gate) | open -> acknowledged, stops escalation; 409 if not open |
+| POST | `/api/pages/:id/resolve` | App | open/acknowledged -> resolved; 409 if already resolved |
+| GET | `/api/pages/open-count` | App | Sidebar badge count |
+| GET/POST | `/api/contact-methods` | App | Own contact methods (self-scoped). Types: email, slack, pushover, telegram, sms. SMS requires Twilio (`TWILIO_ACCOUNT_SID` + `TWILIO_AUTH_TOKEN` + one of `TWILIO_FROM_NUMBER` / `TWILIO_MESSAGING_SERVICE_SID`); without them SMS is not offered at all — the list response carries `smsEnabled: false` so the type picker hides it; create, re-point, resend-code and test answer 422; the escalator drops existing sms methods before its "no methods left" check so those users fall back to the account email; and the adapter errors instead of reporting a delivery nobody received. Disabling and deleting a leftover sms method stay available. Creating/re-pointing an sms method starts code verification; unverified numbers are never paged |
+| PUT/DELETE | `/api/contact-methods/:id` | App | Update (incl. enabled toggle) / delete |
+| POST | `/api/contact-methods/:id/test` | App | Send a canned test through one method (422 for unverified sms) |
+| POST | `/api/contact-methods/:id/verify` | App (rate-limited) | Confirm the 6-digit SMS code (hashed at rest, 10-min expiry, 5-attempt cap). Deliberately **not** under `middleware.Transactional`: a wrong code answers 422, which would roll the consumed attempt back, so the handler manages its own transactions (nesting one under the middleware would also deadlock the single-connection SQLite main DB) |
+| POST | `/api/contact-methods/:id/resend-code` | App (rate-limited) | Re-issue the verification code |
+| GET/PUT | `/api/user-notification-rules` | App | Per-user notification-rule chains `{high: [{contactMethodId, delayMinutes}], low: [...]}` (PagerDuty-style: the page's urgency picks the chain; steps are enqueued at claim time as scheduled outbox deliveries and cancelled on ack; no chain = all enabled+verified methods immediately). Escalation policies carry `urgency: auto\|high\|low` in their definition (auto: critical -> high); pages store the resolved urgency |
+| GET/POST | `/api/ack/:token` | None (rate-limited) | Tokenized no-login acknowledge: per-delivery `twk_` tokens (SHA-256-hashed on page_notifications), GET = read-only summary (scanner-safe), POST = idempotent ack recorded as `acknowledged_via='link'` attributed to the delivery's recipient; 404 after resolve. Frontend page: `/ack/[token]` |
 
 **Logs**
 | Method | Endpoint | Auth | Purpose |

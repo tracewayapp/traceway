@@ -87,7 +87,11 @@
 	]);
 
 	function isPublicPath(pathname: string): boolean {
-		return PUBLIC_PATHS.has(pathname) || pathname.startsWith('/accept-invitation');
+		return (
+			PUBLIC_PATHS.has(pathname) ||
+			pathname.startsWith('/accept-invitation') ||
+			pathname.startsWith('/ack/')
+		);
 	}
 
 	// An unauthenticated visit to a protected path matches neither layout

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/tracewayapp/traceway/backend/app/config"
@@ -24,22 +23,28 @@ func StartEvaluator(ctx context.Context) {
 }
 
 func pollInterval() time.Duration {
-	seconds := 60
-	if v := config.Config.NotificationPollSeconds; v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil && parsed >= 5 {
-			seconds = parsed
-		}
-	}
-	return time.Duration(seconds) * time.Second
+	return config.PollSeconds(config.Config.NotificationPollSeconds, 60)
 }
 
 func seedCooldowns(ctx context.Context) {
 	entries, err := telemetry.FiredNotificationRepository.FindLastFiredPerRule(ctx)
 	if err != nil {
 		traceway.CaptureException(fmt.Errorf("failed to seed notification cooldowns: %w", err))
+	} else {
+		cooldowns.seed(entries)
+	}
+
+	// Backstop: fired_notifications rows only exist once an outcome is
+	// terminal, so a crash between enqueue and delivery would otherwise let
+	// the rule re-fire immediately at boot while its outbox row still exists.
+	enqueued, err := db.ExecuteTransaction(func(tx *sql.Tx) (map[int]time.Time, error) {
+		return transactional.OutboxRepository.LastEnqueuedPerRule(tx)
+	})
+	if err != nil {
+		traceway.CaptureException(fmt.Errorf("failed to seed notification cooldowns from outbox: %w", err))
 		return
 	}
-	cooldowns.seed(entries)
+	cooldowns.seed(enqueued)
 }
 
 func startPolledLoop(ctx context.Context) {

@@ -22,6 +22,17 @@ func (r *notificationChannelRepository) FindByProject(tx *sql.Tx, projectId uuid
 	)
 }
 
+// FindEscalationByOrganization returns every escalation channel across the
+// organization's projects in one query; callers match policy ids from the
+// config JSON in Go.
+func (r *notificationChannelRepository) FindEscalationByOrganization(tx *sql.Tx, organizationId int) ([]*models.NotificationChannel, error) {
+	return lit.SelectNamed[models.NotificationChannel](
+		tx,
+		"SELECT nc.id, nc.project_id, nc.name, nc.channel_type, nc.config, nc.enabled, nc.created_by, nc.created_at, nc.updated_at FROM notification_channels nc JOIN projects p ON p.id = nc.project_id WHERE p.organization_id = :organization_id AND nc.channel_type = 'escalation' ORDER BY nc.name ASC, nc.id ASC",
+		lit.P{"organization_id": organizationId},
+	)
+}
+
 func (r *notificationChannelRepository) FindById(tx *sql.Tx, id int) (*models.NotificationChannel, error) {
 	return lit.SelectSingleNamed[models.NotificationChannel](
 		tx,

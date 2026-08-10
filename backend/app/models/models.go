@@ -12,6 +12,20 @@ func (metricRegistryNaming) GetTableNameFromStructName(string) string {
 	return "metric_registry"
 }
 
+// The default pluralizer would produce "escalation_policys".
+type escalationPolicyNaming struct{ lit.DefaultDbNamingStrategy }
+
+func (escalationPolicyNaming) GetTableNameFromStructName(string) string {
+	return "escalation_policies"
+}
+
+// The default pluralizer would produce "outbox_deliveries".
+type notificationOutboxNaming struct{ lit.DefaultDbNamingStrategy }
+
+func (notificationOutboxNaming) GetTableNameFromStructName(string) string {
+	return "notification_outbox"
+}
+
 func Init(driver lit.Driver) {
 	lit.RegisterModel[Project](driver)
 	lit.RegisterModel[User](driver)
@@ -40,6 +54,22 @@ func Init(driver lit.Driver) {
 	lit.RegisterModel[NotificationChannel](driver)
 	lit.RegisterModel[NotificationRule](driver)
 	lit.RegisterModel[NotificationRuleWithChannel](driver)
+	lit.RegisterModel[Team](driver)
+	lit.RegisterModel[TeamWithCounts](driver)
+	lit.RegisterModel[TeamProjectRow](driver)
+	lit.RegisterModel[TeamMember](driver)
+	lit.RegisterModel[TeamMemberWithUser](driver)
+	lit.RegisterModel[ProjectTeam](driver)
+	lit.RegisterModel[OncallSchedule](driver)
+	lit.RegisterModel[OncallOverride](driver)
+	lit.RegisterModelWithNaming[EscalationPolicy](driver, escalationPolicyNaming{})
+	lit.RegisterModel[Page](driver)
+	lit.RegisterModel[UserContactMethod](driver)
+	lit.RegisterModel[UserNotificationRule](driver)
+	lit.RegisterModel[PageNotification](driver)
+	lit.RegisterModelWithNaming[OutboxDelivery](driver, notificationOutboxNaming{})
+	lit.RegisterModel[OutboxRuleEnqueue](driver)
+	lit.RegisterModel[OutboxHealthCounts](driver)
 
 	for _, register := range ExtensionModelRegistrations {
 		register(driver)

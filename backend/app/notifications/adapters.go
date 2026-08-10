@@ -4,26 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
+	"github.com/tracewayapp/traceway/backend/app/models"
 )
 
-type Severity string
+// Message and Severity live in models (as NotificationMessage /
+// NotificationSeverity) so the outbox package can persist them without
+// importing this package; the aliases keep every call site unchanged.
+type Severity = models.NotificationSeverity
 
 const (
-	SeverityInfo     Severity = "info"
-	SeverityWarning  Severity = "warning"
-	SeverityCritical Severity = "critical"
+	SeverityInfo     = models.NotificationSeverityInfo
+	SeverityWarning  = models.NotificationSeverityWarning
+	SeverityCritical = models.NotificationSeverityCritical
 )
 
-type Message struct {
-	Subject  string
-	Body     string
-	HTMLBody string
-	Severity Severity
-	RuleType string
-	RuleName string
-	URL      string
-	Endpoint string
-}
+type Message = models.NotificationMessage
 
 type Adapter interface {
 	Type() string
@@ -67,6 +63,12 @@ func NewAdapter(channelType string, configJSON json.RawMessage) (Adapter, error)
 		var cfg TelegramAdapter
 		if err := json.Unmarshal(configJSON, &cfg); err != nil {
 			return nil, fmt.Errorf("invalid telegram config: %w", err)
+		}
+		return &cfg, nil
+	case "sms":
+		var cfg SmsAdapter
+		if err := json.Unmarshal(configJSON, &cfg); err != nil {
+			return nil, fmt.Errorf("invalid sms config: %w", err)
 		}
 		return &cfg, nil
 	default:

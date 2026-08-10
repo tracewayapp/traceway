@@ -13,7 +13,10 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/notifications"
+	"github.com/tracewayapp/traceway/backend/app/oncall"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+
+	"github.com/google/uuid"
 	traceway "go.tracewayapp.com"
 )
 
@@ -43,7 +46,45 @@ type createChannelRequest struct {
 }
 
 var validChannelTypes = map[string]bool{
-	"email": true, "webhook": true, "slack": true, "github": true, "pushover": true, "telegram": true,
+	"email": true, "webhook": true, "slack": true, "github": true, "pushover": true, "telegram": true, "escalation": true,
+}
+
+// validateEscalationChannelConfig checks the {policyId} config against the
+// project's organization. Escalation channels have no adapter, so this
+// replaces the NewAdapter validation path. Returns a 422 message.
+func validateEscalationChannelConfig(tx *sql.Tx, projectId uuid.UUID, config json.RawMessage) (string, error) {
+	policyId := oncall.EscalationChannelPolicyId(config)
+	if policyId == 0 {
+		return "An escalation policy is required.", nil
+	}
+	policy, err := transactional.EscalationPolicyRepository.FindById(tx, policyId)
+	if err != nil {
+		return "", err
+	}
+	project, err := transactional.ProjectRepository.FindById(tx, projectId)
+	if err != nil {
+		return "", err
+	}
+	if policy == nil || project == nil || project.OrganizationId == nil || *project.OrganizationId != policy.OrganizationId {
+		return "Escalation policy not found in this project's organization.", nil
+	}
+	return "", nil
+}
+
+// validateChannelConfig routes to the right validation for the channel type.
+// Returns a 422 message, or an empty string when the config is valid.
+func validateChannelConfig(tx *sql.Tx, projectId uuid.UUID, channelType string, config json.RawMessage) (string, error) {
+	if channelType == "escalation" {
+		return validateEscalationChannelConfig(tx, projectId, config)
+	}
+	adapter, err := notifications.NewAdapter(channelType, config)
+	if err != nil {
+		return err.Error(), nil
+	}
+	if err := adapter.Validate(); err != nil {
+		return err.Error(), nil
+	}
+	return "", nil
 }
 
 func (ctrl *notificationChannelController) Create(ctx *gin.Context) {
@@ -69,17 +110,15 @@ func (ctrl *notificationChannelController) Create(ctx *gin.Context) {
 		return
 	}
 	if !validChannelTypes[req.ChannelType] {
-		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Channel type must be one of: email, webhook, slack, github, pushover, telegram."})
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Channel type must be one of: email, webhook, slack, github, pushover, telegram, escalation."})
 		return
 	}
 
-	adapter, err := notifications.NewAdapter(req.ChannelType, req.Config)
-	if err != nil {
-		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+	if message, err := validateChannelConfig(db.GetTx(ctx), projectId, req.ChannelType, req.Config); err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to validate channel config: %w", err))
 		return
-	}
-	if err := adapter.Validate(); err != nil {
-		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+	} else if message != "" {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": message})
 		return
 	}
 
@@ -142,17 +181,15 @@ func (ctrl *notificationChannelController) Update(ctx *gin.Context) {
 		return
 	}
 	if !validChannelTypes[req.ChannelType] {
-		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Channel type must be one of: email, webhook, slack, github, pushover, telegram."})
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Channel type must be one of: email, webhook, slack, github, pushover, telegram, escalation."})
 		return
 	}
 
-	adapter, err := notifications.NewAdapter(req.ChannelType, req.Config)
-	if err != nil {
-		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+	if message, err := validateChannelConfig(db.GetTx(ctx), projectId, req.ChannelType, req.Config); err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to validate channel config: %w", err))
 		return
-	}
-	if err := adapter.Validate(); err != nil {
-		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+	} else if message != "" {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": message})
 		return
 	}
 
@@ -236,6 +273,22 @@ func (ctrl *notificationChannelController) Test(ctx *gin.Context) {
 	}
 	if channel == nil || channel.ProjectId != projectId {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": "channel not found"})
+		return
+	}
+
+	// Testing an escalation channel opens a real page so the whole loop is
+	// exercised; the dialog warns that it pages the on-call responder.
+	if channel.ChannelType == "escalation" {
+		policyId := oncall.EscalationChannelPolicyId(json.RawMessage(channel.Config))
+		if policyId == 0 {
+			ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "An escalation policy is required."})
+			return
+		}
+		if err := oncall.OpenTestPage(policyId, projectId, channel.Id, channel.Name); err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("test page failed: %w", err))
+			return
+		}
+		ctx.JSON(http.StatusOK, gin.H{"success": true})
 		return
 	}
 

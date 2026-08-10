@@ -82,7 +82,8 @@
 		slack: 'Slack',
 		github: 'GitHub',
 		pushover: 'Pushover',
-		telegram: 'Telegram'
+		telegram: 'Telegram',
+		escalation: 'Escalation policy'
 	};
 
 	const tabDescriptions: Record<string, string> = {

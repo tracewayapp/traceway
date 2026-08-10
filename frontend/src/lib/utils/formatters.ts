@@ -63,6 +63,11 @@ export function formatRelativeTime(dateStr: string, timezone?: string): string {
 	return `${diffDays}d`;
 }
 
+export function formatRelativeTimeAgo(dateStr: string, timezone?: string): string {
+	const relative = formatRelativeTime(dateStr, timezone);
+	return relative === 'just now' ? relative : `${relative} ago`;
+}
+
 export type DateTimeFormat = 'full' | 'short' | 'date' | 'time' | 'datetime' | 'iso';
 
 export function formatDateTime(

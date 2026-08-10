@@ -1,6 +1,10 @@
 package config
 
-import "os"
+import (
+	"os"
+	"strconv"
+	"time"
+)
 
 type Cfg struct {
 	JWTSecret string
@@ -9,7 +13,7 @@ type Cfg struct {
 	PostgresHost     string
 	PostgresPort     string
 	PostgresDatabase string
-	PostgresUsername  string
+	PostgresUsername string
 	PostgresPassword string
 	PostgresSSLMode  string
 	SQLitePath       string
@@ -48,6 +52,13 @@ type Cfg struct {
 	SymbolicatorParser       string
 
 	NotificationPollSeconds string
+	OncallPollSeconds       string
+	OutboxPollSeconds       string
+
+	TwilioAccountSID          string
+	TwilioAuthToken           string
+	TwilioFromNumber          string
+	TwilioMessagingServiceSID string
 
 	SMTPEnabled  string
 	SMTPHost     string
@@ -89,6 +100,25 @@ var Config *Cfg
 
 func Init(c *Cfg) { Config = c }
 
+// PollSeconds parses a poll-interval value with a 5-second floor; empty or
+// invalid values fall back to defaultSeconds.
+func PollSeconds(value string, defaultSeconds int) time.Duration {
+	seconds := defaultSeconds
+	if value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil && parsed >= 5 {
+			seconds = parsed
+		}
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+// TwilioEnabled reports whether SMS sending is configured: account credentials
+// plus at least one sender (a from-number or a messaging service).
+func (c *Cfg) TwilioEnabled() bool {
+	return c.TwilioAccountSID != "" && c.TwilioAuthToken != "" &&
+		(c.TwilioFromNumber != "" || c.TwilioMessagingServiceSID != "")
+}
+
 func LoadFromEnv() *Cfg {
 	return &Cfg{
 		JWTSecret: os.Getenv("JWT_SECRET"),
@@ -97,7 +127,7 @@ func LoadFromEnv() *Cfg {
 		PostgresHost:     os.Getenv("POSTGRES_HOST"),
 		PostgresPort:     os.Getenv("POSTGRES_PORT"),
 		PostgresDatabase: os.Getenv("POSTGRES_DATABASE"),
-		PostgresUsername:  os.Getenv("POSTGRES_USERNAME"),
+		PostgresUsername: os.Getenv("POSTGRES_USERNAME"),
 		PostgresPassword: os.Getenv("POSTGRES_PASSWORD"),
 		PostgresSSLMode:  os.Getenv("POSTGRES_SSLMODE"),
 		SQLitePath:       os.Getenv("SQLITE_PATH"),
@@ -136,6 +166,13 @@ func LoadFromEnv() *Cfg {
 		SymbolicatorParser:       os.Getenv("SYMBOLICATOR_PARSER"),
 
 		NotificationPollSeconds: os.Getenv("NOTIFICATION_POLL_SECONDS"),
+		OncallPollSeconds:       os.Getenv("ONCALL_POLL_SECONDS"),
+		OutboxPollSeconds:       os.Getenv("OUTBOX_POLL_SECONDS"),
+
+		TwilioAccountSID:          os.Getenv("TWILIO_ACCOUNT_SID"),
+		TwilioAuthToken:           os.Getenv("TWILIO_AUTH_TOKEN"),
+		TwilioFromNumber:          os.Getenv("TWILIO_FROM_NUMBER"),
+		TwilioMessagingServiceSID: os.Getenv("TWILIO_MESSAGING_SERVICE_SID"),
 
 		SMTPEnabled:  os.Getenv("SMTP_ENABLED"),
 		SMTPHost:     os.Getenv("SMTP_HOST"),

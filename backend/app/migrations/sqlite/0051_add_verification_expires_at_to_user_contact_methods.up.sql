@@ -1,0 +1,1 @@
+ALTER TABLE user_contact_methods ADD COLUMN verification_expires_at DATETIME

@@ -57,6 +57,9 @@
 	let pushoverTtl = $state(0);
 	let telegramBotToken = $state('');
 	let telegramChatId = $state('');
+	let escalationPolicyId = $state<number | null>(null);
+	let escalationPolicies = $state<{ id: number; name: string }[]>([]);
+	let escalationPoliciesLoaded = $state(false);
 
 	const isEditing = $derived(channel !== null);
 
@@ -66,8 +69,28 @@
 		{ value: 'slack', label: 'Slack' },
 		{ value: 'github', label: 'GitHub' },
 		{ value: 'pushover', label: 'Pushover' },
-		{ value: 'telegram', label: 'Telegram' }
+		{ value: 'telegram', label: 'Telegram' },
+		{ value: 'escalation', label: 'Escalation policy' }
 	];
+
+	async function loadEscalationPolicies() {
+		try {
+			const res = await api.get('/escalation-policies', {
+				projectId: projectsState.currentProjectId ?? undefined
+			});
+			escalationPolicies = res.policies || [];
+		} catch {
+			escalationPolicies = [];
+		} finally {
+			escalationPoliciesLoaded = true;
+		}
+	}
+
+	$effect(() => {
+		if (open && channelType === 'escalation' && !escalationPoliciesLoaded) {
+			loadEscalationPolicies();
+		}
+	});
 
 	function resetForm() {
 		name = '';
@@ -97,6 +120,8 @@
 		pushoverTtl = 0;
 		telegramBotToken = '';
 		telegramChatId = '';
+		escalationPolicyId = null;
+		escalationPoliciesLoaded = false;
 	}
 
 	function populateFromChannel(ch: NotificationChannel) {
@@ -139,6 +164,8 @@
 		} else if (ch.channelType === 'telegram') {
 			telegramBotToken = config.botToken || '';
 			telegramChatId = config.chatId || '';
+		} else if (ch.channelType === 'escalation') {
+			escalationPolicyId = config.policyId ?? null;
 		}
 	}
 
@@ -193,6 +220,8 @@
 				botToken: telegramBotToken,
 				chatId: telegramChatId
 			};
+		} else if (channelType === 'escalation') {
+			return { policyId: escalationPolicyId };
 		}
 		return {};
 	}
@@ -525,6 +554,39 @@
 						placeholder="Destination user or group ID"
 						required
 					/>
+				</div>
+			{:else if channelType === 'escalation'}
+				<div class="space-y-2">
+					<Label>Escalation Policy</Label>
+					{#if escalationPoliciesLoaded && escalationPolicies.length === 0}
+						<p class="text-sm text-muted-foreground">
+							No escalation policies yet — create one on the
+							<a href="/on-call?tab=policies" class="text-blue-600 hover:underline dark:text-blue-400"
+								>On-Call page</a
+							>.
+						</p>
+					{:else}
+						<Select.Root
+							type="single"
+							value={escalationPolicyId !== null ? String(escalationPolicyId) : undefined}
+							onValueChange={(val) => {
+								if (val) escalationPolicyId = Number(val);
+							}}
+						>
+							<Select.Trigger class="w-full">
+								{escalationPolicies.find((p) => p.id === escalationPolicyId)?.name ??
+									'Select policy'}
+							</Select.Trigger>
+							<Select.Content>
+								{#each escalationPolicies as policy (policy.id)}
+									<Select.Item value={String(policy.id)}>{policy.name}</Select.Item>
+								{/each}
+							</Select.Content>
+						</Select.Root>
+					{/if}
+					<p class="text-xs text-muted-foreground">
+						Testing an escalation channel opens a real page and notifies the on-call responder.
+					</p>
 				</div>
 			{/if}
 

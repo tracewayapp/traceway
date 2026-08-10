@@ -1,0 +1,1 @@
+ALTER TABLE page_notifications ADD COLUMN IF NOT EXISTS ack_token_hash VARCHAR(64) NOT NULL DEFAULT ''

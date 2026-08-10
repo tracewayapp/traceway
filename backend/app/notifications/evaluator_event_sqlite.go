@@ -64,9 +64,11 @@ func evaluateNewError(ctx context.Context, rule *models.NotificationRuleWithChan
 			continue
 		}
 
-		dedup.record(dedupKey)
 		projectName := getProjectName(rule.ProjectId)
 		msg := buildNewErrorMessage(details, projectName)
+		// Record before dispatch: a persistently failing dispatch retries once
+		// per cooldown window, never on every ingest event.
+		dedup.record(dedupKey)
 		dispatch(rule, msg)
 	}
 }
@@ -92,9 +94,11 @@ func evaluateErrorRegression(ctx context.Context, rule *models.NotificationRuleW
 		}
 
 		details := getExceptionDetails(ctx, event.ProjectId, hash)
-		dedup.record(dedupKey)
 		projectName := getProjectName(rule.ProjectId)
 		msg := buildErrorRegressionMessage(details, projectName)
+		// Record before dispatch: a persistently failing dispatch retries once
+		// per cooldown window, never on every ingest event.
+		dedup.record(dedupKey)
 		dispatch(rule, msg)
 	}
 }

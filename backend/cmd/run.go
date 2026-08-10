@@ -21,6 +21,8 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/monitoring"
 	"github.com/tracewayapp/traceway/backend/app/notifications"
+	"github.com/tracewayapp/traceway/backend/app/oncall"
+	"github.com/tracewayapp/traceway/backend/app/outbox"
 	"github.com/tracewayapp/traceway/backend/app/recordings"
 	"github.com/tracewayapp/traceway/backend/app/retention"
 	"github.com/tracewayapp/traceway/backend/app/services"
@@ -146,6 +148,7 @@ func Run(opts ...Option) {
 	middleware.InitRequireWriteAccess()
 	middleware.InitRequireProjectAccess()
 	middleware.InitRequireAdminAccess()
+	middleware.InitRequireOrganizationAccess()
 	middleware.InitUseSourceMapAuth()
 
 	services.InitEmail()
@@ -156,6 +159,11 @@ func Run(opts ...Option) {
 		hook(ctx)
 	}
 
+	outbox.RegisterSender(notifications.AdapterSend)
+	outbox.RegisterTerminalHook(notifications.OnOutboxTerminal)
+	notifications.RegisterPageOpener(oncall.OpenPageFromDispatch)
+	outbox.StartDrain(ctx)
+	oncall.StartEscalator(ctx)
 	notifications.StartEvaluator(ctx)
 	retention.Start(ctx)
 	recordings.Start(ctx)
@@ -192,6 +200,7 @@ func Run(opts ...Option) {
 		monitoring.StartClickHouseReporter(ctx)
 		monitoring.StartBackendReporter(ctx)
 		monitoring.StartTelemetryDBReporter(ctx)
+		monitoring.StartOutboxReporter(ctx)
 	}
 
 	router.GET("/health", func(c *gin.Context) {

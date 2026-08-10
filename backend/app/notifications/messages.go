@@ -28,10 +28,11 @@ func endpointTimeRangeURL(now time.Time) string {
 
 func buildEndpointLatencyMessage(percentile string, latencyMs float64, thresholdMs float64, endpoint string, window int, projectName string) Message {
 	return Message{
-		Subject:  fmt.Sprintf("[%s] %s latency %.0fms on %s", projectName, percentile, latencyMs, endpoint),
-		Body:     fmt.Sprintf("The %s latency for %s has reached %.0fms over the last %d minutes (threshold: %.0fms).", percentile, endpoint, latencyMs, window, thresholdMs),
-		Severity: SeverityWarning,
-		URL:      endpointTimeRangeURL(time.Now()),
+		Subject:    fmt.Sprintf("[%s] %s latency %.0fms on %s", projectName, percentile, latencyMs, endpoint),
+		Body:       fmt.Sprintf("The %s latency for %s has reached %.0fms over the last %d minutes (threshold: %.0fms).", percentile, endpoint, latencyMs, window, thresholdMs),
+		Severity:   SeverityWarning,
+		URL:        endpointTimeRangeURL(time.Now()),
+		DedupToken: endpoint,
 	}
 }
 
@@ -61,19 +62,21 @@ func buildMetricThresholdMessage(metricName string, value float64, operator stri
 		aggregation = "avg"
 	}
 	return Message{
-		Subject:  fmt.Sprintf("[%s] Metric %s is %.2f (threshold: %s %.2f)", projectName, metricName, value, operator, threshold),
-		Body:     fmt.Sprintf("The metric %s has a %s of %.2f over the last %d minutes which violates the threshold %s %.2f.", metricName, aggregation, value, window, operator, threshold),
-		Severity: severity,
-		URL:      "/metrics?preset=1h",
+		Subject:    fmt.Sprintf("[%s] Metric %s is %.2f (threshold: %s %.2f)", projectName, metricName, value, operator, threshold),
+		Body:       fmt.Sprintf("The metric %s has a %s of %.2f over the last %d minutes which violates the threshold %s %.2f.", metricName, aggregation, value, window, operator, threshold),
+		Severity:   severity,
+		URL:        "/metrics?preset=1h",
+		DedupToken: metricName,
 	}
 }
 
 func buildNoDataMessage(dataType string, silenceMinutes int, projectName string) Message {
 	return Message{
-		Subject:  fmt.Sprintf("[%s] No %s data for %d minutes", projectName, dataType, silenceMinutes),
-		Body:     fmt.Sprintf("No %s data has been received for the last %d minutes.", dataType, silenceMinutes),
-		Severity: SeverityCritical,
-		URL:      "/",
+		Subject:    fmt.Sprintf("[%s] No %s data for %d minutes", projectName, dataType, silenceMinutes),
+		Body:       fmt.Sprintf("No %s data has been received for the last %d minutes.", dataType, silenceMinutes),
+		Severity:   SeverityCritical,
+		URL:        "/",
+		DedupToken: dataType,
 	}
 }
 
@@ -92,10 +95,11 @@ func buildErrorCountMessage(count int64, threshold int64, window int, projectNam
 
 func buildTaskDurationMessage(taskName string, p95Ms float64, thresholdMs float64, window int, projectName string) Message {
 	return Message{
-		Subject:  fmt.Sprintf("[%s] Task %s P95 %.0fms exceeds %.0fms", projectName, taskName, p95Ms, thresholdMs),
-		Body:     fmt.Sprintf("The task %s P95 duration is %.0fms over the last %d minutes (threshold: %.0fms).", taskName, p95Ms, window, thresholdMs),
-		Severity: SeverityWarning,
-		URL:      "/tasks?preset=1h",
+		Subject:    fmt.Sprintf("[%s] Task %s P95 %.0fms exceeds %.0fms", projectName, taskName, p95Ms, thresholdMs),
+		Body:       fmt.Sprintf("The task %s P95 duration is %.0fms over the last %d minutes (threshold: %.0fms).", taskName, p95Ms, window, thresholdMs),
+		Severity:   SeverityWarning,
+		URL:        "/tasks?preset=1h",
+		DedupToken: taskName,
 	}
 }
 
@@ -105,10 +109,11 @@ func buildTaskFailureRateMessage(taskName string, rate float64, threshold float6
 		severity = SeverityCritical
 	}
 	return Message{
-		Subject:  fmt.Sprintf("[%s] Task %s failure rate %.1f%% exceeds %.1f%%", projectName, taskName, rate, threshold),
-		Body:     fmt.Sprintf("The task %s failed %d of %d executions (%.1f%%) over the last %d minutes (threshold: %.1f%%).", taskName, failed, total, rate, window, threshold),
-		Severity: severity,
-		URL:      "/tasks?preset=1h",
+		Subject:    fmt.Sprintf("[%s] Task %s failure rate %.1f%% exceeds %.1f%%", projectName, taskName, rate, threshold),
+		Body:       fmt.Sprintf("The task %s failed %d of %d executions (%.1f%%) over the last %d minutes (threshold: %.1f%%).", taskName, failed, total, rate, window, threshold),
+		Severity:   severity,
+		URL:        "/tasks?preset=1h",
+		DedupToken: taskName,
 	}
 }
 
@@ -131,40 +136,44 @@ func buildEndpointErrorRateMessage(endpoint string, rate float64, threshold floa
 		severity = SeverityCritical
 	}
 	return Message{
-		Subject:  fmt.Sprintf("[%s] %s error rate %.1f%%", projectName, endpoint, rate),
-		Body:     fmt.Sprintf("The endpoint %s has an error rate of %.1f%% (threshold: %.1f%%).", endpoint, rate, threshold),
-		Severity: severity,
-		URL:      endpointTimeRangeURL(time.Now()),
+		Subject:    fmt.Sprintf("[%s] %s error rate %.1f%%", projectName, endpoint, rate),
+		Body:       fmt.Sprintf("The endpoint %s has an error rate of %.1f%% (threshold: %.1f%%).", endpoint, rate, threshold),
+		Severity:   severity,
+		URL:        endpointTimeRangeURL(time.Now()),
+		DedupToken: endpoint,
 	}
 }
 
 func buildImpactScoreCriticalMessage(endpoint string, score float64, reason string, projectName string) Message {
 	return Message{
-		Subject:  fmt.Sprintf("[%s] Endpoint %s impact became critical", projectName, endpoint),
-		Body:     fmt.Sprintf("The endpoint %s has become critical (impact score: %.2f). Reason: %s", endpoint, score, reason),
-		Severity: SeverityCritical,
-		URL:      endpointTimeRangeURL(time.Now()),
-		Endpoint: endpoint,
+		Subject:    fmt.Sprintf("[%s] Endpoint %s impact became critical", projectName, endpoint),
+		Body:       fmt.Sprintf("The endpoint %s has become critical (impact score: %.2f). Reason: %s", endpoint, score, reason),
+		Severity:   SeverityCritical,
+		URL:        endpointTimeRangeURL(time.Now()),
+		Endpoint:   endpoint,
+		DedupToken: endpoint,
 	}
 }
 
 func buildImpactScoreHighMessage(endpoint string, score float64, reason string, projectName string) Message {
 	return Message{
-		Subject:  fmt.Sprintf("[%s] Endpoint %s impact became high", projectName, endpoint),
-		Body:     fmt.Sprintf("The endpoint %s has become high impact (impact score: %.2f). Reason: %s", endpoint, score, reason),
-		Severity: SeverityWarning,
-		URL:      endpointTimeRangeURL(time.Now()),
-		Endpoint: endpoint,
+		Subject:    fmt.Sprintf("[%s] Endpoint %s impact became high", projectName, endpoint),
+		Body:       fmt.Sprintf("The endpoint %s has become high impact (impact score: %.2f). Reason: %s", endpoint, score, reason),
+		Severity:   SeverityWarning,
+		URL:        endpointTimeRangeURL(time.Now()),
+		Endpoint:   endpoint,
+		DedupToken: endpoint,
 	}
 }
 
 func buildImpactScoreMediumMessage(endpoint string, score float64, reason string, projectName string) Message {
 	return Message{
-		Subject:  fmt.Sprintf("[%s] Endpoint %s impact became medium", projectName, endpoint),
-		Body:     fmt.Sprintf("The endpoint %s has become medium impact (impact score: %.2f). Reason: %s", endpoint, score, reason),
-		Severity: SeverityInfo,
-		URL:      endpointTimeRangeURL(time.Now()),
-		Endpoint: endpoint,
+		Subject:    fmt.Sprintf("[%s] Endpoint %s impact became medium", projectName, endpoint),
+		Body:       fmt.Sprintf("The endpoint %s has become medium impact (impact score: %.2f). Reason: %s", endpoint, score, reason),
+		Severity:   SeverityInfo,
+		URL:        endpointTimeRangeURL(time.Now()),
+		Endpoint:   endpoint,
+		DedupToken: endpoint,
 	}
 }
 
@@ -181,10 +190,11 @@ func buildAiTraceCostMessage(traceName string, cost float64, threshold float64, 
 		severity = SeverityCritical
 	}
 	return Message{
-		Subject:  fmt.Sprintf("[%s] AI trace %s cost %s exceeds %s", projectName, traceName, formatCostForMessage(cost), formatCostForMessage(threshold)),
-		Body:     fmt.Sprintf("The AI trace \"%s\" cost %s, exceeding the threshold of %s.", traceName, formatCostForMessage(cost), formatCostForMessage(threshold)),
-		Severity: severity,
-		URL:      "/ai-traces?preset=1h",
+		Subject:    fmt.Sprintf("[%s] AI trace %s cost %s exceeds %s", projectName, traceName, formatCostForMessage(cost), formatCostForMessage(threshold)),
+		Body:       fmt.Sprintf("The AI trace \"%s\" cost %s, exceeding the threshold of %s.", traceName, formatCostForMessage(cost), formatCostForMessage(threshold)),
+		Severity:   severity,
+		URL:        "/ai-traces?preset=1h",
+		DedupToken: traceName,
 	}
 }
 
@@ -210,21 +220,23 @@ func (d ExceptionDetails) endpointForMessage() string {
 
 func buildNewErrorMessage(details ExceptionDetails, projectName string) Message {
 	return Message{
-		Subject:  fmt.Sprintf("[%s] New error: %s", projectName, details.ErrorType),
-		Body:     buildExceptionBody("A new error has been detected: "+details.ErrorType, details),
-		Severity: SeverityCritical,
-		URL:      fmt.Sprintf("/issues/%s", details.Hash),
-		Endpoint: details.endpointForMessage(),
+		Subject:    fmt.Sprintf("[%s] New error: %s", projectName, details.ErrorType),
+		Body:       buildExceptionBody("A new error has been detected: "+details.ErrorType, details),
+		Severity:   SeverityCritical,
+		URL:        fmt.Sprintf("/issues/%s", details.Hash),
+		Endpoint:   details.endpointForMessage(),
+		DedupToken: details.Hash,
 	}
 }
 
 func buildErrorRegressionMessage(details ExceptionDetails, projectName string) Message {
 	return Message{
-		Subject:  fmt.Sprintf("[%s] Resolved error reappeared: %s", projectName, details.ErrorType),
-		Body:     buildExceptionBody("A previously resolved error has reappeared: "+details.ErrorType, details),
-		Severity: SeverityCritical,
-		URL:      fmt.Sprintf("/issues/%s", details.Hash),
-		Endpoint: details.endpointForMessage(),
+		Subject:    fmt.Sprintf("[%s] Resolved error reappeared: %s", projectName, details.ErrorType),
+		Body:       buildExceptionBody("A previously resolved error has reappeared: "+details.ErrorType, details),
+		Severity:   SeverityCritical,
+		URL:        fmt.Sprintf("/issues/%s", details.Hash),
+		Endpoint:   details.endpointForMessage(),
+		DedupToken: details.Hash,
 	}
 }
 

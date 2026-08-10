@@ -15,6 +15,7 @@
   "dashboards": "Dashboards",
   "logs": "Logs",
   "alerts": "Alerts",
+  "on-call": "On-Call",
   "sso": "SSO",
   "cli": "CLI",
   "cli-auth": "CLI Authentication",

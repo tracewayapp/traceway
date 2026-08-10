@@ -853,19 +853,30 @@ body[data-page^="protocol"] .nx-mx-auto.nx-flex > div.nx-w-64.nx-shrink-0 {
   flex-direction: column;
 }
 
+/* Nextra wraps the nav list in a transition wrapper that is `overflow: hidden`.
+   Sizing it with a plain `flex: 1` pins it to the scroll container's height, so
+   a nav list taller than the viewport gets clipped instead of scrolled: the
+   scroll container sees a child that exactly fits and never grows a scrollbar,
+   and the wheel scrolls the page instead. `1 0 auto` still fills the container
+   when the list is short, but lets the wrapper grow past it when the list is
+   long, and `overflow: visible` hands the overflow to the scroll container. */
 .nextra-sidebar-container > :nth-child(2) > :nth-child(1) {
-  flex: 1;
+  flex: 1 0 auto;
+  min-height: 0;
+  overflow: visible;
 }
 
 /* Nextra's sticky-bottom panels (Edit-on-GitHub at the bottom of the TOC,
    collapse toggle at the bottom of the sidebar) ship with an opaque #111
    background and a 16px white-ish drop shadow meant to fade scrolling content
    beneath them. On Traceway's darker palette that reads as a misaligned box
-   with a glow. Drop the background + shadow, keep a hairline border-top so the
-   region is still subtly delineated. */
+   with a glow. Drop the shadow and keep a hairline border-top so the region is
+   still subtly delineated. The background stays opaque, just the page colour
+   rather than #111: these panels sit on top of a scrolling list, and a
+   transparent one lets nav items slide visibly underneath them. */
 nav.nextra-toc .nx-sticky.nx-bottom-0,
 .nextra-sidebar-container .nx-sticky.nx-bottom-0 {
-  background: transparent !important;
+  background: var(--ink-0) !important;
   box-shadow: none !important;
   border-top: 1px solid rgba(255, 255, 255, 0.06) !important;
 }

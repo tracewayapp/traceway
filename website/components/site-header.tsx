@@ -18,6 +18,7 @@ import {
   Braces,
   Plug,
   LayoutDashboard,
+  PhoneCall,
 } from "lucide-react";
 import { MobileNav } from "@/components/mobile-nav";
 import { DiscordIcon } from "@/components/discord-icon";
@@ -89,6 +90,12 @@ const SPECIALIZED: NavItem[] = [
     description: "JSON dashboards you version, sync, and share.",
     href: "/product/dashboards",
     icon: LayoutDashboard,
+  },
+  {
+    title: "On-Call",
+    description: "Rotating schedules, escalation policies, real paging.",
+    href: "/product/on-call",
+    icon: PhoneCall,
   },
   {
     title: "Performance",

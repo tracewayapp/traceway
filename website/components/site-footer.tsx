@@ -27,6 +27,7 @@ const COLUMNS: Column[] = [
       { label: "MCP Server", href: "/product/mcp" },
       { label: "AI Tracing", href: "/product/ai-tracing" },
       { label: "Dashboards as Code", href: "/product/dashboards" },
+      { label: "On-Call", href: "/product/on-call" },
       { label: "Performance", href: "/product/performance" },
       { label: "Flutter Session Replay", href: "/product/flutter-session-replay" },
       { label: "Symbolicator", href: "/product/symbolication" },

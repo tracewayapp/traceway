@@ -364,7 +364,7 @@
 								</Select.Content>
 							</Select.Root>
 						{/if}
-						<Input type="time" bind:value={restriction.startTime} class="w-28" />
+						<Input type="time" bind:value={restriction.startTime} class="w-32" />
 						<span class="text-xs text-muted-foreground">to</span>
 						{#if restriction.type === 'weekly'}
 							<Select.Root
@@ -382,7 +382,7 @@
 								</Select.Content>
 							</Select.Root>
 						{/if}
-						<Input type="time" bind:value={restriction.endTime} class="w-28" />
+						<Input type="time" bind:value={restriction.endTime} class="w-32" />
 						<Button
 							variant="ghost"
 							size="icon"

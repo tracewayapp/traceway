@@ -194,6 +194,35 @@
 		font-family: var(--font-body);
 	}
 
+	/* Native date/time inputs put their picker button straight after the text,
+	   so it floats in the middle of a wide field and gets clipped in a narrow
+	   one. Pin it to the trailing edge and keep it out of the text's way. */
+	input[type='time']::-webkit-calendar-picker-indicator,
+	input[type='date']::-webkit-calendar-picker-indicator,
+	input[type='datetime-local']::-webkit-calendar-picker-indicator,
+	input[type='month']::-webkit-calendar-picker-indicator,
+	input[type='week']::-webkit-calendar-picker-indicator {
+		margin-inline-start: auto;
+		padding-inline-start: 0.5rem;
+		opacity: 0.5;
+		cursor: pointer;
+	}
+
+	input[type='time']:hover::-webkit-calendar-picker-indicator,
+	input[type='date']:hover::-webkit-calendar-picker-indicator,
+	input[type='datetime-local']:hover::-webkit-calendar-picker-indicator,
+	input[type='month']:hover::-webkit-calendar-picker-indicator,
+	input[type='week']:hover::-webkit-calendar-picker-indicator {
+		opacity: 0.85;
+	}
+
+	/* The text half must never be squeezed into an ellipsis by the button. */
+	input[type='time']::-webkit-datetime-edit,
+	input[type='date']::-webkit-datetime-edit,
+	input[type='datetime-local']::-webkit-datetime-edit {
+		flex: 0 0 auto;
+	}
+
 	body {
 		font-family: var(--font-body);
 		font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01', 'ss03';

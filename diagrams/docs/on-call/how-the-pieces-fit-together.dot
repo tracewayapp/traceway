@@ -1,0 +1,41 @@
+// On-Call: alert rule -> page -> escalation -> a human's phone. Render:
+//   dot -Tsvg how-the-pieces-fit-together.dot -o how-the-pieces-fit-together.svg
+// Output belongs in docs/public/on-call/.
+// Palette matches the Traceway dark theme (app/globals.css).
+digraph oncall_pieces {
+  bgcolor="transparent";
+  rankdir=TB;
+  nodesep=0.32;
+  ranksep=0.42;
+  pad=0.2;
+  fontname="Helvetica";
+
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=14,
+        penwidth=1.3, margin="0.30,0.18",
+        color="#283041", fillcolor="#151a24", fontcolor="#f4f6fb"];
+  edge [color="#5a6374", penwidth=1.4, arrowsize=0.85,
+        fontname="Helvetica", fontsize=10, fontcolor="#8a93a6"];
+
+  rule    [label=<<b>an alert rule fires</b><br/><font color="#8a93a6" point-size="12">error rate &#183; latency &#183; metric threshold &#183; missing data</font>>,
+           fillcolor="#0f131c"];
+  // Subtitles stay in the default face: graphviz has no metrics for Menlo and
+  // sizes the box from a much narrower estimate, so a mono subtitle wider than
+  // its title spills out of the border.
+  channel [label=<<b>escalation channel</b><br/><font color="#8a93a6" point-size="12">channel type &#8220;escalation&#8221;, pointing at one policy</font>>];
+  page    [label=<<b>a page opens</b><br/><font color="#ffc46b" point-size="12">one incident: re-fires bump its count, nobody is notified twice</font>>,
+           color="#f0a020", fillcolor="#1c1710"];
+  step    [label=<<b>policy step</b><br/><font color="#8a93a6" point-size="12">level 1, level 2, &#8230; each with a delay</font>>];
+  target  [label=<<b>target</b><br/><font color="#8a93a6" point-size="12">schedule &#183; team &#183; user &#183; notification channel</font>>];
+  person  [label=<<b>the person on call</b><br/><font color="#8a93a6" point-size="12">resolved when the step runs, overrides included</font>>];
+  chain   [label=<<b>notification rule chain</b><br/><font color="#8a93a6" point-size="12">their own steps, for this page&#8217;s urgency</font>>];
+  method  [label=<<b>contact method</b><br/><font color="#b9a7ff" point-size="12">email &#183; Slack &#183; Pushover &#183; Telegram &#183; SMS</font>>,
+           color="#7c5cff", fillcolor="#15121f"];
+  ack     [label=<<b>acknowledged</b><br/><font color="#7ff0c8" point-size="12">escalation stops, queued deliveries are cancelled</font>>,
+           color="#22e0a8", fillcolor="#0c1714"];
+
+  rule -> channel -> page -> step -> target -> person -> chain -> method -> ack;
+
+  method -> step [constraint=false, tailport=e, headport=e,
+                  style=dashed, color="#ff5a5f", fontcolor="#ff8a8d",
+                  label="  nobody acknowledged:\l  next level after\l  the step's delay\l"];
+}

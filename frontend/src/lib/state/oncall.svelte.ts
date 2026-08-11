@@ -256,12 +256,16 @@ export function getCurrentUserFromToken(): { userId: number; email: string } | n
 class OncallState {
     teams = $state<Team[]>([]);
     teamsLoading = $state(false);
+    teamsError = $state('');
     schedules = $state<Schedule[]>([]);
     schedulesLoading = $state(false);
+    schedulesError = $state('');
     overview = $state<OverviewTeam[]>([]);
     overviewLoading = $state(false);
+    overviewError = $state('');
     policies = $state<EscalationPolicy[]>([]);
     policiesLoading = $state(false);
+    policiesError = $state('');
     openPagesCount = $state(0);
 
     canManage(organizationId: number): boolean {
@@ -281,10 +285,12 @@ class OncallState {
 
     async loadTeams(organizationId: number) {
         this.teamsLoading = true;
+        this.teamsError = '';
         try {
             const res = await api.get(`/organizations/${organizationId}/teams`);
             this.teams = res.teams || [];
-        } catch {
+        } catch (e: unknown) {
+            this.teamsError = e instanceof Error ? e.message : 'Failed to load teams';
             this.teams = [];
         } finally {
             this.teamsLoading = false;
@@ -293,10 +299,12 @@ class OncallState {
 
     async loadSchedules(organizationId: number) {
         this.schedulesLoading = true;
+        this.schedulesError = '';
         try {
             const res = await api.get(`/organizations/${organizationId}/schedules`);
             this.schedules = res.schedules || [];
-        } catch {
+        } catch (e: unknown) {
+            this.schedulesError = e instanceof Error ? e.message : 'Failed to load schedules';
             this.schedules = [];
         } finally {
             this.schedulesLoading = false;
@@ -305,10 +313,12 @@ class OncallState {
 
     async loadOverview(organizationId: number) {
         this.overviewLoading = true;
+        this.overviewError = '';
         try {
             const res = await api.get(`/organizations/${organizationId}/oncall/now`);
             this.overview = res.teams || [];
-        } catch {
+        } catch (e: unknown) {
+            this.overviewError = e instanceof Error ? e.message : 'Failed to load who is on call';
             this.overview = [];
         } finally {
             this.overviewLoading = false;
@@ -327,7 +337,12 @@ class OncallState {
     async updateTeam(
         organizationId: number,
         teamId: number,
-        body: { name: string; description: string }
+        body: {
+            name: string;
+            description: string;
+            memberUserIds?: number[];
+            projectIds?: string[];
+        }
     ) {
         await api.put(`/organizations/${organizationId}/teams/${teamId}`, body);
     }
@@ -418,10 +433,12 @@ class OncallState {
 
     async loadPolicies(organizationId: number) {
         this.policiesLoading = true;
+        this.policiesError = '';
         try {
             const res = await api.get(`/organizations/${organizationId}/escalation-policies`);
             this.policies = res.policies || [];
-        } catch {
+        } catch (e: unknown) {
+            this.policiesError = e instanceof Error ? e.message : 'Failed to load escalation policies';
             this.policies = [];
         } finally {
             this.policiesLoading = false;

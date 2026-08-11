@@ -5,7 +5,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import * as Select from '$lib/components/ui/select';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
-	import { Plus } from '@lucide/svelte';
+	import { Check, Plus } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
 	import { getCurrentUserFromToken, type ContactMethod } from '$lib/state/oncall.svelte';
@@ -13,10 +13,14 @@
 	interface Props {
 		open: boolean;
 		smsEnabled: boolean;
+		// When set, the dialog edits that method instead of creating one.
+		method?: ContactMethod | null;
 		onSaved: (created?: ContactMethod) => void;
 	}
 
-	let { open = $bindable(), smsEnabled, onSaved }: Props = $props();
+	let { open = $bindable(), smsEnabled, method = null, onSaved }: Props = $props();
+
+	const isEditing = $derived(method !== null);
 
 	let methodType = $state('email');
 	let loading = $state(false);
@@ -48,19 +52,20 @@
 	]);
 
 	$effect(() => {
-		if (open) {
-			methodType = 'email';
-			email = '';
-			slackWebhookUrl = '';
-			slackChannel = '';
-			slackUsername = '';
-			pushoverUserKey = '';
-			pushoverAppToken = '';
-			telegramBotToken = '';
-			telegramChatId = '';
-			smsPhoneNumber = '';
-			error = '';
-		}
+		if (!open) return;
+		const editing = method;
+		const config = (editing?.config ?? {}) as Record<string, string>;
+		methodType = editing?.methodType ?? 'email';
+		email = config.email ?? '';
+		slackWebhookUrl = config.webhookUrl ?? '';
+		slackChannel = config.channel ?? '';
+		slackUsername = config.username ?? '';
+		pushoverUserKey = config.userKey ?? '';
+		pushoverAppToken = config.appToken ?? '';
+		telegramBotToken = config.botToken ?? '';
+		telegramChatId = config.chatId ?? '';
+		smsPhoneNumber = config.phoneNumber ?? '';
+		error = '';
 	});
 
 	function buildConfig(): Record<string, string> {
@@ -88,9 +93,18 @@
 		loading = true;
 		error = '';
 		try {
-			const created = await api.post('/contact-methods', { methodType, config: buildConfig() });
-			toast.success('Successfully created the Contact Method', { position: 'top-center' });
-			onSaved(created);
+			if (method) {
+				const updated = await api.put(`/contact-methods/${method.id}`, {
+					methodType,
+					config: buildConfig()
+				});
+				toast.success('Successfully updated the Contact Method', { position: 'top-center' });
+				onSaved(updated);
+			} else {
+				const created = await api.post('/contact-methods', { methodType, config: buildConfig() });
+				toast.success('Successfully created the Contact Method', { position: 'top-center' });
+				onSaved(created);
+			}
 		} catch (e: unknown) {
 			error = e instanceof Error ? e.message : 'Failed to save contact method';
 		} finally {
@@ -102,9 +116,11 @@
 <AlertDialog.Root {open} onOpenChange={(isOpen) => (open = isOpen)}>
 	<AlertDialog.Content class="max-h-[90vh] max-w-md overflow-y-auto">
 		<AlertDialog.Header>
-			<AlertDialog.Title>New Contact Method</AlertDialog.Title>
+			<AlertDialog.Title>{isEditing ? 'Edit Contact Method' : 'New Contact Method'}</AlertDialog.Title>
 			<AlertDialog.Description>
-				Add a way for Traceway to reach you when you're paged
+				{isEditing
+					? 'Change where Traceway reaches you when you\'re paged'
+					: "Add a way for Traceway to reach you when you're paged"}
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 
@@ -207,9 +223,14 @@
 
 		<AlertDialog.Footer>
 			<AlertDialog.Cancel disabled={loading}>Cancel</AlertDialog.Cancel>
-			<Button variant="success" onclick={handleSubmit} disabled={loading}>
-				<Plus class="mr-2 h-4 w-4" />
-				{loading ? 'Creating...' : 'New Contact Method'}
+			<Button variant={isEditing ? 'default' : 'success'} onclick={handleSubmit} disabled={loading}>
+				{#if isEditing}
+					<Check class="mr-2 h-4 w-4" />
+					{loading ? 'Updating...' : 'Update Contact Method'}
+				{:else}
+					<Plus class="mr-2 h-4 w-4" />
+					{loading ? 'Creating...' : 'New Contact Method'}
+				{/if}
 			</Button>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>

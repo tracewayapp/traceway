@@ -44,6 +44,15 @@
 
 {#if oncallState.overviewLoading}
 	<div class="flex justify-center py-12"><LoadingCircle size="xlg" /></div>
+{:else if oncallState.overviewError}
+	<div
+		class="flex flex-col items-center justify-center gap-3 rounded-md bg-muted py-20 text-center text-muted-foreground"
+	>
+		<p class="text-sm text-destructive">{oncallState.overviewError}</p>
+		<Button variant="outline" size="sm" onclick={() => oncallState.loadOverview(organizationId)}>
+			Retry
+		</Button>
+	</div>
 {:else if overview.length === 0}
 	<div
 		class="flex flex-col items-center justify-center rounded-md bg-muted py-20 text-center text-muted-foreground"

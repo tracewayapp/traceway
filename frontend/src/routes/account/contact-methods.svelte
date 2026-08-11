@@ -17,7 +17,8 @@
 		MessageSquare,
 		Bell,
 		Smartphone,
-		ShieldCheck
+		ShieldCheck,
+		Pencil
 	} from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
@@ -25,10 +26,19 @@
 	import ContactMethodDialog from './contact-method-dialog.svelte';
 	import VerifyCodeDialog from './verify-code-dialog.svelte';
 
+	interface Props {
+		onMethodsChanged?: () => void;
+	}
+
+	let { onMethodsChanged }: Props = $props();
+
 	let methods = $state<ContactMethod[]>([]);
 	let smsEnabled = $state(false);
 	let loading = $state(true);
+	let loadError = $state('');
 	let showCreate = $state(false);
+	let showEdit = $state(false);
+	let methodToEdit = $state<ContactMethod | null>(null);
 	let methodToDelete = $state<ContactMethod | null>(null);
 	let deleting = $state(false);
 	let deleteError = $state('');
@@ -76,11 +86,13 @@
 
 	async function loadMethods() {
 		loading = true;
+		loadError = '';
 		try {
 			const res = await api.get('/contact-methods');
 			methods = res.methods || [];
 			smsEnabled = res.smsEnabled === true;
-		} catch {
+		} catch (e: unknown) {
+			loadError = e instanceof Error ? e.message : 'Failed to load contact methods';
 			methods = [];
 		} finally {
 			loading = false;
@@ -149,6 +161,7 @@
 			toast.success('Successfully deleted the Contact Method', { position: 'top-center' });
 			methodToDelete = null;
 			loadMethods();
+			onMethodsChanged?.();
 		} catch (e: unknown) {
 			deleteError = e instanceof Error ? e.message : 'Failed to delete contact method';
 		} finally {
@@ -176,6 +189,13 @@
 
 {#if loading}
 	<div class="flex justify-center py-12"><LoadingCircle size="lg" /></div>
+{:else if loadError}
+	<div
+		class="flex flex-col items-center justify-center gap-3 rounded-md bg-muted py-20 text-center text-muted-foreground"
+	>
+		<p class="text-sm text-destructive">{loadError}</p>
+		<Button variant="outline" size="sm" onclick={() => loadMethods()}>Retry</Button>
+	</div>
 {:else if methods.length === 0}
 	<div
 		class="flex flex-col items-center justify-center rounded-md bg-muted py-20 text-center text-muted-foreground"
@@ -259,6 +279,17 @@
 								<Button
 									variant="ghost"
 									size="icon"
+									title="Edit"
+									onclick={() => {
+										methodToEdit = method;
+										showEdit = true;
+									}}
+								>
+									<Pencil class="h-4 w-4" />
+								</Button>
+								<Button
+									variant="ghost"
+									size="icon"
 									title="Delete"
 									onclick={() => {
 										deleteError = '';
@@ -288,6 +319,20 @@
 	}}
 />
 
+<ContactMethodDialog
+	bind:open={showEdit}
+	{smsEnabled}
+	method={methodToEdit}
+	onSaved={(updated) => {
+		showEdit = false;
+		methodToEdit = null;
+		loadMethods();
+		if (updated && updated.methodType === 'sms' && updated.verified === false) {
+			openVerify(updated, true);
+		}
+	}}
+/>
+
 <VerifyCodeDialog
 	bind:open={showVerify}
 	methodId={verifyMethod?.id ?? null}
@@ -310,7 +355,8 @@
 			<AlertDialog.Title>Delete Contact Method</AlertDialog.Title>
 			<AlertDialog.Description>
 				Are you sure you want to delete this {methodTypeLabels[methodToDelete?.methodType ?? ''] ??
-					''} contact method? You will no longer be paged through it.
+					''} contact method? You will no longer be paged through it, and any step of your
+				notification rules that uses it is removed too. To change where it points, edit it instead.
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 		<ErrorAlert error={deleteError} />

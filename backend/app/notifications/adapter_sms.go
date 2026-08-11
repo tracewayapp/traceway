@@ -74,7 +74,8 @@ func (a *SmsAdapter) Send(ctx context.Context, msg Message) error {
 		Message string `json:"message"`
 	}
 	if json.Unmarshal(payload, &twilioError) == nil && twilioError.Message != "" {
-		return fmt.Errorf("twilio returned %d (code %d): %s", resp.StatusCode, twilioError.Code, twilioError.Message)
+		message := strings.ReplaceAll(twilioError.Message, a.PhoneNumber, MaskPhoneNumber(a.PhoneNumber))
+		return fmt.Errorf("twilio returned %d (code %d): %s", resp.StatusCode, twilioError.Code, message)
 	}
 	return fmt.Errorf("twilio returned %d", resp.StatusCode)
 }

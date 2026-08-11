@@ -54,13 +54,18 @@ func dispatch(rule *models.NotificationRuleWithChannel, msg Message) bool {
 			recordFiredNotification(rule, msg, "failed", "escalation pager not initialized")
 			return false
 		}
-		if err := pageOpener(channel.Config, rule, msg); err != nil {
+		opened, err := pageOpener(channel.Config, rule, msg)
+		if err != nil {
 			recordFiredNotification(rule, msg, "failed", err.Error())
 			traceway.CaptureException(fmt.Errorf("failed to open page (rule=%d): %w", rule.Id, err))
 			return false
 		}
 		cooldowns.recordFire(rule.Id)
-		recordFiredNotification(rule, msg, "sent", "")
+		status := "sent"
+		if !opened {
+			status = "deduped"
+		}
+		recordFiredNotification(rule, msg, status, "")
 		return true
 	}
 

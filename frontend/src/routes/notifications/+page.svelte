@@ -725,6 +725,10 @@
 										<Badge class="bg-green-600 text-white">Sent</Badge>
 									{:else if item.status === 'failed'}
 										<Badge variant="destructive">Failed</Badge>
+									{:else if item.status === 'deduped'}
+										<Badge variant="secondary" title="Folded into a page that was already open">
+											Deduped
+										</Badge>
 									{:else}
 										<Badge variant="secondary">Skipped</Badge>
 									{/if}
@@ -843,7 +847,13 @@
 		<AlertDialog.Header>
 			<AlertDialog.Title>Test Channel</AlertDialog.Title>
 			<AlertDialog.Description>
-				Send a test notification to "{testingChannel?.name}"? This will deliver a test message through the configured channel.
+				{#if testingChannel?.channelType === 'escalation'}
+					Testing "{testingChannel?.name}" opens a real page and notifies whoever is on call, exactly
+					as a firing rule would. Resolve the page from On-Call when you are done.
+				{:else}
+					Send a test notification to "{testingChannel?.name}"? This will deliver a test message
+					through the configured channel.
+				{/if}
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 		{#if testError}

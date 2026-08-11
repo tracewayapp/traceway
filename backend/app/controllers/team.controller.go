@@ -4,11 +4,13 @@ import (
 	"database/sql"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/oncall"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 
 	"github.com/gin-gonic/gin"
@@ -38,9 +40,13 @@ type createTeamRequest struct {
 	ProjectIds    []uuid.UUID `json:"projectIds"`
 }
 
+// MemberUserIds and ProjectIds are optional; when present the whole edit
+// applies in one transaction.
 type updateTeamRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	Name          string       `json:"name"`
+	Description   string       `json:"description"`
+	MemberUserIds *[]int       `json:"memberUserIds"`
+	ProjectIds    *[]uuid.UUID `json:"projectIds"`
 }
 
 type setTeamMembersRequest struct {
@@ -188,12 +194,43 @@ func (c *teamController) Update(ctx *gin.Context) {
 		return
 	}
 
+	if request.MemberUserIds != nil {
+		if message, err := c.checkMembersInOrg(tx, organizationId, *request.MemberUserIds); err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to validate team members: %w", err))
+			return
+		} else if message != "" {
+			ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": message})
+			return
+		}
+	}
+	if request.ProjectIds != nil {
+		if message, err := c.checkProjectsAssignable(tx, organizationId, team.Id, *request.ProjectIds); err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to validate team projects: %w", err))
+			return
+		} else if message != "" {
+			ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": message})
+			return
+		}
+	}
+
 	team.Name = request.Name
 	team.Description = request.Description
 	team.UpdatedAt = time.Now().UTC()
 	if err := transactional.TeamRepository.Update(tx, team); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to update team: %w", err))
 		return
+	}
+	if request.MemberUserIds != nil {
+		if err := transactional.TeamRepository.SetMembers(tx, team.Id, *request.MemberUserIds); err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to set team members: %w", err))
+			return
+		}
+	}
+	if request.ProjectIds != nil {
+		if err := transactional.TeamRepository.SetProjects(tx, team.Id, *request.ProjectIds); err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to set team projects: %w", err))
+			return
+		}
 	}
 	ctx.JSON(http.StatusOK, team)
 }
@@ -206,6 +243,17 @@ func (c *teamController) Delete(ctx *gin.Context) {
 	if !ok {
 		return
 	}
+
+	message, err := c.checkPolicyReferences(tx, organizationId, team.Id)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to check referencing policies: %w", err))
+		return
+	}
+	if message != "" {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": message})
+		return
+	}
+
 	if err := transactional.TeamRepository.Delete(tx, team.Id); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to delete team: %w", err))
 		return
@@ -284,6 +332,35 @@ func (c *teamController) loadTeam(ctx *gin.Context, organizationId int) (*models
 		return nil, false
 	}
 	return team, true
+}
+
+// checkPolicyReferences returns a user-facing message when an escalation policy
+// targets the team or one of its schedules.
+func (c *teamController) checkPolicyReferences(tx *sql.Tx, organizationId int, teamId int) (string, error) {
+	referencing, err := oncall.PoliciesReferencing(tx, organizationId, oncall.TargetTeam, teamId)
+	if err != nil {
+		return "", err
+	}
+	if len(referencing) > 0 {
+		return "This team is used by escalation policy(ies): " + strings.Join(referencing, ", ") + ". Remove those steps first.", nil
+	}
+
+	schedules, err := transactional.OncallScheduleRepository.ListByTeam(tx, teamId)
+	if err != nil {
+		return "", err
+	}
+	scheduleIds := make([]int, 0, len(schedules))
+	for _, schedule := range schedules {
+		scheduleIds = append(scheduleIds, schedule.Id)
+	}
+	referencing, err = oncall.PoliciesReferencing(tx, organizationId, oncall.TargetSchedule, scheduleIds...)
+	if err != nil {
+		return "", err
+	}
+	if len(referencing) > 0 {
+		return "Deleting this team would delete schedules used by escalation policy(ies): " + strings.Join(referencing, ", ") + ". Remove those steps first.", nil
+	}
+	return "", nil
 }
 
 // checkMembersInOrg returns a user-facing message when a userId is not a

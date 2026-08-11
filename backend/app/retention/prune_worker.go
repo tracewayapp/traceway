@@ -13,7 +13,8 @@ import (
 
 // startDBPruneWorker runs prune once at startup and then every interval until
 // ctx is cancelled, inside a panic-guarded goroutine. It is the shared
-// scaffolding behind the main-DB retention workers (oauth_sessions, auth_tokens).
+// scaffolding behind the main-DB retention workers (oauth_sessions,
+// auth_tokens, notification_outbox).
 func startDBPruneWorker(ctx context.Context, name string, interval time.Duration, prune func(tx *sql.Tx) (int64, error)) {
 	config.Logf("Starting %s prune worker (interval: %s)", name, interval)
 

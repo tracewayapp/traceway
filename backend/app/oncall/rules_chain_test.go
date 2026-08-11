@@ -250,6 +250,79 @@ func TestRuleChainSkipsUnusableStepsAndFallsBack(t *testing.T) {
 	}
 }
 
+// Dropping the leading zero-delay step must not postpone the first page.
+func TestRuleChainRebasesWhenTheLeadingStepIsDropped(t *testing.T) {
+	fixture := setupEscalatorDB(t)
+	disabledId := createContactMethod(t, fixture.Alice, "email", `{"email":"first@example.com"}`, false, true)
+	secondId := createContactMethod(t, fixture.Alice, "email", `{"email":"second@example.com"}`, true, true)
+	thirdId := createContactMethod(t, fixture.Alice, "email", `{"email":"third@example.com"}`, true, true)
+	setRules(t, fixture.Alice, models.UrgencyHigh, []models.UserNotificationRule{
+		{ContactMethodId: disabledId, DelayMinutes: 0},
+		{ContactMethodId: secondId, DelayMinutes: 15},
+		{ContactMethodId: thirdId, DelayMinutes: 20},
+	})
+
+	policyId := createPolicy(t, fixture.OrgId, singleStepPolicy(fixture.Alice))
+	page := openTestPageForPolicy(t, fixture, policyId, "rebase1|/issues/abc")
+	now := time.Now().UTC()
+	runEscalatorTick(context.Background(), now)
+
+	rows := pageNotifications(t, page.Id)
+	if len(rows) != 2 {
+		t.Fatalf("expected the 2 surviving steps, got %d", len(rows))
+	}
+	if rows[0].TargetDesc != "s***@example.com (email)" {
+		t.Errorf("first surviving step = %q, want no delay suffix", rows[0].TargetDesc)
+	}
+	if rows[0].ScheduledFor == nil || rows[0].ScheduledFor.After(now.Add(time.Minute)) {
+		t.Errorf("first surviving step scheduled for %v, want immediately", rows[0].ScheduledFor)
+	}
+	// 20m - 15m: the spacing between the surviving steps is preserved.
+	if rows[1].TargetDesc != "t***@example.com (email), +5m" {
+		t.Errorf("second surviving step = %q, want a 5 minute gap", rows[1].TargetDesc)
+	}
+}
+
+// An intact leading delay is kept; the rebase must not erase it.
+func TestRuleChainKeepsAnIntentionalLeadingDelay(t *testing.T) {
+	fixture := setupEscalatorDB(t)
+	firstId := createContactMethod(t, fixture.Alice, "email", `{"email":"first@example.com"}`, true, true)
+	setRules(t, fixture.Alice, models.UrgencyHigh, []models.UserNotificationRule{
+		{ContactMethodId: firstId, DelayMinutes: 10},
+	})
+
+	policyId := createPolicy(t, fixture.OrgId, singleStepPolicy(fixture.Alice))
+	page := openTestPageForPolicy(t, fixture, policyId, "rebase2|/issues/abc")
+	runEscalatorTick(context.Background(), time.Now().UTC())
+
+	rows := pageNotifications(t, page.Id)
+	if len(rows) != 1 || rows[0].TargetDesc != "f***@example.com (email), +10m" {
+		t.Errorf("intact leading delay should survive, got %+v", rows)
+	}
+}
+
+// An oversized target_desc must be clamped, not fail the claim insert.
+func TestOversizedTargetDescIsClamped(t *testing.T) {
+	fixture := setupEscalatorDB(t)
+	long := strings.Repeat("a", 400) + "@example.com"
+	methodId := createContactMethod(t, fixture.Alice, "email", `{"email":"`+long+`"}`, true, true)
+	setRules(t, fixture.Alice, models.UrgencyHigh, []models.UserNotificationRule{
+		{ContactMethodId: methodId, DelayMinutes: 0},
+	})
+
+	policyId := createPolicy(t, fixture.OrgId, singleStepPolicy(fixture.Alice))
+	page := openTestPageForPolicy(t, fixture, policyId, "clamp1|/issues/abc")
+	runEscalatorTick(context.Background(), time.Now().UTC())
+
+	rows := pageNotifications(t, page.Id)
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 notification, got %d", len(rows))
+	}
+	if len(rows[0].TargetDesc) > maxTargetDescLength {
+		t.Errorf("target desc is %d chars, want at most %d", len(rows[0].TargetDesc), maxTargetDescLength)
+	}
+}
+
 // An SMS method can outlive its transport: the credentials are removed after
 // the method was verified. The page must not vanish into an unsendable
 // channel, so SMS is skipped and the account-email fallback still fires.
@@ -306,7 +379,7 @@ func TestLowUrgencyPageRunsLowChain(t *testing.T) {
 	runEscalatorTick(context.Background(), time.Now().UTC())
 
 	rows := pageNotifications(t, page.Id)
-	if len(rows) != 1 || rows[0].MethodType != "email" || rows[0].TargetDesc != "low@example.com (email)" {
+	if len(rows) != 1 || rows[0].MethodType != "email" || rows[0].TargetDesc != "l***@example.com (email)" {
 		t.Errorf("low chain should run the email step, got %+v", rows)
 	}
 }

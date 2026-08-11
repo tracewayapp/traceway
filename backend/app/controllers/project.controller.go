@@ -8,6 +8,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/outbox"
 	"github.com/tracewayapp/traceway/backend/app/profiling"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"net/http"
@@ -312,6 +313,9 @@ func (p projectController) DeleteProject(c *gin.Context) {
 		}
 		if project.Name != request.Name {
 			return false, nil
+		}
+		if err := outbox.CancelForProject(tx, projectId); err != nil {
+			return false, err
 		}
 		if err := transactional.ProjectRepository.Delete(tx, projectId); err != nil {
 			return false, err

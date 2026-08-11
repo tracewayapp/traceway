@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import * as Sidebar from '$lib/components/ui/sidebar';
 	import { useSidebar } from '$lib/components/ui/sidebar';
 	import { oncallState } from '$lib/state/oncall.svelte';
@@ -109,7 +108,10 @@
 
 	const sidebar = useSidebar();
 
-	onMount(() => {
+	// Synchronous read so the badge tracks project switches.
+	$effect(() => {
+		const projectId = projectsState.currentProjectId;
+		if (!projectId) return;
 		oncallState.refreshOpenCount();
 		const interval = setInterval(() => oncallState.refreshOpenCount(), 60000);
 		return () => clearInterval(interval);

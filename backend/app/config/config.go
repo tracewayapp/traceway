@@ -55,6 +55,8 @@ type Cfg struct {
 	OncallPollSeconds       string
 	OutboxPollSeconds       string
 
+	AllowPrivateNotificationTargets string
+
 	TwilioAccountSID          string
 	TwilioAuthToken           string
 	TwilioFromNumber          string
@@ -168,6 +170,8 @@ func LoadFromEnv() *Cfg {
 		NotificationPollSeconds: os.Getenv("NOTIFICATION_POLL_SECONDS"),
 		OncallPollSeconds:       os.Getenv("ONCALL_POLL_SECONDS"),
 		OutboxPollSeconds:       os.Getenv("OUTBOX_POLL_SECONDS"),
+
+		AllowPrivateNotificationTargets: os.Getenv("ALLOW_PRIVATE_NOTIFICATION_TARGETS"),
 
 		TwilioAccountSID:          os.Getenv("TWILIO_ACCOUNT_SID"),
 		TwilioAuthToken:           os.Getenv("TWILIO_AUTH_TOKEN"),

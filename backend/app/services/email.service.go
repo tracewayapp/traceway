@@ -141,14 +141,15 @@ func (e *emailService) sendMail(to []string, msg []byte) error {
 		return fmt.Errorf("SMTP dial failed: %w", err)
 	}
 
+	// Must be set before smtp.NewClient, which blocks reading the server greeting.
+	conn.SetDeadline(time.Now().Add(10 * time.Second))
+
 	client, err := smtp.NewClient(conn, e.host)
 	if err != nil {
 		conn.Close()
 		return fmt.Errorf("SMTP client failed: %w", err)
 	}
 	defer client.Close()
-
-	conn.SetDeadline(time.Now().Add(10 * time.Second))
 
 	if ok, _ := client.Extension("STARTTLS"); ok {
 		if err := client.StartTLS(&tls.Config{ServerName: e.host}); err != nil {

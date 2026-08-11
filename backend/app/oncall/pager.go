@@ -32,10 +32,10 @@ func EscalationChannelPolicyId(configJSON json.RawMessage) int {
 // opener (see notifications.RegisterPageOpener). It runs inside dispatch for
 // rules targeting an escalation channel: instead of sending anything, it opens
 // (or dedups into) a page; the escalator worker does all notifying.
-func OpenPageFromDispatch(configJSON json.RawMessage, rule *models.NotificationRuleWithChannel, msg notifications.Message) error {
+func OpenPageFromDispatch(configJSON json.RawMessage, rule *models.NotificationRuleWithChannel, msg notifications.Message) (bool, error) {
 	policyId := EscalationChannelPolicyId(configJSON)
 	if policyId == 0 {
-		return errors.New("escalation channel config has no policyId")
+		return false, errors.New("escalation channel config has no policyId")
 	}
 
 	ruleId := rule.Id
@@ -52,17 +52,18 @@ func OpenPageFromDispatch(configJSON json.RawMessage, rule *models.NotificationR
 		DedupKey:  pageDedupKey(fmt.Sprintf("%d", rule.Id), msg.DedupToken),
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 	if opened {
 		Wake()
 	}
-	return nil
+	return opened, nil
 }
 
 // OpenTestPage opens a real page for the channel test endpoint, exercising the
-// full escalation loop.
-func OpenTestPage(policyId int, projectId uuid.UUID, channelId int, channelName string) error {
+// full escalation loop. Reports false when the fire deduped into a previous
+// test page that is still unresolved.
+func OpenTestPage(policyId int, projectId uuid.UUID, channelId int, channelName string) (bool, error) {
 	opened, err := openPage(openPageParams{
 		PolicyId:  policyId,
 		ProjectId: projectId,
@@ -74,12 +75,12 @@ func OpenTestPage(policyId int, projectId uuid.UUID, channelId int, channelName 
 		DedupKey:  fmt.Sprintf("test|channel:%d", channelId),
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 	if opened {
 		Wake()
 	}
-	return nil
+	return opened, nil
 }
 
 const maxDedupKeyLength = 300

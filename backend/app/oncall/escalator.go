@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/tracewayapp/traceway/backend/app/config"
 	"github.com/tracewayapp/traceway/backend/app/db"
@@ -272,7 +273,7 @@ func claimUserDeliveries(tx *sql.Tx, page *models.Page, level int, userId int, n
 			Level:        level,
 			Iteration:    page.RepeatIteration,
 			UserId:       &userId,
-			TargetDesc:   desc,
+			TargetDesc:   truncateTargetDesc(desc),
 			MethodType:   methodType,
 			Status:       models.PageNotificationPending,
 			ScheduledFor: &sendAt,
@@ -325,27 +326,49 @@ func claimUserDeliveries(tx *sql.Tx, page *models.Page, level int, userId int, n
 	if err != nil {
 		return 0, err
 	}
-	usableSteps := 0
+	type chainStep struct {
+		methodType string
+		configJSON json.RawMessage
+		desc       string
+		delay      time.Duration
+	}
+	var chain []chainStep
+	droppedBeforeFirstStep := false
 	for _, rule := range rules {
 		method, ok := methodById[rule.ContactMethodId]
-		if !ok {
-			// Disabled or unverified since the rule was saved; skip silently
-			// (the rules editor shows a warning for stale steps).
-			continue
+		if ok {
+			configJSON, desc, sendable := deliveryFor(method)
+			if sendable {
+				chain = append(chain, chainStep{
+					methodType: method.MethodType,
+					configJSON: configJSON,
+					desc:       desc,
+					delay:      time.Duration(rule.DelayMinutes) * time.Minute,
+				})
+				continue
+			}
 		}
-		configJSON, desc, ok := deliveryFor(method)
-		if !ok {
-			continue
+		if len(chain) == 0 {
+			droppedBeforeFirstStep = true
 		}
-		if rule.DelayMinutes > 0 {
-			desc = fmt.Sprintf("%s, +%dm", desc, rule.DelayMinutes)
-		}
-		if err := appendDelivery(method.MethodType, configJSON, desc, time.Duration(rule.DelayMinutes)*time.Minute); err != nil {
-			return 0, err
-		}
-		usableSteps++
 	}
-	if usableSteps > 0 {
+	if len(chain) > 0 {
+		// Rebase so the earliest surviving step still pages immediately when
+		// the step carrying the chain's zero delay was dropped.
+		offset := time.Duration(0)
+		if droppedBeforeFirstStep {
+			offset = chain[0].delay
+		}
+		for _, step := range chain {
+			delay := step.delay - offset
+			desc := step.desc
+			if delay > 0 {
+				desc = fmt.Sprintf("%s, +%dm", desc, int(delay/time.Minute))
+			}
+			if err := appendDelivery(step.methodType, step.configJSON, desc, delay); err != nil {
+				return 0, err
+			}
+		}
 		return enqueued, nil
 	}
 	if len(rules) > 0 {
@@ -391,6 +414,23 @@ func sendableContactMethods(methods []*models.UserContactMethod) []*models.UserC
 	return sendable
 }
 
+// maxTargetDescLength matches page_notifications.target_desc (VARCHAR(300) on
+// Postgres).
+const maxTargetDescLength = 300
+
+// truncateTargetDesc clamps a delivery-log label to the column limit; an
+// oversized label would fail the insert and roll back the escalation claim.
+func truncateTargetDesc(desc string) string {
+	if len(desc) <= maxTargetDescLength {
+		return desc
+	}
+	trimmed := desc[:maxTargetDescLength]
+	for len(trimmed) > 0 && !utf8.ValidString(trimmed) {
+		trimmed = trimmed[:len(trimmed)-1]
+	}
+	return trimmed
+}
+
 // SMSPhoneNumber extracts the phoneNumber from an sms contact-method config,
 // or "" when missing or malformed.
 func SMSPhoneNumber(config []byte) string {
@@ -423,14 +463,26 @@ func ParseEmailOverride(config []byte) string {
 }
 
 // EmailDeliveryFor builds the email adapter config (and display description)
-// for a recipient, applying the override when present.
+// for a recipient, applying the override when present. Overrides are masked in
+// the delivery log; the account email is not.
 func EmailDeliveryFor(accountEmail string, override string) (json.RawMessage, string) {
 	email := accountEmail
+	desc := accountEmail
 	if override != "" {
 		email = override
+		desc = maskEmail(override)
 	}
 	configJSON, _ := json.Marshal(map[string]any{"recipients": []string{email}})
-	return configJSON, email + " (email)"
+	return configJSON, desc + " (email)"
+}
+
+// maskEmail keeps the first character of the local part and the whole domain.
+func maskEmail(email string) string {
+	at := strings.LastIndex(email, "@")
+	if at <= 0 {
+		return email
+	}
+	return email[:1] + "***" + email[at:]
 }
 
 // claimChannelDelivery records the delivery-log row for a plain-channel target

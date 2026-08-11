@@ -114,6 +114,8 @@ A target is one of:
 
 A page snapshots its policy the moment it opens, so editing a policy never changes pages that are already escalating. Inside that snapshot, targets are still resolved to people when the step runs. A schedule target reaches whoever is on call at that moment, including an override that started five minutes ago.
 
+Because a policy that points at something deleted would page nobody, a schedule or team a live policy targets cannot be deleted. Remove the step first. The same guard already stops you deleting a policy a channel is using.
+
 Within a single step, each person is notified once. Someone who appears on two targets of the same step does not get two pages.
 
 ### Repeat
@@ -182,7 +184,7 @@ The link is scoped to acknowledging that one page and nothing else. It gives no 
 
 ## Contact methods
 
-Contact methods are personal. Each responder manages their own from the **Account** page, and nobody else can read or change them. The one thing teammates do see is a page's delivery log, which names the destination each notification went to so an incident can be debugged.
+Contact methods are personal. Each responder manages their own from the **Account** page, and nobody else can read or change them. The one thing teammates do see is a page's delivery log, which names the destination each notification went to so an incident can be debugged. Personal destinations are masked there: a phone number shows its last four digits, an email override shows its first character and domain. Your account email is shown in full, since everyone in the organization can already see it.
 
 <img src="/on-call/oncall-contact-methods.png" alt="Contact methods and notification rules on the account page" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
@@ -201,6 +203,16 @@ Every method has a **Test** button that sends a canned message, and an enable to
 If you configure nothing at all, pages still fall back to your account email, so a responder is never silently skipped.
 
 That fallback only leaves the building if the server can send mail. Set `SMTP_ENABLED=true` along with the rest of the SMTP settings. With SMTP off, Traceway runs the email adapter in log-only mode and writes the page to the server log instead of delivering it, which is fine for local development and a bad surprise in production. On a self-hosted instance, configure SMTP before you rely on on-call.
+
+### Slack webhooks and private addresses
+
+Slack is the one contact method type where you choose the destination host yourself. Every other type sends to a fixed service, so only the Slack webhook URL is checked: it must use http or https and resolve to a public address. A URL whose host does not resolve is rejected too, since it could never receive a page.
+
+The check exists because contact methods are personal. They need no project role, so without it any member of the organization, readonly included, could point a webhook at an internal address and use the **Test** button to send requests into the server's own network.
+
+If your paging destinations genuinely live on a private network, for example a self-hosted Mattermost behind the same firewall as Traceway, set `ALLOW_PRIVATE_NOTIFICATION_TARGETS=true` on the server to turn the check off.
+
+Project notification channels are not affected either way. The [webhook channel type](/learn/alerts) exists to post anywhere, and creating one requires write access.
 
 ### SMS and Twilio
 
@@ -288,6 +300,7 @@ The `outbox` block on `/api/health/deep` exposes queue depth and the oldest pend
 | `TWILIO_AUTH_TOKEN` | unset | Twilio auth token, required for SMS |
 | `TWILIO_FROM_NUMBER` | unset | Sending number. Use this or a messaging service. |
 | `TWILIO_MESSAGING_SERVICE_SID` | unset | Twilio messaging service, as an alternative to a from number |
+| `ALLOW_PRIVATE_NOTIFICATION_TARGETS` | unset | Set to `true` to let personal contact methods point at private or loopback addresses. Off by default so a contact method, which needs no project role, cannot be used to reach the server's own network. |
 | `SMTP_ENABLED` | unset | Must be `true` for email pages to be delivered. Anything else runs the email adapter in log-only mode. |
 
 A freshly opened page does not wait for the next poll. The escalator is woken directly, so the first level is notified within a second or so regardless of `ONCALL_POLL_SECONDS`.

@@ -96,8 +96,15 @@
 	}
 
 	function levelLabel(item: OncallPage): string {
-		if (item.escalationLevel < 0) return '—';
 		const stepCount = item.policySnapshot?.steps?.length ?? 0;
+		if (item.escalationLevel < 0) {
+			// -1 = "next escalation starts at level 0", also how a page waiting
+			// for its next repeat is stored.
+			if (item.repeatIteration > 0) {
+				return `L${stepCount} of ${stepCount} · repeat ${item.repeatIteration}`;
+			}
+			return '—';
+		}
 		let label = `L${item.escalationLevel + 1} of ${stepCount}`;
 		if (item.status === 'open' && item.nextEscalationAt === null) {
 			label += ' · exhausted';

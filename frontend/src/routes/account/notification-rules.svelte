@@ -21,6 +21,7 @@
 	let loading = $state(true);
 	let saving = $state(false);
 	let error = $state('');
+	let loadError = $state('');
 
 	onMount(() => {
 		load();
@@ -28,6 +29,7 @@
 
 	async function load() {
 		loading = true;
+		loadError = '';
 		try {
 			const [methodsRes, rulesRes] = await Promise.all([
 				api.get('/contact-methods'),
@@ -36,7 +38,10 @@
 			methods = methodsRes.methods || [];
 			highSteps = toDrafts(rulesRes.high);
 			lowSteps = toDrafts(rulesRes.low);
-		} catch {
+		} catch (e: unknown) {
+			// Never render a failed load as "no steps": saving from that state
+			// would wipe the chains the server still holds.
+			loadError = e instanceof Error ? e.message : 'Failed to load notification rules';
 			methods = [];
 			highSteps = [];
 			lowSteps = [];
@@ -86,7 +91,9 @@
 	function selectedLabel(step: StepDraft): string {
 		if (step.contactMethodId === null) return 'Select a method...';
 		const method = methods.find((m) => m.id === step.contactMethodId);
-		return method ? methodLabel(method) : `Method #${step.contactMethodId}`;
+		if (!method) return `Method #${step.contactMethodId}`;
+		const unavailable = methodUnavailable(method);
+		return unavailable ? `${methodLabel(method)} ${unavailable}` : methodLabel(method);
 	}
 
 	function addStep(steps: StepDraft[]): StepDraft[] {
@@ -235,6 +242,11 @@
 
 {#if loading}
 	<div class="flex justify-center py-12"><LoadingCircle size="lg" /></div>
+{:else if loadError}
+	<div class="flex flex-col items-center justify-center gap-3 rounded-md bg-muted py-12 text-center">
+		<p class="text-sm text-destructive">{loadError}</p>
+		<Button variant="outline" size="sm" onclick={() => load()}>Retry</Button>
+	</div>
 {:else}
 	<div class="space-y-6">
 		<ErrorAlert {error} />

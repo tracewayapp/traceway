@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/tracewayapp/traceway/backend/app/db"
@@ -154,6 +155,17 @@ func (c *oncallController) DeleteSchedule(ctx *gin.Context) {
 	if !ok {
 		return
 	}
+
+	referencing, err := oncall.PoliciesReferencing(tx, organizationId, oncall.TargetSchedule, schedule.Id)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to check referencing policies: %w", err))
+		return
+	}
+	if len(referencing) > 0 {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "This schedule is used by escalation policy(ies): " + strings.Join(referencing, ", ") + ". Remove those steps first."})
+		return
+	}
+
 	if err := transactional.OncallScheduleRepository.Delete(tx, schedule.Id); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to delete schedule: %w", err))
 		return

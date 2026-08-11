@@ -188,9 +188,10 @@
 		return result;
 	}
 
+	// The tooltip reads in the schedule's timezone, matching the axis above it.
 	function shiftTooltip(shift: TimelineShift): string {
-		const range = `${formatDateTime(shift.start, { format: 'short' })} – ${formatDateTime(shift.end, { format: 'short' })}`;
-		return `${userName(shift.userId)}${shift.isOverride ? ' (override)' : ''}\n${range}`;
+		const range = `${formatDateTime(shift.start, { format: 'short', timezone: tz })} – ${formatDateTime(shift.end, { format: 'short', timezone: tz })}`;
+		return `${userName(shift.userId)}${shift.isOverride ? ' (override)' : ''}\n${range} (${tz})`;
 	}
 
 	const rangeLabel = $derived.by(() => {

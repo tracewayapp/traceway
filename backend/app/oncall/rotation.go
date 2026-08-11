@@ -41,21 +41,24 @@ func layerPeriods(layer *models.OncallLayer, tz *time.Location, from, to time.Ti
 		return nil
 	}
 
-	anchor := time.Date(year, month, day, hour, minute, 0, 0, tz)
 	if layer.RotationType == RotationWeekly && layer.HandoffDay >= 1 && layer.HandoffDay <= 7 {
 		// Shift the anchor back to the configured handoff weekday, so period 0
-		// is the week containing the rotation start.
-		daysSinceHandoff := (int(anchor.Weekday()) - layer.HandoffDay%7 + 7) % 7
-		anchor = time.Date(year, month, day-daysSinceHandoff, hour, minute, 0, 0, tz)
+		// is the week containing the rotation start. The weekday is read from
+		// the civil date, not a tz instant, which a DST gap could normalize
+		// onto the previous day.
+		startWeekday := int(time.Date(year, month, day, 12, 0, 0, 0, time.UTC).Weekday())
+		day -= (startWeekday - layer.HandoffDay%7 + 7) % 7
 	}
 
 	boundary := func(k int) time.Time {
-		return time.Date(anchor.Year(), anchor.Month(), anchor.Day()+k*periodDays, anchor.Hour(), anchor.Minute(), 0, 0, tz)
+		return time.Date(year, month, day+k*periodDays, hour, minute, 0, 0, tz)
 	}
+	anchor := boundary(0)
 
 	// Locate the period containing `from` by day-count estimate, then correct
-	// so that boundary(k) <= from < boundary(k+1).
-	k := int(from.Sub(anchor).Hours() / 24 / float64(periodDays))
+	// so that boundary(k) <= from < boundary(k+1). Integer seconds rather than
+	// from.Sub(anchor), which saturates at ~292 years.
+	k := floorDiv(floorDiv(int(from.Unix()-anchor.Unix()), 86400), periodDays)
 	for boundary(k).After(from) {
 		k--
 	}
@@ -79,6 +82,14 @@ func layerPeriods(layer *models.OncallLayer, tz *time.Location, from, to time.Ti
 
 func floorMod(a, n int) int {
 	return ((a % n) + n) % n
+}
+
+func floorDiv(a, n int) int {
+	q := a / n
+	if a%n != 0 && (a < 0) != (n < 0) {
+		q--
+	}
+	return q
 }
 
 func parseLocalDate(s string) (year int, month time.Month, day int, ok bool) {

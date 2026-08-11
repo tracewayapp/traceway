@@ -22,6 +22,7 @@ const (
 	drainBatchSize      = 50
 	drainConcurrency    = 8
 	sendTimeout         = 30 * time.Second
+	sendAbandonGrace    = 5 * time.Second
 	staleSendingAge     = 5 * time.Minute
 	maxAttempts         = 5
 )
@@ -133,9 +134,33 @@ func sendRow(ctx context.Context, row *models.OutboxDelivery) {
 		finalizeTerminal(row, "unreadable message payload: "+err.Error())
 		return
 	}
+	finalizeRow(row, sendWithDeadline(ctx, row, msg))
+}
+
+// sendWithDeadline bounds one attempt in wall-clock time; an adapter that
+// ignores its context deadline is abandoned and the row retries (at-least-once).
+func sendWithDeadline(ctx context.Context, row *models.OutboxDelivery, msg models.NotificationMessage) error {
 	sendCtx, cancel := context.WithTimeout(ctx, sendTimeout)
 	defer cancel()
-	finalizeRow(row, sender(sendCtx, row.AdapterType, json.RawMessage(row.AdapterConfig), msg))
+
+	done := make(chan error, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				done <- fmt.Errorf("adapter %q panicked: %v", row.AdapterType, r)
+			}
+		}()
+		done <- sender(sendCtx, row.AdapterType, json.RawMessage(row.AdapterConfig), msg)
+	}()
+
+	abandonAfter := time.NewTimer(sendTimeout + sendAbandonGrace)
+	defer abandonAfter.Stop()
+	select {
+	case err := <-done:
+		return err
+	case <-abandonAfter.C:
+		return fmt.Errorf("adapter %q ignored its %s deadline and was abandoned", row.AdapterType, sendTimeout)
+	}
 }
 
 func finalizeRow(row *models.OutboxDelivery, sendErr error) {

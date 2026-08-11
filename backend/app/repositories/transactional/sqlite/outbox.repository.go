@@ -9,6 +9,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
 
+	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
 )
 
@@ -31,11 +32,12 @@ func (r *outboxRepository) FindById(tx *sql.Tx, id int) (*models.OutboxDelivery,
 	)
 }
 
-// FindDue returns pending rows whose next_attempt_at has passed, oldest first.
+// FindDue returns pending rows whose next_attempt_at has passed: pages first,
+// then oldest first.
 func (r *outboxRepository) FindDue(tx *sql.Tx, now time.Time, limit int) ([]*models.OutboxDelivery, error) {
 	return lit.SelectNamed[models.OutboxDelivery](
 		tx,
-		"SELECT "+outboxColumns+" FROM notification_outbox WHERE status = 'pending' AND next_attempt_at <= :now ORDER BY next_attempt_at ASC, id ASC LIMIT :limit",
+		"SELECT "+outboxColumns+" FROM notification_outbox WHERE status = 'pending' AND next_attempt_at <= :now ORDER BY CASE WHEN kind = 'page' THEN 0 ELSE 1 END, next_attempt_at ASC, id ASC LIMIT :limit",
 		lit.P{"now": now.UTC(), "limit": limit},
 	)
 }
@@ -116,6 +118,20 @@ func (r *outboxRepository) CancelByKey(tx *sql.Tx, cancelKey string, now time.Ti
 		db.Driver,
 		"UPDATE notification_outbox SET status = 'cancelled', sent_at = :now WHERE cancel_key <> '' AND cancel_key = :cancel_key AND status IN ('pending', 'sending')",
 		lit.P{"now": now.UTC(), "cancel_key": cancelKey},
+	)
+	if err != nil {
+		return err
+	}
+	return lit.UpdateNative(tx, query, args...)
+}
+
+// CancelByProject cancels a deleted project's queued rule deliveries; page
+// rows carry no project id and are cancelled by key.
+func (r *outboxRepository) CancelByProject(tx *sql.Tx, projectId uuid.UUID, now time.Time) error {
+	query, args, err := lit.ParseNamedQuery(
+		db.Driver,
+		"UPDATE notification_outbox SET status = 'cancelled', sent_at = :now WHERE project_id = :project_id AND status IN ('pending', 'sending')",
+		lit.P{"now": now.UTC(), "project_id": projectId},
 	)
 	if err != nil {
 		return err

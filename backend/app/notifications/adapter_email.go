@@ -13,6 +13,8 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/services"
 )
 
+const smtpTimeout = 10 * time.Second
+
 type EmailAdapter struct {
 	Recipients []string `json:"recipients"`
 }
@@ -69,10 +71,18 @@ func (a *EmailAdapter) Send(ctx context.Context, msg Message) error {
 }
 
 func sendMailWithTimeout(ctx context.Context, addr string, auth smtp.Auth, from string, to []string, msg []byte) error {
-	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	dialer := net.Dialer{Timeout: smtpTimeout}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("SMTP dial failed: %w", err)
 	}
+
+	// Must be set before smtp.NewClient, which blocks reading the server greeting.
+	deadline := time.Now().Add(smtpTimeout)
+	if ctxDeadline, ok := ctx.Deadline(); ok && ctxDeadline.Before(deadline) {
+		deadline = ctxDeadline
+	}
+	conn.SetDeadline(deadline)
 
 	host, _, _ := net.SplitHostPort(addr)
 	client, err := smtp.NewClient(conn, host)
@@ -81,8 +91,6 @@ func sendMailWithTimeout(ctx context.Context, addr string, auth smtp.Auth, from 
 		return fmt.Errorf("SMTP client failed: %w", err)
 	}
 	defer client.Close()
-
-	conn.SetDeadline(time.Now().Add(10 * time.Second))
 
 	if ok, _ := client.Extension("STARTTLS"); ok {
 		if err := client.StartTLS(&tls.Config{ServerName: host}); err != nil {

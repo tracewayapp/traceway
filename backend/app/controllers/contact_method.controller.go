@@ -45,6 +45,7 @@ var validContactMethodTypes = map[string]bool{
 const (
 	verificationCodeTTL         = 10 * time.Minute
 	maxVerificationAttempts     = 5
+	maxContactEmailLength       = 254
 	verificationSubjectTemplate = "Your Traceway verification code is %s"
 )
 
@@ -94,6 +95,9 @@ func beginVerification(ctx *gin.Context, tx *sql.Tx, method *models.UserContactM
 	if err != nil {
 		return err
 	}
+	if err := outbox.CancelByKey(tx, outbox.VerificationCancelKey(method.Id)); err != nil {
+		return err
+	}
 	expiresAt := time.Now().UTC().Add(verificationCodeTTL)
 	if err := transactional.UserContactMethodRepository.SetVerification(tx, method.Id, shared.HashAuthToken(code), expiresAt); err != nil {
 		return err
@@ -102,6 +106,7 @@ func beginVerification(ctx *gin.Context, tx *sql.Tx, method *models.UserContactM
 		Kind:          models.OutboxKindVerification,
 		AdapterType:   "sms",
 		AdapterConfig: json.RawMessage(method.Config),
+		CancelKey:     outbox.VerificationCancelKey(method.Id),
 		Message: notifications.Message{
 			Subject:  fmt.Sprintf(verificationSubjectTemplate, code),
 			Severity: notifications.SeverityInfo,
@@ -158,6 +163,17 @@ func (c *contactMethodController) Create(ctx *gin.Context) {
 	if message := validateContactMethod(request.MethodType, request.Config); message != "" {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": message})
 		return
+	}
+	existing, err := transactional.UserContactMethodRepository.FindByUser(tx, userId)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to check existing contact methods: %w", err))
+		return
+	}
+	for _, method := range existing {
+		if method.MethodType == request.MethodType && sameContactConfig(json.RawMessage(method.Config), request.Config) {
+			ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "You already have this contact method."})
+			return
+		}
 	}
 
 	method := &models.UserContactMethod{
@@ -289,7 +305,10 @@ func (c *contactMethodController) Verify(ctx *gin.Context) {
 		return
 	}
 	if _, err := db.ExecuteTransaction(func(verifyTx *sql.Tx) (struct{}, error) {
-		return struct{}{}, transactional.UserContactMethodRepository.MarkVerified(verifyTx, method.Id)
+		if err := transactional.UserContactMethodRepository.MarkVerified(verifyTx, method.Id); err != nil {
+			return struct{}{}, err
+		}
+		return struct{}{}, outbox.CancelByKey(verifyTx, outbox.VerificationCancelKey(method.Id))
 	}); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to mark contact method verified: %w", err))
 		return
@@ -394,7 +413,7 @@ func (c *contactMethodController) Test(ctx *gin.Context) {
 		RuleName: "Test",
 	}
 	if err := adapter.Send(ctx.Request.Context(), testMsg); err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("contact method test failed: %w", err))
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Test notification failed: " + err.Error()})
 		return
 	}
 	ctx.JSON(http.StatusOK, gin.H{"success": true})
@@ -437,6 +456,22 @@ func (c *contactMethodController) resolveOwnMethod(ctx *gin.Context, find func(i
 	return method, true
 }
 
+func sameContactConfig(a, b json.RawMessage) bool {
+	var left, right any
+	if json.Unmarshal(a, &left) != nil || json.Unmarshal(b, &right) != nil {
+		return false
+	}
+	leftJSON, err := json.Marshal(left)
+	if err != nil {
+		return false
+	}
+	rightJSON, err := json.Marshal(right)
+	if err != nil {
+		return false
+	}
+	return string(leftJSON) == string(rightJSON)
+}
+
 func validateContactMethod(methodType string, methodConfig json.RawMessage) string {
 	if !validContactMethodTypes[methodType] {
 		return "Method type must be one of: email, slack, pushover, telegram, sms."
@@ -453,6 +488,9 @@ func validateContactMethod(methodType string, methodConfig json.RawMessage) stri
 		if parsed.Email != "" && !strings.Contains(parsed.Email, "@") {
 			return "The email address is not valid."
 		}
+		if len(parsed.Email) > maxContactEmailLength {
+			return "The email address is too long."
+		}
 		return ""
 	}
 	adapter, err := notifications.NewAdapter(methodType, methodConfig)
@@ -461,6 +499,16 @@ func validateContactMethod(methodType string, methodConfig json.RawMessage) stri
 	}
 	if err := adapter.Validate(); err != nil {
 		return err.Error()
+	}
+	if methodType == "slack" {
+		var parsed struct {
+			WebhookURL string `json:"webhookUrl"`
+		}
+		if err := json.Unmarshal(methodConfig, &parsed); err == nil {
+			if err := notifications.ValidateOutboundURL(parsed.WebhookURL); err != nil {
+				return err.Error()
+			}
+		}
 	}
 	return ""
 }

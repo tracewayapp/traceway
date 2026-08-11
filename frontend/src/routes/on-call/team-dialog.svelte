@@ -102,9 +102,12 @@
 		error = '';
 		try {
 			if (isEditing && team) {
-				await oncallState.updateTeam(organizationId, team.id, { name, description });
-				await oncallState.updateTeamMembers(organizationId, team.id, selectedUserIds);
-				await oncallState.updateTeamProjects(organizationId, team.id, selectedProjectIds);
+				await oncallState.updateTeam(organizationId, team.id, {
+					name,
+					description,
+					memberUserIds: selectedUserIds,
+					projectIds: selectedProjectIds
+				});
 				toast.success('Successfully updated the Team', { position: 'top-center' });
 			} else {
 				await oncallState.createTeam(organizationId, {

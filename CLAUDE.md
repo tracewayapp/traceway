@@ -918,6 +918,8 @@ The DB rows in `session_recordings` are pruned by the SQLite retention worker (a
 
 The `profiles` DB rows (and their `storage_key`) are pruned by the SQLite retention worker / ClickHouse TTL above — not coupled to this disk cleanup, mirroring the session-recording split.
 
+**5. Main-DB outbox prune — `retention.Start` worker** (`backend/app/retention/outbox.go`, same `startDBPruneWorker` scaffolding as item 0). Runs in **all modes** against `db.DB`: once at startup, then every 24h, deleting terminal `notification_outbox` rows — `sent`/`cancelled` older than 7 days, `failed` older than 30 days. `pending` and `sending` rows are never pruned, so nothing undelivered is dropped. No env var — always on. The durable record of what was notified lives in `fired_notifications` and `page_notifications`, which this does not touch. Note that `pages` and `page_notifications` themselves are currently retained indefinitely.
+
 #### Session Recording Uploader
 
 Session recording segments arriving on `/api/report` are not uploaded inline. The handler enqueues each segment onto a bounded worker pool (`backend/app/recordings/uploader.go`, started from `cmd/run.go` next to `retention.Start`). Workers drain the queue and write the body via `storage.Store.Write` (S3 or local disk); successful writes are handed to a single batcher goroutine that calls `SessionRecordingRepository.InsertAsync` once per ~1000 rows or every 2 s, whichever comes first — single-row inserts are an anti-pattern for ClickHouse. Enqueue is non-blocking: when the queue is full the segment is dropped (newest-first) so a burst of `/api/report` traffic cannot spawn unbounded goroutines or saturate S3.
@@ -983,11 +985,10 @@ tags Map(String, String),  -- contextual tags from scope
 ### Database Migrations
 
 **CRITICAL RULES:**
-1. Each migration file must contain **exactly ONE SQL statement**
-2. Only create `.up.sql` files (no down migrations)
-3. Use sequential numbering: `NNNN_description.up.sql`
-
-**Why one statement per file?** ClickHouse migration runner executes each file as a single statement. Multiple statements will fail.
+1. `migrations/ch/` and `migrations/pg/` files must contain **exactly ONE SQL statement**. Both run through `golang-migrate`, and the ClickHouse driver is constructed with `MultiStatementEnabled: false` (`migrations_telemetry_ch.go`), so a second statement fails. `pg/` follows the same rule for symmetry.
+2. `migrations/sqlite/`, `migrations/sqlite_telemetry/` and `migrations/duckdb_telemetry/` run through `runMigrationsOn` in `migrations.go`, which splits on semicolons outside string literals (`splitStatements`, covered by `split_test.go`). A file there may hold a `CREATE TABLE` plus its indexes — that is the existing convention, e.g. `sqlite/0043_create_pages.up.sql`.
+3. Only create `.up.sql` files (no down migrations)
+4. Use sequential numbering: `NNNN_description.up.sql`
 
 **Example - Adding two columns requires TWO files:**
 ```

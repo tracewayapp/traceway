@@ -279,11 +279,26 @@ func Run(opts ...Option) {
 	}
 }
 
+// applyEnvOverrides forwards env vars to a config the embedded Run(opts...)
+// path built without LoadFromEnv; new Cfg fields belong in this table.
 func applyEnvOverrides(cfg *config.Cfg) {
 	for _, m := range []struct {
 		envVar string
 		dest   *string
 	}{
+		{"SMTP_ENABLED", &cfg.SMTPEnabled},
+		{"SMTP_HOST", &cfg.SMTPHost},
+		{"SMTP_PORT", &cfg.SMTPPort},
+		{"SMTP_USERNAME", &cfg.SMTPUsername},
+		{"SMTP_PASSWORD", &cfg.SMTPPassword},
+		{"SMTP_FROM", &cfg.SMTPFrom},
+		{"ONCALL_POLL_SECONDS", &cfg.OncallPollSeconds},
+		{"OUTBOX_POLL_SECONDS", &cfg.OutboxPollSeconds},
+		{"TWILIO_ACCOUNT_SID", &cfg.TwilioAccountSID},
+		{"TWILIO_AUTH_TOKEN", &cfg.TwilioAuthToken},
+		{"TWILIO_FROM_NUMBER", &cfg.TwilioFromNumber},
+		{"TWILIO_MESSAGING_SERVICE_SID", &cfg.TwilioMessagingServiceSID},
+		{"ALLOW_PRIVATE_NOTIFICATION_TARGETS", &cfg.AllowPrivateNotificationTargets},
 		{"OAUTH_SESSION_SECRET", &cfg.OAuthSessionSecret},
 		{"GOOGLE_CLIENT_ID", &cfg.GoogleClientID},
 		{"GOOGLE_CLIENT_SECRET", &cfg.GoogleClientSecret},

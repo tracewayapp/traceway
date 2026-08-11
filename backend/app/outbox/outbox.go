@@ -74,6 +74,11 @@ func CancelByKey(tx *sql.Tx, cancelKey string) error {
 	if err != nil {
 		return err
 	}
+	// notification_outbox first, matching the drain's finalize order; the
+	// reverse order can deadlock against a concurrent finalize on Postgres.
+	if err := transactional.OutboxRepository.CancelByKey(tx, cancelKey, now); err != nil {
+		return err
+	}
 	for _, row := range rows {
 		if row.PageNotificationId != nil {
 			if err := transactional.PageNotificationRepository.MarkCancelled(tx, *row.PageNotificationId, now); err != nil {
@@ -81,11 +86,34 @@ func CancelByKey(tx *sql.Tx, cancelKey string) error {
 			}
 		}
 	}
-	return transactional.OutboxRepository.CancelByKey(tx, cancelKey, now)
+	return nil
 }
 
 func PageCancelKey(pageId int) string {
 	return "page:" + strconv.Itoa(pageId)
+}
+
+// CancelForProject cancels everything still queued for a project (which has no
+// foreign key from notification_outbox), in the caller's transaction.
+func CancelForProject(tx *sql.Tx, projectId uuid.UUID) error {
+	pages, err := transactional.PageRepository.FindByProject(tx, projectId, "", projectCancelPageLimit, 0)
+	if err != nil {
+		return err
+	}
+	for _, page := range pages {
+		if err := CancelByKey(tx, PageCancelKey(page.Id)); err != nil {
+			return err
+		}
+	}
+	return transactional.OutboxRepository.CancelByProject(tx, projectId, time.Now().UTC())
+}
+
+const projectCancelPageLimit = 5000
+
+// VerificationCancelKey scopes a contact method's verification sends so a new
+// code supersedes the one before it.
+func VerificationCancelKey(methodId int) string {
+	return "verify:" + strconv.Itoa(methodId)
 }
 
 var wakeCh = make(chan struct{}, 1)

@@ -516,8 +516,8 @@ func TestEscalatorUsesConfiguredContactMethods(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("expected 1 notification, got %d", len(rows))
 	}
-	if rows[0].TargetDesc != "pager@example.com (email)" {
-		t.Errorf("target desc = %q, want the override email", rows[0].TargetDesc)
+	if rows[0].TargetDesc != "p***@example.com (email)" {
+		t.Errorf("target desc = %q, want the masked override email", rows[0].TargetDesc)
 	}
 }
 

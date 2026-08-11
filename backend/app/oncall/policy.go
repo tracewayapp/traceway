@@ -170,6 +170,47 @@ func validateTarget(tx *sql.Tx, organizationId int, stepIndex int, target StepTa
 	return nil
 }
 
+// PoliciesReferencing returns the names of the organization's escalation
+// policies that target any of the given ids of a type; it backs the delete
+// guards on schedules and teams.
+func PoliciesReferencing(tx *sql.Tx, organizationId int, targetType string, targetIds ...int) ([]string, error) {
+	if len(targetIds) == 0 {
+		return nil, nil
+	}
+	wanted := make(map[int]bool, len(targetIds))
+	for _, id := range targetIds {
+		wanted[id] = true
+	}
+	policies, err := transactional.EscalationPolicyRepository.FindByOrganization(tx, organizationId)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, policy := range policies {
+		def, err := ParsePolicyDefinition(policy.Definition)
+		if err != nil {
+			// Fail closed: an unparseable definition cannot be checked.
+			names = append(names, policy.Name)
+			continue
+		}
+		if policyTargets(def, targetType, wanted) {
+			names = append(names, policy.Name)
+		}
+	}
+	return names, nil
+}
+
+func policyTargets(def *PolicyDefinition, targetType string, wanted map[int]bool) bool {
+	for _, step := range def.Steps {
+		for _, target := range step.Targets {
+			if target.Type == targetType && wanted[target.Id] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func MarshalPolicyDefinition(def *PolicyDefinition) ([]byte, error) {
 	return json.Marshal(def)
 }

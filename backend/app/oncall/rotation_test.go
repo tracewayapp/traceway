@@ -229,3 +229,78 @@ func TestDSTSkippedHandoffTimeNormalizesForward(t *testing.T) {
 		t.Errorf("handoff after transition at %02d:%02d local, want 02:30", nextDay.Hour(), nextDay.Minute())
 	}
 }
+
+// A rotation start whose handoff time falls inside a DST gap must not shift
+// the handoff of every later period.
+func TestRotationStartInsideDSTGapKeepsHandoffTime(t *testing.T) {
+	tz := mustLoad(t, "America/New_York")
+	layer := &models.OncallLayer{
+		Id:            "l_1",
+		Name:          "Primary",
+		RotationType:  RotationDaily,
+		HandoffTime:   "02:30",
+		RotationStart: "2026-03-08", // 02:00 -> 03:00 that morning; 02:30 does not exist
+		UserIds:       []int{1, 2, 3},
+	}
+	from := local(t, tz, "2026-06-10 00:00").UTC()
+	shifts := ResolveLayerRange(layer, tz, from, from.AddDate(0, 0, 5))
+	if len(shifts) == 0 {
+		t.Fatal("expected shifts")
+	}
+	for _, shift := range shifts[1:] {
+		start := shift.Start.In(tz)
+		if start.Hour() != 2 || start.Minute() != 30 {
+			t.Errorf("handoff at %s, want 02:30 local", start.Format("2006-01-02 15:04 MST"))
+		}
+	}
+}
+
+// Same defect on the weekly path: the handoff weekday must not move.
+func TestRotationStartInsideDSTGapKeepsHandoffWeekday(t *testing.T) {
+	tz := mustLoad(t, "America/Havana")
+	layer := &models.OncallLayer{
+		Id:            "l_1",
+		Name:          "Primary",
+		RotationType:  RotationWeekly,
+		HandoffDay:    1, // Monday
+		HandoffTime:   "00:00",
+		RotationStart: "2026-03-08", // local midnight does not exist that day
+		UserIds:       []int{1, 2},
+	}
+	from := local(t, tz, "2026-06-01 00:00").UTC()
+	shifts := ResolveLayerRange(layer, tz, from, from.AddDate(0, 0, 28))
+	if len(shifts) == 0 {
+		t.Fatal("expected shifts")
+	}
+	for _, shift := range shifts[1:] {
+		start := shift.Start.In(tz)
+		if start.Weekday() != time.Monday {
+			t.Errorf("handoff on %s, want Monday", start.Format("Mon 2006-01-02 15:04 MST"))
+		}
+	}
+}
+
+// Far-future dates must resolve arithmetically, not by walking periods.
+func TestExtremeDatesResolveInConstantTime(t *testing.T) {
+	tz := mustLoad(t, "Europe/Berlin")
+	for _, rotationStart := range []string{"2026-01-05", "9999-12-31", "0001-01-01"} {
+		layer := &models.OncallLayer{
+			Id:            "l_1",
+			Name:          "Primary",
+			RotationType:  RotationDaily,
+			HandoffTime:   "09:00",
+			RotationStart: rotationStart,
+			UserIds:       []int{1, 2},
+		}
+		for _, from := range []time.Time{
+			local(t, tz, "2026-06-01 00:00").UTC(),
+			time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC),
+		} {
+			start := time.Now()
+			ResolveLayerRange(layer, tz, from, from.AddDate(0, 0, MaxTimelineRangeDays))
+			if elapsed := time.Since(start); elapsed > 250*time.Millisecond {
+				t.Errorf("rotationStart=%s from=%s took %v", rotationStart, from.Format("2006-01-02"), elapsed)
+			}
+		}
+	}
+}

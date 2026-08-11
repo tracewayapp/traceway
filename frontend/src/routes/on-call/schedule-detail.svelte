@@ -163,7 +163,7 @@
 
 			<div class="space-y-2">
 				<div class="flex items-center justify-between">
-					<h3 class="text-sm font-medium">Overrides (next 30 days)</h3>
+					<h3 class="text-sm font-medium">Overrides (next 30 days) · {schedule.timezone}</h3>
 					<Button size="sm" variant="outline" onclick={() => (overrideDialogOpen = true)}>
 						<Plus class="mr-1 h-4 w-4" /> Add Override
 					</Button>
@@ -177,10 +177,13 @@
 								<div class="min-w-0 text-sm">
 									<span class="font-medium">{userLabel(override.userId)}</span>
 									<span class="text-muted-foreground">
-										{formatDateTime(override.startAt, { format: 'short' })} — {formatDateTime(
-											override.endAt,
-											{ format: 'short' }
-										)}
+										{formatDateTime(override.startAt, {
+											format: 'short',
+											timezone: schedule.timezone
+										})} — {formatDateTime(override.endAt, {
+											format: 'short',
+											timezone: schedule.timezone
+										})}
 									</span>
 								</div>
 								<Button

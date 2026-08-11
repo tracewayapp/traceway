@@ -70,7 +70,16 @@
 
 	{#if oncallState.teamsLoading}
 		<div class="flex justify-center py-12"><LoadingCircle size="xlg" /></div>
-	{:else if teams.length === 0}
+		{:else if oncallState.teamsError}
+		<div
+			class="flex flex-col items-center justify-center gap-3 rounded-md bg-muted py-20 text-center text-muted-foreground"
+		>
+			<p class="text-sm text-destructive">{oncallState.teamsError}</p>
+			<Button variant="outline" size="sm" onclick={() => oncallState.loadTeams(organizationId)}>
+				Retry
+			</Button>
+		</div>
+{:else if teams.length === 0}
 		<div
 			class="flex flex-col items-center justify-center rounded-md bg-muted py-20 text-center text-muted-foreground"
 		>

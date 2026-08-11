@@ -284,8 +284,13 @@ func (ctrl *notificationChannelController) Test(ctx *gin.Context) {
 			ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "An escalation policy is required."})
 			return
 		}
-		if err := oncall.OpenTestPage(policyId, projectId, channel.Id, channel.Name); err != nil {
+		opened, err := oncall.OpenTestPage(policyId, projectId, channel.Id, channel.Name)
+		if err != nil {
 			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("test page failed: %w", err))
+			return
+		}
+		if !opened {
+			ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "A test page for this channel is still open. Resolve it before testing again."})
 			return
 		}
 		ctx.JSON(http.StatusOK, gin.H{"success": true})
@@ -307,7 +312,7 @@ func (ctrl *notificationChannelController) Test(ctx *gin.Context) {
 	}
 
 	if err := adapter.Send(ctx.Request.Context(), testMsg); err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("test notification failed: %w", err))
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Test notification failed: " + err.Error()})
 		return
 	}
 

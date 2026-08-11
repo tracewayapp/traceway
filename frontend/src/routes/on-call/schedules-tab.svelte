@@ -47,7 +47,16 @@
 
 	{#if oncallState.schedulesLoading}
 		<div class="flex justify-center py-12"><LoadingCircle size="xlg" /></div>
-	{:else if schedules.length === 0}
+		{:else if oncallState.schedulesError}
+		<div
+			class="flex flex-col items-center justify-center gap-3 rounded-md bg-muted py-20 text-center text-muted-foreground"
+		>
+			<p class="text-sm text-destructive">{oncallState.schedulesError}</p>
+			<Button variant="outline" size="sm" onclick={() => oncallState.loadSchedules(organizationId)}>
+				Retry
+			</Button>
+		</div>
+{:else if schedules.length === 0}
 		<div
 			class="flex flex-col items-center justify-center rounded-md bg-muted py-20 text-center text-muted-foreground"
 		>

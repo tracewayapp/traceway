@@ -2,6 +2,7 @@
     import * as Sheet from "$lib/components/ui/sheet";
     import * as AlertDialog from "$lib/components/ui/alert-dialog";
     import * as Tabs from "$lib/components/ui/tabs";
+    import * as Select from "$lib/components/ui/select";
     import { Button } from "$lib/components/ui/button";
     import { Input } from "$lib/components/ui/input";
     import { Label } from "$lib/components/ui/label";
@@ -18,11 +19,12 @@
         open: boolean;
         onOpenChange: (open: boolean) => void;
         project: Project | null;
+        initialTab?: string;
     }
 
-    let { open, onOpenChange, project }: Props = $props();
+    let { open, onOpenChange, project, initialTab = 'project' }: Props = $props();
 
-    const tabTriggerClass = "-mb-px rounded-none border-b-2 border-transparent bg-transparent px-0 pb-2.5 pt-0 text-sm font-medium text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none";
+    const tabTriggerClass = "-mb-px shrink-0 rounded-none border-b-2 border-transparent bg-transparent px-0 pb-2.5 pt-0 text-sm font-medium whitespace-nowrap text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none";
 
     const PROFILE_LABEL_KEY_REGEX = /^[a-zA-Z0-9._:-]+$/;
 
@@ -33,7 +35,28 @@
     let healthcheckPathsText = $state('');
     let showDefaultHealthcheckPaths = $state(false);
     let profileLabelsText = $state('');
+    let aiFlaggedTermsText = $state('');
+    let aiFlaggedLanguages = $state<string[]>(['en']);
     let loading = $state(false);
+
+    // Must match contentflag.AvailableLanguages() on the backend.
+    const FLAGGED_LANGUAGE_OPTIONS = [
+        { code: 'en', label: 'English' },
+        { code: 'de', label: 'German' },
+        { code: 'es', label: 'Spanish' },
+        { code: 'fr', label: 'French' },
+        { code: 'it', label: 'Italian' },
+        { code: 'pt', label: 'Portuguese' },
+        { code: 'sr', label: 'Serbian' }
+    ];
+
+    const flaggedLanguagesLabel = $derived(
+        aiFlaggedLanguages.length === 0
+            ? 'None (custom terms only)'
+            : FLAGGED_LANGUAGE_OPTIONS.filter((o) => aiFlaggedLanguages.includes(o.code))
+                  .map((o) => o.label)
+                  .join(', ')
+    );
     let error = $state('');
     let showDeleteConfirm = $state(false);
     let deleting = $state(false);
@@ -42,12 +65,14 @@
 
     $effect(() => {
         if (open && project) {
-            activeTab = 'project';
+            activeTab = initialTab;
             projectName = project.name;
             selectedFramework = project.framework;
             dropHealthyHealthchecks = project.dropHealthyHealthchecks ?? true;
             healthcheckPathsText = (project.healthcheckPaths ?? []).join('\n');
             profileLabelsText = (project.profileLabelAllowlist ?? []).join('\n');
+            aiFlaggedTermsText = (project.aiFlaggedTerms ?? []).join('\n');
+            aiFlaggedLanguages = project.aiFlaggedLanguages ?? ['en'];
             error = '';
         }
     });
@@ -73,6 +98,7 @@
     let subtitle = $derived(
         activeTab === 'healthchecks' ? 'Control which healthcheck requests are stored.'
         : activeTab === 'profiles' ? 'Choose which pprof sample labels are recorded and searchable.'
+        : activeTab === 'ai' ? 'Flag AI conversations that contain specific terms.'
         : activeTab === 'danger' ? 'Irreversible and destructive actions.'
         : ''
     );
@@ -101,6 +127,25 @@
         return '';
     });
 
+    let aiFlaggedTerms = $derived(
+        aiFlaggedTermsText
+            .split('\n')
+            .map((t) => t.trim().toLowerCase())
+            .filter((t) => t.length > 0)
+    );
+
+    let aiFlaggedTermsError = $derived.by(() => {
+        if (aiFlaggedTerms.length > 200) {
+            return 'At most 200 flagged terms are allowed.';
+        }
+        for (const term of aiFlaggedTerms) {
+            if (term.length > 100) {
+                return 'Flagged terms must be at most 100 characters.';
+            }
+        }
+        return '';
+    });
+
     async function handleSubmit(e: Event) {
         e.preventDefault();
         if (!projectName.trim()) {
@@ -123,7 +168,7 @@
             .filter(p => p.length > 0);
 
         try {
-            await projectsState.updateProject(project.id, projectName.trim(), selectedFramework, dropHealthyHealthchecks, healthcheckPaths, profileLabelAllowlist);
+            await projectsState.updateProject(project.id, projectName.trim(), selectedFramework, dropHealthyHealthchecks, healthcheckPaths, profileLabelAllowlist, aiFlaggedTerms, aiFlaggedLanguages);
             toast.success('Successfully updated the Project', { position: 'top-center' });
             onOpenChange(false);
         } catch (err: any) {
@@ -158,16 +203,17 @@
 </script>
 
 <Sheet.Root {open} onOpenChange={handleClose}>
-    <Sheet.Content side="right" class="w-full overflow-y-auto sm:w-[540px]">
+    <Sheet.Content side="right" class="w-full overflow-y-auto sm:w-[680px] sm:max-w-[680px]">
         <Sheet.Header class="px-6 pb-0">
             <Sheet.Title>Edit Project</Sheet.Title>
         </Sheet.Header>
 
         <Tabs.Root value={activeTab} onValueChange={(v) => { if (v) activeTab = v; }}>
-            <Tabs.List class="h-auto w-full justify-start gap-4 rounded-none border-b bg-transparent p-0 pl-6 pt-0">
+            <Tabs.List class="h-auto w-full flex-nowrap justify-start gap-4 overflow-x-auto rounded-none border-b bg-transparent p-0 pr-6 pl-6 pt-0">
                 <Tabs.Trigger value="project" class={tabTriggerClass}>Project</Tabs.Trigger>
                 <Tabs.Trigger value="healthchecks" class={tabTriggerClass}>Healthchecks</Tabs.Trigger>
                 <Tabs.Trigger value="profiles" class={tabTriggerClass}>Profiles</Tabs.Trigger>
+                <Tabs.Trigger value="ai" class={tabTriggerClass}>AI</Tabs.Trigger>
                 <Tabs.Trigger value="danger" class={tabTriggerClass}>Danger Zone</Tabs.Trigger>
             </Tabs.List>
         </Tabs.Root>
@@ -295,6 +341,46 @@
                         </p>
                         <p class="text-xs text-muted-foreground">
                             Avoid high-cardinality keys like <code class="rounded bg-muted px-1 py-0.5 text-[0.7rem]">user_id</code> or <code class="rounded bg-muted px-1 py-0.5 text-[0.7rem]">request_id</code>: every distinct value is stored as a separate sample, which bloats storage and slows queries.
+                        </p>
+                    </div>
+                {:else if activeTab === 'ai'}
+                    <div class="space-y-2">
+                        <Label>Flagged term languages</Label>
+                        <Select.Root type="multiple" bind:value={aiFlaggedLanguages} disabled={loading}>
+                            <Select.Trigger class="w-full">
+                                <span class="truncate">{flaggedLanguagesLabel}</span>
+                            </Select.Trigger>
+                            <Select.Content>
+                                {#each FLAGGED_LANGUAGE_OPTIONS as option (option.code)}
+                                    <Select.Item value={option.code} label={option.label}>
+                                        {option.label}
+                                    </Select.Item>
+                                {/each}
+                            </Select.Content>
+                        </Select.Root>
+                        <p class="text-xs text-muted-foreground">
+                            Built-in profanity lists to scan conversations with. Deselect all to rely on custom terms only. Matching is per whole word, so these packs only cover languages with space-separated words.
+                        </p>
+                    </div>
+
+                    <div class="space-y-2">
+                        <Label for="edit-ai-flagged-terms">Custom flagged terms</Label>
+                        <textarea
+                            id="edit-ai-flagged-terms"
+                            bind:value={aiFlaggedTermsText}
+                            disabled={loading}
+                            rows="4"
+                            placeholder={"competitor name\nrefund"}
+                            class="border-input bg-background dark:bg-input/30 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 flex w-full rounded-md border px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
+                        ></textarea>
+                        {#if aiFlaggedTermsError}
+                            <p class="text-xs text-destructive flex items-center gap-1">
+                                <CircleAlert class="h-3.5 w-3.5 shrink-0" />
+                                {aiFlaggedTermsError}
+                            </p>
+                        {/if}
+                        <p class="text-xs text-muted-foreground">
+                            One term per line. AI conversations containing these terms, in addition to the selected language packs, are marked as flagged and filterable on the Conversations page. Terms match whole words, case-insensitively, and only apply to calls ingested afterward.
                         </p>
                     </div>
                 {/if}

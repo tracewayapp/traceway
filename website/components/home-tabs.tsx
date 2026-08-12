@@ -73,7 +73,7 @@ const tabs: Tab[] = [
     color: "var(--a3)",
     heading: "Track every AI call, its cost, and its conversation.",
     description:
-      "Monitor LLM costs, token usage, and latency across every provider. See the full prompt and completion for every call, with per-agent and per-model breakdowns.",
+      "Monitor LLM costs, token usage, and latency across every provider. Group calls into conversations with tool calls rendered inline, break costs down per user, and flag conversations containing terms you care about.",
     bullets: [
       "Per-call cost and token tracking",
       "Conversation replay with chat view",

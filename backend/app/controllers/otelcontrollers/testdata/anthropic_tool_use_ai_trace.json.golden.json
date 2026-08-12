@@ -1,0 +1,39 @@
+{
+  "endpointCount": 0,
+  "endpoints": [],
+  "taskCount": 0,
+  "spanCount": 0,
+  "spans": [],
+  "exceptionCount": 0,
+  "exceptions": [],
+  "aiTraceCount": 1,
+  "aiTraces": [
+    {
+      "traceName": "Support Bot",
+      "model": "claude-sonnet-5",
+      "provider": "anthropic",
+      "operation": "chat",
+      "inputTokens": 300,
+      "outputTokens": 55,
+      "totalTokens": 355,
+      "cachedTokens": 0,
+      "reasoningTokens": 0,
+      "inputCost": 0,
+      "outputCost": 0,
+      "totalCost": 0,
+      "finishReason": "tool_use",
+      "statusCode": 1,
+      "conversationId": "sess-9f81",
+      "toolCallCount": 1,
+      "toolNames": [
+        "lookup_order"
+      ],
+      "flagged": true,
+      "flaggedTerms": [
+        "bullshit"
+      ]
+    }
+  ],
+  "conversationCount": 1,
+  "allSpansLinked": true
+}

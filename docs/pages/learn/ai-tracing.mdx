@@ -31,6 +31,9 @@ Every AI trace records:
 | Total Cost | Combined cost |
 | Finish Reason | Why the model stopped (e.g., `stop`, `length`) |
 | User ID | The user who triggered the call |
+| Conversation ID | Groups multi-turn conversations (see below) |
+| Tool Calls | Count and names of tools the model invoked, parsed from the completion |
+| Flagged Terms | Content-flag matches found in the prompt or completion at ingest |
 | Conversation | Full input/output content (stored separately) |
 
 ## How It Works
@@ -64,6 +67,66 @@ Click a trace name to see every individual call — timestamp, duration, model u
 Click a specific call to see the full detail: token breakdown (including cached and reasoning tokens), cost breakdown, all metadata attributes, and the complete conversation with the model rendered as a chat view.
 
 <img src="/ai-traces-detail.png" alt="AI Trace Detail" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+## Conversations and Users
+
+Beyond per-call traces, Traceway rolls calls up into conversations and per-user analytics. The AI Traces page has three tabs: **Traces**, **Conversations**, and **Users**.
+
+### How conversations are identified
+
+Each AI call gets a conversation id at ingest, resolved in this order:
+
+1. `gen_ai.conversation.id` span attribute. Set this in your app for reliable multi-turn grouping.
+2. `session.id` span or resource attribute.
+3. The distributed trace id. A single agent run inside one request still groups its calls, even without an explicit id.
+
+Calls ingested before this feature (or with none of the above) have no conversation id and are excluded from conversation analytics.
+
+### Conversations view
+
+Each row is one conversation: turns (LLM call count), user, tool calls, models used, tokens, cost, and first/last seen. Conversations above the 95th percentile in cost or turns are highlighted so outliers stand out.
+
+<img src="/ai-conversations.png" alt="AI Conversations list with flagged badges and outlier highlighting" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+Filter by user, model, specific tool, or flagged content. Active filters show as removable pills, and free-text search matches conversation ids, users, models, tool names, and flagged terms, so searching a curse word finds the flagged conversations directly.
+
+<img src="/ai-conversations-filtered.png" alt="Conversations filtered by tool with a removable filter pill" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+Drill into a conversation to read the full chat timeline with tool calls rendered inline (function name, arguments, and paired results), per-turn cost and tokens, and links to each underlying call.
+
+<img src="/ai-conversation-detail.png" alt="Conversation detail with the chat timeline and expanded tool call" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+### Users view
+
+Per-customer analytics keyed on the `user.id` attribute: conversation count, total calls, median/average/min conversation length, average cost per conversation, total cost, and flagged conversation count. Clicking a user filters the Conversations view to them.
+
+#### What to put in `user.id`
+
+Set `user.id` on every model-call span to a **stable identifier for the end user of your product**, and use the same value across all of that user's sessions and conversations. Good values: your internal account/user id (best), a tenant or organization id for B2B products, or an email if emails are acceptable in your telemetry. Do not use session ids, request ids, or anything random per conversation; that is what `gen_ai.conversation.id` is for, and putting it in `user.id` makes every user look new, which destroys the per-user medians. The value is stored on every AI trace row and is searchable by anyone with project access, so if PII must stay out of telemetry, use an internal id or a hash: the analytics only need stability, not readability.
+
+With OpenRouter's zero-code Broadcast integration, pass the `user` field in your chat completion requests (same guidance for the value) and it arrives as `user.id`. Without it, calls attribute to your OpenRouter account itself and every customer looks like one user.
+
+<img src="/ai-users.png" alt="AI Users view with per-customer conversation analytics" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+### Content flagging
+
+At ingest, the prompt and completion text are scanned against built-in profanity language packs plus custom terms. Packs ship for English, German, Spanish, French, Italian, Portuguese, and Serbian; enable any combination, or none to rely on custom terms only. Custom terms cover anything beyond profanity: competitor names, refund phrases, compliance keywords.
+
+Configure both from the **Flagged terms** button on the Conversations page, or from the project settings sheet (Edit Project, AI tab). Changes take effect for newly ingested calls.
+
+<img src="/ai-flagged-terms-settings.png" alt="Flagged term language packs and custom terms in the project AI settings" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+Matching is whole-word and case-insensitive, so terms never match inside larger words. Matched terms are indexed on the call at ingestion time only; there is no query-time scanning. They show as a Flagged badge, power the flagged-only filter, and are covered by free-text search, so searching a flagged word finds the conversations containing it. Flagging only applies to calls ingested after the configuration changes; historical calls are not re-scanned. Because matching is word-boundary based, packs are only feasible for languages with space-separated words (no CJK).
+
+### Alerting on outliers
+
+Three notification rule types cover AI spend and content:
+
+| Rule type | Fires when |
+|-----------|-----------|
+| AI Trace Cost | A single call exceeds a cost threshold |
+| AI Conversation Cost | A conversation's cumulative cost over the last 24 hours exceeds a threshold |
+| AI Flagged Content | A conversation matches flagged terms (optionally narrowed to specific terms) |
 
 ## Conversation Storage
 

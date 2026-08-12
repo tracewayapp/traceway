@@ -24,9 +24,11 @@ export default function AiTracingPage() {
             See every AI call, <em>its cost, and its conversation.</em>
           </h1>
           <p className="hero-sub">
-            Monitor LLM costs, token usage, latency, and conversations across
-            every provider. Works with OpenRouter, OpenAI, Anthropic, and any
-            OpenTelemetry-compatible provider.
+            Monitor LLM costs, token usage, latency, conversations, and tool
+            calls across every provider. Group calls into conversations, break
+            them down per user, and flag the ones that need attention. Works
+            with OpenRouter, OpenAI, Anthropic, and any OpenTelemetry-compatible
+            provider.
           </p>
           <div className="hero-cta-row">
             <Link href="https://docs.tracewayapp.com/client/openrouter" className="btn btn-accent">
@@ -66,15 +68,53 @@ export default function AiTracingPage() {
           <FeatureRow
             reverse
             eyebrow="Conversation"
-            title="Replay every conversation"
-            description="See the exact prompt sent to the model and the full response it generated. Debug unexpected model behavior, catch hallucinations, and understand what your AI agents are actually doing."
+            title="Replay every conversation, tool calls included"
+            description="See the exact prompt sent to the model and the full response it generated. Multi-turn conversations render as one chat timeline, with tool calls shown inline: function name, arguments, and results. Debug unexpected model behavior, catch hallucinations, and understand what your AI agents are actually doing."
             bullets={[
               "Full prompt + completion stored and rendered as chat",
+              "Tool calls rendered with arguments and paired results",
+              "Sub-agents traced under their own name in the same conversation",
               "Raw JSON view for debugging edge cases",
               "Privacy mode available to exclude conversation content",
-              "Search and filter by prompt content",
             ]}
-            image={{ src: "/images/ai-traces-conversation.png", alt: "Conversation replay" }}
+            image={{ src: "/images/ai-conversation-detail.png", alt: "Conversation replay with tool calls" }}
+          />
+        </section>
+
+        {/* Conversations & users */}
+        <section className="wrap">
+          <FeatureRow
+            eyebrow="Conversations"
+            title={
+              <>
+                Find the outliers, <em>per conversation and per user</em>
+              </>
+            }
+            description="Calls group into conversations automatically. See turns, cost, tokens, and tool usage per conversation, and roll it all up per user: how long conversations run, what they cost, and who your heaviest users are. Anything above the 95th percentile is highlighted."
+            bullets={[
+              "Turns, cost, tokens, and tool calls per conversation",
+              "Per-user analytics: median conversation length, cost per conversation",
+              "Filter by user, model, or specific tool with removable filter pills",
+              "P95 outlier highlighting on cost and conversation length",
+            ]}
+            image={{ src: "/images/ai-conversations.png", alt: "AI conversations analytics" }}
+          />
+        </section>
+
+        {/* Content flags */}
+        <section className="wrap">
+          <FeatureRow
+            reverse
+            eyebrow="Guardrails"
+            title="Flag conversations that need attention"
+            description="Every prompt and completion is scanned at ingest against built-in profanity lists in seven languages plus your own custom terms: competitor names, refund phrases, compliance keywords. Flagged conversations get a badge, a filter, and can trigger alerts."
+            bullets={[
+              "Built-in profanity packs: English, German, Spanish, French, Italian, Portuguese, Serbian",
+              "Custom per-project terms for anything beyond profanity",
+              "Indexed once at ingestion, searchable and filterable instantly",
+              "Alert rules for flagged content and runaway conversation cost",
+            ]}
+            image={{ src: "/images/ai-flagged-terms.png", alt: "Flagged term configuration" }}
           />
         </section>
 
@@ -172,6 +212,34 @@ export default function AiTracingPage() {
                 {
                   q: "How does this work with OpenRouter?",
                   a: "OpenRouter has a built-in Observability feature that broadcasts OTLP traces for every LLM call. You add Traceway as an 'OpenTelemetry Collector' destination in your OpenRouter settings with your Traceway endpoint and project token. No code changes needed.",
+                },
+                {
+                  q: "How does per-user cost and conversation tracking work?",
+                  a: (
+                    <>
+                      <p>
+                        Traceway keys per-customer analytics on the{" "}
+                        <code>user.id</code> span attribute (with OpenRouter,
+                        just pass the <code>user</code> field in your requests).
+                        Set it to a stable identifier for the end user of your
+                        product: your internal account id, a tenant id, or an
+                        email. The same user must carry the same value across
+                        all their conversations.
+                      </p>
+                      <p>
+                        Never put session ids or random values there — that is
+                        what the conversation id is for. With a stable id, the
+                        Users view shows conversation count, median conversation
+                        length, and cost per conversation for every customer.
+                        If PII must stay out of telemetry, use an internal id or
+                        a hash; the analytics only need stability.
+                      </p>
+                    </>
+                  ),
+                },
+                {
+                  q: "Can I find conversations containing specific words, like profanity?",
+                  a: "Yes. Traceway scans every prompt and completion at ingestion against built-in profanity lists (seven languages) plus custom terms you configure per project. Matches are stored on the call, so flagged conversations are instantly filterable and searchable, and an alert rule can notify you the moment flagged content appears. Because scanning happens at ingest, there is no expensive query-time content search.",
                 },
                 {
                   q: "Can I track costs across multiple models?",

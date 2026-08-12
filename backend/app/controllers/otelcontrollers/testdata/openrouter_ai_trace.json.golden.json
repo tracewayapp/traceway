@@ -22,7 +22,12 @@
       "outputCost": 0.015,
       "totalCost": 0.02,
       "finishReason": "stop",
-      "statusCode": 1
+      "statusCode": 1,
+      "conversationId": "ef5ad7a3-070f-ecf7-6bc3-180145d97678",
+      "toolCallCount": 0,
+      "toolNames": null,
+      "flagged": false,
+      "flaggedTerms": null
     }
   ],
   "conversationCount": 1,

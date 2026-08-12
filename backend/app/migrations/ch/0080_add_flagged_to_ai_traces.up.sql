@@ -1,0 +1,1 @@
+ALTER TABLE ai_traces ADD COLUMN flagged UInt8 DEFAULT 0

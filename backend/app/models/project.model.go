@@ -54,6 +54,8 @@ type Project struct {
 	DropHealthyHealthchecks bool        `json:"dropHealthyHealthchecks"`
 	HealthcheckPaths        StringSlice `json:"healthcheckPaths"`
 	ProfileLabelAllowlist   StringSlice `json:"profileLabelAllowlist"`
+	AiFlaggedTerms          StringSlice `json:"aiFlaggedTerms"`
+	AiFlaggedLanguages      StringSlice `json:"aiFlaggedLanguages"`
 }
 
 func (p Project) ToProjectWithBackendUrl() *ProjectWithBackendUrl {

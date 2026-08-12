@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/app/controllers/clientcontrollers"
 	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/services/contentflag"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
@@ -19,6 +20,8 @@ import (
 type aiTraceConversation struct {
 	StorageKey string
 	Content    []byte
+	Input      string
+	Output     string
 }
 
 type entityKind int
@@ -51,6 +54,15 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 	aiConversations []aiTraceConversation,
 ) {
 	suppressEntities := existingProject != nil && clientcontrollers.IsFrontendFramework(existingProject.Framework)
+
+	// nil languages falls back to the default pack; a project that disabled
+	// every pack carries an empty (non-nil) slice and scans custom terms only.
+	var flagLanguages, customFlagTerms []string
+	if existingProject != nil {
+		flagLanguages = existingProject.AiFlaggedLanguages
+		customFlagTerms = existingProject.AiFlaggedTerms
+	}
+	flagMatcher := contentflag.NewMatcher(flagLanguages, customFlagTerms)
 
 	for _, rs := range req.ResourceSpans {
 		resourceAttrs := rs.GetResource().GetAttributes()
@@ -232,10 +244,18 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 					)
 					aiTrace.DistributedTraceId = prom.distributedTraceId
 					aiTrace.IsRoot = prom.isRoot
-					aiTraces = append(aiTraces, aiTrace)
+					aiTrace.ConversationId = resolveConversationId(spanAttrs, resourceAttrs, prom.distributedTraceId)
+					var convInput, convOutput string
 					if conv := extractConversation(spanAttrs, projectId, prom.id); conv != nil {
+						convInput, convOutput = conv.Input, conv.Output
 						aiConversations = append(aiConversations, *conv)
 					}
+					aiTrace.ToolCallCount, aiTrace.ToolNames = extractToolCalls(spanAttrs, convOutput)
+					if terms := flagMatcher.Scan(convInput, convOutput); len(terms) > 0 {
+						aiTrace.Flagged = true
+						aiTrace.FlaggedTerms = terms
+					}
+					aiTraces = append(aiTraces, aiTrace)
 				}
 			} else if !suppressEntities && len(span.ParentSpanId) > 0 {
 				// Non-root, unpromoted span → goes to the generic spans table,
@@ -697,7 +717,9 @@ func buildAiTrace(
 	userId := getStringAttribute(attrs, "user.id")
 	finishReason := getStringAttribute(attrs, "gen_ai.response.finish_reason")
 	if finishReason == "" {
-		finishReason = getStringAttribute(attrs, "gen_ai.response.finish_reasons")
+		// finish_reasons is an array attribute in the OTel gen_ai conventions;
+		// getStringValues handles both the scalar and array encodings.
+		finishReason = strings.Join(getStringValues(attrs, "gen_ai.response.finish_reasons"), ",")
 	}
 
 	statusCode := uint8(span.Status.GetCode())
@@ -744,6 +766,8 @@ var standardAiAttrPrefixes = []string{
 	"gen_ai.completion",
 	"gen_ai.response.finish_reason",
 	"gen_ai.response.finish_reasons",
+	"gen_ai.conversation.id",
+	"gen_ai.tool.",
 	"trace.name",
 	"trace.input",
 	"trace.output",
@@ -808,7 +832,121 @@ func extractConversation(attrs []*commonpb.KeyValue, projectId, traceId uuid.UUI
 	return &aiTraceConversation{
 		StorageKey: fmt.Sprintf("ai-traces/%s/%s.json", projectId, traceId),
 		Content:    data,
+		Input:      input,
+		Output:     output,
 	}
+}
+
+// resolveConversationId picks the conversation grouping key for an AI trace:
+// an explicit gen_ai.conversation.id, else session.id (span first, then
+// resource — browser SDKs stamp it on the resource), else the distributed
+// trace id so a single agent run still groups its calls.
+func resolveConversationId(spanAttrs, resourceAttrs []*commonpb.KeyValue, distributedTraceId *uuid.UUID) string {
+	if id := getStringAttribute(spanAttrs, "gen_ai.conversation.id"); id != "" {
+		return id
+	}
+	if id := getStringAttribute(spanAttrs, "session.id"); id != "" {
+		return id
+	}
+	if id := getStringAttribute(resourceAttrs, "session.id"); id != "" {
+		return id
+	}
+	if distributedTraceId != nil {
+		return distributedTraceId.String()
+	}
+	return ""
+}
+
+const maxToolNames = 50
+
+// extractToolCalls pulls tool-call telemetry out of the completion payload
+// (OpenAI choices/tool_calls, Anthropic content/tool_use, OTel gen_ai output
+// messages with tool_call parts), falling back to the execute_tool span
+// attributes when no payload is available. Names are deduplicated in
+// first-seen order; commas are stripped because the names are persisted as a
+// comma-separated column.
+func extractToolCalls(attrs []*commonpb.KeyValue, output string) (int64, []string) {
+	count, names := parseToolCallsFromOutput(output)
+	if count == 0 && getStringAttribute(attrs, "gen_ai.operation.name") == "execute_tool" {
+		count = 1
+		if name := sanitizeToolName(getStringAttribute(attrs, "gen_ai.tool.name")); name != "" {
+			names = []string{name}
+		}
+	}
+	return count, names
+}
+
+func parseToolCallsFromOutput(output string) (int64, []string) {
+	if output == "" {
+		return 0, nil
+	}
+
+	var count int64
+	var names []string
+	seen := map[string]struct{}{}
+	record := func(name string) {
+		count++
+		name = sanitizeToolName(name)
+		if name == "" || len(names) >= maxToolNames {
+			return
+		}
+		if _, dup := seen[name]; dup {
+			return
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+
+	type contentPart struct {
+		Type string `json:"type"`
+		Name string `json:"name"`
+	}
+	var objectShape struct {
+		// OpenAI-style chat completion response.
+		Choices []struct {
+			Message struct {
+				ToolCalls []struct {
+					Function struct {
+						Name string `json:"name"`
+					} `json:"function"`
+				} `json:"tool_calls"`
+			} `json:"message"`
+		} `json:"choices"`
+		// Anthropic-style response content blocks.
+		Content []contentPart `json:"content"`
+	}
+	if err := json.Unmarshal([]byte(output), &objectShape); err == nil {
+		for _, choice := range objectShape.Choices {
+			for _, call := range choice.Message.ToolCalls {
+				record(call.Function.Name)
+			}
+		}
+		for _, part := range objectShape.Content {
+			if part.Type == "tool_use" {
+				record(part.Name)
+			}
+		}
+		return count, names
+	}
+
+	// OTel gen_ai output messages: a top-level array of messages with parts.
+	var messagesShape []struct {
+		Parts []contentPart `json:"parts"`
+	}
+	if err := json.Unmarshal([]byte(output), &messagesShape); err == nil {
+		for _, msg := range messagesShape {
+			for _, part := range msg.Parts {
+				if part.Type == "tool_call" || part.Type == "tool_use" {
+					record(part.Name)
+				}
+			}
+		}
+	}
+	return count, names
+}
+
+func sanitizeToolName(name string) string {
+	return strings.TrimSpace(strings.ReplaceAll(name, ",", ""))
 }
 
 func formatExceptionStackTrace(excType, excMessage, excStacktrace string) string {

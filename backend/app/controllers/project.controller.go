@@ -11,6 +11,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/outbox"
 	"github.com/tracewayapp/traceway/backend/app/profiling"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/app/services/contentflag"
 	"net/http"
 	"regexp"
 	"strings"
@@ -59,6 +60,29 @@ var projectNameRegex = regexp.MustCompile(`^[a-zA-Z0-9\s\-_]+$`)
 // Profile label key validation regex: letters, numbers, and . _ : -
 var profileLabelKeyRegex = regexp.MustCompile(`^[a-zA-Z0-9._:-]+$`)
 
+func cleanAiFlaggedTerms(in []string) ([]string, string) {
+	if len(in) > 200 {
+		return nil, "At most 200 flagged terms are allowed"
+	}
+	cleaned := make([]string, 0, len(in))
+	seen := make(map[string]struct{})
+	for _, term := range in {
+		term = strings.ToLower(strings.TrimSpace(term))
+		if term == "" {
+			continue
+		}
+		if utf8.RuneCountInString(term) > 100 {
+			return nil, "Flagged terms must be at most 100 characters"
+		}
+		if _, dup := seen[term]; dup {
+			continue
+		}
+		seen[term] = struct{}{}
+		cleaned = append(cleaned, term)
+	}
+	return cleaned, ""
+}
+
 func cleanProfileLabelAllowlist(in []string) ([]string, string) {
 	if len(in) > 20 {
 		return nil, "At most 20 profile label keys are allowed"
@@ -101,6 +125,8 @@ type UpdateProjectRequest struct {
 	DropHealthyHealthchecks *bool     `json:"dropHealthyHealthchecks"`
 	HealthcheckPaths        *[]string `json:"healthcheckPaths"`
 	ProfileLabelAllowlist   *[]string `json:"profileLabelAllowlist"`
+	AiFlaggedTerms          *[]string `json:"aiFlaggedTerms"`
+	AiFlaggedLanguages      *[]string `json:"aiFlaggedLanguages"`
 }
 
 type DeleteProjectRequest struct {
@@ -271,6 +297,38 @@ func (p projectController) UpdateProject(c *gin.Context) {
 		profileLabelAllowlist = &cleaned
 	}
 
+	var aiFlaggedTerms *[]string
+	if request.AiFlaggedTerms != nil {
+		cleaned, errMsg := cleanAiFlaggedTerms(*request.AiFlaggedTerms)
+		if errMsg != "" {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": errMsg})
+			return
+		}
+		aiFlaggedTerms = &cleaned
+	}
+
+	var aiFlaggedLanguages *[]string
+	if request.AiFlaggedLanguages != nil {
+		cleaned := make([]string, 0, len(*request.AiFlaggedLanguages))
+		seen := make(map[string]struct{})
+		for _, lang := range *request.AiFlaggedLanguages {
+			lang = strings.ToLower(strings.TrimSpace(lang))
+			if lang == "" {
+				continue
+			}
+			if !contentflag.IsValidLanguage(lang) {
+				c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Unknown flagged-term language pack: " + lang})
+				return
+			}
+			if _, dup := seen[lang]; dup {
+				continue
+			}
+			seen[lang] = struct{}{}
+			cleaned = append(cleaned, lang)
+		}
+		aiFlaggedLanguages = &cleaned
+	}
+
 	projectId, err := middleware.GetProjectId(c)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
@@ -278,7 +336,7 @@ func (p projectController) UpdateProject(c *gin.Context) {
 	}
 
 	project, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.Project, error) {
-		return transactional.ProjectRepository.Update(tx, projectId, request.Name, request.Framework, request.DropHealthyHealthchecks, healthcheckPaths, profileLabelAllowlist)
+		return transactional.ProjectRepository.Update(tx, projectId, request.Name, request.Framework, request.DropHealthyHealthchecks, healthcheckPaths, profileLabelAllowlist, aiFlaggedTerms, aiFlaggedLanguages)
 	})
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error updating project: %w", err))

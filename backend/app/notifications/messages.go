@@ -198,6 +198,37 @@ func buildAiTraceCostMessage(traceName string, cost float64, threshold float64, 
 	}
 }
 
+func buildAiConversationCostMessage(conversationId string, cost, threshold float64, projectName string) Message {
+	severity := SeverityWarning
+	if cost >= threshold*3 {
+		severity = SeverityCritical
+	}
+	return Message{
+		Subject:    fmt.Sprintf("[%s] AI conversation cost %s exceeds %s", projectName, formatCostForMessage(cost), formatCostForMessage(threshold)),
+		Body:       fmt.Sprintf("The AI conversation \"%s\" has cost %s over the last 24 hours, exceeding the threshold of %s.", conversationId, formatCostForMessage(cost), formatCostForMessage(threshold)),
+		Severity:   severity,
+		URL:        "/ai-traces/conversations?preset=24h",
+		DedupToken: conversationId,
+	}
+}
+
+func buildAiFlaggedContentMessage(conversationId, userId string, terms []string, projectName string) Message {
+	termList := strings.Join(terms, ", ")
+	body := fmt.Sprintf("An AI conversation matched flagged terms: %s.", termList)
+	if conversationId != "" {
+		body = fmt.Sprintf("AI conversation \"%s\" matched flagged terms: %s.", conversationId, termList)
+	}
+	if userId != "" {
+		body += fmt.Sprintf(" User: %s.", userId)
+	}
+	return Message{
+		Subject:  fmt.Sprintf("[%s] AI conversation flagged: %s", projectName, termList),
+		Body:     body,
+		Severity: SeverityWarning,
+		URL:      "/ai-traces/conversations?preset=24h&flagged=1",
+	}
+}
+
 type ExceptionDetails struct {
 	Id         string
 	Hash       string

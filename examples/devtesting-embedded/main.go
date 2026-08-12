@@ -8,11 +8,13 @@ import (
 	"io/fs"
 	"math/rand/v2"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/joho/godotenv"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -33,6 +35,9 @@ var indexHTML []byte
 
 //go:embed cdn.html
 var cdnHTML []byte
+
+//go:embed chat.html
+var chatHTML []byte
 
 //go:embed static/*
 var staticFS embed.FS
@@ -132,6 +137,9 @@ func (s *otelService) log(ctx context.Context, sev otellog.Severity, sevText, bo
 }
 
 func main() {
+	// OPENROUTER_API_KEY / OPENROUTER_MODEL for the AI chat live in .env.
+	_ = godotenv.Load()
+
 	go tracewaybackend.Run(
 		tracewaybackend.WithSQLitePath("./storage/traceway.db"),
 		tracewaybackend.WithPort(8082),
@@ -201,6 +209,12 @@ func main() {
 	router.GET("/cdn", func(c *gin.Context) {
 		c.Data(http.StatusOK, "text/html; charset=utf-8", cdnHTML)
 	})
+
+	router.GET("/chat", func(c *gin.Context) {
+		c.Data(http.StatusOK, "text/html; charset=utf-8", chatHTML)
+	})
+
+	registerAIChatRoutes(router, backendSvc)
 
 	staticSub, _ := fs.Sub(staticFS, "static")
 	router.StaticFS("/static", http.FS(staticSub))
@@ -381,8 +395,13 @@ func main() {
 	fmt.Println("=================================================")
 	fmt.Printf("  Node build:       http://localhost:%d\n", appPort)
 	fmt.Printf("  CDN (no build):   http://localhost:%d/cdn\n", appPort)
+	fmt.Printf("  AI chat:          http://localhost:%d/chat\n", appPort)
 	fmt.Println("  Dashboard:        http://localhost:8082")
 	fmt.Println("  Login:            admin@localhost.com / admin")
+	if os.Getenv("OPENROUTER_API_KEY") == "" {
+		fmt.Println()
+		fmt.Println("  WARNING: OPENROUTER_API_KEY is not set (.env) — /chat will not work")
+	}
 	fmt.Println()
 	fmt.Println("  OTel logs test endpoints (hit with curl or browser):")
 	fmt.Printf("    curl http://localhost:%d/api/test-error\n", appPort)

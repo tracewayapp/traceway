@@ -165,7 +165,14 @@ func (o otelController) ExportTraces(c *gin.Context) {
 
 	var aiTraceInfos []hooks.AiTraceInfo
 	for _, at := range aiTraces {
-		aiTraceInfos = append(aiTraceInfos, hooks.AiTraceInfo{TraceName: at.TraceName, TotalCost: at.TotalCost})
+		aiTraceInfos = append(aiTraceInfos, hooks.AiTraceInfo{
+			TraceName:      at.TraceName,
+			TotalCost:      at.TotalCost,
+			ConversationId: at.ConversationId,
+			UserId:         at.UserId,
+			Flagged:        at.Flagged,
+			FlaggedTerms:   at.FlaggedTerms,
+		})
 	}
 
 	if hasOrg {

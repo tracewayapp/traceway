@@ -14,7 +14,7 @@
 </script>
 
 <Table.Row>
-	<Table.Cell {colspan} class={cn("h-45 text-center text-muted-foreground", className)}>
+	<Table.Cell {colspan} class={cn("h-45 px-6 text-center text-muted-foreground whitespace-normal break-words", className)}>
 		{message}
 	</Table.Cell>
 </Table.Row>

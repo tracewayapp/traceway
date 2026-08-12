@@ -1,0 +1,41 @@
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {"key": "service.name", "value": {"stringValue": "support-bot"}},
+          {"key": "service.version", "value": {"stringValue": "0.9.0"}}
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {"name": "support-bot"},
+          "spans": [
+            {
+              "attributes": [
+                {"key": "trace.name", "value": {"stringValue": "Support Bot"}},
+                {"key": "user.id", "value": {"stringValue": "customer-77"}},
+                {"key": "session.id", "value": {"stringValue": "sess-9f81"}},
+                {"key": "gen_ai.operation.name", "value": {"stringValue": "chat"}},
+                {"key": "gen_ai.system", "value": {"stringValue": "anthropic"}},
+                {"key": "gen_ai.request.model", "value": {"stringValue": "claude-sonnet-5"}},
+                {"key": "gen_ai.usage.input_tokens", "value": {"intValue": 300}},
+                {"key": "gen_ai.usage.output_tokens", "value": {"intValue": 55}},
+                {"key": "gen_ai.response.finish_reasons", "value": {"arrayValue": {"values": [{"stringValue": "tool_use"}]}}},
+                {"key": "gen_ai.prompt", "value": {"stringValue": "{\"messages\":[{\"role\":\"user\",\"content\":\"My order never arrived, this is bullshit. Where is it?\"}]}"}},
+                {"key": "gen_ai.completion", "value": {"stringValue": "{\"content\":[{\"type\":\"text\",\"text\":\"I'm sorry about the delay. Let me look up your order.\"},{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"lookup_order\",\"input\":{\"order_id\":\"A-123\"}}],\"stop_reason\":\"tool_use\"}"}}
+              ],
+              "endTimeUnixNano": "1774926644373000000",
+              "kind": 3,
+              "name": "chat claude-sonnet-5",
+              "spanId": "2b06f22e9f134e70",
+              "startTimeUnixNano": "1774926642873000000",
+              "status": {"code": 1},
+              "traceId": "bb5ad7a3070fecf76bc3180145d97611"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

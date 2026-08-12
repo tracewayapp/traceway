@@ -81,6 +81,8 @@ export interface Project {
     dropHealthyHealthchecks: boolean;
     healthcheckPaths: string[] | null;
     profileLabelAllowlist: string[] | null;
+    aiFlaggedTerms: string[] | null;
+    aiFlaggedLanguages: string[] | null;
     role?: string;
 }
 
@@ -175,8 +177,8 @@ class ProjectsState {
         return response;
     }
 
-    async updateProject(id: string, name: string, framework: Framework, dropHealthyHealthchecks: boolean, healthcheckPaths: string[], profileLabelAllowlist: string[]): Promise<Project> {
-        const response = await api.put('/projects', { name, framework, dropHealthyHealthchecks, healthcheckPaths, profileLabelAllowlist }, {
+    async updateProject(id: string, name: string, framework: Framework, dropHealthyHealthchecks: boolean, healthcheckPaths: string[], profileLabelAllowlist: string[], aiFlaggedTerms: string[], aiFlaggedLanguages: string[]): Promise<Project> {
+        const response = await api.put('/projects', { name, framework, dropHealthyHealthchecks, healthcheckPaths, profileLabelAllowlist, aiFlaggedTerms, aiFlaggedLanguages }, {
             projectId: id
         });
         await this.loadProjects();

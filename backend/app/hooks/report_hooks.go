@@ -7,8 +7,12 @@ import (
 )
 
 type AiTraceInfo struct {
-	TraceName string
-	TotalCost float64
+	TraceName      string
+	TotalCost      float64
+	ConversationId string
+	UserId         string
+	Flagged        bool
+	FlaggedTerms   []string
 }
 
 type ReportEvent struct {

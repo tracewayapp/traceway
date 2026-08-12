@@ -50,7 +50,7 @@ Traceway is an **OpenTelemetry-native** observability platform. It combines **lo
 - **Exceptions**: Stack traces are normalized, given a SHA-256 fingerprint, and grouped into ranked issues. Source-mapped (webpack, esbuild, Vite).
 - **Profiling** _(experimental)_: Flame graphs for CPU, heap, and goroutines with version-to-version diffing and a top-functions table. Ingests native Go pprof and OTLP profiles.
 - **Session Replay**: Watch what the user did right before the error. Available for web (any JS framework) and Flutter.
-- **AI Observability**: LLM cost, tokens, latency, and full conversations across providers (OpenRouter and any OTel-compatible AI gateway).
+- **AI Observability**: LLM cost, tokens, latency, and full conversations across providers (OpenRouter and any OTel-compatible AI gateway). Calls group into conversations via `gen_ai.conversation.id`, tool calls are parsed from completions and rendered in the chat view, and multi-language content flagging catches conversations containing terms you care about. Per-customer analytics (conversation length, cost per conversation) key on `user.id`: set it to a stable customer identifier such as your account or tenant id, the same value across all of that user's conversations, never a session id.
 - **On-Call & Paging**: Rotation schedules with layers and overrides, escalation policies, and pages that escalate until someone acknowledges. Delivered via email, Slack, Pushover, Telegram, or SMS, with one-click acknowledge links that need no login.
 
 Plus: background-task (job) monitoring, configurable alerts (Slack / GitHub / email / webhook / Pushover / Telegram), multi-tenant orgs with role-based access, and a per-endpoint slow-threshold override.

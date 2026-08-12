@@ -18,6 +18,8 @@
     import { createRowClickHandler } from '$lib/utils/navigation';
     import { resolve } from '$app/paths';
     import PageHeader from '$lib/components/issues/page-header.svelte';
+    import { formatCost, formatCount, formatTokens } from '$lib/utils/ai-format';
+    import AiNavTabs from '$lib/components/ai/ai-nav-tabs.svelte';
     import {
         presetMinutes,
         getTimeRangeFromPreset,
@@ -155,26 +157,6 @@
         loadData(false);
     }
 
-    function formatCost(cost: number): string {
-        if (cost === 0) return '$0';
-        if (cost < 0.001) return `$${cost.toFixed(6)}`;
-        if (cost < 0.01) return `$${cost.toFixed(4)}`;
-        if (cost < 1) return `$${cost.toFixed(3)}`;
-        return `$${cost.toFixed(2)}`;
-    }
-
-    function formatCount(count: number): string {
-        if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}m`;
-        if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
-        return count.toLocaleString();
-    }
-
-    function formatTokens(tokens: number): string {
-        if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
-        if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}k`;
-        return tokens.toLocaleString();
-    }
-
     async function loadData(pushToHistory = true) {
         loading = true;
         error = '';
@@ -274,6 +256,8 @@
             />
         </div>
     </div>
+
+    <AiNavTabs active="traces" />
 
     <!-- Search -->
     <SearchBar
@@ -377,6 +361,8 @@
             </Table.Header>
             <Table.Body>
                 {#each traces as trace}
+                    <!-- Trace names "conversations" and "users" are shadowed by the
+                         static sibling routes, so those two names are unreachable here. -->
                     <Table.Row
                         class="cursor-pointer hover:bg-muted/50"
                         onclick={createRowClickHandler(resolve(`/ai-traces/${encodeURIComponent(trace.traceName)}`), 'preset', 'from', 'to')}

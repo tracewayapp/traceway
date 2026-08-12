@@ -9,6 +9,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/services"
+	"github.com/tracewayapp/traceway/backend/app/services/contentflag"
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
@@ -51,12 +52,13 @@ func seed(opts *options) error {
 
 		for _, p := range opts.defaultProjects {
 			project := &models.Project{
-				Id:             uuid.New(),
-				Name:           p.name,
-				Token:          p.token,
-				Framework:      p.framework,
-				OrganizationId: &org.Id,
-				CreatedAt:      time.Now().UTC(),
+				Id:                 uuid.New(),
+				Name:               p.name,
+				Token:              p.token,
+				Framework:          p.framework,
+				OrganizationId:     &org.Id,
+				CreatedAt:          time.Now().UTC(),
+				AiFlaggedLanguages: models.StringSlice(contentflag.DefaultLanguages),
 			}
 			if p.sourceMapToken != "" {
 				token := p.sourceMapToken

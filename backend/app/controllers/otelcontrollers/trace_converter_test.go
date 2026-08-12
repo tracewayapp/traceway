@@ -14,10 +14,10 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/controllers/clientcontrollers"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/services"
-	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
-	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
+	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
+	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -59,6 +59,12 @@ type snapshotAiTrace struct {
 	TotalCost       float64 `json:"totalCost"`
 	FinishReason    string  `json:"finishReason"`
 	StatusCode      uint8   `json:"statusCode"`
+
+	ConversationId string   `json:"conversationId"`
+	ToolCallCount  int64    `json:"toolCallCount"`
+	ToolNames      []string `json:"toolNames"`
+	Flagged        bool     `json:"flagged"`
+	FlaggedTerms   []string `json:"flaggedTerms"`
 }
 
 type snapshotResult struct {
@@ -83,6 +89,8 @@ func TestConvertTraces_Snapshot(t *testing.T) {
 		fixture string
 	}{
 		{"openrouter_ai_trace", "testdata/openrouter_ai_trace.json"},
+		{"openai_tool_calls_ai_trace", "testdata/openai_tool_calls_ai_trace.json"},
+		{"anthropic_tool_use_ai_trace", "testdata/anthropic_tool_use_ai_trace.json"},
 		{"node_better_auth", "testdata/node_better_auth.json"},
 		{"node_sign_in", "testdata/node_sign_in.json"},
 		{"spring_boot_exception", "testdata/spring_boot_exception.json"},
@@ -158,6 +166,11 @@ func TestConvertTraces_Snapshot(t *testing.T) {
 					TotalCost:       at.TotalCost,
 					FinishReason:    at.FinishReason,
 					StatusCode:      at.StatusCode,
+					ConversationId:  at.ConversationId,
+					ToolCallCount:   at.ToolCallCount,
+					ToolNames:       at.ToolNames,
+					Flagged:         at.Flagged,
+					FlaggedTerms:    at.FlaggedTerms,
 				}
 			}
 
@@ -423,10 +436,10 @@ func TestTraceIdResolution_CrossScope(t *testing.T) {
 								EndTimeUnixNano:   now + 2000000,
 							},
 							{
-								TraceId:      traceIdBytes,
-								SpanId:       rootSpanId,
-								Name:         "GET /api/test",
-								Kind:         tracepb.Span_SPAN_KIND_SERVER,
+								TraceId:           traceIdBytes,
+								SpanId:            rootSpanId,
+								Name:              "GET /api/test",
+								Kind:              tracepb.Span_SPAN_KIND_SERVER,
 								StartTimeUnixNano: now,
 								EndTimeUnixNano:   now + 5000000,
 								Attributes: []*commonpb.KeyValue{
@@ -457,48 +470,48 @@ func TestTraceIdResolution_CrossScope(t *testing.T) {
 
 func TestFormatExceptionStackTrace(t *testing.T) {
 	tests := []struct {
-		name         string
-		excType      string
-		excMessage   string
+		name          string
+		excType       string
+		excMessage    string
 		excStacktrace string
-		want         string
+		want          string
 	}{
 		{
-			name:         "go style - no stacktrace",
-			excType:      "RuntimeError",
-			excMessage:   "something failed",
+			name:          "go style - no stacktrace",
+			excType:       "RuntimeError",
+			excMessage:    "something failed",
 			excStacktrace: "",
-			want:         "RuntimeError: something failed",
+			want:          "RuntimeError: something failed",
 		},
 		{
-			name:         "go style - with stacktrace that doesn't start with type",
-			excType:      "RuntimeError",
-			excMessage:   "something failed",
+			name:          "go style - with stacktrace that doesn't start with type",
+			excType:       "RuntimeError",
+			excMessage:    "something failed",
 			excStacktrace: "goroutine 1 [running]:\nmain.foo()\n\t/app/main.go:10",
-			want:         "RuntimeError: something failed\ngoroutine 1 [running]:\nmain.foo()\n\t/app/main.go:10",
+			want:          "RuntimeError: something failed\ngoroutine 1 [running]:\nmain.foo()\n\t/app/main.go:10",
 		},
 		{
 			// Java/JVM OTel agents include the full "Type: message\n\tat ..." in
 			// exception.stacktrace, so we must not prepend a duplicate header.
-			name:         "java style - stacktrace already starts with exception type",
-			excType:      "org.springframework.dao.EmptyResultDataAccessException",
-			excMessage:   "Incorrect result size: expected 1, actual 0",
+			name:          "java style - stacktrace already starts with exception type",
+			excType:       "org.springframework.dao.EmptyResultDataAccessException",
+			excMessage:    "Incorrect result size: expected 1, actual 0",
 			excStacktrace: "org.springframework.dao.EmptyResultDataAccessException: Incorrect result size: expected 1, actual 0\n\tat org.springframework.dao.support.DataAccessUtils.requiredSingleResult(DataAccessUtils.java:90)\n\tat com.example.UserService.getUser(UserService.java:38)",
-			want:         "org.springframework.dao.EmptyResultDataAccessException: Incorrect result size: expected 1, actual 0\n\tat org.springframework.dao.support.DataAccessUtils.requiredSingleResult(DataAccessUtils.java:90)\n\tat com.example.UserService.getUser(UserService.java:38)",
+			want:          "org.springframework.dao.EmptyResultDataAccessException: Incorrect result size: expected 1, actual 0\n\tat org.springframework.dao.support.DataAccessUtils.requiredSingleResult(DataAccessUtils.java:90)\n\tat com.example.UserService.getUser(UserService.java:38)",
 		},
 		{
-			name:         "java style - type only, no message",
-			excType:      "java.lang.NullPointerException",
-			excMessage:   "",
+			name:          "java style - type only, no message",
+			excType:       "java.lang.NullPointerException",
+			excMessage:    "",
 			excStacktrace: "java.lang.NullPointerException\n\tat com.example.Service.run(Service.java:10)",
-			want:         "java.lang.NullPointerException\n\tat com.example.Service.run(Service.java:10)",
+			want:          "java.lang.NullPointerException\n\tat com.example.Service.run(Service.java:10)",
 		},
 		{
-			name:         "empty everything",
-			excType:      "",
-			excMessage:   "",
+			name:          "empty everything",
+			excType:       "",
+			excMessage:    "",
 			excStacktrace: "",
-			want:         "unknown exception",
+			want:          "unknown exception",
 		},
 	}
 	for _, tt := range tests {

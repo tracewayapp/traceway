@@ -1,0 +1,5 @@
+ALTER TABLE ai_traces ADD COLUMN conversation_id VARCHAR DEFAULT '';
+ALTER TABLE ai_traces ADD COLUMN tool_call_count BIGINT DEFAULT 0;
+ALTER TABLE ai_traces ADD COLUMN tool_names VARCHAR DEFAULT '';
+ALTER TABLE ai_traces ADD COLUMN flagged BIGINT DEFAULT 0;
+ALTER TABLE ai_traces ADD COLUMN flagged_terms VARCHAR DEFAULT '';

@@ -1,6 +1,6 @@
 ---
 name: traceway-setup
-description: Connect a project to a Traceway instance so it reports endpoints, spans, errors, background tasks, AI traces, and metrics. Backends use OpenTelemetry over OTLP/HTTP, frontends and mobile apps (including native iOS/Swift) use the Traceway SDKs, and host metrics use the Traceway OTel Agent. Use when the user wants to add Traceway (or OpenTelemetry tracing that exports to Traceway) to a backend, frontend, full-stack, mobile, or iOS/Swift project. Accepts a project token and instance URL, e.g. "/traceway-setup with token abc123".
+description: Connect a project to a Traceway instance so it reports endpoints, spans, errors, background tasks, AI traces, and metrics. Backends use OpenTelemetry over OTLP/HTTP, frontends and mobile apps (including native iOS/Swift) use the Traceway SDKs, and host metrics use the Traceway OTel Agent. AI agents and chatbots additionally get conversation grouping, per-user analytics, and tool-call instrumentation (see ai-agent.md). Use when the user wants to add Traceway (or OpenTelemetry tracing that exports to Traceway) to a backend, frontend, full-stack, mobile, iOS/Swift, or AI agent/chatbot project. Accepts a project token and instance URL, e.g. "/traceway-setup with token abc123".
 ---
 
 # Set Up Traceway in a Project
@@ -70,7 +70,7 @@ Before changing anything, build a picture of what needs instrumenting:
    Frontend-only means integrate ONLY the browser side with the frontend SDK (React for Next.js); do not add OTel or instrument the framework's server side. The separate backend is its own part with its own Traceway project and its own Step 2 integration.
 3. **Services and entry points**: in a monorepo, list each deployable service and its entry point. Each part that should report to Traceway gets its own integration and its own project token, per the one-project-per-part rule in Step 0; ask the user for the missing tokens instead of reusing one across parts.
 4. **Background work**: find cron jobs, queue consumers, schedulers, CLI commands, and long-running workers. These must be instrumented as Tasks (Step 3).
-5. **AI/LLM usage**: check dependencies for `openai`, `@anthropic-ai/sdk`, `anthropic`, `langchain` / `@langchain/*`, `ai` (Vercel AI SDK), `litellm`, `google-generativeai`, `cohere`, `openrouter`. If any are present, Step 4 applies.
+5. **AI/LLM usage**: check dependencies for `openai`, `@anthropic-ai/sdk`, `anthropic`, `langchain` / `@langchain/*`, `ai` (Vercel AI SDK), `litellm`, `google-generativeai`, `cohere`, `openrouter`, and agent frameworks (`langgraph`, `crewai`, `autogen` / `ag2`, `pydantic-ai`, `@openai/agents`, `@mastra/*`, `llamaindex` / `llama-index`, `semantic-kernel`). If any are present, Step 4 applies. Then determine whether this is a **conversational product** (chatbot, assistant, agent) rather than one-shot LLM calls: look for chat endpoints or streaming chat routes (`/chat`, `/completions`, SSE or websocket handlers feeding an LLM), message-history persistence (a `messages`/`conversations` table or thread ids), tool/function-calling definitions passed to the model, or any agent framework above. If conversational, `ai-agent.md` in this skill directory governs Step 4 — it adds conversation grouping, per-user attribution, tool calls, and sub-agents.
 6. **Deployment signals**: note Dockerfiles, `docker-compose.yml`, Kubernetes manifests, Helm charts, deploy/provisioning scripts, `fly.toml`, `vercel.json`, Procfiles. You will use these in Step 5 to set up server metrics.
 
 ## Step 2: Backend OTel Setup
@@ -206,7 +206,9 @@ async function runScheduledJob() {
 
 If Step 1 found AI/LLM dependencies, instrument the model calls. Any span carrying at least one `gen_ai.*` attribute is promoted to an **AI Trace**; since calls usually happen inside a request or task, the span is naturally a child and stays linked to its Endpoint/Task by trace ID.
 
-Boundaries: **one span per model call** (one provider API request = one AI Trace row). A multi-step agent run is multiple spans sharing a stable `trace.name` (same labeling discipline as task names: no IDs or timestamps). For streaming, end the span when the stream finishes. Set `user.id` to break down usage and cost per user.
+Boundaries: **one span per model call** (one provider API request = one AI Trace row). A multi-step agent run is multiple spans sharing a stable `trace.name` (same labeling discipline as task names: no IDs or timestamps). For streaming, end the span when the stream finishes.
+
+**Conversational product?** If Step 1 flagged a chatbot, assistant, or tool-calling agent, follow `ai-agent.md` in this skill directory instead of stopping at the table below — it covers `gen_ai.conversation.id` (multi-turn grouping), what value belongs in `user.id` (a stable end-customer id, never a session id), tool-call payload shapes, and sub-agents. Without those, the Conversations and Users tabs stay empty.
 
 Attributes Traceway reads (all optional, set what is available):
 
@@ -219,7 +221,8 @@ Attributes Traceway reads (all optional, set what is available):
 | `gen_ai.usage.input_tokens.cached` / `gen_ai.usage.output_tokens.reasoning` | Cached / reasoning tokens |
 | `gen_ai.usage.input_cost` / `.output_cost` / `.total_cost` | Cost, when you compute pricing |
 | `trace.name` | Agent/workflow grouping name |
-| `user.id` | End-user attribution |
+| `gen_ai.conversation.id` | Multi-turn conversation grouping (falls back to `session.id`, then the OTel trace id) |
+| `user.id` | End-user attribution: a stable customer id (account id, tenant id, or email), the same value across all of that user's conversations |
 | `gen_ai.response.finish_reason` | Why generation stopped |
 | `gen_ai.prompt` / `gen_ai.completion` | Conversation content, shown on the trace detail page (skip if content must not leave the app) |
 

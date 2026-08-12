@@ -51,6 +51,11 @@ type aiTraceRow struct {
 	Attributes         sqlitetypes.SQLiteJSONMap `lit:"attributes"`
 	DistributedTraceId *uuid.UUID                `lit:"distributed_trace_id"`
 	IsRoot             bool                      `lit:"is_root"`
+	ConversationId     string                    `lit:"conversation_id"`
+	ToolCallCount      int64                     `lit:"tool_call_count"`
+	ToolNames          string                    `lit:"tool_names"`
+	Flagged            bool                      `lit:"flagged"`
+	FlaggedTerms       string                    `lit:"flagged_terms"`
 }
 
 type groupedAiTraceRow struct {
@@ -79,11 +84,53 @@ type aiTraceDetailStatsRow struct {
 	AvgOutputTokens  float64 `lit:"avg_output_tokens"`
 }
 
+type conversationStatsRow struct {
+	ConversationId string    `lit:"conversation_id"`
+	UserId         string    `lit:"user_id"`
+	Turns          int64     `lit:"turns"`
+	TotalTokens    int64     `lit:"total_tokens"`
+	TotalCost      float64   `lit:"total_cost"`
+	ToolCallCount  int64     `lit:"tool_call_count"`
+	ToolNames      string    `lit:"tool_names"`
+	Models         string    `lit:"models"`
+	Flagged        bool      `lit:"flagged"`
+	FlaggedTerms   string    `lit:"flagged_terms"`
+	FirstSeen      time.Time `lit:"first_seen"`
+	LastSeen       time.Time `lit:"last_seen"`
+}
+
+type userConversationRow struct {
+	UserId      string    `lit:"user_id"`
+	Turns       int64     `lit:"turns"`
+	ConvCost    float64   `lit:"conv_cost"`
+	ConvTokens  int64     `lit:"conv_tokens"`
+	ConvFlagged bool      `lit:"conv_flagged"`
+	LastSeen    time.Time `lit:"last_seen"`
+}
+
+type conversationCostRow struct {
+	ConversationId string  `lit:"conversation_id"`
+	TotalCost      float64 `lit:"total_cost"`
+}
+
+type modelNameRow struct {
+	Model string `lit:"model"`
+}
+
+type toolNamesRow struct {
+	ToolNames string `lit:"tool_names"`
+}
+
 func init() {
 	models.ExtensionModelRegistrations = append(models.ExtensionModelRegistrations, func(driver lit.Driver) {
 		lit.RegisterModelWithNaming[aiTraceRow](driver, aiTraceRowNaming{})
 		lit.RegisterModel[groupedAiTraceRow](driver)
 		lit.RegisterModel[aiTraceDetailStatsRow](driver)
+		lit.RegisterModel[conversationStatsRow](driver)
+		lit.RegisterModel[userConversationRow](driver)
+		lit.RegisterModel[conversationCostRow](driver)
+		lit.RegisterModel[modelNameRow](driver)
+		lit.RegisterModel[toolNamesRow](driver)
 	})
 }
 
@@ -114,6 +161,11 @@ func (r *aiTraceRow) toModel() models.AiTrace {
 		StorageKey:         r.StorageKey,
 		DistributedTraceId: r.DistributedTraceId,
 		IsRoot:             r.IsRoot,
+		ConversationId:     r.ConversationId,
+		ToolCallCount:      r.ToolCallCount,
+		ToolNames:          shared.SplitCSV(r.ToolNames),
+		Flagged:            r.Flagged,
+		FlaggedTerms:       shared.SplitCSV(r.FlaggedTerms),
 	}
 	if r.Attributes != nil {
 		t.Attributes = map[string]string(r.Attributes)
@@ -145,7 +197,10 @@ func (r *aiTraceRepository) InsertAsync(ctx context.Context, lines []models.AiTr
 
 			isRoot := boolToInt(t.IsRoot)
 
-			// Column order follows the ai_traces DDL exactly: is_root precedes distributed_trace_id.
+			// Column order follows the ai_traces DDL exactly: is_root precedes
+			// distributed_trace_id, and the 0002 migration's conversation columns
+			// (conversation_id, tool_call_count, tool_names, flagged, flagged_terms)
+			// come last in that order.
 			if err := appender.AppendRow(
 				t.Id.String(),
 				t.ProjectId.String(),
@@ -173,6 +228,11 @@ func (r *aiTraceRepository) InsertAsync(ctx context.Context, lines []models.AiTr
 				attributesJSON,
 				isRoot,
 				nullableString(distributedTraceId),
+				t.ConversationId,
+				t.ToolCallCount,
+				shared.JoinCSV(t.ToolNames),
+				boolToInt(t.Flagged),
+				shared.JoinCSV(t.FlaggedTerms),
 			); err != nil {
 				captureDroppedRow("ai_traces", err)
 			}
@@ -305,7 +365,8 @@ func (r *aiTraceRepository) FindByTraceName(ctx context.Context, projectId uuid.
 			input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens,
 			input_cost, output_cost, total_cost,
 			trace_name, user_id, finish_reason, server_name, app_version,
-			storage_key, attributes, distributed_trace_id, is_root
+			storage_key, attributes, distributed_trace_id, is_root,
+			conversation_id, tool_call_count, tool_names, flagged, flagged_terms
 		FROM ai_traces
 		WHERE project_id = :project_id AND trace_name = :trace_name AND recorded_at >= :from AND recorded_at <= :to
 		ORDER BY %s %s LIMIT :limit OFFSET :offset`, orderBy, sortDir),
@@ -368,7 +429,8 @@ func (r *aiTraceRepository) FindById(ctx context.Context, projectId, traceId uui
 			input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens,
 			input_cost, output_cost, total_cost,
 			trace_name, user_id, finish_reason, server_name, app_version,
-			storage_key, attributes, distributed_trace_id, is_root
+			storage_key, attributes, distributed_trace_id, is_root,
+			conversation_id, tool_call_count, tool_names, flagged, flagged_terms
 		FROM ai_traces
 		WHERE project_id = :project_id AND id = :id`
 	params := lit.P{"project_id": projectId, "id": traceId}
@@ -407,7 +469,8 @@ func (r *aiTraceRepository) FindByDistributedTraceId(ctx context.Context, distri
 			input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens,
 			input_cost, output_cost, total_cost,
 			trace_name, user_id, finish_reason, server_name, app_version,
-			storage_key, attributes, distributed_trace_id, is_root
+			storage_key, attributes, distributed_trace_id, is_root,
+			conversation_id, tool_call_count, tool_names, flagged, flagged_terms
 		FROM ai_traces WHERE distributed_trace_id = :trace_id AND project_id IN (` + strings.Join(placeholders, ",") + `)`
 	if recordedAt != nil {
 		from, to := shared.DistributedTraceWindowBounds(*recordedAt)
@@ -437,12 +500,226 @@ func (r *aiTraceRepository) FindByDistributedTraceId(ctx context.Context, distri
 			&row.InputCost, &row.OutputCost, &row.TotalCost,
 			&row.TraceName, &row.UserId, &row.FinishReason, &row.ServerName, &row.AppVersion,
 			&row.StorageKey, &row.Attributes, &row.DistributedTraceId, &row.IsRoot,
+			&row.ConversationId, &row.ToolCallCount, &row.ToolNames, &row.Flagged, &row.FlaggedTerms,
 		); err != nil {
 			return nil, err
 		}
 		traces = append(traces, row.toModel())
 	}
 	return traces, nil
+}
+
+func (r *aiTraceRepository) FindConversations(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy, sortDirection, search, userId, model, toolName string, flaggedOnly bool) ([]models.AiConversationStats, int64, *models.AiConversationThresholds, error) {
+	params := lit.P{"project_id": projectId, "from": fromDate.UTC(), "to": toDate.UTC()}
+
+	baseWhere := "project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to AND conversation_id != ''"
+
+	// Row-level filters use a semi-join on conversation_id: a conversation
+	// matches when ANY of its turns matches, and its aggregates still cover
+	// all turns (a plain WHERE would drop the non-matching turns from the
+	// sums).
+	var rowPredicates []string
+	if search != "" {
+		rowPredicates = append(rowPredicates,
+			"(INSTR(LOWER(conversation_id), LOWER(:search)) > 0 OR INSTR(LOWER(user_id), LOWER(:search)) > 0 OR INSTR(LOWER(model), LOWER(:search)) > 0 OR INSTR(LOWER(tool_names), LOWER(:search)) > 0 OR INSTR(LOWER(flagged_terms), LOWER(:search)) > 0)")
+		params["search"] = search
+	}
+	if userId != "" {
+		rowPredicates = append(rowPredicates, "user_id = :user_id")
+		params["user_id"] = userId
+	}
+	if model != "" {
+		rowPredicates = append(rowPredicates, "model = :model")
+		params["model"] = model
+	}
+	if toolName != "" {
+		rowPredicates = append(rowPredicates, "INSTR(',' || tool_names || ',', ',' || :tool_name || ',') > 0")
+		params["tool_name"] = toolName
+	}
+
+	whereClause := baseWhere
+	if len(rowPredicates) > 0 {
+		whereClause += " AND conversation_id IN (SELECT DISTINCT conversation_id FROM ai_traces WHERE " +
+			baseWhere + " AND " + strings.Join(rowPredicates, " AND ") + ")"
+	}
+
+	havingClause := ""
+	if flaggedOnly {
+		havingClause = " HAVING MAX(flagged) = 1"
+	}
+
+	rows, err := lit.SelectNamed[conversationStatsRow](db.TelemetryDB,
+		`SELECT conversation_id,
+			MAX(user_id) AS user_id,
+			COUNT(*) AS turns,
+			CAST(SUM(total_tokens) AS BIGINT) AS total_tokens,
+			SUM(total_cost) AS total_cost,
+			CAST(SUM(tool_call_count) AS BIGINT) AS tool_call_count,
+			string_agg(DISTINCT tool_names, ',') AS tool_names,
+			string_agg(DISTINCT model, ',') AS models,
+			MAX(flagged) AS flagged,
+			string_agg(DISTINCT flagged_terms, ',') AS flagged_terms,
+			MIN(recorded_at) AS first_seen,
+			MAX(recorded_at) AS last_seen
+		FROM ai_traces WHERE `+whereClause+`
+		GROUP BY conversation_id`+havingClause, params)
+	if err != nil {
+		return nil, 0, nil, err
+	}
+
+	stats := make([]models.AiConversationStats, 0, len(rows))
+	for _, row := range rows {
+		stats = append(stats, models.AiConversationStats{
+			ConversationId: row.ConversationId,
+			UserId:         row.UserId,
+			Turns:          row.Turns,
+			TotalTokens:    row.TotalTokens,
+			TotalCost:      row.TotalCost,
+			ToolCallCount:  row.ToolCallCount,
+			ToolNames:      shared.UnionCSV(row.ToolNames),
+			Models:         shared.UnionCSV(row.Models),
+			Flagged:        row.Flagged,
+			FlaggedTerms:   shared.UnionCSV(row.FlaggedTerms),
+			FirstSeen:      row.FirstSeen,
+			LastSeen:       row.LastSeen,
+		})
+	}
+
+	total := int64(len(stats))
+	thresholds := shared.ConversationThresholds(stats)
+	stats = shared.SortAndPageConversations(stats, orderBy, sortDirection, page, pageSize)
+	return stats, total, thresholds, nil
+}
+
+func (r *aiTraceRepository) FindByConversationId(ctx context.Context, projectId uuid.UUID, conversationId string, fromDate, toDate time.Time) ([]models.AiTrace, *models.AiConversationDetailStats, error) {
+	query := `SELECT id, project_id, recorded_at, duration, status_code,
+			model, response_model, provider, operation,
+			input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens,
+			input_cost, output_cost, total_cost,
+			trace_name, user_id, finish_reason, server_name, app_version,
+			storage_key, attributes, distributed_trace_id, is_root,
+			conversation_id, tool_call_count, tool_names, flagged, flagged_terms
+		FROM ai_traces
+		WHERE project_id = :project_id AND conversation_id = :conversation_id`
+	params := lit.P{"project_id": projectId, "conversation_id": conversationId}
+	if !fromDate.IsZero() {
+		query += ` AND recorded_at >= :from`
+		params["from"] = fromDate.UTC()
+	}
+	if !toDate.IsZero() {
+		query += ` AND recorded_at <= :to`
+		params["to"] = toDate.UTC()
+	}
+	query += ` ORDER BY recorded_at ASC LIMIT 1000`
+
+	rows, err := lit.SelectNamed[aiTraceRow](db.TelemetryDB, query, params)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	traces := make([]models.AiTrace, 0, len(rows))
+	for _, row := range rows {
+		traces = append(traces, row.toModel())
+	}
+	return traces, shared.BuildConversationDetailStats(traces), nil
+}
+
+func (r *aiTraceRepository) FindUserStats(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy, sortDirection, search string) ([]models.AiUserStats, int64, error) {
+	params := lit.P{"project_id": projectId, "from": fromDate.UTC(), "to": toDate.UTC()}
+
+	whereClause := "project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to AND user_id != '' AND conversation_id != ''"
+	if search != "" {
+		whereClause += " AND INSTR(LOWER(user_id), LOWER(:search)) > 0"
+		params["search"] = search
+	}
+
+	rows, err := lit.SelectNamed[userConversationRow](db.TelemetryDB,
+		`SELECT user_id,
+			COUNT(*) AS turns,
+			SUM(total_cost) AS conv_cost,
+			CAST(SUM(total_tokens) AS BIGINT) AS conv_tokens,
+			MAX(flagged) AS conv_flagged,
+			MAX(recorded_at) AS last_seen
+		FROM ai_traces WHERE `+whereClause+`
+		GROUP BY user_id, conversation_id`, params)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	aggRows := make([]shared.UserConversationAgg, 0, len(rows))
+	for _, row := range rows {
+		aggRows = append(aggRows, shared.UserConversationAgg{
+			UserId:   row.UserId,
+			Turns:    row.Turns,
+			Cost:     row.ConvCost,
+			Tokens:   row.ConvTokens,
+			Flagged:  row.ConvFlagged,
+			LastSeen: row.LastSeen,
+		})
+	}
+
+	stats := shared.AggregateUserStats(aggRows)
+	total := int64(len(stats))
+	stats = shared.SortAndPageUserStats(stats, orderBy, sortDirection, page, pageSize)
+	return stats, total, nil
+}
+
+func (r *aiTraceRepository) GetConversationCosts(ctx context.Context, projectId uuid.UUID, conversationIds []string, since time.Time) (map[string]float64, error) {
+	costs := make(map[string]float64, len(conversationIds))
+	if len(conversationIds) == 0 {
+		return costs, nil
+	}
+	params := lit.P{"project_id": projectId, "since": since.UTC()}
+	placeholders := make([]string, len(conversationIds))
+	for i, id := range conversationIds {
+		key := fmt.Sprintf("cid_%d", i)
+		placeholders[i] = ":" + key
+		params[key] = id
+	}
+	rows, err := lit.SelectNamed[conversationCostRow](db.TelemetryDB,
+		`SELECT conversation_id, SUM(total_cost) AS total_cost
+		FROM ai_traces
+		WHERE project_id = :project_id AND recorded_at >= :since AND conversation_id IN (`+strings.Join(placeholders, ",")+`)
+		GROUP BY conversation_id`, params)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		costs[row.ConversationId] = row.TotalCost
+	}
+	return costs, nil
+}
+
+func (r *aiTraceRepository) ListModels(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time) ([]string, error) {
+	rows, err := lit.SelectNamed[modelNameRow](db.TelemetryDB,
+		`SELECT DISTINCT model FROM ai_traces
+		WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to AND model != ''
+		ORDER BY model LIMIT 200`,
+		lit.P{"project_id": projectId, "from": fromDate.UTC(), "to": toDate.UTC()})
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(rows))
+	for _, row := range rows {
+		names = append(names, row.Model)
+	}
+	return names, nil
+}
+
+func (r *aiTraceRepository) ListToolNames(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time) ([]string, error) {
+	rows, err := lit.SelectNamed[toolNamesRow](db.TelemetryDB,
+		`SELECT DISTINCT tool_names FROM ai_traces
+		WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to AND tool_names != ''
+		LIMIT 500`,
+		lit.P{"project_id": projectId, "from": fromDate.UTC(), "to": toDate.UTC()})
+	if err != nil {
+		return nil, err
+	}
+	values := make([]string, 0, len(rows))
+	for _, row := range rows {
+		values = append(values, row.ToolNames)
+	}
+	return shared.UnionCSV(shared.JoinCSV(values)), nil
 }
 
 var AiTraceRepository = &aiTraceRepository{}

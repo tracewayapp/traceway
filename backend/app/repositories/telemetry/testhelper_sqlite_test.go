@@ -116,9 +116,15 @@ CREATE TABLE IF NOT EXISTS ai_traces (
     storage_key TEXT NOT NULL DEFAULT '',
     attributes TEXT NOT NULL DEFAULT '{}',
     distributed_trace_id TEXT DEFAULT NULL,
-    is_root INTEGER NOT NULL DEFAULT 1
+    is_root INTEGER NOT NULL DEFAULT 1,
+    conversation_id TEXT NOT NULL DEFAULT '',
+    tool_call_count INTEGER NOT NULL DEFAULT 0,
+    tool_names TEXT NOT NULL DEFAULT '',
+    flagged INTEGER NOT NULL DEFAULT 0,
+    flagged_terms TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_ai_traces_project_recorded ON ai_traces(project_id, recorded_at);
+CREATE INDEX IF NOT EXISTS idx_ai_traces_project_conversation ON ai_traces(project_id, conversation_id);
 
 CREATE TABLE IF NOT EXISTS exception_stack_traces (
     id TEXT NOT NULL,

@@ -45,6 +45,14 @@ func aiCostDedupKey(ruleId int, traceName string) string {
 	return ruleStatePrefix(ruleId) + "ai_cost:" + traceName
 }
 
+func aiConversationCostDedupKey(ruleId int, conversationId string) string {
+	return ruleStatePrefix(ruleId) + "ai_conv_cost:" + conversationId
+}
+
+func aiFlaggedContentDedupKey(ruleId int, subject string) string {
+	return ruleStatePrefix(ruleId) + "ai_flagged:" + subject
+}
+
 func ClearRuleState(ruleId int) {
 	cooldowns.mu.Lock()
 	delete(cooldowns.fired, ruleId)

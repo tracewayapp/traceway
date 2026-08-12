@@ -20,7 +20,9 @@ func setupProjectsTable(t *testing.T) {
 		created_at DATETIME NOT NULL DEFAULT (datetime('now')),
 		drop_healthy_healthchecks INTEGER NOT NULL DEFAULT 1,
 		healthcheck_paths TEXT NOT NULL DEFAULT '[]',
-		profile_label_allowlist TEXT NOT NULL DEFAULT '[]'
+		profile_label_allowlist TEXT NOT NULL DEFAULT '[]',
+		ai_flagged_terms TEXT NOT NULL DEFAULT '[]',
+		ai_flagged_languages TEXT NOT NULL DEFAULT '["en"]'
 	)`)
 	if err != nil {
 		t.Fatalf("failed to create projects table: %v", err)
@@ -59,10 +61,16 @@ func TestProjectHealthcheckFieldsRoundTrip(t *testing.T) {
 		t.Errorf("HealthcheckPaths = %v, expected empty", found.HealthcheckPaths)
 	}
 
+	if len(created.AiFlaggedLanguages) != 1 || created.AiFlaggedLanguages[0] != "en" {
+		t.Errorf("new project AiFlaggedLanguages = %v, expected [en]", created.AiFlaggedLanguages)
+	}
+
 	disable := false
 	paths := []string{"/internal/probe", "/checks/*"}
 	labels := []string{"tenant", "region"}
-	updated, err := ProjectRepository.Update(tx, created.Id, "test-project", "gin", &disable, &paths, &labels)
+	flaggedTerms := []string{"acmecorp", "secret phrase"}
+	flaggedLanguages := []string{"en", "sr"}
+	updated, err := ProjectRepository.Update(tx, created.Id, "test-project", "gin", &disable, &paths, &labels, &flaggedTerms, &flaggedLanguages)
 	if err != nil {
 		t.Fatalf("failed to update project: %v", err)
 	}
@@ -83,9 +91,15 @@ func TestProjectHealthcheckFieldsRoundTrip(t *testing.T) {
 	if len(found.ProfileLabelAllowlist) != 2 || found.ProfileLabelAllowlist[0] != "tenant" || found.ProfileLabelAllowlist[1] != "region" {
 		t.Errorf("ProfileLabelAllowlist = %v, expected %v", found.ProfileLabelAllowlist, labels)
 	}
+	if len(found.AiFlaggedTerms) != 2 || found.AiFlaggedTerms[0] != "acmecorp" || found.AiFlaggedTerms[1] != "secret phrase" {
+		t.Errorf("AiFlaggedTerms = %v, expected %v", found.AiFlaggedTerms, flaggedTerms)
+	}
+	if len(found.AiFlaggedLanguages) != 2 || found.AiFlaggedLanguages[0] != "en" || found.AiFlaggedLanguages[1] != "sr" {
+		t.Errorf("AiFlaggedLanguages = %v, expected %v", found.AiFlaggedLanguages, flaggedLanguages)
+	}
 
 	keepDrop := true
-	updated, err = ProjectRepository.Update(tx, created.Id, "renamed", "gin", &keepDrop, nil, nil)
+	updated, err = ProjectRepository.Update(tx, created.Id, "renamed", "gin", &keepDrop, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to update project without paths: %v", err)
 	}
@@ -94,5 +108,11 @@ func TestProjectHealthcheckFieldsRoundTrip(t *testing.T) {
 	}
 	if len(updated.ProfileLabelAllowlist) != 2 {
 		t.Errorf("nil profileLabelAllowlist should keep existing value, got %v", updated.ProfileLabelAllowlist)
+	}
+	if len(updated.AiFlaggedTerms) != 2 {
+		t.Errorf("nil aiFlaggedTerms should keep existing value, got %v", updated.AiFlaggedTerms)
+	}
+	if len(updated.AiFlaggedLanguages) != 2 {
+		t.Errorf("nil aiFlaggedLanguages should keep existing value, got %v", updated.AiFlaggedLanguages)
 	}
 }

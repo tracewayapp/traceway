@@ -685,6 +685,21 @@ Templates are DB rows seeded by migrations (`traceway-otel-agent` for the OTel h
 | POST | `/api/exception-stack-traces/by-id/:exceptionId` | App | Single exception by ID |
 | POST | `/api/exception-stack-traces/:hash` | App | Exception by hash |
 
+**AI Traces & Conversations**
+
+One `ai_traces` row per LLM call (any OTLP span with `gen_ai.*` attributes). Each row carries a `conversation_id` resolved at ingest (`gen_ai.conversation.id` -> `session.id` span/resource attr -> distributed trace id -> empty), `tool_call_count`/`tool_names` parsed from the completion payload (OpenAI `tool_calls`, Anthropic `tool_use`, OTel output messages, `gen_ai.tool.*` fallback), and `flagged`/`flagged_terms` from an ingest-time word-boundary scan of prompt+completion against per-project selected built-in language packs (`projects.ai_flagged_languages`, default `["en"]`; packs live in `backend/app/services/contentflag/terms/*.txt` — en/de/es/fr/it/pt/sr; empty array = custom terms only) plus per-project custom terms (`projects.ai_flagged_terms`); both edited in the project settings AI tab and cached via the project cache. All three project-creation paths (`Create`, `CreateWithOrganization`, `cmd/seed.go`) must set `AiFlaggedLanguages` explicitly since lit inserts every struct field. `tool_names`/`flagged_terms` are stored comma-separated (values sanitized at ingest); the content matcher lives in `backend/app/services/contentflag/`. Conversation analytics exclude rows with an empty `conversation_id`; user analytics additionally require a non-empty `user_id`.
+
+| Method | Endpoint | Auth | Purpose |
+|--------|----------|------|---------|
+| POST | `/api/ai-traces/grouped` | App | AI traces grouped by trace name |
+| POST | `/api/ai-traces/trace` | App | Calls for one trace name (`?traceName=`) |
+| POST | `/api/ai-traces/:traceId` | App | Single call detail + conversation blob |
+| POST | `/api/ai-conversations/grouped` | App | Conversations (GROUP BY conversation_id): turns, cost, tokens, tools, models, flagged; filters userId/model/toolName/flaggedOnly/search (search matches conversation id, user, model, tool names, and flagged terms; row-level filters are semi-joins on conversation_id so a match on any turn returns the whole conversation's aggregates); response also carries `thresholds` (range-wide P95 cost/turns for outlier highlighting) and `facets` (models, tools) |
+| POST | `/api/ai-conversations/conversation` | App | All turns of one conversation (id in body) ordered by recorded_at, each with its stored input/output payload (capped at 200 turns of payloads), plus stats |
+| POST | `/api/ai-users/grouped` | App | Per-user conversation analytics: conversation count, total calls, avg/min/median turns, avg cost per conversation, total cost, flagged conversation count |
+
+Frontend routes: `/ai-traces` (tabs: Traces, Conversations, Users), `/ai-traces/conversations/[conversationId]` (chat timeline with tool calls rendered). Trace names `conversations` and `users` are shadowed by these static routes. Notification rule types `ai_trace_cost` (per call), `ai_conversation_cost` (24h cumulative per conversation), and `ai_flagged_content` (flagged term match, optional term filter) are event-driven; remember both `notification_rule.repository.go` copies list event rule types explicitly.
+
 **Organization Management**
 | Method | Endpoint | Auth | Purpose |
 |--------|----------|------|---------|

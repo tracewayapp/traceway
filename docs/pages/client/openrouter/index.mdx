@@ -57,6 +57,22 @@ Controls what percentage of traces are sent to Traceway. Set to `1` (100%) to ca
 
 Optionally filter traces to only include calls made with specific API keys. Useful if you have multiple environments sharing the same OpenRouter organization.
 
+### End-User and Conversation Attribution
+
+Two request-level fields unlock Traceway's Conversations and Users analytics. Pass them on every chat completion request:
+
+```json
+{
+  "model": "anthropic/claude-sonnet-5",
+  "messages": [...],
+  "user": "account-8a41",
+  "session_id": "thread-129af3"
+}
+```
+
+- **`user`** (up to 128 characters) identifies the end user of your product and becomes the `user.id` on the trace. Use a stable customer identifier: your internal account id, a tenant id, or an email. Do not pass session ids or random values here; the same user must carry the same value across all their conversations, or the per-user medians on the Users page become meaningless. If you leave it out, calls attribute to your OpenRouter account itself, which makes every customer look like one user. If PII must stay out of telemetry, use an internal id or a hash.
+- **`session_id`** (up to 256 characters, also accepted as the `x-session-id` header) groups requests into one conversation on the Conversations page. Use your chat/thread id, stable for the life of the conversation.
+
 ## What Gets Captured
 
 Every OpenRouter completion generates a trace with:
@@ -76,7 +92,8 @@ Every OpenRouter completion generates a trace with:
 | Finish Reason | `gen_ai.response.finish_reason` | `stop` |
 | Prompt | `gen_ai.prompt` | Full messages JSON |
 | Completion | `gen_ai.completion` | Full response JSON |
-| User ID | `user.id` | Your OpenRouter user/org ID |
+| User ID | `user.id` | The `user` field from your request; falls back to your OpenRouter account id |
+| Conversation | `gen_ai.conversation.id` / `session.id` | The `session_id` field from your request |
 | Trace Name | `trace.name` | Workflow identifier |
 | Temperature | `gen_ai.request.temperature` | `0.7` |
 

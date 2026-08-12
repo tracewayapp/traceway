@@ -10,7 +10,33 @@ go run .
 
 Then:
 - App: http://localhost:8080/cdn (no build step) or http://localhost:8080 (requires `cd frontend && npm install && npm run build` first)
+- AI chat: http://localhost:8080/chat (needs `OPENROUTER_API_KEY` in `.env`)
 - Dashboard: http://localhost:8082 — login `admin@localhost.com` / `admin`
+
+## AI chat (conversations, tool calls, sub-agents)
+
+`/chat` is a no-build chat UI backed by OpenRouter, built to exercise the AI conversation analytics end to end. Configuration lives in `.env` (gitignored):
+
+```
+OPENROUTER_API_KEY=sk-or-...
+OPENROUTER_MODEL=anthropic/claude-sonnet-5
+```
+
+How it maps to Traceway:
+
+- Every LLM call emits a `gen_ai.*` span into the `Backend API` project, with real token counts and cost from OpenRouter usage accounting.
+- The chat session id becomes `gen_ai.conversation.id`, so each browser conversation shows up on the Conversations tab. The persona picker sets `user.id` for the Users tab.
+- The main **Support Chat Agent** has fake tools (`get_weather`, `lookup_order`, `get_server_time`) plus two delegation tools that run sub-agents in the same conversation: **Research Sub-Agent** (with `search_knowledge_base`) and **Math Sub-Agent** (with a real `calculate` evaluator). Each agent is a separate trace name on the AI Traces tab.
+- Tool executions run in plain child spans (no `gen_ai.*` attributes) so they appear in the trace waterfall without inflating conversation turn counts; the tool calls themselves are parsed from the completion payloads.
+
+Suggestion buttons in the UI trigger each tool and sub-agent. To test content flagging, swear at the bot or add custom terms in the project settings AI tab. The API is also curl-able:
+
+```bash
+curl -s http://localhost:8080/api/ai/chat -H 'Content-Type: application/json' -d '{
+  "sessionId": "conv-1", "userId": "alice@example.com",
+  "messages": [{"role": "user", "content": "Weather in Paris, and ask the math agent for 12*(3+4)"}]
+}'
+```
 
 ## What runs
 

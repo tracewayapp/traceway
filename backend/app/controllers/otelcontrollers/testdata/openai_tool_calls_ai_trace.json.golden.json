@@ -1,0 +1,38 @@
+{
+  "endpointCount": 0,
+  "endpoints": [],
+  "taskCount": 0,
+  "spanCount": 0,
+  "spans": [],
+  "exceptionCount": 0,
+  "exceptions": [],
+  "aiTraceCount": 1,
+  "aiTraces": [
+    {
+      "traceName": "Weather Agent",
+      "model": "gpt-4o",
+      "provider": "openai",
+      "operation": "chat",
+      "inputTokens": 120,
+      "outputTokens": 40,
+      "totalTokens": 160,
+      "cachedTokens": 0,
+      "reasoningTokens": 0,
+      "inputCost": 0.0012,
+      "outputCost": 0.0008,
+      "totalCost": 0.002,
+      "finishReason": "tool_calls",
+      "statusCode": 1,
+      "conversationId": "conv-2024-abc",
+      "toolCallCount": 2,
+      "toolNames": [
+        "get_weather",
+        "get_time"
+      ],
+      "flagged": false,
+      "flaggedTerms": null
+    }
+  ],
+  "conversationCount": 1,
+  "allSpansLinked": true
+}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/services/contentflag"
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
@@ -28,6 +29,8 @@ type projectWithRole struct {
 	DropHealthyHealthchecks bool               `lit:"drop_healthy_healthchecks"`
 	HealthcheckPaths        models.StringSlice `lit:"healthcheck_paths"`
 	ProfileLabelAllowlist   models.StringSlice `lit:"profile_label_allowlist"`
+	AiFlaggedTerms          models.StringSlice `lit:"ai_flagged_terms"`
+	AiFlaggedLanguages      models.StringSlice `lit:"ai_flagged_languages"`
 	Role                    string             `lit:"role"`
 	OverrideRole            *string            `lit:"override_role"`
 }
@@ -57,7 +60,7 @@ func effectiveRole(orgRole string, overrideRole *string) string {
 func (p *projectRepository) FindAllWithBackendUrlByUserId(tx *sql.Tx, userId int) ([]*models.ProjectWithBackendUrl, error) {
 	rows, err := lit.SelectNamed[projectWithRole](
 		tx,
-		`SELECT DISTINCT p.id, p.name, p.token, p.framework, p.organization_id, p.created_at, p.source_map_token, p.drop_healthy_healthchecks, p.healthcheck_paths, p.profile_label_allowlist, ou.role, pur.role as override_role
+		`SELECT DISTINCT p.id, p.name, p.token, p.framework, p.organization_id, p.created_at, p.source_map_token, p.drop_healthy_healthchecks, p.healthcheck_paths, p.profile_label_allowlist, p.ai_flagged_terms, p.ai_flagged_languages, ou.role, pur.role as override_role
 		FROM projects p
 		INNER JOIN organization_users ou ON p.organization_id = ou.organization_id
 		LEFT JOIN project_user_roles pur ON pur.project_id = p.id AND pur.user_id = :user_id
@@ -90,6 +93,8 @@ func (p *projectRepository) FindAllWithBackendUrlByUserId(tx *sql.Tx, userId int
 			DropHealthyHealthchecks: row.DropHealthyHealthchecks,
 			HealthcheckPaths:        row.HealthcheckPaths,
 			ProfileLabelAllowlist:   row.ProfileLabelAllowlist,
+			AiFlaggedTerms:          row.AiFlaggedTerms,
+			AiFlaggedLanguages:      row.AiFlaggedLanguages,
 		}
 		projectWithUrl := project.ToProjectWithBackendUrl()
 		projectWithUrl.Role = role
@@ -121,14 +126,14 @@ func (p *projectRepository) GetEffectiveRole(tx *sql.Tx, projectId uuid.UUID, us
 func (p *projectRepository) FindAll(tx *sql.Tx) ([]*models.Project, error) {
 	return lit.Select[models.Project](
 		tx,
-		"SELECT id, name, token, framework, organization_id, created_at, source_map_token, drop_healthy_healthchecks, healthcheck_paths, profile_label_allowlist FROM projects ORDER BY created_at ASC",
+		"SELECT id, name, token, framework, organization_id, created_at, source_map_token, drop_healthy_healthchecks, healthcheck_paths, profile_label_allowlist, ai_flagged_terms, ai_flagged_languages FROM projects ORDER BY created_at ASC",
 	)
 }
 
 func (p *projectRepository) FindByToken(tx *sql.Tx, token string) (*models.Project, error) {
 	return lit.SelectSingleNamed[models.Project](
 		tx,
-		"SELECT id, name, token, framework, organization_id, created_at, source_map_token, drop_healthy_healthchecks, healthcheck_paths, profile_label_allowlist FROM projects WHERE token = :token",
+		"SELECT id, name, token, framework, organization_id, created_at, source_map_token, drop_healthy_healthchecks, healthcheck_paths, profile_label_allowlist, ai_flagged_terms, ai_flagged_languages FROM projects WHERE token = :token",
 		lit.P{"token": token},
 	)
 }
@@ -136,7 +141,7 @@ func (p *projectRepository) FindByToken(tx *sql.Tx, token string) (*models.Proje
 func (p *projectRepository) FindById(tx *sql.Tx, id uuid.UUID) (*models.Project, error) {
 	return lit.SelectSingleNamed[models.Project](
 		tx,
-		"SELECT id, name, token, framework, organization_id, created_at, source_map_token, drop_healthy_healthchecks, healthcheck_paths, profile_label_allowlist FROM projects WHERE id = :id",
+		"SELECT id, name, token, framework, organization_id, created_at, source_map_token, drop_healthy_healthchecks, healthcheck_paths, profile_label_allowlist, ai_flagged_terms, ai_flagged_languages FROM projects WHERE id = :id",
 		lit.P{"id": id},
 	)
 }
@@ -149,6 +154,7 @@ func (p *projectRepository) Create(tx *sql.Tx, name string, framework string) (*
 		Framework:               framework,
 		CreatedAt:               time.Now().UTC(),
 		DropHealthyHealthchecks: true,
+		AiFlaggedLanguages:      models.StringSlice(contentflag.DefaultLanguages),
 	}
 
 	err := lit.InsertExistingUuid(tx, project)
@@ -169,6 +175,8 @@ func (p *projectRepository) CreateWithOrganization(tx *sql.Tx, name string, fram
 		CreatedAt:               time.Now().UTC(),
 		DropHealthyHealthchecks: true,
 		ProfileLabelAllowlist:   models.StringSlice{},
+		AiFlaggedTerms:          models.StringSlice{},
+		AiFlaggedLanguages:      models.StringSlice(contentflag.DefaultLanguages),
 	}
 
 	if frameworkRequiresSymbolUpload(framework) {
@@ -187,7 +195,7 @@ func (p *projectRepository) CreateWithOrganization(tx *sql.Tx, name string, fram
 func (p *projectRepository) FindByOrganizationId(tx *sql.Tx, organizationId int) ([]*models.Project, error) {
 	return lit.SelectNamed[models.Project](
 		tx,
-		"SELECT id, name, token, framework, organization_id, created_at, source_map_token, drop_healthy_healthchecks, healthcheck_paths, profile_label_allowlist FROM projects WHERE organization_id = :org_id ORDER BY created_at ASC",
+		"SELECT id, name, token, framework, organization_id, created_at, source_map_token, drop_healthy_healthchecks, healthcheck_paths, profile_label_allowlist, ai_flagged_terms, ai_flagged_languages FROM projects WHERE organization_id = :org_id ORDER BY created_at ASC",
 		lit.P{"org_id": organizationId},
 	)
 }
@@ -195,7 +203,7 @@ func (p *projectRepository) FindByOrganizationId(tx *sql.Tx, organizationId int)
 func (p *projectRepository) FindByUserId(tx *sql.Tx, userId int) ([]*models.Project, error) {
 	return lit.SelectNamed[models.Project](
 		tx,
-		`SELECT DISTINCT p.id, p.name, p.token, p.framework, p.organization_id, p.created_at, p.source_map_token, p.drop_healthy_healthchecks, p.healthcheck_paths, p.profile_label_allowlist
+		`SELECT DISTINCT p.id, p.name, p.token, p.framework, p.organization_id, p.created_at, p.source_map_token, p.drop_healthy_healthchecks, p.healthcheck_paths, p.profile_label_allowlist, p.ai_flagged_terms, p.ai_flagged_languages
 		FROM projects p
 		INNER JOIN organization_users ou ON p.organization_id = ou.organization_id
 		WHERE ou.user_id = :user_id
@@ -241,7 +249,7 @@ func (p *projectRepository) GenerateSourceMapToken(tx *sql.Tx, projectId uuid.UU
 	return token, nil
 }
 
-func (p *projectRepository) Update(tx *sql.Tx, id uuid.UUID, name string, framework string, dropHealthyHealthchecks *bool, healthcheckPaths *[]string, profileLabelAllowlist *[]string) (*models.Project, error) {
+func (p *projectRepository) Update(tx *sql.Tx, id uuid.UUID, name string, framework string, dropHealthyHealthchecks *bool, healthcheckPaths *[]string, profileLabelAllowlist *[]string, aiFlaggedTerms *[]string, aiFlaggedLanguages *[]string) (*models.Project, error) {
 	project, err := p.FindById(tx, id)
 	if err != nil {
 		return nil, err
@@ -259,6 +267,12 @@ func (p *projectRepository) Update(tx *sql.Tx, id uuid.UUID, name string, framew
 	}
 	if profileLabelAllowlist != nil {
 		project.ProfileLabelAllowlist = models.StringSlice(*profileLabelAllowlist)
+	}
+	if aiFlaggedTerms != nil {
+		project.AiFlaggedTerms = models.StringSlice(*aiFlaggedTerms)
+	}
+	if aiFlaggedLanguages != nil {
+		project.AiFlaggedLanguages = models.StringSlice(*aiFlaggedLanguages)
 	}
 	err = lit.UpdateNamed[models.Project](tx, project, "id = :id", lit.P{"id": id})
 	if err != nil {
@@ -289,7 +303,7 @@ func (p *projectRepository) Delete(tx *sql.Tx, id uuid.UUID) error {
 func (p *projectRepository) FindBySourceMapToken(tx *sql.Tx, token string) (*models.Project, error) {
 	return lit.SelectSingleNamed[models.Project](
 		tx,
-		"SELECT id, name, token, framework, organization_id, created_at, source_map_token, drop_healthy_healthchecks, healthcheck_paths, profile_label_allowlist FROM projects WHERE source_map_token = :smt",
+		"SELECT id, name, token, framework, organization_id, created_at, source_map_token, drop_healthy_healthchecks, healthcheck_paths, profile_label_allowlist, ai_flagged_terms, ai_flagged_languages FROM projects WHERE source_map_token = :smt",
 		lit.P{"smt": token},
 	)
 }

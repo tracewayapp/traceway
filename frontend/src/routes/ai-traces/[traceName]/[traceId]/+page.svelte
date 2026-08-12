@@ -14,6 +14,11 @@
 	import { resolve } from '$app/paths';
 	import TraceLogsPanel from '$lib/components/trace-logs/trace-logs-panel.svelte';
 	import { traceIdUuidToHex } from '$lib/utils/span-id';
+	import { formatCost } from '$lib/utils/ai-format';
+	import { extractMessages, formatConversationContent } from '$lib/utils/ai-conversation';
+	import ConversationMessages from '$lib/components/ai/conversation-messages.svelte';
+	import FlaggedBadge from '$lib/components/ai/flagged-badge.svelte';
+	import { addStickyParamsToHref } from '$lib/utils/navigation';
 
 	type AiTrace = {
 		id: string;
@@ -39,6 +44,11 @@
 		appVersion: string;
 		attributes: Record<string, string> | null;
 		distributedTraceId?: string;
+		conversationId?: string;
+		toolCallCount?: number;
+		toolNames?: string[] | null;
+		flagged?: boolean;
+		flaggedTerms?: string[] | null;
 	};
 
 	type AiTraceDetailResponse = {
@@ -57,120 +67,6 @@
 	let loading = $state(true);
 	let error = $state('');
 	let notFound = $state(false);
-
-	function formatCost(cost: number): string {
-		if (cost === 0) return '$0';
-		if (cost < 0.001) return `$${cost.toFixed(6)}`;
-		if (cost < 0.01) return `$${cost.toFixed(4)}`;
-		if (cost < 1) return `$${cost.toFixed(3)}`;
-		return `$${cost.toFixed(2)}`;
-	}
-
-	type ChatMessage = {
-		role: string;
-		content: string | ContentPart[];
-	};
-
-	type ContentPart = {
-		type: string;
-		text?: string;
-		image_url?: { url: string };
-	};
-
-	function tryParseJson(str: string): any {
-		try {
-			return JSON.parse(str);
-		} catch {
-			return null;
-		}
-	}
-
-	function extractMessages(input: string, output: string): ChatMessage[] | null {
-		const inputParsed = tryParseJson(input);
-		if (!inputParsed) return null;
-
-		const messages: ChatMessage[] = [];
-
-		// Extract input messages - could be {messages: [...]} or just [...]
-		const inputMessages =
-			inputParsed?.messages ?? (Array.isArray(inputParsed) ? inputParsed : null);
-		if (!Array.isArray(inputMessages)) return null;
-
-		for (const msg of inputMessages) {
-			if (msg.role && msg.content !== undefined) {
-				messages.push({ role: msg.role, content: msg.content });
-			}
-		}
-
-		// Extract assistant response from output
-		const outputParsed = tryParseJson(output);
-		if (outputParsed) {
-			// OpenAI-style: {choices: [{message: {role, content}}]}
-			const choices = outputParsed?.choices;
-			if (Array.isArray(choices) && choices.length > 0) {
-				const choice = choices[0];
-				const msg = choice?.message;
-				if (msg?.content) {
-					messages.push({ role: msg.role || 'assistant', content: msg.content });
-				}
-			}
-			// Anthropic-style: {content: [{type: "text", text: "..."}]}
-			else if (Array.isArray(outputParsed?.content)) {
-				const text = outputParsed.content
-					.filter((c: any) => c.type === 'text')
-					.map((c: any) => c.text)
-					.join('');
-				if (text) {
-					messages.push({ role: outputParsed.role || 'assistant', content: text });
-				}
-			}
-		}
-
-		return messages.length > 0 ? messages : null;
-	}
-
-	function getMessageText(content: string | ContentPart[]): string {
-		if (typeof content === 'string') return content;
-		if (Array.isArray(content)) {
-			return content
-				.filter((p) => p.type === 'text' && p.text)
-				.map((p) => p.text!)
-				.join('\n');
-		}
-		return '';
-	}
-
-	function getMessageImages(content: string | ContentPart[]): string[] {
-		if (!Array.isArray(content)) return [];
-		return content
-			.filter((p) => p.type === 'image_url' && p.image_url?.url)
-			.map((p) => p.image_url!.url);
-	}
-
-	function getRoleLabel(role: string): string {
-		switch (role) {
-			case 'system':
-				return 'System';
-			case 'user':
-				return 'User';
-			case 'assistant':
-				return 'Assistant';
-			case 'tool':
-				return 'Tool';
-			case 'function':
-				return 'Function';
-			default:
-				return role;
-		}
-	}
-
-	function formatConversationContent(raw: string): string {
-		const parsed = tryParseJson(raw);
-		if (parsed) {
-			return JSON.stringify(parsed, null, 2);
-		}
-		return raw;
-	}
 
 	let showRawJson = $state(false);
 
@@ -251,7 +147,12 @@
 
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>Trace Details</Card.Title>
+				<div class="flex items-center gap-2">
+					<Card.Title>Trace Details</Card.Title>
+					{#if trace.flagged && trace.flaggedTerms?.length}
+						<FlaggedBadge terms={trace.flaggedTerms} />
+					{/if}
+				</div>
 				<Card.Description>Details of this specific AI trace</Card.Description>
 			</Card.Header>
 			<Card.Content>
@@ -284,6 +185,28 @@
 					{/if}
 					{#if trace.userId}
 						<LabelValue label="User ID" value={trace.userId} mono />
+					{/if}
+					{#if trace.toolCallCount}
+						<LabelValue label="Tool Calls" value={trace.toolCallCount.toLocaleString()} mono />
+					{/if}
+					{#if trace.conversationId}
+						<div class="space-y-1">
+							<p class="text-sm text-muted-foreground">Conversation</p>
+							<a
+								class="block truncate font-mono text-sm text-primary hover:underline"
+								href={addStickyParamsToHref(
+									resolve('/ai-traces/conversations/[conversationId]', {
+										conversationId: encodeURIComponent(trace.conversationId)
+									}),
+									'preset',
+									'from',
+									'to'
+								)}
+								title={trace.conversationId}
+							>
+								{trace.conversationId}
+							</a>
+						</div>
 					{/if}
 					<LabelValue label="Server" value={trace.serverName || '-'} mono />
 					<LabelValue label="Version" value={trace.appVersion || '-'} mono />
@@ -351,52 +274,7 @@
 							{/if}
 						</div>
 					{:else}
-						<div class="space-y-3">
-							{#each chatMessages as msg}
-								<div class="flex gap-3 {msg.role === 'assistant' ? '' : ''}">
-									<div
-										class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-medium
-										{msg.role === 'user'
-											? 'bg-primary text-primary-foreground'
-											: msg.role === 'assistant'
-												? 'border bg-muted text-muted-foreground'
-												: msg.role === 'system'
-													? 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
-													: 'bg-muted text-muted-foreground'}"
-									>
-										{getRoleLabel(msg.role).charAt(0)}
-									</div>
-									<div class="min-w-0 flex-1">
-										<p class="mb-1 text-xs font-medium text-muted-foreground">
-											{getRoleLabel(msg.role)}
-										</p>
-										{#each getMessageImages(msg.content) as imageUrl}
-											{#if imageUrl && !imageUrl.includes('REDACTED')}
-												<div class="mb-2 max-w-sm">
-													<img
-														src={imageUrl}
-														alt="Attached image"
-														class="max-h-64 rounded-md border object-contain"
-													/>
-												</div>
-											{/if}
-										{/each}
-										{#if getMessageText(msg.content)}
-											<div
-												class="rounded-md px-3 py-2 text-sm break-words whitespace-pre-wrap
-												{msg.role === 'user'
-													? 'bg-primary/10'
-													: msg.role === 'system'
-														? 'bg-amber-500/10 font-mono text-xs'
-														: 'bg-muted'}"
-											>
-												{getMessageText(msg.content)}
-											</div>
-										{/if}
-									</div>
-								</div>
-							{/each}
-						</div>
+						<ConversationMessages messages={chatMessages} />
 					{/if}
 				</Card.Content>
 			</Card.Root>

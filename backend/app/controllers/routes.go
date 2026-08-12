@@ -131,6 +131,10 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/ai-traces/trace", middleware.UseAppAuth, middleware.RequireProjectAccess, AiTraceController.FindByTraceName)
 	router.POST("/ai-traces/:traceId", middleware.UseAppAuth, middleware.RequireProjectAccess, AiTraceController.GetAiTraceDetail)
 
+	router.POST("/ai-conversations/grouped", middleware.UseAppAuth, middleware.RequireProjectAccess, AiTraceController.FindConversations)
+	router.POST("/ai-conversations/conversation", middleware.UseAppAuth, middleware.RequireProjectAccess, AiTraceController.GetConversationDetail)
+	router.POST("/ai-users/grouped", middleware.UseAppAuth, middleware.RequireProjectAccess, AiTraceController.FindAiUsers)
+
 	router.POST("/distributed-traces/:distributedTraceId", middleware.UseAppAuth, DistributedTraceController.GetDistributedTrace)
 
 	router.POST("/logs", middleware.UseAppAuth, middleware.RequireProjectAccess, LogController.List)

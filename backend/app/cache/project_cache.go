@@ -67,6 +67,8 @@ func copyProject(proj *models.Project) *models.Project {
 	cp := *proj
 	cp.HealthcheckPaths = append(models.StringSlice(nil), proj.HealthcheckPaths...)
 	cp.ProfileLabelAllowlist = append(models.StringSlice(nil), proj.ProfileLabelAllowlist...)
+	cp.AiFlaggedTerms = append(models.StringSlice(nil), proj.AiFlaggedTerms...)
+	cp.AiFlaggedLanguages = append(models.StringSlice(nil), proj.AiFlaggedLanguages...)
 	return &cp
 }
 
@@ -120,6 +122,8 @@ func (c *projectCache) UpdateProject(proj *models.Project) {
 	cached.DropHealthyHealthchecks = proj.DropHealthyHealthchecks
 	cached.HealthcheckPaths = proj.HealthcheckPaths
 	cached.ProfileLabelAllowlist = proj.ProfileLabelAllowlist
+	cached.AiFlaggedTerms = proj.AiFlaggedTerms
+	cached.AiFlaggedLanguages = proj.AiFlaggedLanguages
 }
 
 func (c *projectCache) RemoveProject(id uuid.UUID) {

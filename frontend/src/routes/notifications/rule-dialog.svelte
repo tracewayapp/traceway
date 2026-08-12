@@ -82,6 +82,8 @@
 	let ignorePatterns = $state('');
 	let traceName = $state('*');
 	let thresholdCost = $state(0.5);
+	let conversationThresholdCost = $state(5);
+	let flaggedTermsFilter = $state('');
 
 	const isEditing = $derived(rule !== null);
 
@@ -111,6 +113,10 @@
 			'Fires when an endpoint\u2019s impact score reaches medium level (\u2265 0.25), an early warning of emerging performance or reliability issues.',
 		ai_trace_cost:
 			'Fires when an individual AI trace exceeds a cost threshold. Monitors per-call spending across AI providers.',
+		ai_conversation_cost:
+			'Fires when the cumulative cost of a single AI conversation (over the last 24 hours) exceeds the threshold. Catches runaway agent loops and expensive sessions.',
+		ai_flagged_content:
+			'Fires when an AI conversation matches a flagged content term. Uses the built-in profanity list plus custom terms from the project’s AI settings; optionally narrow to specific terms below.',
 		error_regression:
 			'Fires when an error that was previously archived (resolved) occurs again.',
 		error_rate_threshold:
@@ -266,6 +272,12 @@
 				traceName = cfg.traceName ?? '*';
 				thresholdCost = cfg.thresholdCost ?? 0.5;
 				break;
+			case 'ai_conversation_cost':
+				conversationThresholdCost = cfg.thresholdCost ?? 5;
+				break;
+			case 'ai_flagged_content':
+				flaggedTermsFilter = (cfg.terms || []).join(', ');
+				break;
 		}
 	}
 
@@ -305,6 +317,15 @@
 				return { minRequests };
 			case 'ai_trace_cost':
 				return { traceName, thresholdCost };
+			case 'ai_conversation_cost':
+				return { thresholdCost: conversationThresholdCost };
+			case 'ai_flagged_content': {
+				const terms = flaggedTermsFilter
+					.split(',')
+					.map((t) => t.trim().toLowerCase())
+					.filter((t) => t);
+				return { terms };
+			}
 			default:
 				return {};
 		}
@@ -769,6 +790,29 @@
 							step="0.01"
 							min="0"
 						/>
+					</div>
+				{:else if ruleType === 'ai_conversation_cost'}
+					<div class="space-y-2">
+						<Label for="cfg-conv-threshold-cost">Cost Threshold ($)</Label>
+						<Input
+							id="cfg-conv-threshold-cost"
+							type="number"
+							bind:value={conversationThresholdCost}
+							step="0.01"
+							min="0"
+						/>
+					</div>
+				{:else if ruleType === 'ai_flagged_content'}
+					<div class="space-y-2">
+						<Label for="cfg-flagged-terms">Only These Terms (optional, comma-separated)</Label>
+						<Input
+							id="cfg-flagged-terms"
+							bind:value={flaggedTermsFilter}
+							placeholder="Leave empty to fire on any flagged conversation"
+						/>
+						<p class="text-xs text-muted-foreground">
+							Custom flagged terms are managed in the project settings AI tab.
+						</p>
 					</div>
 				{/if}
 			</div>

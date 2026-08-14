@@ -10,7 +10,17 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
+
+// telegramMaxMessageLength is the Telegram Bot API's sendMessage text limit
+// (4096 UTF-16 code units; treating it as a rune budget keeps a comfortable
+// safety margin since nearly all runes are a single UTF-16 unit). Stack
+// traces routinely blow past this, and Telegram hard-rejects the whole
+// message with 400 "message is too long" rather than accepting a prefix.
+const telegramMaxMessageLength = 4096
+
+const telegramTruncationMarker = "\n\n[truncated]"
 
 type TelegramAdapter struct {
 	BotToken string `json:"botToken"`
@@ -36,20 +46,9 @@ func (a *TelegramAdapter) Validate() error {
 }
 
 func (a *TelegramAdapter) Send(ctx context.Context, msg Message) error {
-	var text strings.Builder
-	if msg.Subject != "" {
-		text.WriteString(msg.Subject)
-		text.WriteString("\n\n")
-	}
-	text.WriteString(msg.Body)
-	if msg.URL != "" {
-		text.WriteString("\n\n")
-		text.WriteString(msg.URL)
-	}
-
 	form := url.Values{
 		"chat_id":                  {a.ChatId},
-		"text":                     {text.String()},
+		"text":                     {telegramText(msg)},
 		"disable_web_page_preview": {"true"},
 	}
 
@@ -89,4 +88,49 @@ func (a *TelegramAdapter) Send(ctx context.Context, msg Message) error {
 	}
 
 	return fmt.Errorf("Telegram returned status %d", resp.StatusCode)
+}
+
+// telegramText composes the message and truncates it to Telegram's length
+// limit. The URL is always kept in full and un-truncated: once the body is
+// cut off, the link back to the dashboard is the only way to see the rest.
+func telegramText(msg Message) string {
+	var footer strings.Builder
+	if msg.URL != "" {
+		footer.WriteString("\n\n")
+		footer.WriteString(msg.URL)
+	}
+	footerStr := footer.String()
+
+	var head strings.Builder
+	if msg.Subject != "" {
+		head.WriteString(msg.Subject)
+		head.WriteString("\n\n")
+	}
+	head.WriteString(msg.Body)
+	headStr := head.String()
+
+	full := headStr + footerStr
+	if utf8.RuneCountInString(full) <= telegramMaxMessageLength {
+		return full
+	}
+
+	budget := telegramMaxMessageLength - utf8.RuneCountInString(footerStr) - utf8.RuneCountInString(telegramTruncationMarker)
+	if budget < 0 {
+		budget = 0
+	}
+	return truncateRunes(headStr, budget) + telegramTruncationMarker + footerStr
+}
+
+// truncateRunes cuts s to at most n runes. Slicing by byte index can split a
+// multi-byte UTF-8 character and produce an invalid string; converting to
+// []rune first keeps every cut on a character boundary.
+func truncateRunes(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	return string(runes[:n])
 }

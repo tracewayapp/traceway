@@ -90,7 +90,8 @@
 		return (
 			PUBLIC_PATHS.has(pathname) ||
 			pathname.startsWith('/accept-invitation') ||
-			pathname.startsWith('/ack/')
+			pathname.startsWith('/ack/') ||
+			pathname.startsWith('/status/')
 		);
 	}
 
@@ -100,6 +101,27 @@
 	$effect(() => {
 		if (!authState.isAuthenticated && !isPublicPath(page.url.pathname)) {
 			const returnTo = page.url.pathname + page.url.search;
+			if (page.url.pathname === '/') {
+				// A CNAMEd status-page vanity domain lands here anonymously; ask
+				// the backend whether this Host maps to a status page before
+				// falling back to the login redirect.
+				fetch('/api/status-domains/resolve')
+					.then((response) => (response.ok ? response.json() : null))
+					.then((resolved) => {
+						if (resolved?.slug) {
+							// eslint-disable-next-line svelte/no-navigation-without-resolve
+							goto(`/status/${resolved.slug}`, { replaceState: true });
+						} else {
+							// eslint-disable-next-line svelte/no-navigation-without-resolve
+							goto(`/login?returnTo=${encodeURIComponent(returnTo)}`, { replaceState: true });
+						}
+					})
+					.catch(() => {
+						// eslint-disable-next-line svelte/no-navigation-without-resolve
+						goto(`/login?returnTo=${encodeURIComponent(returnTo)}`, { replaceState: true });
+					});
+				return;
+			}
 			// eslint-disable-next-line svelte/no-navigation-without-resolve
 			goto(`/login?returnTo=${encodeURIComponent(returnTo)}`, { replaceState: true });
 		}

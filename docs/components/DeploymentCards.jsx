@@ -38,6 +38,13 @@ const DEPLOYMENTS = [
       "Single Debian container with a columnar telemetry store. Same zero-dependency setup as SQLite with far more dashboard headroom.",
   },
   {
+    title: "Browser (Monitors)",
+    href: "/server/browser",
+    subtitle: "DuckDB + Playwright + Chromium",
+    description:
+      "The DuckDB container plus headless Chromium, so Playwright browser monitors run in-process. HTTP/TCP monitors work in every image.",
+  },
+  {
     title: "Local Setup",
     href: "/server/local-setup",
     subtitle: "Backend + Frontend from source",

@@ -1,0 +1,1 @@
+ALTER TABLE check_results ADD COLUMN output_key VARCHAR NOT NULL DEFAULT '';

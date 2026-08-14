@@ -16,6 +16,7 @@
   "logs": "Logs",
   "alerts": "Alerts",
   "on-call": "On-Call",
+  "monitors": "Monitors",
   "sso": "SSO",
   "cli": "CLI",
   "cli-auth": "CLI Authentication",

@@ -30,6 +30,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/sourcemapbackfill"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/scopes"
+	"github.com/tracewayapp/traceway/backend/app/synthetics"
 	"github.com/tracewayapp/traceway/backend/static"
 
 	"github.com/coreos/go-systemd/v22/daemon"
@@ -150,6 +151,7 @@ func Run(opts ...Option) {
 	middleware.InitRequireAdminAccess()
 	middleware.InitRequireOrganizationAccess()
 	middleware.InitUseSourceMapAuth()
+	middleware.InitUseRunnerAuth()
 
 	services.InitEmail()
 	services.InitTurnstile()
@@ -162,9 +164,12 @@ func Run(opts ...Option) {
 	outbox.RegisterSender(notifications.AdapterSend)
 	outbox.RegisterTerminalHook(notifications.OnOutboxTerminal)
 	notifications.RegisterPageOpener(oncall.OpenPageFromDispatch)
+	notifications.RegisterPageResolver(oncall.AutoResolveByDedupKey)
+	synthetics.RegisterNotifier(notifications.OnCheckStateChange)
 	outbox.StartDrain(ctx)
 	oncall.StartEscalator(ctx)
 	notifications.StartEvaluator(ctx)
+	synthetics.Start(ctx)
 	retention.Start(ctx)
 	recordings.Start(ctx)
 	sourcemapbackfill.Start(ctx)
@@ -194,6 +199,12 @@ func Run(opts ...Option) {
 				c.Next()
 				return
 			}
+			// The runner poll long-polls for up to 25s; recording it would
+			// register as 25s endpoint samples and wreck self-monitoring p95.
+			if c.Request.URL.Path == "/api/runners/poll" {
+				c.Next()
+				return
+			}
 			twmw(c)
 		})
 
@@ -201,6 +212,7 @@ func Run(opts ...Option) {
 		monitoring.StartBackendReporter(ctx)
 		monitoring.StartTelemetryDBReporter(ctx)
 		monitoring.StartOutboxReporter(ctx)
+		monitoring.StartSyntheticsReporter(ctx)
 	}
 
 	router.GET("/health", func(c *gin.Context) {
@@ -294,6 +306,13 @@ func applyEnvOverrides(cfg *config.Cfg) {
 		{"SMTP_FROM", &cfg.SMTPFrom},
 		{"ONCALL_POLL_SECONDS", &cfg.OncallPollSeconds},
 		{"OUTBOX_POLL_SECONDS", &cfg.OutboxPollSeconds},
+		{"SYNTHETICS_POLL_SECONDS", &cfg.SyntheticsPollSeconds},
+		{"SYNTHETICS_BROWSER_MODE", &cfg.SyntheticsBrowserMode},
+		{"SYNTHETICS_HTTP_CONCURRENCY", &cfg.SyntheticsHTTPConcurrency},
+		{"SYNTHETICS_BROWSER_CONCURRENCY", &cfg.SyntheticsBrowserConcurrency},
+		{"SYNTHETICS_ALLOW_PRIVATE_TARGETS", &cfg.SyntheticsAllowPrivateTargets},
+		{"SYNTHETICS_PLAYWRIGHT_DIR", &cfg.SyntheticsPlaywrightDir},
+		{"SYNTHETICS_SCREENSHOT_RETENTION_DAYS", &cfg.SyntheticsScreenshotRetentionDays},
 		{"TWILIO_ACCOUNT_SID", &cfg.TwilioAccountSID},
 		{"TWILIO_AUTH_TOKEN", &cfg.TwilioAuthToken},
 		{"TWILIO_FROM_NUMBER", &cfg.TwilioFromNumber},

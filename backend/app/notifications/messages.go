@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/tracewayapp/traceway/backend/app/models"
 )
 
 func buildErrorRateMessage(rate float64, threshold float64, window int, projectName string) Message {
@@ -323,4 +325,28 @@ func buildExceptionBody(headline string, d ExceptionDetails) string {
 	}
 
 	return b.String()
+}
+
+func buildCheckDownMessage(check *models.SyntheticCheck, errorMsg string, projectName string) Message {
+	body := fmt.Sprintf("The synthetic check %q is failing (%d consecutive failures).", check.Name, check.ConsecutiveFailures)
+	if errorMsg != "" {
+		body += "\n\nLast error: " + errorMsg
+	}
+	return Message{
+		Subject:    fmt.Sprintf("[%s] Check %q is down", projectName, check.Name),
+		Body:       body,
+		Severity:   SeverityCritical,
+		URL:        fmt.Sprintf("/monitors/%d", check.Id),
+		DedupToken: fmt.Sprintf("check:%d", check.Id),
+	}
+}
+
+func buildCheckRecoveredMessage(check *models.SyntheticCheck, projectName string) Message {
+	return Message{
+		Subject:    fmt.Sprintf("[%s] Check %q recovered", projectName, check.Name),
+		Body:       fmt.Sprintf("The synthetic check %q is passing again.", check.Name),
+		Severity:   SeverityInfo,
+		URL:        fmt.Sprintf("/monitors/%d", check.Id),
+		DedupToken: fmt.Sprintf("check:%d", check.Id),
+	}
 }

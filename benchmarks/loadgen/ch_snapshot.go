@@ -77,7 +77,7 @@ type healthDeepBody struct {
 // telemetry configured but unreachable) is still parsed and embedded so the
 // JSON captures the chReachable=false signal.
 func fetchDeepHealth(ctx context.Context, cfg config, client *http.Client) (chSnapshot, ingestStatsSnapshot) {
-	if cfg.jwt == "" {
+	if cfg.healthToken == "" {
 		return chSnapshot{}, ingestStatsSnapshot{}
 	}
 
@@ -89,7 +89,7 @@ func fetchDeepHealth(ctx context.Context, cfg config, client *http.Client) (chSn
 		fmt.Fprintf(stderrPrefix(), "fetchDeepHealth: build request failed: %v\n", err)
 		return chSnapshot{}, ingestStatsSnapshot{}
 	}
-	req.Header.Set("Authorization", "Bearer "+cfg.jwt)
+	req.Header.Set("Authorization", "Bearer "+cfg.healthToken)
 
 	resp, err := client.Do(req)
 	if err != nil {

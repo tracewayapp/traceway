@@ -22,6 +22,7 @@ var telemetryRetentionTargets = []struct {
 	{"metric_points", "recorded_at"},
 	{"session_recordings", "recorded_at"},
 	{"fired_notifications", "fired_at"},
+	{"check_results", "recorded_at"},
 	{"ai_traces", "recorded_at"},
 	{"log_records", "timestamp"},
 	{"sessions", "started_at"},

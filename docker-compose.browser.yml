@@ -1,0 +1,60 @@
+services:
+  traceway:
+    build:
+      context: .
+      dockerfile: Dockerfile.browser
+    ports:
+      - "80:80"
+    # Chromium maps renderer shared memory into /dev/shm; the Docker default
+    # of 64MB crashes tabs on heavier pages. The backend also passes
+    # --disable-dev-shm-usage as a fallback, but real shm is faster.
+    shm_size: "1gb"
+    environment:
+      JWT_SECRET: "change-this-to-a-secure-secret-at-least-32-chars"
+      # APP_BASE_URL: "https://traceway.example.com"
+
+      # DuckDB sizes its memory budget from host RAM, not the container limit.
+      # On any memory-capped deployment set this to roughly half the
+      # container's RAM or the backend gets OOM-killed under ingest. Leave
+      # extra headroom here: each concurrent browser check runs a Chromium.
+      DUCKDB_MEMORY_LIMIT: "2GB"
+      # DUCKDB_THREADS: "4"
+      # DUCKDB_CHECKPOINT_THRESHOLD: "256MB"
+
+      # Synthetics. Browser checks are enabled in this image
+      # (SYNTHETICS_BROWSER_MODE=embedded is baked in); http/tcp checks work
+      # in every image. Defaults shown.
+      # SYNTHETICS_POLL_SECONDS: "15"
+      # SYNTHETICS_HTTP_CONCURRENCY: "8"
+      # How many Chromium instances may run at once; each costs ~300-500MB.
+      # SYNTHETICS_BROWSER_CONCURRENCY: "2"
+      # Set to "false" to refuse checks that target private/LAN addresses.
+      # SYNTHETICS_ALLOW_PRIVATE_TARGETS: "true"
+      # Failure screenshots under STORAGE_PATH/synthetics/, cleaned after N
+      # days ("0" disables the cleanup).
+      # SYNTHETICS_SCREENSHOT_RETENTION_DAYS: "30"
+
+      # Optional retention knobs. Defaults are 30 days; set to "0" to disable.
+      # SQLITE_RETENTION_DAYS: "30"
+      # SESSION_RECORDING_RETENTION_DAYS: "30"
+
+      # Optional: store blobs (source maps, session recordings, screenshots)
+      # in S3 instead of the local /data/storage folder.
+      # STORAGE_TYPE: "s3"
+      # S3_BUCKET: "your-bucket"
+      # S3_REGION: "us-east-1"
+      # S3_ACCESS_KEY: "your-access-key"
+      # S3_SECRET_KEY: "your-secret-key"
+      # S3_ENDPOINT: "https://s3.example.com"  # for MinIO / R2 / Spaces
+    volumes:
+      - traceway-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+
+volumes:
+  traceway-data:

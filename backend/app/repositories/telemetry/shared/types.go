@@ -23,6 +23,28 @@ type FiredNotification struct {
 	FiredAt     time.Time
 }
 
+// CheckResult is one synthetic-check probe outcome. RecordedAt is the
+// scheduled time (the uptime timeline position); ExecutedAt is when the probe
+// actually ran.
+type CheckResult struct {
+	ProjectId        uuid.UUID
+	CheckId          int
+	RunId            int
+	CheckType        string
+	RecordedAt       time.Time
+	ExecutedAt       time.Time
+	Status           string
+	LatencyMs        float64
+	StatusCode       int
+	ErrorMsg         string
+	ExecutedBy       string
+	ScreenshotKey    string
+	// OutputKey references the stored Playwright output (stdout/stderr tail
+	// + report error) of a failed browser run, next to the screenshot.
+	OutputKey        string
+	TlsDaysRemaining int
+}
+
 // LogAttributeFilter selects logs by attribute value. Scope is one of
 // "resource", "scope", or "log"; picks which of the three attribute maps to
 // query (Map columns with bloom-filter indexes on ClickHouse, JSON on

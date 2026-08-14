@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/outbox"
+	"github.com/tracewayapp/traceway/backend/app/synthetics"
 	traceway "go.tracewayapp.com"
 )
 
@@ -41,6 +42,7 @@ type HealthDeepResponse struct {
 	IngestRejected   uint64                   `json:"ingestRejected"`
 	Engine           *db.TelemetryEngineStats `json:"engine,omitempty"`
 	Outbox           *outbox.HealthStats      `json:"outbox,omitempty"`
+	Synthetics       *synthetics.HealthStats  `json:"synthetics,omitempty"`
 }
 
 // 503 means the configured telemetry backend is down. On the embedded
@@ -63,6 +65,11 @@ func (h healthDeepController) Get(c *gin.Context) {
 		resp.Outbox = outboxStats
 	} else {
 		traceway.CaptureException(fmt.Errorf("failed to load outbox health: %w", err))
+	}
+	if syntheticsStats, err := synthetics.HealthSnapshot(); err == nil {
+		resp.Synthetics = syntheticsStats
+	} else {
+		traceway.CaptureException(fmt.Errorf("failed to load synthetics health: %w", err))
 	}
 
 	if resp.TelemetryBackend == "clickhouse" && !resp.CHReachable {

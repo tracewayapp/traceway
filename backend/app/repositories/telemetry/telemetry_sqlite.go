@@ -6,6 +6,7 @@ import sqliterepo "github.com/tracewayapp/traceway/backend/app/repositories/tele
 
 var (
 	AiTraceRepository             = sqliterepo.AiTraceRepository
+	CheckResultRepository         = sqliterepo.CheckResultRepository
 	EndpointRepository            = sqliterepo.EndpointRepository
 	ExceptionStackTraceRepository = sqliterepo.ExceptionStackTraceRepository
 	FiredNotificationRepository   = sqliterepo.FiredNotificationRepository

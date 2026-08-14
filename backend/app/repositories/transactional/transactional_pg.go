@@ -6,6 +6,8 @@ import pgrepo "github.com/tracewayapp/traceway/backend/app/repositories/transact
 
 var (
 	AuthorizationCodeRepository    = pgrepo.AuthorizationCodeRepository
+	CheckIncidentRepository        = pgrepo.CheckIncidentRepository
+	CheckRunRepository             = pgrepo.CheckRunRepository
 	DashboardRepository            = pgrepo.DashboardRepository
 	DashboardTemplateRepository    = pgrepo.DashboardTemplateRepository
 	DeviceAuthorizationRepository  = pgrepo.DeviceAuthorizationRepository
@@ -26,6 +28,9 @@ var (
 	ProjectRepository              = pgrepo.ProjectRepository
 	ProjectUserRoleRepository      = pgrepo.ProjectUserRoleRepository
 	RefreshTokenRepository         = pgrepo.RefreshTokenRepository
+	StatusPageRepository           = pgrepo.StatusPageRepository
+	SyntheticCheckRepository       = pgrepo.SyntheticCheckRepository
+	SyntheticRunnerRepository      = pgrepo.SyntheticRunnerRepository
 	TeamRepository                 = pgrepo.TeamRepository
 	UserContactMethodRepository    = pgrepo.UserContactMethodRepository
 	UserNotificationRuleRepository = pgrepo.UserNotificationRuleRepository

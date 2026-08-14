@@ -1,0 +1,57 @@
+# Browser (Monitors)
+
+The [DuckDB deployment](/server/duckdb) plus Node, `@playwright/test`, and headless Chromium baked in, so [browser monitors](/learn/monitors) run inside the container with zero extra moving parts (`SYNTHETICS_BROWSER_MODE=embedded` is set by default). HTTP and TCP checks work in every image; this image exists only for the browser ones.
+
+Pick this when you want Playwright uptime checks with one container. If you already run another image (SQLite, DuckDB, minimal, or all-in-one), you do not need to switch: set `SYNTHETICS_BROWSER_MODE=remote` there and execute browser checks with the [`traceway-runner` binary](/learn/monitors#browser-execution-modes) instead.
+
+Operational notes on top of the DuckDB image:
+
+- **The image is significantly larger** (Chromium and its system libraries add several hundred MB).
+- **Chromium needs shared memory.** Docker's default 64MB `/dev/shm` crashes tabs on heavier pages; run with `--shm-size=1g` (the compose file sets it). The backend also passes `--disable-dev-shm-usage` as a fallback.
+- **Leave memory headroom.** Each concurrent browser check runs a Chromium instance (roughly 300 to 500MB); `SYNTHETICS_BROWSER_CONCURRENCY` defaults to 2. Budget `DUCKDB_MEMORY_LIMIT` accordingly.
+- **Browser checks execute user-authored scripts** inside this container, as root with Chromium's sandbox off (the standard containerized-Playwright trade-off). Anyone with write access to a project can author them; if that trust model does not fit, use `remote` mode instead.
+
+## Quick Start
+
+```bash
+docker pull ghcr.io/tracewayapp/traceway:browser
+
+docker run -d --name traceway \
+  -p 80:80 \
+  --shm-size=1g \
+  -v "$(pwd)/traceway-data:/data" \
+  -e JWT_SECRET="your-jwt-secret-min-32-characters-long" \
+  -e APP_BASE_URL="https://traceway.example.com" \
+  -e DUCKDB_MEMORY_LIMIT="2GB" \
+  ghcr.io/tracewayapp/traceway:browser
+```
+
+Or with compose: `docker compose -f docker-compose.browser.yml up -d`.
+
+After starting, open `http://localhost/register` to create your first account, then create a monitor under **Monitors**.
+
+## Build from Source
+
+```bash
+docker build -f Dockerfile.browser -t traceway:browser .
+```
+
+The pinned `@playwright/test` version lives in `docker/playwright/package.json`; the matching Chromium build is downloaded at image build time, never at runtime.
+
+## Configuration
+
+Everything from the [DuckDB page](/server/duckdb#configuration) applies unchanged. On top of that:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SYNTHETICS_BROWSER_MODE` | `embedded` *(in this image)* | `off`, `embedded`, or `remote`. Other images default to `off`. |
+| `SYNTHETICS_BROWSER_CONCURRENCY` | `2` | Concurrent Chromium instances. |
+| `SYNTHETICS_HTTP_CONCURRENCY` | `8` | Concurrent http/tcp probes. |
+| `SYNTHETICS_POLL_SECONDS` | `15` | Scheduler tick for due checks. |
+| `SYNTHETICS_ALLOW_PRIVATE_TARGETS` | `true` | Set `false` to refuse checks that resolve to private/LAN addresses (re-checked at connect time). |
+| `SYNTHETICS_SCREENSHOT_RETENTION_DAYS` | `30` | Days to keep failure screenshots under `/data/storage/synthetics/`. `0` disables the cleanup. |
+| `SYNTHETICS_PLAYWRIGHT_DIR` | `/opt/traceway-playwright` | The baked-in Playwright harness; only override for custom builds. |
+
+## Access Points
+
+Identical to the [DuckDB image](/server/duckdb#access-points). `/api/health/deep` additionally reports a `synthetics` block (queue depth, checks down, connected runners); it is gated by the `HEALTH_DEEP_TOKEN` deploy secret.

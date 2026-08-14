@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS status_pages (
+    id SERIAL PRIMARY KEY,
+    organization_id INT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    slug VARCHAR(60) NOT NULL UNIQUE,
+    name VARCHAR(200) NOT NULL,
+    is_public BOOLEAN NOT NULL DEFAULT FALSE,
+    check_ids JSONB NOT NULL DEFAULT '[]',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)

@@ -6,6 +6,7 @@ import ch "github.com/tracewayapp/traceway/backend/app/repositories/telemetry/cl
 
 var (
 	AiTraceRepository             = ch.AiTraceRepository
+	CheckResultRepository         = ch.CheckResultRepository
 	EndpointRepository            = ch.EndpointRepository
 	ExceptionStackTraceRepository = ch.ExceptionStackTraceRepository
 	FiredNotificationRepository   = ch.FiredNotificationRepository

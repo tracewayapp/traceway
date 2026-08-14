@@ -154,4 +154,14 @@ func (r *pageRepository) Resolve(tx *sql.Tx, id int, userId int, now time.Time) 
 	)
 }
 
+// ResolveSystem resolves a page with no resolving user, for system-driven
+// resolution (a synthetic check recovering). Same guard as Resolve.
+func (r *pageRepository) ResolveSystem(tx *sql.Tx, id int, now time.Time) (bool, error) {
+	return guardedStatusUpdate(
+		tx,
+		"UPDATE pages SET status = 'resolved', resolved_by = NULL, resolved_at = :now, next_escalation_at = NULL, updated_at = :now WHERE id = :id AND status <> 'resolved'",
+		lit.P{"now": now.UTC(), "id": id},
+	)
+}
+
 var PageRepository = pageRepository{}

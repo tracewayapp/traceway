@@ -18,6 +18,7 @@ type config struct {
 	target             string
 	projectToken       string
 	jwt                string
+	healthToken        string
 	projectId          string
 	signal             string
 	scenario           string
@@ -60,6 +61,7 @@ func main() {
 	flag.StringVar(&cfg.target, "target", "", "Base URL of the system under test (e.g. http://10.0.0.2 or http://localhost:8087)")
 	flag.StringVar(&cfg.projectToken, "token", "", "Project bearer token for OTLP ingest endpoints")
 	flag.StringVar(&cfg.jwt, "jwt", "", "JWT for read endpoints (required when --scenario=read-probe)")
+	flag.StringVar(&cfg.healthToken, "health-token", "", "The SUT's HEALTH_DEEP_TOKEN. /api/health/deep is an operator endpoint (dashboard JWTs are rejected); without this the loadgen skips deep-health snapshots, losing dropped-row/saturation detection, merge-idle waits, and digestion gates.")
 	flag.StringVar(&cfg.projectId, "project-id", "", "Project UUID for read endpoints (required when --scenario=read-probe)")
 	flag.StringVar(&cfg.signal, "signal", "", "Which signal to benchmark: spans | metrics | logs (required)")
 	flag.StringVar(&cfg.scenario, "scenario", "throughput", "Scenario: throughput (default, two-phase ingest ramp) | read-probe (ingest to fill levels and probe a read)")

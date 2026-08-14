@@ -70,6 +70,12 @@ func Init(driver lit.Driver) {
 	lit.RegisterModelWithNaming[OutboxDelivery](driver, notificationOutboxNaming{})
 	lit.RegisterModel[OutboxRuleEnqueue](driver)
 	lit.RegisterModel[OutboxHealthCounts](driver)
+	lit.RegisterModel[SyntheticCheck](driver)
+	lit.RegisterModel[CheckRun](driver)
+	lit.RegisterModel[CheckRunHealthCounts](driver)
+	lit.RegisterModel[CheckIncident](driver)
+	lit.RegisterModel[SyntheticRunner](driver)
+	lit.RegisterModel[StatusPage](driver)
 
 	for _, register := range ExtensionModelRegistrations {
 		register(driver)

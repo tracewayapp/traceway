@@ -1,0 +1,7 @@
+{
+	"name": "traceway-playwright-harness",
+	"private": true,
+	"dependencies": {
+		"@playwright/test": "1.62.1"
+	}
+}

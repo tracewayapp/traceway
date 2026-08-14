@@ -161,6 +161,29 @@ jobs:
             --title "Backend v${{ inputs.version }}" \
             --notes "$NOTES"
 
+      - name: Set up Go for runner binaries
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+
+      # traceway-runner executes browser synthetic checks on user
+      # infrastructure (SYNTHETICS_BROWSER_MODE=remote); distributed as plain
+      # binaries, no docker image. CGO-free on the default (untagged) build.
+      - name: Build and upload traceway-runner binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CGO_ENABLED: 0
+        run: |
+          cd backend
+          mkdir -p dist
+          for target in "linux amd64" "linux arm64" "darwin amd64" "darwin arm64" "windows amd64"; do
+            set -- $target
+            ext=""
+            if [ "$1" = "windows" ]; then ext=".exe"; fi
+            GOOS=$1 GOARCH=$2 go build -ldflags="-s -w" -o "dist/traceway-runner_$1_$2${ext}" ./cmd/traceway-runner
+          done
+          gh release upload "backend/v${{ inputs.version }}" dist/traceway-runner_*
+
       - name: Trigger website + docs deploys
         env:
           GH_TOKEN: ${{ github.token }}
@@ -245,6 +268,23 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # amd64 only like the DuckDB image it extends (same CGO constraint), plus
+      # Node + @playwright/test + headless Chromium for embedded browser
+      # synthetic checks.
+      - name: Build and push Browser image
+        id: docker_build_browser
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.browser
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/traceway:v${{ inputs.version }}-browser
+            ghcr.io/${{ github.repository_owner }}/traceway:browser
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
         with:
@@ -274,6 +314,12 @@ jobs:
         run: |
           cosign sign --yes ghcr.io/${{ github.repository_owner }}/traceway@${{ steps.docker_build_duckdb.outputs.digest }}
 
+      - name: Sign Browser image
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          cosign sign --yes ghcr.io/${{ github.repository_owner }}/traceway@${{ steps.docker_build_browser.outputs.digest }}
+
       - name: Summary
         run: |
           echo "### Docker Images (signed with Cosign)" >> "$GITHUB_STEP_SUMMARY"
@@ -290,6 +336,9 @@ jobs:
           echo "**DuckDB Image** (embedded SQLite main DB + DuckDB columnar telemetry, no dependencies):" >> "$GITHUB_STEP_SUMMARY"
           echo "\`ghcr.io/${{ github.repository_owner }}/traceway:v${{ inputs.version }}-duckdb\`" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "All images tagged with version, plus \`latest\`, \`minimal\`, \`sqlite\`, and \`duckdb\` respectively." >> "$GITHUB_STEP_SUMMARY"
+          echo "**Browser Image** (DuckDB image + Playwright/Chromium for embedded browser synthetic checks):" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`ghcr.io/${{ github.repository_owner }}/traceway:v${{ inputs.version }}-browser\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "All images tagged with version, plus \`latest\`, \`minimal\`, \`sqlite\`, \`duckdb\`, and \`browser\` respectively." >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "See [DOCKER_SIGNATURES.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/DOCKER_SIGNATURES.md) to verify image signatures." >> "$GITHUB_STEP_SUMMARY"

@@ -2,7 +2,9 @@
 	import * as Sidebar from '$lib/components/ui/sidebar';
 	import { useSidebar } from '$lib/components/ui/sidebar';
 	import { oncallState } from '$lib/state/oncall.svelte';
+	import { monitorsState } from '$lib/state/monitors.svelte';
 	import {
+		Activity,
 		Bell,
 		Workflow,
 		Bug,
@@ -74,6 +76,12 @@
 			title: 'Dashboards',
 			stickyParams: ['preset', 'from', 'to']
 		},
+		{
+			Icon: Activity,
+			href: '/monitors',
+			title: 'Monitors',
+			stickyParams: ['preset', 'from', 'to']
+		},
 		{ Icon: Bell, href: '/notifications', title: 'Alerts', stickyParams: ['preset', 'from', 'to'] },
 		{ Icon: PhoneCall, href: '/on-call', title: 'On-Call', stickyParams: [] },
 		{ Icon: Link2, href: '/connection', title: 'Connection', stickyParams: [] }
@@ -113,7 +121,11 @@
 		const projectId = projectsState.currentProjectId;
 		if (!projectId) return;
 		oncallState.refreshOpenCount();
-		const interval = setInterval(() => oncallState.refreshOpenCount(), 60000);
+		monitorsState.refreshDownCount();
+		const interval = setInterval(() => {
+			oncallState.refreshOpenCount();
+			monitorsState.refreshDownCount();
+		}, 60000);
 		return () => clearInterval(interval);
 	});
 
@@ -175,6 +187,13 @@
 								<sidebarItem.Icon />
 								<span>{sidebarItem.title}</span>
 							</Sidebar.SidebarMenuButton>
+							{#if sidebarItem.title === 'Monitors' && monitorsState.downChecksCount > 0}
+								<Sidebar.MenuBadge
+									class="rounded-full bg-destructive text-[10px] text-white peer-hover/menu-button:text-white peer-data-[active=true]/menu-button:text-white"
+								>
+									{monitorsState.downChecksCount}
+								</Sidebar.MenuBadge>
+							{/if}
 							{#if sidebarItem.title === 'On-Call' && oncallState.openPagesCount > 0}
 								<Sidebar.MenuBadge
 									class="rounded-full bg-destructive text-[10px] text-white peer-hover/menu-button:text-white peer-data-[active=true]/menu-button:text-white"

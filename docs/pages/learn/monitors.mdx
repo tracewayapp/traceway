@@ -1,0 +1,85 @@
+# Monitors
+
+Monitors answer the question your telemetry cannot: is the service actually reachable from the outside? Traces and logs only exist while requests arrive. A monitor keeps probing on a schedule, so you find out your site is down before a user tells you.
+
+They live under **Monitors** in the sidebar, with tabs for the monitors themselves and **Status Pages**. The badge counts the monitors currently down on the current project.
+
+## Check types
+
+- **HTTP** probes a URL like Postman would: method, headers, auth (basic, bearer, or a custom header), request body, and a set of expected results. You can assert on status codes, response body content (substring or regex), a maximum response time, and a minimum number of days before the TLS certificate expires. With no status assertion, anything below 400 counts as up.
+- **TCP** connects to a host and port, optionally over TLS, optionally sending a payload and asserting on the response. Useful for databases, SMTP, or anything that is not HTTP.
+- **Browser** runs a real [@playwright/test](https://playwright.dev) script in headless Chromium. You write the spec in a code editor right on the check, so a login flow or a checkout journey can be your uptime probe. Failed runs automatically store a screenshot and the Playwright output; both open from the run history (the screenshot and logs links).
+
+Every check has an interval (30 seconds to 24 hours), a timeout, and a failure threshold. The threshold is flap damping: a check only transitions to **down** after that many consecutive failures, so one flaky probe does not page anyone at 3am.
+
+## How runs work
+
+A scheduler enqueues each due check into a durable run queue in the main database, and executors claim runs from it. Results land in the telemetry store, so uptime and latency charts use the same retention and aggregation machinery as everything else.
+
+Two properties matter operationally:
+
+- **A probe never runs late.** A queued run that outlives its window (the check's interval, capped at five minutes) is recorded as `missed`, not executed. A stale "is it up" answer would corrupt the uptime timeline.
+- **Downtime of Traceway itself shows as a gap, not as uptime.** If the backend was off, no runs existed, and the charts show unknown rather than a fabricated 100%.
+
+## Alerting
+
+Add a notification rule of type **Monitor Down** on the Alerts page. It fires when any monitor in the project crosses its failure threshold, and sends a recovery notice when the check comes back. Pointing the rule at an escalation channel opens an on-call page instead; the page deduplicates per check, and recovery resolves it automatically, so a blip at night that recovers by itself never needs a human.
+
+## Status pages
+
+A status page publishes the uptime of selected monitors at `/status/<slug>`: a branded light page with 90 days of per-day uptime bars (green operational, amber partial outage, red major outage, gray no data), incident history, and no login required. Create one under the **Status Pages** tab on the Monitors page (organization admins only), pick the monitors, choose a slug, and toggle it public. Branding: a title, an optional description, and an uploaded PNG/JPEG logo. Latency numbers stay internal; the public payload only carries availability.
+
+### Custom domains
+
+Each status page can carry a custom domain (for example `status.acme.com`):
+
+1. Set the domain on the status page.
+2. Create a DNS CNAME from that hostname to your Traceway instance's hostname.
+3. Terminate TLS for the vanity hostname at your reverse proxy (Caddy and Traefik can issue certificates for it automatically; with nginx use certbot).
+
+Anonymous visitors hitting the instance under that Host are routed to the status page automatically (the backend maps the Host header to the page via `/api/status-domains/resolve`).
+
+## Browser execution modes
+
+Browser checks execute real user-authored JavaScript, so where that code runs is an explicit deployment decision, controlled by `SYNTHETICS_BROWSER_MODE`:
+
+| Mode | What it means |
+|------|---------------|
+| `off` (default) | HTTP and TCP checks only. Works in every image with no size cost; creating a browser check is rejected with a pointer here. |
+| `embedded` | The backend spawns Playwright in-process. Requires the [`:browser` image](/server/browser), which bakes in Node and headless Chromium. |
+| `remote` | The backend only queues browser runs; one or more **runners** claim and execute them. |
+
+Runners are deployment infrastructure, managed by whoever operates the server, not by dashboard users. There is nothing to create in the UI: set a shared secret on the server (`SYNTHETICS_RUNNER_SECRET`, required for `remote` mode), then start the `traceway-runner` binary from the GitHub release anywhere with outbound HTTPS, next to a Playwright harness:
+
+```bash
+mkdir traceway-runner-home && cd traceway-runner-home
+npm init -y && npm i @playwright/test && npx playwright install chromium
+TRACEWAY_URL=https://traceway.example.com \
+TRACEWAY_RUNNER_SECRET=<same value as the server's SYNTHETICS_RUNNER_SECRET> \
+traceway-runner
+```
+
+Each runner self-registers under its hostname (override with `TRACEWAY_RUNNER_NAME`) on first poll. It only makes outbound connections (long-polling), so it works behind NAT with no inbound port. Work distributes itself: an idle runner claims the next queued run, a busy one is not asking, so adding capacity is just starting more runners (`RUNNER_WORKERS` controls concurrent Chromiums per runner, default 2, max 16). Rotate the fleet credential by changing the secret and restarting the runners.
+
+Runners can also monitor themselves with the Traceway Go SDK. Set `TRACEWAY_RUNNER_MONITORING=<project_token>@<url>/api/report` (any project, typically a dedicated one) and each runner reports its CPU, memory, and goroutine metrics, one `browser_run` task per executed run (tagged with the check id and status, under its own server name), and exceptions for infrastructure failures. That gives you per-runner duration percentiles and error visibility on top of the fleet-level `traceway.synthetics.*` metrics.
+
+Browser check scripts run with an allowlisted environment: they see the variables configured on the check, never the server's own environment. In embedded mode the scripts still execute inside the Traceway container as arbitrary code, which is the trade-off for one-container convenience; use `remote` mode to keep them off the box entirely. Browser checks are disabled in cloud mode.
+
+## Configuration
+
+```bash
+SYNTHETICS_POLL_SECONDS=15              # scheduler tick
+SYNTHETICS_BROWSER_MODE=off             # off | embedded | remote
+SYNTHETICS_HTTP_CONCURRENCY=8           # concurrent http/tcp probes
+SYNTHETICS_BROWSER_CONCURRENCY=2        # concurrent Chromium instances (embedded)
+SYNTHETICS_ALLOW_PRIVATE_TARGETS=true   # "false" refuses checks against private/LAN addresses
+SYNTHETICS_PLAYWRIGHT_DIR=/opt/traceway-playwright   # harness dir (embedded/runner)
+SYNTHETICS_SCREENSHOT_RETENTION_DAYS=30 # failure screenshots on local storage; 0 disables cleanup
+SYNTHETICS_RUNNER_SECRET=               # shared runner credential; required for remote mode
+```
+
+Check results follow the telemetry retention of your deployment (the SQLite/DuckDB retention worker, or a 90-day TTL on ClickHouse).
+
+### Monitoring the monitors
+
+When self-monitoring is on (`MONITORING_TRACEWAY_URL`), the instance emits `traceway.synthetics.*` metrics every 10 seconds: `queued`, `claimed`, `oldest_queued_sec`, `checks_down`, `runners_online`, and `executed.delta` / `missed.delta`. A healthy fleet shows near-zero queue age, throughput on `executed.delta`, and zero `missed.delta`; alert on `runners_online` dropping to 0 in remote mode. `/api/health/deep` exposes the same numbers as a `synthetics` block; it is an operator endpoint gated by the `HEALTH_DEEP_TOKEN` deploy secret (unset disables it).

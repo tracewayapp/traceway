@@ -55,7 +55,7 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.PUT("/projects", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, ProjectController.UpdateProject)
 	router.DELETE("/projects", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, ProjectController.DeleteProject)
 
-	router.GET("/health/deep", middleware.UseAppAuth, HealthDeepController.Get)
+	router.GET("/health/deep", middleware.UseHealthDeepToken, HealthDeepController.Get)
 
 	router.POST("/stats", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricRecordController.FindHomepageStats)
 	router.GET("/dashboard", middleware.UseAppAuth, middleware.RequireProjectAccess, DashboardController.GetDashboard)
@@ -218,6 +218,39 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/notification-rules/:id/snooze", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, NotificationRuleController.Snooze)
 
 	router.POST("/notification-history", middleware.UseAppAuth, middleware.RequireProjectAccess, NotificationHistoryController.List)
+
+	router.GET("/synthetics/checks", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, SyntheticCheckController.List)
+	router.POST("/synthetics/overview", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, SyntheticCheckController.Overview)
+	router.POST("/synthetics/checks", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SyntheticCheckController.Create)
+	router.GET("/synthetics/checks/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, SyntheticCheckController.Get)
+	router.PUT("/synthetics/checks/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SyntheticCheckController.Update)
+	router.DELETE("/synthetics/checks/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SyntheticCheckController.Delete)
+	router.POST("/synthetics/checks/:id/run", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SyntheticCheckController.RunNow)
+	router.POST("/synthetics/checks/:id/results", middleware.UseAppAuth, middleware.RequireProjectAccess, SyntheticCheckController.Results)
+	router.GET("/synthetics/screenshot", middleware.UseAppAuth, middleware.RequireProjectAccess, SyntheticCheckController.Screenshot)
+	router.GET("/synthetics/output", middleware.UseAppAuth, middleware.RequireProjectAccess, SyntheticCheckController.Output)
+	router.POST("/synthetics/checks/:id/series", middleware.UseAppAuth, middleware.RequireProjectAccess, SyntheticCheckController.Series)
+	router.GET("/synthetics/open-count", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, SyntheticCheckController.OpenCount)
+
+	// No Transactional on either runner route: Poll holds the request for up
+	// to 25s (a held transaction would starve the single-connection SQLite
+	// main DB) and Result finalizes through ProcessOutcome, which manages its
+	// own transactions.
+	router.POST("/runners/poll", middleware.UseRunnerAuth, SyntheticRunnerController.Poll)
+	router.POST("/runners/results/:runId", middleware.UseRunnerAuth, SyntheticRunnerController.Result)
+
+	router.GET("/organizations/:organizationId/status-pages", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, StatusPageController.List)
+	router.POST("/organizations/:organizationId/status-pages", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, StatusPageController.Create)
+	router.PUT("/organizations/:organizationId/status-pages/:id", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, StatusPageController.Update)
+	router.DELETE("/organizations/:organizationId/status-pages/:id", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, StatusPageController.Delete)
+	router.POST("/organizations/:organizationId/status-pages/:id/logo", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, StatusPageController.UploadLogo)
+	// Anonymous, rate-limited, cached ~30s per slug; no Transactional (it
+	// reads main DB + telemetry through its own short transactions).
+	router.GET("/status/:slug", middleware.RateLimitPerIP(30, time.Minute), StatusPageController.Public)
+	router.GET("/status/:slug/logo", middleware.RateLimitPerIP(60, time.Minute), StatusPageController.PublicLogo)
+	// Maps a CNAMEd vanity host to its status page slug (called by the SPA
+	// when an anonymous visitor lands on / of an unrecognized host).
+	router.GET("/status-domains/resolve", middleware.RateLimitPerIP(60, time.Minute), StatusPageController.ResolveHost)
 
 	router.GET("/organizations/:organizationId/teams", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, TeamController.List)
 	router.POST("/organizations/:organizationId/teams", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, TeamController.Create)

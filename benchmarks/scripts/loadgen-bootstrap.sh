@@ -67,6 +67,7 @@ bench_ssh "${LG_IP}" /root/loadgen/loadgen \
     --target "http://${SUT_PRIVATE_IP}" \
     --token "${TOKEN}" \
     --jwt "${JWT}" \
+    --health-token "bench-health-token-not-for-production" \
     --project-id "${PROJECT_ID}" \
     --signal "${SIGNAL}" \
     --duration "${DURATION}" \

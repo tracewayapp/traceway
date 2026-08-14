@@ -119,6 +119,8 @@
 			'Fires when an AI conversation matches a flagged content term. Uses the built-in profanity list plus custom terms from the project’s AI settings; optionally narrow to specific terms below.',
 		error_regression:
 			'Fires when an error that was previously archived (resolved) occurs again.',
+		check_down:
+			'Fires when a monitor transitions to down (after its failure threshold), and sends a recovery notice when it comes back up. Applies to every monitor in this project.',
 		error_rate_threshold:
 			'Fires when the percentage of requests returning 5xx across all endpoints exceeds the threshold within the lookback window.',
 		error_count_threshold:

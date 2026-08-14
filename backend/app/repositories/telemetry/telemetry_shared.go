@@ -9,6 +9,7 @@ import (
 type (
 	SessionAttributeFilter = shared.SessionAttributeFilter
 	FiredNotification      = shared.FiredNotification
+	CheckResult            = shared.CheckResult
 	LogAttributeFilter     = shared.LogAttributeFilter
 	LogSearchParams        = shared.LogSearchParams
 )

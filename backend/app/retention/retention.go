@@ -23,6 +23,7 @@ func Start(ctx context.Context) {
 	startLogRecordsCap(ctx, parseMaxRows(cfg.LogRecordsMaxRows))
 	startRecordingDiskCleanup(ctx, parseRetentionDays(cfg.SessionRecordingRetentionDays))
 	startProfileArchiveDiskCleanup(ctx, parseRetentionDays(cfg.ProfileRetentionDays))
+	startSyntheticsScreenshotCleanup(ctx, parseRetentionDays(cfg.SyntheticsScreenshotRetentionDays))
 	startOAuthSessionsPrune(ctx)
 	startAuthTokensPrune(ctx)
 	startOutboxPrune(ctx)

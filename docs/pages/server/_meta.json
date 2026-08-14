@@ -5,6 +5,7 @@
   "minimal": "Minimal Container",
   "sqlite": "SQLite",
   "duckdb": "DuckDB",
+  "browser": "Browser (Monitors)",
   "local-setup": "Local Setup",
   "storage": "Blob Storage",
   "haloy": "Haloy",

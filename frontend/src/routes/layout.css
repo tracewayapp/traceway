@@ -291,9 +291,9 @@
    blue info, red error, amber warning. Same in both modes. */
 [data-sonner-toaster] [data-sonner-toast][data-type='success'],
 .dark [data-sonner-toaster] [data-sonner-toast][data-type='success'] {
-	background: #00a73d;
+	background: #16a34a;
 	color: white;
-	border-color: #008f34;
+	border-color: #15803d;
 }
 
 [data-sonner-toaster] [data-sonner-toast][data-type='info'],

@@ -38,6 +38,7 @@ var validRuleTypes = map[string]bool{
 	"ai_trace_cost":           true,
 	"ai_conversation_cost":    true,
 	"ai_flagged_content":      true,
+	"check_down":              true,
 }
 
 func (ctrl *notificationRuleController) List(ctx *gin.Context) {

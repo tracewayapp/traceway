@@ -100,7 +100,7 @@ api.POST("/login", middleware.Transactional, authController.Login)
 
 // In controller - retrieve transaction from Gin context
 func (c *AuthController) Register(ctx *gin.Context) {
-    tx := middleware.GetTx(ctx)  // Get transaction from context
+    tx := db.GetTx(ctx)  // Get transaction from context (db package, not middleware)
 
     // Use tx for all repository calls
     user, err := transactional.UserRepository.FindByEmail(tx, email)
@@ -117,7 +117,7 @@ func (c *AuthController) Register(ctx *gin.Context) {
 - Commits on status codes: 200, 201, 303
 - Rolls back on all other status codes or panics
 
-**Preference:** For CRUD controller methods, always prefer using `middleware.Transactional` in the route + `middleware.GetTx(ctx)` in the controller over `pgdb.ExecuteTransaction`. The middleware approach keeps controllers flat, avoids nested closures, and follows the established pattern.
+**Preference:** For CRUD controller methods, always prefer using `middleware.Transactional` in the route + `db.GetTx(ctx)` in the controller over `pgdb.ExecuteTransaction`. The middleware approach keeps controllers flat, avoids nested closures, and follows the established pattern. (The tx getter lives in the `db` package: `db.GetTx(ctx)`, not `middleware.GetTx`.)
 
 #### Repository Pattern
 Repositories accept `*sql.Tx` to participate in transactions:
@@ -265,6 +265,17 @@ INGEST_ADMISSION_WAIT_SECONDS=5       # how long a request may wait for a slot b
 NOTIFICATION_POLL_SECONDS=60          # polled rule evaluation interval; minimum 5, invalid values fall back to 60
 ONCALL_POLL_SECONDS=30                # on-call escalation worker interval; minimum 5, invalid values fall back to 30. Kept separate from NOTIFICATION_POLL_SECONDS so raising rule-evaluation intervals never delays paging. A buffered Wake() channel makes freshly opened pages notify L1 near-instantly regardless of this interval.
 OUTBOX_POLL_SECONDS=15                # notification outbox drain interval; minimum 5, invalid values fall back to 15. The outbox (backend/app/outbox, notification_outbox table in the main DB) is the persist-then-send layer for ALL notifications: rule dispatch and the escalator only enqueue (with an adapter-config snapshot) inside their transactions; the drain worker sends with retries (backoff 1m/5m/15m/60m, 5 attempts, then terminal failed + CaptureException). Crash-safe at-least-once: stale 'sending' rows are reclaimed after 5 min, cancelled rows can never resurrect (guarded status transitions), ack/resolve cancels queued page deliveries via outbox.CancelByKey. Cooldown and event-rule dedup record at enqueue commit (the durable promise), and fired_notifications is written at the terminal outcome. /api/health/deep exposes an `outbox` block; `traceway.outbox.*` metrics are emitted when monitoring is on; terminal rows are pruned daily (sent/cancelled 7d, failed 30d).
+
+# Synthetics (synthetic uptime monitoring: backend/app/synthetics, /synthetics frontend route)
+SYNTHETICS_POLL_SECONDS=15            # scheduler tick for due checks; minimum 5, invalid values fall back to 15. The scheduler enqueues due checks into the check_runs queue (main DB, outbox-style guarded claims, advisory lock 824737004) and records expired queued runs as `missed` in telemetry — a probe is never executed late. In-process executors claim http/tcp runs always, browser runs only when mode=embedded.
+SYNTHETICS_BROWSER_MODE=off           # off | embedded | remote. Browser checks are real @playwright/test specs executed by spawning Node against a harness dir (no npm/npx at runtime; allowlisted env so user scripts never see server secrets). `embedded` requires the :browser image (Dockerfile.browser, DuckDB base + Node + Chromium) and fails fast at startup otherwise; `remote` queues browser runs for traceway-runner binaries that long-poll /api/runners/poll authenticating with SYNTHETICS_RUNNER_SECRET. Hard-blocked in cloud mode (startup panic + 422 at check creation).
+SYNTHETICS_RUNNER_SECRET=             # shared bearer credential for the operator's runner fleet; required for remote mode (fail-fast at startup). Runners are deployment infrastructure, NOT tenant entities: no dashboard CRUD, no per-runner tokens. A runner self-registers a liveness row in synthetic_runners under its X-Traceway-Runner-Name on first poll (upsert throttled to 1/min via an in-memory cache; claim identity is "runner:<name>"). Rotation = change the secret + restart runners. Runner-side env: TRACEWAY_URL, TRACEWAY_RUNNER_SECRET, TRACEWAY_RUNNER_NAME (default hostname), RUNNER_WORKERS (default 2, max 16), and optional TRACEWAY_RUNNER_MONITORING (<project_token>@<url>/api/report) which self-instruments the runner with the Traceway Go SDK: default server metrics, a "browser_run" task trace per executed run (tags check_id/run_id/status, server_name = runner name), and CaptureException on infra failures (start/report errors, per-job panics recovered without killing the worker).
+HEALTH_DEEP_TOKEN=                    # operator bearer secret gating GET /api/health/deep (its payload is instance-wide: cross-tenant queue depth, runner fleet, storage engine stats). Unset = endpoint disabled with a 401 pointing here.
+SYNTHETICS_HTTP_CONCURRENCY=8         # concurrent in-process http/tcp probes
+SYNTHETICS_BROWSER_CONCURRENCY=2      # concurrent Chromium instances in embedded mode (~300-500MB each)
+SYNTHETICS_ALLOW_PRIVATE_TARGETS=true # "false" rejects checks that resolve to private/LAN addresses, validated at save AND at dial time (netguard.GuardedDialContext, DNS-rebinding safe). Default allow: probing LAN services is a core self-hosted use case.
+SYNTHETICS_PLAYWRIGHT_DIR=/opt/traceway-playwright   # Playwright harness dir (node_modules with pinned @playwright/test; docker/playwright/package.json pins the version)
+SYNTHETICS_SCREENSHOT_RETENTION_DAYS=30 # browser failure artifacts under STORAGE_PATH/synthetics/ (.png screenshots AND .log Playwright output tails — failed browser runs store both, referenced by screenshot_key/output_key on check_results, served via GET /api/synthetics/screenshot|output?key= with project prefix checks); local storage only, 0 disables the cleanup worker
 
 # Retention (see "Data Retention" section below)
 SQLITE_RETENTION_DAYS=30              # 0 to disable; only applies in SQLite mode
@@ -493,6 +504,9 @@ const handleClick = createRowClickHandler('/issues/abc123', 'preset', 'from', 't
 /tasks                      Background tasks list
 /tasks/[task]               Single task details
 /dashboards                 Dashboards page (tabs of org dashboards; /metrics redirects here)
+/monitors                   Monitors (synthetic checks): single sidebar item, TabsRow tabs Monitors | Status Pages (?tab=, Status Pages admin-only); status pages tab has branding (description, logo upload, custom domain); old /monitors/status-pages redirects to the tab, /monitors/runners to /monitors (runners have no UI — operator infra)
+/monitors/[checkId]         Monitor detail (latency chart, uptime bars, runs w/ result filter, incidents)
+/status/[slug]              Public status page (light standalone design, no auth, raw fetch, listed in isPublicPath)
 /connection                 SDK integration guide
 ```
 
@@ -552,6 +566,8 @@ backend/
 | Admin org management | `UseAppAuth, RequireAdminAccess, Transactional` |
 | Public (auth/invitations) | `Transactional` only |
 | Client SDK ingestion | `CORSReport, UseClientAuth, UseGzip` |
+| Synthetic runner API | `UseRunnerAuth` only (shared SYNTHETICS_RUNNER_SECRET bearer + self-registration by X-Traceway-Runner-Name; no Transactional — poll holds the request up to 25s) |
+| Public status page | `RateLimitPerIP` only |
 
 ### API Endpoints
 
@@ -754,6 +770,29 @@ Org-scoped entities in the main DB. Teams (`teams`/`team_members`) own projects 
 | GET/PUT | `/api/user-notification-rules` | App | Per-user notification-rule chains `{high: [{contactMethodId, delayMinutes}], low: [...]}` (PagerDuty-style: the page's urgency picks the chain; steps are enqueued at claim time as scheduled outbox deliveries and cancelled on ack; no chain = all enabled+verified methods immediately). Escalation policies carry `urgency: auto\|high\|low` in their definition (auto: critical -> high); pages store the resolved urgency |
 | GET/POST | `/api/ack/:token` | None (rate-limited) | Tokenized no-login acknowledge: per-delivery `twk_` tokens (SHA-256-hashed on page_notifications), GET = read-only summary (scanner-safe), POST = idempotent ack recorded as `acknowledged_via='link'` attributed to the delivery's recipient; 404 after resolve. Frontend page: `/ack/[token]` |
 
+**Monitors** (user-facing name for synthetic uptime checks; engine in `backend/app/synthetics`, frontend under `/monitors`, see the SYNTHETICS_* env block)
+
+Checks (`synthetic_checks`, main DB) are http/tcp/browser probes with per-check interval, timeout, and a consecutive-failure threshold (flap damping). Runs flow through the `check_runs` queue (outbox-style guarded claims, terminal rows deleted, expired queued runs recorded as `missed`); results are telemetry (`check_results`, all three backends, pruned by the SQLite retention worker / 90d CH TTL). State transitions open/resolve `check_incidents` and feed the event-driven notification rule type `check_down` (recovery auto-resolves the page a rule-scoped dedup key opened via `oncall.AutoResolveByDedupKey`; recovery never dispatches to escalation channels). The notify hook runs post-commit with no ambient tx (SQLite single-connection). Remember: `notification_rule.repository.go` (both copies) lists event rule types explicitly, and `check_down` is one of them.
+
+| Method | Endpoint | Auth | Purpose |
+|--------|----------|------|---------|
+| GET/POST | `/api/synthetics/checks` | App / App+Write | List / create checks (422 validation incl. browser-mode + cloud gates) |
+| GET/PUT/DELETE | `/api/synthetics/checks/:id` | App / +Write / +Write | Detail+incidents / update (type immutable; pausing drops queued runs) / delete (auto-resolves the check's open pages) |
+| POST | `/api/synthetics/checks/:id/run` | App+Write | Run now (422 if a run is already queued; OnCommit wake) |
+| POST | `/api/synthetics/overview` | App | Checks + per-range aggregates (uptime, avg latency) |
+| POST | `/api/synthetics/checks/:id/results` | App | Paginated run history (telemetry read, no Transactional; optional `status` filter up/down/missed + fromDate/toDate) |
+| POST | `/api/synthetics/checks/:id/series` | App | Bucketed uptime/latency series (telemetry read) |
+| GET | `/api/synthetics/screenshot?key=` | App | Streams a failure screenshot; key prefix-checked against the project |
+| GET | `/api/synthetics/output?key=` | App | Streams a failed browser run's stored Playwright output (.log keys only, same prefix check); "logs" link in the run history UI |
+| GET | `/api/synthetics/open-count` | App | Down-check count for the sidebar badge |
+| POST | `/api/runners/poll` | Runner (shared secret) | Instance-wide long-poll claim of browser runs (25s hold on the wake channel, NO Transactional, excluded from tracewaygin self-monitoring); self-registers the runner's liveness row |
+| POST | `/api/runners/results/:runId` | Runner (shared secret) | Report an outcome (MaxBytesReader 6MB incl. screenshotBase64; idempotent: lost/missing claim = 200 no-op; claims keyed "runner:<name>") |
+| GET/POST/PUT/DELETE | `/api/organizations/:organizationId/status-pages(/:id)` | Member / Admin | Status page CRUD (slug `[a-z0-9-]{3,60}` unique, checkIds validated against the org; branding fields `description`, `customDomain` unique hostname) |
+| POST | `/api/organizations/:organizationId/status-pages/:id/logo` | Admin | Upload a PNG/JPEG logo (raw body, 1MB cap, sniffed content type; SVG rejected as scriptable) stored via storage.Store under `statuspages/<id>/logo` |
+| GET | `/api/status/:slug/logo` | None (rate-limited) | Streams a public page's logo |
+| GET | `/api/status-domains/resolve` | None (rate-limited) | Maps the request Host header to a public status page slug — backs CNAMEd vanity domains (TLS terminates at the operator's proxy); the SPA calls it for anonymous visits to `/` |
+| GET | `/api/status/:slug` | None (rate-limited) | Public status payload: per-check status + 90 daily uptime buckets + incidents; cached ~30s per slug; private/unknown slugs are both 404; latency values stripped. Frontend page: `/status/[slug]` (in `isPublicPath`) |
+
 **Logs**
 | Method | Endpoint | Auth | Purpose |
 |--------|----------|------|---------|
@@ -813,6 +852,11 @@ func (c *ReportController) Report(ctx *gin.Context) {
 | `project_dashboards` | Which projects show a dashboard, and tab order |
 | `dashboard_templates` | Marketplace templates (key, category, definition), seeded by migrations |
 | `starred_dashboard_widgets` | Homepage layout per project (dashboard id + widget id, position, col_span, size) |
+| `synthetic_checks` | Synthetic check config + current state (status, consecutive_failures, next_run_at) |
+| `check_runs` | Synthetic run queue (queued/claimed only; terminal rows deleted, telemetry is the record) |
+| `check_incidents` | Down/up incident spans per check (feeds status pages) |
+| `synthetic_runners` | Liveness registry for self-registered runner fleet (unique name, version, first/last_seen_at; no credentials, no org scoping) |
+| `status_pages` | Public uptime pages (org-scoped slug + selected check ids + branding: description, logo_key, unique custom_domain) |
 | `widget_groups` / `widget_group_widgets` / `starred_widgets` | Legacy pre-dashboards tables, retained read-only for rollback until a follow-up drop |
 
 #### ClickHouse vs PostgreSQL Decision Guide
@@ -833,10 +877,11 @@ In SQLite mode (`DB_TYPE=sqlite`), the backend uses **two separate SQLite databa
 - `users`, `organizations`, `organization_users`, `projects`, `invitations`
 - `source_maps`, `metric_registry`, `dashboards`, `project_dashboards`, `dashboard_templates`, `starred_dashboard_widgets` (plus the legacy `widget_groups`/`widget_group_widgets`/`starred_widgets`)
 - `notification_channels`, `notification_rules`
+- `synthetic_checks`, `check_runs`, `check_incidents`, `synthetic_runners`, `status_pages`
 
 **Telemetry DB tables** (`db.TelemetryDB` — non-transactional, uses lit with `db.TelemetryDB` directly):
 - `endpoints`, `tasks`, `exception_stack_traces`, `spans`, `metric_points`
-- `session_recordings`, `archived_exceptions`, `slow_endpoints`, `fired_notifications`
+- `session_recordings`, `archived_exceptions`, `slow_endpoints`, `fired_notifications`, `check_results`
 
 **How to access each database in repository code:**
 
@@ -871,7 +916,7 @@ Built with `-tags telemetry_duckdb` (`CGO_ENABLED=1` required), this is an alter
 - **Driver:** `github.com/duckdb/duckdb-go/v2` (the official driver; marcboeker/go-duckdb is deprecated). Bundles prebuilt static libs for glibc only — **not musl/Alpine**, so the image uses Debian (`Dockerfile.duckdb`).
 - **Opened in** `backend/app/db/db_telemetry_duckdb.go`: telemetry path is the SQLite path with `.db` swapped for `_telemetry.duckdb`. By default DuckDB auto-tunes to the host; `DUCKDB_MEMORY_LIMIT`/`DUCKDB_THREADS`/`DUCKDB_CHECKPOINT_THRESHOLD` (passed through as DSN config options) let operators cap memory/threads so a memory-capped container doesn't read the host's RAM and OOM-kill the backend, and raise the WAL checkpoint threshold (default 16MB) so sustained Appender ingest isn't stalled by frequent checkpoints. `preserve_insertion_order=false` is always set — telemetry reads all have explicit ORDER BY, and dropping the guarantee lets DuckDB parallelize bulk loads and large scans with less memory. The read pool is bounded (`SetMaxOpenConns(duckDBMaxReadConns)`) since each DuckDB connection can use all threads + its own query memory; Appender writes use their own `DuckDBConnector.Connect()` connections and bypass that cap. Exposes `db.DuckDBConnector` (needed for the Appender).
 - **Writes use the Appender API**, not `INSERT` (`duckdb.NewAppenderFromConn(conn, "", table)` → `AppendRow(...)` → `Close()` flushes). Upserts still go through `ExecContext` with `ON CONFLICT`. The Appender rejects typed `*string` for nullable VARCHAR — use `nullableString()` in `backend/app/repositories/telemetry/duckdb/helpers.go` (returns untyped `nil` or the dereferenced value).
-- **Write-path observability:** a row the Appender rejects is dropped rather than failing the whole frame (the SQLite backend 500s instead), so a poison row cannot wedge the SDK's retry loop. Every drop increments a per-table counter (`db.RecordTelemetryRowDropped`) and fires a rate-limited (1/min per table) `traceway.CaptureException`; Appender flush/connect failures still propagate to the request (500, SDK retries) and increment an insert-failure counter. `GET /api/health/deep` (App auth, all telemetry backends) exposes `telemetryBackend`, `droppedRows` per table, `droppedRowsTotal`, `insertFailures`, `ingestRejected` (requests turned away by the ingest admission gate), and on DuckDB an `engine` object (db/WAL file bytes, `duckdb_memory()` usage, read-pool in-use/wait stats) alongside its existing ClickHouse fields; it 503s only when the configured telemetry backend is ClickHouse and CH is unreachable (the embedded backends answer 200 with `chReachable:false`). The benchmark loadgen polls it before/after every ramp step and fails any step whose drop delta is nonzero; read-probe fills record cumulative `droppedRows` per fill level. When `MONITORING_TRACEWAY_URL` is set, `monitoring.StartTelemetryDBReporter` also emits `traceway.duckdb.*` metrics every 10s: `rows_dropped.delta`, `insert_failures.delta`, `db_size_mb`, `wal_size_mb`, `memory_used_mb`, `read_pool.in_use`, `read_pool.wait_count.delta`, `read_pool.wait_ms.delta`. The hourly retention worker issues a `CHECKPOINT` after its deletes so retention actually reclaims disk (DuckDB otherwise defers reclamation to the WAL checkpoint threshold).
+- **Write-path observability:** a row the Appender rejects is dropped rather than failing the whole frame (the SQLite backend 500s instead), so a poison row cannot wedge the SDK's retry loop. Every drop increments a per-table counter (`db.RecordTelemetryRowDropped`) and fires a rate-limited (1/min per table) `traceway.CaptureException`; Appender flush/connect failures still propagate to the request (500, SDK retries) and increment an insert-failure counter. `GET /api/health/deep` (operator endpoint: requires the HEALTH_DEEP_TOKEN bearer secret, unset disables it; all telemetry backends) exposes `telemetryBackend`, `droppedRows` per table, `droppedRowsTotal`, `insertFailures`, `ingestRejected` (requests turned away by the ingest admission gate), and on DuckDB an `engine` object (db/WAL file bytes, `duckdb_memory()` usage, read-pool in-use/wait stats) alongside its existing ClickHouse fields; it 503s only when the configured telemetry backend is ClickHouse and CH is unreachable (the embedded backends answer 200 with `chReachable:false`). The benchmark loadgen polls it before/after every ramp step and fails any step whose drop delta is nonzero; read-probe fills record cumulative `droppedRows` per fill level. When `MONITORING_TRACEWAY_URL` is set, `monitoring.StartTelemetryDBReporter` also emits `traceway.duckdb.*` metrics every 10s: `rows_dropped.delta`, `insert_failures.delta`, `db_size_mb`, `wal_size_mb`, `memory_used_mb`, `read_pool.in_use`, `read_pool.wait_count.delta`, `read_pool.wait_ms.delta`. The hourly retention worker issues a `CHECKPOINT` after its deletes so retention actually reclaims disk (DuckDB otherwise defers reclamation to the WAL checkpoint threshold).
 - **`lit` placeholders:** `db.Driver` stays `lit.SQLite`, which emits `?` — DuckDB accepts these, so no separate driver was needed for reads.
 - **Migrations:** `backend/app/migrations/duckdb_telemetry/` (mirrors `sqlite_telemetry/` table-for-table; integer columns are `BIGINT`, JSON is `VARCHAR`, no secondary indexes since it's columnar).
 - **Dialect gotchas vs SQLite** (the read queries differ): native `quantile_cont(col, p)` for P50/P95/P99 instead of fetch-and-sort; `strftime('%s',col)`→`epoch(col)`; time bucketing via `time_bucket(to_seconds(N), col, TIMESTAMP '1970-01-01')` — the explicit epoch origin is required because DuckDB anchors sub-day buckets at 2000-01-03 by default, which would misalign chart buckets against the SQLite backend's epoch-floored buckets for any interval that doesn't evenly divide a day; `json_extract`→`json_extract_string`; `json_each`→`LATERAL unnest(json_keys(x))`; strict GROUP BY needs `ANY_VALUE`/`arg_max`; `SUM` returns HUGEINT (CAST to BIGINT); `CAST(.. AS REAL)`→`CAST(.. AS DOUBLE)`.
@@ -894,6 +939,7 @@ Retention is handled in several different ways depending on the deployment.
 | `profiling_samples` (the bulk) | **30 days** | `0068_add_ttl_profiling_samples.up.sql` |
 | `profiles` (slim metadata) | **30 days** | `0069_add_ttl_profiles.up.sql` |
 | `profiling_stacks` (dedup table) | **30 days** | `0070_add_ttl_profiling_stacks.up.sql` |
+| `check_results` (synthetic check probes) | **90 days** | `0083_add_ttl_check_results.up.sql` |
 | All other CH tables (`transactions`, `exception_stack_traces`, `tasks`, `spans`, `sessions`, `ai_traces`, `session_recordings`, `fired_notifications`, `archived_exceptions`, `slow_endpoints`, `endpoints`, etc.) | **No TTL — retained indefinitely** | — |
 
 The three profiling tables share a 30-day TTL keyed on each table's time column (`start_time` / `recorded_at` / `last_seen`). `profiling_stacks` is a `ReplacingMergeTree(last_seen)` dedup table, so `last_seen` is bumped on every re-ingest that references a stack — a stack only ages out once it has gone unreferenced for the full window, which is exactly when its samples have also expired, so no sample is ever left pointing at a dropped stack.
@@ -916,8 +962,11 @@ Tables it prunes (and the column used):
 | Telemetry | `profiling_samples` | `start_time` |
 | Telemetry | `profiles` | `recorded_at` |
 | Telemetry | `profiling_stacks` | `last_seen` |
+| Telemetry | `check_results` | `recorded_at` |
 
 `archived_exceptions` (per-hash flags) and `slow_endpoints` (per-endpoint config) are intentionally skipped — they are not time-series data. `profiling_stacks` *is* pruned (unlike those two) because it holds no user intent — it is a regenerable dedup table whose `last_seen` tracks the most recent referencing sample, so deleting expired stacks is safe.
+
+**2c. Synthetics failure screenshots — `retention.Start` worker** (`backend/app/retention/synthetics.go`). Browser-check failure screenshots written to local disk under `<STORAGE_PATH>/synthetics/` are aged out hourly by mtime, mirroring the session-recording split: the `check_results` rows referencing them are pruned separately (item 2 / CH TTL) and deliberately not coupled. `SYNTHETICS_SCREENSHOT_RETENTION_DAYS` (default 30, `0` disables); no-op unless `STORAGE_TYPE=local`.
 
 **2b. Log row cap — `retention.Start` worker** (`backend/app/retention/log_cap.go`). SQLite mode only (SQLite or DuckDB telemetry), off by default. When `LOG_RECORDS_MAX_ROWS` is set to a positive N, a worker runs once at startup and then every minute and deletes `log_records` rows strictly older than the Nth-newest row's `timestamp` (single portable DELETE with an `ORDER BY timestamp DESC LIMIT 1 OFFSET N-1` subquery; NULL boundary = no-op under the cap, boundary ties are kept). **The cap is best-effort, not a hard limit**: nothing throttles ingest, so between passes the table can exceed N, and sustained ingest above N rows/minute keeps it above the cap permanently — document it to users as a cleanup task with a 1-minute window, sized with headroom for peak log volume. Bounds log disk usage independently of `SQLITE_RETENTION_DAYS`; disk reclamation still happens via the hourly retention pass / DuckDB WAL checkpointing.
 

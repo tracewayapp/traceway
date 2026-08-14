@@ -1,0 +1,111 @@
+# ==============================================================================
+# Traceway Browser (Synthetics) Docker Image
+# The DuckDB image plus Node + @playwright/test + headless Chromium, so
+# browser synthetic checks run in-process (SYNTHETICS_BROWSER_MODE=embedded).
+#
+# Built on Debian like Dockerfile.duckdb: DuckDB links prebuilt glibc static
+# libraries via CGO, and Playwright's Chromium build also requires glibc.
+# Runs as root with --no-sandbox launch args (set by the backend's generated
+# Playwright config), the standard trade-off for containerized Chromium.
+#
+# To bump Playwright, change the pinned @playwright/test version in
+# docker/playwright/package.json; the browser build is downloaded to match.
+# ==============================================================================
+
+# ==============================================================================
+# Stage 1: Build Frontend
+# ==============================================================================
+FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend-builder
+
+WORKDIR /app/frontend
+
+COPY frontend/package.json frontend/package-lock.json ./
+
+RUN npm ci
+
+COPY frontend/ ./
+
+ENV CLOUD_MODE=false
+RUN npm run build
+
+# ==============================================================================
+# Stage 2: Build Backend with embedded frontend (telemetry_duckdb tag = DuckDB telemetry)
+# Built natively (no cross-compile) because CGO cross-compilation against the
+# prebuilt DuckDB libraries is impractical.
+# ==============================================================================
+FROM golang:1.26-bookworm AS backend-builder
+
+WORKDIR /app/backend
+
+RUN apt-get update && apt-get install -y --no-install-recommends git build-essential && rm -rf /var/lib/apt/lists/*
+
+COPY backend/ ./
+COPY cli/ /app/cli/
+
+COPY --from=frontend-builder /app/frontend/build ./static/frontend/
+
+RUN go mod edit -dropreplace=go.tracewayapp.com -dropreplace=go.tracewayapp.com/tracewaygin
+RUN go mod tidy
+RUN go mod download
+
+RUN CGO_ENABLED=1 go build -tags telemetry_duckdb -ldflags="-s -w" -o /traceway ./cmd/traceway
+
+# ==============================================================================
+# Stage 3: Playwright harness (pinned @playwright/test + Chromium download).
+# npm only exists here; the runtime invokes node against the CLI directly.
+# ==============================================================================
+FROM node:22-bookworm-slim AS playwright-builder
+
+WORKDIR /opt/traceway-playwright
+
+COPY docker/playwright/package.json ./
+
+RUN npm install --omit=dev
+
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+# --only-shell installs just the chromium headless shell (~90MB), which is
+# what headless test runs use since Playwright 1.49, skipping the full
+# Chromium build (~170MB). Scripts forcing headed mode or channel:'chromium'
+# would need the full install; a monitoring image does not.
+RUN npx playwright install chromium --only-shell
+
+# ==============================================================================
+# Stage 4: Runtime image (Debian slim for glibc + libstdc++ + Chromium deps)
+# ==============================================================================
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata wget libstdc++6 && rm -rf /var/lib/apt/lists/*
+
+# Node runtime + the Playwright harness + the downloaded Chromium build.
+COPY --from=playwright-builder /usr/local/bin/node /usr/local/bin/node
+COPY --from=playwright-builder /opt/traceway-playwright /opt/traceway-playwright
+COPY --from=playwright-builder /opt/ms-playwright /opt/ms-playwright
+
+# Chromium's system library dependencies, resolved by Playwright itself so the
+# list tracks the pinned version instead of being hardcoded here.
+RUN apt-get update && node /opt/traceway-playwright/node_modules/@playwright/test/cli.js install-deps chromium && rm -rf /var/lib/apt/lists/*
+
+COPY --from=backend-builder /traceway /usr/local/bin/traceway
+
+RUN mkdir -p /data && chmod 755 /data
+
+WORKDIR /app
+
+# DB_TYPE=sqlite selects the embedded codepath; in a telemetry_duckdb build that pairs a
+# SQLite main DB (SQLITE_PATH) with a DuckDB telemetry DB derived alongside it
+# (<path>_telemetry.duckdb). Both, plus local blob storage, live under /data.
+ENV GIN_MODE=release \
+    DB_TYPE=sqlite \
+    SQLITE_PATH=/data/traceway.db \
+    STORAGE_TYPE=local \
+    STORAGE_PATH=/data/storage \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright \
+    SYNTHETICS_BROWSER_MODE=embedded \
+    SYNTHETICS_PLAYWRIGHT_DIR=/opt/traceway-playwright
+
+EXPOSE 80 8082
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget -qO- http://localhost/health || exit 1
+
+ENTRYPOINT ["/usr/local/bin/traceway"]

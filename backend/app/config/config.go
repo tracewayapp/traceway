@@ -57,6 +57,17 @@ type Cfg struct {
 	OncallPollSeconds       string
 	OutboxPollSeconds       string
 
+	SyntheticsPollSeconds             string
+	SyntheticsBrowserMode             string
+	SyntheticsHTTPConcurrency         string
+	SyntheticsBrowserConcurrency      string
+	SyntheticsAllowPrivateTargets     string
+	SyntheticsPlaywrightDir           string
+	SyntheticsScreenshotRetentionDays string
+	SyntheticsRunnerSecret            string
+
+	HealthDeepToken string
+
 	AllowPrivateNotificationTargets string
 
 	TwilioAccountSID          string
@@ -174,6 +185,17 @@ func LoadFromEnv() *Cfg {
 		NotificationPollSeconds: os.Getenv("NOTIFICATION_POLL_SECONDS"),
 		OncallPollSeconds:       os.Getenv("ONCALL_POLL_SECONDS"),
 		OutboxPollSeconds:       os.Getenv("OUTBOX_POLL_SECONDS"),
+
+		SyntheticsPollSeconds:             os.Getenv("SYNTHETICS_POLL_SECONDS"),
+		SyntheticsBrowserMode:             os.Getenv("SYNTHETICS_BROWSER_MODE"),
+		SyntheticsHTTPConcurrency:         os.Getenv("SYNTHETICS_HTTP_CONCURRENCY"),
+		SyntheticsBrowserConcurrency:      os.Getenv("SYNTHETICS_BROWSER_CONCURRENCY"),
+		SyntheticsAllowPrivateTargets:     os.Getenv("SYNTHETICS_ALLOW_PRIVATE_TARGETS"),
+		SyntheticsPlaywrightDir:           os.Getenv("SYNTHETICS_PLAYWRIGHT_DIR"),
+		SyntheticsScreenshotRetentionDays: os.Getenv("SYNTHETICS_SCREENSHOT_RETENTION_DAYS"),
+		SyntheticsRunnerSecret:            os.Getenv("SYNTHETICS_RUNNER_SECRET"),
+
+		HealthDeepToken: os.Getenv("HEALTH_DEEP_TOKEN"),
 
 		AllowPrivateNotificationTargets: os.Getenv("ALLOW_PRIVATE_NOTIFICATION_TARGETS"),
 

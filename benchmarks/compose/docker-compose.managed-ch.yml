@@ -18,6 +18,7 @@ services:
       POSTGRES_PASSWORD: "traceway"
       POSTGRES_SSLMODE: "disable"
       JWT_SECRET: "bench-jwt-secret-not-for-production-use-only-32chars+"
+      HEALTH_DEEP_TOKEN: "bench-health-token-not-for-production"
       GIN_MODE: "release"
       CH_ASYNC_INSERT: "${CH_ASYNC_INSERT:-0}"
     depends_on:

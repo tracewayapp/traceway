@@ -6,6 +6,7 @@ import duckdbrepo "github.com/tracewayapp/traceway/backend/app/repositories/tele
 
 var (
 	AiTraceRepository             = duckdbrepo.AiTraceRepository
+	CheckResultRepository         = duckdbrepo.CheckResultRepository
 	EndpointRepository            = duckdbrepo.EndpointRepository
 	ExceptionStackTraceRepository = duckdbrepo.ExceptionStackTraceRepository
 	FiredNotificationRepository   = duckdbrepo.FiredNotificationRepository

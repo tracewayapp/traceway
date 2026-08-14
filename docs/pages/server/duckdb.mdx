@@ -83,7 +83,7 @@ The two images share the same main database file, so users, projects, tokens, an
 | `http://localhost/` | Frontend dashboard |
 | `http://localhost/api/*` | Backend API |
 | `http://localhost/health` | Health check |
-| `http://localhost/api/health/deep` | Telemetry store introspection (authenticated): dropped rows, insert failures, db/WAL size, engine memory |
+| `http://localhost/api/health/deep` | Telemetry store introspection (operator endpoint, requires the `HEALTH_DEEP_TOKEN` bearer secret; unset disables it): dropped rows, insert failures, db/WAL size, engine memory |
 
 ## Useful Commands
 

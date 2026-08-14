@@ -53,6 +53,10 @@ func aiFlaggedContentDedupKey(ruleId int, subject string) string {
 	return ruleStatePrefix(ruleId) + "ai_flagged:" + subject
 }
 
+func checkDownDedupKey(ruleId int, checkId int) string {
+	return ruleStatePrefix(ruleId) + fmt.Sprintf("check_down:%d", checkId)
+}
+
 func ClearRuleState(ruleId int) {
 	cooldowns.mu.Lock()
 	delete(cooldowns.fired, ruleId)

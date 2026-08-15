@@ -279,7 +279,7 @@
 	}
 
 	// Archive handler
-	async function archiveSelected() {
+	async function archiveSelected(resolvePages: boolean) {
 		if (selectedHashes.size === 0) return;
 
 		archiving = true;
@@ -287,7 +287,8 @@
 			await api.post(
 				'/exception-stack-traces/archive',
 				{
-					hashes: Array.from(selectedHashes)
+					hashes: Array.from(selectedHashes),
+					resolvePages
 				},
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
@@ -525,5 +526,6 @@
 	open={showArchiveDialog}
 	onOpenChange={(open) => (showArchiveDialog = open)}
 	count={selectedCount}
+	hashes={Array.from(selectedHashes)}
 	onConfirm={archiveSelected}
 />

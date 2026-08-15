@@ -10,6 +10,7 @@
 	import { formatDateTime, formatRelativeTimeAgo } from '$lib/utils/formatters';
 	import { runPageAction } from './page-actions';
 	import PageBadges from './page-badges.svelte';
+	import ResolvePageDialog from './resolve-page-dialog.svelte';
 	import EscalationChain from '$lib/components/traceway/escalation-chain.svelte';
 
 	interface Props {
@@ -85,12 +86,21 @@
 		});
 	}
 
-	async function performAction(action: 'acknowledge' | 'resolve') {
+	let resolveDialogOpen = $state(false);
+
+	async function acknowledge() {
 		if (!pageData) return;
 		actionLoading = true;
-		await runPageAction(pageData.id, action);
+		await runPageAction(pageData.id, 'acknowledge');
 		actionLoading = false;
 		await loadDetail(pageData.id);
+		onChanged();
+	}
+
+	async function onResolved() {
+		if (pageData) {
+			await loadDetail(pageData.id);
+		}
 		onChanged();
 	}
 </script>
@@ -277,11 +287,11 @@
 			{#if pageData.status !== 'resolved'}
 				<Sheet.Footer class="flex-row justify-end border-t px-6">
 					{#if pageData.status === 'open'}
-						<Button variant="outline" onclick={() => performAction('acknowledge')} disabled={actionLoading}>
+						<Button variant="outline" onclick={acknowledge} disabled={actionLoading}>
 							<Check class="mr-1 h-4 w-4" /> Acknowledge
 						</Button>
 					{/if}
-					<Button onclick={() => performAction('resolve')} disabled={actionLoading}>
+					<Button onclick={() => (resolveDialogOpen = true)} disabled={actionLoading}>
 						<CheckCheck class="mr-1 h-4 w-4" /> Resolve
 					</Button>
 				</Sheet.Footer>
@@ -289,3 +299,9 @@
 		{/if}
 	</Sheet.Content>
 </Sheet.Root>
+
+<ResolvePageDialog
+	bind:open={resolveDialogOpen}
+	pages={pageData ? [pageData] : []}
+	onResolved={onResolved}
+/>

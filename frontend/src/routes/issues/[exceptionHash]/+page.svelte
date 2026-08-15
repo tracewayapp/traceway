@@ -117,12 +117,12 @@
 		}
 	}
 
-	async function archiveIssue() {
+	async function archiveIssue(resolvePages: boolean) {
 		archiving = true;
 		try {
 			await api.post(
 				'/exception-stack-traces/archive',
-				{ hashes: [exceptionHash] },
+				{ hashes: [exceptionHash], resolvePages },
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
 			toast.success('Successfully archived the Issue', { position: 'top-center' });
@@ -212,5 +212,6 @@
 	open={showArchiveDialog}
 	onOpenChange={(open) => (showArchiveDialog = open)}
 	count={1}
+	hashes={[exceptionHash]}
 	onConfirm={archiveIssue}
 />

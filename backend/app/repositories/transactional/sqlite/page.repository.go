@@ -65,6 +65,18 @@ func (r *pageRepository) FindDue(tx *sql.Tx, now time.Time) ([]*models.Page, err
 	)
 }
 
+// FindUnresolvedByIssueHash returns the unresolved pages opened for one
+// exception hash: new-error/regression pages carry the hash as the dedup token
+// after the "ruleId|" prefix, so the suffix match is exact for those rule
+// types. Served by the pages_project_active_idx partial index.
+func (r *pageRepository) FindUnresolvedByIssueHash(tx *sql.Tx, projectId uuid.UUID, hash string) ([]*models.Page, error) {
+	return lit.SelectNamed[models.Page](
+		tx,
+		"SELECT "+pageColumns+" FROM pages WHERE project_id = :project_id AND status <> 'resolved' AND (rule_type = 'new_error' OR rule_type = 'error_regression') AND dedup_key LIKE ('%|' || :hash)",
+		lit.P{"project_id": projectId, "hash": hash},
+	)
+}
+
 func (r *pageRepository) FindByProject(tx *sql.Tx, projectId uuid.UUID, status string, limit int, offset int) ([]*models.Page, error) {
 	return lit.SelectNamed[models.Page](
 		tx,

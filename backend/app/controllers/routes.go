@@ -277,6 +277,9 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.DELETE("/organizations/:organizationId/escalation-policies/:id", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, EscalationPolicyController.Delete)
 
 	router.POST("/pages", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.List)
+	router.POST("/pages/for-issues", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.UnresolvedForIssues)
+	router.POST("/pages/bulk-acknowledge", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.BulkAcknowledge)
+	router.POST("/pages/bulk-resolve", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.BulkResolve)
 	router.GET("/pages/open-count", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.OpenCount)
 	router.GET("/pages/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.Get)
 	router.POST("/pages/:id/acknowledge", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.Acknowledge)

@@ -1,6 +1,7 @@
 package models
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -51,6 +52,20 @@ type Page struct {
 	ResolvedAt       *time.Time `json:"resolvedAt" lit:"resolved_at"`
 	CreatedAt        time.Time  `json:"createdAt" lit:"created_at"`
 	UpdatedAt        time.Time  `json:"updatedAt" lit:"updated_at"`
+}
+
+// IssueHash returns the exception hash a page was opened for, or "" when the
+// page is not issue-linked. New-error and regression rules carry the hash as
+// the dedup token after the "ruleId|" prefix (see oncall.pageDedupKey).
+func (p *Page) IssueHash() string {
+	if p.RuleType != "new_error" && p.RuleType != "error_regression" {
+		return ""
+	}
+	_, hash, found := strings.Cut(p.DedupKey, "|")
+	if !found {
+		return ""
+	}
+	return hash
 }
 
 type UserContactMethod struct {

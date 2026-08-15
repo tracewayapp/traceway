@@ -202,6 +202,9 @@ export interface OncallPage {
     resolvedAt: string | null;
     createdAt: string;
     updatedAt: string;
+    issueHash: string;
+    acknowledgedByName?: string;
+    resolvedByName?: string;
 }
 
 export interface PageNotification {

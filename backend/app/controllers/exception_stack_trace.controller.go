@@ -11,9 +11,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/oncall"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 
 	"github.com/gin-gonic/gin"
@@ -35,6 +38,9 @@ type ExceptionSearchRequest struct {
 
 type ArchiveRequest struct {
 	Hashes []string `json:"hashes"`
+	// ResolvePages also resolves any unresolved on-call pages that were opened
+	// for these issues (archive path only, confirmed by the user in the dialog).
+	ResolvePages bool `json:"resolvePages"`
 }
 
 type ExceptionDetailRequest struct {
@@ -229,7 +235,36 @@ func (e exceptionStackTraceController) ArchiveExceptions(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"archived": len(request.Hashes)})
+	resolvedPages := 0
+	if request.ResolvePages {
+		userId := middleware.GetUserId(c)
+		now := time.Now().UTC()
+		resolvedPages, err = db.ExecuteTransaction(func(tx *sql.Tx) (int, error) {
+			resolved := 0
+			for _, hash := range request.Hashes {
+				pages, err := transactional.PageRepository.FindUnresolvedByIssueHash(tx, projectId, hash)
+				if err != nil {
+					return 0, err
+				}
+				for _, page := range pages {
+					ok, err := oncall.ResolvePage(tx, page.Id, userId, now)
+					if err != nil {
+						return 0, err
+					}
+					if ok {
+						resolved++
+					}
+				}
+			}
+			return resolved, nil
+		})
+		if err != nil {
+			c.AbortWithError(500, traceway.NewStackTraceErrorf("error resolving pages for archived issues %s: %w", strings.Join(request.Hashes, ","), err))
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"archived": len(request.Hashes), "resolvedPages": resolvedPages})
 }
 
 func (e exceptionStackTraceController) UnarchiveExceptions(c *gin.Context) {

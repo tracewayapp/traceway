@@ -34,3 +34,45 @@ export async function runPageAction(id: number, action: 'acknowledge' | 'resolve
 	}
 	oncallState.refreshOpenCount();
 }
+
+function pluralPages(n: number): string {
+	return n === 1 ? 'page' : 'pages';
+}
+
+// Runs a bulk acknowledge/resolve with shared toasts and badge refresh.
+// Returns true when the call succeeded (even if every page was skipped), so
+// dialogs know whether to close.
+export async function runBulkPageAction(
+	ids: number[],
+	action: 'acknowledge' | 'resolve',
+	options: { archiveIssues?: boolean } = {}
+): Promise<boolean> {
+	const done = action === 'acknowledge' ? 'acknowledged' : 'resolved';
+	try {
+		const res = await api.post(
+			`/pages/bulk-${action}`,
+			action === 'resolve' ? { ids, archiveIssues: options.archiveIssues ?? false } : { ids },
+			{ projectId: projectsState.currentProjectId ?? undefined }
+		);
+		const count = (action === 'acknowledge' ? res.acknowledged : res.resolved) ?? 0;
+		const archived = res.archivedIssues ?? 0;
+		if (count === 0 && archived === 0) {
+			toast.error(
+				ids.length === 1 ? `Page was already ${done}` : `Pages were already ${done}`,
+				{ position: 'top-center' }
+			);
+		} else {
+			let message = count === 1 && ids.length === 1 ? `Page ${done}` : `${count} ${pluralPages(count)} ${done}`;
+			if (archived > 0) {
+				message += ` and ${archived} issue${archived === 1 ? '' : 's'} archived`;
+			}
+			toast.success(message, { position: 'top-center' });
+		}
+		oncallState.refreshOpenCount();
+		return true;
+	} catch {
+		toast.error(`Failed to ${action} ${pluralPages(ids.length)}`, { position: 'top-center' });
+		oncallState.refreshOpenCount();
+		return false;
+	}
+}

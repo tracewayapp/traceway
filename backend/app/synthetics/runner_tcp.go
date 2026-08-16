@@ -27,19 +27,19 @@ func probeTcp(ctx context.Context, check *models.SyntheticCheck) Outcome {
 		outcome.ErrorMsg = "invalid host or port"
 		return outcome
 	}
-	if !AllowPrivateTargets() {
-		if err := netguard.ValidateHost(cfg.Host); err != nil {
-			outcome.ErrorMsg = err.Error()
-			return outcome
-		}
-	}
 
 	address := net.JoinHostPort(cfg.Host, fmt.Sprintf("%d", cfg.Port))
 	timeout := EffectiveTimeout(check)
-	dialer := &net.Dialer{Timeout: timeout}
+	dial := (&net.Dialer{Timeout: timeout}).DialContext
+	if !AllowPrivateTargets() {
+		// Vet the resolved address and dial exactly that address, like the
+		// http probe: a validate-then-redial-by-hostname sequence would leave
+		// a DNS-rebinding window between the check and the connection.
+		dial = netguard.GuardedDialContext(timeout)
+	}
 
 	started := time.Now()
-	conn, err := dialer.DialContext(ctx, "tcp", address)
+	conn, err := dial(ctx, "tcp", address)
 	if err != nil {
 		outcome.LatencyMs = float64(time.Since(started).Microseconds()) / 1000
 		outcome.ErrorMsg = err.Error()

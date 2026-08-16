@@ -2,7 +2,7 @@
 
 The [DuckDB deployment](/server/duckdb) plus Node, `@playwright/test`, and headless Chromium baked in, so [browser monitors](/learn/monitors) run inside the container with zero extra moving parts (`SYNTHETICS_BROWSER_MODE=embedded` is set by default). HTTP and TCP checks work in every image; this image exists only for the browser ones.
 
-Pick this when you want Playwright uptime checks with one container. If you already run another image (SQLite, DuckDB, minimal, or all-in-one), you do not need to switch: set `SYNTHETICS_BROWSER_MODE=remote` there and execute browser checks with the [`traceway-runner` binary](/learn/monitors#browser-execution-modes) instead.
+Pick this when you want Playwright uptime checks with one container. If you already run another image (SQLite, DuckDB, minimal, or all-in-one), you do not need to switch: set `SYNTHETICS_BROWSER_MODE=remote` there and execute browser checks with the [`traceway-runner` binary](/server/runner) instead. Running Traceway as a plain binary with no Docker at all? See [Without Docker](#without-docker) below.
 
 Operational notes on top of the DuckDB image:
 
@@ -37,6 +37,28 @@ docker build -f Dockerfile.browser -t traceway:browser .
 ```
 
 The pinned `@playwright/test` version lives in `docker/playwright/package.json`; the matching Chromium build is downloaded at image build time, never at runtime.
+
+## Without Docker
+
+Embedded mode does not actually require this image. The image is packaging; the real requirements are `node` on PATH and a harness directory containing `@playwright/test` plus a downloaded Chromium. If you run the Traceway backend as a plain binary (a single EC2 instance, a bare-metal box), you can enable browser monitors on that same host:
+
+```bash
+# One-time harness setup (Node 18+ required)
+sudo mkdir -p /opt/traceway-playwright && cd /opt/traceway-playwright
+npm init -y && npm i @playwright/test
+npx playwright install --with-deps chromium
+```
+
+Then add to the backend's environment and restart:
+
+```bash
+SYNTHETICS_BROWSER_MODE=embedded
+SYNTHETICS_PLAYWRIGHT_DIR=/opt/traceway-playwright
+```
+
+The backend validates the harness at startup and fails fast with a pointer here if `node` or the Playwright CLI is missing. `--with-deps` covers apt-based distros; on rpm-based distros (Amazon Linux) install Chromium's shared libraries with your package manager.
+
+Keep in mind what embedded means: browser checks are user-authored scripts executing on the host that runs your backend, and each concurrent Chromium costs roughly 300 to 500MB (`SYNTHETICS_BROWSER_CONCURRENCY`, default 2). If either bothers you, run the checks somewhere else with a [remote runner](/server/runner) instead. Both paths work without Docker.
 
 ## Configuration
 

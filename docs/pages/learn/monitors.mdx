@@ -16,6 +16,8 @@ Every check has an interval (30 seconds to 24 hours), a timeout, and a failure t
 
 A scheduler enqueues each due check into a durable run queue in the main database, and executors claim runs from it. Results land in the telemetry store, so uptime and latency charts use the same retention and aggregation machinery as everything else.
 
+<img src="/monitor-run-lifecycle.svg" alt="Monitor run lifecycle: the scheduler enqueues due checks into the run queue, executors claim runs and probe your services, results land in the telemetry store feeding status pages, and state transitions fire alerts and on-call pages" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
 Two properties matter operationally:
 
 - **A probe never runs late.** A queued run that outlives its window (the check's interval, capped at five minutes) is recorded as `missed`, not executed. A stale "is it up" answer would corrupt the uptime timeline.
@@ -46,22 +48,12 @@ Browser checks execute real user-authored JavaScript, so where that code runs is
 | Mode | What it means |
 |------|---------------|
 | `off` (default) | HTTP and TCP checks only. Works in every image with no size cost; creating a browser check is rejected with a pointer here. |
-| `embedded` | The backend spawns Playwright in-process. Requires the [`:browser` image](/server/browser), which bakes in Node and headless Chromium. |
-| `remote` | The backend only queues browser runs; one or more **runners** claim and execute them. |
+| `embedded` | The backend spawns Playwright in-process. Ships ready to go in the [`:browser` image](/server/browser), or [without Docker](/server/browser#without-docker) on any host with Node and a Playwright harness. |
+| `remote` | The backend only queues browser runs; one or more [**runners**](/server/runner) claim and execute them. |
 
-Runners are deployment infrastructure, managed by whoever operates the server, not by dashboard users. There is nothing to create in the UI: set a shared secret on the server (`SYNTHETICS_RUNNER_SECRET`, required for `remote` mode), then start the `traceway-runner` binary from the GitHub release anywhere with outbound HTTPS, next to a Playwright harness:
+Runners are deployment infrastructure, managed by whoever operates the server, not by dashboard users. There is nothing to create in the UI: set a shared secret on the server (`SYNTHETICS_RUNNER_SECRET`, required for `remote` mode) and start the `traceway-runner` binary anywhere with outbound HTTPS. Each runner self-registers under its name on first poll and only makes outbound connections (long-polling), so it works behind NAT with no inbound port. Work distributes itself: an idle runner claims the next queued run, a busy one is not asking, so adding capacity is just starting more runners. Rotate the fleet credential by changing the secret and restarting the runners.
 
-```bash
-mkdir traceway-runner-home && cd traceway-runner-home
-npm init -y && npm i @playwright/test && npx playwright install chromium
-TRACEWAY_URL=https://traceway.example.com \
-TRACEWAY_RUNNER_SECRET=<same value as the server's SYNTHETICS_RUNNER_SECRET> \
-traceway-runner
-```
-
-Each runner self-registers under its hostname (override with `TRACEWAY_RUNNER_NAME`) on first poll. It only makes outbound connections (long-polling), so it works behind NAT with no inbound port. Work distributes itself: an idle runner claims the next queued run, a busy one is not asking, so adding capacity is just starting more runners (`RUNNER_WORKERS` controls concurrent Chromiums per runner, default 2, max 16). Rotate the fleet credential by changing the secret and restarting the runners.
-
-Runners can also monitor themselves with the Traceway Go SDK. Set `TRACEWAY_RUNNER_MONITORING=<project_token>@<url>/api/report` (any project, typically a dedicated one) and each runner reports its CPU, memory, and goroutine metrics, one `browser_run` task per executed run (tagged with the check id and status, under its own server name), and exceptions for infrastructure failures. That gives you per-runner duration percentiles and error visibility on top of the fleet-level `traceway.synthetics.*` metrics.
+The [Remote Runners guide](/server/runner) walks through the whole setup: getting the binary, preparing the Playwright harness, a systemd unit, verifying the runner is attached, and operations like rotation, scaling, and per-runner self-monitoring via `TRACEWAY_RUNNER_MONITORING`.
 
 Browser check scripts run with an allowlisted environment: they see the variables configured on the check, never the server's own environment. In embedded mode the scripts still execute inside the Traceway container as arbitrary code, which is the trade-off for one-container convenience; use `remote` mode to keep them off the box entirely. Browser checks are disabled in cloud mode.
 

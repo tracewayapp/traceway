@@ -70,10 +70,12 @@
 	let browserScript = $state('');
 	let envRows = $state<{ key: string; value: string }[]>([]);
 
+	// Browser checks execute user scripts server-side and are hard-blocked in
+	// cloud mode, so the cloud build does not offer the type at all.
 	const checkTypeOptions = [
 		{ value: 'http', label: 'HTTP' },
 		{ value: 'tcp', label: 'TCP' },
-		{ value: 'browser', label: 'Browser (Playwright)' }
+		...(__CLOUD_MODE__ ? [] : [{ value: 'browser', label: 'Browser (Playwright)' }])
 	];
 
 	const intervalOptions = [

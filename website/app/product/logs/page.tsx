@@ -297,7 +297,7 @@ export default function LogsPage() {
                 },
                 {
                   q: "Do logs count toward my event limit?",
-                  a: "Logs have their own ingestion tier that scales with your plan. See the Cloud pricing page for current limits. Self-hosting is unlimited.",
+                  a: "On Traceway Cloud, logs count toward your plan's data allowance, which we size per customer. Reach out and we'll put together a plan for your volume. Self-hosting is unlimited.",
                 },
               ]}
             />

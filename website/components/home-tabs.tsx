@@ -89,11 +89,11 @@ const tabs: Tab[] = [
     color: "var(--a4)",
     heading: "Monitor fleets of devices at scale.",
     description:
-      "Traceway's OpenTelemetry-native ingestion and ClickHouse columnar storage handle high-volume telemetry from IoT devices efficiently. Enterprise pricing supports large device fleets with predictable, fixed costs. No per-event billing surprises.",
+      "Traceway's OpenTelemetry-native ingestion and ClickHouse columnar storage handle high-volume telemetry from IoT devices efficiently. Custom enterprise pricing supports large device fleets with predictable costs. No per-event billing surprises.",
     bullets: [
       "High-volume ingestion via OTLP/HTTP",
       "ClickHouse compression keeps storage costs low",
-      "Enterprise pricing for large device fleets",
+      "Custom pricing for large device fleets",
       "Custom metrics for device health and telemetry",
     ],
     href: "/cloud",

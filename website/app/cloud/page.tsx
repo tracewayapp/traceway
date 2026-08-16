@@ -6,7 +6,6 @@ import { SectionHead } from "@/components/section-head";
 import { FaqList } from "@/components/faq-list";
 import { FinalCTA } from "@/components/final-cta";
 import { AuroraBackground } from "@/components/aurora-background";
-import { PricingPlans, PlanComparison } from "@/components/pricing-plans";
 import { ComplianceStrip } from "@/components/compliance-strip";
 import { getCalendlyUrl } from "@/lib/calendly";
 
@@ -40,15 +39,30 @@ export default function CloudPage() {
       </section>
 
       {/* Pricing */}
-      {/* WHITE BAND: pricing + cost comparison render on white */}
+      {/* WHITE BAND: pricing + compliance render on white */}
       <div className="band-light">
         <section className="wrap md:py-20! py-10!">
-          <SectionHead align="center" title="Pricing that scales with you" />
-          <PricingPlans />
-        </section>
-
-        <section className="wrap pb-20">
-          <PlanComparison />
+          <SectionHead
+            align="center"
+            eyebrow="Pricing"
+            title={
+              <>
+                Pricing that fits <em>your team.</em>
+              </>
+            }
+            description="We price Traceway Cloud per customer, sized to your actual volume and needs. Start free, and when you're ready, we'll put together a plan with no per-host or per-seat fees."
+          />
+          <div className="mt-2 flex flex-wrap justify-center gap-3">
+            <Link href={getCalendlyUrl()} className="btn btn-accent">
+              Talk to us about pricing <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link
+              href="https://cloud.tracewayapp.com/register"
+              className="btn btn-ghost"
+            >
+              Start Free
+            </Link>
+          </div>
         </section>
 
         {/* Security & compliance */}
@@ -89,31 +103,28 @@ export default function CloudPage() {
       {/* FAQ, includes absorbed from home */}
       <section className="wrap pt-10 pb-24">
         <div className="max-w-3xl mx-auto">
-          <SectionHead
-            align="center"
-            eyebrow="FAQ"
-            title="Cloud & pricing FAQ"
-          />
+          <SectionHead align="center" eyebrow="FAQ" title="Cloud FAQ" />
           <div className="mt-4">
             <FaqList
               items={[
+                {
+                  q: "How does pricing work?",
+                  a: "We price per customer. Every plan starts from two simple meters, a monthly allowance for exceptions and one for ingested data (logs, traces, spans, metrics, session replay), and we size both to your workload. Book a call, tell us your volume, and we'll put together a plan. HTTP requests and background task runs are never metered, and there are no per-host or per-seat fees.",
+                },
                 {
                   q: "Why is Traceway so cost-effective?",
                   a: (
                     <>
                       <p>
-                        Pricing comes down to two simple meters: a fixed monthly
-                        tier for exceptions, and data (logs, traces, spans,
-                        metrics, replay) at a flat $0.25/GB after a generous
-                        included allowance. There are no per-host or per-seat
-                        fees layered on top, and self-hosted Traceway has zero
-                        licensing cost.
+                        There are no per-host or per-seat fees layered on top of
+                        your plan, and self-hosted Traceway has zero licensing
+                        cost.
                       </p>
                       <p>
                         Architecturally, Traceway uses ClickHouse columnar
                         storage that compresses 1 million daily events into ~2-3
-                        GB per month, keeping the per-GB rate low even at high
-                        volume. Everything is in one tool: endpoint performance
+                        GB per month, keeping costs low even at high volume.
+                        Everything is in one tool: endpoint performance
                         analytics, exception tracking with automatic grouping
                         and ranking, session replay, distributed tracing,
                         metrics, logs, and AI observability, with a single bill
@@ -138,23 +149,11 @@ export default function CloudPage() {
                 },
                 {
                   q: "Will my bill ever increase unexpectedly?",
-                  a: "No. Your plan price is fixed, and data is billed at a flat, published per-GB rate with a generous allowance included on every tier. If you approach your data allowance, we notify you in advance so you can decide whether to upgrade or keep going. There are no per-host or per-seat surprises, and we never apply a new rate without telling you first.",
+                  a: "No. Your pricing is agreed with you up front. If your usage approaches what we agreed, we reach out in advance so you can decide how to proceed. There are no per-host or per-seat surprises, and we never apply a new rate without telling you first.",
                 },
                 {
                   q: "What support do Cloud customers get?",
-                  a: "All Cloud customers on a paid plan can open GitHub issues that are triaged with highest priority by our engineering team. You talk directly to the people who build Traceway, with no help desk routing. Enterprise+ customers also receive a shared Slack channel with direct access to the team. Self-hosted users are welcome to open GitHub issues and participate in community discussions. We actively monitor and respond.",
-                },
-                {
-                  q: "How does data billing work?",
-                  a: "Each plan includes an allowance for data ingested, covering your logs, traces, spans, metrics, and session replay (for example, 150 GB on Premium). If you stay within it, you only pay the fixed plan price. Beyond the allowance, ingested data is billed at a flat, published per-GB rate ($0.25/GB, dropping to $0.20/GB on Enterprise) with no per-host or per-seat add-ons. We meter the volume you send us, not your compressed storage, so the rate is predictable, and we warn you before you exceed your allowance.",
-                },
-                {
-                  q: "How does pricing work at scale?",
-                  a: "Data is where observability bills usually grow, so that is where Traceway stays lean: a flat $0.25/GB, dropping to $0.20/GB on Enterprise, with no per-host or per-seat fees on top. Your exception plan stays a fixed monthly price. Enterprise+ adds the best volume rate plus a dedicated SRE and a shared Slack channel.",
-                },
-                {
-                  q: "What do you charge for, and what is free?",
-                  a: "Two things. First, exceptions, billed as a fixed monthly tier (10k free on Starter, up to 200M on Enterprise). Second, data, meaning your logs, distributed trace spans, custom metrics, and session replay, billed by the gigabyte ingested after a generous per-plan allowance. HTTP requests and background task runs are not metered. For example, on Premium you get 1M exceptions and 150 GB of ingested data included for $24.99/mo, then $0.25 for each additional GB.",
+                  a: "All Cloud customers on a paid plan can open GitHub issues that are triaged with highest priority by our engineering team. You talk directly to the people who build Traceway, with no help desk routing. Larger plans also include a shared Slack channel with direct access to the team. Self-hosted users are welcome to open GitHub issues and participate in community discussions. We actively monitor and respond.",
                 },
                 {
                   q: "Can I migrate from Cloud to Self-Hosted later?",

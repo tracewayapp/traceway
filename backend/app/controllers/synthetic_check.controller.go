@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -249,6 +250,24 @@ func (ctrl *syntheticCheckController) Create(ctx *gin.Context) {
 	}
 
 	tx := db.GetTx(ctx)
+	if CheckLimitHook != nil {
+		project, err := transactional.ProjectRepository.FindById(tx, projectId)
+		if err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to load project for check limit: %w", err))
+			return
+		}
+		if project != nil && project.OrganizationId != nil {
+			if err := CheckLimitHook(tx, *project.OrganizationId); err != nil {
+				var limitErr *LimitExceededError
+				if errors.As(err, &limitErr) {
+					ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": limitErr.Message})
+					return
+				}
+				ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("check limit hook failed: %w", err))
+				return
+			}
+		}
+	}
 	id, err := transactional.SyntheticCheckRepository.Create(tx, check)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to create synthetic check: %w", err))

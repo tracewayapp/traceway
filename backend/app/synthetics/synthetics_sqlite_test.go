@@ -152,6 +152,29 @@ func TestScheduleSkipsDisabledChecks(t *testing.T) {
 	}
 }
 
+func TestAllowPrivateTargetsForcedOffInCloudMode(t *testing.T) {
+	setupSyntheticsDB(t)
+	previousCloud := config.Config.CloudMode
+	previousAllow := config.Config.SyntheticsAllowPrivateTargets
+	t.Cleanup(func() {
+		config.Config.CloudMode = previousCloud
+		config.Config.SyntheticsAllowPrivateTargets = previousAllow
+	})
+
+	config.Config.CloudMode = ""
+	config.Config.SyntheticsAllowPrivateTargets = ""
+	if !AllowPrivateTargets() {
+		t.Fatal("self-hosted default must allow private targets")
+	}
+
+	// Cloud mode must force the SSRF guard on even when the env var says allow.
+	config.Config.CloudMode = "true"
+	config.Config.SyntheticsAllowPrivateTargets = "true"
+	if AllowPrivateTargets() {
+		t.Fatal("cloud mode must never allow private targets")
+	}
+}
+
 func TestScheduleSkipsBrowserChecksWhenModeOff(t *testing.T) {
 	projectId := setupSyntheticsDB(t)
 	previousMode := config.Config.SyntheticsBrowserMode

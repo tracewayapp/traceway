@@ -1,0 +1,125 @@
+# Diagram source for docs/public/monitor-run-lifecycle.svg (learn/monitors.mdx).
+# Rendered with isotopo (https://github.com/MarkovWangRR/iso-topology):
+#   isotopo render docs/diagrams/monitor-run-lifecycle.yaml <out-dir>
+canvas: { background: "#E3E9F4", grid: "", padding: 70 }
+theme:
+  text: { family: "Inter, system-ui, sans-serif", size: 11, weight: "600", color: "#2A3548" }
+  presets:
+    panel:
+      effects: { opacity: 0.92, cornerRadius: 14 }
+      stroke: { color: "#DCE4F0", width: 0.75 }
+      faces:
+        top:
+          fill:
+            kind: linearGradient
+            angle: 120
+            stops:
+              - { offset: 0, color: "#F6F9FD" }
+              - { offset: 1, color: "#EAEFF7" }
+          strokes:
+            - { color: "#FFFFFF", width: 1, opacity: 0.45 }
+        left: { fill: { kind: solid, color: "#E4EAF4" } }
+        right: { fill: { kind: solid, color: "#EDF1F8" } }
+    hero:
+      effects:
+        cornerRadius: 16
+        faceSplit: true
+        backglow: { color: "#5AA0FF", radius: 150, opacity: 0.7 }
+        outline: { color: "#A9CCFF", width: 2, opacity: 0.9 }
+        dropShadow: { dx: 0, dy: 12, blur: 28, color: "#1E50C880" }
+      stroke: { color: "#7FB0FF", width: 1.5 }
+      faces:
+        top:
+          fill:
+            kind: linearGradient
+            angle: 125
+            stops:
+              - { offset: 0, color: "#2F62DE" }
+              - { offset: 1, color: "#1B44B4" }
+          strokes:
+            - { color: "#BBD8FF", width: 1.5, opacity: 0.95 }
+        left:
+          fill:
+            kind: linearGradient
+            angle: 90
+            stops:
+              - { offset: 0, color: "#244CB0" }
+              - { offset: 1, color: "#15296E" }
+        right:
+          fill:
+            kind: linearGradient
+            angle: 90
+            stops:
+              - { offset: 0, color: "#3464D8" }
+              - { offset: 1, color: "#1B3690" }
+nodes:
+  scene:
+    shape: composite
+    parts:
+      - id: backend
+        shape: group
+        label: "Traceway backend"
+        layout: { mode: row, gap: 1.6, padding: 1.1 }
+        style:
+          palette: { top: "#EDF1F8", left: "#DEE5F1", right: "#E7ECF6" }
+          effects: { opacity: 0.55, cornerRadius: 18 }
+          text: { color: "#5A6A85" }
+        parts:
+          - id: scheduler
+            shape: rectangle
+            preset: panel
+            geom: { w: 100, d: 100, h: 30 }
+            icon: "iso://glyph/gear/2563EB"
+            label: "Scheduler"
+          - id: queue
+            shape: rectangle
+            preset: hero
+            geom: { w: 116, d: 116, h: 44 }
+            icon: "iso://glyph/queue/light"
+            label: "Run queue"
+            style: { text: { color: "#F1F5F9" } }
+          - id: executor
+            shape: rectangle
+            preset: panel
+            geom: { w: 100, d: 100, h: 30 }
+            icon: "iso://glyph/bolt/2563EB"
+            label: "Executors"
+      - id: services
+        shape: rectangle
+        place: { rightOf: backend, gap: 2.4 }
+        geom: { w: 118, d: 104, h: 30 }
+        icon: "iso://glyph/globe/1D4ED8"
+        label: "Your services"
+        style:
+          palette: { top: "#DDEAFD", left: "#BAD4F9", right: "#CCDFFB" }
+          text: { color: "#1E3A8A" }
+          effects: { cornerRadius: 14, opacity: 0.95 }
+          stroke: { color: "#B5CFF5", width: 0.75 }
+      - id: telemetry
+        shape: cylinder
+        place: { inFrontOf: backend, gap: 2.8 }
+        geom: { w: 122, d: 122, h: 46 }
+        icon: "iso://glyph/database/2563EB"
+        label: "Results store"
+        preset: panel
+      - id: alerts
+        shape: rectangle
+        place: { leftOf: telemetry, gap: 2.4 }
+        geom: { w: 108, d: 108, h: 30 }
+        icon: "iso://glyph/bell/2563EB"
+        label: "Alerts + on-call"
+        preset: panel
+      - id: statuspage
+        shape: rectangle
+        place: { rightOf: telemetry, gap: 2.4 }
+        geom: { w: 118, d: 104, h: 30 }
+        icon: "iso://glyph/chart/2563EB"
+        label: "Status pages"
+        preset: panel
+    connectors:
+      - { from: scheduler, to: queue, routing: orthogonal, arrow: triangle, stroke: { color: "#6B7C99", width: 1.2 } }
+      - { from: queue, to: executor, routing: orthogonal, arrow: triangle, stroke: { color: "#6B7C99", width: 1.2 } }
+      - { from: executor, to: services, routing: orthogonal, arrow: triangle, label: "probe", stroke: { color: "#3464D8", width: 1.4 } }
+      - { from: executor, to: telemetry, routing: orthogonal, arrow: triangle, label: "results", stroke: { color: "#3464D8", width: 1.4 } }
+      - { from: executor, to: alerts, routing: orthogonal, arrow: triangle, label: "down / recovered", stroke: { color: "#6B7C99", width: 1.2 } }
+      - { from: telemetry, to: statuspage, routing: orthogonal, arrow: triangle, label: "uptime history", stroke: { color: "#6B7C99", width: 1.2 } }

@@ -109,7 +109,7 @@ export default function FlutterSessionReplayPage() {
                 className="mt-6 inline-flex items-center gap-1.5 text-[13px] hover:text-[color:var(--a2)]"
                 style={{ color: "var(--fg-1)", fontFamily: "var(--font-mono)" }}
               >
-                See pricing →
+                Explore Traceway Cloud →
               </Link>
             </div>
           </div>

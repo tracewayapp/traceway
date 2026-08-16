@@ -1,0 +1,108 @@
+# Remote Runners
+
+`traceway-runner` executes [browser monitors](/learn/monitors) for a Traceway instance running with `SYNTHETICS_BROWSER_MODE=remote`. The server only queues browser runs; runners claim them over an outbound long-poll, execute the Playwright spec in headless Chromium, and post the result back. HTTP and TCP monitors never need a runner, they run inside every image and every plain-binary deployment.
+
+<img src="/runner-architecture.svg" alt="Remote runner architecture: the runner long-polls the Traceway backend with the shared secret, spawns Node and Playwright, runs the check spec in headless Chromium against your app" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+Use a runner when you want browser checks but:
+
+- your Traceway deployment is a plain binary or a non-browser image and you would rather not put Node and Chromium on that host,
+- you do not want user-authored check scripts executing on the box that holds your data,
+- you want to probe from a different network vantage point, or scale browser capacity horizontally.
+
+If you run a single host and are fine with checks executing there, [embedded mode](/server/browser#without-docker) is simpler: no secret, no extra process.
+
+## How runners authenticate
+
+Runners are deployment infrastructure, not dashboard entities. There is nothing to create in the UI and there are no per-runner tokens:
+
+- The server holds one shared credential, `SYNTHETICS_RUNNER_SECRET`. Every runner presents it as an `Authorization: Bearer` header on `POST /api/runners/poll` and `POST /api/runners/results/:runId`. Treat it like any other deploy secret.
+- A runner self-registers a liveness row under its `TRACEWAY_RUNNER_NAME` (defaults to the hostname) on first poll. The name is also its claim identity, so give each runner a unique name.
+- Traffic is outbound only. The runner long-polls the server (each poll is held up to 25 seconds), so it works behind NAT with no inbound ports and no firewall changes.
+- Rotation: change the secret on the server, restart it, update the runners, restart them. A runner presenting a stale secret exits immediately with a clear error.
+- The runner receives only the check script and the env vars configured on that check. Scripts run with an allowlisted environment, so they can never read the server's env or the runner's own secret.
+- If a runner dies mid-run, the server reclaims the stale run after 5 minutes. An expired run is recorded as `missed`, never executed late.
+
+## 1. Enable remote mode on the server
+
+Add to the Traceway backend's environment and restart it:
+
+```bash
+SYNTHETICS_BROWSER_MODE=remote
+SYNTHETICS_RUNNER_SECRET=$(openssl rand -hex 32)   # generate once, keep it
+```
+
+The backend refuses to start in remote mode without the secret. Two behaviors worth knowing: creating a browser monitor is rejected with a pointer here while the mode is `off`, and the poll endpoint answers `403` unless the mode is actually `remote`, so a runner pointed at a misconfigured server logs explicit errors instead of idling silently.
+
+## 2. Prepare the runner host
+
+Any Linux, macOS, or Windows host with outbound HTTPS works. A small VM (2 vCPU, 2 to 4GB RAM) comfortably runs the default 2 workers; each concurrent Chromium costs roughly 300 to 500MB.
+
+**Get the binary.** Each backend release attaches prebuilt binaries (`traceway-runner_linux_amd64`, `traceway-runner_linux_arm64`, and darwin/windows variants) to the GitHub release. Or build it yourself, it is CGO-free:
+
+```bash
+cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o traceway-runner ./cmd/traceway-runner
+```
+
+**Set up the Playwright harness.** The runner never uses npm at runtime; it spawns `node` against a directory that has `@playwright/test` installed. Pinning the browser download inside the harness keeps the service independent of `$HOME`:
+
+```bash
+sudo mkdir -p /opt/traceway-runner && cd /opt/traceway-runner
+npm init -y && npm i @playwright/test
+PLAYWRIGHT_BROWSERS_PATH=/opt/traceway-runner/browsers npx playwright install --with-deps chromium
+```
+
+`--with-deps` installs Chromium's system libraries on apt-based distros (Ubuntu, Debian). On Amazon Linux or other rpm-based distros, run `npx playwright install chromium` and install the shared libraries with your package manager instead.
+
+## 3. Run it as a service
+
+Run the binary under a dedicated non-root user: it executes user-authored scripts. A systemd unit:
+
+```ini
+[Unit]
+Description=Traceway synthetic runner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=traceway-runner
+WorkingDirectory=/opt/traceway-runner
+Environment=TRACEWAY_URL=https://traceway.example.com
+Environment=TRACEWAY_RUNNER_SECRET=<the server's SYNTHETICS_RUNNER_SECRET>
+Environment=TRACEWAY_RUNNER_NAME=prod-runner-1
+Environment=RUNNER_WORKERS=2
+Environment=SYNTHETICS_PLAYWRIGHT_DIR=/opt/traceway-runner
+Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/traceway-runner/browsers
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl enable --now traceway-runner
+```
+
+Shutdown is graceful: on SIGTERM the runner stops polling, lets in-flight runs finish or be reclaimed, and exits.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TRACEWAY_URL` | required | Base URL of the Traceway instance. |
+| `TRACEWAY_RUNNER_SECRET` | required | Must match the server's `SYNTHETICS_RUNNER_SECRET`. |
+| `TRACEWAY_RUNNER_NAME` | hostname | Unique name; the runner registers and claims runs under it. |
+| `RUNNER_WORKERS` | `2` | Concurrent browser runs (max 16). |
+| `SYNTHETICS_PLAYWRIGHT_DIR` | `.` | Harness dir containing `node_modules/@playwright/test`. |
+| `TRACEWAY_RUNNER_MONITORING` | unset | Optional `<project_token>@<url>/api/report`. The runner then reports its own CPU/memory metrics, one `browser_run` task per executed check, and exceptions for infra failures. |
+
+## 4. Verify
+
+- The runner log prints `polling https://... (workers: 2, harness: ...)` and then `run N (check M): executing` once browser runs are due.
+- `GET /api/health/deep` (with your `HEALTH_DEEP_TOKEN`) shows `synthetics.runnersOnline: 1` and, over time, `executedTotal` climbing with `missedTotal` flat.
+- In the dashboard, run history rows for browser monitors show `via <runner name>`, and failed runs carry their screenshot and logs links.
+
+## Scaling and operations
+
+- **More capacity** is just more runners, or a higher `RUNNER_WORKERS`. Work distributes itself: an idle runner claims the next queued run, a busy one is not asking.
+- **Upgrades**: replace the binary and restart. The version is reported per runner and visible in its liveness row.
+- **Same host as the server?** It works (point `TRACEWAY_URL` at `http://127.0.0.1:8082`), but on a single host [embedded mode](/server/browser#without-docker) does the same job with fewer moving parts. The runner earns its keep once scripts should live off the server box.

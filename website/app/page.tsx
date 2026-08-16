@@ -335,11 +335,12 @@ export default function Home() {
               </h2>
               <p className="muted mt-4 max-w-[460px] text-pretty">
                 ClickHouse columnar storage compresses 1M daily events to ~2
-                GB/month. Fixed monthly tiers, no per-event gouging.
+                GB/month. Pricing sized to your workload, no per-event gouging,
+                no per-seat fees.
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
-                <Link href="/cloud" className="btn btn-accent">
-                  See pricing
+                <Link href={getCalendlyUrl()} className="btn btn-accent">
+                  Talk to us about pricing
                   <ArrowRight className="h-4 w-4" />
                 </Link>
                 <Link

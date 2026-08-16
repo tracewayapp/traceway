@@ -63,6 +63,12 @@ func BrowserMode() string {
 }
 
 func AllowPrivateTargets() bool {
+	// Multi-tenant cloud must never let a check probe the platform's own
+	// network (metadata endpoints, databases, localhost); the guard is forced
+	// on there regardless of environment.
+	if config.Config.CloudMode == "true" {
+		return false
+	}
 	// Default allow: probing LAN services is a core self-hosted use case.
 	return config.Config.SyntheticsAllowPrivateTargets != "false"
 }

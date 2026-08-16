@@ -21,8 +21,30 @@ func (r *syntheticCheckRepository) Create(tx *sql.Tx, check *models.SyntheticChe
 	return lit.Insert[models.SyntheticCheck](tx, check)
 }
 
+// Update writes only the user-editable columns. The run-state columns
+// (current_status, consecutive_failures, last_run_at, last_state_change_at)
+// belong to ApplyRunState; a full-row update here could revert a concurrent
+// executor finalization on PostgreSQL.
 func (r *syntheticCheckRepository) Update(tx *sql.Tx, check *models.SyntheticCheck) error {
-	return lit.UpdateNamed(tx, check, "id = :id", lit.P{"id": check.Id})
+	query, args, err := lit.ParseNamedQuery(
+		db.Driver,
+		"UPDATE synthetic_checks SET name = :name, enabled = :enabled, interval_seconds = :interval_seconds, timeout_seconds = :timeout_seconds, config = :config, failure_threshold = :failure_threshold, next_run_at = :next_run_at, updated_at = :updated_at WHERE id = :id",
+		lit.P{
+			"name":              check.Name,
+			"enabled":           check.Enabled,
+			"interval_seconds":  check.IntervalSeconds,
+			"timeout_seconds":   check.TimeoutSeconds,
+			"config":            check.Config,
+			"failure_threshold": check.FailureThreshold,
+			"next_run_at":       check.NextRunAt.UTC(),
+			"updated_at":        check.UpdatedAt.UTC(),
+			"id":                check.Id,
+		},
+	)
+	if err != nil {
+		return err
+	}
+	return lit.UpdateNative(tx, query, args...)
 }
 
 func (r *syntheticCheckRepository) Delete(tx *sql.Tx, id int, projectId uuid.UUID) error {

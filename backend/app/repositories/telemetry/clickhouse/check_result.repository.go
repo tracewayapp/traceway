@@ -93,12 +93,14 @@ func (r *checkResultRepository) FindByCheck(ctx context.Context, projectId uuid.
 
 // AggregatesByProject returns per-check result summaries for the range.
 func (r *checkResultRepository) AggregatesByProject(ctx context.Context, projectId uuid.UUID, from time.Time, to time.Time) (map[int]*models.CheckAggregates, error) {
+	// avgIf over zero matching rows is NaN (not NULL), which encoding/json
+	// rejects; the OrNull combinator makes coalesce actually apply.
 	query := `SELECT check_id,
 		count(),
 		countIf(status = 'up'),
 		countIf(status = 'down'),
 		countIf(status = 'missed'),
-		coalesce(avgIf(latency_ms, status != 'missed'), 0)
+		coalesce(avgOrNullIf(latency_ms, status != 'missed'), 0)
 	FROM check_results
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY check_id`
@@ -131,12 +133,14 @@ func (r *checkResultRepository) AggregatesByProject(ctx context.Context, project
 // SeriesByCheck buckets one check's results for the latency chart and uptime
 // bars.
 func (r *checkResultRepository) SeriesByCheck(ctx context.Context, projectId uuid.UUID, checkId int, from time.Time, to time.Time, intervalMinutes int) ([]*models.CheckSeriesPoint, error) {
+	// OrNull for the same NaN reason as AggregatesByProject: an all-missed
+	// bucket must yield 0, not NaN.
 	query := `SELECT toStartOfInterval(recorded_at, INTERVAL ? minute) AS bucket,
 		count(),
 		countIf(status = 'up'),
 		countIf(status = 'missed'),
-		coalesce(avgIf(latency_ms, status != 'missed'), 0),
-		coalesce(maxIf(latency_ms, status != 'missed'), 0)
+		coalesce(avgOrNullIf(latency_ms, status != 'missed'), 0),
+		coalesce(maxOrNullIf(latency_ms, status != 'missed'), 0)
 	FROM check_results
 	WHERE project_id = ? AND check_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY bucket ORDER BY bucket ASC`

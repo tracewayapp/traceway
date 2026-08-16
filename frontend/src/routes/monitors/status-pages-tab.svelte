@@ -331,7 +331,9 @@
 			<div class="space-y-2">
 				<Label>Logo (optional, PNG or JPEG)</Label>
 				<div class="flex items-center gap-3">
-					{#if editing?.logoKey && !logoFile}
+					{#if editing?.logoKey && !logoFile && editing.isPublic}
+						<!-- The preview uses the public logo route, which 404s for
+						     private pages, so it only renders for public ones. -->
 						<img
 							src={`/api/status/${editing.slug}/logo`}
 							alt="Current logo"

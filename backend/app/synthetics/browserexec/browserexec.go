@@ -115,6 +115,11 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 
 	cmd := exec.CommandContext(ctx, "node", cli, "test", "--config", configPath)
 	cmd.Dir = opts.HarnessDir
+	// A leaked descendant holding the output pipe (a daemon the user script
+	// spawned, or Chromium surviving the plain kill on Windows) must not wedge
+	// this worker forever: force the pipes closed shortly after node exits or
+	// the deadline kills it.
+	cmd.WaitDelay = 10 * time.Second
 	// Allowlisted environment only; see Options.Env.
 	env := []string{
 		"PATH=" + os.Getenv("PATH"),

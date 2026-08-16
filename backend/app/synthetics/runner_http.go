@@ -68,9 +68,15 @@ func probeHttp(ctx context.Context, check *models.SyntheticCheck) Outcome {
 		TLSClientConfig:   &tls.Config{InsecureSkipVerify: cfg.SkipTlsVerify},
 		DisableKeepAlives: true,
 	}
-	if !AllowPrivateTargets() {
+	if AllowPrivateTargets() {
+		// Honor HTTP(S)_PROXY like the default transport, so probes work on
+		// instances that can only egress through a proxy.
+		transport.Proxy = http.ProxyFromEnvironment
+	} else {
 		// Guard at dial time so a hostname cannot pass save-time validation
-		// and be re-pointed at a private address (DNS rebinding).
+		// and be re-pointed at a private address (DNS rebinding). No proxy in
+		// this mode: a CONNECT tunnel would move the dial to the proxy address
+		// and blind the guard to the real target.
 		transport.DialContext = netguard.GuardedDialContext(EffectiveTimeout(check))
 	}
 	client := &http.Client{Transport: transport}

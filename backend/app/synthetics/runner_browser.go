@@ -59,10 +59,13 @@ func probeBrowser(ctx context.Context, check *models.SyntheticCheck) Outcome {
 	}
 
 	outcome.ErrorMsg = result.ErrorMsg
+	// On a timed-out run ctx is already expired; the artifacts (especially the
+	// output tail explaining the timeout) must still be storable.
+	storeCtx := context.WithoutCancel(ctx)
 	artifactStamp := time.Now().UTC().UnixNano()
 	if len(result.Screenshot) > 0 {
 		key := fmt.Sprintf("synthetics/%s/%d/%d.png", check.ProjectId, check.Id, artifactStamp)
-		if err := storage.Store.Write(ctx, key, result.Screenshot); err != nil {
+		if err := storage.Store.Write(storeCtx, key, result.Screenshot); err != nil {
 			traceway.CaptureException(fmt.Errorf("failed to store check failure screenshot (check=%d): %w", check.Id, err))
 		} else {
 			outcome.ScreenshotKey = key
@@ -70,7 +73,7 @@ func probeBrowser(ctx context.Context, check *models.SyntheticCheck) Outcome {
 	}
 	if output := strings.TrimSpace(result.Output); output != "" {
 		key := fmt.Sprintf("synthetics/%s/%d/%d.log", check.ProjectId, check.Id, artifactStamp)
-		if err := storage.Store.Write(ctx, key, []byte(output)); err != nil {
+		if err := storage.Store.Write(storeCtx, key, []byte(output)); err != nil {
 			traceway.CaptureException(fmt.Errorf("failed to store check failure output (check=%d): %w", check.Id, err))
 		} else {
 			outcome.OutputKey = key

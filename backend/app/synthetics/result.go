@@ -86,6 +86,14 @@ func ProcessOutcome(ctx context.Context, run *models.CheckRun, claimedBy string,
 		if err := transactional.SyntheticCheckRepository.ApplyRunState(tx, check.Id, toStatus, consecutiveFailures, outcome.ExecutedAt, stateChangedAt); err != nil {
 			return res, err
 		}
+		// Mirror the persisted state onto the struct handed to the notifier;
+		// the "N consecutive failures" in the alert must be the post-run count.
+		check.CurrentStatus = toStatus
+		check.ConsecutiveFailures = consecutiveFailures
+		check.LastRunAt = &outcome.ExecutedAt
+		if stateChangedAt != nil {
+			check.LastStateChangeAt = stateChangedAt
+		}
 
 		if toStatus == models.CheckStatusDown && fromStatus != models.CheckStatusDown {
 			open, err := transactional.CheckIncidentRepository.FindOpenByCheck(tx, check.Id)

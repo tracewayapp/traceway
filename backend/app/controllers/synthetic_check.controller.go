@@ -38,6 +38,8 @@ var validHttpMethods = map[string]bool{
 
 const maxBrowserScriptBytes = 100 << 10
 
+const browserModeOffMessage = "Browser checks require SYNTHETICS_BROWSER_MODE=embedded (the :browser image) or a connected remote runner (SYNTHETICS_BROWSER_MODE=remote)."
+
 type checkRequest struct {
 	Name             string          `json:"name"`
 	CheckType        string          `json:"checkType"`
@@ -94,9 +96,6 @@ func validateCheckRequest(req *checkRequest) string {
 	case models.CheckTypeBrowser:
 		if config.Config.CloudMode == "true" {
 			return "Browser checks are not available in cloud mode."
-		}
-		if synthetics.BrowserMode() == synthetics.BrowserModeOff {
-			return "Browser checks require SYNTHETICS_BROWSER_MODE=embedded (the :browser image) or a connected remote runner (SYNTHETICS_BROWSER_MODE=remote)."
 		}
 		var cfg models.BrowserCheckConfig
 		if err := json.Unmarshal(req.Config, &cfg); err != nil {
@@ -220,6 +219,12 @@ func (ctrl *syntheticCheckController) Create(ctx *gin.Context) {
 	}
 	if message := validateCheckRequest(&req); message != "" {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": message})
+		return
+	}
+	// Gated on create only: an existing browser check must stay editable and
+	// pausable after an operator turns the mode off.
+	if req.CheckType == models.CheckTypeBrowser && synthetics.BrowserMode() == synthetics.BrowserModeOff {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": browserModeOffMessage})
 		return
 	}
 
@@ -390,6 +395,12 @@ func (ctrl *syntheticCheckController) RunNow(ctx *gin.Context) {
 	}
 	if check == nil {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": "Check not found"})
+		return
+	}
+	// With the mode off nothing would ever claim the run; it would only sit in
+	// the queue and expire as a missed result.
+	if check.CheckType == models.CheckTypeBrowser && synthetics.BrowserMode() == synthetics.BrowserModeOff {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": browserModeOffMessage})
 		return
 	}
 	pending, err := transactional.CheckRunRepository.HasPendingForCheck(tx, checkId)

@@ -132,13 +132,18 @@
 		updateUrl(params, { pushToHistory });
 	}
 
+	// Snap to a step that yields ~96 buckets at most, so the availability
+	// strip stays readable for every range (a 3M range at 240m would be 540
+	// cells and overflow the row). The small tolerance keeps a range that is
+	// one endOf-minute epsilon over a boundary on the finer step.
+	const intervalSteps = [1, 5, 15, 30, 60, 120, 240, 480, 720, 1440];
+
 	function calculateInterval(from: Date, to: Date): number {
-		const diffHours = (to.getTime() - from.getTime()) / (1000 * 60 * 60);
-		if (diffHours <= 1) return 1;
-		if (diffHours <= 6) return 5;
-		if (diffHours <= 24) return 15;
-		if (diffHours <= 24 * 7) return 60;
-		return 240;
+		const raw = (to.getTime() - from.getTime()) / 60000 / 96;
+		for (const step of intervalSteps) {
+			if (step >= raw - 0.05) return step;
+		}
+		return 1440;
 	}
 
 	async function loadCheck() {
@@ -344,6 +349,31 @@
 				.map((p) => ({ timestamp: new Date(p.bucket), value: p.avgLatencyMs }))
 		}
 	]);
+
+	// The backend only returns buckets that have rows; rebuild the full
+	// epoch-floored grid over the selected range so sparse data renders as
+	// explicit no-data cells instead of a few bars stretched across the strip.
+	const paddedSeries = $derived.by(() => {
+		if (series.length === 0) return [] as CheckSeriesPoint[];
+		const fromMs = Date.parse(getFromDateTimeUTC());
+		const toMs = Date.parse(getToDateTimeUTC());
+		const stepMs = calculateInterval(new Date(fromMs), new Date(toMs)) * 60000;
+		const byBucket = new Map(series.map((p) => [new Date(p.bucket).getTime(), p]));
+		const cells: CheckSeriesPoint[] = [];
+		for (let t = Math.floor(fromMs / stepMs) * stepMs; t <= toMs && cells.length < 400; t += stepMs) {
+			cells.push(
+				byBucket.get(t) ?? {
+					bucket: new Date(t).toISOString(),
+					total: 0,
+					up: 0,
+					missed: 0,
+					avgLatencyMs: 0,
+					maxLatencyMs: 0
+				}
+			);
+		}
+		return cells;
+	});
 
 	function bucketClass(point: CheckSeriesPoint): string {
 		const measured = point.total - point.missed;
@@ -573,7 +603,7 @@
 					</div>
 				{:else}
 					<div class="flex h-9 items-stretch gap-[3px]">
-						{#each series as point}
+						{#each paddedSeries as point}
 							<div
 								class="min-w-[4px] flex-1 rounded-[3px] transition-transform hover:scale-y-110 {bucketClass(
 									point
@@ -583,7 +613,7 @@
 						{/each}
 					</div>
 					<div class="mt-1.5 flex justify-between text-xs text-muted-foreground">
-						<span>{new Date(series[0].bucket).toLocaleString()}</span>
+						<span>{new Date(paddedSeries[0].bucket).toLocaleString()}</span>
 						<span>Now</span>
 					</div>
 				{/if}

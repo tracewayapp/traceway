@@ -218,6 +218,7 @@ func (ctrl *statusPageController) Update(ctx *gin.Context) {
 	}
 
 	checkIdsJSON, _ := json.Marshal(req.CheckIds)
+	previousSlug := page.Slug
 	page.Name = req.Name
 	page.Slug = req.Slug
 	page.IsPublic = req.IsPublic
@@ -229,6 +230,9 @@ func (ctrl *statusPageController) Update(ctx *gin.Context) {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to update status page: %w", err))
 		return
 	}
+	// A rename must drop the old slug's cached view too, or the retired URL
+	// keeps serving for the rest of its TTL.
+	invalidateStatusPageCache(previousSlug)
 	invalidateStatusPageCache(page.Slug)
 	ctx.JSON(http.StatusOK, page)
 }
@@ -286,7 +290,9 @@ type statusPageView struct {
 }
 
 // The public endpoint is anonymous and its 90-day aggregation is far heavier
-// than a point lookup, so responses are cached briefly per slug.
+// than a point lookup, so responses are cached briefly per slug. Only found
+// pages are cached: a miss is a single indexed lookup, and negative entries
+// would let unknown-slug spam grow the map without bound.
 var statusPageCache = struct {
 	mu      sync.Mutex
 	entries map[string]statusPageCacheEntry
@@ -294,7 +300,6 @@ var statusPageCache = struct {
 
 type statusPageCacheEntry struct {
 	view      *statusPageView
-	notFound  bool
 	expiresAt time.Time
 }
 
@@ -318,10 +323,6 @@ func (ctrl *statusPageController) Public(ctx *gin.Context) {
 	cached, ok := statusPageCache.entries[slug]
 	statusPageCache.mu.Unlock()
 	if ok && now.Before(cached.expiresAt) {
-		if cached.notFound {
-			ctx.JSON(http.StatusNotFound, gin.H{"error": "Status page not found"})
-			return
-		}
 		ctx.JSON(http.StatusOK, cached.view)
 		return
 	}
@@ -331,14 +332,19 @@ func (ctrl *statusPageController) Public(ctx *gin.Context) {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to build status page: %w", err))
 		return
 	}
-	statusPageCache.mu.Lock()
-	statusPageCache.entries[slug] = statusPageCacheEntry{view: view, notFound: view == nil, expiresAt: now.Add(statusPageCacheTTL)}
-	statusPageCache.mu.Unlock()
-
 	if view == nil {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": "Status page not found"})
 		return
 	}
+	statusPageCache.mu.Lock()
+	for key, entry := range statusPageCache.entries {
+		if now.After(entry.expiresAt) {
+			delete(statusPageCache.entries, key)
+		}
+	}
+	statusPageCache.entries[slug] = statusPageCacheEntry{view: view, expiresAt: now.Add(statusPageCacheTTL)}
+	statusPageCache.mu.Unlock()
+
 	ctx.JSON(http.StatusOK, view)
 }
 

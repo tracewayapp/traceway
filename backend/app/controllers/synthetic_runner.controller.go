@@ -53,6 +53,13 @@ func (ctrl *syntheticRunnerController) Poll(ctx *gin.Context) {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("UseRunnerAuth middleware must be applied: %w", errMissingRunner))
 		return
 	}
+	// Only remote mode hands browser runs to the fleet. In embedded mode the
+	// in-process executor owns them; serving a stray runner here would split
+	// execution across environments the operator did not choose.
+	if synthetics.BrowserMode() != synthetics.BrowserModeRemote {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": "This instance is not in remote browser mode (SYNTHETICS_BROWSER_MODE=remote)."})
+		return
+	}
 	var req runnerPollRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil && err.Error() != "EOF" {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})

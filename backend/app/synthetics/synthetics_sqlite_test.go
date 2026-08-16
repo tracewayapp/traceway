@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
+	"github.com/tracewayapp/traceway/backend/app/config"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/dbtest"
 	"github.com/tracewayapp/traceway/backend/app/models"
@@ -148,6 +149,34 @@ func TestScheduleSkipsDisabledChecks(t *testing.T) {
 	ScheduleOnce(context.Background(), now)
 	if runs := allRuns(t); len(runs) != 0 {
 		t.Fatalf("expected no runs for a disabled check, got %d", len(runs))
+	}
+}
+
+func TestScheduleSkipsBrowserChecksWhenModeOff(t *testing.T) {
+	projectId := setupSyntheticsDB(t)
+	previousMode := config.Config.SyntheticsBrowserMode
+	t.Cleanup(func() { config.Config.SyntheticsBrowserMode = previousMode })
+
+	config.Config.SyntheticsBrowserMode = BrowserModeOff
+	now := time.Now().UTC()
+	check := createTestCheck(t, projectId, models.CheckTypeBrowser, `{"script":"import {} from '@playwright/test';"}`, 60, 1, now.Add(-time.Minute))
+
+	ScheduleOnce(context.Background(), now)
+	if runs := allRuns(t); len(runs) != 0 {
+		t.Fatalf("expected no queued runs with browser mode off, got %d", len(runs))
+	}
+	// The pointer must still advance so the check resumes on schedule (and the
+	// scheduler does not refetch it every tick) once the mode comes back.
+	reloaded := reloadCheck(t, check.Id)
+	if !reloaded.NextRunAt.Equal(now.Add(60 * time.Second)) {
+		t.Errorf("next_run_at = %s, want %s", reloaded.NextRunAt, now.Add(60*time.Second))
+	}
+
+	config.Config.SyntheticsBrowserMode = BrowserModeRemote
+	later := now.Add(2 * time.Minute)
+	ScheduleOnce(context.Background(), later)
+	if runs := allRuns(t); len(runs) != 1 {
+		t.Fatalf("expected 1 queued run with browser mode on, got %d", len(runs))
 	}
 }
 

@@ -94,7 +94,18 @@ func ScheduleOnce(ctx context.Context, now time.Time) {
 			return res, err
 		}
 		res.dueSaturated = len(due) == scheduleBatchSize
+		browserOff := BrowserMode() == BrowserModeOff
 		for _, check := range due {
+			if browserOff && check.CheckType == models.CheckTypeBrowser {
+				// Nothing can ever claim a browser run with the mode off;
+				// enqueueing would only produce missed-result noise. Advance
+				// the pointer so the check resumes on schedule when the mode
+				// comes back.
+				if err := transactional.SyntheticCheckRepository.SetNextRun(tx, check.Id, now.Add(time.Duration(check.IntervalSeconds)*time.Second)); err != nil {
+					return res, err
+				}
+				continue
+			}
 			run := &models.CheckRun{
 				CheckId:      check.Id,
 				ProjectId:    check.ProjectId,

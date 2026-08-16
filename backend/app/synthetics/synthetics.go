@@ -99,8 +99,9 @@ var instanceName = func() string {
 // scheduled.
 var wakeCh = make(chan struct{}, 1)
 
-// Wake nudges the executor loops to look for claimable runs without waiting
-// for the next tick. Call after the enqueueing transaction commits.
+// Wake nudges the executor loops (and any waiting remote-runner long-poll) to
+// look for claimable runs without waiting for the next tick. Call after the
+// enqueueing transaction commits.
 func Wake() {
 	select {
 	case wakeCh <- struct{}{}:
@@ -110,6 +111,7 @@ func Wake() {
 	case browserExecWakeCh <- struct{}{}:
 	default:
 	}
+	wakeBrowser()
 }
 
 // browserWakeCh nudges remote-runner long-polls when browser runs are queued.

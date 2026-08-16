@@ -92,7 +92,8 @@ type StatusPage struct {
 
 // Config document shapes stored in synthetic_checks.config, one per check
 // type. Auth secrets live inside the main DB like notification channel
-// configs; the API masks them for readonly project roles.
+// configs, and like channel configs they are returned to any project member
+// with read access; readonly gating restricts writes, not reads.
 
 type HttpCheckConfig struct {
 	URL             string            `json:"url"`

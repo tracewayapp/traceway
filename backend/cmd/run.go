@@ -313,6 +313,8 @@ func applyEnvOverrides(cfg *config.Cfg) {
 		{"SYNTHETICS_ALLOW_PRIVATE_TARGETS", &cfg.SyntheticsAllowPrivateTargets},
 		{"SYNTHETICS_PLAYWRIGHT_DIR", &cfg.SyntheticsPlaywrightDir},
 		{"SYNTHETICS_SCREENSHOT_RETENTION_DAYS", &cfg.SyntheticsScreenshotRetentionDays},
+		{"SYNTHETICS_RUNNER_SECRET", &cfg.SyntheticsRunnerSecret},
+		{"HEALTH_DEEP_TOKEN", &cfg.HealthDeepToken},
 		{"TWILIO_ACCOUNT_SID", &cfg.TwilioAccountSID},
 		{"TWILIO_AUTH_TOKEN", &cfg.TwilioAuthToken},
 		{"TWILIO_FROM_NUMBER", &cfg.TwilioFromNumber},

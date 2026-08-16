@@ -143,6 +143,9 @@ Rules belong to a project and only evaluate that project's data. Frontend projec
 | [Metric Threshold](#metric-threshold) | An aggregated metric violates a comparison | Polled |
 | [No Data](#no-data) | No telemetry received for a configured duration | Polled |
 | [AI Trace Cost](#ai-trace-cost) | A single AI trace exceeds a cost threshold | On ingest |
+| [AI Conversation Cost](#ai-conversation-cost) | A conversation's cumulative 24-hour cost exceeds a threshold | On ingest |
+| [AI Flagged Content](#ai-flagged-content) | An AI conversation matches a flagged content term | On ingest |
+| [Monitor Down](#monitor-down) | A monitor crosses its failure threshold | On state change |
 
 ### New Issue
 
@@ -287,11 +290,36 @@ Fires when a single [AI trace](/learn/ai-tracing) exceeds a cost threshold, catc
 
 The cooldown applies per trace name, so two different expensive workflows alert independently.
 
+### AI Conversation Cost
+
+Fires when the cumulative cost of a single [AI conversation](/learn/ai-tracing) over the last 24 hours crosses the threshold. Where AI Trace Cost catches one expensive call, this catches sessions that get expensive gradually: a runaway agent loop of cheap calls, or a user hammering an assistant.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| Cost Threshold | 5 | Cumulative cost in USD a conversation must reach within 24 hours to trigger the alert |
+
+The cooldown applies per conversation, so one noisy conversation alerts once per cooldown window while a second conversation crossing the threshold still alerts immediately.
+
+### AI Flagged Content
+
+Fires when an [AI conversation](/learn/ai-tracing#content-flagging) matches a flagged content term. Matching happens at ingest against the language packs selected in the project's AI settings plus your custom terms, so the alert carries the matched terms.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| Terms | all | Optional comma-separated list to narrow the rule to specific terms; empty fires on any flagged match |
+
+### Monitor Down
+
+Fires when a [monitor](/learn/monitors) transitions to down, which happens only after its configured number of consecutive failures, and sends a recovery notice when it comes back up. One rule covers every monitor in the project; the alert names the monitor and carries the last probe error.
+
+There are no rule-specific options. Pointing the rule at an escalation channel opens an [on-call page](/learn/on-call) instead of sending a message: the page deduplicates per monitor, re-fires never restart its escalation clock, and recovery resolves it automatically.
+
 ## Evaluation Model and Cost
 
-Rules are evaluated in one of two ways:
+Rules are evaluated in one of three ways:
 
-- **On ingest** (New Issue, Error Regression, AI Trace Cost): evaluated immediately as reports arrive, so alerts fire within seconds of the triggering event.
+- **On ingest** (New Issue, Error Regression, AI Trace Cost, AI Conversation Cost, AI Flagged Content): evaluated immediately as reports arrive, so alerts fire within seconds of the triggering event.
+- **On state change** (Monitor Down): fires the moment a probe result flips the monitor's up/down state, independent of any poll interval.
 - **Polled** (everything else): a background loop evaluates all enabled polled rules on an interval. The default is every 60 seconds; self-hosted deployments can tune it with `NOTIFICATION_POLL_SECONDS` (minimum 5). Detection latency for polled rules is at most one poll interval.
 
 Each rule type has a different evaluation cost against the telemetry database. This matters mostly for self-hosted deployments with many rules or high data volume:
@@ -299,6 +327,9 @@ Each rule type has a different evaluation cost against the telemetry database. T
 | Rule | Work per evaluation | Relative cost |
 |------|--------------------|---------------|
 | AI Trace Cost | In-memory check of the ingested batch, no queries | Minimal |
+| AI Flagged Content | In-memory check of flags set at ingest, no queries | Minimal |
+| Monitor Down | In-memory on the state transition, no queries | Minimal |
+| AI Conversation Cost | One 24-hour cost sum per conversation in the batch | Low |
 | New Issue | 1 to 3 indexed lookups per distinct new error in the batch | Low |
 | Error Regression | 1 indexed lookup per distinct error in the batch | Low |
 | Error Rate | One aggregate over the lookback window | Low |

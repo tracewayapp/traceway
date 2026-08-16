@@ -19,6 +19,7 @@ import {
   Plug,
   LayoutDashboard,
   PhoneCall,
+  Radar,
 } from "lucide-react";
 import { MobileNav } from "@/components/mobile-nav";
 import { DiscordIcon } from "@/components/discord-icon";
@@ -64,6 +65,18 @@ const PILLARS: NavItem[] = [
     href: "/product/stack-traces",
     icon: Bug,
   },
+  {
+    title: "Monitors",
+    description: "HTTP, TCP, and browser uptime checks with status pages.",
+    href: "/product/monitors",
+    icon: Radar,
+  },
+  {
+    title: "On-Call",
+    description: "Rotating schedules, escalation policies, real paging.",
+    href: "/product/on-call",
+    icon: PhoneCall,
+  },
 ];
 
 const SPECIALIZED: NavItem[] = [
@@ -90,12 +103,6 @@ const SPECIALIZED: NavItem[] = [
     description: "JSON dashboards you version, sync, and share.",
     href: "/product/dashboards",
     icon: LayoutDashboard,
-  },
-  {
-    title: "On-Call",
-    description: "Rotating schedules, escalation policies, real paging.",
-    href: "/product/on-call",
-    icon: PhoneCall,
   },
   {
     title: "Performance",

@@ -16,7 +16,7 @@ Every check has an interval (30 seconds to 24 hours), a timeout, and a failure t
 
 A scheduler enqueues each due check into a durable run queue in the main database, and executors claim runs from it. Results land in the telemetry store, so uptime and latency charts use the same retention and aggregation machinery as everything else.
 
-<img src="/monitor-run-lifecycle.svg" alt="Monitor run lifecycle: the scheduler enqueues due checks into the run queue, executors claim runs and probe your services, results land in the telemetry store feeding status pages, and state transitions fire alerts and on-call pages" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+<img src="/monitors/monitor-run-lifecycle.svg" alt="Monitor run lifecycle: the scheduler enqueues due checks into the run queue, an executor claims and probes, results land in telemetry feeding status pages and alerts, and expired queued runs are recorded as missed" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
 
 Two properties matter operationally:
 
@@ -47,7 +47,7 @@ Browser checks execute real user-authored JavaScript, so where that code runs is
 
 | Mode | What it means |
 |------|---------------|
-| `off` (default) | HTTP and TCP checks only. Works in every image with no size cost; creating a browser check is rejected with a pointer here. |
+| `off` (default) | HTTP and TCP checks only. Works in every image with no size cost; creating a browser check is rejected with a pointer here. Existing browser checks stay editable and pausable, and simply do not run until a browser mode is enabled. |
 | `embedded` | The backend spawns Playwright in-process. Ships ready to go in the [`:browser` image](/server/browser), or [without Docker](/server/browser#without-docker) on any host with Node and a Playwright harness. |
 | `remote` | The backend only queues browser runs; one or more [**runners**](/server/runner) claim and execute them. |
 
@@ -69,6 +69,8 @@ SYNTHETICS_PLAYWRIGHT_DIR=/opt/traceway-playwright   # harness dir (embedded/run
 SYNTHETICS_SCREENSHOT_RETENTION_DAYS=30 # failure screenshots on local storage; 0 disables cleanup
 SYNTHETICS_RUNNER_SECRET=               # shared runner credential; required for remote mode
 ```
+
+When private targets are allowed (the default), HTTP probes honor the standard `HTTP_PROXY`/`HTTPS_PROXY` environment variables, so monitors work on instances that can only reach the internet through an egress proxy. With `SYNTHETICS_ALLOW_PRIVATE_TARGETS=false` the proxy is deliberately ignored: the private-address guard vets the exact address being dialed, and a proxy tunnel would blind it. On Traceway Cloud, checks can only target public addresses; the guard is always on there.
 
 Check results follow the telemetry retention of your deployment (the SQLite/DuckDB retention worker, or a 90-day TTL on ClickHouse).
 

@@ -1,0 +1,40 @@
+// Monitors: scheduler -> durable run queue -> executor -> probe -> telemetry,
+// fanning out to status pages and alerting. Render:
+//   dot -Tsvg monitor-run-lifecycle.dot -o monitor-run-lifecycle.svg
+// Output belongs in docs/public/monitors/.
+// Palette matches the Traceway dark theme (app/globals.css), same language as
+// docs/on-call/how-the-pieces-fit-together.dot.
+digraph monitor_run_lifecycle {
+  bgcolor="transparent";
+  rankdir=TB;
+  nodesep=0.32;
+  ranksep=0.42;
+  pad=0.2;
+  fontname="Helvetica";
+
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=14,
+        penwidth=1.3, margin="0.30,0.18",
+        color="#283041", fillcolor="#151a24", fontcolor="#f4f6fb"];
+  edge [color="#5a6374", penwidth=1.4, arrowsize=0.85,
+        fontname="Helvetica", fontsize=10, fontcolor="#8a93a6"];
+
+  scheduler [label=<<b>the scheduler ticks</b><br/><font color="#8a93a6" point-size="12">every few seconds, finds checks whose next run is due</font>>,
+             fillcolor="#0f131c"];
+  queue     [label=<<b>run queue</b><br/><font color="#ffc46b" point-size="12">durable rows in the main DB: claims are guarded, restarts lose nothing</font>>,
+             color="#f0a020", fillcolor="#1c1710"];
+  executor  [label=<<b>an executor claims the run</b><br/><font color="#8a93a6" point-size="12">http and tcp in-process &#183; browser per execution mode</font>>];
+  probe     [label=<<b>the probe runs</b><br/><font color="#8a93a6" point-size="12">HTTP request &#183; TCP connect &#183; Playwright script in Chromium</font>>];
+  result    [label=<<b>result lands in telemetry</b><br/><font color="#8a93a6" point-size="12">status, latency, error, failure screenshot + logs</font>>];
+  alerts    [label=<<b>alerts + on-call</b><br/><font color="#b9a7ff" point-size="12">down after N consecutive failures &#183; recovery notifies or auto-resolves the page</font>>,
+             color="#7c5cff", fillcolor="#15121f"];
+  status    [label=<<b>status pages</b><br/><font color="#7ff0c8" point-size="12">90 days of public per-day uptime, no login required</font>>,
+             color="#22e0a8", fillcolor="#0c1714"];
+
+  scheduler -> queue -> executor -> probe -> result;
+  result -> alerts;
+  result -> status;
+
+  queue -> result [constraint=false, tailport=e, headport=e,
+                   style=dashed, color="#ff5a5f", fontcolor="#ff8a8d",
+                   label="  past its window:\l  recorded as missed,\l  never executed late\l"];
+}

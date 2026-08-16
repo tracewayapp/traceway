@@ -1,0 +1,59 @@
+// Remote runners: the server only queues browser runs; runners long-poll
+// outbound with the shared secret and execute the Playwright spec. Render:
+//   dot -Tsvg runner-architecture.dot -o runner-architecture.svg
+// Output belongs in docs/public/monitors/.
+// Palette matches the Traceway dark theme (app/globals.css), same language as
+// docs/on-call/how-the-pieces-fit-together.dot.
+digraph runner_architecture {
+  bgcolor="transparent";
+  rankdir=TB;
+  nodesep=0.35;
+  ranksep=0.5;
+  pad=0.2;
+  fontname="Helvetica";
+
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=14,
+        penwidth=1.3, margin="0.30,0.18",
+        color="#283041", fillcolor="#151a24", fontcolor="#f4f6fb"];
+  edge [color="#5a6374", penwidth=1.4, arrowsize=0.85,
+        fontname="Helvetica", fontsize=10, fontcolor="#8a93a6"];
+
+  subgraph cluster_instance {
+    label=<<font color="#8a93a6" point-size="12">YOUR TRACEWAY INSTANCE</font>>;
+    labeljust="l";
+    color="#283041";
+    style="rounded";
+    margin=14;
+
+    backend [label=<<b>Traceway backend</b><br/><font color="#8a93a6" point-size="12">SYNTHETICS_BROWSER_MODE=remote + SYNTHETICS_RUNNER_SECRET</font>>,
+             fillcolor="#0f131c"];
+    bqueue  [label=<<b>browser run queue</b><br/><font color="#8a93a6" point-size="12">queued runs wait here; nothing executes on this host</font>>];
+
+    backend -> bqueue [label="  queues browser runs"];
+  }
+
+  subgraph cluster_runner {
+    label=<<font color="#8a93a6" point-size="12">RUNNER HOST &#8212; NO INBOUND PORTS</font>>;
+    labeljust="l";
+    color="#283041";
+    style="rounded";
+    margin=14;
+
+    runner   [label=<<b>traceway-runner</b><br/><font color="#ffc46b" point-size="12">Go binary under systemd &#183; RUNNER_WORKERS concurrent runs</font>>,
+              color="#f0a020", fillcolor="#1c1710"];
+    chromium [label=<<b>Node + Playwright + headless Chromium</b><br/><font color="#8a93a6" point-size="12">allowlisted env: scripts never see server or runner secrets</font>>];
+
+    runner -> chromium [label="  spawns per claimed run"];
+  }
+
+  target [label=<<b>your app</b><br/><font color="#7ff0c8" point-size="12">the pages and flows the check spec exercises</font>>,
+          color="#22e0a8", fillcolor="#0c1714"];
+
+  bqueue -> runner [color="#f0a020", fontcolor="#ffc46b",
+                    label="  claimed over the runner's long-poll\l  Bearer SYNTHETICS_RUNNER_SECRET, outbound from the runner only\l"];
+  chromium -> target [label="  runs the check spec"];
+
+  runner -> backend [constraint=false, tailport=e, headport=e,
+                     style=dashed, color="#f0a020", fontcolor="#ffc46b",
+                     label="  posts the result\l  + failure screenshot and logs\l"];
+}

@@ -287,7 +287,7 @@ Because the level advance and the deliveries commit together, a crash mid-incide
 
 Deliveries that fail are retried on a backoff of 1, 5, 15, and 60 minutes, up to five attempts, before being recorded as permanently failed and reported as an exception. Acknowledging cancels anything still queued, and a cancelled delivery can never come back to life, though a send already in flight may still land once.
 
-The `outbox` block on `/api/health/deep` exposes queue depth and the oldest pending delivery, so you can alert on your alerting.
+The `outbox` block on `/api/health/deep` exposes queue depth and the oldest pending delivery, so you can alert on your alerting. It is an operator endpoint gated by the `HEALTH_DEEP_TOKEN` deploy secret (unset disables it).
 
 ## Configuration
 

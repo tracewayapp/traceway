@@ -2,7 +2,7 @@
 
 `traceway-runner` executes [browser monitors](/learn/monitors) for a Traceway instance running with `SYNTHETICS_BROWSER_MODE=remote`. The server only queues browser runs; runners claim them over an outbound long-poll, execute the Playwright spec in headless Chromium, and post the result back. HTTP and TCP monitors never need a runner, they run inside every image and every plain-binary deployment.
 
-<img src="/runner-architecture.svg" alt="Remote runner architecture: the runner long-polls the Traceway backend with the shared secret, spawns Node and Playwright, runs the check spec in headless Chromium against your app" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+<img src="/monitors/runner-architecture.svg" alt="Remote runner architecture: the runner long-polls the Traceway backend with the shared secret over outbound HTTPS, spawns Node and Playwright per claimed run, and executes the check spec in headless Chromium against your app" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
 
 Use a runner when you want browser checks but:
 

@@ -23,12 +23,12 @@ dependencies: [
 ],
 ```
 
-Then add `"Traceway"` to your target's dependencies:
+Then add the `Traceway` product to your target's dependencies. The package identity is `traceway-ios` and the library product is `Traceway`, so the two names differ and SwiftPM needs the explicit `.product(name:package:)` form:
 
 ```swift
 .target(
     name: "MyApp",
-    dependencies: ["Traceway"]
+    dependencies: [.product(name: "Traceway", package: "traceway-ios")]
 ),
 ```
 
@@ -139,15 +139,35 @@ Traceway.start(
 
 ## Test Your Integration
 
-Add a button that triggers a crash to verify everything is wired up:
+Start with a caught error. It uploads immediately and works with the Xcode debugger attached, so it is the fastest way to confirm the wiring:
 
 ```swift
-Button("Send Test Error") {
-    fatalError("Test error from Traceway integration")
+import SwiftUI
+import Traceway
+
+struct TestError: Error {}
+
+struct TracewayTestView: View {
+    var body: some View {
+        Button("Send Test Error") {
+            Traceway.capture(TestError())
+            Traceway.flush(timeout: 5)
+        }
+    }
 }
 ```
 
-When the Xcode debugger is attached, lldb intercepts signals first, so a crash never reaches the SDK. Test crash capture by running **without** the debugger: launch the app from the home screen, trigger the crash, then relaunch and watch the report upload on the next launch. Caught errors sent through `Traceway.capture(...)` upload immediately and do not need this.
+Tap it and check your Traceway dashboard. The error should appear on the Issues page within a few seconds.
+
+To verify **hard-crash** capture as well, add a second button:
+
+```swift
+Button("Force Crash") {
+    fatalError("Test crash from Traceway integration")
+}
+```
+
+This one does nothing while you are running from Xcode. Hard crashes are intercepted with POSIX signal handlers, and when the debugger is attached lldb intercepts the signal first, so the SDK's handler never runs. Test it **without** the debugger: install once from Xcode, stop the debugger, launch the app from the home screen, tap the button, then relaunch and watch the report upload on the next launch.
 
 ## Release Symbolication (dSYM upload)
 

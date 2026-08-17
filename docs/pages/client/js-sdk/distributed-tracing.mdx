@@ -6,13 +6,15 @@ Correlate frontend errors with the backend requests that caused them. The Tracew
 
 1. The frontend SDK generates a unique trace ID for each outgoing HTTP request
 2. The ID is sent as a `traceway-trace-id` header to your backend
-3. Your backend middleware reads the header and attaches it to the trace context
-4. Any exceptions or traces captured on either side are tagged with the same ID
+3. Your backend sets that ID on its server span as the `traceway.distributed_trace_id` attribute
+4. Traceway uses that attribute as the row's distributed trace ID, so both sides land on one trace
 5. In the Traceway dashboard, you can jump between the frontend error and the backend request
 
-## With fetch (Automatic)
+Step 3 is the one thing you have to add yourself. See [Backend Setup](#backend-setup) below.
 
-When you call `init()`, the SDK automatically instruments `window.fetch` to inject the `traceway-trace-id` header on **same-origin** requests. No extra code is needed.
+## Browser Side (Automatic)
+
+When you call `init()`, the SDK instruments both `window.fetch` and `XMLHttpRequest` to inject the `traceway-trace-id` header on **same-origin** requests. No extra code is needed.
 
 ```javascript
 import { init } from "@tracewayapp/frontend";
@@ -26,110 +28,99 @@ const res = await fetch("/api/orders", {
 });
 ```
 
-Cross-origin requests are **not** instrumented to prevent leaking the header to third-party services.
+Cross-origin requests are **not** instrumented, to prevent leaking the header to third-party services.
 
-If an error is thrown during or after a fetch call (e.g., in a `.then()` handler), the SDK automatically tags the captured exception with the distributed trace ID of that in-flight request.
+An exception captured while a request is still **in flight** is automatically tagged with that request's distributed trace ID. Once the request settles, the ID is cleared, so a `.then()` handler or any code after `await` sees nothing and the exception is stored unlinked. See [Manual Capture After an Await](#manual-capture-after-an-await) for that case.
 
-## With Axios (Manual Interceptor)
+## With Axios
 
-For Axios, use the `createAxiosInterceptor` helper to add the header to all requests:
+Axios uses `XMLHttpRequest` in the browser, and the SDK already instruments it. The header is injected and the active trace ID is set, so Axios requests correlate on their own with no setup at all.
 
 ```javascript
 import axios from "axios";
-import { createAxiosInterceptor } from "@tracewayapp/frontend";
 
 const api = axios.create({ baseURL: "/api" });
-api.interceptors.request.use(createAxiosInterceptor());
 
-// All requests through this instance include the traceway-trace-id header
+// Already carries the traceway-trace-id header
 const res = await api.post("/orders", order);
 ```
 
-### Exception Correlation with Axios
-
-The Axios interceptor injects the header but does not set the active trace ID used by global error handlers. To correlate caught exceptions with Axios requests, pass the trace ID explicitly:
-
-```javascript
-import { captureException } from "@tracewayapp/frontend";
-
-try {
-  await api.post("/orders", order);
-} catch (err) {
-  captureException(err, {
-    distributedTraceId: err.config?.headers?.["traceway-trace-id"],
-  });
-}
-```
+> **Do not register `createAxiosInterceptor()` in a browser app.** It generates a *second*, different ID under the same header name. `XMLHttpRequest.setRequestHeader` combines duplicate header names, so the backend receives `"<uuid1>, <uuid2>"`, which is not a valid UUID and is dropped without an error. Adding the interceptor breaks correlation that already worked.
 
 ## Backend Setup
 
-Your backend must read the `traceway-trace-id` header and pass it into the trace context. This is handled automatically by Traceway's backend middleware.
+Your backend closes the loop in one middleware, in whatever language it uses:
 
-### NestJS
+1. Read the `traceway-trace-id` request header.
+2. Set it on the active server span as the attribute `traceway.distributed_trace_id`. Traceway reads that attribute and uses it as the row's distributed trace ID, overriding the one derived from the OTel trace ID. This is what puts the browser exception and the backend endpoint on the same distributed trace. The value must be a bare UUID; anything else is ignored silently.
+3. Echo the header back on the response so manual `captureException` calls after `await fetch` can read it. This step is optional. Cross-origin, also add `traceway-trace-id` to `Access-Control-Expose-Headers`.
 
-The `TracewayMiddleware` from `@tracewayapp/nestjs` automatically:
-- Reads `traceway-trace-id` from incoming request headers
-- Echoes the ID back in the response header
-- Stores it in the trace context for the duration of the request
+The [Symfony bundle](/client/otel/symfony) does step 2 for you; add step 3 yourself if you want it. Node.js, NestJS, Next.js, Hono, Cloudflare Workers, Laravel, and Django install vanilla OpenTelemetry, which knows nothing about the header, so do all three:
 
-No additional configuration is needed — if you have the middleware installed, distributed tracing works out of the box.
+```javascript
+import { trace } from "@opentelemetry/api";
 
-```typescript
-import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
-import { TracewayModule, TracewayMiddleware } from "@tracewayapp/nestjs";
-
-@Module({
-  imports: [
-    TracewayModule.forRoot({
-      connectionString: "your-token@https://traceway.example.com/api/report",
-    }),
-  ],
-})
-export class AppModule implements NestModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer.apply(TracewayMiddleware).forRoutes("*");
+app.use((req, res, next) => {
+  const id = req.headers["traceway-trace-id"];
+  if (id) {
+    trace.getActiveSpan()?.setAttribute("traceway.distributed_trace_id", id);
+    res.setHeader("traceway-trace-id", id);
   }
+  next();
+});
+```
+
+Register it after your OpenTelemetry instrumentation, so there is an active server span to annotate. See the [OpenTelemetry guides](/client/otel) for the exporter setup itself.
+
+To verify, open the backend endpoint's detail page and select **View distributed trace**. The browser exception appears as a second node.
+
+## Manual Capture After an Await
+
+The SDK holds the active trace ID only while the request is in flight and clears it as soon as the request settles. A `captureException` call that runs after `await fetch` therefore sees `null` and stores the exception unlinked, even though the request header was sent correctly.
+
+Read the ID synchronously, after starting the request and before awaiting it:
+
+```javascript
+import {
+  captureExceptionWithAttributes,
+  getActiveDistributedTraceId,
+} from "@tracewayapp/frontend";
+
+async function request(path, options) {
+  const pending = fetch(path, options);
+  const distributedTraceId = getActiveDistributedTraceId() || undefined;
+  const res = await pending;
+
+  if (!res.ok) {
+    const err = new Error(`Request to ${path} failed (${res.status})`);
+    captureExceptionWithAttributes(
+      err,
+      { path, method: options?.method || "GET", status: String(res.status) },
+      distributedTraceId ? { distributedTraceId } : undefined
+    );
+    throw err;
+  }
+
+  return res.json();
 }
 ```
 
-### Node.js (Express / Custom)
-
-If you're using the `@tracewayapp/backend` package directly, extract the header and pass it to `withTraceContext`:
-
-```javascript
-import { withTraceContext, captureCurrentTrace, setTraceResponseInfo } from "@tracewayapp/backend";
-
-app.use((req, res, next) => {
-  const distributedTraceId = req.headers["traceway-trace-id"];
-
-  if (distributedTraceId) {
-    res.setHeader("traceway-trace-id", distributedTraceId);
-  }
-
-  withTraceContext({ endpoint: "", clientIP: req.ip, distributedTraceId }, () => {
-    res.on("finish", () => {
-      setTraceResponseInfo(res.statusCode, 0);
-      captureCurrentTrace();
-    });
-    next();
-  });
-});
-```
+No other code can run between the `fetch` call and the `getActiveDistributedTraceId` call, so the ID always belongs to this request. If your backend echoes the header (step 3 above), `res.headers.get("traceway-trace-id")` gives you the same value after the await.
 
 ## API Reference
 
 | Export | Description |
 |--------|-------------|
-| `createAxiosInterceptor()` | Returns an Axios request interceptor that adds the `traceway-trace-id` header |
-| `getActiveDistributedTraceId()` | Returns the trace ID of the currently in-flight fetch request, or `null` |
+| `getActiveDistributedTraceId()` | Returns the trace ID of the request currently in flight, or `null` |
 | `DISTRIBUTED_TRACE_HEADER` | The header name constant: `"traceway-trace-id"` |
+| `createAxiosInterceptor()` | Returns an Axios request interceptor that adds the header. Not for browser apps: see the warning above |
 
 ## How the Active Trace ID Works
 
-The SDK keeps a module-level variable that tracks which fetch call is currently in-flight:
+The SDK keeps a module-level variable that tracks which request is currently in flight:
 
-1. Before each same-origin `fetch()`, a new UUID is generated and stored as the "active" trace ID
+1. Before each same-origin `fetch()` or `XMLHttpRequest.send()`, a new UUID is generated and stored as the "active" trace ID
 2. The same ID is injected as the `traceway-trace-id` header
-3. When the fetch promise settles (resolves or rejects), the active ID is cleared
+3. When the request settles (resolves, rejects, or errors), the active ID is cleared
 
-If an exception is captured (via `captureException`, `window.onerror`, or `window.onunhandledrejection`) while a fetch is in-flight, the SDK automatically attaches the active trace ID to the exception. This is how frontend errors get linked to their triggering backend request without any manual work.
+If an exception is captured (via `captureException`, `window.onerror`, or `window.onunhandledrejection`) while a request is in flight, the SDK automatically attaches the active trace ID to the exception. This is how frontend errors get linked to their triggering backend request without any manual work.

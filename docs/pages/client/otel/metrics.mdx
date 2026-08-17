@@ -2,6 +2,8 @@
 
 Traceway ingests OpenTelemetry metrics via the OTLP/HTTP protocol at `POST /api/otel/v1/metrics`.
 
+Metrics are their own OTLP signal. A trace exporter does not send them, so the SDK needs a metric reader of its own. See [Three signals, three exporters](/client/otel#three-signals-three-exporters).
+
 ## Supported Metric Types
 
 | OTel Type | Supported | Traceway Handling |
@@ -9,8 +11,10 @@ Traceway ingests OpenTelemetry metrics via the OTLP/HTTP protocol at `POST /api/
 | Gauge | Yes | Stored as-is |
 | Sum | Yes | Stored as-is |
 | Histogram | Yes | Computes average and count (see below) |
-| ExponentialHistogram | No | — |
-| Summary | No | — |
+| ExponentialHistogram | No | Dropped |
+| Summary | No | Dropped |
+
+> **ExponentialHistogram and Summary are dropped without an error.** Traceway answers `200 OK` and stores nothing. The metric never shows up in dashboards or in metric discovery, so the only symptom is an empty widget. If a metric is missing, check its aggregation first. Switch the SDK's histogram aggregation to explicit-bucket (`Aggregation.Explicit`, `explicit_bucket_histogram`, or `EXPLICIT_BUCKET_HISTOGRAM` for the Java agent), or convert in a Collector before exporting. Summary is a Prometheus-only legacy type; export the same data as a Gauge or a Histogram instead.
 
 ## Histogram Handling
 
@@ -22,16 +26,38 @@ Histograms are converted into two separate metric records:
 | Count | `{name}.count` | Total number of observations |
 
 For example, a histogram named `http.request.duration` produces:
-- `http.request.duration.avg` — the average request duration
-- `http.request.duration.count` — the total number of requests observed
+- `http.request.duration.avg`: the average request duration
+- `http.request.duration.count`: the total number of requests observed
 
-Histogram bucket boundaries are not stored.
+`{name}.count` is registered as a counter with unit `count`. `{name}.avg` keeps the histogram's own unit and is registered as a gauge.
+
+`{name}.avg` is only emitted for data points that have both a non-zero `count` and a `sum`. A delta histogram with no observations in an interval, or a histogram exported without a sum, produces `{name}.count` alone. An average chart then shows a gap for those intervals rather than a zero.
+
+Histogram bucket boundaries are not stored, so percentiles cannot be computed from a Histogram. Use the Endpoints page, which keeps raw request durations, for P50/P95/P99.
 
 ## Resource Attributes
 
-The `service.name` resource attribute is used as the Server Name for all metrics in the resource.
+`service.name` is copied onto every metric point as the `server_name` tag.
+
+Some receivers put the identity of the thing being measured on the **Resource** rather than on the data point. The hostmetrics process scraper emits one `ResourceMetrics` block per process, and docker_stats, kubeletstats and the postgresql receiver do the same for containers, pods, nodes and databases. Without lifting those, every `process.cpu.utilization` point would look identical. Traceway copies this fixed list onto each point's tags so you can group and filter by them:
+
+| Attribute | Typical source |
+|-----------|----------------|
+| `process.pid`, `process.executable.name`, `process.command_line`, `process.owner` | hostmetrics process scraper |
+| `container.name`, `container.image.name` | docker_stats receiver |
+| `k8s.pod.name`, `k8s.namespace.name`, `k8s.node.name`, `k8s.deployment.name`, `k8s.container.name` | kubeletstats and k8s receivers |
+| `postgresql.database.name` | postgresql receiver |
+
+This is a fixed allowlist, not a passthrough, because each distinct tag value multiplies the number of stored series. Notably `host.name` and `deployment.environment` are **not** lifted, so you cannot group by them. If you need to slice by something outside the list, set it as a data-point attribute in your instrumentation, or add it with the Collector's `attributes` processor, rather than as a resource attribute.
+
+As with all attributes, only strings, numbers and booleans survive. Array and map values are dropped.
 
 ## Example: Node.js Metric Export
+
+```bash
+npm install @opentelemetry/sdk-node @opentelemetry/exporter-metrics-otlp-http \
+  @opentelemetry/sdk-metrics @opentelemetry/api
+```
 
 ```typescript
 import { NodeSDK } from "@opentelemetry/sdk-node";
@@ -40,21 +66,44 @@ import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 
 const sdk = new NodeSDK({
   serviceName: "my-service",
-  metricReader: new PeriodicExportingMetricReader({
-    exporter: new OTLPMetricExporter({
-      url: "https://your-traceway-instance.com/api/otel/v1/metrics",
-      headers: {
-        Authorization: "Bearer your-project-token",
-      },
+  metricReaders: [
+    new PeriodicExportingMetricReader({
+      exporter: new OTLPMetricExporter({
+        url: "https://your-traceway-instance.com/api/otel/v1/metrics",
+        headers: {
+          Authorization: "Bearer your-project-token",
+        },
+      }),
+      exportIntervalMillis: 30000,
     }),
-    exportIntervalMillis: 30000,
-  }),
+  ],
 });
 
 sdk.start();
 ```
 
+Use `metricReaders` (an array). The singular `metricReader` option still works but is deprecated. If you already have a `NodeSDK` for traces, add `metricReaders` to that instance instead of starting a second SDK. The [overview page](/client/otel#quick-start-direct-sdk-export) shows one SDK wiring all three signals.
+
+Recording a custom metric then looks like this:
+
+```typescript
+import { metrics } from "@opentelemetry/api";
+
+const meter = metrics.getMeter("shop");
+const ordersPlaced = meter.createCounter("orders.placed", {
+  description: "Orders successfully placed",
+});
+
+ordersPlaced.add(1, { channel: "web" });
+```
+
+The counter is exported on the next 30-second interval and appears in metric discovery as `orders.placed`, with `channel` as a tag you can group by.
+
 ## Example: Python Metric Export
+
+```bash
+pip install opentelemetry-sdk opentelemetry-exporter-otlp-proto-http
+```
 
 ```python
 from opentelemetry import metrics
@@ -73,9 +122,48 @@ exporter = OTLPMetricExporter(
 reader = PeriodicExportingMetricReader(exporter, export_interval_millis=30000)
 provider = MeterProvider(resource=resource, metric_readers=[reader])
 metrics.set_meter_provider(provider)
+
+meter = metrics.get_meter("shop")
+
+orders = meter.create_counter("orders.placed", unit="1", description="orders placed")
+orders.add(1, {"channel": "web"})
+
+checkout = meter.create_histogram("checkout.latency", unit="ms")
+checkout.record(12.5, {"channel": "web"})
+
+# Short-lived script: flush before exiting, or the batch never leaves.
+provider.force_flush()
+provider.shutdown()
 ```
+
+The provider on its own exports nothing. An instrument has to be created and a value recorded, and in a script that exits quickly the flush has to happen before the interpreter tears down. A long-running service can drop the last two lines, since the reader exports on its own interval.
+
+`checkout.latency` arrives as `checkout.latency.avg` and `checkout.latency.count`, per the histogram split above.
+
+> **The SDK's default export interval is 60 seconds.** With `export_interval_millis` left out, or on the zero-code `opentelemetry-instrument` path, a working pipeline still shows nothing for the first minute, which reads as failure. Set `export_interval_millis=10000`, or `OTEL_METRIC_EXPORT_INTERVAL=10000` on the env-var path, while you are verifying the integration.
+
+The zero-code path is simpler: under `opentelemetry-instrument` the meter provider is already configured, so drop everything above and start at `metrics.get_meter(...)`. See the [Python guide](/client/otel/python).
+
+## Example: Java (Agent)
+
+The Java agent exports JVM runtime metrics (heap, GC, thread counts) and HTTP server metrics by default, because `otel.metrics.exporter` is `otlp`. There is nothing to add:
+
+```bash
+java \
+  -javaagent:opentelemetry-javaagent.jar \
+  -Dotel.service.name=my-spring-app \
+  -Dotel.exporter.otlp.protocol=http/protobuf \
+  -Dotel.exporter.otlp.endpoint=https://<your-instance>/api/otel \
+  -Dotel.exporter.otlp.headers="Authorization=Bearer <project_token>" \
+  -jar target/my-app.jar
+```
+
+Remove any `-Dotel.metrics.exporter=none` flag and the metrics appear in metric discovery, ready to chart.
+
+Leave `otel.exporter.otlp.metrics.default.histogram.aggregation` at its default `EXPLICIT_BUCKET_HISTOGRAM`. Setting it to `BASE2_EXPONENTIAL_BUCKET_HISTOGRAM` makes Traceway drop every histogram silently, which takes `http.server.request.duration` and the JVM latency histograms off your dashboards.
 
 ## Next Steps
 
-- [Traces](/client/otel/traces) — how OTel spans map to Traceway concepts
-- [Overview](/client/otel) — protocol details and authentication
+- [Traces](/client/otel/traces): how OTel spans map to Traceway concepts
+- [Logs](/client/otel/logs): export logs and link them to your traces
+- [Overview](/client/otel): protocol details, authentication, and a "nothing is showing up" checklist

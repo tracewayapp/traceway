@@ -1,0 +1,335 @@
+# Symfony
+
+The `traceway/opentelemetry-symfony` bundle automatically instruments your Symfony application and exports traces, metrics, and logs to Traceway's OTLP endpoints. No manual instrumentation is needed.
+
+## Prerequisites
+
+- PHP 8.1+ (no PECL extension needed, the bundle is pure PHP)
+- Symfony 6.4 LTS, 7.x, or 8.x
+- Composer
+- A Traceway project (create one in the dashboard)
+
+> **Note:** the upstream `open-telemetry/opentelemetry-auto-*` instrumentations require the `ext-opentelemetry` PECL extension. This bundle does not, so it installs on managed hosts where you cannot build extensions. `ext-protobuf` is only worth adding if you switch the exporter to `http/protobuf`.
+
+## Step 1: Install Packages
+
+```bash
+composer require traceway/opentelemetry-symfony open-telemetry/exporter-otlp php-http/guzzle7-adapter
+```
+
+The bundle pulls in `open-telemetry/sdk` for you. `open-telemetry/exporter-otlp` and `php-http/guzzle7-adapter` are the OTLP/HTTP exporter and its HTTP client, and both are needed at runtime to actually ship data to Traceway.
+
+## Step 2: Register the Bundle
+
+Flex does not do this for you on a stock Symfony app. The bundle's recipe lives in `symfony/recipes-contrib`, and new apps ship with `extra.symfony.allow-contrib` set to `false`, so `composer require` prints `IGNORING traceway/opentelemetry-symfony` and registers nothing. Add it to `config/bundles.php` yourself:
+
+```php
+// config/bundles.php
+return [
+    // ...
+    Traceway\OpenTelemetryBundle\OpenTelemetryBundle::class => ['all' => true],
+];
+```
+
+The bundle is what produces the spans. Without it registered, the SDK starts but nothing instruments your app, and Traceway stays empty.
+
+## Step 3: Configure Environment Variables
+
+Add the following to your `.env` file, replacing the endpoint and token with your project values:
+
+```bash
+OTEL_SERVICE_NAME=my-symfony-app
+OTEL_TRACES_EXPORTER=otlp
+OTEL_METRICS_EXPORTER=otlp
+OTEL_LOGS_EXPORTER=otlp
+OTEL_EXPORTER_OTLP_PROTOCOL=http/json
+OTEL_EXPORTER_OTLP_ENDPOINT=https://your-traceway-instance.com/api/otel
+OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer your-project-token"
+```
+
+Your Traceway dashboard includes a **Connection** page with a ready-made config snippet and your project token. Go to **Connection** in the sidebar to grab it.
+
+> **Do not put `OTEL_PHP_AUTOLOAD_ENABLED` in `.env`.** OpenTelemetry PHP decides whether to start during Composer autoload, which happens before Symfony's Dotenv reads `.env`. The variable is always read too late there. Worse, once Dotenv has loaded it the bundle's own fallback (Step 4) sees it as already set and skips starting the SDK, so every signal silently becomes a no-op. Step 4 shows the two places the flag actually works.
+
+> **Note:** `http/json` needs no extra extensions and is the easiest starting point. `http/protobuf` also works, but the pure-PHP protobuf encoder is much slower. Install `ext-protobuf` (`pecl install protobuf`) if you switch to it in production. `grpc` is not included out of the box and additionally needs `ext-grpc` plus `open-telemetry/transport-grpc`.
+
+## Step 4: Turn the SDK On
+
+The instrumentation bundle and the OpenTelemetry SDK are two different things. Step 2 wired the bundle. This step starts the SDK that actually exports data. Pick one of the two options below.
+
+### Option A (recommended): let the bundle start it
+
+Create `config/packages/open_telemetry.yaml`:
+
+```yaml
+# config/packages/open_telemetry.yaml
+open_telemetry:
+    sdk:
+        autoload_enabled: true
+```
+
+The bundle sets `OTEL_PHP_AUTOLOAD_ENABLED` during its `boot()` and loads the SDK's autoload file itself. This works everywhere, including `symfony server:start` and `php -S`, and it works with Symfony Secrets. It is the only option that does not need access to the server config.
+
+### Option B: set a real process environment variable
+
+If you control the process environment, set the flag there instead and skip the YAML key:
+
+```ini
+; php-fpm pool config
+env[OTEL_PHP_AUTOLOAD_ENABLED] = true
+```
+
+```dockerfile
+ENV OTEL_PHP_AUTOLOAD_ENABLED=true
+```
+
+```apache
+SetEnv OTEL_PHP_AUTOLOAD_ENABLED true
+```
+
+Pick one option, not both.
+
+### Leave `public/index.php` alone
+
+You never call `SdkAutoloader::autoload()` by hand, and you never edit the front controller. `open-telemetry/sdk` registers its `_autoload.php` as a Composer `files` autoload entry, so it runs on every request already. The stock Symfony front controller is correct as generated:
+
+```php
+<?php
+// public/index.php (leave this file exactly as Symfony generated it)
+
+use App\Kernel;
+
+require_once dirname(__DIR__).'/vendor/autoload_runtime.php';
+
+return function (array $context) {
+    return new Kernel($context['APP_ENV'], (bool) $context['APP_DEBUG']);
+};
+```
+
+Replacing `vendor/autoload_runtime.php` with `vendor/autoload.php` drops `symfony/runtime`, which is what boots Dotenv. Your `.env` then never loads, so both the OTEL variables and every `%env(...)%` in your config break. A typical app starts throwing `Environment variable not found: "DATABASE_URL"`.
+
+## Step 5: Verify
+
+```bash
+bin/console cache:clear
+bin/console traceway:doctor
+```
+
+A healthy setup looks like this:
+
+```
+Traceway Doctor
+═══════════════
+
+Runtime
+  ○ protocol is http/json; ext-protobuf not required
+  ✓ ext-opentelemetry not loaded (no conflict risk)
+  ○ protocol is http/json; gRPC transport not required
+
+SDK configuration
+  ✓ OTEL_SERVICE_NAME = "my-symfony-app"
+  ✓ OTEL_TRACES_EXPORTER = otlp
+  ✓ OTEL_EXPORTER_OTLP_ENDPOINT = https://your-traceway-instance.com/api/otel
+  ✓ OTEL_EXPORTER_OTLP_PROTOCOL = http/json
+  ✓ OTEL_TRACES_SAMPLER unset (defaults to parentbased_always_on)
+  ✓ TracerProvider is TracerProvider
+
+Bundle configuration
+  ○ propagator=w3c, id_generator=default; X-Ray not configured
+  ✓ Messenger tracing enabled and symfony/messenger is installed
+  ✓ Log export wired (LoggerProvider: LoggerProvider)
+
+Connectivity
+  ✓ OTLP endpoint reachable (HTTP 404, 6ms)
+
+Results: 10 ok, 0 warning, 0 error, 3 skipped, 0 info
+```
+
+Your counts will differ. The Messenger and Connectivity lines above need `symfony/messenger` and `symfony/http-client` to be installed. On an app without them you get `⚠ traces.messenger.enabled is true but symfony/messenger is not installed` and a skipped reachability probe. Neither affects HTTP tracing.
+
+The line that matters most is `TracerProvider`. If you see this instead:
+
+```
+  ✗ TracerProvider is NoopTracerProvider — spans are silently dropped
+```
+
+the SDK never started. Nothing in your code will be exported, and there will be no error anywhere to tell you. Go back to Step 4 and make sure exactly one of the two options is in place, and that `OTEL_PHP_AUTOLOAD_ENABLED` is not in `.env`.
+
+`bin/console traceway:doctor --format=json --skip-network` prints a stable JSON envelope, so you can gate CI on it.
+
+### Exclude `cache:clear` from console tracing
+
+In the `dev` environment `bin/console cache:clear` prints a red block like this:
+
+```
+In DebugScope.php line 79:
+
+  User Notice: Scope: missing call to Scope::detach() for scope #608, created
+  	at OpenTelemetry.Context.Context.activate(Context.php:82)
+```
+
+The cache is still cleared and the command still exits `0`. The notice comes from OpenTelemetry's debug scope tracking, which only runs when `kernel.debug` is on, and `cache:clear` rebuilds the kernel underneath the console span. Add `cache:clear` to the excluded command list and it goes away:
+
+```yaml
+# config/packages/open_telemetry.yaml
+open_telemetry:
+    traces:
+        console:
+            excluded_commands: ['messenger:consume', 'messenger:consume-messages', 'cache:clear']
+```
+
+You lose nothing by excluding it. `cache:clear` is a build step, not a job worth tracking on the Tasks page.
+
+## Complete Working Configuration
+
+Everything above in one place. This is the full set of files needed for endpoints, issues, spans, tasks, logs, and metrics.
+
+```bash
+composer require traceway/opentelemetry-symfony open-telemetry/exporter-otlp php-http/guzzle7-adapter
+composer require symfony/monolog-bundle   # only if you want logs
+```
+
+```php
+// config/bundles.php (add this yourself, Flex skips the contrib recipe)
+return [
+    // ...
+    Traceway\OpenTelemetryBundle\OpenTelemetryBundle::class => ['all' => true],
+];
+```
+
+```bash
+# .env (note that OTEL_PHP_AUTOLOAD_ENABLED is deliberately not here)
+OTEL_SERVICE_NAME=my-symfony-app
+OTEL_TRACES_EXPORTER=otlp
+OTEL_METRICS_EXPORTER=otlp
+OTEL_LOGS_EXPORTER=otlp
+OTEL_EXPORTER_OTLP_PROTOCOL=http/json
+OTEL_EXPORTER_OTLP_ENDPOINT=https://your-traceway-instance.com/api/otel
+OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer your-project-token"
+```
+
+```yaml
+# config/packages/open_telemetry.yaml
+open_telemetry:
+    sdk:
+        autoload_enabled: true      # starts the SDK; Dotenv runs too late to do it
+    traces:
+        excluded_paths: ['/_profiler', '/_wdt', '/health']
+        console:
+            excluded_commands: ['messenger:consume', 'messenger:consume-messages', 'cache:clear']
+        messenger:
+            root_spans: true        # each consumed message becomes its own Task
+    metrics:
+        enabled: true
+        http_server:
+            enabled: true
+    logs:
+        export:
+            enabled: true
+            level: debug            # raise to info or warning in production
+```
+
+Leave `public/index.php` exactly as Symfony generated it. Then run `bin/console cache:clear` and `bin/console traceway:doctor`.
+
+## What Gets Captured
+
+Once configured, the bundle automatically captures:
+
+- **Endpoints**: every HTTP request, grouped by route template (`GET /users/{id}`, not `GET /users/42`)
+- **Status codes**: the real response code, including 500s from unhandled exceptions
+- **Exceptions**: unhandled errors become Issues with a full PHP stack trace (see [Exceptions](/client/otel/symfony/exceptions))
+- **Client IP, body size, user agent**: standard HTTP attributes
+- **Doctrine queries**: child spans per query if `doctrine/dbal` is installed (see [Spans](/client/otel/symfony/spans))
+- **Twig renders, cache operations, outgoing HttpClient calls, Mailer sends**: child spans, each individually toggleable
+- **Console commands**: every `bin/console` run lands on the Tasks page (see [Tasks](/client/otel/symfony/tasks))
+- **Messenger jobs**: dispatched and consumed messages (see [Tasks](/client/otel/symfony/tasks))
+- **Monolog records**: trace id and span id injected into every log record, plus opt-in forwarding to Traceway (see [Logs](/client/otel/symfony/logs))
+
+Unrouted requests such as 404s group under `UNMATCHED` rather than leaking the raw URL into your endpoint list.
+
+## Configuration Reference
+
+Every option is optional. The keys below are the v2.0+ nested schema. The old flat keys (`excluded_paths`, `messenger_root_spans`, `log_export_enabled`, and friends) still load but emit a deprecation and are removed in v4.0.
+
+```yaml
+# config/packages/open_telemetry.yaml
+open_telemetry:
+    sdk:
+        autoload_enabled: true          # start the SDK from bundle config
+        resource_attributes:
+            service.version: '%env(APP_VERSION)%'   # becomes the App Version column
+    traces:
+        excluded_paths:                 # matched as path prefixes
+            - /_profiler
+            - /_wdt
+            - /health
+        record_client_ip: true          # default true, set false for GDPR
+        error_status_threshold: 500     # minimum 500, a value of 400-499 fails at boot
+        console:
+            enabled: true
+            excluded_commands: ['messenger:consume', 'messenger:consume-messages']
+        messenger:
+            root_spans: false           # true = each consumed message is its own trace
+        doctrine:
+            record_statements: false    # true records the SQL text on the span
+        http_client:
+            enabled: true               # OTLP endpoint is auto-excluded
+        cache:
+            enabled: true
+        twig:
+            enabled: true
+        mailer:
+            enabled: true
+            record_subject: false       # subjects can contain personal data
+    metrics:
+        enabled: false                  # master switch, off by default
+        http_server:
+            enabled: false
+    logs:
+        correlation:
+            enabled: true               # trace_id / span_id in every log record
+        export:
+            enabled: false              # forward Monolog records to Traceway
+            level: debug
+```
+
+Setting `service.version` is worth doing early. It fills Traceway's **App Version** column, which is how you tell one release apart from the next when an Issue starts spiking.
+
+The on/off switches above are read at compile time to decide which services get wired, so they must be plain `true` or `false` values. Use separate `config/packages/dev/` and `config/packages/prod/` files to vary them per environment. `%env(...)%` placeholders do work inside `sdk.resource_attributes` and `sdk.exporter_otlp_headers`, because those are only read at boot.
+
+## Test Your Integration
+
+Add a test route to verify data is flowing:
+
+```php
+// src/Controller/TestController.php
+namespace App\Controller;
+
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Attribute\Route;
+
+class TestController
+{
+    #[Route('/testing', name: 'testing')]
+    public function index(): Response
+    {
+        throw new \RuntimeException("Test error from Traceway integration");
+    }
+}
+```
+
+Visit `/testing` in your browser. Within a few seconds you should see two things in the dashboard:
+
+- **Endpoints** shows `GET /testing` with status code 500
+- **Issues** shows `RuntimeException: Test error from Traceway integration` with a PHP stack trace pointing at `TestController.php`
+
+Both come from the same request. Symfony's error listener turns the throwable into a 500 response, and the bundle records the exception on the request span, so the endpoint row and the Issue agree.
+
+## Next Steps
+
+- [Exceptions](/client/otel/symfony/exceptions): manually capture caught exceptions with context
+- [Spans](/client/otel/symfony/spans): create custom spans to measure sub-operations
+- [Tasks](/client/otel/symfony/tasks): trace Symfony Messenger jobs and console commands
+- [Metrics](/client/otel/symfony/metrics): track custom counters, histograms, and gauges
+- [Logs](/client/otel/symfony/logs): forward Monolog / PSR-3 logs to Traceway
+- [OpenTelemetry docs](/client/otel): how OTel traces, metrics, and logs map to Traceway

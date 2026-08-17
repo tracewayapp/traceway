@@ -37,16 +37,17 @@ class MyApp : Application() {
 }
 ```
 
-Register the `Application` class and add the `INTERNET` permission in `AndroidManifest.xml`, or reports cannot leave the device:
+Register the `Application` class in `AndroidManifest.xml`, or `onCreate()` never runs and the SDK is never initialized:
 
 ```xml
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-permission android:name="android.permission.INTERNET" />
     <application android:name=".MyApp" ...>
         ...
     </application>
 </manifest>
 ```
+
+No permission entry is needed. The SDK's own manifest inside the AAR already declares `INTERNET` and `ACCESS_NETWORK_STATE`, and the Android manifest merger folds both into the app. Re-declaring `INTERNET` yourself is harmless if the app already has it.
 
 Wire the token through a build setting or `BuildConfig` field, not a committed literal. The connection string format is `<project-token>@https://<instance>/api/report`, identical to the other mobile SDKs.
 
@@ -77,7 +78,7 @@ The last ~10 seconds of logs and actions ride along with each captured exception
 
 A release build with `minifyEnabled true` runs R8, which renames classes and methods and rewrites the line-number table, so production crash traces arrive obfuscated and stay unreadable until Traceway retraces them server-side against the build's `mapping.txt` (the Android equivalent of a JavaScript source map). Set this up whenever the app ships a minified release.
 
-**Token.** Symbol uploads authenticate with the dedicated **upload token** (Connection page > Source Maps / Symbol Upload), NOT the project token from the connection string. Get it from Step 0; it is a CI secret, never committed. `readonly` members cannot generate one. Using the connection-string token here is rejected with a 401.
+**Token.** Symbol uploads authenticate with the dedicated **upload token** (Connection page > Source Maps / Symbol Upload), NOT the project token from the connection string. It is a CI secret, never committed. `readonly` members cannot generate one. Using the connection-string token here is rejected with a 401.
 
 **Apply the plugin.** It is published to Maven Central, so add `mavenCentral()` to the `pluginManagement` repositories in `settings.gradle.kts`:
 
@@ -94,6 +95,7 @@ Then apply it to the app module and point it at the instance:
 
 ```kotlin
 plugins {
+  id("com.android.application")                // must already be applied
   id("com.tracewayapp.symbols") version "1.0.1"
 }
 
@@ -112,6 +114,8 @@ traceway {
   // proguardUuid = "..."               // optional: pin the build UUID yourself
 }
 ```
+
+Order matters in the `plugins { }` block. Gradle applies entries top to bottom, and `com.tracewayapp.symbols` looks for the Android extension the moment it is applied, so it has to come **after** `com.android.application` (or `com.android.library`). Declared above it, the build fails at configuration time with `com.tracewayapp.symbols must be applied after an Android application/library plugin`. The app module already has the Android plugin line, so add the Traceway line under it rather than pasting a new block above it.
 
 **Wire the UUID into the SDK.** The plugin embeds a ProGuard UUID into `BuildConfig.TRACEWAY_PROGUARD_UUID` and names the uploaded mapping `<uuid>.txt`. The UUID is derived from the module path, variant, and app version (`versionName` + `versionCode`), so **bump the version each release** or a new upload overwrites the previous one (or set `proguardUuid` explicitly). Pass the injected value to the SDK so each reported crash carries the matching UUID:
 
@@ -132,7 +136,7 @@ Traceway.init(
 ./gradlew assembleRelease uploadReleaseTracewaySymbols
 ```
 
-With `autoUpload = true` the upload runs automatically after `assembleRelease`. Keep the upload token in a CI secret — the `System.getenv` wiring in the `traceway { ... }` block above is what feeds it to the plugin (there is no built-in environment lookup):
+With `autoUpload = true` the upload runs automatically after `assembleRelease`. Keep the upload token in a CI secret. The `System.getenv` wiring in the `traceway { ... }` block above is what feeds it to the plugin (there is no built-in environment lookup):
 
 ```bash
 TRACEWAY_UPLOAD_TOKEN=<upload-token> ./gradlew assembleRelease uploadReleaseTracewaySymbols

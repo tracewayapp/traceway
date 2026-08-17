@@ -68,7 +68,7 @@ Every Endpoint / Task / AI Trace stores a **`distributed_trace_id`** equal to th
 - A request handler that calls an LLM produces an endpoint row and an ai_trace row with the same `distributed_trace_id`. Same cross-trace page.
 - Cross-service HTTP hops (each service exports its own SERVER span) all share the trace id. Each hop appears as its own endpoint row.
 
-You don't need to set any vendor attribute for this to work — OTLP's native trace_id is enough. (The Go SDK's manual `distributedTraceId` field continues to work for legacy `/api/report` flows and overrides the auto-derived value when set.)
+You don't need to set any vendor attribute for this to work, OTLP's native trace_id is enough. If you do need to stitch runs that genuinely carry different trace ids, the span attribute `traceway.distributed_trace_id` overrides the derived value.
 
 ## What each entity stores
 
@@ -98,9 +98,9 @@ Identified by `trace.name` (your agent or workflow). Carries model, provider, in
 
 ## Lifecycle and sampling
 
-1. A span is created in your app (by a framework's auto-instrumentation, the Traceway SDK, or manual OTel calls).
+1. A span is created in your app (by a framework's auto-instrumentation or by manual OTel calls).
 2. Child spans, attributes, and events accumulate against it.
-3. The trace is exported via OTLP (or `/api/report` for the legacy Go SDK).
+3. The trace is exported via OTLP.
 4. Traceway classifies each span, inserts into the matching entity table, and re-roots the remaining children into `spans` under their nearest enclosing entity.
 5. Exceptions recorded as `"exception"` events become Issues attributed to the owning entity.
 

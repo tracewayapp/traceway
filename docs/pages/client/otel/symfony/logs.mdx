@@ -1,0 +1,217 @@
+# Logs
+
+Forward your Symfony application logs to Traceway over the OpenTelemetry logs endpoint. The bundle ships its own Monolog handler, so all of your existing `$logger->info(...)` / `$logger->error(...)` calls keep working, and every record is linked to the trace and span that was active when you logged it.
+
+## Install Monolog
+
+```bash
+composer require symfony/monolog-bundle
+```
+
+> Symfony's PSR-3 logger comes from `symfony/monolog-bundle`. The `symfony/skeleton` starter does not include it, so install it first. Without it `$this->logger->info(...)` goes nowhere, `config/packages/monolog.yaml` is ignored, and the bundle refuses to boot with log export turned on.
+
+You do not need `open-telemetry/opentelemetry-logger-monolog`. The bundle has its own handler.
+
+## Enable Log Export
+
+Two lines of YAML, and no changes to `config/packages/monolog.yaml`:
+
+```yaml
+# config/packages/open_telemetry.yaml
+open_telemetry:
+    logs:
+        export:
+            enabled: true
+            level: debug     # raise to info or warning in production
+```
+
+The bundle registers its handler into Monolog's handler stack for you, on every channel. `level` is the minimum Monolog level that gets forwarded. Start at `debug` while you verify the pipeline, then raise it once records are arriving.
+
+Make sure the logs exporter is on in `.env` too. This is already in the [Quick Start](/client/otel/symfony) env block:
+
+```bash
+OTEL_LOGS_EXPORTER=otlp
+```
+
+`OTEL_EXPORTER_OTLP_ENDPOINT` is the base URL. The logs exporter appends `/v1/logs` itself, so there is no extra endpoint to configure.
+
+Run `bin/console cache:clear` and then `bin/console traceway:doctor`. A working setup reports:
+
+```
+  ✓ Log export wired (LoggerProvider: LoggerProvider)
+```
+
+If it reports `logs.export.enabled is false`, the setting has not taken effect. Check the file path, the indentation, and that you actually cleared the cache.
+
+## Filter Out the `event` Channel
+
+The bundle's handler listens on every channel, including the `event` channel that Symfony's own default `monolog.yaml` excludes from all of its handlers with `channels: ["!event"]`. That channel carries one `Notified event "{event}" to listener "{listener}".` record per listener per request. If `symfony/stopwatch` is installed, which most apps get through `doctrine/doctrine-bundle` or the debug pack, a single request that logs 4 records of its own ships 26 records to Traceway.
+
+Apply the same exclusion to the bundle's handler. Its Monolog handler key is `opentelemetry`:
+
+```yaml
+# config/packages/monolog.yaml
+monolog:
+    handlers:
+        opentelemetry:
+            channels: ["!event"]
+```
+
+Do not add `type` or `id` here. The bundle already set them, and this block only merges the channel filter on top. After `bin/console cache:clear`, the same request ships 5 records: your 4 plus Symfony's `Matched route`.
+
+`channels` takes an exclude list (`["!event", "!doctrine"]`) or an include list (`["app"]`). Use it to drop any other chatty channel the same way.
+
+## Emit Logs With Trace Context
+
+Inject Symfony's standard `Psr\Log\LoggerInterface` as usual. Trace context attaches automatically:
+
+```php
+// src/Controller/OrderController.php
+namespace App\Controller;
+
+use Psr\Log\LoggerInterface;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Attribute\Route;
+
+class OrderController
+{
+    public function __construct(
+        private readonly LoggerInterface $logger,
+    ) {}
+
+    #[Route('/orders', methods: ['POST'])]
+    public function create(): Response
+    {
+        $this->logger->info('order received', ['order.id' => 'ord_123']);
+
+        try {
+            // ... business logic ...
+            $this->logger->info('order processed', ['order.id' => 'ord_123']);
+            return new JsonResponse(['status' => 'ok']);
+        } catch (\Throwable $e) {
+            $this->logger->error('order failed', [
+                'order.id' => 'ord_123',
+                'exception' => $e,
+            ]);
+            throw $e;
+        }
+    }
+}
+```
+
+Because the controller runs inside the instrumented request span, every log emitted here carries that span's `trace_id` and `span_id`. Open the endpoint's trace in the dashboard and the **Logs** tab shows these records attached to it.
+
+The same is true for logs emitted inside Messenger handlers, console commands, and any other code that runs under an active span.
+
+Two things about the context array:
+
+- Each key becomes a log attribute you can filter on. `['order.id' => 'ord_123']` is stored as the attribute `order.id`.
+- A key named `exception` holding a `Throwable` is special. Pass the object, not `$e->getMessage()`, and the record gains `exception.type`, `exception.message`, and `exception.stacktrace` attributes.
+
+Logging an exception this way does not create an Issue. Issues come from exceptions recorded on spans, which is covered in [Exceptions](/client/otel/symfony/exceptions). Do both when you want the error searchable in Logs and tracked as an Issue.
+
+The Monolog channel becomes the log's scope name, so records from the `doctrine` or `security` channels are distinguishable from your own `app` records.
+
+## Trace Correlation Without Export
+
+Log export is one half of the story. The bundle also injects `trace_id`, `span_id`, and `trace_flags` into every Monolog record, which is what makes your local `var/log/dev.log` (or your existing Elastic/Loki pipeline) correlate with Traceway traces. That part is on by default and independent of export:
+
+```yaml
+# config/packages/open_telemetry.yaml
+open_telemetry:
+    logs:
+        correlation:
+            enabled: true    # default
+```
+
+## Severity Mapping
+
+Monolog levels map to OpenTelemetry severity numbers like this, and Traceway stores the level name it receives:
+
+| Monolog Level | OTLP Severity Number | Shown in Traceway |
+| ------------- | -------------------- | ----------------- |
+| `DEBUG`       | 5                    | DEBUG             |
+| `INFO`        | 9                    | INFO              |
+| `NOTICE`      | 10                   | NOTICE            |
+| `WARNING`     | 13                   | WARNING           |
+| `ERROR`       | 17                   | ERROR             |
+| `CRITICAL`    | 18                   | CRITICAL          |
+| `ALERT`       | 19                   | ALERT             |
+| `EMERGENCY`   | 21                   | EMERGENCY         |
+
+The severity **filter** in the dashboard buckets by number, not by name. `WARN+` starts at 13 and so matches WARNING. `ERROR+` starts at 17 and so matches ERROR, CRITICAL, ALERT, and EMERGENCY.
+
+Only records at or above the configured `level` are forwarded.
+
+## Test Your Integration
+
+Add a route that logs at multiple levels, hit it once, and check the **Logs** page in the dashboard:
+
+```php
+// src/Controller/LogTestController.php
+namespace App\Controller;
+
+use Psr\Log\LoggerInterface;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Attribute\Route;
+
+class LogTestController
+{
+    public function __construct(
+        private readonly LoggerInterface $logger,
+    ) {}
+
+    #[Route('/log-test', name: 'log_test')]
+    public function test(): Response
+    {
+        $this->logger->debug('debug sample');
+        $this->logger->info('info sample', ['request.id' => 'req_1']);
+        $this->logger->warning('warning sample');
+        $this->logger->error('error sample', ['order.id' => 'ord_1']);
+        return new JsonResponse(['emitted' => 4]);
+    }
+}
+```
+
+Visit `/log-test`, then open **Logs** in the dashboard. With `level: debug` you should see all four records within a few seconds, each carrying the trace id of that request. At `level: info` the `debug sample` record is filtered out before it reaches the handler, so you get three.
+
+Symfony also logs on your behalf, so expect a framework record such as `Matched route "log_test".` on the same trace. If you see twenty or more extra `Notified event` records instead, apply the channel filter from [Filter Out the `event` Channel](#filter-out-the-event-channel) above.
+
+## Using the Contrib Handler Instead
+
+The community package `open-telemetry/opentelemetry-logger-monolog` also works, but it needs more care in Symfony and there is no benefit over the bundle's handler. Use one or the other, never both, or every record is sent twice. If you wire it anyway, note two things.
+
+First, nothing registers `OpenTelemetry\API\Logs\LoggerProviderInterface` as a service, so you have to add the factory yourself or the container will not compile:
+
+```yaml
+# config/packages/monolog.yaml
+monolog:
+    handlers:
+        traceway:
+            type: service
+            id: OpenTelemetry\Contrib\Logs\Monolog\Handler
+            level: info
+            channels: ~
+
+services:
+    OpenTelemetry\API\Logs\LoggerProviderInterface:
+        factory: ['OpenTelemetry\API\Globals', 'loggerProvider']
+
+    OpenTelemetry\Contrib\Logs\Monolog\Handler:
+        arguments:
+            $loggerProvider: '@OpenTelemetry\API\Logs\LoggerProviderInterface'
+            $level: !php/const Monolog\Logger::INFO
+            $bubble: true
+```
+
+Second, that handler resolves the logger provider when the container builds the `logger` service, which happens inside `FrameworkBundle::boot()`. That runs before any bundle can start the SDK, and OpenTelemetry PHP caches its providers on first access. So with this handler you **must** use Option B from Step 4 of the [Quick Start](/client/otel/symfony) and set `OTEL_PHP_AUTOLOAD_ENABLED=true` as a real process environment variable. With `open_telemetry.sdk.autoload_enabled` the SDK starts too late, and traces, metrics, and logs all silently become no-ops. Run `bin/console traceway:doctor` and confirm it says `TracerProvider is TracerProvider`.
+
+The bundle's own handler resolves the provider lazily, on the first log write, which is why it has no such ordering requirement.
+
+## Next Steps
+
+- [Exceptions](/client/otel/symfony/exceptions): record caught exceptions with context
+- [Metrics](/client/otel/symfony/metrics): custom counters, histograms, and gauges
+- [OTel Logs reference](/client/otel/logs): full OTLP logs mapping and severity details

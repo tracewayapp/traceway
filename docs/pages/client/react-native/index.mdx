@@ -24,7 +24,7 @@ export default function App() {
 }
 ```
 
-That's it. Every uncaught throw, unhandled promise rejection, render-time exception, and `fetch` call is captured automatically. If you want to replace a crashed subtree with a custom fallback view, `TracewayErrorBoundary` is still exported for that purpose.
+That's it. Every uncaught throw, render-time exception, and `fetch` call is captured automatically. If you want to replace a crashed subtree with a custom fallback view, `TracewayErrorBoundary` is still exported for that purpose, but it is deprecated as of v1.1.0 and will be removed in v2. Do not build new code around it.
 
 > **No screen recording.** Unlike the browser SDK ([`@tracewayapp/frontend`](/client/js-sdk)), this package does not record the screen. The `rrweb` recorder is intentionally absent — nothing in the bundle reaches into a DOM that doesn't exist.
 
@@ -68,9 +68,11 @@ All field names mirror the browser, Android, and Flutter SDKs so existing config
 | `captureLogs` | `boolean` | `true` | Mirror `console.{debug,log,info,warn,error}` into the rolling log buffer |
 | `captureNetwork` | `boolean` | `true` | Record `fetch` / `XMLHttpRequest` calls as network actions |
 | `captureNavigation` | `boolean` | `true` | Record manual `recordNavigation()` calls into the action buffer |
-| `captureDeviceInfo` | `boolean` | `true` | Auto-collect `os.name`, `os.version`, screen, locale, runtime engine and attach to every report |
+| `captureDeviceInfo` | `boolean` | `true` | Auto-collect `device.locale` and `runtime.engine` and attach them to every report (see [Attributes](#1-device-info--auto-collected)) |
 | `eventsWindowMs` | `number` | `10000` | Rolling window kept in the log/action buffers (ms) |
 | `eventsMaxCount` | `number` | `200` | Hard cap applied independently to logs and actions |
+| `distributedTraceHosts` | `Array<string \| RegExp>` | `[]` | Hosts that receive an outgoing `traceway-trace-id` header, so a server-side capture links back to the client request that caused it. React Native has no `window.location.origin` to infer from, so unlike the browser SDK this is opt-in: list your own backend hosts, e.g. `["api.example.com"]`. Each entry is an exact hostname or a `RegExp` tested against the URL host |
+| `captureHttpServerErrors` | `boolean` | `false` | Also report every `fetch` / XHR response with `status >= 500` as a synthetic exception, on top of the network action already recorded. 4xx is deliberately excluded (see `DEFAULT_IGNORE_PATTERNS`) |
 
 ```tsx
 <TracewayProvider
@@ -85,6 +87,32 @@ All field names mirror the browser, Android, and Flutter SDKs so existing config
 ```
 
 The `DEFAULT_IGNORE_PATTERNS` export contains the built-in `ignoreErrors` list (`Network request failed`, `Failed to fetch`, generic 4xx, etc.) — you can extend it rather than replace it.
+
+## Distributed Tracing
+
+By default the SDK injects nothing into outgoing requests. List your backend hosts in `distributedTraceHosts` to turn it on:
+
+```tsx
+<TracewayProvider
+  connectionString="your-token@https://traceway.example.com/api/report"
+  options={{ distributedTraceHosts: ["api.example.com", /\.internal\.example\.com$/] }}
+>
+  <RootNavigator />
+</TracewayProvider>
+```
+
+Each matching `fetch` call gets a `traceway-trace-id` header carrying a fresh id. If your backend reports an error while handling that request, both sides carry the same id and you can jump from the mobile exception to the server one. Entries are matched against the URL's host, so include the port when the URL has one (`"localhost:3000"`). `XMLHttpRequest` calls are still recorded as network actions, but they do not get the header, so route traffic you want linked through `fetch`.
+
+`getActiveDistributedTraceId()` returns the id of the instrumented `fetch` currently in flight, and `null` when there is none. Use it to put that same id on work you kick off from inside such a request (a WebSocket handshake, a native module, a client the SDK does not wrap):
+
+```ts
+import { DISTRIBUTED_TRACE_HEADER, getActiveDistributedTraceId } from "@tracewayapp/react-native";
+
+const traceId = getActiveDistributedTraceId();
+if (traceId) {
+  headers[DISTRIBUTED_TRACE_HEADER] = traceId;
+}
+```
 
 ## Logs & Actions
 
@@ -105,7 +133,8 @@ Three kinds of actions are collected:
 - **Navigation** — RN has no `window.history` to auto-instrument. Wire `recordNavigation` into whatever navigation library you use:
 
   ```tsx
-  import { useNavigationContainerRef } from "@react-navigation/native";
+  import { useRef } from "react";
+  import { NavigationContainer, useNavigationContainerRef } from "@react-navigation/native";
   import { recordNavigation } from "@tracewayapp/react-native";
 
   const navigationRef = useNavigationContainerRef();
@@ -180,18 +209,31 @@ Every captured exception ships with an `attributes` map composed of three layers
 
 ### 1. Device info — auto-collected
 
-Auto-stamped at `init()` from React Native core APIs (no native modules required, works in Expo Go). The keys mirror what the Flutter and Android SDKs emit so the dashboard renders them consistently across platforms:
+`init()` stamps these two keys on every report. They need no native module and work in Expo Go:
 
 | Key | Source |
 |---|---|
-| `os.name` | `Platform.OS` (`ios` / `android` / `web`) |
-| `os.version` | `Platform.Version` |
-| `screen.resolution` | `Dimensions.get("screen")` (whole pixels) |
-| `screen.density` | `PixelRatio.get()` |
 | `device.locale` | `Intl.DateTimeFormat().resolvedOptions().locale` |
 | `runtime.engine` | `hermes` / `javascriptcore` |
 
-To replace or extend the auto-collected map at runtime (e.g. add info from `expo-device` / `react-native-device-info` you've installed yourself):
+`collectSyncDeviceInfo()` also knows how to read `os.name`, `os.version`, `screen.resolution` and `screen.density` from `Platform`, `Dimensions` and `PixelRatio`, but it reaches `react-native` through a global `require`. Metro does not define one (it registers modules on `global.__r`), so in a real app those four keys come back empty. Pass them in yourself if you want them on the dashboard. The key names mirror what the Flutter and Android SDKs emit, so the dashboard renders them consistently across platforms:
+
+```ts
+import { setDeviceAttributes, collectSyncDeviceInfo } from "@tracewayapp/react-native";
+import { Dimensions, PixelRatio, Platform } from "react-native";
+
+const screen = Dimensions.get("screen");
+
+setDeviceAttributes({
+  ...collectSyncDeviceInfo(),
+  "os.name": Platform.OS,
+  "os.version": String(Platform.Version),
+  "screen.resolution": `${Math.round(screen.width)}x${Math.round(screen.height)}`,
+  "screen.density": PixelRatio.get().toFixed(1),
+});
+```
+
+Use the same call to add info from `expo-device` / `react-native-device-info` you've installed yourself:
 
 ```ts
 import { setDeviceAttributes, collectSyncDeviceInfo } from "@tracewayapp/react-native";
@@ -249,11 +291,73 @@ For each captured exception: `device info < global scope < per-call`.
 ## What Gets Captured Automatically
 
 - **Uncaught throws** on the JS thread via `ErrorUtils.setGlobalHandler` — RN's equivalent of `window.onerror`. The red-box dev overlay still appears; we forward to the previous handler.
-- **Unhandled promise rejections** — `Promise.reject(...)` without a `.catch()` reaches the same `ErrorUtils` handler.
+- **Unhandled promise rejections are not captured.** React Native hands them to its own `ExceptionsManager` (and only in dev builds), never through `ErrorUtils`, so the SDK never sees them. Catch them yourself and call `captureException`.
 - **Render errors** — `<TracewayProvider>` itself acts as an error boundary: exceptions thrown during render or in lifecycle methods are captured and re-thrown so your app behaves exactly as without Traceway.
 - **`fetch` calls** — wrapped at `init()`, recorded with method, URL, status, duration, byte counts.
 - **`XMLHttpRequest` calls** — RN polyfills XHR (and `fetch` is implemented on top of it on some platforms); both paths are covered.
 - **Console output** — `console.{debug,log,info,warn,error}` is mirrored into the log buffer that rides along the next exception.
+
+## Release Symbolication (source map upload)
+
+A debug build gives you readable stack traces for free. A release build does not: Metro minifies the JavaScript into one bundle, and Hermes compiles that bundle to bytecode. Every production frame lands on the Issues page as an offset into `index.android.bundle` or `main.jsbundle`, with no function names and no original file. Upload the build's source map and Traceway resolves those frames server-side.
+
+Do this on every release. A crash only resolves against the map for the exact build it came from.
+
+### Get the upload token
+
+Symbol uploads use a dedicated **upload token**, not the project token in your connection string. Open the **Connection** page for your project, scroll to **Source Maps**, and click **Generate Upload Token**. Treat it like any other CI secret. Members with the `readonly` role cannot generate one.
+
+### Emit the source map
+
+Android emits the map already. iOS needs one extra line.
+
+**Android.** The React Native Gradle plugin passes `-output-source-map` to Hermes by default, so a release build writes the map with no config change. Only if your `android/app/build.gradle` overrides `hermesFlags` do you need to keep the flag in the list:
+
+```groovy
+react {
+    hermesFlags = ["-O", "-output-source-map"]
+}
+```
+
+After `./gradlew assembleRelease` the map is at:
+
+```
+android/app/build/generated/sourcemaps/react/release/index.android.bundle.map
+```
+
+**iOS.** In Xcode, open your target's **Build Phases**, find **Bundle React Native code and images**, and add this line to the script:
+
+```sh
+export SOURCEMAP_FILE="$(pwd)/../main.jsbundle.map"
+```
+
+After an archive build the map is at `ios/main.jsbundle.map`.
+
+Both paths moved between React Native versions. If yours is not there, search the build output for `*.bundle.map` or `main.jsbundle.map`.
+
+### Upload it
+
+Traceway matches a map to a frame by filename: the frame says `index.android.bundle`, so the uploaded file must be named `index.android.bundle.map`. `curl -F` sends the basename of the local path, so keep the filename as the build produced it.
+
+```bash
+export TRACEWAY_URL="https://traceway.example.com"
+export TRACEWAY_SOURCEMAP_TOKEN="your-upload-token"
+
+curl --fail -X POST "$TRACEWAY_URL/api/sourcemaps/upload" \
+  -H "Authorization: Bearer $TRACEWAY_SOURCEMAP_TOKEN" \
+  -F "files=@android/app/build/generated/sourcemaps/react/release/index.android.bundle.map"
+```
+
+A `200` with `{"uploaded":1}` means it landed. Uploads take effect immediately, so exceptions arriving right after a deploy resolve against the new map.
+
+The [`traceway-sourcemaps`](/client/js-sdk/sourcemap-upload) CLI does the same thing and reads the two variables above. Point it at the directory holding the map:
+
+```bash
+npm install -D @tracewayapp/sourcemap-upload
+npx traceway-sourcemaps --directory android/app/build/generated/sourcemaps/react/release
+```
+
+See [JavaScript symbolication](/symbolicator/javascript) for how a frame is matched to its map.
 
 ## Test Your Integration
 

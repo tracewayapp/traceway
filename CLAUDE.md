@@ -8,7 +8,6 @@ Traceway is an error tracking and monitoring platform consisting of:
 - **Frontend**: SvelteKit 2 dashboard application with Svelte 5
 - **Backend**: Go/Gin API server with ClickHouse database
 - **CLI**: Go/Cobra command-line client for the backend HTTP API (`/cli`)
-- **Go Client SDK**: Distributed tracing SDK for Go applications (external repo)
 
 ---
 
@@ -33,7 +32,6 @@ Traceway is an error tracking and monitoring platform consisting of:
 | CLI | `cd cli && just test` | Runs unit tests |
 | CLI | `cd cli && just check` | Lint + test + vulncheck (pre-commit gate) |
 | CLI | `cd cli && just smoke-test` | Live E2E (needs `TRACEWAY_SMOKE_*` env vars) |
-| Go Client | External repo at `/Users/dusanstanojevic/Documents/workspace/go-client` | Build with `go build ./...` |
 
 ### Tech Stack
 - **Frontend**: SvelteKit 2.49, Svelte 5.45, Tailwind CSS v4, shadcn-svelte, Vite 7
@@ -1072,20 +1070,28 @@ backend/app/migrations/ch/
 
 The backend normalizes stack traces before hashing to group identical errors despite different runtime values. This happens in `backend/app/controllers/clientcontrollers/client.controller.go`.
 
-**Normalization Steps:**
-1. Extract error type only (remove error message content)
-2. Collapse JS SDK function-name lines (ending in `()`, directly above a 4-space-indented `file:line:col` location line) to `<fn>` so resolved function names never affect grouping; anchoring on the location line keeps Go traces (tab-indented file lines) untouched
-3. Remove absolute file paths (keep `filename:line` only)
-4. Replace hexadecimal addresses with `<hex>`
-5. Replace UUIDs with `<uuid>`
-6. Replace IP addresses with `<ip>`
-7. Replace timestamps with `<timestamp>`
-8. Replace numeric IDs in paths with `<id>`
-9. Normalize whitespace
-10. Remove ANSI color codes
-11. Hash the normalized string with SHA-256, truncate to 16 chars
+**Normalization Steps** (`ComputeExceptionHash`, applied in this order, and skipped entirely when `isMessage` is true):
+1. Strip the message from `Caused by:` lines, keeping the class name (`causedByRe`)
+2. Strip the message from the error line, keeping the error type (`errorMessageRe`)
+3. Collapse JS SDK function-name lines (ending in `()`, directly above a 4-space-indented `file:line:col` location line) to `<fn>` so resolved function names never affect grouping; anchoring on the location line keeps Go traces (tab-indented file lines) untouched (`jsFuncLineRe`)
+4. Remove URL origins such as `https://cdn.example.com` (`urlOriginRe`)
+5. Remove absolute file paths, keeping `filename:line` (`absolutePathRe`)
+6. Drop the column from any frame whose line number is 2 or higher (`laterLineColRe`)
+7. Remove `@v1.2.3` module version suffixes (`versionRe`)
+8. Replace hexadecimal addresses with `<hex>` (`hexRe`)
+9. Replace UUIDs with `<uuid>` (`uuidRe`)
+10. Replace runs of 5 or more digits with `<id>`, unless preceded by a colon or another digit (`largeNumberRe`)
+11. Replace email addresses with `<email>` (`emailRe`)
+12. Replace IP addresses, with an optional port, with `<ip>` (`ipRe`)
+13. Replace Go goroutine ids with `goroutine <n>` (`goroutineRe`)
+14. Drop line numbers from Java, Kotlin and Scala frames (`javaLineNumRe`)
+15. Collapse `... 12 more` to `... more` (`javaEllipsisRe`)
+16. Collapse runs of spaces and tabs, then runs of newlines (`spacesRe`, `newlinesRe`)
+17. Trim, hash with SHA-256, truncate to 16 hex chars
 
-**Note:** columns are intentionally kept in the hash. Minified bundles put everything on line 1, so the column is the only frame disambiguator when no source map matched. Function names are excluded (step 2) because they are derived from the location and change as symbolication improves.
+**Not normalized:** timestamps and ANSI color codes. Two otherwise identical traces that differ only in an embedded timestamp, or only in `\x1b[31m` escapes, produce two separate Issues. Add a regex to the block in `client.controller.go` if that ever matters.
+
+**Note:** the column is kept only on line 1 (step 6). Minified bundles put everything on line 1, so there the column is the only frame disambiguator when no source map matched, while on real source lines the column is noise. Function names are excluded (step 3) because they are derived from the location and change as symbolication improves.
 
 **Result:** Same logical error gets same hash, even if:
 - Error message contains different user IDs
@@ -1187,209 +1193,19 @@ if err != nil {
 
 ---
 
-## Go Client SDK
+## Native `/api/report` Protocol
 
-**Location:** External repository at `/Users/dusanstanojevic/Documents/workspace/go-client`
+There is **no Traceway Go SDK**. It was retired, and every backend, Go included, instruments with
+OpenTelemetry and exports over OTLP/HTTP. The docs carry no Go SDK pages, and `docs/public/_redirects`
+301s the old `/client/sdk` and `/client/*-middleware` URLs to `/client/otel`. Do not reintroduce them.
 
-The SDK is a separate Go module that applications import to send telemetry to Traceway.
-
-### Installation
-```go
-import (
-    "github.com/user/traceway"           // Core SDK
-    "github.com/user/traceway/traceway_gin"  // Gin middleware
-)
-```
-
-### Connection String Format
-```
-<project_token>@<server_url>
-
-Examples:
-abc123@http://localhost:8082/api/report
-abc123@https://traceway.example.com/api/report
-```
-
-### Architecture
-
-#### Ring Buffer Batching
-The SDK uses a ring buffer to batch telemetry data:
-1. Data collected into current "frame" (transactions, exceptions, metrics)
-2. Frame rotates every 5 seconds (configurable via `WithCollectionInterval`)
-3. Completed frames uploaded async via HTTP POST
-4. Failed uploads retry with exponential backoff
-
-#### Data Types Collected
-- **Transactions**: HTTP requests (endpoint, duration, status code)
-- **Exceptions**: Errors/panics with full stack traces
-- **Metrics**: System metrics (CPU, memory, Go runtime)
-
-### Gin Middleware Integration
-
-```go
-package main
-
-import (
-    "github.com/gin-gonic/gin"
-    "traceway"
-    "traceway/traceway_gin"
-)
-
-func main() {
-    router := gin.Default()
-
-    // Initialize with app name and connection string
-    traceway_gin.Use(router, "myapp", "token@http://localhost:8082/api/report")
-
-    // Or with options
-    traceway_gin.Use(router, "myapp", "token@http://localhost:8082/api/report",
-        traceway.WithDebug(true),
-        traceway.WithCollectionInterval(10 * time.Second),
-    )
-
-    router.GET("/api/users", getUsers)
-    router.Run(":8080")
-}
-```
-
-The middleware automatically:
-- Tracks request duration and status code
-- Captures endpoint as `"METHOD /path"` (e.g., `"GET /api/users"`)
-- Recovers from panics and reports them as exceptions
-- Attaches request scope for contextual tags
-
-### Capture Methods
-
-#### Exceptions
-```go
-// Basic capture
-traceway.CaptureException(err)
-
-// With additional scope
-traceway.CaptureExceptionWithScope(err, scope)
-
-// Panic recovery (use in defer)
-defer traceway.Recover()
-
-// Recover with custom scope
-defer traceway.RecoverWithScope(scope)
-```
-
-#### Metrics
-```go
-// Capture custom metric
-traceway.CaptureMetric("custom.metric.name", 42.0)
-
-// Metrics are batched and sent with the next frame
-```
-
-#### Transactions (Manual)
-```go
-// For non-HTTP transactions or custom tracking
-txn := traceway.StartTransaction("operation_name")
-defer txn.End()
-
-// Add segments for sub-operations
-seg := txn.StartSegment("database_query")
-// ... do work ...
-seg.End()
-```
-
-#### Tasks and Segments
-```go
-// Capture a task with duration
-traceway.CaptureTask("background_job", startTime, endTime, nil)
-
-// Measure a function
-result := traceway.MeasureTask("compute", func() interface{} {
-    return heavyComputation()
-})
-
-// Segments within tasks
-traceway.CaptureSegment(taskID, "subtask", startTime, endTime)
-```
-
-### Scope System
-
-Scopes attach contextual tags to exceptions and transactions.
-
-#### Global Scope
-```go
-// Configure tags that apply to all telemetry
-traceway.ConfigureScope(func(s *traceway.Scope) {
-    s.SetTag("environment", "production")
-    s.SetTag("version", "1.2.3")
-    s.SetTag("region", "us-east-1")
-})
-```
-
-#### Request Scope (Gin)
-```go
-func handler(c *gin.Context) {
-    // Get request-scoped scope from Gin context
-    scope := traceway_gin.GetScopeFromGin(c)
-
-    // Tags only apply to this request
-    scope.SetTag("user_id", userID)
-    scope.SetTag("tenant", tenantID)
-
-    // Any exceptions captured in this request will include these tags
-}
-```
-
-#### Scope Methods
-```go
-scope.SetTag("key", "value")      // Set a single tag
-scope.SetTags(map[string]string{  // Set multiple tags
-    "key1": "value1",
-    "key2": "value2",
-})
-scope.SetUser(userID)             // Shorthand for user_id tag
-scope.SetExtra("key", anyValue)   // Set extra data (serialized to JSON)
-```
-
-### Configuration Options
-
-```go
-traceway.Init(appName, connectionString,
-    // Debug mode - logs all telemetry to stdout
-    traceway.WithDebug(true),
-
-    // Max frames to keep in ring buffer (default: 20)
-    traceway.WithMaxCollectionFrames(20),
-
-    // How often to rotate frames (default: 5s)
-    traceway.WithCollectionInterval(5 * time.Second),
-
-    // HTTP upload timeout (default: 3s)
-    traceway.WithUploadTimeout(3 * time.Second),
-
-    // Metric collection interval (default: 30s)
-    traceway.WithMetricInterval(30 * time.Second),
-
-    // Disable automatic metric collection
-    traceway.WithMetricsDisabled(),
-
-    // Custom HTTP transport
-    traceway.WithTransport(customTransport),
-)
-```
-
-### Default Collected Metrics
-
-| Metric | Description | Unit |
-|--------|-------------|------|
-| `cpu.used_pcnt` | CPU usage percentage | % |
-| `mem.used` | Memory usage | MB |
-| `mem.used_pcnt` | Memory usage percentage | % |
-| `go.go_routines` | Active goroutine count | count |
-| `go.heap_objects` | Heap object count | count |
-| `go.num_gc` | Total GC cycles | count |
-| `go.gc_pause` | Last GC pause time | nanoseconds |
+The `/api/report` endpoint below still exists and is still served. The browser and mobile SDKs
+(`@tracewayapp/*`, the iOS and Android libraries, Flutter) speak it, and the backend uses it to report
+its own telemetry. Keep this section accurate for those clients.
 
 ### Data Format (Frame)
 
-The SDK sends data as gzipped JSON. The wire shape is `ReportRequest` in `backend/app/controllers/clientcontrollers/client.controller.go` wrapping `CollectionFrame` from `backend/app/models/clientmodels/`:
+Clients send data as gzipped JSON. The wire shape is `ReportRequest` in `backend/app/controllers/clientcontrollers/client.controller.go` wrapping `CollectionFrame` from `backend/app/models/clientmodels/`:
 
 ```json
 {
@@ -1630,18 +1446,24 @@ type PaginationParams struct {
 
 ### Adding a New Framework
 
-Every framework addition touches multiple files across backend, frontend, and docs. Use this checklist to avoid missing any:
+**Backends do not get a new framework value.** OpenTelemetry is the single backend integration path, and `opentelemetry` is the only backend option in the project-creation picker (plus the preselected default). A new backend language or web framework is a *documentation and Connection-page* change, never a new project framework:
 
-1. **Backend** — `backend/app/controllers/project.controller.go`: Add to `validFrameworks` map and update the validation error message
-2. **Frontend state** — `frontend/src/lib/state/projects.svelte.ts`: Add to `Framework` type union and `FRAMEWORK_LABELS` map
-3. **Frontend combobox** — `frontend/src/lib/components/framework-combobox.svelte`: Add entry with correct group (Go / JavaScript / PHP / etc.)
-4. **Frontend icon** — `frontend/src/lib/components/framework-icon.svelte`: Add icon mapping for the new framework value
-5. **Framework code** — `frontend/src/lib/utils/framework-code.ts`: Add install command, integration code snippet, label, code language, and testing routes
-6. **Connection page** — `frontend/src/routes/connection/+page.svelte`: Add highlight language mapping and install description
-7. **Dashboard page** — `frontend/src/routes/+page.svelte`: Add highlight language mapping
-8. **Docs sidebar** — `docs/pages/client/_meta.json`: Add navigation entry
-9. **Docs SDK selector** — `docs/components/SdkContext.jsx`: Add to `SDK_OPTIONS` array and `PATH_SDK_MAP` object
-10. **Docs framework picker** — `docs/components/FrameworkPicker.jsx`: Add card to `FRAMEWORKS` array
-11. **Docs icon** — `docs/public/`: Add framework icon (PNG, ~45x45)
-12. **Docs page** — `docs/pages/client/<framework>/`: Create `_meta.json` and `index.mdx`
-13. **Docs OTel language table** — `docs/pages/client/otel/index.mdx`: Add row if the framework uses OTLP
+1. **Connection page targets** — `frontend/src/lib/utils/otel-setup.ts`: add the framework to the matching `OTEL_TARGETS` language entry (or add a new language target) and its setup steps
+2. **Docs guide** — `docs/pages/client/otel/<framework>/`: create `_meta.json` and `index.mdx`, then list it in `docs/pages/client/otel/_meta.json` and the "Next Steps" block of `docs/pages/client/otel/index.mdx`
+3. **Docs OTel language table** — `docs/pages/client/otel/index.mdx`: add a row
+4. **Docs framework picker** — nothing to do. `docs/components/FrameworkPicker.jsx` carries exactly one backend card, **OpenTelemetry**, pointing at `/client/otel`, so it mirrors the dashboard's project-creation picker. Do not add a per-framework backend card; the guide is discovered from `/client/otel` instead.
+5. **Combobox search keywords** — `frontend/src/lib/components/framework-combobox.svelte`: append the name to the OpenTelemetry entry's `keywords` so searching for it still finds the right option
+6. **README** — add to the supported-frameworks table if it warrants a row
+
+Only a **browser or mobile** framework needs a real new framework value, because those use platform SDKs with their own Connection-page content:
+
+1. **Backend** — `backend/app/controllers/project.controller.go`: add to `validFrameworks` and update the validation error message
+2. **Frontend state** — `frontend/src/lib/state/projects.svelte.ts`: add to the `Framework` union, `FRAMEWORK_LABELS`, and `MOBILE_FRAMEWORKS`/`FRONTEND_FRAMEWORKS`
+3. **Frontend combobox** — `frontend/src/lib/components/framework-combobox.svelte`: add an entry to the `Browser` or `Mobile` group with `keywords`
+4. **Frontend icon** — `frontend/src/lib/components/framework-icon.svelte`: add the icon mapping
+5. **Framework code** — `frontend/src/lib/utils/framework-code.ts`: add install command, integration snippet, label, code language, and testing routes
+6. **Connection page** — `frontend/src/routes/connection/+page.svelte`: add highlight language mapping and install description
+7. **Dashboard page** — `frontend/src/routes/+page.svelte`: add highlight language mapping
+8. **Docs** — `docs/pages/client/<framework>/`, `docs/pages/client/_meta.json`, `SDK_OPTIONS` + `FOLDER_SDK` in `docs/components/SdkContext.jsx`, `SDK_VISIBILITY` in `docs/theme.config.jsx`, `SDK_QUICK_START` in `docs/components/SdkSelector.jsx`, and a `FrameworkPicker.jsx` card
+
+Values removed from the picker (`gin`, `fiber`, `chi`, `fasthttp`, `stdlib`, `custom`, `nextjs`, `nestjs`, `express`, `remix`, `hono`, `cloudflare`, `symfony`, `laravel`, `django`) stay valid in `validFrameworks` and in `FRAMEWORK_LABELS` — existing projects still carry them and must keep rendering.

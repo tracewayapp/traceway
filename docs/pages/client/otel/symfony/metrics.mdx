@@ -1,0 +1,220 @@
+# Metrics
+
+Metrics are off by default in the bundle. This page covers turning on the automatic ones, and recording your own counters, histograms, gauges, and up/down counters.
+
+Everything here needs `OTEL_METRICS_EXPORTER=otlp` in `.env`. That is already in the [Quick Start](/client/otel/symfony) env block.
+
+## Turn Metrics On
+
+`metrics.enabled` is the master switch. Each subsystem then has its own toggle, so you only pay for what you want:
+
+```yaml
+# config/packages/open_telemetry.yaml
+open_telemetry:
+    metrics:
+        enabled: true
+        http_server:
+            enabled: true
+        http_client:
+            enabled: true
+        messenger:
+            enabled: true
+        doctrine:
+            enabled: true
+```
+
+Enabling a subsystem without `metrics.enabled: true` is a configuration error and fails at boot, so you cannot half-configure this by accident.
+
+With `http_server` on, these arrive without any code:
+
+| Metric | Kind | What it measures |
+|---|---|---|
+| `http.server.request.duration` | Histogram | Request latency, tagged with `http.route` and `http.response.status_code` |
+| `http.server.active_requests` | UpDownCounter | Requests currently in flight |
+| `http.server.request.body.size` | Histogram | Request body bytes |
+| `http.server.response.body.size` | Histogram | Response body bytes |
+
+The other subsystems add `messaging.process.duration` and `messaging.client.consumed.messages` for Messenger, `db.client.operation.duration` for Doctrine, and `http.client.request.duration` for outgoing HttpClient calls.
+
+Traceway splits every histogram into an `.avg` and a `.count` series, so `http.server.request.duration` shows up in the dashboard as `http.server.request.duration.avg` and `http.server.request.duration.count`. See [OTel metrics](/client/otel/metrics#histogram-handling).
+
+## Recording Your Own Metrics
+
+Inject `MeterRegistryInterface`. It hands you cached instruments, so calling `counter('orders.created')` twice returns the same instrument rather than creating a second one:
+
+```php
+// src/Service/OrderService.php
+namespace App\Service;
+
+use App\Entity\Order;
+use Traceway\OpenTelemetryBundle\Metrics\MeterRegistryInterface;
+
+class OrderService
+{
+    public function __construct(
+        private readonly MeterRegistryInterface $metrics,
+    ) {}
+
+    public function createOrder(array $items): Order
+    {
+        $order = $this->doCreateOrder($items);
+
+        $this->metrics->counter('orders.created', 'orders')->add(1, ['plan' => $order->plan]);
+
+        return $order;
+    }
+}
+```
+
+This service only exists when `metrics.enabled: true`. If you leave metrics off, use `Globals::meterProvider()` instead (see the bottom of this page).
+
+### Counter
+
+Counters only go up. Use them for totals: orders placed, emails sent, cache hits.
+
+```php
+$orders = $this->metrics->counter('orders.created', 'orders', 'Total orders created');
+
+$orders->add(1);
+$orders->add(1, ['plan' => 'pro', 'region' => 'eu']);
+```
+
+The array is the attribute set. Each distinct combination becomes its own series, so keep the values low cardinality. `plan` and `region` are fine, a customer id is not.
+
+### Histogram
+
+Histograms track a distribution: durations, payload sizes, item counts per batch.
+
+```php
+$duration = $this->metrics->histogram('order.processing_ms', 'ms', 'Order processing time');
+
+$start = hrtime(true);
+$this->processOrder($order);
+$duration->record((hrtime(true) - $start) / 1e6);
+```
+
+### Gauge
+
+Gauges are point-in-time readings that can go up or down. Record the current value whenever you know it:
+
+```php
+$this->metrics->gauge('queue.depth', 'items', 'Pending jobs')
+    ->record($this->queue->count(), ['queue' => 'async']);
+```
+
+### Up/Down Counter
+
+Use an up/down counter when you want to track a value by its changes rather than its absolute reading, such as items currently being processed:
+
+```php
+$active = $this->metrics->upDownCounter('jobs.active', 'jobs', 'Jobs in flight');
+
+$active->add(1);
+try {
+    $this->run($job);
+} finally {
+    $active->add(-1);
+}
+```
+
+## Grouping Related Instruments
+
+Rather than looking up instruments by string all over the codebase, declare them once in a small service:
+
+```php
+// src/Telemetry/AppMetrics.php
+namespace App\Telemetry;
+
+use OpenTelemetry\API\Metrics\CounterInterface;
+use OpenTelemetry\API\Metrics\HistogramInterface;
+use Traceway\OpenTelemetryBundle\Metrics\MeterRegistryInterface;
+
+class AppMetrics
+{
+    public readonly CounterInterface $ordersCreated;
+    public readonly HistogramInterface $orderProcessingMs;
+    public readonly CounterInterface $paymentSuccess;
+    public readonly CounterInterface $paymentFailed;
+
+    public function __construct(MeterRegistryInterface $metrics)
+    {
+        $this->ordersCreated = $metrics->counter('orders.created', 'orders');
+        $this->orderProcessingMs = $metrics->histogram('orders.processing_ms', 'ms');
+        $this->paymentSuccess = $metrics->counter('payments.success', 'payments');
+        $this->paymentFailed = $metrics->counter('payments.failed', 'payments');
+    }
+}
+```
+
+Then inject `AppMetrics` wherever you need it:
+
+```php
+// src/Service/PaymentService.php
+namespace App\Service;
+
+use App\Entity\Order;
+use App\Telemetry\AppMetrics;
+
+class PaymentService
+{
+    public function __construct(
+        private readonly AppMetrics $metrics,
+    ) {}
+
+    public function processPayment(Order $order): void
+    {
+        $start = hrtime(true);
+
+        try {
+            $this->gateway->charge($order->total);
+            $this->metrics->paymentSuccess->add(1, ['plan' => $order->plan]);
+        } catch (\Throwable $e) {
+            $this->metrics->paymentFailed->add(1, ['plan' => $order->plan]);
+            throw $e;
+        } finally {
+            $this->metrics->orderProcessingMs->record((hrtime(true) - $start) / 1e6);
+        }
+    }
+}
+```
+
+## Naming Conventions
+
+Use dot-separated names, lowercase, with the subject first:
+
+```php
+// Good
+$metrics->counter('orders.created');
+$metrics->histogram('db.query_ms');
+$metrics->counter('cache.hits');
+
+// Bad
+$metrics->counter('created');       // too vague
+$metrics->counter('orderCount');    // inconsistent style
+```
+
+Do not prefix names with your service name. Traceway already separates series by service through the OTel resource, which comes from `OTEL_SERVICE_NAME`.
+
+## Without the Bundle's Registry
+
+If you want custom metrics but do not want to turn `metrics.enabled` on, go through the SDK's global meter provider directly. This works whatever the bundle config says, because it never touches the bundle:
+
+```php
+use OpenTelemetry\API\Globals;
+
+$meter = Globals::meterProvider()->getMeter('app');
+
+$orders = $meter->createCounter('orders.created', 'orders', 'Total orders created');
+$orders->add(1, ['plan' => 'pro']);
+```
+
+An observable gauge is also available on this path. Its callback runs at export time, which suits values you can read on demand:
+
+```php
+$meter->createObservableGauge('cache.entries', 'items', 'Cache entry count')
+    ->observe(function ($observer) {
+        $observer->observe($this->cache->getStats()['entries']);
+    });
+```
+
+Register observable gauges once, in a service constructor, not on every request. Each call adds another callback.

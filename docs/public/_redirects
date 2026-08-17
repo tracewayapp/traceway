@@ -1,0 +1,34 @@
+# OTel-based backend guides moved under /client/otel when the backend docs were
+# consolidated onto one OpenTelemetry path. Keep these until the old URLs stop
+# showing up in referrers.
+/client/node-sdk            /client/otel/nodejs            301
+/client/node-sdk/*          /client/otel/nodejs/:splat     301
+/client/nestjs              /client/otel/nestjs            301
+/client/nestjs/*            /client/otel/nestjs/:splat     301
+/client/nextjs              /client/otel/nextjs            301
+/client/nextjs/*            /client/otel/nextjs/:splat     301
+/client/hono                /client/otel/hono              301
+/client/hono/*              /client/otel/hono/:splat       301
+/client/cloudflare          /client/otel/cloudflare        301
+/client/cloudflare/*        /client/otel/cloudflare/:splat 301
+/client/symfony             /client/otel/symfony           301
+/client/symfony/*           /client/otel/symfony/:splat    301
+/client/laravel             /client/otel/laravel           301
+/client/laravel/*           /client/otel/laravel/:splat    301
+/client/django              /client/otel/django            301
+/client/django/*            /client/otel/django/:splat     301
+
+# The native Go SDK was retired. OpenTelemetry is the one Go integration path,
+# so every Go SDK page now lands on the OpenTelemetry overview.
+/client/sdk                    /client/otel  301
+/client/sdk/*                  /client/otel  301
+/client/gin-middleware         /client/otel  301
+/client/gin-middleware/*       /client/otel  301
+/client/chi-middleware         /client/otel  301
+/client/chi-middleware/*       /client/otel  301
+/client/fiber-middleware       /client/otel  301
+/client/fiber-middleware/*     /client/otel  301
+/client/fasthttp-middleware    /client/otel  301
+/client/fasthttp-middleware/*  /client/otel  301
+/client/http-middleware        /client/otel  301
+/client/http-middleware/*      /client/otel  301

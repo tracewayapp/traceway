@@ -1,6 +1,6 @@
 # Capacity & Self-Monitoring
 
-Traceway's backend can monitor itself with the same Go SDK your applications use. When enabled, the server continuously reports ingestion pressure, ClickHouse health, cache sizes, and process resource usage into a regular Traceway project — so you can dashboard them, and more importantly, alert on them before you hit a wall.
+Traceway's backend can monitor itself. When enabled, the server continuously reports ingestion pressure, ClickHouse health, cache sizes, and process resource usage into a regular Traceway project — so you can dashboard them, and more importantly, alert on them before you hit a wall.
 
 This page lists every self-monitoring metric, recommended alert thresholds, and a decision tree for the three scaling questions that matter in production: **do I scale ClickHouse, do I scale the backend server, or do I put Kafka in front of ingestion?**
 
@@ -16,7 +16,7 @@ MONITORING_TRACEWAY_URL="<project_token>@https://your-traceway-host/api/report"
 That single variable turns everything on:
 
 - Every HTTP request to the backend is captured as a transaction (so endpoint latency/error-rate alert rules work on `POST /api/report` out of the box).
-- The Go SDK reports runtime metrics every 30s: `cpu.used_pcnt`, `mem.used`, `mem.total`, `go.go_routines`, `go.heap_objects`, `go.num_gc`, `go.gc_pause`.
+- Runtime metrics are reported every 30s: `cpu.used_pcnt`, `mem.used`, `mem.total`, `go.go_routines`, `go.heap_objects`, `go.num_gc`, `go.gc_pause`.
 - The backend reporters described below start emitting `traceway.*` metrics.
 
 Note: `mem.used` is Go **heap** memory only. The real OOM-relevant number is `traceway.proc.rss_mb` (resident set size, Linux only).

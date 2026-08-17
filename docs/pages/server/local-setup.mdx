@@ -126,25 +126,16 @@ The project token is used by the SDK to send telemetry data.
 
 ## Connecting Your Application
 
-Once you have a project token, you can connect your Go application:
+Once you have a project token, point your application's OpenTelemetry exporter at the local instance. The endpoint is `http://localhost:8082/api/otel` and the token goes on the `Authorization` header:
 
-```go
-tracewaygin "go.tracewayapp.com/tracewaygin"
-
-func main() {
-    router := gin.Default()
-
-    // Replace with your project token
-    router.Use(tracewaygin.New(
-        "your_project_token@http://localhost:8082/api/report",
-    ))
-
-    router.GET("/", handler)
-    router.Run(":8080")
-}
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:8082/api/otel
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer your_project_token"
+export OTEL_SERVICE_NAME=my-service
 ```
 
-See the [SDK Reference](/client/sdk) for detailed SDK usage.
+See [OpenTelemetry](/client/otel) for the full setup, including the per-framework guides.
 
 ## Troubleshooting
 

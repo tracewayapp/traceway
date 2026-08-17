@@ -1,0 +1,390 @@
+# Django
+
+The official [`opentelemetry-instrumentation-django`](https://github.com/open-telemetry/opentelemetry-python-contrib/tree/main/instrumentation/opentelemetry-instrumentation-django) package (from `opentelemetry-python-contrib`) automatically instruments your Django application and exports traces, metrics, and logs to Traceway's OTLP endpoints. Setup is four steps: install the packages, set the environment variables, add one small middleware so endpoint names come out right, and launch through the OTel agent.
+
+## Prerequisites
+
+- Python 3.9+. On Python 3.9 `pip` installs the last release that still supported it (`opentelemetry-instrumentation-*` 0.62b1). Everything on this page works there. Use Python 3.10 or newer to get the current releases.
+- Django 4.2, 5.x or 6.x
+- pip
+- A Traceway project (create one in the dashboard)
+
+## Step 1: Install Packages
+
+```bash
+pip install \
+    opentelemetry-distro \
+    opentelemetry-exporter-otlp \
+    opentelemetry-instrumentation-django
+```
+
+Then let the OTel bootstrapper auto-install the rest of the instrumentation that matches your installed dependencies (Postgres / MySQL / Redis / `requests` / `urllib3` / Celery / logging / …):
+
+```bash
+opentelemetry-bootstrap -a install
+```
+
+`opentelemetry-bootstrap` inspects your `site-packages` and only installs instrumentation packages that have a matching library present. Re-run it whenever you add or remove dependencies.
+
+## Step 2: Configure Environment Variables
+
+Set these in the **process environment**: your container `env:` block, a systemd `Environment=` line, a Procfile, or a plain shell `export`. `opentelemetry-instrument` reads them at interpreter startup, so a `.env` file that `settings.py` loads is always too late.
+
+```bash
+# Required. The agent instruments Django at interpreter startup, which is before
+# manage.py / wsgi.py get a chance to set this. Leave it out and Django boots
+# with empty settings. See Step 4 for what that looks like.
+DJANGO_SETTINGS_MODULE=myproject.settings
+
+OTEL_SERVICE_NAME=my-django-app
+OTEL_TRACES_EXPORTER=otlp
+OTEL_METRICS_EXPORTER=otlp
+OTEL_LOGS_EXPORTER=otlp
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_EXPORTER_OTLP_ENDPOINT=https://your-traceway-instance.com/api/otel
+OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer%20your-project-token
+
+# Puts otelTraceID / otelSpanID on every LogRecord so you can print them in your
+# own console or file format. See the Logs page.
+OTEL_PYTHON_LOG_CORRELATION=true
+
+# Optional. Metrics are exported every 60s by default. Lower it while testing.
+# OTEL_METRIC_EXPORT_INTERVAL=10000
+```
+
+If you keep these in a file for local development, source the file into your shell before launching:
+
+```bash
+set -a; . ./.env; set +a
+```
+
+Your Traceway dashboard includes a **Connection** page with a ready-made config snippet and your project token. Go to **Connection** in the sidebar to grab it.
+
+> **Note:** `OTEL_EXPORTER_OTLP_HEADERS` is a comma-separated list of `key=value` pairs, so the `Bearer ` prefix's space must be URL-encoded as `%20`. The exporter URL-decodes header values automatically.
+
+> **Do not set `OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true`.** It is deprecated as of `opentelemetry-instrumentation-logging` 0.65b0. Setting it forces the SDK's deprecated log handler and prints a warning on every process start, which then gets shipped to Traceway as noise. `OTEL_LOGS_EXPORTER=otlp` is all you need. See [Logs](/client/otel/django/logs).
+
+## Step 3: Add the Route Middleware (Required)
+
+Django sets `http.route` to the URLconf pattern **without** a leading slash (`api/users/<int:user_id>/`). Traceway only accepts an `http.route` that starts with `/`, so without this step every endpoint shows up with a doubled method and no slash, like `GET GET api/users/<int:user_id>/`, and grouping is fragile.
+
+Create one small middleware that normalizes the route:
+
+```python
+# myproject/traceway_route.py
+from opentelemetry import trace
+
+
+class TracewayRouteMiddleware:
+    """Give http.route a leading slash so Traceway groups Django routes."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        match = getattr(request, "resolver_match", None)
+        route = getattr(match, "route", None) if match else None
+        if route is not None:
+            trace.get_current_span().set_attribute("http.route", "/" + route.lstrip("/"))
+        return response
+```
+
+Add it to `MIDDLEWARE` in `settings.py`. Position does not matter as long as it is in the list, because the OTel middleware is injected above it at index `0` and its span is still active when yours runs:
+
+```python
+# myproject/settings.py
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "myproject.traceway_route.TracewayRouteMiddleware",
+]
+```
+
+With this in place, `/api/users/11/`, `/api/users/12/` and `/api/users/13/` all land on a single `GET /api/users/<int:user_id>/` row in Traceway.
+
+On ASGI, a sync-only middleware makes Django adapt the whole chain through a thread. If you run async Django, use the async-capable form instead (Django 4.2+, which ships `markcoroutinefunction` in `asgiref`):
+
+```python
+# myproject/traceway_route.py
+from asgiref.sync import iscoroutinefunction, markcoroutinefunction
+from opentelemetry import trace
+
+
+def _stamp_route(request):
+    match = getattr(request, "resolver_match", None)
+    route = getattr(match, "route", None) if match else None
+    if route is not None:
+        trace.get_current_span().set_attribute("http.route", "/" + route.lstrip("/"))
+
+
+class TracewayRouteMiddleware:
+    """Give http.route a leading slash so Traceway groups Django routes."""
+
+    async_capable = True
+    sync_capable = True
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+        if iscoroutinefunction(self.get_response):
+            markcoroutinefunction(self)
+
+    def __call__(self, request):
+        if iscoroutinefunction(self.get_response):
+            return self.__acall__(request)
+        response = self.get_response(request)
+        _stamp_route(request)
+        return response
+
+    async def __acall__(self, request):
+        response = await self.get_response(request)
+        _stamp_route(request)
+        return response
+```
+
+> **Why a middleware and not a `response_hook`?** The instrumentation's `response_hook` never fires when you launch through `opentelemetry-instrument`, because the agent has already instrumented Django and a second `.instrument(...)` call is a silent no-op. A middleware works with the agent as-is. If you do need a hook for other reasons, see [Request & Response Hooks](#request--response-hooks) below.
+
+## Step 4: Launch Django Through the OTel Agent
+
+Don't run `manage.py runserver` (or your WSGI/ASGI server) directly. Wrap it with `opentelemetry-instrument` so the agent can patch Django, the database driver, and the HTTP client libraries before your app imports them:
+
+```bash
+# Required: the agent instruments Django before manage.py / wsgi.py can set this.
+export DJANGO_SETTINGS_MODULE=myproject.settings
+
+# Development
+opentelemetry-instrument python manage.py runserver
+
+# Production (Gunicorn / WSGI)
+opentelemetry-instrument gunicorn myproject.wsgi:application
+
+# Production (Uvicorn / ASGI)
+opentelemetry-instrument uvicorn myproject.asgi:application
+```
+
+`DjangoInstrumentor` then injects its middleware at index `0` of the `MIDDLEWARE` list at startup, so every inbound HTTP request is traced.
+
+> **If you forget `DJANGO_SETTINGS_MODULE` the app will not boot.** The agent runs from `sitecustomize` at interpreter startup, before `manage.py`'s `main()` (or `wsgi.py`'s module body) runs `os.environ.setdefault("DJANGO_SETTINGS_MODULE", ...)`. The instrumentor finds no settings, calls `settings.configure()` with empty defaults, and your real `settings.py` is ignored from then on. `runserver` fails with `CommandError: You must set settings.ALLOWED_HOSTS if DEBUG is False.` even though your file says `DEBUG = True`, and Gunicorn boots but 500s every request with `AttributeError: module 'django.conf.global_settings' has no attribute 'ROOT_URLCONF'`.
+
+> **Want to instrument manually instead of via the agent?** You can call `DjangoInstrumentor().instrument()` from a tiny entrypoint module (e.g. `myproject/otel.py`) that you import at the top of `manage.py` and `wsgi.py`. See [Manual Initialization](#manual-initialization) below. Using `opentelemetry-instrument` is strongly preferred because it also wires up exporters and resource detection for you.
+
+## What Gets Captured
+
+Once configured, the Django instrumentation automatically captures:
+
+- **Endpoints**: every HTTP request with method and route template, set as `http.route`. Django writes the raw URLconf pattern with no leading slash (`api/users/<int:user_id>/`), which is why [Step 3](#step-3-add-the-route-middleware-required) is required. With it, endpoints read `GET /api/users/<int:user_id>/`.
+- **Status codes**: 2xx, 4xx, 5xx responses
+- **Exceptions**: unhandled exceptions are recorded on the request span via `span.record_exception()` and the span is marked `ERROR`. The response is a 500 and the error appears under **Issues** with the full Python traceback.
+- **Active request counter**: concurrent in-flight request count, exported as `http.server.active_requests`
+- **Duration histogram**: request latency, exported as `http.server.duration` (Traceway stores it as `http.server.duration.avg` and `http.server.duration.count`). Set `OTEL_SEMCONV_STABILITY_OPT_IN=http` if you want the stable name `http.server.request.duration` instead.
+
+And once `opentelemetry-bootstrap -a install` has been run, the matching auto-instrumentations also capture:
+
+| Library | What it captures |
+|---------|------------------|
+| `psycopg2` / `psycopg` / `mysqlclient` / `pymysql` / `sqlite3` | Every DB query: SQL statement, duration, error |
+| `redis` / `aioredis` | Redis commands (GET/SET/…) |
+| `requests` / `urllib` / `urllib3` / `httpx` | Outbound HTTP (propagates W3C trace context) |
+| `celery` | Producer + consumer spans for queued tasks. See [Tasks](/client/otel/django/tasks) |
+| `logging` | Standard `logging` records as OTel logs (attaches a handler to the root logger, needs `OTEL_LOGS_EXPORTER=otlp`) |
+| `boto3` / `pika` / `kafka-python` / `pymongo` / `elasticsearch` / … | Bundled in `opentelemetry-bootstrap`'s registry; auto-installed if the library is present |
+
+Disable any instrumentation you don't want by uninstalling its package, or by setting the matching `OTEL_PYTHON_DISABLED_INSTRUMENTATIONS` env var:
+
+```bash
+# Comma-separated entry-point names — e.g. disable Redis + outbound requests
+OTEL_PYTHON_DISABLED_INSTRUMENTATIONS=redis,requests
+```
+
+## How Traceway Reads Your Spans
+
+Traceway turns each incoming span into an endpoint, a task, an AI trace, a child in the waterfall, or nothing. Knowing the rules saves you from writing a span that is silently discarded.
+
+| Your span | Shows up as |
+|---|---|
+| Root SERVER span with `http.route` or `http.method` | **Endpoint**, named `METHOD route`. The route must start with `/` |
+| Any CONSUMER-kind span (Celery `run/...`) | **Task**, named after the span |
+| Root INTERNAL span with a `console.command` attribute | **Task**, named after the span |
+| Any non-root span | A child in the trace waterfall |
+| Any span with `gen_ai.*` attributes | **AI trace** |
+| **A root INTERNAL span with none of the above** | **Nothing. It is dropped, with no error** |
+
+That last row is the one to remember. A bare `tracer.start_as_current_span("my.job")` at the top of a script, a cron entry, or a management command creates a root INTERNAL span, and Traceway discards it. Pass `kind=SpanKind.CONSUMER` to make it a Task. See [Tasks](/client/otel/django/tasks#cron-jobs-scripts-and-management-commands).
+
+## Tuning the Django Instrumentation
+
+The middleware reads a handful of environment variables at startup:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `OTEL_PYTHON_DJANGO_INSTRUMENT` | `True` | Set to `False` to disable Django instrumentation while keeping the rest. |
+| `OTEL_PYTHON_DJANGO_EXCLUDED_URLS` | _(unset)_ | Comma-separated regexes. Matching paths are not traced. Example: `healthcheck,client/.*/info`. |
+| `OTEL_PYTHON_DJANGO_TRACED_REQUEST_ATTRS` | _(unset)_ | Comma-separated `HttpRequest` attributes to attach as span attributes (e.g. `path_info,content_type`). |
+| `OTEL_PYTHON_DJANGO_MIDDLEWARE_POSITION` | `0` | Index in the `MIDDLEWARE` list where the OTel middleware is inserted. |
+| `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST` | _(unset)_ | Request headers to capture (regex list). Captured as `http.request.header.<lowercased_name>`. |
+| `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_RESPONSE` | _(unset)_ | Response headers to capture (regex list). |
+| `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SANITIZE_FIELDS` | _(unset)_ | Regexes of header names whose values should be redacted (e.g. `.*session.*,set-cookie`). |
+
+`OTEL_PYTHON_DJANGO_INSTRUMENT` is compared against the exact string `"False"`, so a lowercase `false` will not disable it.
+
+## Request & Response Hooks
+
+Most attribute work is easier in your own middleware, the way [Step 3](#step-3-add-the-route-middleware-required) does it: your middleware runs inside the OTel span, so `trace.get_current_span()` is the request span and you can set anything on it. Use that first.
+
+The instrumentation also supports a `response_hook`, which runs **after** Django middleware has populated `request.user` and `request.session`. There is one catch: under `opentelemetry-instrument` the agent has already instrumented Django, `BaseInstrumentor` is a singleton, and a second `.instrument(...)` call does nothing. The only sign is one line on stderr at startup, `WARNING ... Attempting to instrument while already instrumented`, which is easy to miss. You have to uninstrument first:
+
+```python
+# myproject/otel.py
+from opentelemetry.instrumentation.django import DjangoInstrumentor
+
+
+def response_hook(span, request, response):
+    if not span or not span.is_recording():
+        return
+
+    if hasattr(request, "user") and request.user.is_authenticated:
+        span.set_attribute("enduser.id", request.user.pk)
+        span.set_attribute("enduser.role", request.user.groups.values_list("name", flat=True).first() or "")
+
+    span.set_attribute("http.response.body.size", len(response.content) if hasattr(response, "content") else 0)
+
+
+# Under `opentelemetry-instrument` Django is already instrumented by the time this
+# module is imported, so a bare .instrument(...) is a silent no-op and the hook
+# never fires. Uninstrument first, then re-instrument with the hook.
+DjangoInstrumentor().uninstrument()
+DjangoInstrumentor().instrument(response_hook=response_hook)
+```
+
+Then import this module **before** Django is imported, typically at the very top of `manage.py` / `wsgi.py` / `asgi.py`:
+
+```python
+# manage.py
+import myproject.otel  # noqa: F401  — must come first
+
+# ...standard manage.py body...
+```
+
+Note that a Celery worker never imports `manage.py` or `wsgi.py`, so a hook module only reaches the worker if `myproject/__init__.py` imports it.
+
+> **Why `response_hook` and not `request_hook`?** The `request_hook` runs **before** Django middleware, so middleware-populated attributes like `request.user` are still anonymous when it fires. Use `response_hook` for anything that depends on auth, sessions, or view resolution.
+
+## Manual Initialization
+
+If you can't use the `opentelemetry-instrument` agent (for example you're in a managed environment that forbids wrapping the command line), set up the SDK and instrumentation programmatically. You have to build all three providers yourself, otherwise you get traces but no metrics and no logs:
+
+```python
+# myproject/otel.py
+import logging
+import os
+
+# Must come before the DjangoInstrumentor import below. This module is imported
+# before manage.py sets DJANGO_SETTINGS_MODULE, and without it the instrumentor
+# falls back to empty Django settings and the app will not boot.
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "myproject.settings")
+
+from opentelemetry import metrics, trace  # noqa: E402
+from opentelemetry._logs import set_logger_provider  # noqa: E402
+from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter  # noqa: E402
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter  # noqa: E402
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter  # noqa: E402
+from opentelemetry.instrumentation.django import DjangoInstrumentor  # noqa: E402
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler  # noqa: E402
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor  # noqa: E402
+from opentelemetry.sdk.metrics import MeterProvider  # noqa: E402
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader  # noqa: E402
+from opentelemetry.sdk.resources import Resource  # noqa: E402
+from opentelemetry.sdk.trace import TracerProvider  # noqa: E402
+from opentelemetry.sdk.trace.export import BatchSpanProcessor  # noqa: E402
+
+resource = Resource.create({"service.name": "my-django-app"})
+
+tracer_provider = TracerProvider(resource=resource)
+tracer_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+trace.set_tracer_provider(tracer_provider)
+
+metrics.set_meter_provider(
+    MeterProvider(
+        resource=resource,
+        metric_readers=[PeriodicExportingMetricReader(OTLPMetricExporter())],
+    )
+)
+
+logger_provider = LoggerProvider(resource=resource)
+logger_provider.add_log_record_processor(BatchLogRecordProcessor(OTLPLogExporter()))
+set_logger_provider(logger_provider)
+logging.getLogger().addHandler(LoggingHandler(logger_provider=logger_provider))
+
+DjangoInstrumentor().instrument()
+```
+
+Import this module before Django loads:
+
+```python
+# manage.py
+import myproject.otel  # noqa: F401
+```
+
+The exporter constructors read `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` from the environment, so you still configure them the same way.
+
+You still need the [route middleware from Step 3](#step-3-add-the-route-middleware-required) here. The providers register an `atexit` hook by default, so a clean exit still flushes the last batch.
+
+> **If you also set `LOGGING` in `settings.py`, register the OTel handler there.** Django applies your `LOGGING` dict during `django.setup()`, which happens after this module has run, and a `dictConfig` clears the root logger's handlers first. The `addHandler` line above is wiped and not one log record reaches Traceway. Traces and metrics keep flowing, so nothing looks broken. The agent path does not have this problem, because `opentelemetry-instrumentation-logging` wraps `logging.config.dictConfig` and re-attaches its own handler afterwards. On the manual path, drop the `addHandler` line and list the handler in `LOGGING` instead:
+>
+> ```python
+> # myproject/settings.py
+> LOGGING = {
+>     "version": 1,
+>     "disable_existing_loggers": False,
+>     "handlers": {
+>         "console": {"class": "logging.StreamHandler"},
+>         "otel": {"class": "opentelemetry.sdk._logs.LoggingHandler"},
+>     },
+>     "root": {"handlers": ["console", "otel"], "level": "INFO"},
+> }
+> ```
+>
+> `LoggingHandler` with no arguments uses the global logger provider, which `set_logger_provider(...)` above already installed. Do not add this entry when you launch through `opentelemetry-instrument`. You would then have two OTel handlers on the root logger and every record would arrive in Traceway twice.
+
+## Test Your Integration
+
+Add a test route to verify data is flowing:
+
+```python
+# myapp/views.py
+from django.http import HttpResponse
+
+
+def testing(request):
+    raise RuntimeError("Test error from Traceway integration")
+```
+
+```python
+# myproject/urls.py
+from django.urls import path
+from myapp import views
+
+urlpatterns = [
+    path("testing/", views.testing),
+]
+```
+
+Visit `/testing/` in your browser. The request returns a 500, the endpoint appears as `GET /testing/` with status `500`, and the `RuntimeError` shows up under **Issues** with the full Python traceback.
+
+> **How quickly does data appear?** Spans and logs are batched and flushed within a few seconds. Metrics are exported every **60 seconds** by default, so a brand new custom counter or gauge can take up to a minute to show up. Set `OTEL_METRIC_EXPORT_INTERVAL=10000` (milliseconds) while you are testing.
+>
+> Short-lived processes such as management commands and one-off scripts flush on exit, under `opentelemetry-instrument` and with a hand-built provider alike, because the SDK registers an `atexit` hook. Only an abrupt end such as `os._exit` or `SIGKILL` loses the batch.
+
+## Next Steps
+
+- [Exceptions](/client/otel/django/exceptions): manually capture caught exceptions with context
+- [Spans](/client/otel/django/spans): create custom spans to measure sub-operations
+- [Tasks](/client/otel/django/tasks): trace Celery tasks and Django management commands as background tasks
+- [Metrics](/client/otel/django/metrics): track custom counters, histograms, and gauges with the OTel Metrics API
+- [Logs](/client/otel/django/logs): forward Django + Python `logging` records to Traceway over OTLP
+- [OpenTelemetry docs](/client/otel): how OTel traces, metrics, and logs map to Traceway

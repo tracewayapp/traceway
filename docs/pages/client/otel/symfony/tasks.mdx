@@ -1,0 +1,167 @@
+# Tasks
+
+Traceway's **Tasks** page is where background work shows up, as opposed to HTTP requests, which go to Endpoints. The bundle fills it from two sources with no extra code: Symfony Messenger messages and `bin/console` commands.
+
+## Messenger
+
+Nothing extra to configure. Every consumed message is traced as soon as the bundle is installed.
+
+By default the consumer span is parented to the trace that dispatched it, so the request that dispatched the message and the worker that processed it read as one continuous distributed trace. Traceway captures the message as a Task either way, and marks it with a **Non-root** chip when it was triggered from another trace.
+
+If you would rather have each consumed message start its own independent trace, opt in:
+
+```yaml
+# config/packages/open_telemetry.yaml
+open_telemetry:
+    traces:
+        messenger:
+            root_spans: true
+```
+
+This is mostly a presentation choice. With `root_spans: true` the consumer is a root Task with no chip, and the cross-trace link back to the dispatcher is gone. Without it, the consumer is a non-root Task and the dispatcher to consumer relationship stays visible in the distributed-trace view.
+
+### What Gets Captured
+
+For each consumed message, the bundle records:
+
+- **Span name**: `process <MessageClass>`, for example `process EmailSendMessage`. The dispatch side is `send <MessageClass>`. (Before v3.0 these were `EmailSendMessage process` and `EmailSendMessage publish`. If you are searching for an older name and finding nothing, that is why.)
+- **Span kind**: `CONSUMER`, which is what tells Traceway this is a Task and not a plain internal span
+- **Duration**: total handler execution time
+- **Transport**: `messaging.destination.name`, for example `async`, plus `messaging.system` and `messaging.operation.type`
+- **Errors**: exceptions are recorded with stack traces, the span is marked failed, and the error shows up under Issues
+- **Child spans**: any spans created inside the handler nest under the task span
+
+### Adding Attributes in Handlers
+
+The bundle activates the task span before your handler runs, so `Span::getCurrent()` inside the handler is that task:
+
+```php
+use OpenTelemetry\API\Trace\Span;
+use Symfony\Component\Messenger\Attribute\AsMessageHandler;
+
+#[AsMessageHandler]
+class EmailSendHandler
+{
+    public function __invoke(EmailSendMessage $message): void
+    {
+        $span = Span::getCurrent();
+
+        $span->setAttribute('email.to', $message->to);
+        $span->setAttribute('email.subject', $message->subject);
+
+        $this->mailer->send($message);
+    }
+}
+```
+
+### Child Spans in Handlers
+
+For handlers with distinct sub-operations, inject `TracingInterface` to create child spans. They automatically nest under the task span:
+
+```php
+use OpenTelemetry\API\Trace\SpanKind;
+use Symfony\Component\Messenger\Attribute\AsMessageHandler;
+use Traceway\OpenTelemetryBundle\TracingInterface;
+
+#[AsMessageHandler]
+class PaymentProcessorHandler
+{
+    public function __construct(
+        private readonly TracingInterface $tracing,
+    ) {}
+
+    public function __invoke(PaymentProcessorMessage $message): void
+    {
+        $this->tracing->trace('validate.payment', function () use ($message) {
+            $this->validate($message);
+        }, ['payment.amount' => $message->amount, 'payment.currency' => $message->currency]);
+
+        $this->tracing->trace('charge.gateway', function () use ($message) {
+            $this->chargeGateway($message);
+        }, kind: SpanKind::KIND_CLIENT);
+    }
+}
+```
+
+### Dispatch Tracing
+
+The bundle also traces the dispatch side. When your controller or service dispatches a message, a PRODUCER span named `send <MessageClass>` is created as a child of the current request, and W3C trace context is injected into the message envelope so the consumer links back. With `root_spans: true` the consumer starts an independent trace instead. Either way the consumer lands on the Tasks page.
+
+Logs emitted inside a handler carry the task's trace id, so the Logs tab of a Task shows exactly what that job logged. See [Logs](/client/otel/symfony/logs).
+
+## Console Commands
+
+Every `bin/console` run is traced too, and lands on the Tasks page under the command name:
+
+```
+Task name          Count   Avg
+app:import-orders  12      1.4s
+app:sync-invoices  3       820ms
+```
+
+The span carries `console.command`, `process.exit.code`, `process.pid`, and `process.executable.name`. A command that throws produces both a failed Task and an Issue, which makes this the simplest way to monitor cron jobs.
+
+Add your own attributes the same way as anywhere else:
+
+```php
+namespace App\Command;
+
+use OpenTelemetry\API\Trace\Span;
+use Symfony\Component\Console\Attribute\AsCommand;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\OutputInterface;
+
+#[AsCommand(name: 'app:import-orders')]
+class ImportOrdersCommand extends Command
+{
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        $rows = $this->importer->run();
+
+        Span::getCurrent()->setAttribute('import.rows', $rows);
+
+        return Command::SUCCESS;
+    }
+}
+```
+
+Two commands are excluded by default, because they are long-running workers whose per-message spans are already captured above: `messenger:consume` and `messenger:consume-messages`. Adjust the list if you want to skip noisy commands like `cache:clear`:
+
+```yaml
+# config/packages/open_telemetry.yaml
+open_telemetry:
+    traces:
+        console:
+            enabled: true
+            excluded_commands: ['messenger:consume', 'messenger:consume-messages', 'cache:clear']
+```
+
+## Custom Background Work
+
+If your background work is neither Messenger nor a console command, you have to create the span yourself, and it **must** be `SpanKind::KIND_CONSUMER`:
+
+```php
+use OpenTelemetry\API\Globals;
+use OpenTelemetry\API\Trace\SpanKind;
+use OpenTelemetry\Context\Context;
+
+$tracer = Globals::tracerProvider()->getTracer('app');
+
+$span = $tracer->spanBuilder('nightly.reconcile')
+    ->setParent(Context::getRoot())      // start a fresh trace, not a child of whatever ran before
+    ->setSpanKind(SpanKind::KIND_CONSUMER)
+    ->startSpan();
+$scope = $span->activate();
+
+try {
+    $this->reconcile();
+} finally {
+    $scope->detach();
+    $span->end();
+}
+```
+
+> **A root span with the default `INTERNAL` kind is dropped.** Traceway classifies a span as a Task when its kind is `CONSUMER`, or when it is a root span carrying `console.command`. A root `INTERNAL` span with no HTTP attributes matches neither, so it is discarded on ingest without any error. If you created a background span and it never appeared anywhere in the dashboard, this is almost always why.
+
+Child spans inside the block do not need any of this. They nest under the consumer span and are shown in its trace regardless of their kind.

@@ -40,6 +40,8 @@ Every AI trace records:
 
 AI traces are ingested via the [OpenTelemetry](/client/otel) OTLP/HTTP endpoint. Any span carrying `gen_ai.*` semantic convention attributes is promoted to an AI trace — **regardless of whether it's a root span or a child** of an HTTP request, queue job, or scheduled task. This matters in practice: most LLM calls happen inside a request handler, so the gen_ai span is a child of a SERVER span. Traceway captures both.
 
+One caveat: `gen_ai.*` is checked last. A span that already looks like an endpoint or a task wins first, so a SERVER span with HTTP attributes becomes an Endpoint and a `CONSUMER` span becomes a Task, even when both carry `gen_ai.*`. Neither reaches AI Traces. Put every model call on its own child span and the rule always matches. See [Traces](/client/otel/traces) for the full ordered list.
+
 The data flow:
 
 1. **OTLP span arrives** — From an AI provider broadcast (e.g. [OpenRouter](/client/openrouter)) or your own SDK instrumentation. The span contains `gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.total_cost`, and other standardized attributes.

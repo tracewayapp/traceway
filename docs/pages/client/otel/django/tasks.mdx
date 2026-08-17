@@ -1,0 +1,202 @@
+# Tasks
+
+Django itself doesn't ship a built-in task queue, so most Django apps use **Celery**. The official [`opentelemetry-instrumentation-celery`](https://github.com/open-telemetry/opentelemetry-python-contrib/tree/main/instrumentation/opentelemetry-instrumentation-celery) package auto-traces Celery: when a task is dispatched, a `PRODUCER` span is created; when the worker picks it up, a `CONSUMER` span runs the handler. W3C trace context is propagated through the task headers so the consumer span links back to the dispatch trace. The full lifecycle is visible as one continuous trace in Traceway, and each consumed task appears as a **task** with duration, status, and any child spans.
+
+This page covers Celery (the typical setup), plus cron jobs, scripts and Django management commands. Other Django task systems (RQ, Huey, Django-Q, Dramatiq) follow the same OTel idioms.
+
+## The One Rule to Know First
+
+Traceway turns a span into a **Task** when the span is `CONSUMER` kind, or when it is a root span carrying a `console.command` attribute. A root span with the default `INTERNAL` kind and neither of those is **dropped silently**: no task, no row, no error anywhere.
+
+Celery gets this right for free, because the instrumentation already opens a `CONSUMER` span. Everything you write by hand needs `kind=SpanKind.CONSUMER` at the root, or it produces nothing.
+
+## Celery Setup
+
+`opentelemetry-bootstrap -a install` only installs instrumentation for libraries that are already present, so a project that added Celery after the [Quick Start](/client/otel/django) does not have it yet. Install it directly, or re-run the bootstrapper:
+
+```bash
+pip install opentelemetry-instrumentation-celery
+# or re-run: opentelemetry-bootstrap -a install
+```
+
+Then launch the worker through the agent. That is all that is required:
+
+```bash
+export DJANGO_SETTINGS_MODULE=myproject.settings
+
+opentelemetry-instrument celery -A myproject worker -l info
+opentelemetry-instrument celery -A myproject beat -l info
+```
+
+The same setup applies whether you use `redis`, `rabbitmq`, `sqs`, or `database` brokers.
+
+> **Don't call `CeleryInstrumentor().instrument()` yourself when using the agent.** The agent already did it. `BaseInstrumentor` is a singleton, so a second call is a silent no-op. It would also be the wrong place: the worker's entrypoint is `celery`, so it never imports `manage.py` or `wsgi.py`, and a module you put there is only loaded by the worker if `myproject/__init__.py` imports it (the file that holds `from .celery import app` in the standard Celery-Django layout).
+
+## What Gets Captured
+
+For each Celery task the instrumentation creates two spans:
+
+- **Publish span**: name `apply_async/<task-name>`, `PRODUCER` kind, ended when Celery finishes pushing the payload to the broker.
+- **Run span**: name `run/<task-name>`, `CONSUMER` kind, ended when the handler returns or fails. On a task failure the span records the exception and is marked `STATUS_ERROR`.
+
+The two spans carry different attributes. This is what `opentelemetry-instrumentation-celery` 0.65b0 actually emits:
+
+| Attribute | Producer | Consumer | Value |
+|---|---|---|---|
+| `messaging.destination` | yes | yes | The queue name (e.g. `celery`, `priority-high`) |
+| `messaging.destination_kind` | yes | no | `queue` |
+| `messaging.message.id` | yes | yes | Celery's task UUID (note the dots, not `message_id`) |
+| `messaging.conversation_id` | no | yes | Celery's `root_id`, for chained tasks |
+| `celery.task_name` | yes | yes | Fully-qualified task name (e.g. `myapp.tasks.send_welcome_email`) |
+| `celery.action` | yes | yes | `apply_async` (producer) or `run` (consumer) |
+| `celery.state` | no | yes | Task state on completion: `SUCCESS`, `FAILURE`, `RETRY` |
+| `celery.hostname`, `celery.reply_to`, `celery.delivery_info` | no | yes | Worker and delivery metadata |
+
+There is no `messaging.system` attribute on either span.
+
+W3C trace context is also injected into the task headers, so the run span is linked to the trace where the task was originally dispatched, even if dispatch and execution happen on different services. Any spans you create inside the task body automatically nest under the run span.
+
+## Adding Attributes in Tasks
+
+Since the instrumentation activates the consumer span before your task body runs, use `trace.get_current_span()` to add custom attributes:
+
+```python
+# myapp/tasks.py
+from celery import shared_task
+from opentelemetry import trace
+
+
+@shared_task
+def send_order_email(order_id: int, recipient: str) -> None:
+    span = trace.get_current_span()
+    span.set_attribute("order.id", order_id)
+    span.set_attribute("email.to", recipient)
+
+    # ... business logic ...
+```
+
+## Child Spans in Tasks
+
+For tasks with distinct sub-operations, use the `Tracer` API to create child spans. They automatically nest under the task's run span:
+
+```python
+# myapp/tasks.py
+from celery import shared_task
+from opentelemetry import trace
+
+tracer = trace.get_tracer(__name__)
+
+
+@shared_task
+def process_payment(payment_id: int, amount: float) -> None:
+    with tracer.start_as_current_span("validate.payment") as span:
+        span.set_attribute("payment.id", payment_id)
+        _validate(payment_id)
+
+    with tracer.start_as_current_span("charge.gateway") as span:
+        span.set_attribute("payment.amount", amount)
+        _charge_gateway(payment_id, amount)
+```
+
+## Periodic Tasks (Celery Beat)
+
+Tasks scheduled by Celery Beat run through the same code path as `apply_async`, so they get the same producer + consumer span pair automatically. The producer span is opened by Beat when it dispatches the schedule entry; the consumer span is opened by whichever worker picks the task up.
+
+If you want to attribute beat-dispatched tasks differently in the dashboard, set an attribute on the consumer side:
+
+```python
+@shared_task(bind=True)
+def nightly_cleanup(self) -> None:
+    span = trace.get_current_span()
+    span.set_attribute("celery.scheduled_by", "beat")
+
+    # ... work ...
+```
+
+## Cron Jobs, Scripts and Management Commands
+
+Django management commands run outside the HTTP request cycle, so the Django middleware never opens a root span for them. Unlike Celery tasks, they are **not traced automatically**. You open the root span yourself, and it must be `CONSUMER` kind or Traceway drops it.
+
+```python
+# myapp/management/commands/cleanup_orphans.py
+from django.core.management.base import BaseCommand
+from opentelemetry import trace
+from opentelemetry.trace import SpanKind, Status, StatusCode
+
+tracer = trace.get_tracer(__name__)
+
+
+class Command(BaseCommand):
+    help = "Delete orphaned rows that have no foreign key parent."
+
+    def add_arguments(self, parser):
+        parser.add_argument("--dry-run", action="store_true")
+
+    def handle(self, *args, **options):
+        with tracer.start_as_current_span(
+            "cleanup_orphans",                                # this is the Task name in Traceway
+            kind=SpanKind.CONSUMER,                           # required, or the span is dropped
+            attributes={"console.command": "cleanup_orphans"},
+        ) as span:
+            span.set_attribute("cleanup.dry_run", bool(options["dry_run"]))
+
+            try:
+                with tracer.start_as_current_span("cleanup.scan") as child:
+                    deleted = self._scan_and_delete(options["dry_run"])
+                    child.set_attribute("rows.deleted", deleted)
+            except Exception as exc:
+                span.record_exception(exc)
+                span.set_status(Status(StatusCode.ERROR, str(exc)))
+                raise
+```
+
+Run the command via the OTel agent so the SDK and exporters are configured exactly like the web process, and so the span is flushed when the process exits:
+
+```bash
+export DJANGO_SETTINGS_MODULE=myproject.settings
+opentelemetry-instrument python manage.py cleanup_orphans
+```
+
+The command now appears under **Tasks** as `cleanup_orphans`, with `cleanup.scan` nested underneath it.
+
+Two things are doing work in that snippet:
+
+- `kind=SpanKind.CONSUMER` is what makes it a Task. Leave it out and you get a root `INTERNAL` span, which Traceway discards without an error. The span really is exported by the SDK, it just never becomes a row, so this failure is invisible unless you know to look for it.
+- `console.command` is the second rule that promotes a root span to a Task. Setting both means the span survives either way.
+
+The same pattern covers plain scripts and cron entries that never touch `manage.py`:
+
+```python
+# scripts/nightly_report.py
+import django
+import os
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "myproject.settings")
+django.setup()
+
+from opentelemetry import trace  # noqa: E402
+from opentelemetry.trace import SpanKind  # noqa: E402
+
+tracer = trace.get_tracer(__name__)
+
+
+def main():
+    with tracer.start_as_current_span(
+        "nightly_report",
+        kind=SpanKind.CONSUMER,
+        attributes={"console.command": "nightly_report"},
+    ) as span:
+        rows = build_report()
+        span.set_attribute("report.rows", rows)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+```bash
+export DJANGO_SETTINGS_MODULE=myproject.settings
+opentelemetry-instrument python scripts/nightly_report.py
+```
+
+If you skip the wrapping span entirely, the command's DB queries and HTTP calls still produce spans, but each one is a disconnected root span in Traceway. The wrapping span is what ties them into a single task you can filter on.

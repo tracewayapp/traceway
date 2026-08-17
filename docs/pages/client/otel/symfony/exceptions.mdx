@@ -1,0 +1,160 @@
+# Exceptions
+
+The bundle automatically captures unhandled exceptions and records them on the request span. Anything that escapes your controller becomes an Issue with a full PHP stack trace, and the response is a 500. You do not have to do anything for that case.
+
+This page is about the other case: errors you catch and handle, but still want to see in Traceway.
+
+## Recording an Exception on the Current Span
+
+When you catch an error but want it reported, record it as an event on the active span:
+
+```php
+use OpenTelemetry\API\Trace\Span;
+use OpenTelemetry\API\Trace\StatusCode;
+
+try {
+    $this->paymentGateway->charge($order);
+} catch (\Throwable $e) {
+    $span = Span::getCurrent();
+    $span->recordException($e);
+    $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
+
+    throw $e;
+}
+```
+
+`recordException` adds an `exception` event to the span carrying the type, message, and stack trace. Traceway turns those events into Issues, grouped by a hash of the normalized stack trace.
+
+`Span::getCurrent()` returns whatever span is active right now. Inside a controller that is the request span, inside a Messenger handler it is the task span, and inside a `TracingInterface` callback it is your own span. There is no separate API per context.
+
+Swallowing the exception (not re-throwing) still produces the Issue, but the request will report the status code you actually return. Re-throw when you want the endpoint marked as failed too.
+
+## Adding Context
+
+Put context on the **span**, with `setAttribute()`:
+
+```php
+use OpenTelemetry\API\Trace\Span;
+use OpenTelemetry\API\Trace\StatusCode;
+
+$span = Span::getCurrent();
+
+$span->setAttribute('user.id', $userId);
+$span->setAttribute('order.id', $orderId);
+
+try {
+    $this->processOrder($orderId);
+} catch (\Throwable $e) {
+    $span->setAttribute('order.status', 'failed');
+    $span->setAttribute('retry.count', $retryCount);
+
+    $span->recordException($e);
+    $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
+    throw $e;
+}
+```
+
+The Issue in the dashboard now carries `user.id`, `order.id`, `order.status`, and `retry.count` alongside the automatic HTTP attributes.
+
+> **Do not use the second argument of `recordException()` for this.** Those attributes live on the OpenTelemetry exception *event*. Traceway builds an Issue's attribute map from the owning **span**, so event attributes never reach the dashboard. Anything you want to read or filter on has to go through `setAttribute()`.
+
+Attribute values must be scalars or arrays of scalars. Cast objects and enums yourself, for example `$order->status->value`.
+
+## Capturing Exceptions in Services
+
+For exceptions in services outside of a controller, get the current span the same way:
+
+```php
+namespace App\Service;
+
+use OpenTelemetry\API\Trace\Span;
+use OpenTelemetry\API\Trace\StatusCode;
+
+class PaymentService
+{
+    public function processPayment(string $customerId, float $amount): void
+    {
+        $span = Span::getCurrent();
+
+        try {
+            $this->gateway->charge($customerId, $amount);
+        } catch (\Throwable $e) {
+            $span->setAttribute('customer.id', $customerId);
+            $span->setAttribute('payment.amount', $amount);
+
+            $span->recordException($e);
+            $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
+            throw $e;
+        }
+    }
+}
+```
+
+Note that this attaches the attributes to whatever span is active, which in a controller-driven request is the request span. If you want the failure isolated to its own span, wrap the work with `TracingInterface` first. See [Spans](/client/otel/symfony/spans).
+
+## Custom Error Types
+
+Custom exception classes work the same way. The Issue is titled with the class name and the message:
+
+```php
+namespace App\Exception;
+
+class InsufficientFundsException extends \RuntimeException
+{
+    public function __construct(
+        public readonly string $accountId,
+        public readonly float $requested,
+        public readonly float $available,
+    ) {
+        parent::__construct("Insufficient funds: requested {$requested}, available {$available}");
+    }
+}
+```
+
+```php
+use App\Exception\InsufficientFundsException;
+use OpenTelemetry\API\Trace\Span;
+use OpenTelemetry\API\Trace\StatusCode;
+
+try {
+    $this->withdraw($accountId, $amount);
+} catch (InsufficientFundsException $e) {
+    $span = Span::getCurrent();
+
+    $span->setAttribute('account.id', $e->accountId);
+    $span->setAttribute('amount.requested', $e->requested);
+    $span->setAttribute('amount.available', $e->available);
+
+    $span->recordException($e);
+    $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
+}
+```
+
+## How Issues Are Grouped
+
+Traceway hashes the normalized stack trace, not the message. Values that change between runs (ids, addresses, absolute paths, and any run of 5 or more digits, which covers epoch timestamps) are stripped before hashing, so the same failure from different users lands on one Issue.
+
+That is also why message-only differences do not split a group, as long as the exception class name has no backslash in it. `RuntimeException: requested 50, available 10` and `RuntimeException: requested 900, available 10` are one Issue raised twice, which is what you want. Put the varying numbers in span attributes so you can still see them per occurrence.
+
+**Namespaced classes are the exception.** Traceway strips the message only when the part before the first colon looks like a type name (letters, digits, dots and underscores). `App\Exception\InsufficientFundsException` contains backslashes, so it is not recognised, the message stays in the hash, and every distinct message becomes its own Issue. Keep the message text constant for those classes and put the varying values in span attributes:
+
+```php
+namespace App\Exception;
+
+class InsufficientFundsException extends \RuntimeException
+{
+    public function __construct(
+        public readonly int $requested,
+        public readonly int $available,
+    ) {
+        parent::__construct('Insufficient funds');
+    }
+}
+```
+
+Then record the numbers on the span, where they stay visible per occurrence without splitting the group:
+
+```php
+$span->setAttribute('order.requested', $e->requested);
+$span->setAttribute('order.available', $e->available);
+```

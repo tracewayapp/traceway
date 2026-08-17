@@ -75,6 +75,8 @@ function MyComponent() {
 
 Options go on the provider: `<TracewayProvider connectionString="..." options={{ debug: true, version: "1.0.0" }}>`.
 
+`TracewayProvider` initializes the SDK in its constructor, and React StrictMode double-invokes constructors in development. The Vite and CRA scaffolds both wrap the app in `<StrictMode>` by default, so in dev you get two clients and every uncaught error is reported twice. Production builds do not double-invoke, so treat inflated dev counts as expected, or mount the provider outside `<StrictMode>` while developing.
+
 ## Vue 3 (`@tracewayapp/vue`)
 
 The plugin installs a global error handler for uncaught errors:
@@ -148,7 +150,7 @@ Via CDN (exposes `window.TracewayJQuery`):
 </script>
 ```
 
-Beyond the standard capture, the jQuery SDK hooks `$(document).ajaxError()` to capture failed `$.ajax()` calls (URL, method, status, message) and injects trace headers into `$.ajax()` (XHR) as well as `fetch`.
+Beyond the standard capture, the jQuery SDK adds exactly one thing: it hooks `$(document).ajaxError()` to capture failed `$.ajax()` calls (URL, method, status, message). Trace-header injection is not jQuery-specific. `init()` in the core SDK patches both `fetch` and `XMLHttpRequest`, so it is already active in every JS SDK.
 
 ## Options (shared by all JS SDKs)
 
@@ -166,6 +168,9 @@ Beyond the standard capture, the jQuery SDK hooks `$(document).ajaxError()` to c
 | `captureLogs` | `boolean` | `true` | Mirror `console.*` calls into the rolling log buffer |
 | `captureNetwork` | `boolean` | `true` | Record `fetch` / XHR calls as network actions |
 | `captureNavigation` | `boolean` | `true` | Record History API transitions |
+| `captureHttpServerErrors` | `boolean` | `false` | Report every `fetch` response with status >= 500 as a synthetic exception. 4xx is never included, and it is wired into the `fetch` wrapper only, so XHR and browser Axios do not trigger it |
+| `eventsWindowMs` | `number` | `10000` (`30000` with `recordAllSessions`) | Rolling window the log and action buffers retain |
+| `eventsMaxCount` | `number` | `200` (`600` with `recordAllSessions`) | Hard cap applied independently to the log buffer and the action buffer |
 
 ### Error filtering
 
@@ -198,24 +203,51 @@ clearAttributes();
 
 ### Distributed tracing
 
-The SDK instruments `fetch` (and XHR in the jQuery SDK) to propagate a `traceway-trace-id` header on same-origin requests, and the backend echoes the same id back on the response. Errors the SDK captures on its own (uncaught exceptions, unhandled rejections, `captureHttpServerErrors`) link to the originating backend request automatically. For Axios, register the interceptor:
+`init()` patches both `fetch` and `XMLHttpRequest`, so every same-origin request carries a `traceway-trace-id` header and sets the SDK's active trace id. That covers `$.ajax()` and browser Axios too, because both go through XHR. Errors the SDK captures on its own (uncaught exceptions, unhandled rejections, `captureHttpServerErrors`) pick up the active id and link to the originating backend request automatically.
+
+**Do not register `createAxiosInterceptor()` in a browser app.** Axios already goes through the instrumented `XMLHttpRequest`. The interceptor sets a *second*, different id under the same header name, XHR concatenates duplicate headers, and the backend receives `"<uuid1>, <uuid2>"`. That value fails to parse as a UUID and is dropped without any error, so adding the interceptor breaks a link that already worked.
+
+#### Backend side
+
+The browser id only reaches Traceway if the backend puts it on its server span. Traceway reads the span attribute `traceway.distributed_trace_id` and uses it as the row's distributed trace id, overriding the one derived from the OTel trace id. That override is what joins the browser exception and the backend endpoint into one trace. The value must be a bare UUID; anything else is ignored silently.
+
+Only the Symfony bundle sets the attribute for you. Node, NestJS, Next.js, Hono, Cloudflare, Laravel and Django install vanilla OpenTelemetry, which has never heard of the header, so add one middleware:
 
 ```javascript
-import { createAxiosInterceptor } from "@tracewayapp/frontend";
+import { trace } from "@opentelemetry/api";
 
-api.interceptors.request.use(createAxiosInterceptor());
+app.use((req, res, next) => {
+  const id = req.headers["traceway-trace-id"];
+  if (id) {
+    trace.getActiveSpan()?.setAttribute("traceway.distributed_trace_id", id);
+    res.setHeader("traceway-trace-id", id);
+  }
+  next();
+});
 ```
 
-**Manual captures in a `fetch`/API wrapper MUST pass the trace id explicitly — this is the #1 reason frontend issues show up unlinked to the backend.** The SDK holds the active distributed-trace id only *for the duration of the request* and clears it the instant the fetch settles. A `captureException` call in your `catch` or `if (!res.ok)` branch runs *after* `await fetch`, by which point the active id is already `null`, so the exception is stored with `distributedTraceId: null` and never connects to the backend trace — even though the request header was sent correctly. Read the id the backend echoed on the response and pass it through as the third argument:
+The `setAttribute` line is what creates the link. The `setHeader` line is optional, and only matters for the manual-capture pattern below. When the frontend and backend are on different origins, also send `Access-Control-Expose-Headers: traceway-trace-id` or the browser cannot read the echoed value.
+
+Verify with **View distributed trace** on the backend endpoint's detail page. The browser exception should show up as a second node.
+
+#### Manual captures after `await fetch`
+
+**Manual captures in a `fetch`/API wrapper MUST pass the trace id explicitly. This is the #1 reason frontend issues show up unlinked to the backend.** The SDK holds the active distributed-trace id only *for the duration of the request* and clears it the instant the fetch settles. A `captureException` call in your `catch` or `if (!res.ok)` branch runs *after* `await fetch`, by which point the active id is already `null`, so the exception is stored with `distributedTraceId: null` and never connects to the backend trace, even though the request header was sent correctly.
+
+Read the id off the SDK synchronously, after starting the request and before awaiting it, then pass it as the third argument. This needs nothing from the backend:
 
 ```javascript
-import { captureExceptionWithAttributes } from "@tracewayapp/frontend";
+import {
+  captureExceptionWithAttributes,
+  getActiveDistributedTraceId,
+} from "@tracewayapp/frontend";
 
 async function request(path, options) {
-  const res = await fetch(path, options);
+  const pending = fetch(path, options);
+  const distributedTraceId = getActiveDistributedTraceId() || undefined;
+  const res = await pending;
   if (!res.ok) {
     const err = new Error(`Request to ${path} failed (${res.status})`);
-    const distributedTraceId = res.headers.get("traceway-trace-id") || undefined;
     captureExceptionWithAttributes(
       err,
       { path, method: options?.method || "GET", status: String(res.status) },
@@ -227,7 +259,9 @@ async function request(path, options) {
 }
 ```
 
-The same applies to the React `useTraceway().captureExceptionWithAttributes`, the Vue/Svelte equivalents, and any other place you capture by hand after awaiting a request. When the frontend and backend are on different origins, the backend must also add `traceway-trace-id` to `Access-Control-Expose-Headers` or the browser cannot read it off the response.
+No other code can run between the `fetch` call and the `getActiveDistributedTraceId` call, so the id always belongs to this request. If the backend echoes the header (the `res.setHeader` line above), `res.headers.get("traceway-trace-id")` gives you the same value after the await.
+
+The same applies to the React `useTraceway().captureExceptionWithAttributes`, the Vue/Svelte equivalents, and any other place you capture by hand after awaiting a request. Every framework package re-exports `getActiveDistributedTraceId` and `captureExceptionWithAttributes`, so import them from the package you installed.
 
 ## Bundler Plugin (debug IDs)
 
@@ -266,6 +300,8 @@ esbuild is not covered; bundles processed by Sentry's esbuild plugin still work 
 ## Source Map Upload
 
 Uploads authenticate with a dedicated upload token (Connection page > Source Maps > Generate Upload Token), NOT the project token. It is a CI secret; never commit it. `readonly` members cannot generate one.
+
+First make the build actually emit maps, or there is nothing to upload. Vite needs `build: { sourcemap: true }`, Rollup needs `output: { sourcemap: true }`, webpack needs `devtool: "source-map"`. Vite's default is `false`, so a stock `vite build` produces no `.map` files at all, and `traceway-sourcemaps` then prints `No .map files found` and exits 0. A `postbuild` hook reports success while uploading nothing.
 
 ```bash
 npm install -D @tracewayapp/sourcemap-upload

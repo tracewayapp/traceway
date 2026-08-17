@@ -96,8 +96,8 @@ captureMessage("User completed checkout");
 ## Features
 
 - **Automatic batching**: Events are batched and sent periodically to reduce network overhead
-- **Retry with backoff**: Failed uploads are automatically retried
+- **Automatic retry**: Failed uploads are retried after `retryDelayMs` (10 seconds by default)
 - **Stack trace capture**: Full stack traces are captured for exceptions
 - **Custom attributes**: Attach metadata to exceptions for better debugging
-- **Distributed tracing**: Automatically correlates frontend errors with backend requests via `fetch` instrumentation, with manual support for Axios
+- **Distributed tracing**: Automatically correlates frontend errors with backend requests by instrumenting `fetch` and `XMLHttpRequest`, which covers `$.ajax()` and browser Axios with no extra setup
 - **Lightweight**: Minimal bundle size impact

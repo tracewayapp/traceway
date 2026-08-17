@@ -2,6 +2,23 @@
 
 Upload source maps to Traceway so that minified stack traces in production exceptions are automatically deobfuscated.
 
+## Emit the Maps First
+
+Most bundlers do not write `.map` files for a production build unless you ask them to. Turn it on before you wire up any upload:
+
+| Bundler | Setting |
+|---------|---------|
+| Vite | `build: { sourcemap: true }` in `vite.config.js` |
+| Rollup | `output: { sourcemap: true }` |
+| webpack | `devtool: "source-map"` |
+| Next.js | `productionBrowserSourceMaps: true` in `next.config.js` |
+
+This matters because the uploader treats an empty result as success. With no maps on disk, `traceway-sourcemaps` prints `No .map files found in <dir>` and exits with code 0, so a `postbuild` hook or CI step looks green while nothing was ever uploaded. After a build, confirm the files exist:
+
+```bash
+ls dist/assets/*.map
+```
+
 ## Installation
 
 ```bash

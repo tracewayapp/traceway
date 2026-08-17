@@ -1,0 +1,255 @@
+# Python (OpenTelemetry)
+
+Instrument FastAPI, Flask, or any WSGI/ASGI Python application with OpenTelemetry and export traces, metrics, and logs to Traceway.
+
+There is no application code to write. The OTel agent patches your framework at interpreter startup, so endpoints, status codes, child spans, exceptions, logs, and HTTP metrics all arrive from an unmodified app.
+
+Django uses this same path but needs two extra steps of its own. See the [Django guide](/client/otel/django).
+
+## Requirements
+
+- Python 3.10 or newer. Current `opentelemetry-sdk` releases declare `requires-python >= 3.10`.
+- A Traceway project created with framework **OpenTelemetry**, and that project's token.
+
+## Install
+
+```bash
+pip install opentelemetry-distro opentelemetry-exporter-otlp
+opentelemetry-bootstrap -a install
+```
+
+`opentelemetry-bootstrap` reads the packages already installed in the environment and installs the matching instrumentation for each one: FastAPI, Flask, Starlette, `requests`, `httpx`, `urllib3`, `sqlite3`, `psycopg`, and the standard `logging` module, among others. It only sees what is installed when you run it, so run it again after you add a dependency.
+
+Install both packages. `opentelemetry-sdk` on its own records spans and throws them away, because it ships no OTLP exporter and no `opentelemetry-instrument` command.
+
+## Configure
+
+Set these in the **process environment**: the container `env:` block, a systemd `Environment=` line, a Procfile, or `export` in the shell that starts the server. `opentelemetry-instrument` reads them before your application is imported, so a `.env` file that your settings module loads at import time is too late.
+
+```bash
+export OTEL_SERVICE_NAME=my-python-service
+export OTEL_RESOURCE_ATTRIBUTES="service.version=1.0.0"
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://your-traceway-instance.com/api/otel
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer your-project-token"
+export OTEL_TRACES_EXPORTER=otlp
+export OTEL_METRICS_EXPORTER=otlp
+export OTEL_LOGS_EXPORTER=otlp
+
+# Python only. Without these, logger.info(...) never reaches Traceway.
+export OTEL_PYTHON_LOG_CORRELATION=true
+export OTEL_PYTHON_LOG_LEVEL=info
+```
+
+> **`OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf` is not optional.** With `OTEL_TRACES_EXPORTER=otlp` and no protocol set, the Python SDK resolves the exporter to **gRPC**, and Traceway has no gRPC listener. The app starts, serves traffic, and exits 0 while every export goes into a void. The gRPC exporter does log the failure (`StatusCode.UNAVAILABLE ... Expected SETTINGS frame as the first frame`), but you only see it once something has put a console handler back on the root logger, which is what `OTEL_PYTHON_LOG_CORRELATION=true` below does. Without that variable the failure is silent.
+
+Three more things about that block:
+
+- `OTEL_EXPORTER_OTLP_ENDPOINT` takes the **base** URL. The SDK appends `/v1/traces`, `/v1/metrics`, and `/v1/logs` itself, which is exactly how Traceway's ingest paths are laid out. A full signal path here produces `/v1/traces/v1/traces`.
+- `OTEL_SERVICE_NAME` becomes the **Server Name** on every endpoint, task, and issue.
+- There is no `OTEL_SERVICE_VERSION` variable. Version travels in `OTEL_RESOURCE_ATTRIBUTES`, and without it every endpoint row carries an empty App Version, so release comparison does not work.
+
+## Run
+
+Put `opentelemetry-instrument` in front of whatever starts your process.
+
+```bash
+# FastAPI, Starlette, any ASGI app
+opentelemetry-instrument uvicorn app:app --port 8000
+
+# Flask development server
+opentelemetry-instrument flask --app wsgi run --port 8000
+
+# Any WSGI server, same shape
+opentelemetry-instrument gunicorn wsgi:app --bind 0.0.0.0:8000
+
+# A worker, cron job, or one-shot script
+opentelemetry-instrument python worker.py
+```
+
+Starting the server directly, without the `opentelemetry-instrument` prefix, sends nothing at all. That is the single most common reason a Python integration stays silent.
+
+For short-lived scripts, the last batch flushes on exit either way. `opentelemetry-instrument` registers a shutdown hook, and a hand-built provider registers its own `atexit` hook by default. Only an abrupt end such as `os._exit` or `SIGKILL` loses the batch.
+
+## What Arrives With No Application Code
+
+| Traceway | Where it comes from |
+|----------|---------------------|
+| **Endpoints**, grouped by route pattern | `opentelemetry-instrumentation-fastapi` / `-flask` / `-starlette` set `http.route` from the matched route |
+| Status codes, including 500 on an unhandled exception | The ASGI and WSGI instrumentation |
+| Child **Spans** for database and outgoing HTTP calls | `-sqlite3`, `-psycopg`, `-requests`, `-httpx`, `-urllib3` |
+| **Issues** with the full Python traceback | Unhandled exceptions, recorded as `exception` span events |
+| **Logs**, linked to the trace that produced them | `-logging` bridges the standard `logging` module |
+| HTTP **Metrics** | `http.server.duration`, `http.server.active_requests`, `http.server.response.size`, `http.client.duration` |
+
+## Verify Endpoint Grouping First
+
+Hit one parametrized route three times with different ids, then open **Endpoints**. You must see one row with a count of 3, not three rows.
+
+| Framework | Route in your code | Endpoint row |
+|-----------|--------------------|--------------|
+| FastAPI | `@app.get("/users/{user_id}")` | `GET /users/{user_id}` |
+| Flask | `@app.get("/orders/<order_id>")` | `GET /orders/<order_id>` |
+
+The pattern syntax is the framework's own, and Traceway stores whatever `http.route` carried. Those two rows look different and both are correct.
+
+Three rows with literal ids in them (`GET /users/101`, `GET /users/102`) means `http.route` is not being set, so Traceway fell back to the concrete `url.path`. Check that the app really started under `opentelemetry-instrument` and that `opentelemetry-bootstrap -a install` ran after your web framework was installed.
+
+## Exceptions
+
+An unhandled exception needs no configuration. FastAPI, Starlette, and Flask all respond `500` on their own, the ASGI/WSGI instrumentation records the exception event, and Traceway shows the Issue with the full traceback and the endpoint row with status 500.
+
+```python
+@app.get("/boom")
+def boom():
+    raise ValueError("exploded on purpose")
+```
+
+Only catch-and-handle paths need code. `record_exception` fills in `exception.type`, `exception.message`, and `exception.stacktrace` for you, and `set_status` takes a `Status` object rather than a dict:
+
+```python
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
+
+span = trace.get_current_span()
+try:
+    charge_card()
+except PaymentError as error:
+    span.record_exception(error)
+    span.set_status(Status(StatusCode.ERROR, str(error)))
+    raise
+```
+
+If you swallow the error and still return `200`, the endpoint row is recorded as a success and the Issue arrives with no failing request beside it. Return `500` whenever you record an exception.
+
+## Logs
+
+`opentelemetry-bootstrap -a install` installs `opentelemetry-instrumentation-logging`, which attaches the OTel handler to the **root** logger. Every `logger.info(...)` and `logger.error(...)` in your code, your framework, and your libraries is then forwarded to Traceway and stamped with the active trace and span ids.
+
+Two Python behaviours decide what you actually see:
+
+1. **Python's root logger defaults to `WARNING`.** A logger that inherits that level drops its own INFO records before the OTel handler ever runs, so only WARN, ERROR, and CRITICAL reach Traceway. Since most application logging is `logger.info` on an inheriting logger, the practical result is "my logs do not show up" with no error anywhere. Libraries that set their own level, such as Werkzeug at INFO, are unaffected and keep arriving.
+2. **The OTel handler becomes the root logger's only handler.** The root logger normally has none, so Python falls back to printing WARNING and above on stderr. Adding the OTel handler ends that fallback: your records go to Traceway and stop appearing on stdout. On a server whose runbook is `docker logs`, that reads as the app having stopped logging.
+
+`OTEL_PYTHON_LOG_CORRELATION=true` fixes both. It calls `logging.basicConfig()`, which restores a console handler and sets the root level, and it stamps `otelTraceID` / `otelSpanID` onto every record so your own log lines carry the trace id too:
+
+```bash
+export OTEL_PYTHON_LOG_CORRELATION=true
+export OTEL_PYTHON_LOG_LEVEL=info
+```
+
+`OTEL_PYTHON_LOG_LEVEL` on its own does nothing. It is only read inside the correlation branch, so without `OTEL_PYTHON_LOG_CORRELATION=true` the root logger stays at `WARNING`. With correlation on and no level set, the level defaults to `info`. Setting both is the readable form.
+
+The equivalent in code, if you would rather not use the variables, is `logging.basicConfig(level=logging.INFO)` early in your app.
+
+With both set, a handler like this lands in Traceway and on the endpoint's **Logs** card:
+
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+@app.get("/users/{user_id}")
+def get_user(user_id: str):
+    logger.info("looking up user %s", user_id)
+    return {"id": user_id}
+```
+
+Structured attributes go through `extra`, and dotted keys match the OTel semantic conventions:
+
+```python
+logger.info("order received", extra={"order.id": "ord_123"})
+```
+
+> **Do not set `OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true`.** On current versions the bridge is on by default, and that variable switches it to the SDK's deprecated handler. The instrumentation then logs a duplicate-handler warning, which is itself ingested as a log record.
+
+## Background Tasks
+
+A cron job or queue worker becomes a **Task** only when its root span has `SpanKind.CONSUMER`. A root span with the default `INTERNAL` kind and no HTTP attributes is discarded on ingest, and Traceway still answers `200 OK`, so a plain `start_as_current_span("my-job")` gets you silence.
+
+In Python the kind is a keyword argument, not an options object:
+
+```python
+from opentelemetry import trace
+from opentelemetry.trace import SpanKind, Status, StatusCode
+
+tracer = trace.get_tracer("my-app")
+
+
+def run_scheduled_job():
+    with tracer.start_as_current_span(
+        "cleanup-expired-sessions", kind=SpanKind.CONSUMER
+    ) as span:
+        try:
+            do_work()
+            span.set_status(Status(StatusCode.OK))
+        except Exception as error:
+            span.record_exception(error)
+            span.set_status(Status(StatusCode.ERROR, str(error)))
+            raise
+```
+
+Run it as `opentelemetry-instrument python worker.py`. The span name is the task name and the grouping key, so keep it stable and put job ids, batch sizes, and timestamps in span attributes instead.
+
+## Custom Metrics
+
+Under `opentelemetry-instrument` the meter provider is already configured, so ask the global API for a meter and record:
+
+```python
+from opentelemetry import metrics
+
+meter = metrics.get_meter("my-app")
+
+sessions_cleaned = meter.create_counter(
+    "app.sessions_cleaned",
+    unit="1",
+    description="expired sessions removed by the cleanup job",
+)
+sessions_cleaned.add(7, {"job": "cleanup-expired-sessions"})
+
+checkout_latency = meter.create_histogram("app.checkout.latency", unit="ms")
+checkout_latency.record(12.5, {"tier": "pro"})
+```
+
+The counter appears in metric discovery as `app.sessions_cleaned`, with `job` as a tag you can group by. A histogram arrives split in two, `app.checkout.latency.avg` and `app.checkout.latency.count`, which is how Traceway stores every histogram. See [Metrics](/client/otel/metrics).
+
+> **Metrics export every 60 seconds by default.** That is the SDK default for `OTEL_METRIC_EXPORT_INTERVAL`, so a working pipeline still looks empty for the first minute. Set `OTEL_METRIC_EXPORT_INTERVAL=10000` while you are verifying the integration.
+
+## Child Spans and Database Calls
+
+Database and outgoing HTTP calls appear as child spans on the endpoint's waterfall, named after the SQL statement or the request. One detail costs people an afternoon:
+
+> **The DB-API instrumentation traces cursor calls.** `connection.cursor().execute(...)` produces a child span named after the SQL. The `connection.execute(...)` shortcut bypasses the traced cursor proxy and produces no span at all. If your queries are missing from the waterfall while your outgoing HTTP calls are there, that is usually why.
+
+For business logic that no instrumentation covers, start your own child span. It stays attached to the request because it runs inside the active context:
+
+```python
+from opentelemetry import trace
+
+tracer = trace.get_tracer("my-app")
+
+with tracer.start_as_current_span("rebuild-price-index"):
+    rebuild()
+```
+
+## Verify It Worked
+
+Telemetry is batched, so give traces about 10 seconds and metrics up to a minute. Set the dashboard time picker to the last 15 minutes, then check:
+
+1. **Endpoints.** Three requests to a parametrized route give one row with count 3. Three rows means `http.route` is missing.
+2. **Issues.** A route that raises shows up with its Python traceback, and its endpoint row reports status 500.
+3. **Spans.** Open that endpoint and confirm your database and outgoing HTTP calls are in the waterfall.
+4. **Logs.** A `logger.info(...)` from inside a handler appears on the endpoint's **Logs** card, on the **This Trace** tab. If only WARN and above are there, `OTEL_PYTHON_LOG_CORRELATION` is not set.
+5. **Tasks.** A job run under `opentelemetry-instrument` with `kind=SpanKind.CONSUMER` appears by its span name.
+6. **Metrics.** `http.server.duration.avg` and your custom metric names appear in metric discovery.
+
+Nothing at all in any of the six, with the app running and no error printed? Check `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf` first. Then set `OTEL_PYTHON_LOG_CORRELATION=true` and restart. Exporter failures are logged at WARNING and ERROR, but the OTel handler is the only handler on the root logger until something calls `logging.basicConfig()`, so a broken exporter swallows its own error report. Correlation restores the console handler and the failures appear on stderr. `OTEL_LOG_LEVEL` does not help here: opentelemetry-python declares the variable but no released package reads it.
+
+## Next Steps
+
+- [Traces](/client/otel/traces): how OTel spans map to Endpoints, Tasks, and Issues
+- [Logs](/client/otel/logs): log record mapping and severity handling
+- [Metrics](/client/otel/metrics): supported metric types and histogram handling
+- [Django](/client/otel/django): the two extra steps Django needs
+- [Overview](/client/otel): protocol details, authentication, and a "nothing is showing up" checklist

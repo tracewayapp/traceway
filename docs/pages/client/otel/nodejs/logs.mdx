@@ -1,0 +1,132 @@
+# Logs
+
+Ship your application logs to Traceway over OTLP/HTTP. A log emitted inside a request handler is stamped with the active trace and span id automatically, so it shows up on the trace detail page next to the request that produced it.
+
+## Install
+
+```bash
+npm install @opentelemetry/api-logs \
+  @opentelemetry/sdk-logs \
+  @opentelemetry/exporter-logs-otlp-http
+```
+
+If you followed the [Quick Start](/client/otel/nodejs), these are already installed.
+
+## Setup
+
+Add a `logRecordProcessors` entry to the `NodeSDK` you created in the [Quick Start](/client/otel/nodejs):
+
+```typescript
+// instrumentation.ts
+import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
+import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
+
+const sdk = new NodeSDK({
+  // ...resource, traceExporter, metricReaders, instrumentations
+
+  logRecordProcessors: [
+    new BatchLogRecordProcessor({
+      exporter: new OTLPLogExporter({
+        url: "https://your-traceway-instance.com/api/otel/v1/logs",
+        headers: { Authorization: "Bearer your-project-token" },
+      }),
+      scheduledDelayMillis: 2000,
+    }),
+  ],
+});
+
+sdk.start();
+```
+
+> **`BatchLogRecordProcessor` takes one options object.** The `exporter` goes on an `exporter` key. Passing it positionally, `new BatchLogRecordProcessor(new OTLPLogExporter({...}))`, fails to compile in TypeScript with `error TS2345: Property 'exporter' is missing`. In plain JavaScript it runs and exports nothing: the processor reads `options.exporter`, gets `undefined`, and throws inside its own export loop where you never see it. Traces and metrics keep flowing, so it looks like Traceway is dropping your logs.
+
+## Emitting Logs
+
+```typescript
+import { logs, SeverityNumber } from "@opentelemetry/api-logs";
+
+const logger = logs.getLogger("app");
+
+app.get("/api/users/:id", (req, res) => {
+  logger.emit({
+    severityNumber: SeverityNumber.INFO,
+    severityText: "INFO",
+    body: `fetching user ${req.params.id}`,
+    attributes: { "user.id": req.params.id },
+  });
+
+  res.json({ id: req.params.id });
+});
+```
+
+Called inside a request handler, the log picks up the active span on its own. You do not pass a context. In the dashboard, open the endpoint's trace and switch to the **Logs** tab to see it attached to that request.
+
+Use dotted attribute keys (`user.id`, `order.id`) to match OTel semantic conventions. Attribute values are stored as strings.
+
+## Bridging Pino or Winston
+
+If you already log with Pino or Winston, keep doing that. Once the pipeline above is configured, the auto-instrumentation forwards those records to the same OTLP exporter and stamps the active `trace_id` and `span_id` on each one. Pino works as is, Winston needs one extra package.
+
+**Pino works with no extra packages.** `@opentelemetry/instrumentation-pino` ships in `@opentelemetry/auto-instrumentations-node` and is enabled by default, so every `logger.info(...)` is both printed locally and sent to Traceway.
+
+```typescript
+import pino from "pino";
+
+const logger = pino();
+
+app.get("/api/orders/:id", (req, res) => {
+  logger.info({ "order.id": req.params.id }, "order lookup");
+  res.json({ ok: true });
+});
+```
+
+**Winston needs one more package.** Without it, `@opentelemetry/instrumentation-winston` only injects `trace_id` and `span_id` into your local output. The records are never sent to Traceway, and the reason is only printed with OTel diagnostics on:
+
+```bash
+npm install @opentelemetry/winston-transport
+```
+
+The instrumentation adds its own transport when your logger is created, so you do not register anything yourself. With the package installed, `logger.info("...")` reaches Traceway with the trace id attached.
+
+## Severity Levels
+
+`SeverityNumber` values map to Traceway's severity labels as follows:
+
+| SeverityNumber | Traceway Severity |
+| -------------- | ----------------- |
+| 1-4            | TRACE             |
+| 5-8            | DEBUG             |
+| 9-12           | INFO              |
+| 13-16          | WARN              |
+| 17-20          | ERROR             |
+| 21+            | FATAL             |
+
+If you set `severityText` yourself it is used as-is (uppercased). See [Log Record Mapping](/client/otel/logs) for every field Traceway reads.
+
+## Verify It Worked
+
+1. Hit a route that logs, then wait a couple of seconds for the batch, or stop the app so the shutdown handler flushes.
+2. Open **Logs** in the dashboard. The record should be listed with your `service.name` as the service.
+3. Open the same request on **Endpoints**, go to its trace, and switch to the **Logs** tab. The log is there because it carries the request's trace id. If the Logs tab is empty but the Logs page has the record, the log was emitted outside the request's span.
+
+## Troubleshooting
+
+Log export failures are reported only through OTel's diagnostic channel. If nothing arrives, turn it on temporarily at the top of `instrumentation.ts`:
+
+```typescript
+import { diag, DiagConsoleLogger, DiagLogLevel } from "@opentelemetry/api";
+diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
+```
+
+Common causes, in the order worth checking:
+
+- `BatchLogRecordProcessor` called with a positional exporter (see the warning above).
+- The URL is missing the `/v1/logs` suffix. The full path is `https://your-traceway-instance.com/api/otel/v1/logs`.
+- The process exited before the batch was sent. Add the `SIGTERM` handler from the [Quick Start](/client/otel/nodejs).
+- Winston records missing while Pino records arrive: install `@opentelemetry/winston-transport`.
+
+## Next Steps
+
+- [Traces](/client/otel/nodejs/traces): manual spans, background jobs, exception recording
+- [Metrics](/client/otel/nodejs/metrics): custom counters, histograms, and gauges
+- [Log Record Mapping](/client/otel/logs): how OTLP log fields map to Traceway fields

@@ -2,6 +2,15 @@ import FrameworkPicker from "../../components/FrameworkPicker";
 
 # Traceway
 
-Traceway is an open-source error tracking and monitoring platform for Go applications. It provides real-time visibility into your application's health through exception tracking, endpoint monitoring, background tasks, and system metrics. To learn more about the core concepts of Traceway <a href="/learn">Click Here</a>.
+Traceway is an open-source error tracking and monitoring platform. It gives you real-time visibility into your application's health through exception tracking, endpoint monitoring, background tasks, and system metrics.
+
+There are two ways to send data to it:
+
+- **Backends report over OpenTelemetry**, whatever the language. Go, Node.js, Python, PHP, Java, .NET, and Ruby all point their OTLP exporter at the same Traceway endpoint. Start at [OpenTelemetry](/client/otel).
+- **Browser and mobile apps use the Traceway SDKs.** Pick React, Svelte, Vue.js, or jQuery for the browser, and Flutter, React Native, Android, or iOS for mobile.
+
+> **First time here?** Decide your projects before you instrument anything: one **OpenTelemetry** project per backend system, one project per deployed browser app, and one per released mobile app. Read [Project Structure](/learn/projects) first, then pick the matching framework below.
+
+To learn more about the core concepts of Traceway, see [Learn](/learn).
 
 <FrameworkPicker />

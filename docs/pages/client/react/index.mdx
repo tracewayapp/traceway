@@ -28,6 +28,8 @@ export default App;
 
 > **Custom fallback UI?** If you want to replace a crashed subtree with a fallback view instead of letting the error propagate, wrap the relevant section in `TracewayErrorBoundary` — it's still exported for that purpose, but is no longer required for capture.
 
+Seeing every dev-mode error twice? That is React StrictMode, which double-invokes the provider's constructor and creates two SDK clients. Production is unaffected. See [A note on StrictMode](/client/react/provider#a-note-on-strictmode).
+
 ## Capture Errors Manually
 
 Use the `useTraceway` hook in components:
@@ -84,19 +86,11 @@ Click the button and check your Traceway dashboard to verify the error appears.
 
 ## Distributed Tracing
 
-The SDK automatically instruments `fetch` to propagate a `traceway-trace-id` header on same-origin requests. This links frontend errors to the backend requests that caused them — no extra configuration needed.
+The SDK automatically instruments both `fetch` and `XMLHttpRequest` to propagate a `traceway-trace-id` header on same-origin requests. This links frontend errors to the backend requests that caused them.
 
-For Axios users, add the interceptor to your instance:
+Axios needs no setup. It uses `XMLHttpRequest` in the browser, which the SDK already instruments. Do not register `createAxiosInterceptor()` in a browser app: it adds a second ID under the same header name, and the combined value is rejected by the backend.
 
-```jsx
-import axios from "axios";
-import { createAxiosInterceptor } from "@tracewayapp/frontend";
-
-const api = axios.create({ baseURL: "/api" });
-api.interceptors.request.use(createAxiosInterceptor());
-```
-
-See the [Distributed Tracing](/client/js-sdk/distributed-tracing) guide for full details.
+Your backend still has to set the incoming header on its server span as the `traceway.distributed_trace_id` attribute, or the two sides never join. See the [Distributed Tracing](/client/js-sdk/distributed-tracing) guide for the middleware.
 
 ## Next Steps
 
@@ -104,3 +98,5 @@ See the [Distributed Tracing](/client/js-sdk/distributed-tracing) guide for full
 - [Error Boundary](/client/react/error-boundary) - Automatic error capture
 - [Hooks](/client/react/hooks) - Manual error capture
 - [Distributed Tracing](/client/js-sdk/distributed-tracing) - Frontend ↔ backend correlation
+- [Next.js](/client/otel/nextjs) - Next.js and Remix apps: this SDK covers the browser half, OpenTelemetry covers the server half
+- [Project Structure](/learn/projects) - Why the browser half and the server half are two separate Traceway projects

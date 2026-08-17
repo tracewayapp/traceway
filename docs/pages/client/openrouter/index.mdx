@@ -20,7 +20,7 @@ In your Traceway dashboard, go to **Connection** and copy your project token.
 
 ### 2. Configure OpenRouter Observability
 
-1. Go to [OpenRouter Settings → Observability](https://openrouter.ai/settings/integrations)
+1. Go to [OpenRouter Settings → Observability](https://openrouter.ai/settings/observability)
 2. Enable **Broadcast**
 3. Click **Add Destination** next to **OpenTelemetry Collector**
 4. Fill in the connection details:
@@ -33,13 +33,12 @@ In your Traceway dashboard, go to **Connection** and copy your project token.
 
 Replace `YOUR_PROJECT_TOKEN` with your actual project token. If you're self-hosting, replace the endpoint with your instance URL.
 
-5. Click **Test Connection** to verify
-6. Click **Send Trace** to send a test trace
-7. Click **Add** to save
+5. Click **Test Connection** to verify. OpenRouter only saves the destination if the test passes.
+6. Click **Add** to save
 
 ### 3. Verify in Traceway
 
-Open your Traceway dashboard and navigate to **AI Traces**. You should see your test trace appear within a few seconds.
+Make an API request through OpenRouter, then open your Traceway dashboard and navigate to **AI Traces**. The call appears within a few seconds.
 
 ## Configuration Options
 
@@ -93,9 +92,11 @@ Every OpenRouter completion generates a trace with:
 | Prompt | `gen_ai.prompt` | Full messages JSON |
 | Completion | `gen_ai.completion` | Full response JSON |
 | User ID | `user.id` | The `user` field from your request; falls back to your OpenRouter account id |
-| Conversation | `gen_ai.conversation.id` / `session.id` | The `session_id` field from your request |
-| Trace Name | `trace.name` | Workflow identifier |
+| Conversation | `session.id` | The `session_id` field from your request |
+| Trace Name | Span name | Set it with `trace_name` inside the request's `trace` object |
 | Temperature | `gen_ai.request.temperature` | `0.7` |
+
+Any other key you pass in the request's `trace` object arrives as a `trace.metadata.*` span attribute and shows up in the metadata list on the call detail page.
 
 ## Self-Hosted Setup
 

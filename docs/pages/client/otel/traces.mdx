@@ -4,20 +4,34 @@ Traceway ingests OpenTelemetry spans via the OTLP/HTTP protocol and maps them to
 
 ## Span Mapping
 
-Spans are classified by **kind and attributes**, not by whether they're a root span. Both root and child spans can be promoted to a top-level concept when the signal is there — a queued job processed as a child of the dispatcher's trace still becomes a Task, an LLM call made inside a request handler still becomes an AI Trace.
+Spans are classified by **kind and attributes**, not by whether they're a root span. Both root and child spans can be promoted to a top-level concept when the signal is there. A queued job processed as a child of the dispatcher's trace still becomes a Task, and an LLM call made inside a request handler still becomes an AI Trace.
 
-| Condition | Traceway Concept |
-|-----------|-----------------|
-| `SpanKind = SERVER` / `INTERNAL` with HTTP attributes, and the span is a root (or its parent is in another process — a cross-service inbound hop) | **Endpoint** |
-| `SpanKind = CONSUMER` (queue / messenger workers) | **Task** |
-| Root `INTERNAL` span with a `console.command` attribute (artisan commands, console runners) | **Task** |
-| Any span with `gen_ai.*` attributes (root or child of a request/task) | **AI Trace** |
-| Any other span with a parent | **Span** (waterfall row under its nearest enclosing entity) |
-| Event named `"exception"` on any span | **Issue** (attributed to the owning entity) |
+**The rules below are checked in order, and the first match wins.**
 
-Each Endpoint / Task / AI Trace row carries an `is_root` flag. Non-root rows surface a **Non-root** chip in the dashboard list so you can tell at a glance which runs were triggered by another trace, and a **View distributed trace** link on the detail page jumps you to the full waterfall (endpoint → producer → consumer, request → child LLM call, etc.). The `distributed_trace_id` linking the rows is auto-derived from the OTel `trace_id`, so cross-trace lookup works without any vendor attribute.
+| # | Condition | Traceway Concept |
+|---|-----------|-----------------|
+| 1 | `SpanKind = INTERNAL` carrying `exception.*` attributes | **Issue.** Never promoted to an Endpoint, Task or AI Trace. A child span still gets its ordinary Span row, a root span gets nothing else |
+| 2 | `SpanKind = SERVER` / `INTERNAL` with HTTP attributes, and the span is a root, or its parent span is not present in the same `ResourceSpans` block (a cross-service inbound hop) | **Endpoint** |
+| 3 | `SpanKind = CONSUMER` (queue / messenger workers) | **Task** |
+| 4 | Root `INTERNAL` span with a `console.command` attribute (artisan commands, console runners) | **Task** |
+| 5 | Any remaining span with `gen_ai.*` attributes | **AI Trace** |
+| 6 | Any other span with a parent | **Span** (waterfall row under its nearest enclosing entity) |
+| 7 | A root span matching none of the above | **Dropped.** No row is stored |
+| - | Event named `"exception"` on any span | **Issue** (attributed to the owning entity) |
 
-> **Sub-handler spans are not duplicated.** An in-process child SERVER/INTERNAL+HTTP span (e.g. a framework's "handler /path" sub-span) is kept in the Spans waterfall — Endpoints are only promoted for entry points (root or cross-service hop).
+Order matters most for `gen_ai.*`, which is checked last. A `CONSUMER` span carrying `gen_ai.*` becomes a Task, and a request span carrying `gen_ai.*` becomes an Endpoint. Neither shows up on AI Traces. Put every model call on its own child span so rule 5 is the one that matches it.
+
+> **The default span kind is `INTERNAL`, and a root `INTERNAL` span with no HTTP attributes is discarded.** If you wrap a cron job or a worker in `tracer.startActiveSpan("my-job")` without setting a kind, nothing appears on Tasks and nothing appears on Spans. Traceway still answers `200 OK`. Set `{ kind: SpanKind.CONSUMER }` for queue and job work, or add a `console.command` attribute for CLI commands. The same applies to root `CLIENT` and `PRODUCER` spans, and to root `SERVER` spans that carry no HTTP attributes.
+
+"HTTP attributes" means at least one of `http.request.method`, `http.method`, `http.route` or `url.path`. Nothing else counts, so a span carrying only `url.full`, `http.target` or `server.address` is not treated as an HTTP entry point.
+
+Rule 1 exists because browser SDKs stamp page context like `url.path` onto their error spans, and those must become Issues rather than endpoints. It applies to `exception.*` set as span **attributes**, not to a recorded `exception` **event**, and it suppresses every promotion, so an `INTERNAL` span with both `exception.*` and `gen_ai.*` attributes yields an Issue and no AI Trace. To record an error on a span you also want promoted, use `recordException` (which writes an event) instead of setting the attributes yourself.
+
+Child spans that carry `db.query.text` (or the legacy `db.statement`) are displayed under the query text instead of the span name, so a database waterfall reads as the statements that ran rather than a column of identical `pg.query` rows.
+
+Each Endpoint / Task / AI Trace row carries an `is_root` flag. Rows triggered by another trace surface a **Non Root** chip in the dashboard list, or a **Mixed** chip when a grouped row holds both root and non-root runs. The detail page renders a **Distributed Trace** card with the full waterfall (endpoint → producer → consumer, request → child LLM call) whenever the trace touches more than one run. The `distributed_trace_id` that links the rows is derived from the OTel `trace_id`, so cross-service lookup works with no vendor attribute. If you need to stitch runs that genuinely carry different trace ids, set the span attribute `traceway.distributed_trace_id` to a shared UUID and it overrides the derived value.
+
+> **Sub-handler spans are not duplicated, as long as parent and child ship together.** An in-process child SERVER/INTERNAL+HTTP span (a framework's "handler /path" sub-span) stays in the Spans waterfall when its parent arrives in the same `ResourceSpans` block. Parents are matched inside one block, not across the whole export, though spans from one service normally share a Resource and land in the same block. Traceway cannot see process boundaries, so it treats "parent missing from this block" as a cross-service hop and promotes the child to its own Endpoint. If you see the same route listed twice with a **Mixed** chip, a batch processor split the parent and the child across two exports. Raise the exporter's `maxExportBatchSize` and `scheduledDelayMillis` so a whole trace ships together, or stop emitting the redundant sub-handler span.
 
 ## Resource Attributes
 
@@ -35,12 +49,22 @@ For root SERVER spans with HTTP attributes, Traceway extracts the following:
 | OTel Attribute | Fallback | Traceway Field |
 |---------------|----------|----------------|
 | `http.request.method` | `http.method` | HTTP method |
-| `http.route` | Span name | Route path |
+| `http.route` | `url.path`, then the span name | Route path (`http.route` is ignored unless it starts with `/`) |
 | `http.response.status_code` | `http.status_code` | Status code |
 | `http.response.body.size` | `http.response_content_length` | Response body size |
 | `client.address` | `net.peer.ip` | Client IP |
 
-The endpoint name is constructed as `"METHOD /route"` (e.g., `"GET /api/users"`).
+The endpoint name is built as `"METHOD /route"`, for example `"GET /api/users"`.
+
+**A method attribute is required for the route to be used at all.** If neither `http.request.method` nor `http.method` is set, the raw span name becomes the endpoint name and `url.path` is ignored entirely.
+
+Prefer `http.route` (the low-cardinality template, `/users/:id`) over `url.path` (the concrete URL, `/users/8412`). Falling back to `url.path` creates one endpoint row per distinct URL.
+
+### Unmatched 404s
+
+A 404 response whose span carries no real route is stored under the single endpoint name `UNMATCHED` instead of its URL. "No real route" means `http.route` is missing, does not start with `/`, or is a catch-all made only of slashes and wildcards such as `/`, `/*` or `/**`, which is what not-found handlers usually report.
+
+This keeps scanner traffic and typo'd URLs from creating one endpoint row per bogus path. A 404 returned from a concretely matched route, for example `GET /users/:id` for a user that does not exist, keeps its own identity. Only status 404 collapses. Other statuses on a catch-all route keep the catch-all name.
 
 ### Streaming Responses (SSE / WebSocket)
 
@@ -48,11 +72,13 @@ Long-lived streaming routes are flagged as `is_stream` on ingest so that the das
 
 | Signal | OTel attribute |
 |--------|----------------|
-| Server-Sent Events | `http.response.header.content-type` contains `text/event-stream` |
+| Server-Sent Events | `http.response.header.content-type` **starts with** `text/event-stream` (`text/event-stream; charset=utf-8` matches) |
 | WebSocket upgrade | `http.response.status_code = 101` |
-| Vendor opt-in | `traceway.is_stream = true` (bool) — for protocols the headers don't expose |
+| Vendor opt-in | `traceway.is_stream = true` (bool), for protocols the headers don't expose |
 
-There is no OpenTelemetry-standard streaming attribute; Traceway sniffs the captured Content-Type response header. Make sure your OTel instrumentation actually captures `http.response.header.content-type` (some SDKs require explicit opt-in for header capture). Otherwise set `traceway.is_stream = true` directly on the span when starting a stream.
+There is no OpenTelemetry-standard streaming attribute, so Traceway sniffs the captured Content-Type response header. Two things trip people up. The attribute key must be exactly lowercase, `http.response.header.content-type`, which is what the OTel HTTP conventions emit. And the match is a prefix, so a comma-joined value like `application/json, text/event-stream` is not detected.
+
+Many SDKs require explicit opt-in before response headers are captured at all. When in doubt, set `traceway.is_stream = true` on the span yourself. It must be a **boolean**. The string `"true"` is ignored.
 
 ## Exception Events
 
@@ -66,16 +92,33 @@ Spans with events named `"exception"` are extracted as Issues in Traceway. The f
 
 Exceptions are grouped by a normalized hash of the stack trace, so the same logical error produces the same Issue regardless of runtime differences like memory addresses or user IDs.
 
+Traceway reads exception data from two places: an event named `exception` on the span, which is what `span.recordException(err)` produces, and `exception.type` / `exception.message` / `exception.stacktrace` set directly as span attributes. The event wins when both are present.
+
+The Issue is attributed to the nearest enclosing Endpoint, Task or AI Trace, walking up the parent chain from the span that raised it. An error thrown in a database span therefore shows up on the request that ran the query.
+
+**An exception on a dropped span still becomes an Issue, but an unlinked one.** If you record an error on a root `SpanKind.INTERNAL` span, the span itself is discarded (see Span Mapping) while the Issue is still created. There is then no Endpoint or Task for it to point at, so the occurrence carries only the raw trace id and you lose the request or job context that would tell you what was running. Record exceptions on spans that sit inside a promoted entity, or fix the span kind.
+
 ## Example: Node.js with OTel SDK
 
+```bash
+npm install @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node \
+  @opentelemetry/instrumentation @opentelemetry/exporter-trace-otlp-http \
+  @opentelemetry/resources
+```
+
 ```typescript
+// telemetry.mjs
+// Load it before your app: node --import ./telemetry.mjs server.js
+import { register } from "node:module";
+register("@opentelemetry/instrumentation/hook.mjs", import.meta.url);
+
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
-import { Resource } from "@opentelemetry/resources";
+import { resourceFromAttributes } from "@opentelemetry/resources";
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     "service.name": "my-service",
     "service.version": "1.0.0",
   }),
@@ -91,16 +134,51 @@ const sdk = new NodeSDK({
 sdk.start();
 ```
 
-This automatically instruments HTTP servers, database clients, and other libraries. SERVER spans become Endpoints, CONSUMER spans become Tasks, any span with `gen_ai.*` attributes becomes an AI Trace (root or child), and exception events become Issues.
+The two `node:module` lines are required for an ESM app (`.mjs`, or `"type": "module"`). Without the loader hook nothing is patched, so `http.route` is never set and your endpoints are named after raw span names. A CommonJS app does not need them. Use `resourceFromAttributes`, not the old `new Resource(...)`, which was removed in `@opentelemetry/resources` 2.x.
+
+This automatically instruments HTTP servers, database clients, and other libraries. SERVER spans become Endpoints, CONSUMER spans become Tasks, a span whose only signal is `gen_ai.*` becomes an AI Trace, and exception events become Issues.
+
+This snippet exports traces only. Metrics and logs each need their own exporter. See the [full three-signal setup](/client/otel#quick-start-direct-sdk-export) on the overview page.
+
+## Example: Python (zero-code)
+
+Most Python apps need no instrumentation code at all. `opentelemetry-instrument` starts the SDK, patches your web framework, and flushes on exit:
+
+```bash
+pip install opentelemetry-distro opentelemetry-exporter-otlp
+opentelemetry-bootstrap -a install
+```
+
+```bash
+export OTEL_SERVICE_NAME=my-python-service
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://your-traceway-instance.com/api/otel
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer your-project-token"
+export OTEL_TRACES_EXPORTER=otlp
+
+opentelemetry-instrument uvicorn app:app --port 8000      # FastAPI, any ASGI app
+opentelemetry-instrument flask --app wsgi run --port 8000 # Flask
+```
+
+`OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf` is required. Left unset, the Python SDK resolves `otlp` to gRPC, which Traceway does not accept, and the app runs and exits with no error while nothing arrives.
+
+The FastAPI, Flask, Starlette, and Django instrumentations set `http.route` from the matched route pattern in the framework's own syntax (`/users/{user_id}` on FastAPI, `/orders/<order_id>` on Flask), so endpoints arrive grouped. The [Python guide](/client/otel/python) covers logs, metrics, background tasks, and exceptions on this same path.
 
 ## Example: Python with OTel SDK
 
+To wire the SDK by hand instead, build the provider and create spans with a kind Traceway keeps. A provider on its own records nothing. The SDK registers an `atexit` hook, so a clean exit flushes the last batch even without the explicit `provider.shutdown()` below; only an abrupt end such as `os._exit` or `SIGKILL` loses it.
+
+```bash
+pip install opentelemetry-sdk opentelemetry-exporter-otlp-proto-http
+```
+
 ```python
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.trace import SpanKind, Status, StatusCode
 
 resource = Resource.create({
     "service.name": "my-python-service",
@@ -108,15 +186,40 @@ resource = Resource.create({
 })
 
 provider = TracerProvider(resource=resource)
-exporter = OTLPSpanExporter(
+provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(
     endpoint="https://your-traceway-instance.com/api/otel/v1/traces",
     headers={"Authorization": "Bearer your-project-token"},
-)
-provider.add_span_processor(BatchSpanProcessor(exporter))
+)))
 trace.set_tracer_provider(provider)
+
+tracer = trace.get_tracer("my-app")
+
+
+def do_work():
+    ...  # the job's real work
+
+
+with tracer.start_as_current_span(
+    "cleanup-expired-sessions", kind=SpanKind.CONSUMER
+) as span:
+    try:
+        with tracer.start_as_current_span("delete-batch"):
+            do_work()
+        span.set_status(Status(StatusCode.OK))
+    except Exception as error:
+        span.record_exception(error)
+        span.set_status(Status(StatusCode.ERROR, str(error)))
+        raise
+
+provider.shutdown()
 ```
+
+That run appears under **Tasks** as `cleanup-expired-sessions`, with `delete-batch` as a child span. In Python the span kind is a keyword argument, `kind=SpanKind.CONSUMER`. Drop it and the root span defaults to `INTERNAL`, which is discarded on ingest.
+
+Python's `Resource.create(...)` is unaffected by the JavaScript `Resource` removal. Only the JS SDK changed.
 
 ## Next Steps
 
-- [Metrics](/client/otel/metrics) — export metrics to Traceway via OTel
-- [Overview](/client/otel) — protocol details and authentication
+- [Metrics](/client/otel/metrics): export metrics to Traceway via OTel
+- [Logs](/client/otel/logs): export logs and link them to these traces
+- [Overview](/client/otel): protocol details, authentication, and a "nothing is showing up" checklist

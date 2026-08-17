@@ -19,7 +19,7 @@ Open your Traceway dashboard → the project you want metrics to land in → **S
 
 ### Run the installer on your server
 
-**Linux / macOS** (requires `curl`, `tar`, `sudo` or root):
+**Linux / macOS** (requires `curl`, `tar`, `awk`, `mktemp`, either `sha256sum` or `shasum`, and `sudo` or root):
 
 ```bash
 curl -fsSL https://install.tracewayapp.com/install.sh | TRACEWAY_TOKEN=<your-token> bash
@@ -47,7 +47,20 @@ Every 60 seconds the agent scrapes:
 - **Network** — throughput bytes, packets, errors, and open connections per interface.
 - **Process** *(opt-in)* — set `TRACEWAY_PROCESS_NAMES` to a list of process names (or `*` for all) to enable per-process CPU time, RSS, and virtual memory.
 
-Every signal is tagged with resource attributes so you can filter in the dashboard — `service.name`, `host.name`, `host.id`, `host.arch`, `os.type`, and on cloud VMs, `cloud.provider`, `cloud.region`, and `cloud.account.id` (EC2 / GCE / Azure are auto-detected).
+### How hosts are identified
+
+Metrics are tagged with `server_name`, which comes from `TRACEWAY_SERVICE_NAME` (default: the machine's hostname). Give every host a distinct `TRACEWAY_SERVICE_NAME` or the hosts cannot be told apart. You can also group and filter by the attributes each scraper puts on its own data points, for example `cpu` and `state` on CPU metrics, `device` and `direction` on disk and network metrics, and `device` and `mountpoint` on filesystem metrics.
+
+The agent also attaches resource attributes to the OTLP payload: `service.name`, `host.name`, `os.type`, and on cloud VMs `cloud.provider`, `cloud.region`, and `cloud.account.id` (EC2 / GCE / Azure are auto-detected). Traceway lifts `service.name` onto metric tags, renamed to `server_name`. Every other resource attribute is dropped unless it is on a fixed allowlist. For this agent the allowlist matters only when `TRACEWAY_PROCESS_NAMES` is set: `process.pid`, `process.executable.name`, `process.command_line` and `process.owner` are lifted, which is what keeps the per-process series apart. `host.name`, `os.type` and the `cloud.*` attributes are never stored as tags. See [Resource Attributes](/client/otel/metrics#resource-attributes) for the full allowlist.
+
+## What it opens
+
+The agent binds two loopback-only ports:
+
+- `127.0.0.1:13133` for the health check. The installer polls it to confirm the agent started, and `curl -fsS http://127.0.0.1:13133/` is a quick way to check it is still running.
+- `localhost:8888` for the Collector's own internal metrics.
+
+Neither port is reachable from off the host.
 
 ## Options
 
@@ -56,9 +69,11 @@ Set these env vars alongside `TRACEWAY_TOKEN` before piping into the shell:
 | Var                       | Purpose                                                                                                |
 | ------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `TRACEWAY_SERVICE_NAME`   | `service.name` label for this host. Default: the machine's hostname.                                   |
-| `TRACEWAY_ENDPOINT`       | OTLP/HTTP base URL. Override when running against self-hosted Traceway.                                |
+| `TRACEWAY_ENDPOINT`       | OTLP/HTTP base URL. Default: `https://cloud.tracewayapp.com/api/otel`. Override when running against self-hosted Traceway. |
 | `TRACEWAY_LOG_PATHS`      | Comma-separated file globs to tail as logs (e.g. `/var/log/app/*.log`). Leave unset to ship metrics only. |
 | `TRACEWAY_PROCESS_NAMES`  | Comma-separated process names (e.g. `myapp,postgres`) or `*` for all. Off by default — enables per-process CPU / memory metrics. |
+| `TRACEWAY_VERSION`        | Pin the agent version, e.g. `v0.5.0`. Default: the version the installer was published with. Works on both installers. |
+| `TRACEWAY_RELEASES_URL`   | Override the release-archive base URL. Default: GitHub Releases. Accepts `file://` URLs for air-gapped installs. Linux / macOS installer only. |
 
 Example — named host, app logs, self-hosted Traceway:
 
@@ -72,6 +87,8 @@ curl -fsSL https://install.tracewayapp.com/install.sh | \
 ```
 
 Re-running the installer with the same env vars upgrades in place.
+
+Note that it also overwrites `config.yaml` with the release default. If you edit that file by hand, pin `TRACEWAY_VERSION` first so an upgrade cannot swap the config under you unnoticed.
 
 ## Uninstall
 

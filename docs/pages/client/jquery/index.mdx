@@ -7,14 +7,20 @@ Integrate Traceway into your jQuery application with the `@tracewayapp/jquery` p
 ### Via npm
 
 ```bash
-npm install @tracewayapp/jquery
+npm install @tracewayapp/jquery jquery
 ```
 
 ```javascript
+import $ from "jquery";
 import { init } from "@tracewayapp/jquery";
+
+// The AJAX hook binds to the global jQuery, so publish it before init().
+window.jQuery = window.$ = $;
 
 init("your-token@https://cloud.tracewayapp.com/api/report");
 ```
+
+`init()` binds `$(document).ajaxError()` on `window.jQuery` (or `window.$`). If jQuery is only a bundled module and never lands on `window`, uncaught errors and `captureException()` still work but AJAX errors are silently skipped. Call `init()` after jQuery is on the page. If jQuery already comes from a `<script>` tag, it is global already and you can drop the two jQuery lines above.
 
 Session recording is on by default — the last ~30s of DOM events ship with every captured exception.
 
@@ -30,11 +36,12 @@ No build step needed — add two script tags after jQuery:
 </script>
 ```
 
+The CDN build exposes everything on the `TracewayJQuery` global: `TracewayJQuery.captureException`, `TracewayJQuery.captureMessage`, `TracewayJQuery.setAttribute`, `TracewayJQuery.flush`, and so on. The `import` examples below are for the npm build, so prefix them with `TracewayJQuery.` when you use the CDN.
+
 ## What It Does
 
 Once initialized, the SDK automatically:
 
-This automatically:
 - Captures uncaught JavaScript errors and unhandled promise rejections
 - Captures jQuery AJAX errors via `$(document).ajaxError()`
 - Injects `traceway-trace-id` headers into same-origin `$.ajax()` requests
@@ -84,7 +91,7 @@ init("your-token@https://cloud.tracewayapp.com/api/report", {
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `debug` | `boolean` | `false` | Log captured events to the browser console |
+| `debug` | `boolean` | `false` | Log filtered-out events and failed uploads to the browser console. Successful captures are not logged |
 | `debounceMs` | `number` | `1500` | Batch delay in milliseconds |
 | `retryDelayMs` | `number` | `10000` | Retry delay for failed uploads |
 | `version` | `string` | `undefined` | Your application version |
@@ -96,6 +103,9 @@ init("your-token@https://cloud.tracewayapp.com/api/report", {
 | `captureLogs` | `boolean` | `true` | Mirror `console.*` calls into the rolling log buffer |
 | `captureNetwork` | `boolean` | `true` | Record `fetch` / `XHR` calls as network actions |
 | `captureNavigation` | `boolean` | `true` | Record History API push / replace / pop transitions |
+| `eventsWindowMs` | `number` | `10000` (`30000` w/ `recordAllSessions`) | Rolling window the log and action buffers retain |
+| `eventsMaxCount` | `number` | `200` (`600` w/ `recordAllSessions`) | Hard cap on entries kept independently in the log and action buffers |
+| `captureHttpServerErrors` | `boolean` | `false` | Report every `fetch` response with status >= 500 as a synthetic exception. It is wired into the `fetch` wrapper only, so `$.ajax()` does not trigger it. Use the `ajaxError` capture below for jQuery requests |
 
 ## Error Filtering
 
@@ -148,9 +158,11 @@ Layering on each event: **defaults < global scope < per-call**. See [Sessions](/
 
 The SDK automatically instruments both `XMLHttpRequest` (used by `$.ajax()`) and `fetch` to propagate a `traceway-trace-id` header on same-origin requests. This links frontend errors to the backend requests that caused them.
 
+The backend has to hold up its end: it must set the incoming header on its server span as the `traceway.distributed_trace_id` attribute. The Symfony bundle does this for you, everything else needs one small middleware. See [Distributed Tracing](/client/js-sdk/distributed-tracing#backend-setup).
+
 ### With Symfony + OpenTelemetry
 
-If your backend uses the [Symfony OpenTelemetry Bundle](/client/symfony), distributed tracing works out of the box. The bundle reads the `traceway-trace-id` header from incoming requests and attaches it as a span attribute, linking your jQuery frontend errors to Symfony backend traces.
+If your backend uses the [Symfony OpenTelemetry Bundle](/client/otel/symfony), distributed tracing works out of the box. The bundle reads the `traceway-trace-id` header from incoming requests and attaches it as a span attribute, linking your jQuery frontend errors to Symfony backend traces.
 
 ```javascript
 // Frontend — trace header is injected automatically
@@ -171,6 +183,8 @@ $("#test-button").on("click", function () {
   captureException(new Error("Test error from jQuery"));
 });
 ```
+
+On the CDN build, call `TracewayJQuery.captureException(new Error("Test error from jQuery"))` instead.
 
 Click the button and check your Traceway dashboard to verify the error appears.
 

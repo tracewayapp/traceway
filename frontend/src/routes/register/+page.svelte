@@ -17,7 +17,7 @@
     import TurnstileWidget from '$lib/components/turnstile-widget.svelte';
     import OauthButtons from '$lib/components/oauth-buttons.svelte';
 
-    const DEFAULT_FRAMEWORK: Framework = 'gin';
+    const DEFAULT_FRAMEWORK: Framework = 'opentelemetry';
 
     function parseFrameworkParam(value: string | null): Framework {
         if (!value) return DEFAULT_FRAMEWORK;

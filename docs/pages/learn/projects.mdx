@@ -1,0 +1,141 @@
+# Project Structure
+
+A Traceway project is an observability boundary. It controls which telemetry shares dashboards and distributed traces, which framework-specific setup appears on the **Connection** page, and which runtime and artifact-upload credentials are used.
+
+Choose projects around application runtime boundaries, not folders or processes.
+
+## Recommended Structure
+
+| Application part | Traceway project | Framework | What it records |
+|---|---|---|---|
+| Backend system | One backend project | **OpenTelemetry** | Endpoints, spans, issues, background tasks, AI traces, logs, application metrics, and host metrics |
+| Browser application | Separate project per deployed browser app | React, Svelte, Vue.js, or jQuery | Browser errors, web vitals, session replay, distributed-trace linkage, and source-mapped stacks |
+| Mobile application | Separate project per independently released app | Flutter, React Native, Android, or iOS | Mobile errors and crashes, replay where supported, and symbolicated stacks |
+| Full-stack JavaScript application | Backend and browser projects | OpenTelemetry + browser framework | Server telemetry stays in the backend project; browser telemetry stays in the browser project |
+
+Do not send browser or mobile telemetry to the backend project. Those runtimes use different SDKs, build artifacts, and dashboard behavior.
+
+The framework picker offers exactly nine options, and every backend takes the same one:
+
+| Group | Options |
+|---|---|
+| Backend | OpenTelemetry |
+| Browser | React, Svelte, Vue.js, jQuery |
+| Mobile | Flutter, React Native, Android, iOS |
+
+There is no Gin, Django, Laravel, or Hono entry, because the language and web framework are chosen later on the project's **Connection** page, which then shows the exact install and exporter setup. A meta-framework picks the framework it renders with: Next.js and Remix select **React**, SvelteKit selects **Svelte**, Nuxt selects **Vue.js**.
+
+## Keep Backend Signals Together
+
+The main backend project should receive all server-side signals:
+
+- HTTP endpoints and their child spans
+- Queue consumers, scheduled work, and CLI tasks
+- AI and LLM spans
+- Exceptions and OTel logs
+- Application and runtime metrics
+- Host CPU, memory, disk, filesystem, network, and process metrics from the [Traceway OTel Agent](/learn/otel-agent)
+
+APIs, workers, schedulers, and the host agent use the same backend project token. Give each process or host a stable `service.name` so it remains filterable inside the project:
+
+```text
+checkout-api
+checkout-worker
+checkout-scheduler
+checkout-prod-host-1
+```
+
+Create separate backend projects only when the services are separate products or require different ownership, access control, compliance, or data isolation. A different deployment process alone is not a reason to split them.
+
+## Browser and Mobile Boundaries
+
+Create one project for each independently deployed browser application. Its framework selection drives the browser SDK setup on the Connection page, and its dedicated upload token keeps source maps scoped to that application.
+
+Create one project for each independently released mobile application. A Flutter product that ships to both Android and iOS normally uses one Flutter project. Separate native Android and iOS applications use separate projects and credentials.
+
+A full-stack framework such as Next.js, SvelteKit, or Remix needs two projects only when its server runs meaningful production code:
+
+- OpenTelemetry project for API routes, server rendering, workers, tasks, AI calls, and server metrics
+- Browser-framework project for code running in the user's browser
+
+For Next.js, the server half is covered by the [Next.js OpenTelemetry guide](/client/otel/nextjs) and the browser half by the [React SDK](/client/react). Each half uses its own project token.
+
+A static export with an external API needs only the browser project; the external API belongs to its backend project.
+
+## Create the Projects
+
+For each application boundary:
+
+1. Open your Traceway dashboard.
+2. Open the project selector in the header and select **Add Project**.
+3. Choose the organization.
+4. Enter a name that identifies the product and runtime, such as `Acme Backend`, `Acme Web`, or `Acme Mobile`.
+5. Select the framework:
+   - **OpenTelemetry** for the backend, regardless of language or HTTP framework — it is the only backend option, and the preselected default
+   - **React**, **Svelte**, **Vue.js**, or **jQuery** for a browser project
+   - **Flutter**, **React Native**, **Android**, or **iOS** for a mobile project
+6. Select **New Project**.
+7. Save the project token and open **Go to Connection** for the tailored setup. For a backend project, the Connection page asks for your language and web framework there and then shows the matching install commands.
+
+Repeat until every deployed browser app and independently released mobile app has its own project. Do not reuse the backend token for them.
+
+## Credentials
+
+| Credential | Purpose | Where it belongs |
+|---|---|---|
+| Backend project token | Authenticates OTLP traces, metrics, and logs | Backend deployment secret |
+| Browser connection string | Authenticates browser SDK reports | Public build-time browser configuration; never reuse the backend token |
+| Mobile connection string | Authenticates mobile SDK reports | Mobile build configuration; never reuse another project's token |
+| Upload token | Uploads source maps, Flutter symbols, iOS dSYMs, or Android R8 mappings | CI secret; never embed it in the application |
+
+Generate an upload token from the project's **Connection** page under **Source Maps** or **Symbol Upload**. Upload tokens are project-specific. Regenerating one invalidates the previous value, so update the corresponding CI secret immediately.
+
+Use component-specific environment variables for runtime credentials so a monorepo cannot accidentally cross-wire projects:
+
+```text
+TRACEWAY_BACKEND_TOKEN
+PUBLIC_TRACEWAY_WEB_CONNECTION_STRING
+TRACEWAY_MOBILE_CONNECTION_STRING
+```
+
+Browser frameworks require their public prefix: for example `VITE_` in Vite, `PUBLIC_` in SvelteKit, and `NEXT_PUBLIC_` in Next.js.
+
+Upload tokens are the exception: each uploader reads one fixed variable name.
+
+| Uploader | Token variable |
+|---|---|
+| `traceway-sourcemaps` (JavaScript source maps) | `TRACEWAY_SOURCEMAP_TOKEN` |
+| `dart run traceway:upload_symbols` (Flutter) | `TRACEWAY_UPLOAD_TOKEN` |
+| iOS dSYM upload | `TRACEWAY_UPLOAD_TOKEN` |
+| `com.tracewayapp.symbols` Gradle plugin (Android) | `TRACEWAY_UPLOAD_TOKEN` |
+
+All of them also read `TRACEWAY_URL`. Name the CI secret exactly what the uploader reads, or keep a per-component name and pass it explicitly:
+
+```bash
+traceway-sourcemaps --url "$TRACEWAY_URL" --token "$TRACEWAY_WEB_UPLOAD_TOKEN" --directory ./dist
+```
+
+If one repository releases two mobile apps, their tokens collide on `TRACEWAY_UPLOAD_TOKEN` — scope the secret per CI job, or pass `--token` per build. Upload tokens never use a public prefix and never ship inside the application.
+
+## Example Monorepo
+
+For a repository containing a Go API, a Svelte dashboard, one shared worker binary, and a Flutter application, create three projects:
+
+| Project | Framework | Reporters |
+|---|---|---|
+| `Acme Backend` | OpenTelemetry | Go API, worker, scheduler, AI model calls, OTel Agent |
+| `Acme Web` | Svelte | Svelte browser SDK and source-map upload job |
+| `Acme Mobile` | Flutter | Flutter SDK and symbol-upload job when release builds are obfuscated |
+
+The API and worker use different `service.name` values but the same backend project token. This keeps an endpoint, its queued task, its AI calls, and the affected server metrics in the same project.
+
+## Next Steps
+
+- [OpenTelemetry integration](/client/otel)
+- [OTel span mapping](/client/otel/traces)
+- [Traceway OTel Agent](/learn/otel-agent)
+- [JavaScript source maps](/client/js-sdk/sourcemap-upload)
+- [Flutter](/client/flutter)
+- [React Native](/client/react-native)
+- [Android](/client/android)
+- [iOS](/client/ios)

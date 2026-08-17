@@ -72,17 +72,27 @@ class ValidationError extends Error {
 captureException(new ValidationError("Invalid email format"));
 ```
 
+The type shown in Traceway comes from the error's **class name**, not from `this.name`. Minifiers rename classes, so in a production build the issue above reads `r: Invalid email format` rather than `ValidationError: Invalid email format`. Put anything you need to search or group on into the message or into attributes.
+
 ## Non-Error Values
 
-If you capture a non-Error value, the SDK wraps it:
+Pass real `Error` objects. The SDK reads only the value's class name and its `message` property, so anything else loses information and arrives with no stack trace:
 
 ```javascript
-// These work, but Error objects are preferred
+// Message is lost. Stored as "String: undefined".
 captureException("Something went wrong");
+
+// Stored as "Object: Server error". The `code` field is dropped.
 captureException({ code: 500, message: "Server error" });
 ```
 
-For best stack traces, always throw and catch actual `Error` objects.
+Wrap the value in an `Error` instead, and pass the extra fields as attributes:
+
+```javascript
+import { captureExceptionWithAttributes } from "@tracewayapp/frontend";
+
+captureExceptionWithAttributes(new Error("Server error"), { code: "500" });
+```
 
 ## React Error Boundaries
 

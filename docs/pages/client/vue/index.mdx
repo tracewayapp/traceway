@@ -86,19 +86,11 @@ Click the button and check your Traceway dashboard to verify the error appears.
 
 ## Distributed Tracing
 
-The SDK automatically instruments `fetch` to propagate a `traceway-trace-id` header on same-origin requests. This links frontend errors to the backend requests that caused them — no extra configuration needed.
+The SDK automatically instruments both `fetch` and `XMLHttpRequest` to propagate a `traceway-trace-id` header on same-origin requests. This links frontend errors to the backend requests that caused them.
 
-For Axios users, add the interceptor to your instance:
+Axios needs no setup. It uses `XMLHttpRequest` in the browser, which the SDK already instruments. Do not register `createAxiosInterceptor()` in a browser app: it adds a second ID under the same header name, and the combined value is rejected by the backend.
 
-```javascript
-import axios from "axios";
-import { createAxiosInterceptor } from "@tracewayapp/frontend";
-
-const api = axios.create({ baseURL: "/api" });
-api.interceptors.request.use(createAxiosInterceptor());
-```
-
-See the [Distributed Tracing](/client/js-sdk/distributed-tracing) guide for full details.
+Your backend still has to set the incoming header on its server span as the `traceway.distributed_trace_id` attribute, or the two sides never join. See the [Distributed Tracing](/client/js-sdk/distributed-tracing) guide for the middleware.
 
 ## Next Steps
 

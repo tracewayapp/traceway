@@ -1,0 +1,214 @@
+# Traces
+
+The `@hono/otel` middleware automatically traces all HTTP requests. Database queries from CJS libraries (`pg`, `mysql2`, `mongodb`, `ioredis`) are also auto-instrumented. This page covers manual spans for operations that aren't covered by auto-instrumentation.
+
+Everything here assumes the setup from the [Quick Start](/client/otel/hono), including `app.use(httpInstrumentationMiddleware())`.
+
+## Manual Spans
+
+Use `@opentelemetry/api` to create custom spans for operations that aren't auto-instrumented. These spans automatically become children of the `@hono/otel` root span. Replace `findOrder` with your own lookup:
+
+```typescript
+import { trace, SpanStatusCode } from "@opentelemetry/api";
+
+const tracer = trace.getTracer("my-hono-app");
+
+app.get("/api/orders/:id", async (c) => {
+  const orderId = c.req.param("id");
+
+  return tracer.startActiveSpan("fetch-order", async (span) => {
+    try {
+      span.setAttribute("order.id", orderId);
+      const order = await findOrder(orderId);
+
+      if (!order) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: "Order not found" });
+        span.end();
+        return c.json({ error: "Not found" }, 404);
+      }
+
+      span.end();
+      return c.json(order);
+    } catch (error) {
+      const e = error as Error;
+      span.recordException(e);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: e.message });
+      span.end();
+      throw e;
+    }
+  });
+});
+```
+
+TypeScript binds `catch (error)` to `unknown`, so the `error as Error` cast is what makes `recordException` and `.message` compile. The same cast is used in every snippet below.
+
+## Tracing Middleware
+
+Create a Hono middleware that adds attributes to the current span:
+
+```typescript
+import { trace } from "@opentelemetry/api";
+import { createMiddleware } from "hono/factory";
+
+const addUserContext = createMiddleware(async (c, next) => {
+  const span = trace.getActiveSpan();
+  const userId = c.req.header("x-user-id");
+
+  if (span && userId) {
+    span.setAttribute("user.id", userId);
+  }
+
+  await next();
+});
+
+app.use("/api/*", addUserContext);
+```
+
+The attribute lands on the endpoint's root span, so `user.id` shows up in the attributes panel of every request that route handled.
+
+## Exception Recording
+
+The `@hono/otel` middleware records thrown errors as exception events on the span, so they appear as **Issues** in Traceway with full stack traces. Hono's default error handler answers the request with HTTP 500, and the middleware writes `http.response.status_code` 500 on the endpoint row to match.
+
+For cases where you catch an error and want to record it without re-throwing. Replace `processPayment` with your own work:
+
+```typescript
+import { trace, SpanStatusCode } from "@opentelemetry/api";
+
+app.get("/api/checkout", async (c) => {
+  const span = trace.getActiveSpan();
+  try {
+    await processPayment();
+  } catch (error) {
+    const e = error as Error;
+    if (span) {
+      span.recordException(e);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: e.message });
+    }
+    return c.json({ error: "Payment failed" }, 500);
+  }
+  return c.json({ status: "ok" });
+});
+```
+
+A caught error recorded this way still becomes its own Issue, with the stack trace from where it was thrown.
+
+## Nested Spans
+
+Spans created inside an active span are automatically linked as children:
+
+```typescript
+const tracer = trace.getTracer("my-hono-app");
+
+async function processPayment(orderId: string) {
+  return tracer.startActiveSpan("process-payment", async (span) => {
+    try {
+      await validateCard(orderId);
+      await chargeAmount(orderId);
+      span.setStatus({ code: SpanStatusCode.OK });
+    } catch (error) {
+      span.recordException(error as Error);
+      span.setStatus({ code: SpanStatusCode.ERROR });
+      throw error;
+    } finally {
+      span.end();
+    }
+  });
+}
+```
+
+## Background Jobs
+
+A cron job or queue consumer runs outside any request, so `@hono/otel` never sees it and the span you create is a root span. Root spans need `kind: SpanKind.CONSUMER` or Traceway drops them. The full example is in the [Quick Start](/client/otel/hono#background-jobs).
+
+## Outgoing HTTP Requests (Auto-Instrumented)
+
+Calls through the global `fetch()` are traced by `@opentelemetry/instrumentation-undici`, with no manual spans:
+
+```typescript
+app.get("/api/external", async (c) => {
+  // This fetch creates a child span with url.full,
+  // http.response.status_code, server.address, and more.
+  const res = await fetch("https://api.example.com/data");
+  const data = await res.json();
+  return c.json(data);
+});
+```
+
+The resulting trace in Traceway:
+
+```
+GET /api/external             ← Endpoint (from @hono/otel)
+  └─ GET                      ← Span (from instrumentation-undici)
+                                 url.full = https://api.example.com/data
+                                 http.response.status_code = 200
+```
+
+Opening a new connection adds `dns.lookup` and `tcp.connect` spans underneath.
+
+This covers the global `fetch()` only. `axios`, `got`, `node-fetch` v2, and vendor SDKs built on Node's `http` module produce no span at all with the Quick Start config, because it turns `instrumentation-http` off. To trace those too, see [Tracing Outgoing HTTP Clients](/client/otel/hono#tracing-outgoing-http-clients).
+
+## SQLite / Custom Database Spans (Manual)
+
+SQLite has no OTel auto-instrumentation. Wrap queries in manual spans. Install the driver first:
+
+```bash
+npm install better-sqlite3
+```
+
+```typescript
+import { trace, SpanStatusCode } from "@opentelemetry/api";
+import Database from "better-sqlite3";
+
+const db = new Database("app.db");
+const tracer = trace.getTracer("my-hono-app");
+
+function dbSpan<T>(name: string, query: string, fn: () => T): T {
+  return tracer.startActiveSpan(name, (span) => {
+    span.setAttribute("db.system", "sqlite");
+    span.setAttribute("db.statement", query);
+    try {
+      const result = fn();
+      span.end();
+      return result;
+    } catch (error) {
+      const e = error as Error;
+      span.recordException(e);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: e.message });
+      span.end();
+      throw e;
+    }
+  });
+}
+
+app.get("/api/users", (c) => {
+  const users = dbSpan("db.query", "SELECT * FROM users", () =>
+    db.prepare("SELECT * FROM users").all()
+  );
+  return c.json(users);
+});
+```
+
+Traceway renames any span that carries `db.statement` (or `db.query.text`) after the SQL itself. The snippet sets `db.statement`, so the child span under `GET /api/users` shows as `SELECT * FROM users`, not as `db.query`. That is the same naming you get from `pg` and `mysql2`. If you would rather see your own span name in the waterfall, drop the `db.statement` line.
+
+## What Gets Auto-Instrumented vs Manual
+
+| Operation | Auto-Instrumented? | Notes |
+|-----------|-------------------|-------|
+| HTTP requests (incoming) | Yes | Via `@hono/otel` middleware |
+| Outgoing global `fetch()` calls | Yes | Via `instrumentation-undici` |
+| Outgoing `axios`, `got`, `node-fetch` v2 | No | They use the `http` module, which the Quick Start config disables. [Re-enable outgoing only](/client/otel/hono#tracing-outgoing-http-clients) |
+| Database queries (`pg`, `mysql2`, `mongodb`) | Yes | CJS packages, patched by `require-in-the-middle` |
+| Cache (`redis`, `ioredis`) | Yes | CJS packages, patched automatically |
+| DNS lookups | Yes | Via `instrumentation-dns` |
+| TCP connections | Yes | Via `instrumentation-net` |
+| SQLite (`better-sqlite3`) | No | Use manual spans (see above) |
+| Background jobs and cron | No | Use `tracer.startActiveSpan()` with `kind: SpanKind.CONSUMER` |
+| Custom business logic | No | Use `tracer.startActiveSpan()` |
+
+## Next Steps
+
+- [Quick Start](/client/otel/hono): setup, logs, background jobs, and custom metrics
+- [Node.js Traces](/client/otel/nodejs/traces): more on manual spans and context propagation
+- [Logs](/client/otel/logs): severity levels and attributes
+- [Metrics](/client/otel/metrics): instrument types and how Traceway stores them

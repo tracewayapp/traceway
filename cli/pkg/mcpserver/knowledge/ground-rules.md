@@ -6,3 +6,4 @@
 - **Time windows**: always bound queries, default `--since 1h` for "now" questions, `--since 24h` otherwise. `--since` accepts `s`, `m`, `h`, lowercase `Nd` (no `1w`, no `7d2h`). Absolute windows via `--from` / `--to` (RFC3339).
 - **Exit codes**: 0 ok, 1 generic/API, 2 usage, 3 connection, 4 auth, 5 not found, 6 rate limited, 7 server 5xx. Errors emit `{"error":"<stable_id>","message":"...","hint":"...","exit_code":N}` on stderr; branch on the `error` field.
 - On exit code 4 (auth), do not run `traceway login` yourself; switch to the Login flow and let the user enter credentials.
+- **Never guess a fix**: if the telemetry does not explain the failure, do not change behaviour on a hunch. Add the instrumentation that would explain it next time, and say what is still unknown. See "When the evidence is not enough" in the Debug flow.

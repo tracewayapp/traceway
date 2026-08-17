@@ -1,5 +1,7 @@
 # Logs
 
+Logs are their own OTLP signal. If you have only configured a trace exporter, no logs are reaching Traceway yet. You need two things: a log record processor pointed at `/v1/logs`, and a bridge from your app's logging library into the OTel logs API. Both are shown below.
+
 Traceway ingests OpenTelemetry logs via the OTLP/HTTP protocol at `POST /api/otel/v1/logs`. Logs emitted inside an active span context are automatically linked to the trace and span that produced them.
 
 ## Log Record Mapping
@@ -13,12 +15,14 @@ Each OTLP `LogRecord` maps to a Traceway log as follows:
 | `SpanId` (8 bytes)              | Span ID               | Hex-encoded                                                           |
 | `SeverityNumber` (1-24)         | Severity Number       | Also used to compute Severity Text when text is empty                  |
 | `SeverityText`                  | Severity Text         | Uppercased; when empty, derived from `SeverityNumber` (see below)     |
-| `Body`                          | Body                  | Strings stored as-is; arrays and maps are JSON-encoded                |
+| `Body`                          | Body                  | Strings as-is; numbers, booleans and bytes stringified; arrays and maps JSON-encoded; a missing body stores an empty string |
 | `Resource.service.name`         | Service               | Required for the Logs page service filter                             |
-| Resource attributes             | Resource Attributes   | Stringified; array and map values are dropped at attribute level      |
+| Resource attributes             | Resource Attributes   | Strings, numbers and booleans stringified; array, map and bytes values are dropped |
 | Scope name / version            | Scope Name / Version  |                                                                       |
 | Scope attributes                | Scope Attributes      | Same stringification rules as resource attributes                     |
 | Log record attributes           | Log Attributes        | Same stringification rules                                            |
+
+The attribute rule applies to span attributes and metric tags too, since all three signals share the same conversion. If you need list or object data to survive, JSON-encode it into a string attribute yourself.
 
 ## Severity Fallback
 
@@ -33,37 +37,46 @@ When an SDK sends a `SeverityNumber` but leaves `SeverityText` blank, Traceway c
 | 17-20           | ERROR         |
 | 21+             | FATAL         |
 
-A severity number of `0` is treated as unset.
+A severity number of `0` means unset, and Traceway stores an **empty** severity text for it. Those rows still show under the default **All levels**, but they carry no level badge and they disappear the moment you pick any level, because the filter compares severity numbers. Always send a `severityNumber`.
+
+If you send a `severityText`, it wins and is uppercased exactly as given, so `"warning"` is stored as `WARNING`. That does not affect filtering. The Logs page level picker and `traceway logs query --min-severity` both compare the severity **number**, never the text. What matters is that the number is right.
 
 ## Linking Logs to Traces
 
-OTel Logs SDKs read the active span from the context you pass into `Emit` / `logger.log` / equivalent. When a log is emitted inside a request handler, background job, or child span, its `trace_id` and `span_id` are populated automatically — no plumbing on your side.
+OTel Logs SDKs read the active span from the context you pass into `Emit` / `logger.log` / equivalent. When a log is emitted inside a request handler, background job, or child span, its `trace_id` and `span_id` are populated automatically. There is no plumbing on your side.
 
-In the Traceway dashboard, the trace detail page shows a **Logs** tab listing every log for that trace, plus an **All Distributed Traces** tab that pulls in logs from linked traces across services.
+In the Traceway dashboard, the Endpoint / Task / AI Trace detail page carries a **Logs** card. It has a **This Trace** tab listing the logs whose `trace_id` matches this run, and, when the run is part of a distributed trace, an **All Distributed Traces** tab that pulls in logs from the linked runs in other services. Both tabs search a ±1 hour window around the run and show up to 100 rows.
+
+The match is on the OTel `trace_id`, and only a **root** span's run is keyed by it. A run promoted from a non-root span, which is what a cross-service inbound hop produces, is keyed by its span id instead. Its Logs card comes up empty even though the logs were recorded correctly. Find those logs on the **Logs** page: set the search dropdown to **Trace ID** first, then paste the trace id in. The dropdown defaults to **Message**, which searches the log body and returns nothing for a trace id.
 
 ## Example: Node.js
+
+```bash
+npm install @opentelemetry/sdk-node @opentelemetry/exporter-logs-otlp-http \
+  @opentelemetry/sdk-logs @opentelemetry/resources @opentelemetry/api-logs
+```
 
 ```typescript
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
-import { Resource } from "@opentelemetry/resources";
+import { resourceFromAttributes } from "@opentelemetry/resources";
 import { logs, SeverityNumber } from "@opentelemetry/api-logs";
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     "service.name": "my-service",
     "service.version": "1.0.0",
   }),
   logRecordProcessors: [
-    new BatchLogRecordProcessor(
-      new OTLPLogExporter({
+    new BatchLogRecordProcessor({
+      exporter: new OTLPLogExporter({
         url: "https://your-traceway-instance.com/api/otel/v1/logs",
         headers: {
           Authorization: "Bearer your-project-token",
         },
       }),
-    ),
+    }),
   ],
 });
 
@@ -77,20 +90,69 @@ logger.emit({
   body: "order received",
   attributes: { "order.id": "ord_123" },
 });
+
+await sdk.shutdown();   // short-lived script: flush before exiting
 ```
+
+Keep that final `sdk.shutdown()` in a script that exits right after emitting. The batch processor holds records for up to a second before its first export, so a process that ends sooner sends nothing and reports no error. A long-running service does not need it.
+
+Two details that fail silently if you get them wrong:
+
+- `BatchLogRecordProcessor` takes an **options object**, `{ exporter }`. Passing the exporter positionally, `new BatchLogRecordProcessor(exporter)`, fails to compile in TypeScript with `error TS2741: Property 'exporter' is missing`. In plain JavaScript it constructs without complaint and then exports nothing, and you will not see an error unless you turn on OTel diag logging.
+- `resourceFromAttributes` replaced `new Resource(...)`, which was removed in `@opentelemetry/resources` 2.x. The old form throws at import time.
+
+**Do not create a second `NodeSDK`.** If you already have one for traces, add `logRecordProcessors` to that same instance rather than starting another. The [overview page](/client/otel#quick-start-direct-sdk-export) shows one SDK wiring all three signals.
 
 When called inside an OTel-instrumented HTTP handler (or any code that runs under an active span), the emitted log automatically carries the active `trace_id` and `span_id`.
 
-## Example: Python
+## Example: Python (zero-code)
+
+`opentelemetry-bootstrap -a install` installs `opentelemetry-instrumentation-logging`, which attaches the OTel handler to the **root** logger. Every `logger.info(...)` in your code, your framework, and your libraries is then forwarded and linked to the active span, with no bridge to write yourself:
+
+```bash
+export OTEL_LOGS_EXPORTER=otlp
+export OTEL_PYTHON_LOG_CORRELATION=true
+export OTEL_PYTHON_LOG_LEVEL=info
+```
 
 ```python
 import logging
-from opentelemetry import trace
-from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
-from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
-from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
-from opentelemetry.sdk.resources import Resource
+
+logger = logging.getLogger(__name__)
+
+
+@app.get("/users/{user_id}")
+def get_user(user_id: str):
+    logger.info("looking up user %s", user_id)
+    return {"id": user_id}
+```
+
+> **`OTEL_PYTHON_LOG_CORRELATION=true` is what makes INFO records arrive.** Python's root logger defaults to `WARNING`, so `logger.info(...)` is filtered out before the OTel handler ever runs, and only WARN and above reach Traceway. That variable calls `logging.basicConfig()`, which sets the root level and restores a console handler, and it stamps `otelTraceID` / `otelSpanID` onto every record. `OTEL_PYTHON_LOG_LEVEL` alone does nothing: it is only read alongside the correlation variable, where it defaults to `info`. The equivalent in code is `logging.basicConfig(level=logging.INFO)` early in your app.
+
+Attaching the OTel handler also **replaces the root handler list**, so without the correlation variable your log lines stop appearing on stdout and go only to Traceway. On a host whose runbook is `docker logs`, that reads as the app having stopped logging.
+
+Do not set `OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true`. The bridge is on by default on current versions, and that variable switches it to the SDK's deprecated handler, which then logs a duplicate-handler warning that is itself ingested as a log record.
+
+The rest of the zero-code setup is in the [Python guide](/client/otel/python).
+
+## Example: Python with OTel SDK
+
+To wire the bridge by hand, install the handler package alongside the SDK and the exporter:
+
+```bash
+pip install opentelemetry-sdk opentelemetry-exporter-otlp-proto-http \
+  opentelemetry-instrumentation-logging
+```
+
+```python
+import logging
+
 from opentelemetry._logs import set_logger_provider
+from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+from opentelemetry.instrumentation.logging.handler import LoggingHandler
+from opentelemetry.sdk._logs import LoggerProvider
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+from opentelemetry.sdk.resources import Resource
 
 resource = Resource.create({
     "service.name": "my-python-service",
@@ -106,24 +168,36 @@ exporter = OTLPLogExporter(
 )
 provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
 
-handler = LoggingHandler(level=logging.NOTSET, logger_provider=provider)
-logging.getLogger().addHandler(handler)
-logging.getLogger().setLevel(logging.INFO)
+logging.getLogger().addHandler(LoggingHandler(logger_provider=provider))
+logging.getLogger().setLevel(logging.INFO)   # root defaults to WARNING
 
 logging.info("order received", extra={"order.id": "ord_123"})
+
+provider.shutdown()   # short-lived script: flush before exiting
 ```
 
-The standard `LoggingHandler` bridges Python's `logging` module to OTel. Logs emitted inside a traced request automatically pick up the current trace and span IDs.
+`LoggingHandler` is the bridge: it forwards Python's standard `logging` module into OTel. Without it, `logging.info(...)` writes to stdout and nothing is exported. Logs emitted inside a traced request automatically pick up the current trace and span IDs.
+
+Import the handler from `opentelemetry.instrumentation.logging.handler`. The same class in `opentelemetry.sdk._logs` still works but is deprecated, warns on construction, and is slated for removal. Keep the `setLevel(logging.INFO)` line: the root logger's `WARNING` default drops INFO records before the handler sees them here too. A long-running service can skip the final `shutdown()`, since the batch processor exports on its own interval.
 
 ## Example: Go
+
+```bash
+go get go.opentelemetry.io/otel \
+  go.opentelemetry.io/otel/log \
+  go.opentelemetry.io/otel/sdk/log \
+  go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp
+```
 
 ```go
 import (
     "context"
     "time"
 
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
     otellog "go.opentelemetry.io/otel/log"
+    "go.opentelemetry.io/otel/log/global"
     sdklog "go.opentelemetry.io/otel/sdk/log"
     "go.opentelemetry.io/otel/sdk/resource"
     semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
@@ -150,6 +224,7 @@ func initLogs(ctx context.Context) (*sdklog.LoggerProvider, error) {
             sdklog.WithExportInterval(2*time.Second))),
         sdklog.WithResource(res),
     )
+    global.SetLoggerProvider(lp)
     return lp, nil
 }
 
@@ -159,18 +234,62 @@ func logInfo(ctx context.Context, logger otellog.Logger, msg string) {
     rec.SetTimestamp(time.Now())
     rec.SetSeverity(otellog.SeverityInfo)
     rec.SetSeverityText("INFO")
-    rec.SetBody(otellog.StringValue(msg))
+    rec.SetBody(attribute.StringValue(msg))
     logger.Emit(ctx, rec)
 }
 ```
 
+`Record.SetBody` takes an `attribute.Value`, so the body value comes from `go.opentelemetry.io/otel/attribute`. There is no `log.StringValue`.
+
 When `ctx` carries an active span (for example, the request context inside a Gin or net/http handler instrumented with OTel), the log automatically carries that span's trace and span IDs.
+
+If you log with `log/slog` rather than the OTel API directly, install the bridge instead of writing `Record` values by hand:
+
+```bash
+go get go.opentelemetry.io/contrib/bridges/otelslog
+```
+
+```go
+import "go.opentelemetry.io/contrib/bridges/otelslog"
+
+logger := otelslog.NewLogger("my-service")
+logger.InfoContext(ctx, "order received", "order.id", "ord_123")
+```
+
+Pass the request `ctx` on every call. That is what carries the trace and span ids.
+
+## Example: Java (Agent)
+
+The Java agent bridges Logback, Log4j2 and `java.util.logging` to OTLP for you. There is no code to write and no appender to register. Logs export by default, since `otel.logs.exporter` is `otlp`, so simply do not disable them:
+
+```bash
+java \
+  -javaagent:opentelemetry-javaagent.jar \
+  -Dotel.service.name=my-spring-app \
+  -Dotel.exporter.otlp.protocol=http/protobuf \
+  -Dotel.exporter.otlp.endpoint=https://<your-instance>/api/otel \
+  -Dotel.exporter.otlp.headers="Authorization=Bearer <project_token>" \
+  -jar target/my-app.jar
+```
+
+Every `log.info(...)` inside a traced request is exported with that request's trace and span ids, so it lands on the endpoint's Logs card with no extra wiring. If you previously set `-Dotel.logs.exporter=none` to send traces only, removing that flag is the whole change.
 
 ## Quick Start: OTel Collector
 
 If you route telemetry through a Collector, add a `logs` pipeline that targets the same OTLP/HTTP endpoint:
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+
 exporters:
   otlphttp:
     endpoint: "https://your-traceway-instance.com/api/otel"
@@ -180,15 +299,23 @@ exporters:
 service:
   pipelines:
     traces:
+      receivers: [otlp]
+      processors: [batch]
       exporters: [otlphttp]
     metrics:
+      receivers: [otlp]
+      processors: [batch]
       exporters: [otlphttp]
     logs:
+      receivers: [otlp]
+      processors: [batch]
       exporters: [otlphttp]
 ```
 
+Every pipeline must declare at least one receiver, or the Collector fails validation with `must have at least one receiver` and never starts. The `otlphttp` exporter appends `/v1/logs` to the base `endpoint`, so point it at `/api/otel` and nothing else.
+
 ## Next Steps
 
-- [Traces](/client/otel/traces) — how OTel spans map to Traceway concepts
-- [Metrics](/client/otel/metrics) — supported metric types and histogram handling
-- [Overview](/client/otel) — protocol details and authentication
+- [Traces](/client/otel/traces): how OTel spans map to Traceway concepts
+- [Metrics](/client/otel/metrics): supported metric types and histogram handling
+- [Overview](/client/otel): protocol details, authentication, and a "nothing is showing up" checklist

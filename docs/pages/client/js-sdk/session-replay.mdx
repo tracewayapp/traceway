@@ -76,13 +76,11 @@ Add `class="rr-ignore"` on form inputs when you want interaction events (focus, 
 
 ### What's masked by default
 
-You don't need to add any classes to get the basics — these are always masked:
+Exactly one thing is masked without any markup on your side:
 
-- `<input type="password">` — value is never captured
-- Elements with the `data-sensitive` attribute
-- Elements with the `aria-masked` attribute
+- `<input type="password">`. The value is never captured.
 
-Reach for the `rr-*` classes whenever the sensitive content isn't in a form field, or when you need stricter masking than the defaults.
+Nothing else is automatic. The recorder does not recognize attributes such as `data-sensitive` or `aria-masked`, so text inside those elements is recorded in full. Every other piece of sensitive content needs one of the `rr-*` classes above.
 
 ## Segment Rotation
 

@@ -25,7 +25,7 @@ All commands are read-only. Never archive or mutate anything during a performanc
 4. **Separate code from saturation.** A slow endpoint can be a code bug or an overloaded host. Pull infrastructure and runtime metrics over the same window:
    ```bash
    traceway metrics query --name system.cpu.utilization --aggregation max --since 24h
-   traceway metrics query --name mem.used_pcnt --aggregation max --since 24h
+   traceway metrics query --name mem.used --aggregation max --since 24h
    traceway metrics query --name go.gc_pause --aggregation max --since 24h
    ```
    A metric spike that lines up with the latency rise points at saturation; flat metrics under rising latency point at a code or query problem.
@@ -119,7 +119,7 @@ Each row: the suspect, and how to confirm it from Traceway telemetry.
 | **Synchronous work that belongs in a background task** | A long handler span runs before the response returns, for work the user does not wait on (emails, exports, image processing). It should be a `CaptureTask`. |
 | **CPU-bound serialization** | A compute gap between IO spans (large JSON encode/decode); `system.cpu.utilization` up during the request. |
 | **Inefficient algorithm / O(n^2) hot path** | Latency scales superlinearly with input size across traces; no IO to blame in the waterfall. |
-| **Unbounded in-memory work / large allocations** | `mem.used_pcnt` and `go.num_gc` climb with p99; large compute spans. |
+| **Unbounded in-memory work / large allocations** | `mem.used` and `go.num_gc` climb with p99; large compute spans. |
 | **Excessive logging / telemetry in the hot path** | Many log lines per request in `logs query`; logging spans visible in the waterfall. |
 
 ### Network, IO, and external dependencies
@@ -143,12 +143,12 @@ Each row: the suspect, and how to confirm it from Traceway telemetry.
 | Suspect | How to confirm in Traceway |
 |---|---|
 | **CPU saturation** | `system.cpu.utilization` (max) spike lines up with the latency rise across many endpoints at once. |
-| **Memory pressure / GC pauses** | `mem.used_pcnt`, `go.gc_pause`, `go.num_gc` correlate with p99; pauses visible as gaps in the waterfall. |
+| **Memory pressure / GC pauses** | `mem.used`, `go.gc_pause`, `go.num_gc` correlate with p99; pauses visible as gaps in the waterfall. |
 | **Disk / IO bottleneck** | `system.disk.*` or IO-wait metrics up; slow IO spans with no CPU cost. |
 | **Undersized / noisy-neighbor instance** | Broad latency rise with no single span culprit; infra metrics elevated with no code change. |
 
 ## Notes on the signals
 
-- Host and runtime metrics live under `system.*` (Traceway OTel Agent) and the SDK runtime names (`go.gc_pause`, `mem.used_pcnt`, `go.go_routines`). The server has no quantile aggregation for metric points: `p50/p95/p99` on `metrics query` silently return `avg`, so never present those as percentiles. Real latency percentiles come only from `endpoints list`, computed from raw request durations.
+- Host and runtime metrics live under `system.*` (Traceway OTel Agent) and the SDK runtime names (`go.gc_pause`, `mem.used`, `go.go_routines`). The server has no quantile aggregation for metric points: `p50/p95/p99` on `metrics query` silently return `avg`, so never present those as percentiles. Real latency percentiles come only from `endpoints list`, computed from raw request durations.
 - OTLP histogram metrics are stored as two series, `<name>.avg` and `<name>.count`. A bogus metric name returns an empty `series: {}` cleanly, so probing names is safe.
 - When the waterfall shows a gap with no span, that gap is the finding: it is time the request spent waiting (for a connection, a lock, the scheduler), not time spent doing work.

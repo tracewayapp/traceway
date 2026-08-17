@@ -1,0 +1,358 @@
+# Node.js (OpenTelemetry)
+
+Instrument any Node.js backend (Express, Fastify, Koa, Hono, NestJS, or plain HTTP) with OpenTelemetry and export traces, metrics, and logs to Traceway.
+
+## Requirements
+
+- Node 20.6 or newer. The ESM loader hook below uses `module.register()`, which landed in Node 18.19 / 20.6.
+- Node 22.18 or newer if you want to run `.ts` files directly. Node strips the types itself, so you do not need `tsx` or `ts-node`.
+
+## Installation
+
+Install every package the snippets on this page import. Most of them also arrive as transitive dependencies of `@opentelemetry/sdk-node`, but relying on that breaks under pnpm's strict `node_modules` and Yarn PnP, and it leaves the versions unpinned:
+
+```bash
+npm install @opentelemetry/sdk-node \
+  @opentelemetry/auto-instrumentations-node \
+  @opentelemetry/instrumentation \
+  @opentelemetry/api \
+  @opentelemetry/api-logs \
+  @opentelemetry/resources \
+  @opentelemetry/sdk-metrics \
+  @opentelemetry/sdk-logs \
+  @opentelemetry/exporter-trace-otlp-http \
+  @opentelemetry/exporter-metrics-otlp-http \
+  @opentelemetry/exporter-logs-otlp-http
+```
+
+`@opentelemetry/instrumentation` is what provides the ESM loader hook. With npm it resolves today only as a hoisted transitive dependency of `sdk-node`, which breaks under pnpm's strict `node_modules` and Yarn PnP and leaves the version unpinned, so declare it directly.
+
+## Setup
+
+Create an `instrumentation.ts` (or `.js`) file at the root of your project. This file must be loaded **before** your application code.
+
+```typescript
+// instrumentation.ts
+import { register } from "node:module";
+register("@opentelemetry/instrumentation/hook.mjs", import.meta.url);
+
+import { NodeSDK } from "@opentelemetry/sdk-node";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
+import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
+import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
+import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
+import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
+import { resourceFromAttributes } from "@opentelemetry/resources";
+
+const sdk = new NodeSDK({
+  resource: resourceFromAttributes({
+    "service.name": "my-service",
+    "service.version": "1.0.0",
+  }),
+
+  traceExporter: new OTLPTraceExporter({
+    url: "https://your-traceway-instance.com/api/otel/v1/traces",
+    headers: { Authorization: "Bearer your-project-token" },
+  }),
+
+  metricReaders: [
+    new PeriodicExportingMetricReader({
+      exporter: new OTLPMetricExporter({
+        url: "https://your-traceway-instance.com/api/otel/v1/metrics",
+        headers: { Authorization: "Bearer your-project-token" },
+      }),
+      exportIntervalMillis: 30_000,
+    }),
+  ],
+
+  logRecordProcessors: [
+    new BatchLogRecordProcessor({
+      exporter: new OTLPLogExporter({
+        url: "https://your-traceway-instance.com/api/otel/v1/logs",
+        headers: { Authorization: "Bearer your-project-token" },
+      }),
+      scheduledDelayMillis: 2000,
+    }),
+  ],
+
+  instrumentations: [getNodeAutoInstrumentations()],
+});
+
+sdk.start();
+
+for (const signal of ["SIGTERM", "SIGINT"]) {
+  process.on(signal, () => {
+    sdk.shutdown().finally(() => process.exit(0));
+  });
+}
+```
+
+Four details in that file are easy to get wrong:
+
+- The first two lines register the ESM loader hook. They must come before every other import. See [ESM: Register the Loader Hook](#esm-register-the-loader-hook) for what breaks without them.
+- `resourceFromAttributes({...})` replaced the old `new Resource({...})`. The `Resource` class was removed in `@opentelemetry/resources` 2.x, so `import { Resource }` now crashes on startup with `SyntaxError: Named export 'Resource' not found`.
+- `metricReaders` takes an array. The singular `metricReader` option still works but is deprecated.
+- `BatchLogRecordProcessor` takes a **single options object** with an `exporter` key. Passing the exporter as a positional argument fails to compile in TypeScript with `error TS2345`. In plain JavaScript it runs and ships zero logs with no error printed.
+
+The shutdown handler flushes the pending trace, metric, and log batches when the process stops. Without it you lose everything still sitting in a batch, which is usually why "I started the app, hit a route, pressed Ctrl-C, and saw nothing".
+
+> **Using CommonJS?** Write the same file with `require(...)` and delete the two `register(...)` lines. `import.meta.url` is not valid in a CommonJS file, and `require` is patched directly so the hook is not needed.
+
+## Running Your App
+
+Running `.ts` or `.js` files as ESM needs `"type": "module"` in your `package.json`. A fresh `npm init -y` writes `"type": "commonjs"`, and the ESM file fails under it with `SyntaxError: Cannot use import statement outside a module`:
+
+```json
+{
+  "type": "module",
+  "scripts": {
+    "start": "node --import ./instrumentation.ts server.ts"
+  }
+}
+```
+
+Load the instrumentation file before everything else using Node's `--require` (CommonJS) or `--import` (ESM) flag:
+
+```bash
+# CommonJS
+node --require ./instrumentation.js server.js
+
+# ESM with .mjs files, works whatever "type" says
+node --import ./instrumentation.mjs server.mjs
+
+# ESM with .ts files, needs "type": "module"
+# Node 22.18+ strips the types natively, no tsx or ts-node
+node --import ./instrumentation.ts server.ts
+```
+
+Or set it via environment variable:
+
+```bash
+export NODE_OPTIONS="--require ./instrumentation.js"
+node server.js
+```
+
+## ESM: Register the Loader Hook
+
+OpenTelemetry patches libraries as they load. Under CommonJS it hooks `require` and this happens on its own. Under ESM, Node needs a loader hook registered before anything else is imported. Without it your web framework is never patched, and the HTTP spans that reach Traceway carry no route information.
+
+These two lines, at the very top of `instrumentation.ts`, are the fix:
+
+```typescript
+import { register } from "node:module";
+register("@opentelemetry/instrumentation/hook.mjs", import.meta.url);
+```
+
+On Node 22.15 and newer this prints `DeprecationWarning: module.register() is deprecated. Use module.registerHooks() instead.` at startup. Ignore it. `registerHooks()` takes hook functions, not a module path, so it cannot load `hook.mjs`, and `register()` is still the supported way to install it.
+
+### How to tell it is missing
+
+Nothing errors. Requests still reach Traceway, statuses are correct, exceptions still land in Issues. The tell is on the **Endpoints** page: instead of one row per route you get one row per URL.
+
+| | Without the hook | With the hook |
+|---|---|---|
+| Endpoint rows for 3 requests to `/api/users/101`, `/202`, `/303` | three rows, `GET /api/users/101`, `GET /api/users/202`, `GET /api/users/303` | one row, `GET /api/users/:id` with count 3 |
+| SERVER span name | `GET` | `GET /api/users/:id` |
+| SERVER span attributes | `url.path` only | `url.path` **and** `http.route` |
+
+Traceway names an endpoint from `http.route` and falls back to `url.path` when it is missing, so an unpatched framework turns every path parameter value into its own endpoint.
+
+### Confirming which libraries were patched
+
+Run once with OTel diagnostics turned on, at the top of `instrumentation.ts`:
+
+```typescript
+import { diag, DiagConsoleLogger, DiagLogLevel } from "@opentelemetry/api";
+diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
+```
+
+You should see an `Applying instrumentation patch` line for `@opentelemetry/instrumentation-express` (Express 4) or `@opentelemetry/instrumentation-router` (Express 5). If the only patch line is for `http`, the hook is not registered.
+
+## Environment Variable Alternative
+
+Instead of hardcoding the endpoint and token, you can use standard OTel environment variables:
+
+```bash
+export OTEL_SERVICE_NAME="my-service"
+export OTEL_EXPORTER_OTLP_ENDPOINT="https://your-traceway-instance.com/api/otel"
+export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer your-project-token"
+```
+
+The SDK appends `/v1/traces`, `/v1/metrics`, and `/v1/logs` to the base endpoint itself, which matches Traceway's ingest paths. The space inside `Bearer your-project-token` needs no escaping.
+
+With these set, construct the exporters with no arguments and drop the `resource` block:
+
+```typescript
+import { register } from "node:module";
+register("@opentelemetry/instrumentation/hook.mjs", import.meta.url);
+
+import { NodeSDK } from "@opentelemetry/sdk-node";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
+
+const sdk = new NodeSDK({
+  traceExporter: new OTLPTraceExporter(),
+  instrumentations: [getNodeAutoInstrumentations()],
+});
+
+sdk.start();
+```
+
+The environment variables only supply the endpoint, the headers, and the service name. Metrics and logs still need their `metricReaders` and `logRecordProcessors` entries, with the exporters constructed the same way, no arguments.
+
+## What Gets Auto-Instrumented
+
+The `@opentelemetry/auto-instrumentations-node` package automatically instruments:
+
+| Library | What's Captured |
+|---------|-----------------|
+| `http` / `https` | Incoming and outgoing HTTP requests |
+| `express` | Route-level spans with `http.route` (Express 4) |
+| `router` | Route handler spans and route exception events (Express 5) |
+| `fastify` | Route-level spans |
+| `koa` | Middleware and route spans |
+| `hono` | HTTP request spans (via `http` instrumentation) |
+| `undici` / global `fetch` | Outgoing request spans |
+| `pg` / `mysql2` / `mongodb` | Database query spans |
+| `redis` / `ioredis` | Cache operation spans |
+| `grpc` | gRPC call spans |
+| `pino` / `winston` | Log records, see [Logs](/client/otel/nodejs/logs) |
+| `runtime-node` | Node runtime metrics such as `nodejs.eventloop.delay.p50` |
+
+> **Two instrumentations ship disabled.** `@opentelemetry/instrumentation-fs` and `@opentelemetry/instrumentation-host-metrics` are in the package but excluded by default. Turn one on explicitly if you need it:
+>
+> ```typescript
+> instrumentations: [
+>   getNodeAutoInstrumentations({
+>     "@opentelemetry/instrumentation-fs": { enabled: true },
+>   }),
+> ],
+> ```
+>
+> `fs` spans are very high volume. Expect a much noisier waterfall.
+
+Root SERVER spans become **Endpoints** in Traceway, CONSUMER spans become **Tasks**, child spans become **Spans**, and exception events become **Issues**. See [Traces](/client/otel/nodejs/traces) for the full mapping.
+
+## Framework Quick Start
+
+These snippets assume the framework itself is installed (`npm install express`, `npm install fastify`, and so on). None of them import anything from OpenTelemetry.
+
+### Express
+
+```typescript
+import express from "express";
+
+const app = express();
+
+app.get("/api/users/:id", (req, res) => {
+  res.json({ id: req.params.id });
+});
+
+app.listen(3000);
+```
+
+No extra code needed. Auto-instrumentation captures all requests, routes, and database calls, as long as the loader hook is registered for ESM.
+
+### Fastify
+
+```typescript
+import Fastify from "fastify";
+
+const app = Fastify();
+
+app.get("/api/users", async () => {
+  return { users: [] };
+});
+
+app.listen({ port: 3000 });
+```
+
+### Hono
+
+See the dedicated [Hono guide](/client/otel/hono) for multi-runtime setup.
+
+```typescript
+import { serve } from "@hono/node-server";
+import { Hono } from "hono";
+
+const app = new Hono();
+
+app.get("/api/users", (c) => c.json({ users: [] }));
+
+serve({ fetch: app.fetch, port: 3000 });
+```
+
+## Background Jobs
+
+Cron jobs and queue workers show up under **Tasks**. The signal Traceway looks for is the span kind, so start the job's span with `kind: SpanKind.CONSUMER`:
+
+```typescript
+import { trace, SpanKind } from "@opentelemetry/api";
+
+const tracer = trace.getTracer("my-service");
+
+async function runNightlyReport() {
+  await tracer.startActiveSpan(
+    "nightly-report",
+    { kind: SpanKind.CONSUMER },
+    async (span) => {
+      await buildReport();
+      span.end();
+    },
+  );
+}
+```
+
+> **A plain root span is dropped.** A root `INTERNAL` or `PRODUCER` span with no HTTP attributes and no `console.command` attribute produces no Endpoint, no Task, and no Span row. It is discarded on ingest with no error. Wrapping a job in `tracer.startActiveSpan("my-job", ...)` at the top level of a script gets you silence, not a Task.
+
+[Traces](/client/otel/nodejs/traces) has the full example with error handling and the console-command variant.
+
+## Test Your Integration
+
+Add a route that throws an error:
+
+```typescript
+app.get("/test-error", () => {
+  throw new Error("Test error from Traceway integration");
+});
+```
+
+Visit `/test-error`. The request returns HTTP 500 (Express's default error handler) and the error appears under **Issues** with a full stack trace. You do not need error middleware for this.
+
+The exception event is recorded by the framework instrumentation, not by the HTTP one. Keep `@opentelemetry/instrumentation-express` (Express 4) or `@opentelemetry/instrumentation-router` (Express 5) enabled. If you narrow `getNodeAutoInstrumentations()` down to HTTP only, the span still ends with an error status but carries no exception event, so no Issue is created.
+
+If you catch the error in your own handler, record it explicitly:
+
+```typescript
+import type { NextFunction, Request, Response } from "express";
+import { trace, SpanStatusCode } from "@opentelemetry/api";
+
+app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+  const span = trace.getActiveSpan();
+  if (span) {
+    span.recordException(err);
+    span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+  }
+  res.status(500).json({ error: "Internal Server Error" });
+});
+```
+
+Express only treats a middleware as an error handler when it declares all four parameters, so keep `next` in the signature even though it is unused.
+
+## Verify It Worked
+
+Telemetry is batched, so give it about 10 seconds, or stop the app and let the shutdown handler flush. Then check these four things in the dashboard:
+
+1. **Endpoints.** Hit a parametrized route three times with different values, for example `/api/users/101`, `/api/users/202`, `/api/users/303`. You should see **one** row, `GET /api/users/:id`, with a count of 3. Three separate rows means the ESM loader hook is missing.
+2. **Issues.** `/test-error` shows up as an Issue with a stack trace, and its Endpoints row reports status 500.
+3. **Logs on the trace.** Open the endpoint's trace detail page and switch to the **Logs** tab. A log emitted inside the handler is listed there, because it carries the same trace id. See [Logs](/client/otel/nodejs/logs) for the pipeline.
+4. **Tasks.** A span started with `kind: SpanKind.CONSUMER` shows up under Tasks by its span name.
+
+## Next Steps
+
+- [Traces](/client/otel/nodejs/traces): manual spans, background jobs, exception recording, context propagation
+- [Logs](/client/otel/nodejs/logs): ship application logs and link them to traces
+- [Metrics](/client/otel/nodejs/metrics): custom counters, histograms, and gauges
+- [OTel Overview](/client/otel): protocol details and authentication
+- [OTel Trace Mapping](/client/otel/traces): how OTel spans map to Traceway concepts

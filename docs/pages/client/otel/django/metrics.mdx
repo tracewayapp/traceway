@@ -1,0 +1,239 @@
+# Metrics
+
+The OTel auto-instrumentation captures default request and outbound-HTTP metrics automatically: `http.server.duration`, `http.server.active_requests` and `http.client.duration`. The stable names `http.server.request.duration` / `http.client.request.duration` only appear if you set `OTEL_SEMCONV_STABILITY_OPT_IN=http`. The Python DB instrumentations produce spans only, so there is no `db.client.operation.duration` metric. To track custom application metrics, use the OTel Metrics API.
+
+> **Metrics are exported every 60 seconds** by default, so a new instrument can take up to a minute to show up in the dashboard. Set `OTEL_METRIC_EXPORT_INTERVAL=10000` (milliseconds) while you are testing.
+
+## Getting a Meter
+
+Call `metrics.get_meter(__name__)` once per module. Meters are cheap and cached:
+
+```python
+from opentelemetry import metrics
+
+meter = metrics.get_meter(__name__)
+```
+
+Instruments created from the same meter + same name return the same instance, so it's safe to call `meter.create_counter("orders.created")` from multiple places.
+
+## Supported Instruments
+
+| Method | Use case |
+|--------|----------|
+| `meter.create_counter(name, unit, description)` | Monotonic counter (only goes up) |
+| `meter.create_up_down_counter(...)` | Counter that can go up or down |
+| `meter.create_observable_counter(...)` | Counter whose value is read via callback at export time |
+| `meter.create_observable_up_down_counter(...)` | Up/down counter read via callback |
+| `meter.create_gauge(...)` | Synchronous gauge. Call `.set(value)` with a point-in-time value (it is `.set()`, not `.record()`) |
+| `meter.create_observable_gauge(...)` | Gauge read via callback at export time |
+| `meter.create_histogram(name, unit, description)` | Distribution of values (durations, sizes) |
+
+## Counter
+
+Counters track cumulative values that only go up (total orders, requests processed):
+
+```python
+from opentelemetry import metrics
+
+meter = metrics.get_meter(__name__)
+order_counter = meter.create_counter(
+    "orders.created",
+    unit="orders",
+    description="Total orders created",
+)
+
+# Increment by 1
+order_counter.add(1)
+
+# Increment with attributes
+order_counter.add(1, {"plan": "pro", "region": "eu"})
+```
+
+## Histogram
+
+Histograms track distributions of values (response times, payload sizes):
+
+```python
+import time
+from opentelemetry import metrics
+
+meter = metrics.get_meter(__name__)
+duration_histogram = meter.create_histogram(
+    "order.processing_ms",
+    unit="ms",
+    description="Order processing time",
+)
+
+
+def process_order(order):
+    started = time.perf_counter()
+    _process(order)
+    duration_ms = (time.perf_counter() - started) * 1000
+    duration_histogram.record(duration_ms, {"plan": order.plan})
+```
+
+Traceway converts histograms into average and count metrics (see [OTel metrics](/client/otel/metrics#histogram-handling)).
+
+## Gauge
+
+Gauges track point-in-time values that can go up or down (queue depth, active connections):
+
+```python
+# Synchronous — set a value when you know it
+cache_size_gauge = meter.create_gauge(
+    "cache.size_mb",
+    unit="MB",
+    description="Cache memory usage",
+)
+cache_size_gauge.set(42.3)
+
+
+# Observable — value is read by a callback at export time
+from opentelemetry.metrics import Observation
+
+
+def queue_depth_callback(options):
+    return [Observation(get_queue_size("default"))]
+
+
+meter.create_observable_gauge(
+    "queue.depth",
+    callbacks=[queue_depth_callback],
+    unit="items",
+    description="Pending jobs in the default queue",
+)
+```
+
+The synchronous gauge is the one people get wrong. `.record()` belongs to `Histogram`. A gauge only has `.set()`, and calling `.record()` on one raises `AttributeError: '_Gauge' object has no attribute 'record'`, which in a Django view means a 500.
+
+## Sharing One Expensive Reading Between Instruments
+
+OpenTelemetry Python has no batch-callback API (unlike the Go and Java SDKs). Each instrument's callbacks are invoked separately at collection time, so registering one callback against two instruments calls it twice, not once. Cache the reading yourself:
+
+```python
+import time
+
+from opentelemetry.metrics import Observation
+
+_cache = {"at": 0.0, "usage": 0.0, "pressure": 0.0}
+
+
+def _refresh():
+    now = time.monotonic()
+    if now - _cache["at"] > 5:
+        _cache["usage"], _cache["pressure"] = expensive_system_call()
+        _cache["at"] = now
+
+
+def usage_callback(options):
+    _refresh()
+    return [Observation(_cache["usage"], {"source": "system"})]
+
+
+def pressure_callback(options):
+    _refresh()
+    return [Observation(_cache["pressure"], {"source": "system"})]
+
+
+meter.create_observable_counter("usage", callbacks=[usage_callback], description="count of items used")
+meter.create_observable_gauge("pressure", callbacks=[pressure_callback], description="force per unit area")
+```
+
+One more rule that makes the naive version silently wrong: multiple `Observation`s returned by a single callback must differ in their attribute set. Return `Observation(10, {"source": "system"})` and `Observation(20, {"source": "system"})` from the same callback and they are aggregated into one data point (a counter reports 30, a gauge reports 20). Give each observation its own attributes, or use one callback per instrument as above.
+
+## Use Cases
+
+### Business Metrics
+
+```python
+from opentelemetry import metrics
+
+meter = metrics.get_meter(__name__)
+revenue_counter = meter.create_counter("payments.revenue", unit="usd", description="Total revenue")
+signups_counter = meter.create_counter("users.signups", unit="users", description="User signups")
+
+
+class PaymentService:
+    def process_payment(self, order):
+        self.gateway.charge(order.total)
+        revenue_counter.add(order.total, {"plan": order.plan})
+
+
+def register(request):
+    user = create_user(request.POST)
+    signups_counter.add(1)
+    return JsonResponse({"id": user.pk}, status=201)
+```
+
+### Performance Metrics
+
+```python
+import time
+import requests
+from opentelemetry import metrics
+
+meter = metrics.get_meter(__name__)
+external_latency = meter.create_histogram(
+    "external_api.latency_ms",
+    unit="ms",
+    description="External API call duration",
+)
+
+
+def fetch_external_data(endpoint: str) -> dict:
+    started = time.perf_counter()
+    try:
+        return requests.get(endpoint, timeout=5).json()
+    finally:
+        duration_ms = (time.perf_counter() - started) * 1000
+        external_latency.record(duration_ms, {"endpoint": endpoint})
+```
+
+### Resource Metrics
+
+```python
+import redis
+from opentelemetry import metrics
+from opentelemetry.metrics import Observation
+
+meter = metrics.get_meter(__name__)
+redis_client = redis.Redis()
+
+
+def redis_clients_callback(options):
+    info = redis_client.info("clients")
+    return [Observation(int(info.get("connected_clients", 0)))]
+
+
+meter.create_observable_gauge(
+    "redis.connected_clients",
+    callbacks=[redis_clients_callback],
+    unit="connections",
+    description="Active Redis connections",
+)
+```
+
+## Temporality
+
+The OTLP exporter supports a preferred temporality (`DELTA` vs `CUMULATIVE`) for exported metrics. Set it via env:
+
+```bash
+OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=DELTA
+```
+
+Leave it unset to use the SDK default.
+
+## Metric Naming Conventions
+
+Use dot-separated names for organization:
+
+```python
+# Good
+meter.create_counter("orders.created")
+meter.create_histogram("db.query_ms")
+meter.create_counter("cache.hits")
+
+# Bad
+meter.create_counter("created")     # too vague
+meter.create_counter("orderCount")  # inconsistent style
+```

@@ -41,7 +41,7 @@ If your healthcheck lives somewhere else, add custom paths in the project settin
 
 ## Configuration
 
-The feature is **enabled by default** for every project. To change it, open the project switcher, edit the project, and use the **Drop healthy healthcheck requests** toggle. The same form accepts custom paths (one per line) and shows the full built-in list.
+The feature is **enabled by default** for every project you create in the dashboard or through the API. Projects seeded by embedded mode's `WithDefaultProject` start with it off, so turn it on there if you want probe traffic filtered. To change it, open the project switcher, edit the project, and use the **Drop healthy healthcheck requests** toggle. The same form accepts custom paths (one per line) and shows the full built-in list.
 
 Turning the toggle off stores all healthcheck traffic again. The setting takes effect immediately, no restart required.
 

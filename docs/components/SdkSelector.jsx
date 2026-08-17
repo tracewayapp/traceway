@@ -3,30 +3,17 @@ import { useRouter } from 'next/router'
 import { useSdk, SDK_OPTIONS } from './SdkContext'
 
 const SDK_QUICK_START = {
-  'go-gin': '/client/gin-middleware',
-  'go-chi': '/client/chi-middleware',
-  'go-fiber': '/client/fiber-middleware',
-  'go-fasthttp': '/client/fasthttp-middleware',
-  'go-http': '/client/http-middleware',
-  'go-generic': '/client/sdk',
-  'js-node': '/client/node-sdk',
-  'js-nestjs': '/client/nestjs',
-  'js-hono': '/client/hono',
-  'js-nextjs': '/client/nextjs',
+  'otel': '/client/otel',
   'js-react': '/client/react',
   'js-vue': '/client/vue',
   'js-svelte': '/client/svelte',
   'js-jquery': '/client/jquery',
   'js-generic': '/client/js-sdk',
-  'openrouter': '/client/openrouter',
-  'otel': '/client/otel',
-  'cloudflare': '/client/cloudflare',
-  'php-symfony': '/client/symfony',
-  'php-laravel': '/client/laravel',
-  'python-django': '/client/django',
   'flutter': '/client/flutter',
   'android': '/client/android',
+  'ios': '/client/ios',
   'react-native': '/client/react-native',
+  'openrouter': '/client/openrouter',
 }
 
 export default function SdkSelector() {

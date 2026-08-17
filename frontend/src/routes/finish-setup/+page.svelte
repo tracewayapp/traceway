@@ -15,7 +15,7 @@
     import FrameworkCombobox from '$lib/components/framework-combobox.svelte';
     import { consumeSsoReturnTo, safeLocalPath } from '$lib/utils/navigation';
 
-    const DEFAULT_FRAMEWORK: Framework = 'gin';
+    const DEFAULT_FRAMEWORK: Framework = 'opentelemetry';
 
     let organizationName = $state('');
     let timezone = $state(Intl.DateTimeFormat().resolvedOptions().timeZone);

@@ -57,9 +57,9 @@ function UserProfile({ userId }) {
       setProfile(profile);
     } catch (error) {
       captureExceptionWithAttributes(error, {
-        userId,
+        userId: String(userId),
         action: "loadProfile",
-        timestamp: Date.now(),
+        timestamp: String(Date.now()),
       });
     }
   }
@@ -67,6 +67,8 @@ function UserProfile({ userId }) {
   // ...
 }
 ```
+
+**Attribute values must be strings.** The ingest endpoint types them as a string map and rejects the whole upload with `400 Bad Request` if any value is a number, boolean, or object. The SDK re-queues a rejected batch and retries it forever, so one number blocks every later exception and message from that page too. Wrap non-string values in `String(...)`. TypeScript catches this for you (the signature is `Record<string, string>`), plain `.jsx` does not.
 
 ## captureMessage
 

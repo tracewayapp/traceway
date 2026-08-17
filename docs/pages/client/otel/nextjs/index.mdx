@@ -1,0 +1,667 @@
+# Next.js
+
+Traceway instruments Next.js on two sides:
+
+- **Frontend (Browser)**: uncaught errors, render errors, and session recording via [`@tracewayapp/react`](https://www.npmjs.com/package/@tracewayapp/react).
+- **Backend (Server)**: request traces, database spans, and server-side exceptions via OpenTelemetry.
+
+The two work side by side on the same project. Most apps will want both.
+
+---
+
+## Quick Start
+
+Minimum configuration to get errors flowing in. Drop these in, replace the connection string, and you're done.
+
+**Frontend.** Install `@tracewayapp/react`, wrap your app in `TracewayProvider`:
+
+```bash
+npm install @tracewayapp/react
+```
+
+```tsx
+// app/traceway-provider.tsx
+"use client";
+
+import { TracewayProvider } from "@tracewayapp/react";
+
+export function TracewayClientProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <TracewayProvider connectionString="your-token@https://traceway.example.com/api/report">
+      {children}
+    </TracewayProvider>
+  );
+}
+```
+
+```tsx
+// app/layout.tsx
+import { TracewayClientProvider } from "./traceway-provider";
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <TracewayClientProvider>{children}</TracewayClientProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+**Backend.** Install the OTel Node SDK and add a single `instrumentation.ts`. This installs all three signals at once: traces, metrics, and logs.
+
+```bash
+npm install @opentelemetry/sdk-node \
+  @opentelemetry/auto-instrumentations-node \
+  @opentelemetry/exporter-trace-otlp-http \
+  @opentelemetry/exporter-metrics-otlp-http \
+  @opentelemetry/exporter-logs-otlp-http \
+  @opentelemetry/sdk-metrics \
+  @opentelemetry/sdk-logs \
+  @opentelemetry/resources \
+  @opentelemetry/api \
+  @opentelemetry/api-logs
+```
+
+```typescript
+// instrumentation.ts (project root)
+export async function register() {
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+
+  const { NodeSDK } = await import("@opentelemetry/sdk-node");
+  const { OTLPTraceExporter } = await import("@opentelemetry/exporter-trace-otlp-http");
+  const { OTLPMetricExporter } = await import("@opentelemetry/exporter-metrics-otlp-http");
+  const { OTLPLogExporter } = await import("@opentelemetry/exporter-logs-otlp-http");
+  const { PeriodicExportingMetricReader } = await import("@opentelemetry/sdk-metrics");
+  const { BatchLogRecordProcessor } = await import("@opentelemetry/sdk-logs");
+  const { getNodeAutoInstrumentations } = await import("@opentelemetry/auto-instrumentations-node");
+  const { resourceFromAttributes } = await import("@opentelemetry/resources");
+
+  const base = "https://your-traceway-instance.com/api/otel";
+  const headers = { Authorization: "Bearer your-project-token" };
+
+  new NodeSDK({
+    resource: resourceFromAttributes({
+      "service.name": "my-nextjs-app",
+      "service.version": "1.0.0",
+    }),
+    traceExporter: new OTLPTraceExporter({ url: `${base}/v1/traces`, headers }),
+    metricReaders: [
+      new PeriodicExportingMetricReader({
+        exporter: new OTLPMetricExporter({ url: `${base}/v1/metrics`, headers }),
+        exportIntervalMillis: 30_000,
+      }),
+    ],
+    logRecordProcessors: [
+      new BatchLogRecordProcessor({
+        exporter: new OTLPLogExporter({ url: `${base}/v1/logs`, headers }),
+      }),
+    ],
+    instrumentations: [getNodeAutoInstrumentations()],
+  }).start();
+}
+```
+
+Three details in that file are easy to get wrong:
+
+- `resourceFromAttributes({ ... })` is the current API. `@opentelemetry/resources` 2.x removed the `Resource` class, so `new Resource({ ... })` throws `TypeError: Resource is not a constructor` and takes the Next.js dev server down with it.
+- `new BatchLogRecordProcessor({ exporter })` takes an options object. Passing the exporter directly (`new BatchLogRecordProcessor(exporter)`) fails to compile in TypeScript with `error TS2345`. In plain JavaScript it starts and then ships zero logs.
+- `metricReaders` and `logRecordProcessors` are arrays. The older singular `metricReader` and `logRecordProcessor` fields still work but are deprecated.
+
+The `process.env.NEXT_RUNTIME !== "nodejs"` guard is required. Next.js runs `instrumentation.ts` in both the Node.js and Edge runtimes, and the OTel Node SDK only works in Node.js. The dynamic `import()` calls keep OTel out of the Edge bundle.
+
+> Next.js < 15: also set `experimental.instrumentationHook: true` in `next.config.js`. Not needed for 15+.
+
+That's the whole base setup. Restart the dev server, make a few requests, and confirm they landed with the checklist in [Verify it worked](#verify-it-worked). The rest of this page is for the cases where the defaults aren't enough.
+
+---
+
+## Frontend (Browser)
+
+Captures browser errors, render errors, and session recordings. Works with both App Router and Pages Router.
+
+### Pages Router setup
+
+If you're still on `pages/`, mount the provider directly in `_app.tsx`:
+
+```tsx
+// pages/_app.tsx
+import type { AppProps } from "next/app";
+import { TracewayProvider } from "@tracewayapp/react";
+
+export default function App({ Component, pageProps }: AppProps) {
+  return (
+    <TracewayProvider connectionString="your-token@https://traceway.example.com/api/report">
+      <Component {...pageProps} />
+    </TracewayProvider>
+  );
+}
+```
+
+### What you get by default
+
+Defaults match the rest of the JS SDK family (no flags needed):
+
+| Option | Default | Purpose |
+|---|---|---|
+| `sessionRecording` | `true` | rrweb recorder runs; segments ride along with each exception |
+| `recordAllSessions` | `false` | Only exception-bound clips upload (no always-on recording) |
+| `captureLogs` | `true` | `console.{log,info,warn,error}` mirrored into the rolling buffer |
+| `captureNetwork` | `true` | `fetch` and XHR calls recorded as network actions |
+| `captureNavigation` | `true` | History API push/replace/pop recorded as navigation actions |
+
+The `connectionString` uses the standard `{token}@{apiUrl}` format from your Traceway project page.
+
+`TracewayProvider` also acts as a React error boundary. Render-time exceptions are captured and re-thrown so your app behaves exactly as without Traceway. No separate `<TracewayErrorBoundary>` is required.
+
+### Capture errors manually
+
+Inside any client component, use the `useTraceway` hook:
+
+```tsx
+"use client";
+
+import { useTraceway } from "@tracewayapp/react";
+
+export function CheckoutButton() {
+  const { captureException } = useTraceway();
+
+  async function handleClick() {
+    try {
+      await placeOrder();
+    } catch (e) {
+      captureException(e as Error);
+    }
+  }
+
+  return <button onClick={handleClick}>Place order</button>;
+}
+```
+
+### Test the frontend integration
+
+Throw during render, so the throw goes through the error boundary described above. A `throw` inside an `onClick` handler does not reach a React error boundary, it reaches the global `window.onerror` handler instead, which is a different path.
+
+```tsx
+"use client";
+
+import { useState } from "react";
+
+export function TestErrorButton() {
+  const [boom, setBoom] = useState(false);
+  if (boom) throw new Error("Test error from Next.js client");
+  return <button onClick={() => setBoom(true)}>Send test error</button>;
+}
+```
+
+The error should appear in your Traceway dashboard under **Issues** within a few seconds, with the session recording attached.
+
+---
+
+## Backend (Server)
+
+Captures server-side traces, database spans, and exceptions thrown in Server Components, route handlers, and `getServerSideProps`. The frontend SDK can see none of these.
+
+### Verify it worked
+
+Start the app, make a few requests, then wait about 15 seconds for the batch exporters to flush.
+
+1. **Endpoints.** Hit a dynamic route with three different ids (`/api/users/1`, `/api/users/2`, `/api/users/3`). You should see one row, `GET /api/users/[id]`, with count 3. Three separate rows mean the request span is not coming from Next.js (see [Do not preload the SDK](#do-not-preload-the-sdk)).
+2. **Spans.** Open that endpoint. You should see Next.js's own children (`resolve page components`, `executing api route (app) /api/users/[id]`, `start response`) plus any database or `fetch` spans.
+3. **Issues.** Add a route that throws. The response is HTTP 500, the endpoint row shows 500, and the Issue carries a stack trace.
+4. **Logs.** Emit a log inside a handler and open the request's trace. The log shows up on it.
+5. **Metrics.** `nodejs.eventloop.utilization`, `v8js.memory.heap.used` and `v8js.gc.duration` arrive on their own once a metric reader is configured. Outgoing calls also produce `http.client.request.duration`.
+
+There is no `http.server.request.duration`. Next.js emits the incoming request span from its own tracer, so `@opentelemetry/instrumentation-http` never runs on incoming requests and never records its server metrics. Request duration and status code live on the endpoint row instead.
+
+If nothing arrives at all, check that `instrumentation.ts` is being loaded. Older Next.js versions printed `Compiling instrumentation Node.js ...` at startup, but Next.js 16 with Turbopack prints nothing, so do not rely on that line. Put a `console.log("otel register")` as the first statement inside `register()` and restart. If it never prints, the file is not being picked up (wrong location, or the hook is off on Next.js < 15).
+
+If the file loads and data still does not show up, turn on OTel's own diagnostics. Exporters are silent about a bad URL or a 401 by default:
+
+```bash
+OTEL_LOG_LEVEL=debug npm run dev
+```
+
+### Endpoint grouping
+
+Nothing to do. Next.js runs its own tracer and emits the request span (`next.span_type: BaseServer.handleRequest`) with `http.route` already set to the route pattern, so `/api/users/1` and `/api/users/2` both land on one endpoint, `GET /api/users/[id]`. A plain route handler is enough:
+
+```typescript
+// app/api/users/[id]/route.ts
+const users: Record<string, { id: number; name: string }> = {
+  "1": { id: 1, name: "Ada" },
+  "2": { id: 2, name: "Grace" },
+  "3": { id: 3, name: "Alan" },
+};
+
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const user = users[id];
+  if (!user) {
+    return Response.json({ error: "User not found" }, { status: 404 });
+  }
+  return Response.json(user);
+}
+```
+
+Swap the map for your real data source. The grouping does not depend on it. A 404 from this handler also stays on the `GET /api/users/[id]` row, because Next.js still sets `http.route` when the route matched but the record did not exist.
+
+Do not wrap handlers in a helper that sets `http.route` by hand. Traceway names the endpoint from the request span, and `trace.getActiveSpan()` inside a handler is not that span, it is the inner `executing api route (app) ...` span. Anything you set there shows up on that child span in the trace, never on the endpoint row:
+
+```typescript
+import { trace } from "@opentelemetry/api";
+
+export async function GET() {
+  // lands on the "executing api route (app) /api/orders" span, useful for debugging
+  trace.getActiveSpan()?.setAttribute("order.source", "web");
+  return Response.json({ ok: true });
+}
+```
+
+### Errors and exceptions
+
+Throw and let it bubble. Next.js records the exception on its own span, so an uncaught error in a route handler already produces an HTTP 500 response, an endpoint row with status 500, and an Issue with a full stack trace:
+
+```typescript
+// app/api/test-error/route.ts
+export async function GET() {
+  throw new Error("Test error from Next.js server");
+}
+```
+
+Do not catch the error, call `span.recordException(error)`, and re-throw. Next.js has already recorded it, so the same error is reported twice and every issue count, error rate and alert threshold is doubled. One request through a hand-wrapped handler produces an Issue with a count of 2.
+
+If you catch an error and handle it, so it never bubbles out of the handler, then record it yourself. That is the one case where `recordException` belongs in your code:
+
+```typescript
+import { trace, SpanStatusCode } from "@opentelemetry/api";
+
+export async function POST() {
+  const span = trace.getActiveSpan();
+  try {
+    await processPayment();
+  } catch (error) {
+    span?.recordException(error as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
+    return Response.json({ error: "Payment failed" }, { status: 500 });
+  }
+  return Response.json({ status: "ok" });
+}
+```
+
+### Logs
+
+Logs are a separate OTLP pipeline. The Quick Start `instrumentation.ts` already configures it. Create one shared module for the logger:
+
+```typescript
+// lib/otel.ts
+import { logs } from "@opentelemetry/api-logs";
+
+export const logger = logs.getLogger("my-nextjs-app");
+```
+
+Then emit from any route handler, Server Component, or server action:
+
+```typescript
+// app/api/orders/route.ts
+import { SeverityNumber } from "@opentelemetry/api-logs";
+import { logger } from "@/lib/otel";
+
+export async function GET() {
+  logger.emit({
+    severityNumber: SeverityNumber.INFO,
+    severityText: "INFO",
+    body: "listing orders",
+    attributes: { "user.id": "u-123" },
+  });
+  return Response.json({ ok: true });
+}
+```
+
+You never pass a trace id. The logs API reads the active span from context, so a log emitted during a request carries that request's `trace_id` and `span_id` and appears on the request's trace in Traceway, next to its spans.
+
+### Background tasks
+
+Work that isn't an HTTP request, such as a cron route, a queue consumer, or a webhook processor, should open a span with `SpanKind.CONSUMER`. Traceway lists those under **Tasks** instead of **Endpoints**, using the span name as the task name:
+
+```typescript
+// app/api/cron/nightly/route.ts
+import { trace, SpanKind } from "@opentelemetry/api";
+
+const tracer = trace.getTracer("my-nextjs-app");
+
+async function generateReport() {
+  // your job goes here
+}
+
+export async function GET() {
+  await tracer.startActiveSpan(
+    "nightly-report",
+    { kind: SpanKind.CONSUMER, root: true },
+    async (span) => {
+      try {
+        span.setAttribute("job.queue", "reports");
+        await generateReport();
+      } finally {
+        span.end();
+      }
+    }
+  );
+  return Response.json({ ok: true });
+}
+```
+
+`root: true` detaches the job from the triggering HTTP request so it gets its own trace, which is what you want for a cron endpoint. Drop it when the work really is part of the request.
+
+The `kind` is the part that matters. A root span with the default kind (`INTERNAL`) and no HTTP attributes is dropped on ingest: no Task, no Endpoint, no span row, and no error to tell you why. If a job never shows up under Tasks, this is the first thing to check.
+
+### Packages Next.js bundles
+
+OTel patches CommonJS packages at `require()` time. Next.js bundles server dependencies, which hides them from that hook. Next.js already excludes `pg`, `mongodb`, `@prisma/client` and `better-sqlite3`, so those are instrumented with no extra config. Anything else, including `redis`, `ioredis` and `mysql2`, has to be listed:
+
+```typescript
+// next.config.ts
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  serverExternalPackages: ["ioredis", "redis", "mysql2"],
+};
+
+export default nextConfig;
+```
+
+If a database or cache client produces no child spans, this is almost always why.
+
+Also check the client version against what the instrumentation supports. `@opentelemetry/instrumentation-ioredis` supports `ioredis >=2.0.0 <6`, so a fresh `npm install ioredis` (v6) yields no spans no matter how `next.config.ts` is set up.
+
+### Do not preload the SDK
+
+Generic OTel Node guides tell you to preload the SDK:
+
+```bash
+# don't do this with Next.js
+NODE_OPTIONS='--require ./otel.js' next start
+```
+
+On Next.js that makes `@opentelemetry/instrumentation-http` create the request root span before Next.js's own tracer runs. That span only knows the literal URL (`url.path: /api/users/42`), never the route pattern, so it wins over Next.js's span and your endpoints fragment into one row per id. Wrapping handlers does not repair it, because a handler can only reach the innermost active span.
+
+Use `instrumentation.ts` with the `register()` hook, as shown in the Quick Start.
+
+### What gets captured
+
+With the setup above, OTel captures the following automatically:
+
+| Layer | What's Captured |
+|-------|-----------------|
+| HTTP server | Incoming requests with route pattern, method, status code, duration |
+| Route handler errors | Uncaught throws recorded as Issues, with a 500 on the endpoint |
+| Prisma (`@prisma/instrumentation`) | Query spans with operation name, model, duration |
+| Database (`pg`, `mongodb`) | Query spans, Next.js externalizes these packages by default |
+| Cache (`redis`, `ioredis`), `mysql2` | Query spans, but only after adding them to `serverExternalPackages` |
+| Outgoing `fetch()` | Outgoing HTTP request spans (auto via `instrumentation-undici`) |
+| Node.js runtime metrics | Event loop, heap, and GC. No HTTP server histogram, see [Verify it worked](#verify-it-worked) |
+
+Root SERVER spans become **Endpoints** in Traceway (e.g., `GET /api/users/[id]`), CONSUMER spans become **Tasks**, child spans become **Spans**, and exception events become **Issues**.
+
+#### Prisma auto-instrumentation
+
+With `@prisma/instrumentation` registered, every Prisma query creates child spans (no manual wrapping needed):
+
+```typescript
+const users = await prisma.user.findMany();
+const user = await prisma.user.create({ data: { name, email } });
+```
+
+Resulting trace:
+
+```
+GET /api/users              ← Endpoint
+  └─ prisma:client:query    ← Span (findMany on User)
+```
+
+To register it, add the instrumentation to the Quick Start file:
+
+```bash
+npm install @prisma/instrumentation
+```
+
+```typescript
+// inside register(), next to the other imports
+const { PrismaInstrumentation } = await import("@prisma/instrumentation");
+
+// then in the NodeSDK options
+instrumentations: [getNodeAutoInstrumentations(), new PrismaInstrumentation()],
+```
+
+#### Outgoing fetch() auto-instrumentation
+
+Outgoing `fetch()` calls are traced by `@opentelemetry/instrumentation-undici`:
+
+```typescript
+export async function GET() {
+  const res = await fetch("https://api.example.com/data");
+  const data = await res.json();
+  return Response.json(data);
+}
+```
+
+Resulting trace:
+
+```
+GET /api/external           ← Endpoint
+  └─ GET                    ← Span (https://api.example.com/data)
+```
+
+### Manual spans
+
+For operations that aren't auto-instrumented (SQLite via `better-sqlite3`, Server Component rendering, custom business logic), open a span by hand with `@opentelemetry/api`:
+
+```typescript
+import { trace, SpanStatusCode } from "@opentelemetry/api";
+
+const tracer = trace.getTracer("my-nextjs-app");
+
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+
+  return tracer.startActiveSpan("fetch-order", async (span) => {
+    try {
+      span.setAttribute("order.id", id);
+      const order = await db.orders.findById(id);
+
+      if (!order) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: "Order not found" });
+        return Response.json({ error: "Not found" }, { status: 404 });
+      }
+
+      return Response.json(order);
+    } finally {
+      span.end();
+    }
+  });
+}
+```
+
+Ending the span in `finally` is the safe shape. If the body throws, the span still closes and the error still bubbles up to Next.js, which reports it once.
+
+#### Server Components
+
+Wrap Server Component bodies in a span to see their render time in the trace:
+
+```typescript
+import { trace } from "@opentelemetry/api";
+
+const tracer = trace.getTracer("my-nextjs-app");
+
+export default async function UsersPage() {
+  return tracer.startActiveSpan("UsersPage.render", async (span) => {
+    try {
+      const users = await fetchUsers();
+      span.setAttribute("user.count", users.length);
+      return (
+        <ul>
+          {users.map((user) => (<li key={user.id}>{user.name}</li>))}
+        </ul>
+      );
+    } finally {
+      span.end();
+    }
+  });
+}
+```
+
+Server Component spans appear as **Spans** in Traceway, nested under the parent HTTP request trace.
+
+#### Nested spans
+
+Spans created inside an active span are automatically linked as children:
+
+```typescript
+async function processPayment(orderId: string) {
+  return tracer.startActiveSpan("process-payment", async (span) => {
+    try {
+      await validateCard(orderId);
+      await chargeAmount(orderId);
+      span.setStatus({ code: SpanStatusCode.OK });
+    } catch (error) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
+      throw error;
+    } finally {
+      span.end();
+    }
+  });
+}
+```
+
+### Custom metrics
+
+The Quick Start already exports Node.js runtime metrics. To add your own, create a meter once and reuse it. Put it in the same `lib/otel.ts` as the logger:
+
+```typescript
+// lib/otel.ts (alongside the logger above)
+import { metrics } from "@opentelemetry/api";
+
+export const meter = metrics.getMeter("my-nextjs-app");
+export const ordersProcessed = meter.createCounter("orders.processed", {
+  description: "Orders processed",
+});
+```
+
+```typescript
+// app/api/orders/route.ts
+import { ordersProcessed } from "@/lib/otel";
+
+async function placeOrder() {
+  // your order logic goes here
+}
+
+export async function POST() {
+  await placeOrder();
+  ordersProcessed.add(1, { plan: "pro" });
+  return Response.json({ ok: true });
+}
+```
+
+The counter shows up in Traceway under the metric name you gave it, and the attributes become tags you can group by in a widget.
+
+### Enabling the Instrumentation Hook (Next.js 13.4–14.x)
+
+For Next.js versions before 15, enable the instrumentation hook in `next.config.js`:
+
+```javascript
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  experimental: {
+    instrumentationHook: true,
+  },
+};
+
+module.exports = nextConfig;
+```
+
+Not needed for Next.js 15+, where the hook is stable by default.
+
+### Readable stack traces
+
+By default the frames in an Issue point into Next.js's build output rather than your code:
+
+```
+Error: Test error from Next.js server
+    .next/server/chunks/[root-of-the-server]__0og452-._.js:1:983
+```
+
+Next.js installs its own `Error.prepareStackTrace`, which bypasses Node's source map support, so the stack recorded by OTel keeps the bundled frames. Reset it at the top of `register()` to get Node's default formatter back:
+
+```typescript
+// instrumentation.ts (project root)
+export async function register() {
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+
+  (Error as unknown as { prepareStackTrace?: unknown }).prepareStackTrace = undefined;
+
+  // ...the rest of the SDK setup
+}
+```
+
+That is enough in development, where Next.js already runs the server with `--enable-source-maps`. Frames then read `app/api/orders/route.ts:12:9`.
+
+A production build needs two more things. Node has to be told to use the source maps, and the maps have to exist:
+
+```bash
+NODE_OPTIONS='--enable-source-maps' next start
+```
+
+```typescript
+// next.config.ts, only if the build does not already emit .next/server/chunks/*.js.map
+const nextConfig: NextConfig = {
+  experimental: { serverSourceMaps: true },
+};
+```
+
+Next.js 16 with Turbopack writes those `.map` files on its own, so the config change is usually unnecessary. Check for them after `next build` before adding it.
+
+### Auto vs manual reference
+
+| Operation | Auto-instrumented? | Notes |
+|-----------|-------------------|-------|
+| HTTP requests (incoming) | Yes | Next.js's own tracer sets `http.route` and the status code |
+| Uncaught route handler errors | Yes | Reported once, with a 500 on the endpoint |
+| Outgoing `fetch()` calls | Yes | Via `instrumentation-undici` |
+| Prisma queries | Yes | Via `@prisma/instrumentation` |
+| Database queries (`pg`, `mongodb`) | Yes | Next.js externalizes these, so `require-in-the-middle` sees them |
+| Cache (`redis`, `ioredis`), `mysql2` | Only with config | Add them to `serverExternalPackages` |
+| SQLite (`better-sqlite3`) | No | Use manual spans |
+| Server Component rendering | No | Use `tracer.startActiveSpan()` |
+| Background jobs / cron | No | Use `tracer.startActiveSpan()` with `SpanKind.CONSUMER` |
+| Custom business logic | No | Use `tracer.startActiveSpan()` |
+
+### Environment variable alternative
+
+Instead of hardcoding the endpoint and token, use standard OTel environment variables:
+
+```bash
+export OTEL_SERVICE_NAME="my-nextjs-app"
+export OTEL_EXPORTER_OTLP_ENDPOINT="https://your-traceway-instance.com/api/otel"
+export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer your-project-token"
+```
+
+With these set, your `instrumentation.ts` can omit the exporter URLs, the headers, and the `resource` block. The SDK picks all of them up automatically.
+
+---
+
+## Next Steps
+
+- [React SDK Reference](/client/react): provider options, hooks, advanced usage
+- [Sessions](/learn/sessions): how session recording is stored and replayed
+- [Node.js OTel Guide](/client/otel/nodejs): general Node.js setup details
+- [OTel Overview](/client/otel): protocol details and authentication
+- [OTel Trace Mapping](/client/otel/traces): how OTel spans map to Traceway concepts
+- [OTel Logs](/client/otel/logs): log record fields and severity mapping
+- [OTel Metrics](/client/otel/metrics): metric types and how they are stored

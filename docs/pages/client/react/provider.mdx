@@ -28,7 +28,7 @@ function App() {
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `debug` | `boolean` | `false` | Log events to console |
+| `debug` | `boolean` | `false` | Log SDK problems to the console: failed uploads, `beforeCapture` throwing, and errors dropped by `ignoreErrors` / `beforeCapture`. Captured events themselves are not logged |
 | `debounceMs` | `number` | `1500` | Batch delay in milliseconds |
 | `retryDelayMs` | `number` | `10000` | Retry delay for failed uploads |
 | `version` | `string` | `undefined` | Your application version |
@@ -42,6 +42,7 @@ function App() {
 | `captureNavigation` | `boolean` | `true` | Record History API push / replace / pop transitions |
 | `eventsWindowMs` | `number` | `10000` (`30000` w/ `recordAllSessions`) | Rolling log/action buffer window |
 | `eventsMaxCount` | `number` | `200` (`600` w/ `recordAllSessions`) | Hard cap on log/action buffer entries |
+| `captureHttpServerErrors` | `boolean` | `false` | Report every `fetch` response with status >= 500 as a synthetic exception. 4xx is never included, and it is wired into the `fetch` wrapper only, so `XMLHttpRequest` (including browser Axios) does not trigger it |
 
 ## Custom Attributes
 
@@ -136,6 +137,20 @@ root.render(
       <App />
     </TracewayProvider>
   </React.StrictMode>
+);
+```
+
+### A note on StrictMode
+
+`TracewayProvider` initializes the SDK in its constructor, and StrictMode double-invokes constructors in development. Two clients get created, so every uncaught error is reported twice and two batches are uploaded. Production builds do not double-invoke, so live counts are correct. If the doubled counts get in the way while you develop, mount the provider outside `<StrictMode>`:
+
+```jsx
+root.render(
+  <TracewayProvider connectionString="your-token@...">
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  </TracewayProvider>
 );
 ```
 

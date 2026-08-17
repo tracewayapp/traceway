@@ -2,5 +2,14 @@
   "index": "Overview",
   "traces": "Traces",
   "metrics": "Metrics",
-  "logs": "Logs"
+  "logs": "Logs",
+  "nodejs": "Node.js",
+  "nestjs": "NestJS",
+  "nextjs": "Next.js",
+  "hono": "Hono",
+  "cloudflare": "Cloudflare Workers",
+  "symfony": "Symfony",
+  "laravel": "Laravel",
+  "python": "Python",
+  "django": "Django"
 }

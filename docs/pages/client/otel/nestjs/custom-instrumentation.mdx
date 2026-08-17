@@ -1,0 +1,232 @@
+# Custom Instrumentation
+
+Add manual spans, custom decorators, and explicit exception capture to your NestJS services using the OpenTelemetry API.
+
+## Setup
+
+This page assumes you already followed the [Quick Start](/client/otel/nestjs), so the SDK is running and `@opentelemetry/api` is installed. If it is not:
+
+```bash
+npm install @opentelemetry/api
+```
+
+## Manual Spans in Services
+
+Create spans for operations that aren't auto-instrumented. A span started inside a request handler nests under that request's endpoint on its own, with no context to pass around:
+
+```typescript
+import { Injectable } from "@nestjs/common";
+import { trace, SpanStatusCode } from "@opentelemetry/api";
+
+const tracer = trace.getTracer("my-nestjs-app");
+
+@Injectable()
+export class UsersService {
+  async findAll() {
+    return tracer.startActiveSpan("db.users.findAll", async (span) => {
+      try {
+        const users = await this.userRepository.find();
+        span.setAttribute("user.count", users.length);
+        return users;
+      } catch (error: any) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+        span.recordException(error);
+        throw error;
+      } finally {
+        span.end();
+      }
+    });
+  }
+}
+```
+
+`this.userRepository` is your own repository. Swap in whatever your service already calls.
+
+## Custom @Span Decorator
+
+Create a reusable decorator that wraps methods in OTel spans:
+
+```typescript
+import { trace, SpanStatusCode } from "@opentelemetry/api";
+
+const tracer = trace.getTracer("my-nestjs-app");
+
+export function Span(name?: string): MethodDecorator {
+  return (target, propertyKey, descriptor: PropertyDescriptor) => {
+    const originalMethod = descriptor.value;
+    const spanName = name || `${target.constructor.name}.${String(propertyKey)}`;
+
+    descriptor.value = function (...args: any[]) {
+      return tracer.startActiveSpan(spanName, async (span) => {
+        try {
+          const result = await originalMethod.apply(this, args);
+          span.setStatus({ code: SpanStatusCode.OK });
+          return result;
+        } catch (error: any) {
+          span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+          span.recordException(error);
+          throw error;
+        } finally {
+          span.end();
+        }
+      });
+    };
+
+    return descriptor;
+  };
+}
+```
+
+Use it on `async` service methods:
+
+```typescript
+import { Injectable } from "@nestjs/common";
+import { Span } from "./span.decorator";
+
+@Injectable()
+export class OrdersService {
+  @Span("orders.process")
+  async processOrder(orderId: string) {
+    // Span is automatically created and ended
+    await this.validate(orderId);
+    await this.charge(orderId);
+    await this.ship(orderId);
+  }
+
+  @Span()
+  async validate(orderId: string) {
+    // Span name defaults to "OrdersService.validate"
+  }
+}
+```
+
+> **This decorator makes every method async.** It always returns the promise from `startActiveSpan`, so putting `@Span()` on a synchronous method changes its return type from `T` to `Promise<T>`. A method that used to return `5` now returns `Promise { <pending> }`, and TypeScript does not warn you, because `descriptor: PropertyDescriptor` erases the signature. Only decorate methods that already return a promise.
+
+### A decorator that also handles synchronous methods
+
+If you want one decorator you can put on anything, branch on the result instead of awaiting it:
+
+```typescript
+import { trace, SpanStatusCode } from "@opentelemetry/api";
+
+const tracer = trace.getTracer("my-nestjs-app");
+
+export function Span(name?: string): MethodDecorator {
+  return (target, propertyKey, descriptor: PropertyDescriptor) => {
+    const originalMethod = descriptor.value;
+    const spanName = name || `${target.constructor.name}.${String(propertyKey)}`;
+
+    descriptor.value = function (...args: any[]) {
+      return tracer.startActiveSpan(spanName, (span) => {
+        let result: any;
+
+        try {
+          result = originalMethod.apply(this, args);
+        } catch (error: any) {
+          span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+          span.recordException(error);
+          span.end();
+          throw error;
+        }
+
+        if (result instanceof Promise) {
+          return result.then(
+            (value: any) => {
+              span.setStatus({ code: SpanStatusCode.OK });
+              span.end();
+              return value;
+            },
+            (error: any) => {
+              span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+              span.recordException(error);
+              span.end();
+              throw error;
+            },
+          );
+        }
+
+        span.setStatus({ code: SpanStatusCode.OK });
+        span.end();
+        return result;
+      });
+    };
+
+    return descriptor;
+  };
+}
+```
+
+A synchronous method keeps returning its plain value, an `async` method still returns a promise, and a throw still propagates in both cases.
+
+## Exception Capture
+
+Record exceptions on the active span:
+
+```typescript
+import { Injectable } from "@nestjs/common";
+import { trace, SpanStatusCode } from "@opentelemetry/api";
+
+@Injectable()
+export class PaymentService {
+  async charge(amount: number) {
+    const span = trace.getActiveSpan();
+
+    try {
+      await this.gateway.charge(amount);
+    } catch (error: any) {
+      if (span) {
+        span.recordException(error);
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+      }
+      throw error;
+    }
+  }
+}
+```
+
+Exceptions recorded as span events appear as **Issues** in Traceway with full stack traces.
+
+You rarely need this for uncaught errors. `@opentelemetry/instrumentation-nestjs-core` already records anything thrown out of a controller handler. Use `recordException` when you swallow an error and still want to see it, or when the failure happens outside a request, such as in a background job.
+
+> **A thrown error shows a count of 2.** `instrumentation-nestjs-core` wraps every handler in two spans, one with `nestjs.type=request_context` and one with `nestjs.type=handler`, and both record the exception. That is one request, not two. `HttpException` subclasses like `NotFoundException` are recorded too, so intentional 404s also show up under Issues.
+
+## Span Attributes
+
+Add context to spans for richer trace data:
+
+```typescript
+const span = trace.getActiveSpan();
+if (span) {
+  span.setAttribute("user.id", userId);
+  span.setAttribute("order.total", orderTotal);
+  span.setAttributes({
+    "payment.method": "credit_card",
+    "payment.currency": "USD",
+  });
+}
+```
+
+## What Gets Auto-Instrumented vs Manual
+
+| Operation | Auto-Instrumented? | Notes |
+|-----------|-------------------|-------|
+| HTTP requests (incoming) | Yes | Via `instrumentation-http` + `instrumentation-express` |
+| `http.route` grouping | Yes on Express | Fastify needs `@opentelemetry/instrumentation-fastify`, which is not bundled |
+| Thrown exceptions | Yes | Recorded as Issues with stack traces, two events per throw |
+| Outgoing `fetch()` calls | Yes | Via `instrumentation-undici` |
+| Prisma queries | Yes | Via `@prisma/instrumentation` (install separately) |
+| Database queries (`pg`, `mysql2`, `mongodb`) | Yes | CJS packages, patched by `require-in-the-middle` |
+| Cache (`redis`, `ioredis`) | Yes | CJS packages, patched automatically |
+| NestJS handlers | Yes | Via `instrumentation-nestjs-core` |
+| Custom business logic | No | Use `tracer.startActiveSpan()` or the `@Span()` decorator |
+| SQLite (`better-sqlite3`) | No | Use manual spans |
+| Background jobs and cron | No | Needs a root span with `SpanKind.CONSUMER`, see [Background Jobs](/client/otel/nestjs#background-jobs) |
+| Logs | No | Needs a bridged logger, see [Logs](/client/otel/nestjs#logs) |
+
+## Next Steps
+
+- [Quick Start](/client/otel/nestjs): setup, logs, background jobs, and custom metrics
+- [Node.js Traces](/client/otel/nodejs/traces): more on manual spans and context propagation
+- [OTel Metrics](/client/otel/metrics): how OTel instruments map to Traceway metrics
+- [OTel Logs](/client/otel/logs): shipping logs and linking them to traces
+- [OTel Trace Mapping](/client/otel/traces): how OTel spans map to Traceway concepts

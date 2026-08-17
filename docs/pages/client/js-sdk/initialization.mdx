@@ -26,7 +26,7 @@ init("your-token@https://traceway.example.com/api/report", {
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `debug` | `boolean` | `false` | Log captured events to the browser console |
+| `debug` | `boolean` | `false` | Log dropped events and failed uploads to the browser console. Captured events are not logged |
 | `debounceMs` | `number` | `1500` | Milliseconds to wait before sending batched events |
 | `retryDelayMs` | `number` | `10000` | Milliseconds to wait before retrying failed uploads |
 | `version` | `string` | `undefined` | Your application version (shown in Traceway dashboard) |
@@ -40,29 +40,26 @@ init("your-token@https://traceway.example.com/api/report", {
 | `captureNavigation` | `boolean` | `true` | Record History API push / replace / pop transitions as navigation actions |
 | `eventsWindowMs` | `number` | `10000` (`30000` w/ `recordAllSessions`) | Rolling window the log/action buffers retain |
 | `eventsMaxCount` | `number` | `200` (`600` w/ `recordAllSessions`) | Hard cap on entries kept independently in the log and action buffers |
+| `captureHttpServerErrors` | `boolean` | `false` | Report every `fetch` response with status >= 500 as a synthetic exception. 4xx is never included, and it is wired into the `fetch` wrapper only, so `XMLHttpRequest` (including `$.ajax()` and browser Axios) does not trigger it |
 
 ## Auto-Capture Behavior
 
-By default, the SDK does **not** automatically capture unhandled errors. You need to either:
-
-1. Use a framework integration (React, Vue, Svelte) that provides automatic capture
-2. Set up your own global error handler:
+`init()` installs the global handlers for you. Uncaught errors (`window.onerror`) and unhandled promise rejections (`window.onunhandledrejection`) are captured automatically in every JS SDK: plain, React, Vue, Svelte, and jQuery alike.
 
 ```javascript
-import { init, captureException } from "@tracewayapp/frontend";
+import { init } from "@tracewayapp/frontend";
 
 init("your-token@https://traceway.example.com/api/report");
 
-// Capture unhandled errors
-window.addEventListener("error", (event) => {
-  captureException(event.error);
-});
-
-// Capture unhandled promise rejections
-window.addEventListener("unhandledrejection", (event) => {
-  captureException(event.reason);
+// Nothing else to wire up. This is already reported:
+setTimeout(() => {
+  throw new Error("Boom");
 });
 ```
+
+> **Do not add your own `window.addEventListener("error")` or `"unhandledrejection"` listener that calls `captureException`.** The SDK's handlers are already attached, so every error would be reported twice and show up with double the count in the Issues feed.
+
+The framework packages add render-time capture on top of this: React's `TracewayProvider` doubles as an error boundary, and the Vue plugin installs `app.config.errorHandler`. Manual `captureException` calls are only needed where the error never becomes uncaught, such as inside a `try`/`catch` or an event handler that swallows it.
 
 ## Error Filtering
 
@@ -72,7 +69,7 @@ By default, the SDK ignores common non-actionable errors: **4xx HTTP errors**, *
 
 The following patterns are ignored out of the box:
 
-- `"Failed to fetch"` (Chrome), `"Load failed"` (Safari), `"NetworkError when attempting to fetch resource"` (Firefox), `"Network Error"` (Axios)
+- `"Failed to fetch"` (Chrome), `"Load failed"` (Safari), `"NetworkError when attempting to fetch resource"` (Firefox), `"Network Error"` (Axios), `"Network request failed"` (React Native style)
 - `"The operation was aborted"` (AbortController), any message matching `/timeout/i`
 - Axios 4xx errors matching `/status code 4\d{2}/`
 - jQuery/custom 4xx errors matching `/failed: 4\d{2}/`
@@ -138,7 +135,9 @@ init("your-token@https://traceway.example.com/api/report", {
 
 ## Debug Mode
 
-When `debug: true` is set, the SDK logs all captured events to the browser console. This is useful during development to verify events are being captured correctly.
+When `debug: true` is set, the SDK logs what it throws away: errors suppressed by `ignoreErrors`, a `beforeCapture` callback that threw, and failed uploads. Captured events produce no console output at all, so an empty console does not mean the SDK is broken.
+
+To confirm an event was captured, watch for the `POST` to `/api/report` in the Network tab, or call `await flush()` and open the Issues page.
 
 ```javascript
 init("your-token@https://traceway.example.com/api/report", {

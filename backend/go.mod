@@ -19,7 +19,7 @@ require (
 	github.com/markbates/goth v1.82.0
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/tracewayapp/lit/v2 v2.0.2
-	github.com/tracewayapp/traceway/cli v0.0.0-00010101000000-000000000000
+	github.com/tracewayapp/traceway/cli v1.9.15
 	go.opentelemetry.io/collector/component v1.60.0
 	go.opentelemetry.io/collector/component/componenttest v0.154.0
 	go.opentelemetry.io/collector/consumer v1.60.0
@@ -199,4 +199,8 @@ require (
 	golang.org/x/text v0.37.0 // indirect
 )
 
+// Local development only. `replace` is ignored by anything that imports this
+// module, so the `require` above must name a real published cli version or
+// `go get github.com/tracewayapp/traceway/backend` fails to resolve for
+// consumers. Bump that version when a release depends on newer cli code.
 replace github.com/tracewayapp/traceway/cli => ../cli

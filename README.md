@@ -138,43 +138,43 @@ Open `http://localhost:8082`, log in, and hit your app to see traces appear. Ful
 
 ## Supported Integrations
 
-Traceway integrates with the tools you already use. Every integration ships traces, metrics, and logs over **OTLP/HTTP**. No proprietary SDK required.
+Traceway integrates with the tools you already use. Backends report over **OTLP/HTTP**, so any OpenTelemetry SDK works. Browser and mobile apps use the Traceway SDKs.
 
 > View the full list in the [documentation](https://docs.tracewayapp.com/client). Missing a framework? [Open an issue](https://github.com/tracewayapp/traceway/issues) to request it.
 
 ### Backend
 
-<table width="100%">
+OpenTelemetry is the integration path for every backend language. Point your OTLP exporter at Traceway and you are done.
+
+<table>
 <tbody>
 <tr>
-<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/gin-middleware"><img src="./docs/public/gin.png" height="28" alt="Gin" /><br/><b>Gin</b></a></td>
-<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/chi-middleware"><img src="./docs/public/chi.png" height="28" alt="Chi" /><br/><b>Chi</b></a></td>
-<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/fiber-middleware"><img src="./docs/public/fiber.svg" height="28" alt="Fiber" /><br/><b>Fiber</b></a></td>
-<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/fasthttp-middleware"><img src="./docs/public/fasthttp.png" height="28" alt="FastHTTP" /><br/><b>FastHTTP</b></a></td>
-<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/http-middleware"><img src="./docs/public/stdlib.png" height="28" alt="net/http" /><br/><b>net/http</b></a></td>
-<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/sdk"><img src="./docs/public/custom.png" height="28" alt="Go Generic" /><br/><b>Go Generic</b></a></td>
-<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/node-sdk"><img src="./docs/public/node.png" height="28" alt="Node.js" /><br/><b>Node.js</b></a></td>
+<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/otel"><img src="./docs/public/otel.png" height="28" alt="OpenTelemetry" /><br/><b>OpenTelemetry</b></a></td>
+<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/otel/nodejs"><img src="./docs/public/node.png" height="28" alt="Node.js" /><br/><b>Node.js</b></a></td>
+<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/otel/nestjs"><img src="./docs/public/nestjs.png" height="28" alt="NestJS" /><br/><b>NestJS</b></a></td>
+<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/otel/nextjs"><img src="./docs/public/nextjs.png" height="28" alt="Next.js" /><br/><b>Next.js</b></a></td>
+<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/otel/hono"><img src="./docs/public/hono.png" height="28" alt="Hono" /><br/><b>Hono</b></a></td>
 </tr>
 <tr>
-<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/nestjs"><img src="./docs/public/nestjs.png" height="28" alt="NestJS" /><br/><b>NestJS</b></a></td>
-<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/hono"><img src="./docs/public/hono.png" height="28" alt="Hono" /><br/><b>Hono</b></a></td>
-<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/symfony"><img src="./docs/public/symfony.png" height="28" alt="Symfony" /><br/><b>Symfony</b></a></td>
-<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/laravel"><img src="./docs/public/laravel.png" height="28" alt="Laravel" /><br/><b>Laravel</b></a></td>
-<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/django"><img src="./docs/public/django.png" height="28" alt="Django" /><br/><b>Django</b></a></td>
-<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/cloudflare"><img src="./docs/public/cloudflare.png" height="28" alt="Cloudflare Workers" /><br/><b>Cloudflare</b></a></td>
-<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/otel"><img src="./docs/public/otel.png" height="28" alt="OpenTelemetry" /><br/><b>OpenTelemetry</b></a></td>
+<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/otel/cloudflare"><img src="./docs/public/cloudflare.png" height="28" alt="Cloudflare Workers" /><br/><b>Cloudflare</b></a></td>
+<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/otel/symfony"><img src="./docs/public/symfony.png" height="28" alt="Symfony" /><br/><b>Symfony</b></a></td>
+<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/otel/laravel"><img src="./docs/public/laravel.png" height="28" alt="Laravel" /><br/><b>Laravel</b></a></td>
+<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/otel/django"><img src="./docs/public/django.png" height="28" alt="Django" /><br/><b>Django</b></a></td>
 </tr>
 </tbody>
 </table>
+
+Go applications use OpenTelemetry too. Point [opentelemetry-go](https://github.com/open-telemetry/opentelemetry-go) at the same OTLP endpoint. See the [OpenTelemetry guide](https://docs.tracewayapp.com/client/otel).
 
 ### Frontend
 
 > Session Replay is included with every frontend integration, and with Flutter too.
 
+A full-stack framework has two halves and two Traceway projects. Next.js and Remix use the React integration below for the browser, SvelteKit uses Svelte, and Nuxt uses Vue. Their server half is a separate OpenTelemetry project from the table above. See [Project Structure](https://docs.tracewayapp.com/learn/projects).
+
 <table width="100%">
 <tbody>
 <tr>
-<td align="center" width="150"><a href="https://docs.tracewayapp.com/client/nextjs"><img src="./docs/public/nextjs.png" height="28" alt="Next.js" /><br/><b>Next.js</b></a></td>
 <td align="center" width="150"><a href="https://docs.tracewayapp.com/client/react"><img src="./docs/public/react.png" height="28" alt="React" /><br/><b>React</b></a></td>
 <td align="center" width="150"><a href="https://docs.tracewayapp.com/client/vue"><img src="./docs/public/vue.png" height="28" alt="Vue" /><br/><b>Vue</b></a></td>
 <td align="center" width="150"><a href="https://docs.tracewayapp.com/client/svelte"><img src="./docs/public/svelte.png" height="28" alt="Svelte" /><br/><b>Svelte</b></a></td>

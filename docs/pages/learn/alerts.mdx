@@ -258,7 +258,7 @@ Fires when the percentage of task executions that recorded an error exceeds the 
 
 ### Metric Threshold
 
-Fires when an aggregated [metric](/learn/metrics) value violates the configured comparison over the lookback window. Works for both system metrics (`cpu.used_pcnt`, `mem.used_pcnt`, ...) and custom metrics. If the window contains no data points the rule does not fire; pair it with a No Data rule if you also want to know when the metric stops reporting.
+Fires when an aggregated [metric](/learn/metrics) value violates the configured comparison over the lookback window. Works for both system metrics (`cpu.used_pcnt`, `mem.used`, ...) and custom metrics. If the window contains no data points the rule does not fire; pair it with a No Data rule if you also want to know when the metric stops reporting.
 
 | Option | Default | Description |
 |--------|---------|-------------|

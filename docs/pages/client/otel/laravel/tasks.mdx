@@ -1,0 +1,249 @@
+# Tasks
+
+The `QueueInstrumentation` automatically traces Laravel queue jobs. When a job is dispatched, a `PRODUCER` span is created; when the worker picks it up, a `CONSUMER` span runs the handler. W3C trace context is propagated through the job payload so the consumer span links back to the dispatch trace. The full lifecycle is visible as one continuous trace in Traceway, and each consumed job appears as a **task** with duration, status, and any child spans.
+
+## Setup
+
+`QueueInstrumentation` is enabled by default. If it's not already in your `config/opentelemetry.php`:
+
+```php
+use Keepsuit\LaravelOpenTelemetry\Instrumentation;
+
+return [
+    'instrumentation' => [
+        // ...
+        Instrumentation\QueueInstrumentation::class => env('OTEL_INSTRUMENTATION_QUEUE', true),
+    ],
+];
+```
+
+That's it. Every queued job is now traced automatically. The same setup applies whether you use `database`, `redis`, `sqs`, or `beanstalkd` drivers.
+
+A Task only appears once a worker actually consumes the job. Dispatching alone gives you the `send default` producer span under the request that dispatched it, nothing more. Run `php artisan queue:work` (or Horizon) and the `process default` Task shows up.
+
+Add one env var before you start that worker:
+
+```bash
+OTEL_WORKER_MODE_FLUSH_AFTER_EACH_ITERATION=true
+```
+
+A long-running worker batches its spans and has no timer for them. Without this flag the job you just ran stays inside the worker until a later job runs or the worker stops, so a single test job looks like it was lost. See [Why a One-Off Command Shows Nothing](#why-a-one-off-command-shows-nothing) below.
+
+With `QUEUE_CONNECTION=sync` the job runs inline inside the request instead, so its `process sync` Task is recorded as part of that request's trace rather than as a standalone background task. No worker and no flush flag are involved in that case.
+
+## What Gets Captured
+
+For each queued job the instrumentation creates two spans:
+
+- **Dispatch span**: name `send {queue}` (e.g., `send default`), `PRODUCER` kind, ended when Laravel finishes pushing the payload onto the queue.
+- **Process span**: name `process {queue}` (e.g., `process default`), `CONSUMER` kind, ended when the handler returns or fails. On `JobFailed` the span records the exception and is marked `STATUS_ERROR`.
+
+Both spans carry these attributes (using OTel messaging semantic conventions):
+
+| Attribute | Value |
+|---|---|
+| `messaging.system` | The queue driver: `redis`, `database`, `sqs`, `beanstalkd`, … |
+| `messaging.operation.type` | `send` (producer) or `process` (consumer) |
+| `messaging.message.id` | Laravel's job UUID |
+| `messaging.destination.name` | The queue name |
+| `messaging.message.envelope.size` | Payload size in bytes |
+| `messaging.message.job_name` | The job class name (e.g., `App\Jobs\SendOrderEmail`) |
+| `messaging.message.attempts` | Current attempt number |
+| `messaging.message.max_tries` / `max_exceptions` / `retry_until` / `timeout` | Job configuration |
+
+W3C trace context is also injected into the job payload, so the `process` span is linked to the trace where the job was originally dispatched, even if dispatch and execution happen on different services. Any spans you create inside `handle()` automatically nest under the `process` span.
+
+> **Task naming.** The consumer span is named after the *queue*, not the job, so every job running on `default` groups into one Traceway Task row called `process default`. The job class is carried as the `messaging.message.job_name` attribute. If you want one Task row per job class, rename the span at the top of `handle()`:
+>
+> ```php
+> use OpenTelemetry\API\Trace\Span;
+>
+> public function handle(): void
+> {
+>     Span::getCurrent()->updateName(static::class);
+>
+>     // ... business logic ...
+> }
+> ```
+
+## Adding Attributes in Handlers
+
+Since the instrumentation activates the consumer span before your `handle()` runs, use `Span::getCurrent()` to add custom attributes:
+
+```php
+namespace App\Jobs;
+
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Queue\Queueable;
+use OpenTelemetry\API\Trace\Span;
+
+class SendOrderEmail implements ShouldQueue
+{
+    use Queueable;
+
+    public function __construct(
+        public readonly int $orderId,
+        public readonly string $recipient,
+    ) {}
+
+    public function handle(): void
+    {
+        $span = Span::getCurrent();
+        $span->setAttribute('order.id', $this->orderId);
+        $span->setAttribute('email.to', $this->recipient);
+
+        // ... business logic ...
+    }
+}
+```
+
+Dispatch it the usual way:
+
+```php
+SendOrderEmail::dispatch($order->id, $order->email);
+```
+
+> **Use the right `Queueable`.** Laravel 11 and newer generate jobs with `Illuminate\Foundation\Queue\Queueable`, which bundles `Dispatchable`, `InteractsWithQueue`, `QueueableByBus` and `SerializesModels`. The older `Illuminate\Bus\Queueable` does not provide the static `dispatch()` method, so a job built on it fails at runtime with `Call to undefined method App\Jobs\SendOrderEmail::dispatch()`.
+
+## Child Spans in Handlers
+
+For jobs with distinct sub-operations, use the `Tracer` facade to create child spans. They automatically nest under the task's consumer span:
+
+```php
+namespace App\Jobs;
+
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Queue\Queueable;
+use Keepsuit\LaravelOpenTelemetry\Facades\Tracer;
+use OpenTelemetry\API\Trace\Span;
+
+class ProcessPayment implements ShouldQueue
+{
+    use Queueable;
+
+    public function __construct(
+        public readonly int $paymentId,
+        public readonly float $amount,
+    ) {}
+
+    public function handle(): void
+    {
+        Tracer::newSpan('validate.payment')->measure(function () {
+            Span::getCurrent()->setAttribute('payment.id', $this->paymentId);
+            $this->validate();
+        });
+
+        Tracer::newSpan('charge.gateway')->measure(function () {
+            Span::getCurrent()->setAttribute('payment.amount', $this->amount);
+            $this->chargeGateway();
+        });
+    }
+}
+```
+
+## Console Commands
+
+Console commands are **not traced by default**. Only commands you opt-in are wrapped in a span. Add them to the `commands` array of `ConsoleInstrumentation`:
+
+```php
+// config/opentelemetry.php
+use Keepsuit\LaravelOpenTelemetry\Instrumentation;
+use App\Console\Commands\CleanupOrphans;
+
+return [
+    'instrumentation' => [
+        // ...
+        Instrumentation\ConsoleInstrumentation::class => [
+            'enabled' => env('OTEL_INSTRUMENTATION_CONSOLE', true),
+            'commands' => [
+                CleanupOrphans::class,        // by class name
+                'app:rebuild-search-index',   // by signature
+                'reports:*',                  // wildcard: every command whose name starts with "reports:"
+            ],
+        ],
+    ],
+];
+```
+
+A trailing `*` is the only way to trace a whole command namespace. Everything before the `*` is matched as a prefix against the command name.
+
+Each listed command is opened as a root span at start and ended on exit, with `console.command` set to the command name and every argument and option recorded as `console.argument.*` / `console.option.*` attributes. Inside `handle()`, use `Span::getCurrent()` to add your own:
+
+```php
+namespace App\Console\Commands;
+
+use Illuminate\Console\Command;
+use OpenTelemetry\API\Trace\Span;
+
+class CleanupOrphans extends Command
+{
+    protected $signature = 'cleanup:orphans';
+
+    public function handle(): int
+    {
+        Span::getCurrent()->setAttribute('cleanup.dry_run', false);
+
+        // ... do work ...
+
+        return self::SUCCESS;
+    }
+}
+```
+
+Unlisted commands run without a span, so `Span::getCurrent()` inside them returns a no-op span. Attribute and event calls are silently dropped, which is safe but not useful.
+
+## Scheduled Closures and Other Background Work
+
+`ConsoleInstrumentation` only wraps Artisan *commands* you list. A scheduled closure (`Schedule::call(...)`) is not a command, and neither is a hand-rolled background loop, so nothing traces them for you.
+
+Starting a span yourself is not enough on its own. `Tracer::newSpan()` creates an `INTERNAL` span, and Traceway records a root span only when it is an HTTP request, a `CONSUMER` span, or carries a `console.command` attribute. A root `INTERNAL` span is discarded on ingest along with every child span under it, with no error anywhere. Any logs emitted inside it still arrive, but they point at a trace that does not exist.
+
+Mark the root span as `CONSUMER` and the work lands in **Tasks**:
+
+```php
+// routes/console.php
+use Illuminate\Support\Facades\Schedule;
+use Keepsuit\LaravelOpenTelemetry\Facades\Tracer;
+use OpenTelemetry\API\Trace\Span;
+use OpenTelemetry\API\Trace\SpanKind;
+
+Schedule::call(function () {
+    $span = Tracer::newSpan('cron.prune-sessions')
+        ->setSpanKind(SpanKind::KIND_CONSUMER)
+        ->start();
+    $scope = $span->activate();
+
+    Tracer::updateLogContext();   // so Log:: calls carry the trace id
+
+    try {
+        Span::getCurrent()->setAttribute('cron.dry_run', false);
+
+        // child spans nest under the task
+        Tracer::newSpan('prune.expired')->measure(function () {
+            // ... the actual work ...
+        });
+    } finally {
+        $scope->detach();
+        $span->end();
+    }
+})->hourly();
+```
+
+The alternative is to move the work into a real Artisan command and list it in `ConsoleInstrumentation`. Then the package sets `console.command` for you and the root span is recorded as a Task without any span-kind handling.
+
+Only the **root** span of a trace needs this. Spans you create inside an already-traced request, job or command are children, and children are recorded whatever their kind.
+
+## Why a One-Off Command Shows Nothing
+
+Spans are batched and flushed when the process shuts down, so a short `php artisan …` run reports a second or two after it exits. Give it a moment before concluding the data was dropped. Two things genuinely break the flush:
+
+- Killing the process (`Ctrl-C`, `kill -9`, a container `SIGKILL`). The pending batch goes with it.
+- Long-running workers (Octane, Horizon, `queue:work`). Spans there are batched with no timer, so a finished job's spans wait for the next job or for a clean worker shutdown. An idle worker holds them indefinitely.
+
+For low-traffic workers, and whenever you are testing the integration, flush after every job:
+
+```bash
+OTEL_WORKER_MODE_FLUSH_AFTER_EACH_ITERATION=true
+```
+
+See [Flushing](/client/otel/laravel#flushing-short-lived-processes-and-long-running-workers) in the Quick Start for the full picture.

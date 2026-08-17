@@ -24,7 +24,7 @@ Must be called during component initialization (not in an event handler):
 </script>
 ```
 
-**Delayed Initialization:** The SDK initialization (`init()`) is deferred until `onMount`. This means the actual connection to the Traceway server happens after the component mounts, not during the initial script execution. The context functions (`captureException`, etc.) are available immediately, but events captured before mount will be queued and sent once initialization completes.
+**Initialization is synchronous:** `setupTraceway` calls the SDK's `init()` immediately, during component setup, not in `onMount`. Everything captured after that point is recorded, including captures in a child component's setup code that runs before `onMount`. There is no pre-init buffer, so a capture made before `setupTraceway` runs is dropped.
 
 ### Options
 
@@ -37,7 +37,7 @@ Must be called during component initialization (not in an event handler):
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `debug` | `boolean` | `false` | Log events to console |
+| `debug` | `boolean` | `false` | Log filtered-out exceptions and failed uploads to the console |
 | `debounceMs` | `number` | `1500` | Batch delay in milliseconds |
 | `retryDelayMs` | `number` | `10000` | Retry delay for failed uploads |
 | `version` | `string` | `undefined` | Your application version |
@@ -69,6 +69,7 @@ Retrieve capture functions in any child component:
 | `captureException(error)` | Capture an error with stack trace |
 | `captureExceptionWithAttributes(error, attributes)` | Capture error with metadata |
 | `captureMessage(message)` | Send a custom message |
+| `recordAction(category, name, data)` | Record an action into the rolling buffer that ships with the next exception |
 
 ## Complete Example
 
@@ -78,17 +79,14 @@ Root layout:
 <!-- src/routes/+layout.svelte -->
 <script>
   import { setupTraceway } from "@tracewayapp/svelte";
-  import { browser } from "$app/environment";
   import { PUBLIC_TRACEWAY_CONNECTION } from "$env/static/public";
 
-  if (browser) {
-    setupTraceway({
-      connectionString: PUBLIC_TRACEWAY_CONNECTION,
-      options: {
-        debug: import.meta.env.DEV,
-      },
-    });
-  }
+  setupTraceway({
+    connectionString: PUBLIC_TRACEWAY_CONNECTION,
+    options: {
+      debug: import.meta.env.DEV,
+    },
+  });
 </script>
 
 <slot />
@@ -181,39 +179,48 @@ For advanced use cases, you can access the context key directly:
 
 ## SvelteKit Error Handling
 
-For SvelteKit's error handling, create a custom error hook:
+`handleError` in `src/hooks.client.js` is where SvelteKit hands you the real error from a failed `load` or a render crash during client-side navigation. Svelte context is not available in a hook, so import the capture function directly. It is the same function `getTraceway()` returns.
 
 ```javascript
 // src/hooks.client.js
-import { getTraceway } from "@tracewayapp/svelte";
+import { captureExceptionWithAttributes } from "@tracewayapp/svelte";
 
 export function handleError({ error, event }) {
-  // Note: Context may not be available in hooks
-  // Consider using the core SDK directly here
-  console.error("Unhandled error:", error);
+  captureExceptionWithAttributes(error, {
+    route: event.route?.id ?? event.url.pathname,
+  });
+  return { message: "Something went wrong" };
 }
 ```
 
-For client-side errors, use `+error.svelte`:
+Do not capture from `+error.svelte`. That page only receives `$page.error`, which SvelteKit has already reduced to a plain `{ message }` object. Passing it to `captureException` produces an issue titled `Object: Internal Error` with no stack trace and no original message. Use the page for display and let `handleError` do the reporting.
 
 ```svelte
 <!-- src/routes/+error.svelte -->
 <script>
   import { page } from "$app/stores";
-  import { getTraceway } from "@tracewayapp/svelte";
-  import { onMount } from "svelte";
-
-  const { captureException } = getTraceway();
-
-  onMount(() => {
-    if ($page.error) {
-      captureException($page.error);
-    }
-  });
 </script>
 
 <h1>Error: {$page.status}</h1>
 <p>{$page.error?.message}</p>
+```
+
+### Render Errors (Svelte 5)
+
+Svelte 5's `<svelte:boundary>` catches errors thrown while its children render. Pass `captureSvelteError` as `onerror` to report them:
+
+```svelte
+<script>
+  import { captureSvelteError } from "@tracewayapp/svelte";
+  import Widget from "$lib/components/Widget.svelte";
+</script>
+
+<svelte:boundary onerror={captureSvelteError}>
+  <Widget />
+  {#snippet failed(error)}
+    <p>Something went wrong: {error.message}</p>
+  {/snippet}
+</svelte:boundary>
 ```
 
 ## Environment Variables
@@ -238,7 +245,7 @@ PUBLIC_TRACEWAY_CONNECTION=your-token@https://traceway.example.com/api/report
 ## Best Practices
 
 1. **Initialize early**: Call `setupTraceway` in your root layout
-2. **Check for browser**: In SvelteKit, only initialize on the client
+2. **Skip the browser guard**: `setupTraceway` must also run during SSR, or `getTraceway()` throws in child components
 3. **Use attributes**: Add context with `captureExceptionWithAttributes`
 4. **Handle gracefully**: Show user-friendly errors while capturing details
 

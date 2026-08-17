@@ -1,0 +1,179 @@
+# Traces
+
+OpenTelemetry auto-instrumentation handles most tracing automatically. This page covers manual span creation and exception recording for cases where you need more control.
+
+## How Spans Map to Traceway
+
+Spans are classified by kind and attributes, not by whether they are a root span:
+
+| OTel Span | Traceway Concept |
+|-----------|-----------------|
+| SERVER or INTERNAL span with HTTP attributes, when it is a root or its parent is not in the same export batch | **Endpoint** (e.g., `GET /api/users`) |
+| `SpanKind = CONSUMER`, root or child | **Task** |
+| Root INTERNAL span with a `console.command` attribute | **Task** |
+| Any span with `gen_ai.*` attributes | **AI Trace** |
+| Any other span with a parent | **Span** |
+| Event named `"exception"` on any span | **Issue** |
+
+> **A root span that matches none of these rows is dropped.** A root `INTERNAL` or `PRODUCER` span with no HTTP attributes and no `console.command` attribute produces no Endpoint, no Task, and no Span row. Ingest discards it and returns success, so there is nothing to debug. If the span carries an exception event, the Issue is still created, but the span itself is gone. To trace a cron job or a queue worker, set `kind: SpanKind.CONSUMER`.
+
+See [OTel Trace Mapping](/client/otel/traces) for full details on attributes and conventions.
+
+## Manual Span Creation
+
+Use `@opentelemetry/api` to create custom spans for operations that aren't auto-instrumented:
+
+```typescript
+import { trace, SpanStatusCode } from "@opentelemetry/api";
+
+const tracer = trace.getTracer("my-service");
+
+async function processOrder(orderId: string) {
+  return tracer.startActiveSpan("process-order", async (span) => {
+    try {
+      span.setAttribute("order.id", orderId);
+
+      await validateOrder(orderId);
+      await chargePayment(orderId);
+      await sendConfirmation(orderId);
+
+      span.setStatus({ code: SpanStatusCode.OK });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+      span.recordException(err);
+      throw error;
+    } finally {
+      span.end();
+    }
+  });
+}
+```
+
+TypeScript types a caught value as `unknown`, so narrow it with `error instanceof Error` before reading `.message` or passing it to `recordException`. Skipping that step still runs under Node's type stripping but fails `tsc` in strict mode.
+
+Called inside a request handler, this span joins that request's waterfall. Called at the top level of a worker or a script, where it has no parent, it needs `kind: SpanKind.CONSUMER` to survive ingest. See [Background Jobs and Tasks](#background-jobs-and-tasks).
+
+## Nested Spans
+
+Spans created inside an active span are automatically linked as children:
+
+```typescript
+async function chargePayment(orderId: string) {
+  return tracer.startActiveSpan("charge-payment", async (span) => {
+    try {
+      const result = await paymentGateway.charge(orderId);
+      span.setAttribute("payment.status", result.status);
+      return result;
+    } finally {
+      span.end();
+    }
+  });
+}
+```
+
+## Background Jobs and Tasks
+
+Cron jobs, queue consumers, and scheduled work show up under **Tasks** in Traceway. The signal is the span kind: use `SpanKind.CONSUMER`. The task name is the span name.
+
+```typescript
+import { trace, SpanKind, SpanStatusCode } from "@opentelemetry/api";
+
+const tracer = trace.getTracer("my-service");
+
+async function runNightlyReport() {
+  await tracer.startActiveSpan(
+    "nightly-report",
+    { kind: SpanKind.CONSUMER },
+    async (span) => {
+      try {
+        span.setAttribute("messaging.system", "cron");
+        await buildReport();
+        span.setStatus({ code: SpanStatusCode.OK });
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        span.recordException(err);
+        span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+        throw error;
+      } finally {
+        span.end();
+      }
+    },
+  );
+}
+```
+
+A CONSUMER span becomes a Task whether it is a root span or a child of a request. A job dispatched inside an HTTP handler still gets its own Task row, linked back to the request through the distributed trace.
+
+> **Do not use a plain root span for a job.** A root `INTERNAL` or `PRODUCER` span with no HTTP attributes and no `console.command` attribute is dropped on ingest. `tracer.startActiveSpan("my-job", async (span) => { ... })` at the top level of a worker script produces no Task and no Span, and nothing reports the loss. Pass `{ kind: SpanKind.CONSUMER }`.
+
+For a CLI or console command, the other accepted signal is a `console.command` attribute on a root INTERNAL span:
+
+```typescript
+const span = tracer.startSpan("app:send-digest", { kind: SpanKind.INTERNAL });
+span.setAttribute("console.command", "app:send-digest");
+// ... run the command ...
+span.end();
+```
+
+Short-lived job processes exit before the batch exporter flushes, so call `sdk.shutdown()` (or the `SIGTERM` handler from the [Quick Start](/client/otel/nodejs)) before the process ends, otherwise the Task never leaves the machine.
+
+## Recording Exceptions
+
+Exceptions recorded as span events appear as **Issues** in Traceway:
+
+```typescript
+import { trace, SpanStatusCode } from "@opentelemetry/api";
+
+function riskyOperation() {
+  const span = trace.getActiveSpan();
+
+  try {
+    doSomethingDangerous();
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    if (span) {
+      span.recordException(err);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+    }
+    throw error;
+  }
+}
+```
+
+The `recordException` call adds an event with `exception.type`, `exception.message`, and `exception.stacktrace` attributes. Traceway normalizes and hashes the stack trace to group identical errors into a single Issue.
+
+## Span Attributes
+
+Add attributes to enrich your spans with context:
+
+```typescript
+span.setAttribute("user.id", userId);
+span.setAttribute("db.statement", "SELECT * FROM users");
+span.setAttributes({
+  "order.id": orderId,
+  "order.total": 99.99,
+  "order.items": 3,
+});
+```
+
+## Context Propagation
+
+OTel automatically propagates trace context across async operations. For manual propagation across service boundaries, use the `W3C Trace Context` headers:
+
+```typescript
+import { propagation, context } from "@opentelemetry/api";
+
+// Inject trace context into outgoing request headers
+const headers = {};
+propagation.inject(context.active(), headers);
+
+// The headers now contain `traceparent` and optionally `tracestate`
+await fetch("https://other-service.com/api", { headers });
+```
+
+## Next Steps
+
+- [Logs](/client/otel/nodejs/logs): ship application logs and link them to traces
+- [Metrics](/client/otel/nodejs/metrics): custom counters, histograms, and gauges
+- [Quick Start](/client/otel/nodejs): setup and installation

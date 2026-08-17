@@ -125,7 +125,7 @@ A plain `flutter build --release` keeps enough symbol information that crash sta
 
 **First, check whether the build is obfuscated.** Look at how release artifacts are produced (the `flutter build` invocations in CI under `.github/`, in `fastlane/`, in a `Makefile`, or in shell scripts) and ask the user how they build for release. If neither `--obfuscate` nor `--split-debug-info` is passed, stack traces are already readable and symbol upload is unnecessary; skip the rest of this section. If obfuscation is (or will be) used, set up the upload.
 
-**Then ask for the upload token.** Symbol uploads authenticate with the dedicated upload token (Connection page > Symbol Upload, the same token shown under Source Maps), NOT the project token from the connection string. Get it from Step 0; it is a CI secret, never committed. `readonly` members cannot generate one.
+**Then use the project's upload token.** Symbol uploads authenticate with the dedicated upload token (Connection page > Symbol Upload, the same token shown under Source Maps), NOT the project token from the connection string. It is a CI secret, never committed. `readonly` members cannot generate one.
 
 The `traceway` package ships an uploader (`dart run traceway:upload_symbols`) that finds the `.symbols` files, derives each one's architecture and debug ID, and posts them. Configure it once, then run it on every release.
 
@@ -147,9 +147,24 @@ flutter build apk --release --obfuscate --split-debug-info=build/symbols
 TRACEWAY_UPLOAD_TOKEN=<upload-token> dart run traceway:upload_symbols
 ```
 
-The uploader auto-discovers `build/symbols` and uploads every architecture in one run, so no flags are required. Each value resolves from a CLI flag first (`--token`, `--url`, `--symbols-dir`), then an env var (`TRACEWAY_UPLOAD_TOKEN`, `TRACEWAY_URL`), then the `pubspec.yaml` block. Pass `--dry-run` to preview. Symbols are unique to each build, so upload on every release; a crash only resolves against the exact build it came from.
+The uploader auto-discovers `build/symbols` and uploads every architecture in one run, so no flags are required. Each value resolves from a CLI flag first (`--token`, `--url`, `--symbols-dir`), then an env var (`TRACEWAY_UPLOAD_TOKEN`, `TRACEWAY_URL`), then the `pubspec.yaml` block. Pass `--dry-run` to preview, but note that it still requires a resolved token and URL: without them it exits with `No upload token. Set TRACEWAY_UPLOAD_TOKEN, pass --token, or add traceway.upload_token to pubspec.yaml`. Symbols are unique to each build, so upload on every release; a crash only resolves against the exact build it came from.
 
-The build command above produces an Android APK; other targets (`appbundle`, `ios`, `macos`) emit their own `.symbols` files into the same directory, all picked up by a single uploader run. On Android the debug ID is read straight from each file's build-id note. iOS and macOS `.symbols` carry no such note, so the uploader reads the Mach-O UUID from the built `.app` (auto-discovered under `build/`, or point at it with `--app build/macos/Build/Products/Release/YourApp.app`); run the uploader on the same Mac that produced the build. There is no hand-written upload path for Apple builds because that UUID can only be read from the compiled app.
+The build command above produces an Android APK; other targets (`appbundle`, `ios`, `macos`) emit their own `.symbols` files into the same directory, all picked up by a single uploader run. On Android the debug ID is read straight from each file's build-id note. iOS and macOS `.symbols` carry no such note, so the uploader reads the Mach-O UUID from the built `.app` (auto-discovered under `build/`, or point at it with `--app build/macos/Build/Products/Release/YourApp.app`); run the uploader on the same Mac that produced the build.
+
+The uploader exists because that UUID has to be read out of the compiled app, which is easiest on the build machine. It is not the only path. If a pipeline cannot run the Dart uploader, read the UUID yourself and pass it as a `debug_id` field:
+
+```bash
+dwarfdump --uuid build/macos/Build/Products/Release/YourApp.app/Contents/Frameworks/App.framework/App
+
+curl -fsS -H "Authorization: Bearer <upload-token>" \
+  -F "files=@build/symbols/app.darwin-arm64.symbols" \
+  -F "debug_id=<uuid-from-dwarfdump>" \
+  https://<instance>/api/symbols/upload
+```
+
+Case and dashes are normalized server-side, so paste the UUID exactly as `dwarfdump` prints it. The architecture is read from the `.symbols` filename; pass `-F "arch=arm64"` too if the file has been renamed.
+
+**Known issue, verified 2026-08-17.** This curl body is byte-identical to what the Dart uploader sends, and on macOS both currently accept the upload (`2/2 uploaded`, `debug_id` matching the runtime build id) while obfuscated release traces still come back unresolved. The curl path inherits the bug, so it is not a workaround for it. Until that is fixed, keep a copy of the `.symbols` files with each release so traces can be resolved offline.
 
 Wire the upload into the release pipeline right after the build step (CI, fastlane, or a build script), with the token from a secret:
 

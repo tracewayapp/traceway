@@ -94,7 +94,42 @@ The CLI also accepts `p50|p95|p99`, but the server has no quantile aggregation f
 3. Form a hypothesis that explains the targeted occurrence's full observation set (its message, affected endpoint, timing, volume) — not just the first stack frame. When a URL/hash anchored you to the last occurrence (step 2), explain *that* error; do not stretch one hypothesis to cover sibling clusters that merely share the hash.
 4. Propose or implement the fix per the user's instruction, scoped to the targeted occurrence's failure path.
 
-### 5. Report and clean up
+### 5. When the evidence is not enough, instrument instead of guessing
+
+Before writing a fix, answer one question honestly: **does the telemetry actually explain this failure?** You have enough when you can name the failing line, the input that reached it, and why that input was wrong. A stack trace on its own is usually not enough. Neither is a plausible story that the data neither confirms nor contradicts.
+
+If you cannot explain it, do not ship a speculative fix. A guess that changes behaviour hides the symptom, destroys the next reproduction, and costs another incident cycle. Instead, add the instrumentation that would answer the open question, and let the next occurrence do the diagnosing.
+
+Pick the signal that closes the specific gap:
+
+| What you could not determine | What to add |
+|---|---|
+| Which branch ran, or what the inputs were | A log at the decision point with the deciding values as attributes. Use ERROR severity on the failure path so `--min-severity 17` finds it |
+| Where the time went, or which step failed | Child spans around each suspect step, opened inside the request's active context |
+| Who or what it happened to (user, tenant, release, payload shape) | Attributes on the request span, or attributes passed to `recordException` |
+| How often it happens, or under which conditions | A counter or histogram metric, tagged with the low-cardinality dimension you want to slice by |
+| Where it broke across a service boundary | Trace context propagation on the call, plus a span or log on both sides |
+| Whether the code path runs at all | A log or counter at entry, so absence of data becomes evidence |
+
+Rules for what you add:
+
+- Emit it inside the active span of the request or task. That is what stamps the trace id on the log and makes it show up on the trace.
+- Put identifiers in attributes, never in the message text. Messages are stripped before grouping, and attributes are filterable.
+- Keep cardinality low. User ids and request ids belong in span attributes, never in a metric tag or a span name.
+- Never log secrets, tokens, or personal data.
+- Ship it as permanent instrumentation, not a temporary debug print. Something you remove tomorrow answers nothing.
+- If the area has no instrumentation at all, set it up first with the `traceway-setup` skill rather than bolting on one log line.
+
+Then close the loop with the user. State what you could not determine, what you added, and the exact command to run when it fires again:
+
+```bash
+traceway logs query --trace-id <id> --output json
+traceway exceptions show <hash> --output json | jq '.occurrences | last | .attributes'
+```
+
+Adding instrumentation is a legitimate outcome of a debug session, not a failure to fix. Report it as the deliverable it is.
+
+### 6. Report and clean up
 
 Summarize: symptom, evidence (exception hashes, log excerpts, metric anomalies), root cause, fix. Include `traceway exceptions show <hash>` references so the user can verify. After a fix is deployed and verified, archive only when the user asks:
 

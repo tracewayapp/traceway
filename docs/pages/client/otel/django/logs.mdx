@@ -1,0 +1,186 @@
+# Logs
+
+`opentelemetry-instrumentation-logging` (auto-installed by `opentelemetry-bootstrap`) bridges Python's standard `logging` module to the OpenTelemetry Logs SDK and OTLP exporter. Once enabled, every `logger.info(...)` / `logger.error(...)` is forwarded to Traceway and linked to the active trace and span. That includes records emitted by Django itself, your views, your Celery tasks, and any third-party library that uses `logging`.
+
+Two steps, in this order: turn the exporter on, then set the root logger level explicitly.
+
+## Step 1: Enable OTLP Logs
+
+Extend the env config from the [Quick Start](/client/otel/django) to also turn on the logs exporter:
+
+```bash
+# Existing config from the Quick Start
+DJANGO_SETTINGS_MODULE=myproject.settings
+OTEL_SERVICE_NAME=my-django-app
+OTEL_TRACES_EXPORTER=otlp
+OTEL_METRICS_EXPORTER=otlp
+
+# Enable OTLP logs
+OTEL_LOGS_EXPORTER=otlp
+
+# Put otelTraceID / otelSpanID on every LogRecord (see Step 2)
+OTEL_PYTHON_LOG_CORRELATION=true
+
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_EXPORTER_OTLP_ENDPOINT=https://your-traceway-instance.com/api/otel
+OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer%20your-project-token
+```
+
+`OTEL_EXPORTER_OTLP_ENDPOINT` is the base URL. The logs exporter appends `/v1/logs` automatically. No extra endpoint config is needed.
+
+These variables are read once at interpreter startup, so set them in your process environment, not in a `.env` file that `settings.py` loads.
+
+> **`OTEL_LOGS_EXPORTER=otlp` is all you need to ship logs.** `opentelemetry-bootstrap -a install` installs `opentelemetry-instrumentation-logging`, which attaches a `LoggingHandler` to the root logger for you.
+>
+> **Do not set `OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true`.** It is deprecated as of `opentelemetry-instrumentation-logging` 0.65b0. Setting it swaps in the SDK's deprecated handler and prints a warning on every process start, and that warning is itself shipped to Traceway as a log record. Leave it unset. If you want to turn the handler off entirely, set `OTEL_PYTHON_LOG_AUTO_INSTRUMENTATION=false`.
+
+## Step 2: Set the Root Logger Level (Required)
+
+A stock Django project leaves the **root logger at `WARNING`**. Python drops `logger.debug(...)` and `logger.info(...)` before they reach any handler, so they never reach the OTel handler either. `OTEL_PYTHON_LOG_CORRELATION=true` from Step 1 happens to raise the level to `INFO`, because it calls `logging.basicConfig(level=logging.INFO)` behind your back. Do not rely on that side effect. Configure `LOGGING` in `settings.py`:
+
+```python
+# myproject/settings.py
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "with_trace": {
+            "format": "[{levelname}] {message} | trace_id={otelTraceID} span_id={otelSpanID}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "with_trace",
+        },
+    },
+    "root": {"handlers": ["console"], "level": "INFO"},
+}
+```
+
+Two things about this block:
+
+- The `level` is what decides whether a record exists at all. `"INFO"` ships `INFO` and above. Use `"DEBUG"` if you want debug records in Traceway too.
+- The `{otelTraceID}` / `{otelSpanID}` placeholders in the formatter only work when `OTEL_PYTHON_LOG_CORRELATION=true` is set (Step 1). Trace-context injection is opt-in. Without it those fields do not exist on the `LogRecord` and **every console line** raises `ValueError: Formatting field not found in record: 'otelTraceID'`. If you would rather not set that variable, drop the `| trace_id=... span_id=...` part of the format string.
+
+This `dictConfig` does not remove the OTel handler. After Django applies it the root logger holds both your `StreamHandler` and `opentelemetry.instrumentation.logging.handler.LoggingHandler`, so console output and OTLP export both keep working.
+
+`OTEL_PYTHON_LOG_CORRELATION=true` also stamps `otelTraceID`, `otelSpanID`, `otelServiceName` and `otelTraceSampled` as attributes on the OTel log record, so they are visible in Traceway next to your own `extra` keys.
+
+## Step 3: Use Python's `logging` Module as Usual
+
+Use the standard Python logger. Because the handler runs inside the request / Celery task span, every record emitted from there carries that span's `trace_id` and `span_id` automatically:
+
+```python
+# myapp/views.py
+import logging
+
+from django.http import JsonResponse
+
+logger = logging.getLogger(__name__)
+
+
+def create_order(request):
+    order_id = "ord_123"
+    logger.info("order received", extra={"order.id": order_id})
+
+    try:
+        # ... business logic ...
+        logger.info("order processed", extra={"order.id": order_id})
+        return JsonResponse({"status": "ok"})
+    except Exception as exc:
+        logger.error("order failed", extra={"order.id": order_id, "exception": str(exc)})
+        raise
+```
+
+Open the endpoint's trace in the Traceway dashboard and the **Logs** tab will show these records attached. The same is true for logs emitted inside Celery tasks, management commands, and any other code that runs under an active span.
+
+> **Attributes via `extra={...}`:** OTel's logging handler reads the `extra` dict on a `LogRecord` and attaches each key as an attribute on the OTel log record. So `logger.info("order received", extra={"order.id": "ord_123"})` produces an OTel log with attribute `order.id="ord_123"`. Use dotted keys (e.g. `order.id`, `user.id`) to match OTel semantic conventions.
+
+## Reading `trace_id` in Console / File Logs
+
+With `OTEL_PYTHON_LOG_CORRELATION=true` and the `with_trace` formatter from Step 2, your raw console or file output carries the same ids Traceway shows, which makes it easy to jump from a log line to a trace:
+
+```
+[INFO] fetching user | trace_id=36d1a9e2918feaa0487fb7deb4e5d001 span_id=729a141ab07be6fc
+[INFO] order received | trace_id=852364b111d5fb102122f0743a722986 span_id=80637045ab27cd48
+[INFO] Watching for file changes with StatReloader | trace_id=0 span_id=0
+```
+
+Records emitted outside any active span (startup messages, for example) get `"0"` placeholders, as in the last line.
+
+> **Don't add an OTel `LoggingHandler` yourself.** `opentelemetry-instrumentation-logging` already attaches one to the root logger. Adding another produces duplicate log records in Traceway.
+
+## Severity Mapping
+
+Python's `logging` levels are mapped to OpenTelemetry severity numbers (and Traceway's TRACE → FATAL labels) as follows:
+
+| Python Level | Numeric | OTLP Severity Number | Traceway Severity |
+| ------------ | ------- | -------------------- | ----------------- |
+| `DEBUG`      | 10      | 5                    | DEBUG             |
+| `INFO`       | 20      | 9                    | INFO              |
+| `WARNING`    | 30      | 13                   | WARN              |
+| `ERROR`      | 40      | 17                   | ERROR             |
+| `CRITICAL`   | 50      | 21                   | FATAL             |
+
+Only records at or above the root logger's configured `level` are emitted to handlers, which is why [Step 2](#step-2-set-the-root-logger-level-required) is required. Raise or lower `LOGGING["root"]["level"]` to control volume.
+
+## Logging Exceptions With Full Tracebacks
+
+`logger.exception(...)` and `logger.error(..., exc_info=True)` both attach the traceback to the OTel log record's `exception.stacktrace` attribute, which Traceway extracts into the Logs view:
+
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def withdraw(request):
+    try:
+        _withdraw(request.user, request.POST["amount"])
+    except InsufficientFundsError:
+        logger.exception("withdraw failed", extra={"user.id": request.user.pk})
+        raise
+```
+
+Note that the *unhandled* exception is **also** captured on the request span by the Django middleware (see [Exceptions](/client/otel/django/exceptions)). `logger.exception(...)` is for logging the same event into the Logs feed with structured attributes. It is not a substitute for re-raising.
+
+## Test Your Integration
+
+Add a route that logs at multiple levels, hit it once, and check the **Logs** page in the Traceway dashboard:
+
+```python
+# myapp/views.py
+import logging
+
+from django.http import JsonResponse
+
+logger = logging.getLogger(__name__)
+
+
+def log_test(request):
+    logger.debug("debug sample")
+    logger.info("info sample", extra={"request.id": "req_1"})
+    logger.warning("warning sample")
+    logger.error("error sample", extra={"order.id": "ord_1"})
+    return JsonResponse({"ok": True})
+```
+
+```python
+# myproject/urls.py
+urlpatterns = [
+    # ...
+    path("log-test/", views.log_test),
+]
+```
+
+Visit `/log-test/`, then open **Logs** in the dashboard. With the root level at `INFO` you get **three** records within a few seconds (`info`, `warning`, `error`), each linked to the trace for that request. The `debug` line is dropped by the level, not by OTel. Set the root level to `"DEBUG"` if you want all four.
+
+If you see nothing at all, check in this order: the root logger level (Step 2), `OTEL_LOGS_EXPORTER=otlp` in the process environment (Step 1), and that you launched through `opentelemetry-instrument`.
+
+## Next Steps
+
+- [Exceptions](/client/otel/django/exceptions): record caught exceptions with context
+- [Metrics](/client/otel/django/metrics): custom counters, histograms, and gauges
+- [OTel Logs reference](/client/otel/logs): full OTLP logs mapping and severity details

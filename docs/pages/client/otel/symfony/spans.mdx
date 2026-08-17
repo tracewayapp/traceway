@@ -1,0 +1,183 @@
+# Spans
+
+The bundle creates one span per HTTP request, and that span is what becomes an endpoint row in Traceway. Everything below it in the trace is a child span: database queries, template renders, outgoing HTTP calls, and any work you instrument yourself.
+
+## Spans You Get for Free
+
+Install the relevant Symfony component and the bundle instruments it. A typical request ends up looking like this in the trace view:
+
+```
+GET /users/{id}                     120ms
+├─ db.users.find                     12ms   your own span
+│  └─ SELECT                          1ms   db.system.name=sqlite
+├─ twig.render profile.html.twig      8ms
+└─ GET                               40ms   server.address=api.example.com
+```
+
+Outgoing HttpClient spans are named after the method alone. The host lives in the `server.address` attribute, which keeps one busy client from splitting into hundreds of span names.
+
+| Component | Span kind | Needs |
+|---|---|---|
+| Doctrine DBAL queries and transactions | CLIENT | `doctrine/dbal` |
+| Twig template rendering | INTERNAL | `twig/twig` |
+| Cache pool get / delete / invalidateTags | INTERNAL | `symfony/cache` |
+| Outgoing HttpClient requests | CLIENT | `symfony/http-client` |
+| Mailer sends | PRODUCER + CLIENT | `symfony/mailer` |
+
+Each of these has its own toggle under `open_telemetry.traces` if you want to turn one off. See the [configuration reference](/client/otel/symfony#configuration-reference).
+
+Outgoing HttpClient calls also get W3C trace headers injected, so if the service you call is instrumented too, both sides join the same distributed trace. Traceway's own OTLP endpoint is auto-excluded, so exporting telemetry never traces itself.
+
+### Doctrine Queries Show No SQL by Default
+
+Doctrine spans are named after the operation, plus the table when it can be extracted: `SELECT`, `INSERT orders`, `BEGIN`, `COMMIT`. They carry `db.system.name`, `db.namespace`, and `db.operation.name`. Since v3.0 the SQL text itself is **not** recorded, because raw `query()` and `exec()` calls can contain unescaped literals. A span named `SELECT` with no query attached is the expected default, not a broken setup.
+
+Opt in when you want `db.query.text` on the span:
+
+```yaml
+# config/packages/open_telemetry.yaml
+open_telemetry:
+    traces:
+        doctrine:
+            record_statements: true
+```
+
+Prepared statements record placeholders rather than values. `query()` and `exec()` record the raw string, so leave this off in production if your SQL can carry personal data.
+
+## Using TracingInterface
+
+For your own spans, inject the bundle's `TracingInterface`. It handles span creation, activation, error recording, and cleanup, so there is no `finally` block to forget:
+
+```php
+use Traceway\OpenTelemetryBundle\TracingInterface;
+
+class OrderService
+{
+    public function __construct(
+        private readonly TracingInterface $tracing,
+    ) {}
+
+    public function processOrder(int $orderId): void
+    {
+        $this->tracing->trace('order.validate', function () use ($orderId) {
+            $this->validateOrder($orderId);
+        });
+
+        $this->tracing->trace('order.charge', function () use ($orderId) {
+            $this->chargePayment($orderId);
+        });
+    }
+}
+```
+
+`trace()` returns whatever the callback returns, so you can wrap an expression directly:
+
+```php
+$user = $this->tracing->trace('db.users.find', fn () => $this->repository->find($id));
+```
+
+If the callback throws, the span records the exception, is marked as an error, and the throwable is re-thrown unchanged.
+
+### With Attributes and Span Kind
+
+```php
+use OpenTelemetry\API\Trace\SpanKind;
+
+$result = $this->tracing->trace(
+    'stripe.charge',
+    fn () => $this->stripe->charge($amount),
+    attributes: ['payment.amount' => $amount, 'payment.currency' => 'usd'],
+    kind: SpanKind::KIND_CLIENT,
+);
+```
+
+### Nested Spans
+
+Child spans automatically attach to whatever span is active:
+
+```php
+$this->tracing->trace('order.fulfill', function () {
+    $this->tracing->trace('inventory.reserve', fn () => $this->reserve());
+    $this->tracing->trace('payment.charge', fn () => $this->charge());
+    $this->tracing->trace('email.send', fn () => $this->notify());
+});
+```
+
+For tests, stub the interface and have `trace()` call the callback directly:
+
+```php
+$tracing = $this->createStub(TracingInterface::class);
+$tracing->method('trace')->willReturnCallback(fn (string $name, callable $cb) => $cb());
+```
+
+## Using the OpenTelemetry API Directly
+
+For span events, manual status codes, or a span whose lifetime does not fit a callback, use the tracer directly:
+
+```php
+use OpenTelemetry\API\Globals;
+
+$tracer = Globals::tracerProvider()->getTracer('app');
+
+$span = $tracer->spanBuilder('process-order')->startSpan();
+$scope = $span->activate();
+try {
+    $this->processOrder($orderId);
+} finally {
+    $scope->detach();
+    $span->end();
+}
+```
+
+Always detach the scope and end the span in a `finally` block. A span that is never ended is never exported, and a scope that is never detached leaves the wrong parent active for everything that runs afterwards.
+
+## Adding Attributes
+
+Attach metadata to spans for filtering and debugging:
+
+```php
+$span->setAttribute('db.system', 'mysql');
+$span->setAttribute('cache.key', $key);
+$span->setAttribute('db.row_count', $rowCount);
+```
+
+`Span::getCurrent()` gets you the active span from anywhere, including a controller, a service, or a Messenger handler, without passing it around:
+
+```php
+use OpenTelemetry\API\Trace\Span;
+
+Span::getCurrent()->setAttribute('user.id', $userId);
+```
+
+Attributes set on the request span show up on the endpoint row, and on any Issue raised during that request. See [Exceptions](/client/otel/symfony/exceptions).
+
+## Recording Errors on Spans
+
+When a span's operation fails, record the exception and set the status:
+
+```php
+use OpenTelemetry\API\Trace\StatusCode;
+
+$span = $tracer->spanBuilder('external-api-call')->startSpan();
+try {
+    $response = $this->httpClient->request('GET', 'https://api.example.com/data');
+} catch (\Throwable $e) {
+    $span->recordException($e);
+    $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
+    throw $e;
+} finally {
+    $span->end();
+}
+```
+
+## Span Naming Conventions
+
+Span names group in the dashboard, so they must be low cardinality. Never put an id, an email, or a URL with parameters in a span name. Put those in attributes.
+
+| Good | Bad |
+|------|-----|
+| `db.users.find` | `query` |
+| `cache.sessions.get` | `cache` |
+| `stripe.charge` | `api` |
+| `s3.upload-image` | `upload` |
+| `email.send-welcome` | `send user 4821 an email` |

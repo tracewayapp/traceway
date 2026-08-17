@@ -88,6 +88,8 @@ Traceway.run(
 
 Traceway needs network access to send error reports. Depending on the platform, you may need to add permissions manually.
 
+The package ships native plugins, so iOS and macOS builds go through CocoaPods. If `flutter run` stops with `Error: CocoaPods not installed or not in valid state.`, install it once with `brew install cocoapods` and run again.
+
 ### Android
 
 Add the `INTERNET` permission to `android/app/src/main/AndroidManifest.xml`:

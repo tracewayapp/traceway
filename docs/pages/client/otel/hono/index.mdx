@@ -1,0 +1,418 @@
+# Hono
+
+Instrument your Hono application with OpenTelemetry and export traces, metrics, and logs to Traceway. Hono runs on multiple runtimes. This guide covers the Node.js setup. For Cloudflare Workers, see the [Cloudflare guide](/client/otel/cloudflare).
+
+## Installation
+
+```bash
+npm install hono @hono/node-server @hono/otel \
+  @opentelemetry/api \
+  @opentelemetry/api-logs \
+  @opentelemetry/sdk-node \
+  @opentelemetry/sdk-metrics \
+  @opentelemetry/sdk-logs \
+  @opentelemetry/auto-instrumentations-node \
+  @opentelemetry/exporter-trace-otlp-http \
+  @opentelemetry/exporter-metrics-otlp-http \
+  @opentelemetry/exporter-logs-otlp-http
+```
+
+Every package in that list is imported by code on this page. Install them all, even the ones npm would otherwise hoist for you, or the imports break under pnpm and Yarn PnP.
+
+## Setup
+
+### 1. Set the module type
+
+The two files below use ESM `import` syntax, so `package.json` needs `"type": "module"`:
+
+```json
+{
+  "name": "my-hono-app",
+  "type": "module"
+}
+```
+
+Skip this and Node stops at the first line with `SyntaxError: Cannot use import statement outside a module`.
+
+### 2. Create `instrumentation.ts`
+
+Put it at the root of your project, next to `package.json`:
+
+```typescript
+import { NodeSDK } from "@opentelemetry/sdk-node";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
+import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
+import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
+import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
+import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
+
+const OTEL_URL = "https://your-traceway-instance.com/api/otel";
+const HEADERS = { Authorization: "Bearer your-project-token" };
+
+const sdk = new NodeSDK({
+  serviceName: "my-hono-app",
+
+  traceExporter: new OTLPTraceExporter({
+    url: `${OTEL_URL}/v1/traces`,
+    headers: HEADERS,
+  }),
+
+  metricReaders: [
+    new PeriodicExportingMetricReader({
+      exporter: new OTLPMetricExporter({
+        url: `${OTEL_URL}/v1/metrics`,
+        headers: HEADERS,
+      }),
+      exportIntervalMillis: 30_000,
+    }),
+  ],
+
+  logRecordProcessors: [
+    new BatchLogRecordProcessor({
+      exporter: new OTLPLogExporter({
+        url: `${OTEL_URL}/v1/logs`,
+        headers: HEADERS,
+      }),
+    }),
+  ],
+
+  // @hono/otel owns the incoming request span. See the note below.
+  instrumentations: [
+    getNodeAutoInstrumentations({
+      "@opentelemetry/instrumentation-http": { enabled: false },
+    }),
+  ],
+});
+
+sdk.start();
+
+const shutdown = async () => {
+  await sdk.shutdown();
+  process.exit(0);
+};
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
+```
+
+Replace `your-traceway-instance.com` and `your-project-token` with your own values. The token is on the Connection page of your Traceway dashboard.
+
+Three details on that file are easy to get wrong:
+
+- `serviceName` is not optional in practice. Leave it out and every endpoint, span, log, and metric lands under `unknown_service:node`, which makes the service filter useless as soon as a second app reports to the same project.
+- The option is `metricReaders` (an array). The older `metricReader` still works but prints a deprecation warning.
+- The `shutdown` handler matters more than it looks. Telemetry is batched before it is sent, so stopping the app without it throws away the last few seconds of data. That is usually the very request you just made to test the setup.
+
+> **Why disable `instrumentation-http`?** `@opentelemetry/instrumentation-http` patches Node's `http` module, so it never sees Hono's router. Its spans carry no `http.route`, which means `/api/users/1` and `/api/users/2` arrive as two separate endpoints in Traceway instead of one `GET /api/users/:id` row, and a thrown error is not recorded as an exception. It also wins: once `instrumentation-http` is actually patching, it owns the root span and demotes the `@hono/otel` span to a child, so grouping breaks even though `@hono/otel` is installed. In the ESM setup on this page that line is a safety belt, not a fix. `instrumentation-http` cannot reach `node:http` through an ESM import until you register the loader hook, so it is inert here either way. It becomes load-bearing the moment you register the hook (see [Tracing Outgoing HTTP Clients](#tracing-outgoing-http-clients)) or run the app as CommonJS. Let [`@hono/otel`](https://www.npmjs.com/package/@hono/otel) own the incoming request span.
+>
+> The cost of turning it off is outgoing calls. Requests made through the `http` and `https` modules stop being traced, and that covers axios, got, node-fetch v2, and a lot of vendor SDKs. Calls through the global `fetch()` are still traced, by `@opentelemetry/instrumentation-undici`. See [Tracing Outgoing HTTP Clients](#tracing-outgoing-http-clients) for a config that keeps both.
+
+## Application Code
+
+Create `server.ts` next to `instrumentation.ts`. The `@hono/otel` middleware handles endpoint grouping via `http.route`, status codes, and exception recording:
+
+```typescript
+import { serve } from "@hono/node-server";
+import { Hono } from "hono";
+import { httpInstrumentationMiddleware } from "@hono/otel";
+
+const app = new Hono();
+
+app.use(httpInstrumentationMiddleware());
+
+app.get("/api/users", (c) => {
+  return c.json({ users: [] });
+});
+
+app.get("/api/users/:id", (c) => {
+  const id = c.req.param("id");
+  return c.json({ id, name: "John" });
+});
+
+serve({ fetch: app.fetch, port: 3000 });
+```
+
+> The export is `httpInstrumentationMiddleware`. Older guides show `import { otel } from "@hono/otel"`, which was removed in `@hono/otel` 1.0.0. On any version npm installs today that import fails at startup with `SyntaxError: The requested module '@hono/otel' does not provide an export named 'otel'`.
+
+The middleware takes an optional config object with `serviceName`, `serviceVersion`, `captureRequestHeaders`, `captureResponseHeaders`, `captureActiveRequests`, and `spanNameFactory`. The defaults are fine for most apps.
+
+## Running Your App
+
+Load the instrumentation file before your application code:
+
+```bash
+node --import ./instrumentation.ts server.ts
+```
+
+Use `--import`. On Node 22.12 and newer, `--require` also loads this file, because `require()` can now load ESM that has no top-level await. On older versions it fails, so `--import` is the portable choice.
+
+Node 22.18 and newer (including Node 24) run TypeScript files directly, with no build step and no extra flag. On older versions you have two options. Write both files in plain JavaScript, rename them to `instrumentation.js` and `server.js`, keep `"type": "module"`, and run:
+
+```bash
+node --import ./instrumentation.js server.js
+```
+
+Or install [tsx](https://tsx.is):
+
+```bash
+npm install -D tsx
+node --import tsx --import ./instrumentation.ts server.ts
+```
+
+`tsx` has to come first so its loader is in place before Node reads `instrumentation.ts`.
+
+## Test Your Integration
+
+Add a route that throws:
+
+```typescript
+app.get("/test-error", () => {
+  throw new Error("Test error from Hono");
+});
+```
+
+Start the app, then send a few requests:
+
+```bash
+curl -i http://localhost:3000/test-error
+curl http://localhost:3000/api/users/1
+curl http://localhost:3000/api/users/2
+curl http://localhost:3000/api/users/3
+```
+
+The first one returns `HTTP/1.1 500 Internal Server Error`. Hono's default error handler turns an uncaught throw into a 500, and `@hono/otel` records the exception on the span and sets `http.response.status_code` to 500.
+
+Telemetry is batched, so wait about 10 seconds, or stop the app with Ctrl-C to flush it immediately. Then check the dashboard:
+
+- **Endpoints** shows one row, `GET /api/users/:id`, with a count of 3. Three separate rows with literal ids means `http.route` is missing. Check that `app.use(httpInstrumentationMiddleware())` runs before your routes. If you also registered the loader hook from [Tracing Outgoing HTTP Clients](#tracing-outgoing-http-clients), check that you set `disableIncomingRequestInstrumentation: true` there, because otherwise `instrumentation-http` takes the root span.
+- **Endpoints** shows `GET /test-error` with status 500.
+- **Issues** shows `Error: Test error from Hono` with the full stack trace.
+
+## Logs
+
+The `logRecordProcessors` block in `instrumentation.ts` already ships logs. Emit them from inside a handler and they carry the request's trace id, so Traceway shows them on that trace:
+
+```typescript
+import { logs, SeverityNumber } from "@opentelemetry/api-logs";
+
+const logger = logs.getLogger("my-hono-app");
+
+app.get("/api/users/:id", (c) => {
+  const id = c.req.param("id");
+
+  logger.emit({
+    severityNumber: SeverityNumber.INFO,
+    severityText: "INFO",
+    body: `fetching user ${id}`,
+    attributes: { "user.id": id, route: "/api/users/:id" },
+  });
+
+  return c.json({ id, name: "John" });
+});
+```
+
+There is no context to pass around. `@hono/otel` runs your handler inside the request span, so the log picks up that span's `trace_id` and `span_id` on its own.
+
+> Pass the exporter to `BatchLogRecordProcessor` as `{ exporter }`, the way `instrumentation.ts` above does it. The older positional form, `new BatchLogRecordProcessor(exporter)`, still constructs without an error on current `@opentelemetry/sdk-logs` and then drops every log silently.
+
+## Background Jobs
+
+Cron jobs and queue consumers are not HTTP requests, so `@hono/otel` never sees them. Create the span yourself and set `kind: SpanKind.CONSUMER`. That is what files it under **Tasks** in Traceway. Replace `buildReport` with your own job:
+
+```typescript
+import { trace, context, ROOT_CONTEXT, SpanKind, SpanStatusCode } from "@opentelemetry/api";
+
+const tracer = trace.getTracer("my-hono-app");
+
+async function nightlyReport() {
+  // ROOT_CONTEXT detaches the job from whatever request happened to trigger it,
+  // so it gets its own trace instead of hanging off an HTTP request.
+  await context.with(ROOT_CONTEXT, async () => {
+    await tracer.startActiveSpan(
+      "nightly-report",
+      { kind: SpanKind.CONSUMER, attributes: { "messaging.system": "cron" } },
+      async (span) => {
+        try {
+          await buildReport();
+        } catch (error) {
+          span.recordException(error as Error);
+          span.setStatus({ code: SpanStatusCode.ERROR });
+          throw error;
+        } finally {
+          span.end();
+        }
+      }
+    );
+  });
+}
+
+setInterval(nightlyReport, 60 * 60 * 1000);
+```
+
+The task name in Traceway is the span name, `nightly-report`. To see the row without waiting an hour, call `nightlyReport()` once at startup as well.
+
+> **Always set the kind.** A root span left at the default `SpanKind.INTERNAL` with no HTTP attributes matches nothing Traceway stores, so it is dropped on arrival: no endpoint, no task, no span row. Logs you emitted inside it still arrive, pointing at a trace that does not exist, which is a confusing thing to debug. `kind: SpanKind.CONSUMER` is the whole fix.
+
+## Custom Metrics
+
+The `metricReaders` block in `instrumentation.ts` exports anything you record through the OTel metrics API. Replace `processPayment` with your own work:
+
+```typescript
+import { metrics } from "@opentelemetry/api";
+
+const meter = metrics.getMeter("my-hono-app");
+
+const ordersProcessed = meter.createCounter("orders.processed", {
+  description: "Orders processed",
+});
+
+const checkoutLatency = meter.createHistogram("checkout.latency", {
+  description: "Checkout latency",
+  unit: "ms",
+});
+
+app.post("/api/checkout", async (c) => {
+  const started = Date.now();
+  await processPayment();
+  ordersProcessed.add(1, { plan: "pro" });
+  checkoutLatency.record(Date.now() - started, { outcome: "ok" });
+  return c.json({ status: "ok" });
+});
+```
+
+Tag keys become filterable dimensions in Traceway. Counters and gauges are stored as they are. A histogram arrives as two metrics, `checkout.latency.avg` and `checkout.latency.count`. `ExponentialHistogram` and `Summary` instruments are dropped, so prefer a plain histogram.
+
+`@hono/otel` also emits `http.server.request.duration` (tagged with `http.route` and `http.response.status_code`) and `http.server.active_requests` for free.
+
+## What Gets Captured
+
+With `@hono/otel` and the auto-instrumentations enabled, the following is captured automatically:
+
+| Layer | What's Captured |
+|-------|-----------------|
+| `@hono/otel` middleware | Incoming requests with method, route, status code, duration |
+| `@hono/otel` middleware | `http.route` for endpoint grouping (for example `GET /api/users/:id`) |
+| `@hono/otel` middleware | Thrown errors, recorded as exception events and shown as Issues |
+| `@hono/otel` middleware | `http.server.request.duration` and `http.server.active_requests` metrics |
+| Database (`pg`, `mysql2`, `mongodb`) | Query spans with SQL statements, connection info |
+| Cache (`redis`, `ioredis`) | Cache operation spans |
+| Outgoing global `fetch()` | HTTP client spans, via `instrumentation-undici` |
+| Outgoing `axios`, `got`, `node-fetch` v2 | **Not captured** with the config above. See [Tracing Outgoing HTTP Clients](#tracing-outgoing-http-clients) |
+| DNS and TCP | `dns.lookup` and `tcp.connect` spans |
+
+### How Traceway Classifies Your Spans
+
+| Span shape | Where it lands |
+|-----------|----------------|
+| Root span with `http.route` or `url.path`, which is what `@hono/otel` emits | **Endpoints**, named `METHOD /route` from `http.route` |
+| Any span with `kind: CONSUMER` | **Tasks**, named after the span |
+| Any non-root span | **Spans**, in the trace waterfall |
+| An `exception` event on any span, from `span.recordException()` or a throw caught by `@hono/otel` | **Issues**, with the stack trace |
+| A root span with no HTTP attributes and a kind other than CONSUMER | Dropped. Nothing is stored |
+
+A request that matched no Hono route has no `http.route`, so all such 404s group into a single endpoint named `UNMATCHED` instead of one row per bad URL. That is deliberate. It keeps scanners and typo traffic out of your endpoint list.
+
+### Database Auto-Instrumentation
+
+Database libraries like `pg`, `mysql2`, `mongodb`, and `ioredis` are CommonJS packages. Even in an ESM Hono app, OTel's `require-in-the-middle` hook patches them successfully. Database queries appear as child spans under the `@hono/otel` root span with no manual instrumentation:
+
+```typescript
+import { Hono } from "hono";
+import { httpInstrumentationMiddleware } from "@hono/otel";
+import pg from "pg";
+
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const app = new Hono();
+
+app.use(httpInstrumentationMiddleware());
+
+app.get("/api/users/:id", async (c) => {
+  const id = c.req.param("id");
+  // This query creates a child span named after the SQL, with
+  // db.system.name=postgresql and db.query.text set.
+  const { rows } = await pool.query("SELECT * FROM users WHERE id = $1", [id]);
+  return c.json(rows[0]);
+});
+```
+
+The resulting trace in Traceway:
+
+```
+GET /api/users/:id                     ← Endpoint (from @hono/otel)
+  ├─ pg-pool.connect                   ← Span (only when the pool opens a connection)
+  │   └─ pg.connect
+  │       ├─ dns.lookup                ← Span (from instrumentation-dns)
+  │       └─ tcp.connect               ← Span (from instrumentation-net)
+  └─ SELECT * FROM users WHERE id = $1 ← Span (from instrumentation-pg, named after the SQL)
+```
+
+There is no span called `pg.query`. `instrumentation-pg` names the query span after the SQL text. The `pg.connect`, `dns.lookup`, and `tcp.connect` spans only show up on the request that opens a new pooled connection. Later requests to the same route show `pg-pool.connect` and the query span, with nothing under `pg-pool.connect`.
+
+> **Note:** This works because `pg`, `mysql2`, and similar packages use CommonJS internally, and the CommonJS require hook is always active. ESM imports are a different story, which is what [Tracing Outgoing HTTP Clients](#tracing-outgoing-http-clients) is about.
+
+## Tracing Outgoing HTTP Clients
+
+`axios`, `got`, `node-fetch` v2, and many vendor SDKs send requests through Node's `http` module, which the setup above deliberately leaves unpatched. To trace those calls while `@hono/otel` keeps ownership of the incoming request span, register OTel's ESM loader hook and disable only the incoming half of `instrumentation-http`.
+
+Install the hook package as a direct dependency:
+
+```bash
+npm install @opentelemetry/instrumentation
+```
+
+Then make two changes to `instrumentation.ts`. Add the loader hook at the top of the file, and swap `enabled: false` for `disableIncomingRequestInstrumentation: true`:
+
+```typescript
+import { register } from "node:module";
+register("@opentelemetry/instrumentation/hook.mjs", import.meta.url);
+
+import { NodeSDK } from "@opentelemetry/sdk-node";
+// ...the rest of the imports, unchanged
+
+const sdk = new NodeSDK({
+  // ...serviceName, traceExporter, metricReaders, logRecordProcessors, unchanged
+
+  instrumentations: [
+    getNodeAutoInstrumentations({
+      // @hono/otel keeps the incoming request span, the one that knows http.route.
+      // instrumentation-http now only traces outgoing calls.
+      "@opentelemetry/instrumentation-http": {
+        disableIncomingRequestInstrumentation: true,
+      },
+    }),
+  ],
+});
+```
+
+The hook has to be registered in the preloaded file, which is why it goes in `instrumentation.ts` and not in `server.ts`. With this config, both `fetch()` and `http.get()` produce child spans, endpoints are still named from `http.route`, and there is no duplicate root span. On Node 26 you will see a `module.register() is deprecated` warning at startup. It is harmless and the hook still works.
+
+A CommonJS app loaded with `node --require ./instrumentation.js` does not need the loader hook at all, because the CommonJS require hook patches `http` on its own. It still needs `disableIncomingRequestInstrumentation: true`, otherwise `instrumentation-http` takes the root span and endpoint grouping breaks.
+
+## Environment Variable Alternative
+
+If you would rather not hardcode the endpoint and token, the SDK reads them from the environment. `OTEL_EXPORTER_OTLP_ENDPOINT` is the base URL, without a signal path. The SDK appends `/v1/traces` and `/v1/metrics` itself:
+
+```bash
+export OTEL_SERVICE_NAME="my-hono-app"
+export OTEL_EXPORTER_OTLP_ENDPOINT="https://your-traceway-instance.com/api/otel"
+export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer your-project-token"
+```
+
+With those set you can drop `serviceName`, `traceExporter`, and `metricReaders` from the SDK config. Keep the `logRecordProcessors` block, the `instrumentations` block, and the shutdown handler.
+
+## Multi-Runtime Notes
+
+| Runtime | Instrumentation |
+|---------|----------------|
+| **Node.js** | OTel Node SDK (this guide) |
+| **Cloudflare Workers** | Platform OTLP export, no SDK (Workers Paid, beta). Cloudflare does not emit `http.route`, so endpoints are named by raw URL path instead of your Hono route pattern. Read the [Cloudflare guide](/client/otel/cloudflare) before you switch |
+| **Deno** | Use [Deno OTel](https://docs.deno.com/runtime/fundamentals/open_telemetry/) with OTLP/HTTP export to Traceway |
+| **Bun** | Use `@opentelemetry/sdk-node` (Bun supports most Node.js OTel packages) |
+
+## Next Steps
+
+- [Traces](/client/otel/hono/traces): manual spans, middleware instrumentation, and exception recording
+- [Node.js OTel Guide](/client/otel/nodejs): general Node.js setup details
+- [Logs](/client/otel/logs): severity levels, attributes, and how logs are stored
+- [Metrics](/client/otel/metrics): instrument types and how Traceway stores them
+- [OTel Overview](/client/otel): protocol details and authentication

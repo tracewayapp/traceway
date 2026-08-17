@@ -21,7 +21,7 @@
     let { open, onOpenChange, onProjectCreated }: Props = $props();
 
     let projectName = $state('');
-    let selectedFramework = $state<Framework>('gin');
+    let selectedFramework = $state<Framework>('opentelemetry');
     let loading = $state(false);
     let error = $state('');
     let createdProject = $state<ProjectWithToken | null>(null);
@@ -68,7 +68,7 @@
 
     function handleClose() {
         projectName = '';
-        selectedFramework = 'gin';
+        selectedFramework = 'opentelemetry';
         error = '';
         createdProject = null;
         selectedOrgId = null;

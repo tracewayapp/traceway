@@ -1,0 +1,197 @@
+# Logs
+
+`keepsuit/laravel-opentelemetry` auto-injects an `otlp` log channel that bridges Laravel's standard logger to the OpenTelemetry Logs SDK and OTLP exporter. Once configured, every `Log::info(...)` / `Log::error(...)` routed through that channel is forwarded to Traceway and linked to the active trace and span.
+
+## Step 1: Enable the OTLP Logs Exporter
+
+Extend the env config from the [Quick Start](/client/otel/laravel) to also enable the logs exporter:
+
+```bash
+# Existing traces + metrics config from the Quick Start
+OTEL_SERVICE_NAME=my-laravel-app
+OTEL_TRACES_EXPORTER=otlp
+OTEL_METRICS_EXPORTER=otlp
+
+# Enable OTLP logs
+OTEL_LOGS_EXPORTER=otlp
+
+OTEL_EXPORTER_OTLP_PROTOCOL=http/json
+OTEL_EXPORTER_OTLP_ENDPOINT=https://your-traceway-instance.com/api/otel
+OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer your-project-token"
+```
+
+`OTEL_EXPORTER_OTLP_ENDPOINT` is the base URL. The logs exporter appends `/v1/logs` automatically. No extra endpoint config is needed.
+
+## Step 2: Route Laravel's Logger at the `otlp` Channel
+
+The package's service provider **automatically injects** a log channel named `otlp` into `config/logging.php` at runtime, so no manual channel registration is required. But nothing writes to it by default, so `OTEL_LOGS_EXPORTER=otlp` on its own ships zero logs. You have to point your default log destination at the channel.
+
+On Laravel 11 and newer this is env-only, no file edit needed. The shipped `stack` channel is defined as `explode(',', (string) env('LOG_STACK', 'single'))`, so adding `otlp` to `LOG_STACK` is enough:
+
+```bash
+# .env
+LOG_CHANNEL=stack
+LOG_STACK=single,otlp
+```
+
+That keeps writing `storage/logs/laravel.log` and ships a copy to Traceway. Drop `single` from the list if you do not want local files, or skip the stack entirely with `LOG_CHANNEL=otlp` to send everything straight to Traceway.
+
+If your app has a published `config/logging.php` that hardcodes the stack's channel list instead of reading `LOG_STACK`, add `otlp` to that array:
+
+```php
+// config/logging.php
+'channels' => [
+    'stack' => [
+        'driver' => 'stack',
+        'channels' => ['single', 'otlp'],   // <- add 'otlp' here
+        'ignore_exceptions' => false,
+    ],
+
+    // ... leave the other channels alone ...
+],
+```
+
+Note that hardcoding the array makes `LOG_STACK` dead, so prefer the env-only form above.
+
+### Changing the Level Threshold
+
+The auto-injected `otlp` channel logs at `debug`. To reduce volume in production, define the channel yourself in `config/logging.php` and raise the level. A channel you define wins over the injected one:
+
+```php
+// config/logging.php
+'channels' => [
+    // ...
+    'otlp' => [
+        'driver' => 'monolog',
+        'handler' => \Keepsuit\LaravelOpenTelemetry\Support\OpenTelemetryMonologHandler::class,
+        'level' => 'info',
+    ],
+],
+```
+
+Only records at or above the threshold are forwarded.
+
+## Emit Logs With Trace Context
+
+Use Laravel's standard `Log` facade as usual. Because handlers run inside the package's HTTP-request / queue-job span, every log emitted here carries that span's `trace_id` and `span_id` automatically:
+
+```php
+// app/Http/Controllers/OrderController.php
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+
+class OrderController extends Controller
+{
+    public function store(Request $request)
+    {
+        Log::info('order received', ['order.id' => 'ord_123']);
+
+        try {
+            // ... business logic ...
+            Log::info('order processed', ['order.id' => 'ord_123']);
+            return response()->json(['status' => 'ok']);
+        } catch (\Throwable $e) {
+            Log::error('order failed', [
+                'order.id' => 'ord_123',
+                'exception' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
+    }
+}
+```
+
+Open the endpoint's trace in the Traceway dashboard and the **Logs** tab will show these records attached. The same is true for logs emitted inside queue jobs, Artisan commands, and any other code that runs under an active span.
+
+## Inject `trace_id` Into Non-OTLP Loggers
+
+If you also write logs to `single` / `daily` files (or any non-OTLP channel), the package can inject the active trace id into Laravel's log context so it shows up alongside the message. This is enabled by default for instrumentation-started spans. If you start a root span manually with `Tracer::newSpan(...)->start()`, call `Tracer::updateLogContext()`:
+
+```php
+use Keepsuit\LaravelOpenTelemetry\Facades\Tracer;
+use OpenTelemetry\API\Trace\SpanKind;
+
+$span = Tracer::newSpan('cron.cleanup')
+    ->setSpanKind(SpanKind::KIND_CONSUMER)   // required when this is the root span
+    ->start();
+$scope = $span->activate();
+
+Tracer::updateLogContext();    // makes 'trace_id' available to subsequent Log:: calls
+
+try {
+    // ... work ...
+} finally {
+    $scope->detach();
+    $span->end();
+}
+```
+
+The context field name is configurable via `opentelemetry.logs.trace_id_field` (default: `trace_id`).
+
+> **Set the span kind when the span is a trace root.** `Tracer::newSpan()` produces an `INTERNAL` span, and Traceway discards a root `INTERNAL` span that has no HTTP attributes and no `console.command`. The span, its children, and the trace linkage for every log emitted inside it are all lost, silently. `setSpanKind(SpanKind::KIND_CONSUMER)` makes it a Task instead. Spans started inside an existing request, job or command are children, so they need nothing extra. See [Tasks](/client/otel/laravel/tasks#scheduled-closures-and-other-background-work).
+
+## Logger Facade (Alternative)
+
+For code paths where you want to send a record straight to Traceway without involving Monolog's pipeline, the package also exposes a `Logger` facade. It's particularly handy in low-level contexts where the standard `Log::` facade isn't available:
+
+```php
+use Keepsuit\LaravelOpenTelemetry\Facades\Logger;
+
+Logger::emergency('process crashed');
+Logger::alert('database is unreachable');
+Logger::critical('config is broken');
+Logger::error('order failed', ['order.id' => 'ord_1']);
+Logger::warning('rate limit reached', ['user.id' => 42]);
+Logger::notice('feature flag flipped');
+Logger::info('order received');
+Logger::debug('cache hit');
+```
+
+These records go directly to the OTLP logs exporter and are linked to the active trace, identical to records routed through the `otlp` log channel.
+
+## Severity Mapping
+
+Laravel uses Monolog under the hood, so its levels are mapped to OpenTelemetry severity numbers (and Traceway's TRACE → FATAL labels) as follows:
+
+| Laravel / Monolog Level | OTLP Severity Number | Traceway Severity |
+| ----------------------- | -------------------- | ----------------- |
+| `debug`                 | 5                    | DEBUG             |
+| `info`                  | 9                    | INFO              |
+| `notice`                | 10                   | INFO              |
+| `warning`               | 13                   | WARN              |
+| `error`                 | 17                   | ERROR             |
+| `critical`              | 18                   | FATAL             |
+| `alert`                 | 19                   | ERROR             |
+| `emergency`             | 21                   | FATAL             |
+
+Traceway resolves the label from `severityText` first and only falls back to `severityNumber`. That is why `critical` renders as FATAL: the text `CRITICAL` maps straight to FATAL, while severity number 18 on its own would land in the ERROR band.
+
+Only records at or above the channel's configured `level` threshold are forwarded.
+
+## Test Your Integration
+
+Add a route that logs at multiple levels, hit it once, and check the **Logs** page in the Traceway dashboard:
+
+```php
+// routes/web.php
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Route;
+
+Route::get('/log-test', function () {
+    Log::debug('debug sample');
+    Log::info('info sample', ['request.id' => 'req_1']);
+    Log::warning('warning sample');
+    Log::error('error sample', ['order.id' => 'ord_1']);
+    return response()->json(['emitted' => 4]);
+});
+```
+
+Visit `/log-test`, then open **Logs** in the dashboard. You should see records at or above your `otlp` channel's `level` within a few seconds, each linked to the trace for that request.
+
+## Next Steps
+
+- [Exceptions](/client/otel/laravel/exceptions): record caught exceptions with context
+- [Metrics](/client/otel/laravel/metrics): custom counters, histograms, and gauges
+- [OTel Logs reference](/client/otel/logs): full OTLP logs mapping and severity details

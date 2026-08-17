@@ -27,6 +27,7 @@ Drive a Traceway instance from the terminal with the `traceway` CLI. The first w
 - **Time windows**: always bound queries, default `--since 1h` for "now" questions, `--since 24h` otherwise. `--since` accepts `s`, `m`, `h`, lowercase `Nd` (no `1w`, no `7d2h`). Absolute windows via `--from` / `--to` (RFC3339).
 - **Exit codes**: 0 ok, 1 generic/API, 2 usage, 3 connection, 4 auth, 5 not found, 6 rate limited, 7 server 5xx. Errors emit `{"error":"<stable_id>","message":"...","hint":"...","exit_code":N}` on stderr; branch on the `error` field.
 - On exit code 4 (auth), do not run `traceway login` yourself; switch to the Login flow and let the user enter credentials.
+- **Never guess a fix**: if the telemetry does not explain the failure, do not change behaviour on a hunch. Add the instrumentation that would explain it next time, and say what is still unknown. See "When the evidence is not enough" in the Debug flow.
 
 ## Resolving Dashboard URLs
 
@@ -281,7 +282,42 @@ The CLI also accepts `p50|p95|p99`, but the server has no quantile aggregation f
 3. Form a hypothesis that explains the targeted occurrence's full observation set (its message, affected endpoint, timing, volume) — not just the first stack frame. When a URL/hash anchored you to the last occurrence (step 2), explain *that* error; do not stretch one hypothesis to cover sibling clusters that merely share the hash.
 4. Propose or implement the fix per the user's instruction, scoped to the targeted occurrence's failure path.
 
-### 5. Report and clean up
+### 5. When the evidence is not enough, instrument instead of guessing
+
+Before writing a fix, answer one question honestly: **does the telemetry actually explain this failure?** You have enough when you can name the failing line, the input that reached it, and why that input was wrong. A stack trace on its own is usually not enough. Neither is a plausible story that the data neither confirms nor contradicts.
+
+If you cannot explain it, do not ship a speculative fix. A guess that changes behaviour hides the symptom, destroys the next reproduction, and costs another incident cycle. Instead, add the instrumentation that would answer the open question, and let the next occurrence do the diagnosing.
+
+Pick the signal that closes the specific gap:
+
+| What you could not determine | What to add |
+|---|---|
+| Which branch ran, or what the inputs were | A log at the decision point with the deciding values as attributes. Use ERROR severity on the failure path so `--min-severity 17` finds it |
+| Where the time went, or which step failed | Child spans around each suspect step, opened inside the request's active context |
+| Who or what it happened to (user, tenant, release, payload shape) | Attributes on the request span, or attributes passed to `recordException` |
+| How often it happens, or under which conditions | A counter or histogram metric, tagged with the low-cardinality dimension you want to slice by |
+| Where it broke across a service boundary | Trace context propagation on the call, plus a span or log on both sides |
+| Whether the code path runs at all | A log or counter at entry, so absence of data becomes evidence |
+
+Rules for what you add:
+
+- Emit it inside the active span of the request or task. That is what stamps the trace id on the log and makes it show up on the trace.
+- Put identifiers in attributes, never in the message text. Messages are stripped before grouping, and attributes are filterable.
+- Keep cardinality low. User ids and request ids belong in span attributes, never in a metric tag or a span name.
+- Never log secrets, tokens, or personal data.
+- Ship it as permanent instrumentation, not a temporary debug print. Something you remove tomorrow answers nothing.
+- If the area has no instrumentation at all, set it up first with the `traceway-setup` skill rather than bolting on one log line.
+
+Then close the loop with the user. State what you could not determine, what you added, and the exact command to run when it fires again:
+
+```bash
+traceway logs query --trace-id <id> --output json
+traceway exceptions show <hash> --output json | jq '.occurrences | last | .attributes'
+```
+
+Adding instrumentation is a legitimate outcome of a debug session, not a failure to fix. Report it as the deliverable it is.
+
+### 6. Report and clean up
 
 Summarize: symptom, evidence (exception hashes, log excerpts, metric anomalies), root cause, fix. Include `traceway exceptions show <hash>` references so the user can verify. After a fix is deployed and verified, archive only when the user asks:
 
@@ -302,9 +338,11 @@ The loop, using the read commands documented in this skill:
 3. **Pinpoint when it started: adjust the window down.** Do not investigate the default window blindly; narrow it until it brackets the onset. `traceway endpoints chart --metric-type p95 --interval-minutes <n>` returns latency over time for the top endpoints (`{timestamp, endpoint, value}` in ms): read down one endpoint's buckets for the step where p95 jumps. Confirm the cause with `traceway metrics query --name <metric> --interval-minutes <n>` (the infra/runtime curve). For a specific route not in the top 5, bisect `traceway endpoints list --search <name> --from <a> --to <b>` over adjacent windows. See `performance.md`, "Pinpointing when the slowness started".
 4. **Get a representative slow trace.** `traceway endpoints show <endpointId> --recorded-at <t>` for one request's span waterfall, or `traceway traces show <distributedTraceId> --recorded-at <t>` for the cross-service timeline. Take the trace from inside the slow window you just found; find the long pole.
 5. **Match the long pole to the checklist.** Is the dominant span a database call, an external call, in-process compute, or a *gap* before work starts (queueing / lock wait / pool exhaustion)? Look it up in `performance.md`.
-6. **Separate code from saturation.** Pull infra/runtime metrics over the same window: `traceway metrics query --name system.cpu.utilization --aggregation max`, then `mem.used_pcnt`, `go.gc_pause`. A spike that lines up with the latency onset points at saturation, not a code bug.
+6. **Separate code from saturation.** Pull infra/runtime metrics over the same window: `traceway metrics query --name system.cpu.utilization --aggregation max`, then `mem.used`, `go.gc_pause`. A spike that lines up with the latency onset points at saturation, not a code bug.
 7. **Correlate with code and deploys.** With the onset time from step 3, check what shipped then: `git log --since '<onset - 30m>' --until '<onset + 30m>'` or the deploy history. A jump at a release is a regression; a gradual ramp with no deploy is data growth (N+1, missing index, no pagination).
 8. **Report.** The bottleneck, the evidence (endpoint percentiles, the onset time, the dominating span, any correlated metric anomaly), the root cause mapped to a checklist item, and a concrete fix, with the `endpoints show` / `traces show` references so the user can verify. If the endpoint is marked slow, state whether the latency exceeded the accepted offset.
+
+If the waterfall does not localize the cost, stop before proposing a fix. An unexplained gap, one fat span covering the whole handler, or a tail you cannot reproduce all mean the same thing: the trace is too coarse to act on. Add child spans around the suspect steps inside that handler, then wait for the next slow request to point at the real one. See "When the evidence is not enough" in the Debug flow.
 
 ## Flow: Query
 

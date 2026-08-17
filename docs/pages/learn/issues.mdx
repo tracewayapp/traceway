@@ -52,19 +52,19 @@ Before hashing, Traceway normalizes the stack trace so values that vary between 
 
 | Normalization | Effect |
 |---------------|--------|
-| Error message | Only the error type is kept (`TimeoutError`, `*net.OpError`). The message text, which often embeds user data, is dropped, including the messages on JVM `Caused by:` lines. |
+| Error message | Only the error type is kept (`TimeoutError`, `*net.OpError`). The message text, which often embeds user data, is dropped, including the messages on JVM `Caused by:` lines. The type has to be letters, digits, dots and underscores, so a PHP class written with backslashes (`App\Exception\Foo`) is not recognised and keeps its message in the hash. |
 | Runtime values | Hex addresses, UUIDs, IP addresses and ports, email addresses, goroutine numbers, and long numbers (epoch timestamps, numeric IDs) are replaced with placeholders. |
 | File locations | Absolute paths collapse to `filename:line`, URL origins are stripped from browser frames, and `@v1.2.3` module version suffixes are removed so a dependency bump does not split a group. |
 | JVM frames | Line numbers inside `(File.java:123)` are dropped, and `... 12 more` becomes `... more`. |
-| Column numbers | Dropped everywhere except line 1, where they are kept: minified bundles put everything on line 1, and the column is the only thing distinguishing frames there. |
-| Resolved function names | Function names produced by the [symbolicator](/symbolicator/javascript) are excluded from the hash, so uploading source maps later improves readability without reshuffling existing groups. |
+| Column numbers | Dropped from frames that end in `:line:col`, unless the line number is 1. Minified bundles put everything on line 1, and the column is the only thing distinguishing frames there. Frames that carry the position inside brackets, such as Dart `(main.dart:20:3)`, keep the column. |
+| Resolved function names | JavaScript function-name lines are collapsed to `<fn>`, so better JS name resolution alone does not re-bucket an issue. Function and method names in other formats, such as Dart, iOS and JVM frames, are part of the hash. Uploading debug info for the first time also rewrites each frame's file, line and column, so occurrences from before the upload keep their old hash and later ones form a new issue. |
 | Whitespace | Runs of spaces and blank lines are collapsed. |
 
 The normalized trace is hashed with SHA-256 and truncated to 16 characters.
 
 ### What Stays Together, What Splits
 
-The same logical error keeps the same hash across servers, environments, app versions, and users. A new hash (and therefore a new issue and a New Issue alert) appears when the failure itself changes: a different error type, or a different code path with different frames. Line numbers are part of the hash, so a refactor that moves code within a file can legitimately re-group an error after a deploy.
+The same logical error keeps the same hash across servers, environments, app versions, and users. A new hash (and therefore a new issue and a New Issue alert) appears when the failure itself changes: a different error type, or a different code path with different frames. Line numbers are part of the hash for most languages, so a refactor that moves code within a file can legitimately re-group an error after a deploy. JVM frames are the exception. Their line numbers are removed, so moving Java, Kotlin or Scala code inside a file keeps the same issue.
 
 ### Messages
 

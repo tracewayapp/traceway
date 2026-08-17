@@ -1,0 +1,219 @@
+# Laravel
+
+The [`keepsuit/laravel-opentelemetry`](https://github.com/keepsuit/laravel-opentelemetry) package automatically instruments your Laravel application and exports traces, metrics, and logs to Traceway's OTLP endpoints. No manual instrumentation is needed.
+
+## Prerequisites
+
+- PHP 8.2 or newer. Laravel 13 itself requires PHP 8.3+.
+- Laravel 11.31+, 12, or 13. Version 2.x of the package dropped Laravel 10, so a Laravel 10 app resolves to the older 1.x line, which has a different file layout and config shape than this guide describes.
+- Composer
+- A Traceway project (create one in the dashboard)
+
+No PECL extension is required. `ext-opentelemetry` is only needed by `ScoutInstrumentation`.
+
+## Step 1: Install Packages
+
+```bash
+composer require keepsuit/laravel-opentelemetry open-telemetry/exporter-otlp php-http/guzzle7-adapter
+```
+
+The `open-telemetry/exporter-otlp` and `php-http/guzzle7-adapter` packages provide the OTLP/HTTP exporter and its HTTP client. They are required at runtime to actually ship spans to Traceway.
+
+## Step 2: Publish the Config
+
+```bash
+php artisan vendor:publish \
+    --provider="Keepsuit\LaravelOpenTelemetry\LaravelOpenTelemetryServiceProvider" \
+    --tag="opentelemetry-config"
+```
+
+This creates `config/opentelemetry.php` where you can disable individual instrumentations, configure sampling, set propagators, and tune exporter settings.
+
+## Step 3: Configure Environment Variables
+
+Add the following to your `.env` file, replacing the endpoint and token with your project values:
+
+```bash
+OTEL_SERVICE_NAME=my-laravel-app
+OTEL_TRACES_EXPORTER=otlp
+OTEL_METRICS_EXPORTER=otlp
+OTEL_LOGS_EXPORTER=otlp
+OTEL_EXPORTER_OTLP_PROTOCOL=http/json
+OTEL_EXPORTER_OTLP_ENDPOINT=https://your-traceway-instance.com/api/otel
+OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer your-project-token"
+
+# Logs need one more line. OTEL_LOGS_EXPORTER only wires up the exporter.
+# Nothing writes to the package's auto-injected `otlp` log channel until you
+# point Laravel's logger at it.
+LOG_CHANNEL=stack
+LOG_STACK=single,otlp
+```
+
+Your Traceway dashboard includes a **Connection** page with a ready-made config snippet and your project token. Go to **Connection** in the sidebar to grab it.
+
+> **Protocol:** Traceway accepts both `http/protobuf` (the package default) and `http/json`. Protobuf payloads are smaller and slightly faster, `http/json` is easier to inspect through a proxy. gRPC is **not** supported. Traceway is OTLP/HTTP only, with a 10 MB limit per request body.
+
+That's it for traces and metrics. The package's service provider auto-registers `Keepsuit\LaravelOpenTelemetry\Instrumentation\Support\Http\Server\TraceRequestMiddleware` as a global middleware, so every inbound HTTP request is traced without any manual middleware registration.
+
+Logs are the one signal that needs the extra step above. On Laravel 11 and newer the shipped `stack` channel reads `LOG_STACK`, so `LOG_STACK=single,otlp` keeps writing `storage/logs/laravel.log` and ships a copy to Traceway. Set `LOG_CHANNEL=otlp` instead if you only want Traceway. Full details on [Logs](/client/otel/laravel/logs).
+
+## Tune Which Instrumentations Are Enabled
+
+The package's instrumentation list lives in the `instrumentation` array of `config/opentelemetry.php`. Each entry can be removed (to disable it) or toggled per-environment via the matching env var. This is what version 2.x publishes, so you can compare it against your own file:
+
+```php
+// config/opentelemetry.php
+use Keepsuit\LaravelOpenTelemetry\Instrumentation;
+
+return [
+    // ...
+    'instrumentation' => [
+        Instrumentation\HttpServerInstrumentation::class => [
+            'enabled' => filter_var(env('OTEL_INSTRUMENTATION_HTTP_SERVER', true), FILTER_VALIDATE_BOOLEAN),
+            'excluded_paths' => [],   // e.g. ['/health', '/up'] to skip health checks
+            'excluded_methods' => [],
+            'allowed_headers' => [],
+            'sensitive_headers' => [],
+            'sensitive_query_parameters' => [],
+        ],
+
+        Instrumentation\HttpClientInstrumentation::class => [
+            'enabled' => filter_var(env('OTEL_INSTRUMENTATION_HTTP_CLIENT', true), FILTER_VALIDATE_BOOLEAN),
+            'manual' => false,
+            'allowed_headers' => [],
+            'sensitive_headers' => [],
+            'sensitive_query_parameters' => [],
+        ],
+
+        Instrumentation\QueryInstrumentation::class => filter_var(env('OTEL_INSTRUMENTATION_QUERY', true), FILTER_VALIDATE_BOOLEAN),
+        Instrumentation\RedisInstrumentation::class => filter_var(env('OTEL_INSTRUMENTATION_REDIS', true), FILTER_VALIDATE_BOOLEAN),
+        Instrumentation\QueueInstrumentation::class => filter_var(env('OTEL_INSTRUMENTATION_QUEUE', true), FILTER_VALIDATE_BOOLEAN),
+        Instrumentation\CacheInstrumentation::class => filter_var(env('OTEL_INSTRUMENTATION_CACHE', true), FILTER_VALIDATE_BOOLEAN),
+
+        Instrumentation\EventInstrumentation::class => [
+            'enabled' => filter_var(env('OTEL_INSTRUMENTATION_EVENT', true), FILTER_VALIDATE_BOOLEAN),
+            'excluded' => [],
+        ],
+
+        Instrumentation\ViewInstrumentation::class => filter_var(env('OTEL_INSTRUMENTATION_VIEW', true), FILTER_VALIDATE_BOOLEAN),
+        Instrumentation\LivewireInstrumentation::class => filter_var(env('OTEL_INSTRUMENTATION_LIVEWIRE', true), FILTER_VALIDATE_BOOLEAN),
+
+        Instrumentation\ConsoleInstrumentation::class => [
+            'enabled' => filter_var(env('OTEL_INSTRUMENTATION_CONSOLE', true), FILTER_VALIDATE_BOOLEAN),
+            'commands' => [],
+        ],
+
+        Instrumentation\ScoutInstrumentation::class => filter_var(env('OTEL_INSTRUMENTATION_SCOUT', true), FILTER_VALIDATE_BOOLEAN),
+    ],
+];
+```
+
+Note that `excluded_paths` really is empty by default, so Laravel's own `/up` health route shows up as a Traceway endpoint until you exclude it.
+
+| Instrumentation | What it captures |
+|-----------------|------------------|
+| `HttpServerInstrumentation` | Inbound HTTP requests, status codes, route templates (`http.route`) |
+| `HttpClientInstrumentation` | Outbound `Http::` / Guzzle calls |
+| `QueryInstrumentation` | Eloquent / DB queries with SQL and timing |
+| `RedisInstrumentation` | Redis commands |
+| `QueueInstrumentation` | Queued jobs: `PRODUCER` span at dispatch, `CONSUMER` span at execute (see [Tasks](/client/otel/laravel/tasks)) |
+| `CacheInstrumentation` | Cache hits / misses / writes (as span events) |
+| `EventInstrumentation` | Application events, added to the active span as `event fired` span events. Framework events (`Illuminate\*`, Octane, Horizon, Scout) are skipped. |
+| `ViewInstrumentation` | Blade view rendering |
+| `LivewireInstrumentation` | Livewire component renders |
+| `ConsoleInstrumentation` | Artisan commands (**opt-in per command**, see [Tasks](/client/otel/laravel/tasks)) |
+| `ScoutInstrumentation` | Laravel Scout (requires the `opentelemetry` PHP extension) |
+
+Disable any instrumentation you don't want by removing it from the array or setting the matching env var to `false`. Every enabled instrumentation adds a small amount of overhead.
+
+> **Exceptions:** there is no separate "exception" instrumentation. The package's service provider hooks Laravel's exception handler via `reportable()` and calls `$span->recordException($e)` + `setStatus(ERROR)` on the active span for every reported exception. Queue failures are captured by `QueueInstrumentation` on the `JobFailed` event. See [Exceptions](/client/otel/laravel/exceptions) for adding extra context to caught errors.
+
+## What Gets Captured
+
+Once configured, the package automatically captures:
+
+- **Endpoints**: every HTTP request with method and route template (e.g., `GET /users/{id}`)
+- **Status codes**: 2xx, 4xx, 5xx responses
+- **Exceptions**: recorded on the request span with stack traces
+- **Database queries**: Eloquent / DB facade queries with statement and duration
+- **Outbound HTTP**: `Http::` facade and Guzzle calls
+- **Cache & Redis**: keys, hits, misses
+- **Queued jobs**: `PRODUCER` + `CONSUMER` spans (see [Tasks](/client/otel/laravel/tasks))
+- **Logs**: every `Log::` call, linked to the active trace and span. This one needs the `LOG_CHANNEL` / `LOG_STACK` lines from Step 3.
+- **User context**: the authenticated user's id is added as `user.id` to every span and log (configurable via `opentelemetry.user_context`)
+
+## User Context
+
+When `opentelemetry.user_context` is `true` (the default), the authenticated user's id is attached as `user.id` to every span and log. You can customize the attributes:
+
+```php
+// app/Providers/AppServiceProvider.php
+use Illuminate\Contracts\Auth\Authenticatable;
+use Keepsuit\LaravelOpenTelemetry\Facades\OpenTelemetry;
+
+public function boot(): void
+{
+    OpenTelemetry::user(function (Authenticatable $user) {
+        return [
+            'user.id'    => $user->getAuthIdentifier(),
+            'user.email' => $user->email,
+        ];
+    });
+}
+```
+
+## Flushing: Short-Lived Processes and Long-Running Workers
+
+Spans, metrics and logs are batched, not sent one by one. Where that batch gets flushed depends on how the process runs.
+
+**Short-lived processes** (a php-fpm request, a one-off `php artisan …` run) flush on process shutdown. Telemetry lands in Traceway a couple of seconds after the process exits, so poll the dashboard rather than judging it while the command is still running. Killing the process before it exits cleanly (`Ctrl-C`, `kill -9`, a container `SIGKILL`) loses the pending batch.
+
+**Long-running workers** are detected automatically (Octane, Horizon, default queue workers). There the default is plain batching with **no timer for spans**. A finished job's spans leave the worker only when a later job ends a span, or when the worker itself shuts down cleanly. A single job on a worker that then sits idle stays unexported for as long as that worker keeps running, so waiting does not help. To flush after every iteration (request or job) instead:
+
+```bash
+OTEL_WORKER_MODE_FLUSH_AFTER_EACH_ITERATION=true
+```
+
+This trades a small amount of throughput for guaranteed delivery of every span. Set it on any low-traffic worker, and set it while you are testing the integration, otherwise one test job looks like it never arrived.
+
+When `flush_after_each_iteration` is off, `OTEL_WORKER_MODE_COLLECT_INTERVAL` (default `60`, in seconds) controls how often the worker collects **metrics**. It does not affect span export.
+
+## Test Your Integration
+
+Add a test route to verify data is flowing:
+
+```php
+// routes/web.php
+use Illuminate\Support\Facades\Route;
+
+Route::get('/testing', function () {
+    throw new \RuntimeException('Test error from Traceway integration');
+});
+```
+
+Visit `/testing` in your browser, then check the Traceway dashboard. The exception should appear within a few seconds.
+
+> **Heads-up on the error page.** With `APP_DEBUG=true`, Laravel renders its own exception page through Blade, so `ViewInstrumentation` records a few hundred `view render` spans on every 500. A request that would otherwise have four child spans ends up with roughly 275. The Issue and the 500 status are still recorded correctly, only the waterfall is noisy. It goes away with `APP_DEBUG=false`, or you can turn view spans off with `OTEL_INSTRUMENTATION_VIEW=false`.
+
+## Troubleshooting
+
+Every failure mode here is silent, so work down this table before assuming data is being lost.
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Nothing at all in the dashboard | Wrong endpoint or token | `OTEL_EXPORTER_OTLP_ENDPOINT` must be the **base** URL ending in `/api/otel`. The SDK appends `/v1/traces`, `/v1/metrics` and `/v1/logs` itself. The header format is `OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <token>"`. Export failures are printed to stderr as `OpenTelemetry: [error] Export failure …`, so check your server or worker output. |
+| Traces arrive but logs do not | Laravel's logger is not pointed at the `otlp` channel | Set `LOG_CHANNEL=stack` plus `LOG_STACK=single,otlp`, or `LOG_CHANNEL=otlp`. See [Logs](/client/otel/laravel/logs). |
+| A cron job or hand-rolled background task is missing entirely | Its root span is `INTERNAL` | Traceway drops root `INTERNAL` spans and everything under them. Start the span with `->setSpanKind(SpanKind::KIND_CONSUMER)`, or run the work as an Artisan command listed in `ConsoleInstrumentation`. See [Tasks](/client/otel/laravel/tasks). |
+| Queued jobs never appear under Tasks | No worker is consuming them, or the worker has not flushed | Run `php artisan queue:work` (or Horizon), and set `OTEL_WORKER_MODE_FLUSH_AFTER_EACH_ITERATION=true` before you start it. Without that flag an idle worker holds the job's spans until the next job runs or the worker stops. With `QUEUE_CONNECTION=sync` the job runs inline instead and lands as `process sync` inside the dispatching request's trace. |
+| An Artisan command produces no span | Not listed in `ConsoleInstrumentation` | Add it to the `commands` array. Unlisted commands get a no-op span, so `Span::getCurrent()` calls inside them are silently discarded. |
+| Data appears seconds late | Batching | Expected. See [Flushing](#flushing-short-lived-processes-and-long-running-workers) above. |
+| gRPC connection refused | Not supported | Traceway is OTLP/HTTP only. Use `http/protobuf` or `http/json`. |
+
+## Next Steps
+
+- [Exceptions](/client/otel/laravel/exceptions): manually capture caught exceptions with context
+- [Spans](/client/otel/laravel/spans): create custom spans to measure sub-operations
+- [Tasks](/client/otel/laravel/tasks): trace Laravel queue jobs and console commands as background tasks
+- [Metrics](/client/otel/laravel/metrics): track custom counters, histograms, and gauges with the `Meter` facade
+- [Logs](/client/otel/laravel/logs): forward Laravel logs to Traceway via the auto-injected `otlp` channel
+- [OpenTelemetry docs](/client/otel): how OTel traces, metrics, and logs map to Traceway

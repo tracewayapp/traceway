@@ -25,6 +25,30 @@ Telemetry storage follows your build tags: a plain `go build` embeds SQLite, and
 go get github.com/tracewayapp/traceway/backend
 ```
 
+<Callout type="warning">
+  **On backend v1.9.15 and earlier, that command fails.** Those releases declare
+  their dependency on the Traceway CLI module with a placeholder version, so
+  `go get` stops with:
+
+  ```
+  github.com/tracewayapp/traceway/cli@v0.0.0-00010101000000-000000000000: invalid version: unknown revision 000000000000
+  ```
+
+  Point that dependency at a real published CLI version in your own `go.mod`:
+
+  ```
+  replace github.com/tracewayapp/traceway/cli => github.com/tracewayapp/traceway/cli v1.9.15
+  ```
+
+  Then run `go get github.com/tracewayapp/traceway/backend` again. The failed
+  attempt leaves your `go.mod` untouched, so there is nothing to clean up first.
+  The CLI and the backend are released together, so use the CLI version that
+  matches the backend version you want. A `replace` only applies to your own
+  module, so it does not affect anything that imports your code.
+
+  Later releases need none of this. Upgrade instead if you can.
+</Callout>
+
 ### Start Traceway inside your app
 
 Call `tracewaybackend.Run()` in a goroutine during startup. It boots an in-memory SQLite server and seeds a default user and project:
@@ -68,7 +92,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -76,6 +99,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
@@ -103,13 +127,16 @@ func main() {
 }
 
 func initTracer() func() {
-	exporter, _ := otlptracehttp.New(
+	exporter, err := otlptracehttp.New(
 		context.Background(),
 		otlptracehttp.WithEndpointURL("http://localhost:8082/api/otel/v1/traces"),
 		otlptracehttp.WithHeaders(map[string]string{
 			"Authorization": "Bearer " + tracewayToken,
 		}),
 	)
+	if err != nil {
+		panic(err)
+	}
 
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exporter),
@@ -119,6 +146,14 @@ func initTracer() func() {
 		)),
 	)
 	otel.SetTracerProvider(tp)
+
+	// Go's global propagator is a no-op by default. Without this line the
+	// traceparent header is never sent or read, so an outgoing call starts a
+	// brand new trace instead of joining the request it came from.
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
 
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -131,6 +166,8 @@ func initTracer() func() {
 The key parts:
 - **Exporter URL** points to `http://localhost:8082/api/otel/v1/traces` — the embedded server's OTLP endpoint
 - **Authorization header** uses the same token from `WithDefaultProject`
+- **`otel.SetTextMapPropagator`** is required in Go. The global propagator ships as a no-op, so without this call an HTTP call your app makes to another service shows up as its own separate trace instead of a child span
+- **`defer shutdown()`** flushes the batch processor on exit. Without it the last few seconds of spans never leave the process
 
 ### Open the dashboard
 
@@ -146,13 +183,27 @@ Hit your app at `http://localhost:8080/ping` a few times — traces will appear 
 
 All options are passed to `tracewaybackend.Run()`. When any options are provided, embedded mode is activated automatically (pure SQLite).
 
-| Option                                       | Description                                                                | Default                   |
-| -------------------------------------------- | -------------------------------------------------------------------------- | ------------------------- |
-| `WithPort(port)`                             | HTTP port for the Traceway server                                          | `8082`                    |
-| `WithServerURL(url)`                         | Base URL override (used in connection string output)                       | `http://localhost:{port}` |
-| `WithSQLitePath(path)`                       | SQLite database file path                                                  | `:memory:` (in-memory)    |
-| `WithDefaultUser(email, password)`           | Create a default admin user on startup                                     | None                      |
-| `WithDefaultProject(name, framework, token)` | Create a default project with a fixed token (can be called multiple times) | None                      |
+| Option                                              | Description                                                                                        | Default                   |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------- |
+| `WithPort(port)`                                    | HTTP port for the Traceway server                                                                  | `8082`                    |
+| `WithServerURL(url)`                                | Base URL override (used in connection string output)                                               | `http://localhost:{port}` |
+| `WithSQLitePath(path)`                              | SQLite database file path                                                                          | `:memory:` (in-memory)    |
+| `WithDefaultUser(email, password)`                  | Create a default admin user on startup                                                             | None                      |
+| `WithDefaultProject(name, framework, token)`        | Create a default project with a fixed token (can be called multiple times)                         | None                      |
+| `DisableLogging()`                                  | Silence the embedded server's startup and request logs so they don't mix with your app's output    | Logging enabled           |
+| `WithDefaultProjectSourceMapToken(name, token)`     | Set a fixed source map upload token on a default project. Call it after the matching `WithDefaultProject`, since it looks the project up by name | None |
+| `WithMonitoringURL(connectionString)`               | Report the embedded server's own telemetry to another Traceway instance. Takes a connection string in the form `<project_token>@<url>/api/report` | None |
+
+If the embedded server's startup lines get in the way of your own output, add `tracewaybackend.DisableLogging()` to the option list:
+
+```go
+go tracewaybackend.Run(
+	tracewaybackend.WithPort(8082),
+	tracewaybackend.DisableLogging(),
+	tracewaybackend.WithDefaultUser("admin@localhost.com", "admin"),
+	tracewaybackend.WithDefaultProject("My App", "opentelemetry", "dev-token"),
+)
+```
 
 ## Multiple Projects
 
@@ -171,15 +222,35 @@ go tracewaybackend.Run(
 
 By default, the database is **in-memory** — all data is lost when your application restarts. This is fine for quick debugging sessions, but if you want data to survive restarts, set a file path:
 
+Add `WithSQLitePath` to the options you already pass. It does not replace them. Keep the `go` keyword too, otherwise `Run` blocks and your own server never starts.
+
 ```go
-tracewaybackend.Run(
+go tracewaybackend.Run(
+	tracewaybackend.WithPort(8082),
 	tracewaybackend.WithSQLitePath("./traceway.db"),
 	tracewaybackend.WithDefaultUser("admin@localhost.com", "admin"),
 	tracewaybackend.WithDefaultProject("My App", "opentelemetry", "dev-token"),
 )
 ```
 
-`WithSQLitePath` stores everything — users, projects, traces, issues, and metrics — in a single SQLite file.
+### What ends up on disk
+
+`WithSQLitePath("./traceway.db")` creates **two** databases side by side, not one:
+
+| File | Contents |
+| --- | --- |
+| `traceway.db` | Relational data: users, organizations, projects, settings |
+| `traceway_telemetry.db` | Telemetry: traces, endpoints, issues, logs, metrics |
+
+SQLite also writes `-wal` and `-shm` sidecar files for each database. Back up or ignore all of them, not just the file you named. The server also creates a `storage/` directory in the process working directory for session recordings and synthetics screenshots. That directory appears in the default in-memory mode too.
+
+Add all of it to `.gitignore`:
+
+```text
+traceway.db*
+traceway_telemetry.db*
+storage/
+```
 
 Seeding is idempotent — if the user from `WithDefaultUser` already exists, it's skipped.
 
@@ -200,3 +271,11 @@ if os.Getenv("ENV") != "production" {
 ## Full Example
 
 For a complete working example with error recording and child spans, see the [embedded-backend-otel example on GitHub](https://github.com/tracewayapp/traceway/tree/main/examples/embedded-backend-otel).
+
+## Next Steps
+
+The Quick Start above only sends request traces. Everything else works the same against the embedded server as against a hosted one, so point these guides at `http://localhost:8082` and use your `WithDefaultProject` token:
+
+- [Traces](/client/otel/traces): child spans, recording errors so they land in Issues with a stack trace, and background jobs. A background job span needs `SpanKind.CONSUMER`, a plain root span is silently dropped.
+- [Logs](/client/otel/logs): emitting logs that attach to the request's trace.
+- [Metrics](/client/otel/metrics): counters, histograms, and how Traceway stores them.

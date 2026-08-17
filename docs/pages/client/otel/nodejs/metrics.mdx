@@ -1,0 +1,129 @@
+# Metrics
+
+Export custom application metrics from your Node.js app to Traceway using the OpenTelemetry Metrics API.
+
+## Setup
+
+Metrics export is configured in your `instrumentation.ts` via the `PeriodicExportingMetricReader`. If you followed the [Quick Start](/client/otel/nodejs), metrics are already enabled.
+
+```typescript
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
+import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
+
+// In your NodeSDK config:
+metricReaders: [
+  new PeriodicExportingMetricReader({
+    exporter: new OTLPMetricExporter({
+      url: "https://your-traceway-instance.com/api/otel/v1/metrics",
+      headers: { Authorization: "Bearer your-project-token" },
+    }),
+    exportIntervalMillis: 30_000,
+  }),
+],
+```
+
+The option is `metricReaders` and it takes an array. The singular `metricReader` still works but is deprecated. Keep `exportIntervalMillis` at or above the export timeout (30 seconds by default), otherwise the SDK clamps the timeout and warns about it on startup.
+
+Values are pushed on that interval, so a fresh counter takes up to 30 seconds to appear in the dashboard. Stopping the app flushes early if you added the `SIGTERM` handler from the Quick Start.
+
+## Creating Custom Metrics
+
+Use `@opentelemetry/api` to create meters and instruments. Install it as a direct dependency (`npm install @opentelemetry/api`) rather than relying on it being hoisted from the SDK:
+
+```typescript
+import { metrics } from "@opentelemetry/api";
+
+const meter = metrics.getMeter("my-service");
+```
+
+Create the meter and its instruments once at module scope, not per request.
+
+## Metric Types
+
+### Counter
+
+Monotonically increasing value. Use for counts of events:
+
+```typescript
+const requestCounter = meter.createCounter("app.requests.total", {
+  description: "Total number of requests",
+});
+
+// Increment
+requestCounter.add(1, { endpoint: "/api/users", method: "GET" });
+```
+
+### UpDownCounter
+
+Value that can increase or decrease. Use for gauges like active connections:
+
+```typescript
+const activeConnections = meter.createUpDownCounter("app.connections.active", {
+  description: "Number of active connections",
+});
+
+activeConnections.add(1);   // connection opened
+activeConnections.add(-1);  // connection closed
+```
+
+### Histogram
+
+Distribution of values. Use for durations and sizes:
+
+```typescript
+const requestDuration = meter.createHistogram("app.request.duration", {
+  description: "Request duration in milliseconds",
+  unit: "ms",
+});
+
+const start = performance.now();
+await handleRequest();
+requestDuration.record(performance.now() - start, {
+  endpoint: "/api/users",
+});
+```
+
+### Observable Gauge
+
+Asynchronously observed value. Use for system metrics:
+
+```typescript
+meter.createObservableGauge("app.memory.heap_used", {
+  description: "Heap memory usage in bytes",
+  unit: "bytes",
+}).addCallback((result) => {
+  result.observe(process.memoryUsage().heapUsed);
+});
+```
+
+## How Metrics Appear in Traceway
+
+| OTel Type | Traceway Handling |
+|-----------|-------------------|
+| Gauge | Stored as-is |
+| Sum (Counter) | Stored as-is |
+| Histogram | Converted to `{name}.avg` and `{name}.count` |
+
+A histogram named `app.request.duration` therefore shows up in the dashboard as two metrics, `app.request.duration.avg` (carrying your `unit`) and `app.request.duration.count`. Search for the base name and you will find neither.
+
+See [OTel Metrics](/client/otel/metrics) for full details on histogram handling and supported types.
+
+## Metrics You Get for Free
+
+`@opentelemetry/auto-instrumentations-node` enables `@opentelemetry/instrumentation-runtime-node` by default, so these arrive without any code once a metric reader is configured:
+
+| Metric | What it measures |
+|--------|------------------|
+| `nodejs.eventloop.delay.p50` / `.p90` / `.p99` / `.mean` / `.max` | Event loop lag |
+| `nodejs.eventloop.utilization` | Fraction of time the loop was busy |
+| `http.server.request.duration.avg` / `.count` | Server request duration, from the HTTP instrumentation |
+| `v8js.memory.heap.used` | Heap bytes in use, from the V8 runtime metrics |
+| `v8js.gc.duration.avg` / `.count` | Garbage collection pauses |
+
+Host-level metrics (CPU, memory, disk) are **not** included. `@opentelemetry/instrumentation-host-metrics` ships disabled, and the [Traceway OTel Agent](/learn/otel-agent) is the usual way to collect them.
+
+## Next Steps
+
+- [Traces](/client/otel/nodejs/traces): manual spans, background jobs, exception recording
+- [Logs](/client/otel/nodejs/logs): ship application logs and link them to traces
+- [Quick Start](/client/otel/nodejs): setup and installation

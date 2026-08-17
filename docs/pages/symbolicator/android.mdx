@@ -43,6 +43,7 @@ Then apply it to your app module:
 
 ```kotlin
 plugins {
+  id("com.android.application")                // must already be applied
   id("com.tracewayapp.symbols") version "1.0.1"
 }
 
@@ -60,6 +61,8 @@ traceway {
   // proguardUuid = "..."               // optional: pin the build UUID yourself
 }
 ```
+
+Order matters in the `plugins { }` block. Gradle applies entries top to bottom, and `com.tracewayapp.symbols` looks for the Android extension the moment it is applied, so it has to come **after** `com.android.application` (or `com.android.library`). Declared above it, the build fails at configuration time with `com.tracewayapp.symbols must be applied after an Android application/library plugin`. The app module already has the Android plugin line, so add the Traceway line under it rather than pasting a new block above it.
 
 `uploadToken` is your project's **upload token** from the dashboard, the same one used for JavaScript source maps and iOS dSYMs. It is **not** the runtime token in your SDK connection string. Using the connection-string token here is rejected with a 401.
 

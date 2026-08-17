@@ -98,7 +98,7 @@ Or use framework-specific packages that handle this automatically.
 Adjust timing based on your needs:
 
 ```javascript
-init("your-token@...", {
+init("your-token@https://traceway.example.com/api/report", {
   // Faster batching for critical apps
   debounceMs: 500,
   retryDelayMs: 5000,
@@ -106,7 +106,7 @@ init("your-token@...", {
 ```
 
 ```javascript
-init("your-token@...", {
+init("your-token@https://traceway.example.com/api/report", {
   // More aggressive batching for high-traffic apps
   debounceMs: 3000,
   retryDelayMs: 15000,

@@ -10,25 +10,22 @@ npm install @tracewayapp/svelte
 
 ## Setup
 
-Call `setupTraceway` in your root layout. The `if (browser)` guard keeps the rrweb recorder out of the SSR bundle. Session recording is on by default — the last ~30s of DOM events ship with every captured exception:
+Call `setupTraceway` in your root layout. Do not wrap it in an `if (browser)` guard. `setupTraceway` is what puts the capture functions into Svelte's context, so if it is skipped during SSR, every child component that calls `getTraceway()` throws and the page returns a 500. The call is safe on the server: the rrweb recorder and the fetch/XHR instrumentation only start when `window` exists. Session recording is on by default, so the last ~30s of DOM events ship with every captured exception.
 
 ```svelte
 <!-- src/routes/+layout.svelte -->
 <script>
   import { setupTraceway } from "@tracewayapp/svelte";
-  import { browser } from "$app/environment";
 
-  if (browser) {
-    setupTraceway({
-      connectionString: "your-token@https://traceway.example.com/api/report",
-    });
-  }
+  setupTraceway({
+    connectionString: "your-token@https://traceway.example.com/api/report",
+  });
 </script>
 
 <slot />
 ```
 
-For a non-SvelteKit Svelte app, drop the `if (browser)` guard and import nothing from `$app/environment`.
+The same layout works in a non-SvelteKit Svelte app. On Svelte 5, write `{@render children()}` instead of `<slot />` and `onclick` instead of `on:click`. The legacy forms below still compile, with a deprecation warning.
 
 ## Capture Errors in Components
 
@@ -90,19 +87,11 @@ Click the button and check your Traceway dashboard to verify the error appears.
 
 ## Distributed Tracing
 
-The SDK automatically instruments `fetch` to propagate a `traceway-trace-id` header on same-origin requests. This links frontend errors to the backend requests that caused them — no extra configuration needed.
+The SDK automatically instruments both `fetch` and `XMLHttpRequest` to propagate a `traceway-trace-id` header on same-origin requests. This links frontend errors to the backend requests that caused them.
 
-For Axios users, add the interceptor to your instance:
+Axios needs no setup. It uses `XMLHttpRequest` in the browser, which the SDK already instruments. Do not register `createAxiosInterceptor()` in a browser app: it adds a second ID under the same header name, and the combined value is rejected by the backend.
 
-```javascript
-import axios from "axios";
-import { createAxiosInterceptor } from "@tracewayapp/frontend";
-
-const api = axios.create({ baseURL: "/api" });
-api.interceptors.request.use(createAxiosInterceptor());
-```
-
-See the [Distributed Tracing](/client/js-sdk/distributed-tracing) guide for full details.
+Your backend still has to set the incoming header on its server span as the `traceway.distributed_trace_id` attribute, or the two sides never join. See the [Distributed Tracing](/client/js-sdk/distributed-tracing) guide for the middleware.
 
 ## Next Steps
 

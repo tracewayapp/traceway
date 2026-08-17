@@ -1,14 +1,30 @@
 # OpenTelemetry Integration
 
-Send traces, metrics, and logs from any OpenTelemetry-instrumented application to Traceway — no vendor SDK required.
+**OpenTelemetry is the integration path for every Traceway backend.** Go, Node.js, Python, PHP, Java, .NET, Ruby: whatever your server runs on, it exports traces, metrics, and logs over OTLP/HTTP to Traceway. There is no separate vendor SDK to learn per framework, and no separate Traceway project per backend service.
 
 [OpenTelemetry](https://opentelemetry.io/) (OTel) is the industry-standard, vendor-neutral framework for collecting telemetry. If your app already uses OTel, you can point it at Traceway with a few lines of config. If you're starting fresh, any OTel SDK will work.
+
+Create the Traceway project with framework **OpenTelemetry**, then send your API, background workers, scheduled jobs, AI calls, and host metrics to that one project. See [Project Structure](/learn/projects).
 
 ## How It Works
 
 1. **Instrument your app** with an OpenTelemetry SDK (or auto-instrumentation).
-2. **Export via OTLP/HTTP** — configure the SDK (or an OTel Collector) to send data to your Traceway instance.
-3. **Traceway maps the data** — spans become endpoints and traces, metrics appear on your dashboards, and logs are indexed and linked to their originating traces.
+2. **Export via OTLP/HTTP**: configure the SDK (or an OTel Collector) to send data to your Traceway instance.
+3. **Traceway maps the data**: spans become endpoints and traces, metrics appear on your dashboards, and logs are indexed and linked to their originating traces.
+
+### Three signals, three exporters
+
+OTel treats traces, metrics and logs as three independent signals. Each one needs its own exporter wired into the SDK. Configuring a trace exporter does **not** start sending logs, and auto-instrumentation packages do not add a log exporter for you. This is the most common reason the Logs page stays empty.
+
+| Signal | Path | What you must add | Without it |
+|--------|------|-------------------|------------|
+| Traces | `/v1/traces` | a trace exporter (`traceExporter` / `BatchSpanProcessor`) | No endpoints, tasks, spans or issues |
+| Metrics | `/v1/metrics` | a metric reader (`PeriodicExportingMetricReader`) | Empty dashboard widgets |
+| Logs | `/v1/logs` | a log record processor **and** a bridge from your logging library | Empty Logs page |
+
+Logs need one extra step the other two do not. The OTel log exporter only ships records emitted through the OTel logs API, so you also need a bridge from whatever you actually log with: `LoggingHandler` for Python's `logging`, an `slog` handler for Go, a Monolog handler for PHP, the built-in appenders for the Java agent. A plain `console.log` or `print` sends nothing.
+
+All three signals go to the same host and use the same project token. See [Logs](/client/otel/logs) for the per-language wiring.
 
 ## Supported Languages
 
@@ -16,15 +32,17 @@ Any language with an OTel SDK can export to Traceway. Here are the most common o
 
 | Language | OTel SDK | Install |
 |----------|----------|---------|
-| Java | [opentelemetry-java](https://github.com/open-telemetry/opentelemetry-java) | [Agent JAR](https://opentelemetry.io/docs/zero-code/java/agent/) |
-| Python | [opentelemetry-python](https://github.com/open-telemetry/opentelemetry-python) | `pip install opentelemetry-sdk` |
-| Python / Django | [opentelemetry-python-contrib](https://github.com/open-telemetry/opentelemetry-python-contrib) | `pip install opentelemetry-distro opentelemetry-exporter-otlp opentelemetry-instrumentation-django` — see [Django guide](/client/django) |
-| C# / .NET | [opentelemetry-dotnet](https://github.com/open-telemetry/opentelemetry-dotnet) | `dotnet add package OpenTelemetry` |
-| Go | [opentelemetry-go](https://github.com/open-telemetry/opentelemetry-go) | `go get go.opentelemetry.io/otel` |
-| Node.js | [opentelemetry-js](https://github.com/open-telemetry/opentelemetry-js) | `npm install @opentelemetry/sdk-node` — see [Node.js guide](/client/node-sdk), [NestJS guide](/client/nestjs), [Hono guide](/client/hono), [Next.js guide](/client/nextjs) |
-| PHP / Symfony | [opentelemetry-php](https://github.com/open-telemetry/opentelemetry-php) | `composer require open-telemetry/sdk` — see [Symfony guide](/client/symfony) |
-| PHP / Laravel | [opentelemetry-php](https://github.com/open-telemetry/opentelemetry-php) | `composer require keepsuit/laravel-opentelemetry` — see [Laravel guide](/client/laravel) |
-| Cloudflare Workers | [workers-sdk](https://developers.cloudflare.com/workers/observability/otel/) | Built-in — see [Cloudflare guide](/client/otel-cloudflare) |
+| Java | [opentelemetry-java](https://github.com/open-telemetry/opentelemetry-java) | [Agent JAR](https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar), 2.x (see the Spring Boot quick start below) |
+| Python | [opentelemetry-python](https://github.com/open-telemetry/opentelemetry-python) | `pip install opentelemetry-distro opentelemetry-exporter-otlp`, then `opentelemetry-bootstrap -a install`, then run under `opentelemetry-instrument`. See [Python guide](/client/otel/python) for FastAPI, Flask, and any WSGI/ASGI app |
+| Python / Django | [opentelemetry-python-contrib](https://github.com/open-telemetry/opentelemetry-python-contrib) | `pip install opentelemetry-distro opentelemetry-exporter-otlp opentelemetry-instrumentation-django`. See [Django guide](/client/otel/django) |
+| C# / .NET | [opentelemetry-dotnet](https://github.com/open-telemetry/opentelemetry-dotnet) | `dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol` (pulls in `OpenTelemetry`) |
+| Go | [opentelemetry-go](https://github.com/open-telemetry/opentelemetry-go) | `go get go.opentelemetry.io/otel/sdk go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp` |
+| Node.js | [opentelemetry-js](https://github.com/open-telemetry/opentelemetry-js) | `npm install @opentelemetry/sdk-node`. See [Node.js guide](/client/otel/nodejs), [NestJS guide](/client/otel/nestjs), [Hono guide](/client/otel/hono), [Next.js guide](/client/otel/nextjs) |
+| PHP / Symfony | [opentelemetry-php](https://github.com/open-telemetry/opentelemetry-php) | `composer require open-telemetry/sdk`. See [Symfony guide](/client/otel/symfony) |
+| PHP / Laravel | [opentelemetry-php](https://github.com/open-telemetry/opentelemetry-php) | `composer require keepsuit/laravel-opentelemetry`. See [Laravel guide](/client/otel/laravel) |
+| Cloudflare Workers | [Workers OTel export](https://developers.cloudflare.com/workers/observability/exporting-opentelemetry-data/) | Built-in, traces and logs only, Workers Paid. See [Cloudflare guide](/client/otel/cloudflare) |
+
+Every OTel ecosystem ships the API, the SDK and the OTLP exporter as separate packages. If you install only the SDK, you get an app that records spans and throws them away. The install commands above cover the exporter too.
 
 ## Configuration
 
@@ -35,61 +53,220 @@ Any language with an OTel SDK can export to Traceway. Here are the most common o
 | **Metrics path** | `/v1/metrics` |
 | **Logs path** | `/v1/logs` |
 | **Auth header** | `Authorization: Bearer <project_token>` |
-| **Protocol** | OTLP/HTTP (Protobuf or JSON) |
+| **Protocol** | OTLP/HTTP only, Protobuf or JSON. **gRPC is not supported**, so `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf` is required |
 | **Compression** | Gzip supported (`Content-Encoding: gzip`) |
-| **Max body size** | 10 MB |
+| **Content-Type** | `application/x-protobuf` (or `application/protobuf`) for OTLP/Protobuf. Anything else, including a missing header, is parsed as OTLP/JSON |
+| **Max body size** | 10 MB **after decompression**. Gzip does not raise it |
+| **Auth failure** | `401` with an empty body. The header value must literally start with `Bearer ` |
+
+Traceway serves OTLP over HTTP only. There is no gRPC endpoint, so set your exporter's protocol to `http/protobuf` (or `http/json`) explicitly. Several SDKs default to gRPC when the variable is unset: with `OTEL_TRACES_EXPORTER=otlp` and no `OTEL_EXPORTER_OTLP_PROTOCOL`, the Python SDK resolves to gRPC, and the Java agent does the same. The failure is silent. The app runs, exits 0, prints no warning, and every export lands nowhere.
+
+```bash
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+```
+
+Set that wherever you configure the exporter. The one exception is PHP, which needs `http/json` instead.
+
+An export larger than 10 MB is truncated and then fails to parse, so Traceway answers `400 Bad Request` with a decoding error. OTLP exporters treat 4xx as permanent and drop the batch instead of retrying, so that data is lost. Keep batches comfortably under the limit by capping the exporter's batch size: `maxExportBatchSize` in the JS SDK, `max_export_batch_size` in Python, `send_batch_max_size` on the Collector's `batch` processor. The SDK default of 512 spans per export is far below the limit.
+
+If ingest is saturated, Traceway answers `503` with a `Retry-After` header instead. That one is retryable, and every OTLP exporter and the Collector will back off and resend.
 
 ## Quick Start: Direct SDK Export
 
-The simplest setup — your app exports directly to Traceway with no extra infrastructure.
+The simplest setup: your app exports directly to Traceway, with no extra infrastructure.
 
-Here's a Node.js example:
+Here is a complete Node.js setup that wires all three signals. Install the packages first:
 
-```typescript
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
-
-const traceExporter = new OTLPTraceExporter({
-  url: "https://your-traceway-instance.com/api/otel/v1/traces",
-  headers: {
-    Authorization: "Bearer your-project-token",
-  },
-});
-
-const metricExporter = new OTLPMetricExporter({
-  url: "https://your-traceway-instance.com/api/otel/v1/metrics",
-  headers: {
-    Authorization: "Bearer your-project-token",
-  },
-});
+```bash
+npm install @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node \
+  @opentelemetry/instrumentation @opentelemetry/api \
+  @opentelemetry/exporter-trace-otlp-http @opentelemetry/exporter-metrics-otlp-http \
+  @opentelemetry/exporter-logs-otlp-http @opentelemetry/sdk-metrics \
+  @opentelemetry/sdk-logs @opentelemetry/resources @opentelemetry/api-logs
 ```
 
-The same pattern applies to any language — set the OTLP/HTTP endpoint and the `Authorization` header in your exporter config.
+`@opentelemetry/instrumentation` is listed because the loader hook below is loaded by path from it, and `@opentelemetry/api` because your own code imports it. Both also arrive as transitive dependencies of the packages above, so npm's flat `node_modules` resolves them even when they are not declared. Declare them anyway, since your code names them directly.
+
+Then create `telemetry.mjs`:
+
+```typescript
+// telemetry.mjs
+// Load it before your app: node --import ./telemetry.mjs server.js
+import { register } from "node:module";
+register("@opentelemetry/instrumentation/hook.mjs", import.meta.url);
+
+import { NodeSDK } from "@opentelemetry/sdk-node";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
+import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
+import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
+import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
+import { resourceFromAttributes } from "@opentelemetry/resources";
+import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
+
+const BASE = "https://your-traceway-instance.com/api/otel";
+const headers = { Authorization: "Bearer your-project-token" };
+
+const sdk = new NodeSDK({
+  resource: resourceFromAttributes({
+    "service.name": "my-service",
+    "service.version": "1.0.0",
+  }),
+  traceExporter: new OTLPTraceExporter({ url: `${BASE}/v1/traces`, headers }),
+  metricReaders: [
+    new PeriodicExportingMetricReader({
+      exporter: new OTLPMetricExporter({ url: `${BASE}/v1/metrics`, headers }),
+      exportIntervalMillis: 30000,
+    }),
+  ],
+  logRecordProcessors: [
+    new BatchLogRecordProcessor({
+      exporter: new OTLPLogExporter({ url: `${BASE}/v1/logs`, headers }),
+    }),
+  ],
+  instrumentations: [getNodeAutoInstrumentations()],
+});
+
+sdk.start();
+```
+
+Start your app with `node --import ./telemetry.mjs server.js`. Loading the file first is what lets auto-instrumentation patch your HTTP server and database clients before they are imported.
+
+Four details that break this silently if you get them wrong:
+
+- The two `node:module` lines at the top are required for an **ESM** app (`.mjs`, or `"type": "module"`). Without the hook, no framework is patched, `http.route` is never set, and your endpoints are named after raw span names. A CommonJS app (`require`, `.cjs`) does not need them.
+- `resourceFromAttributes` replaced the old `new Resource(...)`, which was removed in `@opentelemetry/resources` 2.x. The old form throws at import time.
+- `BatchLogRecordProcessor` takes an **options object**, not a bare exporter. `new BatchLogRecordProcessor(exporter)` constructs fine and then exports nothing, with no error.
+- `metricReaders` is the current option. The singular `metricReader` still works but is deprecated.
+
+The same pattern applies to any language: set the OTLP/HTTP endpoint and the `Authorization` header in your exporter config, once per signal.
+
+## End to End: One Request, Its Spans, and Its Logs
+
+Traces and logs are separate signals with separate exporters, but they meet again in the dashboard. A log emitted inside an active span carries that span's `trace_id`, and the Endpoint detail page uses that id to show the request's log lines next to its waterfall.
+
+Here is the request side, using the `telemetry.mjs` above. Auto-instrumentation produces spans like these for you; they are written out by hand so the correlation is visible.
+
+```typescript
+import { trace, SpanKind } from "@opentelemetry/api";
+import { logs, SeverityNumber } from "@opentelemetry/api-logs";
+
+const tracer = trace.getTracer("shop");
+const logger = logs.getLogger("shop");
+
+await tracer.startActiveSpan(
+  "GET /orders/:id",
+  {
+    kind: SpanKind.SERVER,
+    attributes: { "http.request.method": "GET", "http.route": "/orders/:id" },
+  },
+  async (serverSpan) => {
+    logger.emit({
+      severityNumber: SeverityNumber.INFO,
+      severityText: "INFO",
+      body: "handling order lookup",
+      attributes: { "order.id": "ord_123" },
+    });
+
+    await tracer.startActiveSpan(
+      "SELECT orders",
+      {
+        kind: SpanKind.CLIENT,
+        attributes: {
+          "db.system": "postgresql",
+          "db.query.text": "SELECT * FROM orders WHERE id = $1",
+        },
+      },
+      async (dbSpan) => {
+        // ... run the query ...
+        dbSpan.end();
+      },
+    );
+
+    serverSpan.setAttribute("http.response.status_code", 200);
+    serverSpan.end();
+  },
+);
+```
+
+What lands in Traceway:
+
+| What you wrote | Where it shows up |
+|----------------|-------------------|
+| The root SERVER span with `http.route` | **Endpoints**, as `GET /orders/:id`, with its duration and status |
+| The child CLIENT span | The **Spans** waterfall on that endpoint's detail page, labelled with the SQL from `db.query.text` |
+| The `logger.emit` call | The **Logs** card on the same page, **This Trace** tab |
+| Anything you `recordException` on either span | **Issues**, linked back to this endpoint |
+
+The glue is that the log record carries the root span's `trace_id`, and a root span's Endpoint row is keyed by that same trace id.
+
+Note the `SpanKind.SERVER` on the outer span. With the default `INTERNAL` kind and no HTTP attributes, the span is dropped and none of this appears. See [Traces](/client/otel/traces) for the full classification rules.
 
 ## Quick Start: Spring Boot (Java Agent)
 
-The [OpenTelemetry Java agent](https://opentelemetry.io/docs/zero-code/java/agent/) instruments Spring Boot applications with zero code changes. Download the agent JAR and pass it to the JVM:
+The [OpenTelemetry Java agent](https://opentelemetry.io/docs/zero-code/java/agent/) instruments Spring Boot applications with zero code changes. Download [`opentelemetry-javaagent.jar`](https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar) from the latest release, use the **2.x** agent, and pass it to the JVM:
 
 ```bash
 java \
   -javaagent:opentelemetry-javaagent.jar \
   -Dotel.service.name=my-spring-app \
+  -Dotel.exporter.otlp.protocol=http/protobuf \
   -Dotel.exporter.otlp.endpoint=https://<your-instance>/api/otel \
   -Dotel.exporter.otlp.headers="Authorization=Bearer <project_token>" \
-  -Dotel.metrics.exporter=none \
-  -Dotel.logs.exporter=none \
   -jar target/my-app.jar
 ```
 
-Setting `OTEL_EXPORTER_OTLP_ENDPOINT` to `…/api/otel` works too — the agent appends `/v1/traces` automatically, which matches Traceway's ingest path.
+`-Dotel.exporter.otlp.endpoint` takes the **base** URL. The agent appends `/v1/traces`, `/v1/metrics` and `/v1/logs` itself, which is exactly how Traceway's ingest paths are laid out. (The per-signal settings such as `otel.exporter.otlp.traces.endpoint` are used as-is, so those need the full path.) `-Dotel.service.name` becomes the **Server Name** on every endpoint, task and issue.
 
-Exceptions thrown in your controllers are automatically captured as span events and appear in **Issues**, grouped by exception class across deployments regardless of differing error messages or line numbers.
+Set `-Dotel.exporter.otlp.protocol=http/protobuf` explicitly even though it is the default on the 2.x agent. Traceway speaks OTLP/HTTP only. A 1.x agent JAR, or any environment that already exports `OTEL_EXPORTER_OTLP_PROTOCOL=grpc`, will send telemetry to a port that does not exist, and nothing in the dashboard will tell you.
+
+**All three signals are exported by this command.** `otel.traces.exporter`, `otel.metrics.exporter` and `otel.logs.exporter` all default to `otlp`, so JVM and HTTP server metrics land on your dashboards and your Logback or Log4j output lands in **Logs**, with no extra flags and no appender to register. If you deliberately want traces only, add `-Dotel.metrics.exporter=none -Dotel.logs.exporter=none`.
+
+Leave `otel.exporter.otlp.metrics.default.histogram.aggregation` at its default `EXPLICIT_BUCKET_HISTOGRAM`. Traceway reads explicit-bucket histograms and exposes each one as `<name>.avg` and `<name>.count`. Base-2 exponential histograms are not read and are dropped without an error, so `http.server.request.duration` and the JVM latency histograms would silently disappear from your dashboards.
+
+In a container or a Kubernetes manifest, use the environment-variable form instead. Same settings, uppercased, with `.` and `-` replaced by `_`:
+
+```bash
+JAVA_TOOL_OPTIONS=-javaagent:/app/opentelemetry-javaagent.jar
+OTEL_SERVICE_NAME=my-spring-app
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_EXPORTER_OTLP_ENDPOINT=https://<your-instance>/api/otel
+OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer <project_token>
+```
+
+Do not quote the `OTEL_EXPORTER_OTLP_HEADERS` value in a Kubernetes manifest. The quotes become part of the header value and the request comes back `401`.
+
+What lands where, with the command above:
+
+| Spring Boot | Traceway |
+|-------------|----------|
+| Controller requests (`@GetMapping("/orders/{id}")`) | **Endpoints**, named `GET /orders/{id}`, because the Spring Web MVC instrumentation sets `http.route` |
+| `@Scheduled` jobs, `@Async` work, queue consumers | **Tasks** |
+| JDBC, HTTP client and Redis calls inside a request | Child spans on the trace detail page |
+| Uncaught controller exceptions | **Issues**, with the full JVM stack trace |
+| Logback / Log4j output | **Logs**, correlated to the trace that produced it |
+| JVM and HTTP server metrics (`jvm.memory.used`, `http.server.request.duration`) | **Metrics** and dashboard widgets. Histograms appear as `<name>.avg` and `<name>.count` |
+
+Exceptions that reach the servlet container are recorded as span events and show up in **Issues**. Traceway groups them by the exception class **plus the normalized frame list**. The message is stripped and Java, Kotlin and Scala line numbers are removed, so one failure keeps a single issue across redeploys and across differing error messages. A different call site, or a frame added or removed in the same path, is a different issue by design.
+
+Two caveats worth knowing. The message is stripped only from the first line of the header, and only when the exception class name contains no `$`. Exceptions from nested classes, and exceptions whose message spans several lines, can therefore split into one issue per distinct message.
 
 ## Quick Start: OTel Collector
 
-If you already run an [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/) or want a central pipeline that fans out to multiple backends, you can route data through it. **This is optional** — the direct SDK export above works without a Collector.
+If you already run an [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/) or want a central pipeline that fans out to multiple backends, you can route data through it. **This is optional.** The direct SDK export above works without a Collector.
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+
 exporters:
   otlphttp:
     endpoint: "https://your-traceway-instance.com/api/otel"
@@ -99,12 +276,68 @@ exporters:
 service:
   pipelines:
     traces:
+      receivers: [otlp]
+      processors: [batch]
       exporters: [otlphttp]
     metrics:
+      receivers: [otlp]
+      processors: [batch]
       exporters: [otlphttp]
     logs:
+      receivers: [otlp]
+      processors: [batch]
       exporters: [otlphttp]
 ```
+
+Every pipeline must declare at least one receiver. A pipeline with only an `exporters:` line fails validation with `must have at least one receiver` and the Collector never starts.
+
+The `otlphttp` exporter appends `/v1/traces`, `/v1/metrics` and `/v1/logs` to the base `endpoint`, so point it at `/api/otel` and nothing else. On recent Collector builds the component has been renamed to `otlp_http`, with `otlphttp` kept as a deprecated alias. Both work today. Use `otlp_http` if your build warns about the alias.
+
+Your apps then send to the Collector on `localhost:4318` (OTLP/HTTP) or `localhost:4317` (OTLP/gRPC), and the Collector is the only thing that needs your Traceway token.
+
+## Nothing Is Showing Up
+
+Traceway accepts telemetry it cannot use rather than rejecting the whole batch, so a misconfiguration usually looks like silence rather than an error. Work down this list.
+
+**Check the wire first.** Post an empty span batch and watch the status code:
+
+```bash
+curl -i -X POST https://<your-instance>/api/otel/v1/traces \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <project_token>' \
+  -d '{"resourceSpans":[]}'
+```
+
+- `200` with the body `{}` means the endpoint and token are good. The problem is in your SDK, or in how your spans are shaped.
+- `401` with an empty body means a bad token, or a header that does not start with `Bearer `.
+- `503` with `Retry-After` means ingest is saturated. Exporters retry this automatically.
+- `404` means the path under `/api` is wrong, for example `/api/v1/traces` instead of `/api/otel/v1/traces`.
+- `200` with an HTML body means the `/api` prefix is missing. The dashboard is served from the same origin, so its single-page fallback answers `/otel/v1/traces` with the dashboard itself and it looks like a success. Check that the response `Content-Type` is `application/json`, not `text/html`. The base is `/api/otel`, not `/otel`.
+
+**Then check the shape.**
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| Background job or cron never appears on Tasks | Its root span uses the default `SpanKind.INTERNAL`, so it is discarded | Set `kind: SpanKind.CONSUMER`, or add a `console.command` attribute for CLI commands |
+| Endpoint is named after the span, not the route | No `http.request.method` or `http.method` on the span. Without a method the route is ignored entirely | Set the method attribute alongside `http.route` |
+| One endpoint row per URL, thousands of them | Only `url.path` is set, so the concrete URL becomes the name | Set `http.route` to the low-cardinality template, `/users/:id` |
+| Requests appear as `UNMATCHED` | They are 404s with no matched route, collapsed on purpose | Expected. A matched route returning 404 keeps its name |
+| The same route is listed twice with a **Mixed** chip | A batch processor split the parent and child spans across two exports, so the child was promoted to its own endpoint | Raise `maxExportBatchSize` / `scheduledDelayMillis`, or stop emitting the redundant sub-handler span |
+| Nothing at all from an ESM Node app | The `@opentelemetry/instrumentation/hook.mjs` loader hook is missing, so nothing was patched | Add the two `node:module` lines shown above |
+| Logs page is empty | No log exporter is wired (a trace exporter does not send logs), or there is no bridge from your logging library into the OTel logs API | See [Logs](/client/otel/logs) |
+| Logs exist but the endpoint's Logs card is empty | The endpoint was promoted from a non-root span, so it is keyed by span id and not by the trace id the logs carry | Search the trace id on the Logs page |
+| A whole metric family is missing | It is an ExponentialHistogram or a Summary. Both are dropped without an error | Switch to explicit-bucket histograms, or convert in the Collector |
+| Metrics arrive but every series looks identical | The distinguishing attribute is on the Resource and is not in the allowlist | Emit it as a data-point attribute instead. See [Metrics](/client/otel/metrics) |
+| Large exports vanish and the exporter logs a 400 | The batch exceeded 10 MB after decompression, was truncated, and failed to parse | Lower the exporter's batch size |
+
+**Turn on the SDK's own diagnostics.** Most silent client-side failures, including a mis-constructed exporter or processor, only surface here:
+
+```typescript
+import { diag, DiagConsoleLogger, DiagLogLevel } from "@opentelemetry/api";
+diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
+```
+
+The equivalents are `OTEL_LOG_LEVEL=debug` for Python and the Java agent, and `otel.SetErrorHandler` for Go.
 
 ## Connection Page
 
@@ -114,6 +347,12 @@ Your Traceway dashboard includes a **Connection** page with a ready-made config 
 
 ## Next Steps
 
-- [Traces](/client/otel/traces) — how OTel spans map to Traceway concepts
-- [Metrics](/client/otel/metrics) — supported metric types and histogram handling
-- [Logs](/client/otel/logs) — export OTel logs and link them to your traces
+- [Traces](/client/otel/traces): how OTel spans map to Traceway concepts
+- [Metrics](/client/otel/metrics): supported metric types and histogram handling
+- [Logs](/client/otel/logs): export OTel logs and link them to your traces
+
+Framework guides, all on this same OTLP path:
+
+- [Node.js](/client/otel/nodejs) · [NestJS](/client/otel/nestjs) · [Next.js](/client/otel/nextjs) · [Hono](/client/otel/hono) · [Cloudflare Workers](/client/otel/cloudflare)
+- [Python](/client/otel/python) · [Django](/client/otel/django)
+- [Symfony](/client/otel/symfony) · [Laravel](/client/otel/laravel)

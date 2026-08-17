@@ -1,6 +1,7 @@
 {
   "index": "Overview",
   "data-flow": "Data Flow",
+  "projects": "Project Structure",
   "traces": "Traces",
   "ai-tracing": "AI Tracing",
   "issues": "Issues",

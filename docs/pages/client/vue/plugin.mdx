@@ -91,6 +91,25 @@ app.config.errorHandler = (err, instance, info) => {
 };
 ```
 
+Vue has a single `app.config.errorHandler` slot, and the plugin assigns it. If your app assigns its own handler after `app.use(createTracewayPlugin(...))`, it replaces Traceway's and component errors stop reaching the dashboard. To keep both, capture the error yourself inside your handler:
+
+```javascript
+import { captureException, captureMessage } from "@tracewayapp/vue";
+
+app.use(createTracewayPlugin({
+  connectionString: "your-token@https://traceway.example.com/api/report",
+}));
+
+app.config.errorHandler = (err, instance, info) => {
+  if (err instanceof Error) {
+    captureException(err);
+  } else {
+    captureMessage(String(err));
+  }
+  myOwnErrorReporter(err, info);
+};
+```
+
 ## Environment-Specific Configuration
 
 ```javascript
@@ -108,12 +127,50 @@ app.use(createTracewayPlugin({
 
 ## Custom Attributes
 
-Attach app-level identifiers (`userId`, `tenant`, feature flags, etc.) to every session and exception using the imperative scope API. Drive it from `watchEffect` so it tracks reactive state:
+Attach app-level identifiers (`userId`, `tenant`, feature flags, etc.) to every session and exception. The `useTracewayAttributes` composable is the Vue way to do it. Pass a getter and it tracks reactive state, pushes only the keys that changed, and removes the keys it owns when the component unmounts:
+
+```vue
+<script setup>
+import { useTracewayAttributes } from "@tracewayapp/vue";
+import { useUser } from "./auth";
+
+const { user, org } = useUser();
+useTracewayAttributes(() =>
+  user.value && org.value
+    ? { userId: user.value.id, tenant: org.value.id }
+    : null
+);
+</script>
+```
+
+Return `null` when there is nothing to attach. The composable then removes the keys it had set.
+
+There is a declarative wrapper for the same thing. It renders nothing and removes its keys on unmount:
+
+```vue
+<script setup>
+import { TracewayAttributes } from "@tracewayapp/vue";
+import { useUser } from "./auth";
+
+const { user, org } = useUser();
+</script>
+
+<template>
+  <TracewayAttributes
+    v-if="user && org"
+    :attributes="{ userId: user.id, tenant: org.id }"
+  />
+</template>
+```
+
+Treat every key you pass to the composable or the component as owned by it. Do not set the same key with `setAttribute` elsewhere, because the unmount cleanup will remove it.
+
+You can also drive the scope imperatively from `watchEffect`:
 
 ```vue
 <script setup>
 import { watchEffect } from "vue";
-import { setAttributes, clearAttributes } from "@tracewayapp/vue";
+import { setAttributes, removeAttribute } from "@tracewayapp/vue";
 import { useUser } from "./auth";
 
 const { user, org } = useUser();
@@ -121,11 +178,14 @@ watchEffect(() => {
   if (user.value && org.value) {
     setAttributes({ userId: user.value.id, tenant: org.value.id });
   } else {
-    clearAttributes();
+    removeAttribute("userId");
+    removeAttribute("tenant");
   }
 });
 </script>
 ```
+
+Use `removeAttribute` per key here rather than `clearAttributes()`. `clearAttributes()` empties the whole global scope, so it also drops keys set by other parts of the app.
 
 The full API (`setAttribute`, `setAttributes`, `removeAttribute`, `clearAttributes`) is re-exported from `@tracewayapp/vue`. Layering on each event: **defaults < global scope < per-call**. See [Sessions](/learn/sessions) for the full attribute model.
 
@@ -166,7 +226,7 @@ app.use(createTracewayPlugin({
 For Nuxt 3, create a plugin:
 
 ```javascript
-// plugins/traceway.client.ts
+// plugins/traceway.ts
 import { createTracewayPlugin } from "@tracewayapp/vue";
 
 export default defineNuxtPlugin((nuxtApp) => {
@@ -175,6 +235,8 @@ export default defineNuxtPlugin((nuxtApp) => {
   }));
 });
 ```
+
+Name the file `traceway.ts`, not `traceway.client.ts`. A `.client` plugin never runs during SSR, so the injection key is missing on the server and the first component calling `useTraceway()` fails the render with `useTraceway must be used within a Vue app that has installed the Traceway plugin` (HTTP 500). The plugin is safe to run universally: it only installs the browser handlers and the recorder when `window` exists, so the server pass just provides the injection key.
 
 Add to `nuxt.config.ts`:
 

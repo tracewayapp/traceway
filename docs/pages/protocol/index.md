@@ -405,7 +405,7 @@ The legacy `sessionRecordingId` field still works for exception-bound clips. Bot
 
 ## Batching and Collection Strategy
 
-This section describes the recommended client-side implementation, based on the Go SDK.
+This section describes the recommended client-side implementation for anyone writing a client against this protocol directly. Most applications should use OpenTelemetry instead, which handles all of it. See [OpenTelemetry](/client/otel).
 
 ### Collection Interval
 

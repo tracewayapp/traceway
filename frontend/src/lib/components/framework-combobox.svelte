@@ -20,27 +20,18 @@
     let triggerWrapperRef = $state<HTMLDivElement | null>(null);
     let contentRef = $state<HTMLElement | null>(null);
 
+    const GROUP_ORDER = ['Backend', 'Browser', 'Mobile'] as const;
+
     const frameworks = [
-        { value: 'gin', label: 'Gin', description: 'Fast HTTP web framework', group: 'Go' },
-        { value: 'fiber', label: 'Fiber', description: 'Express-inspired framework', group: 'Go' },
-        { value: 'chi', label: 'Chi', description: 'Lightweight router', group: 'Go' },
-        { value: 'fasthttp', label: 'FastHTTP', description: 'High-performance HTTP', group: 'Go' },
-        { value: 'stdlib', label: 'Standard Library', description: 'net/http package', group: 'Go' },
-        { value: 'custom', label: 'Custom', description: 'Other / manual setup', group: 'Go' },
-        { value: 'react', label: 'React', description: 'Frontend UI library', group: 'JavaScript' },
-        { value: 'react-native', label: 'React Native', description: 'React Native and Expo apps', group: 'JavaScript' },
-        { value: 'svelte', label: 'Svelte', description: 'Frontend compiler framework', group: 'JavaScript' },
-        { value: 'vuejs', label: 'Vue.js', description: 'Progressive frontend framework', group: 'JavaScript' },
-        { value: 'jquery', label: 'jQuery', description: 'Legacy-friendly AJAX and DOM library', group: 'JavaScript' },
-        { value: 'symfony', label: 'Symfony', description: 'PHP full-stack framework (OTLP)', group: 'PHP' },
-        { value: 'laravel', label: 'Laravel', description: 'PHP full-stack framework (OTLP)', group: 'PHP' },
-        { value: 'django', label: 'Django', description: 'Python full-stack framework (OTLP)', group: 'Python' },
-        { value: 'hono', label: 'Hono', description: 'Lightweight multi-runtime framework (OTLP)', group: 'Backend' },
-        { value: 'cloudflare', label: 'Cloudflare', description: 'Cloudflare Workers (OTLP Traces)', group: 'Backend' },
-        { value: 'opentelemetry', label: 'OpenTelemetry', description: 'Vendor-neutral observability', group: 'Backend' },
-        { value: 'flutter', label: 'Flutter', description: 'Mobile UI framework', group: 'Mobile' },
-        { value: 'android', label: 'Android', description: 'Native Android (Kotlin/Java)', group: 'Mobile' },
-        { value: 'ios', label: 'iOS', description: 'Native iOS (Swift/Objective-C)', group: 'Mobile' },
+        { value: 'opentelemetry', label: 'OpenTelemetry', description: 'Any backend: Go, Node.js, Python, PHP, Java, .NET, Ruby', group: 'Backend', keywords: 'otel opentelemetry go golang gin fiber chi fasthttp echo node nodejs express nestjs fastify koa hono cloudflare workers python django flask fastapi php symfony laravel slim java spring dotnet .net csharp ruby rails api server backend' },
+        { value: 'react', label: 'React', description: 'React apps, including Next.js and Remix', group: 'Browser', keywords: 'react nextjs next.js remix browser frontend spa' },
+        { value: 'svelte', label: 'Svelte', description: 'Svelte and SvelteKit apps', group: 'Browser', keywords: 'svelte sveltekit browser frontend' },
+        { value: 'vuejs', label: 'Vue.js', description: 'Vue and Nuxt apps', group: 'Browser', keywords: 'vue vuejs nuxt browser frontend' },
+        { value: 'jquery', label: 'jQuery', description: 'Legacy-friendly AJAX and DOM library', group: 'Browser', keywords: 'jquery browser frontend legacy' },
+        { value: 'flutter', label: 'Flutter', description: 'Flutter apps on Android and iOS', group: 'Mobile', keywords: 'flutter dart mobile android ios' },
+        { value: 'react-native', label: 'React Native', description: 'React Native and Expo apps', group: 'Mobile', keywords: 'react native expo mobile' },
+        { value: 'android', label: 'Android', description: 'Native Android (Kotlin/Java)', group: 'Mobile', keywords: 'android kotlin java mobile native' },
+        { value: 'ios', label: 'iOS', description: 'Native iOS (Swift/Objective-C)', group: 'Mobile', keywords: 'ios swift swiftui objective-c apple mobile native' },
     ] as const;
 
     const selectedFrameworkLabel = $derived(getFrameworkLabel(value));
@@ -53,16 +44,16 @@
             : frameworks.filter(f =>
                 f.label.toLowerCase().includes(query) ||
                 f.description.toLowerCase().includes(query) ||
-                f.group.toLowerCase().includes(query)
+                f.group.toLowerCase().includes(query) ||
+                f.keywords.includes(query)
             )
     );
 
-    const goFrameworks = $derived(filteredFrameworks.filter(f => f.group === 'Go'));
-    const jsFrameworks = $derived(filteredFrameworks.filter(f => f.group === 'JavaScript'));
-    const phpFrameworks = $derived(filteredFrameworks.filter(f => f.group === 'PHP'));
-    const pythonFrameworks = $derived(filteredFrameworks.filter(f => f.group === 'Python'));
-    const backendFrameworks = $derived(filteredFrameworks.filter(f => f.group === 'Backend'));
-    const mobileFrameworks = $derived(filteredFrameworks.filter(f => f.group === 'Mobile'));
+    const groups = $derived(
+        GROUP_ORDER
+            .map(name => ({ name, items: filteredFrameworks.filter(f => f.group === name) }))
+            .filter(g => g.items.length > 0)
+    );
 
     function handleOpenChange(isOpen: boolean) {
         open = isOpen;
@@ -128,10 +119,10 @@
                 {#if filteredFrameworks.length === 0}
                     <div class="py-4 text-center text-sm text-muted-foreground">No frameworks found</div>
                 {:else}
-                    {#if goFrameworks.length > 0}
+                    {#each groups as group (group.name)}
                         <Combobox.Group>
-                            <Combobox.GroupHeading class="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Go</Combobox.GroupHeading>
-                            {#each goFrameworks as fw}
+                            <Combobox.GroupHeading class="px-2 py-1.5 text-xs font-semibold text-muted-foreground">{group.name}</Combobox.GroupHeading>
+                            {#each group.items as fw (fw.value)}
                                 <Combobox.Item
                                     value={fw.value}
                                     class={cn(
@@ -153,137 +144,7 @@
                                 </Combobox.Item>
                             {/each}
                         </Combobox.Group>
-                    {/if}
-                    {#if jsFrameworks.length > 0}
-                        <Combobox.Group>
-                            <Combobox.GroupHeading class="px-2 py-1.5 text-xs font-semibold text-muted-foreground">JavaScript</Combobox.GroupHeading>
-                            {#each jsFrameworks as fw}
-                                <Combobox.Item
-                                    value={fw.value}
-                                    class={cn(
-                                        "data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground [&_svg:not([class*='text-'])]:text-muted-foreground relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 ps-2 pe-8 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
-                                    )}
-                                >
-                                    {#snippet children({ selected })}
-                                        <div class="flex items-center gap-2">
-                                            <FrameworkIcon framework={fw.value} />
-                                            <div class="flex flex-col">
-                                                <span class="font-medium">{fw.label}</span>
-                                                <span class="text-xs text-muted-foreground">{fw.description}</span>
-                                            </div>
-                                        </div>
-                                        {#if selected}
-                                            <Check class="absolute end-2 size-4" />
-                                        {/if}
-                                    {/snippet}
-                                </Combobox.Item>
-                            {/each}
-                        </Combobox.Group>
-                    {/if}
-                    {#if phpFrameworks.length > 0}
-                        <Combobox.Group>
-                            <Combobox.GroupHeading class="px-2 py-1.5 text-xs font-semibold text-muted-foreground">PHP</Combobox.GroupHeading>
-                            {#each phpFrameworks as fw}
-                                <Combobox.Item
-                                    value={fw.value}
-                                    class={cn(
-                                        "data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground [&_svg:not([class*='text-'])]:text-muted-foreground relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 ps-2 pe-8 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
-                                    )}
-                                >
-                                    {#snippet children({ selected })}
-                                        <div class="flex items-center gap-2">
-                                            <FrameworkIcon framework={fw.value} />
-                                            <div class="flex flex-col">
-                                                <span class="font-medium">{fw.label}</span>
-                                                <span class="text-xs text-muted-foreground">{fw.description}</span>
-                                            </div>
-                                        </div>
-                                        {#if selected}
-                                            <Check class="absolute end-2 size-4" />
-                                        {/if}
-                                    {/snippet}
-                                </Combobox.Item>
-                            {/each}
-                        </Combobox.Group>
-                    {/if}
-                    {#if pythonFrameworks.length > 0}
-                        <Combobox.Group>
-                            <Combobox.GroupHeading class="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Python</Combobox.GroupHeading>
-                            {#each pythonFrameworks as fw}
-                                <Combobox.Item
-                                    value={fw.value}
-                                    class={cn(
-                                        "data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground [&_svg:not([class*='text-'])]:text-muted-foreground relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 ps-2 pe-8 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
-                                    )}
-                                >
-                                    {#snippet children({ selected })}
-                                        <div class="flex items-center gap-2">
-                                            <FrameworkIcon framework={fw.value} />
-                                            <div class="flex flex-col">
-                                                <span class="font-medium">{fw.label}</span>
-                                                <span class="text-xs text-muted-foreground">{fw.description}</span>
-                                            </div>
-                                        </div>
-                                        {#if selected}
-                                            <Check class="absolute end-2 size-4" />
-                                        {/if}
-                                    {/snippet}
-                                </Combobox.Item>
-                            {/each}
-                        </Combobox.Group>
-                    {/if}
-                    {#if backendFrameworks.length > 0}
-                        <Combobox.Group>
-                            <Combobox.GroupHeading class="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Backend</Combobox.GroupHeading>
-                            {#each backendFrameworks as fw}
-                                <Combobox.Item
-                                    value={fw.value}
-                                    class={cn(
-                                        "data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground [&_svg:not([class*='text-'])]:text-muted-foreground relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 ps-2 pe-8 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
-                                    )}
-                                >
-                                    {#snippet children({ selected })}
-                                        <div class="flex items-center gap-2">
-                                            <FrameworkIcon framework={fw.value} />
-                                            <div class="flex flex-col">
-                                                <span class="font-medium">{fw.label}</span>
-                                                <span class="text-xs text-muted-foreground">{fw.description}</span>
-                                            </div>
-                                        </div>
-                                        {#if selected}
-                                            <Check class="absolute end-2 size-4" />
-                                        {/if}
-                                    {/snippet}
-                                </Combobox.Item>
-                            {/each}
-                        </Combobox.Group>
-                    {/if}
-                    {#if mobileFrameworks.length > 0}
-                        <Combobox.Group>
-                            <Combobox.GroupHeading class="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Mobile</Combobox.GroupHeading>
-                            {#each mobileFrameworks as fw}
-                                <Combobox.Item
-                                    value={fw.value}
-                                    class={cn(
-                                        "data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground [&_svg:not([class*='text-'])]:text-muted-foreground relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 ps-2 pe-8 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
-                                    )}
-                                >
-                                    {#snippet children({ selected })}
-                                        <div class="flex items-center gap-2">
-                                            <FrameworkIcon framework={fw.value} />
-                                            <div class="flex flex-col">
-                                                <span class="font-medium">{fw.label}</span>
-                                                <span class="text-xs text-muted-foreground">{fw.description}</span>
-                                            </div>
-                                        </div>
-                                        {#if selected}
-                                            <Check class="absolute end-2 size-4" />
-                                        {/if}
-                                    {/snippet}
-                                </Combobox.Item>
-                            {/each}
-                        </Combobox.Group>
-                    {/if}
+                    {/each}
                 {/if}
             </Combobox.Viewport>
             <SelectScrollDownButton />

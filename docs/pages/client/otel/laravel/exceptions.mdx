@@ -1,0 +1,177 @@
+# Exceptions
+
+`keepsuit/laravel-opentelemetry` records unhandled exceptions automatically. The package's service provider registers a global `reportable()` callback on Laravel's exception handler that calls `$span->recordException($e)` and `$span->setStatus(STATUS_ERROR)` on the currently-active span. So:
+
+- Any exception thrown from a **controller / route closure** is captured on the request span (which becomes a Traceway Issue).
+- Any exception thrown from a **queued job** that triggers a `JobFailed` event is captured on the consumer span by `QueueInstrumentation`.
+- Any exception thrown inside `Tracer::newSpan(...)->measure(fn)` is captured by `measure()` (see [Spans](/client/otel/laravel/spans) for one caveat about span status).
+- Any exception that propagates through Laravel's `report()` pipeline (including ones you catch and rethrow via `throw $e`) also goes through the reportable callback and is recorded on whatever span is active at that moment.
+
+You only need the patterns on this page when:
+1. You **catch** an exception and don't rethrow it, so Laravel's reporter never sees it.
+2. You want to attach **extra context** (user id, request id, business attributes) to the auto-captured exception event.
+
+## Recording an Exception on the Current Span
+
+When you catch an error but want it reported to Traceway, record it as an event on the active span:
+
+```php
+use OpenTelemetry\API\Trace\Span;
+use OpenTelemetry\API\Trace\StatusCode;
+
+try {
+    $this->paymentGateway->charge($order);
+} catch (\Throwable $e) {
+    $span = Span::getCurrent();
+    $span->recordException($e);
+    $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
+
+    throw $e;
+}
+```
+
+`recordException` adds an `exception` event to the span with the type, message, and stack trace. Traceway extracts these events and creates Issues from them.
+
+## Adding Attributes to Exceptions
+
+Add context by setting span attributes before or after recording the exception:
+
+```php
+use OpenTelemetry\API\Trace\Span;
+use OpenTelemetry\API\Trace\StatusCode;
+
+$span = Span::getCurrent();
+
+$span->setAttribute('user.id', $userId);
+$span->setAttribute('order.id', $orderId);
+
+try {
+    $this->processOrder($orderId);
+} catch (\Throwable $e) {
+    $span->recordException($e, [
+        'order.status' => 'failed',
+        'retry.count' => $retryCount,
+    ]);
+    $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
+    throw $e;
+}
+```
+
+The additional attributes passed to `recordException` are attached to the exception event itself.
+
+## Adding Context to the Auto-Capture
+
+Register your own `reportable()` callback to add request-level attributes to the span. Use this when you want every error to carry the same diagnostic fields.
+
+Your callback and the package's both run through Laravel's `reportable()` pipeline. On Laravel 11 and newer a callback registered in `bootstrap/app.php` actually runs *before* the package's, because `withExceptions()` is wired up while the application is being built, ahead of any service provider. The order does not matter either way: both act on the same active span, so attributes you set are attached whether they land before or after `recordException`.
+
+### Laravel 11, 12 and 13
+
+```php
+// bootstrap/app.php
+
+use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Configuration\Exceptions;
+use OpenTelemetry\API\Trace\Span;
+use OpenTelemetry\API\Trace\StatusCode;
+
+return Application::configure(basePath: dirname(__DIR__))
+    ->withRouting(/* ... */)
+    ->withExceptions(function (Exceptions $exceptions) {
+        $exceptions->report(function (\Throwable $e) {
+            // The package also calls recordException + setStatus(ERROR) on this
+            // span. Here we just attach extra attributes.
+            $span = Span::getCurrent();
+            $span->setAttribute('request.id', request()->header('X-Request-Id'));
+            $span->setAttribute('user.id', optional(auth()->user())->id);
+        });
+    })
+    ->create();
+```
+
+### Laravel 10 (package 1.x)
+
+Version 2.x of the package dropped Laravel 10. If you are still on the 1.x line, the same callback goes in the exception handler class:
+
+```php
+// app/Exceptions/Handler.php
+use OpenTelemetry\API\Trace\Span;
+
+public function register(): void
+{
+    $this->reportable(function (\Throwable $e) {
+        // The package also calls recordException + setStatus(ERROR) on this
+        // span. Here we just attach extra attributes.
+        $span = Span::getCurrent();
+        $span->setAttribute('request.id', request()->header('X-Request-Id'));
+        $span->setAttribute('user.id', optional(auth()->user())->id);
+    });
+}
+```
+
+## Capturing Exceptions in Services
+
+For exceptions in services outside a controller, get the current span from context:
+
+```php
+namespace App\Services;
+
+use OpenTelemetry\API\Trace\Span;
+use OpenTelemetry\API\Trace\StatusCode;
+
+class PaymentService
+{
+    public function processPayment(string $customerId, float $amount): void
+    {
+        $span = Span::getCurrent();
+
+        try {
+            $this->gateway->charge($customerId, $amount);
+        } catch (\Throwable $e) {
+            $span->recordException($e, [
+                'customer.id' => $customerId,
+                'payment.amount' => $amount,
+            ]);
+            $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
+            throw $e;
+        }
+    }
+}
+```
+
+## Custom Exception Types
+
+Custom exception classes work the same way. Their type name appears in the Traceway dashboard:
+
+```php
+class InsufficientFundsException extends \RuntimeException
+{
+    public function __construct(
+        public readonly string $accountId,
+        public readonly float $requested,
+        public readonly float $available,
+    ) {
+        parent::__construct("Insufficient funds: requested {$requested}, available {$available}");
+    }
+}
+
+try {
+    $this->withdraw($accountId, $amount);
+} catch (InsufficientFundsException $e) {
+    $span = Span::getCurrent();
+    $span->recordException($e, [
+        'account.id' => $e->accountId,
+        'amount.requested' => $e->requested,
+        'amount.available' => $e->available,
+    ]);
+    $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
+}
+```
+
+**Keep the message constant on namespaced classes.** Traceway groups Issues by a normalized stack trace, and it strips the message only when the part before the first colon looks like a type name (letters, digits, dots and underscores). A real app class arrives as `App\Exceptions\InsufficientFundsException`, whose backslashes are not recognised, so the message stays in the hash and every distinct message becomes its own Issue. Build the message from fixed text and keep the varying values on the span, where they are still visible per occurrence:
+
+```php
+parent::__construct('Insufficient funds');
+```
+
+The `amount.requested` and `amount.available` attributes above already carry the numbers, so nothing is lost.

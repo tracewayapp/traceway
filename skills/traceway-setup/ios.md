@@ -126,7 +126,7 @@ Hard crashes are intercepted with POSIX signal handlers. When the **Xcode debugg
 
 Release crash reports arrive as bare instruction addresses against each loaded binary image. They stay unreadable until Traceway resolves them server-side against the build's **dSYM** debug symbols (the Apple equivalent of JavaScript source maps). Upload the dSYMs on every release build; a crash only resolves against the exact build it came from.
 
-**Token.** Symbol uploads authenticate with the dedicated **upload token** (Connection page > Source Maps / Symbol Upload), NOT the project token from the connection string. Get it from Step 0; it is a CI secret, never committed. `readonly` members cannot generate one. The upload endpoint is `https://<instance>/api/symbols/upload`.
+**Token.** Symbol uploads authenticate with the dedicated **upload token** (Connection page > Source Maps / Symbol Upload), NOT the project token from the connection string. It is a CI secret, never committed. `readonly` members cannot generate one. The upload endpoint is `https://<instance>/api/symbols/upload`.
 
 **Produce dSYMs.** The build must emit dSYMs: set `DEBUG_INFORMATION_FORMAT = dwarf-with-dsym` for the Release configuration (this is already the default for Archive builds). Without it there are no dSYMs to upload.
 
@@ -168,7 +168,7 @@ Self-hosted instances must have blob storage (S3 or a persistent volume) configu
 
 ## Non-Swift apps: OpenTelemetry into Traceway
 
-For an iOS/Apple app that is not a Swift app the SDK targets (Objective-C only, a cross-platform stack with no Traceway mobile SDK, or a codebase already standardized on OpenTelemetry), there is no native Traceway SDK. Use an OpenTelemetry distribution such as **Honeycomb's** and repoint its OTLP exporter at Traceway. This is the same OTLP/HTTP path the backend uses (Step 2), so all the rules in `data-model.md` apply.
+For an iOS/Apple app that is not a Swift app the SDK targets (Objective-C only, a cross-platform stack with no Traceway mobile SDK, or a codebase already standardized on OpenTelemetry), there is no native Traceway SDK. Use an OpenTelemetry distribution such as **Honeycomb's** and repoint its OTLP exporter at Traceway. This is the same OTLP/HTTP path the backend uses (see "Backend OTel Setup" in SKILL.md), so all the rules in `data-model.md` apply.
 
 A Honeycomb-style distro is configured with an API key plus an endpoint. Override both so the data lands in Traceway instead of Honeycomb:
 
@@ -176,17 +176,27 @@ A Honeycomb-style distro is configured with an API key plus an endpoint. Overrid
 - **Auth header**: `Authorization: Bearer <project-token>`. Traceway authenticates on this Bearer header, not on Honeycomb's `x-honeycomb-team`, so set the `Authorization` header explicitly (Honeycomb's own API-key header is ignored by Traceway and harmless).
 - **`service.name`** / **`service.version`**: set them; they become the Server Name and enable release comparison.
 
+Both `build()` and `Honeycomb.configure(options:)` are `throws`, so the whole thing has to sit inside a `do` / `catch` (or a throwing function). Call it once, as early as possible:
+
 ```swift
 import Honeycomb
 
-let options = try HoneycombOptions.Builder()
-    .setServiceName("my-ios-app")
-    .setServiceVersion("1.0.0")
-    .setApiEndpoint("https://<instance>/api/otel")
-    .setHeaders(["Authorization": "Bearer <project-token>"])
-    .build()
-Honeycomb.configure(options: options)
+do {
+    let options = try HoneycombOptions.Builder()
+        .setServiceName("my-ios-app")
+        .setServiceVersion("1.0.0")
+        .setAPIEndpoint("https://<instance>/api/otel")
+        .setHeaders(["Authorization": "Bearer <project-token>"])
+        .build()
+    try Honeycomb.configure(options: options)
+} catch {
+    NSLog("Honeycomb configure failed: \(error)")
+}
 ```
+
+The method is `setAPIEndpoint`, with a capital `API`, matching `setAPIKey`. Swift is case-sensitive, so `setApiEndpoint` does not compile. Do not drop the line if it fails: without it the exporter falls back to Honeycomb's own default endpoint and the telemetry never reaches Traceway.
+
+No Honeycomb API key is needed. `build()` only demands one when the resolved endpoint is a Honeycomb host, and `https://<instance>/api/otel` is not.
 
 (Field and builder names vary by distro version; the three things that matter are endpoint, the `Authorization: Bearer` header, and service name. A plain OpenTelemetry-Swift setup with an `OTLPHTTPExporter` pointed at the same endpoint and header is equivalent.)
 

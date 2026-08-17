@@ -35,16 +35,17 @@ class MyApp : Application() {
 }
 ```
 
-Register the application class in `AndroidManifest.xml` and add the `INTERNET` permission so reports can leave the device:
+Register the application class in `AndroidManifest.xml`, or `onCreate()` never runs and the SDK is never initialized:
 
 ```xml
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-permission android:name="android.permission.INTERNET" />
     <application android:name=".MyApp" ...>
         ...
     </application>
 </manifest>
 ```
+
+You do not need to add a permission. The library's own manifest declares `INTERNET` and `ACCESS_NETWORK_STATE`, and the Android manifest merger folds both into your app. Re-declaring `INTERNET` yourself is harmless if your app already has it.
 
 ## Capture Errors Manually
 
@@ -114,7 +115,7 @@ Every captured exception ships with the last ~10 seconds of session context, att
 
 Every `println` and any other write to `System.out` / `System.err` is mirrored into the log buffer. Console output behaves normally; it just gets a copy.
 
-Calls that go straight to `android.util.Log` bypass `System.out` and are **not** captured automatically. To pick up Logcat lines, install a Timber tree (or any other logger) that calls `TracewayClient.instance?.recordLog(message, level)`:
+Calls that go straight to `android.util.Log` bypass `System.out` and are **not** captured automatically. To pick up Logcat lines, install a Timber tree (or any other logger) that calls `TracewayClient.instance?.recordLog(message, level)`. Timber is not pulled in by the SDK, so add it yourself with `implementation("com.jakewharton.timber:timber:5.0.1")`:
 
 ```kotlin
 import android.util.Log
@@ -141,14 +142,22 @@ Three kinds of actions are collected:
 - **Network**: every HTTP request routed through an OkHttp client with `TracewayOkHttpInterceptor` installed (method, URL, status, duration, request/response byte counts). Catches Retrofit, Coil, Glide-via-OkHttp, and your own usage:
 
   ```kotlin
+  import com.tracewayapp.traceway.network.TracewayOkHttpInterceptor
+  import okhttp3.OkHttpClient
+
   val client = OkHttpClient.Builder()
       .addInterceptor(TracewayOkHttpInterceptor())
       .build()
   ```
 
+  The SDK's only declared dependency is `kotlin-stdlib`, so the interceptor compiles against your app's own OkHttp (`implementation("com.squareup.okhttp3:okhttp:4.12.0")`).
+
   For HTTP clients that aren't OkHttp, record events manually:
 
   ```kotlin
+  import com.tracewayapp.traceway.TracewayClient
+  import com.tracewayapp.traceway.events.NetworkEvent
+
   TracewayClient.instance?.recordNetworkEvent(
       NetworkEvent(method = "GET", url = "https://...", durationMs = 42L, statusCode = 200)
   )
@@ -225,7 +234,7 @@ Release builds run R8, so crash traces arrive with renamed classes and rewritten
 ```kotlin
 Traceway.init(
     application = this,
-    connectionString = BuildConfig.TRACEWAY_DSN,
+    connectionString = "your-token@https://traceway.example.com/api/report",
     options = TracewayOptions(
         version = "1.0.0",
         proguardUuid = BuildConfig.TRACEWAY_PROGUARD_UUID,
@@ -233,17 +242,28 @@ Traceway.init(
 )
 ```
 
+`TRACEWAY_PROGUARD_UUID` is the only field the plugin adds to `BuildConfig`. To keep the connection string out of source too, declare your own field with `buildConfigField("String", "TRACEWAY_DSN", "\"$tracewayDsn\"")` and read it back as `BuildConfig.TRACEWAY_DSN`.
+
 See the [Android symbolicator docs](/symbolicator/android) for the full plugin configuration, the upload token, and the manual upload path.
 
 ## Test Your Integration
 
-Add a button that throws an exception to verify everything is wired up:
+Make your activity show a button that throws, so you can verify everything is wired up:
 
 ```kotlin
-Button(this).apply {
-    text = "Send Test Error"
-    setOnClickListener {
-        throw RuntimeException("Test error from Traceway")
+import android.app.Activity
+import android.os.Bundle
+import android.widget.Button
+
+class MainActivity : Activity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(Button(this).apply {
+            text = "Send Test Error"
+            setOnClickListener {
+                throw RuntimeException("Test error from Traceway")
+            }
+        })
     }
 }
 ```

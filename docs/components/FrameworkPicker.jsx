@@ -98,9 +98,6 @@ export default function FrameworkPicker() {
   return (
     <div className="framework-picker">
       <h2 className="framework-picker-heading">Choose your framework</h2>
-      <p className="framework-picker-subheading">
-        Select the framework you're using to get started with Traceway.
-      </p>
       <div className="framework-picker-grid">
         {FRAMEWORKS.map((fw) => (
           <button
@@ -110,7 +107,7 @@ export default function FrameworkPicker() {
           >
             <img
               src={fw.icon}
-              alt={fw.label}
+              alt=""
               className={`framework-picker-icon${fw.iconClassName ? ` ${fw.iconClassName}` : ""}`}
             />
             <span className="framework-picker-label">{fw.label}</span>

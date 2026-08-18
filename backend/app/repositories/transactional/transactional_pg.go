@@ -28,6 +28,8 @@ var (
 	ProjectRepository              = pgrepo.ProjectRepository
 	ProjectUserRoleRepository      = pgrepo.ProjectUserRoleRepository
 	RefreshTokenRepository         = pgrepo.RefreshTokenRepository
+	SetupPlanRepository            = pgrepo.SetupPlanRepository
+	SetupTokenRepository           = pgrepo.SetupTokenRepository
 	StatusPageRepository           = pgrepo.StatusPageRepository
 	SyntheticCheckRepository       = pgrepo.SyntheticCheckRepository
 	SyntheticRunnerRepository      = pgrepo.SyntheticRunnerRepository

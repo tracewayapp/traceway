@@ -188,6 +188,7 @@
 
 	function handleLogout() {
 		authState.logout();
+		projectsState.clear();
 		goto('/login');
 	}
 

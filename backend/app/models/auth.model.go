@@ -25,15 +25,15 @@ type RegisterRequest struct {
 	Password         string `json:"password" binding:"required,min=8"`
 	OrganizationName string `json:"organizationName" binding:"required"`
 	Timezone         string `json:"timezone" binding:"required"`
-	ProjectName      string `json:"projectName" binding:"required"`
-	Framework        string `json:"framework" binding:"required"`
+	ProjectName      string `json:"projectName"`
+	Framework        string `json:"framework"`
 	CaptchaToken     string `json:"captchaToken"`
 }
 
 type RegisterResponse struct {
 	Token         string                      `json:"token"`
 	User          UserResponse                `json:"user"`
-	Project       ProjectWithBackendUrl       `json:"project"`
+	Project       *ProjectWithBackendUrl      `json:"project,omitempty"`
 	Projects      []*ProjectWithBackendUrl    `json:"projects"`
 	Organizations []*UserOrganizationResponse `json:"organizations"`
 }

@@ -136,9 +136,7 @@ class ProjectsState {
 
         // If no current project selected or current project not in list, select first one
         if (!this.currentProjectId || !this.projects.find(p => p.id === this.currentProjectId)) {
-            if (this.projects.length > 0) {
-                this.currentProjectId = this.projects[0].id;
-            }
+            this.currentProjectId = this.projects.length > 0 ? this.projects[0].id : null;
         }
 
         // Cache in localStorage
@@ -166,15 +164,22 @@ class ProjectsState {
         }
     }
 
-    async createProject(name: string, framework: Framework = 'gin', organizationId?: number): Promise<ProjectWithToken> {
-        const response = await api.post('/projects', { name, framework, organizationId }, {
-            projectId: this.currentProjectId ?? undefined
-        });
-
-        // Reload projects to refresh cache
+    // Batch create through POST /projects/batch, which needs no existing
+    // projectId, so it also works for zero-project accounts (the registration
+    // wizard's manual step). Existing names are returned instead of erroring.
+    async createProjects(organizationId: number, projects: { name: string; framework: Framework }[]): Promise<ProjectWithToken[]> {
+        const response = await api.post('/projects/batch', { organizationId, projects });
         await this.loadProjects();
+        return response.projects;
+    }
 
-        return response;
+    async createProject(name: string, framework: Framework = 'gin', organizationId?: number): Promise<ProjectWithToken> {
+        const targetOrgId = organizationId ?? this.currentProject?.organizationId;
+        if (!targetOrgId) {
+            throw new Error('No organization selected');
+        }
+        const created = await this.createProjects(targetOrgId, [{ name, framework }]);
+        return created[0];
     }
 
     async updateProject(id: string, name: string, framework: Framework, dropHealthyHealthchecks: boolean, healthcheckPaths: string[], profileLabelAllowlist: string[], aiFlaggedTerms: string[], aiFlaggedLanguages: string[]): Promise<Project> {
@@ -200,6 +205,12 @@ class ProjectsState {
 
     selectProject(projectId: string) {
         this.currentProjectId = projectId;
+    }
+
+    clear() {
+        this.projects = [];
+        this.currentProjectId = null;
+        localStorage.removeItem(PROJECTS_CACHE_KEY);
     }
 
     initFromCache() {

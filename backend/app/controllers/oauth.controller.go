@@ -34,8 +34,8 @@ type oauthProvidersResponse struct {
 type finishOAuthSetupRequest struct {
 	OrganizationName string `json:"organizationName" binding:"required"`
 	Timezone         string `json:"timezone" binding:"required"`
-	ProjectName      string `json:"projectName" binding:"required"`
-	Framework        string `json:"framework" binding:"required"`
+	ProjectName      string `json:"projectName"`
+	Framework        string `json:"framework"`
 }
 
 func (a oauthController) ListProviders(c *gin.Context) {
@@ -217,7 +217,14 @@ func (a oauthController) FinishSetup(c *gin.Context) {
 		return
 	}
 
-	if !validFrameworks[request.Framework] {
+	// Project creation is optional: the setup wizard's step 2 adds projects
+	// after the organization exists (mirrors Register).
+	wantsProject := request.ProjectName != "" || request.Framework != ""
+	if wantsProject && (request.ProjectName == "" || request.Framework == "") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "projectName and framework must be provided together"})
+		return
+	}
+	if wantsProject && !validFrameworks[request.Framework] {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Framework must be one of: gin, fiber, chi, fasthttp, stdlib, custom, react, svelte, vuejs, jquery, react-native, hono, cloudflare, opentelemetry, symfony, flutter, android, ios"})
 		return
 	}
@@ -280,19 +287,23 @@ func (a oauthController) FinishSetup(c *gin.Context) {
 		}
 	}
 
-	project, err := transactional.ProjectRepository.CreateWithOrganization(tx, request.ProjectName, request.Framework, org.Id)
-	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("FinishSetup: create project: %w", err))
-		return
-	}
+	var projectWithUrl *models.ProjectWithBackendUrl
+	if wantsProject {
+		project, err := transactional.ProjectRepository.CreateWithOrganization(tx, request.ProjectName, request.Framework, org.Id)
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("FinishSetup: create project: %w", err))
+			return
+		}
 
-	cache.ProjectCache.AddProject(&models.Project{
-		Id:             project.Id,
-		Name:           project.Name,
-		Token:          project.Token,
-		Framework:      project.Framework,
-		OrganizationId: project.OrganizationId,
-	})
+		cache.ProjectCache.AddProject(&models.Project{
+			Id:             project.Id,
+			Name:           project.Name,
+			Token:          project.Token,
+			Framework:      project.Framework,
+			OrganizationId: project.OrganizationId,
+		})
+		projectWithUrl = project.ToProjectWithBackendUrl()
+	}
 
 	token, err := services.GenerateToken(user.Id, user.Email)
 	if err != nil {
@@ -315,7 +326,7 @@ func (a oauthController) FinishSetup(c *gin.Context) {
 	c.JSON(http.StatusCreated, &models.RegisterResponse{
 		Token:         token,
 		User:          user.ToResponse(),
-		Project:       *project.ToProjectWithBackendUrl(),
+		Project:       projectWithUrl,
 		Projects:      projects,
 		Organizations: organizations,
 	})

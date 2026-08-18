@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -86,11 +87,18 @@ func uniqueDashboardName(existing []*models.Dashboard, base string) string {
 	}
 }
 
-func installDashboardTemplate(ctx *gin.Context, tx *sql.Tx, template *models.DashboardTemplate, organizationId int) *models.Dashboard {
+// errTemplateInvalid marks pre-SQL template problems (unparseable definition,
+// unsupported widget type). Callers may skip such templates without poisoning
+// the surrounding transaction, because no statement has executed yet.
+var errTemplateInvalid = errors.New("invalid dashboard template")
+
+var errDashboardNameTaken = errors.New("dashboard name already exists")
+
+// installDashboardTemplateTx is the gin-free core of installDashboardTemplate.
+func installDashboardTemplateTx(tx *sql.Tx, template *models.DashboardTemplate, organizationId int, createdBy *int) (*models.Dashboard, error) {
 	def, err := dashboardsvc.ParseDefinition(template.Definition)
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to parse template %s definition: %w", template.Key, err))
-		return nil
+		return nil, traceway.NewStackTraceErrorf("failed to parse template %s definition: %w (%w)", template.Key, err, errTemplateInvalid)
 	}
 	for i := range def.Widgets {
 		def.Widgets[i].WidgetType = strings.TrimSpace(def.Widgets[i].WidgetType)
@@ -98,29 +106,20 @@ func installDashboardTemplate(ctx *gin.Context, tx *sql.Tx, template *models.Das
 			def.Widgets[i].WidgetType = "line_chart"
 		}
 		if !dashboardsvc.IsAllowedWidgetType(def.Widgets[i].WidgetType) {
-			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("template %s contains unsupported widget type %s", template.Key, def.Widgets[i].WidgetType))
-			return nil
+			return nil, traceway.NewStackTraceErrorf("template %s contains unsupported widget type %s (%w)", template.Key, def.Widgets[i].WidgetType, errTemplateInvalid)
 		}
 	}
 	dashboardsvc.EnsureWidgetIds(def)
 	definition, err := dashboardsvc.MarshalDefinition(def)
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to marshal template %s definition: %w", template.Key, err))
-		return nil
+		return nil, traceway.NewStackTraceErrorf("failed to marshal template %s definition: %w (%w)", template.Key, err, errTemplateInvalid)
 	}
 
 	existing, err := transactional.DashboardRepository.FindByOrganization(tx, organizationId)
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to list dashboards: %w", err))
-		return nil
+		return nil, traceway.NewStackTraceErrorf("failed to list dashboards: %w", err)
 	}
 	name := uniqueDashboardName(existing, template.Name)
-
-	userId := middleware.GetUserId(ctx)
-	var createdBy *int
-	if userId > 0 {
-		createdBy = &userId
-	}
 
 	templateKey := template.Key
 	now := time.Now().UTC()
@@ -137,14 +136,86 @@ func installDashboardTemplate(ctx *gin.Context, tx *sql.Tx, template *models.Das
 	id, err := transactional.DashboardRepository.Create(tx, dashboard)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
+			return nil, errDashboardNameTaken
+		}
+		return nil, traceway.NewStackTraceErrorf("failed to install template %s: %w", template.Key, err)
+	}
+	dashboard.Id = id
+	return dashboard, nil
+}
+
+func installDashboardTemplate(ctx *gin.Context, tx *sql.Tx, template *models.DashboardTemplate, organizationId int) *models.Dashboard {
+	userId := middleware.GetUserId(ctx)
+	var createdBy *int
+	if userId > 0 {
+		createdBy = &userId
+	}
+
+	dashboard, err := installDashboardTemplateTx(tx, template, organizationId, createdBy)
+	if err != nil {
+		if errors.Is(err, errDashboardNameTaken) {
 			ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "A dashboard with this name already exists."})
 			return nil
 		}
-		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to install template %s: %w", template.Key, err))
+		ctx.AbortWithError(http.StatusInternalServerError, err)
 		return nil
 	}
-	dashboard.Id = id
 	return dashboard
+}
+
+// populateDefaultDashboards installs the framework-default templates for a
+// freshly created project and assigns them. It is a no-op when the framework
+// has no defaults or the project already has dashboard assignments; unseeded
+// or invalid templates are skipped with a CaptureException, while SQL errors
+// propagate (a failed statement poisons a Postgres transaction, so they must
+// never be swallowed here).
+func populateDefaultDashboards(tx *sql.Tx, project *models.Project, createdBy *int) error {
+	if project.OrganizationId == nil {
+		return nil
+	}
+	keys := defaultTemplateKeysForFramework(project.Framework)
+	if len(keys) == 0 {
+		return nil
+	}
+
+	existing, err := transactional.DashboardRepository.FindAssignmentsByProject(tx, project.Id)
+	if err != nil {
+		return err
+	}
+	if len(existing) > 0 {
+		return nil
+	}
+
+	position := 0
+	for _, key := range keys {
+		template, err := transactional.DashboardTemplateRepository.FindByKey(tx, key)
+		if err != nil {
+			return err
+		}
+		if template == nil {
+			traceway.CaptureException(fmt.Errorf("default dashboard template %s is not seeded", key))
+			continue
+		}
+
+		dashboard, err := installDashboardTemplateTx(tx, template, *project.OrganizationId, createdBy)
+		if err != nil {
+			if errors.Is(err, errTemplateInvalid) {
+				traceway.CaptureException(err)
+				continue
+			}
+			return err
+		}
+		if err := transactional.DashboardRepository.CreateAssignment(tx, &models.ProjectDashboard{
+			ProjectId:   project.Id,
+			DashboardId: dashboard.Id,
+			Position:    position,
+			CreatedAt:   time.Now().UTC(),
+		}); err != nil {
+			return err
+		}
+		position++
+	}
+	return nil
 }
 
 type InstallTemplateRequest struct {

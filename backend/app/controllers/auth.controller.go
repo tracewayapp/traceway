@@ -163,16 +163,28 @@ func (a authController) Register(c *gin.Context) {
 		}
 	}
 
-	if !validFrameworks[request.Framework] {
-		traceway.CaptureMessage("Invalid framework received during registration: " + request.Framework)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Framework must be one of: gin, fiber, chi, fasthttp, stdlib, custom, react, svelte, vuejs, jquery, react-native, hono, cloudflare, opentelemetry, symfony, flutter, android, ios"})
+	// Project creation is optional: the registration wizard creates the
+	// account first and lets step 2 (AI proposal or manual batch) add
+	// projects afterwards.
+	wantsProject := request.ProjectName != "" || request.Framework != ""
+	if wantsProject && (request.ProjectName == "" || request.Framework == "") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "projectName and framework must be provided together"})
 		return
 	}
 
-	project, err := transactional.ProjectRepository.CreateWithOrganization(tx, request.ProjectName, request.Framework, org.Id)
-	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, err)
-		return
+	var project *models.Project
+	if wantsProject {
+		if !validFrameworks[request.Framework] {
+			traceway.CaptureMessage("Invalid framework received during registration: " + request.Framework)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Framework must be one of: gin, fiber, chi, fasthttp, stdlib, custom, react, svelte, vuejs, jquery, react-native, hono, cloudflare, opentelemetry, symfony, flutter, android, ios"})
+			return
+		}
+
+		project, err = transactional.ProjectRepository.CreateWithOrganization(tx, request.ProjectName, request.Framework, org.Id)
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, err)
+			return
+		}
 	}
 
 	token, err := services.GenerateToken(user.Id, user.Email)
@@ -187,16 +199,20 @@ func (a authController) Register(c *gin.Context) {
 		return
 	}
 
-	// cache can get out of sync here
-	// the transaction for creating the project is not guaranteed to have
-	// finished when this is inserted into cache
-	cache.ProjectCache.AddProject(&models.Project{
-		Id:             project.Id,
-		Name:           project.Name,
-		Token:          project.Token,
-		Framework:      project.Framework,
-		OrganizationId: project.OrganizationId,
-	})
+	var projectWithUrl *models.ProjectWithBackendUrl
+	if project != nil {
+		// cache can get out of sync here
+		// the transaction for creating the project is not guaranteed to have
+		// finished when this is inserted into cache
+		cache.ProjectCache.AddProject(&models.Project{
+			Id:             project.Id,
+			Name:           project.Name,
+			Token:          project.Token,
+			Framework:      project.Framework,
+			OrganizationId: project.OrganizationId,
+		})
+		projectWithUrl = project.ToProjectWithBackendUrl()
+	}
 
 	organizations, err := transactional.OrganizationRepository.FindByUserIdWithRoles(tx, user.Id)
 	if err != nil {
@@ -207,7 +223,7 @@ func (a authController) Register(c *gin.Context) {
 	c.JSON(http.StatusCreated, &models.RegisterResponse{
 		Token:         token,
 		User:          user.ToResponse(),
-		Project:       *project.ToProjectWithBackendUrl(),
+		Project:       projectWithUrl,
 		Projects:      projects,
 		Organizations: organizations,
 	})

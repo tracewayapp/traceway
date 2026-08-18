@@ -17,3 +17,25 @@ type ActivePAT struct {
 	Email      string
 	LastUsedAt *time.Time
 }
+
+type ActiveSetupToken struct {
+	Id             string
+	UserId         int
+	OrganizationId int
+	Email          string
+	ExpiresAt      time.Time
+}
+
+type SetupPlanRow struct {
+	Id               string
+	UserId           int
+	OrganizationId   int
+	RequestedByEmail string
+	Payload          string
+	Status           string
+	RejectReason     string
+	Result           string
+	CreatedAt        time.Time
+	DecidedAt        *time.Time
+	DecidedBy        *int
+}

@@ -33,6 +33,7 @@ func newRootCmd() *cobra.Command {
 	cmd.AddCommand(newLogoutCmd())
 	cmd.AddCommand(newProfilesCmd())
 	cmd.AddCommand(newProjectsCmd())
+	cmd.AddCommand(newSetupCmd())
 	cmd.AddCommand(newExceptionsCmd())
 	cmd.AddCommand(newLogsCmd())
 	cmd.AddCommand(newEndpointsCmd())

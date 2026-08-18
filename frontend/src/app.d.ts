@@ -24,6 +24,7 @@ declare global {
 				theme?: 'light' | 'dark' | 'auto';
 			}) => string;
 			remove: (widgetId: string) => void;
+			reset: (widgetId: string) => void;
 		};
 		onTurnstileLoad?: () => void;
 	}

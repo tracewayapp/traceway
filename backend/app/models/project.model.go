@@ -59,10 +59,10 @@ type Project struct {
 }
 
 func (p Project) ToProjectWithBackendUrl() *ProjectWithBackendUrl {
-	return &ProjectWithBackendUrl{Project: p, BackendUrl: getBackendUrl()}
+	return &ProjectWithBackendUrl{Project: p, BackendUrl: GetBackendUrl()}
 }
 
-func getBackendUrl() string {
+func GetBackendUrl() string {
 	if url := config.Config.AppBaseURL; url != "" {
 		return url
 	}

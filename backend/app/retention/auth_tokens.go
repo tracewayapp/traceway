@@ -45,6 +45,18 @@ func startAuthTokensPrune(ctx context.Context) {
 		}
 		total += n
 
+		n, err = transactional.SetupTokenRepository.PruneExpired(tx, now)
+		if err != nil {
+			return total, err
+		}
+		total += n
+
+		n, err = transactional.SetupPlanRepository.PruneOld(tx, now)
+		if err != nil {
+			return total, err
+		}
+		total += n
+
 		return total, nil
 	})
 }

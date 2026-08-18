@@ -155,20 +155,14 @@ func (p projectController) CreateProject(c *gin.Context) {
 		return
 	}
 
-	// Validate project name
-	nameLen := utf8.RuneCountInString(request.Name)
-	if nameLen < 1 || nameLen > 100 {
-		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Project name must be between 1 and 100 characters"})
-		return
-	}
-	if !projectNameRegex.MatchString(request.Name) {
-		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Project name can only contain letters, numbers, spaces, hyphens, and underscores"})
+	if msg := validateProjectName(request.Name); msg != "" {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": msg})
 		return
 	}
 
 	if !validFrameworks[request.Framework] {
 		traceway.CaptureMessage("Invalid framework received: " + request.Framework)
-		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Framework must be one of: gin, fiber, chi, fasthttp, stdlib, custom, react, svelte, vuejs, jquery, react-native, hono, cloudflare, opentelemetry, symfony, laravel, django, flutter, android, ios"})
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": invalidFrameworkMessage})
 		return
 	}
 

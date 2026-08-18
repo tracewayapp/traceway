@@ -43,6 +43,10 @@ func NewPATToken() string {
 	return newOpaqueToken("twp_")
 }
 
+func NewSetupToken() string {
+	return newOpaqueToken("tws_")
+}
+
 func IssueTokenSet(tx *sql.Tx, userId int, email, clientId string) (*models.TokenSetResponse, error) {
 	return issueTokenSetWithFamily(tx, userId, email, clientId, uuid.New().String())
 }

@@ -1,1 +1,0 @@
-import{j as o,g as s,k as e}from"./BfY7qcpg.js";import{a as n,p as r}from"./CU0js4iv.js";class a{#t=o(0);get downChecksCount(){return s(this.#t)}set downChecksCount(t){e(this.#t,t,!0)}async refreshDownCount(){try{const t=await n.get("/synthetics/open-count",{projectId:r.currentProjectId??void 0});this.downChecksCount=t.count??0}catch{}}}const u=new a;export{u as m};

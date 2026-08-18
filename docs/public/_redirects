@@ -2,11 +2,21 @@
 # consolidated onto one OpenTelemetry path. Keep these until the old URLs stop
 # showing up in referrers.
 /client/node-sdk            /client/otel/nodejs            301
+# node-sdk subpages with no 1:1 twin under /client/otel/nodejs fall back to the
+# framework index (first match wins, so these must precede the splat).
+/client/node-sdk/exceptions     /client/otel/nodejs        301
+/client/node-sdk/initialization /client/otel/nodejs        301
+/client/node-sdk/spans          /client/otel/nodejs        301
+/client/node-sdk/tasks          /client/otel/nodejs        301
 /client/node-sdk/*          /client/otel/nodejs/:splat     301
 /client/nestjs              /client/otel/nestjs            301
-/client/nestjs/*            /client/otel/nestjs/:splat     301
+# Retired nestjs subpages (decorators/filter/middleware/module/service) fall
+# back to the framework index; only custom-instrumentation still exists.
+/client/nestjs/custom-instrumentation /client/otel/nestjs/custom-instrumentation 301
+/client/nestjs/*            /client/otel/nestjs            301
+# nextjs has no subpages under /client/otel, so everything lands on its index.
 /client/nextjs              /client/otel/nextjs            301
-/client/nextjs/*            /client/otel/nextjs/:splat     301
+/client/nextjs/*            /client/otel/nextjs            301
 /client/hono                /client/otel/hono              301
 /client/hono/*              /client/otel/hono/:splat       301
 /client/cloudflare          /client/otel/cloudflare        301

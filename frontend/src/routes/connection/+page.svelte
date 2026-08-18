@@ -6,6 +6,7 @@
 		CardHeader,
 		CardTitle
 	} from '$lib/components/ui/card';
+	import { goto } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button';
 	import { Copy, Check } from 'lucide-svelte';
 	import {
@@ -363,9 +364,11 @@ service:
 	{:else}
 		<Card>
 			<CardContent class="p-6 text-center">
-				<p class="text-muted-foreground">
-					No project selected. Please select or create a project from the dropdown above.
+				<p class="mb-4 text-muted-foreground">
+					No project selected yet. Let your coding agent propose the setup, or create a project
+					from the dropdown above.
 				</p>
+				<Button onclick={() => goto('/setup')}>Set Up Projects</Button>
 			</CardContent>
 		</Card>
 	{/if}

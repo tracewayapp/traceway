@@ -12,6 +12,7 @@
 		Bug,
 		CircleQuestionMark,
 		CircleCheck,
+		FolderPlus,
 		RefreshCw,
 		Copy,
 		Check,
@@ -304,6 +305,12 @@ service:
 	}
 
 	async function loadDashboard(showFullPageLoading = true) {
+		// Zero-project accounts (wizard skipped) have nothing to load; the
+		// template renders the setup call-to-action instead.
+		if (projectsState.currentProjectId === null) {
+			loading = false;
+			return;
+		}
 		if (showFullPageLoading) {
 			loading = true;
 		}
@@ -442,6 +449,22 @@ service:
 	{#if loading}
 		<div class="flex items-center justify-center py-20">
 			<LoadingCircle size="xlg" />
+		</div>
+	{:else if projectsState.projects.length === 0}
+		<div class="rounded-md border bg-card">
+			<div class="flex flex-col items-center justify-center px-6 py-12 text-center">
+				<div class="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+					<FolderPlus class="h-6 w-6 text-muted-foreground" />
+				</div>
+				<h3 class="mb-2 text-lg font-semibold">Create Your First Project</h3>
+				<p class="mb-4 max-w-md text-sm text-muted-foreground">
+					Let your coding agent propose the setup for your approval, or create projects manually.
+				</p>
+				<Button onclick={() => goto('/setup')}>
+					Set Up Projects
+					<ArrowRight class="ml-2 h-4 w-4" />
+				</Button>
+			</div>
 		</div>
 	{:else if !error && data && !data.hasData}
 		<!-- Integration Not Connected -->

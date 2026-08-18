@@ -1,6 +1,6 @@
 ---
 name: traceway-setup
-description: Analyze a repository's backend, browser, mobile, AI, background-work, existing-observability, build, and deployment architecture; propose and explain the correct Traceway project topology; guide the user through creating projects and credentials in the Traceway dashboard; then instrument and verify every selected component. Every backend uses OpenTelemetry over OTLP/HTTP regardless of language or framework, keeping endpoints, tasks, AI traces, logs, application metrics, and host metrics in one backend project. Browser frontends and independently released mobile apps use separate Traceway projects with the Traceway SDKs, plus source map or symbol uploads where applicable. Use when the user wants to plan, add, migrate, or complete Traceway or OpenTelemetry monitoring for a backend, frontend, full-stack, mobile, iOS/Swift, or AI agent/chatbot repository. Accepts a project token and instance URL in the invocation, e.g. "/traceway-setup with token abc123 and url https://traceway.example.com".
+description: Analyze a repository's backend, browser, mobile, AI, background-work, existing-observability, build, and deployment architecture; propose and explain the correct Traceway project topology; create the projects through a user-approved setup plan (or guide manual dashboard creation); then instrument and verify every selected component. Every backend uses OpenTelemetry over OTLP/HTTP regardless of language or framework, keeping endpoints, tasks, AI traces, logs, application metrics, and host metrics in one backend project. Browser frontends and independently released mobile apps use separate Traceway projects with the Traceway SDKs, plus source map or symbol uploads where applicable. Use when the user wants to plan, add, migrate, or complete Traceway or OpenTelemetry monitoring for a backend, frontend, full-stack, mobile, iOS/Swift, or AI agent/chatbot repository. Accepts a project token and instance URL for connecting an existing project, e.g. "/traceway-setup with token abc123 and url https://traceway.example.com", or an organization setup token for creating projects, e.g. "/traceway-setup with setup token tws_abc123 and url https://traceway.example.com"; with no token it analyzes the repository first and then walks the user through getting a setup token. Any token starting with tws_ is a setup token even when the user just says "token".
 ---
 
 # Set Up Traceway
@@ -12,9 +12,19 @@ Analyze the application first, agree on its Traceway project structure with the 
 - Inspect before asking for credentials or changing code.
 - Explain what was detected, what is already tracked, and how each production component should report to Traceway.
 - Present a proposed project map and wait for the user to confirm it before implementation.
+- There are two classes of credentials, treated differently:
+  - **Setup tokens** (prefix `tws_`) are org-scoped, expire in 60 minutes, and can only propose a setup plan; nothing is created until the user approves the plan on the Traceway website. They are designed to transit chat, and asking the user to paste one is expected.
+  - **Project ingest tokens and upload tokens** are long-lived. Never print their values, never ask the user to paste them into chat, and never commit them. When the `traceway` CLI applies an approved plan, it writes ingest tokens directly into env files; read only the variable names from its summary, never the values.
 - Never print token values found in files or the environment. Report only that a value exists and the variable name that carries it.
-- Do not require the user to paste secrets into chat. Implement against environment variables and let the user set real values in their local, deployment, or CI secret store. Real values are required only for live verification.
 - Never commit tokens or filled connection strings.
+
+## Invocation Forms
+
+| Invocation carries | Path |
+|---|---|
+| A project ingest token + url | Fast Path for a single component, otherwise Steps 1-2, then integrate against the existing project |
+| A setup token (`tws_`) + url | Steps 1-2, then Step 3 from "Write the plan file" (3c) |
+| No token | Steps 1-2, then Step 3 from the top |
 
 **Every backend integrates with OpenTelemetry.** There is one backend path, not one per language or web framework: Go, Node, Python, PHP, Java, .NET, Ruby, and everything else export OTLP/HTTP to `<instance>/api/otel/*`. The Traceway project is created with framework **OpenTelemetry**, which is the only backend option in the dashboard's framework picker. The native Traceway Go SDK is a deliberate exception used only when the user explicitly asks for it.
 
@@ -23,10 +33,10 @@ Analyze the application first, agree on its Traceway project structure with the 
 When all of the following hold, skip Steps 2 and 3 and go straight to the integration steps:
 
 - the repository has exactly one deployable component, and
-- the user supplied (or the environment already carries) an instance URL and a project token, and
+- the user supplied (or the environment already carries) an instance URL and a project ingest token (not a `tws_` setup token, which exists to create projects), and
 - the token's project already matches that component.
 
-Still run Step 1, because it decides *how* to instrument. Collapse "Propose and Confirm the Project Map" to a single confirmation line ("This is a Go API; it reports to your existing `<name>` project over OpenTelemetry") and skip the dashboard walkthrough entirely. The full map-and-dashboard ceremony exists for repositories with more than one deployable component, or where no project exists yet. Do not make a user who handed you a token sit through a project-map review for a single service.
+Still run Step 1, because it decides *how* to instrument. Collapse "Propose and Confirm the Project Map" to a single confirmation line ("This is a Go API; it reports to your existing `<name>` project over OpenTelemetry") and skip the project-creation step entirely. The full map-and-creation ceremony exists for repositories with more than one deployable component, or where no project exists yet. Do not make a user who handed you a token sit through a project-map review for a single service.
 
 ## Step 1: Analyze the Architecture
 
@@ -79,23 +89,88 @@ Ask the user to confirm only what the repository cannot establish safely:
 4. Does the backend run on a VM/host, Kubernetes, or serverless/PaaS, and should host metrics be collected?
 5. Do mobile directories represent one cross-platform product or separate released apps?
 
+Each confirmed row must also settle what Step 3's plan file needs:
+
+- The **framework value**, one of the nine: `opentelemetry`, `react`, `svelte`, `vuejs`, `jquery`, `flutter`, `react-native`, `android`, `ios`.
+- The **env wiring**: which untracked env file holds the credential (`envFile`) and under which name (`envVar`), following the credential-naming rules above (public prefixes like `VITE_`/`PUBLIC_`/`NEXT_PUBLIC_` for browser values). `envFormat` is `token` when the code composes the connection string itself or the value feeds an OTLP Authorization header, and `connectionString` when the SDK init reads the full `<token>@<instance>/api/report` string straight from the variable.
+- The **deployment placement**, from Step 1's deployment analysis: when the credential cannot be hardcoded into the repository because of how the component is deployed (Vercel/Fly/K8s/CI-injected env, secret managers), add a `deployment` block with the platform name and the exact command or UI path, using the literal placeholder `<token>` for the value. The website substitutes the real value after approval; never put real tokens in the plan. A mobile project whose credential lives in build config usually gets a `deployment` block and no `envFile`.
+
 Do not modify code until the user confirms this map.
 
-## Step 3: Guide Dashboard Project Creation
+## Step 3: Create the Projects
 
-Read `dashboard-project-setup.md` and give the user a tailored, ordered checklist containing exactly the projects from the confirmed map. Explain why each project exists, which framework to select, which signals it will receive, and which credentials it needs. Include the relevant Traceway documentation links.
+The default path: submit the confirmed map as a setup plan, the user approves it visually on the Traceway website, and the `traceway` CLI writes the resulting ingest tokens into env files. Existing correctly mapped Traceway projects may be reused (the plan matches projects by name, so listing an existing name reuses it instead of duplicating).
 
-For every credential, define an environment variable rather than asking the user to paste the value. Runtime credentials take component-specific names (`TRACEWAY_BACKEND_TOKEN`, `PUBLIC_TRACEWAY_WEB_CONNECTION_STRING`, `TRACEWAY_MOBILE_CONNECTION_STRING`), respecting the framework's public-environment prefix rules.
+### 3a. Get a setup token (skip when the invocation carried one)
 
-**Upload tokens are different: the uploaders read fixed variable names.** `traceway-sourcemaps` reads `TRACEWAY_SOURCEMAP_TOKEN`, and `dart run traceway:upload_symbols` and the iOS dSYM script read `TRACEWAY_UPLOAD_TOKEN` (all three also read `TRACEWAY_URL`). Either name the CI secret exactly that, or keep a component-specific secret and pass it explicitly:
+Branch on account state; ask only if the repository and conversation do not establish it:
+
+- **Has a Traceway account**: "Open `<instance>/setup` (Traceway Cloud: https://cloud.tracewayapp.com/setup). Log in if prompted; the page shows a setup token starting with `tws_`. Paste it here and keep the page open." The token expires in 60 minutes; the page has a Generate New Token button.
+- **No account yet**: "Open `<instance>/register` (Traceway Cloud: https://cloud.tracewayapp.com/register). Step 1 creates your account and organization. On step 2, keep 'AI' selected; it shows a setup token starting with `tws_`. Paste it here and leave that page open: my proposal will appear there for your approval, and the projects show up live once you approve."
+
+Do not have the user create projects in the web UI on this path, and do not proceed without the token.
+
+### 3b. Ensure the CLI is installed
+
+```bash
+command -v traceway || curl -fsSL https://cli.tracewayapp.com/install.sh | sh
+```
+
+If the installer cannot run, fall back to 3f.
+
+### 3c. Write the plan file
+
+Write `traceway-setup-plan.json` from the confirmed map, one entry per project:
+
+```json
+{
+  "projects": [
+    {"name": "Product Backend", "framework": "opentelemetry",
+     "envFile": "backend/.env", "envVar": "TRACEWAY_BACKEND_TOKEN"},
+    {"name": "Product Web", "framework": "svelte",
+     "envFile": "frontend/.env", "envVar": "PUBLIC_TRACEWAY_WEB_CONNECTION_STRING",
+     "envFormat": "connectionString",
+     "deployment": {"platform": "Vercel",
+       "instructions": "vercel env add PUBLIC_TRACEWAY_WEB_CONNECTION_STRING production\n# paste: <token>"}}
+  ]
+}
+```
+
+Rules: `framework` is one of the nine values from Step 2; every `envFile` must be untracked (create it and confirm it is gitignored first); `envVar` follows the credential-naming rules; `deployment.instructions` uses the literal `<token>` placeholder, never a real value.
+
+### 3d. Apply
+
+Pass the setup token on stdin, never as an argument:
+
+```bash
+printf '%s' "tws_..." | traceway setup apply --url <instance> --plan traceway-setup-plan.json --token-stdin
+```
+
+The command submits the plan as a draft and waits. Tell the user: "Review the proposal on the Traceway page you have open and press **Approve Setup**." On approval the CLI creates nothing itself; the server provisions the projects and the CLI writes each ingest token into its env file, printing a token-free summary.
+
+Failure handling:
+
+- **Rejected**: the CLI exits with the user's rejection reason. Revise the map with the user, update the plan file, and run apply again; re-submitting replaces the pending draft and already-approved projects are matched by name.
+- **`invalid_setup_token` (401)**: the token expired. Ask the user for a fresh one from `<instance>/setup` and rerun.
+- **Timeout**: rerun when the user is ready; it is safe.
+
+Delete the plan file after a successful apply; it holds no secrets but it is setup litter.
+
+### 3e. Confirm and handle deployment credentials
+
+Ask the user to confirm the projects appeared on the open Traceway page before instrumenting anything. For every project with a `deployment` block, the website now shows a **Next Steps** panel with the exact command and the real credential value; walk the user through completing it there. Never relay those values through chat; if the user needs a value, point them at the panel.
+
+### 3f. Manual fallback
+
+When the user prefers clicking, the CLI cannot be installed, or apply keeps failing, follow `dashboard-project-setup.md`: the user creates each project in the dashboard UI and puts the tokens straight into their env files or secret store. On this path the old rule applies in full: ingest tokens never transit chat.
+
+**Upload tokens stay manual on every path: the uploaders read fixed variable names.** `traceway-sourcemaps` reads `TRACEWAY_SOURCEMAP_TOKEN`, and `dart run traceway:upload_symbols` and the iOS dSYM script read `TRACEWAY_UPLOAD_TOKEN` (all three also read `TRACEWAY_URL`). Either name the CI secret exactly that, or keep a component-specific secret and pass it explicitly:
 
 ```bash
 traceway-sourcemaps --url "$TRACEWAY_URL" --token "$TRACEWAY_WEB_UPLOAD_TOKEN" --directory ./dist
 ```
 
-Inventing a name like `TRACEWAY_WEB_UPLOAD_TOKEN` and then calling the uploader with no `--token` fails at release time, not at setup time, so make the choice explicit in the CI step.
-
-Proceed when the user confirms the required projects exist and the variables will be available. Existing correctly mapped Traceway projects may be reused.
+Inventing a name like `TRACEWAY_WEB_UPLOAD_TOKEN` and then calling the uploader with no `--token` fails at release time, not at setup time, so make the choice explicit in the CI step. Upload tokens are generated per project from **Connection** -> **Source Maps** or **Symbol Upload** in the dashboard.
 
 ## Integration Paths
 
@@ -169,6 +244,8 @@ Two of those lines are load-bearing in a way that fails silently:
 - **There is no `OTEL_SERVICE_VERSION`.** `service.version` only reaches Traceway through `OTEL_RESOURCE_ATTRIBUTES`. Without it, every endpoint row comes back with an empty App Version and release comparison does nothing.
 
 SDKs append `/v1/traces`, `/v1/metrics`, `/v1/logs` to the endpoint automatically, so set the **base** URL only. A full signal path in `OTEL_EXPORTER_OTLP_ENDPOINT` produces `/v1/traces/v1/traces`, and the signal-specific variables (`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`) are used verbatim with nothing appended. When configuring in code instead, the full URLs are `https://<instance>/api/otel/v1/traces` (and `/v1/metrics`, `/v1/logs`) with header `Authorization: Bearer <project-token>`.
+
+When Step 3's `traceway setup apply` wrote the env files, the plan's variables already hold real values locally, so wire the exporter to exactly those names (e.g. `Authorization=Bearer ${TRACEWAY_BACKEND_TOKEN}`) and run live verification immediately. On the manual fallback the user populates the variables first.
 
 Constraints: OTLP/HTTP only (protobuf or JSON). OTLP/gRPC is not supported, there is no listener on port 4317. `Content-Encoding: gzip` is fine. The body is read up to 10 MB and the rest is truncated, so an oversized batch answers `400 failed to unmarshal` rather than `413`. A wrong or missing token answers `401`, and any other path answers `404`. All three are invisible from the application: most SDKs log exporter failures at debug level only, so when nothing arrives, turn the SDK's own diagnostic logging on first.
 
@@ -477,6 +554,8 @@ Metrics arrive within ~60s under their hostmetrics names (`system.cpu.utilizatio
 ## Step 9: Verify
 
 Every dashboard page named below is at `<instance>/<page>`: `/endpoints`, `/issues`, `/tasks`, `/ai-traces`, `/logs`, `/dashboards`. Set the time picker to the last 15 minutes before reading any of them. Verify each project independently and finish with a project-to-component summary.
+
+When the CLI applied the plan, the local env files hold real values, so run local verification now rather than deferring it. Deployment environments are verified only after the user completes the website's Next Steps panel; re-state which variables must exist there before that verification can pass.
 
 1. **Backend project**
    - Run `curl <app>/api/users/1`, then `/2`, then `/3`, and open `/endpoints`. Exactly one row, `GET /api/users/:id`, with non-zero status codes. Three rows means `http.route` is not being set. Fix that before checking anything else.

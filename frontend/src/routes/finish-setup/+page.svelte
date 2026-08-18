@@ -5,24 +5,22 @@
     import { Input } from "$lib/components/ui/input";
     import { Label } from "$lib/components/ui/label";
     import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "$lib/components/ui/card";
-    import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
     import { ErrorAlert } from "$lib/components/ui/error-alert";
     import * as Select from "$lib/components/ui/select";
-    import { CircleAlert, Check } from "@lucide/svelte";
+    import { Check } from "@lucide/svelte";
     import { authState } from '$lib/state/auth.svelte';
-    import { projectsState, type Framework } from '$lib/state/projects.svelte';
+    import { projectsState } from '$lib/state/projects.svelte';
     import { themeState } from '$lib/state/theme.svelte';
-    import FrameworkCombobox from '$lib/components/framework-combobox.svelte';
     import { consumeSsoReturnTo, safeLocalPath } from '$lib/utils/navigation';
+    import SetupProjectsStep from '$lib/components/setup/setup-projects-step.svelte';
 
-    const DEFAULT_FRAMEWORK: Framework = 'opentelemetry';
-
+    let phase = $state<'organization' | 'projects'>('organization');
     let organizationName = $state('');
     let timezone = $state(Intl.DateTimeFormat().resolvedOptions().timeZone);
-    let projectName = $state('');
-    let framework = $state<Framework>(DEFAULT_FRAMEWORK);
     let error = $state('');
     let loading = $state(false);
+    let newOrgId = $state<number | null>(null);
+    let returnTo = $state('/');
 
     const timezones = Intl.supportedValuesOf('timeZone');
 
@@ -42,7 +40,7 @@
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${authState.token}`,
                 },
-                body: JSON.stringify({ organizationName, timezone, projectName, framework })
+                body: JSON.stringify({ organizationName, timezone })
             });
 
             if (!response.ok) {
@@ -53,8 +51,17 @@
             const data = await response.json();
             authState.setToken(data.token);
             authState.setOrganizations(data.organizations || []);
-            projectsState.setProjects(data.projects);
-            goto(safeLocalPath(consumeSsoReturnTo()));
+            projectsState.setProjects(data.projects ?? []);
+            newOrgId = data.organizations?.[0]?.id ?? null;
+            // The stashed SSO returnTo is single-use; capture it now and use
+            // it when the project step finishes.
+            returnTo = safeLocalPath(consumeSsoReturnTo());
+
+            if (newOrgId === null) {
+                goto(returnTo);
+                return;
+            }
+            phase = 'projects';
         } catch (e) {
             error = e instanceof Error ? e.message : 'Setup failed';
         } finally {
@@ -64,7 +71,7 @@
 </script>
 
 <div class="flex min-h-screen w-full items-center justify-center px-4 py-8">
-    <Card class="w-[400px]">
+    <Card class={phase === 'projects' ? 'w-full max-w-2xl' : 'w-[400px]'}>
         <CardHeader>
             <CardTitle class="text-2xl">
                 <div class="flex flex-row items-center justify-center gap-2">
@@ -76,10 +83,22 @@
                 </div>
             </CardTitle>
             <CardDescription class="text-center">
-                Finish setting up your account
+                {#if phase === 'projects'}
+                    Set up your projects
+                {:else}
+                    Finish setting up your account
+                {/if}
             </CardDescription>
         </CardHeader>
         <CardContent>
+            {#if phase === 'projects' && newOrgId !== null}
+                <SetupProjectsStep
+                    organizationId={newOrgId}
+                    onDone={() => goto(returnTo)}
+                    onSkip={() => goto(returnTo)}
+                    continueLabel="Continue"
+                />
+            {:else}
             {#if error}
                 <ErrorAlert {error} class="mb-4" />
             {/if}
@@ -108,14 +127,6 @@
                         </Select.Content>
                     </Select.Root>
                 </div>
-                <div class="flex flex-col space-y-1.5">
-                    <Label for="projectName">Project Name</Label>
-                    <Input id="projectName" type="text" bind:value={projectName} placeholder="My App" required />
-                </div>
-                <div class="flex flex-col space-y-1.5">
-                    <Label for="framework">Framework</Label>
-                    <FrameworkCombobox bind:value={framework} />
-                </div>
                 <Button type="submit" disabled={loading} class="w-full mt-2">
                     {#if loading}
                         Finishing setup...
@@ -124,6 +135,7 @@
                     {/if}
                 </Button>
             </form>
+            {/if}
         </CardContent>
     </Card>
 </div>

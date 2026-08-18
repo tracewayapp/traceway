@@ -1,6 +1,6 @@
-# Create the Traceway Project Structure
+# Manual Fallback: Create the Project Structure in the Dashboard UI
 
-Use this guide only after "Analyze the Architecture" produced a repository inventory and "Propose and Confirm the Project Map" was confirmed by the user. Tailor every instruction to the detected components; do not hand the user a generic list of every supported platform.
+Use this guide only when the setup-token + CLI path in SKILL.md Step 3 is unavailable or the user prefers clicking through the UI, and only after "Analyze the Architecture" produced a repository inventory and "Propose and Confirm the Project Map" was confirmed by the user. Tailor every instruction to the detected components; do not hand the user a generic list of every supported platform. On this path ingest tokens never transit chat: the user saves each token straight into their env file or secret store.
 
 ## 1. Establish the Dashboard
 
@@ -10,7 +10,7 @@ Ask whether the user uses Traceway Cloud or a self-hosted instance only if the r
 - Traceway Cloud registration: https://cloud.tracewayapp.com/register
 - Self-hosted dashboard: `https://<their-instance>`
 
-If the user does not have an account, direct them to registration and wait for them to finish account and organization setup. Do not ask for dashboard credentials.
+If the user does not have an account, direct them to registration and wait. Registration has two steps: step 1 creates the account and organization; step 2 offers "AI" and "Manual" project setup. For this manual path, tell the user to pick **Manual** on step 2 and enter the confirmed project rows right there (name plus framework per row, "Add another project" for more); each created project's token is shown for saving under the planned variable name. A user who already registered and skipped step 2 gets the same editor on `<their-instance>/setup` under the Manual tab. Do not ask for dashboard credentials.
 
 ## 2. Present the Creation Checklist
 
@@ -30,7 +30,11 @@ Explain the boundary in one paragraph: the backend project intentionally combine
 
 ## 3. Create Each Project
 
-For each checklist row, walk the user through the current dashboard UI:
+Two equivalent UI paths; pick whichever matches where the user is:
+
+**During onboarding** (registration step 2, or `<instance>/setup`): select the **Manual** tab, enter one row per checklist entry (project name plus framework), use "Add another project" for more rows, then select **New Projects**. Save each project's token under the planned environment-variable name.
+
+**From the running dashboard**, for each checklist row:
 
 1. Open the Traceway dashboard.
 2. Open the project selector in the header.

@@ -16,6 +16,7 @@ import (
 
 	"github.com/tracewayapp/traceway/backend/app/config"
 	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/synthetics/browserexec"
 )
 
 const (
@@ -48,6 +49,12 @@ const (
 
 func pollInterval() time.Duration {
 	return config.PollSeconds(config.Config.SyntheticsPollSeconds, 15)
+}
+
+var browserSandbox = browserexec.SandboxOff
+
+func BrowserSandbox() browserexec.Sandbox {
+	return browserSandbox
 }
 
 // BrowserMode returns the validated SYNTHETICS_BROWSER_MODE, defaulting to off.

@@ -1,0 +1,16 @@
+FROM golang:1.26-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      bubblewrap curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt/harness
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/harness/browsers
+RUN npm init -y >/dev/null && npm i @playwright/test@1.62.1
+RUN npx playwright install --with-deps chromium
+
+WORKDIR /src/backend

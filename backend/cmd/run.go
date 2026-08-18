@@ -308,6 +308,7 @@ func applyEnvOverrides(cfg *config.Cfg) {
 		{"OUTBOX_POLL_SECONDS", &cfg.OutboxPollSeconds},
 		{"SYNTHETICS_POLL_SECONDS", &cfg.SyntheticsPollSeconds},
 		{"SYNTHETICS_BROWSER_MODE", &cfg.SyntheticsBrowserMode},
+		{"SYNTHETICS_BROWSER_SANDBOX", &cfg.SyntheticsBrowserSandbox},
 		{"SYNTHETICS_HTTP_CONCURRENCY", &cfg.SyntheticsHTTPConcurrency},
 		{"SYNTHETICS_BROWSER_CONCURRENCY", &cfg.SyntheticsBrowserConcurrency},
 		{"SYNTHETICS_ALLOW_PRIVATE_TARGETS", &cfg.SyntheticsAllowPrivateTargets},

@@ -20,10 +20,8 @@ var missedTotal uint64
 
 // Start runs the scheduler and the in-process executor.
 func Start(ctx context.Context) {
-	// Browser checks are arbitrary code execution on the server; they must be
-	// impossible to enable in cloud mode.
-	if config.Config.CloudMode == "true" && BrowserMode() != BrowserModeOff {
-		panic("SYNTHETICS_BROWSER_MODE must be off in cloud mode: browser checks execute user-authored scripts on the server")
+	if config.Config.CloudMode == "true" && BrowserMode() == BrowserModeEmbedded {
+		panic("SYNTHETICS_BROWSER_MODE=embedded is not allowed in cloud mode: browser checks would execute user-authored scripts on the API host. Use SYNTHETICS_BROWSER_MODE=remote with a runner fleet")
 	}
 	// Fail fast instead of failing every browser run: embedded mode is only
 	// meaningful with the Node harness present (the :browser image).
@@ -31,13 +29,18 @@ func Start(ctx context.Context) {
 		if err := browserexec.Validate(PlaywrightDir()); err != nil {
 			panic(fmt.Sprintf("SYNTHETICS_BROWSER_MODE=embedded but the Playwright harness is unusable (%v); use the ghcr.io/tracewayapp/traceway:browser image or point SYNTHETICS_PLAYWRIGHT_DIR at a directory with @playwright/test installed", err))
 		}
+		sandbox, err := browserexec.ResolveSandbox(config.Config.SyntheticsBrowserSandbox, PlaywrightDir())
+		if err != nil {
+			panic(fmt.Sprintf("SYNTHETICS_BROWSER_SANDBOX=%s is unusable: %v; install bubblewrap or set SYNTHETICS_BROWSER_SANDBOX=off to accept unconfined check scripts", config.Config.SyntheticsBrowserSandbox, err))
+		}
+		browserSandbox = sandbox
 	}
 	// Same fail-fast principle for remote mode: without the shared secret no
 	// runner can ever authenticate, so every browser run would expire missed.
 	if BrowserMode() == BrowserModeRemote && config.Config.SyntheticsRunnerSecret == "" {
 		panic("SYNTHETICS_BROWSER_MODE=remote requires SYNTHETICS_RUNNER_SECRET so runners can authenticate")
 	}
-	config.Logf("Starting synthetics scheduler (interval: %s, browser mode: %s)", pollInterval(), BrowserMode())
+	config.Logf("Starting synthetics scheduler (interval: %s, browser mode: %s, sandbox: %s)", pollInterval(), BrowserMode(), BrowserSandbox())
 
 	go func() {
 		defer traceway.Recover()

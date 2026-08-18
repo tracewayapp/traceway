@@ -31,6 +31,7 @@ type Options struct {
 	// Timeout bounds the whole run; the per-test Playwright timeout is set
 	// slightly below it so test failures surface as test errors, not kills.
 	Timeout time.Duration
+	Sandbox Sandbox
 }
 
 type Result struct {
@@ -113,8 +114,23 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 	reportPath := filepath.Join(runDir, "report.json")
 	cli := filepath.Join(opts.HarnessDir, "node_modules", "@playwright", "test", "cli.js")
 
-	cmd := exec.CommandContext(ctx, "node", cli, "test", "--config", configPath)
-	cmd.Dir = opts.HarnessDir
+	browsers := browsersPath()
+
+	node, err := exec.LookPath("node")
+	if err != nil {
+		return nil, fmt.Errorf("node is not on PATH: %w", err)
+	}
+	cmd, err := buildCommand(ctx, opts.Sandbox, commandSpec{
+		NodePath:     node,
+		CLIPath:      cli,
+		ConfigPath:   configPath,
+		HarnessDir:   opts.HarnessDir,
+		RunDir:       runDir,
+		BrowsersPath: browsers,
+	})
+	if err != nil {
+		return nil, err
+	}
 	// A leaked descendant holding the output pipe (a daemon the user script
 	// spawned, or Chromium surviving the plain kill on Windows) must not wedge
 	// this worker forever: force the pipes closed shortly after node exits or
@@ -126,12 +142,6 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		"HOME=" + homeDir,
 		"TMPDIR=" + runDir,
 		"PLAYWRIGHT_JSON_OUTPUT_NAME=" + reportPath,
-	}
-	// HOME is sandboxed to the run dir, which would also hide Playwright's
-	// default per-user browser cache; resolve it from the REAL home first.
-	browsers := os.Getenv("PLAYWRIGHT_BROWSERS_PATH")
-	if browsers == "" {
-		browsers = defaultBrowsersPath()
 	}
 	if browsers != "" {
 		env = append(env, "PLAYWRIGHT_BROWSERS_PATH="+browsers)
@@ -295,6 +305,13 @@ func firstErrorMessage(result jsonTestResult) string {
 		}
 	}
 	return "test " + result.Status
+}
+
+func browsersPath() string {
+	if path := os.Getenv("PLAYWRIGHT_BROWSERS_PATH"); path != "" {
+		return path
+	}
+	return defaultBrowsersPath()
 }
 
 // defaultBrowsersPath mirrors Playwright's per-OS registry default, needed

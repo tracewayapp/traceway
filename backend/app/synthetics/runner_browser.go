@@ -42,6 +42,7 @@ func probeBrowser(ctx context.Context, check *models.SyntheticCheck) Outcome {
 		Script:     cfg.Script,
 		Env:        cfg.Env,
 		Timeout:    EffectiveTimeout(check),
+		Sandbox:    BrowserSandbox(),
 	})
 	if err != nil {
 		outcome.LatencyMs = float64(time.Since(started).Microseconds()) / 1000

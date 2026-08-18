@@ -20,6 +20,7 @@
 //	                         exceptions for infrastructure failures.
 //	RUNNER_WORKERS           concurrent browser runs (default 2)
 //	SYNTHETICS_PLAYWRIGHT_DIR  harness dir with @playwright/test (default .)
+//	SYNTHETICS_BROWSER_SANDBOX  auto (default) | bwrap | off
 //
 // Harness setup (once): npm init -y && npm i @playwright/test && npx playwright install chromium
 package main
@@ -49,12 +50,14 @@ import (
 const version = "1.0.0"
 
 type runnerConfig struct {
-	baseURL    string
-	secret     string
-	name       string
-	monitoring string
-	workers    int
-	harnessDir string
+	baseURL         string
+	secret          string
+	name            string
+	monitoring      string
+	workers         int
+	harnessDir      string
+	sandbox         string
+	resolvedSandbox browserexec.Sandbox
 }
 
 type job struct {
@@ -69,6 +72,14 @@ func main() {
 	cfg := loadConfig()
 	if err := browserexec.Validate(cfg.harnessDir); err != nil {
 		log.Fatalf("Playwright harness unusable at %s: %v\nSet it up with:\n  npm init -y && npm i @playwright/test && npx playwright install chromium\nor point SYNTHETICS_PLAYWRIGHT_DIR at an existing harness.", cfg.harnessDir, err)
+	}
+	sandbox, err := browserexec.ResolveSandbox(cfg.sandbox, cfg.harnessDir)
+	if err != nil {
+		log.Fatalf("SYNTHETICS_BROWSER_SANDBOX=%s is unusable: %v\nInstall bubblewrap (apt install bubblewrap / dnf install bubblewrap), or set SYNTHETICS_BROWSER_SANDBOX=off to accept unconfined check scripts.", cfg.sandbox, err)
+	}
+	cfg.resolvedSandbox = sandbox
+	if sandbox == browserexec.SandboxOff {
+		log.Print("WARNING: check scripts run unconfined. They can read this host's filesystem and process table, including this runner's own secret, and they can see each other's runs. Install bubblewrap and set SYNTHETICS_BROWSER_SANDBOX=bwrap before pointing this runner at a shared instance.")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -85,7 +96,7 @@ func main() {
 		}
 	}
 
-	log.Printf("traceway-runner %s (%s): polling %s (workers: %d, harness: %s)", version, cfg.name, cfg.baseURL, cfg.workers, cfg.harnessDir)
+	log.Printf("traceway-runner %s (%s): polling %s (workers: %d, harness: %s, sandbox: %s)", version, cfg.name, cfg.baseURL, cfg.workers, cfg.harnessDir, cfg.resolvedSandbox)
 
 	jobs := make(chan job)
 	var wg sync.WaitGroup
@@ -113,6 +124,7 @@ func loadConfig() runnerConfig {
 		monitoring: strings.TrimSpace(os.Getenv("TRACEWAY_RUNNER_MONITORING")),
 		workers:    2,
 		harnessDir: os.Getenv("SYNTHETICS_PLAYWRIGHT_DIR"),
+		sandbox:    os.Getenv("SYNTHETICS_BROWSER_SANDBOX"),
 	}
 	if cfg.baseURL == "" || cfg.secret == "" {
 		log.Fatal("TRACEWAY_URL and TRACEWAY_RUNNER_SECRET are required (the secret must match the server's SYNTHETICS_RUNNER_SECRET)")
@@ -223,6 +235,7 @@ func execute(ctx context.Context, cfg runnerConfig, j job) {
 		Script:     j.Script,
 		Env:        j.Env,
 		Timeout:    timeout,
+		Sandbox:    cfg.resolvedSandbox,
 	})
 
 	payload := map[string]any{"status": "down", "latencyMs": float64(time.Since(started).Microseconds()) / 1000}

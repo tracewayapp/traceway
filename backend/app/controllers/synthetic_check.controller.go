@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/tracewayapp/traceway/backend/app/config"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
@@ -39,7 +38,7 @@ var validHttpMethods = map[string]bool{
 
 const maxBrowserScriptBytes = 100 << 10
 
-const browserModeOffMessage = "Browser checks require SYNTHETICS_BROWSER_MODE=embedded (the :browser image) or a connected remote runner (SYNTHETICS_BROWSER_MODE=remote)."
+const browserModeOffMessage = "This instance is not running in a mode that can execute browser checks. An operator needs to enable SYNTHETICS_BROWSER_MODE=embedded (the :browser image) or connect a runner fleet with SYNTHETICS_BROWSER_MODE=remote. See https://docs.tracewayapp.com/server/runner"
 
 type checkRequest struct {
 	Name             string          `json:"name"`
@@ -95,9 +94,6 @@ func validateCheckRequest(req *checkRequest) string {
 			return "Port must be between 1 and 65535."
 		}
 	case models.CheckTypeBrowser:
-		if config.Config.CloudMode == "true" {
-			return "Browser checks are not available in cloud mode."
-		}
 		var cfg models.BrowserCheckConfig
 		if err := json.Unmarshal(req.Config, &cfg); err != nil {
 			return "The check configuration is not valid JSON."

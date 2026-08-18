@@ -20,7 +20,7 @@ Runners are deployment infrastructure, not dashboard entities. There is nothing 
 - A runner self-registers a liveness row under its `TRACEWAY_RUNNER_NAME` (defaults to the hostname) on first poll. The name is also its claim identity, so give each runner a unique name.
 - Traffic is outbound only. The runner long-polls the server (each poll is held up to 25 seconds), so it works behind NAT with no inbound ports and no firewall changes.
 - Rotation: change the secret on the server, restart it, update the runners, restart them. A runner presenting a stale secret exits immediately with a clear error.
-- The runner receives only the check script and the env vars configured on that check. Scripts run with an allowlisted environment, so they can never read the server's env or the runner's own secret.
+- The runner receives only the check script and the env vars configured on that check. Scripts run with an allowlisted environment, so they never inherit the server's env or the runner's own. Everything else about what a script can reach depends on the sandbox below.
 - If a runner dies mid-run, the server reclaims the stale run after 5 minutes. An expired run is recorded as `missed`, never executed late.
 
 ## 1. Enable remote mode on the server
@@ -54,6 +54,16 @@ PLAYWRIGHT_BROWSERS_PATH=/opt/traceway-runner/browsers npx playwright install --
 
 `--with-deps` installs Chromium's system libraries on apt-based distros (Ubuntu, Debian). On Amazon Linux or other rpm-based distros, run `npx playwright install chromium` and install the shared libraries with your package manager instead.
 
+**Install bubblewrap.** Check scripts are code someone else wrote, and the env allowlist alone does not contain them. Without a sandbox, node runs as the same user as the runner, which means a script can read the runner's own `/proc/<pid>/environ` and recover the shared secret, overwrite `@playwright/test` in the harness to backdoor every later run, and read the run directory of a check executing beside it. On a fleet serving more than one team, all three are cross-tenant leaks.
+
+```bash
+sudo apt install bubblewrap     # or: sudo dnf install bubblewrap
+```
+
+Then set `SYNTHETICS_BROWSER_SANDBOX=bwrap`. Each run gets its own pid, ipc, uts and user namespace with a fresh `/proc`, so the runner's process table and environment are not merely unreadable, they are absent. The harness is bind-mounted read-only and only that run's directory is writable, so poisoning fails with `EROFS`. The other runs' scratch directories are masked behind an empty overlay, so a run cannot read what a check working beside it downloaded or captured. Nothing under `/etc` is mounted except DNS, CA certificates and locale data, so a secret in the unit file or an `EnvironmentFile` is out of reach. The network namespace is deliberately shared, since probes exist to reach the internet.
+
+The default is `auto`, which uses bubblewrap when the host can run it and falls back to unconfined with a startup warning. Set `bwrap` explicitly in production: a host whose kernel forbids unprivileged user namespaces then fails at startup instead of quietly running scripts unconfined. The runner probes the sandbox at boot by executing `node --version` through the real bind set, so a broken host is caught before the first check.
+
 ## 3. Run it as a service
 
 Run the binary under a dedicated non-root user: it executes user-authored scripts. A systemd unit:
@@ -73,6 +83,7 @@ Environment=TRACEWAY_RUNNER_NAME=prod-runner-1
 Environment=RUNNER_WORKERS=2
 Environment=SYNTHETICS_PLAYWRIGHT_DIR=/opt/traceway-runner
 Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/traceway-runner/browsers
+Environment=SYNTHETICS_BROWSER_SANDBOX=bwrap
 Restart=always
 RestartSec=5
 
@@ -93,6 +104,7 @@ Shutdown is graceful: on SIGTERM the runner stops polling, lets in-flight runs f
 | `TRACEWAY_RUNNER_NAME` | hostname | Unique name; the runner registers and claims runs under it. |
 | `RUNNER_WORKERS` | `2` | Concurrent browser runs (max 16). |
 | `SYNTHETICS_PLAYWRIGHT_DIR` | `.` | Harness dir containing `node_modules/@playwright/test`. |
+| `SYNTHETICS_BROWSER_SANDBOX` | `auto` | `auto`, `bwrap` or `off`. Isolates each spec in a bubblewrap namespace. Set `bwrap` on any fleet serving more than one team. |
 | `TRACEWAY_RUNNER_MONITORING` | unset | Optional `<project_token>@<url>/api/report`. The runner then reports its own CPU/memory metrics, one `browser_run` task per executed check, and exceptions for infra failures. |
 
 ## 4. Verify

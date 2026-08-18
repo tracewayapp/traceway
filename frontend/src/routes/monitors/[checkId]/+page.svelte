@@ -30,7 +30,7 @@
 	} from '$lib/state/monitors.svelte';
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { authState } from '$lib/state/auth.svelte';
-	import { Activity, ChartLine, Check as CheckIcon, History, Pause, Pencil, Play, Trash2, TriangleAlert } from '@lucide/svelte';
+	import { Activity, ChartLine, Check as CheckIcon, History, Image as ImageIcon, Pause, Pencil, Play, ScrollText, Trash2, TriangleAlert } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 
 	let { data } = $props();
@@ -323,7 +323,17 @@
 		return new Date(iso).toLocaleString();
 	}
 
+	let screenshotOpen = $state(false);
+	let screenshotUrl = $state('');
+	let screenshotLoading = $state(false);
+
 	async function viewScreenshot(key: string) {
+		screenshotOpen = true;
+		screenshotLoading = true;
+		if (screenshotUrl) {
+			URL.revokeObjectURL(screenshotUrl);
+			screenshotUrl = '';
+		}
 		try {
 			const params = new URLSearchParams({ key });
 			if (projectsState.currentProjectId) {
@@ -333,12 +343,26 @@
 				headers: { Authorization: `Bearer ${authState.token}` }
 			});
 			if (!response.ok) throw new Error('Screenshot not found');
-			const blob = await response.blob();
-			window.open(URL.createObjectURL(blob), '_blank', 'noopener');
+			screenshotUrl = URL.createObjectURL(await response.blob());
 		} catch {
+			screenshotOpen = false;
 			toast.error('Failed to load the screenshot', { position: 'top-center' });
+		} finally {
+			screenshotLoading = false;
 		}
 	}
+
+	let errorOpen = $state(false);
+	let errorText = $state('');
+
+	function viewError(message: string) {
+		errorText = message;
+		errorOpen = true;
+	}
+
+	// Browser runs have no HTTP status code; http/tcp runs have no artifacts.
+	const isBrowserCheck = $derived(check?.checkType === 'browser');
+	const runHistoryColumns = $derived(isBrowserCheck ? 6 : 5);
 
 	let outputOpen = $state(false);
 	let outputText = $state('');
@@ -577,7 +601,7 @@
 				{#if resultsLoading}
 					<Table.Body>
 						<Table.Row>
-							<Table.Cell colspan={5} class="h-32">
+							<Table.Cell colspan={runHistoryColumns} class="h-32">
 								<div class="flex h-full items-center justify-center">
 									<LoadingCircle size="xlg" />
 								</div>
@@ -586,7 +610,7 @@
 					</Table.Body>
 				{:else if results.length === 0}
 					<Table.Body>
-						<TableEmptyState colspan={5} message="No runs in the last {WINDOW_DAYS} days" />
+						<TableEmptyState colspan={runHistoryColumns} message="No runs in the last {WINDOW_DAYS} days" />
 					</Table.Body>
 				{:else}
 					<Table.Header>
@@ -594,8 +618,14 @@
 							<Table.Head>Time</Table.Head>
 							<Table.Head class="w-[100px]">Result</Table.Head>
 							<Table.Head class="w-[110px]">Latency</Table.Head>
-							<Table.Head class="w-[90px]">Status code</Table.Head>
+							{#if !isBrowserCheck}
+								<Table.Head class="w-[90px]">Status code</Table.Head>
+							{/if}
 							<Table.Head>Error</Table.Head>
+							{#if isBrowserCheck}
+								<Table.Head class="w-[44px]"><span class="sr-only">Screenshot</span></Table.Head>
+								<Table.Head class="w-[44px]"><span class="sr-only">Logs</span></Table.Head>
+							{/if}
 						</Table.Row>
 					</Table.Header>
 					<Table.Body>
@@ -630,30 +660,51 @@
 								<Table.Cell class="font-mono text-sm tabular-nums text-muted-foreground">
 									{result.status === 'missed' ? '—' : formatDurationMs(result.latencyMs)}
 								</Table.Cell>
-								<Table.Cell class="font-mono text-sm tabular-nums text-muted-foreground">
-									{result.statusCode > 0 ? result.statusCode : '—'}
-								</Table.Cell>
-								<Table.Cell class="max-w-[300px] text-xs break-all whitespace-normal text-muted-foreground">
-									{result.errorMessage || ''}
-									{#if result.screenshotKey}
+								{#if !isBrowserCheck}
+									<Table.Cell class="font-mono text-sm tabular-nums text-muted-foreground">
+										{result.statusCode > 0 ? result.statusCode : '—'}
+									</Table.Cell>
+								{/if}
+								<Table.Cell class="max-w-[300px] min-w-[120px] text-xs text-muted-foreground">
+									{#if result.errorMessage}
 										<button
 											type="button"
-											class="ml-1 cursor-pointer text-primary underline underline-offset-2"
-											onclick={() => viewScreenshot(result.screenshotKey)}
+											class="line-clamp-2 w-full cursor-pointer text-left break-all"
+											title="View the full error"
+											onclick={() => viewError(result.errorMessage)}
 										>
-											screenshot
-										</button>
-									{/if}
-									{#if result.outputKey}
-										<button
-											type="button"
-											class="ml-1 cursor-pointer text-primary underline underline-offset-2"
-											onclick={() => viewOutput(result.outputKey)}
-										>
-											logs
+											{result.errorMessage}
 										</button>
 									{/if}
 								</Table.Cell>
+								{#if isBrowserCheck}
+									<Table.Cell class="px-1 text-center">
+										{#if result.screenshotKey}
+											<Button
+												variant="ghost"
+												size="icon"
+												class="h-7 w-7"
+												title="View the screenshot"
+												onclick={() => viewScreenshot(result.screenshotKey)}
+											>
+												<ImageIcon class="h-4 w-4" />
+											</Button>
+										{/if}
+									</Table.Cell>
+									<Table.Cell class="px-1 text-center">
+										{#if result.outputKey}
+											<Button
+												variant="ghost"
+												size="icon"
+												class="h-7 w-7"
+												title="View the logs"
+												onclick={() => viewOutput(result.outputKey)}
+											>
+												<ScrollText class="h-4 w-4" />
+											</Button>
+										{/if}
+									</Table.Cell>
+								{/if}
 							</Table.Row>
 						{/each}
 					</Table.Body>
@@ -755,6 +806,47 @@
 				<pre
 					class="max-h-[60vh] overflow-auto rounded-md border bg-muted/50 p-3 font-mono text-xs whitespace-pre-wrap">{outputText}</pre>
 			{/if}
+			<AlertDialog.Footer>
+				<AlertDialog.Cancel>Close</AlertDialog.Cancel>
+			</AlertDialog.Footer>
+		</AlertDialog.Content>
+	</AlertDialog.Root>
+
+	<AlertDialog.Root bind:open={screenshotOpen}>
+		<AlertDialog.Content class="sm:max-w-3xl">
+			<AlertDialog.Header>
+				<AlertDialog.Title>Failure screenshot</AlertDialog.Title>
+				<AlertDialog.Description>
+					Screenshot captured at the point of failure.
+				</AlertDialog.Description>
+			</AlertDialog.Header>
+			{#if screenshotLoading}
+				<div class="flex h-40 items-center justify-center">
+					<LoadingCircle size="lg" />
+				</div>
+			{:else if screenshotUrl}
+				<img
+					src={screenshotUrl}
+					alt="Failure screenshot"
+					class="max-h-[60vh] w-full rounded-md border object-contain"
+				/>
+			{/if}
+			<AlertDialog.Footer>
+				<AlertDialog.Cancel>Close</AlertDialog.Cancel>
+			</AlertDialog.Footer>
+		</AlertDialog.Content>
+	</AlertDialog.Root>
+
+	<AlertDialog.Root bind:open={errorOpen}>
+		<AlertDialog.Content class="sm:max-w-3xl">
+			<AlertDialog.Header>
+				<AlertDialog.Title>Run error</AlertDialog.Title>
+				<AlertDialog.Description>
+					Full error message reported by this run.
+				</AlertDialog.Description>
+			</AlertDialog.Header>
+			<pre
+				class="max-h-[60vh] overflow-auto rounded-md border bg-muted/50 p-3 font-mono text-xs break-all whitespace-pre-wrap">{errorText}</pre>
 			<AlertDialog.Footer>
 				<AlertDialog.Cancel>Close</AlertDialog.Cancel>
 			</AlertDialog.Footer>

@@ -59,6 +59,7 @@ type Cfg struct {
 
 	SyntheticsPollSeconds             string
 	SyntheticsBrowserMode             string
+	SyntheticsBrowserSandbox          string
 	SyntheticsHTTPConcurrency         string
 	SyntheticsBrowserConcurrency      string
 	SyntheticsAllowPrivateTargets     string
@@ -188,6 +189,7 @@ func LoadFromEnv() *Cfg {
 
 		SyntheticsPollSeconds:             os.Getenv("SYNTHETICS_POLL_SECONDS"),
 		SyntheticsBrowserMode:             os.Getenv("SYNTHETICS_BROWSER_MODE"),
+		SyntheticsBrowserSandbox:          os.Getenv("SYNTHETICS_BROWSER_SANDBOX"),
 		SyntheticsHTTPConcurrency:         os.Getenv("SYNTHETICS_HTTP_CONCURRENCY"),
 		SyntheticsBrowserConcurrency:      os.Getenv("SYNTHETICS_BROWSER_CONCURRENCY"),
 		SyntheticsAllowPrivateTargets:     os.Getenv("SYNTHETICS_ALLOW_PRIVATE_TARGETS"),

@@ -74,7 +74,7 @@ RUN npx playwright install chromium --only-shell
 # ==============================================================================
 FROM debian:bookworm-slim
 
-RUN apt-get update -o Acquire::Retries=3 -o APT::Update::Error-Mode=any && apt-get install -y --no-install-recommends ca-certificates tzdata wget libstdc++6 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -o Acquire::Retries=3 -o APT::Update::Error-Mode=any && apt-get install -y --no-install-recommends ca-certificates tzdata wget libstdc++6 bubblewrap && rm -rf /var/lib/apt/lists/*
 
 # Node runtime + the Playwright harness + the downloaded Chromium build.
 COPY --from=playwright-builder /usr/local/bin/node /usr/local/bin/node
@@ -101,6 +101,7 @@ ENV GIN_MODE=release \
     STORAGE_PATH=/data/storage \
     PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright \
     SYNTHETICS_BROWSER_MODE=embedded \
+    SYNTHETICS_BROWSER_SANDBOX=auto \
     SYNTHETICS_PLAYWRIGHT_DIR=/opt/traceway-playwright
 
 EXPOSE 80 8082

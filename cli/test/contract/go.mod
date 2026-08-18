@@ -6,7 +6,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/tracewayapp/traceway/backend v0.0.0
-	github.com/tracewayapp/traceway/cli v0.0.0
+	github.com/tracewayapp/traceway/cli v1.9.15
 )
 
 require (

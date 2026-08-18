@@ -77,7 +77,7 @@ export default function AgentSkillsPage() {
                 href={GITHUB_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-fg-2 hover:text-a2 transition-colors"
+                className="text-fg-2 hover:text-blue-bright transition-colors"
               >
                 View on GitHub →
               </Link>
@@ -323,7 +323,7 @@ export default function AgentSkillsPage() {
                 prompts, and resources.
               </p>
             </div>
-            <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-[0.8125rem] text-a2 transition-transform group-hover:translate-x-0.5">
+            <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-[0.8125rem] text-blue-bright transition-transform group-hover:translate-x-0.5">
               Explore the MCP server
               <ArrowRight className="h-4 w-4" />
             </span>
@@ -403,7 +403,7 @@ export default function AgentSkillsPage() {
                         gives the agent live tools.
                       </p>
                       <p>
-                        <Link href="/product/mcp" className="text-a2 hover:underline">
+                        <Link href="/product/mcp" className="text-blue-bright hover:underline">
                           See the MCP server →
                         </Link>
                       </p>

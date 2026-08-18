@@ -51,7 +51,7 @@ export default function CliPage() {
                 href="https://docs.tracewayapp.com/learn/cli"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-fg-2 hover:text-a2 transition-colors"
+                className="text-fg-2 hover:text-blue-bright transition-colors"
               >
                 Read the CLI docs →
               </Link>
@@ -276,7 +276,7 @@ export default function CliPage() {
                 login and current project.
               </p>
             </div>
-            <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-[0.8125rem] text-a2 transition-transform group-hover:translate-x-0.5">
+            <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-[0.8125rem] text-blue-bright transition-transform group-hover:translate-x-0.5">
               Explore the MCP server
               <ArrowRight className="h-4 w-4" />
             </span>

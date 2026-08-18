@@ -1,43 +1,47 @@
 /* =========================================================================
-   Traceway Docs: dark-only design tokens ported from website design-guidelines
-   (styles.css). Override Nextra's default theme colors and apply mono-native
-   typography.
+   Traceway Docs: dark-only design tokens matching the dashboard's dark mode
+   (frontend/src/routes/layout.css). Override Nextra's default theme colors
+   and apply mono-native typography.
    ========================================================================= */
 
 :root,
 :is(html[class~="dark"]) {
-  /* Ink & surfaces */
-  --ink-0: #05070c;
-  --ink-1: #0a0d14;
-  --ink-2: #0f131c;
-  --ink-3: #151a24;
-  --ink-4: #1d2430;
-  --ink-5: #283041;
-  --hair: rgba(255, 255, 255, 0.06);
-  --hair-2: rgba(255, 255, 255, 0.1);
+  /* Ink & surfaces: pure black page ground (website style), dashboard navy
+     --ink-* scale for raised surfaces */
+  --ink-0: #000;
+  --ink-1: #0f1220;
+  --ink-2: #151a2c;
+  --ink-3: #1b2138;
+  --ink-4: #252c47;
+  --ink-5: #313a5b;
+  --hair: rgba(255, 255, 255, 0.08);
+  --hair-2: rgba(255, 255, 255, 0.12);
 
-  /* Text */
-  --fg-0: #f4f6fb;
-  --fg-1: #c9d0dd;
-  --fg-2: #8a93a6;
-  --fg-3: #5a6374;
+  /* Text (dashboard --fg-* scale) */
+  --fg-0: #f4f6fc;
+  --fg-1: #cbd2e4;
+  --fg-2: #929bb4;
+  --fg-3: #5f6780;
 
-  /* Accent: Electric Indigo */
-  --a1: #7c5cff;
-  --a2: #00d4ff;
-  --a3: #ff4d8d;
-  --a4: #ffd166;
-  --ok: #22e0a8;
-  --crit: #ff5a5f;
+  /* Accent: dashboard blue family */
+  --blue: oklch(0.623 0.214 259.815);
+  --blue-bright: oklch(0.707 0.165 254.624);
+  --blue-deep: oklch(0.546 0.245 262.881);
+  --a1: var(--blue-deep);
+  --a2: var(--blue-bright);
+  --a3: oklch(0.656 0.241 354.308); /* pink */
+  --a4: oklch(0.769 0.188 70.08); /* amber */
+  --ok: #22c08a;
+  --crit: #f43f5e;
 
-  /* Nextra theme overrides */
-  --nextra-primary-hue: 253deg;
-  --nextra-primary-saturation: 100%;
-  --nextra-bg: 5, 7, 12; /* ink-0 triplet */
+  /* Nextra theme overrides — blue-deep ≈ hsl(221, 83%, 53%) */
+  --nextra-primary-hue: 221deg;
+  --nextra-primary-saturation: 83%;
+  --nextra-bg: 0, 0, 0; /* ink-0 triplet */
 
-  /* Radius + layout */
-  --radius: 6px;
-  --radius-lg: 10px;
+  /* Radius + layout (dashboard: 0.75rem base, 8px controls) */
+  --radius: 8px;
+  --radius-lg: 12px;
   --max: 1240px;
 
   /* Font aliases mirroring website var names
@@ -77,8 +81,23 @@ body {
   font-family: var(--f-body);
 }
 
+/* Dashboard's ambient radial glows (blue top-right, cyan left), fixed to the
+   viewport so long pages don't shift the gradient while scrolling. */
 body {
-  background: var(--ink-0) !important;
+  background:
+    radial-gradient(
+        1100px 600px at 88% -12%,
+        oklch(0.623 0.214 259.815 / 10%),
+        transparent 60%
+      )
+      fixed,
+    radial-gradient(
+        800px 500px at -8% 15%,
+        oklch(0.715 0.143 215.221 / 5%),
+        transparent 60%
+      )
+      fixed,
+    var(--ink-0) !important;
 }
 
 main h1,
@@ -159,7 +178,7 @@ main a,
 
 main a:hover,
 .nextra-content a:hover {
-  color: var(--a1) !important;
+  color: color-mix(in oklab, var(--a2) 70%, white) !important;
 }
 
 /* =========================================================================
@@ -170,8 +189,23 @@ main a:hover,
   border-bottom: 1px solid var(--hair);
 }
 
+/* Same fixed-attachment gradient as body so the opaque navbar blends into the
+   page's top-right glow instead of cutting it off. */
 html[class~="dark"] .nextra-nav-container-blur.nextra-nav-container-blur {
-  background: #000 !important;
+  background:
+    radial-gradient(
+        1100px 600px at 88% -12%,
+        oklch(0.623 0.214 259.815 / 10%),
+        transparent 60%
+      )
+      fixed,
+    radial-gradient(
+        800px 500px at -8% 15%,
+        oklch(0.715 0.143 215.221 / 5%),
+        transparent 60%
+      )
+      fixed,
+    var(--ink-0) !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
   box-shadow: none !important;
@@ -180,6 +214,16 @@ html[class~="dark"] .nextra-nav-container-blur.nextra-nav-container-blur {
 .nextra-sidebar-container {
   background: transparent !important;
   border-right: 1px solid var(--hair);
+}
+
+/* Nextra masks the sidebar with a 20px top fade (scrolling items dissolve
+   near the top edge). Our first item is a filled blue pill, so the fade cuts
+   visibly through it and reads as a stray gradient. Drop the mask; scrolled
+   items simply clip at the edge instead. */
+.nextra-sidebar-container,
+.nextra-sidebar-container > .nextra-scrollbar {
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
 }
 
 /* Sidebar links */
@@ -196,12 +240,17 @@ html[class~="dark"] .nextra-nav-container-blur.nextra-nav-container-blur {
   background: var(--ink-2) !important;
 }
 
-.nextra-sidebar-container a.nx-bg-primary-100,
-.nextra-sidebar-container .nx-text-primary-600,
-.nextra-sidebar-container a[aria-current="page"] {
+.nextra-sidebar-container .nx-text-primary-600 {
   color: var(--fg-0) !important;
   background: transparent !important;
-  border-color: var(--fg-0) !important;
+}
+
+/* Active page: filled blue pill, matching the dashboard sidebar. */
+.nextra-sidebar-container a.nx-bg-primary-100,
+.nextra-sidebar-container a[aria-current="page"] {
+  color: #fff !important;
+  background: var(--blue-deep) !important;
+  border-color: transparent !important;
 }
 
 /* Expanded top-level folder containing the active page: Nextra fills it with the
@@ -223,12 +272,19 @@ nav.nextra-toc .nx-text-primary-600 {
   color: var(--a2) !important;
 }
 
-/* Footer */
-.nextra-footer,
-footer.nextra-footer {
+/* Footer: Nextra 2's footer carries no .nextra-footer class — it ships as
+   footer.nx-bg-gray-100 with dark:nx-bg-neutral-900 (#171717). Let the black
+   page show through and dim its separator + text to our tokens. */
+footer.nx-bg-gray-100 {
   background: transparent !important;
-  border-top: 1px solid var(--hair);
-  color: var(--fg-3);
+}
+
+footer.nx-bg-gray-100 hr {
+  border-color: var(--hair) !important;
+}
+
+footer.nx-bg-gray-100 .nx-text-gray-600 {
+  color: var(--fg-3) !important;
 }
 
 /* =========================================================================
@@ -509,11 +565,11 @@ main hr,
 
 .btn-accent {
   background: var(--a1);
-  color: #0a0612 !important;
+  color: #fff !important;
 }
 .btn-accent:hover {
-  background: color-mix(in oklab, var(--a1) 88%, white);
-  color: #0a0612 !important;
+  background: color-mix(in oklab, var(--a1) 85%, white);
+  color: #fff !important;
 }
 
 .btn-ghost {
@@ -970,5 +1026,5 @@ nav.nextra-toc .nx-sticky.nx-bottom-0,
 .nextra-sidebar-container .nx-sticky.nx-bottom-0 {
   background: var(--ink-0) !important;
   box-shadow: none !important;
-  border-top: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-top: 1px solid var(--hair) !important;
 }

@@ -15,7 +15,7 @@ export default function BlogIndex() {
   const posts = getPostsByCategory("engineering");
 
   return (
-    <main className="relative">
+    <main className="relative blog-scope">
       <section className="wrap pt-6 pb-24">
         <div className="prose max-w-[960px]">
           <Eyebrow>Blog</Eyebrow>

@@ -29,7 +29,7 @@ export function BlogArticle({
   showSubscribe: boolean;
 }) {
   return (
-    <main className="relative">
+    <main className="relative blog-scope">
       <section className="wrap pt-6 pb-24">
         <div className="blog-article">
           <Link

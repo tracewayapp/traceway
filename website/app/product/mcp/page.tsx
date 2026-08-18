@@ -92,7 +92,7 @@ export default function McpPage() {
                 href="https://docs.tracewayapp.com/learn/mcp"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-fg-2 hover:text-a2 transition-colors"
+                className="text-fg-2 hover:text-blue-bright transition-colors"
               >
                 Read the MCP docs →
               </Link>
@@ -191,7 +191,7 @@ export default function McpPage() {
               </p>
               <p>
                 New to the CLI? Installation, usage, and login live on the{" "}
-                <Link href="/product/cli" className="text-a2 hover:underline">
+                <Link href="/product/cli" className="text-blue-bright hover:underline">
                   CLI page →
                 </Link>
               </p>
@@ -328,7 +328,7 @@ export default function McpPage() {
               Prefer skills over MCP tools?{" "}
               <Link
                 href="/product/agent-skills"
-                className="text-a2 hover:underline"
+                className="text-blue-bright hover:underline"
               >
                 See Agent Skills →
               </Link>
@@ -378,7 +378,7 @@ export default function McpPage() {
                       <p>
                         <Link
                           href="/product/agent-skills"
-                          className="text-a2 hover:underline"
+                          className="text-blue-bright hover:underline"
                         >
                           See Agent Skills →
                         </Link>

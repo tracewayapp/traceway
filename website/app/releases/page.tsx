@@ -13,7 +13,7 @@ export default function ReleasesIndex() {
   const posts = getPostsByCategory("release");
 
   return (
-    <main className="relative">
+    <main className="relative blog-scope">
       <section className="wrap pt-6 pb-24">
         <div className="prose max-w-[960px]">
           <Eyebrow>Blog</Eyebrow>

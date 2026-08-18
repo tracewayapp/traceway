@@ -35,6 +35,12 @@
   --ok: #22e0a8;
   --crit: #ff5a5f;
 
+  /* Dashboard blue family, shared with the docs restyle. Used for links
+     site-wide and as the blog band's accent. */
+  --blue: oklch(0.623 0.214 259.815);
+  --blue-bright: oklch(0.707 0.165 254.624);
+  --blue-deep: oklch(0.546 0.245 262.881);
+
   /* Fonts (populated by next/font in layout.tsx) */
   --font-display: "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
   --font-mono: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
@@ -119,6 +125,9 @@
   --color-a2: var(--a2);
   --color-a3: var(--a3);
   --color-a4: var(--a4);
+  --color-blue: var(--blue);
+  --color-blue-bright: var(--blue-bright);
+  --color-blue-deep: var(--blue-deep);
   --color-ok: var(--ok);
   --color-crit: var(--crit);
   --color-hair: var(--hair);
@@ -394,11 +403,35 @@
     font-size: 13px;
   }
 
+  /* Blog band: local token remap like .band-light. The blog renders on the
+     dashboard's navy surface scale with the blue accent family (matching the
+     docs restyle); the rest of the site keeps the original palette. */
+  .blog-scope {
+    --ink-1: #0f1220;
+    --ink-2: #151a2c;
+    --ink-3: #1b2138;
+    --ink-4: #252c47;
+    --ink-5: #313a5b;
+    --hair: rgba(255, 255, 255, 0.08);
+    --hair-2: rgba(255, 255, 255, 0.12);
+    --a1: var(--blue-deep);
+    --a2: var(--blue-bright);
+  }
+
+  /* Subscribe button inside the blog band: dashboard primary blue. */
+  .blog-scope .btn-accent {
+    background: var(--blue-deep);
+    color: #fff;
+  }
+  .blog-scope .btn-accent:hover {
+    background: color-mix(in oklab, var(--blue-deep) 85%, white);
+  }
+
   /* Blog post cards */
   .blog-card {
     display: block;
     border: 1px solid var(--hair);
-    background: color-mix(in oklab, var(--ink-2) 70%, transparent);
+    background: var(--ink-2);
     border-radius: var(--radius-lg);
     padding: 20px 22px;
     text-decoration: none;
@@ -474,7 +507,7 @@
   }
   .blog-panel {
     border: 1px solid var(--hair-2);
-    background: color-mix(in oklab, var(--ink-2) 55%, transparent);
+    background: var(--ink-1);
     border-radius: var(--radius-xl);
     padding: clamp(24px, 4vw, 44px);
     box-shadow: 0 30px 60px -40px rgba(0, 0, 0, 0.6);
@@ -1054,7 +1087,7 @@
     margin: 6px 0;
   }
   .prose a {
-    color: var(--a2);
+    color: var(--blue-bright);
     text-decoration: underline;
     text-underline-offset: 3px;
   }

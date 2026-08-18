@@ -1,32 +1,32 @@
 # Spans
 
-Spans are the underlying primitive Traceway stores. Everything else — Endpoints, Tasks, AI Traces, Issues — is a [materialized view](/learn/traces#spans-are-the-primitive) derived from the spans you ingest. The shape is OpenTelemetry-native, so your existing OTel instrumentation works without translation.
+Spans are the underlying primitive Traceway stores. Everything else (Endpoints, Tasks, AI Traces, Issues) is a [materialized view](/learn/traces#spans-are-the-primitive) derived from the spans you ingest. The shape is OpenTelemetry-native, so your existing OTel instrumentation works without translation.
 
 ## What a span captures
 
 | Field | Description |
 | --- | --- |
 | `span_id` | 8-byte OTel span id, stored as the low 8 bytes of a UUID |
-| `trace_id` | The id of the owning entity (endpoint, task, or ai_trace) — see "Owning entity" below |
+| `trace_id` | The id of the owning entity (endpoint, task, or ai_trace); see "Owning entity" below |
 | `parent_span_id` | The span's direct parent within the trace, if any |
 | `name` | Descriptive label (`db.users.find`, `POST https://api.stripe.com/v1/charges`, etc.) |
 | `kind` | One of OTel's `SERVER`, `CLIENT`, `INTERNAL`, `PRODUCER`, `CONSUMER` |
 | `start_time` / `duration` | When it started and how long it ran |
 | `attributes` | Arbitrary key-value metadata (HTTP, DB, AI, custom) |
-| `events` | Timestamped events on the span — `"exception"` events become [Issues](/learn/issues) |
+| `events` | Timestamped events on the span; `"exception"` events become [Issues](/learn/issues) |
 
 ## Owning entity, not OTel trace id
 
-Each row in the `spans` table carries a `trace_id` column — but in Traceway it points to the **owning entity** (an endpoint, task, or ai_trace id), not the raw OTel trace id. This is what makes the waterfall view cheap:
+Each row in the `spans` table carries a `trace_id` column, but in Traceway it points to the **owning entity** (an endpoint, task, or ai_trace id), not the raw OTel trace id. This is what makes the waterfall view cheap:
 
 - "Show me the children of this endpoint" is a single indexed read on `spans.trace_id = <endpoint.id>`.
 - The full cross-process trace is still reachable via the entity's `distributed_trace_id`, which equals the OTel trace id.
 
-Re-rooting happens at ingestion. When a non-root entity (e.g. a CONSUMER task) is promoted, its descendant spans get the task's id as their `trace_id`. Sibling spans under the originating endpoint keep the endpoint's id. So a single OTel trace that produced an endpoint + a task ends up with two clean waterfalls — one rooted at the endpoint, one at the task — joinable through `distributed_trace_id`.
+Re-rooting happens at ingestion. When a non-root entity (e.g. a CONSUMER task) is promoted, its descendant spans get the task's id as their `trace_id`. Sibling spans under the originating endpoint keep the endpoint's id. So a single OTel trace that produced an endpoint + a task ends up with two clean waterfalls (one rooted at the endpoint, one at the task), joinable through `distributed_trace_id`.
 
 ## What spans are good for
 
-Spans tell you **where the time went**. If an endpoint takes 500ms and 450ms of that is in a `db.users.find` span, you know what to optimize. The dashboard's drill-down — Endpoints / Tasks / AI Traces → instance → waterfall — bottoms out in spans.
+Spans tell you **where the time went**. If an endpoint takes 500ms and 450ms of that is in a `db.users.find` span, you know what to optimize. The dashboard's drill-down (Endpoints / Tasks / AI Traces → instance → waterfall) bottoms out in spans.
 
 Common things to wrap in a span:
 
@@ -49,7 +49,7 @@ cache.redis.get
 logic.pricing.calculate
 ```
 
-`category.resource.action` is a useful default — pick something and stay consistent.
+`category.resource.action` is a useful default. Pick something and stay consistent.
 
 ## Nesting
 

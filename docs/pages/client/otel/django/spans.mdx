@@ -102,7 +102,7 @@ trace.get_current_span()                        # the currently active Span
 trace.get_current_span().get_span_context()     # SpanContext (trace_id, span_id, flags)
 format(trace.get_current_span().get_span_context().trace_id, "032x")  # trace id as hex string
 
-# Inject the active trace context into outbound headers — most users don't need this,
+# Inject the active trace context into outbound headers. Most users don't need this,
 # because requests/httpx/urllib3 instrumentation already injects W3C headers automatically.
 carrier: dict[str, str] = {}
 TraceContextTextMapPropagator().inject(carrier)

@@ -118,7 +118,7 @@ use Keepsuit\LaravelOpenTelemetry\Facades\Tracer;
 Tracer::traceId();              // the active trace id (string)
 Tracer::activeSpan();           // the currently-active SpanInterface
 Tracer::activeScope();          // the currently-active ScopeInterface
-Tracer::currentContext();       // the OTel Context object — for advanced use
+Tracer::currentContext();       // the OTel Context object, for advanced use
 Tracer::propagationHeaders();   // headers to inject into outbound requests so downstream services join the trace
 Tracer::extractContextFromPropagationHeaders($headers);  // build a Context from inbound headers
 Tracer::updateLogContext();     // inject the active trace id into Laravel's log context (only needed if you start the root span manually)

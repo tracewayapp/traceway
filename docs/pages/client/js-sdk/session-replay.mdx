@@ -35,15 +35,15 @@ init("your-token@https://traceway.example.com/api/report", {
 |--------|------|---------|-------------|
 | `sessionRecording` | `boolean` | `true` | Enable or disable session recording |
 | `sessionRecordingSegmentDuration` | `number` | `30000` | Duration of each recording segment in milliseconds |
-| `recordAllSessions` | `boolean` | `false` | Always-on session recording — upload every segment regardless of whether an exception fires. See [Always-on Session Recording](#always-on-session-recording) |
+| `recordAllSessions` | `boolean` | `false` | Always-on session recording: upload every segment regardless of whether an exception fires. See [Always-on Session Recording](#always-on-session-recording) |
 
 ## Privacy & Masking
 
-Because Session Replay runs on [rrweb](https://github.com/rrweb-io/rrweb) under the hood, you can drop rrweb's standard class hooks onto any element in your app to keep sensitive content out of recordings. No SDK configuration needed — these classes are honored automatically.
+Because Session Replay runs on [rrweb](https://github.com/rrweb-io/rrweb) under the hood, you can drop rrweb's standard class hooks onto any element in your app to keep sensitive content out of recordings. No SDK configuration is needed. These classes are honored automatically.
 
-### `rr-mask` — block all text in an element
+### `rr-mask`: block all text in an element
 
-Add `class="rr-mask"` to any element whose **text content** should never be recorded. The element is still captured (layout, clicks, and scrolls all work in the replay), but every character of text — including the text of child elements — is replaced with asterisks.
+Add `class="rr-mask"` to any element whose **text content** should never be recorded. The element is still captured (layout, clicks, and scrolls all work in the replay), but every character of text (including the text of child elements) is replaced with asterisks.
 
 ```html
 <!-- Name visible in the app, hidden in replays -->
@@ -58,7 +58,7 @@ Add `class="rr-mask"` to any element whose **text content** should never be reco
 
 Use this for anything you treat as PII or regulated data: names, emails, customer IDs, dollar amounts, addresses, health info, chat content, support tickets.
 
-### `rr-block` — hide the element entirely
+### `rr-block`: hide the element entirely
 
 Add `class="rr-block"` when you don't want the element visible at all in the replay. It's replaced by a neutral gray placeholder with the same dimensions. Good for avatars, user-uploaded images, or custom widgets that shouldn't be reconstructed.
 
@@ -66,7 +66,7 @@ Add `class="rr-block"` when you don't want the element visible at all in the rep
 <img class="rr-block" src={user.avatarUrl} />
 ```
 
-### `rr-ignore` — don't record input values
+### `rr-ignore`: don't record input values
 
 Add `class="rr-ignore"` on form inputs when you want interaction events (focus, blur, click) captured but **not the characters the user typed**.
 
@@ -122,5 +122,5 @@ When an exception includes session recording data, a **Session Replay** card app
 
 ## Next Steps
 
-- [Exceptions](/client/js-sdk/exceptions) — capturing errors with the JS SDK
-- [Initialization](/client/js-sdk/initialization) — all SDK configuration options
+- [Exceptions](/client/js-sdk/exceptions): capturing errors with the JS SDK
+- [Initialization](/client/js-sdk/initialization): all SDK configuration options

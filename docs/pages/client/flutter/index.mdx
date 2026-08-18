@@ -131,20 +131,20 @@ When `screenCapture` is set to `true`:
 
 ## Logs & Actions
 
-Every captured exception ships with the last ~10 seconds of session context, attached to the same session recording as the video. Two independent rolling buffers — **logs** and **actions** — are kept in memory, each capped at 200 entries by default.
+Every captured exception ships with the last ~10 seconds of session context, attached to the same session recording as the video. Two independent rolling buffers, **logs** and **actions**, are kept in memory, each capped at 200 entries by default.
 
 ### Logs
 
 Every `print` and `debugPrint` line is mirrored into the log buffer via a Zone print override installed by `Traceway.run()`. Console output behaves normally; it just gets a copy.
 
-`dart:developer.log` is **not** captured — it doesn't flow through the Zone print hook.
+`dart:developer.log` is **not** captured, because it doesn't flow through the Zone print hook.
 
 ### Actions
 
 Three kinds of actions are collected:
 
-- **Network** — every dart:io HTTP request (method, URL, status, duration, request/response byte counts). `HttpOverrides.global` is installed by `Traceway.run()`, so this catches `package:http`, Dio, Firebase, and any other library that sits on the dart:io HttpClient on native platforms.
-- **Navigation** — push / pop / replace / remove transitions, recorded by `Traceway.navigatorObserver`. Wire it into your app's navigator:
+- **Network**: every dart:io HTTP request (method, URL, status, duration, request/response byte counts). `HttpOverrides.global` is installed by `Traceway.run()`, so this catches `package:http`, Dio, Firebase, and any other library that sits on the dart:io HttpClient on native platforms.
+- **Navigation**: push / pop / replace / remove transitions, recorded by `Traceway.navigatorObserver`. Wire it into your app's navigator:
 
   ```dart
   MaterialApp(
@@ -153,7 +153,7 @@ Three kinds of actions are collected:
   );
   ```
 
-- **Custom** — anything your app records explicitly:
+- **Custom**: anything your app records explicitly, like this:
 
   ```dart
   Traceway.recordAction(
@@ -165,7 +165,7 @@ Three kinds of actions are collected:
 
 ### Wire shape
 
-Logs and actions are sent to the backend inside the same `sessionRecordings` entry that carries the MP4 — they're stored under separate `logs` and `actions` arrays. Each recording also carries `startedAt` and `endedAt` ISO 8601 timestamps so the backend can align events onto the video timeline (`offsetIntoVideoMs = event.timestamp − recording.startedAt`):
+Logs and actions are sent to the backend inside the same `sessionRecordings` entry that carries the MP4. They're stored under separate `logs` and `actions` arrays. Each recording also carries `startedAt` and `endedAt` ISO 8601 timestamps so the backend can align events onto the video timeline (`offsetIntoVideoMs = event.timestamp − recording.startedAt`):
 
 ```json
 {
@@ -192,7 +192,7 @@ When the screen recorder is on, `startedAt` and `endedAt` come from the first an
 
 ### Network capture on Flutter web
 
-`HttpOverrides.global` does not run on Flutter web. Use `TracewayHttpClient` instead — it's a drop-in `http.Client` you can use directly or pass to libraries that accept a custom client (Dio, Chopper, etc.):
+`HttpOverrides.global` does not run on Flutter web. Use `TracewayHttpClient` instead. It's a drop-in `http.Client` you can use directly or pass to libraries that accept a custom client (Dio, Chopper, etc.):
 
 ```dart
 import 'package:traceway/traceway.dart';
@@ -220,7 +220,7 @@ Traceway.run(
 
 ## Privacy Masking
 
-Use `TracewayPrivacyMask` to hide sensitive content in screen recordings. Masked regions are applied to the recorded frames only — the user sees no visual change in the live app.
+Use `TracewayPrivacyMask` to hide sensitive content in screen recordings. Masked regions are applied to the recorded frames only. The user sees no visual change in the live app.
 
 **Blur (pixelation):**
 
@@ -254,9 +254,9 @@ This replaces the region with a solid color (black by default) in the recording.
 
 `Traceway.run()` sets up capture for the following error sources with no additional configuration:
 
-- **Flutter framework errors** — rendering, layout, and gesture errors reported through `FlutterError.onError`.
-- **Platform errors** — native platform channel errors.
-- **Uncaught async errors** — any unhandled exceptions in asynchronous code, captured via Dart's `Zone` mechanism.
+- **Flutter framework errors**: rendering, layout, and gesture errors reported through `FlutterError.onError`.
+- **Platform errors**: native platform channel errors.
+- **Uncaught async errors**: any unhandled exceptions in asynchronous code, captured via Dart's `Zone` mechanism.
 
 ## Release Symbolication (obfuscated builds)
 
@@ -304,7 +304,7 @@ Tap the button and check your Traceway dashboard to verify the error appears.
 | macOS    | Yes           | Yes             |
 | Web      | No            | No              |
 
-For Flutter web, use the JS SDK instead — see [Flutter Web](#flutter-web) below.
+For Flutter web, use the JS SDK instead; see [Flutter Web](#flutter-web) below.
 
 ## Flutter Web
 

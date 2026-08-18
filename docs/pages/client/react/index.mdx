@@ -10,7 +10,7 @@ npm install @tracewayapp/react
 
 ## Setup
 
-Wrap your application with `TracewayProvider`. It also acts as an error boundary — render-time exceptions thrown anywhere in the tree are captured and reported automatically, then re-thrown so your app behaves exactly as it would without Traceway installed. Session recording is on by default; the last ~30s of DOM events ship with every captured exception:
+Wrap your application with `TracewayProvider`. It also acts as an error boundary: render-time exceptions thrown anywhere in the tree are captured and reported automatically, then re-thrown so your app behaves exactly as it would without Traceway installed. Session recording is on by default; the last ~30s of DOM events ship with every captured exception:
 
 ```jsx
 import { TracewayProvider } from "@tracewayapp/react";
@@ -26,7 +26,7 @@ function App() {
 export default App;
 ```
 
-> **Custom fallback UI?** If you want to replace a crashed subtree with a fallback view instead of letting the error propagate, wrap the relevant section in `TracewayErrorBoundary` — it's still exported for that purpose, but is no longer required for capture.
+> **Custom fallback UI?** If you want to replace a crashed subtree with a fallback view instead of letting the error propagate, wrap the relevant section in `TracewayErrorBoundary`. It's still exported for that purpose, but is no longer required for capture.
 
 Seeing every dev-mode error twice? That is React StrictMode, which double-invokes the provider's constructor and creates two SDK clients. Production is unaffected. See [A note on StrictMode](/client/react/provider#a-note-on-strictmode).
 

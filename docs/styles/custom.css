@@ -34,7 +34,7 @@
   --ok: #22c08a;
   --crit: #f43f5e;
 
-  /* Nextra theme overrides — blue-deep ≈ hsl(221, 83%, 53%) */
+  /* Nextra theme overrides: blue-deep ≈ hsl(221, 83%, 53%) */
   --nextra-primary-hue: 221deg;
   --nextra-primary-saturation: 83%;
   --nextra-bg: 0, 0, 0; /* ink-0 triplet */
@@ -272,7 +272,7 @@ nav.nextra-toc .nx-text-primary-600 {
   color: var(--a2) !important;
 }
 
-/* Footer: Nextra 2's footer carries no .nextra-footer class — it ships as
+/* Footer: Nextra 2's footer carries no .nextra-footer class. It ships as
    footer.nx-bg-gray-100 with dark:nx-bg-neutral-900 (#171717). Let the black
    page show through and dim its separator + text to our tokens. */
 footer.nx-bg-gray-100 {

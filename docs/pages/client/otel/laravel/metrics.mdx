@@ -66,11 +66,11 @@ Gauges track point-in-time values that can go up or down (queue depth, active co
 ```php
 use Keepsuit\LaravelOpenTelemetry\Facades\Meter;
 
-// Synchronous — record a value when you know it
+// Synchronous: record a value when you know it
 $gauge = Meter::gauge('cache.size_mb', 'MB', 'Cache memory usage');
 $gauge->record(42.3);
 
-// Observable — value is read by a callback at export time
+// Observable: value is read by a callback at export time
 Meter::observableGauge('queue.depth', 'items', 'Pending jobs in the default queue')
     ->observe(function ($observer) {
         $observer->observe(\Queue::size('default'));

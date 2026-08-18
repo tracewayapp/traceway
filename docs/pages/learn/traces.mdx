@@ -1,10 +1,10 @@
 # Traces
 
-A **trace** is the lifeline of one logical operation as it moves through your system — a request, a queued job, a scheduled command, an LLM call. Traceway models traces the same way OpenTelemetry does: a tree of **spans** identified by a shared trace id.
+A **trace** is the lifeline of one logical operation as it moves through your system: a request, a queued job, a scheduled command, an LLM call. Traceway models traces the same way OpenTelemetry does: a tree of **spans** identified by a shared trace id.
 
 ## Spans are the primitive
 
-Spans are the ground truth. Every other concept in Traceway — Endpoints, Tasks, AI Traces, Issues — is **derived from spans on ingestion**, then stored in a dedicated table so the dashboard can answer "what's slow?" or "what's expensive?" in milliseconds without scanning every span.
+Spans are the ground truth. Every other concept in Traceway (Endpoints, Tasks, AI Traces, Issues) is **derived from spans on ingestion**, then stored in a dedicated table so the dashboard can answer "what's slow?" or "what's expensive?" in milliseconds without scanning every span.
 
 ```
 OTLP span batch
@@ -25,13 +25,13 @@ OTLP span batch
 You can think of `endpoints`, `tasks`, and `ai_traces` as **cached projections** of the spans table. They exist for one reason: aggregations like "P95 of every endpoint over 7 days" or "total LLM cost grouped by trace_name" need to be cheap. Scanning the full spans table to compute those every dashboard load would not be cheap.
 
 The trade-off this design makes:
-- Top-level dashboards (Endpoints, Tasks, AI Traces) are **fast** — they read a small, pre-aggregated table.
+- Top-level dashboards (Endpoints, Tasks, AI Traces) are **fast**: they read a small, pre-aggregated table.
 - The detail/waterfall view falls back to `spans` for the full timeline of children under any entity.
 - Promotion happens **at write time**, not at query time, so the rules are baked in once per span.
 
 ## What gets promoted
 
-A span lands in a top-level table when its kind or attributes match a rule. The classifier doesn't care whether the span is a root or a child — it cares about what the span represents.
+A span lands in a top-level table when its kind or attributes match a rule. The classifier doesn't care whether the span is a root or a child. It cares about what the span represents.
 
 | Condition on the OTel span | Promoted to |
 |---|---|
@@ -42,14 +42,14 @@ A span lands in a top-level table when its kind or attributes match a rule. The 
 | `"exception"` event on any span | **Issue** (attributed to the owning entity above) |
 | Anything else with a parent | **Span** in the waterfall, re-rooted to its nearest enclosing entity |
 
-In-process sub-handler spans (e.g. a framework's "handler /path" INTERNAL+HTTP child) stay in the spans table — endpoints are only promoted for actual entry points, so frameworks don't silently double-emit.
+In-process sub-handler spans (e.g. a framework's "handler /path" INTERNAL+HTTP child) stay in the spans table. Endpoints are only promoted for actual entry points, so frameworks don't silently double-emit.
 
 ## Root and non-root entities
 
 Each Endpoint / Task / AI Trace row carries an `is_root` flag.
 
-- **Root** — the span had no parent in any process. This is the typical case: an inbound HTTP request, a standalone cron run, a fresh LLM call.
-- **Non-root** — the span was triggered by another trace. Examples:
+- **Root**: the span had no parent in any process. This is the typical case: an inbound HTTP request, a standalone cron run, a fresh LLM call.
+- **Non-root**: the span was triggered by another trace. Examples:
   - A queue worker's CONSUMER span parented to the dispatcher's PRODUCER span via the trace context serialized into the job payload.
   - A child gen_ai span made inside a request handler.
   - A cross-service inbound HTTP hop where the upstream service propagated `traceparent`.
@@ -64,7 +64,7 @@ The id rules avoid collisions when a root and a non-root entity share the same t
 
 Every Endpoint / Task / AI Trace stores a **`distributed_trace_id`** equal to the OTel trace id, auto-derived on ingestion. So:
 
-- A request that dispatches a queue job and the worker that processes it share the same `distributed_trace_id`. They show up as two rows — the endpoint and the task — and a single page (`/distributed-traces/<id>`) renders them side by side with their spans.
+- A request that dispatches a queue job and the worker that processes it share the same `distributed_trace_id`. They show up as two rows (the endpoint and the task), and a single page (`/distributed-traces/<id>`) renders them side by side with their spans.
 - A request handler that calls an LLM produces an endpoint row and an ai_trace row with the same `distributed_trace_id`. Same cross-trace page.
 - Cross-service HTTP hops (each service exports its own SERVER span) all share the trace id. Each hop appears as its own endpoint row.
 
@@ -75,7 +75,7 @@ You don't need to set any vendor attribute for this to work, OTLP's native trace
 The shape mirrors what's useful for the dashboard's aggregations on that entity.
 
 ### Endpoints
-Identified by HTTP method + route template (`GET /api/users/:id`). Ranked by **Impact** — a composite of Apdex, error rate, P99, client-error rate, and volume-weighted error rate. Streaming responses (SSE / WebSocket) are flagged and excluded from latency-based components.
+Identified by HTTP method + route template (`GET /api/users/:id`). Ranked by **Impact**, a composite of Apdex, error rate, P99, client-error rate, and volume-weighted error rate. Streaming responses (SSE / WebSocket) are flagged and excluded from latency-based components.
 
 #### Unmatched requests (404s)
 
@@ -105,8 +105,8 @@ Identified by `trace.name` (your agent or workflow). Carries model, provider, in
 5. Exceptions recorded as `"exception"` events become Issues attributed to the owning entity.
 
 Sampling:
-- **Sample rate** — percentage of normal traces recorded (default: 100%).
-- **Error sample rate** — percentage of error traces recorded (default: 100%). Keep this at 100% to catch every failure.
+- **Sample rate**: percentage of normal traces recorded (default: 100%).
+- **Error sample rate**: percentage of error traces recorded (default: 100%). Keep this at 100% to catch every failure.
 
 <img src="/endpoints.png" alt="Endpoints Dashboard" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 

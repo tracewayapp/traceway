@@ -96,4 +96,4 @@ captureExceptionWithAttributes(new Error("Server error"), { code: "500" });
 
 ## React Error Boundaries
 
-For React applications, use the `@tracewayapp/react` package. Its `<TracewayProvider>` itself acts as an error boundary — render-time exceptions are captured automatically and re-thrown so the app behaves exactly as without Traceway. See the [React documentation](/client/react) for setup, or the [Error Boundary page](/client/react/error-boundary) if you need a custom fallback UI for a specific subtree.
+For React applications, use the `@tracewayapp/react` package. Its `<TracewayProvider>` itself acts as an error boundary: render-time exceptions are captured automatically and re-thrown so the app behaves exactly as without Traceway. See the [React documentation](/client/react) for setup, or the [Error Boundary page](/client/react/error-boundary) if you need a custom fallback UI for a specific subtree.

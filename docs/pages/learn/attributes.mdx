@@ -1,6 +1,6 @@
 # Attributes
 
-Attributes are key-value metadata attached to traces and issues. They provide the context you need to debug problems — who was affected, what they were doing, and in what environment.
+Attributes are key-value metadata attached to traces and issues. They provide the context you need to debug problems: who was affected, what they were doing, and in what environment.
 
 ## Structure
 
@@ -19,8 +19,8 @@ Examples of common attributes:
 
 Since all values are strings, there are two ways they get displayed in the dashboard:
 
-- **Plain strings** — Displayed as-is, without any formatting (e.g., `"12345"`, `"production"`)
-- **JSON strings** — If the string contains valid JSON, the dashboard renders it in a JSON viewer with syntax highlighting and collapsible sections (e.g., `'{"name": "John", "age": 30}'`)
+- **Plain strings**: Displayed as-is, without any formatting (e.g., `"12345"`, `"production"`)
+- **JSON strings**: If the string contains valid JSON, the dashboard renders it in a JSON viewer with syntax highlighting and collapsible sections (e.g., `'{"name": "John", "age": 30}'`)
 
 This means you can attach structured data to any trace or issue by serializing it to a JSON string.
 
@@ -50,8 +50,8 @@ service: user-api                                     service: user-api
 
 ## Where Attributes Appear
 
-- **Traces** (endpoints and tasks) — attributes are recorded with the trace
-- **Issues** (exceptions and messages) — attributes in scope at capture time are attached to the issue
+- **Traces** (endpoints and tasks): attributes are recorded with the trace
+- **Issues** (exceptions and messages): attributes in scope at capture time are attached to the issue
 
 In the dashboard, attributes appear in the detail view for endpoints, tasks, and issues.
 

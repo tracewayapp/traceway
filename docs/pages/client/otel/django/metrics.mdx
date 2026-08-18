@@ -79,7 +79,7 @@ Traceway converts histograms into average and count metrics (see [OTel metrics](
 Gauges track point-in-time values that can go up or down (queue depth, active connections):
 
 ```python
-# Synchronous — set a value when you know it
+# Synchronous: set a value when you know it
 cache_size_gauge = meter.create_gauge(
     "cache.size_mb",
     unit="MB",
@@ -88,7 +88,7 @@ cache_size_gauge = meter.create_gauge(
 cache_size_gauge.set(42.3)
 
 
-# Observable — value is read by a callback at export time
+# Observable: value is read by a callback at export time
 from opentelemetry.metrics import Observation
 
 

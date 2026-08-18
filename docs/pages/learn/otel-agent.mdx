@@ -2,7 +2,7 @@
 
 import { Callout, Steps } from "nextra/components";
 
-The **Traceway OTel Agent** is a tiny, pre-configured OpenTelemetry Collector that pulls host metrics (CPU, memory, disk, filesystem, network) from a server every 60 seconds and ships them to your Traceway project over OTLP/HTTP. Runs as a background service via `systemd`, `launchd`, or the Windows Service Manager — nothing to write, nothing to tune.
+The **Traceway OTel Agent** is a tiny, pre-configured OpenTelemetry Collector that pulls host metrics (CPU, memory, disk, filesystem, network) from a server every 60 seconds and ships them to your Traceway project over OTLP/HTTP. Runs as a background service via `systemd`, `launchd`, or the Windows Service Manager. There is nothing to write, nothing to tune.
 
 <Callout type="info">
   Full source, advanced config, and the contributor guide live at
@@ -34,18 +34,18 @@ iwr -useb https://install.tracewayapp.com/install.ps1 | iex
 
 </Steps>
 
-That's it. The installer downloads the agent, verifies its checksum, writes a systemd unit / launchd plist / Windows service, and starts it. Metrics begin arriving in your dashboard within about 60 seconds — the first scrape interval.
+That's it. The installer downloads the agent, verifies its checksum, writes a systemd unit / launchd plist / Windows service, and starts it. Metrics begin arriving in your dashboard within about 60 seconds, the first scrape interval.
 
 ## What gets captured
 
 Every 60 seconds the agent scrapes:
 
-- **CPU** — utilization (% per core per state), load averages (1m / 5m / 15m).
-- **Memory** — usage in bytes, utilization %.
-- **Disk** — throughput bytes, IOPS, I/O time per device.
-- **Filesystem** — usage bytes and utilization % per mount.
-- **Network** — throughput bytes, packets, errors, and open connections per interface.
-- **Process** *(opt-in)* — set `TRACEWAY_PROCESS_NAMES` to a list of process names (or `*` for all) to enable per-process CPU time, RSS, and virtual memory.
+- **CPU**: utilization (% per core per state), load averages (1m / 5m / 15m).
+- **Memory**: usage in bytes, utilization %.
+- **Disk**: throughput bytes, IOPS, I/O time per device.
+- **Filesystem**: usage bytes and utilization % per mount.
+- **Network**: throughput bytes, packets, errors, and open connections per interface.
+- **Process** *(opt-in)*: set `TRACEWAY_PROCESS_NAMES` to a list of process names (or `*` for all) to enable per-process CPU time, RSS, and virtual memory.
 
 ### How hosts are identified
 
@@ -71,11 +71,11 @@ Set these env vars alongside `TRACEWAY_TOKEN` before piping into the shell:
 | `TRACEWAY_SERVICE_NAME`   | `service.name` label for this host. Default: the machine's hostname.                                   |
 | `TRACEWAY_ENDPOINT`       | OTLP/HTTP base URL. Default: `https://cloud.tracewayapp.com/api/otel`. Override when running against self-hosted Traceway. |
 | `TRACEWAY_LOG_PATHS`      | Comma-separated file globs to tail as logs (e.g. `/var/log/app/*.log`). Leave unset to ship metrics only. |
-| `TRACEWAY_PROCESS_NAMES`  | Comma-separated process names (e.g. `myapp,postgres`) or `*` for all. Off by default — enables per-process CPU / memory metrics. |
+| `TRACEWAY_PROCESS_NAMES`  | Comma-separated process names (e.g. `myapp,postgres`) or `*` for all. Off by default; enables per-process CPU / memory metrics. |
 | `TRACEWAY_VERSION`        | Pin the agent version, e.g. `v0.5.0`. Default: the version the installer was published with. Works on both installers. |
 | `TRACEWAY_RELEASES_URL`   | Override the release-archive base URL. Default: GitHub Releases. Accepts `file://` URLs for air-gapped installs. Linux / macOS installer only. |
 
-Example — named host, app logs, self-hosted Traceway:
+Example (named host, app logs, self-hosted Traceway):
 
 ```bash
 curl -fsSL https://install.tracewayapp.com/install.sh | \
@@ -109,4 +109,4 @@ Stops and removes the service, binary, and config directory. Your Traceway proje
 
 ---
 
-For deeper configuration — tuning the scrape interval, writing filelog operators, air-gapped and manual installs, signed releases, or contributing support for additional auth modes — see the agent repo: [github.com/tracewayapp/traceway-otel-agent](https://github.com/tracewayapp/traceway-otel-agent).
+For deeper configuration (tuning the scrape interval, writing filelog operators, air-gapped and manual installs, signed releases, or contributing support for additional auth modes), see the agent repo: [github.com/tracewayapp/traceway-otel-agent](https://github.com/tracewayapp/traceway-otel-agent).

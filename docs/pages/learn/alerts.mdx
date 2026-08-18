@@ -1,6 +1,6 @@
 # Alerts
 
-Alerts notify you when conditions in your application require attention — errors, latency spikes, metric thresholds, or missing data. Configure channels and rules to get notified through email, Slack, webhooks, GitHub Issues, Pushover, or Telegram, or to page whoever is [on call](/learn/on-call).
+Alerts notify you when conditions in your application require attention: errors, latency spikes, metric thresholds, or missing data. Configure channels and rules to get notified through email, Slack, webhooks, GitHub Issues, Pushover, or Telegram, or to page whoever is [on call](/learn/on-call).
 
 ## How Alerts Work
 
@@ -41,7 +41,7 @@ To send alerts to a Slack channel, you need an **Incoming Webhook URL**:
 2. Choose **From scratch**, give it a name (e.g. "Traceway Alerts"), and select your workspace
 3. In the app settings, navigate to **Incoming Webhooks** and toggle it **on**
 4. Click **Add New Webhook to Workspace**, select the channel you want alerts posted to, and click **Allow**
-5. Copy the **Webhook URL** — it will look like `https://hooks.slack.com/services/T.../B.../xxx`
+5. Copy the **Webhook URL**. It will look like `https://hooks.slack.com/services/T.../B.../xxx`
 
 Then configure the Slack channel in Traceway:
 
@@ -63,7 +63,7 @@ To create GitHub issues from alerts, you need a **Personal Access Token** with i
 4. Set a descriptive name (e.g. "Traceway Alerts") and choose an expiration
 5. Under **Repository access**, select **Only select repositories** and choose the repo where issues should be created
 6. Under **Permissions → Repository permissions**, set **Issues** to **Read and write**
-7. Click **Generate token** and copy it — you won't be able to see it again
+7. Click **Generate token** and copy it; you won't be able to see it again
 
 Then configure the GitHub channel in Traceway:
 
@@ -80,11 +80,11 @@ Then configure the GitHub channel in Traceway:
 
 To send alerts to Telegram, you need a **Bot Token** and a **Chat ID**:
 
-1. Open Telegram and start a chat with [@BotFather](https://t.me/BotFather). Send `/newbot` and follow the prompts to give your bot a name and username. BotFather will reply with a **Bot Token** in the form `123456789:ABCdefGhIJKlmNoPQRstuVwxyZ` — copy it.
+1. Open Telegram and start a chat with [@BotFather](https://t.me/BotFather). Send `/newbot` and follow the prompts to give your bot a name and username. BotFather will reply with a **Bot Token** in the form `123456789:ABCdefGhIJKlmNoPQRstuVwxyZ`. Copy it.
 2. Open a chat with your new bot and send it `/start` so it is allowed to message you.
 3. Create a private channel in Telegram for the alerts.
 4. Open the channel's settings → **Administrators** → **Add Admin**, search for your bot's username, and add it with permission to post messages.
-5. Forward any message from the channel to [@userinfobot](https://t.me/userinfobot) — it will reply with the channel's **Chat ID** (a negative number, e.g. `-1001234567890`). Copy it including the minus sign.
+5. Forward any message from the channel to [@userinfobot](https://t.me/userinfobot); it will reply with the channel's **Chat ID** (a negative number, e.g. `-1001234567890`). Copy it including the minus sign.
 
 Then configure the Telegram channel in Traceway:
 

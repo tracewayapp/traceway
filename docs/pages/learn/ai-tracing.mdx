@@ -1,16 +1,16 @@
 # AI Tracing
 
-**AI Tracing** lets you monitor LLM and AI model calls across your application. Every API call to an AI provider — whether it's OpenAI, Anthropic, Cohere, or any model routed through OpenRouter — is captured as an AI trace with full cost, token usage, and conversation data.
+**AI Tracing** lets you monitor LLM and AI model calls across your application. Every API call to an AI provider, whether it's OpenAI, Anthropic, Cohere, or any model routed through OpenRouter, is captured as an AI trace with full cost, token usage, and conversation data.
 
 ## Why AI Observability Matters
 
 AI API calls are fundamentally different from traditional HTTP requests:
 
-- **Costs are unpredictable** — A single prompt with a large context window can cost 100x more than average. Without visibility, cost spikes go unnoticed until the invoice arrives.
-- **Latency varies wildly** — The same model can respond in 500ms or 30 seconds depending on prompt length, model load, and provider routing. You need P50/P95 breakdowns to understand real-world performance.
-- **Token usage drives cost** — Input and output tokens are billed separately at different rates. Cached tokens and reasoning tokens add further complexity. You need per-call granularity.
-- **Prompt/completion quality matters** — Seeing the actual conversation helps debug unexpected model behavior, hallucinations, or prompt injection issues.
-- **Provider reliability differs** — When routing through multiple providers, you need to know which provider is slower, more expensive, or failing more often.
+- **Costs are unpredictable.** A single prompt with a large context window can cost 100x more than average. Without visibility, cost spikes go unnoticed until the invoice arrives.
+- **Latency varies wildly.** The same model can respond in 500ms or 30 seconds depending on prompt length, model load, and provider routing. You need P50/P95 breakdowns to understand real-world performance.
+- **Token usage drives cost.** Input and output tokens are billed separately at different rates. Cached tokens and reasoning tokens add further complexity. You need per-call granularity.
+- **Prompt/completion quality matters.** Seeing the actual conversation helps debug unexpected model behavior, hallucinations, or prompt injection issues.
+- **Provider reliability differs.** When routing through multiple providers, you need to know which provider is slower, more expensive, or failing more often.
 
 ## What Gets Captured
 
@@ -38,17 +38,17 @@ Every AI trace records:
 
 ## How It Works
 
-AI traces are ingested via the [OpenTelemetry](/client/otel) OTLP/HTTP endpoint. Any span carrying `gen_ai.*` semantic convention attributes is promoted to an AI trace — **regardless of whether it's a root span or a child** of an HTTP request, queue job, or scheduled task. This matters in practice: most LLM calls happen inside a request handler, so the gen_ai span is a child of a SERVER span. Traceway captures both.
+AI traces are ingested via the [OpenTelemetry](/client/otel) OTLP/HTTP endpoint. Any span carrying `gen_ai.*` semantic convention attributes is promoted to an AI trace, **regardless of whether it's a root span or a child** of an HTTP request, queue job, or scheduled task. This matters in practice: most LLM calls happen inside a request handler, so the gen_ai span is a child of a SERVER span. Traceway captures both.
 
 One caveat: `gen_ai.*` is checked last. A span that already looks like an endpoint or a task wins first, so a SERVER span with HTTP attributes becomes an Endpoint and a `CONSUMER` span becomes a Task, even when both carry `gen_ai.*`. Neither reaches AI Traces. Put every model call on its own child span and the rule always matches. See [Traces](/client/otel/traces) for the full ordered list.
 
 The data flow:
 
-1. **OTLP span arrives** — From an AI provider broadcast (e.g. [OpenRouter](/client/openrouter)) or your own SDK instrumentation. The span contains `gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.total_cost`, and other standardized attributes.
-2. **Traceway promotes the span by attributes, not by position** — If a span has `gen_ai.*` attributes, it lands in the AI Traces table. Root spans use the OTel trace_id as their id; non-root child spans use their own span_id, so a request handler and the LLM call it made each get their own row without collision.
-3. **Conversation content stored separately** — The full prompt and completion are stored in object storage (S3 or local filesystem) to keep the database lean.
-4. **Linked across the trace** — `distributed_trace_id` is auto-derived from the OTel trace_id, so a child AI trace and its parent endpoint show up together in the distributed-trace view with no extra configuration.
-5. **Dashboard shows aggregated view** — AI traces are grouped by trace name (your agent or workflow identifier), with drill-down to individual calls. Groups containing non-root calls are flagged with a **Non-root** chip.
+1. **OTLP span arrives.** From an AI provider broadcast (e.g. [OpenRouter](/client/openrouter)) or your own SDK instrumentation. The span contains `gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.total_cost`, and other standardized attributes.
+2. **Traceway promotes the span by attributes, not by position.** If a span has `gen_ai.*` attributes, it lands in the AI Traces table. Root spans use the OTel trace_id as their id; non-root child spans use their own span_id, so a request handler and the LLM call it made each get their own row without collision.
+3. **Conversation content stored separately.** The full prompt and completion are stored in object storage (S3 or local filesystem) to keep the database lean.
+4. **Linked across the trace.** `distributed_trace_id` is auto-derived from the OTel trace_id, so a child AI trace and its parent endpoint show up together in the distributed-trace view with no extra configuration.
+5. **Dashboard shows aggregated view.** AI traces are grouped by trace name (your agent or workflow identifier), with drill-down to individual calls. Groups containing non-root calls are flagged with a **Non-root** chip.
 
 ## Three-Level Drill-Down
 
@@ -56,13 +56,13 @@ AI traces follow the same drill-down pattern as [endpoints](/learn/traces#endpoi
 
 ### Level 1: Grouped by Trace Name
 
-See all your AI agents/workflows at a glance with aggregate metrics — total calls, P50/P95 duration, total tokens consumed, and total cost.
+See all your AI agents/workflows at a glance with aggregate metrics: total calls, P50/P95 duration, total tokens consumed, and total cost.
 
 <img src="/ai-traces.png" alt="AI Traces Dashboard" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
 ### Level 2: Individual Calls
 
-Click a trace name to see every individual call — timestamp, duration, model used, tokens in/out, cost, and provider.
+Click a trace name to see every individual call: timestamp, duration, model used, tokens in/out, cost, and provider.
 
 ### Level 3: Call Detail
 
@@ -132,12 +132,12 @@ Three notification rule types cover AI spend and content:
 
 ## Conversation Storage
 
-Conversation content (prompts and completions) can be large — a single prompt with RAG context might be 50KB+. To keep the database fast for aggregation queries, Traceway stores conversation content in object storage (S3 or local filesystem) and reads it on demand when you view a specific trace.
+Conversation content (prompts and completions) can be large. A single prompt with RAG context might be 50KB+. To keep the database fast for aggregation queries, Traceway stores conversation content in object storage (S3 or local filesystem) and reads it on demand when you view a specific trace.
 
 This means:
-- **List views are fast** — No large text fields in aggregation queries
-- **Detail views load conversations** — The full input/output is fetched from storage when you drill into a specific call
-- **Privacy-friendly** — You can configure your AI provider to exclude prompt/completion data if needed
+- **List views are fast**: no large text fields in aggregation queries
+- **Detail views load conversations**: the full input/output is fetched from storage when you drill into a specific call
+- **Privacy-friendly**: you can configure your AI provider to exclude prompt/completion data if needed
 
 ## Supported Providers
 

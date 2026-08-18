@@ -2,7 +2,7 @@
 
 import { Callout } from "nextra/components";
 
-`traceway` is a command-line client for the Traceway HTTP API — exceptions, logs, endpoints, tasks, traces, and metrics from a terminal. It is designed to be first-class for both humans (with `gh`-style ergonomics) and LLM agents invoking it via shell tools: JSON output when piped, stable error identifiers and exit codes, and nothing that hangs waiting for input. For a quick tour, see the [CLI product page](https://tracewayapp.com/product/cli).
+`traceway` is a command-line client for the Traceway HTTP API: exceptions, logs, endpoints, tasks, traces, and metrics from a terminal. It is designed to be first-class for both humans (with `gh`-style ergonomics) and LLM agents invoking it via shell tools: JSON output when piped, stable error identifiers and exit codes, and nothing that hangs waiting for input. For a quick tour, see the [CLI product page](https://tracewayapp.com/product/cli).
 
 ## Installation
 
@@ -12,11 +12,11 @@ import { Callout } from "nextra/components";
 curl -fsSL https://cli.tracewayapp.com/install.sh | sh
 ```
 
-The installer detects your OS and architecture, downloads the latest CLI release from GitHub, verifies its sha256 checksum, and installs `traceway` to `/usr/local/bin` (when writable) or `~/.local/bin` — no sudo. Two environment variables tweak it: `TRACEWAY_CLI_VERSION` pins a version (e.g. `1.9.3`) and `TRACEWAY_INSTALL_DIR` overrides the target directory.
+The installer detects your OS and architecture, downloads the latest CLI release from GitHub, verifies its sha256 checksum, and installs `traceway` to `/usr/local/bin` (when writable) or `~/.local/bin`, without sudo. Two environment variables tweak it: `TRACEWAY_CLI_VERSION` pins a version (e.g. `1.9.3`) and `TRACEWAY_INSTALL_DIR` overrides the target directory.
 
 ### Prebuilt binaries
 
-Every release publishes prebuilt binaries at [github.com/tracewayapp/traceway/releases](https://github.com/tracewayapp/traceway/releases) under the matching `CLI vX.Y.Z` tag — the CLI version tracks the backend release. Download the archive for your platform (`traceway_<version>_<os>_<arch>.tar.gz`, or `.zip` on Windows), extract it, and put `traceway` on your `PATH`. This is also the route for Windows, which the install script doesn't cover.
+Every release publishes prebuilt binaries at [github.com/tracewayapp/traceway/releases](https://github.com/tracewayapp/traceway/releases) under the matching `CLI vX.Y.Z` tag (the CLI version tracks the backend release). Download the archive for your platform (`traceway_<version>_<os>_<arch>.tar.gz`, or `.zip` on Windows), extract it, and put `traceway` on your `PATH`. This is also the route for Windows, which the install script doesn't cover.
 
 ### From source
 
@@ -39,7 +39,7 @@ Verify an installed binary with `traceway version` (source builds report `dev`).
 ## Quick start
 
 ```bash
-# 1. log in — prints a URL + short code, you approve in the browser
+# 1. log in: prints a URL + short code, you approve in the browser
 traceway login --url https://cloud.tracewayapp.com
 
 # 2. pick a project (one-time; future calls use it implicitly)
@@ -53,7 +53,7 @@ traceway endpoints list --since 1h
 traceway metrics query --name http.server.duration --aggregation avg --since 1h
 ```
 
-The default `traceway login` runs a browser device flow with an auto-refreshing token, so you stay logged in for up to 90 days of inactivity. Password login (`--password`) and personal access tokens (`--token`) are also supported — see [CLI Authentication](/learn/cli-auth) for all three modes, and for what to use in CI.
+The default `traceway login` runs a browser device flow with an auto-refreshing token, so you stay logged in for up to 90 days of inactivity. Password login (`--password`) and personal access tokens (`--token`) are also supported; see [CLI Authentication](/learn/cli-auth) for all three modes, and for what to use in CI.
 
 ## Commands
 
@@ -81,7 +81,7 @@ The default `traceway login` runs a browser device flow with an auto-refreshing 
 Run `traceway <command> --help` for full per-command flags.
 
 <Callout type="info">
-  The `show` / `occurrence` commands take a UUID plus a **required** timestamp flag (`--recorded-at`, or `--started-at` for `sessions`). Telemetry tables are partitioned by day; the timestamp bounds the query so the lookup prunes partitions instead of scanning all of them. Get the id and its timestamp together — from a dashboard URL's `?t=` param, a notification's `Occurred at`, or a list row's `recordedAt`. Omitting the flag exits 2 (`usage_error`).
+  The `show` / `occurrence` commands take a UUID plus a **required** timestamp flag (`--recorded-at`, or `--started-at` for `sessions`). Telemetry tables are partitioned by day; the timestamp bounds the query so the lookup prunes partitions instead of scanning all of them. Get the id and its timestamp together: from a dashboard URL's `?t=` param, a notification's `Occurred at`, or a list row's `recordedAt`. Omitting the flag exits 2 (`usage_error`).
 </Callout>
 
 ## Profiles
@@ -97,7 +97,7 @@ traceway --profile personal exceptions list   # one-off override
 
 ## Output formats
 
-The `--output` flag picks the format. The default is `table` on a TTY and `json` otherwise — piping always gets machine-readable output.
+The `--output` flag picks the format. The default is `table` on a TTY and `json` otherwise, so piping always gets machine-readable output.
 
 | Format | Use |
 |---|---|
@@ -113,7 +113,7 @@ traceway exceptions list --output json --fields exceptionHash,count,lastSeen
 
 ## Errors and exit codes
 
-Every error writes a stable JSON envelope to stderr (in `json` / `yaml` modes — prose in `table` mode):
+Every error writes a stable JSON envelope to stderr (in `json` / `yaml` modes; prose in `table` mode):
 
 ```json
 {"error":"token_expired","message":"session expired or invalid","hint":"traceway login","exit_code":4}
@@ -140,7 +140,7 @@ The `error` field is a stable snake_case identifier that scripts and LLMs can br
 - Or set `TRACEWAY_ASSUME_YES=1` in the environment.
 - Or run interactively and answer the `Continue? [y/N]` prompt.
 
-Calling a mutating command from a non-TTY context (script, LLM tool call) without one of the opt-ins fails immediately with `usage_error` (exit 2) — no hung prompts.
+Calling a mutating command from a non-TTY context (script, LLM tool call) without one of the opt-ins fails immediately with `usage_error` (exit 2); no hung prompts.
 
 ## MCP server
 

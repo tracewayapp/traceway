@@ -2,7 +2,7 @@
 
 import { Callout } from "nextra/components";
 
-This guide covers how to contribute to Traceway — from filing an issue to getting a PR merged.
+This guide covers how to contribute to Traceway, from filing an issue to getting a PR merged.
 
 ## Community
 
@@ -14,11 +14,11 @@ The fastest way to ask questions, share ideas, or get help from maintainers is [
 
 Search open issues first to avoid duplicates. When you file a bug, include:
 
-- **What happened** — a clear description of the bug
-- **What you expected** — what should have happened instead
-- **Steps to reproduce** — the smallest sequence of steps that triggers it
-- **Environment** — Traceway version, deployment type (SQLite, Docker Compose, all-in-one), OS
-- **Logs** — any relevant error messages or stack traces
+- **What happened**: a clear description of the bug
+- **What you expected**: what should have happened instead
+- **Steps to reproduce**: the smallest sequence of steps that triggers it
+- **Environment**: Traceway version, deployment type (SQLite, Docker Compose, all-in-one), OS
+- **Logs**: any relevant error messages or stack traces
 
 The more precise the reproduction steps, the faster the fix.
 
@@ -34,8 +34,8 @@ Maintainers add labels after the issue is filed. You don't need to set them your
 
 | Directory | Description |
 |-----------|-------------|
-| `backend/` | Go/Gin API server — handles telemetry ingestion, REST API, and database access |
-| `frontend/` | SvelteKit 2 dashboard — the web UI users interact with |
+| `backend/` | Go/Gin API server: handles telemetry ingestion, REST API, and database access |
+| `frontend/` | SvelteKit 2 dashboard: the web UI users interact with |
 | `docs/` | Nextra documentation site (what you're reading now) |
 | `examples/` | Working example apps demonstrating embedded mode |
 | `scripts/` | Helper scripts for testing and CI |
@@ -54,7 +54,7 @@ Maintainers add labels after the issue is filed. You don't need to set them your
 - **Go** 1.25 or later
 - **Node.js** 18+ and npm
 - **Docker** (for running the full ClickHouse + PostgreSQL test suite)
-- **ClickHouse** and **PostgreSQL** (only if running the standalone server locally — not needed for embedded/SQLite mode)
+- **ClickHouse** and **PostgreSQL** (only if running the standalone server locally; not needed for embedded/SQLite mode)
 
 ## Build Tags
 
@@ -73,7 +73,7 @@ See the [Build Tags](/learn/build-tags) page for more details.
 
 ### Backend (embedded/SQLite mode)
 
-The fastest way to get going — no databases to install:
+The fastest way to get going (no databases to install):
 
 ```bash
 cd backend
@@ -151,7 +151,7 @@ This builds a Docker image with both databases, applies all migrations, and runs
 
 ### OTEL trace converter tests
 
-These test the OTLP trace parsing logic using snapshot/golden-file testing. No database required — `convertTraces()` is a pure function.
+These test the OTLP trace parsing logic using snapshot/golden-file testing. No database required: `convertTraces()` is a pure function.
 
 ```bash
 cd backend
@@ -191,13 +191,13 @@ The SDK sends telemetry (traces, exceptions, metrics) as gzipped JSON to the bac
 
 Two separate auth systems:
 
-- **Client auth**: Project bearer tokens — used by the SDK to send telemetry (`Authorization: Bearer <project_token>`)
-- **App auth**: JWT tokens — used by the dashboard for user sessions (`Authorization: Bearer <jwt_token>`)
+- **Client auth**: Project bearer tokens, used by the SDK to send telemetry (`Authorization: Bearer <project_token>`)
+- **App auth**: JWT tokens, used by the dashboard for user sessions (`Authorization: Bearer <jwt_token>`)
 
 ### Database Split
 
-- **PostgreSQL** (or SQLite in embedded mode): Relational data that gets updated — users, organizations, projects, invitations, notification rules, dashboards and templates
-- **ClickHouse** (or SQLite in embedded mode): High-volume append-only telemetry — traces, exceptions, metrics, spans, tasks, session recordings
+- **PostgreSQL** (or SQLite in embedded mode): Relational data that gets updated, such as users, organizations, projects, invitations, notification rules, dashboards and templates
+- **ClickHouse** (or SQLite in embedded mode): High-volume append-only telemetry, such as traces, exceptions, metrics, spans, tasks, session recordings
 
 ### Backend Patterns
 
@@ -306,18 +306,18 @@ All pull requests require **at least one approving review** before merging. This
 
 ### What reviewers look at
 
-- **Correctness** — does the code do what the PR says it does?
+- **Correctness**: does the code do what the PR says it does?
 - **Testing**: are the requirements in "Before submitting" met? Repository changes need the ClickHouse + PostgreSQL Docker tests to pass.
-- **Patterns** — does the change follow the conventions in [CLAUDE.md](https://github.com/tracewayapp/traceway/blob/main/CLAUDE.md)? Reviewers will push back on divergence from established patterns.
-- **Scope** — is the PR focused? A small, focused PR is always preferred over one that mixes unrelated changes.
+- **Patterns**: does the change follow the conventions in [CLAUDE.md](https://github.com/tracewayapp/traceway/blob/main/CLAUDE.md)? Reviewers will push back on divergence from established patterns.
+- **Scope**: is the PR focused? A small, focused PR is always preferred over one that mixes unrelated changes.
 
 ### Merge strategy
 
-PRs are squash-merged, so write a clear PR title and description — they become the commit message on `main`. Don't just say "fix bug"; say what bug, why it happened, and what you changed.
+PRs are squash-merged, so write a clear PR title and description; they become the commit message on `main`. Don't just say "fix bug"; say what bug, why it happened, and what you changed.
 
 ### Review timeline
 
-Maintainers aim to review PRs within a few days. If a PR has been open for more than a week with no response, ping in Discord. If you push new commits after requesting review, leave a comment explaining what changed — don't silently update the branch.
+Maintainers aim to review PRs within a few days. If a PR has been open for more than a week with no response, ping in Discord. If you push new commits after requesting review, leave a comment explaining what changed. Don't silently update the branch.
 
 ## Using AI Tools
 

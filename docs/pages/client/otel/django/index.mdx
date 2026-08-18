@@ -197,7 +197,7 @@ And once `opentelemetry-bootstrap -a install` has been run, the matching auto-in
 Disable any instrumentation you don't want by uninstalling its package, or by setting the matching `OTEL_PYTHON_DISABLED_INSTRUMENTATIONS` env var:
 
 ```bash
-# Comma-separated entry-point names — e.g. disable Redis + outbound requests
+# Comma-separated entry-point names, e.g. disable Redis + outbound requests
 OTEL_PYTHON_DISABLED_INSTRUMENTATIONS=redis,requests
 ```
 
@@ -265,7 +265,7 @@ Then import this module **before** Django is imported, typically at the very top
 
 ```python
 # manage.py
-import myproject.otel  # noqa: F401  — must come first
+import myproject.otel  # noqa: F401  (must come first)
 
 # ...standard manage.py body...
 ```

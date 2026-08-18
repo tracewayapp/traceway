@@ -5,16 +5,16 @@ Send AI traces from [OpenRouter](https://openrouter.ai) to Traceway with zero co
 ## How It Works
 
 1. **OpenRouter routes your AI calls** to the best model provider (OpenAI, Anthropic, Google, etc.)
-2. **Observability broadcasts traces** — OpenRouter sends an OTLP span for each completion with `gen_ai.*` attributes
-3. **Traceway captures and stores** — Model, tokens, costs, duration, and conversation content appear in your AI Traces dashboard
+2. **Observability broadcasts traces**: OpenRouter sends an OTLP span for each completion with `gen_ai.*` attributes
+3. **Traceway captures and stores**: Model, tokens, costs, duration, and conversation content appear in your AI Traces dashboard
 
-No SDK or code changes needed — OpenRouter handles the instrumentation automatically.
+No SDK or code changes are needed. OpenRouter handles the instrumentation automatically.
 
 ## Setup
 
 ### 1. Get Your Traceway Project Token
 
-AI Tracing works with any backend or OpenTelemetry project in Traceway. If you don't have a project yet, create a new one and select **OpenTelemetry** as the framework — this gives you a project token you can use for the OpenRouter integration.
+AI Tracing works with any backend or OpenTelemetry project in Traceway. If you don't have a project yet, create a new one and select **OpenTelemetry** as the framework. This gives you a project token you can use for the OpenRouter integration.
 
 In your Traceway dashboard, go to **Connection** and copy your project token.
 
@@ -106,9 +106,9 @@ If you're running Traceway on your own infrastructure, use your instance URL as 
 https://your-traceway-instance.com/api/otel/v1/traces
 ```
 
-The rest of the configuration is identical — project token in the Authorization header, same format.
+The rest of the configuration is identical: project token in the Authorization header, same format.
 
 ## Next Steps
 
-- [AI Tracing concepts](/learn/ai-tracing) — Understand how AI traces are stored and queried
-- [OpenTelemetry](/client/otel) — Send traces from any OTel-instrumented application
+- [AI Tracing concepts](/learn/ai-tracing): Understand how AI traces are stored and queried
+- [OpenTelemetry](/client/otel): Send traces from any OTel-instrumented application

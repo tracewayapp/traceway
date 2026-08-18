@@ -24,7 +24,7 @@ Here's how the concepts connect in a typical scheduled/async task:
 1. **System metrics collected** → CPU, memory, goroutines, and GC stats are captured automatically every 30 seconds (Automatically by the client SDK)
 2. **Custom metrics captured** → Your code calls `CaptureMetric` or `CaptureMetricWithTags` to record application-specific measurements with optional tags
 3. **Batched and uploaded** → All metrics are batched, compressed, and sent to Traceway with the next collection frame
-4. **Displayed on dashboards** → Metrics appear on configurable, org-shareable dashboards with line charts, area charts, bar charts, single values, gauges, and tables — filterable and groupable by tags
+4. **Displayed on dashboards** → Metrics appear on configurable, org-shareable dashboards with line charts, area charts, bar charts, single values, gauges, and tables, filterable and groupable by tags
 
 ## Ingestion pipelines
 

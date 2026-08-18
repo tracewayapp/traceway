@@ -44,9 +44,9 @@ The severity dropdown on the Logs page filters by threshold. Picking `WARN+` kee
 
 OTel logs carry three layers of attributes, all of which are indexed and searchable in Traceway:
 
-- **Resource attributes** describe the emitting process — e.g. `service.name`, `service.version`, `host.name`, `deployment.environment`. Every log emitted by a given service carries the same resource attributes.
-- **Scope attributes** describe the instrumentation library or logger emitting the record — e.g. `logger.name`, scope `version`. Useful for separating framework logs from application logs.
-- **Log attributes** are specific to a single log record — e.g. `user.id`, `order.id`, `request.method`. These are the per-event details you add when logging.
+- **Resource attributes** describe the emitting process, e.g. `service.name`, `service.version`, `host.name`, `deployment.environment`. Every log emitted by a given service carries the same resource attributes.
+- **Scope attributes** describe the instrumentation library or logger emitting the record, e.g. `logger.name`, scope `version`. Useful for separating framework logs from application logs.
+- **Log attributes** are specific to a single log record, e.g. `user.id`, `order.id`, `request.method`. These are the per-event details you add when logging.
 
 Click any log row to expand it. The expanded view shows the raw body, the linked trace and span IDs, and every attribute from all three layers. Each attribute has a filter toggle, so you can pivot from a single log line to all logs sharing that value in one click.
 
@@ -72,12 +72,12 @@ A few details:
 
 The **Logs** page supports filtering and search across all three attribute layers plus the body:
 
-- **Severity threshold** — keep only records at or above a minimum level (e.g. `WARN+` hides INFO and below).
-- **Service** — exact match on `service.name`.
-- **Trace** — exact match on the hex trace ID, or on a Traceway distributed trace ID (returns logs from every linked trace).
-- **Body search** — full-text search over the log message. Single-token queries use a token-bloom index for speed; multi-word or punctuation-heavy queries fall back to substring matching.
-- **Attribute filters** — match on any `resource.*`, `scope.*`, or log attribute key, either as equals or not equals.
-- **Time range** — pick from presets (24h, 7d, 30d) or a custom window.
+- **Severity threshold**: keep only records at or above a minimum level (e.g. `WARN+` hides INFO and below).
+- **Service**: exact match on `service.name`.
+- **Trace**: exact match on the hex trace ID, or on a Traceway distributed trace ID (returns logs from every linked trace).
+- **Body search**: full-text search over the log message. Single-token queries use a token-bloom index for speed; multi-word or punctuation-heavy queries fall back to substring matching.
+- **Attribute filters**: match on any `resource.*`, `scope.*`, or log attribute key, either as equals or not equals.
+- **Time range**: pick from presets (24h, 7d, 30d) or a custom window.
 
 All filters combine. Results load newest first, and a "Load more" button at the end of the list fetches older records in the same query.
 
@@ -113,7 +113,7 @@ When your SDK emits a log inside an active OTel span context, the log record aut
 - When a trace crosses service boundaries, a **Distributed Traces** tab shows logs from every service that participated.
 - Jumping from a log to the trace that produced it is a single click in the dashboard.
 
-No extra configuration is required — the standard OTel context propagation carries the IDs to your logger.
+No extra configuration is required. The standard OTel context propagation carries the IDs to your logger.
 
 ## Retention
 
@@ -123,6 +123,6 @@ Logs are stored in ClickHouse with daily partitioning and a 90-day TTL on the ti
 
 See the SDK-specific guides for setup instructions:
 
-- [OpenTelemetry](/client/otel/logs) — direct SDK export or OTel Collector
-- [Symfony](/client/otel/symfony/logs) — Monolog handler and the OTel PHP Logs API
-- [Cloudflare Workers](/client/otel/cloudflare) — Worker-side OTel logs exporter
+- [OpenTelemetry](/client/otel/logs): direct SDK export or OTel Collector
+- [Symfony](/client/otel/symfony/logs): Monolog handler and the OTel PHP Logs API
+- [Cloudflare Workers](/client/otel/cloudflare): Worker-side OTel logs exporter

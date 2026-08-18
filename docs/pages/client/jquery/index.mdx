@@ -22,11 +22,11 @@ init("your-token@https://cloud.tracewayapp.com/api/report");
 
 `init()` binds `$(document).ajaxError()` on `window.jQuery` (or `window.$`). If jQuery is only a bundled module and never lands on `window`, uncaught errors and `captureException()` still work but AJAX errors are silently skipped. Call `init()` after jQuery is on the page. If jQuery already comes from a `<script>` tag, it is global already and you can drop the two jQuery lines above.
 
-Session recording is on by default — the last ~30s of DOM events ship with every captured exception.
+Session recording is on by default. The last ~30s of DOM events ship with every captured exception.
 
 ### Via CDN
 
-No build step needed — add two script tags after jQuery:
+No build step needed. Add two script tags after jQuery:
 
 ```html
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
@@ -57,7 +57,7 @@ $.ajax({
   url: "/api/users",
   method: "GET",
   error: function (jqXHR, textStatus, errorThrown) {
-    // Your error handling — Traceway also captures this
+    // Your error handling; Traceway also captures this
   },
 });
 ```
@@ -165,12 +165,12 @@ The backend has to hold up its end: it must set the incoming header on its serve
 If your backend uses the [Symfony OpenTelemetry Bundle](/client/otel/symfony), distributed tracing works out of the box. The bundle reads the `traceway-trace-id` header from incoming requests and attaches it as a span attribute, linking your jQuery frontend errors to Symfony backend traces.
 
 ```javascript
-// Frontend — trace header is injected automatically
+// Frontend: trace header is injected automatically
 $.post("/api/orders", { item: "widget" });
 ```
 
 ```php
-// Backend — the bundle reads traceway-trace-id automatically
+// Backend: the bundle reads traceway-trace-id automatically
 // No extra configuration needed in your Symfony controllers
 ```
 
@@ -190,5 +190,5 @@ Click the button and check your Traceway dashboard to verify the error appears.
 
 ## Next Steps
 
-- [Distributed Tracing](/client/js-sdk/distributed-tracing) — Frontend ↔ backend correlation
-- [JS SDK Reference](/client/js-sdk) — Full API reference
+- [Distributed Tracing](/client/js-sdk/distributed-tracing): Frontend ↔ backend correlation
+- [JS SDK Reference](/client/js-sdk): Full API reference

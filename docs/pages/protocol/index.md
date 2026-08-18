@@ -50,7 +50,7 @@ Parse by splitting on the first `@`:
 
 ### Gzip Requirement
 
-The request body **should** be gzip-compressed JSON for the regular sync path. The backend's gzip middleware decompresses when `Content-Encoding: gzip` is present and passes the body through unchanged when it is absent. Browser SDKs use the uncompressed path on the page-unload (`pagehide`) flush so the request can dispatch synchronously inside the unload handler — `CompressionStream` is async and would yield control before the request leaves. Servers MUST therefore accept both compressed and uncompressed JSON on `/api/report`.
+The request body **should** be gzip-compressed JSON for the regular sync path. The backend's gzip middleware decompresses when `Content-Encoding: gzip` is present and passes the body through unchanged when it is absent. Browser SDKs use the uncompressed path on the page-unload (`pagehide`) flush so the request can dispatch synchronously inside the unload handler; `CompressionStream` is async and would yield control before the request leaves. Servers MUST therefore accept both compressed and uncompressed JSON on `/api/report`.
 
 ## Request Payload
 
@@ -136,9 +136,9 @@ A trace represents either an **endpoint** (HTTP request) or a **task** (backgrou
 
 **UUIDs** are v4, formatted as `"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"`.
 
-**`attributes` and `spans`** use `omitempty` in Go — they are omitted from JSON when null/empty. Your SDK may omit them or send `null`/`{}` and `[]`.
+**`attributes` and `spans`** use `omitempty` in Go, which means they are omitted from JSON when null/empty. Your SDK may omit them or send `null`/`{}` and `[]`.
 
-**`isTask`** uses `omitempty` — it is omitted when `false`. The backend treats a missing `isTask` as `false`.
+**`isTask`** uses `omitempty`, so it is omitted when `false`. The backend treats a missing `isTask` as `false`.
 
 ### Endpoints vs. Tasks
 
@@ -199,7 +199,7 @@ An exception record represents either an **error/panic** or an explicitly **capt
 ### Notes
 
 - **`traceId`** is a nullable string pointer. When there is no linked trace, send `null` or omit the field entirely.
-- **`isTask`** uses `omitempty` — omitted when `false`.
+- **`isTask`** uses `omitempty` (omitted when `false`).
 - **`isMessage=false`** → error or panic with a stack trace. The backend normalizes and hashes the stack trace for grouping.
 - **`isMessage=true`** → an explicitly captured message (e.g., via `CaptureMessage`). The full `stackTrace` string is hashed as-is for grouping.
 
@@ -278,7 +278,7 @@ The Go client collects these system metrics automatically:
 
 ### Custom Metrics
 
-SDKs can send any `name`/`value` pair. There is no registry — any string name is accepted.
+SDKs can send any `name`/`value` pair. There is no registry: any string name is accepted.
 
 ```json
 { "name": "queue.length", "value": 42.0, "recordedAt": "2025-01-15T10:30:00Z" }
@@ -286,9 +286,9 @@ SDKs can send any `name`/`value` pair. There is no registry — any string name 
 
 ## Sessions
 
-A **session** represents one user's continuous interaction with a browser app — typically the lifetime of an open tab. Sessions are emitted only by browser SDKs that have **always-on session recording** enabled (`recordAllSessions: true`); back-end and mobile SDKs omit the `sessions` and `sessionRecordings` fields entirely.
+A **session** represents one user's continuous interaction with a browser app, typically the lifetime of an open tab. Sessions are emitted only by browser SDKs that have **always-on session recording** enabled (`recordAllSessions: true`); back-end and mobile SDKs omit the `sessions` and `sessionRecordings` fields entirely.
 
-The session row is upserted on the backend (keyed by `id`), so the same session can be emitted multiple times during its lifetime — each emission overwrites mutable fields (`endedAt`, `duration`, `attributes`). The shape is identical for the open, mid-session refresh, and close payloads; only the populated fields differ.
+The session row is upserted on the backend (keyed by `id`), so the same session can be emitted multiple times during its lifetime; each emission overwrites mutable fields (`endedAt`, `duration`, `attributes`). The shape is identical for the open, mid-session refresh, and close payloads; only the populated fields differ.
 
 ### Session Object
 
@@ -323,13 +323,13 @@ The session row is upserted on the backend (keyed by `id`), so the same session 
 A new session begins on:
 
 1. SDK init when `recordAllSessions: true` and a browser context is available.
-2. Page restore from bfcache (`pageshow` with `event.persisted === true`) — a fresh `id` is generated and the previous session row is left as-is.
+2. Page restore from bfcache (`pageshow` with `event.persisted === true`). A fresh `id` is generated and the previous session row is left as-is.
 
 A session ends on:
 
-1. **Inactivity timeout** — 15 min since the last DOM event observed by rrweb (or the last `markActivity()` call).
-2. **Maximum duration** — 60 min from `startedAt`.
-3. **Page unload** — `pagehide` triggers a final flush and end.
+1. **Inactivity timeout**: 15 min since the last DOM event observed by rrweb (or the last `markActivity()` call).
+2. **Maximum duration**: 60 min from `startedAt`.
+3. **Page unload**: `pagehide` triggers a final flush and end.
 
 The closing payload is sent via `fetch(..., { keepalive: true })` with raw JSON (no gzip) so it dispatches synchronously inside the `pagehide` handler.
 
@@ -352,7 +352,7 @@ Browser SDKs stamp these on every session at open and close (caller-provided key
 
 ## Session Recordings
 
-Session recordings carry the actual replay data. Each recording is **one segment** — typically ~30 s of rrweb events. A session is reassembled at view time by ordering all of its recordings by `segmentIndex`.
+Session recordings carry the actual replay data. Each recording is **one segment**, typically ~30 s of rrweb events. A session is reassembled at view time by ordering all of its recordings by `segmentIndex`.
 
 A recording can be **session-bound** (always-on path), **exception-bound** (legacy, when an exception is captured), or both at once when an exception fires inside an always-on segment.
 
@@ -382,7 +382,7 @@ A recording can be **session-bound** (always-on path), **exception-bound** (lega
 | StartedAt | `startedAt` | `string` | No | RFC 3339 timestamp of the first event in the segment |
 | EndedAt | `endedAt` | `string` | No | RFC 3339 timestamp of the last event in the segment |
 
-The backend stores each recording as a row in `session_recordings` with the events bytes written to S3 (or a configured object store). At least one of `exceptionId` or `sessionId` must be set — recordings with neither linkage are dropped.
+The backend stores each recording as a row in `session_recordings` with the events bytes written to S3 (or a configured object store). At least one of `exceptionId` or `sessionId` must be set; recordings with neither linkage are dropped.
 
 ## Exception ↔ Session Linking
 
@@ -469,7 +469,7 @@ When a trace is not sampled, do not send the trace or any associated exceptions.
 | Status | Meaning | Action |
 |--------|---------|--------|
 | `200` | Success | Remove sent frames from the send queue |
-| `400` | Missing `Content-Encoding: gzip` or malformed JSON | Fix the request — do not retry as-is |
+| `400` | Missing `Content-Encoding: gzip` or malformed JSON | Fix the request; do not retry as-is |
 | `401` | Invalid or expired token | Check the project token configuration |
 | `429` | Rate limited | Back off and retry on the next interval |
 | Any other | Server error or network issue | Retry on the next interval |

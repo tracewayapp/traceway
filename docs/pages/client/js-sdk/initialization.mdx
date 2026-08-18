@@ -34,7 +34,7 @@ init("your-token@https://traceway.example.com/api/report", {
 | `beforeCapture` | `(exception) => boolean` | `undefined` | Callback to programmatically suppress errors. Return `false` to drop. See [Error Filtering](#error-filtering) |
 | `sessionRecording` | `boolean` | `true` | Enable the rrweb session recorder. Required for both per-exception clips and always-on session recording |
 | `sessionRecordingSegmentDuration` | `number` | `30000` | Length of each rrweb segment in milliseconds. Always-on recording uploads one row per segment, so a longer value means fewer rows and S3 reads at the cost of replay granularity |
-| `recordAllSessions` | `boolean` | `false` | Always-on session recording — upload every segment continuously and create a parent `sessions` row, not just exception-bound clips. See [Sessions](/learn/sessions) for the full feature |
+| `recordAllSessions` | `boolean` | `false` | Always-on session recording: upload every segment continuously and create a parent `sessions` row, not just exception-bound clips. See [Sessions](/learn/sessions) for the full feature |
 | `captureLogs` | `boolean` | `true` | Mirror `console.{debug,log,info,warn,error}` into the rolling log buffer that ships with each clip / segment |
 | `captureNetwork` | `boolean` | `true` | Record `fetch` and `XMLHttpRequest` calls as network actions |
 | `captureNavigation` | `boolean` | `true` | Record History API push / replace / pop transitions as navigation actions |
@@ -131,7 +131,7 @@ init("your-token@https://traceway.example.com/api/report", {
 });
 ```
 
-`beforeCapture` is checked **after** `ignoreErrors` — if a pattern already suppresses the error, the callback is not called. If the callback throws, the error is captured normally (safe default).
+`beforeCapture` is checked **after** `ignoreErrors`. If a pattern already suppresses the error, the callback is not called. If the callback throws, the error is captured normally (safe default).
 
 ## Debug Mode
 
@@ -147,7 +147,7 @@ init("your-token@https://traceway.example.com/api/report", {
 
 ## Custom Attributes (Global Scope)
 
-The SDK auto-collects browser context (`url`, `userAgent`, `viewport`, etc.) on every session and exception. To attach app-level identifiers — `userId`, `tenant`, feature flags — call the imperative scope API once and they ride along every subsequent event:
+The SDK auto-collects browser context (`url`, `userAgent`, `viewport`, etc.) on every session and exception. To attach app-level identifiers (`userId`, `tenant`, feature flags), call the imperative scope API once and they ride along every subsequent event:
 
 ```javascript
 import {

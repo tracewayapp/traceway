@@ -2,7 +2,7 @@
 
 import { Callout, Steps } from "nextra/components";
 
-Embedded mode runs a full Traceway server inside your Go process — using **SQLite** for all storage (relational data and telemetry). No Docker, no infrastructure — just one `tracewaybackend.Run()` call and your app has local observability.
+Embedded mode runs a full Traceway server inside your Go process, using **SQLite** for all storage (relational data and telemetry). No Docker, no infrastructure: just one `tracewaybackend.Run()` call and your app has local observability.
 
 This is intended for **local development only**. For production, use the [Docker Compose](/server/docker-compose) or [minimal](/server/minimal) deployment.
 
@@ -10,8 +10,8 @@ Telemetry storage follows your build tags: a plain `go build` embeds SQLite, and
 
 <Callout type="info">
   **Want to see it in action?** Check out the [full working example on
-  GitHub](https://github.com/tracewayapp/traceway/tree/main/examples/embedded-backend-otel)
-  — a complete Go app with embedded Traceway and OpenTelemetry instrumentation
+  GitHub](https://github.com/tracewayapp/traceway/tree/main/examples/embedded-backend-otel):
+  a complete Go app with embedded Traceway and OpenTelemetry instrumentation
   you can run in one command.
 </Callout>
 
@@ -164,7 +164,7 @@ func initTracer() func() {
 ```
 
 The key parts:
-- **Exporter URL** points to `http://localhost:8082/api/otel/v1/traces` — the embedded server's OTLP endpoint
+- **Exporter URL** points to `http://localhost:8082/api/otel/v1/traces`, the embedded server's OTLP endpoint
 - **Authorization header** uses the same token from `WithDefaultProject`
 - **`otel.SetTextMapPropagator`** is required in Go. The global propagator ships as a no-op, so without this call an HTTP call your app makes to another service shows up as its own separate trace instead of a child span
 - **`defer shutdown()`** flushes the batch processor on exit. Without it the last few seconds of spans never leave the process
@@ -175,7 +175,7 @@ Run your app, then open **[http://localhost:8082](http://localhost:8082)** in yo
 
 Log in with the credentials from `WithDefaultUser` (`admin@localhost.com` / `admin`).
 
-Hit your app at `http://localhost:8080/ping` a few times — traces will appear in the Traceway dashboard within a few seconds.
+Hit your app at `http://localhost:8080/ping` a few times. Traces will appear in the Traceway dashboard within a few seconds.
 
 </Steps>
 
@@ -207,7 +207,7 @@ go tracewaybackend.Run(
 
 ## Multiple Projects
 
-`WithDefaultProject` can be called multiple times to create separate projects — one for your Go backend, another for a frontend or any other service. Each project gets its own token, keeping telemetry organized in the dashboard:
+`WithDefaultProject` can be called multiple times to create separate projects: one for your Go backend, another for a frontend or any other service. Each project gets its own token, keeping telemetry organized in the dashboard:
 
 ```go
 go tracewaybackend.Run(
@@ -220,7 +220,7 @@ go tracewaybackend.Run(
 
 ## Data Persistence
 
-By default, the database is **in-memory** — all data is lost when your application restarts. This is fine for quick debugging sessions, but if you want data to survive restarts, set a file path:
+By default, the database is **in-memory**, which means all data is lost when your application restarts. This is fine for quick debugging sessions, but if you want data to survive restarts, set a file path:
 
 Add `WithSQLitePath` to the options you already pass. It does not replace them. Keep the `go` keyword too, otherwise `Run` blocks and your own server never starts.
 
@@ -252,7 +252,7 @@ traceway_telemetry.db*
 storage/
 ```
 
-Seeding is idempotent — if the user from `WithDefaultUser` already exists, it's skipped.
+Seeding is idempotent: if the user from `WithDefaultUser` already exists, it's skipped.
 
 ## Development-Only Guard
 

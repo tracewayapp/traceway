@@ -1,6 +1,6 @@
 # Capacity & Self-Monitoring
 
-Traceway's backend can monitor itself. When enabled, the server continuously reports ingestion pressure, ClickHouse health, cache sizes, and process resource usage into a regular Traceway project — so you can dashboard them, and more importantly, alert on them before you hit a wall.
+Traceway's backend can monitor itself. When enabled, the server continuously reports ingestion pressure, ClickHouse health, cache sizes, and process resource usage into a regular Traceway project, so you can dashboard them, and more importantly, alert on them before you hit a wall.
 
 This page lists every self-monitoring metric, recommended alert thresholds, and a decision tree for the three scaling questions that matter in production: **do I scale ClickHouse, do I scale the backend server, or do I put Kafka in front of ingestion?**
 
@@ -30,7 +30,7 @@ Emitted once per `/api/report` and OTLP request, tagged with `signal` and `table
 | Metric | Meaning |
 |--------|---------|
 | `traceway.ingest.batch.convert_ms` | Time converting the client payload into rows (backend CPU work) |
-| `traceway.ingest.batch.insert_ms` | Time writing the batch into ClickHouse (inside the request — clients wait on this) |
+| `traceway.ingest.batch.insert_ms` | Time writing the batch into ClickHouse (inside the request, so clients wait on this) |
 | `traceway.ingest.batch.size` | Rows in the batch |
 | `traceway.ingest.batch.bytes` | Decompressed payload size in bytes |
 | `traceway.ingest.rate_limited` | Fired when an org hits its ingest quota (tagged `org_id`) |
@@ -69,7 +69,7 @@ Not emitted in SQLite mode.
 | `traceway.recordings.queue_depth` | Segments waiting in the upload queue (cap default 2048) |
 | `traceway.recordings.in_flight` | Workers mid-upload |
 | `traceway.recordings.uploaded.delta` | Segments uploaded since the last tick |
-| `traceway.recordings.dropped.delta` | Segments dropped (queue full) since the last tick — data loss |
+| `traceway.recordings.dropped.delta` | Segments dropped (queue full) since the last tick, meaning data loss |
 | `traceway.recordings.failed.delta` | Upload/insert failures since the last tick |
 
 ### Source map cache (every 30s)
@@ -117,12 +117,12 @@ Sizing guidance:
 
 Create rules in the monitoring project under **Notifications** using the **Metric threshold** rule type. A rule is defined by: metric name, aggregation (`avg`, `max`, `min`, `sum`, `p95`, `p99`), operator (`gt`, `gte`, `lt`, `lte`, `eq`), threshold value, and lookback window in minutes. Rules are evaluated every 60 seconds.
 
-**Tag caveat:** metric threshold rules aggregate across *all* tag combinations of a metric name. That is what you want for the metrics on this page — `max` on `traceway.ch.parts.max_per_partition` gives you the worst partition across every table, and `max` on `traceway.ch.disk.used_pcnt` gives you the fullest disk. Just avoid `avg` on per-table/per-disk metrics, where mixing series would dilute the signal.
+**Tag caveat:** metric threshold rules aggregate across *all* tag combinations of a metric name. That is what you want for the metrics on this page: `max` on `traceway.ch.parts.max_per_partition` gives you the worst partition across every table, and `max` on `traceway.ch.disk.used_pcnt` gives you the fullest disk. Just avoid `avg` on per-table/per-disk metrics, where mixing series would dilute the signal.
 
 Two more rule types complete the picture:
 
-- **Endpoint P95 threshold** on `POST /api/report` — client-visible ingest latency (the backend's own HTTP requests are transactions in the monitoring project).
-- **No data** with data type `metrics` — fires when the backend stops self-reporting entirely (crash, network partition).
+- **Endpoint P95 threshold** on `POST /api/report`: client-visible ingest latency (the backend's own HTTP requests are transactions in the monitoring project).
+- **No data** with data type `metrics`, which fires when the backend stops self-reporting entirely (crash, network partition).
 
 ## Recommended starting alerts
 
@@ -130,15 +130,15 @@ Two more rule types complete the picture:
 |--------|-----|----|-----------|----------|---------|---------|
 | `traceway.ch.failed_inserts.delta` | max | gt | 0 | 5 | critical | Inserts are failing right now |
 | `traceway.ch.rejected_inserts.delta` | max | gt | 0 | 5 | critical | ClickHouse is rejecting inserts (3000 parts/partition hit) |
-| `traceway.ch.inserted_rows.delta` | max | lte | 0 | 10 | critical | Ingestion stalled — nothing written for 10 minutes |
+| `traceway.ch.inserted_rows.delta` | max | lte | 0 | 10 | critical | Ingestion stalled: nothing written for 10 minutes |
 | `traceway.ch.disk.used_pcnt` | max | gt | 90 | 5 | critical | ClickHouse disk nearly full |
 | `traceway.ch.parts.max_per_partition` | max | gt | 2000 | 5 | critical | Approaching the insert-rejection threshold |
-| `traceway.ingest.batch.insert_ms` | p95 | gt | 500 | 10 | warning | ClickHouse write latency rising — clients feel this directly |
+| `traceway.ingest.batch.insert_ms` | p95 | gt | 500 | 10 | warning | ClickHouse write latency rising; clients feel this directly |
 | `traceway.ch.delayed_inserts.delta` | max | gt | 0 | 10 | warning | ClickHouse is throttling inserts (merge back-pressure) |
 | `traceway.ch.parts.max_per_partition` | max | gt | 700 | 10 | warning | Approaching the insert-delay threshold (1000) |
 | `traceway.ch.disk.used_pcnt` | max | gt | 80 | 15 | warning | ClickHouse disk filling up |
-| `traceway.ch.pool.open` | avg | gte | 15 | 10 | warning | Connection pool saturated — check `insert_ms` next |
-| `traceway.recordings.dropped.delta` | max | gt | 0 | 5 | warning | Recording segments being dropped — ingestion overload |
+| `traceway.ch.pool.open` | avg | gte | 15 | 10 | warning | Connection pool saturated; check `insert_ms` next |
+| `traceway.recordings.dropped.delta` | max | gt | 0 | 5 | warning | Recording segments being dropped (ingestion overload) |
 | `traceway.sourcemap.load_failures.delta` | max | gt | 0 | 10 | warning | Source map loads failing (storage errors/timeouts); traces stored unsymbolicated |
 | `cpu.used_pcnt` | avg | gt | 80 | 10 | warning | Backend CPU-bound |
 | `traceway.proc.rss_mb` | avg | gt | 80% of host RAM | 10 | warning | Memory pressure / OOM risk (e.g. 800 on a 1 GB box) |
@@ -148,7 +148,7 @@ Plus the two non-metric rules: **Endpoint P95 threshold** on `POST /api/report` 
 
 ## Scale ClickHouse, scale the backend, or add Kafka?
 
-Ingestion in Traceway is synchronous: each `/api/report` request converts the payload and writes it to ClickHouse before responding. That makes the diagnosis straightforward — the metrics tell you which side of that pipeline is saturated, and whether the problem is sustained or bursty.
+Ingestion in Traceway is synchronous: each `/api/report` request converts the payload and writes it to ClickHouse before responding. That makes the diagnosis straightforward: the metrics tell you which side of that pipeline is saturated, and whether the problem is sustained or bursty.
 
 ### Scale ClickHouse when the pressure is sustained and CH-side
 
@@ -159,12 +159,12 @@ ClickHouse can't merge or store as fast as you're writing. Signals, in rough ord
 - `traceway.ch.disk.used_pcnt` rising, `traceway.ch.memory.tracking_bytes` near the host's RAM
 - `traceway.ingest.batch.insert_ms` p95 high **while the ClickHouse host's CPU is also high**
 
-Fix: more CPU/RAM/disk for ClickHouse, faster disks, or sharding. Kafka won't help here — a buffer in front of a database that's saturated on average just delays the inevitable.
+Fix: more CPU/RAM/disk for ClickHouse, faster disks, or sharding. Kafka won't help here: a buffer in front of a database that's saturated on average just delays the inevitable.
 
 ### Scale the backend server when the Go process is the bottleneck
 
-- `cpu.used_pcnt` avg > 80% together with high `traceway.ingest.batch.convert_ms` — payload conversion (JSON/OTLP decoding, hashing) is CPU work that scales with traffic
-- `traceway.proc.rss_mb` approaching host RAM — before resizing, tune the source map cache variables above; they're the largest tunable consumer
+- `cpu.used_pcnt` avg > 80% together with high `traceway.ingest.batch.convert_ms`; payload conversion (JSON/OTLP decoding, hashing) is CPU work that scales with traffic
+- `traceway.proc.rss_mb` approaching host RAM: before resizing, tune the source map cache variables above; they're the largest tunable consumer
 - `go.go_routines` growing without bound
 
 Fix: a bigger box, or multiple backend instances behind a load balancer (the backend is stateless apart from in-memory caches).
@@ -175,7 +175,7 @@ Because inserts happen inside the request, every ClickHouse hiccup or burst beco
 
 - `traceway.ingest.batch.insert_ms` p95 spiking while ClickHouse CPU, disk, and merges look calm on average
 - `traceway.ch.pool.open` pinned at 15 (pool saturated) during peaks
-- `traceway.recordings.dropped.delta` > 0 — the one buffered path is already overflowing during bursts
+- `traceway.recordings.dropped.delta` > 0; the one buffered path is already overflowing during bursts
 - P95 on `POST /api/report` rising even though total `traceway.ch.inserted_rows.delta` is well within what ClickHouse handles at steady state
 
 That pattern means ClickHouse can absorb your *average* write rate but not your *peaks*, and the synchronous path turns peaks into client errors and data loss. A queue (Kafka) between the HTTP handlers and ClickHouse decouples client latency from insert latency, absorbs spikes, and enables larger, better-shaped batches.

@@ -1,10 +1,10 @@
 # Architecture Overview
 
-Traceway's mental model is small. There's one underlying primitive — **spans** — and a handful of **materialized views** over those spans that make the dashboard fast.
+Traceway's mental model is small. There's one underlying primitive, **spans**, and a handful of **materialized views** over those spans that make the dashboard fast.
 
 ## The primitive: spans
 
-Every piece of trace data Traceway ingests is an OpenTelemetry span. Spans carry a name, a kind, a duration, attributes, events (exceptions live here), and parent/trace ids. The shape is OTel-native — Traceway speaks OTLP directly and doesn't impose its own trace model on top.
+Every piece of trace data Traceway ingests is an OpenTelemetry span. Spans carry a name, a kind, a duration, attributes, events (exceptions live here), and parent/trace ids. The shape is OTel-native: Traceway speaks OTLP directly and doesn't impose its own trace model on top.
 
 [Learn more about spans →](/learn/spans)
 
@@ -12,27 +12,27 @@ Every piece of trace data Traceway ingests is an OpenTelemetry span. Spans carry
 
 On ingestion, Traceway classifies each span and writes a row into a dedicated table when the kind or attributes match a rule. These tables are the top-level dashboard concepts:
 
-- **Endpoints** — inbound HTTP entry points (`GET /api/users/:id`).
-- **Tasks** — queue consumers, scheduled commands, anything that runs as a "thing that completes".
-- **AI Traces** — any span carrying `gen_ai.*` attributes, root or child.
-- **Issues** — exception events lifted off whichever entity owned the span.
+- **Endpoints**: inbound HTTP entry points (`GET /api/users/:id`).
+- **Tasks**: queue consumers, scheduled commands, anything that runs as a "thing that completes".
+- **AI Traces**: any span carrying `gen_ai.*` attributes, root or child.
+- **Issues**: exception events lifted off whichever entity owned the span.
 
-Each table is indexed and shaped for one job: answering "what's slow?", "what's expensive?", "what's failing?" without scanning the full span store. They're projections, not parallel universes — the underlying span data is the source of truth.
+Each table is indexed and shaped for one job: answering "what's slow?", "what's expensive?", "what's failing?" without scanning the full span store. They're projections, not parallel universes: the underlying span data is the source of truth.
 
 [Trace classification rules and the views →](/learn/traces) · [Issues →](/learn/issues) · [AI Tracing →](/learn/ai-tracing)
 
 ## Root and non-root entities
 
-Endpoints, Tasks, and AI Traces all carry an `is_root` flag. A row is **non-root** when the span that produced it was triggered by another trace — a queue worker started by an HTTP request, an LLM call made inside that same handler, a downstream service hop. Non-root rows link back to the originating trace via the auto-derived `distributed_trace_id`, so the distributed-trace view shows the full picture across all the entities that share one OTel trace id.
+Endpoints, Tasks, and AI Traces all carry an `is_root` flag. A row is **non-root** when the span that produced it was triggered by another trace: a queue worker started by an HTTP request, an LLM call made inside that same handler, a downstream service hop. Non-root rows link back to the originating trace via the auto-derived `distributed_trace_id`, so the distributed-trace view shows the full picture across all the entities that share one OTel trace id.
 
 [More on root vs non-root →](/learn/traces#root-and-non-root-entities)
 
 ## Enrichments
 
-- **Attributes** — key-value metadata on spans and the entities derived from them. Flow from global → per-request scope. [Details →](/learn/attributes)
-- **Sessions** — user-session grouping for browser/mobile clients, separate from traces. [Details →](/learn/sessions)
-- **Metrics** — time-series measurements, ingested via OTLP metrics. Independent of the trace pipeline. [Details →](/learn/metrics)
-- **Logs** — OTLP logs ingestion, joinable to traces by trace id. [Details →](/learn/logs)
+- **Attributes**: key-value metadata on spans and the entities derived from them. Flow from global → per-request scope. [Details →](/learn/attributes)
+- **Sessions**: user-session grouping for browser/mobile clients, separate from traces. [Details →](/learn/sessions)
+- **Metrics**: time-series measurements, ingested via OTLP metrics. Independent of the trace pipeline. [Details →](/learn/metrics)
+- **Logs**: OTLP logs ingestion, joinable to traces by trace id. [Details →](/learn/logs)
 
 <img src="/architecture.png" alt="Traceway Architecture" style={{ maxWidth: '100%', height: 'auto' }} />
 

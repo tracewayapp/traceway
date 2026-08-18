@@ -71,7 +71,7 @@ For each application boundary:
 3. Choose the organization.
 4. Enter a name that identifies the product and runtime, such as `Acme Backend`, `Acme Web`, or `Acme Mobile`.
 5. Select the framework:
-   - **OpenTelemetry** for the backend, regardless of language or HTTP framework — it is the only backend option, and the preselected default
+   - **OpenTelemetry** for the backend, regardless of language or HTTP framework; it is the only backend option, and the preselected default
    - **React**, **Svelte**, **Vue.js**, or **jQuery** for a browser project
    - **Flutter**, **React Native**, **Android**, or **iOS** for a mobile project
 6. Select **New Project**.
@@ -115,7 +115,7 @@ All of them also read `TRACEWAY_URL`. Name the CI secret exactly what the upload
 traceway-sourcemaps --url "$TRACEWAY_URL" --token "$TRACEWAY_WEB_UPLOAD_TOKEN" --directory ./dist
 ```
 
-If one repository releases two mobile apps, their tokens collide on `TRACEWAY_UPLOAD_TOKEN` — scope the secret per CI job, or pass `--token` per build. Upload tokens never use a public prefix and never ship inside the application.
+If one repository releases two mobile apps, their tokens collide on `TRACEWAY_UPLOAD_TOKEN`. Scope the secret per CI job, or pass `--token` per build. Upload tokens never use a public prefix and never ship inside the application.
 
 ## Example Monorepo
 

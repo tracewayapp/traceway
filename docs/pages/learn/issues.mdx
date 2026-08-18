@@ -1,6 +1,6 @@
 # Issues
 
-Issues capture problems in your application — exceptions, panics, and explicitly sent messages.
+Issues capture problems in your application: exceptions, panics, and explicitly sent messages.
 
 <img src="/issues.png" alt="Issues Dashboard" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
@@ -16,8 +16,8 @@ An issue is created when:
 
 Traceway captures two kinds of issues:
 
-- **Errors** — Runtime exceptions with stack traces (panics, captured errors)
-- **Messages** — Explicitly captured strings sent through the client SDK
+- **Errors**: Runtime exceptions with stack traces (panics, captured errors)
+- **Messages**: Explicitly captured strings sent through the client SDK
 
 Both appear in the Issues list with full context and attributes.
 
@@ -81,13 +81,13 @@ traceway.CaptureMessage(fmt.Sprintf("payment provider unreachable for order %d",
 
 ## Issue Lifecycle
 
-1. **Active** — When an issue first occurs
-2. **Archived** — Marked as resolved by you (hidden from the default view)
-3. **Reopened** — An archived issue that occurred again (regression detected)
+1. **Active**: When an issue first occurs
+2. **Archived**: Marked as resolved by you (hidden from the default view)
+3. **Reopened**: An archived issue that occurred again (regression detected)
 
 ## Attributes on Issues
 
-Issues carry their own attributes — the key-value metadata that was in scope when the exception occurred. If the issue is linked to a trace, it inherits the trace's attributes.
+Issues carry their own attributes: the key-value metadata that was in scope when the exception occurred. If the issue is linked to a trace, it inherits the trace's attributes.
 
 When error recording flags are enabled in middleware, additional context can be attached (configurable per client library):
 

@@ -72,7 +72,7 @@ Unlike the Dart upload, iOS needs no `arch` or `debug_id` form fields. The backe
 iossymbols/{projectId}/{uuid}.dsym
 ```
 
-Because the key is content-addressed, releases never collide and re-uploading the same build is idempotent. The response reports how many uploaded files were accepted — a fat dSYM counts once, even though it stores one entry per slice:
+Because the key is content-addressed, releases never collide and re-uploading the same build is idempotent. The response reports how many uploaded files were accepted. A fat dSYM counts once, even though it stores one entry per slice:
 
 ```json
 { "uploaded": 2 }
@@ -98,7 +98,7 @@ The parser pulls three things from each frame:
 
 A trace that is already symbolic, or carries no recognizable iOS frames, passes through untouched.
 
-When crafting traces by hand (a custom sender, CI tooling), include the `*** …` separator line between the error message and the frames, as the Traceway iOS SDK does. The symbolicated output preserves everything above the first `***` line as the error preamble — without a separator, the entire raw trace (frame lines included) is treated as preamble and carried into the resolved output verbatim, duplicating the frames.
+When crafting traces by hand (a custom sender, CI tooling), include the `*** …` separator line between the error message and the frames, as the Traceway iOS SDK does. The symbolicated output preserves everything above the first `***` line as the error preamble. Without a separator, the entire raw trace (frame lines included) is treated as preamble and carried into the resolved output verbatim, duplicating the frames.
 
 ## How an offset resolves
 

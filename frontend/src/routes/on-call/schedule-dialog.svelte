@@ -89,9 +89,7 @@
 		<AlertDialog.Header>
 			<AlertDialog.Title>{isEditing ? 'Edit Schedule' : 'New Schedule'}</AlertDialog.Title>
 			<AlertDialog.Description>
-				{isEditing
-					? 'Update the schedule details'
-					: 'Create an on-call schedule for a team'}
+				{isEditing ? 'Update the schedule details' : 'Create an on-call schedule for a team'}
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 

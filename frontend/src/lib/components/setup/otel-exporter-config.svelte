@@ -14,8 +14,8 @@
 	<div>
 		<p class="mb-1 text-sm font-medium">OTLP Endpoint</p>
 		<p class="mb-2 text-xs text-muted-foreground">
-			Your SDK or Collector will append <code
-				class="rounded bg-muted px-1 py-0.5 font-mono text-xs">/v1/traces</code
+			Your SDK or Collector will append <code class="rounded bg-muted px-1 py-0.5 font-mono text-xs"
+				>/v1/traces</code
 			>
 			and
 			<code class="rounded bg-muted px-1 py-0.5 font-mono text-xs">/v1/metrics</code> automatically.

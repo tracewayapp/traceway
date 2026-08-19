@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -325,7 +326,7 @@
 						{channelTypeOptions.find((o) => o.value === channelType)?.label || 'Select type'}
 					</Select.Trigger>
 					<Select.Content>
-						{#each channelTypeOptions as option}
+						{#each channelTypeOptions as option, __index (__index)}
 							<Select.Item value={option.value}>{option.label}</Select.Item>
 						{/each}
 					</Select.Content>
@@ -335,7 +336,7 @@
 			{#if channelType === 'email'}
 				<div class="space-y-2">
 					<Label>Recipients</Label>
-					{#each emailRecipients as _, index}
+					{#each emailRecipients as _, index (index)}
 						<div class="flex gap-2">
 							<Input
 								type="email"
@@ -388,7 +389,7 @@
 				</div>
 				<div class="space-y-2">
 					<Label>Headers (optional)</Label>
-					{#each webhookHeaders as _, index}
+					{#each webhookHeaders as _, index (index)}
 						<div class="flex gap-2">
 							<Input
 								bind:value={webhookHeaders[index].key}
@@ -561,8 +562,9 @@
 					{#if escalationPoliciesLoaded && escalationPolicies.length === 0}
 						<p class="text-sm text-muted-foreground">
 							No escalation policies yet — create one on the
-							<a href="/on-call?tab=policies" class="text-blue-600 hover:underline dark:text-blue-400"
-								>On-Call page</a
+							<a
+								href={resolve('/on-call?tab=policies')}
+								class="text-blue-600 hover:underline dark:text-blue-400">On-Call page</a
 							>.
 						</p>
 					{:else}
@@ -589,7 +591,6 @@
 					</p>
 				</div>
 			{/if}
-
 		</form>
 
 		<AlertDialog.Footer>

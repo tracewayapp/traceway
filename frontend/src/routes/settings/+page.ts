@@ -5,9 +5,9 @@ import type { PageLoad } from './$types';
 export const prerender = false;
 
 export const load: PageLoad = () => {
-    const canManage = authState.organizations.some((o) => o.role === 'owner' || o.role === 'admin');
-    if (!canManage) {
-        throw redirect(302, '/');
-    }
-    return {};
+	const canManage = authState.organizations.some((o) => o.role === 'owner' || o.role === 'admin');
+	if (!canManage) {
+		throw redirect(302, '/');
+	}
+	return {};
 };

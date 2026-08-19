@@ -12,6 +12,7 @@ var (
 	DashboardTemplateRepository    = sqliterepo.DashboardTemplateRepository
 	DeviceAuthorizationRepository  = sqliterepo.DeviceAuthorizationRepository
 	EscalationPolicyRepository     = sqliterepo.EscalationPolicyRepository
+	IncidentUpdateRepository       = sqliterepo.IncidentUpdateRepository
 	InvitationRepository           = sqliterepo.InvitationRepository
 	MetricRegistryRepository       = sqliterepo.MetricRegistryRepository
 	NotificationChannelRepository  = sqliterepo.NotificationChannelRepository
@@ -25,6 +26,7 @@ var (
 	PageNotificationRepository     = sqliterepo.PageNotificationRepository
 	PageRepository                 = sqliterepo.PageRepository
 	PersonalAccessTokenRepository  = sqliterepo.PersonalAccessTokenRepository
+	PostMortemRepository           = sqliterepo.PostMortemRepository
 	ProjectRepository              = sqliterepo.ProjectRepository
 	ProjectUserRoleRepository      = sqliterepo.ProjectUserRoleRepository
 	RefreshTokenRepository         = sqliterepo.RefreshTokenRepository

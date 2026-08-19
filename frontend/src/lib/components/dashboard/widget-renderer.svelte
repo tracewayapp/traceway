@@ -66,7 +66,14 @@
 	let singleValue = $state<number | null>(null);
 	let resolvedUnit = $state('');
 
-	const colors = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)', 'var(--crit)'];
+	const colors = [
+		'var(--chart-1)',
+		'var(--chart-2)',
+		'var(--chart-3)',
+		'var(--chart-4)',
+		'var(--chart-5)',
+		'var(--crit)'
+	];
 
 	const effectiveUnit = $derived(widget.config.unit ?? resolvedUnit);
 
@@ -233,56 +240,102 @@
 	});
 </script>
 
-<div class="flex h-full w-full min-h-[200px] flex-col">
+<div class="flex h-full min-h-[200px] w-full flex-col">
 	<div class="min-h-0 w-full flex-1" bind:clientHeight={chartAreaHeight}>
-	{#if loading}
-		<div class="flex h-full items-center justify-center">
-			<LoadingCircle size="md" />
-		</div>
-	{:else if widget.widgetType === 'single_value'}
-		<div class="flex h-full flex-col items-center justify-center gap-2">
-			<span class="text-3xl font-bold" style={singleValueColor ? `color: ${singleValueColor};` : ''}>
-				{singleValue !== null ? formatMetricLabel(singleValue, effectiveUnit) : '-'}
-			</span>
-			{#if widget.config.showSparkline && series[0]?.data && series[0].data.length > 1}
-				<div class="w-full px-6">
-					<Sparkline data={series[0].data} color={singleValueColor ?? series[0].color} />
+		{#if loading}
+			<div class="flex h-full items-center justify-center">
+				<LoadingCircle size="md" />
+			</div>
+		{:else if widget.widgetType === 'single_value'}
+			<div class="flex h-full flex-col items-center justify-center gap-2">
+				<span
+					class="text-3xl font-bold"
+					style={singleValueColor ? `color: ${singleValueColor};` : ''}
+				>
+					{singleValue !== null ? formatMetricLabel(singleValue, effectiveUnit) : '-'}
+				</span>
+				{#if widget.config.showSparkline && series[0]?.data && series[0].data.length > 1}
+					<div class="w-full px-6">
+						<Sparkline data={series[0].data} color={singleValueColor ?? series[0].color} />
+					</div>
+				{/if}
+			</div>
+		{:else if widget.widgetType === 'gauge'}
+			{#if singleValue !== null}
+				<D3Gauge
+					value={singleValue}
+					min={widget.config.min ?? 0}
+					max={widget.config.max ?? 100}
+					baseColor={widget.config.baseColor}
+					thresholds={widget.config.thresholds}
+					formatValue={(v) => formatMetricLabel(v, effectiveUnit)}
+				/>
+			{:else}
+				<div class="flex h-full items-center justify-center text-sm text-muted-foreground">
+					No data
 				</div>
 			{/if}
-		</div>
-	{:else if widget.widgetType === 'gauge'}
-		{#if singleValue !== null}
-			<D3Gauge
-				value={singleValue}
-				min={widget.config.min ?? 0}
-				max={widget.config.max ?? 100}
-				baseColor={widget.config.baseColor}
-				thresholds={widget.config.thresholds}
-				formatValue={(v) => formatMetricLabel(v, effectiveUnit)}
-			/>
-		{:else}
-			<div class="flex h-full items-center justify-center text-sm text-muted-foreground">
-				No data
-			</div>
-		{/if}
-	{:else if widget.widgetType === 'bar_chart'}
-		{#if barData.length > 0}
-			<D3HorizontalBarChart data={barData} height={chartHeight} unit={effectiveUnit} formatValue={(v) => formatMetricLabel(v, effectiveUnit)} />
-		{:else}
-			<div class="flex h-full items-center justify-center text-sm text-muted-foreground">
-				No data
-			</div>
-		{/if}
-	{:else if widget.widgetType === 'table'}
-		{#if series.length > 0}
-			<WidgetTable {series} unit={effectiveUnit} />
-		{:else}
-			<div class="flex h-full items-center justify-center text-sm text-muted-foreground">
-				No data
-			</div>
-		{/if}
-	{:else if widget.widgetType === 'area_chart'}
-		{#if series.length > 0}
+		{:else if widget.widgetType === 'bar_chart'}
+			{#if barData.length > 0}
+				<D3HorizontalBarChart
+					data={barData}
+					height={chartHeight}
+					unit={effectiveUnit}
+					formatValue={(v) => formatMetricLabel(v, effectiveUnit)}
+				/>
+			{:else}
+				<div class="flex h-full items-center justify-center text-sm text-muted-foreground">
+					No data
+				</div>
+			{/if}
+		{:else if widget.widgetType === 'table'}
+			{#if series.length > 0}
+				<WidgetTable {series} unit={effectiveUnit} />
+			{:else}
+				<div class="flex h-full items-center justify-center text-sm text-muted-foreground">
+					No data
+				</div>
+			{/if}
+		{:else if widget.widgetType === 'area_chart'}
+			{#if series.length > 0}
+				<D3LineChart
+					series={visibleSeries}
+					xDomain={timeDomain ?? undefined}
+					height={chartHeight}
+					padding={chartPadding}
+					{onRangeSelect}
+					data={visibleSeries[0]?.data ?? []}
+					areaFill={true}
+					unit={effectiveUnit}
+					formatValue={(v) => formatMetricLabel(v, effectiveUnit)}
+					{sharedHoverTime}
+					{isSourceChart}
+					{onHoverTimeChange}
+				/>
+			{:else}
+				<div class="flex h-full items-center justify-center text-sm text-muted-foreground">
+					No data
+				</div>
+			{/if}
+		{:else if widget.widgetType === 'stacked_area'}
+			{#if series.length > 0}
+				<D3StackedAreaChart
+					endpoints={visibleSeries.map((s) => s.key)}
+					series={stackedPoints}
+					height={chartHeight}
+					padding={chartPadding}
+					unit={effectiveUnit}
+					formatValue={(v) => formatMetricLabel(v, effectiveUnit)}
+					{onRangeSelect}
+					colors={visibleSeries.map((s) => s.color)}
+					showBuiltinLegend={false}
+				/>
+			{:else}
+				<div class="flex h-full items-center justify-center text-sm text-muted-foreground">
+					No data
+				</div>
+			{/if}
+		{:else if series.length > 0}
 			<D3LineChart
 				series={visibleSeries}
 				xDomain={timeDomain ?? undefined}
@@ -290,7 +343,6 @@
 				padding={chartPadding}
 				{onRangeSelect}
 				data={visibleSeries[0]?.data ?? []}
-				areaFill={true}
 				unit={effectiveUnit}
 				formatValue={(v) => formatMetricLabel(v, effectiveUnit)}
 				{sharedHoverTime}
@@ -302,43 +354,6 @@
 				No data
 			</div>
 		{/if}
-	{:else if widget.widgetType === 'stacked_area'}
-		{#if series.length > 0}
-			<D3StackedAreaChart
-				endpoints={visibleSeries.map((s) => s.key)}
-				series={stackedPoints}
-				height={chartHeight}
-				padding={chartPadding}
-				unit={effectiveUnit}
-				formatValue={(v) => formatMetricLabel(v, effectiveUnit)}
-				{onRangeSelect}
-				colors={visibleSeries.map((s) => s.color)}
-				showBuiltinLegend={false}
-			/>
-		{:else}
-			<div class="flex h-full items-center justify-center text-sm text-muted-foreground">
-				No data
-			</div>
-		{/if}
-	{:else if series.length > 0}
-		<D3LineChart
-			series={visibleSeries}
-			xDomain={timeDomain ?? undefined}
-			height={chartHeight}
-			padding={chartPadding}
-			{onRangeSelect}
-			data={visibleSeries[0]?.data ?? []}
-			unit={effectiveUnit}
-			formatValue={(v) => formatMetricLabel(v, effectiveUnit)}
-			{sharedHoverTime}
-			{isSourceChart}
-			{onHoverTimeChange}
-		/>
-	{:else}
-		<div class="flex h-full items-center justify-center text-sm text-muted-foreground">
-			No data
-		</div>
-	{/if}
 	</div>
 
 	{#if legendVisible && !loading}
@@ -346,12 +361,19 @@
 			{#each series as s (s.key)}
 				<button
 					type="button"
-					class="flex items-center gap-1.5 text-xs transition-opacity {hiddenSeries.has(s.key) ? 'opacity-40' : ''}"
+					class="flex items-center gap-1.5 text-xs transition-opacity {hiddenSeries.has(s.key)
+						? 'opacity-40'
+						: ''}"
 					onclick={() => toggleSeries(s.key)}
 					title={s.key}
 				>
-					<span class="h-2 w-2 flex-shrink-0 rounded-full" style="background-color: {s.color};"></span>
-					<span class="max-w-[180px] truncate text-muted-foreground {hiddenSeries.has(s.key) ? 'line-through' : ''}">{s.key}</span>
+					<span class="h-2 w-2 flex-shrink-0 rounded-full" style="background-color: {s.color};"
+					></span>
+					<span
+						class="max-w-[180px] truncate text-muted-foreground {hiddenSeries.has(s.key)
+							? 'line-through'
+							: ''}">{s.key}</span
+					>
 				</button>
 			{/each}
 		</div>

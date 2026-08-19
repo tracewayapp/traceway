@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Wrench, ChevronRight } from 'lucide-svelte';
+	import { Wrench, ChevronRight } from '@lucide/svelte';
 	import {
 		tryParseJson,
 		getMessageText,
@@ -48,7 +48,8 @@
 			<p class="mb-1 text-[0.65rem] font-medium tracking-wide text-muted-foreground uppercase">
 				Arguments
 			</p>
-			<pre class="max-h-64 overflow-auto font-mono text-xs break-words whitespace-pre-wrap">{formattedArguments}</pre>
+			<pre
+				class="max-h-64 overflow-auto font-mono text-xs break-words whitespace-pre-wrap">{formattedArguments}</pre>
 		</div>
 	{/if}
 	{#if resultText}
@@ -66,7 +67,8 @@
 				/>
 			</button>
 			{#if showResult}
-				<pre class="mt-1 max-h-64 overflow-auto font-mono text-xs break-words whitespace-pre-wrap">{resultText}</pre>
+				<pre
+					class="mt-1 max-h-64 overflow-auto font-mono text-xs break-words whitespace-pre-wrap">{resultText}</pre>
 			{/if}
 		</div>
 	{/if}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import bash from 'svelte-highlight/languages/bash';
 	import go from 'svelte-highlight/languages/go';
@@ -109,7 +110,7 @@
 				{#if step.link}
 					<p class="pt-2 text-xs text-muted-foreground">
 						<a
-							href={step.link.href}
+							href={resolve(step.link.href)}
 							target="_blank"
 							rel="noopener noreferrer"
 							class="underline hover:text-foreground">{step.link.label}</a

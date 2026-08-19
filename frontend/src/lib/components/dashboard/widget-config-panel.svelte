@@ -8,7 +8,7 @@
 	import { THRESHOLD_COLOR_NAMES, resolveThresholdColor } from './gauge-thresholds';
 	import { api } from '$lib/api';
 	import { projectsState } from '$lib/state/projects.svelte';
-	import { Plus, Check, X } from 'lucide-svelte';
+	import { Plus, Check, X } from '@lucide/svelte';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import type { DiscoveredMetric } from '$lib/types/dashboard';
 
@@ -71,8 +71,12 @@
 	);
 	let legend = $state<'auto' | 'on' | 'off'>(legendFromConfig(initialWidget?.config));
 	let showSparkline = $state(!!initialWidget?.config?.showSparkline);
-	let gaugeMin = $state(initialWidget?.config?.min != null ? String(initialWidget.config.min) : '0');
-	let gaugeMax = $state(initialWidget?.config?.max != null ? String(initialWidget.config.max) : '100');
+	let gaugeMin = $state(
+		initialWidget?.config?.min != null ? String(initialWidget.config.min) : '0'
+	);
+	let gaugeMax = $state(
+		initialWidget?.config?.max != null ? String(initialWidget.config.max) : '100'
+	);
 	let baseColor = $state(initialWidget?.config?.baseColor ?? 'green');
 	let thresholds = $state<Array<{ value: string; color: string }>>(
 		thresholdsFromConfig(initialWidget?.config, initialWidget?.widgetType)
@@ -97,9 +101,7 @@
 	});
 
 	function addThreshold() {
-		const values = thresholds
-			.map((t) => parseFloat(t.value))
-			.filter((v) => Number.isFinite(v));
+		const values = thresholds.map((t) => parseFloat(t.value)).filter((v) => Number.isFinite(v));
 		const nextValue = values.length > 0 ? Math.max(...values) + 10 : 80;
 		const usedColors = new Set(thresholds.map((t) => t.color));
 		const nextColor =
@@ -223,7 +225,17 @@
 					}}
 				>
 					<Select.Trigger>
-						{({ line_chart: 'Line Chart', area_chart: 'Area Chart', stacked_area: 'Stacked Area', bar_chart: 'Bar Chart', single_value: 'Single Value', gauge: 'Gauge', table: 'Table' } as Record<string, string>)[widgetType] ?? widgetType}
+						{(
+							{
+								line_chart: 'Line Chart',
+								area_chart: 'Area Chart',
+								stacked_area: 'Stacked Area',
+								bar_chart: 'Bar Chart',
+								single_value: 'Single Value',
+								gauge: 'Gauge',
+								table: 'Table'
+							} as Record<string, string>
+						)[widgetType] ?? widgetType}
 					</Select.Trigger>
 					<Select.Content>
 						<Select.Item value="line_chart">Line Chart</Select.Item>
@@ -248,7 +260,12 @@
 						}}
 					>
 						<Select.Trigger>
-							{({ auto: 'Auto (when multiple series)', on: 'Always', off: 'Never' } as Record<string, string>)[legend]}
+							{(
+								{ auto: 'Auto (when multiple series)', on: 'Always', off: 'Never' } as Record<
+									string,
+									string
+								>
+							)[legend]}
 						</Select.Trigger>
 						<Select.Content>
 							<Select.Item value="auto">Auto (when multiple series)</Select.Item>
@@ -292,22 +309,21 @@
 			{#if widgetType === 'gauge' || widgetType === 'single_value'}
 				<div>
 					<span class="text-sm font-medium">Thresholds</span>
-					<p class="text-xs text-muted-foreground mb-2">
+					<p class="mb-2 text-xs text-muted-foreground">
 						The value takes the color of the highest threshold it crosses
 					</p>
 					<div class="space-y-2">
-						{#each thresholds as threshold, i}
+						{#each thresholds as threshold, i (i)}
 							<div class="flex items-center gap-2">
-								<Input
-									type="number"
-									bind:value={thresholds[i].value}
-									class="h-8 w-28 text-xs"
-								/>
+								<Input type="number" bind:value={thresholds[i].value} class="h-8 w-28 text-xs" />
 								<div class="flex items-center gap-1.5">
-									{#each THRESHOLD_COLOR_NAMES as colorName}
+									{#each THRESHOLD_COLOR_NAMES as colorName, __index (__index)}
 										<button
 											type="button"
-											class="h-5 w-5 cursor-pointer rounded-full transition-transform {threshold.color === colorName ? 'ring-2 ring-ring ring-offset-2 ring-offset-background' : 'opacity-50 hover:opacity-100'}"
+											class="h-5 w-5 cursor-pointer rounded-full transition-transform {threshold.color ===
+											colorName
+												? 'ring-2 ring-ring ring-offset-2 ring-offset-background'
+												: 'opacity-50 hover:opacity-100'}"
 											style="background-color: {resolveThresholdColor(colorName)};"
 											aria-label={colorName}
 											title={colorName}
@@ -329,10 +345,13 @@
 						<div class="flex items-center gap-2">
 							<span class="w-28 px-3 text-xs text-muted-foreground">Base</span>
 							<div class="flex items-center gap-1.5">
-								{#each THRESHOLD_COLOR_NAMES as colorName}
+								{#each THRESHOLD_COLOR_NAMES as colorName, __index (__index)}
 									<button
 										type="button"
-										class="h-5 w-5 cursor-pointer rounded-full transition-transform {baseColor === colorName ? 'ring-2 ring-ring ring-offset-2 ring-offset-background' : 'opacity-50 hover:opacity-100'}"
+										class="h-5 w-5 cursor-pointer rounded-full transition-transform {baseColor ===
+										colorName
+											? 'ring-2 ring-ring ring-offset-2 ring-offset-background'
+											: 'opacity-50 hover:opacity-100'}"
 										style="background-color: {resolveThresholdColor(colorName)};"
 										aria-label={colorName}
 										title={colorName}
@@ -354,12 +373,14 @@
 					id="widget-unit"
 					bind:value={unit}
 					placeholder="Auto-detected from metric"
-					oninput={() => { unitManuallySet = unit.length > 0; }}
+					oninput={() => {
+						unitManuallySet = unit.length > 0;
+					}}
 				/>
-				<p class="text-xs text-muted-foreground mt-1">%, ms, s, MB, GB, bytes, count, ns</p>
+				<p class="mt-1 text-xs text-muted-foreground">%, ms, s, MB, GB, bytes, count, ns</p>
 			</div>
 
-			{#each sources as source, i}
+			{#each sources as source, i (i)}
 				<div class="space-y-2 rounded-md border p-3">
 					<div class="flex items-center gap-2">
 						<Select.Root
@@ -371,7 +392,7 @@
 						>
 							<Select.Trigger class="flex-1">{source.name || 'Select metric'}</Select.Trigger>
 							<Select.Content>
-								{#each availableMetrics as m}
+								{#each availableMetrics as m, __index (__index)}
 									<Select.Item value={m.name}>{m.name}</Select.Item>
 								{/each}
 							</Select.Content>
@@ -429,7 +450,7 @@
 								>
 								<Select.Content>
 									<Select.Item value="">None</Select.Item>
-									{#each getMetricTagKeys(source.name) as key}
+									{#each getMetricTagKeys(source.name) as key, __index (__index)}
 										<Select.Item value={key}>{key}</Select.Item>
 									{/each}
 								</Select.Content>
@@ -442,7 +463,9 @@
 		<Sheet.Footer class="flex-row justify-end border-t px-6">
 			<Button variant="outline" onclick={handleClose}>Cancel</Button>
 			<Button variant={widget?.id ? 'default' : 'success'} onclick={handleSave}>
-				{#if widget?.id}<Check class="mr-1 h-4 w-4" /> Update Widget{:else}<Plus class="mr-1 h-4 w-4" /> New Widget{/if}
+				{#if widget?.id}<Check class="mr-2 h-4 w-4" /> Update Widget{:else}<Plus
+						class="mr-2 h-4 w-4"
+					/> New Widget{/if}
 			</Button>
 		</Sheet.Footer>
 	</Sheet.Content>

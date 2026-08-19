@@ -38,7 +38,16 @@ const TIME_TO_NS: Record<string, number> = {
 };
 
 const BYTE_UNITS = new Set(['bytes', 'byte', 'b']);
-const COUNT_UNITS = new Set(['count', 'samples', 'sample', 'frames', 'objects', 'goroutines', 'none', '']);
+const COUNT_UNITS = new Set([
+	'count',
+	'samples',
+	'sample',
+	'frames',
+	'objects',
+	'goroutines',
+	'none',
+	''
+]);
 
 export function formatValue(unit: string, value: number): string {
 	const u = (unit || '').toLowerCase();

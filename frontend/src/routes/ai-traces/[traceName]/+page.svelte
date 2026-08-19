@@ -21,7 +21,10 @@
 	import { createRowClickHandler } from '$lib/utils/navigation';
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import PaginationFooter from '$lib/components/ui/pagination-footer/pagination-footer.svelte';
-	import PageHeader from '$lib/components/issues/page-header.svelte';
+	import PageHeader from '$lib/components/traceway/page-header.svelte';
+	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import StatRow from '$lib/components/traceway/stat-row.svelte';
+	import StatTile from '$lib/components/traceway/stat-tile.svelte';
 	import { formatCost, formatTokens } from '$lib/utils/ai-format';
 	import { resolve } from '$app/paths';
 	import {
@@ -240,13 +243,12 @@
 			onRetry={() => loadData(false)}
 		/>
 	{:else}
-		<div class="flex flex-col gap-4 sm:flex-row sm:justify-between">
-			<PageHeader
-				title={decodeURIComponent(data.traceName)}
-				subtitle="AI trace instances"
-				onBack={createSmartBackHandler({ fallbackPath: resolve('/ai-traces') })}
-			/>
-			<div class="flex flex-col">
+		<PageHeader
+			title={decodeURIComponent(data.traceName)}
+			subtitle="AI trace instances"
+			onBack={createSmartBackHandler({ fallbackPath: resolve('/ai-traces') })}
+		>
+			{#snippet actions()}
 				<TimeRangePicker
 					bind:fromDate
 					bind:toDate
@@ -255,39 +257,24 @@
 					bind:preset={selectedPreset}
 					onApply={handleTimeRangeChange}
 				/>
-			</div>
-		</div>
+			{/snippet}
+		</PageHeader>
 
 		{#if stats}
-			<div class="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-5">
-				<div class="space-y-1">
-					<p class="text-2xl font-semibold tracking-tight">{formatDurationMs(stats.avgDuration)}</p>
-					<p class="text-xs text-muted-foreground">Average duration</p>
-				</div>
-				<div class="space-y-1">
-					<p class="text-2xl font-semibold tracking-tight">{formatDurationMs(stats.medianDuration)}</p>
-					<p class="text-xs text-muted-foreground">Median duration</p>
-				</div>
-				<div class="space-y-1">
-					<p class="text-2xl font-semibold tracking-tight">{formatDurationMs(stats.p95Duration)}</p>
-					<p class="text-xs text-muted-foreground">95th percentile</p>
-				</div>
-				<div class="space-y-1">
-					<p class="text-2xl font-semibold tracking-tight">{formatCost(stats.totalCost)}</p>
-					<p class="text-xs text-muted-foreground">Total cost</p>
-				</div>
-				<div class="space-y-1">
-					<p class="text-2xl font-semibold tracking-tight">{formatTokens(stats.totalTokens)}</p>
-					<p class="text-xs text-muted-foreground">Total tokens</p>
-				</div>
-			</div>
+			<StatRow columns={5}>
+				<StatTile label="Average duration" value={formatDurationMs(stats.avgDuration)} />
+				<StatTile label="Median duration" value={formatDurationMs(stats.medianDuration)} />
+				<StatTile label="95th percentile" value={formatDurationMs(stats.p95Duration)} />
+				<StatTile label="Total cost" value={formatCost(stats.totalCost)} />
+				<StatTile label="Total tokens" value={formatTokens(stats.totalTokens)} />
+			</StatRow>
 		{:else if loading}
 			<div class="flex items-center justify-center py-8">
 				<LoadingCircle size="lg" />
 			</div>
 		{/if}
 
-		<div class="overflow-hidden rounded-md border">
+		<TableContainer>
 			<Table.Root>
 				{#if loading || traces.length > 0}
 					<Table.Header>
@@ -327,17 +314,17 @@
 					{#if loading}
 						<Table.Row>
 							<Table.Cell colspan={7} class="h-48">
-								<div class="flex items-center justify-center">
-									<LoadingCircle size="lg" />
+								<div class="flex h-full items-center justify-center">
+									<LoadingCircle size="xlg" />
 								</div>
 							</Table.Cell>
 						</Table.Row>
 					{:else if traces.length === 0}
 						<TableEmptyState colspan={7} message="No AI traces found in this time range." />
 					{:else}
-						{#each traces as trace}
+						{#each traces as trace, __index (__index)}
 							<Table.Row
-								class="cursor-pointer hover:bg-muted/50"
+								class="cursor-pointer"
 								onclick={createRowClickHandler(
 									`/ai-traces/${encodeURIComponent(decodeURIComponent(data.traceName))}/${trace.id}?t=${encodeURIComponent(trace.recordedAt)}`,
 									'preset',
@@ -371,7 +358,7 @@
 					{/if}
 				</Table.Body>
 			</Table.Root>
-		</div>
+		</TableContainer>
 
 		<PaginationFooter
 			currentPage={page}

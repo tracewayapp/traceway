@@ -57,8 +57,10 @@ type CheckRun struct {
 
 type CheckIncident struct {
 	Id           int        `json:"id" lit:"id"`
-	CheckId      int        `json:"checkId" lit:"check_id"`
-	ProjectId    uuid.UUID  `json:"projectId" lit:"project_id"`
+	CheckId      *int       `json:"checkId" lit:"check_id"`
+	ProjectId    *uuid.UUID `json:"projectId" lit:"project_id"`
+	StatusPageId *int       `json:"statusPageId" lit:"status_page_id"`
+	Title        string     `json:"title" lit:"title"`
 	StartedAt    time.Time  `json:"startedAt" lit:"started_at"`
 	ResolvedAt   *time.Time `json:"resolvedAt" lit:"resolved_at"`
 	ErrorMessage string     `json:"errorMessage" lit:"error_message"`

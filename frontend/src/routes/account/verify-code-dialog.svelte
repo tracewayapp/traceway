@@ -16,7 +16,13 @@
 		onVerified: () => void;
 	}
 
-	let { open = $bindable(), methodId, phoneLabel, codeJustSent = false, onVerified }: Props = $props();
+	let {
+		open = $bindable(),
+		methodId,
+		phoneLabel,
+		codeJustSent = false,
+		onVerified
+	}: Props = $props();
 
 	let code = $state('');
 	let loading = $state(false);
@@ -61,7 +67,7 @@
 		error = '';
 		try {
 			await api.post(`/contact-methods/${methodId}/verify`, { code: code.trim() });
-			toast.success('Successfully verified the Contact Method', { position: 'top-center' });
+			toast.success('Successfully verified the Contact Method');
 			open = false;
 			onVerified();
 		} catch (e: unknown) {
@@ -77,7 +83,7 @@
 		error = '';
 		try {
 			await api.post(`/contact-methods/${methodId}/resend-code`, {});
-			toast.success('Verification code sent', { position: 'top-center' });
+			toast.success('Verification code sent');
 			startCountdown();
 		} catch (e: unknown) {
 			error = e instanceof Error ? e.message : 'Failed to resend the code';

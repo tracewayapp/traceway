@@ -1,8 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
+	import {
+		Card,
+		CardContent,
+		CardDescription,
+		CardHeader,
+		CardTitle
+	} from '$lib/components/ui/card';
+	import PageBadges from '$lib/components/traceway/page-badges.svelte';
 	import { WarningCallout } from '$lib/components/ui/warning-callout';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { Check, CircleCheck } from '@lucide/svelte';
@@ -127,18 +133,7 @@
 					<div class="space-y-2">
 						<h2 class="text-lg font-semibold">{info.subject || 'Page'}</h2>
 						<div class="flex flex-wrap items-center gap-2">
-							{#if info.severity === 'critical'}
-								<Badge variant="destructive">Critical</Badge>
-							{:else if info.severity === 'warning'}
-								<Badge class="bg-amber-500 text-white">Warning</Badge>
-							{:else if info.severity === 'info'}
-								<Badge variant="secondary">Info</Badge>
-							{/if}
-							{#if info.urgency === 'high'}
-								<Badge class="bg-rose-700 text-white">High urgency</Badge>
-							{:else if info.urgency === 'low'}
-								<Badge variant="secondary">Low urgency</Badge>
-							{/if}
+							<PageBadges severity={info.severity} urgency={info.urgency} longUrgency />
 						</div>
 					</div>
 

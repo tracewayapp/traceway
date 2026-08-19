@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
 	import * as Table from '$lib/components/ui/table';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import EmptyState from '$lib/components/traceway/empty-state.svelte';
+	import ErrorRetryBox from '$lib/components/traceway/error-retry-box.svelte';
+	import TableContainer from '$lib/components/traceway/table-container.svelte';
 	import { oncallState, type Schedule } from '$lib/state/oncall.svelte';
 	import ScheduleDialog from './schedule-dialog.svelte';
 	import ScheduleDetail from './schedule-detail.svelte';
@@ -43,23 +44,19 @@
 <div class="space-y-4">
 	{#if oncallState.schedulesLoading}
 		<div class="flex justify-center py-12"><LoadingCircle size="xlg" /></div>
-		{:else if oncallState.schedulesError}
-		<div
-			class="flex flex-col items-center justify-center gap-3 rounded-md bg-muted py-20 text-center text-muted-foreground"
-		>
-			<p class="text-sm text-destructive">{oncallState.schedulesError}</p>
-			<Button variant="outline" size="sm" onclick={() => oncallState.loadSchedules(organizationId)}>
-				Retry
-			</Button>
-		</div>
-{:else if schedules.length === 0}
+	{:else if oncallState.schedulesError}
+		<ErrorRetryBox
+			message={oncallState.schedulesError}
+			onRetry={() => oncallState.loadSchedules(organizationId)}
+		/>
+	{:else if schedules.length === 0}
 		<EmptyState
 			message="No schedules yet. Create one to get started."
 			actionLabel={canManage ? 'Create your first Schedule' : undefined}
 			onAction={openNew}
 		/>
 	{:else}
-		<div class="overflow-hidden rounded-md border">
+		<TableContainer>
 			<Table.Root>
 				<Table.Header>
 					<Table.Row>
@@ -85,7 +82,7 @@
 					{/each}
 				</Table.Body>
 			</Table.Root>
-		</div>
+		</TableContainer>
 	{/if}
 
 	{#if selectedScheduleId !== null}

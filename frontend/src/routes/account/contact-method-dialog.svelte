@@ -116,10 +116,12 @@
 <AlertDialog.Root {open} onOpenChange={(isOpen) => (open = isOpen)}>
 	<AlertDialog.Content class="max-h-[90vh] max-w-md overflow-y-auto">
 		<AlertDialog.Header>
-			<AlertDialog.Title>{isEditing ? 'Edit Contact Method' : 'New Contact Method'}</AlertDialog.Title>
+			<AlertDialog.Title
+				>{isEditing ? 'Edit Contact Method' : 'New Contact Method'}</AlertDialog.Title
+			>
 			<AlertDialog.Description>
 				{isEditing
-					? 'Change where Traceway reaches you when you\'re paged'
+					? "Change where Traceway reaches you when you're paged"
 					: "Add a way for Traceway to reach you when you're paged"}
 			</AlertDialog.Description>
 		</AlertDialog.Header>
@@ -213,7 +215,12 @@
 			{:else if methodType === 'sms'}
 				<div class="space-y-2">
 					<Label for="cm-sms-phone">Phone Number</Label>
-					<Input id="cm-sms-phone" bind:value={smsPhoneNumber} placeholder="+12025550123" required />
+					<Input
+						id="cm-sms-phone"
+						bind:value={smsPhoneNumber}
+						placeholder="+12025550123"
+						required
+					/>
 					<p class="text-xs text-muted-foreground">
 						International format with country code (E.164)
 					</p>

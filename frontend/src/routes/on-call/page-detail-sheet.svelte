@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { Button } from '$lib/components/ui/button';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
@@ -9,7 +10,7 @@
 	import { type PageDetailResponse, type PageNotification } from '$lib/state/oncall.svelte';
 	import { formatDateTime, formatRelativeTimeAgo } from '$lib/utils/formatters';
 	import { runPageAction } from './page-actions';
-	import PageBadges from './page-badges.svelte';
+	import PageBadges from '$lib/components/traceway/page-badges.svelte';
 	import ResolvePageDialog from './resolve-page-dialog.svelte';
 	import EscalationChain from '$lib/components/traceway/escalation-chain.svelte';
 
@@ -52,9 +53,7 @@
 		} catch (e: unknown) {
 			if (seq !== loadSeq) return;
 			const status = (e as { status?: number }).status;
-			toast.error(status === 404 ? 'Page not found' : 'Failed to load page', {
-				position: 'top-center'
-			});
+			toast.error(status === 404 ? 'Page not found' : 'Failed to load page');
 			open = false;
 		} finally {
 			if (seq === loadSeq) loading = false;
@@ -80,10 +79,7 @@
 	}
 
 	function formatClock(value: string): string {
-		return new Date(value).toLocaleTimeString(undefined, {
-			hour: '2-digit',
-			minute: '2-digit'
-		});
+		return formatDateTime(value, { format: 'time' });
 	}
 
 	let resolveDialogOpen = $state(false);
@@ -146,7 +142,7 @@
 
 				{#if pageData.url}
 					<a
-						href={pageData.url}
+						href={resolve(pageData.url)}
 						class="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline dark:text-blue-400"
 					>
 						<ExternalLink class="h-3.5 w-3.5" />
@@ -157,9 +153,9 @@
 				{#if pageData.body}
 					<div class="space-y-1">
 						<div class="text-xs text-muted-foreground">Details</div>
-						<p
-							class="text-sm whitespace-pre-wrap {bodyExpanded ? '' : 'line-clamp-6'}"
-						>{pageData.body}</p>
+						<p class="text-sm whitespace-pre-wrap {bodyExpanded ? '' : 'line-clamp-6'}">
+							{pageData.body}
+						</p>
 						{#if pageData.body.length > 300 || pageData.body.split('\n').length > 6}
 							<Button
 								variant="link"
@@ -243,7 +239,9 @@
 											{/if}
 										</div>
 										{#if notification.status === 'failed' && notification.errorMsg}
-											<div class="text-xs break-words text-destructive">{notification.errorMsg}</div>
+											<div class="text-xs break-words text-destructive">
+												{notification.errorMsg}
+											</div>
 										{/if}
 										{#if !scheduled}
 											<div class="text-xs text-muted-foreground">
@@ -268,7 +266,9 @@
 								{:else}
 									Acknowledged by {userName(pageData.acknowledgedBy)}
 								{/if}
-								<div class="text-xs text-muted-foreground">{formatTime(pageData.acknowledgedAt)}</div>
+								<div class="text-xs text-muted-foreground">
+									{formatTime(pageData.acknowledgedAt)}
+								</div>
 							</div>
 						</div>
 					{/if}
@@ -288,11 +288,11 @@
 				<Sheet.Footer class="flex-row justify-end border-t px-6">
 					{#if pageData.status === 'open'}
 						<Button variant="outline" onclick={acknowledge} disabled={actionLoading}>
-							<Check class="mr-1 h-4 w-4" /> Acknowledge
+							<Check class="mr-2 h-4 w-4" /> Acknowledge
 						</Button>
 					{/if}
 					<Button onclick={() => (resolveDialogOpen = true)} disabled={actionLoading}>
-						<CheckCheck class="mr-1 h-4 w-4" /> Resolve
+						<CheckCheck class="mr-2 h-4 w-4" /> Resolve
 					</Button>
 				</Sheet.Footer>
 			{/if}
@@ -300,8 +300,4 @@
 	</Sheet.Content>
 </Sheet.Root>
 
-<ResolvePageDialog
-	bind:open={resolveDialogOpen}
-	pages={pageData ? [pageData] : []}
-	onResolved={onResolved}
-/>
+<ResolvePageDialog bind:open={resolveDialogOpen} pages={pageData ? [pageData] : []} {onResolved} />

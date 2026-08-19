@@ -1,13 +1,40 @@
 export const DEFAULT_HEALTHCHECK_PATHS = [
-	'/health', '/healthz', '/healthcheck', '/health-check', '/health_check',
-	'/ping', '/livez', '/readyz', '/live', '/ready', '/alive', '/up',
-	'/heartbeat', '/status', '/ht', '/actuator/health/*', '*/health'
+	'/health',
+	'/healthz',
+	'/healthcheck',
+	'/health-check',
+	'/health_check',
+	'/ping',
+	'/livez',
+	'/readyz',
+	'/live',
+	'/ready',
+	'/alive',
+	'/up',
+	'/heartbeat',
+	'/status',
+	'/ht',
+	'/actuator/health/*',
+	'*/health'
 ];
 
 const DEFAULT_PATH_SET = new Set([
-	'/health', '/healthz', '/healthcheck', '/health-check', '/health_check',
-	'/ping', '/livez', '/readyz', '/live', '/ready', '/alive', '/up',
-	'/heartbeat', '/status', '/ht', '/actuator/health'
+	'/health',
+	'/healthz',
+	'/healthcheck',
+	'/health-check',
+	'/health_check',
+	'/ping',
+	'/livez',
+	'/readyz',
+	'/live',
+	'/ready',
+	'/alive',
+	'/up',
+	'/heartbeat',
+	'/status',
+	'/ht',
+	'/actuator/health'
 ]);
 
 function matchesCustomPath(path: string, pattern: string): boolean {
@@ -26,7 +53,10 @@ export function isHealthcheckEndpoint(endpoint: string, customPaths?: string[] |
 	if (spaceIdx === -1) return false;
 	const method = endpoint.slice(0, spaceIdx);
 	if (method !== 'GET' && method !== 'HEAD') return false;
-	let path = endpoint.slice(spaceIdx + 1).trim().toLowerCase();
+	let path = endpoint
+		.slice(spaceIdx + 1)
+		.trim()
+		.toLowerCase();
 	if (path.length > 1) path = path.replace(/\/+$/, '');
 	if (DEFAULT_PATH_SET.has(path)) return true;
 	if (path.startsWith('/actuator/health/')) return true;

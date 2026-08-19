@@ -29,7 +29,7 @@
 </script>
 
 <div class="space-y-2">
-	{#each rows as _, index}
+	{#each rows as _, index (index)}
 		<div class="flex gap-2">
 			<Input bind:value={rows[index].key} placeholder={keyPlaceholder} class="flex-1" {disabled} />
 			<Input

@@ -82,7 +82,13 @@
 					Use this token to authenticate the Traceway CLI or scripts.
 				</AlertDialog.Description>
 			</AlertDialog.Header>
-			<form onsubmit={(e) => { e.preventDefault(); handleCreate(); }} class="space-y-4">
+			<form
+				onsubmit={(e) => {
+					e.preventDefault();
+					handleCreate();
+				}}
+				class="space-y-4"
+			>
 				<ErrorAlert {error} />
 				<div class="space-y-2">
 					<Label for="token-name">Name</Label>
@@ -95,7 +101,7 @@
 							{expiryOptions.find((o) => o.value === expiry)?.label || 'Select'}
 						</Select.Trigger>
 						<Select.Content>
-							{#each expiryOptions as option}
+							{#each expiryOptions as option, __index (__index)}
 								<Select.Item value={option.value}>{option.label}</Select.Item>
 							{/each}
 						</Select.Content>

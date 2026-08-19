@@ -36,7 +36,14 @@
 		onSelectRange?: (fromIso: string, toIso: string) => void;
 	}
 
-	let { series = [], groups = [], unit, isRate = false, height = 140, onSelectRange }: Props = $props();
+	let {
+		series = [],
+		groups = [],
+		unit,
+		isRate = false,
+		height = 140,
+		onSelectRange
+	}: Props = $props();
 
 	const timezone = $derived(getTimezone());
 
@@ -60,7 +67,8 @@
 	const padB = 20;
 
 	const lines = $derived.by(() => {
-		if (groups.length) return groups.map((g, i) => ({ key: g.key, points: g.points, color: seriesColor(i) }));
+		if (groups.length)
+			return groups.map((g, i) => ({ key: g.key, points: g.points, color: seriesColor(i) }));
 		if (series.length) return [{ key: '', points: series, color: 'var(--primary)' }];
 		return [] as { key: string; points: SeriesPoint[]; color: string }[];
 	});
@@ -199,23 +207,51 @@
 
 				{#if hoverIdx >= 0 && lines[0]?.points[hoverIdx]}
 					{@const hx = xOf(new Date(lines[0].points[hoverIdx].timestamp).getTime())}
-					<line x1={hx} y1={padT} x2={hx} y2={padT + plotH} class="stroke-muted-foreground/40" stroke-width="1" />
+					<line
+						x1={hx}
+						y1={padT}
+						x2={hx}
+						y2={padT + plotH}
+						class="stroke-muted-foreground/40"
+						stroke-width="1"
+					/>
 				{/if}
 
 				{#if dragStart !== null && dragEnd !== null}
 					{@const a = Math.min(dragStart, dragEnd)}
 					{@const b = Math.max(dragStart, dragEnd)}
-					<rect x={a} y={padT} width={Math.max(0, b - a)} height={plotH} class="fill-primary/15 stroke-primary/50" stroke-width="1" />
+					<rect
+						x={a}
+						y={padT}
+						width={Math.max(0, b - a)}
+						height={plotH}
+						class="fill-primary/15 stroke-primary/50"
+						stroke-width="1"
+					/>
 				{/if}
 
-				<text x={padL} y={padT - 2} class="fill-muted-foreground" style="font-size: 10px;">{fmt(vMax)}</text>
-				<text x={padL} y={height - 6} class="fill-muted-foreground" style="font-size: 10px;">{fmtTime(tMin)}</text>
-				<text x={padL + plotW} y={height - 6} text-anchor="end" class="fill-muted-foreground" style="font-size: 10px;">{fmtTime(tMax)}</text>
+				<text x={padL} y={padT - 2} class="fill-muted-foreground" style="font-size: 10px;"
+					>{fmt(vMax)}</text
+				>
+				<text x={padL} y={height - 6} class="fill-muted-foreground" style="font-size: 10px;"
+					>{fmtTime(tMin)}</text
+				>
+				<text
+					x={padL + plotW}
+					y={height - 6}
+					text-anchor="end"
+					class="fill-muted-foreground"
+					style="font-size: 10px;">{fmtTime(tMax)}</text
+				>
 			</svg>
 
 			{#if hoverIdx >= 0 && lines[0]?.points[hoverIdx]}
-				<div class="pointer-events-none absolute right-1 top-1 rounded border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-sm">
-					<div class="text-muted-foreground">{fmtTime(new Date(lines[0].points[hoverIdx].timestamp).getTime())}</div>
+				<div
+					class="pointer-events-none absolute top-1 right-1 rounded border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-sm"
+				>
+					<div class="text-muted-foreground">
+						{fmtTime(new Date(lines[0].points[hoverIdx].timestamp).getTime())}
+					</div>
 					{#each lines as line (line.key)}
 						<div class="flex items-center gap-1.5 tabular-nums">
 							<span class="inline-block h-2 w-2 rounded-sm" style="background: {line.color}"></span>
@@ -240,6 +276,8 @@
 	{/if}
 
 	{#if onSelectRange && allPoints.length >= 2}
-		<div class="mt-1 text-center text-[11px] text-muted-foreground">Drag to zoom into a time range</div>
+		<div class="mt-1 text-center text-[11px] text-muted-foreground">
+			Drag to zoom into a time range
+		</div>
 	{/if}
 </div>

@@ -4,7 +4,7 @@
 	import { formatDateTime } from '$lib/utils/formatters';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import Button from '../ui/button/button.svelte';
-	import { Archive, ChevronRight, ChevronDown } from 'lucide-svelte';
+	import { Archive, ChevronRight, ChevronDown } from '@lucide/svelte';
 	import {
 		parseStackTrace,
 		looksLikeJava,
@@ -145,7 +145,7 @@
 				</div>
 				{#if viewMode === 'formatted'}
 					<ol role="list" class="divide-y divide-border/60">
-						{#each parsed.groups as group, i}
+						{#each parsed.groups as group, i (i)}
 							{#if group.type === 'app'}
 								{@const f = formatFrame(group.frame)}
 								<li
@@ -193,7 +193,7 @@
 											role="list"
 											class="divide-y divide-border/40 border-t border-border/40 bg-muted/30"
 										>
-											{#each group.frames as frame}
+											{#each group.frames as frame, __index (__index)}
 												{@const f = formatFrame(frame)}
 												<li
 													class="flex flex-wrap items-baseline gap-x-1.5 py-2 pr-4 pl-9 font-mono text-sm text-muted-foreground tabular-nums"

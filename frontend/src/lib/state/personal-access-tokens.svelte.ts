@@ -36,7 +36,10 @@ class PersonalAccessTokensState {
 	}
 
 	async create(name: string, expiresInDays: number | null): Promise<CreatedToken> {
-		const res = (await api.post('/personal-access-tokens', { name, expiresInDays })) as CreatedToken;
+		const res = (await api.post('/personal-access-tokens', {
+			name,
+			expiresInDays
+		})) as CreatedToken;
 		await this.load();
 		return res;
 	}

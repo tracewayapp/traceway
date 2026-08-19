@@ -22,11 +22,25 @@
 		incidents: StatusIncident[];
 	}
 
+	interface PastIncidentUpdate {
+		status: string;
+		message: string;
+		createdAt: string;
+	}
+
+	interface PastIncident {
+		title: string;
+		startedAt: string;
+		resolvedAt: string | null;
+		updates: PastIncidentUpdate[];
+	}
+
 	interface StatusView {
 		name: string;
 		description: string;
 		hasLogo: boolean;
 		checks: StatusCheck[];
+		pastIncidents: PastIncident[];
 		generatedAt: string;
 	}
 
@@ -147,6 +161,63 @@
 		return `${started} — resolved after ${minutes} min`;
 	}
 
+	const INCIDENTS_PER_PAGE = 5;
+	let incidentPage = $state(1);
+
+	const totalIncidentPages = $derived(
+		Math.ceil((view?.pastIncidents.length ?? 0) / INCIDENTS_PER_PAGE)
+	);
+
+	const currentIncidentPage = $derived(
+		Math.min(Math.max(incidentPage, 1), Math.max(totalIncidentPages, 1))
+	);
+
+	const pagedIncidents = $derived(
+		(view?.pastIncidents ?? []).slice(
+			(currentIncidentPage - 1) * INCIDENTS_PER_PAGE,
+			currentIncidentPage * INCIDENTS_PER_PAGE
+		)
+	);
+
+	const incidentGroups = $derived.by(() => {
+		const groups: { label: string; incidents: PastIncident[] }[] = [];
+		for (const incident of pagedIncidents) {
+			const label = new Date(incident.startedAt).toLocaleDateString(undefined, {
+				month: 'short',
+				day: 'numeric',
+				year: 'numeric',
+				timeZone: 'UTC'
+			});
+			const group = groups[groups.length - 1];
+			if (group && group.label === label) {
+				group.incidents.push(incident);
+			} else {
+				groups.push({ label, incidents: [incident] });
+			}
+		}
+		return groups;
+	});
+
+	function updateStatusLabel(status: string): string {
+		return status.charAt(0).toUpperCase() + status.slice(1);
+	}
+
+	function formatUpdateTime(iso: string): string {
+		const date = new Date(iso);
+		const day = date.toLocaleDateString(undefined, {
+			month: 'short',
+			day: 'numeric',
+			timeZone: 'UTC'
+		});
+		const time = date.toLocaleTimeString(undefined, {
+			hour: '2-digit',
+			minute: '2-digit',
+			hour12: false,
+			timeZone: 'UTC'
+		});
+		return `${day}, ${time} UTC`;
+	}
+
 	// The status page is a standalone light design; anonymous visitors default
 	// to the app's dark theme class, which would restyle headings underneath
 	// the scoped styles. Force light here and restore on leave.
@@ -209,7 +280,7 @@
 			</div>
 
 			<div class="status-cards">
-				{#each view.checks as check}
+				{#each view.checks as check, __index (__index)}
 					{@const cells = buildCells(check)}
 					{@const chip = checkStatusLabel(check)}
 					<section class="status-card">
@@ -228,7 +299,7 @@
 							>
 						</div>
 						<div class="status-bars">
-							{#each cells as cell, i}
+							{#each cells as cell, i (i)}
 								<span
 									class="status-bar {i < 30 ? 'band-oldest' : i < 60 ? 'band-mid' : ''}"
 									style="background: {cellColors[cell.state]}"
@@ -249,7 +320,7 @@
 									90 days
 								</summary>
 								<ul>
-									{#each check.incidents as incident}
+									{#each check.incidents as incident, __index (__index)}
 										<li>{formatIncident(incident)}</li>
 									{/each}
 								</ul>
@@ -258,6 +329,58 @@
 					</section>
 				{/each}
 			</div>
+
+			{#if view.pastIncidents.length > 0}
+				<section class="past-incidents">
+					<h2>Past Incidents</h2>
+					{#each incidentGroups as group, __index (__index)}
+						<div class="past-day">
+							<h3>{group.label}</h3>
+							{#each group.incidents as incident, __index (__index)}
+								<article class="past-incident">
+									<h4>{incident.title}</h4>
+									{#if incident.updates.length > 0}
+										{#each incident.updates as update, __index (__index)}
+											<div class="past-update">
+												<p>
+													<b>{updateStatusLabel(update.status)}</b>{update.message
+														? ` - ${update.message}`
+														: ''}
+												</p>
+												<time>{formatUpdateTime(update.createdAt)}</time>
+											</div>
+										{/each}
+									{:else}
+										<div class="past-update">
+											<p><b>{incident.resolvedAt ? 'Resolved' : 'Investigating'}</b></p>
+											<time>{formatUpdateTime(incident.resolvedAt ?? incident.startedAt)}</time>
+										</div>
+									{/if}
+								</article>
+							{/each}
+						</div>
+					{/each}
+					{#if totalIncidentPages > 1}
+						<nav class="past-pager" aria-label="Past incidents pages">
+							<button
+								type="button"
+								onclick={() => (incidentPage = currentIncidentPage - 1)}
+								disabled={currentIncidentPage <= 1}
+							>
+								Newer
+							</button>
+							<span>Page {currentIncidentPage} of {totalIncidentPages}</span>
+							<button
+								type="button"
+								onclick={() => (incidentPage = currentIncidentPage + 1)}
+								disabled={currentIncidentPage >= totalIncidentPages}
+							>
+								Older
+							</button>
+						</nav>
+					{/if}
+				</section>
+			{/if}
 
 			<div class="status-legend">
 				<span><i style="background: #22c55e"></i> Operational</span>
@@ -516,6 +639,90 @@
 
 	.status-incidents li {
 		margin-top: 4px;
+	}
+
+	.past-incidents {
+		margin-top: 44px;
+	}
+
+	.past-incidents h2 {
+		font-size: 22px;
+		font-weight: 700;
+		letter-spacing: -0.02em;
+		margin: 0;
+		color: #101828;
+	}
+
+	.past-day {
+		margin-top: 24px;
+	}
+
+	.past-day h3 {
+		font-size: 15px;
+		font-weight: 600;
+		margin: 0;
+		padding-bottom: 10px;
+		border-bottom: 1px solid #e4e7ec;
+		color: #101828;
+	}
+
+	.past-incident {
+		margin-top: 16px;
+	}
+
+	.past-incident h4 {
+		font-size: 16px;
+		font-weight: 600;
+		margin: 0 0 10px;
+		color: #d97706;
+	}
+
+	.past-update {
+		margin-top: 10px;
+	}
+
+	.past-update p {
+		margin: 0;
+		font-size: 14px;
+		line-height: 1.5;
+		color: #101828;
+	}
+
+	.past-update time {
+		display: block;
+		margin-top: 2px;
+		font-size: 12px;
+		color: #98a2b3;
+	}
+
+	.past-pager {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 14px;
+		margin-top: 24px;
+		font-size: 13px;
+		color: #667085;
+	}
+
+	.past-pager button {
+		background: #fff;
+		border: 1px solid #d0d5dd;
+		border-radius: 8px;
+		padding: 6px 14px;
+		font-size: 13px;
+		font-weight: 600;
+		color: #344054;
+		cursor: pointer;
+	}
+
+	.past-pager button:hover:not(:disabled) {
+		background: #f7f8fa;
+	}
+
+	.past-pager button:disabled {
+		opacity: 0.45;
+		cursor: default;
 	}
 
 	.status-legend {

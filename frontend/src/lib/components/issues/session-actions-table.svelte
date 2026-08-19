@@ -101,10 +101,10 @@
 	});
 </script>
 
-<div bind:this={scrollEl} class="rounded-md border max-h-[440px] overflow-y-auto">
+<div bind:this={scrollEl} class="max-h-[440px] overflow-y-auto rounded-md border">
 	<Table.Root>
 		{#if actions.length > 0}
-			<Table.Header class="sticky top-0 bg-background z-10">
+			<Table.Header class="sticky top-0 z-10 bg-background">
 				<Table.Row>
 					<TracewayTableHeader
 						label="Time"
@@ -127,11 +127,11 @@
 			{#if actions.length === 0}
 				<TableEmptyState colspan={3} message="No actions captured for this session." />
 			{:else}
-				{#each actions as entry, i}
+				{#each actions as entry, i (i)}
 					<Table.Row
 						onclick={() => onSeek?.(offsetMs(entry.timestamp))}
-						class="cursor-pointer hover:bg-muted/50 {i === activeIndex
-							? 'bg-primary/10 border-l-2 border-l-primary'
+						class="cursor-pointer {i === activeIndex
+							? 'border-l-2 border-l-primary bg-primary/10'
 							: ''}"
 					>
 						<Table.Cell class="font-mono text-xs text-muted-foreground tabular-nums">
@@ -140,10 +140,7 @@
 						<Table.Cell class="font-mono text-xs uppercase {typeColor(entry.type)}">
 							{entry.type}
 						</Table.Cell>
-						<Table.Cell
-							class="font-mono text-xs truncate max-w-[600px]"
-							title={summary(entry)}
-						>
+						<Table.Cell class="max-w-[600px] truncate font-mono text-xs" title={summary(entry)}>
 							{summary(entry)}
 						</Table.Cell>
 					</Table.Row>

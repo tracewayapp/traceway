@@ -299,6 +299,24 @@ func TestFailureThresholdIncidentAndRecovery(t *testing.T) {
 	if err != nil || openIncident == nil {
 		t.Fatalf("expected an open incident, got %+v (%v)", openIncident, err)
 	}
+	if openIncident.CheckId == nil || *openIncident.CheckId != check.Id {
+		t.Fatalf("open incident check id = %v, want %d", openIncident.CheckId, check.Id)
+	}
+	if openIncident.StatusPageId != nil {
+		t.Fatalf("auto incident carries a status page id: %+v", openIncident)
+	}
+	openUpdates, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.IncidentUpdate, error) {
+		return transactional.IncidentUpdateRepository.FindByIncident(tx, openIncident.Id)
+	})
+	if err != nil {
+		t.Fatalf("find incident updates: %v", err)
+	}
+	if len(openUpdates) != 1 || openUpdates[0].Status != models.IncidentUpdateInvestigating {
+		t.Fatalf("expected one seeded investigating update, got %+v", openUpdates)
+	}
+	if openUpdates[0].Message != "" {
+		t.Fatalf("seeded update must not leak the probe error, got %q", openUpdates[0].Message)
+	}
 
 	// A third failure must not re-notify or duplicate the incident.
 	runOnce(now.Add(122 * time.Second))
@@ -331,6 +349,15 @@ func TestFailureThresholdIncidentAndRecovery(t *testing.T) {
 	}
 	if stillOpen != nil {
 		t.Fatalf("incident not resolved: %+v", stillOpen)
+	}
+	resolvedUpdates, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.IncidentUpdate, error) {
+		return transactional.IncidentUpdateRepository.FindByIncident(tx, openIncident.Id)
+	})
+	if err != nil {
+		t.Fatalf("find incident updates after recovery: %v", err)
+	}
+	if len(resolvedUpdates) != 2 || resolvedUpdates[0].Status != models.IncidentUpdateResolved {
+		t.Fatalf("expected a seeded resolved update on top, got %+v", resolvedUpdates)
 	}
 
 	results := checkResults(t, projectId, check.Id)

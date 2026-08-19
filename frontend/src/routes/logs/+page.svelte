@@ -19,6 +19,10 @@
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import ExpandedLogRow from '$lib/components/trace-logs/expanded-log-row.svelte';
 	import LogMessage from '$lib/components/trace-logs/log-message.svelte';
+	import PageHeader from '$lib/components/traceway/page-header.svelte';
+	import ToolbarSelect from '$lib/components/traceway/toolbar-select.svelte';
+	import FormField from '$lib/components/traceway/form-field.svelte';
+	import TableContainer from '$lib/components/traceway/table-container.svelte';
 	import { Check, Play, Plus, X } from '@lucide/svelte';
 	import { CalendarDate } from '@internationalized/date';
 	import {
@@ -26,7 +30,8 @@
 		getResolvedTimeRange,
 		getTimeRangeFromPreset,
 		dateToCalendarDate,
-		dateToTimeString
+		dateToTimeString,
+		updateUrl
 	} from '$lib/utils/url-params';
 	import { calendarDateTimeToLuxon, toUTCISO, formatDateTime } from '$lib/utils/formatters';
 	import {
@@ -361,7 +366,10 @@
 
 	// Displayed attribute keys are prefixed `resource.` / `scope.`; log
 	// attributes are unprefixed.
-	function displayKeyToFilter(displayKey: string): { scope: AttributeFilter['scope']; key: string } {
+	function displayKeyToFilter(displayKey: string): {
+		scope: AttributeFilter['scope'];
+		key: string;
+	} {
 		if (displayKey.startsWith('resource.')) {
 			return { scope: 'resource', key: displayKey.slice('resource.'.length) };
 		}
@@ -371,10 +379,7 @@
 		return { scope: 'log', key: displayKey };
 	}
 
-	function attributeFilterState(
-		displayKey: string,
-		value: string
-	): 'none' | 'include' | 'exclude' {
+	function attributeFilterState(displayKey: string, value: string): 'none' | 'include' | 'exclude' {
 		const { scope, key } = displayKeyToFilter(displayKey);
 		// Contains filters are ignored: an attribute tile reflects (and toggles)
 		// only exact-match filters for its value.
@@ -393,7 +398,10 @@
 			(f) => !f.contains && f.scope === scope && f.key === key && f.value === value
 		);
 		if (existing === -1) {
-			attributeFilters = [...attributeFilters, { scope, key, value, exclude: false, contains: false }];
+			attributeFilters = [
+				...attributeFilters,
+				{ scope, key, value, exclude: false, contains: false }
+			];
 		} else {
 			attributeFilters = attributeFilters.filter((_, i) => i !== existing);
 		}
@@ -440,7 +448,9 @@
 	// Pills for the active meta filters, shown next to the attribute chips.
 	const metaFilterChips = $derived([
 		...(bodyFilter ? [{ field: 'body' as const, label: 'body', value: bodyFilter }] : []),
-		...(traceIdFilter ? [{ field: 'traceId' as const, label: 'trace_id', value: traceIdFilter }] : []),
+		...(traceIdFilter
+			? [{ field: 'traceId' as const, label: 'trace_id', value: traceIdFilter }]
+			: []),
 		...(spanIdFilter ? [{ field: 'spanId' as const, label: 'span_id', value: spanIdFilter }] : []),
 		...(scopeNameFilter
 			? [{ field: 'scopeName' as const, label: 'scope', value: scopeNameFilter }]
@@ -474,10 +484,6 @@
 		{ value: '21', label: 'FATAL' }
 	];
 
-	const severityTriggerLabel = $derived(
-		severityOptions.find((o) => Number(o.value) === minSeverity)?.label ?? 'All levels'
-	);
-
 	function getFromDateTimeUTC(): string {
 		const [hour, minute] = fromTime.split(':').map(Number);
 		const luxonDt = calendarDateTimeToLuxon(
@@ -497,28 +503,23 @@
 	}
 
 	function updateLogsUrl(pushToHistory = true) {
-		if (!browser) return;
-		const urlParams = new URLSearchParams();
-		if (selectedPreset) {
-			urlParams.set('preset', selectedPreset);
-		} else {
-			urlParams.set('from', getFromDateTimeUTC());
-			urlParams.set('to', getToDateTimeUTC());
-		}
-		if (searchQuery.trim()) urlParams.set('search', searchQuery.trim());
-		if (searchType !== 'body') urlParams.set('searchType', searchType);
-		if (minSeverity > 0) urlParams.set('minSeverity', String(minSeverity));
-		if (serviceName.trim()) urlParams.set('service', serviceName.trim());
-		if (traceIdFilter.trim()) urlParams.set('traceId', traceIdFilter.trim());
-		if (spanIdFilter.trim()) urlParams.set('spanId', spanIdFilter.trim());
-		if (scopeNameFilter.trim()) urlParams.set('scopeName', scopeNameFilter.trim());
-		if (bodyFilter) urlParams.set('body', bodyFilter);
-		for (const f of attributeFilters) {
-			urlParams.append('attr', formatAttributeFilter(f));
-		}
-		const newUrl = `${window.location.pathname}?${urlParams.toString()}`;
-		// eslint-disable-next-line svelte/no-navigation-without-resolve
-		goto(newUrl, { replaceState: !pushToHistory, noScroll: true, keepFocus: true });
+		updateUrl(
+			{
+				preset: selectedPreset || null,
+				from: selectedPreset ? null : getFromDateTimeUTC(),
+				to: selectedPreset ? null : getToDateTimeUTC(),
+				search: searchQuery.trim() || null,
+				searchType: searchType !== 'body' ? searchType : null,
+				minSeverity: minSeverity > 0 ? String(minSeverity) : null,
+				service: serviceName.trim() || null,
+				traceId: traceIdFilter.trim() || null,
+				spanId: spanIdFilter.trim() || null,
+				scopeName: scopeNameFilter.trim() || null,
+				body: bodyFilter || null,
+				attr: attributeFilters.map(formatAttributeFilter)
+			},
+			{ pushToHistory }
+		);
 	}
 
 	function removeAttributeFilter(index: number) {
@@ -808,9 +809,8 @@
 </script>
 
 <div class="space-y-4">
-	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-		<h2 class="text-3xl font-semibold tracking-tight">Logs</h2>
-		<div class="flex w-full items-center gap-2 sm:w-auto">
+	<PageHeader title="Logs">
+		{#snippet actions()}
 			{#if selectedPreset === null}
 				<Tooltip.Root>
 					<!-- buttonVariants sets aria-disabled:pointer-events-none, which would
@@ -818,7 +818,7 @@
 					<Tooltip.Trigger
 						class="{buttonVariants({
 							variant: 'outline'
-						})} shrink-0 !pointer-events-auto !cursor-not-allowed opacity-50"
+						})} !pointer-events-auto shrink-0 !cursor-not-allowed opacity-50"
 						aria-disabled="true"
 					>
 						<Play class="h-4 w-4" />
@@ -849,36 +849,24 @@
 				bind:preset={selectedPreset}
 				onApply={handleTimeRangeChange}
 			/>
-		</div>
-	</div>
+		{/snippet}
+	</PageHeader>
 
-	<div class="flex flex-col gap-3 sm:flex-row sm:items-start">
-		<div class="flex-1">
-			<SearchBar
-				placeholder="Search logs..."
-				bind:value={searchQuery}
-				bind:typeValue={searchType}
-				typeOptions={searchTypeOptions}
-				onSearch={handleSearch}
-				disabled={loading}
-			>
-				<Select.Root
-					type="single"
-					value={String(minSeverity)}
-					onValueChange={handleSeverityChange}
-				>
-					<Select.Trigger class="h-9 w-[130px] rounded-none border-r-0 shadow-none">
-						{severityTriggerLabel}
-					</Select.Trigger>
-					<Select.Content>
-						{#each severityOptions as opt (opt.value)}
-							<Select.Item value={opt.value} label={opt.label}>{opt.label}</Select.Item>
-						{/each}
-					</Select.Content>
-				</Select.Root>
-			</SearchBar>
-		</div>
-	</div>
+	<SearchBar
+		placeholder="Search logs..."
+		bind:value={searchQuery}
+		bind:typeValue={searchType}
+		typeOptions={searchTypeOptions}
+		onSearch={handleSearch}
+		disabled={loading}
+	>
+		<ToolbarSelect
+			value={String(minSeverity)}
+			options={severityOptions}
+			class="w-[130px]"
+			onChange={handleSeverityChange}
+		/>
+	</SearchBar>
 
 	<div class="flex flex-wrap items-center gap-2">
 		<button
@@ -891,7 +879,9 @@
 			Add filter
 		</button>
 		{#each metaFilterChips as chip (chip.field)}
-			<span class="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-mono">
+			<span
+				class="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 font-mono text-xs"
+			>
 				<Tooltip.Root>
 					<Tooltip.Trigger class="inline-flex cursor-default items-center gap-1">
 						<span class="text-muted-foreground">{chip.label}</span>
@@ -912,7 +902,7 @@
 		{/each}
 		{#each attributeFilters as f, i (i)}
 			<span
-				class="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-mono"
+				class="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 font-mono text-xs"
 			>
 				<button
 					type="button"
@@ -948,16 +938,14 @@
 				</AlertDialog.Description>
 			</AlertDialog.Header>
 			<div class="flex flex-col gap-3">
-				<label class="flex flex-col gap-1 text-sm">
-					<span class="font-medium">Attribute key</span>
+				<FormField label="Attribute key">
 					<Input
 						placeholder="resource.service.name"
 						bind:value={dialogKey}
 						onkeydown={handleDialogKeydown}
 					/>
-				</label>
-				<div class="flex flex-col gap-1 text-sm">
-					<span class="font-medium">Operator</span>
+				</FormField>
+				<FormField label="Operator">
 					<Select.Root
 						type="single"
 						value={dialogOperator}
@@ -978,15 +966,14 @@
 							{/each}
 						</Select.Content>
 					</Select.Root>
-				</div>
-				<label class="flex flex-col gap-1 text-sm">
-					<span class="font-medium">Value</span>
+				</FormField>
+				<FormField label="Value">
 					<Input
 						placeholder="backend-service"
 						bind:value={dialogValue}
 						onkeydown={handleDialogKeydown}
 					/>
-				</label>
+				</FormField>
 				{#if dialogError}
 					<p class="text-xs text-red-500">{dialogError}</p>
 				{/if}
@@ -1004,146 +991,146 @@
 		</AlertDialog.Content>
 	</AlertDialog.Root>
 
-	<div class="overflow-hidden rounded-md border">
+	<TableContainer>
 		<div
 			bind:this={scrollEl}
 			bind:clientHeight={viewportH}
 			onscroll={() => (scrollTop = scrollEl?.scrollTop ?? 0)}
 			class="overflow-auto [&_[data-slot=table-container]]:overflow-visible"
 		>
-		<Table.Root>
-			{#if loading}
-				<Table.Body>
-					<Table.Row>
-						<Table.Cell colspan={5} class="h-48">
-							<div class="flex h-full items-center justify-center">
-								<LoadingCircle size="xlg" />
-							</div>
-						</Table.Cell>
-					</Table.Row>
-				</Table.Body>
-			{:else if error}
-				<Table.Body>
-					<Table.Row>
-						<Table.Cell colspan={5} class="h-24 text-center text-red-500">
-							{error}
-						</Table.Cell>
-					</Table.Row>
-				</Table.Body>
-			{:else if logs.length === 0}
-				<Table.Body>
-					<TableEmptyState colspan={5} message="No logs found." />
-				</Table.Body>
-			{:else}
-				<!-- Solid thead bg so rows can't show through the translucent th
-				     bg-muted/60 while it is sticky; the th keeps its own darker
-				     background on top, same look as the endpoints table. -->
-				<Table.Header class="sticky top-0 z-10 bg-background">
-					<Table.Row>
-						<TracewayTableHeader
-							label="Timestamp"
-							tooltip="Log event time"
-							class="w-[180px]"
-							sortField="timestamp"
-							currentSortField={sortField}
-							{sortDirection}
-							onSort={handleSort}
-						/>
-						<TracewayTableHeader
-							label="Level"
-							tooltip="Log severity"
-							class="w-[90px]"
-							sortField="severity_number"
-							currentSortField={sortField}
-							{sortDirection}
-							onSort={handleSort}
-						/>
-						<TracewayTableHeader label="Message" tooltip="Log body (click row to expand)" />
-						<TracewayTableHeader
-							label="Service"
-							tooltip="Emitting service"
-							class="w-[160px]"
-							sortField="service_name"
-							currentSortField={sortField}
-							{sortDirection}
-							onSort={handleSort}
-						/>
-						<TracewayTableHeader
-							label="Trace"
-							tooltip="Linked trace ID (if present)"
-							class="w-[110px]"
-						/>
-					</Table.Row>
-				</Table.Header>
-				<Table.Body>
-					{#if topPad > 0}
-						<tr aria-hidden="true" style="height: {topPad}px"></tr>
-					{/if}
-					{#each visibleLogs as log (log.id)}
-						<Table.Row
-							data-log-id={log.id}
-							class="group cursor-pointer hover:bg-muted/50"
-							onclick={() => toggleExpanded(log.id)}
-						>
-							<Table.Cell class="text-muted-foreground tabular-nums">
-								{formatDateTime(log.timestamp, { timezone })}
-							</Table.Cell>
-							<Table.Cell>
-								<SeverityBadge
-									severityText={log.severityText}
-									severityNumber={log.severityNumber}
-								/>
-							</Table.Cell>
-							<Table.Cell class="max-w-[600px] truncate font-mono text-sm">
-								<LogMessage body={log.body} attributes={log.logAttributes} />
-							</Table.Cell>
-							<Table.Cell class="truncate text-muted-foreground">
-								{log.serviceName || '—'}
-							</Table.Cell>
-							<Table.Cell class="font-mono text-xs">
-								{#if log.traceId}
-									<span class="text-muted-foreground" title={log.traceId}>
-										{log.traceId.slice(0, 8)}…
-									</span>
-								{:else}
-									<span class="text-muted-foreground">—</span>
-								{/if}
+			<Table.Root>
+				{#if loading}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={5} class="h-48">
+								<div class="flex h-full items-center justify-center">
+									<LoadingCircle size="xlg" />
+								</div>
 							</Table.Cell>
 						</Table.Row>
-						{#if expandedId === log.id}
-							<ExpandedLogRow
-								{log}
-								colspan={5}
-								filterStateFor={attributeFilterState}
-								onFilterToggle={toggleAttributeFilter}
-								metaFilterStateFor={metaFilterState}
-								onMetaFilterToggle={toggleMetaFilter}
+					</Table.Body>
+				{:else if error}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={5} class="h-24 text-center text-red-500">
+								{error}
+							</Table.Cell>
+						</Table.Row>
+					</Table.Body>
+				{:else if logs.length === 0}
+					<Table.Body>
+						<TableEmptyState colspan={5} message="No logs found." />
+					</Table.Body>
+				{:else}
+					<!-- Solid thead bg so rows can't show through the translucent th
+				     bg-muted/60 while it is sticky; the th keeps its own darker
+				     background on top, same look as the endpoints table. -->
+					<Table.Header class="sticky top-0 z-10 bg-background">
+						<Table.Row>
+							<TracewayTableHeader
+								label="Timestamp"
+								tooltip="Log event time"
+								class="w-[180px]"
+								sortField="timestamp"
+								currentSortField={sortField}
+								{sortDirection}
+								onSort={handleSort}
 							/>
+							<TracewayTableHeader
+								label="Level"
+								tooltip="Log severity"
+								class="w-[90px]"
+								sortField="severity_number"
+								currentSortField={sortField}
+								{sortDirection}
+								onSort={handleSort}
+							/>
+							<TracewayTableHeader label="Message" tooltip="Log body (click row to expand)" />
+							<TracewayTableHeader
+								label="Service"
+								tooltip="Emitting service"
+								class="w-[160px]"
+								sortField="service_name"
+								currentSortField={sortField}
+								{sortDirection}
+								onSort={handleSort}
+							/>
+							<TracewayTableHeader
+								label="Trace"
+								tooltip="Linked trace ID (if present)"
+								class="w-[110px]"
+							/>
+						</Table.Row>
+					</Table.Header>
+					<Table.Body>
+						{#if topPad > 0}
+							<tr aria-hidden="true" style="height: {topPad}px"></tr>
 						{/if}
-					{/each}
-					{#if bottomPad > 0}
-						<tr aria-hidden="true" style="height: {bottomPad}px"></tr>
-					{/if}
-					<Table.Row class="hover:bg-transparent">
-						<Table.Cell colspan={5}>
-							<div class="flex items-center justify-center gap-3 py-1">
-								{#if logs.length < displayTotal}
-									<Button variant="outline" size="sm" onclick={loadMore} disabled={loadingMore}>
-										{loadingMore ? 'Loading…' : `Load ${pageSize} more`}
-									</Button>
-								{/if}
-								{#if loadMoreError}
-									<span class="text-xs text-red-500">{loadMoreError}</span>
-								{/if}
-								<span class="text-xs text-muted-foreground">
-									Showing {logs.length.toLocaleString()} of {displayTotal.toLocaleString()} logs
-								</span>
-							</div>
-						</Table.Cell>
-					</Table.Row>
-				</Table.Body>
-			{/if}
-		</Table.Root>
+						{#each visibleLogs as log (log.id)}
+							<Table.Row
+								data-log-id={log.id}
+								class="group cursor-pointer"
+								onclick={() => toggleExpanded(log.id)}
+							>
+								<Table.Cell class="text-muted-foreground tabular-nums">
+									{formatDateTime(log.timestamp, { timezone })}
+								</Table.Cell>
+								<Table.Cell>
+									<SeverityBadge
+										severityText={log.severityText}
+										severityNumber={log.severityNumber}
+									/>
+								</Table.Cell>
+								<Table.Cell class="max-w-[600px] truncate font-mono text-sm">
+									<LogMessage body={log.body} attributes={log.logAttributes} />
+								</Table.Cell>
+								<Table.Cell class="truncate text-muted-foreground">
+									{log.serviceName || '—'}
+								</Table.Cell>
+								<Table.Cell class="font-mono text-xs">
+									{#if log.traceId}
+										<span class="text-muted-foreground" title={log.traceId}>
+											{log.traceId.slice(0, 8)}…
+										</span>
+									{:else}
+										<span class="text-muted-foreground">—</span>
+									{/if}
+								</Table.Cell>
+							</Table.Row>
+							{#if expandedId === log.id}
+								<ExpandedLogRow
+									{log}
+									colspan={5}
+									filterStateFor={attributeFilterState}
+									onFilterToggle={toggleAttributeFilter}
+									metaFilterStateFor={metaFilterState}
+									onMetaFilterToggle={toggleMetaFilter}
+								/>
+							{/if}
+						{/each}
+						{#if bottomPad > 0}
+							<tr aria-hidden="true" style="height: {bottomPad}px"></tr>
+						{/if}
+						<Table.Row>
+							<Table.Cell colspan={5}>
+								<div class="flex items-center justify-center gap-3 py-1">
+									{#if logs.length < displayTotal}
+										<Button variant="outline" size="sm" onclick={loadMore} disabled={loadingMore}>
+											{loadingMore ? 'Loading…' : `Load ${pageSize} more`}
+										</Button>
+									{/if}
+									{#if loadMoreError}
+										<span class="text-xs text-red-500">{loadMoreError}</span>
+									{/if}
+									<span class="text-xs text-muted-foreground">
+										Showing {logs.length.toLocaleString()} of {displayTotal.toLocaleString()} logs
+									</span>
+								</div>
+							</Table.Cell>
+						</Table.Row>
+					</Table.Body>
+				{/if}
+			</Table.Root>
 		</div>
-	</div>
+	</TableContainer>
 </div>

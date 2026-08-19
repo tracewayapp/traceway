@@ -6,14 +6,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import * as Select from '$lib/components/ui/select';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
-	import {
-		Plus,
-		Check,
-		Trash2,
-		ChevronUp,
-		ChevronDown,
-		X
-	} from '@lucide/svelte';
+	import { Plus, Check, Trash2, ChevronUp, ChevronDown, X } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 	import {
 		oncallState,
@@ -66,8 +59,7 @@
 	// by a day for users whose local date differs from the schedule-local date.
 	function todayISODate(): string {
 		return (
-			DateTime.now().setZone(schedule.timezone).toISODate() ??
-			new Date().toISOString().slice(0, 10)
+			DateTime.now().setZone(schedule.timezone).toISODate() ?? new Date().toISOString().slice(0, 10)
 		);
 	}
 
@@ -351,7 +343,9 @@
 						{#if restriction.type === 'weekly'}
 							<Select.Root
 								type="single"
-								value={restriction.startDay !== undefined ? String(restriction.startDay) : undefined}
+								value={restriction.startDay !== undefined
+									? String(restriction.startDay)
+									: undefined}
 								onValueChange={(val) => {
 									if (val) restriction.startDay = Number(val);
 								}}
@@ -404,7 +398,7 @@
 
 	<div class="flex items-center justify-between">
 		<Button variant="outline" size="sm" onclick={addLayer}>
-			<Plus class="mr-1 h-4 w-4" /> Add Layer
+			<Plus class="mr-2 h-4 w-4" /> Add Layer
 		</Button>
 		<div class="flex gap-2">
 			<Button variant="outline" onclick={onCancel} disabled={loading}>Cancel</Button>

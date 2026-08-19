@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as Tabs from '$lib/components/ui/tabs';
+	import PageTabs from '$lib/components/traceway/page-tabs.svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { addStickyParamsToHref } from '$lib/utils/navigation';
@@ -24,10 +24,4 @@
 	}
 </script>
 
-<Tabs.Root value={active} onValueChange={(v) => v && onTabChange(v)}>
-	<Tabs.List>
-		{#each tabs as tab (tab.value)}
-			<Tabs.Trigger value={tab.value}>{tab.label}</Tabs.Trigger>
-		{/each}
-	</Tabs.List>
-</Tabs.Root>
+<PageTabs {tabs} activeTab={active} {onTabChange} />

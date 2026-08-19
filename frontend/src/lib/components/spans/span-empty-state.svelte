@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ExternalLink, Code } from 'lucide-svelte';
+	import { ExternalLink, Code } from '@lucide/svelte';
 	import type { Framework } from '$lib/state/projects.svelte';
 	import Highlight from 'svelte-highlight';
 	import go from 'svelte-highlight/languages/go';

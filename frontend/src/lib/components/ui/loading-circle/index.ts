@@ -1,3 +1,3 @@
-import LoadingCircle from "./loading-circle.svelte";
+import LoadingCircle from './loading-circle.svelte';
 
 export { LoadingCircle };

@@ -12,6 +12,7 @@ var (
 	DashboardTemplateRepository    = pgrepo.DashboardTemplateRepository
 	DeviceAuthorizationRepository  = pgrepo.DeviceAuthorizationRepository
 	EscalationPolicyRepository     = pgrepo.EscalationPolicyRepository
+	IncidentUpdateRepository       = pgrepo.IncidentUpdateRepository
 	InvitationRepository           = pgrepo.InvitationRepository
 	MetricRegistryRepository       = pgrepo.MetricRegistryRepository
 	NotificationChannelRepository  = pgrepo.NotificationChannelRepository
@@ -25,6 +26,7 @@ var (
 	PageNotificationRepository     = pgrepo.PageNotificationRepository
 	PageRepository                 = pgrepo.PageRepository
 	PersonalAccessTokenRepository  = pgrepo.PersonalAccessTokenRepository
+	PostMortemRepository           = pgrepo.PostMortemRepository
 	ProjectRepository              = pgrepo.ProjectRepository
 	ProjectUserRoleRepository      = pgrepo.ProjectUserRoleRepository
 	RefreshTokenRepository         = pgrepo.RefreshTokenRepository

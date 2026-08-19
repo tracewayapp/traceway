@@ -8,21 +8,24 @@
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
 	import { SearchBar } from '$lib/components/ui/search-bar';
 	import InfoCallout from '$lib/components/traceway/info-callout.svelte';
-	import TabsRow from '$lib/components/traceway/tabs-row.svelte';
+	import PageTabs from '$lib/components/traceway/page-tabs.svelte';
 	import EmptyState from '$lib/components/traceway/empty-state.svelte';
+	import TableContainer from '$lib/components/traceway/table-container.svelte';
 	import CheckStatusBadge from '$lib/components/synthetics/check-status-badge.svelte';
 	import MonitorTypeBadge from '$lib/components/synthetics/monitor-type-badge.svelte';
 	import MonitorSheet from './monitor-sheet.svelte';
 	import StatusPagesTab from './status-pages-tab.svelte';
+	import PostMortemsTab from './post-mortems-tab.svelte';
 	import { browser } from '$app/environment';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
 	import { projectsState } from '$lib/state/projects.svelte';
+	import { authState } from '$lib/state/auth.svelte';
 	import { monitorsState, type CheckOverview } from '$lib/state/monitors.svelte';
 	import { createRowClickHandler } from '$lib/utils/navigation';
 	import { resolve } from '$app/paths';
-	import PageHeader from '$lib/components/issues/page-header.svelte';
-	import { updateUrl } from '$lib/utils/url-params';
+	import PageHeader from '$lib/components/traceway/page-header.svelte';
+	import { updateUrl, setTabParam } from '$lib/utils/url-params';
+	import { uptimeClass } from '$lib/utils/uptime';
 	import {
 		getSortState,
 		setSortState,
@@ -44,20 +47,30 @@
 	let dialogOpen = $state(false);
 
 	let statusPagesTab = $state<{ openCreate: () => void } | null>(null);
+	let postMortemsTab = $state<{ openCreate: () => void } | null>(null);
 
 	const TABS = $derived([
 		{ value: 'monitors', label: 'Monitors' },
 		...(projectsState.canManageCurrentProject
 			? [{ value: 'status-pages', label: 'Status Pages' }]
-			: [])
+			: []),
+		{ value: 'post-mortems', label: 'Post-Mortems' }
 	]);
 
 	const tabDescriptions: Record<string, string> = {
 		monitors:
 			'Monitors probe your services from the outside on a schedule: an HTTP request, a TCP connect, or a full browser flow. A monitor goes down only after the configured number of consecutive failures.',
 		'status-pages':
-			'A status page publishes the uptime of selected monitors at /status/<slug> with no login required. Brand it with your title and logo, and optionally serve it from your own domain via a CNAME.'
+			'A status page publishes the uptime of selected monitors at /status/<slug> with no login required. Brand it with your title and logo, and optionally serve it from your own domain via a CNAME.',
+		'post-mortems':
+			'Post-mortems are internal write-ups of incidents: what happened, why, and what changes. Tag them and search past write-ups when a similar incident hits again. They never appear on public status pages.'
 	};
+
+	const canWritePostMortems = $derived.by(() => {
+		const orgId = projectsState.currentProject?.organizationId;
+		if (!orgId) return false;
+		return authState.canWriteOrganization(orgId);
+	});
 
 	const activeTab = $derived.by(() => {
 		const tab = page.url.searchParams.get('tab') || 'monitors';
@@ -65,14 +78,7 @@
 	});
 
 	function setTab(tab: string) {
-		const url = new URL(window.location.href);
-		if (tab === 'monitors') {
-			url.searchParams.delete('tab');
-		} else {
-			url.searchParams.set('tab', tab);
-			url.searchParams.delete('search');
-		}
-		goto(url.toString(), { replaceState: true, noScroll: true });
+		setTabParam(tab, { clear: tab === 'monitors' ? [] : ['search'] });
 		if (tab === 'monitors') {
 			loadData(false);
 		}
@@ -86,6 +92,11 @@
 		}
 		if (activeTab === 'status-pages') {
 			return { label: 'New Status Page', onclick: () => statusPagesTab?.openCreate() };
+		}
+		if (activeTab === 'post-mortems') {
+			return canWritePostMortems
+				? { label: 'New Post-Mortem', onclick: () => postMortemsTab?.openCreate() }
+				: null;
 		}
 		return null;
 	});
@@ -213,12 +224,6 @@
 		return `${Math.floor(diffHours / 24)}d ago`;
 	}
 
-	function uptimeClass(uptime: number): string {
-		if (uptime >= 99.9) return 'text-green-600 dark:text-green-400';
-		if (uptime >= 99) return '';
-		return 'text-red-600 dark:text-red-400';
-	}
-
 	onMount(() => {
 		window.addEventListener('popstate', handlePopState);
 		if (activeTab === 'monitors') {
@@ -236,7 +241,7 @@
 <div class="space-y-4">
 	<PageHeader title="Monitors" />
 
-	<TabsRow
+	<PageTabs
 		tabs={TABS}
 		{activeTab}
 		onTabChange={setTab}
@@ -273,7 +278,7 @@
 				<EmptyState message="No monitors yet." />
 			{/if}
 		{:else}
-			<div class="overflow-hidden rounded-md border">
+			<TableContainer minWidth="820px">
 				<Table.Root>
 					{#if visibleChecks.length === 0}
 						<Table.Body>
@@ -336,15 +341,17 @@
 							</Table.Row>
 						</Table.Header>
 						<Table.Body>
-							{#each visibleChecks as check}
+							{#each visibleChecks as check, __index (__index)}
 								{@const uptime = uptimePct(check)}
 								<Table.Row
-									class="cursor-pointer hover:bg-muted/50"
+									class="cursor-pointer"
 									onclick={createRowClickHandler(resolve(`/monitors/${check.id}`))}
 								>
-									<Table.Cell class="max-w-[40%] font-medium break-all whitespace-normal">
+									<Table.Cell class="font-medium whitespace-normal">
 										{check.name}
-										<div class="mt-0.5 font-mono text-xs font-normal text-muted-foreground">
+										<div
+											class="mt-0.5 max-w-[420px] truncate font-mono text-xs font-normal text-muted-foreground"
+										>
 											{#if check.checkType === 'http'}
 												{check.config?.method || 'GET'}
 												{check.config?.url}
@@ -397,10 +404,12 @@
 						</Table.Body>
 					{/if}
 				</Table.Root>
-			</div>
+			</TableContainer>
 		{/if}
 	{:else if activeTab === 'status-pages'}
 		<StatusPagesTab bind:this={statusPagesTab} />
+	{:else if activeTab === 'post-mortems'}
+		<PostMortemsTab bind:this={postMortemsTab} />
 	{/if}
 </div>
 

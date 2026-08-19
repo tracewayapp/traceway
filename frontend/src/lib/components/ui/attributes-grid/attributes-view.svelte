@@ -4,7 +4,8 @@
 
 <script lang="ts">
 	import JSONTree from '@sveltejs/svelte-json-tree';
-	import { Copy, Check, Filter, FilterX } from 'lucide-svelte';
+	import { Filter, FilterX } from '@lucide/svelte';
+	import CopyButton from '$lib/components/traceway/copy-button.svelte';
 
 	let {
 		title,
@@ -31,7 +32,6 @@
 				: 'Excluding this value — click to clear'
 	);
 
-	let copied = $state(false);
 	let showFull = $state(false);
 	let clamped = $state(false);
 	let valueEl = $state<HTMLElement | null>(null);
@@ -53,14 +53,6 @@
 		}
 		return null;
 	});
-
-	async function copyToClipboard() {
-		await navigator.clipboard.writeText(value);
-		copied = true;
-		setTimeout(() => {
-			copied = false;
-		}, 2000);
-	}
 </script>
 
 <div class="group relative flex flex-col gap-1 rounded-md bg-muted p-3">
@@ -84,33 +76,28 @@
 					{/if}
 				</button>
 			{/if}
-			<button
-				onclick={copyToClipboard}
-				class="{hoverRevealClass} transition-opacity text-muted-foreground hover:text-foreground"
-				title="Copy to clipboard"
-			>
-				{#if copied}
-					<Check class="h-3.5 w-3.5 text-green-500" />
-				{:else}
-					<Copy class="h-3.5 w-3.5" />
-				{/if}
-			</button>
+			<CopyButton
+				bare
+				text={value}
+				iconClass="h-3.5 w-3.5"
+				class="{hoverRevealClass} p-0 transition-opacity hover:bg-transparent"
+			/>
 		</div>
 	</div>
 	{#if parsedJson()}
-		<div class="json-tree-container whitespace-normal overflow-x-auto">
+		<div class="json-tree-container overflow-x-auto whitespace-normal">
 			<JSONTree value={parsedJson()} />
 		</div>
 	{:else}
 		<span
 			bind:this={valueEl}
-			class="font-mono text-sm whitespace-pre-wrap break-all {showFull ? '' : 'line-clamp-4'}"
+			class="font-mono text-sm break-all whitespace-pre-wrap {showFull ? '' : 'line-clamp-4'}"
 			>{value}</span
 		>
 		{#if clamped || showFull}
 			<button
 				onclick={() => (showFull = !showFull)}
-				class="self-start text-xs text-muted-foreground hover:text-foreground transition-colors"
+				class="self-start text-xs text-muted-foreground transition-colors hover:text-foreground"
 			>
 				{showFull ? 'Show less' : 'Show more...'}
 			</button>

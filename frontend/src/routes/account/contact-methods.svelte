@@ -2,16 +2,16 @@
 	import { onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as Table from '$lib/components/ui/table';
-	import * as Alert from '$lib/components/ui/alert';
-	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { Switch } from '$lib/components/ui/switch';
 	import { Badge } from '$lib/components/ui/badge';
-	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
+	import InfoCallout from '$lib/components/traceway/info-callout.svelte';
+	import EmptyState from '$lib/components/traceway/empty-state.svelte';
+	import ErrorRetryBox from '$lib/components/traceway/error-retry-box.svelte';
+	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import ConfirmDeleteDialog from '$lib/components/traceway/confirm-delete-dialog.svelte';
 	import {
-		Plus,
 		Trash2,
-		Info,
 		Send,
 		Mail,
 		MessageSquare,
@@ -37,9 +37,14 @@
 	let loading = $state(true);
 	let loadError = $state('');
 	let showCreate = $state(false);
+
+	export function openCreate() {
+		showCreate = true;
+	}
 	let showEdit = $state(false);
 	let methodToEdit = $state<ContactMethod | null>(null);
 	let methodToDelete = $state<ContactMethod | null>(null);
+	let deleteDialogOpen = $state(false);
 	let deleting = $state(false);
 	let deleteError = $state('');
 	let testingId = $state<number | null>(null);
@@ -127,13 +132,9 @@
 	async function toggleEnabled(method: ContactMethod, enabled: boolean) {
 		try {
 			await api.put(`/contact-methods/${method.id}`, { enabled });
-			toast.success(`Successfully ${enabled ? 'enabled' : 'disabled'} the Contact Method`, {
-				position: 'top-center'
-			});
+			toast.success(`Successfully ${enabled ? 'enabled' : 'disabled'} the Contact Method`);
 		} catch (e: unknown) {
-			toast.error(e instanceof Error ? e.message : 'Failed to update contact method', {
-				position: 'top-center'
-			});
+			toast.error(e instanceof Error ? e.message : 'Failed to update contact method');
 		}
 		loadMethods();
 	}
@@ -142,11 +143,9 @@
 		testingId = method.id;
 		try {
 			await api.post(`/contact-methods/${method.id}/test`, {});
-			toast.success('Test notification sent', { position: 'top-center' });
+			toast.success('Test notification sent');
 		} catch (e: unknown) {
-			toast.error(e instanceof Error ? e.message : 'Failed to send test notification', {
-				position: 'top-center'
-			});
+			toast.error(e instanceof Error ? e.message : 'Failed to send test notification');
 		} finally {
 			testingId = null;
 		}
@@ -158,7 +157,8 @@
 		deleteError = '';
 		try {
 			await api.delete(`/contact-methods/${methodToDelete.id}`);
-			toast.success('Successfully deleted the Contact Method', { position: 'top-center' });
+			toast.success('Successfully deleted the Contact Method');
+			deleteDialogOpen = false;
 			methodToDelete = null;
 			loadMethods();
 			onMethodsChanged?.();
@@ -170,44 +170,23 @@
 	}
 </script>
 
-<div class="flex items-center justify-between">
-	<h2 class="text-xl font-semibold tracking-tight">Contact Methods</h2>
-	<Button variant="success" onclick={() => (showCreate = true)}>
-		<Plus class="mr-1 h-4 w-4" /> New Contact Method
-	</Button>
-</div>
-
-<Alert.Root
-	class="border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-200"
->
-	<Info class="text-blue-600 dark:text-blue-400" />
-	<Alert.Description class="text-blue-800 dark:text-blue-300">
-		When you're paged, Traceway notifies every enabled method. With none configured, your account
-		email is used.
-	</Alert.Description>
-</Alert.Root>
+<InfoCallout>
+	When you're paged, Traceway notifies every enabled method. With none configured, your account
+	email is used.
+</InfoCallout>
 
 {#if loading}
 	<div class="flex justify-center py-12"><LoadingCircle size="lg" /></div>
 {:else if loadError}
-	<div
-		class="flex flex-col items-center justify-center gap-3 rounded-md bg-muted py-20 text-center text-muted-foreground"
-	>
-		<p class="text-sm text-destructive">{loadError}</p>
-		<Button variant="outline" size="sm" onclick={() => loadMethods()}>Retry</Button>
-	</div>
+	<ErrorRetryBox message={loadError} onRetry={() => loadMethods()} />
 {:else if methods.length === 0}
-	<div
-		class="flex flex-col items-center justify-center rounded-md bg-muted py-20 text-center text-muted-foreground"
-	>
-		<p class="mb-4">No contact methods yet. Pages fall back to your account email.</p>
-		<Button variant="success" onclick={() => (showCreate = true)}>
-			<Plus class="mr-1 h-4 w-4" />
-			Create your first Contact Method
-		</Button>
-	</div>
+	<EmptyState
+		message="No contact methods yet. Pages fall back to your account email."
+		actionLabel="Create your first Contact Method"
+		onAction={() => (showCreate = true)}
+	/>
 {:else}
-	<div class="overflow-hidden rounded-md border">
+	<TableContainer>
 		<Table.Root>
 			<Table.Header>
 				<Table.Row class="hover:bg-transparent">
@@ -231,7 +210,10 @@
 							<div class="flex items-center gap-2">
 								{methodSummary(method)}
 								{#if isUnsendableSms(method)}
-									<Badge variant="outline" title="This instance has no Twilio credentials configured">
+									<Badge
+										variant="outline"
+										title="This instance has no Twilio credentials configured"
+									>
 										SMS unavailable
 									</Badge>
 								{:else if isUnverifiedSms(method)}
@@ -294,6 +276,7 @@
 									onclick={() => {
 										deleteError = '';
 										methodToDelete = method;
+										deleteDialogOpen = true;
 									}}
 								>
 									<Trash2 class="h-4 w-4 text-destructive" />
@@ -304,7 +287,7 @@
 				{/each}
 			</Table.Body>
 		</Table.Root>
-	</div>
+	</TableContainer>
 {/if}
 
 <ContactMethodDialog
@@ -341,31 +324,11 @@
 	onVerified={() => loadMethods()}
 />
 
-<AlertDialog.Root
-	open={methodToDelete !== null}
-	onOpenChange={(open) => {
-		if (!open) {
-			methodToDelete = null;
-			deleteError = '';
-		}
-	}}
->
-	<AlertDialog.Content>
-		<AlertDialog.Header>
-			<AlertDialog.Title>Delete Contact Method</AlertDialog.Title>
-			<AlertDialog.Description>
-				Are you sure you want to delete this {methodTypeLabels[methodToDelete?.methodType ?? ''] ??
-					''} contact method? You will no longer be paged through it, and any step of your
-				notification rules that uses it is removed too. To change where it points, edit it instead.
-			</AlertDialog.Description>
-		</AlertDialog.Header>
-		<ErrorAlert error={deleteError} />
-		<AlertDialog.Footer>
-			<AlertDialog.Cancel disabled={deleting}>Cancel</AlertDialog.Cancel>
-			<Button variant="destructive" onclick={confirmDelete} disabled={deleting}>
-				<Trash2 class="mr-2 h-4 w-4" />
-				{deleting ? 'Deleting...' : 'Delete Contact Method'}
-			</Button>
-		</AlertDialog.Footer>
-	</AlertDialog.Content>
-</AlertDialog.Root>
+<ConfirmDeleteDialog
+	bind:open={deleteDialogOpen}
+	entity="Contact Method"
+	description={`Are you sure you want to delete this ${methodTypeLabels[methodToDelete?.methodType ?? ''] ?? ''} contact method? You will no longer be paged through it, and any step of your notification rules that uses it is removed too. To change where it points, edit it instead.`}
+	error={deleteError}
+	loading={deleting}
+	onConfirm={confirmDelete}
+/>

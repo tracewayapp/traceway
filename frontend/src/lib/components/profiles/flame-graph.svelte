@@ -27,7 +27,8 @@
 
 	export function diffColor(delta: number): string {
 		const mag = Math.min(1, Math.abs(delta));
-		if (delta > 0.001) return `hsl(8, ${Math.round(45 + mag * 45)}%, ${Math.round(68 - mag * 22)}%)`;
+		if (delta > 0.001)
+			return `hsl(8, ${Math.round(45 + mag * 45)}%, ${Math.round(68 - mag * 22)}%)`;
 		if (delta < -0.001)
 			return `hsl(140, ${Math.round(40 + mag * 45)}%, ${Math.round(66 - mag * 20)}%)`;
 		return 'hsl(220, 6%, 78%)';

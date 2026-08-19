@@ -296,7 +296,29 @@ func (ctrl *syntheticCheckController) Get(ctx *gin.Context) {
 	if incidents == nil {
 		incidents = []*models.CheckIncident{}
 	}
-	ctx.JSON(http.StatusOK, gin.H{"check": check, "incidents": incidents})
+	incidentIds := make([]int, len(incidents))
+	for i, incident := range incidents {
+		incidentIds[i] = incident.Id
+	}
+	updateCounts, postMortemIds, ok := incidentDecorations(ctx, tx, incidentIds)
+	if !ok {
+		return
+	}
+	type checkIncidentView struct {
+		*models.CheckIncident
+		UpdatesCount int  `json:"updatesCount"`
+		PostMortemId *int `json:"postMortemId"`
+	}
+	incidentViews := make([]checkIncidentView, len(incidents))
+	for i, incident := range incidents {
+		view := checkIncidentView{CheckIncident: incident, UpdatesCount: updateCounts[incident.Id]}
+		if id, ok := postMortemIds[incident.Id]; ok {
+			postMortemId := id
+			view.PostMortemId = &postMortemId
+		}
+		incidentViews[i] = view
+	}
+	ctx.JSON(http.StatusOK, gin.H{"check": check, "incidents": incidentViews})
 }
 
 func (ctrl *syntheticCheckController) Update(ctx *gin.Context) {

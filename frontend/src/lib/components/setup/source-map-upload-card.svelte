@@ -6,7 +6,7 @@
 		CardHeader,
 		CardTitle
 	} from '$lib/components/ui/card';
-	import { KeyRound } from 'lucide-svelte';
+	import { KeyRound } from '@lucide/svelte';
 	import { projectsState, isProjectReadonly } from '$lib/state/projects.svelte';
 	import SourceMapSetup from '$lib/components/source-map-setup.svelte';
 

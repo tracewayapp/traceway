@@ -170,7 +170,7 @@
 		>
 			<Sidebar.SidebarGroupContent>
 				<Sidebar.SidebarMenu>
-					{#each sidebarItems as sidebarItem}
+					{#each sidebarItems as sidebarItem, __index (__index)}
 						{@const active =
 							page.url.pathname === sidebarItem.href ||
 							page.url.pathname.startsWith(sidebarItem.href + '/')}
@@ -215,7 +215,7 @@
 			>
 				<Sidebar.SidebarGroupContent>
 					<Sidebar.SidebarMenu>
-						{#each sidebarItemsBottom as sidebarItem}
+						{#each sidebarItemsBottom as sidebarItem, __index (__index)}
 							<Sidebar.SidebarMenuItem>
 								{#if sidebarItem.external}
 									<Sidebar.SidebarMenuButton

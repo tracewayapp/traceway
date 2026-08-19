@@ -42,8 +42,9 @@
 			<h3 class="font-semibold">Run the Setup Prompt</h3>
 		</div>
 		<p class="mt-1 ml-9 text-sm text-muted-foreground">
-			Paste this prompt into your agent. Your instance URL and project token are already filled
-			in{sourceMapToken ? ', along with your source map upload token' : ''}.
+			Paste this prompt into your agent. Your instance URL and project token are already filled in{sourceMapToken
+				? ', along with your source map upload token'
+				: ''}.
 		</p>
 	</div>
 	<div class="p-4">

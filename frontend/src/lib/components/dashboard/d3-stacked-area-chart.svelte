@@ -149,17 +149,9 @@
 	const yDomainMax = $derived(yMax() * 1.1 || 1);
 
 	// Scales
-	const xScale = $derived(
-		scaleUtc()
-			.domain([xMin(), xMax()])
-			.range([0, chartWidth])
-	);
+	const xScale = $derived(scaleUtc().domain([xMin(), xMax()]).range([0, chartWidth]));
 
-	const yScale = $derived(
-		scaleLinear()
-			.domain([0, yDomainMax])
-			.range([chartHeight, 0])
-	);
+	const yScale = $derived(scaleLinear().domain([0, yDomainMax]).range([chartHeight, 0]));
 
 	// Generate Y axis ticks
 	const yTicks = $derived(() => yScale.ticks(4));
@@ -188,9 +180,7 @@
 		const data = stackedData();
 		if (data.length === 0 || endpoints.length === 0) return [];
 
-		const stackGen = stack<StackedData>()
-			.keys(endpoints)
-			.order(stackOrderReverse);
+		const stackGen = stack<StackedData>().keys(endpoints).order(stackOrderReverse);
 
 		const stackedSeries = stackGen(data);
 
@@ -353,8 +343,12 @@
 <div class="flex flex-col gap-2">
 	<div
 		bind:this={containerRef}
-		class="relative select-none w-full"
-		style="height: {height}px; cursor: {isDragging ? 'col-resize' : (isInChartArea() ? 'crosshair' : 'default')};"
+		class="relative w-full select-none"
+		style="height: {height}px; cursor: {isDragging
+			? 'col-resize'
+			: isInChartArea()
+				? 'crosshair'
+				: 'default'};"
 		onmouseenter={handleMouseEnter}
 		onmouseleave={handleMouseLeave}
 		onmousemove={handleMouseMove}
@@ -367,7 +361,7 @@
 			<svg {width} {height}>
 				<g transform="translate({padding.left}, {padding.top})">
 					<!-- Y axis grid lines -->
-					{#each yTicks() as tick}
+					{#each yTicks() as tick, __index (__index)}
 						<line
 							x1={0}
 							y1={yScale(tick)}
@@ -381,7 +375,7 @@
 					{/each}
 
 					<!-- Y axis labels -->
-					{#each yTicks() as tick}
+					{#each yTicks() as tick, __index (__index)}
 						<text
 							x={-8}
 							y={yScale(tick)}
@@ -432,7 +426,7 @@
 					/>
 
 					<!-- Stacked areas -->
-					{#each stackedAreas() as area}
+					{#each stackedAreas() as area, __index (__index)}
 						<path
 							d={area.path}
 							fill={area.color}
@@ -452,13 +446,17 @@
 		<!-- Drag selection overlay -->
 		{#if isDragging && selectionWidth > 0}
 			<div
-				class="absolute top-0 bottom-0 bg-primary/20 border-x border-primary/40 pointer-events-none"
+				class="pointer-events-none absolute top-0 bottom-0 border-x border-primary/40 bg-primary/20"
 				style="left: {selectionLeft}px; width: {selectionWidth}px;"
 			>
-				<div class="absolute -top-5 left-0 -translate-x-full text-[9px] font-medium text-primary whitespace-nowrap">
+				<div
+					class="absolute -top-5 left-0 -translate-x-full text-[9px] font-medium whitespace-nowrap text-primary"
+				>
 					{formatTime(selectionStartTime)}
 				</div>
-				<div class="absolute -top-5 right-0 translate-x-full text-[9px] font-medium text-primary whitespace-nowrap">
+				<div
+					class="absolute -top-5 right-0 translate-x-full text-[9px] font-medium whitespace-nowrap text-primary"
+				>
 					{formatTime(selectionEndTime)}
 				</div>
 			</div>
@@ -471,24 +469,33 @@
 
 			<!-- Vertical line -->
 			<div
-				class="absolute top-0 bottom-0 w-px bg-muted-foreground/50 pointer-events-none"
+				class="pointer-events-none absolute top-0 bottom-0 w-px bg-muted-foreground/50"
 				style="left: {clampedX}px;"
 			></div>
 
 			<!-- Value tooltip -->
 			{#if data}
 				<div
-					class="absolute -translate-x-1/2 -translate-y-full pointer-events-none z-10"
+					class="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full"
 					style="left: {clampedX}px; top: 10px;"
 				>
-					<div class="bg-background text-foreground border border-border rounded px-2 py-1.5 text-xs font-medium whitespace-nowrap mb-1 flex flex-col gap-0.5">
-						{#each endpoints as endpoint}
+					<div
+						class="mb-1 flex flex-col gap-0.5 rounded border border-border bg-background px-2 py-1.5 text-xs font-medium whitespace-nowrap text-foreground"
+					>
+						{#each endpoints as endpoint, __index (__index)}
 							{@const value = getNumericValue(data, endpoint)}
 							{#if value > 0}
 								<div class="flex items-center gap-1.5">
-									<span class="h-2 w-2 rounded-full flex-shrink-0" style="background-color: {getEndpointColor(endpoint)};"></span>
-									<span class="truncate max-w-[200px]" title={endpoint}>{truncateEndpoint(endpoint, 25)}</span>
-									<span class="ml-auto tabular-nums">{formatDisplayValue(value)}{!formatValue && unit ? ` ${unit}` : ''}</span>
+									<span
+										class="h-2 w-2 flex-shrink-0 rounded-full"
+										style="background-color: {getEndpointColor(endpoint)};"
+									></span>
+									<span class="max-w-[200px] truncate" title={endpoint}
+										>{truncateEndpoint(endpoint, 25)}</span
+									>
+									<span class="ml-auto tabular-nums"
+										>{formatDisplayValue(value)}{!formatValue && unit ? ` ${unit}` : ''}</span
+									>
 								</div>
 							{/if}
 						{/each}
@@ -498,10 +505,12 @@
 
 			<!-- Time label -->
 			<div
-				class="absolute bottom-0 -translate-x-1/2 translate-y-full pointer-events-none"
+				class="pointer-events-none absolute bottom-0 -translate-x-1/2 translate-y-full"
 				style="left: {clampedX}px;"
 			>
-				<div class="bg-background border border-border rounded px-1.5 py-0.5 text-[10px] text-muted-foreground whitespace-nowrap shadow-sm mt-1">
+				<div
+					class="mt-1 rounded border border-border bg-background px-1.5 py-0.5 text-[10px] whitespace-nowrap text-muted-foreground shadow-sm"
+				>
 					{formatTime(calculatedTime())}
 				</div>
 			</div>
@@ -511,10 +520,15 @@
 	<!-- Legend -->
 	{#if hasData && showBuiltinLegend}
 		<div class="flex flex-wrap gap-x-4 gap-y-1 px-2 text-xs text-muted-foreground">
-			{#each endpoints as endpoint, i}
+			{#each endpoints as endpoint, i (i)}
 				<div class="flex items-center gap-1.5">
-					<span class="h-2 w-2 rounded-full flex-shrink-0" style="background-color: {palette[i % palette.length]};"></span>
-					<span class="truncate max-w-[180px]" title={endpoint}>{truncateEndpoint(endpoint, 25)}</span>
+					<span
+						class="h-2 w-2 flex-shrink-0 rounded-full"
+						style="background-color: {palette[i % palette.length]};"
+					></span>
+					<span class="max-w-[180px] truncate" title={endpoint}
+						>{truncateEndpoint(endpoint, 25)}</span
+					>
 				</div>
 			{/each}
 		</div>

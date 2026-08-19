@@ -117,8 +117,7 @@
 
 	const ticks = $derived.by(() => {
 		const result: { pos: number; label: string }[] = [];
-		const step =
-			preset === 'day' ? { hours: 3 } : preset === 'month' ? { days: 2 } : { days: 1 };
+		const step = preset === 'day' ? { hours: 3 } : preset === 'month' ? { days: 2 } : { days: 1 };
 		let cursor = rangeFrom;
 		while (cursor < rangeTo) {
 			const pos = ((cursor.toMillis() - rangeFrom.toMillis()) / totalMs) * 100;
@@ -233,7 +232,7 @@
 	{:else if timeline}
 		<div class="overflow-x-auto rounded-md border">
 			<div class="grid min-w-[640px] grid-cols-[140px_1fr]" class:opacity-60={loading}>
-				<div class="border-b border-r px-3 py-1.5 text-xs text-muted-foreground">
+				<div class="border-r border-b px-3 py-1.5 text-xs text-muted-foreground">
 					{tz}
 				</div>
 				<div class="relative h-7 border-b">
@@ -249,7 +248,7 @@
 
 				{#each rows as row (row.id)}
 					<div
-						class="flex items-center border-b border-r px-3 py-2 text-sm {row.id === '__final__'
+						class="flex items-center border-r border-b px-3 py-2 text-sm {row.id === '__final__'
 							? 'font-medium'
 							: ''}"
 					>
@@ -281,9 +280,7 @@
 										{userName(shift.userId)}
 									</span>
 									{#if shift.isOverride && width > 14}
-										<span
-											class="ml-1.5 shrink-0 rounded bg-white/25 px-1 text-[9px] uppercase"
-										>
+										<span class="ml-1.5 shrink-0 rounded bg-white/25 px-1 text-[9px] uppercase">
 											Override
 										</span>
 									{/if}

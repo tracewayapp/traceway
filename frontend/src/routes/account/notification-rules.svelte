@@ -5,6 +5,7 @@
 	import * as Select from '$lib/components/ui/select';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
+	import ErrorRetryBox from '$lib/components/traceway/error-retry-box.svelte';
 	import { Plus, Check, Trash2, ChevronUp, ChevronDown } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
@@ -231,22 +232,15 @@
 	</div>
 {/snippet}
 
-<div class="flex items-center justify-between">
-	<h2 class="text-xl font-semibold tracking-tight">Notification Rules</h2>
-</div>
-
 <p class="text-sm text-muted-foreground">
-	When a page targets you, these steps run for its urgency until you acknowledge. With no steps,
-	all your contact methods are notified immediately.
+	When a page targets you, these steps run for its urgency until you acknowledge. With no steps, all
+	your contact methods are notified immediately.
 </p>
 
 {#if loading}
 	<div class="flex justify-center py-12"><LoadingCircle size="lg" /></div>
 {:else if loadError}
-	<div class="flex flex-col items-center justify-center gap-3 rounded-md bg-muted py-12 text-center">
-		<p class="text-sm text-destructive">{loadError}</p>
-		<Button variant="outline" size="sm" onclick={() => load()}>Retry</Button>
-	</div>
+	<ErrorRetryBox message={loadError} onRetry={() => load()} />
 {:else}
 	<div class="space-y-6">
 		<ErrorAlert {error} />

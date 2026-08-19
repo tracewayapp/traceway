@@ -50,7 +50,7 @@ export function addStickyParamsToHref(href: string, ...stickyParams: string[]) {
 		}
 	}
 
-	stickyParams.forEach(stickyParam => {
+	stickyParams.forEach((stickyParam) => {
 		if (stickyParam === 'projectId') return;
 		const currentValue = currentParams.get(stickyParam);
 		if (currentValue !== null) {
@@ -63,7 +63,11 @@ export function addStickyParamsToHref(href: string, ...stickyParams: string[]) {
 
 // in the future it would be really cool if we could bind the type here to get type safety and force the use of resolve :/
 // this also won't work with absolute paths - meh so be it
-export function createRowClickHandlerWithNavigate(href: string, onBeforeNavigate: (() => void) | undefined, ...stickyParams: string[]) {
+export function createRowClickHandlerWithNavigate(
+	href: string,
+	onBeforeNavigate: (() => void) | undefined,
+	...stickyParams: string[]
+) {
 	return (event: MouseEvent) => {
 		onBeforeNavigate?.();
 

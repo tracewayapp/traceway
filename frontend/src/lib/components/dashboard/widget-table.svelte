@@ -44,7 +44,7 @@
 <div class="overflow-auto">
 	<Table.Root>
 		<Table.Body>
-			{#each stats() as stat}
+			{#each stats() as stat, __index (__index)}
 				<Table.Row>
 					<Table.Cell class="font-medium">{stat.label}</Table.Cell>
 					<Table.Cell class="text-right">{fmt(stat.value)}</Table.Cell>

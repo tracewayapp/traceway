@@ -51,9 +51,7 @@ describe('flameTooltipLabel', () => {
 	});
 
 	it('renders 0% and no parent/self when the total and parent are zero', () => {
-		expect(flameTooltipLabel('main.work', 10, 0, 0, 0, NS)).toBe(
-			'main.work · 10 ns (0% of total)'
-		);
+		expect(flameTooltipLabel('main.work', 10, 0, 0, 0, NS)).toBe('main.work · 10 ns (0% of total)');
 	});
 });
 

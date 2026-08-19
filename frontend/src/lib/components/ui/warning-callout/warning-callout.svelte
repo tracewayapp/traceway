@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { TriangleAlert, OctagonAlert } from 'lucide-svelte';
+	import { TriangleAlert, OctagonAlert } from '@lucide/svelte';
 	import { cn } from '$lib/utils.js';
 
 	let {
@@ -44,7 +44,7 @@
 			<div class="min-w-0 flex-1">
 				{#if title}
 					<div
-						class="font-black leading-tight {destructive ? 'text-destructive' : 'text-[#ffab01]'}"
+						class="leading-tight font-black {destructive ? 'text-destructive' : 'text-[#ffab01]'}"
 					>
 						{title}
 					</div>

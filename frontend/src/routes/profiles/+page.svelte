@@ -15,7 +15,8 @@
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { createRowClickHandler } from '$lib/utils/navigation';
 	import { resolve } from '$app/paths';
-	import PageHeader from '$lib/components/issues/page-header.svelte';
+	import PageHeader from '$lib/components/traceway/page-header.svelte';
+	import TableContainer from '$lib/components/traceway/table-container.svelte';
 	import ExperimentalBanner from '$lib/components/profiles/experimental-banner.svelte';
 	import {
 		getTimeRangeFromPreset,
@@ -69,7 +70,10 @@
 		const max = Math.max(...values, 1);
 		const step = 100 / (values.length - 1);
 		return values
-			.map((v, i) => `${i === 0 ? 'M' : 'L'} ${(i * step).toFixed(1)} ${(16 - (v / max) * 15).toFixed(1)}`)
+			.map(
+				(v, i) =>
+					`${i === 0 ? 'M' : 'L'} ${(i * step).toFixed(1)} ${(16 - (v / max) * 15).toFixed(1)}`
+			)
 			.join(' ');
 	}
 
@@ -230,10 +234,8 @@
 </script>
 
 <div class="space-y-4">
-	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-		<PageHeader title="Profiles" />
-
-		<div class="w-full sm:w-auto">
+	<PageHeader title="Profiles">
+		{#snippet actions()}
 			<TimeRangePicker
 				bind:fromDate
 				bind:toDate
@@ -242,8 +244,8 @@
 				bind:preset={selectedPreset}
 				onApply={handleTimeRangeChange}
 			/>
-		</div>
-	</div>
+		{/snippet}
+	</PageHeader>
 
 	<ExperimentalBanner />
 
@@ -254,7 +256,7 @@
 		disabled={loading}
 	/>
 
-	<div class="overflow-hidden rounded-md border">
+	<TableContainer>
 		<Table.Root>
 			{#if loading}
 				<Table.Body>
@@ -330,7 +332,7 @@
 				<Table.Body>
 					{#each groups as group (group.serviceName + '::' + group.type)}
 						<Table.Row
-							class="cursor-pointer hover:bg-muted/50"
+							class="cursor-pointer"
 							onclick={createRowClickHandler(detailHref(group), 'preset', 'from', 'to')}
 						>
 							<Table.Cell class="font-mono text-sm">{group.serviceName}</Table.Cell>
@@ -367,7 +369,7 @@
 				</Table.Body>
 			{/if}
 		</Table.Root>
-	</div>
+	</TableContainer>
 
 	<PaginationFooter
 		currentPage={page}

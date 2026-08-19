@@ -7,8 +7,9 @@
 		CardTitle
 	} from '$lib/components/ui/card';
 	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
+	import ErrorRetryBox from '$lib/components/traceway/error-retry-box.svelte';
+	import EmptyState from '$lib/components/traceway/empty-state.svelte';
 	import * as Avatar from '$lib/components/ui/avatar';
 	import { CalendarClock, FolderGit2 } from '@lucide/svelte';
 	import { oncallState, type OncallUser } from '$lib/state/oncall.svelte';
@@ -45,21 +46,17 @@
 {#if oncallState.overviewLoading}
 	<div class="flex justify-center py-12"><LoadingCircle size="xlg" /></div>
 {:else if oncallState.overviewError}
-	<div
-		class="flex flex-col items-center justify-center gap-3 rounded-md bg-muted py-20 text-center text-muted-foreground"
-	>
-		<p class="text-sm text-destructive">{oncallState.overviewError}</p>
-		<Button variant="outline" size="sm" onclick={() => oncallState.loadOverview(organizationId)}>
-			Retry
-		</Button>
-	</div>
+	<ErrorRetryBox
+		message={oncallState.overviewError}
+		onRetry={() => oncallState.loadOverview(organizationId)}
+	/>
 {:else if overview.length === 0}
-	<div
-		class="flex flex-col items-center justify-center rounded-md bg-muted py-20 text-center text-muted-foreground"
-	>
-		<p class="mb-4">Create a team to get started.</p>
-		<Button variant="outline" onclick={onGoToTeams}>Go to Teams</Button>
-	</div>
+	<EmptyState
+		message="Create a team to get started."
+		actionLabel="Go to Teams"
+		actionVariant="outline"
+		onAction={onGoToTeams}
+	/>
 {:else}
 	<div class="grid gap-4 lg:grid-cols-2">
 		{#each overview as entry (entry.team.id)}

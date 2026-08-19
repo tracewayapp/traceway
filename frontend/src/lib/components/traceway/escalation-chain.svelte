@@ -61,7 +61,8 @@
 					</span>
 				{/each}
 				{#if step.targets.length === 0}
-					<span class="text-muted-foreground {compact ? 'text-[10px]' : 'text-xs'}">No targets</span>
+					<span class="text-muted-foreground {compact ? 'text-[10px]' : 'text-xs'}">No targets</span
+					>
 				{/if}
 			</div>
 		</div>

@@ -9,7 +9,7 @@
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { LabelValue } from '$lib/components/ui/label-value';
 	import { AttributesGrid } from '$lib/components/ui/attributes-grid/index.js';
-	import PageHeader from '$lib/components/issues/page-header.svelte';
+	import PageHeader from '$lib/components/traceway/page-header.svelte';
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { resolve } from '$app/paths';
 	import TraceLogsPanel from '$lib/components/trace-logs/trace-logs-panel.svelte';
@@ -194,13 +194,15 @@
 							<p class="text-sm text-muted-foreground">Conversation</p>
 							<a
 								class="block truncate font-mono text-sm text-primary hover:underline"
-								href={addStickyParamsToHref(
-									resolve('/ai-traces/conversations/[conversationId]', {
-										conversationId: encodeURIComponent(trace.conversationId)
-									}),
-									'preset',
-									'from',
-									'to'
+								href={resolve(
+									addStickyParamsToHref(
+										resolve('/ai-traces/conversations/[conversationId]', {
+											conversationId: encodeURIComponent(trace.conversationId)
+										}),
+										'preset',
+										'from',
+										'to'
+									)
 								)}
 								title={trace.conversationId}
 							>

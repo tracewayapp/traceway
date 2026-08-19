@@ -10,13 +10,15 @@
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import { projectsState } from '$lib/state/projects.svelte';
-	import { ArrowLeft, ArrowRight, TriangleAlert, ClipboardList } from 'lucide-svelte';
+	import { ArrowLeft, ArrowRight, TriangleAlert, ClipboardList } from '@lucide/svelte';
 	import { LabelValue } from '$lib/components/ui/label-value';
 	import { AttributesGrid } from '$lib/components/ui/attributes-grid/index.js';
 	import SpanWaterfall from '$lib/components/spans/span-waterfall.svelte';
 	import SpanEmptyState from '$lib/components/spans/span-empty-state.svelte';
 	import type { TraceDetailResponse } from '$lib/types/spans';
-	import PageHeader from '$lib/components/issues/page-header.svelte';
+	import PageHeader from '$lib/components/traceway/page-header.svelte';
+	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import { createRowClickHandler } from '$lib/utils/navigation';
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { resolve } from '$app/paths';
 	import DistributedTraceCard from '$lib/components/distributed-trace/distributed-trace-card.svelte';
@@ -180,7 +182,7 @@
 					<Button
 						variant="outline"
 						size="sm"
-						onclick={() => goto(`/issues/${response!.exception!.exceptionHash}`)}
+						onclick={() => goto(resolve(`/issues/${response!.exception!.exceptionHash}`))}
 					>
 						View Full Exception
 						<ArrowRight class="ml-2 h-4 w-4" />
@@ -203,44 +205,49 @@
 					</Card.Description>
 				</Card.Header>
 				<Card.Content class="px-0 pb-0">
-					<Table.Root>
-						<Table.Header>
-							<Table.Row>
-								<Table.Head class="pl-6">Message</Table.Head>
-								<Table.Head class="w-[180px]">Recorded At</Table.Head>
-								<Table.Head class="w-[100px] pr-6">Attributes</Table.Head>
-							</Table.Row>
-						</Table.Header>
-						<Table.Body>
-							{#each response.messages as message}
-								<Table.Row
-									class="cursor-pointer hover:bg-muted/50"
-									onclick={() => goto(`/issues/${message.exceptionHash}/${message.id}`)}
-								>
-									<Table.Cell class="pl-6">
-										<div class="max-w-md truncate font-mono text-sm">
-											{message.stackTrace.split('\n')[0]}
-										</div>
-									</Table.Cell>
-									<Table.Cell class="font-mono text-sm text-muted-foreground">
-										{formatDateTime(message.recordedAt, { timezone })}
-									</Table.Cell>
-									<Table.Cell class="pr-6">
-										{#if message.attributes && Object.keys(message.attributes).length > 0}
-											<span class="text-xs text-muted-foreground">
-												{Object.keys(message.attributes).length} key{Object.keys(message.attributes)
-													.length === 1
-													? ''
-													: 's'}
-											</span>
-										{:else}
-											<span class="text-xs text-muted-foreground">-</span>
-										{/if}
-									</Table.Cell>
+					<TableContainer class="rounded-none border-0">
+						<Table.Root>
+							<Table.Header>
+								<Table.Row>
+									<Table.Head class="pl-6">Message</Table.Head>
+									<Table.Head class="w-[180px]">Recorded At</Table.Head>
+									<Table.Head class="w-[100px] pr-6">Attributes</Table.Head>
 								</Table.Row>
-							{/each}
-						</Table.Body>
-					</Table.Root>
+							</Table.Header>
+							<Table.Body>
+								{#each response.messages as message, __index (__index)}
+									<Table.Row
+										class="cursor-pointer"
+										onclick={createRowClickHandler(
+											`/issues/${message.exceptionHash}/${message.id}`
+										)}
+									>
+										<Table.Cell class="pl-6">
+											<div class="max-w-md truncate font-mono text-sm">
+												{message.stackTrace.split('\n')[0]}
+											</div>
+										</Table.Cell>
+										<Table.Cell class="font-mono text-sm text-muted-foreground">
+											{formatDateTime(message.recordedAt, { timezone })}
+										</Table.Cell>
+										<Table.Cell class="pr-6">
+											{#if message.attributes && Object.keys(message.attributes).length > 0}
+												<span class="text-xs text-muted-foreground">
+													{Object.keys(message.attributes).length} key{Object.keys(
+														message.attributes
+													).length === 1
+														? ''
+														: 's'}
+												</span>
+											{:else}
+												<span class="text-xs text-muted-foreground">-</span>
+											{/if}
+										</Table.Cell>
+									</Table.Row>
+								{/each}
+							</Table.Body>
+						</Table.Root>
+					</TableContainer>
 				</Card.Content>
 			</Card.Root>
 		{/if}

@@ -7,14 +7,17 @@
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
-	import * as Tabs from '$lib/components/ui/tabs';
 	import * as Select from '$lib/components/ui/select';
 	import { GitCompareArrows, Download, Layers, Gauge, X } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { projectsState } from '$lib/state/projects.svelte';
-	import PageHeader from '$lib/components/issues/page-header.svelte';
+	import PageHeader from '$lib/components/traceway/page-header.svelte';
+	import PageTabs from '$lib/components/traceway/page-tabs.svelte';
+	import StatRow from '$lib/components/traceway/stat-row.svelte';
+	import StatTile from '$lib/components/traceway/stat-tile.svelte';
+	import ChartCard from '$lib/components/traceway/chart-card.svelte';
 	import ExperimentalBanner from '$lib/components/profiles/experimental-banner.svelte';
 	import FlameGraph from '$lib/components/profiles/flame-graph.svelte';
 	import ProfileSeriesChart, {
@@ -85,30 +88,6 @@
 	let availableTypes = $state<ProfileTypeInfo[]>([]);
 	// svelte-ignore state_referenced_locally
 	let activeType = $state(data.type ?? '');
-
-	let tabsListEl = $state<HTMLElement | null>(null);
-	let hasOverflow = $state(false);
-
-	function checkOverflow() {
-		if (tabsListEl) {
-			hasOverflow = tabsListEl.scrollWidth > tabsListEl.clientWidth;
-		}
-	}
-
-	$effect(() => {
-		if (!tabsListEl) return;
-		const observer = new ResizeObserver(() => checkOverflow());
-		observer.observe(tabsListEl);
-		checkOverflow();
-		return () => observer.disconnect();
-	});
-
-	$effect(() => {
-		availableTypes;
-		if (tabsListEl) {
-			requestAnimationFrame(() => checkOverflow());
-		}
-	});
 
 	function getInitialRange(): { preset: string | null; from: Date; to: Date } {
 		if (data.preset && presetMinutes[data.preset]) {
@@ -479,7 +458,7 @@
 				})
 			});
 			if (!res.ok) {
-				toast.error('Failed to export profile', { position: 'top-center' });
+				toast.error('Failed to export profile');
 				return;
 			}
 			const blob = await res.blob();
@@ -493,7 +472,7 @@
 			URL.revokeObjectURL(objectUrl);
 		} catch (e) {
 			console.error(e);
-			toast.error('Failed to export profile', { position: 'top-center' });
+			toast.error('Failed to export profile');
 		} finally {
 			downloading = false;
 		}
@@ -512,14 +491,11 @@
 </script>
 
 <div class="space-y-4">
-	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-		<PageHeader
-			title={data.service}
-			subtitle="Profiles"
-			onBack={createSmartBackHandler({ fallbackPath: resolve('/profiles') })}
-		/>
-
-		<div class="flex flex-col">
+	<PageHeader
+		title={data.service}
+		onBack={createSmartBackHandler({ fallbackPath: resolve('/profiles') })}
+	>
+		{#snippet actions()}
 			<TimeRangePicker
 				bind:fromDate
 				bind:toDate
@@ -528,47 +504,17 @@
 				bind:preset={selectedPreset}
 				onApply={handleTimeRangeChange}
 			/>
-		</div>
-	</div>
+		{/snippet}
+	</PageHeader>
 
 	<ExperimentalBanner />
 
 	{#if availableTypes.length}
-		<Tabs.Root value={activeType} onValueChange={handleTypeChange}>
-			<div class="flex items-center" class:gap-2={!hasOverflow}>
-				{#if hasOverflow}
-					<Select.Root
-						type="single"
-						value={activeType}
-						onValueChange={(v) => {
-							if (v) handleTypeChange(v);
-						}}
-					>
-						<Select.Trigger size="sm" class="w-full" data-testid="type-overflow-select">
-							{activeType ? humanizeType(activeType) : 'Select type'}
-						</Select.Trigger>
-						<Select.Content>
-							{#each availableTypes as meta (meta.type)}
-								<Select.Item value={meta.type}>{humanizeType(meta.type)}</Select.Item>
-							{/each}
-						</Select.Content>
-					</Select.Root>
-				{/if}
-				<div
-					class="flex min-w-0 items-center overflow-hidden"
-					class:invisible={hasOverflow}
-					class:h-0={hasOverflow}
-					class:w-0={hasOverflow}
-					bind:this={tabsListEl}
-				>
-					<Tabs.List>
-						{#each availableTypes as meta (meta.type)}
-							<Tabs.Trigger value={meta.type}>{humanizeType(meta.type)}</Tabs.Trigger>
-						{/each}
-					</Tabs.List>
-				</div>
-			</div>
-		</Tabs.Root>
+		<PageTabs
+			tabs={availableTypes.map((meta) => ({ value: meta.type, label: humanizeType(meta.type) }))}
+			activeTab={activeType}
+			onTabChange={handleTypeChange}
+		/>
 	{/if}
 
 	<div class="flex flex-wrap items-center gap-2">
@@ -633,35 +579,28 @@
 	{:else if error}
 		<ErrorDisplay status={400} title="Error" description={error} onRetry={() => loadData()} />
 	{:else}
-		<div class="grid gap-4 sm:grid-cols-2">
-			<div class="rounded-md border p-4">
-				<div class="text-sm text-muted-foreground">
-					Total {activeType ? humanizeType(activeType) : ''}
-				</div>
-				<div class="text-2xl font-bold tabular-nums">
-					{formatValue(activeUnit, totalValue)}
-				</div>
-			</div>
-			<div class="rounded-md border p-4">
-				<div class="text-sm text-muted-foreground">
-					Peak {rateActive
+		<StatRow columns={2}>
+			<StatTile
+				label={activeType ? `Total ${humanizeType(activeType)}` : 'Total'}
+				value={formatValue(activeUnit, totalValue)}
+			/>
+			<StatTile
+				label={`Peak ${
+					rateActive
 						? rateUnitIsTime
 							? '(utilization)'
 							: '(rate)'
 						: activeIsGauge
 							? '(avg/bucket)'
-							: '(sum/bucket)'}
-				</div>
-				<div class="text-2xl font-bold tabular-nums">
-					{rateActive ? formatRate(activeUnit, seriesPeak) : formatValue(activeUnit, seriesPeak)}
-				</div>
-			</div>
-		</div>
+							: '(sum/bucket)'
+				}`}
+				value={rateActive
+					? formatRate(activeUnit, seriesPeak)
+					: formatValue(activeUnit, seriesPeak)}
+			/>
+		</StatRow>
 
-		<div class="rounded-md border p-4">
-			<div class="mb-1 text-sm text-muted-foreground">
-				Trend{groupBy ? ` · by ${groupByLabel.toLowerCase()}` : ''}
-			</div>
+		<ChartCard title={`Trend${groupBy ? ` · by ${groupByLabel.toLowerCase()}` : ''}`}>
 			<ProfileSeriesChart
 				series={groupBy ? [] : series}
 				groups={groupBy ? breakdown : []}
@@ -669,7 +608,7 @@
 				isRate={rateActive}
 				onSelectRange={handleBrushSelect}
 			/>
-		</div>
+		</ChartCard>
 
 		<div class="space-y-3 rounded-md border p-4">
 			<div class="flex flex-wrap items-center gap-2">

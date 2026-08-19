@@ -14,7 +14,7 @@
 		ArrowLeftRight,
 		ArrowUpDown,
 		Check
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import WidgetRenderer from './widget-renderer.svelte';
 
 	type Widget = {
@@ -63,9 +63,7 @@
 			return null;
 		}
 		const aggregations = new Set<string>(
-			(widget.config?.sources ?? []).map(
-				(s: { aggregation?: string }) => s.aggregation || 'avg'
-			)
+			(widget.config?.sources ?? []).map((s: { aggregation?: string }) => s.aggregation || 'avg')
 		);
 		return aggregations.size === 1 ? [...aggregations][0] : null;
 	}
@@ -188,7 +186,7 @@
 										({widget.config.unit})</span
 									>{/if}{#if widgetAggregation(widget)}<span
 										class="text-xs font-normal text-muted-foreground"
-									>&nbsp;&middot; {widgetAggregation(widget)}</span
+										>&nbsp;&middot; {widgetAggregation(widget)}</span
 									>{/if}</Card.Title
 							>
 						</div>

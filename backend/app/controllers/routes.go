@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/tracewayapp/traceway/backend/app/config"
@@ -31,6 +32,29 @@ type Pagination struct {
 	PageSize   int   `json:"pageSize"`
 	Total      int64 `json:"total"`
 	TotalPages int64 `json:"totalPages"`
+}
+
+func paginationFromQuery(ctx *gin.Context) (int, int) {
+	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
+	if page < 1 {
+		page = 1
+	}
+	pageSize, _ := strconv.Atoi(ctx.DefaultQuery("pageSize", "25"))
+	if pageSize < 1 {
+		pageSize = 25
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	return page, pageSize
+}
+
+func buildPagination(page, pageSize, total int) Pagination {
+	totalPages := int64(0)
+	if total > 0 {
+		totalPages = int64((total + pageSize - 1) / pageSize)
+	}
+	return Pagination{Page: page, PageSize: pageSize, Total: int64(total), TotalPages: totalPages}
 }
 
 func RegisterControllers(router *gin.RouterGroup) {
@@ -244,6 +268,21 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.PUT("/organizations/:organizationId/status-pages/:id", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, StatusPageController.Update)
 	router.DELETE("/organizations/:organizationId/status-pages/:id", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, StatusPageController.Delete)
 	router.POST("/organizations/:organizationId/status-pages/:id/logo", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, StatusPageController.UploadLogo)
+
+	router.GET("/organizations/:organizationId/incidents", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, IncidentController.List)
+	router.GET("/organizations/:organizationId/incidents/:incidentId/updates", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, IncidentController.ListUpdates)
+	router.GET("/organizations/:organizationId/status-pages/:id/incidents", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, IncidentController.ListForStatusPage)
+	router.POST("/organizations/:organizationId/status-pages/:id/incidents", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, IncidentController.Create)
+	router.PUT("/organizations/:organizationId/incidents/:incidentId", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, IncidentController.Update)
+	router.DELETE("/organizations/:organizationId/incidents/:incidentId", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, IncidentController.Delete)
+	router.POST("/organizations/:organizationId/incidents/:incidentId/updates", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, IncidentController.CreateUpdate)
+	router.DELETE("/organizations/:organizationId/incidents/:incidentId/updates/:updateId", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, IncidentController.DeleteUpdate)
+
+	router.GET("/organizations/:organizationId/post-mortems", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, PostMortemController.List)
+	router.GET("/organizations/:organizationId/post-mortems/:id", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, PostMortemController.Get)
+	router.POST("/organizations/:organizationId/post-mortems", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, PostMortemController.Create)
+	router.PUT("/organizations/:organizationId/post-mortems/:id", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, PostMortemController.Update)
+	router.DELETE("/organizations/:organizationId/post-mortems/:id", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, PostMortemController.Delete)
 	// Anonymous, rate-limited, cached ~30s per slug; no Transactional (it
 	// reads main DB + telemetry through its own short transactions).
 	router.GET("/status/:slug", middleware.RateLimitPerIP(30, time.Minute), StatusPageController.Public)

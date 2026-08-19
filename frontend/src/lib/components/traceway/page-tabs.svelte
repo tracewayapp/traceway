@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import * as Select from '$lib/components/ui/select';
 	import { Button } from '$lib/components/ui/button';
@@ -15,20 +16,21 @@
 		onTabChange: (tab: string) => void;
 		actionLabel?: string;
 		onAction?: () => void;
+		actions?: Snippet;
 	}
 
-	let { tabs, activeTab, onTabChange, actionLabel, onAction }: Props = $props();
+	let { tabs, activeTab, onTabChange, actionLabel, onAction, actions }: Props = $props();
 
 	const activeLabel = $derived(
 		tabs.find((t) => t.value === activeTab)?.label ?? tabs[0]?.label ?? ''
 	);
 </script>
 
-<!-- Container query: the tab list collapses into a full-row dropdown (and the action
-     button wraps to its own full row) based on the content width, not the viewport,
-     so it accounts for the sidebar. -->
+<!-- Container query: the tab list collapses into a full-row dropdown (and the
+     actions wrap to their own full-width rows) based on the content width, not
+     the viewport, so it accounts for the sidebar. -->
 <div class="@container">
-	<div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-4">
+	<div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-2">
 		<Tabs.Root
 			value={activeTab}
 			onValueChange={(v) => {
@@ -56,9 +58,13 @@
 				{/each}
 			</Select.Content>
 		</Select.Root>
-		{#if actionLabel && onAction}
+		{#if actions}
+			<div class="flex w-full flex-col gap-2 @2xl:w-auto @2xl:flex-row @2xl:items-center">
+				{@render actions()}
+			</div>
+		{:else if actionLabel && onAction}
 			<Button size="sm" variant="success" class="w-full @2xl:w-auto" onclick={onAction}>
-				<Plus class="mr-1 h-4 w-4" />
+				<Plus class="mr-2 h-4 w-4" />
 				{actionLabel}
 			</Button>
 		{/if}

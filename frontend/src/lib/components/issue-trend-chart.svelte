@@ -1,11 +1,14 @@
 <script lang="ts">
-	import * as Tooltip from "$lib/components/ui/tooltip";
+	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { formatDateTime, getNow } from '$lib/utils/formatters';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 
 	type TrendPoint = { timestamp: string; count: number };
 
-	let { trend = [], timezone }: {
+	let {
+		trend = [],
+		timezone
+	}: {
 		trend: TrendPoint[];
 		timezone?: string;
 	} = $props();
@@ -45,7 +48,7 @@
 
 	// Actual max from data
 	const actualMax = $derived(() => {
-		return Math.max(...hourlyData().map(d => d.count), 0);
+		return Math.max(...hourlyData().map((d) => d.count), 0);
 	});
 
 	// Scale max - at least SCALE_MAX, or higher if data exceeds it
@@ -62,20 +65,20 @@
 
 <div class="relative h-8 w-44 flex-shrink-0">
 	<!-- Solid bottom line -->
-	<div class="absolute left-0 right-7 bottom-0 border-t border-muted-foreground/30"></div>
+	<div class="absolute right-7 bottom-0 left-0 border-t border-muted-foreground/30"></div>
 
 	<!-- Dashed line at actual max -->
 	{#if actualMax() > 0}
 		<div
-			class="absolute left-0 right-7 h-[1px]"
+			class="absolute right-7 left-0 h-[1px]"
 			style="bottom: {linePositionPct()}%; background: repeating-linear-gradient(to right, var(--muted-foreground) 0, var(--muted-foreground) 4px, transparent 4px, transparent 7px); opacity: 0.4;"
 		></div>
 		<!-- Max count label -->
 		<span
-			class="absolute right-1 text-[10px] w-[20px] font-medium text-muted-foreground tabular-nums"
+			class="absolute right-1 w-[20px] text-[10px] font-medium text-muted-foreground tabular-nums"
 			style="bottom: calc({linePositionPct()}% - 6px);"
 		>
-			{actualMax() > 999 ? (actualMax()/1000).toFixed(1) + "k" : actualMax()}
+			{actualMax() > 999 ? (actualMax() / 1000).toFixed(1) + 'k' : actualMax()}
 		</span>
 	{/if}
 
@@ -86,7 +89,7 @@
 			{@const hasEvents = point.count > 0}
 			{@const isPeak = hasEvents && point.count === actualMax()}
 			<Tooltip.Root>
-				<Tooltip.Trigger class="flex-1 h-full flex items-end justify-center">
+				<Tooltip.Trigger class="flex h-full flex-1 items-end justify-center">
 					<div
 						class="w-full max-w-[5px] rounded-[2px] {hasEvents
 							? isPeak
@@ -96,9 +99,12 @@
 						style="height: {Math.max(hasEvents ? 8 : 3, heightPct)}%;"
 					></div>
 				</Tooltip.Trigger>
-				<Tooltip.Content side="top" class="py-2 px-3 !animate-none !transition-none">
-					<div class="font-medium text-sm">{point.count} {point.count === 1 ? 'Event' : 'Events'}</div>
-					<div class="text-muted-foreground text-xs">
+				<Tooltip.Content side="top" class="!animate-none px-3 py-2 !transition-none">
+					<div class="text-sm font-medium">
+						{point.count}
+						{point.count === 1 ? 'Event' : 'Events'}
+					</div>
+					<div class="text-xs text-muted-foreground">
 						{formatDateTime(point.hour, { timezone: tz, format: 'full' })}
 					</div>
 				</Tooltip.Content>

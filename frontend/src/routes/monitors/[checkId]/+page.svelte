@@ -1,13 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api';
-	import { formatDurationMs } from '$lib/utils/formatters';
+	import { formatDurationMs, formatDateTime } from '$lib/utils/formatters';
 	import * as Table from '$lib/components/ui/table';
 	import * as Card from '$lib/components/ui/card';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
-	import * as Select from '$lib/components/ui/select';
 	import { Button } from '$lib/components/ui/button';
-	import { Badge } from '$lib/components/ui/badge';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
@@ -15,14 +13,24 @@
 	import CheckStatusBadge from '$lib/components/synthetics/check-status-badge.svelte';
 	import MonitorTypeBadge from '$lib/components/synthetics/monitor-type-badge.svelte';
 	import MonitorSheet from '../monitor-sheet.svelte';
+	import NewPostMortemDialog from '../new-post-mortem-dialog.svelte';
 	import D3LineChart from '$lib/components/dashboard/d3-line-chart.svelte';
-	import PageHeader from '$lib/components/issues/page-header.svelte';
+	import PageHeader from '$lib/components/traceway/page-header.svelte';
+	import StatRow from '$lib/components/traceway/stat-row.svelte';
+	import StatTile from '$lib/components/traceway/stat-tile.svelte';
+	import StatusPill from '$lib/components/traceway/status-pill.svelte';
+	import ChartCard from '$lib/components/traceway/chart-card.svelte';
+	import ToolbarSelect from '$lib/components/traceway/toolbar-select.svelte';
+	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import ConfirmDeleteDialog from '$lib/components/traceway/confirm-delete-dialog.svelte';
+	import { uptimeClass } from '$lib/utils/uptime';
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import {
 		monitorsState,
+		incidentDisplayTitle,
 		type SyntheticCheck,
 		type CheckIncident,
 		type CheckResultEntry,
@@ -30,12 +38,30 @@
 	} from '$lib/state/monitors.svelte';
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { authState } from '$lib/state/auth.svelte';
-	import { Activity, ChartLine, Check as CheckIcon, History, Image as ImageIcon, Pause, Pencil, Play, ScrollText, Trash2, TriangleAlert } from '@lucide/svelte';
+	import {
+		Activity,
+		ChartLine,
+		FileText,
+		History,
+		Image as ImageIcon,
+		Pause,
+		Pencil,
+		Play,
+		ScrollText,
+		Trash2,
+		TriangleAlert
+	} from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 
 	let { data } = $props();
 
 	const checkId = data.checkId;
+
+	const canWritePostMortems = $derived.by(() => {
+		const orgId = projectsState.currentProject?.organizationId;
+		if (!orgId) return false;
+		return authState.canWriteOrganization(orgId);
+	});
 
 	let check = $state<SyntheticCheck | null>(null);
 	let incidents = $state<CheckIncident[]>([]);
@@ -62,10 +88,6 @@
 		{ value: 'down', label: 'Down' },
 		{ value: 'missed', label: 'Missed' }
 	];
-	const resultFilterLabel = $derived(
-		resultFilterOptions.find((o) => o.value === resultFilter)?.label || 'All results'
-	);
-
 	function onResultFilterChange() {
 		page = 1;
 		loadResults();
@@ -73,6 +95,8 @@
 
 	let editOpen = $state(false);
 	let deleteOpen = $state(false);
+	let newPostMortemOpen = $state(false);
+	let newPostMortemIncident = $state<CheckIncident | null>(null);
 	let deleting = $state(false);
 	let runningNow = $state(false);
 	let togglingPause = $state(false);
@@ -194,14 +218,14 @@
 				{},
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
-			toast.success('Run queued', { position: 'top-center' });
+			toast.success('Run queued');
 			setTimeout(() => {
 				loadCheck();
 				loadResults();
 			}, 3000);
 		} catch (e: any) {
 			if (e?.status !== 403) {
-				toast.error(e.message || 'Failed to queue the run', { position: 'top-center' });
+				toast.error(e.message || 'Failed to queue the run');
 			}
 		} finally {
 			runningNow = false;
@@ -229,7 +253,7 @@
 			toast.success('Successfully updated the Monitor', { position: 'top-center' });
 		} catch (e: any) {
 			if (e?.status !== 403) {
-				toast.error(e.message || 'Failed to update the monitor', { position: 'top-center' });
+				toast.error(e.message || 'Failed to update the monitor');
 			}
 		} finally {
 			togglingPause = false;
@@ -242,12 +266,12 @@
 			await api.delete(`/synthetics/checks/${checkId}`, {
 				projectId: projectsState.currentProjectId ?? undefined
 			});
-			toast.success('Successfully deleted the Monitor', { position: 'top-center' });
+			toast.success('Successfully deleted the Monitor');
 			monitorsState.refreshDownCount();
 			goto(resolve('/monitors'));
 		} catch (e: any) {
 			if (e?.status !== 403) {
-				toast.error(e.message || 'Failed to delete the monitor', { position: 'top-center' });
+				toast.error(e.message || 'Failed to delete the monitor');
 			}
 			deleting = false;
 			deleteOpen = false;
@@ -289,7 +313,11 @@
 		const stepMs = calculateInterval(rangeFrom, rangeTo) * 60000;
 		const byBucket = new Map(series.map((p) => [new Date(p.bucket).getTime(), p]));
 		const cells: CheckSeriesPoint[] = [];
-		for (let t = Math.floor(fromMs / stepMs) * stepMs; t <= toMs && cells.length < 400; t += stepMs) {
+		for (
+			let t = Math.floor(fromMs / stepMs) * stepMs;
+			t <= toMs && cells.length < 400;
+			t += stepMs
+		) {
 			cells.push(
 				byBucket.get(t) ?? {
 					bucket: new Date(t).toISOString(),
@@ -314,13 +342,9 @@
 
 	function bucketTitle(point: CheckSeriesPoint): string {
 		const measured = point.total - point.missed;
-		const when = new Date(point.bucket).toLocaleString();
+		const when = formatDateTime(point.bucket, { format: 'short' });
 		if (measured === 0) return `${when}: no data`;
 		return `${when}: ${point.up}/${measured} up${point.missed > 0 ? `, ${point.missed} missed` : ''}`;
-	}
-
-	function formatTime(iso: string): string {
-		return new Date(iso).toLocaleString();
 	}
 
 	let screenshotOpen = $state(false);
@@ -346,7 +370,7 @@
 			screenshotUrl = URL.createObjectURL(await response.blob());
 		} catch {
 			screenshotOpen = false;
-			toast.error('Failed to load the screenshot', { position: 'top-center' });
+			toast.error('Failed to load the screenshot');
 		} finally {
 			screenshotLoading = false;
 		}
@@ -384,7 +408,7 @@
 			outputText = await response.text();
 		} catch {
 			outputOpen = false;
-			toast.error('Failed to load the run output', { position: 'top-center' });
+			toast.error('Failed to load the run output');
 		} finally {
 			outputLoading = false;
 		}
@@ -431,285 +455,245 @@
 	/>
 {:else if check}
 	<div class="space-y-4">
-		<div class="flex items-center justify-between gap-4">
-			<PageHeader
-				title={check.name}
-				onBack={createSmartBackHandler({ fallbackPath: '/monitors' })}
+		<PageHeader title={check.name} onBack={createSmartBackHandler({ fallbackPath: '/monitors' })}>
+			{#snippet meta()}
+				{#if check}
+					<CheckStatusBadge status={check.currentStatus} enabled={check.enabled} />
+					<MonitorTypeBadge type={check.checkType} />
+					<span class="min-w-0 font-mono text-sm break-all text-muted-foreground">
+						{#if check.checkType === 'http'}
+							{check.config?.method || 'GET'} {check.config?.url}
+						{:else if check.checkType === 'tcp'}
+							{check.config?.host}:{check.config?.port}
+						{/if}
+					</span>
+					<span class="text-sm text-muted-foreground">Last {WINDOW_DAYS} days</span>
+				{/if}
+			{/snippet}
+			{#snippet actions()}
+				{#if check && projectsState.canWriteCurrentProject}
+					<Button
+						variant="outline"
+						size="sm"
+						onclick={runNow}
+						disabled={runningNow || !check.enabled}
+					>
+						<Play class="mr-2 h-4 w-4" />
+						{runningNow ? 'Queueing...' : 'Run now'}
+					</Button>
+					<Button variant="outline" size="sm" onclick={togglePause} disabled={togglingPause}>
+						{#if check.enabled}
+							<Pause class="mr-2 h-4 w-4" />
+							Pause
+						{:else}
+							<Play class="mr-2 h-4 w-4" />
+							Resume
+						{/if}
+					</Button>
+					<Button variant="outline" size="sm" onclick={() => (editOpen = true)}>
+						<Pencil class="mr-2 h-4 w-4" />
+						Edit
+					</Button>
+					<Button variant="destructiveOutline" size="sm" onclick={() => (deleteOpen = true)}>
+						<Trash2 class="mr-2 h-4 w-4" />
+						Delete
+					</Button>
+				{/if}
+			{/snippet}
+		</PageHeader>
+
+		<StatRow columns={4}>
+			<StatTile
+				label="Uptime"
+				value={rangeAggregates.uptime === null
+					? '—'
+					: `${rangeAggregates.uptime.toFixed(rangeAggregates.uptime === 100 ? 0 : 2)}%`}
+				valueClass={rangeAggregates.uptime === null
+					? 'text-muted-foreground'
+					: uptimeClass(rangeAggregates.uptime)}
 			/>
-			<span class="shrink-0 text-sm text-muted-foreground">Last {WINDOW_DAYS} days</span>
-		</div>
+			<StatTile
+				label="Avg latency"
+				value={rangeAggregates.avgLatency === null
+					? '—'
+					: formatDurationMs(rangeAggregates.avgLatency)}
+			/>
+			<StatTile
+				label="Interval"
+				value={check.intervalSeconds >= 3600
+					? `${check.intervalSeconds / 3600}h`
+					: check.intervalSeconds >= 60
+						? `${check.intervalSeconds / 60}m`
+						: `${check.intervalSeconds}s`}
+			/>
+			<StatTile
+				label="Incidents (recent)"
+				value={incidents.length}
+				valueClass={incidents.some((i) => !i.resolvedAt) ? 'text-red-600 dark:text-red-400' : ''}
+			/>
+		</StatRow>
 
-		<div class="flex flex-wrap items-center gap-3">
-			<CheckStatusBadge status={check.currentStatus} enabled={check.enabled} />
-			<MonitorTypeBadge type={check.checkType} />
-			<span class="min-w-0 font-mono text-sm break-all text-muted-foreground">
-				{#if check.checkType === 'http'}
-					{check.config?.method || 'GET'} {check.config?.url}
-				{:else if check.checkType === 'tcp'}
-					{check.config?.host}:{check.config?.port}
-				{/if}
-			</span>
-			<div class="flex-1"></div>
-			{#if projectsState.canWriteCurrentProject}
-				<Button variant="outline" size="sm" onclick={runNow} disabled={runningNow || !check.enabled}>
-					<Play class="mr-1.5 h-4 w-4" />
-					{runningNow ? 'Queueing...' : 'Run now'}
-				</Button>
-				<Button variant="outline" size="sm" onclick={togglePause} disabled={togglingPause}>
-					{#if check.enabled}
-						<Pause class="mr-1.5 h-4 w-4" />
-						Pause
-					{:else}
-						<Play class="mr-1.5 h-4 w-4" />
-						Resume
-					{/if}
-				</Button>
-				<Button variant="outline" size="sm" onclick={() => (editOpen = true)}>
-					<Pencil class="mr-1.5 h-4 w-4" />
-					Edit
-				</Button>
-				<Button variant="destructiveOutline" size="sm" onclick={() => (deleteOpen = true)}>
-					<Trash2 class="mr-1.5 h-4 w-4" />
-					Delete
-				</Button>
-			{/if}
-		</div>
-
-		<Card.Root class="py-0">
-			<div class="grid grid-cols-2 divide-y divide-border sm:grid-cols-4 sm:divide-x sm:divide-y-0">
-				<div class="px-6 py-4">
-					<div class="text-xs font-medium text-muted-foreground">Uptime</div>
+		<ChartCard
+			title="Availability"
+			loading={seriesLoading}
+			empty={series.length === 0}
+			emptyMessage="No probe data in the last {WINDOW_DAYS} days"
+			height={64}
+		>
+			{#snippet icon()}
+				<Activity class="h-3.5 w-3.5 text-muted-foreground" />
+			{/snippet}
+			<div class="flex h-9 items-stretch gap-[3px]">
+				{#each paddedSeries as point, __index (__index)}
 					<div
-						class="mt-1 text-2xl font-semibold tabular-nums {rangeAggregates.uptime === null
-							? 'text-muted-foreground'
-							: rangeAggregates.uptime >= 99.9
-								? 'text-green-600 dark:text-green-400'
-								: rangeAggregates.uptime >= 99
-									? ''
-									: 'text-red-600 dark:text-red-400'}"
-					>
-						{rangeAggregates.uptime === null
-							? '—'
-							: `${rangeAggregates.uptime.toFixed(rangeAggregates.uptime === 100 ? 0 : 2)}%`}
-					</div>
-				</div>
-				<div class="px-6 py-4">
-					<div class="text-xs font-medium text-muted-foreground">Avg latency</div>
-					<div class="mt-1 text-2xl font-semibold tabular-nums">
-						{rangeAggregates.avgLatency === null ? '—' : formatDurationMs(rangeAggregates.avgLatency)}
-					</div>
-				</div>
-				<div class="px-6 py-4">
-					<div class="text-xs font-medium text-muted-foreground">Interval</div>
-					<div class="mt-1 text-2xl font-semibold tabular-nums">
-						{check.intervalSeconds >= 3600
-							? `${check.intervalSeconds / 3600}h`
-							: check.intervalSeconds >= 60
-								? `${check.intervalSeconds / 60}m`
-								: `${check.intervalSeconds}s`}
-					</div>
-				</div>
-				<div class="px-6 py-4">
-					<div class="text-xs font-medium text-muted-foreground">Incidents (recent)</div>
-					<div
-						class="mt-1 text-2xl font-semibold tabular-nums {incidents.some((i) => !i.resolvedAt)
-							? 'text-red-600 dark:text-red-400'
-							: ''}"
-					>
-						{incidents.length}
-					</div>
-				</div>
+						class="min-w-0 flex-1 rounded-[3px] transition-transform hover:scale-y-110 {bucketClass(
+							point
+						)}"
+						title={bucketTitle(point)}
+					></div>
+				{/each}
 			</div>
-		</Card.Root>
+			<div class="mt-1.5 flex justify-between text-xs text-muted-foreground">
+				<span>{formatDateTime(paddedSeries[0].bucket, { format: 'short' })}</span>
+				<span>Now</span>
+			</div>
+		</ChartCard>
 
-		<Card.Root class="pt-2 gap-3">
-			<Card.Header class="border-b [.border-b]:pb-2 pl-3">
-				<Card.Title class="flex items-center gap-2 text-base font-medium">
-					<Activity class="h-3.5 w-3.5 text-muted-foreground" />
-					<span class="text-sm font-[400] text-muted-foreground">Availability</span>
-				</Card.Title>
-			</Card.Header>
-			<Card.Content class="pb-4">
-				{#if seriesLoading}
-					<div class="flex h-16 items-center justify-center">
-						<LoadingCircle />
-					</div>
-				{:else if series.length === 0}
-					<div class="flex h-16 items-center justify-center text-sm text-muted-foreground">
-						No probe data in the last {WINDOW_DAYS} days
-					</div>
-				{:else}
-					<div class="flex h-9 items-stretch gap-[3px]">
-						{#each paddedSeries as point}
-							<div
-								class="min-w-0 flex-1 rounded-[3px] transition-transform hover:scale-y-110 {bucketClass(
-									point
-								)}"
-								title={bucketTitle(point)}
-							></div>
-						{/each}
-					</div>
-					<div class="mt-1.5 flex justify-between text-xs text-muted-foreground">
-						<span>{new Date(paddedSeries[0].bucket).toLocaleString()}</span>
-						<span>Now</span>
-					</div>
-				{/if}
-			</Card.Content>
-		</Card.Root>
-
-		<Card.Root class="pt-2 gap-3">
-			<Card.Header class="border-b [.border-b]:pb-2 pl-3">
-				<Card.Title class="flex items-center gap-2 text-base font-medium">
-					<ChartLine class="h-3.5 w-3.5 text-muted-foreground" />
-					<span class="text-sm font-[400] text-muted-foreground">Latency</span>
-				</Card.Title>
-			</Card.Header>
-			<Card.Content>
-				{#if seriesLoading}
-					<div class="flex h-[220px] items-center justify-center">
-						<LoadingCircle size="xlg" />
-					</div>
-				{:else if latencySeries[0].data.length === 0}
-					<div class="flex h-[220px] items-center justify-center text-sm text-muted-foreground">
-						No latency data in the last {WINDOW_DAYS} days
-					</div>
-				{:else}
-					<D3LineChart series={latencySeries} formatValue={formatDurationMs} unit="ms" />
-				{/if}
-			</Card.Content>
-		</Card.Root>
+		<ChartCard
+			title="Latency"
+			loading={seriesLoading}
+			empty={latencySeries[0].data.length === 0}
+			emptyMessage="No latency data in the last {WINDOW_DAYS} days"
+		>
+			{#snippet icon()}
+				<ChartLine class="h-3.5 w-3.5 text-muted-foreground" />
+			{/snippet}
+			<D3LineChart series={latencySeries} formatValue={formatDurationMs} unit="ms" />
+		</ChartCard>
 
 		<Card.Root class="gap-0 pt-2 pb-0">
 			<Card.Header
-				class="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0 border-b [.border-b]:pb-2 pl-3"
+				class="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0 border-b pl-3 [.border-b]:pb-2"
 			>
 				<Card.Title class="flex items-center gap-2 text-base font-medium">
 					<History class="h-3.5 w-3.5 text-muted-foreground" />
 					<span class="text-sm font-[400] text-muted-foreground">Run history</span>
 				</Card.Title>
-				<Select.Root type="single" bind:value={resultFilter} onValueChange={onResultFilterChange}>
-					<Select.Trigger class="h-8 w-[130px] text-xs">{resultFilterLabel}</Select.Trigger>
-					<Select.Content>
-						{#each resultFilterOptions as option}
-							<Select.Item value={option.value}>{option.label}</Select.Item>
-						{/each}
-					</Select.Content>
-				</Select.Root>
+				<ToolbarSelect
+					bind:value={resultFilter}
+					options={resultFilterOptions}
+					class="w-[130px]"
+					onChange={onResultFilterChange}
+				/>
 			</Card.Header>
 			<Card.Content class="overflow-hidden rounded-b-xl p-0">
-				<Table.Root>
-				{#if resultsLoading}
-					<Table.Body>
-						<Table.Row>
-							<Table.Cell colspan={runHistoryColumns} class="h-32">
-								<div class="flex h-full items-center justify-center">
-									<LoadingCircle size="xlg" />
-								</div>
-							</Table.Cell>
-						</Table.Row>
-					</Table.Body>
-				{:else if results.length === 0}
-					<Table.Body>
-						<TableEmptyState colspan={runHistoryColumns} message="No runs in the last {WINDOW_DAYS} days" />
-					</Table.Body>
-				{:else}
-					<Table.Header>
-						<Table.Row>
-							<Table.Head>Time</Table.Head>
-							<Table.Head class="w-[100px]">Result</Table.Head>
-							<Table.Head class="w-[110px]">Latency</Table.Head>
-							{#if !isBrowserCheck}
-								<Table.Head class="w-[90px]">Status code</Table.Head>
-							{/if}
-							<Table.Head>Error</Table.Head>
-							{#if isBrowserCheck}
-								<Table.Head class="w-[44px]"><span class="sr-only">Screenshot</span></Table.Head>
-								<Table.Head class="w-[44px]"><span class="sr-only">Logs</span></Table.Head>
-							{/if}
-						</Table.Row>
-					</Table.Header>
-					<Table.Body>
-						{#each results as result}
-							<Table.Row>
-								<Table.Cell class="text-sm whitespace-nowrap">
-									{formatTime(result.recordedAt)}
-									<span class="ml-1 text-xs text-muted-foreground">via {result.executedBy}</span>
-								</Table.Cell>
-								<Table.Cell>
-									{#if result.status === 'up'}
-										<span
-											class="inline-flex items-center gap-1 rounded-full bg-green-500/15 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400"
-										>
-											<CheckIcon class="h-3 w-3" />
-											Up
-										</span>
-									{:else if result.status === 'down'}
-										<span
-											class="inline-flex items-center rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-600 dark:text-red-400"
-										>
-											Down
-										</span>
-									{:else}
-										<span
-											class="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
-										>
-											Missed
-										</span>
+				<TableContainer class="rounded-none border-0" minWidth="640px">
+					<Table.Root>
+						{#if resultsLoading}
+							<Table.Body>
+								<Table.Row>
+									<Table.Cell colspan={runHistoryColumns} class="h-48">
+										<div class="flex h-full items-center justify-center">
+											<LoadingCircle size="xlg" />
+										</div>
+									</Table.Cell>
+								</Table.Row>
+							</Table.Body>
+						{:else if results.length === 0}
+							<Table.Body>
+								<TableEmptyState
+									colspan={runHistoryColumns}
+									message="No runs in the last {WINDOW_DAYS} days"
+								/>
+							</Table.Body>
+						{:else}
+							<Table.Header>
+								<Table.Row>
+									<Table.Head>Time</Table.Head>
+									<Table.Head class="w-[100px]">Result</Table.Head>
+									<Table.Head class="w-[110px]">Latency</Table.Head>
+									{#if !isBrowserCheck}
+										<Table.Head class="w-[90px]">Status code</Table.Head>
 									{/if}
-								</Table.Cell>
-								<Table.Cell class="font-mono text-sm tabular-nums text-muted-foreground">
-									{result.status === 'missed' ? '—' : formatDurationMs(result.latencyMs)}
-								</Table.Cell>
-								{#if !isBrowserCheck}
-									<Table.Cell class="font-mono text-sm tabular-nums text-muted-foreground">
-										{result.statusCode > 0 ? result.statusCode : '—'}
-									</Table.Cell>
-								{/if}
-								<Table.Cell class="max-w-[300px] min-w-[120px] text-xs text-muted-foreground">
-									{#if result.errorMessage}
-										<button
-											type="button"
-											class="line-clamp-2 w-full cursor-pointer text-left break-all"
-											title="View the full error"
-											onclick={() => viewError(result.errorMessage)}
+									<Table.Head>Error</Table.Head>
+									{#if isBrowserCheck}
+										<Table.Head class="w-[44px]"><span class="sr-only">Screenshot</span></Table.Head
 										>
-											{result.errorMessage}
-										</button>
+										<Table.Head class="w-[44px]"><span class="sr-only">Logs</span></Table.Head>
 									{/if}
-								</Table.Cell>
-								{#if isBrowserCheck}
-									<Table.Cell class="px-1 text-center">
-										{#if result.screenshotKey}
-											<Button
-												variant="ghost"
-												size="icon"
-												class="h-7 w-7"
-												title="View the screenshot"
-												onclick={() => viewScreenshot(result.screenshotKey)}
+								</Table.Row>
+							</Table.Header>
+							<Table.Body>
+								{#each results as result, __index (__index)}
+									<Table.Row>
+										<Table.Cell class="text-sm whitespace-nowrap">
+											{formatDateTime(result.recordedAt, { format: 'short' })}
+											<span class="ml-1 text-xs text-muted-foreground">via {result.executedBy}</span
 											>
-												<ImageIcon class="h-4 w-4" />
-											</Button>
+										</Table.Cell>
+										<Table.Cell>
+											{#if result.status === 'up'}
+												<StatusPill tone="success" dot label="Up" />
+											{:else if result.status === 'down'}
+												<StatusPill tone="danger" label="Down" />
+											{:else}
+												<StatusPill tone="neutral" label="Missed" />
+											{/if}
+										</Table.Cell>
+										<Table.Cell class="font-mono text-sm text-muted-foreground tabular-nums">
+											{result.status === 'missed' ? '—' : formatDurationMs(result.latencyMs)}
+										</Table.Cell>
+										{#if !isBrowserCheck}
+											<Table.Cell class="font-mono text-sm text-muted-foreground tabular-nums">
+												{result.statusCode > 0 ? result.statusCode : '—'}
+											</Table.Cell>
 										{/if}
-									</Table.Cell>
-									<Table.Cell class="px-1 text-center">
-										{#if result.outputKey}
-											<Button
-												variant="ghost"
-												size="icon"
-												class="h-7 w-7"
-												title="View the logs"
-												onclick={() => viewOutput(result.outputKey)}
-											>
-												<ScrollText class="h-4 w-4" />
-											</Button>
+										<Table.Cell class="max-w-[300px] min-w-[120px] text-xs text-muted-foreground">
+											{#if result.errorMessage}
+												<button
+													type="button"
+													class="line-clamp-2 w-full cursor-pointer text-left break-all"
+													title="View the full error"
+													onclick={() => viewError(result.errorMessage)}
+												>
+													{result.errorMessage}
+												</button>
+											{/if}
+										</Table.Cell>
+										{#if isBrowserCheck}
+											<Table.Cell class="px-1 text-center">
+												{#if result.screenshotKey}
+													<Button
+														variant="ghost"
+														size="icon"
+														class="h-7 w-7"
+														title="View the screenshot"
+														onclick={() => viewScreenshot(result.screenshotKey)}
+													>
+														<ImageIcon class="h-4 w-4" />
+													</Button>
+												{/if}
+											</Table.Cell>
+											<Table.Cell class="px-1 text-center">
+												{#if result.outputKey}
+													<Button
+														variant="ghost"
+														size="icon"
+														class="h-7 w-7"
+														title="View the logs"
+														onclick={() => viewOutput(result.outputKey)}
+													>
+														<ScrollText class="h-4 w-4" />
+													</Button>
+												{/if}
+											</Table.Cell>
 										{/if}
-									</Table.Cell>
-								{/if}
-							</Table.Row>
-						{/each}
-					</Table.Body>
-				{/if}
-				</Table.Root>
+									</Table.Row>
+								{/each}
+							</Table.Body>
+						{/if}
+					</Table.Root>
+				</TableContainer>
 			</Card.Content>
 		</Card.Root>
 
@@ -725,8 +709,8 @@
 		/>
 
 		{#if incidents.length > 0}
-			<Card.Root class="pt-2 gap-3">
-				<Card.Header class="border-b [.border-b]:pb-2 pl-3">
+			<Card.Root class="gap-3 pt-2">
+				<Card.Header class="border-b pl-3 [.border-b]:pb-2">
 					<Card.Title class="flex items-center gap-2 text-base font-medium">
 						<TriangleAlert class="h-3.5 w-3.5 text-muted-foreground" />
 						<span class="text-sm font-[400] text-muted-foreground">Incidents</span>
@@ -734,13 +718,20 @@
 				</Card.Header>
 				<Card.Content class="pb-4">
 					<div class="space-y-2">
-						{#each incidents as incident}
-							<div class="flex items-start justify-between gap-4 rounded-md border p-3 text-sm">
+						{#each incidents as incident, __index (__index)}
+							<div
+								class="flex flex-col gap-2 rounded-md border p-3 text-sm sm:flex-row sm:items-start sm:justify-between sm:gap-4"
+							>
 								<div class="min-w-0">
-									<div class="font-medium">
-										{formatTime(incident.startedAt)}
+									{#if incident.title}
+										<div class="font-medium">{incident.title}</div>
+									{/if}
+									<div class={incident.title ? 'text-xs text-muted-foreground' : 'font-medium'}>
+										{formatDateTime(incident.startedAt, { format: 'short' })}
 										{#if incident.resolvedAt}
-											<span class="text-muted-foreground">→ {formatTime(incident.resolvedAt)}</span>
+											<span class="text-muted-foreground">
+												→ {formatDateTime(incident.resolvedAt, { format: 'short' })}
+											</span>
 										{/if}
 									</div>
 									{#if incident.errorMessage}
@@ -749,19 +740,34 @@
 										</div>
 									{/if}
 								</div>
-								{#if incident.resolvedAt}
-									<span
-										class="inline-flex shrink-0 items-center rounded-full bg-green-500/15 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400"
-									>
-										Resolved
-									</span>
-								{:else}
-									<span
-										class="inline-flex shrink-0 items-center rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-600 dark:text-red-400"
-									>
-										Ongoing
-									</span>
-								{/if}
+								<div class="flex shrink-0 items-center gap-2">
+									{#if incident.postMortemId}
+										<a
+											class="inline-flex items-center gap-1 text-xs text-primary underline-offset-2 hover:underline"
+											href={resolve(`/monitors/post-mortems/${incident.postMortemId}`)}
+										>
+											<FileText class="h-3.5 w-3.5" />
+											Post-mortem
+										</a>
+									{:else if canWritePostMortems}
+										<button
+											type="button"
+											class="inline-flex cursor-pointer items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:text-primary hover:underline"
+											onclick={() => {
+												newPostMortemIncident = incident;
+												newPostMortemOpen = true;
+											}}
+										>
+											<FileText class="h-3.5 w-3.5" />
+											Write post-mortem
+										</button>
+									{/if}
+									{#if incident.resolvedAt}
+										<StatusPill tone="success" label="Resolved" />
+									{:else}
+										<StatusPill tone="danger" label="Ongoing" />
+									{/if}
+								</div>
 							</div>
 						{/each}
 					</div>
@@ -772,23 +778,21 @@
 
 	<MonitorSheet bind:open={editOpen} {check} onSaved={() => loadAll()} />
 
-	<AlertDialog.Root bind:open={deleteOpen}>
-		<AlertDialog.Content interactOutsideBehavior={deleting ? 'ignore' : 'close'}>
-			<AlertDialog.Header>
-				<AlertDialog.Title>Delete Monitor</AlertDialog.Title>
-				<AlertDialog.Description>
-					This permanently deletes "{check.name}" along with its run history and incidents.
-				</AlertDialog.Description>
-			</AlertDialog.Header>
-			<AlertDialog.Footer>
-				<AlertDialog.Cancel disabled={deleting}>Cancel</AlertDialog.Cancel>
-				<Button variant="destructive" onclick={deleteCheck} disabled={deleting}>
-					<Trash2 class="mr-2 h-4 w-4" />
-					{deleting ? 'Deleting...' : 'Delete Monitor'}
-				</Button>
-			</AlertDialog.Footer>
-		</AlertDialog.Content>
-	</AlertDialog.Root>
+	<NewPostMortemDialog
+		bind:open={newPostMortemOpen}
+		incidentId={newPostMortemIncident?.id ?? null}
+		incidentLabel={newPostMortemIncident
+			? incidentDisplayTitle({ title: newPostMortemIncident.title, checkName: check?.name ?? null })
+			: ''}
+	/>
+
+	<ConfirmDeleteDialog
+		bind:open={deleteOpen}
+		entity="Monitor"
+		description={`This permanently deletes "${check.name}" along with its run history and incidents.`}
+		loading={deleting}
+		onConfirm={deleteCheck}
+	/>
 
 	<AlertDialog.Root bind:open={outputOpen}>
 		<AlertDialog.Content class="sm:max-w-3xl">
@@ -841,9 +845,7 @@
 		<AlertDialog.Content class="sm:max-w-3xl">
 			<AlertDialog.Header>
 				<AlertDialog.Title>Run error</AlertDialog.Title>
-				<AlertDialog.Description>
-					Full error message reported by this run.
-				</AlertDialog.Description>
+				<AlertDialog.Description>Full error message reported by this run.</AlertDialog.Description>
 			</AlertDialog.Header>
 			<pre
 				class="max-h-[60vh] overflow-auto rounded-md border bg-muted/50 p-3 font-mono text-xs break-all whitespace-pre-wrap">{errorText}</pre>

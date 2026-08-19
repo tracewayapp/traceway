@@ -2,13 +2,17 @@
 	import { onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as Table from '$lib/components/ui/table';
-	import * as Alert from '$lib/components/ui/alert';
-	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { Badge } from '$lib/components/ui/badge';
-	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
-	import { Plus, Trash2, Info } from '@lucide/svelte';
+	import InfoCallout from '$lib/components/traceway/info-callout.svelte';
+	import EmptyState from '$lib/components/traceway/empty-state.svelte';
+	import ErrorRetryBox from '$lib/components/traceway/error-retry-box.svelte';
+	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import StatusPill from '$lib/components/traceway/status-pill.svelte';
+	import ConfirmDeleteDialog from '$lib/components/traceway/confirm-delete-dialog.svelte';
+	import { Trash2 } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
+	import { formatDateTime } from '$lib/utils/formatters';
 	import {
 		personalAccessTokensState,
 		type PersonalAccessToken
@@ -16,7 +20,12 @@
 	import CreateTokenDialog from './create-token-dialog.svelte';
 
 	let showCreate = $state(false);
+
+	export function openCreate() {
+		showCreate = true;
+	}
 	let tokenToRevoke = $state<PersonalAccessToken | null>(null);
+	let revokeDialogOpen = $state(false);
 	let revoking = $state(false);
 	let revokeError = $state('');
 
@@ -24,11 +33,7 @@
 
 	function formatDate(value: string | null): string {
 		if (!value) return '';
-		return new Date(value).toLocaleDateString(undefined, {
-			year: 'numeric',
-			month: 'short',
-			day: 'numeric'
-		});
+		return formatDateTime(value, { format: 'date' });
 	}
 
 	function isExpired(value: string | null): boolean {
@@ -41,7 +46,8 @@
 		revokeError = '';
 		try {
 			await personalAccessTokensState.revoke(tokenToRevoke.id);
-			toast.success('Successfully revoked the Token', { position: 'top-center' });
+			toast.success('Successfully revoked the Token');
+			revokeDialogOpen = false;
 			tokenToRevoke = null;
 		} catch (e: unknown) {
 			revokeError = e instanceof Error ? e.message : 'Failed to revoke token';
@@ -51,36 +57,25 @@
 	}
 </script>
 
-<div class="flex items-center justify-between">
-	<h2 class="text-xl font-semibold tracking-tight">Personal Access Tokens</h2>
-	<Button variant="success" onclick={() => (showCreate = true)}>
-		<Plus class="mr-1 h-4 w-4" /> New Token
-	</Button>
-</div>
-
-<Alert.Root
-	class="border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-200"
->
-	<Info class="text-blue-600 dark:text-blue-400" />
-	<Alert.Description class="text-blue-800 dark:text-blue-300">
-		Authenticate the Traceway CLI or scripts without a browser. Treat tokens like passwords.
-	</Alert.Description>
-</Alert.Root>
+<InfoCallout>
+	Authenticate the Traceway CLI or scripts without a browser. Treat tokens like passwords.
+</InfoCallout>
 
 {#if personalAccessTokensState.loading}
 	<div class="flex justify-center py-12"><LoadingCircle size="lg" /></div>
+{:else if personalAccessTokensState.error}
+	<ErrorRetryBox
+		message={personalAccessTokensState.error}
+		onRetry={() => personalAccessTokensState.load()}
+	/>
 {:else if personalAccessTokensState.tokens.length === 0}
-	<div
-		class="flex flex-col items-center justify-center rounded-md bg-muted py-20 text-center text-muted-foreground"
-	>
-		<p class="mb-4">No tokens yet. Create one to get started.</p>
-		<Button variant="success" onclick={() => (showCreate = true)}>
-			<Plus class="mr-1 h-4 w-4" />
-			Create your first Token
-		</Button>
-	</div>
+	<EmptyState
+		message="No tokens yet. Create one to get started."
+		actionLabel="Create your first Token"
+		onAction={() => (showCreate = true)}
+	/>
 {:else}
-	<div class="overflow-hidden rounded-md border">
+	<TableContainer>
 		<Table.Root>
 			<Table.Header>
 				<Table.Row class="hover:bg-transparent">
@@ -111,15 +106,21 @@
 							{#if !token.expiresAt}
 								<span class="text-muted-foreground">Never</span>
 							{:else if isExpired(token.expiresAt)}
-								<Badge variant="outline" class="border-amber-200 bg-amber-50 text-amber-700"
-									>Expired</Badge
-								>
+								<StatusPill tone="warning" label="Expired" />
 							{:else}
 								{formatDate(token.expiresAt)}
 							{/if}
 						</Table.Cell>
 						<Table.Cell>
-							<Button variant="ghost" size="icon" onclick={() => (tokenToRevoke = token)}>
+							<Button
+								variant="ghost"
+								size="icon"
+								onclick={() => {
+									revokeError = '';
+									tokenToRevoke = token;
+									revokeDialogOpen = true;
+								}}
+							>
 								<Trash2 class="h-4 w-4 text-destructive" />
 							</Button>
 						</Table.Cell>
@@ -127,35 +128,17 @@
 				{/each}
 			</Table.Body>
 		</Table.Root>
-	</div>
+	</TableContainer>
 {/if}
 
 <CreateTokenDialog bind:open={showCreate} />
 
-<AlertDialog.Root
-	open={tokenToRevoke !== null}
-	onOpenChange={(open) => {
-		if (!open) {
-			tokenToRevoke = null;
-			revokeError = '';
-		}
-	}}
->
-	<AlertDialog.Content>
-		<AlertDialog.Header>
-			<AlertDialog.Title>Revoke Token</AlertDialog.Title>
-			<AlertDialog.Description>
-				This permanently revokes {tokenToRevoke?.name ? `"${tokenToRevoke.name}"` : 'this token'}.
-				Any CLI or script using it will stop working immediately.
-			</AlertDialog.Description>
-		</AlertDialog.Header>
-		<ErrorAlert error={revokeError} />
-		<AlertDialog.Footer>
-			<AlertDialog.Cancel disabled={revoking}>Cancel</AlertDialog.Cancel>
-			<Button variant="destructive" onclick={confirmRevoke} disabled={revoking}>
-				<Trash2 class="mr-2 h-4 w-4" />
-				{revoking ? 'Revoking…' : 'Revoke Token'}
-			</Button>
-		</AlertDialog.Footer>
-	</AlertDialog.Content>
-</AlertDialog.Root>
+<ConfirmDeleteDialog
+	bind:open={revokeDialogOpen}
+	entity="Token"
+	verb="Revoke"
+	description={`This permanently revokes ${tokenToRevoke?.name ? `"${tokenToRevoke.name}"` : 'this token'}. Any CLI or script using it will stop working immediately.`}
+	error={revokeError}
+	loading={revoking}
+	onConfirm={confirmRevoke}
+/>

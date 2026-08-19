@@ -1,9 +1,16 @@
 <script lang="ts">
+	import { resolve as resolveRoute } from '$app/paths';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
-	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
+	import {
+		Card,
+		CardContent,
+		CardDescription,
+		CardHeader,
+		CardTitle
+	} from '$lib/components/ui/card';
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { CircleAlert, ShieldCheck } from '@lucide/svelte';
@@ -43,16 +50,19 @@
 
 	function loginRedirect() {
 		const target = page.url.pathname + page.url.search;
-		goto(`/login?returnTo=${encodeURIComponent(target)}`);
+		goto(resolveRoute(`/login?returnTo=${encodeURIComponent(target)}`));
 	}
 
 	async function lookupClient() {
 		status = 'loading';
 		error = '';
 		try {
-			const res = await fetch(`/api/oauth/client?client_id=${encodeURIComponent(params.clientId ?? '')}`, {
-				headers: { Authorization: `Bearer ${authState.token}` }
-			});
+			const res = await fetch(
+				`/api/oauth/client?client_id=${encodeURIComponent(params.clientId ?? '')}`,
+				{
+					headers: { Authorization: `Bearer ${authState.token}` }
+				}
+			);
 			if (res.status === 401) {
 				authState.logout();
 				loginRedirect();
@@ -105,7 +115,8 @@
 			}
 			if (!res.ok) {
 				status = 'error';
-				error = 'The authorization request was rejected. Restart the connection from your application.';
+				error =
+					'The authorization request was rejected. Restart the connection from your application.';
 				return;
 			}
 			const data = await res.json();
@@ -194,8 +205,8 @@
 					<CircleAlert class="h-4 w-4" />
 					<AlertTitle>Unknown application</AlertTitle>
 					<AlertDescription>
-						We don't recognize the application making this request. Restart the connection from
-						your application.
+						We don't recognize the application making this request. Restart the connection from your
+						application.
 					</AlertDescription>
 				</Alert>
 			{:else}

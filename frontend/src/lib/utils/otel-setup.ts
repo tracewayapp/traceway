@@ -208,7 +208,8 @@ http.ListenAndServe(":8080", mux)`,
 	}
 };
 
-const NODE_ZERO_CODE_INSTALL = 'npm install @opentelemetry/api @opentelemetry/auto-instrumentations-node';
+const NODE_ZERO_CODE_INSTALL =
+	'npm install @opentelemetry/api @opentelemetry/auto-instrumentations-node';
 
 function nodeZeroCodeSteps(
 	backendUrl: string,
@@ -410,7 +411,8 @@ export function register() {
 				return [
 					{
 						title: 'Add the Starter',
-						description: 'Add the OpenTelemetry Spring Boot starter to your Gradle build (a Maven dependency works the same way).',
+						description:
+							'Add the OpenTelemetry Spring Boot starter to your Gradle build (a Maven dependency works the same way).',
 						code: `implementation(platform("io.opentelemetry.instrumentation:opentelemetry-instrumentation-bom:2.28.1"))
 implementation("io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter")`,
 						codeLanguage: 'gradle'

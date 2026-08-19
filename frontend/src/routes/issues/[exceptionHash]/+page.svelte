@@ -7,7 +7,8 @@
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import { projectsState, isJsFramework, isJsLanguage } from '$lib/state/projects.svelte';
-	import { StackTraceCard, EventCard, EventsTable, PageHeader } from '$lib/components/issues';
+	import { StackTraceCard, EventCard, EventsTable } from '$lib/components/issues';
+	import PageHeader from '$lib/components/traceway/page-header.svelte';
 	import { toast } from 'svelte-sonner';
 	import ArchiveConfirmationDialog from '$lib/components/archive-confirmation-dialog.svelte';
 	import OncallOwner from '$lib/components/traceway/oncall-owner.svelte';
@@ -49,7 +50,9 @@
 			)
 	);
 	const hasMoreOccurrences = $derived(total > 10);
-	const firstLineOfStackTrace = $derived(latestOccurrence?.stackTrace.split('\n')[0] || 'Exception');
+	const firstLineOfStackTrace = $derived(
+		latestOccurrence?.stackTrace.split('\n')[0] || 'Exception'
+	);
 
 	async function loadData() {
 		loading = true;
@@ -125,8 +128,8 @@
 				{ hashes: [exceptionHash], resolvePages },
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
-			toast.success('Successfully archived the Issue', { position: 'top-center' });
-			goto('/issues');
+			toast.success('Successfully archived the Issue');
+			goto(resolve('/issues'));
 		} catch (e: any) {
 			console.error('Archive failed:', e);
 			throw e;
@@ -141,14 +144,15 @@
 </script>
 
 <div class="space-y-6">
-	<div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-		<PageHeader
-			title={firstLineOfStackTrace}
-			subtitle="Exception Hash: {exceptionHash}"
-			onBack={createSmartBackHandler({ fallbackPath: resolve('/issues') })}
-		/>
-		<OncallOwner />
-	</div>
+	<PageHeader
+		title={firstLineOfStackTrace}
+		subtitle="Exception Hash: {exceptionHash}"
+		onBack={createSmartBackHandler({ fallbackPath: resolve('/issues') })}
+	>
+		{#snippet actions()}
+			<OncallOwner />
+		{/snippet}
+	</PageHeader>
 
 	{#if loading && !group}
 		<div class="flex items-center justify-center py-20">

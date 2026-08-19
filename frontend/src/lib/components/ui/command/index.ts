@@ -6,7 +6,6 @@ import Input from './command-input.svelte';
 import Item from './command-item.svelte';
 import List from './command-list.svelte';
 import Separator from './command-separator.svelte';
-import Shortcut from './command-shortcut.svelte';
 
 export {
 	Root,
@@ -17,7 +16,6 @@ export {
 	Item,
 	List,
 	Separator,
-	Shortcut,
 	//
 	Root as Command,
 	Dialog as CommandDialog,
@@ -26,6 +24,5 @@ export {
 	Input as CommandInput,
 	Item as CommandItem,
 	List as CommandList,
-	Separator as CommandSeparator,
-	Shortcut as CommandShortcut
+	Separator as CommandSeparator
 };

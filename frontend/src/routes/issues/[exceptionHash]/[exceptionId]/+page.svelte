@@ -1,218 +1,233 @@
 <script lang="ts">
-    import { api } from '$lib/api';
-    import { LoadingCircle } from "$lib/components/ui/loading-circle";
-    import { ErrorDisplay } from "$lib/components/ui/error-display";
-    import { projectsState, isJsFramework, isJsLanguage } from '$lib/state/projects.svelte';
-    import { getTimezone } from '$lib/state/timezone.svelte';
-    import { formatDateTime } from '$lib/utils/formatters';
-    import { StackTraceCard, EventCard, EventsTable, PageHeader } from '$lib/components/issues';
-    import type { ExceptionOccurrence, LinkedTrace, SessionRecording } from '$lib/types/exceptions';
+	import { api } from '$lib/api';
+	import { LoadingCircle } from '$lib/components/ui/loading-circle';
+	import { ErrorDisplay } from '$lib/components/ui/error-display';
+	import { projectsState, isJsFramework, isJsLanguage } from '$lib/state/projects.svelte';
+	import { getTimezone } from '$lib/state/timezone.svelte';
+	import { formatDateTime } from '$lib/utils/formatters';
+	import { StackTraceCard, EventCard, EventsTable } from '$lib/components/issues';
+	import PageHeader from '$lib/components/traceway/page-header.svelte';
+	import type { ExceptionOccurrence, LinkedTrace, SessionRecording } from '$lib/types/exceptions';
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { resolve } from '$app/paths';
 	import ArchiveConfirmationDialog from '$lib/components/archive-confirmation-dialog.svelte';
 	import { goto } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 
-    let { data } = $props();
+	let { data } = $props();
 
-    const timezone = $derived(getTimezone());
+	const timezone = $derived(getTimezone());
 
-    let occurrence = $state<ExceptionOccurrence | null>(null);
-    let allOccurrences = $state<ExceptionOccurrence[]>([]);
-    let loading = $state(true);
-    let error = $state('');
-    let notFound = $state(false);
-    let total = $state(0);
-    let linkedTrace = $state<LinkedTrace | null>(null);
-    let sessionRecording = $state<SessionRecording | null>(null);
-    let sessionId = $state<string | null>(null);
-    let showArchiveDialog = $state(false);
-    let archiving = $state(false);
+	let occurrence = $state<ExceptionOccurrence | null>(null);
+	let allOccurrences = $state<ExceptionOccurrence[]>([]);
+	let loading = $state(true);
+	let error = $state('');
+	let notFound = $state(false);
+	let total = $state(0);
+	let linkedTrace = $state<LinkedTrace | null>(null);
+	let sessionRecording = $state<SessionRecording | null>(null);
+	let sessionId = $state<string | null>(null);
+	let showArchiveDialog = $state(false);
+	let archiving = $state(false);
 
+	const isMessage = $derived(occurrence?.isMessage ?? false);
+	const isJavaScript = $derived(
+		(projectsState.currentProject?.framework
+			? isJsFramework(projectsState.currentProject.framework)
+			: false) || isJsLanguage(occurrence?.attributes?.['telemetry.sdk.language'])
+	);
+	const isFlutter = $derived(projectsState.currentProject?.framework === 'flutter');
+	const isIOS = $derived(
+		projectsState.currentProject?.framework === 'ios' ||
+			['ios', 'swift'].includes(
+				(occurrence?.attributes?.['telemetry.sdk.language'] ?? '').toLowerCase()
+			)
+	);
+	const firstLineOfStackTrace = $derived(occurrence?.stackTrace.split('\n')[0] || 'Exception');
+	const hasMoreOccurrences = $derived(total > 10);
+	const subtitleText = $derived(
+		occurrence ? `Event from ${formatDateTime(occurrence.recordedAt, { timezone })}` : 'Loading...'
+	);
 
-    const isMessage = $derived(occurrence?.isMessage ?? false);
-    const isJavaScript = $derived(
-        (projectsState.currentProject?.framework
-            ? isJsFramework(projectsState.currentProject.framework)
-            : false) || isJsLanguage(occurrence?.attributes?.['telemetry.sdk.language'])
-    );
-    const isFlutter = $derived(projectsState.currentProject?.framework === 'flutter');
-    const isIOS = $derived(
-        projectsState.currentProject?.framework === 'ios' ||
-            ['ios', 'swift'].includes(
-                (occurrence?.attributes?.['telemetry.sdk.language'] ?? '').toLowerCase()
-            )
-    );
-    const firstLineOfStackTrace = $derived(occurrence?.stackTrace.split('\n')[0] || 'Exception');
-    const hasMoreOccurrences = $derived(total > 10);
-    const subtitleText = $derived(occurrence ? `Event from ${formatDateTime(occurrence.recordedAt, { timezone })}` : 'Loading...');
+	async function loadData() {
+		loading = true;
+		error = '';
+		notFound = false;
+		linkedTrace = null;
+		sessionRecording = null;
 
-    async function loadData() {
-        loading = true;
-        error = '';
-        notFound = false;
-        linkedTrace = null;
-        sessionRecording = null;
+		try {
+			// Load the specific exception by ID
+			const exceptionResponse = await api.post(
+				`/exception-stack-traces/by-id/${data.exceptionId}`,
+				data.recordedAt ? { recordedAt: data.recordedAt } : {},
+				{ projectId: projectsState.currentProjectId ?? undefined }
+			);
+			occurrence = exceptionResponse.exception;
+			sessionRecording = exceptionResponse.sessionRecording ?? null;
+			sessionId = exceptionResponse.sessionId ?? null;
 
-        try {
-            // Load the specific exception by ID
-            const exceptionResponse = await api.post(`/exception-stack-traces/by-id/${data.exceptionId}`, data.recordedAt ? { recordedAt: data.recordedAt } : {}, { projectId: projectsState.currentProjectId ?? undefined });
-            occurrence = exceptionResponse.exception;
-            sessionRecording = exceptionResponse.sessionRecording ?? null;
-            sessionId = exceptionResponse.sessionId ?? null;
+			if (!occurrence) {
+				notFound = true;
+				return;
+			}
 
-            if (!occurrence) {
-                notFound = true;
-                return;
-            }
+			// Load all occurrences for this hash (for the events table)
+			const response = await api.post(
+				`/exception-stack-traces/${data.exceptionHash}`,
+				{
+					pagination: {
+						page: 1,
+						pageSize: 10
+					}
+				},
+				{ projectId: projectsState.currentProjectId ?? undefined }
+			);
 
-            // Load all occurrences for this hash (for the events table)
-            const response = await api.post(`/exception-stack-traces/${data.exceptionHash}`, {
-                pagination: {
-                    page: 1,
-                    pageSize: 10
-                }
-            }, { projectId: projectsState.currentProjectId ?? undefined });
+			allOccurrences = response.occurrences || [];
+			total = response.pagination.total;
 
-            allOccurrences = response.occurrences || [];
-            total = response.pagination.total;
+			// Load linked trace if this occurrence has a traceId
+			if (occurrence.traceId) {
+				try {
+					const isTask = occurrence.traceType === 'task';
+					console.log('DEBUG linked trace:', {
+						traceId: occurrence.traceId,
+						traceType: occurrence.traceType,
+						isTask
+					});
+					const endpoint = isTask ? '/tasks' : '/endpoints';
+					const txResponse = await api.post(
+						`${endpoint}/${occurrence.traceId}`,
+						{},
+						{ projectId: projectsState.currentProjectId ?? undefined }
+					);
+					const txData = isTask ? txResponse.task : txResponse.endpoint;
+					if (txData) {
+						linkedTrace = {
+							id: txData.id,
+							endpoint: isTask ? txData.taskName : txData.endpoint,
+							duration: txData.duration,
+							statusCode: txData.statusCode || 0,
+							recordedAt: txData.recordedAt,
+							traceType: isTask ? 'task' : 'endpoint',
+							distributedTraceId: txData.distributedTraceId
+						};
+					}
+				} catch (txError) {
+					console.error('Failed to load linked trace:', {
+						error: txError,
+						traceId: occurrence.traceId,
+						traceType: occurrence.traceType
+					});
+				}
+			}
+		} catch (e: any) {
+			console.error(e);
+			if (e.status === 404) {
+				notFound = true;
+			} else {
+				error = e.message || 'Failed to load exception details';
+			}
+		} finally {
+			loading = false;
+		}
+	}
 
-            // Load linked trace if this occurrence has a traceId
-            if (occurrence.traceId) {
-                try {
-                    const isTask = occurrence.traceType === 'task';
-                    console.log('DEBUG linked trace:', {
-                        traceId: occurrence.traceId,
-                        traceType: occurrence.traceType,
-                        isTask
-                    });
-                    const endpoint = isTask ? '/tasks' : '/endpoints';
-                    const txResponse = await api.post(
-                        `${endpoint}/${occurrence.traceId}`,
-                        {},
-                        { projectId: projectsState.currentProjectId ?? undefined }
-                    );
-                    const txData = isTask ? txResponse.task : txResponse.endpoint;
-                    if (txData) {
-                        linkedTrace = {
-                            id: txData.id,
-                            endpoint: isTask ? txData.taskName : txData.endpoint,
-                            duration: txData.duration,
-                            statusCode: txData.statusCode || 0,
-                            recordedAt: txData.recordedAt,
-                            traceType: isTask ? 'task' : 'endpoint',
-                            distributedTraceId: txData.distributedTraceId
-                        };
-                    }
-                } catch (txError) {
-                    console.error('Failed to load linked trace:', {
-                        error: txError,
-                        traceId: occurrence.traceId,
-                        traceType: occurrence.traceType
-                    });
-                }
-            }
-        } catch (e: any) {
-            console.error(e);
-            if (e.status === 404) {
-                notFound = true;
-            } else {
-                error = e.message || 'Failed to load exception details';
-            }
-        } finally {
-            loading = false;
-        }
-    }
+	async function archiveIssue(resolvePages: boolean) {
+		archiving = true;
+		try {
+			await api.post(
+				'/exception-stack-traces/archive',
+				{ hashes: [data.exceptionHash], resolvePages },
+				{ projectId: projectsState.currentProjectId ?? undefined }
+			);
+			toast.success('Successfully archived the Issue');
+			goto(resolve('/issues'));
+		} catch (e: any) {
+			console.error('Archive failed:', e);
+			throw e;
+		} finally {
+			archiving = false;
+		}
+	}
 
-    async function archiveIssue(resolvePages: boolean) {
-        archiving = true;
-        try {
-            await api.post(
-                '/exception-stack-traces/archive',
-                { hashes: [data.exceptionHash], resolvePages },
-                { projectId: projectsState.currentProjectId ?? undefined }
-            );
-            toast.success('Successfully archived the Issue', { position: 'top-center' });
-            goto(resolve("/issues"));
-        } catch (e: any) {
-            console.error('Archive failed:', e);
-            throw e;
-        } finally {
-            archiving = false;
-        }
-    }
-
-    $effect(() => {
-        data.exceptionId;
-        loadData();
-    });
+	$effect(() => {
+		data.exceptionId;
+		loadData();
+	});
 </script>
 
 <div class="space-y-6">
-    <PageHeader
-        title={firstLineOfStackTrace}
-        subtitle={subtitleText}
-        onBack={createSmartBackHandler({ fallbackPath: resolve("/issues/[exceptionHash]", {exceptionHash: data.exceptionHash}) })}
-    />
+	<PageHeader
+		title={firstLineOfStackTrace}
+		subtitle={subtitleText}
+		onBack={createSmartBackHandler({
+			fallbackPath: resolve('/issues/[exceptionHash]', { exceptionHash: data.exceptionHash })
+		})}
+	/>
 
-    {#if loading && !occurrence}
-        <div class="flex items-center justify-center py-20">
-            <LoadingCircle size="xlg" />
-        </div>
-    {:else if notFound}
-        <ErrorDisplay
-            status={404}
-            title="Event Not Found"
-            description="The specific event you're looking for doesn't exist or may have been removed."
-            onBack={createSmartBackHandler({ fallbackPath: resolve('/issues/[exceptionHash]', {exceptionHash: data.exceptionHash}) })}
-            backLabel="Back to Exception"
-            onRetry={() => loadData()}
-        />
-    {:else if error}
-        <ErrorDisplay
-            status={400}
-            title="Something Went Wrong"
-            description={error}
-            onBack={createSmartBackHandler({ fallbackPath: resolve('/issues/[exceptionHash]', {exceptionHash: data.exceptionHash}) })}
-            backLabel="Back to Exception"
-            onRetry={() => loadData()}
-        />
-    {:else if occurrence}
-        <StackTraceCard
-            stackTrace={occurrence.stackTrace}
-            {isMessage}
-            {isJavaScript}
-            {isFlutter}
-            {isIOS}
-            bind:showArchiveDialog={showArchiveDialog}
-            bind:archiving={archiving}
-        />
+	{#if loading && !occurrence}
+		<div class="flex items-center justify-center py-20">
+			<LoadingCircle size="xlg" />
+		</div>
+	{:else if notFound}
+		<ErrorDisplay
+			status={404}
+			title="Event Not Found"
+			description="The specific event you're looking for doesn't exist or may have been removed."
+			onBack={createSmartBackHandler({
+				fallbackPath: resolve('/issues/[exceptionHash]', { exceptionHash: data.exceptionHash })
+			})}
+			backLabel="Back to Exception"
+			onRetry={() => loadData()}
+		/>
+	{:else if error}
+		<ErrorDisplay
+			status={400}
+			title="Something Went Wrong"
+			description={error}
+			onBack={createSmartBackHandler({
+				fallbackPath: resolve('/issues/[exceptionHash]', { exceptionHash: data.exceptionHash })
+			})}
+			backLabel="Back to Exception"
+			onRetry={() => loadData()}
+		/>
+	{:else if occurrence}
+		<StackTraceCard
+			stackTrace={occurrence.stackTrace}
+			{isMessage}
+			{isJavaScript}
+			{isFlutter}
+			{isIOS}
+			bind:showArchiveDialog
+			bind:archiving
+		/>
 
-        <EventCard
-            {occurrence}
-            {linkedTrace}
-            {sessionRecording}
-            {sessionId}
-            title="Event"
-            description="Details for this specific occurrence"
-        />
+		<EventCard
+			{occurrence}
+			{linkedTrace}
+			{sessionRecording}
+			{sessionId}
+			title="Event"
+			description="Details for this specific occurrence"
+		/>
 
-        <EventsTable
-            occurrences={allOccurrences}
-            exceptionHash={data.exceptionHash}
-            {total}
-            hasMore={hasMoreOccurrences}
-            showViewAll={true}
-            currentExceptionId={data.exceptionId}
-        />
-    {/if}
+		<EventsTable
+			occurrences={allOccurrences}
+			exceptionHash={data.exceptionHash}
+			{total}
+			hasMore={hasMoreOccurrences}
+			showViewAll={true}
+			currentExceptionId={data.exceptionId}
+		/>
+	{/if}
 </div>
 
-
 <ArchiveConfirmationDialog
-    open={showArchiveDialog}
-    onOpenChange={(open) => showArchiveDialog = open}
-    count={1}
-    hashes={[data.exceptionHash]}
-    onConfirm={archiveIssue}
+	open={showArchiveDialog}
+	onOpenChange={(open) => (showArchiveDialog = open)}
+	count={1}
+	hashes={[data.exceptionHash]}
+	onConfirm={archiveIssue}
 />

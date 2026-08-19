@@ -1,0 +1,282 @@
+package controllers
+
+import (
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"github.com/gin-gonic/gin"
+	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/app/middleware"
+	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+
+	traceway "go.tracewayapp.com"
+)
+
+type postMortemController struct{}
+
+const (
+	postMortemTitleMax   = 200
+	postMortemContentMax = 200_000
+	postMortemTagMax     = 50
+	postMortemMaxTags    = 20
+)
+
+const postMortemDuplicateMessage = "This incident already has a post-mortem."
+
+type postMortemRequest struct {
+	Title      string   `json:"title"`
+	ContentMd  string   `json:"contentMd"`
+	Tags       []string `json:"tags"`
+	IncidentId *int     `json:"incidentId"`
+}
+
+func normalizePostMortemTags(tags []string) (models.StringSlice, string) {
+	normalized := models.StringSlice{}
+	seen := map[string]bool{}
+	for _, tag := range tags {
+		tag = strings.ToLower(strings.TrimSpace(tag))
+		tag = strings.NewReplacer("\"", "", "\\", "", ",", "").Replace(tag)
+		if tag == "" || seen[tag] {
+			continue
+		}
+		if utf8.RuneCountInString(tag) > postMortemTagMax {
+			return nil, "Tags must be 50 characters or fewer."
+		}
+		seen[tag] = true
+		normalized = append(normalized, tag)
+	}
+	if len(normalized) > postMortemMaxTags {
+		return nil, "A post-mortem can have at most 20 tags."
+	}
+	return normalized, ""
+}
+
+func validatePostMortemRequest(req *postMortemRequest) (models.StringSlice, string) {
+	req.Title = strings.TrimSpace(req.Title)
+	if req.Title == "" {
+		return nil, "Title is required."
+	}
+	if utf8.RuneCountInString(req.Title) > postMortemTitleMax {
+		return nil, "Title must be 200 characters or fewer."
+	}
+	if len(req.ContentMd) > postMortemContentMax {
+		return nil, "Content must be 200KB or smaller."
+	}
+	return normalizePostMortemTags(req.Tags)
+}
+
+func checkIncidentLink(ctx *gin.Context, organizationId int, incidentId int) bool {
+	tx := db.GetTx(ctx)
+	incident, err := transactional.CheckIncidentRepository.FindByIdInOrganization(tx, incidentId, organizationId)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to load incident: %w", err))
+		return false
+	}
+	if incident == nil {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "The linked incident does not belong to this organization."})
+		return false
+	}
+	return true
+}
+
+func (ctrl *postMortemController) List(ctx *gin.Context) {
+	organizationId, ok := organizationIdFromPath(ctx)
+	if !ok {
+		return
+	}
+	search := strings.TrimSpace(ctx.Query("search"))
+	tags := []string{}
+	for _, tag := range ctx.QueryArray("tag") {
+		if tag = strings.ToLower(strings.TrimSpace(tag)); tag != "" {
+			tags = append(tags, tag)
+		}
+	}
+	page, pageSize := paginationFromQuery(ctx)
+
+	tx := db.GetTx(ctx)
+	items, err := transactional.PostMortemRepository.ListByOrganization(tx, organizationId, search, tags, pageSize, (page-1)*pageSize)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to list post-mortems: %w", err))
+		return
+	}
+	if items == nil {
+		items = []*models.PostMortemListItem{}
+	}
+	for _, item := range items {
+		if item.Tags == nil {
+			item.Tags = models.StringSlice{}
+		}
+	}
+	total, err := transactional.PostMortemRepository.CountByOrganization(tx, organizationId, search, tags)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to count post-mortems: %w", err))
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{
+		"data":       items,
+		"pagination": buildPagination(page, pageSize, total),
+	})
+}
+
+func (ctrl *postMortemController) Get(ctx *gin.Context) {
+	organizationId, ok := organizationIdFromPath(ctx)
+	if !ok {
+		return
+	}
+	id, err := strconv.Atoi(ctx.Param("id"))
+	if err != nil || id < 1 {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post-mortem id"})
+		return
+	}
+	tx := db.GetTx(ctx)
+	postMortem, err := transactional.PostMortemRepository.FindByIdForOrganization(tx, id, organizationId)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to load post-mortem: %w", err))
+		return
+	}
+	if postMortem == nil {
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "Post-mortem not found"})
+		return
+	}
+	if postMortem.Tags == nil {
+		postMortem.Tags = models.StringSlice{}
+	}
+	ctx.JSON(http.StatusOK, postMortem)
+}
+
+func (ctrl *postMortemController) Create(ctx *gin.Context) {
+	organizationId, ok := organizationIdFromPath(ctx)
+	if !ok {
+		return
+	}
+	var req postMortemRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+	tx := db.GetTx(ctx)
+	if !requireOrgWrite(ctx, tx, organizationId) {
+		return
+	}
+	tags, message := validatePostMortemRequest(&req)
+	if message != "" {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": message})
+		return
+	}
+	if req.IncidentId != nil && !checkIncidentLink(ctx, organizationId, *req.IncidentId) {
+		return
+	}
+
+	userId := middleware.GetUserId(ctx)
+	now := time.Now().UTC()
+	postMortem := &models.PostMortem{
+		OrganizationId: organizationId,
+		IncidentId:     req.IncidentId,
+		Title:          req.Title,
+		ContentMd:      req.ContentMd,
+		Tags:           tags,
+		CreatedBy:      &userId,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	id, err := transactional.PostMortemRepository.Create(tx, postMortem)
+	if err != nil {
+		if db.IsUniqueViolation(err) {
+			ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": postMortemDuplicateMessage})
+			return
+		}
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to create post-mortem: %w", err))
+		return
+	}
+	postMortem.Id = id
+	ctx.JSON(http.StatusCreated, postMortem)
+}
+
+func (ctrl *postMortemController) Update(ctx *gin.Context) {
+	organizationId, ok := organizationIdFromPath(ctx)
+	if !ok {
+		return
+	}
+	id, err := strconv.Atoi(ctx.Param("id"))
+	if err != nil || id < 1 {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post-mortem id"})
+		return
+	}
+	var req postMortemRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+	tx := db.GetTx(ctx)
+	if !requireOrgWrite(ctx, tx, organizationId) {
+		return
+	}
+	postMortem, err := transactional.PostMortemRepository.FindByIdForOrganization(tx, id, organizationId)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to load post-mortem: %w", err))
+		return
+	}
+	if postMortem == nil {
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "Post-mortem not found"})
+		return
+	}
+	tags, message := validatePostMortemRequest(&req)
+	if message != "" {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": message})
+		return
+	}
+	if req.IncidentId != nil && !checkIncidentLink(ctx, organizationId, *req.IncidentId) {
+		return
+	}
+
+	postMortem.IncidentId = req.IncidentId
+	postMortem.Title = req.Title
+	postMortem.ContentMd = req.ContentMd
+	postMortem.Tags = tags
+	postMortem.UpdatedAt = time.Now().UTC()
+	if err := transactional.PostMortemRepository.Update(tx, postMortem); err != nil {
+		if db.IsUniqueViolation(err) {
+			ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": postMortemDuplicateMessage})
+			return
+		}
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to update post-mortem: %w", err))
+		return
+	}
+	ctx.JSON(http.StatusOK, postMortem)
+}
+
+func (ctrl *postMortemController) Delete(ctx *gin.Context) {
+	organizationId, ok := organizationIdFromPath(ctx)
+	if !ok {
+		return
+	}
+	id, err := strconv.Atoi(ctx.Param("id"))
+	if err != nil || id < 1 {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post-mortem id"})
+		return
+	}
+	tx := db.GetTx(ctx)
+	if !requireOrgWrite(ctx, tx, organizationId) {
+		return
+	}
+	postMortem, err := transactional.PostMortemRepository.FindByIdForOrganization(tx, id, organizationId)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to load post-mortem: %w", err))
+		return
+	}
+	if postMortem == nil {
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "Post-mortem not found"})
+		return
+	}
+	if err := transactional.PostMortemRepository.Delete(tx, id, organizationId); err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to delete post-mortem: %w", err))
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+var PostMortemController = postMortemController{}

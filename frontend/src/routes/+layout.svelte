@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import './layout.css';
 	import { goto, afterNavigate } from '$app/navigation';
 	import { authState } from '$lib/state/auth.svelte';
@@ -18,7 +19,7 @@
 	import { WarningCallout } from '$lib/components/ui/warning-callout';
 	import { onMount } from 'svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
-	import { ChevronDown } from 'lucide-svelte';
+	import { ChevronDown } from '@lucide/svelte';
 	import { Toaster, toast } from 'svelte-sonner';
 	import { page } from '$app/state';
 	import { setupTraceway } from '@tracewayapp/svelte';
@@ -37,7 +38,8 @@
 	let showEditProjectModal = $state(false);
 	let showCommandPalette = $state(false);
 
-	const isMacPlatform = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform);
+	const isMacPlatform =
+		typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform);
 
 	function handleGlobalKeydown(e: KeyboardEvent) {
 		if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -160,7 +162,7 @@
 		) {
 			const canonical = new URL(newUrl);
 			canonical.searchParams.set('projectId', projectsState.currentProjectId);
-			goto(canonical.pathname + canonical.search, {
+			goto(resolve(canonical.pathname + canonical.search), {
 				replaceState: true,
 				noScroll: true,
 				keepFocus: true
@@ -188,17 +190,17 @@
 
 	function handleLogout() {
 		authState.logout();
-		goto('/login');
+		goto(resolve('/login'));
 	}
 
 	function handleProjectSelect(projectId: string) {
-		goto(`/?projectId=${projectId}`);
+		goto(resolve(`/?projectId=${projectId}`));
 	}
 
 	function handleAddProjectClick() {
 		const orgs = authState.organizations;
 		if (orgs.length > 0 && orgs.every((o) => o.role === 'readonly')) {
-			toast.error("You're not authorized to perform that action", { position: 'top-center' });
+			toast.error("You're not authorized to perform that action");
 			return;
 		}
 		showAddProjectModal = true;
@@ -207,7 +209,7 @@
 	function handleProjectCreated() {
 		showAddProjectModal = false;
 		// Optionally navigate to connection page to show token
-		goto('/connection');
+		goto(resolve('/connection'));
 	}
 
 	const multiOrg = $derived(authState.organizations.length > 1);
@@ -251,123 +253,131 @@
 {/snippet}
 
 <Tooltip.Provider delayDuration={0}>
-<!-- This is not ideal, but because our layout is a top level route it can end up showing sidebar on the login page (after the login before the transition). -->
-<!-- We could consider moving this to a lower level layout for the actual app, for now it's just a path check -->
-{#if authState.isAuthenticated && !isPublicPath(page.url.pathname)}
-	<Sidebar.SidebarProvider
-		bind:open={sidebarOpen}
-		onOpenChange={(open) => localStorage.setItem(SIDEBAR_OPEN_KEY, String(open))}
-	>
-		<AppSidebar />
-		<Sidebar.SidebarInset>
-			<header class="flex h-12 shrink-0 items-center gap-2 border-b bg-white px-2 dark:bg-transparent">
-				<Sidebar.SidebarTrigger />
-				<div class="h-4 w-px bg-border"></div>
-				<h1 class="text-lg font-semibold">
-					<DropdownMenu.Root>
-						<DropdownMenu.Trigger
-							class="flex flex-row items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-accent hover:text-accent-foreground"
-						>
-							{#if projectsState.currentProject}
-								<FrameworkIcon framework={projectsState.currentProject.framework} class="size-6 shrink-0" />
-							{/if}
-							<span>{projectsState.currentProject?.name || 'Select Project'}</span>
-							<ChevronDown size={16} />
-						</DropdownMenu.Trigger>
-						<DropdownMenu.Content align="start" class="w-56">
-							{#if multiOrg}
-								{#each groupedProjects as group (group.key)}
+	<!-- This is not ideal, but because our layout is a top level route it can end up showing sidebar on the login page (after the login before the transition). -->
+	<!-- We could consider moving this to a lower level layout for the actual app, for now it's just a path check -->
+	{#if authState.isAuthenticated && !isPublicPath(page.url.pathname)}
+		<Sidebar.SidebarProvider
+			bind:open={sidebarOpen}
+			onOpenChange={(open) => localStorage.setItem(SIDEBAR_OPEN_KEY, String(open))}
+		>
+			<AppSidebar />
+			<Sidebar.SidebarInset>
+				<header
+					class="flex h-12 shrink-0 items-center gap-2 border-b bg-white px-2 dark:bg-transparent"
+				>
+					<Sidebar.SidebarTrigger />
+					<div class="h-4 w-px bg-border"></div>
+					<div class="text-lg font-semibold">
+						<DropdownMenu.Root>
+							<DropdownMenu.Trigger
+								class="flex flex-row items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-accent hover:text-accent-foreground"
+							>
+								{#if projectsState.currentProject}
+									<FrameworkIcon
+										framework={projectsState.currentProject.framework}
+										class="size-6 shrink-0"
+									/>
+								{/if}
+								<span>{projectsState.currentProject?.name || 'Select Project'}</span>
+								<ChevronDown size={16} />
+							</DropdownMenu.Trigger>
+							<DropdownMenu.Content align="start" class="w-56">
+								{#if multiOrg}
+									{#each groupedProjects as group (group.key)}
+										<DropdownMenu.Group>
+											<DropdownMenu.Label class="text-xs text-muted-foreground uppercase"
+												>{group.name}</DropdownMenu.Label
+											>
+											{#each group.projects as project (project.id)}
+												{@render projectItem(project, true)}
+											{/each}
+										</DropdownMenu.Group>
+									{/each}
+								{:else}
 									<DropdownMenu.Group>
-										<DropdownMenu.Label class="text-xs text-muted-foreground uppercase">{group.name}</DropdownMenu.Label>
-										{#each group.projects as project (project.id)}
-											{@render projectItem(project, true)}
+										<DropdownMenu.Label>Projects</DropdownMenu.Label>
+										<DropdownMenu.Separator />
+										{#each projectsState.projects as project (project.id)}
+											{@render projectItem(project, false)}
 										{/each}
 									</DropdownMenu.Group>
-								{/each}
-							{:else}
-								<DropdownMenu.Group>
-									<DropdownMenu.Label>Projects</DropdownMenu.Label>
-									<DropdownMenu.Separator />
-									{#each projectsState.projects as project (project.id)}
-										{@render projectItem(project, false)}
-									{/each}
-								</DropdownMenu.Group>
-							{/if}
-							{#if projectsState.projects.length === 0}
-								<DropdownMenu.Item disabled>No projects yet</DropdownMenu.Item>
-							{/if}
-							<DropdownMenu.Separator />
-							{#if projectsState.canManageCurrentProject}
-								<DropdownMenu.Item onclick={() => showEditProjectModal = true} class="cursor-pointer">
-									<Pencil class="mr-2 h-4 w-4" />
-									Edit Project
+								{/if}
+								{#if projectsState.projects.length === 0}
+									<DropdownMenu.Item disabled>No projects yet</DropdownMenu.Item>
+								{/if}
+								<DropdownMenu.Separator />
+								{#if projectsState.canManageCurrentProject}
+									<DropdownMenu.Item
+										onclick={() => (showEditProjectModal = true)}
+										class="cursor-pointer"
+									>
+										<Pencil class="mr-2 h-4 w-4" />
+										Edit Project
+									</DropdownMenu.Item>
+								{/if}
+								<DropdownMenu.Item onclick={handleAddProjectClick} class="cursor-pointer">
+									<Plus class="mr-2 h-4 w-4" />
+									Add Project
 								</DropdownMenu.Item>
-							{/if}
-							<DropdownMenu.Item onclick={handleAddProjectClick} class="cursor-pointer">
-								<Plus class="mr-2 h-4 w-4" />
-								Add Project
-							</DropdownMenu.Item>
-						</DropdownMenu.Content>
-					</DropdownMenu.Root>
-				</h1>
-				<div class="ml-auto flex items-center gap-2">
-					<Button
-						variant="ghost"
-						size="icon"
-						onclick={toggleTheme}
-						title={themeState.isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-					>
-						{#if themeState.isDark}
-							<Sun class="h-5 w-5" />
-						{:else}
-							<Moon class="h-5 w-5" />
-						{/if}
-					</Button>
-					<Button variant="ghost" size="icon" onclick={handleLogout} title="Logout">
-						<LogOut class="h-5 w-5" />
-					</Button>
-				</div>
-			</header>
-			<main class="min-w-0 flex-1 p-4">
-				{#if timezoneMismatch}
-					<WarningCallout
-						class="mb-4"
-						title="Your browser's timezone differs from the organization's"
-					>
-						All times are shown in the organization's timezone ({zoneLabel(orgZone)}). Your
-						browser is on {zoneLabel(browserZone)}.
-					</WarningCallout>
-				{/if}
-				{#if CrossSiteNotificationBanner && bannerOrganizationId !== null}
-					<div class="mb-4">
-						<CrossSiteNotificationBanner organizationId={bannerOrganizationId} />
+							</DropdownMenu.Content>
+						</DropdownMenu.Root>
 					</div>
-				{/if}
-				{@render children()}
-			</main>
-		</Sidebar.SidebarInset>
-	</Sidebar.SidebarProvider>
+					<div class="ml-auto flex items-center gap-2">
+						<Button
+							variant="ghost"
+							size="icon"
+							onclick={toggleTheme}
+							title={themeState.isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+						>
+							{#if themeState.isDark}
+								<Sun class="h-5 w-5" />
+							{:else}
+								<Moon class="h-5 w-5" />
+							{/if}
+						</Button>
+						<Button variant="ghost" size="icon" onclick={handleLogout} title="Logout">
+							<LogOut class="h-5 w-5" />
+						</Button>
+					</div>
+				</header>
+				<main class="min-w-0 flex-1 p-4">
+					{#if timezoneMismatch}
+						<WarningCallout
+							class="mb-4"
+							title="Your browser's timezone differs from the organization's"
+						>
+							All times are shown in the organization's timezone ({zoneLabel(orgZone)}). Your
+							browser is on {zoneLabel(browserZone)}.
+						</WarningCallout>
+					{/if}
+					{#if CrossSiteNotificationBanner && bannerOrganizationId !== null}
+						<div class="mb-4">
+							<CrossSiteNotificationBanner organizationId={bannerOrganizationId} />
+						</div>
+					{/if}
+					{@render children()}
+				</main>
+			</Sidebar.SidebarInset>
+		</Sidebar.SidebarProvider>
 
-	<AddProjectModal
-		open={showAddProjectModal}
-		onOpenChange={(open) => (showAddProjectModal = open)}
-		onProjectCreated={handleProjectCreated}
-	/>
+		<AddProjectModal
+			open={showAddProjectModal}
+			onOpenChange={(open) => (showAddProjectModal = open)}
+			onProjectCreated={handleProjectCreated}
+		/>
 
-	<EditProjectModal
-		open={showEditProjectModal}
-		onOpenChange={(open) => (showEditProjectModal = open)}
-		project={projectsState.currentProject}
-	/>
+		<EditProjectModal
+			open={showEditProjectModal}
+			onOpenChange={(open) => (showEditProjectModal = open)}
+			project={projectsState.currentProject}
+		/>
 
-	<DashboardCommand bind:open={showCommandPalette} />
+		<DashboardCommand bind:open={showCommandPalette} />
 
-	<Toaster position="bottom-right" />
-{:else}
-	{#if isPublicPath(page.url.pathname)}
+		<Toaster position="top-center" />
+	{:else if isPublicPath(page.url.pathname)}
 		<main class="h-screen w-screen">
 			{@render children()}
 		</main>
 	{/if}
-{/if}
 </Tooltip.Provider>

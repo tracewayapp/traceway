@@ -62,9 +62,7 @@
 	function populateFromTeam(t: Team) {
 		name = t.name;
 		description = t.description;
-		selectedUserIds = [...t.members]
-			.sort((a, b) => a.position - b.position)
-			.map((m) => m.userId);
+		selectedUserIds = [...t.members].sort((a, b) => a.position - b.position).map((m) => m.userId);
 		selectedProjectIds = t.projects.map((p) => p.projectId);
 		error = '';
 	}
@@ -181,7 +179,9 @@
 				{:else}
 					<div class="max-h-44 space-y-1 overflow-y-auto rounded-md border p-2">
 						{#each members as member (member.id)}
-							<label class="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-accent">
+							<label
+								class="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-accent"
+							>
 								<Checkbox
 									checked={selectedUserIds.includes(member.id)}
 									onCheckedChange={(checked) => toggleMember(member.id, checked === true)}
@@ -245,7 +245,9 @@
 				{:else}
 					<div class="max-h-36 space-y-1 overflow-y-auto rounded-md border p-2">
 						{#each orgProjects as project (project.id)}
-							<label class="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-accent">
+							<label
+								class="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-accent"
+							>
 								<Checkbox
 									checked={selectedProjectIds.includes(project.id)}
 									onCheckedChange={(checked) => toggleProject(project.id, checked === true)}

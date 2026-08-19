@@ -1,15 +1,15 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
-	import { Copy, Check, KeyRound, RefreshCw } from 'lucide-svelte';
+	import { KeyRound, RefreshCw } from '@lucide/svelte';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import { toast } from 'svelte-sonner';
-	import Highlight from 'svelte-highlight';
 	import javascript from 'svelte-highlight/languages/javascript';
 	import typescript from 'svelte-highlight/languages/typescript';
 	import bash from 'svelte-highlight/languages/bash';
-	import { themeState } from '$lib/state/theme.svelte';
+	import CopyButton from '$lib/components/traceway/copy-button.svelte';
+	import CopyableCodeBlock from '$lib/components/setup/copyable-code-block.svelte';
 	import { projectsState, isProjectReadonly } from '$lib/state/projects.svelte';
 
 	type Bundler = 'vite' | 'rollup' | 'webpack';
@@ -71,16 +71,6 @@ module.exports = {
 
 	let bundler = $state<Bundler>('vite');
 	let generatingToken = $state(false);
-	let copiedToken = $state(false);
-	let copiedPluginInstall = $state(false);
-	let copiedBundlerConfig = $state(false);
-	let copiedCommand = $state(false);
-	let copiedFlutterBuild = $state(false);
-	let copiedFlutterUpload = $state(false);
-	let copiedIosBuild = $state(false);
-	let copiedIosUpload = $state(false);
-	let copiedAndroidSetup = $state(false);
-	let copiedAndroidUpload = $state(false);
 
 	const pluginInstallCommand = 'npm install -D @tracewayapp/bundler-plugin';
 
@@ -163,71 +153,10 @@ traceway {
 		try {
 			await projectsState.generateSourceMapToken();
 			regenerateDialogOpen = false;
-			toast.success('Successfully regenerated the Upload Token', { position: 'top-center' });
+			toast.success('Successfully regenerated the Upload Token');
 		} finally {
 			generatingToken = false;
 		}
-	}
-
-	async function copyToken() {
-		if (!sourceMapToken) return;
-		await navigator.clipboard.writeText(sourceMapToken);
-		copiedToken = true;
-		setTimeout(() => (copiedToken = false), 2000);
-	}
-
-	async function copyPluginInstall() {
-		await navigator.clipboard.writeText(pluginInstallCommand);
-		copiedPluginInstall = true;
-		setTimeout(() => (copiedPluginInstall = false), 2000);
-	}
-
-	async function copyBundlerConfig() {
-		await navigator.clipboard.writeText(bundlerConfigs[bundler].code);
-		copiedBundlerConfig = true;
-		setTimeout(() => (copiedBundlerConfig = false), 2000);
-	}
-
-	async function copyUploadCommand() {
-		await navigator.clipboard.writeText(uploadCommand);
-		copiedCommand = true;
-		setTimeout(() => (copiedCommand = false), 2000);
-	}
-
-	async function copyFlutterBuild() {
-		await navigator.clipboard.writeText(flutterBuildCommand);
-		copiedFlutterBuild = true;
-		setTimeout(() => (copiedFlutterBuild = false), 2000);
-	}
-
-	async function copyFlutterUpload() {
-		await navigator.clipboard.writeText(flutterUploadCommand);
-		copiedFlutterUpload = true;
-		setTimeout(() => (copiedFlutterUpload = false), 2000);
-	}
-
-	async function copyIosBuild() {
-		await navigator.clipboard.writeText(iosBuildCommand);
-		copiedIosBuild = true;
-		setTimeout(() => (copiedIosBuild = false), 2000);
-	}
-
-	async function copyIosUpload() {
-		await navigator.clipboard.writeText(iosUploadCommand);
-		copiedIosUpload = true;
-		setTimeout(() => (copiedIosUpload = false), 2000);
-	}
-
-	async function copyAndroidSetup() {
-		await navigator.clipboard.writeText(androidSetupSnippet);
-		copiedAndroidSetup = true;
-		setTimeout(() => (copiedAndroidSetup = false), 2000);
-	}
-
-	async function copyAndroidUpload() {
-		await navigator.clipboard.writeText(androidUploadCommand);
-		copiedAndroidUpload = true;
-		setTimeout(() => (copiedAndroidUpload = false), 2000);
 	}
 </script>
 
@@ -239,13 +168,7 @@ traceway {
 				<code class="flex-1 rounded-md bg-muted px-3 py-2 font-mono text-sm break-all"
 					>{sourceMapToken}</code
 				>
-				<Button variant="outline" size="sm" onclick={copyToken}>
-					{#if copiedToken}
-						<Check class="h-4 w-4 text-green-500" />
-					{:else}
-						<Copy class="h-4 w-4" />
-					{/if}
-				</Button>
+				<CopyButton text={sourceMapToken ?? ''} />
 				<Button
 					variant="destructiveOutline"
 					size="sm"
@@ -259,26 +182,7 @@ traceway {
 		{#if isFlutter}
 			<div>
 				<p class="mb-2 text-sm font-medium">Step 1: Build with obfuscation enabled</p>
-				<div class="relative">
-					<div class="absolute top-2 right-2 z-10">
-						<Button variant="outline" size="sm" onclick={copyFlutterBuild}>
-							{#if copiedFlutterBuild}
-								<Check class="mr-2 h-4 w-4 text-green-500" />
-								Copied!
-							{:else}
-								<Copy class="mr-2 h-4 w-4" />
-								Copy
-							{/if}
-						</Button>
-					</div>
-					<div
-						class="overflow-x-auto rounded-md text-sm {themeState.isDark
-							? 'dark-code'
-							: 'light-code'}"
-					>
-						<Highlight language={bash} code={flutterBuildCommand} />
-					</div>
-				</div>
+				<CopyableCodeBlock code={flutterBuildCommand} language={bash} />
 				<p class="mt-2 text-xs text-muted-foreground">
 					This writes a per-architecture .symbols file into build/symbols. The example builds an
 					Android APK; other targets emit their own symbol files in the same directory.
@@ -286,26 +190,7 @@ traceway {
 			</div>
 			<div>
 				<p class="mb-2 text-sm font-medium">Step 2: Upload the symbols after each release build</p>
-				<div class="relative">
-					<div class="absolute top-2 right-2 z-10">
-						<Button variant="outline" size="sm" onclick={copyFlutterUpload}>
-							{#if copiedFlutterUpload}
-								<Check class="mr-2 h-4 w-4 text-green-500" />
-								Copied!
-							{:else}
-								<Copy class="mr-2 h-4 w-4" />
-								Copy
-							{/if}
-						</Button>
-					</div>
-					<div
-						class="overflow-x-auto rounded-md text-sm {themeState.isDark
-							? 'dark-code'
-							: 'light-code'}"
-					>
-						<Highlight language={bash} code={flutterUploadCommand} />
-					</div>
-				</div>
+				<CopyableCodeBlock code={flutterUploadCommand} language={bash} />
 				<p class="mt-2 text-xs text-muted-foreground">
 					Run from your project root after each release. The uploader auto-discovers build/symbols
 					and pushes every architecture in one go; symbols are unique per build, so re-upload on
@@ -317,26 +202,7 @@ traceway {
 		{:else if isIOS}
 			<div>
 				<p class="mb-2 text-sm font-medium">Step 1: Build an archive with dSYMs</p>
-				<div class="relative">
-					<div class="absolute top-2 right-2 z-10">
-						<Button variant="outline" size="sm" onclick={copyIosBuild}>
-							{#if copiedIosBuild}
-								<Check class="mr-2 h-4 w-4 text-green-500" />
-								Copied!
-							{:else}
-								<Copy class="mr-2 h-4 w-4" />
-								Copy
-							{/if}
-						</Button>
-					</div>
-					<div
-						class="overflow-x-auto rounded-md text-sm {themeState.isDark
-							? 'dark-code'
-							: 'light-code'}"
-					>
-						<Highlight language={bash} code={iosBuildCommand} />
-					</div>
-				</div>
+				<CopyableCodeBlock code={iosBuildCommand} language={bash} />
 				<p class="mt-2 text-xs text-muted-foreground">
 					Release builds emit a .dSYM bundle per architecture under the archive's dSYMs directory.
 					Replace MyApp with your scheme name.
@@ -344,26 +210,7 @@ traceway {
 			</div>
 			<div>
 				<p class="mb-2 text-sm font-medium">Step 2: Upload the dSYM after each release build</p>
-				<div class="relative">
-					<div class="absolute top-2 right-2 z-10">
-						<Button variant="outline" size="sm" onclick={copyIosUpload}>
-							{#if copiedIosUpload}
-								<Check class="mr-2 h-4 w-4 text-green-500" />
-								Copied!
-							{:else}
-								<Copy class="mr-2 h-4 w-4" />
-								Copy
-							{/if}
-						</Button>
-					</div>
-					<div
-						class="overflow-x-auto rounded-md text-sm {themeState.isDark
-							? 'dark-code'
-							: 'light-code'}"
-					>
-						<Highlight language={bash} code={iosUploadCommand} />
-					</div>
-				</div>
+				<CopyableCodeBlock code={iosUploadCommand} language={bash} />
 				<p class="mt-2 text-xs text-muted-foreground">
 					Upload the Mach-O DWARF inside the .dSYM bundle. Symbols are keyed by build UUID, so
 					re-upload on each release.
@@ -372,26 +219,7 @@ traceway {
 		{:else if isAndroid}
 			<div>
 				<p class="mb-2 text-sm font-medium">Step 1: Apply the Traceway symbols Gradle plugin</p>
-				<div class="relative">
-					<div class="absolute top-2 right-2 z-10">
-						<Button variant="outline" size="sm" onclick={copyAndroidSetup}>
-							{#if copiedAndroidSetup}
-								<Check class="mr-2 h-4 w-4 text-green-500" />
-								Copied!
-							{:else}
-								<Copy class="mr-2 h-4 w-4" />
-								Copy
-							{/if}
-						</Button>
-					</div>
-					<div
-						class="overflow-x-auto rounded-md text-sm {themeState.isDark
-							? 'dark-code'
-							: 'light-code'}"
-					>
-						<Highlight language={javascript} code={androidSetupSnippet} />
-					</div>
-				</div>
+				<CopyableCodeBlock code={androidSetupSnippet} language={javascript} />
 				<p class="mt-2 text-xs text-muted-foreground">
 					Add to your app module's <code class="font-mono">build.gradle.kts</code>. The plugin
 					embeds a ProGuard UUID into BuildConfig (matching Honeycomb's
@@ -401,26 +229,7 @@ traceway {
 			</div>
 			<div>
 				<p class="mb-2 text-sm font-medium">Step 2: Build and upload after each release</p>
-				<div class="relative">
-					<div class="absolute top-2 right-2 z-10">
-						<Button variant="outline" size="sm" onclick={copyAndroidUpload}>
-							{#if copiedAndroidUpload}
-								<Check class="mr-2 h-4 w-4 text-green-500" />
-								Copied!
-							{:else}
-								<Copy class="mr-2 h-4 w-4" />
-								Copy
-							{/if}
-						</Button>
-					</div>
-					<div
-						class="overflow-x-auto rounded-md text-sm {themeState.isDark
-							? 'dark-code'
-							: 'light-code'}"
-					>
-						<Highlight language={bash} code={androidUploadCommand} />
-					</div>
-				</div>
+				<CopyableCodeBlock code={androidUploadCommand} language={bash} />
 				<p class="mt-2 text-xs text-muted-foreground">
 					Uploads the R8 <code class="font-mono">mapping.txt</code> and the unstripped native
 					<code class="font-mono">.so</code> libraries. Native symbols are keyed by GNU build-id, so re-upload
@@ -431,26 +240,7 @@ traceway {
 			{#if showBundlerSetup}
 				<div>
 					<p class="mb-2 text-sm font-medium">Step 1: Install the bundler plugin</p>
-					<div class="relative">
-						<div class="absolute top-2 right-2 z-10">
-							<Button variant="outline" size="sm" onclick={copyPluginInstall}>
-								{#if copiedPluginInstall}
-									<Check class="mr-2 h-4 w-4 text-green-500" />
-									Copied!
-								{:else}
-									<Copy class="mr-2 h-4 w-4" />
-									Copy
-								{/if}
-							</Button>
-						</div>
-						<div
-							class="overflow-x-auto rounded-md text-sm {themeState.isDark
-								? 'dark-code'
-								: 'light-code'}"
-						>
-							<Highlight language={bash} code={pluginInstallCommand} />
-						</div>
-					</div>
+					<CopyableCodeBlock code={pluginInstallCommand} language={bash} />
 				</div>
 				<div>
 					<p class="mb-2 text-sm font-medium">Step 2: Add the plugin to your bundler</p>
@@ -469,55 +259,17 @@ traceway {
 					<p class="mb-2 font-mono text-xs text-muted-foreground">
 						{bundlerConfigs[bundler].file}
 					</p>
-					<div class="relative">
-						<div class="absolute top-2 right-2 z-10">
-							<Button variant="outline" size="sm" onclick={copyBundlerConfig}>
-								{#if copiedBundlerConfig}
-									<Check class="mr-2 h-4 w-4 text-green-500" />
-									Copied!
-								{:else}
-									<Copy class="mr-2 h-4 w-4" />
-									Copy
-								{/if}
-							</Button>
-						</div>
-						<div
-							class="overflow-x-auto rounded-md text-sm {themeState.isDark
-								? 'dark-code'
-								: 'light-code'}"
-						>
-							<Highlight
-								language={bundlerConfigs[bundler].language}
-								code={bundlerConfigs[bundler].code}
-							/>
-						</div>
-					</div>
+					<CopyableCodeBlock
+						code={bundlerConfigs[bundler].code}
+						language={bundlerConfigs[bundler].language}
+					/>
 				</div>
 			{/if}
 			<div>
 				<p class="mb-2 text-sm font-medium">
 					{showBundlerSetup ? 'Step 3: Upload after your production build' : 'Usage'}
 				</p>
-				<div class="relative">
-					<div class="absolute top-2 right-2 z-10">
-						<Button variant="outline" size="sm" onclick={copyUploadCommand}>
-							{#if copiedCommand}
-								<Check class="mr-2 h-4 w-4 text-green-500" />
-								Copied!
-							{:else}
-								<Copy class="mr-2 h-4 w-4" />
-								Copy
-							{/if}
-						</Button>
-					</div>
-					<div
-						class="overflow-x-auto rounded-md text-sm {themeState.isDark
-							? 'dark-code'
-							: 'light-code'}"
-					>
-						<Highlight language={bash} code={uploadCommand} />
-					</div>
-				</div>
+				<CopyableCodeBlock code={uploadCommand} language={bash} />
 			</div>
 		{/if}
 	</div>

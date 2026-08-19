@@ -45,9 +45,7 @@
 		});
 	});
 
-	const names = $derived(
-		(oncall?.oncall ?? []).map((u) => u.name || u.email).join(', ')
-	);
+	const names = $derived((oncall?.oncall ?? []).map((u) => u.name || u.email).join(', '));
 </script>
 
 {#if oncall?.team}

@@ -16,7 +16,12 @@ function sortTree(node: FlameGraphNode): void {
 }
 
 export function collapseRecursion(node: FlameGraphNode): FlameGraphNode {
-	const out: FlameGraphNode = { name: node.name, value: node.value, self: node.self ?? 0, children: [] };
+	const out: FlameGraphNode = {
+		name: node.name,
+		value: node.value,
+		self: node.self ?? 0,
+		children: []
+	};
 	const byName = new Map<string, FlameGraphNode>();
 
 	const addChild = (c: FlameGraphNode) => {

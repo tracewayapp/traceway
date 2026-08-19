@@ -102,12 +102,21 @@ func ProcessOutcome(ctx context.Context, run *models.CheckRun, claimedBy string,
 			}
 			if open == nil {
 				incident := &models.CheckIncident{
-					CheckId:      check.Id,
-					ProjectId:    check.ProjectId,
+					CheckId:      &check.Id,
+					ProjectId:    &check.ProjectId,
 					StartedAt:    outcome.ExecutedAt,
 					ErrorMessage: outcome.ErrorMsg,
 				}
-				if _, err := transactional.CheckIncidentRepository.Open(tx, incident); err != nil {
+				incidentId, err := transactional.CheckIncidentRepository.Open(tx, incident)
+				if err != nil {
+					return res, err
+				}
+				update := &models.IncidentUpdate{
+					IncidentId: incidentId,
+					Status:     models.IncidentUpdateInvestigating,
+					CreatedAt:  outcome.ExecutedAt,
+				}
+				if _, err := transactional.IncidentUpdateRepository.Create(tx, update); err != nil {
 					return res, err
 				}
 			}
@@ -119,6 +128,14 @@ func ProcessOutcome(ctx context.Context, run *models.CheckRun, claimedBy string,
 			}
 			if open != nil {
 				if err := transactional.CheckIncidentRepository.Resolve(tx, open.Id, outcome.ExecutedAt); err != nil {
+					return res, err
+				}
+				update := &models.IncidentUpdate{
+					IncidentId: open.Id,
+					Status:     models.IncidentUpdateResolved,
+					CreatedAt:  outcome.ExecutedAt,
+				}
+				if _, err := transactional.IncidentUpdateRepository.Create(tx, update); err != nil {
 					return res, err
 				}
 			}

@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { cn } from "$lib/utils.js";
-	import * as Table from "$lib/components/ui/table/index.js";
+	import { cn } from '$lib/utils.js';
+	import * as Table from '$lib/components/ui/table/index.js';
 
 	let {
 		colspan,
-		message = "No data found.",
+		message = 'No data found.',
 		class: className
 	}: {
 		colspan: number;
@@ -14,7 +14,13 @@
 </script>
 
 <Table.Row>
-	<Table.Cell {colspan} class={cn("h-45 px-6 text-center text-muted-foreground whitespace-normal break-words", className)}>
+	<Table.Cell
+		{colspan}
+		class={cn(
+			'h-45 px-6 text-center break-words whitespace-normal text-muted-foreground',
+			className
+		)}
+	>
 		{message}
 	</Table.Cell>
 </Table.Row>

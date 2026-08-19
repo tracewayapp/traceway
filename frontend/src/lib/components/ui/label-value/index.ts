@@ -1,3 +1,3 @@
-import LabelValue from "./label-value.svelte";
+import LabelValue from './label-value.svelte';
 
 export { LabelValue };

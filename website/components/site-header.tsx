@@ -67,7 +67,7 @@ const PILLARS: NavItem[] = [
   },
   {
     title: "Monitors",
-    description: "HTTP, TCP, and browser uptime checks with status pages.",
+    description: "Uptime checks, status pages, incidents, and post-mortems.",
     href: "/product/monitors",
     icon: Radar,
   },

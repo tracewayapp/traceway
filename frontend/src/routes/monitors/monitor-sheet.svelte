@@ -10,9 +10,10 @@
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { CodeEditor } from '$lib/components/ui/code-editor';
 	import KeyValueRows from '$lib/components/synthetics/key-value-rows.svelte';
+	import { underlineTabTriggerClass, underlineTabListClass } from '$lib/utils/tabs';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import type { SyntheticCheck, CheckConfig, CheckType } from '$lib/state/monitors.svelte';
-	import { Check, Globe, Plus } from '@lucide/svelte';
+	import { Check, Plus } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -26,9 +27,6 @@
 	const isEditing = $derived(check !== null);
 	let loading = $state(false);
 	let error = $state('');
-
-	const tabTriggerClass =
-		'-mb-px shrink-0 rounded-none border-b-2 border-transparent bg-transparent px-0 pb-2.5 pt-0 text-sm font-medium text-muted-foreground shadow-none transition-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none';
 
 	// Common fields
 	let name = $state('');
@@ -342,7 +340,7 @@ test('page loads', async ({ page }) => {
 					<Select.Root type="single" bind:value={checkType} disabled={loading || isEditing}>
 						<Select.Trigger class="w-full">{checkTypeLabel}</Select.Trigger>
 						<Select.Content>
-							{#each checkTypeOptions as option}
+							{#each checkTypeOptions as option, __index (__index)}
 								<Select.Item value={option.value}>{option.label}</Select.Item>
 							{/each}
 						</Select.Content>
@@ -356,7 +354,7 @@ test('page loads', async ({ page }) => {
 					<Select.Root type="single" bind:value={intervalSeconds} disabled={loading}>
 						<Select.Trigger class="w-full">{intervalLabel}</Select.Trigger>
 						<Select.Content class="max-h-64 overflow-y-auto">
-							{#each intervalOptions as option}
+							{#each intervalOptions as option, __index (__index)}
 								<Select.Item value={option.value}>{option.label}</Select.Item>
 							{/each}
 						</Select.Content>
@@ -398,7 +396,7 @@ test('page loads', async ({ page }) => {
 								{httpMethod}
 							</Select.Trigger>
 							<Select.Content>
-								{#each methodOptions as method}
+								{#each methodOptions as method, __index (__index)}
 									<Select.Item value={method}>{method}</Select.Item>
 								{/each}
 							</Select.Content>
@@ -413,17 +411,17 @@ test('page loads', async ({ page }) => {
 				</div>
 
 				<Tabs.Root bind:value={requestTab}>
-					<Tabs.List
-						class="flex h-auto w-full items-center justify-start gap-5 rounded-none border-b bg-transparent p-0"
-					>
-						<Tabs.Trigger value="headers" class={tabTriggerClass}>
+					<Tabs.List class={underlineTabListClass}>
+						<Tabs.Trigger value="headers" class={underlineTabTriggerClass}>
 							Headers{headerCount > 0 ? ` (${headerCount})` : ''}
 						</Tabs.Trigger>
-						<Tabs.Trigger value="auth" class={tabTriggerClass}>
+						<Tabs.Trigger value="auth" class={underlineTabTriggerClass}>
 							Auth{authType !== 'none' ? ' •' : ''}
 						</Tabs.Trigger>
-						<Tabs.Trigger value="body" class={tabTriggerClass}>Body</Tabs.Trigger>
-						<Tabs.Trigger value="expected" class={tabTriggerClass}>Expected results</Tabs.Trigger>
+						<Tabs.Trigger value="body" class={underlineTabTriggerClass}>Body</Tabs.Trigger>
+						<Tabs.Trigger value="expected" class={underlineTabTriggerClass}>
+							Expected results
+						</Tabs.Trigger>
 					</Tabs.List>
 				</Tabs.Root>
 
@@ -440,7 +438,7 @@ test('page loads', async ({ page }) => {
 						<Select.Root type="single" bind:value={authType} disabled={loading}>
 							<Select.Trigger class="w-[220px]">{authLabel}</Select.Trigger>
 							<Select.Content>
-								{#each authOptions as option}
+								{#each authOptions as option, __index (__index)}
 									<Select.Item value={option.value}>{option.label}</Select.Item>
 								{/each}
 							</Select.Content>
@@ -503,8 +501,8 @@ test('page loads', async ({ page }) => {
 						</div>
 					{:else}
 						<p class="text-sm text-muted-foreground">
-							{httpMethod} requests are sent without a body. Switch the method to POST, PUT, PATCH,
-							or DELETE to add one.
+							{httpMethod} requests are sent without a body. Switch the method to POST, PUT, PATCH, or
+							DELETE to add one.
 						</p>
 					{/if}
 				{:else}

@@ -24,12 +24,12 @@ export async function runPageAction(id: number, action: 'acknowledge' | 'resolve
 			{},
 			{ projectId: projectsState.currentProjectId ?? undefined }
 		);
-		toast.success(`Page ${done}`, { position: 'top-center' });
+		toast.success(`Page ${done}`);
 	} catch (e: unknown) {
 		if ((e as { status?: number }).status === 409) {
-			toast.error(`Page is already ${await conflictStatus(id)}`, { position: 'top-center' });
+			toast.error(`Page is already ${await conflictStatus(id)}`);
 		} else {
-			toast.error(`Failed to ${action} page`, { position: 'top-center' });
+			toast.error(`Failed to ${action} page`);
 		}
 	}
 	oncallState.refreshOpenCount();
@@ -57,21 +57,19 @@ export async function runBulkPageAction(
 		const count = (action === 'acknowledge' ? res.acknowledged : res.resolved) ?? 0;
 		const archived = res.archivedIssues ?? 0;
 		if (count === 0 && archived === 0) {
-			toast.error(
-				ids.length === 1 ? `Page was already ${done}` : `Pages were already ${done}`,
-				{ position: 'top-center' }
-			);
+			toast.error(ids.length === 1 ? `Page was already ${done}` : `Pages were already ${done}`);
 		} else {
-			let message = count === 1 && ids.length === 1 ? `Page ${done}` : `${count} ${pluralPages(count)} ${done}`;
+			let message =
+				count === 1 && ids.length === 1 ? `Page ${done}` : `${count} ${pluralPages(count)} ${done}`;
 			if (archived > 0) {
 				message += ` and ${archived} issue${archived === 1 ? '' : 's'} archived`;
 			}
-			toast.success(message, { position: 'top-center' });
+			toast.success(message);
 		}
 		oncallState.refreshOpenCount();
 		return true;
 	} catch {
-		toast.error(`Failed to ${action} ${pluralPages(ids.length)}`, { position: 'top-center' });
+		toast.error(`Failed to ${action} ${pluralPages(ids.length)}`);
 		oncallState.refreshOpenCount();
 		return false;
 	}

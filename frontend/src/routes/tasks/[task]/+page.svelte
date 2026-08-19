@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api';
 	import {
@@ -22,7 +23,10 @@
 	import { createRowClickHandler } from '$lib/utils/navigation';
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import PaginationFooter from '$lib/components/ui/pagination-footer/pagination-footer.svelte';
-	import PageHeader from '$lib/components/issues/page-header.svelte';
+	import PageHeader from '$lib/components/traceway/page-header.svelte';
+	import StatRow from '$lib/components/traceway/stat-row.svelte';
+	import StatTile from '$lib/components/traceway/stat-tile.svelte';
+	import TableContainer from '$lib/components/traceway/table-container.svelte';
 	import { resolve } from '$app/paths';
 	import {
 		presetMinutes,
@@ -187,13 +191,13 @@
 			stats = response.stats || null;
 			total = response.pagination.total;
 			totalPages = response.pagination.totalPages;
-		} catch (e: any) {
+		} catch (e) {
 			console.error(e);
-			errorStatus = e.status || 0;
-			if (e.status === 404) {
+			errorStatus = getErrorStatus(e) || 0;
+			if (getErrorStatus(e) === 404) {
 				notFound = true;
 			} else {
-				error = e.message || 'Failed to load data';
+				error = getErrorMessage(e) || 'Failed to load data';
 			}
 		} finally {
 			loading = false;
@@ -248,15 +252,12 @@
 			onRetry={() => loadData(false)}
 		/>
 	{:else}
-		<!-- Header with Title and Time Range Filter -->
-		<div class="flex flex-col gap-4 sm:flex-row sm:justify-between">
-			<PageHeader
-				title={decodeURIComponent(data.task)}
-				subtitle="Task instances"
-				onBack={createSmartBackHandler({ fallbackPath: resolve('/tasks') })}
-			/>
-
-			<div class="flex flex-col">
+		<PageHeader
+			title={decodeURIComponent(data.task)}
+			subtitle="Task instances"
+			onBack={createSmartBackHandler({ fallbackPath: resolve('/tasks') })}
+		>
+			{#snippet actions()}
 				<TimeRangePicker
 					bind:fromDate
 					bind:toDate
@@ -265,35 +266,18 @@
 					bind:preset={selectedPreset}
 					onApply={handleTimeRangeChange}
 				/>
-			</div>
-		</div>
+			{/snippet}
+		</PageHeader>
 
 		<!-- Task Stats -->
 		{#if stats}
-			<div class="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-5">
-				<div class="space-y-1">
-					<p class="text-2xl font-semibold tracking-tight">{formatDurationMs(stats.avgDuration)}</p>
-					<p class="text-xs text-muted-foreground">Average duration</p>
-				</div>
-				<div class="space-y-1">
-					<p class="text-2xl font-semibold tracking-tight">
-						{formatDurationMs(stats.medianDuration)}
-					</p>
-					<p class="text-xs text-muted-foreground">Median duration</p>
-				</div>
-				<div class="space-y-1">
-					<p class="text-2xl font-semibold tracking-tight">{formatDurationMs(stats.p95Duration)}</p>
-					<p class="text-xs text-muted-foreground">95th percentile</p>
-				</div>
-				<div class="space-y-1">
-					<p class="text-2xl font-semibold tracking-tight">{formatDurationMs(stats.p99Duration)}</p>
-					<p class="text-xs text-muted-foreground">99th percentile</p>
-				</div>
-				<div class="space-y-1">
-					<p class="text-2xl font-semibold tracking-tight">{stats.throughput.toFixed(0)} rpm</p>
-					<p class="text-xs text-muted-foreground">Average throughput</p>
-				</div>
-			</div>
+			<StatRow columns={5}>
+				<StatTile label="Average duration" value={formatDurationMs(stats.avgDuration)} />
+				<StatTile label="Median duration" value={formatDurationMs(stats.medianDuration)} />
+				<StatTile label="95th percentile" value={formatDurationMs(stats.p95Duration)} />
+				<StatTile label="99th percentile" value={formatDurationMs(stats.p99Duration)} />
+				<StatTile label="Average throughput" value={`${stats.throughput.toFixed(0)} rpm`} />
+			</StatRow>
 		{:else if loading}
 			<div class="flex items-center justify-center py-8">
 				<LoadingCircle size="lg" />
@@ -301,7 +285,7 @@
 		{/if}
 
 		<!-- Tasks Table -->
-		<div class="overflow-hidden rounded-md border">
+		<TableContainer minWidth="860px">
 			<Table.Root>
 				{#if loading || tasks.length > 0}
 					<Table.Header>
@@ -333,17 +317,17 @@
 					{#if loading}
 						<Table.Row>
 							<Table.Cell colspan={6} class="h-48">
-								<div class="flex items-center justify-center">
-									<LoadingCircle size="lg" />
+								<div class="flex h-full items-center justify-center">
+									<LoadingCircle size="xlg" />
 								</div>
 							</Table.Cell>
 						</Table.Row>
 					{:else if tasks.length === 0}
 						<TableEmptyState colspan={6} message="No tasks found in this time range." />
 					{:else}
-						{#each tasks as task}
+						{#each tasks as task, __index (__index)}
 							<Table.Row
-								class="cursor-pointer hover:bg-muted/50"
+								class="cursor-pointer"
 								onclick={createRowClickHandler(
 									`/tasks/${encodeURIComponent(decodeURIComponent(data.task))}/${task.id}?t=${encodeURIComponent(task.recordedAt)}`,
 									'preset',
@@ -374,7 +358,7 @@
 					{/if}
 				</Table.Body>
 			</Table.Root>
-		</div>
+		</TableContainer>
 
 		<!-- Pagination Footer -->
 		<PaginationFooter

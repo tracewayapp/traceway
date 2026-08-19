@@ -3,10 +3,9 @@
 	import { cn } from '$lib/utils';
 	import { formatDuration, preciseTimeMs } from '$lib/utils/formatters';
 	import * as Popover from '$lib/components/ui/popover';
-	import Copy from 'lucide-svelte/icons/copy';
-	import Check from 'lucide-svelte/icons/check';
-	import ChevronRight from 'lucide-svelte/icons/chevron-right';
-	import ChevronDown from 'lucide-svelte/icons/chevron-down';
+	import CopyButton from '$lib/components/traceway/copy-button.svelte';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 
 	type Props = {
 		row: number;
@@ -76,7 +75,7 @@
 	let isHovered = $state(false);
 	let barElement: HTMLDivElement;
 
-	function handleMouseEnter(e: MouseEvent) {
+	function handleMouseEnter() {
 		isHovered = true;
 	}
 
@@ -97,24 +96,10 @@
 	}
 
 	let nameElement: HTMLSpanElement;
-	let copied = $state(false);
-	let copiedKey = $state<string | null>(null);
 
 	const attributeEntries = $derived(
 		Object.entries(span.attributes ?? {}).sort((a, b) => a[0].localeCompare(b[0]))
 	);
-
-	async function copySpanName() {
-		await navigator.clipboard.writeText(span.name);
-		copied = true;
-		setTimeout(() => (copied = false), 2000);
-	}
-
-	async function copyAttribute(key: string, value: string) {
-		await navigator.clipboard.writeText(value);
-		copiedKey = key;
-		setTimeout(() => (copiedKey = null), 2000);
-	}
 
 	$effect(() => {
 		if (nameElement) {
@@ -159,32 +144,17 @@
 				<div class="flex max-h-[60vh] flex-col gap-2 overflow-y-auto">
 					<div class="flex items-start gap-2">
 						<span class="font-mono text-xs break-all select-text">{span.name}</span>
-						<button onclick={copySpanName} class="shrink-0 p-1 rounded hover:bg-muted">
-							{#if copied}
-								<Check class="h-3.5 w-3.5 text-green-500" />
-							{:else}
-								<Copy class="h-3.5 w-3.5 text-muted-foreground" />
-							{/if}
-						</button>
+						<CopyButton bare text={span.name} iconClass="h-3.5 w-3.5" class="shrink-0" />
 					</div>
 					{#if attributeEntries.length > 0}
 						<div class="flex flex-col gap-1.5 border-t border-border pt-2">
-							{#each attributeEntries as [key, value]}
+							{#each attributeEntries as [key, value], __index (__index)}
 								<div class="flex items-start gap-2">
 									<div class="min-w-0 flex-1">
 										<div class="font-mono text-xs break-all text-muted-foreground">{key}</div>
 										<div class="font-mono text-xs break-all select-text">{value}</div>
 									</div>
-									<button
-										onclick={() => copyAttribute(key, value)}
-										class="shrink-0 p-1 rounded hover:bg-muted"
-									>
-										{#if copiedKey === key}
-											<Check class="h-3.5 w-3.5 text-green-500" />
-										{:else}
-											<Copy class="h-3.5 w-3.5 text-muted-foreground" />
-										{/if}
-									</button>
+									<CopyButton bare text={value} iconClass="h-3.5 w-3.5" class="shrink-0" />
 								</div>
 							{/each}
 						</div>

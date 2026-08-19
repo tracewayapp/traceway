@@ -109,8 +109,8 @@ require (
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/tklauser/go-sysconf v0.4.0 // indirect
 	github.com/tklauser/numcpus v0.12.0 // indirect
-	github.com/tracewayapp/lit/v2 v2.0.2 // indirect
-	github.com/tracewayapp/traceway/cli v0.0.0-00010101000000-000000000000 // indirect
+	github.com/tracewayapp/lit/v2 v2.0.5 // indirect
+	github.com/tracewayapp/traceway/cli v1.9.15 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
@@ -126,7 +126,7 @@ require (
 	go.opentelemetry.io/proto/otlp/collector/profiles/v1development v0.3.0 // indirect
 	go.opentelemetry.io/proto/otlp/profiles/v1development v0.3.0 // indirect
 	go.tracewayapp.com v1.0.4 // indirect
-	go.tracewayapp.com/tracewaygin v1.0.2 // indirect
+	go.tracewayapp.com/tracewaygin v1.0.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/arch v0.25.0 // indirect
 	golang.org/x/crypto v0.51.0 // indirect

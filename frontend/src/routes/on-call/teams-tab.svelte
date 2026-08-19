@@ -2,10 +2,12 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
 	import * as Table from '$lib/components/ui/table';
-	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import * as Avatar from '$lib/components/ui/avatar';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import EmptyState from '$lib/components/traceway/empty-state.svelte';
+	import ErrorRetryBox from '$lib/components/traceway/error-retry-box.svelte';
+	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import ConfirmDeleteDialog from '$lib/components/traceway/confirm-delete-dialog.svelte';
 	import { Pencil, Trash2 } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 	import { oncallState, type Team } from '$lib/state/oncall.svelte';
@@ -21,6 +23,8 @@
 	let teamDialogOpen = $state(false);
 	let editingTeam = $state<Team | null>(null);
 	let teamToDelete = $state<Team | null>(null);
+	let deleteDialogOpen = $state(false);
+	let deleting = $state(false);
 
 	const teams = $derived(oncallState.teams);
 
@@ -46,15 +50,16 @@
 
 	async function handleDeleteTeam() {
 		if (!teamToDelete) return;
+		deleting = true;
 		try {
 			await oncallState.deleteTeam(organizationId, teamToDelete.id);
-			toast.success('Successfully deleted the Team', { position: 'top-center' });
+			toast.success('Successfully deleted the Team');
 			oncallState.loadSchedules(organizationId);
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Failed to delete team', {
-				position: 'top-center'
-			});
+			toast.error(e instanceof Error ? e.message : 'Failed to delete team');
 		} finally {
+			deleting = false;
+			deleteDialogOpen = false;
 			teamToDelete = null;
 		}
 	}
@@ -63,23 +68,19 @@
 <div class="space-y-4">
 	{#if oncallState.teamsLoading}
 		<div class="flex justify-center py-12"><LoadingCircle size="xlg" /></div>
-		{:else if oncallState.teamsError}
-		<div
-			class="flex flex-col items-center justify-center gap-3 rounded-md bg-muted py-20 text-center text-muted-foreground"
-		>
-			<p class="text-sm text-destructive">{oncallState.teamsError}</p>
-			<Button variant="outline" size="sm" onclick={() => oncallState.loadTeams(organizationId)}>
-				Retry
-			</Button>
-		</div>
-{:else if teams.length === 0}
+	{:else if oncallState.teamsError}
+		<ErrorRetryBox
+			message={oncallState.teamsError}
+			onRetry={() => oncallState.loadTeams(organizationId)}
+		/>
+	{:else if teams.length === 0}
 		<EmptyState
 			message="No teams yet. Create a team to get started."
 			actionLabel={canManage ? 'Create your first Team' : undefined}
 			onAction={openNew}
 		/>
 	{:else}
-		<div class="overflow-hidden rounded-md border">
+		<TableContainer>
 			<Table.Root>
 				<Table.Header>
 					<Table.Row>
@@ -143,7 +144,10 @@
 											variant="ghost"
 											size="icon"
 											title="Delete"
-											onclick={() => (teamToDelete = team)}
+											onclick={() => {
+												teamToDelete = team;
+												deleteDialogOpen = true;
+											}}
 										>
 											<Trash2 class="h-4 w-4" />
 										</Button>
@@ -154,7 +158,7 @@
 					{/each}
 				</Table.Body>
 			</Table.Root>
-		</div>
+		</TableContainer>
 	{/if}
 </div>
 
@@ -168,26 +172,10 @@
 	}}
 />
 
-<AlertDialog.Root
-	open={teamToDelete !== null}
-	onOpenChange={(open) => {
-		if (!open) teamToDelete = null;
-	}}
->
-	<AlertDialog.Content>
-		<AlertDialog.Header>
-			<AlertDialog.Title>Delete Team</AlertDialog.Title>
-			<AlertDialog.Description>
-				Are you sure you want to delete "{teamToDelete?.name}"? Its schedules will be deleted as
-				well. This action cannot be undone.
-			</AlertDialog.Description>
-		</AlertDialog.Header>
-		<AlertDialog.Footer>
-			<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
-			<AlertDialog.Action variant="destructive" onclick={handleDeleteTeam}>
-				<Trash2 class="mr-2 h-4 w-4" />
-				Delete Team
-			</AlertDialog.Action>
-		</AlertDialog.Footer>
-	</AlertDialog.Content>
-</AlertDialog.Root>
+<ConfirmDeleteDialog
+	bind:open={deleteDialogOpen}
+	entity="Team"
+	description={`Are you sure you want to delete "${teamToDelete?.name}"? Its schedules will be deleted as well. This action cannot be undone.`}
+	loading={deleting}
+	onConfirm={handleDeleteTeam}
+/>

@@ -73,11 +73,63 @@ export interface CheckOverview extends SyntheticCheck {
 
 export interface CheckIncident {
 	id: number;
-	checkId: number;
-	projectId: string;
+	checkId: number | null;
+	projectId: string | null;
+	statusPageId: number | null;
+	title: string;
 	startedAt: string;
 	resolvedAt: string | null;
 	errorMessage: string;
+	updatesCount?: number;
+	postMortemId?: number | null;
+}
+
+export type IncidentUpdateStatus =
+	| 'investigating'
+	| 'identified'
+	| 'monitoring'
+	| 'update'
+	| 'resolved';
+
+export interface IncidentUpdate {
+	id: number;
+	incidentId: number;
+	status: IncidentUpdateStatus;
+	message: string;
+	createdBy: number | null;
+	createdAt: string;
+}
+
+export interface OrgIncident extends CheckIncident {
+	checkName: string | null;
+	statusPageName: string | null;
+}
+
+export function incidentDisplayTitle(incident: {
+	title?: string | null;
+	checkName?: string | null;
+}): string {
+	if (incident.title) return incident.title;
+	return incident.checkName ? `${incident.checkName} is down` : 'Incident';
+}
+
+export interface PostMortemListItem {
+	id: number;
+	organizationId: number;
+	projectId: string;
+	incidentId: number | null;
+	title: string;
+	tags: string[];
+	createdBy: number | null;
+	updatedBy: number | null;
+	createdByName: string | null;
+	updatedByName: string | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface PostMortem extends PostMortemListItem {
+	contentMd: string;
 }
 
 export interface CheckResultEntry {

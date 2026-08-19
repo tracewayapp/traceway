@@ -2,7 +2,7 @@
 
 Monitors answer the question your telemetry cannot: is the service actually reachable from the outside? Traces and logs only exist while requests arrive. A monitor keeps probing on a schedule, so you find out your site is down before a user tells you.
 
-They live under **Monitors** in the sidebar, with tabs for the monitors themselves and **Status Pages**. The badge counts the monitors currently down on the current project.
+They live under **Monitors** in the sidebar, with tabs for the monitors themselves, **Status Pages**, and **Post-Mortems**. The badge counts the monitors currently down on the current project.
 
 ## Check types
 
@@ -40,6 +40,14 @@ Each status page can carry a custom domain (for example `status.acme.com`):
 3. Terminate TLS for the vanity hostname at your reverse proxy (Caddy and Traefik can issue certificates for it automatically; with nginx use certbot).
 
 Anonymous visitors hitting the instance under that Host are routed to the status page automatically (the backend maps the Host header to the page via `/api/status-domains/resolve`).
+
+## Incidents and post-mortems
+
+Monitors feed a full incident-management workflow, covered in depth in [Incidents & Post-Mortems](/learn/incidents):
+
+- **Incidents open and resolve themselves** from monitor state transitions, with an automatic Investigating and Resolved timeline. Outages your monitors missed can be recorded by hand on a status page, backdated if needed; manual incidents never change uptime numbers.
+- **The public story is yours to tell.** Give incidents public titles and post statuspage-style timeline updates (Investigating, Identified, Monitoring, Update, Resolved). The last 90 days appear in the **Past Incidents** section of the public page; probe error messages stay internal.
+- **Post-mortems** are internal write-ups in the **Post-Mortems** tab, owned by the project like the monitors themselves: a WYSIWYG markdown editor with a raw-markdown toggle, tags, an optional link to the incident (one per incident), a full edit activity log, and search across titles, content, and tags. They never appear on public status pages.
 
 ## Browser execution modes
 

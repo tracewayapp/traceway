@@ -15,14 +15,18 @@ declare global {
 	const __TRACEWAY_URL__: string;
 
 	interface Window {
+		captureException: typeof import('@tracewayapp/frontend').captureException;
 		turnstile: {
-			render: (element: HTMLElement, options: {
-				sitekey: string;
-				callback: (token: string) => void;
-				'error-callback'?: () => void;
-				'expired-callback'?: () => void;
-				theme?: 'light' | 'dark' | 'auto';
-			}) => string;
+			render: (
+				element: HTMLElement,
+				options: {
+					sitekey: string;
+					callback: (token: string) => void;
+					'error-callback'?: () => void;
+					'expired-callback'?: () => void;
+					theme?: 'light' | 'dark' | 'auto';
+				}
+			) => string;
 			remove: (widgetId: string) => void;
 			reset: (widgetId: string) => void;
 		};

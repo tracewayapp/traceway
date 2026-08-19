@@ -24,10 +24,7 @@
 	}>();
 
 	// Check if we have multi-server data
-	const hasMultiServerData = $derived(
-		metric.servers && metric.servers.length > 1
-	);
-
+	const hasMultiServerData = $derived(metric.servers && metric.servers.length > 1);
 
 	// Calculate X domain from timeDomain or data
 	const xDomainValue = $derived(() => {
@@ -53,11 +50,13 @@
 				color: serverColorMap[server.serverName] || '#3b82f6'
 			}));
 		}
-		return [{
-			key: 'value',
-			data: metric.trend,
-			color: '#3b82f6'
-		}];
+		return [
+			{
+				key: 'value',
+				data: metric.trend,
+				color: '#3b82f6'
+			}
+		];
 	});
 
 	const hasData = $derived(() => {
@@ -86,7 +85,8 @@
 				servers={metric.servers}
 				{serverColorMap}
 				unit={metric.unit}
-				formatValue={(v) => metric.formatValue ? metric.formatValue(v) : formatMetricLabel(v, metric.unit)}
+				formatValue={(v) =>
+					metric.formatValue ? metric.formatValue(v) : formatMetricLabel(v, metric.unit)}
 				{sharedHoverTime}
 				{isSourceChart}
 				{onHoverTimeChange}

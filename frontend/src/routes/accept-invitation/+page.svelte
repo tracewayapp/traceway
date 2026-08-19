@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
+	import { gotoHref } from '$lib/utils/navigation';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -12,9 +14,8 @@
 		CardHeader,
 		CardTitle
 	} from '$lib/components/ui/card';
-	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
-	import { CircleAlert, Check } from '@lucide/svelte';
+	import { Check } from '@lucide/svelte';
 	import { authState } from '$lib/state/auth.svelte';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { themeState } from '$lib/state/theme.svelte';
@@ -94,7 +95,7 @@
 			projectsState.setProjects(data.projects);
 
 			success = true;
-			setTimeout(() => goto('/'), 1500);
+			setTimeout(() => goto(resolve('/')), 1500);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to accept invitation';
 		} finally {
@@ -123,7 +124,7 @@
 			const data = await response.json();
 			projectsState.setProjects(data.projects);
 			success = true;
-			setTimeout(() => goto('/'), 1500);
+			setTimeout(() => goto(resolve('/')), 1500);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to accept invitation';
 		} finally {
@@ -133,7 +134,7 @@
 
 	function handleLoginRedirect() {
 		const returnTo = encodeURIComponent(`/accept-invitation?token=${token}`);
-		goto(`/login?returnTo=${returnTo}`);
+		gotoHref(`/login?returnTo=${returnTo}`);
 	}
 
 	function getRoleLabel(role: string): string {
@@ -184,7 +185,7 @@
 			{:else if error && !invitationInfo}
 				<ErrorAlert {error} />
 				<div class="mt-4 text-center">
-					<Button variant="outline" onclick={() => goto('/login')}>Go to Login</Button>
+					<Button variant="outline" onclick={() => goto(resolve('/login'))}>Go to Login</Button>
 				</div>
 			{:else if invitationInfo}
 				<div class="space-y-4">
@@ -211,8 +212,9 @@
 							</Button>
 							<div>
 								<p class="text-sm text-muted-foreground">
-									To go to the Login page <a href="/login" class="text-primary hover:underline"
-										>Click Here</a
+									To go to the Login page <a
+										href={resolve('/login')}
+										class="text-primary hover:underline">Click Here</a
 									>
 								</p>
 							</div>

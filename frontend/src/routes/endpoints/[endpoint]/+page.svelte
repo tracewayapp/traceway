@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import { onMount, onDestroy } from 'svelte';
+	import { SvelteURLSearchParams } from 'svelte/reactivity';
 	import { api } from '$lib/api';
 	import {
 		formatDuration,
@@ -15,7 +17,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
-	import { ArrowLeft, Check, Snail } from '@lucide/svelte';
+	import { Check, Snail } from '@lucide/svelte';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
 	import { CalendarDate } from '@internationalized/date';
@@ -24,15 +26,19 @@
 	import { isHealthcheckEndpoint } from '$lib/utils/healthcheck';
 	import AttributesDisplay from '$lib/components/attributes-display.svelte';
 	import { createRowClickHandler } from '$lib/utils/navigation';
-	import { goto } from '$app/navigation';
+	import { gotoHref } from '$lib/utils/navigation';
 	import PaginationFooter from '$lib/components/ui/pagination-footer/pagination-footer.svelte';
-	import PageHeader from '$lib/components/issues/page-header.svelte';
+	import PageHeader from '$lib/components/traceway/page-header.svelte';
+	import StatRow from '$lib/components/traceway/stat-row.svelte';
+	import StatTile from '$lib/components/traceway/stat-tile.svelte';
+	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import FormField from '$lib/components/traceway/form-field.svelte';
+	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { Input } from '$lib/components/ui/input';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { Badge } from '$lib/components/ui/badge';
 	import { toast } from 'svelte-sonner';
-	import { resolve } from '$app/paths';
 	import {
 		presetMinutes,
 		getTimeRangeFromPreset,
@@ -145,6 +151,7 @@
 	let reason = $state('');
 	let showSlowDialog = $state(false);
 	let slowLoading = $state(false);
+	let slowError = $state('');
 	let offsetInput = $state('');
 	let reasonInput = $state('');
 
@@ -168,18 +175,18 @@
 	}
 
 	function goBackToEndpoints(event: MouseEvent) {
-		const params = new URLSearchParams();
+		const params = new SvelteURLSearchParams();
 		if (selectedPreset) {
 			params.set('preset', selectedPreset);
 		} else {
 			params.set('from', getFromDateTimeUTC());
 			params.set('to', getToDateTimeUTC());
 		}
-		const href = resolve('/endpoints') + '?' + params.toString();
+		const href = '/endpoints?' + params.toString();
 		if (event.ctrlKey || event.metaKey) {
 			window.open(href, '_blank');
 		} else {
-			goto(href);
+			gotoHref(href);
 		}
 	}
 
@@ -245,13 +252,13 @@
 			stats = response.stats || null;
 			total = response.pagination.total;
 			totalPages = response.pagination.totalPages;
-		} catch (e: any) {
+		} catch (e) {
 			console.error(e);
-			errorStatus = e.status || 0;
-			if (e.status === 404) {
+			errorStatus = getErrorStatus(e) || 0;
+			if (getErrorStatus(e) === 404) {
 				notFound = true;
 			} else {
-				error = e.message || 'Failed to load data';
+				error = getErrorMessage(e) || 'Failed to load data';
 			}
 		} finally {
 			loading = false;
@@ -296,19 +303,24 @@
 
 	async function saveSlowEndpoint() {
 		slowLoading = true;
+		slowError = '';
 		try {
 			const value = parseInt(offsetInput) || 0;
 			await api.post(
 				'/endpoints/slow',
-				{ endpoint: decodeURIComponent(data.endpoint), offsetMs: Math.max(0, value), reason: reasonInput },
+				{
+					endpoint: decodeURIComponent(data.endpoint),
+					offsetMs: Math.max(0, value),
+					reason: reasonInput
+				},
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
 			offsetMs = Math.max(0, value);
 			reason = reasonInput;
 			showSlowDialog = false;
 			toast.success('Successfully updated the Expected Performance', { position: 'top-center' });
-		} catch (e: any) {
-			toast.error(e.message || 'Failed to save');
+		} catch (e) {
+			slowError = getErrorMessage(e) || 'Failed to save';
 		} finally {
 			slowLoading = false;
 		}
@@ -360,40 +372,45 @@
 			onRetry={() => loadData(false)}
 		/>
 	{:else}
-		<!-- Header with Title and Time Range Filter -->
-		<div class="flex flex-col gap-4 sm:flex-row sm:justify-between">
-			<PageHeader
-				title={decodeURIComponent(data.endpoint)}
-				subtitle="Trace instances for this endpoint"
-				onBack={goBackToEndpoints}
-			>
-				{#snippet trailing()}
-					{#if stats?.isStream}
-						<Tooltip.Root>
-							<Tooltip.Trigger>
-								<Badge variant="outline" class="font-sans">Stream</Badge>
-							</Tooltip.Trigger>
-							<Tooltip.Content side="bottom" class="max-w-xs">
-								Streaming endpoint. Latency metrics aren't tracked.
-							</Tooltip.Content>
-						</Tooltip.Root>
-					{/if}
-					{#if (projectsState.currentProject?.dropHealthyHealthchecks ?? false) && isHealthcheckEndpoint(decodeURIComponent(data.endpoint), projectsState.currentProject?.healthcheckPaths)}
-						<Tooltip.Root>
-							<Tooltip.Trigger>
-								<Badge variant="outline" class="font-sans">Healthcheck</Badge>
-							</Tooltip.Trigger>
-							<Tooltip.Content side="bottom" class="max-w-xs">
-								Only failed requests (status 400+) are stored for this endpoint, so counts and error rates reflect failures only. Configure in project settings.
-							</Tooltip.Content>
-						</Tooltip.Root>
-					{/if}
-				{/snippet}
-			</PageHeader>
-
-			<div class="flex items-start gap-2">
+		<PageHeader
+			title={decodeURIComponent(data.endpoint)}
+			subtitle="Trace instances for this endpoint"
+			onBack={goBackToEndpoints}
+		>
+			{#snippet trailing()}
+				{#if stats?.isStream}
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							<Badge variant="outline" class="font-sans">Stream</Badge>
+						</Tooltip.Trigger>
+						<Tooltip.Content side="bottom" class="max-w-xs">
+							Streaming endpoint. Latency metrics aren't tracked.
+						</Tooltip.Content>
+					</Tooltip.Root>
+				{/if}
+				{#if (projectsState.currentProject?.dropHealthyHealthchecks ?? false) && isHealthcheckEndpoint(decodeURIComponent(data.endpoint), projectsState.currentProject?.healthcheckPaths)}
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							<Badge variant="outline" class="font-sans">Healthcheck</Badge>
+						</Tooltip.Trigger>
+						<Tooltip.Content side="bottom" class="max-w-xs">
+							Only failed requests (status 400+) are stored for this endpoint, so counts and error
+							rates reflect failures only. Configure in project settings.
+						</Tooltip.Content>
+					</Tooltip.Root>
+				{/if}
+			{/snippet}
+			{#snippet actions()}
 				{#if !stats?.isStream}
-					<Button variant="outline" onclick={() => { offsetInput = offsetMs > 0 ? String(offsetMs) : ''; reasonInput = reason; showSlowDialog = true; }}>
+					<Button
+						variant="outline"
+						onclick={() => {
+							offsetInput = offsetMs > 0 ? String(offsetMs) : '';
+							reasonInput = reason;
+							slowError = '';
+							showSlowDialog = true;
+						}}
+					>
 						<Snail class="h-4 w-4" />
 						{offsetMs > 0 ? `+${offsetMs}ms offset` : 'Expected Performance'}
 					</Button>
@@ -406,11 +423,13 @@
 					bind:preset={selectedPreset}
 					onApply={handleTimeRangeChange}
 				/>
-			</div>
-		</div>
+			{/snippet}
+		</PageHeader>
 
 		{#if offsetMs > 0 && !stats?.isStream}
-			<div class="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-4 py-3 text-sm">
+			<div
+				class="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-4 py-3 text-sm"
+			>
 				<Snail class="h-4 w-4 shrink-0 text-muted-foreground" />
 				<span>
 					<span class="font-medium">Expected Performance:</span> +{offsetMs}ms offset applied.
@@ -424,53 +443,21 @@
 		<!-- Endpoint Stats -->
 		{#if stats}
 			{#if stats.isStream}
-				<div class="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-3">
-					<div class="space-y-1">
-						<p class="text-2xl font-semibold tracking-tight">{stats.count.toLocaleString()}</p>
-						<p class="text-xs text-muted-foreground">Connections</p>
-					</div>
-					<div class="space-y-1">
-						<p class="text-2xl font-semibold tracking-tight">{stats.errorRate.toFixed(2)} %</p>
-						<p class="text-xs text-muted-foreground">Average error rate</p>
-					</div>
-					<div class="space-y-1">
-						<p class="text-2xl font-semibold tracking-tight">{stats.throughput.toFixed(0)} rpm</p>
-						<p class="text-xs text-muted-foreground">Average throughput</p>
-					</div>
-				</div>
+				<StatRow columns={3}>
+					<StatTile label="Connections" value={stats.count.toLocaleString()} />
+					<StatTile label="Average error rate" value={`${stats.errorRate.toFixed(2)} %`} />
+					<StatTile label="Average throughput" value={`${stats.throughput.toFixed(0)} rpm`} />
+				</StatRow>
 			{:else}
-				<div class="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-7">
-					<div class="space-y-1">
-						<p class="text-2xl font-semibold tracking-tight">{formatDurationMs(stats.avgDuration)}</p>
-						<p class="text-xs text-muted-foreground">Average response time</p>
-					</div>
-					<div class="space-y-1">
-						<p class="text-2xl font-semibold tracking-tight">
-							{formatDurationMs(stats.medianDuration)}
-						</p>
-						<p class="text-xs text-muted-foreground">Median response time</p>
-					</div>
-					<div class="space-y-1">
-						<p class="text-2xl font-semibold tracking-tight">{formatDurationMs(stats.p95Duration)}</p>
-						<p class="text-xs text-muted-foreground">95th percentile response time</p>
-					</div>
-					<div class="space-y-1">
-						<p class="text-2xl font-semibold tracking-tight">{formatDurationMs(stats.p99Duration)}</p>
-						<p class="text-xs text-muted-foreground">99th percentile response time</p>
-					</div>
-					<div class="space-y-1">
-						<p class="text-2xl font-semibold tracking-tight">{stats.apdex.toFixed(2)}</p>
-						<p class="text-xs text-muted-foreground">Apdex score</p>
-					</div>
-					<div class="space-y-1">
-						<p class="text-2xl font-semibold tracking-tight">{stats.errorRate.toFixed(2)} %</p>
-						<p class="text-xs text-muted-foreground">Average error rate</p>
-					</div>
-					<div class="space-y-1">
-						<p class="text-2xl font-semibold tracking-tight">{stats.throughput.toFixed(0)} rpm</p>
-						<p class="text-xs text-muted-foreground">Average throughput</p>
-					</div>
-				</div>
+				<StatRow columns={4}>
+					<StatTile label="Average response time" value={formatDurationMs(stats.avgDuration)} />
+					<StatTile label="Median response time" value={formatDurationMs(stats.medianDuration)} />
+					<StatTile label="95th percentile" value={formatDurationMs(stats.p95Duration)} />
+					<StatTile label="99th percentile" value={formatDurationMs(stats.p99Duration)} />
+					<StatTile label="Apdex score" value={stats.apdex.toFixed(2)} />
+					<StatTile label="Average error rate" value={`${stats.errorRate.toFixed(2)} %`} />
+					<StatTile label="Average throughput" value={`${stats.throughput.toFixed(0)} rpm`} />
+				</StatRow>
 			{/if}
 		{:else if loading}
 			<div class="flex items-center justify-center py-8">
@@ -479,7 +466,7 @@
 		{/if}
 
 		<!-- Traces Table -->
-		<div class="overflow-hidden rounded-md border">
+		<TableContainer minWidth="960px">
 			<Table.Root>
 				{#if loading || transactions.length > 0}
 					<Table.Header>
@@ -527,17 +514,17 @@
 					{#if loading}
 						<Table.Row>
 							<Table.Cell colspan={8} class="h-48">
-								<div class="flex items-center justify-center">
-									<LoadingCircle size="lg" />
+								<div class="flex h-full items-center justify-center">
+									<LoadingCircle size="xlg" />
 								</div>
 							</Table.Cell>
 						</Table.Row>
 					{:else if transactions.length === 0}
 						<TableEmptyState colspan={8} message="No traces found in this time range." />
 					{:else}
-						{#each transactions as transaction}
+						{#each transactions as transaction, __index (__index)}
 							<Table.Row
-								class="cursor-pointer hover:bg-muted/50"
+								class="cursor-pointer"
 								onclick={createRowClickHandler(
 									`/endpoints/${encodeURIComponent(decodeURIComponent(data.endpoint))}/${transaction.id}?t=${encodeURIComponent(transaction.recordedAt)}`,
 									'preset',
@@ -574,7 +561,7 @@
 					{/if}
 				</Table.Body>
 			</Table.Root>
-		</div>
+		</TableContainer>
 
 		<!-- Pagination Footer -->
 		<PaginationFooter
@@ -585,7 +572,7 @@
 			onPageChange={handlePageChange}
 			onPageSizeChange={handlePageSizeChange}
 			{loading}
-			itemLabel="endpoint"
+			itemLabel="trace"
 		/>
 	{/if}
 </div>
@@ -595,29 +582,43 @@
 		<AlertDialog.Header>
 			<AlertDialog.Title>Expected Performance</AlertDialog.Title>
 			<AlertDialog.Description>
-				Set a time offset for endpoints that are expected to be slow (e.g., report generation, data exports).
-				The offset adjusts impact score thresholds so the endpoint isn't flagged as unhealthy.
+				Set a time offset for endpoints that are expected to be slow (e.g., report generation, data
+				exports). The offset adjusts impact score thresholds so the endpoint isn't flagged as
+				unhealthy.
 			</AlertDialog.Description>
 		</AlertDialog.Header>
-		<div class="space-y-4 py-4">
-			<div>
-				<label for="offset-input" class="text-sm font-medium">Offset (ms)</label>
-				<Input id="offset-input" type="number" bind:value={offsetInput} placeholder="e.g., 2000" min="0" class="mt-1.5" />
-				<p class="text-xs text-muted-foreground mt-1.5">
-					How many extra milliseconds above the default 750ms threshold are acceptable for this endpoint.
-					Set to 0 to remove the offset.
-				</p>
-			</div>
-			<div>
-				<label for="reason-input" class="text-sm font-medium">Reason</label>
-				<Input id="reason-input" type="text" bind:value={reasonInput} placeholder="e.g., generates large PDF reports" class="mt-1.5" />
-				<p class="text-xs text-muted-foreground mt-1.5">
-					Explain why this endpoint is expected to be slow.
-				</p>
-			</div>
+		<div class="space-y-4">
+			<FormField
+				label="Offset (ms)"
+				for="offset-input"
+				hint="How many extra milliseconds above the default 750ms threshold are acceptable for this endpoint. Set to 0 to remove the offset."
+			>
+				<Input
+					id="offset-input"
+					type="number"
+					bind:value={offsetInput}
+					placeholder="e.g., 2000"
+					min="0"
+				/>
+			</FormField>
+			<FormField
+				label="Reason"
+				for="reason-input"
+				hint="Explain why this endpoint is expected to be slow."
+			>
+				<Input
+					id="reason-input"
+					type="text"
+					bind:value={reasonInput}
+					placeholder="e.g., generates large PDF reports"
+				/>
+			</FormField>
+			<ErrorAlert error={slowError} />
 		</div>
 		<AlertDialog.Footer>
-			<Button variant="outline" onclick={() => showSlowDialog = false} disabled={slowLoading}>Cancel</Button>
+			<Button variant="outline" onclick={() => (showSlowDialog = false)} disabled={slowLoading}
+				>Cancel</Button
+			>
 			<Button onclick={saveSlowEndpoint} disabled={slowLoading}>
 				<Check class="mr-2 h-4 w-4" />
 				{slowLoading ? 'Updating...' : 'Update Expected Performance'}

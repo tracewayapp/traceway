@@ -7,7 +7,9 @@
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import { projectsState } from '$lib/state/projects.svelte';
-	import PageHeader from '$lib/components/issues/page-header.svelte';
+	import PageHeader from '$lib/components/traceway/page-header.svelte';
+	import StatRow from '$lib/components/traceway/stat-row.svelte';
+	import StatTile from '$lib/components/traceway/stat-tile.svelte';
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { resolve } from '$app/paths';
 	import { formatCost, formatTokens, formatCount } from '$lib/utils/ai-format';
@@ -21,6 +23,7 @@
 	import ConversationMessages from '$lib/components/ai/conversation-messages.svelte';
 	import FlaggedBadge from '$lib/components/ai/flagged-badge.svelte';
 	import { addStickyParamsToHref } from '$lib/utils/navigation';
+	import { resolveHref } from '$lib/utils/links';
 
 	type ApiTurn = ConversationTurn & {
 		userId: string;
@@ -78,7 +81,12 @@
 			traceName: encodeURIComponent(turn.traceName),
 			traceId: turn.id
 		});
-		return addStickyParamsToHref(`${base}?t=${encodeURIComponent(turn.recordedAt)}`, 'preset', 'from', 'to');
+		return addStickyParamsToHref(
+			`${base}?t=${encodeURIComponent(turn.recordedAt)}`,
+			'preset',
+			'from',
+			'to'
+		);
 	}
 
 	function conversationDurationLabel(stats: ConversationStats): string {
@@ -154,47 +162,36 @@
 			onRetry={loadData}
 		/>
 	{:else if stats}
-		<div class="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
-			<div>
-				<p class="text-sm text-muted-foreground">Turns</p>
-				<p class="text-2xl font-semibold tabular-nums">{formatCount(stats.turns)}</p>
-			</div>
-			<div>
-				<p class="text-sm text-muted-foreground">Total cost</p>
-				<p class="text-2xl font-semibold tabular-nums">{formatCost(stats.totalCost)}</p>
-			</div>
-			<div>
-				<p class="text-sm text-muted-foreground">Total tokens</p>
-				<p class="text-2xl font-semibold tabular-nums">{formatTokens(stats.totalTokens)}</p>
-			</div>
-			<div>
-				<p class="text-sm text-muted-foreground">Tool calls</p>
-				<p class="text-2xl font-semibold tabular-nums">{formatCount(stats.toolCallCount)}</p>
-			</div>
-			<div class="min-w-0">
-				<p class="text-sm text-muted-foreground">User</p>
+		<StatRow columns={3}>
+			<StatTile label="Turns" value={formatCount(stats.turns)} />
+			<StatTile label="Total cost" value={formatCost(stats.totalCost)} />
+			<StatTile label="Total tokens" value={formatTokens(stats.totalTokens)} />
+			<StatTile label="Tool calls" value={formatCount(stats.toolCallCount)} />
+			<div class="min-w-0 px-6 py-4">
+				<div class="text-xs font-medium text-muted-foreground">User</div>
 				{#if stats.userId}
 					<a
-						class="block truncate font-mono text-sm text-primary hover:underline"
-						href={addStickyParamsToHref(
-							`${resolve('/ai-traces/conversations')}?userId=${encodeURIComponent(stats.userId)}`,
-							'preset',
-							'from',
-							'to'
-						)}
+						class="mt-1 block truncate font-mono text-sm text-primary hover:underline"
+						{...{
+							href: resolveHref(
+								addStickyParamsToHref(
+									`/ai-traces/conversations?userId=${encodeURIComponent(stats.userId)}`,
+									'preset',
+									'from',
+									'to'
+								)
+							)
+						}}
 						title={stats.userId}
 					>
 						{stats.userId}
 					</a>
 				{:else}
-					<p class="text-sm text-muted-foreground">-</p>
+					<div class="mt-1 text-sm text-muted-foreground">-</div>
 				{/if}
 			</div>
-			<div>
-				<p class="text-sm text-muted-foreground">Duration</p>
-				<p class="text-2xl font-semibold tabular-nums">{conversationDurationLabel(stats)}</p>
-			</div>
-		</div>
+			<StatTile label="Duration" value={conversationDurationLabel(stats)} />
+		</StatRow>
 
 		<Card.Root>
 			<Card.Header class="flex flex-row items-center justify-between">
@@ -206,7 +203,9 @@
 						{/if}
 					</div>
 					<Card.Description>
-						{formatDateTime(stats.firstSeen, { timezone })} to {formatDateTime(stats.lastSeen, { timezone })}
+						{formatDateTime(stats.firstSeen, { timezone })} to {formatDateTime(stats.lastSeen, {
+							timezone
+						})}
 					</Card.Description>
 				</div>
 				<button
@@ -219,19 +218,25 @@
 			<Card.Content>
 				{#if showRawJson}
 					<div class="space-y-6">
-						{#each turns as turn, i}
+						{#each turns as turn, i (i)}
 							<div>
 								<p class="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
 									Turn {i + 1} · {formatDateTime(turn.recordedAt, { timezone })}
 								</p>
 								{#if turn.input}
 									<div class="mb-2 max-h-96 overflow-auto rounded-md bg-muted p-4">
-										<pre class="font-mono text-sm break-words whitespace-pre-wrap">{formatConversationContent(turn.input)}</pre>
+										<pre
+											class="font-mono text-sm break-words whitespace-pre-wrap">{formatConversationContent(
+												turn.input
+											)}</pre>
 									</div>
 								{/if}
 								{#if turn.output}
 									<div class="max-h-96 overflow-auto rounded-md bg-muted p-4">
-										<pre class="font-mono text-sm break-words whitespace-pre-wrap">{formatConversationContent(turn.output)}</pre>
+										<pre
+											class="font-mono text-sm break-words whitespace-pre-wrap">{formatConversationContent(
+												turn.output
+											)}</pre>
 									</div>
 								{/if}
 							</div>
@@ -239,11 +244,13 @@
 					</div>
 				{:else if timeline}
 					<div class="space-y-3">
-						{#each timeline as entry, i}
+						{#each timeline as entry, i (i)}
 							{#if entry.kind === 'message'}
 								<ConversationMessages messages={[entry.message]} />
 							{:else}
-								{@const turnNumber = timeline.slice(0, i + 1).filter((e) => e.kind === 'turn-meta').length}
+								{@const turnNumber = timeline
+									.slice(0, i + 1)
+									.filter((e) => e.kind === 'turn-meta').length}
 								<div class="flex items-center gap-2 py-1 text-xs text-muted-foreground">
 									<div class="h-px flex-1 bg-border"></div>
 									<span class="whitespace-nowrap">
@@ -252,12 +259,13 @@
 											· <span class="font-mono">{entry.turn.model}</span>
 										{/if}
 										· {formatCost(entry.turn.totalCost)}
-										· {formatTokens(entry.turn.totalTokens)} tokens
-										· {formatDuration(entry.turn.duration)}
+										· {formatTokens(entry.turn.totalTokens)} tokens · {formatDuration(
+											entry.turn.duration
+										)}
 										·
 										<a
 											class="text-primary hover:underline"
-											href={turnHref(entry.turn as ApiTurn)}
+											{...{ href: resolveHref(turnHref(entry.turn as ApiTurn)) }}
 											onclick={(e) => e.stopPropagation()}
 										>
 											View call →
@@ -272,20 +280,23 @@
 					<!-- Fallback: history prefix-matching failed; render each turn's own
 					     parsed conversation as a separate section. -->
 					<div class="space-y-6">
-						{#each turns as turn, i}
+						{#each turns as turn, i (i)}
 							{@const messages = extractMessages(turn.input, turn.output)}
 							<div class="rounded-md border p-4">
-								<div class="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+								<div
+									class="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
+								>
 									<span class="font-medium">Turn {i + 1}</span>
 									{#if turn.model}
 										· <span class="font-mono">{turn.model}</span>
 									{/if}
 									· {formatCost(turn.totalCost)}
-									· {formatTokens(turn.totalTokens)} tokens
-									· {formatDuration(turn.duration)}
+									· {formatTokens(turn.totalTokens)} tokens · {formatDuration(turn.duration)}
 									· {formatDateTime(turn.recordedAt, { timezone })}
 									·
-									<a class="text-primary hover:underline" href={turnHref(turn)}>View call →</a>
+									<a class="text-primary hover:underline" {...{ href: resolveHref(turnHref(turn)) }}
+										>View call →</a
+									>
 								</div>
 								{#if messages}
 									<ConversationMessages {messages} />

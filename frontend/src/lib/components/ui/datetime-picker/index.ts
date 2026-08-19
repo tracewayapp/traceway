@@ -1,3 +1,3 @@
-import DateTimePicker from "./datetime-picker.svelte";
+import DateTimePicker from './datetime-picker.svelte';
 
 export { DateTimePicker };

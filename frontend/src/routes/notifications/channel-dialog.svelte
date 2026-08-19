@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolveHref } from '$lib/utils/links';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -9,13 +10,14 @@
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
 	import { projectsState } from '$lib/state/projects.svelte';
+	import type { NotificationChannelConfig } from '$lib/types/notifications';
 
 	interface NotificationChannel {
 		id: number;
 		projectId: string;
 		name: string;
 		channelType: string;
-		config: any;
+		config: NotificationChannelConfig;
 		enabled: boolean;
 		createdAt: string;
 	}
@@ -169,11 +171,11 @@
 		}
 	}
 
-	function buildConfig(): any {
+	function buildConfig(): NotificationChannelConfig {
 		if (channelType === 'email') {
 			return { recipients: emailRecipients.filter((e) => e.trim() !== '') };
 		} else if (channelType === 'webhook') {
-			const config: any = { url: webhookUrl };
+			const config: NotificationChannelConfig = { url: webhookUrl };
 			if (webhookMethod !== 'POST') config.method = webhookMethod;
 			if (webhookSecret) config.secret = webhookSecret;
 			const headers: Record<string, string> = {};
@@ -183,12 +185,12 @@
 			if (Object.keys(headers).length > 0) config.headers = headers;
 			return config;
 		} else if (channelType === 'slack') {
-			const config: any = { webhookUrl: slackWebhookUrl };
+			const config: NotificationChannelConfig = { webhookUrl: slackWebhookUrl };
 			if (slackChannel) config.channel = slackChannel;
 			if (slackUsername) config.username = slackUsername;
 			return config;
 		} else if (channelType === 'github') {
-			const config: any = {
+			const config: NotificationChannelConfig = {
 				token: githubToken,
 				owner: githubOwner,
 				repo: githubRepo
@@ -200,7 +202,7 @@
 			if (labels.length > 0) config.labels = labels;
 			return config;
 		} else if (channelType === 'pushover') {
-			const config: any = {
+			const config: NotificationChannelConfig = {
 				userKey: pushoverUserKey,
 				appToken: pushoverAppToken
 			};
@@ -325,7 +327,7 @@
 						{channelTypeOptions.find((o) => o.value === channelType)?.label || 'Select type'}
 					</Select.Trigger>
 					<Select.Content>
-						{#each channelTypeOptions as option}
+						{#each channelTypeOptions as option, __index (__index)}
 							<Select.Item value={option.value}>{option.label}</Select.Item>
 						{/each}
 					</Select.Content>
@@ -335,11 +337,13 @@
 			{#if channelType === 'email'}
 				<div class="space-y-2">
 					<Label>Recipients</Label>
-					{#each emailRecipients as _, index}
+					{#each emailRecipients as recipient, index (index)}
 						<div class="flex gap-2">
 							<Input
 								type="email"
-								bind:value={emailRecipients[index]}
+								value={recipient}
+								oninput={(event) =>
+									(emailRecipients[index] = (event.currentTarget as HTMLInputElement).value)}
 								placeholder="email@example.com"
 							/>
 							{#if emailRecipients.length > 1}
@@ -388,14 +392,10 @@
 				</div>
 				<div class="space-y-2">
 					<Label>Headers (optional)</Label>
-					{#each webhookHeaders as _, index}
+					{#each webhookHeaders as header, index (index)}
 						<div class="flex gap-2">
-							<Input
-								bind:value={webhookHeaders[index].key}
-								placeholder="Header name"
-								class="flex-1"
-							/>
-							<Input bind:value={webhookHeaders[index].value} placeholder="Value" class="flex-1" />
+							<Input bind:value={header.key} placeholder="Header name" class="flex-1" />
+							<Input bind:value={header.value} placeholder="Value" class="flex-1" />
 							<Button
 								variant="ghost"
 								size="icon"
@@ -561,8 +561,9 @@
 					{#if escalationPoliciesLoaded && escalationPolicies.length === 0}
 						<p class="text-sm text-muted-foreground">
 							No escalation policies yet — create one on the
-							<a href="/on-call?tab=policies" class="text-blue-600 hover:underline dark:text-blue-400"
-								>On-Call page</a
+							<a
+								{...{ href: resolveHref('/on-call?tab=policies') }}
+								class="text-blue-600 hover:underline dark:text-blue-400">On-Call page</a
 							>.
 						</p>
 					{:else}
@@ -589,7 +590,6 @@
 					</p>
 				</div>
 			{/if}
-
 		</form>
 
 		<AlertDialog.Footer>

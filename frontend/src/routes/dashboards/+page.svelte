@@ -1,5 +1,8 @@
 <script lang="ts">
+	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
+	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
+	import { SvelteURLSearchParams } from 'svelte/reactivity';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Checkbox } from '$lib/components/ui/checkbox';
@@ -39,13 +42,16 @@
 		Share2,
 		CircleMinus,
 		Search
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { WarningCallout } from '$lib/components/ui/warning-callout';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
+	import PageHeader from '$lib/components/traceway/page-header.svelte';
+	import FormField from '$lib/components/traceway/form-field.svelte';
+	import EmptyState from '$lib/components/traceway/empty-state.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { toast } from 'svelte-sonner';
-	import type { DiscoveredMetric } from '$lib/types/dashboard';
+	import type { DashboardWidgetConfig, DiscoveredMetric } from '$lib/types/dashboard';
 
 	const timezone = $derived(getTimezone());
 	const initialTimezone = getTimezone();
@@ -54,7 +60,7 @@
 		id: string;
 		title: string;
 		widgetType: string;
-		config: any;
+		config: DashboardWidgetConfig;
 		position: number;
 		isStarred?: boolean;
 	};
@@ -121,7 +127,11 @@
 
 	let showWidgetConfig = $state(false);
 	let editingWidget = $state<Widget | null>(null);
-	let widgetPrefill = $state<{ title: string; widgetType: string; config: any } | null>(null);
+	let widgetPrefill = $state<{
+		title: string;
+		widgetType: string;
+		config: DashboardWidgetConfig;
+	} | null>(null);
 	let availableMetrics = $state<DiscoveredMetric[]>([]);
 	let widgetConfigError = $state('');
 
@@ -196,8 +206,8 @@
 	});
 
 	$effect(() => {
-		dashboards;
-		lastUpdated;
+		void dashboards;
+		void lastUpdated;
 		if (tabsRowEl) {
 			requestAnimationFrame(() => checkOverflow());
 		}
@@ -232,9 +242,9 @@
 			if (dashboards.length > 0 && !dashboards.some((d) => String(d.id) === activeTabId)) {
 				activeTabId = String(dashboards[0].id);
 			}
-		} catch (e: any) {
+		} catch (e) {
 			console.error('Failed to load dashboards:', e);
-			listError = e?.message || 'Failed to load dashboards';
+			listError = getErrorMessage(e) || 'Failed to load dashboards';
 		} finally {
 			loading = false;
 		}
@@ -253,7 +263,7 @@
 			if (seq !== loadSeq) return;
 			activeDashboard = {
 				...result,
-				widgets: (result.widgets ?? []).map((w: any, i: number) => ({ ...w, position: i }))
+				widgets: (result.widgets ?? []).map((w: Widget, i: number) => ({ ...w, position: i }))
 			};
 			lastUpdated = new Date();
 		} catch (e) {
@@ -333,10 +343,10 @@
 				{ dashboardIds },
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
-		} catch (e: any) {
+		} catch (e) {
 			dashboards = previous;
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to reorder dashboards', { position: 'top-center' });
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to reorder dashboards');
 			}
 			await loadDashboards();
 		}
@@ -356,9 +366,9 @@
 			newName = '';
 			await loadDashboards();
 			activeTabId = String(dashboard.id);
-		} catch (e: any) {
-			if (e?.status === 422 || e?.status === 403) {
-				createError = e.message;
+		} catch (e) {
+			if (getErrorStatus(e) === 422 || getErrorStatus(e) === 403) {
+				createError = getErrorMessage(e);
 			} else {
 				console.error('Failed to create dashboard:', e);
 			}
@@ -387,9 +397,9 @@
 			showRenameDialog = false;
 			activeDashboard.name = renameName;
 			await loadDashboards();
-		} catch (e: any) {
-			if (e?.status === 422 || e?.status === 403) {
-				renameError = e.message;
+		} catch (e) {
+			if (getErrorStatus(e) === 422 || getErrorStatus(e) === 403) {
+				renameError = getErrorMessage(e);
 			} else {
 				console.error('Failed to rename dashboard:', e);
 			}
@@ -410,9 +420,9 @@
 			activeTabId = '';
 			activeDashboard = null;
 			await loadDashboards();
-		} catch (e: any) {
-			if (e?.status === 422 || e?.status === 403) {
-				deleteError = e.message;
+		} catch (e) {
+			if (getErrorStatus(e) === 422 || getErrorStatus(e) === 403) {
+				deleteError = getErrorMessage(e);
 			} else {
 				console.error('Failed to delete dashboard:', e);
 			}
@@ -426,16 +436,19 @@
 		removing = true;
 		removeError = '';
 		try {
-			await api.delete(`/dashboards/${activeDashboard.id}/apply/${projectsState.currentProjectId}`, {
-				projectId: projectsState.currentProjectId ?? undefined
-			});
+			await api.delete(
+				`/dashboards/${activeDashboard.id}/apply/${projectsState.currentProjectId}`,
+				{
+					projectId: projectsState.currentProjectId ?? undefined
+				}
+			);
 			showRemoveDialog = false;
 			activeTabId = '';
 			activeDashboard = null;
 			await loadDashboards();
-		} catch (e: any) {
-			if (e?.status === 422 || e?.status === 403) {
-				removeError = e.message;
+		} catch (e) {
+			if (getErrorStatus(e) === 422 || getErrorStatus(e) === 403) {
+				removeError = getErrorMessage(e);
 			} else {
 				console.error('Failed to remove dashboard from project:', e);
 			}
@@ -468,21 +481,26 @@
 	async function saveJson() {
 		if (!activeDashboard) return;
 		jsonError = '';
-		let parsed: any;
+		let parsed: unknown;
 		try {
 			parsed = JSON.parse(jsonText);
 		} catch {
 			jsonError = 'The document is not valid JSON.';
 			return;
 		}
+		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+			jsonError = 'The document must contain a JSON object.';
+			return;
+		}
+		const document = parsed as Record<string, unknown>;
 		jsonSaving = true;
 		try {
 			await api.put(
 				`/dashboards/${activeDashboard.id}`,
 				{
-					name: parsed.name,
-					description: parsed.description ?? '',
-					definition: { schemaVersion: 1, widgets: parsed.widgets ?? [] }
+					name: document.name,
+					description: document.description ?? '',
+					definition: { schemaVersion: 1, widgets: document.widgets ?? [] }
 				},
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
@@ -490,9 +508,9 @@
 			showJsonDialog = false;
 			await loadDashboards();
 			await loadDashboardWidgets(activeTabId);
-		} catch (e: any) {
-			if (e?.status === 422 || e?.status === 403) {
-				jsonError = e.message;
+		} catch (e) {
+			if (getErrorStatus(e) === 422 || getErrorStatus(e) === 403) {
+				jsonError = getErrorMessage(e);
 			} else {
 				console.error('Failed to save dashboard JSON:', e);
 			}
@@ -519,8 +537,8 @@
 			});
 			const slug = activeDashboard.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 			downloadJson(`${slug || 'dashboard'}.dashboard.json`, doc);
-		} catch (e: any) {
-			toast.error(e?.message || 'Failed to export dashboard', { position: 'top-center' });
+		} catch (e) {
+			toast.error(getErrorMessage(e) || 'Failed to export dashboard');
 		}
 	}
 
@@ -552,11 +570,11 @@
 			if (activeTabId && dashboards.some((d) => String(d.id) === activeTabId)) {
 				await loadDashboardWidgets(activeTabId);
 			}
-		} catch (e: any) {
-			if (e?.status === 422) {
-				applyError = e.message;
+		} catch (e) {
+			if (getErrorStatus(e) === 422) {
+				applyError = getErrorMessage(e);
 			} else {
-				applyError = e?.message || 'Failed to apply dashboard';
+				applyError = getErrorMessage(e) || 'Failed to apply dashboard';
 			}
 		} finally {
 			applying = false;
@@ -579,7 +597,7 @@
 
 	async function importDashboards() {
 		importError = '';
-		let parsed: any;
+		let parsed: unknown;
 		try {
 			parsed = JSON.parse(importText);
 		} catch {
@@ -594,20 +612,18 @@
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
 			const count = (result.dashboards ?? []).length;
-			toast.success(`Successfully imported ${count} Dashboard${count === 1 ? '' : 's'}`, {
-				position: 'top-center'
-			});
+			toast.success(`Successfully imported ${count} Dashboard${count === 1 ? '' : 's'}`);
 			showImportDialog = false;
 			importText = '';
 			await loadDashboards();
 			if (result.dashboards?.length) {
 				activeTabId = String(result.dashboards[0].id);
 			}
-		} catch (e: any) {
-			if (e?.status === 422) {
-				importError = e.message;
+		} catch (e) {
+			if (getErrorStatus(e) === 422) {
+				importError = getErrorMessage(e);
 			} else {
-				importError = e?.message || 'Failed to import dashboards';
+				importError = getErrorMessage(e) || 'Failed to import dashboards';
 			}
 		} finally {
 			importing = false;
@@ -616,7 +632,7 @@
 
 	async function importGrafana() {
 		grafanaError = '';
-		let parsed: any;
+		let parsed: unknown;
 		try {
 			parsed = JSON.parse(grafanaText);
 		} catch {
@@ -630,7 +646,7 @@
 				{ grafana: parsed },
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
-			toast.success('Successfully imported the Dashboard', { position: 'top-center' });
+			toast.success('Successfully imported the Dashboard');
 			grafanaWarnings = result.warnings ?? [];
 			grafanaText = '';
 			await loadDashboards();
@@ -640,11 +656,11 @@
 			if (grafanaWarnings.length === 0) {
 				showGrafanaDialog = false;
 			}
-		} catch (e: any) {
-			if (e?.status === 422) {
-				grafanaError = e.message;
+		} catch (e) {
+			if (getErrorStatus(e) === 422) {
+				grafanaError = getErrorMessage(e);
 			} else {
-				grafanaError = e?.message || 'Failed to import the Grafana dashboard';
+				grafanaError = getErrorMessage(e) || 'Failed to import the Grafana dashboard';
 			}
 		} finally {
 			grafanaImporting = false;
@@ -755,9 +771,9 @@
 			showDeleteWidgetDialog = false;
 			deletingWidget = null;
 			await loadDashboardWidgets(activeTabId);
-		} catch (e: any) {
-			if (e?.status === 422 || e?.status === 403) {
-				deleteWidgetError = e.message;
+		} catch (e) {
+			if (getErrorStatus(e) === 422 || getErrorStatus(e) === 403) {
+				deleteWidgetError = getErrorMessage(e);
 			} else {
 				console.error('Failed to delete widget:', e);
 			}
@@ -778,10 +794,10 @@
 				{},
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
-		} catch (e: any) {
+		} catch (e) {
 			target.isStarred = previous;
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to update star', { position: 'top-center' });
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to update star');
 			}
 		}
 	}
@@ -799,12 +815,12 @@
 				{ widgetIds },
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
-		} catch (e: any) {
+		} catch (e) {
 			for (const w of activeDashboard.widgets) {
 				w.position = previousPositions.get(w.id) ?? w.position;
 			}
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to reorder widgets', { position: 'top-center' });
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to reorder widgets');
 			}
 			await loadDashboardWidgets(activeTabId);
 		}
@@ -822,11 +838,11 @@
 				},
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
-			toast.success('Successfully duplicated the Widget', { position: 'top-center' });
+			toast.success('Successfully duplicated the Widget');
 			await loadDashboardWidgets(activeTabId);
-		} catch (e: any) {
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to duplicate widget', { position: 'top-center' });
+		} catch (e) {
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to duplicate widget');
 			}
 		}
 	}
@@ -843,15 +859,19 @@
 				{ title: target.title, widgetType: target.widgetType, config: target.config },
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
-		} catch (e: any) {
+		} catch (e) {
 			target.config = previousConfig;
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to resize widget', { position: 'top-center' });
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to resize widget');
 			}
 		}
 	}
 
-	async function handleWidgetSave(data: { title: string; widgetType: string; config: any }) {
+	async function handleWidgetSave(data: {
+		title: string;
+		widgetType: string;
+		config: DashboardWidgetConfig;
+	}) {
 		if (!activeDashboard) return;
 
 		widgetConfigError = '';
@@ -871,9 +891,9 @@
 			editingWidget = null;
 			widgetPrefill = null;
 			await loadDashboardWidgets(activeTabId);
-		} catch (e: any) {
-			if (e?.status === 422 || e?.status === 403) {
-				widgetConfigError = e.message;
+		} catch (e) {
+			if (getErrorStatus(e) === 422 || getErrorStatus(e) === 403) {
+				widgetConfigError = getErrorMessage(e);
 			} else {
 				console.error('Failed to save widget:', e);
 			}
@@ -889,7 +909,7 @@
 		if (search === handledSearch) return;
 		handledSearch = search;
 
-		const params = new URLSearchParams(search);
+		const params = new SvelteURLSearchParams(search);
 		const action = params.get('action');
 		const dashboardParam = params.get('dashboard');
 		const addMetric = params.get('addMetric');
@@ -899,7 +919,9 @@
 		params.delete('dashboard');
 		params.delete('addMetric');
 		const query = params.toString();
-		replaceState(page.url.pathname + (query ? '?' + query : ''), {});
+		let target = resolve(page.url.pathname as '/');
+		target += query ? '?' + query : '';
+		replaceState(target, {});
 
 		if (action === 'create') showCreateDialog = true;
 		else if (action === 'import') showImportDialog = true;
@@ -956,33 +978,32 @@
 <svelte:window onkeydown={handlePageKeydown} />
 
 <div class="space-y-4">
-	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-		<h2 class="text-3xl font-semibold tracking-tight">Dashboards</h2>
-		{#if dashboards.length > 0}
-		<div class="flex items-center gap-2">
-			<button
-				class="inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-muted-foreground shadow-xs transition-colors hover:bg-muted hover:text-foreground sm:w-64"
-				onclick={() => (showPalette = true)}
-			>
-				<Search class="h-4 w-4 shrink-0" />
-				<span class="flex-1 truncate text-left">Add or find dashboards...</span>
-				<kbd
-					class="pointer-events-none hidden h-5 shrink-0 items-center gap-0.5 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium sm:inline-flex"
+	<PageHeader title="Dashboards">
+		{#snippet actions()}
+			{#if dashboards.length > 0}
+				<button
+					class="inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-muted-foreground shadow-xs transition-colors hover:bg-muted hover:text-foreground @2xl:w-64"
+					onclick={() => (showPalette = true)}
 				>
-					{isMac ? '⌘' : 'Ctrl'}K
-				</kbd>
-			</button>
-			<TimeRangePicker
-				bind:fromDate
-				bind:toDate
-				bind:fromTime
-				bind:toTime
-				bind:preset={selectedPreset}
-				onApply={handleTimeRangeChange}
-			/>
-		</div>
-		{/if}
-	</div>
+					<Search class="h-4 w-4 shrink-0" />
+					<span class="flex-1 truncate text-left">Add or find dashboards...</span>
+					<kbd
+						class="pointer-events-none hidden h-5 shrink-0 items-center gap-0.5 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium sm:inline-flex"
+					>
+						{isMac ? '⌘' : 'Ctrl'}K
+					</kbd>
+				</button>
+				<TimeRangePicker
+					bind:fromDate
+					bind:toDate
+					bind:fromTime
+					bind:toTime
+					bind:preset={selectedPreset}
+					onApply={handleTimeRangeChange}
+				/>
+			{/if}
+		{/snippet}
+	</PageHeader>
 
 	{#if loading}
 		<div class="flex items-center justify-center py-20">
@@ -996,13 +1017,16 @@
 			onRetry={() => loadDashboards()}
 		/>
 	{:else if dashboards.length === 0}
-		<div class="flex flex-col items-center justify-center rounded-md bg-muted py-20 text-center">
-			<p class="mb-4 text-muted-foreground">No dashboards yet.</p>
-			<Button onclick={() => (showPalette = true)}>
-				<Search class="mr-1 h-4 w-4" />
-				Browse Dashboards & Templates
-			</Button>
-		</div>
+		<EmptyState
+			message="No dashboards yet."
+			actionLabel="Browse Dashboards & Templates"
+			actionVariant="default"
+			onAction={() => (showPalette = true)}
+		>
+			{#snippet icon()}
+				<Search class="h-6 w-6 text-muted-foreground" />
+			{/snippet}
+		</EmptyState>
 	{:else}
 		<Tabs.Root value={activeTabId} onValueChange={handleTabChange}>
 			<div class="flex items-center gap-2" bind:this={tabsRowEl}>
@@ -1168,10 +1192,12 @@
 							<LoadingCircle size="xlg" />
 						</div>
 					{:else if loadError && activeTabId === String(dashboard.id)}
-						<div class="flex flex-col items-center justify-center gap-3 rounded-md bg-muted py-20 text-center">
+						<div
+							class="flex flex-col items-center justify-center gap-3 rounded-md bg-muted py-20 text-center"
+						>
 							<p class="text-muted-foreground">{loadError}</p>
 							<Button variant="outline" onclick={() => loadDashboardWidgets(activeTabId)}>
-								<RefreshCw class="mr-1 h-4 w-4" />
+								<RefreshCw class="mr-2 h-4 w-4" />
 								Retry
 							</Button>
 						</div>
@@ -1231,21 +1257,20 @@
 			<AlertDialog.Title>New Dashboard</AlertDialog.Title>
 		</AlertDialog.Header>
 		<ErrorAlert error={createError} />
-		<div class="space-y-4">
-			<div>
-				<label class="text-sm font-medium" for="new-dashboard-name">Name</label>
-				<Input
-					id="new-dashboard-name"
-					bind:value={newName}
-					placeholder="My Dashboard"
-					maxlength={100}
-				/>
-			</div>
-		</div>
+		<FormField label="Name" for="new-dashboard-name">
+			<Input
+				id="new-dashboard-name"
+				bind:value={newName}
+				placeholder="My Dashboard"
+				maxlength={100}
+			/>
+		</FormField>
 		<AlertDialog.Footer>
-			<Button variant="outline" onclick={() => (showCreateDialog = false)}>Cancel</Button>
+			<Button variant="outline" onclick={() => (showCreateDialog = false)} disabled={creating}>
+				Cancel
+			</Button>
 			<Button variant="success" onclick={createDashboard} disabled={creating}>
-				{#if creating}Creating...{:else}<Plus class="mr-1 h-4 w-4" /> New Dashboard{/if}
+				{#if creating}Creating...{:else}<Plus class="mr-2 h-4 w-4" /> New Dashboard{/if}
 			</Button>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
@@ -1262,21 +1287,20 @@
 			<AlertDialog.Title>Rename Dashboard</AlertDialog.Title>
 		</AlertDialog.Header>
 		<ErrorAlert error={renameError} />
-		<div class="space-y-4">
-			<div>
-				<label class="text-sm font-medium" for="rename-dashboard-name">Name</label>
-				<Input
-					id="rename-dashboard-name"
-					bind:value={renameName}
-					placeholder="My Dashboard"
-					maxlength={100}
-				/>
-			</div>
-		</div>
+		<FormField label="Name" for="rename-dashboard-name">
+			<Input
+				id="rename-dashboard-name"
+				bind:value={renameName}
+				placeholder="My Dashboard"
+				maxlength={100}
+			/>
+		</FormField>
 		<AlertDialog.Footer>
-			<Button variant="outline" onclick={() => (showRenameDialog = false)}>Cancel</Button>
+			<Button variant="outline" onclick={() => (showRenameDialog = false)} disabled={renaming}>
+				Cancel
+			</Button>
 			<Button onclick={renameDashboard} disabled={renaming}>
-				{#if renaming}Updating...{:else}<Check class="mr-1 h-4 w-4" /> Update Dashboard{/if}
+				{#if renaming}Updating...{:else}<Check class="mr-2 h-4 w-4" /> Update Dashboard{/if}
 			</Button>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
@@ -1304,9 +1328,11 @@
 			></textarea>
 		</div>
 		<AlertDialog.Footer>
-			<Button variant="outline" onclick={() => (showJsonDialog = false)}>Cancel</Button>
+			<Button variant="outline" onclick={() => (showJsonDialog = false)} disabled={jsonSaving}>
+				Cancel
+			</Button>
 			<Button onclick={saveJson} disabled={jsonSaving}>
-				{#if jsonSaving}Updating...{:else}<Check class="mr-1 h-4 w-4" /> Update Dashboard{/if}
+				{#if jsonSaving}Updating...{:else}<Check class="mr-2 h-4 w-4" /> Update Dashboard{/if}
 			</Button>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
@@ -1326,10 +1352,10 @@
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 		<WarningCallout title="Shared across projects">
-			This is a single shared dashboard. Checking a project shows it in that project's tabs.
-			Nothing is copied or overwritten, but edits made from any project apply to all of them.
-			Unchecking a project removes the dashboard from its tabs, including any of its widgets
-			starred on that project's homepage.
+			This is a single shared dashboard. Checking a project shows it in that project's tabs. Nothing
+			is copied or overwritten, but edits made from any project apply to all of them. Unchecking a
+			project removes the dashboard from its tabs, including any of its widgets starred on that
+			project's homepage.
 		</WarningCallout>
 		<ErrorAlert error={applyError} />
 		<div class="max-h-72 space-y-2 overflow-y-auto">
@@ -1349,9 +1375,11 @@
 			{/each}
 		</div>
 		<AlertDialog.Footer>
-			<Button variant="outline" onclick={() => (showApplyDialog = false)}>Cancel</Button>
+			<Button variant="outline" onclick={() => (showApplyDialog = false)} disabled={applying}>
+				Cancel
+			</Button>
 			<Button onclick={saveApply} disabled={applying}>
-				{#if applying}Applying...{:else}<Check class="mr-1 h-4 w-4" /> Update Dashboard{/if}
+				{#if applying}Applying...{:else}<Check class="mr-2 h-4 w-4" /> Update Dashboard{/if}
 			</Button>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
@@ -1380,14 +1408,16 @@
 				class="h-64 w-full resize-y rounded-md border border-input bg-transparent p-3 font-mono text-xs shadow-xs focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
 			></textarea>
 			<Button variant="outline" size="sm" onclick={() => readFileInto((t) => (importText = t))}>
-				<Upload class="mr-1 h-4 w-4" />
+				<Upload class="mr-2 h-4 w-4" />
 				Load from file
 			</Button>
 		</div>
 		<AlertDialog.Footer>
-			<Button variant="outline" onclick={() => (showImportDialog = false)}>Cancel</Button>
+			<Button variant="outline" onclick={() => (showImportDialog = false)} disabled={importing}>
+				Cancel
+			</Button>
 			<Button variant="success" onclick={importDashboards} disabled={importing}>
-				{#if importing}Importing...{:else}<Plus class="mr-1 h-4 w-4" /> Import Dashboards{/if}
+				{#if importing}Importing...{:else}<Plus class="mr-2 h-4 w-4" /> Import Dashboards{/if}
 			</Button>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
@@ -1414,7 +1444,7 @@
 		{#if grafanaWarnings.length > 0}
 			<WarningCallout title="Imported with warnings">
 				<div class="max-h-48 space-y-1 overflow-y-auto">
-					{#each grafanaWarnings as warning}
+					{#each grafanaWarnings as warning, __index (__index)}
 						<div class="text-xs">{warning}</div>
 					{/each}
 				</div>
@@ -1428,7 +1458,7 @@
 					class="h-64 w-full resize-y rounded-md border border-input bg-transparent p-3 font-mono text-xs shadow-xs focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
 				></textarea>
 				<Button variant="outline" size="sm" onclick={() => readFileInto((t) => (grafanaText = t))}>
-					<Upload class="mr-1 h-4 w-4" />
+					<Upload class="mr-2 h-4 w-4" />
 					Load from file
 				</Button>
 			</div>
@@ -1436,12 +1466,18 @@
 		<AlertDialog.Footer>
 			{#if grafanaWarnings.length > 0}
 				<Button onclick={() => (showGrafanaDialog = false)}>
-					<Check class="mr-1 h-4 w-4" /> Done
+					<Check class="mr-2 h-4 w-4" /> Done
 				</Button>
 			{:else}
-				<Button variant="outline" onclick={() => (showGrafanaDialog = false)}>Cancel</Button>
+				<Button
+					variant="outline"
+					onclick={() => (showGrafanaDialog = false)}
+					disabled={grafanaImporting}
+				>
+					Cancel
+				</Button>
 				<Button variant="success" onclick={importGrafana} disabled={grafanaImporting}>
-					{#if grafanaImporting}Importing...{:else}<Plus class="mr-1 h-4 w-4" /> Import Dashboard{/if}
+					{#if grafanaImporting}Importing...{:else}<Plus class="mr-2 h-4 w-4" /> Import Dashboard{/if}
 				</Button>
 			{/if}
 		</AlertDialog.Footer>
@@ -1468,7 +1504,7 @@
 				Cancel
 			</Button>
 			<Button variant="destructive" onclick={removeFromProject} disabled={removing}>
-				<Trash2 class="mr-1 h-4 w-4" />
+				<Trash2 class="mr-2 h-4 w-4" />
 				{removing ? 'Removing...' : 'Remove Dashboard'}
 			</Button>
 		</AlertDialog.Footer>
@@ -1497,7 +1533,7 @@
 				Cancel
 			</Button>
 			<Button variant="destructive" onclick={deleteDashboard} disabled={deleting}>
-				<Trash2 class="mr-1 h-4 w-4" />
+				<Trash2 class="mr-2 h-4 w-4" />
 				{deleting ? 'Deleting...' : 'Delete Dashboard'}
 			</Button>
 		</AlertDialog.Footer>
@@ -1525,7 +1561,7 @@
 				disabled={deletingWidgetLoading}>Cancel</Button
 			>
 			<Button variant="destructive" onclick={confirmDeleteWidget} disabled={deletingWidgetLoading}>
-				<Trash2 class="mr-1 h-4 w-4" />
+				<Trash2 class="mr-2 h-4 w-4" />
 				{deletingWidgetLoading ? 'Deleting...' : 'Delete Widget'}
 			</Button>
 		</AlertDialog.Footer>

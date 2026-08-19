@@ -1,0 +1,1 @@
+ALTER TABLE post_mortems ADD COLUMN project_id UUID REFERENCES projects(id) ON DELETE CASCADE

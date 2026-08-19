@@ -5,7 +5,18 @@
 	import { Label } from '$lib/components/ui/label';
 	import * as Select from '$lib/components/ui/select';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
-	import { Plus, Check, Trash2, X, ChevronUp, ChevronDown, Calendar, User, Users, Bell } from '@lucide/svelte';
+	import {
+		Plus,
+		Check,
+		Trash2,
+		X,
+		ChevronUp,
+		ChevronDown,
+		Calendar,
+		User,
+		Users,
+		Bell
+	} from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 	import {
 		oncallState,
@@ -30,8 +41,14 @@
 		onSaved: () => void;
 	}
 
-	let { open = $bindable(), organizationId, policy, targetOptions, labels, onSaved }: Props =
-		$props();
+	let {
+		open = $bindable(),
+		organizationId,
+		policy,
+		targetOptions,
+		labels,
+		onSaved
+	}: Props = $props();
 
 	interface StepDraft {
 		delayMinutes: number;
@@ -289,7 +306,7 @@
 							</div>
 
 							<div class="flex items-center gap-2">
-								<Label for="step-delay-{index}" class="whitespace-nowrap text-xs font-normal">
+								<Label for="step-delay-{index}" class="text-xs font-normal whitespace-nowrap">
 									Escalate after
 								</Label>
 								<Input
@@ -312,7 +329,14 @@
 
 			<div class="space-y-2">
 				<Label for="policy-repeat">Repeat</Label>
-				<Input id="policy-repeat" type="number" min={0} max={5} class="w-20" bind:value={repeatCount} />
+				<Input
+					id="policy-repeat"
+					type="number"
+					min={0}
+					max={5}
+					class="w-20"
+					bind:value={repeatCount}
+				/>
 				<p class="text-xs text-muted-foreground">
 					After the last step, repeat the chain N more times.
 				</p>

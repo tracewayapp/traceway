@@ -11,13 +11,14 @@
 	import { api } from '$lib/api';
 	import { projectsState, isFrontendFramework } from '$lib/state/projects.svelte';
 	import { ruleTypeOptions } from './rule-types';
+	import type { NotificationChannelConfig, NotificationRuleConfig } from '$lib/types/notifications';
 
 	interface NotificationChannel {
 		id: number;
 		projectId: string;
 		name: string;
 		channelType: string;
-		config: any;
+		config: NotificationChannelConfig;
 		enabled: boolean;
 		createdAt: string;
 	}
@@ -28,7 +29,7 @@
 		channelId: number;
 		name: string;
 		ruleType: string;
-		config: any;
+		config: NotificationRuleConfig;
 		enabled: boolean;
 		cooldownMinutes: number;
 		severity: string;
@@ -88,8 +89,7 @@
 	const isEditing = $derived(rule !== null);
 
 	const isFrontendProject = $derived(
-		!!projectsState.currentProject &&
-			isFrontendFramework(projectsState.currentProject.framework)
+		!!projectsState.currentProject && isFrontendFramework(projectsState.currentProject.framework)
 	);
 
 	const visibleRuleTypes = $derived(
@@ -117,8 +117,7 @@
 			'Fires when the cumulative cost of a single AI conversation (over the last 24 hours) exceeds the threshold. Catches runaway agent loops and expensive sessions.',
 		ai_flagged_content:
 			'Fires when an AI conversation matches a flagged content term. Uses the built-in profanity list plus custom terms from the project’s AI settings; optionally narrow to specific terms below.',
-		error_regression:
-			'Fires when an error that was previously archived (resolved) occurs again.',
+		error_regression: 'Fires when an error that was previously archived (resolved) occurs again.',
 		check_down:
 			'Fires when a monitor transitions to down (after its failure threshold), and sends a recovery notice when it comes back up. Applies to every monitor in this project.',
 		error_rate_threshold:
@@ -283,7 +282,7 @@
 		}
 	}
 
-	function buildConfig(): any {
+	function buildConfig(): NotificationRuleConfig {
 		switch (ruleType) {
 			case 'error_rate_threshold':
 				return { thresholdPercent, lookbackMinutes, minRequests };
@@ -387,7 +386,7 @@
 </script>
 
 <AlertDialog.Root {open} onOpenChange={handleOpenChange}>
-	<AlertDialog.Content class="max-w-lg max-h-[85vh] overflow-y-auto">
+	<AlertDialog.Content class="max-h-[85vh] max-w-lg overflow-y-auto">
 		<AlertDialog.Header>
 			<AlertDialog.Title>{isEditing ? 'Edit Rule' : 'New Rule'}</AlertDialog.Title>
 			<AlertDialog.Description>
@@ -408,23 +407,17 @@
 
 			<div class="space-y-2">
 				<Label for="rule-name">Name</Label>
-				<Input
-					id="rule-name"
-					bind:value={name}
-					placeholder="e.g. High Error Rate"
-					required
-				/>
+				<Input id="rule-name" bind:value={name} placeholder="e.g. High Error Rate" required />
 			</div>
 
 			<div class="space-y-2">
 				<Label for="rule-channel">Channel</Label>
 				<Select.Root type="single" bind:value={channelId}>
 					<Select.Trigger class="w-full">
-						{channels.find((c) => c.id.toString() === channelId)?.name ||
-							'Select channel'}
+						{channels.find((c) => c.id.toString() === channelId)?.name || 'Select channel'}
 					</Select.Trigger>
 					<Select.Content>
-						{#each channels as ch}
+						{#each channels as ch, __index (__index)}
 							<Select.Item value={ch.id.toString()}>{ch.name}</Select.Item>
 						{/each}
 					</Select.Content>
@@ -438,7 +431,7 @@
 						{ruleTypeOptions.find((o) => o.value === ruleType)?.label || 'Select type'}
 					</Select.Trigger>
 					<Select.Content>
-						{#each visibleRuleTypes as option}
+						{#each visibleRuleTypes as option, __index (__index)}
 							<Select.Item value={option.value}>{option.label}</Select.Item>
 						{/each}
 					</Select.Content>
@@ -446,13 +439,17 @@
 			</div>
 
 			{#if ruleTypeDescriptions[ruleType]}
-				<Alert.Root class="bg-amber-50 border-amber-200 text-amber-900 dark:bg-amber-950/50 dark:border-amber-800 dark:text-amber-200 ">
+				<Alert.Root
+					class="border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200 "
+				>
 					<TriangleAlert class="text-amber-600 dark:text-amber-400" />
-					<Alert.Description class="text-amber-800 dark:text-amber-300">{ruleTypeDescriptions[ruleType]}</Alert.Description>
+					<Alert.Description class="text-amber-800 dark:text-amber-300"
+						>{ruleTypeDescriptions[ruleType]}</Alert.Description
+					>
 				</Alert.Root>
 			{/if}
 
-			<div class="rounded-md border p-3 space-y-3">
+			<div class="space-y-3 rounded-md border p-3">
 				<p class="text-sm font-medium text-muted-foreground">Rule Configuration</p>
 
 				{#if ruleType === 'error_rate_threshold'}
@@ -468,21 +465,11 @@
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-lookback">Lookback (minutes)</Label>
-						<Input
-							id="cfg-lookback"
-							type="number"
-							bind:value={lookbackMinutes}
-							min="1"
-						/>
+						<Input id="cfg-lookback" type="number" bind:value={lookbackMinutes} min="1" />
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-min-req">Min Requests</Label>
-						<Input
-							id="cfg-min-req"
-							type="number"
-							bind:value={minRequests}
-							min="1"
-						/>
+						<Input id="cfg-min-req" type="number" bind:value={minRequests} min="1" />
 					</div>
 				{:else if ruleType === 'endpoint_p95_threshold' || ruleType === 'endpoint_p99_threshold'}
 					<div class="space-y-2">
@@ -491,21 +478,11 @@
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-threshold-ms">Threshold (ms)</Label>
-						<Input
-							id="cfg-threshold-ms"
-							type="number"
-							bind:value={thresholdMs}
-							min="1"
-						/>
+						<Input id="cfg-threshold-ms" type="number" bind:value={thresholdMs} min="1" />
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-lookback-p">Lookback (minutes)</Label>
-						<Input
-							id="cfg-lookback-p"
-							type="number"
-							bind:value={lookbackMinutes}
-							min="1"
-						/>
+						<Input id="cfg-lookback-p" type="number" bind:value={lookbackMinutes} min="1" />
 					</div>
 				{:else if ruleType === 'apdex_drop'}
 					<div class="space-y-2">
@@ -521,30 +498,16 @@
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-lookback-a">Lookback (minutes)</Label>
-						<Input
-							id="cfg-lookback-a"
-							type="number"
-							bind:value={lookbackMinutes}
-							min="1"
-						/>
+						<Input id="cfg-lookback-a" type="number" bind:value={lookbackMinutes} min="1" />
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-min-req-a">Min Requests</Label>
-						<Input
-							id="cfg-min-req-a"
-							type="number"
-							bind:value={minRequests}
-							min="1"
-						/>
+						<Input id="cfg-min-req-a" type="number" bind:value={minRequests} min="1" />
 					</div>
 				{:else if ruleType === 'metric_threshold'}
 					<div class="space-y-2">
 						<Label for="cfg-metric">Metric Name</Label>
-						<Input
-							id="cfg-metric"
-							bind:value={metricName}
-							placeholder="cpu.used_pcnt"
-						/>
+						<Input id="cfg-metric" bind:value={metricName} placeholder="cpu.used_pcnt" />
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-operator">Operator</Label>
@@ -553,7 +516,7 @@
 								{operatorOptions.find((o) => o.value === operator)?.label || operator}
 							</Select.Trigger>
 							<Select.Content>
-								{#each operatorOptions as option}
+								{#each operatorOptions as option, __index (__index)}
 									<Select.Item value={option.value}>{option.label}</Select.Item>
 								{/each}
 							</Select.Content>
@@ -561,22 +524,16 @@
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-value">Threshold Value</Label>
-						<Input
-							id="cfg-value"
-							type="number"
-							bind:value={thresholdValue}
-							step="0.1"
-						/>
+						<Input id="cfg-value" type="number" bind:value={thresholdValue} step="0.1" />
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-agg">Aggregation</Label>
 						<Select.Root type="single" bind:value={aggregation}>
 							<Select.Trigger class="w-full">
-								{aggregationOptions.find((o) => o.value === aggregation)?.label ||
-									aggregation}
+								{aggregationOptions.find((o) => o.value === aggregation)?.label || aggregation}
 							</Select.Trigger>
 							<Select.Content>
-								{#each aggregationOptions as option}
+								{#each aggregationOptions as option, __index (__index)}
 									<Select.Item value={option.value}>{option.label}</Select.Item>
 								{/each}
 							</Select.Content>
@@ -584,12 +541,7 @@
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-lookback-m">Lookback (minutes)</Label>
-						<Input
-							id="cfg-lookback-m"
-							type="number"
-							bind:value={lookbackMinutes}
-							min="1"
-						/>
+						<Input id="cfg-lookback-m" type="number" bind:value={lookbackMinutes} min="1" />
 					</div>
 				{:else if ruleType === 'no_data'}
 					<div class="space-y-2">
@@ -599,7 +551,7 @@
 								{dataTypeOptions.find((o) => o.value === dataType)?.label || dataType}
 							</Select.Trigger>
 							<Select.Content>
-								{#each dataTypeOptions as option}
+								{#each dataTypeOptions as option, __index (__index)}
 									<Select.Item value={option.value}>{option.label}</Select.Item>
 								{/each}
 							</Select.Content>
@@ -607,31 +559,16 @@
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-silence">Silence (minutes)</Label>
-						<Input
-							id="cfg-silence"
-							type="number"
-							bind:value={silenceMinutes}
-							min="1"
-						/>
+						<Input id="cfg-silence" type="number" bind:value={silenceMinutes} min="1" />
 					</div>
 				{:else if ruleType === 'error_count_threshold'}
 					<div class="space-y-2">
 						<Label for="cfg-count">Threshold Count</Label>
-						<Input
-							id="cfg-count"
-							type="number"
-							bind:value={thresholdCount}
-							min="1"
-						/>
+						<Input id="cfg-count" type="number" bind:value={thresholdCount} min="1" />
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-lookback-ec">Lookback (minutes)</Label>
-						<Input
-							id="cfg-lookback-ec"
-							type="number"
-							bind:value={lookbackMinutes}
-							min="1"
-						/>
+						<Input id="cfg-lookback-ec" type="number" bind:value={lookbackMinutes} min="1" />
 					</div>
 				{:else if ruleType === 'task_duration_threshold'}
 					<div class="space-y-2">
@@ -640,21 +577,11 @@
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-threshold-ms-t">Threshold (ms)</Label>
-						<Input
-							id="cfg-threshold-ms-t"
-							type="number"
-							bind:value={thresholdMs}
-							min="1"
-						/>
+						<Input id="cfg-threshold-ms-t" type="number" bind:value={thresholdMs} min="1" />
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-lookback-td">Lookback (minutes)</Label>
-						<Input
-							id="cfg-lookback-td"
-							type="number"
-							bind:value={lookbackMinutes}
-							min="1"
-						/>
+						<Input id="cfg-lookback-td" type="number" bind:value={lookbackMinutes} min="1" />
 					</div>
 				{:else if ruleType === 'task_failure_rate'}
 					<div class="space-y-2">
@@ -673,59 +600,29 @@
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-lookback-tf">Lookback (minutes)</Label>
-						<Input
-							id="cfg-lookback-tf"
-							type="number"
-							bind:value={lookbackMinutes}
-							min="1"
-						/>
+						<Input id="cfg-lookback-tf" type="number" bind:value={lookbackMinutes} min="1" />
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-min-exec">Min Executions</Label>
-						<Input
-							id="cfg-min-exec"
-							type="number"
-							bind:value={minExecutions}
-							min="1"
-						/>
+						<Input id="cfg-min-exec" type="number" bind:value={minExecutions} min="1" />
 					</div>
 				{:else if ruleType === 'throughput_drop'}
 					<div class="space-y-2">
 						<Label for="cfg-drop">Drop (%)</Label>
-						<Input
-							id="cfg-drop"
-							type="number"
-							bind:value={dropPercent}
-							step="0.1"
-							min="0"
-						/>
+						<Input id="cfg-drop" type="number" bind:value={dropPercent} step="0.1" min="0" />
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-lookback-tp">Lookback (minutes)</Label>
-						<Input
-							id="cfg-lookback-tp"
-							type="number"
-							bind:value={lookbackMinutes}
-							min="1"
-						/>
+						<Input id="cfg-lookback-tp" type="number" bind:value={lookbackMinutes} min="1" />
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-baseline">Baseline Window (minutes)</Label>
-						<Input
-							id="cfg-baseline"
-							type="number"
-							bind:value={baselineWindowMinutes}
-							min="1"
-						/>
+						<Input id="cfg-baseline" type="number" bind:value={baselineWindowMinutes} min="1" />
 					</div>
 				{:else if ruleType === 'endpoint_error_rate'}
 					<div class="space-y-2">
 						<Label for="cfg-endpoint-er">Endpoint</Label>
-						<Input
-							id="cfg-endpoint-er"
-							bind:value={endpoint}
-							placeholder="POST /api/checkout"
-						/>
+						<Input id="cfg-endpoint-er" bind:value={endpoint} placeholder="POST /api/checkout" />
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-threshold-er">Threshold (%)</Label>
@@ -739,21 +636,11 @@
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-lookback-er">Lookback (minutes)</Label>
-						<Input
-							id="cfg-lookback-er"
-							type="number"
-							bind:value={lookbackMinutes}
-							min="1"
-						/>
+						<Input id="cfg-lookback-er" type="number" bind:value={lookbackMinutes} min="1" />
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-min-req-er">Min Requests</Label>
-						<Input
-							id="cfg-min-req-er"
-							type="number"
-							bind:value={minRequests}
-							min="1"
-						/>
+						<Input id="cfg-min-req-er" type="number" bind:value={minRequests} min="1" />
 					</div>
 				{:else if ruleType === 'new_error'}
 					<div class="space-y-2">
@@ -767,12 +654,7 @@
 				{:else if ruleType === 'impact_score_critical' || ruleType === 'impact_score_high' || ruleType === 'impact_score_medium'}
 					<div class="space-y-2">
 						<Label for="cfg-min-req-impact">Min Requests</Label>
-						<Input
-							id="cfg-min-req-impact"
-							type="number"
-							bind:value={minRequests}
-							min="1"
-						/>
+						<Input id="cfg-min-req-impact" type="number" bind:value={minRequests} min="1" />
 					</div>
 				{:else if ruleType === 'ai_trace_cost'}
 					<div class="space-y-2">
@@ -821,12 +703,7 @@
 
 			<div class="space-y-2">
 				<Label for="rule-cooldown">Cooldown (minutes)</Label>
-				<Input
-					id="rule-cooldown"
-					type="number"
-					bind:value={cooldownMinutes}
-					min="1"
-				/>
+				<Input id="rule-cooldown" type="number" bind:value={cooldownMinutes} min="1" />
 			</div>
 
 			<div class="space-y-2">
@@ -836,13 +713,12 @@
 						{severityOptions.find((o) => o.value === severity)?.label || 'Auto (default)'}
 					</Select.Trigger>
 					<Select.Content>
-						{#each severityOptions as option}
+						{#each severityOptions as option, __index (__index)}
 							<Select.Item value={option.value}>{option.label}</Select.Item>
 						{/each}
 					</Select.Content>
 				</Select.Root>
 			</div>
-
 		</form>
 
 		<AlertDialog.Footer>

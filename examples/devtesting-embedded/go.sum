@@ -288,8 +288,8 @@ github.com/tklauser/go-sysconf v0.4.0 h1:7H0uAN+7RkwWRaxhYXDLqa5V3LPrJeV8wmD9dRU
 github.com/tklauser/go-sysconf v0.4.0/go.mod h1:8mTNWyog7H+MpKijp4VmKJAd2bbYQ2zuUwkYRbUArPI=
 github.com/tklauser/numcpus v0.12.0 h1:NR85qdvHA9pFse3x3weVZ0r0ST8R6l5RHbZrlRaqob4=
 github.com/tklauser/numcpus v0.12.0/go.mod h1:ABHeXzJnr/qqwguhClkZKT1/8VABcYrsyUiUGobwWJg=
-github.com/tracewayapp/lit/v2 v2.0.2 h1:ZE8UlRWUOX3OZvY2UfbYSDcDUpBoTNLXl70Qujs0mqs=
-github.com/tracewayapp/lit/v2 v2.0.2/go.mod h1:i3zPBL5NtFgZxpxT9PvC2w4gm3S9IzDv4K5JSALtlfs=
+github.com/tracewayapp/lit/v2 v2.0.5 h1:BMPopt9xMZqMgIEwDFIRRV+rrDczajGAlV5Md2AsxPM=
+github.com/tracewayapp/lit/v2 v2.0.5/go.mod h1:i3zPBL5NtFgZxpxT9PvC2w4gm3S9IzDv4K5JSALtlfs=
 github.com/twitchyliquid64/golang-asm v0.15.1 h1:SU5vSMR7hnwNxj24w34ZyCi/FmDZTkS4MhqMhdFk5YI=
 github.com/twitchyliquid64/golang-asm v0.15.1/go.mod h1:a1lVb/DtPvCB8fslRZhAngC2+aY1QWCk3Cedj/Gdt08=
 github.com/ugorji/go/codec v1.3.1 h1:waO7eEiFDwidsBN6agj1vJQ4AG7lh2yqXyOXqhgQuyY=
@@ -357,8 +357,8 @@ go.opentelemetry.io/proto/otlp/profiles/v1development v0.3.0 h1:ZQs05qo3Yh4KUHeV
 go.opentelemetry.io/proto/otlp/profiles/v1development v0.3.0/go.mod h1:3iiRVKaCfVo0UI1ZaSMm5WbCBbINRqVlD9SUmvyBNrY=
 go.tracewayapp.com v1.0.4 h1:n9O1OQDRDNPwCBnb7kNd+DutcVoPj9uLn+c9n4M7qzM=
 go.tracewayapp.com v1.0.4/go.mod h1:sFMbWkA2TbT1OW6Hx+6jMDum2yt96irUXpC5lymblyc=
-go.tracewayapp.com/tracewaygin v1.0.2 h1:MRAvtOKz0zceoe1Ee7pl5eciSerc+gIogC7oWJaKQf8=
-go.tracewayapp.com/tracewaygin v1.0.2/go.mod h1:p/26TIhpfte86Gp3QJpA8Q72pJShFXX1jogIiKG2LXQ=
+go.tracewayapp.com/tracewaygin v1.0.4 h1:/3DqDuTy//vaIHVMm7UtxOIF1yhWG6Zu0OXoqBbrsJA=
+go.tracewayapp.com/tracewaygin v1.0.4/go.mod h1:4VCaqh0LKJJP57Ko8xeiliVO7HQIFXWpqFoJpAxkvak=
 go.uber.org/goleak v1.3.0 h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=
 go.uber.org/goleak v1.3.0/go.mod h1:CoHD4mav9JJNrW/WLlf7HGZPjdw8EucARQHekz1X6bE=
 go.uber.org/mock v0.6.0 h1:hyF9dfmbgIX5EfOdasqLsWD6xqpNZlXblLB/Dbnwv3Y=

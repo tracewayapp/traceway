@@ -1,5 +1,6 @@
 <script lang="ts" module>
 	import { api } from '$lib/api';
+	import { SvelteMap } from 'svelte/reactivity';
 	import type { ProjectOncall } from '$lib/state/oncall.svelte';
 
 	interface CacheEntry {
@@ -7,7 +8,7 @@
 		fetchedAt: number;
 	}
 
-	const cache = new Map<string, CacheEntry>();
+	const cache = new SvelteMap<string, CacheEntry>();
 	const CACHE_TTL_MS = 60_000;
 
 	function fetchOncall(projectId: string): Promise<ProjectOncall | null> {
@@ -45,9 +46,7 @@
 		});
 	});
 
-	const names = $derived(
-		(oncall?.oncall ?? []).map((u) => u.name || u.email).join(', ')
-	);
+	const names = $derived((oncall?.oncall ?? []).map((u) => u.name || u.email).join(', '));
 </script>
 
 {#if oncall?.team}

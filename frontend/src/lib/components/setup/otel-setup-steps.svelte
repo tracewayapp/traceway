@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolveHref } from '$lib/utils/links';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import bash from 'svelte-highlight/languages/bash';
 	import go from 'svelte-highlight/languages/go';
@@ -9,12 +10,7 @@
 	import csharp from 'svelte-highlight/languages/csharp';
 	import ruby from 'svelte-highlight/languages/ruby';
 	import yaml from 'svelte-highlight/languages/yaml';
-	import {
-		OTEL_TARGETS,
-		getOtelSteps,
-		type OtelStepLanguage,
-		type OtelTargetId
-	} from '$lib/utils/otel-setup';
+	import { OTEL_TARGETS, getOtelSteps, type OtelStepLanguage } from '$lib/utils/otel-setup';
 	import {
 		getOtelTarget,
 		setOtelTarget,
@@ -109,7 +105,7 @@
 				{#if step.link}
 					<p class="pt-2 text-xs text-muted-foreground">
 						<a
-							href={step.link.href}
+							{...{ href: resolveHref(step.link.href) }}
 							target="_blank"
 							rel="noopener noreferrer"
 							class="underline hover:text-foreground">{step.link.label}</a

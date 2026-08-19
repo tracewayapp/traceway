@@ -1,0 +1,83 @@
+# Incidents & Post-Mortems
+
+Monitors detect outages. Incidents are the record of them, and post-mortems are the write-up that makes the next one shorter. Together they give you the full incident lifecycle in one place: detection, public communication while it burns, and the internal document afterwards. Everything lives under **Monitors** in the sidebar.
+
+## Incidents
+
+An incident is a span of time when something was down, with an optional public story attached: a title and a timeline of updates. Incidents come from two sources.
+
+### Automatic incidents
+
+When a monitor crosses its failure threshold, an incident opens. When the monitor recovers, it resolves. You configure nothing; every state transition is recorded.
+
+- The timeline is seeded automatically: an **Investigating** entry when the incident opens and a **Resolved** entry when it closes.
+- The probe's error message stays internal. It shows on the monitor's run history, never in the public payload.
+- The incident appears on the monitor's detail page, in the organization's incident history, and on any public status page that includes the monitor.
+- The lifecycle belongs to the monitor. An automatic incident cannot be hand-resolved, re-timed, or deleted; it closes when the probes say the service is back.
+
+### Manual incidents
+
+Not every outage is caught by a probe. Organization admins can record an incident by hand with the **Record Incident** button on a status page's incident history, for outages the monitors missed or for events like maintenance windows.
+
+- A manual incident needs a title. It can carry an optional first update message.
+- It can be backdated, and it can be created already resolved by setting an end time.
+- Resolve it later by posting a **Resolved** update or setting the resolved time. Clearing the resolved time reopens it. Manual incidents can also be deleted.
+- Manual incidents only feed the incident history and the public Past Incidents section. They never change a monitor's uptime bars.
+
+### Titles and timeline updates
+
+Every incident, automatic or manual, can carry a public title and a statuspage-style timeline:
+
+- **Title.** Automatic incidents default to "&lt;monitor name&gt; is down". Rename them to something users understand, like "Checkout is failing for some card payments".
+- **Updates.** Post entries with a status of **Investigating**, **Identified**, **Monitoring**, **Update**, or **Resolved**, each with a message. Posting a Resolved update also closes a manual incident.
+
+Updates are public content, so posting, renaming, and deleting them needs an organization admin. Every member can read the incident history.
+
+### Where you manage them
+
+- **Status Pages tab → incidents action**: the full, paginated incident history of one status page. This is where new manual incidents are recorded. Expand an incident to rename it, post timeline updates, attach a post-mortem, or delete a manual one.
+- **Monitor detail page**: the incidents of that one monitor, with the same title and post-mortem links.
+- **Public status page**: the last 90 days appear in the **Past Incidents** section, grouped by day, with the title and the update timeline. No login required, no internal details.
+
+## Post-mortems
+
+Post-mortems are internal write-ups of incidents: what happened, why, and what changes. Each post-mortem belongs to one project, the same way monitors do: the **Post-Mortems** tab shows the current project's documents, and a document opened under a different project is not found. They are visible to every organization member with access to the project and never appear on public status pages.
+
+### Creating one
+
+Creation is deliberately lightweight: a dialog asks for a title and nothing else. The document is created immediately and the editor opens. You can start one from three places:
+
+- the **Post-Mortems** tab,
+- the incidents list on a monitor's detail page,
+- an incident on a status page's incident history, which pre-links the incident.
+
+### Writing
+
+The editor is a WYSIWYG markdown editor. Select text to get the formatting toolbar, or type `/` to insert blocks: headings, lists, tables, code blocks, quotes. A **Rich text / Markdown** toggle at the top switches to a plain-text view of the raw markdown, for pasting an existing document or editing the source directly. Both views edit the same content.
+
+Press **Update Post-Mortem** to save. Documents are capped at 200KB of markdown.
+
+### Tags and the incident link
+
+Under the title, the document carries a row of pills:
+
+- **Tags** like `redis` or `dns`. The **+ Add tags** pill opens a dialog where you add several at once. Up to 20 tags per document.
+- **Linked incident**. The **Link incident** pill opens a searchable picker of recent incidents: the project's own monitor incidents, plus manually recorded status page incidents, which belong to the organization rather than a project. Each incident can have at most one post-mortem, so incidents that already have one are not offered. Unlink with the ✕ on the pill.
+
+The link is what connects the public and internal sides: an incident with a post-mortem shows a link to it in the incident history and on the monitor detail page. Post-mortems survive the deletion of their incident or monitor; the link is simply severed.
+
+### Finding them again
+
+The Post-Mortems tab has a search box that matches titles, content, and tags, so "redis" finds the stampede write-up from last year even if the title never mentions redis. Clicking a tag pill in the list filters by it, and multiple tag filters combine, narrowing to documents that carry all of them. That is the point of the tab: the next time a similar incident hits, the fix from last time is one search away.
+
+### Activity
+
+Every post-mortem records its own history. The **Activity** button on the document opens a panel listing every edit: who created it, who edited it, when, and which parts changed (title, content, tags, or the incident link). Saving without changing anything records nothing.
+
+### Permissions
+
+| Action | Who |
+|--------|-----|
+| Read post-mortems and incident history | Every organization member, including read-only |
+| Create, edit, delete post-mortems | Members with write access to the project (per-project read-only overrides apply) |
+| Record incidents, rename them, post public updates | Organization admins, since this is public content |

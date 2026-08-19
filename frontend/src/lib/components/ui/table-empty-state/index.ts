@@ -1,3 +1,3 @@
-import TableEmptyState from "./table-empty-state.svelte";
+import TableEmptyState from './table-empty-state.svelte';
 
 export { TableEmptyState };

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Check, Bot } from 'lucide-svelte';
+	import { Check, Bot } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
 	import { Button } from '$lib/components/ui/button';

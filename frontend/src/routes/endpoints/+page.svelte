@@ -1,614 +1,622 @@
 <script lang="ts">
-    import { onMount, onDestroy } from 'svelte';
-    import { api } from '$lib/api';
-    import { formatDuration, toUTCISO, calendarDateTimeToLuxon } from '$lib/utils/formatters';
-    import { getTimezone } from '$lib/state/timezone.svelte';
-    import * as Table from "$lib/components/ui/table";
-    import * as Card from "$lib/components/ui/card";
-    import { Button } from "$lib/components/ui/button";
-    import { LoadingCircle } from "$lib/components/ui/loading-circle";
-    import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-    import { ChevronDown, Check } from 'lucide-svelte';
-    import { TracewayTableHeader } from "$lib/components/ui/traceway-table-header";
-    import { ImpactBadge } from "$lib/components/ui/impact-badge";
-    import { Badge } from "$lib/components/ui/badge";
-    import { TableEmptyState } from "$lib/components/ui/table-empty-state";
-    import { PaginationFooter } from "$lib/components/ui/pagination-footer";
-    import { TimeRangePicker } from "$lib/components/ui/time-range-picker";
-    import { SearchBar } from "$lib/components/ui/search-bar";
-    import { RootFilter } from "$lib/components/ui/root-filter";
-    import { NonRootChip } from "$lib/components/ui/non-root-chip";
-    import EndpointName from "$lib/components/endpoint-name.svelte";
-    import { browser } from '$app/environment';
-    import { CalendarDate } from "@internationalized/date";
-    import { projectsState } from '$lib/state/projects.svelte';
-    import { isHealthcheckEndpoint } from '$lib/utils/healthcheck';
-    import { createRowClickHandler } from '$lib/utils/navigation';
-    import { resolve } from '$app/paths';
-    import PageHeader from '$lib/components/issues/page-header.svelte';
-    import D3StackedAreaChart from '$lib/components/dashboard/d3-stacked-area-chart.svelte';
-    import D3HorizontalBarChart from '$lib/components/dashboard/d3-horizontal-bar-chart.svelte';
-    import {
-        presetMinutes,
-        getTimeRangeFromPreset,
-        dateToCalendarDate,
-        dateToTimeString,
-        parseTimeRangeFromUrl,
-        getResolvedTimeRange,
-        updateUrl
-    } from '$lib/utils/url-params';
-    import {
-        getSortState,
-        setSortState,
-        handleSortClick,
-        type SortDirection
-    } from '$lib/utils/sort-storage';
+	import { getErrorMessage } from '$lib/utils/errors';
+	import { onMount, onDestroy } from 'svelte';
+	import { api } from '$lib/api';
+	import { formatDuration, toUTCISO, calendarDateTimeToLuxon } from '$lib/utils/formatters';
+	import { getTimezone } from '$lib/state/timezone.svelte';
+	import * as Table from '$lib/components/ui/table';
+	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { ChartLine } from '@lucide/svelte';
+	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
+	import { ImpactBadge } from '$lib/components/ui/impact-badge';
+	import { Badge } from '$lib/components/ui/badge';
+	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
+	import { PaginationFooter } from '$lib/components/ui/pagination-footer';
+	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
+	import { SearchBar } from '$lib/components/ui/search-bar';
+	import { RootFilter } from '$lib/components/ui/root-filter';
+	import { NonRootChip } from '$lib/components/ui/non-root-chip';
+	import EndpointName from '$lib/components/endpoint-name.svelte';
+	import { browser } from '$app/environment';
+	import { CalendarDate } from '@internationalized/date';
+	import { projectsState } from '$lib/state/projects.svelte';
+	import { isHealthcheckEndpoint } from '$lib/utils/healthcheck';
+	import { createRowClickHandler } from '$lib/utils/navigation';
+	import { resolve } from '$app/paths';
+	import PageHeader from '$lib/components/traceway/page-header.svelte';
+	import ChartCard from '$lib/components/traceway/chart-card.svelte';
+	import ToolbarSelect from '$lib/components/traceway/toolbar-select.svelte';
+	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import D3StackedAreaChart from '$lib/components/dashboard/d3-stacked-area-chart.svelte';
+	import D3HorizontalBarChart from '$lib/components/dashboard/d3-horizontal-bar-chart.svelte';
+	import {
+		getTimeRangeFromPreset,
+		dateToCalendarDate,
+		dateToTimeString,
+		parseTimeRangeFromUrl,
+		getResolvedTimeRange,
+		updateUrl
+	} from '$lib/utils/url-params';
+	import {
+		getSortState,
+		setSortState,
+		handleSortClick,
+		type SortDirection
+	} from '$lib/utils/sort-storage';
 
-    const timezone = $derived(getTimezone());
-    const initialTimezone = getTimezone();
-    const dropHealthyHealthchecks = $derived(projectsState.currentProject?.dropHealthyHealthchecks ?? false);
-    const healthcheckPaths = $derived(projectsState.currentProject?.healthcheckPaths ?? []);
+	const timezone = $derived(getTimezone());
+	const initialTimezone = getTimezone();
+	const dropHealthyHealthchecks = $derived(
+		projectsState.currentProject?.dropHealthyHealthchecks ?? false
+	);
+	const healthcheckPaths = $derived(projectsState.currentProject?.healthcheckPaths ?? []);
 
-    type EndpointStats = {
-        endpoint: string;
-        count: number;
-        p50Duration: number;
-        p95Duration: number;
-        p99Duration: number;
-        avgDuration: number;
-        lastSeen: string;
-        impact: number;
-        impactReason: string;
-        isStream?: boolean;
-        hasRoot: boolean;
-        hasNonRoot: boolean;
-    };
+	type EndpointStats = {
+		endpoint: string;
+		count: number;
+		p50Duration: number;
+		p95Duration: number;
+		p99Duration: number;
+		avgDuration: number;
+		lastSeen: string;
+		impact: number;
+		impactReason: string;
+		isStream?: boolean;
+		hasRoot: boolean;
+		hasNonRoot: boolean;
+	};
 
-    type SortField = 'count' | 'p50_duration' | 'p95_duration' | 'p99_duration' | 'last_seen' | 'impact';
+	type SortField =
+		| 'count'
+		| 'p50_duration'
+		| 'p95_duration'
+		| 'p99_duration'
+		| 'last_seen'
+		| 'impact';
 
-    type ChartDataPoint = {
-        timestamp: Date;
-        endpoint: string;
-        value: number;
-    };
+	type ChartDataPoint = {
+		timestamp: Date;
+		endpoint: string;
+		value: number;
+	};
 
-    type ChartResponse = {
-        endpoints: string[];
-        series: { timestamp: string; endpoint: string; value: number }[];
-    };
+	type ChartResponse = {
+		endpoints: string[];
+		series: { timestamp: string; endpoint: string; value: number }[];
+	};
 
-    // Metric options for the chart
-    const metricOptions = [
-        { value: 'total_time', label: 'Total time' },
-        { value: 'p50', label: 'Average response time' },
-        { value: 'p95', label: 'Slow response time' },
-        { value: 'p99', label: 'Awful response time' }
-    ];
+	// Metric options for the chart
+	const metricOptions = [
+		{ value: 'total_time', label: 'Total time' },
+		{ value: 'p50', label: 'Average response time' },
+		{ value: 'p95', label: 'Slow response time' },
+		{ value: 'p99', label: 'Awful response time' }
+	];
 
-    let endpoints = $state<EndpointStats[]>([]);
-    let loading = $state(true);
-    let error = $state('');
+	let endpoints = $state<EndpointStats[]>([]);
+	let loading = $state(true);
+	let error = $state('');
 
-    // Chart state
-    let chartEndpoints = $state<string[]>([]);
-    let chartSeries = $state<ChartDataPoint[]>([]);
-    let chartLoading = $state(true);
-    let selectedMetric = $state('total_time');
+	// Chart state
+	let chartEndpoints = $state<string[]>([]);
+	let chartSeries = $state<ChartDataPoint[]>([]);
+	let chartLoading = $state(true);
+	let selectedMetric = $state('total_time');
 
-    // Pagination State
-    let page = $state(1);
-    let pageSize = $state(50);
-    let total = $state(0);
-    let totalPages = $state(0);
+	// Pagination State
+	let page = $state(1);
+	let pageSize = $state(50);
+	let total = $state(0);
+	let totalPages = $state(0);
 
-    // Parse URL params including search + rootFilter
-    function parseEndpointsUrlParams() {
-        if (!browser) return { preset: '24h', from: null, to: null, search: '', rootFilter: 'all' };
-        const params = new URLSearchParams(window.location.search);
-        const timeParams = parseTimeRangeFromUrl(timezone, '24h');
-        return {
-            ...timeParams,
-            search: params.get('search') || '',
-            rootFilter: params.get('rootFilter') || 'all'
-        };
-    }
+	// Parse URL params including search + rootFilter
+	function parseEndpointsUrlParams() {
+		if (!browser) return { preset: '24h', from: null, to: null, search: '', rootFilter: 'all' };
+		const params = new URLSearchParams(window.location.search);
+		const timeParams = parseTimeRangeFromUrl(timezone, '24h');
+		return {
+			...timeParams,
+			search: params.get('search') || '',
+			rootFilter: params.get('rootFilter') || 'all'
+		};
+	}
 
-    // Initialize from URL
-    const initialUrlParams = parseEndpointsUrlParams();
-    const initialRange = getResolvedTimeRange(initialUrlParams, initialTimezone);
+	// Initialize from URL
+	const initialUrlParams = parseEndpointsUrlParams();
+	const initialRange = getResolvedTimeRange(initialUrlParams, initialTimezone);
 
-    // Search + rootFilter state
-    let searchQuery = $state(initialUrlParams.search);
-    let rootFilter = $state(initialUrlParams.rootFilter);
+	// Search + rootFilter state
+	let searchQuery = $state(initialUrlParams.search);
+	let rootFilter = $state(initialUrlParams.rootFilter);
 
-    // Date Range State
-    let selectedPreset = $state<string | null>(initialUrlParams.preset);
-    let fromDate = $state<CalendarDate>(dateToCalendarDate(initialRange.from, initialTimezone));
-    let toDate = $state<CalendarDate>(dateToCalendarDate(initialRange.to, initialTimezone));
-    let fromTime = $state(dateToTimeString(initialRange.from, initialTimezone));
-    let toTime = $state(dateToTimeString(initialRange.to, initialTimezone));
+	// Date Range State
+	let selectedPreset = $state<string | null>(initialUrlParams.preset);
+	let fromDate = $state<CalendarDate>(dateToCalendarDate(initialRange.from, initialTimezone));
+	let toDate = $state<CalendarDate>(dateToCalendarDate(initialRange.to, initialTimezone));
+	let fromTime = $state(dateToTimeString(initialRange.from, initialTimezone));
+	let toTime = $state(dateToTimeString(initialRange.to, initialTimezone));
 
-    // Update URL with current time range and search
-    function updateTimeRangeUrl(pushToHistory = true) {
-        const params: Record<string, string | null | undefined> = {};
-        if (selectedPreset) {
-            params.preset = selectedPreset;
-        } else {
-            params.from = getFromDateTimeUTC();
-            params.to = getToDateTimeUTC();
-        }
-        if (searchQuery.trim()) {
-            params.search = searchQuery.trim();
-        }
-        if (rootFilter && rootFilter !== 'all') {
-            params.rootFilter = rootFilter;
-        }
-        updateUrl(params, { pushToHistory });
-    }
+	// Update URL with current time range and search
+	function updateTimeRangeUrl(pushToHistory = true) {
+		const params: Record<string, string | null | undefined> = {};
+		if (selectedPreset) {
+			params.preset = selectedPreset;
+		} else {
+			params.from = getFromDateTimeUTC();
+			params.to = getToDateTimeUTC();
+		}
+		if (searchQuery.trim()) {
+			params.search = searchQuery.trim();
+		}
+		if (rootFilter && rootFilter !== 'all') {
+			params.rootFilter = rootFilter;
+		}
+		updateUrl(params, { pushToHistory });
+	}
 
-    // Handle browser back/forward navigation
-    function handlePopState() {
-        const urlParams = parseEndpointsUrlParams();
-        const range = getResolvedTimeRange(urlParams, timezone);
+	// Handle browser back/forward navigation
+	function handlePopState() {
+		const urlParams = parseEndpointsUrlParams();
+		const range = getResolvedTimeRange(urlParams, timezone);
 
-        selectedPreset = urlParams.preset;
-        fromDate = dateToCalendarDate(range.from, timezone);
-        fromTime = dateToTimeString(range.from, timezone);
-        toDate = dateToCalendarDate(range.to, timezone);
-        toTime = dateToTimeString(range.to, timezone);
-        searchQuery = urlParams.search;
-        rootFilter = urlParams.rootFilter;
+		selectedPreset = urlParams.preset;
+		fromDate = dateToCalendarDate(range.from, timezone);
+		fromTime = dateToTimeString(range.from, timezone);
+		toDate = dateToCalendarDate(range.to, timezone);
+		toTime = dateToTimeString(range.to, timezone);
+		searchQuery = urlParams.search;
+		rootFilter = urlParams.rootFilter;
 
-        page = 1;
-        loadData(false);
-    }
+		page = 1;
+		loadData(false);
+	}
 
-    // Sorting - persisted to localStorage
-    const SORT_STORAGE_KEY = 'endpoints';
-    const initialSort = getSortState(SORT_STORAGE_KEY, { field: 'impact', direction: 'desc' });
-    let orderBy = $state<SortField>(initialSort.field as SortField);
-    let sortDirection = $state<SortDirection>(initialSort.direction);
+	// Sorting - persisted to localStorage
+	const SORT_STORAGE_KEY = 'endpoints';
+	const initialSort = getSortState(SORT_STORAGE_KEY, { field: 'impact', direction: 'desc' });
+	let orderBy = $state<SortField>(initialSort.field as SortField);
+	let sortDirection = $state<SortDirection>(initialSort.direction);
 
-    // Page size options
-    const pageSizeOptions = [
-        { value: "10", label: "10" },
-        { value: "20", label: "20" },
-        { value: "50", label: "50" },
-        { value: "100", label: "100" }
-    ];
+	// Combine date and time into UTC ISO datetime string
+	function getFromDateTimeUTC(): string {
+		const [hour, minute] = (fromTime || '00:00').split(':').map(Number);
+		const dt = calendarDateTimeToLuxon(
+			{ year: fromDate.year, month: fromDate.month, day: fromDate.day, hour, minute },
+			timezone
+		);
+		return toUTCISO(dt);
+	}
 
-    const pageSizeLabel = $derived(pageSizeOptions.find(o => o.value === pageSize.toString())?.label ?? pageSize.toString());
+	function getToDateTimeUTC(): string {
+		const [hour, minute] = (toTime || '23:59').split(':').map(Number);
+		const dt = calendarDateTimeToLuxon(
+			{ year: toDate.year, month: toDate.month, day: toDate.day, hour, minute },
+			timezone
+		).endOf('minute');
+		return toUTCISO(dt);
+	}
 
-    // Combine date and time into UTC ISO datetime string
-    function getFromDateTimeUTC(): string {
-        const [hour, minute] = (fromTime || '00:00').split(':').map(Number);
-        const dt = calendarDateTimeToLuxon({ year: fromDate.year, month: fromDate.month, day: fromDate.day, hour, minute }, timezone);
-        return toUTCISO(dt);
-    }
+	function handleTimeRangeChange(
+		from: { date: CalendarDate; time: string },
+		to: { date: CalendarDate; time: string },
+		preset: string | null
+	) {
+		fromDate = from.date;
+		fromTime = from.time;
+		toDate = to.date;
+		toTime = to.time;
+		selectedPreset = preset;
+		page = 1;
+		loadData(false);
+	}
 
-    function getToDateTimeUTC(): string {
-        const [hour, minute] = (toTime || '23:59').split(':').map(Number);
-        const dt = calendarDateTimeToLuxon({ year: toDate.year, month: toDate.month, day: toDate.day, hour, minute }, timezone).endOf('minute');
-        return toUTCISO(dt);
-    }
+	// Format count with k/m suffixes
+	function formatCount(count: number): string {
+		if (count >= 1_000_000) {
+			return `${(count / 1_000_000).toFixed(1)}m`;
+		} else if (count >= 1_000) {
+			return `${(count / 1_000).toFixed(1)}k`;
+		}
+		return count.toLocaleString();
+	}
 
-    function handleTimeRangeChange(from: { date: CalendarDate; time: string }, to: { date: CalendarDate; time: string }, preset: string | null) {
-        fromDate = from.date;
-        fromTime = from.time;
-        toDate = to.date;
-        toTime = to.time;
-        selectedPreset = preset;
-        page = 1;
-        loadData(false);
-    }
+	// Calculate interval based on time range
+	function calculateInterval(from: Date, to: Date): number {
+		const diffMs = to.getTime() - from.getTime();
+		const diffHours = diffMs / (1000 * 60 * 60);
 
-    // Format count with k/m suffixes
-    function formatCount(count: number): string {
-        if (count >= 1_000_000) {
-            return `${(count / 1_000_000).toFixed(1)}m`;
-        } else if (count >= 1_000) {
-            return `${(count / 1_000).toFixed(1)}k`;
-        }
-        return count.toLocaleString();
-    }
+		if (diffHours <= 1) return 1; // 1 minute
+		if (diffHours <= 6) return 5; // 5 minutes
+		if (diffHours <= 24 * 7) return 60; // 1 hour
+		return 240; // 4 hours
+	}
 
-    // Calculate interval based on time range
-    function calculateInterval(from: Date, to: Date): number {
-        const diffMs = to.getTime() - from.getTime();
-        const diffHours = diffMs / (1000 * 60 * 60);
+	async function loadChartData() {
+		chartLoading = true;
 
-        if (diffHours <= 1) return 1; // 1 minute
-        if (diffHours <= 6) return 5; // 5 minutes
-        if (diffHours <= 24 * 7) return 60; // 1 hour
-        return 240; // 4 hours
-    }
+		try {
+			const fromStr = getFromDateTimeUTC();
+			const toStr = getToDateTimeUTC();
+			const interval = calculateInterval(new Date(fromStr), new Date(toStr));
 
-    async function loadChartData() {
-        chartLoading = true;
+			const response = (await api.post(
+				'/endpoints/chart',
+				{
+					fromDate: fromStr,
+					toDate: toStr,
+					metricType: selectedMetric,
+					intervalMinutes: interval
+				},
+				{ projectId: projectsState.currentProjectId ?? undefined }
+			)) as ChartResponse;
 
-        try {
-            const fromStr = getFromDateTimeUTC();
-            const toStr = getToDateTimeUTC();
-            const interval = calculateInterval(new Date(fromStr), new Date(toStr));
+			chartEndpoints = response.endpoints || [];
+			chartSeries = (response.series || []).map(
+				(s: { timestamp: string; endpoint: string; value: number }) => ({
+					timestamp: new Date(s.timestamp),
+					endpoint: s.endpoint,
+					value: s.value
+				})
+			);
+		} catch (e) {
+			console.error('Failed to load chart data:', e);
+			chartEndpoints = [];
+			chartSeries = [];
+		} finally {
+			chartLoading = false;
+		}
+	}
 
-            const response = await api.post('/endpoints/chart', {
-                fromDate: fromStr,
-                toDate: toStr,
-                metricType: selectedMetric,
-                intervalMinutes: interval
-            }, { projectId: projectsState.currentProjectId ?? undefined }) as ChartResponse;
+	async function loadData(pushToHistory = true) {
+		loading = true;
+		error = '';
 
-            chartEndpoints = response.endpoints || [];
-            chartSeries = (response.series || []).map((s: { timestamp: string; endpoint: string; value: number }) => ({
-                timestamp: new Date(s.timestamp),
-                endpoint: s.endpoint,
-                value: s.value
-            }));
-        } catch (e: any) {
-            console.error('Failed to load chart data:', e);
-            chartEndpoints = [];
-            chartSeries = [];
-        } finally {
-            chartLoading = false;
-        }
-    }
+		if (selectedPreset) {
+			const range = getTimeRangeFromPreset(selectedPreset, timezone);
+			fromDate = dateToCalendarDate(range.from, timezone);
+			toDate = dateToCalendarDate(range.to, timezone);
+			fromTime = dateToTimeString(range.from, timezone);
+			toTime = dateToTimeString(range.to, timezone);
+		}
 
-    async function loadData(pushToHistory = true) {
-        loading = true;
-        error = '';
+		// Update URL
+		updateTimeRangeUrl(pushToHistory);
 
-        if (selectedPreset) {
-            const range = getTimeRangeFromPreset(selectedPreset, timezone);
-            fromDate = dateToCalendarDate(range.from, timezone);
-            toDate = dateToCalendarDate(range.to, timezone);
-            fromTime = dateToTimeString(range.from, timezone);
-            toTime = dateToTimeString(range.to, timezone);
-        }
+		try {
+			const requestBody = {
+				fromDate: getFromDateTimeUTC(),
+				toDate: getToDateTimeUTC(),
+				orderBy: orderBy,
+				sortDirection: sortDirection,
+				pagination: {
+					page: page,
+					pageSize: pageSize
+				},
+				search: searchQuery.trim(),
+				rootFilter: rootFilter === 'all' ? '' : rootFilter
+			};
 
-        // Update URL
-        updateTimeRangeUrl(pushToHistory);
+			const response = await api.post('/endpoints/grouped', requestBody, {
+				projectId: projectsState.currentProjectId ?? undefined
+			});
 
-        try {
-            const requestBody = {
-                fromDate: getFromDateTimeUTC(),
-                toDate: getToDateTimeUTC(),
-                orderBy: orderBy,
-                sortDirection: sortDirection,
-                pagination: {
-                    page: page,
-                    pageSize: pageSize
-                },
-                search: searchQuery.trim(),
-                rootFilter: rootFilter === 'all' ? '' : rootFilter
-            };
+			endpoints = response.data || [];
+			total = response.pagination.total;
+			totalPages = response.pagination.totalPages;
+		} catch (e) {
+			console.error(e);
+			error = getErrorMessage(e) || 'Failed to load data';
+		} finally {
+			loading = false;
+		}
 
-            const response = await api.post('/endpoints/grouped', requestBody, { projectId: projectsState.currentProjectId ?? undefined });
+		// Also load chart data
+		loadChartData();
+	}
 
-            endpoints = response.data || [];
-            total = response.pagination.total;
-            totalPages = response.pagination.totalPages;
-        } catch (e: any) {
-            console.error(e);
-            error = e.message || 'Failed to load data';
-        } finally {
-            loading = false;
-        }
+	function handlePageChange(newPage: number) {
+		if (newPage >= 1 && newPage <= totalPages) {
+			page = newPage;
+			loadData(false); // Don't push to history for pagination
+		}
+	}
 
-        // Also load chart data
-        loadChartData();
-    }
+	function handlePageSizeChange(newPageSize: number) {
+		pageSize = newPageSize;
+		page = 1;
+		loadData(false); // Don't push to history for pagination
+	}
 
-    function handlePageChange(newPage: number) {
-        if (newPage >= 1 && newPage <= totalPages) {
-            page = newPage;
-            loadData(false); // Don't push to history for pagination
-        }
-    }
+	function handleSort(field: SortField) {
+		const newSort = handleSortClick(field, orderBy, sortDirection);
+		orderBy = newSort.field as SortField;
+		sortDirection = newSort.direction;
+		setSortState(SORT_STORAGE_KEY, newSort);
+		page = 1;
+		loadData(false);
+	}
 
-    function handlePageSizeChange(newPageSize: number) {
-        pageSize = newPageSize;
-        page = 1;
-        loadData(false); // Don't push to history for pagination
-    }
+	function handleMetricChange(value: string) {
+		selectedMetric = value;
+		loadChartData();
+	}
 
-    function handleSort(field: SortField) {
-        const newSort = handleSortClick(field, orderBy, sortDirection);
-        orderBy = newSort.field as SortField;
-        sortDirection = newSort.direction;
-        setSortState(SORT_STORAGE_KEY, newSort);
-        page = 1;
-        loadData(false);
-    }
+	function handleSearch() {
+		page = 1;
+		loadData(true);
+	}
 
-    function handleMetricChange(value: string) {
-        selectedMetric = value;
-        loadChartData();
-    }
+	function handleChartRangeSelect(from: Date, to: Date) {
+		selectedPreset = null;
+		fromDate = new CalendarDate(from.getFullYear(), from.getMonth() + 1, from.getDate());
+		fromTime = `${String(from.getHours()).padStart(2, '0')}:${String(from.getMinutes()).padStart(2, '0')}`;
+		toDate = new CalendarDate(to.getFullYear(), to.getMonth() + 1, to.getDate());
+		toTime = `${String(to.getHours()).padStart(2, '0')}:${String(to.getMinutes()).padStart(2, '0')}`;
+		page = 1;
+		loadData(true);
+	}
 
-    function handleSearch() {
-        page = 1;
-        loadData(true);
-    }
+	// Format total time (input is milliseconds, not nanoseconds)
+	function formatTotalTime(ms: number): string {
+		if (ms >= 3600000) {
+			// >= 1 hour
+			return `${(ms / 3600000).toFixed(1)}h`;
+		} else if (ms >= 60000) {
+			// >= 1 minute
+			return `${(ms / 60000).toFixed(1)}m`;
+		} else if (ms >= 1000) {
+			// >= 1 second
+			return `${(ms / 1000).toFixed(1)}s`;
+		} else if (ms < 1) {
+			return `${(ms * 1000).toFixed(0)}µs`;
+		}
+		return `${Math.round(ms)}ms`;
+	}
 
-    function handleChartRangeSelect(from: Date, to: Date) {
-        selectedPreset = null;
-        fromDate = new CalendarDate(from.getFullYear(), from.getMonth() + 1, from.getDate());
-        fromTime = `${String(from.getHours()).padStart(2, '0')}:${String(from.getMinutes()).padStart(2, '0')}`;
-        toDate = new CalendarDate(to.getFullYear(), to.getMonth() + 1, to.getDate());
-        toTime = `${String(to.getHours()).padStart(2, '0')}:${String(to.getMinutes()).padStart(2, '0')}`;
-        page = 1;
-        loadData(true);
-    }
+	// Check if we should use bar chart (for percentile metrics)
+	const useBarChart = $derived(selectedMetric !== 'total_time');
 
-    const selectedMetricLabel = $derived(metricOptions.find(o => o.value === selectedMetric)?.label ?? 'Total time');
+	// Get top 8 endpoints for bar chart based on selected metric
+	// Sort by the selected metric to show the worst (slowest) endpoints first
+	const barChartData = $derived.by(() => {
+		if (!useBarChart || endpoints.length === 0) return [];
 
-    // Format total time (input is milliseconds, not nanoseconds)
-    function formatTotalTime(ms: number): string {
-        if (ms >= 3600000) { // >= 1 hour
-            return `${(ms / 3600000).toFixed(1)}h`;
-        } else if (ms >= 60000) { // >= 1 minute
-            return `${(ms / 60000).toFixed(1)}m`;
-        } else if (ms >= 1000) { // >= 1 second
-            return `${(ms / 1000).toFixed(1)}s`;
-        } else if (ms < 1) {
-            return `${(ms * 1000).toFixed(0)}µs`;
-        }
-        return `${Math.round(ms)}ms`;
-    }
+		const metricKey =
+			selectedMetric === 'p50'
+				? 'p50Duration'
+				: selectedMetric === 'p95'
+					? 'p95Duration'
+					: 'p99Duration';
 
-    // Check if we should use bar chart (for percentile metrics)
-    const useBarChart = $derived(selectedMetric !== 'total_time');
+		return [...endpoints]
+			.sort((a, b) => b[metricKey] - a[metricKey])
+			.slice(0, 8)
+			.map((ep) => ({
+				endpoint: ep.endpoint,
+				value: ep[metricKey]
+			}));
+	});
 
-    // Get top 8 endpoints for bar chart based on selected metric
-    // Sort by the selected metric to show the worst (slowest) endpoints first
-    const barChartData = $derived.by(() => {
-        if (!useBarChart || endpoints.length === 0) return [];
+	onMount(() => {
+		// Add popstate listener for back/forward navigation
+		window.addEventListener('popstate', handlePopState);
 
-        const metricKey = selectedMetric === 'p50' ? 'p50Duration'
-            : selectedMetric === 'p95' ? 'p95Duration'
-            : 'p99Duration';
+		// Initial load with replaceState (don't push to history)
+		loadData(false);
+	});
 
-        return [...endpoints]
-            .sort((a, b) => b[metricKey] - a[metricKey])
-            .slice(0, 8)
-            .map(ep => ({
-                endpoint: ep.endpoint,
-                value: ep[metricKey]
-            }));
-    });
-
-
-    onMount(() => {
-        // Add popstate listener for back/forward navigation
-        window.addEventListener('popstate', handlePopState);
-
-        // Initial load with replaceState (don't push to history)
-        loadData(false);
-    });
-
-    onDestroy(() => {
-        if (typeof window !== 'undefined') {
-            window.removeEventListener('popstate', handlePopState);
-        }
-    });
+	onDestroy(() => {
+		if (typeof window !== 'undefined') {
+			window.removeEventListener('popstate', handlePopState);
+		}
+	});
 </script>
 
 <div class="space-y-4">
-    <!-- Header with Title and Time Range Filter -->
-     <div class="flex flex-col gap-4 sm:flex-row sm:justify-between">
+	<PageHeader title="Endpoints">
+		{#snippet actions()}
+			<TimeRangePicker
+				bind:fromDate
+				bind:toDate
+				bind:fromTime
+				bind:toTime
+				bind:preset={selectedPreset}
+				onApply={handleTimeRangeChange}
+			/>
+		{/snippet}
+	</PageHeader>
 
-        <PageHeader title="Endpoints" />
+	<!-- Search -->
+	<SearchBar
+		placeholder="Search endpoints..."
+		bind:value={searchQuery}
+		onSearch={handleSearch}
+		disabled={loading}
+	>
+		<RootFilter bind:value={rootFilter} />
+	</SearchBar>
 
-        <div class="flex flex-col">
-            <TimeRangePicker
-                bind:fromDate
-                bind:toDate
-                bind:fromTime
-                bind:toTime
-                bind:preset={selectedPreset}
-                onApply={handleTimeRangeChange}
-            />
-        </div>
-    </div>
+	<!-- Performance Chart -->
+	<ChartCard
+		title="Performance"
+		loading={useBarChart ? loading : chartLoading}
+		empty={useBarChart ? barChartData.length === 0 : chartEndpoints.length === 0}
+	>
+		{#snippet icon()}
+			<ChartLine class="h-3.5 w-3.5 text-muted-foreground" />
+		{/snippet}
+		{#snippet controls()}
+			<ToolbarSelect
+				bind:value={selectedMetric}
+				options={metricOptions}
+				class="w-44"
+				onChange={handleMetricChange}
+			/>
+		{/snippet}
+		{#if useBarChart}
+			<D3HorizontalBarChart data={barChartData} formatValue={formatDuration} />
+		{:else}
+			<D3StackedAreaChart
+				endpoints={chartEndpoints}
+				series={chartSeries}
+				formatValue={formatTotalTime}
+				onRangeSelect={handleChartRangeSelect}
+			/>
+		{/if}
+	</ChartCard>
 
-    <!-- Search -->
-    <SearchBar
-        placeholder="Search endpoints..."
-        bind:value={searchQuery}
-        onSearch={handleSearch}
-        disabled={loading}
-    >
-        {#snippet children()}
-            <RootFilter bind:value={rootFilter} />
-        {/snippet}
-    </SearchBar>
+	<!-- Endpoints Table -->
+	<TableContainer minWidth="860px">
+		<Table.Root>
+			{#if loading}
+				<Table.Body>
+					<Table.Row>
+						<Table.Cell colspan={6} class="h-48">
+							<div class="flex h-full items-center justify-center">
+								<LoadingCircle size="xlg" />
+							</div>
+						</Table.Cell>
+					</Table.Row>
+				</Table.Body>
+			{:else if error}
+				<Table.Body>
+					<Table.Row>
+						<Table.Cell colspan={6} class="h-24 text-center text-red-500">
+							{error}
+						</Table.Cell>
+					</Table.Row>
+				</Table.Body>
+			{:else if endpoints.length === 0}
+				<Table.Body>
+					<TableEmptyState
+						colspan={6}
+						message="No endpoint data available for your search parameters"
+					/>
+				</Table.Body>
+			{:else}
+				<Table.Header>
+					<Table.Row>
+						<TracewayTableHeader
+							label="Endpoint"
+							tooltip="The API route or page being accessed"
+							class="max-w-[50%]"
+						/>
+						<TracewayTableHeader
+							label="Calls"
+							tooltip="Total number of requests"
+							sortField="count"
+							currentSortField={orderBy}
+							{sortDirection}
+							onSort={(field) => handleSort(field as SortField)}
+							class="w-[100px]"
+						/>
+						<TracewayTableHeader
+							label="Typical"
+							tooltip="Median response time (P50)"
+							sortField="p50_duration"
+							currentSortField={orderBy}
+							{sortDirection}
+							onSort={(field) => handleSort(field as SortField)}
+							class="w-[100px]"
+						/>
+						<TracewayTableHeader
+							label="Slow"
+							tooltip="95th percentile - slowest 5% of requests"
+							sortField="p95_duration"
+							currentSortField={orderBy}
+							{sortDirection}
+							onSort={(field) => handleSort(field as SortField)}
+							class="w-[100px]"
+						/>
+						<TracewayTableHeader
+							label="Awful"
+							tooltip="99th percentile - slowest 1% of requests"
+							sortField="p99_duration"
+							currentSortField={orderBy}
+							{sortDirection}
+							onSort={(field) => handleSort(field as SortField)}
+							class="w-[100px]"
+						/>
+						<TracewayTableHeader
+							label="Impact"
+							tooltip="Impact score based on Apdex, error rates, P99 latency, and request volume"
+							sortField="impact"
+							currentSortField={orderBy}
+							{sortDirection}
+							onSort={(field) => handleSort(field as SortField)}
+							align="right"
+							class="w-[120px]"
+						/>
+					</Table.Row>
+				</Table.Header>
+				<Table.Body>
+					{#each endpoints as endpoint, __index (__index)}
+						<Table.Row
+							class="cursor-pointer"
+							onclick={createRowClickHandler(
+								resolve(`/endpoints/${encodeURIComponent(endpoint.endpoint)}`),
+								'preset',
+								'from',
+								'to'
+							)}
+						>
+							<Table.Cell class="font-mono text-sm">
+								<div class="flex max-w-[560px] items-center gap-2">
+									<span class="min-w-0 truncate" title={endpoint.endpoint}
+										><EndpointName endpoint={endpoint.endpoint} /></span
+									>
+									{#if endpoint.isStream}
+										<Badge
+											variant="outline"
+											class="shrink-0 font-sans text-xs"
+											title="Streaming response (SSE / WebSocket / long-poll). Excluded from latency, Apdex, and impact scoring."
+											>Stream</Badge
+										>
+									{/if}
+									{#if dropHealthyHealthchecks && isHealthcheckEndpoint(endpoint.endpoint, healthcheckPaths)}
+										<Badge
+											variant="outline"
+											class="shrink-0 font-sans text-xs"
+											title="Healthcheck endpoint. Only failed requests (status 400+) are stored, so counts and error rates reflect failures only. Configure in project settings."
+											>Healthcheck</Badge
+										>
+									{/if}
+									{#if endpoint.hasNonRoot}
+										<NonRootChip mixed={endpoint.hasRoot && endpoint.hasNonRoot} />
+									{/if}
+								</div>
+							</Table.Cell>
+							<Table.Cell class="tabular-nums">
+								{formatCount(endpoint.count)}
+							</Table.Cell>
+							<Table.Cell class="font-mono text-sm text-muted-foreground tabular-nums">
+								{endpoint.isStream ? '—' : formatDuration(endpoint.p50Duration)}
+							</Table.Cell>
+							<Table.Cell class="font-mono text-sm text-muted-foreground tabular-nums">
+								{endpoint.isStream ? '—' : formatDuration(endpoint.p95Duration)}
+							</Table.Cell>
+							<Table.Cell class="font-mono text-sm text-muted-foreground tabular-nums">
+								{endpoint.isStream ? '—' : formatDuration(endpoint.p99Duration)}
+							</Table.Cell>
+							<Table.Cell class="text-right">
+								<ImpactBadge score={endpoint.impact} reason={endpoint.impactReason} />
+							</Table.Cell>
+						</Table.Row>
+					{/each}
+				</Table.Body>
+			{/if}
+		</Table.Root>
+	</TableContainer>
 
-    <!-- Performance Chart -->
-    <Card.Root class="pt-2">
-        <Card.Header class="flex flex-row items-center justify-between space-y-0 border-b [.border-b]:pb-2 pl-3">
-            <Card.Title class="text-base font-medium flex items-center gap-2">
-                <ChartLine class="h-3.5 w-3.5 text-muted-foreground" />
-                <DropdownMenu.Root>
-                    <DropdownMenu.Trigger class="flex items-center text-sm gap-0.5 font-[400] text-muted-foreground">
-                        {selectedMetricLabel}
-                        <ChevronDown class="h-3 w-3 text-muted-foreground" />
-                    </DropdownMenu.Trigger>
-                    <DropdownMenu.Content align="start" class="w-[200px]">
-                        {#each metricOptions as option}
-                            <DropdownMenu.Item
-                                onclick={() => handleMetricChange(option.value)}
-                                class="flex items-center justify-between cursor-pointer"
-                            >
-                                <span>{option.label}</span>
-                                {#if option.value === selectedMetric}
-                                    <Check class="h-4 w-4" />
-                                {/if}
-                            </DropdownMenu.Item>
-                        {/each}
-                    </DropdownMenu.Content>
-                </DropdownMenu.Root>
-            </Card.Title>
-        </Card.Header>
-        <Card.Content>
-            {#if chartLoading && !useBarChart}
-                <div class="flex justify-center items-center h-[220px]">
-                    <LoadingCircle size="xlg" />
-                </div>
-            {:else if useBarChart}
-                {#if loading}
-                    <div class="flex justify-center items-center h-[220px]">
-                        <LoadingCircle size="xlg" />
-                    </div>
-                {:else}
-                    <D3HorizontalBarChart
-                        data={barChartData}
-                        formatValue={formatDuration}
-                    />
-                {/if}
-            {:else}
-                <D3StackedAreaChart
-                    endpoints={chartEndpoints}
-                    series={chartSeries}
-                    formatValue={formatTotalTime}
-                    onRangeSelect={handleChartRangeSelect}
-                />
-            {/if}
-        </Card.Content>
-    </Card.Root>
-
-    <!-- Endpoints Table -->
-    <div class="rounded-md border overflow-hidden">
-        <Table.Root>
-            {#if loading}
-            <Table.Body>
-                <Table.Row>
-                    <Table.Cell colspan={6} class="h-48">
-                        <div class="flex justify-center items-center h-full">
-                            <LoadingCircle size="xlg" />
-                        </div>
-                    </Table.Cell>
-                </Table.Row>
-            </Table.Body>
-            {:else if error}
-            <Table.Body>
-                <Table.Row>
-                    <Table.Cell colspan={6} class="h-24 text-center text-red-500">
-                        {error}
-                    </Table.Cell>
-                </Table.Row>
-            </Table.Body>
-            {:else if endpoints.length === 0}
-            <Table.Body>
-                <TableEmptyState colspan={6} message="No endpoint data available for your search parameters" />
-            </Table.Body>
-            {:else}
-            <Table.Header>
-                <Table.Row>
-                    <TracewayTableHeader
-                        label="Endpoint"
-                        tooltip="The API route or page being accessed"
-                        class="max-w-[50%]"
-                    />
-                    <TracewayTableHeader
-                        label="Calls"
-                        tooltip="Total number of requests"
-                        sortField="count"
-                        currentSortField={orderBy}
-                        {sortDirection}
-                        onSort={(field) => handleSort(field as SortField)}
-                        class="w-[100px]"
-                    />
-                    <TracewayTableHeader
-                        label="Typical"
-                        tooltip="Median response time (P50)"
-                        sortField="p50_duration"
-                        currentSortField={orderBy}
-                        {sortDirection}
-                        onSort={(field) => handleSort(field as SortField)}
-                        class="w-[100px]"
-                    />
-                    <TracewayTableHeader
-                        label="Slow"
-                        tooltip="95th percentile - slowest 5% of requests"
-                        sortField="p95_duration"
-                        currentSortField={orderBy}
-                        {sortDirection}
-                        onSort={(field) => handleSort(field as SortField)}
-                        class="w-[100px]"
-                    />
-                    <TracewayTableHeader
-                        label="Awful"
-                        tooltip="99th percentile - slowest 1% of requests"
-                        sortField="p99_duration"
-                        currentSortField={orderBy}
-                        {sortDirection}
-                        onSort={(field) => handleSort(field as SortField)}
-                        class="w-[100px]"
-                    />
-                    <TracewayTableHeader
-                        label="Impact"
-                        tooltip="Impact score based on Apdex, error rates, P99 latency, and request volume"
-                        sortField="impact"
-                        currentSortField={orderBy}
-                        {sortDirection}
-                        onSort={(field) => handleSort(field as SortField)}
-                        align="right"
-                        class="w-[120px]"
-                    />
-                </Table.Row>
-            </Table.Header>
-            <Table.Body>
-                {#each endpoints as endpoint}
-                    <Table.Row
-                        class="cursor-pointer hover:bg-muted/50"
-                        onclick={createRowClickHandler(resolve(`/endpoints/${encodeURIComponent(endpoint.endpoint)}`), 'preset', 'from', 'to')}
-                    >
-                        <Table.Cell class="font-mono text-sm max-w-[50%] break-all whitespace-normal">
-                            <span class="inline-flex items-center gap-2">
-                                <span><EndpointName endpoint={endpoint.endpoint} /></span>
-                                {#if endpoint.isStream}
-                                    <Badge variant="outline" class="font-sans text-xs" title="Streaming response (SSE / WebSocket / long-poll). Excluded from latency, Apdex, and impact scoring.">Stream</Badge>
-                                {/if}
-                                {#if dropHealthyHealthchecks && isHealthcheckEndpoint(endpoint.endpoint, healthcheckPaths)}
-                                    <Badge variant="outline" class="font-sans text-xs" title="Healthcheck endpoint. Only failed requests (status 400+) are stored, so counts and error rates reflect failures only. Configure in project settings.">Healthcheck</Badge>
-                                {/if}
-                                {#if endpoint.hasNonRoot}
-                                    <NonRootChip mixed={endpoint.hasRoot && endpoint.hasNonRoot} />
-                                {/if}
-                            </span>
-                        </Table.Cell>
-                        <Table.Cell class="tabular-nums">
-                            {formatCount(endpoint.count)}
-                        </Table.Cell>
-                        <Table.Cell class="font-mono text-sm tabular-nums text-muted-foreground">
-                            {endpoint.isStream ? '—' : formatDuration(endpoint.p50Duration)}
-                        </Table.Cell>
-                        <Table.Cell class="font-mono text-sm tabular-nums text-muted-foreground">
-                            {endpoint.isStream ? '—' : formatDuration(endpoint.p95Duration)}
-                        </Table.Cell>
-                        <Table.Cell class="font-mono text-sm tabular-nums text-muted-foreground">
-                            {endpoint.isStream ? '—' : formatDuration(endpoint.p99Duration)}
-                        </Table.Cell>
-                        <Table.Cell class="text-right">
-                            <ImpactBadge score={endpoint.impact} reason={endpoint.impactReason} />
-                        </Table.Cell>
-                    </Table.Row>
-                {/each}
-            </Table.Body>
-            {/if}
-        </Table.Root>
-    </div>
-
-    <!-- Pagination Footer -->
-    <PaginationFooter
-        currentPage={page}
-        {totalPages}
-        {pageSize}
-        totalItems={total}
-        onPageChange={handlePageChange}
-        onPageSizeChange={handlePageSizeChange}
-        {loading}
-        itemLabel="endpoint"
-    />
+	<!-- Pagination Footer -->
+	<PaginationFooter
+		currentPage={page}
+		{totalPages}
+		{pageSize}
+		totalItems={total}
+		onPageChange={handlePageChange}
+		onPageSizeChange={handlePageSizeChange}
+		{loading}
+		itemLabel="endpoint"
+	/>
 </div>

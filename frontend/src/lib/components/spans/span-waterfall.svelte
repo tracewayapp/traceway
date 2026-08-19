@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Span } from '$lib/types/spans';
+	import { SvelteSet } from 'svelte/reactivity';
 	import ScrollArea from '../ui/scroll-area/scroll-area.svelte';
 	import SpanRow from './span-row.svelte';
 	import { preciseTimeMs } from '$lib/utils/formatters';
@@ -17,7 +18,7 @@
 	let collapsed = $state(new Set<string>());
 
 	function toggleCollapse(id: string) {
-		const next = new Set(collapsed);
+		const next = new SvelteSet(collapsed);
 		if (next.has(id)) {
 			next.delete(id);
 		} else {

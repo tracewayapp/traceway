@@ -1,0 +1,1 @@
+function e(t){if(!(!t||typeof t!="object"||!("status"in t)))return typeof t.status=="number"?t.status:void 0}function n(t,s=""){return t instanceof Error?t.message||s:!t||typeof t!="object"||!("message"in t)?s:typeof t.message=="string"&&t.message||s}export{e as a,n as g};

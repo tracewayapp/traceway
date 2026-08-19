@@ -10,9 +10,16 @@
 
 <script lang="ts">
 	import * as Table from '$lib/components/ui/table';
+	import { SvelteMap } from 'svelte/reactivity';
 	import TracewayTableHeader from '$lib/components/ui/traceway-table-header/traceway-table-header.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { formatValue } from '$lib/utils/profile-format';
+	import {
+		getSortState,
+		setSortState,
+		handleSortClick,
+		type SortDirection
+	} from '$lib/utils/sort-storage';
 
 	interface Props {
 		rows: FunctionStat[];
@@ -23,26 +30,25 @@
 
 	let { rows, unit, onSelect, baselineRows }: Props = $props();
 
-	let sortField = $state<'flat' | 'cum'>('flat');
-	let sortDirection = $state<'asc' | 'desc'>('desc');
+	const SORT_STORAGE_KEY = 'profile_functions';
+	const initialSort = getSortState(SORT_STORAGE_KEY, { field: 'flat', direction: 'desc' });
+	let sortField = $state<'flat' | 'cum'>(initialSort.field === 'cum' ? 'cum' : 'flat');
+	let sortDirection = $state<SortDirection>(initialSort.direction);
 	let expanded = $state(false);
 
 	const COLLAPSED = 15;
 
 	const baseFlat = $derived.by(() => {
-		const m = new Map<string, number>();
+		const m = new SvelteMap<string, number>();
 		for (const r of baselineRows ?? []) m.set(r.name, r.flat);
 		return m;
 	});
 
 	function onSort(field: string) {
-		const next = field as 'flat' | 'cum';
-		if (sortField === next) {
-			sortDirection = sortDirection === 'desc' ? 'asc' : 'desc';
-		} else {
-			sortField = next;
-			sortDirection = 'desc';
-		}
+		const newSort = handleSortClick(field, sortField, sortDirection);
+		sortField = newSort.field === 'cum' ? 'cum' : 'flat';
+		sortDirection = newSort.direction;
+		setSortState(SORT_STORAGE_KEY, newSort);
 	}
 
 	const sorted = $derived.by(() => {
@@ -108,7 +114,7 @@
 			<Table.Body>
 				{#each visible as row (row.name)}
 					<Table.Row
-						class={onSelect ? 'cursor-pointer hover:bg-muted/50' : ''}
+						class={onSelect ? 'cursor-pointer' : ''}
 						onclick={onSelect ? () => onSelect(row.name) : undefined}
 					>
 						<Table.Cell class="max-w-[28rem] truncate font-mono text-xs" title={row.name}>

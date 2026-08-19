@@ -18,7 +18,7 @@
 
 {#if entries.length > 0}
 	<div class="flex flex-wrap items-center gap-1">
-		{#each visibleEntries as [key, value]}
+		{#each visibleEntries as [key, value], __index (__index)}
 			<span
 				class="inline-flex items-center rounded bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
 			>
@@ -39,7 +39,7 @@
 					<div class="space-y-2">
 						<h4 class="text-sm font-medium">All Attributes Tags</h4>
 						<div class="grid gap-2">
-							{#each entries as [key, value]}
+							{#each entries as [key, value], __index (__index)}
 								<div class="flex items-start gap-2 text-sm">
 									<span class="shrink-0 font-medium text-muted-foreground">{key}:</span>
 									<span class="font-mono break-all">{value}</span>

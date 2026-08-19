@@ -1,4 +1,14 @@
 import { goto } from '$app/navigation';
+import { resolve } from '$app/paths';
+
+import { splitHref } from './links';
+
+export function gotoHref(href: string, options?: Parameters<typeof goto>[1]) {
+	const { pathname, suffix } = splitHref(href);
+	let destination = resolve((pathname || '/') as '/');
+	destination += suffix;
+	return goto(destination, options);
+}
 
 // Only allow same-origin, absolute-path redirects. Reject absolute URLs
 // (https://evil.com), protocol-relative (//evil.com), and backslash tricks
@@ -50,7 +60,7 @@ export function addStickyParamsToHref(href: string, ...stickyParams: string[]) {
 		}
 	}
 
-	stickyParams.forEach(stickyParam => {
+	stickyParams.forEach((stickyParam) => {
 		if (stickyParam === 'projectId') return;
 		const currentValue = currentParams.get(stickyParam);
 		if (currentValue !== null) {
@@ -63,7 +73,11 @@ export function addStickyParamsToHref(href: string, ...stickyParams: string[]) {
 
 // in the future it would be really cool if we could bind the type here to get type safety and force the use of resolve :/
 // this also won't work with absolute paths - meh so be it
-export function createRowClickHandlerWithNavigate(href: string, onBeforeNavigate: (() => void) | undefined, ...stickyParams: string[]) {
+export function createRowClickHandlerWithNavigate(
+	href: string,
+	onBeforeNavigate: (() => void) | undefined,
+	...stickyParams: string[]
+) {
 	return (event: MouseEvent) => {
 		onBeforeNavigate?.();
 
@@ -72,8 +86,7 @@ export function createRowClickHandlerWithNavigate(href: string, onBeforeNavigate
 		if (event.ctrlKey || event.metaKey) {
 			window.open(finalHref, '_blank');
 		} else {
-			// eslint-disable-next-line svelte/no-navigation-without-resolve
-			goto(finalHref);
+			gotoHref(finalHref);
 		}
 	};
 }

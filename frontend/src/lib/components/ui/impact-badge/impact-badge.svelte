@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { TriangleAlert, CheckCircle } from 'lucide-svelte';
+	import { TriangleAlert, CheckCircle } from '@lucide/svelte';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 
 	let {

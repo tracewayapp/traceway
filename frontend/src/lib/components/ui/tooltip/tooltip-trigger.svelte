@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { Tooltip as TooltipPrimitive } from "bits-ui";
-	import { getContext } from "svelte";
+	import { Tooltip as TooltipPrimitive } from 'bits-ui';
+	import { getContext } from 'svelte';
 
 	let { ref = $bindable(null), ...restProps }: TooltipPrimitive.TriggerProps = $props();
 
-	const ctx = getContext<{ toggle: () => void }>("traceway-tooltip");
+	const ctx = getContext<{ toggle: () => void }>('traceway-tooltip');
 
 	function handleTouchStart(e: TouchEvent) {
 		if (ctx) {
@@ -14,4 +14,9 @@
 	}
 </script>
 
-<TooltipPrimitive.Trigger bind:ref data-slot="tooltip-trigger" ontouchstart={handleTouchStart} {...restProps} />
+<TooltipPrimitive.Trigger
+	bind:ref
+	data-slot="tooltip-trigger"
+	ontouchstart={handleTouchStart}
+	{...restProps}
+/>

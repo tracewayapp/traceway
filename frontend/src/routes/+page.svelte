@@ -1,7 +1,9 @@
 <script lang="ts">
+	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
+	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import { createRowClickHandler } from '$lib/utils/navigation';
-	import { formatDuration, formatRelativeTime, truncateStackTrace } from '$lib/utils/formatters';
+	import { formatDuration, formatRelativeTime } from '$lib/utils/formatters';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import * as Table from '$lib/components/ui/table';
@@ -14,12 +16,9 @@
 		CircleCheck,
 		FolderPlus,
 		RefreshCw,
-		Copy,
-		Check,
 		Star,
 		Unplug
-	} from 'lucide-svelte';
-	import * as Card from '$lib/components/ui/card';
+	} from '@lucide/svelte';
 	import WidgetGrid from '$lib/components/dashboard/widget-grid.svelte';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { ImpactBadge } from '$lib/components/ui/impact-badge';
@@ -29,22 +28,17 @@
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import {
 		projectsState,
-		type ProjectWithToken,
 		isFrontendFramework,
-		isJsFramework,
 		isCloudflareFramework,
 		isOtelFramework
 	} from '$lib/state/projects.svelte';
 	import { setSortState } from '$lib/utils/sort-storage';
 	import { Button } from '$lib/components/ui/button';
-	import Highlight from 'svelte-highlight';
 	import go from 'svelte-highlight/languages/go';
 	import javascript from 'svelte-highlight/languages/javascript';
 	import bash from 'svelte-highlight/languages/bash';
 	import php from 'svelte-highlight/languages/php';
 	import python from 'svelte-highlight/languages/python';
-	import { themeState } from '$lib/state/theme.svelte';
-	import 'svelte-highlight/styles/github-dark.css';
 	import {
 		getFrameworkCode,
 		getInstallCommand,
@@ -61,6 +55,11 @@
 	import AiSetupSteps from '$lib/components/setup/ai-setup-steps.svelte';
 	import OtelSetupSteps from '$lib/components/setup/otel-setup-steps.svelte';
 	import OtelExporterConfig from '$lib/components/setup/otel-exporter-config.svelte';
+	import CopyableInline from '$lib/components/setup/copyable-inline.svelte';
+	import CopyableCodeBlock from '$lib/components/setup/copyable-code-block.svelte';
+	import CopyButton from '$lib/components/traceway/copy-button.svelte';
+	import PageHeader from '$lib/components/traceway/page-header.svelte';
+	import type { DashboardWidgetConfig } from '$lib/types/dashboard';
 
 	const timezone = $derived(getTimezone());
 
@@ -70,7 +69,7 @@
 			isFrontendFramework(projectsState.currentProject.framework)
 		) {
 			// index redirects to issues on a frontend project
-			goto('issues');
+			goto(resolve('/issues'));
 		}
 	});
 
@@ -105,7 +104,7 @@
 		widgetId: string;
 		title: string;
 		widgetType: string;
-		config: any;
+		config: DashboardWidgetConfig;
 		homePosition: number;
 		homeColSpan: number;
 		homeSize: string;
@@ -117,7 +116,7 @@
 		widgetId: string;
 		title: string;
 		widgetType: string;
-		config: any;
+		config: DashboardWidgetConfig;
 		position: number;
 		isStarred: boolean;
 	};
@@ -137,10 +136,6 @@
 
 	let projectWithToken = $derived(projectsState.currentProject);
 	let setupMode = $state(getSetupMode());
-	let copiedInstall = $state(false);
-	let copiedCode = $state(false);
-	let copiedTesting = $state(false);
-	let copiedTesting2 = $state(false);
 	let checking = $state(false);
 
 	const sdkCode = $derived(
@@ -202,11 +197,6 @@
   }
 }`);
 
-	let copiedCfEndpoint = $state(false);
-	let copiedCfAuth = $state(false);
-	let copiedCfWrangler = $state(false);
-	let copiedCfDeploy = $state(false);
-
 	const isOtel = $derived(projectWithToken ? isOtelFramework(projectWithToken.framework) : false);
 	const isOtelGeneric = $derived(projectWithToken?.framework === 'opentelemetry');
 	const otelBaseEndpoint = $derived(
@@ -230,62 +220,6 @@ service:
 			: ''
 	);
 
-	let copiedSdkLang = $state<string | null>(null);
-
-	async function copyCfEndpoint() {
-		await navigator.clipboard.writeText(cfOtelEndpoint);
-		copiedCfEndpoint = true;
-		setTimeout(() => (copiedCfEndpoint = false), 2000);
-	}
-
-	async function copyCfAuth() {
-		await navigator.clipboard.writeText(cfAuthHeader);
-		copiedCfAuth = true;
-		setTimeout(() => (copiedCfAuth = false), 2000);
-	}
-
-	async function copyCfWrangler() {
-		await navigator.clipboard.writeText(cfWranglerConfig);
-		copiedCfWrangler = true;
-		setTimeout(() => (copiedCfWrangler = false), 2000);
-	}
-
-	async function copyCfDeploy() {
-		await navigator.clipboard.writeText('npx wrangler deploy');
-		copiedCfDeploy = true;
-		setTimeout(() => (copiedCfDeploy = false), 2000);
-	}
-
-	async function copySdkInstall(lang: string, cmd: string) {
-		await navigator.clipboard.writeText(cmd);
-		copiedSdkLang = lang;
-		setTimeout(() => (copiedSdkLang = null), 2000);
-	}
-
-	async function copyInstall() {
-		await navigator.clipboard.writeText(installCommand);
-		copiedInstall = true;
-		setTimeout(() => (copiedInstall = false), 2000);
-	}
-
-	async function copyCode() {
-		await navigator.clipboard.writeText(sdkCode);
-		copiedCode = true;
-		setTimeout(() => (copiedCode = false), 2000);
-	}
-
-	async function copyTesting() {
-		await navigator.clipboard.writeText(testingRouteCode);
-		copiedTesting = true;
-		setTimeout(() => (copiedTesting = false), 2000);
-	}
-
-	async function copyTesting2() {
-		await navigator.clipboard.writeText(testingRouteCode2);
-		copiedTesting2 = true;
-		setTimeout(() => (copiedTesting2 = false), 2000);
-	}
-
 	async function checkAgain() {
 		checking = true;
 		const hadDataBefore = data?.hasData ?? false;
@@ -294,13 +228,9 @@ service:
 
 		// Show success toast if data was received
 		if (!hadDataBefore && data?.hasData) {
-			toast.success('Integration successful! Data received from your application.', {
-				position: 'top-center'
-			});
+			toast.success('Integration successful! Data received from your application.');
 		} else if (!data?.hasData) {
-			toast.warning('No data received yet', {
-				position: 'top-center'
-			});
+			toast.warning('No data received yet');
 		}
 	}
 
@@ -336,9 +266,9 @@ service:
 				position: w.homePosition,
 				isStarred: true
 			}));
-		} catch (e: any) {
-			errorStatus = e.status || 0;
-			error = e.message || 'Failed to load dashboard data';
+		} catch (e) {
+			errorStatus = getErrorStatus(e) || 0;
+			error = getErrorMessage(e) || 'Failed to load dashboard data';
 			console.error(e);
 		} finally {
 			if (showFullPageLoading) {
@@ -359,12 +289,12 @@ service:
 				{ ids },
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
-		} catch (e: any) {
+		} catch (e) {
 			for (const w of starredWidgets) {
 				w.position = previousPositions.get(w.id) ?? w.position;
 			}
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to reorder widgets', { position: 'top-center' });
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to reorder widgets');
 			}
 			await loadDashboard(false);
 		}
@@ -383,11 +313,11 @@ service:
 			await api.put(`/starred-widgets/${target.id}`, layout, {
 				projectId: projectsState.currentProjectId ?? undefined
 			});
-		} catch (e: any) {
+		} catch (e) {
 			target.config.colSpan = previous.colSpan;
 			target.config.size = previous.size;
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to resize widget', { position: 'top-center' });
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to resize widget');
 			}
 		}
 	}
@@ -403,10 +333,10 @@ service:
 				{},
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
-		} catch (e: any) {
+		} catch (e) {
 			starredWidgets = previous;
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to unstar widget', { position: 'top-center' });
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to unstar widget');
 			}
 		}
 	}
@@ -431,6 +361,8 @@ service:
 </script>
 
 <div class="space-y-4">
+	<PageHeader title="Dashboard" />
+
 	{#if error && !loading}
 		<ErrorDisplay
 			status={errorStatus === 404
@@ -514,33 +446,11 @@ service:
 						<div class="space-y-4 p-4">
 							<div>
 								<p class="mb-2 text-sm font-medium">OTLP Traces Endpoint</p>
-								<div class="flex items-center gap-2">
-									<code class="flex-1 rounded-md bg-muted px-3 py-2 font-mono text-sm break-all"
-										>{cfOtelEndpoint}</code
-									>
-									<Button variant="outline" size="sm" onclick={copyCfEndpoint}>
-										{#if copiedCfEndpoint}
-											<Check class="h-4 w-4 text-green-500" />
-										{:else}
-											<Copy class="h-4 w-4" />
-										{/if}
-									</Button>
-								</div>
+								<CopyableInline value={cfOtelEndpoint} />
 							</div>
 							<div>
 								<p class="mb-2 text-sm font-medium">Authorization Header</p>
-								<div class="flex items-center gap-2">
-									<code class="flex-1 rounded-md bg-muted px-3 py-2 font-mono text-sm break-all"
-										>{cfAuthHeader}</code
-									>
-									<Button variant="outline" size="sm" onclick={copyCfAuth}>
-										{#if copiedCfAuth}
-											<Check class="h-4 w-4 text-green-500" />
-										{:else}
-											<Copy class="h-4 w-4" />
-										{/if}
-									</Button>
-								</div>
+								<CopyableInline value={cfAuthHeader} />
 							</div>
 						</div>
 					</div>
@@ -561,26 +471,7 @@ service:
 							</p>
 						</div>
 						<div class="p-4">
-							<div class="relative">
-								<div class="absolute top-2 right-2 z-10">
-									<Button variant="outline" size="sm" onclick={copyCfWrangler}>
-										{#if copiedCfWrangler}
-											<Check class="mr-2 h-4 w-4 text-green-500" />
-											Copied!
-										{:else}
-											<Copy class="mr-2 h-4 w-4" />
-											Copy
-										{/if}
-									</Button>
-								</div>
-								<div
-									class="overflow-x-auto rounded-md text-sm {themeState.isDark
-										? 'dark-code'
-										: 'light-code'}"
-								>
-									<Highlight language={javascript} code={cfWranglerConfig} />
-								</div>
-							</div>
+							<CopyableCodeBlock code={cfWranglerConfig} language={javascript} />
 						</div>
 					</div>
 
@@ -600,18 +491,7 @@ service:
 							</p>
 						</div>
 						<div class="p-4">
-							<div class="flex items-center gap-2">
-								<code class="flex-1 rounded-md bg-muted px-3 py-2 font-mono text-sm break-all"
-									>npx wrangler deploy</code
-								>
-								<Button variant="outline" size="sm" onclick={copyCfDeploy}>
-									{#if copiedCfDeploy}
-										<Check class="h-4 w-4 text-green-500" />
-									{:else}
-										<Copy class="h-4 w-4" />
-									{/if}
-								</Button>
-							</div>
+							<CopyableInline value="npx wrangler deploy" />
 						</div>
 					</div>
 				{:else if isOtelGeneric}
@@ -640,17 +520,7 @@ service:
 									<code class="flex-1 rounded-md bg-muted px-3 py-2 font-mono text-xs break-all"
 										>{sdk.installCommand}</code
 									>
-									<Button
-										variant="outline"
-										size="sm"
-										onclick={() => copySdkInstall(sdk.label, sdk.installCommand)}
-									>
-										{#if copiedSdkLang === sdk.label}
-											<Check class="h-4 w-4 text-green-500" />
-										{:else}
-											<Copy class="h-4 w-4" />
-										{/if}
-									</Button>
+									<CopyButton text={sdk.installCommand} />
 								</div>
 							{/each}
 							<p class="ml-16 pt-1 text-xs text-muted-foreground">
@@ -719,26 +589,7 @@ service:
 							</div>
 						</div>
 						<div class="p-4">
-							<div class="relative">
-								<div class="absolute top-2 right-2 z-10">
-									<Button variant="outline" size="sm" onclick={copyInstall}>
-										{#if copiedInstall}
-											<Check class="mr-2 h-4 w-4 text-green-500" />
-											Copied!
-										{:else}
-											<Copy class="mr-2 h-4 w-4" />
-											Copy
-										{/if}
-									</Button>
-								</div>
-								<div
-									class="overflow-x-auto rounded-md text-sm {themeState.isDark
-										? 'dark-code'
-										: 'light-code'}"
-								>
-									<Highlight language={bash} code={installCommand} />
-								</div>
-							</div>
+							<CopyableCodeBlock code={installCommand} language={bash} />
 						</div>
 					</div>
 
@@ -760,26 +611,7 @@ service:
 							</p>
 						</div>
 						<div class="p-4">
-							<div class="relative">
-								<div class="absolute top-2 right-2 z-10">
-									<Button variant="outline" size="sm" onclick={copyCode}>
-										{#if copiedCode}
-											<Check class="mr-2 h-4 w-4 text-green-500" />
-											Copied!
-										{:else}
-											<Copy class="mr-2 h-4 w-4" />
-											Copy
-										{/if}
-									</Button>
-								</div>
-								<div
-									class="overflow-x-auto rounded-md text-sm {themeState.isDark
-										? 'dark-code'
-										: 'light-code'}"
-								>
-									<Highlight language={highlightLanguage} code={sdkCode} />
-								</div>
-							</div>
+							<CopyableCodeBlock code={sdkCode} language={highlightLanguage} />
 						</div>
 					</div>
 
@@ -801,50 +633,12 @@ service:
 							</p>
 						</div>
 						<div class="p-4">
-							<div class="relative">
-								<div class="absolute top-2 right-2 z-10">
-									<Button variant="outline" size="sm" onclick={copyTesting}>
-										{#if copiedTesting}
-											<Check class="mr-2 h-4 w-4 text-green-500" />
-											Copied!
-										{:else}
-											<Copy class="mr-2 h-4 w-4" />
-											Copy
-										{/if}
-									</Button>
-								</div>
-								<div
-									class="overflow-x-auto rounded-md text-sm {themeState.isDark
-										? 'dark-code'
-										: 'light-code'}"
-								>
-									<Highlight language={highlightLanguage} code={testingRouteCode} />
-								</div>
-							</div>
+							<CopyableCodeBlock code={testingRouteCode} language={highlightLanguage} />
 
 							{#if testingRouteCode2}
 								<div class="flex justify-center p-2 italic">or</div>
 
-								<div class="relative">
-									<div class="absolute top-2 right-2 z-10">
-										<Button variant="outline" size="sm" onclick={copyTesting2}>
-											{#if copiedTesting2}
-												<Check class="mr-2 h-4 w-4 text-green-500" />
-												Copied!
-											{:else}
-												<Copy class="mr-2 h-4 w-4" />
-												Copy
-											{/if}
-										</Button>
-									</div>
-									<div
-										class="overflow-x-auto rounded-md text-sm {themeState.isDark
-											? 'dark-code'
-											: 'light-code'}"
-									>
-										<Highlight language={highlightLanguage} code={testingRouteCode2} />
-									</div>
-								</div>
+								<CopyableCodeBlock code={testingRouteCode2} language={highlightLanguage} />
 							{/if}
 						</div>
 					</div>
@@ -883,11 +677,11 @@ service:
 		<div class="space-y-6">
 			{#if starredWidgets.length > 0}
 				<div>
-					<div class="items-bottom mb-4 flex gap-1">
+					<div class="mb-4 flex items-center gap-1">
 						<div class="mr-2 flex h-8 w-8 items-center justify-center rounded-md bg-yellow-500/10">
 							<Star class="h-5 w-5 fill-yellow-400 text-yellow-400" />
 						</div>
-						<h2 class="text-2xl font-bold tracking-tight">Starred</h2>
+						<h2 class="text-2xl font-semibold tracking-tight">Starred</h2>
 						<Tooltip.Root>
 							<Tooltip.Trigger class="pt-1">
 								<CircleQuestionMark class="h-4 w-4 text-muted-foreground/60" />
@@ -911,11 +705,11 @@ service:
 			{#if !isFrontend}
 				<!-- Endpoints -->
 				<div>
-					<div class="items-bottom mb-4 flex gap-1">
+					<div class="mb-4 flex items-center gap-1">
 						<div class="mr-2 flex h-8 w-8 items-center justify-center rounded-md bg-chart-1/10">
 							<Gauge class="h-5 w-5 text-chart-1" />
 						</div>
-						<h2 class="text-2xl font-bold tracking-tight">Endpoints</h2>
+						<h2 class="text-2xl font-semibold tracking-tight">Endpoints</h2>
 						<Tooltip.Root>
 							<Tooltip.Trigger class="pt-1">
 								<CircleQuestionMark class="h-4 w-4 text-muted-foreground/60" />
@@ -961,9 +755,9 @@ service:
 									</Table.Row>
 								</Table.Header>
 								<Table.Body>
-									{#each impactfulEndpoints as endpoint}
+									{#each impactfulEndpoints as endpoint, __index (__index)}
 										<Table.Row
-											class="cursor-pointer hover:bg-muted/50"
+											class="cursor-pointer"
 											onclick={createRowClickHandler(
 												`/endpoints/${encodeURIComponent(endpoint.endpoint)}?preset=24h`
 											)}
@@ -1001,8 +795,8 @@ service:
 						<!-- Empty state card for endpoints -->
 						<div class="rounded-md border bg-card">
 							<div class="flex flex-col items-center justify-center px-6 py-12 text-center">
-								<div class="mb-4 flex h-12 w-12 items-center justify-center rounded-full">
-									<CircleCheck class="h-12 w-12 text-green-500 dark:text-green-400" />
+								<div class="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+									<CircleCheck class="h-6 w-6 text-green-500 dark:text-green-400" />
 								</div>
 								<h3 class="mb-2 text-lg font-semibold">All Endpoints Healthy</h3>
 								<p class="mb-4 max-w-sm text-sm text-muted-foreground">
@@ -1010,7 +804,7 @@ service:
 									with slow response times or high error rates will appear here when detected.
 								</p>
 								<a
-									href="/endpoints"
+									href={resolve('/endpoints')}
 									class="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
 									onclick={resetEndpointsSortToImpact}
 								>
@@ -1029,7 +823,7 @@ service:
 					<div class="mr-2 flex h-8 w-8 items-center justify-center rounded-md bg-destructive/10">
 						<Bug class="h-5 w-5 text-destructive" />
 					</div>
-					<h2 class="text-2xl font-bold tracking-tight">Issues</h2>
+					<h2 class="text-2xl font-semibold tracking-tight">Issues</h2>
 					<Tooltip.Root>
 						<Tooltip.Trigger class="pt-1">
 							<CircleQuestionMark class="h-4 w-4 text-muted-foreground/60" />
@@ -1063,11 +857,11 @@ service:
 								</Table.Row>
 							</Table.Header>
 							<Table.Body>
-								{#each data.recentIssues as issue}
+								{#each data.recentIssues as issue, __index (__index)}
 									{@const issueFirstLine = issue.stackTrace.split('\n')[0]}
 									{@const issueColon = issueFirstLine.indexOf(':')}
 									<Table.Row
-										class="cursor-pointer hover:bg-muted/50"
+										class="cursor-pointer"
 										onclick={createRowClickHandler(`/issues/${issue.exceptionHash}`)}
 									>
 										<Table.Cell class="max-w-[480px] py-3" title={issue.stackTrace}>
@@ -1098,8 +892,8 @@ service:
 					<!-- Empty state card for issues -->
 					<div class="rounded-md border bg-card">
 						<div class="flex flex-col items-center justify-center px-6 py-12 text-center">
-							<div class="mb-4 flex h-12 w-12 items-center justify-center rounded-full">
-								<CircleCheck class="h-12 w-12 text-green-500 dark:text-green-400" />
+							<div class="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+								<CircleCheck class="h-6 w-6 text-green-500 dark:text-green-400" />
 							</div>
 							<h3 class="mb-2 text-lg font-semibold">No Issues Found</h3>
 							<p class="mb-4 max-w-sm text-sm text-muted-foreground">
@@ -1107,7 +901,7 @@ service:
 								application, they will appear here for quick triage.
 							</p>
 							<a
-								href="/issues"
+								href={resolve('/issues')}
 								class="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
 							>
 								View all issues
@@ -1120,62 +914,3 @@ service:
 		</div>
 	{/if}
 </div>
-
-<style>
-	/* Light theme - override dark theme defaults */
-	:global(.light-code .hljs) {
-		background: #f6f8fa;
-		color: #24292e;
-	}
-	:global(.light-code .hljs-keyword),
-	:global(.light-code .hljs-selector-tag) {
-		color: #d73a49;
-	}
-	:global(.light-code .hljs-string),
-	:global(.light-code .hljs-attr) {
-		color: #032f62;
-	}
-	:global(.light-code .hljs-function),
-	:global(.light-code .hljs-title) {
-		color: #6f42c1;
-	}
-	:global(.light-code .hljs-comment) {
-		color: #6a737d;
-	}
-	:global(.light-code .hljs-built_in) {
-		color: #005cc5;
-	}
-	:global(.light-code .hljs-meta) {
-		color: #d73a49;
-	}
-	:global(.light-code .hljs-variable) {
-		color: #24292e;
-	}
-
-	/* Dark theme - ensure dark styles apply */
-	:global(.dark-code .hljs) {
-		background: #0d1117;
-		color: #c9d1d9;
-	}
-	:global(.dark-code .hljs-keyword),
-	:global(.dark-code .hljs-selector-tag) {
-		color: #ff7b72;
-	}
-	:global(.dark-code .hljs-string),
-	:global(.dark-code .hljs-attr) {
-		color: #a5d6ff;
-	}
-	:global(.dark-code .hljs-function),
-	:global(.dark-code .hljs-title) {
-		color: #d2a8ff;
-	}
-	:global(.dark-code .hljs-comment) {
-		color: #8b949e;
-	}
-	:global(.dark-code .hljs-built_in) {
-		color: #79c0ff;
-	}
-	:global(.dark-code .hljs-meta) {
-		color: #ff7b72;
-	}
-</style>

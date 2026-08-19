@@ -1,31 +1,31 @@
 <script lang="ts" module>
-	import { tv, type VariantProps } from "tailwind-variants";
+	import { tv, type VariantProps } from 'tailwind-variants';
 
 	export const loadingCircleVariants = tv({
-		base: "text-muted-foreground dark:text-white",
+		base: 'text-muted-foreground dark:text-white',
 		variants: {
 			size: {
-				sm: "h-4 w-4",
-				default: "h-6 w-6",
-				md: "h-8 w-8",
-				lg: "h-12 w-12",
-				xlg: "h-18 w-18"
+				sm: 'h-4 w-4',
+				default: 'h-6 w-6',
+				md: 'h-8 w-8',
+				lg: 'h-12 w-12',
+				xlg: 'h-18 w-18'
 			}
 		},
 		defaultVariants: {
-			size: "default"
+			size: 'default'
 		}
 	});
 
-	export type LoadingCircleSize = VariantProps<typeof loadingCircleVariants>["size"];
+	export type LoadingCircleSize = VariantProps<typeof loadingCircleVariants>['size'];
 </script>
 
 <script lang="ts">
-	import { cn } from "$lib/utils.js";
+	import { cn } from '$lib/utils.js';
 
 	let {
 		class: className,
-		size = "default"
+		size = 'default'
 	}: {
 		class?: string;
 		size?: LoadingCircleSize;

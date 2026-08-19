@@ -1,8 +1,8 @@
 import { browser } from '$app/environment';
-import { goto } from '$app/navigation';
 import { CalendarDate } from '@internationalized/date';
 import { DateTime } from 'luxon';
 import { getNow, parseISO } from './formatters';
+import { gotoHref } from './navigation';
 
 export const presetMinutes: Record<string, number> = {
 	'5m': 5,
@@ -18,7 +18,10 @@ export const presetMinutes: Record<string, number> = {
 	'3M': 129600
 };
 
-export function getTimeRangeFromPreset(presetValue: string, timezone: string): { from: Date; to: Date } {
+export function getTimeRangeFromPreset(
+	presetValue: string,
+	timezone: string
+): { from: Date; to: Date } {
 	const minutes = presetMinutes[presetValue] || 360;
 	const now = getNow(timezone);
 	const from = now.minus({ minutes });
@@ -82,7 +85,7 @@ export type UpdateUrlOptions = {
 };
 
 export function updateUrl(
-	params: Record<string, string | null | undefined>,
+	params: Record<string, string | string[] | null | undefined>,
 	options: UpdateUrlOptions = {}
 ): void {
 	if (!browser) return;
@@ -96,7 +99,11 @@ export function updateUrl(
 	}
 
 	for (const [key, value] of Object.entries(params)) {
-		if (value != null && value !== '') {
+		if (Array.isArray(value)) {
+			for (const item of value) {
+				urlParams.append(key, item);
+			}
+		} else if (value != null && value !== '') {
 			urlParams.set(key, value);
 		} else {
 			urlParams.delete(key);
@@ -105,9 +112,25 @@ export function updateUrl(
 
 	const newUrl = `${window.location.pathname}?${urlParams.toString()}`;
 
-	// eslint-disable-next-line svelte/no-navigation-without-resolve
-	goto(newUrl, {
+	gotoHref(newUrl, {
 		replaceState: !pushToHistory,
+		noScroll: true,
+		keepFocus: true
+	});
+}
+
+export function setTabParam(tab: string, options: { param?: string; clear?: string[] } = {}): void {
+	if (!browser) return;
+
+	const { param = 'tab', clear = [] } = options;
+	const url = new URL(window.location.href);
+	url.searchParams.set(param, tab);
+	for (const key of clear) {
+		url.searchParams.delete(key);
+	}
+
+	gotoHref(url.pathname + url.search + url.hash, {
+		replaceState: true,
 		noScroll: true,
 		keepFocus: true
 	});

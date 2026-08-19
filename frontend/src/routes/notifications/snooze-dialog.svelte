@@ -34,10 +34,10 @@
 				{ durationMinutes },
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
-			toast.success('Rule snoozed', { position: 'top-center' });
+			toast.success('Rule snoozed');
 			onSaved();
 		} catch {
-			toast.error('Failed to snooze rule', { position: 'top-center' });
+			toast.error('Failed to snooze rule');
 		} finally {
 			loading = false;
 		}
@@ -53,10 +53,10 @@
 				{ durationMinutes: 0 },
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
-			toast.success('Snooze cleared', { position: 'top-center' });
+			toast.success('Snooze cleared');
 			onSaved();
 		} catch {
-			toast.error('Failed to clear snooze', { position: 'top-center' });
+			toast.error('Failed to clear snooze');
 		} finally {
 			loading = false;
 		}
@@ -77,7 +77,7 @@
 		</AlertDialog.Header>
 
 		<div class="grid gap-2">
-			{#each presets as preset}
+			{#each presets as preset, __index (__index)}
 				<Button
 					variant="outline"
 					class="w-full justify-start"

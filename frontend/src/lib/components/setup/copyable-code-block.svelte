@@ -1,6 +1,5 @@
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button';
-	import { Copy, Check } from 'lucide-svelte';
+	import CopyButton from '$lib/components/traceway/copy-button.svelte';
 	import Highlight from 'svelte-highlight';
 	import type { LanguageFn } from 'highlight.js';
 	import { themeState } from '$lib/state/theme.svelte';
@@ -11,35 +10,17 @@
 		language,
 		wrap = false
 	}: { code: string; language: { name: string; register: LanguageFn }; wrap?: boolean } = $props();
-
-	let copied = $state(false);
-
-	async function copy() {
-		await navigator.clipboard.writeText(code);
-		copied = true;
-		setTimeout(() => (copied = false), 2000);
-	}
 </script>
 
-<div class="relative">
-	<div class="absolute top-2 right-2 z-10">
-		<Button variant="outline" size="sm" onclick={copy}>
-			{#if copied}
-				<Check class="mr-2 h-4 w-4 text-green-500" />
-				Copied!
-			{:else}
-				<Copy class="mr-2 h-4 w-4" />
-				Copy
-			{/if}
-		</Button>
-	</div>
+<div class="flex items-start gap-2">
 	<div
-		class="overflow-x-auto rounded-md text-sm {wrap ? 'wrap-code' : ''} {themeState.isDark
-			? 'dark-code'
-			: 'light-code'}"
+		class="min-w-0 flex-1 overflow-x-auto rounded-md text-sm {wrap
+			? 'wrap-code'
+			: ''} {themeState.isDark ? 'dark-code' : 'light-code'}"
 	>
 		<Highlight {language} {code} />
 	</div>
+	<CopyButton text={code} />
 </div>
 
 <style>

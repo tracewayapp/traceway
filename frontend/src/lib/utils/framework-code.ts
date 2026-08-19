@@ -592,16 +592,26 @@ captureException(new Error("Test error"));`;
 
 function getPackageName(framework: Framework): string {
 	switch (framework) {
-		case 'react': return 'react';
-		case 'svelte': return 'svelte';
-		case 'vuejs': return 'vue';
-		case 'nextjs': return 'next';
-		case 'nestjs': return 'nest';
-		case 'express': return 'express';
-		case 'remix': return 'remix';
-		case 'jquery': return 'jquery';
-		case 'react-native': return 'react-native';
-		default: return 'react';
+		case 'react':
+			return 'react';
+		case 'svelte':
+			return 'svelte';
+		case 'vuejs':
+			return 'vue';
+		case 'nextjs':
+			return 'next';
+		case 'nestjs':
+			return 'nest';
+		case 'express':
+			return 'express';
+		case 'remix':
+			return 'remix';
+		case 'jquery':
+			return 'jquery';
+		case 'react-native':
+			return 'react-native';
+		default:
+			return 'react';
 	}
 }
 
@@ -630,12 +640,14 @@ export function getFrameworkLabel(framework: Framework): string {
 		django: 'Django',
 		flutter: 'Flutter',
 		android: 'Android',
-		ios: 'iOS',
+		ios: 'iOS'
 	};
 	return labels[framework] || framework;
 }
 
-export function getCodeLanguage(framework: Framework): 'go' | 'javascript' | 'bash' | 'php' | 'python' {
+export function getCodeLanguage(
+	framework: Framework
+): 'go' | 'javascript' | 'bash' | 'php' | 'python' {
 	if (framework === 'symfony') return 'php';
 	if (framework === 'laravel') return 'php';
 	if (framework === 'django') return 'python';

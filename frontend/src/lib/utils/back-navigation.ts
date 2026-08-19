@@ -1,4 +1,4 @@
-import { goto } from '$app/navigation';
+import { gotoHref } from './navigation';
 
 const NAV_DEPTH_KEY = 'traceway_nav_depth';
 
@@ -78,7 +78,7 @@ export function createSmartBackHandler(options: SmartBackOptions): (e: MouseEven
 		if (hasInternalHistory()) {
 			history.back();
 		} else {
-			goto(fallbackPath);
+			gotoHref(fallbackPath);
 		}
 	};
 }

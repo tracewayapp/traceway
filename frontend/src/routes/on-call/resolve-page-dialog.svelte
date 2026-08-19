@@ -17,9 +17,7 @@
 	let loading = $state(false);
 	let archiveIssues = $state(true);
 
-	const linkedIssueCount = $derived(
-		new Set(pages.map((p) => p.issueHash).filter(Boolean)).size
-	);
+	const linkedIssueCount = $derived(new Set(pages.map((p) => p.issueHash).filter(Boolean)).size);
 	// Archiving is a write on the issues while resolving is not, so the option
 	// is only offered when pages are issue-linked and the user can write.
 	const canArchiveIssues = $derived(linkedIssueCount > 0 && projectsState.canWriteCurrentProject);

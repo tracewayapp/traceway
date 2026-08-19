@@ -9,15 +9,11 @@
 	} from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
-	import * as AlertDialog from '$lib/components/ui/alert-dialog';
+	import ConfirmDeleteDialog from '$lib/components/traceway/confirm-delete-dialog.svelte';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { Pencil, Trash2, Plus, Layers } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
-	import {
-		oncallState,
-		type Schedule,
-		type ScheduleOverride
-	} from '$lib/state/oncall.svelte';
+	import { oncallState, type Schedule, type ScheduleOverride } from '$lib/state/oncall.svelte';
 	import { formatDateTime } from '$lib/utils/formatters';
 	import ScheduleDialog from './schedule-dialog.svelte';
 	import ScheduleTimeline from './schedule-timeline.svelte';
@@ -41,8 +37,11 @@
 	let editDialogOpen = $state(false);
 	let overrideDialogOpen = $state(false);
 	let showDeleteDialog = $state(false);
+	let deletingSchedule = $state(false);
 	let showLayerEditor = $state(false);
 	let overrideToDelete = $state<ScheduleOverride | null>(null);
+	let showDeleteOverrideDialog = $state(false);
+	let deletingOverride = $state(false);
 	let timelineRefreshKey = $state(0);
 
 	const team = $derived(oncallState.teams.find((t) => t.id === schedule?.teamId));
@@ -67,30 +66,32 @@
 	}
 
 	async function handleDeleteSchedule() {
+		deletingSchedule = true;
 		try {
 			await oncallState.deleteSchedule(organizationId, scheduleId);
-			toast.success('Successfully deleted the Schedule', { position: 'top-center' });
+			toast.success('Successfully deleted the Schedule');
 			showDeleteDialog = false;
 			onDeleted();
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Failed to delete schedule', {
-				position: 'top-center'
-			});
+			toast.error(e instanceof Error ? e.message : 'Failed to delete schedule');
+		} finally {
+			deletingSchedule = false;
 		}
 	}
 
 	async function handleDeleteOverride() {
 		if (!overrideToDelete) return;
+		deletingOverride = true;
 		try {
 			await oncallState.deleteOverride(organizationId, scheduleId, overrideToDelete.id);
-			toast.success('Successfully deleted the Override', { position: 'top-center' });
+			toast.success('Successfully deleted the Override');
 			overrides = overrides.filter((o) => o.id !== overrideToDelete!.id);
 			timelineRefreshKey += 1;
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Failed to delete override', {
-				position: 'top-center'
-			});
+			toast.error(e instanceof Error ? e.message : 'Failed to delete override');
 		} finally {
+			deletingOverride = false;
+			showDeleteOverrideDialog = false;
 			overrideToDelete = null;
 		}
 	}
@@ -121,12 +122,8 @@
 			</div>
 			{#if canManage}
 				<div class="flex shrink-0 gap-1">
-					<Button
-						variant="outline"
-						size="sm"
-						onclick={() => (showLayerEditor = !showLayerEditor)}
-					>
-						<Layers class="mr-1 h-4 w-4" /> Edit Layers
+					<Button variant="outline" size="sm" onclick={() => (showLayerEditor = !showLayerEditor)}>
+						<Layers class="mr-2 h-4 w-4" /> Edit Layers
 					</Button>
 					<Button variant="ghost" size="icon" title="Edit" onclick={() => (editDialogOpen = true)}>
 						<Pencil class="h-4 w-4" />
@@ -165,7 +162,7 @@
 				<div class="flex items-center justify-between">
 					<h3 class="text-sm font-medium">Overrides (next 30 days) · {schedule.timezone}</h3>
 					<Button size="sm" variant="outline" onclick={() => (overrideDialogOpen = true)}>
-						<Plus class="mr-1 h-4 w-4" /> Add Override
+						<Plus class="mr-2 h-4 w-4" /> Add Override
 					</Button>
 				</div>
 				{#if overrides.length === 0}
@@ -190,7 +187,10 @@
 									variant="ghost"
 									size="icon"
 									title="Delete"
-									onclick={() => (overrideToDelete = override)}
+									onclick={() => {
+										overrideToDelete = override;
+										showDeleteOverrideDialog = true;
+									}}
 								>
 									<Trash2 class="h-4 w-4" />
 								</Button>
@@ -224,46 +224,19 @@
 		}}
 	/>
 
-	<AlertDialog.Root bind:open={showDeleteDialog}>
-		<AlertDialog.Content>
-			<AlertDialog.Header>
-				<AlertDialog.Title>Delete Schedule</AlertDialog.Title>
-				<AlertDialog.Description>
-					Are you sure you want to delete "{schedule.name}"? This action cannot be undone.
-				</AlertDialog.Description>
-			</AlertDialog.Header>
-			<AlertDialog.Footer>
-				<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
-				<AlertDialog.Action variant="destructive" onclick={handleDeleteSchedule}>
-					<Trash2 class="mr-2 h-4 w-4" />
-					Delete Schedule
-				</AlertDialog.Action>
-			</AlertDialog.Footer>
-		</AlertDialog.Content>
-	</AlertDialog.Root>
+	<ConfirmDeleteDialog
+		bind:open={showDeleteDialog}
+		entity="Schedule"
+		description={`Are you sure you want to delete "${schedule.name}"? This action cannot be undone.`}
+		loading={deletingSchedule}
+		onConfirm={handleDeleteSchedule}
+	/>
 
-	<AlertDialog.Root
-		open={overrideToDelete !== null}
-		onOpenChange={(open) => {
-			if (!open) overrideToDelete = null;
-		}}
-	>
-		<AlertDialog.Content>
-			<AlertDialog.Header>
-				<AlertDialog.Title>Delete Override</AlertDialog.Title>
-				<AlertDialog.Description>
-					Are you sure you want to delete the override for {overrideToDelete
-						? userLabel(overrideToDelete.userId)
-						: ''}?
-				</AlertDialog.Description>
-			</AlertDialog.Header>
-			<AlertDialog.Footer>
-				<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
-				<AlertDialog.Action variant="destructive" onclick={handleDeleteOverride}>
-					<Trash2 class="mr-2 h-4 w-4" />
-					Delete Override
-				</AlertDialog.Action>
-			</AlertDialog.Footer>
-		</AlertDialog.Content>
-	</AlertDialog.Root>
+	<ConfirmDeleteDialog
+		bind:open={showDeleteOverrideDialog}
+		entity="Override"
+		description={`Are you sure you want to delete the override for ${overrideToDelete ? userLabel(overrideToDelete.userId) : ''}?`}
+		loading={deletingOverride}
+		onConfirm={handleDeleteOverride}
+	/>
 {/if}

@@ -1,8 +1,8 @@
 <script lang="ts">
+	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import * as Command from '$lib/components/ui/command';
 	import { api } from '$lib/api';
-	import { goto } from '$app/navigation';
-	import { addStickyParamsToHref } from '$lib/utils/navigation';
+	import { addStickyParamsToHref, gotoHref } from '$lib/utils/navigation';
 	import { page } from '$app/state';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { authState } from '$lib/state/auth.svelte';
@@ -16,7 +16,7 @@
 		ChartLine,
 		Check,
 		Building2
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 
 	type LibraryDashboard = {
 		id: number;
@@ -91,9 +91,9 @@
 			api.get('/dashboards/library', { projectId }).catch(() => ({ organizations: [] })),
 			api.get('/dashboard-templates', { projectId }).catch(() => ({ templates: [] })),
 			currentOrgId
-				? api.get(`/metrics/discover/org?organizationId=${currentOrgId}`, { projectId }).catch(
-						() => ({ metrics: [], truncated: false })
-					)
+				? api
+						.get(`/metrics/discover/org?organizationId=${currentOrgId}`, { projectId })
+						.catch(() => ({ metrics: [], truncated: false }))
 				: Promise.resolve({ metrics: [], truncated: false })
 		]);
 		organizations = library.organizations ?? [];
@@ -110,7 +110,7 @@
 		const target = addStickyParamsToHref(`/dashboards${params}`, 'preset', 'from', 'to');
 		const current = page.url.pathname + page.url.search;
 		if (current === target) return;
-		goto(target);
+		gotoHref(target);
 	}
 
 	function runAction(action: 'create' | 'import' | 'grafana') {
@@ -132,7 +132,7 @@
 
 	async function selectDashboard(org: LibraryOrganization, dashboard: LibraryDashboard) {
 		if (!currentProjectId) {
-			toast.error('Select a project first', { position: 'top-center' });
+			toast.error('Select a project first');
 			return;
 		}
 		if (dashboard.appliedProjectIds.includes(currentProjectId)) {
@@ -147,7 +147,7 @@
 					{ organizationId: currentOrgId, applyToProjectIds: [currentProjectId] },
 					{ projectId: currentProjectId }
 				);
-				toast.success('Successfully copied the Dashboard', { position: 'top-center' });
+				toast.success('Successfully copied the Dashboard');
 				finishWithDashboard(copy.id);
 			} else {
 				const current = await api.get(`/dashboards/${dashboard.id}`, {
@@ -161,12 +161,12 @@
 						{ projectId: currentProjectId }
 					);
 				}
-				toast.success('Successfully applied the Dashboard', { position: 'top-center' });
+				toast.success('Successfully applied the Dashboard');
 				finishWithDashboard(dashboard.id);
 			}
-		} catch (e: any) {
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to add the dashboard', { position: 'top-center' });
+		} catch (e) {
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to add the dashboard');
 			}
 		} finally {
 			busy = false;
@@ -175,7 +175,7 @@
 
 	async function installTemplate(template: Template) {
 		if (!currentProjectId) {
-			toast.error('Select a project first', { position: 'top-center' });
+			toast.error('Select a project first');
 			return;
 		}
 		busy = true;
@@ -185,11 +185,11 @@
 				{},
 				{ projectId: currentProjectId }
 			);
-			toast.success('Successfully installed the Dashboard', { position: 'top-center' });
+			toast.success('Successfully installed the Dashboard');
 			finishWithDashboard(dashboard.id);
-		} catch (e: any) {
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to install the template', { position: 'top-center' });
+		} catch (e) {
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to install the template');
 			}
 		} finally {
 			busy = false;
@@ -215,15 +215,27 @@
 	<Command.List>
 		<Command.Empty>No results found.</Command.Empty>
 		<Command.Group heading="Actions">
-			<Command.Item value="action-new-dashboard" keywords={['new', 'create', 'dashboard']} onSelect={() => runAction('create')}>
+			<Command.Item
+				value="action-new-dashboard"
+				keywords={['new', 'create', 'dashboard']}
+				onSelect={() => runAction('create')}
+			>
 				<Plus />
 				<span>New Dashboard</span>
 			</Command.Item>
-			<Command.Item value="action-import-json" keywords={['import', 'json', 'file']} onSelect={() => runAction('import')}>
+			<Command.Item
+				value="action-import-json"
+				keywords={['import', 'json', 'file']}
+				onSelect={() => runAction('import')}
+			>
 				<Upload />
 				<span>Import JSON</span>
 			</Command.Item>
-			<Command.Item value="action-import-grafana" keywords={['import', 'grafana', 'convert']} onSelect={() => runAction('grafana')}>
+			<Command.Item
+				value="action-import-grafana"
+				keywords={['import', 'grafana', 'convert']}
+				onSelect={() => runAction('grafana')}
+			>
 				<FolderInput />
 				<span>Import from Grafana</span>
 			</Command.Item>
@@ -276,7 +288,8 @@
 						<div class="flex min-w-0 flex-1 flex-col">
 							<span class="truncate">{template.name}</span>
 							<span class="truncate text-xs text-muted-foreground">
-								{template.category} &middot; {template.widgetCount} widget{template.widgetCount === 1
+								{template.category} &middot; {template.widgetCount} widget{template.widgetCount ===
+								1
 									? ''
 									: 's'}
 								{#if template.description}&middot; {template.description}{/if}

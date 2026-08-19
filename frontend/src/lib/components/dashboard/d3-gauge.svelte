@@ -105,7 +105,7 @@
 	{#if radius > 20}
 		<svg {width} {height}>
 			<g transform="translate({cx}, {cy})">
-				{#each bandPaths as seg}
+				{#each bandPaths as seg, __index (__index)}
 					<path d={seg.path} fill={seg.color} />
 				{/each}
 				<path d={trackPath} fill="var(--muted)" />
@@ -119,22 +119,10 @@
 				>
 					{valueLabel}
 				</text>
-				<text
-					x={-endX}
-					y={endY}
-					text-anchor="middle"
-					font-size="11"
-					fill="var(--muted-foreground)"
-				>
+				<text x={-endX} y={endY} text-anchor="middle" font-size="11" fill="var(--muted-foreground)">
 					{formatValue(min)}
 				</text>
-				<text
-					x={endX}
-					y={endY}
-					text-anchor="middle"
-					font-size="11"
-					fill="var(--muted-foreground)"
-				>
+				<text x={endX} y={endY} text-anchor="middle" font-size="11" fill="var(--muted-foreground)">
 					{formatValue(max)}
 				</text>
 			</g>

@@ -13,6 +13,9 @@ export const load: PageLoad = ({ params, url }) => {
 	if (params.checkId === 'runners') {
 		throw redirect(301, '/monitors');
 	}
+	if (params.checkId === 'post-mortems') {
+		throw redirect(301, '/monitors?tab=post-mortems');
+	}
 	if (!authState.isAuthenticated) throw redirect(302, '/login');
 	return {
 		checkId: params.checkId,

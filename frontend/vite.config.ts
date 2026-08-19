@@ -63,10 +63,13 @@ export default defineConfig(({ mode }) => {
 			sourcemap: 'hidden'
 		},
 		resolve: {
-			dedupe: ['d3-scale', 'd3-array', 'lucide-svelte', 'svelte', 'svelte-sonner']
+			dedupe: ['d3-scale', 'd3-array', '@lucide/svelte', 'svelte', 'svelte-sonner']
 		},
 		optimizeDeps: {
-			include: ['d3-scale', 'd3-array', 'lucide-svelte', 'svelte-sonner']
+			// @milkdown/crepe is dynamically imported; pre-bundle it so the first
+			// editor open doesn't trigger a mid-session re-optimization page reload
+			// that strands the editor on its loading state.
+			include: ['d3-scale', 'd3-array', '@lucide/svelte', 'svelte-sonner', '@milkdown/crepe']
 		},
 		server: {
 			proxy: {

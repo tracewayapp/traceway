@@ -60,7 +60,7 @@
 </script>
 
 {#each segments as seg, i (i)}{#if seg.type === 'text'}{seg.text}{:else}<Tooltip.Root
-		><Tooltip.Trigger class="cursor-default align-baseline text-blue-500 dark:text-blue-400"
-			>{seg.value}</Tooltip.Trigger
-		><Tooltip.Content class="font-mono">{seg.name}</Tooltip.Content></Tooltip.Root
-	>{/if}{/each}
+			><Tooltip.Trigger class="cursor-default align-baseline text-blue-500 dark:text-blue-400"
+				>{seg.value}</Tooltip.Trigger
+			><Tooltip.Content class="font-mono">{seg.name}</Tooltip.Content></Tooltip.Root
+		>{/if}{/each}

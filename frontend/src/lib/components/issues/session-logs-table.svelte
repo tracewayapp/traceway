@@ -98,10 +98,10 @@
 			{#if logs.length === 0}
 				<TableEmptyState colspan={3} message="No logs captured for this session." />
 			{:else}
-				{#each logs as entry, i}
+				{#each logs as entry, i (i)}
 					<Table.Row
 						onclick={() => onSeek?.(offsetMs(entry.timestamp))}
-						class="cursor-pointer hover:bg-muted/50 {i === activeIndex
+						class="cursor-pointer {i === activeIndex
 							? 'border-l-2 border-l-primary bg-primary/10'
 							: ''}"
 					>

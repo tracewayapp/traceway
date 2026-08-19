@@ -1,11 +1,17 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import { gotoHref } from '$lib/utils/navigation';
 	import { onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
-	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
+	import {
+		Card,
+		CardContent,
+		CardDescription,
+		CardHeader,
+		CardTitle
+	} from '$lib/components/ui/card';
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert';
 	import { WarningCallout } from '$lib/components/ui/warning-callout';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
@@ -43,7 +49,7 @@
 
 	function loginRedirect() {
 		const target = `/device${userCode ? `?user_code=${encodeURIComponent(userCode)}` : ''}`;
-		goto(`/login?returnTo=${encodeURIComponent(target)}`);
+		gotoHref(`/login?returnTo=${encodeURIComponent(target)}`);
 	}
 
 	async function lookup(code: string) {
@@ -186,7 +192,7 @@
 					<p class="text-center text-muted-foreground">
 						<strong>{info.clientName}</strong> is requesting access to your Traceway account.
 					</p>
-					<div class="font-mono text-4xl font-semibold tracking-[0.3em] text-center py-4">
+					<div class="py-4 text-center font-mono text-4xl font-semibold tracking-[0.3em]">
 						{info.userCode}
 					</div>
 					<p class="text-center text-sm text-muted-foreground">

@@ -1,9 +1,13 @@
 <script lang="ts">
+	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import { api } from '$lib/api';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import * as Table from '$lib/components/ui/table';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import EmptyState from '$lib/components/traceway/empty-state.svelte';
+	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import StatusPill from '$lib/components/traceway/status-pill.svelte';
+	import ConfirmDeleteDialog from '$lib/components/traceway/confirm-delete-dialog.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
@@ -13,8 +17,19 @@
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { authState } from '$lib/state/auth.svelte';
 	import type { SyntheticCheck } from '$lib/state/monitors.svelte';
-	import { Check, ExternalLink, Globe, ImageUp, Pencil, Plus, Trash2 } from '@lucide/svelte';
+	import {
+		Check,
+		ExternalLink,
+		Globe,
+		ImageUp,
+		Pencil,
+		Plus,
+		Siren,
+		Trash2
+	} from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 
 	interface StatusPage {
 		id: number;
@@ -49,6 +64,10 @@
 
 	let deleteTarget = $state<StatusPage | null>(null);
 	let deleting = $state(false);
+
+	function openIncidents(page: StatusPage) {
+		goto(resolve(`/monitors/status-pages/${page.id}/incidents`));
+	}
 
 	async function loadAll() {
 		if (!organizationId) return;
@@ -160,7 +179,7 @@
 			dialogOpen = false;
 			loadAll();
 		} catch (e) {
-			dialogError = e instanceof Error ? e.message : 'Failed to save the status page';
+			dialogError = e instanceof Error ? getErrorMessage(e) : 'Failed to save the status page';
 		} finally {
 			saving = false;
 		}
@@ -173,12 +192,12 @@
 			await api.delete(`/organizations/${organizationId}/status-pages/${deleteTarget.id}`, {
 				skipProjectId: true
 			});
-			toast.success('Successfully deleted the Status Page', { position: 'top-center' });
+			toast.success('Successfully deleted the Status Page');
 			deleteTarget = null;
 			loadAll();
-		} catch (e: any) {
-			if (e?.status !== 403) {
-				toast.error(e.message || 'Failed to delete the status page', { position: 'top-center' });
+		} catch (e) {
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to delete the status page');
 			}
 		} finally {
 			deleting = false;
@@ -197,7 +216,7 @@
 		onAction={openCreate}
 	/>
 {:else}
-	<div class="overflow-hidden rounded-md border">
+	<TableContainer>
 		<Table.Root>
 			<Table.Header>
 				<Table.Row>
@@ -206,12 +225,12 @@
 					<TracewayTableHeader label="Custom domain" class="w-[200px]" />
 					<TracewayTableHeader label="Monitors" class="w-[100px]" />
 					<TracewayTableHeader label="Visibility" class="w-[110px]" />
-					<TracewayTableHeader label="" align="right" class="w-[90px]" />
+					<TracewayTableHeader label="" align="right" class="w-[160px]" />
 				</Table.Row>
 			</Table.Header>
 			<Table.Body>
-				{#each pages as page}
-					<Table.Row class="group hover:bg-muted/50">
+				{#each pages as page, __index (__index)}
+					<Table.Row class="group">
 						<Table.Cell class="font-medium">
 							{page.name}
 							{#if page.description}
@@ -223,7 +242,7 @@
 						<Table.Cell>
 							<a
 								class="inline-flex items-center gap-1 font-mono text-xs text-primary underline-offset-2 hover:underline"
-								href={`/status/${page.slug}`}
+								href={resolve(`/status/${page.slug}`)}
 								target="_blank"
 								rel="noopener"
 							>
@@ -239,22 +258,24 @@
 						</Table.Cell>
 						<Table.Cell>
 							{#if page.isPublic}
-								<span
-									class="inline-flex items-center gap-1 rounded-full bg-green-500/15 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400"
-								>
+								<StatusPill tone="success">
 									<Globe class="h-3 w-3" />
 									Public
-								</span>
+								</StatusPill>
 							{:else}
-								<span
-									class="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
-								>
-									Private
-								</span>
+								<StatusPill tone="neutral" label="Private" />
 							{/if}
 						</Table.Cell>
 						<Table.Cell class="text-right">
 							<div class="flex justify-end gap-1">
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									onclick={() => openIncidents(page)}
+									title="Incidents"
+								>
+									<Siren class="h-4 w-4" />
+								</Button>
 								<Button variant="ghost" size="icon-sm" onclick={() => openEdit(page)} title="Edit">
 									<Pencil class="h-4 w-4" />
 								</Button>
@@ -272,7 +293,7 @@
 				{/each}
 			</Table.Body>
 		</Table.Root>
-	</div>
+	</TableContainer>
 {/if}
 
 <AlertDialog.Root open={dialogOpen} onOpenChange={(v) => (dialogOpen = v)}>
@@ -354,7 +375,7 @@
 						onclick={() => logoInput?.click()}
 						disabled={saving}
 					>
-						<ImageUp class="mr-1.5 h-4 w-4" />
+						<ImageUp class="mr-2 h-4 w-4" />
 						{logoFile ? logoFile.name : editing?.logoKey ? 'Replace logo' : 'Upload logo'}
 					</Button>
 				</div>
@@ -387,7 +408,7 @@
 					<p class="text-sm text-muted-foreground">Create a monitor first.</p>
 				{:else}
 					<div class="max-h-48 space-y-1 overflow-y-auto rounded-md border p-2">
-						{#each checks as check}
+						{#each checks as check, __index (__index)}
 							<label
 								class="flex cursor-pointer items-center gap-2 rounded p-1.5 text-sm hover:bg-muted/50"
 							>
@@ -428,20 +449,10 @@
 	</AlertDialog.Content>
 </AlertDialog.Root>
 
-<AlertDialog.Root open={deleteTarget !== null} onOpenChange={(v) => !v && (deleteTarget = null)}>
-	<AlertDialog.Content interactOutsideBehavior={deleting ? 'ignore' : 'close'}>
-		<AlertDialog.Header>
-			<AlertDialog.Title>Delete Status Page</AlertDialog.Title>
-			<AlertDialog.Description>
-				"{deleteTarget?.name}" at /status/{deleteTarget?.slug} will stop working immediately.
-			</AlertDialog.Description>
-		</AlertDialog.Header>
-		<AlertDialog.Footer>
-			<AlertDialog.Cancel disabled={deleting}>Cancel</AlertDialog.Cancel>
-			<Button variant="destructive" onclick={deletePage} disabled={deleting}>
-				<Trash2 class="mr-2 h-4 w-4" />
-				{deleting ? 'Deleting...' : 'Delete Status Page'}
-			</Button>
-		</AlertDialog.Footer>
-	</AlertDialog.Content>
-</AlertDialog.Root>
+<ConfirmDeleteDialog
+	bind:open={() => deleteTarget !== null, (v) => !v && (deleteTarget = null)}
+	entity="Status Page"
+	description={`"${deleteTarget?.name}" at /status/${deleteTarget?.slug} will stop working immediately.`}
+	loading={deleting}
+	onConfirm={deletePage}
+/>

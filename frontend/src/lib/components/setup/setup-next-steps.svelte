@@ -1,6 +1,6 @@
 <script lang="ts">
 	import bash from 'svelte-highlight/languages/bash';
-	import { Rocket } from 'lucide-svelte';
+	import { Rocket } from '@lucide/svelte';
 	import {
 		credentialValue,
 		substituteToken,

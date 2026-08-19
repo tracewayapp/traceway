@@ -25,7 +25,7 @@ export type DistributedTraceNode = {
 		totalCost: number;
 		recordedAt: string;
 	};
-	spans: any[];
+	spans: Span[];
 	exception?: {
 		exceptionHash: string;
 		stackTrace: string;
@@ -37,3 +37,4 @@ export type DistributedTraceResponse = {
 	distributedTraceId: string;
 	nodes: DistributedTraceNode[];
 };
+import type { Span } from '$lib/types/spans';

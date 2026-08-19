@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { SvelteMap } from 'svelte/reactivity';
 	import { api } from '$lib/api';
 	import * as Card from '$lib/components/ui/card';
 	import * as Table from '$lib/components/ui/table';
@@ -10,6 +11,8 @@
 	import LogMessage from './log-message.svelte';
 	import { formatDateTime } from '$lib/utils/formatters';
 	import { getTimezone } from '$lib/state/timezone.svelte';
+	import { underlineTabTriggerClass, underlineTabListClass } from '$lib/utils/tabs';
+	import { cn } from '$lib/utils';
 	import { spanIdUuidToHex } from '$lib/utils/span-id';
 	import type { Span } from '$lib/types/spans';
 
@@ -41,7 +44,6 @@
 		traceId: string;
 		distributedTraceId?: string | null;
 		spans: Span[];
-		rootSpan: { id: string; name: string };
 		traceRecordedAt: string;
 	} = $props();
 
@@ -49,8 +51,7 @@
 
 	let activeTab = $state<'this-trace' | 'all-distributed'>('this-trace');
 
-	const tabTriggerClass =
-		'rounded-none border-b-2 border-transparent bg-transparent px-0 pb-2 pt-0 text-sm font-medium text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none';
+	const tabTriggerClass = cn(underlineTabTriggerClass, 'mb-0 pb-2');
 
 	// This-trace data
 	let logs = $state<LogRecord[]>([]);
@@ -65,7 +66,7 @@
 	let distributedError = $state('');
 
 	const childSpanNameByHex = $derived.by(() => {
-		const m = new Map<string, string>();
+		const m = new SvelteMap<string, string>();
 		for (const s of spans) {
 			const hex = spanIdUuidToHex(s.id);
 			if (hex) m.set(hex, s.name);
@@ -158,16 +159,14 @@
 	});
 </script>
 
-<Card.Root class="gap-0 pb-0 overflow-hidden">
+<Card.Root class="gap-0 overflow-hidden pb-0">
 	<Card.Header class={distributedTraceId ? '' : 'pb-4'}>
 		<Card.Title>Logs</Card.Title>
 	</Card.Header>
 	<Card.Content class="p-0">
 		<Tabs.Root value={activeTab} onValueChange={onTabChange}>
 			{#if distributedTraceId}
-				<Tabs.List
-					class="h-auto w-full justify-start gap-4 rounded-none border-b bg-transparent p-0 pl-6 pt-0 pb-2"
-				>
+				<Tabs.List class={cn(underlineTabListClass, 'pb-2 pl-6')}>
 					<Tabs.Trigger value="this-trace" class={tabTriggerClass}>This Trace</Tabs.Trigger>
 					<Tabs.Trigger value="all-distributed" class={tabTriggerClass}>
 						All Distributed Traces
@@ -199,10 +198,7 @@
 						<Table.Body>
 							{#each logs as log (log.id)}
 								{@const spanName = resolveSpanName(log)}
-								<Table.Row
-									class="h-8 cursor-pointer hover:bg-muted/50"
-									onclick={() => toggleExpanded(log.id)}
-								>
+								<Table.Row class="h-8 cursor-pointer" onclick={() => toggleExpanded(log.id)}>
 									<Table.Cell class="py-1.5 pl-6 text-xs text-muted-foreground tabular-nums">
 										{formatDateTime(log.timestamp, { timezone })}
 									</Table.Cell>
@@ -266,10 +262,7 @@
 							</Table.Header>
 							<Table.Body>
 								{#each distributedLogs as log (log.id)}
-									<Table.Row
-										class="h-8 cursor-pointer hover:bg-muted/50"
-										onclick={() => toggleExpanded(log.id)}
-									>
+									<Table.Row class="h-8 cursor-pointer" onclick={() => toggleExpanded(log.id)}>
 										<Table.Cell class="py-1.5 pl-6 text-xs text-muted-foreground tabular-nums">
 											{formatDateTime(log.timestamp, { timezone })}
 										</Table.Cell>

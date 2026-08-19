@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { scaleUtc, scaleLinear, type NumberValue } from 'd3-scale';
+	import { scaleUtc, scaleLinear } from 'd3-scale';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { line, area } from 'd3-shape';
 	import { min, max } from 'd3-array';
 	import { formatDateTime } from '$lib/utils/formatters';
@@ -110,17 +111,9 @@
 	const yDomainMax = $derived(yMax() + yPadding);
 
 	// Scales
-	const xScale = $derived(
-		scaleUtc()
-			.domain([xMin, xMax])
-			.range([0, chartWidth])
-	);
+	const xScale = $derived(scaleUtc().domain([xMin, xMax]).range([0, chartWidth]));
 
-	const yScale = $derived(
-		scaleLinear()
-			.domain([yDomainMin, yDomainMax])
-			.range([chartHeight, 0])
-	);
+	const yScale = $derived(scaleLinear().domain([yDomainMin, yDomainMax]).range([chartHeight, 0]));
 
 	// Generate Y axis ticks
 	const yTicks = $derived(() => yScale.ticks(4));
@@ -133,6 +126,16 @@
 	});
 
 	const yAxisUnit = $derived(() => axisScale?.unit ?? '');
+
+	const yTickItems = $derived(() => {
+		const seen = new SvelteSet<string>();
+		return yTicks().filter((tick) => {
+			const label = formatYLabel(tick);
+			if (seen.has(label)) return false;
+			seen.add(label);
+			return true;
+		});
+	});
 
 	function formatYLabel(value: number): string {
 		if (axisScale) {
@@ -149,8 +152,8 @@
 		if (seriesData.length === 0) return '';
 
 		const lineGen = line<DataPoint>()
-			.x(d => xScale(d.timestamp))
-			.y(d => yScale(d.value));
+			.x((d) => xScale(d.timestamp))
+			.y((d) => yScale(d.value));
 
 		return lineGen(seriesData) || '';
 	}
@@ -159,9 +162,9 @@
 		if (seriesData.length === 0) return '';
 
 		const areaGen = area<DataPoint>()
-			.x(d => xScale(d.timestamp))
+			.x((d) => xScale(d.timestamp))
 			.y0(chartHeight)
-			.y1(d => yScale(d.value));
+			.y1((d) => yScale(d.value));
 
 		return areaGen(seriesData) || '';
 	}
@@ -191,7 +194,7 @@
 		const timeDiff = xMax.getTime() - xMin.getTime();
 		if (timeDiff <= 0) return padding.left;
 		const percentage = (time.getTime() - xMin.getTime()) / timeDiff;
-		return padding.left + (percentage * chartWidth);
+		return padding.left + percentage * chartWidth;
 	}
 
 	// Calculate gap threshold from data (2x median interval)
@@ -236,10 +239,12 @@
 		const isolated: DataPoint[] = [];
 
 		for (let i = 0; i < pointData.length; i++) {
-			const hasGapBefore = i === 0 ||
-				(pointData[i].timestamp.getTime() - pointData[i - 1].timestamp.getTime() > threshold);
-			const hasGapAfter = i === pointData.length - 1 ||
-				(pointData[i + 1].timestamp.getTime() - pointData[i].timestamp.getTime() > threshold);
+			const hasGapBefore =
+				i === 0 ||
+				pointData[i].timestamp.getTime() - pointData[i - 1].timestamp.getTime() > threshold;
+			const hasGapAfter =
+				i === pointData.length - 1 ||
+				pointData[i + 1].timestamp.getTime() - pointData[i].timestamp.getTime() > threshold;
 
 			if (hasGapBefore && hasGapAfter) {
 				isolated.push(pointData[i]);
@@ -250,7 +255,10 @@
 	}
 
 	// Find the value at a given time, interpolating for line sections
-	function getValueAtTime(time: Date, pointData: DataPoint[]): { value: number; isInterpolated: boolean } | null {
+	function getValueAtTime(
+		time: Date,
+		pointData: DataPoint[]
+	): { value: number; isInterpolated: boolean } | null {
 		if (pointData.length === 0) return null;
 
 		const targetMs = time.getTime();
@@ -354,7 +362,9 @@
 
 	// Selection region computed values
 	const selectionLeft = $derived(Math.max(padding.left, Math.min(dragStartX, dragEndX)));
-	const selectionRight = $derived(() => Math.min(width - padding.right, Math.max(dragStartX, dragEndX)));
+	const selectionRight = $derived(() =>
+		Math.min(width - padding.right, Math.max(dragStartX, dragEndX))
+	);
 	const selectionWidth = $derived(selectionRight() - selectionLeft);
 	const selectionStartTime = $derived(() => getTimeAtPosition(selectionLeft));
 	const selectionEndTime = $derived(() => getTimeAtPosition(selectionLeft + selectionWidth));
@@ -429,8 +439,12 @@
 
 <div
 	bind:this={containerRef}
-	class="relative select-none w-full"
-	style="height: {height}px; cursor: {isDragging ? 'col-resize' : (isInChartArea() ? 'crosshair' : 'default')};"
+	class="relative w-full select-none"
+	style="height: {height}px; cursor: {isDragging
+		? 'col-resize'
+		: isInChartArea()
+			? 'crosshair'
+			: 'default'};"
 	onmouseenter={handleMouseEnter}
 	onmouseleave={handleMouseLeave}
 	onmousemove={handleMouseMove}
@@ -449,7 +463,7 @@
 			</defs>
 			<g transform="translate({padding.left}, {padding.top})">
 				<!-- Y axis grid lines -->
-				{#each yTicks() as tick}
+				{#each yTickItems() as tick, __index (__index)}
 					<line
 						x1={0}
 						y1={yScale(tick)}
@@ -462,7 +476,7 @@
 				{/each}
 
 				<!-- Y axis labels -->
-				{#each yTicks() as tick}
+				{#each yTickItems() as tick, __index (__index)}
 					<text
 						x={-8}
 						y={yScale(tick)}
@@ -477,13 +491,7 @@
 
 				<!-- Y axis unit label -->
 				{#if yAxisUnit()}
-					<text
-						x={-8}
-						y={-4}
-						text-anchor="end"
-						fill="#9ca3af"
-						font-size="10"
-					>
+					<text x={-8} y={-4} text-anchor="end" fill="#9ca3af" font-size="10">
 						{yAxisUnit()}
 					</text>
 				{/if}
@@ -499,25 +507,18 @@
 				/>
 
 				<!-- Y axis line -->
-				<line
-					x1={0}
-					y1={0}
-					x2={0}
-					y2={chartHeight}
-					stroke="#e5e7eb"
-					stroke-width="1"
-				/>
+				<line x1={0} y1={0} x2={0} y2={chartHeight} stroke="#e5e7eb" stroke-width="1" />
 
 				<!-- Lines for each series (with gap detection) -->
 				<g clip-path="url(#{clipId})">
-					{#each series as s}
+					{#each series as s, __index (__index)}
 						{#if s.data.length > 0}
 							{@const segments = getLineSegments(s.data)}
 							{@const isolated = getIsolatedPoints(s.data)}
 
 							<!-- Draw area fills (when areaFill is enabled) -->
 							{#if areaFill}
-								{#each segments as segment}
+								{#each segments as segment, __index (__index)}
 									{#if segment.length > 1}
 										<path
 											d={generateAreaPath(segment)}
@@ -530,19 +531,14 @@
 							{/if}
 
 							<!-- Draw line segments (only segments with 2+ points) -->
-							{#each segments as segment}
+							{#each segments as segment, __index (__index)}
 								{#if segment.length > 1}
-									<path
-										d={generatePath(segment)}
-										fill="none"
-										stroke={s.color}
-										stroke-width="1.5"
-									/>
+									<path d={generatePath(segment)} fill="none" stroke={s.color} stroke-width="1.5" />
 								{/if}
 							{/each}
 
 							<!-- Draw isolated points as dots -->
-							{#each isolated as point}
+							{#each isolated as point, __index (__index)}
 								<circle
 									cx={xScale(point.timestamp)}
 									cy={yScale(point.value)}
@@ -564,13 +560,17 @@
 	<!-- Drag selection overlay -->
 	{#if isDragging && selectionWidth > 0}
 		<div
-			class="absolute top-0 bottom-0 bg-primary/20 border-x border-primary/40 pointer-events-none"
+			class="pointer-events-none absolute top-0 bottom-0 border-x border-primary/40 bg-primary/20"
 			style="left: {selectionLeft}px; width: {selectionWidth}px;"
 		>
-			<div class="absolute -top-5 left-0 -translate-x-full text-[9px] font-medium text-primary whitespace-nowrap">
+			<div
+				class="absolute -top-5 left-0 -translate-x-full text-[9px] font-medium whitespace-nowrap text-primary"
+			>
 				{formatTime(selectionStartTime())}
 			</div>
-			<div class="absolute -top-5 right-0 translate-x-full text-[9px] font-medium text-primary whitespace-nowrap">
+			<div
+				class="absolute -top-5 right-0 translate-x-full text-[9px] font-medium whitespace-nowrap text-primary"
+			>
 				{formatTime(selectionEndTime())}
 			</div>
 		</div>
@@ -583,22 +583,31 @@
 
 		<!-- Vertical line -->
 		<div
-			class="absolute top-0 bottom-0 w-px bg-muted-foreground/50 pointer-events-none"
+			class="pointer-events-none absolute top-0 bottom-0 w-px bg-muted-foreground/50"
 			style="left: {clampedX}px;"
 		></div>
 
 		<!-- Value tooltip -->
 		{#if hasMultiServerData && calculatedServerValues().length > 0}
 			<div
-				class="absolute top-0 -translate-x-1/2 -translate-y-full pointer-events-none"
+				class="pointer-events-none absolute top-0 -translate-x-1/2 -translate-y-full"
 				style="left: {clampedX}px;"
 			>
-				<div class="bg-foreground text-background rounded px-2 py-1 text-xs font-medium whitespace-nowrap shadow-lg mb-1 flex flex-col gap-0.5">
-					{#each calculatedServerValues() as serverValue}
+				<div
+					class="mb-1 flex flex-col gap-0.5 rounded bg-foreground px-2 py-1 text-xs font-medium whitespace-nowrap text-background shadow-lg"
+				>
+					{#each calculatedServerValues() as serverValue, __index (__index)}
 						{@const formatted = formatDisplayValue(serverValue.value)}
 						<div class="flex items-center gap-1.5">
-							<span class="h-2 w-2 rounded-full flex-shrink-0" style="background-color: {serverValue.color};"></span>
-							<span>{formatted.text}{#if unit && !formatted.includesUnit}<span class="text-background/70 ml-0.5">{unit}</span>{/if}</span>
+							<span
+								class="h-2 w-2 flex-shrink-0 rounded-full"
+								style="background-color: {serverValue.color};"
+							></span>
+							<span
+								>{formatted.text}{#if unit && !formatted.includesUnit}<span
+										class="ml-0.5 text-background/70">{unit}</span
+									>{/if}</span
+							>
 						</div>
 					{/each}
 				</div>
@@ -606,21 +615,27 @@
 		{:else if valueData}
 			{@const formatted = formatDisplayValue(valueData.value)}
 			<div
-				class="absolute top-0 -translate-x-1/2 -translate-y-full pointer-events-none"
+				class="pointer-events-none absolute top-0 -translate-x-1/2 -translate-y-full"
 				style="left: {clampedX}px;"
 			>
-				<div class="bg-foreground text-background rounded px-2 py-1 text-xs font-medium whitespace-nowrap shadow-lg mb-1">
-					{formatted.text}{#if unit && !formatted.includesUnit}<span class="text-background/70 ml-0.5">{unit}</span>{/if}
+				<div
+					class="mb-1 rounded bg-foreground px-2 py-1 text-xs font-medium whitespace-nowrap text-background shadow-lg"
+				>
+					{formatted.text}{#if unit && !formatted.includesUnit}<span
+							class="ml-0.5 text-background/70">{unit}</span
+						>{/if}
 				</div>
 			</div>
 		{/if}
 
 		<!-- Time label -->
 		<div
-			class="absolute bottom-0 -translate-x-1/2 translate-y-full pointer-events-none"
+			class="pointer-events-none absolute bottom-0 -translate-x-1/2 translate-y-full"
 			style="left: {clampedX}px;"
 		>
-			<div class="bg-background border border-border rounded px-1.5 py-0.5 text-[10px] text-muted-foreground whitespace-nowrap shadow-sm mt-1">
+			<div
+				class="mt-1 rounded border border-border bg-background px-1.5 py-0.5 text-[10px] whitespace-nowrap text-muted-foreground shadow-sm"
+			>
 				{formatTime(calculatedTime())}
 			</div>
 		</div>
@@ -631,7 +646,7 @@
 		{@const shadowX = shadowLineX()}
 		{#if shadowX >= padding.left && shadowX <= width - padding.right}
 			<div
-				class="absolute top-0 bottom-0 w-px bg-muted-foreground/25 pointer-events-none"
+				class="pointer-events-none absolute top-0 bottom-0 w-px bg-muted-foreground/25"
 				style="left: {shadowX}px;"
 			></div>
 		{/if}

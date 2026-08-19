@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import bash from 'svelte-highlight/languages/bash';
-	import { RefreshCw } from 'lucide-svelte';
+	import { RefreshCw } from '@lucide/svelte';
 	import { api } from '$lib/api';
 	import { Button } from '$lib/components/ui/button';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';

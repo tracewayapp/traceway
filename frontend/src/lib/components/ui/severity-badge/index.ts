@@ -1,1 +1,5 @@
-export { default as SeverityBadge, severityFromNumber, type SeverityLevel } from './severity-badge.svelte';
+export {
+	default as SeverityBadge,
+	severityFromNumber,
+	type SeverityLevel
+} from './severity-badge.svelte';

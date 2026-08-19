@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { Tooltip as TooltipPrimitive } from "bits-ui";
-	import { setContext } from "svelte";
+	import { Tooltip as TooltipPrimitive } from 'bits-ui';
+	import { setContext } from 'svelte';
 
 	let { open = $bindable(false), ...restProps }: TooltipPrimitive.RootProps = $props();
 
@@ -25,8 +25,8 @@
 		open = true;
 		setTimeout(() => {
 			const handler = () => closeTooltip();
-			document.addEventListener("pointerdown", handler);
-			removeListener = () => document.removeEventListener("pointerdown", handler);
+			document.addEventListener('pointerdown', handler);
+			removeListener = () => document.removeEventListener('pointerdown', handler);
 		}, 0);
 	}
 
@@ -38,7 +38,7 @@
 		open = v;
 	}
 
-	setContext("traceway-tooltip", { toggle });
+	setContext('traceway-tooltip', { toggle });
 </script>
 
 <TooltipPrimitive.Root bind:open {...restProps} onOpenChange={handleOpenChange} />

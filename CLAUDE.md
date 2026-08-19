@@ -39,20 +39,21 @@ Traceway is an error tracking and monitoring platform consisting of:
 - **CLI**: Go 1.26, Cobra 1.10, separate Go module (`github.com/tracewayapp/traceway/cli`); flake.nix dev shell, justfile entrypoints
 - **Client SDK**: Go 1.25, Gin middleware support
 
-### go-lightning Library (PostgreSQL ORM)
-- **Import**: `github.com/tracewayapp/go-lightning/lit`
-- **Purpose**: Lightweight generic CRUD operations for PostgreSQL
+### lit Library (SQL mapper)
+- **Import**: `github.com/tracewayapp/lit/v2` (currently v2.0.5)
+- **Purpose**: Lightweight generic CRUD operations on top of `database/sql`. Supports PostgreSQL, MySQL, SQLite, and DuckDB drivers (`lit.PostgreSQL`, `lit.MySQL`, `lit.SQLite`, `lit.DuckDB`). Traceway registers models against `db.Driver` (SQLite or PostgreSQL depending on build tags); the DuckDB telemetry backend deliberately keeps `lit.SQLite` for reads since DuckDB accepts `?` placeholders.
+- **Docs for AI use**: the lit repo ships a skill at `skills/lit/SKILL.md` plus `llms.txt` with the full API contract and pitfall checklist.
 
 #### Model Registration (required before use)
-All models are registered centrally in `models/models.go` via `models.Init()`:
+All models are registered centrally in `models/models.go` via `models.Init(driver lit.Driver)`, called at boot with `db.Driver`:
 ```go
-func Init() {
-    lit.RegisterModel[User](lit.PostgreSQL)
-    lit.RegisterModel[Project](lit.PostgreSQL)
+func Init(driver lit.Driver) {
+    lit.RegisterModel[User](driver)
+    lit.RegisterModel[Project](driver)
     // ...all models registered here
 }
 ```
-Repository-local result models (e.g., aggregate structs only used in one repo) can use file-level `init()` instead.
+Repository-local result models (e.g., aggregate structs only used in one repo) can use file-level `init()` instead. Irregular table names use `lit.RegisterModelWithNaming` with a struct embedding `lit.DefaultDbNamingStrategy` (see `escalationPolicyNaming` in `models.go`).
 
 #### Naming Conventions
 - Fields: CamelCase → snake_case (`FirstName` → `first_name`)
@@ -61,7 +62,7 @@ Repository-local result models (e.g., aggregate structs only used in one repo) c
 - Override via struct tag: `lit:"custom_name"`
 
 #### Core CRUD Operations
-All lit functions take `*sql.Tx` as the first argument for transactional consistency:
+All lit functions take a `lit.Executor` as the first argument. Both `*sql.Tx` and `*sql.DB` qualify: main-DB repositories pass the `*sql.Tx` from the transaction middleware, telemetry repositories pass `db.TelemetryDB` directly.
 
 | Function | Description |
 |----------|-------------|
@@ -72,7 +73,10 @@ All lit functions take `*sql.Tx` as the first argument for transactional consist
 | `lit.SelectSingle[T](tx, query, args...)` | Retrieve one record (returns `*T`) |
 | `lit.Update[T](tx, &entity, "id = $1", id)` | Update (auto-prepends WHERE) |
 | `lit.UpdateNative(tx, "UPDATE table SET col = $1 WHERE ...", args...)` | Raw SQL update for partial/single-field changes |
-| `lit.Delete(tx, "DELETE FROM table WHERE id = $1", id)` | Delete records |
+| `lit.Delete(tx, "DELETE FROM table WHERE id = $1", id)` | Delete records (any exec statement) |
+| `lit.SelectNamed[T]` / `lit.SelectSingleNamed[T]` / `lit.UpdateNamed[T]` | `:name` placeholder variants taking a `lit.P{...}` map; render per-driver, used for dialect-neutral queries |
+| `lit.DeleteNamed(driver, tx, query, lit.P{...})` | Named delete/exec. Gotcha: takes the driver as the FIRST argument |
+| `lit.ParseNamedQuery(driver, query, lit.P{...})` | Renders `:name` to positional; escape hatch for `QueryContext`/`RowsAffected` via `database/sql` |
 
 #### Transaction Helper (`pgdb.ExecuteTransaction`)
 All PostgreSQL operations should use `ExecuteTransaction` for automatic commit/rollback:
@@ -503,8 +507,10 @@ const handleClick = createRowClickHandler('/issues/abc123', 'preset', 'from', 't
 /tasks                      Background tasks list
 /tasks/[task]               Single task details
 /dashboards                 Dashboards page (tabs of org dashboards; /metrics redirects here)
-/monitors                   Monitors (synthetic checks): single sidebar item, TabsRow tabs Monitors | Status Pages (?tab=, Status Pages admin-only); status pages tab has branding (description, logo upload, custom domain); old /monitors/status-pages redirects to the tab, /monitors/runners to /monitors (runners have no UI — operator infra)
-/monitors/[checkId]         Monitor detail (latency chart, uptime bars, runs w/ result filter, incidents)
+/monitors                   Monitors (synthetic checks): single sidebar item, TabsRow tabs Monitors | Status Pages | Post-Mortems (?tab=, Status Pages admin-only, Post-Mortems for all members); status pages tab has branding (description, logo upload, custom domain) plus a link to the per-page incidents page (which owns the Record Incident dialog); old /monitors/status-pages redirects to the tab, /monitors/runners to /monitors (runners have no UI — operator infra), bare /monitors/post-mortems to the tab
+/monitors/status-pages/[pageId]/incidents  Paginated incident management for one status page (timeline updates, titles, manual resolve/delete, post-mortem links); reads for members, mutations admin-gated in the UI
+/monitors/[checkId]         Monitor detail (latency chart, uptime bars, runs w/ result filter, incidents w/ titles + post-mortem links)
+/monitors/post-mortems/[id] Post-mortem editor/viewer (@milkdown/crepe WYSIWYG with a Rich text/Markdown raw toggle, tag pills + Add-tags dialog, incident link pill + searchable picker, Activity sheet; write gating follows the effective project role). Project-scoped: opening a doc under a different project 404s. Creation is a title-only dialog (new-post-mortem-dialog.svelte, openable from the tab, monitor detail incidents, and the status page incidents page with an optional incident pre-link) that POSTs immediately and navigates here; /monitors/post-mortems/new redirects to the tab
 /status/[slug]              Public status page (light standalone design, no auth, raw fetch, listed in isPublicPath)
 /connection                 SDK integration guide
 ```
@@ -773,6 +779,8 @@ Org-scoped entities in the main DB. Teams (`teams`/`team_members`) own projects 
 
 Checks (`synthetic_checks`, main DB) are http/tcp/browser probes with per-check interval, timeout, and a consecutive-failure threshold (flap damping). Runs flow through the `check_runs` queue (outbox-style guarded claims, terminal rows deleted, expired queued runs recorded as `missed`); results are telemetry (`check_results`, all three backends, pruned by the SQLite retention worker / 90d CH TTL). State transitions open/resolve `check_incidents` and feed the event-driven notification rule type `check_down` (recovery auto-resolves the page a rule-scoped dedup key opened via `oncall.AutoResolveByDedupKey`; recovery never dispatches to escalation channels). The notify hook runs post-commit with no ambient tx (SQLite single-connection). Remember: `notification_rule.repository.go` (both copies) lists event rule types explicitly, and `check_down` is one of them.
 
+**Incidents, incident updates & post-mortems.** `check_incidents` covers both auto and manual incidents: auto rows carry `check_id`+`project_id` (nullable now), hand-recorded ones carry only `status_page_id` (org admins record them from a status page for outages monitors missed; they never affect uptime numbers). All incidents can be given a public `title` and statuspage.io-style timeline updates (`incident_updates`: status investigating/identified/monitoring/update/resolved + message; auto open/resolve seeds empty-message investigating/resolved updates in the same tx in `synthetics/result.go`, and the probe `error_message` stays internal, never in the public payload). A `resolved` update closes a manual incident; auto lifecycle stays owned by `ProcessOutcome` (manual resolve/time-edit/delete of auto incidents answer 422). The public `/api/status/:slug` payload gained `pastIncidents` (90d union of the page's checks' auto incidents + its manual ones, titles defaulting to "<check name> is down", nested updates, cap 30, no ids/error messages); incident mutations invalidate every status-page cache slug of the org. Post-mortems (`post_mortems`, **project-scoped**: `project_id` NOT-NULL-in-practice with ON DELETE CASCADE, backfilled by migration from the linked incident's project else the org's oldest project) are internal markdown documents, never public: optional 1:1 incident link (`incident_id` unique where set, `ON DELETE SET NULL` so documents survive monitor/incident deletion; linkable incidents are the project's own autos plus the org's manual status-page incidents — cross-project autos answer 422), JSON-array `tags` (models.StringSlice), LIKE search over title/content/tags, and an append-only edit log (`post_mortem_events`: action created/updated + JSON `changes` field list, recorded only when something actually changed; served as the Activity panel). Routes are project-scoped (`/api/post-mortems*`, standard RequireProjectAccess/RequireWriteAccess chains, org resolved from the project for incident validation); incident mutations are org-admin since they are public content. Frontend: Post-Mortems tab on `/monitors` (all members; creation is a title-only dialog that creates the document immediately and opens the editor page), full-page WYSIWYG editor at `/monitors/post-mortems/[id]` (`@milkdown/crepe`, dynamically imported, app font stack overrides the theme's serif), paginated incident management page at `/monitors/status-pages/[pageId]/incidents` (which owns the Record Incident dialog).
+
 | Method | Endpoint | Auth | Purpose |
 |--------|----------|------|---------|
 | GET/POST | `/api/synthetics/checks` | App / App+Write | List / create checks (422 validation incl. browser-mode + cloud gates) |
@@ -790,7 +798,16 @@ Checks (`synthetic_checks`, main DB) are http/tcp/browser probes with per-check 
 | POST | `/api/organizations/:organizationId/status-pages/:id/logo` | Admin | Upload a PNG/JPEG logo (raw body, 1MB cap, sniffed content type; SVG rejected as scriptable) stored via storage.Store under `statuspages/<id>/logo` |
 | GET | `/api/status/:slug/logo` | None (rate-limited) | Streams a public page's logo |
 | GET | `/api/status-domains/resolve` | None (rate-limited) | Maps the request Host header to a public status page slug — backs CNAMEd vanity domains (TLS terminates at the operator's proxy); the SPA calls it for anonymous visits to `/` |
-| GET | `/api/status/:slug` | None (rate-limited) | Public status payload: per-check status + 90 daily uptime buckets + incidents; cached ~30s per slug; private/unknown slugs are both 404; latency values stripped. Frontend page: `/status/[slug]` (in `isPublicPath`) |
+| GET | `/api/status/:slug` | None (rate-limited) | Public status payload: per-check status + 90 daily uptime buckets + incidents + `pastIncidents` (date-grouped titles with timeline updates); cached ~30s per slug; private/unknown slugs are both 404; latency values and internal error messages stripped. Frontend page: `/status/[slug]` (in `isPublicPath`) |
+| GET | `/api/organizations/:organizationId/incidents` | Member | Org incidents (90d, joined check/status-page names, updatesCount, postMortemId) |
+| GET | `/api/organizations/:organizationId/incidents/:incidentId/updates` | Member | One incident + its timeline updates |
+| GET | `/api/organizations/:organizationId/status-pages/:id/incidents` | Member | Paginated incident history of one status page (auto incidents of its checks + its manual ones, no time window; standard pagination envelope + `statusPage` meta). Frontend page: `/monitors/status-pages/[pageId]/incidents` |
+| POST | `/api/organizations/:organizationId/status-pages/:id/incidents` | Admin | Record a manual incident on a status page (title required, optional first update message, backdatable, optional resolvedAt) |
+| PUT/DELETE | `/api/organizations/:organizationId/incidents/:incidentId` | Admin | Edit title (any incident) / times (manual only, empty resolvedAt reopens; 422 for auto) / delete (manual only, 422 for auto) |
+| POST/DELETE | `/api/organizations/:organizationId/incidents/:incidentId/updates(/:updateId)` | Admin | Post / delete a public timeline update (a `resolved` update also closes an unresolved manual incident) |
+| GET/POST | `/api/post-mortems` | App / App+Write | Paginated list for the project (query params search/page/pageSize + repeatable `tag` params ANDed together) / create in the project (422 on duplicate or cross-project incident link) |
+| GET/PUT/DELETE | `/api/post-mortems/:id` | App / +Write / +Write | Full document with author names (contentMd) / update (records a `post_mortem_events` diff row; no-op saves change nothing) / delete |
+| GET | `/api/post-mortems/:id/activity` | App | Edit log for the Activity panel (who created/edited what, joined user names) |
 
 **Logs**
 | Method | Endpoint | Auth | Purpose |
@@ -853,7 +870,10 @@ func (c *ReportController) Report(ctx *gin.Context) {
 | `starred_dashboard_widgets` | Homepage layout per project (dashboard id + widget id, position, col_span, size) |
 | `synthetic_checks` | Synthetic check config + current state (status, consecutive_failures, next_run_at) |
 | `check_runs` | Synthetic run queue (queued/claimed only; terminal rows deleted, telemetry is the record) |
-| `check_incidents` | Down/up incident spans per check (feeds status pages) |
+| `check_incidents` | Incident spans: auto (nullable check_id+project_id) and manual (nullable status_page_id), plus public title (feeds status pages) |
+| `incident_updates` | Public timeline updates on incidents (status + message, seeded on auto open/resolve) |
+| `post_mortems` | Internal markdown post-mortems (project-scoped via `project_id` ON DELETE CASCADE, tags JSON array, optional unique incident link with ON DELETE SET NULL) |
+| `post_mortem_events` | Append-only post-mortem edit log (action, JSON changes list, user, ON DELETE CASCADE) |
 | `synthetic_runners` | Liveness registry for self-registered runner fleet (unique name, version, first/last_seen_at; no credentials, no org scoping) |
 | `status_pages` | Public uptime pages (org-scoped slug + selected check ids + branding: description, logo_key, unique custom_domain) |
 | `widget_groups` / `widget_group_widgets` / `starred_widgets` | Legacy pre-dashboards tables, retained read-only for rollback until a follow-up drop |
@@ -876,7 +896,7 @@ In SQLite mode (`DB_TYPE=sqlite`), the backend uses **two separate SQLite databa
 - `users`, `organizations`, `organization_users`, `projects`, `invitations`
 - `source_maps`, `metric_registry`, `dashboards`, `project_dashboards`, `dashboard_templates`, `starred_dashboard_widgets` (plus the legacy `widget_groups`/`widget_group_widgets`/`starred_widgets`)
 - `notification_channels`, `notification_rules`
-- `synthetic_checks`, `check_runs`, `check_incidents`, `synthetic_runners`, `status_pages`
+- `synthetic_checks`, `check_runs`, `check_incidents`, `incident_updates`, `post_mortems`, `post_mortem_events`, `synthetic_runners`, `status_pages`
 
 **Telemetry DB tables** (`db.TelemetryDB` — non-transactional, uses lit with `db.TelemetryDB` directly):
 - `endpoints`, `tasks`, `exception_stack_traces`, `spans`, `metric_points`

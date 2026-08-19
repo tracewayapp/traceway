@@ -78,7 +78,7 @@ require (
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/segmentio/encoding v0.4.0 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
-	github.com/tracewayapp/lit/v2 v2.0.2 // indirect
+	github.com/tracewayapp/lit/v2 v2.0.5 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.0 // indirect
 	go.opentelemetry.io/otel v1.39.0 // indirect

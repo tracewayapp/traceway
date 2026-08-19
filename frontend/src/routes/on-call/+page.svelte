@@ -1,13 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
 	import { authState } from '$lib/state/auth.svelte';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { oncallState } from '$lib/state/oncall.svelte';
-	import * as Select from '$lib/components/ui/select';
-	import TabsRow from '$lib/components/traceway/tabs-row.svelte';
+	import { setTabParam } from '$lib/utils/url-params';
+	import PageTabs from '$lib/components/traceway/page-tabs.svelte';
 	import InfoCallout from '$lib/components/traceway/info-callout.svelte';
+	import PageHeader from '$lib/components/traceway/page-header.svelte';
+	import OrgSwitcher from '$lib/components/traceway/org-switcher.svelte';
+	import EmptyState from '$lib/components/traceway/empty-state.svelte';
 	import OverviewTab from './overview-tab.svelte';
 	import TeamsTab from './teams-tab.svelte';
 	import SchedulesTab from './schedules-tab.svelte';
@@ -90,9 +92,7 @@
 	}
 
 	function setTab(tab: string) {
-		const url = new URL(window.location.href);
-		url.searchParams.set('tab', tab);
-		goto(url.toString(), { replaceState: true, noScroll: true });
+		setTabParam(tab);
 	}
 
 	$effect(() => {
@@ -104,42 +104,26 @@
 
 	onMount(() => {
 		if (deepLinkPageId !== null) {
-			const url = new URL(window.location.href);
-			url.searchParams.set('tab', 'pages');
-			url.searchParams.delete('page');
-			url.searchParams.delete('projectId');
-			goto(url.toString(), { replaceState: true, noScroll: true });
+			setTabParam('pages', { clear: ['page', 'projectId'] });
 		}
 	});
 </script>
 
 <div class="space-y-4">
-	<div class="flex flex-wrap items-center justify-between gap-4">
-		<h1 class="text-3xl font-semibold tracking-tight">On-Call</h1>
-		{#if orgs.length > 1}
-			<div class="flex items-center gap-2">
-				<span class="text-sm text-muted-foreground">Organization</span>
-				<Select.Root
-					type="single"
-					value={currentOrganizationId !== null ? String(currentOrganizationId) : undefined}
-					onValueChange={(val) => {
-						if (val) selectedOrgId = Number(val);
-					}}
-				>
-					<Select.Trigger class="w-[220px]">
-						{currentOrganizationName || 'Select organization'}
-					</Select.Trigger>
-					<Select.Content>
-						{#each orgs as org (org.id)}
-							<Select.Item value={String(org.id)}>{org.name}</Select.Item>
-						{/each}
-					</Select.Content>
-				</Select.Root>
-			</div>
-		{/if}
-	</div>
+	<PageHeader title="On-Call">
+		{#snippet actions()}
+			{#if orgs.length > 1}
+				<OrgSwitcher
+					organizations={orgs.map((o) => ({ id: o.id, name: o.name }))}
+					{currentOrganizationId}
+					{currentOrganizationName}
+					onChange={(id) => (selectedOrgId = id)}
+				/>
+			{/if}
+		{/snippet}
+	</PageHeader>
 
-	<TabsRow
+	<PageTabs
 		tabs={TABS}
 		{activeTab}
 		onTabChange={setTab}
@@ -152,11 +136,7 @@
 	{/if}
 
 	{#if currentOrganizationId === null}
-		<div
-			class="flex flex-col items-center justify-center rounded-md bg-muted py-20 text-center text-muted-foreground"
-		>
-			<p>You are not a member of any organization yet.</p>
-		</div>
+		<EmptyState message="You are not a member of any organization yet." />
 	{:else if activeTab === 'pages'}
 		<PagesTab {deepLinkPageId} />
 	{:else if activeTab === 'overview'}

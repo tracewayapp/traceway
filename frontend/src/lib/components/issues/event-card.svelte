@@ -1,14 +1,11 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import { ArrowRight } from 'lucide-svelte';
-	import type {
-		ExceptionOccurrence,
-		LinkedTrace,
-		SessionRecording
-	} from '$lib/types/exceptions';
+	import { ArrowRight } from '@lucide/svelte';
+	import type { ExceptionOccurrence, LinkedTrace, SessionRecording } from '$lib/types/exceptions';
 	import { formatDuration, getStatusColor, formatDateTime } from '$lib/utils/formatters';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import { AttributesGrid } from '$lib/components/ui/attributes-grid';
@@ -71,11 +68,7 @@
 		<Card.Header class="flex flex-row items-center justify-between gap-2">
 			<Card.Title>Session Replay</Card.Title>
 			{#if sessionId}
-				<Button
-					variant="outline"
-					size="sm"
-					onclick={() => goto(`/sessions/${sessionId}`)}
-				>
+				<Button variant="outline" size="sm" onclick={() => goto(resolve(`/sessions/${sessionId}`))}>
 					View full session
 					<ArrowRight class="size-4" />
 				</Button>
@@ -85,7 +78,7 @@
 			{#key recordingEvents}
 				<SessionReplay
 					bind:this={replayRef}
-					events={recordingEvents as any}
+					events={recordingEvents}
 					onTimeUpdate={(ms) => (currentTimeMs = ms)}
 				/>
 			{/key}
@@ -95,11 +88,7 @@
 	<Card.Root>
 		<Card.Header class="flex flex-row items-center justify-between gap-2">
 			<Card.Title>Session</Card.Title>
-			<Button
-				variant="outline"
-				size="sm"
-				onclick={() => goto(`/sessions/${sessionId}`)}
-			>
+			<Button variant="outline" size="sm" onclick={() => goto(resolve(`/sessions/${sessionId}`))}>
 				View full session
 				<ArrowRight class="size-4" />
 			</Button>
@@ -116,8 +105,8 @@
 		<Card.Header>
 			<Card.Title>Session Context</Card.Title>
 			<Card.Description>
-				The last seconds of console output and recorded actions before this
-				exception. Times are offsets from the start of the recording.
+				The last seconds of console output and recorded actions before this exception. Times are
+				offsets from the start of the recording.
 			</Card.Description>
 		</Card.Header>
 		<Card.Content>
@@ -229,7 +218,9 @@
 						size="sm"
 						onclick={() =>
 							goto(
-								`/tasks/${encodeURIComponent(linkedTrace.endpoint)}/${linkedTrace.id}?preset=24h`
+								resolve(
+									`/tasks/${encodeURIComponent(linkedTrace.endpoint)}/${linkedTrace.id}?preset=24h`
+								)
 							)}
 					>
 						View Task Details
@@ -241,7 +232,9 @@
 						size="sm"
 						onclick={() =>
 							goto(
-								`/endpoints/${encodeURIComponent(linkedTrace.endpoint)}/${linkedTrace.id}?preset=24h`
+								resolve(
+									`/endpoints/${encodeURIComponent(linkedTrace.endpoint)}/${linkedTrace.id}?preset=24h`
+								)
 							)}
 					>
 						View Endpoint Details
@@ -254,5 +247,9 @@
 </Card.Root>
 
 {#if linkedTrace?.distributedTraceId || occurrence.distributedTraceId}
-	<DistributedTraceCard distributedTraceId={(linkedTrace?.distributedTraceId ?? occurrence.distributedTraceId)!} currentExceptionHash={occurrence.exceptionHash} recordedAt={linkedTrace?.recordedAt ?? occurrence.recordedAt} />
+	<DistributedTraceCard
+		distributedTraceId={(linkedTrace?.distributedTraceId ?? occurrence.distributedTraceId)!}
+		currentExceptionHash={occurrence.exceptionHash}
+		recordedAt={linkedTrace?.recordedAt ?? occurrence.recordedAt}
+	/>
 {/if}

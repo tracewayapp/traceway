@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,10 +38,11 @@ func organizationIdFromPath(ctx *gin.Context) (int, bool) {
 var statusPageSlugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,58}[a-z0-9]$`)
 
 const (
-	statusPageUptimeDays  = 90
-	statusPageCacheTTL    = 30 * time.Second
-	statusPageMaxChecks   = 50
-	statusPageIncidentCap = 20
+	statusPageUptimeDays      = 90
+	statusPageCacheTTL        = 30 * time.Second
+	statusPageMaxChecks       = 50
+	statusPageIncidentCap     = 20
+	statusPagePastIncidentCap = 30
 )
 
 type statusPageRequest struct {
@@ -281,12 +283,26 @@ type statusPageIncidentView struct {
 	ResolvedAt *time.Time `json:"resolvedAt"`
 }
 
+type statusPagePastIncidentView struct {
+	Title      string                             `json:"title"`
+	StartedAt  time.Time                          `json:"startedAt"`
+	ResolvedAt *time.Time                         `json:"resolvedAt"`
+	Updates    []statusPagePastIncidentUpdateView `json:"updates"`
+}
+
+type statusPagePastIncidentUpdateView struct {
+	Status    string    `json:"status"`
+	Message   string    `json:"message"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
 type statusPageView struct {
-	Name        string                `json:"name"`
-	Description string                `json:"description"`
-	HasLogo     bool                  `json:"hasLogo"`
-	Checks      []statusPageCheckView `json:"checks"`
-	GeneratedAt time.Time             `json:"generatedAt"`
+	Name          string                       `json:"name"`
+	Description   string                       `json:"description"`
+	HasLogo       bool                         `json:"hasLogo"`
+	Checks        []statusPageCheckView        `json:"checks"`
+	PastIncidents []statusPagePastIncidentView `json:"pastIncidents"`
+	GeneratedAt   time.Time                    `json:"generatedAt"`
 }
 
 // The public endpoint is anonymous and its 90-day aggregation is far heavier
@@ -381,12 +397,18 @@ func buildStatusPageView(ctx *gin.Context, slug string, now time.Time) (*statusP
 
 	from := now.AddDate(0, 0, -statusPageUptimeDays)
 	view := &statusPageView{
-		Name:        loaded.page.Name,
-		Description: loaded.page.Description,
-		HasLogo:     loaded.page.LogoKey != "",
-		Checks:      []statusPageCheckView{},
-		GeneratedAt: now,
+		Name:          loaded.page.Name,
+		Description:   loaded.page.Description,
+		HasLogo:       loaded.page.LogoKey != "",
+		Checks:        []statusPageCheckView{},
+		PastIncidents: []statusPagePastIncidentView{},
+		GeneratedAt:   now,
 	}
+	type pastIncidentSource struct {
+		incident  *models.CheckIncident
+		checkName string
+	}
+	var pastIncidents []pastIncidentSource
 	for _, check := range loaded.checks {
 		days, err := telemetry.CheckResultRepository.SeriesByCheck(ctx, check.ProjectId, check.Id, from, now, 1440)
 		if err != nil {
@@ -425,6 +447,9 @@ func buildStatusPageView(ctx *gin.Context, slug string, now time.Time) (*statusP
 			}
 			incidentViews = append(incidentViews, statusPageIncidentView{StartedAt: incident.StartedAt, ResolvedAt: incident.ResolvedAt})
 		}
+		for _, incident := range incidents {
+			pastIncidents = append(pastIncidents, pastIncidentSource{incident: incident, checkName: check.Name})
+		}
 
 		status := check.CurrentStatus
 		if !check.Enabled {
@@ -437,6 +462,59 @@ func buildStatusPageView(ctx *gin.Context, slug string, now time.Time) (*statusP
 			UptimePct: uptimePct,
 			Days:      days,
 			Incidents: incidentViews,
+		})
+	}
+
+	manualIncidents, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.CheckIncident, error) {
+		return transactional.CheckIncidentRepository.FindByStatusPageSince(tx, loaded.page.Id, from)
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, incident := range manualIncidents {
+		pastIncidents = append(pastIncidents, pastIncidentSource{incident: incident})
+	}
+	sort.SliceStable(pastIncidents, func(a, b int) bool {
+		if pastIncidents[a].incident.StartedAt.Equal(pastIncidents[b].incident.StartedAt) {
+			return pastIncidents[a].incident.Id > pastIncidents[b].incident.Id
+		}
+		return pastIncidents[a].incident.StartedAt.After(pastIncidents[b].incident.StartedAt)
+	})
+	if len(pastIncidents) > statusPagePastIncidentCap {
+		pastIncidents = pastIncidents[:statusPagePastIncidentCap]
+	}
+	incidentIds := make([]int, len(pastIncidents))
+	for i, source := range pastIncidents {
+		incidentIds[i] = source.incident.Id
+	}
+	updates, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.IncidentUpdate, error) {
+		return transactional.IncidentUpdateRepository.FindByIncidentIds(tx, incidentIds)
+	})
+	if err != nil {
+		return nil, err
+	}
+	updatesByIncident := map[int][]statusPagePastIncidentUpdateView{}
+	for _, update := range updates {
+		updatesByIncident[update.IncidentId] = append(updatesByIncident[update.IncidentId], statusPagePastIncidentUpdateView{
+			Status:    update.Status,
+			Message:   update.Message,
+			CreatedAt: update.CreatedAt,
+		})
+	}
+	for _, source := range pastIncidents {
+		title := source.incident.Title
+		if title == "" {
+			title = source.checkName + " is down"
+		}
+		incidentUpdates := updatesByIncident[source.incident.Id]
+		if incidentUpdates == nil {
+			incidentUpdates = []statusPagePastIncidentUpdateView{}
+		}
+		view.PastIncidents = append(view.PastIncidents, statusPagePastIncidentView{
+			Title:      title,
+			StartedAt:  source.incident.StartedAt,
+			ResolvedAt: source.incident.ResolvedAt,
+			Updates:    incidentUpdates,
 		})
 	}
 	return view, nil

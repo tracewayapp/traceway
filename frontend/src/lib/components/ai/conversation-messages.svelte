@@ -32,7 +32,7 @@
 </script>
 
 <div class="space-y-3">
-	{#each visibleMessages as msg}
+	{#each visibleMessages as msg, __index (__index)}
 		<div class="flex gap-3">
 			<div
 				class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-medium
@@ -50,7 +50,7 @@
 				<p class="mb-1 text-xs font-medium text-muted-foreground">
 					{getRoleLabel(msg.role)}
 				</p>
-				{#each getMessageImages(msg.content) as imageUrl}
+				{#each getMessageImages(msg.content) as imageUrl, __index (__index)}
 					{#if imageUrl && !imageUrl.includes('REDACTED')}
 						<div class="mb-2 max-w-sm">
 							<img
@@ -73,7 +73,7 @@
 						{getMessageText(msg.content)}
 					</div>
 				{/if}
-				{#each msg.toolCalls ?? [] as call}
+				{#each msg.toolCalls ?? [] as call, __index (__index)}
 					<ToolCallBlock {call} result={call.id ? toolResults.get(call.id) : undefined} />
 				{/each}
 			</div>

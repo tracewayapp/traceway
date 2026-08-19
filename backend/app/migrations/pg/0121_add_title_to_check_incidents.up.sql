@@ -1,0 +1,1 @@
+ALTER TABLE check_incidents ADD COLUMN title TEXT NOT NULL DEFAULT ''

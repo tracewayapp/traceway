@@ -1,10 +1,10 @@
 <script lang="ts">
-	import * as AlertDialog from "$lib/components/ui/alert-dialog";
-	import { Button } from "$lib/components/ui/button";
-	import { Checkbox } from "$lib/components/ui/checkbox";
-	import { Archive } from "lucide-svelte";
-	import { api } from "$lib/api";
-	import { projectsState } from "$lib/state/projects.svelte";
+	import * as AlertDialog from '$lib/components/ui/alert-dialog';
+	import { Button } from '$lib/components/ui/button';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import { Archive } from '@lucide/svelte';
+	import { api } from '$lib/api';
+	import { projectsState } from '$lib/state/projects.svelte';
 
 	interface Props {
 		open: boolean;
@@ -48,7 +48,7 @@
 		try {
 			await onConfirm(linkedPages > 0 && resolvePages);
 			onOpenChange(false);
-		} catch (e) {
+		} catch {
 			// Error handling done in parent, just reset loading
 		} finally {
 			loading = false;
@@ -67,8 +67,8 @@
 		<AlertDialog.Header>
 			<AlertDialog.Title>Archive Issue{count > 1 ? 's' : ''}</AlertDialog.Title>
 			<AlertDialog.Description>
-				Are you sure you want to archive {count} issue{count > 1 ? 's' : ''}?
-				Archived issues will be hidden from the main issues list.
+				Are you sure you want to archive {count} issue{count > 1 ? 's' : ''}? Archived issues will
+				be hidden from the main issues list.
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 		{#if linkedPages > 0}
@@ -84,11 +84,10 @@
 			</label>
 		{/if}
 		<AlertDialog.Footer>
-			<Button variant="outline" onclick={handleCancel} disabled={loading}>
-				Cancel
-			</Button>
+			<Button variant="outline" onclick={handleCancel} disabled={loading}>Cancel</Button>
 			<Button variant="destructiveOutline" onclick={handleConfirm} disabled={loading}>
-				<Archive class="h-4 w-4" /> {loading ? 'Archiving...' : 'Archive'}
+				<Archive class="h-4 w-4" />
+				{loading ? 'Archiving...' : 'Archive'}
 			</Button>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>

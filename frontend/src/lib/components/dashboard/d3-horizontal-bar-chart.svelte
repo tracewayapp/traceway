@@ -58,12 +58,10 @@
 	const chartHeight = $derived(Math.max(0, height - padding.top - padding.bottom));
 
 	// Sort data by value descending (worst at top)
-	const sortedData = $derived(
-		[...data].sort((a, b) => b.value - a.value)
-	);
+	const sortedData = $derived([...data].sort((a, b) => b.value - a.value));
 
 	// Calculate max value for scale
-	const maxValue = $derived(max(sortedData, d => d.value) ?? 0);
+	const maxValue = $derived(max(sortedData, (d) => d.value) ?? 0);
 
 	// X scale (value)
 	const xScale = $derived(
@@ -75,7 +73,7 @@
 	// Y scale (endpoints)
 	const yScale = $derived(
 		scaleBand<string>()
-			.domain(sortedData.map(d => d.endpoint))
+			.domain(sortedData.map((d) => d.endpoint))
 			.range([0, chartHeight])
 			.padding(0.25)
 	);
@@ -107,16 +105,12 @@
 	}
 </script>
 
-<div
-	bind:this={containerRef}
-	class="relative w-full"
-	style="height: {height}px;"
->
+<div bind:this={containerRef} class="relative w-full" style="height: {height}px;">
 	{#if hasData && chartWidth > 0}
 		<svg {width} {height}>
 			<g transform="translate({padding.left}, {padding.top})">
 				<!-- Bars -->
-				{#each sortedData as item, i}
+				{#each sortedData as item, i (i)}
 					{@const y = yScale(item.endpoint) ?? 0}
 					{@const barWidth = xScale(item.value)}
 					{@const color = chartColors[i % chartColors.length]}
@@ -173,7 +167,7 @@
 			{@const item = sortedData[hoveredIndex]}
 			{@const y = (yScale(item.endpoint) ?? 0) + padding.top + barHeight / 2}
 			<div
-				class="absolute z-10 pointer-events-none bg-background border border-border rounded px-2 py-1 text-xs text-muted-foreground whitespace-nowrap shadow-sm"
+				class="pointer-events-none absolute z-10 rounded border border-border bg-background px-2 py-1 text-xs whitespace-nowrap text-muted-foreground shadow-sm"
 				style="right: {width - padding.left + 8}px; top: {y}px; transform: translateY(-50%);"
 			>
 				{item.endpoint}

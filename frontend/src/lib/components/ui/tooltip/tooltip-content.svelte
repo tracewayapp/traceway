@@ -27,7 +27,7 @@
 		{sideOffset}
 		{side}
 		class={cn(
-			'z-50 max-w-[220px] origin-(--bits-tooltip-content-transform-origin) animate-in rounded-sm border border-transparent bg-foreground px-3 py-2 text-xs text-background shadow-[none] fade-in-0 zoom-in-95 dark:border-border data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-end-2 data-[side=right]:slide-in-from-start-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
+			'z-50 max-w-[220px] origin-(--bits-tooltip-content-transform-origin) animate-in rounded-sm border border-transparent bg-foreground px-3 py-2 text-xs text-background shadow-[none] fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-end-2 data-[side=right]:slide-in-from-start-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 dark:border-border',
 			className
 		)}
 		{...restProps}

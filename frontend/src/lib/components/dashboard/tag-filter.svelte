@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	import * as Select from '$lib/components/ui/select';
-	import { X } from 'lucide-svelte';
+	import { X } from '@lucide/svelte';
 
 	let {
 		tagKeys = [],
@@ -50,17 +50,12 @@
 </script>
 
 <div class="flex flex-wrap items-center gap-2">
-	{#each Object.entries(activeFilters) as [key, value]}
-		<div
-			class="flex items-center gap-1 rounded-md border bg-muted/50 px-2 py-1 text-xs"
-		>
+	{#each Object.entries(activeFilters) as [key, value], __index (__index)}
+		<div class="flex items-center gap-1 rounded-md border bg-muted/50 px-2 py-1 text-xs">
 			<span class="font-medium">{key}</span>
 			<span class="text-muted-foreground">=</span>
 			<span>{value}</span>
-			<button
-				class="ml-1 rounded hover:bg-muted"
-				onclick={() => removeFilter(key)}
-			>
+			<button class="ml-1 rounded hover:bg-muted" onclick={() => removeFilter(key)}>
 				<X class="h-3 w-3" />
 			</button>
 		</div>
@@ -82,7 +77,7 @@
 					{/if}
 				</Select.Trigger>
 				<Select.Content>
-					{#each tagValueOptions[selectedKey] ?? [] as val}
+					{#each tagValueOptions[selectedKey] ?? [] as val, __index (__index)}
 						<Select.Item value={val}>{val}</Select.Item>
 					{/each}
 				</Select.Content>
@@ -97,11 +92,9 @@
 					if (v) handleKeySelect(v);
 				}}
 			>
-				<Select.Trigger class="h-7 w-[140px] text-xs">
-					+ Filter by tag
-				</Select.Trigger>
+				<Select.Trigger class="h-7 w-[140px] text-xs">+ Filter by tag</Select.Trigger>
 				<Select.Content>
-					{#each availableKeys as key}
+					{#each availableKeys as key, __index (__index)}
 						<Select.Item value={key}>{key}</Select.Item>
 					{/each}
 				</Select.Content>

@@ -40,7 +40,7 @@
 
 <div>
 	<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
-		{#each visibleEntries() as [key, value]}
+		{#each visibleEntries() as [key, value], __index (__index)}
 			<AttributesView
 				title={key}
 				{value}
@@ -52,8 +52,8 @@
 	{#if hiddenCount() > 0}
 		<div class="flex justify-end">
 			<button
-				onclick={() => expanded = true}
-				class="mt-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+				onclick={() => (expanded = true)}
+				class="mt-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
 			>
 				Show {hiddenCount()} more...
 			</button>
@@ -61,8 +61,8 @@
 	{:else if expanded && entries().length > collapsedCount}
 		<div class="flex justify-end">
 			<button
-				onclick={() => expanded = false}
-				class="mt-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+				onclick={() => (expanded = false)}
+				class="mt-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
 			>
 				Show less
 			</button>

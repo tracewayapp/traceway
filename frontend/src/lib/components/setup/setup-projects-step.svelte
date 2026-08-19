@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { ArrowRight } from 'lucide-svelte';
+	import { ArrowRight } from '@lucide/svelte';
 	import { api } from '$lib/api';
 	import { Button } from '$lib/components/ui/button';
 	import { projectsState } from '$lib/state/projects.svelte';

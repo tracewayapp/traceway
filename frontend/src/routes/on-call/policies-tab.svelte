@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
-	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import {
 		Card,
 		CardContent,
@@ -8,9 +7,10 @@
 		CardHeader,
 		CardTitle
 	} from '$lib/components/ui/card';
-	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import EmptyState from '$lib/components/traceway/empty-state.svelte';
+	import ErrorRetryBox from '$lib/components/traceway/error-retry-box.svelte';
+	import ConfirmDeleteDialog from '$lib/components/traceway/confirm-delete-dialog.svelte';
 	import { Pencil, Trash2 } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
@@ -42,6 +42,7 @@
 	let editingPolicy = $state<EscalationPolicy | null>(null);
 
 	let deletingPolicy = $state<EscalationPolicy | null>(null);
+	let deleteDialogOpen = $state(false);
 	let deleting = $state(false);
 	let deleteError = $state('');
 
@@ -122,7 +123,8 @@
 		deleteError = '';
 		try {
 			await oncallState.deletePolicy(organizationId, deletingPolicy.id);
-			toast.success('Successfully deleted the Policy', { position: 'top-center' });
+			toast.success('Successfully deleted the Policy');
+			deleteDialogOpen = false;
 			deletingPolicy = null;
 		} catch (e: unknown) {
 			deleteError = e instanceof Error ? e.message : 'Failed to delete policy';
@@ -135,16 +137,12 @@
 <div class="space-y-4">
 	{#if oncallState.policiesLoading}
 		<div class="flex justify-center py-12"><LoadingCircle size="xlg" /></div>
-		{:else if oncallState.policiesError}
-		<div
-			class="flex flex-col items-center justify-center gap-3 rounded-md bg-muted py-20 text-center text-muted-foreground"
-		>
-			<p class="text-sm text-destructive">{oncallState.policiesError}</p>
-			<Button variant="outline" size="sm" onclick={() => oncallState.loadPolicies(organizationId)}>
-				Retry
-			</Button>
-		</div>
-{:else if oncallState.policies.length === 0}
+	{:else if oncallState.policiesError}
+		<ErrorRetryBox
+			message={oncallState.policiesError}
+			onRetry={() => oncallState.loadPolicies(organizationId)}
+		/>
+	{:else if oncallState.policies.length === 0}
 		<EmptyState
 			message="No escalation policies yet. Define who gets paged, and in what order."
 			actionLabel={canManage ? 'Create your first Policy' : undefined}
@@ -177,6 +175,7 @@
 										onclick={() => {
 											deleteError = '';
 											deletingPolicy = policy;
+											deleteDialogOpen = true;
 										}}
 									>
 										<Trash2 class="h-4 w-4" />
@@ -205,29 +204,11 @@
 	}}
 />
 
-<AlertDialog.Root
-	open={deletingPolicy !== null}
-	onOpenChange={(open) => {
-		if (!open) {
-			deletingPolicy = null;
-			deleteError = '';
-		}
-	}}
->
-	<AlertDialog.Content>
-		<AlertDialog.Header>
-			<AlertDialog.Title>Delete Policy</AlertDialog.Title>
-			<AlertDialog.Description>
-				Are you sure you want to delete "{deletingPolicy?.name}"? This action cannot be undone.
-			</AlertDialog.Description>
-		</AlertDialog.Header>
-		<ErrorAlert error={deleteError} />
-		<AlertDialog.Footer>
-			<AlertDialog.Cancel disabled={deleting}>Cancel</AlertDialog.Cancel>
-			<Button variant="destructive" onclick={confirmDelete} disabled={deleting}>
-				<Trash2 class="mr-1 h-4 w-4" />
-				{deleting ? 'Deleting...' : 'Delete Policy'}
-			</Button>
-		</AlertDialog.Footer>
-	</AlertDialog.Content>
-</AlertDialog.Root>
+<ConfirmDeleteDialog
+	bind:open={deleteDialogOpen}
+	entity="Policy"
+	description={`Are you sure you want to delete "${deletingPolicy?.name}"? This action cannot be undone.`}
+	error={deleteError}
+	loading={deleting}
+	onConfirm={confirmDelete}
+/>

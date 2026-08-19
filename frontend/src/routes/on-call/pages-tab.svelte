@@ -1,18 +1,21 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Table from '$lib/components/ui/table';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
 	import { PaginationFooter } from '$lib/components/ui/pagination-footer';
+	import BulkActionsBar from '$lib/components/traceway/bulk-actions-bar.svelte';
+	import TableContainer from '$lib/components/traceway/table-container.svelte';
 	import { Check, CheckCheck } from '@lucide/svelte';
 	import { api } from '$lib/api';
 	import { formatDateTime, formatRelativeTimeAgo } from '$lib/utils/formatters';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { type OncallPage } from '$lib/state/oncall.svelte';
 	import { runPageAction } from './page-actions';
-	import PageBadges from './page-badges.svelte';
+	import PageBadges from '$lib/components/traceway/page-badges.svelte';
 	import PageDetailSheet from './page-detail-sheet.svelte';
 	import ResolvePageDialog from './resolve-page-dialog.svelte';
 	import AcknowledgePagesDialog from './acknowledge-pages-dialog.svelte';
@@ -65,9 +68,7 @@
 	// swaps Status for who/when acknowledged, resolved drops Actions and shows
 	// both who/when columns.
 	const showStatus = $derived(statusFilter === 'active' || statusFilter === 'open');
-	const showAcknowledged = $derived(
-		statusFilter === 'acknowledged' || statusFilter === 'resolved'
-	);
+	const showAcknowledged = $derived(statusFilter === 'acknowledged' || statusFilter === 'resolved');
 	const showResolved = $derived(statusFilter === 'resolved');
 	const showActions = $derived(statusFilter !== 'resolved');
 	const colCount = $derived(selectable ? 8 : 7);
@@ -181,7 +182,7 @@
 	}
 
 	function toggleSelect(id: number) {
-		const newSet = new Set(selectedIds);
+		const newSet = new SvelteSet(selectedIds);
 		if (newSet.has(id)) {
 			newSet.delete(id);
 		} else {
@@ -222,14 +223,14 @@
 		{/each}
 	</div>
 
-	<!-- Bulk actions toolbar - shown when items selected -->
 	{#if selectable && selectedCount > 0}
-		<div
-			class="flex animate-in items-center gap-3 rounded-md border bg-muted/50 p-3 duration-200 fade-in slide-in-from-top-1"
+		<BulkActionsBar
+			count={selectedCount}
+			itemLabel="page"
+			onClear={() => (selectedIds = new Set())}
 		>
-			<span class="text-sm font-medium"
-				>{selectedCount} page{selectedCount === 1 ? '' : 's'} selected</span
-			>
+			<!-- Reachable even though the bar needs a selection: on the active tab a
+			     selection of only-acknowledged pages has nothing left to acknowledge. -->
 			<Button
 				variant="outline"
 				size="sm"
@@ -244,13 +245,10 @@
 				<CheckCheck class="h-4 w-4" />
 				Resolve
 			</Button>
-			<Button variant="ghost" size="sm" onclick={() => (selectedIds = new Set())}>
-				Clear selection
-			</Button>
-		</div>
+		</BulkActionsBar>
 	{/if}
 
-	<div class="overflow-hidden rounded-md border">
+	<TableContainer>
 		<Table.Root>
 			{#if loading}
 				<Table.Body>
@@ -400,7 +398,7 @@
 				</Table.Body>
 			{/if}
 		</Table.Root>
-	</div>
+	</TableContainer>
 
 	<PaginationFooter
 		{currentPage}
@@ -415,4 +413,8 @@
 
 <PageDetailSheet bind:open={sheetOpen} pageId={selectedPageId} onChanged={loadPages} />
 <ResolvePageDialog bind:open={resolveDialogOpen} pages={resolveTargets} onResolved={loadPages} />
-<AcknowledgePagesDialog bind:open={ackDialogOpen} pages={selectedOpenPages} onAcknowledged={loadPages} />
+<AcknowledgePagesDialog
+	bind:open={ackDialogOpen}
+	pages={selectedOpenPages}
+	onAcknowledged={loadPages}
+/>

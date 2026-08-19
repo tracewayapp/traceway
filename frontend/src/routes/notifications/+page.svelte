@@ -1,8 +1,9 @@
 <script lang="ts">
+	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
+	import { resolveHref } from '$lib/utils/links';
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
 	import { api } from '$lib/api';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { getTimezone } from '$lib/state/timezone.svelte';
@@ -13,9 +14,15 @@
 	import { toast } from 'svelte-sonner';
 	import * as Table from '$lib/components/ui/table';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
-	import TabsRow from '$lib/components/traceway/tabs-row.svelte';
+	import { ErrorAlert } from '$lib/components/ui/error-alert';
+	import PageTabs from '$lib/components/traceway/page-tabs.svelte';
 	import InfoCallout from '$lib/components/traceway/info-callout.svelte';
 	import EmptyState from '$lib/components/traceway/empty-state.svelte';
+	import PageHeader from '$lib/components/traceway/page-header.svelte';
+	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import ErrorRetryBox from '$lib/components/traceway/error-retry-box.svelte';
+	import ConfirmDeleteDialog from '$lib/components/traceway/confirm-delete-dialog.svelte';
+	import PageBadges from '$lib/components/traceway/page-badges.svelte';
 	import { Pencil, Trash2, Zap, ZapOff, Clock, Send } from '@lucide/svelte';
 	import { SearchBar } from '$lib/components/ui/search-bar';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
@@ -27,7 +34,8 @@
 		getTimeRangeFromPreset,
 		dateToCalendarDate,
 		dateToTimeString,
-		updateUrl
+		updateUrl,
+		setTabParam
 	} from '$lib/utils/url-params';
 	import { calendarDateTimeToLuxon, toUTCISO } from '$lib/utils/formatters';
 
@@ -35,13 +43,14 @@
 	import RuleDialog from './rule-dialog.svelte';
 	import SnoozeDialog from './snooze-dialog.svelte';
 	import { ruleTypeLabels } from './rule-types';
+	import type { NotificationChannelConfig, NotificationRuleConfig } from '$lib/types/notifications';
 
 	interface NotificationChannel {
 		id: number;
 		projectId: string;
 		name: string;
 		channelType: string;
-		config: any;
+		config: NotificationChannelConfig;
 		enabled: boolean;
 		createdAt: string;
 	}
@@ -52,7 +61,7 @@
 		channelId: number;
 		name: string;
 		ruleType: string;
-		config: any;
+		config: NotificationRuleConfig;
 		enabled: boolean;
 		cooldownMinutes: number;
 		severity: string;
@@ -90,7 +99,8 @@
 	const tabDescriptions: Record<string, string> = {
 		channels:
 			'Channels define where your notifications are delivered, such as Email, Slack, Webhooks, GitHub Issues, or Pushover. Create a channel first, then attach it to a rule.',
-		rules: 'Rules define when notifications are triggered. Each rule monitors a specific condition and sends an alert through the attached channel when that condition is met.',
+		rules:
+			'Rules define when notifications are triggered. Each rule monitors a specific condition and sends an alert through the attached channel when that condition is met.',
 		history:
 			'A log of all notifications that have been sent, including their status and the rule that triggered them.'
 	};
@@ -104,14 +114,7 @@
 	const activeTab = $derived(page.url.searchParams.get('tab') || 'channels');
 
 	function setTab(tab: string) {
-		const url = new URL(window.location.href);
-		url.searchParams.set('tab', tab);
-		if (tab !== 'history') {
-			url.searchParams.delete('preset');
-			url.searchParams.delete('from');
-			url.searchParams.delete('to');
-		}
-		goto(url.toString(), { replaceState: true, noScroll: true });
+		setTabParam(tab, { clear: tab !== 'history' ? ['preset', 'from', 'to'] : [] });
 		if (tab === 'history') {
 			loadHistory(false);
 		}
@@ -119,12 +122,15 @@
 
 	let channels = $state<NotificationChannel[]>([]);
 	let channelsLoading = $state(true);
+	let channelsError = $state('');
 
 	let rules = $state<NotificationRule[]>([]);
 	let rulesLoading = $state(true);
+	let rulesError = $state('');
 
 	let history = $state<NotificationHistory[]>([]);
 	let historyLoading = $state(true);
+	let historyError = $state('');
 	let historyPage = $state(1);
 	let historyPageSize = $state(25);
 	let historyTotal = $state(0);
@@ -187,9 +193,11 @@
 
 	let showDeleteChannelDialog = $state(false);
 	let deletingChannel = $state<NotificationChannel | null>(null);
+	let deleteChannelLoading = $state(false);
 
 	let showDeleteRuleDialog = $state(false);
 	let deletingRule = $state<NotificationRule | null>(null);
+	let deleteRuleLoading = $state(false);
 
 	let showToggleRuleDialog = $state(false);
 	let togglingRule = $state<NotificationRule | null>(null);
@@ -202,13 +210,15 @@
 
 	async function loadChannels() {
 		channelsLoading = true;
+		channelsError = '';
 		try {
 			const res = await api.get('/notification-channels', {
 				projectId: projectsState.currentProjectId ?? undefined
 			});
 			channels = res.channels || [];
-		} catch {
+		} catch (e: unknown) {
 			channels = [];
+			channelsError = e instanceof Error ? getErrorMessage(e) : 'Failed to load channels';
 		} finally {
 			channelsLoading = false;
 		}
@@ -216,13 +226,15 @@
 
 	async function loadRules() {
 		rulesLoading = true;
+		rulesError = '';
 		try {
 			const res = await api.get('/notification-rules', {
 				projectId: projectsState.currentProjectId ?? undefined
 			});
 			rules = res.rules || [];
-		} catch {
+		} catch (e: unknown) {
 			rules = [];
+			rulesError = e instanceof Error ? getErrorMessage(e) : 'Failed to load rules';
 		} finally {
 			rulesLoading = false;
 		}
@@ -230,6 +242,7 @@
 
 	async function loadHistory(pushToHistory = true) {
 		historyLoading = true;
+		historyError = '';
 
 		if (selectedPreset) {
 			const range = getTimeRangeFromPreset(selectedPreset, timezone);
@@ -255,8 +268,11 @@
 			history = res.data || [];
 			historyTotal = res.pagination?.total || 0;
 			historyTotalPages = res.pagination?.totalPages || 0;
-		} catch {
+		} catch (e: unknown) {
 			history = [];
+			historyTotal = 0;
+			historyTotalPages = 0;
+			historyError = e instanceof Error ? getErrorMessage(e) : 'Failed to load history';
 		} finally {
 			historyLoading = false;
 		}
@@ -274,17 +290,20 @@
 
 	async function deleteChannel() {
 		if (!deletingChannel) return;
+		deleteChannelLoading = true;
 		try {
 			await api.delete(`/notification-channels/${deletingChannel.id}`, {
 				projectId: projectsState.currentProjectId ?? undefined
 			});
-			toast.success('Successfully deleted the Channel', { position: 'top-center' });
+			toast.success('Successfully deleted the Channel');
 			showDeleteChannelDialog = false;
 			deletingChannel = null;
 			loadChannels();
 			loadRules();
 		} catch {
-			toast.error('Failed to delete channel', { position: 'top-center' });
+			toast.error('Failed to delete channel');
+		} finally {
+			deleteChannelLoading = false;
 		}
 	}
 
@@ -304,14 +323,14 @@
 				{},
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
-			toast.success('Test notification sent', { position: 'top-center' });
+			toast.success('Test notification sent');
 			showTestChannelDialog = false;
 			testingChannel = null;
-		} catch (e: any) {
-			if (e.status === 422) {
-				testError = e.message || 'Validation failed';
+		} catch (e) {
+			if (getErrorStatus(e) === 422) {
+				testError = getErrorMessage(e) || 'Validation failed';
 			} else {
-				toast.error('An unexpected error has occurred', { position: 'top-center' });
+				toast.error('An unexpected error has occurred');
 				showTestChannelDialog = false;
 				testingChannel = null;
 			}
@@ -327,16 +346,19 @@
 
 	async function deleteRule() {
 		if (!deletingRule) return;
+		deleteRuleLoading = true;
 		try {
 			await api.delete(`/notification-rules/${deletingRule.id}`, {
 				projectId: projectsState.currentProjectId ?? undefined
 			});
-			toast.success('Successfully deleted the Rule', { position: 'top-center' });
+			toast.success('Successfully deleted the Rule');
 			showDeleteRuleDialog = false;
 			deletingRule = null;
 			loadRules();
 		} catch {
-			toast.error('Failed to delete rule', { position: 'top-center' });
+			toast.error('Failed to delete rule');
+		} finally {
+			deleteRuleLoading = false;
 		}
 	}
 
@@ -355,12 +377,12 @@
 				{},
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
-			toast.success(`Successfully ${action} the Rule`, { position: 'top-center' });
+			toast.success(`Successfully ${action} the Rule`);
 			showToggleRuleDialog = false;
 			togglingRule = null;
 			loadRules();
 		} catch {
-			toast.error('Failed to toggle rule', { position: 'top-center' });
+			toast.error('Failed to toggle rule');
 		} finally {
 			togglingLoading = false;
 		}
@@ -468,11 +490,9 @@
 </script>
 
 <div class="space-y-4">
-	<div>
-		<h1 class="text-3xl font-semibold tracking-tight">Alerts</h1>
-	</div>
+	<PageHeader title="Alerts" />
 
-	<TabsRow
+	<PageTabs
 		tabs={TABS}
 		{activeTab}
 		onTabChange={setTab}
@@ -485,6 +505,8 @@
 	{#if activeTab === 'channels'}
 		{#if channelsLoading}
 			<div class="flex justify-center py-12"><LoadingCircle size="xlg" /></div>
+		{:else if channelsError}
+			<ErrorRetryBox message={channelsError} onRetry={() => loadChannels()} />
 		{:else if channels.length === 0}
 			<EmptyState
 				message="No channels yet. Create one to get started."
@@ -492,7 +514,7 @@
 				onAction={openNewChannel}
 			/>
 		{:else}
-			<div class="overflow-hidden rounded-md border">
+			<TableContainer>
 				<Table.Root>
 					<Table.Header>
 						<Table.Row>
@@ -504,13 +526,12 @@
 						</Table.Row>
 					</Table.Header>
 					<Table.Body>
-						{#each channels as channel}
+						{#each channels as channel, __index (__index)}
 							<Table.Row>
 								<Table.Cell class="font-medium">{channel.name}</Table.Cell>
 								<Table.Cell>
 									<Badge variant="outline"
-										>{channelTypeLabels[channel.channelType] ||
-											channel.channelType}</Badge
+										>{channelTypeLabels[channel.channelType] || channel.channelType}</Badge
 									>
 								</Table.Cell>
 								<Table.Cell>
@@ -555,11 +576,13 @@
 						{/each}
 					</Table.Body>
 				</Table.Root>
-			</div>
+			</TableContainer>
 		{/if}
 	{:else if activeTab === 'rules'}
 		{#if rulesLoading}
 			<div class="flex justify-center py-12"><LoadingCircle size="xlg" /></div>
+		{:else if rulesError}
+			<ErrorRetryBox message={rulesError} onRetry={() => loadRules()} />
 		{:else if rules.length === 0}
 			<EmptyState
 				message="No rules yet. Create one to get started."
@@ -567,7 +590,7 @@
 				onAction={openNewRule}
 			/>
 		{:else}
-			<div class="overflow-hidden rounded-md border">
+			<TableContainer>
 				<Table.Root>
 					<Table.Header>
 						<Table.Row>
@@ -579,12 +602,10 @@
 						</Table.Row>
 					</Table.Header>
 					<Table.Body>
-						{#each rules as rule}
+						{#each rules as rule, __index (__index)}
 							<Table.Row>
 								<Table.Cell class="font-medium">{rule.name}</Table.Cell>
-								<Table.Cell
-									>{ruleTypeLabels[rule.ruleType] || rule.ruleType}</Table.Cell
-								>
+								<Table.Cell>{ruleTypeLabels[rule.ruleType] || rule.ruleType}</Table.Cell>
 								<Table.Cell>
 									<Badge variant="outline">{rule.channelName}</Badge>
 								</Table.Cell>
@@ -641,7 +662,7 @@
 						{/each}
 					</Table.Body>
 				</Table.Root>
-			</div>
+			</TableContainer>
 		{/if}
 	{:else if activeTab === 'history'}
 		<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -663,76 +684,76 @@
 			</div>
 		</div>
 
-		<div class="overflow-hidden rounded-md border">
-			<Table.Root>
-				{#if historyLoading}
-					<Table.Body>
-						<Table.Row>
-							<Table.Cell colspan={6} class="h-48">
-								<div class="flex h-full items-center justify-center">
-									<LoadingCircle size="xlg" />
-								</div>
-							</Table.Cell>
-						</Table.Row>
-					</Table.Body>
-				{:else if history.length === 0}
-					<Table.Body>
-						<TableEmptyState colspan={6} message="No Historic Alerts found." />
-					</Table.Body>
-				{:else}
-					<Table.Header>
-						<Table.Row>
-							<Table.Head>Severity</Table.Head>
-							<Table.Head>Rule</Table.Head>
-							<Table.Head>Subject</Table.Head>
-							<Table.Head>Channel</Table.Head>
-							<Table.Head>Status</Table.Head>
-							<Table.Head>Sent At</Table.Head>
-						</Table.Row>
-					</Table.Header>
-					<Table.Body>
-						{#each history as item}
+		{#if historyError && !historyLoading}
+			<ErrorRetryBox message={historyError} onRetry={() => loadHistory(false)} />
+		{:else}
+			<TableContainer>
+				<Table.Root>
+					{#if historyLoading}
+						<Table.Body>
 							<Table.Row>
-								<Table.Cell>
-									{#if item.severity === 'critical'}
-										<Badge variant="destructive">Critical</Badge>
-									{:else if item.severity === 'warning'}
-										<Badge class="bg-amber-500 text-white">Warning</Badge>
-									{:else}
-										<Badge variant="secondary">Info</Badge>
-									{/if}
+								<Table.Cell colspan={6} class="h-48">
+									<div class="flex h-full items-center justify-center">
+										<LoadingCircle size="xlg" />
+									</div>
 								</Table.Cell>
-								<Table.Cell class="font-medium">{item.ruleName}</Table.Cell>
-								<Table.Cell class="max-w-xs truncate">
-									{#if item.url}
-										<a href={item.url} class="text-blue-600 hover:underline dark:text-blue-400">{item.subject}</a>
-									{:else}
-										{item.subject}
-									{/if}
-								</Table.Cell>
-								<Table.Cell>{item.channelName}</Table.Cell>
-								<Table.Cell>
-									{#if item.status === 'sent'}
-										<Badge class="bg-green-600 text-white">Sent</Badge>
-									{:else if item.status === 'failed'}
-										<Badge variant="destructive">Failed</Badge>
-									{:else if item.status === 'deduped'}
-										<Badge variant="secondary" title="Folded into a page that was already open">
-											Deduped
-										</Badge>
-									{:else}
-										<Badge variant="secondary">Skipped</Badge>
-									{/if}
-								</Table.Cell>
-								<Table.Cell class="text-muted-foreground"
-									>{formatDate(item.createdAt)}</Table.Cell
-								>
 							</Table.Row>
-						{/each}
-					</Table.Body>
-				{/if}
-			</Table.Root>
-		</div>
+						</Table.Body>
+					{:else if history.length === 0}
+						<Table.Body>
+							<TableEmptyState colspan={6} message="No Historic Alerts found." />
+						</Table.Body>
+					{:else}
+						<Table.Header>
+							<Table.Row>
+								<Table.Head>Severity</Table.Head>
+								<Table.Head>Rule</Table.Head>
+								<Table.Head>Subject</Table.Head>
+								<Table.Head>Channel</Table.Head>
+								<Table.Head>Status</Table.Head>
+								<Table.Head>Sent At</Table.Head>
+							</Table.Row>
+						</Table.Header>
+						<Table.Body>
+							{#each history as item, __index (__index)}
+								<Table.Row>
+									<Table.Cell>
+										<PageBadges severity={item.severity} fallback />
+									</Table.Cell>
+									<Table.Cell class="font-medium">{item.ruleName}</Table.Cell>
+									<Table.Cell class="max-w-xs truncate">
+										{#if item.url}
+											<a
+												{...{ href: resolveHref(item.url) }}
+												class="text-blue-600 hover:underline dark:text-blue-400">{item.subject}</a
+											>
+										{:else}
+											{item.subject}
+										{/if}
+									</Table.Cell>
+									<Table.Cell>{item.channelName}</Table.Cell>
+									<Table.Cell>
+										{#if item.status === 'sent'}
+											<Badge class="bg-green-600 text-white">Sent</Badge>
+										{:else if item.status === 'failed'}
+											<Badge variant="destructive">Failed</Badge>
+										{:else if item.status === 'deduped'}
+											<Badge variant="secondary" title="Folded into a page that was already open">
+												Deduped
+											</Badge>
+										{:else}
+											<Badge variant="secondary">Skipped</Badge>
+										{/if}
+									</Table.Cell>
+									<Table.Cell class="text-muted-foreground">{formatDate(item.createdAt)}</Table.Cell
+									>
+								</Table.Row>
+							{/each}
+						</Table.Body>
+					{/if}
+				</Table.Root>
+			</TableContainer>
+		{/if}
 
 		<PaginationFooter
 			currentPage={historyPage}
@@ -774,41 +795,21 @@
 	}}
 />
 
-<AlertDialog.Root bind:open={showDeleteChannelDialog}>
-	<AlertDialog.Content interactOutsideBehavior="close">
-		<AlertDialog.Header>
-			<AlertDialog.Title>Delete Channel</AlertDialog.Title>
-			<AlertDialog.Description>
-				Are you sure you want to delete "{deletingChannel?.name}"? This action cannot be undone.
-			</AlertDialog.Description>
-		</AlertDialog.Header>
-		<AlertDialog.Footer>
-			<Button variant="outline" onclick={() => (showDeleteChannelDialog = false)}>Cancel</Button>
-			<Button variant="destructive" onclick={deleteChannel}>
-				<Trash2 class="mr-1 h-4 w-4" />
-				Delete Channel
-			</Button>
-		</AlertDialog.Footer>
-	</AlertDialog.Content>
-</AlertDialog.Root>
+<ConfirmDeleteDialog
+	bind:open={showDeleteChannelDialog}
+	entity="Channel"
+	description={`Are you sure you want to delete "${deletingChannel?.name}"? This action cannot be undone.`}
+	loading={deleteChannelLoading}
+	onConfirm={deleteChannel}
+/>
 
-<AlertDialog.Root bind:open={showDeleteRuleDialog}>
-	<AlertDialog.Content interactOutsideBehavior="close">
-		<AlertDialog.Header>
-			<AlertDialog.Title>Delete Rule</AlertDialog.Title>
-			<AlertDialog.Description>
-				Are you sure you want to delete "{deletingRule?.name}"? This action cannot be undone.
-			</AlertDialog.Description>
-		</AlertDialog.Header>
-		<AlertDialog.Footer>
-			<Button variant="outline" onclick={() => (showDeleteRuleDialog = false)}>Cancel</Button>
-			<Button variant="destructive" onclick={deleteRule}>
-				<Trash2 class="mr-1 h-4 w-4" />
-				Delete Rule
-			</Button>
-		</AlertDialog.Footer>
-	</AlertDialog.Content>
-</AlertDialog.Root>
+<ConfirmDeleteDialog
+	bind:open={showDeleteRuleDialog}
+	entity="Rule"
+	description={`Are you sure you want to delete "${deletingRule?.name}"? This action cannot be undone.`}
+	loading={deleteRuleLoading}
+	onConfirm={deleteRule}
+/>
 
 <AlertDialog.Root bind:open={showToggleRuleDialog}>
 	<AlertDialog.Content
@@ -822,9 +823,19 @@
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 		<AlertDialog.Footer>
-			<Button variant="outline" onclick={() => (showToggleRuleDialog = false)} disabled={togglingLoading}>Cancel</Button>
+			<Button
+				variant="outline"
+				onclick={() => (showToggleRuleDialog = false)}
+				disabled={togglingLoading}>Cancel</Button
+			>
 			<Button onclick={confirmToggleRule} disabled={togglingLoading}>
-				{togglingRule?.enabled ? 'Disable' : 'Enable'}
+				{#if togglingRule?.enabled}
+					<ZapOff class="mr-2 h-4 w-4" />
+					Disable Rule
+				{:else}
+					<Zap class="mr-2 h-4 w-4" />
+					Enable Rule
+				{/if}
 			</Button>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
@@ -839,21 +850,24 @@
 			<AlertDialog.Title>Test Channel</AlertDialog.Title>
 			<AlertDialog.Description>
 				{#if testingChannel?.channelType === 'escalation'}
-					Testing "{testingChannel?.name}" opens a real page and notifies whoever is on call, exactly
-					as a firing rule would. Resolve the page from On-Call when you are done.
+					Testing "{testingChannel?.name}" opens a real page and notifies whoever is on call,
+					exactly as a firing rule would. Resolve the page from On-Call when you are done.
 				{:else}
 					Send a test notification to "{testingChannel?.name}"? This will deliver a test message
 					through the configured channel.
 				{/if}
 			</AlertDialog.Description>
 		</AlertDialog.Header>
-		{#if testError}
-			<p class="text-sm text-destructive">{testError}</p>
-		{/if}
+		<ErrorAlert error={testError} />
 		<AlertDialog.Footer>
-			<Button variant="outline" onclick={() => (showTestChannelDialog = false)} disabled={testingLoading}>Cancel</Button>
+			<Button
+				variant="outline"
+				onclick={() => (showTestChannelDialog = false)}
+				disabled={testingLoading}>Cancel</Button
+			>
 			<Button onclick={confirmTestChannel} disabled={testingLoading}>
-				<Send class="h-4 w-4" /> {testingLoading ? 'Sending...' : 'Send Test'}
+				<Send class="h-4 w-4" />
+				{testingLoading ? 'Sending...' : 'Send Test'}
 			</Button>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>

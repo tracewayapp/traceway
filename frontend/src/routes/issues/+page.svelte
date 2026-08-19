@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { getErrorMessage } from '$lib/utils/errors';
 	import { onMount, onDestroy } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { browser } from '$app/environment';
 	import { createRowClickHandler } from '$lib/utils/navigation';
 	import { api } from '$lib/api';
@@ -17,6 +19,9 @@
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
 	import { PaginationFooter } from '$lib/components/ui/pagination-footer';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
+	import PageHeader from '$lib/components/traceway/page-header.svelte';
+	import BulkActionsBar from '$lib/components/traceway/bulk-actions-bar.svelte';
+	import TableContainer from '$lib/components/traceway/table-container.svelte';
 	import { CalendarDate } from '@internationalized/date';
 	import {
 		parseTimeRangeFromUrl,
@@ -111,14 +116,6 @@
 		{ value: 'messages', label: 'Messages' }
 	];
 
-	// Page size options
-	const pageSizeOptions = [
-		{ value: '10', label: '10' },
-		{ value: '20', label: '20' },
-		{ value: '50', label: '50' },
-		{ value: '100', label: '100' }
-	];
-
 	// Helper functions for date/time conversion
 	function getFromDateTimeUTC(): string {
 		const [hour, minute] = fromTime.split(':').map(Number);
@@ -192,9 +189,9 @@
 
 			// Clear selection when data changes
 			selectedHashes = new Set();
-		} catch (e: any) {
+		} catch (e) {
 			console.error(e);
-			error = e.message || 'Failed to load data';
+			error = getErrorMessage(e) || 'Failed to load data';
 		} finally {
 			loading = false;
 		}
@@ -265,7 +262,7 @@
 	}
 
 	function toggleSelect(hash: string) {
-		const newSet = new Set(selectedHashes);
+		const newSet = new SvelteSet(selectedHashes);
 		if (newSet.has(hash)) {
 			newSet.delete(hash);
 		} else {
@@ -293,14 +290,12 @@
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
 
-			toast.success('Successfully archived the Issue' + (selectedHashes.size > 1 ? 's' : ''), {
-				position: 'top-center'
-			});
+			toast.success('Successfully archived the Issue' + (selectedHashes.size > 1 ? 's' : ''));
 			selectedHashes = new Set();
 			await loadData();
-		} catch (e: any) {
+		} catch (e) {
 			console.error('Archive failed:', e);
-			error = e.message || 'Failed to archive issues';
+			error = getErrorMessage(e) || 'Failed to archive issues';
 			throw e;
 		} finally {
 			archiving = false;
@@ -320,10 +315,8 @@
 </script>
 
 <div class="space-y-4">
-	<!-- Row 1: Title + TimeRangePicker -->
-	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-		<h2 class="text-3xl font-semibold tracking-tight">Issues</h2>
-		<div class="w-full sm:w-auto">
+	<PageHeader title="Issues">
+		{#snippet actions()}
 			<TimeRangePicker
 				bind:fromDate
 				bind:toDate
@@ -332,10 +325,9 @@
 				bind:preset={selectedPreset}
 				onApply={handleTimeRangeChange}
 			/>
-		</div>
-	</div>
+		{/snippet}
+	</PageHeader>
 
-	<!-- Row 2: Search -->
 	<SearchBar
 		placeholder="Search exceptions..."
 		bind:value={searchQuery}
@@ -345,31 +337,25 @@
 		disabled={loading}
 	/>
 
-	<!-- Archive Toolbar - shown when items selected -->
 	{#if selectedCount > 0}
-		<div
-			class="flex animate-in items-center gap-3 rounded-md border bg-muted/50 p-3 duration-200 fade-in slide-in-from-top-1"
+		<BulkActionsBar
+			count={selectedCount}
+			itemLabel="issue"
+			onClear={() => (selectedHashes = new Set())}
 		>
-			<span class="text-sm font-medium"
-				>{selectedCount} issue{selectedCount === 1 ? '' : 's'} selected</span
-			>
 			<Button
 				variant="outline"
 				size="sm"
 				onclick={() => (showArchiveDialog = true)}
 				disabled={archiving}
-				class="gap-1.5"
 			>
-				<Archive class="h-4 w-4" />
+				<Archive class="mr-2 h-4 w-4" />
 				Archive
 			</Button>
-			<Button variant="ghost" size="sm" onclick={() => (selectedHashes = new Set())}>
-				Clear selection
-			</Button>
-		</div>
+		</BulkActionsBar>
 	{/if}
 
-	<div class="overflow-hidden rounded-md border">
+	<TableContainer>
 		<Table.Root>
 			{#if loading}
 				<Table.Body>
@@ -436,7 +422,7 @@
 				<Table.Body>
 					{#each exceptions as exception (exception.exceptionHash)}
 						<Table.Row
-							class="group cursor-pointer hover:bg-muted/50"
+							class="group cursor-pointer"
 							data-state={isSelected(exception.exceptionHash) ? 'selected' : undefined}
 						>
 							<Table.Cell class="pl-4" onclick={(e) => e.stopPropagation()}>
@@ -507,7 +493,7 @@
 				</Table.Body>
 			{/if}
 		</Table.Root>
-	</div>
+	</TableContainer>
 
 	<!-- Pagination Footer -->
 	<PaginationFooter

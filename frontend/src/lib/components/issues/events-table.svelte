@@ -1,119 +1,126 @@
 <script lang="ts">
-    import { createRowClickHandler } from '$lib/utils/navigation';
-    import * as Card from "$lib/components/ui/card";
-    import * as Table from "$lib/components/ui/table";
-    import { TracewayTableHeader } from "$lib/components/ui/traceway-table-header";
-    import { TableEmptyState } from "$lib/components/ui/table-empty-state";
-    import { ViewAllTableRow } from "$lib/components/ui/view-all-table-row";
-    import type { ExceptionOccurrence } from '$lib/types/exceptions';
-    import { formatDateTime, truncateStackTrace } from '$lib/utils/formatters';
-    import { getTimezone } from '$lib/state/timezone.svelte';
-    import { projectsState, isFrontendFramework } from '$lib/state/projects.svelte';
+	import { createRowClickHandler } from '$lib/utils/navigation';
+	import * as Card from '$lib/components/ui/card';
+	import * as Table from '$lib/components/ui/table';
+	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
+	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
+	import { ViewAllTableRow } from '$lib/components/ui/view-all-table-row';
+	import type { ExceptionOccurrence } from '$lib/types/exceptions';
+	import { formatDateTime, truncateStackTrace } from '$lib/utils/formatters';
+	import { getTimezone } from '$lib/state/timezone.svelte';
+	import { projectsState, isFrontendFramework } from '$lib/state/projects.svelte';
 
-    interface Props {
-        occurrences: ExceptionOccurrence[];
-        exceptionHash: string;
-        total: number;
-        hasMore?: boolean;
-        showViewAll?: boolean;
-        currentExceptionId?: string;
-        timezone?: string;
-    }
+	interface Props {
+		occurrences: ExceptionOccurrence[];
+		exceptionHash: string;
+		total: number;
+		hasMore?: boolean;
+		showViewAll?: boolean;
+		currentExceptionId?: string;
+		timezone?: string;
+	}
 
-    let {
-        occurrences,
-        exceptionHash,
-        total,
-        hasMore = false,
-        showViewAll = true,
-        currentExceptionId,
-        timezone
-    }: Props = $props();
+	let {
+		occurrences,
+		exceptionHash,
+		total,
+		hasMore = false,
+		showViewAll = true,
+		currentExceptionId,
+		timezone
+	}: Props = $props();
 
-    const tz = $derived(timezone ?? getTimezone());
-    const isFrontend = $derived(
-        projectsState.currentProject?.framework
-            ? isFrontendFramework(projectsState.currentProject.framework)
-            : false
-    );
+	const tz = $derived(timezone ?? getTimezone());
+	const isFrontend = $derived(
+		projectsState.currentProject?.framework
+			? isFrontendFramework(projectsState.currentProject.framework)
+			: false
+	);
 
-    function getRowUrl(occurrence: ExceptionOccurrence): string {
-        return `/issues/${exceptionHash}/${occurrence.id}?t=${encodeURIComponent(occurrence.recordedAt)}`;
-    }
+	function getRowUrl(occurrence: ExceptionOccurrence): string {
+		return `/issues/${exceptionHash}/${occurrence.id}?t=${encodeURIComponent(occurrence.recordedAt)}`;
+	}
 
-    function isCurrentEvent(occurrence: ExceptionOccurrence): boolean {
-        return currentExceptionId !== undefined && occurrence.id === currentExceptionId;
-    }
+	function isCurrentEvent(occurrence: ExceptionOccurrence): boolean {
+		return currentExceptionId !== undefined && occurrence.id === currentExceptionId;
+	}
 </script>
 
 <Card.Root>
-    <Card.Header>
-        <Card.Title>Events</Card.Title>
-        <Card.Description>All occurrences of this exception ({total} total)</Card.Description>
-    </Card.Header>
-    <Card.Content>
-        <div class="rounded-md border overflow-hidden">
-            <Table.Root>
-                {#if occurrences.length > 0}
-                <Table.Header>
-                    <Table.Row>
-                        <TracewayTableHeader
-                            label="Recorded At"
-                            tooltip="When this occurrence was recorded"
-                        />
-                        {#if isFrontend}
-                        <TracewayTableHeader
-                            label="Title"
-                            tooltip="Exception message from the first line of the stack trace"
-                        />
-                        {:else}
-                        <TracewayTableHeader
-                            label="Server"
-                            tooltip="Server instance where error occurred"
-                        />
-                        <TracewayTableHeader
-                            label="Trace"
-                            tooltip="Trace ID if this occurred during a request"
-                        />
-                        {/if}
-                    </Table.Row>
-                </Table.Header>
-                {/if}
-                <Table.Body>
-                    {#if occurrences.length === 0}
-                        <TableEmptyState colspan={isFrontend ? 2 : 3} message="No occurrences found." />
-                    {:else}
-                        {#each occurrences as occurrence}
-                            <Table.Row
-                                class="cursor-pointer hover:bg-muted/50 {isCurrentEvent(occurrence) ? 'bg-muted' : ''}"
-                                onclick={createRowClickHandler(getRowUrl(occurrence))}
-                            >
-                                <Table.Cell>
-                                    {formatDateTime(occurrence.recordedAt, { timezone: tz })}
-                                    {#if isCurrentEvent(occurrence)}
-                                        <span class="ml-2 text-xs text-muted-foreground">(current)</span>
-                                    {/if}
-                                </Table.Cell>
-                                {#if isFrontend}
-                                <Table.Cell class="font-mono text-sm text-muted-foreground truncate max-w-[400px]" title={occurrence.stackTrace.split('\n')[0]}>
-                                    {truncateStackTrace(occurrence.stackTrace, 60)}
-                                </Table.Cell>
-                                {:else}
-                                <Table.Cell class="font-mono text-sm text-muted-foreground">
-                                    {occurrence.serverName || '-'}
-                                </Table.Cell>
-                                <Table.Cell class="font-mono text-sm">
-                                    {occurrence.traceId || '-'}
-                                </Table.Cell>
-                                {/if}
-                            </Table.Row>
-                        {/each}
-                        {#if hasMore && showViewAll}
-                            <ViewAllTableRow colspan={isFrontend ? 2 : 3} href={`/issues/${exceptionHash}/events`} label={`View all ${total} events`} />
-                        {/if}
-                    {/if}
-                </Table.Body>
-            </Table.Root>
-        </div>
-    </Card.Content>
+	<Card.Header>
+		<Card.Title>Events</Card.Title>
+		<Card.Description>All occurrences of this exception ({total} total)</Card.Description>
+	</Card.Header>
+	<Card.Content>
+		<div class="overflow-hidden rounded-md border">
+			<Table.Root>
+				{#if occurrences.length > 0}
+					<Table.Header>
+						<Table.Row>
+							<TracewayTableHeader
+								label="Recorded At"
+								tooltip="When this occurrence was recorded"
+							/>
+							{#if isFrontend}
+								<TracewayTableHeader
+									label="Title"
+									tooltip="Exception message from the first line of the stack trace"
+								/>
+							{:else}
+								<TracewayTableHeader
+									label="Server"
+									tooltip="Server instance where error occurred"
+								/>
+								<TracewayTableHeader
+									label="Trace"
+									tooltip="Trace ID if this occurred during a request"
+								/>
+							{/if}
+						</Table.Row>
+					</Table.Header>
+				{/if}
+				<Table.Body>
+					{#if occurrences.length === 0}
+						<TableEmptyState colspan={isFrontend ? 2 : 3} message="No occurrences found." />
+					{:else}
+						{#each occurrences as occurrence, __index (__index)}
+							<Table.Row
+								class="cursor-pointer {isCurrentEvent(occurrence) ? 'bg-muted' : ''}"
+								onclick={createRowClickHandler(getRowUrl(occurrence))}
+							>
+								<Table.Cell>
+									{formatDateTime(occurrence.recordedAt, { timezone: tz })}
+									{#if isCurrentEvent(occurrence)}
+										<span class="ml-2 text-xs text-muted-foreground">(current)</span>
+									{/if}
+								</Table.Cell>
+								{#if isFrontend}
+									<Table.Cell
+										class="max-w-[400px] truncate font-mono text-sm text-muted-foreground"
+										title={occurrence.stackTrace.split('\n')[0]}
+									>
+										{truncateStackTrace(occurrence.stackTrace, 60)}
+									</Table.Cell>
+								{:else}
+									<Table.Cell class="font-mono text-sm text-muted-foreground">
+										{occurrence.serverName || '-'}
+									</Table.Cell>
+									<Table.Cell class="font-mono text-sm">
+										{occurrence.traceId || '-'}
+									</Table.Cell>
+								{/if}
+							</Table.Row>
+						{/each}
+						{#if hasMore && showViewAll}
+							<ViewAllTableRow
+								colspan={isFrontend ? 2 : 3}
+								href={`/issues/${exceptionHash}/events`}
+								label={`View all ${total} events`}
+							/>
+						{/if}
+					{/if}
+				</Table.Body>
+			</Table.Root>
+		</div>
+	</Card.Content>
 </Card.Root>

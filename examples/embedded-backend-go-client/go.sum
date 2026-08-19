@@ -237,8 +237,8 @@ github.com/stretchr/testify v1.8.1/go.mod h1:w2LPCIKwWwSfY2zedu0+kehJoqGctiVI29o
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/tidwall/pretty v1.0.0/go.mod h1:XNkn88O1ChpSDQmQeStsy+sBenx6DDtFZJxhVysOjyk=
-github.com/tracewayapp/lit/v2 v2.0.2 h1:ZE8UlRWUOX3OZvY2UfbYSDcDUpBoTNLXl70Qujs0mqs=
-github.com/tracewayapp/lit/v2 v2.0.2/go.mod h1:i3zPBL5NtFgZxpxT9PvC2w4gm3S9IzDv4K5JSALtlfs=
+github.com/tracewayapp/lit/v2 v2.0.5 h1:BMPopt9xMZqMgIEwDFIRRV+rrDczajGAlV5Md2AsxPM=
+github.com/tracewayapp/lit/v2 v2.0.5/go.mod h1:i3zPBL5NtFgZxpxT9PvC2w4gm3S9IzDv4K5JSALtlfs=
 github.com/tracewayapp/traceway/backend v1.5.2 h1:MK2KceJCPfDmCqRQti9YRWax531MaTpdQBNCfFm7Xb4=
 github.com/tracewayapp/traceway/backend v1.5.2/go.mod h1:BgPfL0a44LtR7MKTu+2uMc/e6imUi9vNhRj8HQMwwsk=
 github.com/twitchyliquid64/golang-asm v0.15.1 h1:SU5vSMR7hnwNxj24w34ZyCi/FmDZTkS4MhqMhdFk5YI=

@@ -18,7 +18,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/markbates/goth v1.82.0
 	github.com/modelcontextprotocol/go-sdk v1.6.1
-	github.com/tracewayapp/lit/v2 v2.0.2
+	github.com/tracewayapp/lit/v2 v2.0.5
 	github.com/tracewayapp/traceway/cli v1.9.15
 	go.opentelemetry.io/collector/component v1.60.0
 	go.opentelemetry.io/collector/component/componenttest v0.154.0

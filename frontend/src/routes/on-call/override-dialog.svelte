@@ -7,11 +7,8 @@
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { Plus } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
-	import {
-		oncallState,
-		getCurrentUserFromToken,
-		type Schedule
-	} from '$lib/state/oncall.svelte';
+	import { oncallState, getCurrentUserFromToken, type Schedule } from '$lib/state/oncall.svelte';
+	import { toLocalInputValue } from '$lib/utils/formatters';
 
 	interface Props {
 		open: boolean;
@@ -42,11 +39,6 @@
 		}
 		return list;
 	});
-
-	function toLocalInputValue(date: Date): string {
-		const pad = (n: number) => String(n).padStart(2, '0');
-		return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-	}
 
 	$effect(() => {
 		if (open) {

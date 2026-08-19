@@ -199,7 +199,10 @@
 									{/if}
 								</Table.Cell>
 								<Table.Cell class="text-muted-foreground">
-									{formatRelativeTimeAgo(item.updatedAt)}
+									<div>{formatRelativeTimeAgo(item.updatedAt)}</div>
+									{#if item.updatedByName || item.createdByName}
+										<div class="text-xs">by {item.updatedByName || item.createdByName}</div>
+									{/if}
 								</Table.Cell>
 							</Table.Row>
 						{/each}

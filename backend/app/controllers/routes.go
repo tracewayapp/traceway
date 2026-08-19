@@ -280,6 +280,7 @@ func RegisterControllers(router *gin.RouterGroup) {
 
 	router.GET("/organizations/:organizationId/post-mortems", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, PostMortemController.List)
 	router.GET("/organizations/:organizationId/post-mortems/:id", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, PostMortemController.Get)
+	router.GET("/organizations/:organizationId/post-mortems/:id/activity", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, PostMortemController.Activity)
 	router.POST("/organizations/:organizationId/post-mortems", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, PostMortemController.Create)
 	router.PUT("/organizations/:organizationId/post-mortems/:id", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, PostMortemController.Update)
 	router.DELETE("/organizations/:organizationId/post-mortems/:id", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, PostMortemController.Delete)

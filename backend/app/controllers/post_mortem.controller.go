@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -69,6 +70,13 @@ func validatePostMortemRequest(req *postMortemRequest) (models.StringSlice, stri
 	return normalizePostMortemTags(req.Tags)
 }
 
+func intPtrEqual(a, b *int) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
 func checkIncidentLink(ctx *gin.Context, organizationId int, incidentId int) bool {
 	tx := db.GetTx(ctx)
 	incident, err := transactional.CheckIncidentRepository.FindByIdInOrganization(tx, incidentId, organizationId)
@@ -133,7 +141,7 @@ func (ctrl *postMortemController) Get(ctx *gin.Context) {
 		return
 	}
 	tx := db.GetTx(ctx)
-	postMortem, err := transactional.PostMortemRepository.FindByIdForOrganization(tx, id, organizationId)
+	postMortem, err := transactional.PostMortemRepository.FindDetailByIdForOrganization(tx, id, organizationId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to load post-mortem: %w", err))
 		return
@@ -146,6 +154,33 @@ func (ctrl *postMortemController) Get(ctx *gin.Context) {
 		postMortem.Tags = models.StringSlice{}
 	}
 	ctx.JSON(http.StatusOK, postMortem)
+}
+
+func (ctrl *postMortemController) Activity(ctx *gin.Context) {
+	organizationId, ok := organizationIdFromPath(ctx)
+	if !ok {
+		return
+	}
+	id, err := strconv.Atoi(ctx.Param("id"))
+	if err != nil || id < 1 {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post-mortem id"})
+		return
+	}
+	tx := db.GetTx(ctx)
+	events, err := transactional.PostMortemRepository.ListEvents(tx, id, organizationId, 200)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to list post-mortem activity: %w", err))
+		return
+	}
+	if events == nil {
+		events = []*models.PostMortemEventItem{}
+	}
+	for _, event := range events {
+		if event.Changes == nil {
+			event.Changes = models.StringSlice{}
+		}
+	}
+	ctx.JSON(http.StatusOK, gin.H{"events": events})
 }
 
 func (ctrl *postMortemController) Create(ctx *gin.Context) {
@@ -180,6 +215,7 @@ func (ctrl *postMortemController) Create(ctx *gin.Context) {
 		ContentMd:      req.ContentMd,
 		Tags:           tags,
 		CreatedBy:      &userId,
+		UpdatedBy:      &userId,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
@@ -193,6 +229,16 @@ func (ctrl *postMortemController) Create(ctx *gin.Context) {
 		return
 	}
 	postMortem.Id = id
+	if err := transactional.PostMortemRepository.RecordEvent(tx, &models.PostMortemEvent{
+		PostMortemId: id,
+		UserId:       &userId,
+		Action:       models.PostMortemEventCreated,
+		Changes:      models.StringSlice{},
+		CreatedAt:    now,
+	}); err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to record post-mortem event: %w", err))
+		return
+	}
 	ctx.JSON(http.StatusCreated, postMortem)
 }
 
@@ -233,11 +279,32 @@ func (ctrl *postMortemController) Update(ctx *gin.Context) {
 		return
 	}
 
+	changes := models.StringSlice{}
+	if postMortem.Title != req.Title {
+		changes = append(changes, "title")
+	}
+	if postMortem.ContentMd != req.ContentMd {
+		changes = append(changes, "content")
+	}
+	if !slices.Equal(postMortem.Tags, tags) {
+		changes = append(changes, "tags")
+	}
+	if !intPtrEqual(postMortem.IncidentId, req.IncidentId) {
+		changes = append(changes, "incident link")
+	}
+	if len(changes) == 0 {
+		ctrl.Get(ctx)
+		return
+	}
+
+	userId := middleware.GetUserId(ctx)
+	now := time.Now().UTC()
 	postMortem.IncidentId = req.IncidentId
 	postMortem.Title = req.Title
 	postMortem.ContentMd = req.ContentMd
 	postMortem.Tags = tags
-	postMortem.UpdatedAt = time.Now().UTC()
+	postMortem.UpdatedBy = &userId
+	postMortem.UpdatedAt = now
 	if err := transactional.PostMortemRepository.Update(tx, postMortem); err != nil {
 		if db.IsUniqueViolation(err) {
 			ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": postMortemDuplicateMessage})
@@ -246,7 +313,29 @@ func (ctrl *postMortemController) Update(ctx *gin.Context) {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to update post-mortem: %w", err))
 		return
 	}
-	ctx.JSON(http.StatusOK, postMortem)
+	if err := transactional.PostMortemRepository.RecordEvent(tx, &models.PostMortemEvent{
+		PostMortemId: id,
+		UserId:       &userId,
+		Action:       models.PostMortemEventUpdated,
+		Changes:      changes,
+		CreatedAt:    now,
+	}); err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to record post-mortem event: %w", err))
+		return
+	}
+	detail, err := transactional.PostMortemRepository.FindDetailByIdForOrganization(tx, id, organizationId)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to reload post-mortem after update: %w", err))
+		return
+	}
+	if detail == nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("post-mortem %d vanished during update", id))
+		return
+	}
+	if detail.Tags == nil {
+		detail.Tags = models.StringSlice{}
+	}
+	ctx.JSON(http.StatusOK, detail)
 }
 
 func (ctrl *postMortemController) Delete(ctx *gin.Context) {

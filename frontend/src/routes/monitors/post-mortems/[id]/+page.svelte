@@ -1,11 +1,10 @@
 <script lang="ts">
 	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import { untrack } from 'svelte';
+	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
-	import { Badge } from '$lib/components/ui/badge';
-	import * as Select from '$lib/components/ui/select';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
@@ -13,7 +12,8 @@
 	import ConfirmDeleteDialog from '$lib/components/traceway/confirm-delete-dialog.svelte';
 	import TagsInput from '$lib/components/traceway/tags-input.svelte';
 	import MarkdownEditor from '$lib/components/post-mortems/markdown-editor.svelte';
-	import { Check, Trash2 } from '@lucide/svelte';
+	import ActivitySheet from '$lib/components/post-mortems/activity-sheet.svelte';
+	import { Check, History, Link2, Plus, Trash2, X } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
 	import { gotoHref } from '$lib/utils/navigation';
@@ -42,6 +42,7 @@
 	let saving = $state(false);
 	let deleteOpen = $state(false);
 	let deleting = $state(false);
+	let activityOpen = $state(false);
 
 	let title = $state('');
 	let tags = $state<string[]>([]);
@@ -49,6 +50,11 @@
 	let linkedIncidentId = $state('');
 
 	let incidents = $state<OrgIncident[]>([]);
+
+	let tagsDialogOpen = $state(false);
+	let dialogTags = $state<string[]>([]);
+	let incidentDialogOpen = $state(false);
+	let incidentSearch = $state('');
 
 	let loadSeq = 0;
 
@@ -118,12 +124,44 @@
 		return incident ? incidentLabel(incident) : `Incident #${linkedIncidentId}`;
 	});
 
+	const filteredDialogIncidents = $derived.by(() => {
+		const query = incidentSearch.trim().toLowerCase();
+		if (!query) return selectableIncidents;
+		return selectableIncidents.filter((incident) =>
+			incidentLabel(incident).toLowerCase().includes(query)
+		);
+	});
+
+	function openIncidentDialog() {
+		incidentSearch = '';
+		incidentDialogOpen = true;
+	}
+
+	function linkIncident(incident: OrgIncident) {
+		linkedIncidentId = String(incident.id);
+		incidentDialogOpen = false;
+	}
+
+	function openTagsDialog() {
+		dialogTags = [...tags];
+		tagsDialogOpen = true;
+	}
+
+	function applyTags() {
+		tags = dialogTags;
+		tagsDialogOpen = false;
+	}
+
+	function removeTag(tag: string) {
+		tags = tags.filter((t) => t !== tag);
+	}
+
 	async function save() {
 		if (organizationId === null) return;
 		saving = true;
 		formError = '';
 		try {
-			await api.put(
+			const updated = (await api.put(
 				`/organizations/${organizationId}/post-mortems/${postMortemId}`,
 				{
 					title,
@@ -132,7 +170,9 @@
 					incidentId: linkedIncidentId ? parseInt(linkedIncidentId, 10) : null
 				},
 				{ skipProjectId: true }
-			);
+			)) as PostMortem;
+			title = updated.title;
+			tags = updated.tags || [];
 			toast.success('Successfully updated the Post-Mortem', { position: 'top-center' });
 		} catch (e) {
 			if (getErrorStatus(e) !== 403) {
@@ -189,6 +229,10 @@
 	<div class="space-y-4">
 		<PageHeader title={canWrite ? 'Post-Mortem' : title || 'Post-Mortem'} onBack={backHandler}>
 			{#snippet actions()}
+				<Button variant="outline" size="sm" onclick={() => (activityOpen = true)}>
+					<History class="mr-2 h-4 w-4" />
+					Activity
+				</Button>
 				{#if canWrite}
 					<Button variant="destructiveOutline" size="sm" onclick={() => (deleteOpen = true)}>
 						<Trash2 class="mr-2 h-4 w-4" />
@@ -214,40 +258,74 @@
 					disabled={saving}
 				/>
 			</div>
-			<div class="grid gap-4 sm:grid-cols-2">
-				<div class="min-w-0 space-y-2">
-					<Label>Linked incident</Label>
-					<Select.Root type="single" bind:value={linkedIncidentId} disabled={saving}>
-						<Select.Trigger class="w-full min-w-0">{linkedIncidentLabel}</Select.Trigger>
-						<Select.Content>
-							<Select.Item value="">Not linked</Select.Item>
-							{#each selectableIncidents as incident (incident.id)}
-								<Select.Item value={String(incident.id)}>{incidentLabel(incident)}</Select.Item>
-							{/each}
-						</Select.Content>
-					</Select.Root>
-				</div>
-				<div class="min-w-0 space-y-2">
-					<Label>Tags</Label>
-					<TagsInput bind:tags disabled={saving} />
-				</div>
-			</div>
-		{:else}
-			<div class="flex flex-wrap items-center gap-3">
-				{#if tags.length > 0}
-					<div class="flex flex-wrap gap-1">
-						{#each tags as tag (tag)}
-							<Badge variant="secondary">{tag}</Badge>
-						{/each}
-					</div>
-				{/if}
+		{/if}
+
+		{#if canWrite || tags.length > 0 || linkedIncidentId}
+			<div class="flex flex-wrap items-center gap-2">
 				{#if linkedIncidentId}
-					<span class="text-sm text-muted-foreground">Incident: {linkedIncidentLabel}</span>
+					<span
+						class="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-0.5 text-xs font-medium"
+					>
+						<Link2 class="h-3 w-3 shrink-0 text-muted-foreground" />
+						<span class="max-w-[320px] truncate">{linkedIncidentLabel}</span>
+						{#if canWrite}
+							<button
+								type="button"
+								aria-label="Unlink incident"
+								class="ml-0.5 cursor-pointer text-muted-foreground hover:text-foreground"
+								onclick={() => (linkedIncidentId = '')}
+								disabled={saving}
+							>
+								<X class="h-3 w-3" />
+							</button>
+						{/if}
+					</span>
+				{:else if canWrite}
+					<button
+						type="button"
+						class="inline-flex cursor-pointer items-center gap-1 rounded-full border border-dashed px-3 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
+						onclick={openIncidentDialog}
+						disabled={saving}
+					>
+						<Link2 class="h-3 w-3" />
+						Link incident
+					</button>
+				{/if}
+				{#each tags as tag (tag)}
+					<span
+						class="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium"
+					>
+						{tag}
+						{#if canWrite}
+							<button
+								type="button"
+								aria-label={`Remove tag ${tag}`}
+								class="ml-0.5 cursor-pointer text-muted-foreground hover:text-foreground"
+								onclick={() => removeTag(tag)}
+								disabled={saving}
+							>
+								<X class="h-3 w-3" />
+							</button>
+						{/if}
+					</span>
+				{/each}
+				{#if canWrite}
+					<button
+						type="button"
+						class="inline-flex cursor-pointer items-center gap-1 rounded-full border border-dashed px-3 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
+						onclick={openTagsDialog}
+						disabled={saving}
+					>
+						<Plus class="h-3 w-3" />
+						Add tags
+					</button>
 				{/if}
 			</div>
 		{/if}
 
-		<MarkdownEditor bind:value={contentMd} readonly={!canWrite || saving} />
+		{#key postMortemId}
+			<MarkdownEditor bind:value={contentMd} readonly={!canWrite || saving} />
+		{/key}
 	</div>
 
 	<ConfirmDeleteDialog
@@ -257,4 +335,59 @@
 		loading={deleting}
 		onConfirm={deletePostMortem}
 	/>
+
+	<AlertDialog.Root bind:open={incidentDialogOpen}>
+		<AlertDialog.Content class="sm:max-w-lg">
+			<AlertDialog.Header>
+				<AlertDialog.Title>Link Incident</AlertDialog.Title>
+				<AlertDialog.Description>
+					Link this post-mortem to the incident it covers. Incidents that already have a
+					post-mortem are not listed.
+				</AlertDialog.Description>
+			</AlertDialog.Header>
+			<div class="space-y-3">
+				<Input bind:value={incidentSearch} placeholder="Search incidents..." />
+				<div class="max-h-72 overflow-y-auto rounded-md border">
+					{#each filteredDialogIncidents as incident (incident.id)}
+						<button
+							type="button"
+							class="flex w-full cursor-pointer flex-col items-start gap-0.5 border-b px-3 py-2 text-left text-sm last:border-b-0 hover:bg-accent"
+							onclick={() => linkIncident(incident)}
+						>
+							<span class="font-medium">{incidentDisplayTitle(incident)}</span>
+							<span class="text-xs text-muted-foreground">
+								{formatDateTime(incident.startedAt, { format: 'short' })}
+							</span>
+						</button>
+					{:else}
+						<div class="py-8 text-center text-sm text-muted-foreground">No incidents found</div>
+					{/each}
+				</div>
+			</div>
+			<AlertDialog.Footer>
+				<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+			</AlertDialog.Footer>
+		</AlertDialog.Content>
+	</AlertDialog.Root>
+
+	<AlertDialog.Root bind:open={tagsDialogOpen}>
+		<AlertDialog.Content class="sm:max-w-md">
+			<AlertDialog.Header>
+				<AlertDialog.Title>Add Tags</AlertDialog.Title>
+				<AlertDialog.Description>
+					Type a tag and press Enter; add as many as you need.
+				</AlertDialog.Description>
+			</AlertDialog.Header>
+			<TagsInput bind:tags={dialogTags} />
+			<AlertDialog.Footer>
+				<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+				<Button onclick={applyTags}>
+					<Check class="mr-2 h-4 w-4" />
+					Apply Tags
+				</Button>
+			</AlertDialog.Footer>
+		</AlertDialog.Content>
+	</AlertDialog.Root>
+
+	<ActivitySheet bind:open={activityOpen} {organizationId} {postMortemId} />
 {/if}

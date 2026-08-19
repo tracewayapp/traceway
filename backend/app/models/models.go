@@ -78,8 +78,11 @@ func Init(driver lit.Driver) {
 	lit.RegisterModel[IncidentUpdateCount](driver)
 	lit.RegisterModel[OrgIncident](driver)
 	lit.RegisterModel[PostMortem](driver)
+	lit.RegisterModel[PostMortemDetail](driver)
 	lit.RegisterModel[PostMortemListItem](driver)
 	lit.RegisterModel[PostMortemRef](driver)
+	lit.RegisterModel[PostMortemEvent](driver)
+	lit.RegisterModel[PostMortemEventItem](driver)
 	lit.RegisterModel[SyntheticRunner](driver)
 	lit.RegisterModel[StatusPage](driver)
 

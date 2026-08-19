@@ -183,7 +183,7 @@
 </script>
 
 <div class="space-y-6">
-	<Card class="pb-0">
+	<Card class="overflow-hidden pb-0">
 		<CardHeader
 			class="flex flex-row flex-wrap items-start justify-between gap-4 space-y-0 gap-y-2 pb-4"
 		>
@@ -349,7 +349,7 @@
 		</CardContent>
 	</Card>
 
-	<Card class="pb-0">
+	<Card class="overflow-hidden pb-0">
 		<CardHeader>
 			<CardTitle>Pending Invitations</CardTitle>
 			<CardDescription>Invitations that have not yet been accepted</CardDescription>

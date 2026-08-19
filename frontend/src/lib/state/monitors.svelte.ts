@@ -120,6 +120,9 @@ export interface PostMortemListItem {
 	title: string;
 	tags: string[];
 	createdBy: number | null;
+	updatedBy: number | null;
+	createdByName: string | null;
+	updatedByName: string | null;
 	createdAt: string;
 	updatedAt: string;
 }

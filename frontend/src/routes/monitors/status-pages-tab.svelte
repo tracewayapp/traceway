@@ -22,7 +22,6 @@
 		ExternalLink,
 		Globe,
 		ImageUp,
-		Megaphone,
 		Pencil,
 		Plus,
 		Siren,
@@ -31,7 +30,6 @@
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import RecordIncidentDialog from './record-incident-dialog.svelte';
 
 	interface StatusPage {
 		id: number;
@@ -66,14 +64,6 @@
 
 	let deleteTarget = $state<StatusPage | null>(null);
 	let deleting = $state(false);
-
-	let recordIncidentOpen = $state(false);
-	let recordIncidentPage = $state<StatusPage | null>(null);
-
-	function openRecordIncident(page: StatusPage) {
-		recordIncidentPage = page;
-		recordIncidentOpen = true;
-	}
 
 	function openIncidents(page: StatusPage) {
 		goto(resolve(`/monitors/status-pages/${page.id}/incidents`));
@@ -281,14 +271,6 @@
 								<Button
 									variant="ghost"
 									size="icon-sm"
-									onclick={() => openRecordIncident(page)}
-									title="Record incident"
-								>
-									<Megaphone class="h-4 w-4" />
-								</Button>
-								<Button
-									variant="ghost"
-									size="icon-sm"
 									onclick={() => openIncidents(page)}
 									title="Incidents"
 								>
@@ -466,14 +448,6 @@
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
 </AlertDialog.Root>
-
-<RecordIncidentDialog
-	bind:open={recordIncidentOpen}
-	statusPage={recordIncidentPage}
-	onSaved={() => {
-		if (recordIncidentPage) openIncidents(recordIncidentPage);
-	}}
-/>
 
 <ConfirmDeleteDialog
 	bind:open={() => deleteTarget !== null, (v) => !v && (deleteTarget = null)}

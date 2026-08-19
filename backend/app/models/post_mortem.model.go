@@ -1,10 +1,15 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type PostMortem struct {
 	Id             int         `json:"id" lit:"id"`
 	OrganizationId int         `json:"organizationId" lit:"organization_id"`
+	ProjectId      uuid.UUID   `json:"projectId" lit:"project_id"`
 	IncidentId     *int        `json:"incidentId" lit:"incident_id"`
 	Title          string      `json:"title" lit:"title"`
 	ContentMd      string      `json:"contentMd" lit:"content_md"`
@@ -18,6 +23,7 @@ type PostMortem struct {
 type PostMortemDetail struct {
 	Id             int         `json:"id" lit:"id"`
 	OrganizationId int         `json:"organizationId" lit:"organization_id"`
+	ProjectId      uuid.UUID   `json:"projectId" lit:"project_id"`
 	IncidentId     *int        `json:"incidentId" lit:"incident_id"`
 	Title          string      `json:"title" lit:"title"`
 	ContentMd      string      `json:"contentMd" lit:"content_md"`
@@ -33,6 +39,7 @@ type PostMortemDetail struct {
 type PostMortemListItem struct {
 	Id             int         `json:"id" lit:"id"`
 	OrganizationId int         `json:"organizationId" lit:"organization_id"`
+	ProjectId      uuid.UUID   `json:"projectId" lit:"project_id"`
 	IncidentId     *int        `json:"incidentId" lit:"incident_id"`
 	Title          string      `json:"title" lit:"title"`
 	Tags           StringSlice `json:"tags" lit:"tags"`

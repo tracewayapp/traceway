@@ -20,7 +20,7 @@
 
 	let { open = $bindable(), incidentId = null, incidentLabel = '' }: Props = $props();
 
-	const organizationId = $derived(projectsState.currentProject?.organizationId ?? null);
+	const projectId = $derived(projectsState.currentProjectId);
 
 	let title = $state('');
 	let saving = $state(false);
@@ -34,14 +34,14 @@
 	});
 
 	async function create() {
-		if (organizationId === null) return;
+		if (projectId === null) return;
 		saving = true;
 		dialogError = '';
 		try {
 			const created = await api.post(
-				`/organizations/${organizationId}/post-mortems`,
+				'/post-mortems',
 				{ title, contentMd: '', tags: [], incidentId },
-				{ skipProjectId: true }
+				{ projectId: projectId ?? undefined }
 			);
 			toast.success('Successfully created the Post-Mortem', { position: 'top-center' });
 			open = false;

@@ -278,12 +278,12 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/organizations/:organizationId/incidents/:incidentId/updates", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, IncidentController.CreateUpdate)
 	router.DELETE("/organizations/:organizationId/incidents/:incidentId/updates/:updateId", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, IncidentController.DeleteUpdate)
 
-	router.GET("/organizations/:organizationId/post-mortems", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, PostMortemController.List)
-	router.GET("/organizations/:organizationId/post-mortems/:id", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, PostMortemController.Get)
-	router.GET("/organizations/:organizationId/post-mortems/:id/activity", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, PostMortemController.Activity)
-	router.POST("/organizations/:organizationId/post-mortems", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, PostMortemController.Create)
-	router.PUT("/organizations/:organizationId/post-mortems/:id", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, PostMortemController.Update)
-	router.DELETE("/organizations/:organizationId/post-mortems/:id", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, PostMortemController.Delete)
+	router.GET("/post-mortems", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PostMortemController.List)
+	router.GET("/post-mortems/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PostMortemController.Get)
+	router.GET("/post-mortems/:id/activity", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PostMortemController.Activity)
+	router.POST("/post-mortems", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, PostMortemController.Create)
+	router.PUT("/post-mortems/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, PostMortemController.Update)
+	router.DELETE("/post-mortems/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, PostMortemController.Delete)
 	// Anonymous, rate-limited, cached ~30s per slug; no Transactional (it
 	// reads main DB + telemetry through its own short transactions).
 	router.GET("/status/:slug", middleware.RateLimitPerIP(30, time.Minute), StatusPageController.Public)

@@ -31,22 +31,6 @@ Add a notification rule of type **Monitor Down** on the Alerts page. It fires wh
 
 A status page publishes the uptime of selected monitors at `/status/<slug>`: a branded light page with 90 days of per-day uptime bars (green operational, amber partial outage, red major outage, gray no data), incident history, and no login required. Create one under the **Status Pages** tab on the Monitors page (organization admins only), pick the monitors, choose a slug, and toggle it public. Branding: a title, an optional description, and an uploaded PNG/JPEG logo. Latency numbers stay internal; the public payload only carries availability.
 
-### Incidents and timeline updates
-
-The public page ends with a **Past Incidents** section, grouped by day and paged five incidents at a time, newest first. Every incident a monitor detects appears there automatically with an "Investigating" entry when it opens and a "Resolved" entry when the monitor recovers. The probe's error message stays internal.
-
-Organization admins manage the public story from the **Status Pages** tab. The incidents action on a page opens its incident history, a paginated page with every incident the status page has shown. From there you can give an incident a public title, post timeline updates (Investigating, Identified, Monitoring, Update, Resolved), and attach a post-mortem.
-
-Outages your monitors did not catch can be recorded by hand with the **Record Incident** action. A manual incident carries its own title, start time, and updates. It can be backdated and resolved later by posting a Resolved update. Manual incidents only feed the Past Incidents section; they never change a monitor's uptime bars.
-
-## Post-mortems
-
-Post-mortems are internal write-ups of incidents: what happened, why, and what changes. They live in the **Post-Mortems** tab, visible to every organization member, and they never appear on public status pages.
-
-Each post-mortem is a markdown document written in a WYSIWYG editor. Give it tags like `redis` or `dns`, and optionally link it to an incident (one post-mortem per incident). Start one from the tab, from an incident in the status page sheet, or from the incidents list on a monitor's detail page. The search box matches titles, content, and tags, so the next time a similar incident hits you can find how it was fixed last time. Documents survive the deletion of their monitor or incident.
-
-Members with read-only access can view post-mortems but not edit them. Creating and editing needs a regular member role; recording incidents and posting public updates needs an organization admin, since those are public content.
-
 ### Custom domains
 
 Each status page can carry a custom domain (for example `status.acme.com`):
@@ -56,6 +40,14 @@ Each status page can carry a custom domain (for example `status.acme.com`):
 3. Terminate TLS for the vanity hostname at your reverse proxy (Caddy and Traefik can issue certificates for it automatically; with nginx use certbot).
 
 Anonymous visitors hitting the instance under that Host are routed to the status page automatically (the backend maps the Host header to the page via `/api/status-domains/resolve`).
+
+## Incidents and post-mortems
+
+Monitors feed a full incident-management workflow, covered in depth in [Incidents & Post-Mortems](/learn/incidents):
+
+- **Incidents open and resolve themselves** from monitor state transitions, with an automatic Investigating and Resolved timeline. Outages your monitors missed can be recorded by hand on a status page, backdated if needed; manual incidents never change uptime numbers.
+- **The public story is yours to tell.** Give incidents public titles and post statuspage-style timeline updates (Investigating, Identified, Monitoring, Update, Resolved). The last 90 days appear in the **Past Incidents** section of the public page; probe error messages stay internal.
+- **Post-mortems** are internal write-ups in the **Post-Mortems** tab, owned by the project like the monitors themselves: a WYSIWYG markdown editor with a raw-markdown toggle, tags, an optional link to the incident (one per incident), a full edit activity log, and search across titles, content, and tags. They never appear on public status pages.
 
 ## Browser execution modes
 

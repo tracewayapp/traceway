@@ -6,6 +6,7 @@
 	import { api } from '$lib/api';
 	import { formatDateTime } from '$lib/utils/formatters';
 	import { getErrorMessage } from '$lib/utils/errors';
+	import { projectsState } from '$lib/state/projects.svelte';
 
 	interface ActivityEvent {
 		id: number;
@@ -17,11 +18,10 @@
 
 	interface Props {
 		open: boolean;
-		organizationId: number | null;
 		postMortemId: string;
 	}
 
-	let { open = $bindable(), organizationId, postMortemId }: Props = $props();
+	let { open = $bindable(), postMortemId }: Props = $props();
 
 	let events = $state<ActivityEvent[]>([]);
 	let loading = $state(false);
@@ -35,15 +35,15 @@
 	});
 
 	async function load() {
-		if (organizationId === null) return;
+		const projectId = projectsState.currentProjectId;
+		if (projectId === null) return;
 		const seq = ++loadSeq;
 		loading = true;
 		error = '';
 		try {
-			const res = (await api.get(
-				`/organizations/${organizationId}/post-mortems/${postMortemId}/activity`,
-				{ skipProjectId: true }
-			)) as { events?: ActivityEvent[] };
+			const res = (await api.get(`/post-mortems/${postMortemId}/activity`, {
+				projectId
+			})) as { events?: ActivityEvent[] };
 			if (seq !== loadSeq) return;
 			events = res.events || [];
 		} catch (e) {

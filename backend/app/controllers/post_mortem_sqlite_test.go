@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/dbtest"
 	"github.com/tracewayapp/traceway/backend/app/models"
@@ -25,11 +27,12 @@ func createTestOrg(t *testing.T, name string) int {
 	return org.Id
 }
 
-func createTestPostMortem(t *testing.T, organizationId int, title string, content string, tags []string, incidentId *int) *models.PostMortem {
+func createTestPostMortem(t *testing.T, organizationId int, projectId uuid.UUID, title string, content string, tags []string, incidentId *int) *models.PostMortem {
 	t.Helper()
 	now := time.Now().UTC()
 	postMortem := &models.PostMortem{
 		OrganizationId: organizationId,
+		ProjectId:      projectId,
 		IncidentId:     incidentId,
 		Title:          title,
 		ContentMd:      content,
@@ -51,9 +54,21 @@ func TestPostMortemCrudAndSearch(t *testing.T) {
 	dbtest.SetupSQLite(t)
 	orgId := createTestOrg(t, "org-a")
 	otherOrgId := createTestOrg(t, "org-b")
+	project, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.Project, error) {
+		return transactional.ProjectRepository.CreateWithOrganization(tx, "proj-a", "gin", orgId)
+	})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	otherProject, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.Project, error) {
+		return transactional.ProjectRepository.CreateWithOrganization(tx, "proj-b", "gin", otherOrgId)
+	})
+	if err != nil {
+		t.Fatalf("create other project: %v", err)
+	}
 
-	redis := createTestPostMortem(t, orgId, "Redis outage", "A cache stampede after failover.", []string{"redis", "cache"}, nil)
-	createTestPostMortem(t, orgId, "DB failover", "Postgres replication lag caused stale reads.", []string{"postgres"}, nil)
+	redis := createTestPostMortem(t, orgId, project.Id, "Redis outage", "A cache stampede after failover.", []string{"redis", "cache"}, nil)
+	createTestPostMortem(t, orgId, project.Id, "DB failover", "Postgres replication lag caused stale reads.", []string{"postgres"}, nil)
 
 	type listResult struct {
 		items []*models.PostMortemListItem
@@ -62,11 +77,11 @@ func TestPostMortemCrudAndSearch(t *testing.T) {
 	list := func(search string, tags ...string) listResult {
 		t.Helper()
 		result, err := db.ExecuteTransaction(func(tx *sql.Tx) (listResult, error) {
-			items, err := transactional.PostMortemRepository.ListByOrganization(tx, orgId, search, tags, 50, 0)
+			items, err := transactional.PostMortemRepository.ListByProject(tx, project.Id, search, tags, 50, 0)
 			if err != nil {
 				return listResult{}, err
 			}
-			total, err := transactional.PostMortemRepository.CountByOrganization(tx, orgId, search, tags)
+			total, err := transactional.PostMortemRepository.CountByProject(tx, project.Id, search, tags)
 			return listResult{items: items, total: total}, err
 		})
 		if err != nil {
@@ -99,10 +114,10 @@ func TestPostMortemCrudAndSearch(t *testing.T) {
 	}
 
 	foreign, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.PostMortem, error) {
-		return transactional.PostMortemRepository.FindByIdForOrganization(tx, redis.Id, otherOrgId)
+		return transactional.PostMortemRepository.FindByIdForProject(tx, redis.Id, otherProject.Id)
 	})
 	if err != nil || foreign != nil {
-		t.Fatalf("post-mortem leaked across orgs: %+v (%v)", foreign, err)
+		t.Fatalf("post-mortem leaked across projects: %+v (%v)", foreign, err)
 	}
 
 	redis.Title = "Redis outage (updated)"
@@ -114,14 +129,14 @@ func TestPostMortemCrudAndSearch(t *testing.T) {
 		t.Fatalf("update post-mortem: %v", err)
 	}
 	reloaded, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.PostMortem, error) {
-		return transactional.PostMortemRepository.FindByIdForOrganization(tx, redis.Id, orgId)
+		return transactional.PostMortemRepository.FindByIdForProject(tx, redis.Id, project.Id)
 	})
 	if err != nil || reloaded == nil || reloaded.Title != "Redis outage (updated)" || !slices.Equal(reloaded.Tags, models.StringSlice{"redis"}) {
 		t.Fatalf("reloaded post-mortem = %+v (%v)", reloaded, err)
 	}
 
 	if _, err := db.ExecuteTransaction(func(tx *sql.Tx) (bool, error) {
-		return true, transactional.PostMortemRepository.Delete(tx, redis.Id, orgId)
+		return true, transactional.PostMortemRepository.Delete(tx, redis.Id, project.Id)
 	}); err != nil {
 		t.Fatalf("delete post-mortem: %v", err)
 	}
@@ -237,10 +252,11 @@ func TestIncidentOwnershipAndPostMortemLink(t *testing.T) {
 		t.Fatalf("auto incident was hand-resolved: %+v (%v)", autoIncident, err)
 	}
 
-	linked := createTestPostMortem(t, orgId, "Payment outage write-up", "What happened.", []string{"payments"}, &manualIncidentId)
+	linked := createTestPostMortem(t, orgId, project.Id, "Payment outage write-up", "What happened.", []string{"payments"}, &manualIncidentId)
 	_, err = db.ExecuteTransaction(func(tx *sql.Tx) (int, error) {
 		return transactional.PostMortemRepository.Create(tx, &models.PostMortem{
 			OrganizationId: orgId,
+			ProjectId:      project.Id,
 			IncidentId:     &manualIncidentId,
 			Title:          "Duplicate",
 			Tags:           models.StringSlice{},
@@ -258,7 +274,7 @@ func TestIncidentOwnershipAndPostMortemLink(t *testing.T) {
 		t.Fatalf("delete manual incident: %v", err)
 	}
 	survivor, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.PostMortem, error) {
-		return transactional.PostMortemRepository.FindByIdForOrganization(tx, linked.Id, orgId)
+		return transactional.PostMortemRepository.FindByIdForProject(tx, linked.Id, project.Id)
 	})
 	if err != nil || survivor == nil {
 		t.Fatalf("post-mortem did not survive incident deletion: %v", err)

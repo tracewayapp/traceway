@@ -116,6 +116,7 @@ export function incidentDisplayTitle(incident: {
 export interface PostMortemListItem {
 	id: number;
 	organizationId: number;
+	projectId: string;
 	incidentId: number | null;
 	title: string;
 	tags: string[];

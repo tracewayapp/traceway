@@ -18,6 +18,7 @@
   "alerts": "Alerts",
   "on-call": "On-Call",
   "monitors": "Monitors",
+  "incidents": "Incidents & Post-Mortems",
   "sso": "SSO",
   "cli": "CLI",
   "cli-auth": "CLI Authentication",

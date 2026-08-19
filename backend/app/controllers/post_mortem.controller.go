@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
@@ -77,7 +78,29 @@ func intPtrEqual(a, b *int) bool {
 	return *a == *b
 }
 
-func checkIncidentLink(ctx *gin.Context, organizationId int, incidentId int) bool {
+// postMortemProjectContext resolves the project from RequireProjectAccess and
+// its owning organization; post-mortems belong to a project, but incident
+// links are still validated against the organization.
+func postMortemProjectContext(ctx *gin.Context) (uuid.UUID, int, bool) {
+	projectId, err := middleware.GetProjectId(ctx)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return uuid.Nil, 0, false
+	}
+	tx := db.GetTx(ctx)
+	project, err := transactional.ProjectRepository.FindById(tx, projectId)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to load project: %w", err))
+		return uuid.Nil, 0, false
+	}
+	if project == nil || project.OrganizationId == nil {
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
+		return uuid.Nil, 0, false
+	}
+	return projectId, *project.OrganizationId, true
+}
+
+func checkIncidentLink(ctx *gin.Context, organizationId int, projectId uuid.UUID, incidentId int) bool {
 	tx := db.GetTx(ctx)
 	incident, err := transactional.CheckIncidentRepository.FindByIdInOrganization(tx, incidentId, organizationId)
 	if err != nil {
@@ -88,11 +111,15 @@ func checkIncidentLink(ctx *gin.Context, organizationId int, incidentId int) boo
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "The linked incident does not belong to this organization."})
 		return false
 	}
+	if incident.ProjectId != nil && *incident.ProjectId != projectId {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "The linked incident belongs to a different project."})
+		return false
+	}
 	return true
 }
 
 func (ctrl *postMortemController) List(ctx *gin.Context) {
-	organizationId, ok := organizationIdFromPath(ctx)
+	projectId, _, ok := postMortemProjectContext(ctx)
 	if !ok {
 		return
 	}
@@ -106,7 +133,7 @@ func (ctrl *postMortemController) List(ctx *gin.Context) {
 	page, pageSize := paginationFromQuery(ctx)
 
 	tx := db.GetTx(ctx)
-	items, err := transactional.PostMortemRepository.ListByOrganization(tx, organizationId, search, tags, pageSize, (page-1)*pageSize)
+	items, err := transactional.PostMortemRepository.ListByProject(tx, projectId, search, tags, pageSize, (page-1)*pageSize)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to list post-mortems: %w", err))
 		return
@@ -119,7 +146,7 @@ func (ctrl *postMortemController) List(ctx *gin.Context) {
 			item.Tags = models.StringSlice{}
 		}
 	}
-	total, err := transactional.PostMortemRepository.CountByOrganization(tx, organizationId, search, tags)
+	total, err := transactional.PostMortemRepository.CountByProject(tx, projectId, search, tags)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to count post-mortems: %w", err))
 		return
@@ -131,7 +158,7 @@ func (ctrl *postMortemController) List(ctx *gin.Context) {
 }
 
 func (ctrl *postMortemController) Get(ctx *gin.Context) {
-	organizationId, ok := organizationIdFromPath(ctx)
+	projectId, _, ok := postMortemProjectContext(ctx)
 	if !ok {
 		return
 	}
@@ -141,7 +168,7 @@ func (ctrl *postMortemController) Get(ctx *gin.Context) {
 		return
 	}
 	tx := db.GetTx(ctx)
-	postMortem, err := transactional.PostMortemRepository.FindDetailByIdForOrganization(tx, id, organizationId)
+	postMortem, err := transactional.PostMortemRepository.FindDetailByIdForProject(tx, id, projectId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to load post-mortem: %w", err))
 		return
@@ -157,7 +184,7 @@ func (ctrl *postMortemController) Get(ctx *gin.Context) {
 }
 
 func (ctrl *postMortemController) Activity(ctx *gin.Context) {
-	organizationId, ok := organizationIdFromPath(ctx)
+	projectId, _, ok := postMortemProjectContext(ctx)
 	if !ok {
 		return
 	}
@@ -167,7 +194,7 @@ func (ctrl *postMortemController) Activity(ctx *gin.Context) {
 		return
 	}
 	tx := db.GetTx(ctx)
-	events, err := transactional.PostMortemRepository.ListEvents(tx, id, organizationId, 200)
+	events, err := transactional.PostMortemRepository.ListEvents(tx, id, projectId, 200)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to list post-mortem activity: %w", err))
 		return
@@ -184,7 +211,7 @@ func (ctrl *postMortemController) Activity(ctx *gin.Context) {
 }
 
 func (ctrl *postMortemController) Create(ctx *gin.Context) {
-	organizationId, ok := organizationIdFromPath(ctx)
+	projectId, organizationId, ok := postMortemProjectContext(ctx)
 	if !ok {
 		return
 	}
@@ -194,15 +221,12 @@ func (ctrl *postMortemController) Create(ctx *gin.Context) {
 		return
 	}
 	tx := db.GetTx(ctx)
-	if !requireOrgWrite(ctx, tx, organizationId) {
-		return
-	}
 	tags, message := validatePostMortemRequest(&req)
 	if message != "" {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": message})
 		return
 	}
-	if req.IncidentId != nil && !checkIncidentLink(ctx, organizationId, *req.IncidentId) {
+	if req.IncidentId != nil && !checkIncidentLink(ctx, organizationId, projectId, *req.IncidentId) {
 		return
 	}
 
@@ -210,6 +234,7 @@ func (ctrl *postMortemController) Create(ctx *gin.Context) {
 	now := time.Now().UTC()
 	postMortem := &models.PostMortem{
 		OrganizationId: organizationId,
+		ProjectId:      projectId,
 		IncidentId:     req.IncidentId,
 		Title:          req.Title,
 		ContentMd:      req.ContentMd,
@@ -243,7 +268,7 @@ func (ctrl *postMortemController) Create(ctx *gin.Context) {
 }
 
 func (ctrl *postMortemController) Update(ctx *gin.Context) {
-	organizationId, ok := organizationIdFromPath(ctx)
+	projectId, organizationId, ok := postMortemProjectContext(ctx)
 	if !ok {
 		return
 	}
@@ -258,10 +283,7 @@ func (ctrl *postMortemController) Update(ctx *gin.Context) {
 		return
 	}
 	tx := db.GetTx(ctx)
-	if !requireOrgWrite(ctx, tx, organizationId) {
-		return
-	}
-	postMortem, err := transactional.PostMortemRepository.FindByIdForOrganization(tx, id, organizationId)
+	postMortem, err := transactional.PostMortemRepository.FindByIdForProject(tx, id, projectId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to load post-mortem: %w", err))
 		return
@@ -275,7 +297,7 @@ func (ctrl *postMortemController) Update(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": message})
 		return
 	}
-	if req.IncidentId != nil && !checkIncidentLink(ctx, organizationId, *req.IncidentId) {
+	if req.IncidentId != nil && !checkIncidentLink(ctx, organizationId, projectId, *req.IncidentId) {
 		return
 	}
 
@@ -323,7 +345,7 @@ func (ctrl *postMortemController) Update(ctx *gin.Context) {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to record post-mortem event: %w", err))
 		return
 	}
-	detail, err := transactional.PostMortemRepository.FindDetailByIdForOrganization(tx, id, organizationId)
+	detail, err := transactional.PostMortemRepository.FindDetailByIdForProject(tx, id, projectId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to reload post-mortem after update: %w", err))
 		return
@@ -339,7 +361,7 @@ func (ctrl *postMortemController) Update(ctx *gin.Context) {
 }
 
 func (ctrl *postMortemController) Delete(ctx *gin.Context) {
-	organizationId, ok := organizationIdFromPath(ctx)
+	projectId, _, ok := postMortemProjectContext(ctx)
 	if !ok {
 		return
 	}
@@ -349,10 +371,7 @@ func (ctrl *postMortemController) Delete(ctx *gin.Context) {
 		return
 	}
 	tx := db.GetTx(ctx)
-	if !requireOrgWrite(ctx, tx, organizationId) {
-		return
-	}
-	postMortem, err := transactional.PostMortemRepository.FindByIdForOrganization(tx, id, organizationId)
+	postMortem, err := transactional.PostMortemRepository.FindByIdForProject(tx, id, projectId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to load post-mortem: %w", err))
 		return
@@ -361,7 +380,7 @@ func (ctrl *postMortemController) Delete(ctx *gin.Context) {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": "Post-mortem not found"})
 		return
 	}
-	if err := transactional.PostMortemRepository.Delete(tx, id, organizationId); err != nil {
+	if err := transactional.PostMortemRepository.Delete(tx, id, projectId); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to delete post-mortem: %w", err))
 		return
 	}

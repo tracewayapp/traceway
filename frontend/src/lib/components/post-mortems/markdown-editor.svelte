@@ -104,6 +104,18 @@
 		}
 	}
 
+	// The markdownUpdated listener is debounced; callers that are about to save
+	// use this to pull the very latest content synchronously.
+	export function flushPendingChanges() {
+		if (crepe && ready && mode === 'rich') {
+			try {
+				value = crepe.getMarkdown();
+			} catch {
+				// keep the last synced value
+			}
+		}
+	}
+
 	function destroyEditor() {
 		createSeq++;
 		crepe?.destroy();
@@ -158,8 +170,8 @@
 	});
 </script>
 
-<div class="space-y-2">
-	<div class="flex justify-end">
+<div class="relative space-y-2">
+	<div class="flex justify-end sm:absolute sm:top-4 sm:right-2 sm:z-20">
 		<Tabs.Root value={mode} onValueChange={setMode}>
 			<Tabs.List class="h-8">
 				<Tabs.Trigger value="rich" class="px-2.5 py-0.5 text-xs">Rich text</Tabs.Trigger>
@@ -209,8 +221,15 @@
 		padding: 0.875rem 1rem 1.25rem;
 	}
 	/* Headings carry a large margin-top for spacing between sections; on the
-	   first block it just pushes the content away from the top border. */
-	.post-mortem-editor :global(.milkdown .ProseMirror > *:first-child) {
+	   first block it just pushes the content away from the top border. Cursor
+	   widgets (absolute-positioned divs) come and go as the first child, so
+	   match the first real content block, not literally :first-child. */
+	.post-mortem-editor
+		:global(
+			.milkdown
+				.ProseMirror
+				> :nth-child(1 of :not(.ProseMirror-widget, .prosemirror-virtual-cursor))
+		) {
 		margin-top: 0;
 	}
 	.post-mortem-editor :global(.milkdown .ProseMirror h1),
@@ -231,10 +250,26 @@
 		box-shadow: none;
 		border: 1px solid var(--border);
 	}
+	/* The theme's outline gray reads as disabled; use the foreground color. */
+	.post-mortem-editor :global(.milkdown .milkdown-toolbar .toolbar-item svg) {
+		color: color-mix(in srgb, var(--foreground) 85%, transparent);
+		fill: color-mix(in srgb, var(--foreground) 85%, transparent);
+	}
 	/* Formatting goes through the selection toolbar and the / menu; the floating
 	   gutter handle (drag grip + plus) is hidden entirely. */
 	.post-mortem-editor :global(.milkdown .milkdown-block-handle) {
 		display: none;
+	}
+	/* Crepe renders the caret as a 2px virtual cursor in the gray outline color;
+	   match the native thin foreground caret instead. */
+	.post-mortem-editor :global(.milkdown .ProseMirror-focused) {
+		--prosemirror-virtual-cursor-color: var(--foreground);
+	}
+	.post-mortem-editor :global(.milkdown .ProseMirror .prosemirror-virtual-cursor) {
+		border-left-width: 1px;
+	}
+	.post-mortem-editor :global(.milkdown .cm-editor .cm-content) {
+		caret-color: var(--foreground);
 	}
 	.post-mortem-raw {
 		font-family: var(--font-code);

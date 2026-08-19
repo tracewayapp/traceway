@@ -20,7 +20,6 @@
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { formatDateTime } from '$lib/utils/formatters';
 	import { projectsState } from '$lib/state/projects.svelte';
-	import { authState } from '$lib/state/auth.svelte';
 	import {
 		incidentDisplayTitle,
 		type OrgIncident,
@@ -30,10 +29,9 @@
 	let { data } = $props();
 
 	const postMortemId = $derived(data.id);
+	const projectId = $derived(projectsState.currentProjectId);
 	const organizationId = $derived(projectsState.currentProject?.organizationId ?? null);
-	const canWrite = $derived(
-		organizationId !== null && authState.canWriteOrganization(organizationId)
-	);
+	const canWrite = $derived(projectsState.canWriteCurrentProject);
 
 	let loading = $state(true);
 	let notFound = $state(false);
@@ -51,6 +49,8 @@
 
 	let incidents = $state<OrgIncident[]>([]);
 
+	let markdownEditor = $state<{ flushPendingChanges: () => void } | null>(null);
+
 	let tagsDialogOpen = $state(false);
 	let dialogTags = $state<string[]>([]);
 	let incidentDialogOpen = $state(false);
@@ -59,7 +59,7 @@
 	let loadSeq = 0;
 
 	async function loadAll() {
-		if (organizationId === null) return;
+		if (projectId === null || organizationId === null) return;
 		const seq = ++loadSeq;
 		loading = true;
 		notFound = false;
@@ -67,9 +67,7 @@
 		formError = '';
 		try {
 			const [postMortem, incidentsRes] = (await Promise.all([
-				api.get(`/organizations/${organizationId}/post-mortems/${postMortemId}`, {
-					skipProjectId: true
-				}),
+				api.get(`/post-mortems/${postMortemId}`, { projectId: projectId ?? undefined }),
 				api.get(`/organizations/${organizationId}/incidents`, { skipProjectId: true })
 			])) as [PostMortem, { incidents?: OrgIncident[] }];
 			if (seq !== loadSeq) return;
@@ -104,6 +102,7 @@
 
 	$effect(() => {
 		void postMortemId;
+		void projectId;
 		void organizationId;
 		untrack(() => loadAll());
 	});
@@ -112,9 +111,15 @@
 		return `${incidentDisplayTitle(incident)} · ${formatDateTime(incident.startedAt, { format: 'short' })}`;
 	}
 
+	// Auto incidents from other projects are excluded: the post-mortem belongs
+	// to this project, manual (status page) incidents carry no project.
 	const selectableIncidents = $derived(
 		incidents.filter(
-			(incident) => !incident.postMortemId || String(incident.id) === linkedIncidentId
+			(incident) =>
+				(!incident.postMortemId || String(incident.id) === linkedIncidentId) &&
+				(!incident.projectId ||
+					incident.projectId === projectId ||
+					String(incident.id) === linkedIncidentId)
 		)
 	);
 
@@ -157,19 +162,20 @@
 	}
 
 	async function save() {
-		if (organizationId === null) return;
+		if (projectId === null) return;
+		markdownEditor?.flushPendingChanges();
 		saving = true;
 		formError = '';
 		try {
 			const updated = (await api.put(
-				`/organizations/${organizationId}/post-mortems/${postMortemId}`,
+				`/post-mortems/${postMortemId}`,
 				{
 					title,
 					contentMd,
 					tags,
 					incidentId: linkedIncidentId ? parseInt(linkedIncidentId, 10) : null
 				},
-				{ skipProjectId: true }
+				{ projectId: projectId ?? undefined }
 			)) as PostMortem;
 			title = updated.title;
 			tags = updated.tags || [];
@@ -184,12 +190,10 @@
 	}
 
 	async function deletePostMortem() {
-		if (organizationId === null) return;
+		if (projectId === null) return;
 		deleting = true;
 		try {
-			await api.delete(`/organizations/${organizationId}/post-mortems/${postMortemId}`, {
-				skipProjectId: true
-			});
+			await api.delete(`/post-mortems/${postMortemId}`, { projectId: projectId ?? undefined });
 			toast.success('Successfully deleted the Post-Mortem');
 			gotoHref('/monitors?tab=post-mortems');
 		} catch (e) {
@@ -212,7 +216,7 @@
 	<ErrorDisplay
 		status={404}
 		title="Post-mortem not found"
-		description="This post-mortem does not exist or belongs to a different organization."
+		description="This post-mortem does not exist or belongs to a different project."
 		onBack={backHandler}
 		backLabel="Back to Post-Mortems"
 	/>
@@ -324,7 +328,11 @@
 		{/if}
 
 		{#key postMortemId}
-			<MarkdownEditor bind:value={contentMd} readonly={!canWrite || saving} />
+			<MarkdownEditor
+				bind:this={markdownEditor}
+				bind:value={contentMd}
+				readonly={!canWrite || saving}
+			/>
 		{/key}
 	</div>
 
@@ -389,5 +397,5 @@
 		</AlertDialog.Content>
 	</AlertDialog.Root>
 
-	<ActivitySheet bind:open={activityOpen} {organizationId} {postMortemId} />
+	<ActivitySheet bind:open={activityOpen} {postMortemId} />
 {/if}

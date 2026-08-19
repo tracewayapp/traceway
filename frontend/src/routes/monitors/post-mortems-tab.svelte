@@ -16,7 +16,6 @@
 	import { createRowClickHandler } from '$lib/utils/navigation';
 	import { formatRelativeTimeAgo } from '$lib/utils/formatters';
 	import { projectsState } from '$lib/state/projects.svelte';
-	import { authState } from '$lib/state/auth.svelte';
 	import { type PostMortemListItem } from '$lib/state/monitors.svelte';
 
 	let items = $state<PostMortemListItem[]>([]);
@@ -29,10 +28,8 @@
 	let total = $state(0);
 	let totalPages = $state(0);
 
-	const organizationId = $derived(projectsState.currentProject?.organizationId ?? null);
-	const canWrite = $derived(
-		organizationId !== null && authState.canWriteOrganization(organizationId)
-	);
+	const projectId = $derived(projectsState.currentProjectId);
+	const canWrite = $derived(projectsState.canWriteCurrentProject);
 
 	let createOpen = $state(false);
 
@@ -43,7 +40,7 @@
 	let loadSeq = 0;
 
 	async function load() {
-		if (organizationId === null) return;
+		if (projectId === null) return;
 		const seq = ++loadSeq;
 		loading = true;
 		error = '';
@@ -53,9 +50,7 @@
 			for (const tag of tagFilters) params.append('tag', tag);
 			params.set('page', String(currentPage));
 			params.set('pageSize', String(pageSize));
-			const res = await api.get(`/organizations/${organizationId}/post-mortems?${params}`, {
-				skipProjectId: true
-			});
+			const res = await api.get(`/post-mortems?${params}`, { projectId: projectId ?? undefined });
 			if (seq !== loadSeq) return;
 			items = res.data || [];
 			total = res.pagination?.total || 0;
@@ -69,7 +64,7 @@
 	}
 
 	$effect(() => {
-		void organizationId;
+		void projectId;
 		untrack(() => {
 			searchQuery = '';
 			tagFilters = [];

@@ -12,7 +12,7 @@ import { AuroraBackground } from "@/components/aurora-background";
 export const metadata: Metadata = {
   title: "Monitors · Traceway",
   description:
-    "Synthetic uptime monitoring built into your observability stack. HTTP, TCP, and real-browser Playwright checks, flap damping, failure screenshots, public status pages, and paging that resolves itself on recovery.",
+    "Synthetic uptime monitoring and full incident management in your observability stack. HTTP, TCP, and real-browser Playwright checks, public status pages with incident timelines, internal post-mortems, and paging that resolves itself on recovery.",
 };
 
 export default function MonitorsPage() {
@@ -23,7 +23,7 @@ export default function MonitorsPage() {
         <div className="wrap relative z-10">
           <Chip variant="ok">
             <Radar className="h-3 w-3 inline mr-1" />
-            Uptime Monitors &amp; Status Pages
+            Uptime Monitors, Status Pages &amp; Incident Management
           </Chip>
           <h1 className="mt-6">
             Telemetry sees inside. <em>Monitors check from outside.</em>
@@ -146,6 +146,51 @@ export default function MonitorsPage() {
 
         <section className="wrap">
           <FeatureRow
+            eyebrow="Incident management"
+            title={
+              <>
+                Every outage gets <em>a timeline</em>
+              </>
+            }
+            description="Incidents open and resolve themselves from monitor state changes, with an Investigating entry when they open and a Resolved entry when the service comes back. You own the public story: rename an incident to something users understand and post statuspage-style updates while you work. Outages your monitors missed can be recorded by hand, backdated if needed, without ever touching the uptime numbers."
+            bullets={[
+              "Automatic open and resolve from monitor state transitions",
+              "Public titles and Investigating / Identified / Monitoring / Resolved updates",
+              "Record incidents by hand for outages the probes missed",
+              "Probe errors stay internal, the public page only sees your words",
+            ]}
+            image={{
+              src: "/images/monitors-incidents.png",
+              alt: "Managing a status page's incidents in Traceway: renaming, posting public timeline updates, and attaching a post-mortem",
+            }}
+          />
+        </section>
+
+        <section className="wrap">
+          <FeatureRow
+            reverse
+            eyebrow="Post-mortems"
+            title={
+              <>
+                The write-up lives <em>next to the incident</em>
+              </>
+            }
+            description="After the fire, write the post-mortem in the same tool: a WYSIWYG markdown editor with a raw-markdown toggle, tags, and a one-click link to the incident it covers. Post-mortems are internal, searchable across titles, content, and tags, and every edit is recorded in an activity log, so the next time something similar breaks, how it was fixed last time is one search away."
+            bullets={[
+              "WYSIWYG markdown editor, or flip to raw markdown and paste",
+              "Tag and link each write-up to its incident, one per incident",
+              "Search titles, content, and tags; filter by tag",
+              "Full activity log: who created it, who edited what, and when",
+            ]}
+            image={{
+              src: "/images/monitors-post-mortem.png",
+              alt: "Writing an internal post-mortem in Traceway with tags, a linked incident, and an activity log",
+            }}
+          />
+        </section>
+
+        <section className="wrap">
+          <FeatureRow
             eyebrow="Wired into alerting"
             title={
               <>
@@ -173,7 +218,7 @@ export default function MonitorsPage() {
             Stop paying for <em>a separate uptime tool</em>
           </>
         }
-        description="Monitors, status pages, alerting, and on-call in the same tool that holds your traces, logs, and errors. Open source if you self-host."
+        description="Monitors, status pages, incident timelines, post-mortems, alerting, and on-call in the same tool that holds your traces, logs, and errors. Open source if you self-host."
         primary={{
           label: "Read the Monitors docs",
           href: "https://docs.tracewayapp.com/learn/monitors",
@@ -215,6 +260,10 @@ export default function MonitorsPage() {
                       </p>
                     </>
                   ),
+                },
+                {
+                  q: "Does Traceway cover incident management, or just detection?",
+                  a: "The whole lifecycle. Monitors open and resolve incidents automatically, you give them public titles and post timeline updates (Investigating, Identified, Monitoring, Resolved) while you work, and outages the probes missed can be recorded by hand. Afterwards you write the internal post-mortem in a WYSIWYG markdown editor, tag it, link it to the incident, and find it again later by searching titles, content, and tags. Statuspage, incident tracker, and post-mortem wiki, without three more subscriptions.",
                 },
                 {
                   q: "What stops one slow probe from marking my site down?",

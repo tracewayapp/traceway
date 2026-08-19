@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { SvelteMap } from 'svelte/reactivity';
 	import { api } from '$lib/api';
 	import * as Card from '$lib/components/ui/card';
 	import * as Table from '$lib/components/ui/table';
@@ -43,7 +44,6 @@
 		traceId: string;
 		distributedTraceId?: string | null;
 		spans: Span[];
-		rootSpan: { id: string; name: string };
 		traceRecordedAt: string;
 	} = $props();
 
@@ -66,7 +66,7 @@
 	let distributedError = $state('');
 
 	const childSpanNameByHex = $derived.by(() => {
-		const m = new Map<string, string>();
+		const m = new SvelteMap<string, string>();
 		for (const s of spans) {
 			const hex = spanIdUuidToHex(s.id);
 			if (hex) m.set(hex, s.name);

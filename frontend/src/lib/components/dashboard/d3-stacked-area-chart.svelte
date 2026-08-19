@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { scaleUtc, scaleLinear } from 'd3-scale';
+	import { SvelteMap } from 'svelte/reactivity';
 	import { stack, area, stackOrderReverse } from 'd3-shape';
 	import { min, max } from 'd3-array';
 	import { formatDateTime } from '$lib/utils/formatters';
@@ -88,7 +89,7 @@
 		if (series.length === 0 || endpoints.length === 0) return [];
 
 		// Group by timestamp
-		const byTimestamp = new Map<number, StackedData>();
+		const byTimestamp = new SvelteMap<number, StackedData>();
 
 		for (const point of series) {
 			const ts = point.timestamp.getTime();

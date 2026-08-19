@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { page as pageState } from '$app/state';
@@ -23,6 +24,11 @@
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
 	import { ArrowRight } from '@lucide/svelte';
+	import type {
+		SessionActionEvent,
+		SessionLogEvent,
+		SessionReplayEvent
+	} from '$lib/types/exceptions';
 
 	type Session = {
 		id: string;
@@ -48,9 +54,9 @@
 
 	let session = $state<Session | null>(null);
 	let exceptions = $state<SessionException[]>([]);
-	let recordingEvents = $state<unknown[] | null>(null);
-	let recordingLogs = $state<any[]>([]);
-	let recordingActions = $state<any[]>([]);
+	let recordingEvents = $state<SessionReplayEvent[] | null>(null);
+	let recordingLogs = $state<SessionLogEvent[]>([]);
+	let recordingActions = $state<SessionActionEvent[]>([]);
 	let loading = $state(true);
 	let error = $state('');
 	let notFound = $state(false);
@@ -97,11 +103,11 @@
 			recordingEvents = recording?.events ?? [];
 			recordingLogs = recording?.logs ?? [];
 			recordingActions = recording?.actions ?? [];
-		} catch (e: any) {
-			if (e?.status === 404) {
+		} catch (e) {
+			if (getErrorStatus(e) === 404) {
 				notFound = true;
 			} else {
-				error = e?.message || 'Failed to load session';
+				error = getErrorMessage(e) || 'Failed to load session';
 			}
 		} finally {
 			loading = false;
@@ -164,7 +170,7 @@
 					{#key recordingEvents}
 						<SessionReplay
 							bind:this={replayRef}
-							events={recordingEvents as any}
+							events={recordingEvents}
 							onTimeUpdate={(ms) => (currentTimeMs = ms)}
 						/>
 					{/key}

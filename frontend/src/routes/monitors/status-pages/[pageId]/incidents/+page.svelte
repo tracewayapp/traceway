@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import { untrack } from 'svelte';
 	import * as Select from '$lib/components/ui/select';
 	import { Button } from '$lib/components/ui/button';
@@ -99,12 +100,12 @@
 			incidents = res.data || [];
 			total = res.pagination?.total || 0;
 			totalPages = res.pagination?.totalPages || 0;
-		} catch (e: any) {
+		} catch (e) {
 			if (seq !== loadSeq) return;
-			if (e?.status === 404) {
+			if (getErrorStatus(e) === 404) {
 				notFound = true;
 			} else {
-				error = e instanceof Error ? e.message : 'Failed to load incidents';
+				error = e instanceof Error ? getErrorMessage(e) : 'Failed to load incidents';
 			}
 		} finally {
 			if (seq === loadSeq) loading = false;
@@ -160,9 +161,9 @@
 			);
 			updateMessage = '';
 			await Promise.all([loadUpdates(incident.id), loadIncidents()]);
-		} catch (e: any) {
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to post the update');
+		} catch (e) {
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to post the update');
 			}
 		} finally {
 			posting = false;
@@ -183,9 +184,9 @@
 			);
 			deleteUpdateTarget = null;
 			await loadUpdates(incident.id);
-		} catch (e: any) {
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to delete the update');
+		} catch (e) {
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to delete the update');
 			}
 		} finally {
 			deletingUpdate = false;
@@ -207,9 +208,9 @@
 			);
 			editingTitle = false;
 			await loadIncidents();
-		} catch (e: any) {
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to update the title');
+		} catch (e) {
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to update the title');
 			}
 		} finally {
 			savingTitle = false;
@@ -227,9 +228,9 @@
 			deleteTarget = null;
 			expandedId = null;
 			await loadIncidents();
-		} catch (e: any) {
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to delete the incident');
+		} catch (e) {
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to delete the incident');
 			}
 		} finally {
 			deleting = false;

@@ -1,8 +1,8 @@
 import { browser } from '$app/environment';
-import { goto } from '$app/navigation';
 import { CalendarDate } from '@internationalized/date';
 import { DateTime } from 'luxon';
 import { getNow, parseISO } from './formatters';
+import { gotoHref } from './navigation';
 
 export const presetMinutes: Record<string, number> = {
 	'5m': 5,
@@ -112,8 +112,7 @@ export function updateUrl(
 
 	const newUrl = `${window.location.pathname}?${urlParams.toString()}`;
 
-	// eslint-disable-next-line svelte/no-navigation-without-resolve
-	goto(newUrl, {
+	gotoHref(newUrl, {
 		replaceState: !pushToHistory,
 		noScroll: true,
 		keepFocus: true
@@ -130,6 +129,9 @@ export function setTabParam(tab: string, options: { param?: string; clear?: stri
 		url.searchParams.delete(key);
 	}
 
-	// eslint-disable-next-line svelte/no-navigation-without-resolve
-	goto(url.toString(), { replaceState: true, noScroll: true, keepFocus: true });
+	gotoHref(url.pathname + url.search + url.hash, {
+		replaceState: true,
+		noScroll: true,
+		keepFocus: true
+	});
 }

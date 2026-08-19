@@ -22,6 +22,7 @@
 	import { ChevronDown } from '@lucide/svelte';
 	import { Toaster, toast } from 'svelte-sonner';
 	import { page } from '$app/state';
+	import { gotoHref } from '$lib/utils/navigation';
 	import { setupTraceway } from '@tracewayapp/svelte';
 	import { captureException } from '@tracewayapp/frontend';
 	import * as Tooltip from '$lib/components/ui/tooltip';
@@ -111,21 +112,23 @@
 					.then((response) => (response.ok ? response.json() : null))
 					.then((resolved) => {
 						if (resolved?.slug) {
-							// eslint-disable-next-line svelte/no-navigation-without-resolve
-							goto(`/status/${resolved.slug}`, { replaceState: true });
+							goto(resolve(`/status/${resolved.slug}` as '/'), { replaceState: true });
 						} else {
-							// eslint-disable-next-line svelte/no-navigation-without-resolve
-							goto(`/login?returnTo=${encodeURIComponent(returnTo)}`, { replaceState: true });
+							gotoHref(`/login?returnTo=${encodeURIComponent(returnTo)}`, {
+								replaceState: true
+							});
 						}
 					})
 					.catch(() => {
-						// eslint-disable-next-line svelte/no-navigation-without-resolve
-						goto(`/login?returnTo=${encodeURIComponent(returnTo)}`, { replaceState: true });
+						gotoHref(`/login?returnTo=${encodeURIComponent(returnTo)}`, {
+							replaceState: true
+						});
 					});
 				return;
 			}
-			// eslint-disable-next-line svelte/no-navigation-without-resolve
-			goto(`/login?returnTo=${encodeURIComponent(returnTo)}`, { replaceState: true });
+			gotoHref(`/login?returnTo=${encodeURIComponent(returnTo)}`, {
+				replaceState: true
+			});
 		}
 	});
 
@@ -162,7 +165,7 @@
 		) {
 			const canonical = new URL(newUrl);
 			canonical.searchParams.set('projectId', projectsState.currentProjectId);
-			goto(resolve(canonical.pathname + canonical.search), {
+			gotoHref(canonical.pathname + canonical.search, {
 				replaceState: true,
 				noScroll: true,
 				keepFocus: true
@@ -173,7 +176,7 @@
 	onMount(() => {
 		document.getElementById('splash')?.remove();
 		initTheme();
-		(window as any).captureException = captureException;
+		window.captureException = captureException;
 
 		if (authState.isAuthenticated) {
 			projectsState.loadProjects();
@@ -194,7 +197,7 @@
 	}
 
 	function handleProjectSelect(projectId: string) {
-		goto(resolve(`/?projectId=${projectId}`));
+		gotoHref(`/?projectId=${projectId}`);
 	}
 
 	function handleAddProjectClick() {

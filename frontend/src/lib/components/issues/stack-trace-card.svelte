@@ -1,5 +1,6 @@
 <script lang="ts">
 	import * as Card from '$lib/components/ui/card';
+	import { SvelteSet } from 'svelte/reactivity';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import { formatDateTime } from '$lib/utils/formatters';
 	import { getTimezone } from '$lib/state/timezone.svelte';
@@ -54,7 +55,7 @@
 	let expandedGroups = $state<Set<number>>(new Set());
 
 	function toggleGroup(index: number) {
-		const next = new Set(expandedGroups);
+		const next = new SvelteSet(expandedGroups);
 		if (next.has(index)) {
 			next.delete(index);
 		} else {

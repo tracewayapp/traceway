@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Table from '$lib/components/ui/table';
@@ -181,7 +182,7 @@
 	}
 
 	function toggleSelect(id: number) {
-		const newSet = new Set(selectedIds);
+		const newSet = new SvelteSet(selectedIds);
 		if (newSet.has(id)) {
 			newSet.delete(id);
 		} else {

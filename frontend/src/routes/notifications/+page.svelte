@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
+	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
+	import { resolveHref } from '$lib/utils/links';
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
 	import { page } from '$app/state';
@@ -42,13 +43,14 @@
 	import RuleDialog from './rule-dialog.svelte';
 	import SnoozeDialog from './snooze-dialog.svelte';
 	import { ruleTypeLabels } from './rule-types';
+	import type { NotificationChannelConfig, NotificationRuleConfig } from '$lib/types/notifications';
 
 	interface NotificationChannel {
 		id: number;
 		projectId: string;
 		name: string;
 		channelType: string;
-		config: any;
+		config: NotificationChannelConfig;
 		enabled: boolean;
 		createdAt: string;
 	}
@@ -59,7 +61,7 @@
 		channelId: number;
 		name: string;
 		ruleType: string;
-		config: any;
+		config: NotificationRuleConfig;
 		enabled: boolean;
 		cooldownMinutes: number;
 		severity: string;
@@ -216,7 +218,7 @@
 			channels = res.channels || [];
 		} catch (e: unknown) {
 			channels = [];
-			channelsError = e instanceof Error ? e.message : 'Failed to load channels';
+			channelsError = e instanceof Error ? getErrorMessage(e) : 'Failed to load channels';
 		} finally {
 			channelsLoading = false;
 		}
@@ -232,7 +234,7 @@
 			rules = res.rules || [];
 		} catch (e: unknown) {
 			rules = [];
-			rulesError = e instanceof Error ? e.message : 'Failed to load rules';
+			rulesError = e instanceof Error ? getErrorMessage(e) : 'Failed to load rules';
 		} finally {
 			rulesLoading = false;
 		}
@@ -270,7 +272,7 @@
 			history = [];
 			historyTotal = 0;
 			historyTotalPages = 0;
-			historyError = e instanceof Error ? e.message : 'Failed to load history';
+			historyError = e instanceof Error ? getErrorMessage(e) : 'Failed to load history';
 		} finally {
 			historyLoading = false;
 		}
@@ -324,9 +326,9 @@
 			toast.success('Test notification sent');
 			showTestChannelDialog = false;
 			testingChannel = null;
-		} catch (e: any) {
-			if (e.status === 422) {
-				testError = e.message || 'Validation failed';
+		} catch (e) {
+			if (getErrorStatus(e) === 422) {
+				testError = getErrorMessage(e) || 'Validation failed';
 			} else {
 				toast.error('An unexpected error has occurred');
 				showTestChannelDialog = false;
@@ -722,7 +724,7 @@
 									<Table.Cell class="max-w-xs truncate">
 										{#if item.url}
 											<a
-												href={resolve(item.url)}
+												{...{ href: resolveHref(item.url) }}
 												class="text-blue-600 hover:underline dark:text-blue-400">{item.subject}</a
 											>
 										{:else}

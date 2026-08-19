@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api';
 	import {
@@ -182,13 +183,13 @@
 			stats = response.stats || null;
 			total = response.pagination.total;
 			totalPages = response.pagination.totalPages;
-		} catch (e: any) {
+		} catch (e) {
 			console.error(e);
-			errorStatus = e.status || 0;
-			if (e.status === 404) {
+			errorStatus = getErrorStatus(e) || 0;
+			if (getErrorStatus(e) === 404) {
 				notFound = true;
 			} else {
-				error = e.message || 'Failed to load data';
+				error = getErrorMessage(e) || 'Failed to load data';
 			}
 		} finally {
 			loading = false;

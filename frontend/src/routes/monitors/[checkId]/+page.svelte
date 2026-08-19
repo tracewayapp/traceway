@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import { onMount } from 'svelte';
+	import { SvelteURLSearchParams } from 'svelte/reactivity';
 	import { api } from '$lib/api';
 	import { formatDurationMs, formatDateTime } from '$lib/utils/formatters';
 	import * as Table from '$lib/components/ui/table';
@@ -140,11 +142,11 @@
 			});
 			check = response.check;
 			incidents = response.incidents || [];
-		} catch (e: any) {
-			if (e.status === 404) {
+		} catch (e) {
+			if (getErrorStatus(e) === 404) {
 				notFound = true;
 			} else {
-				error = e.message || 'Failed to load the monitor';
+				error = getErrorMessage(e) || 'Failed to load the monitor';
 			}
 		}
 	}
@@ -223,9 +225,9 @@
 				loadCheck();
 				loadResults();
 			}, 3000);
-		} catch (e: any) {
-			if (e?.status !== 403) {
-				toast.error(e.message || 'Failed to queue the run');
+		} catch (e) {
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to queue the run');
 			}
 		} finally {
 			runningNow = false;
@@ -251,9 +253,9 @@
 			);
 			check = response;
 			toast.success('Successfully updated the Monitor', { position: 'top-center' });
-		} catch (e: any) {
-			if (e?.status !== 403) {
-				toast.error(e.message || 'Failed to update the monitor');
+		} catch (e) {
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to update the monitor');
 			}
 		} finally {
 			togglingPause = false;
@@ -269,9 +271,9 @@
 			toast.success('Successfully deleted the Monitor');
 			monitorsState.refreshDownCount();
 			goto(resolve('/monitors'));
-		} catch (e: any) {
-			if (e?.status !== 403) {
-				toast.error(e.message || 'Failed to delete the monitor');
+		} catch (e) {
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to delete the monitor');
 			}
 			deleting = false;
 			deleteOpen = false;
@@ -359,7 +361,7 @@
 			screenshotUrl = '';
 		}
 		try {
-			const params = new URLSearchParams({ key });
+			const params = new SvelteURLSearchParams({ key });
 			if (projectsState.currentProjectId) {
 				params.set('projectId', projectsState.currentProjectId);
 			}
@@ -397,7 +399,7 @@
 		outputLoading = true;
 		outputText = '';
 		try {
-			const params = new URLSearchParams({ key });
+			const params = new SvelteURLSearchParams({ key });
 			if (projectsState.currentProjectId) {
 				params.set('projectId', projectsState.currentProjectId);
 			}

@@ -1,4 +1,14 @@
 import { goto } from '$app/navigation';
+import { resolve } from '$app/paths';
+
+import { splitHref } from './links';
+
+export function gotoHref(href: string, options?: Parameters<typeof goto>[1]) {
+	const { pathname, suffix } = splitHref(href);
+	let destination = resolve((pathname || '/') as '/');
+	destination += suffix;
+	return goto(destination, options);
+}
 
 // Only allow same-origin, absolute-path redirects. Reject absolute URLs
 // (https://evil.com), protocol-relative (//evil.com), and backslash tricks
@@ -76,8 +86,7 @@ export function createRowClickHandlerWithNavigate(
 		if (event.ctrlKey || event.metaKey) {
 			window.open(finalHref, '_blank');
 		} else {
-			// eslint-disable-next-line svelte/no-navigation-without-resolve
-			goto(finalHref);
+			gotoHref(finalHref);
 		}
 	};
 }

@@ -48,7 +48,7 @@
 		try {
 			await onConfirm(linkedPages > 0 && resolvePages);
 			onOpenChange(false);
-		} catch (e) {
+		} catch {
 			// Error handling done in parent, just reset loading
 		} finally {
 			loading = false;

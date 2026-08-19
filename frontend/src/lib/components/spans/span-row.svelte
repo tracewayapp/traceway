@@ -75,7 +75,7 @@
 	let isHovered = $state(false);
 	let barElement: HTMLDivElement;
 
-	function handleMouseEnter(e: MouseEvent) {
+	function handleMouseEnter() {
 		isHovered = true;
 	}
 

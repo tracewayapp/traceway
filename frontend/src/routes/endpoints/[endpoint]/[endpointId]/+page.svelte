@@ -10,7 +10,7 @@
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import { projectsState } from '$lib/state/projects.svelte';
-	import { ArrowLeft, ArrowRight, TriangleAlert, ClipboardList } from '@lucide/svelte';
+	import { ArrowRight, TriangleAlert, ClipboardList } from '@lucide/svelte';
 	import { LabelValue } from '$lib/components/ui/label-value';
 	import { AttributesGrid } from '$lib/components/ui/attributes-grid/index.js';
 	import SpanWaterfall from '$lib/components/spans/span-waterfall.svelte';
@@ -281,10 +281,6 @@
 			traceId={traceIdUuidToHex(response.endpoint.id)}
 			distributedTraceId={response.endpoint.distributedTraceId ?? null}
 			spans={response.spans ?? []}
-			rootSpan={{
-				id: response.endpoint.spanId ?? response.endpoint.id,
-				name: response.endpoint.endpoint
-			}}
 			traceRecordedAt={response.endpoint.recordedAt}
 		/>
 

@@ -1,8 +1,9 @@
 <script lang="ts">
+	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import { createRowClickHandler } from '$lib/utils/navigation';
-	import { formatDuration, formatRelativeTime, truncateStackTrace } from '$lib/utils/formatters';
+	import { formatDuration, formatRelativeTime } from '$lib/utils/formatters';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import * as Table from '$lib/components/ui/table';
@@ -17,7 +18,6 @@
 		Star,
 		Unplug
 	} from '@lucide/svelte';
-	import * as Card from '$lib/components/ui/card';
 	import WidgetGrid from '$lib/components/dashboard/widget-grid.svelte';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { ImpactBadge } from '$lib/components/ui/impact-badge';
@@ -27,9 +27,7 @@
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import {
 		projectsState,
-		type ProjectWithToken,
 		isFrontendFramework,
-		isJsFramework,
 		isCloudflareFramework,
 		isOtelFramework
 	} from '$lib/state/projects.svelte';
@@ -60,6 +58,7 @@
 	import CopyableCodeBlock from '$lib/components/setup/copyable-code-block.svelte';
 	import CopyButton from '$lib/components/traceway/copy-button.svelte';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
+	import type { DashboardWidgetConfig } from '$lib/types/dashboard';
 
 	const timezone = $derived(getTimezone());
 
@@ -69,7 +68,7 @@
 			isFrontendFramework(projectsState.currentProject.framework)
 		) {
 			// index redirects to issues on a frontend project
-			goto(resolve('issues'));
+			goto(resolve('/issues'));
 		}
 	});
 
@@ -104,7 +103,7 @@
 		widgetId: string;
 		title: string;
 		widgetType: string;
-		config: any;
+		config: DashboardWidgetConfig;
 		homePosition: number;
 		homeColSpan: number;
 		homeSize: string;
@@ -116,7 +115,7 @@
 		widgetId: string;
 		title: string;
 		widgetType: string;
-		config: any;
+		config: DashboardWidgetConfig;
 		position: number;
 		isStarred: boolean;
 	};
@@ -260,9 +259,9 @@ service:
 				position: w.homePosition,
 				isStarred: true
 			}));
-		} catch (e: any) {
-			errorStatus = e.status || 0;
-			error = e.message || 'Failed to load dashboard data';
+		} catch (e) {
+			errorStatus = getErrorStatus(e) || 0;
+			error = getErrorMessage(e) || 'Failed to load dashboard data';
 			console.error(e);
 		} finally {
 			if (showFullPageLoading) {
@@ -283,12 +282,12 @@ service:
 				{ ids },
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
-		} catch (e: any) {
+		} catch (e) {
 			for (const w of starredWidgets) {
 				w.position = previousPositions.get(w.id) ?? w.position;
 			}
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to reorder widgets');
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to reorder widgets');
 			}
 			await loadDashboard(false);
 		}
@@ -307,11 +306,11 @@ service:
 			await api.put(`/starred-widgets/${target.id}`, layout, {
 				projectId: projectsState.currentProjectId ?? undefined
 			});
-		} catch (e: any) {
+		} catch (e) {
 			target.config.colSpan = previous.colSpan;
 			target.config.size = previous.size;
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to resize widget');
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to resize widget');
 			}
 		}
 	}
@@ -327,10 +326,10 @@ service:
 				{},
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
-		} catch (e: any) {
+		} catch (e) {
 			starredWidgets = previous;
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to unstar widget');
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to unstar widget');
 			}
 		}
 	}

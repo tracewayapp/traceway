@@ -11,13 +11,14 @@
 	import { api } from '$lib/api';
 	import { projectsState, isFrontendFramework } from '$lib/state/projects.svelte';
 	import { ruleTypeOptions } from './rule-types';
+	import type { NotificationChannelConfig, NotificationRuleConfig } from '$lib/types/notifications';
 
 	interface NotificationChannel {
 		id: number;
 		projectId: string;
 		name: string;
 		channelType: string;
-		config: any;
+		config: NotificationChannelConfig;
 		enabled: boolean;
 		createdAt: string;
 	}
@@ -28,7 +29,7 @@
 		channelId: number;
 		name: string;
 		ruleType: string;
-		config: any;
+		config: NotificationRuleConfig;
 		enabled: boolean;
 		cooldownMinutes: number;
 		severity: string;
@@ -281,7 +282,7 @@
 		}
 	}
 
-	function buildConfig(): any {
+	function buildConfig(): NotificationRuleConfig {
 		switch (ruleType) {
 			case 'error_rate_threshold':
 				return { thresholdPercent, lookbackMinutes, minRequests };

@@ -78,7 +78,7 @@
 			{#key recordingEvents}
 				<SessionReplay
 					bind:this={replayRef}
-					events={recordingEvents as any}
+					events={recordingEvents}
 					onTimeUpdate={(ms) => (currentTimeMs = ms)}
 				/>
 			{/key}

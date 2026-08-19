@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { getErrorMessage } from '$lib/utils/errors';
 	import { onMount, onDestroy } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { browser } from '$app/environment';
 	import { createRowClickHandler } from '$lib/utils/navigation';
 	import { api } from '$lib/api';
@@ -187,9 +189,9 @@
 
 			// Clear selection when data changes
 			selectedHashes = new Set();
-		} catch (e: any) {
+		} catch (e) {
 			console.error(e);
-			error = e.message || 'Failed to load data';
+			error = getErrorMessage(e) || 'Failed to load data';
 		} finally {
 			loading = false;
 		}
@@ -260,7 +262,7 @@
 	}
 
 	function toggleSelect(hash: string) {
-		const newSet = new Set(selectedHashes);
+		const newSet = new SvelteSet(selectedHashes);
 		if (newSet.has(hash)) {
 			newSet.delete(hash);
 		} else {
@@ -291,9 +293,9 @@
 			toast.success('Successfully archived the Issue' + (selectedHashes.size > 1 ? 's' : ''));
 			selectedHashes = new Set();
 			await loadData();
-		} catch (e: any) {
+		} catch (e) {
 			console.error('Archive failed:', e);
-			error = e.message || 'Failed to archive issues';
+			error = getErrorMessage(e) || 'Failed to archive issues';
 			throw e;
 		} finally {
 			archiving = false;

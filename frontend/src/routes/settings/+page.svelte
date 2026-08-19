@@ -17,7 +17,7 @@
 
 	async function loadBillingModule() {
 		try {
-			// @ts-ignore - $billing alias only exists when billing extension is available
+			// @ts-expect-error - $billing alias only exists when billing extension is available
 			const module = await import('$billing/billing-tab.svelte');
 			BillingTab = module.default;
 		} catch {

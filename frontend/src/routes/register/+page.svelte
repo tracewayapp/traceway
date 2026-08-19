@@ -13,10 +13,9 @@
 		CardTitle,
 		CardDescription
 	} from '$lib/components/ui/card';
-	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import * as Select from '$lib/components/ui/select';
-	import { CircleAlert, Check } from '@lucide/svelte';
+	import { Check } from '@lucide/svelte';
 	import { authState } from '$lib/state/auth.svelte';
 	import { projectsState, FRAMEWORK_LABELS, type Framework } from '$lib/state/projects.svelte';
 	import { themeState } from '$lib/state/theme.svelte';

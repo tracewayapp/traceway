@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import { api } from '$lib/api';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
@@ -122,12 +123,12 @@
 					});
 				}
 			}
-		} catch (e: any) {
+		} catch (e) {
 			console.error(e);
-			if (e.status === 404) {
+			if (getErrorStatus(e) === 404) {
 				notFound = true;
 			} else {
-				error = e.message || 'Failed to load exception details';
+				error = getErrorMessage(e) || 'Failed to load exception details';
 			}
 		} finally {
 			loading = false;
@@ -144,7 +145,7 @@
 			);
 			toast.success('Successfully archived the Issue');
 			goto(resolve('/issues'));
-		} catch (e: any) {
+		} catch (e) {
 			console.error('Archive failed:', e);
 			throw e;
 		} finally {
@@ -153,7 +154,7 @@
 	}
 
 	$effect(() => {
-		data.exceptionId;
+		void data.exceptionId;
 		loadData();
 	});
 </script>

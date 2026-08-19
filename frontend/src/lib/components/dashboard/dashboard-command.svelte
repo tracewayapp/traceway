@@ -1,9 +1,8 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
+	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import * as Command from '$lib/components/ui/command';
 	import { api } from '$lib/api';
-	import { goto } from '$app/navigation';
-	import { addStickyParamsToHref } from '$lib/utils/navigation';
+	import { addStickyParamsToHref, gotoHref } from '$lib/utils/navigation';
 	import { page } from '$app/state';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { authState } from '$lib/state/auth.svelte';
@@ -111,7 +110,7 @@
 		const target = addStickyParamsToHref(`/dashboards${params}`, 'preset', 'from', 'to');
 		const current = page.url.pathname + page.url.search;
 		if (current === target) return;
-		goto(resolve(target));
+		gotoHref(target);
 	}
 
 	function runAction(action: 'create' | 'import' | 'grafana') {
@@ -165,9 +164,9 @@
 				toast.success('Successfully applied the Dashboard');
 				finishWithDashboard(dashboard.id);
 			}
-		} catch (e: any) {
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to add the dashboard');
+		} catch (e) {
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to add the dashboard');
 			}
 		} finally {
 			busy = false;
@@ -188,9 +187,9 @@
 			);
 			toast.success('Successfully installed the Dashboard');
 			finishWithDashboard(dashboard.id);
-		} catch (e: any) {
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to install the template');
+		} catch (e) {
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to install the template');
 			}
 		} finally {
 			busy = false;

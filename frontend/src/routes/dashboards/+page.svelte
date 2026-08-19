@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
+	import { SvelteURLSearchParams } from 'svelte/reactivity';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Checkbox } from '$lib/components/ui/checkbox';
@@ -49,7 +51,7 @@
 	import EmptyState from '$lib/components/traceway/empty-state.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { toast } from 'svelte-sonner';
-	import type { DiscoveredMetric } from '$lib/types/dashboard';
+	import type { DashboardWidgetConfig, DiscoveredMetric } from '$lib/types/dashboard';
 
 	const timezone = $derived(getTimezone());
 	const initialTimezone = getTimezone();
@@ -58,7 +60,7 @@
 		id: string;
 		title: string;
 		widgetType: string;
-		config: any;
+		config: DashboardWidgetConfig;
 		position: number;
 		isStarred?: boolean;
 	};
@@ -125,7 +127,11 @@
 
 	let showWidgetConfig = $state(false);
 	let editingWidget = $state<Widget | null>(null);
-	let widgetPrefill = $state<{ title: string; widgetType: string; config: any } | null>(null);
+	let widgetPrefill = $state<{
+		title: string;
+		widgetType: string;
+		config: DashboardWidgetConfig;
+	} | null>(null);
 	let availableMetrics = $state<DiscoveredMetric[]>([]);
 	let widgetConfigError = $state('');
 
@@ -200,8 +206,8 @@
 	});
 
 	$effect(() => {
-		dashboards;
-		lastUpdated;
+		void dashboards;
+		void lastUpdated;
 		if (tabsRowEl) {
 			requestAnimationFrame(() => checkOverflow());
 		}
@@ -236,9 +242,9 @@
 			if (dashboards.length > 0 && !dashboards.some((d) => String(d.id) === activeTabId)) {
 				activeTabId = String(dashboards[0].id);
 			}
-		} catch (e: any) {
+		} catch (e) {
 			console.error('Failed to load dashboards:', e);
-			listError = e?.message || 'Failed to load dashboards';
+			listError = getErrorMessage(e) || 'Failed to load dashboards';
 		} finally {
 			loading = false;
 		}
@@ -257,7 +263,7 @@
 			if (seq !== loadSeq) return;
 			activeDashboard = {
 				...result,
-				widgets: (result.widgets ?? []).map((w: any, i: number) => ({ ...w, position: i }))
+				widgets: (result.widgets ?? []).map((w: Widget, i: number) => ({ ...w, position: i }))
 			};
 			lastUpdated = new Date();
 		} catch (e) {
@@ -337,10 +343,10 @@
 				{ dashboardIds },
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
-		} catch (e: any) {
+		} catch (e) {
 			dashboards = previous;
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to reorder dashboards');
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to reorder dashboards');
 			}
 			await loadDashboards();
 		}
@@ -360,9 +366,9 @@
 			newName = '';
 			await loadDashboards();
 			activeTabId = String(dashboard.id);
-		} catch (e: any) {
-			if (e?.status === 422 || e?.status === 403) {
-				createError = e.message;
+		} catch (e) {
+			if (getErrorStatus(e) === 422 || getErrorStatus(e) === 403) {
+				createError = getErrorMessage(e);
 			} else {
 				console.error('Failed to create dashboard:', e);
 			}
@@ -391,9 +397,9 @@
 			showRenameDialog = false;
 			activeDashboard.name = renameName;
 			await loadDashboards();
-		} catch (e: any) {
-			if (e?.status === 422 || e?.status === 403) {
-				renameError = e.message;
+		} catch (e) {
+			if (getErrorStatus(e) === 422 || getErrorStatus(e) === 403) {
+				renameError = getErrorMessage(e);
 			} else {
 				console.error('Failed to rename dashboard:', e);
 			}
@@ -414,9 +420,9 @@
 			activeTabId = '';
 			activeDashboard = null;
 			await loadDashboards();
-		} catch (e: any) {
-			if (e?.status === 422 || e?.status === 403) {
-				deleteError = e.message;
+		} catch (e) {
+			if (getErrorStatus(e) === 422 || getErrorStatus(e) === 403) {
+				deleteError = getErrorMessage(e);
 			} else {
 				console.error('Failed to delete dashboard:', e);
 			}
@@ -440,9 +446,9 @@
 			activeTabId = '';
 			activeDashboard = null;
 			await loadDashboards();
-		} catch (e: any) {
-			if (e?.status === 422 || e?.status === 403) {
-				removeError = e.message;
+		} catch (e) {
+			if (getErrorStatus(e) === 422 || getErrorStatus(e) === 403) {
+				removeError = getErrorMessage(e);
 			} else {
 				console.error('Failed to remove dashboard from project:', e);
 			}
@@ -475,21 +481,26 @@
 	async function saveJson() {
 		if (!activeDashboard) return;
 		jsonError = '';
-		let parsed: any;
+		let parsed: unknown;
 		try {
 			parsed = JSON.parse(jsonText);
 		} catch {
 			jsonError = 'The document is not valid JSON.';
 			return;
 		}
+		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+			jsonError = 'The document must contain a JSON object.';
+			return;
+		}
+		const document = parsed as Record<string, unknown>;
 		jsonSaving = true;
 		try {
 			await api.put(
 				`/dashboards/${activeDashboard.id}`,
 				{
-					name: parsed.name,
-					description: parsed.description ?? '',
-					definition: { schemaVersion: 1, widgets: parsed.widgets ?? [] }
+					name: document.name,
+					description: document.description ?? '',
+					definition: { schemaVersion: 1, widgets: document.widgets ?? [] }
 				},
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
@@ -497,9 +508,9 @@
 			showJsonDialog = false;
 			await loadDashboards();
 			await loadDashboardWidgets(activeTabId);
-		} catch (e: any) {
-			if (e?.status === 422 || e?.status === 403) {
-				jsonError = e.message;
+		} catch (e) {
+			if (getErrorStatus(e) === 422 || getErrorStatus(e) === 403) {
+				jsonError = getErrorMessage(e);
 			} else {
 				console.error('Failed to save dashboard JSON:', e);
 			}
@@ -526,8 +537,8 @@
 			});
 			const slug = activeDashboard.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 			downloadJson(`${slug || 'dashboard'}.dashboard.json`, doc);
-		} catch (e: any) {
-			toast.error(e?.message || 'Failed to export dashboard');
+		} catch (e) {
+			toast.error(getErrorMessage(e) || 'Failed to export dashboard');
 		}
 	}
 
@@ -559,11 +570,11 @@
 			if (activeTabId && dashboards.some((d) => String(d.id) === activeTabId)) {
 				await loadDashboardWidgets(activeTabId);
 			}
-		} catch (e: any) {
-			if (e?.status === 422) {
-				applyError = e.message;
+		} catch (e) {
+			if (getErrorStatus(e) === 422) {
+				applyError = getErrorMessage(e);
 			} else {
-				applyError = e?.message || 'Failed to apply dashboard';
+				applyError = getErrorMessage(e) || 'Failed to apply dashboard';
 			}
 		} finally {
 			applying = false;
@@ -586,7 +597,7 @@
 
 	async function importDashboards() {
 		importError = '';
-		let parsed: any;
+		let parsed: unknown;
 		try {
 			parsed = JSON.parse(importText);
 		} catch {
@@ -608,11 +619,11 @@
 			if (result.dashboards?.length) {
 				activeTabId = String(result.dashboards[0].id);
 			}
-		} catch (e: any) {
-			if (e?.status === 422) {
-				importError = e.message;
+		} catch (e) {
+			if (getErrorStatus(e) === 422) {
+				importError = getErrorMessage(e);
 			} else {
-				importError = e?.message || 'Failed to import dashboards';
+				importError = getErrorMessage(e) || 'Failed to import dashboards';
 			}
 		} finally {
 			importing = false;
@@ -621,7 +632,7 @@
 
 	async function importGrafana() {
 		grafanaError = '';
-		let parsed: any;
+		let parsed: unknown;
 		try {
 			parsed = JSON.parse(grafanaText);
 		} catch {
@@ -645,11 +656,11 @@
 			if (grafanaWarnings.length === 0) {
 				showGrafanaDialog = false;
 			}
-		} catch (e: any) {
-			if (e?.status === 422) {
-				grafanaError = e.message;
+		} catch (e) {
+			if (getErrorStatus(e) === 422) {
+				grafanaError = getErrorMessage(e);
 			} else {
-				grafanaError = e?.message || 'Failed to import the Grafana dashboard';
+				grafanaError = getErrorMessage(e) || 'Failed to import the Grafana dashboard';
 			}
 		} finally {
 			grafanaImporting = false;
@@ -760,9 +771,9 @@
 			showDeleteWidgetDialog = false;
 			deletingWidget = null;
 			await loadDashboardWidgets(activeTabId);
-		} catch (e: any) {
-			if (e?.status === 422 || e?.status === 403) {
-				deleteWidgetError = e.message;
+		} catch (e) {
+			if (getErrorStatus(e) === 422 || getErrorStatus(e) === 403) {
+				deleteWidgetError = getErrorMessage(e);
 			} else {
 				console.error('Failed to delete widget:', e);
 			}
@@ -783,10 +794,10 @@
 				{},
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
-		} catch (e: any) {
+		} catch (e) {
 			target.isStarred = previous;
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to update star');
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to update star');
 			}
 		}
 	}
@@ -804,12 +815,12 @@
 				{ widgetIds },
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
-		} catch (e: any) {
+		} catch (e) {
 			for (const w of activeDashboard.widgets) {
 				w.position = previousPositions.get(w.id) ?? w.position;
 			}
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to reorder widgets');
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to reorder widgets');
 			}
 			await loadDashboardWidgets(activeTabId);
 		}
@@ -829,9 +840,9 @@
 			);
 			toast.success('Successfully duplicated the Widget');
 			await loadDashboardWidgets(activeTabId);
-		} catch (e: any) {
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to duplicate widget');
+		} catch (e) {
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to duplicate widget');
 			}
 		}
 	}
@@ -848,15 +859,19 @@
 				{ title: target.title, widgetType: target.widgetType, config: target.config },
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
-		} catch (e: any) {
+		} catch (e) {
 			target.config = previousConfig;
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to resize widget');
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to resize widget');
 			}
 		}
 	}
 
-	async function handleWidgetSave(data: { title: string; widgetType: string; config: any }) {
+	async function handleWidgetSave(data: {
+		title: string;
+		widgetType: string;
+		config: DashboardWidgetConfig;
+	}) {
 		if (!activeDashboard) return;
 
 		widgetConfigError = '';
@@ -876,9 +891,9 @@
 			editingWidget = null;
 			widgetPrefill = null;
 			await loadDashboardWidgets(activeTabId);
-		} catch (e: any) {
-			if (e?.status === 422 || e?.status === 403) {
-				widgetConfigError = e.message;
+		} catch (e) {
+			if (getErrorStatus(e) === 422 || getErrorStatus(e) === 403) {
+				widgetConfigError = getErrorMessage(e);
 			} else {
 				console.error('Failed to save widget:', e);
 			}
@@ -894,7 +909,7 @@
 		if (search === handledSearch) return;
 		handledSearch = search;
 
-		const params = new URLSearchParams(search);
+		const params = new SvelteURLSearchParams(search);
 		const action = params.get('action');
 		const dashboardParam = params.get('dashboard');
 		const addMetric = params.get('addMetric');
@@ -904,7 +919,9 @@
 		params.delete('dashboard');
 		params.delete('addMetric');
 		const query = params.toString();
-		replaceState(resolve(page.url.pathname + (query ? '?' + query : '')), {});
+		let target = resolve(page.url.pathname as '/');
+		target += query ? '?' + query : '';
+		replaceState(target, {});
 
 		if (action === 'create') showCreateDialog = true;
 		else if (action === 'import') showImportDialog = true;

@@ -103,16 +103,6 @@
 		updateDateTime();
 	}
 
-	function handleSecondsInput(e: Event) {
-		const input = e.target as HTMLInputElement;
-		let val = parseInt(input.value) || 0;
-		if (val < 0) val = 0;
-		if (val > 59) val = 59;
-		seconds = val;
-		input.value = String(val).padStart(2, '0');
-		updateDateTime();
-	}
-
 	function handlePeriodChange(newPeriod: string | undefined) {
 		if (newPeriod === 'AM' || newPeriod === 'PM') {
 			period = newPeriod;

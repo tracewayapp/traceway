@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { SvelteURLSearchParams } from 'svelte/reactivity';
 	import * as Table from '$lib/components/ui/table';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
@@ -47,7 +48,7 @@
 		loading = true;
 		error = '';
 		try {
-			const params = new URLSearchParams();
+			const params = new SvelteURLSearchParams();
 			if (searchQuery.trim()) params.set('search', searchQuery.trim());
 			for (const tag of tagFilters) params.append('tag', tag);
 			params.set('page', String(currentPage));

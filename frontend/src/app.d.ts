@@ -15,6 +15,7 @@ declare global {
 	const __TRACEWAY_URL__: string;
 
 	interface Window {
+		captureException: typeof import('@tracewayapp/frontend').captureException;
 		turnstile: {
 			render: (
 				element: HTMLElement,

@@ -16,12 +16,13 @@
 		Check
 	} from '@lucide/svelte';
 	import WidgetRenderer from './widget-renderer.svelte';
+	import type { DashboardWidgetConfig } from '$lib/types/dashboard';
 
 	type Widget = {
 		id: number | string;
 		title: string;
 		widgetType: string;
-		config: any;
+		config: DashboardWidgetConfig;
 		position: number;
 		isStarred?: boolean;
 	};

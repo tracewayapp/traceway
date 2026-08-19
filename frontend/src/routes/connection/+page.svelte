@@ -8,7 +8,6 @@
 	} from '$lib/components/ui/card';
 	import {
 		projectsState,
-		type ProjectWithToken,
 		isJsFramework,
 		isOtelFramework,
 		isCloudflareFramework,

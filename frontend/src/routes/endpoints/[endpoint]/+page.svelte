@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import { onMount, onDestroy } from 'svelte';
+	import { SvelteURLSearchParams } from 'svelte/reactivity';
 	import { api } from '$lib/api';
 	import {
 		formatDuration,
@@ -24,7 +26,7 @@
 	import { isHealthcheckEndpoint } from '$lib/utils/healthcheck';
 	import AttributesDisplay from '$lib/components/attributes-display.svelte';
 	import { createRowClickHandler } from '$lib/utils/navigation';
-	import { goto } from '$app/navigation';
+	import { gotoHref } from '$lib/utils/navigation';
 	import PaginationFooter from '$lib/components/ui/pagination-footer/pagination-footer.svelte';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
 	import StatRow from '$lib/components/traceway/stat-row.svelte';
@@ -37,7 +39,6 @@
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { Badge } from '$lib/components/ui/badge';
 	import { toast } from 'svelte-sonner';
-	import { resolve } from '$app/paths';
 	import {
 		presetMinutes,
 		getTimeRangeFromPreset,
@@ -174,18 +175,18 @@
 	}
 
 	function goBackToEndpoints(event: MouseEvent) {
-		const params = new URLSearchParams();
+		const params = new SvelteURLSearchParams();
 		if (selectedPreset) {
 			params.set('preset', selectedPreset);
 		} else {
 			params.set('from', getFromDateTimeUTC());
 			params.set('to', getToDateTimeUTC());
 		}
-		const href = resolve('/endpoints') + '?' + params.toString();
+		const href = '/endpoints?' + params.toString();
 		if (event.ctrlKey || event.metaKey) {
 			window.open(href, '_blank');
 		} else {
-			goto(resolve(href));
+			gotoHref(href);
 		}
 	}
 
@@ -251,13 +252,13 @@
 			stats = response.stats || null;
 			total = response.pagination.total;
 			totalPages = response.pagination.totalPages;
-		} catch (e: any) {
+		} catch (e) {
 			console.error(e);
-			errorStatus = e.status || 0;
-			if (e.status === 404) {
+			errorStatus = getErrorStatus(e) || 0;
+			if (getErrorStatus(e) === 404) {
 				notFound = true;
 			} else {
-				error = e.message || 'Failed to load data';
+				error = getErrorMessage(e) || 'Failed to load data';
 			}
 		} finally {
 			loading = false;
@@ -318,8 +319,8 @@
 			reason = reasonInput;
 			showSlowDialog = false;
 			toast.success('Successfully updated the Expected Performance', { position: 'top-center' });
-		} catch (e: any) {
-			slowError = e.message || 'Failed to save';
+		} catch (e) {
+			slowError = getErrorMessage(e) || 'Failed to save';
 		} finally {
 			slowLoading = false;
 		}

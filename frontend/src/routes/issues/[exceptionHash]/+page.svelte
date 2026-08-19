@@ -1,9 +1,9 @@
 <script lang="ts">
+	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api';
-	import { Button } from '$lib/components/ui/button';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import { projectsState, isJsFramework, isJsLanguage } from '$lib/state/projects.svelte';
@@ -12,7 +12,6 @@
 	import { toast } from 'svelte-sonner';
 	import ArchiveConfirmationDialog from '$lib/components/archive-confirmation-dialog.svelte';
 	import OncallOwner from '$lib/components/traceway/oncall-owner.svelte';
-	import Archive from '@lucide/svelte/icons/archive';
 	import type {
 		ExceptionGroup,
 		ExceptionOccurrence,
@@ -108,12 +107,12 @@
 					console.warn('Could not load linked trace:', txError);
 				}
 			}
-		} catch (e: any) {
+		} catch (e) {
 			console.error(e);
-			if (e.status === 404) {
+			if (getErrorStatus(e) === 404) {
 				notFound = true;
 			} else {
-				error = e.message || 'Failed to load exception details';
+				error = getErrorMessage(e) || 'Failed to load exception details';
 			}
 		} finally {
 			loading = false;
@@ -130,7 +129,7 @@
 			);
 			toast.success('Successfully archived the Issue');
 			goto(resolve('/issues'));
-		} catch (e: any) {
+		} catch (e) {
 			console.error('Archive failed:', e);
 			throw e;
 		} finally {

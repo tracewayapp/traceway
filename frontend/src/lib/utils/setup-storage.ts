@@ -15,7 +15,9 @@ export function getSetupMode(): SetupMode {
 		if (stored === 'ai' || stored === 'manual') {
 			return stored;
 		}
-	} catch {}
+	} catch {
+		return 'ai';
+	}
 
 	return 'ai';
 }
@@ -25,7 +27,9 @@ export function setSetupMode(mode: SetupMode): void {
 
 	try {
 		localStorage.setItem(MODE_KEY, mode);
-	} catch {}
+	} catch {
+		return;
+	}
 }
 
 export function getOtelTarget(): OtelTargetId {
@@ -36,7 +40,9 @@ export function getOtelTarget(): OtelTargetId {
 		if (stored && OTEL_TARGETS.some((t) => t.id === stored)) {
 			return stored as OtelTargetId;
 		}
-	} catch {}
+	} catch {
+		return OTEL_TARGETS[0].id;
+	}
 
 	return OTEL_TARGETS[0].id;
 }
@@ -46,7 +52,9 @@ export function setOtelTarget(id: OtelTargetId): void {
 
 	try {
 		localStorage.setItem(OTEL_TARGET_KEY, id);
-	} catch {}
+	} catch {
+		return;
+	}
 }
 
 export function getOtelFramework(): string | null {
@@ -54,7 +62,9 @@ export function getOtelFramework(): string | null {
 
 	try {
 		return localStorage.getItem(OTEL_FRAMEWORK_KEY);
-	} catch {}
+	} catch {
+		return null;
+	}
 
 	return null;
 }
@@ -64,5 +74,7 @@ export function setOtelFramework(id: string): void {
 
 	try {
 		localStorage.setItem(OTEL_FRAMEWORK_KEY, id);
-	} catch {}
+	} catch {
+		return;
+	}
 }

@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { scaleUtc, scaleLinear, type NumberValue } from 'd3-scale';
+	import { scaleUtc, scaleLinear } from 'd3-scale';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { line, area } from 'd3-shape';
 	import { min, max } from 'd3-array';
 	import { formatDateTime } from '$lib/utils/formatters';
@@ -127,7 +128,7 @@
 	const yAxisUnit = $derived(() => axisScale?.unit ?? '');
 
 	const yTickItems = $derived(() => {
-		const seen = new Set<string>();
+		const seen = new SvelteSet<string>();
 		return yTicks().filter((tick) => {
 			const label = formatYLabel(tick);
 			if (seen.has(label)) return false;

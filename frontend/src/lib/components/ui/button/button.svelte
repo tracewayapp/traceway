@@ -1,6 +1,6 @@
 <script lang="ts" module>
-	import { resolve } from '$app/paths';
 	import { cn, type WithElementRef } from '$lib/utils.js';
+	import { resolveHref } from '$lib/utils/links';
 	import type { HTMLAnchorAttributes, HTMLButtonAttributes } from 'svelte/elements';
 	import { type VariantProps, tv } from 'tailwind-variants';
 
@@ -65,10 +65,9 @@
 		bind:this={ref}
 		data-slot="button"
 		class={cn(buttonVariants({ variant, size }), className)}
-		href={resolve(disabled ? undefined : href)}
-		aria-disabled={disabled}
-		role={disabled ? 'link' : undefined}
-		tabindex={disabled ? -1 : undefined}
+		{...disabled
+			? { 'aria-disabled': true, role: 'link', tabindex: -1 }
+			: { href: resolveHref(href) }}
 		{...restProps}
 	>
 		{@render children?.()}

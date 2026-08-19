@@ -10,6 +10,7 @@
 
 <script lang="ts">
 	import * as Table from '$lib/components/ui/table';
+	import { SvelteMap } from 'svelte/reactivity';
 	import TracewayTableHeader from '$lib/components/ui/traceway-table-header/traceway-table-header.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { formatValue } from '$lib/utils/profile-format';
@@ -38,7 +39,7 @@
 	const COLLAPSED = 15;
 
 	const baseFlat = $derived.by(() => {
-		const m = new Map<string, number>();
+		const m = new SvelteMap<string, number>();
 		for (const r of baselineRows ?? []) m.set(r.name, r.flat);
 		return m;
 	});

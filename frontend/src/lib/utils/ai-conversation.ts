@@ -33,7 +33,17 @@ export type TimelineEntry =
 	| { kind: 'message'; message: ChatMessage }
 	| { kind: 'turn-meta'; turn: ConversationTurn };
 
-export function tryParseJson(str: string): any {
+type JsonRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is JsonRecord {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function asString(value: unknown): string | undefined {
+	return typeof value === 'string' ? value : undefined;
+}
+
+export function tryParseJson(str: string): unknown {
 	try {
 		return JSON.parse(str);
 	} catch {
@@ -41,15 +51,17 @@ export function tryParseJson(str: string): any {
 	}
 }
 
-function normalizeOpenAiToolCalls(rawCalls: any): ToolCall[] | undefined {
+function normalizeOpenAiToolCalls(rawCalls: unknown): ToolCall[] | undefined {
 	if (!Array.isArray(rawCalls) || rawCalls.length === 0) return undefined;
 	const calls: ToolCall[] = [];
-	for (const call of rawCalls) {
-		const name = call?.function?.name ?? call?.name;
+	for (const value of rawCalls) {
+		if (!isRecord(value)) continue;
+		const fn = isRecord(value.function) ? value.function : undefined;
+		const name = asString(fn?.name) ?? asString(value.name);
 		if (!name) continue;
-		const args = call?.function?.arguments ?? call?.arguments ?? '';
+		const args = fn?.arguments ?? value.arguments ?? '';
 		calls.push({
-			id: call?.id,
+			id: asString(value.id),
 			name,
 			arguments: typeof args === 'string' ? args : JSON.stringify(args)
 		});
@@ -57,39 +69,49 @@ function normalizeOpenAiToolCalls(rawCalls: any): ToolCall[] | undefined {
 	return calls.length > 0 ? calls : undefined;
 }
 
-function normalizeInputMessage(msg: any): ChatMessage | null {
-	if (!msg?.role) return null;
+function normalizeInputMessage(value: unknown): ChatMessage | null {
+	if (!isRecord(value)) return null;
+	const role = asString(value.role);
+	if (!role) return null;
 
 	// Anthropic-style content blocks may carry tool_use / tool_result parts.
-	if (Array.isArray(msg.content)) {
+	if (Array.isArray(value.content)) {
 		const toolCalls: ToolCall[] = [];
 		let toolCallId: string | undefined;
 		const parts: ContentPart[] = [];
-		for (const part of msg.content) {
-			if (part?.type === 'tool_use' && part.name) {
+		for (const item of value.content) {
+			if (!isRecord(item)) continue;
+			const type = asString(item.type);
+			if (type === 'tool_use' && asString(item.name)) {
 				toolCalls.push({
-					id: part.id,
-					name: part.name,
-					arguments: JSON.stringify(part.input ?? {})
+					id: asString(item.id),
+					name: asString(item.name)!,
+					arguments: JSON.stringify(item.input ?? {})
 				});
-			} else if (part?.type === 'tool_result') {
-				toolCallId = part.tool_use_id;
-				const inner = part.content;
+			} else if (type === 'tool_result') {
+				toolCallId = asString(item.tool_use_id);
+				const inner = item.content;
 				if (typeof inner === 'string') {
 					parts.push({ type: 'text', text: inner });
 				} else if (Array.isArray(inner)) {
-					for (const innerPart of inner) {
-						if (innerPart?.type === 'text' && innerPart.text) {
-							parts.push({ type: 'text', text: innerPart.text });
+					for (const innerValue of inner) {
+						if (isRecord(innerValue) && innerValue.type === 'text') {
+							const text = asString(innerValue.text);
+							if (text) parts.push({ type: 'text', text });
 						}
 					}
 				}
-			} else if (part?.type) {
-				parts.push(part);
+			} else if (type) {
+				const image = isRecord(item.image_url) ? asString(item.image_url.url) : undefined;
+				parts.push({
+					type,
+					text: asString(item.text),
+					image_url: image ? { url: image } : undefined
+				});
 			}
 		}
 		const message: ChatMessage = {
-			role: toolCallId ? 'tool' : msg.role,
+			role: toolCallId ? 'tool' : role,
 			content: parts
 		};
 		if (toolCalls.length > 0) message.toolCalls = toolCalls;
@@ -97,46 +119,52 @@ function normalizeInputMessage(msg: any): ChatMessage | null {
 		return message;
 	}
 
-	const toolCalls = normalizeOpenAiToolCalls(msg.tool_calls);
-	if (msg.content === undefined && !toolCalls) return null;
+	const toolCalls = normalizeOpenAiToolCalls(value.tool_calls);
+	if (value.content === undefined && !toolCalls) return null;
 	return {
-		role: msg.role,
-		content: msg.content ?? '',
+		role,
+		content: typeof value.content === 'string' ? value.content : '',
 		toolCalls,
-		toolCallId: msg.tool_call_id
+		toolCallId: asString(value.tool_call_id)
 	};
 }
 
 function extractOutputMessage(output: string): ChatMessage | null {
 	const outputParsed = tryParseJson(output);
-	if (!outputParsed) return null;
+	if (!isRecord(outputParsed)) return null;
 
 	// OpenAI-style: {choices: [{message: {role, content, tool_calls}}]}
-	const choices = outputParsed?.choices;
+	const choices = outputParsed.choices;
 	if (Array.isArray(choices) && choices.length > 0) {
-		const msg = choices[0]?.message;
+		const choice = isRecord(choices[0]) ? choices[0] : null;
+		const msg = choice && isRecord(choice.message) ? choice.message : null;
 		if (!msg) return null;
 		const toolCalls = normalizeOpenAiToolCalls(msg.tool_calls);
 		if (!msg.content && !toolCalls) return null;
-		return { role: msg.role || 'assistant', content: msg.content ?? '', toolCalls };
+		return {
+			role: asString(msg.role) || 'assistant',
+			content: asString(msg.content) ?? '',
+			toolCalls
+		};
 	}
 
 	// Anthropic-style: {content: [{type: "text"|"tool_use", ...}]}
-	if (Array.isArray(outputParsed?.content)) {
-		const text = outputParsed.content
-			.filter((c: any) => c.type === 'text')
-			.map((c: any) => c.text)
+	if (Array.isArray(outputParsed.content)) {
+		const blocks = outputParsed.content.filter(isRecord);
+		const text = blocks
+			.filter((block) => block.type === 'text')
+			.map((block) => asString(block.text) ?? '')
 			.join('');
-		const toolCalls: ToolCall[] = outputParsed.content
-			.filter((c: any) => c.type === 'tool_use' && c.name)
-			.map((c: any) => ({
-				id: c.id,
-				name: c.name,
-				arguments: JSON.stringify(c.input ?? {})
+		const toolCalls: ToolCall[] = blocks
+			.filter((block) => block.type === 'tool_use' && asString(block.name))
+			.map((block) => ({
+				id: asString(block.id),
+				name: asString(block.name)!,
+				arguments: JSON.stringify(block.input ?? {})
 			}));
 		if (!text && toolCalls.length === 0) return null;
 		return {
-			role: outputParsed.role || 'assistant',
+			role: asString(outputParsed.role) || 'assistant',
 			content: text,
 			toolCalls: toolCalls.length > 0 ? toolCalls : undefined
 		};
@@ -149,7 +177,11 @@ export function parseInputMessages(input: string): ChatMessage[] | null {
 	const inputParsed = tryParseJson(input);
 	if (!inputParsed) return null;
 
-	const inputMessages = inputParsed?.messages ?? (Array.isArray(inputParsed) ? inputParsed : null);
+	const inputMessages = isRecord(inputParsed)
+		? inputParsed.messages
+		: Array.isArray(inputParsed)
+			? inputParsed
+			: null;
 	if (!Array.isArray(inputMessages)) return null;
 
 	const messages: ChatMessage[] = [];

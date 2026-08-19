@@ -1,5 +1,6 @@
 <script lang="ts">
 	import * as Tooltip from '$lib/components/ui/tooltip';
+	import { SvelteMap } from 'svelte/reactivity';
 	import { formatDateTime, getNow } from '$lib/utils/formatters';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 
@@ -25,7 +26,7 @@
 		const result: { hour: Date; count: number }[] = [];
 
 		// Create a map of hour -> count from trend data
-		const trendMap = new Map<string, number>();
+		const trendMap = new SvelteMap<string, number>();
 		for (const point of trend) {
 			const date = new Date(point.timestamp);
 			const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}-${date.getHours()}`;

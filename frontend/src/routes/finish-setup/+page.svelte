@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
+	import { gotoHref } from '$lib/utils/navigation';
 	import { onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -12,10 +13,9 @@
 		CardHeader,
 		CardTitle
 	} from '$lib/components/ui/card';
-	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import * as Select from '$lib/components/ui/select';
-	import { CircleAlert, Check } from '@lucide/svelte';
+	import { Check } from '@lucide/svelte';
 	import { authState } from '$lib/state/auth.svelte';
 	import { projectsState, type Framework } from '$lib/state/projects.svelte';
 	import { themeState } from '$lib/state/theme.svelte';
@@ -61,7 +61,7 @@
 			authState.setToken(data.token);
 			authState.setOrganizations(data.organizations || []);
 			projectsState.setProjects(data.projects);
-			goto(resolve(safeLocalPath(consumeSsoReturnTo())));
+			gotoHref(safeLocalPath(consumeSsoReturnTo()));
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Setup failed';
 		} finally {

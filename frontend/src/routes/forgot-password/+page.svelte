@@ -6,7 +6,7 @@
 	import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
-	import { CircleAlert, CircleCheck } from '@lucide/svelte';
+	import { CircleCheck } from '@lucide/svelte';
 	import { themeState } from '$lib/state/theme.svelte';
 
 	let email = $state('');

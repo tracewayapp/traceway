@@ -74,9 +74,19 @@ export interface SessionCustomEvent {
 
 export type SessionActionEvent = SessionNetworkEvent | SessionNavigationEvent | SessionCustomEvent;
 
+export interface FlutterVideoEvent {
+	type: 'flutter_video';
+	data: string;
+	format: string;
+	fps: number;
+	durationSeconds: number;
+}
+
+export type SessionReplayEvent = (eventWithTime & { data?: { href?: string } }) | FlutterVideoEvent;
+
 export interface SessionRecording {
 	/** rrweb events (web SDKs) or MP4 chunk descriptors (Flutter SDK). */
-	events?: unknown[];
+	events?: SessionReplayEvent[];
 	/** Console output snapshotted at exception capture (last ~10s, ≤200). */
 	logs?: SessionLogEvent[];
 	/** Network / navigation / custom actions snapshotted with the exception. */
@@ -86,3 +96,4 @@ export interface SessionRecording {
 	/** ISO 8601 timestamp of the last frame / last event. */
 	endedAt?: string;
 }
+import type { eventWithTime } from '@rrweb/types';

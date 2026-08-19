@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -45,9 +46,9 @@
 			toast.success('Successfully created the Post-Mortem', { position: 'top-center' });
 			open = false;
 			goto(resolve(`/monitors/post-mortems/${created.id}`));
-		} catch (e: any) {
-			if (e?.status !== 403) {
-				dialogError = e instanceof Error ? e.message : 'Failed to create the post-mortem';
+		} catch (e) {
+			if (getErrorStatus(e) !== 403) {
+				dialogError = e instanceof Error ? getErrorMessage(e) : 'Failed to create the post-mortem';
 			}
 		} finally {
 			saving = false;

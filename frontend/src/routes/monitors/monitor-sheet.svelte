@@ -13,7 +13,7 @@
 	import { underlineTabTriggerClass, underlineTabListClass } from '$lib/utils/tabs';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import type { SyntheticCheck, CheckConfig, CheckType } from '$lib/state/monitors.svelte';
-	import { Check, Globe, Plus } from '@lucide/svelte';
+	import { Check, Plus } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {

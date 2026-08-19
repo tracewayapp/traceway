@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { getErrorMessage } from '$lib/utils/errors';
 	import { onMount, onDestroy } from 'svelte';
 	import { api } from '$lib/api';
 	import { formatDurationMs } from '$lib/utils/formatters';
@@ -148,9 +149,9 @@
 			);
 			checks = response.checks || [];
 			monitorsState.refreshDownCount();
-		} catch (e: any) {
+		} catch (e) {
 			console.error(e);
-			error = e.message || 'Failed to load data';
+			error = getErrorMessage(e) || 'Failed to load data';
 		} finally {
 			loading = false;
 		}

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { SvelteDate, SvelteMap } from 'svelte/reactivity';
 
 	interface StatusDay {
 		bucket: string;
@@ -89,14 +90,16 @@
 	// A fixed 90-cell grid: days without data render as empty cells instead of
 	// the bar silently shrinking.
 	function buildCells(check: StatusCheck): DayCell[] {
-		const byDay = new Map<string, StatusDay>();
+		const byDay = new SvelteMap<string, StatusDay>();
 		for (const day of check.days) {
 			byDay.set(dayKey(new Date(day.bucket)), day);
 		}
 		const cells: DayCell[] = [];
 		const now = new Date();
 		for (let i = DAYS - 1; i >= 0; i--) {
-			const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+			const date = new SvelteDate(
+				Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+			);
 			date.setUTCDate(date.getUTCDate() - i);
 			const day = byDay.get(dayKey(date));
 			const measured = day ? day.total - day.missed : 0;

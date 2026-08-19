@@ -23,6 +23,7 @@
 	import DistributedTraceCard from '$lib/components/distributed-trace/distributed-trace-card.svelte';
 	import TraceLogsPanel from '$lib/components/trace-logs/trace-logs-panel.svelte';
 	import { traceIdUuidToHex } from '$lib/utils/span-id';
+	import type { Span } from '$lib/types/spans';
 
 	type TaskDetailResponse = {
 		task: {
@@ -48,7 +49,7 @@
 			recordedAt: string;
 			attributes?: Record<string, string>;
 		}[];
-		spans: any[];
+		spans: Span[];
 		hasSpans: boolean;
 	};
 
@@ -280,10 +281,6 @@
 			traceId={traceIdUuidToHex(response.task.id)}
 			distributedTraceId={response.task.distributedTraceId ?? null}
 			spans={response.spans ?? []}
-			rootSpan={{
-				id: response.task.spanId ?? response.task.id,
-				name: response.task.taskName
-			}}
 			traceRecordedAt={response.task.recordedAt}
 		/>
 

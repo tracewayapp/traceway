@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
+	import { gotoHref } from '$lib/utils/navigation';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -13,9 +14,8 @@
 		CardHeader,
 		CardTitle
 	} from '$lib/components/ui/card';
-	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
-	import { CircleAlert, Check } from '@lucide/svelte';
+	import { Check } from '@lucide/svelte';
 	import { authState } from '$lib/state/auth.svelte';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { themeState } from '$lib/state/theme.svelte';
@@ -134,7 +134,7 @@
 
 	function handleLoginRedirect() {
 		const returnTo = encodeURIComponent(`/accept-invitation?token=${token}`);
-		goto(resolve(`/login?returnTo=${returnTo}`));
+		gotoHref(`/login?returnTo=${returnTo}`);
 	}
 
 	function getRoleLabel(role: string): string {

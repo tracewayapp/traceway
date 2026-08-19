@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
+	import { resolveHref } from '$lib/utils/links';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { Button } from '$lib/components/ui/button';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
@@ -142,7 +142,7 @@
 
 				{#if pageData.url}
 					<a
-						href={resolve(pageData.url)}
+						{...{ href: resolveHref(pageData.url) }}
 						class="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline dark:text-blue-400"
 					>
 						<ExternalLink class="h-3.5 w-3.5" />

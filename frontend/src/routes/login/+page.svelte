@@ -1,14 +1,13 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
+	import { gotoHref } from '$lib/utils/navigation';
 	import { page } from '$app/state';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '$lib/components/ui/card';
-	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
-	import { CircleAlert } from '@lucide/svelte';
 	import { authState } from '$lib/state/auth.svelte';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { themeState } from '$lib/state/theme.svelte';
@@ -94,7 +93,7 @@
 			projectsState.setProjects(data.projects);
 
 			// Redirect to returnTo if provided (validated same-origin), otherwise dashboard
-			goto(resolve(safeLocalPath(returnTo)));
+			gotoHref(safeLocalPath(returnTo));
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Invalid email or password';
 		} finally {

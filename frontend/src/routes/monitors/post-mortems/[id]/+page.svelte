@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import { untrack } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -15,8 +16,7 @@
 	import { Check, Trash2 } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
-	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
+	import { gotoHref } from '$lib/utils/navigation';
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { formatDateTime } from '$lib/utils/formatters';
 	import { projectsState } from '$lib/state/projects.svelte';
@@ -80,14 +80,16 @@
 					);
 					if (seq !== loadSeq) return;
 					if (linked.incident) incidents = [linked.incident, ...incidents];
-				} catch {}
+				} catch {
+					linkedIncidentId = '';
+				}
 			}
-		} catch (e: any) {
+		} catch (e) {
 			if (seq !== loadSeq) return;
-			if (e?.status === 404) {
+			if (getErrorStatus(e) === 404) {
 				notFound = true;
 			} else {
-				error = e instanceof Error ? e.message : 'Failed to load the post-mortem';
+				error = e instanceof Error ? getErrorMessage(e) : 'Failed to load the post-mortem';
 			}
 		} finally {
 			if (seq === loadSeq) loading = false;
@@ -132,9 +134,9 @@
 				{ skipProjectId: true }
 			);
 			toast.success('Successfully updated the Post-Mortem', { position: 'top-center' });
-		} catch (e: any) {
-			if (e?.status !== 403) {
-				formError = e instanceof Error ? e.message : 'Failed to save the post-mortem';
+		} catch (e) {
+			if (getErrorStatus(e) !== 403) {
+				formError = e instanceof Error ? getErrorMessage(e) : 'Failed to save the post-mortem';
 			}
 		} finally {
 			saving = false;
@@ -149,10 +151,10 @@
 				skipProjectId: true
 			});
 			toast.success('Successfully deleted the Post-Mortem');
-			goto(resolve(resolve('/monitors') + '?tab=post-mortems'));
-		} catch (e: any) {
-			if (e?.status !== 403) {
-				toast.error(e?.message || 'Failed to delete the post-mortem');
+			gotoHref('/monitors?tab=post-mortems');
+		} catch (e) {
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to delete the post-mortem');
 			}
 		}
 		deleting = false;

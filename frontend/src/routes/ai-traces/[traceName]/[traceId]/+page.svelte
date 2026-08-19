@@ -202,7 +202,7 @@
 										'preset',
 										'from',
 										'to'
-									)
+									) as '/'
 								)}
 								title={trace.conversationId}
 							>
@@ -287,7 +287,6 @@
 			traceId={traceIdUuidToHex(trace.id)}
 			distributedTraceId={trace.distributedTraceId ?? null}
 			spans={[]}
-			rootSpan={{ id: trace.id, name: trace.traceName }}
 			traceRecordedAt={trace.recordedAt}
 		/>
 	{/if}

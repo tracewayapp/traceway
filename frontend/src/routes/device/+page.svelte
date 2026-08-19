@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { resolve as resolveRoute } from '$app/paths';
-	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import { gotoHref } from '$lib/utils/navigation';
 	import { onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -50,7 +49,7 @@
 
 	function loginRedirect() {
 		const target = `/device${userCode ? `?user_code=${encodeURIComponent(userCode)}` : ''}`;
-		goto(resolveRoute(`/login?returnTo=${encodeURIComponent(target)}`));
+		gotoHref(`/login?returnTo=${encodeURIComponent(target)}`);
 	}
 
 	async function lookup(code: string) {

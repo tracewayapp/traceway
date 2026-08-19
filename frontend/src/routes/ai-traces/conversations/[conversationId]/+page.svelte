@@ -23,6 +23,7 @@
 	import ConversationMessages from '$lib/components/ai/conversation-messages.svelte';
 	import FlaggedBadge from '$lib/components/ai/flagged-badge.svelte';
 	import { addStickyParamsToHref } from '$lib/utils/navigation';
+	import { resolveHref } from '$lib/utils/links';
 
 	type ApiTurn = ConversationTurn & {
 		userId: string;
@@ -171,14 +172,16 @@
 				{#if stats.userId}
 					<a
 						class="mt-1 block truncate font-mono text-sm text-primary hover:underline"
-						href={resolve(
-							addStickyParamsToHref(
-								`${resolve('/ai-traces/conversations')}?userId=${encodeURIComponent(stats.userId)}`,
-								'preset',
-								'from',
-								'to'
+						{...{
+							href: resolveHref(
+								addStickyParamsToHref(
+									`/ai-traces/conversations?userId=${encodeURIComponent(stats.userId)}`,
+									'preset',
+									'from',
+									'to'
+								)
 							)
-						)}
+						}}
 						title={stats.userId}
 					>
 						{stats.userId}
@@ -262,7 +265,7 @@
 										·
 										<a
 											class="text-primary hover:underline"
-											href={resolve(turnHref(entry.turn as ApiTurn))}
+											{...{ href: resolveHref(turnHref(entry.turn as ApiTurn)) }}
 											onclick={(e) => e.stopPropagation()}
 										>
 											View call →
@@ -291,7 +294,7 @@
 									· {formatTokens(turn.totalTokens)} tokens · {formatDuration(turn.duration)}
 									· {formatDateTime(turn.recordedAt, { timezone })}
 									·
-									<a class="text-primary hover:underline" href={resolve(turnHref(turn))}
+									<a class="text-primary hover:underline" {...{ href: resolveHref(turnHref(turn)) }}
 										>View call →</a
 									>
 								</div>

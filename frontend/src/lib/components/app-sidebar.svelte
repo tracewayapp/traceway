@@ -10,7 +10,6 @@
 		Bug,
 		Link2,
 		ChartNoAxesCombined,
-		ChartNoAxesGantt,
 		FileText,
 		Film,
 		Flame,

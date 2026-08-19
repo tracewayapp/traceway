@@ -1,8 +1,7 @@
 <script lang="ts">
 	import PageTabs from '$lib/components/traceway/page-tabs.svelte';
-	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { addStickyParamsToHref } from '$lib/utils/navigation';
+	import { addStickyParamsToHref, gotoHref } from '$lib/utils/navigation';
 
 	type Props = {
 		active: 'traces' | 'conversations' | 'users';
@@ -19,8 +18,7 @@
 	function onTabChange(value: string) {
 		const tab = tabs.find((t) => t.value === value);
 		if (!tab || tab.value === active) return;
-		// eslint-disable-next-line svelte/no-navigation-without-resolve
-		goto(addStickyParamsToHref(tab.href, 'preset', 'from', 'to'));
+		gotoHref(addStickyParamsToHref(tab.href, 'preset', 'from', 'to'));
 	}
 </script>
 

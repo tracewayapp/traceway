@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { Globe, Play, Pause, Maximize, Minimize } from '@lucide/svelte';
+	import type { FlutterVideoEvent, SessionReplayEvent } from '$lib/types/exceptions';
 	import type { eventWithTime } from '@rrweb/types';
 	// Static side-effect import - keeps the rrweb-player stylesheet attached
 	// to the page for the lifetime of the SPA, even across mount/unmount cycles.
@@ -9,22 +10,14 @@
 	// background fill on .replayer-wrapper until a hard refresh.
 	import 'rrweb-player/dist/style.css';
 
-	interface FlutterVideoEvent {
-		type: 'flutter_video';
-		data: string;
-		format: string;
-		fps: number;
-		durationSeconds: number;
-	}
-
 	interface Props {
-		events: (eventWithTime & { data?: { href?: string } })[] | FlutterVideoEvent[] | null;
+		events: SessionReplayEvent[] | null;
 		onTimeUpdate?: (ms: number) => void;
 	}
 
 	let { events, onTimeUpdate }: Props = $props();
 	let container: HTMLElement;
-	let player: any = null;
+	let player: InstanceType<(typeof import('rrweb-player'))['default']> | null = null;
 	let resizeObserver: ResizeObserver | null = null;
 	let rafId: number | null = null;
 	let lastReportedMs = -1;
@@ -38,9 +31,7 @@
 		}
 	}
 
-	let isFlutterVideo = $derived(
-		events && events.length > 0 && (events[0] as any)?.type === 'flutter_video'
-	);
+	let isFlutterVideo = $derived(events && events.length > 0 && events[0]?.type === 'flutter_video');
 
 	let flutterVideoSrc = $derived.by(() => {
 		if (!isFlutterVideo || !events) return '';

@@ -89,3 +89,34 @@ export type MetricQueryResponse = {
 };
 
 export type ExplorerMetricsTab = 'application' | 'stats' | 'server' | 'explorer';
+
+export type DashboardWidgetSource = {
+	type: 'metric';
+	name: string;
+	aggregation: string;
+	tagFilters?: Record<string, string>;
+	groupBy?: string;
+	label?: string;
+};
+
+export type DashboardWidgetConfig = {
+	sources?: DashboardWidgetSource[];
+	yAxisLabel?: string;
+	showLegend?: boolean;
+	unit?: string;
+	colSpan?: number;
+	size?: string;
+	showSparkline?: boolean;
+	min?: number;
+	max?: number;
+	baseColor?: string;
+	thresholds?: Array<{ value: number; color: string }>;
+	[key: string]: unknown;
+};
+
+export type DashboardWidget = {
+	id: number | string;
+	title: string;
+	widgetType: string;
+	config: DashboardWidgetConfig;
+};

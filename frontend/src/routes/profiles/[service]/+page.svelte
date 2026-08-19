@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import { onMount, onDestroy } from 'svelte';
 	import { api } from '$lib/api';
 	import { authState } from '$lib/state/auth.svelte';
@@ -9,7 +10,6 @@
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import * as Select from '$lib/components/ui/select';
 	import { GitCompareArrows, Download, Layers, Gauge, X } from '@lucide/svelte';
-	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { projectsState } from '$lib/state/projects.svelte';
@@ -351,12 +351,12 @@
 			if (selectedFrame && !flameData) selectedFrame = null;
 
 			if (compareMode) await loadCompare(isGauge);
-		} catch (e: any) {
-			if (e?.status === 404) {
+		} catch (e) {
+			if (getErrorStatus(e) === 404) {
 				notFound = true;
 			} else {
 				console.error(e);
-				error = e.message || 'Failed to load profile';
+				error = getErrorMessage(e) || 'Failed to load profile';
 			}
 		} finally {
 			loading = false;

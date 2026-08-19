@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import { api } from '$lib/api';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import * as Table from '$lib/components/ui/table';
@@ -188,7 +189,7 @@
 			dialogOpen = false;
 			loadAll();
 		} catch (e) {
-			dialogError = e instanceof Error ? e.message : 'Failed to save the status page';
+			dialogError = e instanceof Error ? getErrorMessage(e) : 'Failed to save the status page';
 		} finally {
 			saving = false;
 		}
@@ -204,9 +205,9 @@
 			toast.success('Successfully deleted the Status Page');
 			deleteTarget = null;
 			loadAll();
-		} catch (e: any) {
-			if (e?.status !== 403) {
-				toast.error(e.message || 'Failed to delete the status page');
+		} catch (e) {
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to delete the status page');
 			}
 		} finally {
 			deleting = false;

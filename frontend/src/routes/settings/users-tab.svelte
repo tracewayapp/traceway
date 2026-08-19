@@ -22,7 +22,6 @@
 		type Invitation,
 		type MemberProjectRole
 	} from '$lib/state/organization.svelte';
-	import { authState } from '$lib/state/auth.svelte';
 	import { type Framework } from '$lib/state/projects.svelte';
 	import FrameworkIcon from '$lib/components/framework-icon.svelte';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';

@@ -1,7 +1,7 @@
 <script lang="ts">
+	import { getErrorMessage } from '$lib/utils/errors';
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { browser } from '$app/environment';
-	import { goto } from '$app/navigation';
 	import { api } from '$lib/api';
 	import * as Table from '$lib/components/ui/table';
 	import { SearchBar } from '$lib/components/ui/search-bar';
@@ -581,10 +581,10 @@
 			liveExtra = 0;
 			scrollEl?.scrollTo({ top: 0 });
 			scrollTop = 0;
-		} catch (e: any) {
+		} catch (e) {
 			if (gen !== requestGen) return;
 			console.error(e);
-			error = e.message || 'Failed to load logs';
+			error = getErrorMessage(e) || 'Failed to load logs';
 		} finally {
 			if (gen === requestGen) loading = false;
 		}
@@ -616,9 +616,9 @@
 			logs = [...logs, ...fresh];
 			loadedPages += 1;
 			total = response.pagination.total;
-		} catch (e: any) {
+		} catch (e) {
 			console.error(e);
-			loadMoreError = e.message || 'Failed to load more logs';
+			loadMoreError = getErrorMessage(e) || 'Failed to load more logs';
 		} finally {
 			loadingMore = false;
 		}

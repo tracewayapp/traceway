@@ -10,27 +10,23 @@
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { Plus, Check, X } from '@lucide/svelte';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
-	import type { DiscoveredMetric } from '$lib/types/dashboard';
-
-	type WidgetSource = {
-		type: 'metric';
-		name: string;
-		aggregation: string;
-		tagFilters?: Record<string, string>;
-		groupBy?: string;
-		label?: string;
-	};
+	import type {
+		DashboardWidget,
+		DashboardWidgetConfig,
+		DashboardWidgetSource,
+		DiscoveredMetric
+	} from '$lib/types/dashboard';
 
 	const CHART_TYPES = ['line_chart', 'area_chart', 'stacked_area'];
 
-	function legendFromConfig(config: any): 'auto' | 'on' | 'off' {
+	function legendFromConfig(config?: DashboardWidgetConfig): 'auto' | 'on' | 'off' {
 		if (config?.showLegend === true) return 'on';
 		if (config?.showLegend === false) return 'off';
 		return 'auto';
 	}
 
 	function thresholdsFromConfig(
-		config: any,
+		config: DashboardWidgetConfig | undefined,
 		savedType: string | undefined
 	): Array<{ value: string; color: string }> {
 		if (Array.isArray(config?.thresholds) && config.thresholds.length > 0) {
@@ -52,10 +48,10 @@
 		onCancel
 	} = $props<{
 		open: boolean;
-		widget: { id?: number | string; title: string; widgetType: string; config: any } | null;
+		widget: (Omit<DashboardWidget, 'id'> & { id?: number | string }) | null;
 		availableMetrics: DiscoveredMetric[];
 		error?: string;
-		onSave: (data: { title: string; widgetType: string; config: any }) => void;
+		onSave: (data: { title: string; widgetType: string; config: DashboardWidgetConfig }) => void;
 		onCancel: () => void;
 	}>();
 
@@ -66,7 +62,7 @@
 	let widgetType = $state(initialWidget?.widgetType ?? 'line_chart');
 	let unit = $state(initialWidget?.config?.unit ?? '');
 	let unitManuallySet = $state(!!initialWidget?.config?.unit);
-	let sources = $state<WidgetSource[]>(
+	let sources = $state<DashboardWidgetSource[]>(
 		initialWidget?.config?.sources ?? [{ type: 'metric', name: '', aggregation: 'avg' }]
 	);
 	let legend = $state<'auto' | 'on' | 'off'>(legendFromConfig(initialWidget?.config));
@@ -159,13 +155,13 @@
 
 	function handleSave() {
 		const validSources = sources
-			.filter((s: WidgetSource) => s.name)
-			.map((s: WidgetSource) => {
+			.filter((s: DashboardWidgetSource) => s.name)
+			.map((s: DashboardWidgetSource) => {
 				const { label, ...rest } = s;
 				return label?.trim() ? { ...rest, label: label.trim() } : rest;
 			});
 		const displayTitle = title.trim() || validSources[0]?.name || '';
-		const config: Record<string, any> = { sources: validSources };
+		const config: DashboardWidgetConfig = { sources: validSources };
 		if (unit) config.unit = unit;
 		if (widget?.config?.colSpan != null) config.colSpan = widget.config.colSpan;
 		if (widget?.config?.size != null) config.size = widget.config.size;

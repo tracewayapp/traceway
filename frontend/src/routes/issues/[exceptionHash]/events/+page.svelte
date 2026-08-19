@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -10,7 +11,6 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import * as Table from '$lib/components/ui/table';
-	import * as Select from '$lib/components/ui/select';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import { projectsState, isFrontendFramework } from '$lib/state/projects.svelte';
@@ -86,12 +86,12 @@
 			occurrences = response.occurrences || [];
 			total = response.pagination.total;
 			totalPages = response.pagination.totalPages;
-		} catch (e: any) {
+		} catch (e) {
 			console.error(e);
-			if (e.status === 404) {
+			if (getErrorStatus(e) === 404) {
 				notFound = true;
 			} else {
-				error = e.message || 'Failed to load exception details';
+				error = getErrorMessage(e) || 'Failed to load exception details';
 			}
 		} finally {
 			loading = false;
@@ -121,7 +121,7 @@
 			);
 			toast.success('Successfully archived the Issue');
 			goto(resolve('/issues'));
-		} catch (e: any) {
+		} catch (e) {
 			console.error('Archive failed:', e);
 			throw e;
 		} finally {

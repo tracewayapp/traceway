@@ -175,7 +175,7 @@
 			);
 			toast.success('Successfully updated the Project', { position: 'top-center' });
 			onOpenChange(false);
-		} catch (err: any) {
+		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to update project';
 		} finally {
 			loading = false;
@@ -192,7 +192,7 @@
 			showDeleteConfirm = false;
 			onOpenChange(false);
 			goto(resolve('/'));
-		} catch (err: any) {
+		} catch (err) {
 			toast.error(err instanceof Error ? err.message : 'Failed to delete project');
 		} finally {
 			deleting = false;
@@ -319,7 +319,7 @@
 								bind:value={healthcheckPathsText}
 								disabled={loading}
 								rows="3"
-								placeholder={'/internal/probe\n/checks/*'}
+								placeholder="/internal/probe&#10;/checks/*"
 								class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30"
 							></textarea>
 							<p class="text-xs text-muted-foreground">
@@ -347,7 +347,7 @@
 							bind:value={profileLabelsText}
 							disabled={loading}
 							rows="3"
-							placeholder={'tenant\nregion'}
+							placeholder="tenant&#10;region"
 							class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30"
 						></textarea>
 						{#if profileLabelError}
@@ -398,7 +398,7 @@
 							bind:value={aiFlaggedTermsText}
 							disabled={loading}
 							rows="4"
-							placeholder={'competitor name\nrefund'}
+							placeholder="competitor name&#10;refund"
 							class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30"
 						></textarea>
 						{#if aiFlaggedTermsError}

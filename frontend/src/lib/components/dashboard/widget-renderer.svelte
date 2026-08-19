@@ -5,36 +5,18 @@
 	import D3Gauge from './d3-gauge.svelte';
 	import WidgetTable from './widget-table.svelte';
 	import Sparkline from './sparkline.svelte';
-	import { activeThresholdColor, type ThresholdStep } from './gauge-thresholds';
-	import { SvelteSet } from 'svelte/reactivity';
+	import { activeThresholdColor } from './gauge-thresholds';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { api } from '$lib/api';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
-	import type { MetricTrendPoint, MetricQueryResponse } from '$lib/types/dashboard';
+	import type {
+		DashboardWidgetConfig,
+		DashboardWidgetSource,
+		MetricTrendPoint,
+		MetricQueryResponse
+	} from '$lib/types/dashboard';
 	import { formatMetricLabel, formatMetricValue } from '$lib/utils/metric-format';
-
-	type WidgetSource = {
-		type: 'metric';
-		name: string;
-		tagFilters?: Record<string, string>;
-		aggregation: string;
-		groupBy?: string;
-		label?: string;
-	};
-
-	type WidgetConfig = {
-		sources?: WidgetSource[];
-		yAxisLabel?: string;
-		showLegend?: boolean;
-		unit?: string;
-		colSpan?: 1 | 2 | 3;
-		size?: 'sm' | 'md' | 'lg';
-		showSparkline?: boolean;
-		min?: number;
-		max?: number;
-		baseColor?: string;
-		thresholds?: ThresholdStep[];
-	};
 
 	let {
 		widget,
@@ -50,7 +32,7 @@
 			id: number;
 			title: string;
 			widgetType: string;
-			config: WidgetConfig;
+			config: DashboardWidgetConfig;
 		};
 		fromDateUTC: string;
 		toDateUTC: string;
@@ -140,7 +122,7 @@
 			const newSeries: Array<{ key: string; data: MetricTrendPoint[]; color: string }> = [];
 			let colorIdx = 0;
 
-			const queries = sources.map((s: WidgetSource) => ({
+			const queries = sources.map((s: DashboardWidgetSource) => ({
 				name: s.name,
 				aggregation: s.aggregation || 'avg',
 				tagFilters: s.tagFilters,
@@ -153,8 +135,8 @@
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
 
-			const units = new Set<string>();
-			const usedKeys = new Set<string>();
+			const units = new SvelteSet<string>();
+			const usedKeys = new SvelteSet<string>();
 			for (const [idx, result] of response.results.entries()) {
 				if (result.unit) units.add(result.unit);
 				const baseName = sources[idx]?.label?.trim() || result.name;
@@ -214,7 +196,7 @@
 	// which the charts' fixed default would clip
 	const axisMaxValue = $derived.by(() => {
 		if (widget.widgetType === 'stacked_area') {
-			const sums = new Map<number, number>();
+			const sums = new SvelteMap<number, number>();
 			for (const s of visibleSeries) {
 				for (const p of s.data) {
 					const t = p.timestamp.getTime();

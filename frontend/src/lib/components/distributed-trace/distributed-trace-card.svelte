@@ -1,14 +1,12 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { gotoHref } from '$lib/utils/navigation';
 	import { api } from '$lib/api';
 	import * as Card from '$lib/components/ui/card';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
-	import { formatDuration, getStatusColor, formatDateTime } from '$lib/utils/formatters';
-	import { getTimezone } from '$lib/state/timezone.svelte';
+	import { formatDuration, getStatusColor } from '$lib/utils/formatters';
 	import { ArrowRight, GitBranch } from '@lucide/svelte';
 	import type {
 		DistributedTraceResponse,
@@ -38,22 +36,18 @@
 		return false;
 	}
 
-	const timezone = $derived(getTimezone());
-
 	let response = $state<DistributedTraceResponse | null>(null);
 	let loading = $state(true);
-	let error = $state('');
 
 	async function loadTrace() {
 		loading = true;
-		error = '';
 		try {
 			response = (await api.post(
 				`/distributed-traces/${distributedTraceId}`,
 				recordedAt ? { recordedAt } : {}
 			)) as DistributedTraceResponse;
-		} catch (e: any) {
-			error = e.message || 'Failed to load distributed trace';
+		} catch {
+			response = null;
 		} finally {
 			loading = false;
 		}
@@ -62,24 +56,18 @@
 	function navigateToNode(node: DistributedTraceNode) {
 		const project = `&projectId=${encodeURIComponent(node.projectId)}`;
 		if (node.traceType === 'task' && node.task) {
-			goto(
-				resolve(
-					`/tasks/${encodeURIComponent(node.task.taskName)}/${node.task.id}?preset=24h&t=${encodeURIComponent(node.task.recordedAt)}${project}`
-				)
+			gotoHref(
+				`/tasks/${encodeURIComponent(node.task.taskName)}/${node.task.id}?preset=24h&t=${encodeURIComponent(node.task.recordedAt)}${project}`
 			);
 		} else if (node.traceType === 'ai_trace' && node.aiTrace) {
-			goto(
-				resolve(
-					`/ai-traces/${encodeURIComponent(node.aiTrace.traceName)}/${node.aiTrace.id}?preset=24h&t=${encodeURIComponent(node.aiTrace.recordedAt)}${project}`
-				)
+			gotoHref(
+				`/ai-traces/${encodeURIComponent(node.aiTrace.traceName)}/${node.aiTrace.id}?preset=24h&t=${encodeURIComponent(node.aiTrace.recordedAt)}${project}`
 			);
 		} else if (node.traceType === 'exception' && node.exception) {
-			goto(resolve(`/issues/${node.exception.exceptionHash}?preset=24h${project}`));
+			gotoHref(`/issues/${node.exception.exceptionHash}?preset=24h${project}`);
 		} else if (node.endpoint) {
-			goto(
-				resolve(
-					`/endpoints/${encodeURIComponent(node.endpoint.endpoint)}/${node.endpoint.id}?preset=24h&t=${encodeURIComponent(node.endpoint.recordedAt)}${project}`
-				)
+			gotoHref(
+				`/endpoints/${encodeURIComponent(node.endpoint.endpoint)}/${node.endpoint.id}?preset=24h&t=${encodeURIComponent(node.endpoint.recordedAt)}${project}`
 			);
 		}
 	}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { getErrorMessage } from '$lib/utils/errors';
 	import { onMount, onDestroy } from 'svelte';
 	import { api } from '$lib/api';
 	import {
@@ -214,9 +215,9 @@
 			traces = response.data || [];
 			total = response.pagination.total;
 			totalPages = response.pagination.totalPages;
-		} catch (e: any) {
+		} catch (e) {
 			console.error(e);
-			error = e.message || 'Failed to load data';
+			error = getErrorMessage(e) || 'Failed to load data';
 		} finally {
 			loading = false;
 		}
@@ -287,9 +288,7 @@
 		onSearch={handleSearch}
 		disabled={loading}
 	>
-		{#snippet children()}
-			<RootFilter bind:value={rootFilter} />
-		{/snippet}
+		<RootFilter bind:value={rootFilter} />
 	</SearchBar>
 
 	<!-- AI Traces Table -->

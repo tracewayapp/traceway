@@ -29,15 +29,10 @@
 </script>
 
 <div class="space-y-2">
-	{#each rows as _, index (index)}
+	{#each rows as row, index (index)}
 		<div class="flex gap-2">
-			<Input bind:value={rows[index].key} placeholder={keyPlaceholder} class="flex-1" {disabled} />
-			<Input
-				bind:value={rows[index].value}
-				placeholder={valuePlaceholder}
-				class="flex-1"
-				{disabled}
-			/>
+			<Input bind:value={row.key} placeholder={keyPlaceholder} class="flex-1" {disabled} />
+			<Input bind:value={row.value} placeholder={valuePlaceholder} class="flex-1" {disabled} />
 			<Button variant="ghost" size="icon" type="button" onclick={() => removeRow(index)} {disabled}>
 				<Trash2 class="h-4 w-4" />
 			</Button>

@@ -76,8 +76,6 @@ func RegisterControllers(router *gin.RouterGroup) {
 
 	router.GET("/projects", middleware.UseAppAuth, ProjectController.ListProjects)
 	router.POST("/projects", middleware.UseAppAuth, middleware.RequireProjectAccess, ProjectController.CreateProject)
-	// No RequireProjectAccess: the batch path must work for zero-project
-	// accounts (registration wizard); the org role is checked in-handler.
 	router.POST("/projects/batch", middleware.UseAppAuth, middleware.Transactional, ProjectController.BatchCreateProjects)
 	router.PUT("/projects", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, ProjectController.UpdateProject)
 	router.DELETE("/projects", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, ProjectController.DeleteProject)
@@ -198,15 +196,10 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.GET("/personal-access-tokens", middleware.UseAppAuth, PATController.List)
 	router.DELETE("/personal-access-tokens/:id", middleware.UseAppAuth, middleware.Transactional, PATController.Revoke)
 
-	// AI-driven project setup: a setup token (tws_) can only propose a plan
-	// and read its status; the plan turns into projects exclusively through
-	// the JWT-authenticated approve endpoint, i.e. a logged-in user's click.
 	router.POST("/setup-tokens", middleware.UseAppAuth, middleware.RateLimitPerUser(10, time.Hour), middleware.Transactional, SetupTokenController.Create)
 	router.GET("/setup/session", middleware.RateLimitPerIP(60, time.Minute), middleware.UseSetupAuth, middleware.Transactional, SetupController.GetSession)
 	router.PUT("/setup/plan", middleware.RateLimitPerIP(20, time.Minute), middleware.UseSetupAuth, middleware.Transactional, SetupController.SubmitPlan)
-	// Polled by the waiting CLI every ~3s while the user reviews the draft.
 	router.GET("/setup/plan", middleware.RateLimitPerIP(60, time.Minute), middleware.UseSetupAuth, middleware.Transactional, SetupController.GetPlan)
-	// Polled by the register wizard and /setup page every ~3s.
 	router.GET("/setup/drafts", middleware.UseAppAuth, middleware.RateLimitPerUser(60, time.Minute), middleware.Transactional, SetupController.ListDraft)
 	router.POST("/setup/drafts/:id/approve", middleware.UseAppAuth, middleware.Transactional, SetupController.ApproveDraft)
 	router.POST("/setup/drafts/:id/reject", middleware.UseAppAuth, middleware.Transactional, SetupController.RejectDraft)

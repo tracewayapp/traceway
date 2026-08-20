@@ -36,8 +36,6 @@ func (r *setupTokenRepository) Create(ex lit.Executor, id, token, prefix string,
 	return err
 }
 
-// DeleteByUserAndOrganization enforces single-active-token-per-(user, org):
-// minting a new setup token replaces any previous one.
 func (r *setupTokenRepository) DeleteByUserAndOrganization(ex lit.Executor, userId, organizationId int) error {
 	query, args, err := lit.ParseNamedQuery(
 		db.Driver,
@@ -51,7 +49,6 @@ func (r *setupTokenRepository) DeleteByUserAndOrganization(ex lit.Executor, user
 	return err
 }
 
-// FindActiveByToken returns nil for unknown or expired tokens.
 func (r *setupTokenRepository) FindActiveByToken(ex lit.Executor, token string) (*shared.ActiveSetupToken, error) {
 	query, args, err := lit.ParseNamedQuery(
 		db.Driver,

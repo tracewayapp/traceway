@@ -145,9 +145,6 @@ func TestUseSetupAuthRejects(t *testing.T) {
 	}
 }
 
-// A setup token must never authenticate as an app credential: UseAppAuth's
-// bearer path only special-cases twp_ and JWT parsing rejects opaque strings.
-// This test locks that in against a future "generic opaque token" refactor.
 func TestSetupTokenNeverPassesAppAuth(t *testing.T) {
 	setupSetupAuthDB(t)
 

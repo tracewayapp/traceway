@@ -14,8 +14,6 @@ import (
 
 type setupPlanRepository struct{}
 
-// Upsert replaces every previous plan for (user, org) with a fresh pending
-// one: a new submission always starts a new review cycle.
 func (r *setupPlanRepository) Upsert(ex lit.Executor, id string, userId, organizationId int, payload string) error {
 	query, args, err := lit.ParseNamedQuery(
 		db.Driver,
@@ -133,8 +131,6 @@ func (r *setupPlanRepository) FindById(ex lit.Executor, id string) (*shared.Setu
 	return r.scanRow(ex.QueryRow(query, args...))
 }
 
-// Decide transitions a pending plan to approved or rejected. The status guard
-// makes concurrent decisions race-safe: the loser affects zero rows.
 func (r *setupPlanRepository) Decide(ex lit.Executor, id, status, rejectReason, result string, decidedBy int, decidedAt time.Time) (int64, error) {
 	query, args, err := lit.ParseNamedQuery(
 		db.Driver,
@@ -161,8 +157,6 @@ func (r *setupPlanRepository) Decide(ex lit.Executor, id, status, rejectReason, 
 	return res.RowsAffected()
 }
 
-// PruneOld drops decided plans after 7 days and never-decided ones after 24
-// hours; a setup session is ephemeral by design.
 func (r *setupPlanRepository) PruneOld(ex lit.Executor, now time.Time) (int64, error) {
 	query, args, err := lit.ParseNamedQuery(
 		db.Driver,

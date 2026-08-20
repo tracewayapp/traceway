@@ -217,8 +217,6 @@ func (a oauthController) FinishSetup(c *gin.Context) {
 		return
 	}
 
-	// Project creation is optional: the setup wizard's step 2 adds projects
-	// after the organization exists (mirrors Register).
 	wantsProject := request.ProjectName != "" || request.Framework != ""
 	if wantsProject && (request.ProjectName == "" || request.Framework == "") {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "projectName and framework must be provided together"})

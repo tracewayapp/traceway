@@ -20,8 +20,6 @@ import (
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
 
-// setupPollInterval is how often the command asks whether the user decided on
-// the draft; a var so tests can shrink it.
 var setupPollInterval = 3 * time.Second
 
 const (
@@ -108,8 +106,6 @@ func renderSetupAPIError(errOut io.Writer, mode output.Mode, err error) error {
 	return renderAPIError(errOut, mode, err, false)
 }
 
-// setupEnvValue renders the value that lands in the env file. Both shapes are
-// secrets; neither may ever reach stdout/stderr.
 func setupEnvValue(project client.SetupProject, format, fallbackURL string) string {
 	if format == envFormatConnectionString {
 		base := strings.TrimRight(project.BackendURL, "/")
@@ -198,8 +194,6 @@ func runSetupApply(cmd *cobra.Command, _ []string) error {
 	for _, planned := range plan.Projects {
 		project, ok := byName[strings.TrimSpace(planned.Name)]
 		if !ok {
-			// The server folds duplicates and validates names, so a missing
-			// entry means the project was deleted between approval and now.
 			summaries = append(summaries, setupApplyProjectSummary{Name: planned.Name, Framework: planned.Framework, Status: "missing"})
 			projectMissing = true
 			continue

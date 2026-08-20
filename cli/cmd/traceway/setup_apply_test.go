@@ -14,8 +14,6 @@ import (
 
 const testSetupToken = "tws_test-setup-token"
 
-// newSetupTestServer fakes the three setup endpoints: the plan is approved
-// after approveAfterPolls status polls.
 func newSetupTestServer(t *testing.T, approveAfterPolls int32) *httptest.Server {
 	t.Helper()
 	var polls int32
@@ -153,7 +151,6 @@ func TestSetupApplyHappyPath(t *testing.T) {
 		t.Errorf("web env = %q, want %q", webEnv, want)
 	}
 
-	// The ephemeral setup token must leave no trace in CLI state.
 	stateDir := os.Getenv("XDG_STATE_HOME")
 	if entries, err := os.ReadDir(stateDir); err == nil && len(entries) != 0 {
 		t.Errorf("state dir should stay empty, has %v", entries)

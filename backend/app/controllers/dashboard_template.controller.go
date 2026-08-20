@@ -87,14 +87,10 @@ func uniqueDashboardName(existing []*models.Dashboard, base string) string {
 	}
 }
 
-// errTemplateInvalid marks pre-SQL template problems (unparseable definition,
-// unsupported widget type). Callers may skip such templates without poisoning
-// the surrounding transaction, because no statement has executed yet.
 var errTemplateInvalid = errors.New("invalid dashboard template")
 
 var errDashboardNameTaken = errors.New("dashboard name already exists")
 
-// installDashboardTemplateTx is the gin-free core of installDashboardTemplate.
 func installDashboardTemplateTx(tx *sql.Tx, template *models.DashboardTemplate, organizationId int, createdBy *int) (*models.Dashboard, error) {
 	def, err := dashboardsvc.ParseDefinition(template.Definition)
 	if err != nil {
@@ -163,12 +159,6 @@ func installDashboardTemplate(ctx *gin.Context, tx *sql.Tx, template *models.Das
 	return dashboard
 }
 
-// populateDefaultDashboards installs the framework-default templates for a
-// freshly created project and assigns them. It is a no-op when the framework
-// has no defaults or the project already has dashboard assignments; unseeded
-// or invalid templates are skipped with a CaptureException, while SQL errors
-// propagate (a failed statement poisons a Postgres transaction, so they must
-// never be swallowed here).
 func populateDefaultDashboards(tx *sql.Tx, project *models.Project, createdBy *int) error {
 	if project.OrganizationId == nil {
 		return nil

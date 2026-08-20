@@ -163,9 +163,6 @@ func (a authController) Register(c *gin.Context) {
 		}
 	}
 
-	// Project creation is optional: the registration wizard creates the
-	// account first and lets step 2 (AI proposal or manual batch) add
-	// projects afterwards.
 	wantsProject := request.ProjectName != "" || request.Framework != ""
 	if wantsProject && (request.ProjectName == "" || request.Framework == "") {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "projectName and framework must be provided together"})

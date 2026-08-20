@@ -6,7 +6,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// setup-specific flag values
 var (
 	setupApplyURL         string
 	setupApplyToken       string

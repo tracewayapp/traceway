@@ -76,9 +76,6 @@ func (s setupController) GetSession(ctx *gin.Context) {
 	})
 }
 
-// validateSetupPlanPayload normalizes and validates a submitted plan. The
-// payload is later rendered in the dashboard's approval view, so everything is
-// length-capped and project rows get the same validation as project creation.
 func validateSetupPlanPayload(payload *models.SetupPlanPayload) string {
 	if len(payload.Projects) == 0 {
 		return "At least one project is required"
@@ -256,8 +253,6 @@ func (s setupController) draftResponse(ctx *gin.Context, plan *transactional.Set
 	return response, true
 }
 
-// ListDraft returns a pending setup plan before the latest decided plan so
-// concurrent proposals from different organization members remain reviewable.
 func (s setupController) ListDraft(ctx *gin.Context) {
 	orgId, err := strconv.Atoi(ctx.Query("organizationId"))
 	if err != nil {
@@ -309,8 +304,6 @@ func (s setupController) loadDecidablePlan(ctx *gin.Context) *transactional.Setu
 	return plan
 }
 
-// ApproveDraft is the only place an AI-proposed plan turns into real projects:
-// creation runs under the approving user's identity, never the setup token's.
 func (s setupController) ApproveDraft(ctx *gin.Context) {
 	plan := s.loadDecidablePlan(ctx)
 	if plan == nil {

@@ -27,7 +27,7 @@ type BatchProjectInput struct {
 
 type BatchProjectResult struct {
 	Project *models.Project
-	Status  string // "created" | "existing"
+	Status  string
 }
 
 type batchValidationError struct{ Message string }
@@ -47,11 +47,6 @@ func validateProjectName(name string) string {
 
 const invalidFrameworkMessage = "Framework must be one of: gin, fiber, chi, fasthttp, stdlib, custom, react, svelte, vuejs, jquery, react-native, hono, cloudflare, opentelemetry, symfony, laravel, django, flutter, android, ios"
 
-// batchCreateProjects validates and creates inputs in orgId inside tx.
-// Idempotent by trimmed exact-match name within the org: an existing project
-// with the same name is returned with Status "existing" instead of erroring,
-// so a retried batch never duplicates. The whole batch is atomic: any
-// validation or limit failure rolls everything back.
 func batchCreateProjects(tx *sql.Tx, orgId int, createdBy int, inputs []BatchProjectInput) ([]BatchProjectResult, error) {
 	if len(inputs) == 0 {
 		return nil, &batchValidationError{"At least one project is required"}
@@ -135,8 +130,6 @@ func toBatchProjectResponse(results []BatchProjectResult) []BatchProjectResponse
 	return items
 }
 
-// cacheCreatedProjectsOnCommit registers the freshly created projects with the
-// ingest token cache once the request transaction has committed.
 func cacheCreatedProjectsOnCommit(ctx *gin.Context, results []BatchProjectResult) {
 	created := []*models.Project{}
 	for _, r := range results {
@@ -173,9 +166,6 @@ type BatchCreateProjectsRequest struct {
 	Projects       []BatchProjectInput `json:"projects" binding:"required"`
 }
 
-// BatchCreateProjects is the JWT-authenticated batch path. Unlike POST
-// /projects it needs no existing ?projectId=, so zero-project accounts (the
-// registration wizard's manual step) can use it.
 func (p projectController) BatchCreateProjects(ctx *gin.Context) {
 	var request BatchCreateProjectsRequest
 	if err := ctx.ShouldBindJSON(&request); err != nil {

@@ -136,7 +136,6 @@ func TestBatchCreateProjectsCreatesAndIsIdempotent(t *testing.T) {
 		}
 	}
 
-	// The opentelemetry project gets the framework-default dashboards.
 	assignments, err := transactional.DashboardRepository.FindAssignmentsByProject(tx, results[0].Project.Id)
 	if err != nil {
 		t.Fatalf("list assignments: %v", err)
@@ -145,7 +144,6 @@ func TestBatchCreateProjectsCreatesAndIsIdempotent(t *testing.T) {
 		t.Error("opentelemetry project should get default dashboards")
 	}
 
-	// Rerunning the identical batch returns the same projects as "existing".
 	rerun, err := batchCreateProjects(tx, orgId, userId, inputs)
 	if err != nil {
 		t.Fatalf("rerun batch create: %v", err)
@@ -159,7 +157,6 @@ func TestBatchCreateProjectsCreatesAndIsIdempotent(t *testing.T) {
 		}
 	}
 
-	// Duplicate names inside one request fold onto the first occurrence.
 	folded, err := batchCreateProjects(tx, orgId, userId, []BatchProjectInput{
 		{Name: "Workers", Framework: "opentelemetry"},
 		{Name: "Workers", Framework: "opentelemetry"},
@@ -280,13 +277,11 @@ func TestRegisterWithoutProject(t *testing.T) {
 		return recorder, payload
 	}
 
-	// Only one of projectName/framework is a 400.
 	recorder, _ := register(t, `{"email":"half@example.com","name":"A","password":"password1","organizationName":"HalfOrg","timezone":"UTC","projectName":"OnlyName"}`)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("half project fields: status = %d, want 400", recorder.Code)
 	}
 
-	// No project fields: account + org only, no project row, no project key.
 	recorder, payload := register(t, `{"email":"nop@example.com","name":"A","password":"password1","organizationName":"NopOrg","timezone":"UTC"}`)
 	if recorder.Code != http.StatusCreated {
 		t.Fatalf("no project: status = %d, body = %s", recorder.Code, recorder.Body.String())
@@ -345,7 +340,6 @@ func TestSetupDraftLifecycle(t *testing.T) {
 	]}`
 	submitTestPlan(t, tx, userId, orgId, planBody)
 
-	// The setup-token view reports pending.
 	c, recorder := newControllerTestContext(t, tx, userId, http.MethodGet, "/api/setup/plan", "")
 	c.Set(middleware.SetupOrganizationIdContextKey, orgId)
 	SetupController.GetPlan(c)
@@ -353,14 +347,12 @@ func TestSetupDraftLifecycle(t *testing.T) {
 		t.Fatalf("get plan: status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
 
-	// The dashboard view sees the same draft.
 	c, recorder = newControllerTestContext(t, tx, userId, http.MethodGet, "/api/setup/drafts?organizationId="+strconv.Itoa(orgId), "")
 	SetupController.ListDraft(c)
 	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "Product Backend") {
 		t.Fatalf("list draft: status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
 
-	// Approve: creates the projects and stores the result.
 	draftId := latestDraftId(t, tx, userId, orgId)
 	c, recorder = newControllerTestContext(t, tx, userId, http.MethodPost, "/api/setup/drafts/"+draftId+"/approve", "")
 	c.Params = gin.Params{{Key: "id", Value: draftId}}
@@ -394,7 +386,6 @@ func TestSetupDraftLifecycle(t *testing.T) {
 		t.Fatal("read-only draft response exposed a project token")
 	}
 
-	// Second decision on the same draft is a conflict.
 	c, recorder = newControllerTestContext(t, tx, userId, http.MethodPost, "/api/setup/drafts/"+draftId+"/approve", "")
 	c.Params = gin.Params{{Key: "id", Value: draftId}}
 	SetupController.ApproveDraft(c)
@@ -402,7 +393,6 @@ func TestSetupDraftLifecycle(t *testing.T) {
 		t.Fatalf("second approve: status = %d, want 409", recorder.Code)
 	}
 
-	// The waiting CLI now receives the credentials.
 	c, recorder = newControllerTestContext(t, tx, userId, http.MethodGet, "/api/setup/plan", "")
 	c.Set(middleware.SetupOrganizationIdContextKey, orgId)
 	SetupController.GetPlan(c)
@@ -410,7 +400,6 @@ func TestSetupDraftLifecycle(t *testing.T) {
 		t.Fatalf("approved plan body = %s", recorder.Body.String())
 	}
 
-	// A new submission starts a fresh pending cycle; rejecting it records the reason.
 	submitTestPlan(t, tx, userId, orgId, `{"projects":[{"name":"Another","framework":"opentelemetry"}]}`)
 	draftId = latestDraftId(t, tx, userId, orgId)
 	c, recorder = newControllerTestContext(t, tx, userId, http.MethodPost, "/api/setup/drafts/"+draftId+"/reject", `{"reason":"wrong project split"}`)

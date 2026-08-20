@@ -14,9 +14,6 @@ import (
 const SetupOrganizationIdContextKey = "setupOrganizationId"
 const SetupScopeContextKey = "setupScope"
 
-// UseSetupAuth authenticates a short-lived org-scoped setup token (tws_...).
-// It deliberately does not share AuthenticateBearer: setup tokens must never
-// satisfy UseAppAuth, and app credentials must never satisfy setup routes.
 func UseSetupAuth(c *gin.Context) {
 	authHeader := c.GetHeader("Authorization")
 	if !strings.HasPrefix(authHeader, "Bearer ") {

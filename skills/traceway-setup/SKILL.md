@@ -1,6 +1,6 @@
 ---
 name: traceway-setup
-description: Analyze a repository's backend, browser, mobile, AI, background-work, existing-observability, build, and deployment architecture; propose and explain the correct Traceway project topology; create the projects through a user-approved setup plan (or guide manual dashboard creation); then instrument and verify every selected component. Every backend uses OpenTelemetry over OTLP/HTTP regardless of language or framework, keeping endpoints, tasks, AI traces, logs, application metrics, and host metrics in one backend project. Browser frontends and independently released mobile apps use separate Traceway projects with the Traceway SDKs, plus source map or symbol uploads where applicable. Use when the user wants to plan, add, migrate, or complete Traceway or OpenTelemetry monitoring for a backend, frontend, full-stack, mobile, iOS/Swift, or AI agent/chatbot repository. Accepts a project token and instance URL for connecting an existing project, e.g. "/traceway-setup with token abc123 and url https://traceway.example.com", or an organization setup token for creating projects, e.g. "/traceway-setup with setup token tws_abc123 and url https://traceway.example.com"; with no token it analyzes the repository first and then walks the user through getting a setup token. Any token starting with tws_ is a setup token even when the user just says "token".
+description: Analyze and instrument repositories for Traceway observability. Use when the user wants to plan, add, migrate, or verify Traceway or OpenTelemetry monitoring for backend, browser, full-stack, mobile or iOS, or AI-agent software, including project topology and user-approved setup-plan creation. Backends use OTLP/HTTP; browser frontends and independently released mobile clients use separate Traceway SDK projects. Accept either an existing project token and instance URL or an organization setup token (`tws_...`) and URL; with no token, analyze first and guide setup-token acquisition. Treat any `tws_` token as a setup token.
 ---
 
 # Set Up Traceway
@@ -297,6 +297,65 @@ Three parts of that snippet are load-bearing:
 
 Auto-instrumentation covers Express routes (sets `http.route`), status codes, errors, and database clients (`pg`, `mysql2`, `mongodb`, `ioredis`). SQLite and custom business logic need manual `tracer.startActiveSpan()` child spans.
 
+#### Next.js server exception
+
+Next.js must not use the generic `instrumentation.mjs` preload above, `node --import`, or `NODE_OPTIONS`. Next.js creates its own incoming request root span with the matched `http.route`; preloading the generic Node HTTP instrumentation creates a competing root named from the literal URL, so `/api/users/1` and `/api/users/2` become separate endpoints.
+
+For a Next.js server, create a minimal `instrumentation.ts` hook and put the SDK in a separate `instrumentation.node.ts`. Next.js compiles the hook for both Node and Edge; importing OTel packages directly in the hook, even with dynamic `import()` calls after a runtime guard, can make the development Edge compilation resolve Node built-ins and fail. The wrapper must conditionally import only the Node module:
+
+```typescript
+// instrumentation.ts
+export async function register() {
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    await import("./instrumentation.node");
+  }
+}
+```
+
+Keep every Node-only import and the SDK startup in the sibling module:
+
+```typescript
+// instrumentation.node.ts
+import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
+import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { resourceFromAttributes } from "@opentelemetry/resources";
+import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
+import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
+import { NodeSDK } from "@opentelemetry/sdk-node";
+
+(Error as unknown as { prepareStackTrace?: unknown }).prepareStackTrace = undefined;
+
+const instance = process.env.TRACEWAY_URL!.replace(/\/+$/, "");
+const base = `${instance}/api/otel`;
+const headers = { Authorization: `Bearer ${process.env.TRACEWAY_BACKEND_TOKEN}` };
+
+new NodeSDK({
+  resource: resourceFromAttributes({
+    "service.name": process.env.OTEL_SERVICE_NAME ?? "nextjs-server",
+    "service.version": process.env.APP_VERSION ?? "development",
+  }),
+  traceExporter: new OTLPTraceExporter({ url: `${base}/v1/traces`, headers }),
+  metricReaders: [
+    new PeriodicExportingMetricReader({
+      exporter: new OTLPMetricExporter({ url: `${base}/v1/metrics`, headers }),
+      exportIntervalMillis: 30_000,
+    }),
+  ],
+  logRecordProcessors: [
+    new BatchLogRecordProcessor({
+      exporter: new OTLPLogExporter({ url: `${base}/v1/logs`, headers }),
+    }),
+  ],
+  instrumentations: [getNodeAutoInstrumentations()],
+}).start();
+```
+
+Install the log exporter and SDK packages in addition to the generic Node dependencies: `@opentelemetry/exporter-logs-otlp-http`, `@opentelemetry/sdk-logs`, `@opentelemetry/api-logs`, and `@opentelemetry/resources`. Next.js versions before 15 also need `experimental.instrumentationHook: true`. Full setup and verification: https://docs.tracewayapp.com/client/otel/nextjs
+
+Resetting `Error.prepareStackTrace` in `instrumentation.node.ts` lets Node apply source maps instead of leaving server Issues pointed at minified Next chunks. Production must also start with `NODE_OPTIONS=--enable-source-maps`, and the build must emit `.next/server/**/*.js.map`; verify both rather than assuming readable server stacks. If the webpack build omits them, add `experimental: { serverSourceMaps: true }` to `next.config`. Also list `@opentelemetry/auto-instrumentations-node` in `serverExternalPackages` so Next does not bundle the instrumentation registry or warn about its optional transports.
+
 ### Per-language notes
 
 - **Go**: use the framework's OTel middleware. `go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin`, `github.com/riandyrn/otelchi` (a community package, and pass `otelchi.WithChiRoutes(r)` or it reports raw URLs), `github.com/gofiber/contrib/otelfiber/v2`. All three set `http.route` from the matched route pattern. Exporter: `otlptracehttp.WithEndpointURL(...)` + `WithHeaders`. Two Go-only traps:
@@ -511,7 +570,9 @@ Frontend and mobile projects do NOT use OTel; they use the Traceway SDKs reporti
 
 For the per-framework init code (plain JS, React, Vue, Svelte/SvelteKit, jQuery), the shared SDK options, error filtering, custom attributes, distributed tracing, and the full debug-ID + source map pipeline, read `frontend-js.md` in this skill directory. Online docs: https://docs.tracewayapp.com/client/react (or `vue`, `svelte`, `jquery`, `js-sdk`).
 
-**Full-stack JS** (Next.js, SvelteKit, Remix): only when "Analyze the Architecture" confirmed the framework's server actually serves the app in production. A frontend-only deployment gets just the browser pieces above; a separate backend follows "Backend OTel Setup". When it is genuinely full-stack, integrate both sides under the two confirmed projects: server side follows "Backend OTel Setup" with the backend project's token, and browser side follows the three pieces above with the frontend project's token.
+**Full-stack JS** (Next.js, SvelteKit, Remix): only when "Analyze the Architecture" confirmed the framework's server actually serves the app in production. A frontend-only deployment gets just the browser pieces above; a separate backend follows "Backend OTel Setup". When it is genuinely full-stack, integrate both sides under the two confirmed projects: server side follows "Backend OTel Setup" with the backend project's token, and browser side follows the three pieces above with the frontend project's token. For Next.js specifically, use the `instrumentation.ts` framework hook in the "Next.js server exception" above; never apply the generic Node preload to it.
+
+For the Next.js **browser** build, `@tracewayapp/bundler-plugin` currently has a webpack entry point, not a Turbopack one. Set `productionBrowserSourceMaps: true`, add `TracewayDebugIdsWebpackPlugin` only when `!isServer && !dev` (the plugin is production-only and must not replace Next's development source-map mode), and make the production build run `next build --webpack` (Next.js 16 defaults to Turbopack, which otherwise ignores this plugin). After building, confirm client `.js` files contain `//# debugId=` and their `.js.map` siblings contain `debugId`, then upload `.next/static/chunks` with the React project's source-map upload token.
 
 **Mobile**, always the platform SDK, never OTel:
 

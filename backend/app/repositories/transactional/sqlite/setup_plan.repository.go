@@ -101,16 +101,16 @@ func (r *setupPlanRepository) FindLatestByUserAndOrganization(ex lit.Executor, u
 	return r.scanRow(ex.QueryRow(query, args...))
 }
 
-func (r *setupPlanRepository) FindLatestByOrganization(ex lit.Executor, organizationId int) (*shared.SetupPlanRow, error) {
+func (r *setupPlanRepository) FindReviewableByOrganization(ex lit.Executor, organizationId int) (*shared.SetupPlanRow, error) {
 	query, args, err := lit.ParseNamedQuery(
 		db.Driver,
 		`SELECT `+setupPlanColumns+`
 			FROM setup_plans p
 			JOIN users u ON u.id = p.user_id
 			WHERE p.organization_id = :org_id
-			ORDER BY p.created_at DESC
+			ORDER BY CASE WHEN p.status = :pending THEN 0 ELSE 1 END, p.created_at DESC
 			LIMIT 1`,
-		lit.P{"org_id": organizationId},
+		lit.P{"org_id": organizationId, "pending": "pending"},
 	)
 	if err != nil {
 		return nil, err

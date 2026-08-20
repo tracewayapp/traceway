@@ -5,11 +5,11 @@ package sqlite
 import (
 	"database/sql"
 	"errors"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional/shared"
 	"time"
 
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional/shared"
 )
 
 type setupTokenRepository struct{}
@@ -58,6 +58,10 @@ func (r *setupTokenRepository) FindActiveByToken(ex lit.Executor, token string) 
 		`SELECT s.id, s.user_id, s.organization_id, s.expires_at, u.email
 			FROM setup_tokens s
 			JOIN users u ON u.id = s.user_id
+			JOIN organization_users ou
+				ON ou.user_id = s.user_id
+				AND ou.organization_id = s.organization_id
+				AND ou.role <> 'readonly'
 			WHERE s.token_hash = :hash`,
 		lit.P{"hash": shared.HashAuthToken(token)},
 	)

@@ -30,6 +30,7 @@
 
 	let mode = $state<SetupMode>(getSetupMode());
 	let draft = $state<SetupDraft | null>(null);
+	let draftLoaded = $state(false);
 	let initialProjectIds = $state<Set<string>>(new Set());
 	let snapshotTaken = $state(false);
 	let pollInFlight = false;
@@ -49,6 +50,7 @@
 				projectsState.loadProjects()
 			]);
 			draft = draftResponse?.draft ?? null;
+			draftLoaded = true;
 		} catch {
 			// Transient polling errors are ignored; the next tick retries.
 		} finally {
@@ -58,9 +60,7 @@
 
 	onMount(() => {
 		initialProjectIds = new Set(
-			projectsState.projects
-				.filter((p) => p.organizationId === organizationId)
-				.map((p) => p.id)
+			projectsState.projects.filter((p) => p.organizationId === organizationId).map((p) => p.id)
 		);
 		snapshotTaken = true;
 		refresh();
@@ -77,7 +77,9 @@
 	<SetupModeTabs {mode} onModeChange={(m) => (mode = m)} />
 
 	{#if mode === 'ai'}
-		{#if draft?.status === 'pending'}
+		{#if !draftLoaded}
+			<p class="text-sm text-muted-foreground">Loading the latest setup proposal...</p>
+		{:else if draft?.status === 'pending'}
 			<SetupDraftReview {draft} onDecided={refresh} />
 		{:else}
 			{#if draft?.status === 'approved'}
@@ -89,7 +91,7 @@
 					Your agent can revise it and submit a new one with the same setup token.
 				</p>
 			{/if}
-			<SetupTokenPanel {organizationId} />
+			<SetupTokenPanel {organizationId} autoMint={draft === null} />
 		{/if}
 		{#if snapshotTaken}
 			<SetupLiveProjects
@@ -101,11 +103,7 @@
 	{:else}
 		<ManualProjectsEditor {organizationId} {initialFramework} onCreated={() => refresh()} />
 		{#if snapshotTaken && orgProjects.length > 0}
-			<SetupLiveProjects
-				projects={orgProjects}
-				{initialProjectIds}
-				waitingText=""
-			/>
+			<SetupLiveProjects projects={orgProjects} {initialProjectIds} waitingText="" />
 		{/if}
 	{/if}
 
@@ -127,9 +125,7 @@
 				<ArrowRight class="ml-2 h-4 w-4" />
 			</Button>
 			{#if !canContinue}
-				<span class="text-xs text-muted-foreground">
-					Waiting for your first project...
-				</span>
+				<span class="text-xs text-muted-foreground"> Waiting for your first project... </span>
 			{/if}
 		</div>
 	</div>

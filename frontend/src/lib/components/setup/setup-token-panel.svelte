@@ -10,7 +10,8 @@
 	import CopyableCodeBlock from './copyable-code-block.svelte';
 	import CopyablePrompt from './copyable-prompt.svelte';
 
-	let { organizationId }: { organizationId: number } = $props();
+	let { organizationId, autoMint = true }: { organizationId: number; autoMint?: boolean } =
+		$props();
 
 	let minting = $state(false);
 	let mintError = $state('');
@@ -40,7 +41,7 @@
 	}
 
 	onMount(() => {
-		mint();
+		if (autoMint) mint();
 		const tick = setInterval(() => (now = Date.now()), 30000);
 		return () => clearInterval(tick);
 	});
@@ -51,7 +52,7 @@
 	$effect(() => {
 		if (organizationId !== lastOrgId) {
 			lastOrgId = organizationId;
-			mint();
+			if (autoMint) mint();
 		}
 	});
 </script>
@@ -99,8 +100,17 @@
 					<RefreshCw class="mr-2 h-4 w-4" />
 					Try Again
 				</Button>
-			{:else if minting || !setupToken}
+			{:else if minting}
 				<p class="text-sm text-muted-foreground">Generating a setup token...</p>
+			{:else if !setupToken}
+				<p class="text-sm text-muted-foreground">
+					Generate a replacement only after the current agent has received the proposal decision. A
+					new token invalidates the previous one.
+				</p>
+				<Button variant="outline" size="sm" onclick={mint} disabled={minting}>
+					<RefreshCw class="mr-2 h-4 w-4" />
+					Generate New Token
+				</Button>
 			{:else if expired}
 				<p class="text-sm text-muted-foreground">This setup token expired.</p>
 				<Button variant="outline" size="sm" onclick={mint} disabled={minting}>
@@ -110,9 +120,9 @@
 			{:else}
 				<CopyablePrompt parts={promptParts} />
 				<p class="text-xs text-muted-foreground">
-					The setup token lets your coding agent propose a setup plan for this organization for
-					the next {minutesLeft} min. It is not an ingest token, and nothing is created until you
-					approve the proposal here.
+					The setup token lets your coding agent propose a setup plan for this organization for the
+					next {minutesLeft} min. It is not an ingest token, and nothing is created until you approve
+					the proposal here.
 				</p>
 			{/if}
 		</div>

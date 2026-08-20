@@ -256,8 +256,8 @@ func (s setupController) draftResponse(ctx *gin.Context, plan *transactional.Set
 	return response, true
 }
 
-// ListDraft returns the organization's latest setup plan for the dashboard's
-// approval view (register step 2 and /setup poll it).
+// ListDraft returns a pending setup plan before the latest decided plan so
+// concurrent proposals from different organization members remain reviewable.
 func (s setupController) ListDraft(ctx *gin.Context) {
 	orgId, err := strconv.Atoi(ctx.Query("organizationId"))
 	if err != nil {
@@ -266,18 +266,11 @@ func (s setupController) ListDraft(ctx *gin.Context) {
 	}
 
 	tx := db.GetTx(ctx)
-
-	role, err := transactional.OrganizationRepository.GetUserRole(tx, orgId, middleware.GetUserId(ctx))
-	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("resolve organization role: %w", err))
-		return
-	}
-	if role == "" {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "Organization not found"})
+	if !requireOrgWrite(ctx, tx, orgId) {
 		return
 	}
 
-	plan, err := transactional.SetupPlanRepository.FindLatestByOrganization(tx, orgId)
+	plan, err := transactional.SetupPlanRepository.FindReviewableByOrganization(tx, orgId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("load setup plan: %w", err))
 		return

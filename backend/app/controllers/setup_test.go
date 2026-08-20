@@ -170,6 +170,14 @@ func TestBatchCreateProjectsCreatesAndIsIdempotent(t *testing.T) {
 	if folded[0].Status != "created" || folded[1].Status != "existing" || folded[0].Project.Id != folded[1].Project.Id {
 		t.Errorf("duplicate names should fold onto one project: %+v", folded)
 	}
+
+	_, err = batchCreateProjects(tx, orgId, userId, []BatchProjectInput{
+		{Name: "Product Web", Framework: "opentelemetry"},
+	})
+	var validationErr *batchValidationError
+	if !errors.As(err, &validationErr) || !strings.Contains(validationErr.Message, "already exists with framework react") {
+		t.Fatalf("framework mismatch = %v, want a validation error naming the existing framework", err)
+	}
 }
 
 func TestBatchCreateProjectsValidation(t *testing.T) {
@@ -370,6 +378,22 @@ func TestSetupDraftLifecycle(t *testing.T) {
 		t.Fatalf("approve response = %+v", approveResponse)
 	}
 
+	readonly, err := transactional.UserRepository.Create(tx, "readonly@example.com", "Read Only", "hashed-password")
+	if err != nil {
+		t.Fatalf("create read-only user: %v", err)
+	}
+	if _, err := transactional.OrganizationRepository.AddUser(tx, orgId, readonly.Id, "readonly"); err != nil {
+		t.Fatalf("add read-only user: %v", err)
+	}
+	c, recorder = newControllerTestContext(t, tx, readonly.Id, http.MethodGet, "/api/setup/drafts?organizationId="+strconv.Itoa(orgId), "")
+	SetupController.ListDraft(c)
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("read-only list draft: status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if strings.Contains(recorder.Body.String(), approveResponse.Projects[0].Token) {
+		t.Fatal("read-only draft response exposed a project token")
+	}
+
 	// Second decision on the same draft is a conflict.
 	c, recorder = newControllerTestContext(t, tx, userId, http.MethodPost, "/api/setup/drafts/"+draftId+"/approve", "")
 	c.Params = gin.Params{{Key: "id", Value: draftId}}
@@ -403,7 +427,6 @@ func TestSetupDraftLifecycle(t *testing.T) {
 		t.Fatalf("rejected plan body = %s", recorder.Body.String())
 	}
 }
-
 func TestSubmitPlanValidation(t *testing.T) {
 	setupSetupControllerDB(t)
 
@@ -434,4 +457,3 @@ func TestSubmitPlanValidation(t *testing.T) {
 		})
 	}
 }
-

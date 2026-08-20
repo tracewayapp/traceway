@@ -5,7 +5,7 @@ Traceway instruments Next.js on two sides:
 - **Frontend (Browser)**: uncaught errors, render errors, and session recording via [`@tracewayapp/react`](https://www.npmjs.com/package/@tracewayapp/react).
 - **Backend (Server)**: request traces, database spans, and server-side exceptions via OpenTelemetry.
 
-The two work side by side on the same project. Most apps will want both.
+The two work side by side under separate Traceway projects. Use an **OpenTelemetry** project for the server and a **React** project for the browser; swapping those tokens causes backend endpoint, task, and span data to be discarded.
 
 ---
 
@@ -27,7 +27,7 @@ import { TracewayProvider } from "@tracewayapp/react";
 
 export function TracewayClientProvider({ children }: { children: React.ReactNode }) {
   return (
-    <TracewayProvider connectionString="your-token@https://traceway.example.com/api/report">
+    <TracewayProvider connectionString={process.env.NEXT_PUBLIC_TRACEWAY_WEB_CONNECTION_STRING!}>
       {children}
     </TracewayProvider>
   );
@@ -49,7 +49,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 }
 ```
 
-**Backend.** Install the OTel Node SDK and add a single `instrumentation.ts`. This installs all three signals at once: traces, metrics, and logs.
+**Backend.** Install the OTel Node SDK and add `instrumentation.ts` plus a Node-only sibling. This installs all three signals at once: traces, metrics, and logs without pulling Node built-ins into Next.js's Edge compilation.
 
 ```bash
 npm install @opentelemetry/sdk-node \
@@ -67,49 +67,55 @@ npm install @opentelemetry/sdk-node \
 ```typescript
 // instrumentation.ts (project root)
 export async function register() {
-  if (process.env.NEXT_RUNTIME !== "nodejs") return;
-
-  const { NodeSDK } = await import("@opentelemetry/sdk-node");
-  const { OTLPTraceExporter } = await import("@opentelemetry/exporter-trace-otlp-http");
-  const { OTLPMetricExporter } = await import("@opentelemetry/exporter-metrics-otlp-http");
-  const { OTLPLogExporter } = await import("@opentelemetry/exporter-logs-otlp-http");
-  const { PeriodicExportingMetricReader } = await import("@opentelemetry/sdk-metrics");
-  const { BatchLogRecordProcessor } = await import("@opentelemetry/sdk-logs");
-  const { getNodeAutoInstrumentations } = await import("@opentelemetry/auto-instrumentations-node");
-  const { resourceFromAttributes } = await import("@opentelemetry/resources");
-
-  const base = "https://your-traceway-instance.com/api/otel";
-  const headers = { Authorization: "Bearer your-project-token" };
-
-  new NodeSDK({
-    resource: resourceFromAttributes({
-      "service.name": "my-nextjs-app",
-      "service.version": "1.0.0",
-    }),
-    traceExporter: new OTLPTraceExporter({ url: `${base}/v1/traces`, headers }),
-    metricReaders: [
-      new PeriodicExportingMetricReader({
-        exporter: new OTLPMetricExporter({ url: `${base}/v1/metrics`, headers }),
-        exportIntervalMillis: 30_000,
-      }),
-    ],
-    logRecordProcessors: [
-      new BatchLogRecordProcessor({
-        exporter: new OTLPLogExporter({ url: `${base}/v1/logs`, headers }),
-      }),
-    ],
-    instrumentations: [getNodeAutoInstrumentations()],
-  }).start();
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    await import("./instrumentation.node");
+  }
 }
 ```
 
-Three details in that file are easy to get wrong:
+```typescript
+// instrumentation.node.ts (project root)
+import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
+import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { resourceFromAttributes } from "@opentelemetry/resources";
+import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
+import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
+import { NodeSDK } from "@opentelemetry/sdk-node";
+
+const instance = process.env.TRACEWAY_URL!.replace(/\/+$/, "");
+const base = `${instance}/api/otel`;
+const headers = { Authorization: `Bearer ${process.env.TRACEWAY_BACKEND_TOKEN}` };
+
+new NodeSDK({
+  resource: resourceFromAttributes({
+    "service.name": "my-nextjs-app",
+    "service.version": "1.0.0",
+  }),
+  traceExporter: new OTLPTraceExporter({ url: `${base}/v1/traces`, headers }),
+  metricReaders: [
+    new PeriodicExportingMetricReader({
+      exporter: new OTLPMetricExporter({ url: `${base}/v1/metrics`, headers }),
+      exportIntervalMillis: 30_000,
+    }),
+  ],
+  logRecordProcessors: [
+    new BatchLogRecordProcessor({
+      exporter: new OTLPLogExporter({ url: `${base}/v1/logs`, headers }),
+    }),
+  ],
+  instrumentations: [getNodeAutoInstrumentations()],
+}).start();
+```
+
+Three details in the Node-only file are easy to get wrong:
 
 - `resourceFromAttributes({ ... })` is the current API. `@opentelemetry/resources` 2.x removed the `Resource` class, so `new Resource({ ... })` throws `TypeError: Resource is not a constructor` and takes the Next.js dev server down with it.
 - `new BatchLogRecordProcessor({ exporter })` takes an options object. Passing the exporter directly (`new BatchLogRecordProcessor(exporter)`) fails to compile in TypeScript with `error TS2345`. In plain JavaScript it starts and then ships zero logs.
 - `metricReaders` and `logRecordProcessors` are arrays. The older singular `metricReader` and `logRecordProcessor` fields still work but are deprecated.
 
-The `process.env.NEXT_RUNTIME !== "nodejs"` guard is required. Next.js runs `instrumentation.ts` in both the Node.js and Edge runtimes, and the OTel Node SDK only works in Node.js. The dynamic `import()` calls keep OTel out of the Edge bundle.
+The separate `instrumentation.node.ts` boundary is required. Next.js compiles `instrumentation.ts` for both Node.js and Edge, and the OTel Node SDK only works in Node.js. Putting its imports directly in the hook—even dynamic imports after a runtime guard—can make development builds resolve modules such as `stream`, `fs`, and `worker_threads` for Edge and fail. The wrapper above conditionally imports one Node-only module, matching Next.js's recommended NodeSDK pattern.
 
 > Next.js < 15: also set `experimental.instrumentationHook: true` in `next.config.js`. Not needed for 15+.
 
@@ -132,7 +138,7 @@ import { TracewayProvider } from "@tracewayapp/react";
 
 export default function App({ Component, pageProps }: AppProps) {
   return (
-    <TracewayProvider connectionString="your-token@https://traceway.example.com/api/report">
+    <TracewayProvider connectionString={process.env.NEXT_PUBLIC_TRACEWAY_WEB_CONNECTION_STRING!}>
       <Component {...pageProps} />
     </TracewayProvider>
   );
@@ -151,7 +157,7 @@ Defaults match the rest of the JS SDK family (no flags needed):
 | `captureNetwork` | `true` | `fetch` and XHR calls recorded as network actions |
 | `captureNavigation` | `true` | History API push/replace/pop recorded as navigation actions |
 
-The `connectionString` uses the standard `{token}@{apiUrl}` format from your Traceway project page.
+The `connectionString` uses the standard `{token}@{apiUrl}` value from the React browser project. Do not use the OpenTelemetry server project's token here.
 
 `TracewayProvider` also acts as a React error boundary. Render-time exceptions are captured and re-thrown so your app behaves exactly as without Traceway. No separate `<TracewayErrorBoundary>` is required.
 
@@ -196,6 +202,41 @@ export function TestErrorButton() {
 ```
 
 The error should appear in your Traceway dashboard under **Issues** within a few seconds, with the session recording attached.
+
+### Browser source maps and debug IDs
+
+Install the debug-ID plugin and source-map uploader, then use Next's webpack build. The plugin currently supports webpack, not Turbopack; Next.js 16 defaults to Turbopack, so a normal `next build` would silently skip this integration.
+
+```bash
+npm install -D @tracewayapp/bundler-plugin @tracewayapp/sourcemap-upload
+```
+
+```typescript
+// next.config.ts
+import type { NextConfig } from "next";
+import { TracewayDebugIdsWebpackPlugin } from "@tracewayapp/bundler-plugin/webpack";
+
+const nextConfig: NextConfig = {
+  productionBrowserSourceMaps: true,
+  webpack(config, { isServer, dev }) {
+    if (!isServer && !dev) {
+      config.devtool = "source-map";
+      config.plugins.push(new TracewayDebugIdsWebpackPlugin());
+    }
+    return config;
+  },
+};
+
+export default nextConfig;
+```
+
+The `!dev` guard keeps the production-only plugin from replacing Next.js's development source-map mode. Use `next build --webpack`, then verify the emitted client bundles contain `//# debugId=` and their `.js.map` files contain a `debugId` field. Upload the browser artifacts with the **React project's** upload token:
+
+```bash
+TRACEWAY_URL=https://traceway.example.com \
+TRACEWAY_SOURCEMAP_TOKEN=... \
+npx @tracewayapp/sourcemap-upload --directory .next/static/chunks
+```
 
 ---
 
@@ -295,7 +336,7 @@ export async function POST() {
 
 ### Logs
 
-Logs are a separate OTLP pipeline. The Quick Start `instrumentation.ts` already configures it. Create one shared module for the logger:
+Logs are a separate OTLP pipeline. The Quick Start `instrumentation.node.ts` already configures it. Create one shared module for the logger:
 
 ```typescript
 // lib/otel.ts
@@ -368,7 +409,12 @@ OTel patches CommonJS packages at `require()` time. Next.js bundles server depen
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["ioredis", "redis", "mysql2"],
+  serverExternalPackages: [
+    "@opentelemetry/auto-instrumentations-node",
+    "ioredis",
+    "redis",
+    "mysql2",
+  ],
 };
 
 export default nextConfig;
@@ -389,7 +435,7 @@ NODE_OPTIONS='--require ./otel.js' next start
 
 On Next.js that makes `@opentelemetry/instrumentation-http` create the request root span before Next.js's own tracer runs. That span only knows the literal URL (`url.path: /api/users/42`), never the route pattern, so it wins over Next.js's span and your endpoints fragment into one row per id. Wrapping handlers does not repair it, because a handler can only reach the innermost active span.
 
-Use `instrumentation.ts` with the `register()` hook, as shown in the Quick Start.
+Use `instrumentation.ts` with the `register()` hook and its Node-only sibling, as shown in the Quick Start.
 
 ### What gets captured
 
@@ -597,17 +643,13 @@ Error: Test error from Next.js server
     .next/server/chunks/[root-of-the-server]__0og452-._.js:1:983
 ```
 
-Next.js installs its own `Error.prepareStackTrace`, which bypasses Node's source map support, so the stack recorded by OTel keeps the bundled frames. Reset it at the top of `register()` to get Node's default formatter back:
+Next.js installs its own `Error.prepareStackTrace`, which bypasses Node's source map support, so the stack recorded by OTel keeps the bundled frames. Reset it near the top of the Node-only module to get Node's default formatter back:
 
 ```typescript
-// instrumentation.ts (project root)
-export async function register() {
-  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+// instrumentation.node.ts
+(Error as unknown as { prepareStackTrace?: unknown }).prepareStackTrace = undefined;
 
-  (Error as unknown as { prepareStackTrace?: unknown }).prepareStackTrace = undefined;
-
-  // ...the rest of the SDK setup
-}
+// ...the rest of the SDK setup
 ```
 
 That is enough in development, where Next.js already runs the server with `--enable-source-maps`. Frames then read `app/api/orders/route.ts:12:9`.
@@ -652,7 +694,7 @@ export OTEL_EXPORTER_OTLP_ENDPOINT="https://your-traceway-instance.com/api/otel"
 export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer your-project-token"
 ```
 
-With these set, your `instrumentation.ts` can omit the exporter URLs, the headers, and the `resource` block. The SDK picks all of them up automatically.
+With these set, your `instrumentation.node.ts` can omit the exporter URLs, the headers, and the `resource` block. The SDK picks all of them up automatically.
 
 ---
 

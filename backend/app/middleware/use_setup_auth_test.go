@@ -37,6 +37,12 @@ func setupSetupAuthDB(t *testing.T) {
 
 	for _, ddl := range []string{
 		`CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL)`,
+		`CREATE TABLE organization_users (
+			user_id INTEGER NOT NULL,
+			organization_id INTEGER NOT NULL,
+			role TEXT NOT NULL,
+			UNIQUE(user_id, organization_id)
+		)`,
 		`CREATE TABLE setup_tokens (
 			id TEXT PRIMARY KEY,
 			token_hash TEXT NOT NULL UNIQUE,
@@ -74,6 +80,9 @@ func TestUseSetupAuthValidToken(t *testing.T) {
 	}
 	userId64, _ := res.LastInsertId()
 	userId := int(userId64)
+	if _, err := db.DB.Exec("INSERT INTO organization_users (user_id, organization_id, role) VALUES (?, ?, 'user')", userId, 42); err != nil {
+		t.Fatalf("grant organization role: %v", err)
+	}
 
 	token := "tws_valid-token"
 	if err := transactional.SetupTokenRepository.Create(db.DB, "tok-1", token, token, userId, 42, time.Now().Add(time.Hour)); err != nil {
@@ -105,6 +114,9 @@ func TestUseSetupAuthRejects(t *testing.T) {
 
 	res, _ := db.DB.Exec("INSERT INTO users (email) VALUES ('setup@example.com')")
 	userId64, _ := res.LastInsertId()
+	if _, err := db.DB.Exec("INSERT INTO organization_users (user_id, organization_id, role) VALUES (?, ?, 'user')", userId64, 42); err != nil {
+		t.Fatalf("grant organization role: %v", err)
+	}
 
 	expired := "tws_expired-token"
 	if err := transactional.SetupTokenRepository.Create(db.DB, "tok-exp", expired, expired, int(userId64), 42, time.Now().Add(-time.Minute)); err != nil {

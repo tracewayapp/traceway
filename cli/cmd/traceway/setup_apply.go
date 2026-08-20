@@ -194,12 +194,14 @@ func runSetupApply(cmd *cobra.Command, _ []string) error {
 	planDir := filepath.Dir(setupApplyPlanPath)
 	summaries := make([]setupApplyProjectSummary, 0, len(plan.Projects))
 	envWriteFailed := false
+	projectMissing := false
 	for _, planned := range plan.Projects {
 		project, ok := byName[strings.TrimSpace(planned.Name)]
 		if !ok {
 			// The server folds duplicates and validates names, so a missing
 			// entry means the project was deleted between approval and now.
 			summaries = append(summaries, setupApplyProjectSummary{Name: planned.Name, Framework: planned.Framework, Status: "missing"})
+			projectMissing = true
 			continue
 		}
 
@@ -236,6 +238,16 @@ func runSetupApply(cmd *cobra.Command, _ []string) error {
 	}
 	if envWriteFailed {
 		return newCLIError(exitcode.Generic, "env_write_failed")
+	}
+	if projectMissing {
+		env := output.ErrorEnvelope{
+			Code:     "setup_project_missing",
+			Message:  "one or more approved projects could not be loaded",
+			Hint:     "review the setup in Traceway and rerun the plan to restore the missing project",
+			ExitCode: exitcode.Generic,
+		}
+		_ = output.RenderError(cmd.ErrOrStderr(), mode, env)
+		return newCLIError(env.ExitCode, env.Code)
 	}
 	return nil
 }

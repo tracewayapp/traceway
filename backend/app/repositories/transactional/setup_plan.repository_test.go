@@ -100,6 +100,51 @@ func TestSetupPlanDecideGuard(t *testing.T) {
 	}
 }
 
+func TestSetupPlanFindReviewablePrefersPendingAcrossUsers(t *testing.T) {
+	setupTestDB(t)
+	setupSetupPlanTables(t)
+	firstUserId := insertSetupTestUser(t, "first-plan@example.com")
+	secondUserId := insertSetupTestUser(t, "second-plan@example.com")
+
+	if err := SetupPlanRepository.Upsert(db.DB, "older-pending", firstUserId, 1, testPlanPayload); err != nil {
+		t.Fatalf("failed to insert pending plan: %v", err)
+	}
+	if err := SetupPlanRepository.Upsert(db.DB, "newer-approved", secondUserId, 1, testPlanPayload); err != nil {
+		t.Fatalf("failed to insert approved plan: %v", err)
+	}
+	if _, err := SetupPlanRepository.Decide(db.DB, "newer-approved", "approved", "", "[]", secondUserId, time.Now()); err != nil {
+		t.Fatalf("failed to approve newer plan: %v", err)
+	}
+
+	older := shared.FormatAuthTime(time.Now().Add(-time.Minute))
+	newer := shared.FormatAuthTime(time.Now())
+	if _, err := db.DB.Exec("UPDATE setup_plans SET created_at = ? WHERE id = ?", older, "older-pending"); err != nil {
+		t.Fatalf("failed to age pending plan: %v", err)
+	}
+	if _, err := db.DB.Exec("UPDATE setup_plans SET created_at = ? WHERE id = ?", newer, "newer-approved"); err != nil {
+		t.Fatalf("failed to date approved plan: %v", err)
+	}
+
+	plan, err := SetupPlanRepository.FindReviewableByOrganization(db.DB, 1)
+	if err != nil {
+		t.Fatalf("find reviewable failed: %v", err)
+	}
+	if plan == nil || plan.Id != "older-pending" {
+		t.Fatalf("reviewable plan = %+v, want older-pending", plan)
+	}
+
+	if _, err := SetupPlanRepository.Decide(db.DB, "older-pending", "rejected", "", "", firstUserId, time.Now()); err != nil {
+		t.Fatalf("failed to reject pending plan: %v", err)
+	}
+	plan, err = SetupPlanRepository.FindReviewableByOrganization(db.DB, 1)
+	if err != nil {
+		t.Fatalf("find latest decided failed: %v", err)
+	}
+	if plan == nil || plan.Id != "newer-approved" {
+		t.Fatalf("latest decided plan = %+v, want newer-approved", plan)
+	}
+}
+
 func TestSetupPlanPruneOld(t *testing.T) {
 	setupTestDB(t)
 	setupSetupPlanTables(t)

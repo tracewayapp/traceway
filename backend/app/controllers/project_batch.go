@@ -83,6 +83,9 @@ func batchCreateProjects(tx *sql.Tx, orgId int, createdBy int, inputs []BatchPro
 	results := make([]BatchProjectResult, 0, len(inputs))
 	for _, input := range inputs {
 		if project, ok := byName[input.Name]; ok {
+			if project.Framework != input.Framework {
+				return nil, &batchValidationError{Message: "Project " + input.Name + " already exists with framework " + project.Framework + "; requested " + input.Framework}
+			}
 			results = append(results, BatchProjectResult{Project: project, Status: "existing"})
 			continue
 		}

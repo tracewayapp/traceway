@@ -259,6 +259,41 @@ func TestSetupApplyApprovalTimeout(t *testing.T) {
 	}
 }
 
+func TestSetupApplyFailsWhenApprovedProjectIsMissing(t *testing.T) {
+	setupTestEnvIsolation(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method + " " + r.URL.Path {
+		case "GET /api/setup/session":
+			_ = json.NewEncoder(w).Encode(map[string]any{"organizationId": 1, "organizationName": "Acme", "email": "a@b.c", "backendUrl": "x", "projects": []any{}})
+		case "PUT /api/setup/plan":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "pending"})
+		case "GET /api/setup/plan":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status": "approved",
+				"projects": []map[string]any{{
+					"id": "p-backend", "name": "Product Backend", "framework": "opentelemetry",
+					"token": "tok_backend-secret", "backendUrl": "https://traceway.example.com", "status": "created",
+				}},
+			})
+		}
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	planPath := writeSetupPlanFile(t, dir, server.URL)
+
+	stdout, stderr, err := runCmd(t, testSetupToken+"\n", "setup", "apply", "--plan", planPath, "--token-stdin")
+	if err == nil {
+		t.Fatal("expected missing project error")
+	}
+	if !strings.Contains(stdout.String(), "missing") || !strings.Contains(stderr.String(), "setup_project_missing") {
+		t.Fatalf("missing project result not reported: stdout=%s stderr=%s", stdout.String(), stderr.String())
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "web", ".env")); !os.IsNotExist(statErr) {
+		t.Fatalf("missing project's env file should not be written, stat err = %v", statErr)
+	}
+}
+
 func TestSetupApplyUsageErrors(t *testing.T) {
 	setupTestEnvIsolation(t)
 	dir := t.TempDir()
@@ -270,11 +305,11 @@ func TestSetupApplyUsageErrors(t *testing.T) {
 	}
 
 	cases := map[string][]string{
-		"no plan":                  {"setup", "apply", "--token", testSetupToken},
-		"no token":                 {"setup", "apply", "--plan", planPath},
-		"both token flags":         {"setup", "apply", "--plan", planPath, "--token", "x", "--token-stdin"},
-		"envFile without envVar":   {"setup", "apply", "--plan", badPlanPath, "--token", testSetupToken},
-		"missing plan file":        {"setup", "apply", "--plan", filepath.Join(dir, "nope.json"), "--token", testSetupToken},
+		"no plan":                {"setup", "apply", "--token", testSetupToken},
+		"no token":               {"setup", "apply", "--plan", planPath},
+		"both token flags":       {"setup", "apply", "--plan", planPath, "--token", "x", "--token-stdin"},
+		"envFile without envVar": {"setup", "apply", "--plan", badPlanPath, "--token", testSetupToken},
+		"missing plan file":      {"setup", "apply", "--plan", filepath.Join(dir, "nope.json"), "--token", testSetupToken},
 	}
 	for name, args := range cases {
 		t.Run(name, func(t *testing.T) {

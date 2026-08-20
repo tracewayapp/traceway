@@ -22,6 +22,13 @@
 		 * own row on narrow screens instead of squeezing the input.
 		 */
 		children?: Snippet;
+		/**
+		 * Optional slot rendered inside the joined search unit, between the type
+		 * select (if any) and the Go button. Use for a control that should share
+		 * the pill's borders instead of standing on its own - style it with
+		 * `rounded-none border-r-0` to match.
+		 */
+		pillEnd?: Snippet;
 	};
 
 	let {
@@ -31,7 +38,8 @@
 		typeOptions = [],
 		onSearch,
 		disabled = false,
-		children
+		children,
+		pillEnd
 	}: Props = $props();
 
 	const typeLabel = $derived(typeOptions.find((o) => o.value === typeValue)?.label ?? '');
@@ -62,6 +70,8 @@
 				</Select.Content>
 			</Select.Root>
 		{/if}
+
+		{@render pillEnd?.()}
 
 		<Button variant="outline" class="h-9 rounded-l-none shadow-none" onclick={onSearch} {disabled}>
 			Go

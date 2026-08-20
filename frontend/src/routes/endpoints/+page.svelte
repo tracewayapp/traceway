@@ -14,7 +14,6 @@
 	import { PaginationFooter } from '$lib/components/ui/pagination-footer';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
 	import { SearchBar } from '$lib/components/ui/search-bar';
-	import { RootFilter } from '$lib/components/ui/root-filter';
 	import { NonRootChip } from '$lib/components/ui/non-root-chip';
 	import EndpointName from '$lib/components/endpoint-name.svelte';
 	import { browser } from '$app/environment';
@@ -43,7 +42,7 @@
 		handleSortClick,
 		type SortDirection
 	} from '$lib/utils/sort-storage';
-	import { EndpointMethodFilter } from '$lib/components/ui/endpoint-method-filter';
+	import { EndpointFilter } from '$lib/components/ui/endpoint-filter';
 
 	const timezone = $derived(getTimezone());
 	const initialTimezone = getTimezone();
@@ -441,8 +440,9 @@
 		onSearch={handleSearch}
 		disabled={loading}
 	>
-        <EndpointMethodFilter bind:value={methodFilter} />
-		<RootFilter bind:value={rootFilter} />
+		{#snippet pillEnd()}
+			<EndpointFilter bind:rootValue={rootFilter} bind:methodValue={methodFilter} />
+		{/snippet}
 	</SearchBar>
 
 	<!-- Performance Chart -->

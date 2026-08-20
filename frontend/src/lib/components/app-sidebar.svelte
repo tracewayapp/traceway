@@ -6,6 +6,7 @@
 	import {
 		Activity,
 		Bell,
+		Building2,
 		Workflow,
 		Bug,
 		Link2,
@@ -113,6 +114,20 @@
 		allSidebarItemsBottom.filter((item) => !item.adminOnly || projectsState.canManageCurrentProject)
 	);
 
+	// Organization-level view: lives above the project scope, so it stays out of
+	// allSidebarItems and the per-framework hide sets can never filter it.
+	const organizationItem: SidebarItem = {
+		Icon: Building2,
+		href: '/organization',
+		title: 'Organization',
+		stickyParams: []
+	};
+
+	const organizationActive = $derived(
+		page.url.pathname === organizationItem.href ||
+			page.url.pathname.startsWith(organizationItem.href + '/')
+	);
+
 	const sidebar = useSidebar();
 
 	// Synchronous read so the badge tracks project switches.
@@ -164,6 +179,29 @@
 		/>
 	</Sidebar.SidebarHeader>
 	<Sidebar.SidebarContent>
+		<Sidebar.SidebarGroup
+			class="p-4 pt-0 pb-0 transition-[padding] duration-200 ease-linear group-data-[collapsible=icon]:px-2.5 group-data-[collapsible=icon]:pt-2"
+		>
+			<Sidebar.SidebarGroupContent>
+				<Sidebar.SidebarMenu>
+					<Sidebar.SidebarMenuItem>
+						<Sidebar.SidebarMenuButton
+							isActive={organizationActive}
+							tooltipContent={organizationItem.title}
+							tooltipContentProps={navFlyoutProps(organizationActive)}
+							onclick={(e) => {
+								sidebar.setOpenMobile(false);
+								createRowClickHandler(organizationItem.href)(e);
+							}}
+						>
+							<organizationItem.Icon />
+							<span>{organizationItem.title}</span>
+						</Sidebar.SidebarMenuButton>
+					</Sidebar.SidebarMenuItem>
+				</Sidebar.SidebarMenu>
+			</Sidebar.SidebarGroupContent>
+		</Sidebar.SidebarGroup>
+		<Sidebar.SidebarSeparator class="mx-4 group-data-[collapsible=icon]:mx-2.5" />
 		<Sidebar.SidebarGroup
 			class="p-4 pt-0 pb-0 transition-[padding] duration-200 ease-linear group-data-[collapsible=icon]:px-2.5 group-data-[collapsible=icon]:pt-2"
 		>

@@ -104,6 +104,29 @@ func (r *pageRepository) CountOpenByProject(tx *sql.Tx, projectId uuid.UUID) (in
 	return r.CountByProject(tx, projectId, models.PageStatusOpen)
 }
 
+func (r *pageRepository) FindByOrganization(tx *sql.Tx, organizationId int, status string, limit int, offset int) ([]*models.Page, error) {
+	return lit.SelectNamed[models.Page](
+		tx,
+		"SELECT "+pageColumns+" FROM pages WHERE organization_id = :organization_id AND ("+statusCondition(status)+") ORDER BY created_at DESC, id DESC LIMIT :limit OFFSET :offset",
+		lit.P{"organization_id": organizationId, "limit": limit, "offset": offset},
+	)
+}
+
+func (r *pageRepository) CountByOrganization(tx *sql.Tx, organizationId int, status string) (int, error) {
+	result, err := lit.SelectSingleNamed[models.CountResult](
+		tx,
+		"SELECT COUNT(*) as count FROM pages WHERE organization_id = :organization_id AND ("+statusCondition(status)+")",
+		lit.P{"organization_id": organizationId},
+	)
+	if err != nil {
+		return 0, err
+	}
+	if result == nil {
+		return 0, nil
+	}
+	return result.Count, nil
+}
+
 // statusCondition maps a status filter to a fixed SQL condition; values are
 // from a closed set, never user input.
 func statusCondition(status string) string {

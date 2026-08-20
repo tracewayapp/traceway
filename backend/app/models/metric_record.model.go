@@ -14,6 +14,12 @@ type MetricPoint struct {
 	RecordedAt time.Time         `json:"recordedAt" ch:"recorded_at"`
 }
 
+type ServerLatestPoint struct {
+	ServerName     string    `json:"serverName"`
+	Value          float64   `json:"value"`
+	LastReportedAt time.Time `json:"lastReportedAt"`
+}
+
 type DiscoveredMetric struct {
 	Name       string   `json:"name"`
 	TagKeys    []string `json:"tagKeys"`

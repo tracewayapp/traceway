@@ -235,6 +235,36 @@ func (r *metricPointRepository) GetDistinctServers(ctx context.Context, projectI
 	return servers, nil
 }
 
+func (r *metricPointRepository) LatestPerServer(ctx context.Context, projectId uuid.UUID, name string, since time.Time) ([]models.ServerLatestPoint, error) {
+	query, args, err := lit.ParseNamedQuery(db.Driver,
+		`SELECT server_name AS sn,
+			arg_max(value, recorded_at) AS latest_value,
+			max(recorded_at) AS last_reported_at
+		FROM metric_points
+		WHERE project_id = :project_id AND name = :name AND recorded_at >= :since AND server_name != ''
+		GROUP BY sn ORDER BY sn ASC`,
+		lit.P{"project_id": projectId, "name": name, "since": since.UTC()})
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := db.TelemetryDB.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var points []models.ServerLatestPoint
+	for rows.Next() {
+		var p models.ServerLatestPoint
+		if err := rows.Scan(&p.ServerName, &p.Value, &p.LastReportedAt); err != nil {
+			return nil, err
+		}
+		points = append(points, p)
+	}
+	return points, nil
+}
+
 func (r *metricPointRepository) GetAverageByIntervalPerServer(ctx context.Context, projectId uuid.UUID, name string, start, end time.Time, intervalMinutes int, servers []string) (map[string][]models.TimeSeriesPoint, error) {
 	secs := intervalMinutes * 60
 

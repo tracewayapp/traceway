@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { Plus, X } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button';
@@ -25,8 +26,9 @@
 	type Row = { key: number; name: string; framework: Framework };
 
 	let nextKey = 1;
-	// svelte-ignore state_referenced_locally -- the prop only seeds row 1
-	let rows = $state<Row[]>([{ key: 0, name: '', framework: initialFramework }]);
+	let rows = $state<Row[]>([
+		{ key: 0, name: '', framework: untrack(() => initialFramework) }
+	]);
 	let loading = $state(false);
 	let error = $state('');
 

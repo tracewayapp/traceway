@@ -1,6 +1,3 @@
-// Types for the AI setup flow: a coding agent submits a plan draft with its
-// setup token; the user approves it here, which creates the projects.
-
 export interface SetupPlanDeployment {
 	platform: string;
 	instructions: string;
@@ -43,8 +40,6 @@ export interface SetupTokenResponse {
 	backendUrl: string;
 }
 
-// The credential value a deployment instruction needs: the raw ingest token,
-// or the SDK connection string when the plan says so.
 export function credentialValue(planned: SetupPlanProject, project: SetupDraftProject): string {
 	if (planned.envFormat === 'connectionString') {
 		const base = project.backendUrl.replace(/\/+$/, '');

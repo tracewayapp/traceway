@@ -60,8 +60,6 @@
 		}
 	});
 
-	// Turnstile tokens are single-use: after a failed submit the consumed
-	// token must be replaced or the form dead-ends.
 	export function reset() {
 		if (widgetId && window.turnstile) {
 			window.turnstile.reset(widgetId);

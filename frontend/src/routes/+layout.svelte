@@ -132,6 +132,16 @@
 		}
 	});
 
+	// Zero-project accounts have no dashboard to show: they are locked to the
+	// standalone /setup flow until their first project exists.
+	const needsSetup = $derived(authState.isAuthenticated && projectsState.projects.length === 0);
+
+	$effect(() => {
+		if (needsSetup && !isPublicPath(page.url.pathname) && page.url.pathname !== '/setup') {
+			goto(resolve('/setup'), { replaceState: true });
+		}
+	});
+
 	// Track navigation depth for smart back buttons
 	let lastPathname = '';
 	afterNavigate((navigation) => {
@@ -259,7 +269,38 @@
 <Tooltip.Provider delayDuration={0}>
 	<!-- This is not ideal, but because our layout is a top level route it can end up showing sidebar on the login page (after the login before the transition). -->
 	<!-- We could consider moving this to a lower level layout for the actual app, for now it's just a path check -->
-	{#if authState.isAuthenticated && !isPublicPath(page.url.pathname)}
+	{#if authState.isAuthenticated && !isPublicPath(page.url.pathname) && needsSetup}
+		<div class="flex min-h-screen flex-col">
+			<header class="flex h-14 shrink-0 items-center justify-between px-4">
+				{#if themeState.isDark}
+					<img src="/traceway-logo-white.svg" alt="Traceway Logo" class="h-7 w-auto" />
+				{:else}
+					<img src="/traceway-logo.png" alt="Traceway Logo" class="h-7 w-auto" />
+				{/if}
+				<div class="flex items-center gap-2">
+					<Button
+						variant="ghost"
+						size="icon"
+						onclick={toggleTheme}
+						title={themeState.isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+					>
+						{#if themeState.isDark}
+							<Sun class="h-5 w-5" />
+						{:else}
+							<Moon class="h-5 w-5" />
+						{/if}
+					</Button>
+					<Button variant="ghost" size="icon" onclick={handleLogout} title="Logout">
+						<LogOut class="h-5 w-5" />
+					</Button>
+				</div>
+			</header>
+			<main class="flex flex-1 justify-center px-4 py-10">
+				{@render children()}
+			</main>
+		</div>
+		<Toaster position="top-center" />
+	{:else if authState.isAuthenticated && !isPublicPath(page.url.pathname)}
 		<Sidebar.SidebarProvider
 			bind:open={sidebarOpen}
 			onOpenChange={(open) => localStorage.setItem(SIDEBAR_OPEN_KEY, String(open))}

@@ -128,9 +128,6 @@
 
 			authState.setToken(data.token);
 			authState.setOrganizations(data.organizations || []);
-			// Writing the (empty) projects cache here is load-bearing: a
-			// refresh mid-wizard routes authenticated zero-project users to
-			// /setup based on it.
 			projectsState.setProjects(data.projects ?? []);
 			newOrgId = data.organizations?.[0]?.id ?? null;
 
@@ -173,9 +170,6 @@
 				<SetupProjectsStep
 					organizationId={newOrgId}
 					{initialFramework}
-					onDone={() => goto(resolve('/'))}
-					onSkip={() => goto(resolve('/'))}
-					continueLabel="Continue to Dashboard"
 				/>
 			{:else}
 				{#if error}

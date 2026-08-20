@@ -5,8 +5,6 @@ export type PromptPart = {
 	bold: boolean;
 };
 
-// Prompt for connecting an EXISTING project: carries the project's ingest
-// token (and optionally its source map upload token).
 export function getSetupPromptParts(
 	backendUrl: string,
 	token: string,
@@ -37,9 +35,6 @@ export function getSetupPrompt(
 		.join('');
 }
 
-// Prompt for creating NEW projects: carries an org-scoped tws_ setup token.
-// The agent proposes a plan the user approves on this website; the literal
-// words "setup token" (plus the tws_ prefix) are what the skill keys on.
 export function getSetupTokenPromptParts(backendUrl: string, setupToken: string): PromptPart[] {
 	return [
 		{ text: '/traceway-setup with setup token ', bold: false },

@@ -15,7 +15,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/services/authserver"
 )
 
-const setupTokenTTL = 60 * time.Minute
+const setupTokenTTL = 6 * time.Hour
 
 type setupTokenController struct{}
 

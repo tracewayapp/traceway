@@ -205,9 +205,6 @@ class ProjectsState {
 		}
 	}
 
-	// Batch create through POST /projects/batch, which needs no existing
-	// projectId, so it also works for zero-project accounts (the registration
-	// wizard's manual step). Existing names are returned instead of erroring.
 	async createProjects(
 		organizationId: number,
 		projects: { name: string; framework: Framework }[]

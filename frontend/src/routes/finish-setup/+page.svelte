@@ -60,8 +60,6 @@
 			authState.setOrganizations(data.organizations || []);
 			projectsState.setProjects(data.projects ?? []);
 			newOrgId = data.organizations?.[0]?.id ?? null;
-			// The stashed SSO returnTo is single-use; capture it now and use
-			// it when the project step finishes.
 			returnTo = safeLocalPath(consumeSsoReturnTo());
 
 			if (newOrgId === null) {
@@ -101,9 +99,7 @@
 			{#if phase === 'projects' && newOrgId !== null}
 				<SetupProjectsStep
 					organizationId={newOrgId}
-					onDone={() => goto(returnTo)}
-					onSkip={() => goto(returnTo)}
-					continueLabel="Continue"
+					redirectTo={returnTo === '/' ? null : returnTo}
 				/>
 			{:else}
 				{#if error}

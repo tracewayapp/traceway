@@ -235,8 +235,6 @@ service:
 	}
 
 	async function loadDashboard(showFullPageLoading = true) {
-		// Zero-project accounts (wizard skipped) have nothing to load; the
-		// template renders the setup call-to-action instead.
 		if (projectsState.currentProjectId === null) {
 			loading = false;
 			return;

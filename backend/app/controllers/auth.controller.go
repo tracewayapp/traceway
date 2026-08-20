@@ -198,9 +198,6 @@ func (a authController) Register(c *gin.Context) {
 
 	var projectWithUrl *models.ProjectWithBackendUrl
 	if project != nil {
-		// cache can get out of sync here
-		// the transaction for creating the project is not guaranteed to have
-		// finished when this is inserted into cache
 		cache.ProjectCache.AddProject(&models.Project{
 			Id:             project.Id,
 			Name:           project.Name,

@@ -23,6 +23,9 @@
 		return Math.max(0, Math.ceil((new Date(setupToken.expiresAt).getTime() - now) / 60000));
 	});
 	const expired = $derived(setupToken !== null && minutesLeft <= 0);
+	const timeLeftLabel = $derived(
+		minutesLeft >= 90 ? `${Math.floor(minutesLeft / 60)} h ${minutesLeft % 60} min` : `${minutesLeft} min`
+	);
 	const promptParts = $derived(
 		setupToken ? getSetupTokenPromptParts(setupToken.backendUrl, setupToken.token) : []
 	);
@@ -31,7 +34,6 @@
 		minting = true;
 		mintError = '';
 		try {
-			// The token lives only in component state; it is never persisted.
 			setupToken = await api.post('/setup-tokens', { organizationId });
 		} catch (e) {
 			mintError = e instanceof Error ? e.message : 'Failed to generate a setup token';
@@ -46,10 +48,12 @@
 		return () => clearInterval(tick);
 	});
 
-	// svelte-ignore state_referenced_locally -- deliberately captures the
-	// initial org so the effect only re-mints on later changes
-	let lastOrgId = organizationId;
+	let lastOrgId: number | undefined;
 	$effect(() => {
+		if (lastOrgId === undefined) {
+			lastOrgId = organizationId;
+			return;
+		}
 		if (organizationId !== lastOrgId) {
 			lastOrgId = organizationId;
 			if (autoMint) mint();
@@ -121,7 +125,7 @@
 				<CopyablePrompt parts={promptParts} />
 				<p class="text-xs text-muted-foreground">
 					The setup token lets your coding agent propose a setup plan for this organization for the
-					next {minutesLeft} min. It is not an ingest token, and nothing is created until you approve
+					next {timeLeftLabel}. It is not an ingest token, and nothing is created until you approve
 					the proposal here.
 				</p>
 			{/if}

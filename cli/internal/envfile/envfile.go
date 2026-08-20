@@ -1,6 +1,3 @@
-// Package envfile idempotently writes KEY=value assignments into dotenv-style
-// files. It exists so `traceway setup apply` can persist ingest tokens without
-// ever printing them: the value goes straight from the API response to disk.
 package envfile
 
 import (
@@ -16,18 +13,12 @@ import (
 type Result string
 
 const (
-	ResultCreated   Result = "created"   // file did not exist
-	ResultAdded     Result = "added"     // var appended to an existing file
-	ResultUpdated   Result = "updated"   // existing assignment(s) replaced
-	ResultUnchanged Result = "unchanged" // value already correct, file untouched
+	ResultCreated   Result = "created"
+	ResultAdded     Result = "added"
+	ResultUpdated   Result = "updated"
+	ResultUnchanged Result = "unchanged"
 )
 
-// Upsert sets key=value in the file at path, creating it with mode 0600 when
-// missing. Every uncommented assignment of key is rewritten (dotenv loaders
-// disagree on first-wins vs last-wins, so rewriting all occurrences is the
-// only way the new value definitively applies); indentation and an `export `
-// prefix are preserved, commented-out assignments are left alone. The write
-// is atomic (temp file + rename) and preserves the file's existing mode.
 func Upsert(path, key, value string) (Result, error) {
 	content, mode, existed, err := readEnvFile(path)
 	if err != nil {

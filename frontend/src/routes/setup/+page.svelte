@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import * as Select from '$lib/components/ui/select';
 	import { Label } from '$lib/components/ui/label';
 	import { authState } from '$lib/state/auth.svelte';
@@ -61,11 +60,7 @@
 
 		{#if selectedOrgId !== null}
 			{#key selectedOrgId}
-				<SetupProjectsStep
-					organizationId={selectedOrgId}
-					onDone={() => goto('/')}
-					continueLabel="Continue to Dashboard"
-				/>
+				<SetupProjectsStep organizationId={selectedOrgId} />
 			{/key}
 		{/if}
 	{/if}

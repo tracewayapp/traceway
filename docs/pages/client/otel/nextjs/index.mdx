@@ -64,8 +64,9 @@ npm install @opentelemetry/sdk-node \
   @opentelemetry/api-logs
 ```
 
+Create `instrumentation.ts` at the project root:
+
 ```typescript
-// instrumentation.ts (project root)
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     await import("./instrumentation.node");
@@ -73,8 +74,9 @@ export async function register() {
 }
 ```
 
+Create `instrumentation.node.ts` alongside it:
+
 ```typescript
-// instrumentation.node.ts (project root)
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
@@ -211,8 +213,9 @@ Install the debug-ID plugin and source-map uploader, then use Next's webpack bui
 npm install -D @tracewayapp/bundler-plugin @tracewayapp/sourcemap-upload
 ```
 
+In `next.config.ts`:
+
 ```typescript
-// next.config.ts
 import type { NextConfig } from "next";
 import { TracewayDebugIdsWebpackPlugin } from "@tracewayapp/bundler-plugin/webpack";
 
@@ -645,11 +648,10 @@ Error: Test error from Next.js server
 
 Next.js installs its own `Error.prepareStackTrace`, which bypasses Node's source map support, so the stack recorded by OTel keeps the bundled frames. Reset it near the top of the Node-only module to get Node's default formatter back:
 
-```typescript
-// instrumentation.node.ts
-(Error as unknown as { prepareStackTrace?: unknown }).prepareStackTrace = undefined;
+In `instrumentation.node.ts`:
 
-// ...the rest of the SDK setup
+```typescript
+(Error as unknown as { prepareStackTrace?: unknown }).prepareStackTrace = undefined;
 ```
 
 That is enough in development, where Next.js already runs the server with `--enable-source-maps`. Frames then read `app/api/orders/route.ts:12:9`.

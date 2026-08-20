@@ -7,10 +7,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
+	"time"
+
 	"github.com/tracewayapp/traceway/backend/app/chdb"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
-	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/google/uuid"
@@ -97,7 +99,7 @@ func (e *endpointRepository) FindAll(ctx context.Context, projectId uuid.UUID, f
 	return endpoints, int64(count), nil
 }
 
-func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string, search string, rootFilter string) ([]models.EndpointStats, int64, error) {
+func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string, search string, rootFilter string, methodFilter string) ([]models.EndpointStats, int64, error) {
 	// Build WHERE clause with optional search filter
 	// Count query uses bare column names; main query uses e. prefix for LEFT JOIN
 	whereClause := "project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
@@ -117,6 +119,12 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 	case "non_root":
 		whereClause += " AND is_root = 0"
 		joinWhereClause += " AND e.is_root = 0"
+	}
+
+	if methodFilter != "" {
+		whereClause += " AND startsWith(endpoint, ?)"
+		joinWhereClause += " AND startsWith(e.endpoint, ?)"
+		args = append(args, strings.ToUpper(methodFilter)+" ")
 	}
 
 	// Count unique endpoints

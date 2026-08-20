@@ -6,11 +6,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
@@ -214,7 +215,7 @@ func (e *endpointRepository) FindAll(ctx context.Context, projectId uuid.UUID, f
 	return endpoints, count, nil
 }
 
-func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string, search string, rootFilter string) ([]models.EndpointStats, int64, error) {
+func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string, search string, rootFilter string, methodFilter string) ([]models.EndpointStats, int64, error) {
 	params := lit.P{"project_id": projectId, "from": sqlitetypes.NewSQLiteTime(fromDate), "to": sqlitetypes.NewSQLiteTime(toDate)}
 
 	whereClause := "e.project_id = :project_id AND e.recorded_at >= :from AND e.recorded_at <= :to"
@@ -222,7 +223,11 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 		whereClause += " AND INSTR(LOWER(e.endpoint), LOWER(:search)) > 0"
 		params["search"] = search
 	}
+	if methodFilter != "" {
+		params["method"] = strings.ToUpper(methodFilter) + " %"
+	}
 	whereClause += shared.RootFilterClause("e.is_root", rootFilter)
+	whereClause += shared.MethodFilterClause("e.endpoint", methodFilter)
 
 	countQuery := "SELECT COUNT(DISTINCT e.endpoint) AS count FROM endpoints e WHERE " + whereClause
 	totalResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB, countQuery, params)

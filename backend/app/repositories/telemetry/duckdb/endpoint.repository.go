@@ -6,11 +6,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
 
 	"github.com/duckdb/duckdb-go/v2"
 	"github.com/google/uuid"
@@ -218,7 +219,7 @@ func (e *endpointRepository) FindAll(ctx context.Context, projectId uuid.UUID, f
 	return endpoints, count, nil
 }
 
-func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string, search string, rootFilter string) ([]models.EndpointStats, int64, error) {
+func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string, search string, rootFilter string, methodFilter string) ([]models.EndpointStats, int64, error) {
 	params := lit.P{"project_id": projectId, "from": fromDate.UTC(), "to": toDate.UTC()}
 
 	whereClause := "e.project_id = :project_id AND e.recorded_at >= :from AND e.recorded_at <= :to"
@@ -226,7 +227,11 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 		whereClause += " AND INSTR(LOWER(e.endpoint), LOWER(:search)) > 0"
 		params["search"] = search
 	}
+	if methodFilter != "" {
+		params["method"] = strings.ToUpper(methodFilter) + " %"
+	}
 	whereClause += shared.RootFilterClause("e.is_root", rootFilter)
+	whereClause += shared.MethodFilterClause("e.endpoint", methodFilter)
 
 	groupQuery := `SELECT
 		e.endpoint,

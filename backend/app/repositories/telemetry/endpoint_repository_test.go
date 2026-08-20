@@ -134,7 +134,7 @@ func TestEndpointRepository_FindGroupedByEndpoint(t *testing.T) {
 		t.Fatalf("InsertAsync failed: %v", err)
 	}
 
-	stats, total, err := EndpointRepository.FindGroupedByEndpoint(ctx, projectId, now.Add(-time.Hour), now.Add(time.Hour), 1, 10, "count", "desc", "", "")
+	stats, total, err := EndpointRepository.FindGroupedByEndpoint(ctx, projectId, now.Add(-time.Hour), now.Add(time.Hour), 1, 10, "count", "desc", "", "", "")
 	if err != nil {
 		t.Fatalf("FindGroupedByEndpoint failed: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestEndpointRepository_FindGroupedByEndpoint_Search(t *testing.T) {
 		t.Fatalf("InsertAsync failed: %v", err)
 	}
 
-	stats, total, err := EndpointRepository.FindGroupedByEndpoint(ctx, projectId, now.Add(-time.Hour), now.Add(time.Hour), 1, 10, "count", "desc", "users", "")
+	stats, total, err := EndpointRepository.FindGroupedByEndpoint(ctx, projectId, now.Add(-time.Hour), now.Add(time.Hour), 1, 10, "count", "desc", "users", "", "")
 	if err != nil {
 		t.Fatalf("FindGroupedByEndpoint with search failed: %v", err)
 	}

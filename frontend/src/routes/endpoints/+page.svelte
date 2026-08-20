@@ -43,6 +43,7 @@
 		handleSortClick,
 		type SortDirection
 	} from '$lib/utils/sort-storage';
+	import { EndpointMethodFilter } from '$lib/components/ui/endpoint-method-filter';
 
 	const timezone = $derived(getTimezone());
 	const initialTimezone = getTimezone();
@@ -111,13 +112,14 @@
 
 	// Parse URL params including search + rootFilter
 	function parseEndpointsUrlParams() {
-		if (!browser) return { preset: '24h', from: null, to: null, search: '', rootFilter: 'all' };
+		if (!browser) return { preset: '24h', from: null, to: null, search: '', rootFilter: 'all', methodFilter: 'all' };
 		const params = new URLSearchParams(window.location.search);
 		const timeParams = parseTimeRangeFromUrl(timezone, '24h');
 		return {
 			...timeParams,
 			search: params.get('search') || '',
-			rootFilter: params.get('rootFilter') || 'all'
+			rootFilter: params.get('rootFilter') || 'all',
+			methodFilter: params.get('methodFilter') || 'all'
 		};
 	}
 
@@ -128,6 +130,7 @@
 	// Search + rootFilter state
 	let searchQuery = $state(initialUrlParams.search);
 	let rootFilter = $state(initialUrlParams.rootFilter);
+	let methodFilter = $state(initialUrlParams.methodFilter);
 
 	// Date Range State
 	let selectedPreset = $state<string | null>(initialUrlParams.preset);
@@ -151,6 +154,9 @@
 		if (rootFilter && rootFilter !== 'all') {
 			params.rootFilter = rootFilter;
 		}
+		if (methodFilter && methodFilter !== 'all') {
+			params.methodFilter = methodFilter;
+		}
 		updateUrl(params, { pushToHistory });
 	}
 
@@ -166,6 +172,7 @@
 		toTime = dateToTimeString(range.to, timezone);
 		searchQuery = urlParams.search;
 		rootFilter = urlParams.rootFilter;
+		methodFilter = urlParams.methodFilter;
 
 		page = 1;
 		loadData(false);
@@ -293,7 +300,8 @@
 					pageSize: pageSize
 				},
 				search: searchQuery.trim(),
-				rootFilter: rootFilter === 'all' ? '' : rootFilter
+				rootFilter: rootFilter === 'all' ? '' : rootFilter,
+				methodFilter: methodFilter === 'all' ? '' : methodFilter,
 			};
 
 			const response = await api.post('/endpoints/grouped', requestBody, {
@@ -433,6 +441,7 @@
 		onSearch={handleSearch}
 		disabled={loading}
 	>
+        <EndpointMethodFilter bind:value={methodFilter} />
 		<RootFilter bind:value={rootFilter} />
 	</SearchBar>
 

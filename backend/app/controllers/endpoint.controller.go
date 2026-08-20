@@ -3,12 +3,13 @@ package controllers
 import (
 	"database/sql"
 	"errors"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/tracewayapp/traceway/backend/app/middleware"
+	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 
 	"github.com/gin-gonic/gin"
 	traceway "go.tracewayapp.com"
@@ -24,6 +25,7 @@ type EndpointSearchRequest struct {
 	Pagination    PaginationParams `json:"pagination"`
 	Search        string           `json:"search"`
 	RootFilter    string           `json:"rootFilter"`
+	MethodFilter  string           `json:"methodFilter"`
 }
 
 type EndpointInstancesRequest struct {
@@ -93,7 +95,7 @@ func (e endpointController) FindGroupedByEndpoint(c *gin.Context) {
 	}
 
 	span := traceway.StartSpan(c, "loading grouped endpoints")
-	stats, total, err := telemetry.EndpointRepository.FindGroupedByEndpoint(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection, request.Search, request.RootFilter)
+	stats, total, err := telemetry.EndpointRepository.FindGroupedByEndpoint(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection, request.Search, request.RootFilter, request.MethodFilter)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading stats: %w", err))

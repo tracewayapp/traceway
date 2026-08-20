@@ -14,6 +14,12 @@ func RootFilterClause(qualifiedCol, rootFilter string) string {
 		return ""
 	}
 }
+func MethodFilterClause(qualifiedCol, methodFilter string) string {
+	if methodFilter != "" {
+		return " AND " + qualifiedCol + " LIKE :method"
+	}
+	return ""
+}
 
 // SortedKeys returns map keys in stable order so generated SQL and its
 // bound parameters line up deterministically.

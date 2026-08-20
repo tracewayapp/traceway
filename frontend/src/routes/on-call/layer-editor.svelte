@@ -4,6 +4,8 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { DatePicker } from '$lib/components/ui/date-picker';
+	import { TimePicker } from '$lib/components/ui/time-picker';
 	import * as Select from '$lib/components/ui/select';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { Plus, Check, Trash2, ChevronUp, ChevronDown, X } from '@lucide/svelte';
@@ -233,7 +235,7 @@
 				</div>
 				<div class="space-y-1">
 					<Label class="text-xs">Handoff time</Label>
-					<Input type="time" bind:value={layer.handoffTime} />
+					<TimePicker bind:value={layer.handoffTime} />
 				</div>
 				{#if layer.rotationType === 'weekly'}
 					<div class="space-y-1">
@@ -261,7 +263,7 @@
 				{/if}
 				<div class="space-y-1">
 					<Label class="text-xs">Rotation start</Label>
-					<Input type="date" bind:value={layer.rotationStart} />
+					<DatePicker bind:value={layer.rotationStart} />
 				</div>
 			</div>
 
@@ -358,7 +360,7 @@
 								</Select.Content>
 							</Select.Root>
 						{/if}
-						<Input type="time" bind:value={restriction.startTime} class="w-32" />
+						<TimePicker bind:value={restriction.startTime} class="w-32" />
 						<span class="text-xs text-muted-foreground">to</span>
 						{#if restriction.type === 'weekly'}
 							<Select.Root
@@ -376,7 +378,7 @@
 								</Select.Content>
 							</Select.Root>
 						{/if}
-						<Input type="time" bind:value={restriction.endTime} class="w-32" />
+						<TimePicker bind:value={restriction.endTime} class="w-32" />
 						<Button
 							variant="ghost"
 							size="icon"

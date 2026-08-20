@@ -3,6 +3,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { DateTimePicker } from '$lib/components/ui/datetime-picker';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { Plus } from '@lucide/svelte';
@@ -107,20 +108,14 @@
 			<div class="grid gap-4 sm:grid-cols-2">
 				<div class="space-y-2">
 					<Label for="incident-started">Started at</Label>
-					<Input
-						id="incident-started"
-						type="datetime-local"
-						bind:value={startedAt}
-						disabled={saving}
-					/>
+					<DateTimePicker id="incident-started" bind:value={startedAt} disabled={saving} />
 				</div>
 				<div class="space-y-2">
 					<Label for="incident-resolved" class={alreadyResolved ? '' : 'text-muted-foreground'}>
 						Resolved at
 					</Label>
-					<Input
+					<DateTimePicker
 						id="incident-resolved"
-						type="datetime-local"
 						bind:value={resolvedAt}
 						disabled={saving || !alreadyResolved}
 					/>

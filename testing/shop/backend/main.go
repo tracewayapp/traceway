@@ -1,14 +1,19 @@
 package main
 
 import (
+	"context"
 	"database/sql"
+	"errors"
+	"log/slog"
 	"net/http"
 	"os"
-
-	tracewaygin "go.tracewayapp.com/tracewaygin"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
 var db *sql.DB
@@ -16,20 +21,18 @@ var db *sql.DB
 func main() {
 	initDB()
 
-	endpoint := os.Getenv("TRACEWAY_ENDPOINT")
-	if endpoint == "" {
-		endpoint = "default_token_change_me@http://localhost:8082/api/report"
+	ctx := context.Background()
+	shutdownTelemetry, err := initTelemetry(ctx)
+	if err != nil {
+		slog.Error("telemetry init failed", "error", err.Error())
+		os.Exit(1)
 	}
 
 	router := gin.Default()
 	router.Use(corsMiddleware())
-	router.Use(tracewaygin.New(
-		endpoint,
-		tracewaygin.WithDebug(true),
-		tracewaygin.WithServerName("shop-demo"),
-		tracewaygin.WithVersion("0.1.0"),
-		tracewaygin.WithOnErrorRecording(tracewaygin.RecordingUrl|tracewaygin.RecordingQuery|tracewaygin.RecordingHeader|tracewaygin.RecordingBody),
-	))
+	router.Use(otelgin.Middleware(serviceName, otelgin.WithGinFilter(traceFilter)))
+	router.Use(otelRecovery())
+	router.Use(distributedTraceMiddleware())
 
 	router.GET("/api/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -45,20 +48,25 @@ func main() {
 	router.POST("/api/coupon", applyCoupon)
 	router.POST("/api/checkout", checkout)
 
+	router.POST("/api/support/chat", supportChat)
+
 	registerFrontend(router)
 
-	router.Run(":8090")
-}
-
-func corsMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		if c.Request.Method == http.MethodOptions {
-			c.AbortWithStatus(http.StatusNoContent)
-			return
+	srv := &http.Server{Addr: ":8090", Handler: router}
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("server failed", "error", err.Error())
+			os.Exit(1)
 		}
-		c.Next()
-	}
+	}()
+
+	stopCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	<-stopCtx.Done()
+
+	slog.Info("shutting down, flushing telemetry")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_ = srv.Shutdown(shutdownCtx)
+	shutdownTelemetry(shutdownCtx)
 }

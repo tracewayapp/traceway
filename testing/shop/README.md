@@ -1,85 +1,74 @@
-# Demo Shop
+# Shoply — Traceway demo shop
 
-A tiny, intentionally-buggy shop app. React (Vite) frontend + Go/Gin backend with in-memory
-SQLite. No auth, single shared cart. Three pages: products, cart, checkout.
+A small e-commerce app used to generate realistic demo data for a Traceway instance:
 
-The app is built to **look like it works** but be mostly **slow**, with a few actions that throw
-exceptions. Every intentional bug is cataloged in [`BUGS.md`](./BUGS.md).
+- **Frontend**: React 18 + Vite + Tailwind, instrumented with `@tracewayapp/react` (session recording on, all sessions recorded). Reports to the **react** demo project via `/api/report`.
+- **Backend**: Go + Gin + in-memory SQLite, instrumented with **OpenTelemetry** (traces, logs, metrics over OTLP/HTTP). Reports to the **opentelemetry** demo project via `/api/otel/v1/*`. The retired Traceway Go SDK is gone.
+- Single origin: the built frontend is embedded into the Go binary and served on **:8090**.
 
-> **Traceway instrumentation has been removed** from both halves on purpose — it gets re-added
-> live during the demo. The bugs in [`BUGS.md`](./BUGS.md) are all still here; right now panics
-> are recovered by Gin's own middleware (still 500s) and frontend errors surface in the console
-> instead of being reported.
+The app ships intentional bugs and random slowness (see `BUGS.md`) so issues, slow endpoints,
+logs, metrics, session replays and AI traces all light up. Frontend exceptions carry a
+`traceway-trace-id` that links them to the backend trace (distributed tracing).
+
+## Setup
+
+1. `backend/.env` (gitignored, see `backend/.env.example`):
 
 ```
-shop/
-├── build-and-run.sh   build the frontend, embed it in the backend, compile + run
-├── DEMO.md            live-demo runbook (bugs first, then add Traceway + symbolication)
-├── BUGS.md            the demo script (what's wrong and where)
-├── backend/           Go / Gin / SQLite, serves the API + the built frontend on :8090
-└── frontend/          React + Vite source
+TRACEWAY_URL=https://cloud.tracewayapp.com
+TRACEWAY_BACKEND_TOKEN=<opentelemetry project token>
+TRACEWAY_SERVICE_NAME=shop-backend
 ```
 
-## Prerequisites
+2. `frontend/.env` (gitignored, see `frontend/.env.example`):
 
-- Go 1.25+ with **CGO enabled** (`mattn/go-sqlite3` needs a C compiler; clang ships with macOS).
-- Node 18+ and npm.
+```
+VITE_API_BASE=/api
+VITE_TW_CONNECTION=<react project token>@https://cloud.tracewayapp.com/api/report
+TRACEWAY_URL=https://cloud.tracewayapp.com
+TRACEWAY_SOURCEMAP_TOKEN=<source map upload token>
+```
+
+The sourcemap token comes from `seed/seed.mjs` with `MINT_SOURCEMAP_TOKEN=1` (or the
+project's Connection page). Uploading source maps before generating browser traffic makes
+the frontend issues symbolicate at ingest.
 
 ## Run
 
 ```bash
-./build-and-run.sh
+./build-and-run.sh          # build frontend -> embed -> build backend -> run on :8090
 ```
 
-The script `npm install`s and builds the frontend (with source maps), copies the built `dist/`
-into `backend/dist` (embedded into the Go binary at compile time via `//go:embed`), then builds
-and starts the backend. Everything is served from a single origin at **http://localhost:8090** —
-open it and click around. There is no separate frontend dev server and no CORS to configure.
+Dev mode: `cd frontend && npm run dev` (:5175, proxies /api to :8090).
 
-For the live demo (show bugs first, then add Traceway and watch them get symbolicated on the
-dashboard), follow [`DEMO.md`](./DEMO.md).
-
-### Frontend dev server (optional)
-
-For hot-reload while editing the frontend, run Vite separately. It serves on **:5175** and
-proxies `/api/*` to the backend on `:8090`, so start the backend (via `./run.sh`) first.
+## Seed platform entities (monitors, on-call, status page, dashboards...)
 
 ```bash
-cd frontend
-npm install
-npm run dev
+traceway login --profile demo          # device flow into the demo account
+cd seed && MINT_SOURCEMAP_TOKEN=1 node seed.mjs
 ```
 
-## Reproduce the bugs
+Idempotent; see `seed/README.md`.
+
+## Generate traffic
 
 ```bash
-# 1. Health
-curl localhost:8090/api/health                       # {"status":"ok"}
-
-# 2. Slow + N+1 product list (most calls hit the slow path)
-for i in $(seq 1 12); do curl -s -o /dev/null localhost:8090/api/products; done
-
-# 3. Coupon nil-map panic (~75% return 500)
-for i in $(seq 1 8); do
-  curl -s -o /dev/null -w "%{http_code} " -X POST localhost:8090/api/coupon \
-    -H 'Content-Type: application/json' -d '{"code":"SAVE10"}'
-done; echo
-
-# 4. Empty-cart checkout panic (500: index out of range)
-curl -s -o /dev/null -w "%{http_code}\n" -X POST localhost:8090/api/checkout \
-  -H 'Content-Type: application/json' -d '{"name":"A","email":"a@b.c","card_last4":"4242"}'
+cd traffic && npm install && npx playwright install chromium
+./run-traffic.sh --seed                # ~50 varied browser sessions + http load + AI chats
+./run-traffic.sh --drip                # endless low-rate mode (nohup it)
+./run-traffic.sh --seed --no-browser   # http load + AI chats only
 ```
 
-In the browser at http://localhost:8090:
+Flags: `--base <url>` `--sessions N` `--parallel N` `--headed`.
 
-- **Products** load slowly (N+1). "Quick view" throws a frontend exception (#11). "Add to cart"
-  can fail silently when the backend slow path 500s (#9).
-- **Checkout** → "Apply" a coupon: usually 500s on the backend (#5) and the badge render is caught
-  by the error boundary (#10). "Place order" with an empty cart 500s (#6); with items it is slow
-  (#7) and occasionally declined (#8, a 402).
+## API
 
-## Notes
-
-- The in-memory SQLite DB is reseeded on every backend start, so the cart and orders reset on restart.
-- The slow/fast split is `rand.IntN(4) == 0` per request (see `backend/slow.go`) — about 1 in 4 fast.
-- Panics are recovered, so the server stays up and returns 500.
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/health` | untraced |
+| GET | `/api/products` | ~75% N+1 slow path |
+| GET | `/api/products/:id` | ~75% slow (review N+1 + recommendations); no UI path, driven by http-load |
+| GET/POST | `/api/cart`, DELETE `/api/cart/:id` | POST returns 201, inventory.check sleep |
+| POST | `/api/coupon` | `SAVE10`/`HALF50` valid (~75% panic: nil map), `EXPIRED` 400, unknown 500 |
+| POST | `/api/checkout` | empty cart 500; 1-in-6 payment declined 500 |
+| POST | `/api/support/chat` | fake LLM support agent; emits gen_ai.* spans (AI Traces) |

@@ -136,6 +136,8 @@
 	// standalone /setup flow until their first project exists.
 	const needsSetup = $derived(authState.isAuthenticated && projectsState.projects.length === 0);
 
+	const inSetupFlow = $derived(needsSetup || page.url.pathname === '/setup');
+
 	$effect(() => {
 		if (needsSetup && !isPublicPath(page.url.pathname) && page.url.pathname !== '/setup') {
 			goto(resolve('/setup'), { replaceState: true });
@@ -269,7 +271,7 @@
 <Tooltip.Provider delayDuration={0}>
 	<!-- This is not ideal, but because our layout is a top level route it can end up showing sidebar on the login page (after the login before the transition). -->
 	<!-- We could consider moving this to a lower level layout for the actual app, for now it's just a path check -->
-	{#if authState.isAuthenticated && !isPublicPath(page.url.pathname) && needsSetup}
+	{#if authState.isAuthenticated && !isPublicPath(page.url.pathname) && inSetupFlow}
 		<div class="flex min-h-screen flex-col">
 			<header class="flex h-14 shrink-0 items-center justify-between px-4">
 				{#if themeState.isDark}

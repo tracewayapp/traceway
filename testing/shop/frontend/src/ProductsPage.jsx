@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { captureException } from '@tracewayapp/react'
 import { getProducts, addToCart, formatPrice } from './api.js'
 import { Button, IconButton, Stars, IconClose, IconCheck, IconEye, cx } from './ui.jsx'
 
@@ -44,6 +45,17 @@ export default function ProductsPage({ onCartChanged }) {
   }
 
   function handleQuickView(p) {
+    if (p.name === '4K Monitor') {
+      try {
+        const preferred = p.variants.find((v) => v.default)
+        setQuickView({ ...p, variant: preferred })
+        return
+      } catch (e) {
+        captureException(e)
+        setNotice('No variants available')
+        return
+      }
+    }
     setQuickView(p)
   }
 

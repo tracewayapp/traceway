@@ -3,6 +3,7 @@ package controllers
 import (
 	"database/sql"
 	"fmt"
+	"github.com/tracewayapp/traceway/backend/app/config"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
@@ -21,6 +22,11 @@ const resetTokenExpiry = 1 * time.Hour
 const resetRateLimitPeriod = 1 * time.Hour
 
 func (c *passwordResetController) ForgotPassword(ctx *gin.Context) {
+	if config.Config.PasswordLoginDisabled() {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": passwordLoginDisabledMessage})
+		return
+	}
+
 	tx := db.GetTx(ctx)
 
 	var request models.ForgotPasswordRequest
@@ -64,6 +70,11 @@ func (c *passwordResetController) ForgotPassword(ctx *gin.Context) {
 }
 
 func (c *passwordResetController) ValidateToken(ctx *gin.Context) {
+	if config.Config.PasswordLoginDisabled() {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": passwordLoginDisabledMessage})
+		return
+	}
+
 	token := ctx.Param("token")
 
 	user, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.User, error) {
@@ -92,6 +103,11 @@ func (c *passwordResetController) ValidateToken(ctx *gin.Context) {
 }
 
 func (c *passwordResetController) ResetPassword(ctx *gin.Context) {
+	if config.Config.PasswordLoginDisabled() {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": passwordLoginDisabledMessage})
+		return
+	}
+
 	tx := db.GetTx(ctx)
 	token := ctx.Param("token")
 

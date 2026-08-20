@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
-	import { DateTimePicker } from '$lib/components/ui/datetime-picker';
+	import { DateTimeCalendar } from '$lib/components/ui/datetime-picker';
 	import * as Popover from '$lib/components/ui/popover';
 	import { Clock, ChevronDown, ChevronRight, Check } from '@lucide/svelte';
 	import { CalendarDate, CalendarDateTime, getLocalTimeZone, today } from '@internationalized/date';
@@ -471,7 +471,7 @@
 								</button>
 							</Popover.Trigger>
 							<Popover.Content class="w-auto p-0" align="start">
-								<DateTimePicker value={tempFromDateTime} onValueChange={handleFromDateTimeChange} />
+								<DateTimeCalendar value={tempFromDateTime} onValueChange={handleFromDateTimeChange} />
 							</Popover.Content>
 						</Popover.Root>
 
@@ -492,7 +492,7 @@
 								</button>
 							</Popover.Trigger>
 							<Popover.Content class="w-auto p-0" align="start">
-								<DateTimePicker value={tempToDateTime} onValueChange={handleToDateTimeChange} />
+								<DateTimeCalendar value={tempToDateTime} onValueChange={handleToDateTimeChange} />
 							</Popover.Content>
 						</Popover.Root>
 					</div>

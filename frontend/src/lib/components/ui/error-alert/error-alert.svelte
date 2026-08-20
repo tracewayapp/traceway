@@ -27,12 +27,10 @@
 	>
 		<CircleAlert />
 		<AlertTitle class="min-h-5 text-base font-semibold">{title}</AlertTitle>
-		<AlertDescription>
-			<ul class="list-disc pl-4">
-				{#each messages as message (message)}
-					<li>{message}</li>
-				{/each}
-			</ul>
+		<AlertDescription class="font-medium tracking-normal">
+			{#each messages as message (message)}
+				<div>{message}</div>
+			{/each}
 		</AlertDescription>
 	</Alert>
 {/if}

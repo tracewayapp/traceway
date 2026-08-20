@@ -1,8 +1,8 @@
 <script lang="ts">
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { DateTimePicker } from '$lib/components/ui/datetime-picker';
 	import * as Select from '$lib/components/ui/select';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { Plus } from '@lucide/svelte';
@@ -110,12 +110,12 @@
 
 			<div class="space-y-2">
 				<Label for="override-start">Start</Label>
-				<Input id="override-start" type="datetime-local" bind:value={startAt} />
+				<DateTimePicker id="override-start" bind:value={startAt} />
 			</div>
 
 			<div class="space-y-2">
 				<Label for="override-end">End</Label>
-				<Input id="override-end" type="datetime-local" bind:value={endAt} />
+				<DateTimePicker id="override-end" bind:value={endAt} />
 			</div>
 
 			<p class="text-xs text-muted-foreground">

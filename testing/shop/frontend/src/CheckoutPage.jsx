@@ -1,19 +1,7 @@
 import React, { useEffect, useState } from 'react'
+import { TracewayErrorBoundary } from '@tracewayapp/react'
 import { applyCoupon, checkout, getCart, formatPrice } from './api.js'
 import { Button, IconCheck, IconLock } from './ui.jsx'
-
-class ErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props)
-    this.state = { failed: false }
-  }
-  static getDerivedStateFromError() {
-    return { failed: true }
-  }
-  render() {
-    return this.state.failed ? this.props.fallback : this.props.children
-  }
-}
 
 function CouponBadge({ discount }) {
   return (
@@ -121,7 +109,7 @@ export default function CheckoutPage({ onDone }) {
             {couponError && <p className="mt-2 text-sm text-red-600">{couponError}</p>}
             {discount !== undefined && (
               <div className="mt-3">
-                <ErrorBoundary
+                <TracewayErrorBoundary
                   fallback={
                     <div className="rounded-lg bg-red-50 px-3 py-2.5 text-sm font-medium text-red-700 ring-1 ring-red-600/20">
                       Could not display coupon.
@@ -129,7 +117,7 @@ export default function CheckoutPage({ onDone }) {
                   }
                 >
                   <CouponBadge discount={discount} />
-                </ErrorBoundary>
+                </TracewayErrorBoundary>
               </div>
             )}
           </section>

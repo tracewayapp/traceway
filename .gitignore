@@ -71,3 +71,4 @@ symbolicator-bench.txt
 skills-lock.json
 /.claude/skills
 /.agents
+/testing/shop/traffic/node_modules

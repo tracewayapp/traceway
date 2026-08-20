@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
@@ -13,6 +15,21 @@
 	let error = $state('');
 	let loading = $state(false);
 	let success = $state(false);
+
+	onMount(async () => {
+		try {
+			const response = await fetch('/api/auth/providers');
+			if (response.ok) {
+				const data = await response.json();
+				// password login disabled, so just skip this entirely and redirect to SSO login
+				if (data.passwordLoginEnabled === false) {
+					goto(resolve('/login'));
+				}
+			}
+		} catch {
+			// leave the page usable even if we manage to get here since we still have the backend check
+		}
+	});
 
 	async function handleSubmit() {
 		loading = true;

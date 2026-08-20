@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react'
+import { setAttributes } from '@tracewayapp/react'
 import { getCart } from './api.js'
+import { getDemoUser } from './demoUser.js'
 import ProductsPage from './ProductsPage.jsx'
 import CartPage from './CartPage.jsx'
 import CheckoutPage from './CheckoutPage.jsx'
@@ -24,6 +26,11 @@ export default function App() {
       setCartCount(0)
     }
   }
+
+  useEffect(() => {
+    const user = getDemoUser()
+    setAttributes({ 'user.email': user.email, 'user.name': user.name, plan: user.plan })
+  }, [])
 
   useEffect(() => {
     refreshCartCount()

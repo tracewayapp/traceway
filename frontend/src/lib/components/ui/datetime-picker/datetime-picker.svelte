@@ -1,252 +1,72 @@
 <script lang="ts">
-	import { Calendar } from '$lib/components/ui/calendar';
-	import * as Select from '$lib/components/ui/select';
+	import * as Popover from '$lib/components/ui/popover';
+	import DateTimeCalendar from './datetime-calendar.svelte';
 	import { cn } from '$lib/utils';
-	import {
-		CalendarDate,
-		CalendarDateTime,
-		getLocalTimeZone,
-		today,
-		type DateValue
-	} from '@internationalized/date';
-
-	type Period = 'AM' | 'PM';
+	import { Calendar as CalendarIcon } from '@lucide/svelte';
+	import { CalendarDateTime, getLocalTimeZone, parseDateTime } from '@internationalized/date';
 
 	interface Props {
-		value?: CalendarDateTime | CalendarDate;
-		onValueChange?: (value: CalendarDateTime) => void;
+		// Same wire format as <input type="datetime-local">: yyyy-MM-ddTHH:mm
+		value?: string;
+		onValueChange?: (value: string) => void;
+		disabled?: boolean;
+		id?: string;
 		class?: string;
+		placeholder?: string;
 	}
 
-	let { value = $bindable(), onValueChange, class: className }: Props = $props();
+	let {
+		value = $bindable(''),
+		onValueChange,
+		disabled = false,
+		id,
+		class: className,
+		placeholder = 'Pick a date & time'
+	}: Props = $props();
 
-	// Time state (12-hour format for display)
-	let hours = $state(12);
-	let minutes = $state(0);
-	let seconds = $state(0);
-	let period = $state<Period>('AM');
+	let open = $state(false);
 
-	// Initialize from value
-	$effect(() => {
-		if (value && 'hour' in value) {
-			const hour24 = value.hour;
-			period = hour24 >= 12 ? 'PM' : 'AM';
-			hours = hour24 % 12 || 12;
-			minutes = value.minute;
-			seconds = value.second;
-		}
-	});
-
-	// Derived 24-hour value
-	const hour24 = $derived(() => {
-		if (period === 'AM') {
-			return hours === 12 ? 0 : hours;
-		} else {
-			return hours === 12 ? 12 : hours + 12;
-		}
-	});
-
-	// Handle calendar date change
-	function handleDateChange(newDate: DateValue | undefined) {
-		if (!newDate) return;
-
-		const dateTime = new CalendarDateTime(
-			newDate.year,
-			newDate.month,
-			newDate.day,
-			hour24(),
-			minutes,
-			seconds
-		);
-
-		value = dateTime;
-		onValueChange?.(dateTime);
-	}
-
-	// Handle time changes
-	function updateDateTime() {
-		if (!value) {
-			const now = today(getLocalTimeZone());
-			value = new CalendarDateTime(now.year, now.month, now.day, hour24(), minutes, seconds);
-		} else {
-			const dateTime = new CalendarDateTime(
-				value.year,
-				value.month,
-				value.day,
-				hour24(),
-				minutes,
-				seconds
-			);
-			value = dateTime;
-			onValueChange?.(dateTime);
-		}
-	}
-
-	// Input handlers with validation
-	function handleHoursInput(e: Event) {
-		const input = e.target as HTMLInputElement;
-		let val = parseInt(input.value) || 0;
-		if (val < 1) val = 1;
-		if (val > 12) val = 12;
-		hours = val;
-		input.value = String(val).padStart(2, '0');
-		updateDateTime();
-	}
-
-	function handleMinutesInput(e: Event) {
-		const input = e.target as HTMLInputElement;
-		let val = parseInt(input.value) || 0;
-		if (val < 0) val = 0;
-		if (val > 59) val = 59;
-		minutes = val;
-		input.value = String(val).padStart(2, '0');
-		updateDateTime();
-	}
-
-	function handlePeriodChange(newPeriod: string | undefined) {
-		if (newPeriod === 'AM' || newPeriod === 'PM') {
-			period = newPeriod;
-			updateDateTime();
-		}
-	}
-
-	// Increment/decrement helpers
-	function incrementHours() {
-		hours = hours >= 12 ? 1 : hours + 1;
-		updateDateTime();
-	}
-
-	function decrementHours() {
-		hours = hours <= 1 ? 12 : hours - 1;
-		updateDateTime();
-	}
-
-	function incrementMinutes() {
-		if (minutes >= 59) {
-			minutes = 0;
-			incrementHours();
-		} else {
-			minutes++;
-		}
-		updateDateTime();
-	}
-
-	function decrementMinutes() {
-		if (minutes <= 0) {
-			minutes = 59;
-			decrementHours();
-		} else {
-			minutes--;
-		}
-		updateDateTime();
-	}
-
-	function incrementSeconds() {
-		if (seconds >= 59) {
-			seconds = 0;
-			incrementMinutes();
-		} else {
-			seconds++;
-		}
-		updateDateTime();
-	}
-
-	function decrementSeconds() {
-		if (seconds <= 0) {
-			seconds = 59;
-			decrementMinutes();
-		} else {
-			seconds--;
-		}
-		updateDateTime();
-	}
-
-	// Handle keyboard navigation
-	function handleKeyDown(e: KeyboardEvent, field: 'hours' | 'minutes' | 'seconds') {
-		if (e.key === 'ArrowUp') {
-			e.preventDefault();
-			if (field === 'hours') incrementHours();
-			else if (field === 'minutes') incrementMinutes();
-			else incrementSeconds();
-		} else if (e.key === 'ArrowDown') {
-			e.preventDefault();
-			if (field === 'hours') decrementHours();
-			else if (field === 'minutes') decrementMinutes();
-			else decrementSeconds();
-		}
-	}
-
-	// Get calendar-compatible date value
-	const calendarValue = $derived(() => {
+	const parsed = $derived.by(() => {
 		if (!value) return undefined;
-		return new CalendarDate(value.year, value.month, value.day);
+		try {
+			return parseDateTime(value);
+		} catch {
+			return undefined;
+		}
 	});
+
+	const label = $derived(
+		parsed
+			? parsed.toDate(getLocalTimeZone()).toLocaleString('en-US', {
+					month: 'short',
+					day: 'numeric',
+					year: 'numeric',
+					hour: 'numeric',
+					minute: '2-digit'
+				})
+			: placeholder
+	);
+
+	function handleChange(dt: CalendarDateTime) {
+		const pad = (n: number) => String(n).padStart(2, '0');
+		value = `${dt.year}-${pad(dt.month)}-${pad(dt.day)}T${pad(dt.hour)}:${pad(dt.minute)}`;
+		onValueChange?.(value);
+	}
 </script>
 
-<div class={cn('flex flex-col', className)}>
-	<!-- Calendar -->
-	<Calendar type="single" value={calendarValue()} onValueChange={handleDateChange} />
-
-	<!-- Time Picker -->
-	<div class="border-t px-3 py-3">
-		<div class="flex items-end gap-2">
-			<!-- Hours -->
-			<div class="flex flex-col items-center gap-1">
-				<span class="text-xs text-muted-foreground">Hours</span>
-				<input
-					type="text"
-					inputmode="numeric"
-					class="h-9 w-10 rounded-md border bg-background text-center text-sm tabular-nums focus:ring-2 focus:ring-ring focus:outline-none"
-					value={String(hours).padStart(2, '0')}
-					onchange={handleHoursInput}
-					onkeydown={(e) => handleKeyDown(e, 'hours')}
-					maxlength={2}
-				/>
-			</div>
-
-			<span class="pb-1 text-sm font-medium text-muted-foreground">:</span>
-
-			<!-- Minutes -->
-			<div class="flex flex-col items-center gap-1">
-				<span class="text-xs text-muted-foreground">Minutes</span>
-				<input
-					type="text"
-					inputmode="numeric"
-					class="h-9 w-10 rounded-md border bg-background text-center text-sm tabular-nums focus:ring-2 focus:ring-ring focus:outline-none"
-					value={String(minutes).padStart(2, '0')}
-					onchange={handleMinutesInput}
-					onkeydown={(e) => handleKeyDown(e, 'minutes')}
-					maxlength={2}
-				/>
-			</div>
-
-			<span class="pb-1 text-sm font-medium text-muted-foreground">:</span>
-
-			<!-- Seconds (disabled - not passed between pages) -->
-			<div class="flex flex-col items-center gap-1">
-				<span class="text-xs text-muted-foreground">Seconds</span>
-				<input
-					type="text"
-					inputmode="numeric"
-					class="h-9 w-10 cursor-not-allowed rounded-md border bg-muted text-center text-sm text-muted-foreground tabular-nums"
-					value={String(seconds).padStart(2, '0')}
-					disabled
-				/>
-			</div>
-
-			<!-- Period (AM/PM) -->
-			<div class="flex flex-col items-center gap-1">
-				<span class="text-xs text-muted-foreground">Period</span>
-				<Select.Root type="single" value={period} onValueChange={handlePeriodChange}>
-					<Select.Trigger class="h-9 w-[60px] text-sm">
-						{period}
-					</Select.Trigger>
-					<Select.Content>
-						<Select.Item value="AM" label="AM">AM</Select.Item>
-						<Select.Item value="PM" label="PM">PM</Select.Item>
-					</Select.Content>
-				</Select.Root>
-			</div>
-		</div>
-	</div>
-</div>
+<Popover.Root bind:open>
+	<Popover.Trigger
+		{id}
+		{disabled}
+		class={cn(
+			'flex h-9 w-full items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-sm shadow-xs transition-[color,box-shadow] outline-none hover:bg-muted/50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 data-[state=open]:border-ring data-[state=open]:ring-[3px] data-[state=open]:ring-ring/50 dark:bg-input/30',
+			className
+		)}
+	>
+		<CalendarIcon class="h-4 w-4 shrink-0 text-muted-foreground" />
+		<span class={cn('truncate tabular-nums', !parsed && 'text-muted-foreground')}>{label}</span>
+	</Popover.Trigger>
+	<Popover.Content class="w-auto p-0" align="start">
+		<DateTimeCalendar value={parsed} onValueChange={handleChange} />
+	</Popover.Content>
+</Popover.Root>

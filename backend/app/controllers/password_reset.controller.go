@@ -22,8 +22,8 @@ const resetTokenExpiry = 1 * time.Hour
 const resetRateLimitPeriod = 1 * time.Hour
 
 func (c *passwordResetController) ForgotPassword(ctx *gin.Context) {
-	if config.Config.DisablePasswordLogin == "true" {
-		ctx.JSON(http.StatusForbidden, gin.H{"error": "Password login is disabled. Please use SSO to sign in."})
+	if config.Config.PasswordLoginDisabled() {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": passwordLoginDisabledMessage})
 		return
 	}
 
@@ -70,8 +70,8 @@ func (c *passwordResetController) ForgotPassword(ctx *gin.Context) {
 }
 
 func (c *passwordResetController) ValidateToken(ctx *gin.Context) {
-	if config.Config.DisablePasswordLogin == "true" {
-		ctx.JSON(http.StatusForbidden, gin.H{"error": "Password login is disabled. Please use SSO to sign in."})
+	if config.Config.PasswordLoginDisabled() {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": passwordLoginDisabledMessage})
 		return
 	}
 
@@ -103,8 +103,8 @@ func (c *passwordResetController) ValidateToken(ctx *gin.Context) {
 }
 
 func (c *passwordResetController) ResetPassword(ctx *gin.Context) {
-	if config.Config.DisablePasswordLogin == "true" {
-		ctx.JSON(http.StatusForbidden, gin.H{"error": "Password login is disabled. Please use SSO to sign in."})
+	if config.Config.PasswordLoginDisabled() {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": passwordLoginDisabledMessage})
 		return
 	}
 

@@ -39,7 +39,7 @@ type finishOAuthSetupRequest struct {
 }
 
 func (a oauthController) ListProviders(c *gin.Context) {
-	passwordEnabled := config.Config.DisablePasswordLogin != "true"
+	passwordEnabled := !config.Config.PasswordLoginDisabled()
 	if services.OAuthService == nil {
 		c.JSON(http.StatusOK, oauthProvidersResponse{Providers: []string{}, ProviderLabels: map[string]string{}, PasswordLoginEnabled: passwordEnabled})
 		return

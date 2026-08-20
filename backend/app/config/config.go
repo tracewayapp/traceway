@@ -128,6 +128,13 @@ func PollSeconds(value string, defaultSeconds int) time.Duration {
 	return time.Duration(seconds) * time.Second
 }
 
+// PasswordLoginDisabled reports whether the instance is SSO-only
+// (DISABLE_PASSWORD_LOGIN=true), which turns off password login,
+// registration, and the password-reset flow.
+func (c *Cfg) PasswordLoginDisabled() bool {
+	return c.DisablePasswordLogin == "true"
+}
+
 // TwilioEnabled reports whether SMS sending is configured: account credentials
 // plus at least one sender (a from-number or a messaging service).
 func (c *Cfg) TwilioEnabled() bool {

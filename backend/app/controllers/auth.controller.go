@@ -17,6 +17,8 @@ import (
 
 var PostRegistrationHooks []func(tx *sql.Tx, org *models.Organization, user *models.User) error
 
+const passwordLoginDisabledMessage = "Password login is disabled. Please use SSO to sign in."
+
 type authController struct{}
 
 func (a authController) HasOrganizations(c *gin.Context) {
@@ -32,8 +34,8 @@ func (a authController) HasOrganizations(c *gin.Context) {
 }
 
 func (a authController) Login(c *gin.Context) {
-	if config.Config.DisablePasswordLogin == "true" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Password login is disabled. Please use SSO to sign in."})
+	if config.Config.PasswordLoginDisabled() {
+		c.JSON(http.StatusForbidden, gin.H{"error": passwordLoginDisabledMessage})
 		return
 	}
 
@@ -87,8 +89,8 @@ func (a authController) Login(c *gin.Context) {
 }
 
 func (a authController) Register(c *gin.Context) {
-	if config.Config.DisablePasswordLogin == "true" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Password login is disabled. Please use SSO to sign in."})
+	if config.Config.PasswordLoginDisabled() {
+		c.JSON(http.StatusForbidden, gin.H{"error": passwordLoginDisabledMessage})
 		return
 	}
 

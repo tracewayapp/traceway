@@ -15,6 +15,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
 )
 
 type metricPointRepository struct{}
@@ -239,7 +240,8 @@ func (r *metricPointRepository) LatestPerServer(ctx context.Context, projectId u
 	query, args, err := lit.ParseNamedQuery(db.Driver,
 		`SELECT server_name AS sn,
 			arg_max(value, recorded_at) AS latest_value,
-			max(recorded_at) AS last_reported_at
+			max(recorded_at) AS last_reported_at,
+			arg_max(tags, recorded_at) AS latest_tags
 		FROM metric_points
 		WHERE project_id = :project_id AND name = :name AND recorded_at >= :since AND server_name != ''
 		GROUP BY sn ORDER BY sn ASC`,
@@ -257,12 +259,14 @@ func (r *metricPointRepository) LatestPerServer(ctx context.Context, projectId u
 	var points []models.ServerLatestPoint
 	for rows.Next() {
 		var p models.ServerLatestPoint
-		if err := rows.Scan(&p.ServerName, &p.Value, &p.LastReportedAt); err != nil {
+		var tags sqlitetypes.SQLiteJSONMap
+		if err := rows.Scan(&p.ServerName, &p.Value, &p.LastReportedAt, &tags); err != nil {
 			return nil, err
 		}
+		p.Tags = map[string]string(tags)
 		points = append(points, p)
 	}
-	return points, nil
+	return points, rows.Err()
 }
 
 func (r *metricPointRepository) GetAverageByIntervalPerServer(ctx context.Context, projectId uuid.UUID, name string, start, end time.Time, intervalMinutes int, servers []string) (map[string][]models.TimeSeriesPoint, error) {

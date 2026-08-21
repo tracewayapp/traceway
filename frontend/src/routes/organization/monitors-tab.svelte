@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { SvelteMap } from 'svelte/reactivity';
 	import { api } from '$lib/api';
 	import { getErrorMessage } from '$lib/utils/errors';
 	import { formatDurationMs, formatRelativeTimeAgo } from '$lib/utils/formatters';
@@ -38,42 +39,48 @@
 	let incidents = $state<OrgIncident[]>([]);
 	let incidentsLoading = $state(true);
 	let incidentsError = $state('');
+	let loadGeneration = 0;
 
 	const SORT_STORAGE_KEY = 'org-monitors';
 	const initialSort = getSortState(SORT_STORAGE_KEY, { field: 'status', direction: 'asc' });
 	let orderBy = $state<SortField>(initialSort.field as SortField);
 	let sortDirection = $state<SortDirection>(initialSort.direction);
 
-	async function loadChecks(orgId: number) {
+	async function loadChecks(orgId: number, generation: number) {
 		checksLoading = true;
 		checksError = '';
 		try {
 			const response = await api.get(`/organizations/${orgId}/overview/monitors`);
+			if (generation !== loadGeneration) return;
 			checks = response.checks || [];
 		} catch (e) {
+			if (generation !== loadGeneration) return;
 			checksError = getErrorMessage(e) || 'Failed to load monitors';
 		} finally {
-			checksLoading = false;
+			if (generation === loadGeneration) checksLoading = false;
 		}
 	}
 
-	async function loadIncidents(orgId: number) {
+	async function loadIncidents(orgId: number, generation: number) {
 		incidentsLoading = true;
 		incidentsError = '';
 		try {
 			const response = await api.get(`/organizations/${orgId}/incidents`);
+			if (generation !== loadGeneration) return;
 			incidents = response.incidents || [];
 		} catch (e) {
+			if (generation !== loadGeneration) return;
 			incidentsError = getErrorMessage(e) || 'Failed to load incidents';
 		} finally {
-			incidentsLoading = false;
+			if (generation === loadGeneration) incidentsLoading = false;
 		}
 	}
 
 	$effect(() => {
 		const orgId = organizationId;
-		loadChecks(orgId);
-		loadIncidents(orgId);
+		const generation = ++loadGeneration;
+		loadChecks(orgId, generation);
+		loadIncidents(orgId, generation);
 	});
 
 	function handleSort(field: SortField) {
@@ -94,7 +101,7 @@
 	const statusRank: Record<string, number> = { down: 0, unknown: 1, up: 2 };
 
 	const lastIncidentByCheck = $derived.by(() => {
-		const byCheck = new Map<number, OrgIncident>();
+		const byCheck = new SvelteMap<number, OrgIncident>();
 		for (const incident of incidents) {
 			if (incident.checkId === null) continue;
 			const existing = byCheck.get(incident.checkId);

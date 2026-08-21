@@ -15,7 +15,7 @@ type convertedMetrics struct {
 	Entries []transactional.MetricRegistrationEntry
 }
 
-// processResourceAttrAllowlist names the OTel Resource attributes we lift
+// metricResourceAttrAllowlist names the OTel Resource attributes we lift
 // onto each metric point's tags. Necessary because the hostmetrics process
 // scraper distinguishes per-process metrics via Resource attributes (one
 // ResourceMetrics per process), not data-point attributes — without this,
@@ -24,7 +24,15 @@ type convertedMetrics struct {
 // container/pod/node/database identity also lives on the Resource. The list
 // is an allowlist rather than a passthrough so other receivers can't blow up
 // metric_points cardinality with arbitrary resource attrs.
-var processResourceAttrAllowlist = []string{
+var metricResourceAttrAllowlist = []string{
+	"host.name",
+	"host.id",
+	"host.arch",
+	"os.type",
+	"os.description",
+	"cloud.provider",
+	"cloud.region",
+	"cloud.availability_zone",
 	"process.pid",
 	"process.executable.name",
 	"process.command_line",
@@ -36,6 +44,7 @@ var processResourceAttrAllowlist = []string{
 	"k8s.node.name",
 	"k8s.deployment.name",
 	"k8s.container.name",
+	"k8s.cluster.name",
 	"postgresql.database.name",
 }
 
@@ -46,7 +55,7 @@ func convertMetricPoints(projectId uuid.UUID, req *colmetricspb.ExportMetricsSer
 	for _, rm := range req.ResourceMetrics {
 		resAttrs := rm.GetResource().GetAttributes()
 		sn := getStringAttribute(resAttrs, "service.name")
-		resTags := extractProcessResourceTags(resAttrs)
+		resTags := extractMetricResourceTags(resAttrs)
 
 		for _, sm := range rm.ScopeMetrics {
 			for _, metric := range sm.Metrics {
@@ -163,7 +172,7 @@ func buildTags(serverName string, resTags map[string]string, attrs []*commonpb.K
 	return tags
 }
 
-func extractProcessResourceTags(resAttrs []*commonpb.KeyValue) map[string]string {
+func extractMetricResourceTags(resAttrs []*commonpb.KeyValue) map[string]string {
 	if len(resAttrs) == 0 {
 		return nil
 	}
@@ -171,8 +180,8 @@ func extractProcessResourceTags(resAttrs []*commonpb.KeyValue) map[string]string
 	if len(all) == 0 {
 		return nil
 	}
-	out := make(map[string]string, len(processResourceAttrAllowlist))
-	for _, k := range processResourceAttrAllowlist {
+	out := make(map[string]string, len(metricResourceAttrAllowlist))
+	for _, k := range metricResourceAttrAllowlist {
 		if v, ok := all[k]; ok && v != "" {
 			out[k] = v
 		}

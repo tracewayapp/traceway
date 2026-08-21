@@ -3,28 +3,13 @@ import { resolve } from '$app/paths';
 
 import { splitHref } from './links';
 
+export { authenticatedLandingPath, defaultAuthenticatedPath, safeLocalPath } from './landing';
+
 export function gotoHref(href: string, options?: Parameters<typeof goto>[1]) {
 	const { pathname, suffix } = splitHref(href);
 	let destination = resolve((pathname || '/') as '/');
 	destination += suffix;
 	return goto(destination, options);
-}
-
-// Only allow same-origin, absolute-path redirects. Reject absolute URLs
-// (https://evil.com), protocol-relative (//evil.com), and backslash tricks
-// (/\evil.com) so returnTo can't be used as an open redirect.
-export function safeLocalPath(raw: string | null): string {
-	if (!raw) return '/';
-	let decoded: string;
-	try {
-		decoded = decodeURIComponent(raw);
-	} catch {
-		return '/';
-	}
-	if (!decoded.startsWith('/') || decoded.startsWith('//') || decoded.startsWith('/\\')) {
-		return '/';
-	}
-	return decoded;
 }
 
 // SSO logins bounce through the provider and land on /auth/callback, losing

@@ -13,7 +13,7 @@
 	import WidgetGrid from '$lib/components/dashboard/widget-grid.svelte';
 	import WidgetConfigPanel from '$lib/components/dashboard/widget-config-panel.svelte';
 	import DashboardCommand from '$lib/components/dashboard/dashboard-command.svelte';
-	import { replaceState } from '$app/navigation';
+	import { afterNavigate, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '$lib/api';
 	import { projectsState } from '$lib/state/projects.svelte';
@@ -41,7 +41,9 @@
 		Upload,
 		Share2,
 		CircleMinus,
-		Search
+		Search,
+		Server,
+		X
 	} from '@lucide/svelte';
 	import { WarningCallout } from '$lib/components/ui/warning-callout';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
@@ -178,6 +180,21 @@
 			? projectsState.projects.filter((p) => p.organizationId === activeDashboard?.organizationId)
 			: []
 	);
+	let serverScope = $state(page.url.searchParams.get('server')?.trim() ?? '');
+	const scopeTagFilters = $derived.by(
+		(): Record<string, string> => (serverScope ? { server_name: serverScope } : {})
+	);
+
+	function clearServerScope() {
+		const url = new URL(window.location.href);
+		url.searchParams.delete('server');
+		serverScope = '';
+		replaceState(url.pathname + url.search, {});
+	}
+
+	function updateDashboardUrl(params: Record<string, string>) {
+		updateUrl(serverScope ? { ...params, server: serverScope } : params);
+	}
 
 	function reloadDashboardWidgets() {
 		if (selectedPreset) {
@@ -688,9 +705,9 @@
 
 		sharedTimeDomain = [new Date(getFromDateTimeUTC()), new Date(getToDateTimeUTC())];
 		if (selectedPreset) {
-			updateUrl({ preset: selectedPreset });
+			updateDashboardUrl({ preset: selectedPreset });
 		} else {
-			updateUrl({ from: getFromDateTimeUTC(), to: getToDateTimeUTC() });
+			updateDashboardUrl({ from: getFromDateTimeUTC(), to: getToDateTimeUTC() });
 		}
 	}
 
@@ -701,7 +718,7 @@
 		toDate = new CalendarDate(to.getFullYear(), to.getMonth() + 1, to.getDate());
 		toTime = `${String(to.getHours()).padStart(2, '0')}:${String(to.getMinutes()).padStart(2, '0')}`;
 		sharedTimeDomain = [from, to];
-		updateUrl({ from: getFromDateTimeUTC(), to: getToDateTimeUTC() });
+		updateDashboardUrl({ from: getFromDateTimeUTC(), to: getToDateTimeUTC() });
 	}
 
 	async function loadMetrics() {
@@ -903,8 +920,15 @@
 	const activeTabName = $derived(dashboards.find((d) => String(d.id) === activeTabId)?.name ?? '');
 
 	let handledSearch = '';
+	let routerReady = $state(false);
+
+	afterNavigate(() => {
+		routerReady = true;
+		serverScope = page.url.searchParams.get('server')?.trim() ?? '';
+	});
 
 	$effect(() => {
+		if (!routerReady) return;
 		const search = page.url.search;
 		if (search === handledSearch) return;
 		handledSearch = search;
@@ -1004,6 +1028,35 @@
 			{/if}
 		{/snippet}
 	</PageHeader>
+
+	{#if serverScope}
+		<div
+			class="flex items-start gap-3 rounded-xl border border-blue-500/20 bg-blue-500/5 px-4 py-3"
+		>
+			<div
+				class="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-300"
+			>
+				<Server class="size-4" />
+			</div>
+			<div class="min-w-0 flex-1">
+				<div class="flex flex-wrap items-center gap-2 text-sm font-medium">
+					<span>Instance view</span>
+					<code class="rounded bg-background/80 px-1.5 py-0.5 text-xs">{serverScope}</code>
+				</div>
+				<p class="mt-0.5 text-xs text-muted-foreground">
+					Every widget is scoped to this instance. Clear the scope to compare the full project.
+				</p>
+			</div>
+			<Button
+				variant="ghost"
+				size="icon-sm"
+				onclick={clearServerScope}
+				title="Clear instance scope"
+			>
+				<X class="size-4" />
+			</Button>
+		</div>
+	{/if}
 
 	{#if loading}
 		<div class="flex items-center justify-center py-20">
@@ -1207,6 +1260,7 @@
 							fromDateUTC={getFromDateTimeUTC()}
 							toDateUTC={getToDateTimeUTC()}
 							timeDomain={sharedTimeDomain}
+							{scopeTagFilters}
 							onEditWidget={(w) => openEditWidget(w as Widget)}
 							onDeleteWidget={(w) => openDeleteWidgetDialog(w as Widget)}
 							onReorderWidgets={handleReorderWidgets}

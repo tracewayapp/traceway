@@ -4,7 +4,7 @@
 	import { onMount } from 'svelte';
 	import { authState } from '$lib/state/auth.svelte';
 	import { projectsState } from '$lib/state/projects.svelte';
-	import { consumeSsoReturnTo, gotoHref, safeLocalPath } from '$lib/utils/navigation';
+	import { authenticatedLandingPath, consumeSsoReturnTo, gotoHref } from '$lib/utils/navigation';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 
@@ -42,7 +42,13 @@
 			const data = await response.json();
 			authState.setOrganizations(data.organizations || []);
 			projectsState.setProjects(data.projects || []);
-			gotoHref(safeLocalPath(consumeSsoReturnTo()));
+			gotoHref(
+				authenticatedLandingPath(
+					consumeSsoReturnTo(),
+					data.organizations || [],
+					data.projects || []
+				)
+			);
 		} catch {
 			authState.logout();
 			error = 'Failed to load your account. Please try logging in again.';

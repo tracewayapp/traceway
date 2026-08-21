@@ -135,8 +135,6 @@ func (r *syntheticCheckRepository) FindByIdInOrganization(tx *sql.Tx, id int, or
 	)
 }
 
-// FindByOrganization lists every check across all the organization's projects
-// (the org-level monitors view).
 func (r *syntheticCheckRepository) FindByOrganization(tx *sql.Tx, organizationId int) ([]*models.SyntheticCheck, error) {
 	return lit.SelectNamed[models.SyntheticCheck](
 		tx,

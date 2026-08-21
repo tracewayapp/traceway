@@ -39,7 +39,8 @@
 		onResizeWidget,
 		onAddWidget,
 		onToggleStar,
-		onRangeSelect
+		onRangeSelect,
+		scopeTagFilters = {}
 	} = $props<{
 		widgets: Widget[];
 		fromDateUTC: string;
@@ -53,6 +54,7 @@
 		onAddWidget?: () => void;
 		onToggleStar?: (widget: Widget) => void;
 		onRangeSelect?: (from: Date, to: Date) => void;
+		scopeTagFilters?: Record<string, string>;
 	}>();
 
 	let sharedHoverTime = $state<Date | null>(null);
@@ -312,6 +314,7 @@
 						{timeDomain}
 						{onRangeSelect}
 						{sharedHoverTime}
+						{scopeTagFilters}
 						onHoverTimeChange={(time) => (sharedHoverTime = time)}
 						isSourceChart={false}
 					/>

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
-	import { gotoHref } from '$lib/utils/navigation';
+	import { authenticatedLandingPath, gotoHref } from '$lib/utils/navigation';
 	import { page } from '$app/state';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -13,7 +13,6 @@
 	import { themeState } from '$lib/state/theme.svelte';
 	import { toast } from 'svelte-sonner';
 	import OauthButtons from '$lib/components/oauth-buttons.svelte';
-	import { safeLocalPath } from '$lib/utils/navigation';
 
 	const ERROR_MESSAGES: Record<string, string> = {
 		oauth_failed: 'Sign-in failed. Please try again.',
@@ -92,8 +91,7 @@
 			authState.setOrganizations(data.organizations || []);
 			projectsState.setProjects(data.projects);
 
-			// Redirect to returnTo if provided (validated same-origin), otherwise dashboard
-			gotoHref(safeLocalPath(returnTo));
+			gotoHref(authenticatedLandingPath(returnTo, data.organizations || [], data.projects || []));
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Invalid email or password';
 		} finally {

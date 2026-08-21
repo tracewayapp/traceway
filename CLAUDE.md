@@ -678,7 +678,7 @@ Dashboards are org-owned JSON documents (`{schemaVersion, widgets: [{id, title, 
 | POST | `/api/dashboards/populate-defaults` | App+Write | Install the framework-default template set for an empty project |
 | GET | `/api/metrics/discover/org` | App | Metric names across all org projects (command palette) |
 
-Templates are DB rows seeded by migrations (`traceway-otel-agent` for the OTel host agent, `golang` for Go SDK apps, `traceway-clickhouse`/`traceway-duckdb` for the telemetry stores of a monitored Traceway instance; SQLite emits no store-specific metrics so it has no template); cloud can insert more rows without a release. The OTLP metric ingest allowlists per-resource grouping tags (`container.name`, `k8s.pod.name`, `k8s.node.name`, `postgresql.database.name`, ...) in `otelcontrollers/metric_converter.go` for custom widgets.
+Templates are DB rows seeded by migrations (`traceway-otel-agent` for the OTel host agent, `golang` for Go SDK apps, `traceway-clickhouse`/`traceway-duckdb` for the telemetry stores of a monitored Traceway instance; SQLite emits no store-specific metrics so it has no template); cloud can insert more rows without a release. The OTLP metric ingest allowlists per-resource identity and grouping tags (`host.name`, `host.id`, `os.type`, `cloud.region`, `container.name`, `k8s.cluster.name`, `k8s.pod.name`, `k8s.node.name`, `postgresql.database.name`, ...) in `otelcontrollers/metric_converter.go` for infrastructure views and custom widgets.
 
 **Endpoints**
 | Method | Endpoint | Auth | Purpose |

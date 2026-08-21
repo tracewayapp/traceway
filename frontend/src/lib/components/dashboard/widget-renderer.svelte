@@ -26,7 +26,8 @@
 		onRangeSelect,
 		sharedHoverTime = null,
 		isSourceChart = false,
-		onHoverTimeChange
+		onHoverTimeChange,
+		scopeTagFilters = {}
 	} = $props<{
 		widget: {
 			id: number;
@@ -41,12 +42,14 @@
 		sharedHoverTime?: Date | null;
 		isSourceChart?: boolean;
 		onHoverTimeChange?: (time: Date | null) => void;
+		scopeTagFilters?: Record<string, string>;
 	}>();
 
 	let series = $state<Array<{ key: string; data: MetricTrendPoint[]; color: string }>>([]);
 	let loading = $state(true);
 	let singleValue = $state<number | null>(null);
 	let resolvedUnit = $state('');
+	let loadSequence = 0;
 
 	const colors = [
 		'var(--chart-1)',
@@ -58,6 +61,7 @@
 	];
 
 	const effectiveUnit = $derived(widget.config.unit ?? resolvedUnit);
+	const scopeFilterKey = $derived(JSON.stringify(scopeTagFilters));
 
 	// Fallbacks for the first render; once mounted the chart fills the measured card space
 	const chartHeights: Record<string, number> = { sm: 200, md: 300, lg: 420 };
@@ -111,9 +115,10 @@
 	);
 
 	async function loadData() {
+		const sequence = ++loadSequence;
 		const sources = widget.config.sources;
 		if (!sources || sources.length === 0) {
-			loading = false;
+			if (sequence === loadSequence) loading = false;
 			return;
 		}
 
@@ -125,7 +130,7 @@
 			const queries = sources.map((s: DashboardWidgetSource) => ({
 				name: s.name,
 				aggregation: s.aggregation || 'avg',
-				tagFilters: s.tagFilters,
+				tagFilters: { ...(s.tagFilters ?? {}), ...scopeTagFilters },
 				groupBy: s.groupBy
 			}));
 
@@ -134,6 +139,7 @@
 				{ queries, from: fromDateUTC, to: toDateUTC },
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
+			if (sequence !== loadSequence) return;
 
 			const units = new SvelteSet<string>();
 			const usedKeys = new SvelteSet<string>();
@@ -167,13 +173,15 @@
 				singleValue = newSeries.length > 0 ? reduceSeries(newSeries[0].data, aggregation) : null;
 			}
 		} catch {
-			// keep empty
+			if (sequence !== loadSequence) return;
+			// Retain the last successful snapshot during transient query failures.
 		} finally {
-			loading = false;
+			if (sequence === loadSequence) loading = false;
 		}
 	}
 
 	$effect(() => {
+		void scopeFilterKey;
 		if (fromDateUTC && toDateUTC) {
 			loadData();
 		}

@@ -22,9 +22,10 @@
 		open: boolean;
 		onOpenChange: (open: boolean) => void;
 		onProjectCreated: () => void;
+		initialOrganizationId?: number | null;
 	}
 
-	let { open, onOpenChange, onProjectCreated }: Props = $props();
+	let { open, onOpenChange, onProjectCreated, initialOrganizationId = null }: Props = $props();
 
 	let projectName = $state('');
 	let selectedFramework = $state<Framework>('opentelemetry');
@@ -40,9 +41,11 @@
 		if (open) {
 			untrack(() => {
 				const currentOrgId = projectsState.currentProject?.organizationId;
-				selectedOrgId = writableOrgs.some((o) => o.id === currentOrgId)
-					? currentOrgId!
-					: (writableOrgs[0]?.id ?? null);
+				selectedOrgId = writableOrgs.some((o) => o.id === initialOrganizationId)
+					? initialOrganizationId
+					: writableOrgs.some((o) => o.id === currentOrgId)
+						? currentOrgId!
+						: (writableOrgs[0]?.id ?? null);
 			});
 		}
 	});

@@ -43,13 +43,13 @@ func TestRenderEscapesAndIncludesContent(t *testing.T) {
 	}
 }
 
-func TestRenderDefaultsButtonColor(t *testing.T) {
+func TestRenderButtonIsOutlineStyle(t *testing.T) {
 	html, err := Render(Data{Title: "t", Button: &Button{Label: "Go", URL: "https://x"}})
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
-	if !strings.Contains(html, ColorPrimary) {
-		t.Errorf("expected default button color %s", ColorPrimary)
+	if !strings.Contains(html, "border:1px solid #d1d9e0;border-radius:6px;background-color:#ffffff;") {
+		t.Error("expected the outline button style")
 	}
 }
 

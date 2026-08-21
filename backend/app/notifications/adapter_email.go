@@ -93,7 +93,6 @@ func renderMessageHTML(msg Message, baseURL string) (string, error) {
 	switch msg.Severity {
 	case SeverityCritical:
 		d.Badge, d.BadgeColor = "CRITICAL", emailtemplate.ColorCritical
-		d.ButtonColor = emailtemplate.ColorCritical
 	case SeverityWarning:
 		d.Badge, d.BadgeColor = "WARNING", emailtemplate.ColorWarning
 	case SeverityInfo:

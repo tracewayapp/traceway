@@ -1212,6 +1212,16 @@ if err != nil {
 - **Validation errors** (user-facing): `c.JSON(422, gin.H{"error": "message"})` for form validation
 - **Always** wrap errors with `traceway.NewStackTraceErrorf` or `fmt.Errorf` using `%w` — never discard the original error
 
+### Notification Email Templates (HTML)
+
+Notification/alert/monitor emails are sent as styled HTML through one shared layout; only the email adapter renders HTML, every other channel stays plaintext.
+
+- **`backend/app/services/emailtemplate/`** — the layout (`base.gohtml`, embedded via `go:embed`, parsed once with `template.Must`) and `Render(Data)`. `Data` fields: `Title`, `Badge`/`BadgeColor` (severity chip; `ColorCritical`/`ColorWarning`/`ColorInfo`), `Paragraphs` (internal `\n` becomes `<br>` via the `nl2br` func), `Details` (label/value rows, monospace values), `CodeBlock` (stack traces, probe errors), `Button` (always the dashboard's outline style — white background, `#d1d9e0` border; severity never colors the button, only the badge), `FooterNote`, `LogoURL` (`LogoURL(baseURL)` = `{APP_BASE_URL}/traceway-mark.png`), `Preheader` (defaults to the first paragraph). Table-based markup with inline styles for Gmail/Outlook; all content is escaped by `html/template`.
+- **`emailtemplate.BuildMIME(from, to, subject, textBody, htmlBody)`** — composes `multipart/alternative` (plaintext part first, then HTML), quoted-printable both parts, RFC 2047 subject. Empty `htmlBody` yields a single-part plaintext message. Used by the notifications email adapter; the invitation/password-reset emails in `services/email.service.go` are deliberately still plaintext.
+- **Structured message fields** (`models.NotificationMessage`): optional `Intro`, `Details []NotificationMessageDetail`, `CodeBlock`, `ActionLabel`, all `json:",omitempty"`. When any of `Intro`/`Details`/`CodeBlock` is set, `renderMessageHTML` in `adapter_email.go` renders them instead of `Body`; otherwise `Body` is split into paragraphs on blank lines. `Body` must therefore always stay complete on its own — Slack/Telegram/SMS/webhook and `fired_notifications` only ever see `Body`. The fields round-trip through the outbox (the whole `Message` is persisted as JSON), so no migration is needed when adding more; rows enqueued before an upgrade fall back to the generic rendering.
+- **Buttons/links**: relative `msg.URL`s are absolutized against `services.EmailService.BaseURL()`; `ActionLabel` overrides the default "View in Traceway" (builders use "View Issue", "View Monitor", "Acknowledge Page"). `msg.HTMLBody`, when set, bypasses the template entirely.
+- **Adding a new rule type's email**: nothing to do for a plain sentence (generic path). For richer emails, set `Intro`/`Details`/`CodeBlock`/`ActionLabel` on the `Message` in `messages.go` while keeping `Body` self-contained (see `buildNewErrorMessage` / `buildCheckDownMessage`).
+
 ---
 
 ## Native `/api/report` Protocol

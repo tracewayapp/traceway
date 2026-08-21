@@ -21,7 +21,6 @@ var baseTemplate = template.Must(template.New("base").Funcs(template.FuncMap{
 }).Parse(baseTemplateSource))
 
 const (
-	ColorPrimary  = "#1f883d"
 	ColorCritical = "#cf222e"
 	ColorWarning  = "#9a6700"
 	ColorInfo     = "#0969da"
@@ -48,16 +47,13 @@ type Data struct {
 	Paragraphs []string
 	Details    []Detail
 	CodeBlock  string
+	// Button renders in the dashboard's outline style; severity only ever
+	// colors the badge.
 	Button     *Button
-	// ButtonColor defaults to ColorPrimary.
-	ButtonColor string
-	FooterNote  string
+	FooterNote string
 }
 
 func Render(d Data) (string, error) {
-	if d.ButtonColor == "" {
-		d.ButtonColor = ColorPrimary
-	}
 	if d.BadgeColor == "" {
 		d.BadgeColor = ColorInfo
 	}

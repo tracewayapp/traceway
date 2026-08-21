@@ -92,6 +92,7 @@ func RegisterControllers(router *gin.RouterGroup) {
 
 	router.POST("/metrics/query", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricQueryController.Query)
 	router.GET("/metrics/discover", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricQueryController.Discover)
+	router.GET("/metrics/discover/instances", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricQueryController.DiscoverInstances)
 	router.GET("/metrics/discover/tags", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricQueryController.DiscoverTags)
 	router.GET("/metrics/discover/org", middleware.UseAppAuth, MetricQueryController.DiscoverOrg)
 	router.PUT("/metrics/registry", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, MetricQueryController.UpdateRegistry)

@@ -62,7 +62,12 @@ func (a *EmailAdapter) Send(ctx context.Context, msg Message) error {
 
 	cfg := config.Config
 	from := cfg.SMTPFrom
-	auth := smtp.PlainAuth("", cfg.SMTPUsername, cfg.SMTPPassword, cfg.SMTPHost)
+	// No username means an auth-less relay; smtp.PlainAuth would refuse to
+	// run over an unencrypted connection anyway.
+	var auth smtp.Auth
+	if cfg.SMTPUsername != "" {
+		auth = smtp.PlainAuth("", cfg.SMTPUsername, cfg.SMTPPassword, cfg.SMTPHost)
+	}
 	addr := fmt.Sprintf("%s:%s", cfg.SMTPHost, cfg.SMTPPort)
 
 	htmlBody := msg.HTMLBody

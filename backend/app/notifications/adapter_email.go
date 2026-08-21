@@ -11,6 +11,7 @@ import (
 
 	"github.com/tracewayapp/traceway/backend/app/config"
 	"github.com/tracewayapp/traceway/backend/app/services"
+	"github.com/tracewayapp/traceway/backend/app/services/emailtemplate"
 )
 
 const smtpTimeout = 10 * time.Second
@@ -64,10 +65,70 @@ func (a *EmailAdapter) Send(ctx context.Context, msg Message) error {
 	auth := smtp.PlainAuth("", cfg.SMTPUsername, cfg.SMTPPassword, cfg.SMTPHost)
 	addr := fmt.Sprintf("%s:%s", cfg.SMTPHost, cfg.SMTPPort)
 
-	emailMsg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\n\r\n%s",
-		from, strings.Join(a.Recipients, ", "), subject, msg.Body)
+	htmlBody := msg.HTMLBody
+	if htmlBody == "" {
+		var err error
+		htmlBody, err = renderMessageHTML(msg, emailSvc.BaseURL())
+		if err != nil {
+			return fmt.Errorf("failed to render email HTML: %w", err)
+		}
+	}
+	emailMsg, err := emailtemplate.BuildMIME(from, a.Recipients, subject, msg.Body, htmlBody)
+	if err != nil {
+		return fmt.Errorf("failed to build email message: %w", err)
+	}
 
-	return sendMailWithTimeout(ctx, addr, auth, from, a.Recipients, []byte(emailMsg))
+	return sendMailWithTimeout(ctx, addr, auth, from, a.Recipients, emailMsg)
+}
+
+// renderMessageHTML renders any notification Message through the shared email
+// layout. Structured fields (Intro/Details/CodeBlock) win over the plaintext
+// Body, which stays the source for every text-only adapter.
+func renderMessageHTML(msg Message, baseURL string) (string, error) {
+	d := emailtemplate.Data{
+		LogoURL: emailtemplate.LogoURL(baseURL),
+		Title:   msg.Subject,
+	}
+
+	switch msg.Severity {
+	case SeverityCritical:
+		d.Badge, d.BadgeColor = "CRITICAL", emailtemplate.ColorCritical
+		d.ButtonColor = emailtemplate.ColorCritical
+	case SeverityWarning:
+		d.Badge, d.BadgeColor = "WARNING", emailtemplate.ColorWarning
+	case SeverityInfo:
+		d.Badge, d.BadgeColor = "INFO", emailtemplate.ColorInfo
+	}
+
+	if msg.Intro != "" || len(msg.Details) > 0 || msg.CodeBlock != "" {
+		if msg.Intro != "" {
+			d.Paragraphs = []string{msg.Intro}
+		}
+		for _, det := range msg.Details {
+			d.Details = append(d.Details, emailtemplate.Detail{Label: det.Label, Value: det.Value})
+		}
+		d.CodeBlock = msg.CodeBlock
+	} else if body := strings.TrimSpace(msg.Body); body != "" {
+		d.Paragraphs = strings.Split(body, "\n\n")
+	}
+
+	if msg.URL != "" {
+		u := msg.URL
+		if strings.HasPrefix(u, "/") {
+			u = strings.TrimRight(baseURL, "/") + u
+		}
+		label := msg.ActionLabel
+		if label == "" {
+			label = "View in Traceway"
+		}
+		d.Button = &emailtemplate.Button{Label: label, URL: u}
+	}
+
+	if msg.RuleName != "" {
+		d.FooterNote = fmt.Sprintf("You are receiving this because the notification rule %q fired.", msg.RuleName)
+	}
+
+	return emailtemplate.Render(d)
 }
 
 func sendMailWithTimeout(ctx context.Context, addr string, auth smtp.Auth, from string, to []string, msg []byte) error {

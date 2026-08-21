@@ -95,6 +95,12 @@ func (e *emailService) IsEnabled() bool {
 	return e.enabled
 }
 
+// BaseURL is the dashboard origin used to absolutize links and reference the
+// logo in HTML notification emails.
+func (e *emailService) BaseURL() string {
+	return e.baseUrl
+}
+
 func (e *emailService) SendPasswordReset(toEmail string, token string) error {
 	resetUrl := fmt.Sprintf("%s/reset-password?token=%s", e.baseUrl, token)
 

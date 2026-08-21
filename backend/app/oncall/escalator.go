@@ -534,7 +534,7 @@ func claimChannelDelivery(tx *sql.Tx, page *models.Page, level int, channelId in
 func buildPageMessage(page *models.Page, level int, ackURL string) notifications.Message {
 	prefix := "[Page] "
 	if level > 0 {
-		prefix = fmt.Sprintf("[Page — escalation L%d] ", level+1)
+		prefix = fmt.Sprintf("[Page - escalation L%d] ", level+1)
 	}
 	body := page.Body
 	if body != "" {
@@ -547,12 +547,13 @@ func buildPageMessage(page *models.Page, level int, ackURL string) notifications
 		severity = notifications.SeverityCritical
 	}
 	return notifications.Message{
-		Subject:  prefix + page.Subject,
-		Body:     body,
-		Severity: severity,
-		RuleType: page.RuleType,
-		RuleName: page.RuleName,
-		URL:      ackURL,
+		Subject:     prefix + page.Subject,
+		Body:        body,
+		Severity:    severity,
+		RuleType:    page.RuleType,
+		RuleName:    page.RuleName,
+		URL:         ackURL,
+		ActionLabel: "Acknowledge Page",
 	}
 }
 

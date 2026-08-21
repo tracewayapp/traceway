@@ -252,25 +252,74 @@ func (d ExceptionDetails) endpointForMessage() string {
 }
 
 func buildNewErrorMessage(details ExceptionDetails, projectName string) Message {
+	headline := "A new error has been detected: " + details.ErrorType
 	return Message{
-		Subject:    fmt.Sprintf("[%s] New error: %s", projectName, details.ErrorType),
-		Body:       buildExceptionBody("A new error has been detected: "+details.ErrorType, details),
-		Severity:   SeverityCritical,
-		URL:        fmt.Sprintf("/issues/%s", details.Hash),
-		Endpoint:   details.endpointForMessage(),
-		DedupToken: details.Hash,
+		Subject:     fmt.Sprintf("[%s] New error: %s", projectName, details.ErrorType),
+		Body:        buildExceptionBody(headline, details),
+		Severity:    SeverityCritical,
+		URL:         fmt.Sprintf("/issues/%s", details.Hash),
+		Endpoint:    details.endpointForMessage(),
+		DedupToken:  details.Hash,
+		Intro:       headline,
+		Details:     exceptionMessageDetails(details),
+		CodeBlock:   details.StackTrace,
+		ActionLabel: "View Issue",
 	}
 }
 
 func buildErrorRegressionMessage(details ExceptionDetails, projectName string) Message {
+	headline := "A previously resolved error has reappeared: " + details.ErrorType
 	return Message{
-		Subject:    fmt.Sprintf("[%s] Resolved error reappeared: %s", projectName, details.ErrorType),
-		Body:       buildExceptionBody("A previously resolved error has reappeared: "+details.ErrorType, details),
-		Severity:   SeverityCritical,
-		URL:        fmt.Sprintf("/issues/%s", details.Hash),
-		Endpoint:   details.endpointForMessage(),
-		DedupToken: details.Hash,
+		Subject:     fmt.Sprintf("[%s] Resolved error reappeared: %s", projectName, details.ErrorType),
+		Body:        buildExceptionBody(headline, details),
+		Severity:    SeverityCritical,
+		URL:         fmt.Sprintf("/issues/%s", details.Hash),
+		Endpoint:    details.endpointForMessage(),
+		DedupToken:  details.Hash,
+		Intro:       headline,
+		Details:     exceptionMessageDetails(details),
+		CodeBlock:   details.StackTrace,
+		ActionLabel: "View Issue",
 	}
+}
+
+// exceptionMessageDetails mirrors the detail lines of buildExceptionBody as
+// structured rows for the HTML email layout.
+func exceptionMessageDetails(d ExceptionDetails) []models.NotificationMessageDetail {
+	var rows []models.NotificationMessageDetail
+	add := func(label, value string) {
+		if value != "" {
+			rows = append(rows, models.NotificationMessageDetail{Label: label, Value: value})
+		}
+	}
+	add("Exception ID", d.Id)
+	add("Hash", d.Hash)
+	if !d.RecordedAt.IsZero() {
+		add("Occurred at", d.RecordedAt.UTC().Format("2006-01-02 15:04:05 UTC"))
+	}
+	add("App version", d.AppVersion)
+	add("Server", d.ServerName)
+	if d.TraceName != "" {
+		switch d.TraceType {
+		case "task":
+			add("Task", d.TraceName)
+		case "ai_trace":
+			add("AI trace", d.TraceName)
+		default:
+			add("Endpoint", d.TraceName)
+		}
+	}
+	if len(d.Attributes) > 0 {
+		keys := make([]string, 0, len(d.Attributes))
+		for k := range d.Attributes {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			add(k, d.Attributes[k])
+		}
+	}
+	return rows
 }
 
 func buildExceptionBody(headline string, d ExceptionDetails) string {
@@ -328,25 +377,30 @@ func buildExceptionBody(headline string, d ExceptionDetails) string {
 }
 
 func buildCheckDownMessage(check *models.SyntheticCheck, errorMsg string, projectName string) Message {
-	body := fmt.Sprintf("The synthetic check %q is failing (%d consecutive failures).", check.Name, check.ConsecutiveFailures)
+	intro := fmt.Sprintf("The synthetic check %q is failing (%d consecutive failures).", check.Name, check.ConsecutiveFailures)
+	body := intro
 	if errorMsg != "" {
 		body += "\n\nLast error: " + errorMsg
 	}
 	return Message{
-		Subject:    fmt.Sprintf("[%s] Check %q is down", projectName, check.Name),
-		Body:       body,
-		Severity:   SeverityCritical,
-		URL:        fmt.Sprintf("/monitors/%d", check.Id),
-		DedupToken: fmt.Sprintf("check:%d", check.Id),
+		Subject:     fmt.Sprintf("[%s] Check %q is down", projectName, check.Name),
+		Body:        body,
+		Severity:    SeverityCritical,
+		URL:         fmt.Sprintf("/monitors/%d", check.Id),
+		DedupToken:  fmt.Sprintf("check:%d", check.Id),
+		Intro:       intro,
+		CodeBlock:   errorMsg,
+		ActionLabel: "View Monitor",
 	}
 }
 
 func buildCheckRecoveredMessage(check *models.SyntheticCheck, projectName string) Message {
 	return Message{
-		Subject:    fmt.Sprintf("[%s] Check %q recovered", projectName, check.Name),
-		Body:       fmt.Sprintf("The synthetic check %q is passing again.", check.Name),
-		Severity:   SeverityInfo,
-		URL:        fmt.Sprintf("/monitors/%d", check.Id),
-		DedupToken: fmt.Sprintf("check:%d", check.Id),
+		Subject:     fmt.Sprintf("[%s] Check %q recovered", projectName, check.Name),
+		Body:        fmt.Sprintf("The synthetic check %q is passing again.", check.Name),
+		Severity:    SeverityInfo,
+		URL:         fmt.Sprintf("/monitors/%d", check.Id),
+		DedupToken:  fmt.Sprintf("check:%d", check.Id),
+		ActionLabel: "View Monitor",
 	}
 }

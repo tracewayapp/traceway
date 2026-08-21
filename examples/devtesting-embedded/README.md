@@ -10,21 +10,28 @@ go run .
 
 Then:
 - App: http://localhost:8080/cdn (no build step) or http://localhost:8080 (requires `cd frontend && npm install && npm run build` first)
-- AI chat: http://localhost:8080/chat (needs `OPENROUTER_API_KEY` in `.env`)
+- AI chat: http://localhost:8080/chat (needs `ORCAROUTER_API_KEY` or `OPENROUTER_API_KEY` in `.env`)
 - Dashboard: http://localhost:8082 — login `admin@localhost.com` / `admin`
 
 ## AI chat (conversations, tool calls, sub-agents)
 
-`/chat` is a no-build chat UI backed by OpenRouter, built to exercise the AI conversation analytics end to end. Configuration lives in `.env` (gitignored):
+`/chat` is a no-build chat UI backed by an OpenAI-compatible gateway, built to exercise the AI conversation analytics end to end. Configuration lives in `.env` (gitignored):
 
 ```
-OPENROUTER_API_KEY=sk-or-...
-OPENROUTER_MODEL=anthropic/claude-sonnet-5
+# OrcaRouter (https://www.orcarouter.ai) — preferred; routing, fallback, guardrails
+ORCAROUTER_API_KEY=sk-orca-...
+ORCAROUTER_MODEL=orcarouter/auto
+
+# OpenRouter — fallback provider
+# OPENROUTER_API_KEY=sk-or-...
+# OPENROUTER_MODEL=anthropic/claude-sonnet-5
 ```
+
+When `ORCAROUTER_API_KEY` is set the chat routes through [OrcaRouter](https://www.orcarouter.ai) (`https://api.orcarouter.ai/v1`); otherwise it falls back to OpenRouter. It also runs gateway-level, zero-trust security for AI agents on the same endpoint — screening every prompt/response and governing every tool call on a default-deny basis, with no application code changes.
 
 How it maps to Traceway:
 
-- Every LLM call emits a `gen_ai.*` span into the `Backend API` project, with real token counts and cost from OpenRouter usage accounting.
+- Every LLM call emits a `gen_ai.*` span into the `Backend API` project, with real token counts and cost from the gateway's usage accounting.
 - The chat session id becomes `gen_ai.conversation.id`, so each browser conversation shows up on the Conversations tab. The persona picker sets `user.id` for the Users tab.
 - The main **Support Chat Agent** has fake tools (`get_weather`, `lookup_order`, `get_server_time`) plus two delegation tools that run sub-agents in the same conversation: **Research Sub-Agent** (with `search_knowledge_base`) and **Math Sub-Agent** (with a real `calculate` evaluator). Each agent is a separate trace name on the AI Traces tab.
 - Tool executions run in plain child spans (no `gen_ai.*` attributes) so they appear in the trace waterfall without inflating conversation turn counts; the tool calls themselves are parsed from the completion payloads.

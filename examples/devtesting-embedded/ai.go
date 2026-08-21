@@ -19,17 +19,22 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// An AI chat agent backed by OpenRouter, instrumented with gen_ai.* span
-// attributes so every LLM call lands in Traceway's AI Traces / Conversations
-// analytics: conversation grouping (gen_ai.conversation.id), per-user stats
-// (user.id), tool calls parsed from the completion payload, and sub-agents as
-// separate trace names inside the same conversation.
+// An AI chat agent backed by OpenRouter or OrcaRouter, instrumented with
+// gen_ai.* span attributes so every LLM call lands in Traceway's AI Traces /
+// Conversations analytics: conversation grouping (gen_ai.conversation.id),
+// per-user stats (user.id), tool calls parsed from the completion payload, and
+// sub-agents as separate trace names inside the same conversation.
+//
+// The provider is selected by environment: setting ORCAROUTER_API_KEY routes
+// through OrcaRouter (https://api.orcarouter.ai/v1), otherwise the agent falls
+// back to OpenRouter.
 
 const openRouterURL = "https://openrouter.ai/api/v1/chat/completions"
+const orcaRouterURL = "https://api.orcarouter.ai/v1/chat/completions"
 
 var aiHTTPClient = &http.Client{Timeout: 120 * time.Second}
 
-// --- OpenRouter wire types (OpenAI chat-completions compatible) ---
+// --- Gateway wire types (OpenAI chat-completions compatible) ---
 
 type orToolCall struct {
 	Id       string `json:"id"`
@@ -187,9 +192,15 @@ type toolEvent struct {
 	Result string `json:"result"`
 }
 
-// callOpenRouter makes one chat-completions call and emits the gen_ai.* span
-// Traceway promotes to an ai_traces row.
-func (cc *chatContext) callOpenRouter(ctx context.Context, agent agentDef, messages []orMessage) (*orResponse, error) {
+// callGateway makes one chat-completions call and emits the gen_ai.* span
+// Traceway promotes to an ai_traces row. The gateway is selected by env:
+// ORCAROUTER_API_KEY routes through OrcaRouter, otherwise OpenRouter is used.
+func (cc *chatContext) callGateway(ctx context.Context, agent agentDef, messages []orMessage) (*orResponse, error) {
+	endpoint, apiKey, system := openRouterURL, os.Getenv("OPENROUTER_API_KEY"), "openrouter"
+	if os.Getenv("ORCAROUTER_API_KEY") != "" {
+		endpoint, apiKey, system = orcaRouterURL, os.Getenv("ORCAROUTER_API_KEY"), "orcarouter"
+	}
+
 	reqBody := orRequest{Model: cc.model, Messages: messages, Tools: agent.Tools}
 	reqBody.Usage.Include = true
 
@@ -207,18 +218,18 @@ func (cc *chatContext) callOpenRouter(ctx context.Context, agent agentDef, messa
 		attribute.String("gen_ai.conversation.id", cc.conversationId),
 		attribute.String("user.id", cc.userId),
 		attribute.String("gen_ai.operation.name", "chat"),
-		attribute.String("gen_ai.system", "openrouter"),
+		attribute.String("gen_ai.system", system),
 		attribute.String("gen_ai.request.model", cc.model),
 		attribute.String("gen_ai.prompt", string(promptJSON)),
 	)
 
-	httpReq, err := http.NewRequestWithContext(spanCtx, http.MethodPost, openRouterURL, bytes.NewReader(payload))
+	httpReq, err := http.NewRequestWithContext(spanCtx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		return nil, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+os.Getenv("OPENROUTER_API_KEY"))
+	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 	httpReq.Header.Set("X-Title", "traceway devtesting-embedded")
 
 	httpResp, err := aiHTTPClient.Do(httpReq)
@@ -237,15 +248,15 @@ func (cc *chatContext) callOpenRouter(ctx context.Context, agent agentDef, messa
 	var resp orResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
 		span.SetStatus(codes.Error, err.Error())
-		return nil, fmt.Errorf("openrouter returned non-JSON (%d): %.300s", httpResp.StatusCode, string(body))
+		return nil, fmt.Errorf("%s returned non-JSON (%d): %.300s", system, httpResp.StatusCode, string(body))
 	}
 	if resp.Error != nil {
 		span.SetStatus(codes.Error, resp.Error.Message)
-		return nil, fmt.Errorf("openrouter error: %s", resp.Error.Message)
+		return nil, fmt.Errorf("%s error: %s", system, resp.Error.Message)
 	}
 	if len(resp.Choices) == 0 {
 		span.SetStatus(codes.Error, "no choices in response")
-		return nil, fmt.Errorf("openrouter returned no choices (%d): %.300s", httpResp.StatusCode, string(body))
+		return nil, fmt.Errorf("%s returned no choices (%d): %.300s", system, httpResp.StatusCode, string(body))
 	}
 
 	completionJSON, _ := json.Marshal(map[string]any{"choices": resp.Choices})
@@ -271,7 +282,7 @@ func (cc *chatContext) runAgent(ctx context.Context, agent agentDef, userContent
 	messages = append(messages, textMsg("user", userContent))
 
 	for turn := 0; turn < agent.MaxTurns; turn++ {
-		resp, err := cc.callOpenRouter(ctx, agent, messages)
+		resp, err := cc.callGateway(ctx, agent, messages)
 		if err != nil {
 			return "", err
 		}
@@ -530,14 +541,17 @@ type chatRequest struct {
 }
 
 func registerAIChatRoutes(router *gin.Engine, svc *otelService) {
-	model := os.Getenv("OPENROUTER_MODEL")
+	model := os.Getenv("ORCAROUTER_MODEL")
 	if model == "" {
-		model = "anthropic/claude-sonnet-5"
+		model = os.Getenv("OPENROUTER_MODEL")
+	}
+	if model == "" {
+		model = "orcarouter/auto"
 	}
 
 	router.POST("/api/ai/chat", func(c *gin.Context) {
-		if os.Getenv("OPENROUTER_API_KEY") == "" {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "OPENROUTER_API_KEY is not set; add it to examples/devtesting-embedded/.env"})
+		if os.Getenv("ORCAROUTER_API_KEY") == "" && os.Getenv("OPENROUTER_API_KEY") == "" {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "ORCAROUTER_API_KEY or OPENROUTER_API_KEY is not set; add it to examples/devtesting-embedded/.env"})
 			return
 		}
 

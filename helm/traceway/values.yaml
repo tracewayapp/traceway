@@ -62,6 +62,15 @@ app:
   jwtSecret: ""
   # Optional. Base URL used in password reset emails, e.g. "https://traceway.example.com"
   baseURL: ""
+  # Comma-separated IPs/CIDRs of proxies whose X-Forwarded-For is trusted for
+  # per-IP rate limiting, or "*". Defaults to loopback. Required when ingress
+  # is enabled unless trustedProxyHeader is set; use the controller's pod CIDR.
+  trustedProxies: ""
+  # Alternative for ingress. A header trusted verbatim as the client IP, e.g. "X-Real-IP"
+  # (overwritten by ingress-nginx on every request) or "CF-Connecting-IP".
+  # Takes precedence over trustedProxies. Only safe when a NetworkPolicy
+  # forces all traffic through the proxy that overwrites the header.
+  trustedProxyHeader: ""
   # Optional. Set to "true" to serve only the API without the embedded frontend.
   apiOnly: ""
 

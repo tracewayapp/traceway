@@ -242,6 +242,8 @@ if err != nil {
 ```
 JWT_SECRET=<min 32 char secret for JWT signing>
 APP_BASE_URL=                         # public origin of this server (e.g. https://traceway.example.com). Used as the OAuth issuer / device verification URL and SSO redirect base. If unset, the device-auth + well-known endpoints derive it per-request from the Host / X-Forwarded-* headers; set it explicitly behind a proxy that doesn't forward Host.
+TRUSTED_PROXIES=127.0.0.1,::1         # comma-separated IPs/CIDRs of reverse proxies whose X-Forwarded-For gin trusts when resolving c.ClientIP(), the per-IP rate-limit key (cmd/run.go SetTrustedProxies via cfg.TrustedProxyList; default loopback so a direct client cannot spoof it, "*" restores gin's trust-everything behavior). The unauthenticated credential endpoints sit behind middleware.RateLimitPerIP — budgets live in routes.go — placed before Transactional so throttled requests never open a transaction.
+TRUSTED_PROXY_HEADER=                 # optional header trusted verbatim as the client IP (gin TrustedPlatform, e.g. X-Real-IP behind ingress-nginx, CF-Connecting-IP behind Cloudflare); takes precedence over TRUSTED_PROXIES. Only safe when every request path goes through a proxy that overwrites the header
 CLICKHOUSE_SERVER=localhost:9000
 CLICKHOUSE_DATABASE=traceway
 CLICKHOUSE_USERNAME=default

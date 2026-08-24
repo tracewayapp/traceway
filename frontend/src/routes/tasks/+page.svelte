@@ -269,13 +269,13 @@
 		{#snippet pillEnd()}
 			<RootFilter
 				bind:value={rootFilter}
-				class="h-9 w-[110px] shrink-0 rounded-none border-r-0 shadow-none"
+				class="h-9 w-[110px] shrink-0 shadow-none sm:rounded-none sm:border-r-0"
 			/>
 		{/snippet}
 	</SearchBar>
 
 	<!-- Tasks Table -->
-	<TableContainer minWidth="640px">
+	<TableContainer minWidth="640px" empty={loading || !!error || tasks.length === 0}>
 		<Table.Root>
 			{#if loading}
 				<Table.Body>

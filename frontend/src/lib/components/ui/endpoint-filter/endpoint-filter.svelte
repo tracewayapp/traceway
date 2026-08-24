@@ -44,7 +44,7 @@
 </script>
 
 <Select.Root type="single" bind:value={methodValue}>
-	<Select.Trigger class="h-9 w-[120px] shrink-0 rounded-none border-r-0 shadow-none">
+	<Select.Trigger class="h-9 w-[120px] shrink-0 shadow-none sm:rounded-none sm:border-r-0">
 		<span class={METHOD_COLORS[methodLabel] ?? ''}>
 			{methodLabel}
 		</span>
@@ -63,7 +63,7 @@
 </Select.Root>
 
 <Select.Root type="single" bind:value={rootValue}>
-	<Select.Trigger class="h-9 w-[110px] shrink-0 rounded-none border-r-0 shadow-none">
+	<Select.Trigger class="h-9 w-[110px] shrink-0 shadow-none sm:rounded-none sm:border-r-0">
 		{rootLabel}
 	</Select.Trigger>
 	<Select.Content>

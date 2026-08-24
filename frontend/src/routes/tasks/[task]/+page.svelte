@@ -285,7 +285,7 @@
 		{/if}
 
 		<!-- Tasks Table -->
-		<TableContainer minWidth="860px">
+		<TableContainer minWidth="860px" empty={!loading && tasks.length === 0}>
 			<Table.Root>
 				{#if loading || tasks.length > 0}
 					<Table.Header>

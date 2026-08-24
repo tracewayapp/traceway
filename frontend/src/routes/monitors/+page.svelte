@@ -279,7 +279,7 @@
 				<EmptyState message="No monitors yet." />
 			{/if}
 		{:else}
-			<TableContainer minWidth="820px">
+			<TableContainer minWidth="820px" empty={visibleChecks.length === 0}>
 				<Table.Root>
 					{#if visibleChecks.length === 0}
 						<Table.Body>

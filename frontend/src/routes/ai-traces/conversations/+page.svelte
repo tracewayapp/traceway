@@ -388,18 +388,18 @@
 			<FlaggedFilter
 				bind:value={flaggedFilter}
 				onChange={applyFilterChange}
-				class="h-9 w-[130px] shrink-0 rounded-none border-r-0 shadow-none"
+				class="h-9 w-[130px] shrink-0 shadow-none sm:rounded-none sm:border-r-0"
 			/>
 			<ToolbarSelect
 				bind:value={modelFilter}
 				options={modelOptions}
-				class="h-9 w-[160px] shrink-0 rounded-none border-r-0 shadow-none"
+				class="h-9 w-[160px] shrink-0 shadow-none sm:rounded-none sm:border-r-0"
 				onChange={applyFilterChange}
 			/>
 			<ToolbarSelect
 				bind:value={toolFilter}
 				options={toolOptions}
-				class="h-9 w-[150px] shrink-0 rounded-none border-r-0 shadow-none"
+				class="h-9 w-[150px] shrink-0 shadow-none sm:rounded-none sm:border-r-0"
 				onChange={applyFilterChange}
 			/>
 		{/snippet}

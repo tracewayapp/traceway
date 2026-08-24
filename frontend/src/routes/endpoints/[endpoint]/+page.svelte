@@ -466,7 +466,7 @@
 		{/if}
 
 		<!-- Traces Table -->
-		<TableContainer minWidth="960px">
+		<TableContainer minWidth="960px" empty={!loading && transactions.length === 0}>
 			<Table.Root>
 				{#if loading || transactions.length > 0}
 					<Table.Header>

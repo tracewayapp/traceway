@@ -291,7 +291,7 @@
 		{#snippet pillEnd()}
 			<RootFilter
 				bind:value={rootFilter}
-				class="h-9 w-[110px] shrink-0 rounded-none border-r-0 shadow-none"
+				class="h-9 w-[110px] shrink-0 shadow-none sm:rounded-none sm:border-r-0"
 			/>
 		{/snippet}
 	</SearchBar>

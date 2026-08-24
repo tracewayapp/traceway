@@ -475,7 +475,7 @@
 	</ChartCard>
 
 	<!-- Endpoints Table -->
-	<TableContainer minWidth="860px">
+	<TableContainer minWidth="860px" empty={loading || !!error || endpoints.length === 0}>
 		<Table.Root>
 			{#if loading}
 				<Table.Body>

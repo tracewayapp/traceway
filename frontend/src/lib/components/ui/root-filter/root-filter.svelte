@@ -3,9 +3,10 @@
 
 	type Props = {
 		value?: string;
+		class?: string;
 	};
 
-	let { value = $bindable('all') }: Props = $props();
+	let { value = $bindable('all'), class: className = 'w-[120px]' }: Props = $props();
 
 	const options = [
 		{ value: 'all', label: 'All' },
@@ -14,4 +15,4 @@
 	];
 </script>
 
-<ToolbarSelect bind:value {options} class="w-[120px]" />
+<ToolbarSelect bind:value {options} class={className} />

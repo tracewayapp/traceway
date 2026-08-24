@@ -384,19 +384,25 @@
 		onSearch={handleSearch}
 		disabled={loading}
 	>
-		<FlaggedFilter bind:value={flaggedFilter} onChange={applyFilterChange} />
-		<ToolbarSelect
-			bind:value={modelFilter}
-			options={modelOptions}
-			class="w-[160px]"
-			onChange={applyFilterChange}
-		/>
-		<ToolbarSelect
-			bind:value={toolFilter}
-			options={toolOptions}
-			class="w-[150px]"
-			onChange={applyFilterChange}
-		/>
+		{#snippet pillEnd()}
+			<FlaggedFilter
+				bind:value={flaggedFilter}
+				onChange={applyFilterChange}
+				class="h-9 w-[130px] shrink-0 rounded-none border-r-0 shadow-none"
+			/>
+			<ToolbarSelect
+				bind:value={modelFilter}
+				options={modelOptions}
+				class="h-9 w-[160px] shrink-0 rounded-none border-r-0 shadow-none"
+				onChange={applyFilterChange}
+			/>
+			<ToolbarSelect
+				bind:value={toolFilter}
+				options={toolOptions}
+				class="h-9 w-[150px] shrink-0 rounded-none border-r-0 shadow-none"
+				onChange={applyFilterChange}
+			/>
+		{/snippet}
 	</SearchBar>
 
 	{#if filterPills.length > 0}

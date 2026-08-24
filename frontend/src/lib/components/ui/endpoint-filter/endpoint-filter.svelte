@@ -25,6 +25,7 @@
 	];
 
 	const methodOptions = [
+		{ value: 'all', label: 'Endpoints' },
 		{ value: 'get', label: 'GET' },
 		{ value: 'post', label: 'POST' },
 		{ value: 'put', label: 'PUT' },
@@ -34,41 +35,40 @@
 		{ value: 'head', label: 'HEAD' }
 	];
 
-	// A method selection and a root selection are mutually exclusive - picking one clears the other
-	const selected = $derived(methodValue !== 'all' ? methodValue : rootValue);
-	const label = $derived(
-		methodOptions.find((option) => option.value === selected)?.label ??
-			rootOptions.find((option) => option.value === selected)?.label ??
-			'All'
+	const rootLabel = $derived(
+		rootOptions.find((option) => option.value === rootValue)?.label ?? 'All'
 	);
-
-	function onValueChange(value: string | undefined) {
-		if (!value) return;
-		if (methodOptions.some((option) => option.value === value)) {
-			methodValue = value;
-			rootValue = 'all';
-		} else {
-			rootValue = value;
-			methodValue = 'all';
-		}
-	}
+	const methodLabel = $derived(
+		methodOptions.find((option) => option.value === methodValue)?.label ?? 'Endpoints'
+	);
 </script>
 
-<Select.Root type="single" value={selected} {onValueChange}>
+<Select.Root type="single" bind:value={methodValue}>
 	<Select.Trigger class="h-9 w-[120px] shrink-0 rounded-none border-r-0 shadow-none">
-		<span class={METHOD_COLORS[label] ?? ''}>
-			{label}
+		<span class={METHOD_COLORS[methodLabel] ?? ''}>
+			{methodLabel}
 		</span>
+	</Select.Trigger>
+	<Select.Content>
+		{#each methodOptions as option (option.value)}
+			<Select.Item
+				value={option.value}
+				label={option.label}
+				class={option.value === 'all' ? '' : 'font-mono text-sm'}
+			>
+				<span class={METHOD_COLORS[option.label] ?? ''}>{option.label}</span>
+			</Select.Item>
+		{/each}
+	</Select.Content>
+</Select.Root>
+
+<Select.Root type="single" bind:value={rootValue}>
+	<Select.Trigger class="h-9 w-[110px] shrink-0 rounded-none border-r-0 shadow-none">
+		{rootLabel}
 	</Select.Trigger>
 	<Select.Content>
 		{#each rootOptions as option (option.value)}
 			<Select.Item value={option.value} label={option.label}>{option.label}</Select.Item>
-		{/each}
-		<Select.Separator />
-		{#each methodOptions as option (option.value)}
-			<Select.Item value={option.value} label={option.label} class="font-mono text-sm">
-				<span class={METHOD_COLORS[option.label] ?? ''}>{option.label}</span>
-			</Select.Item>
 		{/each}
 	</Select.Content>
 </Select.Root>

@@ -4,6 +4,7 @@
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import * as Table from '$lib/components/ui/table';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import ErrorRetryBox from '$lib/components/traceway/error-retry-box.svelte';
 	import { getErrorMessage } from '$lib/utils/errors';
 	import { formatRelativeTimeAgo } from '$lib/utils/formatters';
 	import { createRowClickHandler } from '$lib/utils/navigation';
@@ -26,8 +27,7 @@
 	let error = $state('');
 	let loadGeneration = 0;
 
-	$effect(() => {
-		const orgId = organizationId;
+	function loadIssues(orgId: number) {
 		const generation = ++loadGeneration;
 		loading = true;
 		error = '';
@@ -45,6 +45,10 @@
 			.finally(() => {
 				if (generation === loadGeneration) loading = false;
 			});
+	}
+
+	$effect(() => {
+		loadIssues(organizationId);
 	});
 
 	function issueTitle(row: OrgIssueRow): { type: string; message: string } {
@@ -73,7 +77,7 @@
 			<LoadingCircle size="xlg" />
 		</div>
 	{:else if error}
-		<div class="rounded-md border py-16 text-center text-red-500">{error}</div>
+		<ErrorRetryBox message={error} onRetry={() => loadIssues(organizationId)} />
 	{:else if issues.length === 0}
 		<div class="rounded-md border py-16 text-center text-sm text-muted-foreground">
 			No issues in the last 24 hours. All quiet.

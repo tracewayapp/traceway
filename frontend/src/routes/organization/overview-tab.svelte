@@ -151,9 +151,12 @@
 		}
 	}
 
-	async function refreshOverview(orgId: number, background: boolean) {
+	type RefreshMode = 'initial' | 'background' | 'manual';
+
+	async function refreshOverview(orgId: number, mode: RefreshMode) {
 		const generation = ++loadGeneration;
-		if (background) refreshing = true;
+		const background = mode !== 'initial';
+		if (mode === 'manual') refreshing = true;
 		await Promise.all([
 			loadServers(orgId, generation, background),
 			loadIssues(orgId, generation, background),
@@ -179,8 +182,8 @@
 			groupMode = 'project';
 			groupPreferenceInitializedFor = null;
 		}
-		void refreshOverview(orgId, false);
-		const timer = window.setInterval(() => void refreshOverview(orgId, true), REFRESH_MS);
+		void refreshOverview(orgId, 'initial');
+		const timer = window.setInterval(() => void refreshOverview(orgId, 'background'), REFRESH_MS);
 		return () => window.clearInterval(timer);
 	});
 
@@ -421,7 +424,7 @@
 				variant="outline"
 				size="sm"
 				disabled={refreshing}
-				onclick={() => void refreshOverview(organizationId, true)}
+				onclick={() => void refreshOverview(organizationId, 'manual')}
 			>
 				<RefreshCw class="size-4 {refreshing ? 'animate-spin' : ''}" />
 				Refresh
@@ -581,7 +584,7 @@
 				<Button
 					variant="outline"
 					size="sm"
-					onclick={() => void refreshOverview(organizationId, false)}>Retry</Button
+					onclick={() => void refreshOverview(organizationId, 'initial')}>Retry</Button
 				>
 			</div>
 		{:else if servers.length === 0}

@@ -166,6 +166,14 @@
 		}
 	});
 
+	const landingOwnsRoot = $derived(
+		authState.isAuthenticated &&
+			projectsState.projects.length > 0 &&
+			defaultAuthenticatedPath(authState.organizations, projectsState.projects).startsWith(
+				'/organization'
+			)
+	);
+
 	$effect(() => {
 		if (
 			!authState.isAuthenticated ||
@@ -210,6 +218,7 @@
 			authState.isAuthenticated &&
 			!isPublicPath(newPathname) &&
 			!isOrganizationPath(newPathname) &&
+			!(newPathname === '/' && landingOwnsRoot) &&
 			projectsState.currentProjectId &&
 			!newUrl.searchParams.get('projectId')
 		) {

@@ -10,6 +10,7 @@
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { Badge } from '$lib/components/ui/badge';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import ErrorRetryBox from '$lib/components/traceway/error-retry-box.svelte';
 	import CheckStatusBadge from '$lib/components/synthetics/check-status-badge.svelte';
 	import MonitorTypeBadge from '$lib/components/synthetics/monitor-type-badge.svelte';
 	import {
@@ -83,6 +84,14 @@
 		loadIncidents(orgId, generation);
 	});
 
+	function retryChecks() {
+		loadChecks(organizationId, ++loadGeneration);
+	}
+
+	function retryIncidents() {
+		loadIncidents(organizationId, ++loadGeneration);
+	}
+
 	function handleSort(field: SortField) {
 		const newSort = handleSortClick(field, orderBy, sortDirection);
 		orderBy = newSort.field as SortField;
@@ -143,7 +152,7 @@
 				<LoadingCircle size="xlg" />
 			</div>
 		{:else if checksError}
-			<div class="rounded-md border py-16 text-center text-red-500">{checksError}</div>
+			<ErrorRetryBox message={checksError} onRetry={retryChecks} />
 		{:else if checks.length === 0}
 			<div class="rounded-md border py-16 text-center text-sm text-muted-foreground">
 				No monitors in this organization yet. Create monitors from a project's Monitors page.
@@ -285,7 +294,7 @@
 				<LoadingCircle size="lg" />
 			</div>
 		{:else if incidentsError}
-			<div class="rounded-md border py-8 text-center text-sm text-red-500">{incidentsError}</div>
+			<ErrorRetryBox message={incidentsError} onRetry={retryIncidents} />
 		{:else if incidents.length === 0}
 			<div class="rounded-md border py-8 text-center text-sm text-muted-foreground">
 				No incidents in the last 90 days.

@@ -61,7 +61,7 @@
 		{#if typeOptions.length > 0}
 			<Select.Root type="single" bind:value={typeValue}>
 				<Select.Trigger
-					class="h-9 w-[110px] shrink-0 shadow-none sm:rounded-none sm:border-r-0"
+					class="h-9 w-fit shrink-0 shadow-none sm:rounded-none sm:border-r-0"
 				>
 					{typeLabel}
 				</Select.Trigger>

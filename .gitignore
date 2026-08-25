@@ -72,3 +72,19 @@ skills-lock.json
 /.claude/skills
 /.agents
 /testing/shop/traffic/node_modules
+
+# Nix / direnv dev environment. `nix build` only ever writes its symlink into
+# the working directory, so the result patterns are anchored -- unanchored they
+# would also swallow any future results/ directory or result-*.svelte file.
+.direnv/
+.envrc.local
+/result
+/result-*
+
+# Local databases created by `go run ./cmd/traceway`. SQLITE_PATH defaults to
+# ./traceway.db in the working directory, so these are unanchored to cover
+# running the backend from anywhere in the tree. The .duckdb pair is written by
+# -tags telemetry_duckdb builds. The basename must start with `traceway`, so
+# tracked files like Dockerfile.duckdb are unaffected.
+traceway*.db*
+traceway*.duckdb*

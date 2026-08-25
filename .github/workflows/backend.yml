@@ -137,9 +137,9 @@ jobs:
         working-directory: backend
 
     # Same images docker-compose.yml pins, so CI exercises what is shipped.
-    # start-period mirrors compose: without it, probes fired during postgres
-    # initdb (which runs a socket-only server first) count against the retry
-    # budget and can report healthy before TCP is actually up.
+    # postgres keeps a start-period, mirroring compose: without it, probes fired
+    # during initdb (which runs a socket-only server first) count against the
+    # retry budget and can report healthy before TCP is actually up.
     services:
       postgres:
         image: postgres:17
@@ -156,25 +156,28 @@ jobs:
           --health-start-period 10s
           --health-retries 10
 
-      # Deliberately NOT using the image's CLICKHOUSE_DB env var, even though
-      # docker-compose.yml does and it would replace the explicit creation step
-      # below. Setting it makes the entrypoint run its first-boot init path,
-      # which (with no CLICKHOUSE_USER/PASSWORD set) also disables network
-      # access for the default user; on a GitHub runner the container then never
-      # reports healthy and the job dies in "Initialize containers" before a
-      # single step runs. It recovers locally under podman, so this is not
-      # reproducible off-runner -- please don't re-simplify it.
+      # CLICKHOUSE_SKIP_USER_SETUP keeps the image's stock users.xml, whose
+      # `default` user accepts ::/0. Without it the entrypoint overwrites
+      # default-user.xml with <networks>::1, 127.0.0.1</networks> -- the
+      # "disabling network access for user 'default'" line in the container log
+      # -- which locks out every connection this job makes: they all arrive from
+      # the runner over the published port, so ClickHouse sees the bridge
+      # gateway address, not localhost.
+      #
+      # No --health-cmd on purpose. A healthcheck that never passes kills the job
+      # in "Initialize containers", before a single step runs, and the only
+      # diagnostic left is the word "unhealthy" plus the container's stdout --
+      # four lines of preamble, because ClickHouse logs to files. The wait step
+      # below polls the published port instead: it checks what this job actually
+      # needs (reachability from the runner, not from inside the container) and
+      # leaves any failure inside a step that can print the server's real log.
       clickhouse:
         image: clickhouse/clickhouse-server:24.8-alpine
+        env:
+          CLICKHOUSE_SKIP_USER_SETUP: "1"
         ports:
           - 8123:8123
           - 9000:9000
-        options: >-
-          --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:8123/ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-start-period 10s
-          --health-retries 20
 
     steps:
       - name: Checkout
@@ -201,12 +204,28 @@ jobs:
           CGO_ENABLED: "0"
         run: go build -tags "transactional_pg telemetry_ch" ./cmd/traceway ./cmd/traceway-runner
 
+      # Placed after the build so ClickHouse warms up while Go compiles, and at
+      # the first query rather than at the top of the job.
+      - name: Wait for ClickHouse
+        run: |
+          for i in $(seq 1 90); do
+            if curl -sfo /dev/null 'http://localhost:8123/ping'; then
+              echo "ClickHouse answered /ping after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::ClickHouse never answered /ping on localhost:8123"
+          cid=$(docker ps -aq --filter 'ancestor=clickhouse/clickhouse-server:24.8-alpine' | head -1)
+          docker logs "$cid" || true
+          docker exec "$cid" tail -n 100 /var/log/clickhouse-server/clickhouse-server.err.log || true
+          exit 1
+
       # Migrations are applied over ClickHouse's HTTP interface rather than with
       # clickhouse-client, which is not on the runner. Every file in
       # migrations/ch holds exactly one statement (the golang-migrate ClickHouse
       # driver is built with MultiStatementEnabled: false), so one request per
       # file is the whole contract, and it keeps per-file error attribution.
-      #
       - name: Create ClickHouse database
         run: |
           curl -sS --fail-with-body 'http://localhost:8123/' \

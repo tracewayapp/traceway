@@ -28,8 +28,10 @@ type Cfg struct {
 	ClickhousePassword string
 	ClickhouseTLS      string
 
-	FireboltURL      string
-	FireboltDatabase string
+	FireboltURL           string
+	FireboltDatabase      string
+	FireboltCopyDir       string
+	FireboltCopyDirEngine string
 
 	StorageType string
 	StoragePath string
@@ -162,8 +164,10 @@ func LoadFromEnv() *Cfg {
 		DuckDBThreads:             os.Getenv("DUCKDB_THREADS"),
 		DuckDBCheckpointThreshold: os.Getenv("DUCKDB_CHECKPOINT_THRESHOLD"),
 
-		FireboltURL:      os.Getenv("FIREBOLT_URL"),
-		FireboltDatabase: os.Getenv("FIREBOLT_DATABASE"),
+		FireboltURL:           os.Getenv("FIREBOLT_URL"),
+		FireboltDatabase:      os.Getenv("FIREBOLT_DATABASE"),
+		FireboltCopyDir:       os.Getenv("FIREBOLT_COPY_DIR"),
+		FireboltCopyDirEngine: os.Getenv("FIREBOLT_COPY_DIR_ENGINE"),
 
 		ClickhouseServer:   os.Getenv("CLICKHOUSE_SERVER"),
 		ClickhouseDatabase: os.Getenv("CLICKHOUSE_DATABASE"),

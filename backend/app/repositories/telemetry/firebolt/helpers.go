@@ -85,6 +85,12 @@ func insertRows(ctx context.Context, table string, columns []string, rows [][]an
 	if len(rows) == 0 {
 		return nil
 	}
+	if _, _, ok := copyDirs(); ok && len(rows) >= copyMinRows {
+		if err := copyIngest(ctx, table, columns, rows); err == nil {
+			return nil
+		}
+		// fall through to the literal path — copyIngest is an optimization
+	}
 	prefix := "INSERT INTO " + table + " (" + strings.Join(columns, ", ") + ") VALUES "
 
 	for start := 0; start < len(rows); start += insertChunkRows {

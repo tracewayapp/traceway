@@ -251,6 +251,8 @@ CLICKHOUSE_TLS=false
 # Firebolt telemetry backend (only with -tags "transactional_pg telemetry_firebolt"; see "Firebolt Telemetry Backend" below)
 FIREBOLT_URL=http://localhost:3473    # self-managed Firebolt engine HTTP endpoint
 FIREBOLT_DATABASE=                    # optional; unset = the engine's default database
+FIREBOLT_COPY_DIR=                    # optional bulk-ingest dir shared with the engine; unset disables the file-load fast path
+FIREBOLT_COPY_DIR_ENGINE=             # the same dir as the engine sees it (defaults to FIREBOLT_COPY_DIR)
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_DATABASE=traceway

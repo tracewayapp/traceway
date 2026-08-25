@@ -10,6 +10,7 @@ services:
       - "${BENCH_PORT:-8087}:80"
     environment:
       FIREBOLT_URL: "http://firebolt:3473"
+      FIREBOLT_COPY_DIR: "/var/lib/traceway-copy"
       POSTGRES_HOST: "postgres"
       POSTGRES_PORT: "5432"
       POSTGRES_DATABASE: "traceway"
@@ -19,6 +20,8 @@ services:
       JWT_SECRET: "bench-jwt-secret-not-for-production-use-only-32chars+"
       HEALTH_DEEP_TOKEN: "bench-health-token-not-for-production"
       GIN_MODE: "release"
+    volumes:
+      - firebolt-copy:/var/lib/traceway-copy
     depends_on:
       firebolt:
         condition: service_healthy
@@ -46,6 +49,7 @@ services:
     mem_limit: "${FIREBOLT_MEM_LIMIT:-4g}"
     volumes:
       - firebolt-bench-data:/var/lib/firebolt
+      - firebolt-copy:/var/lib/traceway-copy
       - ./firebolt-config.yaml:/etc/firebolt/config.yaml:ro
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3473 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q ' 200 '"]
@@ -84,4 +88,5 @@ services:
 
 volumes:
   firebolt-bench-data:
+  firebolt-copy:
   postgres-bench-data:

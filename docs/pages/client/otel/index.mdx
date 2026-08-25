@@ -310,7 +310,7 @@ curl -i -X POST https://<your-instance>/api/otel/v1/traces \
 
 - `200` with the body `{}` means the endpoint and token are good. The problem is in your SDK, or in how your spans are shaped.
 - `401` with an empty body means a bad token, or a header that does not start with `Bearer `.
-- `503` with `Retry-After` means ingest is saturated, or this project already holds its share of the ingest slots (one project cannot take them all). Exporters retry this automatically.
+- `503` with `Retry-After` means ingest is saturated. Exporters retry this automatically.
 - `413` means the batch exceeded 10 MB after decompression. Nothing was ingested. Lower the exporter's batch size.
 - `404` means the path under `/api` is wrong, for example `/api/v1/traces` instead of `/api/otel/v1/traces`.
 - `200` with an HTML body means the `/api` prefix is missing. The dashboard is served from the same origin, so its single-page fallback answers `/otel/v1/traces` with the dashboard itself and it looks like a success. Check that the response `Content-Type` is `application/json`, not `text/html`. The base is `/api/otel`, not `/otel`.

@@ -50,10 +50,7 @@ OTLP endpoints keep their 10 MB cap, but an oversized batch is now rejected with
 
 ## Ingest concurrency
 
-The ingest admission gate (`INGEST_MAX_CONCURRENT`, default 2 x CPU cores with a floor of 4) has two new properties:
-
-- One project can hold at most three quarters of the slots. The rest is a reserve, so a single project sending slow bodies cannot make every other project on the instance see `503`. On an instance with one project this means 3 of the default 4 slots; raise `INGEST_MAX_CONCURRENT` if you need all of them.
-- Requests that cannot get a slot wait in a bounded room (four times the capacity, at least 16). Beyond that they are turned away immediately with `503` and `Retry-After`, which SDKs and OTLP exporters retry.
+The ingest admission gate (`INGEST_MAX_CONCURRENT`, default 2 x CPU cores with a floor of 4) now bounds its waiting room as well as its active slots. Requests that cannot get a slot wait in a room of four times the capacity (at least 16); beyond that they are turned away immediately with `503` and `Retry-After`, which SDKs and OTLP exporters retry. Before, every waiting request parked a goroutine, a timer and a connection for the full wait window with no limit.
 
 ## Server timeouts
 

@@ -25,154 +25,44 @@ func newIngestAdmission(capacity int, wait time.Duration) gin.HandlerFunc {
 	return newAdmissionGate(capacity, wait, "ingest saturated, retry later", db.RecordIngestRejected)
 }
 
-type admissionGate struct {
-	slots    chan struct{}
-	waiters  chan struct{}
-	wait     time.Duration
-	message  string
-	onReject func()
-	keyOf    func(*gin.Context) string
-	perKey   int
-	keyed    keyedSlots
-}
-
 func newAdmissionGate(capacity int, wait time.Duration, message string, onReject func()) gin.HandlerFunc {
-	g := &admissionGate{
-		slots:    make(chan struct{}, capacity),
-		waiters:  make(chan struct{}, maxWaitersFor(capacity)),
-		wait:     wait,
-		message:  message,
-		onReject: onReject,
-		keyOf:    projectAdmissionKey,
-		perKey:   perKeyMaxFor(capacity),
+	slots := make(chan struct{}, capacity)
+	waiters := make(chan struct{}, max(4*capacity, 16))
+	reject := func(c *gin.Context) {
+		if onReject != nil {
+			onReject()
+		}
+		c.Header("Retry-After", "2")
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": message})
 	}
-	return g.handle
-}
-
-func maxWaitersFor(capacity int) int {
-	n := 4 * capacity
-	if n < 16 {
-		n = 16
-	}
-	return n
-}
-
-func perKeyMaxFor(capacity int) int {
-	reserve := capacity / 4
-	if reserve < 1 {
-		reserve = 1
-	}
-	n := capacity - reserve
-	if n < 1 {
-		n = 1
-	}
-	return n
-}
-
-func projectAdmissionKey(c *gin.Context) string {
-	if id, err := GetProjectId(c); err == nil {
-		return id.String()
-	}
-	return ""
-}
-
-func (g *admissionGate) handle(c *gin.Context) {
-	deadline := time.Now().Add(g.wait)
-
-	if g.keyOf != nil && g.perKey > 0 {
-		if key := g.keyOf(c); key != "" {
-			entry := g.keyed.ref(key, g.perKey)
-			defer g.keyed.unref(key)
-			if !g.acquire(c, entry.slots, entry.waiters, deadline) {
+	return func(c *gin.Context) {
+		select {
+		case slots <- struct{}{}:
+		default:
+			select {
+			case waiters <- struct{}{}:
+			default:
+				reject(c)
 				return
 			}
-			defer func() { <-entry.slots }()
+			timer := time.NewTimer(wait)
+			select {
+			case slots <- struct{}{}:
+				<-waiters
+				timer.Stop()
+			case <-timer.C:
+				<-waiters
+				reject(c)
+				return
+			case <-c.Request.Context().Done():
+				<-waiters
+				timer.Stop()
+				c.Abort()
+				return
+			}
 		}
-	}
-
-	if !g.acquire(c, g.slots, g.waiters, deadline) {
-		return
-	}
-	defer func() { <-g.slots }()
-	c.Next()
-}
-
-func (g *admissionGate) acquire(c *gin.Context, slots, waiters chan struct{}, deadline time.Time) bool {
-	select {
-	case slots <- struct{}{}:
-		return true
-	default:
-	}
-
-	select {
-	case waiters <- struct{}{}:
-	default:
-		g.reject(c)
-		return false
-	}
-	defer func() { <-waiters }()
-
-	timer := time.NewTimer(time.Until(deadline))
-	defer timer.Stop()
-	select {
-	case slots <- struct{}{}:
-		return true
-	case <-timer.C:
-		g.reject(c)
-		return false
-	case <-c.Request.Context().Done():
-		c.Abort()
-		return false
-	}
-}
-
-func (g *admissionGate) reject(c *gin.Context) {
-	if g.onReject != nil {
-		g.onReject()
-	}
-	c.Header("Retry-After", "2")
-	c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": g.message})
-}
-
-type keyedSlots struct {
-	mu   sync.Mutex
-	keys map[string]*keySlotsEntry
-}
-
-type keySlotsEntry struct {
-	slots   chan struct{}
-	waiters chan struct{}
-	refs    int
-}
-
-func (k *keyedSlots) ref(key string, size int) *keySlotsEntry {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	if k.keys == nil {
-		k.keys = map[string]*keySlotsEntry{}
-	}
-	entry := k.keys[key]
-	if entry == nil {
-		entry = &keySlotsEntry{
-			slots:   make(chan struct{}, size),
-			waiters: make(chan struct{}, maxWaitersFor(size)),
-		}
-		k.keys[key] = entry
-	}
-	entry.refs++
-	return entry
-}
-
-func (k *keyedSlots) unref(key string) {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	entry := k.keys[key]
-	if entry == nil {
-		return
-	}
-	entry.refs--
-	if entry.refs <= 0 {
-		delete(k.keys, key)
+		defer func() { <-slots }()
+		c.Next()
 	}
 }
 

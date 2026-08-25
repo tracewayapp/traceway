@@ -14,9 +14,8 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/config"
 )
 
-// Firebolt replaces ClickHouse as the telemetry store in this build: the main
-// DB is PostgreSQL (transactional_pg is required by a compile guard) and
-// TelemetryDB speaks SQL-over-HTTP to a self-managed Firebolt engine.
+// Firebolt replaces ClickHouse as the telemetry store in this build;
+// TelemetryDB speaks SQL-over-HTTP to a self-managed engine.
 const fireboltMaxConns = 8
 
 func initTelemetryDB() error {
@@ -49,9 +48,8 @@ func initTelemetryDB() error {
 	return nil
 }
 
-// fireboltDSN builds the SDK's engine-instance DSN. The parser's regex
-// accepts `firebolt://?params` (no database) or `firebolt:///<db>?params` —
-// a bare third slash without a database name fails to parse.
+// The SDK's DSN parser accepts `firebolt://?params` or
+// `firebolt:///<db>?params`; a bare third slash fails to parse.
 func fireboltDSN(engineURL, database string) string {
 	dbPart := ""
 	if database != "" {

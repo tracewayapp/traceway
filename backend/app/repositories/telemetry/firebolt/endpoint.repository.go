@@ -131,9 +131,6 @@ func endpointTimeSeriesRowsToPoints(rows []*endpointTimeSeriesRow) []models.Time
 	return points
 }
 
-// rootFilterClause returns a SQL fragment ("", " AND <col> = 1", " AND <col> = 0")
-// to splice into a WHERE clause based on the rootFilter param. Accepts "all" |
-// "root" | "non_root"; defaults to "all" (no filter).
 type endpointRepository struct{}
 
 var endpointColumns = []string{"id", "project_id", "endpoint", "duration", "recorded_at", "status_code", "body_size", "client_ip", "attributes", "app_version", "server_name", "distributed_trace_id", "span_id", "is_stream", "is_root"}
@@ -239,11 +236,9 @@ func (e *endpointRepository) FindAll(ctx context.Context, projectId uuid.UUID, f
 func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string, search string, rootFilter string) ([]models.EndpointStats, int64, error) {
 	params := minuteRangeParams(projectId, fromDate, toDate)
 
-	// Filters reference only aggregating-index keys (endpoint, is_root, the
-	// minute-truncated time) so the whole grouping merges index states
-	// instead of scanning rows. Apdex uses the fixed thresholds baked into
-	// the index; endpoints with a configured slow-endpoint offset are
-	// refined afterwards with a raw scan bounded to just those endpoints.
+	// Filters reference only aggregating-index keys so the grouping merges
+	// index states instead of scanning rows; offset-configured endpoints
+	// are corrected afterwards by refineOffsetEndpoints.
 	whereClause := "e.project_id = :project_id AND " + indexMinuteRange("e.recorded_at")
 	if search != "" {
 		whereClause += " AND STRPOS(LOWER(e.endpoint), LOWER(:search)) > 0"
@@ -761,12 +756,10 @@ func (e *endpointRepository) UpsertSlowEndpoint(ctx context.Context, projectId u
 
 // --- helpers ---
 
-// queryGroupedEndpointsIndexed is the index-served grouped read: two halves
-// joined on endpoint, because a FILTER clause on the percentiles would block
-// the aggregating-index rewrite — the percentile half filters is_stream via
-// the index key instead. Apdex uses the fixed thresholds baked into the
-// index; offset_ms scans as 0 and refineOffsetEndpoints corrects the few
-// endpoints with configured offsets.
+// queryGroupedEndpointsIndexed splits the grouped read into two joined
+// halves because FILTER on the percentiles would block the aggregating-index
+// rewrite — the percentile half filters is_stream via the index key instead.
+// offset_ms scans as 0; refineOffsetEndpoints corrects offset endpoints.
 func queryGroupedEndpointsIndexed(ctx context.Context, whereClause string, params lit.P, _ bool) ([]*groupedEndpointRow, error) {
 	groupQuery := `SELECT c.endpoint, c.total_count, c.avg_duration, c.last_seen, 0 as offset_ms,
 		c.server_error_count, c.client_error_count, c.satisfied_count, c.tolerating_count, c.bad_count,
@@ -822,11 +815,10 @@ func queryGroupedEndpointsIndexed(ctx context.Context, whereClause string, param
 	return groups, sqlRows.Err()
 }
 
-// refineOffsetEndpoints replaces the fixed-threshold Apdex rows of endpoints
-// that have a configured slow-endpoint offset with an offset-aware raw scan
-// bounded to just those endpoints — the offsets are dynamic per-project data
-// the aggregating index cannot encode. whereClause/params are the ones the
-// indexed query ran with, so both passes see the identical time window.
+// refineOffsetEndpoints re-queries endpoints that have a slow-endpoint
+// offset with an offset-aware raw scan bounded to just those endpoints —
+// offsets are dynamic data the aggregating index cannot encode. Reusing
+// whereClause/params keeps both passes on the identical time window.
 func refineOffsetEndpoints(ctx context.Context, projectId uuid.UUID, from, to time.Time, whereClause string, params lit.P, groups []*groupedEndpointRow) error {
 	byEndpoint := make(map[string]*groupedEndpointRow, len(groups))
 	for _, g := range groups {

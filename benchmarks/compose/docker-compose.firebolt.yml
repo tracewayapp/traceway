@@ -4,11 +4,14 @@ services:
   firebolt:
     image: ghcr.io/firebolt-db/engine:dev
     container_name: firebolt
-    command: ["server", "--data-dir", "/var/lib/firebolt"]
+    command: ["server", "--data-dir", "/var/lib/firebolt", "--server-config", "/etc/firebolt/config.yaml"]
+    security_opt:
+      - seccomp:unconfined
     ports:
       - "3473:3473"
     volumes:
       - firebolt-data:/var/lib/firebolt
+      - ./firebolt-config.yaml:/etc/firebolt/config.yaml:ro
     ulimits:
       memlock:
         soft: 8589934592

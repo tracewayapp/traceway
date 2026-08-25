@@ -48,9 +48,17 @@ bench_ssh "${IP}" 'bash -s' <<REMOTE
 set -euo pipefail
 command -v docker >/dev/null 2>&1 || curl -fsSL https://get.docker.com | sh
 mkdir -p /root/firebolt-data /root/results
+cat > /root/firebolt-config.yaml <<'CFG'
+schema_version: "1.0"
+engine:
+  auto_vacuum:
+    enabled: true
+CFG
 docker run -d --name firebolt --restart on-failure:3 -p 3473:3473 \
+    --security-opt seccomp=unconfined \
     -v /root/firebolt-data:/var/lib/firebolt \
-    ${FIREBOLT_IMAGE} server --data-dir /var/lib/firebolt
+    -v /root/firebolt-config.yaml:/etc/firebolt/config.yaml:ro \
+    ${FIREBOLT_IMAGE} server --data-dir /var/lib/firebolt --server-config /etc/firebolt/config.yaml
 docker run -d --name clickhouse --restart on-failure:3 -p 8123:8123 \
     -e CLICKHOUSE_PASSWORD=bench --ulimit nofile=262144:262144 \
     clickhouse/clickhouse-server:24.8-alpine

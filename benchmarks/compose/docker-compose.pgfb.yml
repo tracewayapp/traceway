@@ -34,14 +34,19 @@ services:
 
   firebolt:
     image: "${FIREBOLT_IMAGE:-ghcr.io/firebolt-db/engine:dev}"
-    command: ["server", "--data-dir", "/var/lib/firebolt"]
-    # The engine sizes its memory budget from the cgroup limit (verified:
-    # -m 3g -> "Available RAM: 3.00 GiB"). Uncapped it takes the whole box
-    # and starves Postgres + the backend into HTTP timeouts. 4g suits the
+    command: ["server", "--data-dir", "/var/lib/firebolt", "--server-config", "/etc/firebolt/config.yaml"]
+    # seccomp=unconfined lets the engine use io_uring on Linux hosts (the
+    # default Docker profile blocks it; without it spilling and the disk
+    # cache are disabled and VACUUM of large tables fails).
+    security_opt:
+      - seccomp:unconfined
+    # The engine sizes its memory budget from the cgroup limit; uncapped it
+    # takes the whole box and starves Postgres + the backend. 4g suits the
     # 8GB ccx13; pass FIREBOLT_MEM_LIMIT for bigger tiers (~half the box).
     mem_limit: "${FIREBOLT_MEM_LIMIT:-4g}"
     volumes:
       - firebolt-bench-data:/var/lib/firebolt
+      - ./firebolt-config.yaml:/etc/firebolt/config.yaml:ro
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3473 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q ' 200 '"]
       interval: 5s

@@ -68,12 +68,9 @@ func (r *metricPointRepository) QueryTimeSeries(ctx context.Context, projectId u
 	aggFunc := fireboltAggregationFunc(aggregation)
 	hasGroupBy := groupBy != ""
 
-	// The aggregating index keys (project_id, name, minute,
-	// JSON_POINTER_EXTRACT_TEXT(tags, '/host'), server_name) serve this query
-	// when everything it references is a key or an indexed aggregate. The
-	// '/host' pointer must appear as a literal to match the index expression,
-	// so the indexed path is taken only for the host tag; other tags, and the
-	// MAX_BY "last" aggregation, fall back to the raw scan.
+	// The '/host' pointer must appear as a literal to match the index key
+	// expression, so only host-tag queries take the indexed path; other
+	// tags and the MAX_BY "last" aggregation fall back to the raw scan.
 	indexable := aggregation != "last"
 	if hasGroupBy && groupBy != "host" {
 		indexable = false

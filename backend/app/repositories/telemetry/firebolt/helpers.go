@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,15 +17,10 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
 )
 
-// The Firebolt engine accepts `?` placeholders (the Go SDK substitutes them
-// client-side), so this package renders every lit named query with the SQLite
-// driver regardless of db.Driver — which is lit.PostgreSQL in this build,
-// since the main DB is Postgres. Model registration pins the same driver so
-// SelectNamed/SelectSingleNamed resolve to `?` rendering.
+// Firebolt takes `?` placeholders, so telemetry queries render with the
+// SQLite dialect — never db.Driver, which is lit.PostgreSQL in this build.
 var litDriver = lit.SQLite
 
-// registerModels queues row-model registrations pinned to the Firebolt
-// placeholder dialect, ignoring the main-DB driver models.Init passes in.
 func registerModels(register func(driver lit.Driver)) {
 	models.ExtensionModelRegistrations = append(models.ExtensionModelRegistrations, func(lit.Driver) {
 		register(litDriver)
@@ -35,11 +31,9 @@ func parseNamed(query string, params lit.P) (string, []any, error) {
 	return lit.ParseNamedQuery(litDriver, query, params)
 }
 
-// sqlitetypes registers its shared result models with the driver models.Init
-// passes in — lit.PostgreSQL in this build. lit's registry is last-write-wins
-// per type, and this package's registrations run after sqlitetypes' (package
-// init order), so re-registering here rebinds them to the `?` dialect every
-// telemetry query needs. Nothing outside telemetry uses these types.
+// sqlitetypes registers these with the main-DB driver; lit's registry is
+// last-write-wins per type and this init runs later, so this rebinds them
+// to the `?` dialect. Nothing outside telemetry uses them.
 func init() {
 	registerModels(func(driver lit.Driver) {
 		lit.RegisterModel[sqlitetypes.TimeSeriesResult](driver)
@@ -48,16 +42,49 @@ func init() {
 	})
 }
 
-// insertRows bulk-inserts rows as chunked multi-row INSERT statements.
-// A failed statement fails the whole call (the request 500s and the SDK
-// retries the frame), matching the SQLite/ClickHouse backends' behavior.
+// insertRows bulk-inserts chunked multi-row INSERTs rendered as SQL
+// literals — substantially faster than driver placeholder substitution on
+// large batches. Firebolt string literals treat backslashes literally, so
+// doubling single quotes is the only escaping needed. A failed statement
+// fails the whole call (the request 500s and the SDK retries the frame).
 const insertChunkRows = 500
+
+func renderLiteral(sb *strings.Builder, v any) error {
+	switch x := v.(type) {
+	case nil:
+		sb.WriteString("NULL")
+	case string:
+		sb.WriteByte('\'')
+		sb.WriteString(strings.ReplaceAll(x, "'", "''"))
+		sb.WriteByte('\'')
+	case int64:
+		sb.WriteString(strconv.FormatInt(x, 10))
+	case int:
+		sb.WriteString(strconv.Itoa(x))
+	case uint32:
+		sb.WriteString(strconv.FormatUint(uint64(x), 10))
+	case float64:
+		sb.WriteString(strconv.FormatFloat(x, 'g', -1, 64))
+	case bool:
+		if x {
+			sb.WriteString("true")
+		} else {
+			sb.WriteString("false")
+		}
+	case time.Time:
+		sb.WriteByte('\'')
+		sb.WriteString(x.UTC().Format("2006-01-02 15:04:05.000000"))
+		sb.WriteByte('\'')
+	default:
+		return fmt.Errorf("unsupported literal type %T", v)
+	}
+	return nil
+}
 
 func insertRows(ctx context.Context, table string, columns []string, rows [][]any) error {
 	if len(rows) == 0 {
 		return nil
 	}
-	rowPlaceholders := "(" + strings.TrimSuffix(strings.Repeat("?,", len(columns)), ",") + ")"
 	prefix := "INSERT INTO " + table + " (" + strings.Join(columns, ", ") + ") VALUES "
 
 	for start := 0; start < len(rows); start += insertChunkRows {
@@ -68,18 +95,26 @@ func insertRows(ctx context.Context, table string, columns []string, rows [][]an
 		chunk := rows[start:end]
 
 		var sb strings.Builder
-		sb.Grow(len(prefix) + len(chunk)*(len(rowPlaceholders)+1))
+		sb.Grow(len(prefix) + len(chunk)*len(columns)*24)
 		sb.WriteString(prefix)
-		args := make([]any, 0, len(chunk)*len(columns))
 		for i, row := range chunk {
 			if i > 0 {
 				sb.WriteByte(',')
 			}
-			sb.WriteString(rowPlaceholders)
-			args = append(args, row...)
+			sb.WriteByte('(')
+			for j, v := range row {
+				if j > 0 {
+					sb.WriteByte(',')
+				}
+				if err := renderLiteral(&sb, v); err != nil {
+					db.RecordTelemetryInsertFailure()
+					return fmt.Errorf("firebolt %s insert: %w", table, err)
+				}
+			}
+			sb.WriteByte(')')
 		}
 
-		if _, err := db.TelemetryDB.ExecContext(ctx, sb.String(), args...); err != nil {
+		if _, err := db.TelemetryDB.ExecContext(ctx, sb.String()); err != nil {
 			db.RecordTelemetryInsertFailure()
 			return fmt.Errorf("firebolt %s insert: %w", table, err)
 		}
@@ -93,13 +128,11 @@ func timeBucketExpr(column string, intervalSeconds int) string {
 	return fmt.Sprintf("TO_TIMESTAMP(FLOOR(EXTRACT(EPOCH FROM %s) / %d) * %d)", column, intervalSeconds, intervalSeconds)
 }
 
-// The aggregating indexes key time by DATE_TRUNC('minute', col). A query is
-// rewritten to merge index states only when its time filter and buckets are
-// expressed over that exact key expression — any use of the raw column forces
-// a full scan. indexBucketExpr therefore buckets over the minute key (charts
-// never use sub-minute intervals), and indexMinuteRange emits the filter
-// fragment whose :from_min/:to_min bounds must be bound via bindMinuteRange.
-// The minute snap moves each window edge by <60s, below dashboard resolution.
+// The aggregating indexes key time by DATE_TRUNC('minute', col). A query
+// merges index states only when its time filter and buckets are expressed
+// over that exact key expression — any raw-column reference forces a full
+// scan. The minute snap moves window edges by <60s, below dashboard
+// resolution. Bind :from_min/:to_min via bindMinuteRange.
 func indexBucketExpr(column string, intervalSeconds int) string {
 	if intervalSeconds <= 60 {
 		return fmt.Sprintf("DATE_TRUNC('minute', %s)", column)

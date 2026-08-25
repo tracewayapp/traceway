@@ -1,0 +1,7 @@
+# Firebolt engine server config (--server-config). Background compaction
+# (auto-vacuum) is not on by default in this engine build; without it,
+# insert-heavy tables fragment and reads degrade as the table grows.
+schema_version: "1.0"
+engine:
+  auto_vacuum:
+    enabled: true

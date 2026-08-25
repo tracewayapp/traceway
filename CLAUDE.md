@@ -27,11 +27,13 @@ Traceway is an error tracking and monitoring platform consisting of:
 | Frontend | `cd frontend && npm run dev` | Dev server (port 5173) |
 | Frontend | `npm run build` | Production build |
 | Frontend | `npm run check` | TypeScript checking |
-| Backend | `cd backend && go run .` | API server (port 8082) |
+| Backend | `cd backend && go run ./cmd/traceway` | API server (port 8082) |
 | CLI | `cd cli && just build` | Builds `bin/traceway` |
 | CLI | `cd cli && just test` | Runs unit tests |
 | CLI | `cd cli && just check` | Lint + test + vulncheck (pre-commit gate) |
 | CLI | `cd cli && just smoke-test` | Live E2E (needs `TRACEWAY_SMOKE_*` env vars) |
+
+Set `JWT_SECRET` (min 32 characters) before running the backend — it is the one variable with no default. `SQLITE_PATH` sets the database location, defaulting to `./traceway.db` in the working directory.
 
 ### Tech Stack
 - **Frontend**: SvelteKit 2.49, Svelte 5.45, Tailwind CSS v4, shadcn-svelte, Vite 7
@@ -538,7 +540,11 @@ Uses shadcn-svelte registry with bits-ui primitives. Key components:
 ### Project Structure
 ```
 backend/
-├── main.go                     # Entry point, DB init, server start
+├── traceway.go                 # package tracewaybackend - embeddable API (Run, WithPort, ...)
+├── cmd/
+│   ├── run.go                  # Run() implementation: DB init, routes, server start
+│   ├── traceway/main.go        # Binary entry point (package main)
+│   └── traceway-runner/        # Synthetics remote runner binary
 ├── app/
 │   ├── controllers/
 │   │   ├── routes.go           # Route registration

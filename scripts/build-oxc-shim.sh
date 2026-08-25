@@ -14,5 +14,5 @@ cargo build --release
 
 echo "Built liboxc_shim.a"
 echo "Build the backend with the oxc parser enabled:"
-echo "  cd backend && go build -tags oxc ."
+echo "  cd backend && go build -tags oxc ./cmd/traceway"
 echo "Select it at runtime with SYMBOLICATOR_PARSER=oxc"

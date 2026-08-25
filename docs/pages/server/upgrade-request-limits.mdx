@@ -26,7 +26,15 @@ Fix: set `TRUSTED_PROXIES` to every hop in the chain, not just the outermost one
 TRUSTED_PROXIES=173.245.48.0/20,103.21.244.0/22,10.0.0.0/8
 ```
 
-Use `none` to trust no proxy at all. The full list of Cloudflare ranges is at https://www.cloudflare.com/ips/.
+Use `none` to trust no proxy at all, or `*` to trust every peer (the behaviour before this setting existed; it lets clients spoof their address). The full list of Cloudflare ranges is at https://www.cloudflare.com/ips/.
+
+`TRUSTED_PROXY_HEADER` is the alternative for a proxy that sets a dedicated header: `X-Real-IP` behind ingress-nginx, `CF-Connecting-IP` behind Cloudflare. Its value is taken as the client IP on every request, ahead of `TRUSTED_PROXIES`, and a value that is not an IP address is ignored. Only use it when nothing can reach the backend without passing through that proxy, because a directly reachable backend lets clients set the header themselves.
+
+## Per-IP limits on the authentication endpoints
+
+The unauthenticated endpoints now have fixed-window per-IP limits: `/login` and `/register` 10 a minute, SSO start and callback 20, the token endpoints (`/auth/token`, `/auth/device/token`) 60 shared, `/auth/logout` 20, `/forgot-password` 5, password-reset validation 30 and consumption 10, invitation lookup 30 and acceptance 10. Over the limit answers `429`, except the two token endpoints, which answer the RFC 8628 shape `400 {"error":"slow_down"}` so device-flow pollers (the CLI, MCP clients) back off and keep polling instead of failing the login. Limits are per process and reset on restart.
+
+They key on the client IP, which is why the trusted-proxy setting above matters: behind a proxy Traceway does not trust, every user shares one bucket of 10 logins a minute. Teams behind one office NAT share a bucket by design; raise the numbers in `routes.go` if that is too tight for you.
 
 ## Upload limits
 

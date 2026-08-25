@@ -74,8 +74,13 @@ app:
   # is the ingress, so a CDN-only list leaves that peer untrusted and turns
   # X-Forwarded-For off entirely. Include the pod/ingress range too, e.g.
   # "173.245.48.0/20,103.21.244.0/22,10.0.0.0/8".
-  # Use "none" to trust no proxy at all.
+  # Use "none" to trust no proxy at all, or "*" to trust every peer.
   trustedProxies: ""
+  # Optional. A header taken as the client IP on every request, ahead of
+  # trustedProxies: "X-Real-IP" behind ingress-nginx, "CF-Connecting-IP" behind
+  # Cloudflare. Only safe when a NetworkPolicy forces all traffic through the
+  # proxy that overwrites the header.
+  trustedProxyHeader: ""
   # Optional. Cap on the decompressed /api/report body in megabytes.
   # Default 64. Session-replay batches are the large case.
   reportMaxBodyMB: ""

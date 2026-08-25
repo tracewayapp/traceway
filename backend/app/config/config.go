@@ -85,13 +85,14 @@ type Cfg struct {
 	SMTPFrom     string
 
 	AppBaseURL            string
+	TrustedProxies        string
+	TrustedProxyHeader    string
 	EmailPreviewEnabled   string
 	CloudMode             string
 	MonitoringTracewayURL string
 	APIOnly               string
 	Ports                 string
 	TurnstileSecretKey    string
-	TrustedProxies        string
 	ReportMaxBodyMB       string
 
 	GoogleClientID     string
@@ -147,6 +148,33 @@ func SizeMB(value string, defaultMB int) int64 {
 // registration, and the password-reset flow.
 func (c *Cfg) PasswordLoginDisabled() bool {
 	return c.DisablePasswordLogin == "true"
+}
+
+var DefaultTrustedProxies = []string{
+	"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+	"127.0.0.0/8", "fc00::/7", "::1",
+}
+
+func (c *Cfg) TrustedProxyList() []string {
+	raw := strings.TrimSpace(c.TrustedProxies)
+	switch {
+	case raw == "":
+		return DefaultTrustedProxies
+	case raw == "*":
+		return []string{"0.0.0.0/0", "::/0"}
+	case strings.EqualFold(raw, "none"):
+		return nil
+	}
+	var proxies []string
+	for _, p := range strings.Split(raw, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			proxies = append(proxies, p)
+		}
+	}
+	if len(proxies) == 0 {
+		return DefaultTrustedProxies
+	}
+	return proxies
 }
 
 // TwilioEnabled reports whether SMS sending is configured: account credentials
@@ -235,13 +263,14 @@ func LoadFromEnv() *Cfg {
 		SMTPFrom:     os.Getenv("SMTP_FROM"),
 
 		AppBaseURL:            os.Getenv("APP_BASE_URL"),
+		TrustedProxies:        os.Getenv("TRUSTED_PROXIES"),
+		TrustedProxyHeader:    os.Getenv("TRUSTED_PROXY_HEADER"),
 		EmailPreviewEnabled:   os.Getenv("EMAIL_PREVIEW_ENABLED"),
 		CloudMode:             os.Getenv("CLOUD_MODE"),
 		MonitoringTracewayURL: os.Getenv("MONITORING_TRACEWAY_URL"),
 		APIOnly:               os.Getenv("API_ONLY"),
 		Ports:                 os.Getenv("PORTS"),
 		TurnstileSecretKey:    os.Getenv("TURNSTILE_SECRET_KEY"),
-		TrustedProxies:        os.Getenv("TRUSTED_PROXIES"),
 		ReportMaxBodyMB:       os.Getenv("REPORT_MAX_BODY_MB"),
 
 		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),

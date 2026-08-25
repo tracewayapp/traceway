@@ -14,6 +14,7 @@ services:
       # rate-limit bucket keyed on the proxy and sessions record the proxy's
       # address as their client IP. List every hop, not just the CDN.
       # TRUSTED_PROXIES: "173.245.48.0/20,103.21.244.0/22"
+      # TRUSTED_PROXY_HEADER: "X-Real-IP"
 
       # Optional retention knobs. Defaults are 30 days; set to "0" to disable.
       # SQLITE_RETENTION_DAYS prunes telemetry rows; SESSION_RECORDING_RETENTION_DAYS

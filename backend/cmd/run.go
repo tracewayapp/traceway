@@ -185,8 +185,8 @@ func Run(opts ...Option) {
 		router = gin.Default()
 	}
 
-	proxies := parseTrustedProxies(cfg.TrustedProxies)
-	if err := router.SetTrustedProxies(proxies); err != nil {
+	proxies := cfg.TrustedProxyList()
+	if err := configureClientIP(router, cfg); err != nil {
 		config.Logf("Invalid TRUSTED_PROXIES %q, ignoring X-Forwarded-For entirely (every per-IP rate limit now keys on your proxy's address): %v", cfg.TrustedProxies, err)
 		router.SetTrustedProxies(nil)
 		proxies = nil
@@ -195,7 +195,12 @@ func Run(opts ...Option) {
 	} else {
 		config.Logf("Trusted proxies: %s", strings.Join(proxies, ", "))
 	}
-	router.Use(warnOnUntrustedForwardedFor(proxies))
+	if cfg.TrustedProxyHeader != "" {
+		config.Logf("Trusted proxy header: %s is taken as the client IP on every request", cfg.TrustedProxyHeader)
+		router.Use(dropInvalidTrustedProxyHeader(cfg.TrustedProxyHeader))
+	} else {
+		router.Use(warnOnUntrustedForwardedFor(proxies))
+	}
 
 	router.Use(middleware.SecurityHeaders)
 
@@ -315,29 +320,13 @@ func resolveGinMode(value string) string {
 	}
 }
 
-var defaultTrustedProxies = []string{
-	"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
-	"127.0.0.0/8", "fc00::/7", "::1",
-}
-
-func parseTrustedProxies(env string) []string {
-	trimmed := strings.TrimSpace(env)
-	if trimmed == "" {
-		return defaultTrustedProxies
-	}
-	if strings.EqualFold(trimmed, "none") {
-		return nil
-	}
-	var proxies []string
-	for _, p := range strings.Split(env, ",") {
-		if p = strings.TrimSpace(p); p != "" {
-			proxies = append(proxies, p)
+func dropInvalidTrustedProxyHeader(name string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if v := c.GetHeader(name); v != "" && net.ParseIP(strings.TrimSpace(v)) == nil {
+			c.Request.Header.Del(name)
 		}
+		c.Next()
 	}
-	if len(proxies) == 0 {
-		return defaultTrustedProxies
-	}
-	return proxies
 }
 
 func warnOnUntrustedForwardedFor(proxies []string) gin.HandlerFunc {
@@ -410,6 +399,19 @@ func serveHTTP(router *gin.Engine, port string) {
 	}
 }
 
+func configureClientIP(router *gin.Engine, cfg *config.Cfg) error {
+	// Gin trusts X-Forwarded-For from any peer by default, which would let a
+	// direct client pick its own ClientIP() and rotate out of the per-IP limits.
+	if err := router.SetTrustedProxies(cfg.TrustedProxyList()); err != nil {
+		return err
+	}
+	// Taken verbatim as the client IP when present, bypassing the proxy list —
+	// only safe when every path to the backend runs through a proxy that
+	// overwrites the header (e.g. ingress-nginx X-Real-IP, CF-Connecting-IP).
+	router.TrustedPlatform = cfg.TrustedProxyHeader
+	return nil
+}
+
 // applyEnvOverrides forwards env vars to a config the embedded Run(opts...)
 // path built without LoadFromEnv; new Cfg fields belong in this table.
 func applyEnvOverrides(cfg *config.Cfg) {
@@ -435,12 +437,13 @@ func applyEnvOverrides(cfg *config.Cfg) {
 		{"SYNTHETICS_SCREENSHOT_RETENTION_DAYS", &cfg.SyntheticsScreenshotRetentionDays},
 		{"SYNTHETICS_RUNNER_SECRET", &cfg.SyntheticsRunnerSecret},
 		{"HEALTH_DEEP_TOKEN", &cfg.HealthDeepToken},
+		{"TRUSTED_PROXIES", &cfg.TrustedProxies},
+		{"TRUSTED_PROXY_HEADER", &cfg.TrustedProxyHeader},
 		{"TWILIO_ACCOUNT_SID", &cfg.TwilioAccountSID},
 		{"TWILIO_AUTH_TOKEN", &cfg.TwilioAuthToken},
 		{"TWILIO_FROM_NUMBER", &cfg.TwilioFromNumber},
 		{"TWILIO_MESSAGING_SERVICE_SID", &cfg.TwilioMessagingServiceSID},
 		{"ALLOW_PRIVATE_NOTIFICATION_TARGETS", &cfg.AllowPrivateNotificationTargets},
-		{"TRUSTED_PROXIES", &cfg.TrustedProxies},
 		{"REPORT_MAX_BODY_MB", &cfg.ReportMaxBodyMB},
 		{"OAUTH_SESSION_SECRET", &cfg.OAuthSessionSecret},
 		{"GOOGLE_CLIENT_ID", &cfg.GoogleClientID},

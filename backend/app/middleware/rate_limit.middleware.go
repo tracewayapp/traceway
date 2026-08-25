@@ -65,6 +65,17 @@ func rateLimitWithKey(maxRequests int, window time.Duration, keyOf func(c *gin.C
 	}
 }
 
+func RateLimitOAuthTokenPerIP(maxRequests int, window time.Duration) gin.HandlerFunc {
+	limiter := NewFixedWindowLimiter(maxRequests, window)
+	return func(c *gin.Context) {
+		if !limiter.Allow(c.ClientIP()) {
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "slow_down"})
+			return
+		}
+		c.Next()
+	}
+}
+
 // RateLimitPerIP returns a fixed-window per-IP rate limiter for unauthenticated
 // endpoints that persist state per request (e.g. the device-authorize endpoint,
 // which inserts a main-DB row per call).

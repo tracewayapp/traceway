@@ -44,6 +44,9 @@ data:
   {{- if .Values.app.baseURL }}
   APP_BASE_URL: {{ .Values.app.baseURL | quote }}
   {{- end }}
+  {{- if .Values.app.trustedProxyHeader }}
+  TRUSTED_PROXY_HEADER: {{ .Values.app.trustedProxyHeader | quote }}
+  {{- end }}
   {{- if .Values.app.apiOnly }}
   API_ONLY: {{ .Values.app.apiOnly | quote }}
   {{- end }}

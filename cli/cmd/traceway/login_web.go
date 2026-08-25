@@ -100,7 +100,7 @@ func runLoginWeb(cmd *cobra.Command) error {
 			switch {
 			case errors.Is(err, client.ErrAuthorizationPending):
 				continue
-			case errors.Is(err, client.ErrSlowDown):
+			case errors.Is(err, client.ErrSlowDown), errors.Is(err, client.ErrRateLimited):
 				interval += 5
 				continue
 			case errors.Is(err, client.ErrAccessDenied):

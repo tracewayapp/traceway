@@ -4,61 +4,95 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"slices"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tracewayapp/traceway/backend/app/config"
 )
 
-func TestParseTrustedProxies(t *testing.T) {
-	cases := []struct {
-		name string
-		env  string
-		want []string
-	}{
-		{"unset uses the private-range defaults", "", defaultTrustedProxies},
-		{"blank uses the defaults", "   ", defaultTrustedProxies},
-		{"single entry", "10.0.0.0/8", []string{"10.0.0.0/8"}},
-		{"no spaces", "10.0.0.0/8,192.168.0.0/16", []string{"10.0.0.0/8", "192.168.0.0/16"}},
-		{"space after comma", "10.0.0.0/8, 192.168.0.0/16", []string{"10.0.0.0/8", "192.168.0.0/16"}},
-		{"trailing comma", "10.0.0.0/8,", []string{"10.0.0.0/8"}},
-		{"trailing newline", "10.0.0.0/8\n", []string{"10.0.0.0/8"}},
-		{"padded everywhere", "  10.0.0.0/8 , 192.168.0.0/16  ", []string{"10.0.0.0/8", "192.168.0.0/16"}},
-		{"only separators falls back", " , , ", defaultTrustedProxies},
-		{"none trusts no proxy", "none", nil},
-		{"none is case-insensitive and padded", "  NONE  ", nil},
-	}
+func TestConfigureClientIPRejectsForwardingHeadersFromUntrustedPeers(t *testing.T) {
+	router := clientIPRouter(t, &config.Cfg{})
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.RemoteAddr = "203.0.113.10:1234"
+	request.Header.Set("X-Forwarded-For", "198.51.100.20")
+	response := httptest.NewRecorder()
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := parseTrustedProxies(tc.env)
-			if !slices.Equal(got, tc.want) {
-				t.Fatalf("got %v, want %v", got, tc.want)
-			}
-		})
+	router.ServeHTTP(response, request)
+
+	if got := response.Body.String(); got != "203.0.113.10" {
+		t.Fatalf("ClientIP() = %q, want direct peer address", got)
 	}
 }
 
-func TestParseTrustedProxiesAlwaysParsesInGin(t *testing.T) {
+func TestConfigureClientIPAcceptsForwardingHeadersFromTrustedPeers(t *testing.T) {
+	router := clientIPRouter(t, &config.Cfg{TrustedProxies: "10.0.0.0/8"})
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.RemoteAddr = "10.1.2.3:1234"
+	request.Header.Set("X-Forwarded-For", "198.51.100.20")
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if got := response.Body.String(); got != "198.51.100.20" {
+		t.Fatalf("ClientIP() = %q, want forwarded client address", got)
+	}
+}
+
+func TestConfigureClientIPUsesExplicitTrustedPlatformHeader(t *testing.T) {
+	router := clientIPRouter(t, &config.Cfg{TrustedProxyHeader: "CF-Connecting-IP"})
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.RemoteAddr = "203.0.113.10:1234"
+	request.Header.Set("CF-Connecting-IP", "198.51.100.20")
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if got := response.Body.String(); got != "198.51.100.20" {
+		t.Fatalf("ClientIP() = %q, want trusted platform address", got)
+	}
+}
+
+func TestConfigureClientIPRejectsInvalidTrustedProxy(t *testing.T) {
+	router := gin.New()
+	if err := configureClientIP(router, &config.Cfg{TrustedProxies: "not-a-cidr"}); err == nil {
+		t.Fatal("configureClientIP accepted an invalid proxy")
+	}
+}
+
+func clientIPRouter(t *testing.T, cfg *config.Cfg) *gin.Engine {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
-	for _, env := range []string{"", "10.0.0.0/8, 192.168.0.0/16", "10.0.0.0/8,", "  172.16.0.0/12  ", "fc00::/7,::1"} {
-		if err := gin.New().SetTrustedProxies(parseTrustedProxies(env)); err != nil {
+	router := gin.New()
+	if err := configureClientIP(router, cfg); err != nil {
+		t.Fatalf("configure client IP: %v", err)
+	}
+	if cfg.TrustedProxyHeader != "" {
+		router.Use(dropInvalidTrustedProxyHeader(cfg.TrustedProxyHeader))
+	}
+	router.GET("/", func(c *gin.Context) {
+		c.String(http.StatusOK, c.ClientIP())
+	})
+	return router
+}
+
+func TestTrustedProxyListAlwaysParsesInGin(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, env := range []string{"", "10.0.0.0/8, 192.168.0.0/16", "10.0.0.0/8,", "  172.16.0.0/12  ", "fc00::/7,::1", "*", "none"} {
+		if err := gin.New().SetTrustedProxies((&config.Cfg{TrustedProxies: env}).TrustedProxyList()); err != nil {
 			t.Fatalf("TRUSTED_PROXIES=%q produced a list gin rejects: %v", env, err)
 		}
 	}
 }
 
-func clientIPFor(t *testing.T, proxies []string, peer, xff string) string {
+func clientIPFor(t *testing.T, cfg *config.Cfg, peer, xff string) string {
 	t.Helper()
-	gin.SetMode(gin.TestMode)
-	c, r := gin.CreateTestContext(httptest.NewRecorder())
-	if err := r.SetTrustedProxies(proxies); err != nil {
-		t.Fatalf("SetTrustedProxies(%v): %v", proxies, err)
-	}
-	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
-	c.Request.RemoteAddr = net.JoinHostPort(peer, "5555")
-	c.Request.Header.Set("X-Forwarded-For", xff)
-	return c.ClientIP()
+	router := clientIPRouter(t, cfg)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = net.JoinHostPort(peer, "5555")
+	req.Header.Set("X-Forwarded-For", xff)
+	router.ServeHTTP(rec, req)
+	return rec.Body.String()
 }
 
 func TestDefaultTrustedProxiesResolveClientIP(t *testing.T) {
@@ -79,8 +113,35 @@ func TestDefaultTrustedProxiesResolveClientIP(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := clientIPFor(t, defaultTrustedProxies, tc.peer, tc.xff); got != tc.want {
+			if got := clientIPFor(t, &config.Cfg{}, tc.peer, tc.xff); got != tc.want {
 				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestTrustedProxyHeaderIgnoresValuesThatAreNotAnIP(t *testing.T) {
+	cfg := &config.Cfg{TrustedProxyHeader: "CF-Connecting-IP"}
+	cases := []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{"valid IPv4", "198.51.100.20", "198.51.100.20"},
+		{"valid IPv6", "2001:db8::1", "2001:db8::1"},
+		{"garbage falls back to the peer", "not-an-ip", "203.0.113.10"},
+		{"a list falls back to the peer", "1.2.3.4, 5.6.7.8", "203.0.113.10"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			router := clientIPRouter(t, cfg)
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.RemoteAddr = "203.0.113.10:1234"
+			req.Header.Set("CF-Connecting-IP", tc.value)
+			router.ServeHTTP(rec, req)
+			if got := rec.Body.String(); got != tc.want {
+				t.Fatalf("ClientIP() = %q, want %q", got, tc.want)
 			}
 		})
 	}

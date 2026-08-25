@@ -18,6 +18,7 @@ services:
       # rate-limit bucket keyed on the proxy and sessions record the proxy's
       # address as their client IP. List every hop, not just the CDN.
       # TRUSTED_PROXIES: "173.245.48.0/20,103.21.244.0/22"
+      # TRUSTED_PROXY_HEADER: "X-Real-IP"
 
       # DuckDB sizes its memory budget from host RAM, not the container limit.
       # On any memory-capped deployment set this to roughly half the

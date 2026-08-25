@@ -88,7 +88,13 @@ fi
 
 CH_ASYNC_INSERT_VAL="${CH_ASYNC_INSERT:-0}"
 echo "bringing up compose stack (mode=${MODE}, CH_ASYNC_INSERT=${CH_ASYNC_INSERT_VAL}) on ${SUT_IP}" >&2
-bench_ssh "${SUT_IP}" "cd /opt/traceway && BENCH_PORT=80 CH_ASYNC_INSERT=${CH_ASYNC_INSERT_VAL} docker compose ${compose_args[*]} up -d --build"
+if ! bench_ssh "${SUT_IP}" "cd /opt/traceway && BENCH_PORT=80 CH_ASYNC_INSERT=${CH_ASYNC_INSERT_VAL} docker compose ${compose_args[*]} up -d --build"; then
+    # The box is deleted on teardown, so dump the container state and logs
+    # into the CI log — otherwise a crash-looping service is undiagnosable.
+    echo "--- compose up failed; container state and logs ---" >&2
+    bench_ssh "${SUT_IP}" "cd /opt/traceway && docker compose ${compose_args[*]} ps -a; docker compose ${compose_args[*]} logs --tail 80" >&2 || true
+    exit 1
+fi
 
 echo "polling /health on ${SUT_IP}" >&2
 deadline=$(( $(date +%s) + 600 ))   # cold compose build can hit 10 min on small tiers

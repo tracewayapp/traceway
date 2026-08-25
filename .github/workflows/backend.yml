@@ -259,6 +259,12 @@ jobs:
       # while running nothing. app/chdb is included because batch_retry_test.go
       # is `//go:build telemetry_ch` and would otherwise run in no job at all;
       # it uses fakes and needs no live ClickHouse.
+      #
+      # -json is written to a file for the tally below and replayed through jq
+      # so the log still reads like ordinary `go test` output. pipefail is set
+      # explicitly: the default shell here is `bash -e`, which takes the exit
+      # status of the last command in a pipeline -- without it jq's success
+      # would mask a failing test run.
       - name: Test
         env:
           CGO_ENABLED: "0"
@@ -268,4 +274,43 @@ jobs:
           TEST_POSTGRES_DATABASE: traceway_test
           TEST_POSTGRES_USERNAME: traceway
           TEST_POSTGRES_PASSWORD: traceway
-        run: go test -tags "transactional_pg telemetry_ch" -count=1 ./app/repositories/... ./app/chdb/...
+        run: |
+          set -o pipefail
+          go test -json -tags "transactional_pg telemetry_ch" -count=1 \
+            ./app/repositories/... ./app/chdb/... \
+            | tee "$RUNNER_TEMP/pgch-tests.jsonl" \
+            | jq -j 'select(.Action == "output") | .Output'
+
+      # Green and "ran something" are not the same claim here. Every test in
+      # this suite reaches live ClickHouse and PostgreSQL through setupTestDB,
+      # which calls t.Skip when TEST_CLICKHOUSE_SERVER is missing -- and a
+      # package whose every test skipped still prints "ok". Dropping one env
+      # var above would leave this job passing while asserting nothing, which
+      # is the one failure mode a test workflow must not have.
+      #
+      # Package-level "skip" events (the `[no test files]` packages) carry no
+      # .Test field and are excluded; only skipped *tests* count. If a
+      # deliberately skippable test is ever added here, exclude it by name
+      # rather than deleting the guard.
+      #
+      # The pass tally counts top-level tests only -- subtests emit their own
+      # pass events, and a count inflated by them could not be compared against
+      # the suite size. Skips are counted at every level, subtests included.
+      - name: Assert the suite actually ran
+        run: |
+          results="$RUNNER_TEMP/pgch-tests.jsonl"
+          skipped=$(jq -r 'select(.Action == "skip" and .Test != null) | "\(.Package) \(.Test)"' "$results")
+          passed=$(jq -r 'select(.Action == "pass" and .Test != null and (.Test | contains("/") | not)) | .Test' "$results" | wc -l)
+
+          if [ -n "$skipped" ]; then
+            echo "::error::pgch suite skipped $(printf '%s\n' "$skipped" | wc -l) test(s) -- it must run against the service containers, not skip past them"
+            printf '%s\n' "$skipped"
+            exit 1
+          fi
+
+          if [ "$passed" -eq 0 ]; then
+            echo "::error::pgch suite ran no tests at all"
+            exit 1
+          fi
+
+          echo "$passed tests ran, 0 skipped"

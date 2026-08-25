@@ -48,6 +48,7 @@
 
 	function destination(): string {
 		if (redirectTo) return redirectTo;
+		if (orgProjects.length > 1) return `/organization?organizationId=${organizationId}`;
 		const first = newProjects[0] ?? orgProjects[0];
 		return first ? `/?projectId=${first.id}` : '/';
 	}
@@ -83,6 +84,7 @@
 			draft = draftResponse?.draft ?? null;
 			draftLoaded = true;
 		} catch {
+			// A later poll retries transient setup API failures.
 		} finally {
 			pollInFlight = false;
 		}

@@ -14,6 +14,13 @@ type MetricPoint struct {
 	RecordedAt time.Time         `json:"recordedAt" ch:"recorded_at"`
 }
 
+type ServerLatestPoint struct {
+	ServerName     string            `json:"serverName"`
+	Value          float64           `json:"value"`
+	LastReportedAt time.Time         `json:"lastReportedAt"`
+	Tags           map[string]string `json:"tags,omitempty"`
+}
+
 type DiscoveredMetric struct {
 	Name       string   `json:"name"`
 	TagKeys    []string `json:"tagKeys"`
@@ -22,12 +29,16 @@ type DiscoveredMetric struct {
 }
 
 const (
-	MetricNameMemoryUsage  = "mem.used"
-	MetricNameMemoryTotal  = "mem.total"
-	MetricNameCpuUsage     = "cpu.used_pcnt"
-	MetricNameGoRoutines   = "go.go_routines"
-	MetricNameHeapObjects  = "go.heap_objects"
-	MetricNameNumGC        = "go.num_gc"
-	MetricNameGCPauseTotal = "go.gc_pause"
+	MetricNameMemoryUsage                 = "mem.used"
+	MetricNameMemoryTotal                 = "mem.total"
+	MetricNameCpuUsage                    = "cpu.used_pcnt"
+	MetricNameGoRoutines                  = "go.go_routines"
+	MetricNameHeapObjects                 = "go.heap_objects"
+	MetricNameNumGC                       = "go.num_gc"
+	MetricNameGCPauseTotal                = "go.gc_pause"
+	MetricNameSystemCPUUtilization        = "system.cpu.utilization"
+	MetricNameSystemMemoryUtilization     = "system.memory.utilization"
+	MetricNameSystemFilesystemUtilization = "system.filesystem.utilization"
+	MetricNameSystemNetworkIO             = "system.network.io"
 	// other metric names are custom and added by the clients
 )

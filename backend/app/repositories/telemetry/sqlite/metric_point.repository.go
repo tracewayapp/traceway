@@ -262,6 +262,51 @@ func (r *metricPointRepository) GetDistinctServers(ctx context.Context, projectI
 	return servers, nil
 }
 
+func (r *metricPointRepository) LatestPerServer(ctx context.Context, projectId uuid.UUID, name string, since time.Time) ([]models.ServerLatestPoint, error) {
+	query, args, err := lit.ParseNamedQuery(db.Driver,
+		`SELECT sn, latest_value, last_reported_at, latest_tags
+		FROM (
+			SELECT json_extract(tags, '$.server_name') AS sn,
+				value AS latest_value,
+				recorded_at AS last_reported_at,
+				tags AS latest_tags,
+				ROW_NUMBER() OVER (
+					PARTITION BY json_extract(tags, '$.server_name')
+					ORDER BY recorded_at DESC
+				) AS row_number
+			FROM metric_points
+			WHERE project_id = :project_id AND name = :name AND recorded_at >= :since
+			AND json_extract(tags, '$.server_name') IS NOT NULL
+			AND json_extract(tags, '$.server_name') != ''
+		)
+		WHERE row_number = 1
+		ORDER BY sn ASC`,
+		lit.P{"project_id": projectId, "name": name, "since": sqlitetypes.NewSQLiteTime(since)})
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := db.TelemetryDB.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var points []models.ServerLatestPoint
+	for rows.Next() {
+		var p models.ServerLatestPoint
+		var lastReportedAt sqlitetypes.SQLiteTime
+		var tags sqlitetypes.SQLiteJSONMap
+		if err := rows.Scan(&p.ServerName, &p.Value, &lastReportedAt, &tags); err != nil {
+			return nil, err
+		}
+		p.LastReportedAt = lastReportedAt.Time
+		p.Tags = map[string]string(tags)
+		points = append(points, p)
+	}
+	return points, rows.Err()
+}
+
 func (r *metricPointRepository) GetAverageByIntervalPerServer(ctx context.Context, projectId uuid.UUID, name string, start, end time.Time, intervalMinutes int, servers []string) (map[string][]models.TimeSeriesPoint, error) {
 	secs := intervalMinutes * 60
 

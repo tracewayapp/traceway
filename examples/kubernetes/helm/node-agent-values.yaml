@@ -1,0 +1,137 @@
+# Traceway node agent, as values for the upstream OpenTelemetry Collector chart.
+#
+#   helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+#   helm upgrade --install traceway-node-agent \
+#     open-telemetry/opentelemetry-collector \
+#     --namespace traceway --create-namespace \
+#     --values node-agent-values.yaml
+#
+# Expects the same Secret and ConfigMap as the plain manifests:
+#
+#   kubectl create secret generic traceway-token -n traceway \
+#     --from-literal=token='<your-project-token>'
+#   kubectl create configmap traceway-settings -n traceway \
+#     --from-literal=TRACEWAY_CLUSTER_NAME=production-eu \
+#     --from-literal=TRACEWAY_ENDPOINT=https://cloud.tracewayapp.com/api/otel
+mode: daemonset
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+
+presets:
+  hostMetrics:
+    enabled: true
+  kubeletMetrics:
+    enabled: true
+  logsCollection:
+    enabled: true
+  kubernetesAttributes:
+    enabled: true
+
+extraEnvs:
+  - name: TRACEWAY_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: traceway-token
+        key: token
+  - name: TRACEWAY_ENDPOINT
+    valueFrom:
+      configMapKeyRef:
+        name: traceway-settings
+        key: TRACEWAY_ENDPOINT
+  - name: TRACEWAY_CLUSTER_NAME
+    valueFrom:
+      configMapKeyRef:
+        name: traceway-settings
+        key: TRACEWAY_CLUSTER_NAME
+
+config:
+  receivers:
+    # The hostMetrics preset wires up the scrapers and the /hostfs mount, but
+    # leaves the three *.utilization metrics off. Traceway's organization
+    # overview reads exactly those, so turn them on.
+    hostmetrics:
+      collection_interval: 30s
+      scrapers:
+        cpu:
+          metrics:
+            system.cpu.utilization:
+              enabled: true
+        memory:
+          metrics:
+            system.memory.utilization:
+              enabled: true
+        filesystem:
+          metrics:
+            system.filesystem.utilization:
+              enabled: true
+    kubeletstats:
+      collection_interval: 30s
+      metric_groups: [node, pod]
+
+  processors:
+    resource/cluster:
+      attributes:
+        - key: k8s.cluster.name
+          value: ${env:TRACEWAY_CLUSTER_NAME}
+          action: upsert
+        - key: k8s.node.name
+          value: ${env:K8S_NODE_NAME}
+          action: upsert
+    # service.name becomes the server_name tag in Traceway. Naming it after the
+    # node gives one instance row per node in the organization overview.
+    resource/node:
+      attributes:
+        - key: service.name
+          value: ${env:K8S_NODE_NAME}
+          action: upsert
+        - key: host.name
+          value: ${env:K8S_NODE_NAME}
+          action: upsert
+    transform/log_service_name:
+      error_mode: ignore
+      log_statements:
+        - context: resource
+          statements:
+            - set(attributes["service.name"], attributes["k8s.container.name"]) where attributes["service.name"] == nil
+
+  exporters:
+    otlphttp/traceway:
+      endpoint: ${env:TRACEWAY_ENDPOINT}
+      headers:
+        Authorization: Bearer ${env:TRACEWAY_TOKEN}
+      compression: gzip
+      retry_on_failure:
+        enabled: true
+      sending_queue:
+        enabled: true
+        queue_size: 1000
+
+  service:
+    pipelines:
+      # The node agent ships no traces of its own; applications export those
+      # directly or through the gateway.
+      traces: null
+      metrics:
+        receivers: [hostmetrics, kubeletstats]
+        processors:
+          [memory_limiter, k8sattributes, resource/cluster, resource/node, batch]
+        exporters: [otlphttp/traceway]
+      logs:
+        receivers: [filelog]
+        processors:
+          [
+            memory_limiter,
+            k8sattributes,
+            resource/cluster,
+            transform/log_service_name,
+            batch,
+          ]
+        exporters: [otlphttp/traceway]
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 200Mi
+  limits:
+    memory: 500Mi

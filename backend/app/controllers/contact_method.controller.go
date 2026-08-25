@@ -405,13 +405,7 @@ func (c *contactMethodController) Test(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 		return
 	}
-	testMsg := notifications.Message{
-		Subject:  "Traceway on-call test",
-		Body:     "This is a test of your on-call contact method. If you received this, pages will reach you here.",
-		Severity: notifications.SeverityInfo,
-		RuleType: "test",
-		RuleName: "Test",
-	}
+	testMsg := notifications.TestContactMethodMessage()
 	if err := adapter.Send(ctx.Request.Context(), testMsg); err != nil {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Test notification failed: " + err.Error()})
 		return

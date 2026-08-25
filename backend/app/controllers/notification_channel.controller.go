@@ -303,13 +303,7 @@ func (ctrl *notificationChannelController) Test(ctx *gin.Context) {
 		return
 	}
 
-	testMsg := notifications.Message{
-		Subject:  "Traceway Test Notification",
-		Body:     "This is a test notification from Traceway. If you received this, your notification channel is configured correctly.",
-		Severity: notifications.SeverityInfo,
-		RuleType: "test",
-		RuleName: "Test",
-	}
+	testMsg := notifications.TestChannelMessage()
 
 	if err := adapter.Send(ctx.Request.Context(), testMsg); err != nil {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Test notification failed: " + err.Error()})

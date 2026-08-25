@@ -38,6 +38,10 @@ Endpoints, Tasks, and AI Traces all carry an `is_root` flag. A row is **non-root
 
 See [Data Flow](/learn/data-flow) for how these connect during request processing, task execution, and metrics collection, and [Project Structure](/learn/projects) for how to split an application across Traceway projects before you instrument it.
 
+## Above a single project
+
+Everything above is scoped to one project. The [Organization Overview](/learn/organization-overview) sits above them all: every instance reporting into the organization, every recently active issue, every monitor, and every open on-call page, on one page. It is how a fleet of servers or a [Kubernetes cluster](/learn/kubernetes) is read at a glance before you drill into the project that owns the problem.
+
 ## Authentication
 
 Every way in has its own credential: SDKs and OTel exporters use the project token, CI uses the source map token for symbol uploads, the dashboard uses a JWT or a personal access token, the [CLI](/learn/cli-auth) uses a device flow, and [MCP clients](/learn/mcp) use OAuth with PKCE. Role middleware scopes what an authenticated user can do.

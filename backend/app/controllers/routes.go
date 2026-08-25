@@ -82,6 +82,11 @@ func RegisterControllers(router *gin.RouterGroup) {
 
 	router.GET("/health/deep", middleware.UseHealthDeepToken, HealthDeepController.Get)
 
+	if config.Config.EmailPreviewEnabled == "true" {
+		router.GET("/email-preview", EmailPreviewController.Index)
+		router.GET("/email-preview/:template", EmailPreviewController.Show)
+	}
+
 	router.POST("/stats", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricRecordController.FindHomepageStats)
 	router.GET("/dashboard", middleware.UseAppAuth, middleware.RequireProjectAccess, DashboardController.GetDashboard)
 	router.GET("/dashboard/overview", middleware.UseAppAuth, middleware.RequireProjectAccess, DashboardController.GetDashboardOverview)
@@ -92,6 +97,7 @@ func RegisterControllers(router *gin.RouterGroup) {
 
 	router.POST("/metrics/query", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricQueryController.Query)
 	router.GET("/metrics/discover", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricQueryController.Discover)
+	router.GET("/metrics/discover/instances", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricQueryController.DiscoverInstances)
 	router.GET("/metrics/discover/tags", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricQueryController.DiscoverTags)
 	router.GET("/metrics/discover/org", middleware.UseAppAuth, MetricQueryController.DiscoverOrg)
 	router.PUT("/metrics/registry", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, MetricQueryController.UpdateRegistry)
@@ -170,19 +176,23 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/exception-stack-traces/by-id/:exceptionId", middleware.UseAppAuth, middleware.RequireProjectAccess, ExceptionStackTraceController.FindById)
 	router.POST("/exception-stack-traces/:hash", middleware.UseAppAuth, middleware.RequireProjectAccess, ExceptionStackTraceController.FindByHash)
 
-	router.POST("/login", middleware.Transactional, AuthController.Login)
-	router.POST("/register", middleware.Transactional, AuthController.Register)
+	// Keep the limiter before Transactional so rejected requests don't open a transaction.
+	router.POST("/login", middleware.RateLimitPerIP(10, time.Minute), middleware.Transactional, AuthController.Login)
+	router.POST("/register", middleware.RateLimitPerIP(10, time.Minute), middleware.Transactional, AuthController.Register)
 	router.GET("/me/login-bundle", middleware.UseAppAuth, middleware.Transactional, AuthController.LoginBundle)
 
 	router.GET("/auth/providers", OAuthController.ListProviders)
-	router.GET("/auth/start/:provider", middleware.Transactional, OAuthController.Begin)
-	router.GET("/auth/callback/:provider", middleware.Transactional, OAuthController.Callback)
+	router.GET("/auth/start/:provider", middleware.RateLimitPerIP(20, time.Minute), middleware.Transactional, OAuthController.Begin)
+	router.GET("/auth/callback/:provider", middleware.RateLimitPerIP(20, time.Minute), middleware.Transactional, OAuthController.Callback)
 	router.POST("/auth/finish-setup", middleware.UseAppAuth, middleware.Transactional, OAuthController.FinishSetup)
 
 	router.Match(postPreflight, "/auth/device/authorize", middleware.OAuthCors, middleware.RateLimitPerIP(10, time.Minute), DeviceAuthController.Authorize)
-	router.Match(postPreflight, "/auth/device/token", middleware.OAuthCors, DeviceAuthController.Token)
-	router.Match(postPreflight, "/auth/token", middleware.OAuthCors, DeviceAuthController.Token)
-	router.Match(postPreflight, "/auth/logout", middleware.OAuthCors, DeviceAuthController.Logout)
+	// One shared limiter instance so both token routes draw from the same budget;
+	// slightly higher 60/min limit to leave headroom for concurrent device flow polling behind NAT
+	tokenRateLimit := middleware.RateLimitPerIP(60, time.Minute)
+	router.Match(postPreflight, "/auth/device/token", middleware.OAuthCors, tokenRateLimit, DeviceAuthController.Token)
+	router.Match(postPreflight, "/auth/token", middleware.OAuthCors, tokenRateLimit, DeviceAuthController.Token)
+	router.Match(postPreflight, "/auth/logout", middleware.OAuthCors, middleware.RateLimitPerIP(20, time.Minute), DeviceAuthController.Logout)
 	router.GET("/device", middleware.UseAppAuth, DeviceAuthController.Lookup)
 	router.POST("/device/approve", middleware.UseAppAuth, middleware.Transactional, DeviceAuthController.Approve)
 	router.POST("/device/deny", middleware.UseAppAuth, middleware.Transactional, DeviceAuthController.Deny)
@@ -212,9 +222,10 @@ func RegisterControllers(router *gin.RouterGroup) {
 		router.GET("/has-organizations", middleware.Transactional, AuthController.HasOrganizations)
 	}
 
-	router.POST("/forgot-password", middleware.Transactional, PasswordResetController.ForgotPassword)
-	router.GET("/password-reset/:token", PasswordResetController.ValidateToken)
-	router.POST("/password-reset/:token", middleware.Transactional, PasswordResetController.ResetPassword)
+	// slightly tighter limit since every accepted request sends an email
+	router.POST("/forgot-password", middleware.RateLimitPerIP(5, time.Minute), middleware.Transactional, PasswordResetController.ForgotPassword)
+	router.GET("/password-reset/:token", middleware.RateLimitPerIP(30, time.Minute), PasswordResetController.ValidateToken)
+	router.POST("/password-reset/:token", middleware.RateLimitPerIP(10, time.Minute), middleware.Transactional, PasswordResetController.ResetPassword)
 
 	router.GET("/organizations/:organizationId/settings", middleware.UseAppAuth, middleware.RequireAdminAccess, OrganizationController.GetSettings)
 	router.PUT("/organizations/:organizationId/settings", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, OrganizationController.UpdateSettings)
@@ -229,8 +240,8 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.GET("/organizations/:organizationId/invitations", middleware.UseAppAuth, middleware.RequireAdminAccess, InvitationController.ListInvitations)
 	router.DELETE("/organizations/:organizationId/invitations/:id", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, InvitationController.RevokeInvitation)
 
-	router.GET("/invitations/:token", InvitationController.GetInvitationInfo)
-	router.POST("/invitations/:token/accept", middleware.Transactional, InvitationController.AcceptInvitation)
+	router.GET("/invitations/:token", middleware.RateLimitPerIP(30, time.Minute), InvitationController.GetInvitationInfo)
+	router.POST("/invitations/:token/accept", middleware.RateLimitPerIP(10, time.Minute), middleware.Transactional, InvitationController.AcceptInvitation)
 	router.POST("/invitations/:token/accept-existing", middleware.UseAppAuth, middleware.Transactional, InvitationController.AcceptExistingUser)
 
 	router.POST("/projects/source-map-token", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, ProjectController.GenerateSourceMapToken)
@@ -277,6 +288,15 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.PUT("/organizations/:organizationId/status-pages/:id", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, StatusPageController.Update)
 	router.DELETE("/organizations/:organizationId/status-pages/:id", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, StatusPageController.Delete)
 	router.POST("/organizations/:organizationId/status-pages/:id/logo", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, StatusPageController.UploadLogo)
+
+	// Org overview: servers/issues/monitors fan out over per-project telemetry
+	// queries, so they deliberately skip Transactional (RequireOrganizationAccess
+	// completes its own short transaction before the handler runs); the pure
+	// main-DB pages endpoint keeps it.
+	router.GET("/organizations/:organizationId/overview/servers", middleware.UseAppAuth, middleware.RequireOrganizationAccess, OrganizationOverviewController.Servers)
+	router.GET("/organizations/:organizationId/overview/issues", middleware.UseAppAuth, middleware.RequireOrganizationAccess, OrganizationOverviewController.Issues)
+	router.GET("/organizations/:organizationId/overview/pages", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, OrganizationOverviewController.Pages)
+	router.GET("/organizations/:organizationId/overview/monitors", middleware.UseAppAuth, middleware.RequireOrganizationAccess, OrganizationOverviewController.Monitors)
 
 	router.GET("/organizations/:organizationId/incidents", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, IncidentController.List)
 	router.GET("/organizations/:organizationId/incidents/:incidentId/updates", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, IncidentController.ListUpdates)

@@ -222,6 +222,33 @@ func (r *metricPointRepository) GetDistinctServers(ctx context.Context, projectI
 	return servers, nil
 }
 
+func (r *metricPointRepository) LatestPerServer(ctx context.Context, projectId uuid.UUID, name string, since time.Time) ([]models.ServerLatestPoint, error) {
+	query := `SELECT tags['server_name'] AS sn,
+		argMax(value, recorded_at) AS latest_value,
+		max(recorded_at) AS last_reported_at,
+		argMax(tags, recorded_at) AS latest_tags
+	FROM metric_points
+	WHERE project_id = ? AND name = ? AND recorded_at >= ?
+	AND tags['server_name'] != ''
+	GROUP BY sn ORDER BY sn ASC`
+
+	rows, err := chdb.Conn.Query(ctx, query, projectId, name, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var points []models.ServerLatestPoint
+	for rows.Next() {
+		var p models.ServerLatestPoint
+		if err := rows.Scan(&p.ServerName, &p.Value, &p.LastReportedAt, &p.Tags); err != nil {
+			return nil, err
+		}
+		points = append(points, p)
+	}
+	return points, rows.Err()
+}
+
 func (r *metricPointRepository) GetAverageByIntervalPerServer(ctx context.Context, projectId uuid.UUID, name string, start, end time.Time, intervalMinutes int, servers []string) (map[string][]models.TimeSeriesPoint, error) {
 	table := selectTable(end.Sub(start))
 	aggFunc := aggregationFunc("avg", table)

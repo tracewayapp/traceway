@@ -1,0 +1,133 @@
+# Organization Overview
+
+import { Callout } from "nextra/components";
+
+Every other page in Traceway is scoped to one project. The organization overview is the one that is not: it puts every instance, issue, monitor, and open on-call page across all of your organization's projects on a single screen.
+
+It is the page for the question a project view cannot answer. Which box is about to run out of memory? What is already paging someone? Is anything on fire anywhere?
+
+<img src="/organization-overview.png" alt="The Traceway organization overview: operational pulse counters, an instance table grouped by Kubernetes cluster, and open on-call pages" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+## Getting there
+
+Open the switcher in the top-left header. Organizations are the headings; their projects are listed underneath. Selecting the organization itself opens the overview, selecting a project opens that project's dashboard.
+
+<img src="/organization-switcher.png" alt="The header switcher, listing organizations with their projects nested underneath" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+The overview replaces the project sidebar with a plain header, because nothing on it is project-scoped. Pick a project from the switcher to get the sidebar back.
+
+After signing in you land on the overview automatically when your first organization has more than one project. With a single project you go straight to that project's dashboard, since an overview of one thing is not worth a click.
+
+Every organization member can open it, read-only members included. It shows the projects you can already see, so it grants no access you did not have.
+
+<Callout type="info">
+  The overview is per organization, not global. If you belong to more than one,
+  each has its own page; switch between them from the same menu.
+</Callout>
+
+## Operational pulse
+
+The strip across the top is the summary you read first.
+
+| Counter | Meaning |
+|---|---|
+| **Reporting now** | Instances whose last metric arrived within 3 minutes |
+| **Needs attention** | Instances that are critical, warning, or stale |
+| **Stale signals** | Instances that have gone quiet for more than 3 minutes |
+| **Network I/O** | Combined receive plus transmit rate across every instance |
+| **Issues · 24h** | Distinct issues seen across all projects in the last 24 hours; opens the Issues tab |
+| **Active response** | Open on-call pages plus monitors currently down; opens the Monitors tab |
+
+The whole page refreshes itself every minute, and **Refresh** forces it. A refresh that fails leaves the last good snapshot on screen with a warning rather than blanking the page, and if one project's telemetry cannot be read the others still render.
+
+## Instances
+
+The instance table is a live view of every server reporting into the organization, over the last 30 minutes. One row per distinct `server_name`, per project.
+
+Rows come from server metrics, not from any registry, so an instance appears when it starts reporting and disappears when it stops. Nothing to register, nothing to clean up.
+
+| Column | Source |
+|---|---|
+| CPU | `system.cpu.utilization` where `state=idle`, inverted, with a 30-minute sparkline |
+| Memory | `system.memory.utilization` where `state=used` |
+| Disk | `system.filesystem.utilization` where `state=used` |
+| Network | `system.network.io` split by `direction`, as a rate |
+| Last signal | Most recent metric point from that instance |
+
+Hosts running the [Traceway OTel Agent](/learn/otel-agent) or any OpenTelemetry Collector with the hostmetrics receiver fill in all four. Instances still on the older Traceway Go SDK metric names (`cpu.used_pcnt`, `mem.used`, `mem.total`) fill in CPU and memory, and the row is labelled **SDK metrics** instead of **OTel Agent**.
+
+<Callout type="warning">
+  The three `system.*.utilization` metrics are **off by default** in the
+  OpenTelemetry hostmetrics receiver. If you configure a collector by hand,
+  enable them explicitly or the rings stay empty. The Traceway OTel Agent and
+  the [Kubernetes manifests](/learn/kubernetes) already do.
+</Callout>
+
+### Health states
+
+Each row carries a state, computed from the latest values:
+
+| State | Condition |
+|---|---|
+| **Critical** | CPU ≥ 95%, memory ≥ 95%, or disk ≥ 90% |
+| **Warning** | CPU ≥ 80%, memory ≥ 85%, or disk ≥ 80% |
+| **Stale** | No metric in the last 3 minutes, whatever the last values were |
+| **Healthy** | Everything else |
+
+Rows sort worst-first inside their group: critical, then stale, then warning, then healthy. Stale outranks warning deliberately. An instance that stopped talking is a bigger unknown than one running warm.
+
+### The metadata line
+
+Under each instance name is whatever the telemetry knows about it: the project, the host name when it differs from the instance name, OS and architecture, cloud region, the Kubernetes node, and whether the numbers came from the OTel Agent or the SDK. All of it comes from resource attributes on the metrics themselves (see [Resource Attributes](/client/otel/metrics#resource-attributes)), so richer instrumentation means a more useful line, and nothing needs configuring in Traceway.
+
+### Search, filter, group
+
+- **Find an instance** matches the instance name, project, host name, host id, OS, architecture, cloud region, Kubernetes cluster, and node name.
+- **Health state** narrows to needs attention, stale, or healthy.
+- **Project** appears once instances span more than one project.
+- **Group by** switches between project, Kubernetes cluster, and no grouping.
+
+Grouping defaults to project. When any instance carries a `k8s.cluster.name` attribute, the page starts grouped by Kubernetes cluster instead, and instances without one collect under **Not in a Kubernetes cluster**. See [Kubernetes](/learn/kubernetes) for how that attribute gets set.
+
+### Clicking through
+
+Selecting a row opens that instance's dashboard: the project's dashboards page, scoped to that one `server_name`, over the last 30 minutes. If the project has the **OTelemetry Server Agent** dashboard installed, that tab opens directly.
+
+The scope is a normal URL parameter (`?server=<name>`), so the link is shareable and the page keeps the filter while you change the time range. Clear it from the instance picker in the dashboard header. See [Dashboards](/learn/dashboards#filtering-by-instance).
+
+## Active on-call response
+
+Under the instances is every page that still needs acknowledgement or resolution, across all projects: title, project, severity, status, and how long it has been open. It is the same queue as the [On-Call](/learn/on-call) page, without the per-project filter. Acknowledged pages stay listed until they are resolved, so nothing quietly falls off the screen.
+
+## Issues
+
+<img src="/organization-issues.png" alt="The organization Issues tab: recently active issues from every project" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+Recently active issues from every project in the last 24 hours, newest event first, with the project each belongs to. Capped at 50 rows; the counter above the table is the true total across the organization. This is a triage feed, not the [Issues](/learn/issues) page, which is where you filter, search, and archive.
+
+## Monitors
+
+<img src="/organization-monitors.png" alt="The organization Monitors tab: every monitor across projects with status, uptime and average latency, plus recent incidents" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+Every [monitor](/learn/monitors) in the organization in one sortable list: type, project, current status, 30-day uptime, 30-day average latency, and when it last had an incident. Underneath is the organization's incident history for the last 90 days, across monitors and status pages, with the ongoing ones marked.
+
+Uptime excludes missed probes, so a window where Traceway itself was down reads as unknown rather than as a fabricated 100%.
+
+## Projects
+
+<img src="/organization-projects.png" alt="The organization Projects tab, listing each project with its framework and your effective access level" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+Every project in the organization with its framework, when it was added, and your **effective** access level on it: your organization role, unless a [per-project override](/learn/projects) changes it. Selecting a row opens that project.
+
+## Multi-organization setups
+
+A user can belong to several organizations, and each carries its own overview, members, dashboards, teams, schedules, and escalation policies. Nothing is shared across the boundary, which is what makes an organization the right shape for an agency's clients or a company's independent business units.
+
+Within one organization, prefer more projects over more organizations. Projects are the isolation boundary for telemetry, but the overview, dashboards, on-call rotations, and status pages are all organization-wide, so splitting a fleet across organizations means giving up exactly the view that makes a fleet manageable.
+
+## Next steps
+
+- [Kubernetes](/learn/kubernetes) for cluster-wide instrumentation and cluster grouping
+- [Traceway OTel Agent](/learn/otel-agent) for host metrics on a plain server
+- [Project Structure](/learn/projects) for splitting an application across projects
+- [On-Call](/learn/on-call) for the paging that fills the response queue

@@ -13,7 +13,8 @@
 	import WidgetGrid from '$lib/components/dashboard/widget-grid.svelte';
 	import WidgetConfigPanel from '$lib/components/dashboard/widget-config-panel.svelte';
 	import DashboardCommand from '$lib/components/dashboard/dashboard-command.svelte';
-	import { replaceState } from '$app/navigation';
+	import InstanceFilter from '$lib/components/dashboard/instance-filter.svelte';
+	import { afterNavigate, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '$lib/api';
 	import { projectsState } from '$lib/state/projects.svelte';
@@ -178,6 +179,26 @@
 			? projectsState.projects.filter((p) => p.organizationId === activeDashboard?.organizationId)
 			: []
 	);
+	let serverScope = $state(page.url.searchParams.get('server')?.trim() ?? '');
+	const scopeTagFilters = $derived.by(
+		(): Record<string, string> => (serverScope ? { server_name: serverScope } : {})
+	);
+
+	function setServerScope(scope: string) {
+		const normalized = scope.trim();
+		const url = new URL(window.location.href);
+		if (normalized) {
+			url.searchParams.set('server', normalized);
+		} else {
+			url.searchParams.delete('server');
+		}
+		serverScope = normalized;
+		replaceState(url.pathname + url.search + url.hash, {});
+	}
+
+	function updateDashboardUrl(params: Record<string, string>) {
+		updateUrl(serverScope ? { ...params, server: serverScope } : params);
+	}
 
 	function reloadDashboardWidgets() {
 		if (selectedPreset) {
@@ -688,9 +709,9 @@
 
 		sharedTimeDomain = [new Date(getFromDateTimeUTC()), new Date(getToDateTimeUTC())];
 		if (selectedPreset) {
-			updateUrl({ preset: selectedPreset });
+			updateDashboardUrl({ preset: selectedPreset });
 		} else {
-			updateUrl({ from: getFromDateTimeUTC(), to: getToDateTimeUTC() });
+			updateDashboardUrl({ from: getFromDateTimeUTC(), to: getToDateTimeUTC() });
 		}
 	}
 
@@ -701,7 +722,7 @@
 		toDate = new CalendarDate(to.getFullYear(), to.getMonth() + 1, to.getDate());
 		toTime = `${String(to.getHours()).padStart(2, '0')}:${String(to.getMinutes()).padStart(2, '0')}`;
 		sharedTimeDomain = [from, to];
-		updateUrl({ from: getFromDateTimeUTC(), to: getToDateTimeUTC() });
+		updateDashboardUrl({ from: getFromDateTimeUTC(), to: getToDateTimeUTC() });
 	}
 
 	async function loadMetrics() {
@@ -903,8 +924,15 @@
 	const activeTabName = $derived(dashboards.find((d) => String(d.id) === activeTabId)?.name ?? '');
 
 	let handledSearch = '';
+	let routerReady = $state(false);
+
+	afterNavigate(() => {
+		routerReady = true;
+		serverScope = page.url.searchParams.get('server')?.trim() ?? '';
+	});
 
 	$effect(() => {
+		if (!routerReady) return;
 		const search = page.url.search;
 		if (search === handledSearch) return;
 		handledSearch = search;
@@ -993,6 +1021,13 @@
 						{isMac ? '⌘' : 'Ctrl'}K
 					</kbd>
 				</button>
+				<InstanceFilter
+					value={serverScope}
+					from={getFromDateTimeUTC()}
+					to={getToDateTimeUTC()}
+					projectId={projectsState.currentProjectId}
+					onValueChange={setServerScope}
+				/>
 				<TimeRangePicker
 					bind:fromDate
 					bind:toDate
@@ -1207,6 +1242,7 @@
 							fromDateUTC={getFromDateTimeUTC()}
 							toDateUTC={getToDateTimeUTC()}
 							timeDomain={sharedTimeDomain}
+							{scopeTagFilters}
 							onEditWidget={(w) => openEditWidget(w as Widget)}
 							onDeleteWidget={(w) => openDeleteWidgetDialog(w as Widget)}
 							onReorderWidgets={handleReorderWidgets}

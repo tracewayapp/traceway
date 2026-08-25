@@ -1,0 +1,465 @@
+# Traceway for Kubernetes
+#
+# Two OpenTelemetry Collector workloads that cover a whole cluster:
+#
+#   traceway-node-agent    DaemonSet   host metrics per node, kubelet pod metrics, pod logs
+#   traceway-cluster-agent Deployment  cluster state metrics and Kubernetes events
+#
+# Before applying, create the namespace and the project token secret:
+#
+#   kubectl create namespace traceway
+#   kubectl create secret generic traceway-token \
+#     --namespace traceway --from-literal=token='<your-project-token>'
+#
+# Then set the two values in the traceway-settings ConfigMap below and apply:
+#
+#   kubectl apply -f traceway-kubernetes.yaml
+#
+# Docs: https://docs.tracewayapp.com/learn/kubernetes
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: traceway
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: traceway-settings
+  namespace: traceway
+data:
+  # Name this cluster. It becomes k8s.cluster.name on every series and is what
+  # the organization overview groups instances by. Use one distinct value per
+  # cluster, even across Traceway projects.
+  TRACEWAY_CLUSTER_NAME: production-eu
+  # OTLP/HTTP base URL of your Traceway instance. The collector appends
+  # /v1/metrics, /v1/logs and /v1/traces itself.
+  # Traceway Cloud: https://cloud.tracewayapp.com/api/otel
+  TRACEWAY_ENDPOINT: https://cloud.tracewayapp.com/api/otel
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: traceway-collector
+  namespace: traceway
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: traceway-collector
+rules:
+  - apiGroups: [""]
+    resources:
+      - events
+      - namespaces
+      - namespaces/status
+      - nodes
+      - nodes/spec
+      - nodes/stats
+      - nodes/proxy
+      - pods
+      - pods/status
+      - replicationcontrollers
+      - replicationcontrollers/status
+      - resourcequotas
+      - services
+    verbs: [get, list, watch]
+  - apiGroups: [events.k8s.io]
+    resources: [events]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [daemonsets, deployments, replicasets, statefulsets]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: traceway-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: traceway-collector
+subjects:
+  - kind: ServiceAccount
+    name: traceway-collector
+    namespace: traceway
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: traceway-node-agent
+  namespace: traceway
+data:
+  config.yaml: |
+    extensions:
+      # Remembers how far each pod log file was read, so a restarted agent does
+      # not replay or skip lines.
+      file_storage:
+        directory: /var/lib/traceway-collector
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    receivers:
+      # Host metrics for the node itself. These are what the Traceway
+      # organization overview reads to build one instance row per node, so the
+      # three *.utilization metrics below must be enabled explicitly: the
+      # hostmetrics receiver ships them turned off.
+      hostmetrics:
+        root_path: /hostfs
+        collection_interval: 30s
+        scrapers:
+          cpu:
+            metrics:
+              system.cpu.utilization:
+                enabled: true
+          load:
+          memory:
+            metrics:
+              system.memory.utilization:
+                enabled: true
+          filesystem:
+            include_fs_types:
+              match_type: strict
+              fs_types: [btrfs, ext2, ext3, ext4, xfs, zfs]
+            metrics:
+              system.filesystem.utilization:
+                enabled: true
+          disk:
+          network:
+
+      # Per-node and per-pod resource usage, straight from the kubelet.
+      # Add "container" to metric_groups for per-container series; it multiplies
+      # the number of stored series, so turn it on deliberately.
+      kubeletstats:
+        collection_interval: 30s
+        auth_type: serviceAccount
+        endpoint: https://${env:K8S_NODE_NAME}:10250
+        insecure_skip_verify: true
+        metric_groups: [node, pod]
+
+      # Every container's stdout/stderr on this node.
+      filelog:
+        include: [/var/log/pods/*/*/*.log]
+        exclude: [/var/log/pods/traceway_*/*/*.log]
+        start_at: end
+        include_file_path: true
+        storage: file_storage
+        operators:
+          # Handles containerd, CRI-O and Docker log formats and lifts
+          # k8s.pod.name, k8s.namespace.name and k8s.container.name off the path.
+          - type: container
+            id: container-parser
+
+    processors:
+      memory_limiter:
+        check_interval: 2s
+        limit_percentage: 80
+        spike_limit_percentage: 20
+
+      batch:
+        send_batch_size: 512
+        timeout: 5s
+
+      # Cluster and node identity on everything this agent ships.
+      # k8s.cluster.name is what the organization overview groups by.
+      resource/cluster:
+        attributes:
+          - key: k8s.cluster.name
+            value: ${env:TRACEWAY_CLUSTER_NAME}
+            action: upsert
+          - key: k8s.node.name
+            value: ${env:K8S_NODE_NAME}
+            action: upsert
+
+      # service.name becomes the server_name tag in Traceway, which is the
+      # identity of an instance. Naming it after the node gives one row per node.
+      resource/node:
+        attributes:
+          - key: service.name
+            value: ${env:K8S_NODE_NAME}
+            action: upsert
+          - key: host.name
+            value: ${env:K8S_NODE_NAME}
+            action: upsert
+
+      k8sattributes:
+        auth_type: serviceAccount
+        passthrough: false
+        filter:
+          node_from_env_var: K8S_NODE_NAME
+        extract:
+          metadata:
+            - k8s.namespace.name
+            - k8s.pod.name
+            - k8s.pod.uid
+            - k8s.deployment.name
+            - k8s.node.name
+            - container.image.name
+        pod_association:
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.uid
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.name
+              - from: resource_attribute
+                name: k8s.namespace.name
+          - sources:
+              - from: connection
+
+      # Pod logs have no service.name of their own; the Logs page filters on it,
+      # so fall back to the container name.
+      transform/log_service_name:
+        error_mode: ignore
+        log_statements:
+          - context: resource
+            statements:
+              - set(attributes["service.name"], attributes["k8s.container.name"]) where attributes["service.name"] == nil
+
+    exporters:
+      otlphttp/traceway:
+        endpoint: ${env:TRACEWAY_ENDPOINT}
+        headers:
+          Authorization: Bearer ${env:TRACEWAY_TOKEN}
+        compression: gzip
+        retry_on_failure:
+          enabled: true
+        sending_queue:
+          enabled: true
+          queue_size: 1000
+
+    service:
+      extensions: [file_storage, health_check]
+      pipelines:
+        metrics/host:
+          receivers: [hostmetrics]
+          processors: [memory_limiter, resource/cluster, resource/node, batch]
+          exporters: [otlphttp/traceway]
+        metrics/kubelet:
+          receivers: [kubeletstats]
+          processors: [memory_limiter, k8sattributes, resource/cluster, resource/node, batch]
+          exporters: [otlphttp/traceway]
+        logs:
+          receivers: [filelog]
+          processors:
+            [
+              memory_limiter,
+              k8sattributes,
+              resource/cluster,
+              transform/log_service_name,
+              batch,
+            ]
+          exporters: [otlphttp/traceway]
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: traceway-node-agent
+  namespace: traceway
+  labels:
+    app.kubernetes.io/name: traceway-node-agent
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: traceway-node-agent
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: traceway-node-agent
+    spec:
+      serviceAccountName: traceway-collector
+      # Reading /hostfs and the kubelet's log directory needs uid 0.
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: collector
+          image: otel/opentelemetry-collector-contrib:0.154.0
+          args: ["--config=/conf/config.yaml"]
+          env:
+            - name: K8S_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: TRACEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: traceway-token
+                  key: token
+          envFrom:
+            - configMapRef:
+                name: traceway-settings
+          ports:
+            - name: health
+              containerPort: 13133
+          livenessProbe:
+            httpGet:
+              path: /
+              port: health
+            initialDelaySeconds: 15
+          resources:
+            requests:
+              cpu: 100m
+              memory: 200Mi
+            limits:
+              memory: 500Mi
+          volumeMounts:
+            - name: config
+              mountPath: /conf
+            - name: hostfs
+              mountPath: /hostfs
+              readOnly: true
+              mountPropagation: HostToContainer
+            - name: pod-logs
+              mountPath: /var/log/pods
+              readOnly: true
+            - name: checkpoints
+              mountPath: /var/lib/traceway-collector
+      volumes:
+        - name: config
+          configMap:
+            name: traceway-node-agent
+        - name: hostfs
+          hostPath:
+            path: /
+        - name: pod-logs
+          hostPath:
+            path: /var/log/pods
+        - name: checkpoints
+          hostPath:
+            path: /var/lib/traceway-collector
+            type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: traceway-cluster-agent
+  namespace: traceway
+data:
+  config.yaml: |
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    receivers:
+      # Cluster state: pod phases, deployment replicas, node conditions,
+      # allocatable and requested resources.
+      k8s_cluster:
+        collection_interval: 30s
+        node_conditions_to_report: [Ready, MemoryPressure, DiskPressure, PIDPressure]
+        allocatable_types_to_report: [cpu, memory, storage, ephemeral-storage]
+
+      # Kubernetes events (scheduling failures, OOMKilled, image pull errors)
+      # arrive on the Traceway Logs page.
+      k8sobjects:
+        auth_type: serviceAccount
+        objects:
+          - name: events
+            mode: watch
+            group: events.k8s.io
+
+    processors:
+      memory_limiter:
+        check_interval: 2s
+        limit_percentage: 80
+        spike_limit_percentage: 20
+
+      batch:
+        send_batch_size: 512
+        timeout: 5s
+
+      resource/cluster:
+        attributes:
+          - key: k8s.cluster.name
+            value: ${env:TRACEWAY_CLUSTER_NAME}
+            action: upsert
+          # Cluster-wide series are not tied to a node, so they report under the
+          # cluster's own name rather than any instance.
+          - key: service.name
+            value: ${env:TRACEWAY_CLUSTER_NAME}
+            action: upsert
+
+    exporters:
+      otlphttp/traceway:
+        endpoint: ${env:TRACEWAY_ENDPOINT}
+        headers:
+          Authorization: Bearer ${env:TRACEWAY_TOKEN}
+        compression: gzip
+        retry_on_failure:
+          enabled: true
+
+    service:
+      extensions: [health_check]
+      pipelines:
+        metrics:
+          receivers: [k8s_cluster]
+          processors: [memory_limiter, resource/cluster, batch]
+          exporters: [otlphttp/traceway]
+        logs:
+          receivers: [k8sobjects]
+          processors: [memory_limiter, resource/cluster, batch]
+          exporters: [otlphttp/traceway]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traceway-cluster-agent
+  namespace: traceway
+  labels:
+    app.kubernetes.io/name: traceway-cluster-agent
+spec:
+  # Must stay at 1. Two replicas would report every cluster metric twice.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: traceway-cluster-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: traceway-cluster-agent
+    spec:
+      serviceAccountName: traceway-collector
+      containers:
+        - name: collector
+          image: otel/opentelemetry-collector-contrib:0.154.0
+          args: ["--config=/conf/config.yaml"]
+          env:
+            - name: TRACEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: traceway-token
+                  key: token
+          envFrom:
+            - configMapRef:
+                name: traceway-settings
+          ports:
+            - name: health
+              containerPort: 13133
+          livenessProbe:
+            httpGet:
+              path: /
+              port: health
+            initialDelaySeconds: 15
+          resources:
+            requests:
+              cpu: 100m
+              memory: 200Mi
+            limits:
+              memory: 500Mi
+          volumeMounts:
+            - name: config
+              mountPath: /conf
+      volumes:
+        - name: config
+          configMap:
+            name: traceway-cluster-agent

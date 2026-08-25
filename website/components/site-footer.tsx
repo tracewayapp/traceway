@@ -20,6 +20,7 @@ const COLUMNS: Column[] = [
       { label: "Exceptions / Stack Traces", href: "/product/stack-traces" },
       { label: "Monitors", href: "/product/monitors" },
       { label: "On-Call", href: "/product/on-call" },
+      { label: "Fleet Overview", href: "/product/fleet" },
     ],
   },
   {

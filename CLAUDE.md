@@ -265,6 +265,9 @@ DUCKDB_CHECKPOINT_THRESHOLD=          # e.g. 256MB. Unset = DuckDB default (16MB
 INGEST_MAX_CONCURRENT=                # max concurrently processed ingest requests. Unset = 2×CPU cores, min 4. Bounds ingest memory so overload sheds load with 503s instead of the process being OOM-killed (on DuckDB an OOM death is followed by a minutes-long WAL-replay stall on restart).
 INGEST_ADMISSION_WAIT_SECONDS=5       # how long a request may wait for a slot before the 503 + Retry-After; 0 = reject immediately when saturated
 
+# Email
+EMAIL_PREVIEW_ENABLED=false           # "true" registers GET /api/email-preview[/:template], rendering every email template with sample data for design review. Off by default; never enable in production.
+
 # Notifications
 NOTIFICATION_POLL_SECONDS=60          # polled rule evaluation interval; minimum 5, invalid values fall back to 60
 ONCALL_POLL_SECONDS=30                # on-call escalation worker interval; minimum 5, invalid values fall back to 30. Kept separate from NOTIFICATION_POLL_SECONDS so raising rule-evaluation intervals never delays paging. A buffered Wake() channel makes freshly opened pages notify L1 near-instantly regardless of this interval.
@@ -645,6 +648,7 @@ backend/
 | POST | `/api/metrics/query` | App | Custom metric queries |
 | GET | `/api/metrics/discover` | App | Discover available metrics |
 | GET | `/api/metrics/discover/tags` | App | Discover metric tags |
+| GET | `/api/metrics/discover/instances` | App | Distinct `server_name` values in a range (dashboard instance filter) |
 | PUT | `/api/metrics/registry` | App+Write | Update metric registry entry |
 
 **Dashboards & Templates**
@@ -680,7 +684,7 @@ Dashboards are org-owned JSON documents (`{schemaVersion, widgets: [{id, title, 
 | POST | `/api/dashboards/populate-defaults` | App+Write | Install the framework-default template set for an empty project |
 | GET | `/api/metrics/discover/org` | App | Metric names across all org projects (command palette) |
 
-Templates are DB rows seeded by migrations (`traceway-otel-agent` for the OTel host agent, `golang` for Go SDK apps, `traceway-clickhouse`/`traceway-duckdb` for the telemetry stores of a monitored Traceway instance; SQLite emits no store-specific metrics so it has no template); cloud can insert more rows without a release. The OTLP metric ingest allowlists per-resource grouping tags (`container.name`, `k8s.pod.name`, `k8s.node.name`, `postgresql.database.name`, ...) in `otelcontrollers/metric_converter.go` for custom widgets.
+Templates are DB rows seeded by migrations (`traceway-otel-agent` for the OTel host agent, `golang` for Go SDK apps, `traceway-clickhouse`/`traceway-duckdb` for the telemetry stores of a monitored Traceway instance; SQLite emits no store-specific metrics so it has no template); cloud can insert more rows without a release. The OTLP metric ingest allowlists per-resource identity and grouping tags (`host.name`, `host.id`, `os.type`, `cloud.region`, `container.name`, `k8s.cluster.name`, `k8s.pod.name`, `k8s.node.name`, `postgresql.database.name`, ...) in `otelcontrollers/metric_converter.go` for infrastructure views and custom widgets.
 
 **Endpoints**
 | Method | Endpoint | Auth | Purpose |
@@ -735,6 +739,19 @@ Frontend routes: `/ai-traces` (tabs: Traces, Conversations, Users), `/ai-traces/
 | DELETE | `/api/organizations/:orgId/members/:userId` | Admin | Remove member |
 | GET | `/api/organizations/:orgId/members/:userId/project-roles` | Admin | List member's per-project role overrides |
 | PUT | `/api/organizations/:orgId/members/:userId/project-roles/:projectId` | Admin | Set/clear a per-project role override |
+
+**Organization Overview** (`/organization` frontend route, tabs Overview | Issues | Monitors | Projects)
+
+Org-wide read views that fan out over every project of the org, in `organization_overview.controller.go`. `RequireOrganizationAccess` (any org role) gates them; the servers/issues/monitors handlers deliberately skip `Transactional` because they run per-project telemetry queries and must not hold the single-connection SQLite main DB across them (they open their own short `db.ExecuteTransaction` for the project list first). The pure main-DB pages endpoint keeps `Transactional`. The frontend renders `/organization` without the project sidebar and auto-lands there after login when the first org has more than one project (`frontend/src/lib/utils/landing.ts`).
+
+| Method | Endpoint | Auth | Purpose |
+|--------|----------|------|---------|
+| GET | `/api/organizations/:organizationId/overview/servers` | Member | One row per `server_name` per project over the last 30 min: CPU/memory/disk/network + a CPU sparkline, plus host/os/cloud/k8s metadata lifted from metric tags. Reads OTel hostmetrics (`system.cpu.utilization` state=idle inverted, `system.memory.utilization` state=used, `system.filesystem.utilization` state=used, `system.network.io` by direction) and falls back to the legacy SDK names (`cpu.used_pcnt`, `mem.used`/`mem.total`). A project that fails to read sets `partial: true` instead of failing the request |
+| GET | `/api/organizations/:organizationId/overview/issues` | Member | Recently active issues across all projects, last 24h, max 50, plus the true `totalGroups` |
+| GET | `/api/organizations/:organizationId/overview/pages` | Member | Active on-call pages across all projects + open-page and down-monitor counts |
+| GET | `/api/organizations/:organizationId/overview/monitors` | Member | Every synthetic check in the org with 30-day aggregates |
+
+Instance identity is the `server_name` tag, which comes from the OTLP `service.name` resource attribute; grouping by Kubernetes cluster keys off the `k8s.cluster.name` tag and the group selector only offers it when at least one instance carries one. Clicking a row opens `/dashboards?projectId=&server=&preset=30m` (plus `dashboard=` when the project has the `traceway-otel-agent` template applied); `server` scopes every widget query via `scopeTagFilters` in `widget-grid`/`widget-renderer`. Cluster-wide instrumentation manifests live in `examples/kubernetes/`, documented at `docs/pages/learn/kubernetes.mdx`.
 
 **Invitations**
 | Method | Endpoint | Auth | Purpose |
@@ -1213,6 +1230,18 @@ if err != nil {
 - **Non-stopping errors** (continue serving): `traceway.CaptureException(fmt.Errorf("reason: %w", err))`
 - **Validation errors** (user-facing): `c.JSON(422, gin.H{"error": "message"})` for form validation
 - **Always** wrap errors with `traceway.NewStackTraceErrorf` or `fmt.Errorf` using `%w` — never discard the original error
+
+### Emails
+
+Every email Traceway sends is a hardcoded template in `backend/app/services/emailtemplates/` (embedded with `go:embed`, parsed once at init). The copy of an email lives in its own `.gohtml` file; the payload is the only thing it interpolates. There is no shared layout document, so changing one email cannot reshape the others, and every file is a complete HTML document styled like the rest.
+
+Templates: `new_error`, `error_regression`, `check_down`, `check_recovered`, `alert` (the threshold email every rate/latency/apdex/throughput/task/impact/cost rule sends), `ai_flagged`, `page` (on-call escalation), `test` (both test buttons), `invitation`, `password_reset`.
+
+- **One send path** — `services.SendEmail(ctx, services.Email{...})` in `backend/app/services/email.service.go` is the only way mail leaves the process: it renders the template, wraps it as `multipart/alternative` (plaintext part first, quoted-printable), and talks SMTP. With `SMTP_ENABLED` off it logs the plaintext instead. `services.RenderEmail` is the render-only half, used by the preview endpoint.
+- **`services.Email`** carries the chrome every template shares (`Title`, `Badge`/`BadgeColor` via `EmailColor*`, `URL`, `Footer`, `LogoURL` defaulting to `{APP_BASE_URL}/traceway-mark.png`) plus `Template` and `Data`, the typed payload reached as `{{.Data.X}}`. `Text` is the plaintext alternative and must stand on its own.
+- **Notification payloads** live on `models.NotificationMessage.Email` (`models.NotificationEmail`: a template name plus one typed struct — `EmailException`, `EmailCheck`, `EmailAlert`, `EmailFlagged`, `EmailPage`, `EmailTest`). The builders in `notifications/messages.go` attach it; `services.NotificationEmail` turns a message into the `Email` at send time (severity chip, absolute link, "why you got this" footer). It rides through the notification outbox as JSON, so the shape is a wire format: add fields, never repurpose them. Only the email adapter reads it — Slack/Telegram/SMS/webhook and `fired_notifications` still see `Body` alone, so `Body` must always stay complete.
+- **Adding an email**: add `emailtemplates/<name>.gohtml`, add its payload struct, and call `SendEmail` with `Template: "<name>"`. For a new rule type that only needs a sentence and a link, reuse `alert` by filling `models.EmailAlert`.
+- **Preview**: `EMAIL_PREVIEW_ENABLED=true` registers `GET /api/email-preview` (index) and `GET /api/email-preview/:template`, which renders any template with sample data (`?format=text` shows the plaintext alternative). Off by default, so it is never a route in production. Sample data lives in `controllers/email_preview.controller.go`.
 
 ---
 

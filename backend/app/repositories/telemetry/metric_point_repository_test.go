@@ -280,6 +280,46 @@ func TestMetricPointRepository_GetDistinctServers(t *testing.T) {
 	}
 }
 
+func TestMetricPointRepository_LatestPerServer(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	projectId := uuid.New()
+	base := time.Now().UTC().Truncate(time.Second)
+
+	points := []models.MetricPoint{
+		makeMetricPoint(projectId, "cpu.used_pcnt", 10, map[string]string{"server_name": "api-1"}, base),
+		makeMetricPoint(projectId, "cpu.used_pcnt", 30, map[string]string{"server_name": "api-1", "os.type": "linux"}, base.Add(2*time.Minute)),
+		makeMetricPoint(projectId, "cpu.used_pcnt", 50, map[string]string{"server_name": "worker-1"}, base.Add(3*time.Minute)),
+		makeMetricPoint(projectId, "mem.used", 99, map[string]string{"server_name": "api-1"}, base.Add(4*time.Minute)),
+		makeMetricPoint(projectId, "cpu.used_pcnt", 70, nil, base.Add(5*time.Minute)),
+		makeMetricPoint(uuid.New(), "cpu.used_pcnt", 80, map[string]string{"server_name": "other"}, base.Add(6*time.Minute)),
+	}
+
+	if err := MetricPointRepository.InsertAsync(ctx, points); err != nil {
+		t.Fatalf("InsertAsync failed: %v", err)
+	}
+
+	latest, err := MetricPointRepository.LatestPerServer(ctx, projectId, "cpu.used_pcnt", base.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("LatestPerServer failed: %v", err)
+	}
+	if len(latest) != 2 {
+		t.Fatalf("LatestPerServer returned %d rows, want 2: %+v", len(latest), latest)
+	}
+	if latest[0].ServerName != "api-1" || latest[0].Value != 30 {
+		t.Errorf("latest[0] = %+v, want api-1 value 30", latest[0])
+	}
+	if !latest[0].LastReportedAt.Equal(base.Add(2 * time.Minute)) {
+		t.Errorf("api-1 timestamp = %s, want %s", latest[0].LastReportedAt, base.Add(2*time.Minute))
+	}
+	if latest[0].Tags["os.type"] != "linux" {
+		t.Errorf("api-1 tags = %v, want os.type=linux", latest[0].Tags)
+	}
+	if latest[1].ServerName != "worker-1" || latest[1].Value != 50 {
+		t.Errorf("latest[1] = %+v, want worker-1 value 50", latest[1])
+	}
+}
+
 func TestMetricPointRepository_InsertEmpty(t *testing.T) {
 	setupTestDB(t)
 	ctx := context.Background()

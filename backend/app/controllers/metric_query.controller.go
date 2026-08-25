@@ -118,13 +118,11 @@ type DiscoverResponse struct {
 	Metrics []models.DiscoveredMetric `json:"metrics"`
 }
 
-func (c *metricQueryController) Discover(ctx *gin.Context) {
-	projectId, err := middleware.GetProjectId(ctx)
-	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
-		return
-	}
+type DiscoverInstancesResponse struct {
+	Instances []string `json:"instances"`
+}
 
+func parseMetricDiscoveryRange(ctx *gin.Context) (time.Time, time.Time) {
 	from := time.Now().AddDate(0, 0, -7)
 	to := time.Now()
 
@@ -138,6 +136,18 @@ func (c *metricQueryController) Discover(ctx *gin.Context) {
 			to = parsed
 		}
 	}
+
+	return from, to
+}
+
+func (c *metricQueryController) Discover(ctx *gin.Context) {
+	projectId, err := middleware.GetProjectId(ctx)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return
+	}
+
+	from, to := parseMetricDiscoveryRange(ctx)
 
 	span := traceway.StartSpan(ctx, "discover metrics")
 	discovered, err := telemetry.MetricPointRepository.DiscoverMetrics(ctx, projectId, from, to)
@@ -168,6 +178,28 @@ func (c *metricQueryController) Discover(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, DiscoverResponse{Metrics: discovered})
+}
+
+func (c *metricQueryController) DiscoverInstances(ctx *gin.Context) {
+	projectId, err := middleware.GetProjectId(ctx)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return
+	}
+
+	from, to := parseMetricDiscoveryRange(ctx)
+	span := traceway.StartSpan(ctx, "discover instances")
+	instances, err := telemetry.MetricPointRepository.GetDistinctServers(ctx, projectId, from, to)
+	span.End()
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to discover instances: %w", err))
+		return
+	}
+	if instances == nil {
+		instances = []string{}
+	}
+
+	ctx.JSON(http.StatusOK, DiscoverInstancesResponse{Instances: instances})
 }
 
 const discoverOrgMaxProjects = 25

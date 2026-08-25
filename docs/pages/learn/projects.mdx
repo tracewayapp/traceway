@@ -25,6 +25,12 @@ The framework picker offers exactly nine options, and every backend takes the sa
 
 There is no Gin, Django, Laravel, or Hono entry, because the language and web framework are chosen later on the project's **Connection** page, which then shows the exact install and exporter setup. A meta-framework picks the framework it renders with: Next.js and Remix select **React**, SvelteKit selects **Svelte**, Nuxt selects **Vue.js**.
 
+## Organizations
+
+Projects live inside an **organization**, which is the boundary for everything that is not telemetry: members and roles, dashboards, teams, on-call schedules, escalation policies, and status pages. It is also what the [organization overview](/learn/organization-overview) summarizes, putting every instance, issue, monitor, and open page across all of the organization's projects on one screen.
+
+Split by project first. A second organization is right when two groups of projects should share no members, no dashboards, and no on-call rotation, an agency's separate clients for example. Splitting one fleet across organizations costs you the single view of it.
+
 ## Keep Backend Signals Together
 
 The main backend project should receive all server-side signals:
@@ -34,7 +40,7 @@ The main backend project should receive all server-side signals:
 - AI and LLM spans
 - Exceptions and OTel logs
 - Application and runtime metrics
-- Host CPU, memory, disk, filesystem, network, and process metrics from the [Traceway OTel Agent](/learn/otel-agent)
+- Host CPU, memory, disk, filesystem, network, and process metrics from the [Traceway OTel Agent](/learn/otel-agent), or from the [Kubernetes collectors](/learn/kubernetes) when the backend runs in a cluster
 
 APIs, workers, schedulers, and the host agent use the same backend project token. Give each process or host a stable `service.name` so it remains filterable inside the project:
 
@@ -131,6 +137,8 @@ The API and worker use different `service.name` values but the same backend proj
 
 ## Next Steps
 
+- [Organization Overview](/learn/organization-overview)
+- [Kubernetes](/learn/kubernetes)
 - [OpenTelemetry integration](/client/otel)
 - [OTel span mapping](/client/otel/traces)
 - [Traceway OTel Agent](/learn/otel-agent)

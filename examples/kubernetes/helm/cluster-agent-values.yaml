@@ -1,0 +1,84 @@
+# Traceway cluster agent, as values for the upstream OpenTelemetry Collector chart.
+#
+#   helm upgrade --install traceway-cluster-agent \
+#     open-telemetry/opentelemetry-collector \
+#     --namespace traceway \
+#     --values cluster-agent-values.yaml
+#
+# Reports cluster state metrics and Kubernetes events. Keep it at one replica:
+# a second copy would report every cluster metric twice.
+mode: deployment
+replicaCount: 1
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+
+presets:
+  clusterMetrics:
+    enabled: true
+  kubernetesEvents:
+    enabled: true
+
+extraEnvs:
+  - name: TRACEWAY_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: traceway-token
+        key: token
+  - name: TRACEWAY_ENDPOINT
+    valueFrom:
+      configMapKeyRef:
+        name: traceway-settings
+        key: TRACEWAY_ENDPOINT
+  - name: TRACEWAY_CLUSTER_NAME
+    valueFrom:
+      configMapKeyRef:
+        name: traceway-settings
+        key: TRACEWAY_CLUSTER_NAME
+
+config:
+  receivers:
+    k8s_cluster:
+      collection_interval: 30s
+      node_conditions_to_report: [Ready, MemoryPressure, DiskPressure, PIDPressure]
+      allocatable_types_to_report: [cpu, memory, storage, ephemeral-storage]
+
+  processors:
+    resource/cluster:
+      attributes:
+        - key: k8s.cluster.name
+          value: ${env:TRACEWAY_CLUSTER_NAME}
+          action: upsert
+        # Cluster-wide series belong to no node, so they report under the
+        # cluster's own name rather than any instance.
+        - key: service.name
+          value: ${env:TRACEWAY_CLUSTER_NAME}
+          action: upsert
+
+  exporters:
+    otlphttp/traceway:
+      endpoint: ${env:TRACEWAY_ENDPOINT}
+      headers:
+        Authorization: Bearer ${env:TRACEWAY_TOKEN}
+      compression: gzip
+      retry_on_failure:
+        enabled: true
+
+  service:
+    pipelines:
+      traces: null
+      metrics:
+        receivers: [k8s_cluster]
+        processors: [memory_limiter, resource/cluster, batch]
+        exporters: [otlphttp/traceway]
+      logs:
+        receivers: [k8sobjects]
+        processors: [memory_limiter, resource/cluster, batch]
+        exporters: [otlphttp/traceway]
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 200Mi
+  limits:
+    memory: 500Mi

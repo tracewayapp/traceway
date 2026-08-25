@@ -42,6 +42,14 @@ Templates are ready-made dashboards you install and then customize freely. The m
 
 Widgets can group series by resource tags such as `container.name`, `k8s.pod.name`, `k8s.node.name`, or `postgresql.database.name`, so one widget shows one line per container, pod, node, or database. Point the matching OpenTelemetry Collector receiver at your Traceway project's OTLP endpoint and build widgets on the metrics it reports.
 
+## Filtering by instance
+
+The instance picker in the dashboard header narrows every widget on the page to one reporting machine. It lists the `server_name` values seen in the selected time range, so it stays in step with what is actually reporting rather than with a static list.
+
+The scope is applied as an extra tag filter on each widget's queries, on top of whatever filters the widget already has. Nothing is saved to the dashboard, so it does not change what teammates see; it lives in the URL as `?server=<name>` and survives time-range changes, which makes the filtered view shareable.
+
+This is where a row in the [organization overview](/learn/organization-overview) leads. Selecting an instance there opens its project's dashboards already scoped to that machine over the last 30 minutes, jumping straight to the **OTelemetry Server Agent** tab when the project has it installed. Clear the picker to go back to the whole project.
+
 ## Dashboards as code
 
 Every dashboard is a single JSON document. Widget order in the array is the display order, and each widget carries its own config:

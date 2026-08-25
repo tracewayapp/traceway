@@ -135,6 +135,29 @@ func (r *syntheticCheckRepository) FindByIdInOrganization(tx *sql.Tx, id int, or
 	)
 }
 
+func (r *syntheticCheckRepository) FindByOrganization(tx *sql.Tx, organizationId int) ([]*models.SyntheticCheck, error) {
+	return lit.SelectNamed[models.SyntheticCheck](
+		tx,
+		"SELECT c.id, c.project_id, c.name, c.check_type, c.enabled, c.interval_seconds, c.timeout_seconds, c.config, c.failure_threshold, c.current_status, c.consecutive_failures, c.last_run_at, c.last_state_change_at, c.next_run_at, c.created_at, c.updated_at FROM synthetic_checks c JOIN projects p ON p.id = c.project_id WHERE p.organization_id = :organization_id ORDER BY c.name ASC, c.id ASC",
+		lit.P{"organization_id": organizationId},
+	)
+}
+
+func (r *syntheticCheckRepository) CountDownByOrganization(tx *sql.Tx, organizationId int) (int, error) {
+	result, err := lit.SelectSingleNamed[models.CountResult](
+		tx,
+		"SELECT COUNT(*) as count FROM synthetic_checks c JOIN projects p ON p.id = c.project_id WHERE p.organization_id = :organization_id AND c.enabled = true AND c.current_status = 'down'",
+		lit.P{"organization_id": organizationId},
+	)
+	if err != nil {
+		return 0, err
+	}
+	if result == nil {
+		return 0, nil
+	}
+	return result.Count, nil
+}
+
 func (r *syntheticCheckRepository) CountDownAll(tx *sql.Tx) (int, error) {
 	result, err := lit.SelectSingleNamed[models.CountResult](
 		tx,

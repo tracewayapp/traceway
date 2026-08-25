@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f6f8fa;">
+<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">The monitor {{.Data.Check.CheckName}} is down.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f6f8fa;">
+<tr><td align="center" style="padding:24px 16px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+<tr><td align="center" style="padding:16px 0;">
+<img src="{{.LogoURL}}" alt="Traceway" width="36" height="36" style="display:block;border:0;">
+</td></tr>
+<tr><td align="center" style="padding:0 8px 24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:22px;line-height:30px;font-weight:600;color:#1f2328;">{{.Title}}</td></tr>
+<tr><td style="background-color:#ffffff;border:1px solid #d1d9e0;border-radius:8px;padding:24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:21px;color:#1f2328;">
+{{if .Badge}}<div style="margin:0 0 16px;"><span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600;letter-spacing:0.5px;color:#ffffff;background-color:{{.BadgeColor}};">{{.Badge}}</span></div>{{end}}
+<p style="margin:0 0 16px;">The monitor <strong>{{.Data.Check.CheckName}}</strong> is failing and Traceway has opened an incident for it.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 16px;">
+<tr>
+<td style="padding:3px 16px 3px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:13px;line-height:20px;color:#59636e;white-space:nowrap;vertical-align:top;">Project</td>
+<td style="padding:3px 0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:20px;color:#1f2328;word-break:break-all;">{{.Data.Check.ProjectName}}</td>
+</tr>
+<tr>
+<td style="padding:3px 16px 3px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:13px;line-height:20px;color:#59636e;white-space:nowrap;vertical-align:top;">Consecutive failures</td>
+<td style="padding:3px 0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:20px;color:#1f2328;word-break:break-all;">{{.Data.Check.ConsecutiveFailures}}</td>
+</tr>
+</table>
+{{if .Data.Check.LastError}}<div style="margin:0 0 6px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:#59636e;">Last error</div>
+<pre style="margin:0 0 16px;padding:12px;background-color:#f6f8fa;border:1px solid #d1d9e0;border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:18px;color:#1f2328;white-space:pre-wrap;word-break:break-word;">{{.Data.Check.LastError}}</pre>
+{{end}}<table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:20px auto 4px;">
+<tr><td align="center" style="border:1px solid #d1d9e0;border-radius:6px;background-color:#ffffff;">
+<a href="{{.URL}}" style="display:inline-block;padding:10px 24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;font-weight:500;color:#1f2328;text-decoration:none;border-radius:6px;">View Monitor</a>
+</td></tr>
+</table>
+</td></tr>
+<tr><td align="center" style="padding:24px 8px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:13px;line-height:20px;color:#59636e;">
+Button not working? Paste the following link into your browser:<br>
+<a href="{{.URL}}" style="color:#0969da;text-decoration:none;word-break:break-all;">{{.URL}}</a>
+</td></tr>
+<tr><td style="padding:24px 0 0;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="border-top:1px solid #d1d9e0;font-size:0;line-height:0;">&nbsp;</td></tr></table>
+</td></tr>
+<tr><td align="center" style="padding:8px 8px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:12px;line-height:18px;color:#59636e;">
+{{if .Footer}}{{.Footer}}<br>{{end}}Traceway &middot; Error tracking &amp; monitoring
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>

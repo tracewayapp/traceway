@@ -20,6 +20,7 @@ import {
   LayoutDashboard,
   PhoneCall,
   Radar,
+  Boxes,
 } from "lucide-react";
 import { MobileNav } from "@/components/mobile-nav";
 import { DiscordIcon } from "@/components/discord-icon";
@@ -76,6 +77,12 @@ const PILLARS: NavItem[] = [
     description: "Rotating schedules, escalation policies, real paging.",
     href: "/product/on-call",
     icon: PhoneCall,
+  },
+  {
+    title: "Fleet Overview",
+    description: "Every server, cluster, and project on one page.",
+    href: "/product/fleet",
+    icon: Boxes,
   },
 ];
 

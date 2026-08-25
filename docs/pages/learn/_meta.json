@@ -2,6 +2,7 @@
   "index": "Overview",
   "data-flow": "Data Flow",
   "projects": "Project Structure",
+  "organization-overview": "Organization Overview",
   "traces": "Traces",
   "ai-tracing": "AI Tracing",
   "issues": "Issues",
@@ -25,6 +26,7 @@
   "mcp": "MCP Server",
   "embedded-mode": "Embedded Mode",
   "otel-agent": "OTel Agent",
+  "kubernetes": "Kubernetes",
   "build-tags": "Build Tags",
   "hardware-requirements": "Hardware Requirements",
   "contributing": "Contributing"

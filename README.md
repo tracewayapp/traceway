@@ -52,6 +52,7 @@ Traceway is an **OpenTelemetry-native** observability platform. It combines **lo
 - **Session Replay**: Watch what the user did right before the error. Available for web (any JS framework) and Flutter.
 - **AI Observability**: LLM cost, tokens, latency, and full conversations across providers (OpenRouter and any OTel-compatible AI gateway). Calls group into conversations via `gen_ai.conversation.id`, tool calls are parsed from completions and rendered in the chat view, and multi-language content flagging catches conversations containing terms you care about. Per-customer analytics (conversation length, cost per conversation) key on `user.id`: set it to a stable customer identifier such as your account or tenant id, the same value across all of that user's conversations, never a session id.
 - **On-Call & Paging**: Rotation schedules with layers and overrides, escalation policies, and pages that escalate until someone acknowledges. Delivered via email, Slack, Pushover, Telegram, or SMS, with one-click acknowledge links that need no login.
+- **Fleet Overview**: One organization-wide page above every project: each reporting instance with live CPU, memory, disk and network, plus issues, monitors and open pages across all projects. Kubernetes nodes group by cluster, and a single `kubectl apply` instruments a whole cluster.
 
 Plus: background-task (job) monitoring, configurable alerts (Slack / GitHub / email / webhook / Pushover / Telegram), multi-tenant orgs with role-based access, and a per-endpoint slow-threshold override.
 
@@ -291,6 +292,8 @@ Full documentation at **[docs.tracewayapp.com](https://docs.tracewayapp.com)**:
 - [**Self-Hosting**](https://docs.tracewayapp.com/server): Docker Compose and production deployment
 - [**Concepts**](https://docs.tracewayapp.com/learn): How tracing, exception fingerprinting, metrics, and alerts work
 - [**Embedded Mode**](https://docs.tracewayapp.com/learn/embedded-mode): Run Traceway inside your Go app
+- [**Kubernetes**](https://docs.tracewayapp.com/learn/kubernetes): Instrument a whole cluster with the manifests in [`examples/kubernetes`](./examples/kubernetes)
+- [**Organization Overview**](https://docs.tracewayapp.com/learn/organization-overview): Fleet health and cross-project triage on one page
 
 ## Community
 

@@ -1,0 +1,179 @@
+# Traceway OTLP gateway (optional)
+#
+# An in-cluster OTLP endpoint your applications export to instead of talking to
+# Traceway directly. Worth deploying when you want:
+#
+#   - the project token in one Secret instead of in every application's env
+#   - k8s.pod.name / k8s.namespace.name / k8s.deployment.name added to
+#     application metrics and logs automatically
+#   - one place to change the Traceway URL, batching, or retry behaviour
+#
+# Requires traceway-kubernetes.yaml to be applied first: it reuses the
+# traceway namespace, the traceway-collector ServiceAccount and RBAC, the
+# traceway-settings ConfigMap, and the traceway-token Secret.
+#
+#   kubectl apply -f traceway-gateway.yaml
+#
+# Then point applications at it:
+#
+#   OTEL_EXPORTER_OTLP_ENDPOINT=http://traceway-gateway.traceway.svc.cluster.local:4318
+#
+# and drop the Authorization header from the application; the gateway adds it.
+#
+# Docs: https://docs.tracewayapp.com/learn/kubernetes
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: traceway-gateway
+  namespace: traceway
+data:
+  config.yaml: |
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      memory_limiter:
+        check_interval: 2s
+        limit_percentage: 80
+        spike_limit_percentage: 20
+
+      batch:
+        send_batch_size: 512
+        timeout: 5s
+
+      k8sattributes:
+        auth_type: serviceAccount
+        passthrough: false
+        extract:
+          metadata:
+            - k8s.namespace.name
+            - k8s.pod.name
+            - k8s.pod.uid
+            - k8s.deployment.name
+            - k8s.node.name
+            - container.image.name
+        pod_association:
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.uid
+          - sources:
+              - from: connection
+
+      # Applications set their own service.name; only cluster identity is added
+      # here. Traceway groups instances by k8s.cluster.name.
+      resource/cluster:
+        attributes:
+          - key: k8s.cluster.name
+            value: ${env:TRACEWAY_CLUSTER_NAME}
+            action: upsert
+
+    exporters:
+      otlphttp/traceway:
+        endpoint: ${env:TRACEWAY_ENDPOINT}
+        headers:
+          Authorization: Bearer ${env:TRACEWAY_TOKEN}
+        compression: gzip
+        retry_on_failure:
+          enabled: true
+        sending_queue:
+          enabled: true
+          queue_size: 2000
+
+    service:
+      extensions: [health_check]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, resource/cluster, batch]
+          exporters: [otlphttp/traceway]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, resource/cluster, batch]
+          exporters: [otlphttp/traceway]
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, resource/cluster, batch]
+          exporters: [otlphttp/traceway]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traceway-gateway
+  namespace: traceway
+  labels:
+    app.kubernetes.io/name: traceway-gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: traceway-gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: traceway-gateway
+    spec:
+      serviceAccountName: traceway-collector
+      containers:
+        - name: collector
+          image: otel/opentelemetry-collector-contrib:0.154.0
+          args: ["--config=/conf/config.yaml"]
+          env:
+            - name: TRACEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: traceway-token
+                  key: token
+          envFrom:
+            - configMapRef:
+                name: traceway-settings
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+            - name: otlp-http
+              containerPort: 4318
+            - name: health
+              containerPort: 13133
+          livenessProbe:
+            httpGet:
+              path: /
+              port: health
+            initialDelaySeconds: 15
+          resources:
+            requests:
+              cpu: 200m
+              memory: 400Mi
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - name: config
+              mountPath: /conf
+      volumes:
+        - name: config
+          configMap:
+            name: traceway-gateway
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: traceway-gateway
+  namespace: traceway
+spec:
+  selector:
+    app.kubernetes.io/name: traceway-gateway
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
+    - name: otlp-http
+      port: 4318
+      targetPort: otlp-http

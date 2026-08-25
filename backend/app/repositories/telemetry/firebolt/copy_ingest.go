@@ -34,6 +34,9 @@ const copyNullMarker = `\N`
 var copyFileSeq atomic.Uint64
 
 func copyDirs() (local string, engine string, ok bool) {
+	if config.Config == nil {
+		return "", "", false
+	}
 	local = strings.TrimSpace(config.Config.FireboltCopyDir)
 	if local == "" {
 		return "", "", false

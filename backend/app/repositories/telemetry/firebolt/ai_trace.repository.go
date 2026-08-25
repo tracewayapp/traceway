@@ -252,7 +252,7 @@ func (r *aiTraceRepository) FindGroupedByTraceName(ctx context.Context, projectI
 	}
 	whereClause += shared.RootFilterClause("is_root", rootFilter)
 
-	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+	countResult, err := lit.SelectSingleNamed[fbCountResult](db.TelemetryDB,
 		"SELECT COUNT(DISTINCT trace_name) AS count FROM ai_traces WHERE "+whereClause, params)
 	if err != nil {
 		return nil, 0, err
@@ -335,7 +335,7 @@ func (r *aiTraceRepository) FindGroupedByTraceName(ctx context.Context, projectI
 func (r *aiTraceRepository) FindByTraceName(ctx context.Context, projectId uuid.UUID, traceName string, fromDate, toDate time.Time, page, pageSize int, orderBy, sortDirection string) ([]models.AiTrace, int64, error) {
 	params := lit.P{"project_id": projectId, "trace_name": traceName, "from": fromDate.UTC(), "to": toDate.UTC()}
 
-	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+	countResult, err := lit.SelectSingleNamed[fbCountResult](db.TelemetryDB,
 		"SELECT COUNT(*) AS count FROM ai_traces WHERE project_id = :project_id AND trace_name = :trace_name AND recorded_at >= :from AND recorded_at <= :to",
 		params)
 	if err != nil {

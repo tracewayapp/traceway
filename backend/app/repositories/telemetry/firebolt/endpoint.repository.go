@@ -183,7 +183,7 @@ func (e *endpointRepository) InsertAsync(ctx context.Context, lines []models.End
 }
 
 func (e *endpointRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {
-	result, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+	result, err := lit.SelectSingleNamed[fbCountResult](db.TelemetryDB,
 		"SELECT COUNT(*) AS count FROM endpoints WHERE project_id = :project_id AND DATE_TRUNC('minute', recorded_at) >= :from_min AND DATE_TRUNC('minute', recorded_at) <= :to_min",
 		minuteRangeParams(projectId, start, end))
 	if err != nil {
@@ -198,7 +198,7 @@ func (e *endpointRepository) CountBetween(ctx context.Context, projectId uuid.UU
 func (e *endpointRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string) ([]models.Endpoint, int64, error) {
 	params := lit.P{"project_id": projectId, "from": fromDate.UTC(), "to": toDate.UTC()}
 
-	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+	countResult, err := lit.SelectSingleNamed[fbCountResult](db.TelemetryDB,
 		"SELECT COUNT(*) AS count FROM endpoints WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to",
 		params)
 	if err != nil {
@@ -321,7 +321,7 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.UUID, endpointName string, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.Endpoint, int64, error) {
 	params := lit.P{"project_id": projectId, "endpoint": endpointName, "from": fromDate.UTC(), "to": toDate.UTC()}
 
-	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+	countResult, err := lit.SelectSingleNamed[fbCountResult](db.TelemetryDB,
 		"SELECT COUNT(*) AS count FROM endpoints WHERE project_id = :project_id AND endpoint = :endpoint AND recorded_at >= :from AND recorded_at <= :to",
 		params)
 	if err != nil {

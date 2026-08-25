@@ -171,7 +171,7 @@ func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearc
 			// snap can shift the total by <60s of edge rows (see indexMinuteRange).
 			countQuery, countArgs = r.indexCountQuery(params)
 		}
-		countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB, countQuery, countArgs)
+		countResult, err := lit.SelectSingleNamed[fbCountResult](db.TelemetryDB, countQuery, countArgs)
 		if err != nil {
 			return nil, 0, err
 		}

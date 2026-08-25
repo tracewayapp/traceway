@@ -158,7 +158,7 @@ func (e *exceptionStackTraceRepository) InsertAsync(ctx context.Context, lines [
 }
 
 func (e *exceptionStackTraceRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {
-	result, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+	result, err := lit.SelectSingleNamed[fbCountResult](db.TelemetryDB,
 		"SELECT COUNT(*) AS count FROM exception_stack_traces WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to",
 		lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()})
 	if err != nil {
@@ -236,7 +236,7 @@ func (e *exceptionStackTraceRepository) FindGrouped(ctx context.Context, project
 			WHERE ` + whereClause + `
 			GROUP BY e.exception_hash` + havingClause + `) AS sub`
 
-		countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB, countQuery, params)
+		countResult, err := lit.SelectSingleNamed[fbCountResult](db.TelemetryDB, countQuery, params)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -404,7 +404,7 @@ func (e *exceptionStackTraceRepository) UnarchiveByHashes(ctx context.Context, p
 }
 
 func (e *exceptionStackTraceRepository) IsArchived(ctx context.Context, projectId uuid.UUID, hash string) (bool, error) {
-	result, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+	result, err := lit.SelectSingleNamed[fbCountResult](db.TelemetryDB,
 		"SELECT COUNT(*) AS count FROM archived_exceptions WHERE project_id = :project_id AND exception_hash = :exception_hash",
 		lit.P{"project_id": projectId, "exception_hash": hash})
 	if err != nil {

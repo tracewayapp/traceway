@@ -124,7 +124,7 @@ func (e *taskRepository) InsertAsync(ctx context.Context, lines []models.Task) e
 }
 
 func (e *taskRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {
-	result, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+	result, err := lit.SelectSingleNamed[fbCountResult](db.TelemetryDB,
 		"SELECT COUNT(*) AS count FROM tasks WHERE project_id = :project_id AND "+indexMinuteRange("recorded_at"),
 		minuteRangeParams(projectId, start, end))
 	if err != nil {
@@ -137,7 +137,7 @@ func (e *taskRepository) CountBetween(ctx context.Context, projectId uuid.UUID, 
 }
 
 func (e *taskRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string) ([]models.Task, int64, error) {
-	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+	countResult, err := lit.SelectSingleNamed[fbCountResult](db.TelemetryDB,
 		"SELECT COUNT(*) AS count FROM tasks WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to",
 		lit.P{"project_id": projectId, "from": fromDate.UTC(), "to": toDate.UTC()})
 	if err != nil {
@@ -191,7 +191,7 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 	// database paginates.
 	totalCount := int64(0)
 	if !needsGoSort {
-		totalResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+		totalResult, err := lit.SelectSingleNamed[fbCountResult](db.TelemetryDB,
 			"SELECT COUNT(DISTINCT task_name) AS count FROM tasks WHERE "+whereClause,
 			params)
 		if err != nil {
@@ -296,7 +296,7 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID, taskName string, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.Task, int64, error) {
 	params := lit.P{"project_id": projectId, "task_name": taskName, "from": fromDate.UTC(), "to": toDate.UTC()}
 
-	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+	countResult, err := lit.SelectSingleNamed[fbCountResult](db.TelemetryDB,
 		"SELECT COUNT(*) AS count FROM tasks WHERE project_id = :project_id AND task_name = :task_name AND recorded_at >= :from AND recorded_at <= :to",
 		params)
 	if err != nil {

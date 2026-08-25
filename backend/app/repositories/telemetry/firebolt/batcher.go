@@ -42,6 +42,9 @@ var (
 
 func activeBatcher() *ingestBatcher {
 	batcherOnce.Do(func() {
+		if config.Config == nil {
+			return
+		}
 		ms, err := strconv.Atoi(strings.TrimSpace(config.Config.FireboltBatchMS))
 		if err != nil || ms <= 0 {
 			return

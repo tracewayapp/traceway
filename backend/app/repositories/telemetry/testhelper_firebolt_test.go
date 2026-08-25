@@ -33,6 +33,15 @@ func setupTestDB(t *testing.T) {
 	dbPart := ""
 	if database != "" {
 		dbPart = "/" + url.PathEscape(database)
+		bootstrap, err := sql.Open("firebolt", fmt.Sprintf("firebolt://?url=%s&client_side_lb=false", url.QueryEscape(engineURL)))
+		if err != nil {
+			t.Fatalf("failed to open firebolt: %v", err)
+		}
+		if _, err := bootstrap.Exec("CREATE DATABASE IF NOT EXISTS " + database); err != nil {
+			bootstrap.Close()
+			t.Fatalf("failed to create test database: %v", err)
+		}
+		bootstrap.Close()
 	}
 	dsn := fmt.Sprintf("firebolt://%s?url=%s&client_side_lb=false", dbPart, url.QueryEscape(engineURL))
 

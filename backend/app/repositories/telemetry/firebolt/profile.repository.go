@@ -174,7 +174,7 @@ func (r *profileRepository) FindGroupedByService(ctx context.Context, projectId 
 		countParams["search"] = search
 	}
 
-	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+	countResult, err := lit.SelectSingleNamed[fbCountResult](db.TelemetryDB,
 		`SELECT COUNT(*) AS count FROM (
 			SELECT 1 FROM profiles
 			WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to`+searchClause+`

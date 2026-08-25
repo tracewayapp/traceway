@@ -31,11 +31,19 @@ func parseNamed(query string, params lit.P) (string, []any, error) {
 	return lit.ParseNamedQuery(litDriver, query, params)
 }
 
+// fbCountResult exists because models.CountResult stays registered with the
+// main-DB dialect for the transactional repos — one global registration
+// cannot serve both databases.
+type fbCountResult struct {
+	Count int `lit:"count"`
+}
+
 // sqlitetypes registers these with the main-DB driver; lit's registry is
 // last-write-wins per type and this init runs later, so this rebinds them
 // to the `?` dialect. Nothing outside telemetry uses them.
 func init() {
 	registerModels(func(driver lit.Driver) {
+		lit.RegisterModel[fbCountResult](driver)
 		lit.RegisterModel[sqlitetypes.TimeSeriesResult](driver)
 		lit.RegisterModel[sqlitetypes.GroupedTimeSeriesResult](driver)
 		lit.RegisterModel[sqlitetypes.FilePathResult](driver)

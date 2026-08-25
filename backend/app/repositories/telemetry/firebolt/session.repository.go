@@ -120,7 +120,7 @@ func (r *sessionRepository) Upsert(ctx context.Context, sessions []models.Sessio
 }
 
 func (r *sessionRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {
-	result, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+	result, err := lit.SelectSingleNamed[fbCountResult](db.TelemetryDB,
 		"SELECT count(*) as count FROM sessions WHERE project_id = :project_id AND started_at >= :start AND started_at <= :end",
 		lit.P{"project_id": projectId, "start": start.UTC(), "end": end.UTC()})
 	if err != nil {
@@ -144,7 +144,7 @@ func (r *sessionRepository) FindAll(ctx context.Context, projectId uuid.UUID, fr
 	for k, v := range extraParams {
 		countParams[k] = v
 	}
-	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB, countQuery, countParams)
+	countResult, err := lit.SelectSingleNamed[fbCountResult](db.TelemetryDB, countQuery, countParams)
 	if err != nil {
 		return nil, 0, err
 	}

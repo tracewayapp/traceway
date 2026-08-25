@@ -12,7 +12,6 @@ linters:
         # Diagnostics on their way to the terminal. If stderr itself is broken
         # there is nowhere left to report that, and the command's exit code
         # already carries the outcome.
-        - fmt.Fprint
         - fmt.Fprintf
         - fmt.Fprintln
         # Cleanup of a temp file the happy path has already renamed away.

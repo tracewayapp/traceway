@@ -1,0 +1,70 @@
+name: CLI Lint
+
+# `cd cli && just check` is the documented pre-commit gate. cli.yml already
+# covers its test, contract-test and gen-skills-check recipes; this workflow
+# covers the remaining two, lint and vulncheck.
+#
+# Separate from cli.yml because the triggers differ: cli.yml also runs on
+# backend changes so the contract tests can catch backend drift, but nothing
+# in backend/ can change the result of linting or scanning the cli module.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "cli/**"
+      - ".github/workflows/cli-lint.yml"
+  pull_request:
+    paths:
+      - "cli/**"
+      - ".github/workflows/cli-lint.yml"
+
+permissions:
+  contents: read
+
+# Two jobs, not one: a lint nit and a stdlib CVE are different signals, and
+# neither should mask the other.
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+
+      # Pinned, not `latest`: a new linter release must never turn an unrelated
+      # PR red. Keep in step with the golangci-lint in cli/flake.nix so
+      # `just lint` and CI report the same thing.
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.13.1
+          working-directory: cli
+
+  vulncheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+
+      # Deliberately unpinned: the point is the newest vulnerability database.
+      # This job going red without a code change is the signal, not a defect --
+      # it means a CVE landed in a dependency or in the pinned Go toolchain.
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Vulncheck
+        run: govulncheck ./...

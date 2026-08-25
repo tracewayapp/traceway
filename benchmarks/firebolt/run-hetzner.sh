@@ -98,6 +98,27 @@ done
 run "hetzner-firebolt-spans-concurrency" --signal spans --reset=false --workers 16 \
     --batch-sizes 16384 --step-seconds ${STEP} --fill-levels 1 --cache-bust --probe-runs ${RUNS}
 
+# A/B: does the admission controller turn OOM-death into rejection under the
+# concurrency-killer workload? Needs Linux (spill/io_uring); swap the config,
+# restart, rerun the same cell, restore.
+cp /root/firebolt-config.yaml /root/firebolt-config.base.yaml
+cat > /root/firebolt-config.yaml <<'CFG2'
+schema_version: "1.0"
+engine:
+  auto_vacuum:
+    enabled: true
+execution:
+  admission_controller:
+    enabled: true
+CFG2
+docker restart firebolt >/dev/null
+for i in \$(seq 1 60); do curl -sf http://localhost:3473/health/ready >/dev/null && break; sleep 3; done
+run "hetzner-firebolt-spans-concurrency-admission" --signal spans --reset=false --workers 16 \
+    --batch-sizes 16384 --step-seconds ${STEP} --fill-levels 1 --cache-bust --probe-runs ${RUNS}
+cp /root/firebolt-config.base.yaml /root/firebolt-config.yaml
+docker restart firebolt >/dev/null
+for i in \$(seq 1 60); do curl -sf http://localhost:3473/health/ready >/dev/null && break; sleep 3; done
+
 # Firebolt tuned: aggregating indexes + VACUUM (io_uring works here)
 for sig in logs spans metrics; do
     fills="${FILL_STD}"; [ "\${sig}" = "logs" ] && fills="${FILL_LOGS}"

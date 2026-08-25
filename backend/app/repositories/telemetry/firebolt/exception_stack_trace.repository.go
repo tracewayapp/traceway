@@ -184,13 +184,17 @@ func (e *exceptionStackTraceRepository) FindGrouped(ctx context.Context, project
 		orderBy = "count"
 	}
 
+	// A stack-trace search filters a non-key column, which blocks the
+	// aggregating-index rewrite; only that path scans raw rows.
+	if search == "" {
+		return e.findGroupedIndexed(ctx, projectId, fromDate, toDate, pageSize, offset, orderBy, sortDirection, searchType, includeArchived)
+	}
+
 	params := lit.P{"project_id": projectId, "from": fromDate.UTC(), "to": toDate.UTC()}
 
 	whereClause := "e.project_id = :project_id AND e.recorded_at >= :from AND e.recorded_at <= :to"
-	if search != "" {
-		whereClause += " AND STRPOS(LOWER(e.stack_trace), LOWER(:search)) > 0"
-		params["search"] = search
-	}
+	whereClause += " AND STRPOS(LOWER(e.stack_trace), LOWER(:search)) > 0"
+	params["search"] = search
 	if searchType == "issues" {
 		whereClause += " AND e.is_message = 0"
 	} else if searchType == "messages" {
@@ -256,6 +260,144 @@ func (e *exceptionStackTraceRepository) FindGrouped(ctx context.Context, project
 		})
 	}
 
+	return groups, count, nil
+}
+
+// findGroupedIndexed serves the no-search grouped list from the aggregating
+// index: an index-served aggregate per hash joined with the archive map, then
+// a representative stack trace fetched only for the page's hashes (a bounded
+// scan the (project_id, exception_hash, recorded_at) primary index prunes).
+func (e *exceptionStackTraceRepository) findGroupedIndexed(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, pageSize, offset int, orderBy, sortDirection, searchType string, includeArchived bool) ([]models.ExceptionGroup, int64, error) {
+	params := minuteRangeParams(projectId, fromDate, toDate)
+	params["archive_project_id"] = projectId
+	params["limit"] = pageSize
+	params["offset"] = offset
+
+	whereClause := "e.project_id = :project_id AND " + indexMinuteRange("e.recorded_at")
+	if searchType == "issues" {
+		whereClause += " AND e.is_message = 0"
+	} else if searchType == "messages" {
+		whereClause += " AND e.is_message = 1"
+	}
+
+	archivedFilter := ""
+	if !includeArchived {
+		archivedFilter = " WHERE a.archived_at IS NULL OR i.last_seen > a.archived_at"
+	}
+
+	query := `SELECT i.exception_hash, i.count, i.last_seen, i.first_seen, a.archived_at AS max_archived_at, COUNT(*) OVER () AS total
+	FROM (
+		SELECT e.exception_hash, COUNT(*) AS count, MAX(e.recorded_at) AS last_seen, MIN(e.recorded_at) AS first_seen
+		FROM exception_stack_traces e
+		WHERE ` + whereClause + `
+		GROUP BY e.exception_hash
+	) i LEFT JOIN (
+		SELECT exception_hash, MAX(archived_at) AS archived_at
+		FROM archived_exceptions WHERE project_id = :archive_project_id
+		GROUP BY exception_hash
+	) a ON i.exception_hash = a.exception_hash` + archivedFilter + `
+	ORDER BY ` + orderBy + ` ` + sortDirection + ` LIMIT :limit OFFSET :offset`
+
+	parsedQuery, args, err := parseNamed(query, params)
+	if err != nil {
+		return nil, 0, err
+	}
+	sqlRows, err := db.TelemetryDB.QueryContext(ctx, parsedQuery, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer sqlRows.Close()
+
+	type aggRow struct {
+		hash      string
+		count     uint64
+		lastSeen  time.Time
+		firstSeen time.Time
+		total     int64
+	}
+	var rows []aggRow
+	for sqlRows.Next() {
+		var r aggRow
+		var maxArchived sql.NullTime
+		if err := sqlRows.Scan(&r.hash, &r.count, &r.lastSeen, &r.firstSeen, &maxArchived, &r.total); err != nil {
+			return nil, 0, err
+		}
+		rows = append(rows, r)
+	}
+	if err := sqlRows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	count := int64(0)
+	if len(rows) > 0 {
+		count = rows[0].total
+	} else if offset > 0 {
+		countQuery := `SELECT COUNT(*) AS count FROM (
+			SELECT i.exception_hash
+			FROM (
+				SELECT e.exception_hash, MAX(e.recorded_at) AS last_seen
+				FROM exception_stack_traces e
+				WHERE ` + whereClause + `
+				GROUP BY e.exception_hash
+			) i LEFT JOIN (
+				SELECT exception_hash, MAX(archived_at) AS archived_at
+				FROM archived_exceptions WHERE project_id = :archive_project_id
+				GROUP BY exception_hash
+			) a ON i.exception_hash = a.exception_hash` + archivedFilter + `) AS sub`
+		countResult, err := lit.SelectSingleNamed[fbCountResult](db.TelemetryDB, countQuery, params)
+		if err != nil {
+			return nil, 0, err
+		}
+		if countResult != nil {
+			count = int64(countResult.Count)
+		}
+	}
+
+	stacks := map[string]string{}
+	if len(rows) > 0 {
+		repParams := minuteRangeParams(projectId, fromDate, toDate)
+		placeholders := make([]string, len(rows))
+		for i, r := range rows {
+			key := fmt.Sprintf("h_%d", i)
+			placeholders[i] = ":" + key
+			repParams[key] = r.hash
+		}
+		repQuery := `SELECT exception_hash, MAX_BY(stack_trace, recorded_at) AS stack_trace
+			FROM exception_stack_traces
+			WHERE project_id = :project_id AND ` + indexMinuteRange("recorded_at") + `
+			AND exception_hash IN (` + strings.Join(placeholders, ",") + `)
+			GROUP BY exception_hash`
+		parsedRep, repArgs, err := parseNamed(repQuery, repParams)
+		if err != nil {
+			return nil, 0, err
+		}
+		repRows, err := db.TelemetryDB.QueryContext(ctx, parsedRep, repArgs...)
+		if err != nil {
+			return nil, 0, err
+		}
+		defer repRows.Close()
+		for repRows.Next() {
+			var hash, stack string
+			if err := repRows.Scan(&hash, &stack); err != nil {
+				return nil, 0, err
+			}
+			stacks[hash] = stack
+		}
+		if err := repRows.Err(); err != nil {
+			return nil, 0, err
+		}
+	}
+
+	groups := make([]models.ExceptionGroup, 0, len(rows))
+	for _, r := range rows {
+		groups = append(groups, models.ExceptionGroup{
+			ExceptionHash: r.hash,
+			StackTrace:    stacks[r.hash],
+			LastSeen:      r.lastSeen,
+			FirstSeen:     r.firstSeen,
+			Count:         r.count,
+		})
+	}
 	return groups, count, nil
 }
 

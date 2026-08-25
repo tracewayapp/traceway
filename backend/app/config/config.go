@@ -32,6 +32,7 @@ type Cfg struct {
 	FireboltDatabase      string
 	FireboltCopyDir       string
 	FireboltCopyDirEngine string
+	FireboltBatchMS       string
 
 	StorageType string
 	StoragePath string
@@ -168,6 +169,7 @@ func LoadFromEnv() *Cfg {
 		FireboltDatabase:      os.Getenv("FIREBOLT_DATABASE"),
 		FireboltCopyDir:       os.Getenv("FIREBOLT_COPY_DIR"),
 		FireboltCopyDirEngine: os.Getenv("FIREBOLT_COPY_DIR_ENGINE"),
+		FireboltBatchMS:       os.Getenv("FIREBOLT_BATCH_MS"),
 
 		ClickhouseServer:   os.Getenv("CLICKHOUSE_SERVER"),
 		ClickhouseDatabase: os.Getenv("CLICKHOUSE_DATABASE"),

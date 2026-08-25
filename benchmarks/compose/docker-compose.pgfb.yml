@@ -11,6 +11,7 @@ services:
     environment:
       FIREBOLT_URL: "http://firebolt:3473"
       FIREBOLT_COPY_DIR: "/var/lib/traceway-copy"
+      FIREBOLT_BATCH_MS: "${FIREBOLT_BATCH_MS:-200}"
       POSTGRES_HOST: "postgres"
       POSTGRES_PORT: "5432"
       POSTGRES_DATABASE: "traceway"

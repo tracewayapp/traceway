@@ -85,6 +85,13 @@ func insertRows(ctx context.Context, table string, columns []string, rows [][]an
 	if len(rows) == 0 {
 		return nil
 	}
+	if b := activeBatcher(); b != nil && b.enqueue(table, columns, rows) {
+		return nil
+	}
+	return insertRowsDirect(ctx, table, columns, rows)
+}
+
+func insertRowsDirect(ctx context.Context, table string, columns []string, rows [][]any) error {
 	if _, _, ok := copyDirs(); ok && len(rows) >= copyMinRows {
 		if err := copyIngest(ctx, table, columns, rows); err == nil {
 			return nil

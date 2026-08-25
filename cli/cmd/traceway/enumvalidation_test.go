@@ -20,19 +20,19 @@ func TestEnumFlagValidation_acceptsAndRejects(t *testing.T) {
 		args []string
 	}
 	type rejectCase struct {
-		name           string
-		args           []string
+		name            string
+		args            []string
 		expectFlagInMsg string
-		expectAllowed  []string
+		expectAllowed   []string
 	}
 
 	emptyOK := func(_ http.ResponseWriter, _ *http.Request) {}
 
 	tests := []struct {
-		group   string
+		group     string
 		emptyJSON string
-		valid   []validCase
-		reject  []rejectCase
+		valid     []validCase
+		reject    []rejectCase
 	}{
 		{
 			group:     "exceptions list --search-type",

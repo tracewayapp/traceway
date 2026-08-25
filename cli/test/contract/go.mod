@@ -1,6 +1,6 @@
 module github.com/tracewayapp/traceway/cli/test/contract
 
-go 1.26.2
+go 1.26.6
 
 require (
 	github.com/google/uuid v1.6.0

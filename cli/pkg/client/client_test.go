@@ -69,7 +69,7 @@ func TestDo_omitsAuthHeaderWhenJWTEmpty(t *testing.T) {
 		if got := r.Header.Get("Authorization"); got != "" {
 			t.Errorf("expected no Authorization header, got %q", got)
 		}
-		w.Write([]byte(`{}`))
+		_, _ = w.Write([]byte(`{}`))
 	}))
 	defer srv.Close()
 

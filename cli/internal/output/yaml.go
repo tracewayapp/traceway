@@ -25,6 +25,8 @@ func RenderYAML(w io.Writer, v any, fields []string) error {
 	}
 	enc := yaml.NewEncoder(w)
 	enc.SetIndent(2)
-	defer enc.Close()
+	// Encode flushes the whole document, so Close only finalizes the stream and
+	// has no buffered output left that could fail here.
+	defer func() { _ = enc.Close() }()
 	return enc.Encode(generic)
 }

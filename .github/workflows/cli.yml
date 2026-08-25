@@ -50,3 +50,54 @@ jobs:
         run: |
           go run ./tools/skillgen
           git diff --exit-code ../skills/traceway
+
+  # `just check` is documented as the pre-commit gate, so CI runs the two parts
+  # of it that build-test above does not. Kept as separate jobs: a lint nit and
+  # a stdlib CVE are different signals and neither should mask the test result.
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+
+      # Pinned, not @latest: a new linter release must never turn an unrelated
+      # PR red. Keep this in step with the golangci-lint in cli/flake.nix so
+      # `just lint` and CI report the same thing.
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
+
+      - name: Lint
+        run: golangci-lint run
+
+  vulncheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+
+      # Deliberately unpinned: the point is the newest vulnerability database.
+      # This job going red without a code change is the signal, not a defect --
+      # it means a CVE landed in a dependency or in the pinned Go toolchain.
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Vulncheck
+        run: govulncheck ./...

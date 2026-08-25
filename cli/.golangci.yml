@@ -1,0 +1,49 @@
+# Lint policy for the CLI module. `just check` is the documented pre-commit
+# gate, and CI enforces it (.github/workflows/cli.yml).
+#
+# Everything below is an exclusion, not a relaxation of a rule we intend to
+# follow: each entry is a call whose error is unactionable at the call site.
+version: "2"
+
+linters:
+  settings:
+    errcheck:
+      exclude-functions:
+        # Diagnostics on their way to the terminal. If stderr itself is broken
+        # there is nowhere left to report that, and the command's exit code
+        # already carries the outcome.
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        # Cleanup of a temp file the happy path has already renamed away.
+        # A failure here means the file is gone, which is the goal.
+        - os.Remove
+        # Close on a handle we are abandoning: either the write path already
+        # failed and that error is the one worth returning, or the value has
+        # been fully consumed.
+        - (*os.File).Close
+        - (io.ReadCloser).Close
+
+    staticcheck:
+      # golangci-lint's default set, minus one check. Spelled out because bare
+      # "all" is wider than the default: it turns on the ST1003 naming checks,
+      # which would rename Id -> ID across the client's wire structs.
+      checks:
+        - all
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        # QF1008 wants in.timeRangeIn.resolve() shortened to in.resolve().
+        # Naming the embedded struct documents which mixin supplies the method,
+        # which is worth more than the saved characters.
+        - -QF1008
+
+# gofmt only, not gofumpt: gofmt is the language's own baseline, so gating it
+# costs no style debate. The dev shell ships gofumpt for anyone who wants the
+# stricter pass locally.
+formatters:
+  enable:
+    - gofmt

@@ -1,0 +1,162 @@
+{
+  "tier": "ccx23",
+  "mode": "pgfb",
+  "signal": "spans",
+  "scenario": "read-probe",
+  "startedAt": "2026-08-25T22:21:06Z",
+  "endedAt": "2026-08-25T22:50:41Z",
+  "readProbe": {
+    "endpoints": [
+      {
+        "name": "endpoints-grouped",
+        "path": "/api/endpoints/grouped"
+      },
+      {
+        "name": "endpoints-chart",
+        "path": "/api/endpoints/chart"
+      },
+      {
+        "name": "exception-stack-traces",
+        "path": "/api/exception-stack-traces"
+      }
+    ],
+    "readPath": "/api/endpoints/grouped",
+    "readThresholdMs": 5000,
+    "settleSeconds": 10,
+    "fillBatchSize": 8192,
+    "fillRequestRate": 100,
+    "steps": [
+      {
+        "fillLevelTarget": 100000,
+        "rowsIngested": 1474560,
+        "ingestSecondsElapsed": 23.162144136,
+        "digestSeconds": 0.002133131,
+        "probes": [
+          {
+            "name": "endpoints-grouped",
+            "path": "/api/endpoints/grouped",
+            "latencyMs": 191.20074200000002,
+            "ok": true
+          },
+          {
+            "name": "endpoints-chart",
+            "path": "/api/endpoints/chart",
+            "latencyMs": 83.534485,
+            "ok": true
+          },
+          {
+            "name": "exception-stack-traces",
+            "path": "/api/exception-stack-traces",
+            "latencyMs": 17.721493000000002,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 83.534485,
+        "readLatencyMs": 83.534485,
+        "readOk": true,
+        "passed": true
+      },
+      {
+        "fillLevelTarget": 1000000,
+        "rowsIngested": 1474560,
+        "ingestSecondsElapsed": 0,
+        "digestSeconds": 0.00187578,
+        "probes": [
+          {
+            "name": "endpoints-grouped",
+            "path": "/api/endpoints/grouped",
+            "latencyMs": 41.662509,
+            "ok": true
+          },
+          {
+            "name": "endpoints-chart",
+            "path": "/api/endpoints/chart",
+            "latencyMs": 32.218686000000005,
+            "ok": true
+          },
+          {
+            "name": "exception-stack-traces",
+            "path": "/api/exception-stack-traces",
+            "latencyMs": 25.739933,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 32.218686000000005,
+        "readLatencyMs": 32.218686000000005,
+        "readOk": true,
+        "passed": true
+      },
+      {
+        "fillLevelTarget": 10000000,
+        "rowsIngested": 11370496,
+        "ingestSecondsElapsed": 147.466701238,
+        "digestSeconds": 0.001879133,
+        "probes": [
+          {
+            "name": "endpoints-grouped",
+            "path": "/api/endpoints/grouped",
+            "latencyMs": 553.111995,
+            "ok": true
+          },
+          {
+            "name": "endpoints-chart",
+            "path": "/api/endpoints/chart",
+            "latencyMs": 206.98261100000002,
+            "ok": true
+          },
+          {
+            "name": "exception-stack-traces",
+            "path": "/api/exception-stack-traces",
+            "latencyMs": 16.356944000000002,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 206.98261100000002,
+        "readLatencyMs": 206.98261100000002,
+        "readOk": true,
+        "passed": true
+      },
+      {
+        "fillLevelTarget": 100000000,
+        "rowsIngested": 101154816,
+        "ingestSecondsElapsed": 1561.315571828,
+        "digestSeconds": 0.002018768,
+        "probes": [
+          {
+            "name": "endpoints-grouped",
+            "path": "/api/endpoints/grouped",
+            "latencyMs": 759.934556,
+            "ok": false,
+            "error": "status 500"
+          },
+          {
+            "name": "endpoints-chart",
+            "path": "/api/endpoints/chart",
+            "latencyMs": 819.30052,
+            "ok": false,
+            "error": "status 500"
+          },
+          {
+            "name": "exception-stack-traces",
+            "path": "/api/exception-stack-traces",
+            "latencyMs": 16.616051,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 759.934556,
+        "readLatencyMs": 759.934556,
+        "readOk": false,
+        "passed": false,
+        "failReason": "probe endpoints-grouped failed: status 500 (latency 760ms)"
+      }
+    ],
+    "maxFillLevelPassed": 10000000
+  },
+  "maxFillLevelPassed": 10000000,
+  "sutContainer": {
+    "status": "running",
+    "oomKilled": false,
+    "exitCode": 0,
+    "restartCount": 0
+  }
+}

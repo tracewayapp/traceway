@@ -86,11 +86,11 @@ func (s *State) Save() error {
 	defer os.Remove(tmpName) // no-op if rename succeeded
 
 	if err := tmp.Chmod(0o600); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("chmod temp: %w", err)
 	}
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("writing temp: %w", err)
 	}
 	if err := tmp.Close(); err != nil {

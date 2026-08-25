@@ -30,7 +30,7 @@ Traceway is an error tracking and monitoring platform consisting of:
 | Backend | `cd backend && go run ./cmd/traceway` | API server (port 8082) |
 | CLI | `cd cli && just build` | Builds `bin/traceway` |
 | CLI | `cd cli && just test` | Runs unit tests |
-| CLI | `cd cli && just check` | Lint + test + vulncheck (pre-commit gate; CI enforces it for `cli/`) |
+| CLI | `cd cli && just check` | Lint + test + vulncheck + skill drift + contract tests (pre-commit gate; CI enforces it for `cli/`) |
 | CLI | `cd cli && just smoke-test` | Live E2E (needs `TRACEWAY_SMOKE_*` env vars) |
 
 Set `JWT_SECRET` (min 32 characters) before running the backend — it is the one variable with no default. `SQLITE_PATH` sets the database location, defaulting to `./traceway.db` in the working directory.

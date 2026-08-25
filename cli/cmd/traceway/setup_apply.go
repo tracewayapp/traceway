@@ -170,12 +170,12 @@ func runSetupApply(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return renderSetupAPIError(cmd.ErrOrStderr(), mode, err)
 	}
-	fmt.Fprintf(cmd.ErrOrStderr(), "Applying plan to organization %q on %s as %s\n", session.OrganizationName, url, session.Email)
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Applying plan to organization %q on %s as %s\n", session.OrganizationName, url, session.Email)
 
 	if err := c.SubmitSetupPlan(ctx, plan.Projects); err != nil {
 		return renderSetupAPIError(cmd.ErrOrStderr(), mode, err)
 	}
-	fmt.Fprintf(cmd.ErrOrStderr(), "Plan submitted. Ask the user to review and approve it at %s/setup (it also appears on the registration page if they still have it open).\nWaiting for approval...\n", url)
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Plan submitted. Ask the user to review and approve it at %s/setup (it also appears on the registration page if they still have it open).\nWaiting for approval...\n", url)
 
 	projects, err := waitForSetupDecision(ctx, cmd.ErrOrStderr(), mode, c)
 	if err != nil {
@@ -299,13 +299,13 @@ func renderSetupApplySummary(out io.Writer, mode output.Mode, summaries []setupA
 	}
 
 	tw := output.NewTabWriter(out)
-	fmt.Fprintln(tw, "NAME\tFRAMEWORK\tSTATUS\tENV\tDASHBOARD")
+	_, _ = fmt.Fprintln(tw, "NAME\tFRAMEWORK\tSTATUS\tENV\tDASHBOARD")
 	for _, s := range summaries {
 		env := "-"
 		if s.EnvFile != "" {
 			env = fmt.Sprintf("%s (%s, %s)", s.EnvFile, s.EnvVar, s.EnvResult)
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", s.Name, s.Framework, s.Status, env, s.DashboardURL)
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", s.Name, s.Framework, s.Status, env, s.DashboardURL)
 	}
 	if err := tw.Flush(); err != nil {
 		return err
@@ -318,13 +318,13 @@ func renderSetupApplySummary(out io.Writer, mode output.Mode, summaries []setupA
 		}
 	}
 	if len(withDeployment) > 0 {
-		fmt.Fprintln(out, "\nNext steps (deployment credentials):")
+		_, _ = fmt.Fprintln(out, "\nNext steps (deployment credentials):")
 		for _, p := range withDeployment {
 			credential := p.EnvVar
 			if credential == "" {
 				credential = "its Traceway credential"
 			}
-			fmt.Fprintf(out, "  - %s: add %s to %s. The exact command with the secret value is on %s/setup.\n", p.Name, credential, p.Deployment.Platform, url)
+			_, _ = fmt.Fprintf(out, "  - %s: add %s to %s. The exact command with the secret value is on %s/setup.\n", p.Name, credential, p.Deployment.Platform, url)
 		}
 	}
 	return nil

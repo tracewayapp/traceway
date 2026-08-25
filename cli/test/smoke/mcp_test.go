@@ -61,7 +61,7 @@ func TestMcp_stdioHandshake(t *testing.T) {
 	}
 	defer func() { _ = cmd.Process.Kill() }()
 
-	fmt.Fprintln(stdin, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}`)
+	_, _ = fmt.Fprintln(stdin, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}`)
 
 	line := make(chan string, 1)
 	go func() {

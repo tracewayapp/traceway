@@ -40,14 +40,14 @@ optional TRACEWAY_PROJECT default project id.`,
 func runMcp(cmd *cobra.Command, _ []string) error {
 	cfg, err := resolveMcpConfig(cmd.ErrOrStderr())
 	if err != nil {
-		fmt.Fprintln(cmd.ErrOrStderr(), "traceway mcp:", err)
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "traceway mcp:", err)
 		return newCLIError(exitcode.Auth, "not_authenticated")
 	}
 
 	srv := mcpserver.New(cfg)
 	err = srv.Run(cmd.Context(), &mcp.StdioTransport{})
 	if err != nil && !errors.Is(err, cmd.Context().Err()) && !isClientDisconnect(err) {
-		fmt.Fprintln(cmd.ErrOrStderr(), "traceway mcp:", err)
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "traceway mcp:", err)
 		return newCLIError(exitcode.Generic, "mcp_server_failed")
 	}
 	return nil
@@ -81,7 +81,7 @@ func resolveMcpConfig(errOut io.Writer) (mcpserver.Config, error) {
 	url, token := os.Getenv("TRACEWAY_URL"), os.Getenv("TRACEWAY_TOKEN")
 	if url != "" || token != "" {
 		if flagProfile != "" {
-			fmt.Fprintln(errOut, "traceway mcp: ignoring TRACEWAY_URL/TRACEWAY_TOKEN because --profile was given")
+			_, _ = fmt.Fprintln(errOut, "traceway mcp: ignoring TRACEWAY_URL/TRACEWAY_TOKEN because --profile was given")
 		} else {
 			if url == "" || token == "" {
 				return mcpserver.Config{}, errors.New("TRACEWAY_URL and TRACEWAY_TOKEN must be set together")

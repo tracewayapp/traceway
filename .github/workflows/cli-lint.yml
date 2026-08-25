@@ -7,6 +7,9 @@ name: CLI Lint
 # Separate from cli.yml because the triggers differ: cli.yml also runs on
 # backend changes so the contract tests can catch backend drift, but nothing
 # in backend/ can change the result of linting or scanning the cli module.
+#
+# Scope note: cli/test/contract is a separate Go module, so `./...` does not
+# reach it and neither job covers it. It is test-only and ships nothing.
 on:
   push:
     branches: [main]
@@ -17,6 +20,12 @@ on:
     paths:
       - "cli/**"
       - ".github/workflows/cli-lint.yml"
+  # A CVE lands in the vulnerability database without anyone pushing a commit.
+  # Without this, the vulncheck job below could only ever fire on a cli/ change
+  # -- 6% of commits -- so a new advisory could sit unreported for weeks.
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -25,6 +34,9 @@ permissions:
 # neither should mask the other.
 jobs:
   lint:
+    # The daily run exists for the vulnerability database. Lint is pinned and
+    # deterministic, so re-running it on a timer would only add noise.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -37,8 +49,9 @@ jobs:
           cache-dependency-path: cli/go.sum
 
       # Pinned, not `latest`: a new linter release must never turn an unrelated
-      # PR red. Keep in step with the golangci-lint in cli/flake.nix so
-      # `just lint` and CI report the same thing.
+      # PR red. CI is authoritative for the version -- cli/flake.nix takes
+      # whatever golangci-lint its nixpkgs input carries and cannot pin one, so
+      # a local `just lint` can legitimately differ after a flake update.
       - name: Lint
         uses: golangci/golangci-lint-action@v9
         with:
@@ -60,11 +73,12 @@ jobs:
           go-version-file: cli/go.mod
           cache-dependency-path: cli/go.sum
 
-      # Deliberately unpinned: the point is the newest vulnerability database.
-      # This job going red without a code change is the signal, not a defect --
-      # it means a CVE landed in a dependency or in the pinned Go toolchain.
+      # Pinned like the linter, and for the same reason. Pinning costs no
+      # freshness: govulncheck fetches the advisory database from vuln.go.dev
+      # at run time, so the schedule above is what keeps this current, not the
+      # tool version.
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
 
       - name: Vulncheck
         run: govulncheck ./...

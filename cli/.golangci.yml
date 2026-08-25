@@ -1,26 +1,26 @@
 # Lint policy for the CLI module. `just check` is the documented pre-commit
-# gate, and CI enforces it (.github/workflows/cli.yml).
+# gate, and CI enforces it (.github/workflows/cli-lint.yml).
 #
-# Everything below is an exclusion, not a relaxation of a rule we intend to
-# follow: each entry is a call whose error is unactionable at the call site.
+# Exclusions are kept narrow. Where the codebase already checks a function's
+# error somewhere, the unactionable call sites get an explicit `_ =` instead of
+# a module-wide exclusion, so the linter keeps guarding the sites that matter.
 version: "2"
+
+run:
+  # cli/test/smoke sits behind //go:build smoke, so the default package load
+  # cannot see it. It is the module's largest end-to-end surface; lint it too.
+  build-tags:
+    - smoke
 
 linters:
   settings:
     errcheck:
       exclude-functions:
-        # Diagnostics on their way to the terminal. If stderr itself is broken
-        # there is nowhere left to report that, and the command's exit code
-        # already carries the outcome.
-        - fmt.Fprintf
-        - fmt.Fprintln
         # Cleanup of a temp file the happy path has already renamed away.
         # A failure here means the file is gone, which is the goal.
         - os.Remove
-        # Close on a handle we are abandoning: either the write path already
-        # failed and that error is the one worth returning, or the value has
-        # been fully consumed.
-        - (*os.File).Close
+        # A response body being abandoned: the status code and any decode
+        # error are what the caller acts on.
         - (io.ReadCloser).Close
 
     staticcheck:
@@ -46,3 +46,9 @@ linters:
 formatters:
   enable:
     - gofmt
+
+issues:
+  # A gate should show everything it found. The defaults cap output at 50 per
+  # linter and 3 per identical message, which silently hides real hits.
+  max-issues-per-linter: 0
+  max-same-issues: 0

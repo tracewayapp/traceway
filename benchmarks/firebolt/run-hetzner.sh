@@ -55,7 +55,7 @@ engine:
     enabled: true
 CFG
 docker run -d --name firebolt --restart on-failure:3 -p 3473:3473 \
-    --security-opt seccomp=unconfined \
+    --security-opt seccomp=unconfined --ulimit memlock=-1:-1 \
     -v /root/firebolt-data:/var/lib/firebolt \
     -v /root/firebolt-config.yaml:/etc/firebolt/config.yaml:ro \
     ${FIREBOLT_IMAGE} server --data-dir /var/lib/firebolt --server-config /etc/firebolt/config.yaml

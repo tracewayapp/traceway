@@ -60,6 +60,11 @@ services:
       nofile:
         soft: 262144
         hard: 262144
+      # io_uring registered buffers count against RLIMIT_MEMLOCK; Docker's
+      # default is far too small once seccomp allows io_uring.
+      memlock:
+        soft: -1
+        hard: -1
 
   postgres:
     image: postgres:17

@@ -15,7 +15,14 @@ var DB *sql.DB          // PostgreSQL-replacement: relational/config data (trans
 var TelemetryDB *sql.DB // ClickHouse-replacement: append-only telemetry data (non-transactional)
 var Driver lit.Driver = lit.PostgreSQL
 
+// TelemetryDriver is the lit dialect for TelemetryDB. Every embedded/engine
+// telemetry store (SQLite, DuckDB, Firebolt) takes `?` placeholders, so this
+// stays lit.SQLite even when the main DB is Postgres; ClickHouse builds have
+// no TelemetryDB and never use it.
+var TelemetryDriver lit.Driver = lit.SQLite
+
 var telemetryIsDuckDB bool
+var telemetryIsFirebolt bool
 
 func IsSQLite() bool {
 	return Driver == lit.SQLite

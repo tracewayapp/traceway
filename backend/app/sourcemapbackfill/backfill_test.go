@@ -1,4 +1,4 @@
-//go:build !telemetry_ch
+//go:build !telemetry_ch && !telemetry_firebolt
 
 package sourcemapbackfill
 

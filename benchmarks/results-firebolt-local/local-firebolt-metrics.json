@@ -1,0 +1,210 @@
+{
+  "target": "http://localhost:3473",
+  "engineVersion": "5.0.0-pre.0.20260822175432.75d37cc26c66",
+  "scenario": "firebolt-direct",
+  "signal": "metrics",
+  "workers": 4,
+  "startedAt": "2026-08-24T10:42:25.960573Z",
+  "endedAt": "2026-08-24T10:44:38.142052Z",
+  "ingestRamp": [
+    {
+      "batchSize": 256,
+      "seconds": 15.040763625,
+      "requests": 936,
+      "errors": 0,
+      "rowsAcked": 239616,
+      "rowsPerSec": 15931.106024545346,
+      "p50Ms": 62.485667,
+      "p95Ms": 91.650625,
+      "p99Ms": 109.140292,
+      "avgPayloadBytes": 34592
+    },
+    {
+      "batchSize": 1024,
+      "seconds": 15.050048625,
+      "requests": 732,
+      "errors": 0,
+      "rowsAcked": 749568,
+      "rowsPerSec": 49805.02180935645,
+      "p50Ms": 79.634541,
+      "p95Ms": 121.003292,
+      "p99Ms": 148.7855,
+      "avgPayloadBytes": 138271
+    },
+    {
+      "batchSize": 4096,
+      "seconds": 15.06289525,
+      "requests": 453,
+      "errors": 0,
+      "rowsAcked": 1855488,
+      "rowsPerSec": 123182.69291556017,
+      "p50Ms": 120.472875,
+      "p95Ms": 203.583375,
+      "p99Ms": 242.321291,
+      "avgPayloadBytes": 552990
+    },
+    {
+      "batchSize": 8192,
+      "seconds": 15.134768291,
+      "requests": 388,
+      "errors": 0,
+      "rowsAcked": 3178496,
+      "rowsPerSec": 210012.86170268728,
+      "p50Ms": 145.821125,
+      "p95Ms": 194.27175,
+      "p99Ms": 235.159291,
+      "avgPayloadBytes": 1105952
+    },
+    {
+      "batchSize": 16384,
+      "seconds": 15.167574541,
+      "requests": 262,
+      "errors": 0,
+      "rowsAcked": 4292608,
+      "rowsPerSec": 283012.1578368711,
+      "p50Ms": 206.117917,
+      "p95Ms": 284.994166,
+      "p99Ms": 327.7895,
+      "avgPayloadBytes": 2211869
+    }
+  ],
+  "maxRowsPerSec": 283012.1578368711,
+  "fillLevels": [
+    {
+      "target": 1000000,
+      "tableRows": 1032192,
+      "fillSeconds": 5.750520167,
+      "fillRowsPerSec": 179495.4143319675,
+      "queries": [
+        {
+          "name": "timeseries-avg-1m",
+          "runsMs": [
+            102.21225,
+            5.520541,
+            5.006875,
+            4.724708,
+            4.655291
+          ],
+          "minMs": 4.655291,
+          "medianMs": 5.006875,
+          "serverElapsedMs": [
+            99.897,
+            3.968,
+            3.527,
+            3.332,
+            3.165
+          ],
+          "rowsReturned": 1441
+        },
+        {
+          "name": "timeseries-grouped-by-tag",
+          "runsMs": [
+            84.848667,
+            8.203625,
+            8.379625,
+            8.4455,
+            8.704292
+          ],
+          "minMs": 8.203625,
+          "medianMs": 8.4455,
+          "serverElapsedMs": [
+            83.015,
+            6.666,
+            6.938,
+            6.912,
+            7.178
+          ],
+          "rowsReturned": 5764
+        },
+        {
+          "name": "discover-names",
+          "runsMs": [
+            41.593375,
+            4.410292,
+            3.78625,
+            3.47925,
+            3.425334
+          ],
+          "minMs": 3.425334,
+          "medianMs": 3.78625,
+          "serverElapsedMs": [
+            39.853,
+            3.205,
+            2.666,
+            2.3040000000000003,
+            2.366
+          ],
+          "rowsReturned": 10
+        }
+      ]
+    },
+    {
+      "target": 10000000,
+      "tableRows": 10027008,
+      "fillSeconds": 45.8464725,
+      "fillRowsPerSec": 196194.28735765876,
+      "queries": [
+        {
+          "name": "timeseries-avg-1m",
+          "runsMs": [
+            886.894084,
+            10.557667,
+            8.89575,
+            9.339042,
+            9.059
+          ],
+          "minMs": 8.89575,
+          "medianMs": 9.339042,
+          "serverElapsedMs": [
+            882.364,
+            8.873000000000001,
+            7.341,
+            6.991,
+            7.452
+          ],
+          "rowsReturned": 1442
+        },
+        {
+          "name": "timeseries-grouped-by-tag",
+          "runsMs": [
+            660.212875,
+            12.380458,
+            12.496,
+            10.810542,
+            14.259459
+          ],
+          "minMs": 10.810542,
+          "medianMs": 12.496,
+          "serverElapsedMs": [
+            656.313,
+            10.375,
+            10.370000000000001,
+            9.254,
+            12.575
+          ],
+          "rowsReturned": 5768
+        },
+        {
+          "name": "discover-names",
+          "runsMs": [
+            325.481792,
+            6.709375,
+            5.510792,
+            5.921875,
+            5.877792
+          ],
+          "minMs": 5.510792,
+          "medianMs": 5.921875,
+          "serverElapsedMs": [
+            322.595,
+            5.595,
+            4.32,
+            4.720000000000001,
+            4.776
+          ],
+          "rowsReturned": 10
+        }
+      ]
+    }
+  ]
+}

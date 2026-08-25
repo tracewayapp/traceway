@@ -1,4 +1,4 @@
-//go:build !transactional_pg || (!telemetry_ch && !telemetry_duckdb)
+//go:build !transactional_pg || (!telemetry_ch && !telemetry_duckdb && !telemetry_firebolt)
 
 package db
 

@@ -8,7 +8,7 @@
 # 5. Poll /health until 200.
 #
 # Usage: sut-bootstrap.sh <sut-public-ip> <mode>
-#   <mode>  sqlite | duckdb | pgch | managed-ch
+#   <mode>  sqlite | duckdb | pgch | pgfb | managed-ch
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -24,8 +24,8 @@ SUT_IP="$1"
 MODE="$2"
 
 case "${MODE}" in
-    sqlite|duckdb|pgch|managed-ch) ;;
-    *) echo "mode must be sqlite, duckdb, pgch, or managed-ch, got: ${MODE}" >&2; exit 2 ;;
+    sqlite|duckdb|pgch|pgfb|managed-ch) ;;
+    *) echo "mode must be sqlite, duckdb, pgch, pgfb, or managed-ch, got: ${MODE}" >&2; exit 2 ;;
 esac
 
 if [[ "${MODE}" == "managed-ch" ]]; then

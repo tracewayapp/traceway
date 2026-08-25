@@ -1,0 +1,136 @@
+{
+  "target": "http://localhost:3473",
+  "dialect": "firebolt",
+  "engineVersion": "5.0.0-pre.0.20260822175432.75d37cc26c66",
+  "scenario": "engine-direct",
+  "signal": "spans",
+  "workers": 4,
+  "startedAt": "2026-08-24T12:23:50.605156Z",
+  "endedAt": "2026-08-24T15:03:56.875648Z",
+  "maxRowsPerSec": 0,
+  "fillLevels": [
+    {
+      "target": 30000000,
+      "tableRows": 30031872,
+      "fillSeconds": 638.054943333,
+      "fillRowsPerSec": 47067.846294118295,
+      "writeRowsPerSecDuringProbes": 27228.569773878582,
+      "queries": [
+        {
+          "name": "grouped-endpoints",
+          "runsMs": [
+            101122.596292,
+            59021.697792,
+            61994.255625,
+            58734.823584,
+            60783.633292
+          ],
+          "minMs": 58734.823584,
+          "medianMs": 60783.633292,
+          "serverElapsedMs": [
+            552252.395,
+            59003.065,
+            115938.123,
+            58719.091,
+            60763.703
+          ],
+          "rowsReturned": 13
+        },
+        {
+          "name": "endpoint-latency-chart",
+          "runsMs": [
+            73881.50425,
+            68133.003666,
+            67002.825834,
+            73356.553833,
+            74645.794209
+          ],
+          "minMs": 67002.825834,
+          "medianMs": 73356.553833,
+          "serverElapsedMs": [
+            73864.177,
+            68118.40100000001,
+            66989.246,
+            73343.409,
+            74631.473
+          ],
+          "rowsReturned": 296
+        },
+        {
+          "name": "grouped-endpoints-under-write",
+          "runsMs": [
+            48644.195875,
+            66414.744083,
+            71627.562167,
+            68226.664958,
+            68274.552625
+          ],
+          "minMs": 48644.195875,
+          "medianMs": 68226.664958,
+          "serverElapsedMs": [
+            48585.984000000004,
+            66338.345,
+            191725.432,
+            68187.423,
+            68219.224
+          ],
+          "rowsReturned": 13
+        },
+        {
+          "name": "endpoint-latency-chart-under-write",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "firebolt error: Out of memory - Exceeded available 6.85 GiB RAM. Consider using an engine with more RAM."
+        }
+      ]
+    },
+    {
+      "target": 100000000,
+      "tableRows": 100032512,
+      "fillSeconds": 2321.356604083,
+      "fillRowsPerSec": 25503.872992140754,
+      "writeRowsPerSecDuringProbes": 18036.607919698425,
+      "queries": [
+        {
+          "name": "grouped-endpoints",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+        },
+        {
+          "name": "endpoint-latency-chart",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+        },
+        {
+          "name": "grouped-endpoints-under-write",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "firebolt error: Out of memory - Exceeded available 6.85 GiB RAM. Consider using an engine with more RAM."
+        },
+        {
+          "name": "endpoint-latency-chart-under-write",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+        }
+      ]
+    }
+  ]
+}

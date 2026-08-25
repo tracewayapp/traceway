@@ -28,6 +28,9 @@ type Cfg struct {
 	ClickhousePassword string
 	ClickhouseTLS      string
 
+	FireboltURL      string
+	FireboltDatabase string
+
 	StorageType string
 	StoragePath string
 	S3Bucket    string
@@ -158,6 +161,9 @@ func LoadFromEnv() *Cfg {
 		DuckDBMemoryLimit:         os.Getenv("DUCKDB_MEMORY_LIMIT"),
 		DuckDBThreads:             os.Getenv("DUCKDB_THREADS"),
 		DuckDBCheckpointThreshold: os.Getenv("DUCKDB_CHECKPOINT_THRESHOLD"),
+
+		FireboltURL:      os.Getenv("FIREBOLT_URL"),
+		FireboltDatabase: os.Getenv("FIREBOLT_DATABASE"),
 
 		ClickhouseServer:   os.Getenv("CLICKHOUSE_SERVER"),
 		ClickhouseDatabase: os.Getenv("CLICKHOUSE_DATABASE"),

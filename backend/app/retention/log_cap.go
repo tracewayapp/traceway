@@ -13,7 +13,7 @@ import (
 const logCapTickInterval = time.Minute
 
 func startLogRecordsCap(ctx context.Context, maxRows int) {
-	if !db.IsSQLite() || maxRows <= 0 {
+	if db.TelemetryDB == nil || maxRows <= 0 {
 		return
 	}
 

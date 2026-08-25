@@ -1,0 +1,70 @@
+# pgfb mode: Postgres main DB + Firebolt telemetry — the Firebolt twin of
+# docker-compose.pgch.yml. The Firebolt engine image is a dev preview; pin a
+# different tag via FIREBOLT_IMAGE when Firebolt publishes stable ones.
+services:
+  traceway:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.firebolt
+    ports:
+      - "${BENCH_PORT:-8087}:80"
+    environment:
+      FIREBOLT_URL: "http://firebolt:3473"
+      POSTGRES_HOST: "postgres"
+      POSTGRES_PORT: "5432"
+      POSTGRES_DATABASE: "traceway"
+      POSTGRES_USERNAME: "traceway"
+      POSTGRES_PASSWORD: "traceway"
+      POSTGRES_SSLMODE: "disable"
+      JWT_SECRET: "bench-jwt-secret-not-for-production-use-only-32chars+"
+      HEALTH_DEEP_TOKEN: "bench-health-token-not-for-production"
+      GIN_MODE: "release"
+    depends_on:
+      firebolt:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: on-failure:3
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+      retries: 20
+
+  firebolt:
+    image: "${FIREBOLT_IMAGE:-ghcr.io/firebolt-db/engine:dev}"
+    command: ["server", "--data-dir", "/var/lib/firebolt"]
+    volumes:
+      - firebolt-bench-data:/var/lib/firebolt
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3473/health/ready || wget -qO- http://localhost:3473/health/ready || exit 1"]
+      interval: 5s
+      timeout: 3s
+      start_period: 15s
+      retries: 30
+    restart: on-failure:3
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: traceway
+      POSTGRES_PASSWORD: traceway
+      POSTGRES_DB: traceway
+    volumes:
+      - postgres-bench-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U traceway"]
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+      retries: 20
+    restart: on-failure:3
+
+volumes:
+  firebolt-bench-data:
+  postgres-bench-data:

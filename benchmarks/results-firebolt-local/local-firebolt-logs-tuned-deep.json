@@ -1,0 +1,398 @@
+{
+  "target": "http://localhost:3473",
+  "dialect": "firebolt",
+  "engineVersion": "5.0.0-pre.0.20260822175432.75d37cc26c66",
+  "scenario": "engine-direct-tuned",
+  "signal": "logs",
+  "workers": 4,
+  "startedAt": "2026-08-24T20:39:59.499688Z",
+  "endedAt": "2026-08-25T07:56:06.012324Z",
+  "ingestRamp": [
+    {
+      "batchSize": 256,
+      "seconds": 15.396918167,
+      "requests": 112,
+      "errors": 0,
+      "rowsAcked": 28672,
+      "rowsPerSec": 1862.1908416355875,
+      "p50Ms": 531.799417,
+      "p95Ms": 772.073625,
+      "p99Ms": 784.189584,
+      "avgPayloadBytes": 113821
+    },
+    {
+      "batchSize": 1024,
+      "seconds": 15.562239042,
+      "requests": 109,
+      "errors": 0,
+      "rowsAcked": 111616,
+      "rowsPerSec": 7172.232716562587,
+      "p50Ms": 550.115708,
+      "p95Ms": 712.892541,
+      "p99Ms": 786.326958,
+      "avgPayloadBytes": 455198
+    },
+    {
+      "batchSize": 4096,
+      "seconds": 15.489624167,
+      "requests": 103,
+      "errors": 0,
+      "rowsAcked": 421888,
+      "rowsPerSec": 27236.813201627887,
+      "p50Ms": 573.385167,
+      "p95Ms": 754.863083,
+      "p99Ms": 808.928709,
+      "avgPayloadBytes": 1820701
+    },
+    {
+      "batchSize": 8192,
+      "seconds": 15.344246708,
+      "requests": 91,
+      "errors": 0,
+      "rowsAcked": 745472,
+      "rowsPerSec": 48583.160463089705,
+      "p50Ms": 630.143833,
+      "p95Ms": 882.208833,
+      "p99Ms": 1000.176958,
+      "avgPayloadBytes": 3641354
+    },
+    {
+      "batchSize": 16384,
+      "seconds": 15.534327083,
+      "requests": 80,
+      "errors": 0,
+      "rowsAcked": 1310720,
+      "rowsPerSec": 84375.71791792559,
+      "p50Ms": 732.765,
+      "p95Ms": 977.449708,
+      "p99Ms": 1014.310458,
+      "avgPayloadBytes": 7282713
+    }
+  ],
+  "maxRowsPerSec": 84375.71791792559,
+  "fillLevels": [
+    {
+      "target": 30000000,
+      "tableRows": 30031872,
+      "fillSeconds": 844.421964459,
+      "fillRowsPerSec": 35565.00572464463,
+      "writeRowsPerSecDuringProbes": 4511.193876115845,
+      "vacuumSeconds": 45.566539459,
+      "queries": [
+        {
+          "name": "log-page",
+          "runsMs": [
+            6764.373333,
+            4042.077958,
+            6364.607833,
+            4714.703083,
+            4346.605708
+          ],
+          "minMs": 4042.077958,
+          "medianMs": 4714.703083,
+          "serverElapsedMs": [
+            6756.869,
+            4034.264,
+            6353.603,
+            4697.319,
+            4338.686
+          ],
+          "rowsReturned": 50
+        },
+        {
+          "name": "log-count",
+          "runsMs": [
+            33.877292,
+            14.666291,
+            13.202542,
+            12.224459,
+            11.576208
+          ],
+          "minMs": 11.576208,
+          "medianMs": 13.202542,
+          "serverElapsedMs": [
+            30.484,
+            12.474,
+            11.093,
+            10.036,
+            9.915999999999999
+          ],
+          "rowsReturned": 1
+        },
+        {
+          "name": "log-severity-search",
+          "runsMs": [
+            16414.060625,
+            8443.706583,
+            8098.743709,
+            8190.188667,
+            7959.204959
+          ],
+          "minMs": 7959.204959,
+          "medianMs": 8190.188667,
+          "serverElapsedMs": [
+            16407.857,
+            405977.655,
+            8092.242,
+            8184.08,
+            7953.461
+          ],
+          "rowsReturned": 50
+        },
+        {
+          "name": "log-page-under-write",
+          "runsMs": [
+            4532.537916,
+            3899.462375,
+            3505.982,
+            3763.516375,
+            4268.024
+          ],
+          "minMs": 3505.982,
+          "medianMs": 3899.462375,
+          "serverElapsedMs": [
+            4516.968999999999,
+            3893.395,
+            3495.739,
+            3754.8849999999998,
+            4261.125
+          ],
+          "rowsReturned": 50
+        },
+        {
+          "name": "log-count-under-write",
+          "runsMs": [
+            45.9355,
+            35.784708,
+            21.013709,
+            16.848542,
+            17.296625
+          ],
+          "minMs": 16.848542,
+          "medianMs": 21.013709,
+          "serverElapsedMs": [
+            42.757000000000005,
+            32.841,
+            18.806,
+            14.958,
+            14.931
+          ],
+          "rowsReturned": 1
+        },
+        {
+          "name": "log-severity-search-under-write",
+          "runsMs": [
+            9763.230291,
+            8746.77525,
+            8973.197041,
+            11940.589834,
+            19345.2415
+          ],
+          "minMs": 8746.77525,
+          "medianMs": 9763.230291,
+          "serverElapsedMs": [
+            9756.841,
+            8734.871,
+            8964.739,
+            11931.787,
+            969651.384
+          ],
+          "rowsReturned": 50
+        }
+      ]
+    },
+    {
+      "target": 60000000,
+      "tableRows": 60030976,
+      "fillSeconds": 1405.167194584,
+      "fillRowsPerSec": 21080.95898778058,
+      "writeRowsPerSecDuringProbes": 10777.860086826246,
+      "vacuumSeconds": 48.90505225,
+      "queries": [
+        {
+          "name": "log-page",
+          "runsMs": [
+            15927.20025,
+            12968.769,
+            12707.994083,
+            13811.720459,
+            14707.154042
+          ],
+          "minMs": 12707.994083,
+          "medianMs": 13811.720459,
+          "serverElapsedMs": [
+            15916.462,
+            12957.905999999999,
+            12696.966,
+            13803.526,
+            14697.296
+          ],
+          "rowsReturned": 50
+        },
+        {
+          "name": "log-count",
+          "runsMs": [
+            56.638875,
+            17.833916,
+            19.323,
+            17.288083,
+            19.908625
+          ],
+          "minMs": 17.288083,
+          "medianMs": 19.323,
+          "serverElapsedMs": [
+            52.165000000000006,
+            15.354,
+            17.252,
+            15.305,
+            17.413999999999998
+          ],
+          "rowsReturned": 1
+        },
+        {
+          "name": "log-severity-search",
+          "runsMs": [
+            22777.043083,
+            23575.90525,
+            23745.836541,
+            26970.27025,
+            27209.854666
+          ],
+          "minMs": 22777.043083,
+          "medianMs": 23745.836541,
+          "serverElapsedMs": [
+            22757.535,
+            23560.277,
+            23736.571,
+            26959.783000000003,
+            27195.873
+          ],
+          "rowsReturned": 50
+        },
+        {
+          "name": "log-page-under-write",
+          "runsMs": [
+            18852.117833,
+            19857.202125,
+            19246.738041,
+            17340.307,
+            19040.598417
+          ],
+          "minMs": 17340.307,
+          "medianMs": 19040.598417,
+          "serverElapsedMs": [
+            18839.747,
+            19847.601000000002,
+            19235.755999999998,
+            17330.887,
+            19032.513000000003
+          ],
+          "rowsReturned": 50
+        },
+        {
+          "name": "log-count-under-write",
+          "runsMs": [
+            127.659333,
+            89.796792,
+            53.220917,
+            55.706917,
+            711.652291
+          ],
+          "minMs": 53.220917,
+          "medianMs": 89.796792,
+          "serverElapsedMs": [
+            123.208,
+            86.203,
+            50.378,
+            52.831,
+            706.624
+          ],
+          "rowsReturned": 1
+        },
+        {
+          "name": "log-severity-search-under-write",
+          "runsMs": [
+            30060.607167,
+            29142.711209,
+            37347.469125,
+            28468.05075,
+            27197.862
+          ],
+          "minMs": 27197.862,
+          "medianMs": 29142.711209,
+          "serverElapsedMs": [
+            30048.159,
+            29126.987,
+            81178.93599999999,
+            28453.717999999997,
+            27186.613999999998
+          ],
+          "rowsReturned": 50
+        }
+      ]
+    },
+    {
+      "target": 100000000,
+      "tableRows": 100032512,
+      "fillSeconds": 1280.83998475,
+      "fillRowsPerSec": 29126.486090517872,
+      "vacuumSeconds": 8.720552291,
+      "queries": [
+        {
+          "name": "log-page",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": read tcp [::1]:65467-\u003e[::1]:3473: read: connection reset by peer"
+        },
+        {
+          "name": "log-count",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": read tcp [::1]:65468-\u003e[::1]:3473: read: connection reset by peer"
+        },
+        {
+          "name": "log-severity-search",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": read tcp [::1]:65469-\u003e[::1]:3473: read: connection reset by peer"
+        },
+        {
+          "name": "log-page-under-write",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": read tcp [::1]:65492-\u003e[::1]:3473: read: connection reset by peer"
+        },
+        {
+          "name": "log-count-under-write",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": read tcp [::1]:65493-\u003e[::1]:3473: read: connection reset by peer"
+        },
+        {
+          "name": "log-severity-search-under-write",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": read tcp [::1]:65494-\u003e[::1]:3473: read: connection reset by peer"
+        }
+      ]
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-//go:build (telemetry_sqlite && (telemetry_ch || telemetry_duckdb)) || (transactional_sqlite && transactional_pg)
+//go:build (telemetry_sqlite && (telemetry_ch || telemetry_duckdb || telemetry_firebolt)) || (transactional_sqlite && transactional_pg)
 
 package db
 

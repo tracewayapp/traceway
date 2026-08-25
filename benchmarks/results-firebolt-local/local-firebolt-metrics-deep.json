@@ -1,0 +1,150 @@
+{
+  "target": "http://localhost:3473",
+  "dialect": "firebolt",
+  "engineVersion": "5.0.0-pre.0.20260822175432.75d37cc26c66",
+  "scenario": "engine-direct",
+  "signal": "metrics",
+  "workers": 4,
+  "startedAt": "2026-08-24T15:03:56.897216Z",
+  "endedAt": "2026-08-24T17:43:30.580557Z",
+  "maxRowsPerSec": 0,
+  "fillLevels": [
+    {
+      "target": 30000000,
+      "tableRows": 30031872,
+      "fillSeconds": 1332.744894458,
+      "fillRowsPerSec": 22533.84884450324,
+      "writeRowsPerSecDuringProbes": 13631.896050475421,
+      "queries": [
+        {
+          "name": "timeseries-avg-1m",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+        },
+        {
+          "name": "timeseries-grouped-by-tag",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+        },
+        {
+          "name": "discover-names",
+          "runsMs": [
+            54520.02625,
+            81200.589833,
+            92732.579375,
+            102783.008959,
+            53485.385041
+          ],
+          "minMs": 53485.385041,
+          "medianMs": 81200.589833,
+          "serverElapsedMs": [
+            54508.449,
+            81197.18000000001,
+            92730.00899999999,
+            102780.50399999999,
+            53482.558
+          ],
+          "rowsReturned": 10
+        },
+        {
+          "name": "timeseries-avg-1m-under-write",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+        },
+        {
+          "name": "timeseries-grouped-by-tag-under-write",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+        },
+        {
+          "name": "discover-names-under-write",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+        }
+      ]
+    },
+    {
+      "target": 100000000,
+      "tableRows": 100032512,
+      "fillSeconds": 5507.56977875,
+      "fillRowsPerSec": 11808.527283836003,
+      "writeRowsPerSecDuringProbes": 12572.907948887105,
+      "queries": [
+        {
+          "name": "timeseries-avg-1m",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+        },
+        {
+          "name": "timeseries-grouped-by-tag",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+        },
+        {
+          "name": "discover-names",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+        },
+        {
+          "name": "timeseries-avg-1m-under-write",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+        },
+        {
+          "name": "timeseries-grouped-by-tag-under-write",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+        },
+        {
+          "name": "discover-names-under-write",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+        }
+      ]
+    }
+  ]
+}

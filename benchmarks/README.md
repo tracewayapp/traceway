@@ -16,9 +16,10 @@ Three signals are tested in separate matrix entries:
 - **metrics** → `POST /api/otel/v1/metrics` (`ExportMetricsServiceRequest`, Gauge data points)
 - **logs** → `POST /api/otel/v1/logs` (`ExportLogsServiceRequest`)
 
-Three DB modes are supported:
+Four DB modes are supported:
 - **sqlite** — single-binary Traceway with embedded SQLite (`Dockerfile.sqlite`).
 - **pgch** — full ClickHouse + Postgres stack, all in Docker on the SUT (`Dockerfile.minimal`).
+- **pgfb** — Postgres + Firebolt engine stack, all in Docker on the SUT (`Dockerfile.firebolt`, `transactional_pg telemetry_firebolt` build). The Firebolt twin of pgch: same middleware/repository shape, telemetry stored in a self-managed Firebolt engine with primary + aggregating indexes. Override the engine image with `FIREBOLT_IMAGE` (default `ghcr.io/firebolt-db/engine:dev`).
 - **managed-ch** — `Dockerfile.minimal` pointed at an externally-hosted ClickHouse (ClickHouse Cloud, Aiven, Altinity, etc.) via env vars. Postgres still runs locally in the SUT's Docker. See [Running against managed ClickHouse](#running-against-managed-clickhouse).
 
 Four hardware tiers, all Hetzner CCX (dedicated vCPU) so neighbor noise doesn't

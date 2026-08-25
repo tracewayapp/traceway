@@ -1,0 +1,191 @@
+{
+  "target": "http://localhost:8123",
+  "dialect": "clickhouse",
+  "engineVersion": "26.5.1.882",
+  "scenario": "engine-direct",
+  "signal": "spans",
+  "workers": 4,
+  "startedAt": "2026-08-24T20:03:20.36004Z",
+  "endedAt": "2026-08-24T20:28:28.796465Z",
+  "maxRowsPerSec": 0,
+  "fillLevels": [
+    {
+      "target": 30000000,
+      "tableRows": 30031872,
+      "fillSeconds": 216.937703584,
+      "fillRowsPerSec": 138435.46559149143,
+      "writeRowsPerSecDuringProbes": 134147.20295945206,
+      "queries": [
+        {
+          "name": "grouped-endpoints",
+          "runsMs": [
+            934.6335,
+            818.90075,
+            826.98075,
+            892.224709,
+            869.364959
+          ],
+          "minMs": 818.90075,
+          "medianMs": 869.364959,
+          "serverElapsedMs": [
+            933.402833,
+            817.0503329999999,
+            825.921709,
+            891.111584,
+            868.262292
+          ],
+          "rowsReturned": 13
+        },
+        {
+          "name": "endpoint-latency-chart",
+          "runsMs": [
+            174.82525,
+            163.969667,
+            172.8475,
+            170.1625,
+            163.744625
+          ],
+          "minMs": 163.744625,
+          "medianMs": 170.1625,
+          "serverElapsedMs": [
+            173.817833,
+            162.965458,
+            171.624042,
+            168.957083,
+            162.713416
+          ],
+          "rowsReturned": 292
+        },
+        {
+          "name": "grouped-endpoints-under-write",
+          "runsMs": [
+            890.074959,
+            930.590666,
+            909.37825,
+            910.511792,
+            970.723083
+          ],
+          "minMs": 890.074959,
+          "medianMs": 910.511792,
+          "serverElapsedMs": [
+            887.2146250000001,
+            929.584417,
+            908.2344999999999,
+            909.109375,
+            968.853167
+          ],
+          "rowsReturned": 13
+        },
+        {
+          "name": "endpoint-latency-chart-under-write",
+          "runsMs": [
+            192.579542,
+            227.614375,
+            203.420541,
+            195.013458,
+            177.670667
+          ],
+          "minMs": 177.670667,
+          "medianMs": 195.013458,
+          "serverElapsedMs": [
+            191.579333,
+            223.185292,
+            200.255458,
+            194.024751,
+            176.660708
+          ],
+          "rowsReturned": 292
+        }
+      ]
+    },
+    {
+      "target": 100000000,
+      "tableRows": 100032512,
+      "fillSeconds": 482.345666541,
+      "fillRowsPerSec": 142934.5732375097,
+      "writeRowsPerSecDuringProbes": 132631.11897809856,
+      "queries": [
+        {
+          "name": "grouped-endpoints",
+          "runsMs": [
+            2778.770292,
+            2886.204166,
+            2920.026958,
+            3053.747875,
+            3009.01075
+          ],
+          "minMs": 2778.770292,
+          "medianMs": 2920.026958,
+          "serverElapsedMs": [
+            2777.922168,
+            2884.9435009999997,
+            2918.691834,
+            3052.498959,
+            3007.905044
+          ],
+          "rowsReturned": 13
+        },
+        {
+          "name": "endpoint-latency-chart",
+          "runsMs": [
+            602.54325,
+            558.073792,
+            520.4015,
+            529.275083,
+            524.921041
+          ],
+          "minMs": 520.4015,
+          "medianMs": 529.275083,
+          "serverElapsedMs": [
+            601.26475,
+            556.948958,
+            519.227667,
+            528.1346249999999,
+            523.835084
+          ],
+          "rowsReturned": 294
+        },
+        {
+          "name": "grouped-endpoints-under-write",
+          "runsMs": [
+            3490.325042,
+            3437.127583,
+            3926.099417,
+            3645.272417,
+            6977.887041
+          ],
+          "minMs": 3437.127583,
+          "medianMs": 3645.272417,
+          "serverElapsedMs": [
+            3483.90871,
+            3434.818876,
+            3924.369752,
+            3643.49321,
+            6976.37042
+          ],
+          "rowsReturned": 13
+        },
+        {
+          "name": "endpoint-latency-chart-under-write",
+          "runsMs": [
+            642.910584,
+            654.505667,
+            639.565958,
+            683.079083,
+            683.096333
+          ],
+          "minMs": 639.565958,
+          "medianMs": 654.505667,
+          "serverElapsedMs": [
+            641.4154159999999,
+            653.057667,
+            637.6426670000001,
+            681.801292,
+            681.8957919999999
+          ],
+          "rowsReturned": 294
+        }
+      ]
+    }
+  ]
+}

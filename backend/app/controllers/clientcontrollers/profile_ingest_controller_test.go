@@ -1,4 +1,4 @@
-//go:build !telemetry_ch && !telemetry_duckdb
+//go:build !telemetry_ch && !telemetry_duckdb && !telemetry_firebolt
 
 package clientcontrollers
 

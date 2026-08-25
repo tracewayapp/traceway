@@ -48,6 +48,7 @@ Three compose stacks, each pinned to one of the project's existing Dockerfiles:
 |------|--------------|-------|---------------|
 | `sqlite` | `benchmarks/compose/docker-compose.sqlite.yml` | `Dockerfile.sqlite` | Single-binary backend with embedded SQLite. Fast to bring up, lower ceiling. |
 | `pgch` | `benchmarks/compose/docker-compose.pgch.yml` | `Dockerfile.minimal` + clickhouse + postgres | Full prod-shape stack. Slower first build, much higher ceiling. |
+| `pgfb` | `benchmarks/compose/docker-compose.pgfb.yml` | `Dockerfile.firebolt` + firebolt engine + postgres | Firebolt as the telemetry store (ClickHouse replacement candidate). Engine image via `FIREBOLT_IMAGE`, default `ghcr.io/firebolt-db/engine:dev`. |
 | `managed-ch` | `benchmarks/compose/docker-compose.managed-ch.yml` | `Dockerfile.minimal` + postgres (CH is external) | Same `Dockerfile.minimal` as pgch but pointed at an external managed ClickHouse via env vars. |
 
 All expose port **8087** on the host (override with `BENCH_PORT=8088 docker

@@ -27,6 +27,9 @@ func TelemetryBackendName() string {
 	if telemetryIsDuckDB {
 		return "duckdb"
 	}
+	if telemetryIsFirebolt {
+		return "firebolt"
+	}
 	if TelemetryDB != nil {
 		return "sqlite"
 	}

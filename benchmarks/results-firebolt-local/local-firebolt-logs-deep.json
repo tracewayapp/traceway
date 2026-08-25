@@ -1,0 +1,338 @@
+{
+  "target": "http://localhost:3473",
+  "dialect": "firebolt",
+  "engineVersion": "5.0.0-pre.0.20260822175432.75d37cc26c66",
+  "scenario": "engine-direct",
+  "signal": "logs",
+  "workers": 4,
+  "startedAt": "2026-08-24T10:57:19.532362Z",
+  "endedAt": "2026-08-24T12:23:02.715006Z",
+  "maxRowsPerSec": 0,
+  "fillLevels": [
+    {
+      "target": 30000000,
+      "tableRows": 30031872,
+      "fillSeconds": 417.081601209,
+      "fillRowsPerSec": 72004.78734364262,
+      "writeRowsPerSecDuringProbes": 32497.84218659601,
+      "queries": [
+        {
+          "name": "log-page",
+          "runsMs": [
+            7541.654375,
+            5196.918417,
+            5123.669916,
+            5156.117792,
+            5768.011667
+          ],
+          "minMs": 5123.669916,
+          "medianMs": 5196.918417,
+          "serverElapsedMs": [
+            7531.715,
+            5186.715,
+            5112.407,
+            5148.197,
+            5756.557
+          ],
+          "rowsReturned": 50
+        },
+        {
+          "name": "log-count",
+          "runsMs": [
+            5787.746,
+            4155.144083,
+            4348.692208,
+            4161.334292,
+            4293.145792
+          ],
+          "minMs": 4155.144083,
+          "medianMs": 4293.145792,
+          "serverElapsedMs": [
+            5780.302,
+            4150.366,
+            4343.813,
+            4154.817999999999,
+            4284.3910000000005
+          ],
+          "rowsReturned": 1
+        },
+        {
+          "name": "log-severity-search",
+          "runsMs": [
+            14283.399792,
+            12849.163125,
+            10836.880458,
+            11715.858291,
+            12664.771041
+          ],
+          "minMs": 10836.880458,
+          "medianMs": 12664.771041,
+          "serverElapsedMs": [
+            14275.323,
+            12840.368,
+            10828.196,
+            11704.556,
+            12642.848
+          ],
+          "rowsReturned": 50
+        },
+        {
+          "name": "log-page-under-write",
+          "runsMs": [
+            6393.849417,
+            7177.01625,
+            6906.124791,
+            6316.335583,
+            7027.108708
+          ],
+          "minMs": 6316.335583,
+          "medianMs": 6906.124791,
+          "serverElapsedMs": [
+            6377.867,
+            7161.533,
+            6896.115,
+            6306.776,
+            7019.313
+          ],
+          "rowsReturned": 50
+        },
+        {
+          "name": "log-count-under-write",
+          "runsMs": [
+            6076.256458,
+            11595.874625,
+            25822.992417,
+            22968.784,
+            22369.953791
+          ],
+          "minMs": 6076.256458,
+          "medianMs": 22369.953791,
+          "serverElapsedMs": [
+            6064.887,
+            11578.214,
+            25813.965,
+            22956.828999999998,
+            22363.69
+          ],
+          "rowsReturned": 1
+        },
+        {
+          "name": "log-severity-search-under-write",
+          "runsMs": [
+            49672.590042,
+            44176.685292,
+            42848.453,
+            40530.147,
+            42255.391209
+          ],
+          "minMs": 40530.147,
+          "medianMs": 42848.453,
+          "serverElapsedMs": [
+            49667.265,
+            44169.484,
+            42842.518,
+            40520.415,
+            42246.657
+          ],
+          "rowsReturned": 50
+        }
+      ]
+    },
+    {
+      "target": 60000000,
+      "tableRows": 60030976,
+      "fillSeconds": 247.598205708,
+      "fillRowsPerSec": 75965.13854458954,
+      "writeRowsPerSecDuringProbes": 31533.278473138987,
+      "queries": [
+        {
+          "name": "log-page",
+          "runsMs": [
+            52595.753625,
+            47423.630167,
+            50273.10125,
+            50924.174459,
+            53085.651166
+          ],
+          "minMs": 47423.630167,
+          "medianMs": 50924.174459,
+          "serverElapsedMs": [
+            52585.83,
+            47414.990000000005,
+            50264.603,
+            50916.096000000005,
+            53078.425
+          ],
+          "rowsReturned": 50
+        },
+        {
+          "name": "log-count",
+          "runsMs": [
+            52039.018125,
+            52060.766291,
+            45447.658167,
+            48513.991167,
+            47159.997541
+          ],
+          "minMs": 45447.658167,
+          "medianMs": 48513.991167,
+          "serverElapsedMs": [
+            52031.475,
+            52054.996,
+            45440.633,
+            48506.687999999995,
+            47154.657999999996
+          ],
+          "rowsReturned": 1
+        },
+        {
+          "name": "log-severity-search",
+          "runsMs": [
+            73427.544208,
+            78813.732875,
+            84998.897083,
+            86857.021417,
+            90998.523833
+          ],
+          "minMs": 73427.544208,
+          "medianMs": 84998.897083,
+          "serverElapsedMs": [
+            73417.56599999999,
+            78804.849,
+            84989.16900000001,
+            86848.496,
+            90988.573
+          ],
+          "rowsReturned": 50
+        },
+        {
+          "name": "log-page-under-write",
+          "runsMs": [
+            68117.86025,
+            75866.302083,
+            73049.464709,
+            97051.229708,
+            104232.793333
+          ],
+          "minMs": 68117.86025,
+          "medianMs": 75866.302083,
+          "serverElapsedMs": [
+            68099.188,
+            75855.997,
+            73034.279,
+            97001.492,
+            104207.76
+          ],
+          "rowsReturned": 50
+        },
+        {
+          "name": "log-count-under-write",
+          "runsMs": [
+            104918.440958
+          ],
+          "minMs": 104918.440958,
+          "medianMs": 104918.440958,
+          "serverElapsedMs": [
+            104896.57699999999
+          ],
+          "rowsReturned": 1,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+        },
+        {
+          "name": "log-severity-search-under-write",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+        }
+      ]
+    },
+    {
+      "target": 100000000,
+      "tableRows": 100032512,
+      "fillSeconds": 318.697846917,
+      "fillRowsPerSec": 49712.69229856502,
+      "writeRowsPerSecDuringProbes": 30648.33502910238,
+      "queries": [
+        {
+          "name": "log-page",
+          "runsMs": [
+            97429.681875,
+            99788.795375,
+            102544.920375,
+            103621.048833,
+            99659.137208
+          ],
+          "minMs": 97429.681875,
+          "medianMs": 99788.795375,
+          "serverElapsedMs": [
+            97407.27699999999,
+            99780.61499999999,
+            102533.179,
+            103610.804,
+            99649.765
+          ],
+          "rowsReturned": 50
+        },
+        {
+          "name": "log-count",
+          "runsMs": [
+            95813.910458,
+            94022.944416,
+            90793.831125,
+            76441.538625,
+            89068.90575
+          ],
+          "minMs": 76441.538625,
+          "medianMs": 90793.831125,
+          "serverElapsedMs": [
+            95804.542,
+            94012.27500000001,
+            90774.02100000001,
+            76423.743,
+            89089.404
+          ],
+          "rowsReturned": 1
+        },
+        {
+          "name": "log-severity-search",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+        },
+        {
+          "name": "log-page-under-write",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+        },
+        {
+          "name": "log-count-under-write",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+        },
+        {
+          "name": "log-severity-search-under-write",
+          "runsMs": null,
+          "minMs": 0,
+          "medianMs": 0,
+          "serverElapsedMs": null,
+          "rowsReturned": 0,
+          "error": "Post \"http://localhost:3473/?output_format=JSON\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+        }
+      ]
+    }
+  ]
+}

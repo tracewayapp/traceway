@@ -1,0 +1,23 @@
+# Firebolt Core (self-managed engine) for the direct-Firebolt telemetry
+# benchmark in benchmarks/firebolt/. HTTP SQL API on :3473.
+services:
+  firebolt:
+    image: ghcr.io/firebolt-db/engine:dev
+    container_name: firebolt
+    command: ["server", "--data-dir", "/var/lib/firebolt"]
+    ports:
+      - "3473:3473"
+    volumes:
+      - firebolt-data:/var/lib/firebolt
+    ulimits:
+      memlock:
+        soft: 8589934592
+        hard: 8589934592
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3473/health/ready || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  firebolt-data:

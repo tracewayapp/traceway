@@ -1,0 +1,211 @@
+{
+  "target": "http://localhost:8123",
+  "dialect": "clickhouse",
+  "engineVersion": "26.5.1.882",
+  "scenario": "engine-direct",
+  "signal": "metrics",
+  "workers": 4,
+  "startedAt": "2026-08-24T10:50:52.31204Z",
+  "endedAt": "2026-08-24T10:53:11.937115Z",
+  "ingestRamp": [
+    {
+      "batchSize": 256,
+      "seconds": 15.115879041,
+      "requests": 358,
+      "errors": 0,
+      "rowsAcked": 91648,
+      "rowsPerSec": 6063.028140898446,
+      "p50Ms": 180.473709,
+      "p95Ms": 214.492292,
+      "p99Ms": 217.333416,
+      "avgPayloadBytes": 34591
+    },
+    {
+      "batchSize": 1024,
+      "seconds": 15.094681209,
+      "requests": 328,
+      "errors": 0,
+      "rowsAcked": 335872,
+      "rowsPerSec": 22251.01645735591,
+      "p50Ms": 183.219125,
+      "p95Ms": 189.508292,
+      "p99Ms": 189.913083,
+      "avgPayloadBytes": 138271
+    },
+    {
+      "batchSize": 4096,
+      "seconds": 15.215134459,
+      "requests": 320,
+      "errors": 0,
+      "rowsAcked": 1310720,
+      "rowsPerSec": 86145.80459554782,
+      "p50Ms": 222.99475,
+      "p95Ms": 240.63775,
+      "p99Ms": 242.339333,
+      "avgPayloadBytes": 552992
+    },
+    {
+      "batchSize": 8192,
+      "seconds": 15.088355208,
+      "requests": 295,
+      "errors": 0,
+      "rowsAcked": 2416640,
+      "rowsPerSec": 160165.900569379,
+      "p50Ms": 239.515709,
+      "p95Ms": 258.573167,
+      "p99Ms": 261.676583,
+      "avgPayloadBytes": 1105958
+    },
+    {
+      "batchSize": 16384,
+      "seconds": 15.158718583,
+      "requests": 255,
+      "errors": 0,
+      "rowsAcked": 4177920,
+      "rowsPerSec": 275611.68690639845,
+      "p50Ms": 274.142875,
+      "p95Ms": 301.340458,
+      "p99Ms": 302.571875,
+      "avgPayloadBytes": 2211873
+    }
+  ],
+  "maxRowsPerSec": 275611.68690639845,
+  "fillLevels": [
+    {
+      "target": 1000000,
+      "tableRows": 1024000,
+      "fillSeconds": 6.469964833,
+      "fillRowsPerSec": 158269.79379812034,
+      "queries": [
+        {
+          "name": "timeseries-avg-1m",
+          "runsMs": [
+            12.458958,
+            10.516708,
+            10.436667,
+            18.459709,
+            7.857625
+          ],
+          "minMs": 7.857625,
+          "medianMs": 10.516708,
+          "serverElapsedMs": [
+            10.086291000000001,
+            8.667959,
+            8.47475,
+            16.764583,
+            6.224709
+          ],
+          "rowsReturned": 1441
+        },
+        {
+          "name": "timeseries-grouped-by-tag",
+          "runsMs": [
+            19.642959,
+            18.224834,
+            19.3405,
+            18.866208,
+            18.300375
+          ],
+          "minMs": 18.224834,
+          "medianMs": 18.866208,
+          "serverElapsedMs": [
+            14.188541,
+            13.548875,
+            14.557542,
+            13.941083,
+            13.339208
+          ],
+          "rowsReturned": 5764
+        },
+        {
+          "name": "discover-names",
+          "runsMs": [
+            11.0425,
+            9.727959,
+            10.309208,
+            14.49175,
+            10.225167
+          ],
+          "minMs": 9.727959,
+          "medianMs": 10.309208,
+          "serverElapsedMs": [
+            10.318042,
+            8.922542,
+            9.312583,
+            13.7305,
+            9.431416
+          ],
+          "rowsReturned": 10
+        }
+      ]
+    },
+    {
+      "target": 10000000,
+      "tableRows": 10027008,
+      "fillSeconds": 56.457737792,
+      "fillRowsPerSec": 159464.55441003724,
+      "queries": [
+        {
+          "name": "timeseries-avg-1m",
+          "runsMs": [
+            30.405167,
+            24.021334,
+            21.757708,
+            20.721792,
+            18.29675
+          ],
+          "minMs": 18.29675,
+          "medianMs": 21.757708,
+          "serverElapsedMs": [
+            28.12775,
+            21.890041999999998,
+            19.734542,
+            18.78925,
+            16.525042
+          ],
+          "rowsReturned": 1442
+        },
+        {
+          "name": "timeseries-grouped-by-tag",
+          "runsMs": [
+            39.519041,
+            46.939875,
+            41.934958,
+            43.075625,
+            40.827333
+          ],
+          "minMs": 39.519041,
+          "medianMs": 41.934958,
+          "serverElapsedMs": [
+            31.624209,
+            38.588333000000006,
+            33.366,
+            33.98525,
+            33.700250000000004
+          ],
+          "rowsReturned": 5768
+        },
+        {
+          "name": "discover-names",
+          "runsMs": [
+            56.466292,
+            58.811334,
+            58.774083,
+            60.641417,
+            56.786333
+          ],
+          "minMs": 56.466292,
+          "medianMs": 58.774083,
+          "serverElapsedMs": [
+            55.304041,
+            57.947041999999996,
+            57.89675,
+            59.750583000000006,
+            55.856500000000004
+          ],
+          "rowsReturned": 10
+        }
+      ]
+    }
+  ]
+}

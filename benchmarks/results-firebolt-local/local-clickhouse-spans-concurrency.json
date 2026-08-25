@@ -1,0 +1,75 @@
+{
+  "target": "http://localhost:8123",
+  "dialect": "clickhouse",
+  "engineVersion": "26.5.1.882",
+  "scenario": "engine-direct",
+  "signal": "spans",
+  "workers": 16,
+  "startedAt": "2026-08-24T20:39:15.727999Z",
+  "endedAt": "2026-08-24T20:39:31.762826Z",
+  "ingestRamp": [
+    {
+      "batchSize": 16384,
+      "seconds": 15.352339666,
+      "requests": 669,
+      "errors": 0,
+      "rowsAcked": 10960896,
+      "rowsPerSec": 713956.0639264975,
+      "p50Ms": 337.46075,
+      "p95Ms": 439.566708,
+      "p99Ms": 471.236833,
+      "avgPayloadBytes": 4111298
+    }
+  ],
+  "maxRowsPerSec": 713956.0639264975,
+  "fillLevels": [
+    {
+      "target": 1,
+      "tableRows": 131072,
+      "fillSeconds": 0.438879208,
+      "fillRowsPerSec": 298651.6508660852,
+      "queries": [
+        {
+          "name": "grouped-endpoints",
+          "runsMs": [
+            19.577667,
+            17.633917,
+            16.036625,
+            14.499,
+            14.381791
+          ],
+          "minMs": 14.381791,
+          "medianMs": 16.036625,
+          "serverElapsedMs": [
+            18.695209000000002,
+            16.477916,
+            14.758333,
+            13.055417,
+            13.281208
+          ],
+          "rowsReturned": 13
+        },
+        {
+          "name": "endpoint-latency-chart",
+          "runsMs": [
+            5.999334,
+            8.917125,
+            6.822167,
+            5.389208,
+            5.67425
+          ],
+          "minMs": 5.389208,
+          "medianMs": 5.999334,
+          "serverElapsedMs": [
+            4.976416,
+            7.681125,
+            5.716209,
+            4.6465,
+            4.9884580000000005
+          ],
+          "rowsReturned": 289
+        }
+      ]
+    }
+  ]
+}

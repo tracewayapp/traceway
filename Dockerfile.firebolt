@@ -1,0 +1,81 @@
+# ==============================================================================
+# Traceway Firebolt Docker Image
+# Single binary serving both API and Frontend
+# Postgres main DB + Firebolt telemetry (telemetry_firebolt build tag)
+# Target image size: ~20-30MB
+# ==============================================================================
+
+# ==============================================================================
+# Stage 1: Build Frontend
+# ==============================================================================
+FROM node:22-alpine AS frontend-builder
+
+WORKDIR /app/frontend
+
+# Copy package files first for better caching
+COPY frontend/package.json frontend/package-lock.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy source and build
+COPY frontend/ ./
+
+ENV CLOUD_MODE=false
+RUN npm run build
+
+# ==============================================================================
+# Stage 2: Build Backend with embedded frontend
+# ==============================================================================
+FROM golang:1.26-alpine AS backend-builder
+
+WORKDIR /app/backend
+
+# Install build dependencies
+RUN apk add --no-cache git
+
+# Copy all backend source
+COPY backend/ ./
+COPY cli/ /app/cli/
+
+# Copy built frontend for embedding
+COPY --from=frontend-builder /app/frontend/build ./static/frontend/
+
+# Strip local replace directives and download dependencies
+RUN go mod edit -dropreplace=go.tracewayapp.com -dropreplace=go.tracewayapp.com/tracewaygin
+RUN go mod tidy
+RUN go mod download
+
+# Build with embedded static files
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags "transactional_pg telemetry_firebolt" -ldflags="-s -w" -o /traceway ./cmd/traceway
+
+# ==============================================================================
+# Stage 3: Minimal runtime image
+# ==============================================================================
+FROM alpine:3.20
+
+# Install minimal runtime dependencies
+# - ca-certificates: for HTTPS connections to external services
+# - tzdata: for timezone support
+RUN apk add --no-cache ca-certificates tzdata
+
+# Copy the binary
+COPY --from=backend-builder /traceway /usr/local/bin/traceway
+
+# Create app directory
+WORKDIR /app
+
+# Environment variables (can be overridden at runtime)
+ENV GIN_MODE=release
+
+# Expose ports
+# 80: Frontend + API
+# 8082: Direct API access
+EXPOSE 80 8082
+
+# Health check using wget (alpine-native, no curl needed)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget -qO- http://localhost/health || exit 1
+
+# Run the binary directly (no systemd needed)
+ENTRYPOINT ["/usr/local/bin/traceway"]

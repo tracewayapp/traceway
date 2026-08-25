@@ -32,7 +32,10 @@ var telemetryRetentionTargets = []struct {
 }
 
 func startSQLiteRetention(ctx context.Context, days int, source string) {
-	if !db.IsSQLite() {
+	// Prune whenever an embedded/engine telemetry store exists (SQLite,
+	// DuckDB, Firebolt) — none of them have built-in TTLs. ClickHouse
+	// builds have no TelemetryDB and expire via table TTLs instead.
+	if db.TelemetryDB == nil {
 		return
 	}
 	if days == 0 {
@@ -70,7 +73,7 @@ func runSQLiteRetention(ctx context.Context, days int) {
 				return
 			}
 			query := fmt.Sprintf("DELETE FROM %s WHERE %s < :cutoff", tgt.table, tgt.column)
-			if err := lit.DeleteNamed(db.Driver, db.TelemetryDB, query, params); err != nil {
+			if err := lit.DeleteNamed(db.TelemetryDriver, db.TelemetryDB, query, params); err != nil {
 				traceway.CaptureException(fmt.Errorf("retention: delete from telemetry.%s failed: %w", tgt.table, err))
 			}
 		}

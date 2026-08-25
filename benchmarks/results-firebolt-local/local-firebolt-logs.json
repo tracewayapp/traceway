@@ -1,0 +1,210 @@
+{
+  "target": "http://localhost:3473",
+  "engineVersion": "5.0.0-pre.0.20260822175432.75d37cc26c66",
+  "scenario": "firebolt-direct",
+  "signal": "logs",
+  "workers": 4,
+  "startedAt": "2026-08-24T10:44:38.162415Z",
+  "endedAt": "2026-08-24T10:47:50.847135Z",
+  "ingestRamp": [
+    {
+      "batchSize": 256,
+      "seconds": 15.08088375,
+      "requests": 544,
+      "errors": 0,
+      "rowsAcked": 139264,
+      "rowsPerSec": 9234.472084568652,
+      "p50Ms": 105.338042,
+      "p95Ms": 160.378417,
+      "p99Ms": 194.698792,
+      "avgPayloadBytes": 113822
+    },
+    {
+      "batchSize": 1024,
+      "seconds": 15.162664125,
+      "requests": 436,
+      "errors": 0,
+      "rowsAcked": 446464,
+      "rowsPerSec": 29444.957450707894,
+      "p50Ms": 126.6575,
+      "p95Ms": 205.804708,
+      "p99Ms": 253.517125,
+      "avgPayloadBytes": 455196
+    },
+    {
+      "batchSize": 4096,
+      "seconds": 15.157527625,
+      "requests": 272,
+      "errors": 0,
+      "rowsAcked": 1114112,
+      "rowsPerSec": 73502.22460834868,
+      "p50Ms": 207.064917,
+      "p95Ms": 255.497084,
+      "p99Ms": 306.835084,
+      "avgPayloadBytes": 1820699
+    },
+    {
+      "batchSize": 8192,
+      "seconds": 15.139698834,
+      "requests": 165,
+      "errors": 0,
+      "rowsAcked": 1351680,
+      "rowsPerSec": 89280.50781066151,
+      "p50Ms": 319.967834,
+      "p95Ms": 499.803333,
+      "p99Ms": 543.7195,
+      "avgPayloadBytes": 3641375
+    },
+    {
+      "batchSize": 16384,
+      "seconds": 15.352685208,
+      "requests": 113,
+      "errors": 0,
+      "rowsAcked": 1851392,
+      "rowsPerSec": 120590.76148029622,
+      "p50Ms": 490.535625,
+      "p95Ms": 576.341625,
+      "p99Ms": 605.880416,
+      "avgPayloadBytes": 7282723
+    }
+  ],
+  "maxRowsPerSec": 120590.76148029622,
+  "fillLevels": [
+    {
+      "target": 1000000,
+      "tableRows": 1032192,
+      "fillSeconds": 9.982397,
+      "fillRowsPerSec": 103401.21716257127,
+      "queries": [
+        {
+          "name": "log-page",
+          "runsMs": [
+            239.74975,
+            17.708,
+            17.64625,
+            16.827875,
+            15.455875
+          ],
+          "minMs": 15.455875,
+          "medianMs": 17.64625,
+          "serverElapsedMs": [
+            230.349,
+            11.821,
+            11.370999999999999,
+            11.295,
+            10.478
+          ],
+          "rowsReturned": 50
+        },
+        {
+          "name": "log-count",
+          "runsMs": [
+            106.105208,
+            3.543584,
+            2.782209,
+            2.800041,
+            2.794625
+          ],
+          "minMs": 2.782209,
+          "medianMs": 2.800041,
+          "serverElapsedMs": [
+            104.359,
+            2.4650000000000003,
+            1.74,
+            1.812,
+            1.83
+          ],
+          "rowsReturned": 1
+        },
+        {
+          "name": "log-severity-search",
+          "runsMs": [
+            228.894084,
+            3.976541,
+            3.345208,
+            3.086583,
+            3.10675
+          ],
+          "minMs": 3.086583,
+          "medianMs": 3.345208,
+          "serverElapsedMs": [
+            225.971,
+            2.994,
+            2.27,
+            2.129,
+            2.139
+          ],
+          "rowsReturned": 50
+        }
+      ]
+    },
+    {
+      "target": 10000000,
+      "tableRows": 10027008,
+      "fillSeconds": 94.81467125,
+      "fillRowsPerSec": 94867.34364435187,
+      "queries": [
+        {
+          "name": "log-page",
+          "runsMs": [
+            3362.32025,
+            74.987667,
+            65.815875,
+            55.142167,
+            52.449
+          ],
+          "minMs": 52.449,
+          "medianMs": 65.815875,
+          "serverElapsedMs": [
+            3350.346,
+            67.214,
+            58.672000000000004,
+            48.888,
+            46.486
+          ],
+          "rowsReturned": 50
+        },
+        {
+          "name": "log-count",
+          "runsMs": [
+            1453.447958,
+            9.82175,
+            6.406833,
+            7.1325,
+            6.558167
+          ],
+          "minMs": 6.406833,
+          "medianMs": 7.1325,
+          "serverElapsedMs": [
+            1449.433,
+            8.27,
+            5.204000000000001,
+            4.436,
+            5.2909999999999995
+          ],
+          "rowsReturned": 1
+        },
+        {
+          "name": "log-severity-search",
+          "runsMs": [
+            4061.499542,
+            12.204166,
+            7.258209,
+            6.097875,
+            5.905875
+          ],
+          "minMs": 5.905875,
+          "medianMs": 7.258209,
+          "serverElapsedMs": [
+            4057.1349999999998,
+            10.697,
+            5.933,
+            4.998,
+            4.811
+          ],
+          "rowsReturned": 50
+        }
+      ]
+    }
+  ]
+}

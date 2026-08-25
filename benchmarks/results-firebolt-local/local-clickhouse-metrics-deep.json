@@ -1,0 +1,271 @@
+{
+  "target": "http://localhost:8123",
+  "dialect": "clickhouse",
+  "engineVersion": "26.5.1.882",
+  "scenario": "engine-direct",
+  "signal": "metrics",
+  "workers": 4,
+  "startedAt": "2026-08-24T20:28:28.811614Z",
+  "endedAt": "2026-08-24T20:39:15.710462Z",
+  "maxRowsPerSec": 0,
+  "fillLevels": [
+    {
+      "target": 30000000,
+      "tableRows": 30031872,
+      "fillSeconds": 185.611172084,
+      "fillRowsPerSec": 161799.9157206378,
+      "writeRowsPerSecDuringProbes": 160745.13938601405,
+      "queries": [
+        {
+          "name": "timeseries-avg-1m",
+          "runsMs": [
+            57.073458,
+            32.599375,
+            31.682209,
+            34.278917,
+            33.352
+          ],
+          "minMs": 31.682209,
+          "medianMs": 33.352,
+          "serverElapsedMs": [
+            54.814459,
+            30.612333,
+            29.847375,
+            32.347375,
+            31.419500000000003
+          ],
+          "rowsReturned": 1444
+        },
+        {
+          "name": "timeseries-grouped-by-tag",
+          "runsMs": [
+            89.319667,
+            90.888875,
+            93.477167,
+            87.921417,
+            91.618792
+          ],
+          "minMs": 87.921417,
+          "medianMs": 90.888875,
+          "serverElapsedMs": [
+            82.483958,
+            84.776333,
+            87.30558400000001,
+            81.077916,
+            84.64116700000001
+          ],
+          "rowsReturned": 5776
+        },
+        {
+          "name": "discover-names",
+          "runsMs": [
+            160.426542,
+            145.121625,
+            149.934584,
+            142.423125,
+            142.456333
+          ],
+          "minMs": 142.423125,
+          "medianMs": 145.121625,
+          "serverElapsedMs": [
+            159.407833,
+            144.15475,
+            149.04279200000002,
+            141.599875,
+            141.623875
+          ],
+          "rowsReturned": 10
+        },
+        {
+          "name": "timeseries-avg-1m-under-write",
+          "runsMs": [
+            56.134417,
+            39.65225,
+            30.69925,
+            30.133291,
+            29.586042
+          ],
+          "minMs": 29.586042,
+          "medianMs": 30.69925,
+          "serverElapsedMs": [
+            52.259874999999994,
+            36.678791000000004,
+            28.303625,
+            28.253334000000002,
+            27.77175
+          ],
+          "rowsReturned": 1444
+        },
+        {
+          "name": "timeseries-grouped-by-tag-under-write",
+          "runsMs": [
+            84.409416,
+            97.82475,
+            95.932708,
+            96.78975,
+            88.386792
+          ],
+          "minMs": 84.409416,
+          "medianMs": 95.932708,
+          "serverElapsedMs": [
+            77.447209,
+            84.198167,
+            88.21825,
+            90.994291,
+            82.791833
+          ],
+          "rowsReturned": 5776
+        },
+        {
+          "name": "discover-names-under-write",
+          "runsMs": [
+            150.39125,
+            144.580875,
+            151.636458,
+            153.454125,
+            153.365584
+          ],
+          "minMs": 144.580875,
+          "medianMs": 151.636458,
+          "serverElapsedMs": [
+            149.400125,
+            143.750292,
+            150.797083,
+            151.860208,
+            151.124875
+          ],
+          "rowsReturned": 10
+        }
+      ]
+    },
+    {
+      "target": 100000000,
+      "tableRows": 100032512,
+      "fillSeconds": 433.907823625,
+      "fillRowsPerSec": 160004.48993978428,
+      "writeRowsPerSecDuringProbes": 159461.63247678315,
+      "queries": [
+        {
+          "name": "timeseries-avg-1m",
+          "runsMs": [
+            85.323625,
+            62.531875,
+            63.636083,
+            67.531375,
+            63.011542
+          ],
+          "minMs": 62.531875,
+          "medianMs": 63.636083,
+          "serverElapsedMs": [
+            83.55975000000001,
+            60.644209,
+            61.555208,
+            65.713708,
+            61.093291
+          ],
+          "rowsReturned": 1452
+        },
+        {
+          "name": "timeseries-grouped-by-tag",
+          "runsMs": [
+            230.908625,
+            218.888542,
+            206.70825,
+            211.513708,
+            209.613333
+          ],
+          "minMs": 206.70825,
+          "medianMs": 211.513708,
+          "serverElapsedMs": [
+            226.604959,
+            211.752209,
+            201.36425,
+            205.444542,
+            202.10787499999998
+          ],
+          "rowsReturned": 5807
+        },
+        {
+          "name": "discover-names",
+          "runsMs": [
+            576.990917,
+            494.240125,
+            471.060125,
+            451.331,
+            460.735416
+          ],
+          "minMs": 451.331,
+          "medianMs": 471.060125,
+          "serverElapsedMs": [
+            575.885666,
+            493.29970899999995,
+            470.214542,
+            450.454959,
+            459.83025
+          ],
+          "rowsReturned": 10
+        },
+        {
+          "name": "timeseries-avg-1m-under-write",
+          "runsMs": [
+            74.921833,
+            60.292542,
+            65.264875,
+            61.666459,
+            66.612375
+          ],
+          "minMs": 60.292542,
+          "medianMs": 65.264875,
+          "serverElapsedMs": [
+            72.252166,
+            58.503459,
+            63.321208000000006,
+            59.957334,
+            64.32779199999999
+          ],
+          "rowsReturned": 1452
+        },
+        {
+          "name": "timeseries-grouped-by-tag-under-write",
+          "runsMs": [
+            214.875875,
+            212.670291,
+            212.983458,
+            218.191666,
+            219.454
+          ],
+          "minMs": 212.670291,
+          "medianMs": 214.875875,
+          "serverElapsedMs": [
+            209.098333,
+            206.670208,
+            202.92425,
+            212.726,
+            210.071125
+          ],
+          "rowsReturned": 5808
+        },
+        {
+          "name": "discover-names-under-write",
+          "runsMs": [
+            475.79525,
+            475.948291,
+            502.871125,
+            486.955916,
+            475.830291
+          ],
+          "minMs": 475.79525,
+          "medianMs": 475.948291,
+          "serverElapsedMs": [
+            474.770709,
+            475.10125,
+            502.00887500000005,
+            486.12475,
+            474.93295800000004
+          ],
+          "rowsReturned": 10
+        }
+      ]
+    }
+  ]
+}

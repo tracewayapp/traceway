@@ -1,0 +1,170 @@
+{
+  "target": "http://localhost:3473",
+  "engineVersion": "5.0.0-pre.0.20260822175432.75d37cc26c66",
+  "scenario": "firebolt-direct",
+  "signal": "spans",
+  "workers": 4,
+  "startedAt": "2026-08-24T10:40:18.381644Z",
+  "endedAt": "2026-08-24T10:42:25.942654Z",
+  "ingestRamp": [
+    {
+      "batchSize": 256,
+      "seconds": 15.019646166,
+      "requests": 1493,
+      "errors": 0,
+      "rowsAcked": 382208,
+      "rowsPerSec": 25447.204000398156,
+      "p50Ms": 38.148125,
+      "p95Ms": 52.455083,
+      "p99Ms": 68.055625,
+      "avgPayloadBytes": 64267
+    },
+    {
+      "batchSize": 1024,
+      "seconds": 15.049234291,
+      "requests": 1144,
+      "errors": 0,
+      "rowsAcked": 1171456,
+      "rowsPerSec": 77841.56837139376,
+      "p50Ms": 48.665084,
+      "p95Ms": 67.191125,
+      "p99Ms": 108.308667,
+      "avgPayloadBytes": 256981
+    },
+    {
+      "batchSize": 4096,
+      "seconds": 15.163719167,
+      "requests": 642,
+      "errors": 0,
+      "rowsAcked": 2629632,
+      "rowsPerSec": 173416.03145241103,
+      "p50Ms": 79.966833,
+      "p95Ms": 145.484334,
+      "p99Ms": 184.598458,
+      "avgPayloadBytes": 1027845
+    },
+    {
+      "batchSize": 8192,
+      "seconds": 15.116016041,
+      "requests": 396,
+      "errors": 0,
+      "rowsAcked": 3244032,
+      "rowsPerSec": 214608.92811975285,
+      "p50Ms": 130.049792,
+      "p95Ms": 188.046,
+      "p99Ms": 229.621917,
+      "avgPayloadBytes": 2055646
+    },
+    {
+      "batchSize": 16384,
+      "seconds": 15.162097375,
+      "requests": 241,
+      "errors": 0,
+      "rowsAcked": 3948544,
+      "rowsPerSec": 260422.018296133,
+      "p50Ms": 228.480875,
+      "p95Ms": 274.349084,
+      "p99Ms": 300.636292,
+      "avgPayloadBytes": 4111295
+    }
+  ],
+  "maxRowsPerSec": 260422.018296133,
+  "fillLevels": [
+    {
+      "target": 1000000,
+      "tableRows": 1032192,
+      "fillSeconds": 4.638315,
+      "fillRowsPerSec": 222535.98558959446,
+      "queries": [
+        {
+          "name": "grouped-endpoints",
+          "runsMs": [
+            146.638375,
+            6.519083,
+            5.510167,
+            5.709209,
+            6.100208
+          ],
+          "minMs": 5.510167,
+          "medianMs": 6.100208,
+          "serverElapsedMs": [
+            144.225,
+            5.077,
+            4.209,
+            4.306,
+            4.494
+          ],
+          "rowsReturned": 13
+        },
+        {
+          "name": "endpoint-latency-chart",
+          "runsMs": [
+            177.617625,
+            3.874417,
+            3.036459,
+            2.594292,
+            2.850958
+          ],
+          "minMs": 2.594292,
+          "medianMs": 3.036459,
+          "serverElapsedMs": [
+            176.209,
+            2.83,
+            2.1359999999999997,
+            1.818,
+            2.002
+          ],
+          "rowsReturned": 289
+        }
+      ]
+    },
+    {
+      "target": 10000000,
+      "tableRows": 10027008,
+      "fillSeconds": 42.244778625,
+      "fillRowsPerSec": 212921.36668167947,
+      "queries": [
+        {
+          "name": "grouped-endpoints",
+          "runsMs": [
+            1321.945916,
+            13.482292,
+            8.695167,
+            8.615,
+            7.724333
+          ],
+          "minMs": 7.724333,
+          "medianMs": 8.695167,
+          "serverElapsedMs": [
+            1316.7009999999998,
+            11.557,
+            7.2090000000000005,
+            7.191999999999999,
+            6.357
+          ],
+          "rowsReturned": 13
+        },
+        {
+          "name": "endpoint-latency-chart",
+          "runsMs": [
+            1761.494208,
+            9.217083,
+            7.230333,
+            6.835334,
+            7.1305
+          ],
+          "minMs": 6.835334,
+          "medianMs": 7.230333,
+          "serverElapsedMs": [
+            1759.021,
+            7.746,
+            5.92,
+            5.715,
+            6.045
+          ],
+          "rowsReturned": 289
+        }
+      ]
+    }
+  ]
+}

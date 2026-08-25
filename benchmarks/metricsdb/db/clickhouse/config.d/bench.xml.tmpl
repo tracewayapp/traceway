@@ -1,0 +1,41 @@
+<!-- Rendered by up.sh into bench.xml (gitignored). @@DB_CORES@@ = cores in the
+     DB cpuset, @@LISTEN_HOST@@ = 127.0.0.1 on host networking. -->
+<clickhouse>
+    <listen_host>@@LISTEN_HOST@@</listen_host>
+    <logger>
+        <level>warning</level>
+    </logger>
+    <max_server_memory_usage_to_ram_ratio>0.8</max_server_memory_usage_to_ram_ratio>
+    <mark_cache_size>2147483648</mark_cache_size>
+    <background_pool_size>@@DB_CORES@@</background_pool_size>
+    <merge_tree>
+        <!-- 30 GB: caps merge scratch on the 240 GB disk. parts_to_delay_insert
+             and parts_to_throw_insert stay at their defaults on purpose. -->
+        <max_bytes_to_merge_at_max_space_in_pool>32212254720</max_bytes_to_merge_at_max_space_in_pool>
+        <!-- These defaults (20, 25) must not exceed background_pool_size x
+             background_merges_mutations_concurrency_ratio; ClickHouse only
+             checks that once a database exists, so a restart would fail. -->
+        <number_of_free_entries_in_pool_to_execute_mutation>@@DB_CORES@@</number_of_free_entries_in_pool_to_execute_mutation>
+        <number_of_free_entries_in_pool_to_execute_optimize_entire_partition>@@DB_CORES@@</number_of_free_entries_in_pool_to_execute_optimize_entire_partition>
+        <number_of_free_entries_in_pool_to_lower_max_size_of_merge>@@DB_CORES@@</number_of_free_entries_in_pool_to_lower_max_size_of_merge>
+    </merge_tree>
+    <!-- System logs would land in the data dir and pollute the du measurement. -->
+    <query_log remove="remove"/>
+    <query_thread_log remove="remove"/>
+    <query_views_log remove="remove"/>
+    <part_log remove="remove"/>
+    <text_log remove="remove"/>
+    <trace_log remove="remove"/>
+    <metric_log remove="remove"/>
+    <latency_log remove="remove"/>
+    <error_log remove="remove"/>
+    <query_metric_log remove="remove"/>
+    <asynchronous_metric_log remove="remove"/>
+    <opentelemetry_span_log remove="remove"/>
+    <crash_log remove="remove"/>
+    <session_log remove="remove"/>
+    <processors_profile_log remove="remove"/>
+    <backup_log remove="remove"/>
+    <s3queue_log remove="remove"/>
+    <blob_storage_log remove="remove"/>
+</clickhouse>

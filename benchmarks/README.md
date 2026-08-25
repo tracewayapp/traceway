@@ -376,15 +376,16 @@ they're missing.
 
 ## Symbolicator benchmarks
 
-Two additional workflows benchmark the JS symbolicator. They answer different
-questions and run on different infrastructure:
+Additional workflows benchmark the JS symbolicator and the choice of metrics
+store. They answer different questions and run on different infrastructure:
 
 | Workflow | What it measures | Where it runs | Cost |
 |---|---|---|---|
 | `benchmark-symbolicator` | Bundle parser throughput: goja vs oxc (`go test -bench`) | GitHub runner | free, ~10 min |
 | `benchmark-symbolicator-cache` | Resolver cache architecture: in-memory LRU vs mmap disk cache | One Hetzner box | under 1 EUR, ~2 h |
+| `benchmark-metricsdb` | Metrics store shoot-out on OTel-shaped points: VictoriaMetrics vs ClickHouse vs DuckDB vs Firebolt Core (ingest, bytes/point, query latency, where each falls behind). See [metricsdb/README.md](metricsdb/README.md) | One Hetzner box per database | about EUR 2.50, ~5 h |
 
-Both are `workflow_dispatch` only. The workflow file must exist on `main` to be
+All are `workflow_dispatch` only. The workflow file must exist on `main` to be
 dispatchable; select the feature branch in the run dropdown to execute that
 branch's scripts and code.
 
@@ -486,6 +487,7 @@ benchmarks/
     cachebench-local.sh          # Symbolicator cache sweep on this machine
     cachebench-entry.sh          # Symbolicator cache sweep on one Hetzner box
     _cachebench.sh               # Shared matrix/stub helpers for the two above
+  metricsdb/                     # Metrics store shoot-out (VM, CH, DuckDB, Firebolt); see metricsdb/README.md
   results-throughput/            # Committed throughput results (wiped per dispatch)
   results-probe/                 # Committed read-probe results (wiped per dispatch)
   results-cachebench/            # Symbolicator cache results; CI uploads these as a run artifact, never committed

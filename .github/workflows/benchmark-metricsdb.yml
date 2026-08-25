@@ -1,0 +1,226 @@
+name: benchmark-metricsdb
+
+# Manual-only: this workflow provisions one dedicated-core Hetzner box per
+# database and tears it down afterwards, which costs real money. A full run
+# of the default four databases on ccx33 is about EUR 2.50 (roughly
+# EUR 0.09/h per box, a little under 5 h each). Triggering must be deliberate.
+on:
+  workflow_dispatch:
+    inputs:
+      databases:
+        description: 'Comma-separated databases to benchmark, one Hetzner box each (victoriametrics, clickhouse, duckdb, firebolt). Add clickhouse-map to also measure the shape of the current metric_points table (tags as a Map column, no codecs) as a baseline.'
+        required: true
+        default: 'victoriametrics,clickhouse,duckdb,firebolt'
+      tier:
+        description: 'Hetzner dedicated-vCPU tier for every box. ccx33 (8 cores, 32 GB, 240 GB NVMe) is the reference; ccx43 (16/64/360) is what 20B points needs. The database container gets all cores but two and the bench the last two; DuckDB runs in-process with threads = cores minus two. Firebolt Core needs 16 GB, so ccx13 and ccx23 cannot run it.'
+        required: true
+        default: 'ccx33'
+      location:
+        description: 'Hetzner datacenter (nbg1, fsn1, hel1, ash, hil)'
+        required: true
+        default: 'nbg1'
+      target_points:
+        description: 'Points to ingest per database. 10B over 1M series is 10,000 scrape rounds, about 28 h of simulated time at a 10 s interval. Going to 20B on ccx33 risks the disk guard (92% of /data) for the least compressing store once merge scratch is counted; use ccx43.'
+        required: true
+        default: '10000000000'
+      series:
+        description: 'Distinct series in the generated fleet (hosts x hostmetrics, pods x k8s metrics, services x http metrics). 1M is about 1,600 hosts and 12,800 pods. The same seed gives every database the same fingerprinted corpus.'
+        required: true
+        default: '1000000'
+      interval_seconds:
+        description: 'Simulated scrape interval in seconds. Points per series is target_points / series regardless; this only sets how much simulated time the corpus spans, which is what the routine dashboard queries window over.'
+        required: true
+        default: '10'
+      max_minutes:
+        description: 'Ingest wall-clock cap per database. 225 keeps ingest plus 30 min settle, 30 min cold queries and provisioning under the 6 h job limit. A database that hits it is reported with hit_max_ingest=true and the points it stored so far; the hard deadline in entry.sh is this plus the settle and cold caps plus 10.'
+        required: true
+        default: '225'
+      query_threshold_ms:
+        description: 'Routine query p95 during ingest above which a database counts as having fallen behind. 5000 matches the hardware read-probe threshold so the two benchmarks agree on what "usable dashboard" means.'
+        required: true
+        default: '5000'
+      writers:
+        description: 'Override the number of concurrent writers for every database. Leave empty for each database''s documented sweet spot, which the result JSON records (ClickHouse 4, VictoriaMetrics 8, DuckDB 1, Firebolt 2).'
+        required: false
+        default: ''
+      batch_size:
+        description: 'Override points per write for every database. Leave empty for the per-database default (ClickHouse 500k, clickhouse-map 200k, VictoriaMetrics 20k samples per remote-write request, DuckDB 1M, Firebolt 1M rows per Parquet upload).'
+        required: false
+        default: ''
+      extra_args:
+        description: 'Extra metricsdb-bench flags appended verbatim, for example "--gen-threads 4" when a run was flagged bench-limited, or "--rate 500000" for a fixed-rate stability run instead of saturation. Leave empty for headline runs.'
+        required: false
+        default: ''
+      smoke:
+        description: 'Tiny run to validate the pipeline end to end: 20M points, 10k series, 5 min ingest, 1 min settle, 2 min cold. About 15 min and EUR 0.05 per database.'
+        required: true
+        type: boolean
+        default: false
+      max_parallel:
+        description: 'How many databases run at the same time. Each is its own box, so 4 in parallel on ccx33 needs a 32 dedicated-vCPU Hetzner quota, which new accounts do not have. 1 runs them one after another and takes about 5 h for the default four.'
+        required: true
+        default: '1'
+
+concurrency:
+  group: benchmark-metricsdb
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # Pinned so the binary's glibc matches the ubuntu-24.04 Hetzner image.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: benchmarks/metricsdb/bench -> target
+      - name: Fetch libduckdb
+        run: ./benchmarks/metricsdb/scripts/fetch-libduckdb.sh linux-amd64
+      - name: Build metricsdb-bench
+        working-directory: benchmarks/metricsdb/bench
+        env:
+          DUCKDB_LIB_DIR: ${{ github.workspace }}/benchmarks/metricsdb/lib
+          DUCKDB_INCLUDE_DIR: ${{ github.workspace }}/benchmarks/metricsdb/lib
+        run: cargo build --release --locked
+      - name: Assemble artifact
+        working-directory: benchmarks/metricsdb
+        run: |
+          set -euo pipefail
+          rm -rf _artifact
+          mkdir -p _artifact
+          cp bench/target/release/metricsdb-bench lib/libduckdb.so bench/duckdb-version.txt _artifact/
+          cp -R db _artifact/db
+          cp scripts/remote-*.sh _artifact/
+          LD_LIBRARY_PATH=_artifact _artifact/metricsdb-bench --version
+          ls -la _artifact
+      - uses: actions/upload-artifact@v4
+        with:
+          name: metricsdb-bench
+          path: benchmarks/metricsdb/_artifact/
+
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      expected: ${{ steps.plan.outputs.expected }}
+    steps:
+      - id: plan
+        name: Build matrix from inputs
+        run: |
+          set -euo pipefail
+          jq -nc --arg dbs "${{ github.event.inputs.databases }}" '
+            ($dbs | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(. != ""))) as $D
+            | ($D - ["victoriametrics", "clickhouse", "clickhouse-map", "duckdb", "firebolt"]) as $bad
+            | if ($bad | length) > 0 then error("unknown databases: " + ($bad | join(","))) else . end
+            | if ($D | length) == 0 then error("no databases given") else . end
+            | {include: ($D | map({db: .}))}' > matrix.json
+          cat matrix.json
+          echo "matrix=$(cat matrix.json)" >> "$GITHUB_OUTPUT"
+          echo "expected=$(jq '.include | length' matrix.json)" >> "$GITHUB_OUTPUT"
+
+  run:
+    needs: [build, setup]
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(github.event.inputs.max_parallel) }}
+      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
+    env:
+      HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+      # Deterministic per attempt so the always() step below can delete the
+      # box by name even when entry.sh never got to its own trap.
+      BENCH_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+      TIER: ${{ github.event.inputs.tier }}
+      LOCATION: ${{ github.event.inputs.location }}
+      TARGET_POINTS: ${{ github.event.inputs.target_points }}
+      SERIES: ${{ github.event.inputs.series }}
+      INTERVAL_SECONDS: ${{ github.event.inputs.interval_seconds }}
+      MAX_MINUTES: ${{ github.event.inputs.max_minutes }}
+      QUERY_THRESHOLD_MS: ${{ github.event.inputs.query_threshold_ms }}
+      WRITERS: ${{ github.event.inputs.writers }}
+      BATCH_SIZE: ${{ github.event.inputs.batch_size }}
+      EXTRA_ARGS: ${{ github.event.inputs.extra_args }}
+      SMOKE: ${{ github.event.inputs.smoke == 'true' && '1' || '0' }}
+      ARTIFACT_DIR: ${{ github.workspace }}/benchmarks/metricsdb/_artifact
+      OUT_DIR: ${{ runner.temp }}/metricsdb-results
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: metricsdb-bench
+          path: benchmarks/metricsdb/_artifact/
+
+      - name: Install hcloud CLI
+        run: |
+          curl -fsSL https://github.com/hetznercloud/cli/releases/download/v1.50.0/hcloud-linux-amd64.tar.gz \
+            | sudo tar -xz -C /usr/local/bin hcloud
+
+      - name: Materialize SSH key
+        run: |
+          umask 077
+          key="$RUNNER_TEMP/benchmark-key"
+          printf '%s\n' "${{ secrets.BENCHMARK_SSH_PRIVATE_KEY }}" > "$key"
+          echo "BENCHMARK_SSH_KEY=$key" >> "$GITHUB_ENV"
+
+      - name: Preflight
+        run: ./benchmarks/metricsdb/scripts/preflight.sh ${{ matrix.db }}
+
+      # A timed-out step still runs the always() steps below; a job-level
+      # timeout would cancel them and leak the box. entry.sh pulls the partial
+      # result every minute, so even this timeout leaves data.
+      - name: Run ${{ matrix.db }} on ${{ github.event.inputs.tier }}
+        timeout-minutes: 330
+        run: ./benchmarks/metricsdb/scripts/entry.sh ${{ matrix.db }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: metricsdb-result-${{ github.event.inputs.tier }}-${{ matrix.db }}
+          path: ${{ runner.temp }}/metricsdb-results/
+          if-no-files-found: warn
+
+      - name: Delete leftover server
+        if: always()
+        run: |
+          hcloud server delete "bench-mdb-${BENCH_RUN_ID}-${{ matrix.db }}" 2>/dev/null || true
+          hcloud server list -l "run=${BENCH_RUN_ID}-${{ matrix.db }}" -o noheader -o columns=name 2>/dev/null \
+            | xargs -r -n1 hcloud server delete 2>/dev/null || true
+
+  summary:
+    needs: [setup, run]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: metricsdb-result-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/metricsdb-results/
+
+      - name: Install matplotlib
+        run: pip install --quiet matplotlib
+
+      - name: Summarize
+        run: |
+          set -euo pipefail
+          results="${RUNNER_TEMP}/metricsdb-results"
+          python3 benchmarks/metricsdb/scripts/summarize.py "${results}"
+          tee -a "$GITHUB_STEP_SUMMARY" < "${results}/summary.md"
+          got=$(find "${results}" -maxdepth 1 -name '*.json' | wc -l | tr -d ' ')
+          echo "cells with a result file: ${got}/${{ needs.setup.outputs.expected }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: metricsdb-summary
+          path: |
+            ${{ runner.temp }}/metricsdb-results/summary.md
+            ${{ runner.temp }}/metricsdb-results/report.html
+            ${{ runner.temp }}/metricsdb-results/chart-*
+          if-no-files-found: warn

@@ -1,0 +1,19 @@
+<!-- Rendered by up.sh into bench.xml (gitignored). @@DB_CORES@@ = cores in the
+     DB cpuset, @@CLIENT_NET@@ = 127.0.0.1 on host networking. -->
+<clickhouse>
+    <profiles>
+        <default>
+            <async_insert>0</async_insert>
+            <max_insert_threads>2</max_insert_threads>
+            <max_threads>@@DB_CORES@@</max_threads>
+            <max_execution_time>120</max_execution_time>
+        </default>
+    </profiles>
+    <users>
+        <default>
+            <networks replace="replace">
+                <ip>@@CLIENT_NET@@</ip>
+            </networks>
+        </default>
+    </users>
+</clickhouse>

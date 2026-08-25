@@ -156,10 +156,16 @@ jobs:
           --health-start-period 10s
           --health-retries 10
 
+      # Deliberately NOT using the image's CLICKHOUSE_DB env var, even though
+      # docker-compose.yml does and it would replace the explicit creation step
+      # below. Setting it makes the entrypoint run its first-boot init path,
+      # which (with no CLICKHOUSE_USER/PASSWORD set) also disables network
+      # access for the default user; on a GitHub runner the container then never
+      # reports healthy and the job dies in "Initialize containers" before a
+      # single step runs. It recovers locally under podman, so this is not
+      # reproducible off-runner -- please don't re-simplify it.
       clickhouse:
         image: clickhouse/clickhouse-server:24.8-alpine
-        env:
-          CLICKHOUSE_DB: traceway_test
         ports:
           - 8123:8123
           - 9000:9000
@@ -201,6 +207,11 @@ jobs:
       # driver is built with MultiStatementEnabled: false), so one request per
       # file is the whole contract, and it keeps per-file error attribution.
       #
+      - name: Create ClickHouse database
+        run: |
+          curl -sS --fail-with-body 'http://localhost:8123/' \
+            --data-binary 'CREATE DATABASE IF NOT EXISTS traceway_test'
+
       # Unlike scripts/test-pgch-entrypoint.sh these are NOT suffixed with
       # `|| true`: a migration that fails there silently yields a half-built
       # schema and surfaces later as confusing test failures.

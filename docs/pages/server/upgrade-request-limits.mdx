@@ -4,15 +4,15 @@ This release hardens the server against slow, oversized, and unfair requests. Mo
 
 ## Trusted proxies
 
-Traceway used to accept `X-Forwarded-For` from any peer. It now trusts only private networks by default: RFC1918 ranges, loopback, and IPv6 ULA (`fc00::/7`). A reverse proxy on the same host, on a Docker network, or on an in-cluster ingress keeps working as before.
+Traceway used to accept `X-Forwarded-For` from any peer. It now trusts only loopback by default. A reverse proxy running on the same host as a plain process keeps working; anything else has to be listed. Private networks are deliberately not trusted: on a Docker or Kubernetes network every peer has a private address, including the clients themselves when the port is published directly, so trusting those ranges would let any of them forge the header past the per-IP limits.
 
-You are affected if any hop between your users and Traceway has a public or carrier-grade NAT address:
+You are affected if any hop between your users and Traceway is not on loopback:
 
+- A proxy container on the same Docker network (nginx, Caddy, Traefik).
+- An in-cluster ingress. List its pod range.
 - A CDN such as Cloudflare talking to Traceway directly.
-- A CDN in front of a private ingress (`CDN -> nginx -> Traceway`). The ingress is trusted, but gin stops walking the header chain at the CDN's address.
+- A CDN in front of a private ingress (`CDN -> nginx -> Traceway`). List both.
 - An external load balancer with a public IP.
-- Kubernetes clusters whose pod ranges live in `100.64.0.0/10`, which some GKE setups use.
-- Tailscale or another `100.64.0.0/10` fabric.
 
 Symptoms after the upgrade:
 
@@ -26,19 +26,19 @@ Fix: set `TRUSTED_PROXIES` to every hop in the chain, not just the outermost one
 TRUSTED_PROXIES=173.245.48.0/20,103.21.244.0/22,10.0.0.0/8
 ```
 
-Use `none` to trust no proxy at all, or `*` to trust every peer (the behaviour before this setting existed; it lets clients spoof their address). The full list of Cloudflare ranges is at https://www.cloudflare.com/ips/.
+`*` trusts every peer, which is the behaviour before this setting existed and lets clients spoof their address. The full list of Cloudflare ranges is at https://www.cloudflare.com/ips/.
 
-`TRUSTED_PROXY_HEADER` is the alternative for a proxy that sets a dedicated header: `X-Real-IP` behind ingress-nginx, `CF-Connecting-IP` behind Cloudflare. Its value is taken as the client IP on every request, ahead of `TRUSTED_PROXIES`, and a value that is not an IP address is ignored. Only use it when nothing can reach the backend without passing through that proxy, because a directly reachable backend lets clients set the header themselves.
+`TRUSTED_PROXY_HEADER` is the alternative for a proxy that sets a dedicated header: `X-Real-IP` behind ingress-nginx, `CF-Connecting-IP` behind Cloudflare. Its value is taken as the client IP on every request, ahead of `TRUSTED_PROXIES`. Only use it when nothing can reach the backend without passing through that proxy, because a directly reachable backend lets clients set the header themselves.
 
 ## Per-IP limits on the authentication endpoints
 
-The unauthenticated endpoints now have fixed-window per-IP limits: `/login` and `/register` 10 a minute, SSO start and callback 20, the token endpoints (`/auth/token`, `/auth/device/token`) 60 shared, `/auth/logout` 20, `/forgot-password` 5, password-reset validation 30 and consumption 10, invitation lookup 30 and acceptance 10. Over the limit answers `429`, except the two token endpoints, which answer the RFC 8628 shape `400 {"error":"slow_down"}` so device-flow pollers (the CLI, MCP clients) back off and keep polling instead of failing the login. Limits are per process and reset on restart.
+The unauthenticated endpoints now have fixed-window per-IP limits: `/login` and `/register` 10 a minute, SSO start and callback 20, the token endpoints (`/auth/token`, `/auth/device/token`) 60 shared, `/auth/logout` 20, `/forgot-password` 5, password-reset validation 30 and consumption 10, invitation lookup 30 and acceptance 10. Over the limit answers `429` with a `Retry-After` header. The one exception is a `device_code` poll on the token endpoints, which answers the RFC 8628 shape `400 {"error":"slow_down"}` so device-flow pollers (the CLI, MCP clients) back off and keep polling instead of failing the login; refresh and authorization-code grants get the `429` like everything else, since `slow_down` means nothing to them. The anonymous auth endpoints also cap their bodies at 64 KB. Limits are per process and reset on restart.
 
 They key on the client IP, which is why the trusted-proxy setting above matters: behind a proxy Traceway does not trust, every user shares one bucket of 10 logins a minute. Teams behind one office NAT share a bucket by design; raise the numbers in `routes.go` if that is too tight for you.
 
 ## Upload limits
 
-Source map and symbol uploads now have a total cap per request: 250 MB and 500 files for `/api/sourcemaps/upload`, 250 MB and 100 files for `/api/symbols/upload`. A larger body answers `413`, too many files answers `422`. `@tracewayapp/sourcemap-upload` posts a whole build in one request, so a very large build that used to work may now need to be split. Chunked uploads without a `Content-Length` are held to the same total.
+Source map and symbol uploads now have a total cap of 250 MB per request. A larger body answers `413`. A request with more than 1000 files (the number of parts Go's multipart reader accepts, so nothing that uploaded before is refused now) answers `422` instead of the old `400`. `@tracewayapp/sourcemap-upload` posts a whole build, maps and bundles, in one request; a build over 1000 files needs to be uploaded in batches. Chunked uploads without a `Content-Length` are held to the same total.
 
 Concurrent uploads are limited by `UPLOAD_MAX_CONCURRENT` (default 4). Excess uploads wait 30 seconds and then get `503`; CI retries handle that.
 
@@ -57,11 +57,11 @@ The ingest admission gate (`INGEST_MAX_CONCURRENT`, default 2 x CPU cores with a
 
 ## Server timeouts
 
-The server now closes connections whose body does not finish arriving. Ordinary requests have 60 seconds. Routes that take large bodies get their own progress deadline: uploads may take up to 30 minutes as long as data keeps flowing, telemetry ingest up to 2 minutes. On those routes a client that averages under 4 KB/s after the first 20 seconds is cut off with `408`. Idle keep-alive connections are closed after 2 minutes.
+The server now closes connections whose headers or body do not finish arriving. Headers must arrive within 15 seconds. Every request body has a progress deadline: no more than 30 seconds between bytes, 10 minutes in total. Routes that take large bodies have their own budget: uploads may take up to 30 minutes as long as data keeps flowing, `/api/report` up to 5 minutes, OTLP up to 2 minutes. A client that averages under 1 KB/s after the first 20 seconds is cut off with `408`; a body that has fully arrived is never rejected for being slow. Idle keep-alive connections are closed after 2 minutes.
 
 ## Public status pages in iframes
 
-Every response now carries `X-Frame-Options: DENY` and a `frame-ancestors 'none'` policy, except public status pages, which stay embeddable: any `/status/<slug>` page, and the root of a custom status-page domain. The custom-domain case is recognised by comparing the request host to `APP_BASE_URL`, so set `APP_BASE_URL` if you embed a status page served from its own domain.
+Every response now carries `X-Frame-Options: DENY` and a `frame-ancestors 'none'` policy, except public status pages at `/status/<slug>`, which stay embeddable. A status page served at the root of a custom domain is not exempt, because that same root serves the dashboard on every hostname the backend answers on. To embed a status page, use its `/status/<slug>` URL.
 
 ## Metric query limits
 

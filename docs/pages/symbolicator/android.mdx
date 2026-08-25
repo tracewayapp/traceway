@@ -97,7 +97,7 @@ Content-Type: multipart/form-data
 
 | Field | Required | Notes |
 |---|---|---|
-| `files` | yes | The `mapping.txt` file. 200 MB per file, 250 MB and 100 files total per request (a larger body answers `413`, too many files `422`). |
+| `files` | yes | The `mapping.txt` file. 200 MB per file, 250 MB and 1000 files total per request (a larger body answers `413`, too many files `422`). |
 | `proguard_uuid` | yes | The build UUID. The mapping is stored as `<uuid>.txt`. |
 
 The backend recognizes an R8 mapping by its header and class lines. The stored key is:

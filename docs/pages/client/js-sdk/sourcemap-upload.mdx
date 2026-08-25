@@ -67,7 +67,7 @@ Flags take precedence over environment variables when both are set.
 
 ## Limits
 
-Individual source map files must not exceed **50MB**, and one request must not exceed **250MB** and **500 files** in total.
+Individual source map files must not exceed **50MB**, and one request must not exceed **250MB** and **1000 files** (maps and bundles together) in total.
 
 The CLI posts every map and its sibling bundle in a single request, so the total is what a large build actually hits. A request over the total answers `413`; a single file over 50MB answers `400`.
 
@@ -143,7 +143,7 @@ The contract:
 | Accepted extensions | `.map`, `.js`, `.cjs`, `.mjs`. Files with any other extension are silently skipped, not rejected. |
 | Size limit | 50MB per file. A larger file fails the request with `400` and an error message. |
 | Total request size | 250MB across all files in one request. A larger body fails with `413`. |
-| File count | 500 files per request. More than that fails with `422`; split the upload into batches. |
+| File count | 1000 files per request, counting the bundles uploaded next to the maps. More than that fails with `422`; upload the build in smaller batches. |
 | Auth failure | Missing or invalid token returns `401`. |
 | Response | `200` with `{"uploaded": N}`, counting only the stored files (skipped files are excluded). |
 | Debug IDs | Detected server-side in the uploaded content; no extra fields or flags needed. |

@@ -130,6 +130,7 @@ func TestInvalidateSourceMapEvictsStaleResolver(t *testing.T) {
 	defer func() { storage.Store = prev }()
 	cs := &countingStorage{reads: map[string]int{}, data: map[string][]byte{}}
 	storage.Store = cs
+	defer awaitTWWarmups(t)
 
 	projectId := uuid.New()
 	mapKey := fmt.Sprintf("sourcemaps/%s/stable.js.map", projectId)

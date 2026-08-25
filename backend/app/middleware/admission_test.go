@@ -148,3 +148,21 @@ func TestAdmissionGateBoundsWaiters(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 }
+
+func TestAdmissionGateKeepsOneProjectsQueueOutOfTheGlobalRoom(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	r := admissionRouter(newAdmissionGate(4, time.Second, "busy", nil), release)
+
+	for i := 0; i < 25; i++ {
+		go postAs(r, "hog")
+	}
+	time.Sleep(150 * time.Millisecond)
+
+	if !admitted(r, "victim") {
+		t.Fatal("victim's first request was rejected while the reserve was free")
+	}
+	if !admitted(r, "victim") {
+		t.Fatal("victim's second request was rejected immediately instead of waiting for a slot")
+	}
+}

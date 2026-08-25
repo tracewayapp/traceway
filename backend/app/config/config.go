@@ -150,29 +150,22 @@ func (c *Cfg) PasswordLoginDisabled() bool {
 	return c.DisablePasswordLogin == "true"
 }
 
-var DefaultTrustedProxies = []string{
-	"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
-	"127.0.0.0/8", "fc00::/7", "::1",
-}
-
+// TrustedProxyList returns the proxy IPs/CIDRs whose X-Forwarded-For gin may
+// trust when resolving c.ClientIP() for per-IP rate limiters.
+// Defaults to loopback so a direct client can't spoof a bypass
 func (c *Cfg) TrustedProxyList() []string {
 	raw := strings.TrimSpace(c.TrustedProxies)
-	switch {
-	case raw == "":
-		return DefaultTrustedProxies
-	case raw == "*":
+	if raw == "" {
+		return []string{"127.0.0.1", "::1"}
+	}
+	if raw == "*" {
 		return []string{"0.0.0.0/0", "::/0"}
-	case strings.EqualFold(raw, "none"):
-		return nil
 	}
 	var proxies []string
 	for _, p := range strings.Split(raw, ",") {
 		if p = strings.TrimSpace(p); p != "" {
 			proxies = append(proxies, p)
 		}
-	}
-	if len(proxies) == 0 {
-		return DefaultTrustedProxies
 	}
 	return proxies
 }

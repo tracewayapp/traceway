@@ -3,14 +3,13 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"github.com/tracewayapp/traceway/backend/app/middleware"
+	"github.com/tracewayapp/traceway/backend/app/services"
+	"github.com/tracewayapp/traceway/backend/app/storage"
 	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
-
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/services"
-	"github.com/tracewayapp/traceway/backend/app/storage"
 
 	"github.com/gin-gonic/gin"
 	traceway "go.tracewayapp.com"
@@ -25,16 +24,14 @@ func (s sourceMapController) Upload(c *gin.Context) {
 		return
 	}
 
-	if !parseMultipartCapped(c, sourceMapMaxUploadBytes, uploadMultipartMemory) {
+	if !parseMultipartCapped(c, maxUploadBytes, uploadMultipartMemory) {
 		return
 	}
+	defer c.Request.MultipartForm.RemoveAll()
 
 	files := c.Request.MultipartForm.File["files"]
 	if len(files) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No files uploaded"})
-		return
-	}
-	if !checkFileCount(c, len(files), sourceMapMaxFiles, "source map files") {
 		return
 	}
 

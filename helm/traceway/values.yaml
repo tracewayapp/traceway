@@ -62,37 +62,24 @@ app:
   jwtSecret: ""
   # Optional. Base URL used in password reset emails, e.g. "https://traceway.example.com"
   baseURL: ""
+  # Comma-separated IPs/CIDRs of proxies whose X-Forwarded-For is trusted for
+  # per-IP rate limiting, or "*". Defaults to loopback. Required when ingress
+  # is enabled unless trustedProxyHeader is set; use the controller's pod CIDR.
+  trustedProxies: ""
+  # Alternative for ingress. A header trusted verbatim as the client IP, e.g. "X-Real-IP"
+  # (overwritten by ingress-nginx on every request) or "CF-Connecting-IP".
+  # Takes precedence over trustedProxies. Only safe when a NetworkPolicy
+  # forces all traffic through the proxy that overwrites the header.
+  trustedProxyHeader: ""
   # Optional. Set to "true" to serve only the API without the embedded frontend.
   apiOnly: ""
-  # Optional. Comma-separated CIDRs of the proxies whose X-Forwarded-For is
-  # trusted for the real client IP. Defaults to private ranges (RFC1918,
-  # loopback, IPv6 ULA), which already covers an in-cluster ingress.
-  # Every per-IP rate limit and each session's recorded client.ip depend on it.
-  #
-  # A value REPLACES the defaults, so it must list EVERY hop between the client
-  # and Traceway. In the usual CDN -> ingress -> Traceway chain, Traceway's peer
-  # is the ingress, so a CDN-only list leaves that peer untrusted and turns
-  # X-Forwarded-For off entirely. Include the pod/ingress range too, e.g.
-  # "173.245.48.0/20,103.21.244.0/22,10.0.0.0/8".
-  # Use "none" to trust no proxy at all, or "*" to trust every peer.
-  trustedProxies: ""
-  # Optional. A header taken as the client IP on every request, ahead of
-  # trustedProxies: "X-Real-IP" behind ingress-nginx, "CF-Connecting-IP" behind
-  # Cloudflare. Only safe when a NetworkPolicy forces all traffic through the
-  # proxy that overwrites the header.
-  trustedProxyHeader: ""
-  # Optional. Cap on the decompressed /api/report body in megabytes.
-  # Default 64. Session-replay batches are the large case.
+  # Optional. Cap on the decompressed /api/report body in megabytes. Default 64.
   reportMaxBodyMB: ""
-  # Optional. Concurrently processed telemetry ingest requests. Default is
-  # 2x CPU count with a floor of 4. Each admitted request can hold a decoded
-  # body, so on a memory-capped container set this from the memory limit
-  # rather than letting it track CPU count.
-  # One project can hold at most three quarters of the slots; the rest is a
-  # reserve so a single noisy project cannot block the others.
+  # Optional. Telemetry ingest requests processed at once. Default is 2x CPU
+  # count with a floor of 4. Each admitted request can hold a decoded body, so
+  # on a memory-capped container size this from the memory limit instead.
   ingestMaxConcurrent: ""
-  # Optional. Concurrent source-map/symbol uploads. Default 4. Each holds a
-  # whole file in memory while parsing.
+  # Optional. Source map and symbol uploads processed at once. Default 4.
   uploadMaxConcurrent: ""
 
 # ClickHouse configuration — required when variant=minimal

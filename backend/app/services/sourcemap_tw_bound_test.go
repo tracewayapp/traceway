@@ -51,10 +51,9 @@ func TestTWWarmupQueueIsBoundedAndCoalesced(t *testing.T) {
 	project := uuid.New()
 	job := func(i int) twJob { return twJob{projectId: project, base: fmt.Sprintf("bundle-%d", i)} }
 
-	accepted := 0
-	for i := 0; i < twWorkers+twQueueDepth; i++ {
-		if enqueueTWWarmup(job(i)) {
-			accepted++
+	for i := 0; i < twWorkers; i++ {
+		if !enqueueTWWarmup(job(i)) {
+			t.Fatalf("job %d was not accepted on an idle pool", i)
 		}
 	}
 	for i := 0; i < twWorkers; i++ {
@@ -64,8 +63,10 @@ func TestTWWarmupQueueIsBoundedAndCoalesced(t *testing.T) {
 			t.Fatal("workers did not start")
 		}
 	}
-	if accepted != twWorkers+twQueueDepth {
-		t.Fatalf("accepted %d jobs, want %d", accepted, twWorkers+twQueueDepth)
+	for i := twWorkers; i < twWorkers+twQueueDepth; i++ {
+		if !enqueueTWWarmup(job(i)) {
+			t.Fatalf("job %d was dropped with room left in the queue", i)
+		}
 	}
 
 	done := make(chan bool, 1)

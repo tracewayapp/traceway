@@ -224,7 +224,7 @@ func (e exceptionStackTraceController) ArchiveExceptions(c *gin.Context) {
 
 	var request ArchiveRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		middleware.RejectBindError(c, err, err.Error())
 		return
 	}
 
@@ -286,7 +286,7 @@ func (e exceptionStackTraceController) UnarchiveExceptions(c *gin.Context) {
 
 	var request ArchiveRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		middleware.RejectBindError(c, err, err.Error())
 		return
 	}
 

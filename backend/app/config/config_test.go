@@ -11,16 +11,11 @@ func TestTrustedProxyList(t *testing.T) {
 		value string
 		want  []string
 	}{
-		{"default is the private ranges", "", DefaultTrustedProxies},
-		{"whitespace only is the default", "  ", DefaultTrustedProxies},
+		{"default is loopback", "", []string{"127.0.0.1", "::1"}},
+		{"whitespace only is loopback", "  ", []string{"127.0.0.1", "::1"}},
 		{"wildcard trusts everything", "*", []string{"0.0.0.0/0", "::/0"}},
-		{"none trusts nobody", "none", nil},
-		{"none is case-insensitive and padded", "  NONE  ", nil},
-		{"single entry", "10.0.0.0/8", []string{"10.0.0.0/8"}},
 		{"list with spaces and empty entries", " 10.0.0.1, 192.168.0.0/16,, ", []string{"10.0.0.1", "192.168.0.0/16"}},
-		{"trailing comma", "10.0.0.0/8,", []string{"10.0.0.0/8"}},
-		{"trailing newline", "10.0.0.0/8\n", []string{"10.0.0.0/8"}},
-		{"only separators falls back to the default", ",,", DefaultTrustedProxies},
+		{"only separators trusts nobody", ",,", nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

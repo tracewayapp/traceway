@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sort"
 	"strconv"
 	"time"
 
@@ -81,19 +80,15 @@ func validateMetricRange(from, to time.Time) string {
 	return ""
 }
 
-func trimGroupSeries(series map[string][]models.TimeSeriesPoint, maxGroups int) bool {
-	if maxGroups <= 0 || len(series) <= maxGroups {
-		return false
+func trimGroupSeries(series map[string][]models.TimeSeriesPoint) bool {
+	truncated := false
+	for k, points := range series {
+		if points == nil {
+			delete(series, k)
+			truncated = true
+		}
 	}
-	keys := make([]string, 0, len(series))
-	for k := range series {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys[maxGroups:] {
-		delete(series, k)
-	}
-	return true
+	return truncated
 }
 
 type MetricQueryRequest struct {
@@ -132,7 +127,7 @@ func (c *metricQueryController) Query(ctx *gin.Context) {
 
 	var req MetricQueryRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		middleware.RejectBindError(ctx, err, "Invalid request body")
 		return
 	}
 	if msg := validateMetricQuery(&req); msg != "" {
@@ -184,7 +179,7 @@ func (c *metricQueryController) Query(ctx *gin.Context) {
 			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to query metric %s: %w", q.Name, err))
 			return
 		}
-		truncated := trimGroupSeries(series, metricQueryMaxGroups)
+		truncated := trimGroupSeries(series)
 
 		resultUnit := unitMap[q.Name]
 		if agg == "count" {

@@ -186,13 +186,13 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.GET("/auth/callback/:provider", middleware.RateLimitPerIP(20, time.Minute), middleware.Transactional, OAuthController.Callback)
 	router.POST("/auth/finish-setup", middleware.UseAppAuth, middleware.Transactional, OAuthController.FinishSetup)
 
-	router.Match(postPreflight, "/auth/device/authorize", middleware.OAuthCors, middleware.RateLimitPerIP(10, time.Minute), DeviceAuthController.Authorize)
+	router.Match(postPreflight, "/auth/device/authorize", middleware.OAuthCors, middleware.RateLimitPerIP(10, time.Minute), middleware.BufferAuthBody, DeviceAuthController.Authorize)
 	// One shared limiter instance so both token routes draw from the same budget;
 	// slightly higher 60/min limit to leave headroom for concurrent device flow polling behind NAT
 	tokenRateLimit := middleware.RateLimitOAuthTokenPerIP(60, time.Minute)
-	router.Match(postPreflight, "/auth/device/token", middleware.OAuthCors, tokenRateLimit, DeviceAuthController.Token)
-	router.Match(postPreflight, "/auth/token", middleware.OAuthCors, tokenRateLimit, DeviceAuthController.Token)
-	router.Match(postPreflight, "/auth/logout", middleware.OAuthCors, middleware.RateLimitPerIP(20, time.Minute), DeviceAuthController.Logout)
+	router.Match(postPreflight, "/auth/device/token", middleware.OAuthCors, tokenRateLimit, middleware.BufferAuthBody, DeviceAuthController.Token)
+	router.Match(postPreflight, "/auth/token", middleware.OAuthCors, tokenRateLimit, middleware.BufferAuthBody, DeviceAuthController.Token)
+	router.Match(postPreflight, "/auth/logout", middleware.OAuthCors, middleware.RateLimitPerIP(20, time.Minute), middleware.BufferAuthBody, DeviceAuthController.Logout)
 	router.GET("/device", middleware.UseAppAuth, DeviceAuthController.Lookup)
 	router.POST("/device/approve", middleware.UseAppAuth, middleware.Transactional, DeviceAuthController.Approve)
 	router.POST("/device/deny", middleware.UseAppAuth, middleware.Transactional, DeviceAuthController.Deny)
@@ -347,8 +347,8 @@ func RegisterControllers(router *gin.RouterGroup) {
 
 	router.POST("/pages", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.List)
 	router.POST("/pages/for-issues", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.UnresolvedForIssues)
-	router.POST("/pages/bulk-acknowledge", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.BufferAuthBody, middleware.Transactional, PageController.BulkAcknowledge)
-	router.POST("/pages/bulk-resolve", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.BufferAuthBody, middleware.Transactional, PageController.BulkResolve)
+	router.POST("/pages/bulk-acknowledge", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.BulkAcknowledge)
+	router.POST("/pages/bulk-resolve", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.BulkResolve)
 	router.GET("/pages/open-count", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.OpenCount)
 	router.GET("/pages/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.Get)
 	router.POST("/pages/:id/acknowledge", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.Acknowledge)

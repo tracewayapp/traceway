@@ -2,10 +2,8 @@ package middleware
 
 import (
 	"bytes"
-	"errors"
 	"io"
 	"net/http"
-	"os"
 
 	"github.com/gin-gonic/gin"
 )
@@ -16,11 +14,9 @@ const maxTransactionalBodyBytes = 8 << 20
 
 const bodyBufferedContextKey = "bodyBuffered"
 
-func BufferBody(maxBytes int64) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if bufferRequestBody(c, maxBytes) {
-			c.Next()
-		}
+func BufferAuthBody(c *gin.Context) {
+	if bufferRequestBody(c, maxAuthBodyBytes) {
+		c.Next()
 	}
 }
 
@@ -34,15 +30,11 @@ func bufferRequestBody(c *gin.Context, maxBytes int64) bool {
 
 	data, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes))
 	if err != nil {
-		var maxBytesErr *http.MaxBytesError
-		switch {
-		case errors.As(err, &maxBytesErr):
-			c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{"error": "Request body too large"})
-		case errors.Is(err, ErrBodyTooSlow), errors.Is(err, os.ErrDeadlineExceeded):
-			c.AbortWithStatusJSON(http.StatusRequestTimeout, gin.H{"error": "Request body arrived too slowly"})
-		default:
-			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Could not read request body"})
+		status, message, ok := BodyReadError(err)
+		if !ok {
+			status, message = http.StatusBadRequest, "Could not read request body"
 		}
+		c.AbortWithStatusJSON(status, gin.H{"error": message})
 		return false
 	}
 
@@ -51,9 +43,3 @@ func bufferRequestBody(c *gin.Context, maxBytes int64) bool {
 	c.Set(bodyBufferedContextKey, true)
 	return true
 }
-
-func BufferAuthBody(c *gin.Context) {
-	bufferAuthBody(c)
-}
-
-var bufferAuthBody = BufferBody(maxAuthBodyBytes)

@@ -1,3 +1,6 @@
+{{- if and .Values.ingress.enabled (not .Values.app.trustedProxies) (not .Values.app.trustedProxyHeader) }}
+{{- fail "set app.trustedProxies or app.trustedProxyHeader when ingress.enabled=true so clients do not share the ingress controller's rate-limit bucket" }}
+{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -44,14 +47,11 @@ data:
   {{- if .Values.app.baseURL }}
   APP_BASE_URL: {{ .Values.app.baseURL | quote }}
   {{- end }}
-  {{- if .Values.app.trustedProxyHeader }}
-  TRUSTED_PROXY_HEADER: {{ .Values.app.trustedProxyHeader | quote }}
-  {{- end }}
-  {{- if .Values.app.apiOnly }}
-  API_ONLY: {{ .Values.app.apiOnly | quote }}
-  {{- end }}
   {{- if .Values.app.trustedProxies }}
   TRUSTED_PROXIES: {{ .Values.app.trustedProxies | quote }}
+  {{- end }}
+  {{- if .Values.app.trustedProxyHeader }}
+  TRUSTED_PROXY_HEADER: {{ .Values.app.trustedProxyHeader | quote }}
   {{- end }}
   {{- if .Values.app.reportMaxBodyMB }}
   REPORT_MAX_BODY_MB: {{ .Values.app.reportMaxBodyMB | quote }}
@@ -61,6 +61,9 @@ data:
   {{- end }}
   {{- if .Values.app.uploadMaxConcurrent }}
   UPLOAD_MAX_CONCURRENT: {{ .Values.app.uploadMaxConcurrent | quote }}
+  {{- end }}
+  {{- if .Values.app.apiOnly }}
+  API_ONLY: {{ .Values.app.apiOnly | quote }}
   {{- end }}
   {{- if .Values.disablePasswordLogin }}
   DISABLE_PASSWORD_LOGIN: {{ .Values.disablePasswordLogin | quote }}

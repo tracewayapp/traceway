@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -65,12 +64,13 @@ func isMaxBytes(err error) bool {
 }
 
 func writeDecodeError(c *gin.Context, err error) {
+	if status, message, ok := middleware.BodyReadError(err); ok {
+		c.JSON(status, gin.H{"error": message})
+		return
+	}
 	status := http.StatusBadRequest
-	switch {
-	case errors.Is(err, errBodyTooLarge):
+	if errors.Is(err, errBodyTooLarge) {
 		status = http.StatusRequestEntityTooLarge
-	case errors.Is(err, middleware.ErrBodyTooSlow), errors.Is(err, os.ErrDeadlineExceeded):
-		status = http.StatusRequestTimeout
 	}
 	c.JSON(status, gin.H{"error": err.Error()})
 }

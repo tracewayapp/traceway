@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -13,25 +13,11 @@ import (
 )
 
 const (
-	sourceMapMaxUploadBytes = 250 << 20
-	symbolsMaxUploadBytes   = 250 << 20
-
-	sourceMapMaxFiles = 500
-	symbolsMaxFiles   = 100
-
-	uploadBodyIdle  = 30 * time.Second
-	uploadBodyTotal = 30 * time.Minute
-
+	maxUploadBytes        = 250 << 20
 	uploadMultipartMemory = 8 << 20
+	uploadBodyIdle        = 30 * time.Second
+	uploadBodyTotal       = 30 * time.Minute
 )
-
-func checkFileCount(c *gin.Context, files int, max int, noun string) bool {
-	if files > max {
-		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": fmt.Sprintf("a maximum of %d %s can be uploaded per request; split the upload into smaller batches", max, noun)})
-		return false
-	}
-	return true
-}
 
 type countingReadCloser struct {
 	rc io.ReadCloser
@@ -62,16 +48,21 @@ func parseMultipartCapped(c *gin.Context, maxBytes, maxMemory int64) bool {
 		if _, err = io.Copy(io.Discard, c.Request.Body); err == nil {
 			return true
 		}
+		c.Request.MultipartForm.RemoveAll()
 	}
 
 	var maxBytesErr *http.MaxBytesError
 	switch {
 	case errors.As(err, &maxBytesErr) || counter.n > maxBytes:
 		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": fmt.Sprintf("Total upload size exceeds %dMB", maxBytes>>20)})
-	case errors.Is(err, os.ErrDeadlineExceeded):
-		c.JSON(http.StatusRequestTimeout, gin.H{"error": "Upload timed out before the whole body arrived"})
+	case errors.Is(err, multipart.ErrMessageTooLarge):
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Too many files in one request; split the upload into smaller batches"})
 	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse multipart form"})
+		if status, message, ok := middleware.BodyReadError(err); ok {
+			c.JSON(status, gin.H{"error": message})
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse multipart form"})
+		}
 	}
 	return false
 }

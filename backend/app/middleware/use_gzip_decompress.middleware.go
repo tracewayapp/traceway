@@ -26,7 +26,7 @@ func UseGzip(c *gin.Context) {
 
 const (
 	reportBodyIdle  = 20 * time.Second
-	reportBodyTotal = 2 * time.Minute
+	reportBodyTotal = 5 * time.Minute
 )
 
 func useGzipLimited(c *gin.Context, maxBytes int64) {

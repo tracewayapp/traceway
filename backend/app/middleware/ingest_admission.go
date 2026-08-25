@@ -81,41 +81,41 @@ func (g *admissionGate) handle(c *gin.Context) {
 
 	if g.keyOf != nil && g.perKey > 0 {
 		if key := g.keyOf(c); key != "" {
-			keySlots := g.keyed.ref(key, g.perKey)
+			entry := g.keyed.ref(key, g.perKey)
 			defer g.keyed.unref(key)
-			if !g.acquire(c, keySlots, deadline) {
+			if !g.acquire(c, entry.slots, entry.waiters, deadline) {
 				return
 			}
-			defer func() { <-keySlots }()
+			defer func() { <-entry.slots }()
 		}
 	}
 
-	if !g.acquire(c, g.slots, deadline) {
+	if !g.acquire(c, g.slots, g.waiters, deadline) {
 		return
 	}
 	defer func() { <-g.slots }()
 	c.Next()
 }
 
-func (g *admissionGate) acquire(c *gin.Context, ch chan struct{}, deadline time.Time) bool {
+func (g *admissionGate) acquire(c *gin.Context, slots, waiters chan struct{}, deadline time.Time) bool {
 	select {
-	case ch <- struct{}{}:
+	case slots <- struct{}{}:
 		return true
 	default:
 	}
 
 	select {
-	case g.waiters <- struct{}{}:
+	case waiters <- struct{}{}:
 	default:
 		g.reject(c)
 		return false
 	}
-	defer func() { <-g.waiters }()
+	defer func() { <-waiters }()
 
 	timer := time.NewTimer(time.Until(deadline))
 	defer timer.Stop()
 	select {
-	case ch <- struct{}{}:
+	case slots <- struct{}{}:
 		return true
 	case <-timer.C:
 		g.reject(c)
@@ -140,11 +140,12 @@ type keyedSlots struct {
 }
 
 type keySlotsEntry struct {
-	ch   chan struct{}
-	refs int
+	slots   chan struct{}
+	waiters chan struct{}
+	refs    int
 }
 
-func (k *keyedSlots) ref(key string, size int) chan struct{} {
+func (k *keyedSlots) ref(key string, size int) *keySlotsEntry {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	if k.keys == nil {
@@ -152,11 +153,14 @@ func (k *keyedSlots) ref(key string, size int) chan struct{} {
 	}
 	entry := k.keys[key]
 	if entry == nil {
-		entry = &keySlotsEntry{ch: make(chan struct{}, size)}
+		entry = &keySlotsEntry{
+			slots:   make(chan struct{}, size),
+			waiters: make(chan struct{}, maxWaitersFor(size)),
+		}
 		k.keys[key] = entry
 	}
 	entry.refs++
-	return entry.ch
+	return entry
 }
 
 func (k *keyedSlots) unref(key string) {

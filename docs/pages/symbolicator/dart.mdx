@@ -87,7 +87,7 @@ Content-Type: multipart/form-data
 
 | Field | Required | Notes |
 |---|---|---|
-| `files` | yes | One or more `.symbols` files. Non-`.symbols` entries are ignored. 200 MB per file, 250 MB and 100 files total per request (a larger body answers `413`, too many files `422`). |
+| `files` | yes | One or more `.symbols` files. Non-`.symbols` entries are ignored. 200 MB per file, 250 MB and 1000 files total per request (a larger body answers `413`, too many files `422`). |
 | `arch` | sometimes | The architecture token (`arm64`, `arm`, `x64`, `ia32`). Optional when the filename ends in `-<arch>.symbols`, which Flutter's output already does. |
 | `debug_id` | sometimes | Required only when the file has no build-id note (Apple). When the file does have one, this must match it if provided. |
 

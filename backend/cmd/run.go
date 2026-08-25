@@ -74,6 +74,7 @@ func Run(opts ...Option) {
 		}
 		cfg.AppBaseURL = o.serverURL
 		cfg.MonitoringTracewayURL = o.monitoringTracewayURL
+		gin.SetMode(gin.ReleaseMode)
 		if o.disableLogging {
 			config.LoggingEnabled = false
 		}
@@ -81,8 +82,6 @@ func Run(opts ...Option) {
 		applyEnvOverrides(cfg)
 	}
 	config.Init(cfg)
-
-	gin.SetMode(resolveGinMode(os.Getenv("GIN_MODE")))
 
 	if err := services.InitJWT(); err != nil {
 		panic(fmt.Errorf("failed to initialize JWT: %w", err))
@@ -185,23 +184,14 @@ func Run(opts ...Option) {
 		router = gin.Default()
 	}
 
-	proxies := cfg.TrustedProxyList()
-	if err := configureClientIP(router, cfg); err != nil {
-		config.Logf("Invalid TRUSTED_PROXIES %q, ignoring X-Forwarded-For entirely (every per-IP rate limit now keys on your proxy's address): %v", cfg.TrustedProxies, err)
-		router.SetTrustedProxies(nil)
-		proxies = nil
-	} else if len(proxies) == 0 {
-		config.Logf("Trusted proxies: none (X-Forwarded-For ignored; client IP is the immediate peer)")
-	} else {
-		config.Logf("Trusted proxies: %s", strings.Join(proxies, ", "))
-	}
-	if cfg.TrustedProxyHeader != "" {
-		config.Logf("Trusted proxy header: %s is taken as the client IP on every request", cfg.TrustedProxyHeader)
-		router.Use(dropInvalidTrustedProxyHeader(cfg.TrustedProxyHeader))
-	} else {
-		router.Use(warnOnUntrustedForwardedFor(proxies))
-	}
+	router.Use(middleware.GuardBodyReads(middleware.DefaultBodyIdle, middleware.DefaultBodyTotal))
 
+	if err := configureClientIP(router, cfg); err != nil {
+		panic(fmt.Errorf("invalid TRUSTED_PROXIES: %w", err))
+	}
+	if cfg.TrustedProxyHeader == "" {
+		router.Use(warnOnUntrustedForwardedFor(cfg.TrustedProxyList()))
+	}
 	router.Use(middleware.SecurityHeaders)
 
 	if monitoringTracewayUrl := cfg.MonitoringTracewayURL; monitoringTracewayUrl != "" {
@@ -309,31 +299,11 @@ func Run(opts ...Option) {
 	serveHTTP(router, ":"+portsList[0])
 }
 
-func resolveGinMode(value string) string {
-	switch strings.TrimSpace(value) {
-	case gin.DebugMode:
-		return gin.DebugMode
-	case gin.TestMode:
-		return gin.TestMode
-	default:
-		return gin.ReleaseMode
-	}
-}
-
-func dropInvalidTrustedProxyHeader(name string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if v := c.GetHeader(name); v != "" && net.ParseIP(strings.TrimSpace(v)) == nil {
-			c.Request.Header.Del(name)
-		}
-		c.Next()
-	}
-}
-
 func warnOnUntrustedForwardedFor(proxies []string) gin.HandlerFunc {
 	detect := newUntrustedForwarderDetector(proxies)
 	return func(c *gin.Context) {
 		if peer, first := detect(c); first {
-			config.Logf("X-Forwarded-For received from %s, which is not in TRUSTED_PROXIES. The header is ignored, so per-IP rate limits and session client IPs currently see that address instead of the real client. If %s is your proxy or CDN, add its range to TRUSTED_PROXIES (keeping the private ranges you rely on).", peer, peer)
+			config.Logf("X-Forwarded-For received from %s, which is not in TRUSTED_PROXIES. The header is ignored, so per-IP rate limits and session client IPs see that address instead of the real client. If %s is your proxy or CDN, add its range to TRUSTED_PROXIES.", peer, peer)
 		}
 		c.Next()
 	}
@@ -384,7 +354,7 @@ func containsIP(nets []*net.IPNet, ip net.IP) bool {
 	return false
 }
 
-const serverReadTimeout = 60 * time.Second
+const serverReadTimeout = time.Hour
 
 func serveHTTP(router *gin.Engine, port string) {
 	srv := &http.Server{

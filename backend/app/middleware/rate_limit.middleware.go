@@ -1,8 +1,14 @@
 package middleware
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
+	"math"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -36,6 +42,11 @@ func NewFixedWindowLimiter(maxRequests int, window time.Duration) *FixedWindowLi
 // Allow consumes one slot for key and reports whether the request is within
 // the limit.
 func (l *FixedWindowLimiter) Allow(key string) bool {
+	allowed, _ := l.Take(key)
+	return allowed
+}
+
+func (l *FixedWindowLimiter) Take(key string) (bool, time.Duration) {
 	now := time.Now()
 
 	l.mu.Lock()
@@ -51,14 +62,27 @@ func (l *FixedWindowLimiter) Allow(key string) bool {
 		l.buckets[key] = b
 	}
 	b.count++
-	return b.count <= l.maxRequests
+	if b.count <= l.maxRequests {
+		return true, 0
+	}
+	return false, b.windowStart.Add(l.window).Sub(now)
+}
+
+func rejectRateLimited(c *gin.Context, retryAfter time.Duration) {
+	seconds := int(math.Ceil(retryAfter.Seconds()))
+	if seconds < 1 {
+		seconds = 1
+	}
+	c.Header("Retry-After", strconv.Itoa(seconds))
+	c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "slow_down"})
 }
 
 func rateLimitWithKey(maxRequests int, window time.Duration, keyOf func(c *gin.Context) string) gin.HandlerFunc {
 	limiter := NewFixedWindowLimiter(maxRequests, window)
 	return func(c *gin.Context) {
-		if !limiter.Allow(keyOf(c)) {
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "slow_down"})
+		allowed, retryAfter := limiter.Take(keyOf(c))
+		if !allowed {
+			rejectRateLimited(c, retryAfter)
 			return
 		}
 		c.Next()
@@ -68,12 +92,47 @@ func rateLimitWithKey(maxRequests int, window time.Duration, keyOf func(c *gin.C
 func RateLimitOAuthTokenPerIP(maxRequests int, window time.Duration) gin.HandlerFunc {
 	limiter := NewFixedWindowLimiter(maxRequests, window)
 	return func(c *gin.Context) {
-		if !limiter.Allow(c.ClientIP()) {
+		allowed, retryAfter := limiter.Take(c.ClientIP())
+		if allowed {
+			c.Next()
+			return
+		}
+		grant, ok := oauthGrantType(c)
+		if !ok {
+			return
+		}
+		if grant == "device_code" || grant == "urn:ietf:params:oauth:grant-type:device_code" {
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "slow_down"})
 			return
 		}
-		c.Next()
+		rejectRateLimited(c, retryAfter)
 	}
+}
+
+func oauthGrantType(c *gin.Context) (string, bool) {
+	if !bufferRequestBody(c, maxAuthBodyBytes) {
+		return "", false
+	}
+	if c.Request.Body == nil || c.Request.Body == http.NoBody {
+		return "", true
+	}
+	data, err := io.ReadAll(c.Request.Body)
+	c.Request.Body = io.NopCloser(bytes.NewReader(data))
+	if err != nil {
+		return "", true
+	}
+	if strings.HasPrefix(c.ContentType(), "application/json") {
+		var body struct {
+			GrantType string `json:"grant_type"`
+		}
+		_ = json.Unmarshal(data, &body)
+		return body.GrantType, true
+	}
+	values, err := url.ParseQuery(string(data))
+	if err != nil {
+		return "", true
+	}
+	return values.Get("grant_type"), true
 }
 
 // RateLimitPerIP returns a fixed-window per-IP rate limiter for unauthenticated

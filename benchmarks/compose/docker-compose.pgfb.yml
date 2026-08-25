@@ -35,6 +35,11 @@ services:
   firebolt:
     image: "${FIREBOLT_IMAGE:-ghcr.io/firebolt-db/engine:dev}"
     command: ["server", "--data-dir", "/var/lib/firebolt"]
+    # The engine sizes its memory budget from the cgroup limit (verified:
+    # -m 3g -> "Available RAM: 3.00 GiB"). Uncapped it takes the whole box
+    # and starves Postgres + the backend into HTTP timeouts. 4g suits the
+    # 8GB ccx13; pass FIREBOLT_MEM_LIMIT for bigger tiers (~half the box).
+    mem_limit: "${FIREBOLT_MEM_LIMIT:-4g}"
     volumes:
       - firebolt-bench-data:/var/lib/firebolt
     healthcheck:

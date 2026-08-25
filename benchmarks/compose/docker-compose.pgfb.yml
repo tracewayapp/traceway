@@ -51,8 +51,10 @@ services:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3473 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q ' 200 '"]
       interval: 5s
       timeout: 3s
-      start_period: 15s
-      retries: 30
+      # Wide window: on small SUTs the engine starts while the backend
+      # image is still building on the same box.
+      start_period: 60s
+      retries: 90
     restart: on-failure:3
     ulimits:
       nofile:

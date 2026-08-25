@@ -38,7 +38,7 @@ Set `JWT_SECRET` (min 32 characters) before running the backend — it is the on
 ### Tech Stack
 - **Frontend**: SvelteKit 2.49, Svelte 5.45, Tailwind CSS v4, shadcn-svelte, Vite 7
 - **Backend**: Go 1.25, Gin 1.11, ClickHouse, PostgreSQL
-- **CLI**: Go 1.26, Cobra 1.10, separate Go module (`github.com/tracewayapp/traceway/cli`); flake.nix dev shell, justfile entrypoints
+- **CLI**: Go 1.26, Cobra 1.10, separate Go module (`github.com/tracewayapp/traceway/cli`); shares the repo-root `flake.nix` dev shells (`nix develop ..#cli`), justfile entrypoints
 - **Client SDK**: Go 1.25, Gin middleware support
 
 ### lit Library (SQL mapper)

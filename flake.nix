@@ -36,6 +36,10 @@
           gofumpt
           govulncheck
           gotestsum
+
+          # Used by the CLI's Go tooling.
+          gomodifytags
+          impl
         ]);
 
         jsTools = [ nodejs ];
@@ -99,6 +103,19 @@
           };
 
           backend = goShell;
+
+          # Same toolchain as the backend, but its own derivation: aliasing
+          # goShell would announce itself as "backend" and print backend run
+          # commands to someone who entered it via cli/.envrc.
+          cli = mkShell {
+            name = "cli";
+            packages = goTools ++ sharedTools;
+            banner = ''
+              ${goBanner}
+              echo "  build  cd cli && just build"
+              echo "  check  just check   (lint + test + vulncheck)"
+            '';
+          };
 
           frontend = mkShell {
             name = "frontend";

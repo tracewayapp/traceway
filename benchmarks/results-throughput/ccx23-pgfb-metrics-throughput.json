@@ -3,8 +3,8 @@
   "mode": "pgfb",
   "signal": "metrics",
   "scenario": "throughput",
-  "startedAt": "2026-08-25T15:49:19Z",
-  "endedAt": "2026-08-25T16:10:06Z",
+  "startedAt": "2026-08-25T20:01:38Z",
+  "endedAt": "2026-08-25T20:24:00Z",
   "phase1": {
     "kind": "batch-size-ramp",
     "fixedRequestRate": 5,
@@ -13,13 +13,13 @@
         "step": 1,
         "batchSize": 256,
         "requestRate": 5,
-        "attemptedItemsPerSec": 1281.6615468610444,
-        "actualItemsPerSec": 1281.6615468610444,
+        "attemptedItemsPerSec": 1281.7602064643424,
+        "actualItemsPerSec": 1281.7602064643424,
         "rejected": 0,
         "ingest": {
-          "p50": 51.041554000000005,
-          "p95": 57.082816,
-          "p99": 60.882014999999996,
+          "p50": 44.59349,
+          "p95": 48.788208,
+          "p99": 54.058943,
           "ok": 601,
           "errors": 0,
           "errRate": 0
@@ -42,14 +42,14 @@
         "step": 2,
         "batchSize": 1024,
         "requestRate": 5,
-        "attemptedItemsPerSec": 3861.7962080353727,
-        "actualItemsPerSec": 3861.7962080353727,
+        "attemptedItemsPerSec": 3874.0956622727963,
+        "actualItemsPerSec": 3874.0956622727963,
         "rejected": 0,
         "ingest": {
-          "p50": 160.69553100000002,
-          "p95": 176.943067,
-          "p99": 186.36728399999998,
-          "ok": 453,
+          "p50": 52.229782,
+          "p95": 57.931312,
+          "p99": 65.68545400000001,
+          "ok": 454,
           "errors": 0,
           "errRate": 0
         },
@@ -71,16 +71,16 @@
         "step": 3,
         "batchSize": 4096,
         "requestRate": 5,
-        "attemptedItemsPerSec": 14810.887995543611,
-        "actualItemsPerSec": 14517.280083737682,
+        "attemptedItemsPerSec": 15424.30030437293,
+        "actualItemsPerSec": 15424.30030437293,
         "rejected": 0,
         "ingest": {
-          "p50": 1334.031249,
-          "p95": 6482.457715,
-          "p99": 7104.016277999999,
-          "ok": 445,
-          "errors": 9,
-          "errRate": 0.019823788546255508
+          "p50": 78.135858,
+          "p95": 84.916727,
+          "p99": 92.053685,
+          "ok": 452,
+          "errors": 0,
+          "errRate": 0
         },
         "ch": {
           "reachable": false,
@@ -100,16 +100,16 @@
         "step": 4,
         "batchSize": 8192,
         "requestRate": 5,
-        "attemptedItemsPerSec": 32664.26317039337,
-        "actualItemsPerSec": 11652.164054935645,
+        "attemptedItemsPerSec": 30914.71170105767,
+        "actualItemsPerSec": 30914.71170105767,
         "rejected": 0,
         "ingest": {
-          "p50": 9386.230629,
-          "p95": 11606.140729,
-          "p99": 12096.066026,
-          "ok": 183,
-          "errors": 330,
-          "errRate": 0.6432748538011696
+          "p50": 115.17245399999999,
+          "p95": 122.787091,
+          "p99": 126.902131,
+          "ok": 453,
+          "errors": 0,
+          "errRate": 0
         },
         "ch": {
           "reachable": false,
@@ -123,28 +123,56 @@
           "droppedRowsTotal": 0,
           "insertFailures": 0
         },
-        "passed": false,
-        "failReason": "combined error rate 64.33% (http 64.33% + rejected 0.00%) > 5.00% threshold"
+        "passed": true
+      },
+      {
+        "step": 5,
+        "batchSize": 16384,
+        "requestRate": 5,
+        "attemptedItemsPerSec": 61947.15416703534,
+        "actualItemsPerSec": 61947.15416703534,
+        "rejected": 0,
+        "ingest": {
+          "p50": 166.695063,
+          "p95": 189.091114,
+          "p99": 193.73295099999999,
+          "ok": 454,
+          "errors": 0,
+          "errRate": 0
+        },
+        "ch": {
+          "reachable": false,
+          "uptimeSec": 0,
+          "partsCount": 0,
+          "activeMerges": 0,
+          "longestMergeSec": 0
+        },
+        "sutIngest": {
+          "reachable": true,
+          "droppedRowsTotal": 0,
+          "insertFailures": 0
+        },
+        "passed": true
       }
     ],
-    "maxBatchSize": 4096
+    "maxBatchSize": 16384
   },
   "phase2": {
     "kind": "request-rate-ramp",
-    "fixedBatchSize": 4096,
+    "fixedBatchSize": 16384,
     "steps": [
       {
         "step": 1,
-        "batchSize": 4096,
+        "batchSize": 16384,
         "requestRate": 1,
-        "attemptedItemsPerSec": 1796.05666505578,
-        "actualItemsPerSec": 1796.05666505578,
+        "attemptedItemsPerSec": 0,
+        "actualItemsPerSec": 0,
         "rejected": 0,
         "ingest": {
-          "p50": 2586.550742,
-          "p95": 3515.71173,
-          "p99": 4815.089869,
-          "ok": 54,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "ok": 0,
           "errors": 0,
           "errRate": 0
         },
@@ -161,7 +189,7 @@
           "insertFailures": 0
         },
         "passed": false,
-        "failReason": "achieved 0.44 req/sec is below 70% of target 1.00 req/sec (workers saturated, SUT past cliff)"
+        "failReason": "no requests completed"
       }
     ]
   },
@@ -173,14 +201,14 @@
         "step": 1,
         "batchSize": 100,
         "requestRate": 10,
-        "attemptedItemsPerSec": 971.0407070691449,
-        "actualItemsPerSec": 971.0407070691449,
+        "attemptedItemsPerSec": 953.7461666977322,
+        "actualItemsPerSec": 953.7461666977322,
         "rejected": 0,
         "ingest": {
-          "p50": 304.45761999999996,
-          "p95": 1515.7284479999998,
-          "p99": 1967.7756,
-          "ok": 1176,
+          "p50": 68.096244,
+          "p95": 104.919687,
+          "p99": 137.29013500000002,
+          "ok": 1145,
           "errors": 0,
           "errRate": 0
         },
@@ -202,16 +230,16 @@
         "step": 2,
         "batchSize": 100,
         "requestRate": 100,
-        "attemptedItemsPerSec": 9348.486084126052,
-        "actualItemsPerSec": 1935.7653840977982,
+        "attemptedItemsPerSec": 9331.787811268307,
+        "actualItemsPerSec": 3652.5051233270774,
         "rejected": 0,
         "ingest": {
-          "p50": 5308.331907999999,
-          "p95": 5893.176167,
-          "p99": 6310.1824369999995,
-          "ok": 2426,
-          "errors": 9290,
-          "errRate": 0.792932741550017
+          "p50": 5177.907107,
+          "p95": 5390.026943,
+          "p99": 5557.618149,
+          "ok": 4581,
+          "errors": 7123,
+          "errRate": 0.6085953520164047
         },
         "ch": {
           "reachable": false,
@@ -226,22 +254,22 @@
           "insertFailures": 0
         },
         "passed": false,
-        "failReason": "combined error rate 79.29% (http 79.29% + rejected 0.00%) > 5.00% threshold"
+        "failReason": "combined error rate 60.86% (http 60.86% + rejected 0.00%) > 5.00% threshold"
       },
       {
         "step": 3,
         "batchSize": 100,
         "requestRate": 55,
-        "attemptedItemsPerSec": 5179.587801361455,
-        "actualItemsPerSec": 1478.5482005088288,
+        "attemptedItemsPerSec": 5316.867922573361,
+        "actualItemsPerSec": 2554.18180573197,
         "rejected": 0,
         "ingest": {
-          "p50": 5344.512062,
-          "p95": 6167.953042,
-          "p99": 8194.714779,
-          "ok": 1900,
-          "errors": 4756,
-          "errRate": 0.7145432692307693
+          "p50": 5240.750024999999,
+          "p95": 5643.092864,
+          "p99": 6143.282061,
+          "ok": 3197,
+          "errors": 3458,
+          "errRate": 0.5196093163035311
         },
         "ch": {
           "reachable": false,
@@ -256,22 +284,22 @@
           "insertFailures": 0
         },
         "passed": false,
-        "failReason": "combined error rate 71.45% (http 71.45% + rejected 0.00%) > 5.00% threshold"
+        "failReason": "combined error rate 51.96% (http 51.96% + rejected 0.00%) > 5.00% threshold"
       },
       {
         "step": 4,
         "batchSize": 100,
         "requestRate": 32.5,
-        "attemptedItemsPerSec": 3075.873004259752,
-        "actualItemsPerSec": 1399.1194519757682,
+        "attemptedItemsPerSec": 3141.526504820751,
+        "actualItemsPerSec": 2233.3353947314567,
         "rejected": 0,
         "ingest": {
-          "p50": 5370.8649700000005,
-          "p95": 6239.289686,
-          "p99": 8143.914831,
-          "ok": 1789,
-          "errors": 2144,
-          "errRate": 0.5451309433002797
+          "p50": 5243.748161,
+          "p95": 5731.714022,
+          "p99": 6078.210749,
+          "ok": 2796,
+          "errors": 1137,
+          "errRate": 0.28909229595728453
         },
         "ch": {
           "reachable": false,
@@ -286,22 +314,22 @@
           "insertFailures": 0
         },
         "passed": false,
-        "failReason": "combined error rate 54.51% (http 54.51% + rejected 0.00%) > 5.00% threshold"
+        "failReason": "combined error rate 28.91% (http 28.91% + rejected 0.00%) > 5.00% threshold"
       },
       {
         "step": 5,
         "batchSize": 100,
         "requestRate": 21.25,
-        "attemptedItemsPerSec": 1946.6616040678778,
-        "actualItemsPerSec": 1221.9919558382298,
+        "attemptedItemsPerSec": 1890.0910391660918,
+        "actualItemsPerSec": 1728.015136690311,
         "rejected": 0,
         "ingest": {
-          "p50": 5353.778261,
-          "p95": 6444.062672,
-          "p99": 7987.746844,
-          "ok": 1548,
-          "errors": 918,
-          "errRate": 0.3722627737226277
+          "p50": 4633.692625,
+          "p95": 5418.226894,
+          "p99": 6513.450237999999,
+          "ok": 2175,
+          "errors": 204,
+          "errRate": 0.08575031525851198
         },
         "ch": {
           "reachable": false,
@@ -313,15 +341,15 @@
         "sutIngest": {
           "reachable": true,
           "droppedRowsTotal": 0,
-          "insertFailures": 20
+          "insertFailures": 0
         },
         "passed": false,
-        "failReason": "combined error rate 37.23% (http 37.23% + rejected 0.00%) > 5.00% threshold"
+        "failReason": "combined error rate 8.58% (http 8.58% + rejected 0.00%) > 5.00% threshold"
       }
     ],
     "maxRequestRate": 10
   },
-  "maxSustainableItemsPerSec": 14517.280083737682,
+  "maxSustainableItemsPerSec": 61947.15416703534,
   "sutContainer": {
     "status": "running",
     "oomKilled": false,

@@ -37,6 +37,10 @@ func (c *patController) Create(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Name must be 100 characters or fewer"})
 		return
 	}
+	if req.ExpiresInDays != nil && (*req.ExpiresInDays < 1 || *req.ExpiresInDays > 3650) {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Expiry must be between 1 and 3650 days"})
+		return
+	}
 
 	token := authserver.NewPATToken()
 	id := uuid.New().String()

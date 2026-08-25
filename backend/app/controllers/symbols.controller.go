@@ -28,14 +28,16 @@ func (s symbolsController) Upload(c *gin.Context) {
 		return
 	}
 
-	if err := c.Request.ParseMultipartForm(200 << 20); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse multipart form"})
+	if !parseMultipartCapped(c, symbolsMaxUploadBytes, uploadMultipartMemory) {
 		return
 	}
 
 	files := c.Request.MultipartForm.File["files"]
 	if len(files) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No files uploaded"})
+		return
+	}
+	if !checkFileCount(c, len(files), symbolsMaxFiles, "symbol files") {
 		return
 	}
 

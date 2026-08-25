@@ -70,7 +70,7 @@ func TestDuckDBMetricPointsRoundTrip(t *testing.T) {
 	}
 
 	// time_bucket over a 1-minute window collapses all three points into one bucket.
-	series, err := repo.QueryTimeSeries(ctx, project, "cpu.used_pcnt", from, to, 1, "avg", nil, "")
+	series, err := repo.QueryTimeSeries(ctx, project, "cpu.used_pcnt", from, to, 1, "avg", nil, "", 0)
 	if err != nil {
 		t.Fatalf("QueryTimeSeries: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestDuckDBMetricPointsRoundTrip(t *testing.T) {
 	}
 
 	// json_extract_string group-by splits the same window by server tag.
-	grouped, err := repo.QueryTimeSeries(ctx, project, "cpu.used_pcnt", from, to, 1, "avg", nil, "server_name")
+	grouped, err := repo.QueryTimeSeries(ctx, project, "cpu.used_pcnt", from, to, 1, "avg", nil, "server_name", 0)
 	if err != nil {
 		t.Fatalf("QueryTimeSeries grouped: %v", err)
 	}

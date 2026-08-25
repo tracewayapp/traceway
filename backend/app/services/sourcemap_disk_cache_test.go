@@ -287,6 +287,7 @@ func TestGenerateTWArtifacts(t *testing.T) {
 	seedFixture(t, cs, prefix+"minified.js", "testdata/sourcemapcache/simple/minified.js")
 
 	GenerateTWArtifacts(context.Background(), projectId, []string{"minified.js.map", "minified.js"})
+	awaitTWWarmups(t)
 
 	twBytes, ok := cs.data[prefix+"minified.js.tw"]
 	if !ok {
@@ -306,6 +307,7 @@ func TestGenerateTWArtifactsDeletesStaleOnFailure(t *testing.T) {
 	cs.data[prefix+"minified.js.map"] = []byte("{not a valid source map")
 
 	GenerateTWArtifacts(context.Background(), projectId, []string{"minified.js.map"})
+	awaitTWWarmups(t)
 
 	if _, ok := cs.data[prefix+"minified.js.tw"]; ok {
 		t.Fatal("stale tw artifact must be deleted even when regeneration fails")

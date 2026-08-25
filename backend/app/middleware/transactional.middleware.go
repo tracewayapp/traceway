@@ -10,6 +10,10 @@ import (
 )
 
 func Transactional(c *gin.Context) {
+	if !bufferRequestBody(c, maxTransactionalBodyBytes) {
+		return
+	}
+
 	txHandle, err := db.DB.Begin()
 
 	if err != nil {

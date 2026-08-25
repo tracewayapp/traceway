@@ -64,7 +64,7 @@ curl -H "Authorization: Bearer $TRACEWAY_UPLOAD_TOKEN" \
 
 | Field | Required | Notes |
 |---|---|---|
-| `files` | yes | One or more Mach-O dSYM binaries. Repeatable to upload several at once. 200 MB per file. |
+| `files` | yes | One or more Mach-O dSYM binaries. Repeatable to upload several at once. 200 MB per file, 250 MB and 100 files total per request (a larger body answers `413`, too many files `422`). |
 
 Unlike the Dart upload, iOS needs no `arch` or `debug_id` form fields. The backend auto-detects the Mach-O, reads the `LC_UUID` straight from the binary, and for a fat dSYM stores one entry per architecture slice. The stored key is content-addressed by UUID:
 

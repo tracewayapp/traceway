@@ -8,6 +8,12 @@ services:
     environment:
       JWT_SECRET: "change-this-to-a-secure-secret-at-least-32-chars"
       # APP_BASE_URL: "https://traceway.example.com"
+      # TRUSTED_PROXIES trusts a proxy's X-Forwarded-For for the real client IP.
+      # Private ranges are trusted by default; set this only when a CDN or a
+      # public-IP load balancer sits in front, or every visitor shares one
+      # rate-limit bucket keyed on the proxy and sessions record the proxy's
+      # address as their client IP. List every hop, not just the CDN.
+      # TRUSTED_PROXIES: "173.245.48.0/20,103.21.244.0/22"
 
       # Optional retention knobs. Defaults are 30 days; set to "0" to disable.
       # SQLITE_RETENTION_DAYS prunes telemetry rows; SESSION_RECORDING_RETENTION_DAYS

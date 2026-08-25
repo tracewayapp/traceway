@@ -6,6 +6,7 @@ import (
 	"context"
 	"github.com/tracewayapp/traceway/backend/app/chdb"
 	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -28,7 +29,7 @@ func (r *metricPointRepository) InsertAsync(ctx context.Context, points []models
 	})
 }
 
-func (r *metricPointRepository) QueryTimeSeries(ctx context.Context, projectId uuid.UUID, name string, from, to time.Time, intervalMinutes int, aggregation string, tagFilters map[string]string, groupBy string) (map[string][]models.TimeSeriesPoint, error) {
+func (r *metricPointRepository) QueryTimeSeries(ctx context.Context, projectId uuid.UUID, name string, from, to time.Time, intervalMinutes int, aggregation string, tagFilters map[string]string, groupBy string, maxGroups int) (map[string][]models.TimeSeriesPoint, error) {
 	table := selectTable(to.Sub(from))
 	if aggregation == "last" {
 		table = "metric_points"
@@ -56,9 +57,14 @@ func (r *metricPointRepository) QueryTimeSeries(ctx context.Context, projectId u
 
 	query += " GROUP BY bucket"
 	if hasGroupBy {
-		query += ", group_key"
+		query += ", group_key ORDER BY group_key ASC, bucket ASC"
+		if maxGroups > 0 {
+			query += " LIMIT ?"
+			args = append(args, shared.TimeSeriesRowLimit(maxGroups))
+		}
+	} else {
+		query += " ORDER BY bucket ASC"
 	}
-	query += " ORDER BY bucket ASC"
 
 	rows, err := chdb.Conn.Query(ctx, query, args...)
 	if err != nil {
@@ -84,6 +90,9 @@ func (r *metricPointRepository) QueryTimeSeries(ctx context.Context, projectId u
 
 		if groupKey == "" {
 			groupKey = "(empty)"
+		}
+		if shared.GroupCapReached(result, groupKey, maxGroups) {
+			break
 		}
 		result[groupKey] = append(result[groupKey], models.TimeSeriesPoint{
 			Timestamp: bucket,

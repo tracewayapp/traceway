@@ -3,6 +3,7 @@ package notifications
 import (
 	"context"
 	"fmt"
+	netmail "net/mail"
 	"strings"
 
 	"github.com/tracewayapp/traceway/backend/app/models"
@@ -23,7 +24,7 @@ func (a *EmailAdapter) Validate() error {
 		return fmt.Errorf("maximum 10 recipients allowed")
 	}
 	for _, r := range a.Recipients {
-		if !strings.Contains(r, "@") {
+		if _, err := netmail.ParseAddress(r); err != nil || strings.ContainsAny(r, "\r\n") {
 			return fmt.Errorf("invalid email address: %s", r)
 		}
 	}

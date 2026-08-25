@@ -176,8 +176,8 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/exception-stack-traces/by-id/:exceptionId", middleware.UseAppAuth, middleware.RequireProjectAccess, ExceptionStackTraceController.FindById)
 	router.POST("/exception-stack-traces/:hash", middleware.UseAppAuth, middleware.RequireProjectAccess, ExceptionStackTraceController.FindByHash)
 
-	router.POST("/login", middleware.Transactional, AuthController.Login)
-	router.POST("/register", middleware.Transactional, AuthController.Register)
+	router.POST("/login", middleware.BufferAuthBody, middleware.Transactional, AuthController.Login)
+	router.POST("/register", middleware.BufferAuthBody, middleware.Transactional, AuthController.Register)
 	router.GET("/me/login-bundle", middleware.UseAppAuth, middleware.Transactional, AuthController.LoginBundle)
 
 	router.GET("/auth/providers", OAuthController.ListProviders)
@@ -193,7 +193,7 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/device/approve", middleware.UseAppAuth, middleware.Transactional, DeviceAuthController.Approve)
 	router.POST("/device/deny", middleware.UseAppAuth, middleware.Transactional, DeviceAuthController.Deny)
 
-	router.Match(postPreflight, "/oauth/register", middleware.OAuthCors, middleware.RateLimitPerIP(10, time.Minute), middleware.Transactional, OauthAuthorizeController.Register)
+	router.Match(postPreflight, "/oauth/register", middleware.OAuthCors, middleware.RateLimitPerIP(10, time.Minute), middleware.BufferAuthBody, middleware.Transactional, OauthAuthorizeController.Register)
 	router.GET("/oauth/client", middleware.UseAppAuth, OauthAuthorizeController.Lookup)
 	router.POST("/oauth/approve", middleware.UseAppAuth, middleware.Transactional, OauthAuthorizeController.Approve)
 	router.POST("/oauth/deny", middleware.UseAppAuth, OauthAuthorizeController.Deny)
@@ -218,9 +218,9 @@ func RegisterControllers(router *gin.RouterGroup) {
 		router.GET("/has-organizations", middleware.Transactional, AuthController.HasOrganizations)
 	}
 
-	router.POST("/forgot-password", middleware.Transactional, PasswordResetController.ForgotPassword)
+	router.POST("/forgot-password", middleware.BufferAuthBody, middleware.Transactional, PasswordResetController.ForgotPassword)
 	router.GET("/password-reset/:token", PasswordResetController.ValidateToken)
-	router.POST("/password-reset/:token", middleware.Transactional, PasswordResetController.ResetPassword)
+	router.POST("/password-reset/:token", middleware.BufferAuthBody, middleware.Transactional, PasswordResetController.ResetPassword)
 
 	router.GET("/organizations/:organizationId/settings", middleware.UseAppAuth, middleware.RequireAdminAccess, OrganizationController.GetSettings)
 	router.PUT("/organizations/:organizationId/settings", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, OrganizationController.UpdateSettings)
@@ -236,12 +236,12 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.DELETE("/organizations/:organizationId/invitations/:id", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, InvitationController.RevokeInvitation)
 
 	router.GET("/invitations/:token", InvitationController.GetInvitationInfo)
-	router.POST("/invitations/:token/accept", middleware.Transactional, InvitationController.AcceptInvitation)
+	router.POST("/invitations/:token/accept", middleware.BufferAuthBody, middleware.Transactional, InvitationController.AcceptInvitation)
 	router.POST("/invitations/:token/accept-existing", middleware.UseAppAuth, middleware.Transactional, InvitationController.AcceptExistingUser)
 
 	router.POST("/projects/source-map-token", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, ProjectController.GenerateSourceMapToken)
-	router.POST("/sourcemaps/upload", middleware.UseSourceMapAuth, SourceMapController.Upload)
-	router.POST("/symbols/upload", middleware.UseSourceMapAuth, SymbolsController.Upload)
+	router.POST("/sourcemaps/upload", middleware.UseSourceMapAuth, middleware.UploadAdmission, SourceMapController.Upload)
+	router.POST("/symbols/upload", middleware.UseSourceMapAuth, middleware.UploadAdmission, SymbolsController.Upload)
 
 	router.GET("/notification-channels", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, NotificationChannelController.List)
 	router.POST("/notification-channels", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, NotificationChannelController.Create)
@@ -342,8 +342,8 @@ func RegisterControllers(router *gin.RouterGroup) {
 
 	router.POST("/pages", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.List)
 	router.POST("/pages/for-issues", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.UnresolvedForIssues)
-	router.POST("/pages/bulk-acknowledge", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.BulkAcknowledge)
-	router.POST("/pages/bulk-resolve", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.BulkResolve)
+	router.POST("/pages/bulk-acknowledge", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.BufferAuthBody, middleware.Transactional, PageController.BulkAcknowledge)
+	router.POST("/pages/bulk-resolve", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.BufferAuthBody, middleware.Transactional, PageController.BulkResolve)
 	router.GET("/pages/open-count", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.OpenCount)
 	router.GET("/pages/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.Get)
 	router.POST("/pages/:id/acknowledge", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, PageController.Acknowledge)

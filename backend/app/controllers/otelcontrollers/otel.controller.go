@@ -79,7 +79,7 @@ func (o otelController) ExportTraces(c *gin.Context) {
 	}
 	req, bodyBytes, err := decodeTraceRequest(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		writeDecodeError(c, err)
 		return
 	}
 
@@ -224,7 +224,7 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 
 	req, bodyBytes, err := decodeMetricsRequest(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		writeDecodeError(c, err)
 		return
 	}
 
@@ -296,7 +296,7 @@ func (o otelController) ExportLogs(c *gin.Context) {
 
 	req, bodyBytes, err := decodeLogsRequest(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		writeDecodeError(c, err)
 		return
 	}
 
@@ -358,7 +358,7 @@ func (o otelController) ExportProfiles(c *gin.Context) {
 
 	payload, bodyBytes, err := decodeProfilesPayload(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		writeDecodeError(c, err)
 		return
 	}
 

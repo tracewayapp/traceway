@@ -28,8 +28,18 @@ const maxDashboardNameLength = 100
 
 const maxDashboardBodyBytes = 5 << 20
 
+const maxJSONBodyBytes = 256 << 10
+
 func limitRequestBody(ctx *gin.Context) {
-	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, maxDashboardBodyBytes)
+	limitRequestBodyTo(ctx, maxDashboardBodyBytes)
+}
+
+func limitJSONBody(ctx *gin.Context) {
+	limitRequestBodyTo(ctx, maxJSONBodyBytes)
+}
+
+func limitRequestBodyTo(ctx *gin.Context, maxBytes int64) {
+	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, maxBytes)
 }
 
 func definitionProvided(raw json.RawMessage) bool {

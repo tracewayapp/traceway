@@ -119,6 +119,8 @@ func (c *AuthController) Register(ctx *gin.Context) {
 - Commits on status codes: 200, 201, 303
 - Rolls back on all other status codes or panics
 
+**Body buffering:** `Transactional` reads the request body into memory (cap `maxTransactionalBodyBytes`, 8MB) before it calls `db.DB.Begin()`, answering 413/408/400 without a transaction when that fails; the handler's later bind is served from memory. This is what keeps a slow-drip body from holding the single SQLite main-DB connection, and it covers every transactional route without each one remembering a special middleware. Routes that want a tighter cap put `middleware.BufferAuthBody` (64KB) in front of `Transactional`, which then skips the body it finds already buffered; the anonymous auth endpoints and the bulk page actions do this.
+
 **Preference:** For CRUD controller methods, always prefer using `middleware.Transactional` in the route + `db.GetTx(ctx)` in the controller over `pgdb.ExecuteTransaction`. The middleware approach keeps controllers flat, avoids nested closures, and follows the established pattern. (The tx getter lives in the `db` package: `db.GetTx(ctx)`, not `middleware.GetTx`.)
 
 #### Repository Pattern
@@ -242,6 +244,9 @@ if err != nil {
 ```
 JWT_SECRET=<min 32 char secret for JWT signing>
 APP_BASE_URL=                         # public origin of this server (e.g. https://traceway.example.com). Used as the OAuth issuer / device verification URL and SSO redirect base. If unset, the device-auth + well-known endpoints derive it per-request from the Host / X-Forwarded-* headers; set it explicitly behind a proxy that doesn't forward Host.
+TRUSTED_PROXIES=                      # comma-separated CIDRs whose X-Forwarded-For/X-Real-IP gin trusts for c.ClientIP() (all per-IP rate limiters key on it, and `/api/report` stores it on every session as `client.ip`). Unset = private ranges only (RFC1918, loopback, and fc00::/7 for IPv6 ULA docker/k8s networks), so direct internet clients cannot spoof their IP. CGNAT (100.64.0.0/10) is deliberately excluded: those are real mobile-client addresses, so trusting them would let any carrier-NAT'd client spoof XFF past every per-IP limiter; set to your proxy/ALB CIDRs when the proxy sits outside those ranges (a public-IP CDN like Cloudflare, or an external LB; otherwise every visitor shares one rate-limit bucket keyed on the proxy). The value REPLACES the defaults, so it must name every hop in the chain, not just the outermost (a CDN-only list leaves a private ingress untrusted and disables XFF entirely); `none` trusts no proxy. Entries are trimmed, so spaces after commas and a trailing comma are fine. A genuinely malformed CIDR disables XFF trust entirely (fail-closed) and logs why; the effective list is logged once at boot, and the first request carrying X-Forwarded-For/X-Real-IP from a peer outside the list logs a one-time warning naming that peer (`warnOnUntrustedForwardedFor`), which is how a forgotten CDN hop shows up. Parsing lives in `parseTrustedProxies` (cmd/run.go), covered by cmd/run_test.go.
+UPLOAD_MAX_CONCURRENT=4               # concurrent /api/sourcemaps/upload + /api/symbols/upload requests; excess waits 30s then gets 503. Separate from INGEST_MAX_CONCURRENT so a CI upload burst cannot starve telemetry ingest. Each upload holds a whole file in memory while parsing, so this bounds peak upload memory at roughly concurrency x largest file. It is a count-based gate, not a memory budget: on a memory-capped container size it from the limit rather than trusting the default. Same bounded waiting room and per-project reserve as the ingest gate. The source-map warm-up that follows an upload (`services.GenerateTWArtifacts`) runs outside this gate on its own 2-worker pool with a 64-job queue: the stale `.tw` artifact is deleted and the cache invalidated inline, the rebuild is queued, identical pending jobs are coalesced, and a full queue drops the warm-up (rate-limited `CaptureException`) because lookups build a missing artifact on demand anyway.
+REPORT_MAX_BODY_MB=64                 # cap on the DECOMPRESSED /api/report and /api/profiles/ingest body (middleware.UseGzip bounds both the raw and gunzipped stream, so gzip cannot raise it). Deliberately far above the 10MB OTLP cap: session-replay frames carry rrweb segments and are a different size class, and the shipped browser SDKs re-queue a rejected batch forever, so a reachable cap is a permanent wedge rather than shed load. Overruns answer 413.
 CLICKHOUSE_SERVER=localhost:9000
 CLICKHOUSE_DATABASE=traceway
 CLICKHOUSE_USERNAME=default
@@ -260,7 +265,7 @@ DUCKDB_THREADS=                       # e.g. 4. Unset = DuckDB auto-tunes (= cor
 DUCKDB_CHECKPOINT_THRESHOLD=          # e.g. 256MB. Unset = DuckDB default (16MB). Raise under sustained ingest to reduce WAL checkpoint stalls; costs a larger WAL and longer restart replay.
 
 # Ingest admission gate (all telemetry ingest endpoints: /api/report, /api/profiles/ingest, /api/otel/*)
-INGEST_MAX_CONCURRENT=                # max concurrently processed ingest requests. Unset = 2×CPU cores, min 4. Bounds ingest memory so overload sheds load with 503s instead of the process being OOM-killed (on DuckDB an OOM death is followed by a minutes-long WAL-replay stall on restart).
+INGEST_MAX_CONCURRENT=                # max concurrently processed ingest requests. Unset = 2×CPU cores, min 4. Bounds ingest memory so overload sheds load with 503s instead of the process being OOM-killed (on DuckDB an OOM death is followed by a minutes-long WAL-replay stall on restart). The gate (`middleware/ingest_admission.go`) also bounds waiters at 4×capacity (min 16; beyond that a request gets an immediate 503 instead of parking a goroutine and a timer for the wait window) and reserves a quarter of the slots (at least one) from any single project (`perKeyMaxFor`, keyed on the authenticated project id), so one project's slow bodies cannot 503 every other tenant. On a single-project instance that means 3 of the default 4 slots are usable; raise the capacity if that matters.
 INGEST_ADMISSION_WAIT_SECONDS=5       # how long a request may wait for a slot before the 503 + Retry-After; 0 = reject immediately when saturated
 
 # Email
@@ -577,6 +582,8 @@ backend/
 | Synthetic runner API | `UseRunnerAuth` only (shared SYNTHETICS_RUNNER_SECRET bearer + self-registration by X-Traceway-Runner-Name; no Transactional — poll holds the request up to 25s) |
 | Public status page | `RateLimitPerIP` only |
 
+**Global middleware** (registered in `cmd/run.go` ahead of the routes): `warnOnUntrustedForwardedFor` (one-time log when a forwarding header arrives from a peer outside `TRUSTED_PROXIES`) and `middleware.SecurityHeaders` (`X-Frame-Options: DENY`, CSP `frame-ancestors 'none'; base-uri 'self'; form-action 'self'`, `Referrer-Policy`, `nosniff`). The two frame headers are skipped for public status pages so they stay embeddable in an iframe: any `/status/*` or `/api/status/*` path, and the root path `/` when the request Host differs from the `APP_BASE_URL` host (a custom status-page domain). Without `APP_BASE_URL` nothing at the root is exempted.
+
 ### API Endpoints
 
 **Client SDK Ingestion**
@@ -643,7 +650,7 @@ backend/
 | GET | `/api/metrics/application` | App | Application metrics |
 | GET | `/api/metrics/stats` | App | Stats metrics |
 | GET | `/api/metrics/server` | App | Server metrics |
-| POST | `/api/metrics/query` | App | Custom metric queries |
+| POST | `/api/metrics/query` | App | Custom metric queries. Bounded in `metric_query.controller.go`: 256KB body, max 50 queries and 20 tag filters each, range at most 731 days and `to > from` (422), buckets widened so no series exceeds 2000 points, at most 200 groups per query (the repositories return one extra so the result carries `truncatedGroups: true`), and a 30s deadline for the whole request that answers 504. The discovery endpoints validate their `from`/`to` the same way |
 | GET | `/api/metrics/discover` | App | Discover available metrics |
 | GET | `/api/metrics/discover/tags` | App | Discover metric tags |
 | GET | `/api/metrics/discover/instances` | App | Distinct `server_name` values in a range (dashboard instance filter) |

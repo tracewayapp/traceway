@@ -52,6 +52,8 @@ Parse by splitting on the first `@`:
 
 The request body **should** be gzip-compressed JSON for the regular sync path. The backend's gzip middleware decompresses when `Content-Encoding: gzip` is present and passes the body through unchanged when it is absent. Browser SDKs use the uncompressed path on the page-unload (`pagehide`) flush so the request can dispatch synchronously inside the unload handler; `CompressionStream` is async and would yield control before the request leaves. Servers MUST therefore accept both compressed and uncompressed JSON on `/api/report`.
 
+The body is capped **after decompression**, so gzip does not raise the ceiling. The default is 64 MB, tunable with `REPORT_MAX_BODY_MB`. A body over the cap answers `413` and is not ingested. See [Response Handling](#response-handling).
+
 ## Request Payload
 
 ### Top-Level Structure
@@ -469,8 +471,9 @@ When a trace is not sampled, do not send the trace or any associated exceptions.
 | Status | Meaning | Action |
 |--------|---------|--------|
 | `200` | Success | Remove sent frames from the send queue |
-| `400` | Missing `Content-Encoding: gzip` or malformed JSON | Fix the request; do not retry as-is |
+| `400` | Malformed JSON, or a body that claims `Content-Encoding: gzip` but is not gzip | Fix the request; do not retry as-is |
 | `401` | Invalid or expired token | Check the project token configuration |
+| `413` | Payload too large after decompression | Drop or split the batch. Do **not** retry it as-is: the same body fails every time, and re-queueing it wedges the client permanently |
 | `429` | Rate limited | Back off and retry on the next interval |
 | Any other | Server error or network issue | Retry on the next interval |
 

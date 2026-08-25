@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	netmail "net/mail"
 	"strconv"
 	"strings"
 	"time"
@@ -215,12 +216,15 @@ func (c *contactMethodController) Update(ctx *gin.Context) {
 	if request.MethodType == "" {
 		request.MethodType = method.MethodType
 	}
+	configProvided := request.Config != nil
 	if request.Config == nil {
 		request.Config = json.RawMessage(method.Config)
 	}
-	if message := validateContactMethod(request.MethodType, request.Config); message != "" {
-		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": message})
-		return
+	if configProvided || request.MethodType != method.MethodType {
+		if message := validateContactMethod(request.MethodType, request.Config); message != "" {
+			ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": message})
+			return
+		}
 	}
 
 	// Re-pointing an sms method at a different number voids the verification.
@@ -479,8 +483,10 @@ func validateContactMethod(methodType string, methodConfig json.RawMessage) stri
 				return "Invalid email configuration."
 			}
 		}
-		if parsed.Email != "" && !strings.Contains(parsed.Email, "@") {
-			return "The email address is not valid."
+		if parsed.Email != "" {
+			if _, err := netmail.ParseAddress(parsed.Email); err != nil {
+				return "The email address is not valid."
+			}
 		}
 		if len(parsed.Email) > maxContactEmailLength {
 			return "The email address is too long."

@@ -26,7 +26,7 @@ func TestMetricPointRepository_InsertAndQueryTimeSeries(t *testing.T) {
 		t.Fatalf("InsertAsync failed: %v", err)
 	}
 
-	result, err := MetricPointRepository.QueryTimeSeries(ctx, projectId, "cpu.used_pcnt", base.Add(-time.Minute), base.Add(time.Hour), 30, "avg", nil, "")
+	result, err := MetricPointRepository.QueryTimeSeries(ctx, projectId, "cpu.used_pcnt", base.Add(-time.Minute), base.Add(time.Hour), 30, "avg", nil, "", 0)
 	if err != nil {
 		t.Fatalf("QueryTimeSeries failed: %v", err)
 	}
@@ -46,6 +46,55 @@ func TestMetricPointRepository_InsertAndQueryTimeSeries(t *testing.T) {
 	assertApproxEqual(t, "second bucket avg", series[1].Value, 70.0, 0.1)
 }
 
+func TestMetricPointRepository_QueryTimeSeries_GroupCap(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	projectId := uuid.New()
+	base := time.Now().UTC().Truncate(time.Hour)
+
+	var points []models.MetricPoint
+	for _, server := range []string{"web-5", "web-1", "web-3", "web-2", "web-4"} {
+		for i := 0; i < 3; i++ {
+			points = append(points, makeMetricPoint(projectId, "cpu.used_pcnt", float64(10*i), map[string]string{"server_name": server}, base.Add(time.Duration(i)*10*time.Minute)))
+		}
+	}
+	if err := MetricPointRepository.InsertAsync(ctx, points); err != nil {
+		t.Fatalf("InsertAsync failed: %v", err)
+	}
+
+	capped, err := MetricPointRepository.QueryTimeSeries(ctx, projectId, "cpu.used_pcnt", base.Add(-time.Minute), base.Add(time.Hour), 10, "avg", nil, "server_name", 2)
+	if err != nil {
+		t.Fatalf("QueryTimeSeries failed: %v", err)
+	}
+	if len(capped) != 3 {
+		t.Fatalf("expected 2 groups plus the marker, got %d: %v", len(capped), capped)
+	}
+	for _, server := range []string{"web-1", "web-2"} {
+		if len(capped[server]) != 3 {
+			t.Fatalf("group %s should be complete with 3 buckets, got %d", server, len(capped[server]))
+		}
+	}
+	if marker, ok := capped["web-3"]; !ok || len(marker) != 0 {
+		t.Fatalf("expected an empty marker for the first group past the cap, got %v", capped)
+	}
+
+	uncapped, err := MetricPointRepository.QueryTimeSeries(ctx, projectId, "cpu.used_pcnt", base.Add(-time.Minute), base.Add(time.Hour), 10, "avg", nil, "server_name", 0)
+	if err != nil {
+		t.Fatalf("QueryTimeSeries failed: %v", err)
+	}
+	if len(uncapped) != 5 {
+		t.Fatalf("cap 0 must return every group, got %d", len(uncapped))
+	}
+
+	wide, err := MetricPointRepository.QueryTimeSeries(ctx, projectId, "cpu.used_pcnt", base.Add(-time.Minute), base.Add(time.Hour), 10, "avg", nil, "server_name", 5)
+	if err != nil {
+		t.Fatalf("QueryTimeSeries failed: %v", err)
+	}
+	if len(wide) != 5 {
+		t.Fatalf("a cap equal to the cardinality must not add a marker, got %d", len(wide))
+	}
+}
+
 func TestMetricPointRepository_QueryTimeSeries_WithGroupBy(t *testing.T) {
 	setupTestDB(t)
 	ctx := context.Background()
@@ -62,7 +111,7 @@ func TestMetricPointRepository_QueryTimeSeries_WithGroupBy(t *testing.T) {
 		t.Fatalf("InsertAsync failed: %v", err)
 	}
 
-	result, err := MetricPointRepository.QueryTimeSeries(ctx, projectId, "cpu.used_pcnt", base.Add(-time.Minute), base.Add(time.Hour), 60, "avg", nil, "server_name")
+	result, err := MetricPointRepository.QueryTimeSeries(ctx, projectId, "cpu.used_pcnt", base.Add(-time.Minute), base.Add(time.Hour), 60, "avg", nil, "server_name", 0)
 	if err != nil {
 		t.Fatalf("QueryTimeSeries with groupBy failed: %v", err)
 	}
@@ -103,7 +152,7 @@ func TestMetricPointRepository_QueryTimeSeries_WithTagFilter(t *testing.T) {
 	}
 
 	filters := map[string]string{"server_name": "web-1"}
-	result, err := MetricPointRepository.QueryTimeSeries(ctx, projectId, "cpu.used_pcnt", base.Add(-time.Minute), base.Add(time.Hour), 60, "avg", filters, "")
+	result, err := MetricPointRepository.QueryTimeSeries(ctx, projectId, "cpu.used_pcnt", base.Add(-time.Minute), base.Add(time.Hour), 60, "avg", filters, "", 0)
 	if err != nil {
 		t.Fatalf("QueryTimeSeries with tag filter failed: %v", err)
 	}
@@ -350,7 +399,7 @@ func TestMetricPointRepository_QueryTimeSeries_Aggregations(t *testing.T) {
 	to := base.Add(time.Hour)
 
 	// Test min aggregation
-	result, err := MetricPointRepository.QueryTimeSeries(ctx, projectId, "response_time", from, to, 60, "min", nil, "")
+	result, err := MetricPointRepository.QueryTimeSeries(ctx, projectId, "response_time", from, to, 60, "min", nil, "", 0)
 	if err != nil {
 		t.Fatalf("QueryTimeSeries min failed: %v", err)
 	}
@@ -361,7 +410,7 @@ func TestMetricPointRepository_QueryTimeSeries_Aggregations(t *testing.T) {
 	assertApproxEqual(t, "min", series[0].Value, 100.0, 0.1)
 
 	// Test max aggregation
-	result, err = MetricPointRepository.QueryTimeSeries(ctx, projectId, "response_time", from, to, 60, "max", nil, "")
+	result, err = MetricPointRepository.QueryTimeSeries(ctx, projectId, "response_time", from, to, 60, "max", nil, "", 0)
 	if err != nil {
 		t.Fatalf("QueryTimeSeries max failed: %v", err)
 	}
@@ -369,7 +418,7 @@ func TestMetricPointRepository_QueryTimeSeries_Aggregations(t *testing.T) {
 	assertApproxEqual(t, "max", series[0].Value, 300.0, 0.1)
 
 	// Test sum aggregation
-	result, err = MetricPointRepository.QueryTimeSeries(ctx, projectId, "response_time", from, to, 60, "sum", nil, "")
+	result, err = MetricPointRepository.QueryTimeSeries(ctx, projectId, "response_time", from, to, 60, "sum", nil, "", 0)
 	if err != nil {
 		t.Fatalf("QueryTimeSeries sum failed: %v", err)
 	}
@@ -396,7 +445,7 @@ func TestMetricPointRepository_QueryTimeSeries_LastAggregation(t *testing.T) {
 	from := base.Add(-time.Minute)
 	to := base.Add(time.Hour)
 
-	result, err := MetricPointRepository.QueryTimeSeries(ctx, projectId, "response_time", from, to, 60, "last", nil, "")
+	result, err := MetricPointRepository.QueryTimeSeries(ctx, projectId, "response_time", from, to, 60, "last", nil, "", 0)
 	if err != nil {
 		t.Fatalf("QueryTimeSeries last failed: %v", err)
 	}
@@ -428,7 +477,7 @@ func TestMetricPointRepository_QueryTimeSeries_LastAggregationWithGroupBy(t *tes
 	from := base.Add(-time.Minute)
 	to := base.Add(time.Hour)
 
-	result, err := MetricPointRepository.QueryTimeSeries(ctx, projectId, "disk.used", from, to, 60, "last", nil, "disk")
+	result, err := MetricPointRepository.QueryTimeSeries(ctx, projectId, "disk.used", from, to, 60, "last", nil, "disk", 0)
 	if err != nil {
 		t.Fatalf("QueryTimeSeries last with groupBy failed: %v", err)
 	}

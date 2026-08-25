@@ -318,7 +318,7 @@ SDKs append `/v1/traces`, `/v1/metrics`, `/v1/logs` to the endpoint automaticall
 
 When Step 3's apply script wrote the env files, the plan's variables already hold real values locally, so wire the exporter to exactly those names (e.g. `Authorization=Bearer ${TRACEWAY_BACKEND_TOKEN}`) and run live verification immediately. The script writes only each project's one plan variable: companion variables the integration reads, like `TRACEWAY_URL` for the instance URL, are yours to add to the same env file now. On the manual fallback the user populates the variables first.
 
-Constraints: OTLP/HTTP only (protobuf or JSON). OTLP/gRPC is not supported, there is no listener on port 4317. `Content-Encoding: gzip` is fine. The body is read up to 10 MB and the rest is truncated, so an oversized batch answers `400 failed to unmarshal` rather than `413`. A wrong or missing token answers `401`, and any other path answers `404`. All three are invisible from the application: most SDKs log exporter failures at debug level only, so when nothing arrives, turn the SDK's own diagnostic logging on first.
+Constraints: OTLP/HTTP only (protobuf or JSON). OTLP/gRPC is not supported, there is no listener on port 4317. `Content-Encoding: gzip` is fine. The body is capped at 10 MB after decompression, and an oversized batch is rejected outright with `413` and `{"error":"request body exceeds the 10MB limit"}`. Nothing is ingested partially. A wrong or missing token answers `401`, and any other path answers `404`. All three are invisible from the application: most SDKs log exporter failures at debug level only, so when nothing arrives, turn the SDK's own diagnostic logging on first.
 
 ### Node.js example
 

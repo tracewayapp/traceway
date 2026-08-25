@@ -64,6 +64,31 @@ app:
   baseURL: ""
   # Optional. Set to "true" to serve only the API without the embedded frontend.
   apiOnly: ""
+  # Optional. Comma-separated CIDRs of the proxies whose X-Forwarded-For is
+  # trusted for the real client IP. Defaults to private ranges (RFC1918,
+  # loopback, IPv6 ULA), which already covers an in-cluster ingress.
+  # Every per-IP rate limit and each session's recorded client.ip depend on it.
+  #
+  # A value REPLACES the defaults, so it must list EVERY hop between the client
+  # and Traceway. In the usual CDN -> ingress -> Traceway chain, Traceway's peer
+  # is the ingress, so a CDN-only list leaves that peer untrusted and turns
+  # X-Forwarded-For off entirely. Include the pod/ingress range too, e.g.
+  # "173.245.48.0/20,103.21.244.0/22,10.0.0.0/8".
+  # Use "none" to trust no proxy at all.
+  trustedProxies: ""
+  # Optional. Cap on the decompressed /api/report body in megabytes.
+  # Default 64. Session-replay batches are the large case.
+  reportMaxBodyMB: ""
+  # Optional. Concurrently processed telemetry ingest requests. Default is
+  # 2x CPU count with a floor of 4. Each admitted request can hold a decoded
+  # body, so on a memory-capped container set this from the memory limit
+  # rather than letting it track CPU count.
+  # One project can hold at most three quarters of the slots; the rest is a
+  # reserve so a single noisy project cannot block the others.
+  ingestMaxConcurrent: ""
+  # Optional. Concurrent source-map/symbol uploads. Default 4. Each holds a
+  # whole file in memory while parsing.
+  uploadMaxConcurrent: ""
 
 # ClickHouse configuration — required when variant=minimal
 clickhouse:

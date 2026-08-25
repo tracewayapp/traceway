@@ -68,7 +68,7 @@ func (r *metricPointRepository) InsertAsync(ctx context.Context, points []models
 	return tx.Commit()
 }
 
-func (r *metricPointRepository) QueryTimeSeries(ctx context.Context, projectId uuid.UUID, name string, from, to time.Time, intervalMinutes int, aggregation string, tagFilters map[string]string, groupBy string) (map[string][]models.TimeSeriesPoint, error) {
+func (r *metricPointRepository) QueryTimeSeries(ctx context.Context, projectId uuid.UUID, name string, from, to time.Time, intervalMinutes int, aggregation string, tagFilters map[string]string, groupBy string, maxGroups int) (map[string][]models.TimeSeriesPoint, error) {
 	secs := intervalMinutes * 60
 	aggFunc := sqliteAggregationFunc(aggregation)
 	hasGroupBy := groupBy != ""
@@ -105,9 +105,14 @@ func (r *metricPointRepository) QueryTimeSeries(ctx context.Context, projectId u
 
 	query := selectClause + filterClauses + " GROUP BY bucket"
 	if hasGroupBy {
-		query += ", group_key"
+		query += ", group_key ORDER BY group_key ASC, bucket ASC"
+		if maxGroups > 0 {
+			query += " LIMIT :row_limit"
+			params["row_limit"] = shared.TimeSeriesRowLimit(maxGroups)
+		}
+	} else {
+		query += " ORDER BY bucket ASC"
 	}
-	query += " ORDER BY bucket ASC"
 
 	parsedQuery, args, err := lit.ParseNamedQuery(db.Driver, query, params)
 	if err != nil {
@@ -150,6 +155,9 @@ func (r *metricPointRepository) QueryTimeSeries(ctx context.Context, projectId u
 
 		if groupKey == "" {
 			groupKey = "(empty)"
+		}
+		if shared.GroupCapReached(result, groupKey, maxGroups) {
+			break
 		}
 		result[groupKey] = append(result[groupKey], models.TimeSeriesPoint{
 			Timestamp: bucket,

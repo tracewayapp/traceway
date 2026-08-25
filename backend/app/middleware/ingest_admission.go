@@ -22,27 +22,153 @@ import (
 // a connection; a request that cannot get a slot within the wait window is
 // rejected with 503 + Retry-After, which SDKs and OTLP collectors retry.
 func newIngestAdmission(capacity int, wait time.Duration) gin.HandlerFunc {
-	slots := make(chan struct{}, capacity)
-	return func(c *gin.Context) {
-		select {
-		case slots <- struct{}{}:
-		default:
-			timer := time.NewTimer(wait)
-			defer timer.Stop()
-			select {
-			case slots <- struct{}{}:
-			case <-timer.C:
-				db.RecordIngestRejected()
-				c.Header("Retry-After", "2")
-				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "ingest saturated, retry later"})
-				return
-			case <-c.Request.Context().Done():
-				c.Abort()
+	return newAdmissionGate(capacity, wait, "ingest saturated, retry later", db.RecordIngestRejected)
+}
+
+type admissionGate struct {
+	slots    chan struct{}
+	waiters  chan struct{}
+	wait     time.Duration
+	message  string
+	onReject func()
+	keyOf    func(*gin.Context) string
+	perKey   int
+	keyed    keyedSlots
+}
+
+func newAdmissionGate(capacity int, wait time.Duration, message string, onReject func()) gin.HandlerFunc {
+	g := &admissionGate{
+		slots:    make(chan struct{}, capacity),
+		waiters:  make(chan struct{}, maxWaitersFor(capacity)),
+		wait:     wait,
+		message:  message,
+		onReject: onReject,
+		keyOf:    projectAdmissionKey,
+		perKey:   perKeyMaxFor(capacity),
+	}
+	return g.handle
+}
+
+func maxWaitersFor(capacity int) int {
+	n := 4 * capacity
+	if n < 16 {
+		n = 16
+	}
+	return n
+}
+
+func perKeyMaxFor(capacity int) int {
+	reserve := capacity / 4
+	if reserve < 1 {
+		reserve = 1
+	}
+	n := capacity - reserve
+	if n < 1 {
+		n = 1
+	}
+	return n
+}
+
+func projectAdmissionKey(c *gin.Context) string {
+	if id, err := GetProjectId(c); err == nil {
+		return id.String()
+	}
+	return ""
+}
+
+func (g *admissionGate) handle(c *gin.Context) {
+	deadline := time.Now().Add(g.wait)
+
+	if g.keyOf != nil && g.perKey > 0 {
+		if key := g.keyOf(c); key != "" {
+			keySlots := g.keyed.ref(key, g.perKey)
+			defer g.keyed.unref(key)
+			if !g.acquire(c, keySlots, deadline) {
 				return
 			}
+			defer func() { <-keySlots }()
 		}
-		defer func() { <-slots }()
-		c.Next()
+	}
+
+	if !g.acquire(c, g.slots, deadline) {
+		return
+	}
+	defer func() { <-g.slots }()
+	c.Next()
+}
+
+func (g *admissionGate) acquire(c *gin.Context, ch chan struct{}, deadline time.Time) bool {
+	select {
+	case ch <- struct{}{}:
+		return true
+	default:
+	}
+
+	select {
+	case g.waiters <- struct{}{}:
+	default:
+		g.reject(c)
+		return false
+	}
+	defer func() { <-g.waiters }()
+
+	timer := time.NewTimer(time.Until(deadline))
+	defer timer.Stop()
+	select {
+	case ch <- struct{}{}:
+		return true
+	case <-timer.C:
+		g.reject(c)
+		return false
+	case <-c.Request.Context().Done():
+		c.Abort()
+		return false
+	}
+}
+
+func (g *admissionGate) reject(c *gin.Context) {
+	if g.onReject != nil {
+		g.onReject()
+	}
+	c.Header("Retry-After", "2")
+	c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": g.message})
+}
+
+type keyedSlots struct {
+	mu   sync.Mutex
+	keys map[string]*keySlotsEntry
+}
+
+type keySlotsEntry struct {
+	ch   chan struct{}
+	refs int
+}
+
+func (k *keyedSlots) ref(key string, size int) chan struct{} {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.keys == nil {
+		k.keys = map[string]*keySlotsEntry{}
+	}
+	entry := k.keys[key]
+	if entry == nil {
+		entry = &keySlotsEntry{ch: make(chan struct{}, size)}
+		k.keys[key] = entry
+	}
+	entry.refs++
+	return entry.ch
+}
+
+func (k *keyedSlots) unref(key string) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	entry := k.keys[key]
+	if entry == nil {
+		return
+	}
+	entry.refs--
+	if entry.refs <= 0 {
+		delete(k.keys, key)
 	}
 }
 
@@ -77,4 +203,22 @@ var ingestAdmission = sync.OnceValue(func() gin.HandlerFunc {
 
 func IngestAdmission(c *gin.Context) {
 	ingestAdmission()(c)
+}
+
+var uploadAdmission = sync.OnceValue(func() gin.HandlerFunc {
+	return newAdmissionGate(uploadCapacityFromEnv(), 30*time.Second, "upload queue saturated, retry later", nil)
+})
+
+func uploadCapacityFromEnv() int {
+	n := 4
+	if v := os.Getenv("UPLOAD_MAX_CONCURRENT"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			n = parsed
+		}
+	}
+	return n
+}
+
+func UploadAdmission(c *gin.Context) {
+	uploadAdmission()(c)
 }

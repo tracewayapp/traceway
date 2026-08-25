@@ -1,0 +1,64 @@
+# Upgrade notes: request limits and trusted proxies
+
+This release hardens the server against slow, oversized, and unfair requests. Most instances upgrade without changing anything. The sections below cover the changes that can affect an existing deployment, roughly in order of how likely they are to matter.
+
+## Trusted proxies
+
+Traceway used to accept `X-Forwarded-For` from any peer. It now trusts only private networks by default: RFC1918 ranges, loopback, and IPv6 ULA (`fc00::/7`). A reverse proxy on the same host, on a Docker network, or on an in-cluster ingress keeps working as before.
+
+You are affected if any hop between your users and Traceway has a public or carrier-grade NAT address:
+
+- A CDN such as Cloudflare talking to Traceway directly.
+- A CDN in front of a private ingress (`CDN -> nginx -> Traceway`). The ingress is trusted, but gin stops walking the header chain at the CDN's address.
+- An external load balancer with a public IP.
+- Kubernetes clusters whose pod ranges live in `100.64.0.0/10`, which some GKE setups use.
+- Tailscale or another `100.64.0.0/10` fabric.
+
+Symptoms after the upgrade:
+
+- Public status pages answer `429` once one proxy address exceeds 30 requests a minute. Acknowledge links and CLI device logins hit their per-IP limits the same way.
+- Sessions show the proxy's address as `client.ip`.
+- The server log contains a line starting with `X-Forwarded-For received from <address>, which is not in TRUSTED_PROXIES`. That address is the hop you need to list.
+
+Fix: set `TRUSTED_PROXIES` to every hop in the chain, not just the outermost one. The value replaces the defaults, so include the private range your ingress uses as well:
+
+```
+TRUSTED_PROXIES=173.245.48.0/20,103.21.244.0/22,10.0.0.0/8
+```
+
+Use `none` to trust no proxy at all. The full list of Cloudflare ranges is at https://www.cloudflare.com/ips/.
+
+## Upload limits
+
+Source map and symbol uploads now have a total cap per request: 250 MB and 500 files for `/api/sourcemaps/upload`, 250 MB and 100 files for `/api/symbols/upload`. A larger body answers `413`, too many files answers `422`. `@tracewayapp/sourcemap-upload` posts a whole build in one request, so a very large build that used to work may now need to be split. Chunked uploads without a `Content-Length` are held to the same total.
+
+Concurrent uploads are limited by `UPLOAD_MAX_CONCURRENT` (default 4). Excess uploads wait 30 seconds and then get `503`; CI retries handle that.
+
+## Ingest body caps
+
+`/api/report` and `/api/profiles/ingest` accept at most 64 MB after decompression, tunable with `REPORT_MAX_BODY_MB`. A larger body answers `413` and is not ingested. Gzip does not raise the cap.
+
+OTLP endpoints keep their 10 MB cap, but an oversized batch is now rejected with `413` instead of being truncated into a `400`. Exporters treat both as permanent and drop the batch, so the change is only in what the log says.
+
+## Ingest concurrency
+
+The ingest admission gate (`INGEST_MAX_CONCURRENT`, default 2 x CPU cores with a floor of 4) has two new properties:
+
+- One project can hold at most three quarters of the slots. The rest is a reserve, so a single project sending slow bodies cannot make every other project on the instance see `503`. On an instance with one project this means 3 of the default 4 slots; raise `INGEST_MAX_CONCURRENT` if you need all of them.
+- Requests that cannot get a slot wait in a bounded room (four times the capacity, at least 16). Beyond that they are turned away immediately with `503` and `Retry-After`, which SDKs and OTLP exporters retry.
+
+## Server timeouts
+
+The server now closes connections whose body does not finish arriving. Ordinary requests have 60 seconds. Routes that take large bodies get their own progress deadline: uploads may take up to 30 minutes as long as data keeps flowing, telemetry ingest up to 2 minutes. On those routes a client that averages under 4 KB/s after the first 20 seconds is cut off with `408`. Idle keep-alive connections are closed after 2 minutes.
+
+## Public status pages in iframes
+
+Every response now carries `X-Frame-Options: DENY` and a `frame-ancestors 'none'` policy, except public status pages, which stay embeddable: any `/status/<slug>` page, and the root of a custom status-page domain. The custom-domain case is recognised by comparing the request host to `APP_BASE_URL`, so set `APP_BASE_URL` if you embed a status page served from its own domain.
+
+## Metric query limits
+
+`POST /api/metrics/query` enforces: at most 50 queries per request and 20 tag filters per query, a time range of at most 731 days with `to` after `from` (`422`), buckets widened so no series exceeds 2000 points, at most 200 groups per query (the result carries `truncatedGroups: true` when cut), and a 30-second deadline for the whole request that answers `504`. Dashboards built in the UI stay well inside these limits.
+
+## Transactional requests
+
+Endpoints that write to the main database now read the whole request body (up to 8 MB) before opening their transaction. Bodies above that answer `413`. No documented endpoint takes a body that large; the biggest is dashboard import at 5 MB.

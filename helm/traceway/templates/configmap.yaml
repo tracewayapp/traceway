@@ -47,6 +47,18 @@ data:
   {{- if .Values.app.apiOnly }}
   API_ONLY: {{ .Values.app.apiOnly | quote }}
   {{- end }}
+  {{- if .Values.app.trustedProxies }}
+  TRUSTED_PROXIES: {{ .Values.app.trustedProxies | quote }}
+  {{- end }}
+  {{- if .Values.app.reportMaxBodyMB }}
+  REPORT_MAX_BODY_MB: {{ .Values.app.reportMaxBodyMB | quote }}
+  {{- end }}
+  {{- if .Values.app.ingestMaxConcurrent }}
+  INGEST_MAX_CONCURRENT: {{ .Values.app.ingestMaxConcurrent | quote }}
+  {{- end }}
+  {{- if .Values.app.uploadMaxConcurrent }}
+  UPLOAD_MAX_CONCURRENT: {{ .Values.app.uploadMaxConcurrent | quote }}
+  {{- end }}
   {{- if .Values.disablePasswordLogin }}
   DISABLE_PASSWORD_LOGIN: {{ .Values.disablePasswordLogin | quote }}
   {{- end }}

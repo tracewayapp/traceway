@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -27,6 +29,17 @@ import (
 )
 
 type clientController struct{}
+
+func bodyReadStatus(err error) int {
+	var maxBytesErr *http.MaxBytesError
+	if errors.As(err, &maxBytesErr) {
+		return http.StatusRequestEntityTooLarge
+	}
+	if errors.Is(err, middleware.ErrBodyTooSlow) || errors.Is(err, os.ErrDeadlineExceeded) {
+		return http.StatusRequestTimeout
+	}
+	return http.StatusBadRequest
+}
 
 func isEmptyRaw(r json.RawMessage) bool {
 	if len(r) == 0 {
@@ -112,7 +125,7 @@ func (e clientController) Report(c *gin.Context) {
 	var request ReportRequest
 	if err := c.ShouldBindBodyWithJSON(&request); err != nil {
 		parseSpan.End()
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(bodyReadStatus(err), gin.H{"error": err.Error()})
 		return
 	}
 	parseSpan.End()

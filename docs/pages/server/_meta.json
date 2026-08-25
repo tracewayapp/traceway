@@ -11,5 +11,6 @@
   "storage": "Blob Storage",
   "haloy": "Haloy",
   "capacity-monitoring": "Capacity & Self-Monitoring",
-  "upgrade-1-8": "Upgrading to 1.8"
+  "upgrade-1-8": "Upgrading to 1.8",
+  "upgrade-request-limits": "Upgrade Notes: Request Limits"
 }

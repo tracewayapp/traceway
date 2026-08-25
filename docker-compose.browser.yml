@@ -12,6 +12,12 @@ services:
     environment:
       JWT_SECRET: "change-this-to-a-secure-secret-at-least-32-chars"
       # APP_BASE_URL: "https://traceway.example.com"
+      # TRUSTED_PROXIES trusts a proxy's X-Forwarded-For for the real client IP.
+      # Private ranges are trusted by default; set this only when a CDN or a
+      # public-IP load balancer sits in front, or every visitor shares one
+      # rate-limit bucket keyed on the proxy and sessions record the proxy's
+      # address as their client IP. List every hop, not just the CDN.
+      # TRUSTED_PROXIES: "173.245.48.0/20,103.21.244.0/22"
 
       # DuckDB sizes its memory budget from host RAM, not the container limit.
       # On any memory-capped deployment set this to roughly half the

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -90,6 +91,8 @@ type Cfg struct {
 	APIOnly               string
 	Ports                 string
 	TurnstileSecretKey    string
+	TrustedProxies        string
+	ReportMaxBodyMB       string
 
 	GoogleClientID     string
 	GoogleClientSecret string
@@ -127,6 +130,16 @@ func PollSeconds(value string, defaultSeconds int) time.Duration {
 		}
 	}
 	return time.Duration(seconds) * time.Second
+}
+
+const maxConfigurableMB = 1 << 20
+
+func SizeMB(value string, defaultMB int) int64 {
+	mb := int64(defaultMB)
+	if parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64); err == nil && parsed > 0 && parsed <= maxConfigurableMB {
+		mb = parsed
+	}
+	return mb * 1024 * 1024
 }
 
 // PasswordLoginDisabled reports whether the instance is SSO-only
@@ -228,6 +241,8 @@ func LoadFromEnv() *Cfg {
 		APIOnly:               os.Getenv("API_ONLY"),
 		Ports:                 os.Getenv("PORTS"),
 		TurnstileSecretKey:    os.Getenv("TURNSTILE_SECRET_KEY"),
+		TrustedProxies:        os.Getenv("TRUSTED_PROXIES"),
+		ReportMaxBodyMB:       os.Getenv("REPORT_MAX_BODY_MB"),
 
 		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),

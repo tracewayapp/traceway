@@ -12,7 +12,7 @@ This is the framework-agnostic reference for connecting any OpenTelemetry projec
 | Profiles | `POST https://<instance>/api/otel/v1development/profiles` (OTLP profiles, the development signal) |
 | Auth | `Authorization: Bearer <project-token>` header on every request |
 | Encoding | OTLP/HTTP: both `application/x-protobuf` and `application/json` are accepted. OTLP/gRPC is NOT supported. |
-| Compression | `Content-Encoding: gzip` is supported (exporters default to no compression; enabling `compression: gzip` is fine). Max request body: 10 MB. |
+| Compression | `Content-Encoding: gzip` is supported (exporters default to no compression; enabling `compression: gzip` is fine). Max request body: 10 MB after decompression; larger bodies answer `413`. |
 
 Anything whose `Content-Type` is not `application/x-protobuf` or `application/protobuf` is parsed as OTLP/JSON, so a missing `Content-Type` header still works for JSON exporters. When ingest is saturated the endpoints answer `503` with a `Retry-After` header. That is a back-pressure signal to retry, not a misconfiguration.
 

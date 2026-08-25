@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -240,6 +241,8 @@ type bulkAcknowledgeRequest struct {
 	Ids []int `json:"ids"`
 }
 
+const maxBulkPageIds = 100
+
 // BulkAcknowledge acknowledges every selected page that is still open. Pages
 // from other projects or in another state are skipped, not errors: bulk
 // actions race the escalator and other responders by nature.
@@ -254,6 +257,10 @@ func (c *pageController) BulkAcknowledge(ctx *gin.Context) {
 	var request bulkAcknowledgeRequest
 	if err := ctx.ShouldBindJSON(&request); err != nil || len(request.Ids) == 0 {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "ids array is required"})
+		return
+	}
+	if len(request.Ids) > maxBulkPageIds {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": fmt.Sprintf("a maximum of %d pages can be acknowledged at once", maxBulkPageIds)})
 		return
 	}
 
@@ -301,6 +308,10 @@ func (c *pageController) BulkResolve(ctx *gin.Context) {
 	var request bulkResolveRequest
 	if err := ctx.ShouldBindJSON(&request); err != nil || len(request.Ids) == 0 {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "ids array is required"})
+		return
+	}
+	if len(request.Ids) > maxBulkPageIds {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": fmt.Sprintf("a maximum of %d pages can be resolved at once", maxBulkPageIds)})
 		return
 	}
 
@@ -374,6 +385,10 @@ func (c *pageController) UnresolvedForIssues(ctx *gin.Context) {
 	var request pagesForIssuesRequest
 	if err := ctx.ShouldBindJSON(&request); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+	if len(request.Hashes) > maxBulkIssueHashes {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": fmt.Sprintf("a maximum of %d issues can be checked at once", maxBulkIssueHashes)})
 		return
 	}
 

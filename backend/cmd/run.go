@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tracewayapp/traceway/backend/app/backfill"
@@ -72,7 +74,6 @@ func Run(opts ...Option) {
 		}
 		cfg.AppBaseURL = o.serverURL
 		cfg.MonitoringTracewayURL = o.monitoringTracewayURL
-		gin.SetMode(gin.ReleaseMode)
 		if o.disableLogging {
 			config.LoggingEnabled = false
 		}
@@ -80,6 +81,8 @@ func Run(opts ...Option) {
 		applyEnvOverrides(cfg)
 	}
 	config.Init(cfg)
+
+	gin.SetMode(resolveGinMode(os.Getenv("GIN_MODE")))
 
 	if err := services.InitJWT(); err != nil {
 		panic(fmt.Errorf("failed to initialize JWT: %w", err))
@@ -182,6 +185,20 @@ func Run(opts ...Option) {
 		router = gin.Default()
 	}
 
+	proxies := parseTrustedProxies(cfg.TrustedProxies)
+	if err := router.SetTrustedProxies(proxies); err != nil {
+		config.Logf("Invalid TRUSTED_PROXIES %q, ignoring X-Forwarded-For entirely (every per-IP rate limit now keys on your proxy's address): %v", cfg.TrustedProxies, err)
+		router.SetTrustedProxies(nil)
+		proxies = nil
+	} else if len(proxies) == 0 {
+		config.Logf("Trusted proxies: none (X-Forwarded-For ignored; client IP is the immediate peer)")
+	} else {
+		config.Logf("Trusted proxies: %s", strings.Join(proxies, ", "))
+	}
+	router.Use(warnOnUntrustedForwardedFor(proxies))
+
+	router.Use(middleware.SecurityHeaders)
+
 	if monitoringTracewayUrl := cfg.MonitoringTracewayURL; monitoringTracewayUrl != "" {
 		twmw := tracewaygin.New(
 			monitoringTracewayUrl,
@@ -278,16 +295,118 @@ func Run(opts ...Option) {
 
 				port := ":" + portsList[i]
 				config.Logln("Starting server on " + port)
-				if err := router.Run(port); err != nil {
-					panic(fmt.Errorf("Error starting server on port %s: %v", port, err))
-				}
+				serveHTTP(router, port)
 			}()
 		}
 	}
 
 	notifySystemd()
-	if err := router.Run(":" + portsList[0]); err != nil {
-		panic(fmt.Errorf("Error starting server on port %s: %v", portsList[0], err))
+	serveHTTP(router, ":"+portsList[0])
+}
+
+func resolveGinMode(value string) string {
+	switch strings.TrimSpace(value) {
+	case gin.DebugMode:
+		return gin.DebugMode
+	case gin.TestMode:
+		return gin.TestMode
+	default:
+		return gin.ReleaseMode
+	}
+}
+
+var defaultTrustedProxies = []string{
+	"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+	"127.0.0.0/8", "fc00::/7", "::1",
+}
+
+func parseTrustedProxies(env string) []string {
+	trimmed := strings.TrimSpace(env)
+	if trimmed == "" {
+		return defaultTrustedProxies
+	}
+	if strings.EqualFold(trimmed, "none") {
+		return nil
+	}
+	var proxies []string
+	for _, p := range strings.Split(env, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			proxies = append(proxies, p)
+		}
+	}
+	if len(proxies) == 0 {
+		return defaultTrustedProxies
+	}
+	return proxies
+}
+
+func warnOnUntrustedForwardedFor(proxies []string) gin.HandlerFunc {
+	detect := newUntrustedForwarderDetector(proxies)
+	return func(c *gin.Context) {
+		if peer, first := detect(c); first {
+			config.Logf("X-Forwarded-For received from %s, which is not in TRUSTED_PROXIES. The header is ignored, so per-IP rate limits and session client IPs currently see that address instead of the real client. If %s is your proxy or CDN, add its range to TRUSTED_PROXIES (keeping the private ranges you rely on).", peer, peer)
+		}
+		c.Next()
+	}
+}
+
+func newUntrustedForwarderDetector(proxies []string) func(*gin.Context) (string, bool) {
+	nets := trustedProxyNets(proxies)
+	var once sync.Once
+	return func(c *gin.Context) (string, bool) {
+		if c.GetHeader("X-Forwarded-For") == "" && c.GetHeader("X-Real-IP") == "" {
+			return "", false
+		}
+		peer := c.RemoteIP()
+		ip := net.ParseIP(peer)
+		if ip == nil || containsIP(nets, ip) {
+			return "", false
+		}
+		first := false
+		once.Do(func() { first = true })
+		return peer, first
+	}
+}
+
+func trustedProxyNets(proxies []string) []*net.IPNet {
+	var nets []*net.IPNet
+	for _, p := range proxies {
+		if _, n, err := net.ParseCIDR(p); err == nil {
+			nets = append(nets, n)
+			continue
+		}
+		if ip := net.ParseIP(p); ip != nil {
+			bits := 32
+			if ip.To4() == nil {
+				bits = 128
+			}
+			nets = append(nets, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+		}
+	}
+	return nets
+}
+
+func containsIP(nets []*net.IPNet, ip net.IP) bool {
+	for _, n := range nets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+const serverReadTimeout = 60 * time.Second
+
+func serveHTTP(router *gin.Engine, port string) {
+	srv := &http.Server{
+		Addr:              port,
+		Handler:           router,
+		ReadHeaderTimeout: 15 * time.Second,
+		ReadTimeout:       serverReadTimeout,
+		IdleTimeout:       2 * time.Minute,
+	}
+	if err := srv.ListenAndServe(); err != nil {
+		panic(fmt.Errorf("Error starting server on port %s: %v", port, err))
 	}
 }
 
@@ -321,6 +440,8 @@ func applyEnvOverrides(cfg *config.Cfg) {
 		{"TWILIO_FROM_NUMBER", &cfg.TwilioFromNumber},
 		{"TWILIO_MESSAGING_SERVICE_SID", &cfg.TwilioMessagingServiceSID},
 		{"ALLOW_PRIVATE_NOTIFICATION_TARGETS", &cfg.AllowPrivateNotificationTargets},
+		{"TRUSTED_PROXIES", &cfg.TrustedProxies},
+		{"REPORT_MAX_BODY_MB", &cfg.ReportMaxBodyMB},
 		{"OAUTH_SESSION_SECRET", &cfg.OAuthSessionSecret},
 		{"GOOGLE_CLIENT_ID", &cfg.GoogleClientID},
 		{"GOOGLE_CLIENT_SECRET", &cfg.GoogleClientSecret},

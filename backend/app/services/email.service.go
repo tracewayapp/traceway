@@ -11,6 +11,7 @@ import (
 	"mime/multipart"
 	"mime/quotedprintable"
 	"net"
+	netmail "net/mail"
 	"net/smtp"
 	"net/textproto"
 	"strings"
@@ -84,13 +85,36 @@ func RenderEmail(email Email) (string, error) {
 	return out.String(), nil
 }
 
+func sanitizeHeaderValues(values []string) []string {
+	out := make([]string, len(values))
+	for i, v := range values {
+		out[i] = strings.NewReplacer("\r", "", "\n", "").Replace(v)
+	}
+	return out
+}
+
+func envelopeAddresses(recipients []string) []string {
+	out := make([]string, 0, len(recipients))
+	for _, r := range recipients {
+		if parsed, err := netmail.ParseAddress(r); err == nil {
+			out = append(out, parsed.Address)
+			continue
+		}
+		out = append(out, strings.TrimSpace(r))
+	}
+	return out
+}
+
 func SendEmail(ctx context.Context, email Email) error {
 	if len(email.To) == 0 {
 		return fmt.Errorf("no recipients")
 	}
 
+	recipients := sanitizeHeaderValues(email.To)
+	subject := sanitizeHeaderValues([]string{email.Subject})[0]
+
 	if !emailEnabled() {
-		config.Logf("[EMAIL LOG] To: %s\nSubject: %s\nBody:\n%s", strings.Join(email.To, ", "), email.Subject, email.Text)
+		config.Logf("[EMAIL LOG] To: %s\nSubject: %s\nBody:\n%s", strings.Join(recipients, ", "), subject, email.Text)
 		return nil
 	}
 
@@ -102,8 +126,8 @@ func SendEmail(ctx context.Context, email Email) error {
 	from := config.Config.SMTPFrom
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "From: %s\r\n", from)
-	fmt.Fprintf(&buf, "To: %s\r\n", strings.Join(email.To, ", "))
-	fmt.Fprintf(&buf, "Subject: %s\r\n", mime.QEncoding.Encode("utf-8", email.Subject))
+	fmt.Fprintf(&buf, "To: %s\r\n", strings.Join(recipients, ", "))
+	fmt.Fprintf(&buf, "Subject: %s\r\n", mime.QEncoding.Encode("utf-8", subject))
 	fmt.Fprintf(&buf, "Date: %s\r\n", time.Now().Format(time.RFC1123Z))
 	buf.WriteString("MIME-Version: 1.0\r\n")
 
@@ -132,7 +156,11 @@ func SendEmail(ctx context.Context, email Email) error {
 		return err
 	}
 
-	return sendSMTP(ctx, from, email.To, buf.Bytes())
+	envelopeFrom := from
+	if parsed, err := netmail.ParseAddress(from); err == nil {
+		envelopeFrom = parsed.Address
+	}
+	return sendSMTP(ctx, envelopeFrom, envelopeAddresses(recipients), buf.Bytes())
 }
 
 func sendSMTP(ctx context.Context, from string, to []string, msg []byte) error {

@@ -38,7 +38,7 @@ func (e profileIngestController) Ingest(c *gin.Context) {
 
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
+		c.JSON(bodyReadStatus(err), gin.H{"error": "failed to read request body"})
 		return
 	}
 

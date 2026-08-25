@@ -2,12 +2,16 @@ package otelcontrollers
 
 import (
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tracewayapp/traceway/backend/app/middleware"
 	collogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	colmetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	colprofilespb "go.opentelemetry.io/proto/otlp/collector/profiles/v1development"
@@ -18,17 +22,57 @@ import (
 
 const maxBodySize = 10 * 1024 * 1024 // 10MB
 
+var errBodyTooLarge = errors.New("request body exceeds the 10MB limit")
+
+const (
+	otlpBodyIdle  = 20 * time.Second
+	otlpBodyTotal = 2 * time.Minute
+)
+
 func readBody(c *gin.Context) ([]byte, error) {
-	var reader io.Reader = c.Request.Body
+	middleware.GuardBodyRead(c, otlpBodyIdle, otlpBodyTotal)
+
+	raw := http.MaxBytesReader(c.Writer, c.Request.Body, maxBodySize)
+
+	var reader io.Reader = raw
 	if strings.EqualFold(c.GetHeader("Content-Encoding"), "gzip") {
-		gr, err := gzip.NewReader(c.Request.Body)
+		gr, err := gzip.NewReader(raw)
 		if err != nil {
+			if isMaxBytes(err) {
+				return nil, errBodyTooLarge
+			}
 			return nil, fmt.Errorf("failed to create gzip reader: %w", err)
 		}
 		defer gr.Close()
 		reader = gr
 	}
-	return io.ReadAll(io.LimitReader(reader, maxBodySize))
+	body, err := io.ReadAll(io.LimitReader(reader, maxBodySize+1))
+	if err != nil {
+		if isMaxBytes(err) {
+			return nil, errBodyTooLarge
+		}
+		return nil, err
+	}
+	if len(body) > maxBodySize {
+		return nil, errBodyTooLarge
+	}
+	return body, nil
+}
+
+func isMaxBytes(err error) bool {
+	var maxBytesErr *http.MaxBytesError
+	return errors.As(err, &maxBytesErr)
+}
+
+func writeDecodeError(c *gin.Context, err error) {
+	status := http.StatusBadRequest
+	switch {
+	case errors.Is(err, errBodyTooLarge):
+		status = http.StatusRequestEntityTooLarge
+	case errors.Is(err, middleware.ErrBodyTooSlow), errors.Is(err, os.ErrDeadlineExceeded):
+		status = http.StatusRequestTimeout
+	}
+	c.JSON(status, gin.H{"error": err.Error()})
 }
 
 func isProtobuf(c *gin.Context) bool {

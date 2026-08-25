@@ -206,23 +206,23 @@ func loadProjectServerRows(ctx *gin.Context, project *models.Project, dashboardI
 	}
 
 	if len(latestOtel) > 0 {
-		cpuIdle, err := telemetry.MetricPointRepository.QueryTimeSeries(ctx, project.Id, models.MetricNameSystemCPUUtilization, since, now, 2, "avg", map[string]string{"state": "idle"}, "server_name")
+		cpuIdle, err := telemetry.MetricPointRepository.QueryTimeSeries(ctx, project.Id, models.MetricNameSystemCPUUtilization, since, now, 2, "avg", map[string]string{"state": "idle"}, "server_name", 0)
 		if err != nil {
 			return nil, err
 		}
-		memoryUsed, err := telemetry.MetricPointRepository.QueryTimeSeries(ctx, project.Id, models.MetricNameSystemMemoryUtilization, since, now, 2, "avg", map[string]string{"state": "used"}, "server_name")
+		memoryUsed, err := telemetry.MetricPointRepository.QueryTimeSeries(ctx, project.Id, models.MetricNameSystemMemoryUtilization, since, now, 2, "avg", map[string]string{"state": "used"}, "server_name", 0)
 		if err != nil {
 			return nil, err
 		}
-		filesystemUsed, err := telemetry.MetricPointRepository.QueryTimeSeries(ctx, project.Id, models.MetricNameSystemFilesystemUtilization, since, now, 2, "max", map[string]string{"state": "used"}, "server_name")
+		filesystemUsed, err := telemetry.MetricPointRepository.QueryTimeSeries(ctx, project.Id, models.MetricNameSystemFilesystemUtilization, since, now, 2, "max", map[string]string{"state": "used"}, "server_name", 0)
 		if err != nil {
 			return nil, err
 		}
-		networkReceive, err := telemetry.MetricPointRepository.QueryTimeSeries(ctx, project.Id, models.MetricNameSystemNetworkIO, since, now, 1, "sum", map[string]string{"direction": "receive"}, "server_name")
+		networkReceive, err := telemetry.MetricPointRepository.QueryTimeSeries(ctx, project.Id, models.MetricNameSystemNetworkIO, since, now, 1, "sum", map[string]string{"direction": "receive"}, "server_name", 0)
 		if err != nil {
 			return nil, err
 		}
-		networkTransmit, err := telemetry.MetricPointRepository.QueryTimeSeries(ctx, project.Id, models.MetricNameSystemNetworkIO, since, now, 1, "sum", map[string]string{"direction": "transmit"}, "server_name")
+		networkTransmit, err := telemetry.MetricPointRepository.QueryTimeSeries(ctx, project.Id, models.MetricNameSystemNetworkIO, since, now, 1, "sum", map[string]string{"direction": "transmit"}, "server_name", 0)
 		if err != nil {
 			return nil, err
 		}

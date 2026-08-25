@@ -56,7 +56,7 @@ Every OTel ecosystem ships the API, the SDK and the OTLP exporter as separate pa
 | **Protocol** | OTLP/HTTP only, Protobuf or JSON. **gRPC is not supported**, so `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf` is required |
 | **Compression** | Gzip supported (`Content-Encoding: gzip`) |
 | **Content-Type** | `application/x-protobuf` (or `application/protobuf`) for OTLP/Protobuf. Anything else, including a missing header, is parsed as OTLP/JSON |
-| **Max body size** | 10 MB **after decompression**. Gzip does not raise it |
+| **Max body size** | 10 MB, applied to the compressed body **and** to the decompressed output. Gzip does not raise it. A larger export is rejected with `413` |
 | **Auth failure** | `401` with an empty body. The header value must literally start with `Bearer ` |
 
 Traceway serves OTLP over HTTP only. There is no gRPC endpoint, so set your exporter's protocol to `http/protobuf` (or `http/json`) explicitly. Several SDKs default to gRPC when the variable is unset: with `OTEL_TRACES_EXPORTER=otlp` and no `OTEL_EXPORTER_OTLP_PROTOCOL`, the Python SDK resolves to gRPC, and the Java agent does the same. The failure is silent. The app runs, exits 0, prints no warning, and every export lands nowhere.
@@ -67,7 +67,7 @@ OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 
 Set that wherever you configure the exporter. The one exception is PHP, which needs `http/json` instead.
 
-An export larger than 10 MB is truncated and then fails to parse, so Traceway answers `400 Bad Request` with a decoding error. OTLP exporters treat 4xx as permanent and drop the batch instead of retrying, so that data is lost. Keep batches comfortably under the limit by capping the exporter's batch size: `maxExportBatchSize` in the JS SDK, `max_export_batch_size` in Python, `send_batch_max_size` on the Collector's `batch` processor. The SDK default of 512 spans per export is far below the limit.
+An export larger than 10 MB after decompression is rejected outright with `413 Request Entity Too Large` and `{"error":"request body exceeds the 10MB limit"}`. Nothing is truncated and nothing is partially ingested. OTLP exporters treat 4xx as permanent and drop the batch instead of retrying, so that data is lost. Keep batches comfortably under the limit by capping the exporter's batch size: `maxExportBatchSize` in the JS SDK, `max_export_batch_size` in Python, `send_batch_max_size` on the Collector's `batch` processor. The SDK default of 512 spans per export is far below the limit.
 
 If ingest is saturated, Traceway answers `503` with a `Retry-After` header instead. That one is retryable, and every OTLP exporter and the Collector will back off and resend.
 
@@ -310,7 +310,8 @@ curl -i -X POST https://<your-instance>/api/otel/v1/traces \
 
 - `200` with the body `{}` means the endpoint and token are good. The problem is in your SDK, or in how your spans are shaped.
 - `401` with an empty body means a bad token, or a header that does not start with `Bearer `.
-- `503` with `Retry-After` means ingest is saturated. Exporters retry this automatically.
+- `503` with `Retry-After` means ingest is saturated, or this project already holds its share of the ingest slots (one project cannot take them all). Exporters retry this automatically.
+- `413` means the batch exceeded 10 MB after decompression. Nothing was ingested. Lower the exporter's batch size.
 - `404` means the path under `/api` is wrong, for example `/api/v1/traces` instead of `/api/otel/v1/traces`.
 - `200` with an HTML body means the `/api` prefix is missing. The dashboard is served from the same origin, so its single-page fallback answers `/otel/v1/traces` with the dashboard itself and it looks like a success. Check that the response `Content-Type` is `application/json`, not `text/html`. The base is `/api/otel`, not `/otel`.
 
@@ -328,7 +329,7 @@ curl -i -X POST https://<your-instance>/api/otel/v1/traces \
 | Logs exist but the endpoint's Logs card is empty | The endpoint was promoted from a non-root span, so it is keyed by span id and not by the trace id the logs carry | Search the trace id on the Logs page |
 | A whole metric family is missing | It is an ExponentialHistogram or a Summary. Both are dropped without an error | Switch to explicit-bucket histograms, or convert in the Collector |
 | Metrics arrive but every series looks identical | The distinguishing attribute is on the Resource and is not in the allowlist | Emit it as a data-point attribute instead. See [Metrics](/client/otel/metrics) |
-| Large exports vanish and the exporter logs a 400 | The batch exceeded 10 MB after decompression, was truncated, and failed to parse | Lower the exporter's batch size |
+| Large exports vanish and the exporter logs a 413 | The batch exceeded 10 MB after decompression and was rejected outright | Lower the exporter's batch size |
 
 **Turn on the SDK's own diagnostics.** Most silent client-side failures, including a mis-constructed exporter or processor, only surface here:
 

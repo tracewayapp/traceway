@@ -1,6 +1,7 @@
 package config
 
 import (
+	"cmp"
 	"os"
 	"strconv"
 	"strings"
@@ -181,7 +182,7 @@ func LoadFromEnv() *Cfg {
 	return &Cfg{
 		JWTSecret: os.Getenv("JWT_SECRET"),
 
-		DBType:           os.Getenv("DB_TYPE"),
+		DBType:           cmp.Or(os.Getenv("DB_TYPE"), defaultDBType()),
 		PostgresHost:     os.Getenv("POSTGRES_HOST"),
 		PostgresPort:     os.Getenv("POSTGRES_PORT"),
 		PostgresDatabase: os.Getenv("POSTGRES_DATABASE"),

@@ -84,7 +84,13 @@ func Run(opts ...Option) {
 	config.Init(cfg)
 
 	if err := services.InitJWT(); err != nil {
-		panic(fmt.Errorf("failed to initialize JWT: %w", err))
+		// A missing signing key is a configuration mistake, not a crash: print
+		// something actionable instead of burying the message under a panic
+		// stack trace. There is deliberately no default -- a key committed to
+		// the repo would be identical in every clone.
+		config.Logln("FATAL: " + err.Error())
+		config.Logln("Generate one with: openssl rand -hex 32")
+		os.Exit(1)
 	}
 
 	err := db.Init()
@@ -275,28 +281,50 @@ func Run(opts ...Option) {
 	if ports == "" {
 		ports = "80,8082"
 	}
-	portsList := strings.Split(ports, ",")
-	if len(portsList) == 0 {
-		panic(fmt.Errorf("ports env variable is invalid - no ports found"))
+
+	// Bind every port up front rather than inside the serving goroutines, so a
+	// failure is known before the process reports itself started. Individual
+	// failures are tolerated -- binding :80 as a non-root user is the ordinary
+	// local-development case -- but losing every port is fatal.
+	//
+	// Previously only the first entry was bound on this goroutine and panicked,
+	// while the rest panicked inside goroutines guarded by traceway.Recover(),
+	// which swallows the panic (and reports nothing at all when monitoring is
+	// unconfigured). That made the same failure either fatal or invisible
+	// depending on the order of PORTS.
+	var listeners []net.Listener
+	for _, port := range strings.Split(ports, ",") {
+		port = strings.TrimSpace(port)
+		if port == "" {
+			continue
+		}
+
+		addr := ":" + port
+		listener, err := net.Listen("tcp", addr)
+		if err != nil {
+			config.Logln("WARNING: not listening on " + addr + ": " + err.Error())
+			traceway.CaptureException(fmt.Errorf("could not listen on %s: %w", addr, err))
+			continue
+		}
+		listeners = append(listeners, listener)
 	}
 
-	if len(portsList) > 1 {
-		for i := 1; i < len(portsList); i++ {
-			if len(portsList[i]) == 0 {
-				continue
-			}
-			go func() {
-				defer traceway.Recover()
+	if len(listeners) == 0 {
+		panic(fmt.Errorf("could not listen on any port in PORTS=%q", ports))
+	}
 
-				port := ":" + portsList[i]
-				config.Logln("Starting server on " + port)
-				serveHTTP(router, port)
-			}()
-		}
+	for _, listener := range listeners[1:] {
+		go func(listener net.Listener) {
+			defer traceway.Recover()
+
+			config.Logln("Starting server on " + listener.Addr().String())
+			serveHTTP(router, listener)
+		}(listener)
 	}
 
 	notifySystemd()
-	serveHTTP(router, ":"+portsList[0])
+	config.Logln("Starting server on " + listeners[0].Addr().String())
+	serveHTTP(router, listeners[0])
 }
 
 func warnOnUntrustedForwardedFor(proxies []string) gin.HandlerFunc {
@@ -356,16 +384,20 @@ func containsIP(nets []*net.IPNet, ip net.IP) bool {
 
 const serverReadTimeout = time.Hour
 
-func serveHTTP(router *gin.Engine, port string) {
+// serveHTTP takes an already-bound listener rather than an address: the ports
+// are bound up front so a bind failure is known before the process reports
+// itself started, which ListenAndServe cannot express. The timeouts are the
+// point of this helper and must survive that change -- gin's RunListener sets
+// none of them.
+func serveHTTP(router *gin.Engine, listener net.Listener) {
 	srv := &http.Server{
-		Addr:              port,
 		Handler:           router,
 		ReadHeaderTimeout: 15 * time.Second,
 		ReadTimeout:       serverReadTimeout,
 		IdleTimeout:       2 * time.Minute,
 	}
-	if err := srv.ListenAndServe(); err != nil {
-		panic(fmt.Errorf("Error starting server on port %s: %v", port, err))
+	if err := srv.Serve(listener); err != nil {
+		panic(fmt.Errorf("server on %s stopped: %w", listener.Addr().String(), err))
 	}
 }
 

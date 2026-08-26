@@ -67,8 +67,9 @@
 
 			newOrgName = '';
 			toast.success('Successfully created the Organization', { position: 'top-center' });
-		} catch (e: any) {
-			createError = e.message || 'Failed to create the organization';
+		} catch (e) {
+			createError =
+				e instanceof Error && e.message ? e.message : 'Failed to create the organization';
 			creating = false;
 		}
 	}

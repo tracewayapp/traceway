@@ -582,3 +582,41 @@ func TestEndpointRepository_FindGroupedByEndpoint_RootFilterPercentiles(t *testi
 		t.Errorf("p95 = %v, want the root-only 100ms; non-root durations leaked into the percentile", stats[0].P95Duration)
 	}
 }
+
+// The chart ranks the top 5 on percentiles and then plots only the filtered
+// rows, so ranking on the unfiltered population puts endpoints on the chart that
+// are not slow under the filter. These two rank one way on all rows and the
+// other way on root rows alone.
+func TestEndpointRepository_GetEndpointStackedChart_RanksOnFilteredRows(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	projectId := uuid.New()
+	now := truncateMs(time.Now().UTC())
+
+	var endpoints []models.Endpoint
+	for range 3 {
+		// Slow as a root request, which is what "root" asks to see.
+		slowRoot := makeEndpoint(projectId, "GET /slow-root", 500*time.Millisecond, 200, now)
+		slowRoot.IsRoot = true
+		// Fast as a root request, slow only in the rows the filter drops.
+		fastRoot := makeEndpoint(projectId, "GET /fast-root", 10*time.Millisecond, 200, now)
+		fastRoot.IsRoot = true
+		endpoints = append(endpoints, slowRoot, fastRoot,
+			makeEndpoint(projectId, "GET /fast-root", 5*time.Second, 200, now))
+	}
+
+	if err := EndpointRepository.InsertAsync(ctx, endpoints); err != nil {
+		t.Fatalf("InsertAsync failed: %v", err)
+	}
+
+	chart, err := EndpointRepository.GetEndpointStackedChart(ctx, projectId, now.Add(-time.Hour), now.Add(time.Hour), 5, "p95", "", "root", "")
+	if err != nil {
+		t.Fatalf("GetEndpointStackedChart failed: %v", err)
+	}
+	if len(chart.Endpoints) < 2 {
+		t.Fatalf("expected both endpoints in the chart, got %v", chart.Endpoints)
+	}
+	if chart.Endpoints[0] != "GET /slow-root" {
+		t.Errorf("top endpoint ranked on unfiltered rows: got %v, want 'GET /slow-root' first", chart.Endpoints)
+	}
+}

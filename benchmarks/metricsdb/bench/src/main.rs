@@ -98,7 +98,7 @@ fn debt_metric(kind: DbKind) -> &'static str {
     match kind {
         DbKind::Clickhouse | DbKind::ClickhouseMap => "active parts",
         DbKind::Victoriametrics => "small + in-memory parts",
-        DbKind::Duckdb => "WAL MB",
+        DbKind::Duckdb => "WAL MB above the checkpoint threshold",
         DbKind::Firebolt => "tablets",
     }
 }
@@ -114,11 +114,15 @@ fn debt_floor(it: impl Iterator<Item = f64>) -> Option<f64> {
     Some(v[(v.len() - 1) / 4])
 }
 
-fn debt_of(kind: DbKind, h: &Value) -> Option<f64> {
+/// `wal_threshold` is DuckDB's checkpoint threshold in bytes: below it the
+/// WAL is a sawtooth by design (fill to the threshold, checkpoint, repeat),
+/// so only the excess is deferred work; DuckDB stalls the writer rather than
+/// let it grow, which the acceptance rule sees.
+fn debt_of(kind: DbKind, h: &Value, wal_threshold: f64) -> Option<f64> {
     match kind {
         DbKind::Clickhouse | DbKind::ClickhouseMap => num(h.get("active_parts")),
         DbKind::Victoriametrics => Some(num(h.get("parts_small"))? + num(h.get("parts_inmemory"))?),
-        DbKind::Duckdb => num(h.get("wal_bytes")).map(|b| b / 1e6),
+        DbKind::Duckdb => num(h.get("wal_bytes")).map(|b| (b - wal_threshold).max(0.0) / 1e6),
         DbKind::Firebolt => num(h.get("number_of_tablets")),
     }
 }
@@ -350,6 +354,7 @@ async fn run(cli: Cli) -> anyhow::Result<u8> {
         ingest_windows: 0,
         prev_delayed: None,
         last_debt: None,
+        wal_threshold: util::parse_bytes(&cli.duckdb_checkpoint_threshold).unwrap_or(1 << 30) as f64,
         fill_start: None,
         gen_handles,
         rx,
@@ -596,6 +601,7 @@ struct Ctx<'a> {
     ingest_windows: u64,
     prev_delayed: Option<f64>,
     last_debt: Option<f64>,
+    wal_threshold: f64,
     fill_start: Option<(Instant, u64)>,
     gen_handles: Vec<std::thread::JoinHandle<crate::model::generator::GenResult>>,
     rx: async_channel::Receiver<Batch>,
@@ -632,7 +638,7 @@ impl<'a> Ctx<'a> {
             let restarted = std::mem::take(&mut p.restarted);
             (p.health.clone(), p.proc.clone(), p.container.clone(), disk, p.reachable, restarted)
         };
-        let debt = health.as_ref().and_then(|h| debt_of(self.kind, h));
+        let debt = health.as_ref().and_then(|h| debt_of(self.kind, h, self.wal_threshold));
         if debt.is_some() {
             self.last_debt = debt;
         }

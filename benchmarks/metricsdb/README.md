@@ -94,7 +94,8 @@ inserts get throttled. Three things in the bench make that visible.
 
 1. **Deferred work is tracked every window** as a per-store "debt":
    ClickHouse active parts, VictoriaMetrics small plus in-memory parts,
-   DuckDB WAL bytes, Firebolt tablets. During the fill, a trailing 10 minute
+   DuckDB WAL bytes above its checkpoint threshold (below it the WAL is a
+   sawtooth by design), Firebolt tablets. During the fill, a trailing 10 minute
    mean more than 30% above the previous 10 minutes for a full minute, or any
    throttled write (ClickHouse `DelayedInserts`), is a fell-behind verdict
    (`--debt-window`, `--debt-growth`).

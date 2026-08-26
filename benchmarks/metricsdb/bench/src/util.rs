@@ -101,7 +101,6 @@ pub fn fmt_bytes(v: u64) -> String {
     }
 }
 
-#[allow(dead_code)]
 pub fn parse_bytes(s: &str) -> Option<u64> {
     let s = s.trim().to_ascii_uppercase();
     let (num, mult) = if let Some(n) = s.strip_suffix("GB").or_else(|| s.strip_suffix("GIB")).or_else(|| s.strip_suffix('G')) {

@@ -84,8 +84,10 @@ fn self_mem_io() -> (u64, u64, u64) {
     (kb("VmRSS:"), kb("VmHWM:"), wb)
 }
 
-fn is_bench_thread(comm: &str) -> bool {
-    comm.starts_with("gen-") || comm.starts_with("tokio-") || comm.starts_with("metricsdb") || comm == "main"
+/// DuckDB's worker threads inherit the process name, so the main thread is
+/// told apart by its id (tid == pid) rather than by name.
+fn is_bench_thread(comm: &str, tid: u32, pid: u32) -> bool {
+    comm.starts_with("gen-") || comm.starts_with("tokio-") || tid == pid
 }
 
 /// (db ticks, bench ticks): with an in-process DB the split is by thread name,
@@ -97,7 +99,9 @@ fn self_cpu_ticks(in_process: bool) -> (u64, u64) {
         Ok(t) => t,
         Err(_) => return (0, 0),
     };
+    let pid = std::process::id();
     for t in tasks.flatten() {
+        let tid: u32 = t.file_name().to_string_lossy().parse().unwrap_or(0);
         let comm = std::fs::read_to_string(t.path().join("comm")).unwrap_or_default();
         let stat = std::fs::read_to_string(t.path().join("stat")).unwrap_or_default();
         let after = match stat.rfind(')') {
@@ -106,7 +110,7 @@ fn self_cpu_ticks(in_process: bool) -> (u64, u64) {
         };
         let f: Vec<&str> = after.split_whitespace().collect();
         let ticks: u64 = f.get(11).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0) + f.get(12).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
-        if !in_process || is_bench_thread(comm.trim()) {
+        if !in_process || is_bench_thread(comm.trim(), tid, pid) {
             bench += ticks;
         } else {
             db += ticks;

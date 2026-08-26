@@ -163,13 +163,18 @@ pub fn spawn_generators(
 fn send(tx: &async_channel::Sender<Batch>, shared: &GenShared, batch: Batch) -> Option<(u64, u64)> {
     let n = batch.len() as u64;
     loop {
-        if shared.rate_pps.load(Ordering::Relaxed) == 0 {
+        let rate = shared.rate_pps.load(Ordering::Relaxed);
+        if rate == 0 {
             break;
         }
         if shared.stop.load(Ordering::Relaxed) {
             return None;
         }
-        if shared.credits.load(Ordering::Relaxed) >= n as i64 {
+        // The bucket holds one second of credits, so a batch sized under an
+        // earlier, higher rate could never be paid for in full; a full bucket
+        // pays for it and the balance goes negative, which keeps the average.
+        let need = (n as i64).min(rate as i64).max(1);
+        if shared.credits.load(Ordering::Relaxed) >= need {
             shared.credits.fetch_sub(n as i64, Ordering::Relaxed);
             break;
         }

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { LoadingCircle } from '$lib/components/ui/loading-circle';
+	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { Plus } from '@lucide/svelte';
 	import * as Select from '$lib/components/ui/select';
 	import { Button } from '$lib/components/ui/button';
@@ -30,7 +30,9 @@
 	// login, so a membership removed mid-session is still cached here. The layout
 	// pins every zero-project account to this page, which makes it the one screen
 	// that must not act on a stale list.
-	let refreshing = $state(true);
+	// Deliberately not a render gate: the cached list is right for every case but
+	// the mid-session removal this endpoint exists for, so blocking the page would
+	// tax every onboarding load to avoid one rare branch flip.
 
 	onMount(async () => {
 		try {
@@ -43,8 +45,6 @@
 		} catch {
 			// Fall back to the cached list rather than stranding the page; a genuinely
 			// expired token is already handled by the 401 path in api.ts.
-		} finally {
-			refreshing = false;
 		}
 	});
 
@@ -64,21 +64,18 @@
 				timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
 			})) as UserOrganizationResponse;
 			authState.setOrganizations([...authState.organizations, organization]);
-			selectedOrgId = organization.id;
+
 			newOrgName = '';
 			toast.success('Successfully created the Organization', { position: 'top-center' });
 		} catch (e: any) {
 			createError = e.message || 'Failed to create the organization';
-		} finally {
 			creating = false;
 		}
 	}
 </script>
 
 <div class="mx-auto w-full max-w-2xl space-y-6">
-	{#if refreshing}
-		<LoadingCircle size="xlg" />
-	{:else if hasNoOrganizations}
+	{#if hasNoOrganizations}
 		<div>
 			<h1 class="text-2xl font-bold">Create an Organization</h1>
 			<p class="mt-1 text-sm text-muted-foreground">
@@ -98,9 +95,7 @@
 				/>
 			</div>
 
-			{#if createError}
-				<p class="text-sm text-destructive">{createError}</p>
-			{/if}
+			<ErrorAlert error={createError} />
 
 			<Button type="submit" variant="success" disabled={creating}>
 				<Plus class="mr-2 size-4" />

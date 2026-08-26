@@ -3,9 +3,11 @@ package controllers
 import (
 	"database/sql"
 	"errors"
+	"github.com/tracewayapp/traceway/backend/app/config"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/oncall"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"net/http"
 	"strings"
@@ -152,14 +154,33 @@ func (c *organizationController) Create(ctx *gin.Context) {
 		timezone = "UTC"
 	}
 	// On-call schedule resolution is tz-aware calendar math, so an unparseable
-	// zone here would surface much later as wrong shift boundaries.
-	if _, err := time.LoadLocation(timezone); err != nil {
-		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Unknown timezone"})
+	// zone would surface much later as wrong shift boundaries.
+	if _, err := oncall.LoadTimezone(timezone); err != nil {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 		return
 	}
 
 	userId := middleware.GetUserId(ctx)
 	tx := db.GetTx(ctx)
+
+	// Self-hosted instances allow exactly one organization; Register enforces the
+	// same rule (as a 409). This answers 422 instead because the message has to
+	// reach the recovery form, and api.ts only extracts bodies from 401/403/422 --
+	// a 409 would surface to the user as "API Error: Conflict".
+	// Without this an authenticated user of any role -- readonly
+	// included -- could mint an organization here and own it, since the route
+	// carries no role guard and OrganizationLimitHook is nil outside cloud.
+	if config.Config.CloudMode != "true" {
+		hasOrganizations, err := transactional.OrganizationRepository.HasOrganizations(tx)
+		if err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to check for existing organizations: %w", err))
+			return
+		}
+		if hasOrganizations {
+			ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "This instance already has an organization. Ask an administrator to invite you to it."})
+			return
+		}
+	}
 
 	if OrganizationLimitHook != nil {
 		if err := OrganizationLimitHook(tx, userId); err != nil {
@@ -173,15 +194,35 @@ func (c *organizationController) Create(ctx *gin.Context) {
 		}
 	}
 
+	user, err := transactional.UserRepository.FindById(tx, userId)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to load creating user: %w", err))
+		return
+	}
+	if user == nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("authenticated user %d not found", userId))
+		return
+	}
+
 	org, err := transactional.OrganizationRepository.Create(tx, name, timezone)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to create organization: %w", err))
 		return
 	}
 
-	if _, err := transactional.OrganizationRepository.AddUser(tx, org.Id, userId, "owner"); err != nil {
+	if _, err := transactional.OrganizationRepository.AddUser(tx, org.Id, user.Id, "owner"); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to add creator to organization: %w", err))
 		return
+	}
+
+	// Register and FinishSetup both run these for every new org+owner pair; it is
+	// the cloud build's provisioning seam, so an organization created here must
+	// not skip it.
+	for _, hook := range PostRegistrationHooks {
+		if err := hook(tx, org, user); err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("post-registration hook failed: %w", err))
+			return
+		}
 	}
 
 	ctx.JSON(http.StatusCreated, models.UserOrganizationResponse{

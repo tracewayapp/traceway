@@ -142,17 +142,27 @@ func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearc
 	args["limit"] = params.PageSize
 	args["offset"] = offset
 
-	// COUNT(*) OVER () counts the filtered rows before LIMIT, so one scan
+	// Late materialization: the inner query resolves the page under the
+	// filter touching only (timestamp, id); the outer join fetches the wide
+	// columns (body + three JSON maps) for just those rows. Selecting wide
+	// columns under the filter directly makes the engine materialize every
+	// matching row before LIMIT and OOM on large ranges. COUNT(*) OVER ()
+	// in the inner query counts the filtered rows before LIMIT, so one scan
 	// yields both the page and the total.
-	query := fmt.Sprintf(`SELECT id, project_id, timestamp, trace_id, span_id, trace_flags,
-		severity_text, severity_number, service_name, body,
-		resource_schema_url, resource_attributes,
-		scope_schema_url, scope_name, scope_version, scope_attributes,
-		log_attributes, COUNT(*) OVER () AS total
-	FROM log_records
-	WHERE %s
-	ORDER BY %s %s, id
-	LIMIT :limit OFFSET :offset`, where, orderBy, direction)
+	query := fmt.Sprintf(`SELECT l.id, l.project_id, l.timestamp, l.trace_id, l.span_id, l.trace_flags,
+		l.severity_text, l.severity_number, l.service_name, l.body,
+		l.resource_schema_url, l.resource_attributes,
+		l.scope_schema_url, l.scope_name, l.scope_version, l.scope_attributes,
+		l.log_attributes, p.total
+	FROM (
+		SELECT id AS page_id, timestamp AS page_ts, COUNT(*) OVER () AS total
+		FROM log_records
+		WHERE %s
+		ORDER BY %s %s, id
+		LIMIT :limit OFFSET :offset
+	) p JOIN log_records l ON l.id = p.page_id AND l.timestamp = p.page_ts
+	WHERE l.project_id = :project_id
+	ORDER BY l.%s %s, l.id`, where, orderBy, direction, orderBy, direction)
 
 	rows, err := lit.SelectNamed[logRecord](db.TelemetryDB, query, args)
 	if err != nil {

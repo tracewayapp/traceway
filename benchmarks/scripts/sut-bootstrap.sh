@@ -86,9 +86,23 @@ EOF
     compose_args=( --env-file benchmarks/compose/managed-ch.env "${compose_args[@]}" )
 fi
 
+# Firebolt engine memory: ~60% of the tier's RAM so Postgres and the
+# backend keep headroom. Exact-percentile index-state merges at deep fills
+# scale with the scanned range and OOM a 4g engine around 100M rows.
+if [[ "${MODE}" == "pgfb" && -z "${FIREBOLT_MEM_LIMIT:-}" ]]; then
+    case "${TIER:-}" in
+        ccx13) FIREBOLT_MEM_LIMIT="4g" ;;
+        ccx23) FIREBOLT_MEM_LIMIT="10g" ;;
+        ccx33) FIREBOLT_MEM_LIMIT="20g" ;;
+        ccx43) FIREBOLT_MEM_LIMIT="40g" ;;
+        *)     FIREBOLT_MEM_LIMIT="4g" ;;
+    esac
+fi
+export FIREBOLT_MEM_LIMIT="${FIREBOLT_MEM_LIMIT:-4g}"
+
 CH_ASYNC_INSERT_VAL="${CH_ASYNC_INSERT:-0}"
 echo "bringing up compose stack (mode=${MODE}, CH_ASYNC_INSERT=${CH_ASYNC_INSERT_VAL}) on ${SUT_IP}" >&2
-if ! bench_ssh "${SUT_IP}" "cd /opt/traceway && BENCH_PORT=80 CH_ASYNC_INSERT=${CH_ASYNC_INSERT_VAL} docker compose ${compose_args[*]} up -d --build"; then
+if ! bench_ssh "${SUT_IP}" "cd /opt/traceway && BENCH_PORT=80 CH_ASYNC_INSERT=${CH_ASYNC_INSERT_VAL} FIREBOLT_MEM_LIMIT=${FIREBOLT_MEM_LIMIT} docker compose ${compose_args[*]} up -d --build"; then
     # The box is deleted on teardown, so dump the container state and logs
     # into the CI log — otherwise a crash-looping service is undiagnosable.
     echo "--- compose up failed; container state and logs ---" >&2

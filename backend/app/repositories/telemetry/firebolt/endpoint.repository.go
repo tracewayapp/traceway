@@ -217,9 +217,14 @@ func (e *endpointRepository) FindAll(ctx context.Context, projectId uuid.UUID, f
 	}
 
 	rows, err := lit.SelectNamed[endpoint](db.TelemetryDB,
-		fmt.Sprintf(`SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id
-		FROM endpoints WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
-		ORDER BY %s DESC LIMIT :limit OFFSET :offset`, orderBy),
+		fmt.Sprintf(`SELECT e.id, e.project_id, e.endpoint, e.duration, e.recorded_at, e.status_code, e.body_size, e.client_ip, e.attributes, e.app_version, e.server_name, e.distributed_trace_id
+		FROM (
+			SELECT id AS page_id FROM endpoints
+			WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
+			ORDER BY %s DESC LIMIT :limit OFFSET :offset
+		) p JOIN endpoints e ON e.id = p.page_id
+		WHERE e.project_id = :project_id
+		ORDER BY e.%s DESC`, orderBy, orderBy),
 		lit.P{"project_id": projectId, "from": fromDate.UTC(), "to": toDate.UTC(), "limit": pageSize, "offset": offset})
 	if err != nil {
 		return nil, 0, err
@@ -345,9 +350,14 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.
 	}
 
 	rows, err := lit.SelectNamed[endpoint](db.TelemetryDB,
-		fmt.Sprintf(`SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id
-		FROM endpoints WHERE project_id = :project_id AND endpoint = :endpoint AND recorded_at >= :from AND recorded_at <= :to
-		ORDER BY %s %s LIMIT :limit OFFSET :offset`, orderBy, sortDir),
+		fmt.Sprintf(`SELECT e.id, e.project_id, e.endpoint, e.duration, e.recorded_at, e.status_code, e.body_size, e.client_ip, e.attributes, e.app_version, e.server_name, e.distributed_trace_id
+		FROM (
+			SELECT id AS page_id FROM endpoints
+			WHERE project_id = :project_id AND endpoint = :endpoint AND recorded_at >= :from AND recorded_at <= :to
+			ORDER BY %s %s LIMIT :limit OFFSET :offset
+		) p JOIN endpoints e ON e.id = p.page_id
+		WHERE e.project_id = :project_id
+		ORDER BY e.%s %s`, orderBy, sortDir, orderBy, sortDir),
 		lit.P{"project_id": projectId, "endpoint": endpointName, "from": fromDate.UTC(), "to": toDate.UTC(), "limit": pageSize, "offset": offset})
 	if err != nil {
 		return nil, 0, err

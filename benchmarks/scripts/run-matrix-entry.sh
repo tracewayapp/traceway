@@ -76,7 +76,7 @@ if [[ "${ASYNC_FLAG}" == "async" ]]; then
     async_suffix="-async"
     echo "CH_ASYNC_INSERT=1 (async-insert benchmark pass)" >&2
 fi
-"${SCRIPT_DIR}/sut-bootstrap.sh" "${SUT_PUBLIC_IP}" "${MODE}"
+TIER="${TIER}" "${SCRIPT_DIR}/sut-bootstrap.sh" "${SUT_PUBLIC_IP}" "${MODE}"
 
 # 3. Run the loadgen, pulling JSON back into OUT_DIR.
 extra_args=( --scenario "${SCENARIO}" )

@@ -156,9 +156,14 @@ func (e *taskRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromD
 	}
 
 	rows, err := lit.SelectNamed[task](db.TelemetryDB,
-		fmt.Sprintf(`SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id
-		FROM tasks WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
-		ORDER BY %s DESC LIMIT :limit OFFSET :offset`, orderBy),
+		fmt.Sprintf(`SELECT t.id, t.project_id, t.task_name, t.duration, t.recorded_at, t.client_ip, t.attributes, t.app_version, t.server_name, t.distributed_trace_id
+		FROM (
+			SELECT id AS page_id FROM tasks
+			WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
+			ORDER BY %s DESC LIMIT :limit OFFSET :offset
+		) p JOIN tasks t ON t.id = p.page_id
+		WHERE t.project_id = :project_id
+		ORDER BY t.%s DESC`, orderBy, orderBy),
 		lit.P{"project_id": projectId, "from": fromDate.UTC(), "to": toDate.UTC(), "limit": pageSize, "offset": offset})
 	if err != nil {
 		return nil, 0, err
@@ -320,9 +325,14 @@ func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID
 	}
 
 	rows, err := lit.SelectNamed[task](db.TelemetryDB,
-		fmt.Sprintf(`SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id
-		FROM tasks WHERE project_id = :project_id AND task_name = :task_name AND recorded_at >= :from AND recorded_at <= :to
-		ORDER BY %s %s LIMIT :limit OFFSET :offset`, orderBy, sortDir),
+		fmt.Sprintf(`SELECT t.id, t.project_id, t.task_name, t.duration, t.recorded_at, t.client_ip, t.attributes, t.app_version, t.server_name, t.distributed_trace_id
+		FROM (
+			SELECT id AS page_id FROM tasks
+			WHERE project_id = :project_id AND task_name = :task_name AND recorded_at >= :from AND recorded_at <= :to
+			ORDER BY %s %s LIMIT :limit OFFSET :offset
+		) p JOIN tasks t ON t.id = p.page_id
+		WHERE t.project_id = :project_id
+		ORDER BY t.%s %s`, orderBy, sortDir, orderBy, sortDir),
 		lit.P{"project_id": projectId, "task_name": taskName, "from": fromDate.UTC(), "to": toDate.UTC(), "limit": pageSize, "offset": offset})
 	if err != nil {
 		return nil, 0, err

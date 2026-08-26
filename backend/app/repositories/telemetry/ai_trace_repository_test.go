@@ -508,8 +508,8 @@ func TestAiTraceRepository_ListModels(t *testing.T) {
 	}
 }
 
-// Same invariant as the tasks and endpoints lists: percentiles must describe the
-// rows the filter selects, since the list is ordered and paginated on them.
+// Percentiles must describe the rows the filter selects, since the list is
+// ordered and paginated on them.
 func TestAiTraceRepository_FindGroupedByTraceName_PercentilesUseFilteredRows(t *testing.T) {
 	setupTestDB(t)
 	ctx := context.Background()

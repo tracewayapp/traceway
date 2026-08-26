@@ -67,7 +67,9 @@ func makeAiTrace(projectId uuid.UUID, traceName string, duration time.Duration, 
 		TraceName:    traceName,
 		ServerName:   "test-server",
 		AppVersion:   "1.0.0",
-		IsRoot:       true,
+		// Unlike makeTask/makeEndpoint, AI traces default to root -- callers that
+		// need a child span go through makeAiTraceWithRoot.
+		IsRoot: true,
 	}
 }
 

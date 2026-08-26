@@ -193,10 +193,6 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 	offset := (page - 1) * pageSize
 
 	var baseQuery string
-	groupParams := lit.P{}
-	for k, v := range params {
-		groupParams[k] = v
-	}
 
 	groupedCols := `task_name, COUNT(*) as count, AVG(duration) as avg_duration, MAX(recorded_at) as last_seen,
 			MAX(is_root) as has_root, MAX(CASE WHEN is_root = 0 THEN 1 ELSE 0 END) as has_non_root`
@@ -214,11 +210,11 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 		baseQuery = fmt.Sprintf(`SELECT `+groupedCols+`
 			FROM tasks WHERE `+whereClause+`
 			GROUP BY task_name ORDER BY %s %s LIMIT :limit OFFSET :offset`, expr, sortDir)
-		groupParams["limit"] = pageSize
-		groupParams["offset"] = offset
+		params["limit"] = pageSize
+		params["offset"] = offset
 	}
 
-	groups, err := lit.SelectNamed[taskGroupRow](db.TelemetryDB, baseQuery, groupParams)
+	groups, err := lit.SelectNamed[taskGroupRow](db.TelemetryDB, baseQuery, params)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -520,9 +516,9 @@ func (e *taskRepository) FindByDistributedTraceId(ctx context.Context, distribut
 	return tasks, nil
 }
 
-// taskFilterClause is the single definition of what the task list filters on, so
-// the query that selects a task and the query that reads its durations cannot
-// drift apart. Both go through it.
+// taskFilterClause appends the task list's filter to a WHERE clause and binds
+// what it needs into params. Both the query that selects a task and the query
+// that reads its durations go through it, so they cannot filter differently.
 func taskFilterClause(params lit.P, search, rootFilter string) string {
 	clause := ""
 	if search != "" {
@@ -533,9 +529,6 @@ func taskFilterClause(params lit.P, search, rootFilter string) string {
 	return clause
 }
 
-// fetchSortedTaskDurations runs the same filter as the query that selected the
-// task: a percentile must describe exactly the rows that filter selects, or the
-// caller reports and sorts on a population the user filtered out.
 func fetchSortedTaskDurations(ctx context.Context, projectId uuid.UUID, taskName string, from, to time.Time, search, rootFilter string) ([]float64, error) {
 	params := lit.P{"project_id": projectId, "task_name": taskName, "from": sqlitetypes.NewSQLiteTime(from), "to": sqlitetypes.NewSQLiteTime(to)}
 	filterClause := taskFilterClause(params, search, rootFilter)

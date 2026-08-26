@@ -1,0 +1,104 @@
+name: Backend Vulncheck
+
+# govulncheck for the backend module. cli-lint.yml covers cli/; nothing
+# covered backend/, which is the module that ships a binary to users:
+# release-traceway.yml builds the traceway-runner artifacts from
+# backend/go.mod, and that binary runs on user infrastructure with an
+# outbound HTTPS long-poll as its main loop.
+#
+# Own workflow rather than jobs bolted onto a build workflow, for the same
+# reason cli-lint.yml is separate: the schedule below has to fire on days
+# nobody pushed anything.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-vulncheck.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-vulncheck.yml"
+  # A CVE lands in the vulnerability database without anyone pushing a commit,
+  # and both triggers above are path-filtered. Staggered off cli-lint.yml's
+  # 06:17 so the two do not contend for runners.
+  schedule:
+    - cron: "41 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # One job per supported build-tag combination. The tags are not cosmetic
+  # here: they select which db/ and repositories/ packages compile in, and
+  # each backend brings its own driver -- modernc.org/sqlite on the default
+  # build, duckdb-go under telemetry_duckdb, clickhouse-go plus lib/pq under
+  # transactional_pg telemetry_ch. A default-tags-only scan would leave the
+  # two driver stacks that the published Docker images actually run unscanned.
+  #
+  # These three are the only combinations that compile; app/db/guard_*.go
+  # rejects the rest at compile time.
+  #
+  # Scope, stated rather than implied: this scans linux/amd64 source. Release
+  # also cross-compiles the runner for darwin and windows, and reachability is
+  # in principle GOOS-dependent, but every finding so far has been either a
+  # stdlib symbol the toolchain pin resolves for all targets or a
+  # platform-independent module version. Widening to a GOOS axis is a
+  # deliberate follow-up, not an oversight.
+  vulncheck:
+    name: vulncheck (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      # Report every combination on one run. Which backend a CVE reaches
+      # through is exactly the thing this job exists to answer, so a first
+      # failure must not cancel the others.
+      fail-fast: false
+      matrix:
+        include:
+          - name: default (dual SQLite)
+            tags: ""
+            cgo: "0"
+          - name: telemetry_duckdb
+            tags: telemetry_duckdb
+            cgo: "1"
+          - name: transactional_pg telemetry_ch
+            tags: transactional_pg,telemetry_ch
+            cgo: "0"
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # setup-go@v5 reads only the `go` line, so it installs the 1.26.2 floor
+      # and GOTOOLCHAIN (left at its "auto" default -- v5 never sets it) then
+      # switches to the `toolchain` directive's 1.26.6 on first use. The
+      # scanned stdlib is the one the release build uses, which is the point.
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      # Pinned, not @latest: a tool release must never turn an unrelated PR
+      # red. Pinning costs no freshness -- govulncheck fetches the advisory
+      # database from vuln.go.dev at run time, so the schedule above is what
+      # keeps this current, not the binary version.
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+
+      # No -test: the gate is about what ships. Test-only dependencies are not
+      # in any released artifact, and failing a release on one would train
+      # people to ignore this job.
+      - name: Vulncheck
+        env:
+          TAGS: ${{ matrix.tags }}
+          CGO_ENABLED: ${{ matrix.cgo }}
+        run: |
+          if [ -n "$TAGS" ]; then
+            govulncheck -tags "$TAGS" ./...
+          else
+            govulncheck ./...
+          fi

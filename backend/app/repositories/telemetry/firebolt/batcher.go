@@ -24,6 +24,13 @@ import (
 // the bench's dropped-rows gate surface the loss instead of hiding it.
 const batcherMaxBufferedRows = 200000
 
+// A buffer past this size flushes immediately instead of waiting for the
+// ticker — under sustained load bigger windows would only add latency and
+// risk the overflow fallback. Flushes run concurrently per table (bounded)
+// because the engine absorbs parallel file loads.
+const batcherFlushRowsTrigger = 50000
+const batcherMaxConcurrentFlushes = 4
+
 type tableBuffer struct {
 	columns []string
 	rows    [][]any
@@ -33,6 +40,8 @@ type ingestBatcher struct {
 	mu      sync.Mutex
 	buffers map[string]*tableBuffer
 	total   int
+	kick    chan struct{}
+	sem     chan struct{}
 }
 
 var (
@@ -52,7 +61,11 @@ func activeBatcher() *ingestBatcher {
 		if _, _, ok := copyDirs(); !ok {
 			return
 		}
-		b := &ingestBatcher{buffers: map[string]*tableBuffer{}}
+		b := &ingestBatcher{
+			buffers: map[string]*tableBuffer{},
+			kick:    make(chan struct{}, 1),
+			sem:     make(chan struct{}, batcherMaxConcurrentFlushes),
+		}
 		go b.run(time.Duration(ms) * time.Millisecond)
 		batcher = b
 	})
@@ -74,6 +87,12 @@ func (b *ingestBatcher) enqueue(table string, columns []string, rows [][]any) bo
 	}
 	buf.rows = append(buf.rows, rows...)
 	b.total += len(rows)
+	if b.total >= batcherFlushRowsTrigger {
+		select {
+		case b.kick <- struct{}{}:
+		default:
+		}
+	}
 	return true
 }
 
@@ -81,7 +100,11 @@ func (b *ingestBatcher) run(interval time.Duration) {
 	defer traceway.Recover()
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	for range ticker.C {
+	for {
+		select {
+		case <-ticker.C:
+		case <-b.kick:
+		}
 		b.flush()
 	}
 }
@@ -93,21 +116,30 @@ func (b *ingestBatcher) flush() {
 	b.total = 0
 	b.mu.Unlock()
 
+	var wg sync.WaitGroup
 	for table, buf := range pending {
 		if len(buf.rows) == 0 {
 			continue
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		err := copyIngest(ctx, table, buf.columns, buf.rows)
-		if err != nil {
-			err = insertRowsDirect(ctx, table, buf.columns, buf.rows)
-		}
-		cancel()
-		if err != nil {
-			for range buf.rows {
-				db.RecordTelemetryRowDropped(table)
+		wg.Add(1)
+		b.sem <- struct{}{}
+		go func(table string, buf *tableBuffer) {
+			defer wg.Done()
+			defer func() { <-b.sem }()
+			defer traceway.Recover()
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			err := copyIngest(ctx, table, buf.columns, buf.rows)
+			if err != nil {
+				err = insertRowsDirect(ctx, table, buf.columns, buf.rows)
 			}
-			traceway.CaptureException(fmt.Errorf("firebolt batcher: dropped %d %s rows: %w", len(buf.rows), table, err))
-		}
+			if err != nil {
+				for range buf.rows {
+					db.RecordTelemetryRowDropped(table)
+				}
+				traceway.CaptureException(fmt.Errorf("firebolt batcher: dropped %d %s rows: %w", len(buf.rows), table, err))
+			}
+		}(table, buf)
 	}
+	wg.Wait()
 }

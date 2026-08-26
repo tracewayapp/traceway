@@ -101,7 +101,7 @@ pub fn spawn_generators(
                     let mut points = 0u64;
                     let mut batch_points = shared.batch_points.load(Ordering::Relaxed).max(1);
                     let mut batch = Batch::with_capacity(shared.seq.fetch_add(1, Ordering::Relaxed), batch_points);
-                    'rounds: for r in 0..max_rounds {
+                    for r in 0..max_rounds {
                         barrier.wait();
                         if shared.stop.load(Ordering::Relaxed) {
                             break;
@@ -109,9 +109,11 @@ pub fn spawn_generators(
                         let ts_base = cat.sim_start_ms + r as i64 * cat.interval_ms;
                         if g == 0 {
                             batch.push(SENTINEL_ID, ts_base, r as f64);
-                            fp ^= point_hash(SENTINEL_ID, ts_base, r as f64);
-                            points += 1;
                         }
+                        // Every thread must reach the next barrier even after a stop,
+                        // otherwise the others wait there forever; a thread that could
+                        // not send keeps the round's points out of its counts.
+                        let mut sent_all = true;
                         for (li, &h) in local.iter().enumerate() {
                             let host = &cat.hosts[h];
                             let ts = ts_base + host.jitter_ms;
@@ -119,22 +121,34 @@ pub fn spawn_generators(
                             for (k, &id) in host.series.iter().enumerate() {
                                 let t = &TEMPLATES[cat.series[id as usize].template as usize];
                                 let v = st[k].next(&t.value, interval_s, host.quiet, t.precision);
+                                if !sent_all {
+                                    continue;
+                                }
                                 batch.push(id, ts, v);
-                                fp ^= point_hash(id, ts, v);
-                                points += 1;
                                 if batch.len() >= batch_points {
                                     batch_points = shared.batch_points.load(Ordering::Relaxed).max(1);
                                     let full = std::mem::replace(&mut batch, Batch::with_capacity(shared.seq.fetch_add(1, Ordering::Relaxed), batch_points));
-                                    if !send(&tx, &shared, full) {
-                                        break 'rounds;
+                                    match send(&tx, &shared, full) {
+                                        Some(h) => {
+                                            fp ^= h.0;
+                                            points += h.1;
+                                        }
+                                        None => sent_all = false,
                                     }
                                 }
                             }
                         }
+                        if !sent_all {
+                            batch = Batch::with_capacity(shared.seq.fetch_add(1, Ordering::Relaxed), batch_points);
+                            shared.stop.store(true, Ordering::Relaxed);
+                        }
                         shared.rounds_done.fetch_max(r + 1, Ordering::Relaxed);
                     }
                     if !batch.is_empty() {
-                        let _ = send(&tx, &shared, batch);
+                        if let Some(h) = send(&tx, &shared, batch) {
+                            fp ^= h.0;
+                            points += h.1;
+                        }
                     }
                     GenResult { fingerprint: fp, points }
                 })
@@ -143,14 +157,17 @@ pub fn spawn_generators(
         .collect()
 }
 
-fn send(tx: &async_channel::Sender<Batch>, shared: &GenShared, batch: Batch) -> bool {
+/// Sends one batch; returns its (fingerprint, points) or None when the run
+/// is stopping or the writers are gone. The fingerprint only covers batches
+/// that were actually offered, so it matches what the store received.
+fn send(tx: &async_channel::Sender<Batch>, shared: &GenShared, batch: Batch) -> Option<(u64, u64)> {
     let n = batch.len() as u64;
     loop {
         if shared.rate_pps.load(Ordering::Relaxed) == 0 {
             break;
         }
         if shared.stop.load(Ordering::Relaxed) {
-            return false;
+            return None;
         }
         if shared.credits.load(Ordering::Relaxed) >= n as i64 {
             shared.credits.fetch_sub(n as i64, Ordering::Relaxed);
@@ -158,13 +175,19 @@ fn send(tx: &async_channel::Sender<Batch>, shared: &GenShared, batch: Batch) -> 
         }
         std::thread::sleep(Duration::from_millis(1));
     }
+    let mut fp = 0u64;
+    for i in 0..batch.len() {
+        fp ^= point_hash(batch.series_id[i], batch.ts_ms[i], batch.value[i]);
+    }
     let t0 = Instant::now();
     let ok = tx.send_blocking(batch).is_ok();
     shared.stall_ns.fetch_add(t0.elapsed().as_nanos() as u64, Ordering::Relaxed);
     if ok {
         shared.produced.fetch_add(n, Ordering::Relaxed);
+        Some((fp, n))
+    } else {
+        None
     }
-    ok
 }
 
 #[cfg(test)]

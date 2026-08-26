@@ -23,6 +23,7 @@ pub struct VerdictCfg {
     pub interval_s: f64,
     pub debt_windows: usize,
     pub debt_growth: f64,
+    pub debt_min_delta: f64,
     pub debt_metric: String,
 }
 
@@ -119,7 +120,7 @@ impl VerdictState {
             let m1 = floor(&mut self.debts.iter().take(half));
             let m2 = floor(&mut self.debts.iter().skip(half));
             match (m1, m2) {
-                (Some(a), Some(b)) if a > 0.0 && b > self.cfg.debt_growth * a => {
+                (Some(a), Some(b)) if a > 0.0 && b > self.cfg.debt_growth * a && b - a >= self.cfg.debt_min_delta => {
                     self.debt_streak += 1;
                     if self.debt_streak >= 6 {
                         behind.get_or_insert(format!("merge debt growing: {} floor {a:.0} -> {b:.0} over the trailing window", self.cfg.debt_metric));

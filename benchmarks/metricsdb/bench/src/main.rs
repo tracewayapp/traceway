@@ -338,6 +338,7 @@ async fn run(cli: Cli) -> anyhow::Result<u8> {
             interval_s: cat.interval_ms as f64 / 1000.0,
             debt_windows: (cli.debt_window.as_secs() / cli.window.as_secs().max(1)).max(2) as usize,
             debt_growth: cli.debt_growth,
+            debt_min_delta: cli.debt_min_delta,
             debt_metric: debt_metric(kind).into(),
         }),
         t0: t_ingest,
@@ -861,7 +862,7 @@ impl<'a> Ctx<'a> {
             (false, format!("{} write errors, {} points lost", step.errors, step.points_lost))
         } else if step.throttled > 0 {
             (false, format!("store throttled {} writes", step.throttled))
-        } else if matches!((step.debt_first_half, step.debt_second_half), (Some(a), Some(b)) if a > 0.0 && b > self.cli.debt_growth * a) {
+        } else if half >= 4 && matches!((step.debt_first_half, step.debt_second_half), (Some(a), Some(b)) if a > 0.0 && b > self.cli.debt_growth * a && b - a >= self.cli.debt_min_delta) {
             (false, format!("{} grew {:.0} -> {:.0} within the step", self.report.debt_metric, step.debt_first_half.unwrap(), step.debt_second_half.unwrap()))
         } else if step.lag_wall_s.map(|l| l > self.cli.lag_threshold.as_secs_f64()).unwrap_or(false) {
             (false, format!("visibility lag {:.0}s of ingest", step.lag_wall_s.unwrap()))

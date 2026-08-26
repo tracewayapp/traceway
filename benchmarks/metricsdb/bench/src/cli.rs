@@ -96,6 +96,9 @@ pub struct Cli {
     pub debt_window: Duration,
     #[arg(long, default_value_t = 1.3)]
     pub debt_growth: f64,
+    /// Growth below this many units (parts, tablets, WAL MB) is noise, whatever the ratio.
+    #[arg(long, default_value_t = 10.0)]
+    pub debt_min_delta: f64,
     #[arg(long, default_value_t = 5)]
     pub max_retries: u32,
     #[arg(long, default_value = "60s", value_parser = humantime::parse_duration)]

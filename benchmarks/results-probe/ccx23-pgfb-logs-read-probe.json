@@ -3,8 +3,8 @@
   "mode": "pgfb",
   "signal": "logs",
   "scenario": "read-probe",
-  "startedAt": "2026-08-26T13:31:21Z",
-  "endedAt": "2026-08-26T13:32:04Z",
+  "startedAt": "2026-08-26T18:05:59Z",
+  "endedAt": "2026-08-26T18:06:47Z",
   "readProbe": {
     "endpoints": [
       {
@@ -28,61 +28,61 @@
     "steps": [
       {
         "fillLevelTarget": 100000,
-        "rowsIngested": 1138688,
-        "ingestSecondsElapsed": 22.371463989,
-        "digestSeconds": 0.001550792,
+        "rowsIngested": 1212416,
+        "ingestSecondsElapsed": 26.941478224,
+        "digestSeconds": 0.001659582,
         "probes": [
           {
             "name": "logs-severity-error",
             "path": "/api/logs",
-            "latencyMs": 130.44212,
+            "latencyMs": 149.64416599999998,
             "ok": true
           },
           {
             "name": "logs-body-search",
             "path": "/api/logs",
-            "latencyMs": 67.45190299999999,
+            "latencyMs": 74.95649399999999,
             "ok": true
           },
           {
             "name": "logs-trace-id",
             "path": "/api/logs",
-            "latencyMs": 15.666824,
+            "latencyMs": 17.344523000000002,
             "ok": true
           }
         ],
-        "medianLatencyMs": 67.45190299999999,
-        "readLatencyMs": 67.45190299999999,
+        "medianLatencyMs": 74.95649399999999,
+        "readLatencyMs": 74.95649399999999,
         "readOk": true,
         "passed": true
       },
       {
         "fillLevelTarget": 1000000,
-        "rowsIngested": 1138688,
+        "rowsIngested": 1212416,
         "ingestSecondsElapsed": 0,
-        "digestSeconds": 0.001281624,
+        "digestSeconds": 0.001476772,
         "probes": [
           {
             "name": "logs-severity-error",
             "path": "/api/logs",
-            "latencyMs": 81.489145,
+            "latencyMs": 88.598325,
             "ok": true
           },
           {
             "name": "logs-body-search",
             "path": "/api/logs",
-            "latencyMs": 61.647164999999994,
+            "latencyMs": 57.66528,
             "ok": true
           },
           {
             "name": "logs-trace-id",
             "path": "/api/logs",
-            "latencyMs": 23.303712,
+            "latencyMs": 27.581346,
             "ok": true
           }
         ],
-        "medianLatencyMs": 61.647164999999994,
-        "readLatencyMs": 61.647164999999994,
+        "medianLatencyMs": 57.66528,
+        "readLatencyMs": 57.66528,
         "readOk": true,
         "passed": true
       }

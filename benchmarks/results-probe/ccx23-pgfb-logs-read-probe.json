@@ -3,8 +3,8 @@
   "mode": "pgfb",
   "signal": "logs",
   "scenario": "read-probe",
-  "startedAt": "2026-08-25T23:10:26Z",
-  "endedAt": "2026-08-25T23:36:24Z",
+  "startedAt": "2026-08-26T08:39:40Z",
+  "endedAt": "2026-08-26T08:40:28Z",
   "readProbe": {
     "endpoints": [
       {
@@ -29,30 +29,30 @@
       {
         "fillLevelTarget": 100000,
         "rowsIngested": 1122304,
-        "ingestSecondsElapsed": 26.981136679,
-        "digestSeconds": 0.002025908,
+        "ingestSecondsElapsed": 27.766308864,
+        "digestSeconds": 0.001829967,
         "probes": [
           {
             "name": "logs-severity-error",
             "path": "/api/logs",
-            "latencyMs": 273.96908199999996,
+            "latencyMs": 154.750211,
             "ok": true
           },
           {
             "name": "logs-body-search",
             "path": "/api/logs",
-            "latencyMs": 38.333849,
+            "latencyMs": 79.922877,
             "ok": true
           },
           {
             "name": "logs-trace-id",
             "path": "/api/logs",
-            "latencyMs": 7.957012,
+            "latencyMs": 15.375444,
             "ok": true
           }
         ],
-        "medianLatencyMs": 38.333849,
-        "readLatencyMs": 38.333849,
+        "medianLatencyMs": 79.922877,
+        "readLatencyMs": 79.922877,
         "readOk": true,
         "passed": true
       },
@@ -60,72 +60,34 @@
         "fillLevelTarget": 1000000,
         "rowsIngested": 1122304,
         "ingestSecondsElapsed": 0,
-        "digestSeconds": 0.002012187,
+        "digestSeconds": 0.001888423,
         "probes": [
           {
             "name": "logs-severity-error",
             "path": "/api/logs",
-            "latencyMs": 134.982883,
+            "latencyMs": 88.72538300000001,
             "ok": true
           },
           {
             "name": "logs-body-search",
             "path": "/api/logs",
-            "latencyMs": 42.292691,
+            "latencyMs": 59.949906,
             "ok": true
           },
           {
             "name": "logs-trace-id",
             "path": "/api/logs",
-            "latencyMs": 8.986854000000001,
+            "latencyMs": 24.257689999999997,
             "ok": true
           }
         ],
-        "medianLatencyMs": 42.292691,
-        "readLatencyMs": 42.292691,
+        "medianLatencyMs": 59.949906,
+        "readLatencyMs": 59.949906,
         "readOk": true,
         "passed": true
-      },
-      {
-        "fillLevelTarget": 10000000,
-        "rowsIngested": 10805248,
-        "ingestSecondsElapsed": 1498.938203102,
-        "digestSeconds": 0.00333846,
-        "probes": [
-          {
-            "name": "logs-severity-error",
-            "path": "/api/logs",
-            "latencyMs": 667.199395,
-            "ok": false,
-            "error": "status 500"
-          },
-          {
-            "name": "logs-body-search",
-            "path": "/api/logs",
-            "latencyMs": 530.908186,
-            "ok": true
-          },
-          {
-            "name": "logs-trace-id",
-            "path": "/api/logs",
-            "latencyMs": 9.653939000000001,
-            "ok": true
-          }
-        ],
-        "medianLatencyMs": 530.908186,
-        "readLatencyMs": 530.908186,
-        "readOk": false,
-        "passed": false,
-        "failReason": "probe logs-severity-error failed: status 500 (latency 667ms)"
       }
     ],
     "maxFillLevelPassed": 1000000
   },
-  "maxFillLevelPassed": 1000000,
-  "sutContainer": {
-    "status": "running",
-    "oomKilled": false,
-    "exitCode": 0,
-    "restartCount": 0
-  }
+  "maxFillLevelPassed": 1000000
 }

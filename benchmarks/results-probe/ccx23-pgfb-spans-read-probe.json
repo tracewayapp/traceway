@@ -3,8 +3,8 @@
   "mode": "pgfb",
   "signal": "spans",
   "scenario": "read-probe",
-  "startedAt": "2026-08-25T22:21:06Z",
-  "endedAt": "2026-08-25T22:50:41Z",
+  "startedAt": "2026-08-26T07:51:47Z",
+  "endedAt": "2026-08-26T08:20:31Z",
   "readProbe": {
     "endpoints": [
       {
@@ -28,126 +28,125 @@
     "steps": [
       {
         "fillLevelTarget": 100000,
-        "rowsIngested": 1474560,
-        "ingestSecondsElapsed": 23.162144136,
-        "digestSeconds": 0.002133131,
+        "rowsIngested": 1425408,
+        "ingestSecondsElapsed": 23.046807229,
+        "digestSeconds": 0.001374868,
         "probes": [
           {
             "name": "endpoints-grouped",
             "path": "/api/endpoints/grouped",
-            "latencyMs": 191.20074200000002,
+            "latencyMs": 113.31531100000001,
             "ok": true
           },
           {
             "name": "endpoints-chart",
             "path": "/api/endpoints/chart",
-            "latencyMs": 83.534485,
+            "latencyMs": 62.775560999999996,
             "ok": true
           },
           {
             "name": "exception-stack-traces",
             "path": "/api/exception-stack-traces",
-            "latencyMs": 17.721493000000002,
+            "latencyMs": 11.956292,
             "ok": true
           }
         ],
-        "medianLatencyMs": 83.534485,
-        "readLatencyMs": 83.534485,
+        "medianLatencyMs": 62.775560999999996,
+        "readLatencyMs": 62.775560999999996,
         "readOk": true,
         "passed": true
       },
       {
         "fillLevelTarget": 1000000,
-        "rowsIngested": 1474560,
+        "rowsIngested": 1425408,
         "ingestSecondsElapsed": 0,
-        "digestSeconds": 0.00187578,
+        "digestSeconds": 0.001908507,
         "probes": [
           {
             "name": "endpoints-grouped",
             "path": "/api/endpoints/grouped",
-            "latencyMs": 41.662509,
+            "latencyMs": 20.198386,
             "ok": true
           },
           {
             "name": "endpoints-chart",
             "path": "/api/endpoints/chart",
-            "latencyMs": 32.218686000000005,
+            "latencyMs": 17.684189999999997,
             "ok": true
           },
           {
             "name": "exception-stack-traces",
             "path": "/api/exception-stack-traces",
-            "latencyMs": 25.739933,
+            "latencyMs": 9.841634,
             "ok": true
           }
         ],
-        "medianLatencyMs": 32.218686000000005,
-        "readLatencyMs": 32.218686000000005,
+        "medianLatencyMs": 17.684189999999997,
+        "readLatencyMs": 17.684189999999997,
         "readOk": true,
         "passed": true
       },
       {
         "fillLevelTarget": 10000000,
-        "rowsIngested": 11370496,
-        "ingestSecondsElapsed": 147.466701238,
-        "digestSeconds": 0.001879133,
+        "rowsIngested": 11313152,
+        "ingestSecondsElapsed": 112.078333345,
+        "digestSeconds": 0.001467663,
         "probes": [
           {
             "name": "endpoints-grouped",
             "path": "/api/endpoints/grouped",
-            "latencyMs": 553.111995,
+            "latencyMs": 291.11229199999997,
             "ok": true
           },
           {
             "name": "endpoints-chart",
             "path": "/api/endpoints/chart",
-            "latencyMs": 206.98261100000002,
+            "latencyMs": 214.03921200000002,
             "ok": true
           },
           {
             "name": "exception-stack-traces",
             "path": "/api/exception-stack-traces",
-            "latencyMs": 16.356944000000002,
+            "latencyMs": 10.949432,
             "ok": true
           }
         ],
-        "medianLatencyMs": 206.98261100000002,
-        "readLatencyMs": 206.98261100000002,
+        "medianLatencyMs": 214.03921200000002,
+        "readLatencyMs": 214.03921200000002,
         "readOk": true,
         "passed": true
       },
       {
         "fillLevelTarget": 100000000,
-        "rowsIngested": 101154816,
-        "ingestSecondsElapsed": 1561.315571828,
-        "digestSeconds": 0.002018768,
+        "rowsIngested": 101335040,
+        "ingestSecondsElapsed": 1538.346024937,
+        "digestSeconds": 0.00173929,
         "probes": [
           {
             "name": "endpoints-grouped",
             "path": "/api/endpoints/grouped",
-            "latencyMs": 759.934556,
+            "latencyMs": 5743.413618,
             "ok": false,
             "error": "status 500"
           },
           {
             "name": "endpoints-chart",
             "path": "/api/endpoints/chart",
-            "latencyMs": 819.30052,
-            "ok": false,
-            "error": "status 500"
+            "latencyMs": 4252.172291,
+            "ok": true
           },
           {
             "name": "exception-stack-traces",
             "path": "/api/exception-stack-traces",
-            "latencyMs": 16.616051,
+            "latencyMs": 15.033652,
             "ok": true
           }
         ],
-        "medianLatencyMs": 759.934556,
-        "readLatencyMs": 759.934556,
+        "medianLatencyMs": 4252.172291,
+        "readLatencyMs": 4252.172291,
         "readOk": false,
         "passed": false,
-        "failReason": "probe endpoints-grouped failed: status 500 (latency 760ms)"
+        "failReason": "probe endpoints-grouped failed: status 500 (latency 5743ms)"
       }
     ],
     "maxFillLevelPassed": 10000000

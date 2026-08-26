@@ -16,12 +16,16 @@ under the matching `CLI vX.Y.Z` tag — the CLI version tracks the backend relea
 Download the archive for your platform (`traceway_<version>_<os>_<arch>.tar.gz`,
 or `.zip` on Windows), extract it, and put `traceway` on your `PATH`.
 
-Or build from source — this repo ships a Nix dev shell with Go 1.26, `just`, `gotestsum`, `golangci-lint`, `govulncheck`, and `gh`:
+Or build from source — the repo root ships a Nix dev shell with Go, `just`, `gotestsum`, `golangci-lint`, `govulncheck`, and `gh`:
 
 ```bash
-nix develop
+nix develop ..#cli
 just build         # produces ./bin/traceway
 ```
+
+A bare `nix develop` from this directory also works — Nix searches upward for
+the flake — but it lands in the repo-wide `default` shell, which additionally
+pulls Node for the frontend.
 
 Or vanilla Go:
 

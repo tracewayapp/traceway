@@ -543,3 +543,39 @@ func TestAiTraceRepository_FindGroupedByTraceName_PercentilesUseFilteredRows(t *
 		t.Errorf("P95 computed over unfiltered rows: got %v, want 200ms", stats[0].P95Duration)
 	}
 }
+
+// FindGroupedByTraceName sorts and paginates in Go on P50/P95, so percentiles
+// computed over the unfiltered population reorder the page as well as
+// misreporting it. These two traces rank one way on all rows and the other way
+// on root rows alone.
+func TestAiTraceRepository_FindGroupedByTraceName_RanksOnFilteredRows(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	projectId := uuid.New()
+	now := truncateMs(time.Now().UTC())
+
+	var traces []models.AiTrace
+	for range 4 {
+		// Slow as a root call, which is what "root" asks to see.
+		traces = append(traces, makeAiTraceWithRoot(projectId, "trace.slow-root", 500*time.Millisecond, 100, 0.01, now, true))
+		traces = append(traces, makeAiTraceWithRoot(projectId, "trace.slow-root", 50*time.Millisecond, 100, 0.01, now, false))
+		// Fast as a root call, slow only in the rows the filter drops.
+		traces = append(traces, makeAiTraceWithRoot(projectId, "trace.fast-root", 100*time.Millisecond, 100, 0.01, now, true))
+		traces = append(traces, makeAiTraceWithRoot(projectId, "trace.fast-root", 10*time.Second, 100, 0.01, now, false))
+	}
+
+	if err := AiTraceRepository.InsertAsync(ctx, traces); err != nil {
+		t.Fatalf("InsertAsync failed: %v", err)
+	}
+
+	stats, _, err := AiTraceRepository.FindGroupedByTraceName(ctx, projectId, now.Add(-time.Hour), now.Add(time.Hour), 1, 10, "p95_duration", "desc", "", "root")
+	if err != nil {
+		t.Fatalf("FindGroupedByTraceName failed: %v", err)
+	}
+	if len(stats) != 2 {
+		t.Fatalf("expected 2 grouped stats, got %d", len(stats))
+	}
+	if stats[0].TraceName != "trace.slow-root" {
+		t.Errorf("page ordered on unfiltered percentiles: got %q first, want \"trace.slow-root\"", stats[0].TraceName)
+	}
+}

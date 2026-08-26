@@ -170,12 +170,7 @@ func (e *taskRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromD
 
 func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string, search string, rootFilter string) ([]models.TaskStats, int64, error) {
 	params := lit.P{"project_id": projectId, "from": sqlitetypes.NewSQLiteTime(fromDate), "to": sqlitetypes.NewSQLiteTime(toDate)}
-	whereClause := "project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to"
-	if search != "" {
-		whereClause += " AND INSTR(LOWER(task_name), LOWER(:search)) > 0"
-		params["search"] = search
-	}
-	whereClause += shared.RootFilterClause("is_root", rootFilter)
+	whereClause := "project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to" + taskFilterClause(params, search, rootFilter)
 
 	totalResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
 		"SELECT COUNT(DISTINCT task_name) AS count FROM tasks WHERE "+whereClause,
@@ -198,9 +193,9 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 	offset := (page - 1) * pageSize
 
 	var baseQuery string
-	groupParams := lit.P{"project_id": projectId, "from": sqlitetypes.NewSQLiteTime(fromDate), "to": sqlitetypes.NewSQLiteTime(toDate)}
-	if search != "" {
-		groupParams["search"] = search
+	groupParams := lit.P{}
+	for k, v := range params {
+		groupParams[k] = v
 	}
 
 	groupedCols := `task_name, COUNT(*) as count, AVG(duration) as avg_duration, MAX(recorded_at) as last_seen,
@@ -230,7 +225,7 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 
 	var stats []models.TaskStats
 	for _, g := range groups {
-		durations, err := fetchSortedTaskDurations(ctx, projectId, g.TaskName, fromDate, toDate)
+		durations, err := fetchSortedTaskDurations(ctx, projectId, g.TaskName, fromDate, toDate, search, rootFilter)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -419,7 +414,7 @@ func (e *taskRepository) FindWorstTasks(ctx context.Context, projectId uuid.UUID
 
 	var stats []models.TaskStats
 	for _, g := range groups {
-		durations, err := fetchSortedTaskDurations(ctx, projectId, g.TaskName, start, end)
+		durations, err := fetchSortedTaskDurations(ctx, projectId, g.TaskName, start, end, "", "")
 		if err != nil {
 			return nil, err
 		}
@@ -465,7 +460,7 @@ func (e *taskRepository) GetTaskStats(ctx context.Context, projectId uuid.UUID, 
 		return &models.TaskDetailStats{}, nil
 	}
 
-	durations, err := fetchSortedTaskDurations(ctx, projectId, taskName, start, end)
+	durations, err := fetchSortedTaskDurations(ctx, projectId, taskName, start, end, "", "")
 	if err != nil {
 		return nil, err
 	}
@@ -525,10 +520,29 @@ func (e *taskRepository) FindByDistributedTraceId(ctx context.Context, distribut
 	return tasks, nil
 }
 
-func fetchSortedTaskDurations(ctx context.Context, projectId uuid.UUID, taskName string, from, to time.Time) ([]float64, error) {
+// taskFilterClause is the single definition of what the task list filters on, so
+// the query that selects a task and the query that reads its durations cannot
+// drift apart. Both go through it.
+func taskFilterClause(params lit.P, search, rootFilter string) string {
+	clause := ""
+	if search != "" {
+		clause += " AND INSTR(LOWER(task_name), LOWER(:search)) > 0"
+		params["search"] = search
+	}
+	clause += shared.RootFilterClause("is_root", rootFilter)
+	return clause
+}
+
+// fetchSortedTaskDurations runs the same filter as the query that selected the
+// task: a percentile must describe exactly the rows that filter selects, or the
+// caller reports and sorts on a population the user filtered out.
+func fetchSortedTaskDurations(ctx context.Context, projectId uuid.UUID, taskName string, from, to time.Time, search, rootFilter string) ([]float64, error) {
+	params := lit.P{"project_id": projectId, "task_name": taskName, "from": sqlitetypes.NewSQLiteTime(from), "to": sqlitetypes.NewSQLiteTime(to)}
+	filterClause := taskFilterClause(params, search, rootFilter)
+
 	results, err := lit.SelectNamed[durationValueRow](db.TelemetryDB,
-		"SELECT duration FROM tasks WHERE project_id = :project_id AND task_name = :task_name AND recorded_at >= :from AND recorded_at <= :to ORDER BY duration ASC",
-		lit.P{"project_id": projectId, "task_name": taskName, "from": sqlitetypes.NewSQLiteTime(from), "to": sqlitetypes.NewSQLiteTime(to)})
+		"SELECT duration FROM tasks WHERE project_id = :project_id AND task_name = :task_name AND recorded_at >= :from AND recorded_at <= :to"+filterClause+" ORDER BY duration ASC",
+		params)
 	if err != nil {
 		return nil, err
 	}

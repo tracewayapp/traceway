@@ -44,6 +44,12 @@ func makeTask(projectId uuid.UUID, taskName string, duration time.Duration, reco
 	}
 }
 
+func makeTaskWithRoot(projectId uuid.UUID, taskName string, duration time.Duration, recordedAt time.Time, isRoot bool) models.Task {
+	t := makeTask(projectId, taskName, duration, recordedAt)
+	t.IsRoot = isRoot
+	return t
+}
+
 func makeAiTrace(projectId uuid.UUID, traceName string, duration time.Duration, totalTokens int64, totalCost float64, recordedAt time.Time) models.AiTrace {
 	return models.AiTrace{
 		Id:           uuid.New(),
@@ -63,6 +69,12 @@ func makeAiTrace(projectId uuid.UUID, traceName string, duration time.Duration, 
 		AppVersion:   "1.0.0",
 		IsRoot:       true,
 	}
+}
+
+func makeAiTraceWithRoot(projectId uuid.UUID, traceName string, duration time.Duration, totalTokens int64, totalCost float64, recordedAt time.Time, isRoot bool) models.AiTrace {
+	tr := makeAiTrace(projectId, traceName, duration, totalTokens, totalCost, recordedAt)
+	tr.IsRoot = isRoot
+	return tr
 }
 
 func makeException(projectId uuid.UUID, hash, stackTrace string, recordedAt time.Time) models.ExceptionStackTrace {

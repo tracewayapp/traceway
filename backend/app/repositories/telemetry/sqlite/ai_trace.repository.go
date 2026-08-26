@@ -231,15 +231,23 @@ func (r *aiTraceRepository) InsertAsync(ctx context.Context, lines []models.AiTr
 	return tx.Commit()
 }
 
+// aiTraceFilterClause is the single definition of what the AI-traces list filters
+// on, so the query that selects a trace_name and the query that reads its
+// durations cannot drift apart. Both go through it.
+func aiTraceFilterClause(params lit.P, search, rootFilter string) string {
+	clause := ""
+	if search != "" {
+		clause += " AND INSTR(LOWER(trace_name), LOWER(:search)) > 0"
+		params["search"] = search
+	}
+	clause += shared.RootFilterClause("is_root", rootFilter)
+	return clause
+}
+
 func (r *aiTraceRepository) FindGroupedByTraceName(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy, sortDirection, search, rootFilter string) ([]models.AiTraceStats, int64, error) {
 	params := lit.P{"project_id": projectId, "from": sqlitetypes.NewSQLiteTime(fromDate), "to": sqlitetypes.NewSQLiteTime(toDate)}
 
-	whereClause := "project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to"
-	if search != "" {
-		whereClause += " AND INSTR(LOWER(trace_name), LOWER(:search)) > 0"
-		params["search"] = search
-	}
-	whereClause += shared.RootFilterClause("is_root", rootFilter)
+	whereClause := "project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to" + aiTraceFilterClause(params, search, rootFilter)
 
 	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
 		"SELECT COUNT(DISTINCT trace_name) AS count FROM ai_traces WHERE "+whereClause, params)
@@ -269,11 +277,14 @@ func (r *aiTraceRepository) FindGroupedByTraceName(ctx context.Context, projectI
 
 	var stats []models.AiTraceStats
 	for _, row := range rows {
-		// Compute percentiles from raw durations for this trace_name
+		// Percentiles come from the raw durations, under the same filter that
+		// selected this trace_name -- otherwise the list reports and sorts on a
+		// population the user filtered out.
 		durationParams := lit.P{"project_id": projectId, "from": sqlitetypes.NewSQLiteTime(fromDate), "to": sqlitetypes.NewSQLiteTime(toDate), "trace_name": row.TraceName}
 		durationRows, err := lit.SelectNamed[aiTraceDurationRow](db.TelemetryDB,
 			`SELECT CAST(duration AS REAL) AS duration FROM ai_traces
-			WHERE project_id = :project_id AND trace_name = :trace_name AND recorded_at >= :from AND recorded_at <= :to
+			WHERE project_id = :project_id AND trace_name = :trace_name AND recorded_at >= :from AND recorded_at <= :to`+
+				aiTraceFilterClause(durationParams, search, rootFilter)+`
 			ORDER BY duration ASC`, durationParams)
 		if err != nil {
 			return nil, 0, err

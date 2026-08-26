@@ -507,3 +507,39 @@ func TestAiTraceRepository_ListModels(t *testing.T) {
 		t.Errorf("ListModels = %v, expected [claude-sonnet-5 gpt-4o]", names)
 	}
 }
+
+// Same invariant as the tasks and endpoints lists: percentiles must describe the
+// rows the filter selects, since the list is ordered and paginated on them.
+func TestAiTraceRepository_FindGroupedByTraceName_PercentilesUseFilteredRows(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	projectId := uuid.New()
+	now := truncateMs(time.Now().UTC())
+
+	var traces []models.AiTrace
+	for range 4 {
+		traces = append(traces, makeAiTraceWithRoot(projectId, "agent.plan", 200*time.Millisecond, 100, 0.01, now, true))
+		traces = append(traces, makeAiTraceWithRoot(projectId, "agent.plan", 30*time.Second, 100, 0.01, now, false))
+	}
+
+	if err := AiTraceRepository.InsertAsync(ctx, traces); err != nil {
+		t.Fatalf("InsertAsync failed: %v", err)
+	}
+
+	stats, _, err := AiTraceRepository.FindGroupedByTraceName(ctx, projectId, now.Add(-time.Hour), now.Add(time.Hour), 1, 10, "count", "desc", "", "root")
+	if err != nil {
+		t.Fatalf("FindGroupedByTraceName failed: %v", err)
+	}
+	if len(stats) != 1 {
+		t.Fatalf("expected 1 grouped stat, got %d", len(stats))
+	}
+	if stats[0].Count != 4 {
+		t.Errorf("expected count 4 under rootFilter=root, got %d", stats[0].Count)
+	}
+	if stats[0].P50Duration != 200*time.Millisecond {
+		t.Errorf("P50 computed over unfiltered rows: got %v, want 200ms", stats[0].P50Duration)
+	}
+	if stats[0].P95Duration != 200*time.Millisecond {
+		t.Errorf("P95 computed over unfiltered rows: got %v, want 200ms", stats[0].P95Duration)
+	}
+}

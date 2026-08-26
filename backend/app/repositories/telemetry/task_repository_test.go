@@ -441,3 +441,40 @@ func TestTaskRepository_GetTaskStats_EmptyWindow(t *testing.T) {
 		t.Errorf("expected count 0, got %d", stats.Count)
 	}
 }
+
+// The P50/P95 columns must describe the rows the active filter selects. The list
+// also sorts on them for orderBy=p50_duration/p95_duration/impact, so computing
+// them over the unfiltered population reorders the page as well as misreporting it.
+func TestTaskRepository_FindGroupedByTaskName_PercentilesUseFilteredRows(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	projectId := uuid.New()
+	now := truncateMs(time.Now().UTC())
+
+	var tasks []models.Task
+	for range 4 {
+		tasks = append(tasks, makeTaskWithRoot(projectId, "nightly.report", 100*time.Millisecond, now, true))
+		tasks = append(tasks, makeTaskWithRoot(projectId, "nightly.report", 10*time.Second, now, false))
+	}
+
+	if err := TaskRepository.InsertAsync(ctx, tasks); err != nil {
+		t.Fatalf("InsertAsync failed: %v", err)
+	}
+
+	stats, _, err := TaskRepository.FindGroupedByTaskName(ctx, projectId, now.Add(-time.Hour), now.Add(time.Hour), 1, 10, "count", "desc", "", "root")
+	if err != nil {
+		t.Fatalf("FindGroupedByTaskName failed: %v", err)
+	}
+	if len(stats) != 1 {
+		t.Fatalf("expected 1 grouped stat, got %d", len(stats))
+	}
+	if stats[0].Count != 4 {
+		t.Errorf("expected count 4 under rootFilter=root, got %d", stats[0].Count)
+	}
+	if stats[0].P50Duration != 100*time.Millisecond {
+		t.Errorf("P50 computed over unfiltered rows: got %v, want 100ms", stats[0].P50Duration)
+	}
+	if stats[0].P95Duration != 100*time.Millisecond {
+		t.Errorf("P95 computed over unfiltered rows: got %v, want 100ms", stats[0].P95Duration)
+	}
+}

@@ -1,0 +1,71 @@
+name: Frontend
+
+# The frontend is a pure client-side SPA served from the backend image, and
+# release-traceway.yml builds it during a release -- so before this workflow a
+# broken build surfaced at release time, where it blocks shipping rather than
+# failing a PR.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend.yml"
+  pull_request:
+    types: [labeled]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: Typecheck, test and build
+    if: github.event_name != 'pull_request' || github.event.label.name == 'ci'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # engines.node in frontend/package.json is the single source of truth for
+      # the Node version -- flake.nix reads that same field to build the dev
+      # shell, so CI and `nix develop` cannot drift.
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/package.json
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # One job rather than three parallel ones (unlike backend.yml): these
+      # steps share a single node_modules and the install dominates the run, so
+      # splitting them would pay that cost three times over.
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run check
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
+      # `npm run lint` (prettier --check && eslint) is deliberately NOT run
+      # here yet: it fails on pre-existing code -- 10 files unformatted, and 10
+      # eslint errors across 5 files, mostly svelte/no-navigation-without-resolve
+      # plus three mutable Map/URLSearchParams in organization/overview-tab.svelte.
+      # Fixing those changes routing and reactivity behaviour, so it belongs in
+      # its own reviewed PR, not folded into CI plumbing. Add the step here once
+      # that lands.

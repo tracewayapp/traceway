@@ -62,12 +62,23 @@ docker run -d --name firebolt --restart on-failure:3 -p 3473:3473 \
 docker run -d --name clickhouse --restart on-failure:3 -p 8123:8123 \
     -e CLICKHOUSE_PASSWORD=bench --ulimit nofile=262144:262144 \
     clickhouse/clickhouse-server:24.8-alpine
-for i in \$(seq 1 60); do
-    curl -sf http://localhost:3473/health/ready >/dev/null && break; sleep 3
+fb_ready=0
+for i in \$(seq 1 100); do
+    curl -sf http://localhost:3473/health/ready >/dev/null && { fb_ready=1; break; }; sleep 3
 done
+if [ "\$fb_ready" != "1" ]; then
+    echo "FIREBOLT ENGINE NEVER BECAME READY — container state and logs:" >&2
+    docker ps -a >&2
+    docker logs --tail 60 firebolt >&2 || true
+    exit 1
+fi
+ch_ready=0
 for i in \$(seq 1 60); do
-    curl -sf "http://localhost:8123/ping" >/dev/null && break; sleep 3
+    curl -sf "http://localhost:8123/ping" >/dev/null && { ch_ready=1; break; }; sleep 3
 done
+if [ "\$ch_ready" != "1" ]; then
+    echo "CLICKHOUSE NEVER BECAME READY:" >&2; docker logs --tail 60 clickhouse >&2 || true; exit 1
+fi
 echo "engines ready"
 REMOTE
 

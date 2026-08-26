@@ -3,16 +3,20 @@ name: benchmark-firebolt-direct
 # Direct-engine breaking-point suite (benchmarks/firebolt/run-hetzner.sh):
 # tuned + untuned Firebolt vs ClickHouse on one dedicated Hetzner box, with
 # working io_uring (Linux), VACUUM, and the admission-controller A/B cell.
-# Uses the same repository secrets as benchmark-hardware, so no local token
-# is needed. NOTE: this file must exist on the default branch before it can
-# be dispatched; pick the feature branch in the run dropdown to execute that
-# branch's scripts.
+# Uses the same repository secrets as benchmark-hardware.
+#
+# Two triggers: workflow_dispatch works once this file reaches the default
+# branch; until then, pushing a change to benchmarks/firebolt/dispatch.env
+# on any branch fires the suite with the parameters read from that file.
 
 on:
+  push:
+    paths:
+      - 'benchmarks/firebolt/dispatch.env'
   workflow_dispatch:
     inputs:
       tier:
-        description: 'Hetzner tier for the single engine box (ccx33=8c/32G recommended; ccx43=16c/64G for deeper fills)'
+        description: 'Hetzner tier for the engine box (ccx33=8c/32G recommended; ccx43=16c/64G for deeper fills)'
         required: true
         default: 'ccx33'
       location:
@@ -20,7 +24,7 @@ on:
         required: true
         default: 'nbg1'
       smoke:
-        description: 'Smoke run: 1M-row fills, short steps (~20 min) to validate the pipeline before the full suite'
+        description: 'Smoke run: 1M-row fills, short steps (~20 min) to validate the pipeline'
         required: true
         type: boolean
         default: false
@@ -60,14 +64,16 @@ jobs:
       - name: Run direct-engine suite
         env:
           HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
-          TIER: ${{ github.event.inputs.tier }}
-          LOCATION: ${{ github.event.inputs.location }}
         run: |
-          if [[ "${{ github.event.inputs.smoke }}" == "true" ]]; then
-            export SMOKE=1
-          fi
-          if [[ -n "${{ github.event.inputs.firebolt_image }}" ]]; then
-            export FIREBOLT_IMAGE="${{ github.event.inputs.firebolt_image }}"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            export TIER="${{ github.event.inputs.tier }}"
+            export LOCATION="${{ github.event.inputs.location }}"
+            if [[ "${{ github.event.inputs.smoke }}" == "true" ]]; then export SMOKE=1; fi
+            if [[ -n "${{ github.event.inputs.firebolt_image }}" ]]; then export FIREBOLT_IMAGE="${{ github.event.inputs.firebolt_image }}"; fi
+          else
+            # push trigger: parameters come from the trigger file itself
+            set -a; source benchmarks/firebolt/dispatch.env; set +a
+            if [[ "${SMOKE:-0}" != "1" ]]; then unset SMOKE; fi
           fi
           ./benchmarks/firebolt/run-hetzner.sh
 

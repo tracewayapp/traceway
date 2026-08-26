@@ -121,6 +121,14 @@ inserts get throttled. Three things in the bench make that visible.
 On ccx33 the default ladder plus bisection takes about an hour before the
 fill starts, which leaves roughly 2.5 h of fill inside the 225 minute cap.
 
+A dispatch runs `max_parallel` stores at once (default 2, one Hetzner box
+each; a ccx33 is 8 dedicated vCPUs, so 2 fit a 24 vCPU quota next to one
+other server). Separate dispatches for different stores also run side by
+side, because the concurrency group is keyed on the `databases` input. Then
+`scripts/combine.sh <out-dir> <run-id> [<run-id>...]` downloads the result
+artifacts of those runs into one folder and renders the combined
+`summary.md`, `report.html` and charts.
+
 ## What is measured
 
 - **Peak points/s**: the best 10 s window after the 60 s warmup.
@@ -252,6 +260,7 @@ layer still leaves data.
 | `MAX_MINUTES` | `225` | Ingest wall-clock cap. |
 | `MAX_SETTLE_MINUTES`, `MAX_COLD_MINUTES` | `30`, `30` | Caps on the settle and cold phases (env only). |
 | `QUERY_THRESHOLD_MS` | `5000` | Query p95 that counts as fallen behind. |
+| `max_parallel` | `2` | Boxes provisioned at once for one dispatch; 2 x ccx33 fits a 24 dedicated-vCPU quota with one other server running. |
 | `MODE` / `mode` | `ramp-then-fill` | `saturate` or `ramp` as described above. |
 | `RAMP_RATES` / `ramp_rates` | `250k,500k,1M,2M,4M,8M` | Ramp ladder, strictly increasing. |
 | `RAMP_STEP_SECONDS` / `step_seconds` | `480` | Seconds per ramp step; `RAMP_IN_SECONDS` (60) and `RAMP_BISECT` (1) are env only. |

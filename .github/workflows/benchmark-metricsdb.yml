@@ -71,12 +71,16 @@ on:
         type: boolean
         default: false
       max_parallel:
-        description: 'How many databases run at the same time. Each is its own box, so 4 in parallel on ccx33 needs a 32 dedicated-vCPU Hetzner quota, which new accounts do not have. 1 runs them one after another and takes about 5 h for the default four.'
+        description: 'How many databases of this dispatch run at the same time, one Hetzner box each. 2 x ccx33 is 16 dedicated vCPUs, which fits a 24 vCPU quota with room for one other server; 4 needs 32. A box that the quota refuses is recorded as setup_failed, not retried. Separate dispatches with different databases also run side by side; combine their results with scripts/combine.sh.'
         required: true
-        default: '1'
+        default: '2'
 
+# Keyed on the databases input so dispatches for different stores run side by
+# side (one Hetzner box each, bounded by the dedicated-vCPU quota) while two
+# dispatches for the same stores still queue. Combine the per-run results with
+# benchmarks/metricsdb/scripts/combine.sh.
 concurrency:
-  group: benchmark-metricsdb
+  group: benchmark-metricsdb-${{ github.event.inputs.databases }}
   cancel-in-progress: false
 
 permissions:

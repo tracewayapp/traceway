@@ -3,8 +3,8 @@
   "mode": "pgfb",
   "signal": "logs",
   "scenario": "throughput",
-  "startedAt": "2026-08-26T06:14:17Z",
-  "endedAt": "2026-08-26T06:40:20Z",
+  "startedAt": "2026-08-26T12:58:55Z",
+  "endedAt": "2026-08-26T13:24:57Z",
   "phase1": {
     "kind": "batch-size-ramp",
     "fixedRequestRate": 5,
@@ -13,13 +13,13 @@
         "step": 1,
         "batchSize": 256,
         "requestRate": 5,
-        "attemptedItemsPerSec": 1282.092444221424,
-        "actualItemsPerSec": 1282.092444221424,
+        "attemptedItemsPerSec": 1282.1274567876103,
+        "actualItemsPerSec": 1282.1274567876103,
         "rejected": 0,
         "ingest": {
-          "p50": 5.546397,
-          "p95": 7.175235000000001,
-          "p99": 8.134891999999999,
+          "p50": 4.512894,
+          "p95": 5.699323,
+          "p99": 6.208979,
           "ok": 601,
           "errors": 0,
           "errRate": 0
@@ -42,13 +42,13 @@
         "step": 2,
         "batchSize": 1024,
         "requestRate": 5,
-        "attemptedItemsPerSec": 3865.0560761661063,
-        "actualItemsPerSec": 3865.0560761661063,
+        "attemptedItemsPerSec": 3865.145587523836,
+        "actualItemsPerSec": 3865.145587523836,
         "rejected": 0,
         "ingest": {
-          "p50": 19.746318,
-          "p95": 23.651622,
-          "p99": 25.813675,
+          "p50": 16.595671,
+          "p95": 19.351727999999998,
+          "p99": 20.361286999999997,
           "ok": 453,
           "errors": 0,
           "errRate": 0
@@ -71,14 +71,14 @@
         "step": 3,
         "batchSize": 4096,
         "requestRate": 5,
-        "attemptedItemsPerSec": 15553.308703437211,
-        "actualItemsPerSec": 15553.308703437211,
+        "attemptedItemsPerSec": 15452.465932093713,
+        "actualItemsPerSec": 15452.465932093713,
         "rejected": 0,
         "ingest": {
-          "p50": 73.91316400000001,
-          "p95": 87.483919,
-          "p99": 95.459144,
-          "ok": 456,
+          "p50": 58.306554,
+          "p95": 68.22066000000001,
+          "p99": 72.107929,
+          "ok": 453,
           "errors": 0,
           "errRate": 0
         },
@@ -100,14 +100,14 @@
         "step": 4,
         "batchSize": 8192,
         "requestRate": 5,
-        "attemptedItemsPerSec": 30916.1730485339,
-        "actualItemsPerSec": 30916.1730485339,
+        "attemptedItemsPerSec": 31118.42983189632,
+        "actualItemsPerSec": 31118.42983189632,
         "rejected": 0,
         "ingest": {
-          "p50": 113.316425,
-          "p95": 144.188049,
-          "p99": 153.99632799999998,
-          "ok": 453,
+          "p50": 91.519918,
+          "p95": 110.583372,
+          "p99": 116.965898,
+          "ok": 456,
           "errors": 0,
           "errRate": 0
         },
@@ -129,13 +129,13 @@
         "step": 5,
         "batchSize": 16384,
         "requestRate": 5,
-        "attemptedItemsPerSec": 61786.9586646581,
-        "actualItemsPerSec": 61786.9586646581,
+        "attemptedItemsPerSec": 61833.9642572396,
+        "actualItemsPerSec": 61833.9642572396,
         "rejected": 0,
         "ingest": {
-          "p50": 163.68476700000002,
-          "p95": 208.59394,
-          "p99": 231.96709700000002,
+          "p50": 137.290888,
+          "p95": 176.26729799999998,
+          "p99": 196.18970099999999,
           "ok": 453,
           "errors": 0,
           "errRate": 0
@@ -201,13 +201,13 @@
         "step": 1,
         "batchSize": 100,
         "requestRate": 10,
-        "attemptedItemsPerSec": 954.9872784075504,
-        "actualItemsPerSec": 954.9872784075504,
+        "attemptedItemsPerSec": 954.9924485484203,
+        "actualItemsPerSec": 954.9924485484203,
         "rejected": 0,
         "ingest": {
-          "p50": 2.940575,
-          "p95": 4.843143,
-          "p99": 5.363402,
+          "p50": 2.4140569999999997,
+          "p95": 3.861655,
+          "p99": 4.6107830000000005,
           "ok": 1146,
           "errors": 0,
           "errRate": 0
@@ -230,14 +230,14 @@
         "step": 2,
         "batchSize": 100,
         "requestRate": 100,
-        "attemptedItemsPerSec": 9751.92859947768,
-        "actualItemsPerSec": 9751.92859947768,
+        "attemptedItemsPerSec": 9751.534571160424,
+        "actualItemsPerSec": 9751.534571160424,
         "rejected": 0,
         "ingest": {
-          "p50": 2.76143,
-          "p95": 4.613519,
-          "p99": 5.960357999999999,
-          "ok": 11703,
+          "p50": 2.191715,
+          "p95": 3.688913,
+          "p99": 4.27879,
+          "ok": 11702,
           "errors": 0,
           "errRate": 0
         },
@@ -259,14 +259,14 @@
         "step": 3,
         "batchSize": 100,
         "requestRate": 1000,
-        "attemptedItemsPerSec": 99579.23934304429,
-        "actualItemsPerSec": 99579.23934304429,
+        "attemptedItemsPerSec": 99576.92352220471,
+        "actualItemsPerSec": 99576.92352220471,
         "rejected": 0,
         "ingest": {
-          "p50": 2.394319,
-          "p95": 20.525741,
-          "p99": 48.684576,
-          "ok": 119498,
+          "p50": 1.428918,
+          "p95": 6.089627999999999,
+          "p99": 13.985755000000001,
+          "ok": 119495,
           "errors": 0,
           "errRate": 0
         },
@@ -288,14 +288,14 @@
         "step": 4,
         "batchSize": 100,
         "requestRate": 5000,
-        "attemptedItemsPerSec": 85965.13517343834,
-        "actualItemsPerSec": 85965.13517343834,
+        "attemptedItemsPerSec": 101452.74833263906,
+        "actualItemsPerSec": 101452.74833263906,
         "rejected": 0,
         "ingest": {
-          "p50": 442.078892,
-          "p95": 1597.444914,
-          "p99": 1934.787805,
-          "ok": 104605,
+          "p50": 361.742165,
+          "p95": 1381.432732,
+          "p99": 1709.471792,
+          "ok": 121896,
           "errors": 0,
           "errRate": 0
         },
@@ -312,20 +312,20 @@
           "insertFailures": 0
         },
         "passed": false,
-        "failReason": "achieved 859.65 req/sec is below 70% of target 5000.00 req/sec (workers saturated, SUT past cliff)"
+        "failReason": "achieved 1014.53 req/sec is below 70% of target 5000.00 req/sec (workers saturated, SUT past cliff)"
       },
       {
         "step": 5,
         "batchSize": 100,
         "requestRate": 3000,
-        "attemptedItemsPerSec": 77680.61677306474,
-        "actualItemsPerSec": 77680.61677306474,
+        "attemptedItemsPerSec": 93982.74211146093,
+        "actualItemsPerSec": 93982.74211146093,
         "rejected": 0,
         "ingest": {
-          "p50": 473.15436,
-          "p95": 1797.059792,
-          "p99": 2359.403074,
-          "ok": 93230,
+          "p50": 380.013714,
+          "p95": 1540.480222,
+          "p99": 1983.233228,
+          "ok": 114085,
           "errors": 0,
           "errRate": 0
         },
@@ -342,22 +342,22 @@
           "insertFailures": 0
         },
         "passed": false,
-        "failReason": "achieved 776.81 req/sec is below 70% of target 3000.00 req/sec (workers saturated, SUT past cliff)"
+        "failReason": "achieved 939.83 req/sec is below 70% of target 3000.00 req/sec (workers saturated, SUT past cliff)"
       },
       {
         "step": 6,
         "batchSize": 100,
         "requestRate": 2000,
-        "attemptedItemsPerSec": 73052.52653609953,
-        "actualItemsPerSec": 73048.39222068361,
+        "attemptedItemsPerSec": 91182.94005733839,
+        "actualItemsPerSec": 91182.94005733839,
         "rejected": 0,
         "ingest": {
-          "p50": 479.54458900000003,
-          "p95": 1960.0870459999999,
-          "p99": 2566.358671,
-          "ok": 88344,
-          "errors": 5,
-          "errRate": 0.0000565937362052768
+          "p50": 380.011267,
+          "p95": 1680.890351,
+          "p99": 2132.674407,
+          "ok": 109430,
+          "errors": 0,
+          "errRate": 0
         },
         "ch": {
           "reachable": false,
@@ -369,25 +369,25 @@
         "sutIngest": {
           "reachable": true,
           "droppedRowsTotal": 0,
-          "insertFailures": 5
+          "insertFailures": 0
         },
         "passed": false,
-        "failReason": "achieved 730.48 req/sec is below 70% of target 2000.00 req/sec (workers saturated, SUT past cliff)"
+        "failReason": "achieved 911.83 req/sec is below 70% of target 2000.00 req/sec (workers saturated, SUT past cliff)"
       },
       {
         "step": 7,
         "batchSize": 100,
         "requestRate": 1500,
-        "attemptedItemsPerSec": 64025.57063363454,
-        "actualItemsPerSec": 63625.39001776602,
+        "attemptedItemsPerSec": 79861.00487524757,
+        "actualItemsPerSec": 79454.8332193943,
         "rejected": 0,
         "ingest": {
-          "p50": 488.685554,
-          "p95": 2500.468085,
-          "p99": 3929.640387,
-          "ok": 76475,
-          "errors": 481,
-          "errRate": 0.006250324860959509
+          "p50": 380.093719,
+          "p95": 2080.693126,
+          "p99": 3224.5217890000004,
+          "ok": 95462,
+          "errors": 488,
+          "errRate": 0.0050859822824387705
         },
         "ch": {
           "reachable": false,
@@ -399,15 +399,15 @@
         "sutIngest": {
           "reachable": true,
           "droppedRowsTotal": 0,
-          "insertFailures": 19
+          "insertFailures": 0
         },
         "passed": false,
-        "failReason": "achieved 636.25 req/sec is below 70% of target 1500.00 req/sec (workers saturated, SUT past cliff)"
+        "failReason": "achieved 794.55 req/sec is below 70% of target 1500.00 req/sec (workers saturated, SUT past cliff)"
       }
     ],
     "maxRequestRate": 1000
   },
-  "maxSustainableItemsPerSec": 99579.23934304429,
+  "maxSustainableItemsPerSec": 99576.92352220471,
   "sutContainer": {
     "status": "running",
     "oomKilled": false,

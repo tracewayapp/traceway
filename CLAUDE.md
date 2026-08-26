@@ -28,7 +28,7 @@ Traceway is an error tracking and monitoring platform consisting of:
 | Frontend | `npm run build` | Production build |
 | Frontend | `npm run check` | TypeScript checking |
 | Backend | `cd backend && go run ./cmd/traceway` | API server (port 8082) |
-| Backend | `cd backend && govulncheck ./...` | Vulnerability scan; CI runs one job per supported build-tag combination (`.github/workflows/backend-vulncheck.yml`) |
+| Backend | `cd backend && govulncheck ./...` | Vulnerability scan (default tags only); CI also scans the other storage build-tag combos (`.github/workflows/backend-vulncheck.yml`) |
 | CLI | `cd cli && just build` | Builds `bin/traceway` |
 | CLI | `cd cli && just test` | Runs unit tests |
 | CLI | `cd cli && just check` | Lint + test + vulncheck (pre-commit gate) |
@@ -38,7 +38,7 @@ Set `JWT_SECRET` (min 32 characters) before running the backend — it is the on
 
 ### Tech Stack
 - **Frontend**: SvelteKit 2.49, Svelte 5.45, Tailwind CSS v4, shadcn-svelte, Vite 7
-- **Backend**: Go 1.26 (`go` line 1.26.2 is the floor consumers inherit; `toolchain go1.26.6` is what actually builds it — do not collapse the two), Gin 1.11, ClickHouse, PostgreSQL
+- **Backend**: Go 1.26, Gin 1.11, ClickHouse, PostgreSQL (in `backend/go.mod` the `go` line is the floor importers inherit and the `toolchain` directive is what builds it — keep the two distinct)
 - **CLI**: Go 1.26, Cobra 1.10, separate Go module (`github.com/tracewayapp/traceway/cli`); flake.nix dev shell, justfile entrypoints
 - **Client SDK**: Go 1.25, Gin middleware support
 

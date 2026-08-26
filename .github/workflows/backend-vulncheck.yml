@@ -1,27 +1,25 @@
 name: Backend Vulncheck
 
-# govulncheck for the backend module. cli-lint.yml covers cli/; nothing
-# covered backend/, which is the module that ships a binary to users:
-# release-traceway.yml builds the traceway-runner artifacts from
-# backend/go.mod, and that binary runs on user infrastructure with an
-# outbound HTTPS long-poll as its main loop.
-#
-# Own workflow rather than jobs bolted onto a build workflow, for the same
-# reason cli-lint.yml is separate: the schedule below has to fire on days
-# nobody pushed anything.
+# The backend ships a binary to users: release-traceway.yml builds the
+# traceway-runner artifacts from backend/go.mod, and that binary runs on user
+# infrastructure with an outbound HTTPS long-poll as its main loop.
 on:
   push:
     branches: [main]
     paths:
       - "backend/**"
+      # backend/go.mod carries `replace ... /cli => ../cli`, so cli source is
+      # compiled into this scan and a cli-only change can alter the result.
+      - "cli/**"
       - ".github/workflows/backend-vulncheck.yml"
   pull_request:
     paths:
       - "backend/**"
+      - "cli/**"
       - ".github/workflows/backend-vulncheck.yml"
-  # A CVE lands in the vulnerability database without anyone pushing a commit,
-  # and both triggers above are path-filtered. Staggered off cli-lint.yml's
-  # 06:17 so the two do not contend for runners.
+  # A CVE lands in the database without anyone pushing a commit, and both
+  # triggers above are path-filtered. Off-the-hour to miss GitHub's
+  # on-the-hour scheduler backlog.
   schedule:
     - cron: "41 6 * * *"
   workflow_dispatch:
@@ -29,30 +27,27 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  # One job per supported build-tag combination. The tags are not cosmetic
-  # here: they select which db/ and repositories/ packages compile in, and
-  # each backend brings its own driver -- modernc.org/sqlite on the default
-  # build, duckdb-go under telemetry_duckdb, clickhouse-go plus lib/pq under
-  # transactional_pg telemetry_ch. A default-tags-only scan would leave the
-  # two driver stacks that the published Docker images actually run unscanned.
+  # One job per shipped storage backend, because the tags change which drivers
+  # compile in: `go list -deps ./cmd/traceway` returns 0 ClickHouse packages by
+  # default and 11 under transactional_pg,telemetry_ch. Rows map to
+  # Dockerfile.sqlite / Dockerfile.duckdb+.browser / Dockerfile+.minimal; see
+  # docs/pages/learn/build-tags.mdx.
   #
-  # These three are the only combinations that compile; app/db/guard_*.go
-  # rejects the rest at compile time.
-  #
-  # Scope, stated rather than implied: this scans linux/amd64 source. Release
-  # also cross-compiles the runner for darwin and windows, and reachability is
-  # in principle GOOS-dependent, but every finding so far has been either a
-  # stdlib symbol the toolchain pin resolves for all targets or a
-  # platform-independent module version. Widening to a GOOS axis is a
-  # deliberate follow-up, not an oversight.
+  # Storage axis only. The orthogonal `oxc` symbolicator tag needs
+  # scripts/build-oxc-shim.sh to compile, and only linux/amd64 is scanned
+  # though release also cross-compiles the runner for darwin and windows --
+  # both are follow-ups.
   vulncheck:
     name: vulncheck (${{ matrix.name }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
-      # Report every combination on one run. Which backend a CVE reaches
-      # through is exactly the thing this job exists to answer, so a first
-      # failure must not cancel the others.
+      # Which backend a CVE reaches through is the question this job answers.
       fail-fast: false
       matrix:
         include:
@@ -72,33 +67,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # setup-go@v5 reads only the `go` line, so it installs the 1.26.2 floor
-      # and GOTOOLCHAIN (left at its "auto" default -- v5 never sets it) then
-      # switches to the `toolchain` directive's 1.26.6 on first use. The
-      # scanned stdlib is the one the release build uses, which is the point.
+      # setup-go@v5 reads only the `go` line and never sets GOTOOLCHAIN, so it
+      # installs the 1.26.2 floor and the go command then switches to the
+      # `toolchain` directive -- the same path release-traceway.yml builds the
+      # runner through. The Docker images are not covered by that: the official
+      # golang bases set GOTOOLCHAIN=local, so they build with whatever the
+      # floating golang:1.26-* tag ships, which is >= what is scanned here.
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
 
-      # Pinned, not @latest: a tool release must never turn an unrelated PR
-      # red. Pinning costs no freshness -- govulncheck fetches the advisory
-      # database from vuln.go.dev at run time, so the schedule above is what
-      # keeps this current, not the binary version.
+      # Pinned so a tool release cannot redden an unrelated PR. Costs no
+      # freshness: the advisory database is fetched at run time, so the
+      # schedule keeps this current, not the binary version.
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
 
-      # No -test: the gate is about what ships. Test-only dependencies are not
-      # in any released artifact, and failing a release on one would train
-      # people to ignore this job.
+      # No -test: the gate is about what ships.
       - name: Vulncheck
         env:
           TAGS: ${{ matrix.tags }}
           CGO_ENABLED: ${{ matrix.cgo }}
-        run: |
-          if [ -n "$TAGS" ]; then
-            govulncheck -tags "$TAGS" ./...
-          else
-            govulncheck ./...
-          fi
+        run: govulncheck -tags "$TAGS" ./...

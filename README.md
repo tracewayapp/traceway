@@ -225,7 +225,7 @@ A full-stack framework has two halves and two Traceway projects. Next.js and Rem
 
 | Component     | Technology                                            |
 | ------------- | ----------------------------------------------------- |
-| Backend       | Go 1.25, Gin                                          |
+| Backend       | Go 1.26, Gin                                          |
 | Frontend      | SvelteKit 2, Svelte 5, Tailwind CSS v4                |
 | Telemetry DB  | ClickHouse (standalone), SQLite or DuckDB (embedded)  |
 | Relational DB | PostgreSQL (standalone) or SQLite (embedded)          |

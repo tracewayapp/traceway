@@ -84,12 +84,12 @@ const CONN_STATES: &[&str] = &["ESTABLISHED", "TIME_WAIT", "CLOSE_WAIT", "LISTEN
 const ROUTES: &[&str] = &["/api/users", "/api/orders", "/api/search"];
 const METHODS: &[&str] = &["GET", "POST"];
 
-const UTIL: ValueModel = ValueModel::Walk { lo: 0.0, hi: 1.0, sigma: 0.02, revert: 0.02 };
-const BYTES_GAUGE: ValueModel = ValueModel::Walk { lo: 1.0e8, hi: 3.2e10, sigma: 5.0e7, revert: 0.002 };
+const UTIL: ValueModel = ValueModel::Walk { lo: 0.0, hi: 1.0, sigma: 0.015, revert: 0.02 };
+const BYTES_GAUGE: ValueModel = ValueModel::Walk { lo: 1.0e8, hi: 3.2e10, sigma: 4.0e6, revert: 0.002 };
 const SMALL_GAUGE: ValueModel = ValueModel::Walk { lo: 0.0, hi: 64.0, sigma: 0.5, revert: 0.02 };
-const IO_COUNTER: ValueModel = ValueModel::Counter { rate_mean: 2.0e6, rate_cv: 0.6 };
-const OPS_COUNTER: ValueModel = ValueModel::Counter { rate_mean: 250.0, rate_cv: 0.5 };
-const SECONDS_COUNTER: ValueModel = ValueModel::Counter { rate_mean: 1.2, rate_cv: 0.4 };
+const IO_COUNTER: ValueModel = ValueModel::Counter { rate_mean: 2.0e6, rate_cv: 0.4 };
+const OPS_COUNTER: ValueModel = ValueModel::Counter { rate_mean: 250.0, rate_cv: 0.3 };
+const SECONDS_COUNTER: ValueModel = ValueModel::Counter { rate_mean: 1.2, rate_cv: 0.15 };
 const RARE: ValueModel = ValueModel::ZeroMostly { p: 0.01, burst: 3.0 };
 const LATENCY: ValueModel = ValueModel::Spiky { base: 42.0, sigma: 2.5, spike_p: 0.01, spike_mag: 30.0 };
 

@@ -5,3 +5,4 @@ results-local/
 *.log
 db/clickhouse/config.d/bench.xml
 db/clickhouse/users.d/bench.xml
+results-hetzner-smoke/

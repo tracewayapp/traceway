@@ -106,7 +106,7 @@ def load_runs(d):
     return runs
 
 
-def windows(run, phases=("warmup", "ingest")):
+def windows(run, phases=("warmup", "ramp", "ingest")):
     return [w for w in run.get("timeline", []) if w.get("phase") in phases]
 
 
@@ -142,6 +142,21 @@ def headline(run):
     steady = [w["acked_pps"] for w in ing if w["t_s"] >= 300 and (fb is None or w["t_s"] < fb)]
     h["sustained_pps"] = statistics.median(steady) if steady else (statistics.median(pps) if pps else 0.0)
     th = run.get("throughput", {})
+    # A run shorter than a few windows is timed exactly from first to last ack
+    # by the bench; the 10 s windows would only quantise it.
+    if h.get("short_run") and th.get("ingest_wall_s") and th.get("overall_pps"):
+        h["peak_pps"] = h["sustained_pps"] = th["overall_pps"]
+    h["store_bytes"] = (run.get("disk", {}).get("db_reported") or {}).get("compressed_bytes")
+    h["mode"] = th.get("mode", "saturate")
+    h["sustainable_pps"] = th.get("sustainable_pps")
+    h["fill_rate_pps"] = th.get("fill_rate_pps", 0)
+    h["fill_pps"] = th.get("fill_pps") or h["sustained_pps"]
+    h["late_pps"] = th.get("late_pps")
+    h["amortized_pps"] = th.get("amortized_pps")
+    h["digest_s"] = th.get("digest_s")
+    h["debt_end"] = th.get("debt_end")
+    h["debt_metric"] = run.get("debt_metric", "")
+    h["ramp"] = run.get("ramp")
     h["acked_points"] = th.get("acked_points", 0)
     h["points_lost"] = th.get("points_lost", 0)
     h["plateau_pps"] = th.get("plateau_pps", 0.0)
@@ -332,6 +347,7 @@ def chart_series(runs):
         S["disk"].append((db, [(w["t_s"] / 60, w["disk"]["total_bytes"] / 1e9) for w in all_w if w.get("disk")]))
         S["rss"].append((db, [(w["t_s"] / 60, w["proc"]["rss_bytes"] / 1e9) for w in all_w if w.get("proc") and w["proc"].get("rss_bytes")]))
         S["lag"].append((db, [(w["t_s"] / 60, max(w["visibility"]["points_behind"], 1)) for w in ws if w.get("visibility")]))
+        S.setdefault("debt", {})[db] = ([(w["t_s"] / 60, w["debt"]) for w in all_w if w.get("debt") is not None], r.get("debt_metric", ""))
         for q in QUERY_IDS:
             pts = []
             for w in ws:
@@ -358,8 +374,14 @@ def build_svgs(runs, heads, tier, slow_ms):
     valid = [h for h in heads if not h["stub"]]
     svgs = {}
     svgs["headline"] = svg_bar_chart(
-        [("sustained points/s", [(h["db"], h["sustained_pps"]) for h in valid]), ("peak points/s (60s)", [(h["db"], h["peak_pps"]) for h in valid])],
+        [("sustainable (ramp)", [(h["db"], h.get("sustainable_pps")) for h in valid]),
+         ("fill, achieved", [(h["db"], h["fill_pps"]) for h in valid]),
+         ("amortized (incl. digest)", [(h["db"], h.get("amortized_pps")) for h in valid]),
+         ("peak 60 s", [(h["db"], h["peak_pps"]) for h in valid])],
         f"Ingest throughput on {tier}", "points per second")
+    for h in valid:
+        pts, metric = S.get("debt", {}).get(h["db"], ([], ""))
+        svgs[f"debt-{h['db']}"] = svg_line_chart([(h["db"], pts)], f"{DB_LABEL.get(h['db'], h['db'])}: deferred work ({metric})", "minutes since ingest start", metric or "debt", height=220, markers=markers_for([r for r in runs if r["db"] == h["db"]]))
     svgs["disk-per-point"] = svg_bar_chart(
         [("bytes per point on disk", [(h["db"], h["bytes_per_point"]) for h in valid])],
         f"Disk per stored point after settle on {tier}", "bytes / point", value_fmt=lambda v: f"{v:.2f}")
@@ -461,17 +483,19 @@ def render_summary_md(runs, heads, tier, png_files):
                  f"{fmt_si(sm.get('points_planned', 0))} points planned, {sm.get('interval_ms', 0)/1000:.0f}s scrape interval, "
                  f"simulated span {sm.get('sim_start', '')[:16]} to {sm.get('sim_end', '')[:16]}, {sm.get('avg_tags_per_series', 0):.1f} tags per series.")
     L.append("")
-    L.append("| DB | Peak points/s | Sustained points/s | Points stored | Bytes/point | Disk | Settle | Ingest q p95 (a/b/c/d/e1/e2/f) | Cold warm median (a/b/c/d/e1/e2/f) | Fell behind at | Unusable at | Outcome |")
-    L.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
+    L.append("| DB | Sustainable (ramp) | Fill points/s | Amortized (incl. digest) | Peak 60s | Points stored | Bytes/point | Disk (data dir) | Store-reported | Digest | Ingest q p95 (a/b/c/d/e1/e2/f) | Cold warm median (a/b/c/d/e1/e2/f) | Fell behind at | Unusable at | Outcome |")
+    L.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for h in heads:
         if h["stub"]:
-            L.append(f"| {DB_LABEL.get(h['db'], h['db'])} | - | - | - | - | - | - | - | - | - | - | {h['outcome']} |")
+            L.append(f"| {DB_LABEL.get(h['db'], h['db'])} | - | - | - | - | - | - | - | - | - | - | - | - | - | {h['outcome']} |")
             continue
         stored = fmt_si(h["acked_points"]) + (" (hit cap)" if h["hit_max_ingest"] else "")
         fb = f"{fmt_si(h['fell_behind_points'])} pts" if h["fell_behind_at_s"] is not None else "no"
         un = f"{fmt_si(h['unusable_points'])} pts" if h["unusable_at_s"] is not None else "no"
         settle = (fmt_secs(h["settle_s"]) + ("" if h["settled"] else " (cap)")) if h["settle_s"] is not None else "-"
-        L.append(f"| {DB_LABEL.get(h['db'], h['db'])} | {fmt_si(h['peak_pps'])} | {fmt_si(h['sustained_pps'])} | {stored} | {h['bytes_per_point']:.2f} | {fmt_bytes(h['disk_bytes'])} | {settle} | "
+        digest = fmt_secs(h["digest_s"]) if h.get("digest_s") else settle
+        sus = fmt_si(h["sustainable_pps"]) if h.get("sustainable_pps") else ("saturation" if h["mode"] == "saturate" else "none")
+        L.append(f"| {DB_LABEL.get(h['db'], h['db'])} | {sus} | {fmt_si(h['fill_pps'])} | {fmt_si(h['amortized_pps']) if h.get('amortized_pps') else '-'} | {fmt_si(h['peak_pps'])} | {stored} | {h['bytes_per_point']:.2f} | {fmt_bytes(h['disk_bytes'])} | {fmt_bytes(h['store_bytes'])} | {digest} | "
                  f"{'/'.join(q_cell(h['q_ingest'], 'p95_ms', q) for q in QUERY_IDS)} | {'/'.join(q_cell(h['q_cold'], 'warm', q) for q in QUERY_IDS)} | {fb} | {un} | {h['outcome']}{' (bench bottleneck?)' if h['bottleneck'] else ''} |")
     L.append("")
     fps = {h["fingerprint"] for h in valid if h.get("fingerprint")}
@@ -497,6 +521,14 @@ def render_summary_md(runs, heads, tier, png_files):
             notes.append(f"{fmt_si(h['points_lost'])} points lost to failed writes")
         if notes:
             L.append(f"- {DB_LABEL.get(h['db'], h['db'])}: " + "; ".join(notes))
+    ramps = [h for h in valid if h.get("ramp")]
+    if ramps:
+        L.append("")
+        L.append("Ramp steps (rate: pass/fail):")
+        for h in ramps:
+            r = h["ramp"]
+            steps = "; ".join(f"{fmt_si(st['rate_pps'])} {'pass' if st['passed'] else 'FAIL (' + st['reason'] + ')'}" for st in r.get("steps", []))
+            L.append(f"- {DB_LABEL.get(h['db'], h['db'])}: {steps}" + (f". {r['note']}" if r.get("note") else ""))
     L.append("")
     L.append("Query intents: " + "; ".join(f"{q} = {QUERY_INTENT[q]}" for q in QUERY_IDS) + ".")
     if png_files:
@@ -592,10 +624,10 @@ def render_html(runs, heads, tier, svgs, slow_ms):
     # results
     H.append("<h2>Result</h2>")
     if valid:
-        best_pps = max(valid, key=lambda h: h["sustained_pps"])
+        best_pps = max(valid, key=lambda h: (h.get("amortized_pps") or h["sustained_pps"]))
         best_disk = min((h for h in valid if h["bytes_per_point"] > 0), key=lambda h: h["bytes_per_point"], default=None)
         best_cold = min((h for h in valid if h["cold_median_ms"] is not None), key=lambda h: h["cold_median_ms"], default=None)
-        parts = [f"<b>{E(DB_LABEL[best_pps['db']])}</b> sustained the highest ingest at {fmt_si(best_pps['sustained_pps'])} points/s"]
+        parts = [f"<b>{E(DB_LABEL[best_pps['db']])}</b> absorbed the most at {fmt_si(best_pps.get('amortized_pps') or best_pps['sustained_pps'])} points/s amortized over ingest and digest"]
         if best_disk:
             parts.append(f"<b>{E(DB_LABEL[best_disk['db']])}</b> used the least disk at {best_disk['bytes_per_point']:.2f} bytes per point")
         if best_cold:
@@ -604,7 +636,8 @@ def render_html(runs, heads, tier, svgs, slow_ms):
         H.append('<div class="kpis">')
         for h in valid:
             H.append(f'<div class="kpi" style="--kpi:{DB_COLOR.get(h["db"], "#888")}"><div class="name">{E(DB_LABEL.get(h["db"], h["db"]))}</div><dl>'
-                     f'<dt>sustained</dt><dd>{fmt_si(h["sustained_pps"])}/s</dd>'
+                     f'<dt>sustainable</dt><dd>{fmt_si(h["sustainable_pps"]) + "/s" if h.get("sustainable_pps") else ("saturation" if h["mode"] == "saturate" else "none")}</dd>'
+                     f'<dt>amortized</dt><dd>{fmt_si(h["amortized_pps"]) + "/s" if h.get("amortized_pps") else "-"}</dd>'
                      f'<dt>bytes/point</dt><dd>{h["bytes_per_point"]:.2f}</dd>'
                      f'<dt>cold median</dt><dd>{fmt_ms(h["cold_median_ms"])}</dd>'
                      f'<dt>stored</dt><dd>{fmt_si(h["acked_points"])}</dd>'
@@ -615,18 +648,45 @@ def render_html(runs, heads, tier, svgs, slow_ms):
     H.append("<div>" + svgs["disk-per-point"] + "</div>")
     H.append("<div>" + svgs["cold"] + "</div>")
     H.append("</div>")
-    H.append('<div class="tablewrap"><table><thead><tr><th>Store</th><th>Peak points/s</th><th>Sustained points/s</th><th>Points stored</th><th>Bytes/point</th><th>vs raw 16 B</th><th>vs logical</th><th>Disk</th><th>Peak RSS</th><th>Settle</th><th>Fell behind at</th><th>Unusable at</th><th>Outcome</th></tr></thead><tbody>')
+    H.append('<div class="tablewrap"><table><thead><tr><th>Store</th><th>Sustainable (ramp)</th><th>Fill points/s</th><th>Amortized</th><th>Peak 60 s</th><th>Points stored</th><th>Bytes/point</th><th>vs raw 16 B</th><th>vs logical</th><th>Disk (data dir)</th><th>Store-reported</th><th>Peak RSS</th><th>Digest</th><th>Debt at end</th><th>Fell behind at</th><th>Unusable at</th><th>Outcome</th></tr></thead><tbody>')
     for h in heads:
         if h["stub"]:
-            H.append(f'<tr><td>{db_name(h["db"])}</td><td colspan="11" class="wrap bad">{E(h["outcome"])}: {E(h.get("error") or "")}</td><td>{E(h["outcome"])}</td></tr>')
+            H.append(f'<tr><td>{db_name(h["db"])}</td><td colspan="15" class="wrap bad">{E(h["outcome"])}: {E(h.get("error") or "")}</td><td>{E(h["outcome"])}</td></tr>')
             continue
         fb = f"{fmt_si(h['fell_behind_points'])} pts ({fmt_secs(h['fell_behind_at_s'])})" if h["fell_behind_at_s"] is not None else '<span class="ok">no</span>'
         un = f'<span class="bad">{fmt_si(h["unusable_points"])} pts ({fmt_secs(h["unusable_at_s"])})</span>' if h["unusable_at_s"] is not None else '<span class="ok">no</span>'
         settle = (fmt_secs(h["settle_s"]) + ("" if h["settled"] else ' <span class="warn">(cap)</span>')) if h["settle_s"] is not None else "-"
         stored = fmt_si(h["acked_points"]) + (' <span class="warn">(cap)</span>' if h["hit_max_ingest"] else "")
-        H.append(f'<tr><td>{db_name(h["db"])}</td><td>{fmt_si(h["peak_pps"])}</td><td><b>{fmt_si(h["sustained_pps"])}</b></td><td>{stored}</td><td><b>{h["bytes_per_point"]:.2f}</b></td>'
-                 f'<td>{h["ratio_raw16"]:.1f}x</td><td>{h["ratio_logical"]:.0f}x</td><td>{fmt_bytes(h["disk_bytes"])}</td><td>{fmt_bytes(h["peak_rss"]) if h["peak_rss"] else "-"}</td><td>{settle}</td><td>{fb}</td><td>{un}</td><td>{E(h["outcome"])}</td></tr>')
+        sus = (fmt_si(h["sustainable_pps"]) + "/s") if h.get("sustainable_pps") else ("saturation" if h["mode"] == "saturate" else '<span class="bad">none</span>')
+        amort = (fmt_si(h["amortized_pps"]) + "/s") if h.get("amortized_pps") else "-"
+        digest = fmt_secs(h["digest_s"]) if h.get("digest_s") else settle
+        debt_end = f'{h["debt_end"]:.0f} {E(h["debt_metric"])}' if h.get("debt_end") is not None else "-"
+        H.append(f'<tr><td>{db_name(h["db"])}</td><td><b>{sus}</b></td><td>{fmt_si(h["fill_pps"])}/s</td><td><b>{amort}</b></td><td>{fmt_si(h["peak_pps"])}/s</td><td>{stored}</td><td><b>{h["bytes_per_point"]:.2f}</b></td>'
+                 f'<td>{h["ratio_raw16"]:.1f}x</td><td>{h["ratio_logical"]:.0f}x</td><td>{fmt_bytes(h["disk_bytes"])}</td><td>{fmt_bytes(h["store_bytes"])}</td><td>{fmt_bytes(h["peak_rss"]) if h["peak_rss"] else "-"}</td><td>{digest}</td><td>{debt_end}</td><td>{fb}</td><td>{un}</td><td>{E(h["outcome"])}</td></tr>')
     H.append("</tbody></table></div>")
+    ramps = [h for h in valid if h.get("ramp")]
+    if ramps:
+        H.append("<h3>How the sustainable rate was found</h3>")
+        H.append("<p>Fixed-rate steps, each judged on its second half after a ramp-in: the store must accept at least 90% of the offered rate, its deferred work must not grow across the step, the visibility lag must stay bounded, routine queries must stay under the threshold, and nothing may be throttled or lost. The highest passing rate is the sustainable rate; one geometric bisection narrows the gap; the fill then runs at 90% of it with the debt rule still armed.</p>")
+        H.append('<div class="tablewrap"><table><thead><tr><th>Store</th><th>Offered rate</th><th>Accepted</th><th>Debt 1st half → 2nd half</th><th>Lag</th><th>Query p95</th><th>Verdict</th></tr></thead><tbody>')
+        for h in ramps:
+            r = h["ramp"]
+            for st in r.get("steps", []):
+                d1 = st.get("debt_first_half"); d2 = st.get("debt_second_half")
+                debt = f'{d1:.0f} → {d2:.0f}' if d1 is not None and d2 is not None else "-"
+                verdict = '<span class="ok">pass</span>' if st["passed"] else f'<span class="bad">fail</span> <small>{E(st["reason"])}</small>'
+                lag = f'{st["lag_wall_s"]:.0f}s' if st.get("lag_wall_s") is not None else "-"
+                q95 = fmt_ms(st["query_p95_ms"]) if st.get("query_p95_ms") is not None else "-"
+                H.append(f'<tr><td>{db_name(h["db"])}</td><td>{fmt_si(st["rate_pps"])}/s</td><td>{fmt_si(st["achieved_pps"])}/s</td><td>{debt}</td><td>{lag}</td><td>{q95}</td><td class="wrap">{verdict}</td></tr>')
+            if r.get("note"):
+                H.append(f'<tr><td>{db_name(h["db"])}</td><td colspan="6" class="wrap">{E(r["note"])}</td></tr>')
+        H.append("</tbody></table></div>")
+    H.append("<h3>Deferred work over the run</h3>")
+    H.append("<p>What each store lets pile up while still acknowledging writes: merges for ClickHouse and VictoriaMetrics, the write-ahead log for DuckDB, tablets awaiting vacuum for Firebolt. Flat is healthy; a rising line during the fill is the store falling behind no matter what the acknowledged rate says.</p>")
+    H.append('<div class="grid">')
+    for h in valid:
+        H.append("<div>" + svgs.get(f"debt-{h['db']}", "") + "</div>")
+    H.append("</div>")
     H.append("<h3>Routine queries</h3>")
     H.append(f"<p>Seven dashboard-shaped queries rotate one at a time every 15 s during ingest (p95 of those below, threshold {fmt_ms(slow_ms)}), then run three times each after settle with the database restarted and the page cache dropped (first run cold, then the warm median).</p>")
     H.append('<div class="tablewrap"><table><thead><tr><th>Query</th><th class="wrap">Intent</th>' + "".join(f"<th>{db_name(h['db'])}<br><span class='pill'>ingest p95 / cold / warm</span></th>" for h in valid) + "</tr></thead><tbody>")
@@ -695,8 +755,9 @@ def render_html(runs, heads, tier, svgs, slow_ms):
         H.append("</dl></div>")
     H.append("<h3>What the numbers mean</h3>")
     H.append("<ul>")
-    H.append("<li><b>Sustained points/s</b>: median acknowledged rate over 10 s windows from minute 5 of ingest until the store fell behind (or the end). <b>Peak</b>: best 60 s rolling mean.</li>")
-    H.append("<li><b>Bytes per point</b>: data directory size after the store's own settle step (merges idle, WAL checkpointed, vacuumed) divided by acknowledged points. <b>vs raw 16 B</b>: compression against an 8 byte timestamp plus 8 byte value; <b>vs logical</b>: against the size of the point with its name and attributes spelled out.</li>")
+    H.append("<li><b>Sustainable (ramp)</b>: the highest fixed rate whose step passed (accepted, debt flat, lag bounded, queries under threshold, nothing throttled or lost). <b>Fill points/s</b>: what was actually acknowledged per second during the fill. <b>Amortized</b>: fill points divided by fill time plus digest time (settle and garbage deletion), which is what the store truly absorbed; a store that acknowledges fast and digests for an hour is scored on both. <b>Peak</b>: best 60 s rolling mean, the number a vendor benchmark would quote.</li>")
+    H.append("<li><b>Deferred work / debt</b>: active parts (ClickHouse), small plus in-memory parts (VictoriaMetrics), WAL bytes (DuckDB), tablets (Firebolt). During the fill, a trailing 10 minute mean more than 30% above the previous 10 minutes for a full minute, or any throttled write, counts as fallen behind.</li>")
+    H.append("<li><b>Bytes per point</b>: data directory size after the store's own settle step (merges idle, WAL checkpointed, vacuumed) and after the directory has stopped shrinking (merged-away parts and vacuumed tablets are deleted asynchronously), divided by acknowledged points. <b>Store-reported</b> is what the store says its live table occupies; the gap to the data dir is index, metadata and whatever the store has not garbage-collected yet. <b>vs raw 16 B</b>: compression against an 8 byte timestamp plus 8 byte value; <b>vs logical</b>: against the size of the point with its name and attributes spelled out.</li>")
     H.append("<li><b>Fell behind</b>: three consecutive windows where the visibility lag (latest acknowledged timestamp minus the latest timestamp a query can see, via a sentinel series) exceeded the threshold and kept growing, or throughput dropped under half its plateau, or a routine query breached the threshold, or writes failed. Ingest continues; the point count at that moment is reported.</li>")
     H.append("<li><b>Unusable</b>: three consecutive windows where every query timed out or failed, nothing was acknowledged while data was offered, more than half the writes failed, or the process was unreachable or restarted. Ingest runs on for a grace period to show whether it recovers, then stops.</li>")
     H.append("<li><b>Queries</b>: identical intents per store (SQL on ClickHouse, DuckDB and Firebolt; MetricsQL on VictoriaMetrics), same time windows relative to the latest visible timestamp, same 30 s deadline. A result with fewer than half the expected rows is marked <i>suspect</i> rather than counted as fast.</li>")

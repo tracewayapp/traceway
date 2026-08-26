@@ -18,6 +18,9 @@
         <number_of_free_entries_in_pool_to_execute_mutation>@@DB_CORES@@</number_of_free_entries_in_pool_to_execute_mutation>
         <number_of_free_entries_in_pool_to_execute_optimize_entire_partition>@@DB_CORES@@</number_of_free_entries_in_pool_to_execute_optimize_entire_partition>
         <number_of_free_entries_in_pool_to_lower_max_size_of_merge>@@DB_CORES@@</number_of_free_entries_in_pool_to_lower_max_size_of_merge>
+        <!-- Merged-away parts are kept 8 minutes by default; the settle step
+             waits for them to go, so keep that window short. -->
+        <old_parts_lifetime>30</old_parts_lifetime>
     </merge_tree>
     <!-- System logs would land in the data dir and pollute the du measurement. -->
     <query_log remove="remove"/>

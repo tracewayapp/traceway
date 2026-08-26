@@ -26,6 +26,8 @@ pub struct Visibility {
     pub visible_ts: i64,
     pub lag_sim_s: f64,
     pub points_behind: f64,
+    /// points_behind at the current acknowledged rate: seconds of ingest not yet queryable.
+    pub lag_wall_s: Option<f64>,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -49,6 +51,10 @@ pub struct Window {
     pub maintenance: Vec<MaintEvent>,
     pub visibility: Option<Visibility>,
     pub queries: Vec<QueryOutcome>,
+    /// The store's deferred work (active parts, WAL bytes, tablets, ...), see Report.debt_metric.
+    pub debt: Option<f64>,
+    /// Writes the store slowed down on purpose this window (ClickHouse DelayedInserts).
+    pub throttled: u64,
     pub health: Option<Value>,
     pub proc: Option<ProcSample>,
     pub container: Option<ContainerState>,
@@ -113,13 +119,58 @@ pub struct Phases {
 
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct Throughput {
+    pub mode: String,
     pub plateau_pps: f64,
     pub overall_pps: f64,
+    pub ingest_wall_s: f64,
     pub acked_points: u64,
     pub points_lost: u64,
     pub hit_max_ingest: bool,
     pub bench_bottleneck_suspected: bool,
     pub starved_windows: u64,
+    /// Highest ramp rate that passed; None in saturate mode or when no step passed.
+    pub sustainable_pps: Option<f64>,
+    pub fill_rate_pps: u64,
+    pub fill_points: u64,
+    pub fill_wall_s: f64,
+    pub fill_pps: f64,
+    /// Mean acknowledged rate over the last quarter of the fill.
+    pub late_pps: f64,
+    /// Settle plus the wait for merged-away data to be deleted, in seconds.
+    pub digest_s: f64,
+    /// fill_points / (fill_wall_s + digest_s): what the store really absorbed per second.
+    pub amortized_pps: f64,
+    pub debt_end: Option<f64>,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct RampStep {
+    pub rate_pps: u64,
+    pub step_s: u64,
+    pub windows: usize,
+    pub achieved_pps: f64,
+    pub debt_first_half: Option<f64>,
+    pub debt_second_half: Option<f64>,
+    pub lag_wall_s: Option<f64>,
+    pub query_p95_ms: Option<f64>,
+    pub query_timeouts: u64,
+    pub errors: u64,
+    pub points_lost: u64,
+    pub throttled: u64,
+    pub passed: bool,
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct RampReport {
+    pub ladder: Vec<u64>,
+    pub step_s: u64,
+    pub ramp_in_s: u64,
+    pub steps: Vec<RampStep>,
+    pub sustainable_pps: Option<f64>,
+    pub fill_rate_pps: u64,
+    pub aborted: bool,
+    pub note: String,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -169,6 +220,8 @@ pub struct Report {
     pub db_config: DbConfig,
     pub series_model: SeriesModel,
     pub ack_semantics: String,
+    pub debt_metric: String,
+    pub ramp: Option<RampReport>,
     pub timeline: Vec<Window>,
     pub phases: Phases,
     pub throughput: Throughput,

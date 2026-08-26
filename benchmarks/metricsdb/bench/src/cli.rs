@@ -1,9 +1,57 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use clap::{ArgAction, Parser};
+use clap::{ArgAction, Parser, ValueEnum};
 
 use crate::sink::DbKind;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum Mode {
+    /// Offer unbounded load; the acknowledged rate is whatever the store accepts.
+    Saturate,
+    /// Fixed-rate steps only; report the highest rate whose debt stays flat.
+    Ramp,
+    /// Ramp, then fill at a fraction of the highest passing rate.
+    RampThenFill,
+}
+
+impl Mode {
+    pub fn name(self) -> &'static str {
+        match self {
+            Mode::Saturate => "saturate",
+            Mode::Ramp => "ramp",
+            Mode::RampThenFill => "ramp-then-fill",
+        }
+    }
+}
+
+/// "250k,500k,1M,2M" -> points per second.
+pub fn parse_rate(s: &str) -> Result<u64, String> {
+    let t = s.trim().to_ascii_lowercase();
+    let (num, mult) = if let Some(n) = t.strip_suffix('k') {
+        (n, 1_000.0)
+    } else if let Some(n) = t.strip_suffix('m') {
+        (n, 1_000_000.0)
+    } else if let Some(n) = t.strip_suffix('g') {
+        (n, 1_000_000_000.0)
+    } else {
+        (t.as_str(), 1.0)
+    };
+    let f: f64 = num.trim().parse().map_err(|_| format!("bad rate '{s}' (use 250k, 1M, 2000000)"))?;
+    Ok((f * mult) as u64)
+}
+
+pub fn parse_rate_list(s: &str) -> Result<Vec<u64>, String> {
+    let v: Result<Vec<u64>, String> = s.split(',').filter(|x| !x.trim().is_empty()).map(parse_rate).collect();
+    let v = v?;
+    if v.is_empty() {
+        return Err("ramp ladder is empty".into());
+    }
+    if v.windows(2).any(|w| w[1] <= w[0]) {
+        return Err("ramp ladder must be strictly increasing".into());
+    }
+    Ok(v)
+}
 
 #[derive(Parser, Debug, Clone)]
 #[command(name = "metricsdb-bench", version, about = "Ingest, disk and query benchmark for OTel metrics stores")]
@@ -30,8 +78,24 @@ pub struct Cli {
     pub writers: Option<usize>,
     #[arg(long)]
     pub batch_points: Option<usize>,
-    #[arg(long, default_value_t = 0)]
+    #[arg(long, value_parser = parse_rate, default_value = "0")]
     pub rate: u64,
+    #[arg(long, value_enum, default_value_t = Mode::RampThenFill)]
+    pub mode: Mode,
+    #[arg(long, default_value = "250k,500k,1M,2M,4M,8M")]
+    pub ramp_rates: String,
+    #[arg(long, default_value = "8m", value_parser = humantime::parse_duration)]
+    pub step: Duration,
+    #[arg(long, default_value = "60s", value_parser = humantime::parse_duration)]
+    pub ramp_in: Duration,
+    #[arg(long, default_value_t = 1)]
+    pub ramp_bisect: u32,
+    #[arg(long, default_value_t = 0.9)]
+    pub fill_fraction: f64,
+    #[arg(long, default_value = "10m", value_parser = humantime::parse_duration)]
+    pub debt_window: Duration,
+    #[arg(long, default_value_t = 1.3)]
+    pub debt_growth: f64,
     #[arg(long, default_value_t = 5)]
     pub max_retries: u32,
     #[arg(long, default_value = "60s", value_parser = humantime::parse_duration)]
@@ -127,7 +191,26 @@ pub struct Cli {
 }
 
 impl Cli {
+    pub fn ramp_ladder(&self) -> anyhow::Result<Vec<u64>> {
+        parse_rate_list(&self.ramp_rates).map_err(|e| anyhow::anyhow!("--ramp-rates: {e}"))
+    }
+
     pub fn sim_start_ms(&self) -> i64 {
         crate::util::parse_ts_ms(&self.sim_start).unwrap_or_else(|| panic!("--sim-start must look like 2026-01-01T00:00:00Z, got {}", self.sim_start))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rates_parse() {
+        assert_eq!(parse_rate("250k").unwrap(), 250_000);
+        assert_eq!(parse_rate("1M").unwrap(), 1_000_000);
+        assert_eq!(parse_rate("1.5m").unwrap(), 1_500_000);
+        assert_eq!(parse_rate("2000000").unwrap(), 2_000_000);
+        assert_eq!(parse_rate_list("250k,500k,1M").unwrap(), vec![250_000, 500_000, 1_000_000]);
+        assert!(parse_rate_list("1M,500k").is_err());
     }
 }

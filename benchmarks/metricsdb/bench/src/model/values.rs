@@ -1,23 +1,40 @@
 use super::rng::Xoshiro256;
 use super::templates::{Precision, ValueModel};
 
+/// Per-series state. `rate` is this series' own steady rate for counters
+/// (drawn once, log-normal around the template mean, the way idle and user
+/// cpu time differ by an order of magnitude on one host); `hold_p` makes a
+/// third of the gauges sticky, holding their last value most scrapes the way
+/// memory, filesystem and connection-count gauges do in real fleets.
 #[derive(Clone, Debug)]
 pub struct ValueState {
     cur: f64,
+    rate: f64,
+    hold_p: f64,
     rng: Xoshiro256,
 }
 
 impl ValueState {
     pub fn new(model: &ValueModel, seed: u64) -> Self {
         let mut rng = Xoshiro256::seeded(seed);
+        let mut rate = 0.0;
+        let mut hold_p = 0.0;
         let cur = match *model {
-            ValueModel::Walk { lo, hi, .. } => lo + rng.next_f64() * (hi - lo),
-            ValueModel::Counter { rate_mean, .. } => rng.next_f64() * rate_mean * 86_400.0,
+            ValueModel::Walk { lo, hi, .. } => {
+                if rng.next_f64() < 0.3 {
+                    hold_p = 0.8;
+                }
+                lo + rng.next_f64() * (hi - lo)
+            }
+            ValueModel::Counter { rate_mean, .. } => {
+                rate = rate_mean * (0.8 * rng.next_normal()).exp();
+                rng.next_f64() * rate * 86_400.0
+            }
             ValueModel::Const { lo, hi } => lo + rng.next_f64() * (hi - lo),
             ValueModel::ZeroMostly { .. } => (rng.next_f64() * 20.0).floor(),
             ValueModel::Spiky { base, .. } => base,
         };
-        Self { cur, rng }
+        Self { cur, rate, hold_p, rng }
     }
 
     #[inline]
@@ -25,12 +42,16 @@ impl ValueState {
         let damp = if quiet { 0.1 } else { 1.0 };
         match *model {
             ValueModel::Walk { lo, hi, sigma, revert } => {
+                let step = self.rng.next_normal();
+                if self.hold_p > 0.0 && self.rng.next_f64() < self.hold_p {
+                    return quantize(self.cur, prec);
+                }
                 let mid = (lo + hi) * 0.5;
-                self.cur += sigma * damp * self.rng.next_normal() + revert * (mid - self.cur);
+                self.cur += sigma * damp * step + revert * (mid - self.cur);
                 self.cur = self.cur.clamp(lo, hi);
             }
-            ValueModel::Counter { rate_mean, rate_cv } => {
-                let inc = rate_mean * interval_s * (1.0 + rate_cv * damp * self.rng.next_normal());
+            ValueModel::Counter { rate_cv, .. } => {
+                let inc = self.rate * interval_s * (1.0 + rate_cv * damp * self.rng.next_normal());
                 self.cur += inc.max(0.0);
             }
             ValueModel::Const { .. } => {}

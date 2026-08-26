@@ -65,13 +65,22 @@ QUERY_THRESHOLD_MS="${QUERY_THRESHOLD_MS:-5000}"
 WRITERS="${WRITERS:-}"
 BATCH_SIZE="${BATCH_SIZE:-}"
 FB_STAGE="${FB_STAGE:-upload}"
+MODE="${MODE:-ramp-then-fill}"
+RAMP_RATES="${RAMP_RATES:-250k,500k,1M,2M,4M,8M}"
+RAMP_STEP_SECONDS="${RAMP_STEP_SECONDS:-480}"
+RAMP_IN_SECONDS="${RAMP_IN_SECONDS:-60}"
+RAMP_BISECT="${RAMP_BISECT:-1}"
 EXTRA_ARGS="${EXTRA_ARGS:-}"
 if (( SMOKE )); then
-    TARGET_POINTS=20000000
+    TARGET_POINTS=150000000
     SERIES=10000
     MAX_MINUTES=5
     MAX_SETTLE_MINUTES=1
     MAX_COLD_MINUTES=2
+    RAMP_RATES="500k,1M,2M"
+    RAMP_STEP_SECONDS=30
+    RAMP_IN_SECONDS=10
+    RAMP_BISECT=0
 fi
 
 case "$(uname -s)-$(uname -m)" in
@@ -101,7 +110,7 @@ summarize() {
 if (( HETZNER )); then
     export TIER="${TIER:-ccx33}" LOCATION="${LOCATION:-nbg1}"
     export TARGET_POINTS SERIES INTERVAL_SECONDS MAX_MINUTES MAX_SETTLE_MINUTES MAX_COLD_MINUTES
-    export QUERY_THRESHOLD_MS WRITERS BATCH_SIZE FB_STAGE EXTRA_ARGS
+    export QUERY_THRESHOLD_MS WRITERS BATCH_SIZE FB_STAGE EXTRA_ARGS MODE RAMP_RATES RAMP_STEP_SECONDS RAMP_IN_SECONDS RAMP_BISECT
     export SMOKE
     export OUT_DIR="${OUT_DIR:-${MDB_ROOT}/results-local}"
     export ARTIFACT_DIR="${ARTIFACT_DIR:-${MDB_ROOT}/_artifact}"
@@ -192,6 +201,11 @@ for db in "${db_list[@]}"; do
         --max-settle "${MAX_SETTLE_MINUTES}m"
         --max-cold "${MAX_COLD_MINUTES}m"
         --query-slow-ms "${QUERY_THRESHOLD_MS}"
+        --mode "${MODE}"
+        --ramp-rates "${RAMP_RATES}"
+        --step "${RAMP_STEP_SECONDS}s"
+        --ramp-in "${RAMP_IN_SECONDS}s"
+        --ramp-bisect "${RAMP_BISECT}"
         --data-dir "${DATA_DIR}"
         --cold-hook "${MDB_ROOT}/db/${db_dir}/restart.sh"
         --tier "${TIER}"

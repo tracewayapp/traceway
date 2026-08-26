@@ -68,7 +68,7 @@ impl DbKind {
             DbKind::Victoriametrics => SinkDefaults { writers: 8, batch_points: 20_000 },
             DbKind::Clickhouse => SinkDefaults { writers: 4, batch_points: 500_000 },
             DbKind::ClickhouseMap => SinkDefaults { writers: 4, batch_points: 200_000 },
-            DbKind::Duckdb => SinkDefaults { writers: 1, batch_points: 1_000_000 },
+            DbKind::Duckdb => SinkDefaults { writers: 1, batch_points: 4_000_000 },
             DbKind::Firebolt => SinkDefaults { writers: 2, batch_points: 1_000_000 },
         }
     }

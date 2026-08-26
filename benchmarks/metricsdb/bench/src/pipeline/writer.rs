@@ -29,6 +29,8 @@ pub struct Accounting {
     pub write_hist: Mutex<Histogram<u64>>,
     pub maintenance: Mutex<Vec<MaintEvent>>,
     pub last_error: Mutex<Option<String>>,
+    pub first_ack: Mutex<Option<Instant>>,
+    pub last_ack: Mutex<Option<Instant>>,
 }
 
 impl Default for Accounting {
@@ -47,6 +49,8 @@ impl Default for Accounting {
             write_hist: Mutex::new(Histogram::new_with_bounds(1, 3_600_000_000, 3).expect("histogram bounds")),
             maintenance: Mutex::new(Vec::new()),
             last_error: Mutex::new(None),
+            first_ack: Mutex::new(None),
+            last_ack: Mutex::new(None),
         }
     }
 }
@@ -95,6 +99,9 @@ pub async fn run_writer(
                     acct.batches.fetch_add(1, Ordering::Relaxed);
                     acct.last_acked_ts_ms.fetch_max(batch.max_ts_ms, Ordering::Relaxed);
                     acct.record_latency(t0.elapsed());
+                    let now = Instant::now();
+                    acct.first_ack.lock().unwrap().get_or_insert(t0);
+                    *acct.last_ack.lock().unwrap() = Some(now);
                     if !ack.maintenance.is_empty() {
                         acct.maintenance.lock().unwrap().extend(ack.maintenance);
                     }

@@ -39,6 +39,20 @@ on:
         description: 'Routine query p95 during ingest above which a database counts as having fallen behind. 5000 matches the hardware read-probe threshold so the two benchmarks agree on what "usable dashboard" means.'
         required: true
         default: '5000'
+      mode:
+        description: 'ramp-then-fill (default) finds the sustainable rate with fixed-rate steps, then fills at 90% of it with the debt rule armed; saturate offers unbounded load and reports whatever is acknowledged (the number a store can overstate by deferring merges); ramp stops after the ladder.'
+        required: true
+        type: choice
+        options: [ramp-then-fill, saturate, ramp]
+        default: 'ramp-then-fill'
+      ramp_rates:
+        description: 'Ramp ladder in points per second, strictly increasing (k/M suffixes). Each step runs step_seconds; a step passes when the store accepts at least 90% of it with flat deferred work, bounded lag, queries under the threshold and nothing throttled or lost. One geometric bisection follows the first failure.'
+        required: true
+        default: '250k,500k,1M,2M,4M,8M'
+      step_seconds:
+        description: 'Seconds per ramp step, the first 60 excluded as ramp-in. 480 makes the six-step ladder plus one bisection about an hour before the fill starts; shorter steps hide merge debt.'
+        required: true
+        default: '480'
       writers:
         description: 'Override the number of concurrent writers for every database. Leave empty for each database''s documented sweet spot, which the result JSON records (ClickHouse 4, VictoriaMetrics 8, DuckDB 1, Firebolt 2).'
         required: false
@@ -141,6 +155,9 @@ jobs:
       INTERVAL_SECONDS: ${{ github.event.inputs.interval_seconds }}
       MAX_MINUTES: ${{ github.event.inputs.max_minutes }}
       QUERY_THRESHOLD_MS: ${{ github.event.inputs.query_threshold_ms }}
+      MODE: ${{ github.event.inputs.mode }}
+      RAMP_RATES: ${{ github.event.inputs.ramp_rates }}
+      RAMP_STEP_SECONDS: ${{ github.event.inputs.step_seconds }}
       WRITERS: ${{ github.event.inputs.writers }}
       BATCH_SIZE: ${{ github.event.inputs.batch_size }}
       EXTRA_ARGS: ${{ github.event.inputs.extra_args }}

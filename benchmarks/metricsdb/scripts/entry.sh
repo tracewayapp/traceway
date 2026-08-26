@@ -14,6 +14,8 @@
 #   SMOKE=1               20M points / 10k series / 5 min ingest / 1 min settle / 2 min cold
 #   FB_STAGE=upload|s3    firebolt staging; s3 also starts MinIO on the box
 #   EXTRA_ARGS            extra metricsdb-bench flags, word-split (e.g. "--gen-threads 4")
+#   MODE                  ramp-then-fill (default) | saturate | ramp
+#   RAMP_RATES, RAMP_STEP_SECONDS, RAMP_IN_SECONDS, RAMP_BISECT   ramp ladder and step shape
 #   ARTIFACT_DIR          built bench artifact (binary, libduckdb.so, db/, remote-*.sh)
 #   OUT_DIR               where <tier>-<db>.json and logs/ land
 #   BENCH_RUN_ID          CI passes <run_id>-<attempt> so the always() step can delete by name
@@ -47,16 +49,25 @@ QUERY_THRESHOLD_MS="${QUERY_THRESHOLD_MS:-5000}"
 WRITERS="${WRITERS:-}"
 BATCH_SIZE="${BATCH_SIZE:-}"
 FB_STAGE="${FB_STAGE:-upload}"
+MODE="${MODE:-ramp-then-fill}"
+RAMP_RATES="${RAMP_RATES:-250k,500k,1M,2M,4M,8M}"
+RAMP_STEP_SECONDS="${RAMP_STEP_SECONDS:-480}"
+RAMP_IN_SECONDS="${RAMP_IN_SECONDS:-60}"
+RAMP_BISECT="${RAMP_BISECT:-1}"
 ARTIFACT_DIR="${ARTIFACT_DIR:-${MDB_ROOT}/_artifact}"
 OUT_DIR="${OUT_DIR:-${MDB_ROOT}/results-local}"
 POLL_SECONDS="${POLL_SECONDS:-60}"
 
 if [[ "${SMOKE:-0}" == "1" ]]; then
-    TARGET_POINTS=20000000
+    TARGET_POINTS=150000000
     SERIES=10000
     MAX_MINUTES=5
     MAX_SETTLE_MINUTES=1
     MAX_COLD_MINUTES=2
+    RAMP_RATES="500k,1M,2M"
+    RAMP_STEP_SECONDS=30
+    RAMP_IN_SECONDS=10
+    RAMP_BISECT=0
 fi
 
 for tool in hcloud jq ssh scp rsync; do
@@ -150,6 +161,11 @@ bench_args=(
     --max-settle "${MAX_SETTLE_MINUTES}m"
     --max-cold "${MAX_COLD_MINUTES}m"
     --query-slow-ms "${QUERY_THRESHOLD_MS}"
+    --mode "${MODE}"
+    --ramp-rates "${RAMP_RATES}"
+    --step "${RAMP_STEP_SECONDS}s"
+    --ramp-in "${RAMP_IN_SECONDS}s"
+    --ramp-bisect "${RAMP_BISECT}"
     --data-dir "${DATA_DIR}"
     --cold-hook "db/${DB_DIR}/restart.sh"
     --tier "${TIER}"

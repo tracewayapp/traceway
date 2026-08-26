@@ -213,8 +213,12 @@ impl Sink for ClickhouseSink {
                 .scalar_u64(&format!("SELECT count() FROM system.parts WHERE active AND database = '{}' AND table = '{table}' FORMAT TabSeparated", self.db))
                 .await
                 .unwrap_or(u64::MAX);
+            let inactive = self
+                .scalar_u64(&format!("SELECT count() FROM system.parts WHERE NOT active AND database = '{}' AND table = '{table}' FORMAT TabSeparated", self.db))
+                .await
+                .unwrap_or(u64::MAX);
             let delta_ok = prev_parts.map(|p| (p as f64 - parts as f64).abs() <= 0.05 * p.max(1) as f64).unwrap_or(false);
-            if merges == 0 && delta_ok {
+            if merges == 0 && delta_ok && inactive == 0 {
                 stable += 1;
             } else {
                 stable = 0;
@@ -226,7 +230,7 @@ impl Sink for ClickhouseSink {
                 return rep;
             }
             if Instant::now() > deadline {
-                rep.step("merges_idle", t0, false, format!("deadline: merges={merges} active_parts={parts}"));
+                rep.step("merges_idle", t0, false, format!("deadline: merges={merges} active_parts={parts} inactive_parts={inactive}"));
                 return rep;
             }
             tokio::time::sleep(Duration::from_secs(5)).await;

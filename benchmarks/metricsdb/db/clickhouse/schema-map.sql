@@ -9,4 +9,4 @@ CREATE TABLE IF NOT EXISTS metric_points (
 ) ENGINE = MergeTree
 PARTITION BY toYYYYMMDD(recorded_at)
 ORDER BY (name, recorded_at)
-SETTINGS index_granularity = 8192;
+SETTINGS index_granularity = 8192, old_parts_lifetime = 30;

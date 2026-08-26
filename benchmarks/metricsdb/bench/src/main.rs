@@ -19,13 +19,13 @@ use std::time::{Duration, Instant};
 use clap::Parser;
 use serde_json::Value;
 
-use crate::cli::Cli;
+use crate::cli::{Cli, Mode};
 use crate::model::catalog::{CatalogConfig, SeriesCatalog};
 use crate::model::generator::{spawn_generators, GenConfig, GenShared};
 use crate::pipeline::batch::Batch;
 use crate::pipeline::writer::{run_writer, Accounting};
 use crate::probe::disk::DiskSample;
-use crate::probe::proc::{ProcSampler, ProcSample};
+use crate::probe::proc::{ProcSample, ProcSampler};
 use crate::probe::ContainerState;
 use crate::progress::log;
 use crate::queries::{QueryId, QueryInstance, QueryOutcome, QueryParams, QueryStatus};
@@ -35,15 +35,17 @@ use crate::util::{fmt_count, fmt_rfc3339_ms, now_ms, now_rfc3339};
 use crate::verdict::{VerdictCfg, VerdictState};
 
 const PH_WARMUP: u8 = 0;
-const PH_INGEST: u8 = 1;
-const PH_DRAIN: u8 = 2;
-const PH_SETTLE: u8 = 3;
-const PH_COLD: u8 = 4;
-const PH_DONE: u8 = 5;
+const PH_RAMP: u8 = 1;
+const PH_INGEST: u8 = 2;
+const PH_DRAIN: u8 = 3;
+const PH_SETTLE: u8 = 4;
+const PH_COLD: u8 = 5;
+const PH_DONE: u8 = 6;
 
 fn phase_name(p: u8) -> &'static str {
     match p {
         PH_WARMUP => "warmup",
+        PH_RAMP => "ramp",
         PH_INGEST => "ingest",
         PH_DRAIN => "drain",
         PH_SETTLE => "settle",
@@ -79,6 +81,45 @@ impl Shared {
     }
     fn set_phase(&self, p: u8) {
         self.phase.store(p, Ordering::Relaxed);
+    }
+}
+
+fn num(v: Option<&Value>) -> Option<f64> {
+    match v? {
+        Value::Number(n) => n.as_f64(),
+        Value::String(s) => s.trim().parse().ok(),
+        _ => None,
+    }
+}
+
+/// The store's deferred work: what an LSM-style store can let pile up while
+/// still acknowledging every write.
+fn debt_metric(kind: DbKind) -> &'static str {
+    match kind {
+        DbKind::Clickhouse | DbKind::ClickhouseMap => "active parts",
+        DbKind::Victoriametrics => "small + in-memory parts",
+        DbKind::Duckdb => "WAL MB",
+        DbKind::Firebolt => "tablets",
+    }
+}
+
+/// Lower quartile: merges, checkpoints and vacuums make the debt a sawtooth,
+/// and only its floor rising means the store is not keeping up.
+fn debt_floor(it: impl Iterator<Item = f64>) -> Option<f64> {
+    let mut v: Vec<f64> = it.collect();
+    if v.is_empty() {
+        return None;
+    }
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    Some(v[(v.len() - 1) / 4])
+}
+
+fn debt_of(kind: DbKind, h: &Value) -> Option<f64> {
+    match kind {
+        DbKind::Clickhouse | DbKind::ClickhouseMap => num(h.get("active_parts")),
+        DbKind::Victoriametrics => Some(num(h.get("parts_small"))? + num(h.get("parts_inmemory"))?),
+        DbKind::Duckdb => num(h.get("wal_bytes")).map(|b| b / 1e6),
+        DbKind::Firebolt => num(h.get("number_of_tablets")),
     }
 }
 
@@ -124,9 +165,11 @@ async fn run(cli: Cli) -> anyhow::Result<u8> {
     let writers = cli.writers.unwrap_or(defaults.writers).max(1);
     let batch_points = cli.batch_points.unwrap_or(defaults.batch_points).max(1);
     let sink: Arc<dyn Sink> = Arc::from(sink::make_sink(&cli)?);
+    let mode = cli.mode;
+    let ladder = cli.ramp_ladder()?;
 
     let mut report = Report {
-        schema_version: 1,
+        schema_version: 2,
         db: kind.name().into(),
         family: kind.family().into(),
         variant: kind.variant().into(),
@@ -167,9 +210,11 @@ async fn run(cli: Cli) -> anyhow::Result<u8> {
             catalog_load_ms: 0,
         },
         ack_semantics: sink.ack_semantics().into(),
+        debt_metric: debt_metric(kind).into(),
+        ramp: None,
         timeline: Vec::new(),
-        phases: Phases { warmup_s: cli.warmup.as_secs(), ..Default::default() },
-        throughput: Throughput::default(),
+        phases: Phases { warmup_s: if mode == Mode::Saturate { cli.warmup.as_secs() } else { 0 }, ..Default::default() },
+        throughput: Throughput { mode: mode.name().into(), ..Default::default() },
         queries_during_ingest: BTreeMap::new(),
         queries_cold: BTreeMap::new(),
         cold_method: if cli.no_cold { "skipped".into() } else if cli.cold_hook.is_some() { "cold_hook+drop_caches".into() } else { "reopen+drop_caches".into() },
@@ -205,14 +250,16 @@ async fn run(cli: Cli) -> anyhow::Result<u8> {
     log(format!("setup: series loaded in {}ms", report.series_model.catalog_load_ms));
 
     let shared = Arc::new(Shared {
-        phase: AtomicU8::new(PH_WARMUP),
+        phase: AtomicU8::new(if mode == Mode::Saturate { PH_WARMUP } else { PH_RAMP }),
         interrupted: AtomicBool::new(false),
         probe: Mutex::new(ProbeState::default()),
         pending_outcomes: Mutex::new(Vec::new()),
         all_outcomes: Mutex::new(Vec::new()),
         visible_ts: AtomicI64::new(0),
     });
-    let gen = Arc::new(GenShared::default());
+    let initial_rate = if mode == Mode::Saturate { cli.rate } else { ladder[0] };
+    let gen = Arc::new(GenShared::with(initial_rate, batch_points));
+    gen.set_rate(initial_rate, batch_points);
     let acct = Arc::new(Accounting::default());
 
     {
@@ -244,28 +291,40 @@ async fn run(cli: Cli) -> anyhow::Result<u8> {
         let w = sink.writer(i).await?;
         writer_handles.push(tokio::spawn(run_writer(i, rx.clone(), w, Arc::clone(&acct), Arc::clone(&cat), cli.max_retries)));
     }
-    if cli.rate > 0 {
+    {
         let gen = Arc::clone(&gen);
-        let rate = cli.rate;
         tokio::spawn(async move {
             let mut iv = tokio::time::interval(Duration::from_millis(10));
             loop {
                 iv.tick().await;
-                let cap = (rate as i64).max(1);
+                let rate = gen.rate_pps.load(Ordering::Relaxed);
+                if rate == 0 {
+                    continue;
+                }
+                let cap = rate as i64;
+                let add = (rate / 100).max(1) as i64;
                 let cur = gen.credits.load(Ordering::Relaxed);
-                let add = (rate / 100) as i64;
                 if cur + add <= cap {
                     gen.credits.fetch_add(add, Ordering::Relaxed);
+                } else if cur < cap {
+                    gen.credits.store(cap, Ordering::Relaxed);
                 }
             }
         });
     }
     let t_ingest = Instant::now();
-    let gen_handles = spawn_generators(&GenConfig { threads: cli.gen_threads, batch_points, rate_pps: cli.rate, max_rounds: u64::MAX }, Arc::clone(&cat), tx, Arc::clone(&gen));
-    log(format!("ingest: started writers={writers} batch_points={batch_points} gen_threads={} target_points={}", cli.gen_threads, fmt_count((cat.rounds * cat.len()) as f64)));
+    let gen_handles = spawn_generators(&GenConfig { threads: cli.gen_threads, max_rounds: u64::MAX }, Arc::clone(&cat), tx, Arc::clone(&gen));
+    log(format!(
+        "ingest: started mode={} writers={writers} batch_points={batch_points} gen_threads={} target_points={} initial_rate={}",
+        mode.name(),
+        cli.gen_threads,
+        fmt_count((cat.rounds * cat.len()) as f64),
+        if initial_rate == 0 { "saturation".to_string() } else { format!("{}/s", fmt_count(initial_rate as f64)) }
+    ));
 
     let mut ctx = Ctx {
         cli: &cli,
+        kind,
         cat: Arc::clone(&cat),
         acct: Arc::clone(&acct),
         gen: Arc::clone(&gen),
@@ -277,62 +336,56 @@ async fn run(cli: Cli) -> anyhow::Result<u8> {
             query_slow_ms: cli.query_slow_ms as f64,
             write_err_ratio: cli.write_err_ratio,
             interval_s: cat.interval_ms as f64 / 1000.0,
+            debt_windows: (cli.debt_window.as_secs() / cli.window.as_secs().max(1)).max(2) as usize,
+            debt_growth: cli.debt_growth,
+            debt_metric: debt_metric(kind).into(),
         }),
         t0: t_ingest,
         prev: Prev::default(),
         writers,
+        batch_points,
         last_disk_seq: 0,
         starved_windows: 0,
         ingest_windows: 0,
+        prev_delayed: None,
+        last_debt: None,
+        fill_start: None,
+        gen_handles,
+        rx,
+        ctl: IngestCtl::new(cli.window),
     };
 
-    let mut interval = tokio::time::interval(cli.window);
-    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    interval.tick().await;
-    let mut stopping = false;
-    let mut stop_started: Option<Instant> = None;
-    let mut unusable_since: Option<u64> = None;
-    loop {
-        interval.tick().await;
-        let elapsed = t_ingest.elapsed();
-        if shared.phase() == PH_WARMUP && elapsed >= cli.warmup {
-            shared.set_phase(PH_INGEST);
+    match mode {
+        Mode::Saturate => {
+            ctx.report.throughput.fill_rate_pps = cli.rate;
+            ctx.fill_start = Some((t_ingest, 0));
+            ctx.run_until_done().await;
         }
-        ctx.record_window();
-        let gens_done = gen_handles.iter().all(|h| h.is_finished());
-        let drained = gens_done && rx.is_empty() && acct.inflight.load(Ordering::Relaxed) == 0;
-        if drained {
-            if ctx.report.verdict.stopped_reason == "running" || ctx.report.verdict.stopped_reason == "setup" {
-                ctx.report.verdict.stopped_reason = "completed".into();
-            }
-            break;
-        }
-        if let (Some(at), None) = (ctx.verdict.verdict.unusable_at_s, unusable_since) {
-            unusable_since = Some(at);
-            log(format!("verdict: unusable at t={at}s ({}), continuing for the grace period", ctx.verdict.verdict.unusable_reason.clone().unwrap_or_default()));
-        }
-        if !stopping {
-            let reason = if shared.interrupted.load(Ordering::Relaxed) {
-                Some("interrupted")
-            } else if elapsed >= cli.max_ingest {
-                ctx.report.throughput.hit_max_ingest = true;
-                Some("wall_deadline")
-            } else if unusable_since.map(|u| elapsed.as_secs().saturating_sub(u) >= cli.unusable_grace.as_secs()).unwrap_or(false) {
-                Some("unusable")
+        Mode::Ramp | Mode::RampThenFill => {
+            let ramp = ctx.run_ramp().await;
+            let aborted = ramp.aborted;
+            let fill_rate = ramp.fill_rate_pps;
+            ctx.report.throughput.sustainable_pps = ramp.sustainable_pps;
+            ctx.report.ramp = Some(ramp);
+            if aborted {
+                ctx.report.notes.push("the ramp did not finish (points exhausted, deadline or interrupt); no fill phase".into());
+            } else if mode == Mode::RampThenFill {
+                log(format!(
+                    "fill: rate={} for the remaining points",
+                    if fill_rate == 0 { "saturation".to_string() } else { format!("{}/s", fmt_count(fill_rate as f64)) }
+                ));
+                ctx.gen.set_rate(fill_rate, batch_points);
+                ctx.report.throughput.fill_rate_pps = fill_rate;
+                ctx.shared.set_phase(PH_INGEST);
+                ctx.fill_start = Some((Instant::now(), ctx.acct.acked.load(Ordering::Relaxed)));
+                ctx.run_until_done().await;
             } else {
-                None
-            };
-            if let Some(r) = reason {
-                log(format!("ingest: stopping ({r})"));
-                ctx.report.verdict.stopped_reason = r.into();
-                gen.stop.store(true, Ordering::Relaxed);
-                stopping = true;
-                stop_started = Some(Instant::now());
+                ctx.report.verdict.stopped_reason = "ramp_complete".into();
+                ctx.gen.stop.store(true, Ordering::Relaxed);
+                ctx.ctl.stopping = true;
+                ctx.ctl.stop_started = Some(Instant::now());
+                ctx.run_until_done().await;
             }
-        } else if stop_started.map(|s| s.elapsed() > cli.drain_timeout).unwrap_or(false) {
-            log("ingest: drain timeout, writers still busy; moving on");
-            ctx.report.notes.push("drain timed out: writers were still busy when ingest was abandoned".into());
-            break;
         }
     }
     ctx.report.phases.ingest_s = t_ingest.elapsed().as_secs();
@@ -340,6 +393,7 @@ async fn run(cli: Cli) -> anyhow::Result<u8> {
     ctx.report.interrupted = shared.interrupted.load(Ordering::Relaxed);
 
     let t_drain = Instant::now();
+    let gen_handles = std::mem::take(&mut ctx.gen_handles);
     if gen_handles.iter().all(|h| h.is_finished()) {
         let mut fp = 0u64;
         for h in gen_handles {
@@ -364,13 +418,15 @@ async fn run(cli: Cli) -> anyhow::Result<u8> {
     }
     ctx.report.phases.drain_ms = t_drain.elapsed().as_millis() as u64;
     ctx.finalize_throughput();
+    let ingest_end = ctx.acct.last_ack.lock().unwrap().unwrap_or_else(Instant::now);
     ctx.report.write_atomic(&cli.out)?;
     log(format!(
-        "ingest: done acked={} lost={} plateau={}/s overall={}/s fingerprint={}",
+        "ingest: done acked={} lost={} sustainable={} fill={}/s late={}/s fingerprint={}",
         fmt_count(ctx.report.throughput.acked_points as f64),
         ctx.report.throughput.points_lost,
-        fmt_count(ctx.report.throughput.plateau_pps),
-        fmt_count(ctx.report.throughput.overall_pps),
+        ctx.report.throughput.sustainable_pps.map(|v| format!("{}/s", fmt_count(v))).unwrap_or_else(|| "-".into()),
+        fmt_count(ctx.report.throughput.fill_pps),
+        fmt_count(ctx.report.throughput.late_pps),
         ctx.report.bench.data_fingerprint.clone().unwrap_or_default()
     ));
 
@@ -389,13 +445,33 @@ async fn run(cli: Cli) -> anyhow::Result<u8> {
         ctx.report.notes.push("database unreachable after ingest; settle and cold phases skipped".into());
     }
 
-    let disk = tokio::task::spawn_blocking({
+    // Stores delete merged-away parts and vacuumed tablets asynchronously;
+    // measure only once the directory has stopped shrinking.
+    let walk_dir = || {
         let dir = cli.data_dir.clone();
         let sink = Arc::clone(&sink);
-        move || probe::disk::walk(&dir, &|rel| sink.disk_class(rel))
-    })
-    .await
-    .unwrap_or_default();
+        tokio::task::spawn_blocking(move || probe::disk::walk(&dir, &|rel| sink.disk_class(rel)))
+    };
+    let mut disk = walk_dir().await.unwrap_or_default();
+    let gc_deadline = Instant::now() + cli.max_settle.min(Duration::from_secs(180));
+    let mut stable = 0;
+    while stable < 2 && Instant::now() < gc_deadline {
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        let again = walk_dir().await.unwrap_or_default();
+        if again.total_bytes == disk.total_bytes {
+            stable += 1;
+        } else {
+            stable = 0;
+        }
+        disk = again;
+    }
+    if stable < 2 {
+        ctx.report.notes.push("data dir was still shrinking when the disk measure was taken".into());
+    }
+    let digest_s = ingest_end.elapsed().as_secs_f64();
+    ctx.report.throughput.digest_s = digest_s;
+    let fill_wall = ctx.report.throughput.fill_wall_s;
+    ctx.report.throughput.amortized_pps = if fill_wall + digest_s > 0.0 { ctx.report.throughput.fill_points as f64 / (fill_wall + digest_s) } else { 0.0 };
     let db_reported = if reachable { sink.db_size().await.unwrap_or_default() } else { Default::default() };
     let acked = ctx.report.throughput.acked_points.max(1);
     let mut disk = disk;
@@ -417,7 +493,15 @@ async fn run(cli: Cli) -> anyhow::Result<u8> {
         db_reported,
     };
     ctx.report.write_atomic(&cli.out)?;
-    log(format!("disk: {} total, {:.2} bytes/point, {:.1}x vs raw16, {:.1}x vs logical", util::fmt_bytes(disk.total_bytes), ctx.report.disk.bytes_per_point, ctx.report.disk.ratio_vs_raw16, ctx.report.disk.ratio_vs_logical));
+    log(format!(
+        "disk: {} total, {:.2} bytes/point, {:.1}x vs raw16, {:.1}x vs logical; digest={:.0}s amortized={}/s",
+        util::fmt_bytes(disk.total_bytes),
+        ctx.report.disk.bytes_per_point,
+        ctx.report.disk.ratio_vs_raw16,
+        ctx.report.disk.ratio_vs_logical,
+        digest_s,
+        fmt_count(ctx.report.throughput.amortized_pps)
+    ));
 
     if !cli.no_cold && reachable && !shared.interrupted.load(Ordering::Relaxed) {
         shared.set_phase(PH_COLD);
@@ -440,9 +524,9 @@ async fn run(cli: Cli) -> anyhow::Result<u8> {
 
 fn verify_gen(cli: &Cli, cat: Arc<SeriesCatalog>, rounds: u64) -> anyhow::Result<u8> {
     let (tx, rx) = async_channel::bounded::<Batch>(64);
-    let shared = Arc::new(GenShared::default());
+    let shared = Arc::new(GenShared::with(0, cli.batch_points.unwrap_or(500_000)));
     let t0 = Instant::now();
-    let handles = spawn_generators(&GenConfig { threads: cli.gen_threads, batch_points: cli.batch_points.unwrap_or(500_000), rate_pps: 0, max_rounds: rounds }, cat, tx, Arc::clone(&shared));
+    let handles = spawn_generators(&GenConfig { threads: cli.gen_threads, max_rounds: rounds }, cat, tx, Arc::clone(&shared));
     let drain = std::thread::spawn(move || {
         let mut n = 0u64;
         while let Ok(b) = rx.recv_blocking() {
@@ -477,8 +561,25 @@ struct Prev {
     at: Option<Instant>,
 }
 
+struct IngestCtl {
+    interval: tokio::time::Interval,
+    stopping: bool,
+    stop_started: Option<Instant>,
+    unusable_since: Option<u64>,
+}
+
+impl IngestCtl {
+    fn new(window: Duration) -> Self {
+        // interval() fires immediately; the first window must cover a full period.
+        let mut interval = tokio::time::interval_at(tokio::time::Instant::now() + window, window);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        Self { interval, stopping: false, stop_started: None, unusable_since: None }
+    }
+}
+
 struct Ctx<'a> {
     cli: &'a Cli,
+    kind: DbKind,
     cat: Arc<SeriesCatalog>,
     acct: Arc<Accounting>,
     gen: Arc<GenShared>,
@@ -488,9 +589,16 @@ struct Ctx<'a> {
     t0: Instant,
     prev: Prev,
     writers: usize,
+    batch_points: usize,
     last_disk_seq: u64,
     starved_windows: u64,
     ingest_windows: u64,
+    prev_delayed: Option<f64>,
+    last_debt: Option<f64>,
+    fill_start: Option<(Instant, u64)>,
+    gen_handles: Vec<std::thread::JoinHandle<crate::model::generator::GenResult>>,
+    rx: async_channel::Receiver<Batch>,
+    ctl: IngestCtl,
 }
 
 impl<'a> Ctx<'a> {
@@ -523,17 +631,32 @@ impl<'a> Ctx<'a> {
             let restarted = std::mem::take(&mut p.restarted);
             (p.health.clone(), p.proc.clone(), p.container.clone(), disk, p.reachable, restarted)
         };
+        let debt = health.as_ref().and_then(|h| debt_of(self.kind, h));
+        if debt.is_some() {
+            self.last_debt = debt;
+        }
+        let delayed_now = health.as_ref().and_then(|h| num(h.get("delayed_inserts")));
+        let throttled = match (self.prev_delayed, delayed_now) {
+            (Some(prev), Some(cur)) if cur > prev => (cur - prev) as u64,
+            _ => 0,
+        };
+        if delayed_now.is_some() {
+            self.prev_delayed = delayed_now;
+        }
+        let acked_pps = (acked - self.prev.acked) as f64 / dt;
         let last_acked_ts = self.acct.last_acked_ts_ms.load(Ordering::Relaxed);
         let visible_ts = self.shared.visible_ts.load(Ordering::Relaxed);
-        let visibility = if visible_ts > 0 && last_acked_ts > i64::MIN {
+        let visibility = if phase < PH_DRAIN && visible_ts > 0 && last_acked_ts > i64::MIN {
             let lag_s = ((last_acked_ts - visible_ts).max(0)) as f64 / 1000.0;
-            Some(Visibility { last_acked_ts, visible_ts, lag_sim_s: lag_s, points_behind: lag_s / (self.cat.interval_ms as f64 / 1000.0) * self.cat.len() as f64 })
+            let points_behind = lag_s / (self.cat.interval_ms as f64 / 1000.0) * self.cat.len() as f64;
+            Some(Visibility { last_acked_ts, visible_ts, lag_sim_s: lag_s, points_behind, lag_wall_s: if acked_pps > 0.0 { Some(points_behind / acked_pps) } else { None } })
         } else {
             None
         };
         let queries = std::mem::take(&mut *self.shared.pending_outcomes.lock().unwrap());
         let mut flags = Vec::new();
-        if phase == PH_INGEST && writer_idle_pct > 20.0 && gen_stall_pct < 5.0 {
+        let saturating = self.gen.rate_pps.load(Ordering::Relaxed) == 0;
+        if phase == PH_INGEST && saturating && writer_idle_pct > 20.0 && gen_stall_pct < 5.0 {
             flags.push("generator_starved".to_string());
             self.starved_windows += 1;
         }
@@ -546,7 +669,7 @@ impl<'a> Ctx<'a> {
             phase: phase_name(phase).into(),
             acked_points: acked - self.prev.acked,
             acked_total: acked,
-            acked_pps: (acked - self.prev.acked) as f64 / dt,
+            acked_pps,
             produced_pps: (produced - self.prev.produced) as f64 / dt,
             write_ms: Pct { p50: pct(0.5), p95: pct(0.95), p99: pct(0.99), max: hist.max() as f64 / 1000.0 },
             inflight: self.acct.inflight.load(Ordering::Relaxed),
@@ -560,6 +683,8 @@ impl<'a> Ctx<'a> {
             maintenance: self.acct.take_maintenance(),
             visibility,
             queries,
+            debt,
+            throttled,
             health,
             proc,
             container,
@@ -585,18 +710,231 @@ impl<'a> Ctx<'a> {
         self.report.throughput.plateau_pps = self.verdict.plateau_pps;
         self.report.throughput.acked_points = acked;
         self.report.throughput.points_lost = failed;
-        self.report.throughput.overall_pps = acked as f64 / self.t0.elapsed().as_secs_f64().max(0.001);
+        self.update_throughput(acked);
         self.report.throughput.starved_windows = self.starved_windows;
         self.report.throughput.bench_bottleneck_suspected = self.ingest_windows >= 10 && self.starved_windows as f64 > 0.1 * self.ingest_windows as f64;
+        self.report.throughput.debt_end = self.last_debt;
         self.report.queries_during_ingest = aggregate_queries(&self.shared.all_outcomes.lock().unwrap());
         if let Err(e) = self.report.write_atomic(&self.cli.out) {
             log(format!("report: write failed: {e}"));
         }
     }
 
+    fn update_throughput(&mut self, acked: u64) {
+        let first = self.acct.first_ack.lock().unwrap().unwrap_or(self.t0);
+        let last = self.acct.last_ack.lock().unwrap().unwrap_or_else(Instant::now);
+        let wall = last.duration_since(first).as_secs_f64();
+        self.report.throughput.ingest_wall_s = wall;
+        self.report.throughput.overall_pps = if wall > 0.0 { acked as f64 / wall } else { 0.0 };
+        if let Some((t_fill, acked_at_start)) = self.fill_start {
+            let fill_points = acked.saturating_sub(acked_at_start);
+            let fill_wall = last.max(t_fill).duration_since(t_fill).as_secs_f64();
+            self.report.throughput.fill_points = fill_points;
+            self.report.throughput.fill_wall_s = fill_wall;
+            self.report.throughput.fill_pps = if fill_wall > 0.0 { fill_points as f64 / fill_wall } else { 0.0 };
+            let fill_windows: Vec<f64> = self.report.timeline.iter().filter(|w| w.phase == "ingest" && w.acked_points > 0).map(|w| w.acked_pps).collect();
+            if !fill_windows.is_empty() {
+                let q = (fill_windows.len() / 4).max(1);
+                let tail = &fill_windows[fill_windows.len() - q..];
+                self.report.throughput.late_pps = tail.iter().sum::<f64>() / tail.len() as f64;
+            }
+        }
+    }
+
     fn finalize_throughput(&mut self) {
-        let ingest_s = self.report.phases.ingest_s.max(1) as f64;
-        self.report.throughput.overall_pps = self.report.throughput.acked_points as f64 / ingest_s;
+        let acked = self.acct.acked.load(Ordering::Relaxed);
+        self.update_throughput(acked);
+    }
+
+    /// One reporting window; true when the ingest loop must end (drained, or
+    /// the drain timed out after a stop).
+    async fn tick(&mut self) -> bool {
+        self.ctl.interval.tick().await;
+        let elapsed = self.t0.elapsed();
+        if self.shared.phase() == PH_WARMUP && elapsed >= self.cli.warmup {
+            self.shared.set_phase(PH_INGEST);
+        }
+        self.record_window();
+        let gens_done = self.gen_handles.iter().all(|h| h.is_finished());
+        let drained = gens_done && self.rx.is_empty() && self.acct.inflight.load(Ordering::Relaxed) == 0;
+        if drained {
+            if matches!(self.report.verdict.stopped_reason.as_str(), "running" | "setup") {
+                self.report.verdict.stopped_reason = "completed".into();
+            }
+            return true;
+        }
+        if let (Some(at), None) = (self.verdict.verdict.unusable_at_s, self.ctl.unusable_since) {
+            self.ctl.unusable_since = Some(at);
+            log(format!("verdict: unusable at t={at}s ({}), continuing for the grace period", self.verdict.verdict.unusable_reason.clone().unwrap_or_default()));
+        }
+        if !self.ctl.stopping {
+            let reason = if self.shared.interrupted.load(Ordering::Relaxed) {
+                Some("interrupted")
+            } else if elapsed >= self.cli.max_ingest {
+                self.report.throughput.hit_max_ingest = true;
+                Some("wall_deadline")
+            } else if self.ctl.unusable_since.map(|u| elapsed.as_secs().saturating_sub(u) >= self.cli.unusable_grace.as_secs()).unwrap_or(false) {
+                Some("unusable")
+            } else {
+                None
+            };
+            if let Some(r) = reason {
+                log(format!("ingest: stopping ({r})"));
+                self.report.verdict.stopped_reason = r.into();
+                self.gen.stop.store(true, Ordering::Relaxed);
+                self.ctl.stopping = true;
+                self.ctl.stop_started = Some(Instant::now());
+            }
+        } else if self.ctl.stop_started.map(|s| s.elapsed() > self.cli.drain_timeout).unwrap_or(false) {
+            log("ingest: drain timeout, writers still busy; moving on");
+            self.report.notes.push("drain timed out: writers were still busy when ingest was abandoned".into());
+            return true;
+        }
+        false
+    }
+
+    async fn run_until_done(&mut self) {
+        while !self.tick().await {}
+    }
+
+    async fn ramp_step(&mut self, rate: u64) -> (RampStep, bool) {
+        self.gen.set_rate(rate, self.batch_points);
+        let start_idx = self.report.timeline.len();
+        let start_t_s = self.t0.elapsed().as_secs();
+        let t_start = Instant::now();
+        let ticks = (self.cli.step.as_secs_f64() / self.cli.window.as_secs_f64().max(1.0)).round().max(1.0) as usize;
+        log(format!("ramp: step {}/s for {}s", fmt_count(rate as f64), self.cli.step.as_secs()));
+        let mut done = false;
+        for _ in 0..ticks {
+            if self.tick().await {
+                done = true;
+                break;
+            }
+        }
+        let step = self.evaluate_step(rate, start_idx, start_t_s, t_start.elapsed());
+        log(format!(
+            "ramp: {}/s achieved={}/s debt={}->{} lag={}s q95={}ms timeouts={} errors={} throttled={} passed={} {}",
+            fmt_count(rate as f64),
+            fmt_count(step.achieved_pps),
+            step.debt_first_half.map(|d| format!("{d:.0}")).unwrap_or_else(|| "-".into()),
+            step.debt_second_half.map(|d| format!("{d:.0}")).unwrap_or_else(|| "-".into()),
+            step.lag_wall_s.map(|d| format!("{d:.0}")).unwrap_or_else(|| "-".into()),
+            step.query_p95_ms.map(|d| format!("{d:.0}")).unwrap_or_else(|| "-".into()),
+            step.query_timeouts,
+            step.errors,
+            step.throttled,
+            step.passed,
+            step.reason
+        ));
+        (step, done)
+    }
+
+    fn evaluate_step(&self, rate: u64, start_idx: usize, start_t_s: u64, took: Duration) -> RampStep {
+        let all = &self.report.timeline[start_idx.min(self.report.timeline.len())..];
+        // A window records the 10 s that ended at its t_s, so the window ending
+        // exactly ramp_in after the step start is the first one fully past it.
+        let ws: Vec<&Window> = all.iter().filter(|w| w.t_s >= start_t_s + self.cli.ramp_in.as_secs() + self.cli.window.as_secs()).collect();
+        let mut step = RampStep { rate_pps: rate, step_s: took.as_secs(), windows: ws.len(), ..Default::default() };
+        if ws.is_empty() {
+            step.reason = "no windows after ramp-in; step too short to judge".into();
+            return step;
+        }
+        step.achieved_pps = ws.iter().map(|w| w.acked_pps).sum::<f64>() / ws.len() as f64;
+        let half = ws.len() / 2;
+        step.debt_first_half = debt_floor(ws[..half].iter().filter_map(|w| w.debt));
+        step.debt_second_half = debt_floor(ws[half..].iter().filter_map(|w| w.debt));
+        step.lag_wall_s = ws.iter().rev().find_map(|w| w.visibility.as_ref().and_then(|v| v.lag_wall_s));
+        let mut q_ms: Vec<f64> = ws.iter().flat_map(|w| w.queries.iter()).filter(|q| q.status != QueryStatus::Error).map(|q| q.ms).collect();
+        q_ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        step.query_p95_ms = if q_ms.is_empty() { None } else { Some(q_ms[((q_ms.len() as f64 - 1.0) * 0.95).round() as usize]) };
+        step.query_timeouts = ws.iter().flat_map(|w| w.queries.iter()).filter(|q| q.status == QueryStatus::Timeout).count() as u64;
+        step.errors = ws.iter().map(|w| w.errors).sum();
+        step.points_lost = ws.iter().map(|w| w.points_lost).sum();
+        step.throttled = ws.iter().map(|w| w.throttled).sum();
+
+        let want = rate as f64;
+        let (passed, reason) = if ws.len() < 2 {
+            (false, format!("only {} window after ramp-in; step too short to judge", ws.len()))
+        } else if step.achieved_pps < 0.9 * want {
+            (false, format!("accepted only {:.0}% of the offered rate", step.achieved_pps / want * 100.0))
+        } else if step.points_lost > 0 || step.errors > 0 {
+            (false, format!("{} write errors, {} points lost", step.errors, step.points_lost))
+        } else if step.throttled > 0 {
+            (false, format!("store throttled {} writes", step.throttled))
+        } else if matches!((step.debt_first_half, step.debt_second_half), (Some(a), Some(b)) if a > 0.0 && b > self.cli.debt_growth * a) {
+            (false, format!("{} grew {:.0} -> {:.0} within the step", self.report.debt_metric, step.debt_first_half.unwrap(), step.debt_second_half.unwrap()))
+        } else if step.lag_wall_s.map(|l| l > self.cli.lag_threshold.as_secs_f64()).unwrap_or(false) {
+            (false, format!("visibility lag {:.0}s of ingest", step.lag_wall_s.unwrap()))
+        } else if step.query_timeouts > 0 {
+            (false, format!("{} query timeouts", step.query_timeouts))
+        } else if step.query_p95_ms.map(|p| p > self.cli.query_slow_ms as f64).unwrap_or(false) {
+            (false, format!("query p95 {:.0}ms over the threshold", step.query_p95_ms.unwrap()))
+        } else {
+            (true, String::new())
+        };
+        step.passed = passed;
+        step.reason = reason;
+        step
+    }
+
+    async fn run_ramp(&mut self) -> RampReport {
+        let ladder = self.cli.ramp_ladder().unwrap_or_else(|_| vec![250_000]);
+        let mut rep = RampReport { ladder: ladder.clone(), step_s: self.cli.step.as_secs(), ramp_in_s: self.cli.ramp_in.as_secs(), ..Default::default() };
+        let mut last_pass: Option<u64> = None;
+        let mut first_fail: Option<u64> = None;
+        for &rate in &ladder {
+            let (step, aborted) = self.ramp_step(rate).await;
+            let passed = step.passed;
+            rep.steps.push(step);
+            if aborted {
+                rep.aborted = true;
+                break;
+            }
+            if passed {
+                last_pass = Some(rate);
+            } else {
+                first_fail = Some(rate);
+                break;
+            }
+        }
+        if !rep.aborted {
+            for _ in 0..self.cli.ramp_bisect {
+                let (lp, ff) = match (last_pass, first_fail) {
+                    (Some(lp), Some(ff)) if ff as f64 > lp as f64 * 1.15 => (lp, ff),
+                    _ => break,
+                };
+                let mid = ((lp as f64) * (ff as f64)).sqrt() as u64;
+                let (step, aborted) = self.ramp_step(mid).await;
+                let passed = step.passed;
+                rep.steps.push(step);
+                if aborted {
+                    rep.aborted = true;
+                    break;
+                }
+                if passed {
+                    last_pass = Some(mid);
+                } else {
+                    first_fail = Some(mid);
+                }
+            }
+        }
+        rep.sustainable_pps = last_pass.map(|r| r as f64);
+        rep.fill_rate_pps = match (last_pass, first_fail) {
+            (Some(lp), Some(_)) => (lp as f64 * self.cli.fill_fraction) as u64,
+            (Some(_), None) => {
+                rep.note = "every ramp step passed; the fill runs at saturation, so the sustainable rate is a lower bound".into();
+                0
+            }
+            (None, _) => {
+                rep.note = "no ramp step passed; the fill runs at half the lowest rate".into();
+                (ladder[0] / 2).max(1)
+            }
+        };
+        if !rep.note.is_empty() {
+            log(format!("ramp: {}", rep.note));
+            self.report.notes.push(rep.note.clone());
+        }
+        rep
     }
 
     async fn tick_until<F: Future>(&mut self, fut: F) -> F::Output {
@@ -766,4 +1104,3 @@ async fn cold_phase(sink: Arc<dyn Sink>, cli: &Cli, params: Arc<QueryParams>, si
     }
     Ok(out)
 }
-

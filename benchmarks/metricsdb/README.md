@@ -45,10 +45,23 @@ DuckDB has no container. It runs inside the bench process with
 | Database | Image | Write path | One ack means | Settle step | Disk measure |
 |---|---|---|---|---|---|
 | VictoriaMetrics | `victoriametrics/victoria-metrics:v1.150.0` | Prometheus remote write (protobuf + snappy) to `/api/v1/write`, 20k samples per request, 8 writers | 204: in an in-memory part, flushed within about 1 s | `/internal/force_flush`, `/internal/force_merge`, wait until `vm_active_merges == 0` and `vm_data_size_bytes` is stable | `du` of the storage dir |
-| ClickHouse | `clickhouse/clickhouse-server:26.3.22-alpine` | RowBinary inserts of 500k rows over HTTP, 4 connections, `async_insert=0` | 200: the part is on disk | poll until no merges and the part count is stable twice; never `OPTIMIZE FINAL` | `du` and `sum(bytes_on_disk)` both reported |
+| ClickHouse | `clickhouse/clickhouse-server:26.3.22-alpine` | RowBinary inserts of 500k rows over HTTP, 4 connections, `async_insert=0` | 200: the part is on disk | poll until no merges, the part count is stable twice and no merged-away part is left (`old_parts_lifetime = 30` on the table); never `OPTIMIZE FINAL` | `du` and `sum(bytes_on_disk)` both reported |
 | clickhouse-map (optional) | same | same client, 200k rows into the current `metric_points` shape (tags as a Map, no codecs) | same | same | same |
-| DuckDB | `libduckdb` 1.5.5 in-process (`bench/duckdb-version.txt`) | Arrow appender on batches of 1M rows sorted by `(series_id, ts)`, 1 writer | appender flush returned: in the WAL and visible | `CHECKPOINT`, assert the WAL is empty | `.duckdb` plus `.wal` |
-| Firebolt Core | `ghcr.io/firebolt-db/engine:dev` (`db/firebolt/image.txt`; the resolved digest is recorded in every result) | Parquet in memory, multipart `INSERT ... FROM READ_PARQUET('upload://batch')`, 1M rows, 2 writers; `VACUUM` every 20 inserts or above 50 tablets, timed as maintenance because Core has no auto-vacuum | INSERT returned: tablet committed | `VACUUM` until the tablet count stops shrinking | `du` of `/var/lib/firebolt` |
+| DuckDB | `libduckdb` 1.5.5 in-process (`bench/duckdb-version.txt`) | Arrow appender on batches of 4M rows sorted by `(series_id, ts)`, 1 writer | appender flush returned: in the WAL and visible | `CHECKPOINT`, assert the WAL is empty | `.duckdb` plus `.wal` |
+| Firebolt Core | `ghcr.io/firebolt-db/engine:dev` (`db/firebolt/image.txt`; the resolved digest is recorded in every result) | Parquet in memory, multipart `INSERT ... FROM READ_PARQUET('upload://batch')`, 1M rows, 2 writers; `VACUUM` every 20 inserts or above 50 tablets, timed as maintenance because Core has no auto-vacuum; tables created `WITH (compression = ZSTD, compression_level = 3)` | INSERT returned: tablet committed | `VACUUM` until the tablet count stops shrinking | `du` of `/var/lib/firebolt` and the live `compressed_bytes` from `information_schema.tables`; vacuumed tablets stay on disk until Core's own garbage collection runs |
+
+After every store's settle step the bench keeps re-walking the data dir
+until it has stopped shrinking (up to 3 minutes), because merged-away parts
+and vacuumed tablets are deleted asynchronously. `summary.md` shows both the
+data-dir size and the store-reported live size; a gap is index, metadata and
+uncollected garbage.
+
+Codecs were chosen by measurement, not habit. On this corpus timestamps and
+series ids compress to under 1% of the bytes; the value column is
+everything. ClickHouse `Delta(8), ZSTD(3)` on `value` beats `Gorilla` by a
+third (52 MB vs 81 MB for 20M points; ZSTD(6)/(9) buy 3-4% more for 2-3x the
+CPU). Firebolt ZSTD level 3 beats its LZ4 default by 39%. DuckDB picks ALP
+for doubles itself and gains 7% from 4M-row appends over 1M.
 
 Every SQL store gets the same normalized model: a `series` dimension table
 loaded once before ingest (timed, excluded from throughput) and a narrow
@@ -70,6 +83,43 @@ is `toDateTime64(..., 'UTC')`, so a host timezone can never shift a window. `par
 left at their defaults on purpose: "too many parts" is a legitimate
 fell-behind signal. VictoriaMetrics gets its series caps disabled and a 100y
 retention because the corpus carries simulated timestamps.
+
+## How the sustainable rate is found
+
+Acknowledged writes per second is not throughput for a store that can defer
+work: ClickHouse defers merges, VictoriaMetrics defers merging small parts,
+DuckDB defers checkpoints, Firebolt defers vacuum and garbage collection.
+Every insert returns 200 while the backlog grows, until queries slow down or
+inserts get throttled. Three things in the bench make that visible.
+
+1. **Deferred work is tracked every window** as a per-store "debt":
+   ClickHouse active parts, VictoriaMetrics small plus in-memory parts,
+   DuckDB WAL bytes, Firebolt tablets. During the fill, a trailing 10 minute
+   mean more than 30% above the previous 10 minutes for a full minute, or any
+   throttled write (ClickHouse `DelayedInserts`), is a fell-behind verdict
+   (`--debt-window`, `--debt-growth`).
+2. **Digest time is charged to throughput.** `amortized_pps = fill points /
+   (fill wall time + digest time)`, where digest is the settle step plus the
+   wait for merged-away data to be deleted. A store that acknowledges 10B
+   points in two hours and then merges for ninety minutes is scored on three
+   and a half hours.
+3. **`--mode ramp-then-fill` (the default)** runs fixed-rate steps
+   (`--ramp-rates 250k,500k,1M,2M,4M,8M`, `--step 8m`, first `--ramp-in 60s`
+   excluded). A step passes when the store accepts at least 90% of the
+   offered rate, its debt does not grow across the step's two halves, the
+   visibility lag stays under `--lag-threshold`, routine queries stay under
+   `--query-slow-ms` with no timeouts, and nothing is throttled or lost. The
+   highest passing rate is `sustainable_pps`; one geometric bisection narrows
+   the gap (`--ramp-bisect`); the fill then runs at `--fill-fraction` (0.9)
+   of it with the debt rule armed, because merge cost per row grows with
+   table size and a rate that held at 500M points can fail at 8B. If every
+   step passes the fill runs at saturation and the sustainable rate is
+   reported as a lower bound; if none passes the fill runs at half the lowest
+   rate. `--mode saturate` is the old behaviour (unbounded offered load) and
+   `--mode ramp` stops after the ladder.
+
+On ccx33 the default ladder plus bisection takes about an hour before the
+fill starts, which leaves roughly 2.5 h of fill inside the 225 minute cap.
 
 ## What is measured
 
@@ -202,8 +252,11 @@ layer still leaves data.
 | `MAX_MINUTES` | `225` | Ingest wall-clock cap. |
 | `MAX_SETTLE_MINUTES`, `MAX_COLD_MINUTES` | `30`, `30` | Caps on the settle and cold phases (env only). |
 | `QUERY_THRESHOLD_MS` | `5000` | Query p95 that counts as fallen behind. |
+| `MODE` / `mode` | `ramp-then-fill` | `saturate` or `ramp` as described above. |
+| `RAMP_RATES` / `ramp_rates` | `250k,500k,1M,2M,4M,8M` | Ramp ladder, strictly increasing. |
+| `RAMP_STEP_SECONDS` / `step_seconds` | `480` | Seconds per ramp step; `RAMP_IN_SECONDS` (60) and `RAMP_BISECT` (1) are env only. |
 | `WRITERS`, `BATCH_SIZE` | per database | Override the write concurrency and points per write. |
-| `SMOKE` | `0` | `1` = 20M points, 10k series, 5 min ingest, 1 min settle, 2 min cold. |
+| `SMOKE` | `0` | `1` = 150M points, 10k series, ladder 500k,1M,2M with 30 s steps and no bisection, 5 min ingest cap, 1 min settle, 2 min cold. |
 | `FB_STAGE` | `upload` | `s3` stages Firebolt batches through a loopback MinIO (`db/firebolt/minio-up.sh`), the fallback if `upload://` does not work on Core. Env only. |
 | `OUT_DIR` | `results-local/` locally, `$RUNNER_TEMP/metricsdb-results` in CI | Where `<tier>-<db>.json` and `logs/` land. |
 | `EXTRA_ARGS` / `extra_args` | empty | Extra `metricsdb-bench` flags appended verbatim, for example `--gen-threads 4` after a bench-limited run, `--rate 500000` for a fixed-rate stability run, or `--warmup 15s --query-interval 5s` for a short local run. |

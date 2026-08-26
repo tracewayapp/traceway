@@ -21,6 +21,9 @@ pub struct VerdictCfg {
     pub query_slow_ms: f64,
     pub write_err_ratio: f64,
     pub interval_s: f64,
+    pub debt_windows: usize,
+    pub debt_growth: f64,
+    pub debt_metric: String,
 }
 
 pub struct VerdictState {
@@ -32,6 +35,8 @@ pub struct VerdictState {
     recent_pps: VecDeque<f64>,
     post_warmup_windows: u32,
     lags: VecDeque<f64>,
+    debts: VecDeque<Option<f64>>,
+    debt_streak: u32,
     pub plateau_pps: f64,
     pub verdict: Verdict,
 }
@@ -47,6 +52,8 @@ impl VerdictState {
             recent_pps: VecDeque::new(),
             post_warmup_windows: 0,
             lags: VecDeque::new(),
+            debts: VecDeque::new(),
+            debt_streak: 0,
             plateau_pps: 0.0,
             verdict: Verdict { stopped_reason: "running".into(), ..Default::default() },
         }
@@ -90,6 +97,39 @@ impl VerdictState {
         let err_ratio = if total > 0 { w.errors as f64 / total as f64 } else { 0.0 };
         if err_ratio > self.cfg.write_err_ratio || (w.batches > 0 && w.retries > w.batches) {
             behind.get_or_insert(format!("write error ratio {:.1}% (retries {})", err_ratio * 100.0, w.retries));
+        }
+        // Deferred work that keeps piling up is the LSM way of falling behind:
+        // every insert still returns 200 while merges, checkpoints or vacuums
+        // slip further behind. Compare the two halves of the trailing window
+        // and require the growth to hold for a full minute.
+        self.debts.push_back(w.debt);
+        if self.debts.len() > self.cfg.debt_windows.max(2) {
+            self.debts.pop_front();
+        }
+        if self.debts.len() == self.cfg.debt_windows.max(2) {
+            let half = self.debts.len() / 2;
+            let floor = |it: &mut dyn Iterator<Item = &Option<f64>>| {
+                let mut v: Vec<f64> = it.filter_map(|d| *d).collect();
+                if v.is_empty() {
+                    return None;
+                }
+                v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                Some(v[(v.len() - 1) / 4])
+            };
+            let m1 = floor(&mut self.debts.iter().take(half));
+            let m2 = floor(&mut self.debts.iter().skip(half));
+            match (m1, m2) {
+                (Some(a), Some(b)) if a > 0.0 && b > self.cfg.debt_growth * a => {
+                    self.debt_streak += 1;
+                    if self.debt_streak >= 6 {
+                        behind.get_or_insert(format!("merge debt growing: {} floor {a:.0} -> {b:.0} over the trailing window", self.cfg.debt_metric));
+                    }
+                }
+                _ => self.debt_streak = 0,
+            }
+        }
+        if w.throttled > 0 {
+            behind.get_or_insert(format!("store throttled {} writes (too many parts)", w.throttled));
         }
 
         let mut unusable: Option<String> = None;

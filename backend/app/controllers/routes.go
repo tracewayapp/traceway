@@ -227,6 +227,7 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.GET("/password-reset/:token", middleware.RateLimitPerIP(30, time.Minute), PasswordResetController.ValidateToken)
 	router.POST("/password-reset/:token", middleware.RateLimitPerIP(10, time.Minute), middleware.BufferAuthBody, middleware.Transactional, PasswordResetController.ResetPassword)
 
+	router.POST("/organizations", middleware.UseAppAuth, middleware.Transactional, OrganizationController.Create)
 	router.GET("/organizations/:organizationId/settings", middleware.UseAppAuth, middleware.RequireAdminAccess, OrganizationController.GetSettings)
 	router.PUT("/organizations/:organizationId/settings", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, OrganizationController.UpdateSettings)
 	router.GET("/organizations/:organizationId/members", middleware.UseAppAuth, middleware.RequireAdminAccess, OrganizationController.GetMembers)

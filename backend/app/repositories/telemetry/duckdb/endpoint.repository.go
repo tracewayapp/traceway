@@ -823,27 +823,29 @@ func sortEndpointStats(stats []models.EndpointStats, orderBy string, sortDirecti
 	desc := sortDirection != "asc"
 
 	sort.Slice(stats, func(i, j int) bool {
-		var less bool
+		// Descending is the ascending comparison with the operands swapped.
+		// Negating the ascending result instead would return true for both
+		// (i, j) and (j, i) whenever two rows tie, which is not the strict
+		// weak ordering sort.Slice documents a requirement for.
+		if desc {
+			i, j = j, i
+		}
 		switch orderBy {
 		case "count":
-			less = stats[i].Count < stats[j].Count
+			return stats[i].Count < stats[j].Count
 		case "p50_duration":
-			less = stats[i].P50Duration < stats[j].P50Duration
+			return stats[i].P50Duration < stats[j].P50Duration
 		case "p95_duration":
-			less = stats[i].P95Duration < stats[j].P95Duration
+			return stats[i].P95Duration < stats[j].P95Duration
 		case "p99_duration":
-			less = stats[i].P99Duration < stats[j].P99Duration
+			return stats[i].P99Duration < stats[j].P99Duration
 		case "avg_duration":
-			less = stats[i].AvgDuration < stats[j].AvgDuration
+			return stats[i].AvgDuration < stats[j].AvgDuration
 		case "last_seen":
-			less = stats[i].LastSeen.Before(stats[j].LastSeen)
+			return stats[i].LastSeen.Before(stats[j].LastSeen)
 		default:
-			less = stats[i].Impact < stats[j].Impact
+			return stats[i].Impact < stats[j].Impact
 		}
-		if desc {
-			return !less
-		}
-		return less
 	})
 }
 

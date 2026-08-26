@@ -102,16 +102,14 @@ export FIREBOLT_MEM_LIMIT="${FIREBOLT_MEM_LIMIT:-4g}"
 
 CH_ASYNC_INSERT_VAL="${CH_ASYNC_INSERT:-0}"
 echo "bringing up compose stack (mode=${MODE}, CH_ASYNC_INSERT=${CH_ASYNC_INSERT_VAL}) on ${SUT_IP}" >&2
-if ! bench_ssh "${SUT_IP}" "cd /opt/traceway && BENCH_PORT=80 CH_ASYNC_INSERT=${CH_ASYNC_INSERT_VAL} FIREBOLT_MEM_LIMIT=${FIREBOLT_MEM_LIMIT} docker compose ${compose_args[*]} up -d --build"; then
-    # The box is deleted on teardown, so dump the container state and logs
-    # into the CI log — otherwise a crash-looping service is undiagnosable.
-    echo "--- compose up failed; container state and logs ---" >&2
-    bench_ssh "${SUT_IP}" "cd /opt/traceway && docker compose ${compose_args[*]} ps -a; docker compose ${compose_args[*]} logs --tail 80" >&2 || true
-    exit 1
-fi
+# Detached: the build has multi-minute silent phases during which flaky
+# SUT hosts have dropped the ssh channel (exit 255), killing the build with
+# it. nohup survives the disconnect; the /health poll below (plain curl,
+# no ssh) is the completion signal, and the timeout path dumps the log.
+bench_ssh "${SUT_IP}" "cd /opt/traceway && nohup env BENCH_PORT=80 CH_ASYNC_INSERT=${CH_ASYNC_INSERT_VAL} FIREBOLT_MEM_LIMIT=${FIREBOLT_MEM_LIMIT} docker compose ${compose_args[*]} up -d --build > /tmp/compose-up.log 2>&1 & echo build-started"
 
 echo "polling /health on ${SUT_IP}" >&2
-deadline=$(( $(date +%s) + 600 ))   # cold compose build can hit 10 min on small tiers
+deadline=$(( $(date +%s) + 900 ))   # cold compose build can hit 10+ min on small tiers
 while [[ $(date +%s) -lt ${deadline} ]]; do
     if curl -sf --max-time 5 "http://${SUT_IP}/health" >/dev/null 2>&1; then
         echo "SUT ${SUT_IP} healthy (mode=${MODE})" >&2
@@ -120,5 +118,5 @@ while [[ $(date +%s) -lt ${deadline} ]]; do
     sleep 5
 done
 echo "SUT ${SUT_IP} never reported healthy" >&2
-bench_ssh "${SUT_IP}" "cd /opt/traceway && docker compose -f benchmarks/compose/docker-compose.${MODE}.yml logs --tail=80" >&2 || true
+bench_ssh "${SUT_IP}" "tail -40 /tmp/compose-up.log; cd /opt/traceway && docker compose -f benchmarks/compose/docker-compose.${MODE}.yml ps -a; docker compose -f benchmarks/compose/docker-compose.${MODE}.yml logs --tail=80" >&2 || true
 exit 1

@@ -146,7 +146,7 @@ jobs:
       EXTRA_ARGS: ${{ github.event.inputs.extra_args }}
       SMOKE: ${{ github.event.inputs.smoke == 'true' && '1' || '0' }}
       ARTIFACT_DIR: ${{ github.workspace }}/benchmarks/metricsdb/_artifact
-      OUT_DIR: ${{ runner.temp }}/metricsdb-results
+      OUT_DIR: ${{ github.workspace }}/benchmarks/metricsdb/_results
     steps:
       - uses: actions/checkout@v4
 
@@ -181,7 +181,7 @@ jobs:
         if: always()
         with:
           name: metricsdb-result-${{ github.event.inputs.tier }}-${{ matrix.db }}
-          path: ${{ runner.temp }}/metricsdb-results/
+          path: benchmarks/metricsdb/_results/
           if-no-files-found: warn
 
       - name: Delete leftover server

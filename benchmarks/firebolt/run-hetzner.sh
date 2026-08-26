@@ -48,6 +48,9 @@ bench_ssh "${IP}" 'bash -s' <<REMOTE
 set -euo pipefail
 command -v docker >/dev/null 2>&1 || curl -fsSL https://get.docker.com | sh
 mkdir -p /root/firebolt-data /root/results
+# The engine image runs as uid:gid 3473:3473 (recent dev builds); a
+# root-owned bind mount is unwritable for it and the server exits at boot.
+chown -R 3473:3473 /root/firebolt-data
 cat > /root/firebolt-config.yaml <<'CFG'
 schema_version: "1.0"
 engine:

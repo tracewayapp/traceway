@@ -135,20 +135,21 @@ jobs:
             go-${{ runner.os }}-duckdb-${{ hashFiles('backend/go.sum') }}-
             go-${{ runner.os }}-duckdb-
 
-      # Load-bearing, not redundant with the tests below: the test scope covers
-      # two package trees, so this is what compiles every other package under
-      # this tag.
+      # Retained even though the ./... test scope below compiles every package
+      # too: this fails fast with a plain build error before any test binary is
+      # linked, which is a clearer signal than a compile failure attributed to
+      # a test package.
       - name: Build
         run: go build -tags telemetry_duckdb ./...
 
       # The DuckDB harness opens an in-memory database, so no service
-      # containers are needed. app/retention is included because
-      # log_cap_duckdb_test.go is `//go:build telemetry_duckdb` and would
-      # otherwise run in no job at all -- the untagged job compiles it out.
-      # The scope is deliberately not ./... : three packages fail under this
-      # tag today, which is a separate problem from this workflow.
+      # containers are needed. The scope is ./... so that test files gated on
+      # this tag run somewhere at all -- app/retention/log_cap_duckdb_test.go
+      # and the telemetry_duckdb repository harness are compiled out of the
+      # untagged job, and app/controllers is where the missing !telemetry_duckdb
+      # constraint this commit fixes went unnoticed under the narrower scope.
       - name: Test
-        run: go test -tags telemetry_duckdb -count=1 ./app/repositories/... ./app/retention/...
+        run: go test -tags telemetry_duckdb -count=1 ./...
 
   pgch:
     name: Test (PostgreSQL + ClickHouse)

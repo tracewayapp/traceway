@@ -1,0 +1,80 @@
+name: benchmark-firebolt-direct
+
+# Direct-engine breaking-point suite (benchmarks/firebolt/run-hetzner.sh):
+# tuned + untuned Firebolt vs ClickHouse on one dedicated Hetzner box, with
+# working io_uring (Linux), VACUUM, and the admission-controller A/B cell.
+# Uses the same repository secrets as benchmark-hardware, so no local token
+# is needed. NOTE: this file must exist on the default branch before it can
+# be dispatched; pick the feature branch in the run dropdown to execute that
+# branch's scripts.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: 'Hetzner tier for the single engine box (ccx33=8c/32G recommended; ccx43=16c/64G for deeper fills)'
+        required: true
+        default: 'ccx33'
+      location:
+        description: 'Hetzner datacenter (nbg1, fsn1, hel1, ash, hil)'
+        required: true
+        default: 'nbg1'
+      smoke:
+        description: 'Smoke run: 1M-row fills, short steps (~20 min) to validate the pipeline before the full suite'
+        required: true
+        type: boolean
+        default: false
+      firebolt_image:
+        description: 'Engine image override'
+        required: false
+        default: ''
+
+concurrency:
+  group: benchmark-firebolt-direct
+  cancel-in-progress: false
+
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install hcloud CLI
+        run: |
+          curl -fsSL https://github.com/hetznercloud/cli/releases/download/v1.50.0/hcloud-linux-amd64.tar.gz \
+            | sudo tar -xz -C /usr/local/bin hcloud
+
+      - name: Materialize SSH key
+        run: |
+          umask 077
+          key="$RUNNER_TEMP/benchmark-key"
+          printf '%s\n' "${{ secrets.BENCHMARK_SSH_PRIVATE_KEY }}" > "$key"
+          echo "BENCHMARK_SSH_KEY=$key" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: benchmarks/firebolt/go.mod
+
+      - name: Run direct-engine suite
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+          TIER: ${{ github.event.inputs.tier }}
+          LOCATION: ${{ github.event.inputs.location }}
+        run: |
+          if [[ "${{ github.event.inputs.smoke }}" == "true" ]]; then
+            export SMOKE=1
+          fi
+          if [[ -n "${{ github.event.inputs.firebolt_image }}" ]]; then
+            export FIREBOLT_IMAGE="${{ github.event.inputs.firebolt_image }}"
+          fi
+          ./benchmarks/firebolt/run-hetzner.sh
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firebolt-direct-results
+          path: benchmarks/results-firebolt-hetzner/
+          if-no-files-found: warn

@@ -8,6 +8,10 @@ ssh_opts=(
     -o UserKnownHostsFile=/dev/null
     -o LogLevel=ERROR
     -o ServerAliveInterval=30
+    # Tolerate ~5 min of unresponsiveness: the SUT's docker build has long
+    # silent phases and runner-side NAT blips were killing entries with
+    # exit 255 mid-build.
+    -o ServerAliveCountMax=10
     -o ConnectTimeout=15
 )
 

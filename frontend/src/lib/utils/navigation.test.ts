@@ -1,6 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+const goto = vi.hoisted(() => vi.fn());
+vi.mock('$app/navigation', () => ({ goto }));
 
 import { authenticatedLandingPath, defaultAuthenticatedPath } from './landing';
+import { gotoHref } from './navigation';
+
+describe('gotoHref', () => {
+	it('navigates to a bracketed path instead of throwing', async () => {
+		await gotoHref('/a[b]c?returnTo=1', { replaceState: true });
+
+		expect(goto).toHaveBeenCalledWith('/a[b]c?returnTo=1', { replaceState: true });
+	});
+});
 
 describe('defaultAuthenticatedPath', () => {
 	it('opens the first organization when it has multiple projects', () => {

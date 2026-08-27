@@ -18,7 +18,7 @@
 	import { authState } from '$lib/state/auth.svelte';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { themeState } from '$lib/state/theme.svelte';
-	import { consumeSsoReturnTo, safeLocalPath } from '$lib/utils/navigation';
+	import { consumeSsoReturnTo, gotoHref, safeLocalPath } from '$lib/utils/navigation';
 	import SetupProjectsStep from '$lib/components/setup/setup-projects-step.svelte';
 
 	let phase = $state<'organization' | 'projects'>('organization');
@@ -63,7 +63,7 @@
 			returnTo = safeLocalPath(consumeSsoReturnTo());
 
 			if (newOrgId === null) {
-				goto(returnTo);
+				gotoHref(returnTo);
 				return;
 			}
 			phase = 'projects';

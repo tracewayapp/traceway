@@ -196,6 +196,15 @@ jobs:
   build-docker:
     runs-on: ubuntu-latest
     needs: release
+    env:
+      # build-push-action v6+ generates a build summary and uploads a build
+      # record artifact per build. The summary is worth keeping -- all five
+      # builds below write cache-to: type=gha,mode=max, and it is the only
+      # place per-build cache-hit ratios show up without re-running a release.
+      # The records inherit the repo-wide artifact retention by default, so
+      # five of them accumulate per release; a week is long enough to debug
+      # the release that produced them.
+      DOCKER_BUILD_RECORD_RETENTION_DAYS: 7
     steps:
       - name: Checkout
         uses: actions/checkout@v4

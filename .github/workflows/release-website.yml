@@ -35,10 +35,10 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # The action bump is only about the Node 24 runtime. wrangler-action
-          # v4 also changed its default Wrangler CLI from 3 to 4, which is a
-          # separate migration on a production deploy path -- pinned here so
-          # this change moves one thing. Drop the pin to take Wrangler 4.
+          # wrangler-action v4 defaults to the Wrangler 4 CLI, a separate
+          # migration on a production deploy path. Pinned so this change is
+          # only the runtime move.
+          # Unpinning is tracked in #331.
           wranglerVersion: "3"
           workingDirectory: website
           command: deploy

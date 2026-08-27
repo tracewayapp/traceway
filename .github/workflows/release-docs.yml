@@ -35,8 +35,9 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # See release-website.yml: v4 defaults to the Wrangler 4 CLI, a
-          # separate migration. Pinned so this change is only the runtime move.
+          # wrangler-action v4 defaults to the Wrangler 4 CLI, a separate
+          # migration. Pinned so this change is only the runtime move.
+          # Unpinning is tracked in #331.
           wranglerVersion: "3"
           workingDirectory: docs
           command: deploy

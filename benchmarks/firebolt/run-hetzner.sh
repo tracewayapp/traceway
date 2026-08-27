@@ -31,7 +31,17 @@ cleanup() {
     echo "deleting ${SERVER_NAME}" >&2
     hcloud server delete "${SERVER_NAME}" >/dev/null 2>&1 || true
 }
-trap cleanup EXIT
+# INT/TERM included: a cancelled workflow kills the step with SIGTERM, which
+# does not run an EXIT-only trap — that is how a box leaks.
+trap cleanup EXIT INT TERM
+
+# Sweep leaks from previous cancelled runs: names are unique per run and the
+# workflow's concurrency group serializes runs, so any pre-existing
+# bench-fbdirect-* server is an orphan still billing.
+hcloud server list -o noheader -o columns=name 2>/dev/null | grep '^bench-fbdirect-' | while read -r leaked; do
+    echo "deleting leaked server ${leaked}" >&2
+    hcloud server delete "${leaked}" >/dev/null 2>&1 || true
+done
 
 echo "cross-compiling harness for linux/amd64" >&2
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o firebolt-bench-linux .

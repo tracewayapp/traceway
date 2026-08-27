@@ -94,7 +94,8 @@ else
 fi
 
 echo "running suite (SMOKE=${SMOKE})" >&2
-bench_ssh "${IP}" 'bash -s' <<REMOTE
+suite_script="$(mktemp)"
+cat > "${suite_script}" <<REMOTE
 set -uo pipefail   # deliberately no -e: a failed cell must not kill the suite
 cd /root
 run() { # label args...
@@ -103,13 +104,10 @@ run() { # label args...
     ./firebolt-bench "\$@" --report-out "/root/results/\${label}.json" || echo "=== \${label} FAILED (continuing) ==="
 }
 
-# Firebolt untuned: ramp + deep + concurrency
-for sig in spans metrics logs; do
-    fills="${FILL_STD}"; [ "\${sig}" = "logs" ] && fills="${FILL_LOGS}"
-    run "hetzner-firebolt-\${sig}-deep" --signal "\${sig}" --step-seconds ${STEP} --probe-runs ${RUNS} \
-        --cache-bust --probe-under-write --fill-levels "\${fills}"
-done
-run "hetzner-firebolt-spans-concurrency" --signal spans --reset=false --workers 16 \
+# Untuned deep cells are deliberately omitted: the untuned collapse is
+# fully documented from the local campaign, and its timeout-bound probes
+# at depth burn hours. Tuned is what the evaluation cares about.
+run "hetzner-firebolt-spans-fill-concurrency" --signal spans --fb-tuned --workers 16 \
     --batch-sizes 16384 --step-seconds ${STEP} --fill-levels 1 --cache-bust --probe-runs ${RUNS}
 
 # A/B: does the admission controller turn OOM-death into rejection under the
@@ -127,7 +125,7 @@ execution:
 CFG2
 docker restart firebolt >/dev/null
 for i in \$(seq 1 60); do curl -sf http://localhost:3473/health/ready >/dev/null && break; sleep 3; done
-run "hetzner-firebolt-spans-concurrency-admission" --signal spans --reset=false --workers 16 \
+run "hetzner-firebolt-spans-concurrency-admission" --signal spans --fb-tuned --workers 16 \
     --batch-sizes 16384 --step-seconds ${STEP} --fill-levels 1 --cache-bust --probe-runs ${RUNS}
 cp /root/firebolt-config.base.yaml /root/firebolt-config.yaml
 docker restart firebolt >/dev/null
@@ -151,10 +149,31 @@ run "hetzner-clickhouse-spans-concurrency" --dialect clickhouse --target http://
     --ch-password bench --signal spans --reset=false --workers 16 \
     --batch-sizes 16384 --step-seconds ${STEP} --fill-levels 1 --cache-bust --probe-runs ${RUNS}
 echo "SUITE DONE"
+touch /root/suite_done
 REMOTE
 
+# Detached execution + incremental result pulls: a cancelled workflow or a
+# dropped ssh session no longer loses completed cells, and the suite log
+# streams through short-lived sessions.
+bench_scp "${suite_script}" "root@${IP}:/root/suite.sh"
+bench_ssh "${IP}" "nohup bash /root/suite.sh > /root/suite.log 2>&1 & echo started"
 mkdir -p "${OUT}"
-bench_rsync "root@${IP}:/root/results/" "${OUT}/"
+streamed=0
+while true; do
+    sleep 60
+    bench_rsync "root@${IP}:/root/results/" "${OUT}/" 2>/dev/null || true
+    if out=$(bench_ssh "${IP}" "tail -n +$((streamed + 1)) /root/suite.log 2>/dev/null | head -100; test -f /root/suite_done && echo __SUITE_DONE__"); then
+        body=$(printf '%s\n' "${out}" | grep -v '^__SUITE_DONE__' || true)
+        if [[ -n "${body}" ]]; then
+            printf '%s\n' "${body}" >&2
+            streamed=$((streamed + $(printf '%s\n' "${body}" | wc -l | tr -d ' ')))
+        fi
+        if printf '%s\n' "${out}" | grep -q '^__SUITE_DONE__'; then
+            break
+        fi
+    fi
+done
+bench_rsync "root@${IP}:/root/results/" "${OUT}/" 2>/dev/null || true
 echo "results in ${OUT}/" >&2
 python3 summarize.py "${OUT}" > "${OUT}/summary.md" || true
 echo "wrote ${OUT}/summary.md" >&2

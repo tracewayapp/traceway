@@ -62,10 +62,5 @@ jobs:
       - name: Build
         run: npm run build
 
-      # `npm run lint` (prettier --check && eslint) is deliberately NOT run
-      # here yet: it fails on pre-existing code -- 10 files unformatted, and 10
-      # eslint errors across 5 files, mostly svelte/no-navigation-without-resolve
-      # plus three mutable Map/URLSearchParams in organization/overview-tab.svelte.
-      # Fixing those changes routing and reactivity behaviour, so it belongs in
-      # its own reviewed PR, not folded into CI plumbing. Add the step here once
-      # that lands.
+      - name: Lint
+        run: npm run lint

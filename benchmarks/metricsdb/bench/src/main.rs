@@ -99,7 +99,7 @@ fn debt_metric(kind: DbKind) -> &'static str {
         DbKind::Clickhouse | DbKind::ClickhouseMap => "active parts",
         DbKind::Victoriametrics => "small + in-memory parts",
         DbKind::Duckdb => "WAL MB above the checkpoint threshold",
-        DbKind::Firebolt => "tablets",
+        DbKind::Firebolt | DbKind::FireboltS3 => "tablets",
     }
 }
 
@@ -123,7 +123,7 @@ fn debt_of(kind: DbKind, h: &Value, wal_threshold: f64) -> Option<f64> {
         DbKind::Clickhouse | DbKind::ClickhouseMap => num(h.get("active_parts")),
         DbKind::Victoriametrics => Some(num(h.get("parts_small"))? + num(h.get("parts_inmemory"))?),
         DbKind::Duckdb => num(h.get("wal_bytes")).map(|b| (b - wal_threshold).max(0.0) / 1e6),
-        DbKind::Firebolt => num(h.get("number_of_tablets")),
+        DbKind::Firebolt | DbKind::FireboltS3 => num(h.get("number_of_tablets")),
     }
 }
 

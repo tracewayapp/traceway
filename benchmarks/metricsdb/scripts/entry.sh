@@ -6,7 +6,7 @@
 # source of truth for cell orchestration.
 #
 # Usage: entry.sh <db>
-#   <db>  victoriametrics | clickhouse | clickhouse-map | duckdb | firebolt
+#   <db>  victoriametrics | clickhouse | clickhouse-map | duckdb | firebolt | firebolt-s3
 #
 # Env (all optional):
 #   TIER LOCATION TARGET_POINTS SERIES INTERVAL_SECONDS MAX_MINUTES
@@ -30,9 +30,9 @@ source "${REPO_ROOT}/benchmarks/scripts/_ssh.sh"
 
 DB="$(printf '%s' "${1:-}" | xargs)"
 case "${DB}" in
-    victoriametrics|clickhouse|clickhouse-map|duckdb|firebolt) ;;
+    victoriametrics|clickhouse|clickhouse-map|duckdb|firebolt|firebolt-s3) ;;
     "") echo "usage: $0 <db>" >&2; exit 2 ;;
-    *) echo "unknown db '${DB}' (expected victoriametrics|clickhouse|clickhouse-map|duckdb|firebolt)" >&2; exit 2 ;;
+    *) echo "unknown db '${DB}' (expected victoriametrics|clickhouse|clickhouse-map|duckdb|firebolt|firebolt-s3)" >&2; exit 2 ;;
 esac
 DB_DIR="${DB%-map}"
 
@@ -141,7 +141,11 @@ eval "${db_env}"
 echo "db.env: ${db_env//$'\n'/ }" >&2
 
 fb_args=()
-if [[ "${DB}" == "firebolt" ]]; then
+if [[ "${DB}" == "firebolt-s3" ]]; then
+    # Disaggregated topology from up.sh: writes -> ingest engine, queries and
+    # VACUUM -> analytics engine, per-column codec schema.
+    fb_args+=(--fb-write-engine "${FB_WRITE_ENGINE}" --fb-query-engine "${FB_QUERY_ENGINE}"               --fb-maint-engine "${FB_MAINT_ENGINE}" --fb-schema codecs)
+elif [[ "${DB}" == "firebolt" ]]; then
     fb_args+=(--fb-stage "${FB_STAGE}")
     if [[ "${FB_STAGE}" == "s3" ]]; then
         s3_env="$(bench_ssh "${BOX_IP}" "cd /opt/bench && db/firebolt/minio-up.sh")"

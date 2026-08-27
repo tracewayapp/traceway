@@ -27,11 +27,12 @@ pub enum DbKind {
     ClickhouseMap,
     Duckdb,
     Firebolt,
+    FireboltS3,
 }
 
 impl DbKind {
     pub fn all() -> &'static [DbKind] {
-        &[DbKind::Victoriametrics, DbKind::Clickhouse, DbKind::ClickhouseMap, DbKind::Duckdb, DbKind::Firebolt]
+        &[DbKind::Victoriametrics, DbKind::Clickhouse, DbKind::ClickhouseMap, DbKind::Duckdb, DbKind::Firebolt, DbKind::FireboltS3]
     }
     pub fn name(self) -> &'static str {
         match self {
@@ -40,17 +41,20 @@ impl DbKind {
             DbKind::ClickhouseMap => "clickhouse-map",
             DbKind::Duckdb => "duckdb",
             DbKind::Firebolt => "firebolt",
+            DbKind::FireboltS3 => "firebolt-s3",
         }
     }
     pub fn family(self) -> &'static str {
         match self {
             DbKind::Clickhouse | DbKind::ClickhouseMap => "clickhouse",
+            DbKind::Firebolt | DbKind::FireboltS3 => "firebolt",
             other => other.name(),
         }
     }
     pub fn variant(self) -> &'static str {
         match self {
             DbKind::ClickhouseMap => "map",
+            DbKind::FireboltS3 => "s3-disaggregated",
             DbKind::Clickhouse | DbKind::Duckdb | DbKind::Firebolt => "normalized",
             DbKind::Victoriametrics => "native",
         }
@@ -61,6 +65,7 @@ impl DbKind {
             DbKind::Clickhouse | DbKind::ClickhouseMap => "http://127.0.0.1:8123",
             DbKind::Duckdb => "",
             DbKind::Firebolt => "http://127.0.0.1:3473",
+            DbKind::FireboltS3 => "http://127.0.0.1:3473",
         }
     }
     pub fn defaults(self) -> SinkDefaults {
@@ -70,6 +75,7 @@ impl DbKind {
             DbKind::ClickhouseMap => SinkDefaults { writers: 4, batch_points: 200_000 },
             DbKind::Duckdb => SinkDefaults { writers: 1, batch_points: 4_000_000 },
             DbKind::Firebolt => SinkDefaults { writers: 2, batch_points: 1_000_000 },
+            DbKind::FireboltS3 => SinkDefaults { writers: 2, batch_points: 1_000_000 },
         }
     }
 }
@@ -81,7 +87,7 @@ impl FromStr for DbKind {
             .iter()
             .copied()
             .find(|k| k.name() == s)
-            .ok_or_else(|| format!("unknown db '{s}', expected one of victoriametrics, clickhouse, clickhouse-map, duckdb, firebolt"))
+            .ok_or_else(|| format!("unknown db '{s}', expected one of victoriametrics, clickhouse, clickhouse-map, duckdb, firebolt, firebolt-s3"))
     }
 }
 
@@ -200,7 +206,7 @@ pub fn make_sink(cli: &crate::cli::Cli) -> anyhow::Result<Box<dyn Sink>> {
         #[cfg(feature = "duckdb")]
         DbKind::Duckdb => Ok(Box::new(duckdb::DuckSink::new(cli)?)),
         #[cfg(feature = "firebolt")]
-        DbKind::Firebolt => Ok(Box::new(firebolt::FireboltSink::new(url, cli)?)),
+        DbKind::Firebolt | DbKind::FireboltS3 => Ok(Box::new(firebolt::FireboltSink::new(url, cli)?)),
         #[allow(unreachable_patterns)]
         other => anyhow::bail!("this binary was built without support for {}", other.name()),
     }

@@ -16,9 +16,9 @@ err()  { printf 'FAIL: %s\n' "$*" >&2; fail=1; }
 
 DB="${1:-}"
 case "${DB}" in
-    victoriametrics|clickhouse|clickhouse-map|duckdb|firebolt) ;;
+    victoriametrics|clickhouse|clickhouse-map|duckdb|firebolt|firebolt-s3) ;;
     "") err "usage: preflight.sh <db>" ;;
-    *) err "unknown db '${DB}' (expected victoriametrics|clickhouse|clickhouse-map|duckdb|firebolt)" ;;
+    *) err "unknown db '${DB}' (expected victoriametrics|clickhouse|clickhouse-map|duckdb|firebolt|firebolt-s3)" ;;
 esac
 
 for cmd in hcloud jq ssh scp rsync curl; do

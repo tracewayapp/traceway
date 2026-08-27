@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       databases:
-        description: 'Comma-separated databases to benchmark, one Hetzner box each (victoriametrics, clickhouse, duckdb, firebolt). Add clickhouse-map to also measure the shape of the current metric_points table (tags as a Map column, no codecs) as a baseline.'
+        description: 'Comma-separated databases to benchmark, one Hetzner box each (victoriametrics, clickhouse, duckdb, firebolt). Add clickhouse-map to also measure the shape of the current metric_points table (tags as a Map column, no codecs) as a baseline. firebolt-s3 is the disaggregated cell: k3s + firebolt-operator, ingest and analytics engines over MinIO object storage, per-column codec schema — run it on ccx43.'
         required: true
         default: 'victoriametrics,clickhouse,duckdb,firebolt'
       tier:
@@ -132,7 +132,7 @@ jobs:
           set -euo pipefail
           jq -nc --arg dbs "${{ github.event.inputs.databases }}" '
             ($dbs | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(. != ""))) as $D
-            | ($D - ["victoriametrics", "clickhouse", "clickhouse-map", "duckdb", "firebolt"]) as $bad
+            | ($D - ["victoriametrics", "clickhouse", "clickhouse-map", "duckdb", "firebolt", "firebolt-s3"]) as $bad
             | if ($bad | length) > 0 then error("unknown databases: " + ($bad | join(","))) else . end
             | if ($D | length) == 0 then error("no databases given") else . end
             | {include: ($D | map({db: .}))}' > matrix.json

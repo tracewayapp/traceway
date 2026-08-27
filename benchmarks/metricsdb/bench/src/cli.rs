@@ -191,6 +191,22 @@ pub struct Cli {
     pub fb_s3_key: Option<String>,
     #[arg(long)]
     pub fb_s3_secret: Option<String>,
+
+    /// Gateway-routed engine names (firebolt-s3 / operator deployments):
+    /// writes, queries and VACUUM can each hit a different engine via the
+    /// X-Firebolt-Engine header. Unset = single-node, no header.
+    #[arg(long)]
+    pub fb_write_engine: Option<String>,
+    #[arg(long)]
+    pub fb_query_engine: Option<String>,
+    #[arg(long)]
+    pub fb_maint_engine: Option<String>,
+
+    /// Firebolt schema variant: "zstd" (table-level ZSTD, the single-node
+    /// baseline schema) or "codecs" (per-column Delta/DoubleDelta/Gorilla
+    /// chained with ZSTD, db/firebolt-s3/schema.sql).
+    #[arg(long, default_value = "zstd")]
+    pub fb_schema: String,
 }
 
 impl Cli {

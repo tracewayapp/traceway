@@ -11,13 +11,14 @@ import os
 import statistics
 import sys
 
-DB_ORDER = ["victoriametrics", "clickhouse", "clickhouse-map", "duckdb", "firebolt"]
+DB_ORDER = ["victoriametrics", "clickhouse", "clickhouse-map", "duckdb", "firebolt", "firebolt-s3"]
 DB_LABEL = {
     "victoriametrics": "VictoriaMetrics",
     "clickhouse": "ClickHouse",
     "clickhouse-map": "ClickHouse (map baseline)",
     "duckdb": "DuckDB",
     "firebolt": "Firebolt Core",
+    "firebolt-s3": "Firebolt disaggregated (S3)",
 }
 DB_COLOR = {
     "victoriametrics": "#7c5cff",
@@ -25,6 +26,7 @@ DB_COLOR = {
     "clickhouse-map": "#9a6b00",
     "duckdb": "#1f9d8f",
     "firebolt": "#e5484d",
+    "firebolt-s3": "#f76b15",
 }
 QUERY_IDS = ["a", "b", "c", "d", "e1", "e2", "f"]
 QUERY_INTENT = {
@@ -42,6 +44,7 @@ DB_HOW = {
     "clickhouse-map": ("RowBinary INSERTs over HTTP, 200k rows each, 4 writers", "Traceway's metric_points: name, value, tags Map, recorded_at; no codecs", "same as clickhouse", "same as clickhouse"),
     "duckdb": ("in-process Appender (Arrow record batches), 1M rows per append, batches sorted by (series_id, ts); threads = cores minus 2", "points(series_id, ts, value), series(series_id, name, tags MAP); no ART index", "CHECKPOINT until the WAL is empty", "points.duckdb + points.duckdb.wal"),
     "firebolt": ("Parquet batches of 1M rows uploaded inline (multipart, READ_PARQUET('upload://batch')), 2 writers; VACUUM every 20 inserts or above 50 tablets", "FACT TABLE points PRIMARY INDEX (series_id, ts) PARTITION BY day; series table with its own primary index", "VACUUM until the tablet count stops falling", "du of /var/lib/firebolt"),
+    "firebolt-s3": ("Same Parquet upload path through the operator gateway; writes -> ingest engine, queries + VACUUM -> analytics engine (X-Firebolt-Engine header), tablets on MinIO", "Per-column codec schema: Delta/DoubleDelta/Gorilla chained with ZSTD(3), same layout otherwise", "VACUUM on the analytics engine until the tablet count stops falling", "du of the MinIO data dir (object-store bytes)"),
 }
 
 

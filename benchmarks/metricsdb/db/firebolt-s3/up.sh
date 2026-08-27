@@ -74,6 +74,13 @@ if ! command -v k3s >/dev/null 2>&1; then
     curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable traefik" sh - >&2
 fi
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+# The node object registers a few seconds after the k3s service starts;
+# `kubectl wait` on zero resources errors instead of waiting.
+node_deadline=$(( $(date +%s) + 180 ))
+until kubectl get nodes --no-headers 2>/dev/null | grep -q .; do
+    (( $(date +%s) < node_deadline )) || die "k3s node never registered"
+    sleep 3
+done
 kubectl wait --for=condition=Ready node --all --timeout=180s >&2
 
 if ! command -v helm >/dev/null 2>&1; then

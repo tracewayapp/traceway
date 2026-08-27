@@ -27,6 +27,7 @@ Traceway is an error tracking and monitoring platform consisting of:
 | Frontend | `cd frontend && npm run dev` | Dev server (port 5173) |
 | Frontend | `npm run build` | Production build |
 | Frontend | `npm run check` | TypeScript checking |
+| Frontend | `npm run lint` | `prettier --check . && eslint .` (CI gate; `npm run format` fixes the prettier half) |
 | Backend | `cd backend && go run ./cmd/traceway` | API server (port 8082) |
 | Backend | `cd backend && govulncheck ./...` | Vulnerability scan (default tags only); CI also scans the other storage build-tag combos (`.github/workflows/backend-vulncheck.yml`) |
 | CLI | `cd cli && just build` | Builds `bin/traceway` |
@@ -1403,6 +1404,7 @@ type PaginationParams struct {
      import { api } from '$lib/api'
      import { projectsState } from '$lib/state/projects.svelte'
      import { ErrorDisplay } from '$lib/components/ui/error-display'
+     import { getErrorMessage, getErrorStatus } from '$lib/utils/errors'
 
      let data = $state<DataType[]>([])
      let loading = $state(true)
@@ -1417,11 +1419,11 @@ type PaginationParams struct {
            projectId: projectsState.currentProjectId ?? undefined
          })
          data = response.data || []
-       } catch (e: any) {
-         if (e.status === 404) {
+       } catch (e) {
+         if (getErrorStatus(e) === 404) {
            notFound = true
          } else {
-           error = e.message || 'Failed to load data'
+           error = getErrorMessage(e) || 'Failed to load data'
          }
        } finally {
          loading = false

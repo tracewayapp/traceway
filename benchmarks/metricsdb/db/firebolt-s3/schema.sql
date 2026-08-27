@@ -9,14 +9,14 @@
 -- measurement on this corpus preferred Delta over Gorilla for value - if the
 -- smoke run shows weak value compression, A/B that column the same way.
 CREATE FACT TABLE IF NOT EXISTS points (
-    series_id BIGINT NOT NULL COMPRESSION (Delta(8), ZSTD(3)),
-    ts TIMESTAMPNTZ NOT NULL COMPRESSION (DoubleDelta(8), ZSTD(3)),
-    value DOUBLE PRECISION NOT NULL COMPRESSION (Gorilla(8), ZSTD(3))
+    series_id BIGINT NOT NULL COMPRESSION (Delta, ZSTD(3)),
+    ts TIMESTAMPNTZ NOT NULL COMPRESSION (DoubleDelta, ZSTD(3)),
+    value DOUBLE PRECISION NOT NULL COMPRESSION (Gorilla, ZSTD(3))
 ) PRIMARY INDEX series_id, ts
 PARTITION BY DATE_TRUNC('day', ts);
 
 CREATE TABLE IF NOT EXISTS series (
-    series_id BIGINT NOT NULL COMPRESSION (Delta(8), ZSTD(3)),
+    series_id BIGINT NOT NULL COMPRESSION (Delta, ZSTD(3)),
     name TEXT NOT NULL COMPRESSION (ZSTD(3)),
     tags TEXT NOT NULL COMPRESSION (ZSTD(3))
 ) PRIMARY INDEX series_id;

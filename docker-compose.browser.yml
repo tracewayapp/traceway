@@ -58,7 +58,10 @@ services:
       test: ["CMD", "wget", "-qO-", "http://localhost/health"]
       interval: 30s
       timeout: 3s
-      start_period: 5s
+      # The server binds after migrations run, and a first boot on a large
+      # database can spend minutes building indexes. Docker ends the start
+      # period at the first success, so this only costs a slow first boot.
+      start_period: 300s
       retries: 3
 
 volumes:

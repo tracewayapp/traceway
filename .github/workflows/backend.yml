@@ -282,8 +282,9 @@ jobs:
       # setupTestDB skips unless TEST_CLICKHOUSE_SERVER is set, so these are
       # what opts the tagged suite in -- without them the job would report ok
       # while running nothing. app/chdb is included because batch_retry_test.go
-      # is `//go:build telemetry_ch` and would otherwise run in no job at all;
-      # it uses fakes and needs no live ClickHouse.
+      # is `//go:build telemetry_ch` and would otherwise run in no job at all,
+      # as is app/migrations for migrate_logger_test.go; both use fakes and need
+      # no live ClickHouse.
       #
       # -json is written to a file for the tally below and replayed through jq
       # so the log still reads like ordinary `go test` output. pipefail is set
@@ -302,7 +303,7 @@ jobs:
         run: |
           set -o pipefail
           go test -json -tags "transactional_pg telemetry_ch" -count=1 \
-            ./app/repositories/... ./app/chdb/... \
+            ./app/repositories/... ./app/chdb/... ./app/migrations/... \
             | tee "$RUNNER_TEMP/pgch-tests.jsonl" \
             | jq -j 'select(.Action == "output") | .Output'
 

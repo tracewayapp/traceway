@@ -51,6 +51,15 @@ spec:
                 name: {{ include "traceway.fullname" . }}
             - secretRef:
                 name: {{ include "traceway.secretName" . }}
+          {{- if .Values.startupProbe.enabled }}
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: {{ .Values.startupProbe.failureThreshold }}
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /health

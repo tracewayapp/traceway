@@ -38,6 +38,21 @@ ingress:
           pathType: Prefix
   tls: []
 
+# Startup probe. Kubernetes withholds liveness and readiness until it first
+# succeeds, so the liveness budget only starts once the process is serving. The
+# server binds after migrations run, and killing a pod mid-migration needs hand
+# repair either way: golang-migrate marks the version dirty before running it, so
+# ClickHouse/Postgres come back refusing to boot until someone runs force, and a
+# part-applied multi-statement file cannot be re-applied on SQLite/DuckDB.
+startupProbe:
+  enabled: true
+  # 100 x 5s. Deliberately under the Deployment's default progressDeadlineSeconds
+  # (600s), so a migration this probe tolerates is not simultaneously reported as
+  # a failed rollout -- which `helm --wait --atomic` or a GitOps self-heal would
+  # answer by deleting the pod mid-migration. Raising this past that ceiling means
+  # raising progressDeadlineSeconds and any deploy-tool timeout with it.
+  failureThreshold: 100
+
 resources: {}
 
 autoscaling:

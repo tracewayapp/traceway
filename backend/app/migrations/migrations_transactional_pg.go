@@ -41,6 +41,7 @@ func runMigrationsPostgres(connStr string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create migrate instance: %w", err)
 	}
+	m.Log = migrateLogger("postgres")
 
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		return fmt.Errorf("postgres migration failed: %w", err)
@@ -77,6 +78,7 @@ func runExtensionMigrations(db *sql.DB, ext ExtensionMigration) error {
 	if err != nil {
 		return fmt.Errorf("failed to create extension migrate instance: %w", err)
 	}
+	m.Log = migrateLogger("postgres " + tableName)
 
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		return fmt.Errorf("extension postgres migration failed: %w", err)

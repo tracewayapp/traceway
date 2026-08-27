@@ -1,17 +1,19 @@
 -- Codec-tuned variant of db/firebolt/schema.sql. Same layout (narrow fact
 -- table + dimension table, PRIMARY INDEX (series_id, ts), daily partitions);
 -- the difference is per-column codec chains instead of table-level ZSTD,
--- mirroring the tuned ClickHouse schema: transform codec first (Delta /
--- DoubleDelta / Gorilla), entropy codec second. ts is a fixed-interval
--- scrape clock so DoubleDelta collapses it; series_id arrives in long
--- sorted runs so Delta feeds ZSTD tiny residuals; value gets Gorilla
--- (XOR-based float codec, the VictoriaMetrics approach). Note the ClickHouse
--- measurement on this corpus preferred Delta over Gorilla for value - if the
--- smoke run shows weak value compression, A/B that column the same way.
+-- mirroring the tuned ClickHouse schema: transform codec first, entropy
+-- codec second. Delta everywhere: ts is a fixed-interval scrape clock
+-- (constant deltas, ZSTD flattens them), series_id arrives in long sorted
+-- runs, and on this corpus the ClickHouse measurement preferred Delta over
+-- Gorilla for value by a third. The live engine gates DoubleDelta and
+-- Gorilla behind per-codec feature flags that are off in the current dev
+-- build ("Unsupported compression type"), and rejects codec width
+-- parameters (width defaults to sizeof(type)) - Delta + ZSTD is the
+-- strongest chain the deployed build accepts.
 CREATE FACT TABLE IF NOT EXISTS points (
     series_id BIGINT NOT NULL COMPRESSION (Delta, ZSTD(3)),
-    ts TIMESTAMPNTZ NOT NULL COMPRESSION (DoubleDelta, ZSTD(3)),
-    value DOUBLE PRECISION NOT NULL COMPRESSION (Gorilla, ZSTD(3))
+    ts TIMESTAMPNTZ NOT NULL COMPRESSION (Delta, ZSTD(3)),
+    value DOUBLE PRECISION NOT NULL COMPRESSION (Delta, ZSTD(3))
 ) PRIMARY INDEX series_id, ts
 PARTITION BY DATE_TRUNC('day', ts);
 

@@ -230,9 +230,29 @@ if [[ -z "${GW_SVC}" ]]; then
     kubectl -n "${NS}" get svc >&2 || true
     die "could not find the gateway service"
 fi
-kubectl -n "${NS}" patch svc "${GW_SVC}" -p '{"spec":{"type":"NodePort"}}' >&2
-NODEPORT="$(kubectl -n "${NS}" get svc "${GW_SVC}" -o jsonpath='{range .spec.ports[*]}{.name} {.nodePort}{"\n"}{end}'     | awk 'NF==2 { if ($1 ~ /http|sql|query/) { print $2; exit } if (!first) first=$2 } END { if (first) print first }' | head -1)"
-[[ -n "${NODEPORT}" ]] || { kubectl -n "${NS}" get svc "${GW_SVC}" -o yaml >&2; die "gateway service has no nodePort"; }
+# The operator owns the gateway Service and reconciles spec drift away (a
+# NodePort patch reverts to ClusterIP within seconds), so expose the gateway
+# through our own NodePort service on the same pod selector, fixed port.
+NODEPORT=30347
+gw_port="$(kubectl -n "${NS}" get svc "${GW_SVC}" -o jsonpath='{.spec.ports[0].port}')"
+gw_target="$(kubectl -n "${NS}" get svc "${GW_SVC}" -o jsonpath='{.spec.ports[0].targetPort}')"
+kubectl apply -f - >&2 <<SVC
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-bench
+  namespace: ${NS}
+spec:
+  type: NodePort
+  selector:
+    firebolt.io/component: gateway
+    firebolt.io/instance: firebolt
+  ports:
+    - name: http
+      port: ${gw_port:-80}
+      targetPort: ${gw_target:-8080}
+      nodePort: ${NODEPORT}
+SVC
 DB_URL="http://${NODE_IP}:${NODEPORT}"
 echo "gateway ${GW_SVC} on ${DB_URL}" >&2
 

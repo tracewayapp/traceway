@@ -1,0 +1,93 @@
+{
+  "tier": "ccx23",
+  "mode": "pgfb",
+  "signal": "logs",
+  "scenario": "read-probe",
+  "startedAt": "2026-08-27T07:15:31Z",
+  "endedAt": "2026-08-27T07:16:20Z",
+  "readProbe": {
+    "endpoints": [
+      {
+        "name": "logs-severity-error",
+        "path": "/api/logs"
+      },
+      {
+        "name": "logs-body-search",
+        "path": "/api/logs"
+      },
+      {
+        "name": "logs-trace-id",
+        "path": "/api/logs"
+      }
+    ],
+    "readPath": "/api/logs",
+    "readThresholdMs": 5000,
+    "settleSeconds": 10,
+    "fillBatchSize": 8192,
+    "fillRequestRate": 100,
+    "steps": [
+      {
+        "fillLevelTarget": 100000,
+        "rowsIngested": 1179648,
+        "ingestSecondsElapsed": 28.439638197,
+        "digestSeconds": 0.00181273,
+        "probes": [
+          {
+            "name": "logs-severity-error",
+            "path": "/api/logs",
+            "latencyMs": 159.100001,
+            "ok": true
+          },
+          {
+            "name": "logs-body-search",
+            "path": "/api/logs",
+            "latencyMs": 67.066443,
+            "ok": true
+          },
+          {
+            "name": "logs-trace-id",
+            "path": "/api/logs",
+            "latencyMs": 14.81789,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 67.066443,
+        "readLatencyMs": 67.066443,
+        "readOk": true,
+        "passed": true
+      },
+      {
+        "fillLevelTarget": 1000000,
+        "rowsIngested": 1179648,
+        "ingestSecondsElapsed": 0,
+        "digestSeconds": 0.001562045,
+        "probes": [
+          {
+            "name": "logs-severity-error",
+            "path": "/api/logs",
+            "latencyMs": 89.342686,
+            "ok": true
+          },
+          {
+            "name": "logs-body-search",
+            "path": "/api/logs",
+            "latencyMs": 59.244028,
+            "ok": true
+          },
+          {
+            "name": "logs-trace-id",
+            "path": "/api/logs",
+            "latencyMs": 18.008082,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 59.244028,
+        "readLatencyMs": 59.244028,
+        "readOk": true,
+        "passed": true
+      }
+    ],
+    "maxFillLevelPassed": 1000000
+  },
+  "maxFillLevelPassed": 1000000
+}

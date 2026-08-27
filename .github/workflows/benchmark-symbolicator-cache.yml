@@ -47,7 +47,7 @@ jobs:
     env:
       HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install hcloud CLI
         run: |
@@ -61,7 +61,7 @@ jobs:
           printf '%s\n' "${{ secrets.BENCHMARK_SSH_PRIVATE_KEY }}" > "$key"
           echo "BENCHMARK_SSH_KEY=$key" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
@@ -86,7 +86,7 @@ jobs:
             cat benchmarks/results-cachebench/summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: cachebench-${{ github.event.inputs.tier }}

@@ -46,7 +46,7 @@ jobs:
           fi
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN }}
@@ -60,7 +60,7 @@ jobs:
           fi
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           # frontend/package.json only declares a floor (>=22); keep the
           # release build on the same major the Dockerfiles use.
@@ -164,7 +164,7 @@ jobs:
             --notes "$NOTES"
 
       - name: Set up Go for runner binaries
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
 
@@ -198,7 +198,7 @@ jobs:
     needs: release
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3

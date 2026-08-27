@@ -1,10 +1,10 @@
 {
   "tier": "ccx23",
-  "mode": "pgfb",
+  "mode": "pgch",
   "signal": "logs",
   "scenario": "throughput",
-  "startedAt": "2026-08-26T11:24:58Z",
-  "endedAt": "2026-08-26T11:51:04Z",
+  "startedAt": "2026-08-26T22:21:05Z",
+  "endedAt": "2026-08-26T22:45:36Z",
   "phase1": {
     "kind": "batch-size-ramp",
     "fixedRequestRate": 5,
@@ -13,23 +13,25 @@
         "step": 1,
         "batchSize": 256,
         "requestRate": 5,
-        "attemptedItemsPerSec": 1282.0926911766528,
-        "actualItemsPerSec": 1282.0926911766528,
+        "attemptedItemsPerSec": 1282.1236302430684,
+        "actualItemsPerSec": 1282.1236302430684,
         "rejected": 0,
         "ingest": {
-          "p50": 4.532337,
-          "p95": 5.993094,
-          "p99": 6.999021,
+          "p50": 17.34367,
+          "p95": 19.699742,
+          "p99": 21.743209,
           "ok": 601,
           "errors": 0,
           "errRate": 0
         },
         "ch": {
-          "reachable": false,
-          "uptimeSec": 0,
+          "reachable": true,
+          "uptimeSec": 157,
           "partsCount": 0,
           "activeMerges": 0,
-          "longestMergeSec": 0
+          "longestMergeSec": 0,
+          "memoryUsageBytes": 664682496,
+          "memoryTotalBytes": 16368730112
         },
         "sutIngest": {
           "reachable": true,
@@ -42,23 +44,25 @@
         "step": 2,
         "batchSize": 1024,
         "requestRate": 5,
-        "attemptedItemsPerSec": 3865.177639863982,
-        "actualItemsPerSec": 3865.177639863982,
+        "attemptedItemsPerSec": 3857.0357446825337,
+        "actualItemsPerSec": 3857.0357446825337,
         "rejected": 0,
         "ingest": {
-          "p50": 18.111853,
-          "p95": 22.035293,
-          "p99": 24.406061,
-          "ok": 453,
+          "p50": 34.246345,
+          "p95": 38.529503999999996,
+          "p99": 42.994639,
+          "ok": 452,
           "errors": 0,
           "errRate": 0
         },
         "ch": {
-          "reachable": false,
-          "uptimeSec": 0,
+          "reachable": true,
+          "uptimeSec": 277,
           "partsCount": 0,
           "activeMerges": 0,
-          "longestMergeSec": 0
+          "longestMergeSec": 0,
+          "memoryUsageBytes": 771919872,
+          "memoryTotalBytes": 16368730112
         },
         "sutIngest": {
           "reachable": true,
@@ -71,23 +75,25 @@
         "step": 3,
         "batchSize": 4096,
         "requestRate": 5,
-        "attemptedItemsPerSec": 15452.89704561143,
-        "actualItemsPerSec": 15452.89704561143,
+        "attemptedItemsPerSec": 15652.652400857909,
+        "actualItemsPerSec": 15652.652400857909,
         "rejected": 0,
         "ingest": {
-          "p50": 61.153809,
-          "p95": 71.645788,
-          "p99": 76.302972,
-          "ok": 453,
+          "p50": 96.075762,
+          "p95": 108.26825199999999,
+          "p99": 113.436887,
+          "ok": 459,
           "errors": 0,
           "errRate": 0
         },
         "ch": {
-          "reachable": false,
-          "uptimeSec": 0,
+          "reachable": true,
+          "uptimeSec": 398,
           "partsCount": 0,
           "activeMerges": 0,
-          "longestMergeSec": 0
+          "longestMergeSec": 0,
+          "memoryUsageBytes": 869818368,
+          "memoryTotalBytes": 16368730112
         },
         "sutIngest": {
           "reachable": true,
@@ -100,23 +106,25 @@
         "step": 4,
         "batchSize": 8192,
         "requestRate": 5,
-        "attemptedItemsPerSec": 30988.05360709007,
-        "actualItemsPerSec": 30988.05360709007,
+        "attemptedItemsPerSec": 31040.47870804277,
+        "actualItemsPerSec": 31040.47870804277,
         "rejected": 0,
         "ingest": {
-          "p50": 79.816165,
-          "p95": 101.824697,
-          "p99": 110.104525,
-          "ok": 454,
+          "p50": 145.551286,
+          "p95": 182.424873,
+          "p99": 190.325713,
+          "ok": 455,
           "errors": 0,
           "errRate": 0
         },
         "ch": {
-          "reachable": false,
-          "uptimeSec": 0,
+          "reachable": true,
+          "uptimeSec": 518,
           "partsCount": 0,
           "activeMerges": 0,
-          "longestMergeSec": 0
+          "longestMergeSec": 0,
+          "memoryUsageBytes": 975626240,
+          "memoryTotalBytes": 16368730112
         },
         "sutIngest": {
           "reachable": true,
@@ -129,23 +137,25 @@
         "step": 5,
         "batchSize": 16384,
         "requestRate": 5,
-        "attemptedItemsPerSec": 61808.317374446175,
-        "actualItemsPerSec": 61808.317374446175,
+        "attemptedItemsPerSec": 61883.59416243579,
+        "actualItemsPerSec": 61883.59416243579,
         "rejected": 0,
         "ingest": {
-          "p50": 127.26054,
-          "p95": 236.21940999999998,
-          "p99": 273.117548,
-          "ok": 453,
+          "p50": 204.999344,
+          "p95": 282.844029,
+          "p99": 304.160679,
+          "ok": 455,
           "errors": 0,
           "errRate": 0
         },
         "ch": {
-          "reachable": false,
-          "uptimeSec": 0,
+          "reachable": true,
+          "uptimeSec": 638,
           "partsCount": 0,
           "activeMerges": 0,
-          "longestMergeSec": 0
+          "longestMergeSec": 0,
+          "memoryUsageBytes": 1232416768,
+          "memoryTotalBytes": 16368730112
         },
         "sutIngest": {
           "reachable": true,
@@ -165,23 +175,25 @@
         "step": 1,
         "batchSize": 16384,
         "requestRate": 1,
-        "attemptedItemsPerSec": 0,
-        "actualItemsPerSec": 0,
+        "attemptedItemsPerSec": 3679.7520240265562,
+        "actualItemsPerSec": 3679.7520240265562,
         "rejected": 0,
         "ingest": {
-          "p50": 0,
-          "p95": 0,
-          "p99": 0,
-          "ok": 0,
+          "p50": 244.009267,
+          "p95": 288.19836100000003,
+          "p99": 296.46654500000005,
+          "ok": 27,
           "errors": 0,
           "errRate": 0
         },
         "ch": {
-          "reachable": false,
-          "uptimeSec": 0,
+          "reachable": true,
+          "uptimeSec": 769,
           "partsCount": 0,
           "activeMerges": 0,
-          "longestMergeSec": 0
+          "longestMergeSec": 0,
+          "memoryUsageBytes": 953098240,
+          "memoryTotalBytes": 16368730112
         },
         "sutIngest": {
           "reachable": true,
@@ -189,7 +201,7 @@
           "insertFailures": 0
         },
         "passed": false,
-        "failReason": "no requests completed"
+        "failReason": "achieved 0.22 req/sec is below 70% of target 1.00 req/sec (workers saturated, SUT past cliff)"
       }
     ]
   },
@@ -201,23 +213,25 @@
         "step": 1,
         "batchSize": 100,
         "requestRate": 10,
-        "attemptedItemsPerSec": 954.1573475311229,
-        "actualItemsPerSec": 954.1573475311229,
+        "attemptedItemsPerSec": 984.1546232056858,
+        "actualItemsPerSec": 984.1546232056858,
         "rejected": 0,
         "ingest": {
-          "p50": 2.813031,
-          "p95": 5.086323999999999,
-          "p99": 6.79802,
-          "ok": 1145,
+          "p50": 12.622383,
+          "p95": 14.433356,
+          "p99": 15.668502,
+          "ok": 1181,
           "errors": 0,
           "errRate": 0
         },
         "ch": {
-          "reachable": false,
-          "uptimeSec": 0,
+          "reachable": true,
+          "uptimeSec": 899,
           "partsCount": 0,
           "activeMerges": 0,
-          "longestMergeSec": 0
+          "longestMergeSec": 0,
+          "memoryUsageBytes": 899284992,
+          "memoryTotalBytes": 16368730112
         },
         "sutIngest": {
           "reachable": true,
@@ -230,23 +244,25 @@
         "step": 2,
         "batchSize": 100,
         "requestRate": 100,
-        "attemptedItemsPerSec": 9751.549073061446,
-        "actualItemsPerSec": 9751.549073061446,
+        "attemptedItemsPerSec": 9752.803991850613,
+        "actualItemsPerSec": 9752.803991850613,
         "rejected": 0,
         "ingest": {
-          "p50": 2.275318,
-          "p95": 4.2655590000000005,
-          "p99": 5.832764,
-          "ok": 11702,
+          "p50": 6.596872,
+          "p95": 11.971269999999999,
+          "p99": 14.753874999999999,
+          "ok": 11704,
           "errors": 0,
           "errRate": 0
         },
         "ch": {
-          "reachable": false,
-          "uptimeSec": 0,
+          "reachable": true,
+          "uptimeSec": 1019,
           "partsCount": 0,
           "activeMerges": 0,
-          "longestMergeSec": 0
+          "longestMergeSec": 0,
+          "memoryUsageBytes": 1481670656,
+          "memoryTotalBytes": 16368730112
         },
         "sutIngest": {
           "reachable": true,
@@ -259,23 +275,121 @@
         "step": 3,
         "batchSize": 100,
         "requestRate": 1000,
-        "attemptedItemsPerSec": 72688.23037756549,
-        "actualItemsPerSec": 72688.23037756549,
+        "attemptedItemsPerSec": 26903.411471174197,
+        "actualItemsPerSec": 26903.411471174197,
         "rejected": 0,
         "ingest": {
-          "p50": 320.72500199999996,
-          "p95": 2246.6131179999998,
-          "p99": 2430.585145,
-          "ok": 87782,
+          "p50": 1827.391428,
+          "p95": 2345.359357,
+          "p99": 2483.634992,
+          "ok": 32815,
           "errors": 0,
           "errRate": 0
         },
         "ch": {
-          "reachable": false,
-          "uptimeSec": 0,
+          "reachable": true,
+          "uptimeSec": 1141,
           "partsCount": 0,
           "activeMerges": 0,
-          "longestMergeSec": 0
+          "longestMergeSec": 0,
+          "memoryUsageBytes": 2809741312,
+          "memoryTotalBytes": 16368730112
+        },
+        "sutIngest": {
+          "reachable": true,
+          "droppedRowsTotal": 0,
+          "insertFailures": 0
+        },
+        "passed": false,
+        "failReason": "achieved 269.03 req/sec is below 70% of target 1000.00 req/sec (workers saturated, SUT past cliff)"
+      },
+      {
+        "step": 4,
+        "batchSize": 100,
+        "requestRate": 550,
+        "attemptedItemsPerSec": 24181.79162744847,
+        "actualItemsPerSec": 24181.79162744847,
+        "rejected": 0,
+        "ingest": {
+          "p50": 2057.152753,
+          "p95": 2550.766367,
+          "p99": 2901.649565,
+          "ok": 29568,
+          "errors": 0,
+          "errRate": 0
+        },
+        "ch": {
+          "reachable": true,
+          "uptimeSec": 1263,
+          "partsCount": 0,
+          "activeMerges": 0,
+          "longestMergeSec": 0,
+          "memoryUsageBytes": 3896401920,
+          "memoryTotalBytes": 16368730112
+        },
+        "sutIngest": {
+          "reachable": true,
+          "droppedRowsTotal": 0,
+          "insertFailures": 0
+        },
+        "passed": false,
+        "failReason": "achieved 241.82 req/sec is below 70% of target 550.00 req/sec (workers saturated, SUT past cliff)"
+      },
+      {
+        "step": 5,
+        "batchSize": 100,
+        "requestRate": 325,
+        "attemptedItemsPerSec": 19923.567011881278,
+        "actualItemsPerSec": 19923.567011881278,
+        "rejected": 0,
+        "ingest": {
+          "p50": 2558.4862510000003,
+          "p95": 2876.410232,
+          "p99": 3006.27859,
+          "ok": 24417,
+          "errors": 0,
+          "errRate": 0
+        },
+        "ch": {
+          "reachable": true,
+          "uptimeSec": 1386,
+          "partsCount": 0,
+          "activeMerges": 0,
+          "longestMergeSec": 0,
+          "memoryUsageBytes": 4675072000,
+          "memoryTotalBytes": 16368730112
+        },
+        "sutIngest": {
+          "reachable": true,
+          "droppedRowsTotal": 0,
+          "insertFailures": 0
+        },
+        "passed": false,
+        "failReason": "achieved 199.24 req/sec is below 70% of target 325.00 req/sec (workers saturated, SUT past cliff)"
+      },
+      {
+        "step": 6,
+        "batchSize": 100,
+        "requestRate": 212.5,
+        "attemptedItemsPerSec": 18451.821920501287,
+        "actualItemsPerSec": 18451.821920501287,
+        "rejected": 0,
+        "ingest": {
+          "p50": 2776.232657,
+          "p95": 3212.640891,
+          "p99": 3363.146026,
+          "ok": 22689,
+          "errors": 0,
+          "errRate": 0
+        },
+        "ch": {
+          "reachable": true,
+          "uptimeSec": 1509,
+          "partsCount": 0,
+          "activeMerges": 0,
+          "longestMergeSec": 0,
+          "memoryUsageBytes": 5056765952,
+          "memoryTotalBytes": 16368730112
         },
         "sutIngest": {
           "reachable": true,
@@ -283,131 +397,11 @@
           "insertFailures": 0
         },
         "passed": true
-      },
-      {
-        "step": 4,
-        "batchSize": 100,
-        "requestRate": 5000,
-        "attemptedItemsPerSec": 61692.137981875065,
-        "actualItemsPerSec": 61692.137981875065,
-        "rejected": 0,
-        "ingest": {
-          "p50": 408.928656,
-          "p95": 2564.426402,
-          "p99": 2987.735902,
-          "ok": 74266,
-          "errors": 0,
-          "errRate": 0
-        },
-        "ch": {
-          "reachable": false,
-          "uptimeSec": 0,
-          "partsCount": 0,
-          "activeMerges": 0,
-          "longestMergeSec": 0
-        },
-        "sutIngest": {
-          "reachable": true,
-          "droppedRowsTotal": 0,
-          "insertFailures": 0
-        },
-        "passed": false,
-        "failReason": "achieved 616.92 req/sec is below 70% of target 5000.00 req/sec (workers saturated, SUT past cliff)"
-      },
-      {
-        "step": 5,
-        "batchSize": 100,
-        "requestRate": 3000,
-        "attemptedItemsPerSec": 55422.4937252704,
-        "actualItemsPerSec": 55422.4937252704,
-        "rejected": 0,
-        "ingest": {
-          "p50": 454.9048,
-          "p95": 2773.409735,
-          "p99": 3189.537445,
-          "ok": 67426,
-          "errors": 0,
-          "errRate": 0
-        },
-        "ch": {
-          "reachable": false,
-          "uptimeSec": 0,
-          "partsCount": 0,
-          "activeMerges": 0,
-          "longestMergeSec": 0
-        },
-        "sutIngest": {
-          "reachable": true,
-          "droppedRowsTotal": 0,
-          "insertFailures": 0
-        },
-        "passed": false,
-        "failReason": "achieved 554.22 req/sec is below 70% of target 3000.00 req/sec (workers saturated, SUT past cliff)"
-      },
-      {
-        "step": 6,
-        "batchSize": 100,
-        "requestRate": 2000,
-        "attemptedItemsPerSec": 53705.99376619618,
-        "actualItemsPerSec": 53705.99376619618,
-        "rejected": 0,
-        "ingest": {
-          "p50": 480.050609,
-          "p95": 2949.0075239999996,
-          "p99": 3273.534411,
-          "ok": 65388,
-          "errors": 0,
-          "errRate": 0
-        },
-        "ch": {
-          "reachable": false,
-          "uptimeSec": 0,
-          "partsCount": 0,
-          "activeMerges": 0,
-          "longestMergeSec": 0
-        },
-        "sutIngest": {
-          "reachable": true,
-          "droppedRowsTotal": 0,
-          "insertFailures": 0
-        },
-        "passed": false,
-        "failReason": "achieved 537.06 req/sec is below 70% of target 2000.00 req/sec (workers saturated, SUT past cliff)"
-      },
-      {
-        "step": 7,
-        "batchSize": 100,
-        "requestRate": 1500,
-        "attemptedItemsPerSec": 57467.520987655786,
-        "actualItemsPerSec": 57467.520987655786,
-        "rejected": 0,
-        "ingest": {
-          "p50": 454.122861,
-          "p95": 2791.430049,
-          "p99": 3235.330073,
-          "ok": 69318,
-          "errors": 0,
-          "errRate": 0
-        },
-        "ch": {
-          "reachable": false,
-          "uptimeSec": 0,
-          "partsCount": 0,
-          "activeMerges": 0,
-          "longestMergeSec": 0
-        },
-        "sutIngest": {
-          "reachable": true,
-          "droppedRowsTotal": 0,
-          "insertFailures": 0
-        },
-        "passed": false,
-        "failReason": "achieved 574.68 req/sec is below 70% of target 1500.00 req/sec (workers saturated, SUT past cliff)"
       }
     ],
-    "maxRequestRate": 1000
+    "maxRequestRate": 212.5
   },
-  "maxSustainableItemsPerSec": 72688.23037756549,
+  "maxSustainableItemsPerSec": 61883.59416243579,
   "sutContainer": {
     "status": "running",
     "oomKilled": false,

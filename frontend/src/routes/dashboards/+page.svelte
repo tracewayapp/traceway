@@ -193,7 +193,9 @@
 			url.searchParams.delete('server');
 		}
 		serverScope = normalized;
-		replaceState(url.pathname + url.search + url.hash, {});
+		let target = resolve('/dashboards');
+		target += url.search + url.hash;
+		replaceState(target, {});
 	}
 
 	function updateDashboardUrl(params: Record<string, string>) {

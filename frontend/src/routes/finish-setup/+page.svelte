@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
+	import { base, resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -63,7 +63,11 @@
 			returnTo = safeLocalPath(consumeSsoReturnTo());
 
 			if (newOrgId === null) {
-				goto(returnTo);
+				// returnTo is a concrete path from the SSO handoff, not a route id.
+				// resolve() substitutes [params] and throws a TypeError on any path
+				// containing brackets, so prefix the base path directly.
+				// eslint-disable-next-line svelte/no-navigation-without-resolve
+				goto(base + returnTo);
 				return;
 			}
 			phase = 'projects';

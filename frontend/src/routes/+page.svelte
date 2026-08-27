@@ -390,7 +390,7 @@ service:
 				<p class="mb-4 max-w-md text-sm text-muted-foreground">
 					Let your coding agent propose the setup for your approval, or create projects manually.
 				</p>
-				<Button onclick={() => goto('/setup')}>
+				<Button onclick={() => goto(resolve('/setup'))}>
 					Set Up Projects
 					<ArrowRight class="ml-2 h-4 w-4" />
 				</Button>

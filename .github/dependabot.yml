@@ -20,13 +20,18 @@ updates:
     #   first-party -- actions/*, GitHub-maintained. A major here is normally a
     #                  runner/runtime bump (#326 was exactly that): wide,
     #                  mechanical, reviewed once as a sweep.
-    #   third-party -- docker/*, cloudflare/*, azure/*, sigstore/*, golangci/*.
+    #   third-party -- docker/*, cloudflare/*, azure/*, sigstore/*, golangci/*,
+    #                  Swatinem/*, anthropics/*.
     #                  A major here can change behaviour. wrangler-action v4
     #                  moved its default Wrangler CLI from 3 to 4, which is the
     #                  whole of #331. These want reading one at a time.
     #
-    # Not covered: the three dtolnay/rust-toolchain@stable refs. `stable` is a
-    # branch and that repo publishes no version tags, so they never surface here.
+    # Not covered, so do not read this file as total coverage: the three
+    # dtolnay/rust-toolchain@stable refs (`stable` is a branch and that repo
+    # publishes no version tags), and the action pins inside shipped docs --
+    # docs/pages/client/js-sdk/sourcemap-upload.mdx and
+    # website/content/blog/auto-fix-loop.mdx -- which live outside
+    # .github/workflows and so are bumped by hand or not at all.
     groups:
       first-party-actions:
         patterns:

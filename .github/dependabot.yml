@@ -14,9 +14,6 @@ updates:
     # Repo convention is conventional commits, and workflow changes are "ci:".
     commit-message:
       prefix: "ci"
-    # Grouped updates open one PR per group, so this only binds if the grouping
-    # below is removed. Two groups plus headroom for a security update.
-    open-pull-requests-limit: 4
     # The split mirrors how #328/#329 bumped these pins by hand, and it splits on
     # what a major actually means:
     #
@@ -28,12 +25,8 @@ updates:
     #                  moved its default Wrangler CLI from 3 to 4, which is the
     #                  whole of #331. These want reading one at a time.
     #
-    # Note what this does not buy. The `ci` label reaches only backend*.yml and
-    # cli*.yml; most pins in this repo sit on release-*.yml, benchmark-*.yml and
-    # traceway-autofix.yml, which are release-, dispatch- or issue-triggered. For
-    # those, Dependabot is detection and not validation -- a bump still needs a
-    # workflow_dispatch dry run before it is trusted. Detection is the half that
-    # was missing.
+    # Not covered: the three dtolnay/rust-toolchain@stable refs. `stable` is a
+    # branch and that repo publishes no version tags, so they never surface here.
     groups:
       first-party-actions:
         patterns:
@@ -43,8 +36,5 @@ updates:
           - "*"
         exclude-patterns:
           - "actions/*"
-    # No `labels:` on purpose. Dependabot applies its own `dependencies` label;
-    # `ci` is left off because that label is the collaborator trust gate that
-    # makes PR CI opt-in (see CLAUDE.md), and an unattended bot PR proposing an
-    # action version nobody has read yet should not trip it. A reviewer applies
-    # `ci` after looking, exactly as for a human PR.
+    # No `labels:` on purpose: `ci` is the collaborator trust gate that makes PR
+    # CI opt-in (see CLAUDE.md), so a reviewer applies it after reading the bump.

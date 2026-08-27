@@ -73,6 +73,18 @@ if ! command -v k3s >/dev/null 2>&1; then
     echo "installing k3s" >&2
     curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable traefik" sh - >&2
 fi
+# The engine registers io_uring buffers at startup; containerd's default
+# MEMLOCK limit (inherited from the k3s service) kills it with
+# "io_uring_register_buffers failed: Cannot allocate memory" - the same
+# failure the docker cells solve with --ulimit memlock=-1.
+mkdir -p /etc/systemd/system/k3s.service.d
+cat > /etc/systemd/system/k3s.service.d/limits.conf <<'LIMITS'
+[Service]
+LimitMEMLOCK=infinity
+LimitNOFILE=1048576
+LIMITS
+systemctl daemon-reload
+systemctl restart k3s
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 # The node object registers a few seconds after the k3s service starts;
 # `kubectl wait` on zero resources errors instead of waiting.
@@ -219,7 +231,8 @@ if [[ -z "${GW_SVC}" ]]; then
     die "could not find the gateway service"
 fi
 kubectl -n "${NS}" patch svc "${GW_SVC}" -p '{"spec":{"type":"NodePort"}}' >&2
-NODEPORT="$(kubectl -n "${NS}" get svc "${GW_SVC}" -o jsonpath='{.spec.ports[0].nodePort}')"
+NODEPORT="$(kubectl -n "${NS}" get svc "${GW_SVC}" -o jsonpath='{range .spec.ports[*]}{.name} {.nodePort}{"\n"}{end}'     | awk 'NF==2 { if ($1 ~ /http|sql|query/) { print $2; exit } if (!first) first=$2 } END { if (first) print first }' | head -1)"
+[[ -n "${NODEPORT}" ]] || { kubectl -n "${NS}" get svc "${GW_SVC}" -o yaml >&2; die "gateway service has no nodePort"; }
 DB_URL="http://${NODE_IP}:${NODEPORT}"
 echo "gateway ${GW_SVC} on ${DB_URL}" >&2
 
@@ -227,7 +240,14 @@ for eng in ingest analytics; do
     wait_http 300 '"data"' -X POST -H "X-Firebolt-Engine: ${eng}" \
         --data-binary 'SELECT 1' "${DB_URL}/?output_format=JSON_Compact" || {
         kubectl -n "${NS}" get pods >&2 || true
-        kubectl -n "${NS}" logs -l "compute.firebolt.io/engine=${eng}" --tail 50 >&2 || true
+        pod="$(kubectl -n "${NS}" get pods -o name | grep "^pod/${eng}-" | head -1)"
+        if [[ -n "${pod}" ]]; then
+            kubectl -n "${NS}" describe "${pod}" | tail -30 >&2 || true
+            echo "--- ${pod} current logs ---" >&2
+            kubectl -n "${NS}" logs "${pod#pod/}" --all-containers --tail 60 >&2 || true
+            echo "--- ${pod} previous logs (crash loop) ---" >&2
+            kubectl -n "${NS}" logs "${pod#pod/}" --all-containers --previous --tail 60 >&2 || true
+        fi
         die "engine ${eng} never answered SELECT 1 through the gateway"
     }
     echo "engine ${eng} answering through the gateway" >&2

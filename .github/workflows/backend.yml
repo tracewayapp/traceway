@@ -39,6 +39,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Setup Go
+        id: setup-go
         uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
@@ -48,16 +49,20 @@ jobs:
           # leaving the duckdb job to re-fetch ~131MB of libduckdb every run.
           cache: false
 
+      # The Go version is part of the key because both cached trees depend on
+      # it: go-build entries are compiler-keyed, and a Go bump otherwise leaves
+      # the superseded toolchain module sitting in ~/go/pkg/mod, which the
+      # run_id rotation below then copies forward on every run.
       - name: Cache Go modules and build
         uses: actions/cache@v6
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: go-${{ runner.os }}-sqlite-${{ hashFiles('backend/go.sum') }}-${{ github.run_id }}
+          key: go-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-sqlite-${{ hashFiles('backend/go.sum') }}-${{ github.run_id }}
           restore-keys: |
-            go-${{ runner.os }}-sqlite-${{ hashFiles('backend/go.sum') }}-
-            go-${{ runner.os }}-sqlite-
+            go-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-sqlite-${{ hashFiles('backend/go.sum') }}-
+            go-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-sqlite-
 
       # CGO_ENABLED=0 mirrors Dockerfile.sqlite, so CI links what ships.
       - name: Build
@@ -119,6 +124,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Setup Go
+        id: setup-go
         uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
@@ -130,10 +136,10 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: go-${{ runner.os }}-duckdb-${{ hashFiles('backend/go.sum') }}-${{ github.run_id }}
+          key: go-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-duckdb-${{ hashFiles('backend/go.sum') }}-${{ github.run_id }}
           restore-keys: |
-            go-${{ runner.os }}-duckdb-${{ hashFiles('backend/go.sum') }}-
-            go-${{ runner.os }}-duckdb-
+            go-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-duckdb-${{ hashFiles('backend/go.sum') }}-
+            go-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-duckdb-
 
       # Load-bearing, not redundant with the tests below: the test scope covers
       # two package trees, so this is what compiles every other package under
@@ -207,6 +213,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Setup Go
+        id: setup-go
         uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
@@ -218,10 +225,10 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: go-${{ runner.os }}-pgch-${{ hashFiles('backend/go.sum') }}-${{ github.run_id }}
+          key: go-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-pgch-${{ hashFiles('backend/go.sum') }}-${{ github.run_id }}
           restore-keys: |
-            go-${{ runner.os }}-pgch-${{ hashFiles('backend/go.sum') }}-
-            go-${{ runner.os }}-pgch-
+            go-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-pgch-${{ hashFiles('backend/go.sum') }}-
+            go-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-pgch-
 
       # CGO_ENABLED=0 mirrors Dockerfile and Dockerfile.minimal.
       - name: Build

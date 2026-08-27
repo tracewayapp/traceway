@@ -3,8 +3,8 @@
   "mode": "pgfb",
   "signal": "logs",
   "scenario": "read-probe",
-  "startedAt": "2026-08-27T07:15:31Z",
-  "endedAt": "2026-08-27T07:16:20Z",
+  "startedAt": "2026-08-27T07:25:02Z",
+  "endedAt": "2026-08-27T07:47:27Z",
   "readProbe": {
     "endpoints": [
       {
@@ -23,71 +23,140 @@
     "readPath": "/api/logs",
     "readThresholdMs": 5000,
     "settleSeconds": 10,
-    "fillBatchSize": 8192,
+    "fillBatchSize": 4096,
     "fillRequestRate": 100,
     "steps": [
       {
         "fillLevelTarget": 100000,
-        "rowsIngested": 1179648,
-        "ingestSecondsElapsed": 28.439638197,
-        "digestSeconds": 0.00181273,
+        "rowsIngested": 253952,
+        "ingestSecondsElapsed": 1.214816582,
+        "digestSeconds": 0.001693637,
         "probes": [
           {
             "name": "logs-severity-error",
             "path": "/api/logs",
-            "latencyMs": 159.100001,
+            "latencyMs": 80.806326,
             "ok": true
           },
           {
             "name": "logs-body-search",
             "path": "/api/logs",
-            "latencyMs": 67.066443,
+            "latencyMs": 65.336562,
             "ok": true
           },
           {
             "name": "logs-trace-id",
             "path": "/api/logs",
-            "latencyMs": 14.81789,
+            "latencyMs": 28.531517,
             "ok": true
           }
         ],
-        "medianLatencyMs": 67.066443,
-        "readLatencyMs": 67.066443,
+        "medianLatencyMs": 65.336562,
+        "readLatencyMs": 65.336562,
         "readOk": true,
         "passed": true
       },
       {
         "fillLevelTarget": 1000000,
-        "rowsIngested": 1179648,
-        "ingestSecondsElapsed": 0,
-        "digestSeconds": 0.001562045,
+        "rowsIngested": 1679360,
+        "ingestSecondsElapsed": 10.656860243,
+        "digestSeconds": 0.002065341,
         "probes": [
           {
             "name": "logs-severity-error",
             "path": "/api/logs",
-            "latencyMs": 89.342686,
+            "latencyMs": 166.03674900000001,
             "ok": true
           },
           {
             "name": "logs-body-search",
             "path": "/api/logs",
-            "latencyMs": 59.244028,
+            "latencyMs": 74.71456599999999,
             "ok": true
           },
           {
             "name": "logs-trace-id",
             "path": "/api/logs",
-            "latencyMs": 18.008082,
+            "latencyMs": 14.872955000000001,
             "ok": true
           }
         ],
-        "medianLatencyMs": 59.244028,
-        "readLatencyMs": 59.244028,
+        "medianLatencyMs": 74.71456599999999,
+        "readLatencyMs": 74.71456599999999,
         "readOk": true,
         "passed": true
+      },
+      {
+        "fillLevelTarget": 10000000,
+        "rowsIngested": 10510336,
+        "ingestSecondsElapsed": 84.520289493,
+        "digestSeconds": 0.001651621,
+        "probes": [
+          {
+            "name": "logs-severity-error",
+            "path": "/api/logs",
+            "latencyMs": 732.017782,
+            "ok": true
+          },
+          {
+            "name": "logs-body-search",
+            "path": "/api/logs",
+            "latencyMs": 415.672749,
+            "ok": true
+          },
+          {
+            "name": "logs-trace-id",
+            "path": "/api/logs",
+            "latencyMs": 16.192843,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 415.672749,
+        "readLatencyMs": 415.672749,
+        "readOk": true,
+        "passed": true
+      },
+      {
+        "fillLevelTarget": 100000000,
+        "rowsIngested": 100417536,
+        "ingestSecondsElapsed": 1194.82317615,
+        "digestSeconds": 0.002005417,
+        "probes": [
+          {
+            "name": "logs-severity-error",
+            "path": "/api/logs",
+            "latencyMs": 6005.237857,
+            "ok": false,
+            "error": "Post \"http://10.0.0.2/api/logs?projectId=58cd26f6-93f9-493c-a00c-94366fa2408d\": context deadline exceeded"
+          },
+          {
+            "name": "logs-body-search",
+            "path": "/api/logs",
+            "latencyMs": 6000.267476,
+            "ok": false,
+            "error": "Post \"http://10.0.0.2/api/logs?projectId=58cd26f6-93f9-493c-a00c-94366fa2408d\": context deadline exceeded"
+          },
+          {
+            "name": "logs-trace-id",
+            "path": "/api/logs",
+            "latencyMs": 74.74926699999999,
+            "ok": true
+          }
+        ],
+        "medianLatencyMs": 6000.267476,
+        "readLatencyMs": 6000.267476,
+        "readOk": false,
+        "passed": false,
+        "failReason": "probe logs-severity-error failed: Post \"http://10.0.0.2/api/logs?projectId=58cd26f6-93f9-493c-a00c-94366fa2408d\": context deadline exceeded (latency 6005ms)"
       }
     ],
-    "maxFillLevelPassed": 1000000
+    "maxFillLevelPassed": 10000000
   },
-  "maxFillLevelPassed": 1000000
+  "maxFillLevelPassed": 10000000,
+  "sutContainer": {
+    "status": "running",
+    "oomKilled": false,
+    "exitCode": 0,
+    "restartCount": 0
+  }
 }

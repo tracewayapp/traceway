@@ -62,19 +62,42 @@ echo "running loadgen on ${LG_IP} -> http://${SUT_PRIVATE_IP} (tier=${TIER} mode
 # even if it dies mid-run (OOM, SSH drop, panic) the file on the SUT has
 # everything up to the last completed step. We must scp regardless of the
 # loadgen's exit status to avoid losing that partial data.
+# Detached: entries with long fills (read-probe logs especially) outlive
+# flaky ssh sessions — a dropped channel used to kill the loadgen mid-run
+# (exit 255). nohup survives it; fresh short ssh sessions poll the pidfile
+# and stream progress, and the exit code is read from a file at the end.
 loadgen_rc=0
-bench_ssh "${LG_IP}" /root/loadgen/loadgen \
-    --target "http://${SUT_PRIVATE_IP}" \
-    --token "${TOKEN}" \
-    --jwt "${JWT}" \
-    --health-token "bench-health-token-not-for-production" \
-    --project-id "${PROJECT_ID}" \
-    --signal "${SIGNAL}" \
-    --duration "${DURATION}" \
-    --tier "${TIER}" \
-    --mode "${MODE}" \
+printf -v loadgen_args '%q ' "$@"
+bench_ssh "${LG_IP}" "nohup sh -c '/root/loadgen/loadgen \
+    --target http://${SUT_PRIVATE_IP} \
+    --token ${TOKEN} \
+    --jwt ${JWT} \
+    --health-token bench-health-token-not-for-production \
+    --project-id ${PROJECT_ID} \
+    --signal ${SIGNAL} \
+    --duration ${DURATION} \
+    --tier ${TIER} \
+    --mode ${MODE} \
     --report-out /root/loadgen/result.json \
-    "$@" || loadgen_rc=$?
+    ${loadgen_args} > /root/loadgen/run.log 2>&1; echo \$? > /root/loadgen/exit_code' > /dev/null 2>&1 & echo \$! > /root/loadgen/pid"
+
+streamed_lines=0
+while true; do
+    sleep 20
+    if ! out=$(bench_ssh "${LG_IP}" "tail -n +$((streamed_lines + 1)) /root/loadgen/run.log 2>/dev/null | head -200; test -f /root/loadgen/exit_code && echo __LOADGEN_DONE__\$(cat /root/loadgen/exit_code)"); then
+        echo "loadgen poll ssh failed; retrying" >&2
+        continue
+    fi
+    body=$(printf '%s\n' "${out}" | grep -v '^__LOADGEN_DONE__' || true)
+    if [[ -n "${body}" ]]; then
+        printf '%s\n' "${body}" >&2
+        streamed_lines=$((streamed_lines + $(printf '%s\n' "${body}" | wc -l | tr -d ' ')))
+    fi
+    if done_line=$(printf '%s\n' "${out}" | grep '^__LOADGEN_DONE__' | head -1); then
+        loadgen_rc="${done_line#__LOADGEN_DONE__}"
+        break
+    fi
+done
 
 if [[ "${loadgen_rc}" -ne 0 ]]; then
     echo "loadgen exited with status ${loadgen_rc} — attempting to fetch any partial result.json from the loadgen box" >&2

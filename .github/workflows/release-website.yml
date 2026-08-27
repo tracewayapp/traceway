@@ -31,10 +31,15 @@ jobs:
         run: npm run build
 
       - name: Deploy to Cloudflare
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # The action bump is only about the Node 24 runtime. wrangler-action
+          # v4 also changed its default Wrangler CLI from 3 to 4, which is a
+          # separate migration on a production deploy path -- pinned here so
+          # this change moves one thing. Drop the pin to take Wrangler 4.
+          wranglerVersion: "3"
           workingDirectory: website
           command: deploy
 

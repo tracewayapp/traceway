@@ -201,13 +201,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -215,7 +215,7 @@ jobs:
 
       - name: Build and push full image
         id: docker_build_full
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
@@ -228,7 +228,7 @@ jobs:
 
       - name: Build and push minimal image
         id: docker_build_minimal
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile.minimal
@@ -241,7 +241,7 @@ jobs:
 
       - name: Build and push SQLite image
         id: docker_build_sqlite
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile.sqlite
@@ -258,7 +258,7 @@ jobs:
       # impractically slow. arm64 users build Dockerfile.duckdb natively.
       - name: Build and push DuckDB image
         id: docker_build_duckdb
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile.duckdb
@@ -275,7 +275,7 @@ jobs:
       # synthetic checks.
       - name: Build and push Browser image
         id: docker_build_browser
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile.browser

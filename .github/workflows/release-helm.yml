@@ -32,7 +32,7 @@ jobs:
           fi
 
       - name: Install Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
 
       - name: Update chart version
         run: |
@@ -84,10 +84,13 @@ jobs:
           cp chart-pkg/index.yaml deploy/
 
       - name: Deploy index.yaml to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # See release-website.yml: v4 defaults to the Wrangler 4 CLI, a
+          # separate migration. Pinned so this change is only the runtime move.
+          wranglerVersion: "3"
           command: pages deploy deploy --project-name traceway-charts --commit-dirty=true
 
       - name: Summary

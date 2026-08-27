@@ -18,7 +18,11 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "latest"
+          # "latest" floated this production deploy onto whatever Node had
+          # shipped that morning, up to and including a non-LTS Current
+          # release. website/package.json declares no engines floor at all, so
+          # pin the same major the Dockerfiles and the release build use.
+          node-version: 22
           cache: "npm"
           cache-dependency-path: website/package-lock.json
 

@@ -147,8 +147,10 @@ func (c *organizationController) Create(ctx *gin.Context) {
 		return
 	}
 
-	// Unlike register, which takes the timezone from a required form field, this
-	// endpoint is reached from a recovery screen with nothing to prefill from.
+	// Register binds the timezone as required. Here it is optional: the recovery
+	// form sends one, but this is a plain authenticated endpoint a CLI or script
+	// can also reach, and an org whose on-call schedules resolve against UTC is a
+	// better outcome than refusing to create it at all.
 	timezone := strings.TrimSpace(request.Timezone)
 	if timezone == "" {
 		timezone = "UTC"

@@ -88,6 +88,13 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # website/ and docs/ pin the Wrangler CLI in their package-lock.json
+          # and the action picks that up; this job has no npm project to hold
+          # one, so it is the single site that needs the version stated. Exact,
+          # not a bare major: "3" is a range the action resolves to the newest
+          # 3.x at deploy time, which is the drift this pin exists to stop.
+          # Tracked with the other two in #331.
+          wranglerVersion: "3.114.17"
           command: pages deploy deploy --project-name traceway-charts --commit-dirty=true
 
       - name: Summary

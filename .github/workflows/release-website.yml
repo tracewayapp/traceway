@@ -18,11 +18,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          # "latest" resolves to Node Current, which the runner tool cache does
-          # not ship -- an unpinned input, re-downloaded, on a production deploy.
-          # website/package.json has no engines floor to catch it, so pin the major
-          # the Dockerfiles and the release build use (#330).
-          node-version: 22
+          node-version: "latest"
           cache: "npm"
           cache-dependency-path: website/package-lock.json
 

@@ -62,9 +62,9 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          # frontend/package.json only declares a floor (>=22); keep the
-          # release build on the same major the Dockerfiles use.
-          node-version: 22
+          # .nvmrc is the repo-wide Node pin, shared with the Dockerfiles
+          # NODE_VERSION build arg and the nix dev shells.
+          node-version-file: .nvmrc
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
@@ -200,6 +200,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # One --build-arg read from .nvmrc, so every image below is built on the
+      # same Node major as CI and the dev shells rather than on whatever each
+      # Dockerfile's ARG default happens to say.
+      - name: Read the Node pin
+        id: node
+        run: |
+          ./scripts/check-node-pins.sh
+          echo "version=$(cat .nvmrc)" >> "$GITHUB_OUTPUT"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -219,6 +228,8 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          build-args: |
+            NODE_VERSION=${{ steps.node.outputs.version }}
           push: true
           tags: |
             ghcr.io/${{ github.repository_owner }}/traceway:v${{ inputs.version }}
@@ -232,6 +243,8 @@ jobs:
         with:
           context: .
           file: ./Dockerfile.minimal
+          build-args: |
+            NODE_VERSION=${{ steps.node.outputs.version }}
           push: true
           tags: |
             ghcr.io/${{ github.repository_owner }}/traceway:v${{ inputs.version }}-minimal
@@ -245,6 +258,8 @@ jobs:
         with:
           context: .
           file: ./Dockerfile.sqlite
+          build-args: |
+            NODE_VERSION=${{ steps.node.outputs.version }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
@@ -262,6 +277,8 @@ jobs:
         with:
           context: .
           file: ./Dockerfile.duckdb
+          build-args: |
+            NODE_VERSION=${{ steps.node.outputs.version }}
           platforms: linux/amd64
           push: true
           tags: |
@@ -279,6 +296,8 @@ jobs:
         with:
           context: .
           file: ./Dockerfile.browser
+          build-args: |
+            NODE_VERSION=${{ steps.node.outputs.version }}
           platforms: linux/amd64
           push: true
           tags: |

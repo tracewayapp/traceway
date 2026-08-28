@@ -85,7 +85,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
       - name: Build oxc shim
         run: bash scripts/build-oxc-shim.sh
       - name: Build traceway collector (oxc)

@@ -204,19 +204,56 @@ func TestEndpointRepository_FindGroupedByEndpoint_MethodFilter(t *testing.T) {
 		t.Fatalf("InsertAsync failed: %v", err)
 	}
 
+	// "GETAWAY /api/cars" must not match: the filter compares a whole
+	// space-terminated token, not a prefix of the endpoint string.
+	// "get /api/lowercase" must match. getHTTPEndpoint concatenates
+	// http.request.method verbatim, so lowercase rows genuinely exist, and the
+	// dropdown only ever offers the 7 canonical uppercase methods -- a
+	// case-sensitive comparison made those rows unreachable from the UI (#321).
 	stats, total, err := EndpointRepository.FindGroupedByEndpoint(ctx, projectId, now.Add(-time.Hour), now.Add(time.Hour), 1, 10, "count", "desc", "", "", "get")
 	if err != nil {
 		t.Fatalf("FindGroupedByEndpoint with method filter failed: %v", err)
 	}
 
-	if total != 1 {
-		t.Errorf("expected 1 matching endpoint, got %d", total)
+	if total != 2 {
+		t.Errorf("expected 2 matching endpoints, got %d", total)
 	}
-	if len(stats) != 1 {
-		t.Fatalf("expected 1 grouped stat, got %d", len(stats))
+	matched := make(map[string]bool, len(stats))
+	for _, s := range stats {
+		matched[s.Endpoint] = true
 	}
-	if stats[0].Endpoint != "GET /api/users" {
-		t.Errorf("expected 'GET /api/users', got %q", stats[0].Endpoint)
+	if len(stats) != 2 || !matched["GET /api/users"] || !matched["get /api/lowercase"] {
+		t.Fatalf("expected GET /api/users and get /api/lowercase, got %v", matched)
+	}
+}
+
+// The filter is applied by upper-casing the column, not the caller's argument,
+// so it holds however the request cased its method.
+func TestEndpointRepository_FindGroupedByEndpoint_MethodFilterCaseInsensitive(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	projectId := uuid.New()
+	now := truncateMs(time.Now().UTC())
+
+	endpoints := []models.Endpoint{
+		makeEndpoint(projectId, "GET /api/users", 100*time.Millisecond, 200, now),
+		makeEndpoint(projectId, "get /api/lowercase", 100*time.Millisecond, 200, now.Add(time.Minute)),
+		makeEndpoint(projectId, "Get /api/mixed", 100*time.Millisecond, 200, now.Add(2*time.Minute)),
+		makeEndpoint(projectId, "POST /api/users", 200*time.Millisecond, 201, now.Add(3*time.Minute)),
+	}
+
+	if err := EndpointRepository.InsertAsync(ctx, endpoints); err != nil {
+		t.Fatalf("InsertAsync failed: %v", err)
+	}
+
+	for _, method := range []string{"GET", "get", "GeT"} {
+		_, total, err := EndpointRepository.FindGroupedByEndpoint(ctx, projectId, now.Add(-time.Hour), now.Add(time.Hour), 1, 10, "count", "desc", "", "", method)
+		if err != nil {
+			t.Fatalf("methodFilter %q failed: %v", method, err)
+		}
+		if total != 3 {
+			t.Errorf("methodFilter %q: expected 3 matching endpoints, got %d", method, total)
+		}
 	}
 }
 

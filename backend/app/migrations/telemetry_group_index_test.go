@@ -35,6 +35,7 @@ func TestTelemetryGroupIndexesCoverTimeColumn(t *testing.T) {
 		{"endpoints", "endpoint", "recorded_at"},
 		{"tasks", "task_name", "recorded_at"},
 		{"ai_traces", "trace_name", "recorded_at"},
+		{"ai_traces", "conversation_id", "recorded_at"},
 		{"exception_stack_traces", "exception_hash", "recorded_at"},
 		{"check_results", "check_id", "recorded_at"},
 		{"log_records", "service_name", "timestamp"},

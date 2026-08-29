@@ -3,6 +3,9 @@
 package db
 
 import (
+	"database/sql"
+
+	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/app/config"
 )
@@ -25,5 +28,9 @@ func initMainDB() error {
 	Driver = lit.SQLite
 	config.Logf("SQLite database opened at %s", path)
 
+	return nil
+}
+
+func NotifyProjectCacheChanged(*sql.Tx, uuid.UUID) error {
 	return nil
 }

@@ -161,6 +161,9 @@ func (p *projectRepository) Create(tx *sql.Tx, name string, framework string) (*
 	if err != nil {
 		return nil, err
 	}
+	if err := db.NotifyProjectCacheChanged(tx, project.Id); err != nil {
+		return nil, err
+	}
 
 	return project, nil
 }
@@ -186,6 +189,9 @@ func (p *projectRepository) CreateWithOrganization(tx *sql.Tx, name string, fram
 
 	err := lit.InsertExistingUuid(tx, project)
 	if err != nil {
+		return nil, err
+	}
+	if err := db.NotifyProjectCacheChanged(tx, project.Id); err != nil {
 		return nil, err
 	}
 
@@ -246,6 +252,9 @@ func (p *projectRepository) GenerateSourceMapToken(tx *sql.Tx, projectId uuid.UU
 	if err != nil {
 		return "", err
 	}
+	if err := db.NotifyProjectCacheChanged(tx, projectId); err != nil {
+		return "", err
+	}
 	return token, nil
 }
 
@@ -278,6 +287,9 @@ func (p *projectRepository) Update(tx *sql.Tx, id uuid.UUID, name string, framew
 	if err != nil {
 		return nil, err
 	}
+	if err := db.NotifyProjectCacheChanged(tx, id); err != nil {
+		return nil, err
+	}
 	return project, nil
 }
 
@@ -297,7 +309,10 @@ func (p *projectRepository) Delete(tx *sql.Tx, id uuid.UUID) error {
 			return fmt.Errorf("deleting %s: %w", table, err)
 		}
 	}
-	return lit.DeleteNamed(db.Driver, tx, "DELETE FROM projects WHERE id = :id", lit.P{"id": id})
+	if err := lit.DeleteNamed(db.Driver, tx, "DELETE FROM projects WHERE id = :id", lit.P{"id": id}); err != nil {
+		return err
+	}
+	return db.NotifyProjectCacheChanged(tx, id)
 }
 
 func (p *projectRepository) FindBySourceMapToken(tx *sql.Tx, token string) (*models.Project, error) {

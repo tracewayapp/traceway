@@ -19,6 +19,7 @@ type projectCache struct {
 	projectsById             map[uuid.UUID]*models.Project // key: id
 	projectsBySourceMapToken map[string]*models.Project    // key: source_map_token
 	mu                       sync.RWMutex
+	refreshMu                sync.Mutex
 	lastRefresh              time.Time
 }
 
@@ -29,10 +30,17 @@ var ProjectCache = &projectCache{
 }
 
 func (c *projectCache) Init(ctx context.Context) error {
+	if err := c.startListener(ctx); err != nil {
+		return err
+	}
+
 	return c.Refresh(ctx)
 }
 
 func (c *projectCache) Refresh(ctx context.Context) error {
+	c.refreshMu.Lock()
+	defer c.refreshMu.Unlock()
+
 	projects, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.Project, error) {
 		return transactional.ProjectRepository.FindAll(tx)
 	})

@@ -35,26 +35,7 @@ func IsDuckDBTelemetry() bool {
 }
 
 func initPostgres() error {
-	cfg := config.Config
-
-	host := cfg.PostgresHost
-	port := cfg.PostgresPort
-	database := cfg.PostgresDatabase
-	username := cfg.PostgresUsername
-	password := cfg.PostgresPassword
-	sslMode := cfg.PostgresSSLMode
-
-	if sslMode == "" {
-		sslMode = "disable"
-	}
-	if port == "" {
-		port = "5432"
-	}
-
-	connStr := fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		host, port, username, password, database, sslMode,
-	)
+	connStr := postgresConnectionString()
 
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
@@ -72,6 +53,24 @@ func initPostgres() error {
 	Driver = lit.PostgreSQL
 
 	return nil
+}
+
+func postgresConnectionString() string {
+	cfg := config.Config
+	port := cfg.PostgresPort
+	sslMode := cfg.PostgresSSLMode
+
+	if sslMode == "" {
+		sslMode = "disable"
+	}
+	if port == "" {
+		port = "5432"
+	}
+
+	return fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		cfg.PostgresHost, port, cfg.PostgresUsername, cfg.PostgresPassword, cfg.PostgresDatabase, sslMode,
+	)
 }
 
 func GetDB() *sql.DB {

@@ -40,6 +40,22 @@ ingress:
 
 resources: {}
 
+# Startup probe. The liveness budget only starts once this succeeds, so a slow
+# first boot is not mistaken for a hung process. The server binds its ports only
+# after migrations finish, and an upgrade that builds indexes on a large
+# telemetry database can take minutes — without this the kubelet would kill the
+# pod mid-migration and restart it into the same stall on every retry. Raise
+# failureThreshold if an upgrade needs longer than periodSeconds x
+# failureThreshold; the backend logs each migration and its elapsed time as it
+# runs, so the container log says how much longer it needs.
+startupProbe:
+  httpGet:
+    path: /health
+    port: http
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 60
+
 autoscaling:
   enabled: false
   minReplicas: 1

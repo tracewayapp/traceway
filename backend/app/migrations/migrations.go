@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
+
+	"github.com/tracewayapp/traceway/backend/app/config"
 )
 
 type ExtensionMigration struct {
@@ -59,6 +62,9 @@ func runMigrationsOn(target *sql.DB, fsys embed.FS, dir, trackingTable, createTr
 			return fmt.Errorf("failed to read migration file %s: %w", file, err)
 		}
 
+		config.Logf("migrations: applying %s/%s", dir, version)
+		started := time.Now()
+
 		statements := splitStatements(string(content))
 		for _, stmt := range statements {
 			stmt = strings.TrimSpace(stmt)
@@ -73,6 +79,8 @@ func runMigrationsOn(target *sql.DB, fsys embed.FS, dir, trackingTable, createTr
 		if _, err := target.Exec(fmt.Sprintf("INSERT INTO %s (version) VALUES (?)", trackingTable), version); err != nil {
 			return fmt.Errorf("failed to record migration version %s: %w", version, err)
 		}
+
+		config.Logf("migrations: applied %s/%s in %s", dir, version, time.Since(started).Round(time.Millisecond))
 	}
 
 	return nil

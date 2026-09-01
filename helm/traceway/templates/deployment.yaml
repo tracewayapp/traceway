@@ -51,6 +51,10 @@ spec:
                 name: {{ include "traceway.fullname" . }}
             - secretRef:
                 name: {{ include "traceway.secretName" . }}
+          {{- with .Values.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /health

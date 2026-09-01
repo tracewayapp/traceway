@@ -10,15 +10,12 @@ import (
 )
 
 // Every per-group telemetry read pairs a group column with the table's time
-// column: as a second filter on the grouped lists, as the ORDER BY on the
-// per-group detail reads. An index that stops at the group column leaves SQLite
-// choosing between two bad plans -- seek the time index and re-filter the group
-// per row, which is a whole-window scan per group on the lists and a whole-table
-// walk on a detail read whose group holds fewer rows than the LIMIT; or seek the
-// group and sort its entire history. Which one it picks flips on whether ANALYZE
-// has ever run, so both are reachable in production and neither shows up in a
-// functional test. Guard the covering indexes: a later migration must not narrow
-// or drop one unnoticed.
+// column -- as a second filter on the grouped lists, as the ORDER BY on the
+// per-group detail reads. An index that stops at the group column forces SQLite
+// to either re-filter the group across the whole window once per group, which is
+// quadratic in the number of groups, or seek the group and sort its entire
+// history. Both are unbounded and both are invisible to functional tests. Guard
+// the covering indexes so a later migration cannot narrow or drop one unnoticed.
 func TestTelemetryGroupIndexesCoverTimeColumn(t *testing.T) {
 	telemetryDB, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -52,7 +49,7 @@ func TestTelemetryGroupIndexesCoverTimeColumn(t *testing.T) {
 			t.Fatalf("%s: failed to inspect indexes: %v", tc.table, err)
 		}
 		if !covered {
-			t.Errorf("%s: no index leading with (project_id, %s, %s); per-group reads fall back to scanning the table or sorting the whole group", tc.table, tc.group, tc.timeCol)
+			t.Errorf("%s: no index leading with (project_id, %s, %s)", tc.table, tc.group, tc.timeCol)
 		}
 	}
 }

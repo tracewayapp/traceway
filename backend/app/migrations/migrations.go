@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
+	"io/fs"
 	"sort"
 	"strings"
 	"time"
@@ -27,12 +28,12 @@ const sqliteTrackingDDL = `CREATE TABLE IF NOT EXISTS %s (
 	applied_at DATETIME DEFAULT (datetime('now'))
 )`
 
-func runMigrationsOn(target *sql.DB, fsys embed.FS, dir, trackingTable, createTrackingSQL string) error {
+func runMigrationsOn(target *sql.DB, fsys fs.FS, dir, trackingTable, createTrackingSQL string) error {
 	if _, err := target.Exec(fmt.Sprintf(createTrackingSQL, trackingTable)); err != nil {
 		return fmt.Errorf("failed to create %s table: %w", trackingTable, err)
 	}
 
-	entries, err := fsys.ReadDir(dir)
+	entries, err := fs.ReadDir(fsys, dir)
 	if err != nil {
 		return fmt.Errorf("failed to read migrations dir %s: %w", dir, err)
 	}
@@ -57,7 +58,7 @@ func runMigrationsOn(target *sql.DB, fsys embed.FS, dir, trackingTable, createTr
 			continue
 		}
 
-		content, err := fsys.ReadFile(dir + "/" + file)
+		content, err := fs.ReadFile(fsys, dir+"/"+file)
 		if err != nil {
 			return fmt.Errorf("failed to read migration file %s: %w", file, err)
 		}

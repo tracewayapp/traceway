@@ -72,7 +72,9 @@ ENV GIN_MODE=release \
 
 EXPOSE 80 8082
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+# 300s, the Helm chart's default startupProbe budget: the server binds only after
+# migrations run, and Docker ends the start period at the first healthy probe.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=300s --retries=3 \
     CMD wget -qO- http://localhost/health || exit 1
 
 ENTRYPOINT ["/usr/local/bin/traceway"]

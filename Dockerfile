@@ -99,7 +99,9 @@ VOLUME ["/var/lib/clickhouse", "/var/lib/postgresql/data"]
 
 EXPOSE 80 8082
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+# 300s, the Helm chart's default startupProbe budget: the server binds only after
+# migrations run, and Docker ends the start period at the first healthy probe.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=300s --retries=3 \
     CMD curl -f http://localhost/health || exit 1
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]

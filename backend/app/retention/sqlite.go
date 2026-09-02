@@ -31,6 +31,17 @@ var telemetryRetentionTargets = []struct {
 	{"profiling_stacks", "last_seen"},
 }
 
+// TelemetryTimeColumns maps each pruned telemetry table to its retention time
+// column, which is also the column the migrations package's index guard
+// expects project-leading indexes to reach.
+func TelemetryTimeColumns() map[string]string {
+	columns := make(map[string]string, len(telemetryRetentionTargets))
+	for _, tgt := range telemetryRetentionTargets {
+		columns[tgt.table] = tgt.column
+	}
+	return columns
+}
+
 func startSQLiteRetention(ctx context.Context, days int, source string) {
 	if !db.IsSQLite() {
 		return

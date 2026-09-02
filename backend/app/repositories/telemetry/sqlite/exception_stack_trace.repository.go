@@ -492,6 +492,9 @@ func (e *exceptionStackTraceRepository) FindByDistributedTraceId(ctx context.Con
 }
 
 // FindAllBySessionId returns all exceptions/messages stamped with the given session_id, ordered by time.
+// The plain `session_id = ?` is what lets SQLite prove the partial idx_exceptions_session_recorded
+// (WHERE session_id IS NOT NULL) applies; an IS, IN or COALESCE rewrite would fall back to the
+// (project_id, recorded_at) index and re-filter the whole project.
 func (e *exceptionStackTraceRepository) FindAllBySessionId(ctx context.Context, projectId, sessionId uuid.UUID) ([]models.ExceptionStackTrace, error) {
 	rows, err := lit.SelectNamed[exceptionRow](db.TelemetryDB,
 		`SELECT id, project_id, trace_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, distributed_trace_id, session_id

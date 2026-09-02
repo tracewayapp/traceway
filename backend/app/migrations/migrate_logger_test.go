@@ -4,7 +4,6 @@ package migrations
 
 import (
 	"bytes"
-	"log"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -40,16 +39,12 @@ func TestMigrateLoggerReportsEachMigrationAsItRuns(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	restore := log.Writer()
-	log.SetOutput(&buf)
-	defer log.SetOutput(restore)
+	t.Cleanup(captureLog(&buf))
 
 	m.Log = migrateLogger{store: "postgres"}
 	if err := m.Up(); err != nil {
 		t.Fatalf("migrate up failed: %v", err)
 	}
-
-	log.SetOutput(restore)
 	got := buf.String()
 
 	for _, want := range []string{

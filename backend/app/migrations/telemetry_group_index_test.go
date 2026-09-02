@@ -2,12 +2,7 @@
 
 package migrations
 
-import (
-	"database/sql"
-	"testing"
-
-	_ "modernc.org/sqlite"
-)
+import "testing"
 
 // The grouped-list reads for these three tables filter
 // (project_id, <group>, recorded_at). An index that stops at the group column
@@ -16,12 +11,7 @@ import (
 // the number of groups and invisible to functional tests. Guard the covering
 // indexes so a later migration cannot narrow or drop them unnoticed.
 func TestTelemetryGroupIndexesCoverRecordedAt(t *testing.T) {
-	telemetryDB, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("failed to open in-memory sqlite: %v", err)
-	}
-	defer telemetryDB.Close()
-	telemetryDB.SetMaxOpenConns(1)
+	telemetryDB := openMemorySQLite(t)
 
 	if err := runMigrationsOn(telemetryDB, migrationsSqliteTelemetryFS, "sqlite_telemetry", "schema_migrations", sqliteTrackingDDL); err != nil {
 		t.Fatalf("telemetry migrations failed: %v", err)

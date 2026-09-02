@@ -8,6 +8,9 @@ spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
+  {{- $probe := .Values.startupProbe | default dict }}
+  {{- $probeBudget := mul ($probe.periodSeconds | default 0) ($probe.failureThreshold | default 0) }}
+  progressDeadlineSeconds: {{ .Values.progressDeadlineSeconds | default (max 600 (add $probeBudget 60)) }}
   selector:
     matchLabels:
       {{- include "traceway.selectorLabels" . | nindent 6 }}

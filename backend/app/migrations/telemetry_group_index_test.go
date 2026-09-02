@@ -17,8 +17,14 @@ import (
 // per-group detail reads. An index that stops at the group column leaves SQLite
 // to either re-filter the group across the whole window once per group, which
 // is quadratic in the number of groups, or seek the group and sort its entire
-// history. Both are unbounded and invisible to functional tests. Guard the
-// covering indexes so a later migration cannot narrow or drop one unnoticed.
+// history. Both are unbounded and invisible to functional tests.
+//
+// The first loop guards the indexes behind known reads so a later migration
+// cannot narrow or drop one unnoticed. The second inverts the question: every
+// index that leads with project_id must reach its table's time column, so a
+// short index fails here the day it lands rather than when somebody remembers
+// to list it. Indexes that stop short on purpose are named with the reason,
+// and each entry is itself checked so it cannot outlive the index it excuses.
 func TestTelemetryGroupIndexesCoverTimeColumn(t *testing.T) {
 	telemetryDB, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -54,6 +60,31 @@ func TestTelemetryGroupIndexesCoverTimeColumn(t *testing.T) {
 		}
 	}
 
+	intentionallyShort := map[string]string{
+		"idx_spans_project_trace":                  "a trace has tens of spans; after the trace seek, the recorded_at window and the start_time sort touch only those rows",
+		"idx_session_recordings_project_exception": "an exception has at most a handful of recordings, so ordering them costs nothing",
+		"idx_exceptions_project_hash":              "widened by #338; delete this entry when it merges",
+		"idx_ai_traces_project_conversation":       "widened by #338; delete this entry when it merges",
+	}
+	for _, ix := range indexes {
+		timeCol, pruned := timeColumn[ix.table]
+		if ix.cols[0] != "project_id" || !pruned {
+			continue
+		}
+		_, listed := intentionallyShort[ix.name]
+		delete(intentionallyShort, ix.name)
+		reaches := slices.Contains(ix.cols[1:], timeCol)
+		shape := ix.table + "(" + strings.Join(ix.cols, ", ") + ")"
+		switch {
+		case reaches && listed:
+			t.Errorf("%s on %s reaches %s now; remove it from intentionallyShort", ix.name, shape, timeCol)
+		case !reaches && !listed:
+			t.Errorf("%s on %s leads with project_id but never reaches %s; widen it, or add it to intentionallyShort with the reason", ix.name, shape, timeCol)
+		}
+	}
+	for index := range intentionallyShort {
+		t.Errorf("intentionallyShort names %s, which is no longer an index leading with project_id on a pruned table; remove the entry", index)
+	}
 }
 
 type telemetryIndex struct {

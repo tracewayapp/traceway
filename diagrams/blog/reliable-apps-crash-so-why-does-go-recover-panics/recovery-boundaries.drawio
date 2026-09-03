@@ -1,0 +1,100 @@
+<mxfile host="app.diagrams.net" version="29.3.6">
+  <diagram name="recovery-boundaries" id="recovery-boundaries-1">
+    <mxGraphModel dx="0" dy="0" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="630" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="bg" parent="1" vertex="1" value="" style="rounded=0;html=0;fillColor=#0a0d14;strokeColor=none;">
+          <mxGeometry x="0" y="0" width="1200" height="630" as="geometry" />
+        </mxCell>
+        <mxCell id="eyebrow" parent="1" vertex="1" value="RECOVERY BOUNDARIES" style="text;html=0;align=left;verticalAlign=middle;fontFamily=Helvetica;fontSize=13;fontColor=#5a6374;strokeColor=none;fillColor=none;">
+          <mxGeometry x="60" y="26" width="400" height="24" as="geometry" />
+        </mxCell>
+
+        <mxCell id="process" parent="1" vertex="1" value="" style="rounded=1;arcSize=4;html=0;fillColor=#0d1119;strokeColor=#2c3446;strokeWidth=1.5;">
+          <mxGeometry x="60" y="70" width="740" height="500" as="geometry" />
+        </mxCell>
+        <mxCell id="process-t" parent="1" vertex="1" value="process" style="text;html=0;align=center;verticalAlign=middle;fontFamily=Helvetica;fontSize=17;fontStyle=1;fontColor=#c9d0dd;strokeColor=none;fillColor=none;">
+          <mxGeometry x="60" y="78" width="740" height="26" as="geometry" />
+        </mxCell>
+
+        <mxCell id="worker" parent="1" vertex="1" value="" style="rounded=1;arcSize=4;html=0;fillColor=#10151f;strokeColor=#2f3849;strokeWidth=1.5;">
+          <mxGeometry x="106" y="116" width="648" height="408" as="geometry" />
+        </mxCell>
+        <mxCell id="worker-t" parent="1" vertex="1" value="worker" style="text;html=0;align=center;verticalAlign=middle;fontFamily=Helvetica;fontSize=17;fontStyle=1;fontColor=#c9d0dd;strokeColor=none;fillColor=none;">
+          <mxGeometry x="106" y="124" width="648" height="26" as="geometry" />
+        </mxCell>
+
+        <mxCell id="job" parent="1" vertex="1" value="" style="rounded=1;arcSize=4;html=0;fillColor=#141a25;strokeColor=#353e50;strokeWidth=1.5;">
+          <mxGeometry x="152" y="162" width="556" height="316" as="geometry" />
+        </mxCell>
+        <mxCell id="job-t" parent="1" vertex="1" value="durable job attempt" style="text;html=0;align=center;verticalAlign=middle;fontFamily=Helvetica;fontSize=17;fontStyle=1;fontColor=#c9d0dd;strokeColor=none;fillColor=none;">
+          <mxGeometry x="152" y="170" width="556" height="26" as="geometry" />
+        </mxCell>
+
+        <mxCell id="request" parent="1" vertex="1" value="" style="rounded=1;arcSize=4;html=0;fillColor=#181f2b;strokeColor=#3c4557;strokeWidth=1.5;">
+          <mxGeometry x="198" y="208" width="464" height="224" as="geometry" />
+        </mxCell>
+        <mxCell id="request-t" parent="1" vertex="1" value="request" style="text;html=0;align=center;verticalAlign=middle;fontFamily=Helvetica;fontSize=17;fontStyle=1;fontColor=#f4f6fb;strokeColor=none;fillColor=none;">
+          <mxGeometry x="198" y="216" width="464" height="26" as="geometry" />
+        </mxCell>
+
+        <mxCell id="operation" parent="1" vertex="1" value="" style="rounded=1;arcSize=4;html=0;fillColor=#1b1115;strokeColor=#ff5a5f;strokeWidth=1.5;">
+          <mxGeometry x="244" y="254" width="372" height="132" as="geometry" />
+        </mxCell>
+        <mxCell id="operation-t" parent="1" vertex="1" value="operation" style="text;html=0;align=center;verticalAlign=middle;fontFamily=Helvetica;fontSize=17;fontStyle=1;fontColor=#ff9a9d;strokeColor=none;fillColor=none;">
+          <mxGeometry x="244" y="262" width="372" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="glow" parent="1" vertex="1" value="" style="ellipse;html=0;fillColor=#ff5a5f;strokeColor=none;opacity=12;">
+          <mxGeometry x="270" y="284" width="320" height="76" as="geometry" />
+        </mxCell>
+        <mxCell id="panic" parent="1" vertex="1" value="panic()" style="rounded=1;arcSize=50;html=0;fillColor=#2a1418;strokeColor=#ff5a5f;strokeWidth=1.5;fontFamily=Helvetica;fontSize=18;fontStyle=1;fontColor=#ff9a9d;">
+          <mxGeometry x="360" y="300" width="140" height="44" as="geometry" />
+        </mxCell>
+
+        <mxCell id="unwind" parent="1" edge="1" value="" style="edgeStyle=none;html=0;endArrow=none;strokeColor=#ff5a5f;strokeWidth=2;dashed=1;dashPattern=6 5;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="500" y="322" as="sourcePoint" />
+            <mxPoint x="800" y="322" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m1" parent="1" vertex="1" value="" style="ellipse;html=0;fillColor=#0a0d14;strokeColor=#22e0a8;strokeWidth=1.5;">
+          <mxGeometry x="609" y="315" width="14" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="m2" parent="1" vertex="1" value="" style="ellipse;html=0;fillColor=#0a0d14;strokeColor=#22e0a8;strokeWidth=1.5;">
+          <mxGeometry x="655" y="315" width="14" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="m3" parent="1" vertex="1" value="" style="ellipse;html=0;fillColor=#0a0d14;strokeColor=#22e0a8;strokeWidth=1.5;">
+          <mxGeometry x="701" y="315" width="14" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="m4" parent="1" vertex="1" value="" style="ellipse;html=0;fillColor=#0a0d14;strokeColor=#22e0a8;strokeWidth=1.5;">
+          <mxGeometry x="747" y="315" width="14" height="14" as="geometry" />
+        </mxCell>
+
+        <mxCell id="exit" parent="1" edge="1" value="exit(1)" style="edgeStyle=none;html=0;endArrow=block;endFill=1;strokeColor=#ff5a5f;strokeWidth=2;fontFamily=Helvetica;fontSize=14;fontColor=#ff8a8d;labelBackgroundColor=none;">
+          <mxGeometry relative="1" as="geometry" x="0" y="12">
+            <mxPoint x="800" y="322" as="sourcePoint" />
+            <mxPoint x="940" y="322" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="restart" parent="1" edge="1" value="clean process" style="edgeStyle=none;html=0;endArrow=block;endFill=1;strokeColor=#22e0a8;strokeWidth=2;fontFamily=Helvetica;fontSize=14;fontColor=#7ff0c8;labelBackgroundColor=none;">
+          <mxGeometry relative="1" as="geometry" x="0" y="12">
+            <mxPoint x="940" y="362" as="sourcePoint" />
+            <mxPoint x="800" y="362" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="supervisor" parent="1" vertex="1" value="" style="rounded=1;arcSize=8;html=0;fillColor=#0c1714;strokeColor=#22e0a8;strokeWidth=1.5;">
+          <mxGeometry x="940" y="278" width="210" height="128" as="geometry" />
+        </mxCell>
+        <mxCell id="supervisor-t" parent="1" vertex="1" value="supervisor" style="text;html=0;align=center;verticalAlign=middle;fontFamily=Helvetica;fontSize=18;fontStyle=1;fontColor=#f4f6fb;strokeColor=none;fillColor=none;">
+          <mxGeometry x="940" y="308" width="210" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="supervisor-s" parent="1" vertex="1" value="systemd · Docker · kubelet" style="text;html=0;align=center;verticalAlign=middle;fontFamily=Helvetica;fontSize=13;fontColor=#7ff0c8;strokeColor=none;fillColor=none;">
+          <mxGeometry x="940" y="338" width="210" height="24" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

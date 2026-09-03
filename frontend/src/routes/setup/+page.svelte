@@ -17,9 +17,7 @@
 			: (writableOrgs[0]?.id ?? null);
 	});
 
-	const selectedOrgName = $derived(
-		writableOrgs.find((o) => o.id === selectedOrgId)?.name ?? ''
-	);
+	const selectedOrgName = $derived(writableOrgs.find((o) => o.id === selectedOrgId)?.name ?? '');
 </script>
 
 <div class="mx-auto w-full max-w-2xl space-y-6">

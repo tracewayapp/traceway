@@ -1,0 +1,241 @@
+---
+title: 'Reliable Apps Crash: So Why Does net/http Recover Panics?'
+date: '2026-08-29'
+category: engineering
+author: dusan
+image: /blog/reliable-apps-crash-so-why-does-go-recover-panics/og.png
+description: >-
+  What separates good restaurants from bad ones is consistency. When you order
+  the same meal twice, you expect the same meal twice. That predictability is
+  what makes them reliable. A distributed system needs the same property.
+---
+
+If your service is built on `net/http`, it already recovers panics in handlers. The server catches the panic, logs a stack trace, closes the connection, and moves on to the next request. Nothing in your code asked for that. It is the default, and it is why "the process is still up" feels like the same thing as "the service is fine", but it is not. Reliable is not the same as running.
+
+![Two panels side by side. Restaurant: the fridge broke and stayed warm all night, so close the doors and throw out everything you cannot trust, restock from a supplier you trust, then seat guests again. Go service: a panic landed between two writes, so exit(1) and nothing in memory survives, the supervisor starts a clean process that rebuilds from durable state, then readiness passes and traffic comes back.](/blog/reliable-apps-crash-so-why-does-go-recover-panics/restaurant-vs-go-service.svg)
+
+To build truly reliable systems, we must make them predictable. For a system to be predictable, it has to have a set of rules that must hold true when it is observed. These rules are called _invariants_. An account balance must be positive. An index and the data must agree. If a cache reports that it contains 10 entries, then its map has to have 10 keys.
+
+Invariants can be broken briefly while the system cannot be observed. This is done to update related pieces of state. To outside observers, these operations appear atomic. The invariants we're breaking must be restored before we give control back to the caller or release the lock.
+
+This distinction matters less when you're building a CRUD app on a single database, because someone already built the boundary for you. The transaction owns every write you make inside it, and a panic in the middle means it never commits. When you are the one building the stateful thing, a database, a queue, a scheduler, or any service with shared in-memory state, you have to establish and enforce these invariants yourself.
+
+## Reliability is a state
+
+After a panic occurs, the goal is not to keep the process alive; it's to return the service to a valid internal state and make sure its invariants hold again.
+
+A _side effect_ is anything a function does besides compute its return value: writing to a map, taking a lock, appending to a slice someone else holds, inserting a database row, writing a file, and so on. A function with no side effects can be called, fail, and be called again with nothing to clean up. A function with side effects has made changes that will stay after the function is gone, whether it returned normally or not.
+
+Go's `recover()` only works when called directly by a deferred function on the same goroutine that is panicking. When it succeeds, it stops the panic from continuing up the stack. It does not resume execution at the line that panicked, undo writes, repair shared state, or restart a goroutine. The functions between the panic and the recovery point are gone, and the function that installed the defer returns to its caller. Their deferred calls still run on the way out, which is why the mutex in the example below gets unlocked. This is important because it gives us a simple rule: handle panics only at the _boundary_ where every possible side effect can be rolled back, discarded and rebuilt, or reconciled. That boundary might be an operation, a request, a durable job attempt, a worker, or the entire process. If we cannot identify a safe boundary inside the process, we should terminate it and let an external supervisor start a clean one.
+
+Yes, you read that right: if you cannot safely roll back all of the side effects, you should not blindly recover, but instead let the app **crash** and have the supervisor restart it.
+
+### The problem: key-value store
+
+To demonstrate, we will build a simple cache service in Go. We will start with a naive version, show why it is unsafe, then fix it twice: once by removing the duplicated fact, and once by making the process the recovery boundary. We'll use a map to store the key-value pairs. The map access will be guarded by a mutex, and we'll define simple set and stats functions.
+
+> The cache has one invariant: `numKeys` must always equal `len(values)` when no operation is in progress.
+
+The `PANIC` value below is a deliberate failure injection. In real code, it could be a nil pointer dereference, a failed type assertion, or a library panic. What matters is that it happens after the first mutation and before the second.
+
+```go
+package main
+
+import (
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"sync"
+)
+
+type Cache struct {
+	mu      sync.RWMutex
+	values  map[string]string
+	numKeys int
+}
+
+func (c *Cache) Set(key, value string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if _, exists := c.values[key]; !exists {
+		c.numKeys++
+	}
+	if value == "PANIC" {
+		panic("simulated failure")
+	}
+	c.values[key] = value
+}
+
+func (c *Cache) Stats() (numKeys, storedKeys int) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.numKeys, len(c.values)
+}
+
+func main() {
+	cache := &Cache{values: make(map[string]string)}
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("PUT /cache/{key}", func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1024))
+		if err != nil {
+			http.Error(w, "invalid value", http.StatusBadRequest)
+			return
+		}
+
+		cache.Set(r.PathValue("key"), string(body))
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	mux.HandleFunc("GET /stats", func(w http.ResponseWriter, _ *http.Request) {
+		numKeys, storedKeys := cache.Stats()
+		fmt.Fprintf(w, "reported_keys=%d stored_keys=%d\n", numKeys, storedKeys)
+	})
+
+	log.Fatal(http.ListenAndServe(":8080", mux))
+}
+```
+
+Start the server and make these requests:
+
+```bash
+curl -X PUT http://localhost:8080/cache/first -d 'hello'
+curl -X PUT http://localhost:8080/cache/second -d 'PANIC'
+curl http://localhost:8080/stats
+```
+
+The second request fails with `curl: (52) Empty reply from server` because `net/http` closes the connection, and the server logs `http: panic serving [::1]:55242: simulated failure` followed by a stack trace. The process stays alive, so the final request still succeeds:
+
+```
+reported_keys=2 stored_keys=1
+```
+
+Is the process alive? Yes.
+
+Is the cache reliable? No.
+
+Does that make `net/http` wrong? Also no.
+
+The mutex did its job. The cache is up and available, but the problem is that it disagrees with itself. The panic happened in an unexpected place, and the default boundary was not correct for our application. The `net/http` design works for most apps, but it does not work for all apps.
+
+The [`net/http` contract](https://pkg.go.dev/net/http#Handler) says the server **assumes** that the effect of a handler panic is isolated to the active request. In our case, that was not correct. This doesn't mean that we cannot build complex systems with internal state in Go. It means we must be aware of its interfaces and contracts in order to maintain our invariants. Our two independent in-memory mutations are not isolated. `recover()` is a language feature, but recovery is a system property.
+
+Once the cache disagrees with itself, we have at least three choices:
+
+1. Roll back the partial mutation if we know exactly what changed.
+2. Reset the entire cache if all of its state is reconstructible.
+3. Terminate the process if neither in-process repair can be proven safe.
+
+You're thinking: just don't store the count twice. Correct. That is the fix in this case. Now do it for an LRU cache, where a map and a linked list must agree. Or a B-tree with a dirty page list. Or a connection pool that counts what it has handed out. Systems store the same fact twice on purpose, because the second copy is what makes them fast, and a panic does not care which of the two writes it lands between. Here the fix is one deleted field. In most other cases, this is not trivial. The one option that is always easy, however, is terminating the process. It shouldn't be our only strategy, but it should be our last line of defense. It is always available, even for panics in our recovery logic.
+
+### The narrow fix
+
+The narrow fix is to stop storing the same fact twice:
+
+```go
+type Cache struct {
+	mu     sync.RWMutex
+	values map[string]string
+}
+
+func (c *Cache) Set(key, value string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if value == "PANIC" {
+		panic("simulated failure")
+	}
+	c.values[key] = value
+}
+
+func (c *Cache) Len() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return len(c.values)
+}
+```
+
+With `Stats` gone, the `/stats` handler prints `cache.Len()` instead. Now the map is the only source of truth. The panic still interrupts the request, but there is no second value that can disagree with it.
+
+## When the process is the recovery boundary
+
+Let's talk about the restaurant again. When the fridge breaks and has been warm all night, the kitchen does not keep serving just because the doors are open. It closes, throws out everything it cannot trust, restocks, and only then seats guests again.
+
+The process becomes the recovery boundary when we cannot prove that anything smaller owns everything the panicked code might have changed. Recovery code is still code, so it can fail too. It might depend on a database that is unavailable, inherit corrupted state, or panic while trying to clean up.
+
+In that situation, continuing to serve traffic turns uncertainty into an API contract. A clean process is safer because its memory, locks, stacks, and goroutines are rebuilt from scratch. This works only when important state is durable or reconstructible. Restarting cannot repair corrupted durable data, recall an email, or uncharge a card.
+
+There is one Go-specific complication. Letting a panic escape `ServeHTTP` does not terminate the process because `net/http` catches that panic at its own boundary. If a service decides that a handler has compromised process-wide state, it needs an explicit fatal path owned by the application, one that stops serving and exits with a nonzero status. A panic caught by `net/http` is not such a path.
+
+### The process fix
+
+For the original cache, the broader alternative is to catch a panic around the state-changing operation and exit before `net/http` can recover it. With `os` and `runtime/debug` imported, replace the call to `cache.Set` with `setOrExit`:
+
+```go
+func setOrExit(cache *Cache, key, value string) {
+	defer func() {
+		if failure := recover(); failure != nil {
+			log.Printf("fatal cache panic: %v\n%s", failure, debug.Stack())
+			os.Exit(1)
+		}
+	}()
+
+	cache.Set(key, value)
+}
+```
+
+The second `PUT` now terminates the process with status 1. Its supervisor can start a new process whose empty cache satisfies the invariant again.
+
+This is why "always recover" and "always crash" are both bad strategies. If one malformed request can restart every instance, a small bug can become a denial-of-service attack. Request-level recovery is the right default when the request is truly isolated. Process termination is the safer choice when shared state is invalid or we cannot determine whether it is still valid.
+
+To turn a crash into a restart instead of an outage, we need a supervisor.
+
+## The supervisor
+
+A supervisor sits outside the unit that can fail. Its job is to notice that the unit stopped and create a replacement from a state known to be good. For a worker, that supervisor may be another goroutine. Go does not send a panic from one goroutine to another, so the worker must catch its own panic and report that it stopped. Without that wrapper, an unrecovered worker panic terminates the whole process before another goroutine can restart it.
+
+The wrapper is short. The goroutine recovers its own panic, records it with the stack, and tells the supervisor goroutine to start a replacement:
+
+```go
+go func() {
+	defer func() {
+		if failure := recover(); failure != nil {
+			log.Printf("worker panic: %v\n%s", failure, debug.Stack())
+			restart <- struct{}{}
+		}
+	}()
+	worker()
+}()
+```
+
+For a process, the supervisor is usually systemd, Docker, a kubelet, or another process manager.
+
+I have shipped an app whose background goroutines had no such wrapper, behind a supervisor that was misconfigured and slow to restart. One goroutine panic took production down. Learn from my mistake. Recover in long-running goroutines when the worker owns its state, configure the supervisor properly, and make the app restart fast.
+
+The supervisor is part of the recovery design, not a magic property of deployment. It must be configured to restart failed units and back off when the same deterministic bug keeps crashing them. A restart is only half of the job. Something in the deployment also has to keep the replacement out of traffic until it is ready. Depending on the setup, that might be the supervisor, an orchestrator, or a load balancer. Without readiness and backoff, restarts can amplify load and turn one failure into a crash loop across the fleet.
+
+Common configurations include:
+
+- A systemd unit with `Restart=on-failure` and `RestartSec=5s`, which restarts a failed process after a short delay.
+- A Docker container with an `on-failure` restart policy, which restarts the container when its process exits unsuccessfully.
+- A Kubernetes Pod with a readiness probe, which stays out of Service traffic until it is ready, while the kubelet restarts failed containers with backoff.
+
+## Building your boundaries
+
+You already use the best recovery boundary ever built: a database transaction. Every write inside it can be rolled back, which is why CRUD apps get to be relaxed about panics. It stops working the moment one side effect leaves the database. Insert the order, then send the email. Panic between them and the order exists but the email is gone, and no rollback can fix that. The outbox pattern solves it: instead of sending the email, save it as a row in the same transaction as the order, and let a worker send it later. Now a crash loses nothing. The row survives, the worker retries. Everything that matters is durable, so the process itself is allowed to crash.
+
+These are common recovery boundaries, ordered from narrow to broad. Recover at the narrowest one that owns every side effect, and widen when it does not. Real systems almost never nest them exactly like this:
+
+![Five nested recovery boundaries, from the operation at the center out to the process. A panic unwinds outward until a deferred recover at the first boundary that can restore the invariants stops it. If no boundary inside the process can, the process exits with a nonzero status and a supervisor such as systemd, Docker or the kubelet starts a clean process.](/blog/reliable-apps-crash-so-why-does-go-recover-panics/recovery-boundaries.svg)
+
+However hard you try to recover at a narrow boundary, it will not always be possible, so keep a strong fallback in place. Do not recover a panic just to report it unless you can show that no side effect survives that boundary. Smaller is useful only when it is actually safe.
+
+## Conclusion
+
+We started with a cache that reported two keys and stored one. `net/http` did exactly what its contract says: it assumed the panic was isolated to the request and kept serving, so the process stayed up while the cache disagreed with itself. We fixed that twice, once by deleting the second copy of the fact, and once by exiting before `net/http` could recover and letting the supervisor start a process that agrees with itself. Neither fix was about keeping the process alive. Both were about getting back to a state where the invariants hold.
+
+Every rule in this post I learned by breaking it. I recovered panics I should have let through. I let one through behind a misconfigured supervisor and took production down. What finally stuck fits in three lines. Recover at the narrowest boundary that owns every side effect. If there is no such boundary, record the panic, flush, and exit 1. Then go read the panic, because the crash was the easy part.
+
+I have also lost stack traces to a process that exited before anyone wrote them down. Don't make that mistake either. Use [Traceway](https://tracewayapp.com "Traceway"). It is where I go to read them. Reliable apps crash. The good ones leave a note too. If you have any questions send me an email at [dusan@tracewayapp.com](mailto:dusan@tracewayapp.com).

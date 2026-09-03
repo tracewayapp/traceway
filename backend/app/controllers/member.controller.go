@@ -1,13 +1,14 @@
 package controllers
 
 import (
+	"net/http"
+	"strconv"
+
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/oncall"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -84,6 +85,11 @@ func (c *memberController) RemoveMember(ctx *gin.Context) {
 		return
 	}
 
+	currentUserRole, err := transactional.OrganizationRepository.GetUserRole(tx, organizationId, currentUserId)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to get user role: %w", err))
+		return
+	}
 	targetRole, err := transactional.OrganizationRepository.GetUserRole(tx, organizationId, targetUserId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to get user role: %w", err))
@@ -96,6 +102,11 @@ func (c *memberController) RemoveMember(ctx *gin.Context) {
 
 	if targetRole == "owner" {
 		ctx.JSON(http.StatusForbidden, gin.H{"error": "Cannot remove the owner from the organization"})
+		return
+	}
+
+	if targetRole == currentUserRole {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": "Cannot remove the user with the same role"})
 		return
 	}
 

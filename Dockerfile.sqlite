@@ -7,7 +7,13 @@
 # ==============================================================================
 # Stage 1: Build Frontend
 # ==============================================================================
-FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend-builder
+# NODE_VERSION must match .nvmrc, the repo-wide Node pin. release-traceway.yml
+# passes it as a --build-arg read from that file, so a released image cannot be
+# built on a different major from CI; the default below is what a bare
+# `docker build` gets.
+ARG NODE_VERSION=26
+
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 

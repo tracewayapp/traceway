@@ -94,8 +94,7 @@
 							{/if}
 							{#if project.deployment}
 								<div>
-									Deployment: {project.deployment.platform} (instructions shown here after
-									approval)
+									Deployment: {project.deployment.platform} (instructions shown here after approval)
 								</div>
 							{/if}
 						</div>
@@ -116,9 +115,7 @@
 					<Button variant="outline" onclick={() => (rejecting = false)} disabled={loading}>
 						Back
 					</Button>
-					<Button variant="destructive" onclick={reject} disabled={loading}>
-						Reject Proposal
-					</Button>
+					<Button variant="destructive" onclick={reject} disabled={loading}>Reject Proposal</Button>
 				</div>
 			</div>
 		{:else}

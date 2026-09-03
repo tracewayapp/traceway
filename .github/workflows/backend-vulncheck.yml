@@ -67,18 +67,18 @@ jobs:
         working-directory: backend
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      # setup-go@v5 reads the `go` line of go.mod; Go's own GOTOOLCHAIN=auto
-      # then downloads the `toolchain` version, so the scan runs on the same
-      # release release-traceway.yml builds the runner with. The Docker images are not covered by that: the official golang
-      # bases set GOTOOLCHAIN=local, so they build with whatever the floating
-      # golang:1.26-* tag ships, which is >= what is scanned here. One setup-go
-      # cache shared by the three rows is fine here, unlike backend.yml: with
-      # no -race and no test builds the module cache is what matters, and it
-      # is identical across rows.
+      # setup-go@v7 installs the `toolchain` version of go.mod directly, so the
+      # scan runs on the same release release-traceway.yml builds the runner
+      # with. The Docker images are not covered by that: their golang bases pin
+      # GOTOOLCHAIN=local, so they ignore the `toolchain` line and build with
+      # whatever the floating golang:1.26-* tag ships, which is >= what is
+      # scanned here. One setup-go cache shared by the three rows is fine here,
+      # unlike backend.yml: with no -race and no test builds the module cache
+      # is what matters, and it is identical across rows.
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum

@@ -182,7 +182,9 @@
 
 	<div class="relative min-h-[420px] rounded-md border">
 		{#if mode === 'rich' && failed}
-			<div class="flex min-h-[420px] items-center justify-center px-4 text-center text-sm text-red-500">
+			<div
+				class="flex min-h-[420px] items-center justify-center px-4 text-center text-sm text-red-500"
+			>
 				Failed to load the editor. Switch to Markdown to keep editing.
 			</div>
 		{:else if mode === 'rich' && !ready}

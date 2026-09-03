@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { BlogArticle } from "@/components/blog-article";
 import { getPostsByCategory, getPostBySlug, postMetadata } from "@/lib/blog";
+import { vscodeDarkShiki } from "@/lib/shiki-theme-vscode";
 
 type Params = { slug: string };
 
@@ -36,6 +37,7 @@ export default async function BlogPostPage({
       backHref="/blog"
       eyebrow="Engineering"
       showSubscribe
+      codeTheme={vscodeDarkShiki}
     />
   );
 }

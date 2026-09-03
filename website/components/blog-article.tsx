@@ -11,23 +11,25 @@ import { BlogSubscribe } from "@/components/blog-subscribe";
 import type { BlogPost } from "@/lib/blog";
 import { tracewayShiki } from "@/lib/shiki-theme";
 
-const prettyCodeOptions: RehypePrettyCodeOptions = {
-  theme: tracewayShiki,
-  keepBackground: false,
-  defaultLang: "plaintext",
-};
-
 export function BlogArticle({
   post,
   backHref,
   eyebrow,
   showSubscribe,
+  codeTheme = tracewayShiki,
 }: {
   post: BlogPost;
   backHref: string;
   eyebrow: string;
   showSubscribe: boolean;
+  codeTheme?: RehypePrettyCodeOptions["theme"];
 }) {
+  const prettyCodeOptions: RehypePrettyCodeOptions = {
+    theme: codeTheme,
+    keepBackground: false,
+    defaultLang: "plaintext",
+  };
+
   return (
     <main className="relative blog-scope">
       <section className="wrap pt-6 pb-24">

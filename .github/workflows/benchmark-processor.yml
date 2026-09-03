@@ -77,15 +77,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version-file: .nvmrc
       - name: Build oxc shim
         run: bash scripts/build-oxc-shim.sh
       - name: Build traceway collector (oxc)
@@ -127,7 +127,7 @@ jobs:
             cp config-honeycomb.yaml config-honeycomb-ios.yaml config-honeycomb-android.yaml artifacts/
             [ -f ../../testing/symbolication/node-app/dist/app.mjs ] && cp ../../testing/symbolication/node-app/dist/app.mjs ../../testing/symbolication/node-app/dist/app.mjs.map artifacts/ || true
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bench-artifacts
           path: benchmarks/processor/artifacts/
@@ -158,8 +158,8 @@ jobs:
       matrix:
         impl: ${{ fromJson(needs.setup.outputs.impls) }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: bench-artifacts
           path: benchmarks/processor/artifacts/
@@ -193,7 +193,7 @@ jobs:
           hcloud server delete "bench-sut-${{ github.run_id }}-${{ matrix.impl }}" 2>/dev/null || true
           hcloud server delete "bench-ldg-${{ github.run_id }}-${{ matrix.impl }}" 2>/dev/null || true
           hcloud ssh-key delete "bench-key-${{ github.run_id }}-${{ matrix.impl }}" 2>/dev/null || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: results-${{ matrix.impl }}
@@ -204,8 +204,8 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           pattern: results-*
           merge-multiple: true
@@ -213,7 +213,7 @@ jobs:
       - name: Summarize
         working-directory: benchmarks/processor
         run: bash summarize.sh ./results | tee -a "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: summary
           path: benchmarks/processor/results/

@@ -1,0 +1,45 @@
+version: 2
+
+# Scope: GitHub Actions only. The npm and Go module trees are deliberately left
+# unwatched -- backend/ and cli/ already run govulncheck on a daily schedule, and
+# adding those ecosystems would bury the signal this file exists for. Action
+# versions had no watcher at all, which is how the Node 20 runtime migration
+# (#326) reached us twice in one day as a run annotation instead of a PR.
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    # Repo convention is conventional commits, and workflow changes are "ci:".
+    commit-message:
+      prefix: "ci"
+    # The split mirrors how #328/#329 bumped these pins by hand, and it splits on
+    # what a major actually means:
+    #
+    #   first-party -- actions/*, GitHub-maintained. A major here is normally a
+    #                  runner/runtime bump (#326 was exactly that): wide,
+    #                  mechanical, reviewed once as a sweep.
+    #   third-party -- docker/*, cloudflare/*, azure/*, sigstore/*, golangci/*,
+    #                  Swatinem/*, anthropics/*.
+    #                  A major here can change behaviour. wrangler-action v4
+    #                  moved its default Wrangler CLI from 3 to 4, which is the
+    #                  whole of #331. These want reading one at a time.
+    #
+    # Not covered, so do not read this file as total coverage: the three
+    # dtolnay/rust-toolchain@stable refs (`stable` is a branch and that repo
+    # publishes no version tags), and the action pins inside shipped docs --
+    # docs/pages/client/js-sdk/sourcemap-upload.mdx and
+    # website/content/blog/auto-fix-loop.mdx -- which live outside
+    # .github/workflows and so are bumped by hand or not at all.
+    groups:
+      first-party-actions:
+        patterns:
+          - "actions/*"
+      third-party-actions:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "actions/*"
+    # No `labels:` on purpose: `ci` is the collaborator trust gate that makes PR
+    # CI opt-in (see CLAUDE.md), so a reviewer applies it after reading the bump.

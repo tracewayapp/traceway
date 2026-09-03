@@ -4,8 +4,12 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
+	"io/fs"
 	"sort"
 	"strings"
+	"time"
+
+	"github.com/tracewayapp/traceway/backend/app/config"
 )
 
 type ExtensionMigration struct {
@@ -24,12 +28,12 @@ const sqliteTrackingDDL = `CREATE TABLE IF NOT EXISTS %s (
 	applied_at DATETIME DEFAULT (datetime('now'))
 )`
 
-func runMigrationsOn(target *sql.DB, fsys embed.FS, dir, trackingTable, createTrackingSQL string) error {
+func runMigrationsOn(target *sql.DB, fsys fs.FS, dir, trackingTable, createTrackingSQL string) error {
 	if _, err := target.Exec(fmt.Sprintf(createTrackingSQL, trackingTable)); err != nil {
 		return fmt.Errorf("failed to create %s table: %w", trackingTable, err)
 	}
 
-	entries, err := fsys.ReadDir(dir)
+	entries, err := fs.ReadDir(fsys, dir)
 	if err != nil {
 		return fmt.Errorf("failed to read migrations dir %s: %w", dir, err)
 	}
@@ -54,10 +58,13 @@ func runMigrationsOn(target *sql.DB, fsys embed.FS, dir, trackingTable, createTr
 			continue
 		}
 
-		content, err := fsys.ReadFile(dir + "/" + file)
+		content, err := fs.ReadFile(fsys, dir+"/"+file)
 		if err != nil {
 			return fmt.Errorf("failed to read migration file %s: %w", file, err)
 		}
+
+		config.Logf("migrations: applying %s/%s", dir, version)
+		started := time.Now()
 
 		statements := splitStatements(string(content))
 		for _, stmt := range statements {
@@ -73,6 +80,8 @@ func runMigrationsOn(target *sql.DB, fsys embed.FS, dir, trackingTable, createTr
 		if _, err := target.Exec(fmt.Sprintf("INSERT INTO %s (version) VALUES (?)", trackingTable), version); err != nil {
 			return fmt.Errorf("failed to record migration version %s: %w", version, err)
 		}
+
+		config.Logf("migrations: applied %s/%s in %s", dir, version, time.Since(started).Round(time.Millisecond))
 	}
 
 	return nil

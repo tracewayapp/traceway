@@ -40,6 +40,33 @@ ingress:
 
 resources: {}
 
+# Startup probe. The liveness budget only starts once this succeeds, so a slow
+# first boot is not mistaken for a hung process. The server binds its ports only
+# after migrations finish, and an upgrade that builds indexes on a large
+# telemetry database can take minutes — without this the kubelet would kill the
+# pod mid-migration and restart it into the same stall on every retry. The
+# default budget (periodSeconds x failureThreshold = 300s) is the same one the
+# Docker images give their HEALTHCHECK start period. Raise failureThreshold if
+# an upgrade needs longer; the backend logs each migration with its elapsed
+# time (boot phases before migrations, such as DuckDB WAL replay, are not yet
+# timed). The Deployment's progressDeadlineSeconds follows this budget, but a
+# deploy tool's own timeout does not: `helm upgrade --wait` defaults to 5m, and
+# `--atomic` (or a Flux HelmRelease remediation) rolls back when it expires,
+# scaling the migrating pod away — so raise `--timeout` / `spec.timeout` in
+# step with the budget.
+startupProbe:
+  httpGet:
+    path: /health
+    port: http
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 60
+
+# Deployment progress deadline. Derived from the startup probe budget plus a
+# minute for scheduling and image pull, never below the Kubernetes default of
+# 600s; set to override.
+# progressDeadlineSeconds: 900
+
 autoscaling:
   enabled: false
   minReplicas: 1

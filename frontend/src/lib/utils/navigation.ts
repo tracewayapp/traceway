@@ -1,15 +1,13 @@
 import { goto } from '$app/navigation';
-import { resolve } from '$app/paths';
 
-import { splitHref } from './links';
+import { resolveHref } from './links';
 
 export { authenticatedLandingPath, defaultAuthenticatedPath, safeLocalPath } from './landing';
 
 export function gotoHref(href: string, options?: Parameters<typeof goto>[1]) {
-	const { pathname, suffix } = splitHref(href);
-	let destination = resolve((pathname || '/') as '/');
-	destination += suffix;
-	return goto(destination, options);
+	// The rule only recognises a literal resolve() at the call site.
+	// eslint-disable-next-line svelte/no-navigation-without-resolve
+	return goto(resolveHref(href), options);
 }
 
 // SSO logins bounce through the provider and land on /auth/callback, losing

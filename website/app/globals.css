@@ -1128,6 +1128,12 @@
   .blog-body li {
     margin: 8px 0;
   }
+  .blog-body ol {
+    list-style: decimal;
+  }
+  .blog-body ul {
+    list-style: disc;
+  }
   .blog-body strong {
     color: var(--fg-0);
     font-weight: 600;

@@ -132,7 +132,7 @@ jobs:
       CLICKHOUSE_DATABASE: ${{ secrets.BENCH_CH_DATABASE }}
       BENCH_CH_HTTPS_PORT: ${{ secrets.BENCH_CH_HTTPS_PORT }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install hcloud CLI
         run: |
@@ -149,7 +149,7 @@ jobs:
           printf '%s\n' "${{ secrets.BENCHMARK_SSH_PRIVATE_KEY }}" > "$key"
           echo "BENCHMARK_SSH_KEY=$key" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.25'
 
@@ -166,7 +166,7 @@ jobs:
           fi
           ./benchmarks/scripts/run-matrix-entry.sh "${{ matrix.tier }}" "${{ matrix.mode }}" "${{ matrix.signal }}" "${{ github.event.inputs.duration }}" benchmarks/_artifact "" "${async_arg}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: result-${{ matrix.tier }}-${{ matrix.mode }}-${{ matrix.signal }}${{ github.event.inputs.async_insert == 'true' && '-async' || '' }}
@@ -178,13 +178,13 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Need history so the bot commit doesn't trample anything.
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN }}
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: /tmp/results-raw
 

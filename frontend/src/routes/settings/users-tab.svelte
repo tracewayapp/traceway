@@ -52,6 +52,7 @@
 	const invitations = $derived(organizationState.invitations.filter((i) => i.status === 'pending'));
 	const canInvite = $derived(organizationState.canInvite);
 	const isOwner = $derived(organizationState.isOwner);
+	const currentUserRole = $derived(organizationState.userRole);
 
 	const roleOptions = [
 		{ value: 'admin', label: 'Admin' },
@@ -165,7 +166,7 @@
 	}
 
 	function canRemoveMember(member: OrganizationMember): boolean {
-		return member.role !== 'owner';
+		return member.role !== 'owner' && member.role !== currentUserRole;
 	}
 
 	function getRoleBadgeVariant(role: string): 'default' | 'secondary' | 'destructive' | 'outline' {

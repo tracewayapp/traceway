@@ -46,7 +46,7 @@ jobs:
           fi
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN }}
@@ -60,11 +60,11 @@ jobs:
           fi
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          # frontend/package.json only declares a floor (>=22); keep the
-          # release build on the same major the Dockerfiles use.
-          node-version: 22
+          # .nvmrc is the repo-wide Node pin, shared with the Dockerfiles
+          # NODE_VERSION build arg and the nix dev shells.
+          node-version-file: .nvmrc
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
@@ -164,7 +164,7 @@ jobs:
             --notes "$NOTES"
 
       - name: Set up Go for runner binaries
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
 
@@ -196,18 +196,36 @@ jobs:
   build-docker:
     runs-on: ubuntu-latest
     needs: release
+    env:
+      # build-push-action v6+ generates a build summary and uploads a build
+      # record artifact per build. The summary is worth keeping -- all five
+      # builds below write cache-to: type=gha,mode=max, and it is the only
+      # place per-build cache-hit ratios show up without re-running a release.
+      # The records inherit the repo-wide artifact retention by default, so
+      # five of them accumulate per release; a week is long enough to debug
+      # the release that produced them.
+      DOCKER_BUILD_RECORD_RETENTION_DAYS: 7
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+
+      # One --build-arg read from .nvmrc, so every image below is built on the
+      # same Node major as CI and the dev shells rather than on whatever each
+      # Dockerfile's ARG default happens to say.
+      - name: Read the Node pin
+        id: node
+        run: |
+          ./scripts/check-node-pins.sh
+          echo "version=$(cat .nvmrc)" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -215,10 +233,12 @@ jobs:
 
       - name: Build and push full image
         id: docker_build_full
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
+          build-args: |
+            NODE_VERSION=${{ steps.node.outputs.version }}
           push: true
           tags: |
             ghcr.io/${{ github.repository_owner }}/traceway:v${{ inputs.version }}
@@ -228,10 +248,12 @@ jobs:
 
       - name: Build and push minimal image
         id: docker_build_minimal
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile.minimal
+          build-args: |
+            NODE_VERSION=${{ steps.node.outputs.version }}
           push: true
           tags: |
             ghcr.io/${{ github.repository_owner }}/traceway:v${{ inputs.version }}-minimal
@@ -241,10 +263,12 @@ jobs:
 
       - name: Build and push SQLite image
         id: docker_build_sqlite
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile.sqlite
+          build-args: |
+            NODE_VERSION=${{ steps.node.outputs.version }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
@@ -258,10 +282,12 @@ jobs:
       # impractically slow. arm64 users build Dockerfile.duckdb natively.
       - name: Build and push DuckDB image
         id: docker_build_duckdb
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile.duckdb
+          build-args: |
+            NODE_VERSION=${{ steps.node.outputs.version }}
           platforms: linux/amd64
           push: true
           tags: |
@@ -275,10 +301,12 @@ jobs:
       # synthetic checks.
       - name: Build and push Browser image
         id: docker_build_browser
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile.browser
+          build-args: |
+            NODE_VERSION=${{ steps.node.outputs.version }}
           platforms: linux/amd64
           push: true
           tags: |

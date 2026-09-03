@@ -15,7 +15,13 @@
 # ==============================================================================
 # Stage 1: Build Frontend
 # ==============================================================================
-FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend-builder
+# NODE_VERSION must match .nvmrc, the repo-wide Node pin. release-traceway.yml
+# passes it as a --build-arg read from that file, so a released image cannot be
+# built on a different major from CI; the default below is what a bare
+# `docker build` gets.
+ARG NODE_VERSION=26
+
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
@@ -54,7 +60,7 @@ RUN CGO_ENABLED=1 go build -tags telemetry_duckdb -ldflags="-s -w" -o /traceway 
 # Stage 3: Playwright harness (pinned @playwright/test + Chromium download).
 # npm only exists here; the runtime invokes node against the CLI directly.
 # ==============================================================================
-FROM node:22-bookworm-slim AS playwright-builder
+FROM node:${NODE_VERSION}-bookworm-slim AS playwright-builder
 
 WORKDIR /opt/traceway-playwright
 
@@ -106,7 +112,9 @@ ENV GIN_MODE=release \
 
 EXPOSE 80 8082
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+# 300s, the Helm chart's default startupProbe budget: the server binds only after
+# migrations run, and Docker ends the start period at the first healthy probe.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=300s --retries=3 \
     CMD wget -qO- http://localhost/health || exit 1
 
 ENTRYPOINT ["/usr/local/bin/traceway"]

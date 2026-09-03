@@ -42,6 +42,8 @@ func runMigrationsClickhouse(connStr string) error {
 		return err
 	}
 
+	m.Log = migrateLogger{store: "clickhouse"}
+
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		return err
 	}

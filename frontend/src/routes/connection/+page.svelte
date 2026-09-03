@@ -7,6 +7,7 @@
 		CardTitle
 	} from '$lib/components/ui/card';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { Button } from '$lib/components/ui/button';
 	import {
 		projectsState,
@@ -231,7 +232,7 @@ service:
 					No project selected yet. Let your coding agent propose the setup, or create a project from
 					the dropdown above.
 				</p>
-				<Button onclick={() => goto('/setup')}>Set Up Projects</Button>
+				<Button onclick={() => goto(resolve('/setup'))}>Set Up Projects</Button>
 			</CardContent>
 		</Card>
 	{/if}

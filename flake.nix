@@ -24,9 +24,11 @@
         goVersion = if goToolchain != null then goToolchain else goFloor;
         go = pkgs."go_${builtins.elemAt goVersion 0}_${builtins.elemAt goVersion 1}";
 
-        frontendPackage = builtins.fromJSON (builtins.readFile ./frontend/package.json);
-        # engines.node is a floor such as ">=22"; the dev shell pins that major.
-        nodeMajor = builtins.head (builtins.match "[^0-9]*([0-9]+).*" frontendPackage.engines.node);
+        # .nvmrc is the single source of truth for Node's major, shared with every
+        # setup-node step and the Dockerfiles' NODE_VERSION build arg. Read from
+        # there rather than from engines.node, which is a floor (">=22") and so
+        # names the oldest supported major, not the one to build with.
+        nodeMajor = builtins.head (builtins.match "[[:space:]]*v?([0-9]+).*" (builtins.readFile ./.nvmrc));
         nodejs = pkgs."nodejs_${nodeMajor}";
 
         goTools = [

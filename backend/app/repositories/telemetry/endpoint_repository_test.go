@@ -204,19 +204,56 @@ func TestEndpointRepository_FindGroupedByEndpoint_MethodFilter(t *testing.T) {
 		t.Fatalf("InsertAsync failed: %v", err)
 	}
 
+	// "GETAWAY /api/cars" must not match: the filter compares a whole
+	// space-terminated token, not a prefix of the endpoint string.
+	// "get /api/lowercase" must match. getHTTPEndpoint concatenates
+	// http.request.method verbatim, so lowercase rows genuinely exist, and the
+	// dropdown only ever offers the 7 canonical uppercase methods -- a
+	// case-sensitive comparison made those rows unreachable from the UI (#321).
 	stats, total, err := EndpointRepository.FindGroupedByEndpoint(ctx, projectId, now.Add(-time.Hour), now.Add(time.Hour), 1, 10, "count", "desc", "", "", "get")
 	if err != nil {
 		t.Fatalf("FindGroupedByEndpoint with method filter failed: %v", err)
 	}
 
-	if total != 1 {
-		t.Errorf("expected 1 matching endpoint, got %d", total)
+	if total != 2 {
+		t.Errorf("expected 2 matching endpoints, got %d", total)
 	}
-	if len(stats) != 1 {
-		t.Fatalf("expected 1 grouped stat, got %d", len(stats))
+	matched := make(map[string]bool, len(stats))
+	for _, s := range stats {
+		matched[s.Endpoint] = true
 	}
-	if stats[0].Endpoint != "GET /api/users" {
-		t.Errorf("expected 'GET /api/users', got %q", stats[0].Endpoint)
+	if len(stats) != 2 || !matched["GET /api/users"] || !matched["get /api/lowercase"] {
+		t.Fatalf("expected GET /api/users and get /api/lowercase, got %v", matched)
+	}
+}
+
+// The filter is applied by upper-casing the column, not the caller's argument,
+// so it holds however the request cased its method.
+func TestEndpointRepository_FindGroupedByEndpoint_MethodFilterCaseInsensitive(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	projectId := uuid.New()
+	now := truncateMs(time.Now().UTC())
+
+	endpoints := []models.Endpoint{
+		makeEndpoint(projectId, "GET /api/users", 100*time.Millisecond, 200, now),
+		makeEndpoint(projectId, "get /api/lowercase", 100*time.Millisecond, 200, now.Add(time.Minute)),
+		makeEndpoint(projectId, "Get /api/mixed", 100*time.Millisecond, 200, now.Add(2*time.Minute)),
+		makeEndpoint(projectId, "POST /api/users", 200*time.Millisecond, 201, now.Add(3*time.Minute)),
+	}
+
+	if err := EndpointRepository.InsertAsync(ctx, endpoints); err != nil {
+		t.Fatalf("InsertAsync failed: %v", err)
+	}
+
+	for _, method := range []string{"GET", "get", "GeT"} {
+		_, total, err := EndpointRepository.FindGroupedByEndpoint(ctx, projectId, now.Add(-time.Hour), now.Add(time.Hour), 1, 10, "count", "desc", "", "", method)
+		if err != nil {
+			t.Fatalf("methodFilter %q failed: %v", method, err)
+		}
+		if total != 3 {
+			t.Errorf("methodFilter %q: expected 3 matching endpoints, got %d", method, total)
+		}
 	}
 }
 
@@ -580,5 +617,43 @@ func TestEndpointRepository_FindGroupedByEndpoint_RootFilterPercentiles(t *testi
 	}
 	if stats[0].P95Duration > 100*time.Millisecond {
 		t.Errorf("p95 = %v, want the root-only 100ms; non-root durations leaked into the percentile", stats[0].P95Duration)
+	}
+}
+
+// The chart ranks the top 5 on percentiles and then plots only the filtered
+// rows, so ranking on the unfiltered population puts endpoints on the chart that
+// are not slow under the filter. These two rank one way on all rows and the
+// other way on root rows alone.
+func TestEndpointRepository_GetEndpointStackedChart_RanksOnFilteredRows(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	projectId := uuid.New()
+	now := truncateMs(time.Now().UTC())
+
+	var endpoints []models.Endpoint
+	for range 3 {
+		// Slow as a root request, which is what "root" asks to see.
+		slowRoot := makeEndpoint(projectId, "GET /slow-root", 500*time.Millisecond, 200, now)
+		slowRoot.IsRoot = true
+		// Fast as a root request, slow only in the rows the filter drops.
+		fastRoot := makeEndpoint(projectId, "GET /fast-root", 10*time.Millisecond, 200, now)
+		fastRoot.IsRoot = true
+		endpoints = append(endpoints, slowRoot, fastRoot,
+			makeEndpoint(projectId, "GET /fast-root", 5*time.Second, 200, now))
+	}
+
+	if err := EndpointRepository.InsertAsync(ctx, endpoints); err != nil {
+		t.Fatalf("InsertAsync failed: %v", err)
+	}
+
+	chart, err := EndpointRepository.GetEndpointStackedChart(ctx, projectId, now.Add(-time.Hour), now.Add(time.Hour), 5, "p95", "", "root", "")
+	if err != nil {
+		t.Fatalf("GetEndpointStackedChart failed: %v", err)
+	}
+	if len(chart.Endpoints) < 2 {
+		t.Fatalf("expected both endpoints in the chart, got %v", chart.Endpoints)
+	}
+	if chart.Endpoints[0] != "GET /slow-root" {
+		t.Errorf("top endpoint ranked on unfiltered rows: got %v, want 'GET /slow-root' first", chart.Endpoints)
 	}
 }

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
+	import { resolveHref } from '$lib/utils/links';
 	import { api } from '$lib/api';
 	import { getErrorMessage } from '$lib/utils/errors';
 	import { formatRelativeTimeAgo } from '$lib/utils/formatters';
@@ -261,11 +261,13 @@
 	const allServerNames = $derived(servers.map((server) => server.serverName));
 	const hasKubernetesMetadata = $derived(servers.some((server) => !!server.k8sClusterName));
 	const projectOptions = $derived.by(() => {
-		const projects = new Map<string, string>();
-		for (const server of servers) projects.set(server.projectId, server.projectName);
-		return [...projects.entries()]
-			.map(([id, name]) => ({ id, name }))
-			.sort((a, b) => a.name.localeCompare(b.name));
+		const byProject = new Map(
+			servers.map((server) => [
+				server.projectId,
+				{ id: server.projectId, name: server.projectName }
+			])
+		);
+		return [...byProject.values()].sort((a, b) => a.name.localeCompare(b.name));
 	});
 
 	$effect(() => {
@@ -317,6 +319,8 @@
 			return [{ key: 'all', label: 'All instances', subtitle: '', servers: visibleServers }];
 		}
 
+		// Scratch map: never escapes this derived, only the sorted array of its values is returned.
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const grouped = new Map<string, ServerGroup>();
 		for (const server of visibleServers) {
 			const cluster = server.k8sClusterName.trim();
@@ -390,14 +394,14 @@
 		const params = new URLSearchParams({
 			projectId: server.projectId,
 			server: server.serverName,
-			preset: '30m'
+			preset: '30m',
+			...(server.dashboardId ? { dashboard: String(server.dashboardId) } : {})
 		});
-		if (server.dashboardId) params.set('dashboard', String(server.dashboardId));
-		return `${resolve('/dashboards')}?${params.toString()}`;
+		return `/dashboards?${params.toString()}`;
 	}
 
 	function organizationTabHref(tab: string): string {
-		return `${resolve('/organization')}?organizationId=${organizationId}&tab=${tab}`;
+		return `/organization?organizationId=${organizationId}&tab=${tab}`;
 	}
 
 	function osLabel(server: OrgServerRow): string {
@@ -512,7 +516,7 @@
 				</div>
 			{/if}
 			<a
-				href={organizationTabHref('issues')}
+				{...{ href: resolveHref(organizationTabHref('issues')) }}
 				class="group border-r px-5 py-4 transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset"
 			>
 				<div class="flex items-center justify-between text-xs text-muted-foreground">
@@ -525,7 +529,7 @@
 			</a>
 			{#if hasBackendProjects}
 				<a
-					href={organizationTabHref('monitors')}
+					{...{ href: resolveHref(organizationTabHref('monitors')) }}
 					class="group px-5 py-4 transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset"
 				>
 					<div class="flex items-center justify-between text-xs text-muted-foreground">
@@ -720,7 +724,7 @@
 						{#each group.servers as server (server.projectId + server.serverName)}
 							{@const state = instanceState(server)}
 							<a
-								href={instanceHref(server)}
+								{...{ href: resolveHref(instanceHref(server)) }}
 								class="group/instance grid gap-4 border-b px-4 py-4 transition-colors last:border-b-0 hover:bg-muted/35 focus-visible:bg-muted/35 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset lg:grid-cols-[minmax(250px,1.7fr)_104px_104px_104px_minmax(155px,0.9fr)_125px_28px] lg:items-center lg:gap-0 lg:py-3"
 							>
 								<div class="flex min-w-0 items-center gap-3">

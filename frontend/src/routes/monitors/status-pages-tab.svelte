@@ -17,16 +17,7 @@
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { authState } from '$lib/state/auth.svelte';
 	import type { SyntheticCheck } from '$lib/state/monitors.svelte';
-	import {
-		Check,
-		ExternalLink,
-		Globe,
-		ImageUp,
-		Pencil,
-		Plus,
-		Siren,
-		Trash2
-	} from '@lucide/svelte';
+	import { Check, ExternalLink, Globe, ImageUp, Pencil, Plus, Siren, Trash2 } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';

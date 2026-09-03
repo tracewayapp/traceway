@@ -44,8 +44,13 @@ func TestTelemetryGroupIndexesCoverTimeColumn(t *testing.T) {
 		{"endpoints", "endpoint"},
 		{"tasks", "task_name"},
 		{"ai_traces", "trace_name"},
+		{"ai_traces", "conversation_id"},
+		{"exception_stack_traces", "exception_hash"},
 		{"exception_stack_traces", "session_id"},
+		{"check_results", "check_id"},
 		{"log_records", "trace_id"},
+		{"log_records", "service_name"},
+		{"metric_points", "name"},
 	} {
 		timeCol, pruned := timeColumn[tc.table]
 		if !pruned {
@@ -63,8 +68,6 @@ func TestTelemetryGroupIndexesCoverTimeColumn(t *testing.T) {
 	intentionallyShort := map[string]string{
 		"idx_spans_project_trace":                  "a trace has tens of spans; after the trace seek, the recorded_at window and the start_time sort touch only those rows",
 		"idx_session_recordings_project_exception": "an exception has at most a handful of recordings, so ordering them costs nothing",
-		"idx_exceptions_project_hash":              "widened by #338; delete this entry when it merges",
-		"idx_ai_traces_project_conversation":       "widened by #338; delete this entry when it merges",
 	}
 	for _, ix := range indexes {
 		timeCol, pruned := timeColumn[ix.table]

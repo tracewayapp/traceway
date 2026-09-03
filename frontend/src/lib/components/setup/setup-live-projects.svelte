@@ -34,9 +34,7 @@
 				{#each projects as project (project.id)}
 					{@const isNew = !initialProjectIds.has(project.id)}
 					<li
-						class="flex items-center gap-3 rounded-md border px-3 py-2 {isNew
-							? ''
-							: 'opacity-60'}"
+						class="flex items-center gap-3 rounded-md border px-3 py-2 {isNew ? '' : 'opacity-60'}"
 					>
 						<FrameworkIcon framework={project.framework} class="size-5 shrink-0" />
 						<div class="min-w-0 flex-1">

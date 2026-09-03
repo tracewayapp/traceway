@@ -26,6 +26,8 @@ type organizationOverviewController struct{}
 
 var OrganizationOverviewController = organizationOverviewController{}
 
+const orgOverviewMaxIssueFetch = 1000
+
 // orgOverviewProjects loads the organization's projects in one short
 // transaction: the fan-out handlers run their telemetry queries outside any
 // tx so the single-connection SQLite main DB is never held across them.
@@ -421,7 +423,7 @@ func orgIssueLess(orderBy string) func(a, b orgIssueRow) bool {
 	}
 }
 
-func attachOrgIssueTrends(ctx *gin.Context, rows []orgIssueRow) error {
+func attachOrgIssueTrends(ctx *gin.Context, rows []orgIssueRow) (partial bool) {
 	hashesByProject := map[uuid.UUID][]string{}
 	for _, row := range rows {
 		hashesByProject[row.ProjectId] = append(hashesByProject[row.ProjectId], row.ExceptionHash)
@@ -434,7 +436,9 @@ func attachOrgIssueTrends(ctx *gin.Context, rows []orgIssueRow) error {
 		projectTrends, err := telemetry.ExceptionStackTraceRepository.GetHourlyTrendForHashes(ctx, projectId, hashes, start24h, now)
 		span.End()
 		if err != nil {
-			return err
+			partial = true
+			traceway.CaptureException(traceway.NewStackTraceErrorf("failed to load issue trends for project %s: %w", projectId, err))
+			continue
 		}
 		trends[projectId] = projectTrends
 	}
@@ -445,7 +449,7 @@ func attachOrgIssueTrends(ctx *gin.Context, rows []orgIssueRow) error {
 			rows[i].HourlyTrend = []models.ExceptionTrendPoint{}
 		}
 	}
-	return nil
+	return partial
 }
 
 func (c *organizationOverviewController) Issues(ctx *gin.Context) {
@@ -461,6 +465,11 @@ func (c *organizationOverviewController) Issues(ctx *gin.Context) {
 	}
 	orderBy := normalizeIssueOrderBy(request.OrderBy)
 	page, pageSize := request.Pagination.Page, request.Pagination.PageSize
+	maxPages := orgOverviewMaxIssueFetch / pageSize
+	if page > maxPages {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": fmt.Sprintf("Only the first %d issues can be paged; narrow the time range or search", orgOverviewMaxIssueFetch)})
+		return
+	}
 
 	projects, err := orgOverviewProjects(organizationId)
 	if err != nil {
@@ -494,14 +503,17 @@ func (c *organizationOverviewController) Issues(ctx *gin.Context) {
 	if offset < len(candidates) {
 		rows = candidates[offset:min(offset+pageSize, len(candidates))]
 	}
-	if err := attachOrgIssueTrends(ctx, rows); err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to load issue trends: %w", err))
-		return
+	if attachOrgIssueTrends(ctx, rows) {
+		partial = true
+	}
+	pagination := buildPagination(page, pageSize, int(total))
+	if pagination.TotalPages > int64(maxPages) {
+		pagination.TotalPages = int64(maxPages)
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
 		"data":       rows,
-		"pagination": buildPagination(page, pageSize, int(total)),
+		"pagination": pagination,
 		"partial":    partial,
 	})
 }

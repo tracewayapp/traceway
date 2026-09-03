@@ -88,6 +88,11 @@ export function formatMetricLabel(value: number, unit: string): string {
 type AxisScale = { divisor: number; unit: string };
 
 export function getMetricAxisScale(maxValue: number, unit: string): AxisScale {
+	if (unit.length > 2 && unit.endsWith('/s')) {
+		const base = getMetricAxisScale(maxValue, unit.slice(0, -2));
+		return { divisor: base.divisor, unit: `${base.unit}/s` };
+	}
+
 	if (unit === '1') {
 		return { divisor: 0.01, unit: '%' };
 	}

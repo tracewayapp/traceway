@@ -174,7 +174,7 @@ func (e *exceptionStackTraceRepository) FindGrouped(ctx context.Context, project
 		` + archiveSubquery + `
 		WHERE ` + whereClause + `
 		GROUP BY e.exception_hash` + havingClause + `
-		ORDER BY ` + orderBy + ` ` + sortDirection + ` LIMIT ? OFFSET ?`
+		ORDER BY ` + orderBy + ` ` + sortDirection + `, e.exception_hash LIMIT ? OFFSET ?`
 
 	queryArgs := append([]interface{}{projectId}, args...)
 	queryArgs = append(queryArgs, pageSize, offset)

@@ -198,7 +198,7 @@ func (e *exceptionStackTraceRepository) FindGrouped(ctx context.Context, project
 		FROM exception_stack_traces e ` + archiveSubquery + `
 		WHERE ` + whereClause + `
 		GROUP BY e.exception_hash` + havingClause + `
-		ORDER BY ` + orderBy + ` ` + sortDirection + ` LIMIT :limit OFFSET :offset`
+		ORDER BY ` + orderBy + ` ` + sortDirection + `, e.exception_hash LIMIT :limit OFFSET :offset`
 	params["limit"] = pageSize
 	params["offset"] = offset
 

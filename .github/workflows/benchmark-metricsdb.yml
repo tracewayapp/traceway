@@ -74,7 +74,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -98,7 +98,7 @@ jobs:
           cp scripts/remote-*.sh _artifact/
           LD_LIBRARY_PATH=_artifact _artifact/metricsdb-bench --version
           ls -la _artifact
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: metricsdb-bench
           path: benchmarks/metricsdb/_artifact/
@@ -152,9 +152,9 @@ jobs:
       ARTIFACT_DIR: ${{ github.workspace }}/benchmarks/metricsdb/_artifact
       OUT_DIR: ${{ github.workspace }}/benchmarks/metricsdb/_results
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: metricsdb-bench
           path: benchmarks/metricsdb/_artifact/
@@ -183,7 +183,7 @@ jobs:
         timeout-minutes: 330
         run: ./benchmarks/metricsdb/scripts/entry.sh ${{ matrix.db }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: metricsdb-result-${{ github.event.inputs.tier }}-${{ matrix.db }}
@@ -203,9 +203,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: metricsdb-result-*
           merge-multiple: true
@@ -223,7 +223,7 @@ jobs:
           got=$(find "${results}" -maxdepth 1 -name '*.json' | wc -l | tr -d ' ')
           echo "cells with a result file: ${got}/${{ needs.setup.outputs.expected }}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: metricsdb-summary
           path: |

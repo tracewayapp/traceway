@@ -17,7 +17,7 @@ jobs:
       issues: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -34,7 +34,7 @@ jobs:
             -H "anthropic-version: 2023-06-01" -o /dev/null \
             || { echo "ANTHROPIC_API_KEY was rejected"; exit 1; }
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
@@ -129,7 +129,7 @@ jobs:
           git diff HEAD > "$RUNNER_TEMP/artifact/fix.patch" || true
           git status --porcelain > "$RUNNER_TEMP/artifact/changed-files.txt" || true
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: traceway-fix-issue-${{ github.event.issue.number }}

@@ -1,4 +1,6 @@
 import { authState } from './state/auth.svelte';
+import { projectsState } from './state/projects.svelte';
+import { gotoHref } from './utils/navigation';
 import { toast } from 'svelte-sonner';
 
 const BASE_URL = '/api';
@@ -8,76 +10,106 @@ interface RequestOptions {
 	skipProjectId?: boolean;
 }
 
+let recovering = false;
+let staleProjectNotified = '';
+
 async function request(method: string, endpoint: string, data?: unknown, options?: RequestOptions) {
-	const currentToken = authState.token;
-	const headers: Record<string, string> = {
-		'Content-Type': 'application/json'
-	};
-
-	if (currentToken) {
-		headers['Authorization'] = `Bearer ${currentToken}`;
+	const token = authState.token;
+	const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+	if (token) {
+		headers['Authorization'] = `Bearer ${token}`;
 	}
 
-	const config: RequestInit = {
-		method,
-		headers
-	};
-
-	if (data) {
-		config.body = JSON.stringify(data);
-	}
-
-	// Add projectId as query parameter if provided
 	let url = `${BASE_URL}${endpoint}`;
 	if (options?.projectId && !options?.skipProjectId) {
-		const separator = endpoint.includes('?') ? '&' : '?';
-		url = `${url}${separator}projectId=${options.projectId}`;
+		url += `${endpoint.includes('?') ? '&' : '?'}projectId=${options.projectId}`;
 	}
 
-	const response = await fetch(url, config);
+	const response = await fetch(url, {
+		method,
+		headers,
+		body: data ? JSON.stringify(data) : undefined
+	});
+
+	if (authState.token !== token) {
+		throw Object.assign(new Error('Session changed'), { status: 0 });
+	}
 
 	if (response.status === 401) {
 		authState.logout();
-		window.location.href = '/login';
-		throw new Error('Unauthorized');
+		const current = window.location.pathname + window.location.search;
+		gotoHref(
+			current === '/' || current.startsWith('/login')
+				? '/login'
+				: `/login?returnTo=${encodeURIComponent(current)}`,
+			{ replaceState: true }
+		);
+		throw Object.assign(new Error('Unauthorized'), { status: 401 });
 	}
 
 	if (response.status === 403) {
-		if (method !== 'GET') {
-			const body = await response.json().catch(() => ({}));
-			const message = body.error || "You don't have permission to perform this action";
-			toast.error(message);
-			const error = new Error(message) as Error & { status: number; body?: unknown };
-			error.status = 403;
-			error.body = body;
-			throw error;
+		const body = await response.json().catch(() => ({}));
+		const message =
+			body.error ||
+			(method === 'GET' ? 'Forbidden' : "You don't have permission to perform this action");
+
+		if (!recovering) {
+			recovering = true;
+			try {
+				const bundle = await request('GET', '/me/login-bundle').catch(() => null);
+				if (bundle) {
+					authState.setOrganizations(bundle.organizations ?? []);
+					projectsState.setProjects(bundle.projects ?? []);
+				}
+
+				if (authState.token === token) {
+					const requestedProjectId = new URL(url, window.location.origin).searchParams.get(
+						'projectId'
+					);
+					const staleProject =
+						bundle &&
+						requestedProjectId &&
+						!projectsState.projects.some((project) => project.id === requestedProjectId);
+
+					if (staleProject) {
+						if (staleProjectNotified !== requestedProjectId) {
+							staleProjectNotified = requestedProjectId;
+							toast.warning('That project is no longer available');
+						}
+						const current = new URL(window.location.href);
+						if (
+							current.searchParams.get('projectId') === requestedProjectId &&
+							projectsState.currentProjectId
+						) {
+							current.searchParams.set('projectId', projectsState.currentProjectId);
+							await gotoHref(current.pathname + current.search, { replaceState: true });
+						}
+					} else if (method !== 'GET') {
+						toast.error(message);
+					} else {
+						toast.warning("You don't have permission to access that feature");
+						if (window.location.pathname !== '/') {
+							await gotoHref('/', { replaceState: true });
+						}
+					}
+				}
+			} finally {
+				recovering = false;
+			}
 		}
-		const currentPath = window.location.pathname;
-		if (currentPath === '/' || currentPath === '') {
-			authState.logout();
-			window.location.href = '/login';
-		} else {
-			toast.warning("You don't have permission to access that feature");
-			window.location.href = '/';
-		}
-		throw new Error('Forbidden');
+
+		throw Object.assign(new Error(message), { status: 403, body });
 	}
 
 	if (response.status === 422) {
 		const body = await response.json().catch(() => ({}));
-		const error = new Error(body.error || 'Validation failed') as Error & {
-			status: number;
-			body?: unknown;
-		};
-		error.status = 422;
-		error.body = body;
-		throw error;
+		throw Object.assign(new Error(body.error || 'Validation failed'), { status: 422, body });
 	}
 
 	if (!response.ok) {
-		const error = new Error(`API Error: ${response.statusText}`) as Error & { status: number };
-		error.status = response.status;
-		throw error;
+		throw Object.assign(new Error(`API Error: ${response.statusText}`), {
+			status: response.status
+		});
 	}
 
 	return response.json();

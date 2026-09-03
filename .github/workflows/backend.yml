@@ -36,10 +36,11 @@ jobs:
         working-directory: backend
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        id: setup-go
+        uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
           # Cached per build-tag set below instead: setup-go keys only on
@@ -48,16 +49,20 @@ jobs:
           # leaving the duckdb job to re-fetch ~131MB of libduckdb every run.
           cache: false
 
+      # The Go version is part of the key because both cached trees depend on
+      # it: go-build entries are compiler-keyed, and a Go bump otherwise leaves
+      # the superseded toolchain module sitting in ~/go/pkg/mod, which the
+      # run_id rotation below then copies forward on every run.
       - name: Cache Go modules and build
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: go-${{ runner.os }}-sqlite-${{ hashFiles('backend/go.sum') }}-${{ github.run_id }}
+          key: go-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-sqlite-${{ hashFiles('backend/go.sum') }}-${{ github.run_id }}
           restore-keys: |
-            go-${{ runner.os }}-sqlite-${{ hashFiles('backend/go.sum') }}-
-            go-${{ runner.os }}-sqlite-
+            go-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-sqlite-${{ hashFiles('backend/go.sum') }}-
+            go-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-sqlite-
 
       # CGO_ENABLED=0 mirrors Dockerfile.sqlite, so CI links what ships.
       - name: Build
@@ -116,39 +121,41 @@ jobs:
       CGO_ENABLED: "1"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        id: setup-go
+        uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
           cache: false
 
       - name: Cache Go modules and build
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: go-${{ runner.os }}-duckdb-${{ hashFiles('backend/go.sum') }}-${{ github.run_id }}
+          key: go-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-duckdb-${{ hashFiles('backend/go.sum') }}-${{ github.run_id }}
           restore-keys: |
-            go-${{ runner.os }}-duckdb-${{ hashFiles('backend/go.sum') }}-
-            go-${{ runner.os }}-duckdb-
+            go-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-duckdb-${{ hashFiles('backend/go.sum') }}-
+            go-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-duckdb-
 
-      # Load-bearing, not redundant with the tests below: the test scope covers
-      # two package trees, so this is what compiles every other package under
-      # this tag.
+      # Retained even though the ./... test scope below compiles every package
+      # too: this fails fast with a plain build error before any test binary is
+      # linked, which is a clearer signal than a compile failure attributed to
+      # a test package.
       - name: Build
         run: go build -tags telemetry_duckdb ./...
 
       # The DuckDB harness opens an in-memory database, so no service
-      # containers are needed. app/retention is included because
-      # log_cap_duckdb_test.go is `//go:build telemetry_duckdb` and would
-      # otherwise run in no job at all -- the untagged job compiles it out.
-      # The scope is deliberately not ./... : three packages fail under this
-      # tag today, which is a separate problem from this workflow.
+      # containers are needed. The scope is ./... so that test files gated on
+      # this tag run somewhere at all -- app/retention/log_cap_duckdb_test.go
+      # and the telemetry_duckdb repository harness are compiled out of the
+      # untagged job, and app/controllers is where the missing !telemetry_duckdb
+      # constraint this commit fixes went unnoticed under the narrower scope.
       - name: Test
-        run: go test -tags telemetry_duckdb -count=1 ./app/repositories/... ./app/retention/...
+        run: go test -tags telemetry_duckdb -count=1 ./...
 
   pgch:
     name: Test (PostgreSQL + ClickHouse)
@@ -204,24 +211,25 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        id: setup-go
+        uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
           cache: false
 
       - name: Cache Go modules and build
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: go-${{ runner.os }}-pgch-${{ hashFiles('backend/go.sum') }}-${{ github.run_id }}
+          key: go-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-pgch-${{ hashFiles('backend/go.sum') }}-${{ github.run_id }}
           restore-keys: |
-            go-${{ runner.os }}-pgch-${{ hashFiles('backend/go.sum') }}-
-            go-${{ runner.os }}-pgch-
+            go-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-pgch-${{ hashFiles('backend/go.sum') }}-
+            go-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-pgch-
 
       # CGO_ENABLED=0 mirrors Dockerfile and Dockerfile.minimal.
       - name: Build
@@ -283,7 +291,9 @@ jobs:
       # what opts the tagged suite in -- without them the job would report ok
       # while running nothing. app/chdb is included because batch_retry_test.go
       # is `//go:build telemetry_ch` and would otherwise run in no job at all;
-      # it uses fakes and needs no live ClickHouse.
+      # it uses fakes and needs no live ClickHouse. app/migrations is included
+      # for the same reason: migrate_logger_test.go is tagged
+      # `transactional_pg || telemetry_ch` and needs no database either.
       #
       # -json is written to a file for the tally below and replayed through jq
       # so the log still reads like ordinary `go test` output. pipefail is set
@@ -302,7 +312,7 @@ jobs:
         run: |
           set -o pipefail
           go test -json -tags "transactional_pg telemetry_ch" -count=1 \
-            ./app/repositories/... ./app/chdb/... \
+            ./app/repositories/... ./app/chdb/... ./app/migrations/... \
             | tee "$RUNNER_TEMP/pgch-tests.jsonl" \
             | jq -j 'select(.Action == "output") | .Output'
 

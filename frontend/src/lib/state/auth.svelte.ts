@@ -7,8 +7,19 @@ export interface UserOrganizationResponse {
 	timezone: string;
 }
 
+function readStoredToken(): string | null {
+	const token = localStorage.getItem('AUTH_TOKEN');
+	if (!token) return null;
+	try {
+		const { exp } = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+		return exp * 1000 <= Date.now() ? null : token;
+	} catch {
+		return token;
+	}
+}
+
 class AuthState {
-	token = $state<string | null>(localStorage.getItem('AUTH_TOKEN'));
+	token = $state<string | null>(readStoredToken());
 	organizations = $state<UserOrganizationResponse[]>(
 		JSON.parse(localStorage.getItem('USER_ORGANIZATIONS') || '[]')
 	);

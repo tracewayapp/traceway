@@ -349,8 +349,8 @@
 			<AlertDialog.Header>
 				<AlertDialog.Title>Link Incident</AlertDialog.Title>
 				<AlertDialog.Description>
-					Link this post-mortem to the incident it covers. Incidents that already have a
-					post-mortem are not listed.
+					Link this post-mortem to the incident it covers. Incidents that already have a post-mortem
+					are not listed.
 				</AlertDialog.Description>
 			</AlertDialog.Header>
 			<div class="space-y-3">

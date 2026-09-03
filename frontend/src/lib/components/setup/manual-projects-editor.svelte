@@ -6,11 +6,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
-	import {
-		projectsState,
-		type Framework,
-		type ProjectWithToken
-	} from '$lib/state/projects.svelte';
+	import { projectsState, type Framework, type ProjectWithToken } from '$lib/state/projects.svelte';
 	import FrameworkCombobox from '$lib/components/framework-combobox.svelte';
 
 	let {
@@ -26,9 +22,7 @@
 	type Row = { key: number; name: string; framework: Framework };
 
 	let nextKey = 1;
-	let rows = $state<Row[]>([
-		{ key: 0, name: '', framework: untrack(() => initialFramework) }
-	]);
+	let rows = $state<Row[]>([{ key: 0, name: '', framework: untrack(() => initialFramework) }]);
 	let loading = $state(false);
 	let error = $state('');
 
@@ -67,8 +61,8 @@
 	<div class="border-b px-4 py-3">
 		<h3 class="font-semibold">Create Projects</h3>
 		<p class="mt-1 text-sm text-muted-foreground">
-			One project per deployed application: a backend uses OpenTelemetry; each browser or mobile
-			app gets its own project.
+			One project per deployed application: a backend uses OpenTelemetry; each browser or mobile app
+			gets its own project.
 		</p>
 	</div>
 	<div class="space-y-4 p-4">
@@ -83,12 +77,7 @@
 		</div>
 		{#each rows as row (row.key)}
 			<div class="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_2rem] sm:items-center">
-				<Input
-					type="text"
-					placeholder="My Application"
-					bind:value={row.name}
-					disabled={loading}
-				/>
+				<Input type="text" placeholder="My Application" bind:value={row.name} disabled={loading} />
 				<FrameworkCombobox bind:value={row.framework} disabled={loading} />
 				<div class="flex justify-end">
 					{#if rows.length > 1}

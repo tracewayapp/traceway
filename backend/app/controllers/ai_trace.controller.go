@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"sync"
@@ -162,8 +163,11 @@ func (a aiTraceController) FindByTraceName(c *gin.Context) {
 		return
 	}
 
+	// Stats are best-effort: the trace list still renders without them, so a
+	// failure here is reported rather than aborting the request.
 	stats, err := telemetry.AiTraceRepository.GetTraceNameStats(c, projectId, traceName, request.FromDate, request.ToDate)
 	if err != nil {
+		traceway.CaptureException(fmt.Errorf("failed to load ai trace stats (traceName=%s): %w", traceName, err))
 		stats = nil
 	}
 

@@ -27,17 +27,23 @@ Traceway is an error tracking and monitoring platform consisting of:
 | Frontend | `cd frontend && npm run dev` | Dev server (port 5173) |
 | Frontend | `npm run build` | Production build |
 | Frontend | `npm run check` | TypeScript checking |
+| Frontend | `npm run lint` | `prettier --check . && eslint .` (CI gate; `npm run format` fixes the prettier half) |
 | Backend | `cd backend && go run ./cmd/traceway` | API server (port 8082) |
 | Backend | `cd backend && govulncheck ./...` | Vulnerability scan (default tags only); CI also scans the other storage build-tag combos (`.github/workflows/backend-vulncheck.yml`) |
 | CLI | `cd cli && just build` | Builds `bin/traceway` |
 | CLI | `cd cli && just test` | Runs unit tests |
 | CLI | `cd cli && just check` | Lint + test + vulncheck + skill drift + contract tests (pre-commit gate; CI enforces it for `cli/`) |
 | CLI | `cd cli && just smoke-test` | Live E2E (needs `TRACEWAY_SMOKE_*` env vars) |
-| Any | `nix develop` (or direnv via `.envrc`) | Dev shell with the Go and Node versions read from `backend/go.mod` and `frontend/package.json`, plus `just`, `golangci-lint`, `govulncheck` (`flake.nix`; shells `default`, `backend`, `frontend`, `oxc`). Put `JWT_SECRET` in the gitignored `.envrc.local` |
+| Any | `nix develop` (or direnv via `.envrc`) | Dev shell with the Go and Node versions read from `backend/go.mod` and `.nvmrc`, plus `just`, `golangci-lint`, `govulncheck` (`flake.nix`; shells `default`, `backend`, `frontend`, `oxc`). Put `JWT_SECRET` in the gitignored `.envrc.local` |
+| Any | `./scripts/check-node-pins.sh` | Asserts every Dockerfile's `ARG NODE_VERSION` default matches `.nvmrc`; run by `release-traceway.yml` before it builds |
+
+**Node's version lives in `.nvmrc`** (a bare major, currently `26`) and nothing else derives it independently: every `setup-node` step uses `node-version-file: .nvmrc`, `flake.nix` reads it for the dev shells, and `release-traceway.yml` passes it to all five image builds as `--build-arg NODE_VERSION`. The Dockerfiles each carry an `ARG NODE_VERSION=<major>` default because a bare `docker build` cannot read `.nvmrc`; that default is the one value that can drift, which is what `scripts/check-node-pins.sh` exists to catch (it also fails on a literal `node:<major>` tag reintroduced in a `FROM`). To move Node, edit `.nvmrc` and the ARG defaults, then run the script. `frontend/package.json`'s `engines.node` is deliberately left as a floor (`>=22`) rather than a pin — it is what npm enforces on consumers, and `node-version-file` pointed at it resolves a range to the *newest* release, which is the drift `f95424cc` was fixing. `testing/devtesting-nestjs/Dockerfile` is out of scope: it pins the runtime of a sample third-party app, not anything Traceway builds.
 
 Set `JWT_SECRET` (min 32 characters) before running the backend — it is the one variable with no default in the standalone binary (the all-in-one Docker image bakes a public one in via `backend/.env.docker`, which must be overridden in production). `SQLITE_PATH` sets the database location, defaulting to `./traceway.db` in the working directory.
 
 CI on pull requests is opt-in. `backend.yml`, `backend-vulncheck.yml`, `cli.yml`, `cli-lint.yml` and `cli-contract.yml` listen for `pull_request: types: [labeled]` and every job is gated on `github.event.label.name == 'ci'`, so a PR runs nothing until a maintainer applies the `ci` label (only collaborators can), and applying any other label runs nothing either. Each application validates the PR as it is at that moment: to validate later pushes, remove and re-add the label. The same workflows still run on pushes to `main` that touch their paths (`backend/**`, `cli/**`, their own workflow file), on their daily schedules (the two vulnchecks), and from the Actions tab via `workflow_dispatch`.
+
+Action versions are watched by `.github/dependabot.yml` (the `github-actions` ecosystem only; npm and Go modules are deliberately not watched there). It opens a weekly PR per group — `actions/*` in one, every third-party action in the other — and deliberately does **not** auto-apply `ci`, so a bot PR passes the same collaborator gate as any other. Label the first-party group to validate it; `golangci/golangci-lint-action` is reachable the same way via `cli-lint.yml`. The rest of the third-party group lands on `release-*.yml`, `benchmark-*.yml` and `traceway-autofix.yml`, which no label reaches — and `workflow_dispatch` is **not** a dry run on the release path: dispatching `release-docs.yml` or `release-website.yml` deploys to Cloudflare for real, and the other `release-*.yml` workflows publish real assets, so dispatching one from an unreviewed bot branch ships it. Validate those by reading the action's release notes instead, and dispatch only where the target is disposable. `traceway-autofix.yml` has no dispatch at all, so its `claude-code-action` pin — the most privileged action here — has no pre-merge validation path. Note too that labelling a PR which touches no gated workflow yields zero checks, which reads like a pass but is silence. Every updatable pin is a bare major tag, so Dependabot only ever proposes major bumps here.
 
 ### Tech Stack
 - **Frontend**: SvelteKit 2.49, Svelte 5.45, Tailwind CSS v4, shadcn-svelte, Vite 7
@@ -1403,6 +1409,7 @@ type PaginationParams struct {
      import { api } from '$lib/api'
      import { projectsState } from '$lib/state/projects.svelte'
      import { ErrorDisplay } from '$lib/components/ui/error-display'
+     import { getErrorMessage, getErrorStatus } from '$lib/utils/errors'
 
      let data = $state<DataType[]>([])
      let loading = $state(true)
@@ -1417,11 +1424,11 @@ type PaginationParams struct {
            projectId: projectsState.currentProjectId ?? undefined
          })
          data = response.data || []
-       } catch (e: any) {
-         if (e.status === 404) {
+       } catch (e) {
+         if (getErrorStatus(e) === 404) {
            notFound = true
          } else {
-           error = e.message || 'Failed to load data'
+           error = getErrorMessage(e) || 'Failed to load data'
          }
        } finally {
          loading = false

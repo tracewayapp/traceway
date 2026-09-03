@@ -167,10 +167,7 @@
 		</CardHeader>
 		<CardContent>
 			{#if step === 'projects' && newOrgId !== null}
-				<SetupProjectsStep
-					organizationId={newOrgId}
-					{initialFramework}
-				/>
+				<SetupProjectsStep organizationId={newOrgId} {initialFramework} />
 			{:else}
 				{#if error}
 					<ErrorAlert {error} class="mb-4" />

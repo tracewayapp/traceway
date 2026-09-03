@@ -60,7 +60,7 @@ Metrics are tagged with `server_name`, which comes from `TRACEWAY_SERVICE_NAME` 
 
 The agent also attaches resource attributes to the OTLP payload: `service.name`, `host.name`, `os.type`, and on cloud VMs `cloud.provider`, `cloud.region`, and `cloud.account.id` (EC2 / GCE / Azure are auto-detected). Traceway lifts `service.name` onto metric tags, renamed to `server_name`. Every other resource attribute is dropped unless it is on a fixed allowlist, which covers host and platform metadata (`host.name`, `host.id`, `host.arch`, `os.type`, `os.description`, `cloud.provider`, `cloud.region`, `cloud.availability_zone`) and per-process identity when `TRACEWAY_PROCESS_NAMES` is set (`process.pid`, `process.executable.name`, `process.command_line`, `process.owner`, which is what keeps the per-process series apart). See [Resource Attributes](/client/otel/metrics#resource-attributes) for the full allowlist.
 
-The retained metadata is what the [organization overview](/learn/organization-overview) shows beside each instance: OS, architecture, cloud region, and the host name when it differs from `TRACEWAY_SERVICE_NAME`. It is descriptive only. `server_name` remains the identity, so two hosts sharing a `TRACEWAY_SERVICE_NAME` still collapse into one instance no matter how different their metadata is.
+The retained metadata is what the [organization overview](/learn/organization-overview) shows beside each server: OS, architecture, cloud region, and the host name when it differs from `TRACEWAY_SERVICE_NAME`. It is descriptive only. `server_name` remains the identity, so two hosts sharing a `TRACEWAY_SERVICE_NAME` still collapse into one instance no matter how different their metadata is.
 
 ## What it opens
 

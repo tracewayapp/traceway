@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { page } from '$app/state';
 	import { Building2, Check, ChevronDown, Pencil, Plus } from '@lucide/svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { authState } from '$lib/state/auth.svelte';
+	import { organizationContext } from '$lib/state/organization-context.svelte';
 	import { projectsState, type Project } from '$lib/state/projects.svelte';
 	import { gotoHref } from '$lib/utils/navigation';
 	import FrameworkIcon from './framework-icon.svelte';
@@ -13,27 +13,6 @@
 	}
 
 	let { onAddProject, onEditProject }: Props = $props();
-
-	const organizationContext = $derived(
-		page.url.pathname === '/organization' || page.url.pathname.startsWith('/organization/')
-	);
-
-	const selectedOrganizationId = $derived.by(() => {
-		if (!organizationContext) return null;
-		const value = Number(page.url.searchParams.get('organizationId'));
-		if (
-			Number.isInteger(value) &&
-			authState.organizations.some((organization) => organization.id === value)
-		) {
-			return value;
-		}
-		return authState.organizations[0]?.id ?? null;
-	});
-
-	const selectedOrganization = $derived(
-		authState.organizations.find((organization) => organization.id === selectedOrganizationId) ??
-			null
-	);
 
 	const groups = $derived.by(() => {
 		const grouped = authState.organizations.map((organization) => ({
@@ -70,7 +49,7 @@
 			<FrameworkIcon framework={project.framework} class="size-5 shrink-0" />
 			<span class="truncate">{project.name}</span>
 		</div>
-		{#if !organizationContext && project.id === projectsState.currentProjectId}
+		{#if !organizationContext.active && project.id === projectsState.currentProjectId}
 			<Check class="size-4 shrink-0" />
 		{/if}
 	</DropdownMenu.Item>
@@ -81,9 +60,10 @@
 		class="flex max-w-[min(70vw,32rem)] min-w-0 items-center gap-2 rounded-md px-2 py-1 text-lg font-semibold transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 		aria-label="Switch organization or project"
 	>
-		{#if organizationContext}
+		{#if organizationContext.active}
 			<Building2 class="size-5 shrink-0 text-muted-foreground" />
-			<span class="truncate">{selectedOrganization?.name || 'Select organization'}</span>
+			<span class="truncate">{organizationContext.organization?.name || 'Select organization'}</span
+			>
 		{:else}
 			{#if projectsState.currentProject}
 				<FrameworkIcon framework={projectsState.currentProject.framework} class="size-6 shrink-0" />
@@ -109,7 +89,7 @@
 							<div class="truncate font-semibold">{group.organization.name}</div>
 							<div class="text-xs text-muted-foreground">Organization overview</div>
 						</div>
-						{#if organizationContext && selectedOrganizationId === group.organization.id}
+						{#if organizationContext.active && organizationContext.organizationId === group.organization.id}
 							<Check class="size-4 shrink-0" />
 						{/if}
 					</DropdownMenu.Item>
@@ -144,7 +124,7 @@
 		{/if}
 
 		<DropdownMenu.Separator />
-		{#if !organizationContext && projectsState.canManageCurrentProject}
+		{#if !organizationContext.active && projectsState.canManageCurrentProject}
 			<DropdownMenu.Item onclick={onEditProject} class="cursor-pointer">
 				<Pencil class="size-4" />
 				Edit Project

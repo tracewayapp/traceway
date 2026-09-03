@@ -4,6 +4,7 @@ package sqlite
 
 import (
 	"database/sql"
+	"strings"
 	"time"
 
 	"github.com/tracewayapp/traceway/backend/app/db"
@@ -200,3 +201,47 @@ func (r *pageRepository) ResolveSystem(tx *sql.Tx, id int, now time.Time) (bool,
 }
 
 var PageRepository = pageRepository{}
+
+func pageListCondition(status string, search string, from, to *time.Time, params lit.P) string {
+	condition := "(" + statusCondition(status) + ")"
+	if from != nil {
+		condition += " AND created_at >= :from"
+		params["from"] = from.UTC()
+	}
+	if to != nil {
+		condition += " AND created_at <= :to"
+		params["to"] = to.UTC()
+	}
+	if search != "" {
+		condition += ` AND (LOWER(subject) LIKE :search ESCAPE '\' OR LOWER(rule_name) LIKE :search ESCAPE '\')`
+		params["search"] = "%" + likeEscaper.Replace(strings.ToLower(search)) + "%"
+	}
+	return condition
+}
+
+func (r *pageRepository) FindByOrganizationFiltered(tx *sql.Tx, organizationId int, status string, search string, from, to *time.Time, limit int, offset int) ([]*models.Page, error) {
+	params := lit.P{"organization_id": organizationId, "limit": limit, "offset": offset}
+	condition := pageListCondition(status, search, from, to, params)
+	return lit.SelectNamed[models.Page](
+		tx,
+		"SELECT "+pageColumns+" FROM pages WHERE organization_id = :organization_id AND "+condition+" ORDER BY created_at DESC, id DESC LIMIT :limit OFFSET :offset",
+		params,
+	)
+}
+
+func (r *pageRepository) CountByOrganizationFiltered(tx *sql.Tx, organizationId int, status string, search string, from, to *time.Time) (int, error) {
+	params := lit.P{"organization_id": organizationId}
+	condition := pageListCondition(status, search, from, to, params)
+	result, err := lit.SelectSingleNamed[models.CountResult](
+		tx,
+		"SELECT COUNT(*) as count FROM pages WHERE organization_id = :organization_id AND "+condition,
+		params,
+	)
+	if err != nil {
+		return 0, err
+	}
+	if result == nil {
+		return 0, nil
+	}
+	return result.Count, nil
+}

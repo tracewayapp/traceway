@@ -3,6 +3,7 @@
 	import { useSidebar } from '$lib/components/ui/sidebar';
 	import { oncallState } from '$lib/state/oncall.svelte';
 	import { monitorsState } from '$lib/state/monitors.svelte';
+	import { organizationContext } from '$lib/state/organization-context.svelte';
 	import {
 		Activity,
 		Bell,
@@ -13,9 +14,11 @@
 		FileText,
 		Film,
 		Flame,
+		FolderKanban,
 		Gauge,
 		ListEnd,
 		PhoneCall,
+		Server,
 		Settings,
 		BookOpen,
 		KeyRound
@@ -28,7 +31,8 @@
 	} from '$lib/state/projects.svelte';
 	import { LayoutDashboard } from '@lucide/svelte';
 	import { page } from '$app/state';
-	import { createRowClickHandler } from '$lib/utils/navigation';
+	import { addStickyParamsToHref, createRowClickHandler } from '$lib/utils/navigation';
+	import { resolveHref } from '$lib/utils/links';
 	import { cn } from '$lib/utils';
 
 	interface SidebarItem {
@@ -38,6 +42,7 @@
 		stickyParams: string[];
 		adminOnly?: boolean;
 		external?: boolean;
+		exact?: boolean;
 	}
 
 	const hiddenForFrontend = new Set([
@@ -98,6 +103,44 @@
 				: allSidebarItems.filter((item) => !frontendOnly.has(item.title))
 	);
 
+	const allOrganizationItems: SidebarItem[] = [
+		{
+			Icon: Server,
+			href: '/organization',
+			title: 'Servers',
+			stickyParams: ['organizationId'],
+			exact: true
+		},
+		{ Icon: Bug, href: '/organization/issues', title: 'Issues', stickyParams: ['organizationId'] },
+		{
+			Icon: Activity,
+			href: '/organization/monitors',
+			title: 'Monitors',
+			stickyParams: ['organizationId']
+		},
+		{
+			Icon: PhoneCall,
+			href: '/organization/on-call',
+			title: 'On-Call',
+			stickyParams: ['organizationId']
+		},
+		{
+			Icon: FolderKanban,
+			href: '/organization/projects',
+			title: 'Projects',
+			stickyParams: ['organizationId']
+		}
+	];
+	const backendOnlyOrganizationItems = new Set(['Servers', 'Monitors']);
+
+	const organizationItems = $derived(
+		organizationContext.hasBackendProjects
+			? allOrganizationItems
+			: allOrganizationItems.filter((item) => !backendOnlyOrganizationItems.has(item.title))
+	);
+
+	const items = $derived(organizationContext.active ? organizationItems : sidebarItems);
+
 	const allSidebarItemsBottom: SidebarItem[] = [
 		{ Icon: KeyRound, href: '/account', title: 'Account', stickyParams: [] },
 		{
@@ -114,10 +157,58 @@
 		allSidebarItemsBottom.filter((item) => !item.adminOnly || projectsState.canManageCurrentProject)
 	);
 
+	const organizationProjectParam = $derived.by(() => {
+		const project = organizationContext.projects[0];
+		return project ? `?projectId=${project.id}` : '';
+	});
+
+	const itemsBottom = $derived.by((): SidebarItem[] => {
+		if (!organizationContext.active) return sidebarItemsBottom;
+		return allSidebarItemsBottom
+			.filter((item) => !item.adminOnly || organizationContext.canManage)
+			.map((item) =>
+				item.external ? item : { ...item, href: item.href + organizationProjectParam }
+			);
+	});
+
 	const sidebar = useSidebar();
+
+	const homeItem = $derived(items[0]);
+	const homeHref = $derived.by(() => {
+		void page.url;
+		return homeItem ? addStickyParamsToHref(homeItem.href, ...homeItem.stickyParams) : '/';
+	});
+
+	function goHome(event: MouseEvent) {
+		event.preventDefault();
+		if (!homeItem) return;
+		sidebar.setOpenMobile(false);
+		createRowClickHandler(homeItem.href, ...homeItem.stickyParams)(event);
+	}
+
+	function isActive(item: SidebarItem): boolean {
+		if (page.url.pathname === item.href) return true;
+		if (item.exact) return false;
+		return page.url.pathname.startsWith(item.href + '/');
+	}
+
+	function badgeCount(item: SidebarItem): number {
+		if (item.title === 'Monitors') {
+			return organizationContext.active
+				? organizationContext.downMonitorsCount
+				: monitorsState.downChecksCount;
+		}
+		if (item.title === 'On-Call') {
+			return organizationContext.active
+				? organizationContext.openPagesCount
+				: oncallState.openPagesCount;
+		}
+		return 0;
+	}
 
 	// Synchronous read so the badge tracks project switches.
 	$effect(() => {
+		if (organizationContext.active) return;
 		const projectId = projectsState.currentProjectId;
 		if (!projectId) return;
 		const hasMonitors = sidebarItems.some((item) => item.title === 'Monitors');
@@ -127,6 +218,15 @@
 			oncallState.refreshOpenCount();
 			if (hasMonitors) monitorsState.refreshDownCount();
 		}, 60000);
+		return () => clearInterval(interval);
+	});
+
+	$effect(() => {
+		if (!organizationContext.active) return;
+		const organizationId = organizationContext.organizationId;
+		if (organizationId === null) return;
+		organizationContext.refreshCounts(organizationId);
+		const interval = setInterval(() => organizationContext.refreshCounts(organizationId), 60000);
 		return () => clearInterval(interval);
 	});
 
@@ -146,35 +246,49 @@
 	<Sidebar.SidebarHeader
 		class="flex items-start overflow-hidden p-4 transition-[padding] duration-200 ease-linear group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-2.5"
 	>
-		{#if themeState.isDark}
+		<a
+			{...{ href: resolveHref(homeHref) }}
+			onclick={goHome}
+			aria-label={homeItem ? `Go to ${homeItem.title}` : 'Home'}
+			data-testid="sidebar-home"
+			class="flex shrink-0 rounded-md focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none"
+		>
+			{#if themeState.isDark}
+				<img
+					src="/traceway-logo-white.svg"
+					alt="Traceway Logo"
+					class="h-9 w-auto max-w-none shrink-0 group-data-[collapsible=icon]:hidden"
+				/>
+			{:else}
+				<img
+					src="/traceway-logo.png"
+					alt="Traceway Logo"
+					class="h-9 w-auto max-w-none shrink-0 group-data-[collapsible=icon]:hidden"
+				/>
+			{/if}
 			<img
-				src="/traceway-logo-white.svg"
+				src="/traceway-mark.png"
 				alt="Traceway Logo"
-				class="h-9 w-auto max-w-none shrink-0 group-data-[collapsible=icon]:hidden"
+				class="mt-1 hidden size-9 shrink-0 object-contain group-data-[collapsible=icon]:block dark:invert"
 			/>
-		{:else}
-			<img
-				src="/traceway-logo.png"
-				alt="Traceway Logo"
-				class="h-9 w-auto max-w-none shrink-0 group-data-[collapsible=icon]:hidden"
-			/>
-		{/if}
-		<img
-			src="/traceway-mark.png"
-			alt="Traceway Logo"
-			class="mt-1 hidden size-9 shrink-0 object-contain group-data-[collapsible=icon]:block dark:invert"
-		/>
+		</a>
 	</Sidebar.SidebarHeader>
 	<Sidebar.SidebarContent>
 		<Sidebar.SidebarGroup
 			class="p-4 pt-0 pb-0 transition-[padding] duration-200 ease-linear group-data-[collapsible=icon]:px-2.5 group-data-[collapsible=icon]:pt-2"
 		>
+			{#if organizationContext.active}
+				<Sidebar.SidebarGroupLabel
+					class="mb-1 text-[11px] font-semibold tracking-[0.14em] text-muted-foreground uppercase"
+				>
+					Organization
+				</Sidebar.SidebarGroupLabel>
+			{/if}
 			<Sidebar.SidebarGroupContent>
 				<Sidebar.SidebarMenu>
-					{#each sidebarItems as sidebarItem, __index (__index)}
-						{@const active =
-							page.url.pathname === sidebarItem.href ||
-							page.url.pathname.startsWith(sidebarItem.href + '/')}
+					{#each items as sidebarItem (sidebarItem.href)}
+						{@const active = isActive(sidebarItem)}
+						{@const badge = badgeCount(sidebarItem)}
 						<Sidebar.SidebarMenuItem>
 							<Sidebar.SidebarMenuButton
 								isActive={active}
@@ -188,18 +302,11 @@
 								<sidebarItem.Icon />
 								<span>{sidebarItem.title}</span>
 							</Sidebar.SidebarMenuButton>
-							{#if sidebarItem.title === 'Monitors' && monitorsState.downChecksCount > 0}
+							{#if badge > 0}
 								<Sidebar.MenuBadge
 									class="rounded-full bg-destructive text-[10px] text-white peer-hover/menu-button:text-white peer-data-[active=true]/menu-button:text-white"
 								>
-									{monitorsState.downChecksCount}
-								</Sidebar.MenuBadge>
-							{/if}
-							{#if sidebarItem.title === 'On-Call' && oncallState.openPagesCount > 0}
-								<Sidebar.MenuBadge
-									class="rounded-full bg-destructive text-[10px] text-white peer-hover/menu-button:text-white peer-data-[active=true]/menu-button:text-white"
-								>
-									{oncallState.openPagesCount}
+									{badge}
 								</Sidebar.MenuBadge>
 							{/if}
 						</Sidebar.SidebarMenuItem>
@@ -208,7 +315,7 @@
 			</Sidebar.SidebarGroupContent>
 		</Sidebar.SidebarGroup>
 
-		{#if sidebarItemsBottom.length}
+		{#if itemsBottom.length}
 			<div class="flex-1"></div>
 
 			<Sidebar.SidebarGroup
@@ -216,7 +323,7 @@
 			>
 				<Sidebar.SidebarGroupContent>
 					<Sidebar.SidebarMenu>
-						{#each sidebarItemsBottom as sidebarItem, __index (__index)}
+						{#each itemsBottom as sidebarItem (sidebarItem.title)}
 							<Sidebar.SidebarMenuItem>
 								{#if sidebarItem.external}
 									<Sidebar.SidebarMenuButton
@@ -231,9 +338,7 @@
 										<span>{sidebarItem.title}</span>
 									</Sidebar.SidebarMenuButton>
 								{:else}
-									{@const active =
-										page.url.pathname === sidebarItem.href ||
-										page.url.pathname.startsWith(sidebarItem.href + '/')}
+									{@const active = isActive(sidebarItem)}
 									<Sidebar.SidebarMenuButton
 										isActive={active}
 										tooltipContent={sidebarItem.title}

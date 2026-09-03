@@ -99,6 +99,7 @@ export type DashboardWidgetSource = {
 	tagFilters?: Record<string, string>;
 	groupBy?: string;
 	label?: string;
+	complement?: boolean;
 };
 
 export type DashboardWidgetConfig = {

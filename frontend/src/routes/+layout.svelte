@@ -13,6 +13,7 @@
 	import EditProjectModal from '$lib/components/edit-project-modal.svelte';
 	import DashboardCommand from '$lib/components/dashboard/dashboard-command.svelte';
 	import OrganizationProjectSwitcher from '$lib/components/organization-project-switcher.svelte';
+	import { isOrganizationPath, organizationContext } from '$lib/state/organization-context.svelte';
 	import * as Sidebar from '$lib/components/ui/sidebar';
 	import { Button } from '$lib/components/ui/button';
 	import { Sun, Moon, LogOut } from '@lucide/svelte';
@@ -54,25 +55,9 @@
 	let sidebarOpen = $state(localStorage.getItem(SIDEBAR_OPEN_KEY) !== 'false');
 	let CrossSiteNotificationBanner = $state<Component<{ organizationId: number }> | null>(null);
 
-	function isOrganizationPath(pathname: string): boolean {
-		return pathname === '/organization' || pathname.startsWith('/organization/');
-	}
-
-	const organizationPage = $derived(isOrganizationPath(page.url.pathname));
-	const selectedOrganizationId = $derived.by(() => {
-		if (!organizationPage) return null;
-		const value = Number(page.url.searchParams.get('organizationId'));
-		if (
-			Number.isInteger(value) &&
-			authState.organizations.some((organization) => organization.id === value)
-		) {
-			return value;
-		}
-		return authState.organizations[0]?.id ?? null;
-	});
 	const contextOrganizationId = $derived(
-		organizationPage
-			? selectedOrganizationId
+		organizationContext.active
+			? organizationContext.organizationId
 			: (projectsState.currentProject?.organizationId ?? null)
 	);
 	const bannerOrganizationId = $derived(contextOrganizationId);
@@ -315,7 +300,7 @@
 		open={showAddProjectModal}
 		onOpenChange={(open) => (showAddProjectModal = open)}
 		onProjectCreated={handleProjectCreated}
-		initialOrganizationId={organizationPage ? selectedOrganizationId : null}
+		initialOrganizationId={organizationContext.organizationId}
 	/>
 
 	<EditProjectModal
@@ -346,42 +331,6 @@
 			</main>
 		</div>
 		<Toaster position="top-center" />
-	{:else if authState.isAuthenticated && !isPublicPath(page.url.pathname) && organizationPage}
-		<div class="min-h-screen bg-background">
-			<header
-				class="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-4"
-			>
-				{#if themeState.isDark}
-					<img
-						src="/traceway-logo-white.svg"
-						alt="Traceway Logo"
-						class="hidden h-7 w-auto shrink-0 sm:block"
-					/>
-				{:else}
-					<img
-						src="/traceway-logo.png"
-						alt="Traceway Logo"
-						class="hidden h-7 w-auto shrink-0 sm:block"
-					/>
-				{/if}
-				<img
-					src="/traceway-mark.png"
-					alt="Traceway Logo"
-					class="size-7 shrink-0 object-contain sm:hidden dark:invert"
-				/>
-				<div class="mx-1 h-5 w-px shrink-0 bg-border"></div>
-				<OrganizationProjectSwitcher
-					onAddProject={handleAddProjectClick}
-					onEditProject={() => (showEditProjectModal = true)}
-				/>
-				{@render accountActions()}
-			</header>
-			<main class="mx-auto w-full max-w-[1200px] p-4 sm:p-6">
-				{@render contextNotices()}
-				{@render children()}
-			</main>
-		</div>
-		{@render authenticatedOverlays()}
 	{:else if authState.isAuthenticated && !isPublicPath(page.url.pathname)}
 		<Sidebar.SidebarProvider
 			bind:open={sidebarOpen}

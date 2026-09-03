@@ -48,7 +48,17 @@ The instance picker in the dashboard header narrows every widget on the page to 
 
 The scope is applied as an extra tag filter on each widget's queries, on top of whatever filters the widget already has. Nothing is saved to the dashboard, so it does not change what teammates see; it lives in the URL as `?server=<name>` and survives time-range changes, which makes the filtered view shareable.
 
-This is where a row in the [organization overview](/learn/organization-overview) leads. Selecting an instance there opens its project's dashboards already scoped to that machine over the last 30 minutes, jumping straight to the **OTelemetry Server Agent** tab when the project has it installed. Clear the picker to go back to the whole project.
+With **All instances** selected a widget shows whatever its sources define. The **OTelemetry Server Agent** template groups every widget by `server_name`, so its charts draw one line per server until you narrow the picker to one; a widget of your own does the same once you set its **Group By** to `server_name`.
+
+This is where a row on the organization's [Servers page](/learn/organization-overview#servers) leads. Selecting a server there opens its project's dashboards already scoped to that machine over the last 30 minutes, jumping straight to the **OTelemetry Server Agent** tab when the project has it installed. Clear the picker to go back to the whole project.
+
+## Counters, rates and inverted values
+
+Host metrics such as `system.network.io` and `system.disk.io` are cumulative counters: the value only ever grows. Charted as an average they climb forever, so give such a source the **rate** aggregation. Each series (every distinct tag set, so a counter per device or direction stays on its own) is differenced against its previous sample, resets are dropped, and the result is a per-second rate with a matching unit: bytes become `B/s`, packets become packets per second. On ClickHouse a rate reads the raw 7-day table, so a rate widget shows at most the last 7 days.
+
+A source can also be **inverted**, which charts 1 − value. The OTel agent reports `system.cpu.utilization` per state, and the `idle` state inverted is the busy share; that is how the Server Agent template draws CPU. The template's other widgets carry the matching state filters (`used` for memory and filesystem, `ESTABLISHED` TCP for open connections) so a widget never averages unrelated states together.
+
+Dashboards installed from the Server Agent template before these sources existed are upgraded once at startup: a widget that still carries the original plain average takes the template's current sources for its metric, a widget you have edited is left as it is.
 
 ## Dashboards as code
 

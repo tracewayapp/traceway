@@ -593,3 +593,59 @@ func TestMetricPointRepository_QueryTimeSeries_GroupByKeyWithComma(t *testing.T)
 		t.Fatalf("a comma in groupBy must name one tag key literally, got %v", result)
 	}
 }
+
+func TestMetricPointRepository_QueryTimeSeries_Rate(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	projectId := uuid.New()
+	base := time.Now().UTC().Truncate(time.Hour)
+
+	sample := func(server, device string, value float64, offset time.Duration) models.MetricPoint {
+		return makeMetricPoint(projectId, "system.network.io", value, map[string]string{
+			"server_name": server, "device": device, "direction": "receive",
+		}, base.Add(offset))
+	}
+	points := []models.MetricPoint{
+		sample("web-1", "eth0", 1000, 0), sample("web-1", "eth0", 1600, 30*time.Second),
+		sample("web-1", "eth0", 2200, 60*time.Second), sample("web-1", "eth0", 2800, 90*time.Second),
+		sample("web-1", "eth0", 3400, 120*time.Second),
+		sample("web-1", "eth1", 500, 0), sample("web-1", "eth1", 800, 30*time.Second),
+		sample("web-1", "eth1", 1100, 60*time.Second), sample("web-1", "eth1", 1400, 90*time.Second),
+		sample("web-1", "eth1", 1700, 120*time.Second),
+		sample("web-2", "eth0", 1000, 0), sample("web-2", "eth0", 1500, 30*time.Second),
+		sample("web-2", "eth0", 100, 60*time.Second), sample("web-2", "eth0", 400, 90*time.Second),
+	}
+	if err := MetricPointRepository.InsertAsync(ctx, points); err != nil {
+		t.Fatalf("InsertAsync failed: %v", err)
+	}
+
+	result, err := MetricPointRepository.QueryTimeSeries(ctx, projectId, "system.network.io", base, base.Add(3*time.Minute), 1, "rate", nil, "server_name", 0)
+	if err != nil {
+		t.Fatalf("QueryTimeSeries failed: %v", err)
+	}
+
+	web1 := result["web-1"]
+	if len(web1) != 3 {
+		t.Fatalf("expected 3 buckets for web-1, got %d: %+v", len(web1), web1)
+	}
+	assertApproxEqual(t, "web-1 first bucket", web1[0].Value, 15.0, 0.01)
+	assertApproxEqual(t, "web-1 second bucket", web1[1].Value, 30.0, 0.01)
+	assertApproxEqual(t, "web-1 third bucket", web1[2].Value, 15.0, 0.01)
+
+	web2 := result["web-2"]
+	if len(web2) != 2 {
+		t.Fatalf("expected 2 buckets for web-2, got %d: %+v", len(web2), web2)
+	}
+	assertApproxEqual(t, "web-2 first bucket", web2[0].Value, 500.0/60, 0.01)
+	assertApproxEqual(t, "web-2 reset bucket", web2[1].Value, 300.0/60, 0.01)
+
+	later, err := MetricPointRepository.QueryTimeSeries(ctx, projectId, "system.network.io", base.Add(time.Minute), base.Add(3*time.Minute), 1, "rate", map[string]string{"server_name": "web-1"}, "", 0)
+	if err != nil {
+		t.Fatalf("QueryTimeSeries with lookback failed: %v", err)
+	}
+	all := later["__all__"]
+	if len(all) != 2 {
+		t.Fatalf("expected 2 buckets from the later range, got %d: %+v", len(all), all)
+	}
+	assertApproxEqual(t, "lookback bucket", all[0].Value, 30.0, 0.01)
+}

@@ -1,19 +1,29 @@
 <script lang="ts">
-	import { SvelteMap } from 'svelte/reactivity';
+	import { onDestroy, onMount, untrack } from 'svelte';
+	import { browser } from '$app/environment';
 	import { api } from '$lib/api';
+	import { organizationContext } from '$lib/state/organization-context.svelte';
 	import { getErrorMessage } from '$lib/utils/errors';
 	import { formatDurationMs, formatRelativeTimeAgo } from '$lib/utils/formatters';
 	import { createRowClickHandler } from '$lib/utils/navigation';
 	import { uptimeClass } from '$lib/utils/uptime';
+	import { TimeRangeState } from '$lib/utils/time-range-state.svelte';
+	import { updateUrl } from '$lib/utils/url-params';
 	import * as Table from '$lib/components/ui/table';
-	import { LoadingCircle } from '$lib/components/ui/loading-circle';
-	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { Badge } from '$lib/components/ui/badge';
+	import { LoadingCircle } from '$lib/components/ui/loading-circle';
+	import { SearchBar } from '$lib/components/ui/search-bar';
+	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
+	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
+	import { PaginationFooter } from '$lib/components/ui/pagination-footer';
+	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
+	import PageHeader from '$lib/components/traceway/page-header.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
 	import ErrorRetryBox from '$lib/components/traceway/error-retry-box.svelte';
-	import PartialNotice from './partial-notice.svelte';
 	import CheckStatusBadge from '$lib/components/synthetics/check-status-badge.svelte';
 	import MonitorTypeBadge from '$lib/components/synthetics/monitor-type-badge.svelte';
+	import CountPill from '../count-pill.svelte';
+	import PartialNotice from '../partial-notice.svelte';
 	import {
 		incidentDisplayTitle,
 		type CheckOverview,
@@ -30,9 +40,30 @@
 		projectName: string;
 	}
 
-	type SortField = 'name' | 'project' | 'status' | 'uptime' | 'latency';
+	type SortField = 'name' | 'project' | 'status' | 'uptime' | 'latency' | 'last_run';
 
-	let { organizationId }: { organizationId: number } = $props();
+	const typeOptions = [
+		{ value: '', label: 'All types' },
+		{ value: 'http', label: 'HTTP' },
+		{ value: 'tcp', label: 'TCP' },
+		{ value: 'browser', label: 'Browser' }
+	];
+
+	function readParams() {
+		if (!browser) return { search: '', incidentSearch: '' };
+		const params = new URLSearchParams(window.location.search);
+		return {
+			search: params.get('search') || '',
+			incidentSearch: params.get('incidentSearch') || ''
+		};
+	}
+
+	const initialParams = readParams();
+	let searchQuery = $state(initialParams.search);
+	let typeFilter = $state('');
+	let incidentSearch = $state(initialParams.incidentSearch);
+
+	const range = new TimeRangeState('3M');
 
 	let checks = $state<OrgMonitorRow[]>([]);
 	let checksLoading = $state(true);
@@ -43,6 +74,10 @@
 	let incidents = $state<OrgIncident[]>([]);
 	let incidentsLoading = $state(true);
 	let incidentsError = $state('');
+	let incidentsPage = $state(1);
+	let incidentsPageSize = $state(20);
+	let incidentsTotal = $state(0);
+	let incidentsTotalPages = $state(0);
 	let incidentsGeneration = 0;
 	let activeOrganizationId: number | null = null;
 
@@ -51,12 +86,24 @@
 	let orderBy = $state<SortField>(initialSort.field as SortField);
 	let sortDirection = $state<SortDirection>(initialSort.direction);
 
-	async function loadChecks(orgId: number, generation: number) {
+	function syncUrl(pushToHistory: boolean) {
+		updateUrl(
+			{
+				...range.urlParams(),
+				search: searchQuery.trim() || null,
+				incidentSearch: incidentSearch.trim() || null
+			},
+			{ pushToHistory }
+		);
+	}
+
+	async function loadChecks(organizationId: number) {
+		const generation = ++checksGeneration;
 		checksLoading = true;
 		checksError = '';
 		checksPartial = false;
 		try {
-			const response = await api.get(`/organizations/${orgId}/overview/monitors`);
+			const response = await api.get(`/organizations/${organizationId}/overview/monitors`);
 			if (generation !== checksGeneration) return;
 			checks = response.checks || [];
 			checksPartial = response.partial === true;
@@ -68,13 +115,23 @@
 		}
 	}
 
-	async function loadIncidents(orgId: number, generation: number) {
+	async function loadIncidents(organizationId: number, pushToHistory: boolean) {
+		const generation = ++incidentsGeneration;
 		incidentsLoading = true;
 		incidentsError = '';
+		range.resolvePreset();
+		syncUrl(pushToHistory);
 		try {
-			const response = await api.get(`/organizations/${orgId}/incidents`);
+			const response = await api.post(`/organizations/${organizationId}/overview/incidents`, {
+				search: incidentSearch.trim(),
+				fromDate: range.fromUTC(),
+				toDate: range.toUTC(),
+				pagination: { page: incidentsPage, pageSize: incidentsPageSize }
+			});
 			if (generation !== incidentsGeneration) return;
-			incidents = response.incidents || [];
+			incidents = response.data || [];
+			incidentsTotal = response.pagination?.total || 0;
+			incidentsTotalPages = response.pagination?.totalPages || 0;
 		} catch (e) {
 			if (generation !== incidentsGeneration) return;
 			incidentsError = getErrorMessage(e) || 'Failed to load incidents';
@@ -83,26 +140,77 @@
 		}
 	}
 
-	$effect(() => {
-		const orgId = organizationId;
-		if (activeOrganizationId !== orgId) {
-			activeOrganizationId = orgId;
-			checks = [];
-			checksError = '';
-			incidents = [];
-			incidentsError = '';
-		}
-		loadChecks(orgId, ++checksGeneration);
-		loadIncidents(orgId, ++incidentsGeneration);
-	});
+	function reloadIncidents(pushToHistory: boolean) {
+		const organizationId = organizationContext.organizationId;
+		if (organizationId !== null) void loadIncidents(organizationId, pushToHistory);
+	}
 
 	function retryChecks() {
-		loadChecks(organizationId, ++checksGeneration);
+		const organizationId = organizationContext.organizationId;
+		if (organizationId !== null) void loadChecks(organizationId);
 	}
 
-	function retryIncidents() {
-		loadIncidents(organizationId, ++incidentsGeneration);
+	function handleSearch() {
+		syncUrl(true);
 	}
+
+	function handleIncidentSearch() {
+		incidentsPage = 1;
+		reloadIncidents(true);
+	}
+
+	function handleTimeRangeChange(
+		from: Parameters<TimeRangeState['apply']>[0],
+		to: Parameters<TimeRangeState['apply']>[1],
+		preset: string | null
+	) {
+		range.apply(from, to, preset);
+		incidentsPage = 1;
+		reloadIncidents(true);
+	}
+
+	function handleIncidentsPageChange(newPage: number) {
+		if (newPage >= 1 && newPage <= incidentsTotalPages) {
+			incidentsPage = newPage;
+			reloadIncidents(true);
+		}
+	}
+
+	function handleIncidentsPageSizeChange(newSize: number) {
+		incidentsPageSize = newSize;
+		incidentsPage = 1;
+		reloadIncidents(true);
+	}
+
+	function handlePopState() {
+		range.readUrl();
+		const params = readParams();
+		searchQuery = params.search;
+		incidentSearch = params.incidentSearch;
+		incidentsPage = 1;
+		reloadIncidents(false);
+	}
+
+	$effect(() => {
+		const organizationId = organizationContext.organizationId;
+		if (organizationId === null || organizationId === activeOrganizationId) return;
+		activeOrganizationId = organizationId;
+		untrack(() => {
+			incidentsPage = 1;
+			void loadChecks(organizationId);
+			void loadIncidents(organizationId, false);
+		});
+	});
+
+	onMount(() => {
+		window.addEventListener('popstate', handlePopState);
+	});
+
+	onDestroy(() => {
+		if (typeof window !== 'undefined') {
+			window.removeEventListener('popstate', handlePopState);
+		}
+	});
 
 	function handleSort(field: SortField) {
 		const newSort = handleSortClick(field, orderBy, sortDirection);
@@ -119,23 +227,29 @@
 		return (agg.up / measured) * 100;
 	}
 
+	function target(check: OrgMonitorRow): string {
+		if (check.checkType === 'http')
+			return `${check.config?.method || 'GET'} ${check.config?.url ?? ''}`;
+		if (check.checkType === 'tcp') return `${check.config?.host ?? ''}:${check.config?.port ?? ''}`;
+		return 'Playwright script';
+	}
+
 	const statusRank: Record<string, number> = { down: 0, unknown: 1, up: 2 };
 
-	const lastIncidentByCheck = $derived.by(() => {
-		const byCheck = new SvelteMap<number, OrgIncident>();
-		for (const incident of incidents) {
-			if (incident.checkId === null) continue;
-			const existing = byCheck.get(incident.checkId);
-			if (!existing || new Date(incident.startedAt) > new Date(existing.startedAt)) {
-				byCheck.set(incident.checkId, incident);
-			}
-		}
-		return byCheck;
-	});
+	const downCount = $derived(
+		checks.filter((check) => check.enabled && check.currentStatus === 'down').length
+	);
 
-	const sortedChecks = $derived.by(() => {
+	const visibleChecks = $derived.by(() => {
+		const query = searchQuery.trim().toLowerCase();
+		let filtered = typeFilter ? checks.filter((c) => c.checkType === typeFilter) : checks;
+		if (query) {
+			filtered = filtered.filter((c) =>
+				[c.name, c.projectName, c.checkType, target(c)].join(' ').toLowerCase().includes(query)
+			);
+		}
 		const direction = sortDirection === 'asc' ? 1 : -1;
-		return [...checks].sort((a, b) => {
+		return [...filtered].sort((a, b) => {
 			switch (orderBy) {
 				case 'project':
 					return direction * a.projectName.localeCompare(b.projectName);
@@ -150,6 +264,11 @@
 					return (
 						direction * ((a.aggregates?.avgLatencyMs ?? -1) - (b.aggregates?.avgLatencyMs ?? -1))
 					);
+				case 'last_run': {
+					const timeA = a.lastRunAt ? new Date(a.lastRunAt).getTime() : 0;
+					const timeB = b.lastRunAt ? new Date(b.lastRunAt).getTime() : 0;
+					return direction * (timeA - timeB);
+				}
 				default:
 					return direction * a.name.localeCompare(b.name);
 			}
@@ -157,8 +276,31 @@
 	});
 </script>
 
-<div class="space-y-6">
-	<section class="space-y-3">
+<div class="space-y-8">
+	<section class="space-y-4">
+		<PageHeader
+			title="Monitors"
+			description="Every monitor in the organization with its current status, 30-day uptime, and average latency."
+		>
+			{#snippet trailing()}
+				{#if !checksLoading && !checksError}
+					<CountPill count={checks.length} />
+					{#if downCount > 0}
+						<CountPill count={downCount} label="down" tone="danger" />
+					{/if}
+				{/if}
+			{/snippet}
+		</PageHeader>
+
+		<SearchBar
+			placeholder="Search monitors..."
+			bind:value={searchQuery}
+			bind:typeValue={typeFilter}
+			{typeOptions}
+			onSearch={handleSearch}
+			disabled={checksLoading}
+		/>
+
 		{#if checksPartial}
 			<PartialNotice />
 		{/if}
@@ -171,6 +313,10 @@
 		{:else if checks.length === 0}
 			<div class="rounded-md border py-16 text-center text-sm text-muted-foreground">
 				No monitors in this organization yet. Create monitors from a project's Monitors page.
+			</div>
+		{:else if visibleChecks.length === 0}
+			<div class="rounded-md border py-16 text-center text-sm text-muted-foreground">
+				No monitors match the search.
 			</div>
 		{:else}
 			<TableContainer minWidth="920px">
@@ -220,13 +366,20 @@
 								onSort={(field) => handleSort(field as SortField)}
 								class="w-[120px]"
 							/>
-							<TracewayTableHeader label="Last incident" class="w-[160px]" align="right" />
+							<TracewayTableHeader
+								label="Last run"
+								sortField="last_run"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[130px]"
+								align="right"
+							/>
 						</Table.Row>
 					</Table.Header>
 					<Table.Body>
-						{#each sortedChecks as check (check.id)}
+						{#each visibleChecks as check (check.id)}
 							{@const uptime = uptimePct(check)}
-							{@const lastIncident = lastIncidentByCheck.get(check.id)}
 							<Table.Row
 								class="cursor-pointer"
 								onclick={createRowClickHandler(
@@ -238,14 +391,7 @@
 									<div
 										class="mt-0.5 max-w-[420px] truncate font-mono text-xs font-normal text-muted-foreground"
 									>
-										{#if check.checkType === 'http'}
-											{check.config?.method || 'GET'}
-											{check.config?.url}
-										{:else if check.checkType === 'tcp'}
-											{check.config?.host}:{check.config?.port}
-										{:else}
-											Playwright script
-										{/if}
+										{target(check)}
 									</div>
 								</Table.Cell>
 								<Table.Cell>
@@ -284,15 +430,7 @@
 										: '—'}
 								</Table.Cell>
 								<Table.Cell class="text-right text-sm text-muted-foreground">
-									{#if lastIncident}
-										{#if lastIncident.resolvedAt === null}
-											<Badge variant="destructive">ongoing</Badge>
-										{:else}
-											{formatRelativeTimeAgo(lastIncident.startedAt)}
-										{/if}
-									{:else}
-										—
-									{/if}
+									{check.lastRunAt ? formatRelativeTimeAgo(check.lastRunAt) : 'never'}
 								</Table.Cell>
 							</Table.Row>
 						{/each}
@@ -302,21 +440,67 @@
 		{/if}
 	</section>
 
-	<section class="space-y-3">
-		<h2 class="text-lg font-semibold">Recent incidents</h2>
-		{#if incidentsLoading}
-			<div class="flex h-32 items-center justify-center">
-				<LoadingCircle size="lg" />
+	<section class="space-y-4">
+		<div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+			<div>
+				<div class="flex items-center gap-2">
+					<h2 class="text-lg font-semibold">Incidents</h2>
+					{#if !incidentsLoading && !incidentsError}
+						<CountPill count={incidentsTotal} />
+					{/if}
+				</div>
+				<p class="mt-0.5 text-sm text-muted-foreground">
+					Across monitors and status pages, for incidents open at any point in the selected range.
+				</p>
 			</div>
-		{:else if incidentsError}
-			<ErrorRetryBox message={incidentsError} onRetry={retryIncidents} />
-		{:else if incidents.length === 0}
-			<div class="rounded-md border py-8 text-center text-sm text-muted-foreground">
-				No incidents in the last 90 days.
-			</div>
-		{:else}
-			<TableContainer minWidth="720px">
-				<Table.Root>
+			<TimeRangePicker
+				bind:fromDate={range.fromDate}
+				bind:toDate={range.toDate}
+				bind:fromTime={range.fromTime}
+				bind:toTime={range.toTime}
+				bind:preset={range.preset}
+				onApply={handleTimeRangeChange}
+			/>
+		</div>
+
+		<SearchBar
+			placeholder="Search incidents by title, monitor, or status page..."
+			bind:value={incidentSearch}
+			onSearch={handleIncidentSearch}
+			disabled={incidentsLoading}
+		/>
+
+		<TableContainer minWidth="720px">
+			<Table.Root>
+				{#if incidentsLoading}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={4} class="h-32">
+								<div class="flex h-full items-center justify-center">
+									<LoadingCircle size="lg" />
+								</div>
+							</Table.Cell>
+						</Table.Row>
+					</Table.Body>
+				{:else if incidentsError}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={4} class="h-32">
+								<div class="flex h-full flex-col items-center justify-center gap-3">
+									<p class="text-sm text-destructive">{incidentsError}</p>
+									<button
+										class="text-sm font-medium text-primary hover:underline"
+										onclick={() => reloadIncidents(false)}>Retry</button
+									>
+								</div>
+							</Table.Cell>
+						</Table.Row>
+					</Table.Body>
+				{:else if incidents.length === 0}
+					<Table.Body>
+						<TableEmptyState colspan={4} message="No incidents in the selected range." />
+					</Table.Body>
+				{:else}
 					<Table.Header>
 						<Table.Row>
 							<TracewayTableHeader label="Incident" />
@@ -365,8 +549,19 @@
 							</Table.Row>
 						{/each}
 					</Table.Body>
-				</Table.Root>
-			</TableContainer>
-		{/if}
+				{/if}
+			</Table.Root>
+		</TableContainer>
+
+		<PaginationFooter
+			currentPage={incidentsPage}
+			totalPages={incidentsTotalPages}
+			pageSize={incidentsPageSize}
+			totalItems={incidentsTotal}
+			onPageChange={handleIncidentsPageChange}
+			onPageSizeChange={handleIncidentsPageSizeChange}
+			loading={incidentsLoading}
+			itemLabel="incident"
+		/>
 	</section>
 </div>

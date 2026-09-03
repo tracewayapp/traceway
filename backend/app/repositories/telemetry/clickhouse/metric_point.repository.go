@@ -45,7 +45,8 @@ func (r *metricPointRepository) QueryTimeSeriesByTags(ctx context.Context, proje
 
 func (r *metricPointRepository) queryTimeSeries(ctx context.Context, projectId uuid.UUID, name string, from, to time.Time, intervalMinutes int, aggregation string, tagFilters map[string]string, groupKeys []string, maxGroups int) (map[string][]models.TimeSeriesPoint, error) {
 	table := selectTable(to.Sub(from))
-	if aggregation == "last" {
+	isRate := aggregation == "rate"
+	if aggregation == "last" || isRate {
 		table = "metric_points"
 	}
 
@@ -70,12 +71,22 @@ func (r *metricPointRepository) queryTimeSeries(ctx context.Context, projectId u
 		query += " AS group_key"
 	}
 
-	query += ", " + aggFunc + " AS agg_value FROM " + table + " WHERE project_id = ? AND name = ? AND recorded_at >= ? AND recorded_at <= ?"
-	args = append(args, projectId, name, from, to)
+	if isRate {
+		query += ", sum(greatest(delta, 0)) / ? AS agg_value FROM (" + chRateDeltasSelect + " WHERE project_id = ? AND name = ? AND recorded_at >= ? AND recorded_at <= ?"
+		args = append(args, float64(intervalMinutes*60), projectId, name, from.Add(-shared.RateLookback), to)
+	} else {
+		query += ", " + aggFunc + " AS agg_value FROM " + table + " WHERE project_id = ? AND name = ? AND recorded_at >= ? AND recorded_at <= ?"
+		args = append(args, projectId, name, from, to)
+	}
 
 	for k, v := range tagFilters {
 		query += " AND tags[?] = ?"
 		args = append(args, k, v)
+	}
+
+	if isRate {
+		query += " " + chRateWindow + ") WHERE rn > 1 AND recorded_at >= ?"
+		args = append(args, from)
 	}
 
 	query += " GROUP BY bucket"
@@ -188,6 +199,10 @@ func selectTable(duration time.Duration) string {
 		return "metric_points_1d"
 	}
 }
+
+const chRateDeltasSelect = "SELECT recorded_at, tags, value - lagInFrame(value) OVER w AS delta, row_number() OVER w AS rn FROM metric_points"
+
+const chRateWindow = "WINDOW w AS (PARTITION BY mapSort(tags) ORDER BY recorded_at ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)"
 
 func aggregationFunc(agg string, table string) string {
 	if table == "metric_points" {

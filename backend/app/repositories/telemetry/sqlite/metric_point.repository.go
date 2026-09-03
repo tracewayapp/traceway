@@ -100,13 +100,22 @@ func (r *metricPointRepository) queryTimeSeries(ctx context.Context, projectId u
 	if isLast {
 		selectClause += ", max(recorded_at) AS last_ts"
 	}
-	selectClause += " FROM metric_points WHERE project_id = :project_id AND name = :name AND recorded_at >= :from AND recorded_at <= :to"
+	isRate := aggregation == "rate"
+	if isRate {
+		selectClause += " FROM (" + sqliteRateDeltasQuery + ") WHERE recorded_at >= :from AND delta IS NOT NULL"
+	} else {
+		selectClause += " FROM metric_points WHERE project_id = :project_id AND name = :name AND recorded_at >= :from AND recorded_at <= :to"
+	}
 
 	params := lit.P{
 		"project_id": projectId,
 		"name":       name,
 		"from":       sqlitetypes.NewSQLiteTime(from),
 		"to":         sqlitetypes.NewSQLiteTime(to),
+	}
+	if isRate {
+		params["lookback"] = sqlitetypes.NewSQLiteTime(from.Add(-shared.RateLookback))
+		params["secs"] = float64(secs)
 	}
 	for i, key := range groupKeys {
 		params[fmt.Sprintf("group_by_%d", i)] = key
@@ -403,8 +412,12 @@ func (r *metricPointRepository) GetAverageByIntervalPerServer(ctx context.Contex
 	return result, nil
 }
 
+const sqliteRateDeltasQuery = "SELECT recorded_at, tags, value - lag(value) OVER (PARTITION BY tags ORDER BY recorded_at) AS delta FROM metric_points WHERE project_id = :project_id AND name = :name AND recorded_at >= :lookback AND recorded_at <= :to"
+
 func sqliteAggregationFunc(agg string) string {
 	switch agg {
+	case "rate":
+		return "sum(CASE WHEN delta > 0 THEN delta ELSE 0 END) / :secs"
 	case "min":
 		return "min(value)"
 	case "max":

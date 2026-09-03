@@ -2,51 +2,44 @@
 
 import { Callout } from "nextra/components";
 
-Every other page in Traceway is scoped to one project. The organization overview is the one that is not: it puts every instance, issue, monitor, and open on-call page across all of your organization's projects on a single screen.
+Every other page in Traceway is scoped to one project. The organization pages are the ones that are not: they put every server, issue, monitor, and open on-call page across all of your organization's projects one sidebar click apart.
 
-It is the page for the question a project view cannot answer. Which box is about to run out of memory? What is already paging someone? Is anything on fire anywhere?
+They answer the questions a project view cannot. Which box is about to run out of memory? What is already paging someone? Is anything on fire anywhere?
 
-<img src="/organization-overview.png" alt="The Traceway organization overview: operational pulse counters, an instance table grouped by Kubernetes cluster, and open on-call pages" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+<img src="/organization-overview.png" alt="The organization Servers page: a fleet health bar with state filters above a server table grouped by Kubernetes cluster" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
 ## Getting there
 
-Open the switcher in the top-left header. Organizations are the headings; their projects are listed underneath. Selecting the organization itself opens the overview, selecting a project opens that project's dashboard.
+Open the switcher in the top-left header. Organizations are the headings; their projects are listed underneath. Selecting the organization itself opens its pages, selecting a project opens that project's dashboard.
 
 <img src="/organization-switcher.png" alt="The header switcher, listing organizations with their projects nested underneath" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
-The overview replaces the project sidebar with a plain header, because nothing on it is project-scoped. Pick a project from the switcher to get the sidebar back.
+The sidebar stays where it is and switches to the organization's pages, under an **Organization** label: **Servers**, **Issues**, **Monitors**, **On-Call**, and **Projects**. Each one fans out over all of the organization's projects. The **Monitors** badge counts monitors currently down and the **On-Call** badge counts open pages, across the whole organization. Pick a project from the switcher, or select a row on any of the pages, to get back into a project.
 
-After signing in you land on the overview automatically when your first organization has more than one project. With a single project you go straight to that project's dashboard, since an overview of one thing is not worth a click. That organization has no overview at all: the switcher lists it as a plain heading, and opening `/organization` for it sends you into the project.
+After signing in you land on the Servers page automatically when your first organization has more than one project. With a single project you go straight to that project's dashboard, since an overview of one thing is not worth a click. That organization has no organization pages at all: the switcher lists it as a plain heading, and opening `/organization` for it sends you into the project.
 
-The page also adapts to what the organization contains. Instances and monitors are backend features, so when every project is a browser or mobile app the **Instances** section, the **Monitors** tab, and the four instance counters disappear, and the pulse strip keeps only issues and open on-call pages.
+The sidebar also adapts to what the organization contains. Servers and monitors are backend features, so when every project is a browser or mobile app the **Servers** and **Monitors** items disappear and **Issues** becomes the first page.
 
-Every organization member can open it, read-only members included. It shows the projects you can already see, so it grants no access you did not have.
+Every organization member can open these pages, read-only members included. They show the projects you can already see, so they grant no access you did not have.
 
 <Callout type="info">
-  The overview is per organization, not global. If you belong to more than one,
-  each has its own page; switch between them from the same menu.
+  The pages are per organization, not global. If you belong to more than one,
+  each has its own set; switch between them from the same menu.
 </Callout>
 
-## Operational pulse
+## Servers
 
-The strip across the top is the summary you read first.
+The Servers page is a live view of every server reporting into the organization over the last 30 minutes. One row per distinct `server_name`, per project.
 
-| Counter | Meaning |
-|---|---|
-| **Reporting now** | Instances whose last metric arrived within 3 minutes |
-| **Needs attention** | Instances that are critical, warning, or stale |
-| **Stale signals** | Instances that have gone quiet for more than 3 minutes |
-| **Network I/O** | Combined receive plus transmit rate across every instance |
-| **Issues · 24h** | Distinct issues seen across all projects in the last 24 hours; opens the Issues tab |
-| **Active response** | Open on-call pages plus monitors currently down; opens the Monitors tab |
+Rows come from server metrics, not from any registry, so a server appears when it starts reporting and disappears when it stops. Nothing to register, nothing to clean up.
 
-The Overview tab refreshes itself every minute, and **Refresh** forces it. A refresh that fails leaves the last good snapshot on screen with a warning rather than blanking the page, and on every tab, if one project's telemetry cannot be read the others still render with a notice.
+### Fleet health
 
-## Instances
+The bar under the title is the summary you read first: one segment per health state, sized by how many servers are in it, worst first. The line above it says how many servers need attention, and the chips beside it carry the counts. Selecting a chip filters the table to that state; select it again to clear the filter.
 
-The instance table is a live view of every server reporting into the organization, over the last 30 minutes. One row per distinct `server_name`, per project.
+The page refreshes itself every minute, and **Refresh** forces it. A refresh that fails leaves the last good snapshot on screen with a warning rather than blanking the page, and on every organization page, if one project's telemetry cannot be read the others still render with a notice.
 
-Rows come from server metrics, not from any registry, so an instance appears when it starts reporting and disappears when it stops. Nothing to register, nothing to clean up.
+### Columns
 
 | Column | Source |
 |---|---|
@@ -54,9 +47,9 @@ Rows come from server metrics, not from any registry, so an instance appears whe
 | Memory | `system.memory.utilization` where `state=used` |
 | Disk | `system.filesystem.utilization` where `state=used` |
 | Network | `system.network.io` split by `direction`, as a rate |
-| Last signal | Most recent metric point from that instance |
+| Last signal | Most recent metric point from that server |
 
-Hosts running the [Traceway OTel Agent](/learn/otel-agent) or any OpenTelemetry Collector with the hostmetrics receiver fill in all four. Instances still on the older Traceway Go SDK metric names (`cpu.used_pcnt`, `mem.used`, `mem.total`) fill in CPU and memory, and the row is labelled **SDK metrics** instead of **OTel Agent**.
+Hosts running the [Traceway OTel Agent](/learn/otel-agent) or any OpenTelemetry Collector with the hostmetrics receiver fill in all four. Servers still on the older Traceway Go SDK metric names (`cpu.used_pcnt`, `mem.used`, `mem.total`) fill in CPU and memory, and the row is labelled **SDK metrics** instead of **OTel Agent**.
 
 <Callout type="warning">
   The three `system.*.utilization` metrics are **off by default** in the
@@ -76,56 +69,60 @@ Each row carries a state, computed from the latest values:
 | **Stale** | No metric in the last 3 minutes, whatever the last values were |
 | **Healthy** | Everything else |
 
-Rows sort worst-first inside their group: critical, then stale, then warning, then healthy. Stale outranks warning deliberately. An instance that stopped talking is a bigger unknown than one running warm.
+Rows sort worst-first inside their group, and the health bar reads the same way: critical, then stale, then warning, then healthy. Stale outranks warning deliberately. A server that stopped talking is a bigger unknown than one running warm.
 
 ### The metadata line
 
-Under each instance name is whatever the telemetry knows about it: the project, the host name when it differs from the instance name, OS and architecture, cloud region, the Kubernetes node, and whether the numbers came from the OTel Agent or the SDK. All of it comes from resource attributes on the metrics themselves (see [Resource Attributes](/client/otel/metrics#resource-attributes)), so richer instrumentation means a more useful line, and nothing needs configuring in Traceway.
+Under each server name is whatever the telemetry knows about it: the project, the host name when it differs from the server name, OS and architecture, cloud region, the Kubernetes node, and whether the numbers came from the OTel Agent or the SDK. All of it comes from resource attributes on the metrics themselves (see [Resource Attributes](/client/otel/metrics#resource-attributes)), so richer instrumentation means a more useful line, and nothing needs configuring in Traceway.
 
 ### Search, filter, group
 
-- **Find an instance** matches the instance name, project, host name, host id, OS, architecture, cloud region, Kubernetes cluster, and node name.
-- **Health state** narrows to needs attention, stale, or healthy.
-- **Project** appears once instances span more than one project.
+- **Find a server** matches the server name, project, host name, host id, OS, architecture, cloud region, Kubernetes cluster, and node name.
+- **Health chips** narrow to critical, stale, warning, or healthy servers.
+- **Project** appears once servers span more than one project.
 - **Group by** switches between project, Kubernetes cluster, and no grouping.
 
-Grouping defaults to project. When any instance carries a `k8s.cluster.name` attribute, the page starts grouped by Kubernetes cluster instead, and instances without one collect under **Not in a Kubernetes cluster**. See [Kubernetes](/learn/kubernetes) for how that attribute gets set.
+Grouping defaults to project. When any server carries a `k8s.cluster.name` attribute, the page starts grouped by Kubernetes cluster instead, and servers without one collect under **Not in a Kubernetes cluster**. See [Kubernetes](/learn/kubernetes) for how that attribute gets set.
 
 ### Clicking through
 
-Selecting a row opens that instance's dashboard: the project's dashboards page, scoped to that one `server_name`, over the last 30 minutes. If the project has the **OTelemetry Server Agent** dashboard installed, that tab opens directly.
+Selecting a row opens that server's dashboard: the project's dashboards page, scoped to that one `server_name`, over the last 30 minutes. If the project has the **OTelemetry Server Agent** dashboard installed, that tab opens directly.
 
 The scope is a normal URL parameter (`?server=<name>`), so the link is shareable and the page keeps the filter while you change the time range. Clear it from the instance picker in the dashboard header. See [Dashboards](/learn/dashboards#filtering-by-instance).
 
-## Active on-call response
-
-Under the instances is every page that still needs acknowledgement or resolution, across all projects: title, project, severity, status, and how long it has been open. It is the same queue as the [On-Call](/learn/on-call) page, without the per-project filter. Acknowledged pages stay listed until they are resolved, so nothing quietly falls off the screen.
-
 ## Issues
 
-<img src="/organization-issues.png" alt="The organization Issues tab: recently active issues from every project" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+<img src="/organization-issues.png" alt="The organization Issues page: recently active issues from every project" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
-Recently active issues from every project in the last 24 hours, newest event first, with the project each belongs to. Capped at 50 rows; the counter above the table is the true total across the organization. This is a triage feed, not the [Issues](/learn/issues) page, which is where you filter, search, and archive.
+Issues from every project in the selected time range, with the project each belongs to. The page works like the project-level [Issues](/learn/issues) page: a time range picker (last 24 hours by default), a search box that matches issues, messages, or both, sortable **Events** and **Last seen** columns, and pagination. The counter next to the title is the total across the organization for that range. Every project contributes its own top groups and the page is cut from their merged order, so a page here is exactly what one combined project would show. Selecting a row opens the issue in its project, where you archive it.
 
 ## Monitors
 
-<img src="/organization-monitors.png" alt="The organization Monitors tab: every monitor across projects with status, uptime and average latency, plus recent incidents" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+<img src="/organization-monitors.png" alt="The organization Monitors page: every monitor across projects with status, uptime and average latency, plus recent incidents" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
-Every [monitor](/learn/monitors) in the organization in one sortable list: type, project, current status, 30-day uptime, 30-day average latency, and when it last had an incident. Underneath is the organization's incident history for the last 90 days, across monitors and status pages, with the ongoing ones marked.
+Every [monitor](/learn/monitors) in the organization in one sortable list: type, project, current status, 30-day uptime, 30-day average latency, and last run. Search narrows the list by name, project, or target, and the type dropdown keeps only HTTP, TCP, or browser monitors. The counters next to the title show how many monitors there are and how many are down right now. Monitors deliberately carry no time filter, like the project page.
+
+Underneath is the organization's incident history across monitors and status pages, with its own time range picker (last 3 months by default), a search over title, monitor, status page, and error message, and pagination. An incident is listed when it was open at any point in the range, so the ongoing ones are always there, marked as such.
 
 Uptime excludes missed probes, so a window where Traceway itself was down reads as unknown rather than as a fabricated 100%.
 
+## On-Call
+
+<img src="/organization-on-call.png" alt="The organization On-Call page: every page that still needs acknowledgement or resolution, across projects" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+Pages from every project: title, project, severity, status, and when each was opened. It is the same queue as the [On-Call](/learn/on-call) page, without the per-project filter, and it refreshes itself every minute. The status chips switch between all active, open, acknowledged, and resolved pages; the search box matches subject and rule name; the time range picker filters by when a page was opened and defaults to the last month, wide enough that an ageing open page does not quietly fall off the screen. Acknowledged pages stay active until they are resolved. Selecting a row opens the page in its project.
+
 ## Projects
 
-<img src="/organization-projects.png" alt="The organization Projects tab, listing each project with its framework and your effective access level" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+<img src="/organization-projects.png" alt="The organization Projects page, listing each project with its framework and your effective access level" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
 Every project in the organization with its framework, when it was added, and your **effective** access level on it: your organization role, unless a [per-project override](/learn/projects) changes it. Selecting a row opens that project.
 
 ## Multi-organization setups
 
-A user can belong to several organizations, and each carries its own overview, members, dashboards, teams, schedules, and escalation policies. Nothing is shared across the boundary, which is what makes an organization the right shape for an agency's clients or a company's independent business units.
+A user can belong to several organizations, and each carries its own organization pages, members, dashboards, teams, schedules, and escalation policies. Nothing is shared across the boundary, which is what makes an organization the right shape for an agency's clients or a company's independent business units.
 
-Within one organization, prefer more projects over more organizations. Projects are the isolation boundary for telemetry, but the overview, dashboards, on-call rotations, and status pages are all organization-wide, so splitting a fleet across organizations means giving up exactly the view that makes a fleet manageable.
+Within one organization, prefer more projects over more organizations. Projects are the isolation boundary for telemetry, but the organization pages, dashboards, on-call rotations, and status pages are all organization-wide, so splitting a fleet across organizations means giving up exactly the view that makes a fleet manageable.
 
 ## Next steps
 

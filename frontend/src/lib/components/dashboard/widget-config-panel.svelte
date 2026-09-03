@@ -409,6 +409,7 @@
 								<Select.Item value="max">max</Select.Item>
 								<Select.Item value="sum">sum</Select.Item>
 								<Select.Item value="count">count</Select.Item>
+								<Select.Item value="rate">rate</Select.Item>
 							</Select.Content>
 						</Select.Root>
 					</div>
@@ -418,6 +419,17 @@
 						placeholder="Label (optional, defaults to metric name)"
 						class="h-8 text-xs"
 					/>
+
+					<label class="flex items-center gap-2 text-xs text-muted-foreground">
+						<Checkbox
+							checked={source.complement === true}
+							onCheckedChange={(checked) => {
+								sources[i].complement = checked === true ? true : undefined;
+							}}
+							aria-label="Invert value"
+						/>
+						Invert: chart 1 &minus; value (turns CPU idle into CPU busy)
+					</label>
 
 					{#if source.name && getMetricTagKeys(source.name).length > 0}
 						<div class="space-y-1">

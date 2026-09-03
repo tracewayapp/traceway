@@ -4,20 +4,24 @@
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import * as Table from '$lib/components/ui/table';
 	import FrameworkIcon from '$lib/components/framework-icon.svelte';
+	import PageHeader from '$lib/components/traceway/page-header.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import CountPill from '../count-pill.svelte';
 	import { authState } from '$lib/state/auth.svelte';
-	import { getFrameworkLabel, projectsState, type Project } from '$lib/state/projects.svelte';
+	import { organizationContext } from '$lib/state/organization-context.svelte';
+	import { getFrameworkLabel, type Project } from '$lib/state/projects.svelte';
 	import { formatRelativeTimeAgo } from '$lib/utils/formatters';
 	import { createRowClickHandler } from '$lib/utils/navigation';
 
-	let { organizationId }: { organizationId: number } = $props();
-
-	const projects = $derived(
-		projectsState.projects.filter((project) => project.organizationId === organizationId)
-	);
+	const projects = $derived(organizationContext.projects);
 
 	function projectRole(project: Project): string {
-		return project.role || authState.getRoleForOrganization(organizationId) || 'user';
+		const organizationId = organizationContext.organizationId;
+		return (
+			project.role ||
+			(organizationId === null ? null : authState.getRoleForOrganization(organizationId)) ||
+			'user'
+		);
 	}
 
 	function roleLabel(role: string): string {
@@ -34,14 +38,15 @@
 	}
 </script>
 
-<section class="space-y-3">
-	<div class="flex flex-wrap items-baseline justify-between gap-2">
-		<h2 class="text-lg font-semibold">Projects</h2>
-		<span class="text-sm text-muted-foreground">
-			{projects.length.toLocaleString()}
-			{projects.length === 1 ? 'project' : 'projects'} in this organization
-		</span>
-	</div>
+<div class="space-y-4">
+	<PageHeader
+		title="Projects"
+		description="Every project in the organization, with its framework and your effective access level."
+	>
+		{#snippet trailing()}
+			<CountPill count={projects.length} />
+		{/snippet}
+	</PageHeader>
 
 	{#if projects.length === 0}
 		<div class="rounded-md border py-16 text-center text-sm text-muted-foreground">
@@ -93,4 +98,4 @@
 			</Table.Root>
 		</TableContainer>
 	{/if}
-</section>
+</div>

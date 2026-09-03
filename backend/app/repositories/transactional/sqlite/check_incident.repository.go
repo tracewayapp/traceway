@@ -4,6 +4,7 @@ package sqlite
 
 import (
 	"database/sql"
+	"strings"
 	"time"
 
 	"github.com/tracewayapp/traceway/backend/app/db"
@@ -169,3 +170,48 @@ func (r *checkIncidentRepository) DeleteManual(tx *sql.Tx, id int) error {
 }
 
 var CheckIncidentRepository = checkIncidentRepository{}
+
+func orgIncidentCondition(organizationId int, search string, from, to *time.Time, params lit.P) string {
+	condition := "(p.organization_id = :organization_id OR sp.organization_id = :organization_id)"
+	params["organization_id"] = organizationId
+	if from != nil {
+		condition += " AND (i.resolved_at IS NULL OR i.resolved_at >= :from)"
+		params["from"] = from.UTC()
+	}
+	if to != nil {
+		condition += " AND i.started_at <= :to"
+		params["to"] = to.UTC()
+	}
+	if search != "" {
+		condition += ` AND (LOWER(i.title) LIKE :search ESCAPE '\' OR LOWER(c.name) LIKE :search ESCAPE '\' OR LOWER(sp.name) LIKE :search ESCAPE '\' OR LOWER(i.error_message) LIKE :search ESCAPE '\')`
+		params["search"] = "%" + likeEscaper.Replace(strings.ToLower(search)) + "%"
+	}
+	return condition
+}
+
+func (r *checkIncidentRepository) FindByOrganizationPaged(tx *sql.Tx, organizationId int, search string, from, to *time.Time, limit int, offset int) ([]*models.OrgIncident, error) {
+	params := lit.P{"limit": limit, "offset": offset}
+	condition := orgIncidentCondition(organizationId, search, from, to, params)
+	return lit.SelectNamed[models.OrgIncident](
+		tx,
+		"SELECT "+checkIncidentJoinedColumns+", c.name AS check_name, sp.name AS status_page_name "+checkIncidentOrgJoin+" WHERE "+condition+" ORDER BY i.started_at DESC, i.id DESC LIMIT :limit OFFSET :offset",
+		params,
+	)
+}
+
+func (r *checkIncidentRepository) CountByOrganizationFiltered(tx *sql.Tx, organizationId int, search string, from, to *time.Time) (int, error) {
+	params := lit.P{}
+	condition := orgIncidentCondition(organizationId, search, from, to, params)
+	result, err := lit.SelectSingleNamed[models.CountResult](
+		tx,
+		"SELECT COUNT(*) as count "+checkIncidentOrgJoin+" WHERE "+condition,
+		params,
+	)
+	if err != nil {
+		return 0, err
+	}
+	if result == nil {
+		return 0, nil
+	}
+	return result.Count, nil
+}

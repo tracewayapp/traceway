@@ -124,6 +124,9 @@ func Run(opts ...Option) {
 	if err := backfill.RunDashboards(); err != nil {
 		panic(fmt.Errorf("dashboards backfill failed: %w", err))
 	}
+	if err := backfill.RunOtelAgentDashboardSources(); err != nil {
+		panic(fmt.Errorf("OTel agent dashboard backfill failed: %w", err))
+	}
 
 	if o != nil {
 		if err := seed(o); err != nil {

@@ -295,8 +295,10 @@ func RegisterControllers(router *gin.RouterGroup) {
 	// completes its own short transaction before the handler runs); the pure
 	// main-DB pages endpoint keeps it.
 	router.GET("/organizations/:organizationId/overview/servers", middleware.UseAppAuth, middleware.RequireOrganizationAccess, OrganizationOverviewController.Servers)
-	router.GET("/organizations/:organizationId/overview/issues", middleware.UseAppAuth, middleware.RequireOrganizationAccess, OrganizationOverviewController.Issues)
-	router.GET("/organizations/:organizationId/overview/pages", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, OrganizationOverviewController.Pages)
+	router.POST("/organizations/:organizationId/overview/issues", middleware.UseAppAuth, middleware.RequireOrganizationAccess, OrganizationOverviewController.Issues)
+	router.POST("/organizations/:organizationId/overview/pages", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, OrganizationOverviewController.Pages)
+	router.GET("/organizations/:organizationId/overview/counts", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, OrganizationOverviewController.Counts)
+	router.POST("/organizations/:organizationId/overview/incidents", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, OrganizationOverviewController.Incidents)
 	router.GET("/organizations/:organizationId/overview/monitors", middleware.UseAppAuth, middleware.RequireOrganizationAccess, OrganizationOverviewController.Monitors)
 
 	router.GET("/organizations/:organizationId/incidents", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, IncidentController.List)

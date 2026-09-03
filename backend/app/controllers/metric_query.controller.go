@@ -182,7 +182,7 @@ func (c *metricQueryController) Query(ctx *gin.Context) {
 		}
 		truncated := trimGroupSeries(series)
 
-		resultUnit := unitMap[q.Name]
+		resultUnit := rateUnit(agg, unitMap[q.Name])
 		if agg == "count" {
 			resultUnit = "count"
 		}
@@ -459,3 +459,16 @@ func (c *metricQueryController) UpdateRegistry(ctx *gin.Context) {
 }
 
 var MetricQueryController = metricQueryController{}
+
+func rateUnit(aggregation string, unit string) string {
+	if aggregation != "rate" {
+		return unit
+	}
+	switch unit {
+	case "s":
+		return "1"
+	case "":
+		return "count/s"
+	}
+	return unit + "/s"
+}

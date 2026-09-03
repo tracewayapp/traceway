@@ -293,7 +293,7 @@ Full documentation at **[docs.tracewayapp.com](https://docs.tracewayapp.com)**:
 - [**Concepts**](https://docs.tracewayapp.com/learn): How tracing, exception fingerprinting, metrics, and alerts work
 - [**Embedded Mode**](https://docs.tracewayapp.com/learn/embedded-mode): Run Traceway inside your Go app
 - [**Kubernetes**](https://docs.tracewayapp.com/learn/kubernetes): Instrument a whole cluster with the manifests in [`examples/kubernetes`](./examples/kubernetes)
-- [**Organization Overview**](https://docs.tracewayapp.com/learn/organization-overview): Fleet health and cross-project triage on one page
+- [**Organization Overview**](https://docs.tracewayapp.com/learn/organization-overview): Servers, issues, monitors, and on-call pages across every project, one sidebar click apart
 
 ## Community
 

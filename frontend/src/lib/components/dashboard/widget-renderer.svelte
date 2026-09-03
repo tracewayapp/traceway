@@ -93,6 +93,10 @@
 	let hiddenSeries = new SvelteSet<string>();
 	const visibleSeries = $derived(series.filter((s) => !hiddenSeries.has(s.key)));
 
+	function complementValue(value: number, unit: string): number {
+		return unit === '%' ? 100 - value : 1 - value;
+	}
+
 	function toggleSeries(key: string) {
 		if (hiddenSeries.has(key)) {
 			hiddenSeries.delete(key);
@@ -150,6 +154,7 @@
 			for (const [idx, result] of response.results.entries()) {
 				if (result.unit) units.add(result.unit);
 				const baseName = sources[idx]?.label?.trim() || result.name;
+				const complement = sources[idx]?.complement === true;
 				for (const [key, points] of Object.entries(result.series)) {
 					const label = Object.keys(result.series).length > 1 ? `${baseName} (${key})` : baseName;
 					let uniqueKey = label;
@@ -161,7 +166,7 @@
 						key: uniqueKey,
 						data: points.map((p) => ({
 							timestamp: new Date(p.timestamp),
-							value: p.value
+							value: complement ? complementValue(p.value, result.unit) : p.value
 						})),
 						color: colors[colorIdx % colors.length]
 					});

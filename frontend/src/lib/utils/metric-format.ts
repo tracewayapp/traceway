@@ -1,6 +1,11 @@
 type FormatResult = { text: string; unit: string };
 
 export function formatMetricValue(value: number, unit: string): FormatResult {
+	if (unit.length > 2 && unit.endsWith('/s')) {
+		const base = formatMetricValue(value, unit.slice(0, -2));
+		return { text: base.text, unit: `${base.unit}/s` };
+	}
+
 	// OTel canonical unit '1' is a dimensionless ratio (0-1) - render as percent.
 	if (unit === '1') {
 		return formatMetricValue(value * 100, '%');

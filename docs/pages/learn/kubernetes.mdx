@@ -10,7 +10,7 @@ Ready-to-apply manifests live in the repository at [`examples/kubernetes`](https
 
 | Workload | Reads | Shows up as |
 |---|---|---|
-| `traceway-node-agent` (DaemonSet) | Host CPU, memory, disk, filesystem, network of each node | One [instance row per node](/learn/organization-overview#instances), grouped by cluster |
+| `traceway-node-agent` (DaemonSet) | Host CPU, memory, disk, filesystem, network of each node | One [server row per node](/learn/organization-overview#servers), grouped by cluster |
 | `traceway-node-agent` | Kubelet node and pod resource usage | `k8s.pod.*` metrics for [dashboard widgets](/learn/dashboards) |
 | `traceway-node-agent` | Every container's stdout and stderr | The [Logs](/learn/logs) page, tagged with pod, namespace and container |
 | `traceway-cluster-agent` (Deployment) | Pod phases, deployment replicas, node conditions, allocatable resources | `k8s.*` cluster metrics |
@@ -19,7 +19,7 @@ Ready-to-apply manifests live in the repository at [`examples/kubernetes`](https
 
 The applications keep their own instrumentation. The collectors describe the cluster the applications run on; they do not replace [OpenTelemetry in the app](/client/otel).
 
-<img src="/organization-overview.png" alt="The organization overview with instances grouped by Kubernetes cluster, plus plain hosts under Not in a Kubernetes cluster" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+<img src="/organization-overview.png" alt="The organization Servers page with servers grouped by Kubernetes cluster, plus plain hosts under Not in a Kubernetes cluster" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
 Nodes from every cluster and every plain host land in the same table, grouped by cluster. Machines with no `k8s.cluster.name` collect under **Not in a Kubernetes cluster**, so a half-migrated fleet still reads as one fleet.
 
@@ -62,7 +62,7 @@ data:
   TRACEWAY_ENDPOINT: https://traceway.mycompany.com/api/otel
 ```
 
-`TRACEWAY_CLUSTER_NAME` becomes `k8s.cluster.name` on everything the cluster reports, and it is the string the organization overview groups instances by. Give every cluster a distinct one.
+`TRACEWAY_CLUSTER_NAME` becomes `k8s.cluster.name` on everything the cluster reports, and it is the string the organization's Servers page groups servers by. Give every cluster a distinct one.
 
 `TRACEWAY_ENDPOINT` is the OTLP/HTTP base URL of your instance, ending in `/api/otel`. On Traceway Cloud that is `https://cloud.tracewayapp.com/api/otel`. The collector appends `/v1/metrics`, `/v1/logs` and `/v1/traces` itself.
 
@@ -81,7 +81,7 @@ kubectl -n traceway rollout status daemonset/traceway-node-agent
 kubectl -n traceway logs -l app.kubernetes.io/name=traceway-node-agent --tail=50
 ```
 
-Metrics arrive within about 30 seconds. Open the organization overview: every node appears as its own instance, grouped under your cluster name.
+Metrics arrive within about 30 seconds. Open the organization's Servers page: every node appears as its own server, grouped under your cluster name.
 
 </Steps>
 
@@ -110,7 +110,7 @@ The same `traceway-token` Secret and `traceway-settings` ConfigMap are expected.
   The chart's `hostMetrics` preset wires up the scrapers but leaves
   `system.cpu.utilization`, `system.memory.utilization` and
   `system.filesystem.utilization` **disabled**, because that is the receiver's
-  default. Those three are exactly what the organization overview reads. Both
+  default. Those three are exactly what the organization's Servers page reads. Both
   values files turn them on; if you write your own, do the same or the instance
   rings stay empty.
 </Callout>
@@ -279,7 +279,7 @@ Separate from monitoring a cluster, Traceway can run in one. The repository ship
 
 ## Next steps
 
-- [Organization Overview](/learn/organization-overview) for what the instance table does with all this
+- [Organization Overview](/learn/organization-overview) for what the Servers page does with all this
 - [OpenTelemetry](/client/otel) for instrumenting the applications
 - [Resource Attributes](/client/otel/metrics#resource-attributes) for the full allowlist
 - [Dashboards](/learn/dashboards) for building pod and namespace views

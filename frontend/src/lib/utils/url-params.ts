@@ -93,9 +93,10 @@ export function updateUrl(
 	const { pushToHistory = false } = options;
 	const urlParams = new URLSearchParams();
 
-	const currentProjectId = new URLSearchParams(window.location.search).get('projectId');
-	if (currentProjectId) {
-		urlParams.set('projectId', currentProjectId);
+	const current = new URLSearchParams(window.location.search);
+	for (const scope of ['projectId', 'organizationId']) {
+		const value = current.get(scope);
+		if (value) urlParams.set(scope, value);
 	}
 
 	for (const [key, value] of Object.entries(params)) {

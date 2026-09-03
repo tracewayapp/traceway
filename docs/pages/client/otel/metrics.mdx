@@ -43,7 +43,7 @@ Two other things live on the **Resource** rather than on the data point, and Tra
 
 The first is the identity of the thing being measured. The hostmetrics process scraper emits one `ResourceMetrics` block per process, and docker_stats, kubeletstats and the postgresql receiver do the same for containers, pods, nodes and databases. Without lifting those, every `process.cpu.utilization` point would look identical.
 
-The second is host and platform metadata, which is what the [organization overview](/learn/organization-overview) shows next to each instance.
+The second is host and platform metadata, which is what the [organization overview](/learn/organization-overview) shows next to each server.
 
 | Attribute | Typical source |
 |-----------|----------------|

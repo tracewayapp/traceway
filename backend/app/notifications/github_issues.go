@@ -126,8 +126,11 @@ func CloseGitHubIssuesForArchived(tx *sql.Tx, projectId uuid.UUID, hashes []stri
 func buildGitHubCloseMessage(issue *models.GithubIssue) Message {
 	var body strings.Builder
 	body.WriteString("Closed automatically by Traceway: the issue this tracks was archived.")
-	if link := dashboardURL("/issues/" + issue.IssueKey); link != "" {
-		fmt.Fprintf(&body, "\n\n%s", link)
+	// Unlike dashboardURL's normal fallback (a bare relative path), the link is
+	// left out entirely when unset: the comment it goes into is public, and a
+	// relative or localhost path there helps nobody outside Traceway.
+	if config.Config.PublicBaseURL() != "" {
+		fmt.Fprintf(&body, "\n\n%s", dashboardURL("/issues/"+issue.IssueKey))
 	}
 	return Message{
 		Subject:  "Issue archived in Traceway",
@@ -141,15 +144,4 @@ func buildGitHubCloseMessage(issue *models.GithubIssue) Message {
 			Repo:        issue.Repo,
 		},
 	}
-}
-
-// dashboardURL builds an absolute link to a dashboard path, or "" when the
-// deployment has not published an origin. A link is left out rather than
-// guessed: the comment it goes into is public, and a localhost URL there helps
-// nobody.
-func dashboardURL(path string) string {
-	if config.Config == nil || config.Config.AppBaseURL == "" {
-		return ""
-	}
-	return strings.TrimRight(config.Config.AppBaseURL, "/") + path
 }

@@ -10,7 +10,9 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/notifications"
 	"github.com/tracewayapp/traceway/backend/app/oncall"
+	"github.com/tracewayapp/traceway/backend/app/outbox"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 
@@ -210,6 +212,7 @@ func (c *pageController) Resolve(ctx *gin.Context) {
 	}
 
 	archived := false
+	closedIssues := 0
 	if request.ArchiveIssue {
 		hash := page.IssueHash()
 		if hash == "" {
@@ -233,8 +236,15 @@ func (c *pageController) Resolve(ctx *gin.Context) {
 			return
 		}
 		archived = true
+		if closedIssues, err = notifications.CloseGitHubIssuesForArchived(tx, page.ProjectId, []string{hash}); err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to close GitHub issues for archived issue %s: %w", hash, err))
+			return
+		}
+		if closedIssues > 0 {
+			middleware.OnCommit(ctx, outbox.Wake)
+		}
 	}
-	ctx.JSON(http.StatusOK, gin.H{"message": "Page resolved", "archivedIssue": archived})
+	ctx.JSON(http.StatusOK, gin.H{"message": "Page resolved", "archivedIssue": archived, "closedGithubIssues": closedIssues})
 }
 
 type bulkAcknowledgeRequest struct {
@@ -343,6 +353,7 @@ func (c *pageController) BulkResolve(ctx *gin.Context) {
 	}
 
 	archivedIssues := 0
+	closedIssues := 0
 	if len(hashSet) > 0 {
 		// Resolving deliberately has no write gate, but archiving issues is a
 		// write: enforce the effective project role in-handler. Aborting rolls
@@ -365,8 +376,15 @@ func (c *pageController) BulkResolve(ctx *gin.Context) {
 			return
 		}
 		archivedIssues = len(hashes)
+		if closedIssues, err = notifications.CloseGitHubIssuesForArchived(tx, projectId, hashes); err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to close GitHub issues for archived issues: %w", err))
+			return
+		}
+		if closedIssues > 0 {
+			middleware.OnCommit(ctx, outbox.Wake)
+		}
 	}
-	ctx.JSON(http.StatusOK, gin.H{"resolved": resolved, "archivedIssues": archivedIssues})
+	ctx.JSON(http.StatusOK, gin.H{"resolved": resolved, "archivedIssues": archivedIssues, "closedGithubIssues": closedIssues})
 }
 
 type pagesForIssuesRequest struct {

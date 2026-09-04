@@ -18,6 +18,12 @@ func AdapterSend(ctx context.Context, adapterType string, adapterConfig json.Raw
 	if err != nil {
 		return err
 	}
+	// GitHub deliveries are two-way: they open an issue and later close it,
+	// and an opened one is recorded so the close can find it. Adapter.Send
+	// only covers the open half.
+	if github, ok := adapter.(*GitHubAdapter); ok {
+		return sendGitHubIssue(ctx, github, msg)
+	}
 	return adapter.Send(ctx, msg)
 }
 

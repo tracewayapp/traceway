@@ -20,7 +20,7 @@ A channel represents a notification destination. Traceway supports the following
 | Email   | Sends an email to one or more recipients | List of email addresses |
 | Slack   | Posts a message to a Slack channel via incoming webhook | Webhook URL |
 | Webhook | Sends an HTTP POST with a JSON payload to any URL | URL, optional headers, optional HMAC secret |
-| GitHub  | Creates a GitHub issue in a repository | Personal access token, repository owner/name, optional labels |
+| GitHub  | Opens a GitHub issue in a repository, and closes it again when the error is archived | Personal access token, repository owner/name, optional labels |
 | Pushover | Sends push notifications to your mobile devices | User Key, App Token |
 | Telegram | Sends a message via a Telegram bot to a user or group chat | Bot Token, Chat ID |
 | Escalation policy | Opens an on-call [page](/learn/on-call) and runs the policy's escalation chain until somebody acknowledges, instead of sending a message | Escalation policy |
@@ -76,6 +76,17 @@ Then configure the GitHub channel in Traceway:
 
 <img src="/channel-github.png" alt="GitHub channel configuration dialog" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
+#### Closing Issues Automatically
+
+When a **New Error** or **Error Regression** rule opens a GitHub issue, Traceway remembers which issue tracks which error. Archiving that error — from the issues list, the issue page, or by resolving its on-call page with **Archive issue** ticked — closes the GitHub issue and leaves a comment linking back to Traceway. Nothing to configure: it applies to every GitHub channel.
+
+A few details worth knowing:
+
+- Only issues opened by error rules are tracked. An issue opened by a latency or metric rule has no error to archive, so it stays open for you to close by hand.
+- The issue is closed in the repository it was created in, even if the channel has since been pointed at a different one.
+- If the error comes back, an Error Regression rule opens a **new** issue rather than reopening the closed one. Archiving again closes that one too.
+- Deleting the channel forgets its issues. Any that are still open stay open, since the token that could close them is gone.
+- Set `APP_BASE_URL` on the server for the closing comment to carry a link back to the error in Traceway.
 Issues opened by this channel can start an AI coding agent in the repository's own GitHub Actions, which investigates the exception with the traceway CLI and opens a pull request or comments its analysis. See [Auto-Fix](/learn/auto-fix).
 
 ### Setting Up Telegram

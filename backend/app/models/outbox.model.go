@@ -10,6 +10,9 @@ const (
 	OutboxKindRule         = "rule"
 	OutboxKindPage         = "page"
 	OutboxKindVerification = "verification"
+	// OutboxKindGithubClose closes a GitHub issue whose exception was archived.
+	// It is not a rule fire, so it records no fired_notifications audit row.
+	OutboxKindGithubClose = "github_close"
 
 	OutboxPending   = "pending"
 	OutboxSending   = "sending"

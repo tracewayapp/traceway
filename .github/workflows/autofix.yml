@@ -1,0 +1,195 @@
+# Reusable Traceway auto-fix loop with Claude Code as the agent: a Traceway
+# GitHub channel opens an issue, the agent investigates it with the traceway
+# CLI, and a deterministic publish step opens a pull request or comments the
+# analysis. See docs/pages/learn/auto-fix.mdx for the contract; other agents
+# fit between the same two actions (autofix-prepare / autofix-publish) in a
+# caller of their own.
+#
+# The agent step never holds a GitHub credential and only a read-only Traceway
+# token; every write (push, PR, comment, archive) happens in the publish step
+# from validated inputs. That split is the security model, not the agent's
+# tool allowlist.
+name: Traceway auto-fix
+
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        description: Number of the issue the Traceway GitHub channel opened
+        type: number
+        required: true
+      allowed_authors:
+        description: Comma-separated GitHub logins allowed to trigger a run (the owner of the channel's token); every other issue author is refused
+        type: string
+        required: true
+      project_id:
+        description: Traceway project id the exception belongs to
+        type: string
+        required: true
+      traceway_url:
+        description: Traceway instance to query
+        type: string
+        default: https://cloud.tracewayapp.com
+      traceway_ref:
+        description: Ref of tracewayapp/traceway to take the prepare/publish actions and the traceway skill from
+        type: string
+        default: main
+      model:
+        description: Model passed to Claude Code
+        type: string
+        default: claude-opus-4-8
+      effort:
+        description: Effort level passed to Claude Code
+        type: string
+        default: xhigh
+      max_turns:
+        description: Turn budget for Claude Code
+        type: number
+        default: 60
+      allowed_tools:
+        description: Tool allowlist for Claude Code. The default permits traceway read subcommands, jq and the file tools, nothing that writes anywhere
+        type: string
+        default: "Bash(traceway exceptions list:*),Bash(traceway exceptions show:*),Bash(traceway exceptions occurrence:*),Bash(traceway logs query:*),Bash(traceway endpoints list:*),Bash(traceway endpoints show:*),Bash(traceway endpoints chart:*),Bash(traceway endpoints slow:*),Bash(traceway traces show:*),Bash(traceway sessions show:*),Bash(traceway tasks show:*),Bash(traceway ai-traces show:*),Bash(traceway metrics query:*),Bash(traceway projects list:*),Bash(jq:*),Read,Edit,Write,Glob,Grep,Skill"
+      extra_allowed_tools:
+        description: "Appended to allowed_tools, typically the test runner: Bash(go:*), Bash(npm test:*), ..."
+        type: string
+        default: ""
+      go_version_file:
+        description: Path of a go.mod; when set, a cached Go toolchain is installed before the agent runs
+        type: string
+        default: ""
+      setup_command:
+        description: Shell run before the agent for any other toolchain the tests need
+        type: string
+        default: ""
+      archive_on_open:
+        description: Archive the exception in Traceway when the pull request opens (needs TRACEWAY_PUBLISH_TOKEN)
+        type: boolean
+        default: true
+      timeout_minutes:
+        description: Job timeout
+        type: number
+        default: 30
+    secrets:
+      TRACEWAY_TOKEN:
+        description: Read-only Traceway personal access token for the agent step (a bot user with org role readonly)
+        required: true
+      TRACEWAY_PUBLISH_TOKEN:
+        description: Traceway personal access token with write access to the project, used only by the publish step to archive the exception. Leave unset to never archive
+        required: false
+      GH_PUSH_TOKEN:
+        description: GitHub token that pushes the fix branch, opens the pull request and comments on the issue
+        required: true
+      ANTHROPIC_API_KEY:
+        required: true
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    concurrency:
+      group: traceway-fix-${{ inputs.issue_number }}
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # A local `uses: ./...` resolves against the caller's checkout, so the
+      # actions and the skill are fetched into a git-excluded subdirectory
+      # for callers outside this repository.
+      - name: Fetch the Traceway auto-fix actions
+        uses: actions/checkout@v7
+        with:
+          repository: tracewayapp/traceway
+          ref: ${{ inputs.traceway_ref }}
+          path: .traceway
+          sparse-checkout: |
+            .github/actions
+            skills/traceway
+          persist-credentials: false
+      - run: echo '/.traceway/' >> .git/info/exclude
+
+      - name: Validate credentials
+        env:
+          GH_TOKEN: ${{ secrets.GH_PUSH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          echo "GH_PUSH_TOKEN authenticates as: $(gh api user --jq .login)"
+          gh auth setup-git
+          git push --dry-run origin "HEAD:refs/heads/tw-preflight-$GITHUB_RUN_ID"
+          curl -sf https://api.anthropic.com/v1/models \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" -o /dev/null \
+            || { echo "ANTHROPIC_API_KEY was rejected"; exit 1; }
+
+      - name: Prepare
+        id: prepare
+        uses: ./.traceway/.github/actions/autofix-prepare
+        with:
+          issue_number: ${{ inputs.issue_number }}
+          allowed_authors: ${{ inputs.allowed_authors }}
+          traceway_url: ${{ inputs.traceway_url }}
+          traceway_token: ${{ secrets.TRACEWAY_TOKEN }}
+          project_id: ${{ inputs.project_id }}
+
+      - name: Set up Go
+        if: steps.prepare.outputs.proceed == 'true' && inputs.go_version_file != ''
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: ${{ inputs.go_version_file }}
+          cache-dependency-path: "**/go.sum"
+
+      - name: Set up the toolchain
+        if: steps.prepare.outputs.proceed == 'true' && inputs.setup_command != ''
+        run: ${{ inputs.setup_command }}
+
+      - name: Investigate and fix
+        if: steps.prepare.outputs.proceed == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          plugin_marketplaces: |
+            https://github.com/tracewayapp/traceway.git
+          plugins: |
+            tw@traceway
+          claude_args: |
+            --model ${{ inputs.model }}
+            --effort ${{ inputs.effort }}
+            --allowedTools "${{ inputs.allowed_tools }}${{ inputs.extra_allowed_tools && format(',{0}', inputs.extra_allowed_tools) || '' }}"
+            --max-turns ${{ inputs.max_turns }}
+          prompt: ${{ steps.prepare.outputs.prompt }}
+
+      - name: Save diff and report as artifact
+        if: always() && steps.prepare.outputs.proceed == 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/artifact"
+          cp "${{ steps.prepare.outputs.report_file }}" "$RUNNER_TEMP/artifact/" 2>/dev/null || true
+          git add --intent-to-add --all
+          git diff > "$RUNNER_TEMP/artifact/fix.patch" || true
+          git reset -q
+          git status --porcelain > "$RUNNER_TEMP/artifact/changed-files.txt" || true
+
+      - uses: actions/upload-artifact@v7
+        if: always() && steps.prepare.outputs.proceed == 'true'
+        with:
+          name: traceway-fix-issue-${{ inputs.issue_number }}
+          path: ${{ runner.temp }}/artifact
+          if-no-files-found: ignore
+
+      - name: Publish
+        if: steps.prepare.outputs.proceed == 'true'
+        uses: ./.traceway/.github/actions/autofix-publish
+        with:
+          issue_number: ${{ inputs.issue_number }}
+          hash: ${{ steps.prepare.outputs.hash }}
+          github_token: ${{ secrets.GH_PUSH_TOKEN }}
+          report_file: ${{ steps.prepare.outputs.report_file }}
+          traceway_url: ${{ inputs.traceway_url }}
+          traceway_token: ${{ secrets.TRACEWAY_PUBLISH_TOKEN }}
+          project_id: ${{ inputs.project_id }}
+          archive_on_open: ${{ inputs.archive_on_open }}

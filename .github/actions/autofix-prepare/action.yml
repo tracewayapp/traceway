@@ -1,0 +1,168 @@
+name: Traceway auto-fix prepare
+description: >-
+  Gates a Traceway-created issue and builds the agent's prompt from its
+  validated fields only. Installs the traceway CLI and logs it in with a
+  read-only token. Part of the auto-fix contract documented in
+  docs/pages/learn/auto-fix.mdx.
+inputs:
+  issue_number:
+    description: Number of the issue the Traceway GitHub channel opened
+    required: true
+  allowed_authors:
+    description: Comma-separated GitHub logins allowed to trigger a run, normally the owner of the channel's token. An empty list refuses every issue
+    required: true
+  github_token:
+    description: Token used to read the issue
+    default: ${{ github.token }}
+  traceway_url:
+    description: Traceway instance the agent queries
+    default: https://cloud.tracewayapp.com
+  traceway_token:
+    description: Read-only Traceway personal access token (a bot user with org role readonly)
+    required: true
+  project_id:
+    description: Traceway project id the exception belongs to
+    required: true
+outputs:
+  proceed:
+    description: '"true" when the issue passed every gate; skip the agent and publish steps otherwise'
+    value: ${{ steps.gate.outputs.proceed }}
+  hash:
+    description: The 16-hex exception hash from the issue body; pass it to autofix-publish
+    value: ${{ steps.gate.outputs.hash }}
+  prompt:
+    description: The generated prompt, for agents that take it as a string
+    value: ${{ steps.prompt.outputs.prompt }}
+  prompt_file:
+    description: Path of the generated prompt
+    value: ${{ steps.prompt.outputs.prompt_file }}
+  skills_dir:
+    description: Directory holding traceway/SKILL.md, outside the working tree
+    value: ${{ steps.prompt.outputs.skills_dir }}
+  report_file:
+    description: File the agent must write its report to; pass it to autofix-publish
+    value: ${{ steps.prompt.outputs.report_file }}
+runs:
+  using: composite
+  steps:
+    - name: Gate the issue
+      id: gate
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        ISSUE: ${{ inputs.issue_number }}
+        ALLOWED_AUTHORS: ${{ inputs.allowed_authors }}
+      run: |
+        set -euo pipefail
+        refuse() {
+          echo "proceed=false" >> "$GITHUB_OUTPUT"
+          echo "::warning::auto-fix skipped: $1"
+          exit 0
+        }
+        authors=",${ALLOWED_AUTHORS// /},"
+        if [ "$authors" = ",," ]; then
+          refuse "allowed_authors is empty; name the GitHub login that owns the Traceway channel's token"
+        fi
+        issue=$(gh issue view "$ISSUE" --repo "$GITHUB_REPOSITORY" --json author,body)
+        author=$(jq -r .author.login <<< "$issue")
+        case "$authors" in
+          *,"$author",*) ;;
+          *) refuse "issue author '$author' is not in allowed_authors" ;;
+        esac
+        # Only regex-validated fields leave this step: the issue body quotes
+        # the exception message, so it is attacker-influenced and is never
+        # interpolated into the prompt. The line formats are the ones
+        # buildExceptionBody writes (backend/app/notifications/messages.go).
+        body=$(jq -r .body <<< "$issue" | tr -d '\r')
+        hash=$(printf '%s\n' "$body" | grep -oE '^Hash: [0-9a-f]{16}$' | head -n1 | cut -d' ' -f2 || true)
+        if [ -z "$hash" ]; then
+          refuse "the issue body carries no Traceway exception hash (a channel test notification, or not a Traceway issue)"
+        fi
+        exception_id=$(printf '%s\n' "$body" | grep -oE '^Exception ID: [0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$' | head -n1 | cut -d' ' -f3 || true)
+        occurred_at=$(printf '%s\n' "$body" | grep -oE '^Occurred at: [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} UTC$' | head -n1 | cut -d' ' -f3- || true)
+        {
+          echo "proceed=true"
+          echo "hash=$hash"
+          echo "exception_id=$exception_id"
+          echo "occurred_at=$occurred_at"
+        } >> "$GITHUB_OUTPUT"
+        echo "Issue #$ISSUE by $author: hash=$hash exception_id=${exception_id:-none} occurred_at=${occurred_at:-none}"
+
+    - name: Install the traceway CLI
+      if: steps.gate.outputs.proceed == 'true'
+      shell: bash
+      run: curl -fsSL https://cli.tracewayapp.com/install.sh | sh
+
+    - name: Log in to Traceway with the read-only token
+      if: steps.gate.outputs.proceed == 'true'
+      shell: bash
+      env:
+        URL: ${{ inputs.traceway_url }}
+        TOKEN: ${{ inputs.traceway_token }}
+        PROJECT_ID: ${{ inputs.project_id }}
+      run: |
+        set -euo pipefail
+        printf '%s' "$TOKEN" | traceway login --url "$URL" --token-stdin
+        traceway projects use "$PROJECT_ID"
+
+    - name: Deliver the skill and write the prompt
+      if: steps.gate.outputs.proceed == 'true'
+      id: prompt
+      shell: bash
+      env:
+        ISSUE: ${{ inputs.issue_number }}
+        HASH: ${{ steps.gate.outputs.hash }}
+        EXCEPTION_ID: ${{ steps.gate.outputs.exception_id }}
+        OCCURRED_AT: ${{ steps.gate.outputs.occurred_at }}
+        URL: ${{ inputs.traceway_url }}
+      run: |
+        set -euo pipefail
+        SKILLS_DIR="$RUNNER_TEMP/skills"
+        REPORT_FILE="$RUNNER_TEMP/fix-report.md"
+        PROMPT_FILE="$RUNNER_TEMP/autofix-prompt.md"
+
+        # The skill ships in tracewayapp/traceway two directories above this
+        # action; the reusable workflow's sparse checkout lists both paths so
+        # the layout holds there as well.
+        mkdir -p "$SKILLS_DIR"
+        rm -rf "$SKILLS_DIR/traceway"
+        cp -R "$GITHUB_ACTION_PATH/../../../skills/traceway" "$SKILLS_DIR/traceway"
+
+        view_url="${URL%/}/issues/$HASH"
+        {
+          echo "Traceway detected a production error and opened issue #$ISSUE in this repository. The exception, as the notification reported it:"
+          echo
+          echo "Hash: $HASH"
+          if [ -n "$EXCEPTION_ID" ]; then echo "Exception ID: $EXCEPTION_ID"; fi
+          if [ -n "$OCCURRED_AT" ]; then echo "Occurred at: $OCCURRED_AT"; fi
+          echo "View details: $view_url"
+          echo
+          cat <<PROMPT
+        Before anything else, read $SKILLS_DIR/traceway/SKILL.md and follow its Debug flow, treating the fields above as the issue reference; if the traceway skill from the tw plugin is available to you, invoking it is the same thing. The skill explains how to get from the Hash, Exception ID and Occurred-at timestamp to the occurrence, and from there into traces, sessions and logs. The traceway CLI is installed and already authenticated against the right project with a read-only token: never run \`traceway login\`, and never archive or otherwise change anything in Traceway.
+
+        You have NO access to git or gh, and you must not commit, push, or call any network tool. A later workflow step handles all of that. Your job is only to investigate, edit files in the working tree if a fix is warranted, and write a report.
+
+        If the investigation ties the root cause to code in this repository, fix the cause, not the symptom. Keep the diff minimal. Run the relevant tests for the packages you touch. If you cannot tie the root cause to code with confidence, do NOT guess a fix; leave the working tree untouched.
+
+        Do not add code comments explaining your change, why it is correct, or what the error was. The diff must read like the surrounding code and follow the repository's contribution rules (CLAUDE.md or its equivalent). ALL explanation belongs in the report file, none of it in the code.
+
+        When you are done, write your report to the file $REPORT_FILE in exactly this format:
+
+        Line 1: "STATUS: fixed" if you applied a fix, or "STATUS: analysis" if you investigated but did not change code.
+        Line 2: "HASH: $HASH".
+        Line 3 onward: your root cause analysis in markdown. If STATUS is fixed, explain the root cause, the fix, and how you verified it, and include the View details link from above. This text becomes the pull request description or the issue comment, so write it for a human reviewer.
+
+        The report file is mandatory. Write it even when you change nothing.
+
+        Never create helper scripts, notes, or any other scratch files inside the repository working tree: everything in the working tree becomes part of the pull request, and the publish step refuses a run that leaves scratch files behind. Use $RUNNER_TEMP for anything temporary.
+        PROMPT
+        } > "$PROMPT_FILE"
+
+        {
+          echo "prompt_file=$PROMPT_FILE"
+          echo "skills_dir=$SKILLS_DIR"
+          echo "report_file=$REPORT_FILE"
+          echo "prompt<<TRACEWAY_PROMPT_$GITHUB_RUN_ID"
+          cat "$PROMPT_FILE"
+          echo "TRACEWAY_PROMPT_$GITHUB_RUN_ID"
+        } >> "$GITHUB_OUTPUT"

@@ -1,0 +1,138 @@
+name: Traceway auto-fix publish
+description: >-
+  Turns the agent's report and working-tree edits into a pull request or an
+  issue comment. The only step of the auto-fix loop that holds write
+  credentials; it publishes nothing the report and the tree do not agree on.
+  Expects the traceway CLI installed by the prepare action in the same job.
+inputs:
+  issue_number:
+    description: Number of the issue the run is for
+    required: true
+  hash:
+    description: The exception hash the prepare action validated. A report naming a different hash is refused
+    required: true
+  github_token:
+    description: GitHub token that pushes the fix branch, opens the pull request and comments on the issue
+    required: true
+  report_file:
+    description: The report the agent wrote (the prepare action's report_file output)
+    required: true
+  traceway_url:
+    description: Traceway instance to archive the exception on
+    default: https://cloud.tracewayapp.com
+  traceway_token:
+    description: Traceway token with write access to the project, used only to archive the exception once the pull request is open. Empty never archives
+    default: ""
+  project_id:
+    description: Traceway project id, needed to archive
+    default: ""
+  archive_on_open:
+    description: Archive the exception when the pull request opens
+    default: "true"
+  scratch_patterns:
+    description: Space-separated basename globs. A new file matching one refuses the run instead of shipping it in the pull request
+    default: ".tw_* *.sh *.patch *.log *.tmp fix-report*"
+outputs:
+  result:
+    description: '"pr" when a pull request was opened, "comment" when the analysis was posted on the issue'
+    value: ${{ steps.publish.outputs.result }}
+  pr_url:
+    description: URL of the pull request, when one was opened
+    value: ${{ steps.publish.outputs.pr_url }}
+runs:
+  using: composite
+  steps:
+    - name: Publish the result
+      id: publish
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        ISSUE: ${{ inputs.issue_number }}
+        HASH: ${{ inputs.hash }}
+        REPORT_FILE: ${{ inputs.report_file }}
+        TRACEWAY_URL: ${{ inputs.traceway_url }}
+        TRACEWAY_TOKEN: ${{ inputs.traceway_token }}
+        PROJECT_ID: ${{ inputs.project_id }}
+        ARCHIVE_ON_OPEN: ${{ inputs.archive_on_open }}
+        SCRATCH_PATTERNS: ${{ inputs.scratch_patterns }}
+      run: |
+        set -euo pipefail
+        comment() { gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body-file -; }
+        refuse() {
+          printf '%s\n' "$1" | comment
+          echo "::error::$1"
+          exit 1
+        }
+
+        if [ ! -f "$REPORT_FILE" ]; then
+          refuse "The auto-fix agent finished without producing a report. Check the workflow run log."
+        fi
+        STATUS=$(sed -n '1s/^STATUS: *//p' "$REPORT_FILE")
+        REPORT_HASH=$(sed -n '2s/^HASH: *//p' "$REPORT_FILE")
+        BODY=$(tail -n +3 "$REPORT_FILE")
+        case "$STATUS" in
+          fixed|analysis) ;;
+          *) refuse "The agent's report has an unknown STATUS ('$STATUS'); nothing was published. Check the run log." ;;
+        esac
+        # Line 2 is dictated by the prompt, and `tail -n +3` drops it either
+        # way: accepting anything else would silently cut the analysis short.
+        if [ "$REPORT_HASH" != "$HASH" ]; then
+          refuse "The agent's report must carry \"HASH: $HASH\" on line 2 (found '$REPORT_HASH'); nothing was published."
+        fi
+
+        # -uall lists a new directory's files instead of collapsing it to
+        # "notes/", which would hide every scratch file inside it.
+        CHANGES=$(git status --porcelain -uall)
+        # noglob keeps the unquoted $SCRATCH_PATTERNS split into words without
+        # each word then expanding against the repository's own files.
+        set -f
+        while IFS= read -r path; do
+          [ -n "$path" ] || continue
+          for pattern in $SCRATCH_PATTERNS; do
+            # shellcheck disable=SC2254 # the pattern is meant to glob
+            case "$(basename "$path")" in
+              $pattern) refuse "The agent left a scratch file in the working tree ($path); nothing was published." ;;
+            esac
+          done
+        done <<< "$(sed -n 's/^\(??\|A[ M]\) //p' <<< "$CHANGES")"
+        set +f
+        if [ "$STATUS" = fixed ] && [ -z "$CHANGES" ]; then
+          refuse "The agent reported a fix but left the working tree unchanged; nothing was published."
+        fi
+        if [ "$STATUS" != fixed ] && [ -n "$CHANGES" ]; then
+          refuse "The agent changed the working tree without reporting a fix (STATUS: $STATUS); nothing was published. The diff is in the run's artifact."
+        fi
+
+        if [ "$STATUS" != fixed ]; then
+          { echo "Auto-fix agent report (no PR opened):"; echo; echo "$BODY"; } | comment
+          echo "result=comment" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        gh auth setup-git
+        # The run id and attempt keep the branch unique: the same hash comes
+        # back whenever a resolved error regresses, and a re-run repeats the
+        # whole job, both of which would otherwise be a rejected push.
+        BRANCH="traceway/fix-$HASH-$GITHUB_RUN_ID.$GITHUB_RUN_ATTEMPT"
+        git checkout -q -b "$BRANCH"
+        git add -A
+        git commit -q -m "Fix production error $HASH"
+        if ! git push -q -u origin "$BRANCH"; then
+          refuse "Could not push $BRANCH; nothing was published. The fix is in the run's artifact."
+        fi
+        PR_URL=$({ echo "Fixes #$ISSUE"; echo; echo "$BODY"; } | \
+          gh pr create --title "Auto-fix: traceway $HASH (issue #$ISSUE)" --head "$BRANCH" --body-file -)
+        echo "result=pr" >> "$GITHUB_OUTPUT"
+        echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+        echo "Opened $PR_URL"
+
+        if [ "$ARCHIVE_ON_OPEN" = true ] && [ -n "$TRACEWAY_TOKEN" ] && [ -n "$PROJECT_ID" ]; then
+          # A separate CLI profile keeps the write token apart from the
+          # read-only session the agent step used.
+          printf '%s' "$TRACEWAY_TOKEN" | traceway --profile publish login --url "$TRACEWAY_URL" --token-stdin
+          traceway --profile publish --project "$PROJECT_ID" exceptions archive "$HASH" --yes
+        elif [ "$ARCHIVE_ON_OPEN" = true ] && [ -n "$TRACEWAY_TOKEN" ]; then
+          echo "::warning::project_id is empty; the exception was not archived"
+        fi

@@ -1,0 +1,144 @@
+# Auto-Fix
+
+import { Callout } from "nextra/components";
+
+Auto-fix closes the loop between an alert and a pull request. A [GitHub channel](/learn/alerts#setting-up-github) opens an issue for a new error, a coding agent running in the repository's own GitHub Actions investigates it with the [traceway CLI](/learn/cli), and a deterministic publish step turns the result into a pull request or an analysis comment. Traceway never runs a model itself: the agent, its vendor and its key live in your CI, and every self-hosted instance works without any LLM configuration.
+
+This page is the productized form of the loop described in [the auto-fix blog post](https://tracewayapp.com/blog/auto-fix-loop).
+
+## The contract
+
+The loop is three steps, and only the middle one is agent-specific:
+
+| Step | Runs as | What it does | Credentials |
+|------|---------|--------------|-------------|
+| **Prepare** | `tracewayapp/traceway/.github/actions/autofix-prepare` | Refuses issues from anyone but the channel's token owner, extracts the `Hash`, `Exception ID` and `Occurred at` fields from the issue body with strict regexes, copies the [traceway skill](https://github.com/tracewayapp/traceway/tree/main/skills/traceway) outside the working tree, installs and logs in the CLI, and writes the prompt from the validated fields only. Outputs `proceed`, `hash`, `prompt`, `prompt_file`, `skills_dir`, `report_file` | Read-only Traceway token |
+| **Agent** | Your choice | Reads the prompt (and `SKILL.md`), investigates with `traceway` read commands, edits the working tree if a fix is warranted, and writes the report file | The same read-only token, no GitHub credential |
+| **Publish** | `tracewayapp/traceway/.github/actions/autofix-publish` | Validates the report against the tree (see [What the publish step refuses](#what-the-publish-step-refuses)), then opens the PR (`traceway/fix-<hash>-<run>`, body `Fixes #N` + the report) or comments the analysis, and archives the exception | GitHub write token, Traceway write token |
+
+The report file is the whole interface between the agent and the publish step:
+
+```
+STATUS: fixed            # or: analysis
+HASH: <16 hex characters>
+<markdown: root cause, the fix, how it was verified, the View details link>
+```
+
+The security model is the split, not the agent's tool allowlist: the agent step holds no GitHub credential and only a read-only Traceway token, every write happens in the publish step, and the prompt is assembled from regex-validated fields, never from the issue body (which quotes the exception message and is therefore attacker-influenced). That holds for any agent you wire in, including ones whose sandboxing Traceway cannot configure.
+
+## Quick start with the reusable workflow
+
+The reusable workflow composes the three steps, with Claude Code as the tested agent.
+
+1. **Create two Traceway bot users** (or one; see [Credentials](#credentials)) and mint a [personal access token](/learn/cli-auth#personal-access-tokens) for each.
+2. **Add repository secrets**: `TRACEWAY_TOKEN` (read-only), `TRACEWAY_PUBLISH_TOKEN` (write, optional: without it the exception is never archived), `GH_PUSH_TOKEN` (a GitHub token that can push branches, open pull requests and comment; the built-in `github.token` cannot open a pull request that triggers other workflows), and `ANTHROPIC_API_KEY`.
+3. **Add a repository variable** `TRACEWAY_PROJECT_ID` with the project's id (`traceway projects list`).
+4. **Point the GitHub channel at the repository** with a label such as `traceway`, and create the caller workflow:
+
+```yaml
+# .github/workflows/traceway-autofix.yml
+name: Traceway auto-fix
+on:
+  issues:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      issue_number: { type: number, required: true }
+jobs:
+  fix:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'traceway'
+    uses: tracewayapp/traceway/.github/workflows/autofix.yml@main
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    with:
+      issue_number: ${{ github.event.issue.number || inputs.issue_number }}
+      allowed_authors: the-github-login-that-owns-the-channel-token
+      project_id: ${{ vars.TRACEWAY_PROJECT_ID }}
+      # traceway_url: https://traceway.example.com   # self-hosted
+    secrets: inherit
+```
+
+`issues: [labeled]` fires for labels applied at creation, so an issue the channel opens with the label starts the run immediately. Only collaborators can apply labels, and the prepare step additionally refuses any issue whose author is not in `allowed_authors`, so a stranger cannot start a run by filing an issue.
+
+Inputs worth knowing: `model`, `effort`, `max_turns` and `allowed_tools` are passed to Claude Code (the default allowlist permits only `traceway` read subcommands, `jq` and the file tools); `extra_allowed_tools` appends your test runner, `Bash(go:*)` for a Go repository; `go_version_file` installs a cached Go toolchain before the agent runs, and `setup_command` covers any other toolchain; `archive_on_open: false` keeps the exception open until you resolve it yourself; `traceway_ref` selects which branch of `tracewayapp/traceway` supplies the actions and the skill.
+
+### Validate a change before it lands
+
+`workflow_dispatch` runs the loop against an existing issue from whichever branch you dispatch. It runs the agent for real and publishes for real. To check the wiring first, send a test notification from the channel dialog and dispatch against the issue it opens: the notification carries no hash, so the prepare step refuses it with a warning after the credential preflight has validated `GH_PUSH_TOKEN` and `ANTHROPIC_API_KEY`, and no model call is spent. The Traceway tokens are only exercised by a run that gets past the gate, so point it at a real issue for that.
+
+## Bring your own agent
+
+Any agent that can read a file, run `traceway`, edit files and write a file fits between the two actions. A caller using them directly:
+
+```yaml
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - id: prepare
+        uses: tracewayapp/traceway/.github/actions/autofix-prepare@main
+        with:
+          issue_number: ${{ github.event.issue.number }}
+          allowed_authors: the-github-login-that-owns-the-channel-token
+          traceway_token: ${{ secrets.TRACEWAY_TOKEN }}
+          project_id: ${{ vars.TRACEWAY_PROJECT_ID }}
+      - if: steps.prepare.outputs.proceed == 'true'
+        # Your agent step. Give it steps.prepare.outputs.prompt (or
+        # prompt_file), the working tree and the traceway CLI. Do not give it a
+        # GitHub token or any Traceway token but the read-only one it already
+        # has through the CLI session.
+        run: your-agent --prompt-file "${{ steps.prepare.outputs.prompt_file }}"
+      - if: steps.prepare.outputs.proceed == 'true'
+        uses: tracewayapp/traceway/.github/actions/autofix-publish@main
+        with:
+          issue_number: ${{ github.event.issue.number }}
+          hash: ${{ steps.prepare.outputs.hash }}
+          github_token: ${{ secrets.GH_PUSH_TOKEN }}
+          report_file: ${{ steps.prepare.outputs.report_file }}
+          traceway_token: ${{ secrets.TRACEWAY_PUBLISH_TOKEN }}
+          project_id: ${{ vars.TRACEWAY_PROJECT_ID }}
+```
+
+The prompt's first instruction is to read `<skills_dir>/traceway/SKILL.md`, so agents without a skills mechanism still get the debug flow. Agents that prefer MCP can run `traceway mcp` headlessly with `TRACEWAY_URL`, `TRACEWAY_TOKEN` and `TRACEWAY_PROJECT` (see [MCP Server](/learn/mcp)); the same knowledge is exposed as resources there. Whatever the agent's own sandbox offers, keep the split described under [The contract](#the-contract). The publish step judges the run by `git status`, so anything else you check out into the working tree (a tools repository, a cache) has to go into `.git/info/exclude` first, as the reusable workflow does for its own copy of the actions.
+
+<Callout type="info">
+  Claude Code is the agent the reusable workflow has been run with. Other agents fit the contract but have not been exercised end to end yet; run one on a fork before relying on it.
+</Callout>
+
+## Credentials
+
+The agent step should not be able to change anything in Traceway, and the publish step needs to archive one exception. The least-privilege recipe is two bot users in the organization:
+
+| Secret | User | Role | Used by |
+|--------|------|------|---------|
+| `TRACEWAY_TOKEN` | `autofix-reader` | Organization role `readonly` | Prepare (login) and the agent step |
+| `TRACEWAY_PUBLISH_TOKEN` | `autofix-publisher` | Organization role `readonly` with a per-project override to `user` on the target project ([Settings → Team Members](/learn/projects)) | Publish, to archive the exception |
+
+One token for both works and is documented as weaker: the agent step could then archive exceptions, whatever its tool allowlist says. Neither token needs to be an admin, and neither user needs a password login.
+
+`GH_PUSH_TOKEN` is a fine-grained GitHub token for the repository with **Contents**, **Pull requests** and **Issues** set to read and write. The prepare step reads the issue with the workflow's own `github.token`.
+
+## What the publish step refuses
+
+Each refusal comments the reason on the issue and fails the run, and the run's artifact keeps the diff and the report:
+
+- No report file, or a `STATUS` other than `fixed` / `analysis`.
+- A `HASH` line that differs from the hash the prepare step validated.
+- `STATUS: fixed` with an unchanged working tree, or any other status with a changed one.
+- A new file whose name matches `scratch_patterns` (`.tw_*`, `*.sh`, `*.patch`, `*.log`, `*.tmp`, `fix-report*` by default), including files inside a newly added directory.
+
+## Caveats
+
+- The exception is archived when the pull request **opens**, not when it merges. Set `archive_on_open: false` if a closed-unmerged PR would otherwise hide a live error; archiving on merge is planned.
+- Two runs on the same input can differ. The workflow serializes runs per issue (`concurrency`), but does not yet dedup across issues for the same hash.
+- The agent is told to follow the repository's contribution rules, but that is a prompt-level instruction; review the diff as you would any contributor's.

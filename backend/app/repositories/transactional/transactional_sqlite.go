@@ -12,6 +12,7 @@ var (
 	DashboardTemplateRepository    = sqliterepo.DashboardTemplateRepository
 	DeviceAuthorizationRepository  = sqliterepo.DeviceAuthorizationRepository
 	EscalationPolicyRepository     = sqliterepo.EscalationPolicyRepository
+	GithubIssueRepository          = sqliterepo.GithubIssueRepository
 	IncidentUpdateRepository       = sqliterepo.IncidentUpdateRepository
 	InvitationRepository           = sqliterepo.InvitationRepository
 	MetricRegistryRepository       = sqliterepo.MetricRegistryRepository

@@ -54,11 +54,18 @@ type Page struct {
 	UpdatedAt        time.Time  `json:"updatedAt" lit:"updated_at"`
 }
 
+// IsIssueRuleType reports whether a rule fires for one exception group, and so
+// carries that group's hash as its dedup token. Pages and GitHub issues both
+// use it to decide whether they are issue-linked.
+func IsIssueRuleType(ruleType string) bool {
+	return ruleType == "new_error" || ruleType == "error_regression"
+}
+
 // IssueHash returns the exception hash a page was opened for, or "" when the
 // page is not issue-linked. New-error and regression rules carry the hash as
 // the dedup token after the "ruleId|" prefix (see oncall.pageDedupKey).
 func (p *Page) IssueHash() string {
-	if p.RuleType != "new_error" && p.RuleType != "error_regression" {
+	if !IsIssueRuleType(p.RuleType) {
 		return ""
 	}
 	_, hash, found := strings.Cut(p.DedupKey, "|")

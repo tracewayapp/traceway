@@ -54,6 +54,7 @@ func Init(driver lit.Driver) {
 	lit.RegisterModel[NotificationChannel](driver)
 	lit.RegisterModel[NotificationRule](driver)
 	lit.RegisterModel[NotificationRuleWithChannel](driver)
+	lit.RegisterModel[GithubIssue](driver)
 	lit.RegisterModel[Team](driver)
 	lit.RegisterModel[TeamWithCounts](driver)
 	lit.RegisterModel[TeamProjectRow](driver)

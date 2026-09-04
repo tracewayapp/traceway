@@ -69,6 +69,10 @@ func dispatch(rule *models.NotificationRuleWithChannel, msg Message) bool {
 		return true
 	}
 
+	if channel.ChannelType == "github" {
+		trackGitHubIssue(&msg, rule, channel.Id)
+	}
+
 	ruleId := rule.Id
 	projectId := rule.ProjectId
 	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (int, error) {

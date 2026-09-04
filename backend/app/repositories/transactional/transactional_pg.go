@@ -12,6 +12,7 @@ var (
 	DashboardTemplateRepository    = pgrepo.DashboardTemplateRepository
 	DeviceAuthorizationRepository  = pgrepo.DeviceAuthorizationRepository
 	EscalationPolicyRepository     = pgrepo.EscalationPolicyRepository
+	GithubIssueRepository          = pgrepo.GithubIssueRepository
 	IncidentUpdateRepository       = pgrepo.IncidentUpdateRepository
 	InvitationRepository           = pgrepo.InvitationRepository
 	MetricRegistryRepository       = pgrepo.MetricRegistryRepository

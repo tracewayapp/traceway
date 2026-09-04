@@ -9,7 +9,7 @@ The body embeds everything for a direct, fast lookup. It contains:
 - `Hash: <16-hex>` — the exception group → `traceway exceptions show <hash>`.
 - `Exception ID: <uuid>` — the specific occurrence.
 - `Occurred at: 2006-01-02 15:04:05 UTC` — the occurrence timestamp. **Convert to RFC3339**: replace the space with `T` and ` UTC` with `Z` (→ `2006-01-02T15:04:05Z`).
-- `View details: /issues/<hash>` — the deep link.
+- `View details: <url>` — the deep link, `https://<instance>/issues/<hash>` when the server sets `APP_BASE_URL`, otherwise the bare path `/issues/<hash>`.
 
 So from a notification, go straight to the occurrence (fast), then pivot reusing the same timestamp:
 

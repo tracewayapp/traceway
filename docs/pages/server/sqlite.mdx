@@ -67,7 +67,7 @@ If `STORAGE_TYPE` is unset (or set to `local`), blobs are written to `/data/stor
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `JWT_SECRET` | *(required)* | Signs all authentication tokens (dashboard sessions and CLI/MCP device logins). Use a strong, unique secret of at least 32 characters (`openssl rand -hex 32`) and keep it stable. See [CLI Authentication](/learn/cli-auth#set-a-strong-jwt_secret). |
-| `APP_BASE_URL` | *(unset)* | Public URL of your instance. Used for SDK setup snippets, password-reset emails, OAuth callback URLs, and the CLI/MCP OAuth issuer plus device-login verification URL. If unset, the device-auth and `/.well-known` endpoints derive it per-request from the `Host` / `X-Forwarded-*` headers. See [CLI Authentication](/learn/cli-auth) |
+| `APP_BASE_URL` | *(unset)* | Public URL of your instance. Used for SDK setup snippets, password-reset emails, OAuth callback URLs, deep links in notifications, and the CLI/MCP OAuth issuer plus device-login verification URL. If unset, the device-auth and `/.well-known` endpoints derive it per-request from the `Host` / `X-Forwarded-*` headers. See [CLI Authentication](/learn/cli-auth) |
 | `TRUSTED_PROXIES` | *(loopback)* | Comma-separated CIDRs of the proxies in front of Traceway whose `X-Forwarded-For` / `X-Real-IP` is trusted for the real client IP. Every per-IP rate limit keys on it, and `/api/report` stores it as each session's `client.ip`. Unset trusts loopback only, so a proxy container on a Docker network or an in-cluster ingress has to be listed before its header counts. A value replaces the default, so list every hop between the client and this server, not just the outermost one: naming only a CDN leaves a private ingress untrusted and turns `X-Forwarded-For` off entirely. `*` trusts every peer and lets clients spoof their address. Until the proxy is listed, every visitor shares one rate-limit bucket keyed on the proxy, and the server logs a warning the first time it sees a forwarding header from a peer it does not trust. |
 | `TRUSTED_PROXY_HEADER` | *(none)* | A header taken as the client IP on every request, ahead of `TRUSTED_PROXIES`: `X-Real-IP` behind ingress-nginx, `CF-Connecting-IP` behind Cloudflare. Only safe when every request provably passes through a proxy that overwrites the header; a directly reachable backend lets clients set it freely. |
 | `REPORT_MAX_BODY_MB` | `64` | Cap on the decompressed `/api/report` and `/api/profiles/ingest` body in megabytes. Gzip does not raise it. A body over the cap answers `413`. |
@@ -166,7 +166,7 @@ docker stop traceway && docker rm traceway
 |----------|-------|-------|
 | `JWT_SECRET` | a random string ≥ 32 chars | Required. Generate with `openssl rand -hex 32` |
 | `PORTS` | `${{PORT}}` | Railway exposes a single port via `PORT`. The app's `PORTS` setting accepts a single value, so this binds the server where Railway expects it |
-| `APP_BASE_URL` | `https://<your-service>.up.railway.app` | Optional but recommended once you generate a domain. Makes SDK snippets and reset emails point at the right URL |
+| `APP_BASE_URL` | `https://<your-service>.up.railway.app` | Optional but recommended once you generate a domain. Makes SDK snippets, reset emails and the deep links in notifications point at the right URL |
 
 To use external object storage, also set `STORAGE_TYPE=s3`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, and optionally `S3_ENDPOINT`. Otherwise blobs are written to `/data/storage` on the volume you added above.
 

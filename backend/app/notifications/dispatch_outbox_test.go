@@ -4,9 +4,12 @@ package notifications
 
 import (
 	"database/sql"
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/tracewayapp/traceway/backend/app/config"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/dbtest"
 	"github.com/tracewayapp/traceway/backend/app/models"
@@ -148,5 +151,57 @@ func TestSeedCooldownsIncludesOutbox(t *testing.T) {
 	cooldowns.seed(enqueued)
 	if cooldowns.canFire(fixture.Rule.Id, fixture.Rule.CooldownMinutes) {
 		t.Error("outbox-backed seeding should keep the rule in cooldown after restart")
+	}
+}
+
+func setAppBaseURL(t *testing.T, base string) {
+	t.Helper()
+	previous := config.Config.AppBaseURL
+	config.Config.AppBaseURL = base
+	t.Cleanup(func() { config.Config.AppBaseURL = previous })
+}
+
+func queuedMessage(t *testing.T) Message {
+	t.Helper()
+	rows := outboxRows(t)
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 outbox row, got %d", len(rows))
+	}
+	var msg Message
+	if err := json.Unmarshal(rows[0].Message, &msg); err != nil {
+		t.Fatalf("decode queued message: %v", err)
+	}
+	return msg
+}
+
+// The link reaches an adapter two ways — the URL field, which webhook,
+// telegram, pushover and sms render, and the "View details" body line, which
+// is the only one Slack and GitHub ever show — so both are asserted.
+func TestDispatchDashboardLinks(t *testing.T) {
+	cases := []struct {
+		name string
+		base string
+		want string
+	}{
+		{"absolute when APP_BASE_URL is set", "https://traceway.example.com/", "https://traceway.example.com/issues/0123456789abcdef"},
+		{"relative when it is not", "", "/issues/0123456789abcdef"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := setupDispatchDB(t)
+			setAppBaseURL(t, tc.base)
+
+			details := ExceptionDetails{Hash: "0123456789abcdef", ErrorType: "RuntimeError"}
+			if !dispatch(fixture.Rule, buildNewErrorMessage(details, "api")) {
+				t.Fatal("dispatch failed")
+			}
+			msg := queuedMessage(t)
+			if msg.URL != tc.want {
+				t.Errorf("URL = %q, want %q", msg.URL, tc.want)
+			}
+			if !strings.Contains(msg.Body, "View details: "+tc.want) {
+				t.Errorf("body lacks %q:\n%s", tc.want, msg.Body)
+			}
+		})
 	}
 }

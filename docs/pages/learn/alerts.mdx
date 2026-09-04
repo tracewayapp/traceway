@@ -104,7 +104,7 @@ When a webhook channel fires, Traceway sends a JSON POST request with the follow
 | `severity` | `info`, `warning`, or `critical` |
 | `ruleType` | The rule type that triggered the alert |
 | `ruleName` | The name you gave the rule |
-| `url` | Deep link to the relevant dashboard page |
+| `url` | Deep link to the relevant dashboard page. Absolute when the server sets `APP_BASE_URL`, otherwise a path such as `/issues/<hash>` relative to your dashboard origin |
 | `timestamp` | When the alert fired (ISO 8601) |
 
 If you configure an HMAC secret on the channel, each request includes an `X-Traceway-Signature` header containing `sha256=<hex>` of the request body, which you can use to verify that the request came from Traceway.

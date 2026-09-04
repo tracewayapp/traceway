@@ -67,12 +67,7 @@ func (e *emailService) BaseURL() string { return emailBaseURL() }
 
 func emailEnabled() bool { return config.Config != nil && config.Config.SMTPEnabled == "true" }
 
-func emailBaseURL() string {
-	if config.Config != nil && config.Config.AppBaseURL != "" {
-		return strings.TrimRight(config.Config.AppBaseURL, "/")
-	}
-	return "http://localhost:5173"
-}
+func emailBaseURL() string { return config.Config.PublicBaseURLOrDev() }
 
 func RenderEmail(email Email) (string, error) {
 	if email.LogoURL == "" {

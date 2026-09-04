@@ -578,14 +578,8 @@ func newAckToken() string {
 }
 
 // appBaseURL is the dashboard origin for outgoing links. On-call deployments
-// should set APP_BASE_URL; the localhost fallback mirrors the email service.
-func appBaseURL() string {
-	base := config.Config.AppBaseURL
-	if base == "" {
-		base = "http://localhost:5173"
-	}
-	return strings.TrimRight(base, "/")
-}
+// should set APP_BASE_URL; without it an ack link still has to be clickable.
+func appBaseURL() string { return config.Config.PublicBaseURLOrDev() }
 
 // ackURLFor builds the public no-login acknowledge link for a delivery token.
 func ackURLFor(token string) string {

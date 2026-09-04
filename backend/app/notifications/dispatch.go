@@ -45,6 +45,7 @@ func dispatch(rule *models.NotificationRuleWithChannel, msg Message) bool {
 	if rule.Severity != "" {
 		msg.Severity = Severity(rule.Severity)
 	}
+	msg.URL = dashboardURL(msg.URL)
 
 	// Escalation channels do not send anything themselves: they open (or
 	// dedup into) an on-call page, and the escalator + outbox do all

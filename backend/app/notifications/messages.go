@@ -6,8 +6,21 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tracewayapp/traceway/backend/app/config"
 	"github.com/tracewayapp/traceway/backend/app/models"
 )
+
+// dashboardURL makes a dashboard path absolute when APP_BASE_URL is set.
+// Without it the path stays relative: a guessed localhost origin would be
+// wrong for everyone reading a Slack post or a GitHub issue, whereas the bare
+// path still identifies the page.
+func dashboardURL(path string) string {
+	base := config.Config.PublicBaseURL()
+	if base == "" || !strings.HasPrefix(path, "/") {
+		return path
+	}
+	return base + path
+}
 
 func alertEmail(alert models.EmailAlert) *models.NotificationEmail {
 	return &models.NotificationEmail{Template: models.EmailTemplateAlert, Alert: &alert}
@@ -476,7 +489,7 @@ func buildExceptionBody(headline string, d ExceptionDetails) string {
 	}
 
 	if d.Hash != "" {
-		fmt.Fprintf(&b, "\n\nView details: /issues/%s", d.Hash)
+		fmt.Fprintf(&b, "\n\nView details: %s", dashboardURL("/issues/"+d.Hash))
 	}
 
 	return b.String()

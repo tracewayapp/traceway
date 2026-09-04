@@ -578,8 +578,8 @@ func (c *organizationOverviewController) Pages(ctx *gin.Context) {
 	}
 
 	names := map[int]string{}
-	for _, page := range pages {
-		if page.AcknowledgedBy != nil || page.ResolvedBy != nil {
+	for _, p := range pages {
+		if p.AcknowledgedBy != nil || p.ResolvedBy != nil {
 			names, err = memberNames(tx, organizationId)
 			if err != nil {
 				ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to load members: %w", err))
@@ -590,8 +590,8 @@ func (c *organizationOverviewController) Pages(ctx *gin.Context) {
 	}
 
 	items := make([]orgPageRow, 0, len(pages))
-	for _, page := range pages {
-		items = append(items, orgPageRow{pageResponse: toPageResponse(page, names), ProjectName: projectNames[page.ProjectId]})
+	for _, p := range pages {
+		items = append(items, orgPageRow{pageResponse: toPageResponse(p, names), ProjectName: projectNames[p.ProjectId]})
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{

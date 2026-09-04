@@ -649,3 +649,51 @@ func TestMetricPointRepository_QueryTimeSeries_Rate(t *testing.T) {
 	}
 	assertApproxEqual(t, "lookback bucket", all[0].Value, 30.0, 0.01)
 }
+
+func TestMetricPointRepository_QueryTimeSeries_RateOverLongRanges(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	projectId := uuid.New()
+	base := time.Now().UTC().Truncate(time.Hour).Add(-4 * time.Hour)
+
+	sample := func(server string, value float64, hour int) models.MetricPoint {
+		return makeMetricPoint(projectId, "system.network.io", value, map[string]string{
+			"server_name": server, "device": "eth0", "direction": "receive",
+		}, base.Add(time.Duration(hour)*time.Hour))
+	}
+	points := []models.MetricPoint{
+		sample("web-1", 1000, 0), sample("web-1", 1600, 1), sample("web-1", 2200, 2), sample("web-1", 2800, 3),
+		sample("web-2", 1000, 0), sample("web-2", 1500, 1), sample("web-2", 100, 2), sample("web-2", 400, 3),
+	}
+	if err := MetricPointRepository.InsertAsync(ctx, points); err != nil {
+		t.Fatalf("InsertAsync failed: %v", err)
+	}
+
+	for _, span := range []time.Duration{12 * time.Hour, 4 * 24 * time.Hour, 40 * 24 * time.Hour} {
+		t.Run(span.String(), func(t *testing.T) {
+			result, err := MetricPointRepository.QueryTimeSeries(ctx, projectId, "system.network.io", base.Add(-span), base.Add(4*time.Hour), 60, "rate", nil, "server_name", 0)
+			if err != nil {
+				t.Fatalf("QueryTimeSeries failed: %v", err)
+			}
+
+			web1 := result["web-1"]
+			if len(web1) != 3 {
+				t.Fatalf("expected 3 hourly buckets for web-1, got %d: %+v", len(web1), web1)
+			}
+			for i, p := range web1 {
+				if !p.Timestamp.Equal(base.Add(time.Duration(i+1) * time.Hour)) {
+					t.Fatalf("expected hourly buckets starting one hour in, got %+v", web1)
+				}
+				assertApproxEqual(t, "web-1 bucket", p.Value, 600.0/3600, 0.001)
+			}
+
+			web2 := result["web-2"]
+			if len(web2) != 3 {
+				t.Fatalf("expected 3 hourly buckets for web-2, got %d: %+v", len(web2), web2)
+			}
+			assertApproxEqual(t, "web-2 first bucket", web2[0].Value, 500.0/3600, 0.001)
+			assertApproxEqual(t, "web-2 reset bucket", web2[1].Value, 0, 0.001)
+			assertApproxEqual(t, "web-2 last bucket", web2[2].Value, 300.0/3600, 0.001)
+		})
+	}
+}

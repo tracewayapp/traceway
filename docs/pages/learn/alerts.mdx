@@ -87,6 +87,7 @@ A few details worth knowing:
 - If the error comes back, an Error Regression rule opens a **new** issue rather than reopening the closed one. Archiving again closes that one too.
 - Deleting the channel forgets its issues. Any that are still open stay open, since the token that could close them is gone.
 - Set `APP_BASE_URL` on the server for the closing comment to carry a link back to the error in Traceway.
+Issues opened by this channel can start an AI coding agent in the repository's own GitHub Actions, which investigates the exception with the traceway CLI and opens a pull request or comments its analysis. See [Auto-Fix](/learn/auto-fix).
 
 ### Setting Up Telegram
 
@@ -116,7 +117,7 @@ When a webhook channel fires, Traceway sends a JSON POST request with the follow
 | `severity` | `info`, `warning`, or `critical` |
 | `ruleType` | The rule type that triggered the alert |
 | `ruleName` | The name you gave the rule |
-| `url` | Deep link to the relevant dashboard page |
+| `url` | Deep link to the relevant dashboard page. Absolute when the server sets `APP_BASE_URL`, otherwise a path such as `/issues/<hash>` relative to your dashboard origin |
 | `timestamp` | When the alert fired (ISO 8601) |
 
 If you configure an HMAC secret on the channel, each request includes an `X-Traceway-Signature` header containing `sha256=<hex>` of the request body, which you can use to verify that the request came from Traceway.

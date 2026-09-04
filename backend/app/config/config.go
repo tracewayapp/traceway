@@ -178,6 +178,29 @@ func (c *Cfg) TwilioEnabled() bool {
 		(c.TwilioFromNumber != "" || c.TwilioMessagingServiceSID != "")
 }
 
+// devBaseURL is the origin assumed when APP_BASE_URL is unset. Links that
+// must be clickable regardless (emails, on-call pages) fall back to it; the
+// Vite dev server is where a dashboard without a configured origin lives.
+const devBaseURL = "http://localhost:5173"
+
+// PublicBaseURL is the dashboard origin (APP_BASE_URL without surrounding
+// whitespace or a trailing slash), or empty when the operator has not set one.
+func (c *Cfg) PublicBaseURL() string {
+	if c == nil {
+		return ""
+	}
+	return strings.TrimRight(strings.TrimSpace(c.AppBaseURL), "/")
+}
+
+// PublicBaseURLOrDev is PublicBaseURL for callers that need some origin to
+// build a link with, even on an instance that never configured one.
+func (c *Cfg) PublicBaseURLOrDev() string {
+	if base := c.PublicBaseURL(); base != "" {
+		return base
+	}
+	return devBaseURL
+}
+
 func LoadFromEnv() *Cfg {
 	return &Cfg{
 		JWTSecret: os.Getenv("JWT_SECRET"),

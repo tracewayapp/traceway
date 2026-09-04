@@ -17,6 +17,7 @@
   "dashboards": "Dashboards",
   "logs": "Logs",
   "alerts": "Alerts",
+  "auto-fix": "Auto-Fix",
   "on-call": "On-Call",
   "monitors": "Monitors",
   "incidents": "Incidents & Post-Mortems",

@@ -64,6 +64,20 @@ func setupSetupControllerDB(t *testing.T) {
 	}
 }
 
+func initRegistrationJWT(t *testing.T) {
+	t.Helper()
+	prevSecret := config.Config.JWTSecret
+	config.Config.JWTSecret = strings.Repeat("s", 32)
+	if err := services.InitJWT(); err != nil {
+		t.Fatalf("init jwt: %v", err)
+	}
+	services.InitTurnstile()
+	t.Cleanup(func() {
+		config.Config.JWTSecret = prevSecret
+		_ = services.InitJWT()
+	})
+}
+
 func createSetupTestAccount(t *testing.T, tx *sql.Tx, email, role string) (userId int, orgId int) {
 	t.Helper()
 	user, err := transactional.UserRepository.Create(tx, email, "Test User", "hashed-password")
@@ -246,16 +260,7 @@ func TestBatchCreateProjectsLimitHookAbortsBatch(t *testing.T) {
 func TestRegisterWithoutProject(t *testing.T) {
 	setupSetupControllerDB(t)
 
-	prevSecret := config.Config.JWTSecret
-	config.Config.JWTSecret = strings.Repeat("s", 32)
-	if err := services.InitJWT(); err != nil {
-		t.Fatalf("init jwt: %v", err)
-	}
-	services.InitTurnstile()
-	t.Cleanup(func() {
-		config.Config.JWTSecret = prevSecret
-		_ = services.InitJWT()
-	})
+	initRegistrationJWT(t)
 
 	register := func(t *testing.T, body string) (*httptest.ResponseRecorder, map[string]any) {
 		t.Helper()

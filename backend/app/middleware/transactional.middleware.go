@@ -50,9 +50,13 @@ const commitHooksContextKey = "txCommitHooks"
 
 // OnCommit queues fn to run after the Transactional middleware successfully
 // commits the request transaction; queued fns are dropped on rollback. Use it
-// for side effects that must only fire once the transaction's writes are
-// visible to other connections (e.g. waking the outbox drain worker, which
-// would otherwise poll before the enqueued row exists and go back to sleep).
+// for side effects that must not observe the write before it lands: waking the
+// outbox drain worker, which would otherwise poll before the enqueued row
+// exists and go back to sleep, or filling a process-local cache that concurrent
+// requests read (cache.ProjectCache, whose entry would outlive a rollback).
+// Only routes carrying this middleware run the queued fns; a handler that
+// commits its own transaction via db.ExecuteTransaction should call its side
+// effect directly instead.
 func OnCommit(c *gin.Context, fn func()) {
 	hooks, _ := c.Get(commitHooksContextKey)
 	fns, _ := hooks.([]func())

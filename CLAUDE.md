@@ -123,13 +123,15 @@ func (c *AuthController) Register(ctx *gin.Context) {
         return  // Transaction auto-rolls back on non-success status
     }
 
-    ctx.JSON(201, user)  // Transaction auto-commits on 200/201/303
+    ctx.JSON(201, user)  // Transaction auto-commits on any 2xx/3xx status
 }
 ```
 
 **Auto-commit/rollback behavior:**
-- Commits on status codes: 200, 201, 303
+- Commits on any 2xx or 3xx status (`200 <= status < 400`)
 - Rolls back on all other status codes or panics
+
+**Response buffering:** `Transactional` holds the handler's response in memory (`responseBuffer` in `buffer_response.go`) and only releases it after `Commit()` succeeds; a failed commit answers 500 with an empty body instead of the 2xx the handler rendered, and commit hooks run before the release (each hook is isolated by `runCommitHook`, so a panicking hook is recorded on `c.Errors` without cancelling the others or the response). Handlers on transactional routes therefore must not stream, flush or hijack.
 
 **Body buffering:** `Transactional` reads the request body into memory (cap `maxTransactionalBodyBytes`, 8MB) before it calls `db.DB.Begin()`, answering 413/408/400 without a transaction when that fails; the handler's later bind is served from memory. This is what keeps a slow-drip body from holding the single SQLite main-DB connection, and it covers every transactional route without each one remembering a special middleware. Routes that want a tighter cap put `middleware.BufferAuthBody` (64KB) in front of `Transactional`, which then skips the body it finds already buffered; the anonymous auth endpoints do this. The self-transacting OAuth routes (`/auth/device/*`, `/auth/token`, `/auth/logout`) use `BufferAuthBody` on its own for the same cap. `UseAppAuth` caps every dashboard route's body at the same 8MB with `MaxBytesReader`, so the non-transactional telemetry reads are bounded too. Every plain JSON bind site in the controllers answers through `middleware.RejectBindError(c, err, fallback)`, which maps `MaxBytesError` to 413 and the body guard's timeout to 408 with fixed messages and otherwise returns 400 with the fallback (the ingest routes use `middleware.RejectIngestBindError`, the same mapping except that the timeout becomes 503 + `Retry-After`, because OTLP exporters retry 503 but treat 408 as permanent; the Traceway SDKs re-queue a failed batch whatever the status); the guard itself swaps the raw deadline error (a `*net.OpError` naming the listener address) for `middleware.ErrBodyTimedOut` before it leaves `Read`, so no handler can echo the address.
 
@@ -1245,11 +1247,18 @@ if err != nil {
     traceway.CaptureException(fmt.Errorf("failed to read session recording (key=%s): %w", key, err))
 }
 
+// ALSO CORRECT - inside a handler or middleware, before the response is sent
+if err != nil {
+    _ = c.Error(fmt.Errorf("failed to warm the project cache: %w", err))
+}
+
 // WRONG - Do not use log.Printf for errors
 if err != nil {
     log.Printf("Failed to read session recording (key=%s): %v", key, err)
 }
 ```
+
+Inside a handler or middleware with the response not yet sent, `c.Error(err)` is an equivalent channel: tracewaygin reports every `c.Errors` entry with the request's trace, and gin's Logger prints it even when monitoring is off, whereas `CaptureException` is a no-op until the SDK is initialised. `runCommitHook` uses it for a panicking commit hook.
 
 **Validation error conventions:**
 - `400 Bad Request`: Malformed requests, missing required params, type errors
@@ -1257,7 +1266,7 @@ if err != nil {
 
 **Summary:**
 - **Stopping errors** (abort the request): `c.AbortWithError(status, traceway.NewStackTraceErrorf("reason: %w", err))`
-- **Non-stopping errors** (continue serving): `traceway.CaptureException(fmt.Errorf("reason: %w", err))`
+- **Non-stopping errors** (continue serving): `traceway.CaptureException(fmt.Errorf("reason: %w", err))`, or `c.Error(err)` when a `*gin.Context` is in hand and the response has not been sent
 - **Validation errors** (user-facing): `c.JSON(422, gin.H{"error": "message"})` for form validation
 - **Always** wrap errors with `traceway.NewStackTraceErrorf` or `fmt.Errorf` using `%w` — never discard the original error
 

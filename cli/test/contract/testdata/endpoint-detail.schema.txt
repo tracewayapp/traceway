@@ -18,4 +18,10 @@ exception.recordedAt: string
 exception.stackTrace: string
 hasSpans: bool
 messages[]: empty
-spans[]: empty
+spans[].duration: number
+spans[].id: string
+spans[].name: string
+spans[].projectId: string
+spans[].recordedAt: string
+spans[].startTime: string
+spans[].traceId: string

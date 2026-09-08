@@ -17,3 +17,12 @@ type Span struct {
 	ParentSpanId *uuid.UUID        `json:"parentSpanId,omitempty" ch:"parent_span_id"`
 	Attributes   map[string]string `json:"attributes,omitempty" ch:"attributes"`
 }
+
+// TraceRef names one entity's span tree. Spans are stored under their owning
+// endpoint, task or AI-trace id as trace_id, scoped to the project, and
+// RecordedAt anchors the lookup window.
+type TraceRef struct {
+	ProjectId  uuid.UUID
+	TraceId    uuid.UUID
+	RecordedAt time.Time
+}

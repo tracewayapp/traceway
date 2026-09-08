@@ -71,7 +71,7 @@ func runTracesShow(cmd *cobra.Command, args []string) error {
 		out := cmd.OutOrStdout()
 		_, _ = fmt.Fprintf(out, "DISTRIBUTED TRACE: %s\nNODES (%d):\n", resp.DistributedTraceId, len(resp.Nodes))
 		tw := output.NewTabWriter(out)
-		_, _ = fmt.Fprintln(tw, "PROJECT\tTYPE\tNAME\tERROR")
+		_, _ = fmt.Fprintln(tw, "PROJECT\tTYPE\tNAME\tSPANS\tERROR")
 		for _, n := range resp.Nodes {
 			name := "-"
 			switch {
@@ -86,7 +86,7 @@ func runTracesShow(cmd *cobra.Command, args []string) error {
 			if n.Exception != nil {
 				errCol = truncateHash(n.Exception.ExceptionHash, 12)
 			}
-			_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", pickStr(n.ProjectName, "-"), n.TraceType, name, errCol)
+			_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\n", pickStr(n.ProjectName, "-"), n.TraceType, name, len(n.Spans), errCol)
 		}
 		return tw.Flush()
 	}

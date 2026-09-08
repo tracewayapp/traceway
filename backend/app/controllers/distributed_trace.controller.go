@@ -126,41 +126,45 @@ func (d distributedTraceController) GetDistributedTrace(c *gin.Context) {
 	}
 
 	var nodes []DistributedTraceNode
+	var spanRefs []models.TraceRef
 
-	for _, ep := range endpoints {
-		node := DistributedTraceNode{
+	for i := range endpoints {
+		ep := &endpoints[i]
+		nodes = append(nodes, DistributedTraceNode{
 			ProjectId:   ep.ProjectId,
 			ProjectName: projectNameMap[ep.ProjectId],
 			TraceType:   "endpoint",
-			Endpoint:    &ep,
+			Endpoint:    ep,
 			Spans:       []models.Span{},
 			Exception:   exceptionByTraceId[ep.Id],
-		}
-		nodes = append(nodes, node)
+		})
+		spanRefs = append(spanRefs, models.TraceRef{ProjectId: ep.ProjectId, TraceId: ep.Id, RecordedAt: ep.RecordedAt})
 	}
 
-	for _, t := range tasks {
-		node := DistributedTraceNode{
+	for i := range tasks {
+		t := &tasks[i]
+		nodes = append(nodes, DistributedTraceNode{
 			ProjectId:   t.ProjectId,
 			ProjectName: projectNameMap[t.ProjectId],
 			TraceType:   "task",
-			Task:        &t,
+			Task:        t,
 			Spans:       []models.Span{},
 			Exception:   exceptionByTraceId[t.Id],
-		}
-		nodes = append(nodes, node)
+		})
+		spanRefs = append(spanRefs, models.TraceRef{ProjectId: t.ProjectId, TraceId: t.Id, RecordedAt: t.RecordedAt})
 	}
 
-	for _, a := range aiTraces {
-		node := DistributedTraceNode{
+	for i := range aiTraces {
+		a := &aiTraces[i]
+		nodes = append(nodes, DistributedTraceNode{
 			ProjectId:   a.ProjectId,
 			ProjectName: projectNameMap[a.ProjectId],
 			TraceType:   "ai_trace",
-			AiTrace:     &a,
+			AiTrace:     a,
 			Spans:       []models.Span{},
 			Exception:   exceptionByTraceId[a.Id],
-		}
-		nodes = append(nodes, node)
+		})
+		spanRefs = append(spanRefs, models.TraceRef{ProjectId: a.ProjectId, TraceId: a.Id, RecordedAt: a.RecordedAt})
 	}
 
 	for _, exc := range exceptions {
@@ -180,6 +184,15 @@ func (d distributedTraceController) GetDistributedTrace(c *gin.Context) {
 		})
 	}
 
+	// Each entity node owns the spans stored under its id as trace_id, the
+	// same ownership the detail pages read, loaded here in one bounded query.
+	spans, err := telemetry.SpanRepository.FindByTraceIds(ctx, spanRefs)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to query spans: %w", err))
+		return
+	}
+	attachSpans(nodes, spans)
+
 	if nodes == nil {
 		nodes = []DistributedTraceNode{}
 	}
@@ -188,6 +201,37 @@ func (d distributedTraceController) GetDistributedTrace(c *gin.Context) {
 		DistributedTraceId: distributedTraceIdStr,
 		Nodes:              nodes,
 	})
+}
+
+// attachSpans hands every span to the node whose entity id and project it was
+// stored under. Exception-only nodes have no entity and keep their empty list.
+func attachSpans(nodes []DistributedTraceNode, spans []models.Span) {
+	byOwner := make(map[models.TraceRef][]models.Span)
+	for _, s := range spans {
+		key := models.TraceRef{ProjectId: s.ProjectId, TraceId: s.TraceId}
+		byOwner[key] = append(byOwner[key], s)
+	}
+	for i := range nodes {
+		owner, ok := nodes[i].spanOwner()
+		if !ok {
+			continue
+		}
+		if owned := byOwner[owner]; len(owned) > 0 {
+			nodes[i].Spans = owned
+		}
+	}
+}
+
+func (n DistributedTraceNode) spanOwner() (models.TraceRef, bool) {
+	switch {
+	case n.Endpoint != nil:
+		return models.TraceRef{ProjectId: n.ProjectId, TraceId: n.Endpoint.Id}, true
+	case n.Task != nil:
+		return models.TraceRef{ProjectId: n.ProjectId, TraceId: n.Task.Id}, true
+	case n.AiTrace != nil:
+		return models.TraceRef{ProjectId: n.ProjectId, TraceId: n.AiTrace.Id}, true
+	}
+	return models.TraceRef{}, false
 }
 
 var DistributedTraceController = distributedTraceController{}

@@ -49,6 +49,13 @@ nodes[].exception.recordedAt: string
 nodes[].exception.stackTrace: string
 nodes[].projectId: string
 nodes[].projectName: string
+nodes[].spans[].duration: number
+nodes[].spans[].id: string
+nodes[].spans[].name: string
+nodes[].spans[].projectId: string
+nodes[].spans[].recordedAt: string
+nodes[].spans[].startTime: string
+nodes[].spans[].traceId: string
 nodes[].spans[]: empty
 nodes[].task.appVersion: string
 nodes[].task.attributes: null

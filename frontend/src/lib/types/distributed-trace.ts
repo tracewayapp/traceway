@@ -8,12 +8,14 @@ export type DistributedTraceNode = {
 		duration: number;
 		statusCode: number;
 		recordedAt: string;
+		spanId?: string;
 	};
 	task?: {
 		id: string;
 		taskName: string;
 		duration: number;
 		recordedAt: string;
+		spanId?: string;
 	};
 	aiTrace?: {
 		id: string;

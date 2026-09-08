@@ -63,6 +63,14 @@ func (r *span) toModel() models.Span {
 	return s
 }
 
+func spansToModels(rows []*span) []models.Span {
+	spans := make([]models.Span, 0, len(rows))
+	for _, row := range rows {
+		spans = append(spans, row.toModel())
+	}
+	return spans
+}
+
 type spanRepository struct{}
 
 func (r *spanRepository) InsertAsync(ctx context.Context, spans []models.Span) error {
@@ -103,12 +111,32 @@ func (r *spanRepository) FindByTraceId(ctx context.Context, projectId, traceId u
 	if err != nil {
 		return nil, err
 	}
+	return spansToModels(rows), nil
+}
 
-	spans := make([]models.Span, 0, len(rows))
-	for _, row := range rows {
-		spans = append(spans, row.toModel())
+// FindByTraceIds loads the spans of every referenced trace in one query, for
+// views that show several entities side by side. The lookup is bounded to the
+// trace window around the earliest and latest reference and hits the
+// (project_id, trace_id) index.
+func (r *spanRepository) FindByTraceIds(ctx context.Context, refs []models.TraceRef) ([]models.Span, error) {
+	if len(refs) == 0 {
+		return []models.Span{}, nil
 	}
-	return spans, nil
+	projectIds, traceIds := shared.TraceRefIds(refs)
+	from, to := shared.TraceRefsWindowBounds(refs)
+	params := lit.P{"from": sqlitetypes.NewSQLiteTime(from), "to": sqlitetypes.NewSQLiteTime(to)}
+	query := `SELECT id, trace_id, project_id, name, start_time, duration, recorded_at, parent_span_id, attributes
+		FROM spans
+		WHERE project_id IN (` + shared.NamedIdList("pid", projectIds, params) + `)
+		AND trace_id IN (` + shared.NamedIdList("tid", traceIds, params) + `)
+		AND recorded_at >= :from AND recorded_at <= :to
+		ORDER BY start_time ASC`
+
+	rows, err := lit.SelectNamed[span](db.TelemetryDB, query, params)
+	if err != nil {
+		return nil, err
+	}
+	return shared.FilterSpansByTraceRefs(spansToModels(rows), refs), nil
 }
 
 var SpanRepository = &spanRepository{}

@@ -108,9 +108,12 @@ func seedTelemetry(ctx context.Context, projectIDStr string, at time.Time) error
 		return fmt.Errorf("exception: %w", err)
 	}
 
+	// Spans are stored under their owning entity id as trace_id (the ingest
+	// re-roots them), so the seeded span belongs to the endpoint and surfaces in
+	// both the endpoint detail and the distributed trace.
 	span := models.Span{
 		Id:         seedSpanID,
-		TraceId:    seedTraceID,
+		TraceId:    seedEndpointID,
 		ProjectId:  pid,
 		Name:       "contract-span",
 		StartTime:  at,

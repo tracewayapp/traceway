@@ -878,7 +878,7 @@ service:
 											{issue.count}
 										</Table.Cell>
 										<Table.Cell class="py-3 text-right text-sm text-muted-foreground tabular-nums">
-											{formatRelativeTime(issue.lastSeen, timezone)}
+											{formatRelativeTime(issue.lastSeen, timezone)} ago
 										</Table.Cell>
 									</Table.Row>
 								{/each}

@@ -17,6 +17,8 @@
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
 	import { SearchBar } from '$lib/components/ui/search-bar';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
+	import * as Select from '$lib/components/ui/select';
+	import Check from '@lucide/svelte/icons/check';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -46,6 +48,13 @@
 		type SortDirection
 	} from '$lib/utils/sort-storage';
 
+	import {
+		parseAttributeFilter,
+		filterOperator,
+		type AttributeFilter,
+		type FilterOperator
+	} from '$lib/utils/session-filters';
+
 	const timezone = $derived(getTimezone());
 	const initialTimezone = getTimezone();
 
@@ -55,6 +64,7 @@
 		endedAt?: string | null;
 		duration: number;
 		clientIP: string;
+		attributes?: Record<string, string>;
 		appVersion: string;
 		serverName: string;
 	};
@@ -64,22 +74,20 @@
 	let sessions = $state<Session[]>([]);
 	let loading = $state(true);
 	let error = $state('');
+	let expandedAttributes = $state<string[]>([]);
+
+	function sessionAttributes(session: Session) {
+		const identityKeys = ['userId', 'user.id', 'user_id', 'email', 'user.email'];
+		return Object.entries(session.attributes ?? {}).sort(
+			([a], [b]) =>
+				Number(identityKeys.includes(b)) - Number(identityKeys.includes(a)) || a.localeCompare(b)
+		);
+	}
 
 	let page = $state(1);
 	let pageSize = $state(50);
 	let total = $state(0);
 	let totalPages = $state(0);
-
-	type AttributeFilter = { key: string; value: string };
-
-	function parseAttributeFilter(input: string): AttributeFilter | null {
-		const idx = input.indexOf('=');
-		if (idx <= 0) return null;
-		const key = input.slice(0, idx).trim();
-		const value = input.slice(idx + 1);
-		if (!key) return null;
-		return { key, value };
-	}
 
 	function parseSessionsUrlParams() {
 		const timeParams = parseTimeRangeFromUrl(timezone);
@@ -112,10 +120,30 @@
 	let dialogKey = $state('');
 	let dialogValue = $state('');
 	let dialogError = $state('');
+	let dialogOperator = $state<FilterOperator>('=');
+	let dialogEditIndex = $state<number | null>(null);
+	const operatorOptions: { value: FilterOperator; label: string }[] = [
+		{ value: '=', label: 'Equals' },
+		{ value: '!=', label: 'Not equals' },
+		{ value: '~=', label: 'Contains' },
+		{ value: '!~=', label: 'Not contains' }
+	];
 
-	function openAddFilterDialog() {
-		dialogKey = '';
-		dialogValue = '';
+	function openAddFilterDialog(key = '', value = '') {
+		dialogKey = key;
+		dialogValue = value;
+		dialogOperator = '=';
+		dialogEditIndex = null;
+		dialogError = '';
+		addFilterOpen = true;
+	}
+
+	function openEditFilterDialog(index: number) {
+		const filter = attributeFilters[index];
+		dialogKey = filter.key;
+		dialogValue = filter.value;
+		dialogOperator = filterOperator(filter);
+		dialogEditIndex = index;
 		dialogError = '';
 		addFilterOpen = true;
 	}
@@ -126,11 +154,25 @@
 			dialogError = 'Attribute key is required';
 			return;
 		}
-		const value = dialogValue;
-		const dup = attributeFilters.some((f) => f.key === key && f.value === value);
-		if (!dup) {
-			attributeFilters = [...attributeFilters, { key, value }];
-		}
+		const filter: AttributeFilter = {
+			key,
+			value: dialogValue,
+			exclude: dialogOperator.startsWith('!'),
+			contains: dialogOperator.includes('~')
+		};
+		const others = attributeFilters.filter((_, i) => i !== dialogEditIndex);
+		const duplicate = others.some(
+			(f) =>
+				f.key === filter.key &&
+				f.value === filter.value &&
+				f.exclude === filter.exclude &&
+				f.contains === filter.contains
+		);
+		attributeFilters = duplicate
+			? others
+			: dialogEditIndex === null
+				? [...others, filter]
+				: attributeFilters.map((f, i) => (i === dialogEditIndex ? filter : f));
 		addFilterOpen = false;
 		page = 1;
 		loadData(true);
@@ -156,7 +198,7 @@
 				from: selectedPreset ? null : getFromDateTimeUTC(),
 				to: selectedPreset ? null : getToDateTimeUTC(),
 				search: searchQuery.trim() || null,
-				attr: attributeFilters.map((f) => `${f.key}=${f.value}`)
+				attr: attributeFilters.map((f) => `${f.key}${filterOperator(f)}${f.value}`)
 			},
 			{ pushToHistory }
 		);
@@ -335,7 +377,7 @@
 	</PageHeader>
 
 	<SearchBar
-		placeholder="Search by session ID..."
+		placeholder="Search session ID, user, or attribute value..."
 		bind:value={searchQuery}
 		onSearch={handleSearch}
 		disabled={loading}
@@ -345,7 +387,7 @@
 		<button
 			type="button"
 			class="inline-flex items-center gap-1 rounded-full border border-dashed px-3 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
-			onclick={openAddFilterDialog}
+			onclick={() => openAddFilterDialog()}
 			disabled={loading}
 		>
 			<Plus class="h-3 w-3" />
@@ -355,9 +397,16 @@
 			<span
 				class="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 font-mono text-xs"
 			>
-				<span class="text-muted-foreground">{f.key}</span>
-				<span>=</span>
-				<span>{f.value || '""'}</span>
+				<button
+					type="button"
+					aria-label="Edit filter"
+					class="inline-flex cursor-pointer items-center gap-1 hover:text-primary"
+					onclick={() => openEditFilterDialog(i)}
+				>
+					<span class="text-muted-foreground">{f.key}</span>
+					<span class={f.exclude ? 'text-red-500' : ''}>{filterOperator(f)}</span>
+					<span class="max-w-64 truncate" title={f.value}>{f.value || '""'}</span>
+				</button>
 				<button
 					type="button"
 					aria-label="Remove filter"
@@ -373,24 +422,40 @@
 	<AlertDialog.Root open={addFilterOpen} onOpenChange={(open) => (addFilterOpen = open)}>
 		<AlertDialog.Content>
 			<AlertDialog.Header>
-				<AlertDialog.Title>Add attribute filter</AlertDialog.Title>
+				<AlertDialog.Title
+					>{dialogEditIndex === null
+						? 'Add attribute filter'
+						: 'Edit attribute filter'}</AlertDialog.Title
+				>
 				<AlertDialog.Description>
-					Match sessions by an exact attribute value. Keys come from what the SDK auto-collects (<code
-						class="font-mono">url</code
-					>, <code class="font-mono">userAgent</code>, <code class="font-mono">viewport</code>,
-					<code class="font-mono">client.ip</code>, …) plus anything you attach yourself.
+					Filter by attributes such as <code class="font-mono">userId</code>,
+					<code class="font-mono">email</code>, or <code class="font-mono">client.ip</code>. All
+					filters must match. Contains ignores case; excluded filters also include sessions without
+					the attribute.
 				</AlertDialog.Description>
 			</AlertDialog.Header>
 			<div class="flex flex-col gap-3">
 				<FormField label="Attribute key">
-					<Input placeholder="userAgent" bind:value={dialogKey} onkeydown={handleDialogKeydown} />
+					<Input placeholder="userId" bind:value={dialogKey} onkeydown={handleDialogKeydown} />
+				</FormField>
+				<FormField label="Operator">
+					<Select.Root
+						type="single"
+						value={dialogOperator}
+						onValueChange={(v) => (dialogOperator = v as FilterOperator)}
+					>
+						<Select.Trigger class="w-full"
+							>{operatorOptions.find((o) => o.value === dialogOperator)?.label}</Select.Trigger
+						>
+						<Select.Content>
+							{#each operatorOptions as option (option.value)}
+								<Select.Item value={option.value} label={option.label}>{option.label}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
 				</FormField>
 				<FormField label="Value">
-					<Input
-						placeholder="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)..."
-						bind:value={dialogValue}
-						onkeydown={handleDialogKeydown}
-					/>
+					<Input placeholder="u_42" bind:value={dialogValue} onkeydown={handleDialogKeydown} />
 				</FormField>
 				{#if dialogError}
 					<p class="text-xs text-red-500">{dialogError}</p>
@@ -399,7 +464,11 @@
 			<AlertDialog.Footer>
 				<Button variant="outline" onclick={() => (addFilterOpen = false)}>Cancel</Button>
 				<Button onclick={submitDialogFilter}>
-					<Plus class="h-4 w-4" /> Add filter
+					{#if dialogEditIndex === null}
+						<Plus class="h-4 w-4" /> Add filter
+					{:else}
+						<Check class="h-4 w-4" /> Update filter
+					{/if}
 				</Button>
 			</AlertDialog.Footer>
 		</AlertDialog.Content>
@@ -410,7 +479,7 @@
 			{#if loading}
 				<Table.Body>
 					<Table.Row>
-						<Table.Cell colspan={4} class="h-48">
+						<Table.Cell colspan={5} class="h-48">
 							<div class="flex h-full items-center justify-center">
 								<LoadingCircle size="xlg" />
 							</div>
@@ -420,7 +489,7 @@
 			{:else if error}
 				<Table.Body>
 					<Table.Row>
-						<Table.Cell colspan={4} class="h-24 text-center text-red-500">
+						<Table.Cell colspan={5} class="h-24 text-center text-red-500">
 							{error}
 						</Table.Cell>
 					</Table.Row>
@@ -428,8 +497,10 @@
 			{:else if sessions.length === 0}
 				<Table.Body>
 					<TableEmptyState
-						colspan={4}
-						message="No sessions recorded yet. Enable recordAllSessions in the SDK to start capturing them."
+						colspan={5}
+						message={searchQuery.trim() || attributeFilters.length
+							? 'No sessions match your search and filters.'
+							: 'No sessions recorded in this time range. Enable recordAllSessions in the SDK to start capturing them.'}
 					/>
 				</Table.Body>
 			{:else}
@@ -438,6 +509,10 @@
 						<TracewayTableHeader
 							label="Session"
 							tooltip="Session UUID. Open to play back the recording."
+						/>
+						<TracewayTableHeader
+							label="Attributes"
+							tooltip="User and session context. Click an attribute to filter sessions."
 						/>
 						<TracewayTableHeader
 							label="Started"
@@ -465,7 +540,9 @@
 					</Table.Row>
 				</Table.Header>
 				<Table.Body>
-					{#each sessions as session, __index (__index)}
+					{#each sessions as session (session.id)}
+						{@const attributes = sessionAttributes(session)}
+						{@const attributesExpanded = expandedAttributes.includes(session.id)}
 						<Table.Row
 							class="cursor-pointer"
 							onclick={createRowClickHandler(
@@ -475,7 +552,41 @@
 								'to'
 							)}
 						>
-							<Table.Cell class="font-mono text-sm">{shortId(session.id)}</Table.Cell>
+							<Table.Cell class="w-[140px] font-mono text-sm">{shortId(session.id)}</Table.Cell>
+							<Table.Cell>
+								<div class="flex max-w-2xl flex-wrap gap-1">
+									{#each attributesExpanded ? attributes : attributes.slice(0, 3) as [key, value] (key)}
+										<button
+											type="button"
+											class="max-w-64 truncate rounded-full bg-muted px-2 py-0.5 font-mono text-xs hover:text-primary"
+											title={`${key}=${value}`}
+											aria-label={`Filter by ${key}=${value}`}
+											onclick={(event) => {
+												event.stopPropagation();
+												openAddFilterDialog(key, value);
+											}}
+										>
+											<span class="text-muted-foreground">{key}</span>={value || '""'}
+										</button>
+									{:else}
+										<span class="text-muted-foreground">—</span>
+									{/each}
+									{#if attributes.length > 3}
+										<button
+											type="button"
+											class="px-1 text-xs text-muted-foreground hover:text-foreground"
+											aria-expanded={attributesExpanded}
+											onclick={(event) => {
+												event.stopPropagation();
+												expandedAttributes = attributesExpanded
+													? expandedAttributes.filter((id) => id !== session.id)
+													: [...expandedAttributes, session.id];
+											}}
+											>{attributesExpanded ? 'Show less' : `+${attributes.length - 3} more`}</button
+										>
+									{/if}
+								</div>
+							</Table.Cell>
 							<Table.Cell class="text-sm"
 								>{formatRelativeTime(session.startedAt, timezone)}</Table.Cell
 							>

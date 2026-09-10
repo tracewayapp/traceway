@@ -116,31 +116,28 @@ func (r *sessionRepository) FindById(ctx context.Context, projectId, sessionId u
 	return &s, nil
 }
 
-// buildSessionFilterClause assembles the search + attribute-filter portion of
-// the WHERE clause for sessions queries. Empty inputs return ("", nil).
-// Search restricts to a single session id (only valid UUIDs match — any other
-// search input falls through and matches nothing useful, which is the right
-// behaviour given attribute filters now cover the structured-search use case).
-// Each attribute filter adds an exact-match clause via the `attributes[?]`
-// Map subscript, which is O(1) per row and indexed by the bloom filters on
-// `mapKeys(attributes)` / `mapValues(attributes)`.
 func buildSessionFilterClause(search string, filters []shared.SessionAttributeFilter) (string, []interface{}) {
 	var sb strings.Builder
 	args := []interface{}{}
 	if s := strings.TrimSpace(search); s != "" {
-		if id, err := uuid.Parse(s); err == nil {
-			sb.WriteString(" AND id = ?")
-			args = append(args, id)
-		}
+		sb.WriteString(" AND (positionCaseInsensitiveUTF8(toString(id), ?) > 0 OR positionCaseInsensitiveUTF8(client_ip, ?) > 0 OR arrayExists(v -> positionCaseInsensitiveUTF8(v, ?) > 0, mapValues(attributes)))")
+		args = append(args, s, s, s)
 	}
 	for _, f := range filters {
 		if f.Key == "" {
 			continue
 		}
-		// `attributes[?]` does an O(1) lookup on the Map column. Combined
-		// with the bloom_filter on mapKeys/mapValues this is index-driven.
-		sb.WriteString(" AND attributes[?] = ?")
-		args = append(args, f.Key, f.Value)
+		sb.WriteString(" AND ")
+		if f.Exclude {
+			sb.WriteString("NOT ")
+		}
+		sb.WriteString("(mapContains(attributes, ?) AND ")
+		if f.Contains {
+			sb.WriteString("positionCaseInsensitiveUTF8(attributes[?], ?) > 0)")
+		} else {
+			sb.WriteString("attributes[?] = ?)")
+		}
+		args = append(args, f.Key, f.Key, f.Value)
 	}
 	return sb.String(), args
 }

@@ -203,18 +203,12 @@ func (r *sessionRepository) FindAll(ctx context.Context, projectId uuid.UUID, fr
 	return sessions, count, nil
 }
 
-// buildSessionFilterClauseSQLite produces a WHERE fragment + named params
-// mirroring the ClickHouse helper: search must be a valid UUID for an exact
-// id match (anything else is ignored), and each attribute filter becomes an
-// exact match against `json_extract(attributes, '$.<key>')`.
 func buildSessionFilterClauseSQLite(search string, filters []shared.SessionAttributeFilter) (string, lit.P) {
 	var sb strings.Builder
 	params := lit.P{}
 	if s := strings.TrimSpace(search); s != "" {
-		if id, err := uuid.Parse(s); err == nil {
-			sb.WriteString(" AND id = :search_id")
-			params["search_id"] = id
-		}
+		sb.WriteString(" AND (instr(lower(CAST(sessions.id AS TEXT)), lower(:search)) > 0 OR instr(lower(client_ip), lower(:search)) > 0 OR EXISTS (SELECT 1 FROM json_each(sessions.attributes) AS attr WHERE instr(lower(attr.value), lower(:search)) > 0))")
+		params["search"] = s
 	}
 	for i, f := range filters {
 		if f.Key == "" {
@@ -222,10 +216,16 @@ func buildSessionFilterClauseSQLite(search string, filters []shared.SessionAttri
 		}
 		keyParam := fmt.Sprintf("attr_k_%d", i)
 		valParam := fmt.Sprintf("attr_v_%d", i)
-		sb.WriteString(" AND json_extract(attributes, '$.\"' || :")
-		sb.WriteString(keyParam)
-		sb.WriteString(" || '\"') = :")
-		sb.WriteString(valParam)
+		sb.WriteString(" AND ")
+		if f.Exclude {
+			sb.WriteString("NOT ")
+		}
+		sb.WriteString("EXISTS (SELECT 1 FROM json_each(sessions.attributes) AS attr WHERE attr.key = :" + keyParam + " AND ")
+		if f.Contains {
+			sb.WriteString("instr(lower(attr.value), lower(:" + valParam + ")) > 0)")
+		} else {
+			sb.WriteString("attr.value = :" + valParam + ")")
+		}
 		params[keyParam] = f.Key
 		params[valParam] = f.Value
 	}

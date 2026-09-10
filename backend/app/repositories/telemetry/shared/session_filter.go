@@ -1,9 +1,10 @@
 package shared
 
-// SessionAttributeFilter narrows the sessions list by an exact key=value
-// match against the JSON `attributes` blob. Defined here so every telemetry
-// backend sees the same type.
+// SessionAttributeFilter matches a literal attribute key. Excluded filters also
+// include sessions where the key is absent; contains matches ignore case.
 type SessionAttributeFilter struct {
-	Key   string
-	Value string
+	Key      string
+	Value    string
+	Exclude  bool
+	Contains bool
 }

@@ -50,7 +50,7 @@ If a session ends without an explicit close (e.g. the browser is force-quit befo
 Every session ships with a context map. Three layers contribute:
 
 1. **Auto-collected defaults**: the SDK stamps `url`, `path`, `referrer`, `userAgent`, `language`, `platform`, `viewport`, `screen`, and `timezone` from `window` / `navigator`. The backend additionally stamps `client.ip` from the request.
-2. **Global scope**: anything set via `setAttribute("userId", "u_42")` / `setAttributes({ tenant: "acme" })` on the SDK. These flow through every subsequent session, exception, and segment update.
+2. **Global scope**: anything set via `setAttribute("userId", "u_42")` / `setAttributes({ tenant: "acme" })` on the SDK. These refresh the open session and flow through subsequent sessions and exceptions. You can also pass `attributes` at initialization.
 3. **Per-call attributes**: `captureExceptionWithAttributes(err, { … })` for exceptions only.
 
 Layering: defaults → global scope → per-call. Higher layers win on key collision.
@@ -67,10 +67,30 @@ See the framework-specific guides for the API:
 
 The Sessions page in the dashboard accepts:
 
-- **Search by session ID**: paste a UUID for an exact match.
-- **Attribute filters**: add `key=value` filters (e.g. `userId=u_42`, `tenant=acme`, `experiment.cart_redesign=variant_b`). Filters AND together; values are exact match.
+- **Search**: paste a full session UUID for an exact match, or search a partial session ID, IP address, or attribute value (such as a user ID or email). Text search ignores case.
+- **Attribute filters**: click **Add filter** or an attribute on a session row. Choose **Equals**, **Not equals**, **Contains**, or **Not contains**. Equals is case-sensitive; Contains ignores case and treats characters such as `%` literally. Excluded filters also include sessions without that attribute.
+- **Filter chips**: click a chip to edit it or its × to remove it. All filters and the search combine with AND. Filters are stored in the URL for sharing and back/forward navigation.
 
-Attribute filters are backed by a Map column with bloom-filter indexes on keys and values, so they stay fast even as the table grows.
+For example, attach identity in your browser app:
+
+```javascript
+import { init, setAttributes, clearAttributes } from "@tracewayapp/frontend";
+
+init("your-token@https://traceway.example.com/api/report", {
+  recordAllSessions: true,
+  attributes: { tenant: "acme" },
+});
+
+// After login:
+setAttributes({ userId: "u_42", email: "alice@example.com" });
+
+// On logout:
+clearAttributes();
+```
+
+Then add `userId=u_42` to find that user's sessions, or combine `tenant=acme` with `email~=example.com`. Attribute values must be strings. Changes replace the current session's context; `clearAttributes()` removes app-defined values while retaining browser defaults.
+
+Older SDKs and `/api/report` payloads that omit session attributes remain supported.
 
 ## Sessions and Issues
 

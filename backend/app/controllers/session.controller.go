@@ -15,8 +15,10 @@ import (
 type sessionController struct{}
 
 type SessionAttributeFilter struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
+	Key      string `json:"key"`
+	Value    string `json:"value"`
+	Exclude  bool   `json:"exclude"`
+	Contains bool   `json:"contains"`
 }
 
 type SessionSearchRequest struct {
@@ -47,7 +49,7 @@ func (s sessionController) FindAllSessions(c *gin.Context) {
 		if f.Key == "" {
 			continue
 		}
-		filters = append(filters, telemetry.SessionAttributeFilter{Key: f.Key, Value: f.Value})
+		filters = append(filters, telemetry.SessionAttributeFilter{Key: f.Key, Value: f.Value, Exclude: f.Exclude, Contains: f.Contains})
 	}
 
 	span := traceway.StartSpan(c, "loading sessions")

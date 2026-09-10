@@ -16,6 +16,9 @@ export default defineConfig({
 	resolve: {
 		conditions: ['browser'],
 		alias: {
+			'$app/environment': path.resolve(
+				'./node_modules/@sveltejs/kit/src/runtime/app/environment/index.js'
+			),
 			$lib: path.resolve('./src/lib'),
 			'$app/paths': path.resolve('./node_modules/@sveltejs/kit/src/runtime/app/paths/client.js'),
 			'$app/navigation': path.resolve('./src/test/mocks/app-navigation.ts')

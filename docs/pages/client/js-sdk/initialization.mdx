@@ -34,6 +34,7 @@ init("your-token@https://traceway.example.com/api/report", {
 | `beforeCapture` | `(exception) => boolean` | `undefined` | Callback to programmatically suppress errors. Return `false` to drop. See [Error Filtering](#error-filtering) |
 | `sessionRecording` | `boolean` | `true` | Enable the rrweb session recorder. Required for both per-exception clips and always-on session recording |
 | `sessionRecordingSegmentDuration` | `number` | `30000` | Length of each rrweb segment in milliseconds. Always-on recording uploads one row per segment, so a longer value means fewer rows and S3 reads at the cost of replay granularity |
+| `attributes` | `Record<string, string>` | `{}` | Initial context for sessions and exceptions, such as `userId`, `email`, or `tenant`. Use `setAttributes` to update after login and `clearAttributes` on logout |
 | `recordAllSessions` | `boolean` | `false` | Always-on session recording: upload every segment continuously and create a parent `sessions` row, not just exception-bound clips. See [Sessions](/learn/sessions) for the full feature |
 | `captureLogs` | `boolean` | `true` | Mirror `console.{debug,log,info,warn,error}` into the rolling log buffer that ships with each clip / segment |
 | `captureNetwork` | `boolean` | `true` | Record `fetch` and `XMLHttpRequest` calls as network actions |

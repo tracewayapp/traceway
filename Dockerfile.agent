@@ -1,0 +1,102 @@
+# ==============================================================================
+# Traceway Agent Docker Image
+# The DuckDB image plus Node, the pinned Claude Code CLI, git and bubblewrap,
+# so fix attempts run in-process (AGENT_MODE=embedded) the way the :browser
+# image runs synthetic checks. The traceway CLI is built from this repository
+# and installed next to the backend for the sandboxed agent to read telemetry
+# with.
+#
+# Built on Debian like Dockerfile.duckdb: DuckDB links prebuilt glibc static
+# libraries via CGO. To bump Claude Code, change CLAUDE_CODE_VERSION.
+# ==============================================================================
+
+# ==============================================================================
+# Stage 1: Build Frontend
+# ==============================================================================
+ARG NODE_VERSION=26
+ARG CLAUDE_CODE_VERSION=2.1.261
+
+FROM node:${NODE_VERSION}-alpine AS frontend-builder
+
+WORKDIR /app/frontend
+
+COPY frontend/package.json frontend/package-lock.json ./
+
+RUN npm ci
+
+COPY frontend/ ./
+
+ENV CLOUD_MODE=false
+RUN npm run build
+
+# ==============================================================================
+# Stage 2: Build Backend with embedded frontend (telemetry_duckdb tag) and the CLI
+# ==============================================================================
+FROM golang:1.26-bookworm AS backend-builder
+
+WORKDIR /app/backend
+
+RUN apt-get update -o Acquire::Retries=3 -o APT::Update::Error-Mode=any && apt-get install -y --no-install-recommends git build-essential && rm -rf /var/lib/apt/lists/*
+
+COPY backend/go.mod backend/go.sum ./
+COPY cli/go.mod cli/go.sum /app/cli/
+RUN go mod download
+
+COPY backend/ ./
+COPY cli/ /app/cli/
+
+COPY --from=frontend-builder /app/frontend/build ./static/frontend/
+
+RUN CGO_ENABLED=1 go build -tags telemetry_duckdb -ldflags="-s -w" -o /traceway ./cmd/traceway
+
+WORKDIR /app/cli
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /traceway-cli ./cmd/traceway
+
+# ==============================================================================
+# Stage 3: Claude Code CLI, installed with npm here so the runtime carries no npm
+# ==============================================================================
+FROM node:${NODE_VERSION}-bookworm-slim AS claude-builder
+
+ARG CLAUDE_CODE_VERSION
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
+
+# ==============================================================================
+# Stage 4: Runtime image (Debian slim: glibc, libstdc++, git, bubblewrap, Node)
+# ==============================================================================
+FROM debian:bookworm-slim
+
+RUN apt-get update -o Acquire::Retries=3 -o APT::Update::Error-Mode=any && apt-get install -y --no-install-recommends ca-certificates tzdata wget libstdc++6 git bubblewrap && rm -rf /var/lib/apt/lists/*
+
+COPY --from=claude-builder /usr/local/bin/node /usr/local/bin/node
+COPY --from=claude-builder /usr/local/lib/node_modules/@anthropic-ai/claude-code /usr/local/lib/node_modules/@anthropic-ai/claude-code
+RUN ln -s /usr/local/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe /usr/local/bin/claude && claude --version
+
+COPY --from=backend-builder /traceway /usr/local/bin/traceway
+COPY --from=backend-builder /traceway-cli /usr/local/bin/traceway-cli
+RUN mkdir -p /opt/traceway/bin && ln -s /usr/local/bin/traceway-cli /opt/traceway/bin/traceway
+COPY skills/traceway /opt/traceway/skill
+
+RUN mkdir -p /data && chmod 755 /data
+
+WORKDIR /app
+
+# DB_TYPE=sqlite selects the embedded codepath; in a telemetry_duckdb build that pairs a
+# SQLite main DB (SQLITE_PATH) with a DuckDB telemetry DB derived alongside it
+# (<path>_telemetry.duckdb). Both, plus local blob storage, mirrors and
+# attempt workspaces, live under /data.
+ENV GIN_MODE=release \
+    DB_TYPE=sqlite \
+    SQLITE_PATH=/data/traceway.db \
+    STORAGE_TYPE=local \
+    STORAGE_PATH=/data/storage \
+    AGENT_MODE=embedded \
+    AGENT_SANDBOX=auto \
+    AGENT_SKILL_DIR=/opt/traceway/skill \
+    PATH=/opt/traceway/bin:/usr/local/bin:/usr/bin:/bin
+
+EXPOSE 80 8082
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=300s --retries=3 \
+    CMD wget -qO- http://localhost/health || exit 1
+
+ENTRYPOINT ["/usr/local/bin/traceway"]

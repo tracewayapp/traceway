@@ -33,6 +33,14 @@ func (r *notificationChannelRepository) FindEscalationByOrganization(tx *sql.Tx,
 	)
 }
 
+func (r *notificationChannelRepository) FindAll(tx *sql.Tx) ([]*models.NotificationChannel, error) {
+	return lit.SelectNamed[models.NotificationChannel](
+		tx,
+		"SELECT id, project_id, name, channel_type, config, enabled, created_by, created_at, updated_at FROM notification_channels ORDER BY id ASC",
+		lit.P{},
+	)
+}
+
 func (r *notificationChannelRepository) FindById(tx *sql.Tx, id int) (*models.NotificationChannel, error) {
 	return lit.SelectSingleNamed[models.NotificationChannel](
 		tx,

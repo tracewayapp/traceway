@@ -46,6 +46,7 @@ func dispatch(rule *models.NotificationRuleWithChannel, msg Message) bool {
 		msg.Severity = Severity(rule.Severity)
 	}
 	msg.URL = dashboardURL(msg.URL)
+	msg.ProjectId = rule.ProjectId.String()
 
 	// Escalation channels do not send anything themselves: they open (or
 	// dedup into) an on-call page, and the escalator + outbox do all
@@ -65,6 +66,36 @@ func dispatch(rule *models.NotificationRuleWithChannel, msg Message) bool {
 		status := "sent"
 		if !opened {
 			status = "deduped"
+		}
+		recordFiredNotification(rule, msg, status, "")
+		return true
+	}
+
+	// Agent channels start an attempt instead of a delivery. Only fires
+	// that name an exception can become one; anything else is recorded as
+	// skipped so the rule's history says why nothing happened.
+	if channel.ChannelType == AgentChannelType {
+		if attemptStarter == nil {
+			recordFiredNotification(rule, msg, "failed", "fix agent not initialized")
+			return false
+		}
+		if msg.DedupToken == "" || msg.ProjectId == "" {
+			recordFiredNotification(rule, msg, "skipped", "the rule does not name an exception; attach the fix agent to New Issue or Error Regression rules")
+			return false
+		}
+		result, err := attemptStarter(channel.Config, rule, msg)
+		if err != nil {
+			recordFiredNotification(rule, msg, "failed", err.Error())
+			traceway.CaptureException(fmt.Errorf("failed to start a fix attempt (rule=%d): %w", rule.Id, err))
+			return false
+		}
+		cooldowns.recordFire(rule.Id)
+		status := "sent"
+		switch {
+		case result.Existing:
+			status = "deduped"
+		case result.Pending:
+			status = "pending"
 		}
 		recordFiredNotification(rule, msg, status, "")
 		return true

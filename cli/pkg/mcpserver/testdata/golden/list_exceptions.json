@@ -1,0 +1,27 @@
+{
+  "data": [
+    {
+      "count": 42,
+      "exceptionHash": "0123456789abcdef",
+      "firstSeen": "2026-05-30T08:00:00Z",
+      "hourlyTrend": [
+        {
+          "count": 3,
+          "timestamp": "2026-06-01T11:00:00Z"
+        },
+        {
+          "count": 5,
+          "timestamp": "2026-06-01T12:00:00Z"
+        }
+      ],
+      "lastSeen": "2026-06-01T12:05:00Z",
+      "stackTrace": "TimeoutError: payment gateway timeout\n    at charge (checkout/payment.go:88)"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "pageSize": 20,
+    "total": 1,
+    "totalPages": 1
+  }
+}

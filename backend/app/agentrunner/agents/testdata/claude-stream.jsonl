@@ -1,0 +1,7 @@
+{"type":"system","subtype":"init","session_id":"sess-123","tools":["Read","Edit"],"model":"claude-opus-5"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Let me look at the failing handler."},{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":"/work/repo/checkout/payment.go"}}],"usage":{"input_tokens":1200,"output_tokens":80}},"session_id":"sess-123"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"package checkout\n\nfunc charge() error { return client.Do(req) }"}]},"session_id":"sess-123"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_2","name":"Edit","input":{"file_path":"/work/repo/checkout/payment.go","old_string":"client.Do(req)","new_string":"client.Do(req.WithContext(ctx))"}}],"usage":{"input_tokens":1500,"output_tokens":120}},"session_id":"sess-123"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_2","content":[{"type":"text","text":"The file has been updated."}]}]},"session_id":"sess-123"}
+this line is not json and must be reported, not swallowed
+{"type":"result","subtype":"success","is_error":false,"duration_ms":41000,"num_turns":4,"result":"Done with the investigation.\nSTATUS: fixed\nSUBJECT: 0123456789abcdef\n\n## Root cause\nThe gateway call had no deadline.\n\n## Fix\nPropagate the request context.","session_id":"sess-123","total_cost_usd":0.1834,"usage":{"input_tokens":2700,"output_tokens":200}}

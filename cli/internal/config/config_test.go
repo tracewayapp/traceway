@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -149,6 +150,12 @@ func TestSave_thenLoad_roundTrips(t *testing.T) {
 			"stormwind": {
 				URL:      "https://traceway.stormwind.local",
 				Username: "fred@example.com",
+				Sources: []Source{{
+					Name:     "staging",
+					Provider: "traceway",
+					Domains:  []string{"logs", "exceptions"},
+					Config:   map[string]string{"url": "https://staging.stormwind.local", "token": "twp_x"},
+				}},
 			},
 		},
 	}
@@ -159,7 +166,7 @@ func TestSave_thenLoad_roundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Profiles["stormwind"] != want.Profiles["stormwind"] {
+	if !reflect.DeepEqual(got.Profiles["stormwind"], want.Profiles["stormwind"]) {
 		t.Errorf("Profile mismatch: got %+v want %+v", got.Profiles["stormwind"], want.Profiles["stormwind"])
 	}
 }

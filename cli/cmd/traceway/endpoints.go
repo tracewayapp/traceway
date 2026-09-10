@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tracewayapp/traceway/cli/internal/output"
+	"github.com/tracewayapp/traceway/cli/pkg/access"
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
 
@@ -70,10 +71,14 @@ func runEndpointsList(cmd *cobra.Command, _ []string) error {
 			enumFlagHint("traceway endpoints list", "--sort-direction", sortDirections))
 	}
 
-	c := sess.Client()
-	resp, err := c.ListEndpoints(ctx, sess.ProjectID, client.ListEndpointsRequest{
-		TimeRange:     tr,
-		Pagination:    page,
+	sources, err := endpointSources(sess)
+	if err != nil {
+		return renderSourceError(cmd.ErrOrStderr(), mode, err)
+	}
+	resp, failed, err := access.ListEndpoints(ctx, sources, access.EndpointQuery{
+		ProjectID:     sess.ProjectID,
+		Window:        tr,
+		Page:          page,
 		Search:        search,
 		OrderBy:       orderBy,
 		SortDirection: sortDir,
@@ -81,6 +86,7 @@ func runEndpointsList(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
 	}
+	reportSourceFailures(cmd.ErrOrStderr(), failed)
 
 	switch mode {
 	case output.ModeJSON:
@@ -88,10 +94,11 @@ func runEndpointsList(cmd *cobra.Command, _ []string) error {
 	case output.ModeYAML:
 		return output.RenderYAML(cmd.OutOrStdout(), resp, output.ParseFieldsFlag(flagFields))
 	default:
+		col := sourceColumnFor(sources)
 		tw := output.NewTabWriter(cmd.OutOrStdout())
-		_, _ = fmt.Fprintln(tw, "ENDPOINT\tCOUNT\tP50\tP95\tP99\tIMPACT\tLAST SEEN")
+		_, _ = fmt.Fprintln(tw, col.header("ENDPOINT\tCOUNT\tP50\tP95\tP99\tIMPACT\tLAST SEEN"))
 		for _, e := range resp.Data {
-			_, _ = fmt.Fprintf(tw, "%s\t%d\t%s\t%s\t%s\t%.2f\t%s\n",
+			_, _ = fmt.Fprintf(tw, col.cell(e.Source)+"%s\t%d\t%s\t%s\t%s\t%.2f\t%s\n",
 				e.Endpoint, e.Count,
 				formatDuration(e.P50Duration),
 				formatDuration(e.P95Duration),
@@ -145,9 +152,13 @@ func runEndpointsChart(cmd *cobra.Command, _ []string) error {
 	}
 	intervalMin, _ := cmd.Flags().GetInt("interval-minutes")
 
-	c := sess.Client()
-	resp, err := c.GetEndpointChart(ctx, sess.ProjectID, client.EndpointChartRequest{
-		TimeRange:       tr,
+	source, err := singleEndpointSource(cmd, mode, sess, "chart")
+	if err != nil {
+		return err
+	}
+	resp, err := source.EndpointChart(ctx, access.EndpointChartQuery{
+		ProjectID:       sess.ProjectID,
+		Window:          tr,
 		MetricType:      metricType,
 		IntervalMinutes: intervalMin,
 	})
@@ -168,7 +179,7 @@ func runEndpointsChart(cmd *cobra.Command, _ []string) error {
 // renderEndpointChartTable prints a per-endpoint summary of the time series
 // (point count and min/max/latest value in ms), in the server's ranked order.
 // The full per-bucket series is only in --output json.
-func renderEndpointChartTable(out io.Writer, resp *client.EndpointChartResponse) error {
+func renderEndpointChartTable(out io.Writer, resp *access.EndpointChart) error {
 	type seriesAgg struct {
 		points     int
 		min, max   float64
@@ -239,8 +250,11 @@ func runEndpointsSlow(cmd *cobra.Command, args []string) error {
 		return renderSessionError(cmd.ErrOrStderr(), mode, err)
 	}
 
-	c := sess.Client()
-	resp, err := c.GetSlowEndpoint(ctx, sess.ProjectID, args[0])
+	source, err := singleEndpointSource(cmd, mode, sess, "slow")
+	if err != nil {
+		return err
+	}
+	resp, err := source.SlowEndpoint(ctx, sess.ProjectID, args[0])
 	if err != nil {
 		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
 	}
@@ -300,8 +314,11 @@ func runEndpointsShow(cmd *cobra.Command, args []string) error {
 		return renderTimestampError(cmd.ErrOrStderr(), mode, "recorded-at", err)
 	}
 
-	c := sess.Client()
-	resp, err := c.GetEndpoint(ctx, sess.ProjectID, args[0], recordedAt)
+	sources, err := endpointSources(sess)
+	if err != nil {
+		return renderSourceError(cmd.ErrOrStderr(), mode, err)
+	}
+	resp, err := access.GetRequest(ctx, sources, access.Lookup{ProjectID: sess.ProjectID, ID: args[0], At: recordedAt})
 	if err != nil {
 		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
 	}
@@ -334,7 +351,7 @@ func runEndpointsShow(cmd *cobra.Command, args []string) error {
 
 // renderSpansTable prints a span waterfall (name + duration), or a count line
 // when there are none. Shared by endpoints show and tasks show.
-func renderSpansTable(out io.Writer, spans []client.Span) {
+func renderSpansTable(out io.Writer, spans []access.Span) {
 	if len(spans) == 0 {
 		_, _ = fmt.Fprintln(out, "\nSPANS: none")
 		return
@@ -351,7 +368,7 @@ func renderSpansTable(out io.Writer, spans []client.Span) {
 
 // renderLinkedErrors prints the exception and message summaries attached to an
 // endpoint or task detail. Shared by endpoints show and tasks show.
-func renderLinkedErrors(out io.Writer, exc *client.LinkedException, messages []client.LinkedMessage) {
+func renderLinkedErrors(out io.Writer, exc *access.LinkedException, messages []access.LinkedMessage) {
 	if exc != nil {
 		_, _ = fmt.Fprintf(out, "\nLINKED EXCEPTION (%s):\n%s\n", exc.ExceptionHash, firstLine(exc.StackTrace))
 	}
@@ -371,4 +388,28 @@ func formatDuration(d time.Duration) string {
 		return "0"
 	}
 	return d.String()
+}
+
+func endpointSources(sess *session) ([]access.EndpointsAccess, error) {
+	resolver, err := sess.Resolver()
+	if err != nil {
+		return nil, err
+	}
+	return access.Endpoints(resolver, flagSource)
+}
+
+// singleEndpointSource picks the one source for the endpoint views that have
+// no merge (the ranked chart, an operator's slow allowance): the bound source
+// when there is one, else the one named by --source.
+func singleEndpointSource(cmd *cobra.Command, mode output.Mode, sess *session, subcommand string) (access.EndpointsAccess, error) {
+	sources, err := endpointSources(sess)
+	if err != nil {
+		return nil, renderSourceError(cmd.ErrOrStderr(), mode, err)
+	}
+	if len(sources) > 1 {
+		return nil, renderUsageError(cmd.ErrOrStderr(), mode,
+			"several sources answer endpoints; this view reads one of them",
+			"traceway endpoints "+subcommand+" --source <name>")
+	}
+	return sources[0], nil
 }

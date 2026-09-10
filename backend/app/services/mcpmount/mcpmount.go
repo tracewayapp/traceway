@@ -22,11 +22,19 @@ const Path = "/mcp"
 
 const patExpiryHorizon = time.Hour
 
-func GinHandler(engine *gin.Engine, version string) gin.HandlerFunc {
-	loopback := client.New(
+// LoopbackClient is an API client that calls this process's own router
+// without a socket, presenting the given bearer. The MCP mount and the
+// agent's context packs read telemetry through it.
+func LoopbackClient(engine *gin.Engine, bearer string) *client.Client {
+	return client.New(
 		"http://traceway-mcp.internal",
 		client.WithHTTPClient(&http.Client{Transport: engineTransport{engine}, Timeout: 60 * time.Second}),
+		client.WithJWT(bearer),
 	)
+}
+
+func GinHandler(engine *gin.Engine, version string) gin.HandlerFunc {
+	loopback := LoopbackClient(engine, "")
 
 	streamable := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		return mcpserver.New(mcpserver.Config{

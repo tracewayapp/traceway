@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tracewayapp/traceway/cli/internal/output"
+	"github.com/tracewayapp/traceway/cli/pkg/access"
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
 
@@ -67,28 +68,35 @@ func runLogsQuery(cmd *cobra.Command, _ []string) error {
 		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
 			enumFlagHint("traceway logs query", "--search-type", logsSearchTypes))
 	}
-	orderBy, _ := cmd.Flags().GetString("order-by")
+	if orderBy, _ := cmd.Flags().GetString("order-by"); orderBy != "timestamp" {
+		return renderUsageError(cmd.ErrOrStderr(), mode, "--order-by must be timestamp",
+			"traceway logs query --order-by timestamp")
+	}
 	sortDir, _ := cmd.Flags().GetString("sort-direction")
 	if err := validateEnumFlag("--sort-direction", sortDir, sortDirections); err != nil {
 		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
 			enumFlagHint("traceway logs query", "--sort-direction", sortDirections))
 	}
 
-	c := sess.Client()
-	resp, err := c.QueryLogs(ctx, sess.ProjectID, client.QueryLogsRequest{
-		TimeRange:     tr,
-		Pagination:    page,
+	sources, err := logsSources(sess)
+	if err != nil {
+		return renderSourceError(cmd.ErrOrStderr(), mode, err)
+	}
+	resp, failed, err := access.QueryLogs(ctx, sources, access.LogQuery{
+		ProjectID:     sess.ProjectID,
+		Window:        tr,
+		Page:          page,
 		ServiceName:   service,
 		MinSeverity:   minSev,
-		TraceId:       traceID,
+		TraceID:       traceID,
 		Search:        search,
 		SearchType:    searchType,
-		OrderBy:       orderBy,
 		SortDirection: sortDir,
 	})
 	if err != nil {
 		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
 	}
+	reportSourceFailures(cmd.ErrOrStderr(), failed)
 
 	switch mode {
 	case output.ModeJSON:
@@ -96,10 +104,11 @@ func runLogsQuery(cmd *cobra.Command, _ []string) error {
 	case output.ModeYAML:
 		return output.RenderYAML(cmd.OutOrStdout(), resp, output.ParseFieldsFlag(flagFields))
 	default:
+		col := sourceColumnFor(sources)
 		tw := output.NewTabWriter(cmd.OutOrStdout())
-		_, _ = fmt.Fprintln(tw, "TIMESTAMP\tSEVERITY\tSERVICE\tBODY")
+		_, _ = fmt.Fprintln(tw, col.header("TIMESTAMP\tSEVERITY\tSERVICE\tBODY"))
 		for _, l := range resp.Data {
-			_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
+			_, _ = fmt.Fprintf(tw, col.cell(l.Source)+"%s\t%s\t%s\t%s\n",
 				l.Timestamp.Format("2006-01-02 15:04:05"),
 				pickStr(l.SeverityText, "-"),
 				pickStr(l.ServiceName, "-"),
@@ -108,4 +117,12 @@ func runLogsQuery(cmd *cobra.Command, _ []string) error {
 		}
 		return tw.Flush()
 	}
+}
+
+func logsSources(sess *session) ([]access.LogsAccess, error) {
+	resolver, err := sess.Resolver()
+	if err != nil {
+		return nil, err
+	}
+	return access.Logs(resolver, flagSource)
 }

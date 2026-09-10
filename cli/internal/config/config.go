@@ -17,10 +17,24 @@ type Config struct {
 	Profiles map[string]Profile `json:"profiles"`
 }
 
-// Profile holds connection parameters for a single Traceway instance.
+// Profile holds connection parameters for a single Traceway instance and
+// the additional telemetry sources bound to it.
 type Profile struct {
-	URL      string `json:"url"`
-	Username string `json:"username"`
+	URL      string   `json:"url"`
+	Username string   `json:"username"`
+	Sources  []Source `json:"sources,omitempty"`
+}
+
+// Source is one additional telemetry provider bound to a profile. The
+// instance's own Traceway source is implicit and never listed here. Domains
+// restricts what the source answers; empty means everything its provider
+// implements. Config holds the provider's own settings, credentials
+// included, under the same file permissions as the rest of the profile.
+type Source struct {
+	Name     string            `json:"name"`
+	Provider string            `json:"provider"`
+	Domains  []string          `json:"domains,omitempty"`
+	Config   map[string]string `json:"config,omitempty"`
 }
 
 // legacyProfile is used only for migration detection.

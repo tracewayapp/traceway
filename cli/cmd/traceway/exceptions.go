@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tracewayapp/traceway/cli/internal/output"
+	"github.com/tracewayapp/traceway/cli/pkg/access"
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
 
@@ -74,10 +75,14 @@ func runExceptionsList(cmd *cobra.Command, _ []string) error {
 			enumFlagHint("traceway exceptions list", "--order-by", exceptionsOrderBy))
 	}
 
-	c := sess.Client()
-	resp, err := c.ListExceptions(ctx, sess.ProjectID, client.ListExceptionsRequest{
-		TimeRange:       tr,
-		Pagination:      page,
+	sources, err := exceptionSources(sess)
+	if err != nil {
+		return renderSourceError(cmd.ErrOrStderr(), mode, err)
+	}
+	resp, failed, err := access.ListExceptions(ctx, sources, access.ExceptionQuery{
+		ProjectID:       sess.ProjectID,
+		Window:          tr,
+		Page:            page,
 		Search:          search,
 		SearchType:      searchType,
 		IncludeArchived: includeArchived,
@@ -86,6 +91,7 @@ func runExceptionsList(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
 	}
+	reportSourceFailures(cmd.ErrOrStderr(), failed)
 
 	switch mode {
 	case output.ModeJSON:
@@ -93,14 +99,15 @@ func runExceptionsList(cmd *cobra.Command, _ []string) error {
 	case output.ModeYAML:
 		return output.RenderYAML(cmd.OutOrStdout(), resp, output.ParseFieldsFlag(flagFields))
 	default:
+		col := sourceColumnFor(sources)
 		tw := output.NewTabWriter(cmd.OutOrStdout())
-		_, _ = fmt.Fprintln(tw, "HASH\tCOUNT\tLAST SEEN\tFIRST SEEN\tFIRST LINE")
+		_, _ = fmt.Fprintln(tw, col.header("HASH\tCOUNT\tLAST SEEN\tFIRST SEEN\tFIRST LINE"))
 		for _, e := range resp.Data {
 			hash := e.ExceptionHash
 			if len(hash) > 12 {
 				hash = hash[:12]
 			}
-			_, _ = fmt.Fprintf(tw, "%s\t%d\t%s\t%s\t%s\n",
+			_, _ = fmt.Fprintf(tw, col.cell(e.Source)+"%s\t%d\t%s\t%s\t%s\n",
 				hash, e.Count,
 				e.LastSeen.Format("2006-01-02 15:04:05"),
 				e.FirstSeen.Format("2006-01-02 15:04:05"),
@@ -137,8 +144,11 @@ func runExceptionsShow(cmd *cobra.Command, args []string) error {
 	page := resolvePagination(cmd)
 	page.PageSize = pickDefault(page.PageSize, 20) // detail uses 20 by default
 
-	c := sess.Client()
-	resp, err := c.GetException(ctx, sess.ProjectID, args[0], page)
+	sources, err := exceptionSources(sess)
+	if err != nil {
+		return renderSourceError(cmd.ErrOrStderr(), mode, err)
+	}
+	resp, err := access.GetException(ctx, sources, access.ExceptionLookup{ProjectID: sess.ProjectID, Hash: args[0], Page: page})
 	if err != nil {
 		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
 	}
@@ -217,8 +227,11 @@ func runExceptionsOccurrence(cmd *cobra.Command, args []string) error {
 		return renderTimestampError(cmd.ErrOrStderr(), mode, "recorded-at", err)
 	}
 
-	c := sess.Client()
-	resp, err := c.GetExceptionById(ctx, sess.ProjectID, args[0], recordedAt)
+	sources, err := exceptionSources(sess)
+	if err != nil {
+		return renderSourceError(cmd.ErrOrStderr(), mode, err)
+	}
+	resp, err := access.GetOccurrence(ctx, sources, access.Lookup{ProjectID: sess.ProjectID, ID: args[0], At: recordedAt})
 	if err != nil {
 		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
 	}
@@ -264,10 +277,7 @@ func newExceptionsArchiveCmd() *cobra.Command {
 		Short: "Archive one or more exception groups",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runExceptionsMutation(cmd, args, "archive",
-				func(c *client.Client, ctx context.Context, projectID string, hashes []string) error {
-					return c.ArchiveExceptions(ctx, projectID, hashes)
-				})
+			return runExceptionsMutation(cmd, args, "archive", access.ExceptionAccess.ArchiveExceptions)
 		},
 	}
 }
@@ -278,22 +288,20 @@ func newExceptionsUnarchiveCmd() *cobra.Command {
 		Short: "Unarchive one or more exception groups",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runExceptionsMutation(cmd, args, "unarchive",
-				func(c *client.Client, ctx context.Context, projectID string, hashes []string) error {
-					return c.UnarchiveExceptions(ctx, projectID, hashes)
-				})
+			return runExceptionsMutation(cmd, args, "unarchive", access.ExceptionAccess.UnarchiveExceptions)
 		},
 	}
 }
 
 // runExceptionsMutation is the shared body for archive and unarchive. The
 // 'verb' parameter controls the prompt wording and the rendered action label;
-// 'doIt' is the client method to call after confirmation passes.
+// 'apply' is the access method to call after confirmation passes. An archive
+// changes state at one source, so with several bound the caller names it.
 func runExceptionsMutation(
 	cmd *cobra.Command,
 	hashes []string,
 	verb string,
-	doIt func(c *client.Client, ctx context.Context, projectID string, hashes []string) error,
+	apply func(source access.ExceptionAccess, ctx context.Context, projectID string, hashes []string) error,
 ) error {
 	ctx := cmd.Context()
 	mode := output.ResolveMode(flagOutput, output.StdoutIsTerminal())
@@ -301,6 +309,15 @@ func runExceptionsMutation(
 	sess, err := loadSession()
 	if err != nil {
 		return renderSessionError(cmd.ErrOrStderr(), mode, err)
+	}
+	sources, err := exceptionSources(sess)
+	if err != nil {
+		return renderSourceError(cmd.ErrOrStderr(), mode, err)
+	}
+	if len(sources) > 1 {
+		return renderUsageError(cmd.ErrOrStderr(), mode,
+			"several sources answer exceptions; say which one holds these hashes",
+			"traceway exceptions "+verb+" --source <name> <hash>")
 	}
 
 	summary := []string{
@@ -313,8 +330,7 @@ func runExceptionsMutation(
 		return err
 	}
 
-	c := sess.Client()
-	if err := doIt(c, ctx, sess.ProjectID, hashes); err != nil {
+	if err := apply(sources[0], ctx, sess.ProjectID, hashes); err != nil {
 		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
 	}
 
@@ -341,4 +357,12 @@ func truncateHash(hash string, n int) string {
 		return hash
 	}
 	return hash[:n]
+}
+
+func exceptionSources(sess *session) ([]access.ExceptionAccess, error) {
+	resolver, err := sess.Resolver()
+	if err != nil {
+		return nil, err
+	}
+	return access.Exceptions(resolver, flagSource)
 }

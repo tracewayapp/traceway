@@ -3,10 +3,12 @@
 	import { useSidebar } from '$lib/components/ui/sidebar';
 	import { oncallState } from '$lib/state/oncall.svelte';
 	import { monitorsState } from '$lib/state/monitors.svelte';
+	import { agentState } from '$lib/state/agent.svelte';
 	import { organizationContext } from '$lib/state/organization-context.svelte';
 	import {
 		Activity,
 		Bell,
+		Bot,
 		Workflow,
 		Bug,
 		Link2,
@@ -88,6 +90,7 @@
 			stickyParams: ['preset', 'from', 'to']
 		},
 		{ Icon: Bell, href: '/notifications', title: 'Alerts', stickyParams: ['preset', 'from', 'to'] },
+		{ Icon: Bot, href: '/agent', title: 'Agent', stickyParams: [] },
 		{ Icon: PhoneCall, href: '/on-call', title: 'On-Call', stickyParams: [] },
 		{ Icon: Link2, href: '/connection', title: 'Connection', stickyParams: [] }
 	];
@@ -203,6 +206,9 @@
 				? organizationContext.openPagesCount
 				: oncallState.openPagesCount;
 		}
+		if (item.title === 'Agent') {
+			return agentState.needsInputCount + agentState.pendingApprovalCount;
+		}
 		return 0;
 	}
 
@@ -213,9 +219,11 @@
 		if (!projectId) return;
 		const hasMonitors = sidebarItems.some((item) => item.title === 'Monitors');
 		oncallState.refreshOpenCount();
+		agentState.refreshBadge();
 		if (hasMonitors) monitorsState.refreshDownCount();
 		const interval = setInterval(() => {
 			oncallState.refreshOpenCount();
+			agentState.refreshBadge();
 			if (hasMonitors) monitorsState.refreshDownCount();
 		}, 60000);
 		return () => clearInterval(interval);

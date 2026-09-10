@@ -1,0 +1,56 @@
+# GitHub
+
+import { Callout } from "nextra/components";
+
+GitHub is where the agent's pull requests go, and with a GitHub App it is also a surface: labelling an issue starts an attempt, `@traceway` in a comment talks to it, and merging the pull request closes the loop. A personal access token gets the pull requests; the App adds the rest.
+
+## Personal access token
+
+In **Settings**, under **Integrations**, add a **github** integration with credential `pat` and a fine-grained token that has, on the repositories the agent may touch, **contents**, **pull requests** and **issues** read and write. This is enough to clone, push a fix branch and open a draft pull request. There are no webhooks in this mode, so merged and closed pull requests do not update the attempt on their own.
+
+## GitHub App
+
+With credential `app`, one GitHub App owned by your account or organization does the work with installation tokens minted per repository (an hour each, scoped to that repository), and its webhooks feed comments and merges back into attempts.
+
+1. Add a **github** integration with credential `app` and save it, or open an existing one.
+2. Press **Create the GitHub App from a manifest**. Traceway opens a page that sends an App manifest to GitHub: name, the webhook pointing at this instance, and exactly the permissions below.
+3. GitHub asks which account owns the App and shows the manifest. Create it.
+4. GitHub returns to Traceway, which stores the App's ID, private key, webhook secret and client credentials encrypted on the integration, and sends you on to install the App.
+5. Install it on the repositories the agent may touch. The `installation` webhook records the installation on the integration; the repository tab shows **GitHub App installed**.
+
+| Permission | Why |
+|------------|-----|
+| Contents: write | Clone and push the fix branch |
+| Pull requests: write | Open the draft pull request and comment on it |
+| Issues: write | Read labelled issues, comment, and create issues from the github notification channel |
+| Metadata: read | Required by GitHub for the others |
+
+The App subscribes to `installation`, `issues`, `issue_comment`, `pull_request` and `pull_request_review_comment`. Every delivery is checked against the webhook secret before anything is read from it.
+
+<Callout type="info">
+The instance needs to be reachable from GitHub for the webhooks: set `APP_BASE_URL` to the public origin before creating the App, since the manifest carries the webhook address. Without webhooks the App still mints tokens and opens pull requests.
+</Callout>
+
+## What the webhooks do
+
+- **Labelling an issue** with the integration's label (`traceway` by default) starts an attempt when the issue body names the exception and the project on lines of their own, the way the [GitHub notification channel](/learn/alerts#setting-up-github) writes them:
+
+  ```
+  Hash: 0123456789abcdef
+  Project: 6f1b3d2e-4c5a-4b8e-9d0f-1a2b3c4d5e6f
+  ```
+
+  Nothing else in the issue is trusted; the agent reads the issue through Traceway, not from GitHub.
+- **`@traceway fix`** in a comment on such an issue does the same.
+- **`@traceway <text>`** in a comment on the attempt's pull request, or on the issue it started from, is a reply in the attempt's thread. When the agent is waiting for an answer, it resumes with it.
+- **Closing the pull request** marks the attempt *Merged* and archives the exception in Traceway, or *Closed* when it was not merged, leaving the exception open.
+
+The agent's findings and questions are posted as comments on the pull request, and replies from the dashboard or Slack appear there too, each with where it came from.
+
+## Who can talk to the agent from GitHub
+
+GitHub does not expose member emails, so logins are mapped by hand: in **Settings**, under **Team Members**, expand a member and enter their **GitHub login**. Comments and labels from unmapped logins are ignored and recorded on the attempt's timeline; mapped members need the same write access on the project as in the dashboard.
+
+## The github notification channel
+
+The existing **GitHub** notification channel, which opens an issue per alert, can use the integration instead of its own token: pick the integration in the channel dialog and leave the token empty. Issues it creates carry the `Hash:` and `Project:` lines above, so labelling them is all it takes to start an attempt.

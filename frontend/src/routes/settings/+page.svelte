@@ -8,6 +8,8 @@
 	import OrgSwitcher from '$lib/components/traceway/org-switcher.svelte';
 	import OrganizationTab from './organization-tab.svelte';
 	import UsersTab from './users-tab.svelte';
+	import IntegrationsTab from './integrations-tab.svelte';
+	import AgentProfilesTab from './agent-profiles-tab.svelte';
 	import type { Component } from 'svelte';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 
@@ -100,6 +102,8 @@
 		<div class="space-y-4">
 			<OrganizationTab />
 			<UsersTab organizationId={currentOrganizationId!} />
+			<IntegrationsTab organizationId={currentOrganizationId!} />
+			<AgentProfilesTab organizationId={currentOrganizationId!} />
 			{#if BillingTab}
 				<BillingTab organizationId={currentOrganizationId!} />
 			{/if}

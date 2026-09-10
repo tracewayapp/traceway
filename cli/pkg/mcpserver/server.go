@@ -10,6 +10,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/tracewayapp/traceway/cli/pkg/access"
+	"github.com/tracewayapp/traceway/cli/pkg/access/traceway"
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 	"github.com/tracewayapp/traceway/cli/pkg/mcpserver/knowledge"
 )
@@ -21,8 +23,12 @@ import (
 type Config struct {
 	// Client is the authenticated API client. Refresh behavior is the
 	// client's own concern (client.WithRefresher); the server never touches
-	// credentials.
+	// credentials. It is also the instance's own telemetry source, bound
+	// first under the name "traceway".
 	Client *client.Client
+	// Sources are the profile's additional telemetry sources, bound after
+	// the instance's own in priority order.
+	Sources []access.Bound
 	// DefaultProjectID is used when a tool call passes no project_id. May be
 	// empty: list_projects still works and every tool accepts project_id.
 	DefaultProjectID string
@@ -68,7 +74,8 @@ func New(cfg Config) *mcp.Server {
 		&mcp.Implementation{Name: "traceway", Title: "Traceway", Version: version},
 		&mcp.ServerOptions{Instructions: instructions, SchemaCache: sharedSchemaCache()},
 	)
-	s := &server{cfg: cfg}
+	bound := append([]access.Bound{{Source: traceway.New(traceway.DefaultName, cfg.Client)}}, cfg.Sources...)
+	s := &server{cfg: cfg, resolver: access.NewResolver(bound...)}
 	s.addTools(srv)
 	addPrompts(srv)
 	addResources(srv)
@@ -76,5 +83,6 @@ func New(cfg Config) *mcp.Server {
 }
 
 type server struct {
-	cfg Config
+	cfg      Config
+	resolver *access.Resolver
 }

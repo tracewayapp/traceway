@@ -1,0 +1,31 @@
+{
+  "data": [
+    {
+      "body": "payment gateway timeout after 30s",
+      "id": "aaaaaaaa-0000-4000-8000-000000000001",
+      "logAttributes": {
+        "order_id": "18841"
+      },
+      "serviceName": "checkout",
+      "severityNumber": 17,
+      "severityText": "ERROR",
+      "spanId": "00f067aa0ba902b7",
+      "timestamp": "2026-06-01T12:05:00Z",
+      "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+    },
+    {
+      "body": "order created",
+      "id": "aaaaaaaa-0000-4000-8000-000000000002",
+      "serviceName": "checkout",
+      "severityNumber": 9,
+      "severityText": "INFO",
+      "timestamp": "2026-06-01T12:04:30Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "pageSize": 20,
+    "total": 2,
+    "totalPages": 1
+  }
+}

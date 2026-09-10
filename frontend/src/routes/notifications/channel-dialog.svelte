@@ -10,7 +10,7 @@
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
 	import { projectsState } from '$lib/state/projects.svelte';
-	import type { NotificationChannelConfig } from '$lib/types/notifications';
+	import { SECRET_SENTINEL, type NotificationChannelConfig } from '$lib/types/notifications';
 
 	interface NotificationChannel {
 		id: number;
@@ -18,6 +18,7 @@
 		name: string;
 		channelType: string;
 		config: NotificationChannelConfig;
+		hasSecrets?: string[];
 		enabled: boolean;
 		createdAt: string;
 	}
@@ -62,13 +63,41 @@
 	let escalationPolicyId = $state<number | null>(null);
 	let escalationPolicies = $state<{ id: number; name: string }[]>([]);
 	let escalationPoliciesLoaded = $state(false);
+	let agentProfileId = $state<number | null>(null);
+	let agentApproval = $state<'ask' | 'auto'>('ask');
+	let agentProfiles = $state<{ id: number; name: string; isDefault: boolean }[]>([]);
+	let agentProfilesLoaded = $state(false);
+	let githubIntegrationId = $state<number | null>(null);
+	let codeHostIntegrations = $state<{ id: number; name: string; provider: string }[]>([]);
+	let codeHostIntegrationsLoaded = $state(false);
+	let slackAppIntegrationId = $state<number | null>(null);
+	let slackAppChannel = $state('');
+	let chatIntegrations = $state<{ id: number; name: string; provider: string }[]>([]);
+	let chatIntegrationsLoaded = $state(false);
+	let storedSecrets = $state<string[]>([]);
 
 	const isEditing = $derived(channel !== null);
+
+	function hasStoredSecret(field: string): boolean {
+		return isEditing && channelType === channel?.channelType && storedSecrets.includes(field);
+	}
+
+	// A credential the API masked is shown as an empty field; leaving it empty
+	// sends the sentinel back so the stored value survives the update.
+	function secretValue(field: string, typed: string): string {
+		return typed || (hasStoredSecret(field) ? SECRET_SENTINEL : '');
+	}
+
+	function secretPlaceholder(field: string, fallback: string): string {
+		return hasStoredSecret(field) ? 'Secret set, leave blank to keep' : fallback;
+	}
 
 	const channelTypeOptions = [
 		{ value: 'email', label: 'Email' },
 		{ value: 'webhook', label: 'Webhook' },
 		{ value: 'slack', label: 'Slack' },
+		{ value: 'slack_app', label: 'Slack app (agent)' },
+		{ value: 'agent', label: 'Fix agent' },
 		{ value: 'github', label: 'GitHub' },
 		{ value: 'pushover', label: 'Pushover' },
 		{ value: 'telegram', label: 'Telegram' },
@@ -88,9 +117,61 @@
 		}
 	}
 
+	async function loadChatIntegrations() {
+		try {
+			const res = await api.get('/integrations?kind=chat', {
+				projectId: projectsState.currentProjectId ?? undefined
+			});
+			chatIntegrations = (res.integrations || []).filter(
+				(i: { provider: string }) => i.provider === 'slack'
+			);
+		} catch {
+			chatIntegrations = [];
+		} finally {
+			chatIntegrationsLoaded = true;
+		}
+	}
+
+	async function loadAgentProfiles() {
+		try {
+			const res = await api.get('/agent-profiles', {
+				projectId: projectsState.currentProjectId ?? undefined
+			});
+			agentProfiles = res.profiles || [];
+		} catch {
+			agentProfiles = [];
+		} finally {
+			agentProfilesLoaded = true;
+		}
+	}
+
+	async function loadCodeHostIntegrations() {
+		try {
+			const res = await api.get('/integrations?kind=code_host', {
+				projectId: projectsState.currentProjectId ?? undefined
+			});
+			codeHostIntegrations = (res.integrations || []).filter(
+				(i: { provider: string }) => i.provider === 'github'
+			);
+		} catch {
+			codeHostIntegrations = [];
+		} finally {
+			codeHostIntegrationsLoaded = true;
+		}
+	}
+
 	$effect(() => {
 		if (open && channelType === 'escalation' && !escalationPoliciesLoaded) {
 			loadEscalationPolicies();
+		}
+		if (open && channelType === 'slack_app' && !chatIntegrationsLoaded) {
+			loadChatIntegrations();
+		}
+		if (open && channelType === 'github' && !codeHostIntegrationsLoaded) {
+			loadCodeHostIntegrations();
+		}
+		if (open && channelType === 'agent' && !agentProfilesLoaded) {
+			loadAgentProfiles();
 		}
 	});
 
@@ -124,11 +205,21 @@
 		telegramChatId = '';
 		escalationPolicyId = null;
 		escalationPoliciesLoaded = false;
+		slackAppIntegrationId = null;
+		slackAppChannel = '';
+		chatIntegrationsLoaded = false;
+		githubIntegrationId = null;
+		codeHostIntegrationsLoaded = false;
+		agentProfileId = null;
+		agentApproval = 'ask';
+		agentProfilesLoaded = false;
+		storedSecrets = [];
 	}
 
 	function populateFromChannel(ch: NotificationChannel) {
 		name = ch.name;
 		channelType = ch.channelType;
+		storedSecrets = ch.hasSecrets ?? [];
 		const config = ch.config || {};
 
 		if (ch.channelType === 'email') {
@@ -136,7 +227,7 @@
 		} else if (ch.channelType === 'webhook') {
 			webhookUrl = config.url || '';
 			webhookMethod = config.method || 'POST';
-			webhookSecret = config.secret || '';
+			webhookSecret = '';
 			webhookHeaders = config.headers
 				? Object.entries(config.headers).map(([key, value]) => ({
 						key,
@@ -144,17 +235,18 @@
 					}))
 				: [];
 		} else if (ch.channelType === 'slack') {
-			slackWebhookUrl = config.webhookUrl || '';
+			slackWebhookUrl = '';
 			slackChannel = config.channel || '';
 			slackUsername = config.username || '';
 		} else if (ch.channelType === 'github') {
-			githubToken = config.token || '';
+			githubToken = '';
+			githubIntegrationId = config.integrationId ?? null;
 			githubOwner = config.owner || '';
 			githubRepo = config.repo || '';
 			githubLabels = (config.labels || []).join(', ');
 		} else if (ch.channelType === 'pushover') {
-			pushoverUserKey = config.userKey || '';
-			pushoverAppToken = config.appToken || '';
+			pushoverUserKey = '';
+			pushoverAppToken = '';
 			pushoverDevice = config.device || '';
 			pushoverPriority = String(config.priority ?? 0);
 			pushoverRetry = config.retry ?? 30;
@@ -164,10 +256,16 @@
 			pushoverHtml = config.html ?? false;
 			pushoverTtl = config.ttl ?? 0;
 		} else if (ch.channelType === 'telegram') {
-			telegramBotToken = config.botToken || '';
+			telegramBotToken = '';
 			telegramChatId = config.chatId || '';
 		} else if (ch.channelType === 'escalation') {
 			escalationPolicyId = config.policyId ?? null;
+		} else if (ch.channelType === 'slack_app') {
+			slackAppIntegrationId = config.integrationId ?? null;
+			slackAppChannel = config.channel || '';
+		} else if (ch.channelType === 'agent') {
+			agentProfileId = config.profileId ?? null;
+			agentApproval = config.approval === 'auto' ? 'auto' : 'ask';
 		}
 	}
 
@@ -177,7 +275,8 @@
 		} else if (channelType === 'webhook') {
 			const config: NotificationChannelConfig = { url: webhookUrl };
 			if (webhookMethod !== 'POST') config.method = webhookMethod;
-			if (webhookSecret) config.secret = webhookSecret;
+			const secret = secretValue('secret', webhookSecret);
+			if (secret) config.secret = secret;
 			const headers: Record<string, string> = {};
 			for (const h of webhookHeaders) {
 				if (h.key.trim()) headers[h.key.trim()] = h.value;
@@ -185,16 +284,19 @@
 			if (Object.keys(headers).length > 0) config.headers = headers;
 			return config;
 		} else if (channelType === 'slack') {
-			const config: NotificationChannelConfig = { webhookUrl: slackWebhookUrl };
+			const config: NotificationChannelConfig = {
+				webhookUrl: secretValue('webhookUrl', slackWebhookUrl)
+			};
 			if (slackChannel) config.channel = slackChannel;
 			if (slackUsername) config.username = slackUsername;
 			return config;
 		} else if (channelType === 'github') {
 			const config: NotificationChannelConfig = {
-				token: githubToken,
+				token: secretValue('token', githubToken),
 				owner: githubOwner,
 				repo: githubRepo
 			};
+			if (githubIntegrationId !== null) config.integrationId = githubIntegrationId;
 			const labels = githubLabels
 				.split(',')
 				.map((l) => l.trim())
@@ -203,8 +305,8 @@
 			return config;
 		} else if (channelType === 'pushover') {
 			const config: NotificationChannelConfig = {
-				userKey: pushoverUserKey,
-				appToken: pushoverAppToken
+				userKey: secretValue('userKey', pushoverUserKey),
+				appToken: secretValue('appToken', pushoverAppToken)
 			};
 			if (pushoverDevice) config.device = pushoverDevice;
 			if (pushoverPriority !== '0') config.priority = Number(pushoverPriority);
@@ -219,11 +321,15 @@
 			return config;
 		} else if (channelType === 'telegram') {
 			return {
-				botToken: telegramBotToken,
+				botToken: secretValue('botToken', telegramBotToken),
 				chatId: telegramChatId
 			};
 		} else if (channelType === 'escalation') {
 			return { policyId: escalationPolicyId };
+		} else if (channelType === 'slack_app') {
+			return { integrationId: slackAppIntegrationId, channel: slackAppChannel };
+		} else if (channelType === 'agent') {
+			return { profileId: agentProfileId, approval: agentApproval };
 		}
 		return {};
 	}
@@ -388,7 +494,12 @@
 				</div>
 				<div class="space-y-2">
 					<Label for="webhook-secret">Secret (optional)</Label>
-					<Input id="webhook-secret" bind:value={webhookSecret} placeholder="HMAC signing secret" />
+					<Input
+						id="webhook-secret"
+						type="password"
+						bind:value={webhookSecret}
+						placeholder={secretPlaceholder('secret', 'HMAC signing secret')}
+					/>
 				</div>
 				<div class="space-y-2">
 					<Label>Headers (optional)</Label>
@@ -415,9 +526,10 @@
 					<Label for="slack-url">Webhook URL</Label>
 					<Input
 						id="slack-url"
+						type="password"
 						bind:value={slackWebhookUrl}
-						placeholder="https://hooks.slack.com/services/..."
-						required
+						placeholder={secretPlaceholder('webhookUrl', 'https://hooks.slack.com/services/...')}
+						required={!hasStoredSecret('webhookUrl')}
 					/>
 				</div>
 				<div class="space-y-2">
@@ -429,16 +541,47 @@
 					<Input id="slack-username" bind:value={slackUsername} placeholder="Traceway" />
 				</div>
 			{:else if channelType === 'github'}
-				<div class="space-y-2">
-					<Label for="gh-token">Personal Access Token</Label>
-					<Input
-						id="gh-token"
-						type="password"
-						bind:value={githubToken}
-						placeholder="ghp_..."
-						required
-					/>
-				</div>
+				{#if codeHostIntegrations.length > 0}
+					<div class="space-y-2">
+						<Label>Credential</Label>
+						<Select.Root
+							type="single"
+							value={githubIntegrationId !== null ? String(githubIntegrationId) : 'own'}
+							onValueChange={(val) => {
+								githubIntegrationId = val && val !== 'own' ? Number(val) : null;
+							}}
+						>
+							<Select.Trigger class="w-full">
+								{codeHostIntegrations.find((i) => i.id === githubIntegrationId)?.name ??
+									'Own token'}
+							</Select.Trigger>
+							<Select.Content>
+								<Select.Item value="own">Own token</Select.Item>
+								{#each codeHostIntegrations as integration (integration.id)}
+									<Select.Item value={String(integration.id)}
+										>{integration.name} (integration)</Select.Item
+									>
+								{/each}
+							</Select.Content>
+						</Select.Root>
+						<p class="text-xs text-muted-foreground">
+							An integration creates issues with its own credential; labelling those issues starts
+							the fix agent.
+						</p>
+					</div>
+				{/if}
+				{#if githubIntegrationId === null}
+					<div class="space-y-2">
+						<Label for="gh-token">Personal Access Token</Label>
+						<Input
+							id="gh-token"
+							type="password"
+							bind:value={githubToken}
+							placeholder={secretPlaceholder('token', 'ghp_...')}
+							required={!hasStoredSecret('token')}
+						/>
+					</div>
+				{/if}
 				<div class="space-y-2">
 					<Label for="gh-owner">Repository Owner</Label>
 					<Input id="gh-owner" bind:value={githubOwner} placeholder="owner" required />
@@ -456,9 +599,10 @@
 					<Label for="po-user-key">User Key</Label>
 					<Input
 						id="po-user-key"
+						type="password"
 						bind:value={pushoverUserKey}
-						placeholder="Your Pushover user key"
-						required
+						placeholder={secretPlaceholder('userKey', 'Your Pushover user key')}
+						required={!hasStoredSecret('userKey')}
 					/>
 				</div>
 				<div class="space-y-2">
@@ -467,8 +611,8 @@
 						id="po-app-token"
 						type="password"
 						bind:value={pushoverAppToken}
-						placeholder="Your Pushover application token"
-						required
+						placeholder={secretPlaceholder('appToken', 'Your Pushover application token')}
+						required={!hasStoredSecret('appToken')}
 					/>
 				</div>
 				<div class="space-y-2">
@@ -542,8 +686,8 @@
 						id="tg-bot-token"
 						type="password"
 						bind:value={telegramBotToken}
-						placeholder="Token from @BotFather"
-						required
+						placeholder={secretPlaceholder('botToken', 'Token from @BotFather')}
+						required={!hasStoredSecret('botToken')}
 					/>
 				</div>
 				<div class="space-y-2">
@@ -554,6 +698,94 @@
 						placeholder="Destination user or group ID"
 						required
 					/>
+				</div>
+			{:else if channelType === 'slack_app'}
+				<div class="space-y-2">
+					<Label>Slack integration</Label>
+					{#if chatIntegrationsLoaded && chatIntegrations.length === 0}
+						<p class="text-sm text-muted-foreground">
+							No Slack integration yet. An organization admin adds one under
+							<a
+								{...{ href: resolveHref('/settings') }}
+								class="text-blue-600 hover:underline dark:text-blue-400">Settings</a
+							>.
+						</p>
+					{:else}
+						<Select.Root
+							type="single"
+							value={slackAppIntegrationId !== null ? String(slackAppIntegrationId) : undefined}
+							onValueChange={(val) => {
+								if (val) slackAppIntegrationId = Number(val);
+							}}
+						>
+							<Select.Trigger class="w-full">
+								{chatIntegrations.find((i) => i.id === slackAppIntegrationId)?.name ??
+									'Select integration'}
+							</Select.Trigger>
+							<Select.Content>
+								{#each chatIntegrations as integration (integration.id)}
+									<Select.Item value={String(integration.id)}>{integration.name}</Select.Item>
+								{/each}
+							</Select.Content>
+						</Select.Root>
+					{/if}
+				</div>
+				<div class="space-y-2">
+					<Label for="slack-app-channel">Channel ID</Label>
+					<Input
+						id="slack-app-channel"
+						bind:value={slackAppChannel}
+						placeholder="C0123456789"
+						required
+					/>
+					<p class="text-xs text-muted-foreground">
+						Alerts post here with View, Fix it and Archive buttons; the app has to be invited to the
+						channel.
+					</p>
+				</div>
+			{:else if channelType === 'agent'}
+				<div class="space-y-2">
+					<Label>Agent profile</Label>
+					<Select.Root
+						type="single"
+						value={agentProfileId !== null ? String(agentProfileId) : 'default'}
+						onValueChange={(val) => {
+							agentProfileId = val && val !== 'default' ? Number(val) : null;
+						}}
+					>
+						<Select.Trigger class="w-full">
+							{agentProfiles.find((p) => p.id === agentProfileId)?.name ?? 'Organization default'}
+						</Select.Trigger>
+						<Select.Content>
+							<Select.Item value="default">Organization default</Select.Item>
+							{#each agentProfiles as profile (profile.id)}
+								<Select.Item value={String(profile.id)}>{profile.name}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
+				</div>
+				<div class="space-y-2">
+					<Label>Approval</Label>
+					<Select.Root
+						type="single"
+						value={agentApproval}
+						onValueChange={(val) => {
+							if (val === 'ask' || val === 'auto') agentApproval = val;
+						}}
+					>
+						<Select.Trigger class="w-full" data-testid="agent-approval">
+							{agentApproval === 'auto' ? 'Start right away' : 'Ask first'}
+						</Select.Trigger>
+						<Select.Content>
+							<Select.Item value="ask">Ask first</Select.Item>
+							<Select.Item value="auto">Start right away</Select.Item>
+						</Select.Content>
+					</Select.Root>
+					<p class="text-xs text-muted-foreground">
+						Attach this channel to a New Issue or Error Regression rule. Ask first parks the attempt
+						on the Agent page (and in Slack when a Slack app is connected) until someone approves
+						it. Rules of other types create nothing.
+					</p>
 				</div>
 			{:else if channelType === 'escalation'}
 				<div class="space-y-2">

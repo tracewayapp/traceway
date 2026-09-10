@@ -1,0 +1,1 @@
+{"metrics":[{"name":"system.cpu.utilization","tagKeys":["host.name","state"],"metricType":"gauge","unit":"1"},{"name":"http.server.duration.avg","tagKeys":["route"]}]}

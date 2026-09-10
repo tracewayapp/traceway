@@ -24,7 +24,14 @@ export type NotificationChannelConfig = {
 	botToken?: string;
 	chatId?: string;
 	policyId?: number | null;
+	integrationId?: number | null;
+	profileId?: number | null;
+	approval?: string;
 };
+
+// Credentials come back from the API as this value; sending it back on an
+// update keeps the stored credential.
+export const SECRET_SENTINEL = '********';
 
 export type NotificationRuleConfig = {
 	thresholdPercent?: number;

@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS agent_links_provider_kind_ref_unique;

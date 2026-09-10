@@ -6,11 +6,13 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/tracewayapp/traceway/cli/pkg/access"
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
 
 type queryLogsIn struct {
 	projectIn
+	sourceIn
 	timeRangeIn
 	pageIn
 	Search        string `json:"search,omitempty" jsonschema:"Free-text search."`
@@ -40,19 +42,23 @@ func (s *server) queryLogs(ctx context.Context, req *mcp.CallToolRequest, in que
 	if err := validateEnum("sort_direction", in.SortDirection, client.SortDirections); err != nil {
 		return nil, nil, err
 	}
-	resp, err := s.client(req).QueryLogs(ctx, projectID, client.QueryLogsRequest{
-		TimeRange:     tr,
-		Pagination:    page,
+	sources, err := access.Logs(s.sources(req), in.Source)
+	if err != nil {
+		return nil, nil, usageErrf("%v", err)
+	}
+	resp, failed, err := access.QueryLogs(ctx, sources, access.LogQuery{
+		ProjectID:     projectID,
+		Window:        tr,
+		Page:          page,
 		Search:        in.Search,
 		SearchType:    cmp.Or(in.SearchType, "body"),
 		MinSeverity:   in.MinSeverity,
 		ServiceName:   in.ServiceName,
-		TraceId:       in.TraceID,
-		OrderBy:       "timestamp",
+		TraceID:       in.TraceID,
 		SortDirection: cmp.Or(in.SortDirection, "desc"),
 	})
 	if err != nil {
 		return nil, nil, s.apiErr(err)
 	}
-	return nil, resp, nil
+	return withSourceWarnings(resp, failed)
 }

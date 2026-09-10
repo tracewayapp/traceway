@@ -17,9 +17,11 @@ require (
 	github.com/google/pprof v0.0.0-20260604005048-7023385849c0
 	github.com/gorilla/securecookie v1.1.2
 	github.com/gorilla/sessions v1.4.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/lib/pq v1.10.9
 	github.com/markbates/goth v1.82.0
 	github.com/modelcontextprotocol/go-sdk v1.6.1
+	github.com/slack-go/slack v0.29.0
 	github.com/tracewayapp/lit/v2 v2.0.5
 	github.com/tracewayapp/traceway/cli v1.9.15
 	go.opentelemetry.io/collector/component v1.60.0

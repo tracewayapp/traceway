@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS identities (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider VARCHAR(50) NOT NULL,
+    external_id VARCHAR(300) NOT NULL,
+    display VARCHAR(300) NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)

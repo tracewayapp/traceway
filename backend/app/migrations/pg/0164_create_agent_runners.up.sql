@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS agent_runners (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(200) NOT NULL UNIQUE,
+    version VARCHAR(100) NOT NULL DEFAULT '',
+    capabilities JSONB NOT NULL DEFAULT '{}',
+    first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)

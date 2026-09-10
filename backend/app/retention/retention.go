@@ -27,16 +27,21 @@ func Start(ctx context.Context) {
 	startOAuthSessionsPrune(ctx)
 	startAuthTokensPrune(ctx)
 	startOutboxPrune(ctx)
+	startAgentAttemptPrune(ctx, parseRetentionDaysWithDefault(cfg.AgentAttemptRetentionDays, defaultAgentAttemptRetentionDays))
 }
 
 func parseRetentionDays(value string) int {
+	return parseRetentionDaysWithDefault(value, defaultRetentionDays)
+}
+
+func parseRetentionDaysWithDefault(value string, fallback int) int {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
-		return defaultRetentionDays
+		return fallback
 	}
 	days, err := strconv.Atoi(trimmed)
 	if err != nil || days < 0 {
-		return defaultRetentionDays
+		return fallback
 	}
 	return days
 }

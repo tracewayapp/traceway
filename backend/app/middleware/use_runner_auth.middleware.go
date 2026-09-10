@@ -52,9 +52,7 @@ func InitUseRunnerAuth() {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Runner support is not enabled on this instance: set SYNTHETICS_RUNNER_SECRET"})
 			return
 		}
-		header := c.GetHeader("Authorization")
-		presented, ok := strings.CutPrefix(header, "Bearer ")
-		if !ok || subtle.ConstantTimeCompare([]byte(presented), []byte(secret)) != 1 {
+		if !bearerMatches(c.GetHeader("Authorization"), secret) {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid runner secret"})
 			return
 		}
@@ -62,6 +60,13 @@ func InitUseRunnerAuth() {
 		c.Set(RunnerContextKey, runner)
 		c.Next()
 	}
+}
+
+// bearerMatches compares a presented bearer header against a shared secret
+// in constant time.
+func bearerMatches(header string, secret string) bool {
+	presented, ok := strings.CutPrefix(header, "Bearer ")
+	return ok && subtle.ConstantTimeCompare([]byte(presented), []byte(secret)) == 1
 }
 
 // resolveRunner returns the liveness row for a runner name, registering or

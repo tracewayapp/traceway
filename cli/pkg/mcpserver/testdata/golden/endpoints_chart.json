@@ -1,0 +1,24 @@
+{
+  "endpoints": [
+    "POST /api/checkout",
+    "GET /api/cart",
+    "Other"
+  ],
+  "series": [
+    {
+      "endpoint": "POST /api/checkout",
+      "timestamp": "2026-06-01T12:00:00Z",
+      "value": 880.5
+    },
+    {
+      "endpoint": "POST /api/checkout",
+      "timestamp": "2026-06-01T12:05:00Z",
+      "value": 950.2
+    },
+    {
+      "endpoint": "GET /api/cart",
+      "timestamp": "2026-06-01T12:00:00Z",
+      "value": 40.1
+    }
+  ]
+}

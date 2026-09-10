@@ -120,41 +120,37 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("node is not on PATH: %w", err)
 	}
-	cmd, err := buildCommand(ctx, opts.Sandbox, commandSpec{
+	// Allowlisted environment only; see Options.Env.
+	env := map[string]string{
+		"PATH":                        os.Getenv("PATH"),
+		"HOME":                        homeDir,
+		"TMPDIR":                      runDir,
+		"PLAYWRIGHT_JSON_OUTPUT_NAME": reportPath,
+	}
+	if browsers != "" {
+		env["PLAYWRIGHT_BROWSERS_PATH"] = browsers
+	}
+	for name, value := range opts.Env {
+		env[name] = value
+	}
+	cmd, cleanup, err := buildCommand(ctx, opts.Sandbox, commandSpec{
 		NodePath:     node,
 		CLIPath:      cli,
 		ConfigPath:   configPath,
 		HarnessDir:   opts.HarnessDir,
 		RunDir:       runDir,
 		BrowsersPath: browsers,
+		Env:          env,
 	})
 	if err != nil {
 		return nil, err
 	}
+	defer cleanup()
 	// A leaked descendant holding the output pipe (a daemon the user script
 	// spawned, or Chromium surviving the plain kill on Windows) must not wedge
 	// this worker forever: force the pipes closed shortly after node exits or
 	// the deadline kills it.
 	cmd.WaitDelay = 10 * time.Second
-	// Allowlisted environment only; see Options.Env.
-	env := []string{
-		"PATH=" + os.Getenv("PATH"),
-		"HOME=" + homeDir,
-		"TMPDIR=" + runDir,
-		"PLAYWRIGHT_JSON_OUTPUT_NAME=" + reportPath,
-	}
-	if browsers != "" {
-		env = append(env, "PLAYWRIGHT_BROWSERS_PATH="+browsers)
-	}
-	for name, value := range opts.Env {
-		name = strings.TrimSpace(name)
-		if name == "" || strings.ContainsAny(name, "=\x00") {
-			continue
-		}
-		env = append(env, name+"="+value)
-	}
-	cmd.Env = env
-	configureProcessGroup(cmd)
 
 	output, runErr := cmd.CombinedOutput()
 	if len(output) > maxOutputBytes {

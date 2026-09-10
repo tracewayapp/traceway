@@ -1,6 +1,9 @@
 package controllers
 
-import "database/sql"
+import (
+	"database/sql"
+	"github.com/tracewayapp/traceway/backend/app/agent"
+)
 
 type LimitExceededError struct {
 	Message string
@@ -21,3 +24,16 @@ var CheckLimitHook func(tx *sql.Tx, orgId int) error
 // organization, because it runs before the organization exists. Nil means
 // unlimited; a LimitExceededError surfaces as a 422 in the dialog.
 var OrganizationLimitHook func(tx *sql.Tx, userId int) error
+
+// AttemptLimitHook caps active fix-agent attempts per organization (cloud
+// plans). Nil means unlimited; a LimitExceededError surfaces as a 422.
+var AttemptLimitHook func(tx *sql.Tx, orgId int) error
+
+func init() {
+	agent.StartLimitHook = func(tx *sql.Tx, orgId int) error {
+		if AttemptLimitHook != nil {
+			return AttemptLimitHook(tx, orgId)
+		}
+		return nil
+	}
+}

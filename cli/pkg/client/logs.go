@@ -1,29 +1,16 @@
 package client
 
 import (
+	"github.com/tracewayapp/traceway/cli/pkg/access"
+
 	"context"
 	"net/http"
 	"net/url"
 	"time"
-
-	"github.com/google/uuid"
 )
 
-// LogRecord matches the upstream models.LogRecord (subset — we drop fields
-// we don't surface in v1, like resource/scope schema URLs).
-type LogRecord struct {
-	Id                 uuid.UUID         `json:"id"`
-	Timestamp          time.Time         `json:"timestamp"`
-	SeverityText       string            `json:"severityText"`
-	SeverityNumber     uint8             `json:"severityNumber"`
-	ServiceName        string            `json:"serviceName"`
-	Body               string            `json:"body"`
-	TraceId            string            `json:"traceId,omitempty"`
-	SpanId             string            `json:"spanId,omitempty"`
-	ResourceAttributes map[string]string `json:"resourceAttributes,omitempty"`
-	ScopeName          string            `json:"scopeName,omitempty"`
-	LogAttributes      map[string]string `json:"logAttributes,omitempty"`
-}
+// LogRecord is access.LogRecord, the normalized log shape.
+type LogRecord = access.LogRecord
 
 // QueryLogsRequest is the body for POST /api/logs.
 type QueryLogsRequest struct {
@@ -50,10 +37,7 @@ func (r QueryLogsRequest) MarshalJSON() ([]byte, error) {
 }
 
 // QueryLogsResponse mirrors the upstream PaginatedResponse[LogRecord].
-type QueryLogsResponse struct {
-	Data       []LogRecord `json:"data"`
-	Pagination Pagination  `json:"pagination"`
-}
+type QueryLogsResponse = access.LogPage
 
 // QueryLogs returns one page of log records for the given project and filters.
 func (c *Client) QueryLogs(ctx context.Context, projectID string, req QueryLogsRequest) (*QueryLogsResponse, error) {

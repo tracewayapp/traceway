@@ -6,6 +6,10 @@ Auto-fix closes the loop between an alert and a pull request. A [GitHub channel]
 
 This page is the productized form of the loop described in [the auto-fix blog post](https://tracewayapp.com/blog/auto-fix-loop).
 
+<Callout type="info">
+Traceway also ships a [fix agent](/learn/agent) that runs the same loop on the server: a sandbox, a conversation on the issue page and in Slack, and a draft pull request without any CI setup. The CI contract on this page keeps working next to it and will report its runs into the same attempts.
+</Callout>
+
 ## The contract
 
 The loop is three steps, and only the middle one is agent-specific:
@@ -127,6 +131,10 @@ The agent step should not be able to change anything in Traceway, and the publis
 One token for both works and is documented as weaker: the agent step could then archive exceptions, whatever its tool allowlist says. Neither token needs to be an admin, and neither user needs a password login.
 
 `GH_PUSH_TOKEN` is a fine-grained GitHub token for the repository with **Contents**, **Pull requests** and **Issues** set to read and write. The prepare step reads the issue with the workflow's own `github.token`.
+
+## Attempts on the issue page
+
+The publish step also records the run as a fix-agent [attempt](/learn/agent/fix-it) when `traceway_token` and `project_id` are set (input `report_attempt`, on by default): it calls `traceway agent report` with the outcome, the branch and the pull request, so a CI-only setup shows its runs on the issue page and on the Agent page next to the server-side agent's, with the report as the attempt's thread entry. The attempt's executor is `ci`.
 
 ## What the publish step refuses
 

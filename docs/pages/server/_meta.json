@@ -6,6 +6,7 @@
   "sqlite": "SQLite",
   "duckdb": "DuckDB",
   "browser": "Browser (Monitors)",
+  "agent": "Agent (Fix Agent)",
   "runner": "Remote Runners",
   "local-setup": "Local Setup",
   "storage": "Blob Storage",

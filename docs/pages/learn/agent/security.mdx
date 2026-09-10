@@ -1,0 +1,50 @@
+# Security
+
+The fix agent is designed around a few lines that are never crossed. They hold on the self-hosted server and on the hosted service alike.
+
+## The backend never calls a model
+
+Traceway stores attempts, threads, diffs and reports; it never sends anything to a model provider. The agent is a separate process, started by the harness, that talks to the provider itself. A Traceway instance without an agent profile has no provider key anywhere.
+
+## What the agent process holds
+
+Inside the sandbox the agent has:
+
+- the working tree of the repository, on a fix branch;
+- the provider key of the agent profile, as an environment variable;
+- a traceway CLI logged in with a **run token**: a short-lived, read-only token scoped to the attempt's project, renewed by the harness while the attempt is active and useless once it is over;
+- the traceway skill, read-only.
+
+It does not have the repository credential (the harness clones and pushes outside the sandbox), `SECRETS_KEY`, `JWT_SECRET`, the server's database files, the environment of the server process, or the workspaces of other attempts. The sandbox is bubblewrap with its own pid, ipc, uts and user namespaces, a fresh `/proc`, the system directories read-only, a minimal `/etc`, and only the workspace writable.
+
+## What the agent reads
+
+The context pack the agent starts from is built from validated fields: the issue hash, the project, the repository. Stack traces, messages and attributes are untrusted text and are rendered inside delimited data blocks, never as instructions. Everything else the agent learns about the issue comes through the CLI with the run token, so it can read exactly what a read-only member of the project could read, and nothing else.
+
+## What leaves the sandbox
+
+Before publication, the harness copies source entries into a fresh checkout with trusted Git metadata outside writable sandbox mounts. It never uses the agent's Git hooks, config or remotes for host-side publication. Scratch-file, diff-size and secret checks run on that snapshot, followed by the configured tests with networking off; a test command that changes the proposed patch prevents publication. Draft PRs use the configured remote and fresh credentials. Follow-up sessions reuse the existing branch and PR; merging stays a human decision.
+
+Runner names are not claim credentials: each acquisition has a unique claim identity. State, events, artifacts, token renewal and outcomes reject stale or expired claims. Run tokens are renewed before expiry and the sandbox CLI reloads its atomically replaced profile. Runner output is bounded and known credentials are redacted before storage; this does not make arbitrary agent output safe to publish without review.
+
+## Who can do what
+
+| Action | Needs |
+|--------|-------|
+| Start, approve, cancel an attempt; answer in the thread | Write access on the project |
+| See attempts, timelines, diffs and reports | Membership of the project |
+| Manage integrations and agent profiles | Organization admin |
+| Act from Slack | A Slack account whose email matches a Traceway user with the role above |
+
+## Threat model
+
+| Threat | Where it would come from | What stands in the way |
+|--------|--------------------------|------------------------|
+| Sandbox escape | The agent, or code it runs, breaking out of the run's confinement | bubblewrap: own pid, ipc, uts and user namespaces, a fresh `/proc`, system directories read-only, a minimal `/etc`, only the workspace writable, sibling workspaces hidden. docker: every capability dropped, no new privileges, a read-only rootfs, the runner's uid, cgroup limits, optionally gVisor. Both: the process holds no credential that reaches beyond its own attempt |
+| Prompt injection through exception text | Stack traces, messages and attributes written by an attacker who can make your app throw | The context pack renders them inside delimited data blocks and never as instructions; the agent's own tools read telemetry through the CLI with a read-only token, so the worst case is a wrong diff in a draft PR a human reviews |
+| Prompt injection through Slack or GitHub comments | Anyone who can post where the app listens | Only comments from members whose identity maps to a Traceway user with write access become thread messages; replies are data in the pack, not instructions; unmapped authors are ignored and counted |
+| Credential exposure | The environment, files, logs, transcripts | The sandbox gets exactly the allowlisted variables (the live test asserts the parent environment is invisible); the repository credential never enters the sandbox; the diff is refused when it looks like it contains a secret; transcripts are the agent's stream, which never sees the git credential or `SECRETS_KEY` |
+| Webhook forgery | Anyone who can reach the inbound route | GitHub deliveries are checked against the App's webhook secret, Slack requests against the signing secret with a five minute window; both routes are rate limited per IP; a wrong integration id is a 404 before any body is read |
+| Slack identity spoofing | A workspace member posing as another | Identity is the Slack user id from the signed payload, mapped through the workspace email on first contact; a member cannot choose which email Slack reports |
+| Run token misuse | A token copied out of a transcript or a sandbox | Fifteen minutes, read-only, one project, one attempt; renewal needs the token and an active attempt; nothing that writes accepts it |
+| Mirror cache cross-tenant access | One organization's attempt reading another's repository mirror | Mirrors are keyed by integration id and only the harness process, outside the sandbox, touches them; the sandbox sees its own checkout and nothing under the mirrors or other workspaces |

@@ -1,0 +1,44 @@
+{
+  "aiTrace": {
+    "appVersion": "1.4.2",
+    "attributes": {},
+    "cachedTokens": 0,
+    "conversationId": "conv-1",
+    "duration": 1800000000,
+    "finishReason": "end_turn",
+    "flagged": false,
+    "flaggedTerms": [],
+    "id": "88888888-0000-4000-8000-000000000001",
+    "inputCost": 0.0036,
+    "inputTokens": 1200,
+    "isRoot": true,
+    "model": "claude-sonnet-5",
+    "operation": "chat",
+    "outputCost": 0.0045,
+    "outputTokens": 300,
+    "projectId": "11111111-1111-4111-8111-111111111111",
+    "provider": "anthropic",
+    "reasoningTokens": 0,
+    "recordedAt": "2026-06-01T12:05:00Z",
+    "responseModel": "claude-sonnet-5",
+    "serverName": "bot-1",
+    "statusCode": 0,
+    "storageKey": "ai/abc",
+    "toolCallCount": 1,
+    "toolNames": [
+      "lookup_order"
+    ],
+    "totalCost": 0.0081,
+    "totalTokens": 1500,
+    "traceName": "support-bot",
+    "userId": "u-77"
+  },
+  "conversation": {
+    "messages": [
+      {
+        "content": "where is my order",
+        "role": "user"
+      }
+    ]
+  }
+}

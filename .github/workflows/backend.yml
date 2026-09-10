@@ -68,7 +68,7 @@ jobs:
       - name: Build
         env:
           CGO_ENABLED: "0"
-        run: go build ./cmd/traceway ./cmd/traceway-runner
+        run: go build ./cmd/traceway ./cmd/traceway-runner ./cmd/traceway-agent-runner
 
       # release-traceway.yml cross-builds the runner for linux/darwin/windows,
       # but app/synthetics/browserexec/proc_windows.go is `//go:build windows`
@@ -82,6 +82,7 @@ jobs:
             set -- $target
             echo "  $1/$2"
             GOOS=$1 GOARCH=$2 go build -o /dev/null ./cmd/traceway-runner
+            GOOS=$1 GOARCH=$2 go build -o /dev/null ./cmd/traceway-agent-runner
           done
 
       - name: gofmt
@@ -235,7 +236,7 @@ jobs:
       - name: Build
         env:
           CGO_ENABLED: "0"
-        run: go build -tags "transactional_pg telemetry_ch" ./cmd/traceway ./cmd/traceway-runner
+        run: go build -tags "transactional_pg telemetry_ch" ./cmd/traceway ./cmd/traceway-runner ./cmd/traceway-agent-runner
 
       # Placed after the build so ClickHouse warms up while Go compiles, and at
       # the first query rather than at the top of the job.

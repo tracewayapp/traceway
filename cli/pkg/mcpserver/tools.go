@@ -6,9 +6,10 @@ import (
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
 
-// addTools registers the full tool surface. Every tool wraps exactly one
-// pkg/client method; the descriptions carry the operating discipline that
-// the knowledge resources explain in depth.
+// addTools registers the full tool surface. Every telemetry tool wraps one
+// pkg/access call and takes an optional source; list_projects stays on
+// pkg/client. The descriptions carry the operating discipline that the
+// knowledge resources explain in depth.
 func (s *server) addTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:         "list_projects",

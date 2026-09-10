@@ -1,0 +1,1 @@
+{"results":[{"name":"system.cpu.utilization","unit":"1","series":{"all":[{"timestamp":"2026-06-01T12:00:00Z","value":0.42},{"timestamp":"2026-06-01T12:05:00Z","value":0.71}]}}],"intervalMinutes":5}

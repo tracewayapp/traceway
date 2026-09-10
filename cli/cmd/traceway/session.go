@@ -11,6 +11,8 @@ import (
 	"github.com/tracewayapp/traceway/cli/internal/exitcode"
 	"github.com/tracewayapp/traceway/cli/internal/output"
 	"github.com/tracewayapp/traceway/cli/internal/state"
+	"github.com/tracewayapp/traceway/cli/pkg/access"
+	"github.com/tracewayapp/traceway/cli/pkg/access/traceway"
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
 
@@ -24,6 +26,7 @@ type session struct {
 	RefreshToken string
 	Kind         string
 	ProjectID    string
+	Sources      []config.Source
 }
 
 // Sentinel errors so the caller can map them to the right error envelope.
@@ -81,7 +84,35 @@ func loadSessionOpts(requireProject bool) (*session, error) {
 		RefreshToken: sp.RefreshToken,
 		Kind:         sp.CredentialKind,
 		ProjectID:    projectID,
+		Sources:      cp.Sources,
 	}, nil
+}
+
+// Resolver binds the telemetry sources of this session: the instance itself
+// first, under the implicit name, then the profile's configured sources in
+// the order they were added.
+func (s *session) Resolver() (*access.Resolver, error) {
+	bound, err := openSources(s.Sources)
+	if err != nil {
+		return nil, err
+	}
+	return access.NewResolver(append([]access.Bound{{Source: traceway.New(traceway.DefaultName, s.Client())}}, bound...)...), nil
+}
+
+func openSources(configured []config.Source) ([]access.Bound, error) {
+	bound := make([]access.Bound, 0, len(configured))
+	for _, cfg := range configured {
+		domains := make([]access.Domain, 0, len(cfg.Domains))
+		for _, d := range cfg.Domains {
+			domains = append(domains, access.Domain(d))
+		}
+		source, err := access.Open(access.Config{Name: cfg.Name, Provider: cfg.Provider, Domains: domains, Settings: cfg.Config})
+		if err != nil {
+			return nil, err
+		}
+		bound = append(bound, access.Bound{Source: source, Domains: domains})
+	}
+	return bound, nil
 }
 
 // errNoRefresh wraps client.ErrUnauthorized so the transport maps it back to
@@ -113,6 +144,13 @@ func newRefreshingClient(url, profileName, jwt, refreshToken, kind string, opts 
 	rt := refreshToken
 	current := jwt
 	refresher := func(ctx context.Context) (string, error) {
+		if kind == state.KindRun {
+			if disk := loadProfileJWT(profileName); disk != "" && disk != current {
+				current = disk
+				return disk, nil
+			}
+			return "", errNoRefresh
+		}
 		if kind != state.KindDevice || rt == "" {
 			return "", errNoRefresh
 		}

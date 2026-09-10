@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -8,6 +9,37 @@ import (
 	"github.com/tracewayapp/traceway/cli/internal/config"
 	"github.com/tracewayapp/traceway/cli/internal/state"
 )
+
+func TestRunCredentialReloadsAfterHarnessRotation(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	st := &state.State{CurrentProfile: "default", Profiles: map[string]state.ProfileState{"default": {JWT: "rotated", CredentialKind: state.KindRun}}}
+	if err := st.Save(); err != nil {
+		t.Fatal(err)
+	}
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.URL.Path != "/api/projects" {
+			t.Errorf("unexpected endpoint %s", r.URL.Path)
+		}
+		if r.Header.Get("Authorization") == "Bearer stale" {
+			w.WriteHeader(401)
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer rotated" {
+			t.Errorf("incorrect renewed credential")
+		}
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+	client := newRefreshingClient(srv.URL, "default", "stale", "", state.KindRun)
+	if _, err := client.ListProjects(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d", requests)
+	}
+}
 
 func TestSession_refreshesExpiredDeviceToken(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())

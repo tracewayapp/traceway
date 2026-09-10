@@ -7,13 +7,15 @@ package client
 import (
 	"errors"
 	"fmt"
+
+	"github.com/tracewayapp/traceway/cli/pkg/access"
 )
 
 // Sentinel errors returned by client methods. Use errors.Is to test.
 var (
 	ErrUnauthorized = errors.New("unauthorized (401)")
 	ErrForbidden    = errors.New("forbidden (403)")
-	ErrNotFound     = errors.New("not found (404)")
+	ErrNotFound     = access.ErrNotFound
 	ErrRateLimited  = errors.New("rate limited (429)")
 
 	ErrAuthorizationPending = errors.New("authorization_pending")

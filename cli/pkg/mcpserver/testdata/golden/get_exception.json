@@ -1,0 +1,32 @@
+{
+  "group": {
+    "count": 42,
+    "exceptionHash": "0123456789abcdef",
+    "firstSeen": "2026-05-30T08:00:00Z",
+    "lastSeen": "2026-06-01T12:05:00Z",
+    "stackTrace": "TimeoutError: payment gateway timeout\n    at charge (checkout/payment.go:88)"
+  },
+  "occurrences": [
+    {
+      "appVersion": "1.4.2",
+      "attributes": {
+        "order_id": "18841"
+      },
+      "distributedTraceId": "dddddddd-0000-4000-8000-000000000001",
+      "exceptionHash": "0123456789abcdef",
+      "id": "bbbbbbbb-0000-4000-8000-000000000001",
+      "recordedAt": "2026-06-01T12:05:00Z",
+      "serverName": "web-1",
+      "sessionId": "eeeeeeee-0000-4000-8000-000000000001",
+      "stackTrace": "TimeoutError: payment gateway timeout\n    at charge (checkout/payment.go:88)",
+      "traceId": "cccccccc-0000-4000-8000-000000000001",
+      "traceType": "endpoint"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "pageSize": 20,
+    "total": 42,
+    "totalPages": 3
+  }
+}

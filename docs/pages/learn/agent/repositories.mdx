@@ -1,0 +1,40 @@
+# Repositories
+
+import { Callout } from "nextra/components";
+
+The agent works in a clone of the project's repository and opens its pull requests there. Two things connect the two: a **GitHub integration** on the organization, holding the credential, and a **repository** on the project, naming what to clone.
+
+## The GitHub integration
+
+In **Settings**, under **Integrations**, add a **github** integration with a fine-grained personal access token. The token needs, on the repositories the agent may touch:
+
+- **Contents**: read and write, to clone and push the fix branch.
+- **Pull requests**: read and write, to open the draft pull request.
+- **Issues**: read and write, if you also use GitHub issues as a notification channel.
+
+The token is stored encrypted and is never shown again. The agent process never sees it: the harness uses it outside the sandbox to clone and push, and the sandbox only holds the working tree.
+
+<img src="/agent-integrations.png" alt="The integrations card in settings" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+<Callout type="info">
+A GitHub App with installation tokens and webhooks (so merged and closed pull requests update the attempt on their own) is the next step of the integration; the personal access token path stays supported.
+</Callout>
+
+## The repository
+
+On the **Agent** page, the **Repository** tab binds the project to one repository:
+
+<img src="/agent-repository.png" alt="The repository tab" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+| Field | Meaning |
+|-------|---------|
+| Code host integration | The GitHub integration whose token clones and pushes |
+| Owner, Repository | `owner/name` on GitHub |
+| Default branch | Where the fix branch starts from, `main` unless yours differs |
+| Sandbox image | Optional image with the project's toolchain, used by remote runners |
+| Setup command | Optional, runs once after the clone (dependency install) |
+| Test command | Optional, runs in the sandbox with the network off after the agent's change |
+
+When the test command fails, its output goes back to the agent once; a second failure ends the attempt as analyzed with both outputs in the thread.
+
+Members with a read-only role see the form but cannot change it.

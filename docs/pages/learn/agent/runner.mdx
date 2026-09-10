@@ -1,0 +1,61 @@
+# Remote Runners
+
+import { Callout } from "nextra/components";
+
+A remote runner executes attempts on a host of its own. The Traceway server keeps the queue, the conversation and every credential but two; the runner polls for work, runs the same harness the embedded executor runs, and reports events, the diff and the outcome back. Nothing on the runner reaches the database, `SECRETS_KEY` or `JWT_SECRET`, and the runner only ever connects outward, so it needs no public address.
+
+Use runners when the server should not run coding agents itself (a small API host, a managed platform), when attempts need a sandbox with real egress control (docker on a Linux host), or when one server has more attempts than one host should run.
+
+## On the server
+
+```
+AGENT_MODE=remote
+AGENT_RUNNER_SECRET=<a long random string>
+```
+
+With `AGENT_MODE=remote` no attempt runs in the server process. This configuration enables **Traceway AI Agent** in the **Fix it** menu, even when no runner is currently polling. Attempts wait in the queue until a runner claims them. `GET /api/health/deep` reports fleet liveness separately, counting runners that polled in the last two minutes. The secret is the runners' only credential: rotate it by changing it and restarting the runners.
+
+## Running a runner
+
+```bash
+docker run -d --name traceway-agent-runner \
+  --network host --cap-add NET_ADMIN \
+	-v /var/run/docker.sock:/var/run/docker.sock \
+  -v /var/lib/traceway-agent-runner:/var/lib/traceway-agent-runner \
+  -e TRACEWAY_URL="https://traceway.example.com" \
+  -e AGENT_RUNNER_SECRET="<the server's secret>" \
+  -e AGENT_DEFAULT_IMAGE="ghcr.io/tracewayapp/traceway:agent" \
+  ghcr.io/tracewayapp/traceway-agent-runner:latest
+```
+
+The image defaults to `AGENT_SANDBOX=docker`: every attempt runs in a container of its own, started through the mounted docker socket, from the repository's **Sandbox image** or `AGENT_DEFAULT_IMAGE`. The `traceway:agent` image works as that default because it carries Node, the Claude Code CLI, git and the traceway CLI at the paths the harness expects. The runner's own state (repository mirrors, attempt workspaces) lives under `/var/lib/traceway-agent-runner`.
+
+The binary is also published on every release (`traceway-agent-runner_linux_amd64`, `_arm64`, and the macOS builds) for hosts without Docker. With `AGENT_SANDBOX=bwrap` it runs the agent under bubblewrap like the embedded executor does, and needs `git`, `claude` and the traceway CLI on its PATH.
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `TRACEWAY_URL` | *(required)* | The instance to poll |
+| `AGENT_RUNNER_SECRET` | *(required)* | Must match the server's |
+| `AGENT_RUNNER_NAME` | hostname | The runner registers under this name; attempts record `runner:<name>` as their executor |
+| `AGENT_RUNNER_WORKERS` | `2` | Attempts at once (max 16) |
+| `AGENT_RUNNER_STATE` | `./agent-runner` (image: `/var/lib/traceway-agent-runner`) | Mirrors and workspaces |
+| `AGENT_SANDBOX` | `auto` (image: `docker`) | `docker`, `bwrap`, `auto` or `off` |
+| `AGENT_SANDBOX_ALLOW_OFF` | `false` | Accept an unconfined agent. Development only |
+| `AGENT_DEFAULT_IMAGE` | | Docker sandbox image when the repository names none |
+| `AGENT_DOCKER_RUNTIME` | | Passed as `docker --runtime`, for gVisor's `runsc` |
+| `AGENT_SKILL_DIR` | `/opt/traceway/skill` | The traceway skill, bound read-only into the sandbox |
+| `AGENT_RUNNER_MONITORING` | | `<project token>@<url>/api/report` to send the runner's own telemetry to a Traceway project |
+
+## The docker sandbox
+
+Each attempt's container drops every capability, forbids new privileges, has a read-only root filesystem with only the attempt's workspace mounted read-write and a sized tmpfs for scratch, and runs as the runner's uid. Agent and verification commands request 2 CPUs, 2048 MiB memory and 256 PIDs. Docker enforces these with cgroups; bwrap requires a working systemd scope and otherwise logs unsupported resource limits. Tests run with the network off.
+
+Docker execution requires a root Linux runner with access to the daemon host's `iptables` rules. The runner creates a bridge per attempt and filters both forwarded traffic (`DOCKER-USER`) and access to the host (`INPUT`), allowing configured destinations and DNS. Unsupported allowlisting refuses startup/execution; there is no unrestricted fallback. Prefer the runner binary directly on the Linux host. A containerized runner needs the host network namespace, NET_ADMIN, the Docker socket and identical absolute state paths on the runner and daemon host. These are powerful host privileges: never expose the runner or socket to tenant code. Bwrap's documented lack of egress filtering is a separate deployment option, not an equivalent allowlist.
+
+<Callout type="info">
+The runner renews its attempt lease while working. If renewals stop, the two-minute lease expires and the server requeues the attempt. A runner that still has the attempt workspace can resume the Claude session. Another runner starts a fresh session using the stored context and thread, and the pushed fix branch when one exists; the stored transcript alone does not restore Claude's session files or unpushed edits. Persist runner state when continuity matters.
+</Callout>
+
+## What the runner is trusted with
+
+The runner receives, per attempt: the rendered context pack, a run token (read-only, that project, that attempt), the profile's provider key, and a git credential for the clone and the push. It never receives the repository's integration row, another project's data, or anything encrypted with `SECRETS_KEY`. Opening the pull request is the server's job once the runner has pushed. See [Security](/learn/agent/security).

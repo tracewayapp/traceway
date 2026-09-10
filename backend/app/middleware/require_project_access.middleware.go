@@ -17,16 +17,28 @@ var RequireProjectAccess gin.HandlerFunc
 
 func InitRequireProjectAccess() {
 	RequireProjectAccess = func(c *gin.Context) {
-		userId := GetUserId(c)
-		if userId == 0 {
-			c.AbortWithStatus(http.StatusUnauthorized)
-			return
-		}
-
 		projectId := extractProjectId(c)
 		if projectId == uuid.Nil {
 			// you are not authorized to access a no project id, this is just a bad request
 			c.AbortWithStatus(http.StatusBadRequest)
+			return
+		}
+
+		// A run token reads its own project and nothing else; it never
+		// reaches the membership check because it has no user.
+		if runProject, isRunToken := c.Get(RunProjectIdContextKey); isRunToken {
+			if runProject.(uuid.UUID) != projectId {
+				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+				return
+			}
+			c.Set(ProjectIdContextKey, projectId)
+			c.Next()
+			return
+		}
+
+		userId := GetUserId(c)
+		if userId == 0 {
+			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
 

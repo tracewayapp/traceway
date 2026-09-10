@@ -1,0 +1,10 @@
+{
+  "events": [
+    { "id": 1, "attemptId": "aaaaaaaa-0000-4000-8000-000000000001", "seq": 1, "kind": "created", "payload": { "number": 2, "origin": "web", "status": "queued" }, "createdAt": "2026-06-01T12:00:00Z" },
+    { "id": 2, "attemptId": "aaaaaaaa-0000-4000-8000-000000000001", "seq": 2, "kind": "status", "payload": { "status": "running", "executor": "embedded" }, "createdAt": "2026-06-01T12:00:05Z" },
+    { "id": 3, "attemptId": "aaaaaaaa-0000-4000-8000-000000000001", "seq": 3, "kind": "assistant_text", "payload": { "text": "Reading the occurrence with traceway exceptions get." }, "createdAt": "2026-06-01T12:00:09Z" },
+    { "id": 4, "attemptId": "aaaaaaaa-0000-4000-8000-000000000001", "seq": 4, "kind": "message", "payload": { "direction": "out", "provider": "agent", "kind": "pr" }, "createdAt": "2026-06-01T12:09:40Z" },
+    { "id": 5, "attemptId": "aaaaaaaa-0000-4000-8000-000000000001", "seq": 5, "kind": "status", "payload": { "status": "awaiting_review" }, "createdAt": "2026-06-01T12:09:40Z" }
+  ],
+  "status": "awaiting_review"
+}

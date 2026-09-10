@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/tracewayapp/traceway/backend/app/sandbox"
 )
 
 func testSpec() commandSpec {
@@ -15,7 +17,12 @@ func testSpec() commandSpec {
 		HarnessDir:   "/opt/harness",
 		RunDir:       "/opt/harness/.runs/run-1",
 		BrowsersPath: "/opt/ms-playwright",
+		Env:          map[string]string{"PATH": "/usr/bin", "TARGET_URL": "http://example"},
 	}
+}
+
+func bwrapArgs(spec commandSpec) []string {
+	return sandbox.Args(specFor(spec))
 }
 
 func indexOfBind(args []string, op, src string) int {
@@ -58,10 +65,6 @@ func TestBwrapArgsBindsHarnessReadOnlyBeforeRunDir(t *testing.T) {
 func TestBwrapArgsHidesSiblingRunDirsWithTmpfs(t *testing.T) {
 	args := bwrapArgs(testSpec())
 
-	// testSpec's run dir is /opt/harness/.runs/run-1, so its container is
-	// /opt/harness/.runs. That container must be overlaid with an empty tmpfs
-	// so a concurrent sibling run dir under it is not exposed by the harness
-	// read-only bind.
 	tmpfs := indexOfSingle(args, "--tmpfs", "/opt/harness/.runs")
 	if tmpfs < 0 {
 		t.Fatalf("the run-dir container must be overlaid with a tmpfs to hide sibling runs: %v", args)
@@ -74,8 +77,6 @@ func TestBwrapArgsHidesSiblingRunDirsWithTmpfs(t *testing.T) {
 	if !(harness < tmpfs && tmpfs < runDir) {
 		t.Fatalf("the tmpfs must come after the harness ro-bind and before the run-dir bind, got harness=%d tmpfs=%d runDir=%d", harness, tmpfs, runDir)
 	}
-	// The tmpfs must never land on the harness root itself: that would bury
-	// node_modules and break module resolution.
 	if indexOfSingle(args, "--tmpfs", "/opt/harness") >= 0 {
 		t.Fatal("the harness root must never be overlaid with a tmpfs: it holds node_modules")
 	}
@@ -100,14 +101,14 @@ func TestBwrapArgsIsolatesProcessesAndKeepsNetwork(t *testing.T) {
 	if !slices.Contains(args, "--unshare-pid") {
 		t.Error("expected --unshare-pid")
 	}
-	if indexOfBind(args, "--proc", "/proc") < 0 && !slices.Contains(args, "--proc") {
+	if !slices.Contains(args, "--proc") {
 		t.Error("expected a fresh /proc")
 	}
 	if !slices.Contains(args, "--die-with-parent") {
 		t.Error("expected --die-with-parent so a killed run leaves nothing behind")
 	}
 	if slices.Contains(args, "--unshare-net") {
-		t.Error("the network namespace must stay shared")
+		t.Error("the network namespace must stay shared: probes reach the internet")
 	}
 }
 
@@ -122,20 +123,24 @@ func TestBwrapArgsBindsNodeAndBrowsers(t *testing.T) {
 	}
 }
 
-func TestBuildCommandOffSpawnsNodeDirectly(t *testing.T) {
+func TestBuildCommandOffSpawnsNodeDirectlyWithTheAllowlistedEnv(t *testing.T) {
 	spec := testSpec()
-	cmd, err := buildCommand(context.Background(), SandboxOff, spec)
+	cmd, cleanup, err := buildCommand(context.Background(), SandboxOff, spec)
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
+	defer cleanup()
 	if cmd.Path != spec.NodePath {
 		t.Errorf("expected node to be spawned directly, got %q", cmd.Path)
 	}
-	if cmd.Dir != spec.HarnessDir {
-		t.Errorf("expected the harness as cwd, got %q", cmd.Dir)
+	if cmd.Dir != spec.RunDir {
+		t.Errorf("expected the run dir as cwd, got %q", cmd.Dir)
 	}
 	if !slices.Contains(cmd.Args, spec.ConfigPath) {
 		t.Errorf("expected the generated config in the argv, got %v", cmd.Args)
+	}
+	if len(cmd.Env) != 2 || !slices.Contains(cmd.Env, "TARGET_URL=http://example") {
+		t.Errorf("the process must get exactly the allowlisted env, got %v", cmd.Env)
 	}
 }
 
@@ -150,12 +155,15 @@ func TestResolveSandboxOff(t *testing.T) {
 }
 
 func TestResolveSandboxUnknownValue(t *testing.T) {
-	_, err := ResolveSandbox("docker", t.TempDir())
+	_, err := ResolveSandbox("podman", t.TempDir())
 	if err == nil {
 		t.Fatal("expected an error for an unknown sandbox")
 	}
-	if !strings.Contains(err.Error(), "auto, bwrap, or off") {
+	if !strings.Contains(err.Error(), "auto, bwrap, docker, or off") {
 		t.Errorf("expected the error to list the valid modes, got %q", err)
+	}
+	if _, err := ResolveSandbox("docker", t.TempDir()); err == nil || !strings.Contains(err.Error(), "agent runner") {
+		t.Errorf("docker must be refused for browser checks, got %v", err)
 	}
 }
 

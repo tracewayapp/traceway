@@ -1,0 +1,60 @@
+# Environment
+
+import { Callout } from "nextra/components";
+
+The control plane (attempts, threads, preflight, the Slack integration) is part of every Traceway build. Running attempts needs an executor: the server itself in embedded mode, on the `:agent` image.
+
+## The agent image
+
+```bash
+docker pull ghcr.io/tracewayapp/traceway:agent
+```
+
+The image extends the DuckDB image with Node, the Claude Code CLI, git, bubblewrap and the traceway CLI plus skill under `/opt/traceway`. It is built for `linux/amd64` like the DuckDB image it comes from. The repository's `docker-compose.agent.yml` is this example with comments; the [server page](/server/agent) has the operational notes.
+
+```yaml
+services:
+  traceway:
+    image: ghcr.io/tracewayapp/traceway:agent
+    ports:
+      - "80:80"
+    # bubblewrap needs an unprivileged user namespace, which Docker refuses
+    # under its default profiles (Ubuntu 24.04 hosts also need
+    # sysctl -w kernel.apparmor_restrict_unprivileged_userns=0). Without it
+    # the sandbox degrades to off and embedded mode refuses to start.
+    privileged: true
+    environment:
+      JWT_SECRET: change-me-to-at-least-32-characters
+      APP_BASE_URL: https://traceway.example.com
+      SECRETS_KEY: ${SECRETS_KEY}
+      AGENT_MODE: embedded
+      AGENT_WORKERS: "2"
+      DUCKDB_MEMORY_LIMIT: 2GB
+    volumes:
+      - traceway-data:/data
+volumes:
+  traceway-data:
+```
+
+Generate `SECRETS_KEY` once with `openssl rand -base64 32` and keep it: every stored credential (GitHub tokens, provider keys, Slack tokens) is encrypted with it.
+
+## Variables
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `AGENT_MODE` | `off` | `off` hides Traceway AI Agent from the Fix it menu and blocks new dashboard starts; existing history stays accessible. `embedded` runs the harness in the server process. `remote` leaves the queue to a [runner fleet](/learn/agent/runner) |
+| `AGENT_WORKERS` | `2` | Embedded mode: attempts running at once, each with its own workspace and sandbox |
+| `AGENT_SANDBOX` | `auto` | `auto` uses bubblewrap when the host can and degrades otherwise; `bwrap` fails at startup when it cannot; `off` runs the agent unconfined |
+| `AGENT_SANDBOX_ALLOW_OFF` | `false` | Embedded mode refuses to start with the sandbox off unless this is `true`. For development only |
+| `AGENT_SKILL_DIR` | *(image sets `/opt/traceway/skill`)* | The traceway skill bound read-only into the sandbox |
+| `AGENT_ATTEMPT_RETENTION_DAYS` | `90` | After this many days a finished attempt loses its event stream, transcript, diff and report; the row and the thread stay. `0` disables |
+| `SECRETS_KEY` | *(key file on SQLite; required on PostgreSQL)* | Encrypts stored credentials at rest. See the [server pages](/server/sqlite#environment-variables) |
+| `APP_BASE_URL` | *(derived from the request)* | The public origin. Set it: the links in Slack messages and the View button need an absolute URL |
+
+## Checking it works
+
+Open an issue and press **Fix it**. Traceway AI Agent appears when `AGENT_MODE` is `embedded` or `remote`. Its preflight checks configuration, not runner liveness; a remote attempt may wait in the queue for a worker. `GET /api/health/deep` (with `HEALTH_DEEP_TOKEN`) reports the queue depth.
+
+<Callout type="warning">
+Embedded mode runs the agent on the same host as Traceway. The sandbox hides the server's environment, its files and other attempts from the agent, but it shares the host's network. Where that is not acceptable, run attempts on a separate runner host instead.
+</Callout>

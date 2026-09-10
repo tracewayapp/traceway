@@ -62,6 +62,7 @@ POSTGRES_SSLMODE=disable
 | Variable | Description |
 |----------|-------------|
 | `JWT_SECRET` | Signs all authentication tokens (dashboard sessions and CLI/MCP device logins). Must be at least 32 characters; use a strong, unique secret and keep it stable. See [CLI Authentication](/learn/cli-auth#set-a-strong-jwt_secret). |
+| `SECRETS_KEY` | *(key file on SQLite; required on PostgreSQL)* | Base64 of 32 random bytes (`openssl rand -base64 32`) that encrypts stored credentials at rest: notification channel tokens today, integration and repository credentials for the fix agent. When unset on a SQLite deployment, the server generates `traceway.secrets.key` (mode 600) next to the main database on first boot and logs a warning; move that value into `SECRETS_KEY` and back it up, since credentials cannot be decrypted without it. On PostgreSQL the variable is required and startup exits 1 without it. |
 | `CLICKHOUSE_SERVER` | ClickHouse server address (host:port) |
 | `CLICKHOUSE_DATABASE` | ClickHouse database name |
 | `CLICKHOUSE_USERNAME` | ClickHouse username |

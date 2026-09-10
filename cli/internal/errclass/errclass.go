@@ -10,6 +10,7 @@ import (
 	"net/url"
 
 	"github.com/tracewayapp/traceway/cli/internal/exitcode"
+	"github.com/tracewayapp/traceway/cli/pkg/access"
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
 
@@ -46,6 +47,12 @@ func Classify(err error) Classified {
 		return Classified{
 			Code: "rate_limited", Message: "rate limit exceeded — slow down or retry later",
 			ExitCode: exitcode.RateLimited,
+		}
+	case errors.Is(err, access.ErrUnsupported):
+		return Classified{
+			Code: "unsupported", Message: err.Error(),
+			Hint:     "pick a source that supports this query with --source (traceway sources list shows what each answers)",
+			ExitCode: exitcode.Usage,
 		}
 	}
 	if apiErr, ok := errors.AsType[*client.APIError](err); ok {

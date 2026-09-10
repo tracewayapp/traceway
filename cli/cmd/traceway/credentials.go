@@ -24,7 +24,7 @@ func saveProfileCredentials(cfg *config.Config, st *state.State, profileName, ur
 	if cfg.Profiles == nil {
 		cfg.Profiles = map[string]config.Profile{}
 	}
-	cfg.Profiles[profileName] = config.Profile{URL: url, Username: username}
+	cfg.Profiles[profileName] = config.Profile{URL: url, Username: username, Sources: cfg.Profiles[profileName].Sources}
 
 	if st.Profiles == nil {
 		st.Profiles = map[string]state.ProfileState{}

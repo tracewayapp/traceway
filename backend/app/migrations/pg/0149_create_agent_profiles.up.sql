@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS agent_profiles (
+    id SERIAL PRIMARY KEY,
+    organization_id INT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    name VARCHAR(200) NOT NULL,
+    agent VARCHAR(50) NOT NULL,
+    package VARCHAR(200) NOT NULL DEFAULT '',
+    package_version VARCHAR(100) NOT NULL DEFAULT '',
+    model VARCHAR(200) NOT NULL DEFAULT '',
+    provider VARCHAR(50) NOT NULL DEFAULT '',
+    base_url VARCHAR(500) NOT NULL DEFAULT '',
+    credential TEXT NOT NULL DEFAULT '',
+    max_turns INT NOT NULL DEFAULT 0,
+    timeout_minutes INT NOT NULL DEFAULT 0,
+    budget_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+    allowed_tools JSONB NOT NULL DEFAULT '[]',
+    network_policy JSONB NOT NULL DEFAULT '{}',
+    is_default BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)

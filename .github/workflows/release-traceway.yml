@@ -186,6 +186,21 @@ jobs:
           done
           gh release upload "backend/v${{ inputs.version }}" dist/traceway-runner_*
 
+      - name: Build and upload traceway-agent-runner binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CGO_ENABLED: 0
+        run: |
+          cd backend
+          mkdir -p dist
+          for target in "linux amd64" "linux arm64" "darwin amd64" "darwin arm64" "windows amd64"; do
+            set -- $target
+            ext=""
+            if [ "$1" = "windows" ]; then ext=".exe"; fi
+            GOOS=$1 GOARCH=$2 go build -ldflags="-s -w" -o "dist/traceway-agent-runner_$1_$2${ext}" ./cmd/traceway-agent-runner
+          done
+          gh release upload "backend/v${{ inputs.version }}" dist/traceway-agent-runner_*
+
       - name: Trigger website + docs deploys
         env:
           GH_TOKEN: ${{ github.token }}
@@ -315,6 +330,44 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # amd64 only like the DuckDB image it extends, plus Node, the pinned
+      # Claude Code CLI, git, bubblewrap and the traceway CLI + skill, for
+      # running fix-agent attempts in the server process (AGENT_MODE=embedded).
+      - name: Build and push Agent image
+        id: docker_build_agent
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile.agent
+          build-args: |
+            NODE_VERSION=${{ steps.node.outputs.version }}
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/traceway:v${{ inputs.version }}-agent
+            ghcr.io/${{ github.repository_owner }}/traceway:agent
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The runner image for AGENT_MODE=remote fleets: the runner binary, git,
+      # the docker CLI, and the same Node/Claude Code/bubblewrap/CLI set as
+      # the agent image so it can also run the bwrap sandbox on its host.
+      - name: Build and push Agent Runner image
+        id: docker_build_agent_runner
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile.agent-runner
+          build-args: |
+            NODE_VERSION=${{ steps.node.outputs.version }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/traceway-agent-runner:v${{ inputs.version }}
+            ghcr.io/${{ github.repository_owner }}/traceway-agent-runner:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
         with:
@@ -350,6 +403,18 @@ jobs:
         run: |
           cosign sign --yes ghcr.io/${{ github.repository_owner }}/traceway@${{ steps.docker_build_browser.outputs.digest }}
 
+      - name: Sign Agent image
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          cosign sign --yes ghcr.io/${{ github.repository_owner }}/traceway@${{ steps.docker_build_agent.outputs.digest }}
+
+      - name: Sign Agent Runner image
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          cosign sign --yes ghcr.io/${{ github.repository_owner }}/traceway-agent-runner@${{ steps.docker_build_agent_runner.outputs.digest }}
+
       - name: Summary
         run: |
           echo "### Docker Images (signed with Cosign)" >> "$GITHUB_STEP_SUMMARY"
@@ -369,6 +434,12 @@ jobs:
           echo "**Browser Image** (DuckDB image + Playwright/Chromium for embedded browser synthetic checks):" >> "$GITHUB_STEP_SUMMARY"
           echo "\`ghcr.io/${{ github.repository_owner }}/traceway:v${{ inputs.version }}-browser\`" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "All images tagged with version, plus \`latest\`, \`minimal\`, \`sqlite\`, \`duckdb\`, and \`browser\` respectively." >> "$GITHUB_STEP_SUMMARY"
+          echo "**Agent Image** (DuckDB image + Node, Claude Code CLI, git, bubblewrap and the traceway CLI for embedded fix-agent attempts):" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`ghcr.io/${{ github.repository_owner }}/traceway:v${{ inputs.version }}-agent\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Agent Runner Image** (traceway-agent-runner for AGENT_MODE=remote fleets, with git, the docker CLI and the agent toolchain):" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`ghcr.io/${{ github.repository_owner }}/traceway-agent-runner:v${{ inputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "All images tagged with version, plus \`latest\`, \`minimal\`, \`sqlite\`, \`duckdb\`, \`browser\`, and \`agent\` respectively." >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "See [DOCKER_SIGNATURES.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/DOCKER_SIGNATURES.md) to verify image signatures." >> "$GITHUB_STEP_SUMMARY"

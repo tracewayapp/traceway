@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
+	import { api } from '$lib/api';
+	import type { MemberIdentity } from '$lib/types/agent';
 	import {
 		Card,
 		CardContent,
@@ -111,8 +114,54 @@
 		return true;
 	}
 
-	function canExpand(member: OrganizationMember): boolean {
+	function canExpand(): boolean {
+		return true;
+	}
+
+	function hasProjectRoles(member: OrganizationMember): boolean {
 		return member.role === 'user' || member.role === 'readonly';
+	}
+
+	let githubLogin = $state('');
+	let savedGithubLogin = $state('');
+	let savingGithubLogin = $state(false);
+	let loadingGithubLogin = $state(false);
+
+	async function loadGithubLogin(member: OrganizationMember) {
+		githubLogin = '';
+		savedGithubLogin = '';
+		loadingGithubLogin = true;
+		try {
+			const res = await api.get(`/organizations/${organizationId}/members/${member.id}/identities`);
+			if (expandedMemberId !== member.id) return;
+			const github = (res.identities ?? []).find((i: MemberIdentity) => i.provider === 'github');
+			githubLogin = github?.externalId ?? '';
+			savedGithubLogin = githubLogin;
+		} catch {
+			githubLogin = '';
+		} finally {
+			loadingGithubLogin = false;
+		}
+	}
+
+	async function saveGithubLogin(member: OrganizationMember) {
+		savingGithubLogin = true;
+		try {
+			const login = githubLogin.trim();
+			if (login) {
+				await api.put(`/organizations/${organizationId}/members/${member.id}/identities/github`, {
+					externalId: login
+				});
+			} else {
+				await api.delete(`/organizations/${organizationId}/members/${member.id}/identities/github`);
+			}
+			savedGithubLogin = login;
+			toast.success('Successfully updated the Member', { position: 'top-center' });
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Failed to save the GitHub login');
+		} finally {
+			savingGithubLogin = false;
+		}
 	}
 
 	async function toggleExpand(member: OrganizationMember) {
@@ -121,8 +170,13 @@
 			return;
 		}
 		expandedMemberId = member.id;
-		loadingProjectRoles = true;
 		expandedProjectRoles = [];
+		loadGithubLogin(member);
+		if (!hasProjectRoles(member)) {
+			loadingProjectRoles = false;
+			return;
+		}
+		loadingProjectRoles = true;
 		try {
 			const response = await organizationState.getMemberProjectRoles(organizationId, member.id);
 			if (expandedMemberId !== member.id) return;
@@ -219,7 +273,7 @@
 							<Table.Row>
 								<Table.Cell class="font-medium">
 									<div class="flex items-center gap-1">
-										{#if canExpand(member)}
+										{#if canExpand()}
 											<button
 												type="button"
 												class="rounded p-0.5 hover:bg-accent"
@@ -292,10 +346,39 @@
 									{/if}
 								</Table.Cell>
 							</Table.Row>
-							{#if expandedMemberId === member.id && canExpand(member)}
+							{#if expandedMemberId === member.id && canExpand()}
 								<Table.Row class="bg-muted/30 hover:bg-transparent">
 									<Table.Cell colspan={5} class="py-2">
-										{#if loadingProjectRoles}
+										<div class="mb-2 flex items-center justify-between gap-4 pr-2 pl-10">
+											<div class="space-y-0.5">
+												<p class="text-sm">GitHub login</p>
+												<p class="text-xs text-muted-foreground">
+													Lets this member start attempts and answer the agent from GitHub comments.
+												</p>
+											</div>
+											<div class="flex items-center gap-2">
+												<Input
+													class="w-[200px]"
+													bind:value={githubLogin}
+													placeholder="octocat"
+													disabled={loadingGithubLogin}
+													data-testid="github-login"
+												/>
+												<Button
+													size="sm"
+													variant="outline"
+													onclick={() => saveGithubLogin(member)}
+													disabled={savingGithubLogin || githubLogin.trim() === savedGithubLogin}
+												>
+													Save
+												</Button>
+											</div>
+										</div>
+										{#if !hasProjectRoles(member)}
+											<p class="pr-2 pl-10 text-xs text-muted-foreground">
+												Owners and admins have full access to every project.
+											</p>
+										{:else if loadingProjectRoles}
 											<div class="flex justify-center py-4">
 												<LoadingCircle />
 											</div>

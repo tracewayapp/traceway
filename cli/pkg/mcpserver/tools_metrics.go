@@ -8,6 +8,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/tracewayapp/traceway/cli/pkg/access"
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
 
@@ -20,6 +21,7 @@ type metricQueryIn struct {
 
 type queryMetricsIn struct {
 	projectIn
+	sourceIn
 	timeRangeIn
 	IntervalMinutes int             `json:"interval_minutes,omitempty" jsonschema:"Bucket size in minutes. Default 0 lets the server pick. The server may widen it so no series exceeds 2000 points; the effective value is returned as intervalMinutes. Read down the buckets for the step where a value jumps."`
 	Queries         []metricQueryIn `json:"queries" jsonschema:"One or more metric queries to run over the same window."`
@@ -40,7 +42,7 @@ func (s *server) queryMetrics(ctx context.Context, req *mcp.CallToolRequest, in 
 	if in.IntervalMinutes < 0 {
 		return nil, nil, usageErrf("interval_minutes must be 0 (server default) or positive")
 	}
-	items := make([]client.MetricQueryItem, 0, len(in.Queries))
+	items := make([]access.MetricQueryItem, 0, len(in.Queries))
 	for _, q := range in.Queries {
 		if q.Name == "" {
 			return nil, nil, usageErrf("queries[].name is required")
@@ -51,20 +53,25 @@ func (s *server) queryMetrics(ctx context.Context, req *mcp.CallToolRequest, in 
 			}
 			return nil, nil, usageErrf("aggregation must be one of: %s", strings.Join(client.MetricAggregationsExact, ", "))
 		}
-		items = append(items, client.MetricQueryItem{
+		items = append(items, access.MetricQueryItem{
 			Name:        q.Name,
 			Aggregation: cmp.Or(q.Aggregation, "avg"),
 			TagFilters:  q.TagFilters,
 			GroupBy:     q.GroupBy,
 		})
 	}
-	resp, err := s.client(req).QueryMetrics(ctx, projectID, client.QueryMetricsRequest{
-		TimeRange:       tr,
+	sources, err := access.Metrics(s.sources(req), in.Source)
+	if err != nil {
+		return nil, nil, usageErrf("%v", err)
+	}
+	resp, failed, err := access.QueryMetrics(ctx, sources, access.MetricQuery{
+		ProjectID:       projectID,
+		Window:          tr,
 		IntervalMinutes: in.IntervalMinutes,
 		Queries:         items,
 	})
 	if err != nil {
 		return nil, nil, s.apiErr(err)
 	}
-	return nil, resp, nil
+	return withSourceWarnings(resp, failed)
 }

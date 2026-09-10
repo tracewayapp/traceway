@@ -104,8 +104,13 @@ func resolveMcpConfig(errOut io.Writer) (mcpserver.Config, error) {
 	if err != nil {
 		return mcpserver.Config{}, fmt.Errorf("not logged in (%w): run 'traceway login --url https://<instance>' in a terminal, then reconnect this MCP server", err)
 	}
+	sources, err := openSources(sess.Sources)
+	if err != nil {
+		return mcpserver.Config{}, fmt.Errorf("profile %q has a source that cannot be opened: %w", sess.ProfileName, err)
+	}
 	return mcpserver.Config{
 		Client:           sess.Client(),
+		Sources:          sources,
 		DefaultProjectID: sess.ProjectID,
 		InstanceURL:      sess.URL,
 		Version:          version,

@@ -1,0 +1,36 @@
+# Fix Agent
+
+import { Callout } from "nextra/components";
+
+The fix agent turns an issue into a draft pull request. Press **Fix it** on an issue, and a coding agent clones the repository into a sandbox, reads the issue through the [traceway CLI](/learn/cli) with a read-only token scoped to that one attempt, edits the code, runs your tests, and pushes a branch. You review the pull request like any other.
+
+Traceway never calls a model itself. The agent runs as a separate process in a sandbox, with your provider key and nothing else of the server's environment. The backend only holds the state: the queue, the conversation, the diff and the report.
+
+<img src="/agent-run-page.png" alt="An attempt's run page with the timeline and the thread" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+## The three pieces
+
+| Piece | Where | What it needs |
+|-------|-------|---------------|
+| **Repository** | Agent page, Repository tab, one per project | The code host integration (a GitHub token today), owner and name, the branch to start from, optionally a test command |
+| **Agent profile** | Settings, one or more per organization | Which agent runs (Claude Code), the model, the provider key, and limits on turns, minutes and dollars |
+| **Executor** | The server, or a runner fleet later | `AGENT_MODE=embedded` on the `:agent` image, which carries the agent, git and the sandbox |
+
+The preflight dialog behind **Fix it** shows which of these is missing and links to where to fix it.
+
+## The thread
+
+Every attempt has one conversation, the thread, visible on the run page. The agent posts its findings and its questions there; when it asks something, the attempt waits for an answer and the sidebar badge counts it. Answer on the run page or, with the [Slack integration](/learn/agent/slack), in the Slack thread under the alert. Both surfaces show the same messages, each labelled with where it came from.
+
+## Where to go next
+
+- [Fix it](/learn/agent/fix-it): the preflight, attempts and the run page.
+- [Repositories](/learn/agent/repositories): connecting GitHub.
+- [Agent profiles](/learn/agent/profiles): Claude Code, keys and limits.
+- [Slack](/learn/agent/slack): alerts with buttons and threads in Slack.
+- [Environment](/learn/agent/environment): the `:agent` image and the variables.
+- [Security](/learn/agent/security): what the agent can and cannot reach.
+
+<Callout type="info">
+The [auto-fix GitHub Actions contract](/learn/auto-fix) keeps working next to this. It runs in your CI with your own agent; the fix agent runs on the server with a sandbox and a conversation.
+</Callout>

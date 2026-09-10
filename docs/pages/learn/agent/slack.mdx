@@ -1,0 +1,105 @@
+# Slack
+
+import { Callout } from "nextra/components";
+
+Slack is the second front door of the fix agent. An alert lands in a channel with a **Fix it** button, the agent's questions and findings arrive in a thread under it, and answering in that thread resumes the attempt. `@Traceway fix <issue link>` or `/traceway fix <hash>` start an attempt from anywhere the app is invited.
+
+Every message the agent posts also shows on the run page, and replies from the dashboard are mirrored into the Slack thread with a `web` label. The attempt itself runs where it always runs; Slack only carries the conversation.
+
+## Create the app
+
+1. Open [api.slack.com/apps](https://api.slack.com/apps), choose **Create New App**, then **From a manifest**, and pick the workspace.
+2. Paste the manifest below and create the app.
+3. Under **Basic Information**, create an **app-level token** with the `connections:write` scope. Keep the `xapp-` value.
+4. Under **Install App**, install it to the workspace and keep the **bot token** (`xoxb-`).
+5. Note the **signing secret** from Basic Information.
+6. Invite the app to the channel where alerts should land (`/invite @Traceway`).
+
+```yaml
+display_information:
+  name: Traceway
+  description: Fix issues from Slack with the Traceway agent
+  background_color: "#1d4ed8"
+features:
+  bot_user:
+    display_name: Traceway
+    always_online: true
+  slash_commands:
+    - command: /traceway
+      description: Ask the Traceway agent to fix an issue
+      usage_hint: fix <issue url or hash>
+      should_escape: false
+oauth_config:
+  scopes:
+    bot:
+      - app_mentions:read
+      - channels:history
+      - chat:write
+      - chat:write.public
+      - commands
+      - groups:history
+      - users:read
+      - users:read.email
+settings:
+  event_subscriptions:
+    bot_events:
+      - app_mention
+      - message.channels
+      - message.groups
+  interactivity:
+    is_enabled: true
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false
+```
+
+The manifest turns on Socket Mode, so the app needs no public URL: Traceway opens an outbound connection to Slack and receives events over it. This is the right setup for a self-hosted instance behind a firewall.
+
+## Connect it to Traceway
+
+In **Settings**, under **Integrations**, add a **slack** integration:
+
+| Field | Value |
+|-------|-------|
+| Bot token | The `xoxb-` token from Install App |
+| Signing secret | From Basic Information |
+| App-level token | The `xapp-` token. With it set, Traceway connects over Socket Mode within a minute and reconnects on its own |
+| Default channel ID | Where threads open for attempts that did not start from an alert message. The `C…` id is in the channel's details, not its name |
+
+Credentials are stored encrypted and never shown again. Disabling the integration closes its Socket Mode connection; enabling it again reopens it.
+
+### Without Socket Mode
+
+Leave the app-level token empty and Slack has to reach the instance instead. Turn Socket Mode off in the app settings, then point **Event Subscriptions**, **Interactivity** and the slash command at
+
+```
+https://<your traceway>/api/integrations/slack/inbound/<integration id>
+```
+
+The integration id is in the integrations table. Every request is checked against the signing secret with a five minute replay window.
+
+## Alerts with buttons
+
+Add a notification channel of type **Slack app** on the project's Alerts page, pick the integration and a channel id, and attach it to rules like any other channel. Each alert posts a Block Kit message with:
+
+- **View**, which opens the page in Traceway (present when `APP_BASE_URL` is set, since Slack needs an absolute link).
+- **Fix it**, which starts an attempt on the issue. The thread under the alert becomes the attempt's conversation.
+- **Archive**, which archives the issue.
+
+The buttons work for members whose Slack email matches their Traceway account and whose project role allows writes. Anyone else gets a threaded reply saying why nothing happened. The older **Slack** channel type, the incoming webhook, keeps working and has no buttons.
+
+## Starting attempts by hand
+
+- `@Traceway fix https://<your traceway>/issues/<hash>?projectId=<id>` in any channel the app is in.
+- `@Traceway fix <hash>` when the hash exists in exactly one project of the organization.
+- `/traceway fix <link or hash>` from anywhere; errors come back as messages only you can see.
+
+The attempt's thread opens under the mention, or in the integration's default channel for a slash command.
+
+## Answering the agent
+
+When the agent needs input, the thread gets a message starting with *The agent needs an answer.* Reply in the thread and the attempt resumes with your answer; the reply also appears on the run page with a `slack` label. Replies from people whose Slack account is not linked to a Traceway user are not forwarded; they get a message pointing at the sign-in page instead.
+
+<Callout type="info">
+Account linking happens on first contact: Traceway asks Slack for the member's email and matches it against its users. There is nothing to configure, but the workspace email has to be the one used for Traceway.
+</Callout>

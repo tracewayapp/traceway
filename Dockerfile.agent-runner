@@ -1,0 +1,57 @@
+# traceway-agent-runner: executes fix-agent attempts for an instance in
+# AGENT_MODE=remote. Carries the runner, git, the docker CLI for the docker
+# sandbox, and (for the bwrap/off modes) Node, the pinned Claude Code CLI,
+# bubblewrap, the traceway CLI and the skill at the same paths as the
+# :agent image, so AGENT_DEFAULT_IMAGE can point at that image.
+ARG NODE_VERSION=26
+ARG CLAUDE_CODE_VERSION=2.1.261
+
+# ==============================================================================
+# Stage 1: Build the runner and the CLI
+# ==============================================================================
+FROM golang:1.26-bookworm AS builder
+
+WORKDIR /src
+COPY backend/go.mod backend/go.sum ./backend/
+COPY cli/go.mod cli/go.sum ./cli/
+RUN cd backend && go mod download
+RUN cd cli && go mod download
+COPY backend ./backend
+COPY cli ./cli
+COPY skills ./skills
+RUN cd backend && CGO_ENABLED=0 go build -ldflags="-s -w" -o /traceway-agent-runner ./cmd/traceway-agent-runner
+RUN cd cli && CGO_ENABLED=0 go build -ldflags="-s -w" -o /traceway-cli ./cmd/traceway
+
+# ==============================================================================
+# Stage 2: Claude Code CLI
+# ==============================================================================
+FROM node:${NODE_VERSION}-bookworm-slim AS claude-builder
+ARG CLAUDE_CODE_VERSION
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
+
+# ==============================================================================
+# Stage 3: Runtime
+# ==============================================================================
+FROM debian:bookworm-slim
+
+RUN apt-get update -o Acquire::Retries=3 -o APT::Update::Error-Mode=any && apt-get install -y --no-install-recommends ca-certificates tzdata git bubblewrap docker.io iptables && rm -rf /var/lib/apt/lists/*
+
+COPY --from=claude-builder /usr/local/bin/node /usr/local/bin/node
+COPY --from=claude-builder /usr/local/lib/node_modules/@anthropic-ai/claude-code /usr/local/lib/node_modules/@anthropic-ai/claude-code
+RUN ln -s /usr/local/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe /usr/local/bin/claude && claude --version
+
+COPY --from=builder /traceway-agent-runner /usr/local/bin/traceway-agent-runner
+COPY --from=builder /traceway-cli /usr/local/bin/traceway-cli
+RUN mkdir -p /opt/traceway/bin && ln -s /usr/local/bin/traceway-cli /opt/traceway/bin/traceway
+COPY skills/traceway /opt/traceway/skill
+
+RUN mkdir -p /var/lib/traceway-agent-runner
+
+ENV AGENT_RUNNER_STATE=/var/lib/traceway-agent-runner \
+    AGENT_SKILL_DIR=/opt/traceway/skill \
+    AGENT_SANDBOX=docker \
+    PATH=/opt/traceway/bin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+RUN claude --version && traceway --help >/dev/null && iptables --version && test -s /opt/traceway/skill/SKILL.md
+
+ENTRYPOINT ["/usr/local/bin/traceway-agent-runner"]

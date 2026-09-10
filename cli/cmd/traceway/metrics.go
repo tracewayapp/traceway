@@ -3,11 +3,11 @@ package main
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/tracewayapp/traceway/cli/internal/output"
+	"github.com/tracewayapp/traceway/cli/pkg/access"
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
 
@@ -66,23 +66,32 @@ func runMetricsQuery(cmd *cobra.Command, _ []string) error {
 	intervalMin, _ := cmd.Flags().GetInt("interval-minutes")
 	tags, _ := cmd.Flags().GetStringSlice("tag")
 
-	tagFilters, err := parseTagFilters(tags)
+	tagFilters, err := parseKeyValues("--tag", tags)
 	if err != nil {
 		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
 			"use --tag key=value (repeatable)")
 	}
 
-	c := sess.Client()
-	resp, err := c.QueryMetrics(ctx, sess.ProjectID, client.QueryMetricsRequest{
-		TimeRange:       tr,
+	resolver, err := sess.Resolver()
+	if err != nil {
+		return renderSourceError(cmd.ErrOrStderr(), mode, err)
+	}
+	sources, err := access.Metrics(resolver, flagSource)
+	if err != nil {
+		return renderSourceError(cmd.ErrOrStderr(), mode, err)
+	}
+	resp, failed, err := access.QueryMetrics(ctx, sources, access.MetricQuery{
+		ProjectID:       sess.ProjectID,
+		Window:          tr,
 		IntervalMinutes: intervalMin,
-		Queries: []client.MetricQueryItem{
+		Queries: []access.MetricQueryItem{
 			{Name: name, Aggregation: agg, TagFilters: tagFilters, GroupBy: groupBy},
 		},
 	})
 	if err != nil {
 		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
 	}
+	reportSourceFailures(cmd.ErrOrStderr(), failed)
 
 	switch mode {
 	case output.ModeJSON:
@@ -91,11 +100,12 @@ func runMetricsQuery(cmd *cobra.Command, _ []string) error {
 		return output.RenderYAML(cmd.OutOrStdout(), resp, output.ParseFieldsFlag(flagFields))
 	default:
 		// Summary table — for actual time-series data, --output json is recommended.
+		col := sourceColumnFor(sources)
 		tw := output.NewTabWriter(cmd.OutOrStdout())
-		_, _ = fmt.Fprintln(tw, "METRIC\tUNIT\tGROUP\tPOINTS\tLATEST")
+		_, _ = fmt.Fprintln(tw, col.header("METRIC\tUNIT\tGROUP\tPOINTS\tLATEST"))
 		for _, r := range resp.Results {
 			if len(r.Series) == 0 {
-				_, _ = fmt.Fprintf(tw, "%s\t%s\t-\t0\t-\n", r.Name, pickStr(r.Unit, "-"))
+				_, _ = fmt.Fprintf(tw, col.cell(r.Source)+"%s\t%s\t-\t0\t-\n", r.Name, pickStr(r.Unit, "-"))
 				continue
 			}
 			groups := make([]string, 0, len(r.Series))
@@ -109,29 +119,12 @@ func runMetricsQuery(cmd *cobra.Command, _ []string) error {
 				if len(pts) > 0 {
 					latest = fmt.Sprintf("%g", pts[len(pts)-1].Value)
 				}
-				_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\n", r.Name, pickStr(r.Unit, "-"), group, len(pts), latest)
+				_, _ = fmt.Fprintf(tw, col.cell(r.Source)+"%s\t%s\t%s\t%d\t%s\n", r.Name, pickStr(r.Unit, "-"), group, len(pts), latest)
 			}
 			if r.TruncatedGroups {
-				_, _ = fmt.Fprintf(tw, "%s\t%s\t(more groups not shown)\t-\t-\n", r.Name, pickStr(r.Unit, "-"))
+				_, _ = fmt.Fprintf(tw, col.cell(r.Source)+"%s\t%s\t(more groups not shown)\t-\t-\n", r.Name, pickStr(r.Unit, "-"))
 			}
 		}
 		return tw.Flush()
 	}
-}
-
-// parseTagFilters parses ["k=v", "x=y"] into {"k":"v","x":"y"}. Returns an
-// error if any element is malformed.
-func parseTagFilters(in []string) (map[string]string, error) {
-	if len(in) == 0 {
-		return nil, nil
-	}
-	out := make(map[string]string, len(in))
-	for _, item := range in {
-		k, v, ok := strings.Cut(item, "=")
-		if !ok || k == "" {
-			return nil, fmt.Errorf("invalid --tag %q: expected key=value", item)
-		}
-		out[k] = v
-	}
-	return out, nil
 }

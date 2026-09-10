@@ -1,6 +1,8 @@
 package client
 
 import (
+	"github.com/tracewayapp/traceway/cli/pkg/access"
+
 	"context"
 	"net/http"
 	"net/url"
@@ -8,12 +10,7 @@ import (
 )
 
 // MetricQueryItem is one query within a QueryMetricsRequest.
-type MetricQueryItem struct {
-	Name        string            `json:"name"`
-	Aggregation string            `json:"aggregation,omitempty"`
-	TagFilters  map[string]string `json:"tagFilters,omitempty"`
-	GroupBy     string            `json:"groupBy,omitempty"`
-}
+type MetricQueryItem = access.MetricQueryItem
 
 // QueryMetricsRequest is the body for POST /api/metrics/query.
 //
@@ -37,34 +34,38 @@ func (r QueryMetricsRequest) MarshalJSON() ([]byte, error) {
 }
 
 // TimeSeriesPoint is one data point in a metric query result.
-type TimeSeriesPoint struct {
-	Timestamp time.Time `json:"timestamp"`
-	Value     float64   `json:"value"`
-}
+type TimeSeriesPoint = access.TimeSeriesPoint
 
 // MetricQueryResult is one query's results, optionally grouped by tag.
 // The map key is the group label ("all" if no GroupBy was specified).
-type MetricQueryResult struct {
-	Name   string                       `json:"name"`
-	Unit   string                       `json:"unit"`
-	Series map[string][]TimeSeriesPoint `json:"series"`
-	// TruncatedGroups is true when a grouped query was cut to the first 200 groups.
-	TruncatedGroups bool `json:"truncatedGroups,omitempty"`
-}
+type MetricQueryResult = access.MetricSeries
 
 // QueryMetricsResponse is the upstream MetricQueryResponse.
-type QueryMetricsResponse struct {
-	Results []MetricQueryResult `json:"results"`
-	// IntervalMinutes is the effective bucket size: the server widens the
-	// requested interval so no series exceeds 2000 points.
-	IntervalMinutes int `json:"intervalMinutes,omitempty"`
-}
+type QueryMetricsResponse = access.MetricResult
 
 // QueryMetrics runs one or more metric queries against the project.
 func (c *Client) QueryMetrics(ctx context.Context, projectID string, req QueryMetricsRequest) (*QueryMetricsResponse, error) {
 	path := "/api/metrics/query?projectId=" + url.QueryEscape(projectID)
 	var resp QueryMetricsResponse
 	if err := c.do(ctx, http.MethodPost, path, req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// DiscoverMetricsResponse is the body of GET /api/metrics/discover.
+type DiscoverMetricsResponse struct {
+	Metrics []access.MetricInfo `json:"metrics"`
+}
+
+// DiscoverMetrics lists the metric names seen in the window with their tag
+// keys and, when registered, type and unit.
+func (c *Client) DiscoverMetrics(ctx context.Context, projectID string, tr TimeRange) (*DiscoverMetricsResponse, error) {
+	path := "/api/metrics/discover?projectId=" + url.QueryEscape(projectID) +
+		"&from=" + url.QueryEscape(tr.From.UTC().Format(time.RFC3339)) +
+		"&to=" + url.QueryEscape(tr.To.UTC().Format(time.RFC3339))
+	var resp DiscoverMetricsResponse
+	if err := c.do(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

@@ -8,6 +8,7 @@ import (
 var (
 	flagProfile string
 	flagProject string
+	flagSource  string
 	flagOutput  string
 	flagFields  string
 	flagYes     bool
@@ -25,6 +26,7 @@ func newRootCmd() *cobra.Command {
 	pf := cmd.PersistentFlags()
 	pf.StringVar(&flagProfile, "profile", "", "Profile name (default: current profile, then \"default\")")
 	pf.StringVar(&flagProject, "project", "", "Project ID (default: profile's current project)")
+	pf.StringVar(&flagSource, "source", "", "Telemetry source to query by name when the profile binds several (default: all that answer, merged)")
 	pf.StringVarP(&flagOutput, "output", "o", "", "Output format: json, yaml, or table (default: table on TTY, json otherwise)")
 	pf.StringVar(&flagFields, "fields", "", "Comma-separated field projection (e.g. id,name)")
 	pf.BoolVar(&flagYes, "yes", false, "Skip confirmation for mutating commands")
@@ -33,6 +35,8 @@ func newRootCmd() *cobra.Command {
 	cmd.AddCommand(newLogoutCmd())
 	cmd.AddCommand(newProfilesCmd())
 	cmd.AddCommand(newProjectsCmd())
+	cmd.AddCommand(newSourcesCmd())
+	cmd.AddCommand(newAgentCmd())
 	cmd.AddCommand(newSetupCmd())
 	cmd.AddCommand(newExceptionsCmd())
 	cmd.AddCommand(newLogsCmd())

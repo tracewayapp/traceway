@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -13,6 +14,8 @@ import (
 
 	"github.com/tracewayapp/traceway/cli/internal/errclass"
 	"github.com/tracewayapp/traceway/cli/internal/timerange"
+	"github.com/tracewayapp/traceway/cli/pkg/access"
+	"github.com/tracewayapp/traceway/cli/pkg/access/traceway"
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
 
@@ -59,6 +62,39 @@ func (s *server) client(req *mcp.CallToolRequest) *client.Client {
 	return s.cfg.Client.WithBearer(fields[1])
 }
 
+// sources is the resolver for one call. A per-request bearer means the
+// backend mount, where the only source is the instance itself under that
+// bearer; otherwise it is the profile's full source list built at New.
+func (s *server) sources(req *mcp.CallToolRequest) *access.Resolver {
+	if c := s.client(req); c != s.cfg.Client {
+		return access.NewResolver(access.Bound{Source: traceway.New(traceway.DefaultName, c)})
+	}
+	return s.resolver
+}
+
+// withSourceWarnings shapes a fan-out answer. Sources that failed while
+// others answered are reported in a second text block so the structured
+// result keeps its shape.
+func withSourceWarnings(out any, failed []*access.SourceError) (*mcp.CallToolResult, any, error) {
+	if len(failed) == 0 {
+		return nil, out, nil
+	}
+	encoded, err := json.Marshal(out)
+	if err != nil {
+		return nil, nil, err
+	}
+	var warning strings.Builder
+	for _, f := range failed {
+		warning.WriteString("warning: ")
+		warning.WriteString(f.Error())
+		warning.WriteByte('\n')
+	}
+	return &mcp.CallToolResult{Content: []mcp.Content{
+		&mcp.TextContent{Text: string(encoded)},
+		&mcp.TextContent{Text: strings.TrimRight(warning.String(), "\n")},
+	}}, out, nil
+}
+
 // project resolves the effective project id: the per-call param wins, then
 // the session default.
 func (s *server) project(override string) (string, error) {
@@ -74,6 +110,11 @@ func (s *server) project(override string) (string, error) {
 // projectIn is embedded in every project-scoped tool input.
 type projectIn struct {
 	ProjectID string `json:"project_id,omitempty" jsonschema:"Project to query. Optional when a default project is configured on the host (traceway projects use); find ids with list_projects."`
+}
+
+// sourceIn is embedded in every telemetry tool input.
+type sourceIn struct {
+	Source string `json:"source,omitempty" jsonschema:"Telemetry source to query by name when the profile binds more than one (traceway sources list). Default: every source that answers the domain, merged, each record tagged with its source."`
 }
 
 // timeRangeIn is embedded in every windowed list/query tool input.

@@ -1,0 +1,29 @@
+# Agent Profiles
+
+import { Callout } from "nextra/components";
+
+An agent profile is what runs an attempt: the coding agent, the model, the provider key, and the limits. Profiles belong to the organization; one is the default that **Fix it** uses unless another is picked in the preflight dialog.
+
+<img src="/agent-profiles.png" alt="The agent profiles card in settings" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+| Field | Meaning |
+|-------|---------|
+| Agent | The coding agent. Stage 1 ships **Claude Code** |
+| Model | Passed to the agent, for example `claude-opus-5` |
+| Provider API key | The key the agent authenticates with. Stored encrypted; handed to the agent process only |
+| Base URL | Optional, for a gateway or proxy in front of the provider |
+| Max turns | How many agent turns before the harness stops the run |
+| Timeout | Wall-clock minutes for one run |
+| Budget | Dollars the agent is told not to exceed |
+| Allowed tools | Optional list restricting the agent's tools |
+| Default | The profile **Fix it** uses when none is chosen |
+
+## Claude Code
+
+The agent runs the Claude Code CLI in headless mode inside the sandbox, with the project's working tree, the [traceway skill](https://github.com/tracewayapp/traceway/tree/main/skills/traceway) and a logged-in traceway CLI. It reads the issue's stack traces, occurrences and related telemetry through the CLI, edits the tree, and ends its session with a report the harness parses: whether it fixed the issue, or an analysis of why not.
+
+The control plane stores the provider key encrypted and the trusted harness passes it into the Stage 1 agent sandbox. Docker runners require an enforceable outbound allowlist; unsupported hosts are refused. Bwrap does not filter outbound destinations.
+
+<Callout type="info">
+For Claude Code, the harness passes the remaining attempt budget through `--max-budget-usd`, accounting for completed sessions and verification retries. This is a cooperative CLI limit, not a hard spending boundary against a malicious process holding the raw key. Independent gateway enforcement is planned before third-party agent activation. Cost and turns accumulate across completed sessions on the same attempt.
+</Callout>

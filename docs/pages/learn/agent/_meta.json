@@ -1,0 +1,12 @@
+{
+  "index": "Overview",
+  "fix-it": "Fix It",
+  "repositories": "Repositories",
+  "github": "GitHub",
+  "profiles": "Agent Profiles",
+  "slack": "Slack",
+  "environment": "Environment",
+  "runner": "Remote Runners",
+  "security": "Security",
+  "runbook": "Runbook"
+}

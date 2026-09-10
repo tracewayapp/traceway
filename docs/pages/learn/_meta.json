@@ -6,9 +6,15 @@
   "traces": "Traces",
   "ai-tracing": "AI Tracing",
   "issues": "Issues",
-  "symbolication-js": { "display": "hidden" },
-  "symbolicator-library": { "display": "hidden" },
-  "collector-symbolicator": { "display": "hidden" },
+  "symbolication-js": {
+    "display": "hidden"
+  },
+  "symbolicator-library": {
+    "display": "hidden"
+  },
+  "collector-symbolicator": {
+    "display": "hidden"
+  },
   "sessions": "Sessions",
   "attributes": "Attributes",
   "spans": "Spans",
@@ -18,6 +24,7 @@
   "logs": "Logs",
   "alerts": "Alerts",
   "auto-fix": "Auto-Fix",
+  "agent": "Fix Agent",
   "on-call": "On-Call",
   "monitors": "Monitors",
   "incidents": "Incidents & Post-Mortems",

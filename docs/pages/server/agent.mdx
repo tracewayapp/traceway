@@ -1,0 +1,59 @@
+# Agent (Fix Agent)
+
+The [DuckDB deployment](/server/duckdb) plus Node, the pinned Claude Code CLI, git, bubblewrap and the traceway CLI with its skill, so [fix agent](/learn/agent) attempts run inside the container (`AGENT_MODE=embedded`). The control plane, meaning attempts, threads, the preflight and the Slack integration, is in every image; this image exists only to execute attempts.
+
+Operational notes on top of the DuckDB image:
+
+- **The image is larger** (Node and the Claude Code CLI add a few hundred MB).
+- **Attempts run a coding agent on this host.** Each worker (`AGENT_WORKERS`, default 2) clones the repository into its own workspace and runs the agent in a bubblewrap sandbox that hides the server's environment, files and other workspaces. The network namespace is shared: the agent can reach whatever the container can.
+- **The sandbox needs user namespaces.** Docker refuses them under its default security options; the compose file runs the container `privileged`, and Ubuntu 24.04 hosts additionally need `sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`. Watch the startup log for `sandbox: bwrap`. When the host cannot provide it, the sandbox degrades to off and embedded mode refuses to start unless `AGENT_SANDBOX_ALLOW_OFF=true`, which is meant for development. A plain binary on a host with `bubblewrap` installed avoids the Docker question entirely.
+- **The provider key is the agent's only credential.** The GitHub token stays outside the sandbox with the harness; the agent reads telemetry with a read-only run token. See [Security](/learn/agent/security).
+
+## Quick Start
+
+```bash
+docker pull ghcr.io/tracewayapp/traceway:agent
+
+export SECRETS_KEY="$(openssl rand -base64 32)"   # keep this with your backups
+
+docker run -d --name traceway \
+  -p 80:80 \
+  --privileged \
+  -v "$(pwd)/traceway-data:/data" \
+  -e JWT_SECRET="your-jwt-secret-min-32-characters-long" \
+  -e APP_BASE_URL="https://traceway.example.com" \
+  -e SECRETS_KEY="$SECRETS_KEY" \
+  -e AGENT_MODE="embedded" \
+  -e DUCKDB_MEMORY_LIMIT="2GB" \
+  ghcr.io/tracewayapp/traceway:agent
+```
+
+Or with compose: `SECRETS_KEY=... docker compose -f docker-compose.agent.yml up -d`.
+
+After starting, open `http://localhost/register` to create your first account, then follow [Fix it](/learn/agent/fix-it): a GitHub integration and an agent profile under **Settings**, the repository on the **Agent** page, and **Fix it** on an issue.
+
+## Build from Source
+
+```bash
+docker build -f Dockerfile.agent -t traceway:agent .
+```
+
+The Claude Code CLI version is pinned by `ARG CLAUDE_CODE_VERSION` in the Dockerfile; the traceway CLI and skill are built from the same checkout.
+
+## Configuration
+
+Everything from the [DuckDB page](/server/duckdb#configuration) applies unchanged. The agent variables are listed on the [environment page](/learn/agent/environment); the ones you will set:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AGENT_MODE` | `off` | Set `embedded` in this image. `remote` leaves the queue to a runner fleet. |
+| `AGENT_WORKERS` | `2` | Concurrent attempts, each with its own workspace and sandbox. |
+| `AGENT_SANDBOX` | `auto` | `auto`, `bwrap` or `off`. |
+| `AGENT_SANDBOX_ALLOW_OFF` | `false` | Let embedded mode start with the sandbox off. Development only. |
+| `AGENT_ATTEMPT_RETENTION_DAYS` | `90` | Days before a finished attempt loses its events and blobs. |
+| `SECRETS_KEY` | *(key file)* | Encrypts stored credentials. Set it explicitly here: the key file would otherwise live in the data volume next to what it protects. |
+| `APP_BASE_URL` | *(derived)* | Public origin, needed for the links in Slack messages. |
+
+## Access Points
+
+Identical to the [DuckDB image](/server/duckdb#access-points). `/api/health/deep` reports the attempt queue; it is gated by the `HEALTH_DEEP_TOKEN` deploy secret.

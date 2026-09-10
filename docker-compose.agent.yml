@@ -1,0 +1,45 @@
+services:
+  traceway:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    ports:
+      - "80:80"
+    # The agent's sandbox is bubblewrap, which needs an unprivileged user
+    # namespace. Docker refuses that under its default seccomp and AppArmor
+    # profiles; on Ubuntu 24.04 hosts it also needs
+    #   sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+    # Without both, the sandbox degrades to off and embedded mode refuses to
+    # start unless AGENT_SANDBOX_ALLOW_OFF=true (development only).
+    privileged: true
+    environment:
+      JWT_SECRET: "change-this-to-a-secure-secret-at-least-32-chars"
+      # Required for the links in Slack messages and pull requests.
+      APP_BASE_URL: "https://traceway.example.com"
+      # openssl rand -base64 32. Encrypts every stored credential: GitHub
+      # tokens, provider keys, Slack tokens. Back it up with the data volume.
+      SECRETS_KEY: "${SECRETS_KEY}"
+      # TRUSTED_PROXIES: "172.18.0.0/16"
+      # TRUSTED_PROXY_HEADER: "X-Real-IP"
+
+      # DuckDB sizes its memory budget from host RAM, not the container limit.
+      DUCKDB_MEMORY_LIMIT: "2GB"
+      # DUCKDB_THREADS: "4"
+
+      # Fix agent. embedded runs attempts in this container; each worker has
+      # its own workspace and sandbox.
+      AGENT_MODE: "embedded"
+      AGENT_WORKERS: "2"
+      # auto | bwrap | off. bwrap fails fast at startup when the host cannot
+      # create user namespaces; auto degrades to off with a warning.
+      # AGENT_SANDBOX: "auto"
+      # AGENT_SANDBOX_ALLOW_OFF: "false"
+      # Finished attempts lose their events, transcript, diff and report
+      # after this many days; the row and the thread stay. "0" disables.
+      # AGENT_ATTEMPT_RETENTION_DAYS: "90"
+    volumes:
+      - traceway-data:/data
+    restart: unless-stopped
+
+volumes:
+  traceway-data:

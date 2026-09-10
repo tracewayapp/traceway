@@ -14,6 +14,7 @@ import (
 
 	"github.com/tracewayapp/traceway/cli/internal/exitcode"
 	"github.com/tracewayapp/traceway/cli/internal/output"
+	"github.com/tracewayapp/traceway/cli/pkg/access"
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
 
@@ -155,4 +156,59 @@ func confirmMutation(cmd *cobra.Command, summaryLines []string) error {
 			"confirmation declined", "")
 	}
 	return nil
+}
+
+// renderSourceError maps a source resolution failure (an unknown --source,
+// a source that does not answer the domain, a misconfigured profile entry)
+// to a usage envelope.
+func renderSourceError(errOut io.Writer, mode output.Mode, err error) error {
+	return renderUsageError(errOut, mode, err.Error(), "traceway sources list")
+}
+
+// reportSourceFailures prints the sources that could not answer a fan-out
+// while others did. They are warnings: the merged answer is still rendered.
+func reportSourceFailures(errOut io.Writer, failed []*access.SourceError) {
+	for _, f := range failed {
+		_, _ = fmt.Fprintf(errOut, "warning: %v\n", f)
+	}
+}
+
+// sourceColumn adds a leading SOURCE column to a table when more than one
+// source answered, so the merged rows stay attributable; with a single
+// source the table is unchanged.
+type sourceColumn bool
+
+func sourceColumnFor[S access.Source](sources []S) sourceColumn {
+	return sourceColumn(len(sources) > 1)
+}
+
+func (c sourceColumn) header(rest string) string {
+	if c {
+		return "SOURCE\t" + rest
+	}
+	return rest
+}
+
+func (c sourceColumn) cell(source string) string {
+	if c {
+		return source + "\t"
+	}
+	return ""
+}
+
+// parseKeyValues parses repeated key=value flag values ("k=v", "x=y") into a
+// map, naming the flag in the error for a malformed element.
+func parseKeyValues(flag string, items []string) (map[string]string, error) {
+	if len(items) == 0 {
+		return nil, nil
+	}
+	out := make(map[string]string, len(items))
+	for _, item := range items {
+		key, value, ok := strings.Cut(item, "=")
+		if !ok || key == "" {
+			return nil, fmt.Errorf("invalid %s %q: expected key=value", flag, item)
+		}
+		out[key] = value
+	}
+	return out, nil
 }

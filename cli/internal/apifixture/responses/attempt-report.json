@@ -1,0 +1,29 @@
+{
+  "attempt": {
+    "id": "aaaaaaaa-0000-4000-8000-000000000003",
+    "organizationId": 1,
+    "projectId": "11111111-1111-4111-8111-111111111111",
+    "number": 3,
+    "kind": "fix",
+    "subjectKind": "traceway_exception",
+    "subjectRef": "0123456789abcdef",
+    "executor": "ci",
+    "status": "awaiting_review",
+    "resume": false,
+    "baseBranch": "main",
+    "fixBranch": "traceway/fix-0123456789abcdef-77.1",
+    "agent": "",
+    "model": "",
+    "costUsd": 0,
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "turns": 0,
+    "claimedBy": "ci",
+    "error": "",
+    "reportKey": "agent/aaaaaaaa-0000-4000-8000-000000000003/report.md",
+    "createdAt": "2026-06-01T14:00:00Z",
+    "startedAt": "2026-06-01T14:00:00Z",
+    "finishedAt": "2026-06-01T14:00:01Z",
+    "updatedAt": "2026-06-01T14:00:01Z"
+  }
+}

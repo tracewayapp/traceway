@@ -1,0 +1,31 @@
+# Runbook
+
+What to look at when the fix agent misbehaves, and what to do about it. `GET /api/health/deep` (with `HEALTH_DEEP_TOKEN`) has an `agent` block with the queue, the counters since start, the last lease reclaim and the runners online; the same numbers are the `traceway.agent.*` metrics when self-monitoring is on, and the **Traceway Fix Agent** dashboard template charts them.
+
+## An attempt is stuck
+
+**Queued for minutes.** Nothing is claiming. In embedded mode check the startup log for `agent: embedded executor started`; without it `AGENT_MODE` is off or the executor refused to start (bubblewrap unavailable without `AGENT_SANDBOX_ALLOW_OFF`, no `claude` or `git` on PATH). In remote mode `runnersOnline` in the health block must be above zero; a runner that cannot reach the instance or holds the wrong `AGENT_RUNNER_SECRET` logs it and exits.
+
+**Running or preparing for longer than the profile's timeout.** The run's lease expires two minutes after its last event; the reclaimer then puts the attempt back in the queue flagged to resume, and the timeline shows a `reclaimed` event. If that never happens the executor is alive but silent: look at its log for the attempt id. Cancel the attempt from the run page when you do not want it resumed.
+
+**Needs input.** The agent asked a question. Answer in the thread on the run page or in Slack; the attempt resumes on the next poll.
+
+## The budget or the turn limit was hit
+
+The run ends *analyzed* with the agent's last report, and the row carries the cost and turns. Raise `Max turns`, `Timeout` or `Budget` on the [agent profile](/learn/agent/profiles), or pick a larger profile in the preflight dialog for that issue. A run that keeps hitting the limit on the same issue usually needs a narrower repository test command, or the issue is not a code bug.
+
+## A runner is offline
+
+`runnersOnline` drops and the preflight's Executor row turns red once no runner polled for two minutes. Attempts a dead runner held come back to the queue after the lease expires and finish on the next runner. Restart the runner; if it exits at once, its log names the cause (rejected secret, docker or bubblewrap unusable, missing `claude`). A runner behind a proxy that closes idle connections needs the long poll's 25 seconds allowed.
+
+## The Slack loop is disconnected
+
+Socket Mode reconnects on its own with backoff. If a Slack integration stops receiving events, check that it is enabled, that the app-level token still exists in Slack (rotating it means saving the new token on the integration, which restarts the loop), and the backend log for `slack socket mode: integration N`. Without an app-level token Slack has to reach `/api/integrations/slack/inbound/<id>` from the outside instead.
+
+## Credentials
+
+Every credential minted for a run is on the timeline as a `credential` event: the run token the agent reads telemetry with and the git credential the harness pushes with. A leaked provider key is rotated on the agent profile; a leaked GitHub token on the integration; `SECRETS_KEY` itself is rotated by re-encrypting the stored credentials with the new key.
+
+## Cleaning up
+
+Finished attempts keep their events, transcript, diff and report for `AGENT_ATTEMPT_RETENTION_DAYS` (default 90), then only the row and the thread. Repository mirrors and workspaces live under `STORAGE_PATH/agent/` (or the runner's state directory) and can be deleted while nothing is running; they are rebuilt on the next attempt.

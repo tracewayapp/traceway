@@ -26,6 +26,19 @@ func (notificationOutboxNaming) GetTableNameFromStructName(string) string {
 	return "notification_outbox"
 }
 
+// The default pluralizer would produce "identitys" and "repositorys".
+type identityNaming struct{ lit.DefaultDbNamingStrategy }
+
+func (identityNaming) GetTableNameFromStructName(string) string {
+	return "identities"
+}
+
+type repositoryNaming struct{ lit.DefaultDbNamingStrategy }
+
+func (repositoryNaming) GetTableNameFromStructName(string) string {
+	return "repositories"
+}
+
 func Init(driver lit.Driver) {
 	lit.RegisterModel[Project](driver)
 	lit.RegisterModel[User](driver)
@@ -85,6 +98,17 @@ func Init(driver lit.Driver) {
 	lit.RegisterModel[PostMortemEventItem](driver)
 	lit.RegisterModel[SyntheticRunner](driver)
 	lit.RegisterModel[StatusPage](driver)
+	lit.RegisterModel[Integration](driver)
+	lit.RegisterModelWithNaming[Identity](driver, identityNaming{})
+	lit.RegisterModelWithNaming[Repository](driver, repositoryNaming{})
+	lit.RegisterModel[AgentProfile](driver)
+	lit.RegisterModel[AgentAttempt](driver)
+	lit.RegisterModel[AgentAttemptStatusCount](driver)
+	lit.RegisterModel[AgentAttemptEvent](driver)
+	lit.RegisterModel[AgentMessage](driver)
+	lit.RegisterModel[AgentLink](driver)
+	lit.RegisterModel[ProjectTelemetrySource](driver)
+	lit.RegisterModel[AgentRunner](driver)
 
 	for _, register := range ExtensionModelRegistrations {
 		register(driver)

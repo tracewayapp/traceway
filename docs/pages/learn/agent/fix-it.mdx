@@ -1,0 +1,63 @@
+# Fix It
+
+import { Callout } from "nextra/components";
+
+## The preflight
+
+**Fix it** sits in the header of every issue page for members with write access. It opens a menu with **Local LLM** first: instructions for installing the Traceway skill, signing in to this instance, and asking your coding harness to fix the current issue. Claude Code, Codex, Cursor, VS Code/Copilot and Antigravity each have an installation tab.
+
+**Traceway AI Agent** is offered only when the server has `AGENT_MODE=embedded` or `AGENT_MODE=remote`. Default installations (`off` or unset) do not offer it. This option opens a dialog that checks the four things an attempt needs before anything starts:
+
+<img src="/agent-preflight.png" alt="The preflight dialog with its four checks" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+| Check | Passes when |
+|-------|-------------|
+| Repository | The project has a repository with a code host integration |
+| Agent | The organization has an agent profile, and it is the default or you picked one |
+| Executor | The server is configured for embedded or remote execution; recent runner polls do not gate starting an attempt |
+| Conversation | Always, in the browser; Slack adds a second surface |
+
+A failing row carries a **Connect GitHub** or **Set up** link to the page where it is set up. The dialog also names the next attempt number and, when one is already running for this issue, links to it instead of starting another.
+
+## Attempts
+
+An attempt is one run of the agent against one issue. It moves through these states:
+
+| Status | Meaning |
+|--------|---------|
+| Pending approval | Waiting for a member to approve it (attempts started by rules) |
+| Queued | Waiting for an executor to claim it |
+| Running | The agent is working |
+| Needs input | The agent asked a question and is waiting in the thread |
+| Awaiting review | A draft pull request is open |
+| Merged / Closed | The pull request was merged or closed on the code host |
+| Analyzed | The agent found no safe fix and left its analysis in the report |
+| Failed / Timed out / Cancelled | The run ended without a result |
+
+The issue page lists the issue's attempts with their status, pull request, cost and start time:
+
+<img src="/agent-attempts-card.png" alt="The attempts card on an issue page" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+The **Agent** page lists every attempt in the project, filtered by status, with the ones waiting for approval on top:
+
+<img src="/agent-attempts.png" alt="The attempts list" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+## Starting attempts from rules
+
+A **Fix agent** [notification channel](/learn/alerts#setting-up-the-fix-agent) attached to a New Issue or Error Regression rule starts an attempt on every fire, with the profile it names and either waiting for approval or queued right away. Pending attempts show on top of the Agent page with an **Approve** button, and in Slack with Approve and Dismiss buttons when a Slack app is connected. The CLI lists and inspects attempts with `traceway agent attempts` and `traceway agent show <id>`, and a CI run of the [auto-fix contract](/learn/auto-fix) records itself with `traceway agent report`.
+
+## The run page
+
+Each attempt has a run page with:
+
+- **Timeline**: every event as it happens, from creation through the agent's tool calls and usage to the final status. The page polls while the attempt is active and stops once it is over.
+- **Diff**: the change the agent pushed.
+- **Report**: the agent's own summary, the same text it puts in the pull request.
+- **Transcript**: the full session, stored when the run finishes.
+- **Thread**: the conversation. When the status is *Needs input*, answering here resumes the attempt.
+
+**Cancel attempt** stops an active attempt; **Approve** releases one that is pending approval. Both need write access on the project.
+
+<Callout type="info">
+Costs and tokens on the attempt come from the agent's own accounting. The budget in the [agent profile](/learn/agent/profiles) is a cap the agent is told to respect, enforced by the harness when the agent reports exceeding it.
+</Callout>

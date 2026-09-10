@@ -12,12 +12,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tracewayapp/traceway/backend/app/agent"
+	"github.com/tracewayapp/traceway/backend/app/agentrunner"
 	"github.com/tracewayapp/traceway/backend/app/backfill"
 	"github.com/tracewayapp/traceway/backend/app/cache"
 	"github.com/tracewayapp/traceway/backend/app/chdb"
 	"github.com/tracewayapp/traceway/backend/app/config"
 	"github.com/tracewayapp/traceway/backend/app/controllers"
 	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/app/integrations/github"
+	slackapp "github.com/tracewayapp/traceway/backend/app/integrations/slack"
+	"github.com/tracewayapp/traceway/backend/app/integrations/web"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/migrations"
 	"github.com/tracewayapp/traceway/backend/app/models"
@@ -27,6 +32,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/outbox"
 	"github.com/tracewayapp/traceway/backend/app/recordings"
 	"github.com/tracewayapp/traceway/backend/app/retention"
+	"github.com/tracewayapp/traceway/backend/app/secrets"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/services/mcpmount"
 	"github.com/tracewayapp/traceway/backend/app/sourcemapbackfill"
@@ -38,6 +44,7 @@ import (
 	"github.com/coreos/go-systemd/v22/daemon"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/tracewayapp/traceway/cli/pkg/client"
 	traceway "go.tracewayapp.com"
 	tracewaygin "go.tracewayapp.com/tracewaygin"
 )
@@ -93,6 +100,13 @@ func Run(opts ...Option) {
 		os.Exit(1)
 	}
 
+	secretsKey, err := secrets.LoadKey(cfg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "FATAL: "+err.Error())
+		os.Exit(1)
+	}
+	secrets.Init(secretsKey)
+
 	trustedNets, proxyErr := trustedProxyNets(cfg.TrustedProxyList())
 	if proxyErr != nil {
 		fmt.Fprintln(os.Stderr, "FATAL: invalid TRUSTED_PROXIES: "+proxyErr.Error())
@@ -100,7 +114,7 @@ func Run(opts ...Option) {
 		os.Exit(1)
 	}
 
-	err := db.Init()
+	err = db.Init()
 	if err != nil {
 		panic(fmt.Errorf("error connecting to database: %w", err))
 	}
@@ -126,6 +140,9 @@ func Run(opts ...Option) {
 	}
 	if err := backfill.RunOtelAgentDashboardSources(); err != nil {
 		panic(fmt.Errorf("OTel agent dashboard backfill failed: %w", err))
+	}
+	if err := backfill.RunSecretsEncryption(); err != nil {
+		panic(fmt.Errorf("secrets backfill failed: %w", err))
 	}
 
 	if o != nil {
@@ -170,6 +187,7 @@ func Run(opts ...Option) {
 	middleware.InitRequireOrganizationAccess()
 	middleware.InitUseSourceMapAuth()
 	middleware.InitUseRunnerAuth()
+	middleware.InitUseAgentRunnerAuth()
 
 	services.InitEmail()
 	services.InitTurnstile()
@@ -179,7 +197,15 @@ func Run(opts ...Option) {
 		hook(ctx)
 	}
 
-	outbox.RegisterSender(notifications.AdapterSend)
+	web.Register()
+	githubHost := github.New()
+	github.Register(githubHost)
+	controllers.GitHubHost = githubHost
+	slackIntegration := slackapp.New()
+	slackapp.Register(slackIntegration)
+	agent.RegisterContextProvider(agent.TracewayExceptionContext{})
+	outbox.RegisterSender(agent.OutboxSender(notifications.AdapterSend))
+	notifications.RegisterAttemptStarter(agent.StartFromRule)
 	outbox.RegisterTerminalHook(notifications.OnOutboxTerminal)
 	notifications.RegisterPageOpener(oncall.OpenPageFromDispatch)
 	notifications.RegisterPageResolver(oncall.AutoResolveByDedupKey)
@@ -189,6 +215,8 @@ func Run(opts ...Option) {
 	notifications.StartEvaluator(ctx)
 	synthetics.Start(ctx)
 	retention.Start(ctx)
+	agent.StartReclaimer(ctx)
+	slackIntegration.StartSocketMode(ctx, slackSocketModeReconcileInterval)
 	recordings.Start(ctx)
 	sourcemapbackfill.Start(ctx)
 
@@ -229,7 +257,7 @@ func Run(opts ...Option) {
 			}
 			// The runner poll long-polls for up to 25s; recording it would
 			// register as 25s endpoint samples and wreck self-monitoring p95.
-			if c.Request.URL.Path == "/api/runners/poll" {
+			if c.Request.URL.Path == "/api/runners/poll" || c.Request.URL.Path == "/api/agent-runners/poll" {
 				c.Next()
 				return
 			}
@@ -240,6 +268,7 @@ func Run(opts ...Option) {
 		monitoring.StartBackendReporter(ctx)
 		monitoring.StartTelemetryDBReporter(ctx)
 		monitoring.StartOutboxReporter(ctx)
+		monitoring.StartAgentReporter(ctx)
 		monitoring.StartSyntheticsReporter(ctx)
 	}
 
@@ -260,6 +289,8 @@ func Run(opts ...Option) {
 	router.Match(wellKnown, "/.well-known/oauth-protected-resource"+mcpmount.Path, middleware.WellKnownCors, controllers.WellKnownController.ProtectedResourceMCP)
 
 	mcpHandler := mcpmount.GinHandler(router, "0.0.1")
+	agent.SetTelemetryClient(func(runToken string) *client.Client { return mcpmount.LoopbackClient(router, runToken) })
+	startAgentExecutor(ctx, cfg)
 	mcpMethods := []string{http.MethodGet, http.MethodPost, http.MethodDelete, http.MethodOptions}
 	router.Match(mcpMethods, mcpmount.Path, middleware.MCPCors, mcpHandler)
 	router.Match(mcpMethods, mcpmount.Path+"/", middleware.MCPCors, mcpHandler)
@@ -453,6 +484,12 @@ func applyEnvOverrides(cfg *config.Cfg) {
 		{"SYNTHETICS_SCREENSHOT_RETENTION_DAYS", &cfg.SyntheticsScreenshotRetentionDays},
 		{"SYNTHETICS_RUNNER_SECRET", &cfg.SyntheticsRunnerSecret},
 		{"HEALTH_DEEP_TOKEN", &cfg.HealthDeepToken},
+		{"SECRETS_KEY", &cfg.SecretsKey},
+		{"AGENT_ATTEMPT_RETENTION_DAYS", &cfg.AgentAttemptRetentionDays},
+		{"AGENT_MODE", &cfg.AgentMode},
+		{"AGENT_WORKERS", &cfg.AgentWorkers},
+		{"AGENT_SANDBOX", &cfg.AgentSandbox},
+		{"AGENT_SANDBOX_ALLOW_OFF", &cfg.AgentSandboxAllowOff},
 		{"TRUSTED_PROXIES", &cfg.TrustedProxies},
 		{"TRUSTED_PROXY_HEADER", &cfg.TrustedProxyHeader},
 		{"TWILIO_ACCOUNT_SID", &cfg.TwilioAccountSID},
@@ -619,5 +656,46 @@ func detectContentType(filename string) string {
 		return "font/woff2"
 	default:
 		return "application/octet-stream"
+	}
+}
+
+// slackSocketModeReconcileInterval bounds how long a disabled or re-keyed
+// Slack integration keeps its Socket Mode connection when the change
+// notification is missed (another replica, a direct database edit).
+const slackSocketModeReconcileInterval = 30 * time.Second
+
+// startAgentExecutor starts the embedded harness when AGENT_MODE says so.
+// Its checks (git, the Claude Code CLI, the traceway CLI, the sandbox) are
+// fatal: an image that cannot run attempts must not pretend to.
+func startAgentExecutor(ctx context.Context, cfg *config.Cfg) {
+	mode, err := agentrunner.Mode()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "FATAL: "+err.Error())
+		os.Exit(1)
+	}
+	if mode == agentrunner.ModeRemote {
+		if strings.TrimSpace(cfg.AgentRunnerSecret) == "" {
+			fmt.Fprintln(os.Stderr, "FATAL: AGENT_MODE=remote needs AGENT_RUNNER_SECRET, the shared bearer secret of the runner fleet")
+			os.Exit(1)
+		}
+		agent.RegisterExecutor(agentrunner.RemoteExecutor{})
+		config.Logf("agent: remote executor mode; attempts wait for traceway-agent-runner processes polling /api/agent-runners/poll")
+		return
+	}
+	if mode != agentrunner.ModeEmbedded {
+		return
+	}
+	storagePath := cfg.StoragePath
+	if storagePath == "" {
+		storagePath = "./storage"
+	}
+	err = agentrunner.StartEmbedded(ctx, agentrunner.EmbeddedOptions{
+		InstanceURL: cfg.PublicBaseURLOrDev(),
+		StoragePath: storagePath,
+		SkillDir:    os.Getenv("AGENT_SKILL_DIR"),
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "FATAL: "+err.Error())
+		os.Exit(1)
 	}
 }

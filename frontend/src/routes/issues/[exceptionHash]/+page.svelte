@@ -12,6 +12,12 @@
 	import { toast } from 'svelte-sonner';
 	import ArchiveConfirmationDialog from '$lib/components/archive-confirmation-dialog.svelte';
 	import OncallOwner from '$lib/components/traceway/oncall-owner.svelte';
+	import FixItDialog from '$lib/components/agent/fix-it-dialog.svelte';
+	import LocalFixDialog from '$lib/components/agent/local-fix-dialog.svelte';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import AttemptsCard from '$lib/components/agent/attempts-card.svelte';
+	import { Button } from '$lib/components/ui/button';
+	import { Wrench, ChevronDown, Terminal, Bot } from '@lucide/svelte';
 	import type {
 		ExceptionGroup,
 		ExceptionOccurrence,
@@ -32,6 +38,10 @@
 	let sessionId = $state<string | null>(null);
 	let showArchiveDialog = $state(false);
 	let archiving = $state(false);
+	let showFixItDialog = $state(false);
+	let showLocalFixDialog = $state(false);
+	let managedAgentEnabled = $state(false);
+	let attemptsRefresh = $state(0);
 
 	const exceptionHash = $derived(page.params.exceptionHash ?? '');
 	const latestOccurrence = $derived(occurrences[0]);
@@ -139,6 +149,10 @@
 
 	onMount(() => {
 		loadData();
+		api.get('/agent/capabilities').then(
+			(capabilities: { enabled: boolean }) => (managedAgentEnabled = capabilities.enabled),
+			() => (managedAgentEnabled = false)
+		);
 	});
 </script>
 
@@ -150,6 +164,46 @@
 	>
 		{#snippet actions()}
 			<OncallOwner />
+			{#if projectsState.canWriteCurrentProject && group}
+				<DropdownMenu.Root>
+					<DropdownMenu.Trigger>
+						{#snippet child({ props })}
+							<Button {...props} variant="success">
+								<Wrench class="mr-2 h-4 w-4" />Fix it<ChevronDown class="ml-2 h-4 w-4" />
+							</Button>
+						{/snippet}
+					</DropdownMenu.Trigger>
+					<DropdownMenu.Content align="end" class="w-72">
+						<DropdownMenu.Item
+							onclick={() => (showLocalFixDialog = true)}
+							class="items-start gap-3 p-3"
+						>
+							<Terminal class="mt-0.5 h-4 w-4" />
+							<div>
+								<p class="font-medium">Local LLM</p>
+								<p class="mt-0.5 text-xs text-muted-foreground">
+									Use your own editor or coding agent
+								</p>
+							</div>
+						</DropdownMenu.Item>
+						{#if managedAgentEnabled}
+							<DropdownMenu.Separator />
+							<DropdownMenu.Item
+								onclick={() => (showFixItDialog = true)}
+								class="items-start gap-3 p-3"
+							>
+								<Bot class="mt-0.5 h-4 w-4" />
+								<div>
+									<p class="font-medium">Traceway AI Agent</p>
+									<p class="mt-0.5 text-xs text-muted-foreground">
+										Connect GitHub and let Traceway run the fix
+									</p>
+								</div>
+							</DropdownMenu.Item>
+						{/if}
+					</DropdownMenu.Content>
+				</DropdownMenu.Root>
+			{/if}
 		{/snippet}
 	</PageHeader>
 
@@ -190,6 +244,8 @@
 			bind:archiving
 		/>
 
+		<AttemptsCard hash={exceptionHash} refreshKey={attemptsRefresh} />
+
 		{#if latestOccurrence}
 			<EventCard
 				occurrence={latestOccurrence}
@@ -210,6 +266,16 @@
 		/>
 	{/if}
 </div>
+
+{#if managedAgentEnabled}
+	<FixItDialog
+		bind:open={showFixItDialog}
+		hash={exceptionHash}
+		onStarted={() => (attemptsRefresh += 1)}
+	/>
+{/if}
+
+<LocalFixDialog bind:open={showLocalFixDialog} hash={exceptionHash} />
 
 <ArchiveConfirmationDialog
 	open={showArchiveDialog}

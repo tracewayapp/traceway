@@ -78,6 +78,17 @@ Then configure the GitHub channel in Traceway:
 
 Issues opened by this channel can start an AI coding agent in the repository's own GitHub Actions, which investigates the exception with the traceway CLI and opens a pull request or comments its analysis. See [Auto-Fix](/learn/auto-fix).
 
+### Setting Up the Fix Agent
+
+A **Fix agent** channel does not send anything: a rule attached to it starts a [fix agent](/learn/agent) attempt on the issue that fired. It works with **New Issue** and **Error Regression** rules, which name an exception; rules of other types record a skipped fire and create nothing.
+
+| Field | Meaning |
+|-------|---------|
+| Agent profile | Which [profile](/learn/agent/profiles) runs the attempt; the organization default when left unset |
+| Approval | **Ask first** parks the attempt as *Pending approval* on the Agent page, and in Slack with Approve and Dismiss buttons when a Slack app integration is connected. **Start right away** queues it for the executor |
+
+One attempt per issue at a time: while one is active, further fires for the same issue are deduplicated, and the rule's cooldown applies as for any channel. The channel's Test button has nothing to send; use **Fix it** on an issue to try the agent.
+
 ### Setting Up Telegram
 
 To send alerts to Telegram, you need a **Bot Token** and a **Chat ID**:

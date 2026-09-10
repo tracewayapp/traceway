@@ -1,15 +1,15 @@
 //go:build !windows
 
-package browserexec
+package sandbox
 
 import (
 	"os/exec"
 	"syscall"
 )
 
-// configureProcessGroup makes the node process lead its own process group and
-// kills the whole group on context cancellation, so orphaned Chromium
-// processes never outlive a timed-out run.
+// configureProcessGroup makes the child lead its own process group and kills
+// the whole group on context cancellation, so nothing it spawned (a Chromium,
+// a test suite's daemon) outlives a timed-out run.
 func configureProcessGroup(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {

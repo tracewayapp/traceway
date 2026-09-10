@@ -24,6 +24,7 @@ const (
 	KindPassword = "password"
 	KindDevice   = "device"
 	KindPAT      = "pat"
+	KindRun      = "run"
 )
 
 // ProfileState holds runtime state for a single Traceway profile.

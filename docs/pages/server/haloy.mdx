@@ -181,6 +181,7 @@ Point your SDK's connection string at your Traceway domain:
 | `POSTGRES_PASSWORD` | *(from env)* | PostgreSQL password |
 | `POSTGRES_SSLMODE` | `disable` | PostgreSQL SSL mode |
 | `JWT_SECRET` | *(from env)* | Signs all authentication tokens (dashboard sessions and CLI/MCP device logins). Use a strong, unique secret of at least 32 chars; keep it stable. See [CLI Authentication](/learn/cli-auth#set-a-strong-jwt_secret). |
+| `SECRETS_KEY` | *(key file on SQLite; required on PostgreSQL)* | Base64 of 32 random bytes (`openssl rand -base64 32`) that encrypts stored credentials at rest: notification channel tokens today, integration and repository credentials for the fix agent. When unset on a SQLite deployment, the server generates `traceway.secrets.key` (mode 600) next to the main database on first boot and logs a warning; move that value into `SECRETS_KEY` and back it up, since credentials cannot be decrypted without it. On PostgreSQL the variable is required and startup exits 1 without it. |
 | `GOOGLE_CLIENT_ID` | *(unset)* | Optional. Google OAuth client ID. Setting both Google variables enables the **Continue with Google** button. See the [SSO guide](/learn/sso). |
 | `GOOGLE_CLIENT_SECRET` | *(unset)* | Optional. Google OAuth client secret. |
 | `GITHUB_CLIENT_ID` | *(unset)* | Optional. GitHub OAuth App client ID. Setting both GitHub variables enables the **Continue with GitHub** button. |

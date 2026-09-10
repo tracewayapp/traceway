@@ -21,6 +21,7 @@ frontend/build
 # Documentation (keep the CLI knowledge chunks: go:embed needs them)
 *.md
 !cli/pkg/mcpserver/knowledge/*.md
+!skills/traceway/*.md
 
 # Environment files (use .env.docker instead)
 backend/.env
@@ -39,3 +40,18 @@ temp/
 
 # Claude plans
 .claude/
+
+# Local data and unrelated dependency trees are not image inputs.
+.validation.*/
+benchmarks/metricsdb/results-local/
+benchmarks/metricsdb/bench/
+docs/node_modules/
+docs/.next/
+docs/out/
+website/node_modules/
+website/.next/
+**/*.db
+**/*.db-wal
+**/*.db-shm
+backend/storage/
+**/node_modules/

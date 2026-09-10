@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tracewayapp/traceway/cli/internal/output"
+	"github.com/tracewayapp/traceway/cli/pkg/access"
 )
 
 func newAiTracesCmd() *cobra.Command {
@@ -53,8 +54,15 @@ func runAiTracesShow(cmd *cobra.Command, args []string) error {
 		return renderTimestampError(cmd.ErrOrStderr(), mode, "recorded-at", err)
 	}
 
-	c := sess.Client()
-	resp, err := c.GetAiTrace(ctx, sess.ProjectID, args[0], recordedAt)
+	resolver, err := sess.Resolver()
+	if err != nil {
+		return renderSourceError(cmd.ErrOrStderr(), mode, err)
+	}
+	sources, err := access.AITraces(resolver, flagSource)
+	if err != nil {
+		return renderSourceError(cmd.ErrOrStderr(), mode, err)
+	}
+	resp, err := access.GetAITrace(ctx, sources, access.Lookup{ProjectID: sess.ProjectID, ID: args[0], At: recordedAt})
 	if err != nil {
 		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
 	}

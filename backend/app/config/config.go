@@ -9,7 +9,8 @@ import (
 )
 
 type Cfg struct {
-	JWTSecret string
+	JWTSecret  string
+	SecretsKey string
 
 	DBType           string
 	PostgresHost     string
@@ -40,6 +41,7 @@ type Cfg struct {
 
 	SQLiteRetentionDays             string
 	DuckDBRetentionDays             string
+	AgentAttemptRetentionDays       string
 	LogRecordsMaxRows               string
 	SessionRecordingRetentionDays   string
 	SessionRecordingUploadWorkers   string
@@ -70,6 +72,12 @@ type Cfg struct {
 	SyntheticsRunnerSecret            string
 
 	HealthDeepToken string
+
+	AgentMode            string
+	AgentWorkers         string
+	AgentSandbox         string
+	AgentSandboxAllowOff string
+	AgentRunnerSecret    string
 
 	AllowPrivateNotificationTargets string
 
@@ -203,7 +211,8 @@ func (c *Cfg) PublicBaseURLOrDev() string {
 
 func LoadFromEnv() *Cfg {
 	return &Cfg{
-		JWTSecret: os.Getenv("JWT_SECRET"),
+		JWTSecret:  os.Getenv("JWT_SECRET"),
+		SecretsKey: os.Getenv("SECRETS_KEY"),
 
 		DBType:           cmp.Or(os.Getenv("DB_TYPE"), defaultDBType()),
 		PostgresHost:     os.Getenv("POSTGRES_HOST"),
@@ -234,6 +243,7 @@ func LoadFromEnv() *Cfg {
 
 		SQLiteRetentionDays:             os.Getenv("SQLITE_RETENTION_DAYS"),
 		DuckDBRetentionDays:             os.Getenv("DUCKDB_RETENTION_DAYS"),
+		AgentAttemptRetentionDays:       os.Getenv("AGENT_ATTEMPT_RETENTION_DAYS"),
 		LogRecordsMaxRows:               os.Getenv("LOG_RECORDS_MAX_ROWS"),
 		SessionRecordingRetentionDays:   os.Getenv("SESSION_RECORDING_RETENTION_DAYS"),
 		SessionRecordingUploadWorkers:   os.Getenv("SESSION_RECORDING_UPLOAD_WORKERS"),
@@ -264,6 +274,12 @@ func LoadFromEnv() *Cfg {
 		SyntheticsRunnerSecret:            os.Getenv("SYNTHETICS_RUNNER_SECRET"),
 
 		HealthDeepToken: os.Getenv("HEALTH_DEEP_TOKEN"),
+
+		AgentMode:            os.Getenv("AGENT_MODE"),
+		AgentWorkers:         os.Getenv("AGENT_WORKERS"),
+		AgentSandbox:         os.Getenv("AGENT_SANDBOX"),
+		AgentSandboxAllowOff: os.Getenv("AGENT_SANDBOX_ALLOW_OFF"),
+		AgentRunnerSecret:    os.Getenv("AGENT_RUNNER_SECRET"),
 
 		AllowPrivateNotificationTargets: os.Getenv("ALLOW_PRIVATE_NOTIFICATION_TARGETS"),
 

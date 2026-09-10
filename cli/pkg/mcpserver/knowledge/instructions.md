@@ -10,6 +10,7 @@ Ground rules:
 - Log severity is an OTel number, not a name: 1 TRACE, 5 DEBUG, 9 INFO, 13 WARN, 17 ERROR, 21 FATAL. Use min_severity 17 for errors and worse.
 - Latency percentiles (p50/p95/p99) come only from list_endpoints and endpoints_chart. query_metrics has no quantile aggregation.
 - Keep page_size at 10 to 20 for triage; raise it only when you need the full set.
+- Every telemetry tool takes an optional source param. Leave it unset unless the profile binds more than one source and you want just one of them; merged results tag each record with source.
 - Empty results are not errors: widen the window, check the project (list_projects), and consider that the app may not be connected to Traceway yet.
 
 For deep work, read the knowledge resources first: traceway://knowledge/debug-flow before debugging an issue to root cause, traceway://knowledge/performance before any latency investigation, traceway://knowledge/url-resolution when the user pastes a dashboard URL, and traceway://knowledge/notifications when resolving an alert notification.

@@ -1,31 +1,19 @@
 package client
 
 import (
+	"github.com/tracewayapp/traceway/cli/pkg/access"
+
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/url"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // ExceptionGroup matches Traceway's models.ExceptionGroup. Hourly trends are
 // only present on list responses; on the detail endpoint they're absent.
-type ExceptionGroup struct {
-	ExceptionHash string                `json:"exceptionHash"`
-	StackTrace    string                `json:"stackTrace"`
-	FirstSeen     time.Time             `json:"firstSeen"`
-	LastSeen      time.Time             `json:"lastSeen"`
-	Count         uint64                `json:"count"`
-	HourlyTrend   []ExceptionTrendPoint `json:"hourlyTrend,omitempty"`
-}
+type ExceptionGroup = access.ExceptionGroup
 
-// ExceptionTrendPoint is one entry in an exception's hourly trend.
-type ExceptionTrendPoint struct {
-	Timestamp time.Time `json:"timestamp"`
-	Count     uint64    `json:"count"`
-}
+type ExceptionTrendPoint = access.ExceptionTrendPoint
 
 // ListExceptionsRequest is the body for POST /api/exception-stack-traces.
 // projectId travels as a URL query param (handled by ListExceptions), not in
@@ -57,10 +45,7 @@ func (r ListExceptionsRequest) MarshalJSON() ([]byte, error) {
 }
 
 // ListExceptionsResponse mirrors the upstream PaginatedResponse[ExceptionGroup].
-type ListExceptionsResponse struct {
-	Data       []ExceptionGroup `json:"data"`
-	Pagination Pagination       `json:"pagination"`
-}
+type ListExceptionsResponse = access.ExceptionPage
 
 // ListExceptions returns one page of grouped exceptions for the given project.
 func (c *Client) ListExceptions(ctx context.Context, projectID string, req ListExceptionsRequest) (*ListExceptionsResponse, error) {
@@ -73,20 +58,7 @@ func (c *Client) ListExceptions(ctx context.Context, projectID string, req ListE
 }
 
 // ExceptionStackTrace is one occurrence of a grouped exception.
-type ExceptionStackTrace struct {
-	Id                 uuid.UUID         `json:"id"`
-	ExceptionHash      string            `json:"exceptionHash"`
-	StackTrace         string            `json:"stackTrace"`
-	RecordedAt         time.Time         `json:"recordedAt"`
-	TraceId            *uuid.UUID        `json:"traceId,omitempty"`
-	TraceType          string            `json:"traceType,omitempty"`
-	ServerName         string            `json:"serverName,omitempty"`
-	AppVersion         string            `json:"appVersion,omitempty"`
-	IsMessage          bool              `json:"isMessage,omitempty"`
-	Attributes         map[string]string `json:"attributes,omitempty"`
-	DistributedTraceId *uuid.UUID        `json:"distributedTraceId,omitempty"`
-	SessionId          *uuid.UUID        `json:"sessionId,omitempty"`
-}
+type ExceptionStackTrace = access.Occurrence
 
 // getExceptionRequest is the body for POST /api/exception-stack-traces/:hash.
 type getExceptionRequest struct {
@@ -95,11 +67,7 @@ type getExceptionRequest struct {
 
 // GetExceptionResponse is the upstream ExceptionDetailResponse minus the
 // session-recording blob (we don't expose recordings in v1).
-type GetExceptionResponse struct {
-	Group       *ExceptionGroup       `json:"group"`
-	Occurrences []ExceptionStackTrace `json:"occurrences"`
-	Pagination  Pagination            `json:"pagination"`
-}
+type GetExceptionResponse = access.ExceptionDetail
 
 // GetException returns the group + paginated occurrences for the given hash.
 func (c *Client) GetException(ctx context.Context, projectID, hash string, page PaginationParams) (*GetExceptionResponse, error) {
@@ -116,11 +84,7 @@ func (c *Client) GetException(ctx context.Context, projectID, hash string, page 
 // show <hash>` occurrence it adds the linked sessionId and an inline
 // sessionRecording blob (passed through verbatim), and resolves directly
 // without walking pages.
-type ExceptionByIdResponse struct {
-	Exception        *ExceptionStackTrace `json:"exception"`
-	SessionId        *uuid.UUID           `json:"sessionId,omitempty"`
-	SessionRecording json.RawMessage      `json:"sessionRecording,omitempty"`
-}
+type ExceptionByIdResponse = access.OccurrenceDetail
 
 // GetExceptionById returns a single exception occurrence by its id. recordedAt
 // is the occurrence's recordedAt (from the URL's t= param, a notification's

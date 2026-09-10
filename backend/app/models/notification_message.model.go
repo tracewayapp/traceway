@@ -21,6 +21,11 @@ type NotificationMessage struct {
 	URL      string
 	Endpoint string
 
+	// ProjectId is the project the rule fired in, set at dispatch. Adapters
+	// that answer back into the dashboard (the Slack app's Fix it button)
+	// need it because the URL alone does not carry the project.
+	ProjectId string `json:",omitempty"`
+
 	Email *NotificationEmail `json:",omitempty"`
 
 	// DedupToken is the stable identity of what fired within the rule

@@ -1,13 +1,12 @@
 package client
 
+import "github.com/tracewayapp/traceway/cli/pkg/access"
+
 import "time"
 
 // TimeRange is an inclusive [From, To] interval used in resource queries.
 // It marshals to RFC3339 strings via the request structs that embed it.
-type TimeRange struct {
-	From time.Time
-	To   time.Time
-}
+type TimeRange = access.Window
 
 // TimeRangeFromSince returns a TimeRange ending now and starting `d` ago.
 // Equivalent to TimeRangeFromSinceAt(d, time.Now()).

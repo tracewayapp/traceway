@@ -90,6 +90,8 @@
 		email: 'Email',
 		webhook: 'Webhook',
 		slack: 'Slack',
+		slack_app: 'Slack app',
+		agent: 'Fix agent',
 		github: 'GitHub',
 		pushover: 'Pushover',
 		telegram: 'Telegram',

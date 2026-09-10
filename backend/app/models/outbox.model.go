@@ -10,6 +10,7 @@ const (
 	OutboxKindRule         = "rule"
 	OutboxKindPage         = "page"
 	OutboxKindVerification = "verification"
+	OutboxKindAgent        = "agent"
 
 	OutboxPending   = "pending"
 	OutboxSending   = "sending"

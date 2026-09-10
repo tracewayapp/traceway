@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tracewayapp/traceway/cli/internal/output"
+	"github.com/tracewayapp/traceway/cli/pkg/access"
 )
 
 func newTracesCmd() *cobra.Command {
@@ -56,8 +57,15 @@ func runTracesShow(cmd *cobra.Command, args []string) error {
 		return renderTimestampError(cmd.ErrOrStderr(), mode, "recorded-at", err)
 	}
 
-	c := sess.Client()
-	resp, err := c.GetDistributedTrace(ctx, args[0], recordedAt)
+	resolver, err := sess.Resolver()
+	if err != nil {
+		return renderSourceError(cmd.ErrOrStderr(), mode, err)
+	}
+	sources, err := access.Traces(resolver, flagSource)
+	if err != nil {
+		return renderSourceError(cmd.ErrOrStderr(), mode, err)
+	}
+	resp, err := access.GetTrace(ctx, sources, args[0], recordedAt)
 	if err != nil {
 		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
 	}

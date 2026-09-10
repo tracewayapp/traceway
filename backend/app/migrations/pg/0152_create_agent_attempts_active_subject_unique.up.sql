@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX IF NOT EXISTS agent_attempts_active_subject_unique ON agent_attempts (project_id, subject_kind, subject_ref) WHERE status IN ('pending_approval', 'queued', 'claimed', 'preparing', 'running', 'verifying', 'publishing', 'needs_input', 'awaiting_review')

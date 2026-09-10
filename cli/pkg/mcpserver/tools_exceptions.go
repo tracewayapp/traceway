@@ -6,11 +6,13 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/tracewayapp/traceway/cli/pkg/access"
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
 
 type listExceptionsIn struct {
 	projectIn
+	sourceIn
 	timeRangeIn
 	pageIn
 	Search          string `json:"search,omitempty" jsonschema:"Free-text filter over stack traces."`
@@ -38,9 +40,14 @@ func (s *server) listExceptions(ctx context.Context, req *mcp.CallToolRequest, i
 	if err := validateEnum("order_by", in.OrderBy, client.ExceptionsOrderByValues); err != nil {
 		return nil, nil, err
 	}
-	resp, err := s.client(req).ListExceptions(ctx, projectID, client.ListExceptionsRequest{
-		TimeRange:       tr,
-		Pagination:      page,
+	sources, err := access.Exceptions(s.sources(req), in.Source)
+	if err != nil {
+		return nil, nil, usageErrf("%v", err)
+	}
+	resp, failed, err := access.ListExceptions(ctx, sources, access.ExceptionQuery{
+		ProjectID:       projectID,
+		Window:          tr,
+		Page:            page,
 		Search:          in.Search,
 		SearchType:      cmp.Or(in.SearchType, "text"),
 		OrderBy:         cmp.Or(in.OrderBy, "lastSeen"),
@@ -49,11 +56,12 @@ func (s *server) listExceptions(ctx context.Context, req *mcp.CallToolRequest, i
 	if err != nil {
 		return nil, nil, s.apiErr(err)
 	}
-	return nil, resp, nil
+	return withSourceWarnings(resp, failed)
 }
 
 type getExceptionIn struct {
 	projectIn
+	sourceIn
 	pageIn
 	Hash string `json:"hash" jsonschema:"The exception group's hash: 16 hex characters, from list_exceptions or the /issues/<hash> dashboard URL path."`
 }
@@ -70,7 +78,11 @@ func (s *server) getException(ctx context.Context, req *mcp.CallToolRequest, in 
 	if !exceptionHashPattern.MatchString(in.Hash) {
 		return nil, nil, usageErrf("invalid hash %q: must be 16 lowercase hex characters, from list_exceptions or an /issues/<hash> dashboard URL", in.Hash)
 	}
-	resp, err := s.client(req).GetException(ctx, projectID, in.Hash, page)
+	sources, err := access.Exceptions(s.sources(req), in.Source)
+	if err != nil {
+		return nil, nil, usageErrf("%v", err)
+	}
+	resp, err := access.GetException(ctx, sources, access.ExceptionLookup{ProjectID: projectID, Hash: in.Hash, Page: page})
 	if err != nil {
 		return nil, nil, s.apiErr(err)
 	}
@@ -79,6 +91,7 @@ func (s *server) getException(ctx context.Context, req *mcp.CallToolRequest, in 
 
 type getExceptionOccurrenceIn struct {
 	projectIn
+	sourceIn
 	ID         string `json:"id" jsonschema:"The occurrence's UUID, from a dashboard URL path, a notification's Exception ID, or a get_exception occurrence."`
 	RecordedAt string `json:"recorded_at" jsonschema:"REQUIRED for a fast lookup: the record's timestamp, RFC3339. Approximate is fine (within 24h). Recover it from the dashboard URL's ?t= param, an occurrence's recordedAt, or a notification's Occurred at; see traceway://knowledge/timestamps. Never pass the current time for an old record."`
 }
@@ -95,7 +108,11 @@ func (s *server) getExceptionOccurrence(ctx context.Context, req *mcp.CallToolRe
 	if err != nil {
 		return nil, nil, err
 	}
-	resp, err := s.client(req).GetExceptionById(ctx, projectID, in.ID, recordedAt)
+	sources, err := access.Exceptions(s.sources(req), in.Source)
+	if err != nil {
+		return nil, nil, usageErrf("%v", err)
+	}
+	resp, err := access.GetOccurrence(ctx, sources, access.Lookup{ProjectID: projectID, ID: in.ID, At: recordedAt})
 	if err != nil {
 		return nil, nil, s.apiErr(err)
 	}
@@ -104,6 +121,7 @@ func (s *server) getExceptionOccurrence(ctx context.Context, req *mcp.CallToolRe
 
 type archiveIn struct {
 	projectIn
+	sourceIn
 	Hashes []string `json:"hashes" jsonschema:"Exception group hashes (16 hex characters each) to act on."`
 }
 
@@ -113,20 +131,16 @@ type archiveResult struct {
 }
 
 func (s *server) archiveExceptions(ctx context.Context, req *mcp.CallToolRequest, in archiveIn) (*mcp.CallToolResult, any, error) {
-	projectID, err := s.project(in.ProjectID)
-	if err != nil {
-		return nil, nil, err
-	}
-	if len(in.Hashes) == 0 {
-		return nil, nil, usageErrf("hashes must contain at least one exception hash")
-	}
-	if err := s.client(req).ArchiveExceptions(ctx, projectID, in.Hashes); err != nil {
-		return nil, nil, s.apiErr(err)
-	}
-	return nil, archiveResult{Status: "archived", Hashes: in.Hashes}, nil
+	return s.changeArchived(ctx, req, in, "archived", access.ExceptionAccess.ArchiveExceptions)
 }
 
 func (s *server) unarchiveExceptions(ctx context.Context, req *mcp.CallToolRequest, in archiveIn) (*mcp.CallToolResult, any, error) {
+	return s.changeArchived(ctx, req, in, "unarchived", access.ExceptionAccess.UnarchiveExceptions)
+}
+
+// changeArchived applies an archive change on the source that owns the
+// hashes: with several sources bound, the caller names it.
+func (s *server) changeArchived(ctx context.Context, req *mcp.CallToolRequest, in archiveIn, status string, apply func(access.ExceptionAccess, context.Context, string, []string) error) (*mcp.CallToolResult, any, error) {
 	projectID, err := s.project(in.ProjectID)
 	if err != nil {
 		return nil, nil, err
@@ -134,8 +148,15 @@ func (s *server) unarchiveExceptions(ctx context.Context, req *mcp.CallToolReque
 	if len(in.Hashes) == 0 {
 		return nil, nil, usageErrf("hashes must contain at least one exception hash")
 	}
-	if err := s.client(req).UnarchiveExceptions(ctx, projectID, in.Hashes); err != nil {
+	sources, err := access.Exceptions(s.sources(req), in.Source)
+	if err != nil {
+		return nil, nil, usageErrf("%v", err)
+	}
+	if len(sources) > 1 {
+		return nil, nil, usageErrf("several sources answer exceptions; pass source to say which one holds these hashes")
+	}
+	if err := apply(sources[0], ctx, projectID, in.Hashes); err != nil {
 		return nil, nil, s.apiErr(err)
 	}
-	return nil, archiveResult{Status: "unarchived", Hashes: in.Hashes}, nil
+	return nil, archiveResult{Status: status, Hashes: in.Hashes}, nil
 }

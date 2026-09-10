@@ -13,10 +13,17 @@ import (
 	traceway "go.tracewayapp.com"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 const UserIdContextKey = "userId"
 const UserEmailContextKey = "userEmail"
+
+// RunAttemptIdContextKey and RunProjectIdContextKey are set instead of a
+// user when the bearer is an agent run token: a readonly credential scoped
+// to one attempt's project, with no user behind it.
+const RunAttemptIdContextKey = "runAttemptId"
+const RunProjectIdContextKey = "runProjectId"
 
 const patTouchInterval = time.Minute
 
@@ -44,6 +51,12 @@ func InitUseAppAuth() {
 			return
 		}
 
+		if identity.RunAttemptId != uuid.Nil {
+			c.Set(RunAttemptIdContextKey, identity.RunAttemptId)
+			c.Set(RunProjectIdContextKey, identity.RunProjectId)
+			c.Next()
+			return
+		}
 		c.Set(UserIdContextKey, identity.UserId)
 		c.Set(UserEmailContextKey, identity.Email)
 
@@ -57,9 +70,23 @@ type BearerIdentity struct {
 	UserId  int
 	Email   string
 	Expires time.Time
+	// RunAttemptId and RunProjectId are set for an agent run token, which
+	// carries no user: it reads one project as readonly for a short while.
+	RunAttemptId uuid.UUID
+	RunProjectId uuid.UUID
 }
 
 func AuthenticateBearer(tokenString string) (*BearerIdentity, error) {
+	// Any token that is not a valid run token falls through to the user
+	// shapes, which give the accurate rejection for a PAT, an expired
+	// session or a malformed string.
+	if run, err := services.ValidateRunToken(tokenString); err == nil {
+		return &BearerIdentity{
+			RunAttemptId: uuid.MustParse(run.AttemptId),
+			RunProjectId: uuid.MustParse(run.ProjectId),
+			Expires:      run.ExpiresAt.Time,
+		}, nil
+	}
 	if strings.HasPrefix(tokenString, "twp_") {
 		pat, err := transactional.PersonalAccessTokenRepository.FindActiveByToken(db.DB, tokenString)
 		if err != nil {
@@ -81,6 +108,15 @@ func AuthenticateBearer(tokenString string) (*BearerIdentity, error) {
 		identity.Expires = claims.ExpiresAt.Time
 	}
 	return identity, nil
+}
+
+// RunAttemptId returns the attempt a run token is scoped to, or uuid.Nil
+// when the caller is a user.
+func RunAttemptId(c *gin.Context) uuid.UUID {
+	if id, exists := c.Get(RunAttemptIdContextKey); exists {
+		return id.(uuid.UUID)
+	}
+	return uuid.Nil
 }
 
 func touchPersonalAccessToken(pat *transactional.ActivePAT) {

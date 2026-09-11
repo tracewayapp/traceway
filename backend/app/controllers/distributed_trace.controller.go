@@ -10,6 +10,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 
 	"github.com/gin-gonic/gin"
@@ -75,7 +76,7 @@ func (d distributedTraceController) GetDistributedTrace(c *gin.Context) {
 		projectNameMap[p.Id] = p.Name
 	}
 
-	ctx := context.Background()
+	ctx := c.Request.Context()
 
 	endpoints, err := telemetry.EndpointRepository.FindByDistributedTraceId(ctx, distributedTraceId, projectIds, request.RecordedAt)
 	if err != nil {
@@ -101,11 +102,11 @@ func (d distributedTraceController) GetDistributedTrace(c *gin.Context) {
 		return
 	}
 
-	exceptionByTraceId := make(map[uuid.UUID]*EndpointExceptionInfo)
+	exceptionByTraceId := make(map[distributedTraceOwner]*EndpointExceptionInfo)
 	for _, exc := range exceptions {
 		if exc.TraceId != nil {
-			if _, exists := exceptionByTraceId[*exc.TraceId]; !exists {
-				exceptionByTraceId[*exc.TraceId] = &EndpointExceptionInfo{
+			if _, exists := exceptionByTraceId[distributedTraceOwner{exc.ProjectId, *exc.TraceId}]; !exists {
+				exceptionByTraceId[distributedTraceOwner{exc.ProjectId, *exc.TraceId}] = &EndpointExceptionInfo{
 					ExceptionHash: exc.ExceptionHash,
 					StackTrace:    exc.StackTrace,
 					RecordedAt:    exc.RecordedAt.Format("2006-01-02T15:04:05Z07:00"),
@@ -114,18 +115,19 @@ func (d distributedTraceController) GetDistributedTrace(c *gin.Context) {
 		}
 	}
 
-	matchedIds := make(map[uuid.UUID]bool)
+	matchedIds := make(map[distributedTraceOwner]bool)
 	for _, ep := range endpoints {
-		matchedIds[ep.Id] = true
+		matchedIds[distributedTraceOwner{ep.ProjectId, ep.Id}] = true
 	}
 	for _, t := range tasks {
-		matchedIds[t.Id] = true
+		matchedIds[distributedTraceOwner{t.ProjectId, t.Id}] = true
 	}
 	for _, a := range aiTraces {
-		matchedIds[a.Id] = true
+		matchedIds[distributedTraceOwner{a.ProjectId, a.Id}] = true
 	}
 
 	var nodes []DistributedTraceNode
+	var lookups []telemetry.SpanLookup
 
 	for _, ep := range endpoints {
 		node := DistributedTraceNode{
@@ -134,9 +136,10 @@ func (d distributedTraceController) GetDistributedTrace(c *gin.Context) {
 			TraceType:   "endpoint",
 			Endpoint:    &ep,
 			Spans:       []models.Span{},
-			Exception:   exceptionByTraceId[ep.Id],
+			Exception:   exceptionByTraceId[distributedTraceOwner{ep.ProjectId, ep.Id}],
 		}
 		nodes = append(nodes, node)
+		lookups = append(lookups, telemetry.SpanLookup{ProjectId: ep.ProjectId, TraceId: ep.Id, RecordedAt: &ep.RecordedAt})
 	}
 
 	for _, t := range tasks {
@@ -146,9 +149,10 @@ func (d distributedTraceController) GetDistributedTrace(c *gin.Context) {
 			TraceType:   "task",
 			Task:        &t,
 			Spans:       []models.Span{},
-			Exception:   exceptionByTraceId[t.Id],
+			Exception:   exceptionByTraceId[distributedTraceOwner{t.ProjectId, t.Id}],
 		}
 		nodes = append(nodes, node)
+		lookups = append(lookups, telemetry.SpanLookup{ProjectId: t.ProjectId, TraceId: t.Id, RecordedAt: &t.RecordedAt})
 	}
 
 	for _, a := range aiTraces {
@@ -158,13 +162,14 @@ func (d distributedTraceController) GetDistributedTrace(c *gin.Context) {
 			TraceType:   "ai_trace",
 			AiTrace:     &a,
 			Spans:       []models.Span{},
-			Exception:   exceptionByTraceId[a.Id],
+			Exception:   exceptionByTraceId[distributedTraceOwner{a.ProjectId, a.Id}],
 		}
 		nodes = append(nodes, node)
+		lookups = append(lookups, telemetry.SpanLookup{ProjectId: a.ProjectId, TraceId: a.Id, RecordedAt: &a.RecordedAt})
 	}
 
 	for _, exc := range exceptions {
-		if exc.TraceId != nil && matchedIds[*exc.TraceId] {
+		if exc.TraceId != nil && matchedIds[distributedTraceOwner{exc.ProjectId, *exc.TraceId}] {
 			continue
 		}
 		nodes = append(nodes, DistributedTraceNode{
@@ -178,6 +183,16 @@ func (d distributedTraceController) GetDistributedTrace(c *gin.Context) {
 				RecordedAt:    exc.RecordedAt.Format("2006-01-02T15:04:05Z07:00"),
 			},
 		})
+		lookup := telemetry.SpanLookup{ProjectId: exc.ProjectId, RecordedAt: &exc.RecordedAt}
+		if exc.TraceId != nil {
+			lookup.TraceId = *exc.TraceId
+		}
+		lookups = append(lookups, lookup)
+	}
+
+	if err := loadDistributedTraceSpans(ctx, nodes, lookups); err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to query distributed trace spans: %w", err))
+		return
 	}
 
 	if nodes == nil {
@@ -188,6 +203,42 @@ func (d distributedTraceController) GetDistributedTrace(c *gin.Context) {
 		DistributedTraceId: distributedTraceIdStr,
 		Nodes:              nodes,
 	})
+}
+
+type distributedTraceOwner struct {
+	projectId uuid.UUID
+	traceId   uuid.UUID
+}
+
+func loadDistributedTraceSpans(ctx context.Context, nodes []DistributedTraceNode, lookups []telemetry.SpanLookup) error {
+	nodeIndexes := make(map[distributedTraceOwner][]int)
+	queries := make([]telemetry.SpanLookup, 0, len(lookups))
+	for i, lookup := range lookups {
+		if lookup.TraceId == uuid.Nil {
+			continue
+		}
+		key := distributedTraceOwner{lookup.ProjectId, lookup.TraceId}
+		nodeIndexes[key] = append(nodeIndexes[key], i)
+		queries = append(queries, lookup)
+	}
+	spans, err := telemetry.SpanRepository.FindByTraces(ctx, queries)
+	if err != nil {
+		return err
+	}
+	for _, span := range spans {
+		for _, i := range nodeIndexes[distributedTraceOwner{span.ProjectId, span.TraceId}] {
+			// A bulk result can cover multiple occurrences of the same ID. Keep
+			// each node's window consistent with its individual detail endpoint.
+			if lookups[i].RecordedAt != nil {
+				from, to := shared.TraceWindowBounds(*lookups[i].RecordedAt)
+				if span.RecordedAt.Before(from) || span.RecordedAt.After(to) {
+					continue
+				}
+			}
+			nodes[i].Spans = append(nodes[i].Spans, span)
+		}
+	}
+	return nil
 }
 
 var DistributedTraceController = distributedTraceController{}

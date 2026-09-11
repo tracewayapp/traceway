@@ -12,6 +12,7 @@ type (
 	CheckResult            = shared.CheckResult
 	LogAttributeFilter     = shared.LogAttributeFilter
 	LogSearchParams        = shared.LogSearchParams
+	SpanLookup             = shared.SpanLookup
 )
 
 var (

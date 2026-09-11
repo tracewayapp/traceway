@@ -5,11 +5,12 @@ package clickhouse
 import (
 	"context"
 	"encoding/json"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"slices"
 	"time"
 
 	"github.com/tracewayapp/traceway/backend/app/chdb"
 	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/google/uuid"
@@ -49,18 +50,37 @@ func (r *spanRepository) InsertAsync(ctx context.Context, spans []models.Span) e
 }
 
 func (r *spanRepository) FindByTraceId(ctx context.Context, projectId, traceId uuid.UUID, recordedAt *time.Time) ([]models.Span, error) {
-	query := `SELECT
-		id, trace_id, project_id, name, start_time, duration, recorded_at, parent_span_id, attributes
-	FROM spans
-	WHERE project_id = ? AND trace_id = ?`
-	args := []any{projectId, traceId}
-	if recordedAt != nil {
-		from, to := shared.TraceWindowBounds(*recordedAt)
-		query += ` AND recorded_at >= ? AND recorded_at <= ?`
-		args = append(args, from, to)
-	}
-	query += ` ORDER BY start_time ASC`
+	query, args := shared.SpanLookupQuery([]shared.SpanLookup{{ProjectId: projectId, TraceId: traceId, RecordedAt: recordedAt}},
+		func(t time.Time) any { return t.UTC() })
+	return r.querySpans(ctx, query, args)
+}
 
+func (r *spanRepository) FindByTraces(ctx context.Context, lookups []shared.SpanLookup) ([]models.Span, error) {
+	spans := make([]models.Span, 0)
+	type spanKey struct {
+		projectId, traceId, id uuid.UUID
+		recordedAt             time.Time
+	}
+	seen := make(map[spanKey]bool)
+	for batch := range slices.Chunk(lookups, shared.SpanLookupBatchSize) {
+		query, args := shared.SpanLookupQuery(batch, func(t time.Time) any { return t.UTC() })
+		found, err := r.querySpans(ctx, query, args)
+		if err != nil {
+			return nil, err
+		}
+		for _, span := range found {
+			key := spanKey{span.ProjectId, span.TraceId, span.Id, span.RecordedAt}
+			if !seen[key] {
+				seen[key] = true
+				spans = append(spans, span)
+			}
+		}
+	}
+	slices.SortStableFunc(spans, func(a, b models.Span) int { return a.StartTime.Compare(b.StartTime) })
+	return spans, nil
+}
+
+func (r *spanRepository) querySpans(ctx context.Context, query string, args []any) ([]models.Span, error) {
 	rows, err := chdb.Conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -86,7 +106,7 @@ func (r *spanRepository) FindByTraceId(ctx context.Context, projectId, traceId u
 		spans = append(spans, s)
 	}
 
-	return spans, nil
+	return spans, rows.Err()
 }
 
 var SpanRepository = &spanRepository{}

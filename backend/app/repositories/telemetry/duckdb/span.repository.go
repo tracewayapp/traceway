@@ -4,8 +4,7 @@ package duckdb
 
 import (
 	"context"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
+	"slices"
 	"time"
 
 	"github.com/duckdb/duckdb-go/v2"
@@ -13,6 +12,8 @@ import (
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
 )
 
 type span struct {
@@ -91,28 +92,53 @@ func (r *spanRepository) InsertAsync(ctx context.Context, spans []models.Span) e
 }
 
 func (r *spanRepository) FindByTraceId(ctx context.Context, projectId, traceId uuid.UUID, recordedAt *time.Time) ([]models.Span, error) {
-	query := `SELECT id, trace_id, project_id, name, start_time, duration, recorded_at, parent_span_id, attributes
-		FROM spans
-		WHERE project_id = :project_id AND trace_id = :trace_id`
-	params := lit.P{"project_id": projectId, "trace_id": traceId}
-	if recordedAt != nil {
-		from, to := shared.TraceWindowBounds(*recordedAt)
-		query += ` AND recorded_at >= :from AND recorded_at <= :to`
-		params["from"] = from.UTC()
-		params["to"] = to.UTC()
-	}
-	query += ` ORDER BY start_time ASC`
+	query, args := shared.SpanLookupQuery([]shared.SpanLookup{{ProjectId: projectId, TraceId: traceId, RecordedAt: recordedAt}},
+		func(t time.Time) any { return t.UTC() })
+	return r.querySpans(ctx, query, args)
+}
 
-	rows, err := lit.SelectNamed[span](db.TelemetryDB, query, params)
+func (r *spanRepository) FindByTraces(ctx context.Context, lookups []shared.SpanLookup) ([]models.Span, error) {
+	spans := make([]models.Span, 0)
+	type spanKey struct {
+		projectId, traceId, id uuid.UUID
+		recordedAt             time.Time
+	}
+	seen := make(map[spanKey]bool)
+	for batch := range slices.Chunk(lookups, shared.SpanLookupBatchSize) {
+		query, args := shared.SpanLookupQuery(batch, func(t time.Time) any { return t.UTC() })
+		found, err := r.querySpans(ctx, query, args)
+		if err != nil {
+			return nil, err
+		}
+		for _, span := range found {
+			key := spanKey{span.ProjectId, span.TraceId, span.Id, span.RecordedAt}
+			if !seen[key] {
+				seen[key] = true
+				spans = append(spans, span)
+			}
+		}
+	}
+	slices.SortStableFunc(spans, func(a, b models.Span) int { return a.StartTime.Compare(b.StartTime) })
+	return spans, nil
+}
+
+func (r *spanRepository) querySpans(ctx context.Context, query string, args []any) ([]models.Span, error) {
+	rows, err := db.TelemetryDB.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
-	spans := make([]models.Span, 0, len(rows))
-	for _, row := range rows {
+	spans := make([]models.Span, 0)
+	for rows.Next() {
+		var row span
+		if err := rows.Scan(&row.Id, &row.TraceId, &row.ProjectId, &row.Name, &row.StartTime,
+			&row.Duration, &row.RecordedAt, &row.ParentSpanId, &row.Attributes); err != nil {
+			return nil, err
+		}
 		spans = append(spans, row.toModel())
 	}
-	return spans, nil
+	return spans, rows.Err()
 }
 
 var SpanRepository = &spanRepository{}

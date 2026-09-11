@@ -3,7 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import { createRowClickHandler } from '$lib/utils/navigation';
-	import { formatDuration, formatRelativeTime } from '$lib/utils/formatters';
+	import { formatDuration, formatRelativeTimeAgo } from '$lib/utils/formatters';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import * as Table from '$lib/components/ui/table';
@@ -878,7 +878,7 @@ service:
 											{issue.count}
 										</Table.Cell>
 										<Table.Cell class="py-3 text-right text-sm text-muted-foreground tabular-nums">
-											{formatRelativeTime(issue.lastSeen, timezone)} ago
+											{formatRelativeTimeAgo(issue.lastSeen, timezone)}
 										</Table.Cell>
 									</Table.Row>
 								{/each}

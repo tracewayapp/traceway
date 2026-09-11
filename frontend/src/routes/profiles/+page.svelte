@@ -2,7 +2,7 @@
 	import { getErrorMessage } from '$lib/utils/errors';
 	import { onMount, onDestroy } from 'svelte';
 	import { api } from '$lib/api';
-	import { formatRelativeTime, toUTCISO, calendarDateTimeToLuxon } from '$lib/utils/formatters';
+	import { formatRelativeTimeAgo, toUTCISO, calendarDateTimeToLuxon } from '$lib/utils/formatters';
 	import { formatValue, humanizeType } from '$lib/utils/profile-format';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import * as Table from '$lib/components/ui/table';
@@ -363,7 +363,7 @@
 								{/if}
 							</Table.Cell>
 							<Table.Cell class="text-sm text-muted-foreground">
-								{formatRelativeTime(group.lastSeen, timezone)}
+								{formatRelativeTimeAgo(group.lastSeen, timezone)}
 							</Table.Cell>
 						</Table.Row>
 					{/each}

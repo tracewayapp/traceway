@@ -4,7 +4,7 @@
 	import { api } from '$lib/api';
 	import {
 		formatDuration,
-		formatRelativeTime,
+		formatRelativeTimeAgo,
 		toUTCISO,
 		calendarDateTimeToLuxon
 	} from '$lib/utils/formatters';
@@ -588,7 +588,7 @@
 								</div>
 							</Table.Cell>
 							<Table.Cell class="text-sm"
-								>{formatRelativeTime(session.startedAt, timezone)}</Table.Cell
+								>{formatRelativeTimeAgo(session.startedAt, timezone)}</Table.Cell
 							>
 							<Table.Cell class="font-mono text-sm tabular-nums">
 								{durationLabel(session)}

@@ -2,6 +2,7 @@ package otelcontrollers
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -217,6 +218,14 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 			}
 
 			if promoted {
+				// Occurrence IDs can come from span_id, and distributed_trace_id can be
+				// overridden. Keep the wire trace ID for correlation with OTLP logs.
+				if traceId := otelTraceIDToUUID(span.TraceId); traceId != uuid.Nil {
+					if allAttrs == nil {
+						allAttrs = make(map[string]string)
+					}
+					allAttrs["traceway.otel.trace_id"] = hex.EncodeToString(traceId[:])
+				}
 				rootSpanId := otelSpanIDToUUID(span.SpanId)
 				switch prom.kind {
 				case entityEndpoint:

@@ -23,7 +23,7 @@
 	import { resolve } from '$app/paths';
 	import DistributedTraceCard from '$lib/components/distributed-trace/distributed-trace-card.svelte';
 	import TraceLogsPanel from '$lib/components/trace-logs/trace-logs-panel.svelte';
-	import { traceIdUuidToHex } from '$lib/utils/span-id';
+	import { logTraceId } from '$lib/utils/span-id';
 
 	let { data } = $props();
 
@@ -278,7 +278,7 @@
 
 		<TraceLogsPanel
 			projectId={projectsState.currentProjectId ?? ''}
-			traceId={traceIdUuidToHex(response.endpoint.id)}
+			traceId={logTraceId(response.endpoint)}
 			distributedTraceId={response.endpoint.distributedTraceId ?? null}
 			spans={response.spans ?? []}
 			traceRecordedAt={response.endpoint.recordedAt}

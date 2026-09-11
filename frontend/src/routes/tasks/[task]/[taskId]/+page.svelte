@@ -22,7 +22,7 @@
 	import { resolve } from '$app/paths';
 	import DistributedTraceCard from '$lib/components/distributed-trace/distributed-trace-card.svelte';
 	import TraceLogsPanel from '$lib/components/trace-logs/trace-logs-panel.svelte';
-	import { traceIdUuidToHex } from '$lib/utils/span-id';
+	import { logTraceId } from '$lib/utils/span-id';
 	import type { Span } from '$lib/types/spans';
 
 	type TaskDetailResponse = {
@@ -278,7 +278,7 @@
 
 		<TraceLogsPanel
 			projectId={projectsState.currentProjectId ?? ''}
-			traceId={traceIdUuidToHex(response.task.id)}
+			traceId={logTraceId(response.task)}
 			distributedTraceId={response.task.distributedTraceId ?? null}
 			spans={response.spans ?? []}
 			traceRecordedAt={response.task.recordedAt}

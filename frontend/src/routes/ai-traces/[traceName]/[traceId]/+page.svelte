@@ -13,7 +13,7 @@
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { resolve } from '$app/paths';
 	import TraceLogsPanel from '$lib/components/trace-logs/trace-logs-panel.svelte';
-	import { traceIdUuidToHex } from '$lib/utils/span-id';
+	import { logTraceId } from '$lib/utils/span-id';
 	import { formatCost } from '$lib/utils/ai-format';
 	import { extractMessages, formatConversationContent } from '$lib/utils/ai-conversation';
 	import ConversationMessages from '$lib/components/ai/conversation-messages.svelte';
@@ -284,7 +284,7 @@
 
 		<TraceLogsPanel
 			projectId={projectsState.currentProjectId ?? ''}
-			traceId={traceIdUuidToHex(trace.id)}
+			traceId={logTraceId(trace)}
 			distributedTraceId={trace.distributedTraceId ?? null}
 			spans={[]}
 			traceRecordedAt={trace.recordedAt}

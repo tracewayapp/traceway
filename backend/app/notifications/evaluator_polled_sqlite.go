@@ -526,14 +526,14 @@ func countFailedTaskExecutions(ctx context.Context, projectId uuid.UUID, taskNam
 	toStr := to.Format(time.RFC3339Nano)
 
 	// A task failed when an exception was recorded on its own span. One caught further down did not fail it.
-	query := "SELECT COUNT(DISTINCT span_id) FROM exceptions_v2 WHERE project_id = ? AND trace_type = 'task' AND recorded_at >= ? AND recorded_at <= ?" +
-		" AND span_id IN (SELECT span_id FROM tasks_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
+	query := "SELECT COUNT(*) FROM (SELECT DISTINCT trace_id, span_id FROM exceptions_v2 WHERE project_id = ? AND trace_type = 'task' AND recorded_at >= ? AND recorded_at <= ?" +
+		" AND (trace_id, span_id) IN (SELECT trace_id, span_id FROM tasks_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
 	args := []interface{}{pid, fromStr, toStr, pid, fromStr, toStr}
 	if named {
 		query += " AND task_name = ?"
 		args = append(args, taskName)
 	}
-	query += ")"
+	query += ")) AS failed_tasks"
 
 	var failed int64
 	if err := db.TelemetryDB.QueryRowContext(ctx, query, args...).Scan(&failed); err != nil {

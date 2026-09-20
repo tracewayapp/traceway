@@ -1,9 +1,12 @@
 package shared
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -128,27 +131,79 @@ type OtelSpanRow struct {
 	PartitionTime time.Time
 }
 
+// Native UUIDs stay unchanged in Traceway's API. OTLP requires eight-byte span
+// IDs, so export uses this stable, domain-separated mapping for both ends of an edge.
+func nativeOTLPSpanID(id string) ([]byte, error) {
+	raw, err := hex.DecodeString(id)
+	if err != nil || (len(raw) != 8 && len(raw) != 16) || bytes.Equal(raw, make([]byte, len(raw))) {
+		return nil, fmt.Errorf("invalid span ID %q", id)
+	}
+	if len(raw) == 8 {
+		return raw, nil
+	}
+	hash := sha256.Sum256(append([]byte("traceway.native.span-id.v1:"), raw...))
+	result := hash[:8]
+	if bytes.Equal(result, make([]byte, 8)) {
+		result[7] = 1
+	}
+	return result, nil
+}
+
+func nativeStringAttribute(key, value string) *commonpb.KeyValue {
+	return &commonpb.KeyValue{Key: key, Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: value}}}
+}
+
 // NewOtelSpanRow prepares one span for storage. A span that did not arrive as OTLP, one from the native protocol, gets
 // a payload built from its fields, so every stored span can be returned in the same format.
 func NewOtelSpanRow(span models.OtelSpan, groups OtelSpanGroups) (*OtelSpanRow, error) {
 	traceID, err := hex.DecodeString(span.TraceId)
-	if err != nil || len(traceID) != 16 {
+	if err != nil || len(traceID) != 16 || bytes.Equal(traceID, make([]byte, 16)) {
 		return nil, fmt.Errorf("invalid trace ID %q", span.TraceId)
 	}
 	sourceID, err := hex.DecodeString(span.SpanId)
-	if err != nil || len(sourceID) == 0 {
+	if err != nil || (len(sourceID) != 8 && (span.OTLP != nil || len(sourceID) != 16)) {
 		return nil, fmt.Errorf("invalid span ID %q", span.SpanId)
 	}
 	row := &OtelSpanRow{Span: span.Span, Source: span.OTLP}
 	if row.Source == nil {
 		row.Synthesized = true
+		sourceID, err = nativeOTLPSpanID(span.SpanId)
+		if err != nil {
+			return nil, err
+		}
 		row.Source = &tracepb.Span{TraceId: traceID, SpanId: sourceID, Name: span.Name, Kind: tracepb.Span_SpanKind(span.SpanKind),
 			StartTimeUnixNano: uint64(span.StartTime.UnixNano()), EndTimeUnixNano: uint64(span.StartTime.Add(span.Duration).UnixNano())}
 		if span.StatusCode != 0 {
 			row.Source.Status = &tracepb.Status{Code: tracepb.Status_StatusCode(span.StatusCode)}
 		}
-		if parent, err := hex.DecodeString(span.ParentSpanId); err == nil && len(parent) > 0 {
-			row.Source.ParentSpanId = parent
+		if span.ParentSpanId != "" {
+			row.Source.ParentSpanId, err = nativeOTLPSpanID(span.ParentSpanId)
+			if err != nil {
+				return nil, err
+			}
+		}
+		keys := make([]string, 0, len(span.Attributes))
+		for key := range span.Attributes {
+			keys = append(keys, key)
+		}
+		slices.Sort(keys)
+		for _, key := range keys {
+			if key != "traceway.native.span_id" && key != "traceway.native.parent_span_id" {
+				row.Source.Attributes = append(row.Source.Attributes, nativeStringAttribute(key, span.Attributes[key]))
+			}
+		}
+		if len(span.SpanId) == 32 {
+			row.Source.Attributes = append(row.Source.Attributes, nativeStringAttribute("traceway.native.span_id", span.SpanId))
+		}
+		if len(span.ParentSpanId) == 32 {
+			row.Source.Attributes = append(row.Source.Attributes, nativeStringAttribute("traceway.native.parent_span_id", span.ParentSpanId))
+		}
+		if span.Context == nil {
+			resource := &resourcepb.Resource{}
+			if span.ServiceName != "" {
+				resource.Attributes = []*commonpb.KeyValue{nativeStringAttribute("service.name", span.ServiceName)}
+			}
+			span.Context = &tracepb.ResourceSpans{Resource: resource, ScopeSpans: []*tracepb.ScopeSpans{{Scope: &commonpb.InstrumentationScope{Name: span.ScopeName}}}}
 		}
 	}
 	if row.Group, err = groups.group(span.Context); err != nil {
@@ -192,6 +247,7 @@ func (row *OtelSpanRow) ScalarValues(codec OtelValueCodec) ([]any, error) {
 func (row *OtelSpanRow) NestedValues() ([]any, error) {
 	attributes := StringAttributes(row.Source.GetAttributes())
 	if row.Synthesized {
+		attributes = make(map[string]string, len(row.Span.Attributes))
 		for key, value := range row.Span.Attributes {
 			attributes[key] = value
 		}

@@ -48,10 +48,15 @@ func duckdbOtelValues(span models.OtelSpan, groups shared.OtelSpanGroups) ([]dri
 }
 
 func (r *otelSpanRepository) InsertAsync(ctx context.Context, spans []models.OtelSpan) (int, error) {
+	rejected, err := r.InsertWithRejections(ctx, spans)
+	return len(rejected), err
+}
+
+func (r *otelSpanRepository) InsertWithRejections(ctx context.Context, spans []models.OtelSpan) ([]shared.SpanOwner, error) {
 	if len(spans) == 0 {
-		return 0, nil
+		return nil, nil
 	}
-	rejected := 0
+	var rejected []shared.SpanOwner
 	err := withAppenderColumns(ctx, shared.SpansTable, strings.Split(shared.OtelTextStorageColumns+", trace_key", ", "), func(appender *duckdb.Appender) {
 		groups := shared.OtelSpanGroups{}
 		for _, span := range spans {
@@ -61,12 +66,12 @@ func (r *otelSpanRepository) InsertAsync(ctx context.Context, spans []models.Ote
 			}
 			if err != nil {
 				captureDroppedRow(shared.SpansTable, err)
-				rejected++
+				rejected = append(rejected, shared.SpanOwner{ProjectId: span.ProjectId, TraceId: span.TraceId, SpanId: span.SpanId})
 			}
 		}
 	})
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	return rejected, nil
 }
@@ -125,7 +130,7 @@ func (r *otelSpanRepository) FindSpanAttributes(ctx context.Context, lookup shar
 	}
 	predicate := "trace_key = ? AND span_id IN (" + shared.OtelPlaceholders(len(spanIds)) + ")"
 	predicate, args = shared.OtelWindowPredicate(predicate, args, []shared.SpanLookup{lookup}, duckdbOtelCodec.Time)
-	rows, err := db.TelemetryDB.QueryContext(ctx, shared.OtelAttributeQuery("span_attributes", "start_time_unix_nano", predicate, limits), args...)
+	rows, err := db.TelemetryDB.QueryContext(ctx, shared.OtelAttributeQuery("span_attributes", "octet_length(encode(span_attributes))", "start_time_unix_nano", predicate, shared.OtelTextWinnerOrder, limits), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -136,8 +141,9 @@ func (r *otelSpanRepository) FindSpanAttributes(ctx context.Context, lookup shar
 func (r *otelSpanRepository) IsReadLimitError(error) bool { return false }
 
 var duckdbSearchDialect = shared.OtelSearchDialect{
-	Project: func(id uuid.UUID) any { return id.String() },
-	Time:    duckdbOtelCodec.Time,
+	WinnerOrder: shared.OtelTextWinnerOrder,
+	Project:     func(id uuid.UUID) any { return id.String() },
+	Time:        duckdbOtelCodec.Time,
 	Trace: func(project uuid.UUID, traceHex string) (string, any) {
 		return "trace_key = ?", shared.OtelKey(project, traceHex)
 	},
@@ -184,7 +190,7 @@ func (r *otelSpanRepository) FindOTLP(ctx context.Context, project uuid.UUID, tr
 	defer cancel()
 	var value []byte
 	from, to := shared.TraceWindowBounds(at.UTC())
-	err := db.TelemetryDB.QueryRowContext(ctx, "SELECT otlp FROM "+shared.SpansTable+" WHERE trace_key = ? AND span_id = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY duration DESC, otlp DESC LIMIT 1", shared.OtelKey(project, traceID), spanID, from.UTC(), to.UTC()).Scan(&value)
+	err := db.TelemetryDB.QueryRowContext(ctx, "SELECT otlp FROM "+shared.SpansTable+" WHERE trace_key = ? AND span_id = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY "+shared.OtelTextWinnerOrder+" LIMIT 1", shared.OtelKey(project, traceID), spanID, from.UTC(), to.UTC()).Scan(&value)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

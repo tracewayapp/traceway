@@ -36,12 +36,12 @@ const (
 		app_version, server_name, is_message, COALESCE(distributed_trace_id, '') AS linked_trace_id, session_id`
 )
 
-// legacyWindow reads a time slice. With after it continues in id order behind that id, which is how one overfull second is paged.
-func legacyWindow(columns, table string, from, to time.Time, limit int, after *uuid.UUID) (string, lit.P) {
-	if after != nil {
+// legacyWindow sorts only overfull one-second slices; see shared.LegacyPageOrder.
+func legacyWindow(columns, table string, from, to time.Time, limit int, offset *int) (string, lit.P) {
+	if offset != nil {
 		query, params := legacyWindow(columns, table, from, to, limit, nil)
-		params["after"] = *after
-		return strings.Replace(query, " LIMIT :limit", " AND id > :after ORDER BY id LIMIT :limit", 1), params
+		params["offset"] = *offset
+		return strings.Replace(query, " LIMIT :limit", " ORDER BY "+shared.LegacyPageOrder(table, false)+" LIMIT :limit OFFSET :offset", 1), params
 	}
 	return "SELECT " + columns + " FROM " + table + " WHERE recorded_at >= :from AND recorded_at < :to LIMIT :limit",
 		lit.P{"from": sqlitetypes.NewSQLiteTime(from), "to": sqlitetypes.NewSQLiteTime(to), "limit": limit}
@@ -57,8 +57,8 @@ func legacyByIds(columns, table string, ids []uuid.UUID, from, to time.Time) (st
 	return "SELECT " + columns + " FROM " + table + " WHERE id IN (" + strings.Join(names, ",") + ") AND recorded_at >= :from AND recorded_at < :to", params
 }
 
-func legacyEndpoints(query string, params lit.P) ([]models.Endpoint, error) {
-	rows, err := lit.SelectNamed[endpoint](db.TelemetryDB, query, params)
+func legacyEndpoints(ctx context.Context, query string, params lit.P) ([]models.Endpoint, error) {
+	rows, err := shared.SelectLegacy[endpoint](ctx, db.TelemetryDB, query, params)
 	if err != nil {
 		return nil, err
 	}
@@ -69,8 +69,8 @@ func legacyEndpoints(query string, params lit.P) ([]models.Endpoint, error) {
 	return found, nil
 }
 
-func legacyTasks(query string, params lit.P) ([]models.Task, error) {
-	rows, err := lit.SelectNamed[task](db.TelemetryDB, query, params)
+func legacyTasks(ctx context.Context, query string, params lit.P) ([]models.Task, error) {
+	rows, err := shared.SelectLegacy[task](ctx, db.TelemetryDB, query, params)
 	if err != nil {
 		return nil, err
 	}
@@ -81,8 +81,8 @@ func legacyTasks(query string, params lit.P) ([]models.Task, error) {
 	return found, nil
 }
 
-func legacyAiTraces(query string, params lit.P) ([]models.AiTrace, error) {
-	rows, err := lit.SelectNamed[aiTraceRow](db.TelemetryDB, query, params)
+func legacyAiTraces(ctx context.Context, query string, params lit.P) ([]models.AiTrace, error) {
+	rows, err := shared.SelectLegacy[aiTraceRow](ctx, db.TelemetryDB, query, params)
 	if err != nil {
 		return nil, err
 	}
@@ -93,21 +93,24 @@ func legacyAiTraces(query string, params lit.P) ([]models.AiTrace, error) {
 	return found, nil
 }
 
-func (legacyRepository) FindEndpoints(ctx context.Context, from, to time.Time, limit int, after *uuid.UUID) ([]models.Endpoint, error) {
-	return legacyEndpoints(legacyWindow(legacyEndpointColumns, "endpoints", from, to, limit, after))
+func (legacyRepository) FindEndpoints(ctx context.Context, from, to time.Time, limit int, offset *int) ([]models.Endpoint, error) {
+	query, params := legacyWindow(legacyEndpointColumns, "endpoints", from, to, limit, offset)
+	return legacyEndpoints(ctx, query, params)
 }
 
-func (legacyRepository) FindTasks(ctx context.Context, from, to time.Time, limit int, after *uuid.UUID) ([]models.Task, error) {
-	return legacyTasks(legacyWindow(legacyTaskColumns, "tasks", from, to, limit, after))
+func (legacyRepository) FindTasks(ctx context.Context, from, to time.Time, limit int, offset *int) ([]models.Task, error) {
+	query, params := legacyWindow(legacyTaskColumns, "tasks", from, to, limit, offset)
+	return legacyTasks(ctx, query, params)
 }
 
-func (legacyRepository) FindAiTraces(ctx context.Context, from, to time.Time, limit int, after *uuid.UUID) ([]models.AiTrace, error) {
-	return legacyAiTraces(legacyWindow(legacyAiTraceColumns, "ai_traces", from, to, limit, after))
+func (legacyRepository) FindAiTraces(ctx context.Context, from, to time.Time, limit int, offset *int) ([]models.AiTrace, error) {
+	query, params := legacyWindow(legacyAiTraceColumns, "ai_traces", from, to, limit, offset)
+	return legacyAiTraces(ctx, query, params)
 }
 
-func (legacyRepository) FindExceptions(ctx context.Context, from, to time.Time, limit int, after *uuid.UUID) ([]models.ExceptionStackTrace, error) {
-	query, params := legacyWindow(legacyExceptionColumns, "exception_stack_traces", from, to, limit, after)
-	rows, err := lit.SelectNamed[exceptionRow](db.TelemetryDB, query, params)
+func (legacyRepository) FindExceptions(ctx context.Context, from, to time.Time, limit int, offset *int) ([]models.ExceptionStackTrace, error) {
+	query, params := legacyWindow(legacyExceptionColumns, "exception_stack_traces", from, to, limit, offset)
+	rows, err := shared.SelectLegacy[exceptionRow](ctx, db.TelemetryDB, query, params)
 	if err != nil {
 		return nil, err
 	}
@@ -118,8 +121,8 @@ func (legacyRepository) FindExceptions(ctx context.Context, from, to time.Time, 
 	return found, nil
 }
 
-func (legacyRepository) FindSpans(ctx context.Context, from, to time.Time, limit int, after *uuid.UUID) ([]shared.LegacySpan, error) {
-	query, params := legacyWindow("project_id, id, trace_id, COALESCE(parent_span_id, ''), name, start_time, duration, recorded_at, attributes", "spans", from, to, limit, after)
+func (legacyRepository) FindSpans(ctx context.Context, from, to time.Time, limit int, offset *int) ([]shared.LegacySpan, error) {
+	query, params := legacyWindow("project_id, id, trace_id, COALESCE(parent_span_id, ''), name, start_time, duration, recorded_at, attributes", "spans", from, to, limit, offset)
 	query, args, err := lit.ParseNamedQuery(db.Driver, query, params)
 	if err != nil {
 		return nil, err
@@ -150,15 +153,18 @@ func (legacyRepository) FindOwners(ctx context.Context, ids []uuid.UUID, from, t
 	var tasks []models.Task
 	var aiTraces []models.AiTrace
 	for chunk := range slices.Chunk(ids, legacyIdChunk) {
-		foundEndpoints, err := legacyEndpoints(legacyByIds(legacyEndpointColumns, "endpoints", chunk, from, to))
+		query, params := legacyByIds(legacyEndpointColumns, "endpoints", chunk, from, to)
+		foundEndpoints, err := legacyEndpoints(ctx, query, params)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		foundTasks, err := legacyTasks(legacyByIds(legacyTaskColumns, "tasks", chunk, from, to))
+		query, params = legacyByIds(legacyTaskColumns, "tasks", chunk, from, to)
+		foundTasks, err := legacyTasks(ctx, query, params)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		foundAiTraces, err := legacyAiTraces(legacyByIds(legacyAiTraceColumns, "ai_traces", chunk, from, to))
+		query, params = legacyByIds(legacyAiTraceColumns, "ai_traces", chunk, from, to)
+		foundAiTraces, err := legacyAiTraces(ctx, query, params)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -179,20 +185,19 @@ func (legacyRepository) FindBounds(ctx context.Context, table string) (oldest, n
 	return low.Time, high.Time, count > 0, nil
 }
 
-// FindMovedIds reports which of the ids a V2 table already holds, so a day that was interrupted can be finished
-// without writing its first rows twice.
-func (legacyRepository) FindMovedIds(ctx context.Context, table string, ids []uuid.UUID, from, to time.Time) (map[uuid.UUID]bool, error) {
+// FindMovedIds returns full occurrence keys, never IDs shared by unrelated traces.
+func (legacyRepository) FindMovedIds(ctx context.Context, table string, ids []uuid.UUID, from, to time.Time) (map[shared.MovedOccurrence]bool, error) {
 	table, err := shared.LegacyTable(table)
 	if err != nil {
 		return nil, err
 	}
-	moved := map[uuid.UUID]bool{}
+	moved := map[shared.MovedOccurrence]bool{}
 	for chunk := range slices.Chunk(ids, legacyIdChunk) {
 		args := []any{sqlitetypes.NewSQLiteTime(from), sqlitetypes.NewSQLiteTime(to)}
 		for _, id := range chunk {
 			args = append(args, id)
 		}
-		rows, err := db.TelemetryDB.QueryContext(ctx, "SELECT id FROM "+table+" WHERE recorded_at >= ? AND recorded_at < ? AND id IN (?"+strings.Repeat(",?", len(chunk)-1)+")", args...)
+		rows, err := db.TelemetryDB.QueryContext(ctx, "SELECT project_id, id, trace_id, span_id, recorded_at FROM "+table+" WHERE recorded_at >= ? AND recorded_at < ? AND id IN (?"+strings.Repeat(",?", len(chunk)-1)+")", args...)
 		if err != nil {
 			return nil, err
 		}
@@ -203,14 +208,16 @@ func (legacyRepository) FindMovedIds(ctx context.Context, table string, ids []uu
 	return moved, nil
 }
 
-func scanMovedIds(rows *sql.Rows, moved map[uuid.UUID]bool) error {
+func scanMovedIds(rows *sql.Rows, moved map[shared.MovedOccurrence]bool) error {
 	defer rows.Close()
 	for rows.Next() {
-		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
+		var project, id uuid.UUID
+		var trace, span string
+		var at sqlitetypes.SQLiteTime
+		if err := rows.Scan(&project, &id, &trace, &span, &at); err != nil {
 			return err
 		}
-		moved[id] = true
+		moved[shared.MovedOccurrenceKey(project, id, trace, span, at.Time)] = true
 	}
 	return rows.Err()
 }
@@ -235,11 +242,20 @@ func (legacyRepository) FindMovedSpans(ctx context.Context, traceIds []string, f
 			}
 			moved[shared.MovedSpanKey(project, trace, span)] = true
 		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
 		if err := rows.Close(); err != nil {
 			return nil, err
 		}
 	}
 	return moved, nil
+}
+
+// OccurrenceTime matches the destination column precision for recovery keys.
+func (legacyRepository) OccurrenceTime(table string, at time.Time) time.Time {
+	return at
 }
 
 var LegacyRepository = legacyRepository{}

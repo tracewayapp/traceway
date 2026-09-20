@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { untrack } from 'svelte';
 	import SpanWaterfall from '$lib/components/spans/span-waterfall.svelte';
 	import SpanGraphNotice from '$lib/components/spans/span-graph-notice.svelte';
 	import type { Span, SpanGraphStatus, TraceIdentity } from '$lib/types/spans';
@@ -74,7 +74,10 @@
 
 	let showRawJson = $state(false);
 
+	let loadSequence = 0;
+
 	async function loadData() {
+		const sequence = ++loadSequence;
 		loading = true;
 		error = '';
 		notFound = false;
@@ -85,8 +88,10 @@
 				data.recordedAt ? { recordedAt: data.recordedAt } : {},
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
+			if (sequence !== loadSequence) return;
 			response = result;
 		} catch (e: unknown) {
+			if (sequence !== loadSequence) return;
 			console.error(e);
 			const err = e as { status?: number; message?: string };
 			if (err.status === 404) {
@@ -95,12 +100,22 @@
 				error = err.message || 'Failed to load AI trace details';
 			}
 		} finally {
-			loading = false;
+			if (sequence === loadSequence) loading = false;
 		}
 	}
 
-	onMount(() => {
-		loadData();
+	$effect(() => {
+		void data.traceId;
+		void data.recordedAt;
+		void projectsState.currentProjectId;
+		untrack(() => {
+			response = null;
+			showRawJson = false;
+			loadData();
+		});
+		return () => {
+			loadSequence++;
+		};
 	});
 </script>
 
@@ -307,7 +322,8 @@
 		<TraceLogsPanel
 			projectId={projectsState.currentProjectId ?? ''}
 			traceId={trace.traceId}
-			spans={[]}
+			spans={response.spans ?? []}
+			rootSpan={{ spanId: trace.spanId, name: trace.traceName }}
 			traceRecordedAt={trace.recordedAt}
 		/>
 	{/if}

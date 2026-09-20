@@ -18,6 +18,8 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models/clientmodels"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestReportKeepsNativeSpanEdgesAndHistoricalTimes(t *testing.T) {
@@ -84,6 +86,36 @@ func TestReportKeepsNativeSpanEdgesAndHistoricalTimes(t *testing.T) {
 		if (span.ParentSpanId == "") != (span.Name == "native-task") {
 			t.Fatalf("the run's own span is the only root: %+v", span)
 		}
+	}
+	exported := map[string]*tracepb.Span{}
+	for _, span := range whole.Spans {
+		payload, err := telemetry.OtelSpanRepository.FindOTLP(context.Background(), project, run, span.SpanId, recorded)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var resource tracepb.ResourceSpans
+		if err := proto.Unmarshal(payload, &resource); err != nil {
+			t.Fatal(err)
+		}
+		if len(resource.ScopeSpans) != 1 || len(resource.ScopeSpans[0].Spans) != 1 || shared.StringAttributes(resource.Resource.GetAttributes())["service.name"] != "native-host" {
+			t.Fatalf("native export lost its envelope: %v", &resource)
+		}
+		source := resource.ScopeSpans[0].Spans[0]
+		if len(source.TraceId) != 16 || len(source.SpanId) != 8 || (len(source.ParentSpanId) != 0 && len(source.ParentSpanId) != 8) || hex.EncodeToString(source.TraceId) != run {
+			t.Fatalf("invalid native OTLP identity: %v", source)
+		}
+		if shared.StringAttributes(source.Attributes)["traceway.native.span_id"] != span.SpanId {
+			t.Fatal("export must retain the native API identity")
+		}
+		exported[span.SpanId] = source
+	}
+	for _, span := range whole.Spans {
+		if span.ParentSpanId != "" && !bytes.Equal(exported[span.SpanId].ParentSpanId, exported[span.ParentSpanId].SpanId) {
+			t.Fatal("native parent and child use different OTLP identity mappings")
+		}
+	}
+	if shared.StringAttributes(exported[hex.EncodeToString(child[:])].Attributes)["native"] != "preserved" {
+		t.Fatal("native attributes were not exported")
 	}
 	// A malformed legacy ID must generate one owner for both projection and children.
 	trace := &clientmodels.ClientTrace{Id: "invalid"}

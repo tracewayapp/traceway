@@ -32,6 +32,7 @@ type OtelSearchDialect struct {
 	Attribute   string
 	StartOrder  string
 	ReadSetting string
+	WinnerOrder string
 }
 
 var otelSearchOrders = map[string]string{
@@ -83,9 +84,13 @@ func OtelSearchQueries(search OtelSpanSearch, dialect OtelSearchDialect) (page s
 		order = otelSearchOrders["start_time desc"]
 	}
 	order = strings.ReplaceAll(order, "%s", dialect.StartOrder)
-	page = "SELECT " + OtelTopologyColumns + " FROM " + SpansTable + " WHERE " + predicate + " ORDER BY " + order + " LIMIT ? OFFSET ?" + dialect.ReadSetting
+	order += ", trace_id, span_id"
+	scope, scopeArgs := otelSearchPredicate(OtelSpanSearch{ProjectId: search.ProjectId, From: search.From, To: search.To, TraceId: search.TraceId}, dialect)
+	winners := OtelWinningRows("*", scope, dialect.WinnerOrder)
+	args = append(scopeArgs, args...)
+	page = "SELECT " + OtelTopologyColumns + " FROM " + winners + " WHERE " + predicate + " ORDER BY " + order + " LIMIT ? OFFSET ?" + dialect.ReadSetting
 	pageArgs = append(append([]any{}, args...), search.PageSize, (search.Page-1)*search.PageSize)
-	return page, pageArgs, "SELECT count(*) FROM " + SpansTable + " WHERE " + predicate + dialect.ReadSetting, args
+	return page, pageArgs, "SELECT count(*) FROM " + winners + " WHERE " + predicate + dialect.ReadSetting, args
 }
 
 // OtelServicesQuery lists the services that reported spans in the range, busiest first, for the explorer's filter.

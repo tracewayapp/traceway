@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { untrack } from 'svelte';
 	import { api } from '$lib/api';
 	import { formatDuration, formatDateTime } from '$lib/utils/formatters';
 	import { getTimezone } from '$lib/state/timezone.svelte';
@@ -99,7 +99,10 @@
 		return `${(spanMs / 3_600_000).toFixed(1)}h`;
 	}
 
+	let loadSequence = 0;
+
 	async function loadData() {
+		const sequence = ++loadSequence;
 		loading = true;
 		error = '';
 		notFound = false;
@@ -110,8 +113,10 @@
 				{ conversationId },
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
+			if (sequence !== loadSequence) return;
 			response = result;
 		} catch (e: unknown) {
+			if (sequence !== loadSequence) return;
 			console.error(e);
 			const err = e as { status?: number; message?: string };
 			if (err.status === 404) {
@@ -120,12 +125,20 @@
 				error = err.message || 'Failed to load conversation';
 			}
 		} finally {
-			loading = false;
+			if (sequence === loadSequence) loading = false;
 		}
 	}
 
-	onMount(() => {
-		loadData();
+	$effect(() => {
+		void conversationId;
+		void projectsState.currentProjectId;
+		untrack(() => {
+			response = null;
+			loadData();
+		});
+		return () => {
+			loadSequence++;
+		};
 	});
 </script>
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -14,6 +15,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/monitoring"
 	"github.com/tracewayapp/traceway/backend/app/profiling"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/jsstack"
@@ -48,13 +50,13 @@ func otelSymbolicateAndroid(existingProject *models.Project, projectId uuid.UUID
 type otelController struct{}
 
 var traceStore = struct {
-	spans      func(context.Context, []models.OtelSpan) (int, error)
+	spans      func(context.Context, []models.OtelSpan) ([]shared.SpanOwner, error)
 	endpoints  func(context.Context, []models.Endpoint) error
 	tasks      func(context.Context, []models.Task) error
 	exceptions func(context.Context, []models.ExceptionStackTrace) error
 	aiTraces   func(context.Context, []models.AiTrace) error
 }{
-	spans:      telemetry.OtelSpanRepository.InsertAsync,
+	spans:      telemetry.OtelSpanRepository.InsertWithRejections,
 	endpoints:  telemetry.EndpointRepository.InsertAsync,
 	tasks:      telemetry.TaskRepository.InsertAsync,
 	exceptions: telemetry.ExceptionStackTraceRepository.InsertAsync,
@@ -156,6 +158,25 @@ func (o otelController) ExportTraces(c *gin.Context) {
 		return
 	}
 
+	if len(notStored) > 0 {
+		rejected := make(map[shared.SpanOwner]bool, len(notStored))
+		for _, span := range notStored {
+			rejected[span] = true
+		}
+		hasRejectedSource := func(traceId, spanId string) bool {
+			return rejected[shared.SpanOwner{ProjectId: projectId, TraceId: traceId, SpanId: spanId}]
+		}
+		endpoints = slices.DeleteFunc(endpoints, func(row models.Endpoint) bool { return hasRejectedSource(row.TraceId, row.SpanId) })
+		tasks = slices.DeleteFunc(tasks, func(row models.Task) bool { return hasRejectedSource(row.TraceId, row.SpanId) })
+		exceptions = slices.DeleteFunc(exceptions, func(row models.ExceptionStackTrace) bool { return hasRejectedSource(row.TraceId, row.SpanId) })
+		aiTraces = slices.DeleteFunc(aiTraces, func(row models.AiTrace) bool { return hasRejectedSource(row.TraceId, row.SpanId) })
+		storedConversations := map[string]bool{}
+		for _, row := range aiTraces {
+			storedConversations[row.StorageKey] = true
+		}
+		aiConversations = slices.DeleteFunc(aiConversations, func(row aiTraceConversation) bool { return !storedConversations[row.StorageKey] })
+	}
+
 	if len(endpoints) > 0 {
 		if err := traceStore.endpoints(c, endpoints); err != nil {
 			abortIngestStorage(c, "endpoints", err)
@@ -234,7 +255,7 @@ func (o otelController) ExportTraces(c *gin.Context) {
 		hooks.BroadcastReport(ev)
 	}
 
-	writeTraceResponse(c, countInvalidSpanIDs(req), int64(notStored))
+	writeTraceResponse(c, countInvalidSpanIDs(req), int64(len(notStored)))
 }
 
 func (o otelController) ExportMetrics(c *gin.Context) {

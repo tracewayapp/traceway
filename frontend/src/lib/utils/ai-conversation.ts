@@ -131,7 +131,11 @@ function normalizeInputMessage(value: unknown): ChatMessage | null {
 
 function extractOutputMessage(output: string): ChatMessage | null {
 	const outputParsed = tryParseJson(output);
-	if (!isRecord(outputParsed)) return null;
+	if (!isRecord(outputParsed)) {
+		return output.trim()
+			? { role: 'assistant', content: typeof outputParsed === 'string' ? outputParsed : output }
+			: null;
+	}
 
 	// OpenAI-style: {choices: [{message: {role, content, tool_calls}}]}
 	const choices = outputParsed.choices;
@@ -193,10 +197,13 @@ export function parseInputMessages(input: string): ChatMessage[] | null {
 }
 
 export function extractMessages(input: string, output: string): ChatMessage[] | null {
-	const messages = parseInputMessages(input);
-	if (!messages) return null;
+	const messages =
+		parseInputMessages(input) ??
+		(input.trim() ? [{ role: 'user', content: formatConversationContent(input) }] : []);
 
-	const outputMessage = extractOutputMessage(output);
+	const outputMessage =
+		extractOutputMessage(output) ??
+		(output.trim() ? { role: 'assistant', content: formatConversationContent(output) } : null);
 	if (outputMessage) messages.push(outputMessage);
 
 	return messages.length > 0 ? messages : null;
@@ -219,17 +226,17 @@ export function pairToolResults(messages: ChatMessage[]): Map<string, ChatMessag
 	return paired;
 }
 
-function roleSequenceMatches(previous: ChatMessage[], current: ChatMessage[]): boolean {
+function historyPrefixMatches(previous: ChatMessage[], current: ChatMessage[]): boolean {
 	if (current.length < previous.length) return false;
 	for (let i = 0; i < previous.length; i++) {
-		if (previous[i].role !== current[i].role) return false;
+		if (JSON.stringify(previous[i]) !== JSON.stringify(current[i])) return false;
 	}
 	return true;
 }
 
 // buildConversationTimeline merges per-call payloads into one chat timeline.
 // Most SDKs resend the full history each turn, so each turn's input is
-// deduplicated against the previous turn's by role-sequence prefix matching;
+// deduplicated against the previous turn's by complete-message prefix matching;
 // when that fails (compacted histories, unparsable payloads) the caller
 // should fall back to per-turn rendering (signaled by returning null).
 export function buildConversationTimeline(turns: ConversationTurn[]): TimelineEntry[] | null {
@@ -242,7 +249,7 @@ export function buildConversationTimeline(turns: ConversationTurn[]): TimelineEn
 
 		let fresh = inputMessages;
 		if (previousInput && previousInput.length > 0) {
-			if (!roleSequenceMatches(previousInput, inputMessages)) return null;
+			if (!historyPrefixMatches(previousInput, inputMessages)) return null;
 			fresh = inputMessages.slice(previousInput.length);
 		}
 		for (const message of fresh) {
@@ -250,6 +257,7 @@ export function buildConversationTimeline(turns: ConversationTurn[]): TimelineEn
 		}
 
 		const outputMessage = extractOutputMessage(turn.output);
+		if (turn.output.trim() && !outputMessage) return null;
 		if (outputMessage) {
 			entries.push({ kind: 'message', message: outputMessage });
 		}

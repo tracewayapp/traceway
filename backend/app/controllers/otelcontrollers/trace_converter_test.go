@@ -819,7 +819,7 @@ func TestConvertTraces_NestedServerSpanIsOneRequest(t *testing.T) {
 		want  int
 	}{
 		{"local parent by flags, same batch", []*tracepb.Span{server(outerId, nil, 0), server(innerId, outerId, hasIsRemote)}, 1},
-		{"local parent by flags, parent in another batch", []*tracepb.Span{server(innerId, outerId, hasIsRemote)}, 0},
+		{"local parent by flags, unknown kind in another batch", []*tracepb.Span{server(innerId, outerId, hasIsRemote)}, 1},
 		{"remote parent by flags, same batch", []*tracepb.Span{server(outerId, nil, 0), server(innerId, outerId, hasIsRemote|isRemote)}, 2},
 		{"no flags, parent in the same batch", []*tracepb.Span{server(outerId, nil, 0), server(innerId, outerId, 0)}, 1},
 		{"no flags, parent in another batch", []*tracepb.Span{server(innerId, outerId, 0)}, 1},

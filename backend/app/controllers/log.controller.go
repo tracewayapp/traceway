@@ -1,15 +1,18 @@
 package controllers
 
 import (
+	"context"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	traceway "go.tracewayapp.com"
 
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 )
 
 type logController struct{}
@@ -30,20 +33,22 @@ type LogPaginationParams struct {
 }
 
 type LogSearchRequest struct {
-	FromDate         time.Time                   `json:"fromDate"`
-	ToDate           time.Time                   `json:"toDate"`
-	OrderBy          string                      `json:"orderBy"`
-	SortDirection    string                      `json:"sortDirection"`
-	Search           string                      `json:"search"`
-	SearchType       string                      `json:"searchType"`
-	MinSeverity      uint8                       `json:"minSeverity"`
-	ServiceName      string                      `json:"serviceName"`
-	TraceId          string                      `json:"traceId"`
-	SpanId           string                      `json:"spanId"`
-	ScopeName        string                      `json:"scopeName"`
-	Body             string                      `json:"body"`
-	AttributeFilters []LogAttributeFilterRequest `json:"attributeFilters"`
-	Pagination       LogPaginationParams         `json:"pagination"`
+	DistributedTraceId string                      `json:"distributedTraceId"`
+	ExcludeTraceId     string                      `json:"excludeTraceId"`
+	FromDate           time.Time                   `json:"fromDate"`
+	ToDate             time.Time                   `json:"toDate"`
+	OrderBy            string                      `json:"orderBy"`
+	SortDirection      string                      `json:"sortDirection"`
+	Search             string                      `json:"search"`
+	SearchType         string                      `json:"searchType"`
+	MinSeverity        uint8                       `json:"minSeverity"`
+	ServiceName        string                      `json:"serviceName"`
+	TraceId            string                      `json:"traceId"`
+	SpanId             string                      `json:"spanId"`
+	ScopeName          string                      `json:"scopeName"`
+	Body               string                      `json:"body"`
+	AttributeFilters   []LogAttributeFilterRequest `json:"attributeFilters"`
+	Pagination         LogPaginationParams         `json:"pagination"`
 }
 
 // Max time range allowed for body search without any other selector. Keeps a
@@ -66,6 +71,13 @@ func (l logController) List(c *gin.Context) {
 		return
 	}
 
+	if request.ExcludeTraceId != "" {
+		if request.DistributedTraceId == "" || !validTraceHex(shared.NormalizeTraceId(request.ExcludeTraceId)) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "excludeTraceId requires distributedTraceId and a valid trace ID"})
+			return
+		}
+	}
+
 	// Loki-style gate: a body substring search without any selector can scan
 	// the entire body column across the requested range. Require at least one
 	// selector (service / severity / trace / attribute) OR a short time range.
@@ -77,6 +89,7 @@ func (l logController) List(c *gin.Context) {
 		hasSelector := request.MinSeverity > 0 ||
 			request.ServiceName != "" ||
 			request.TraceId != "" ||
+			request.DistributedTraceId != "" ||
 			request.SpanId != "" ||
 			request.ScopeName != "" ||
 			request.Body != "" ||
@@ -123,6 +136,33 @@ func (l logController) List(c *gin.Context) {
 		PageSize:         request.Pagination.PageSize,
 	}
 
+	if request.DistributedTraceId != "" {
+		dtid, err := uuid.Parse(request.DistributedTraceId)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid distributedTraceId"})
+			return
+		}
+		traceIds, err := l.resolveDistributedTraceIds(c, dtid, projectId, request.ExcludeTraceId, request.FromDate)
+		if err != nil {
+			c.AbortWithError(500, traceway.NewStackTraceErrorf("error resolving distributed trace: %w", err))
+			return
+		}
+		if len(traceIds) == 0 {
+			c.JSON(http.StatusOK, PaginatedResponse[models.LogRecord]{
+				Data: []models.LogRecord{},
+				Pagination: Pagination{
+					Page:       request.Pagination.Page,
+					PageSize:   request.Pagination.PageSize,
+					Total:      0,
+					TotalPages: 0,
+				},
+			})
+			return
+		}
+		params.TraceIds = traceIds
+		params.TraceId = ""
+	}
+
 	span := traceway.StartSpan(c, "loading logs")
 	records, total, err := telemetry.LogRecordRepository.Search(c, params)
 	span.End()
@@ -140,4 +180,41 @@ func (l logController) List(c *gin.Context) {
 			TotalPages: (total + int64(request.Pagination.PageSize) - 1) / int64(request.Pagination.PageSize),
 		},
 	})
+}
+
+func (l logController) resolveDistributedTraceIds(ctx context.Context, id uuid.UUID, projectId uuid.UUID, exclude string, at time.Time) ([]string, error) {
+	var anchor *time.Time
+	if !at.IsZero() {
+		anchor = &at
+	}
+	traceId := shared.NormalizeTraceId(id.String())
+	found, err := findTraceEntities(ctx, traceId, []uuid.UUID{projectId}, anchor)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var ids []string
+	exclude = shared.NormalizeTraceId(exclude)
+	add := func(values ...string) {
+		for _, value := range values {
+			if value != "" && value != exclude && !seen[value] {
+				seen[value] = true
+				ids = append(ids, value)
+			}
+		}
+	}
+	add(traceId)
+	for _, row := range found.endpoints {
+		add(row.TraceId, row.LinkedTraceId)
+	}
+	for _, row := range found.tasks {
+		add(row.TraceId, row.LinkedTraceId)
+	}
+	for _, row := range found.aiTraces {
+		add(row.TraceId, row.LinkedTraceId)
+	}
+	for _, row := range found.exceptions {
+		add(row.TraceId, row.LinkedTraceId)
+	}
+	return ids, nil
 }

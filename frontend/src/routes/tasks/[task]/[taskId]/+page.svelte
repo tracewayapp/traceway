@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api';
 	import { formatDuration, formatDateTime } from '$lib/utils/formatters';
@@ -62,7 +62,10 @@
 	let error = $state('');
 	let notFound = $state(false);
 
+	let loadSequence = 0;
+
 	async function loadData() {
+		const sequence = ++loadSequence;
 		loading = true;
 		error = '';
 		notFound = false;
@@ -73,8 +76,10 @@
 				data.recordedAt ? { recordedAt: data.recordedAt } : {},
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
+			if (sequence !== loadSequence) return;
 			response = result;
 		} catch (e: unknown) {
+			if (sequence !== loadSequence) return;
 			console.error(e);
 			const err = e as { status?: number; message?: string };
 			if (err.status === 404) {
@@ -83,12 +88,21 @@
 				error = err.message || 'Failed to load task details';
 			}
 		} finally {
-			loading = false;
+			if (sequence === loadSequence) loading = false;
 		}
 	}
 
-	onMount(() => {
-		loadData();
+	$effect(() => {
+		void data.taskId;
+		void data.recordedAt;
+		void projectsState.currentProjectId;
+		untrack(() => {
+			response = null;
+			loadData();
+		});
+		return () => {
+			loadSequence++;
+		};
 	});
 </script>
 
@@ -282,6 +296,7 @@
 			projectId={projectsState.currentProjectId ?? ''}
 			traceId={response.task.traceId}
 			spans={response.spans ?? []}
+			rootSpan={{ spanId: response.task.spanId, name: response.task.taskName }}
 			traceRecordedAt={response.task.recordedAt}
 		/>
 

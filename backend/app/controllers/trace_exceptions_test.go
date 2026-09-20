@@ -16,6 +16,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 )
 
@@ -117,4 +118,32 @@ func TestDetailShowsTheExceptionsInsideItsSubtree(t *testing.T) {
 			t.Fatalf("the issue page finds the endpoint above the exception's span: %+v", issue.RelatedEntity)
 		}
 	}
+
+	t.Run("missing descendant exception keeps partial status", func(t *testing.T) {
+		previous := shared.MaxOtelGraphRows
+		shared.MaxOtelGraphRows = 1
+		t.Cleanup(func() { shared.MaxOtelGraphRows = previous })
+		for _, route := range []struct {
+			param   string
+			handler gin.HandlerFunc
+		}{
+			{"endpointId", EndpointDetailController.GetEndpointDetail},
+			{"taskId", TaskDetailController.GetTaskDetail},
+		} {
+			c, response := newControllerTestContext(t, nil, user, http.MethodPost, "/detail", "{}")
+			c.Set(middleware.ProjectIdContextKey, project.Id)
+			c.Params = gin.Params{{Key: route.param, Value: owner.String()}}
+			route.handler(c)
+			var detail struct {
+				Exception *EndpointExceptionInfo  `json:"exception"`
+				Status    *models.SpanGraphStatus `json:"spanGraphStatus"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &detail); err != nil || response.Code != 200 {
+				t.Fatalf("%s: HTTP %d %v", route.param, response.Code, err)
+			}
+			if detail.Exception != nil || detail.Status == nil || detail.Status.State != models.SpanGraphPartial {
+				t.Fatalf("missing exceptions must not imply a complete graph: %+v", detail)
+			}
+		}
+	})
 }

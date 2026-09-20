@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { untrack } from 'svelte';
 	import { gotoHref } from '$lib/utils/navigation';
 	import { api } from '$lib/api';
 	import * as Card from '$lib/components/ui/card';
@@ -48,17 +48,23 @@
 		else collapsed.add(key);
 	}
 
+	let loadSequence = 0;
+
 	async function loadTrace() {
+		const sequence = ++loadSequence;
 		loading = true;
 		try {
-			response = (await api.post(
+			const result = (await api.post(
 				`/distributed-traces/${traceId}`,
 				recordedAt ? { recordedAt } : {}
 			)) as DistributedTraceResponse;
+			if (sequence !== loadSequence) return;
+			response = result;
 		} catch {
+			if (sequence !== loadSequence) return;
 			response = null;
 		} finally {
-			loading = false;
+			if (sequence === loadSequence) loading = false;
 		}
 	}
 
@@ -81,8 +87,17 @@
 		}
 	}
 
-	onMount(() => {
-		loadTrace();
+	$effect(() => {
+		void traceId;
+		void recordedAt;
+		untrack(() => {
+			response = null;
+			collapsed.clear();
+			loadTrace();
+		});
+		return () => {
+			loadSequence++;
+		};
 	});
 </script>
 

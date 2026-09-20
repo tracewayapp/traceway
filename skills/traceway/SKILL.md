@@ -260,11 +260,11 @@ OCC=$(traceway exceptions show $HASH --output json | jq -c '.occurrences[0]')
 TS=$(jq -r '.recordedAt' <<<"$OCC")
 DT=$(jq -r '.traceId // empty' <<<"$OCC")
 SID=$(jq -r '.sessionId // empty' <<<"$OCC")
-[ -n "$DT" ]  && traceway traces show "$DT" --recorded-at "$TS"      # every endpoint/task/ai-trace/exception node across services
+[ -n "$DT" ]  && traceway traces show "$DT" --recorded-at "$TS"      # available endpoint/task/ai-trace/exception nodes across services
 [ -n "$SID" ] && traceway sessions show "$SID" --started-at "$TS"    # the session + the exceptions that fired in it
 ```
 
-`traces show` is usually the single highest-value RCA call: it stitches one logical request together end to end across services.
+`traces show` connects available nodes across services. Inspect each node's `spanGraphStatus` (the `GRAPH` column in table output): time windows, retention and read limits can leave spans and their related exceptions absent.
 
 **Check metrics for systemic causes** (spikes lining up with `firstSeen` suggest saturation rather than a code bug):
 

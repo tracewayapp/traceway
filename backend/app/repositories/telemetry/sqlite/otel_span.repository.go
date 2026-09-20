@@ -42,33 +42,39 @@ func sqliteOtelValues(span models.OtelSpan, groups shared.OtelSpanGroups) ([]any
 }
 
 func (r *otelSpanRepository) InsertAsync(ctx context.Context, spans []models.OtelSpan) (int, error) {
+	rejected, err := r.InsertWithRejections(ctx, spans)
+	return len(rejected), err
+}
+
+func (r *otelSpanRepository) InsertWithRejections(ctx context.Context, spans []models.OtelSpan) ([]shared.SpanOwner, error) {
 	if len(spans) == 0 {
-		return 0, nil
+		return nil, nil
 	}
 	tx, err := db.TelemetryDB.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	defer tx.Rollback()
 	stmt, err := tx.PrepareContext(ctx, shared.OtelTextInsertSQL)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	defer stmt.Close()
-	groups, rejected := shared.OtelSpanGroups{}, 0
+	groups := shared.OtelSpanGroups{}
+	var rejected []shared.SpanOwner
 	for _, span := range spans {
 		values, err := sqliteOtelValues(span, groups)
 		if err != nil {
 			shared.RecordRejectedOtelSpan(err)
-			rejected++
+			rejected = append(rejected, shared.SpanOwner{ProjectId: span.ProjectId, TraceId: span.TraceId, SpanId: span.SpanId})
 			continue
 		}
 		if _, err := stmt.ExecContext(ctx, values...); err != nil {
-			return 0, err
+			return nil, err
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return 0, err
+		return nil, err
 	}
 	return rejected, nil
 }
@@ -131,7 +137,7 @@ func (r *otelSpanRepository) FindSpanAttributes(ctx context.Context, lookup shar
 	}
 	predicate := "project_id = ? AND trace_id = ? AND span_id IN (" + shared.OtelPlaceholders(len(spanIds)) + ")"
 	predicate, args = shared.OtelWindowPredicate(predicate, args, []shared.SpanLookup{lookup}, sqliteOtelCodec.Time)
-	rows, err := db.TelemetryDB.QueryContext(ctx, shared.OtelAttributeQuery("span_attributes", "CAST(start_time_unix_nano AS INTEGER)", predicate, limits), args...)
+	rows, err := db.TelemetryDB.QueryContext(ctx, shared.OtelAttributeQuery("span_attributes", "length(CAST(span_attributes AS BLOB))", "CAST(start_time_unix_nano AS INTEGER)", predicate, shared.OtelTextWinnerOrder, limits), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -142,12 +148,13 @@ func (r *otelSpanRepository) FindSpanAttributes(ctx context.Context, lookup shar
 func (r *otelSpanRepository) IsReadLimitError(error) bool { return false }
 
 var sqliteSearchDialect = shared.OtelSearchDialect{
-	Project:    func(id uuid.UUID) any { return id.String() },
-	Time:       sqliteOtelCodec.Time,
-	Trace:      func(_ uuid.UUID, traceId string) (string, any) { return "trace_id = ?", traceId },
-	NameLike:   "INSTR(LOWER(name), LOWER(?)) > 0",
-	Attribute:  `json_extract(span_attributes, '$."' || ? || '"') = ?`,
-	StartOrder: "CAST(start_time_unix_nano AS INTEGER)",
+	WinnerOrder: shared.OtelTextWinnerOrder,
+	Project:     func(id uuid.UUID) any { return id.String() },
+	Time:        sqliteOtelCodec.Time,
+	Trace:       func(_ uuid.UUID, traceId string) (string, any) { return "trace_id = ?", traceId },
+	NameLike:    "INSTR(LOWER(name), LOWER(?)) > 0",
+	Attribute:   `json_extract(span_attributes, '$."' || ? || '"') = ?`,
+	StartOrder:  "CAST(start_time_unix_nano AS INTEGER)",
 }
 
 func (r *otelSpanRepository) Search(ctx context.Context, search shared.OtelSpanSearch) ([]models.OtelSpan, uint64, error) {
@@ -188,7 +195,7 @@ func (r *otelSpanRepository) FindOTLP(ctx context.Context, project uuid.UUID, tr
 	defer cancel()
 	var value []byte
 	from, to := shared.TraceWindowBounds(at.UTC())
-	err := db.TelemetryDB.QueryRowContext(ctx, "SELECT otlp FROM "+shared.SpansTable+" WHERE project_id = ? AND trace_id = ? AND span_id = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY duration DESC, otlp DESC LIMIT 1", project.String(), traceID, spanID, sqliteOtelCodec.Time(from), sqliteOtelCodec.Time(to)).Scan(&value)
+	err := db.TelemetryDB.QueryRowContext(ctx, "SELECT otlp FROM "+shared.SpansTable+" WHERE project_id = ? AND trace_id = ? AND span_id = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY "+shared.OtelTextWinnerOrder+" LIMIT 1", project.String(), traceID, spanID, sqliteOtelCodec.Time(from), sqliteOtelCodec.Time(to)).Scan(&value)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

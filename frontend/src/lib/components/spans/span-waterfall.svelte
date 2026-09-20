@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Span, SpanAttributeLoader } from '$lib/types/spans';
-	import { SvelteSet } from 'svelte/reactivity';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+	import { untrack } from 'svelte';
 	import ScrollArea from '../ui/scroll-area/scroll-area.svelte';
 	import SpanRow from './span-row.svelte';
 	import { preciseTimeMs } from '$lib/utils/formatters';
@@ -86,6 +87,27 @@
 		flipExactly([...tree.childrenById.keys()].filter((key) => !foldedByDefault.has(key)));
 
 	const treeRows = $derived(flattenBuiltTree(tree, collapsed));
+
+	$effect(() => {
+		const currentTree = tree;
+		const selection = selectedSpanId;
+		if (!selection) return;
+		untrack(() => {
+			const parents = new SvelteMap<string, string>();
+			for (const [parent, children] of currentTree.childrenById) {
+				for (const child of children) parents.set(child, parent);
+			}
+			for (const [key, span] of currentTree.byId) {
+				if (span.spanId !== selection) continue;
+				for (let parent = parents.get(key); parent; parent = parents.get(parent)) {
+					if (foldedByDefault.has(parent)) flipped.add(parent);
+					else flipped.delete(parent);
+				}
+			}
+			const index = treeRows.findLastIndex((row) => row.span.spanId === selection);
+			visibleRows = Math.max(visibleRows, index + 1);
+		});
+	});
 
 	const traceStart = $derived(
 		rawSpans.reduce(
@@ -199,31 +221,33 @@
 
 			<!-- Spans -->
 			{#each treeRows.slice(0, visibleRows) as treeRow, i (treeRow.key)}
-				<SpanRow
-					row={colorIndex(treeRow.span.serviceName, i)}
-					span={treeRow.span}
-					{traceStart}
-					traceDuration={timelineDuration}
-					isOdd={i % 2 === 1}
-					depth={treeRow.depth}
-					hasChildren={treeRow.hasChildren}
-					missingParent={treeRow.missingParent}
-					{missingParentLabel}
-					descendants={treeRow.descendants}
-					errorBelow={treeRow.errorBelow}
-					{loadAttributes}
-					projectName={projectNames?.[treeRow.span.projectId]}
-					showService={showServiceLabel}
-					isSelected={!!selectedSpanId && treeRow.span.spanId === selectedSpanId}
-					traceHref={linkTraces ? spanTraceHref(treeRow.span) : undefined}
-					isCollapsed={collapsed.has(treeRow.key)}
-					onToggle={() => toggleCollapse(treeRow.key)}
-					{nameColumnWidth}
-					{updateNameWidth}
-					spanCellHandleMouseEnter={handleMouseEnter}
-					spanCellHandleMouseMove={handleMouseMove}
-					spanCellHandleMouseLeave={handleMouseLeave}
-				/>
+				{#key treeRow.span}
+					<SpanRow
+						row={colorIndex(treeRow.span.serviceName, i)}
+						span={treeRow.span}
+						{traceStart}
+						traceDuration={timelineDuration}
+						isOdd={i % 2 === 1}
+						depth={treeRow.depth}
+						hasChildren={treeRow.hasChildren}
+						missingParent={treeRow.missingParent}
+						{missingParentLabel}
+						descendants={treeRow.descendants}
+						errorBelow={treeRow.errorBelow}
+						{loadAttributes}
+						projectName={projectNames?.[treeRow.span.projectId]}
+						showService={showServiceLabel}
+						isSelected={!!selectedSpanId && treeRow.span.spanId === selectedSpanId}
+						traceHref={linkTraces ? spanTraceHref(treeRow.span) : undefined}
+						isCollapsed={collapsed.has(treeRow.key)}
+						onToggle={() => toggleCollapse(treeRow.key)}
+						{nameColumnWidth}
+						{updateNameWidth}
+						spanCellHandleMouseEnter={handleMouseEnter}
+						spanCellHandleMouseMove={handleMouseMove}
+						spanCellHandleMouseLeave={handleMouseLeave}
+					/>
+				{/key}
 			{/each}
 
 			{#if treeRows.length > visibleRows || wholeTraceHref}

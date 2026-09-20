@@ -214,6 +214,46 @@ it('collapses and expands everything from the header', async () => {
 	expect(getByText('span 100')).toBeTruthy();
 });
 
+it('reveals a selected span inside a folded subtree beyond the first page', async () => {
+	const { findByText, container, rerender } = render(SpanWaterfall, {
+		spans: wideTrace(),
+		traceStartTime: '2026-09-17T00:00:00Z',
+		traceDuration: 5_000_000
+	});
+	await rerender({ selectedSpanId: (699).toString(16).padStart(16, '0') });
+	expect(await findByText('span 699')).toBeTruthy();
+	expect(container.querySelector('[aria-current="true"]')?.textContent).toContain('span 699');
+}, 30_000);
+
+it('reloads lazy attributes after a new version of the same span arrives', async () => {
+	const loadAttributes = vi
+		.fn()
+		.mockResolvedValueOnce({ attributes: { version: 'before' } })
+		.mockResolvedValueOnce({ attributes: { version: 'after' } });
+	const span: Span = {
+		spanId: '01',
+		traceId: 'abc',
+		projectId: 'project',
+		name: 'refreshed span',
+		startTime: '2026-09-17T00:00:00Z',
+		recordedAt: '',
+		duration: 1_000_000
+	};
+	const { getByText, findByText, queryByText, rerender } = render(SpanWaterfall, {
+		spans: [span],
+		traceStartTime: span.startTime,
+		traceDuration: 5_000_000,
+		loadAttributes
+	});
+	await fireEvent.click(getByText('refreshed span'));
+	expect(await findByText('before')).toBeTruthy();
+	await rerender({ spans: [{ ...span, duration: 2_000_000 }] });
+	await fireEvent.click(getByText('refreshed span'));
+	expect(await findByText('after')).toBeTruthy();
+	expect(queryByText('before')).toBeNull();
+	expect(loadAttributes).toHaveBeenCalledTimes(2);
+});
+
 it("asks for a span's attributes once, when its popover opens", async () => {
 	const loadAttributes = vi.fn(async () => ({ attributes: { 'url.path': '/checkout' } }));
 	const { getByText, getAllByText, findByText } = render(SpanWaterfall, {

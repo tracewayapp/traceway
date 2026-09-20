@@ -41,11 +41,19 @@ describe('span search filters', () => {
 	});
 
 	it('send only the filters that are set', () => {
-		const body = spanSearchBody(readSpanSearchFilters('?status=0&minMs=abc&maxMs=-3'));
+		const body = spanSearchBody(readSpanSearchFilters('?status=0&maxMs=-3'));
 		expect(body.status).toBe(0);
 		expect(body.kind).toBeUndefined();
 		expect(body.minDurationMs).toBeUndefined();
-		expect(body.maxDurationMs).toBeUndefined();
+		expect(body.maxDurationMs).toBe(-3);
+	});
+
+	it('rejects malformed durations instead of silently broadening the search', () => {
+		for (const value of ['abc', 'Infinity', '1e999']) {
+			expect(() => spanSearchBody(readSpanSearchFilters(`?minMs=${value}`))).toThrow(
+				/finite duration/
+			);
+		}
 	});
 });
 

@@ -20,11 +20,11 @@ func newTracesCmd() *cobra.Command {
 func newTracesShowCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "show <traceId>",
-		Short: "Show a distributed trace: every service node that shares the trace id",
-		Long: `Show the full cross-service timeline for a trace id: every endpoint, task,
-ai-trace, and exception node that shares it, across all projects you can see.
-This is the highest-value root-cause view: it stitches one logical request
-together end to end.
+		Short: "Show the available service nodes for a trace id",
+		Long: `Show the available cross-service timeline for a trace id: endpoint, task,
+ai-trace, and exception nodes across the projects you can see. Time windows,
+retention and read limits can make the view incomplete. The GRAPH column reports
+partial or unavailable span graphs; exceptions on missing spans may be absent.
 
 The trace id is the traceId of an occurrence (in "exceptions show" /
 "exceptions occurrence" output) or of an endpoint, task or ai-trace: 32 hex
@@ -72,7 +72,7 @@ func runTracesShow(cmd *cobra.Command, args []string) error {
 		out := cmd.OutOrStdout()
 		_, _ = fmt.Fprintf(out, "DISTRIBUTED TRACE: %s\nNODES (%d):\n", resp.TraceId, len(resp.Nodes))
 		tw := output.NewTabWriter(out)
-		_, _ = fmt.Fprintln(tw, "PROJECT\tTYPE\tNAME\tERROR")
+		_, _ = fmt.Fprintln(tw, "PROJECT\tTYPE\tNAME\tERROR\tGRAPH")
 		for _, n := range resp.Nodes {
 			name := "-"
 			switch {
@@ -87,7 +87,11 @@ func runTracesShow(cmd *cobra.Command, args []string) error {
 			if n.Exception != nil {
 				errCol = truncateHash(n.Exception.ExceptionHash, 12)
 			}
-			_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", pickStr(n.ProjectName, "-"), n.TraceType, name, errCol)
+			graph := "-"
+			if n.SpanGraphStatus != nil {
+				graph = n.SpanGraphStatus.State
+			}
+			_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", pickStr(n.ProjectName, "-"), n.TraceType, name, errCol, graph)
 		}
 		return tw.Flush()
 	}

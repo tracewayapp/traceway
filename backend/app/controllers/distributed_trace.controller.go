@@ -3,7 +3,9 @@ package controllers
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -57,7 +59,10 @@ func (d distributedTraceController) GetDistributedTrace(c *gin.Context) {
 	}
 
 	var request distributedTraceRequest
-	_ = c.ShouldBindJSON(&request)
+	if err := c.ShouldBindJSON(&request); err != nil && !errors.Is(err, io.EOF) {
+		middleware.RejectBindError(c, err, "Invalid distributed trace request")
+		return
+	}
 
 	userId := middleware.GetUserId(c)
 
@@ -180,11 +185,15 @@ type traceEntities struct {
 // trace id and to the trace they say they are linked with, so the browser's trace and the backend trace it started come
 // back together whichever of the two ids was asked for. A second round runs only when a row names an id not yet read.
 func findTraceEntities(ctx context.Context, traceId string, projectIds []uuid.UUID, recordedAt *time.Time) (*traceEntities, error) {
+	if recordedAt == nil || recordedAt.IsZero() {
+		now := time.Now().UTC()
+		recordedAt = &now
+	}
 	found := &traceEntities{}
 	fetched := map[string]bool{}
 	seen := map[string]bool{}
-	fresh := func(kind string, projectId, id uuid.UUID) bool {
-		key := kind + ":" + projectId.String() + ":" + id.String()
+	fresh := func(kind string, projectId, id uuid.UUID, traceId, spanId string) bool {
+		key := kind + ":" + projectId.String() + ":" + id.String() + ":" + traceId + ":" + spanId
 		if seen[key] {
 			return false
 		}
@@ -220,25 +229,25 @@ func findTraceEntities(ctx context.Context, traceId string, projectIds []uuid.UU
 			return nil, fmt.Errorf("exceptions: %w", err)
 		}
 		for _, endpoint := range endpoints {
-			if fresh("endpoint", endpoint.ProjectId, endpoint.Id) {
+			if fresh("endpoint", endpoint.ProjectId, endpoint.Id, endpoint.TraceId, endpoint.SpanId) {
 				found.endpoints = append(found.endpoints, endpoint)
 				note(endpoint.TraceId, endpoint.LinkedTraceId)
 			}
 		}
 		for _, task := range tasks {
-			if fresh("task", task.ProjectId, task.Id) {
+			if fresh("task", task.ProjectId, task.Id, task.TraceId, task.SpanId) {
 				found.tasks = append(found.tasks, task)
 				note(task.TraceId, task.LinkedTraceId)
 			}
 		}
 		for _, aiTrace := range aiTraces {
-			if fresh("ai_trace", aiTrace.ProjectId, aiTrace.Id) {
+			if fresh("ai_trace", aiTrace.ProjectId, aiTrace.Id, aiTrace.TraceId, aiTrace.SpanId) {
 				found.aiTraces = append(found.aiTraces, aiTrace)
 				note(aiTrace.TraceId, aiTrace.LinkedTraceId)
 			}
 		}
 		for _, exception := range exceptions {
-			if fresh("exception", exception.ProjectId, exception.Id) {
+			if fresh("exception", exception.ProjectId, exception.Id, exception.TraceId, exception.SpanId) {
 				found.exceptions = append(found.exceptions, exception)
 				note(exception.TraceId, exception.LinkedTraceId)
 			}

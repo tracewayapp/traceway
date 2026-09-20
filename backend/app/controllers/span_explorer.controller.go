@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -101,6 +102,13 @@ func (s spanExplorerController) searchParams(request SpanSearchRequest) (shared.
 		return search, "Unknown span kind or status."
 	case len(request.AttributeFilters) > shared.MaxOtelSearchAttributeFilters:
 		return search, "Too many attribute filters."
+	case request.MinDurationMs < 0 || request.MaxDurationMs < 0 ||
+		math.IsNaN(request.MinDurationMs) || math.IsNaN(request.MaxDurationMs) ||
+		request.MinDurationMs >= float64(math.MaxInt64)/float64(time.Millisecond) ||
+		request.MaxDurationMs >= float64(math.MaxInt64)/float64(time.Millisecond):
+		return search, "Duration limits must be non-negative and fit within 292 years."
+	case request.MaxDurationMs > 0 && request.MinDurationMs > request.MaxDurationMs:
+		return search, "The maximum duration must be at least the minimum duration."
 	}
 	for _, filter := range request.AttributeFilters {
 		if filter.Key == "" {
@@ -251,7 +259,7 @@ func (s spanExplorerController) GetSpanAttributes(c *gin.Context) {
 	traceId, spanId := strings.ToLower(c.Param("traceId")), strings.ToLower(c.Param("spanId"))
 	at, err := time.Parse(time.RFC3339Nano, c.Query("at"))
 	if !validTraceHex(traceId) || !validSpanHex(spanId) || err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Span attributes need a 32 character trace ID, a 16 character span ID and an RFC 3339 `at` time."})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Span attributes need a 32 character trace ID, a 16 or 32 character span ID and an RFC 3339 `at` time."})
 		return
 	}
 	found, err := telemetry.SpanRepository.FindSpanAttributes(c, projectId, traceId, spanId, at)

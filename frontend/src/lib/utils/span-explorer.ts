@@ -68,9 +68,13 @@ export function spanSearchUrlParams(
 	};
 }
 
-function positiveNumber(text: string): number | undefined {
+function durationNumber(text: string): number | undefined {
+	if (!text.trim()) return undefined;
 	const value = Number(text.trim());
-	return text.trim() && Number.isFinite(value) && value > 0 ? value : undefined;
+	if (!Number.isFinite(value)) {
+		throw Object.assign(new Error('Enter a finite duration in milliseconds.'), { status: 422 });
+	}
+	return value;
 }
 
 export function spanSearchBody(filters: SpanSearchFilters) {
@@ -80,8 +84,8 @@ export function spanSearchBody(filters: SpanSearchFilters) {
 		traceId: filters.traceId.trim(),
 		kind: filters.kind === '' ? undefined : Number(filters.kind),
 		status: filters.status === '' ? undefined : Number(filters.status),
-		minDurationMs: positiveNumber(filters.minMs),
-		maxDurationMs: positiveNumber(filters.maxMs),
+		minDurationMs: durationNumber(filters.minMs),
+		maxDurationMs: durationNumber(filters.maxMs),
 		attributeFilters: filters.attributes
 	};
 }

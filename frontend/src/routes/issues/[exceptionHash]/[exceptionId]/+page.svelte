@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import { api } from '$lib/api';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
@@ -51,7 +52,10 @@
 		occurrence ? `Event from ${formatDateTime(occurrence.recordedAt, { timezone })}` : 'Loading...'
 	);
 
+	let loadSequence = 0;
+
 	async function loadData() {
+		const sequence = ++loadSequence;
 		loading = true;
 		error = '';
 		notFound = false;
@@ -65,6 +69,7 @@
 				data.recordedAt ? { recordedAt: data.recordedAt } : {},
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
+			if (sequence !== loadSequence) return;
 			occurrence = exceptionResponse.exception;
 			linkedTrace = linkedTraceFrom(exceptionResponse.relatedEntity);
 			sessionRecording = exceptionResponse.sessionRecording ?? null;
@@ -87,9 +92,11 @@
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
 
+			if (sequence !== loadSequence) return;
 			allOccurrences = response.occurrences || [];
 			total = response.pagination.total;
 		} catch (e) {
+			if (sequence !== loadSequence) return;
 			console.error(e);
 			if (getErrorStatus(e) === 404) {
 				notFound = true;
@@ -97,7 +104,7 @@
 				error = getErrorMessage(e) || 'Failed to load exception details';
 			}
 		} finally {
-			loading = false;
+			if (sequence === loadSequence) loading = false;
 		}
 	}
 
@@ -121,7 +128,18 @@
 
 	$effect(() => {
 		void data.exceptionId;
-		loadData();
+		void data.exceptionHash;
+		void data.recordedAt;
+		void projectsState.currentProjectId;
+		untrack(() => {
+			occurrence = null;
+			allOccurrences = [];
+			sessionId = null;
+			loadData();
+		});
+		return () => {
+			loadSequence++;
+		};
 	});
 </script>
 

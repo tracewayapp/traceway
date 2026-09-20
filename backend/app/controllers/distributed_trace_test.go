@@ -293,3 +293,34 @@ func TestDistributedTraceIsWholeUnderEitherOfItsIds(t *testing.T) {
 		}
 	}
 }
+
+func TestTraceEntityLookupKeepsMigratedIdentitiesAndBoundsMissingTime(t *testing.T) {
+	setupSetupControllerDB(t)
+	ctx := context.Background()
+	project, id := uuid.New(), uuid.New()
+	now := time.Now().UTC()
+	rows := []models.Endpoint{
+		{Id: id, ProjectId: project, TraceId: cardTrace, LinkedTraceId: cardBrowser, SpanId: "0102030405060708", RecordedAt: now},
+		{Id: id, ProjectId: project, TraceId: cardBrowser, SpanId: "0102030405060708", RecordedAt: now},
+		{Id: uuid.New(), ProjectId: project, TraceId: cardTrace, SpanId: "0102030405060709", RecordedAt: now.Add(-7 * 24 * time.Hour)},
+	}
+	if err := telemetry.EndpointRepository.InsertAsync(ctx, rows); err != nil {
+		t.Fatal(err)
+	}
+	found, err := findTraceEntities(ctx, cardBrowser, []uuid.UUID{project}, nil)
+	if err != nil || len(found.endpoints) != 2 {
+		t.Fatalf("unanchored lookup lost an identity or scanned old history: %+v, %v", found, err)
+	}
+	old := rows[2].RecordedAt
+	found, err = findTraceEntities(ctx, cardTrace, []uuid.UUID{project}, &old)
+	if err != nil || len(found.endpoints) != 1 || found.endpoints[0].Id != rows[2].Id {
+		t.Fatalf("historical anchor: %+v, %v", found, err)
+	}
+}
+
+func TestDistributedTraceRejectsMalformedAnchor(t *testing.T) {
+	_, code, _ := openCard(t, 1, cardTrace, `{"recordedAt":"invalid"}`)
+	if code != http.StatusBadRequest {
+		t.Fatalf("invalid date must not silently become an unanchored scan: %d", code)
+	}
+}

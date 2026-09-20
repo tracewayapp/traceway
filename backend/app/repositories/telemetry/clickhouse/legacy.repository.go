@@ -38,10 +38,10 @@ func legacyAttributes(raw string) map[string]string {
 	return attributes
 }
 
-// legacyWindow reads a time slice. With after it continues in id order behind that id, which is how one overfull second is paged.
-func legacyWindow(columns, table string, from, to time.Time, limit int, after *uuid.UUID) (string, []any) {
-	if after != nil {
-		return "SELECT " + columns + " FROM " + table + " WHERE recorded_at >= ? AND recorded_at < ? AND id > ? ORDER BY id LIMIT ?", []any{from, to, *after, limit}
+// legacyWindow sorts only overfull one-second slices; see shared.LegacyPageOrder.
+func legacyWindow(columns, table string, from, to time.Time, limit int, offset *int) (string, []any) {
+	if offset != nil {
+		return "SELECT " + columns + " FROM " + table + " WHERE recorded_at >= ? AND recorded_at < ? ORDER BY " + shared.LegacyPageOrder(table, true) + " LIMIT ? OFFSET ?", []any{from, to, limit, *offset}
 	}
 	return "SELECT " + columns + " FROM " + table + " WHERE recorded_at >= ? AND recorded_at < ? LIMIT ?", []any{from, to, limit}
 }
@@ -90,24 +90,24 @@ func scanLegacyAiTrace(rows driver.Rows) (models.AiTrace, error) {
 	return scanAiTrace(rows.Scan)
 }
 
-func (legacyRepository) FindEndpoints(ctx context.Context, from, to time.Time, limit int, after *uuid.UUID) ([]models.Endpoint, error) {
-	query, args := legacyWindow(legacyEndpointColumns, "endpoints", from, to, limit, after)
+func (legacyRepository) FindEndpoints(ctx context.Context, from, to time.Time, limit int, offset *int) ([]models.Endpoint, error) {
+	query, args := legacyWindow(legacyEndpointColumns, "endpoints", from, to, limit, offset)
 	return legacyRows(ctx, query, args, scanLegacyEndpoint)
 }
 
-func (legacyRepository) FindTasks(ctx context.Context, from, to time.Time, limit int, after *uuid.UUID) ([]models.Task, error) {
-	query, args := legacyWindow(legacyTaskColumns, "tasks", from, to, limit, after)
+func (legacyRepository) FindTasks(ctx context.Context, from, to time.Time, limit int, offset *int) ([]models.Task, error) {
+	query, args := legacyWindow(legacyTaskColumns, "tasks", from, to, limit, offset)
 	return legacyRows(ctx, query, args, scanLegacyTask)
 }
 
-func (legacyRepository) FindAiTraces(ctx context.Context, from, to time.Time, limit int, after *uuid.UUID) ([]models.AiTrace, error) {
-	query, args := legacyWindow(legacyAiTraceColumns, "ai_traces", from, to, limit, after)
+func (legacyRepository) FindAiTraces(ctx context.Context, from, to time.Time, limit int, offset *int) ([]models.AiTrace, error) {
+	query, args := legacyWindow(legacyAiTraceColumns, "ai_traces", from, to, limit, offset)
 	return legacyRows(ctx, query, args, scanLegacyAiTrace)
 }
 
-func (legacyRepository) FindExceptions(ctx context.Context, from, to time.Time, limit int, after *uuid.UUID) ([]models.ExceptionStackTrace, error) {
+func (legacyRepository) FindExceptions(ctx context.Context, from, to time.Time, limit int, offset *int) ([]models.ExceptionStackTrace, error) {
 	query, args := legacyWindow(`id, project_id, ifNull(toString(trace_id), ''), trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version,
-		server_name, is_message, ifNull(toString(distributed_trace_id), ''), session_id`, "exception_stack_traces", from, to, limit, after)
+		server_name, is_message, ifNull(toString(distributed_trace_id), ''), session_id`, "exception_stack_traces", from, to, limit, offset)
 	return legacyRows(ctx, query, args, func(rows driver.Rows) (models.ExceptionStackTrace, error) {
 		var est models.ExceptionStackTrace
 		var attributes string
@@ -119,8 +119,8 @@ func (legacyRepository) FindExceptions(ctx context.Context, from, to time.Time, 
 	})
 }
 
-func (legacyRepository) FindSpans(ctx context.Context, from, to time.Time, limit int, after *uuid.UUID) ([]shared.LegacySpan, error) {
-	query, args := legacyWindow(`project_id, id, trace_id, ifNull(toString(parent_span_id), ''), name, start_time, duration, recorded_at, attributes`, "spans", from, to, limit, after)
+func (legacyRepository) FindSpans(ctx context.Context, from, to time.Time, limit int, offset *int) ([]shared.LegacySpan, error) {
+	query, args := legacyWindow(`project_id, id, trace_id, ifNull(toString(parent_span_id), ''), name, start_time, duration, recorded_at, attributes`, "spans", from, to, limit, offset)
 	return legacyRows(ctx, query, args, func(rows driver.Rows) (shared.LegacySpan, error) {
 		var span shared.LegacySpan
 		var attributes string
@@ -168,18 +168,20 @@ func (legacyRepository) FindBounds(ctx context.Context, table string) (oldest, n
 	return oldest, newest, count > 0, nil
 }
 
-// FindMovedIds reports which of the ids a V2 table already holds, so a day that was interrupted can be finished
-// without writing its first rows twice.
-func (legacyRepository) FindMovedIds(ctx context.Context, table string, ids []uuid.UUID, from, to time.Time) (map[uuid.UUID]bool, error) {
+// FindMovedIds returns full occurrence keys, never IDs shared by unrelated traces.
+func (legacyRepository) FindMovedIds(ctx context.Context, table string, ids []uuid.UUID, from, to time.Time) (map[shared.MovedOccurrence]bool, error) {
 	table, err := shared.LegacyTable(table)
 	if err != nil {
 		return nil, err
 	}
-	moved := map[uuid.UUID]bool{}
+	moved := map[shared.MovedOccurrence]bool{}
 	for chunk := range slices.Chunk(ids, legacyIdChunk) {
-		found, err := legacyRows(ctx, "SELECT id FROM "+table+" WHERE recorded_at >= ? AND recorded_at < ? AND id IN (?)", []any{from, to, chunk}, func(rows driver.Rows) (uuid.UUID, error) {
-			var id uuid.UUID
-			return id, rows.Scan(&id)
+		found, err := legacyRows(ctx, "SELECT project_id, id, trace_id, span_id, recorded_at FROM "+table+" WHERE recorded_at >= ? AND recorded_at < ? AND id IN (?)", []any{from, to, chunk}, func(rows driver.Rows) (shared.MovedOccurrence, error) {
+			var project, id uuid.UUID
+			var trace, span string
+			var at time.Time
+			err := rows.Scan(&project, &id, &trace, &span, &at)
+			return shared.MovedOccurrenceKey(project, id, trace, span, at), err
 		})
 		if err != nil {
 			return nil, err
@@ -208,6 +210,14 @@ func (legacyRepository) FindMovedSpans(ctx context.Context, traceIds []string, f
 		}
 	}
 	return moved, nil
+}
+
+// OccurrenceTime matches the destination column precision for recovery keys.
+func (legacyRepository) OccurrenceTime(table string, at time.Time) time.Time {
+	if table == "ai_traces" {
+		return at.Truncate(time.Millisecond)
+	}
+	return at.Truncate(time.Microsecond)
 }
 
 var LegacyRepository = legacyRepository{}

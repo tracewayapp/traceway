@@ -33,7 +33,7 @@ export function distributedTraceTree(nodes: DistributedTraceNode[], collapsed: S
 			// Virtual tree identities keep duplicated exports in different projects distinct.
 			projectId: 'distributed',
 			traceId: 'distributed',
-			spanId: `${node.projectId}:${entity?.id ?? `${node.exception?.exceptionHash}:${node.exception?.recordedAt}`}`,
+			spanId: `${node.projectId}:${node.traceType}:${node.traceId}:${node.spanId}:${entity?.id ?? `${node.exception?.exceptionHash}:${node.exception?.recordedAt}`}`,
 			name: '',
 			startTime: entity?.recordedAt ?? node.exception?.recordedAt ?? '',
 			recordedAt: entity?.recordedAt ?? '',

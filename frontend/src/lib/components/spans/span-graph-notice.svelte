@@ -16,11 +16,15 @@
 		{#if status.state === 'unavailable'}
 			The trace could not be loaded within the read limits. Refresh to try again.
 		{:else if status.reasons?.includes('most_important')}
-			Its errors, entry points and slowest spans are shown. The fastest spans were left out.
+			The available spans prioritize errors, entry points and slowest spans. Other spans may be
+			missing.
 		{:else if status.reasons?.includes('row_limit')}
 			The spans shown are only part of the trace.
 		{:else}
 			The available spans are shown, but some attributes could not be loaded.
+		{/if}
+		{#if status.state === 'unavailable' || status.reasons?.includes('row_limit')}
+			Exceptions attached to missing spans may also be absent from this view.
 		{/if}
 		{#if status.omittedAttributes}
 			Attributes are missing from {status.omittedAttributes}

@@ -28,6 +28,12 @@ var telemetryTables = []string{
 	"endpoints_v2",
 	"tasks_v2",
 	"ai_traces_v2",
+	// Backfill retains the legacy tables; their parts still consume capacity.
+	"spans",
+	"exception_stack_traces",
+	"endpoints",
+	"tasks",
+	"ai_traces",
 }
 
 type chBaselines struct {

@@ -64,6 +64,9 @@ func TestSpanExplorerEndpoints(t *testing.T) {
 		"malformed trace id":    `{` + window + `,"traceId":"xyz",` + pagination + `}`,
 		"quoted attribute key":  `{` + window + `,"attributeFilters":[{"key":"a\"b","value":"x"}],` + pagination + `}`,
 		"empty attribute value": `{` + window + `,"attributeFilters":[{"key":"url.path","value":""}],` + pagination + `}`,
+		"negative duration":     `{` + window + `,"minDurationMs":-1,` + pagination + `}`,
+		"overflowing duration":  `{` + window + `,"maxDurationMs":1e20,` + pagination + `}`,
+		"inverted duration":     `{` + window + `,"minDurationMs":100,"maxDurationMs":50,` + pagination + `}`,
 	} {
 		if code, _ := search(body); code != http.StatusUnprocessableEntity {
 			t.Fatalf("%s: a search is always bounded and validated, got %d", name, code)

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { untrack } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { api } from '$lib/api';
 	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
@@ -38,6 +38,7 @@
 	let loading = $state(true);
 	let error = $state('');
 	let notFound = $state(false);
+	let generation = 0;
 
 	const summary = $derived(summarizeSpanTrace(spans));
 	const showLogs = $derived(
@@ -54,9 +55,13 @@
 	}
 
 	async function loadData() {
+		const requestGeneration = ++generation;
 		loading = true;
 		error = '';
 		notFound = false;
+		spans = [];
+		status = null;
+		projectNames = {};
 		if (!data.at) {
 			notFound = true;
 			loading = false;
@@ -67,10 +72,12 @@
 				`/spans/traces/${data.traceId}?at=${encodeURIComponent(data.at)}`,
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			)) as SpanTraceResponse;
+			if (requestGeneration !== generation) return;
 			spans = response.spans || [];
 			status = response.spanGraphStatus ?? null;
 			projectNames = Object.fromEntries((response.projects ?? []).map((p) => [p.id, p.name]));
 		} catch (e) {
+			if (requestGeneration !== generation) return;
 			console.error(e);
 			if (getErrorStatus(e) === 404) {
 				notFound = true;
@@ -78,12 +85,16 @@
 				error = getErrorMessage(e) || 'Failed to load the trace';
 			}
 		} finally {
-			loading = false;
+			if (requestGeneration === generation) loading = false;
 		}
 	}
 
-	onMount(() => {
-		loadData();
+	$effect(() => {
+		const identity = [data.traceId, data.at, projectsState.currentProjectId];
+		if (identity[0]) untrack(loadData);
+		return () => {
+			generation++;
+		};
 	});
 </script>
 

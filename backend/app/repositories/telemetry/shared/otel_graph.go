@@ -49,14 +49,15 @@ type SpanGraph struct {
 }
 
 // OtelAttributeQuery applies both byte limits inside the database, so an oversized value is never transferred.
-func OtelAttributeQuery(attributes, startOrder, predicate string, limits OtelAttributeLimits) string {
+func OtelAttributeQuery(attributes, byteLength, startOrder, predicate, winnerOrder string, limits OtelAttributeLimits) string {
 	return fmt.Sprintf(`SELECT span_id,
 		CASE WHEN size > %[1]d OR running > %[2]d THEN '' ELSE attributes END,
 		CASE WHEN size > %[1]d THEN 2 WHEN running > %[2]d THEN 1 ELSE 0 END
 		FROM (SELECT span_id, attributes, size, start_order,
 			SUM(CASE WHEN size > %[1]d THEN 0 ELSE size END) OVER (ORDER BY start_order, span_id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running
-			FROM (SELECT span_id, %[3]s AS attributes, length(%[3]s) AS size, %[4]s AS start_order FROM `+SpansTable+` WHERE %[5]s) sized) budgeted
-		ORDER BY start_order, span_id`, limits.PerSpanBytes, limits.BudgetBytes, attributes, startOrder, predicate)
+			FROM (SELECT span_id, %[3]s AS attributes, %[4]s AS size, %[5]s AS start_order FROM %[6]s) sized) budgeted
+		ORDER BY start_order, span_id`, limits.PerSpanBytes, limits.BudgetBytes, attributes, byteLength, startOrder,
+		OtelWinningRows("project_id, trace_id, span_id, span_attributes, start_time_unix_nano", predicate, winnerOrder))
 }
 
 func OtelAttributeOmission(flag int) string {

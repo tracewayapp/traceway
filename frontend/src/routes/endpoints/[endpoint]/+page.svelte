@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, untrack } from 'svelte';
 	import { SvelteURLSearchParams } from 'svelte/reactivity';
 	import { api } from '$lib/api';
 	import {
@@ -214,7 +214,10 @@
 		}
 	}
 
+	let loadSequence = 0;
+
 	async function loadData(pushToHistory = true) {
+		const sequence = ++loadSequence;
 		loading = true;
 		error = '';
 		notFound = false;
@@ -248,11 +251,13 @@
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
 
+			if (sequence !== loadSequence) return;
 			transactions = response.data || [];
 			stats = response.stats || null;
 			total = response.pagination.total;
 			totalPages = response.pagination.totalPages;
 		} catch (e) {
+			if (sequence !== loadSequence) return;
 			console.error(e);
 			errorStatus = getErrorStatus(e) || 0;
 			if (getErrorStatus(e) === 404) {
@@ -261,7 +266,7 @@
 				error = getErrorMessage(e) || 'Failed to load data';
 			}
 		} finally {
-			loading = false;
+			if (sequence === loadSequence) loading = false;
 		}
 	}
 
@@ -287,15 +292,20 @@
 		loadData(false);
 	}
 
+	let slowSequence = 0;
+
 	async function loadSlowEndpoint() {
+		const sequence = ++slowSequence;
 		try {
 			const response = await api.get(
 				`/endpoints/slow?endpoint=${encodeURIComponent(data.endpoint)}`,
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
+			if (sequence !== slowSequence) return;
 			offsetMs = response.offsetMs ?? 0;
 			reason = response.reason ?? '';
 		} catch {
+			if (sequence !== slowSequence) return;
 			offsetMs = 0;
 			reason = '';
 		}
@@ -340,14 +350,37 @@
 
 	onMount(() => {
 		window.addEventListener('popstate', handlePopState);
-		loadData(false);
-		loadSlowEndpoint();
 	});
 
 	onDestroy(() => {
 		if (typeof window !== 'undefined') {
 			window.removeEventListener('popstate', handlePopState);
 		}
+	});
+
+	$effect(() => {
+		void data.endpoint;
+		void projectsState.currentProjectId;
+		untrack(() => {
+			transactions = [];
+			stats = null;
+			page = 1;
+			const range = getInitialRange();
+			selectedPreset = range.preset;
+			fromDate = dateToCalendarDate(range.from, timezone);
+			toDate = dateToCalendarDate(range.to, timezone);
+			fromTime = dateToTimeString(range.from, timezone);
+			toTime = dateToTimeString(range.to, timezone);
+			loadData(false);
+			offsetMs = 0;
+			reason = '';
+			showSlowDialog = false;
+			loadSlowEndpoint();
+		});
+		return () => {
+			loadSequence++;
+			slowSequence++;
+		};
 	});
 </script>
 

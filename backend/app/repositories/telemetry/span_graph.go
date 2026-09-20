@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,7 +18,10 @@ func (r *spanGraphRepository) InsertAsync(ctx context.Context, spans []models.Sp
 	for i, span := range spans {
 		stored[i] = models.OtelSpan{Span: span}
 	}
-	_, err := OtelSpanRepository.InsertAsync(ctx, stored)
+	rejected, err := OtelSpanRepository.InsertAsync(ctx, stored)
+	if err == nil && rejected > 0 {
+		return fmt.Errorf("%d native spans could not be stored", rejected)
+	}
 	return err
 }
 

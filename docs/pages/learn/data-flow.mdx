@@ -10,16 +10,16 @@ Here's how the concepts connect in a typical request:
 2. **Auth middleware runs** → You add `user_id` to the active span's **Attributes** (done by you, Traceway does not know about your authentication)
 3. **Handler executes** → Child **Spans** are created for sub-operations (DB queries, outgoing HTTP calls, your own spans)
 4. **Error occurs** → The exception is recorded on the span it happened in and becomes an **Issue**, linked to that trace and span (automatic)
-5. **Request completes** → The exporter sends the spans. Traceway stores every span and shows the server span as an **Endpoint** with its duration, status code and waterfall
+5. **Request completes** → The exporter sends the spans. Traceway stores accepted spans and shows the server span as an **Endpoint** with its duration, status code and waterfall
 
 ## Task Flow
 
 Here's how the concepts connect in a typical scheduled or queued job:
 
-1. **Job starts** → The queue instrumentation starts a consumer **Span**. When the job was enqueued by a request, it joins that request's trace (automatic)
+1. **Job starts** → The queue instrumentation starts a consumer **Span**. Depending on the queue instrumentation, it either joins the producer's trace or starts a new trace with an OTel link
 2. **Your job code executes** → Child **Spans** are created for sub-operations
 3. **Error occurs** → The exception is recorded on its span and becomes an **Issue**, linked to the job's trace
-4. **Job completes** → Traceway stores the spans and shows the consumer span as a **Task**, next to the endpoint that started it
+4. **Job completes** → Traceway stores the spans and shows the consumer span as a **Task**, alongside the producer endpoint when both share a trace ID
 
 ## Metrics Flow
 
@@ -32,7 +32,7 @@ Here's how the concepts connect in a typical scheduled or queued job:
 
 Traces, metrics and logs arrive over OTLP/HTTP at `/api/otel/v1/traces`, `/api/otel/v1/metrics` and `/api/otel/v1/logs`. Each request authenticates with the project token. Stack traces are symbolicated at ingest, and everything lands in the same telemetry store.
 
-Browser and mobile apps use the Traceway SDK for their platform, which adds session replay and on-device crash capture. Pick yours under [Docs](/client).
+Browser and mobile apps use the Traceway SDK for their platform, which sends the native JSON collection-frame format to `/api/report` and adds session replay and on-device crash capture. Traceway builds canonical spans from those frames and keeps the API’s native UUID identities; OTLP export maps span and parent IDs to eight bytes and includes the available attributes and service metadata. Pick yours under [Docs](/client).
 
 ## After the data collection
 
@@ -42,3 +42,5 @@ All this data flows to your Traceway dashboard where you can:
 - Get notified when errors happen
 - Track task durations over time
 - Monitor system health through metrics
+
+Sampling, project permissions, healthcheck filtering and row rejection can remove telemetry before storage. Trace views are also bounded by access, time, row and attribute limits.

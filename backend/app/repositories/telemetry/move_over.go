@@ -28,8 +28,6 @@ const (
 	// An owner is recorded near its spans and exceptions, not at the same instant: an endpoint at its start, an old
 	// OTel task at its end.
 	ownerWindow = moveOverDay
-	// A moved task is recorded at its start, which can be days before the end the old row carried.
-	movedWindow = 7 * moveOverDay
 )
 
 // Entities before what hangs off them, so a day is usable as soon as its endpoints are in.
@@ -38,14 +36,15 @@ var tableOrder = []string{"endpoints", "tasks", "ai_traces", "exception_stack_tr
 type mover struct {
 	MoveOverOptions
 	legacy interface {
-		FindEndpoints(ctx context.Context, from, to time.Time, limit int, after *uuid.UUID) ([]models.Endpoint, error)
-		FindTasks(ctx context.Context, from, to time.Time, limit int, after *uuid.UUID) ([]models.Task, error)
-		FindAiTraces(ctx context.Context, from, to time.Time, limit int, after *uuid.UUID) ([]models.AiTrace, error)
-		FindExceptions(ctx context.Context, from, to time.Time, limit int, after *uuid.UUID) ([]models.ExceptionStackTrace, error)
-		FindSpans(ctx context.Context, from, to time.Time, limit int, after *uuid.UUID) ([]shared.LegacySpan, error)
+		OccurrenceTime(table string, at time.Time) time.Time
+		FindEndpoints(ctx context.Context, from, to time.Time, limit int, offset *int) ([]models.Endpoint, error)
+		FindTasks(ctx context.Context, from, to time.Time, limit int, offset *int) ([]models.Task, error)
+		FindAiTraces(ctx context.Context, from, to time.Time, limit int, offset *int) ([]models.AiTrace, error)
+		FindExceptions(ctx context.Context, from, to time.Time, limit int, offset *int) ([]models.ExceptionStackTrace, error)
+		FindSpans(ctx context.Context, from, to time.Time, limit int, offset *int) ([]shared.LegacySpan, error)
 		FindOwners(ctx context.Context, ids []uuid.UUID, from, to time.Time) ([]models.Endpoint, []models.Task, []models.AiTrace, error)
 		FindBounds(ctx context.Context, table string) (oldest, newest time.Time, found bool, err error)
-		FindMovedIds(ctx context.Context, table string, ids []uuid.UUID, from, to time.Time) (map[uuid.UUID]bool, error)
+		FindMovedIds(ctx context.Context, table string, ids []uuid.UUID, from, to time.Time) (map[shared.MovedOccurrence]bool, error)
 		FindMovedSpans(ctx context.Context, traceIds []string, from, to time.Time) (map[string]bool, error)
 	}
 	progress interface {
@@ -140,7 +139,7 @@ func (m *mover) run(ctx context.Context) error {
 }
 
 // moveDay walks one day in slices narrow enough to hold in memory. A slice that comes back full is halved and read
-// again, so no read sorts a day. Only a single second that is still too full is paged, in id order.
+// again, so no read sorts a day. Only a single second that is still too full is paged, in a stable full-row order.
 func (m *mover) moveDay(ctx context.Context, table string, start time.Time, resumed bool) (int64, error) {
 	var total int64
 	width, end := time.Hour, start.Add(moveOverDay)
@@ -156,7 +155,7 @@ func (m *mover) moveDay(ctx context.Context, table string, start time.Time, resu
 		if to.Sub(cursor) > time.Second {
 			var full bool
 			var err error
-			if moved, full, _, err = m.move(ctx, table, cursor, to, nil, resumed); err != nil {
+			if moved, full, err = m.move(ctx, table, cursor, to, nil, resumed); err != nil {
 				return total, err
 			}
 			if full {
@@ -164,12 +163,12 @@ func (m *mover) moveDay(ctx context.Context, table string, start time.Time, resu
 				continue
 			}
 		} else {
-			for after, full := uuid.Nil, true; full; {
-				page, more, last, err := m.move(ctx, table, cursor, to, &after, resumed)
+			for offset, full := 0, true; full; {
+				page, more, err := m.move(ctx, table, cursor, to, &offset, resumed)
 				if err != nil {
 					return total, err
 				}
-				moved, full, after = moved+page, more, last
+				moved, full, offset = moved+page, more, offset+int(page)
 			}
 		}
 		total, cursor = total+moved, to
@@ -181,73 +180,62 @@ func (m *mover) moveDay(ctx context.Context, table string, start time.Time, resu
 	return total, nil
 }
 
-// move reads one page and writes it. Without after the read is unordered, and a page that hit the limit is not written:
-// the caller narrows the slice and reads again. With after the read continues in id order behind that id.
-func (m *mover) move(ctx context.Context, table string, from, to time.Time, after *uuid.UUID, resumed bool) (int64, bool, uuid.UUID, error) {
-	var last uuid.UUID
+// move probes a slice without ordering before narrowing it. Only a paged read
+// writes a full page, since a full probe may have omitted rows.
+func (m *mover) move(ctx context.Context, table string, from, to time.Time, offset *int, resumed bool) (int64, bool, error) {
 	var count int
 	var write func() error
 	switch table {
 	case "endpoints":
-		rows, err := m.legacy.FindEndpoints(ctx, from, to, m.PageSize, after)
+		rows, err := m.legacy.FindEndpoints(ctx, from, to, m.PageSize, offset)
 		if err != nil {
-			return 0, false, last, err
+			return 0, false, err
 		}
-		if count = len(rows); count > 0 {
-			last = rows[count-1].Id
-		}
+		count = len(rows)
 		write = func() error { return m.writeEndpoints(ctx, rows, from, to, resumed) }
 	case "tasks":
-		rows, err := m.legacy.FindTasks(ctx, from, to, m.PageSize, after)
+		rows, err := m.legacy.FindTasks(ctx, from, to, m.PageSize, offset)
 		if err != nil {
-			return 0, false, last, err
+			return 0, false, err
 		}
-		if count = len(rows); count > 0 {
-			last = rows[count-1].Id
-		}
+		count = len(rows)
 		write = func() error { return m.writeTasks(ctx, rows, from, to, resumed) }
 	case "ai_traces":
-		rows, err := m.legacy.FindAiTraces(ctx, from, to, m.PageSize, after)
+		rows, err := m.legacy.FindAiTraces(ctx, from, to, m.PageSize, offset)
 		if err != nil {
-			return 0, false, last, err
+			return 0, false, err
 		}
-		if count = len(rows); count > 0 {
-			last = rows[count-1].Id
-		}
+		count = len(rows)
 		write = func() error { return m.writeAiTraces(ctx, rows, from, to, resumed) }
 	case "exception_stack_traces":
-		rows, err := m.legacy.FindExceptions(ctx, from, to, m.PageSize, after)
+		rows, err := m.legacy.FindExceptions(ctx, from, to, m.PageSize, offset)
 		if err != nil {
-			return 0, false, last, err
+			return 0, false, err
 		}
-		if count = len(rows); count > 0 {
-			last = rows[count-1].Id
-		}
+		count = len(rows)
 		write = func() error { return m.writeExceptions(ctx, rows, from, to, resumed) }
 	case "spans":
-		rows, err := m.legacy.FindSpans(ctx, from, to, m.PageSize, after)
+		rows, err := m.legacy.FindSpans(ctx, from, to, m.PageSize, offset)
 		if err != nil {
-			return 0, false, last, err
+			return 0, false, err
 		}
-		if count = len(rows); count > 0 {
-			last = rows[count-1].Id
-		}
+		count = len(rows)
 		write = func() error { return m.writeSpans(ctx, rows, from, to, resumed) }
 	default:
-		return 0, false, last, fmt.Errorf("unknown table %q", table)
+		return 0, false, fmt.Errorf("unknown table %q", table)
 	}
 	full := count >= m.PageSize
-	if count == 0 || (full && after == nil) {
-		return 0, full, last, nil
+	if count == 0 || (full && offset == nil) {
+		return 0, full, nil
 	}
-	return int64(count), full, last, write()
+	return int64(count), full, write()
 }
 
-func (m *mover) movedIds(ctx context.Context, table string, ids []uuid.UUID, from, to time.Time, resumed bool) (map[uuid.UUID]bool, error) {
+func (m *mover) movedIds(ctx context.Context, table string, ids []uuid.UUID, from, to time.Time, resumed bool) (map[shared.MovedOccurrence]bool, error) {
 	if !resumed || len(ids) == 0 {
 		return nil, nil
 	}
-	return m.legacy.FindMovedIds(ctx, shared.LegacyTables[table], ids, from.Add(-movedWindow), to.Add(moveOverDay))
+	return m.legacy.FindMovedIds(ctx, shared.LegacyTables[table], ids, from.Truncate(time.Second), to.Add(time.Second))
 }
 
 // insertSpans writes the spans of a page. On a resumed day it leaves out the ones the interrupted run already wrote.
@@ -256,12 +244,18 @@ func (m *mover) insertSpans(ctx context.Context, spans []models.Span, from, to t
 		seen := map[string]bool{}
 		var traces []string
 		for _, span := range spans {
+			if span.StartTime.Before(from) {
+				from = span.StartTime
+			}
+			if span.StartTime.After(to) {
+				to = span.StartTime
+			}
 			if !seen[span.TraceId] {
 				seen[span.TraceId] = true
 				traces = append(traces, span.TraceId)
 			}
 		}
-		moved, err := m.legacy.FindMovedSpans(ctx, traces, from.Add(-movedWindow), to.Add(moveOverDay))
+		moved, err := m.legacy.FindMovedSpans(ctx, traces, from.Truncate(time.Second), to.Add(time.Second))
 		if err != nil {
 			return err
 		}
@@ -291,10 +285,10 @@ func (m *mover) writeEndpoints(ctx context.Context, rows []models.Endpoint, from
 	var entities []models.Endpoint
 	var spans []models.Span
 	for _, row := range rows {
-		if moved[row.Id] {
+		entity, span := mapEndpoint(row)
+		if moved[shared.MovedOccurrenceKey(entity.ProjectId, entity.Id, entity.TraceId, entity.SpanId, m.legacy.OccurrenceTime("endpoints", entity.RecordedAt))] {
 			continue
 		}
-		entity, span := mapEndpoint(row)
 		entities, spans = append(entities, entity), append(spans, span)
 	}
 	if err := m.insertSpans(ctx, spans, from, to, resumed); err != nil || len(entities) == 0 {
@@ -307,6 +301,10 @@ func (m *mover) writeTasks(ctx context.Context, rows []models.Task, from, to tim
 	ids := make([]uuid.UUID, len(rows))
 	for i, row := range rows {
 		ids[i] = row.Id
+		// Legacy OTel tasks stored their end time, with no upper bound on duration.
+		if start := row.RecordedAt.Add(-row.Duration); row.SpanId != "" && start.Before(from) {
+			from = start
+		}
 	}
 	moved, err := m.movedIds(ctx, "tasks", ids, from, to, resumed)
 	if err != nil {
@@ -315,10 +313,10 @@ func (m *mover) writeTasks(ctx context.Context, rows []models.Task, from, to tim
 	var entities []models.Task
 	var spans []models.Span
 	for _, row := range rows {
-		if moved[row.Id] {
+		entity, span := mapTask(row)
+		if moved[shared.MovedOccurrenceKey(entity.ProjectId, entity.Id, entity.TraceId, entity.SpanId, m.legacy.OccurrenceTime("tasks", entity.RecordedAt))] {
 			continue
 		}
-		entity, span := mapTask(row)
 		entities, spans = append(entities, entity), append(spans, span)
 	}
 	if err := m.insertSpans(ctx, spans, from, to, resumed); err != nil || len(entities) == 0 {
@@ -339,10 +337,10 @@ func (m *mover) writeAiTraces(ctx context.Context, rows []models.AiTrace, from, 
 	var entities []models.AiTrace
 	var spans []models.Span
 	for _, row := range rows {
-		if moved[row.Id] {
+		entity, span := mapAiTrace(row)
+		if moved[shared.MovedOccurrenceKey(entity.ProjectId, entity.Id, entity.TraceId, entity.SpanId, m.legacy.OccurrenceTime("ai_traces", entity.RecordedAt))] {
 			continue
 		}
-		entity, span := mapAiTrace(row)
 		entities, spans = append(entities, entity), append(spans, span)
 	}
 	if err := m.insertSpans(ctx, spans, from, to, resumed); err != nil || len(entities) == 0 {
@@ -397,8 +395,9 @@ func (m *mover) writeExceptions(ctx context.Context, rows []models.ExceptionStac
 	}
 	var exceptions []models.ExceptionStackTrace
 	for _, row := range rows {
-		if !moved[row.Id] {
-			exceptions = append(exceptions, mapException(row, owners))
+		entity := mapException(row, owners)
+		if !moved[shared.MovedOccurrenceKey(entity.ProjectId, entity.Id, entity.TraceId, entity.SpanId, m.legacy.OccurrenceTime("exception_stack_traces", entity.RecordedAt))] {
+			exceptions = append(exceptions, entity)
 		}
 	}
 	if len(exceptions) == 0 {

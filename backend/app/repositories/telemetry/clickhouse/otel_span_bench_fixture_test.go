@@ -46,12 +46,14 @@ func scratchDatabase(t *testing.T) (context.Context, driver.Conn) {
 }
 
 func createSpansTable(t *testing.T, ctx context.Context, conn driver.Conn) {
-	migration, err := os.ReadFile("../../../migrations/ch/0085_create_spans_v2.up.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := conn.Exec(ctx, string(migration)); err != nil {
-		t.Fatal(err)
+	for _, name := range []string{"0085_create_spans_v2.up.sql", "0090_add_span_version.up.sql"} {
+		migration, err := os.ReadFile("../../../migrations/ch/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := conn.Exec(ctx, string(migration)); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

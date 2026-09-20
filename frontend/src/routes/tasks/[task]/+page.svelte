@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
-	import { onMount } from 'svelte';
+	import { untrack } from 'svelte';
 	import { api } from '$lib/api';
 	import {
 		formatDuration,
@@ -161,7 +161,10 @@
 		loadData();
 	}
 
+	let loadSequence = 0;
+
 	async function loadData(pushToHistory = true) {
+		const sequence = ++loadSequence;
 		loading = true;
 		error = '';
 		notFound = false;
@@ -187,11 +190,13 @@
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
 
+			if (sequence !== loadSequence) return;
 			tasks = response.data || [];
 			stats = response.stats || null;
 			total = response.pagination.total;
 			totalPages = response.pagination.totalPages;
 		} catch (e) {
+			if (sequence !== loadSequence) return;
 			console.error(e);
 			errorStatus = getErrorStatus(e) || 0;
 			if (getErrorStatus(e) === 404) {
@@ -200,7 +205,7 @@
 				error = getErrorMessage(e) || 'Failed to load data';
 			}
 		} finally {
-			loading = false;
+			if (sequence === loadSequence) loading = false;
 		}
 	}
 
@@ -226,8 +231,24 @@
 		loadData(false);
 	}
 
-	onMount(() => {
-		loadData(false);
+	$effect(() => {
+		void data.task;
+		void projectsState.currentProjectId;
+		untrack(() => {
+			tasks = [];
+			stats = null;
+			page = 1;
+			const range = getInitialRange();
+			selectedPreset = range.preset;
+			fromDate = dateToCalendarDate(range.from, timezone);
+			toDate = dateToCalendarDate(range.to, timezone);
+			fromTime = dateToTimeString(range.from, timezone);
+			toTime = dateToTimeString(range.to, timezone);
+			loadData(false);
+		});
+		return () => {
+			loadSequence++;
+		};
 	});
 </script>
 

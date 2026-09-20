@@ -48,6 +48,7 @@ const (
 )
 
 type clickhouseOtelRow struct {
+	owner  shared.SpanOwner
 	values []any
 	day    int64
 }
@@ -65,7 +66,7 @@ func clickhouseOtelValues(span models.OtelSpan, groups shared.OtelSpanGroups) (c
 	if err != nil {
 		return clickhouseOtelRow{}, err
 	}
-	return clickhouseOtelRow{append(values, nested...), row.PartitionTime.Unix() / 86400}, nil
+	return clickhouseOtelRow{owner: shared.SpanOwner{ProjectId: span.ProjectId, TraceId: span.TraceId, SpanId: span.SpanId}, values: append(values, nested...), day: row.PartitionTime.Unix() / 86400}, nil
 }
 
 // partitionedInserts keeps each insert within the partition limit and bounds how many inserts one request may cause.
@@ -96,21 +97,28 @@ func partitionedInserts(rows []clickhouseOtelRow) (inserts [][]clickhouseOtelRow
 }
 
 func (r *otelSpanRepository) InsertAsync(ctx context.Context, spans []models.OtelSpan) (int, error) {
+	rejected, err := r.InsertWithRejections(ctx, spans)
+	return len(rejected), err
+}
+
+func (r *otelSpanRepository) InsertWithRejections(ctx context.Context, spans []models.OtelSpan) ([]shared.SpanOwner, error) {
+	var rejected []shared.SpanOwner
 	groups, rows := shared.OtelSpanGroups{}, make([]clickhouseOtelRow, 0, len(spans))
 	for _, span := range spans {
 		row, err := clickhouseOtelValues(span, groups)
 		if err != nil {
 			shared.RecordRejectedOtelSpan(err)
+			rejected = append(rejected, shared.SpanOwner{ProjectId: span.ProjectId, TraceId: span.TraceId, SpanId: span.SpanId})
 			continue
 		}
 		rows = append(rows, row)
 	}
-	rejected := len(spans) - len(rows)
 	if len(rows) == 0 {
 		return rejected, nil
 	}
 	inserts, overflow := partitionedInserts(rows)
-	for range overflow {
+	for _, row := range overflow {
+		rejected = append(rejected, row.owner)
 		shared.RecordRejectedOtelSpan(fmt.Errorf("one request spans more than %d daily partitions", clickhouseMaxPartitionsPerInsert*clickhouseMaxPartitionedInserts))
 	}
 	for _, insert := range inserts {
@@ -123,10 +131,10 @@ func (r *otelSpanRepository) InsertAsync(ctx context.Context, spans []models.Ote
 			return nil
 		})
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 	}
-	return rejected + len(overflow), nil
+	return rejected, nil
 }
 
 const otelReadSettings = ` SETTINGS max_execution_time=10, max_rows_to_read=1000000, max_bytes_to_read=268435456, max_memory_usage=268435456, read_overflow_mode='throw', timeout_overflow_mode='throw'`
@@ -158,11 +166,12 @@ func (r *otelSpanRepository) FindTraceTopology(ctx context.Context, lookups []sh
 	}
 	predicate, args := clickhouseTracePredicate(lookups)
 	predicate, args = shared.OtelWindowPredicate(predicate, args, lookups, clickhouseOtelCodec.Time)
+	query := "SELECT " + shared.OtelTopologyColumns + " FROM " + shared.OtelWinningRows(shared.OtelTopologyColumns, predicate, shared.OtelClickHouseWinnerOrder)
 	if fromUnixNano > 0 {
-		predicate += " AND start_time_unix_nano >= ?"
+		query += " WHERE start_time_unix_nano >= ?"
 		args = append(args, fromUnixNano)
 	}
-	query := "SELECT " + shared.OtelTopologyColumns + " FROM " + shared.SpansTable + " WHERE " + predicate + fmt.Sprintf(" ORDER BY start_time_unix_nano ASC, span_id ASC LIMIT %d", shared.MaxOtelGraphRows+1) + otelReadSettings
+	query += fmt.Sprintf(" ORDER BY start_time_unix_nano ASC, span_id ASC LIMIT %d", shared.MaxOtelGraphRows+1) + otelReadSettings
 	rows, err := chdb.Conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -176,7 +185,7 @@ const clickhouseStatementPreview = `substringUTF8(if(span_attributes['db.query.t
 func (r *otelSpanRepository) FindTraceOutline(ctx context.Context, lookups []shared.SpanLookup) ([]models.OtelSpan, error) {
 	predicate, args := clickhouseTracePredicate(lookups)
 	predicate, args = shared.OtelWindowPredicate(predicate, args, lookups, clickhouseOtelCodec.Time)
-	query := "SELECT " + shared.OtelTopologyColumns + ", " + clickhouseStatementPreview + " FROM " + shared.SpansTable + " WHERE " + predicate + shared.OtelImportanceOrder + fmt.Sprintf(" LIMIT %d", shared.MaxOtelGraphRows+1) + otelReadSettings
+	query := "SELECT " + shared.OtelTopologyColumns + ", " + clickhouseStatementPreview + " FROM " + shared.OtelWinningRows(shared.OtelTopologyColumns+", span_attributes", predicate, shared.OtelClickHouseWinnerOrder) + shared.OtelImportanceOrder + fmt.Sprintf(" LIMIT %d", shared.MaxOtelGraphRows+1) + otelReadSettings
 	rows, err := chdb.Conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -209,6 +218,7 @@ func scanClickhouseTopology(rows driver.Rows, withStatement bool) ([]models.Otel
 const otelSearchSettings = ` SETTINGS max_execution_time=15, timeout_overflow_mode='throw', max_memory_usage=1073741824`
 
 var clickhouseSearchDialect = shared.OtelSearchDialect{
+	WinnerOrder: shared.OtelClickHouseWinnerOrder,
 	Project:     func(id uuid.UUID) any { return id },
 	Time:        clickhouseOtelCodec.Time,
 	Trace:       func(_ uuid.UUID, traceId string) (string, any) { return "trace_id = ?", traceId },
@@ -254,7 +264,7 @@ func (r *otelSpanRepository) Services(ctx context.Context, project uuid.UUID, fr
 func (r *otelSpanRepository) FindSpanAttributes(ctx context.Context, lookup shared.SpanLookup, spanIds []string, limits shared.OtelAttributeLimits) (map[string]shared.OtelSpanAttributes, error) {
 	predicate, args := shared.OtelWindowPredicate("project_id = ? AND trace_id = ? AND span_id IN (?)",
 		[]any{lookup.ProjectId, lookup.TraceId, spanIds}, []shared.SpanLookup{lookup}, clickhouseOtelCodec.Time)
-	query := shared.OtelAttributeQuery("toJSONString(span_attributes)", "start_time_unix_nano", predicate, limits) + otelReadSettings
+	query := shared.OtelAttributeQuery("toJSONString(span_attributes)", "length(toJSONString(span_attributes))", "start_time_unix_nano", predicate, shared.OtelClickHouseWinnerOrder, limits) + otelReadSettings
 	rows, err := chdb.Conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -302,7 +312,7 @@ func (r *otelSpanRepository) FindOTLP(ctx context.Context, project uuid.UUID, tr
 	defer cancel()
 	from, to := shared.TraceWindowBounds(at.UTC())
 	var resourcePB, scopePB, spanPB string
-	err := chdb.Conn.QueryRow(ctx, "SELECT resource_pb, scope_pb, span_pb FROM "+shared.SpansTable+" WHERE project_id = ? AND trace_id = ? AND span_id = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY duration DESC, span_pb DESC, resource_pb DESC, scope_pb DESC LIMIT 1"+otelReadSettings, project, traceID, spanID, from, to).Scan(&resourcePB, &scopePB, &spanPB)
+	err := chdb.Conn.QueryRow(ctx, "SELECT resource_pb, scope_pb, span_pb FROM "+shared.SpansTable+" WHERE project_id = ? AND trace_id = ? AND span_id = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY "+shared.OtelClickHouseWinnerOrder+" LIMIT 1"+otelReadSettings, project, traceID, spanID, from, to).Scan(&resourcePB, &scopePB, &spanPB)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

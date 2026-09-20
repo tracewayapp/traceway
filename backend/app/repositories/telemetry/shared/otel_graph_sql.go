@@ -9,6 +9,19 @@ import (
 	"time"
 )
 
+const OtelTextWinnerOrder = "duration DESC, otlp DESC"
+
+// A stored digest keeps ClickHouse topology reads independent of payload size.
+const OtelClickHouseWinnerOrder = "duration DESC, span_version DESC"
+
+// Apply the same winner before filtering or limiting every logical-span read.
+// Otherwise topology, attributes and export can describe different retry versions.
+func OtelWinningRows(columns, predicate, order string) string {
+	return "(SELECT " + columns + " FROM (SELECT " + columns +
+		", ROW_NUMBER() OVER (PARTITION BY project_id, trace_id, span_id ORDER BY " + order +
+		") AS otel_version FROM " + SpansTable + " WHERE " + predicate + ") ranked WHERE otel_version = 1) winners"
+}
+
 func OtelTopologyQuery(lookups []SpanLookup, combinedKey bool, fromUnixNano uint64, timeValue func(time.Time) any) (string, []any) {
 	predicate, args := OtelTracePredicate(lookups, combinedKey)
 	predicate, args = OtelWindowPredicate(predicate, args, lookups, timeValue)
@@ -16,9 +29,9 @@ func OtelTopologyQuery(lookups []SpanLookup, combinedKey bool, fromUnixNano uint
 	if !combinedKey {
 		startOrder = "CAST(start_time_unix_nano AS INTEGER)"
 	}
-	query := "SELECT " + OtelTopologyColumns + " FROM " + SpansTable + " WHERE " + predicate
+	query := "SELECT " + OtelTopologyColumns + " FROM " + OtelWinningRows(OtelTopologyColumns, predicate, OtelTextWinnerOrder)
 	if fromUnixNano > 0 {
-		query += " AND " + startOrder + " >= ?"
+		query += " WHERE " + startOrder + " >= ?"
 		args = append(args, OtelNanosArgument(fromUnixNano))
 	}
 	return query + fmt.Sprintf(" ORDER BY %s, span_id LIMIT %d", startOrder, MaxOtelGraphRows+1), args
@@ -36,7 +49,7 @@ const OtelStatementPreviewLength = 240
 func OtelOutlineQuery(lookups []SpanLookup, combinedKey bool, statement string, timeValue func(time.Time) any) (string, []any) {
 	predicate, args := OtelTracePredicate(lookups, combinedKey)
 	predicate, args = OtelWindowPredicate(predicate, args, lookups, timeValue)
-	return "SELECT " + OtelTopologyColumns + ", " + statement + " FROM " + SpansTable + " WHERE " + predicate + OtelImportanceOrder + fmt.Sprintf(" LIMIT %d", MaxOtelGraphRows+1), args
+	return "SELECT " + OtelTopologyColumns + ", " + statement + " FROM " + OtelWinningRows(OtelTopologyColumns+", span_attributes", predicate, OtelTextWinnerOrder) + OtelImportanceOrder + fmt.Sprintf(" LIMIT %d", MaxOtelGraphRows+1), args
 }
 
 // OtelWindowPredicate adds the lookup window to a predicate on the spans table.

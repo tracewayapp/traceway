@@ -55,6 +55,13 @@ it('does not manufacture relationships from ordering or custom grouping', () => 
 	expect(rows.every((r) => r.depth === 0 && !r.hasChildren)).toBe(true);
 });
 
+it('keeps migrated occurrences with the same legacy ID in different traces', () => {
+	const rows = distributedTraceTree([node('01'), node('01', undefined, 'other-trace')], new Set());
+	expect(rows).toHaveLength(2);
+	expect(new Set(rows.map((row) => row.key)).size).toBe(2);
+	expect(rows.map((row) => row.node.traceId).sort()).toEqual(['other-trace', 'trace']);
+});
+
 it('keeps duplicate source identities in different projects visible without guessing a parent', () => {
 	const first = node('01');
 	const second = { ...node('01'), projectId: 'another-project' };

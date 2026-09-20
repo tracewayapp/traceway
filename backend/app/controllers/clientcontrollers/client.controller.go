@@ -307,6 +307,15 @@ func (e clientController) Report(c *gin.Context) {
 	convertMs := float64(time.Since(convertStart).Microseconds()) / 1000.0
 	insertStart := time.Now()
 
+	spanInsertSpan := traceway.StartSpan(c, "report.insert.spans")
+	err = telemetry.SpanRepository.InsertAsync(c, spansToInsert)
+	spanInsertSpan.End()
+
+	if err != nil {
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting spansToInsert: %w", err))
+		return
+	}
+
 	if len(endpointsToInsert) > 0 {
 		insertSpan := traceway.StartSpan(c, "report.insert.endpoints")
 		err := telemetry.EndpointRepository.InsertAsync(c, endpointsToInsert)
@@ -357,15 +366,6 @@ func (e clientController) Report(c *gin.Context) {
 
 		metricNames := services.CollectUniqueMetricNames(metricPointsToInsert)
 		go services.AutoRegisterMetrics(projectId, metricNames)
-	}
-
-	spanInsertSpan := traceway.StartSpan(c, "report.insert.spans")
-	err = telemetry.SpanRepository.InsertAsync(c, spansToInsert)
-	spanInsertSpan.End()
-
-	if err != nil {
-		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting spansToInsert: %w", err))
-		return
 	}
 
 	insertMs := float64(time.Since(insertStart).Microseconds()) / 1000.0

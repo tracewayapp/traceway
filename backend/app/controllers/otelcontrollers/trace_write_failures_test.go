@@ -95,7 +95,7 @@ func TestExportTracesFailureAtEachWriteStage(t *testing.T) {
 		persisted []int
 	}{
 		{"spans", func(err error) {
-			traceStore.spans = func(context.Context, []models.OtelSpan) (int, error) { return 0, err }
+			traceStore.spans = func(context.Context, []models.OtelSpan) ([]shared.SpanOwner, error) { return nil, err }
 		}, []int{0, 0, 0, 0, 0}},
 		{"endpoints", func(err error) { traceStore.endpoints = func(context.Context, []models.Endpoint) error { return err } }, []int{4, 0, 0, 0, 0}},
 		{"tasks", func(err error) { traceStore.tasks = func(context.Context, []models.Task) error { return err } }, []int{4, 1, 0, 0, 0}},
@@ -159,9 +159,12 @@ func TestExportTracesRetryDuplicatesAnalyticsButNotTheGraph(t *testing.T) {
 func TestExportTracesReportsRowsStorageRejected(t *testing.T) {
 	setupTraceWrites(t)
 	store := traceStore.spans
-	traceStore.spans = func(ctx context.Context, spans []models.OtelSpan) (int, error) {
+	traceStore.spans = func(ctx context.Context, spans []models.OtelSpan) ([]shared.SpanOwner, error) {
 		stored, err := store(ctx, spans[:len(spans)-2])
-		return stored + 2, err
+		for _, span := range spans[len(spans)-2:] {
+			stored = append(stored, shared.SpanOwner{ProjectId: span.ProjectId, TraceId: span.TraceId, SpanId: span.SpanId})
+		}
+		return stored, err
 	}
 	request, _, _ := everyTableRequest()
 	request.ResourceSpans[0].ScopeSpans[0].Spans = append(request.ResourceSpans[0].ScopeSpans[0].Spans, &tracepb.Span{TraceId: []byte{1}, SpanId: []byte{1}})
@@ -170,6 +173,10 @@ func TestExportTracesReportsRowsStorageRejected(t *testing.T) {
 	if recorder.Code != http.StatusOK || partial.GetRejectedSpans() != 3 {
 		t.Fatalf("status %d, partial success %v", recorder.Code, partial)
 	}
+	if got := traceTableCounts(t); fmt.Sprint(got) != fmt.Sprint([]int{2, 1, 0, 1, 0}) {
+		t.Fatalf("rejected task/AI spans must not produce projections: %v", got)
+	}
+
 	if !strings.Contains(partial.GetErrorMessage(), "1 spans need valid non-zero trace and span IDs") || !strings.Contains(partial.GetErrorMessage(), "2 spans could not be stored") {
 		t.Fatalf("the exporter must learn why spans were rejected: %q", partial.GetErrorMessage())
 	}

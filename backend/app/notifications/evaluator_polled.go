@@ -454,14 +454,14 @@ func countTaskExecutions(ctx context.Context, projectId uuid.UUID, taskName stri
 
 func countFailedTaskExecutions(ctx context.Context, projectId uuid.UUID, taskName string, named bool, from, to time.Time) (int64, error) {
 	// A task failed when an exception was recorded on its own span. One caught further down did not fail it.
-	query := "SELECT countDistinct(span_id) FROM exceptions_v2 WHERE project_id = ? AND trace_type = 'task' AND recorded_at >= ? AND recorded_at <= ?" +
-		" AND span_id IN (SELECT span_id FROM tasks_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
+	query := "SELECT count() FROM (SELECT DISTINCT trace_id, span_id FROM exceptions_v2 WHERE project_id = ? AND trace_type = 'task' AND recorded_at >= ? AND recorded_at <= ?" +
+		" AND (trace_id, span_id) IN (SELECT trace_id, span_id FROM tasks_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
 	args := []interface{}{projectId, from, to, projectId, from, to}
 	if named {
 		query += " AND task_name = ?"
 		args = append(args, taskName)
 	}
-	query += ")"
+	query += ")) AS failed_tasks"
 
 	var failed uint64
 	if err := chdb.Conn.QueryRow(ctx, query, args...).Scan(&failed); err != nil {

@@ -74,7 +74,7 @@ Register it after your OpenTelemetry instrumentation, so there is an active serv
 
 To verify, open the backend endpoint's detail page and select **View distributed trace**. The browser exception appears as a second node.
 
-Only the service that receives the browser's request needs this middleware. Services further down the call chain never see the `traceway-trace-id` header, only `traceparent`, and they do not need to: every backend row carries the same OpenTelemetry trace ID. The first service's row links that trace to the browser's, so Traceway shows the browser exception and every backend service as one distributed trace, whichever of them you open it from. from.
+Only the service that receives the browser's request needs this middleware. Services further down the call chain never see the `traceway-trace-id` header, only `traceparent`, and they do not need to: every backend row carries the same OpenTelemetry trace ID. The first service's row links that trace to the browser's, so Traceway shows the browser exception and every backend service as one distributed trace, whichever of them you open it from.
 
 ## Manual Capture After an Await
 
@@ -126,3 +126,5 @@ The SDK keeps a module-level variable that tracks which request is currently in 
 3. When the request settles (resolves, rejects, or errors), the active ID is cleared
 
 If an exception is captured (via `captureException`, `window.onerror`, or `window.onunhandledrejection`) while a request is in flight, the SDK automatically attaches the active trace ID to the exception. This is how frontend errors get linked to their triggering backend request without any manual work.
+
+Trace views are limited to projects you can access, the lookup time window and the graph row/attribute limits. Missing or sampled spans cannot be reconstructed.

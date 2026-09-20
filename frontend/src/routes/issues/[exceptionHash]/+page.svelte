@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
-	import { onMount } from 'svelte';
+	import { untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api';
@@ -54,7 +54,10 @@
 		latestOccurrence?.stackTrace.split('\n')[0] || 'Exception'
 	);
 
+	let loadSequence = 0;
+
 	async function loadData() {
+		const sequence = ++loadSequence;
 		loading = true;
 		error = '';
 		notFound = false;
@@ -75,6 +78,7 @@
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
 
+			if (sequence !== loadSequence) return;
 			group = response.group;
 			occurrences = response.occurrences || [];
 			total = response.pagination.total;
@@ -82,6 +86,7 @@
 			sessionId = response.sessionId ?? null;
 			linkedTrace = linkedTraceFrom(response.relatedEntity);
 		} catch (e) {
+			if (sequence !== loadSequence) return;
 			console.error(e);
 			if (getErrorStatus(e) === 404) {
 				notFound = true;
@@ -89,7 +94,7 @@
 				error = getErrorMessage(e) || 'Failed to load exception details';
 			}
 		} finally {
-			loading = false;
+			if (sequence === loadSequence) loading = false;
 		}
 	}
 
@@ -111,8 +116,18 @@
 		}
 	}
 
-	onMount(() => {
-		loadData();
+	$effect(() => {
+		void page.params.exceptionHash;
+		void projectsState.currentProjectId;
+		untrack(() => {
+			group = null;
+			occurrences = [];
+			total = 0;
+			loadData();
+		});
+		return () => {
+			loadSequence++;
+		};
 	});
 </script>
 

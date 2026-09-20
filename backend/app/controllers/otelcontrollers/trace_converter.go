@@ -205,8 +205,8 @@ func isHTTPServerSpan(span *tracepb.Span) bool {
 // An HTTP SERVER span is a request of its own unless a local span above it already is one (Next.js under the HTTP
 // instrumentation). The walk stays inside the process: it stops at a remote parent, which OTLP flags mark however
 // the trace is batched, and at a CLIENT or PRODUCER span, which is the calling side. A plain wrapper span above
-// the request does not make it nested. When the chain is cut off because a parent has not arrived, a parent known
-// to be local is taken for the enclosing request; exporters that predate the flags keep counting the span.
+// the request does not make it nested. Missing parents have unknown kinds, even
+// when flags establish locality, so they cannot suppress an HTTP entry point.
 func isEntryPoint(span *tracepb.Span, parentOf func(*tracepb.Span) *tracepb.Span) bool {
 	for current, depth := span, 0; depth < maxEntryPointDepth; depth++ {
 		if len(current.ParentSpanId) == 0 {
@@ -218,7 +218,7 @@ func isEntryPoint(span *tracepb.Span, parentOf func(*tracepb.Span) *tracepb.Span
 		}
 		parent := parentOf(current)
 		if parent == nil {
-			return !localityKnown
+			return true
 		}
 		if parent.Kind == tracepb.Span_SPAN_KIND_CLIENT || parent.Kind == tracepb.Span_SPAN_KIND_PRODUCER {
 			return true
@@ -763,6 +763,10 @@ func resolveConversationId(spanAttrs, resourceAttrs []*commonpb.KeyValue, traceI
 	}
 	if id := getStringAttribute(resourceAttrs, "session.id"); id != "" {
 		return id
+	}
+	// Keep fallback conversation keys compatible with history written before V2.
+	if id, err := uuid.Parse(traceId); err == nil {
+		return id.String()
 	}
 	return traceId
 }

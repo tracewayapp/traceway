@@ -15,6 +15,9 @@ it('identifies a truncated graph', () => {
 		status: { state: 'partial', reasons: ['row_limit'] }
 	});
 	expect(getByRole('alert').textContent?.replace(/\s+/g, ' ')).toContain('only part of the trace');
+	expect(getByRole('alert').textContent?.replace(/\s+/g, ' ')).toContain(
+		'Exceptions attached to missing spans'
+	);
 });
 
 it('explains omitted attributes', () => {

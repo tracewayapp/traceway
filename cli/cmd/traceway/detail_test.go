@@ -144,7 +144,7 @@ func TestTracesShow_rendersNodesAndNoProjectId(t *testing.T) {
 	var gotRawQuery string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotRawQuery = r.URL.RawQuery
-		_, _ = w.Write([]byte(`{"traceId":"0af7651916cd43dd8448eb211c80319c","nodes":[{"projectName":"api","traceType":"endpoint","traceId":"0af7651916cd43dd8448eb211c80319c","spanId":"b7ad6b7169203331","endpoint":{"id":"00000000-0000-0000-0000-0000000000d1","endpoint":"GET /x","traceId":"0af7651916cd43dd8448eb211c80319c","spanId":"b7ad6b7169203331"},"spans":[]}]}`))
+		_, _ = w.Write([]byte(`{"traceId":"0af7651916cd43dd8448eb211c80319c","nodes":[{"projectName":"api","traceType":"endpoint","traceId":"0af7651916cd43dd8448eb211c80319c","spanId":"b7ad6b7169203331","endpoint":{"id":"00000000-0000-0000-0000-0000000000d1","endpoint":"GET /x","traceId":"0af7651916cd43dd8448eb211c80319c","spanId":"b7ad6b7169203331"},"spans":[],"spanGraphStatus":{"state":"partial","reasons":["row_limit"]}}]}`))
 	}))
 	defer srv.Close()
 	seedSessionFor(t, srv.URL)
@@ -159,7 +159,7 @@ func TestTracesShow_rendersNodesAndNoProjectId(t *testing.T) {
 		t.Errorf("traces show must not send a query string, got %q", gotRawQuery)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "GET /x") || !strings.Contains(out, "endpoint") || !strings.Contains(out, "0af7651916cd43dd8448eb211c80319c") {
+	if !strings.Contains(out, "GRAPH") || !strings.Contains(out, "partial") || !strings.Contains(out, "GET /x") || !strings.Contains(out, "endpoint") || !strings.Contains(out, "0af7651916cd43dd8448eb211c80319c") {
 		t.Errorf("expected trace id and node row in table: %s", out)
 	}
 }

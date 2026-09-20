@@ -2,21 +2,18 @@ package otelcontrollers
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/hex"
 	"testing"
 
 	"github.com/google/uuid"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
-	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 )
 
 func TestPromotedEntityLogCorrelation(t *testing.T) {
 	const traceHex = "8462dd06157032df3c6c90ac5ff74ed7"
 	traceBytes, _ := hex.DecodeString(traceHex)
-	jsonTraceBytes, _ := base64.StdEncoding.DecodeString(traceHex)
 	spanBytes, _ := hex.DecodeString("1985a7abed0024db")
 	groupID := uuid.MustParse("a5100000-0000-4000-8000-000000000001")
 
@@ -29,15 +26,9 @@ func TestPromotedEntityLogCorrelation(t *testing.T) {
 		{"endpoint", tracepb.Span_SPAN_KIND_SERVER, []*commonpb.KeyValue{strKV("http.request.method", "GET")}},
 		{"ai", tracepb.Span_SPAN_KIND_CLIENT, []*commonpb.KeyValue{strKV("gen_ai.system", "openai")}},
 	} {
-		for _, encoding := range []struct {
-			name string
-			id   []byte
-		}{
-			{"protobuf", traceBytes},
-			{"json", jsonTraceBytes},
-		} {
+		for _, encoding := range []string{"protobuf", "json"} {
 			for _, override := range []bool{false, true} {
-				t.Run(entity.name+"/"+encoding.name+"/override="+map[bool]string{false: "false", true: "true"}[override], func(t *testing.T) {
+				t.Run(entity.name+"/"+encoding+"/override="+map[bool]string{false: "false", true: "true"}[override], func(t *testing.T) {
 					attrs := append([]*commonpb.KeyValue{}, entity.attrs...)
 					if override {
 						attrs = append(attrs, strKV("traceway.distributed_trace_id", groupID.String()))
@@ -49,7 +40,8 @@ func TestPromotedEntityLogCorrelation(t *testing.T) {
 							StartTimeUnixNano: 1_700_000_000_000_000_000, EndTimeUnixNano: 1_700_000_000_001_000_000,
 						}}}},
 					}}}
-					endpoints, tasks, _, aiTraces, _ := convertTraces(context.Background(), nil, testProjectId, req)
+					converted := convertTraces(context.Background(), nil, testProjectId, req)
+					endpoints, tasks, aiTraces := converted.Endpoints, converted.Tasks, converted.AiTraces
 					if len(endpoints)+len(tasks)+len(aiTraces) != 1 {
 						t.Fatal("expected one promoted entity")
 					}
@@ -63,7 +55,7 @@ func TestPromotedEntityLogCorrelation(t *testing.T) {
 					case "ai":
 						id, traceId, linkedTraceId = aiTraces[0].Id, aiTraces[0].TraceId, aiTraces[0].LinkedTraceId
 					}
-					log := toLogRecord(testProjectId, &logspb.LogRecord{TraceId: encoding.id, SpanId: spanBytes}, "worker", "", nil, "", "", "", nil)
+					log := toLogRecord(testProjectId, decodeLogIDs(t, encoding, traceBytes, spanBytes), "worker", "", nil, "", "", "", nil)
 					if traceId != traceHex || traceId != log.TraceId {
 						t.Fatalf("entity trace ID %q does not correlate with log trace ID %q", traceId, log.TraceId)
 					}

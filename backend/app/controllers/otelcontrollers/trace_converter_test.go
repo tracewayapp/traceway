@@ -131,7 +131,7 @@ func TestConvertTraces_Snapshot(t *testing.T) {
 			}
 
 			req := &coltracepb.ExportTraceServiceRequest{}
-			normalized, err := normalizeTraceJSON(raw, req.ProtoReflect().Descriptor())
+			normalized, err := normalizeOTLPJSON(raw, req.ProtoReflect().Descriptor())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -140,8 +140,9 @@ func TestConvertTraces_Snapshot(t *testing.T) {
 			}
 
 			setFakeStore(t, nil)
-			endpoints, _, exceptions, aiTraces, aiConversations := convertTraces(context.Background(), nil, testProjectId, req)
-			spans := convertCanonicalSpans(testProjectId, req)
+			converted := convertTraces(context.Background(), nil, testProjectId, req)
+			endpoints, exceptions, aiTraces, aiConversations := converted.Endpoints, converted.Exceptions, converted.AiTraces, converted.AiConversations
+			spans := converted.Spans
 
 			endpointIds := map[string]bool{}
 			for _, ep := range endpoints {
@@ -484,13 +485,14 @@ func TestTraceIdResolution_CrossScope(t *testing.T) {
 		},
 	}
 
-	endpoints, _, _, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	converted := convertTraces(context.Background(), nil, testProjectId, req)
+	endpoints := converted.Endpoints
 
 	if len(endpoints) != 1 {
 		t.Fatalf("expected 1 endpoint, got %d", len(endpoints))
 	}
 
-	spans := convertCanonicalSpans(testProjectId, req)
+	spans := converted.Spans
 	if len(spans) < 2 {
 		t.Fatalf("expected the root and its descendants to be stored, got %d spans", len(spans))
 	}
@@ -581,7 +583,8 @@ func TestConvertTraces_ConsumerNonRoot_BecomesTask(t *testing.T) {
 		}},
 	}
 
-	endpoints, tasks, _, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	converted := convertTraces(context.Background(), nil, testProjectId, req)
+	endpoints, tasks := converted.Endpoints, converted.Tasks
 
 	if len(endpoints) != 0 {
 		t.Fatalf("expected 0 endpoints, got %d", len(endpoints))
@@ -600,7 +603,7 @@ func TestConvertTraces_ConsumerNonRoot_BecomesTask(t *testing.T) {
 		t.Errorf("expected the task to carry its span's own ids, got %+v", tasks[0])
 	}
 
-	spans := convertCanonicalSpans(testProjectId, req)
+	spans := converted.Spans
 	if len(spans) != 2 {
 		t.Fatalf("expected the consumer and its child to be stored, got %d", len(spans))
 	}
@@ -608,8 +611,8 @@ func TestConvertTraces_ConsumerNonRoot_BecomesTask(t *testing.T) {
 	if owner, ok := nearestPromotedAncestor(spans, child, map[string]bool{spanKey(tasks[0].TraceId, tasks[0].SpanId): true}); !ok || owner != tasks[0].SpanId {
 		t.Errorf("expected the child to reach task %s through its stored parent edge", wantTaskId)
 	}
-	if child.Attributes["db.system"] != "postgresql" {
-		t.Errorf("expected child span attribute db.system 'postgresql', got %q", child.Attributes["db.system"])
+	if getStringAttribute(child.OTLP.Attributes, "db.system") != "postgresql" {
+		t.Errorf("expected child span attribute db.system 'postgresql', got %q", getStringAttribute(child.OTLP.Attributes, "db.system"))
 	}
 }
 
@@ -632,7 +635,7 @@ func TestConvertTraces_ConsoleCommand_BecomesTask(t *testing.T) {
 		}},
 	}
 
-	_, tasks, _, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	tasks := convertTraces(context.Background(), nil, testProjectId, req).Tasks
 	if len(tasks) != 1 {
 		t.Fatalf("expected 1 task, got %d", len(tasks))
 	}
@@ -640,7 +643,7 @@ func TestConvertTraces_ConsoleCommand_BecomesTask(t *testing.T) {
 		t.Errorf("expected task.IsRoot == true, got false")
 	}
 	if tasks[0].Id != otelOccurrenceID(testProjectId, &tracepb.Span{TraceId: traceId, SpanId: rootSpanId}) {
-		t.Errorf("expected task.Id == otelTraceIDToUUID(trace_id), got %s", tasks[0].Id)
+		t.Errorf("expected the stable task occurrence ID, got %s", tasks[0].Id)
 	}
 }
 
@@ -664,7 +667,8 @@ func TestConvertTraces_InlineGenAi_BecomesAiTrace(t *testing.T) {
 		}},
 	}
 
-	endpoints, _, _, aiTraces, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	converted := convertTraces(context.Background(), nil, testProjectId, req)
+	endpoints, aiTraces := converted.Endpoints, converted.AiTraces
 	if len(endpoints) != 1 {
 		t.Fatalf("expected 1 endpoint, got %d", len(endpoints))
 	}
@@ -718,7 +722,8 @@ func TestConvertTraces_ExceptionOnConsumer_TraceTypeIsTask(t *testing.T) {
 		}},
 	}
 
-	_, tasks, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	converted := convertTraces(context.Background(), nil, testProjectId, req)
+	tasks, exceptions := converted.Tasks, converted.Exceptions
 	if len(tasks) != 1 || len(exceptions) != 1 {
 		t.Fatalf("expected 1 task + 1 exception, got %d / %d", len(tasks), len(exceptions))
 	}
@@ -752,11 +757,12 @@ func TestConvertTraces_OrphanSpan_KeepsSourceIdentity(t *testing.T) {
 		}},
 	}
 
-	endpoints, tasks, _, aiTraces, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	converted := convertTraces(context.Background(), nil, testProjectId, req)
+	endpoints, tasks, aiTraces := converted.Endpoints, converted.Tasks, converted.AiTraces
 	if len(endpoints) != 0 || len(tasks) != 0 || len(aiTraces) != 0 {
 		t.Fatalf("an unclassified orphan must not be promoted: %d endpoints / %d tasks / %d aiTraces", len(endpoints), len(tasks), len(aiTraces))
 	}
-	spans := convertCanonicalSpans(testProjectId, req)
+	spans := converted.Spans
 	if len(spans) != 1 {
 		t.Fatalf("expected 1 stored span, got %d", len(spans))
 	}
@@ -780,7 +786,7 @@ func TestConvertTraces_ExceptionWithoutItsEndpointKeepsItsSpan(t *testing.T) {
 		}}}}
 
 	// The child ends first, so an exporter flush between the two leaves it without its endpoint.
-	_, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, spanRequest(child))
+	exceptions := convertTraces(context.Background(), nil, testProjectId, spanRequest(child)).Exceptions
 	if len(exceptions) != 1 {
 		t.Fatalf("expected 1 exception, got %d", len(exceptions))
 	}
@@ -831,11 +837,11 @@ func TestConvertTraces_NestedServerSpanIsOneRequest(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			endpoints, _, _, _, _ := convertTraces(context.Background(), nil, testProjectId, spanRequest(tt.spans...))
+			endpoints := convertTraces(context.Background(), nil, testProjectId, spanRequest(tt.spans...)).Endpoints
 			if len(endpoints) != tt.want {
 				t.Fatalf("expected %d endpoints, got %d", tt.want, len(endpoints))
 			}
-			if stored := convertCanonicalSpans(testProjectId, spanRequest(tt.spans...)); len(stored) != len(tt.spans) {
+			if stored := convertTraces(context.Background(), nil, testProjectId, spanRequest(tt.spans...)).Spans; len(stored) != len(tt.spans) {
 				t.Fatalf("every span must still be stored, got %d of %d", len(stored), len(tt.spans))
 			}
 		})
@@ -935,7 +941,7 @@ func TestConvertTraces_HoneycombJsExceptionSymbolicates(t *testing.T) {
 	}
 
 	setFakeStore(t, nil)
-	_, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	exceptions := convertTraces(context.Background(), nil, testProjectId, req).Exceptions
 	if len(exceptions) != 1 {
 		t.Fatalf("expected 1 exception, got %d", len(exceptions))
 	}
@@ -986,7 +992,7 @@ func TestConvertTraces_JsExceptionResolvesWithSourceMap(t *testing.T) {
 		}},
 	}
 
-	_, _, exceptions, _, _ := convertTraces(context.Background(), tokenProject(projectId), projectId, req)
+	exceptions := convertTraces(context.Background(), tokenProject(projectId), projectId, req).Exceptions
 	if len(exceptions) != 1 {
 		t.Fatalf("expected 1 exception, got %d", len(exceptions))
 	}
@@ -1067,7 +1073,8 @@ func TestConvertTraces_ExceptionSpanAttrs_CapturedWithoutAKind(t *testing.T) {
 	req := honeycombExceptionSpanRequest(honeycombExceptionSpanAttrs(), nil, strKV("telemetry.sdk.language", "webjs"))
 
 	setFakeStore(t, nil)
-	endpoints, tasks, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	converted := convertTraces(context.Background(), nil, testProjectId, req)
+	endpoints, tasks, exceptions := converted.Endpoints, converted.Tasks, converted.Exceptions
 	if len(endpoints) != 0 || len(tasks) != 0 {
 		t.Fatalf("expected no entity rows, got %d endpoints / %d tasks", len(endpoints), len(tasks))
 	}
@@ -1116,7 +1123,8 @@ func TestConvertTraces_ExceptionSpanAttrs_StrippedFromEndpointRow(t *testing.T) 
 	}
 
 	setFakeStore(t, nil)
-	endpoints, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	converted := convertTraces(context.Background(), nil, testProjectId, req)
+	endpoints, exceptions := converted.Endpoints, converted.Exceptions
 	if len(endpoints) != 1 || len(exceptions) != 1 {
 		t.Fatalf("expected 1 endpoint + 1 exception, got %d / %d", len(endpoints), len(exceptions))
 	}
@@ -1144,7 +1152,7 @@ func TestConvertTraces_ExceptionEventAndSpanAttrs_EventWins(t *testing.T) {
 	req := honeycombExceptionSpanRequest(honeycombExceptionSpanAttrs(), events, strKV("telemetry.sdk.language", "webjs"))
 
 	setFakeStore(t, nil)
-	_, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	exceptions := convertTraces(context.Background(), nil, testProjectId, req).Exceptions
 	if len(exceptions) != 1 {
 		t.Fatalf("expected exactly 1 exception, got %d", len(exceptions))
 	}
@@ -1161,7 +1169,7 @@ func TestConvertTraces_ExceptionSpanAttrs_HeaderOnly(t *testing.T) {
 	req := honeycombExceptionSpanRequest(attrs, nil, strKV("telemetry.sdk.language", "webjs"))
 
 	setFakeStore(t, nil)
-	_, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	exceptions := convertTraces(context.Background(), nil, testProjectId, req).Exceptions
 	if len(exceptions) != 1 {
 		t.Fatalf("expected 1 exception, got %d", len(exceptions))
 	}
@@ -1174,7 +1182,7 @@ func TestConvertTraces_ExceptionSpanAttrs_NoLanguageAttr(t *testing.T) {
 	req := honeycombExceptionSpanRequest(honeycombExceptionSpanAttrs(), nil)
 
 	setFakeStore(t, nil)
-	_, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	exceptions := convertTraces(context.Background(), nil, testProjectId, req).Exceptions
 	if len(exceptions) != 1 {
 		t.Fatalf("expected 1 exception, got %d", len(exceptions))
 	}
@@ -1243,7 +1251,7 @@ func TestExceptionHash_FourWayStability(t *testing.T) {
 		"firefox-raw": firefoxRaw,
 		"structured":  structured,
 	} {
-		_, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, fourWayRequest(attrs, nil))
+		exceptions := convertTraces(context.Background(), nil, testProjectId, fourWayRequest(attrs, nil)).Exceptions
 		if len(exceptions) != 1 {
 			t.Fatalf("%s: expected 1 exception, got %d", name, len(exceptions))
 		}
@@ -1266,7 +1274,7 @@ func TestConvertTraces_FrontendFrameworkSuppressesEntityRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	req := &coltracepb.ExportTraceServiceRequest{}
-	normalized, err := normalizeTraceJSON(raw, req.ProtoReflect().Descriptor())
+	normalized, err := normalizeOTLPJSON(raw, req.ProtoReflect().Descriptor())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1276,7 +1284,8 @@ func TestConvertTraces_FrontendFrameworkSuppressesEntityRows(t *testing.T) {
 
 	setFakeStore(t, nil)
 	reactProject := &models.Project{Id: testProjectId, Framework: "react"}
-	endpoints, tasks, exceptions, aiTraces, _ := convertTraces(context.Background(), reactProject, testProjectId, req)
+	converted := convertTraces(context.Background(), reactProject, testProjectId, req)
+	endpoints, tasks, exceptions, aiTraces := converted.Endpoints, converted.Tasks, converted.Exceptions, converted.AiTraces
 	if len(endpoints) != 0 || len(tasks) != 0 || len(aiTraces) != 0 {
 		t.Fatalf("expected no entity rows for a frontend-framework project, got %d endpoints / %d tasks / %d aiTraces",
 			len(endpoints), len(tasks), len(aiTraces))
@@ -1289,7 +1298,7 @@ func TestConvertTraces_FrontendFrameworkSuppressesEntityRows(t *testing.T) {
 	}
 
 	backendProject := &models.Project{Id: testProjectId, Framework: "gin"}
-	endpoints, _, _, _, _ = convertTraces(context.Background(), backendProject, testProjectId, req)
+	endpoints = convertTraces(context.Background(), backendProject, testProjectId, req).Endpoints
 	if len(endpoints) == 0 {
 		t.Error("expected non-frontend frameworks to keep promoting endpoint rows")
 	}

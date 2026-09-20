@@ -47,13 +47,17 @@ func (k entityKind) traceType() string {
 	return ""
 }
 
-func convertTraces(ctx context.Context, existingProject *models.Project, projectId uuid.UUID, req *coltracepb.ExportTraceServiceRequest) (
-	endpoints []models.Endpoint,
-	tasks []models.Task,
-	exceptions []models.ExceptionStackTrace,
-	aiTraces []models.AiTrace,
-	aiConversations []aiTraceConversation,
-) {
+type convertedTraces struct {
+	Spans           []models.OtelSpan
+	Endpoints       []models.Endpoint
+	Tasks           []models.Task
+	Exceptions      []models.ExceptionStackTrace
+	AiTraces        []models.AiTrace
+	AiConversations []aiTraceConversation
+	InvalidSpanIDs  int64
+}
+
+func convertTraces(ctx context.Context, existingProject *models.Project, projectId uuid.UUID, req *coltracepb.ExportTraceServiceRequest) (result convertedTraces) {
 	suppressEntities := existingProject != nil && clientcontrollers.IsFrontendFramework(existingProject.Framework)
 
 	// nil languages falls back to the default pack; a project that disabled
@@ -81,17 +85,22 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 		}
 
 		type spanEntry struct {
-			span      *tracepb.Span
-			scopeName string
+			span     *tracepb.Span
+			metadata *tracepb.ResourceSpans
 		}
 		var allSpans []spanEntry
 		spanByKey := map[string]*tracepb.Span{}
 		for _, ss := range rs.ScopeSpans {
+			metadata := &tracepb.ResourceSpans{Resource: rs.Resource, SchemaUrl: rs.SchemaUrl,
+				ScopeSpans: []*tracepb.ScopeSpans{{Scope: ss.Scope, SchemaUrl: ss.SchemaUrl}}}
+			metadata.ProtoReflect().SetUnknown(rs.ProtoReflect().GetUnknown())
+			metadata.ScopeSpans[0].ProtoReflect().SetUnknown(ss.ProtoReflect().GetUnknown())
 			for _, span := range ss.Spans {
 				if !validSourceSpanIDs(span) {
+					result.InvalidSpanIDs++
 					continue
 				}
-				allSpans = append(allSpans, spanEntry{span: span, scopeName: ss.GetScope().GetName()})
+				allSpans = append(allSpans, spanEntry{span: span, metadata: metadata})
 				spanByKey[otelSpanKey(span)] = span
 			}
 		}
@@ -104,6 +113,21 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 
 		for _, entry := range allSpans {
 			span := entry.span
+			scopeName := entry.metadata.ScopeSpans[0].GetScope().GetName()
+			traceId := hex.EncodeToString(span.TraceId)
+			spanId := hex.EncodeToString(span.SpanId)
+			parentSpanId := hex.EncodeToString(span.ParentSpanId)
+			start := shared.OtelNanosToTime(span.StartTimeUnixNano)
+			duration := shared.OtelDuration(span.StartTimeUnixNano, span.EndTimeUnixNano)
+			result.Spans = append(result.Spans, models.OtelSpan{
+				OTLP: span, Context: entry.metadata,
+				Span: models.Span{
+					ProjectId: projectId, TraceId: traceId, SpanId: spanId, ParentSpanId: parentSpanId,
+					Name: span.Name, StartTime: start, RecordedAt: start, Duration: duration,
+					SpanKind: int32(span.Kind), StatusCode: int32(span.GetStatus().GetCode()),
+					ServiceName: serverName, ScopeName: scopeName,
+				},
+			})
 			kind := entityNone
 			if !suppressEntities {
 				kind = classifySpan(span, parentInBatch)
@@ -120,11 +144,6 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 			// endpoint/task/span rows or the exception's attribute map.
 			delete(allAttrs, "exception.stacktrace")
 			recordedStart, _, _ := shared.OtelStorageTimes(span.StartTimeUnixNano, ingestedAt)
-			duration := shared.OtelDuration(span.StartTimeUnixNano, span.EndTimeUnixNano)
-
-			traceId := hex.EncodeToString(span.TraceId)
-			spanId := hex.EncodeToString(span.SpanId)
-			parentSpanId := hex.EncodeToString(span.ParentSpanId)
 			linked := linkedTraceId(span, traceId)
 			id := otelOccurrenceID(projectId, span)
 
@@ -136,7 +155,7 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 				)
 				ep.TraceId, ep.SpanId, ep.ParentSpanId, ep.LinkedTraceId = traceId, spanId, parentSpanId, linked
 				ep.IsRoot = parentSpanId == ""
-				endpoints = append(endpoints, ep)
+				result.Endpoints = append(result.Endpoints, ep)
 			case entityTask:
 				t := buildTask(
 					id, projectId, span, allAttrs,
@@ -144,7 +163,7 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 				)
 				t.TraceId, t.SpanId, t.ParentSpanId, t.LinkedTraceId = traceId, spanId, parentSpanId, linked
 				t.IsRoot = parentSpanId == ""
-				tasks = append(tasks, t)
+				result.Tasks = append(result.Tasks, t)
 			case entityAiTrace:
 				aiTrace := buildAiTrace(
 					id, projectId, span, spanAttrs, allAttrs,
@@ -156,24 +175,24 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 				var convInput, convOutput string
 				if conv := extractConversation(spanAttrs, projectId, id); conv != nil {
 					convInput, convOutput = conv.Input, conv.Output
-					aiConversations = append(aiConversations, *conv)
+					result.AiConversations = append(result.AiConversations, *conv)
 				}
 				aiTrace.ToolCallCount, aiTrace.ToolNames = extractToolCalls(spanAttrs, convOutput)
 				if terms := flagMatcher.Scan(convInput, convOutput); len(terms) > 0 {
 					aiTrace.Flagged = true
 					aiTrace.FlaggedTerms = terms
 				}
-				aiTraces = append(aiTraces, aiTrace)
+				result.AiTraces = append(result.AiTraces, aiTrace)
 			}
 
 			appendException := func(attrs []*commonpb.KeyValue, timeUnixNano uint64) {
 				exc := buildException(
 					ctx, existingProject, projectId, attrs, timeUnixNano,
-					allAttrs, serverName, appVersion, language, proguardUuid, entry.scopeName,
+					allAttrs, serverName, appVersion, language, proguardUuid, scopeName,
 				)
 				// The kind is stored only when this span says it. An exception further down the request finds its entity at read time.
 				exc.TraceId, exc.SpanId, exc.LinkedTraceId, exc.TraceType = traceId, spanId, linked, kind.traceType()
-				exceptions = append(exceptions, exc)
+				result.Exceptions = append(result.Exceptions, exc)
 			}
 
 			hadExceptionEvent := false

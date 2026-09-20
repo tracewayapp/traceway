@@ -30,10 +30,7 @@ func sqliteOtelValues(span models.OtelSpan, groups shared.OtelSpanGroups) ([]any
 	if err != nil {
 		return nil, err
 	}
-	values, err := row.ScalarValues(sqliteOtelCodec)
-	if err != nil {
-		return nil, err
-	}
+	values := row.ScalarValues(sqliteOtelCodec)
 	text, err := row.TextValues()
 	if err != nil {
 		return nil, err

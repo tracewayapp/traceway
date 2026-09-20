@@ -31,10 +31,7 @@ func duckdbOtelValues(span models.OtelSpan, groups shared.OtelSpanGroups) ([]dri
 	if err != nil {
 		return nil, err
 	}
-	values, err := row.ScalarValues(duckdbOtelCodec)
-	if err != nil {
-		return nil, err
-	}
+	values := row.ScalarValues(duckdbOtelCodec)
 	text, err := row.TextValues()
 	if err != nil {
 		return nil, err

@@ -109,11 +109,12 @@ func (o otelController) ExportTraces(c *gin.Context) {
 	}
 
 	convertStart := time.Now()
-	endpoints, tasks, exceptions, aiTraces, aiConversations := convertTraces(c, project, projectId, req)
-
-	var canonicalSpans []models.OtelSpan
-	if perm.Data {
-		canonicalSpans = convertCanonicalSpans(projectId, req)
+	result := convertTraces(c, project, projectId, req)
+	endpoints, tasks, exceptions := result.Endpoints, result.Tasks, result.Exceptions
+	aiTraces, aiConversations := result.AiTraces, result.AiConversations
+	canonicalSpans := result.Spans
+	if !perm.Data {
+		canonicalSpans = nil
 	}
 	var droppedHealthchecks map[string]bool
 	endpoints, droppedHealthchecks = services.FilterHealthchecks(project, endpoints, exceptions)
@@ -177,18 +178,14 @@ func (o otelController) ExportTraces(c *gin.Context) {
 		aiConversations = slices.DeleteFunc(aiConversations, func(row aiTraceConversation) bool { return !storedConversations[row.StorageKey] })
 	}
 
-	if len(endpoints) > 0 {
-		if err := traceStore.endpoints(c, endpoints); err != nil {
-			abortIngestStorage(c, "endpoints", err)
-			return
-		}
+	if err := traceStore.endpoints(c, endpoints); err != nil {
+		abortIngestStorage(c, "endpoints", err)
+		return
 	}
 
-	if len(tasks) > 0 {
-		if err := traceStore.tasks(c, tasks); err != nil {
-			abortIngestStorage(c, "tasks", err)
-			return
-		}
+	if err := traceStore.tasks(c, tasks); err != nil {
+		abortIngestStorage(c, "tasks", err)
+		return
 	}
 
 	if err := traceStore.exceptions(c, exceptions); err != nil {
@@ -255,7 +252,7 @@ func (o otelController) ExportTraces(c *gin.Context) {
 		hooks.BroadcastReport(ev)
 	}
 
-	writeTraceResponse(c, countInvalidSpanIDs(req), int64(len(notStored)))
+	writeTraceResponse(c, result.InvalidSpanIDs, int64(len(notStored)))
 }
 
 func (o otelController) ExportMetrics(c *gin.Context) {

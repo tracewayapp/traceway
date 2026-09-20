@@ -8,11 +8,11 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	collogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
-
-	"github.com/tracewayapp/traceway/backend/app/models"
 )
 
 func convertLogs(existingProject *models.Project, ctx context.Context, projectId uuid.UUID, req *collogspb.ExportLogsServiceRequest) []models.LogRecord {
@@ -66,19 +66,18 @@ func toLogRecord(
 		severityText = severityTextFromNumber(severityNumber)
 	}
 
-	// JSON-OTLP trace_id/span_id arrive as 24/12 base64 bytes — round-trip through the UUID helpers.
 	var traceIDHex, spanIDHex string
-	if u := otelTraceIDToUUID(lr.TraceId); u != uuid.Nil {
-		traceIDHex = hex.EncodeToString(u[:])
+	if validOtelID(lr.TraceId, 16) {
+		traceIDHex = hex.EncodeToString(lr.TraceId)
 	}
-	if u := otelSpanIDToUUID(lr.SpanId); u != uuid.Nil {
-		spanIDHex = spanUUIDToHex(u)
+	if validOtelID(lr.SpanId, 8) {
+		spanIDHex = hex.EncodeToString(lr.SpanId)
 	}
 
 	return models.LogRecord{
 		Id:                 uuid.New(),
 		ProjectId:          projectId,
-		Timestamp:          nanoToTime(ts),
+		Timestamp:          shared.OtelNanosToTime(ts),
 		TraceId:            traceIDHex,
 		SpanId:             spanIDHex,
 		TraceFlags:         uint8(lr.Flags),

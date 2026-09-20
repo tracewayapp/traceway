@@ -3,6 +3,7 @@ package otelcontrollers
 import (
 	"bytes"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -53,5 +54,40 @@ func TestOTLPJSONSignalsStillRejectMalformedKnownFields(t *testing.T) {
 	}
 	if _, _, err := decodeProfilesPayload(jsonContext("/api/otel/v1development/profiles", `{"resourceProfiles":{"not":"an array"}}`)); err == nil {
 		t.Fatal("profiles accepted a malformed known field")
+	}
+}
+
+func TestLogJSONNormalizesOnlyContextIDs(t *testing.T) {
+	body := `{"resourceLogs":[{"resource":{"attributes":[{"key":"traceId","value":{"stringValue":"resource ID"}}]},"scopeLogs":[{"scope":{"attributes":[{"key":"spanId","value":{"stringValue":"scope ID"}}]},"logRecords":[{"traceId":"0123456789ABCDEF0123456789ABCDEF","spanId":"ABCDEF0123456789","attributes":[{"key":"traceId","value":{"stringValue":"attribute ID"}}],"body":{"kvlistValue":{"values":[{"key":"spanId","value":{"stringValue":"body ID"}}]}},"futureField":true}]}]}]}`
+	snakeCase := strings.NewReplacer(
+		`"resourceLogs":`, `"resource_logs":`, `"scopeLogs":`, `"scope_logs":`,
+		`"logRecords":`, `"log_records":`, `"traceId":`, `"trace_id":`, `"spanId":`, `"span_id":`,
+	).Replace(body)
+	for _, input := range []string{body, snakeCase} {
+		req, _, err := decodeLogsRequest(jsonContext("/api/otel/v1/logs", input))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resource := req.ResourceLogs[0]
+		scope := resource.ScopeLogs[0]
+		log := scope.LogRecords[0]
+		if len(log.TraceId) != 16 || len(log.SpanId) != 8 {
+			t.Fatalf("IDs were not decoded from hex: %v", log)
+		}
+		if getStringAttribute(resource.Resource.Attributes, "traceId") != "resource ID" ||
+			getStringAttribute(scope.Scope.Attributes, "spanId") != "scope ID" ||
+			getStringAttribute(log.Attributes, "traceId") != "attribute ID" ||
+			getStringAttribute(log.Body.GetKvlistValue().Values, "spanId") != "body ID" {
+			t.Fatalf("normalization changed user attributes or body: %v", req)
+		}
+	}
+}
+
+func TestLogJSONRejectsMalformedHexIDs(t *testing.T) {
+	for _, id := range []string{`"abc"`, `"gggggggggggggggg"`, `42`} {
+		body := `{"resourceLogs":[{"scopeLogs":[{"logRecords":[{"spanId":` + id + `}]}]}]}`
+		if _, _, err := decodeLogsRequest(jsonContext("/api/otel/v1/logs", body)); err == nil {
+			t.Fatalf("accepted malformed span ID %s", id)
+		}
 	}
 }

@@ -231,7 +231,7 @@ type OtelValueCodec struct {
 }
 
 // Order must match OtelScalarColumns.
-func (row *OtelSpanRow) ScalarValues(codec OtelValueCodec) ([]any, error) {
+func (row *OtelSpanRow) ScalarValues(codec OtelValueCodec) []any {
 	span, source, group := row.Span, row.Source, row.Group
 	return []any{
 		codec.UUID(span.ProjectId), span.TraceId, span.SpanId, span.ParentSpanId, span.Name, span.SpanKind, span.StatusCode, source.GetStatus().GetMessage(),
@@ -239,7 +239,7 @@ func (row *OtelSpanRow) ScalarValues(codec OtelValueCodec) ([]any, error) {
 		int64(span.Duration), codec.Time(row.PartitionTime), source.TraceState, codec.Uint32(source.Flags),
 		codec.Uint32(source.DroppedAttributesCount), codec.Uint32(source.DroppedEventsCount), codec.Uint32(source.DroppedLinksCount),
 		group.ResourceSchemaUrl, group.ScopeSchemaUrl,
-	}, nil
+	}
 }
 
 // NestedValues holds the variable-size parts of a span the way every backend stores them: the attributes as a string

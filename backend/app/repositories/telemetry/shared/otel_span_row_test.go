@@ -117,10 +117,7 @@ func TestOtelSpanRowValuesMatchColumns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	scalars, err := row.ScalarValues(testOtelCodec)
-	if err != nil {
-		t.Fatal(err)
-	}
+	scalars := row.ScalarValues(testOtelCodec)
 	text, err := row.TextValues()
 	if err != nil {
 		t.Fatal(err)
@@ -157,9 +154,7 @@ func BenchmarkOtelSpanRowScalars(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			if _, err := row.ScalarValues(testOtelCodec); err != nil {
-				b.Fatal(err)
-			}
+			row.ScalarValues(testOtelCodec)
 		}
 	}
 	b.ReportMetric(float64(b.Elapsed().Microseconds())/float64(b.N*len(spans)), "us/span")
@@ -175,9 +170,7 @@ func BenchmarkOtelSpanRowTextStorage(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			if _, err := row.ScalarValues(testOtelCodec); err != nil {
-				b.Fatal(err)
-			}
+			row.ScalarValues(testOtelCodec)
 			if _, err := row.TextValues(); err != nil {
 				b.Fatal(err)
 			}

@@ -22,20 +22,20 @@ func TestCanonicalSpansBatchIndependent(t *testing.T) {
 	trace := uuid.New()
 	root := &tracepb.Span{TraceId: trace[:], SpanId: []byte{1, 1, 1, 1, 1, 1, 1, 1}, Kind: tracepb.Span_SPAN_KIND_CONSUMER, Name: "worker"}
 	child := &tracepb.Span{TraceId: trace[:], SpanId: []byte{2, 2, 2, 2, 2, 2, 2, 2}, ParentSpanId: root.SpanId, Kind: tracepb.Span_SPAN_KIND_INTERNAL, Attributes: []*commonpb.KeyValue{strKV("http.request.method", "GET")}}
-	all := convertCanonicalSpans(testProjectId, spanRequest(root, child))
-	split := append(convertCanonicalSpans(testProjectId, spanRequest(root)), convertCanonicalSpans(testProjectId, spanRequest(child))...)
+	all := convertTraces(context.Background(), nil, testProjectId, spanRequest(root, child)).Spans
+	split := append(convertTraces(context.Background(), nil, testProjectId, spanRequest(root)).Spans, convertTraces(context.Background(), nil, testProjectId, spanRequest(child)).Spans...)
 	if !reflect.DeepEqual(all, split) {
 		t.Fatal("batching changed canonical graph")
 	}
 	for _, req := range []*coltracepb.ExportTraceServiceRequest{spanRequest(root, child), spanRequest(child)} {
-		endpoints, _, _, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+		endpoints := convertTraces(context.Background(), nil, testProjectId, req).Endpoints
 		if len(endpoints) != 0 {
 			t.Fatal("internal child classification depends on parent arrival")
 		}
 	}
 	req := spanRequest(root)
 	req.ResourceSpans = append(req.ResourceSpans, spanRequest(child).ResourceSpans...)
-	if !reflect.DeepEqual(all, convertCanonicalSpans(testProjectId, req)) {
+	if !reflect.DeepEqual(all, convertTraces(context.Background(), nil, testProjectId, req).Spans) {
 		t.Fatal("resource split changed graph")
 	}
 }
@@ -43,9 +43,13 @@ func TestCanonicalSpansBatchIndependent(t *testing.T) {
 // The entity id is the one derived value: it must differ across projects and traces and stay put across retries. The
 // span keeps the ids it arrived with, and the browser's trace id never replaces them.
 func TestCanonicalIdentityIncludesTraceAndProject(t *testing.T) {
-	trace, otherTrace, browser := uuid.New(), uuid.New(), uuid.New()
+	trace := uuid.MustParse("01234567-89ab-cdef-0123-456789abcdef")
+	otherTrace, browser := uuid.New(), uuid.New()
 	span := &tracepb.Span{TraceId: trace[:], SpanId: []byte{1, 2, 3, 4, 5, 6, 7, 8}}
 	a := otelOccurrenceID(testProjectId, span)
+	if a.String() != "211293e1-1332-5ff7-8097-c9b3a439f2fc" {
+		t.Fatalf("historical occurrence ID changed: %s", a)
+	}
 	if a == otelOccurrenceID(uuid.New(), span) || a != otelOccurrenceID(testProjectId, span) {
 		t.Fatal("entity id must depend on the project and be stable")
 	}
@@ -55,17 +59,18 @@ func TestCanonicalIdentityIncludesTraceAndProject(t *testing.T) {
 	}
 	span.Kind = tracepb.Span_SPAN_KIND_SERVER
 	span.Attributes = []*commonpb.KeyValue{strKV("http.request.method", "GET"), strKV("traceway.distributed_trace_id", browser.String())}
-	stored := convertCanonicalSpans(testProjectId, spanRequest(span))[0]
+	converted := convertTraces(context.Background(), nil, testProjectId, spanRequest(span))
+	stored := converted.Spans[0]
 	if stored.TraceId != hex.EncodeToString(otherTrace[:]) || stored.SpanId != "0102030405060708" || stored.ParentSpanId != "" {
 		t.Fatalf("a span keeps the ids it arrived with: %+v", stored.Span)
 	}
-	endpoints, _, _, _, _ := convertTraces(context.Background(), nil, testProjectId, spanRequest(span))
+	endpoints := converted.Endpoints
 	if len(endpoints) != 1 || endpoints[0].TraceId != stored.TraceId || endpoints[0].SpanId != stored.SpanId || endpoints[0].LinkedTraceId != hex.EncodeToString(browser[:]) || !endpoints[0].IsRoot {
 		t.Fatalf("the endpoint carries its span's ids and links to the browser's trace: %+v", endpoints)
 	}
 	for _, ignored := range []string{"not-a-uuid", otherTrace.String(), ""} {
 		span.Attributes = []*commonpb.KeyValue{strKV("http.request.method", "GET"), strKV("traceway.distributed_trace_id", ignored)}
-		if endpoints, _, _, _, _ := convertTraces(context.Background(), nil, testProjectId, spanRequest(span)); endpoints[0].LinkedTraceId != "" {
+		if endpoints := convertTraces(context.Background(), nil, testProjectId, spanRequest(span)).Endpoints; endpoints[0].LinkedTraceId != "" {
 			t.Fatalf("%q is no link: %+v", ignored, endpoints[0])
 		}
 	}
@@ -76,13 +81,19 @@ func TestCanonicalKeepsUnclassifiedRootsAndRejectsInvalidIDs(t *testing.T) {
 	root := &tracepb.Span{TraceId: trace[:], SpanId: []byte{1, 2, 3, 4, 5, 6, 7, 8}, Kind: tracepb.Span_SPAN_KIND_CLIENT}
 	invalid := &tracepb.Span{TraceId: []byte{1}, SpanId: root.SpanId}
 	zero := &tracepb.Span{TraceId: make([]byte, 16), SpanId: root.SpanId}
-	found := convertCanonicalSpans(testProjectId, spanRequest(root, invalid, zero))
+	badParent := &tracepb.Span{TraceId: trace[:], SpanId: root.SpanId, ParentSpanId: []byte{1}}
+	converted := convertTraces(context.Background(), nil, testProjectId, spanRequest(root, invalid, zero, badParent, nil))
+	found := converted.Spans
 	if len(found) != 1 || found[0].ParentSpanId != "" {
 		t.Fatalf("unexpected roots: %+v", found)
 	}
+	if converted.InvalidSpanIDs != 4 {
+		t.Fatalf("invalid span count = %d, want 4", converted.InvalidSpanIDs)
+	}
 	// Frontend projects suppress product entities, but their source graph is retained.
-	ep, tasks, _, ai, _ := convertTraces(context.Background(), &models.Project{Framework: "react"}, testProjectId, spanRequest(root))
-	if len(ep)+len(tasks)+len(ai) != 0 {
+	converted = convertTraces(context.Background(), &models.Project{Framework: "react"}, testProjectId, spanRequest(root))
+	ep, tasks, ai := converted.Endpoints, converted.Tasks, converted.AiTraces
+	if len(ep)+len(tasks)+len(ai) != 0 || len(converted.Spans) != 1 {
 		t.Fatal("unexpected projection")
 	}
 }
@@ -92,7 +103,7 @@ func TestCanonicalHealthcheckFilterKeepsPromotedDescendants(t *testing.T) {
 	root := &tracepb.Span{TraceId: trace[:], SpanId: []byte{1, 1, 1, 1, 1, 1, 1, 1}}
 	child := &tracepb.Span{TraceId: trace[:], SpanId: []byte{2, 2, 2, 2, 2, 2, 2, 2}, ParentSpanId: root.SpanId}
 	promoted := &tracepb.Span{TraceId: trace[:], SpanId: []byte{3, 3, 3, 3, 3, 3, 3, 3}, ParentSpanId: root.SpanId}
-	spans := convertCanonicalSpans(testProjectId, spanRequest(child, root, promoted))
+	spans := convertTraces(context.Background(), nil, testProjectId, spanRequest(child, root, promoted)).Spans
 	traceId := hex.EncodeToString(trace[:])
 	kept := services.DropSpanSubtrees(spans, func(span models.OtelSpan) (string, string, string) {
 		return span.TraceId, span.SpanId, span.ParentSpanId

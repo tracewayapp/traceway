@@ -20,6 +20,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/protobuf/proto"
 )
@@ -34,6 +35,7 @@ func TestExportTracesPersistsLateParentGraphByDefault(t *testing.T) {
 	now := uint64(time.Now().UnixNano())
 	parent := &tracepb.Span{TraceId: trace[:], SpanId: []byte{1, 1, 1, 1, 1, 1, 1, 1}, Name: "worker", Kind: tracepb.Span_SPAN_KIND_CONSUMER, StartTimeUnixNano: now, EndTimeUnixNano: now + 1000}
 	child := &tracepb.Span{TraceId: trace[:], SpanId: []byte{2, 2, 2, 2, 2, 2, 2, 2}, ParentSpanId: parent.SpanId, Name: "query", Kind: tracepb.Span_SPAN_KIND_INTERNAL, StartTimeUnixNano: now, EndTimeUnixNano: now + 500}
+	child.Attributes = []*commonpb.KeyValue{strKV("db.system", "postgresql")}
 	invalid := &tracepb.Span{TraceId: []byte{1}, SpanId: child.SpanId}
 	for i, request := range []*coltracepb.ExportTraceServiceRequest{spanRequest(child, invalid), spanRequest(parent)} {
 		payload, err := proto.Marshal(request)
@@ -71,6 +73,9 @@ func TestExportTracesPersistsLateParentGraphByDefault(t *testing.T) {
 	}
 	if spans := graph.Spans; len(spans) != 1 || spans[0].Name != "query" {
 		t.Fatalf("lost separately exported child: %+v", spans)
+	}
+	if graph.Spans[0].Attributes["db.system"] != "postgresql" {
+		t.Fatalf("lost source span attributes: %v", graph.Spans[0].Attributes)
 	}
 	var stored int
 	if err := db.TelemetryDB.QueryRow("SELECT COUNT(*) FROM spans_v2").Scan(&stored); err != nil || stored != 2 {

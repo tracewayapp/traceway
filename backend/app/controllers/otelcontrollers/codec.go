@@ -87,7 +87,7 @@ func decodeTraceRequest(c *gin.Context) (*coltracepb.ExportTraceServiceRequest, 
 			return nil, 0, fmt.Errorf("failed to unmarshal protobuf: %w", err)
 		}
 	} else {
-		normalized, err := normalizeTraceJSON(body, req.ProtoReflect().Descriptor())
+		normalized, err := normalizeOTLPJSON(body, req.ProtoReflect().Descriptor())
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to decode OTLP JSON: %w", err)
 		}
@@ -189,7 +189,11 @@ func decodeLogsRequest(c *gin.Context) (*collogspb.ExportLogsServiceRequest, int
 			return nil, 0, fmt.Errorf("failed to unmarshal protobuf: %w", err)
 		}
 	} else {
-		if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(body, req); err != nil {
+		normalized, err := normalizeOTLPJSON(body, req.ProtoReflect().Descriptor())
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to decode OTLP JSON: %w", err)
+		}
+		if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(normalized, req); err != nil {
 			return nil, 0, fmt.Errorf("failed to unmarshal JSON: %w", err)
 		}
 	}

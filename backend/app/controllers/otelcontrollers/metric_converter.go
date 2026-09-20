@@ -2,6 +2,7 @@ package otelcontrollers
 
 import (
 	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 
 	"github.com/google/uuid"
@@ -87,7 +88,7 @@ func convertMetricPoints(projectId uuid.UUID, req *colmetricspb.ExportMetricsSer
 					}
 				case *metricspb.Metric_Histogram:
 					for _, dp := range data.Histogram.GetDataPoints() {
-						ts := nanoToTime(dp.TimeUnixNano)
+						ts := shared.OtelNanosToTime(dp.TimeUnixNano)
 						tags := buildTags(sn, resTags, dp.Attributes)
 						if dp.Count > 0 && dp.Sum != nil {
 							points = append(points, models.MetricPoint{
@@ -150,7 +151,7 @@ func appendNumberDataPoints(points []models.MetricPoint, projectId uuid.UUID, na
 			Name:       name,
 			Value:      value,
 			Tags:       tags,
-			RecordedAt: nanoToTime(dp.TimeUnixNano),
+			RecordedAt: shared.OtelNanosToTime(dp.TimeUnixNano),
 		})
 	}
 	return points

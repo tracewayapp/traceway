@@ -1,64 +1,21 @@
 package otelcontrollers
 
 import (
-	"encoding/base64"
-	"encoding/hex"
 	"strconv"
-	"time"
 
-	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 )
 
-// otelTraceIDToUUID converts a 16-byte OTEL trace ID to a UUID.
-// OTLP JSON uses hex encoding for trace_id, but protojson base64-decodes it,
-// producing 24 bytes instead of 16. We roundtrip through base64 to recover the hex string.
-func otelTraceIDToUUID(traceID []byte) uuid.UUID {
-	if len(traceID) == 16 {
-		var u uuid.UUID
-		copy(u[:], traceID)
-		return u
+func validOtelID(id []byte, size int) bool {
+	if len(id) != size {
+		return false
 	}
-	if len(traceID) == 24 {
-		hexStr := base64.StdEncoding.EncodeToString(traceID)
-		if decoded, err := hex.DecodeString(hexStr); err == nil && len(decoded) == 16 {
-			var u uuid.UUID
-			copy(u[:], decoded)
-			return u
+	for _, b := range id {
+		if b != 0 {
+			return true
 		}
 	}
-	return uuid.Nil
-}
-
-// otelSpanIDToUUID converts an 8-byte OTEL span ID to a UUID by zero-padding the first 8 bytes.
-// Same base64/hex roundtrip as otelTraceIDToUUID for 12-byte inputs.
-func otelSpanIDToUUID(spanID []byte) uuid.UUID {
-	if len(spanID) == 8 {
-		var u uuid.UUID
-		copy(u[8:], spanID)
-		return u
-	}
-	if len(spanID) == 12 {
-		hexStr := base64.StdEncoding.EncodeToString(spanID)
-		if decoded, err := hex.DecodeString(hexStr); err == nil && len(decoded) == 8 {
-			var u uuid.UUID
-			copy(u[8:], decoded)
-			return u
-		}
-	}
-	return uuid.Nil
-}
-
-func nanoToTime(nanos uint64) time.Time {
-	return shared.OtelNanosToTime(nanos)
-}
-
-// spanUUIDToHex returns the hex representation of the last 8 bytes of a span-derived UUID
-// (those last 8 bytes carry the original OTel span ID). Mirrors otelSpanIDToUUID going the
-// other direction, producing the same format we store in log_records.span_id.
-func spanUUIDToHex(u uuid.UUID) string {
-	return hex.EncodeToString(u[8:])
+	return false
 }
 
 func extractAttributes(attrs []*commonpb.KeyValue) map[string]string {

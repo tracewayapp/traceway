@@ -58,10 +58,7 @@ func clickhouseOtelValues(span models.OtelSpan, groups shared.OtelSpanGroups) (c
 	if err != nil {
 		return clickhouseOtelRow{}, err
 	}
-	values, err := row.ScalarValues(clickhouseOtelCodec)
-	if err != nil {
-		return clickhouseOtelRow{}, err
-	}
+	values := row.ScalarValues(clickhouseOtelCodec)
 	nested, err := otelNestedValues(row)
 	if err != nil {
 		return clickhouseOtelRow{}, err

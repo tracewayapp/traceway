@@ -44,8 +44,11 @@ func TestOTLPFullSpanRoundTrip(t *testing.T) {
 	}
 	resource := &tracepb.ResourceSpans{SchemaUrl: "https://resource/schema", Resource: &resourcepb.Resource{Attributes: attrs, DroppedAttributesCount: 8},
 		ScopeSpans: []*tracepb.ScopeSpans{{SchemaUrl: "https://scope/schema", Scope: &commonpb.InstrumentationScope{Name: "scope", Version: "1.2.3", Attributes: attrs, DroppedAttributesCount: 9}, Spans: []*tracepb.Span{source}}}}
+	source.ProtoReflect().SetUnknown([]byte{0xa0, 0x06, 0x01})
+	resource.ProtoReflect().SetUnknown([]byte{0xa0, 0x06, 0x02})
+	resource.ScopeSpans[0].ProtoReflect().SetUnknown([]byte{0xa0, 0x06, 0x03})
 	req := &coltracepb.ExportTraceServiceRequest{ResourceSpans: []*tracepb.ResourceSpans{resource}}
-	spans := convertCanonicalSpans(testProjectId, req)
+	spans := convertTraces(context.Background(), nil, testProjectId, req).Spans
 	// Retries retain each span's full inline context.
 	for range 2 {
 		if _, err := telemetry.OtelSpanRepository.InsertAsync(context.Background(), append(spans, spans...)); err != nil {

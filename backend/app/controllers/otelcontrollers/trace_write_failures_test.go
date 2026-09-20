@@ -18,6 +18,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/config"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/dbtest"
+	"github.com/tracewayapp/traceway/backend/app/hooks"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
@@ -179,5 +180,44 @@ func TestExportTracesReportsRowsStorageRejected(t *testing.T) {
 
 	if !strings.Contains(partial.GetErrorMessage(), "1 spans need valid non-zero trace and span IDs") || !strings.Contains(partial.GetErrorMessage(), "2 spans could not be stored") {
 		t.Fatalf("the exporter must learn why spans were rejected: %q", partial.GetErrorMessage())
+	}
+}
+
+func TestExportTracesCountsInvalidIDsWhenQuotaSuppressesWrites(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		permission hooks.IngestPermission
+		counts     []int
+	}{
+		{"exceptions only", hooks.IngestPermission{Exceptions: true}, []int{0, 0, 0, 1, 0}},
+		{"data only", hooks.IngestPermission{Data: true}, []int{4, 1, 1, 0, 1}},
+		{"neither", hooks.IngestPermission{}, []int{0, 0, 0, 0, 0}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			setupTraceWrites(t)
+			hooks.RegisterIngestPermissionHook(func(int) hooks.IngestPermission { return tt.permission })
+			t.Cleanup(func() { hooks.RegisterIngestPermissionHook(nil) })
+			request, _, _ := everyTableRequest()
+			request.ResourceSpans[0].ScopeSpans[0].Spans = append(request.ResourceSpans[0].ScopeSpans[0].Spans, &tracepb.Span{})
+			payload, err := proto.Marshal(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/api/otel/v1/traces", bytes.NewReader(payload))
+			c.Request.Header.Set("Content-Type", "application/x-protobuf")
+			c.Set(middleware.ProjectIdContextKey, testProjectId)
+			orgID := 1
+			c.Set(middleware.ProjectContextKey, &models.Project{Id: testProjectId, OrganizationId: &orgID})
+			OtelController.ExportTraces(c)
+			var response coltracepb.ExportTraceServiceResponse
+			if recorder.Code != http.StatusOK || proto.Unmarshal(recorder.Body.Bytes(), &response) != nil || response.GetPartialSuccess().GetRejectedSpans() != 1 {
+				t.Fatalf("status %d, response %v", recorder.Code, &response)
+			}
+			if got := traceTableCounts(t); fmt.Sprint(got) != fmt.Sprint(tt.counts) {
+				t.Fatalf("persisted rows %v, want %v", got, tt.counts)
+			}
+		})
 	}
 }

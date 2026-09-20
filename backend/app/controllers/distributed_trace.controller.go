@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -25,26 +26,33 @@ type distributedTraceRequest struct {
 }
 
 type DistributedTraceNode struct {
-	ProjectId   uuid.UUID              `json:"projectId"`
-	ProjectName string                 `json:"projectName"`
-	TraceType   string                 `json:"traceType"`
-	Endpoint    *models.Endpoint       `json:"endpoint,omitempty"`
-	Task        *models.Task           `json:"task,omitempty"`
-	AiTrace     *models.AiTrace        `json:"aiTrace,omitempty"`
-	Spans       []models.Span          `json:"spans"`
-	Exception   *EndpointExceptionInfo `json:"exception,omitempty"`
+	ProjectId       uuid.UUID               `json:"projectId"`
+	ProjectName     string                  `json:"projectName"`
+	TraceType       string                  `json:"traceType"`
+	TraceId         string                  `json:"traceId"`
+	SpanId          string                  `json:"spanId"`
+	Endpoint        *models.Endpoint        `json:"endpoint,omitempty"`
+	Task            *models.Task            `json:"task,omitempty"`
+	AiTrace         *models.AiTrace         `json:"aiTrace,omitempty"`
+	SpanGraphStatus *models.SpanGraphStatus `json:"spanGraphStatus,omitempty"`
+	Spans           []models.Span           `json:"spans"`
+	Exception       *EndpointExceptionInfo  `json:"exception,omitempty"`
+	// ParentEntitySpanId is the span of the nearest endpoint, task or AI trace above this one, found by walking the
+	// whole trace across projects. The hops in between need not belong to any of them, or to a project that has one.
+	ParentEntitySpanId string `json:"parentEntitySpanId,omitempty"`
+
+	recordedAt time.Time
 }
 
 type DistributedTraceResponse struct {
-	DistributedTraceId string                 `json:"distributedTraceId"`
-	Nodes              []DistributedTraceNode `json:"nodes"`
+	TraceId string                 `json:"traceId"`
+	Nodes   []DistributedTraceNode `json:"nodes"`
 }
 
 func (d distributedTraceController) GetDistributedTrace(c *gin.Context) {
-	distributedTraceIdStr := c.Param("distributedTraceId")
-	distributedTraceId, err := uuid.Parse(distributedTraceIdStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid distributedTraceId"})
+	traceId := shared.NormalizeTraceId(c.Param("traceId"))
+	if !validTraceHex(traceId) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid traceId"})
 		return
 	}
 
@@ -62,10 +70,7 @@ func (d distributedTraceController) GetDistributedTrace(c *gin.Context) {
 	}
 
 	if len(projects) == 0 {
-		c.JSON(http.StatusOK, DistributedTraceResponse{
-			DistributedTraceId: distributedTraceIdStr,
-			Nodes:              []DistributedTraceNode{},
-		})
+		c.JSON(http.StatusOK, DistributedTraceResponse{TraceId: traceId, Nodes: []DistributedTraceNode{}})
 		return
 	}
 
@@ -78,167 +83,254 @@ func (d distributedTraceController) GetDistributedTrace(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	endpoints, err := telemetry.EndpointRepository.FindByDistributedTraceId(ctx, distributedTraceId, projectIds, request.RecordedAt)
+	found, err := findTraceEntities(ctx, traceId, projectIds, request.RecordedAt)
 	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to query endpoints: %w", err))
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to query the distributed trace: %w", err))
 		return
 	}
 
-	tasks, err := telemetry.TaskRepository.FindByDistributedTraceId(ctx, distributedTraceId, projectIds, request.RecordedAt)
-	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to query tasks: %w", err))
-		return
+	nodes := make([]DistributedTraceNode, 0, len(found.endpoints)+len(found.tasks)+len(found.aiTraces))
+	for _, ep := range found.endpoints {
+		nodes = append(nodes, DistributedTraceNode{
+			ProjectId: ep.ProjectId, ProjectName: projectNameMap[ep.ProjectId], TraceType: "endpoint",
+			TraceId: ep.TraceId, SpanId: ep.SpanId, Endpoint: &ep, Spans: []models.Span{}, recordedAt: ep.RecordedAt,
+		})
+	}
+	for _, t := range found.tasks {
+		nodes = append(nodes, DistributedTraceNode{
+			ProjectId: t.ProjectId, ProjectName: projectNameMap[t.ProjectId], TraceType: "task",
+			TraceId: t.TraceId, SpanId: t.SpanId, Task: &t, Spans: []models.Span{}, recordedAt: t.RecordedAt,
+		})
+	}
+	for _, a := range found.aiTraces {
+		nodes = append(nodes, DistributedTraceNode{
+			ProjectId: a.ProjectId, ProjectName: projectNameMap[a.ProjectId], TraceType: "ai_trace",
+			TraceId: a.TraceId, SpanId: a.SpanId, AiTrace: &a, Spans: []models.Span{}, recordedAt: a.RecordedAt,
+		})
 	}
 
-	aiTraces, err := telemetry.AiTraceRepository.FindByDistributedTraceId(ctx, distributedTraceId, projectIds, request.RecordedAt)
-	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to query ai traces: %w", err))
-		return
-	}
+	parents := findTraceParents(ctx, nodes, found.exceptions, projectIds)
+	linkDistributedTraceNodes(nodes, parents)
 
-	exceptions, err := telemetry.ExceptionStackTraceRepository.FindByDistributedTraceId(ctx, distributedTraceId, projectIds, request.RecordedAt)
-	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to query exceptions: %w", err))
-		return
-	}
-
-	exceptionByTraceId := make(map[distributedTraceOwner]*EndpointExceptionInfo)
-	for _, exc := range exceptions {
-		if exc.TraceId != nil {
-			if _, exists := exceptionByTraceId[distributedTraceOwner{exc.ProjectId, *exc.TraceId}]; !exists {
-				exceptionByTraceId[distributedTraceOwner{exc.ProjectId, *exc.TraceId}] = &EndpointExceptionInfo{
-					ExceptionHash: exc.ExceptionHash,
-					StackTrace:    exc.StackTrace,
-					RecordedAt:    exc.RecordedAt.Format("2006-01-02T15:04:05Z07:00"),
-				}
+	for _, exc := range found.exceptions {
+		info := &EndpointExceptionInfo{
+			ExceptionHash: exc.ExceptionHash,
+			StackTrace:    exc.StackTrace,
+			RecordedAt:    exc.RecordedAt.Format("2006-01-02T15:04:05Z07:00"),
+		}
+		if owner := exceptionOwner(nodes, parents, exc); owner >= 0 {
+			if nodes[owner].Exception == nil {
+				nodes[owner].Exception = info
 			}
-		}
-	}
-
-	matchedIds := make(map[distributedTraceOwner]bool)
-	for _, ep := range endpoints {
-		matchedIds[distributedTraceOwner{ep.ProjectId, ep.Id}] = true
-	}
-	for _, t := range tasks {
-		matchedIds[distributedTraceOwner{t.ProjectId, t.Id}] = true
-	}
-	for _, a := range aiTraces {
-		matchedIds[distributedTraceOwner{a.ProjectId, a.Id}] = true
-	}
-
-	var nodes []DistributedTraceNode
-	var lookups []telemetry.SpanLookup
-
-	for _, ep := range endpoints {
-		node := DistributedTraceNode{
-			ProjectId:   ep.ProjectId,
-			ProjectName: projectNameMap[ep.ProjectId],
-			TraceType:   "endpoint",
-			Endpoint:    &ep,
-			Spans:       []models.Span{},
-			Exception:   exceptionByTraceId[distributedTraceOwner{ep.ProjectId, ep.Id}],
-		}
-		nodes = append(nodes, node)
-		lookups = append(lookups, telemetry.SpanLookup{ProjectId: ep.ProjectId, TraceId: ep.Id, RecordedAt: &ep.RecordedAt})
-	}
-
-	for _, t := range tasks {
-		node := DistributedTraceNode{
-			ProjectId:   t.ProjectId,
-			ProjectName: projectNameMap[t.ProjectId],
-			TraceType:   "task",
-			Task:        &t,
-			Spans:       []models.Span{},
-			Exception:   exceptionByTraceId[distributedTraceOwner{t.ProjectId, t.Id}],
-		}
-		nodes = append(nodes, node)
-		lookups = append(lookups, telemetry.SpanLookup{ProjectId: t.ProjectId, TraceId: t.Id, RecordedAt: &t.RecordedAt})
-	}
-
-	for _, a := range aiTraces {
-		node := DistributedTraceNode{
-			ProjectId:   a.ProjectId,
-			ProjectName: projectNameMap[a.ProjectId],
-			TraceType:   "ai_trace",
-			AiTrace:     &a,
-			Spans:       []models.Span{},
-			Exception:   exceptionByTraceId[distributedTraceOwner{a.ProjectId, a.Id}],
-		}
-		nodes = append(nodes, node)
-		lookups = append(lookups, telemetry.SpanLookup{ProjectId: a.ProjectId, TraceId: a.Id, RecordedAt: &a.RecordedAt})
-	}
-
-	for _, exc := range exceptions {
-		if exc.TraceId != nil && matchedIds[distributedTraceOwner{exc.ProjectId, *exc.TraceId}] {
 			continue
 		}
 		nodes = append(nodes, DistributedTraceNode{
-			ProjectId:   exc.ProjectId,
-			ProjectName: projectNameMap[exc.ProjectId],
-			TraceType:   "exception",
-			Spans:       []models.Span{},
-			Exception: &EndpointExceptionInfo{
-				ExceptionHash: exc.ExceptionHash,
-				StackTrace:    exc.StackTrace,
-				RecordedAt:    exc.RecordedAt.Format("2006-01-02T15:04:05Z07:00"),
-			},
+			ProjectId: exc.ProjectId, ProjectName: projectNameMap[exc.ProjectId], TraceType: "exception",
+			TraceId: exc.TraceId, SpanId: exc.SpanId, Spans: []models.Span{}, Exception: info, recordedAt: exc.RecordedAt,
 		})
-		lookup := telemetry.SpanLookup{ProjectId: exc.ProjectId, RecordedAt: &exc.RecordedAt}
-		if exc.TraceId != nil {
-			lookup.TraceId = *exc.TraceId
-		}
-		lookups = append(lookups, lookup)
 	}
 
-	if err := loadDistributedTraceSpans(ctx, nodes, lookups); err != nil {
+	if err := loadDistributedTraceSpans(ctx, nodes); err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to query distributed trace spans: %w", err))
 		return
 	}
 
-	if nodes == nil {
-		nodes = []DistributedTraceNode{}
-	}
-
-	c.JSON(http.StatusOK, DistributedTraceResponse{
-		DistributedTraceId: distributedTraceIdStr,
-		Nodes:              nodes,
-	})
+	c.JSON(http.StatusOK, DistributedTraceResponse{TraceId: traceId, Nodes: nodes})
 }
 
-type distributedTraceOwner struct {
-	projectId uuid.UUID
-	traceId   uuid.UUID
-}
-
-func loadDistributedTraceSpans(ctx context.Context, nodes []DistributedTraceNode, lookups []telemetry.SpanLookup) error {
-	nodeIndexes := make(map[distributedTraceOwner][]int)
-	queries := make([]telemetry.SpanLookup, 0, len(lookups))
-	for i, lookup := range lookups {
-		if lookup.TraceId == uuid.Nil {
+func loadDistributedTraceSpans(ctx context.Context, nodes []DistributedTraceNode) error {
+	nodeIndexes := make(map[shared.SpanOwner][]int)
+	lookups := make([]shared.SpanLookup, 0, len(nodes))
+	for i, node := range nodes {
+		if node.TraceId == "" || node.SpanId == "" {
 			continue
 		}
-		key := distributedTraceOwner{lookup.ProjectId, lookup.TraceId}
-		nodeIndexes[key] = append(nodeIndexes[key], i)
-		queries = append(queries, lookup)
+		nodes[i].SpanGraphStatus = &models.SpanGraphStatus{State: models.SpanGraphComplete}
+		lookup := shared.NewSpanLookup(node.ProjectId, node.TraceId, node.SpanId, node.recordedAt)
+		nodeIndexes[lookup.Owner()] = append(nodeIndexes[lookup.Owner()], i)
+		lookups = append(lookups, lookup)
 	}
-	spans, err := telemetry.SpanRepository.FindByTraces(ctx, queries)
+	graphs, err := telemetry.SpanRepository.FindGraphs(ctx, lookups)
 	if err != nil {
 		return err
 	}
-	for _, span := range spans {
-		for _, i := range nodeIndexes[distributedTraceOwner{span.ProjectId, span.TraceId}] {
-			// A bulk result can cover multiple occurrences of the same ID. Keep
-			// each node's window consistent with its individual detail endpoint.
-			if lookups[i].RecordedAt != nil {
-				from, to := shared.TraceWindowBounds(*lookups[i].RecordedAt)
-				if span.RecordedAt.Before(from) || span.RecordedAt.After(to) {
-					continue
-				}
-			}
-			nodes[i].Spans = append(nodes[i].Spans, span)
+	for owner, graph := range graphs {
+		for _, i := range nodeIndexes[owner] {
+			nodes[i].SpanGraphStatus = &graph.Status
+			nodes[i].Spans = graph.Spans
 		}
 	}
 	return nil
+}
+
+const (
+	// A trace links to at most a handful of others (the browser's, today). The cap bounds a malicious chain of links.
+	maxLinkedTraces    = 4
+	maxEntityLinkDepth = 10000
+)
+
+type traceEntities struct {
+	endpoints  []models.Endpoint
+	tasks      []models.Task
+	aiTraces   []models.AiTrace
+	exceptions []models.ExceptionStackTrace
+}
+
+// findTraceEntities gathers everything promoted from one trace, in every project listed. Rows answer to their own
+// trace id and to the trace they say they are linked with, so the browser's trace and the backend trace it started come
+// back together whichever of the two ids was asked for. A second round runs only when a row names an id not yet read.
+func findTraceEntities(ctx context.Context, traceId string, projectIds []uuid.UUID, recordedAt *time.Time) (*traceEntities, error) {
+	found := &traceEntities{}
+	fetched := map[string]bool{}
+	seen := map[string]bool{}
+	fresh := func(kind string, projectId, id uuid.UUID) bool {
+		key := kind + ":" + projectId.String() + ":" + id.String()
+		if seen[key] {
+			return false
+		}
+		seen[key] = true
+		return true
+	}
+	fetched[traceId] = true
+	pending := []string{traceId}
+	for len(pending) > 0 {
+		var next []string
+		note := func(ids ...string) {
+			for _, id := range ids {
+				if id != "" && !fetched[id] && len(fetched) < maxLinkedTraces {
+					fetched[id] = true
+					next = append(next, id)
+				}
+			}
+		}
+		endpoints, err := telemetry.EndpointRepository.FindByTraceIds(ctx, pending, projectIds, recordedAt)
+		if err != nil {
+			return nil, fmt.Errorf("endpoints: %w", err)
+		}
+		tasks, err := telemetry.TaskRepository.FindByTraceIds(ctx, pending, projectIds, recordedAt)
+		if err != nil {
+			return nil, fmt.Errorf("tasks: %w", err)
+		}
+		aiTraces, err := telemetry.AiTraceRepository.FindByTraceIds(ctx, pending, projectIds, recordedAt)
+		if err != nil {
+			return nil, fmt.Errorf("ai traces: %w", err)
+		}
+		exceptions, err := telemetry.ExceptionStackTraceRepository.FindByTraceIds(ctx, pending, projectIds, recordedAt)
+		if err != nil {
+			return nil, fmt.Errorf("exceptions: %w", err)
+		}
+		for _, endpoint := range endpoints {
+			if fresh("endpoint", endpoint.ProjectId, endpoint.Id) {
+				found.endpoints = append(found.endpoints, endpoint)
+				note(endpoint.TraceId, endpoint.LinkedTraceId)
+			}
+		}
+		for _, task := range tasks {
+			if fresh("task", task.ProjectId, task.Id) {
+				found.tasks = append(found.tasks, task)
+				note(task.TraceId, task.LinkedTraceId)
+			}
+		}
+		for _, aiTrace := range aiTraces {
+			if fresh("ai_trace", aiTrace.ProjectId, aiTrace.Id) {
+				found.aiTraces = append(found.aiTraces, aiTrace)
+				note(aiTrace.TraceId, aiTrace.LinkedTraceId)
+			}
+		}
+		for _, exception := range exceptions {
+			if fresh("exception", exception.ProjectId, exception.Id) {
+				found.exceptions = append(found.exceptions, exception)
+				note(exception.TraceId, exception.LinkedTraceId)
+			}
+		}
+		pending = next
+	}
+	return found, nil
+}
+
+// findTraceParents maps span to parent span for every trace on the card, keyed by trace id. It reads no attributes. The
+// subtrees loaded per node are not enough to nest the nodes: a hop that was never promoted, such as a gRPC server
+// reporting to its own project, belongs to no subtree, and the nodes on either side of it would show side by side.
+func findTraceParents(ctx context.Context, nodes []DistributedTraceNode, exceptions []models.ExceptionStackTrace, projectIds []uuid.UUID) map[string]map[string]string {
+	earliest := map[string]time.Time{}
+	note := func(traceId string, at time.Time) {
+		if traceId == "" {
+			return
+		}
+		if known, ok := earliest[traceId]; !ok || at.Before(known) {
+			earliest[traceId] = at
+		}
+	}
+	for _, node := range nodes {
+		note(node.TraceId, node.recordedAt)
+	}
+	for _, exception := range exceptions {
+		note(exception.TraceId, exception.RecordedAt)
+	}
+	parents := map[string]map[string]string{}
+	for traceId, at := range earliest {
+		if len(parents) == maxLinkedTraces {
+			break
+		}
+		traceParents, err := telemetry.SpanRepository.FindTraceParents(ctx, projectIds, traceId, at)
+		if err != nil {
+			traceway.CaptureException(traceway.NewStackTraceErrorf("failed to read the span parents of trace %s: %w", traceId, err))
+			continue
+		}
+		parents[traceId] = traceParents
+	}
+	return parents
+}
+
+// nearestEntity walks up from a span until it meets the span of a node. It prefers a node of the same project, because
+// one payload exported to two projects promotes the same span twice.
+func nearestEntity(nodes []DistributedTraceNode, parents map[string]map[string]string, projectId uuid.UUID, traceId, spanId string, includeSelf bool) int {
+	bySpan := map[string][]int{}
+	for i, node := range nodes {
+		if node.TraceId == traceId && node.SpanId != "" && node.TraceType != "exception" {
+			bySpan[node.SpanId] = append(bySpan[node.SpanId], i)
+		}
+	}
+	pick := func(candidates []int) int {
+		for _, i := range candidates {
+			if nodes[i].ProjectId == projectId {
+				return i
+			}
+		}
+		return candidates[0]
+	}
+	parentOf := parents[traceId]
+	current := spanId
+	if !includeSelf {
+		current = parentOf[spanId]
+	}
+	visited := map[string]bool{}
+	for depth := 0; current != "" && !visited[current] && depth < maxEntityLinkDepth; depth++ {
+		if candidates := bySpan[current]; len(candidates) > 0 {
+			return pick(candidates)
+		}
+		visited[current] = true
+		current = parentOf[current]
+	}
+	return -1
+}
+
+func exceptionOwner(nodes []DistributedTraceNode, parents map[string]map[string]string, exc models.ExceptionStackTrace) int {
+	if exc.TraceId == "" || exc.SpanId == "" {
+		return -1
+	}
+	return nearestEntity(nodes, parents, exc.ProjectId, exc.TraceId, exc.SpanId, true)
+}
+
+func linkDistributedTraceNodes(nodes []DistributedTraceNode, parents map[string]map[string]string) {
+	for i, node := range nodes {
+		if node.SpanId == "" {
+			continue
+		}
+		if parent := nearestEntity(nodes, parents, node.ProjectId, node.TraceId, node.SpanId, false); parent >= 0 {
+			nodes[i].ParentEntitySpanId = nodes[parent].SpanId
+		}
+	}
 }
 
 var DistributedTraceController = distributedTraceController{}

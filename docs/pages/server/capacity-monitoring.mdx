@@ -15,7 +15,7 @@ MONITORING_TRACEWAY_URL="<project_token>@https://your-traceway-host/api/report"
 
 That single variable turns everything on:
 
-- Every HTTP request to the backend is captured as a transaction (so endpoint latency/error-rate alert rules work on `POST /api/report` out of the box).
+- Every HTTP request to the backend is captured as a transaction (so endpoint latency/error-rate alert rules work on `POST /api/otel/v1/traces` out of the box).
 - Runtime metrics are reported every 30s: `cpu.used_pcnt`, `mem.used`, `mem.total`, `go.go_routines`, `go.heap_objects`, `go.num_gc`, `go.gc_pause`.
 - The backend reporters described below start emitting `traceway.*` metrics.
 
@@ -25,7 +25,7 @@ Note: `mem.used` is Go **heap** memory only. The real OOM-relevant number is `tr
 
 ### Ingestion (every batch)
 
-Emitted once per `/api/report` and OTLP request, tagged with `signal` and `table`:
+Emitted once per ingest request, tagged with `signal` and `table`:
 
 | Metric | Meaning |
 |--------|---------|
@@ -121,7 +121,7 @@ Create rules in the monitoring project under **Notifications** using the **Metri
 
 Two more rule types complete the picture:
 
-- **Endpoint P95 threshold** on `POST /api/report`: client-visible ingest latency (the backend's own HTTP requests are transactions in the monitoring project).
+- **Endpoint P95 threshold** on `POST /api/otel/v1/traces`: client-visible ingest latency (the backend's own HTTP requests are transactions in the monitoring project).
 - **No data** with data type `metrics`, which fires when the backend stops self-reporting entirely (crash, network partition).
 
 ## Recommended starting alerts
@@ -144,11 +144,11 @@ Two more rule types complete the picture:
 | `traceway.proc.rss_mb` | avg | gt | 80% of host RAM | 10 | warning | Memory pressure / OOM risk (e.g. 800 on a 1 GB box) |
 | `traceway.sourcemap.bytes` | avg | gt | ~half of `SOURCEMAP_CACHE_MAX_BYTES_MB`×1MB | 30 | info | Source map cache growing, revisit sizing |
 
-Plus the two non-metric rules: **Endpoint P95 threshold** on `POST /api/report` (e.g. 1000 ms over 10 minutes) and **No data** on `metrics` with 10 minutes of silence.
+Plus the two non-metric rules: **Endpoint P95 threshold** on `POST /api/otel/v1/traces` (e.g. 1000 ms over 10 minutes) and **No data** on `metrics` with 10 minutes of silence.
 
 ## Scale ClickHouse, scale the backend, or add Kafka?
 
-Ingestion in Traceway is synchronous: each `/api/report` request converts the payload and writes it to ClickHouse before responding. That makes the diagnosis straightforward: the metrics tell you which side of that pipeline is saturated, and whether the problem is sustained or bursty.
+Ingestion in Traceway is synchronous: each ingest request converts the payload and writes it to ClickHouse before responding. That makes the diagnosis straightforward: the metrics tell you which side of that pipeline is saturated, and whether the problem is sustained or bursty.
 
 ### Scale ClickHouse when the pressure is sustained and CH-side
 
@@ -171,12 +171,12 @@ Fix: a bigger box, or multiple backend instances behind a load balancer (the bac
 
 ### Add Kafka when the load is bursty and ClickHouse averages look healthy
 
-Because inserts happen inside the request, every ClickHouse hiccup or burst becomes client-visible `/api/report` latency. The tell-tale combination:
+Because inserts happen inside the request, every ClickHouse hiccup or burst becomes client-visible ingest latency. The tell-tale combination:
 
 - `traceway.ingest.batch.insert_ms` p95 spiking while ClickHouse CPU, disk, and merges look calm on average
 - `traceway.ch.pool.open` pinned at 15 (pool saturated) during peaks
 - `traceway.recordings.dropped.delta` > 0; the one buffered path is already overflowing during bursts
-- P95 on `POST /api/report` rising even though total `traceway.ch.inserted_rows.delta` is well within what ClickHouse handles at steady state
+- P95 on `POST /api/otel/v1/traces` rising even though total `traceway.ch.inserted_rows.delta` is well within what ClickHouse handles at steady state
 
 That pattern means ClickHouse can absorb your *average* write rate but not your *peaks*, and the synchronous path turns peaks into client errors and data loss. A queue (Kafka) between the HTTP handlers and ClickHouse decouples client latency from insert latency, absorbs spikes, and enables larger, better-shaped batches.
 

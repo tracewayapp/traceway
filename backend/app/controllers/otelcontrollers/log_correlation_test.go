@@ -44,39 +44,38 @@ func TestPromotedEntityLogCorrelation(t *testing.T) {
 					}
 					req := &coltracepb.ExportTraceServiceRequest{ResourceSpans: []*tracepb.ResourceSpans{{
 						ScopeSpans: []*tracepb.ScopeSpans{{Spans: []*tracepb.Span{{
-							TraceId: encoding.id, SpanId: spanBytes, ParentSpanId: []byte{1, 2, 3, 4, 5, 6, 7, 8},
+							TraceId: traceBytes, SpanId: spanBytes, ParentSpanId: []byte{1, 2, 3, 4, 5, 6, 7, 8},
 							Name: "worker", Kind: entity.kind, Attributes: attrs,
 							StartTimeUnixNano: 1_700_000_000_000_000_000, EndTimeUnixNano: 1_700_000_000_001_000_000,
 						}}}},
 					}}}
-					endpoints, tasks, _, _, aiTraces, _ := convertTraces(context.Background(), nil, testProjectId, req)
+					endpoints, tasks, _, aiTraces, _ := convertTraces(context.Background(), nil, testProjectId, req)
 					if len(endpoints)+len(tasks)+len(aiTraces) != 1 {
 						t.Fatal("expected one promoted entity")
 					}
 					var id uuid.UUID
-					var distributedID *uuid.UUID
-					var attributes map[string]string
+					var traceId, linkedTraceId string
 					switch entity.name {
 					case "task":
-						id, distributedID, attributes = tasks[0].Id, tasks[0].DistributedTraceId, tasks[0].Attributes
+						id, traceId, linkedTraceId = tasks[0].Id, tasks[0].TraceId, tasks[0].LinkedTraceId
 					case "endpoint":
-						id, distributedID, attributes = endpoints[0].Id, endpoints[0].DistributedTraceId, endpoints[0].Attributes
+						id, traceId, linkedTraceId = endpoints[0].Id, endpoints[0].TraceId, endpoints[0].LinkedTraceId
 					case "ai":
-						id, distributedID, attributes = aiTraces[0].Id, aiTraces[0].DistributedTraceId, aiTraces[0].Attributes
+						id, traceId, linkedTraceId = aiTraces[0].Id, aiTraces[0].TraceId, aiTraces[0].LinkedTraceId
 					}
 					log := toLogRecord(testProjectId, &logspb.LogRecord{TraceId: encoding.id, SpanId: spanBytes}, "worker", "", nil, "", "", "", nil)
-					if attributes["traceway.otel.trace_id"] != traceHex || attributes["traceway.otel.trace_id"] != log.TraceId {
-						t.Fatalf("entity trace ID %q does not correlate with log trace ID %q", attributes["traceway.otel.trace_id"], log.TraceId)
+					if traceId != traceHex || traceId != log.TraceId {
+						t.Fatalf("entity trace ID %q does not correlate with log trace ID %q", traceId, log.TraceId)
 					}
-					if id != otelSpanIDToUUID(spanBytes) {
+					if id != otelOccurrenceID(testProjectId, &tracepb.Span{TraceId: traceBytes, SpanId: spanBytes}) {
 						t.Fatalf("occurrence ID changed: %s", id)
 					}
-					wantGroup := otelTraceIDToUUID(traceBytes)
+					wantLink := ""
 					if override {
-						wantGroup = groupID
+						wantLink = hex.EncodeToString(groupID[:])
 					}
-					if distributedID == nil || *distributedID != wantGroup {
-						t.Fatalf("distributed grouping changed: %v", distributedID)
+					if linkedTraceId != wantLink {
+						t.Fatalf("the override links to another trace and never replaces this one: %q", linkedTraceId)
 					}
 				})
 			}

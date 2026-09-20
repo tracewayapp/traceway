@@ -54,6 +54,8 @@ type ExceptionDetailResponse struct {
 	Occurrences      []models.ExceptionStackTrace `json:"occurrences"`
 	Pagination       Pagination                   `json:"pagination"`
 	SessionRecording json.RawMessage              `json:"sessionRecording,omitempty"`
+	// RelatedEntity is the endpoint, task or AI trace the newest occurrence happened in.
+	RelatedEntity *telemetry.ExceptionOwner `json:"relatedEntity,omitempty"`
 	// SessionId is set when the exception is linked to a parent session row
 	// (always-on recording). The frontend swaps SessionRecording for a fetch
 	// against `/sessions/:sessionId/recording`, which spans every segment.
@@ -189,6 +191,8 @@ func (e exceptionStackTraceController) FindByHash(c *gin.Context) {
 	}
 
 	if len(occurrences) > 0 {
+		response.RelatedEntity = findRelatedEntity(c, occurrences[0])
+
 		// The per-exception 10 s clip and the parent session are independent
 		// attachments — surface both whenever they exist. The dashboard plays
 		// the clip inline and renders a link to the full session.
@@ -308,6 +312,16 @@ func (e exceptionStackTraceController) UnarchiveExceptions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"unarchived": len(request.Hashes)})
 }
 
+// The related entity is a convenience on the page, so a failed lookup is reported and the page still loads.
+func findRelatedEntity(ctx context.Context, exception models.ExceptionStackTrace) *telemetry.ExceptionOwner {
+	owner, err := telemetry.FindExceptionOwner(ctx, exception)
+	if err != nil {
+		traceway.CaptureException(fmt.Errorf("failed to find the related entity of exception %s: %w", exception.Id, err))
+		return nil
+	}
+	return owner
+}
+
 type exceptionByIdRequest struct {
 	RecordedAt *time.Time `json:"recordedAt"`
 }
@@ -345,6 +359,9 @@ func (e exceptionStackTraceController) FindById(c *gin.Context) {
 	}
 
 	response := gin.H{"exception": exception}
+	if related := findRelatedEntity(c, *exception); related != nil {
+		response["relatedEntity"] = related
+	}
 
 	filePath, err := telemetry.SessionRecordingRepository.FindByExceptionId(c, projectId, exceptionId)
 	if err == nil && filePath != "" {

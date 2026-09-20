@@ -35,14 +35,16 @@ type HealthDeepResponse struct {
 	MemoryUsageBytes int64        `json:"memoryUsageBytes,omitempty"`
 	MemoryTotalBytes int64        `json:"memoryTotalBytes,omitempty"`
 
-	TelemetryBackend string                   `json:"telemetryBackend"`
-	DroppedRows      map[string]uint64        `json:"droppedRows"`
-	DroppedRowsTotal uint64                   `json:"droppedRowsTotal"`
-	InsertFailures   uint64                   `json:"insertFailures"`
-	IngestRejected   uint64                   `json:"ingestRejected"`
-	Engine           *db.TelemetryEngineStats `json:"engine,omitempty"`
-	Outbox           *outbox.HealthStats      `json:"outbox,omitempty"`
-	Synthetics       *synthetics.HealthStats  `json:"synthetics,omitempty"`
+	TelemetryBackend string            `json:"telemetryBackend"`
+	DroppedRows      map[string]uint64 `json:"droppedRows"`
+	DroppedRowsTotal uint64            `json:"droppedRowsTotal"`
+	InsertFailures   uint64            `json:"insertFailures"`
+	IngestRejected   uint64            `json:"ingestRejected"`
+	// Spans whose source start was missing or unrepresentable, so their partition time is the ingest time.
+	SpanPartitionTimeFallbacks uint64                   `json:"spanPartitionTimeFallbacks"`
+	Engine                     *db.TelemetryEngineStats `json:"engine,omitempty"`
+	Outbox                     *outbox.HealthStats      `json:"outbox,omitempty"`
+	Synthetics                 *synthetics.HealthStats  `json:"synthetics,omitempty"`
 }
 
 // 503 means the configured telemetry backend is down. On the embedded
@@ -57,6 +59,7 @@ func (h healthDeepController) Get(c *gin.Context) {
 	resp.DroppedRowsTotal = droppedTotal
 	resp.InsertFailures = insertFailures
 	resp.IngestRejected = db.GetIngestRejects()
+	resp.SpanPartitionTimeFallbacks = db.GetSpanPartitionTimeFallbacks()
 	if engine, ok := db.GetTelemetryEngineStats(c.Request.Context()); ok {
 		resp.Engine = &engine
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -152,10 +153,17 @@ func runExceptionsShow(cmd *cobra.Command, args []string) error {
 		// Group header, then occurrences table.
 		if resp.Group != nil {
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(),
-				"HASH:        %s\nCOUNT:       %d\nFIRST SEEN:  %s\nLAST SEEN:   %s\n\nSTACK TRACE:\n%s\n\nOCCURRENCES (%d):\n",
+				"HASH:        %s\nCOUNT:       %d\nFIRST SEEN:  %s\nLAST SEEN:   %s\n",
 				resp.Group.ExceptionHash, resp.Group.Count,
 				resp.Group.FirstSeen.Format("2006-01-02 15:04:05"),
 				resp.Group.LastSeen.Format("2006-01-02 15:04:05"),
+			)
+			if related := resp.RelatedEntity; related != nil {
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "RELATED:     %s %s (%s, recorded %s)\n",
+					related.TraceType, related.Name, related.Id,
+					related.RecordedAt.UTC().Format(time.RFC3339Nano))
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\nSTACK TRACE:\n%s\n\nOCCURRENCES (%d):\n",
 				resp.Group.StackTrace,
 				len(resp.Occurrences),
 			)
@@ -243,8 +251,11 @@ func runExceptionsOccurrence(cmd *cobra.Command, args []string) error {
 			pickStr(occ.AppVersion, "-"),
 			pickStr(occ.TraceType, "-"),
 		)
-		if occ.DistributedTraceId != nil {
-			_, _ = fmt.Fprintf(out, "TRACE ID:     %s\n", occ.DistributedTraceId.String())
+		renderTraceIds(out, occ.TraceId, occ.LinkedTraceId)
+		if related := resp.RelatedEntity; related != nil {
+			_, _ = fmt.Fprintf(out, "RELATED:      %s %s (%s, recorded %s)\n",
+				related.TraceType, related.Name, related.Id,
+				related.RecordedAt.UTC().Format(time.RFC3339Nano))
 		}
 		sid := resp.SessionId
 		if sid == nil {

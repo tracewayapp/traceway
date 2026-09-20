@@ -10,6 +10,7 @@
 		Workflow,
 		Bug,
 		Link2,
+		ChartGantt,
 		ChartNoAxesCombined,
 		FileText,
 		Film,
@@ -67,6 +68,7 @@
 		{ Icon: FileText, href: '/logs', title: 'Logs', stickyParams: ['preset', 'from', 'to'] },
 		{ Icon: Gauge, href: '/endpoints', title: 'Endpoints', stickyParams: ['preset', 'from', 'to'] },
 		{ Icon: ListEnd, href: '/tasks', title: 'Tasks', stickyParams: ['preset', 'from', 'to'] },
+		{ Icon: ChartGantt, href: '/spans', title: 'Spans', stickyParams: ['preset', 'from', 'to'] },
 		{ Icon: Flame, href: '/profiles', title: 'Profiles', stickyParams: ['preset', 'from', 'to'] },
 		{ Icon: Film, href: '/sessions', title: 'Sessions', stickyParams: ['preset', 'from', 'to'] },
 		{

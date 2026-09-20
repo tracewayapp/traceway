@@ -62,7 +62,7 @@ func evaluateErrorRateThreshold(ctx context.Context, rule *models.NotificationRu
 
 	var total, errors int64
 	err := db.TelemetryDB.QueryRowContext(ctx,
-		"SELECT COUNT(*) as total, COALESCE(SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END), 0) as errors FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?",
+		"SELECT COUNT(*) as total, COALESCE(SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END), 0) as errors FROM endpoints_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?",
 		projectId.String(), from.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)).Scan(&total, &errors)
 	if err != nil {
 		return nil, err
@@ -147,7 +147,7 @@ func evaluateEndpointP99Threshold(ctx context.Context, rule *models.Notification
 }
 
 func queryPercentile(ctx context.Context, projectId uuid.UUID, endpoint string, from, to time.Time, pct float64) float64 {
-	query := "SELECT duration FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
+	query := "SELECT duration FROM endpoints_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
 	args := []interface{}{projectId.String(), from.Format(time.RFC3339Nano), to.Format(time.RFC3339Nano)}
 	if endpoint != "" && endpoint != "*" {
 		query += " AND endpoint = ?"
@@ -215,7 +215,7 @@ func evaluateApdexDrop(ctx context.Context, rule *models.NotificationRule, proje
 		`SELECT COUNT(*) as total,
 			COALESCE(SUM(CASE WHEN duration <= 750000000 AND status_code < 500 THEN 1 ELSE 0 END), 0) as satisfied,
 			COALESCE(SUM(CASE WHEN duration > 750000000 AND duration <= 1500000000 AND status_code < 500 THEN 1 ELSE 0 END), 0) as tolerating
-		FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?`,
+		FROM endpoints_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?`,
 		projectId.String(), from.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)).Scan(&total, &satisfied, &tolerating)
 	if err != nil {
 		return nil, err
@@ -359,7 +359,7 @@ func evaluateNoData(ctx context.Context, rule *models.NotificationRule, projectI
 	pid := projectId.String()
 
 	if cfg.DataType == "any" {
-		tables := []string{"endpoints", "exception_stack_traces", "metric_points", "tasks"}
+		tables := []string{"endpoints_v2", "exceptions_v2", "metric_points", "tasks_v2"}
 		for _, t := range tables {
 			var maxTs sql.NullString
 			err := db.TelemetryDB.QueryRowContext(ctx,
@@ -379,13 +379,13 @@ func evaluateNoData(ctx context.Context, rule *models.NotificationRule, projectI
 	table := ""
 	switch cfg.DataType {
 	case "endpoints":
-		table = "endpoints"
+		table = "endpoints_v2"
 	case "exceptions":
-		table = "exception_stack_traces"
+		table = "exceptions_v2"
 	case "metrics":
 		table = "metric_points"
 	case "tasks":
-		table = "tasks"
+		table = "tasks_v2"
 	default:
 		return nil, fmt.Errorf("unknown data type: %s", cfg.DataType)
 	}
@@ -430,7 +430,7 @@ func evaluateErrorCountThreshold(ctx context.Context, rule *models.NotificationR
 
 	var count int64
 	err := db.TelemetryDB.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM exception_stack_traces WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? AND is_message = 0",
+		"SELECT COUNT(*) FROM exceptions_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? AND is_message = 0",
 		projectId.String(), from.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)).Scan(&count)
 	if err != nil {
 		return nil, err
@@ -465,7 +465,7 @@ func evaluateTaskDurationThreshold(ctx context.Context, rule *models.Notificatio
 	now := time.Now().UTC()
 	from := now.Add(-time.Duration(cfg.LookbackMinutes) * time.Minute)
 
-	query := "SELECT duration FROM tasks WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
+	query := "SELECT duration FROM tasks_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
 	args := []interface{}{projectId.String(), from.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)}
 	if cfg.TaskName != "" && cfg.TaskName != "*" {
 		query += " AND task_name = ?"
@@ -506,7 +506,7 @@ func evaluateTaskDurationThreshold(ctx context.Context, rule *models.Notificatio
 // --- Task Failure Rate ---
 
 func countTaskExecutions(ctx context.Context, projectId uuid.UUID, taskName string, named bool, from, to time.Time) (int64, error) {
-	query := "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
+	query := "SELECT COUNT(*) FROM tasks_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
 	args := []interface{}{projectId.String(), from.Format(time.RFC3339Nano), to.Format(time.RFC3339Nano)}
 	if named {
 		query += " AND task_name = ?"
@@ -525,8 +525,9 @@ func countFailedTaskExecutions(ctx context.Context, projectId uuid.UUID, taskNam
 	fromStr := from.Format(time.RFC3339Nano)
 	toStr := to.Format(time.RFC3339Nano)
 
-	query := "SELECT COUNT(DISTINCT trace_id) FROM exception_stack_traces WHERE project_id = ? AND trace_type = 'task' AND recorded_at >= ? AND recorded_at <= ?" +
-		" AND trace_id IN (SELECT id FROM tasks WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
+	// A task failed when an exception was recorded on its own span. One caught further down did not fail it.
+	query := "SELECT COUNT(DISTINCT span_id) FROM exceptions_v2 WHERE project_id = ? AND trace_type = 'task' AND recorded_at >= ? AND recorded_at <= ?" +
+		" AND span_id IN (SELECT span_id FROM tasks_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
 	args := []interface{}{pid, fromStr, toStr, pid, fromStr, toStr}
 	if named {
 		query += " AND task_name = ?"
@@ -568,7 +569,7 @@ func evaluateThroughputDrop(ctx context.Context, rule *models.NotificationRule, 
 
 	var currentCount int64
 	err := db.TelemetryDB.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?",
+		"SELECT COUNT(*) FROM endpoints_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?",
 		pid, lookbackFrom.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)).Scan(&currentCount)
 	if err != nil {
 		return nil, err
@@ -576,7 +577,7 @@ func evaluateThroughputDrop(ctx context.Context, rule *models.NotificationRule, 
 
 	var baselineCount int64
 	err = db.TelemetryDB.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?",
+		"SELECT COUNT(*) FROM endpoints_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?",
 		pid, baselineFrom.Format(time.RFC3339Nano), lookbackFrom.Format(time.RFC3339Nano)).Scan(&baselineCount)
 	if err != nil {
 		return nil, err
@@ -625,7 +626,7 @@ func evaluateEndpointErrorRate(ctx context.Context, rule *models.NotificationRul
 
 	var total, errors int64
 	err := db.TelemetryDB.QueryRowContext(ctx,
-		"SELECT COUNT(*) as total, COALESCE(SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END), 0) as errors FROM endpoints WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ?",
+		"SELECT COUNT(*) as total, COALESCE(SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END), 0) as errors FROM endpoints_v2 WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ?",
 		pid, cfg.Endpoint, from.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)).Scan(&total, &errors)
 	if err != nil {
 		return nil, err
@@ -662,7 +663,7 @@ func computeImpactEndpoints(ctx context.Context, projectId uuid.UUID, minRequest
 		COALESCE(SUM(CASE WHEN e.duration > (750000000 + COALESCE(s.offset_ms, 0) * 1000000) AND e.duration <= (1500000000 + COALESCE(s.offset_ms, 0) * 1000000) AND e.status_code < 500 THEN 1 ELSE 0 END), 0) as tolerating_count,
 		COALESCE(SUM(CASE WHEN e.duration > (1500000000 + COALESCE(s.offset_ms, 0) * 1000000) OR e.status_code >= 500 THEN 1 ELSE 0 END), 0) as bad_count,
 		COALESCE(SUM(CASE WHEN e.status_code >= 400 AND e.status_code < 500 THEN 1 ELSE 0 END), 0) as client_error_count
-	FROM endpoints e
+	FROM endpoints_v2 e
 	LEFT JOIN slow_endpoints s ON e.endpoint = s.endpoint AND e.project_id = s.project_id
 	WHERE e.project_id = ? AND e.recorded_at >= ? AND e.recorded_at <= ? AND e.is_stream = 0
 	GROUP BY e.endpoint, COALESCE(s.offset_ms, 0)`,
@@ -707,11 +708,11 @@ func computeImpactEndpoints(ctx context.Context, projectId uuid.UUID, minRequest
 		SELECT endpoint, duration,
 			ROW_NUMBER() OVER (PARTITION BY endpoint ORDER BY duration) AS rn,
 			COUNT(*) OVER (PARTITION BY endpoint) AS cnt
-		FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? AND is_stream = 0
+		FROM endpoints_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? AND is_stream = 0
 	) WHERE rn = CAST(0.99 * (cnt - 1) AS INTEGER) + 1`
 	if db.IsDuckDBTelemetry() {
 		p99Query = `SELECT endpoint, CAST(quantile_cont(duration, 0.99) AS BIGINT) as duration
-		FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? AND is_stream = 0
+		FROM endpoints_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? AND is_stream = 0
 		GROUP BY endpoint`
 	}
 

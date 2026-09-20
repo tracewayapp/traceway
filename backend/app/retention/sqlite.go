@@ -15,6 +15,12 @@ var telemetryRetentionTargets = []struct {
 	table  string
 	column string
 }{
+	{"endpoints_v2", "recorded_at"},
+	{"tasks_v2", "recorded_at"},
+	{"exceptions_v2", "recorded_at"},
+	{"spans_v2", "recorded_at"},
+	{"ai_traces_v2", "recorded_at"},
+	// The tables V2 replaced. They hold history until the move-over script has run and they are dropped.
 	{"endpoints", "recorded_at"},
 	{"tasks", "recorded_at"},
 	{"exception_stack_traces", "recorded_at"},

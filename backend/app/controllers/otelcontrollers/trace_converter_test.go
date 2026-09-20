@@ -2,6 +2,7 @@ package otelcontrollers
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"os"
@@ -32,6 +33,31 @@ type snapshotEndpoint struct {
 	StatusCode int16  `json:"statusCode"`
 	ServerName string `json:"serverName"`
 	AppVersion string `json:"appVersion"`
+}
+
+func spanKey(traceId, spanId string) string { return traceId + ":" + spanId }
+
+// nearestPromotedAncestor walks the stored parent edges the way a read does, and returns the span id of the first
+// promoted span it meets.
+func nearestPromotedAncestor(canonical []models.OtelSpan, span models.OtelSpan, promoted map[string]bool) (string, bool) {
+	byKey := make(map[string]models.OtelSpan, len(canonical))
+	for _, candidate := range canonical {
+		byKey[spanKey(candidate.TraceId, candidate.SpanId)] = candidate
+	}
+	for range len(canonical) + 1 {
+		if promoted[spanKey(span.TraceId, span.SpanId)] {
+			return span.SpanId, true
+		}
+		if span.ParentSpanId == "" {
+			return "", false
+		}
+		parent, ok := byKey[spanKey(span.TraceId, span.ParentSpanId)]
+		if !ok {
+			return "", false
+		}
+		span = parent
+	}
+	return "", false
 }
 
 type snapshotSpan struct {
@@ -105,25 +131,29 @@ func TestConvertTraces_Snapshot(t *testing.T) {
 			}
 
 			req := &coltracepb.ExportTraceServiceRequest{}
-			if err := protojson.Unmarshal(raw, req); err != nil {
+			normalized, err := normalizeTraceJSON(raw, req.ProtoReflect().Descriptor())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := protojson.Unmarshal(normalized, req); err != nil {
 				t.Fatalf("failed to unmarshal fixture %s: %v", tt.fixture, err)
 			}
 
 			setFakeStore(t, nil)
-			endpoints, _, spans, exceptions, aiTraces, aiConversations := convertTraces(context.Background(), nil, testProjectId, req)
+			endpoints, _, exceptions, aiTraces, aiConversations := convertTraces(context.Background(), nil, testProjectId, req)
+			spans := convertCanonicalSpans(testProjectId, req)
 
-			// Check if all child spans share a trace ID with an endpoint
-			endpointIds := map[uuid.UUID]bool{}
+			endpointIds := map[string]bool{}
 			for _, ep := range endpoints {
-				endpointIds[ep.Id] = true
+				endpointIds[spanKey(ep.TraceId, ep.SpanId)] = true
 			}
 			for _, at := range aiTraces {
-				endpointIds[at.Id] = true
+				endpointIds[spanKey(at.TraceId, at.SpanId)] = true
 			}
 			allLinked := true
 			snapSpans := make([]snapshotSpan, len(spans))
 			for i, s := range spans {
-				linked := endpointIds[s.TraceId]
+				_, linked := nearestPromotedAncestor(spans, s, endpointIds)
 				snapSpans[i] = snapshotSpan{Name: s.Name, LinkedToParent: linked}
 				if !linked {
 					allLinked = false
@@ -454,16 +484,20 @@ func TestTraceIdResolution_CrossScope(t *testing.T) {
 		},
 	}
 
-	endpoints, _, spans, _, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	endpoints, _, _, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 
 	if len(endpoints) != 1 {
 		t.Fatalf("expected 1 endpoint, got %d", len(endpoints))
 	}
 
-	rootTraceId := endpoints[0].Id
+	spans := convertCanonicalSpans(testProjectId, req)
+	if len(spans) < 2 {
+		t.Fatalf("expected the root and its descendants to be stored, got %d spans", len(spans))
+	}
+	promoted := map[string]bool{spanKey(endpoints[0].TraceId, endpoints[0].SpanId): true}
 	for _, s := range spans {
-		if s.TraceId != rootTraceId {
-			t.Errorf("span %q has traceId %s, want %s (root endpoint)", s.Name, s.TraceId, rootTraceId)
+		if owner, ok := nearestPromotedAncestor(spans, s, promoted); !ok || owner != endpoints[0].SpanId {
+			t.Errorf("span %q does not reach the root endpoint through its stored parent edges", s.Name)
 		}
 	}
 }
@@ -547,7 +581,7 @@ func TestConvertTraces_ConsumerNonRoot_BecomesTask(t *testing.T) {
 		}},
 	}
 
-	endpoints, tasks, spans, _, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	endpoints, tasks, _, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 
 	if len(endpoints) != 0 {
 		t.Fatalf("expected 0 endpoints, got %d", len(endpoints))
@@ -558,23 +592,24 @@ func TestConvertTraces_ConsumerNonRoot_BecomesTask(t *testing.T) {
 	if tasks[0].IsRoot {
 		t.Errorf("expected task.IsRoot == false, got true")
 	}
-	wantTaskId := otelSpanIDToUUID(consumerSpanId)
+	wantTaskId := otelOccurrenceID(testProjectId, &tracepb.Span{TraceId: traceId, SpanId: consumerSpanId})
 	if tasks[0].Id != wantTaskId {
 		t.Errorf("expected task.Id %s (from span_id), got %s", wantTaskId, tasks[0].Id)
 	}
-	wantDtId := otelTraceIDToUUID(traceId)
-	if tasks[0].DistributedTraceId == nil || *tasks[0].DistributedTraceId != wantDtId {
-		t.Errorf("expected task.DistributedTraceId %s (from trace_id), got %v", wantDtId, tasks[0].DistributedTraceId)
+	if tasks[0].TraceId != hex.EncodeToString(traceId) || tasks[0].SpanId != hex.EncodeToString(consumerSpanId) || tasks[0].ParentSpanId == "" || tasks[0].LinkedTraceId != "" {
+		t.Errorf("expected the task to carry its span's own ids, got %+v", tasks[0])
 	}
 
-	if len(spans) != 1 {
-		t.Fatalf("expected 1 span row, got %d", len(spans))
+	spans := convertCanonicalSpans(testProjectId, req)
+	if len(spans) != 2 {
+		t.Fatalf("expected the consumer and its child to be stored, got %d", len(spans))
 	}
-	if spans[0].TraceId != wantTaskId {
-		t.Errorf("expected child span.TraceId == task.Id %s, got %s", wantTaskId, spans[0].TraceId)
+	child := spans[1]
+	if owner, ok := nearestPromotedAncestor(spans, child, map[string]bool{spanKey(tasks[0].TraceId, tasks[0].SpanId): true}); !ok || owner != tasks[0].SpanId {
+		t.Errorf("expected the child to reach task %s through its stored parent edge", wantTaskId)
 	}
-	if spans[0].Attributes["db.system"] != "postgresql" {
-		t.Errorf("expected child span attribute db.system 'postgresql', got %q", spans[0].Attributes["db.system"])
+	if child.Attributes["db.system"] != "postgresql" {
+		t.Errorf("expected child span attribute db.system 'postgresql', got %q", child.Attributes["db.system"])
 	}
 }
 
@@ -597,14 +632,14 @@ func TestConvertTraces_ConsoleCommand_BecomesTask(t *testing.T) {
 		}},
 	}
 
-	_, tasks, _, _, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	_, tasks, _, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 	if len(tasks) != 1 {
 		t.Fatalf("expected 1 task, got %d", len(tasks))
 	}
 	if !tasks[0].IsRoot {
 		t.Errorf("expected task.IsRoot == true, got false")
 	}
-	if tasks[0].Id != otelTraceIDToUUID(traceId) {
+	if tasks[0].Id != otelOccurrenceID(testProjectId, &tracepb.Span{TraceId: traceId, SpanId: rootSpanId}) {
 		t.Errorf("expected task.Id == otelTraceIDToUUID(trace_id), got %s", tasks[0].Id)
 	}
 }
@@ -629,14 +664,14 @@ func TestConvertTraces_InlineGenAi_BecomesAiTrace(t *testing.T) {
 		}},
 	}
 
-	endpoints, _, _, _, aiTraces, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	endpoints, _, _, aiTraces, _ := convertTraces(context.Background(), nil, testProjectId, req)
 	if len(endpoints) != 1 {
 		t.Fatalf("expected 1 endpoint, got %d", len(endpoints))
 	}
 	if !endpoints[0].IsRoot {
 		t.Errorf("expected endpoint.IsRoot == true")
 	}
-	wantEndpointId := otelTraceIDToUUID(traceId)
+	wantEndpointId := otelOccurrenceID(testProjectId, &tracepb.Span{TraceId: traceId, SpanId: rootSpanId})
 	if endpoints[0].Id != wantEndpointId {
 		t.Errorf("expected endpoint.Id %s, got %s", wantEndpointId, endpoints[0].Id)
 	}
@@ -647,12 +682,12 @@ func TestConvertTraces_InlineGenAi_BecomesAiTrace(t *testing.T) {
 	if aiTraces[0].IsRoot {
 		t.Errorf("expected aiTrace.IsRoot == false")
 	}
-	wantAiId := otelSpanIDToUUID(llmSpanId)
+	wantAiId := otelOccurrenceID(testProjectId, &tracepb.Span{TraceId: traceId, SpanId: llmSpanId})
 	if aiTraces[0].Id != wantAiId {
 		t.Errorf("expected aiTrace.Id %s, got %s", wantAiId, aiTraces[0].Id)
 	}
-	if aiTraces[0].DistributedTraceId == nil || *aiTraces[0].DistributedTraceId != wantEndpointId {
-		t.Errorf("expected aiTrace.DistributedTraceId %s, got %v", wantEndpointId, aiTraces[0].DistributedTraceId)
+	if aiTraces[0].TraceId != hex.EncodeToString(traceId) || aiTraces[0].SpanId != hex.EncodeToString(llmSpanId) || aiTraces[0].ParentSpanId == "" {
+		t.Errorf("expected the AI trace to carry its span's own ids, got %+v", aiTraces[0])
 	}
 }
 
@@ -683,22 +718,22 @@ func TestConvertTraces_ExceptionOnConsumer_TraceTypeIsTask(t *testing.T) {
 		}},
 	}
 
-	_, tasks, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	_, tasks, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 	if len(tasks) != 1 || len(exceptions) != 1 {
 		t.Fatalf("expected 1 task + 1 exception, got %d / %d", len(tasks), len(exceptions))
 	}
 	if exceptions[0].TraceType != "task" {
 		t.Errorf("expected exception.TraceType == 'task', got %q", exceptions[0].TraceType)
 	}
-	if exceptions[0].TraceId == nil || *exceptions[0].TraceId != tasks[0].Id {
-		t.Errorf("expected exception.TraceId == task.Id %s, got %v", tasks[0].Id, exceptions[0].TraceId)
+	if exceptions[0].TraceId != tasks[0].TraceId || exceptions[0].SpanId != tasks[0].SpanId {
+		t.Errorf("expected the exception on the task's own span, got trace %s span %s", exceptions[0].TraceId, exceptions[0].SpanId)
 	}
 }
 
-func TestConvertTraces_OrphanSpan_FallsBackToTraceId(t *testing.T) {
+func TestConvertTraces_OrphanSpan_KeepsSourceIdentity(t *testing.T) {
 	// A non-root span whose parent is not in this batch and the span itself
-	// isn't classified as an entity. Should land in the spans table with
-	// trace_id == otelTraceIDToUUID(trace_id) (orphan fallback path).
+	// isn't classified as an entity. It is stored with its source trace and
+	// parent IDs untouched, so the edge connects when the parent arrives.
 	traceId := []byte{0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a, 0x5b, 0x5c, 0x5d, 0x5e, 0x5f}
 	orphanParentId := []byte{0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67}
 	orphanSpanId := []byte{0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77}
@@ -717,13 +752,93 @@ func TestConvertTraces_OrphanSpan_FallsBackToTraceId(t *testing.T) {
 		}},
 	}
 
-	_, _, spans, _, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
-	if len(spans) != 1 {
-		t.Fatalf("expected 1 span row, got %d", len(spans))
+	endpoints, tasks, _, aiTraces, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	if len(endpoints) != 0 || len(tasks) != 0 || len(aiTraces) != 0 {
+		t.Fatalf("an unclassified orphan must not be promoted: %d endpoints / %d tasks / %d aiTraces", len(endpoints), len(tasks), len(aiTraces))
 	}
-	want := otelTraceIDToUUID(traceId)
-	if spans[0].TraceId != want {
-		t.Errorf("expected orphan span.TraceId %s (fallback to OTel trace_id), got %s", want, spans[0].TraceId)
+	spans := convertCanonicalSpans(testProjectId, req)
+	if len(spans) != 1 {
+		t.Fatalf("expected 1 stored span, got %d", len(spans))
+	}
+	if spans[0].TraceId != hex.EncodeToString(traceId) || spans[0].SpanId != hex.EncodeToString(orphanSpanId) {
+		t.Errorf("source identity changed: trace %s span %s", spans[0].TraceId, spans[0].SpanId)
+	}
+	if spans[0].ParentSpanId != hex.EncodeToString(orphanParentId) {
+		t.Errorf("expected the source parent ID to be kept, got %v", spans[0].ParentSpanId)
+	}
+}
+
+func TestConvertTraces_ExceptionWithoutItsEndpointKeepsItsSpan(t *testing.T) {
+	traceId := []byte{0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40}
+	rootId := []byte{1, 1, 1, 1, 1, 1, 1, 1}
+	childId := []byte{2, 2, 2, 2, 2, 2, 2, 2}
+	now := uint64(1_700_000_000_000_000_000)
+	child := &tracepb.Span{TraceId: traceId, SpanId: childId, ParentSpanId: rootId, Name: "work", Kind: tracepb.Span_SPAN_KIND_INTERNAL,
+		StartTimeUnixNano: now, EndTimeUnixNano: now + 1_000_000,
+		Events: []*tracepb.Span_Event{{Name: "exception", TimeUnixNano: now + 500_000, Attributes: []*commonpb.KeyValue{
+			strKV("exception.type", "RuntimeError"), strKV("exception.message", "boom"), strKV("exception.stacktrace", "RuntimeError: boom\n  at work (app.js:10:5)"),
+		}}}}
+
+	// The child ends first, so an exporter flush between the two leaves it without its endpoint.
+	_, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, spanRequest(child))
+	if len(exceptions) != 1 {
+		t.Fatalf("expected 1 exception, got %d", len(exceptions))
+	}
+	// Its endpoint is not in the payload and ingest does not go looking. The trace and the span are all a read needs.
+	if exceptions[0].TraceId != hex.EncodeToString(traceId) || exceptions[0].SpanId != hex.EncodeToString(childId) || exceptions[0].TraceType != "" {
+		t.Fatalf("expected the exception's own trace and span and no kind, got %+v", exceptions[0])
+	}
+	for key := range exceptions[0].Attributes {
+		if strings.HasPrefix(key, "traceway.") {
+			t.Fatalf("ingest must not add attributes of its own: %v", exceptions[0].Attributes)
+		}
+	}
+}
+
+func TestConvertTraces_NestedServerSpanIsOneRequest(t *testing.T) {
+	traceId := []byte{0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30}
+	outerId := []byte{1, 1, 1, 1, 1, 1, 1, 1}
+	innerId := []byte{2, 2, 2, 2, 2, 2, 2, 2}
+	const hasIsRemote = uint32(tracepb.SpanFlags_SPAN_FLAGS_CONTEXT_HAS_IS_REMOTE_MASK)
+	const isRemote = uint32(tracepb.SpanFlags_SPAN_FLAGS_CONTEXT_IS_REMOTE_MASK)
+	http := []*commonpb.KeyValue{strKV("http.request.method", "GET"), strKV("http.route", "/users")}
+	now := uint64(1_700_000_000_000_000_000)
+	server := func(id, parent []byte, flags uint32) *tracepb.Span {
+		return &tracepb.Span{TraceId: traceId, SpanId: id, ParentSpanId: parent, Name: "GET /users", Kind: tracepb.Span_SPAN_KIND_SERVER,
+			Attributes: http, Flags: flags, StartTimeUnixNano: now, EndTimeUnixNano: now + 1_000_000}
+	}
+	middleId := []byte{3, 3, 3, 3, 3, 3, 3, 3}
+	wrapper := func(id, parent []byte) *tracepb.Span {
+		return &tracepb.Span{TraceId: traceId, SpanId: id, ParentSpanId: parent, Name: "handle", Kind: tracepb.Span_SPAN_KIND_INTERNAL, StartTimeUnixNano: now, EndTimeUnixNano: now + 1_000_000}
+	}
+	client := &tracepb.Span{TraceId: traceId, SpanId: outerId, Name: "GET", Kind: tracepb.Span_SPAN_KIND_CLIENT, StartTimeUnixNano: now, EndTimeUnixNano: now + 1_000_000}
+
+	tests := []struct {
+		name  string
+		spans []*tracepb.Span
+		want  int
+	}{
+		{"local parent by flags, same batch", []*tracepb.Span{server(outerId, nil, 0), server(innerId, outerId, hasIsRemote)}, 1},
+		{"local parent by flags, parent in another batch", []*tracepb.Span{server(innerId, outerId, hasIsRemote)}, 0},
+		{"remote parent by flags, same batch", []*tracepb.Span{server(outerId, nil, 0), server(innerId, outerId, hasIsRemote|isRemote)}, 2},
+		{"no flags, parent in the same batch", []*tracepb.Span{server(outerId, nil, 0), server(innerId, outerId, 0)}, 1},
+		{"no flags, parent in another batch", []*tracepb.Span{server(innerId, outerId, 0)}, 1},
+		{"no flags, calling CLIENT span in the same batch", []*tracepb.Span{client, server(innerId, outerId, 0)}, 1},
+		{"no flags, plain wrapper span above the request", []*tracepb.Span{wrapper(outerId, nil), server(innerId, outerId, 0)}, 1},
+		{"local by flags, plain wrapper span above the request", []*tracepb.Span{wrapper(outerId, nil), server(innerId, outerId, hasIsRemote)}, 1},
+		{"nested through a plain span in between", []*tracepb.Span{server(outerId, nil, 0), wrapper(middleId, outerId), server(innerId, middleId, hasIsRemote)}, 1},
+		{"parent cycle does not hang", []*tracepb.Span{wrapper(outerId, middleId), wrapper(middleId, outerId), server(innerId, middleId, 0)}, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			endpoints, _, _, _, _ := convertTraces(context.Background(), nil, testProjectId, spanRequest(tt.spans...))
+			if len(endpoints) != tt.want {
+				t.Fatalf("expected %d endpoints, got %d", tt.want, len(endpoints))
+			}
+			if stored := convertCanonicalSpans(testProjectId, spanRequest(tt.spans...)); len(stored) != len(tt.spans) {
+				t.Fatalf("every span must still be stored, got %d of %d", len(stored), len(tt.spans))
+			}
+		})
 	}
 }
 
@@ -820,7 +935,7 @@ func TestConvertTraces_HoneycombJsExceptionSymbolicates(t *testing.T) {
 	}
 
 	setFakeStore(t, nil)
-	_, _, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	_, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 	if len(exceptions) != 1 {
 		t.Fatalf("expected 1 exception, got %d", len(exceptions))
 	}
@@ -871,7 +986,7 @@ func TestConvertTraces_JsExceptionResolvesWithSourceMap(t *testing.T) {
 		}},
 	}
 
-	_, _, _, exceptions, _, _ := convertTraces(context.Background(), tokenProject(projectId), projectId, req)
+	_, _, exceptions, _, _ := convertTraces(context.Background(), tokenProject(projectId), projectId, req)
 	if len(exceptions) != 1 {
 		t.Fatalf("expected 1 exception, got %d", len(exceptions))
 	}
@@ -948,20 +1063,20 @@ func honeycombExceptionSpanRequest(spanAttrs []*commonpb.KeyValue, events []*tra
 	}
 }
 
-func TestConvertTraces_ExceptionSpanAttrs_CapturedAsTask(t *testing.T) {
+func TestConvertTraces_ExceptionSpanAttrs_CapturedWithoutAKind(t *testing.T) {
 	req := honeycombExceptionSpanRequest(honeycombExceptionSpanAttrs(), nil, strKV("telemetry.sdk.language", "webjs"))
 
 	setFakeStore(t, nil)
-	endpoints, tasks, spans, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
-	if len(endpoints) != 0 || len(tasks) != 0 || len(spans) != 0 {
-		t.Fatalf("expected no entity/span rows, got %d endpoints / %d tasks / %d spans", len(endpoints), len(tasks), len(spans))
+	endpoints, tasks, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	if len(endpoints) != 0 || len(tasks) != 0 {
+		t.Fatalf("expected no entity rows, got %d endpoints / %d tasks", len(endpoints), len(tasks))
 	}
 	if len(exceptions) != 1 {
 		t.Fatalf("expected 1 exception, got %d", len(exceptions))
 	}
 	exc := exceptions[0]
-	if exc.TraceType != "task" {
-		t.Errorf("expected TraceType 'task', got %q", exc.TraceType)
+	if exc.TraceType != "" || exc.TraceId == "" || exc.SpanId == "" {
+		t.Errorf("an exception on a span that is no endpoint or task keeps its trace and span and names no kind, got %+v", exc)
 	}
 	want := "TypeError: discount rate must be finite\nassertValid()\n    http://localhost:4173/assets/app.js:1:730\nhandleCheckout()\n    http://localhost:4173/assets/app.js:1:1366"
 	if exc.StackTrace != want {
@@ -1001,7 +1116,7 @@ func TestConvertTraces_ExceptionSpanAttrs_StrippedFromEndpointRow(t *testing.T) 
 	}
 
 	setFakeStore(t, nil)
-	endpoints, _, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	endpoints, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 	if len(endpoints) != 1 || len(exceptions) != 1 {
 		t.Fatalf("expected 1 endpoint + 1 exception, got %d / %d", len(endpoints), len(exceptions))
 	}
@@ -1029,7 +1144,7 @@ func TestConvertTraces_ExceptionEventAndSpanAttrs_EventWins(t *testing.T) {
 	req := honeycombExceptionSpanRequest(honeycombExceptionSpanAttrs(), events, strKV("telemetry.sdk.language", "webjs"))
 
 	setFakeStore(t, nil)
-	_, _, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	_, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 	if len(exceptions) != 1 {
 		t.Fatalf("expected exactly 1 exception, got %d", len(exceptions))
 	}
@@ -1046,7 +1161,7 @@ func TestConvertTraces_ExceptionSpanAttrs_HeaderOnly(t *testing.T) {
 	req := honeycombExceptionSpanRequest(attrs, nil, strKV("telemetry.sdk.language", "webjs"))
 
 	setFakeStore(t, nil)
-	_, _, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	_, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 	if len(exceptions) != 1 {
 		t.Fatalf("expected 1 exception, got %d", len(exceptions))
 	}
@@ -1059,7 +1174,7 @@ func TestConvertTraces_ExceptionSpanAttrs_NoLanguageAttr(t *testing.T) {
 	req := honeycombExceptionSpanRequest(honeycombExceptionSpanAttrs(), nil)
 
 	setFakeStore(t, nil)
-	_, _, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
+	_, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, req)
 	if len(exceptions) != 1 {
 		t.Fatalf("expected 1 exception, got %d", len(exceptions))
 	}
@@ -1128,7 +1243,7 @@ func TestExceptionHash_FourWayStability(t *testing.T) {
 		"firefox-raw": firefoxRaw,
 		"structured":  structured,
 	} {
-		_, _, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, fourWayRequest(attrs, nil))
+		_, _, exceptions, _, _ := convertTraces(context.Background(), nil, testProjectId, fourWayRequest(attrs, nil))
 		if len(exceptions) != 1 {
 			t.Fatalf("%s: expected 1 exception, got %d", name, len(exceptions))
 		}
@@ -1151,26 +1266,30 @@ func TestConvertTraces_FrontendFrameworkSuppressesEntityRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	req := &coltracepb.ExportTraceServiceRequest{}
-	if err := protojson.Unmarshal(raw, req); err != nil {
+	normalized, err := normalizeTraceJSON(raw, req.ProtoReflect().Descriptor())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := protojson.Unmarshal(normalized, req); err != nil {
 		t.Fatal(err)
 	}
 
 	setFakeStore(t, nil)
 	reactProject := &models.Project{Id: testProjectId, Framework: "react"}
-	endpoints, tasks, spans, exceptions, aiTraces, _ := convertTraces(context.Background(), reactProject, testProjectId, req)
-	if len(endpoints) != 0 || len(tasks) != 0 || len(spans) != 0 || len(aiTraces) != 0 {
-		t.Fatalf("expected no entity/span rows for a frontend-framework project, got %d endpoints / %d tasks / %d spans / %d aiTraces",
-			len(endpoints), len(tasks), len(spans), len(aiTraces))
+	endpoints, tasks, exceptions, aiTraces, _ := convertTraces(context.Background(), reactProject, testProjectId, req)
+	if len(endpoints) != 0 || len(tasks) != 0 || len(aiTraces) != 0 {
+		t.Fatalf("expected no entity rows for a frontend-framework project, got %d endpoints / %d tasks / %d aiTraces",
+			len(endpoints), len(tasks), len(aiTraces))
 	}
 	if len(exceptions) != 1 {
 		t.Fatalf("expected the exception to still be extracted, got %d", len(exceptions))
 	}
-	if exceptions[0].TraceType != "task" {
-		t.Errorf("expected TraceType 'task', got %q", exceptions[0].TraceType)
+	if exceptions[0].TraceType != "" {
+		t.Errorf("expected no kind when nothing was promoted, got %q", exceptions[0].TraceType)
 	}
 
 	backendProject := &models.Project{Id: testProjectId, Framework: "gin"}
-	endpoints, _, _, _, _, _ = convertTraces(context.Background(), backendProject, testProjectId, req)
+	endpoints, _, _, _, _ = convertTraces(context.Background(), backendProject, testProjectId, req)
 	if len(endpoints) == 0 {
 		t.Error("expected non-frontend frameworks to keep promoting endpoint rows")
 	}

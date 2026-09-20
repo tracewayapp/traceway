@@ -9,8 +9,12 @@
     }
   ],
   "taskCount": 0,
-  "spanCount": 4,
+  "spanCount": 5,
   "spans": [
+    {
+      "name": "GET /get-session",
+      "linkedToParent": true
+    },
     {
       "name": "db findOne session",
       "linkedToParent": true

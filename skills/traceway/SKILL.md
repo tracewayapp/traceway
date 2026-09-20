@@ -43,7 +43,7 @@ Users paste dashboard URLs (`https://<instance>/<route>`) as references in any f
 | `/tasks/<task>/<taskId>` | Single task run | `traceway tasks show <taskId> --recorded-at <t>` (`t` = the URL's `?t=` param) |
 | `/sessions/<sessionId>` | Session (the exceptions that fired during it; replay stays dashboard-only) | `traceway sessions show <sessionId> --started-at <t>`. The URL has no `?t=`; use the session's start, the URL's `from=`, or a linked occurrence's `recordedAt` (it falls inside the window). Occurrences reference sessions via their `sessionId` |
 | `/ai-traces/<traceName>` | AI trace group | No CLI for the group; for one trace use the next row |
-| `/ai-traces/<traceName>/<traceId>` | Single AI trace | `traceway ai-traces show <traceId> --recorded-at <t>` (`t` = the URL's `?t=` param); returns token/cost stats + the conversation |
+| `/ai-traces/<traceName>/<traceId>` | Single AI trace | `traceway ai-traces show <aiTraceId> --recorded-at <t>` (the UUID in the URL, not a 32 hex trace id) (`t` = the URL's `?t=` param); returns token/cost stats + the conversation |
 | `/logs` | Logs page (its filters are not stored in the URL) | `traceway logs query` with flags taken from the user's description |
 | `/issues`, `/endpoints`, `/metrics`, `/` | List and dashboard pages | The matching `list` / `query` command |
 
@@ -92,7 +92,7 @@ So from a notification, go straight to the occurrence (fast), then pivot reusing
 
 ```bash
 traceway exceptions occurrence <Exception ID> --recorded-at <Occurred at → RFC3339> --output json
-# the result carries distributedTraceId and sessionId → traces show / sessions show below
+# the result carries traceId, relatedEntity and sessionId → traces show / endpoints show / sessions show below
 ```
 
 ### Performance notification (an endpoint became slow or critical)
@@ -214,7 +214,7 @@ traceway exceptions list --since 7d --search "checkout" --output json \
 traceway exceptions show <hash>
 ```
 
-This is the high-value call: full stack trace, occurrence list with `recordedAt`, `attributes` (user IDs, app versions, request context), and optional `distributedTraceId` / `sessionId` per occurrence. `firstSeen` correlates with deploys: a group that first appeared right after a release points at that release's diff. A bogus hash exits 5 with `not_found`; fall back to search.
+This is the high-value call: full stack trace, occurrence list with `recordedAt`, `attributes` (user IDs, app versions, request context), and optional `traceId` / `spanId` / `linkedTraceId` / `sessionId` per occurrence. `traceId` is the OpenTelemetry trace id (32 hex characters), the same id the request's logs and spans carry. The response also has `relatedEntity`: the endpoint, task or AI trace the newest occurrence happened in, with the `id` and `recordedAt` that `endpoints show` / `tasks show` / `ai-traces show` take. `firstSeen` correlates with deploys: a group that first appeared right after a release points at that release's diff. A bogus hash exits 5 with `not_found`; fall back to search.
 
 **When the user gave an issue URL (or hash), fix the LAST occurrence — not "the group".** A single hash can bundle *several distinct errors*: the hash is computed from a normalized stack trace with the message stripped, so two unrelated failures that share their top frames (e.g. both captured at the same middleware/recovery frame) collapse into one group. The group's representative stack trace and `firstSeen` may belong to a different, now-dormant error than the one the user is looking at. Anchor on the most recent occurrence and fix that specific failure path:
 
@@ -222,7 +222,7 @@ This is the high-value call: full stack trace, occurrence list with `recordedAt`
 # The occurrence the user actually wants: the latest one. Pin its exact message + attributes + trace.
 traceway exceptions show <hash> --output json \
   | jq '.occurrences | sort_by(.recordedAt) | last
-        | {recordedAt, message: (.stackTrace | split("\n")[0]), attributes, traceId, distributedTraceId}'
+        | {recordedAt, message: (.stackTrace | split("\n")[0]), attributes, traceId, spanId, linkedTraceId}'
 
 # Then confirm whether the group is homogeneous or mixed — distinct first lines = distinct bugs:
 traceway exceptions show <hash> --output json \
@@ -249,7 +249,7 @@ Severity is an OTel number, not a name: 1 TRACE, 5 DEBUG, 9 INFO, 13 WARN, 17 ER
 **Correlate by trace**: when an occurrence or log line carries a trace ID, pull the whole request timeline; this is usually the fastest route to a root cause:
 
 ```bash
-traceway exceptions show $HASH --output json | jq -r '.occurrences[0].distributedTraceId' \
+traceway exceptions show $HASH --output json | jq -r '.occurrences[0].traceId' \
   | xargs -I{} traceway logs query --trace-id {} --output json
 ```
 
@@ -258,7 +258,7 @@ Pull the whole cross-service trace and the user's session, reusing the occurrenc
 ```bash
 OCC=$(traceway exceptions show $HASH --output json | jq -c '.occurrences[0]')
 TS=$(jq -r '.recordedAt' <<<"$OCC")
-DT=$(jq -r '.distributedTraceId // empty' <<<"$OCC")
+DT=$(jq -r '.traceId // empty' <<<"$OCC")
 SID=$(jq -r '.sessionId // empty' <<<"$OCC")
 [ -n "$DT" ]  && traceway traces show "$DT" --recorded-at "$TS"      # every endpoint/task/ai-trace/exception node across services
 [ -n "$SID" ] && traceway sessions show "$SID" --started-at "$TS"    # the session + the exceptions that fired in it
@@ -336,7 +336,7 @@ The loop, using the read commands documented in this skill:
 1. **Quantify and localize.** `traceway endpoints list --since 24h --order-by p95` (or `impact`). Read the latency shape first: p50 already high means every request pays it (systemic: query, index, algorithm); p99 much greater than p50 means a tail (contention, pool exhaustion, GC, retries, a flaky dependency). Note that `impact`/`impactReason` are offset-adjusted for marked-slow endpoints but the raw p50/p95/p99 are not.
 2. **Check the accepted baseline.** Before calling an endpoint slow, run `traceway endpoints slow "<endpoint>"`. A non-zero `offsetMs` means an operator accepted that much latency (with a `reason`), so only latency *beyond* the offset is a real regression; `offsetMs 0` means default thresholds apply. Skip this only for a clearly systemic, multi-endpoint slowdown.
 3. **Pinpoint when it started: adjust the window down.** Do not investigate the default window blindly; narrow it until it brackets the onset. `traceway endpoints chart --metric-type p95 --interval-minutes <n>` returns latency over time for the top endpoints (`{timestamp, endpoint, value}` in ms): read down one endpoint's buckets for the step where p95 jumps. Confirm the cause with `traceway metrics query --name <metric> --interval-minutes <n>` (the infra/runtime curve). For a specific route not in the top 5, bisect `traceway endpoints list --search <name> --from <a> --to <b>` over adjacent windows. See `performance.md`, "Pinpointing when the slowness started".
-4. **Get a representative slow trace.** `traceway endpoints show <endpointId> --recorded-at <t>` for one request's span waterfall, or `traceway traces show <distributedTraceId> --recorded-at <t>` for the cross-service timeline. Take the trace from inside the slow window you just found; find the long pole.
+4. **Get a representative slow trace.** `traceway endpoints show <endpointId> --recorded-at <t>` for one request's span waterfall, or `traceway traces show <traceId> --recorded-at <t>` (the `traceId` that `endpoints show` prints) for the cross-service timeline. Take the trace from inside the slow window you just found; find the long pole.
 5. **Match the long pole to the checklist.** Is the dominant span a database call, an external call, in-process compute, or a *gap* before work starts (queueing / lock wait / pool exhaustion)? Look it up in `performance.md`.
 6. **Separate code from saturation.** Pull infra/runtime metrics over the same window: `traceway metrics query --name system.cpu.utilization --aggregation max`, then `mem.used`, `go.gc_pause`. A spike that lines up with the latency onset points at saturation, not a code bug.
 7. **Correlate with code and deploys.** With the onset time from step 3, check what shipped then: `git log --since '<onset - 30m>' --until '<onset + 30m>'` or the deploy history. A jump at a release is a regression; a gradual ramp with no deploy is data growth (N+1, missing index, no pagination).

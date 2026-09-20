@@ -7,19 +7,22 @@ import (
 )
 
 type ExceptionStackTrace struct {
-	Id                 uuid.UUID         `json:"id" ch:"id"`
-	ProjectId          uuid.UUID         `json:"projectId" ch:"project_id"`
-	TraceId            *uuid.UUID        `json:"traceId" ch:"trace_id"`
-	TraceType          string            `json:"traceType" ch:"trace_type"` // "endpoint" or "task"
-	ExceptionHash      string            `json:"exceptionHash" ch:"exception_hash"`
-	StackTrace         string            `json:"stackTrace" ch:"stack_trace"`
-	RecordedAt         time.Time         `json:"recordedAt" ch:"recorded_at"`
-	Attributes         map[string]string `json:"attributes" ch:"attributes"`
-	AppVersion         string            `json:"appVersion" ch:"app_version"`
-	ServerName         string            `json:"serverName" ch:"server_name"`
-	IsMessage          bool              `json:"isMessage" ch:"is_message"`
-	DistributedTraceId *uuid.UUID        `json:"distributedTraceId,omitempty" ch:"distributed_trace_id"`
-	SessionId          *uuid.UUID        `json:"sessionId,omitempty" ch:"session_id"`
+	Id        uuid.UUID `json:"id" ch:"id"`
+	ProjectId uuid.UUID `json:"projectId" ch:"project_id"`
+	// TraceId is the trace the exception happened in and SpanId the span it happened on, as lowercase hex.
+	TraceId string `json:"traceId" ch:"trace_id"`
+	SpanId  string `json:"spanId" ch:"span_id"`
+	// TraceType is set when it is known without a lookup: native clients say it, and an exception on a promoted span has that span's kind.
+	TraceType     string            `json:"traceType" ch:"trace_type"`
+	ExceptionHash string            `json:"exceptionHash" ch:"exception_hash"`
+	StackTrace    string            `json:"stackTrace" ch:"stack_trace"`
+	RecordedAt    time.Time         `json:"recordedAt" ch:"recorded_at"`
+	Attributes    map[string]string `json:"attributes" ch:"attributes"`
+	AppVersion    string            `json:"appVersion" ch:"app_version"`
+	ServerName    string            `json:"serverName" ch:"server_name"`
+	IsMessage     bool              `json:"isMessage" ch:"is_message"`
+	LinkedTraceId string            `json:"linkedTraceId,omitempty" ch:"linked_trace_id"`
+	SessionId     *uuid.UUID        `json:"sessionId,omitempty" ch:"session_id"`
 }
 
 type ExceptionTrendPoint struct {

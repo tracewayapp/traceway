@@ -85,7 +85,7 @@ echo "==> reading back from $TELDB"
 got=
 for _ in $(seq 1 25); do
   if [ -f "$TELDB" ]; then
-    got="$(sqlite3 "$TELDB" "SELECT stack_trace FROM exception_stack_traces WHERE stack_trace LIKE '%chargeCard%' LIMIT 1;" 2>/dev/null || true)"
+    got="$(sqlite3 "$TELDB" "SELECT stack_trace FROM exceptions_v2 WHERE stack_trace LIKE '%chargeCard%' LIMIT 1;" 2>/dev/null || true)"
     [ -n "$got" ] && break
   fi
   sleep 1
@@ -102,7 +102,7 @@ echo "--- stored symbolicated stack trace ---"
 echo "$got" | head -6
 echo "$got" | grep -q "main.dart:20:3" || { echo "FAIL: chargeCard not resolved to main.dart:20:3"; exit 1; }
 
-counts="$(sqlite3 "$TELDB" "SELECT COUNT(*), COUNT(DISTINCT exception_hash) FROM exception_stack_traces WHERE stack_trace LIKE '%chargeCard%';")"
+counts="$(sqlite3 "$TELDB" "SELECT COUNT(*), COUNT(DISTINCT exception_hash) FROM exceptions_v2 WHERE stack_trace LIKE '%chargeCard%';")"
 total="${counts%%|*}"
 distinct="${counts##*|}"
 echo "==> grouping: $total row(s), $distinct distinct hash(es)"

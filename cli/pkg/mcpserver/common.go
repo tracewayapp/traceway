@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"regexp"
@@ -142,6 +143,14 @@ func validateEnum(param, value string, allowed []string) error {
 func validateUUID(param, value string) error {
 	if _, err := uuid.Parse(value); err != nil {
 		return usageErrf("invalid %s %q: must be a UUID", param, value)
+	}
+	return nil
+}
+
+func validateTraceID(param, value string) error {
+	decoded, err := hex.DecodeString(strings.ReplaceAll(value, "-", ""))
+	if err != nil || len(decoded) != 16 {
+		return usageErrf("invalid %s %q: must be 32 hex characters or a UUID", param, value)
 	}
 	return nil
 }

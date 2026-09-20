@@ -23,7 +23,7 @@ func (e *endpointRepository) InsertAsync(ctx context.Context, lines []models.End
 	if len(lines) == 0 {
 		return nil
 	}
-	return chdb.SendBatch("INSERT INTO endpoints (id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, is_stream, is_root)", func(batch driver.Batch) error {
+	return chdb.SendBatch("INSERT INTO endpoints_v2 (id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, linked_trace_id, is_stream, is_root)", func(batch driver.Batch) error {
 		for _, t := range lines {
 			attributesJSON := "{}"
 			if len(t.Attributes) != 0 {
@@ -39,7 +39,7 @@ func (e *endpointRepository) InsertAsync(ctx context.Context, lines []models.End
 			if t.IsRoot {
 				isRoot = 1
 			}
-			if err := batch.Append(t.Id, t.ProjectId, t.Endpoint, int64(t.Duration), t.RecordedAt, t.StatusCode, t.BodySize, t.ClientIP, attributesJSON, t.AppVersion, t.ServerName, t.DistributedTraceId, t.SpanId, isStream, isRoot); err != nil {
+			if err := batch.Append(t.Id, t.ProjectId, t.Endpoint, int64(t.Duration), t.RecordedAt, t.StatusCode, t.BodySize, t.ClientIP, attributesJSON, t.AppVersion, t.ServerName, t.TraceId, t.SpanId, t.ParentSpanId, t.LinkedTraceId, isStream, isRoot); err != nil {
 				return err
 			}
 		}
@@ -49,13 +49,13 @@ func (e *endpointRepository) InsertAsync(ctx context.Context, lines []models.End
 
 func (e *endpointRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {
 	var count uint64
-	err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, start, end).Scan(&count)
+	err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM endpoints_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, start, end).Scan(&count)
 	return int64(count), err
 }
 
 func (e *endpointRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string) ([]models.Endpoint, int64, error) {
 	var count uint64
-	err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, fromDate, toDate).Scan(&count)
+	err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM endpoints_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, fromDate, toDate).Scan(&count)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -73,7 +73,7 @@ func (e *endpointRepository) FindAll(ctx context.Context, projectId uuid.UUID, f
 		orderBy = "recorded_at"
 	}
 
-	query := "SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " DESC LIMIT ? OFFSET ?"
+	query := "SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, linked_trace_id FROM endpoints_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " DESC LIMIT ? OFFSET ?"
 	rows, err := chdb.Conn.Query(ctx, query, projectId, fromDate, toDate, pageSize, offset)
 	if err != nil {
 		return nil, 0, err
@@ -84,7 +84,7 @@ func (e *endpointRepository) FindAll(ctx context.Context, projectId uuid.UUID, f
 	for rows.Next() {
 		var t models.Endpoint
 		var attributesJSON string
-		if err := rows.Scan(&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt, &t.StatusCode, &t.BodySize, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.DistributedTraceId); err != nil {
+		if err := rows.Scan(&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt, &t.StatusCode, &t.BodySize, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.TraceId, &t.SpanId, &t.ParentSpanId, &t.LinkedTraceId); err != nil {
 			return nil, 0, err
 		}
 		if attributesJSON != "" && attributesJSON != "{}" {
@@ -129,7 +129,7 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 
 	// Count unique endpoints
 	var count uint64
-	countQuery := "SELECT uniq(endpoint) FROM endpoints WHERE " + whereClause
+	countQuery := "SELECT uniq(endpoint) FROM endpoints_v2 WHERE " + whereClause
 	err := chdb.Conn.QueryRow(ctx, countQuery, args...).Scan(&count)
 	if err != nil {
 		return nil, 0, err
@@ -242,7 +242,7 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 		FROM (
 			SELECT e.endpoint, e.duration, e.status_code, e.recorded_at, e.is_stream, e.is_root,
 				   s.offset_ms as offset_ms
-			FROM endpoints e
+			FROM endpoints_v2 e
 			LEFT JOIN (SELECT * FROM slow_endpoints FINAL) AS s
 				ON e.endpoint = s.endpoint AND e.project_id = s.project_id
 			WHERE ` + joinWhereClause + `
@@ -297,7 +297,7 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 
 func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.UUID, endpoint string, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.Endpoint, int64, error) {
 	var count uint64
-	err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM endpoints WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, endpoint, fromDate, toDate).Scan(&count)
+	err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM endpoints_v2 WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, endpoint, fromDate, toDate).Scan(&count)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -321,7 +321,7 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.
 		sortDir = "ASC"
 	}
 
-	query := "SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id FROM endpoints WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " " + sortDir + " LIMIT ? OFFSET ?"
+	query := "SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, linked_trace_id FROM endpoints_v2 WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " " + sortDir + " LIMIT ? OFFSET ?"
 	rows, err := chdb.Conn.Query(ctx, query, projectId, endpoint, fromDate, toDate, pageSize, offset)
 	if err != nil {
 		return nil, 0, err
@@ -332,7 +332,7 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.
 	for rows.Next() {
 		var t models.Endpoint
 		var attributesJSON string
-		if err := rows.Scan(&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt, &t.StatusCode, &t.BodySize, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.DistributedTraceId); err != nil {
+		if err := rows.Scan(&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt, &t.StatusCode, &t.BodySize, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.TraceId, &t.SpanId, &t.ParentSpanId, &t.LinkedTraceId); err != nil {
 			return nil, 0, err
 		}
 		if attributesJSON != "" && attributesJSON != "{}" {
@@ -348,8 +348,8 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.
 
 // FindById returns a single endpoint by ID
 func (e *endpointRepository) FindById(ctx context.Context, projectId, endpointId uuid.UUID, recordedAt *time.Time) (*models.Endpoint, error) {
-	query := `SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, is_root
-		FROM endpoints
+	query := `SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, linked_trace_id, is_root
+		FROM endpoints_v2
 		WHERE project_id = ? AND id = ?`
 	args := []any{projectId, endpointId}
 	if recordedAt != nil {
@@ -365,7 +365,7 @@ func (e *endpointRepository) FindById(ctx context.Context, projectId, endpointId
 
 	err := chdb.Conn.QueryRow(ctx, query, args...).Scan(
 		&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt,
-		&t.StatusCode, &t.BodySize, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.DistributedTraceId, &t.SpanId, &isRoot)
+		&t.StatusCode, &t.BodySize, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.TraceId, &t.SpanId, &t.ParentSpanId, &t.LinkedTraceId, &isRoot)
 	t.IsRoot = isRoot == 1
 
 	if err != nil {
@@ -389,7 +389,7 @@ func (e *endpointRepository) CountByHour(ctx context.Context, projectId uuid.UUI
 	query := `SELECT
 		toStartOfHour(recorded_at) as hour,
 		toFloat64(count()) as count
-	FROM endpoints
+	FROM endpoints_v2
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY hour
 	ORDER BY hour ASC`
@@ -417,7 +417,7 @@ func (e *endpointRepository) AvgDurationByHour(ctx context.Context, projectId uu
 	query := `SELECT
 		toStartOfHour(recorded_at) as hour,
 		avg(duration) / 1000000 as avg_duration_ms
-	FROM endpoints
+	FROM endpoints_v2
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? AND is_stream = 0
 	GROUP BY hour
 	ORDER BY hour ASC`
@@ -445,7 +445,7 @@ func (e *endpointRepository) ErrorRateByHour(ctx context.Context, projectId uuid
 	query := `SELECT
 		toStartOfHour(recorded_at) as hour,
 		countIf(status_code >= 500) * 100.0 / count() as error_rate
-	FROM endpoints
+	FROM endpoints_v2
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY hour
 	ORDER BY hour ASC`
@@ -473,7 +473,7 @@ func (e *endpointRepository) CountByInterval(ctx context.Context, projectId uuid
 	query := `SELECT
 		toStartOfInterval(recorded_at, INTERVAL ? MINUTE) as bucket,
 		toFloat64(count()) as count
-	FROM endpoints
+	FROM endpoints_v2
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY bucket
 	ORDER BY bucket ASC`
@@ -501,7 +501,7 @@ func (e *endpointRepository) AvgDurationByInterval(ctx context.Context, projectI
 	query := `SELECT
 		toStartOfInterval(recorded_at, INTERVAL ? MINUTE) as bucket,
 		avg(duration) / 1000000 as avg_duration_ms
-	FROM endpoints
+	FROM endpoints_v2
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? AND is_stream = 0
 	GROUP BY bucket
 	ORDER BY bucket ASC`
@@ -529,7 +529,7 @@ func (e *endpointRepository) ErrorRateByInterval(ctx context.Context, projectId 
 	query := `SELECT
 		toStartOfInterval(recorded_at, INTERVAL ? MINUTE) as bucket,
 		countIf(status_code >= 500) * 100.0 / count() as error_rate
-	FROM endpoints
+	FROM endpoints_v2
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY bucket
 	ORDER BY bucket ASC`
@@ -605,7 +605,7 @@ func (e *endpointRepository) FindWorstEndpoints(ctx context.Context, projectId u
 		FROM (
 			SELECT e.endpoint, e.duration, e.status_code, e.recorded_at,
 				   s.offset_ms as offset_ms
-			FROM endpoints e
+			FROM endpoints_v2 e
 			LEFT JOIN (SELECT * FROM slow_endpoints FINAL) AS s
 				ON e.endpoint = s.endpoint AND e.project_id = s.project_id
 			WHERE e.project_id = ? AND e.recorded_at >= ? AND e.recorded_at <= ? AND e.is_stream = 0
@@ -664,7 +664,7 @@ func (e *endpointRepository) GetEndpointStats(ctx context.Context, projectId uui
 			0) as satisfied_tolerating,
 		max(is_stream) as has_stream,
 		countIf(is_stream = 0) as non_stream_count
-	FROM endpoints
+	FROM endpoints_v2
 	WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ?`
 
 	var stats models.EndpointDetailStats
@@ -726,7 +726,7 @@ func (e *endpointRepository) GetEndpointStackedChart(ctx context.Context, projec
 
 	// Step 1: Get top 5 endpoints ranked by selected metric (streams excluded)
 	rankQuery := `SELECT endpoint, ` + metricExpr + ` as metric_value
-		FROM endpoints
+		FROM endpoints_v2
 		WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? AND is_stream = 0` + filterClause + `
 		GROUP BY endpoint
 		ORDER BY metric_value DESC
@@ -768,7 +768,7 @@ func (e *endpointRepository) GetEndpointStackedChart(ctx context.Context, projec
 		toStartOfInterval(recorded_at, INTERVAL ? MINUTE) as bucket,
 		` + caseExpr + ` as endpoint_category,
 		` + metricExpr + ` as metric_value
-	FROM endpoints
+	FROM endpoints_v2
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? AND is_stream = 0` + filterClause + `
 	GROUP BY bucket, endpoint_category
 	ORDER BY bucket ASC, endpoint_category ASC`
@@ -836,11 +836,14 @@ func (e *endpointRepository) UpsertSlowEndpoint(ctx context.Context, projectId u
 	return batch.Send()
 }
 
-func (e *endpointRepository) FindByDistributedTraceId(ctx context.Context, distributedTraceId uuid.UUID, projectIds []uuid.UUID, recordedAt *time.Time) ([]models.Endpoint, error) {
-	query := `SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id
-		FROM endpoints
-		WHERE distributed_trace_id = ? AND project_id IN (?)`
-	args := []any{distributedTraceId, projectIds}
+func (e *endpointRepository) FindByTraceIds(ctx context.Context, traceIds []string, projectIds []uuid.UUID, recordedAt *time.Time) ([]models.Endpoint, error) {
+	if len(projectIds) == 0 || len(traceIds) == 0 {
+		return nil, nil
+	}
+	query := `SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, linked_trace_id, is_root
+		FROM endpoints_v2
+		WHERE (trace_id IN (?) OR linked_trace_id IN (?)) AND project_id IN (?)`
+	args := []any{traceIds, traceIds, projectIds}
 	if recordedAt != nil {
 		from, to := shared.DistributedTraceWindowBounds(*recordedAt)
 		query += ` AND recorded_at >= ? AND recorded_at <= ?`
@@ -859,7 +862,7 @@ func (e *endpointRepository) FindByDistributedTraceId(ctx context.Context, distr
 		var t models.Endpoint
 		var attributesJSON string
 		if err := rows.Scan(&t.Id, &t.ProjectId, &t.Endpoint, &t.Duration, &t.RecordedAt,
-			&t.StatusCode, &t.BodySize, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.DistributedTraceId); err != nil {
+			&t.StatusCode, &t.BodySize, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.TraceId, &t.SpanId, &t.ParentSpanId, &t.LinkedTraceId, &t.IsRoot); err != nil {
 			return nil, err
 		}
 		if attributesJSON != "" && attributesJSON != "{}" {

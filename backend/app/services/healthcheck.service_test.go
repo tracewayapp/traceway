@@ -75,46 +75,50 @@ func TestShouldDropHealthcheck(t *testing.T) {
 func TestFilterHealthchecks(t *testing.T) {
 	project := &models.Project{DropHealthyHealthchecks: true}
 
-	healthyId := uuid.New()
-	failingId := uuid.New()
-	regularId := uuid.New()
-	excId := uuid.New()
-
 	endpoints := []models.Endpoint{
-		{Id: healthyId, Endpoint: "GET /health", StatusCode: 200},
-		{Id: failingId, Endpoint: "GET /health", StatusCode: 503},
-		{Id: regularId, Endpoint: "GET /api/users", StatusCode: 200},
-		{Id: excId, Endpoint: "GET /healthz", StatusCode: 200},
-	}
-	spans := []models.Span{
-		{Id: uuid.New(), TraceId: healthyId},
-		{Id: uuid.New(), TraceId: regularId},
-		{Id: uuid.New(), TraceId: excId},
+		{Id: uuid.New(), TraceId: "t-healthy", SpanId: "e1", Endpoint: "GET /health", StatusCode: 200},
+		{Id: uuid.New(), TraceId: "t-failing", SpanId: "e2", Endpoint: "GET /health", StatusCode: 503},
+		{Id: uuid.New(), TraceId: "t-regular", SpanId: "e3", Endpoint: "GET /api/users", StatusCode: 200},
+		{Id: uuid.New(), TraceId: "t-exception", SpanId: "e4", Endpoint: "GET /healthz", StatusCode: 200},
 	}
 	exceptions := []models.ExceptionStackTrace{
-		{Id: uuid.New(), TraceId: &excId},
+		{Id: uuid.New(), TraceId: "t-exception", SpanId: "e4-child"},
 	}
 
-	keptEndpoints, keptSpans, dropped := FilterHealthchecks(project, endpoints, spans, exceptions)
+	kept, dropped := FilterHealthchecks(project, endpoints, exceptions)
 
-	if dropped != 1 {
-		t.Errorf("dropped = %d, expected 1", dropped)
+	if len(dropped) != 1 || !dropped[SpanKey("t-healthy", "e1")] {
+		t.Errorf("dropped = %v, expected only the healthy healthcheck", dropped)
 	}
-	if len(keptEndpoints) != 3 {
-		t.Fatalf("len(keptEndpoints) = %d, expected 3", len(keptEndpoints))
+	if len(kept) != 3 {
+		t.Fatalf("len(kept) = %d, expected 3", len(kept))
 	}
-	for _, e := range keptEndpoints {
-		if e.Id == healthyId {
+	for _, e := range kept {
+		if e.TraceId == "t-healthy" {
 			t.Errorf("healthy healthcheck endpoint was not dropped")
 		}
 	}
-	if len(keptSpans) != 2 {
-		t.Fatalf("len(keptSpans) = %d, expected 2", len(keptSpans))
+}
+
+func TestDropSpanSubtrees(t *testing.T) {
+	spans := []models.Span{
+		{TraceId: "t-healthy", SpanId: "e1"},
+		{TraceId: "t-healthy", SpanId: "db", ParentSpanId: "e1"},
+		{TraceId: "t-healthy", SpanId: "row", ParentSpanId: "db"},
+		{TraceId: "t-healthy", SpanId: "job", ParentSpanId: "e1"},
+		{TraceId: "t-healthy", SpanId: "job-child", ParentSpanId: "job"},
+		{TraceId: "t-regular", SpanId: "e1"},
 	}
-	for _, s := range keptSpans {
-		if s.TraceId == healthyId {
-			t.Errorf("span of dropped healthcheck was not dropped")
-		}
+	ids := func(span models.Span) (string, string, string) { return span.TraceId, span.SpanId, span.ParentSpanId }
+
+	kept := DropSpanSubtrees(spans, ids, map[string]bool{SpanKey("t-healthy", "e1"): true}, map[string]bool{SpanKey("t-healthy", "job"): true})
+
+	got := ""
+	for _, span := range kept {
+		got += span.TraceId + "/" + span.SpanId + " "
+	}
+	if got != "t-healthy/job t-healthy/job-child t-regular/e1 " {
+		t.Fatalf("a dropped healthcheck takes its own spans and stops at a task it started, in its own trace only: %s", got)
 	}
 }
 
@@ -124,9 +128,9 @@ func TestFilterHealthchecksDisabled(t *testing.T) {
 		{Id: uuid.New(), Endpoint: "GET /health", StatusCode: 200},
 	}
 
-	keptEndpoints, _, dropped := FilterHealthchecks(project, endpoints, nil, nil)
+	kept, dropped := FilterHealthchecks(project, endpoints, nil)
 
-	if dropped != 0 || len(keptEndpoints) != 1 {
-		t.Errorf("disabled filter dropped endpoints: kept=%d dropped=%d", len(keptEndpoints), dropped)
+	if len(dropped) != 0 || len(kept) != 1 {
+		t.Errorf("disabled filter dropped endpoints: kept=%d dropped=%d", len(kept), len(dropped))
 	}
 }

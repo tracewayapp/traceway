@@ -1,12 +1,14 @@
 package telemetry
 
 import (
+	"context"
 	"math"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 )
 
 func assertApproxEqual(t *testing.T, name string, got, want, tolerance float64) {
@@ -90,16 +92,27 @@ func makeException(projectId uuid.UUID, hash, stackTrace string, recordedAt time
 	}
 }
 
-func makeSpan(projectId, traceId uuid.UUID, name string, startTime time.Time, duration time.Duration) models.Span {
+// makeSpan is a span of the native protocol: a child of the run it was recorded in, which is the root span of its trace.
+func makeSpan(projectId, runId uuid.UUID, name string, startTime time.Time, duration time.Duration) models.Span {
 	return models.Span{
-		Id:         uuid.New(),
-		TraceId:    traceId,
-		ProjectId:  projectId,
-		Name:       name,
-		StartTime:  startTime,
-		Duration:   duration,
-		RecordedAt: startTime,
+		ProjectId:    projectId,
+		TraceId:      hexId(runId),
+		SpanId:       hexId(uuid.New()),
+		ParentSpanId: hexId(runId),
+		Name:         name,
+		StartTime:    startTime,
+		Duration:     duration,
+		RecordedAt:   startTime,
 	}
+}
+
+// findRunSpans reads the spans under a native run the way its detail page does.
+func findRunSpans(ctx context.Context, projectId, runId uuid.UUID, recordedAt *time.Time) ([]models.Span, error) {
+	graph, err := SpanRepository.FindGraph(ctx, shared.SpanLookup{ProjectId: projectId, TraceId: hexId(runId), SpanId: hexId(runId), RecordedAt: recordedAt})
+	if err != nil {
+		return nil, err
+	}
+	return graph.Spans, nil
 }
 
 func makeSessionRecording(projectId, exceptionId uuid.UUID, filePath string, recordedAt time.Time) models.SessionRecording {

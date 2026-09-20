@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -91,6 +92,17 @@ func validateUUIDArg(cmd *cobra.Command, mode output.Mode, id, label string) err
 	if _, err := uuid.Parse(id); err != nil {
 		return renderUsageError(cmd.ErrOrStderr(), mode,
 			fmt.Sprintf("invalid %s %q: must be a UUID", label, id), "")
+	}
+	return nil
+}
+
+// validateTraceIDArg checks that id is a trace id: 32 hex characters, which is
+// how OpenTelemetry writes one, or the same bytes as a dashed UUID.
+func validateTraceIDArg(cmd *cobra.Command, mode output.Mode, id string) error {
+	decoded, err := hex.DecodeString(strings.ReplaceAll(id, "-", ""))
+	if err != nil || len(decoded) != 16 {
+		return renderUsageError(cmd.ErrOrStderr(), mode,
+			fmt.Sprintf("invalid trace id %q: must be 32 hex characters or a UUID", id), "")
 	}
 	return nil
 }

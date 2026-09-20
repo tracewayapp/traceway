@@ -14,6 +14,7 @@
 	import { LabelValue } from '$lib/components/ui/label-value';
 	import { AttributesGrid } from '$lib/components/ui/attributes-grid/index.js';
 	import SpanWaterfall from '$lib/components/spans/span-waterfall.svelte';
+	import SpanGraphNotice from '$lib/components/spans/span-graph-notice.svelte';
 	import SpanEmptyState from '$lib/components/spans/span-empty-state.svelte';
 	import type { TraceDetailResponse } from '$lib/types/spans';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
@@ -23,13 +24,13 @@
 	import { resolve } from '$app/paths';
 	import DistributedTraceCard from '$lib/components/distributed-trace/distributed-trace-card.svelte';
 	import TraceLogsPanel from '$lib/components/trace-logs/trace-logs-panel.svelte';
-	import { logTraceId } from '$lib/utils/span-id';
 
 	let { data } = $props();
 
 	const timezone = $derived(getTimezone());
 
-	let response = $state<TraceDetailResponse | null>(null);
+	// Raw on purpose: the response can carry 20,000 spans and is only ever replaced, never edited.
+	let response = $state.raw<TraceDetailResponse | null>(null);
 	let loading = $state(true);
 	let error = $state('');
 	let notFound = $state(false);
@@ -262,15 +263,17 @@
 					</Card.Description>
 				</Card.Header>
 			{/if}
-			<Card.Content>
+			<Card.Content class="space-y-3">
+				<SpanGraphNotice status={response.spanGraphStatus} />
 				{#if response.hasSpans}
 					<SpanWaterfall
 						spans={response.spans}
 						traceDuration={response.endpoint.duration}
 						traceStartTime={response.endpoint.recordedAt}
+						traceId={response.endpoint.traceId}
 						rootSpanId={response.endpoint.spanId}
 					/>
-				{:else}
+				{:else if !response.spanGraphStatus || response.spanGraphStatus.state === 'complete'}
 					<SpanEmptyState framework={projectsState.currentProject?.framework ?? 'gin'} />
 				{/if}
 			</Card.Content>
@@ -278,15 +281,14 @@
 
 		<TraceLogsPanel
 			projectId={projectsState.currentProjectId ?? ''}
-			traceId={logTraceId(response.endpoint)}
-			distributedTraceId={response.endpoint.distributedTraceId ?? null}
+			traceId={response.endpoint.traceId}
 			spans={response.spans ?? []}
 			traceRecordedAt={response.endpoint.recordedAt}
 		/>
 
-		{#if response.endpoint.distributedTraceId}
+		{#if response.endpoint.traceId}
 			<DistributedTraceCard
-				distributedTraceId={response.endpoint.distributedTraceId}
+				traceId={response.endpoint.traceId}
 				currentNodeId={response.endpoint.id}
 				recordedAt={response.endpoint.recordedAt}
 			/>

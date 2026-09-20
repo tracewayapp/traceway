@@ -73,7 +73,7 @@ func TestConvertTraces_AndroidR8Retraces(t *testing.T) {
 	})
 
 	req := androidExceptionRequest(string(androidConvFixture(t, "r8", "obfuscated.txt")), proguardUuid, nil)
-	_, _, _, exceptions, _, _ := convertTraces(context.Background(), tokenProject(projectId), projectId, req)
+	_, _, exceptions, _, _ := convertTraces(context.Background(), tokenProject(projectId), projectId, req)
 	if len(exceptions) != 1 {
 		t.Fatalf("expected 1 exception, got %d", len(exceptions))
 	}
@@ -106,7 +106,7 @@ func TestConvertTraces_AndroidStructuredArrays(t *testing.T) {
 		intArrayKV("exception.structured_stacktrace.lines", 2),
 	}
 	req := androidExceptionRequest("", proguardUuid, extra)
-	_, _, _, exceptions, _, _ := convertTraces(context.Background(), tokenProject(projectId), projectId, req)
+	_, _, exceptions, _, _ := convertTraces(context.Background(), tokenProject(projectId), projectId, req)
 	if len(exceptions) != 1 {
 		t.Fatalf("expected 1 exception, got %d", len(exceptions))
 	}

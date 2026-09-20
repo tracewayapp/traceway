@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/google/uuid"
 	_ "github.com/lib/pq"
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/app/chdb"
@@ -100,8 +101,9 @@ func setupTestDB(t *testing.T) {
 	t.Cleanup(func() {
 		ctx := context.Background()
 		tables := []string{
-			"endpoints", "tasks", "exception_stack_traces",
-			"spans", "metric_points", "session_recordings",
+			"endpoints_v2", "tasks_v2", "exceptions_v2", "spans_v2", "ai_traces_v2",
+			"endpoints", "tasks", "exception_stack_traces", "spans", "ai_traces",
+			"metric_points", "session_recordings",
 			"archived_exceptions", "slow_endpoints", "fired_notifications",
 		}
 		for _, table := range tables {
@@ -109,4 +111,43 @@ func setupTestDB(t *testing.T) {
 		}
 		pgDB.Close()
 	})
+}
+
+// legacyExec writes to the tables V2 replaced, which no repository writes any more.
+func legacyExec(t *testing.T, query string, args ...any) {
+	t.Helper()
+	for i, arg := range args {
+		switch value := arg.(type) {
+		case bool:
+			args[i] = uint8(0)
+			if value {
+				args[i] = uint8(1)
+			}
+		case *uuid.UUID:
+			args[i] = nil
+			if value != nil {
+				args[i] = *value
+			}
+		}
+	}
+	if err := chdb.Conn.Exec(context.Background(), query, args...); err != nil {
+		t.Fatalf("%s: %v", query, err)
+	}
+}
+
+func legacyReset(t *testing.T) {
+	t.Helper()
+	for _, statement := range []string{"TRUNCATE TABLE IF EXISTS endpoints", "TRUNCATE TABLE IF EXISTS tasks", "TRUNCATE TABLE IF EXISTS ai_traces",
+		"TRUNCATE TABLE IF EXISTS exception_stack_traces", "TRUNCATE TABLE IF EXISTS spans"} {
+		legacyExec(t, statement)
+	}
+}
+
+func moveOverRowCount(t *testing.T, table string) int64 {
+	t.Helper()
+	var count uint64
+	if err := chdb.Conn.QueryRow(context.Background(), "SELECT count() FROM "+table).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	return int64(count)
 }

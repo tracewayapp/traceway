@@ -72,20 +72,38 @@ func (c *Client) ListExceptions(ctx context.Context, projectID string, req ListE
 	return &resp, nil
 }
 
-// ExceptionStackTrace is one occurrence of a grouped exception.
+// ExceptionStackTrace is one occurrence of a grouped exception. TraceId and
+// SpanId name the span it was recorded on (empty when it arrived outside any
+// trace), and TraceType is set only when that span is itself an endpoint, a
+// task or an AI trace. RelatedEntity on the responses names the owner.
 type ExceptionStackTrace struct {
-	Id                 uuid.UUID         `json:"id"`
-	ExceptionHash      string            `json:"exceptionHash"`
-	StackTrace         string            `json:"stackTrace"`
-	RecordedAt         time.Time         `json:"recordedAt"`
-	TraceId            *uuid.UUID        `json:"traceId,omitempty"`
-	TraceType          string            `json:"traceType,omitempty"`
-	ServerName         string            `json:"serverName,omitempty"`
-	AppVersion         string            `json:"appVersion,omitempty"`
-	IsMessage          bool              `json:"isMessage,omitempty"`
-	Attributes         map[string]string `json:"attributes,omitempty"`
-	DistributedTraceId *uuid.UUID        `json:"distributedTraceId,omitempty"`
-	SessionId          *uuid.UUID        `json:"sessionId,omitempty"`
+	Id            uuid.UUID         `json:"id"`
+	ExceptionHash string            `json:"exceptionHash"`
+	StackTrace    string            `json:"stackTrace"`
+	RecordedAt    time.Time         `json:"recordedAt"`
+	TraceId       string            `json:"traceId,omitempty"`
+	SpanId        string            `json:"spanId,omitempty"`
+	TraceType     string            `json:"traceType,omitempty"`
+	ServerName    string            `json:"serverName,omitempty"`
+	AppVersion    string            `json:"appVersion,omitempty"`
+	IsMessage     bool              `json:"isMessage,omitempty"`
+	Attributes    map[string]string `json:"attributes,omitempty"`
+	LinkedTraceId string            `json:"linkedTraceId,omitempty"`
+	SessionId     *uuid.UUID        `json:"sessionId,omitempty"`
+}
+
+// RelatedEntity is the endpoint, task or AI trace an exception happened in:
+// the one whose span it was recorded on, or the nearest one above that span.
+// Id and RecordedAt feed straight into endpoints/tasks/ai-traces show, and
+// TraceId into traces show.
+type RelatedEntity struct {
+	TraceType  string        `json:"traceType"`
+	Id         uuid.UUID     `json:"id"`
+	Name       string        `json:"name"`
+	StatusCode int16         `json:"statusCode"`
+	Duration   time.Duration `json:"duration"`
+	RecordedAt time.Time     `json:"recordedAt"`
+	TraceId    string        `json:"traceId"`
 }
 
 // getExceptionRequest is the body for POST /api/exception-stack-traces/:hash.
@@ -99,6 +117,8 @@ type GetExceptionResponse struct {
 	Group       *ExceptionGroup       `json:"group"`
 	Occurrences []ExceptionStackTrace `json:"occurrences"`
 	Pagination  Pagination            `json:"pagination"`
+	// RelatedEntity belongs to the newest occurrence, the first of page 1.
+	RelatedEntity *RelatedEntity `json:"relatedEntity,omitempty"`
 }
 
 // GetException returns the group + paginated occurrences for the given hash.
@@ -118,6 +138,7 @@ func (c *Client) GetException(ctx context.Context, projectID, hash string, page 
 // without walking pages.
 type ExceptionByIdResponse struct {
 	Exception        *ExceptionStackTrace `json:"exception"`
+	RelatedEntity    *RelatedEntity       `json:"relatedEntity,omitempty"`
 	SessionId        *uuid.UUID           `json:"sessionId,omitempty"`
 	SessionRecording json.RawMessage      `json:"sessionRecording,omitempty"`
 }

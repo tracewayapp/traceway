@@ -22,7 +22,7 @@ func (e *taskRepository) InsertAsync(ctx context.Context, lines []models.Task) e
 	if len(lines) == 0 {
 		return nil
 	}
-	return chdb.SendBatch("INSERT INTO tasks (id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, is_root)", func(batch driver.Batch) error {
+	return chdb.SendBatch("INSERT INTO tasks_v2 (id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, linked_trace_id, is_root)", func(batch driver.Batch) error {
 		for _, t := range lines {
 			attributesJSON := "{}"
 			if len(t.Attributes) != 0 {
@@ -34,7 +34,7 @@ func (e *taskRepository) InsertAsync(ctx context.Context, lines []models.Task) e
 			if t.IsRoot {
 				isRoot = 1
 			}
-			if err := batch.Append(t.Id, t.ProjectId, t.TaskName, int64(t.Duration), t.RecordedAt, t.ClientIP, attributesJSON, t.AppVersion, t.ServerName, t.DistributedTraceId, t.SpanId, isRoot); err != nil {
+			if err := batch.Append(t.Id, t.ProjectId, t.TaskName, int64(t.Duration), t.RecordedAt, t.ClientIP, attributesJSON, t.AppVersion, t.ServerName, t.TraceId, t.SpanId, t.ParentSpanId, t.LinkedTraceId, isRoot); err != nil {
 				return err
 			}
 		}
@@ -44,13 +44,13 @@ func (e *taskRepository) InsertAsync(ctx context.Context, lines []models.Task) e
 
 func (e *taskRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {
 	var count uint64
-	err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM tasks WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, start, end).Scan(&count)
+	err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM tasks_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, start, end).Scan(&count)
 	return int64(count), err
 }
 
 func (e *taskRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string) ([]models.Task, int64, error) {
 	var count uint64
-	err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM tasks WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, fromDate, toDate).Scan(&count)
+	err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM tasks_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, fromDate, toDate).Scan(&count)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -66,7 +66,7 @@ func (e *taskRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromD
 		orderBy = "recorded_at"
 	}
 
-	query := "SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id FROM tasks WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " DESC LIMIT ? OFFSET ?"
+	query := "SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, linked_trace_id FROM tasks_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " DESC LIMIT ? OFFSET ?"
 	rows, err := chdb.Conn.Query(ctx, query, projectId, fromDate, toDate, pageSize, offset)
 	if err != nil {
 		return nil, 0, err
@@ -77,7 +77,7 @@ func (e *taskRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromD
 	for rows.Next() {
 		var t models.Task
 		var attributesJSON string
-		if err := rows.Scan(&t.Id, &t.ProjectId, &t.TaskName, &t.Duration, &t.RecordedAt, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.DistributedTraceId); err != nil {
+		if err := rows.Scan(&t.Id, &t.ProjectId, &t.TaskName, &t.Duration, &t.RecordedAt, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.TraceId, &t.SpanId, &t.ParentSpanId, &t.LinkedTraceId); err != nil {
 			return nil, 0, err
 		}
 		if attributesJSON != "" && attributesJSON != "{}" {
@@ -106,7 +106,7 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 	}
 
 	var count uint64
-	err := chdb.Conn.QueryRow(ctx, "SELECT uniq(task_name) FROM tasks WHERE "+whereClause, args...).Scan(&count)
+	err := chdb.Conn.QueryRow(ctx, "SELECT uniq(task_name) FROM tasks_v2 WHERE "+whereClause, args...).Scan(&count)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -143,7 +143,7 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 		max(recorded_at) as last_seen,
 		max(is_root) as has_root,
 		max(if(is_root = 0, 1, 0)) as has_non_root
-	FROM tasks
+	FROM tasks_v2
 	WHERE ` + whereClause + `
 	GROUP BY task_name
 	ORDER BY ` + orderExpr + ` ` + sortDir + `
@@ -177,7 +177,7 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 
 func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID, taskName string, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.Task, int64, error) {
 	var count uint64
-	err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM tasks WHERE project_id = ? AND task_name = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, taskName, fromDate, toDate).Scan(&count)
+	err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM tasks_v2 WHERE project_id = ? AND task_name = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, taskName, fromDate, toDate).Scan(&count)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -199,7 +199,7 @@ func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID
 		sortDir = "ASC"
 	}
 
-	query := "SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id FROM tasks WHERE project_id = ? AND task_name = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " " + sortDir + " LIMIT ? OFFSET ?"
+	query := "SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, linked_trace_id FROM tasks_v2 WHERE project_id = ? AND task_name = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " " + sortDir + " LIMIT ? OFFSET ?"
 	rows, err := chdb.Conn.Query(ctx, query, projectId, taskName, fromDate, toDate, pageSize, offset)
 	if err != nil {
 		return nil, 0, err
@@ -210,7 +210,7 @@ func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID
 	for rows.Next() {
 		var t models.Task
 		var attributesJSON string
-		if err := rows.Scan(&t.Id, &t.ProjectId, &t.TaskName, &t.Duration, &t.RecordedAt, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.DistributedTraceId); err != nil {
+		if err := rows.Scan(&t.Id, &t.ProjectId, &t.TaskName, &t.Duration, &t.RecordedAt, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.TraceId, &t.SpanId, &t.ParentSpanId, &t.LinkedTraceId); err != nil {
 			return nil, 0, err
 		}
 		if attributesJSON != "" && attributesJSON != "{}" {
@@ -226,8 +226,8 @@ func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID
 
 // FindById returns a single task by ID
 func (e *taskRepository) FindById(ctx context.Context, projectId, taskId uuid.UUID, recordedAt *time.Time) (*models.Task, error) {
-	query := `SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, is_root
-		FROM tasks
+	query := `SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, linked_trace_id, is_root
+		FROM tasks_v2
 		WHERE project_id = ? AND id = ?`
 	args := []any{projectId, taskId}
 	if recordedAt != nil {
@@ -243,7 +243,7 @@ func (e *taskRepository) FindById(ctx context.Context, projectId, taskId uuid.UU
 
 	err := chdb.Conn.QueryRow(ctx, query, args...).Scan(
 		&t.Id, &t.ProjectId, &t.TaskName, &t.Duration, &t.RecordedAt,
-		&t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.DistributedTraceId, &t.SpanId, &isRoot)
+		&t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.TraceId, &t.SpanId, &t.ParentSpanId, &t.LinkedTraceId, &isRoot)
 	t.IsRoot = isRoot == 1
 
 	if err != nil {
@@ -267,7 +267,7 @@ func (e *taskRepository) CountByHour(ctx context.Context, projectId uuid.UUID, s
 	query := `SELECT
 		toStartOfHour(recorded_at) as hour,
 		toFloat64(count()) as count
-	FROM tasks
+	FROM tasks_v2
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY hour
 	ORDER BY hour ASC`
@@ -295,7 +295,7 @@ func (e *taskRepository) AvgDurationByHour(ctx context.Context, projectId uuid.U
 	query := `SELECT
 		toStartOfHour(recorded_at) as hour,
 		avg(duration) / 1000000 as avg_duration_ms
-	FROM tasks
+	FROM tasks_v2
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY hour
 	ORDER BY hour ASC`
@@ -323,7 +323,7 @@ func (e *taskRepository) CountByInterval(ctx context.Context, projectId uuid.UUI
 	query := `SELECT
 		toStartOfInterval(recorded_at, INTERVAL ? MINUTE) as bucket,
 		toFloat64(count()) as count
-	FROM tasks
+	FROM tasks_v2
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY bucket
 	ORDER BY bucket ASC`
@@ -351,7 +351,7 @@ func (e *taskRepository) AvgDurationByInterval(ctx context.Context, projectId uu
 	query := `SELECT
 		toStartOfInterval(recorded_at, INTERVAL ? MINUTE) as bucket,
 		avg(duration) / 1000000 as avg_duration_ms
-	FROM tasks
+	FROM tasks_v2
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY bucket
 	ORDER BY bucket ASC`
@@ -383,7 +383,7 @@ func (e *taskRepository) FindWorstTasks(ctx context.Context, projectId uuid.UUID
 		quantile(0.95)(duration) as p95_duration,
 		avg(duration) as avg_duration,
 		max(recorded_at) as last_seen
-	FROM tasks
+	FROM tasks_v2
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY task_name
 	ORDER BY count * (p95_duration - p50_duration) DESC
@@ -425,7 +425,7 @@ func (e *taskRepository) GetTaskStats(ctx context.Context, projectId uuid.UUID, 
 		quantile(0.5)(duration) / 1000000 as p50_duration_ms,
 		quantile(0.95)(duration) / 1000000 as p95_duration_ms,
 		quantile(0.99)(duration) / 1000000 as p99_duration_ms
-	FROM tasks
+	FROM tasks_v2
 	WHERE project_id = ? AND task_name = ? AND recorded_at >= ? AND recorded_at <= ?`
 
 	var stats models.TaskDetailStats
@@ -449,11 +449,14 @@ func (e *taskRepository) GetTaskStats(ctx context.Context, projectId uuid.UUID, 
 	return &stats, nil
 }
 
-func (e *taskRepository) FindByDistributedTraceId(ctx context.Context, distributedTraceId uuid.UUID, projectIds []uuid.UUID, recordedAt *time.Time) ([]models.Task, error) {
-	query := `SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, distributed_trace_id
-		FROM tasks
-		WHERE distributed_trace_id = ? AND project_id IN (?)`
-	args := []any{distributedTraceId, projectIds}
+func (e *taskRepository) FindByTraceIds(ctx context.Context, traceIds []string, projectIds []uuid.UUID, recordedAt *time.Time) ([]models.Task, error) {
+	if len(projectIds) == 0 || len(traceIds) == 0 {
+		return nil, nil
+	}
+	query := `SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, linked_trace_id, is_root
+		FROM tasks_v2
+		WHERE (trace_id IN (?) OR linked_trace_id IN (?)) AND project_id IN (?)`
+	args := []any{traceIds, traceIds, projectIds}
 	if recordedAt != nil {
 		from, to := shared.DistributedTraceWindowBounds(*recordedAt)
 		query += ` AND recorded_at >= ? AND recorded_at <= ?`
@@ -472,7 +475,7 @@ func (e *taskRepository) FindByDistributedTraceId(ctx context.Context, distribut
 		var t models.Task
 		var attributesJSON string
 		if err := rows.Scan(&t.Id, &t.ProjectId, &t.TaskName, &t.Duration, &t.RecordedAt,
-			&t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.DistributedTraceId); err != nil {
+			&t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.TraceId, &t.SpanId, &t.ParentSpanId, &t.LinkedTraceId, &t.IsRoot); err != nil {
 			return nil, err
 		}
 		if attributesJSON != "" && attributesJSON != "{}" {

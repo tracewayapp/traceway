@@ -14,6 +14,7 @@
 	import { LabelValue } from '$lib/components/ui/label-value';
 	import { AttributesGrid } from '$lib/components/ui/attributes-grid/index.js';
 	import SpanWaterfall from '$lib/components/spans/span-waterfall.svelte';
+	import SpanGraphNotice from '$lib/components/spans/span-graph-notice.svelte';
 	import SpanEmptyState from '$lib/components/spans/span-empty-state.svelte';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
@@ -22,11 +23,11 @@
 	import { resolve } from '$app/paths';
 	import DistributedTraceCard from '$lib/components/distributed-trace/distributed-trace-card.svelte';
 	import TraceLogsPanel from '$lib/components/trace-logs/trace-logs-panel.svelte';
-	import { logTraceId } from '$lib/utils/span-id';
-	import type { Span } from '$lib/types/spans';
+	import type { Span, SpanGraphStatus, TraceIdentity } from '$lib/types/spans';
 
 	type TaskDetailResponse = {
-		task: {
+		spanGraphStatus?: SpanGraphStatus;
+		task: TraceIdentity & {
 			id: string;
 			taskName: string;
 			duration: number;
@@ -35,8 +36,6 @@
 			attributes: Record<string, string> | null;
 			serverName: string;
 			appVersion: string;
-			distributedTraceId?: string;
-			spanId?: string;
 		};
 		exception?: {
 			exceptionHash: string;
@@ -57,7 +56,8 @@
 
 	const timezone = $derived(getTimezone());
 
-	let response = $state<TaskDetailResponse | null>(null);
+	// Raw on purpose: the response can carry 20,000 spans and is only ever replaced, never edited.
+	let response = $state.raw<TaskDetailResponse | null>(null);
 	let loading = $state(true);
 	let error = $state('');
 	let notFound = $state(false);
@@ -262,15 +262,17 @@
 					{/if}
 				</Card.Description>
 			</Card.Header>
-			<Card.Content>
+			<Card.Content class="space-y-3">
+				<SpanGraphNotice status={response.spanGraphStatus} />
 				{#if response.hasSpans}
 					<SpanWaterfall
 						spans={response.spans}
 						traceDuration={response.task.duration}
 						traceStartTime={response.task.recordedAt}
+						traceId={response.task.traceId}
 						rootSpanId={response.task.spanId}
 					/>
-				{:else}
+				{:else if !response.spanGraphStatus || response.spanGraphStatus.state === 'complete'}
 					<SpanEmptyState framework={projectsState.currentProject?.framework ?? 'gin'} />
 				{/if}
 			</Card.Content>
@@ -278,15 +280,14 @@
 
 		<TraceLogsPanel
 			projectId={projectsState.currentProjectId ?? ''}
-			traceId={logTraceId(response.task)}
-			distributedTraceId={response.task.distributedTraceId ?? null}
+			traceId={response.task.traceId}
 			spans={response.spans ?? []}
 			traceRecordedAt={response.task.recordedAt}
 		/>
 
-		{#if response.task.distributedTraceId}
+		{#if response.task.traceId}
 			<DistributedTraceCard
-				distributedTraceId={response.task.distributedTraceId}
+				traceId={response.task.traceId}
 				currentNodeId={response.task.id}
 				recordedAt={response.task.recordedAt}
 			/>

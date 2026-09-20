@@ -13,6 +13,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	traceway "go.tracewayapp.com"
 )
@@ -48,8 +49,10 @@ type AiTraceInstancesResponse struct {
 }
 
 type AiTraceDetailResponse struct {
-	AiTrace      *models.AiTrace `json:"aiTrace"`
-	Conversation json.RawMessage `json:"conversation,omitempty"`
+	SpanGraphStatus *models.SpanGraphStatus `json:"spanGraphStatus"`
+	Spans           []models.Span           `json:"spans,omitempty"`
+	AiTrace         *models.AiTrace         `json:"aiTrace"`
+	Conversation    json.RawMessage         `json:"conversation,omitempty"`
 }
 
 type AiConversationSearchRequest struct {
@@ -210,8 +213,15 @@ func (a aiTraceController) GetAiTraceDetail(c *gin.Context) {
 		return
 	}
 
+	graph, err := telemetry.SpanRepository.FindGraph(c, shared.NewSpanLookup(projectId, aiTrace.TraceId, aiTrace.SpanId, aiTrace.RecordedAt))
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error loading AI trace spans: %w", err))
+		return
+	}
 	response := AiTraceDetailResponse{
-		AiTrace: aiTrace,
+		SpanGraphStatus: &graph.Status,
+		Spans:           graph.Spans,
+		AiTrace:         aiTrace,
 	}
 
 	if aiTrace.StorageKey != "" {

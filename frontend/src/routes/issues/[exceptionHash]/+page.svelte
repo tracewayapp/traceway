@@ -12,6 +12,7 @@
 	import { toast } from 'svelte-sonner';
 	import ArchiveConfirmationDialog from '$lib/components/archive-confirmation-dialog.svelte';
 	import OncallOwner from '$lib/components/traceway/oncall-owner.svelte';
+	import { linkedTraceFrom } from '$lib/types/exceptions';
 	import type {
 		ExceptionGroup,
 		ExceptionOccurrence,
@@ -79,34 +80,7 @@
 			total = response.pagination.total;
 			sessionRecording = response.sessionRecording ?? null;
 			sessionId = response.sessionId ?? null;
-
-			// Load linked trace if the latest occurrence has a traceId
-			const firstOccurrence = occurrences[0];
-			if (firstOccurrence?.traceId) {
-				try {
-					const isTask = firstOccurrence.traceType === 'task';
-					const endpoint = isTask ? '/tasks' : '/endpoints';
-					const txResponse = await api.post(
-						`${endpoint}/${firstOccurrence.traceId}`,
-						{},
-						{ projectId: projectsState.currentProjectId ?? undefined }
-					);
-					const txData = isTask ? txResponse.task : txResponse.endpoint;
-					if (txData) {
-						linkedTrace = {
-							id: txData.id,
-							endpoint: isTask ? txData.taskName : txData.endpoint,
-							duration: txData.duration,
-							statusCode: txData.statusCode || 0,
-							recordedAt: txData.recordedAt,
-							traceType: isTask ? 'task' : 'endpoint',
-							distributedTraceId: txData.distributedTraceId
-						};
-					}
-				} catch (txError) {
-					console.warn('Could not load linked trace:', txError);
-				}
-			}
+			linkedTrace = linkedTraceFrom(response.relatedEntity);
 		} catch (e) {
 			console.error(e);
 			if (getErrorStatus(e) === 404) {

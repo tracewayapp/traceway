@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 )
 
@@ -50,7 +51,7 @@ func otelSpanIDToUUID(spanID []byte) uuid.UUID {
 }
 
 func nanoToTime(nanos uint64) time.Time {
-	return time.Unix(0, int64(nanos))
+	return shared.OtelNanosToTime(nanos)
 }
 
 // spanUUIDToHex returns the hex representation of the last 8 bytes of a span-derived UUID
@@ -58,19 +59,6 @@ func nanoToTime(nanos uint64) time.Time {
 // other direction, producing the same format we store in log_records.span_id.
 func spanUUIDToHex(u uuid.UUID) string {
 	return hex.EncodeToString(u[8:])
-}
-
-// ptrSpanUUID wraps otelSpanIDToUUID for nullable parent-span-id capture: returns nil when
-// the span has no parent bytes, or when the OTel span ID is malformed.
-func ptrSpanUUID(raw []byte) *uuid.UUID {
-	if len(raw) == 0 {
-		return nil
-	}
-	u := otelSpanIDToUUID(raw)
-	if u == uuid.Nil {
-		return nil
-	}
-	return &u
 }
 
 func extractAttributes(attrs []*commonpb.KeyValue) map[string]string {

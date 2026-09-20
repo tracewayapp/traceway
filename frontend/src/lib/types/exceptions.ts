@@ -8,8 +8,11 @@ export type ExceptionGroup = {
 
 export type ExceptionOccurrence = {
 	id: string;
-	traceId: string | null;
-	traceType: 'endpoint' | 'task';
+	// The trace and span the exception was recorded on, as lowercase hex. Empty when it arrived without a trace.
+	traceId: string;
+	spanId: string;
+	traceType: 'endpoint' | 'task' | 'ai_trace' | '';
+	linkedTraceId?: string;
 	exceptionHash: string;
 	stackTrace: string;
 	recordedAt: string;
@@ -18,7 +21,17 @@ export type ExceptionOccurrence = {
 	serverName: string;
 	isMessage: boolean;
 	endpoint: string;
-	distributedTraceId?: string;
+};
+
+// The endpoint, task or AI trace an exception happened in, as the backend resolves it.
+export type RelatedEntity = {
+	traceType: 'endpoint' | 'task' | 'ai_trace';
+	id: string;
+	name: string;
+	statusCode: number;
+	duration: number;
+	recordedAt: string;
+	traceId: string;
 };
 
 export type LinkedTrace = {
@@ -27,9 +40,22 @@ export type LinkedTrace = {
 	duration: number;
 	statusCode: number;
 	recordedAt: string;
-	traceType: 'endpoint' | 'task';
-	distributedTraceId?: string;
+	traceType: 'endpoint' | 'task' | 'ai_trace';
+	traceId: string;
 };
+
+export function linkedTraceFrom(related: RelatedEntity | null | undefined): LinkedTrace | null {
+	if (!related) return null;
+	return {
+		id: related.id,
+		endpoint: related.name,
+		duration: related.duration,
+		statusCode: related.statusCode,
+		recordedAt: related.recordedAt,
+		traceType: related.traceType,
+		traceId: related.traceId
+	};
+}
 
 // Session recording shape returned by the backend's exception detail endpoints.
 // Mirrors the wire format produced by the Flutter and JS SDKs.

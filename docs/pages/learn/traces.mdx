@@ -56,19 +56,17 @@ Each Endpoint / Task / AI Trace row carries an `is_root` flag.
 
 Non-root rows surface a **Non-root** chip in the dashboard list. On the row's detail page, a **View distributed trace** link jumps to the full picture across all the entities sharing that trace id.
 
-The id rules avoid collisions when a root and a non-root entity share the same trace id:
-- Root entity id = OTel trace id (so the request and its lineage are easy to look up by trace id).
-- Non-root entity id = the entity's own span id (distinct from the root's id even within the same trace).
+Every row keeps the ids of the span it was made from: `trace_id`, `span_id` and `parent_span_id`. Its own row id is derived from the project, the trace and the span, so a retried export produces the same id.
 
 ## Distributed traces
 
-Every Endpoint / Task / AI Trace stores a **`distributed_trace_id`** equal to the OTel trace id, auto-derived on ingestion. So:
+Every Endpoint / Task / AI Trace stores the **`trace_id`** of its span. Rows that share a trace id belong together, whichever service or project reported them. So:
 
-- A request that dispatches a queue job and the worker that processes it share the same `distributed_trace_id`. They show up as two rows (the endpoint and the task), and a single page (`/distributed-traces/<id>`) renders them side by side with their spans.
-- A request handler that calls an LLM produces an endpoint row and an ai_trace row with the same `distributed_trace_id`. Same cross-trace page.
-- Cross-service HTTP hops (each service exports its own SERVER span) all share the trace id. Each hop appears as its own endpoint row.
+- A request that dispatches a queue job and the worker that processes it share a trace id. They show up as two rows (the endpoint and the task), and the Distributed Trace card on either page shows both, the task nested under the endpoint.
+- A request handler that calls an LLM produces an endpoint row and an ai_trace row with the same trace id. Same card.
+- Cross-service HTTP hops (each service exports its own SERVER span) all share the trace id. Each hop appears as its own endpoint row, nested by the spans in between.
 
-You don't need to set any vendor attribute for this to work, OTLP's native trace_id is enough. If you do need to stitch runs that genuinely carry different trace ids, the span attribute `traceway.distributed_trace_id` overrides the derived value.
+You don't need to set any vendor attribute for this to work, OTLP's native trace id is enough. One case needs a link between two different trace ids: a browser request and the backend trace it started. There the span attribute `traceway.distributed_trace_id` names the other trace. It is stored as the row's `linked_trace_id`, and opening either trace shows both. See [Distributed Tracing](/client/js-sdk/distributed-tracing).
 
 ## What each entity stores
 
@@ -87,8 +85,6 @@ On the OTel ingestion path, a 404 from a matched route keeps its route identity.
 - `http.route` is a catch-all made only of slashes and wildcards, such as `/`, `/*`, `/**`, or `*/*`. Some instrumentations report these for unmatched requests: Express reports `/` when only app-level middleware ran, and Spring reports `/**` for its static resource handler.
 
 Scoped wildcards like `GET /api/*` are real routes and keep their name even on 404.
-
-This route check only exists for OTel ingestion. The legacy `/api/report` path has no route information on the wire, so it groups every 404 under `UNMATCHED`.
 
 ### Tasks
 Identified by a task name (job class, scheduled command, agent operation). Ranked by count × (P95 − P50) as a rough impact proxy. CONSUMER spans from any queue driver (database, Redis, SQS, Beanstalk, …) land here, as do root `console.command` spans.

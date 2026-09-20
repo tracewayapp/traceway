@@ -322,13 +322,23 @@ func runEndpointsShow(cmd *cobra.Command, args []string) error {
 				formatDuration(e.Duration), e.StatusCode,
 				pickStr(e.ServerName, "-"), pickStr(e.AppVersion, "-"),
 			)
-			if e.DistributedTraceId != nil {
-				_, _ = fmt.Fprintf(out, "TRACE ID:     %s\n", e.DistributedTraceId.String())
-			}
+			renderTraceIds(out, e.TraceId, e.LinkedTraceId)
 		}
 		renderSpansTable(out, resp.Spans)
 		renderLinkedErrors(out, resp.Exception, resp.Messages)
 		return nil
+	}
+}
+
+// renderTraceIds prints the trace an entity or occurrence belongs to, plus the
+// trace it is linked with (the browser's, when the first service copied its id).
+// Either one works as the argument of "traces show".
+func renderTraceIds(out io.Writer, traceId, linkedTraceId string) {
+	if traceId != "" {
+		_, _ = fmt.Fprintf(out, "TRACE ID:     %s\n", traceId)
+	}
+	if linkedTraceId != "" {
+		_, _ = fmt.Fprintf(out, "LINKED TRACE: %s\n", linkedTraceId)
 	}
 }
 

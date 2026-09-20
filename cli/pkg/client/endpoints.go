@@ -65,30 +65,33 @@ func (c *Client) ListEndpoints(ctx context.Context, projectID string, req ListEn
 // the by-id detail endpoint. EndpointStats (above) is the grouped/list shape;
 // this is the single-row shape keyed by the transaction's id.
 type Endpoint struct {
-	Id                 uuid.UUID         `json:"id"`
-	ProjectId          uuid.UUID         `json:"projectId"`
-	Endpoint           string            `json:"endpoint"`
-	Duration           time.Duration     `json:"duration"`
-	RecordedAt         time.Time         `json:"recordedAt"`
-	StatusCode         int16             `json:"statusCode"`
-	BodySize           int32             `json:"bodySize"`
-	ClientIP           string            `json:"clientIP"`
-	Attributes         map[string]string `json:"attributes"`
-	AppVersion         string            `json:"appVersion"`
-	ServerName         string            `json:"serverName"`
-	DistributedTraceId *uuid.UUID        `json:"distributedTraceId,omitempty"`
-	SpanId             *uuid.UUID        `json:"spanId,omitempty"`
-	IsStream           bool              `json:"isStream"`
-	IsRoot             bool              `json:"isRoot"`
+	Id            uuid.UUID         `json:"id"`
+	ProjectId     uuid.UUID         `json:"projectId"`
+	Endpoint      string            `json:"endpoint"`
+	Duration      time.Duration     `json:"duration"`
+	RecordedAt    time.Time         `json:"recordedAt"`
+	StatusCode    int16             `json:"statusCode"`
+	BodySize      int32             `json:"bodySize"`
+	ClientIP      string            `json:"clientIP"`
+	Attributes    map[string]string `json:"attributes"`
+	AppVersion    string            `json:"appVersion"`
+	ServerName    string            `json:"serverName"`
+	TraceId       string            `json:"traceId"`
+	SpanId        string            `json:"spanId"`
+	ParentSpanId  string            `json:"parentSpanId,omitempty"`
+	LinkedTraceId string            `json:"linkedTraceId,omitempty"`
+	IsStream      bool              `json:"isStream"`
+	IsRoot        bool              `json:"isRoot"`
 }
 
 // EndpointDetailResponse is the body of POST /api/endpoints/:endpointId.
 type EndpointDetailResponse struct {
-	Endpoint  *Endpoint        `json:"endpoint"`
-	Spans     []Span           `json:"spans"`
-	HasSpans  bool             `json:"hasSpans"`
-	Exception *LinkedException `json:"exception,omitempty"`
-	Messages  []LinkedMessage  `json:"messages"`
+	Endpoint        *Endpoint        `json:"endpoint"`
+	SpanGraphStatus *SpanGraphStatus `json:"spanGraphStatus,omitempty"`
+	Spans           []Span           `json:"spans"`
+	HasSpans        bool             `json:"hasSpans"`
+	Exception       *LinkedException `json:"exception,omitempty"`
+	Messages        []LinkedMessage  `json:"messages"`
 }
 
 // GetEndpoint returns one request (transaction) by id plus its spans and any

@@ -41,7 +41,7 @@
 
 	type ExceptionOccurrence = {
 		id: string;
-		traceId: string | null;
+		traceId: string;
 		exceptionHash: string;
 		stackTrace: string;
 		recordedAt: string;

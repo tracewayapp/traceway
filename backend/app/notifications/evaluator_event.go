@@ -27,7 +27,7 @@ func evaluateNewError(ctx context.Context, rule *models.NotificationRuleWithChan
 
 		var count uint64
 		err := chdb.Conn.QueryRow(ctx,
-			"SELECT count() FROM exception_stack_traces WHERE project_id = ? AND exception_hash = ?",
+			"SELECT count() FROM exceptions_v2 WHERE project_id = ? AND exception_hash = ?",
 			event.ProjectId, hash).Scan(&count)
 		if err != nil {
 			traceway.CaptureException(fmt.Errorf("new_error check failed: %w", err))
@@ -45,7 +45,7 @@ func evaluateNewError(ctx context.Context, rule *models.NotificationRuleWithChan
 
 			var postArchiveCount uint64
 			archErr = chdb.Conn.QueryRow(ctx,
-				"SELECT count() FROM exception_stack_traces WHERE project_id = ? AND exception_hash = ? AND recorded_at > (SELECT max(archived_at) FROM archived_exceptions FINAL WHERE project_id = ? AND exception_hash = ?)",
+				"SELECT count() FROM exceptions_v2 WHERE project_id = ? AND exception_hash = ? AND recorded_at > (SELECT max(archived_at) FROM archived_exceptions FINAL WHERE project_id = ? AND exception_hash = ?)",
 				event.ProjectId, hash, event.ProjectId, hash).Scan(&postArchiveCount)
 			if archErr != nil {
 				traceway.CaptureException(fmt.Errorf("new_error post-archive count failed: %w", archErr))
@@ -105,13 +105,12 @@ func evaluateErrorRegression(ctx context.Context, rule *models.NotificationRuleW
 
 func getExceptionDetails(ctx context.Context, projectId uuid.UUID, hash string) ExceptionDetails {
 	var id uuid.UUID
-	var traceId *uuid.UUID
-	var stackTrace, traceType, appVersion, serverName, attributesJSON string
+	var stackTrace, traceId, spanId, traceType, appVersion, serverName, attributesJSON string
 	var recordedAt time.Time
 
 	err := chdb.Conn.QueryRow(ctx,
-		"SELECT id, trace_id, trace_type, stack_trace, attributes, app_version, server_name, recorded_at FROM exception_stack_traces WHERE project_id = ? AND exception_hash = ? ORDER BY recorded_at DESC LIMIT 1",
-		projectId, hash).Scan(&id, &traceId, &traceType, &stackTrace, &attributesJSON, &appVersion, &serverName, &recordedAt)
+		"SELECT id, trace_id, span_id, trace_type, stack_trace, attributes, app_version, server_name, recorded_at FROM exceptions_v2 WHERE project_id = ? AND exception_hash = ? ORDER BY recorded_at DESC LIMIT 1",
+		projectId, hash).Scan(&id, &traceId, &spanId, &traceType, &stackTrace, &attributesJSON, &appVersion, &serverName, &recordedAt)
 
 	details := ExceptionDetails{
 		Hash: hash,
@@ -127,8 +126,9 @@ func getExceptionDetails(ctx context.Context, projectId uuid.UUID, hash string) 
 	details.AppVersion = appVersion
 	details.ServerName = serverName
 	details.RecordedAt = recordedAt
-	details.TraceType = traceType
-	details.TraceName = resolveTraceName(ctx, projectId, traceId, traceType, &details.RecordedAt)
+	details.TraceType, details.TraceName = resolveExceptionOwner(ctx, models.ExceptionStackTrace{
+		Id: id, ProjectId: projectId, TraceId: traceId, SpanId: spanId, RecordedAt: recordedAt,
+	})
 
 	if attributesJSON != "" && attributesJSON != "{}" {
 		attrs := make(map[string]string)

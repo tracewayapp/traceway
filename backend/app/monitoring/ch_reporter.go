@@ -23,10 +23,11 @@ var telemetryTables = []string{
 	"traces",
 	"log_records",
 	"metric_points",
-	"spans",
-	"exception_stack_traces",
-	"endpoints",
-	"tasks",
+	"spans_v2",
+	"exceptions_v2",
+	"endpoints_v2",
+	"tasks_v2",
+	"ai_traces_v2",
 }
 
 type chBaselines struct {

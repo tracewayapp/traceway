@@ -3,10 +3,5 @@
   "client": { "title": "Docs", "type": "page", "withIndexPage": true },
   "learn": { "title": "Learn", "type": "page" },
   "symbolicator": { "title": "Symbolicator", "type": "page" },
-  "protocol": {
-    "title": "Protocol",
-    "type": "page",
-    "theme": { "sidebar": false }
-  },
   "server": { "title": "Self Host", "type": "page" }
 }

@@ -1,0 +1,85 @@
+# Upgrade notes: V2 telemetry tables
+
+This release stores traces the way OpenTelemetry describes them. A trace is a trace and a span is a span. Every span is kept with the trace id, span id and parent span id it arrived with, and every endpoint, task, AI trace and exception carries the ids of the span it came from.
+
+No ClickHouse upgrade is required. Nothing in the existing tables is rewritten or dropped.
+
+## What changes
+
+Five new tables are created next to the ones they replace: `spans_v2`, `endpoints_v2`, `tasks_v2`, `ai_traces_v2` and `exceptions_v2`. The migrations are `0085` to `0089` on ClickHouse, `0025` on SQLite and `0005` on DuckDB. They only create tables, so they finish at once on any size of installation.
+
+From the first start of the new release:
+
+- New telemetry is written to the V2 tables only.
+- The dashboard, the API, the CLI and notification rules read the V2 tables only.
+- The old tables (`spans`, `endpoints`, `tasks`, `ai_traces`, `exception_stack_traces`) stay as they are and receive nothing new.
+
+So right after the upgrade the dashboard shows new data and none of your history. The history is still there, in the old tables. The next section brings it over.
+
+## Moving your history over
+
+Set one environment variable and restart:
+
+```
+V2_MOVE_OVER=true
+```
+
+The backend then copies the old tables into the V2 tables in the background, while it keeps serving traffic. It works newest day first, so yesterday is back before last month, and within a day it moves endpoints, tasks and AI traces before exceptions and spans.
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `V2_MOVE_OVER` | unset | `true` runs the move on startup, then again one hour after each pass ends. |
+| `V2_MOVE_OVER_OLDEST` | unset | A `YYYY-MM-DD` date. Days before it are left in the old tables. |
+
+Things worth knowing:
+
+- **It can stop and resume.** Each UTC day of each source table is recorded in `v2_move_over_days` in the **transactional database** (PostgreSQL or the main SQLite database), created by migrations `pg/0143` and `sqlite/0077`. The worker commits `started` before copying and `done` only after every batch succeeds. After a failure it retries in one hour; after a restart it runs immediately. A day that was interrupted half way is finished without writing its first rows twice.
+- **It runs inside the backend.** There is no separate tool, because an embedded DuckDB file cannot be opened by a second process.
+- **Finish upgrading old writers first.** Completed source-table/date pairs are skipped on later passes. Rows written into an already completed day by an old server or a historical importer are not picked up automatically.
+- **Run it on one instance.** With several backend replicas, set the variable on exactly one of them.
+- **On SQLite and DuckDB it stops at your retention window.** Days older than `SQLITE_RETENTION_DAYS` or `DUCKDB_RETENTION_DAYS` would be deleted by the retention worker straight away, so they are not moved.
+- **Progress is logged.** Each day prints a line such as `move-over: 2026-09-19 spans: 23677 rows in 1.0s`, and the last line says it is done. After that you can remove the variable. Leaving it set checks for remaining work hourly, but skips completed source-table/date pairs. The one-hour delay starts after a pass finishes, so a long pass cannot overlap the next one.
+
+The move reads at most 20,000 source rows at a time, narrowing time slices when they fill and paging by ID only within an overfull second. It still competes with ingest for CPU, memory, disk and database connections; this page bound is not an I/O rate limit. Disable the worker and restart if you need to stop that load.
+
+Inspect progress in the transactional database:
+
+```sql
+SELECT source_table, day, state, moved_rows, updated_at
+FROM v2_move_over_days
+ORDER BY day DESC, source_table;
+```
+
+`moved_rows` counts source rows scanned by the completed pass, including rows skipped during recovery because they were already copied. It is not a count of newly inserted V2 rows: one old endpoint, task or AI trace also produces its own span. No main-DB transaction is held while telemetry is copied. The two stores do not share a transaction; durable start markers and destination ID checks on resumed days cover the failure window.
+
+## What moved history looks like
+
+- Endpoints, tasks and AI traces keep their ids, so existing links keep working.
+- Their waterfalls are intact. Each span is filed under the real trace id of its endpoint or task.
+- An exception is attached to the endpoint or task it belonged to.
+- A task that came from OpenTelemetry is now recorded at the time it started. The old tables recorded the time it ended.
+- The endpoints and tasks of one trace are listed together on the Distributed Trace card, but not nested under each other. The old tables never stored which span an endpoint was called from. New data nests.
+- Downloading an old span as OTLP returns a span rebuilt from its stored fields, since the original payload was never kept.
+
+## Disk usage
+
+Until you remove the old tables, moved days exist twice. A V2 span also takes more room than an old one, because the whole span is kept: about 125 bytes per span on ClickHouse after merges, against about 70 before. More spans are stored too, since the span behind every endpoint and task is now a row of its own.
+
+The ClickHouse V2 tables have no TTL, like the tables they replace. Plan disk for them or drop old daily partitions. SQLite and DuckDB keep following `SQLITE_RETENTION_DAYS` and `DUCKDB_RETENTION_DAYS`, for the old tables and the new ones.
+
+Once the move is done and you are happy with what you see, the old tables are only a backup. A later release will drop them. On ClickHouse you can reclaim the space earlier by dropping their partitions.
+
+## Rolling back
+
+The previous release still works after the upgrade, on every backend, because its tables were not touched. It shows the history it always had, and nothing that was recorded by the new release. Telemetry recorded while the new release ran stays in the V2 tables and is shown again when you upgrade.
+
+## API changes
+
+Clients of the HTTP API see these changes. The Traceway CLI and MCP server of the same release already use them.
+
+- Endpoints, tasks and AI traces carry `traceId`, `spanId`, `parentSpanId` and `linkedTraceId` as hex strings. `distributedTraceId` is gone.
+- Spans carry `traceId`, `spanId` and `parentSpanId`. `id`, `otelTraceId` and `distributedTraceId` are gone.
+- An exception's `traceId` is now the trace id, and `spanId` is the span it was recorded on. The endpoint, task or AI trace it happened in is returned as `relatedEntity` on the exception responses.
+- `POST /api/distributed-traces/:traceId` takes the hex trace id. A dashed UUID is still accepted. The response carries `traceId` in place of `distributedTraceId`.
+- `POST /api/logs` no longer accepts `distributedTraceId`. Search by `traceId`.
+- The span attribute `traceway.distributed_trace_id` no longer replaces a row's trace id. It is stored as the row's linked trace.

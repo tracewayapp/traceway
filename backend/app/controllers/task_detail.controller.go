@@ -7,6 +7,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -34,11 +35,12 @@ type TaskMessageInfo struct {
 }
 
 type TaskDetailResponse struct {
-	Task      *models.Task       `json:"task"`
-	Spans     []models.Span      `json:"spans"`
-	HasSpans  bool               `json:"hasSpans"`
-	Exception *TaskExceptionInfo `json:"exception,omitempty"`
-	Messages  []TaskMessageInfo  `json:"messages"`
+	Task            *models.Task            `json:"task"`
+	SpanGraphStatus *models.SpanGraphStatus `json:"spanGraphStatus"`
+	Spans           []models.Span           `json:"spans"`
+	HasSpans        bool                    `json:"hasSpans"`
+	Exception       *TaskExceptionInfo      `json:"exception,omitempty"`
+	Messages        []TaskMessageInfo       `json:"messages"`
 }
 
 func (t taskDetailController) GetTaskDetail(c *gin.Context) {
@@ -77,7 +79,7 @@ func (t taskDetailController) GetTaskDetail(c *gin.Context) {
 
 	// Get spans (flat list ordered by start_time)
 	span = traceway.StartSpan(c, "loading spans")
-	spans, err := telemetry.SpanRepository.FindByTraceId(c, projectId, taskId, &recordedAt)
+	graph, err := telemetry.SpanRepository.FindGraph(c, shared.NewSpanLookup(projectId, task.TraceId, task.SpanId, recordedAt))
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading spans: %w", err))
@@ -89,7 +91,7 @@ func (t taskDetailController) GetTaskDetail(c *gin.Context) {
 	var messages []TaskMessageInfo
 
 	span = traceway.StartSpan(c, "loading exceptions")
-	allExceptions, err := telemetry.ExceptionStackTraceRepository.FindAllByTraceId(c, projectId, taskId, &recordedAt)
+	allExceptions, err := findOccurrenceExceptions(c, projectId, task.TraceId, task.SpanId, &recordedAt, graph.Spans)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading allExceptions: %w", err))
@@ -121,11 +123,12 @@ func (t taskDetailController) GetTaskDetail(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, TaskDetailResponse{
-		Task:      task,
-		Spans:     spans,
-		HasSpans:  len(spans) > 0,
-		Exception: exceptionInfo,
-		Messages:  messages,
+		Task:            task,
+		SpanGraphStatus: &graph.Status,
+		Spans:           graph.Spans,
+		HasSpans:        len(graph.Spans) > 0,
+		Exception:       exceptionInfo,
+		Messages:        messages,
 	})
 }
 

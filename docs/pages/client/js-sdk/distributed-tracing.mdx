@@ -7,7 +7,7 @@ Correlate frontend errors with the backend requests that caused them. The Tracew
 1. The frontend SDK generates a unique trace ID for each outgoing HTTP request
 2. The ID is sent as a `traceway-trace-id` header to your backend
 3. Your backend sets that ID on its server span as the `traceway.distributed_trace_id` attribute
-4. Traceway uses that attribute as the row's distributed trace ID, so both sides land on one trace
+4. Traceway stores that ID on the backend row as its linked trace, so the browser's trace and the backend trace are shown together
 5. In the Traceway dashboard, you can jump between the frontend error and the backend request
 
 Step 3 is the one thing you have to add yourself. See [Backend Setup](#backend-setup) below.
@@ -52,7 +52,7 @@ const res = await api.post("/orders", order);
 Your backend closes the loop in one middleware, in whatever language it uses:
 
 1. Read the `traceway-trace-id` request header.
-2. Set it on the active server span as the attribute `traceway.distributed_trace_id`. Traceway reads that attribute and uses it as the row's distributed trace ID, overriding the one derived from the OTel trace ID. This is what puts the browser exception and the backend endpoint on the same distributed trace. The value must be a bare UUID; anything else is ignored silently.
+2. Set it on the active server span as the attribute `traceway.distributed_trace_id`. Traceway keeps the span's own OpenTelemetry trace ID and stores this value next to it as the linked trace. This is what puts the browser exception and the backend endpoint on the same distributed trace. The value must be a bare UUID or 32 hex characters. Anything else is ignored silently.
 3. Echo the header back on the response so manual `captureException` calls after `await fetch` can read it. This step is optional. Cross-origin, also add `traceway-trace-id` to `Access-Control-Expose-Headers`.
 
 The [Symfony bundle](/client/otel/symfony) does step 2 for you; add step 3 yourself if you want it. Node.js, NestJS, Next.js, Hono, Cloudflare Workers, Laravel, and Django install vanilla OpenTelemetry, which knows nothing about the header, so do all three:
@@ -73,6 +73,8 @@ app.use((req, res, next) => {
 Register it after your OpenTelemetry instrumentation, so there is an active server span to annotate. See the [OpenTelemetry guides](/client/otel) for the exporter setup itself.
 
 To verify, open the backend endpoint's detail page and select **View distributed trace**. The browser exception appears as a second node.
+
+Only the service that receives the browser's request needs this middleware. Services further down the call chain never see the `traceway-trace-id` header, only `traceparent`, and they do not need to: every backend row carries the same OpenTelemetry trace ID. The first service's row links that trace to the browser's, so Traceway shows the browser exception and every backend service as one distributed trace, whichever of them you open it from. from.
 
 ## Manual Capture After an Await
 

@@ -76,6 +76,10 @@ func attrJSON(m map[string]string) (string, error) {
 // Appender API is not reachable through database/sql, and Close flushes
 // the appended rows.
 func withAppender(ctx context.Context, table string, fn func(*duckdb.Appender)) error {
+	return withAppenderColumns(ctx, table, nil, fn)
+}
+
+func withAppenderColumns(ctx context.Context, table string, columns []string, fn func(*duckdb.Appender)) error {
 	conn, err := db.DuckDBConnector.Connect(ctx)
 	if err != nil {
 		db.RecordTelemetryInsertFailure()
@@ -83,7 +87,12 @@ func withAppender(ctx context.Context, table string, fn func(*duckdb.Appender)) 
 	}
 	defer conn.Close()
 
-	appender, err := duckdb.NewAppenderFromConn(conn, "", table)
+	var appender *duckdb.Appender
+	if len(columns) == 0 {
+		appender, err = duckdb.NewAppenderFromConn(conn, "", table)
+	} else {
+		appender, err = duckdb.NewAppenderWithColumns(conn, "", "", table, columns)
+	}
 	if err != nil {
 		db.RecordTelemetryInsertFailure()
 		return err

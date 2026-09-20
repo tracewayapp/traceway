@@ -4,7 +4,7 @@ Symbolication turns a minified or stripped production stack trace back into the 
 
 The same engine runs three ways:
 
-- **At ingest**, inside Traceway's `/api/report` and OTLP endpoints, so issues are stored already symbolicated.
+- **At ingest**, inside Traceway, so issues are stored already symbolicated.
 - **As an [OpenTelemetry Collector processor](/symbolicator/opentelemetry)**, so traces are rewritten before they reach any backend.
 - **As an importable [Go library](/symbolicator/library)**, so you can call it from your own tooling.
 

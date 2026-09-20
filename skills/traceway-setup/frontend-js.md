@@ -209,7 +209,7 @@ clearAttributes();
 
 #### Backend side
 
-The browser id only reaches Traceway if the backend puts it on its server span. Traceway reads the span attribute `traceway.distributed_trace_id` and uses it as the row's distributed trace id, overriding the one derived from the OTel trace id. That override is what joins the browser exception and the backend endpoint into one trace. The value must be a bare UUID; anything else is ignored silently.
+The browser id only reaches Traceway if the backend puts it on its server span. Traceway reads the span attribute `traceway.distributed_trace_id` and stores it on the row as its linked trace id, next to the row's own OTel trace id. That link is what joins the browser exception and the backend endpoint into one trace, whichever of the two ids you open it by. The value must be a bare UUID (or the same 32 hex characters without dashes); anything else is ignored silently.
 
 Only the Symfony bundle sets the attribute for you. Node, NestJS, Next.js, Hono, Cloudflare, Laravel and Django install vanilla OpenTelemetry, which has never heard of the header, so add one middleware:
 

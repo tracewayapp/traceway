@@ -87,7 +87,11 @@ func decodeTraceRequest(c *gin.Context) (*coltracepb.ExportTraceServiceRequest, 
 			return nil, 0, fmt.Errorf("failed to unmarshal protobuf: %w", err)
 		}
 	} else {
-		if err := protojson.Unmarshal(body, req); err != nil {
+		normalized, err := normalizeTraceJSON(body, req.ProtoReflect().Descriptor())
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to decode OTLP JSON: %w", err)
+		}
+		if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(normalized, req); err != nil {
 			return nil, 0, fmt.Errorf("failed to unmarshal JSON: %w", err)
 		}
 	}
@@ -105,15 +109,25 @@ func decodeMetricsRequest(c *gin.Context) (*colmetricspb.ExportMetricsServiceReq
 			return nil, 0, fmt.Errorf("failed to unmarshal protobuf: %w", err)
 		}
 	} else {
-		if err := protojson.Unmarshal(body, req); err != nil {
+		if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(body, req); err != nil {
 			return nil, 0, fmt.Errorf("failed to unmarshal JSON: %w", err)
 		}
 	}
 	return req, len(body), nil
 }
 
-func writeTraceResponse(c *gin.Context) {
+func writeTraceResponse(c *gin.Context, invalidIDs, notStored int64) {
 	resp := &coltracepb.ExportTraceServiceResponse{}
+	if invalidIDs+notStored > 0 {
+		var reasons []string
+		if invalidIDs > 0 {
+			reasons = append(reasons, fmt.Sprintf("%d spans need valid non-zero trace and span IDs", invalidIDs))
+		}
+		if notStored > 0 {
+			reasons = append(reasons, fmt.Sprintf("%d spans could not be stored", notStored))
+		}
+		resp.PartialSuccess = &coltracepb.ExportTracePartialSuccess{RejectedSpans: invalidIDs + notStored, ErrorMessage: strings.Join(reasons, "; ")}
+	}
 	if isProtobuf(c) {
 		data, _ := proto.Marshal(resp)
 		c.Data(http.StatusOK, "application/x-protobuf", data)
@@ -143,7 +157,7 @@ func decodeProfilesPayload(c *gin.Context) ([]byte, int, error) {
 		return body, len(body), nil
 	}
 	req := &colprofilespb.ExportProfilesServiceRequest{}
-	if err := protojson.Unmarshal(body, req); err != nil {
+	if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(body, req); err != nil {
 		return nil, 0, fmt.Errorf("failed to unmarshal JSON: %w", err)
 	}
 	binary, err := proto.Marshal(req)
@@ -175,7 +189,7 @@ func decodeLogsRequest(c *gin.Context) (*collogspb.ExportLogsServiceRequest, int
 			return nil, 0, fmt.Errorf("failed to unmarshal protobuf: %w", err)
 		}
 	} else {
-		if err := protojson.Unmarshal(body, req); err != nil {
+		if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(body, req); err != nil {
 			return nil, 0, fmt.Errorf("failed to unmarshal JSON: %w", err)
 		}
 	}

@@ -15,6 +15,7 @@ var (
 	ProfileRepository             = sqliterepo.ProfileRepository
 	SessionRecordingRepository    = sqliterepo.SessionRecordingRepository
 	SessionRepository             = sqliterepo.SessionRepository
-	SpanRepository                = sqliterepo.SpanRepository
+	OtelSpanRepository            = sqliterepo.OtelSpanRepository
+	LegacyRepository              = sqliterepo.LegacyRepository
 	TaskRepository                = sqliterepo.TaskRepository
 )

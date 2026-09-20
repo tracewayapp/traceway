@@ -1,7 +1,6 @@
 package shared
 
 import (
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -9,26 +8,44 @@ import (
 
 const SpanLookupBatchSize = 100
 
+// SpanLookup names the spans to read: a trace in a project, and for a subtree the span it hangs under.
 type SpanLookup struct {
-	ProjectId uuid.UUID
-	// TraceId is the owning occurrence ID, which may differ from the OTel trace ID.
-	TraceId    uuid.UUID
+	ProjectId  uuid.UUID
+	TraceId    string
+	SpanId     string
 	RecordedAt *time.Time
+	// StartUnixNano is the start of the span named by SpanId, used to re-read a trace from that point when the row cap
+	// cut it off.
+	StartUnixNano uint64
 }
 
-func SpanLookupQuery(lookups []SpanLookup, timeValue func(time.Time) any) (string, []any) {
-	conditions := make([]string, 0, len(lookups))
-	args := make([]any, 0, 4*len(lookups))
-	for _, lookup := range lookups {
-		condition := "project_id = ? AND trace_id = ?"
-		args = append(args, lookup.ProjectId, lookup.TraceId)
-		if lookup.RecordedAt != nil {
-			from, to := TraceWindowBounds(*lookup.RecordedAt)
-			condition += " AND recorded_at >= ? AND recorded_at <= ?"
-			args = append(args, timeValue(from), timeValue(to))
-		}
-		conditions = append(conditions, "("+condition+")")
+// NewSpanLookup names the subtree under an endpoint, a task or an AI trace. Each of them is recorded at its span's start.
+func NewSpanLookup(projectId uuid.UUID, traceId, spanId string, recordedAt time.Time) SpanLookup {
+	lookup := SpanLookup{ProjectId: projectId, TraceId: traceId, SpanId: spanId, RecordedAt: &recordedAt}
+	if recordedAt.Unix() > 0 {
+		lookup.StartUnixNano = uint64(recordedAt.Unix())*uint64(time.Second) + uint64(recordedAt.Nanosecond())
 	}
-	return `SELECT id, trace_id, project_id, name, start_time, duration, recorded_at, parent_span_id, attributes
-		FROM spans WHERE ` + strings.Join(conditions, " OR ") + ` ORDER BY start_time ASC`, args
+	return lookup
+}
+
+// OtelLookupWindow is the recorded_at range every read of spans is held to: 24 hours either side of the rows looked up.
+// On ClickHouse that is what prunes the read to a few daily partitions. A lookup that names no time is anchored on now,
+// so no caller can reach an unbounded read.
+func OtelLookupWindow(lookups []SpanLookup) (from, to time.Time) {
+	for i, lookup := range lookups {
+		anchor := time.Now().UTC()
+		if lookup.RecordedAt != nil {
+			anchor = *lookup.RecordedAt
+		} else if lookup.StartUnixNano != 0 {
+			anchor = OtelNanosToTime(lookup.StartUnixNano)
+		}
+		low, high := TraceWindowBounds(anchor)
+		if i == 0 || low.Before(from) {
+			from = low
+		}
+		if i == 0 || high.After(to) {
+			to = high
+		}
+	}
+	return from, to
 }

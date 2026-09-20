@@ -24,68 +24,91 @@ type startedAtBody struct {
 }
 
 // Span mirrors models.Span. Returned inside endpoint, task, and distributed
-// trace detail responses.
+// trace detail responses. TraceId, SpanId and ParentSpanId are the ids the span
+// arrived with, as lowercase hex: 32 characters for a trace, 16 for an
+// OpenTelemetry span, 32 for a span of the native protocol.
 type Span struct {
-	Id           uuid.UUID         `json:"id"`
-	TraceId      uuid.UUID         `json:"traceId"`
-	ProjectId    uuid.UUID         `json:"projectId"`
-	Name         string            `json:"name"`
-	StartTime    time.Time         `json:"startTime"`
-	Duration     time.Duration     `json:"duration"`
-	RecordedAt   time.Time         `json:"recordedAt"`
-	ParentSpanId *uuid.UUID        `json:"parentSpanId,omitempty"`
-	Attributes   map[string]string `json:"attributes,omitempty"`
+	ProjectId         uuid.UUID         `json:"projectId"`
+	TraceId           string            `json:"traceId"`
+	SpanId            string            `json:"spanId"`
+	ParentSpanId      string            `json:"parentSpanId,omitempty"`
+	Name              string            `json:"name"`
+	StartTime         time.Time         `json:"startTime"`
+	Duration          time.Duration     `json:"duration"`
+	RecordedAt        time.Time         `json:"recordedAt"`
+	SpanKind          int32             `json:"spanKind,omitempty"`
+	StatusCode        int32             `json:"statusCode,omitempty"`
+	ServiceName       string            `json:"serviceName,omitempty"`
+	ScopeName         string            `json:"scopeName,omitempty"`
+	Attributes        map[string]string `json:"attributes,omitempty"`
+	AttributesOmitted bool              `json:"attributesOmitted,omitempty"`
+	DbStatement       string            `json:"dbStatement,omitempty"`
 }
 
-// Task mirrors models.Task — one run of a background task.
+// SpanGraphStatus says whether the spans beside it are the whole graph. State
+// is complete, partial or unavailable; Reasons names the limit that was hit.
+type SpanGraphStatus struct {
+	State             string   `json:"state"`
+	Reasons           []string `json:"reasons,omitempty"`
+	OmittedAttributes int      `json:"omittedAttributes,omitempty"`
+}
+
+// Task mirrors models.Task: one run of a background task. TraceId and SpanId
+// are the ids of the span it was promoted from; LinkedTraceId is another trace
+// it belongs with, such as the browser's.
 type Task struct {
-	Id                 uuid.UUID         `json:"id"`
-	ProjectId          uuid.UUID         `json:"projectId"`
-	TaskName           string            `json:"taskName"`
-	Duration           time.Duration     `json:"duration"`
-	RecordedAt         time.Time         `json:"recordedAt"`
-	ClientIP           string            `json:"clientIP"`
-	Attributes         map[string]string `json:"attributes"`
-	AppVersion         string            `json:"appVersion"`
-	ServerName         string            `json:"serverName"`
-	DistributedTraceId *uuid.UUID        `json:"distributedTraceId,omitempty"`
-	SpanId             *uuid.UUID        `json:"spanId,omitempty"`
-	IsRoot             bool              `json:"isRoot"`
+	Id            uuid.UUID         `json:"id"`
+	ProjectId     uuid.UUID         `json:"projectId"`
+	TaskName      string            `json:"taskName"`
+	Duration      time.Duration     `json:"duration"`
+	RecordedAt    time.Time         `json:"recordedAt"`
+	ClientIP      string            `json:"clientIP"`
+	Attributes    map[string]string `json:"attributes"`
+	AppVersion    string            `json:"appVersion"`
+	ServerName    string            `json:"serverName"`
+	TraceId       string            `json:"traceId"`
+	SpanId        string            `json:"spanId"`
+	ParentSpanId  string            `json:"parentSpanId,omitempty"`
+	LinkedTraceId string            `json:"linkedTraceId,omitempty"`
+	IsRoot        bool              `json:"isRoot"`
 }
 
 // AiTrace mirrors models.AiTrace — one LLM call/operation.
 type AiTrace struct {
-	Id                 uuid.UUID         `json:"id"`
-	ProjectId          uuid.UUID         `json:"projectId"`
-	RecordedAt         time.Time         `json:"recordedAt"`
-	Duration           time.Duration     `json:"duration"`
-	StatusCode         uint8             `json:"statusCode"`
-	Model              string            `json:"model"`
-	ResponseModel      string            `json:"responseModel"`
-	Provider           string            `json:"provider"`
-	Operation          string            `json:"operation"`
-	InputTokens        int64             `json:"inputTokens"`
-	OutputTokens       int64             `json:"outputTokens"`
-	TotalTokens        int64             `json:"totalTokens"`
-	CachedTokens       int64             `json:"cachedTokens"`
-	ReasoningTokens    int64             `json:"reasoningTokens"`
-	InputCost          float64           `json:"inputCost"`
-	OutputCost         float64           `json:"outputCost"`
-	TotalCost          float64           `json:"totalCost"`
-	TraceName          string            `json:"traceName"`
-	UserId             string            `json:"userId"`
-	FinishReason       string            `json:"finishReason"`
-	ServerName         string            `json:"serverName"`
-	AppVersion         string            `json:"appVersion"`
-	StorageKey         string            `json:"storageKey"`
-	Attributes         map[string]string `json:"attributes"`
-	DistributedTraceId *uuid.UUID        `json:"distributedTraceId,omitempty"`
-	IsRoot             bool              `json:"isRoot"`
-	ConversationId     string            `json:"conversationId"`
-	ToolCallCount      int64             `json:"toolCallCount"`
-	ToolNames          []string          `json:"toolNames"`
-	Flagged            bool              `json:"flagged"`
-	FlaggedTerms       []string          `json:"flaggedTerms"`
+	Id              uuid.UUID         `json:"id"`
+	ProjectId       uuid.UUID         `json:"projectId"`
+	RecordedAt      time.Time         `json:"recordedAt"`
+	Duration        time.Duration     `json:"duration"`
+	StatusCode      uint8             `json:"statusCode"`
+	Model           string            `json:"model"`
+	ResponseModel   string            `json:"responseModel"`
+	Provider        string            `json:"provider"`
+	Operation       string            `json:"operation"`
+	InputTokens     int64             `json:"inputTokens"`
+	OutputTokens    int64             `json:"outputTokens"`
+	TotalTokens     int64             `json:"totalTokens"`
+	CachedTokens    int64             `json:"cachedTokens"`
+	ReasoningTokens int64             `json:"reasoningTokens"`
+	InputCost       float64           `json:"inputCost"`
+	OutputCost      float64           `json:"outputCost"`
+	TotalCost       float64           `json:"totalCost"`
+	TraceName       string            `json:"traceName"`
+	UserId          string            `json:"userId"`
+	FinishReason    string            `json:"finishReason"`
+	ServerName      string            `json:"serverName"`
+	AppVersion      string            `json:"appVersion"`
+	StorageKey      string            `json:"storageKey"`
+	Attributes      map[string]string `json:"attributes"`
+	TraceId         string            `json:"traceId"`
+	SpanId          string            `json:"spanId"`
+	ParentSpanId    string            `json:"parentSpanId,omitempty"`
+	LinkedTraceId   string            `json:"linkedTraceId,omitempty"`
+	IsRoot          bool              `json:"isRoot"`
+	ConversationId  string            `json:"conversationId"`
+	ToolCallCount   int64             `json:"toolCallCount"`
+	ToolNames       []string          `json:"toolNames"`
+	Flagged         bool              `json:"flagged"`
+	FlaggedTerms    []string          `json:"flaggedTerms"`
 }
 
 // Session mirrors models.Session — one user session that can be replayed.
@@ -123,11 +146,12 @@ type LinkedMessage struct {
 
 // TaskDetailResponse is the body of POST /api/tasks/:taskId.
 type TaskDetailResponse struct {
-	Task      *Task            `json:"task"`
-	Spans     []Span           `json:"spans"`
-	HasSpans  bool             `json:"hasSpans"`
-	Exception *LinkedException `json:"exception,omitempty"`
-	Messages  []LinkedMessage  `json:"messages"`
+	Task            *Task            `json:"task"`
+	SpanGraphStatus *SpanGraphStatus `json:"spanGraphStatus,omitempty"`
+	Spans           []Span           `json:"spans"`
+	HasSpans        bool             `json:"hasSpans"`
+	Exception       *LinkedException `json:"exception,omitempty"`
+	Messages        []LinkedMessage  `json:"messages"`
 }
 
 // GetTask returns one task run plus its spans and linked exceptions/messages.
@@ -145,8 +169,10 @@ func (c *Client) GetTask(ctx context.Context, projectID, id string, recordedAt t
 // AiTraceDetailResponse is the body of POST /api/ai-traces/:traceId. The
 // conversation blob is passed through verbatim (server stores it opaquely).
 type AiTraceDetailResponse struct {
-	AiTrace      *AiTrace        `json:"aiTrace"`
-	Conversation json.RawMessage `json:"conversation,omitempty"`
+	AiTrace         *AiTrace         `json:"aiTrace"`
+	SpanGraphStatus *SpanGraphStatus `json:"spanGraphStatus,omitempty"`
+	Spans           []Span           `json:"spans"`
+	Conversation    json.RawMessage  `json:"conversation,omitempty"`
 }
 
 // GetAiTrace returns one AI trace plus its stored conversation. recordedAt is
@@ -191,27 +217,36 @@ func (c *Client) GetSession(ctx context.Context, projectID, id string, startedAt
 
 // DistributedTraceNode is one resource (endpoint/task/ai-trace/exception) that
 // participated in a distributed trace, scoped to its originating project.
+// TraceId and SpanId name the span the node was promoted from, and
+// ParentEntitySpanId is the SpanId of the nearest node above it, which is how
+// the nodes nest across services and projects.
 type DistributedTraceNode struct {
-	ProjectId   uuid.UUID        `json:"projectId"`
-	ProjectName string           `json:"projectName"`
-	TraceType   string           `json:"traceType"`
-	Endpoint    *Endpoint        `json:"endpoint,omitempty"`
-	Task        *Task            `json:"task,omitempty"`
-	AiTrace     *AiTrace         `json:"aiTrace,omitempty"`
-	Spans       []Span           `json:"spans"`
-	Exception   *LinkedException `json:"exception,omitempty"`
+	ProjectId          uuid.UUID        `json:"projectId"`
+	ProjectName        string           `json:"projectName"`
+	TraceType          string           `json:"traceType"`
+	TraceId            string           `json:"traceId"`
+	SpanId             string           `json:"spanId"`
+	Endpoint           *Endpoint        `json:"endpoint,omitempty"`
+	Task               *Task            `json:"task,omitempty"`
+	AiTrace            *AiTrace         `json:"aiTrace,omitempty"`
+	SpanGraphStatus    *SpanGraphStatus `json:"spanGraphStatus,omitempty"`
+	Spans              []Span           `json:"spans"`
+	Exception          *LinkedException `json:"exception,omitempty"`
+	ParentEntitySpanId string           `json:"parentEntitySpanId,omitempty"`
 }
 
-// DistributedTraceResponse is the body of POST /api/distributed-traces/:id —
+// DistributedTraceResponse is the body of POST /api/distributed-traces/:traceId,
 // the full cross-service request timeline, the highest-value RCA view.
 type DistributedTraceResponse struct {
-	DistributedTraceId string                 `json:"distributedTraceId"`
-	Nodes              []DistributedTraceNode `json:"nodes"`
+	TraceId string                 `json:"traceId"`
+	Nodes   []DistributedTraceNode `json:"nodes"`
 }
 
-// GetDistributedTrace returns every node sharing a distributed trace id across
-// all projects the user can see. The route resolves projects from the JWT, so
-// no projectId query param is sent. recordedAt bounds the lookup to ±48h.
+// GetDistributedTrace returns every node of a trace across all projects the
+// user can see. id is the trace id as 32 hex characters (a dashed UUID is
+// accepted too), and a trace linked to it, such as the browser's, comes back
+// with it. The route resolves projects from the JWT, so no projectId query
+// param is sent. recordedAt bounds the lookup to ±48h.
 func (c *Client) GetDistributedTrace(ctx context.Context, id string, recordedAt time.Time) (*DistributedTraceResponse, error) {
 	path := "/api/distributed-traces/" + url.PathEscape(id)
 	var resp DistributedTraceResponse

@@ -72,7 +72,7 @@ func TestContract_mcpToolSurface(t *testing.T) {
 	call("get_task", map[string]any{"id": seedTaskID.String(), "recorded_at": at}, seedTaskID.String())
 	call("get_ai_trace", map[string]any{"id": seedAiTraceID.String(), "recorded_at": at}, seedAiTraceID.String())
 	call("get_session", map[string]any{"id": seedSessionID.String(), "started_at": at}, seedSessionID.String())
-	call("get_trace", map[string]any{"id": seedTraceID.String(), "recorded_at": at}, seedTraceID.String())
+	call("get_trace", map[string]any{"id": seedTraceID, "recorded_at": at}, seedTraceID)
 
 	// Archive round trip last, restoring state for any test that follows.
 	call("archive_exceptions", map[string]any{"hashes": []string{seedHash}}, "archived")

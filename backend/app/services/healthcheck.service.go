@@ -3,7 +3,6 @@ package services
 import (
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/app/models"
 )
 
@@ -83,41 +82,66 @@ func matchesCustomPath(path, pattern string) bool {
 	return path == pattern
 }
 
-func FilterHealthchecks(project *models.Project, endpoints []models.Endpoint, spans []models.Span, exceptions []models.ExceptionStackTrace) ([]models.Endpoint, []models.Span, int) {
+// SpanKey names one span of one trace inside a payload.
+func SpanKey(traceId, spanId string) string { return traceId + ":" + spanId }
+
+// FilterHealthchecks drops healthy healthcheck endpoints and returns the spans they were promoted from, keyed by
+// SpanKey. A healthcheck whose trace carries an exception in the same payload is kept.
+func FilterHealthchecks(project *models.Project, endpoints []models.Endpoint, exceptions []models.ExceptionStackTrace) ([]models.Endpoint, map[string]bool) {
 	if project == nil || !project.DropHealthyHealthchecks || len(endpoints) == 0 {
-		return endpoints, spans, 0
+		return endpoints, nil
 	}
-
-	dropped := map[uuid.UUID]bool{}
-	for _, e := range endpoints {
-		if ShouldDropHealthcheck(project, e.Endpoint, e.StatusCode) {
-			dropped[e.Id] = true
+	failing := map[string]bool{}
+	for _, exception := range exceptions {
+		if exception.TraceId != "" {
+			failing[exception.TraceId] = true
 		}
 	}
+	dropped := map[string]bool{}
+	kept := endpoints[:0]
+	for _, endpoint := range endpoints {
+		if ShouldDropHealthcheck(project, endpoint.Endpoint, endpoint.StatusCode) && !failing[endpoint.TraceId] {
+			dropped[SpanKey(endpoint.TraceId, endpoint.SpanId)] = true
+			continue
+		}
+		kept = append(kept, endpoint)
+	}
+	return kept, dropped
+}
+
+// DropSpanSubtrees removes the dropped spans and everything under them, stopping at a retained span: a task or an AI
+// trace started by a healthcheck keeps its own spans.
+func DropSpanSubtrees[T any](spans []T, ids func(T) (traceId, spanId, parentSpanId string), dropped, retained map[string]bool) []T {
 	if len(dropped) == 0 {
-		return endpoints, spans, 0
+		return spans
 	}
-
-	for _, exc := range exceptions {
-		if exc.TraceId != nil {
-			delete(dropped, *exc.TraceId)
+	children := make(map[string][]int)
+	pending := make([]int, 0)
+	for i, span := range spans {
+		traceId, spanId, parentSpanId := ids(span)
+		if dropped[SpanKey(traceId, spanId)] {
+			pending = append(pending, i)
+		}
+		if parentSpanId != "" {
+			children[SpanKey(traceId, parentSpanId)] = append(children[SpanKey(traceId, parentSpanId)], i)
 		}
 	}
-	if len(dropped) == 0 {
-		return endpoints, spans, 0
+	removed := make(map[int]bool)
+	for len(pending) > 0 {
+		i := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		traceId, spanId, _ := ids(spans[i])
+		if removed[i] || retained[SpanKey(traceId, spanId)] {
+			continue
+		}
+		removed[i] = true
+		pending = append(pending, children[SpanKey(traceId, spanId)]...)
 	}
-
-	keptEndpoints := endpoints[:0]
-	for _, e := range endpoints {
-		if !dropped[e.Id] {
-			keptEndpoints = append(keptEndpoints, e)
+	kept := spans[:0]
+	for i, span := range spans {
+		if !removed[i] {
+			kept = append(kept, span)
 		}
 	}
-	keptSpans := spans[:0]
-	for _, s := range spans {
-		if !dropped[s.TraceId] {
-			keptSpans = append(keptSpans, s)
-		}
-	}
-	return keptEndpoints, keptSpans, len(dropped)
+	return kept
 }

@@ -68,7 +68,14 @@ export function formatRelativeTimeAgo(dateStr: string, timezone?: string): strin
 	return relative === 'just now' ? relative : `${relative} ago`;
 }
 
-export type DateTimeFormat = 'full' | 'short' | 'date' | 'time' | 'datetime' | 'iso';
+export type DateTimeFormat =
+	| 'full'
+	| 'short'
+	| 'date'
+	| 'time'
+	| 'datetime'
+	| 'datetime-seconds'
+	| 'iso';
 
 export function formatDateTime(
 	dateInput: string | Date | number,
@@ -102,6 +109,8 @@ export function formatDateTime(
 			return dt.toLocaleString(DateTime.TIME_SIMPLE);
 		case 'iso':
 			return dt.toISO() ?? '';
+		case 'datetime-seconds':
+			return dt.toLocaleString(DateTime.DATETIME_MED_WITH_SECONDS);
 		case 'datetime':
 		default:
 			return dt.toLocaleString(DateTime.DATETIME_MED);

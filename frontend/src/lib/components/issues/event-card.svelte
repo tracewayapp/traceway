@@ -36,6 +36,12 @@
 		timezone
 	}: Props = $props();
 
+	const RELATED_LABELS = {
+		endpoint: { label: 'Endpoint', route: 'endpoints' },
+		task: { label: 'Task', route: 'tasks' },
+		ai_trace: { label: 'AI Trace', route: 'ai-traces' }
+	} as const;
+
 	const tz = $derived(timezone ?? getTimezone());
 	const isFrontend = $derived(
 		projectsState.currentProject?.framework
@@ -185,18 +191,13 @@
 
 		<!-- Related Trace -->
 		{#if linkedTrace}
+			{@const related = RELATED_LABELS[linkedTrace.traceType]}
 			<hr class="border-border" />
 			<div>
-				<p class="mb-3 text-sm font-medium">
-					{linkedTrace.traceType === 'task' ? 'Related Task' : 'Related Endpoint'}
-				</p>
+				<p class="mb-3 text-sm font-medium">Related {related.label}</p>
 				<div class="mb-4 grid grid-cols-2 gap-4 md:grid-cols-4">
-					<LabelValue
-						label={linkedTrace.traceType === 'task' ? 'Task' : 'Endpoint'}
-						value={linkedTrace.endpoint}
-						mono
-					/>
-					{#if linkedTrace.traceType !== 'task'}
+					<LabelValue label={related.label} value={linkedTrace.endpoint} mono />
+					{#if linkedTrace.traceType === 'endpoint'}
 						<LabelValue
 							label="Status"
 							value={linkedTrace.statusCode}
@@ -212,43 +213,27 @@
 						mono
 					/>
 				</div>
-				{#if linkedTrace.traceType === 'task'}
-					<Button
-						variant="outline"
-						size="sm"
-						onclick={() =>
-							goto(
-								resolve(
-									`/tasks/${encodeURIComponent(linkedTrace.endpoint)}/${linkedTrace.id}?preset=24h`
-								)
-							)}
-					>
-						View Task Details
-						<ArrowRight class="ml-2 h-4 w-4" />
-					</Button>
-				{:else}
-					<Button
-						variant="outline"
-						size="sm"
-						onclick={() =>
-							goto(
-								resolve(
-									`/endpoints/${encodeURIComponent(linkedTrace.endpoint)}/${linkedTrace.id}?preset=24h`
-								)
-							)}
-					>
-						View Endpoint Details
-						<ArrowRight class="ml-2 h-4 w-4" />
-					</Button>
-				{/if}
+				<Button
+					variant="outline"
+					size="sm"
+					onclick={() =>
+						goto(
+							resolve(
+								`/${related.route}/${encodeURIComponent(linkedTrace.endpoint)}/${linkedTrace.id}?preset=24h&t=${encodeURIComponent(linkedTrace.recordedAt)}`
+							)
+						)}
+				>
+					View {related.label} Details
+					<ArrowRight class="ml-2 h-4 w-4" />
+				</Button>
 			</div>
 		{/if}
 	</Card.Content>
 </Card.Root>
 
-{#if linkedTrace?.distributedTraceId || occurrence.distributedTraceId}
+{#if occurrence.traceId}
 	<DistributedTraceCard
-		distributedTraceId={(linkedTrace?.distributedTraceId ?? occurrence.distributedTraceId)!}
+		traceId={occurrence.traceId}
 		currentExceptionHash={occurrence.exceptionHash}
 		recordedAt={linkedTrace?.recordedAt ?? occurrence.recordedAt}
 	/>

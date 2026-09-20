@@ -90,7 +90,7 @@ clearAttributes();
 
 Then add `userId=u_42` to find that user's sessions, or combine `tenant=acme` with `email~=example.com`. Attribute values must be strings. Changes replace the current session's context; `clearAttributes()` removes app-defined values while retaining browser defaults.
 
-Older SDKs and `/api/report` payloads that omit session attributes remain supported.
+Older SDKs that omit session attributes remain supported.
 
 ## Sessions and Issues
 

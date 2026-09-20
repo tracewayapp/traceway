@@ -15,7 +15,7 @@ So from a notification, go straight to the occurrence (fast), then pivot reusing
 
 ```bash
 traceway exceptions occurrence <Exception ID> --recorded-at <Occurred at → RFC3339> --output json
-# the result carries distributedTraceId and sessionId → traces show / sessions show below
+# the result carries traceId, relatedEntity and sessionId → traces show / endpoints show / sessions show below
 ```
 
 ### Performance notification (an endpoint became slow or critical)

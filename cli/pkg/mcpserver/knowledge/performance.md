@@ -16,7 +16,7 @@ All commands are read-only. Never archive or mutate anything during a performanc
 2. **Get a representative slow trace.** Drill into one slow request to see where the time goes. Capture an id and its `recordedAt` together, then:
    ```bash
    traceway endpoints show <endpointId> --recorded-at <t>          # span waterfall for one request
-   traceway traces show <distributedTraceId> --recorded-at <t>     # cross-service timeline
+   traceway traces show <traceId> --recorded-at <t>                # cross-service timeline (traceId from endpoints show)
    ```
    `traces show` is the highest-value call when more than one service is involved: it stitches the whole logical request together end to end.
 

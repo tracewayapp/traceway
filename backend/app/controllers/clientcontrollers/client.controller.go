@@ -154,6 +154,9 @@ func (e clientController) Report(c *gin.Context) {
 		}
 
 		for _, ct := range cf.Traces {
+			if ct == nil {
+				continue
+			}
 			if ct.IsTask {
 				t := ct.ToTask(request.AppVersion, request.ServerName)
 				t.ProjectId = projectId
@@ -167,10 +170,11 @@ func (e clientController) Report(c *gin.Context) {
 				endpointsToInsert = append(endpointsToInsert, e)
 			}
 
+			spansToInsert = append(spansToInsert, ct.RootSpan(projectId, request.ServerName))
 			for _, cs := range ct.Spans {
-				span := cs.ToSpan(ct.ParsedId())
-				span.ProjectId = projectId
-				spansToInsert = append(spansToInsert, span)
+				if cs != nil {
+					spansToInsert = append(spansToInsert, cs.ToSpan(ct, projectId, request.ServerName))
+				}
 			}
 		}
 		resolveJs := project != nil && project.SourceMapToken != nil && jsFrameworks[project.Framework]
@@ -261,10 +265,13 @@ func (e clientController) Report(c *gin.Context) {
 	}
 	convertSpan.End()
 
-	var droppedHealthchecks int
-	endpointsToInsert, spansToInsert, droppedHealthchecks = services.FilterHealthchecks(project, endpointsToInsert, spansToInsert, exceptionStackTraceToInsert)
-	if droppedHealthchecks > 0 {
-		monitoring.RecordHealthchecksDropped(monitoring.SignalNative, droppedHealthchecks)
+	var droppedHealthchecks map[string]bool
+	endpointsToInsert, droppedHealthchecks = services.FilterHealthchecks(project, endpointsToInsert, exceptionStackTraceToInsert)
+	spansToInsert = services.DropSpanSubtrees(spansToInsert, func(span models.Span) (string, string, string) {
+		return span.TraceId, span.SpanId, span.ParentSpanId
+	}, droppedHealthchecks, nil)
+	if len(droppedHealthchecks) > 0 {
+		monitoring.RecordHealthchecksDropped(monitoring.SignalNative, len(droppedHealthchecks))
 	}
 
 	perm := hooks.IngestPermission{Exceptions: true, Data: true, Replay: true}

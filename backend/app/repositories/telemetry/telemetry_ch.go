@@ -15,6 +15,7 @@ var (
 	ProfileRepository             = ch.ProfileRepository
 	SessionRecordingRepository    = ch.SessionRecordingRepository
 	SessionRepository             = ch.SessionRepository
-	SpanRepository                = ch.SpanRepository
+	OtelSpanRepository            = ch.OtelSpanRepository
+	LegacyRepository              = ch.LegacyRepository
 	TaskRepository                = ch.TaskRepository
 )

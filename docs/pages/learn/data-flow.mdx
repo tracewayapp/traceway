@@ -1,36 +1,38 @@
 # Data Flow
 
-## Endpoint Flow
+Traceway is OpenTelemetry first. Your services are instrumented with the OpenTelemetry SDK for their language and export over OTLP/HTTP. See [OpenTelemetry](/client/otel) for the setup.
+
+## Request Flow
 
 Here's how the concepts connect in a typical request:
 
-1. **Request arrives** → Middleware creates a new **Trace** (Automatically by the client SDK for your framework)
-2. **Auth middleware runs** → Adds `user_id` to **Attributes** (Manually done by you - Traceway does not know about your authentication)
-3. **Handler executes** → Creates **Spans** for sub-operations (DB queries, API calls, your own spans...)
-4. **Error occurs** → **Issue** captured with full attributes context, linked to the trace (Automatically by the client SDK for your framework)
-5. **Request completes** → Trace recorded with duration, status code, and all spans (Automatically by the client SDK for your framework)
+1. **Request arrives** → The HTTP instrumentation starts a server **Span**, which begins a **Trace** or joins the one the caller started (automatic)
+2. **Auth middleware runs** → You add `user_id` to the active span's **Attributes** (done by you, Traceway does not know about your authentication)
+3. **Handler executes** → Child **Spans** are created for sub-operations (DB queries, outgoing HTTP calls, your own spans)
+4. **Error occurs** → The exception is recorded on the span it happened in and becomes an **Issue**, linked to that trace and span (automatic)
+5. **Request completes** → The exporter sends the spans. Traceway stores every span and shows the server span as an **Endpoint** with its duration, status code and waterfall
 
 ## Task Flow
 
-Here's how the concepts connect in a typical scheduled/async task:
+Here's how the concepts connect in a typical scheduled or queued job:
 
-1. **Task starts** → Client SDK provides a wrapper function for task execution
-2. **Your task code executes** → Creates **Spans** for sub-operations (DB queries, API calls, your own spans...)
-3. **Error occurs** → **Issue** captured with full attributes context, linked to the task trace (Automatically by the client SDK for your framework)
-4. **Task completes** → Trace recorded with duration, status code, and all spans (Automatically by the client SDK for your framework)
+1. **Job starts** → The queue instrumentation starts a consumer **Span**. When the job was enqueued by a request, it joins that request's trace (automatic)
+2. **Your job code executes** → Child **Spans** are created for sub-operations
+3. **Error occurs** → The exception is recorded on its span and becomes an **Issue**, linked to the job's trace
+4. **Job completes** → Traceway stores the spans and shows the consumer span as a **Task**, next to the endpoint that started it
 
 ## Metrics Flow
 
-1. **System metrics collected** → CPU, memory, goroutines, and GC stats are captured automatically every 30 seconds (Automatically by the client SDK)
-2. **Custom metrics captured** → Your code calls `CaptureMetric` or `CaptureMetricWithTags` to record application-specific measurements with optional tags
-3. **Batched and uploaded** → All metrics are batched, compressed, and sent to Traceway with the next collection frame
+1. **System metrics collected** → The OpenTelemetry Collector's host metrics receiver, or your runtime's metrics instrumentation, reports CPU, memory, disk and network
+2. **Custom metrics recorded** → Your code records counters, gauges and histograms with the OpenTelemetry metrics API, with attributes as tags
+3. **Exported** → Metrics are batched and sent over OTLP
 4. **Displayed on dashboards** → Metrics appear on configurable, org-shareable dashboards with line charts, area charts, bar charts, single values, gauges, and tables, filterable and groupable by tags
 
-## Ingestion pipelines
+## Ingestion
 
-On the server side all of this arrives through one of two paths: Traceway SDKs (frontend, mobile, and Go) post gzipped collection frames to `/api/report`, while OpenTelemetry-instrumented backends export OTLP to `/api/otel/v1/*`. Both authenticate with the project token, symbolicate stack traces at ingest, and land in the same telemetry store:
+Traces, metrics and logs arrive over OTLP/HTTP at `/api/otel/v1/traces`, `/api/otel/v1/metrics` and `/api/otel/v1/logs`. Each request authenticates with the project token. Stack traces are symbolicated at ingest, and everything lands in the same telemetry store.
 
-<img src="/ingestion-flows.png" alt="Traceway ingestion pipelines" style={{ maxWidth: '100%', height: 'auto' }} />
+Browser and mobile apps use the Traceway SDK for their platform, which adds session replay and on-device crash capture. Pick yours under [Docs](/client).
 
 ## After the data collection
 

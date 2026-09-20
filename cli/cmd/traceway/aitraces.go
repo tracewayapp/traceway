@@ -20,10 +20,11 @@ func newAiTracesCmd() *cobra.Command {
 
 func newAiTracesShowCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "show <traceId>",
+		Use:   "show <aiTraceId>",
 		Short: "Show one AI trace by id with its conversation",
 		Long: `Show a single AI/LLM trace by its UUID, including token/cost stats and the
-stored conversation. This is the detail behind /ai-traces/<name>/<traceId>.
+stored conversation. This is the detail behind /ai-traces/<name>/<id>. The UUID
+is the AI trace's own id, not the 32 hex traceId that "traces show" takes.
 
 --recorded-at is REQUIRED. The ai_traces table is daily-partitioned; the
 timestamp bounds the lookup to a window around it so ClickHouse prunes
@@ -45,7 +46,7 @@ func runAiTracesShow(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return renderSessionError(cmd.ErrOrStderr(), mode, err)
 	}
-	if err := validateUUIDArg(cmd, mode, args[0], "trace id"); err != nil {
+	if err := validateUUIDArg(cmd, mode, args[0], "ai trace id"); err != nil {
 		return err
 	}
 	recordedAt, err := resolveTimestamp(cmd, "recorded-at")
@@ -76,9 +77,7 @@ func runAiTracesShow(cmd *cobra.Command, args []string) error {
 				a.InputTokens, a.OutputTokens, a.TotalTokens,
 				a.TotalCost, formatDuration(a.Duration),
 			)
-			if a.DistributedTraceId != nil {
-				_, _ = fmt.Fprintf(out, "TRACE ID:     %s\n", a.DistributedTraceId.String())
-			}
+			renderTraceIds(out, a.TraceId, a.LinkedTraceId)
 			if a.ConversationId != "" {
 				_, _ = fmt.Fprintf(out, "CONVERSATION: %s\n", a.ConversationId)
 			}

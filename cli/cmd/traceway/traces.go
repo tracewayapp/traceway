@@ -19,16 +19,17 @@ func newTracesCmd() *cobra.Command {
 
 func newTracesShowCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "show <distributedTraceId>",
+		Use:   "show <traceId>",
 		Short: "Show a distributed trace: every service node that shares the trace id",
-		Long: `Show the full cross-service timeline for a distributed trace id — every
-endpoint, task, ai-trace, and exception node that shares it, across all projects
-you can see. This is the highest-value root-cause view: it stitches one logical
-request together end to end.
+		Long: `Show the full cross-service timeline for a trace id: every endpoint, task,
+ai-trace, and exception node that shares it, across all projects you can see.
+This is the highest-value root-cause view: it stitches one logical request
+together end to end.
 
-The distributed trace id comes from an occurrence's distributedTraceId (in
-"exceptions show" / "exceptions occurrence" output) or an endpoint/task's
-distributedTraceId.
+The trace id is the traceId of an occurrence (in "exceptions show" /
+"exceptions occurrence" output) or of an endpoint, task or ai-trace: 32 hex
+characters, the OpenTelemetry trace id. A linkedTraceId works too and returns
+the same trace, since a trace and the one it is linked with come back together.
 
 --recorded-at is REQUIRED. The lookup is bounded to a window around it so
 ClickHouse prunes partitions instead of scanning all of them. Use the recordedAt
@@ -48,7 +49,7 @@ func runTracesShow(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return renderSessionError(cmd.ErrOrStderr(), mode, err)
 	}
-	if err := validateUUIDArg(cmd, mode, args[0], "distributed trace id"); err != nil {
+	if err := validateTraceIDArg(cmd, mode, args[0]); err != nil {
 		return err
 	}
 	recordedAt, err := resolveTimestamp(cmd, "recorded-at")
@@ -69,7 +70,7 @@ func runTracesShow(cmd *cobra.Command, args []string) error {
 		return output.RenderYAML(cmd.OutOrStdout(), resp, output.ParseFieldsFlag(flagFields))
 	default:
 		out := cmd.OutOrStdout()
-		_, _ = fmt.Fprintf(out, "DISTRIBUTED TRACE: %s\nNODES (%d):\n", resp.DistributedTraceId, len(resp.Nodes))
+		_, _ = fmt.Fprintf(out, "DISTRIBUTED TRACE: %s\nNODES (%d):\n", resp.TraceId, len(resp.Nodes))
 		tw := output.NewTabWriter(out)
 		_, _ = fmt.Fprintln(tw, "PROJECT\tTYPE\tNAME\tERROR")
 		for _, n := range resp.Nodes {

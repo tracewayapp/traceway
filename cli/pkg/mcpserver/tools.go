@@ -27,14 +27,14 @@ func (s *server) addTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:         "get_exception",
 		OutputSchema: outSchema[client.GetExceptionResponse](),
-		Description:  "Get one exception group by its 16-hex hash: the representative stack trace plus paginated occurrences, each with recordedAt, attributes, and optional distributedTraceId/sessionId. A hash can bundle several distinct errors that share top frames: when debugging, anchor on the most recent occurrence, not the group; distinct first stack lines mean distinct bugs. Capture each occurrence's id together with its recordedAt for the by-id drill-in tools.",
+		Description:  "Get one exception group by its 16-hex hash: the representative stack trace plus paginated occurrences, each with recordedAt, attributes, and optional traceId/spanId/linkedTraceId/sessionId, plus relatedEntity: the endpoint, task or AI trace the newest occurrence happened in (its id and recordedAt feed the by-id tools, its traceId feeds get_trace). A hash can bundle several distinct errors that share top frames: when debugging, anchor on the most recent occurrence, not the group; distinct first stack lines mean distinct bugs. Capture each occurrence's id together with its recordedAt for the by-id drill-in tools.",
 		Annotations:  readOnly(),
 	}, s.getException)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:         "get_exception_occurrence",
 		OutputSchema: outSchema[client.ExceptionByIdResponse](),
-		Description:  "Get a single exception occurrence by UUID, including its sessionId and session recording reference. Prefer this over get_exception when you already hold the occurrence id and its timestamp (dashboard URL path + ?t= param, or a notification's Exception ID + Occurred at).",
+		Description:  "Get a single exception occurrence by UUID, including its traceId, its relatedEntity (the endpoint, task or AI trace it happened in), its sessionId and session recording reference. Prefer this over get_exception when you already hold the occurrence id and its timestamp (dashboard URL path + ?t= param, or a notification's Exception ID + Occurred at).",
 		Annotations:  readOnly(),
 	}, s.getExceptionOccurrence)
 
@@ -104,7 +104,7 @@ func (s *server) addTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:         "get_trace",
 		OutputSchema: outSchema[client.DistributedTraceResponse](),
-		Description:  "Get a distributed trace by id: every endpoint/task/AI-trace/exception node sharing the trace id, across services and across all projects the user can see (no project_id param). Usually the single highest-value root-cause call: it stitches one logical request together end to end. The lookup window is 48h around recorded_at.",
+		Description:  "Get a distributed trace by trace id (32 hex characters, the traceId of any occurrence or request; a linkedTraceId works too): every endpoint/task/AI-trace/exception node sharing the trace id, across services and across all projects the user can see (no project_id param). Each node carries its spanId and parentEntitySpanId, the spanId of the node it sits under, so the call chain can be rebuilt. Usually the single highest-value root-cause call: it stitches one logical request together end to end. The lookup window is 48h around recorded_at.",
 		Annotations:  readOnly(),
 	}, s.getTrace)
 

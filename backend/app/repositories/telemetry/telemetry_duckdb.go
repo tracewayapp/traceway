@@ -15,6 +15,7 @@ var (
 	ProfileRepository             = duckdbrepo.ProfileRepository
 	SessionRecordingRepository    = duckdbrepo.SessionRecordingRepository
 	SessionRepository             = duckdbrepo.SessionRepository
-	SpanRepository                = duckdbrepo.SpanRepository
+	OtelSpanRepository            = duckdbrepo.OtelSpanRepository
+	LegacyRepository              = duckdbrepo.LegacyRepository
 	TaskRepository                = duckdbrepo.TaskRepository
 )

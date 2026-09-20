@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -187,24 +188,27 @@ func setupNotificationsTestDB(t *testing.T) {
 	db.Driver = lit.SQLite
 	models.Init(db.Driver)
 
-	if _, err := telemetryDB.Exec(`CREATE TABLE tasks (
+	if _, err := telemetryDB.Exec(`CREATE TABLE tasks_v2 (
 		id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
+		trace_id TEXT NOT NULL DEFAULT '',
+		span_id TEXT NOT NULL DEFAULT '',
 		task_name TEXT NOT NULL DEFAULT '',
 		duration INTEGER NOT NULL DEFAULT 0,
 		recorded_at DATETIME NOT NULL
 	)`); err != nil {
-		t.Fatalf("failed to create tasks table: %v", err)
+		t.Fatalf("failed to create tasks_v2 table: %v", err)
 	}
 
-	if _, err := telemetryDB.Exec(`CREATE TABLE exception_stack_traces (
+	if _, err := telemetryDB.Exec(`CREATE TABLE exceptions_v2 (
 		id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
-		trace_id TEXT,
-		trace_type TEXT NOT NULL DEFAULT 'endpoint',
+		trace_id TEXT NOT NULL DEFAULT '',
+		span_id TEXT NOT NULL DEFAULT '',
+		trace_type TEXT NOT NULL DEFAULT '',
 		recorded_at DATETIME NOT NULL
 	)`); err != nil {
-		t.Fatalf("failed to create exception_stack_traces table: %v", err)
+		t.Fatalf("failed to create exceptions_v2 table: %v", err)
 	}
 }
 
@@ -216,26 +220,30 @@ func TestEvaluateTaskFailureRate(t *testing.T) {
 	pid := projectId.String()
 	now := time.Now().UTC()
 
-	var taskIds []string
+	trace := func(i int) string { return fmt.Sprintf("%032x", i+1) }
+	span := func(i int) string { return fmt.Sprintf("%016x", i+1) }
 	for i := 0; i < 5; i++ {
-		id := uuid.New().String()
-		taskIds = append(taskIds, id)
 		ts := now.Add(-time.Duration(i+1) * time.Minute).Format(time.RFC3339Nano)
 		if _, err := db.TelemetryDB.Exec(
-			"INSERT INTO tasks (id, project_id, task_name, duration, recorded_at) VALUES (?, ?, ?, ?, ?)",
-			id, pid, "etl-job", 1000000, ts); err != nil {
+			"INSERT INTO tasks_v2 (id, project_id, trace_id, span_id, task_name, duration, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			uuid.New().String(), pid, trace(i), span(i), "etl-job", 1000000, ts); err != nil {
 			t.Fatalf("failed to insert task: %v", err)
 		}
 	}
 
-	for i := 0; i < 2; i++ {
+	exception := func(i int, spanId, traceType string) {
 		ts := now.Add(-time.Duration(i+1) * time.Minute).Format(time.RFC3339Nano)
 		if _, err := db.TelemetryDB.Exec(
-			"INSERT INTO exception_stack_traces (id, project_id, trace_id, trace_type, recorded_at) VALUES (?, ?, ?, ?, ?)",
-			uuid.New().String(), pid, taskIds[i], "task", ts); err != nil {
+			"INSERT INTO exceptions_v2 (id, project_id, trace_id, span_id, trace_type, recorded_at) VALUES (?, ?, ?, ?, ?, ?)",
+			uuid.New().String(), pid, trace(i), spanId, traceType, ts); err != nil {
 			t.Fatalf("failed to insert exception: %v", err)
 		}
 	}
+	// Two tasks failed, one of them twice on a retried export. A third caught an exception further down and finished.
+	exception(0, span(0), "task")
+	exception(0, span(0), "task")
+	exception(1, span(1), "task")
+	exception(2, "00000000000000ff", "")
 
 	t.Run("fires above threshold", func(t *testing.T) {
 		rule := &models.NotificationRule{

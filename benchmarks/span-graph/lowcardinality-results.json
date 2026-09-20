@@ -1,0 +1,295 @@
+{
+  "measured_at": "2026-09-18",
+  "image": "clickhouse/clickhouse-server:25.8-alpine",
+  "runtime": "local arm64 Docker, clickhouse-local",
+  "max_threads": 2,
+  "max_memory_usage": 1073741824,
+  "schema": "single spans table, migration 0085: native JSON span attributes, LowCardinality resource/scope text and protobuf envelopes, per-span protobuf",
+  "source_rows": 1000000,
+  "projects": 100,
+  "traces": 100000,
+  "limitations": [
+    "One pass under local load; not latency percentiles or production throughput.",
+    "Legacy excludes roots: 900000 rows versus 1000000 V2 rows, with different retained fields.",
+    "Synthetic source has one resource and one scope for every span, which is the best case for dictionary encoding.",
+    "Prepared-source SQL inserts exclude Go conversion, HTTP ingestion and driver batching; see the Go benchmarks for those.",
+    "clickhouse-local reports zero rows/bytes read in its JSON statistics; those counters are unavailable, not evidence of zero work."
+  ],
+  "results": {
+    "json_settings": {
+      "wall_seconds": 0.0
+    },
+    "source": {
+      "wall_seconds": 5.346
+    },
+    "legacy_ddl": {
+      "wall_seconds": 0.017
+    },
+    "spans_ddl": {
+      "wall_seconds": 0.009
+    },
+    "v2_columns": {
+      "wall_seconds": 0.004
+    },
+    "legacy_insert": {
+      "wall_seconds": 2.898
+    },
+    "v2_insert": {
+      "wall_seconds": 5.96
+    },
+    "legacy_spans_1_plan": {
+      "wall_seconds": 0.009,
+      "plan": [
+        "Expression ((Project names + Projection))",
+        "  Limit (preliminary LIMIT (without OFFSET))",
+        "    Expression ((WHERE + Change column names to column identifiers))",
+        "      ReadFromMergeTree (default.legacy_spans)",
+        "      Indexes:",
+        "        MinMax",
+        "          Condition: true",
+        "          Parts: 2/2",
+        "          Granules: 111/111",
+        "        Partition",
+        "          Condition: true",
+        "          Parts: 2/2",
+        "          Granules: 111/111",
+        "        PrimaryKey",
+        "          Keys:",
+        "            project_id",
+        "            trace_id",
+        "          Condition: and((trace_id in [\\'81dc9bdb-52d0-4dc2-0036-dbd8313ed055\\', \\'81dc9bdb-52d0-4dc2-0036-dbd8313ed055\\']), (project_id in [\\'c4ca4238-a0b9-2382-0dcc-509a6f75849b\\', \\'c4ca4238-a0b9-2382-0dcc-509a6f75849b\\']))",
+        "          Parts: 2/2",
+        "          Granules: 2/111",
+        "          Search Algorithm: binary search",
+        "        Skip",
+        "          Name: idx_trace_id",
+        "          Description: bloom_filter GRANULARITY 1",
+        "          Parts: 1/2",
+        "          Granules: 1/2",
+        "          Ranges: 1"
+      ]
+    },
+    "legacy_spans_1_read": {
+      "wall_seconds": 0.015,
+      "data": [
+        {
+          "count()": 9,
+          "sum(cityHash64(toJSONString((id, trace_id, project_id, name, start_time, duration, recorded_at, parent_span_id, attributes))))": 1165391443441766333
+        }
+      ]
+    },
+    "spans_1_plan": {
+      "wall_seconds": 0.005,
+      "plan": [
+        "Expression ((Project names + Projection))",
+        "  Limit (preliminary LIMIT (without OFFSET))",
+        "    Expression ((WHERE + Change column names to column identifiers))",
+        "      ReadFromMergeTree (default.spans)",
+        "      Indexes:",
+        "        MinMax",
+        "          Condition: true",
+        "          Parts: 7/7",
+        "          Granules: 190/190",
+        "        Partition",
+        "          Condition: true",
+        "          Parts: 7/7",
+        "          Granules: 190/190",
+        "        PrimaryKey",
+        "          Keys:",
+        "            trace_id",
+        "          Condition: (trace_id in 1-element set)",
+        "          Parts: 5/7",
+        "          Granules: 6/190",
+        "          Search Algorithm: generic exclusion search",
+        "        Skip",
+        "          Name: idx_trace_id",
+        "          Description: bloom_filter GRANULARITY 1",
+        "          Parts: 1/5",
+        "          Granules: 1/6",
+        "          Ranges: 1"
+      ]
+    },
+    "spans_1_read": {
+      "wall_seconds": 0.021,
+      "data": [
+        {
+          "count()": 10,
+          "sum(cityHash64(toJSONString((project_id, otel_trace_id, span_id, parent_span_id, distributed_trace_id, name, start_time, duration, attributes, span_kind, status_code, service_name, scope_name, start_time_unix_nano))))": 13682137705730973184
+        }
+      ]
+    },
+    "legacy_spans_100_plan": {
+      "wall_seconds": 0.035,
+      "plan": [
+        "Expression ((Project names + Projection))",
+        "  Limit (preliminary LIMIT (without OFFSET))",
+        "    Expression ((WHERE + Change column names to column identifiers))",
+        "      ReadFromMergeTree (default.legacy_spans)",
+        "      Indexes:",
+        "        MinMax",
+        "          Condition: true",
+        "          Parts: 2/2",
+        "          Granules: 111/111",
+        "        Partition",
+        "          Condition: true",
+        "          Parts: 2/2",
+        "          Granules: 111/111",
+        "        PrimaryKey",
+        "          Keys:",
+        "            project_id",
+        "            trace_id",
+        "          Condition: or(and((trace_id in [\\'44d3377f-d88b-c32c-d46a-cd38d716abd3\\', \\'44d3377f-d88b-c32c-d46a-cd38d716abd3\\']), (project_id in [\\'ac627ab1-ccbd-b62e-c96e-702f07f6425b\\', \\'ac627ab1-ccbd-b62e-c96e-702f07f6425b\\'])), or(and((trace_id in [\\'1ed6f515-f06b-75cf-f414-91cceee3146c\\', \\'1ed6f515-f06b-75cf-f414-91cceee3146c\\']), (project_id in [\\'ed3d2c21-991e-3bef-5e06-9713af9fa6ca\\', \\'ed3d2c21-991e-3bef-5e06-9713af9fa6ca\\'])), or(and((trace_id in [\\'82f75d42-3a68-00bb-bb3b-c8e208805198\\', \\'82f75d42-3a68-00bb-bb3b-c8e208805198\\']), (project_id in [\\'e2ef524f-bf3d-9fe6-11d5-a8e90fefdc9c\\', \\'e2ef524f-bf3d-9fe6-11d5-a8e90fefdc9c\\'])), or(and((trace_id in [\\'09d8e2ec-1c4a-f789-e4cc-0e22c3117d6f\\', \\'09d8e2ec-1c4a-f789-e4cc-0e22c3117d6f\\']), (project_id in [\\'26657d5f-f902-0d2a-befe-558796b99584\\', \\'26657d5f-f902-0d2a-befe-558796b99584\\'])), or(and((trace_id in [\\'b1567d68-a6fe-1ae7-e868-527d88195eae\\', \\'b1567d68-a6fe-1ae7-e868-527d88195eae\\']), (project_id in [\\'812b4ba2-87f5-ee0b-c9d4-3bbf5bbe87fb\\', \\'812b4ba2-87f5-ee0b-c9d4-3bbf5bbe87fb\\'])), or(and((trace_id in [\\'5c64eb19-08aa-3f7b-07b9-541c95692291\\', \\'5c64eb19-08aa-3f7b-07b9-541c95692291\\']), (project_id in [\\'f4b9ec30-ad9f-68f8-9b29-639786cb62ef\\', \\'f4b9ec30-ad9f-68f8-9b29-639786cb62ef\\'])), or(and((trace_id in [\\'e2ffa20a-2cb0-f2af-53b3-ab6ee157242e\\', \\'e2ffa20a-2cb0-f2af-53b3-ab6ee157242e\\']), (project_id in [\\'98dce83d-a57b-0395-e163-467c9dae521b\\', \\'98dce83d-a57b-0395-e163-467c9dae521b\\'])), or(and((trace_id in [\\'f99bb040-00db-653a-564e-3aadd5b39d92\\', \\'f99bb040-00db-653a-564e-3aadd5b39d92\\']), (project_id in [\\'92cc2275-32d1-7e56-e079-02b254dfad10\\', \\'92cc2275-32d1-7e56-e079-02b254dfad10\\'])), or(and((trace_id in [\\'21a23df3-3dce-b8b7-c865-bee83322de29\\', \\'21a23df3-3dce-b8b7-c865-bee83322de29\\']), (project_id in [\\'54229abf-cfa5-649e-7003-b83dd4755294\\', \\'54229abf-cfa5-649e-7003-b83dd4755294\\'])), or(and((trace_id in [\\'bac4973a-fe4c-1b8d-0d3d-51ab0b9743bd\\', \\'bac4973a-fe4c-1b8d-0d3d-51ab0b9743bd\\']), (project_id in [\\'8613985e-c49e-b8f7-57ae-6439e879bb2a\\', \\'8613985e-c49e-b8f7-57ae-6439e879bb2a\\'])), or(and((trace_id in [\\'ac279f54-7f66-2d77-6679-cb629dc65227\\', \\'ac279f54-7f66-2d77-6679-cb629dc65227\\']), (project_id in [\\'7647966b-7343-c290-4867-3252e490f736\\', \\'7647966b-7343-c290-4867-3252e490f736\\'])), or(and((trace_id in [\\'73b15204-4bac-f635-8418-a21136be3a8e\\', \\'73b15204-4bac-f635-8418-a21136be3a8e\\']), (project_id in [\\'2a38a4a9-316c-49e5-a833-517c45d31070\\', \\'2a38a4a9-316c-49e5-a833-517c45d31070\\'])), or(and((trace_id in [\\'7e47b7f5-b60d-6a1d-77fc-75da953e9592\\', \\'7e47b7f5-b60d-6a1d-77fc-75da953e9592\\']), (project_id in [\\'c7e1249f-fc03-eb9d-ed90-8c236bd1996d\\', \\'c7e1249f-fc03-eb9d-ed90-8c236bd1996d\\'])), or(and((trace_id in [\\'400ccfef-f001-74ce-c206-29908241c772\\', \\'400ccfef-f001-74ce-c206-29908241c772\\']), (project_id in [\\'c7e1249f-fc03-eb9d-ed90-8c236bd1996d\\', \\'c7e1249f-fc03-eb9d-ed90-8c236bd1996d\\'])), or(and((trace_id in [\\'ffce4d36-5430-31bd-fb08-598e86d7c657\\', \\'ffce4d36-5430-31bd-fb08-598e86d7c657\\']), (project_id in [\\'93db85ed-909c-1383-8ff9-5ccfa94cebd9\\', \\'93db85ed-909c-1383-8ff9-5ccfa94cebd9\\'])), or(and((trace_id in [\\'b6576561-a6e0-aa98-679f-03cca1e6c47e\\', \\'b6576561-a6e0-aa98-679f-03cca1e6c47e\\']), (project_id in [\\'3ef81541-6f77-5098-fe97-7004015c6193\\', \\'3ef81541-6f77-5098-fe97-7004015c6193\\'])), or(and((trace_id in [\\'07398274-6ad1-579a-03db-5ea3a81f01f2\\', \\'07398274-6ad1-579a-03db-5ea3a81f01f2\\']), (project_id in [\\'68d30a95-9472-8bc3-9aa2-4be94b319d21\\', \\'68d30a95-9472-8bc3-9aa2-4be94b319d21\\'])), or(and((trace_id in [\\'48692994-cb67-cc25-0b09-9c073246ced9\\', \\'48692994-cb67-cc25-0b09-9c073246ced9\\']), (project_id in [\\'fe9fc289-c3ff-0af1-42b6-d3bead98a923\\', \\'fe9fc289-c3ff-0af1-42b6-d3bead98a923\\'])), or(and((trace_id in [\\'a05f3cd1-9302-8c8d-42d0-e218ec7f6352\\', \\'a05f3cd1-9302-8c8d-42d0-e218ec7f6352\\']), (project_id in [\\'9778d5d2-19c5-080b-9a6a-17bef029331c\\', \\'9778d5d2-19c5-080b-9a6a-17bef029331c\\'])), or(and((trace_id in [\\'e6aa5566-0cca-f66a-675f-4183b9185bc5\\', \\'e6aa5566-0cca-f66a-675f-4183b9185bc5\\']), (project_id in [\\'43ec517d-68b6-edd3-015b-3edc9a11367b\\', \\'43ec517d-68b6-edd3-015b-3edc9a11367b\\'])), or(and((trace_id in [\\'ad7e47ac-2545-1511-c592-15d85a095489\\', \\'ad7e47ac-2545-1511-c592-15d85a095489\\']), (project_id in [\\'f033ab37-c302-01f7-3f14-2449d037028d\\', \\'f033ab37-c302-01f7-3f14-2449d037028d\\'])), or(and((trace_id in [\\'283b569e-0fa3-66d0-4862-e77cccddcae5\\', \\'283b569e-0fa3-66d0-4862-e77cccddcae5\\']), (project_id in [\\'d1fe173d-08e9-5939-7adf-34b1d77e88d7\\', \\'d1fe173d-08e9-5939-7adf-34b1d77e88d7\\'])), or(and((trace_id in [\\'6746db19-09ae-0de9-64a0-ccc8578a7dc7\\', \\'6746db19-09ae-0de9-64a0-ccc8578a7dc7\\']), (project_id in [\\'35f4a8d4-65e6-e1ed-c05f-3d8ab658c551\\', \\'35f4a8d4-65e6-e1ed-c05f-3d8ab658c551\\'])), or(and((trace_id in [\\'2446676c-147c-e456-d766-173536acd53d\\', \\'2446676c-147c-e456-d766-173536acd53d\\']), (project_id in [\\'28dd2c79-55ce-9264-5624-0b2ff0100bde\\', \\'28dd2c79-55ce-9264-5624-0b2ff0100bde\\'])), or(and((trace_id in [\\'3f722c39-358f-ed67-4747-c4197d6d6687\\', \\'3f722c39-358f-ed67-4747-c4197d6d6687\\']), (project_id in [\\'fbd7939d-6749-97cd-b469-2d34de8633c4\\', \\'fbd7939d-6749-97cd-b469-2d34de8633c4\\'])), or(and((trace_id in [\\'7950e952-fc31-b443-1e9b-96c314d703b0\\', \\'7950e952-fc31-b443-1e9b-96c314d703b0\\']), (project_id in [\\'d09bf415-44a3-365a-46c9-077ebb5e35c3\\', \\'d09bf415-44a3-365a-46c9-077ebb5e35c3\\'])), or(and((trace_id in [\\'9e3dc238-712b-b645-95f3-ec4ee605b2e0\\', \\'9e3dc238-712b-b645-95f3-ec4ee605b2e0\\']), (project_id in [\\'ad61ab14-3223-efbc-24c7-d2583be69251\\', \\'ad61ab14-3223-efbc-24c7-d2583be69251\\'])), or(and((trace_id in [\\'4248cd23-f6b3-b8e5-4549-5eb596b035f2\\', \\'4248cd23-f6b3-b8e5-4549-5eb596b035f2\\']), (project_id in [\\'d2ddea18-f006-65ce-8623-e36bd4e3c7c5\\', \\'d2ddea18-f006-65ce-8623-e36bd4e3c7c5\\'])), or(and((trace_id in [\\'7b04fb1b-db3c-9575-b152-d8f4292b17ea\\', \\'7b04fb1b-db3c-9575-b152-d8f4292b17ea\\']), (project_id in [\\'32bb90e8-976a-ab52-98d5-da10fe66f21d\\', \\'32bb90e8-976a-ab52-98d5-da10fe66f21d\\'])), or(and((trace_id in [\\'02c28595-f4e3-22a2-dde4-6b91ea524035\\', \\'02c28595-f4e3-22a2-dde4-6b91ea524035\\']), (project_id in [\\'e2c420d9-28d4-bf8c-e0ff-2ec19b371514\\', \\'e2c420d9-28d4-bf8c-e0ff-2ec19b371514\\'])), or(and((trace_id in [\\'7cef32cc-6eb3-8eef-9405-7388ed0b4748\\', \\'7cef32cc-6eb3-8eef-9405-7388ed0b4748\\']), (project_id in [\\'7cbbc409-ec99-0f19-c78c-75bd1e06f215\\', \\'7cbbc409-ec99-0f19-c78c-75bd1e06f215\\'])), or(and((trace_id in [\\'f061b24f-b0d7-47c8-b66f-3c03c090e607\\', \\'f061b24f-b0d7-47c8-b66f-3c03c090e607\\']), (project_id in [\\'14bfa6bb-1487-5e45-bba0-28a21ed38046\\', \\'14bfa6bb-1487-5e45-bba0-28a21ed38046\\'])), or(and((trace_id in [\\'33edb9e2-b500-c17e-f306-ebc4a979a878\\', \\'33edb9e2-b500-c17e-f306-ebc4a979a878\\']), (project_id in [\\'a3f390d8-8e4c-41f2-747b-fa2f1b5f87db\\', \\'a3f390d8-8e4c-41f2-747b-fa2f1b5f87db\\'])), or(and((trace_id in [\\'f94a2446-cb0d-1504-acc1-a6dce59cc708\\', \\'f94a2446-cb0d-1504-acc1-a6dce59cc708\\']), (project_id in [\\'735b90b4-5681-25ed-6c3f-678819b6e058\\', \\'735b90b4-5681-25ed-6c3f-678819b6e058\\'])), or(and((trace_id in [\\'f362a6fd-2424-0e94-9b13-ec70bab630e7\\', \\'f362a6fd-2424-0e94-9b13-ec70bab630e7\\']), (project_id in [\\'3295c76a-cbf4-caae-d33c-36b1b5fc2cb1\\', \\'3295c76a-cbf4-caae-d33c-36b1b5fc2cb1\\'])), or(and((trace_id in [\\'16a21259-e130-28a6-e14c-8abc30df8e51\\', \\'16a21259-e130-28a6-e14c-8abc30df8e51\\']), (project_id in [\\'fc490ca4-5c00-b124-9bbe-3554a4fdf6fb\\', \\'fc490ca4-5c00-b124-9bbe-3554a4fdf6fb\\'])), or(and((trace_id in [\\'0823d86d-a948-ef77-b6e7-5f081aeed490\\', \\'0823d86d-a948-ef77-b6e7-5f081aeed490\\']), (project_id in [\\'ea5d2f1c-4608-232e-07d3-aa3d998e5135\\', \\'ea5d2f1c-4608-232e-07d3-aa3d998e5135\\'])), or(and((trace_id in [\\'a966e862-1181-0972-f1f2-1a0a59a8fdb5\\', \\'a966e862-1181-0972-f1f2-1a0a59a8fdb5\\']), (project_id in [\\'03afdbd6-6e79-29b1-25f8-597834fa83a4\\', \\'03afdbd6-6e79-29b1-25f8-597834fa83a4\\'])), or(and((trace_id in [\\'9db1c4a3-a802-7643-9554-314a0b2dabe2\\', \\'9db1c4a3-a802-7643-9554-314a0b2dabe2\\']), (project_id in [\\'44f683a8-4163-b352-3afe-57c2e008bc8c\\', \\'44f683a8-4163-b352-3afe-57c2e008bc8c\\'])), or(and((trace_id in [\\'993cd825-33ae-f177-ff73-fd065e781c3f\\', \\'993cd825-33ae-f177-ff73-fd065e781c3f\\']), (project_id in [\\'7f39f831-7fbd-b198-8ef4-c628eba02591\\', \\'7f39f831-7fbd-b198-8ef4-c628eba02591\\'])), or(and((trace_id in [\\'17cdf5a2-12a1-2b4f-ae46-90f90d671c89\\', \\'17cdf5a2-12a1-2b4f-ae46-90f90d671c89\\']), (project_id in [\\'072b030b-a126-b2f4-b237-4f342be9ed44\\', \\'072b030b-a126-b2f4-b237-4f342be9ed44\\'])), or(and((trace_id in [\\'c15d1244-4bdb-a497-b968-41a269056108\\', \\'c15d1244-4bdb-a497-b968-41a269056108\\']), (project_id in [\\'093f65e0-80a2-95f8-076b-1c5722a46aa2\\', \\'093f65e0-80a2-95f8-076b-1c5722a46aa2\\'])), or(and((trace_id in [\\'f6028807-a9cd-c18d-5162-38d7973d90d4\\', \\'f6028807-a9cd-c18d-5162-38d7973d90d4\\']), (project_id in [\\'66f041e1-6a60-928b-05a7-e228a89c3799\\', \\'66f041e1-6a60-928b-05a7-e228a89c3799\\'])), or(and((trace_id in [\\'c2c86788-ca17-eea2-353c-b76376e1f220\\', \\'c2c86788-ca17-eea2-353c-b76376e1f220\\']), (project_id in [\\'72b32a1f-754b-a1c0-9b36-95e0cb6cde7f\\', \\'72b32a1f-754b-a1c0-9b36-95e0cb6cde7f\\'])), or(and((trace_id in [\\'97e90722-1af0-1aec-5f7a-dcdc49d72b39\\', \\'97e90722-1af0-1aec-5f7a-dcdc49d72b39\\']), (project_id in [\\'9f61408e-3afb-633e-50cd-f1b20de6f466\\', \\'9f61408e-3afb-633e-50cd-f1b20de6f466\\'])), or(and((trace_id in [\\'62ce5db1-f5b0-268a-2038-9d0086242488\\', \\'62ce5db1-f5b0-268a-2038-9d0086242488\\']), (project_id in [\\'b53b3a3d-6ab9-0ce0-2682-29151c9bde11\\', \\'b53b3a3d-6ab9-0ce0-2682-29151c9bde11\\'])), or(and((trace_id in [\\'b9a97f4e-21cf-cfbf-0381-ca4027e2b4a4\\', \\'b9a97f4e-21cf-cfbf-0381-ca4027e2b4a4\\']), (project_id in [\\'a684ecee-e76f-c522-7732-86a895bc8436\\', \\'a684ecee-e76f-c522-7732-86a895bc8436\\'])), or(and((trace_id in [\\'8a06615d-4aba-cff2-3bb8-cde6c87e911c\\', \\'8a06615d-4aba-cff2-3bb8-cde6c87e911c\\']), (project_id in [\\'d82c8d16-19ad-8176-d665-453cfb2e55f0\\', \\'d82c8d16-19ad-8176-d665-453cfb2e55f0\\'])), or(and((trace_id in [\\'d6357860-9b03-516c-b298-003355327357\\', \\'d6357860-9b03-516c-b298-003355327357\\']), (project_id in [\\'9a115815-4dfa-42ca-ddbd-0694a4e9bdc8\\', \\'9a115815-4dfa-42ca-ddbd-0694a4e9bdc8\\'])), or(and((trace_id in [\\'b45d0892-a61a-32c5-c01f-5ff140148d54\\', \\'b45d0892-a61a-32c5-c01f-5ff140148d54\\']), (project_id in [\\'2838023a-778d-faec-dc21-2708f721b788\\', \\'2838023a-778d-faec-dc21-2708f721b788\\'])), or(and((trace_id in [\\'86a2e69c-428a-afb5-0b38-a78f62d35b8d\\', \\'86a2e69c-428a-afb5-0b38-a78f62d35b8d\\']), (project_id in [\\'c0c7c76d-30bd-3dca-efc9-6f40275bdc0a\\', \\'c0c7c76d-30bd-3dca-efc9-6f40275bdc0a\\'])), or(and((trace_id in [\\'0fe9baf3-d161-6fa5-b3f1-0b7d6cf91de1\\', \\'0fe9baf3-d161-6fa5-b3f1-0b7d6cf91de1\\']), (project_id in [\\'f457c545-a9de-d88f-18ec-ee47145a72c0\\', \\'f457c545-a9de-d88f-18ec-ee47145a72c0\\'])), or(and((trace_id in [\\'7cf3a0e4-045d-c8e6-b2ae-a2319ae903f8\\', \\'7cf3a0e4-045d-c8e6-b2ae-a2319ae903f8\\']), (project_id in [\\'642e92ef-b794-2173-4881-b53e1e1b18b6\\', \\'642e92ef-b794-2173-4881-b53e1e1b18b6\\'])), or(and((trace_id in [\\'4832215b-e72e-7fa0-ff65-39453731b5b3\\', \\'4832215b-e72e-7fa0-ff65-39453731b5b3\\']), (project_id in [\\'67c6a1e7-ce56-d3d6-fa74-8ab6d9af3fd7\\', \\'67c6a1e7-ce56-d3d6-fa74-8ab6d9af3fd7\\'])), or(and((trace_id in [\\'0604888a-01dd-d003-a565-14677827d0bd\\', \\'0604888a-01dd-d003-a565-14677827d0bd\\']), (project_id in [\\'d9d4f495-e875-a2e0-75a1-a4a6e1b9770f\\', \\'d9d4f495-e875-a2e0-75a1-a4a6e1b9770f\\'])), or(and((trace_id in [\\'ec169a34-f974-ccb7-e834-fbfc88d61ff3\\', \\'ec169a34-f974-ccb7-e834-fbfc88d61ff3\\']), (project_id in [\\'6c8349cc-7260-ae62-e3b1-396831a8398f\\', \\'6c8349cc-7260-ae62-e3b1-396831a8398f\\'])), or(and((trace_id in [\\'68579a2a-1b3f-242d-1501-1c629a01e14e\\', \\'68579a2a-1b3f-242d-1501-1c629a01e14e\\']), (project_id in [\\'f7177163-c833-dff4-b38f-c8d2872f1ec6\\', \\'f7177163-c833-dff4-b38f-c8d2872f1ec6\\'])), or(and((trace_id in [\\'61eedc0f-f959-f8ff-d5a5-f1f74b6f5a1a\\', \\'61eedc0f-f959-f8ff-d5a5-f1f74b6f5a1a\\']), (project_id in [\\'17e62166-fc85-86df-a4d1-bc0e1742c08b\\', \\'17e62166-fc85-86df-a4d1-bc0e1742c08b\\'])), or(and((trace_id in [\\'72cfa54a-dabf-75a3-6f18-185567aa8ea1\\', \\'72cfa54a-dabf-75a3-6f18-185567aa8ea1\\']), (project_id in [\\'a1d0c6e8-3f02-7327-d846-1063f4ac58a6\\', \\'a1d0c6e8-3f02-7327-d846-1063f4ac58a6\\'])), or(and((trace_id in [\\'f6b19256-4928-a134-8da4-91c4987e08c4\\', \\'f6b19256-4928-a134-8da4-91c4987e08c4\\']), (project_id in [\\'3416a75f-4cea-9109-507c-acd8e2f2aefc\\', \\'3416a75f-4cea-9109-507c-acd8e2f2aefc\\'])), or(and((trace_id in [\\'3524e592-e453-ec8f-9356-efc4e6e4f6af\\', \\'3524e592-e453-ec8f-9356-efc4e6e4f6af\\']), (project_id in [\\'d645920e-395f-edad-7bbb-ed0eca3fe2e0\\', \\'d645920e-395f-edad-7bbb-ed0eca3fe2e0\\'])), or(and((trace_id in [\\'ced58dad-da88-ebec-98a7-fabb0f296401\\', \\'ced58dad-da88-ebec-98a7-fabb0f296401\\']), (project_id in [\\'d67d8ab4-f4c1-0bf2-2aa3-53e27879133c\\', \\'d67d8ab4-f4c1-0bf2-2aa3-53e27879133c\\'])), or(and((trace_id in [\\'849dc2aa-3a61-0f5a-c8d4-080ec9ca7f86\\', \\'849dc2aa-3a61-0f5a-c8d4-080ec9ca7f86\\']), (project_id in [\\'a5771bce-93e2-00c3-6f7c-d9dfd0e5deaa\\', \\'a5771bce-93e2-00c3-6f7c-d9dfd0e5deaa\\'])), or(and((trace_id in [\\'1757e3f1-8eaf-bd66-4e0b-c8cd4c2e0e39\\', \\'1757e3f1-8eaf-bd66-4e0b-c8cd4c2e0e39\\']), (project_id in [\\'a5bfc9e0-7964-f8dd-deb9-5fc584cd965d\\', \\'a5bfc9e0-7964-f8dd-deb9-5fc584cd965d\\'])), or(and((trace_id in [\\'f5aa7691-b405-9b96-dbdb-0439f1b43c7f\\', \\'f5aa7691-b405-9b96-dbdb-0439f1b43c7f\\']), (project_id in [\\'19ca14e7-ea63-28a4-2e0e-b13d585e4c22\\', \\'19ca14e7-ea63-28a4-2e0e-b13d585e4c22\\'])), or(and((trace_id in [\\'3f9f56ea-29f7-b4ae-ed72-0fad19c360c5\\', \\'3f9f56ea-29f7-b4ae-ed72-0fad19c360c5\\']), (project_id in [\\'1c383cd3-0b7c-298a-b502-93adfecb7b18\\', \\'1c383cd3-0b7c-298a-b502-93adfecb7b18\\'])), or(and((trace_id in [\\'22faad81-9c7d-2f97-3908-3b503674694e\\', \\'22faad81-9c7d-2f97-3908-3b503674694e\\']), (project_id in [\\'e369853d-f766-fa44-e1ed-0ff613f563bd\\', \\'e369853d-f766-fa44-e1ed-0ff613f563bd\\'])), or(and((trace_id in [\\'414a1761-3b27-acc5-4d1e-e7d56cc7346f\\', \\'414a1761-3b27-acc5-4d1e-e7d56cc7346f\\']), (project_id in [\\'182be0c5-cdcd-5072-bb18-64cdee4d3d6e\\', \\'182be0c5-cdcd-5072-bb18-64cdee4d3d6e\\'])), or(and((trace_id in [\\'bf39eb8e-d254-b605-bb3a-bdec33573855\\', \\'bf39eb8e-d254-b605-bb3a-bdec33573855\\']), (project_id in [\\'6364d3f0-f495-b6ab-9dcf-8d3b5c6e0b01\\', \\'6364d3f0-f495-b6ab-9dcf-8d3b5c6e0b01\\'])), or(and((trace_id in [\\'82df31b5-ab82-f68d-1614-48e658fdd76b\\', \\'82df31b5-ab82-f68d-1614-48e658fdd76b\\']), (project_id in [\\'c16a5320-fa47-5530-d958-3c34fd356ef5\\', \\'c16a5320-fa47-5530-d958-3c34fd356ef5\\'])), or(and((trace_id in [\\'ae8970f7-d835-8142-7155-bc725c003594\\', \\'ae8970f7-d835-8142-7155-bc725c003594\\']), (project_id in [\\'34173cb3-8f07-f89d-dbeb-c2ac9128303f\\', \\'34173cb3-8f07-f89d-dbeb-c2ac9128303f\\'])), or(and((trace_id in [\\'b63e51aa-a5ec-ef14-deb6-d72224133cc7\\', \\'b63e51aa-a5ec-ef14-deb6-d72224133cc7\\']), (project_id in [\\'6ea9ab1b-aa0e-fb9e-1909-4440c317e21b\\', \\'6ea9ab1b-aa0e-fb9e-1909-4440c317e21b\\'])), or(and((trace_id in [\\'3e824285-3ca7-831e-b03d-a9c1cef03f61\\', \\'3e824285-3ca7-831e-b03d-a9c1cef03f61\\']), (project_id in [\\'33e75ff0-9dd6-01bb-e69f-351039152189\\', \\'33e75ff0-9dd6-01bb-e69f-351039152189\\'])), or(and((trace_id in [\\'5236d2d4-66e7-a1d9-785a-33e298a58c3c\\', \\'5236d2d4-66e7-a1d9-785a-33e298a58c3c\\']), (project_id in [\\'02e74f10-e032-7ad8-68d1-38f2b4fdd6f0\\', \\'02e74f10-e032-7ad8-68d1-38f2b4fdd6f0\\'])), or(and((trace_id in [\\'ebc33d3c-fa0d-c5d1-99f5-8077fbd1de28\\', \\'ebc33d3c-fa0d-c5d1-99f5-8077fbd1de28\\']), (project_id in [\\'4e732ced-3463-d06d-e0ca-9a15b6153677\\', \\'4e732ced-3463-d06d-e0ca-9a15b6153677\\'])), or(and((trace_id in [\\'8de251fe-ae05-7b86-75fb-551e684a295c\\', \\'8de251fe-ae05-7b86-75fb-551e684a295c\\']), (project_id in [\\'8e296a06-7a37-5633-70de-d05f5a3bf3ec\\', \\'8e296a06-7a37-5633-70de-d05f5a3bf3ec\\'])), or(and((trace_id in [\\'418bf1ce-1437-adee-b5d0-352fcd92b1d2\\', \\'418bf1ce-1437-adee-b5d0-352fcd92b1d2\\']), (project_id in [\\'1ff1de77-4005-f8da-13f4-2943881c655f\\', \\'1ff1de77-4005-f8da-13f4-2943881c655f\\'])), or(and((trace_id in [\\'f846d436-4ff3-0b69-2d4d-6f1d8ddc407e\\', \\'f846d436-4ff3-0b69-2d4d-6f1d8ddc407e\\']), (project_id in [\\'37693cfc-7480-49e4-5d87-b8c7d8b9aacd\\', \\'37693cfc-7480-49e4-5d87-b8c7d8b9aacd\\'])), or(and((trace_id in [\\'da3792d6-6f5f-4552-e5bc-ff268c45946a\\', \\'da3792d6-6f5f-4552-e5bc-ff268c45946a\\']), (project_id in [\\'b6d767d2-f8ed-5d21-a44b-0e5886680cb9\\', \\'b6d767d2-f8ed-5d21-a44b-0e5886680cb9\\'])), or(and((trace_id in [\\'1918451b-bab7-610b-0e3f-80ec60c76411\\', \\'1918451b-bab7-610b-0e3f-80ec60c76411\\']), (project_id in [\\'3c59dc04-8e88-5024-3be8-079a5c74d079\\', \\'3c59dc04-8e88-5024-3be8-079a5c74d079\\'])), or(and((trace_id in [\\'fb56db57-36e9-e08a-9518-03b8f72e9e6c\\', \\'fb56db57-36e9-e08a-9518-03b8f72e9e6c\\']), (project_id in [\\'98f13708-2101-94c4-7568-7be6106a3b84\\', \\'98f13708-2101-94c4-7568-7be6106a3b84\\'])), or(and((trace_id in [\\'85dc2c3d-1a40-e7a1-42b1-20dfdf72b98a\\', \\'85dc2c3d-1a40-e7a1-42b1-20dfdf72b98a\\']), (project_id in [\\'1f0e3dad-9990-8345-f743-9f8ffabdffc4\\', \\'1f0e3dad-9990-8345-f743-9f8ffabdffc4\\'])), or(and((trace_id in [\\'c2eb37b9-56b9-1d3d-3a3d-12bba1531cba\\', \\'c2eb37b9-56b9-1d3d-3a3d-12bba1531cba\\']), (project_id in [\\'6f4922f4-5568-161a-8cdf-4ad2299f6d23\\', \\'6f4922f4-5568-161a-8cdf-4ad2299f6d23\\'])), or(and((trace_id in [\\'bfc54cb1-2ac9-731e-ea18-2845891e6cc8\\', \\'bfc54cb1-2ac9-731e-ea18-2845891e6cc8\\']), (project_id in [\\'70efdf2e-c9b0-8607-9795-c442636b55fb\\', \\'70efdf2e-c9b0-8607-9795-c442636b55fb\\'])), or(and((trace_id in [\\'f6e673b2-ec10-fe50-1930-9e1a056a15c2\\', \\'f6e673b2-ec10-fe50-1930-9e1a056a15c2\\']), (project_id in [\\'c74d97b0-1eae-257e-44aa-9d5bade97baf\\', \\'c74d97b0-1eae-257e-44aa-9d5bade97baf\\'])), or(and((trace_id in [\\'973cf0f1-e5cb-6a86-bcc5-a188d698a7bc\\', \\'973cf0f1-e5cb-6a86-bcc5-a188d698a7bc\\']), (project_id in [\\'9bf31c7f-f062-936a-96d3-c8bd1f8f2ff3\\', \\'9bf31c7f-f062-936a-96d3-c8bd1f8f2ff3\\'])), or(and((trace_id in [\\'def14e85-4170-8294-d755-8fdf2126ef27\\', \\'def14e85-4170-8294-d755-8fdf2126ef27\\']), (project_id in [\\'aab32389-22bc-c25a-6f60-6eb525ffdc56\\', \\'aab32389-22bc-c25a-6f60-6eb525ffdc56\\'])), or(and((trace_id in [\\'b0a3f2a0-d6f8-6051-e6ab-6c49d6d99e75\\', \\'b0a3f2a0-d6f8-6051-e6ab-6c49d6d99e75\\']), (project_id in [\\'c51ce410-c124-a10e-0db5-e4b97fc2af39\\', \\'c51ce410-c124-a10e-0db5-e4b97fc2af39\\'])), or(and((trace_id in [\\'8417b4b7-a649-29b9-e6de-a71c8c247959\\', \\'8417b4b7-a649-29b9-e6de-a71c8c247959\\']), (project_id in [\\'c20ad4d7-6fe9-7759-aa27-a0c99bff6710\\', \\'c20ad4d7-6fe9-7759-aa27-a0c99bff6710\\'])), or(and((trace_id in [\\'5781a263-7b47-6d78-1eb3-134581b32044\\', \\'5781a263-7b47-6d78-1eb3-134581b32044\\']), (project_id in [\\'6512bd43-d9ca-a6e0-2c99-0b0a82652dca\\', \\'6512bd43-d9ca-a6e0-2c99-0b0a82652dca\\'])), or(and((trace_id in [\\'0f83556a-305d-789b-1d71-815e8ea4f4b0\\', \\'0f83556a-305d-789b-1d71-815e8ea4f4b0\\']), (project_id in [\\'d3d94468-02a4-4259-755d-38e6d163e820\\', \\'d3d94468-02a4-4259-755d-38e6d163e820\\'])), or(and((trace_id in [\\'8386fa11-2ba7-0c3f-60b6-907d3812bb9e\\', \\'8386fa11-2ba7-0c3f-60b6-907d3812bb9e\\']), (project_id in [\\'45c48cce-2e2d-7fbd-ea1a-fc51c7c6ad26\\', \\'45c48cce-2e2d-7fbd-ea1a-fc51c7c6ad26\\'])), or(and((trace_id in [\\'1e0feeaf-f84a-19bf-3936-e693311fa66d\\', \\'1e0feeaf-f84a-19bf-3936-e693311fa66d\\']), (project_id in [\\'c9f0f895-fb98-ab91-59f5-1fd0297e236d\\', \\'c9f0f895-fb98-ab91-59f5-1fd0297e236d\\'])), or(and((trace_id in [\\'29263a8c-f61f-b9ad-df56-29769fac92b7\\', \\'29263a8c-f61f-b9ad-df56-29769fac92b7\\']), (project_id in [\\'8f14e45f-ceea-167a-5a36-dedd4bea2543\\', \\'8f14e45f-ceea-167a-5a36-dedd4bea2543\\'])), or(and((trace_id in [\\'90cc440b-1b8c-aa52-0c56-2ac4e4bbcb51\\', \\'90cc440b-1b8c-aa52-0c56-2ac4e4bbcb51\\']), (project_id in [\\'1679091c-5a88-0faf-6fb5-e6087eb1b2dc\\', \\'1679091c-5a88-0faf-6fb5-e6087eb1b2dc\\'])), or(and((trace_id in [\\'fc0cc602-ce84-3b53-9368-4a7fc1b566bc\\', \\'fc0cc602-ce84-3b53-9368-4a7fc1b566bc\\']), (project_id in [\\'e4da3b7f-bbce-2345-d777-2b0674a318d5\\', \\'e4da3b7f-bbce-2345-d777-2b0674a318d5\\'])), or(and((trace_id in [\\'d0ac1ed0-c5cb-9ecb-ca3d-2496ec1ad984\\', \\'d0ac1ed0-c5cb-9ecb-ca3d-2496ec1ad984\\']), (project_id in [\\'a87ff679-a2f3-e71d-9181-a67b7542122c\\', \\'a87ff679-a2f3-e71d-9181-a67b7542122c\\'])), or(and((trace_id in [\\'040a99f2-3e89-6076-3e68-0041c601acab\\', \\'040a99f2-3e89-6076-3e68-0041c601acab\\']), (project_id in [\\'eccbc87e-4b5c-e2fe-2830-8fd9f2a7baf3\\', \\'eccbc87e-4b5c-e2fe-2830-8fd9f2a7baf3\\'])), or(and((trace_id in [\\'2a8a8124-00df-8963-b2e2-ac0ed01b07b8\\', \\'2a8a8124-00df-8963-b2e2-ac0ed01b07b8\\']), (project_id in [\\'c81e728d-9d4c-2f63-6f06-7f89cc14862c\\', \\'c81e728d-9d4c-2f63-6f06-7f89cc14862c\\'])), and((trace_id in [\\'81dc9bdb-52d0-4dc2-0036-dbd8313ed055\\', \\'81dc9bdb-52d0-4dc2-0036-dbd8313ed055\\']), (project_id in [\\'c4ca4238-a0b9-2382-0dcc-509a6f75849b\\', \\'c4ca4238-a0b9-2382-0dcc-509a6f75849b\\'])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+        "          Parts: 2/2",
+        "          Granules: 95/111",
+        "          Search Algorithm: generic exclusion search",
+        "        Skip",
+        "          Name: idx_trace_id",
+        "          Description: bloom_filter GRANULARITY 1",
+        "          Parts: 2/2",
+        "          Granules: 87/95",
+        "          Ranges: 25"
+      ]
+    },
+    "legacy_spans_100_read": {
+      "wall_seconds": 0.329,
+      "data": [
+        {
+          "count()": 900,
+          "sum(cityHash64(toJSONString((id, trace_id, project_id, name, start_time, duration, recorded_at, parent_span_id, attributes))))": 10730491318653616398
+        }
+      ]
+    },
+    "spans_100_plan": {
+      "wall_seconds": 0.016,
+      "plan": [
+        "Expression ((Project names + Projection))",
+        "  Limit (preliminary LIMIT (without OFFSET))",
+        "    Expression ((WHERE + Change column names to column identifiers))",
+        "      ReadFromMergeTree (default.spans)",
+        "      Indexes:",
+        "        MinMax",
+        "          Condition: true",
+        "          Parts: 7/7",
+        "          Granules: 190/190",
+        "        Partition",
+        "          Condition: true",
+        "          Parts: 7/7",
+        "          Granules: 190/190",
+        "        PrimaryKey",
+        "          Keys:",
+        "            trace_id",
+        "          Condition: (trace_id in 100-element set)",
+        "          Parts: 7/7",
+        "          Granules: 144/190",
+        "          Search Algorithm: generic exclusion search",
+        "        Skip",
+        "          Name: idx_trace_id",
+        "          Description: bloom_filter GRANULARITY 1",
+        "          Parts: 7/7",
+        "          Granules: 100/144",
+        "          Ranges: 62"
+      ]
+    },
+    "spans_100_read": {
+      "wall_seconds": 0.259,
+      "data": [
+        {
+          "count()": 1000,
+          "sum(cityHash64(toJSONString((project_id, otel_trace_id, span_id, parent_span_id, distributed_trace_id, name, start_time, duration, attributes, span_kind, status_code, service_name, scope_name, start_time_unix_nano))))": 6341383096648366555
+        }
+      ]
+    },
+    "attribute_path_plan": {
+      "wall_seconds": 0.005,
+      "plan": [
+        "Expression ((Project names + Projection))",
+        "  Aggregating",
+        "    Expression (Before GROUP BY)",
+        "      Expression ((WHERE + Change column names to column identifiers))",
+        "        ReadFromMergeTree (default.spans)",
+        "        Indexes:",
+        "          MinMax",
+        "            Condition: true",
+        "            Parts: 7/7",
+        "            Granules: 190/190",
+        "          Partition",
+        "            Condition: true",
+        "            Parts: 7/7",
+        "            Granules: 190/190",
+        "          PrimaryKey",
+        "            Condition: true",
+        "            Parts: 7/7",
+        "            Granules: 190/190",
+        "            Ranges: 7"
+      ]
+    },
+    "attribute_path_read": {
+      "wall_seconds": 0.099,
+      "data": [
+        {
+          "count()": 1000000
+        }
+      ]
+    },
+    "resource_like_plan": {
+      "wall_seconds": 0.003,
+      "plan": [
+        "Expression ((Project names + Projection))",
+        "  Aggregating",
+        "    Expression (Before GROUP BY)",
+        "      Expression ((WHERE + Change column names to column identifiers))",
+        "        ReadFromMergeTree (default.spans)",
+        "        Indexes:",
+        "          MinMax",
+        "            Condition: true",
+        "            Parts: 7/7",
+        "            Granules: 190/190",
+        "          Partition",
+        "            Condition: true",
+        "            Parts: 7/7",
+        "            Granules: 190/190",
+        "          PrimaryKey",
+        "            Condition: true",
+        "            Parts: 7/7",
+        "            Granules: 190/190",
+        "            Ranges: 7"
+      ]
+    },
+    "resource_like_read": {
+      "wall_seconds": 0.012,
+      "data": [
+        {
+          "count()": 1000000
+        }
+      ]
+    },
+    "payload_read": {
+      "wall_seconds": 0.208,
+      "data": [
+        {
+          "count()": 1000000,
+          "sum(plus(plus(length(resource_pb), length(scope_pb)), length(span_pb)))": 1274000000
+        }
+      ]
+    },
+    "storage": {
+      "wall_seconds": 0.01,
+      "data": [
+        {
+          "table": "spans",
+          "rows": 1000000,
+          "bytes": 63965890,
+          "compressed": 63706355,
+          "marks": 50589
+        },
+        {
+          "table": "legacy_spans",
+          "rows": 900000,
+          "bytes": 22008635,
+          "compressed": 21810350,
+          "marks": 4231
+        }
+      ]
+    }
+  }
+}

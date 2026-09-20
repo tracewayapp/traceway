@@ -8,6 +8,7 @@
 	import { formatDateTime } from '$lib/utils/formatters';
 	import { StackTraceCard, EventCard, EventsTable } from '$lib/components/issues';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
+	import { linkedTraceFrom } from '$lib/types/exceptions';
 	import type { ExceptionOccurrence, LinkedTrace, SessionRecording } from '$lib/types/exceptions';
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { resolve } from '$app/paths';
@@ -65,6 +66,7 @@
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
 			occurrence = exceptionResponse.exception;
+			linkedTrace = linkedTraceFrom(exceptionResponse.relatedEntity);
 			sessionRecording = exceptionResponse.sessionRecording ?? null;
 			sessionId = exceptionResponse.sessionId ?? null;
 
@@ -87,42 +89,6 @@
 
 			allOccurrences = response.occurrences || [];
 			total = response.pagination.total;
-
-			// Load linked trace if this occurrence has a traceId
-			if (occurrence.traceId) {
-				try {
-					const isTask = occurrence.traceType === 'task';
-					console.log('DEBUG linked trace:', {
-						traceId: occurrence.traceId,
-						traceType: occurrence.traceType,
-						isTask
-					});
-					const endpoint = isTask ? '/tasks' : '/endpoints';
-					const txResponse = await api.post(
-						`${endpoint}/${occurrence.traceId}`,
-						{},
-						{ projectId: projectsState.currentProjectId ?? undefined }
-					);
-					const txData = isTask ? txResponse.task : txResponse.endpoint;
-					if (txData) {
-						linkedTrace = {
-							id: txData.id,
-							endpoint: isTask ? txData.taskName : txData.endpoint,
-							duration: txData.duration,
-							statusCode: txData.statusCode || 0,
-							recordedAt: txData.recordedAt,
-							traceType: isTask ? 'task' : 'endpoint',
-							distributedTraceId: txData.distributedTraceId
-						};
-					}
-				} catch (txError) {
-					console.error('Failed to load linked trace:', {
-						error: txError,
-						traceId: occurrence.traceId,
-						traceType: occurrence.traceType
-					});
-				}
-			}
 		} catch (e) {
 			console.error(e);
 			if (getErrorStatus(e) === 404) {

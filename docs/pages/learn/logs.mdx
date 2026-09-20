@@ -74,7 +74,7 @@ The **Logs** page supports filtering and search across all three attribute layer
 
 - **Severity threshold**: keep only records at or above a minimum level (e.g. `WARN+` hides INFO and below).
 - **Service**: exact match on `service.name`.
-- **Trace**: exact match on the hex trace ID, or on a Traceway distributed trace ID (returns logs from every linked trace).
+- **Trace**: exact match on the hex trace ID.
 - **Body search**: full-text search over the log message. Single-token queries use a token-bloom index for speed; multi-word or punctuation-heavy queries fall back to substring matching.
 - **Attribute filters**: match on any `resource.*`, `scope.*`, or log attribute key, either as equals or not equals.
 - **Time range**: pick from presets (24h, 7d, 30d) or a custom window.

@@ -9,10 +9,14 @@
     }
   ],
   "taskCount": 0,
-  "spanCount": 1,
+  "spanCount": 2,
   "spans": [
     {
-      "name": "SELECT id, email, name FROM users WHERE id = ?",
+      "name": "GET /api/users/{id}",
+      "linkedToParent": true
+    },
+    {
+      "name": "SELECT users",
       "linkedToParent": true
     }
   ],

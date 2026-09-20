@@ -20,7 +20,7 @@ type aiTraceRepository struct{}
 
 func (r *aiTraceRepository) InsertAsync(ctx context.Context, lines []models.AiTrace) error {
 	batch, err := chdb.Conn.PrepareBatch(chdb.BatchCtx(),
-		"INSERT INTO ai_traces (id, project_id, recorded_at, duration, status_code, model, response_model, provider, operation, input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens, input_cost, output_cost, total_cost, trace_name, user_id, finish_reason, server_name, app_version, storage_key, attributes, distributed_trace_id, is_root, conversation_id, tool_call_count, tool_names, flagged, flagged_terms)")
+		"INSERT INTO ai_traces_v2 (id, project_id, recorded_at, duration, status_code, model, response_model, provider, operation, input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens, input_cost, output_cost, total_cost, trace_name, user_id, finish_reason, server_name, app_version, storage_key, attributes, trace_id, span_id, parent_span_id, linked_trace_id, is_root, conversation_id, tool_call_count, tool_names, flagged, flagged_terms)")
 	if err != nil {
 		return err
 	}
@@ -45,7 +45,7 @@ func (r *aiTraceRepository) InsertAsync(ctx context.Context, lines []models.AiTr
 			t.InputTokens, t.OutputTokens, t.TotalTokens, t.CachedTokens, t.ReasoningTokens,
 			t.InputCost, t.OutputCost, t.TotalCost,
 			t.TraceName, t.UserId, t.FinishReason, t.ServerName, t.AppVersion,
-			t.StorageKey, attributesJSON, t.DistributedTraceId, isRoot,
+			t.StorageKey, attributesJSON, t.TraceId, t.SpanId, t.ParentSpanId, t.LinkedTraceId, isRoot,
 			t.ConversationId, t.ToolCallCount, shared.JoinCSV(t.ToolNames), flagged, shared.JoinCSV(t.FlaggedTerms),
 		); err != nil {
 			return err
@@ -70,7 +70,7 @@ func (r *aiTraceRepository) FindGroupedByTraceName(ctx context.Context, projectI
 	}
 
 	var count uint64
-	err := chdb.Conn.QueryRow(ctx, "SELECT uniq(trace_name) FROM ai_traces WHERE "+whereClause, args...).Scan(&count)
+	err := chdb.Conn.QueryRow(ctx, "SELECT uniq(trace_name) FROM ai_traces_v2 WHERE "+whereClause, args...).Scan(&count)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -109,7 +109,7 @@ func (r *aiTraceRepository) FindGroupedByTraceName(ctx context.Context, projectI
 		max(recorded_at) as last_seen,
 		max(is_root) as has_root,
 		max(if(is_root = 0, 1, 0)) as has_non_root
-	FROM ai_traces
+	FROM ai_traces_v2
 	WHERE ` + whereClause + `
 	GROUP BY trace_name
 	ORDER BY ` + orderExpr + ` ` + sortDir + `
@@ -144,7 +144,7 @@ func (r *aiTraceRepository) FindGroupedByTraceName(ctx context.Context, projectI
 
 func (r *aiTraceRepository) FindByTraceName(ctx context.Context, projectId uuid.UUID, traceName string, fromDate, toDate time.Time, page, pageSize int, orderBy, sortDirection string) ([]models.AiTrace, int64, error) {
 	var count uint64
-	err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM ai_traces WHERE project_id = ? AND trace_name = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, traceName, fromDate, toDate).Scan(&count)
+	err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM ai_traces_v2 WHERE project_id = ? AND trace_name = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, traceName, fromDate, toDate).Scan(&count)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -173,9 +173,9 @@ func (r *aiTraceRepository) FindByTraceName(ctx context.Context, projectId uuid.
 		input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens,
 		input_cost, output_cost, total_cost,
 		trace_name, user_id, finish_reason, server_name, app_version,
-		storage_key, attributes, distributed_trace_id, is_root,
+		storage_key, attributes, trace_id, span_id, parent_span_id, linked_trace_id, is_root,
 		conversation_id, tool_call_count, tool_names, flagged, flagged_terms
-	FROM ai_traces
+	FROM ai_traces_v2
 	WHERE project_id = ? AND trace_name = ? AND recorded_at >= ? AND recorded_at <= ?
 	ORDER BY ` + orderBy + ` ` + sortDir + `
 	LIMIT ? OFFSET ?`
@@ -210,7 +210,7 @@ func scanAiTrace(scan func(dest ...any) error) (models.AiTrace, error) {
 		&t.InputTokens, &t.OutputTokens, &t.TotalTokens, &t.CachedTokens, &t.ReasoningTokens,
 		&t.InputCost, &t.OutputCost, &t.TotalCost,
 		&t.TraceName, &t.UserId, &t.FinishReason, &t.ServerName, &t.AppVersion,
-		&t.StorageKey, &attributesJSON, &t.DistributedTraceId, &isRoot,
+		&t.StorageKey, &attributesJSON, &t.TraceId, &t.SpanId, &t.ParentSpanId, &t.LinkedTraceId, &isRoot,
 		&t.ConversationId, &t.ToolCallCount, &toolNames, &flagged, &flaggedTerms,
 	); err != nil {
 		return t, err
@@ -242,7 +242,7 @@ func (r *aiTraceRepository) GetTraceNameStats(ctx context.Context, projectId uui
 		sum(total_cost) as total_cost,
 		avg(input_tokens) as avg_input_tokens,
 		avg(output_tokens) as avg_output_tokens
-	FROM ai_traces
+	FROM ai_traces_v2
 	WHERE project_id = ? AND trace_name = ? AND recorded_at >= ? AND recorded_at <= ?`
 
 	var stats models.AiTraceDetailStats
@@ -274,9 +274,9 @@ func (r *aiTraceRepository) FindById(ctx context.Context, projectId, traceId uui
 		input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens,
 		input_cost, output_cost, total_cost,
 		trace_name, user_id, finish_reason, server_name, app_version,
-		storage_key, attributes, distributed_trace_id, is_root,
+		storage_key, attributes, trace_id, span_id, parent_span_id, linked_trace_id, is_root,
 		conversation_id, tool_call_count, tool_names, flagged, flagged_terms
-	FROM ai_traces
+	FROM ai_traces_v2
 	WHERE project_id = ? AND id = ?`
 	args := []any{projectId, traceId}
 	if recordedAt != nil {
@@ -298,26 +298,23 @@ func (r *aiTraceRepository) FindById(ctx context.Context, projectId, traceId uui
 	return &t, nil
 }
 
-func (r *aiTraceRepository) FindByDistributedTraceId(ctx context.Context, distributedTraceId uuid.UUID, projectIds []uuid.UUID, recordedAt *time.Time) ([]models.AiTrace, error) {
-	if len(projectIds) == 0 {
+func (r *aiTraceRepository) FindByTraceIds(ctx context.Context, traceIds []string, projectIds []uuid.UUID, recordedAt *time.Time) ([]models.AiTrace, error) {
+	if len(projectIds) == 0 || len(traceIds) == 0 {
 		return nil, nil
 	}
-	placeholders := make([]string, len(projectIds))
-	args := []interface{}{distributedTraceId}
-	for i, pid := range projectIds {
-		placeholders[i] = "?"
-		args = append(args, pid)
-		_ = i
+	if len(projectIds) == 0 || len(traceIds) == 0 {
+		return nil, nil
 	}
+	args := []any{traceIds, traceIds, projectIds}
 	query := `SELECT id, project_id, recorded_at, duration, status_code,
 		model, response_model, provider, operation,
 		input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens,
 		input_cost, output_cost, total_cost,
 		trace_name, user_id, finish_reason, server_name, app_version,
-		storage_key, attributes, distributed_trace_id, is_root,
+		storage_key, attributes, trace_id, span_id, parent_span_id, linked_trace_id, is_root,
 		conversation_id, tool_call_count, tool_names, flagged, flagged_terms
-	FROM ai_traces
-	WHERE distributed_trace_id = ? AND project_id IN (` + strings.Join(placeholders, ",") + `)`
+	FROM ai_traces_v2
+	WHERE (trace_id IN (?) OR linked_trace_id IN (?)) AND project_id IN (?)`
 	if recordedAt != nil {
 		from, to := shared.DistributedTraceWindowBounds(*recordedAt)
 		query += ` AND recorded_at >= ? AND recorded_at <= ?`
@@ -346,7 +343,7 @@ func (r *aiTraceRepository) FindConversations(ctx context.Context, projectId uui
 	// WHERE columns are table-qualified: the select list aliases aggregates to
 	// the same names (max(user_id) AS user_id), and ClickHouse resolves bare
 	// names in WHERE against those aliases.
-	whereClause := "ai_traces.project_id = ? AND ai_traces.recorded_at >= ? AND ai_traces.recorded_at <= ? AND ai_traces.conversation_id != ''"
+	whereClause := "ai_traces_v2.project_id = ? AND ai_traces_v2.recorded_at >= ? AND ai_traces_v2.recorded_at <= ? AND ai_traces_v2.conversation_id != ''"
 	args := []interface{}{projectId, fromDate, toDate}
 
 	// Row-level filters use a semi-join on conversation_id: a conversation
@@ -374,7 +371,7 @@ func (r *aiTraceRepository) FindConversations(ctx context.Context, projectId uui
 		rowArgs = append(rowArgs, toolName)
 	}
 	if len(rowPredicates) > 0 {
-		whereClause += " AND ai_traces.conversation_id IN (SELECT DISTINCT conversation_id FROM ai_traces WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? AND conversation_id != '' AND " +
+		whereClause += " AND ai_traces_v2.conversation_id IN (SELECT DISTINCT conversation_id FROM ai_traces_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? AND conversation_id != '' AND " +
 			strings.Join(rowPredicates, " AND ") + ")"
 		args = append(args, projectId, fromDate, toDate)
 		args = append(args, rowArgs...)
@@ -400,7 +397,7 @@ func (r *aiTraceRepository) FindConversations(ctx context.Context, projectId uui
 			arrayStringConcat(groupUniqArray(flagged_terms), ',') AS flagged_terms,
 			min(recorded_at) AS first_seen,
 			max(recorded_at) AS last_seen
-		FROM ai_traces
+		FROM ai_traces_v2
 		WHERE ` + whereClause + `
 		GROUP BY conversation_id` + havingClause
 
@@ -475,9 +472,9 @@ func (r *aiTraceRepository) FindByConversationId(ctx context.Context, projectId 
 		input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens,
 		input_cost, output_cost, total_cost,
 		trace_name, user_id, finish_reason, server_name, app_version,
-		storage_key, attributes, distributed_trace_id, is_root,
+		storage_key, attributes, trace_id, span_id, parent_span_id, linked_trace_id, is_root,
 		conversation_id, tool_call_count, tool_names, flagged, flagged_terms
-	FROM ai_traces
+	FROM ai_traces_v2
 	WHERE project_id = ? AND conversation_id = ?`
 	args := []interface{}{projectId, conversationId}
 	if !fromDate.IsZero() {
@@ -517,7 +514,7 @@ func (r *aiTraceRepository) FindUserStats(ctx context.Context, projectId uuid.UU
 
 	var count uint64
 	if err := chdb.Conn.QueryRow(ctx,
-		"SELECT uniq(user_id) FROM ai_traces WHERE "+whereClause, args...).Scan(&count); err != nil {
+		"SELECT uniq(user_id) FROM ai_traces_v2 WHERE "+whereClause, args...).Scan(&count); err != nil {
 		return nil, 0, err
 	}
 
@@ -562,7 +559,7 @@ func (r *aiTraceRepository) FindUserStats(ctx context.Context, projectId uuid.UU
 				sum(total_tokens) AS conv_tokens,
 				max(flagged) AS conv_flagged,
 				max(recorded_at) AS conv_last_seen
-			FROM ai_traces
+			FROM ai_traces_v2
 			WHERE ` + whereClause + `
 			GROUP BY user_id, conversation_id
 		)
@@ -612,7 +609,7 @@ func (r *aiTraceRepository) GetConversationCosts(ctx context.Context, projectId 
 
 	rows, err := chdb.Conn.Query(ctx,
 		`SELECT conversation_id, sum(total_cost)
-		FROM ai_traces
+		FROM ai_traces_v2
 		WHERE project_id = ? AND recorded_at >= ? AND conversation_id IN (`+strings.Join(placeholders, ",")+`)
 		GROUP BY conversation_id`, args...)
 	if err != nil {
@@ -633,7 +630,7 @@ func (r *aiTraceRepository) GetConversationCosts(ctx context.Context, projectId 
 
 func (r *aiTraceRepository) ListModels(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time) ([]string, error) {
 	rows, err := chdb.Conn.Query(ctx,
-		`SELECT DISTINCT model FROM ai_traces
+		`SELECT DISTINCT model FROM ai_traces_v2
 		WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? AND model != ''
 		ORDER BY model LIMIT 200`, projectId, fromDate, toDate)
 	if err != nil {
@@ -654,7 +651,7 @@ func (r *aiTraceRepository) ListModels(ctx context.Context, projectId uuid.UUID,
 
 func (r *aiTraceRepository) ListToolNames(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time) ([]string, error) {
 	rows, err := chdb.Conn.Query(ctx,
-		`SELECT DISTINCT tool_names FROM ai_traces
+		`SELECT DISTINCT tool_names FROM ai_traces_v2
 		WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? AND tool_names != ''
 		LIMIT 500`, projectId, fromDate, toDate)
 	if err != nil {

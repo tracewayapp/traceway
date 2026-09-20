@@ -248,51 +248,17 @@ func extractErrorType(stackTrace string) string {
 	return "Unknown Error"
 }
 
-func resolveTraceName(ctx context.Context, projectId uuid.UUID, traceId *uuid.UUID, traceType string, recordedAt *time.Time) string {
-	if traceId == nil {
-		return ""
+// resolveExceptionOwner names the endpoint, task or AI trace an exception happened in, for the notification's text.
+func resolveExceptionOwner(ctx context.Context, exception models.ExceptionStackTrace) (traceType, name string) {
+	owner, err := telemetry.FindExceptionOwner(ctx, exception)
+	if err != nil {
+		traceway.CaptureException(fmt.Errorf("failed to resolve the entity of exception %s for a notification: %w", exception.Id, err))
+		return "", ""
 	}
-	switch traceType {
-	case "task":
-		task, err := telemetry.TaskRepository.FindById(ctx, projectId, *traceId, recordedAt)
-		if task == nil && err == nil && recordedAt != nil {
-			task, err = telemetry.TaskRepository.FindById(ctx, projectId, *traceId, nil)
-		}
-		if err != nil {
-			traceway.CaptureException(fmt.Errorf("failed to resolve task name for notification: %w", err))
-			return ""
-		}
-		if task == nil {
-			return ""
-		}
-		return task.TaskName
-	case "ai_trace":
-		trace, err := telemetry.AiTraceRepository.FindById(ctx, projectId, *traceId, recordedAt)
-		if trace == nil && err == nil && recordedAt != nil {
-			trace, err = telemetry.AiTraceRepository.FindById(ctx, projectId, *traceId, nil)
-		}
-		if err != nil {
-			traceway.CaptureException(fmt.Errorf("failed to resolve ai trace name for notification: %w", err))
-			return ""
-		}
-		if trace == nil {
-			return ""
-		}
-		return trace.TraceName
-	default:
-		endpoint, err := telemetry.EndpointRepository.FindById(ctx, projectId, *traceId, recordedAt)
-		if endpoint == nil && err == nil && recordedAt != nil {
-			endpoint, err = telemetry.EndpointRepository.FindById(ctx, projectId, *traceId, nil)
-		}
-		if err != nil {
-			traceway.CaptureException(fmt.Errorf("failed to resolve endpoint name for notification: %w", err))
-			return ""
-		}
-		if endpoint == nil {
-			return ""
-		}
-		return endpoint.Endpoint
+	if owner == nil {
+		return "", ""
 	}
+	return owner.TraceType, owner.Name
 }
 
 func getProjectName(projectId uuid.UUID) string {

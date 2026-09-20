@@ -47,6 +47,29 @@ func otelSymbolicateAndroid(existingProject *models.Project, projectId uuid.UUID
 
 type otelController struct{}
 
+var traceStore = struct {
+	spans      func(context.Context, []models.OtelSpan) (int, error)
+	endpoints  func(context.Context, []models.Endpoint) error
+	tasks      func(context.Context, []models.Task) error
+	exceptions func(context.Context, []models.ExceptionStackTrace) error
+	aiTraces   func(context.Context, []models.AiTrace) error
+}{
+	spans:      telemetry.OtelSpanRepository.InsertAsync,
+	endpoints:  telemetry.EndpointRepository.InsertAsync,
+	tasks:      telemetry.TaskRepository.InsertAsync,
+	exceptions: telemetry.ExceptionStackTraceRepository.InsertAsync,
+	aiTraces:   telemetry.AiTraceRepository.InsertAsync,
+}
+
+func abortIngestStorage(c *gin.Context, stage string, err error) {
+	status := http.StatusInternalServerError
+	if telemetry.IsTransientStorageError(err) {
+		status = http.StatusServiceUnavailable
+		c.Header("Retry-After", "2")
+	}
+	c.AbortWithError(status, traceway.NewStackTraceErrorf("error inserting OTEL %s: %w", stage, err))
+}
+
 var OtelController = otelController{}
 
 func (o otelController) ExportTraces(c *gin.Context) {
@@ -84,18 +107,34 @@ func (o otelController) ExportTraces(c *gin.Context) {
 	}
 
 	convertStart := time.Now()
-	endpoints, tasks, spans, exceptions, aiTraces, aiConversations := convertTraces(c, project, projectId, req)
+	endpoints, tasks, exceptions, aiTraces, aiConversations := convertTraces(c, project, projectId, req)
 
-	var droppedHealthchecks int
-	endpoints, spans, droppedHealthchecks = services.FilterHealthchecks(project, endpoints, spans, exceptions)
-	if droppedHealthchecks > 0 {
-		monitoring.RecordHealthchecksDropped(monitoring.SignalTraces, droppedHealthchecks)
+	var canonicalSpans []models.OtelSpan
+	if perm.Data {
+		canonicalSpans = convertCanonicalSpans(projectId, req)
+	}
+	var droppedHealthchecks map[string]bool
+	endpoints, droppedHealthchecks = services.FilterHealthchecks(project, endpoints, exceptions)
+	if len(droppedHealthchecks) > 0 {
+		retained := make(map[string]bool)
+		for _, endpoint := range endpoints {
+			retained[services.SpanKey(endpoint.TraceId, endpoint.SpanId)] = true
+		}
+		for _, task := range tasks {
+			retained[services.SpanKey(task.TraceId, task.SpanId)] = true
+		}
+		for _, ai := range aiTraces {
+			retained[services.SpanKey(ai.TraceId, ai.SpanId)] = true
+		}
+		canonicalSpans = services.DropSpanSubtrees(canonicalSpans, func(span models.OtelSpan) (string, string, string) {
+			return span.TraceId, span.SpanId, span.ParentSpanId
+		}, droppedHealthchecks, retained)
+		monitoring.RecordHealthchecksDropped(monitoring.SignalTraces, len(droppedHealthchecks))
 	}
 
 	if !perm.Data {
 		endpoints = nil
 		tasks = nil
-		spans = nil
 		aiTraces = nil
 		aiConversations = nil
 	}
@@ -110,33 +149,35 @@ func (o otelController) ExportTraces(c *gin.Context) {
 
 	insertStart := time.Now()
 
+	// Spans are the source the other rows are projected from, so a failed span write must not leave projections behind.
+	notStored, err := traceStore.spans(c, canonicalSpans)
+	if err != nil {
+		abortIngestStorage(c, "spans", err)
+		return
+	}
+
 	if len(endpoints) > 0 {
-		if err := telemetry.EndpointRepository.InsertAsync(c, endpoints); err != nil {
-			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL endpoints: %w", err))
+		if err := traceStore.endpoints(c, endpoints); err != nil {
+			abortIngestStorage(c, "endpoints", err)
 			return
 		}
 	}
 
 	if len(tasks) > 0 {
-		if err := telemetry.TaskRepository.InsertAsync(c, tasks); err != nil {
-			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL tasks: %w", err))
+		if err := traceStore.tasks(c, tasks); err != nil {
+			abortIngestStorage(c, "tasks", err)
 			return
 		}
 	}
 
-	if err := telemetry.ExceptionStackTraceRepository.InsertAsync(c, exceptions); err != nil {
-		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL exceptions: %w", err))
-		return
-	}
-
-	if err := telemetry.SpanRepository.InsertAsync(c, spans); err != nil {
-		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL spans: %w", err))
+	if err := traceStore.exceptions(c, exceptions); err != nil {
+		abortIngestStorage(c, "exceptions", err)
 		return
 	}
 
 	if len(aiTraces) > 0 {
-		if err := telemetry.AiTraceRepository.InsertAsync(c, aiTraces); err != nil {
-			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL ai traces: %w", err))
+		if err := traceStore.aiTraces(c, aiTraces); err != nil {
+			abortIngestStorage(c, "ai traces", err)
 			return
 		}
 
@@ -155,7 +196,7 @@ func (o otelController) ExportTraces(c *gin.Context) {
 	}
 
 	insertMs := msSince(insertStart)
-	totalSize := len(endpoints) + len(tasks) + len(spans) + len(exceptions) + len(aiTraces)
+	totalSize := len(endpoints) + len(tasks) + len(canonicalSpans) + len(exceptions) + len(aiTraces)
 	monitoring.RecordIngestBatch(monitoring.SignalTraces, "traces", convertMs, insertMs, totalSize, bodyBytes)
 
 	var exceptionHashes []string
@@ -193,7 +234,7 @@ func (o otelController) ExportTraces(c *gin.Context) {
 		hooks.BroadcastReport(ev)
 	}
 
-	writeTraceResponse(c)
+	writeTraceResponse(c, countInvalidSpanIDs(req), int64(notStored))
 }
 
 func (o otelController) ExportMetrics(c *gin.Context) {
@@ -244,7 +285,7 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 	if len(result.Points) > 0 {
 		insertStart := time.Now()
 		if err := telemetry.MetricPointRepository.InsertAsync(c, result.Points); err != nil {
-			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL metric points: %w", err))
+			abortIngestStorage(c, "metric points", err)
 			return
 		}
 		insertMs = msSince(insertStart)
@@ -315,7 +356,7 @@ func (o otelController) ExportLogs(c *gin.Context) {
 	if len(records) > 0 {
 		insertStart := time.Now()
 		if err := telemetry.LogRecordRepository.InsertAsync(c, records); err != nil {
-			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL log records: %w", err))
+			abortIngestStorage(c, "log records", err)
 			return
 		}
 		insertMs = msSince(insertStart)

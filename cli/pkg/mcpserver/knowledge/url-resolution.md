@@ -12,7 +12,7 @@ Users paste dashboard URLs (`https://<instance>/<route>`) as references in any f
 | `/tasks/<task>/<taskId>` | Single task run | `traceway tasks show <taskId> --recorded-at <t>` (`t` = the URL's `?t=` param) |
 | `/sessions/<sessionId>` | Session (the exceptions that fired during it; replay stays dashboard-only) | `traceway sessions show <sessionId> --started-at <t>`. The URL has no `?t=`; use the session's start, the URL's `from=`, or a linked occurrence's `recordedAt` (it falls inside the window). Occurrences reference sessions via their `sessionId` |
 | `/ai-traces/<traceName>` | AI trace group | No CLI for the group; for one trace use the next row |
-| `/ai-traces/<traceName>/<traceId>` | Single AI trace | `traceway ai-traces show <traceId> --recorded-at <t>` (`t` = the URL's `?t=` param); returns token/cost stats + the conversation |
+| `/ai-traces/<traceName>/<traceId>` | Single AI trace | `traceway ai-traces show <aiTraceId> --recorded-at <t>` (the UUID in the URL, not a 32 hex trace id) (`t` = the URL's `?t=` param); returns token/cost stats + the conversation |
 | `/logs` | Logs page (its filters are not stored in the URL) | `traceway logs query` with flags taken from the user's description |
 | `/issues`, `/endpoints`, `/metrics`, `/` | List and dashboard pages | The matching `list` / `query` command |
 

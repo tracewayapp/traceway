@@ -1,50 +1,87 @@
-# Upgrade notes: V2 telemetry tables
+# Migrating to V2 telemetry tables
 
-This release uses OpenTelemetry trace and span identity throughout telemetry storage. Accepted OTLP spans keep their source trace, span and parent IDs, and their endpoint, task, AI trace and exception projections carry that identity. Sampling, ingest permissions, health-check filtering and rejected input can leave spans absent. Native `/api/report` data is adapted as described below.
+The V2 move-over supports **ClickHouse, SQLite and DuckDB**. It copies existing trace history into the new tables in the background while the backend accepts new telemetry. The same conversion and recovery logic runs on all three storage backends.
 
-No ClickHouse version upgrade is required. Legacy telemetry tables are not rewritten or dropped.
+Schema creation is automatic when the new backend starts. **Copying historical telemetry is opt-in:** set `V2_MOVE_OVER=true` if you want existing history to appear in the new dashboard. Without it, the five telemetry families below show only newly ingested data. Their old rows remain in the legacy tables, subject to existing retention.
+
+## Supported deployments
+
+| Telemetry backend | Where history is copied | Where progress is stored | History cutoff |
+|-------------------|-------------------------|--------------------------|----------------|
+| ClickHouse | Old and V2 tables in the configured ClickHouse database | PostgreSQL main database | `V2_MOVE_OVER_OLDEST`, if set; otherwise all available history |
+| SQLite | Old and V2 tables in the existing telemetry SQLite file | Main SQLite file, separate from telemetry | Configured oldest date and `SQLITE_RETENTION_DAYS` |
+| DuckDB | Old and V2 tables in the existing telemetry DuckDB file | Main SQLite file, not DuckDB | Configured oldest date and `DUCKDB_RETENTION_DAYS`, falling back to `SQLITE_RETENTION_DAYS` when unset |
+
+The backend selects the correct reader for its [storage build](/learn/build-tags). This is a schema migration within the same storage engine; it does not transfer data between SQLite, DuckDB and ClickHouse. Keep your existing database connections, database names and persistent volumes when upgrading.
+
+The worker runs inside the backend and reuses its database connections. There is no separate migration binary. In particular, do not open the live DuckDB file from another process to run the backfill.
 
 ## What changes
 
-Five new tables are created next to the ones they replace: `spans_v2`, `endpoints_v2`, `tasks_v2`, `ai_traces_v2` and `exceptions_v2`. The table-creation migrations are `0085` to `0089` on ClickHouse, `0025` on SQLite and `0005` on DuckDB. They create empty tables without rewriting telemetry history; completion still depends on database availability and schema locks.
+| Legacy table | V2 destination | Conversion |
+|--------------|----------------|------------|
+| `endpoints` | `endpoints_v2` and `spans_v2` | Preserve the endpoint occurrence and create its corresponding span |
+| `tasks` | `tasks_v2` and `spans_v2` | Preserve the task occurrence and create its corresponding span |
+| `ai_traces` | `ai_traces_v2` and `spans_v2` | Preserve the AI occurrence and create its corresponding span |
+| `exception_stack_traces` | `exceptions_v2` | Recover trace/span identity from the old owner where possible |
+| `spans` | `spans_v2` | Convert child-span identities and recover their owning trace |
 
-From the first start of the new release:
+From the first start of the new release, new writes and dashboard/API reads for these five telemetry families use V2 only. Their notification rules also read V2, so evaluations can see incomplete historical windows until backfill reaches them. New and old backend versions write different tables; finish replacing old writers before copying history.
 
-- New telemetry is written to the V2 tables only.
-- The dashboard, the API, the CLI and notification rules read the V2 tables only.
-- The old tables (`spans`, `endpoints`, `tasks`, `ai_traces`, `exception_stack_traces`) stay as they are and receive nothing new.
+Users, organizations, projects, tokens and configuration are retained. Logs, metrics, sessions, profiles and synthetic-check results are not copied by this worker. Blob storage is not moved: keep the existing local storage volume or S3 configuration, including AI conversation payloads and session recordings.
 
-So right after the upgrade the dashboard shows new data and none of your history. The history is still there, in the old tables. The next section brings it over.
+New accepted OTLP spans retain their original trace, span and parent IDs and lossless protobuf payloads. Migrated history can only recover what the old schema stored; see [historical-data differences](#what-migrated-history-looks-like).
 
-ClickHouse migration `0090` adds `span_version`, a materialized 32-byte fingerprint, to `spans_v2`. New inserts compute it once, so topology and search can select consistent retries without reading the full protobuf payload. Existing V2 parts remain readable: ClickHouse computes the expression when the column is absent. Those parts still pay the payload-read cost until a merge or an operator-scheduled `ALTER TABLE spans_v2 MATERIALIZE COLUMN span_version` writes the column. This optional mutation consumes I/O; the upgrade does not start a bulk rewrite. Equal-duration conflicting retries may select a different version than an earlier preview, but all ClickHouse readers use the same order.
+## Before upgrading
 
-## Moving your history over
+1. Back up both the main database and telemetry database, and preserve blob storage and deployment configuration. For embedded deployments, stop the backend before taking a filesystem snapshot of its data directory, or use the storage engine's supported backup procedure.
+2. Allow disk space for both legacy and V2 data. V2 adds a span for every migrated endpoint, task and AI trace, so destination row counts and disk usage will not match the old tables one-to-one.
+3. Choose the oldest history you need and review retention before the first upgraded start. On SQLite and DuckDB, retention runs at startup and continues pruning both old and new tables. Backfill cannot restore already expired rows. Increase retention or set the applicable retention variable to `0` before startup if you need older history; `V2_MOVE_OVER_OLDEST` does not override retention.
+4. Upgrade the backend and dashboard together, and use a CLI/MCP release compatible with the changed API. Retain the previous image or binary and the backups for rollback.
+5. Replace or stop every old backend writer before enabling backfill. With multiple replicas, enable the worker on exactly one upgraded instance. The progress table does not provide a distributed lock.
 
-Set one environment variable and restart:
+Fresh installations have no legacy history to copy and do not need `V2_MOVE_OVER`. Existing installations that do not need historical traces can also leave it unset; normal retention still applies to their old data.
 
-```
+## Enable the backfill
+
+Add these settings to your existing backend configuration and restart or recreate that instance:
+
+```dotenv
 V2_MOVE_OVER=true
+# Optional: copy this UTC source date and newer dates.
+V2_MOVE_OVER_OLDEST=2026-09-01
 ```
 
-The backend then copies the old tables into the V2 tables in the background, while it keeps serving traffic. It works newest day first, so yesterday is back before last month, and within a day it moves endpoints, tasks and AI traces before exceptions and spans.
+The date is an example; replace it with your desired oldest day or omit it. For Docker Compose, add the settings to the backend service's existing `environment` block and recreate that service. A plain container restart does not change its environment. Preserve the service's other settings and volume mounts.
 
-| Variable | Default | Meaning |
-|----------|---------|---------|
-| `V2_MOVE_OVER` | unset | `true` runs the move on startup, then again one hour after each pass ends. |
-| `V2_MOVE_OVER_OLDEST` | unset | A `YYYY-MM-DD` date. Days before it are left in the old tables. |
+| Variable | Default | Behavior |
+|----------|---------|----------|
+| `V2_MOVE_OVER` | unset; disabled | `true` enables one background worker in this backend process |
+| `V2_MOVE_OVER_OLDEST` | unset | Inclusive oldest UTC source day, formatted `YYYY-MM-DD`; older days are left in the old tables |
 
-Things worth knowing:
+An invalid oldest date is logged and the worker does not start. An unset, false or unparseable `V2_MOVE_OVER` leaves the worker disabled.
 
-- **It can stop and resume.** Each UTC day of each source table is recorded in `v2_move_over_days` in the **transactional database** (PostgreSQL or the main SQLite database), created by migrations `pg/0143` and `sqlite/0077`. The worker commits `started` before copying and `done` only after every batch succeeds, including canonical row validation. After a failure it retries in one hour; after a restart it runs immediately. Destination identity checks skip rows already present when an interrupted day is scanned again.
-- **It runs inside the backend.** There is no separate tool, because an embedded DuckDB file cannot be opened by a second process.
-- **Finish upgrading old writers first.** Completed source-table/date pairs are skipped on later passes. Rows written into an already completed day by an old server or a historical importer are not picked up automatically.
-- **Run it on one instance.** With several backend replicas, set the variable on exactly one of them.
-- **On SQLite and DuckDB it stops at your retention window.** Days older than `SQLITE_RETENTION_DAYS` or `DUCKDB_RETENTION_DAYS` would be deleted by the retention worker straight away, so they are not moved.
-- **Progress is logged.** Each day prints a line such as `move-over: 2026-09-19 spans: 23677 rows in 1.0s`, and the last line says it is done. After that you can remove the variable. Leaving it set checks for remaining work hourly, but skips completed source-table/date pairs. The one-hour delay starts after a pass finishes, so a long pass cannot overlap the next one.
+A pass starts immediately when the backend starts. After a pass completes or returns an error, the worker waits one hour before the next pass. Restarting starts another pass immediately. A long pass never overlaps the next pass in the same process.
 
-The move reads at most 20,000 source rows at a time, narrowing time slices when they fill. An overfull second uses offset pages ordered by every copied source value. This preserves equal IDs across projects, traces and occurrences, including identical retry rows on a fresh pass. Keep the legacy tables immutable while copying: complete the writer cutover first and do not import or delete source rows during a pass. Sorting and offset scans still compete with ingest for CPU, memory, disk and database connections; this page bound is not an I/O rate limit. Disable the worker and restart if you need to stop that load.
+On SQLite and DuckDB, the oldest source day is constrained by both the configured date and the retention window; the later cutoff wins. The retention cutoff is recalculated before each pass and rounded to a UTC day for copying. Normal retention can still prune individual rows within that boundary day. ClickHouse has no automatic backfill retention cutoff.
 
-Inspect progress in the transactional database:
+## How copying works
+
+The worker processes the newest UTC source day first, then walks backward. Within each day it copies:
+
+```text
+endpoints → tasks → ai_traces → exception_stack_traces → spans
+```
+
+History becomes visible progressively as batches are inserted. An occurrence can appear before its child spans and exceptions have been copied; a day is not published atomically.
+
+Each primary source read returns at most 20,000 rows. It starts with a one-hour window. A full result may be truncated, so the worker halves the window and reads again before writing. Once a window is only one second wide, a full result is paged using a stable order over all copied source values. Sparse windows grow again.
+
+This bounds the source page size, not total memory or I/O. Large attributes, owner lookups, sorting and destination inserts still compete with live traffic. There is no configurable throughput limiter. Keep legacy source rows unchanged while copying: do not import, manually delete or mutate them during a pass. Account for automatic retention when selecting the history to preserve.
+
+## Progress and verification
+
+Progress is stored in `v2_move_over_days` in the **main database** shown in the deployment table. Query PostgreSQL for ClickHouse deployments, or the main SQLite file for SQLite/DuckDB deployments:
 
 ```sql
 SELECT source_table, day, state, moved_rows, updated_at
@@ -52,9 +89,43 @@ FROM v2_move_over_days
 ORDER BY day DESC, source_table;
 ```
 
-`moved_rows` counts source rows scanned by the completed pass, including rows skipped during recovery because they were already copied. It is not a count of newly inserted V2 rows: one old endpoint, task or AI trace also produces its own span. No main-DB transaction is held while telemetry is copied. The two stores do not share a transaction. On recovery, projections match project, occurrence ID, trace ID, span ID and recorded time at the destination's precision; canonical spans match project, trace and span. A repeated occurrence with that exact identity is treated as already copied, so recovery can coalesce legacy retries.
+| State | Meaning |
+|-------|---------|
+| No row | This table/day has not started, has no work in the scanned bounds, or is outside the requested range |
+| `started` | The table/day is in progress or was interrupted; inspect backend logs to distinguish them |
+| `done` | The pass completed this table/day without a reported error; later passes skip it |
 
-If you ran an earlier V2 preview with ID-only paging or recovery, some days may be marked done despite skipped rows. Stop the worker, back up the transactional database, and mark the affected source-table/date pairs `started` (do not delete the markers). For example:
+`updated_at` changes when a table/day is started or completed; it is not a per-batch heartbeat. `moved_rows` is recorded on completion and counts processed source rows, including rows skipped during recovery. It is not the number of newly inserted V2 rows or a live progress counter.
+
+Backend logs use the `move-over:` prefix. For example:
+
+```text
+move-over: 2026-09-19 spans: 23677 rows in 1.0s
+move-over: done, every day from 2026-09-19 back to 2026-09-01 is in the V2 tables
+```
+
+After completion, open historical endpoints, tasks, AI traces and issues in the dashboard using dates inside the copied range. Check their child spans, exception associations and AI conversation payloads. Also verify new telemetry is arriving. Counts alone are insufficient because occurrences generate additional span rows and recovery can coalesce identical legacy retries.
+
+Leave the setting enabled to retry remaining work hourly, or disable it and restart/recreate the worker instance after verification. Completed days remain recorded either way. Progress is currently exposed through logs and this table; there is no dedicated dashboard migration-progress page.
+
+## Stopping, failures and recovery
+
+Set `V2_MOVE_OVER=false` or remove it, then restart/recreate the worker instance to stop background copying. Already copied rows remain available. Re-enable it later to resume; retain the main database and its progress records along with the telemetry database.
+
+Before writing a table/day, the worker commits a `started` marker. It writes spans before their corresponding endpoint, task or AI rows, and records `done` after the day completes. A read, write or progress error stops the pass, logs the failure and leaves unfinished work resumable. A rejected canonical span also prevents that day from being marked complete. Persistent errors require correcting the cause; retrying does not bypass invalid data or insufficient disk space.
+
+Recovery rescans the unfinished day rather than resuming a saved page offset. It skips destination rows already found using these identities:
+
+- Occurrences: project, occurrence ID, trace ID, span ID and recorded time at the destination's precision.
+- Spans: project, trace ID and span ID.
+
+For example, if the process stops after writing an endpoint's span but before writing its endpoint row, recovery skips the existing span and inserts the missing endpoint. No transaction covers the main database and telemetry store together; the progress markers and identity checks bridge that gap. Identical legacy retries can be coalesced during recovery, so physical duplicate counts are not guaranteed to remain identical.
+
+### Rechecking a completed day
+
+A completed day is never rescanned automatically, even if an old writer or importer later adds rows. Earlier previews with ID-only paging or recovery may also have marked incomplete days as done.
+
+To recheck an affected day, stop the worker, back up the main and telemetry databases, and change the existing marker to `started` in the main database:
 
 ```sql
 UPDATE v2_move_over_days
@@ -62,42 +133,71 @@ SET state = 'started'
 WHERE source_table = 'endpoints' AND day = '2026-09-19';
 ```
 
-Restart with `V2_MOVE_OVER=true` to re-scan that day using destination identity checks. Use the actual affected table/date, within the configured retention window. The fix does not automatically reset completed production history.
+Use the actual source table/date and verify that the update matched its progress row. Do not delete progress records: a missing marker selects the first-pass path without recovery checks. Re-enable the worker with a cutoff that includes the day. Only legacy data still present can be recovered. This checks for missing identities; it does not overwrite already migrated rows or repair changed payloads with the same identity.
 
-## What moved history looks like
+## What migrated history looks like
 
-- Endpoints, tasks and AI traces keep their ids, so existing links keep working.
-- Recovered spans are attached using available legacy owner IDs and timestamps. Parents or resource metadata the old schema never stored cannot be reconstructed, and ambiguous reused owner IDs or long gaps can limit reconstruction.
-- An exception is attached to the endpoint or task it belonged to.
-- A task that came from OpenTelemetry is now recorded at the time it started. The old tables recorded the time it ended.
-- The endpoints and tasks of one trace are listed together on the Distributed Trace card, but not nested under each other. The old tables never stored which span an endpoint was called from. New data nests.
-- Downloading an old span as OTLP returns a span rebuilt from its stored fields, since the original payload was never kept.
+Endpoint, task and AI occurrence IDs are preserved. Trace and span IDs are normalized to the V2 representation. The converter first uses an original OTel trace ID saved in legacy attributes, then an old distributed trace ID, then the occurrence's own ID. If the original OTel and browser trace IDs differ, the browser ID becomes `linkedTraceId`.
 
-## Disk usage
+An old OTel span ID stored as a zero-padded UUID becomes its original 16 hexadecimal characters. Native UUID span IDs retain 32 hexadecimal characters. Legacy OTel tasks move from their old end timestamp to their start timestamp by subtracting duration; native task timestamps stay unchanged.
 
-Until you remove the old tables, moved days exist twice. V2 keeps the full span payload and stores the span behind each endpoint and task as its own row. Storage cost depends on attributes, resources, payload size and compression; the historical benchmark figures are not current capacity estimates. Measure your workload and include both stores. ClickHouse's per-table part and row metrics include both legacy and V2 tables, distinguished by the `table` tag.
+Old child spans and exceptions identify an owning occurrence rather than always carrying the original trace/span relationship. The converter searches nearby legacy endpoint, task and AI rows in the same project, extending the source window by 24 hours on either side. When an owner ID occurs more than once, it chooses the nearest timestamp. Missing owners, ambiguous IDs and long gaps can limit reconstruction; exceptions can remain without a recovered owner.
 
-The ClickHouse V2 tables have no TTL, like the tables they replace. Plan disk for them or drop old daily partitions. SQLite and DuckDB keep following `SQLITE_RETENTION_DAYS` and `DUCKDB_RETENTION_DAYS`, for the old tables and the new ones.
+Legacy endpoint/task/AI rows did not preserve their parent span IDs, so their converted spans have no recovered parent. Related occurrences may appear together on a distributed trace without nesting as new data does. Parent links that were retained on old child spans are converted where available.
 
-Once the move is done and you are happy with what you see, the old tables are only a backup. A later release will drop them. On ClickHouse you can reclaim the space earlier by dropping their partitions.
+The original OTLP envelope was not retained in V1. Downloading a migrated span as OTLP returns a payload synthesized from the fields that survived: it cannot restore missing events, links, resource metadata or unknown protobuf fields. Existing AI conversation storage keys are preserved; their external payloads must still exist in blob storage.
+
+## Schema and storage details
+
+Startup applies the existing migration history followed by the new migrations. Do not reset the database's migration ledger to perform this upgrade.
+
+| Database | Added migrations |
+|----------|------------------|
+| ClickHouse telemetry | `0085`–`0089` create the five V2 tables; `0090` adds `span_version` |
+| SQLite telemetry | `0025` creates the V2 tables and indexes |
+| DuckDB telemetry | `0005` creates the V2 tables and indexes |
+| PostgreSQL main | `0143` creates `v2_move_over_days` |
+| SQLite main | `0077` creates `v2_move_over_days` |
+
+Table creation does not copy historical rows. Startup still depends on database availability and schema locks. The move-over neither rewrites nor drops the legacy tables, and it does not require switching storage engines or upgrading ClickHouse for these tables.
+
+ClickHouse V2 tables use ordinary `MergeTree` storage. Go converts and inserts each batch; no materialized view automatically copies old rows. `span_version` is a materialized 32-byte SHA-256 fingerprint computed on new inserts so consistent retry selection can avoid reading full protobuf payloads.
+
+If an earlier V2 preview already wrote parts before `0090`, ClickHouse can compute the missing fingerprint while reading them. Those reads still incur payload cost until the column is stored through a merge that materializes it or an explicit mutation. Operators may schedule this after considering I/O and disk load:
+
+```sql
+ALTER TABLE spans_v2 MATERIALIZE COLUMN span_version;
+```
+
+This is an optional ClickHouse operation, not the historical backfill, and the upgrade does not run it automatically. It is unnecessary for newly backfilled rows written after `0090`. Equal-duration conflicting retries can select a different version than an earlier preview; current ClickHouse readers use the same winner order.
+
+### Retention and cleanup
+
+Copied history occupies space in both old and new tables until retention or an operator removes the old copy. V2 stores additional spans and synthesized payloads, so plan capacity from your workload rather than assuming exactly twice the old size. ClickHouse per-table part and row metrics distinguish legacy and V2 tables by the `table` tag.
+
+The shipped ClickHouse V2 tables have no TTL. Any TTL or cleanup policy you added to legacy tables must be reviewed and applied deliberately to the new tables. SQLite/DuckDB retention covers both legacy and V2 tables; their old tables are not permanent backups.
+
+Verify the copied history and retain a recoverable backup before considering legacy cleanup. This release does not automatically drop legacy tables. Do not drop them while the worker is enabled: subsequent passes still query their bounds. Dropping legacy data also removes the previous release's ability to display that history; further schema cleanup should follow an explicit upgrade procedure.
 
 ## Rolling back
 
-The previous release still works after the upgrade, on every backend, because its tables were not touched. It shows the history it always had, and nothing that was recorded by the new release. Telemetry recorded while the new release ran stays in the V2 tables and is shown again when you upgrade.
+Stop the backfill before switching binaries or images. This migration preserves legacy tables, so a previous backend can read the legacy history still present. It cannot read telemetry written only to V2, and there is no reverse backfill. Those V2 rows remain available to the new release while retained.
 
-## API changes
+Running the old backend again writes to old tables. If you later return to V2, affected source days already marked `done` need explicit rechecking after old writers have stopped. Do not run both versions as a steady-state deployment: they read and write different trace datasets.
 
-Clients of the HTTP API see these changes. The Traceway CLI and MCP server of the same release already use them.
+A database restore returns to the snapshot's state and loses later writes unless separately preserved. Check the rest of the target release's upgrade notes too; preservation of these telemetry tables is not a guarantee that every other schema or application change supports an arbitrary downgrade.
 
-- Endpoints, tasks and AI traces carry `traceId`, `spanId`, `parentSpanId` and `linkedTraceId` as hex strings. `distributedTraceId` is gone.
-- Spans carry `traceId`, `spanId` and `parentSpanId`. `id`, `otelTraceId` and `distributedTraceId` are gone.
-- An exception's `traceId` is now the trace id, and `spanId` is the span it was recorded on. The endpoint, task or AI trace it happened in is returned as `relatedEntity` on the exception responses.
-- `POST /api/distributed-traces/:traceId` takes the hex trace id. A dashed UUID is still accepted. Omitting `recordedAt` anchors entity lookup on now (48 hours either side); pass an RFC 3339 timestamp for historical traces. Malformed timestamps return 400. The response carries `traceId` in place of `distributedTraceId`.
-- `POST /api/logs` keeps `distributedTraceId` and `excludeTraceId` for linked-trace expansion within the selected project. `traceId` searches one exact trace.
-- The span attribute `traceway.distributed_trace_id` no longer replaces a row's trace id. It is stored as the row's linked trace.
+## API and SDK compatibility
 
-Native `/api/report` IDs remain UUID-width in the HTTP API. When synthesized spans are exported as OTLP, native span and parent UUIDs are mapped to eight bytes using the first eight bytes of SHA-256 over `traceway.native.span-id.v1:` followed by the decoded UUID bytes (an all-zero result is replaced by `0000000000000001`). Already eight-byte span IDs are preserved. Trace IDs remain sixteen bytes. The original native IDs are included as `traceway.native.span_id` and `traceway.native.parent_span_id` attributes, and the export includes native attributes, `service.name` and available scope metadata. Actual OTLP input retains its original payload.
+Existing OTLP and native `/api/report` ingestion formats remain supported. HTTP API consumers and the CLI/MCP need to account for these response changes:
 
-Span search, graph topology, graph attributes and export choose one deterministic retry version: longest duration first. ClickHouse breaks ties by the stored SHA-256 fingerprint of the length-prefixed span, resource and scope protobuf bytes; SQLite and DuckDB use descending stored protobuf bytes. Search filters and pagination apply to those logical spans. These reads do extra work in the database to select a consistent version; attributes still obey per-span and total UTF-8 byte limits before transfer.
+- Endpoints, tasks and AI traces carry `traceId`, `spanId`, `parentSpanId` and `linkedTraceId` as hex strings. Their `distributedTraceId` field is gone.
+- Spans carry `traceId`, `spanId` and `parentSpanId`; `id`, `otelTraceId` and `distributedTraceId` are gone.
+- An exception's `traceId` is the trace ID, and `spanId` identifies its span. The recovered endpoint, task or AI owner is returned as `relatedEntity` on exception responses.
+- `POST /api/distributed-traces/:traceId` accepts a hex trace ID or dashed UUID. Pass an RFC 3339 `recordedAt` for historical traces; omitting it anchors entity lookup on now, 48 hours either side. Malformed timestamps return 400. The response uses `traceId` instead of `distributedTraceId`.
+- `POST /api/logs` retains `distributedTraceId` and `excludeTraceId` for linked-trace expansion within the selected project. `traceId` searches one exact trace.
+- The span attribute `traceway.distributed_trace_id` is stored as a link to another trace instead of replacing the source trace ID.
 
-Detail responses expose `spanGraphStatus`. When membership is partial or unavailable, exceptions on missing descendant spans may also be absent; an empty exception list does not establish that the occurrence succeeded. The dashboard warning and CLI `traces show` graph status make this limitation visible.
+Native UUID span IDs remain unchanged in Traceway's API. OTLP export maps them to stable eight-byte span/parent IDs and includes the originals in `traceway.native.span_id` and `traceway.native.parent_span_id`. Actual OTLP input retains its original payload.
+
+Span search, topology, attributes and export choose one deterministic retry version: longest duration first, with the stored fingerprint breaking ties on ClickHouse and stored protobuf bytes breaking ties on SQLite/DuckDB. This does not make all occurrence counts exactly-once. Graph reads also apply row, time and attribute-byte limits. Detail responses expose `spanGraphStatus`; a partial graph can omit exceptions on missing descendant spans, so an empty exception list does not establish that the occurrence succeeded.

@@ -1,0 +1,24 @@
+---
+title: "Traceway 2.0: a new foundation for traces"
+date: "2026-09-20"
+category: engineering
+author: dusan
+image: /blog/traceway-2-0/og.png
+description: >-
+  A request starts a task. The task calls an AI model. You should be able
+  to follow the whole thing. That's why we've rebuilt tracing in Traceway 2.0.
+---
+
+![Traceway 2.0 release, with a large party popper and a smaller construction emoji.](/blog/traceway-2-0/og.png)
+
+Traceway 2.0 is here. 🎉
+
+We've rebuilt tracing around one shared span model. Incoming OpenTelemetry spans keep their original IDs, parent relationships, and full payloads. That makes Traceway much more OTel compatible, with more reliable data linkage and a more faithful view of your traces in the dashboard, even when child spans arrive before their parents. You can also search individual spans, including the slow query buried inside a request.
+
+The cost is **a bigger database and more work on reads and writes**, which can make them slower. We're accepting that overhead to preserve the data and its relationships more faithfully. Loading the trace outline before the full details helps limit how much data we fetch while you browse.
+
+There is one thing to plan for: **this is a breaking upgrade**. The trace tables and parts of the API have changed. New tables are created automatically, but copying your history is opt-in. Until you copy it, those views show only new data.
+
+Back up first, upgrade the backend and dashboard together, and stop all old backend writers. Then enable `V2_MOVE_OVER=true` on **one** upgraded backend instance to copy history in the background, newest day first. This works on **ClickHouse, SQLite, and DuckDB**. Fresh installs can skip it.
+
+[Read the migration guide before upgrading](https://docs.tracewayapp.com/server/upgrade-v2-tables). It covers retention, checking the copy, and rollback.

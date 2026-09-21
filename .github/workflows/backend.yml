@@ -294,6 +294,8 @@ jobs:
       # it uses fakes and needs no live ClickHouse. app/migrations is included
       # for the same reason: migrate_logger_test.go is tagged
       # `transactional_pg || telemetry_ch` and needs no database either.
+      # app/notifications includes the ClickHouse-only task failure identity
+      # regression, which neither the SQLite nor DuckDB job can run.
       #
       # -json is written to a file for the tally below and replayed through jq
       # so the log still reads like ordinary `go test` output. pipefail is set
@@ -312,7 +314,7 @@ jobs:
         run: |
           set -o pipefail
           go test -json -tags "transactional_pg telemetry_ch" -count=1 \
-            ./app/repositories/... ./app/chdb/... ./app/migrations/... \
+            ./app/repositories/... ./app/chdb/... ./app/migrations/... ./app/notifications/... \
             | tee "$RUNNER_TEMP/pgch-tests.jsonl" \
             | jq -j 'select(.Action == "output") | .Output'
 

@@ -1,0 +1,45 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background: rgba(9, 10, 12, 0.94);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: fade-in 160ms ease-out;
+}
+
+.panel {
+  position: relative;
+  flex-shrink: 0;
+  width: 100%;
+  max-width: 1152px;
+  margin-block: auto;
+  outline: none;
+  animation: rise-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (min-width: 640px) {
+  .overlay {
+    padding: 32px;
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay, .panel { animation: none; }
+}

@@ -27,7 +27,7 @@ const (
 		ifNull(toString(distributed_trace_id), ''), ifNull(toString(span_id), ''), is_root`
 	legacyAiTraceColumns = `id, project_id, recorded_at, duration, status_code, model, response_model, provider, operation, input_tokens, output_tokens,
 		total_tokens, cached_tokens, reasoning_tokens, input_cost, output_cost, total_cost, trace_name, user_id, finish_reason, server_name, app_version,
-		storage_key, attributes, ifNull(toString(distributed_trace_id), ''), '', '', '', is_root, conversation_id, tool_call_count, tool_names, flagged, flagged_terms`
+		storage_key, attributes, ifNull(toString(distributed_trace_id), ''), '', '', is_root, conversation_id, tool_call_count, tool_names, flagged, flagged_terms`
 )
 
 func legacyAttributes(raw string) map[string]string {
@@ -105,15 +105,15 @@ func (legacyRepository) FindAiTraces(ctx context.Context, from, to time.Time, li
 	return legacyRows(ctx, query, args, scanLegacyAiTrace)
 }
 
-func (legacyRepository) FindExceptions(ctx context.Context, from, to time.Time, limit int, offset *int) ([]models.ExceptionStackTrace, error) {
+func (legacyRepository) FindExceptions(ctx context.Context, from, to time.Time, limit int, offset *int) ([]shared.LegacyException, error) {
 	query, args := legacyWindow(`id, project_id, ifNull(toString(trace_id), ''), trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version,
 		server_name, is_message, ifNull(toString(distributed_trace_id), ''), session_id`, "exception_stack_traces", from, to, limit, offset)
-	return legacyRows(ctx, query, args, func(rows driver.Rows) (models.ExceptionStackTrace, error) {
-		var est models.ExceptionStackTrace
+	return legacyRows(ctx, query, args, func(rows driver.Rows) (shared.LegacyException, error) {
+		var est shared.LegacyException
 		var attributes string
 		var isMessage uint8
 		err := rows.Scan(&est.Id, &est.ProjectId, &est.TraceId, &est.TraceType, &est.ExceptionHash, &est.StackTrace, &est.RecordedAt, &attributes,
-			&est.AppVersion, &est.ServerName, &isMessage, &est.LinkedTraceId, &est.SessionId)
+			&est.AppVersion, &est.ServerName, &isMessage, &est.DistributedTraceId, &est.SessionId)
 		est.Attributes, est.IsMessage = legacyAttributes(attributes), isMessage == 1
 		return est, err
 	})

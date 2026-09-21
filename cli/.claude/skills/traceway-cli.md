@@ -115,7 +115,7 @@ Result shape (JSON):
 traceway exceptions show <exceptionHash> [--page 1] [--page-size 20]
 ```
 
-Returns the exception group plus an array of recent `occurrences`. Each occurrence has at least `recordedAt`, `attributes`, and optional `traceId` / `spanId` / `linkedTraceId` / `sessionId`. `traceId` is the OpenTelemetry trace id as 32 hex characters, the same id the request's logs carry. The response also carries `relatedEntity` (`{traceType, id, name, statusCode, duration, recordedAt, traceId}`): the endpoint, task or AI trace the newest occurrence happened in. A bogus hash exits with code `5` and `not_found`.
+Returns the exception group plus an array of recent `occurrences`. Each occurrence has at least `recordedAt`, `attributes`, and optional `traceId` / `spanId` / `sessionId`. `traceId` is the OpenTelemetry trace id as 32 hex characters, the same id the request's logs carry. The response also carries `relatedEntity` (`{traceType, id, name, statusCode, duration, recordedAt, traceId}`): the endpoint, task or AI trace the newest occurrence happened in. A bogus hash exits with code `5` and `not_found`.
 
 ```
 traceway exceptions occurrence <exceptionId> --recorded-at <RFC3339>
@@ -243,7 +243,7 @@ traceway sessions show <sessionId> --started-at <RFC3339>     # {session, except
 traceway traces show <traceId> --recorded-at <RFC3339>       # {traceId, nodes:[...]}
 ```
 
-`traces show` is the cross-service waterfall: every endpoint/task/ai-trace/exception node sharing a trace id, across all projects you can see (the route scopes by your JWT, so it ignores the active project). It's the highest-value RCA call: feed it an occurrence's `traceId` (32 hex characters; a `linkedTraceId` or a dashed UUID works too) plus that occurrence's `recordedAt`. Each node carries `traceId`, `spanId` and `parentEntitySpanId`, the `spanId` of the node it sits under.
+`traces show` is the cross-service waterfall: every endpoint/task/ai-trace/exception node sharing a trace id, across all projects you can see (the route scopes by your JWT, so it ignores the active project). It's the highest-value RCA call: feed it an occurrence's `traceId` (32 hex characters; a dashed UUID works too) plus that occurrence's `recordedAt`. Each node carries `traceId`, `spanId` and `parentEntitySpanId`, the `spanId` of the node it sits under.
 
 `sessions show` takes `--started-at` because the sessions table is partitioned on `started_at`. The session URL carries no `t=`; use the session's start, the URL's `from=`, or a linked occurrence's `recordedAt` (it falls inside the ±24h window).
 

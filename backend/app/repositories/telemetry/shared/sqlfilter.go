@@ -43,8 +43,7 @@ func SortedKeys(m map[string]string) []string {
 	return keys
 }
 
-// TraceIdsFilter matches rows that belong to any of the traces, either as their own trace or as the one they are linked
-// to. It writes its named parameters into params.
+// TraceIdsFilter matches the supplied trace IDs and writes its named parameters into params.
 func TraceIdsFilter(traceIds []string, params map[string]any) string {
 	names := make([]string, len(traceIds))
 	for i, id := range traceIds {
@@ -53,5 +52,5 @@ func TraceIdsFilter(traceIds []string, params map[string]any) string {
 		params[key] = id
 	}
 	list := strings.Join(names, ",")
-	return "(trace_id IN (" + list + ") OR linked_trace_id IN (" + list + "))"
+	return "trace_id IN (" + list + ")"
 }

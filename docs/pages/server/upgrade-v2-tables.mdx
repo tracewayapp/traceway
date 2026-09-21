@@ -30,6 +30,18 @@ From the first start of the new release, new writes and dashboard/API reads for 
 
 Users, organizations, projects, tokens and configuration are retained. Logs, metrics, sessions, profiles and synthetic-check results are not copied by this worker. Blob storage is not moved: keep the existing local storage volume or S3 configuration, including AI conversation payloads and session recordings.
 
+### Trace identity schema cleanup
+
+Startup migrations also clean the active session, profile and V2 entity schemas, independently of `V2_MOVE_OVER`:
+
+- `sessions.trace_id` replaces `distributed_trace_id`. It stores lowercase 32-character hex, with an empty string for no association. Existing nonzero UUIDs keep the same 128 bits; null and zero IDs become empty strings. New protocol-v2 reports supply the actual W3C trace ID. A migration cannot reconstruct an OTel trace that an old client never recorded.
+- `endpoints_v2`, `tasks_v2`, `ai_traces_v2` and `exceptions_v2` lose `linked_trace_id` and its indexes. Actual span links remain in `spans_v2` and the OTLP payload.
+- `profiles` keeps its existing `trace_id` and `span_id`; the unused `distributed_trace_id` column and its ClickHouse index are dropped. Profiles stay in the same table.
+
+These are forward migrations (`ch/0091`–`0099`, `sqlite_telemetry/0026`, `duckdb_telemetry/0006`–`0007`), so databases that already ran the V2 preview are cleaned too. ClickHouse materializes the converted session IDs synchronously before removing the source column; this can add startup I/O and time proportional to session history. SQLite and DuckDB commit each migration together with its tracking record. DuckDB sets the final session non-null constraint in a separate migration because it cannot rebuild that constraint with outstanding updates in the same transaction.
+
+Stop all old backend instances before starting the first upgraded instance: their session/profile SQL refers to columns this release removes. Complete the database migrations before starting the other new instances, then deploy the updated SDK. This is a coordinated upgrade; switching back to the old binary alone is no longer sufficient for rollback.
+
 New accepted OTLP spans retain their original trace, span and parent IDs and lossless protobuf payloads. Migrated history can only recover what the old schema stored; see [historical-data differences](#what-migrated-history-looks-like).
 
 ## Before upgrading
@@ -38,7 +50,7 @@ New accepted OTLP spans retain their original trace, span and parent IDs and los
 2. Allow disk space for both legacy and V2 data. V2 adds a span for every migrated endpoint, task and AI trace, so destination row counts and disk usage will not match the old tables one-to-one.
 3. Choose the oldest history you need and review retention before the first upgraded start. On SQLite and DuckDB, retention runs at startup and continues pruning both old and new tables. Backfill cannot restore already expired rows. Increase retention or set the applicable retention variable to `0` before startup if you need older history; `V2_MOVE_OVER_OLDEST` does not override retention.
 4. Upgrade the backend and dashboard together, and use a CLI/MCP release compatible with the changed API. Retain the previous image or binary and the backups for rollback.
-5. Replace or stop every old backend writer before enabling backfill. With multiple replicas, enable the worker on exactly one upgraded instance. The progress table does not provide a distributed lock.
+5. Stop every old backend writer before the first upgraded start, then let one upgraded instance complete startup migrations. With multiple replicas, enable the backfill worker on exactly one upgraded instance. The progress table does not provide a distributed lock.
 
 Fresh installations have no legacy history to copy and do not need `V2_MOVE_OVER`. Existing installations that do not need historical traces can also leave it unset; normal retention still applies to their old data.
 
@@ -137,7 +149,7 @@ Use the actual source table/date and verify that the update matched its progress
 
 ## What migrated history looks like
 
-Endpoint, task and AI occurrence IDs are preserved. Trace and span IDs are normalized to the V2 representation. The converter first uses an original OTel trace ID saved in legacy attributes, then an old distributed trace ID, then the occurrence's own ID. If the original OTel and browser trace IDs differ, the browser ID becomes `linkedTraceId`.
+Endpoint, task and AI occurrence IDs are preserved. Trace and span IDs are normalized to the V2 representation. The converter first uses an original OTel trace ID saved in legacy attributes, then an old distributed trace ID, then the occurrence's own ID. If the original OTel and browser correlation IDs differ, the original OTel trace ID wins; separate traces are not merged.
 
 An old OTel span ID stored as a zero-padded UUID becomes its original 16 hexadecimal characters. Native UUID span IDs retain 32 hexadecimal characters. Legacy OTel tasks move from their old end timestamp to their start timestamp by subtracting duration; native task timestamps stay unchanged.
 
@@ -181,7 +193,7 @@ Verify the copied history and retain a recoverable backup before considering leg
 
 ## Rolling back
 
-Stop the backfill before switching binaries or images. This migration preserves legacy tables, so a previous backend can read the legacy history still present. It cannot read telemetry written only to V2, and there is no reverse backfill. Those V2 rows remain available to the new release while retained.
+Stop all backend instances and restore the pre-upgrade databases before restarting the previous release. The previous binary references removed session/profile columns; preserving the old trace tables does not make it compatible with the cleaned schema. There is no reverse backfill from V2 to the legacy trace tables.
 
 Running the old backend again writes to old tables. If you later return to V2, affected source days already marked `done` need explicit rechecking after old writers have stopped. Do not run both versions as a steady-state deployment: they read and write different trace datasets.
 
@@ -191,13 +203,15 @@ A database restore returns to the snapshot's state and loses later writes unless
 
 Existing OTLP and native `/api/report` ingestion formats remain supported. HTTP API consumers and the CLI/MCP need to account for these response changes:
 
-- Endpoints, tasks and AI traces carry `traceId`, `spanId`, `parentSpanId` and `linkedTraceId` as hex strings. Their `distributedTraceId` field is gone.
+- Endpoints, tasks and AI traces carry `traceId`, `spanId` and `parentSpanId` as hex strings. Their `distributedTraceId` field is gone.
 - Spans carry `traceId`, `spanId` and `parentSpanId`; `id`, `otelTraceId` and `distributedTraceId` are gone.
 - An exception's `traceId` is the trace ID, and `spanId` identifies its span. The recovered endpoint, task or AI owner is returned as `relatedEntity` on exception responses.
 - `POST /api/distributed-traces/:traceId` accepts a hex trace ID or dashed UUID. Pass an RFC 3339 `recordedAt` for historical traces; omitting it anchors entity lookup on now, 48 hours either side. Malformed timestamps return 400. The response uses `traceId` instead of `distributedTraceId`.
-- `POST /api/logs` retains `distributedTraceId` and `excludeTraceId` for linked-trace expansion within the selected project. `traceId` searches one exact trace.
-- The span attribute `traceway.distributed_trace_id` is stored as a link to another trace instead of replacing the source trace ID.
+- `POST /api/logs` uses `traceId` and optional `spanId`, within the selected project. Retired `distributedTraceId` and `excludeTraceId` filters return 400.
+- The retired span attribute `traceway.distributed_trace_id` no longer joins traces. Use W3C context propagation to share a trace ID, or actual OTLP span links to express cross-trace relationships.
 
 Native UUID span IDs remain unchanged in Traceway's API. OTLP export maps them to stable eight-byte span/parent IDs and includes the originals in `traceway.native.span_id` and `traceway.native.parent_span_id`. Actual OTLP input retains its original payload.
 
 Span search, topology, attributes and export choose one deterministic retry version: longest duration first, with the stored fingerprint breaking ties on ClickHouse and stored protobuf bytes breaking ties on SQLite/DuckDB. This does not make all occurrence counts exactly-once. Graph reads also apply row, time and attribute-byte limits. Detail responses expose `spanGraphStatus`; a partial graph can omit exceptions on missing descendant spans, so an empty exception list does not establish that the occurrence succeeded.
+
+Active session, profile and V2 entity tables have no `distributed_trace_id` or `linked_trace_id` columns after startup migrations complete. Historical SQL migrations and the old trace tables still contain the old names because the move-over reads that history. Legacy native-report fields remain only at the decoder boundary. `/api/report` retains the existing SDK wire format; these storage migrations do not introduce a new report protocol. True OTel span links remain intact.

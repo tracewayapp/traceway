@@ -267,7 +267,7 @@
   .wrap {
     max-width: var(--container-max);
     margin: 0 auto;
-    padding: 0 28px;
+    padding-inline: 28px;
   }
 
   /* Light band: local token remap so a run of sections renders on white.
@@ -1360,7 +1360,7 @@
     padding: 48px 24px;
   }
   .wrap {
-    padding: 0 20px;
+    padding-inline: 20px;
   }
 }
 

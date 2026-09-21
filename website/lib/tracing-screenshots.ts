@@ -1,0 +1,38 @@
+export const tracingScreenshots = [
+  {
+    label: "Search spans",
+    src: "/images/tracing/span-explorer.png",
+    width: 2528,
+    height: 1640,
+    alt: "Span explorer filtered to checkout operations over 40 milliseconds, showing services, span kinds, errors, durations and trace IDs",
+    title: "Start with the operation that needs attention.",
+    description: "Filter by service, name, kind, status, duration, trace ID or an exact attribute value. Open a result to see where it belongs in the request.",
+  },
+  {
+    label: "Follow the trace",
+    src: "/images/tracing/trace-waterfall.png",
+    width: 2528,
+    height: 1640,
+    alt: "A checkout trace with 14 spans across four services and two projects, including PostgreSQL, Redis, a failed payment call and a Kafka worker",
+    title: "One checkout. Four services. The full sequence.",
+    description: "The gateway, checkout API, inventory service and worker share one trace ID. The waterfall shows their parent-child relationships and the payment call that took 950 ms.",
+  },
+  {
+    label: "Inspect a span",
+    src: "/images/tracing/span-attributes.png",
+    width: 2528,
+    height: 1640,
+    alt: "Payment span details open over the waterfall, displaying the original trace and span IDs, service, client kind, error status, instrumentation scope and HTTP attributes",
+    title: "Read the context behind the failed span.",
+    description: "Select a span to inspect its service, kind, status, instrumentation scope and attributes. Copy the trace or span ID to continue the investigation in your own tools.",
+  },
+  {
+    label: "Correlated logs",
+    src: "/images/tracing/trace-logs.png",
+    width: 2464,
+    height: 712,
+    alt: "Seven logs for the checkout trace: order loaded, inventory reserved, payment timeout, failure published and the final 502, each with its severity and emitting span",
+    title: "The request failed. Here is what it logged.",
+    description: "The same checkout: a 950 ms payment timeout, followed by a failed-order event and the gateway’s 502 response. Each log carries the trace ID and its emitting span. Demo data.",
+  },
+] as const;

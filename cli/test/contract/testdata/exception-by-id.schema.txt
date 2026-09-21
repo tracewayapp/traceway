@@ -3,7 +3,6 @@ exception.attributes: null
 exception.exceptionHash: string
 exception.id: string
 exception.isMessage: bool
-exception.linkedTraceId: string
 exception.projectId: string
 exception.recordedAt: string
 exception.serverName: string

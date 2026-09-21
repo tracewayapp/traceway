@@ -153,7 +153,7 @@ func TestMoveOverRecoveryKeepsTraceAndOccurrenceIdentity(t *testing.T) {
 					var endpoints []models.Endpoint
 					var tasks []models.Task
 					var calls []models.AiTrace
-					var exceptions []models.ExceptionStackTrace
+					var exceptions []shared.LegacyException
 					for i, trace := range traces {
 						if firstOnly && i > 0 {
 							break
@@ -167,7 +167,7 @@ func TestMoveOverRecoveryKeepsTraceAndOccurrenceIdentity(t *testing.T) {
 							case "ai_traces":
 								calls = append(calls, models.AiTrace{ProjectId: project, Id: id, TraceId: trace.String(), RecordedAt: recorded, Duration: time.Second, Attributes: map[string]string{}})
 							case "exception_stack_traces":
-								exceptions = append(exceptions, models.ExceptionStackTrace{ProjectId: project, Id: id, LinkedTraceId: trace.String(), RecordedAt: recorded, Attributes: map[string]string{}})
+								exceptions = append(exceptions, shared.LegacyException{ExceptionStackTrace: models.ExceptionStackTrace{ProjectId: project, Id: id, RecordedAt: recorded, Attributes: map[string]string{}}, DistributedTraceId: trace.String()})
 							}
 						}
 					}

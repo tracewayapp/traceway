@@ -77,7 +77,7 @@ func runAiTracesShow(cmd *cobra.Command, args []string) error {
 				a.InputTokens, a.OutputTokens, a.TotalTokens,
 				a.TotalCost, formatDuration(a.Duration),
 			)
-			renderTraceIds(out, a.TraceId, a.LinkedTraceId)
+			renderTraceId(out, a.TraceId)
 			if a.ConversationId != "" {
 				_, _ = fmt.Fprintf(out, "CONVERSATION: %s\n", a.ConversationId)
 			}

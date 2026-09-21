@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
+	"io/fs"
 	"net/url"
 
 	"github.com/tracewayapp/traceway/backend/app/config"
@@ -19,13 +20,17 @@ import (
 var migrationsChFS embed.FS
 
 func runMigrationsClickhouse(connStr string) error {
+	return runMigrationsClickhouseFrom(connStr, migrationsChFS)
+}
+
+func runMigrationsClickhouseFrom(connStr string, sourceFS fs.FS) error {
 	db, err := sql.Open("clickhouse", connStr)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 
-	source, err := iofs.New(migrationsChFS, "ch")
+	source, err := iofs.New(sourceFS, "ch")
 	if err != nil {
 		return err
 	}

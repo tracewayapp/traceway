@@ -22,7 +22,7 @@ func (e *taskRepository) InsertAsync(ctx context.Context, lines []models.Task) e
 	if len(lines) == 0 {
 		return nil
 	}
-	return chdb.SendBatch("INSERT INTO tasks_v2 (id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, linked_trace_id, is_root)", func(batch driver.Batch) error {
+	return chdb.SendBatch("INSERT INTO tasks_v2 (id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, is_root)", func(batch driver.Batch) error {
 		for _, t := range lines {
 			attributesJSON := "{}"
 			if len(t.Attributes) != 0 {
@@ -34,7 +34,7 @@ func (e *taskRepository) InsertAsync(ctx context.Context, lines []models.Task) e
 			if t.IsRoot {
 				isRoot = 1
 			}
-			if err := batch.Append(t.Id, t.ProjectId, t.TaskName, int64(t.Duration), t.RecordedAt, t.ClientIP, attributesJSON, t.AppVersion, t.ServerName, t.TraceId, t.SpanId, t.ParentSpanId, t.LinkedTraceId, isRoot); err != nil {
+			if err := batch.Append(t.Id, t.ProjectId, t.TaskName, int64(t.Duration), t.RecordedAt, t.ClientIP, attributesJSON, t.AppVersion, t.ServerName, t.TraceId, t.SpanId, t.ParentSpanId, isRoot); err != nil {
 				return err
 			}
 		}
@@ -66,7 +66,7 @@ func (e *taskRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromD
 		orderBy = "recorded_at"
 	}
 
-	query := "SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, linked_trace_id FROM tasks_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " DESC LIMIT ? OFFSET ?"
+	query := "SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id FROM tasks_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " DESC LIMIT ? OFFSET ?"
 	rows, err := chdb.Conn.Query(ctx, query, projectId, fromDate, toDate, pageSize, offset)
 	if err != nil {
 		return nil, 0, err
@@ -77,7 +77,7 @@ func (e *taskRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromD
 	for rows.Next() {
 		var t models.Task
 		var attributesJSON string
-		if err := rows.Scan(&t.Id, &t.ProjectId, &t.TaskName, &t.Duration, &t.RecordedAt, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.TraceId, &t.SpanId, &t.ParentSpanId, &t.LinkedTraceId); err != nil {
+		if err := rows.Scan(&t.Id, &t.ProjectId, &t.TaskName, &t.Duration, &t.RecordedAt, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.TraceId, &t.SpanId, &t.ParentSpanId); err != nil {
 			return nil, 0, err
 		}
 		if attributesJSON != "" && attributesJSON != "{}" {
@@ -199,7 +199,7 @@ func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID
 		sortDir = "ASC"
 	}
 
-	query := "SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, linked_trace_id FROM tasks_v2 WHERE project_id = ? AND task_name = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " " + sortDir + " LIMIT ? OFFSET ?"
+	query := "SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id FROM tasks_v2 WHERE project_id = ? AND task_name = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " " + sortDir + " LIMIT ? OFFSET ?"
 	rows, err := chdb.Conn.Query(ctx, query, projectId, taskName, fromDate, toDate, pageSize, offset)
 	if err != nil {
 		return nil, 0, err
@@ -210,7 +210,7 @@ func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID
 	for rows.Next() {
 		var t models.Task
 		var attributesJSON string
-		if err := rows.Scan(&t.Id, &t.ProjectId, &t.TaskName, &t.Duration, &t.RecordedAt, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.TraceId, &t.SpanId, &t.ParentSpanId, &t.LinkedTraceId); err != nil {
+		if err := rows.Scan(&t.Id, &t.ProjectId, &t.TaskName, &t.Duration, &t.RecordedAt, &t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.TraceId, &t.SpanId, &t.ParentSpanId); err != nil {
 			return nil, 0, err
 		}
 		if attributesJSON != "" && attributesJSON != "{}" {
@@ -226,7 +226,7 @@ func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID
 
 // FindById returns a single task by ID
 func (e *taskRepository) FindById(ctx context.Context, projectId, taskId uuid.UUID, recordedAt *time.Time) (*models.Task, error) {
-	query := `SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, linked_trace_id, is_root
+	query := `SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, is_root
 		FROM tasks_v2
 		WHERE project_id = ? AND id = ?`
 	args := []any{projectId, taskId}
@@ -243,7 +243,7 @@ func (e *taskRepository) FindById(ctx context.Context, projectId, taskId uuid.UU
 
 	err := chdb.Conn.QueryRow(ctx, query, args...).Scan(
 		&t.Id, &t.ProjectId, &t.TaskName, &t.Duration, &t.RecordedAt,
-		&t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.TraceId, &t.SpanId, &t.ParentSpanId, &t.LinkedTraceId, &isRoot)
+		&t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.TraceId, &t.SpanId, &t.ParentSpanId, &isRoot)
 	t.IsRoot = isRoot == 1
 
 	if err != nil {
@@ -453,10 +453,10 @@ func (e *taskRepository) FindByTraceIds(ctx context.Context, traceIds []string, 
 	if len(projectIds) == 0 || len(traceIds) == 0 {
 		return nil, nil
 	}
-	query := `SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, linked_trace_id, is_root
+	query := `SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, is_root
 		FROM tasks_v2
-		WHERE (trace_id IN (?) OR linked_trace_id IN (?)) AND project_id IN (?)`
-	args := []any{traceIds, traceIds, projectIds}
+		WHERE trace_id IN (?) AND project_id IN (?)`
+	args := []any{traceIds, projectIds}
 	if recordedAt != nil {
 		from, to := shared.DistributedTraceWindowBounds(*recordedAt)
 		query += ` AND recorded_at >= ? AND recorded_at <= ?`
@@ -475,7 +475,7 @@ func (e *taskRepository) FindByTraceIds(ctx context.Context, traceIds []string, 
 		var t models.Task
 		var attributesJSON string
 		if err := rows.Scan(&t.Id, &t.ProjectId, &t.TaskName, &t.Duration, &t.RecordedAt,
-			&t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.TraceId, &t.SpanId, &t.ParentSpanId, &t.LinkedTraceId, &t.IsRoot); err != nil {
+			&t.ClientIP, &attributesJSON, &t.AppVersion, &t.ServerName, &t.TraceId, &t.SpanId, &t.ParentSpanId, &t.IsRoot); err != nil {
 			return nil, err
 		}
 		if attributesJSON != "" && attributesJSON != "{}" {

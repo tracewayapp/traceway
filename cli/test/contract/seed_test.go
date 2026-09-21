@@ -63,21 +63,20 @@ func seedTelemetry(ctx context.Context, projectIDStr string, at time.Time) error
 	seedHash = clientcontrollers.ComputeExceptionHash(stack, false)
 
 	endpoint := models.Endpoint{
-		Id:            seedEndpointID,
-		ProjectId:     pid,
-		Endpoint:      "GET /api/contract",
-		Duration:      123 * time.Millisecond,
-		RecordedAt:    at,
-		StatusCode:    200,
-		BodySize:      1024,
-		ClientIP:      "127.0.0.1",
-		Attributes:    map[string]string{},
-		AppVersion:    "1.0.0",
-		ServerName:    "contract-host",
-		TraceId:       seedTraceID,
-		SpanId:        seedEndpointSpanID,
-		LinkedTraceId: seedLinkedTraceID,
-		IsRoot:        true,
+		Id:         seedEndpointID,
+		ProjectId:  pid,
+		Endpoint:   "GET /api/contract",
+		Duration:   123 * time.Millisecond,
+		RecordedAt: at,
+		StatusCode: 200,
+		BodySize:   1024,
+		ClientIP:   "127.0.0.1",
+		Attributes: map[string]string{},
+		AppVersion: "1.0.0",
+		ServerName: "contract-host",
+		TraceId:    seedTraceID,
+		SpanId:     seedEndpointSpanID,
+		IsRoot:     true,
 	}
 	if err := telemetry.EndpointRepository.InsertAsync(ctx, []models.Endpoint{endpoint}); err != nil {
 		return fmt.Errorf("endpoint: %w", err)
@@ -115,7 +114,6 @@ func seedTelemetry(ctx context.Context, projectIDStr string, at time.Time) error
 		AppVersion:    "1.0.0",
 		ServerName:    "contract-host",
 		IsMessage:     false,
-		LinkedTraceId: seedLinkedTraceID,
 		SessionId:     &seedSessionID,
 	}
 	if err := telemetry.ExceptionStackTraceRepository.InsertAsync(ctx, []models.ExceptionStackTrace{exception}); err != nil {
@@ -152,15 +150,15 @@ func seedTelemetry(ctx context.Context, projectIDStr string, at time.Time) error
 	}
 
 	session := models.Session{
-		Id:                 seedSessionID,
-		ProjectId:          pid,
-		StartedAt:          at,
-		Duration:           60000,
-		ClientIP:           "127.0.0.1",
-		Attributes:         map[string]string{},
-		AppVersion:         "1.0.0",
-		ServerName:         "contract-host",
-		DistributedTraceId: &traceUUID,
+		Id:         seedSessionID,
+		ProjectId:  pid,
+		StartedAt:  at,
+		Duration:   60000,
+		ClientIP:   "127.0.0.1",
+		Attributes: map[string]string{},
+		AppVersion: "1.0.0",
+		ServerName: "contract-host",
+		TraceId:    &traceUUID,
 	}
 	if err := telemetry.SessionRepository.Upsert(ctx, []models.Session{session}); err != nil {
 		return fmt.Errorf("session: %w", err)

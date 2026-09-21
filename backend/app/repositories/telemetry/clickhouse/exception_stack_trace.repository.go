@@ -23,7 +23,7 @@ func (e *exceptionStackTraceRepository) InsertAsync(ctx context.Context, lines [
 	if len(lines) == 0 {
 		return nil
 	}
-	return chdb.SendBatch("INSERT INTO exceptions_v2 (id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, linked_trace_id, session_id)", func(batch driver.Batch) error {
+	return chdb.SendBatch("INSERT INTO exceptions_v2 (id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, session_id)", func(batch driver.Batch) error {
 		for _, est := range lines {
 			attributesJSON := "{}"
 			if len(est.Attributes) != 0 {
@@ -35,7 +35,7 @@ func (e *exceptionStackTraceRepository) InsertAsync(ctx context.Context, lines [
 			if est.IsMessage {
 				isMessage = 1
 			}
-			if err := batch.Append(est.Id, est.ProjectId, est.TraceId, est.SpanId, est.TraceType, est.ExceptionHash, est.StackTrace, est.RecordedAt, attributesJSON, est.AppVersion, est.ServerName, isMessage, est.LinkedTraceId, est.SessionId); err != nil {
+			if err := batch.Append(est.Id, est.ProjectId, est.TraceId, est.SpanId, est.TraceType, est.ExceptionHash, est.StackTrace, est.RecordedAt, attributesJSON, est.AppVersion, est.ServerName, isMessage, est.SessionId); err != nil {
 				return err
 			}
 		}
@@ -46,7 +46,7 @@ func (e *exceptionStackTraceRepository) InsertAsync(ctx context.Context, lines [
 // FindAllBySessionId returns all exceptions/messages stamped with the given session_id.
 func (e *exceptionStackTraceRepository) FindAllBySessionId(ctx context.Context, projectId, sessionId uuid.UUID) ([]models.ExceptionStackTrace, error) {
 	rows, err := chdb.Conn.Query(ctx,
-		`SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, linked_trace_id, session_id
+		`SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, session_id
 			FROM exceptions_v2
 			WHERE project_id = ? AND session_id = ?
 			ORDER BY recorded_at ASC`,
@@ -62,7 +62,7 @@ func (e *exceptionStackTraceRepository) FindAllBySessionId(ctx context.Context, 
 		var attributesJSON string
 		var isMessage uint8
 		if err := rows.Scan(&est.Id, &est.ProjectId, &est.TraceId, &est.SpanId, &est.TraceType, &est.ExceptionHash, &est.StackTrace,
-			&est.RecordedAt, &attributesJSON, &est.AppVersion, &est.ServerName, &isMessage, &est.LinkedTraceId, &est.SessionId); err != nil {
+			&est.RecordedAt, &attributesJSON, &est.AppVersion, &est.ServerName, &isMessage, &est.SessionId); err != nil {
 			return nil, err
 		}
 		est.IsMessage = isMessage == 1
@@ -208,7 +208,7 @@ func (e *exceptionStackTraceRepository) FindByHash(ctx context.Context, projectI
 	}
 
 	rows, err := chdb.Conn.Query(ctx,
-		"SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, linked_trace_id FROM exceptions_v2 WHERE project_id = ? AND exception_hash = ? ORDER BY recorded_at DESC LIMIT ? OFFSET ?",
+		"SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message FROM exceptions_v2 WHERE project_id = ? AND exception_hash = ? ORDER BY recorded_at DESC LIMIT ? OFFSET ?",
 		projectId, exceptionHash, pageSize, offset)
 	if err != nil {
 		return nil, nil, 0, err
@@ -220,7 +220,7 @@ func (e *exceptionStackTraceRepository) FindByHash(ctx context.Context, projectI
 		var o models.ExceptionStackTrace
 		var attributesJSON string
 		var isMessage uint8
-		if err := rows.Scan(&o.Id, &o.ProjectId, &o.TraceId, &o.SpanId, &o.TraceType, &o.ExceptionHash, &o.StackTrace, &o.RecordedAt, &attributesJSON, &o.AppVersion, &o.ServerName, &isMessage, &o.LinkedTraceId); err != nil {
+		if err := rows.Scan(&o.Id, &o.ProjectId, &o.TraceId, &o.SpanId, &o.TraceType, &o.ExceptionHash, &o.StackTrace, &o.RecordedAt, &attributesJSON, &o.AppVersion, &o.ServerName, &isMessage); err != nil {
 			return nil, nil, 0, err
 		}
 		o.IsMessage = isMessage == 1
@@ -371,7 +371,7 @@ func (e *exceptionStackTraceRepository) IsArchived(ctx context.Context, projectI
 
 // FindAllByTraceId returns all exceptions and messages associated with a specific trace
 func (e *exceptionStackTraceRepository) FindAllByTraceId(ctx context.Context, projectId uuid.UUID, traceId string, recordedAt *time.Time) ([]models.ExceptionStackTrace, error) {
-	query := `SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, linked_trace_id
+	query := `SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message
 		FROM exceptions_v2
 		WHERE project_id = ? AND trace_id = ?`
 	args := []any{projectId, traceId}
@@ -396,7 +396,7 @@ func (e *exceptionStackTraceRepository) FindAllByTraceId(ctx context.Context, pr
 		var isMessage uint8
 
 		if err := rows.Scan(&est.Id, &est.ProjectId, &est.TraceId, &est.SpanId, &est.TraceType, &est.ExceptionHash, &est.StackTrace,
-			&est.RecordedAt, &attributesJSON, &est.AppVersion, &est.ServerName, &isMessage, &est.LinkedTraceId); err != nil {
+			&est.RecordedAt, &attributesJSON, &est.AppVersion, &est.ServerName, &isMessage); err != nil {
 			return nil, err
 		}
 
@@ -418,7 +418,7 @@ func (e *exceptionStackTraceRepository) FindById(ctx context.Context, projectId 
 	var attributesJSON string
 	var isMessage uint8
 
-	query := `SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, linked_trace_id
+	query := `SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message
 		FROM exceptions_v2
 		WHERE project_id = ? AND id = ?`
 	args := []any{projectId, id}
@@ -431,7 +431,7 @@ func (e *exceptionStackTraceRepository) FindById(ctx context.Context, projectId 
 
 	err := chdb.Conn.QueryRow(ctx, query, args...).Scan(
 		&est.Id, &est.ProjectId, &est.TraceId, &est.SpanId, &est.TraceType, &est.ExceptionHash, &est.StackTrace,
-		&est.RecordedAt, &attributesJSON, &est.AppVersion, &est.ServerName, &isMessage, &est.LinkedTraceId)
+		&est.RecordedAt, &attributesJSON, &est.AppVersion, &est.ServerName, &isMessage)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -454,10 +454,10 @@ func (e *exceptionStackTraceRepository) FindByTraceIds(ctx context.Context, trac
 	if len(projectIds) == 0 || len(traceIds) == 0 {
 		return nil, nil
 	}
-	query := `SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, linked_trace_id
+	query := `SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message
 		FROM exceptions_v2
-		WHERE (trace_id IN (?) OR linked_trace_id IN (?)) AND project_id IN (?) AND is_message = false`
-	args := []any{traceIds, traceIds, projectIds}
+		WHERE trace_id IN (?) AND project_id IN (?) AND is_message = false`
+	args := []any{traceIds, projectIds}
 	if recordedAt != nil {
 		from, to := shared.DistributedTraceWindowBounds(*recordedAt)
 		query += ` AND recorded_at >= ? AND recorded_at <= ?`
@@ -477,7 +477,7 @@ func (e *exceptionStackTraceRepository) FindByTraceIds(ctx context.Context, trac
 		var attributesJSON string
 		var isMessage uint8
 		if err := rows.Scan(&est.Id, &est.ProjectId, &est.TraceId, &est.SpanId, &est.TraceType, &est.ExceptionHash, &est.StackTrace,
-			&est.RecordedAt, &attributesJSON, &est.AppVersion, &est.ServerName, &isMessage, &est.LinkedTraceId); err != nil {
+			&est.RecordedAt, &attributesJSON, &est.AppVersion, &est.ServerName, &isMessage); err != nil {
 			return nil, err
 		}
 		est.IsMessage = isMessage == 1

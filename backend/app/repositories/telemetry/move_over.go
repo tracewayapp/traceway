@@ -40,7 +40,7 @@ type mover struct {
 		FindEndpoints(ctx context.Context, from, to time.Time, limit int, offset *int) ([]models.Endpoint, error)
 		FindTasks(ctx context.Context, from, to time.Time, limit int, offset *int) ([]models.Task, error)
 		FindAiTraces(ctx context.Context, from, to time.Time, limit int, offset *int) ([]models.AiTrace, error)
-		FindExceptions(ctx context.Context, from, to time.Time, limit int, offset *int) ([]models.ExceptionStackTrace, error)
+		FindExceptions(ctx context.Context, from, to time.Time, limit int, offset *int) ([]shared.LegacyException, error)
 		FindSpans(ctx context.Context, from, to time.Time, limit int, offset *int) ([]shared.LegacySpan, error)
 		FindOwners(ctx context.Context, ids []uuid.UUID, from, to time.Time) ([]models.Endpoint, []models.Task, []models.AiTrace, error)
 		FindBounds(ctx context.Context, table string) (oldest, newest time.Time, found bool, err error)
@@ -364,20 +364,20 @@ func (m *mover) owners(ctx context.Context, ids map[uuid.UUID]bool, from, to tim
 	}
 	for _, row := range endpoints {
 		entity, _ := mapEndpoint(row)
-		found.add(row.ProjectId, row.Id, owner{entity.TraceId, entity.SpanId, entity.LinkedTraceId, entity.ServerName, row.RecordedAt})
+		found.add(row.ProjectId, row.Id, owner{entity.TraceId, entity.SpanId, entity.ServerName, row.RecordedAt})
 	}
 	for _, row := range tasks {
 		entity, _ := mapTask(row)
-		found.add(row.ProjectId, row.Id, owner{entity.TraceId, entity.SpanId, entity.LinkedTraceId, entity.ServerName, row.RecordedAt})
+		found.add(row.ProjectId, row.Id, owner{entity.TraceId, entity.SpanId, entity.ServerName, row.RecordedAt})
 	}
 	for _, row := range aiTraces {
 		entity, _ := mapAiTrace(row)
-		found.add(row.ProjectId, row.Id, owner{entity.TraceId, entity.SpanId, entity.LinkedTraceId, entity.ServerName, row.RecordedAt})
+		found.add(row.ProjectId, row.Id, owner{entity.TraceId, entity.SpanId, entity.ServerName, row.RecordedAt})
 	}
 	return found, nil
 }
 
-func (m *mover) writeExceptions(ctx context.Context, rows []models.ExceptionStackTrace, from, to time.Time, resumed bool) error {
+func (m *mover) writeExceptions(ctx context.Context, rows []shared.LegacyException, from, to time.Time, resumed bool) error {
 	ids, ownerIds := make([]uuid.UUID, len(rows)), map[uuid.UUID]bool{}
 	for i, row := range rows {
 		ids[i] = row.Id
@@ -428,8 +428,8 @@ type ownerKey struct {
 }
 
 type owner struct {
-	traceId, spanId, linkedTraceId, serverName string
-	recordedAt                                 time.Time
+	traceId, spanId, serverName string
+	recordedAt                  time.Time
 }
 
 // ownerIndex holds every old row an id answers to. An OTel id was a span id, which repeats across traces, and a retried
@@ -467,7 +467,7 @@ const (
 func hexId(id uuid.UUID) string { return shared.NormalizeTraceId(id.String()) }
 
 func validTraceId(id string) bool {
-	return len(id) == 32 && strings.Trim(id, "0123456789abcdef") == ""
+	return len(id) == 32 && id != zeroPadding+zeroPadding && strings.Trim(id, "0123456789abcdef") == ""
 }
 
 // spanHex undoes the old storage of an OTel span id, which was kept as a UUID with eight zero bytes in front. A native
@@ -480,23 +480,15 @@ func spanHex(id string) string {
 	return id
 }
 
-// traceIds picks the trace a row belongs to: the OTel trace id the old ingest kept in the attributes, else the old
-// distributed trace id, else the row's own id. When the first two differ, the distributed id was the browser's.
-func traceIds(attributes map[string]string, distributed string, id uuid.UUID) (traceId, linkedTraceId string) {
-	distributed = shared.NormalizeTraceId(distributed)
-	if !validTraceId(distributed) {
-		distributed = ""
-	}
+// Prefer the original OTel trace ID over the old browser correlation attribute.
+func traceIdFromLegacy(attributes map[string]string, distributed string, id uuid.UUID) string {
 	if source := shared.NormalizeTraceId(attributes[traceIdAttribute]); validTraceId(source) {
-		if distributed != source {
-			linkedTraceId = distributed
-		}
-		return source, linkedTraceId
+		return source
 	}
-	if distributed != "" {
-		return distributed, ""
+	if source := shared.NormalizeTraceId(distributed); validTraceId(source) {
+		return source
 	}
-	return hexId(id), ""
+	return hexId(id)
 }
 
 func withoutIdentity(attributes map[string]string) map[string]string {
@@ -509,7 +501,7 @@ func withoutIdentity(attributes map[string]string) map[string]string {
 }
 
 func mapEndpoint(row models.Endpoint) (models.Endpoint, models.Span) {
-	row.TraceId, row.LinkedTraceId = traceIds(row.Attributes, row.TraceId, row.Id)
+	row.TraceId = traceIdFromLegacy(row.Attributes, row.TraceId, row.Id)
 	if row.SpanId = spanHex(row.SpanId); row.SpanId == "" {
 		row.SpanId = hexId(row.Id)
 	}
@@ -523,7 +515,7 @@ func mapEndpoint(row models.Endpoint) (models.Endpoint, models.Span) {
 }
 
 func mapTask(row models.Task) (models.Task, models.Span) {
-	row.TraceId, row.LinkedTraceId = traceIds(row.Attributes, row.TraceId, row.Id)
+	row.TraceId = traceIdFromLegacy(row.Attributes, row.TraceId, row.Id)
 	kind := int32(spanKindConsumer)
 	if row.SpanId = spanHex(row.SpanId); row.SpanId == "" {
 		row.SpanId, kind = hexId(row.Id), spanKindInternal
@@ -537,7 +529,7 @@ func mapTask(row models.Task) (models.Task, models.Span) {
 }
 
 func mapAiTrace(row models.AiTrace) (models.AiTrace, models.Span) {
-	row.TraceId, row.LinkedTraceId = traceIds(row.Attributes, row.TraceId, row.Id)
+	row.TraceId = traceIdFromLegacy(row.Attributes, row.TraceId, row.Id)
 	// The old table kept no span id. A call below the root was stored under its span id. The root was stored under the
 	// trace id, which serves as its span id here: it only has to be the same on the row and on the span.
 	row.SpanId, row.ParentSpanId, row.Attributes = spanHex(row.Id.String()), "", withoutIdentity(row.Attributes)
@@ -547,23 +539,21 @@ func mapAiTrace(row models.AiTrace) (models.AiTrace, models.Span) {
 
 // mapException puts an exception on its owner's span. The old row named the owner, not the span it happened on, and
 // the owner's span is where a detail page and the issue page look first.
-func mapException(row models.ExceptionStackTrace, owners ownerIndex) models.ExceptionStackTrace {
-	distributed := shared.NormalizeTraceId(row.LinkedTraceId)
+func mapException(legacy shared.LegacyException, owners ownerIndex) models.ExceptionStackTrace {
+	row := legacy.ExceptionStackTrace
+	distributed := shared.NormalizeTraceId(legacy.DistributedTraceId)
 	if !validTraceId(distributed) {
 		distributed = ""
 	}
 	ownerId, err := uuid.Parse(row.TraceId)
-	row.Attributes, row.SpanId, row.LinkedTraceId = withoutIdentity(row.Attributes), "", ""
+	row.Attributes, row.SpanId = withoutIdentity(row.Attributes), ""
 	switch found, known := owners.nearest(row.ProjectId, ownerId, row.RecordedAt); {
 	case err != nil:
 		row.TraceId, row.TraceType = distributed, ""
 	case known:
-		row.TraceId, row.SpanId, row.LinkedTraceId = found.traceId, found.spanId, found.linkedTraceId
+		row.TraceId, row.SpanId = found.traceId, found.spanId
 	default:
 		row.TraceId, row.TraceType = hexId(ownerId), ""
-	}
-	if row.LinkedTraceId == "" && distributed != row.TraceId {
-		row.LinkedTraceId = distributed
 	}
 	return row
 }

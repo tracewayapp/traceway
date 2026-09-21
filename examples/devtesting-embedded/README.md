@@ -64,7 +64,7 @@ Five endpoints exercise different parts of the logs feature end-to-end:
 | `GET /api/test-success` | DEBUG + INFO logs on a simple successful request |
 | `GET /api/test-log-levels` | One log at each severity (TRACE/DEBUG/INFO/WARN/ERROR/FATAL) — validates `SeverityBadge` rendering |
 | `GET /api/test-spans-with-logs` | Nested child spans (`auth.verify` → `db.query` → `cache.lookup`) with logs emitted inside each and attributes on every child span. Exercises `parent_span_id` capture, the span tree + attribute popover on the trace detail page, and span-chip linking |
-| `GET /api/test-distributed-logs` | Two services (`backend-service` + `worker-service`) emit logs under a shared `traceway.distributed_trace_id`. Powers the "Load logs from other traces" button on the trace detail page |
+| `GET /api/test-distributed-logs` | Two services (`backend-service` + `worker-service`) emit logs under a shared W3C trace ID. Both services appear in the trace log panel |
 
 Trigger them all at once:
 

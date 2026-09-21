@@ -7,7 +7,6 @@ endpoint.endpoint: string
 endpoint.id: string
 endpoint.isRoot: bool
 endpoint.isStream: bool
-endpoint.linkedTraceId: string
 endpoint.projectId: string
 endpoint.recordedAt: string
 endpoint.serverName: string

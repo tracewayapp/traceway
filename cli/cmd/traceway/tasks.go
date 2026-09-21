@@ -73,7 +73,7 @@ func runTasksShow(cmd *cobra.Command, args []string) error {
 				formatDuration(t.Duration),
 				pickStr(t.ServerName, "-"), pickStr(t.AppVersion, "-"),
 			)
-			renderTraceIds(out, t.TraceId, t.LinkedTraceId)
+			renderTraceId(out, t.TraceId)
 		}
 		renderSpansTable(out, resp.Spans)
 		renderLinkedErrors(out, resp.Exception, resp.Messages)

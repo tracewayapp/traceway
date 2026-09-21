@@ -22,13 +22,13 @@ func (r *sessionRepository) Upsert(ctx context.Context, sessions []models.Sessio
 	if len(sessions) == 0 {
 		return nil
 	}
-	return chdb.SendBatch("INSERT INTO sessions (id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, distributed_trace_id, version)", func(batch driver.Batch) error {
+	return chdb.SendBatch("INSERT INTO sessions (id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, trace_id, version)", func(batch driver.Batch) error {
 		for _, s := range sessions {
 			attrs := s.Attributes
 			if attrs == nil {
 				attrs = map[string]string{}
 			}
-			if err := batch.Append(s.Id, s.ProjectId, s.StartedAt, s.EndedAt, s.Duration, s.ClientIP, attrs, s.AppVersion, s.ServerName, s.DistributedTraceId, time.Now()); err != nil {
+			if err := batch.Append(s.Id, s.ProjectId, s.StartedAt, s.EndedAt, s.Duration, s.ClientIP, attrs, s.AppVersion, s.ServerName, s.TraceId, time.Now()); err != nil {
 				return err
 			}
 		}
@@ -69,7 +69,7 @@ func (r *sessionRepository) FindAll(ctx context.Context, projectId uuid.UUID, fr
 
 	offset := (page - 1) * pageSize
 
-	query := "SELECT id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, distributed_trace_id FROM sessions FINAL WHERE project_id = ? AND started_at >= ? AND started_at <= ?" + whereExtra + " ORDER BY " + orderBy + " " + sortDir + " LIMIT ? OFFSET ?"
+	query := "SELECT id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, trace_id FROM sessions FINAL WHERE project_id = ? AND started_at >= ? AND started_at <= ?" + whereExtra + " ORDER BY " + orderBy + " " + sortDir + " LIMIT ? OFFSET ?"
 	queryArgs := []interface{}{projectId, fromDate, toDate}
 	queryArgs = append(queryArgs, extraArgs...)
 	queryArgs = append(queryArgs, pageSize, offset)
@@ -82,7 +82,7 @@ func (r *sessionRepository) FindAll(ctx context.Context, projectId uuid.UUID, fr
 	var sessions []models.Session
 	for rows.Next() {
 		var s models.Session
-		if err := rows.Scan(&s.Id, &s.ProjectId, &s.StartedAt, &s.EndedAt, &s.Duration, &s.ClientIP, &s.Attributes, &s.AppVersion, &s.ServerName, &s.DistributedTraceId); err != nil {
+		if err := rows.Scan(&s.Id, &s.ProjectId, &s.StartedAt, &s.EndedAt, &s.Duration, &s.ClientIP, &s.Attributes, &s.AppVersion, &s.ServerName, &s.TraceId); err != nil {
 			return nil, 0, err
 		}
 		sessions = append(sessions, s)
@@ -93,7 +93,7 @@ func (r *sessionRepository) FindAll(ctx context.Context, projectId uuid.UUID, fr
 func (r *sessionRepository) FindById(ctx context.Context, projectId, sessionId uuid.UUID, startedAt *time.Time) (*models.Session, error) {
 	var s models.Session
 
-	query := `SELECT id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, distributed_trace_id
+	query := `SELECT id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, trace_id
 		FROM sessions FINAL
 		WHERE project_id = ? AND id = ?`
 	args := []any{projectId, sessionId}
@@ -105,7 +105,7 @@ func (r *sessionRepository) FindById(ctx context.Context, projectId, sessionId u
 	query += ` LIMIT 1`
 
 	err := chdb.Conn.QueryRow(ctx, query, args...).Scan(
-		&s.Id, &s.ProjectId, &s.StartedAt, &s.EndedAt, &s.Duration, &s.ClientIP, &s.Attributes, &s.AppVersion, &s.ServerName, &s.DistributedTraceId,
+		&s.Id, &s.ProjectId, &s.StartedAt, &s.EndedAt, &s.Duration, &s.ClientIP, &s.Attributes, &s.AppVersion, &s.ServerName, &s.TraceId,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

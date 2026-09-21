@@ -19,13 +19,12 @@ type Endpoint struct {
 	Attributes map[string]string `json:"attributes" ch:"attributes"`
 	AppVersion string            `json:"appVersion" ch:"app_version"`
 	ServerName string            `json:"serverName" ch:"server_name"`
-	// Ids as they arrived, lowercase hex. LinkedTraceId is another trace this row belongs with, such as the browser's.
-	TraceId       string `json:"traceId" ch:"trace_id"`
-	SpanId        string `json:"spanId" ch:"span_id"`
-	ParentSpanId  string `json:"parentSpanId,omitempty" ch:"parent_span_id"`
-	LinkedTraceId string `json:"linkedTraceId,omitempty" ch:"linked_trace_id"`
-	IsStream      bool   `json:"isStream" ch:"is_stream"`
-	IsRoot        bool   `json:"isRoot" ch:"is_root"`
+
+	TraceId      string `json:"traceId" ch:"trace_id"`
+	SpanId       string `json:"spanId" ch:"span_id"`
+	ParentSpanId string `json:"parentSpanId,omitempty" ch:"parent_span_id"`
+	IsStream     bool   `json:"isStream" ch:"is_stream"`
+	IsRoot       bool   `json:"isRoot" ch:"is_root"`
 }
 
 type EndpointStats struct {

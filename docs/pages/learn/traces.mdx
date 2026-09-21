@@ -62,11 +62,11 @@ Every OTLP projection keeps the ids of the span it was made from: `trace_id`, `s
 
 Every Endpoint / Task / AI Trace stores the **`trace_id`** of its span. Rows that share a trace id belong together, whichever service or project reported them. So:
 
-- A request and its queue worker share a trace id when the instrumentation propagates a parent context. Some queue integrations start a new trace with a link instead; those runs are not grouped by shared trace ID. They show up as two rows (the endpoint and the task), and the Distributed Trace card on either page shows both, the task nested under the endpoint.
+- A request and its queue worker share a trace id when the instrumentation propagates a parent context. Some queue integrations start a new trace with a link instead; those runs are not grouped by shared trace ID. With parent-context propagation the card shows the endpoint and task together, nested by their span parentage. A task started as a new trace with a span link has its own trace view.
 - A request handler that calls an LLM produces an endpoint row and an ai_trace row with the same trace id. Same card.
 - Cross-service HTTP hops (each service exports its own SERVER span) all share the trace id. Each hop appears as its own endpoint row, nested by the spans in between.
 
-You don't need to set any vendor attribute for this to work, OTLP's native trace id is enough. One case needs a link between two different trace ids: a browser request and the backend trace it started. There the span attribute `traceway.distributed_trace_id` names the other trace. It is stored as the row's `linked_trace_id`, and opening either trace shows both. See [Distributed Tracing](/client/js-sdk/distributed-tracing).
+Standard W3C propagation also makes browser requests share the backend trace ID. OTel span links can reference another trace, but those traces remain separate. See [Distributed Tracing](/client/js-sdk/distributed-tracing).
 
 ## What each entity stores
 

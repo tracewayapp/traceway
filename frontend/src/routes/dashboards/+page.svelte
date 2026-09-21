@@ -1066,7 +1066,7 @@
 		</EmptyState>
 	{:else}
 		<Tabs.Root value={activeTabId} onValueChange={handleTabChange}>
-			<div class="flex items-center gap-2" bind:this={tabsRowEl}>
+			<div class="flex flex-wrap items-center gap-2" bind:this={tabsRowEl}>
 				{#if hasOverflow}
 					<Select.Root
 						type="single"
@@ -1075,7 +1075,9 @@
 							if (v) handleTabChange(v);
 						}}
 					>
-						<Select.Trigger size="sm">{activeTabName}</Select.Trigger>
+						<Select.Trigger size="sm" class="max-w-[70%] min-w-0">
+							<span class="truncate">{activeTabName}</span>
+						</Select.Trigger>
 						<Select.Content>
 							{#each dashboards as dashboard (dashboard.id)}
 								<Select.Item value={String(dashboard.id)}>{dashboard.name}</Select.Item>
@@ -1206,7 +1208,10 @@
 					</DropdownMenu.Root>
 				{/if}
 				{#if lastUpdated}
-					<div class="ml-auto flex items-center gap-1" bind:this={updatedEl}>
+					<div
+						class="ml-auto flex w-full shrink-0 items-center justify-end gap-1 sm:w-auto"
+						bind:this={updatedEl}
+					>
 						<span class="text-sm whitespace-nowrap text-muted-foreground">
 							Updated: {lastUpdatedFormatted}
 						</span>
@@ -1214,6 +1219,7 @@
 							variant="ghost"
 							size="sm"
 							onclick={reloadDashboardWidgets}
+							aria-label="Refresh dashboard"
 							disabled={loadingDashboard}
 						>
 							<RefreshCw class="h-4 w-4 {loadingDashboard ? 'animate-spin' : ''}" />

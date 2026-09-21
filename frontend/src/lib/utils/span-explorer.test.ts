@@ -89,10 +89,20 @@ describe('trace view', () => {
 	});
 
 	it('links a span to its trace and keeps the time the read is bound to', () => {
-		const href = spanTraceHref(span({ startTime: '2026-09-17T00:00:00.5Z' }), { focusSpan: true });
+		const href = spanTraceHref(span({ recordedAt: '2026-09-17T00:00:00.5Z' }), { focusSpan: true });
 		expect(href).toBe('/spans/abc?at=2026-09-17T00%3A00%3A00.5Z&span=01');
 		expect(spanTraceHref(span({ traceId: '' }))).toBeUndefined();
 	});
+
+	it.each(['1970-01-01T00:00:00Z', '2554-07-21T23:34:33.709551615Z'])(
+		'opens spans with source time %s using their storage time',
+		(startTime) => {
+			const href = spanTraceHref(span({ startTime, recordedAt: '2026-09-20T12:34:56Z' }), {
+				focusSpan: true
+			});
+			expect(href).toBe('/spans/abc?at=2026-09-20T12%3A34%3A56Z&span=01');
+		}
+	);
 
 	it('measures the trace from its first start to its last end', () => {
 		const summary = summarizeSpanTrace([

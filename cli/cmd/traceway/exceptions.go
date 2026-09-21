@@ -251,7 +251,7 @@ func runExceptionsOccurrence(cmd *cobra.Command, args []string) error {
 			pickStr(occ.AppVersion, "-"),
 			pickStr(occ.TraceType, "-"),
 		)
-		renderTraceIds(out, occ.TraceId, occ.LinkedTraceId)
+		renderTraceId(out, occ.TraceId)
 		if related := resp.RelatedEntity; related != nil {
 			_, _ = fmt.Fprintf(out, "RELATED:      %s %s (%s, recorded %s)\n",
 				related.TraceType, related.Name, related.Id,

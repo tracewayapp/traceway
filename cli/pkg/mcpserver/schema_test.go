@@ -13,12 +13,11 @@ func TestOutSchema_matchesMarshaledShape(t *testing.T) {
 	traceID := "0af7651916cd43dd8448eb211c80319c"
 	resp := client.EndpointDetailResponse{
 		Endpoint: &client.Endpoint{
-			Id:            uuid.New(),
-			ProjectId:     uuid.New(),
-			Endpoint:      "GET /api/users",
-			TraceId:       traceID,
-			SpanId:        "b7ad6b7169203331",
-			LinkedTraceId: "4bf92f3577b34da6a3ce929d0e0e4736",
+			Id:        uuid.New(),
+			ProjectId: uuid.New(),
+			Endpoint:  "GET /api/users",
+			TraceId:   traceID,
+			SpanId:    "b7ad6b7169203331",
 		},
 		SpanGraphStatus: &client.SpanGraphStatus{State: "partial", Reasons: []string{"row_limit"}},
 		Spans:           []client.Span{{ProjectId: uuid.New(), TraceId: traceID, SpanId: "00f067aa0ba902b7", ParentSpanId: "b7ad6b7169203331", Name: "db"}},

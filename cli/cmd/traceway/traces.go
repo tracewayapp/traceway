@@ -28,8 +28,7 @@ partial or unavailable span graphs; exceptions on missing spans may be absent.
 
 The trace id is the traceId of an occurrence (in "exceptions show" /
 "exceptions occurrence" output) or of an endpoint, task or ai-trace: 32 hex
-characters, the OpenTelemetry trace id. A linkedTraceId works too and returns
-the same trace, since a trace and the one it is linked with come back together.
+characters, the OpenTelemetry trace id shared by all participating services.
 
 --recorded-at is REQUIRED. The lookup is bounded to a window around it so
 ClickHouse prunes partitions instead of scanning all of them. Use the recordedAt

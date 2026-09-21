@@ -19,13 +19,13 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 )
 
-func TestLegacyDistributedLogFiltersStayScoped(t *testing.T) {
+func TestLogTraceFiltersStayScoped(t *testing.T) {
 	dbtest.SetupSQLite(t)
 	ctx := context.Background()
 	project, other, browser, server := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	hexID := func(id uuid.UUID) string { return strings.ReplaceAll(id.String(), "-", "") }
 	at := time.Now().UTC().Truncate(time.Second)
-	if err := telemetry.EndpointRepository.InsertAsync(ctx, []models.Endpoint{{Id: uuid.New(), ProjectId: project, TraceId: hexID(server), LinkedTraceId: hexID(browser), SpanId: "0102030405060708", RecordedAt: at}}); err != nil {
+	if err := telemetry.EndpointRepository.InsertAsync(ctx, []models.Endpoint{{Id: uuid.New(), ProjectId: project, TraceId: hexID(server), Attributes: map[string]string{"traceway.distributed_trace_id": hexID(browser)}, SpanId: "0102030405060708", RecordedAt: at}}); err != nil {
 		t.Fatal(err)
 	}
 	logs := []models.LogRecord{
@@ -38,12 +38,16 @@ func TestLegacyDistributedLogFiltersStayScoped(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, test := range []struct {
-		distributed, exclude string
+		trace, span, retired string
 		status, want         int
 	}{
-		{browser.String(), "", 200, 2}, {hexID(browser), hexID(browser), 200, 1}, {"invalid", "", 400, 0}, {"", hexID(browser), 400, 0},
+		{browser.String(), "", "", 200, 1}, {hexID(server), "", "", 200, 1}, {"invalid", "", "", 400, 0}, {strings.Repeat("0", 32), "", "", 400, 0}, {"", "", "distributedTraceId", 400, 0}, {"", "", "excludeTraceId", 400, 0},
 	} {
-		body, err := json.Marshal(map[string]any{"fromDate": at.Add(-time.Hour), "toDate": at.Add(time.Hour), "distributedTraceId": test.distributed, "excludeTraceId": test.exclude, "pagination": map[string]int{"page": 1, "pageSize": 100}})
+		payload := map[string]any{"fromDate": at.Add(-time.Hour), "toDate": at.Add(time.Hour), "traceId": test.trace, "spanId": test.span, "pagination": map[string]int{"page": 1, "pageSize": 100}}
+		if test.retired != "" {
+			payload[test.retired] = hexID(browser)
+		}
+		body, err := json.Marshal(payload)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -62,11 +66,11 @@ func TestLegacyDistributedLogFiltersStayScoped(t *testing.T) {
 				t.Fatal(err)
 			}
 			if len(result.Data) != test.want || result.Pagination.Total != int64(test.want) {
-				t.Fatalf("legacy filter widened or lost results: %+v", result)
+				t.Fatalf("trace filter widened or lost results: %+v", result)
 			}
 			for _, log := range result.Data {
 				if log.ProjectId != project || log.Body == "unrelated" {
-					t.Fatal("linked filter escaped its scope")
+					t.Fatal("trace filter escaped its scope")
 				}
 			}
 		}

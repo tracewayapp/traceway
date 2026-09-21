@@ -1,0 +1,1 @@
+const c=/^(.*?)(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})?$/;function e(n){const t=n.match(c),a=Date.parse(t?`${t[1]}${t[3]??""}`:n);if(!t||Number.isNaN(a))return 0n;const s=(t[2]??"").padEnd(9,"0").slice(0,9);return BigInt(a)*1000000n+BigInt(s||"0")}export{e as t};

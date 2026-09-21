@@ -21,7 +21,6 @@ type ExceptionStackTrace struct {
 	AppVersion    string            `json:"appVersion" ch:"app_version"`
 	ServerName    string            `json:"serverName" ch:"server_name"`
 	IsMessage     bool              `json:"isMessage" ch:"is_message"`
-	LinkedTraceId string            `json:"linkedTraceId,omitempty" ch:"linked_trace_id"`
 	SessionId     *uuid.UUID        `json:"sessionId,omitempty" ch:"session_id"`
 }
 

@@ -29,7 +29,6 @@ type exceptionRow struct {
 	AppVersion    string                    `lit:"app_version"`
 	ServerName    string                    `lit:"server_name"`
 	IsMessage     bool                      `lit:"is_message"`
-	LinkedTraceId string                    `lit:"linked_trace_id"`
 	SessionId     *uuid.UUID                `lit:"session_id"`
 }
 
@@ -76,7 +75,6 @@ func exceptionToRow(est models.ExceptionStackTrace) exceptionRow {
 		AppVersion:    est.AppVersion,
 		ServerName:    est.ServerName,
 		IsMessage:     est.IsMessage,
-		LinkedTraceId: est.LinkedTraceId,
 		SessionId:     est.SessionId,
 	}
 }
@@ -94,7 +92,6 @@ func (r *exceptionRow) toModel() models.ExceptionStackTrace {
 		AppVersion:    r.AppVersion,
 		ServerName:    r.ServerName,
 		IsMessage:     r.IsMessage,
-		LinkedTraceId: r.LinkedTraceId,
 		SessionId:     r.SessionId,
 	}
 	if r.Attributes != nil {
@@ -249,7 +246,7 @@ func (e *exceptionStackTraceRepository) FindByHash(ctx context.Context, projectI
 	}
 
 	rows, err := lit.SelectNamed[exceptionRow](db.TelemetryDB,
-		`SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, linked_trace_id, session_id
+		`SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, session_id
 		FROM exceptions_v2 WHERE project_id = :project_id AND exception_hash = :exception_hash
 		ORDER BY recorded_at DESC LIMIT :limit OFFSET :offset`,
 		lit.P{"project_id": projectId, "exception_hash": exceptionHash, "limit": pageSize, "offset": offset})
@@ -384,7 +381,7 @@ func (e *exceptionStackTraceRepository) IsArchived(ctx context.Context, projectI
 }
 
 func (e *exceptionStackTraceRepository) FindAllByTraceId(ctx context.Context, projectId uuid.UUID, traceId string, recordedAt *time.Time) ([]models.ExceptionStackTrace, error) {
-	query := `SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, linked_trace_id, session_id
+	query := `SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, session_id
 		FROM exceptions_v2 WHERE project_id = :project_id AND trace_id = :trace_id`
 	params := lit.P{"project_id": projectId, "trace_id": traceId}
 	if recordedAt != nil {
@@ -408,7 +405,7 @@ func (e *exceptionStackTraceRepository) FindAllByTraceId(ctx context.Context, pr
 }
 
 func (e *exceptionStackTraceRepository) FindById(ctx context.Context, projectId uuid.UUID, id uuid.UUID, recordedAt *time.Time) (*models.ExceptionStackTrace, error) {
-	query := `SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, linked_trace_id, session_id
+	query := `SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, session_id
 		FROM exceptions_v2 WHERE project_id = :project_id AND id = :id`
 	params := lit.P{"project_id": projectId, "id": id}
 	if recordedAt != nil {
@@ -443,7 +440,7 @@ func (e *exceptionStackTraceRepository) FindByTraceIds(ctx context.Context, trac
 		params[key] = pid
 	}
 
-	query := `SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, linked_trace_id, session_id
+	query := `SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, session_id
 		FROM exceptions_v2 WHERE ` + traceFilter + ` AND project_id IN (` + strings.Join(placeholders, ",") + `) AND is_message = 0`
 	if recordedAt != nil {
 		from, to := shared.DistributedTraceWindowBounds(*recordedAt)
@@ -468,7 +465,7 @@ func (e *exceptionStackTraceRepository) FindByTraceIds(ctx context.Context, trac
 	for sqlRows.Next() {
 		var row exceptionRow
 		if err := sqlRows.Scan(&row.Id, &row.ProjectId, &row.TraceId, &row.SpanId, &row.TraceType, &row.ExceptionHash, &row.StackTrace,
-			&row.RecordedAt, &row.Attributes, &row.AppVersion, &row.ServerName, &row.IsMessage, &row.LinkedTraceId, &row.SessionId); err != nil {
+			&row.RecordedAt, &row.Attributes, &row.AppVersion, &row.ServerName, &row.IsMessage, &row.SessionId); err != nil {
 			return nil, err
 		}
 		results = append(results, row.toModel())
@@ -481,7 +478,7 @@ func (e *exceptionStackTraceRepository) FindByTraceIds(ctx context.Context, trac
 // (WHERE session_id IS NOT NULL); an IS, IN or COALESCE rewrite falls back to a whole-project scan.
 func (e *exceptionStackTraceRepository) FindAllBySessionId(ctx context.Context, projectId, sessionId uuid.UUID) ([]models.ExceptionStackTrace, error) {
 	rows, err := lit.SelectNamed[exceptionRow](db.TelemetryDB,
-		`SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, linked_trace_id, session_id
+		`SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, session_id
 			FROM exceptions_v2
 			WHERE project_id = :project_id AND session_id = :session_id
 			ORDER BY recorded_at ASC`,
@@ -499,7 +496,7 @@ func (e *exceptionStackTraceRepository) FindAllBySessionId(ctx context.Context, 
 // GetSessionIdForException returns the session_id for the given exception or nil when not linked.
 func (e *exceptionStackTraceRepository) GetSessionIdForException(ctx context.Context, projectId, exceptionId uuid.UUID) (*uuid.UUID, error) {
 	row, err := lit.SelectSingleNamed[exceptionRow](db.TelemetryDB,
-		`SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, linked_trace_id, session_id
+		`SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, session_id
 			FROM exceptions_v2
 			WHERE project_id = :project_id AND id = :id LIMIT 1`,
 		lit.P{"project_id": projectId, "id": exceptionId})

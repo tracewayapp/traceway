@@ -40,7 +40,6 @@ nodes[].endpoint.endpoint: string
 nodes[].endpoint.id: string
 nodes[].endpoint.isRoot: bool
 nodes[].endpoint.isStream: bool
-nodes[].endpoint.linkedTraceId: string
 nodes[].endpoint.projectId: string
 nodes[].endpoint.recordedAt: string
 nodes[].endpoint.serverName: string

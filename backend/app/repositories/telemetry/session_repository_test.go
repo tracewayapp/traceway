@@ -2,12 +2,37 @@ package telemetry
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/app/models"
 )
+
+func TestSessionTraceIdentityRoundTrip(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	const traceID = "0102030405060708090a0b0c0d0e0f10"
+	session := models.Session{Id: uuid.New(), ProjectId: uuid.New(), StartedAt: now, TraceId: traceID}
+	if err := SessionRepository.Upsert(ctx, []models.Session{session}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := SessionRepository.FindById(ctx, session.ProjectId, session.Id, &now)
+	if err != nil || got == nil || got.TraceId != traceID {
+		t.Fatalf("session trace did not round trip: %+v: %v", got, err)
+	}
+	encoded, err := json.Marshal(got)
+	if err != nil || !strings.Contains(string(encoded), `"traceId":"`+traceID+`"`) || strings.Contains(string(encoded), "distributedTraceId") {
+		t.Fatalf("session JSON must expose the canonical trace ID: %s: %v", encoded, err)
+	}
+	rows, total, err := SessionRepository.FindAll(ctx, session.ProjectId, now.Add(-time.Second), now.Add(time.Second), 1, 10, "started_at", "asc", "", nil)
+	if err != nil || total != 1 || len(rows) != 1 || rows[0].TraceId != traceID {
+		t.Fatalf("session search lost trace identity: %+v total=%d: %v", rows, total, err)
+	}
+}
 
 func TestSessionRepository_SearchAttributes(t *testing.T) {
 	setupTestDB(t)

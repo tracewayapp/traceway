@@ -115,19 +115,24 @@ func TestMoveOverIds(t *testing.T) {
 	traceHex, browserHex := "0102030405060708090a0b0c0d0e0f10", "a1a2a3a4a5a6a7a8a9aaabacadaeaf00"
 
 	for name, test := range map[string]struct {
-		attributes              map[string]string
-		distributed             string
-		id                      uuid.UUID
-		wantTrace, wantLinkedTo string
+		attributes  map[string]string
+		distributed string
+		id          uuid.UUID
+		wantTrace   string
 	}{
-		"an OTel row names its trace in the attributes":    {map[string]string{"traceway.otel.trace_id": traceHex}, trace.String(), trace, traceHex, ""},
-		"the browser's id was filed as the distributed id": {map[string]string{"traceway.otel.trace_id": traceHex}, browser.String(), trace, traceHex, browserHex},
-		"an older OTel row only has the distributed id":    {nil, trace.String(), paddedSpan(7), traceHex, ""},
-		"a native run without a distributed trace":         {nil, "", run, hexId(run), ""},
-		"a distributed id that is not an id is ignored":    {nil, "not-a-uuid", run, hexId(run), ""},
+		"an OTel row names its trace in the attributes":    {map[string]string{"traceway.otel.trace_id": traceHex}, trace.String(), trace, traceHex},
+		"the browser's id was filed as the distributed id": {map[string]string{"traceway.otel.trace_id": traceHex}, browser.String(), trace, traceHex},
+		"an older OTel row only has the distributed id":    {nil, trace.String(), paddedSpan(7), traceHex},
+		"a native run without a distributed trace":         {nil, "", run, hexId(run)},
+		"a distributed id that is not an id is ignored":    {nil, "not-a-uuid", run, hexId(run)},
+		"a zero distributed id is ignored":                 {nil, uuid.Nil.String(), run, hexId(run)},
+		"a zero hex distributed id is ignored":             {nil, hexId(uuid.Nil), run, hexId(run)},
+		"a zero OTel id falls back to the distributed id":  {map[string]string{traceIdAttribute: hexId(uuid.Nil)}, trace.String(), run, traceHex},
+		"zero source ids fall back to the run":             {map[string]string{traceIdAttribute: hexId(uuid.Nil)}, uuid.Nil.String(), run, hexId(run)},
+		"a zero distributed id does not become a link":     {map[string]string{traceIdAttribute: traceHex}, uuid.Nil.String(), run, traceHex},
 	} {
-		if gotTrace, gotLinked := traceIds(test.attributes, test.distributed, test.id); gotTrace != test.wantTrace || gotLinked != test.wantLinkedTo {
-			t.Errorf("%s: trace %q linked %q", name, gotTrace, gotLinked)
+		if gotTrace := traceIdFromLegacy(test.attributes, test.distributed, test.id); gotTrace != test.wantTrace {
+			t.Errorf("%s: trace %q", name, gotTrace)
 		}
 	}
 	if got := spanHex(paddedSpan(0xab).String()); got != "abababababababab" {
@@ -156,18 +161,18 @@ func TestMoveOverIds(t *testing.T) {
 
 	project := uuid.New()
 	owners := ownerIndex{}
-	owners.add(project, trace, owner{"ffffffffffffffffffffffffffffffff", "f1f1f1f1f1f1f1f1", "", "yesterday", recorded.Add(-20 * time.Hour)})
-	owners.add(project, trace, owner{traceHex, "e1e1e1e1e1e1e1e1", browserHex, "gateway", recorded})
-	onEndpoint := mapException(models.ExceptionStackTrace{ProjectId: project, TraceId: trace.String(), TraceType: "endpoint", LinkedTraceId: browser.String(), RecordedAt: recorded.Add(time.Second)}, owners)
-	if onEndpoint.TraceId != traceHex || onEndpoint.SpanId != "e1e1e1e1e1e1e1e1" || onEndpoint.TraceType != "endpoint" || onEndpoint.LinkedTraceId != browserHex {
+	owners.add(project, trace, owner{"ffffffffffffffffffffffffffffffff", "f1f1f1f1f1f1f1f1", "yesterday", recorded.Add(-20 * time.Hour)})
+	owners.add(project, trace, owner{traceHex, "e1e1e1e1e1e1e1e1", "gateway", recorded})
+	onEndpoint := mapException(shared.LegacyException{ExceptionStackTrace: models.ExceptionStackTrace{ProjectId: project, TraceId: trace.String(), TraceType: "endpoint", RecordedAt: recorded.Add(time.Second)}, DistributedTraceId: browser.String()}, owners)
+	if onEndpoint.TraceId != traceHex || onEndpoint.SpanId != "e1e1e1e1e1e1e1e1" || onEndpoint.TraceType != "endpoint" {
 		t.Errorf("an exception lands on the span of the owner recorded nearest to it: %+v", onEndpoint)
 	}
-	unowned := mapException(models.ExceptionStackTrace{ProjectId: project, TraceId: browser.String(), TraceType: "task"}, owners)
+	unowned := mapException(shared.LegacyException{ExceptionStackTrace: models.ExceptionStackTrace{ProjectId: project, TraceId: browser.String(), TraceType: "task"}}, owners)
 	if unowned.TraceId != browserHex || unowned.SpanId != "" || unowned.TraceType != "" {
 		t.Errorf("an exception whose owner is gone keeps the trace and claims no kind: %+v", unowned)
 	}
-	inBrowser := mapException(models.ExceptionStackTrace{ProjectId: project, LinkedTraceId: browser.String(), TraceType: "endpoint"}, owners)
-	if inBrowser.TraceId != browserHex || inBrowser.SpanId != "" || inBrowser.LinkedTraceId != "" || inBrowser.TraceType != "" {
+	inBrowser := mapException(shared.LegacyException{ExceptionStackTrace: models.ExceptionStackTrace{ProjectId: project, TraceType: "endpoint"}, DistributedTraceId: browser.String()}, owners)
+	if inBrowser.TraceId != browserHex || inBrowser.SpanId != "" || inBrowser.TraceType != "" {
 		t.Errorf("a browser exception belongs to the browser's trace: %+v", inBrowser)
 	}
 
@@ -178,6 +183,46 @@ func TestMoveOverIds(t *testing.T) {
 	nativeChild := mapSpan(shared.LegacySpan{ProjectId: project, Id: uuid.New(), OwnerId: run}, owners)
 	if nativeChild.TraceId != hexId(run) || nativeChild.ParentSpanId != hexId(run) {
 		t.Errorf("a native span without a parent hangs under its run: %+v", nativeChild)
+	}
+}
+
+func TestMoveOverZeroDistributedIDKeepsNativeGraph(t *testing.T) {
+	setupTestDB(t)
+	setupMoveOverProgress(t)
+	legacyReset(t)
+	t.Cleanup(func() { legacyReset(t) })
+	ctx := context.Background()
+	at := time.Now().UTC().Truncate(moveOverDay).Add(10 * time.Hour)
+	project, run, child, exception := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	legacyExec(t, `INSERT INTO endpoints (id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, distributed_trace_id, span_id, is_stream, is_root)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, run, project, "GET /zero-header", int64(time.Second), at, 200, 0, "", "{}", "1.0", "api", &uuid.Nil, (*uuid.UUID)(nil), false, true)
+	legacyExec(t, `INSERT INTO spans (id, trace_id, project_id, name, start_time, duration, recorded_at, parent_span_id, attributes)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, child, run, project, "child", at, int64(time.Millisecond), at, (*uuid.UUID)(nil), "{}")
+	legacyExec(t, `INSERT INTO exception_stack_traces (id, project_id, trace_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, distributed_trace_id, session_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, exception, project, &run, "endpoint", "zero-header", "Error: zero header", at, "{}", "1.0", "api", false, &uuid.Nil, (*uuid.UUID)(nil))
+	if err := RunMoveOver(ctx, MoveOverOptions{Log: func(string, ...any) {}}); err != nil {
+		t.Fatal(err)
+	}
+	endpoint, err := EndpointRepository.FindById(ctx, project, run, &at)
+	if err != nil || endpoint == nil || endpoint.TraceId != hexId(run) || endpoint.SpanId != hexId(run) {
+		t.Fatalf("migrated endpoint: %+v %v", endpoint, err)
+	}
+	graph, err := SpanRepository.FindTrace(ctx, []uuid.UUID{project}, hexId(run), at)
+	if err != nil || len(graph.Spans) != 2 {
+		t.Fatalf("migrated root and child: %+v %v", graph, err)
+	}
+	for _, span := range graph.Spans {
+		if span.TraceId != hexId(run) || (span.SpanId == hexId(child) && span.ParentSpanId != hexId(run)) {
+			t.Fatalf("migrated span identity: %+v", span)
+		}
+	}
+	exc, err := ExceptionStackTraceRepository.FindById(ctx, project, exception, &at)
+	if err != nil || exc == nil || exc.TraceId != hexId(run) || exc.SpanId != hexId(run) {
+		t.Fatalf("migrated exception: %+v %v", exc, err)
+	}
+	owner, err := FindExceptionOwner(ctx, *exc)
+	if err != nil || owner == nil || owner.Name != endpoint.Endpoint {
+		t.Fatalf("migrated exception owner: %+v %v", owner, err)
 	}
 }
 
@@ -240,7 +285,7 @@ func TestMoveOverBringsHistoryIntoTheV2Tables(t *testing.T) {
 		t.Fatalf("moved endpoint: %+v %v", endpoints, err)
 	}
 	endpoint := endpoints[0]
-	if endpoint.Id != traces[0] || endpoint.SpanId != "e1e1e1e1e1e1e1e1" || endpoint.ParentSpanId != "" || endpoint.LinkedTraceId != "" || !endpoint.IsRoot ||
+	if endpoint.Id != traces[0] || endpoint.SpanId != "e1e1e1e1e1e1e1e1" || endpoint.ParentSpanId != "" || !endpoint.IsRoot ||
 		endpoint.StatusCode != 500 || endpoint.ServerName != "gateway" || len(endpoint.Attributes) != 1 || endpoint.Attributes["http.route"] != "/checkout" {
 		t.Fatalf("the endpoint keeps its row id and gains real ids, and the identity attribute is gone: %+v", endpoint)
 	}

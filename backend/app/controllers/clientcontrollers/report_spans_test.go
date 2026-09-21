@@ -22,6 +22,38 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+func TestReportKeepsNativeExceptionTraceIdentity(t *testing.T) {
+	dbtest.SetupSQLite(t)
+	project, run, distributed := uuid.New(), uuid.New(), uuid.New()
+	at := time.Now().UTC()
+	traceID, spanID := hex.EncodeToString(distributed[:]), hex.EncodeToString(run[:])
+	body, err := json.Marshal(map[string]any{
+		"collectionFrames": []any{map[string]any{"stackTraces": []any{map[string]any{
+			"traceId": run, "distributedTraceId": distributed, "stackTrace": "Error: request failed", "recordedAt": at,
+		}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest("POST", "/api/report", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set(middleware.ProjectIdContextKey, project)
+	ClientController.Report(c)
+	if rec.Code != 200 || len(c.Errors) > 0 {
+		t.Fatalf("report: %d %s %v", rec.Code, rec.Body.String(), c.Errors)
+	}
+	rows, err := telemetry.ExceptionStackTraceRepository.FindByTraceIds(context.Background(), []string{traceID}, []uuid.UUID{project}, &at)
+	if err != nil || len(rows) != 1 || rows[0].TraceId != traceID || rows[0].SpanId != spanID || rows[0].TraceType != "endpoint" {
+		t.Fatalf("native report lost its trace or owning run: %+v %v", rows, err)
+	}
+	encoded, err := json.Marshal(rows[0])
+	if err != nil || bytes.Contains(encoded, []byte("linkedTraceId")) || bytes.Contains(encoded, []byte("distributedTraceId")) {
+		t.Fatalf("retired identity exposed: %s %v", encoded, err)
+	}
+}
+
 func TestReportKeepsNativeSpanEdgesAndHistoricalTimes(t *testing.T) {
 	dbtest.SetupSQLite(t)
 	project, owner, parent, child := uuid.New(), uuid.New(), uuid.New(), uuid.New()
@@ -122,5 +154,62 @@ func TestReportKeepsNativeSpanEdgesAndHistoricalTimes(t *testing.T) {
 	id := trace.ParsedId()
 	if trace.ToTask("", "").Id != id || trace.ToEndpoint("", "").Id != id {
 		t.Fatal("generated owner identity changed between conversions")
+	}
+}
+
+func TestReportZeroDistributedIDKeepsBatchAndExceptionCorrelation(t *testing.T) {
+	for _, isTask := range []bool{false, true} {
+		name := "endpoint"
+		if isTask {
+			name = "task"
+		}
+		t.Run(name, func(t *testing.T) {
+			dbtest.SetupSQLite(t)
+			project, run, healthy := uuid.New(), uuid.New(), uuid.New()
+			at := time.Now().UTC()
+			frame := map[string]any{
+				"traces": []any{
+					map[string]any{"id": run, "endpoint": "zero-header", "isTask": isTask, "distributedTraceId": uuid.Nil, "recordedAt": at, "duration": 1000,
+						"spans": []any{map[string]any{"id": uuid.Nil, "parentSpanId": uuid.Nil, "name": "child", "startTime": at, "duration": 500}}},
+					map[string]any{"id": healthy, "endpoint": "healthy", "recordedAt": at, "duration": 1000},
+				},
+				"stackTraces": []any{map[string]any{"traceId": run, "distributedTraceId": uuid.Nil, "isTask": isTask, "stackTrace": "Error: zero header", "recordedAt": at}},
+			}
+			body, err := json.Marshal(map[string]any{"collectionFrames": []any{frame}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest("POST", "/api/report", bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			c.Set(middleware.ProjectIdContextKey, project)
+			ClientController.Report(c)
+			if rec.Code != 200 || len(c.Errors) > 0 {
+				t.Fatalf("report: %d %v", rec.Code, c.Errors)
+			}
+			ctx := context.Background()
+			if endpoint, err := telemetry.EndpointRepository.FindById(ctx, project, healthy, &at); err != nil || endpoint == nil {
+				t.Fatalf("healthy request in the batch was lost: %+v %v", endpoint, err)
+			}
+			traceId := hex.EncodeToString(run[:])
+			whole, err := telemetry.SpanRepository.FindTrace(ctx, []uuid.UUID{project}, traceId, at)
+			if err != nil || len(whole.Spans) != 2 {
+				t.Fatalf("native root and child: %+v %v", whole, err)
+			}
+			for _, span := range whole.Spans {
+				if span.TraceId != traceId || span.SpanId == hex.EncodeToString(uuid.Nil[:]) || (span.Name == "child" && span.ParentSpanId != traceId) {
+					t.Fatalf("invalid native identity: %+v", span)
+				}
+			}
+			exceptions, err := telemetry.ExceptionStackTraceRepository.FindAllByTraceId(ctx, project, traceId, &at)
+			if err != nil || len(exceptions) != 1 || exceptions[0].SpanId != traceId {
+				t.Fatalf("exception lost its run: %+v %v", exceptions, err)
+			}
+			owner, err := telemetry.FindExceptionOwner(ctx, exceptions[0])
+			if err != nil || owner == nil || owner.TraceType != name || owner.Name != "zero-header" {
+				t.Fatalf("exception owner: %+v %v", owner, err)
+			}
+		})
 	}
 }

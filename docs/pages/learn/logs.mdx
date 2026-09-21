@@ -110,7 +110,7 @@ A few details worth knowing:
 When your SDK emits a log inside an active OTel span context, the log record automatically carries that span's `trace_id` and `span_id`. This means:
 
 - Every endpoint and task detail page has a **Logs** panel showing the log lines for that trace.
-- When a trace crosses service boundaries, the **Related Traces** tab also resolves linked trace IDs within the selected project and surrounding time window.
+- Logs from services reporting to the selected project are shown together when they share the trace ID. The trace log panel does not cross project boundaries.
 - Jumping from a log to the trace that produced it is a single click in the dashboard.
 
 No extra configuration is required. The standard OTel context propagation carries the IDs to your logger.
@@ -127,4 +127,4 @@ See the SDK-specific guides for setup instructions:
 - [Symfony](/client/otel/symfony/logs): Monolog handler and the OTel PHP Logs API
 - [Cloudflare Workers](/client/otel/cloudflare): Worker-side OTel logs exporter
 
-For API callers, `POST /api/logs` accepts `traceId` for an exact trace and retains `distributedTraceId` for bounded linked-trace expansion in the selected project. `excludeTraceId` removes one trace from that expansion and requires `distributedTraceId`. Invalid IDs return an error rather than broadening the query.
+For API callers, `POST /api/logs` accepts `traceId` and optional `spanId`, scoped to the selected project and time window. The retired `distributedTraceId` and `excludeTraceId` selectors return 400, so stale clients cannot silently widen a query. Invalid trace IDs also return 400.

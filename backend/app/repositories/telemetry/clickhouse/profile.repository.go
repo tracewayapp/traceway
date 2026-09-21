@@ -73,7 +73,7 @@ func (r *profileRepository) InsertProfilesAsync(ctx context.Context, profiles []
 		return nil
 	}
 	batch, err := chdb.Conn.PrepareBatch(chdb.BatchCtx(),
-		"INSERT INTO profiles (id, project_id, recorded_at, duration, service_name, profile_type, unit, is_gauge, sample_count, total_value, server_name, app_version, attributes, storage_key, trace_id, span_id, distributed_trace_id)")
+		"INSERT INTO profiles (id, project_id, recorded_at, duration, service_name, profile_type, unit, is_gauge, sample_count, total_value, server_name, app_version, attributes, storage_key, trace_id, span_id)")
 	if err != nil {
 		return err
 	}
@@ -87,7 +87,7 @@ func (r *profileRepository) InsertProfilesAsync(ctx context.Context, profiles []
 		if err := batch.Append(
 			p.Id, p.ProjectId, p.RecordedAt, int64(p.Duration), p.ServiceName, p.ProfileType, p.Unit, boolToUInt8(p.IsGauge),
 			p.SampleCount, p.TotalValue, p.ServerName, p.AppVersion, attributesJSON, p.StorageKey,
-			p.TraceId, p.SpanId, p.DistributedTraceId,
+			p.TraceId, p.SpanId,
 		); err != nil {
 			return err
 		}

@@ -23,7 +23,7 @@ Each table is indexed and shaped for one job: answering "what's slow?", "what's 
 
 ## Root and non-root entities
 
-Endpoints, Tasks, and AI Traces all carry an `is_root` flag. A row is **non-root** when the span that produced it was triggered by another trace: a queue worker started by an HTTP request, an LLM call made inside that same handler, a downstream service hop. Non-root rows link back to the originating trace via the auto-derived `distributed_trace_id`, so the distributed-trace view shows the full picture across all the entities that share one OTel trace id.
+Endpoints, Tasks, and AI Traces all carry an `is_root` flag. A row is **non-root** when the span that produced it was a child of another span: a queue worker started by an HTTP request, an LLM call made inside that same handler, a downstream service hop. Non-root rows link back to the originating trace via their `traceId`, so the distributed-trace view shows the full picture across all the entities that share one OTel trace id.
 
 [More on root vs non-root →](/learn/traces#root-and-non-root-entities)
 

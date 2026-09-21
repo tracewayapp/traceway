@@ -1,14 +1,22 @@
-import Image from "next/image";
+import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Network, Video, FileCode, TrendingUp } from "lucide-react";
+import { ArrowRight, Braces, GitBranch, Network, Radio } from "lucide-react";
 
 import { Chip } from "@/components/chip";
 import { SectionHead } from "@/components/section-head";
-import { FeatureRow } from "@/components/feature-row";
-import { BentoGrid, BentoCell } from "@/components/bento-grid";
 import { FaqList } from "@/components/faq-list";
 import { FinalCTA } from "@/components/final-cta";
 import { AuroraBackground } from "@/components/aurora-background";
+import { TracingShowcase } from "@/components/tracing-showcase";
+import { ScreenshotZoom } from "@/components/screenshot-zoom";
+import { tracingScreenshots } from "@/lib/tracing-screenshots";
+
+export const metadata: Metadata = {
+  title: "OpenTelemetry Tracing & Span Explorer | Traceway",
+  description: "Search OpenTelemetry spans by service, duration, status and attributes. Follow a trace across services, inspect its waterfall and read correlated logs in Traceway.",
+};
+
+const tracingDocs = "https://docs.tracewayapp.com/client/otel/traces";
 
 export default function TracesPage() {
   return (
@@ -16,21 +24,18 @@ export default function TracesPage() {
       <section className="hero hero-product relative">
         <AuroraBackground variant="hero" />
         <div className="wrap relative z-10">
-          <Chip>
-            <Network className="h-3 w-3 inline mr-1" />
-            Traces
-          </Chip>
-          <h1 className="mt-6">
-            See the user behind <em>every backend error.</em>
+          <Chip><Network className="mr-1 inline h-3 w-3" />OpenTelemetry tracing</Chip>
+          <h1 className="mt-6 max-w-5xl">
+            Search any span.<br /><em>Follow the whole trace.</em>
           </h1>
           <p className="hero-sub">
-            When a backend service throws an exception, Traceway shows you the
-            user&apos;s session replay, the cross-service trace, and the exact
-            span that failed. No log-digging. No guessing what happened.
+            Find the slow query, failed request or background job. Open its trace
+            to see the services involved, where the time went, and what the logs
+            say—all connected by the original OpenTelemetry trace ID.
           </p>
           <div className="hero-cta-row">
-            <Link href="https://docs.tracewayapp.com" className="btn btn-accent">
-              Get Started <ArrowRight className="h-4 w-4" />
+            <Link href={tracingDocs} className="btn btn-accent">
+              Connect OpenTelemetry <ArrowRight className="h-4 w-4" />
             </Link>
             <Link href="https://cloud.tracewayapp.com/register" className="btn btn-ghost">
               Try Traceway Cloud
@@ -39,149 +44,115 @@ export default function TracesPage() {
         </div>
       </section>
 
-      {/* Distributed trace example, absorbed from home */}
-      {/* WHITE BAND: feature sections render on white */}
+      <section className="wrap pb-16 sm:pb-20" aria-label="Explore tracing in Traceway">
+        <TracingShowcase />
+      </section>
+
       <div className="band-light">
-        <section className="wrap py-20">
+        <section className="wrap py-16 sm:py-20" aria-label="OpenTelemetry features">
           <SectionHead
-            eyebrow="Cross-service"
-            title="Trace requests across every service"
-            description="Follow a single user action from the browser through your API gateway, backend services, and database calls. See the full picture in one distributed trace."
+            eyebrow="OpenTelemetry throughout"
+            title={<>Keep the context <em>your tools already send.</em></>}
+            description="Send traces from your existing OpenTelemetry SDK or Collector over OTLP/HTTP. Your services keep their trace IDs, span IDs and parent relationships."
           />
-          <div className="mt-8 max-w-4xl mx-auto">
-            <Image
-              src="/images/traces-cross-service.png"
-              alt="Distributed trace across multiple services"
-              width={1600}
-              height={500}
-              className="w-full h-auto rounded-[12px]"
-              style={{ border: "1px solid var(--hair)" }}
-            />
+          <div className="grid gap-10 md:grid-cols-3">
+            {[
+              {
+                icon: Radio,
+                title: "Search beyond HTTP",
+                text: "Database calls, internal operations, producers and consumers are all searchable spans. Filter the work itself, even when it has no endpoint or task page.",
+              },
+              {
+                icon: GitBranch,
+                title: "Follow service boundaries",
+                text: "See one trace across services and the projects you can access in your organization. Expand branches, spot errors and jump straight to a selected span.",
+              },
+              {
+                icon: Braces,
+                title: "Preserve the OTel detail",
+                text: "Original OTLP payloads retain typed attributes, resource and scope metadata, events and span links. Retrieve a stored span through the OTLP export API when you need its full payload.",
+              },
+            ].map(({ icon: Icon, title, text }) => (
+              <div key={title} className="border-t border-hair-2 pt-6">
+                <Icon className="mb-5 h-5 w-5 text-a2" aria-hidden="true" />
+                <h3 className="text-xl">{title}</h3>
+                <p className="mt-3 text-sm leading-relaxed text-fg-2">{text}</p>
+              </div>
+            ))}
           </div>
         </section>
 
-        {/* Full distributed trace screenshot */}
-        <section className="wrap">
-          <FeatureRow
-            eyebrow="Waterfall"
-            title={
-              <>
-                Every span. <em>Every hop.</em>
-              </>
-            }
-            description="Visualize a request as a waterfall: each hop between services shows duration, status, and the exact span where latency or errors appear. Click any span to open its logs, exceptions, and attributes."
-            bullets={[
-              "Cross-service distributed trace propagation",
-              "W3C Trace Context standard headers",
-              "Drill-down to span attributes, logs, events",
-              "Async workflows (Kafka, RabbitMQ, SQS)",
-            ]}
-            image={{ src: "/images/traces-spans-waterfall.png", alt: "Span waterfall timing breakdown", width: 1600, height: 500 }}
-          />
-        </section>
-
-        {/* Session replay + backend errors */}
-        <section className="wrap">
-          <FeatureRow
-            reverse
-            eyebrow="Replay"
-            title="See what the user did when the backend broke"
-            description="Traceway connects frontend session replays to backend exceptions. When your payment service returns a 500, you don't just see the stack trace. You see the user clicking Checkout, filling in their card, and hitting submit."
-            bullets={[
-              "Frontend replay linked to backend errors",
-              "Automatic correlation via trace ID",
-              "No manual reproduction needed",
-              "Works across browser and server",
-            ]}
-            image={{ src: "/images/session-replay-viewer.png", alt: "Session replay linked to trace" }}
-          />
-        </section>
-
-        {/* Two card bento */}
-        <section className="wrap py-10">
+        <section className="wrap pb-16 sm:pb-20" aria-label="Correlated logs">
           <SectionHead
-            eyebrow="Deep context"
-            title={
-              <>
-                More than spans, <em>full context</em>
-              </>
-            }
+            eyebrow="Correlated logs"
+            title={<>The request failed. <em>Here is what it logged.</em></>}
+            description="Read logs carrying the same trace ID alongside the waterfall. See the emitting service and span, then expand a record for its attributes. Logs stay scoped to the selected project."
           />
-          <BentoGrid>
-            <BentoCell
-              size="wide"
-              icon={FileCode}
-              title="Source map stack trace resolution"
-              iconColor="var(--a4)"
-            >
-              <p>
-                Minified JavaScript stack traces are resolved to original source
-                files and line numbers automatically. Upload your source maps and
-                every frontend error shows readable, actionable traces. Works with
-                webpack, esbuild, and Vite.
+          <figure className="overflow-hidden rounded-xl border border-hair-2 bg-ink-1">
+            <ScreenshotZoom images={tracingScreenshots} index={3} />
+            <figcaption className="px-5 py-4 text-sm leading-relaxed text-fg-2">
+              The same checkout shown above: a 950 ms payment timeout, followed by
+              a failed-order event and the gateway&apos;s 502 response. Demo data.
+            </figcaption>
+          </figure>
+        </section>
+
+        <section className="wrap border-t border-hair py-16" aria-label="Browser tracing">
+          <div className="grid items-start gap-8 md:grid-cols-2 md:gap-16">
+            <h2>From the browser <em>to the backend.</em></h2>
+            <div>
+              <p className="leading-relaxed text-fg-2">
+                The Traceway browser SDK propagates W3C trace context on configured
+                requests. When your backend instrumentation continues that context,
+                captured errors and sessions can carry the same trace ID. Add session
+                replay to see what the user was doing alongside the technical context.
               </p>
-            </BentoCell>
-            <BentoCell
-              size="tall"
-              icon={TrendingUp}
-              title="Impact propagation"
-              iconColor="var(--a2)"
-            >
-              <p>
-                The Impact Score extends across service boundaries. When an
-                upstream service degrades, its impact propagates to every
-                downstream consumer, so you fix the root cause, not the symptoms.
-              </p>
-            </BentoCell>
-          </BentoGrid>
+              <Link href="https://docs.tracewayapp.com/client/js-sdk/distributed-tracing" className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-a2 underline-offset-4 hover:underline">
+                Set up browser-to-backend tracing <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+          </div>
         </section>
       </div>
 
-      <FinalCTA
-        title={
-          <>
-            Trace every hop, <em>not just the first</em>.
-          </>
-        }
-        description="Connect an SDK, propagate one trace ID, and see the whole story."
-        primary={{ label: "Get Started", href: "https://docs.tracewayapp.com" }}
-      />
-
-      <section className="wrap pt-10 pb-24">
-        <div className="max-w-3xl mx-auto">
-          <SectionHead align="center" eyebrow="FAQ" title="Questions about traces" />
-          <div className="mt-4">
-            <FaqList
-              items={[
-                {
-                  q: "How does distributed tracing work?",
-                  a: "Traceway propagates a trace ID across every service in a request chain. The frontend SDK generates the ID and passes it to your backend via the traceparent header (W3C Trace Context). Each backend service forwards it to downstream calls. Every span, exception, and session replay recorded with that trace ID is linked together, giving you a complete picture of a single user action across your entire architecture.",
-                },
-                {
-                  q: "Does Traceway connect frontend and backend issues?",
-                  a: "Yes. When a backend service returns an error, Traceway links it to the frontend session replay that triggered the request. You see the user's clicks and navigations alongside the server-side stack trace and span waterfall. Both sides are connected automatically via the shared trace ID.",
-                },
-                {
-                  q: "How does distributed tracing connect to session replay?",
-                  a: "Traceway's frontend SDK generates a trace ID for each user interaction and passes it to your backend via the traceparent header. When the backend reports a span or exception with that trace ID, Traceway links the frontend session replay to the backend trace automatically.",
-                },
-                {
-                  q: "What protocols does Traceway use for trace propagation?",
-                  a: "Traceway supports W3C Trace Context (traceparent/tracestate headers) and is compatible with any OpenTelemetry-instrumented service. If your services already propagate trace context, Traceway picks it up automatically.",
-                },
-                {
-                  q: "Do I need to instrument both frontend and backend?",
-                  a: "For the full experience (session replay linked to backend traces), yes. The frontend SDK captures user interactions and the backend middleware captures server-side spans. Both connect via the shared trace ID. However, backend-only distributed tracing works independently.",
-                },
-                {
-                  q: "Does distributed tracing work with message queues and async workflows?",
-                  a: "Yes. Traceway uses W3C Trace Context, and OpenTelemetry instrumentation libraries for Kafka, RabbitMQ, SQS, and other message brokers propagate the trace context through message headers automatically. When a consumer processes a message, its spans are linked to the original producer's trace, so an API that publishes to Kafka, which triggers a worker, which calls a downstream service, appears as a single connected trace.",
-                },
-              ]}
-            />
-          </div>
+      <section className="wrap py-16 sm:py-20" aria-label="Tracing questions">
+        <div className="mx-auto max-w-3xl">
+          <SectionHead align="center" eyebrow="FAQ" title="Questions about tracing" />
+          <FaqList items={[
+            {
+              q: "Can I use my existing OpenTelemetry instrumentation?",
+              a: "Yes. Send traces with an OpenTelemetry SDK or Collector using OTLP over HTTP, in protobuf or JSON format. Traceway keeps the original trace and span IDs. Backend tracing works independently of the Traceway browser SDK.",
+            },
+            {
+              q: "What can I search in the span explorer?",
+              a: "Search received spans by name, service, span kind, status, minimum or maximum duration, trace ID and exact attribute values within a time range. HTTP calls, database queries, internal spans and messaging operations are all available. Open a result to view its trace with that span selected.",
+            },
+            {
+              q: "How are spans connected across services?",
+              a: "Your instrumentation propagates W3C trace context between services. Spans in the same trace share a trace ID, and parent span IDs describe their relationships. Traceway assembles that trace across the projects you can access in the selected organization.",
+            },
+            {
+              q: "Are span links the same as parent-child relationships?",
+              a: "No. OpenTelemetry span links can reference spans in the same trace or a different trace, for example in a batch or asynchronous workflow. Traceway preserves those links in the original OTLP payload and export. They do not merge separate traces into one waterfall. Whether a queue consumer continues a trace or links to it depends on your instrumentation.",
+            },
+            {
+              q: "How do logs connect to a trace?",
+              a: "Export logs with a trace ID and, when available, a span ID. The trace page shows matching logs in the selected project and surrounding time window, with their service and span names. A span ID lets you narrow a log search to a specific operation.",
+            },
+            {
+              q: "Can I connect browser errors and session replay?",
+              a: "Yes. Configure W3C propagation in the Traceway browser SDK and context extraction in your backend instrumentation. Errors and sessions carrying that trace ID can be correlated with the backend trace. For cross-origin requests, allow the destination in the SDK and permit traceparent and tracestate in your server's CORS policy.",
+            },
+          ]} />
         </div>
       </section>
+
+      <FinalCTA
+        title={<>Bring your spans. <em>See the request.</em></>}
+        description="Connect your OpenTelemetry exporter and start with the span explorer."
+        primary={{ label: "Connect OpenTelemetry", href: tracingDocs }}
+        secondary={{ label: "Try Traceway Cloud", href: "https://cloud.tracewayapp.com/register" }}
+      />
     </main>
   );
 }

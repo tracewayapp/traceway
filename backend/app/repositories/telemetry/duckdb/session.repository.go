@@ -18,16 +18,16 @@ import (
 )
 
 type sessionRow struct {
-	Id                 uuid.UUID                 `lit:"id"`
-	ProjectId          uuid.UUID                 `lit:"project_id"`
-	StartedAt          sqlitetypes.SQLiteTime    `lit:"started_at"`
-	EndedAt            *sqlitetypes.SQLiteTime   `lit:"ended_at"`
-	Duration           int64                     `lit:"duration"`
-	ClientIP           string                    `lit:"client_ip"`
-	Attributes         sqlitetypes.SQLiteJSONMap `lit:"attributes"`
-	AppVersion         string                    `lit:"app_version"`
-	ServerName         string                    `lit:"server_name"`
-	DistributedTraceId *uuid.UUID                `lit:"distributed_trace_id"`
+	Id         uuid.UUID                 `lit:"id"`
+	ProjectId  uuid.UUID                 `lit:"project_id"`
+	StartedAt  sqlitetypes.SQLiteTime    `lit:"started_at"`
+	EndedAt    *sqlitetypes.SQLiteTime   `lit:"ended_at"`
+	Duration   int64                     `lit:"duration"`
+	ClientIP   string                    `lit:"client_ip"`
+	Attributes sqlitetypes.SQLiteJSONMap `lit:"attributes"`
+	AppVersion string                    `lit:"app_version"`
+	ServerName string                    `lit:"server_name"`
+	TraceId    string                    `lit:"trace_id"`
 }
 
 type sessionRowNaming struct{ lit.DefaultDbNamingStrategy }
@@ -44,14 +44,14 @@ func init() {
 
 func (row *sessionRow) toModel() models.Session {
 	s := models.Session{
-		Id:                 row.Id,
-		ProjectId:          row.ProjectId,
-		StartedAt:          row.StartedAt.Time,
-		Duration:           row.Duration,
-		ClientIP:           row.ClientIP,
-		AppVersion:         row.AppVersion,
-		ServerName:         row.ServerName,
-		DistributedTraceId: row.DistributedTraceId,
+		Id:         row.Id,
+		ProjectId:  row.ProjectId,
+		StartedAt:  row.StartedAt.Time,
+		Duration:   row.Duration,
+		ClientIP:   row.ClientIP,
+		AppVersion: row.AppVersion,
+		ServerName: row.ServerName,
+		TraceId:    row.TraceId,
 	}
 	if row.EndedAt != nil {
 		t := row.EndedAt.Time
@@ -73,15 +73,15 @@ func (r *sessionRepository) Upsert(ctx context.Context, sessions []models.Sessio
 		return nil
 	}
 	const stmt = `INSERT INTO sessions
-		(id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, distributed_trace_id)
-		VALUES (:id, :project_id, :started_at, :ended_at, :duration, :client_ip, :attributes, :app_version, :server_name, :distributed_trace_id)
+		(id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, trace_id)
+		VALUES (:id, :project_id, :started_at, :ended_at, :duration, :client_ip, :attributes, :app_version, :server_name, :trace_id)
 		ON CONFLICT (id) DO UPDATE SET
 			ended_at = COALESCE(excluded.ended_at, sessions.ended_at),
 			duration = CASE WHEN excluded.duration > 0 THEN excluded.duration ELSE sessions.duration END,
 			attributes = excluded.attributes,
 			app_version = excluded.app_version,
 			server_name = excluded.server_name,
-			distributed_trace_id = excluded.distributed_trace_id`
+			trace_id = excluded.trace_id`
 
 	tx, err := db.TelemetryDB.BeginTx(ctx, nil)
 	if err != nil {
@@ -103,22 +103,17 @@ func (r *sessionRepository) Upsert(ctx context.Context, sessions []models.Sessio
 			t := s.EndedAt.UTC()
 			endedAt = &t
 		}
-		var distTraceId *string
-		if s.DistributedTraceId != nil {
-			v := s.DistributedTraceId.String()
-			distTraceId = &v
-		}
 		query, args, err := lit.ParseNamedQuery(db.Driver, stmt, lit.P{
-			"id":                   s.Id.String(),
-			"project_id":           s.ProjectId.String(),
-			"started_at":           s.StartedAt.UTC(),
-			"ended_at":             endedAt,
-			"duration":             s.Duration,
-			"client_ip":            s.ClientIP,
-			"attributes":           attrs,
-			"app_version":          s.AppVersion,
-			"server_name":          s.ServerName,
-			"distributed_trace_id": distTraceId,
+			"id":          s.Id.String(),
+			"project_id":  s.ProjectId.String(),
+			"started_at":  s.StartedAt.UTC(),
+			"ended_at":    endedAt,
+			"duration":    s.Duration,
+			"client_ip":   s.ClientIP,
+			"attributes":  attrs,
+			"app_version": s.AppVersion,
+			"server_name": s.ServerName,
+			"trace_id":    s.TraceId,
 		})
 		if err != nil {
 			return err
@@ -177,7 +172,7 @@ func (r *sessionRepository) FindAll(ctx context.Context, projectId uuid.UUID, fr
 	}
 
 	offset := (page - 1) * pageSize
-	query := "SELECT id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, distributed_trace_id FROM sessions WHERE project_id = :project_id AND started_at >= :start AND started_at <= :end" + whereExtra + " ORDER BY " + orderBy + " " + sortDir + " LIMIT :limit OFFSET :offset"
+	query := "SELECT id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, trace_id FROM sessions WHERE project_id = :project_id AND started_at >= :start AND started_at <= :end" + whereExtra + " ORDER BY " + orderBy + " " + sortDir + " LIMIT :limit OFFSET :offset"
 
 	queryParams := lit.P{
 		"project_id": projectId,
@@ -231,7 +226,7 @@ func buildSessionFilterClauseDuckDB(search string, filters []shared.SessionAttri
 }
 
 func (r *sessionRepository) FindById(ctx context.Context, projectId, sessionId uuid.UUID, startedAt *time.Time) (*models.Session, error) {
-	query := "SELECT id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, distributed_trace_id FROM sessions WHERE project_id = :project_id AND id = :id"
+	query := "SELECT id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, trace_id FROM sessions WHERE project_id = :project_id AND id = :id"
 	params := lit.P{"project_id": projectId, "id": sessionId}
 	if startedAt != nil {
 		from, to := shared.TraceWindowBounds(*startedAt)

@@ -18,13 +18,14 @@ const (
 )
 
 // One request seen from a browser and three services, stored the way ingest stores it: every row keeps the trace id
-// it arrived with, and only the first service knows the browser's trace, as its linked trace.
-func seedLinkedTrace(t *testing.T, gateway, payments, stranger uuid.UUID, at time.Time) {
+// it arrived with. Retired browser correlation metadata must not affect lookups.
+func seedTraceWithLegacyMetadata(t *testing.T, gateway, payments, stranger uuid.UUID, at time.Time) {
 	t.Helper()
 	ctx := context.Background()
 	endpoint := func(project uuid.UUID, name, trace, span, parent, linked string, recordedAt time.Time) models.Endpoint {
 		row := makeEndpoint(project, name, time.Millisecond, 200, recordedAt)
-		row.TraceId, row.SpanId, row.ParentSpanId, row.LinkedTraceId, row.IsRoot = trace, span, parent, linked, parent == ""
+		row.TraceId, row.SpanId, row.ParentSpanId, row.IsRoot = trace, span, parent, parent == ""
+		row.Attributes = map[string]string{"traceway.distributed_trace_id": linked}
 		return row
 	}
 	if err := EndpointRepository.InsertAsync(ctx, []models.Endpoint{
@@ -48,7 +49,8 @@ func seedLinkedTrace(t *testing.T, gateway, payments, stranger uuid.UUID, at tim
 	}
 	exception := func(project uuid.UUID, hash, trace, span, kind, linked string) models.ExceptionStackTrace {
 		row := makeException(project, hash, "Error: "+hash, at.Add(4*time.Millisecond))
-		row.TraceId, row.SpanId, row.TraceType, row.LinkedTraceId = trace, span, kind, linked
+		row.TraceId, row.SpanId, row.TraceType = trace, span, kind
+		row.Attributes = map[string]string{"traceway.distributed_trace_id": linked}
 		return row
 	}
 	message := exception(payments, "message", backendTrace, "e200000000000002", "endpoint", "")
@@ -64,12 +66,12 @@ func seedLinkedTrace(t *testing.T, gateway, payments, stranger uuid.UUID, at tim
 	}
 }
 
-func TestFindByTraceIdsFollowsTheTraceAndItsLink(t *testing.T) {
+func TestFindByTraceIdsNeverFollowsLegacyLinks(t *testing.T) {
 	setupTestDB(t)
 	ctx := context.Background()
 	gateway, payments, stranger := uuid.New(), uuid.New(), uuid.New()
 	at := truncateMs(time.Now().UTC())
-	seedLinkedTrace(t, gateway, payments, stranger, at)
+	seedTraceWithLegacyMetadata(t, gateway, payments, stranger, at)
 	readable := []uuid.UUID{gateway, payments}
 
 	names := func(endpoints []models.Endpoint) string {
@@ -89,20 +91,20 @@ func TestFindByTraceIdsFollowsTheTraceAndItsLink(t *testing.T) {
 		t.Fatalf("the trace id finds every service's endpoint in the readable projects, inside the window: %s", got)
 	}
 	for _, endpoint := range byTrace {
-		if endpoint.Endpoint == "GET /checkout" && (endpoint.SpanId != "e100000000000001" || endpoint.ParentSpanId != "" || endpoint.LinkedTraceId != browserTrace || !endpoint.IsRoot) {
+		if endpoint.Endpoint == "GET /checkout" && (endpoint.SpanId != "e100000000000001" || endpoint.ParentSpanId != "" || !endpoint.IsRoot) {
 			t.Fatalf("ids did not round trip: %+v", endpoint)
 		}
-		if endpoint.Endpoint == "POST /charge" && (endpoint.ParentSpanId != "c100000000000001" || endpoint.LinkedTraceId != "" || endpoint.IsRoot) {
+		if endpoint.Endpoint == "POST /charge" && (endpoint.ParentSpanId != "c100000000000001" || endpoint.IsRoot) {
 			t.Fatalf("ids did not round trip: %+v", endpoint)
 		}
 	}
 
 	byLink, err := EndpointRepository.FindByTraceIds(ctx, []string{browserTrace}, readable, &at)
-	if err != nil || names(byLink) != "GET /checkout" {
-		t.Fatalf("the browser's trace id finds the endpoint linked to it: %s %v", names(byLink), err)
+	if err != nil || len(byLink) != 0 {
+		t.Fatalf("legacy metadata must not join separate traces: %s %v", names(byLink), err)
 	}
 	both, err := EndpointRepository.FindByTraceIds(ctx, []string{browserTrace, otherTrace}, readable, &at)
-	if err != nil || names(both) != "GET /checkout, GET /unrelated" {
+	if err != nil || names(both) != "GET /unrelated" {
 		t.Fatalf("several ids in one read: %s %v", names(both), err)
 	}
 	unbounded, err := EndpointRepository.FindByTraceIds(ctx, []string{backendTrace}, readable, nil)
@@ -145,7 +147,7 @@ func TestExceptionsAreFoundByTraceAndKeepTheirSpan(t *testing.T) {
 	ctx := context.Background()
 	gateway, payments, stranger := uuid.New(), uuid.New(), uuid.New()
 	at := truncateMs(time.Now().UTC())
-	seedLinkedTrace(t, gateway, payments, stranger, at)
+	seedTraceWithLegacyMetadata(t, gateway, payments, stranger, at)
 
 	hashes := func(exceptions []models.ExceptionStackTrace) string {
 		out := make([]string, len(exceptions))
@@ -190,7 +192,7 @@ func TestFindExceptionOwner(t *testing.T) {
 	ctx := context.Background()
 	gateway, payments, stranger := uuid.New(), uuid.New(), uuid.New()
 	at := truncateMs(time.Now().UTC())
-	seedLinkedTrace(t, gateway, payments, stranger, at)
+	seedTraceWithLegacyMetadata(t, gateway, payments, stranger, at)
 	// POST /charge (e2) -> db span (5b) -> driver span (5c). The task hangs under e2 as well.
 	span := func(id, parent string) models.Span {
 		return models.Span{ProjectId: payments, TraceId: backendTrace, SpanId: id, ParentSpanId: parent, Name: id, StartTime: at, RecordedAt: at, Duration: time.Millisecond}

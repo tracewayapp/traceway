@@ -49,7 +49,7 @@
 
 	function loadAttributes(span: Span): Promise<SpanAttributes> {
 		return api.get(
-			`/spans/traces/${data.traceId}/spans/${span.spanId}/attributes?at=${encodeURIComponent(span.startTime)}`,
+			`/spans/traces/${data.traceId}/spans/${span.spanId}/attributes?at=${encodeURIComponent(span.recordedAt)}`,
 			{ projectId: span.projectId }
 		);
 	}
@@ -174,7 +174,7 @@
 				projectId={projectsState.currentProjectId ?? ''}
 				traceId={data.traceId}
 				{spans}
-				traceRecordedAt={summary.startTime}
+				traceRecordedAt={data.at ?? spans[0]?.recordedAt ?? summary.startTime}
 			/>
 		{/if}
 	{/if}

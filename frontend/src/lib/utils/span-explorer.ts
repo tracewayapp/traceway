@@ -21,13 +21,13 @@ export type SpanSearchFilters = {
 };
 
 export function spanTraceHref(
-	span: Pick<Span, 'traceId' | 'spanId' | 'startTime'>,
+	span: Pick<Span, 'traceId' | 'spanId' | 'recordedAt'>,
 	options: { focusSpan?: boolean } = {}
 ): string | undefined {
 	if (!span.traceId) return undefined;
 	const focus = options.focusSpan && span.spanId ? `&span=${span.spanId}` : '';
 	return addStickyParamsToHref(
-		`/spans/${span.traceId}?at=${encodeURIComponent(span.startTime)}${focus}`
+		`/spans/${span.traceId}?at=${encodeURIComponent(span.recordedAt)}${focus}`
 	);
 }
 

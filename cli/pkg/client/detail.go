@@ -54,23 +54,21 @@ type SpanGraphStatus struct {
 }
 
 // Task mirrors models.Task: one run of a background task. TraceId and SpanId
-// are the ids of the span it was promoted from; LinkedTraceId is another trace
-// it belongs with, such as the browser's.
+// are the IDs of the span it was promoted from.
 type Task struct {
-	Id            uuid.UUID         `json:"id"`
-	ProjectId     uuid.UUID         `json:"projectId"`
-	TaskName      string            `json:"taskName"`
-	Duration      time.Duration     `json:"duration"`
-	RecordedAt    time.Time         `json:"recordedAt"`
-	ClientIP      string            `json:"clientIP"`
-	Attributes    map[string]string `json:"attributes"`
-	AppVersion    string            `json:"appVersion"`
-	ServerName    string            `json:"serverName"`
-	TraceId       string            `json:"traceId"`
-	SpanId        string            `json:"spanId"`
-	ParentSpanId  string            `json:"parentSpanId,omitempty"`
-	LinkedTraceId string            `json:"linkedTraceId,omitempty"`
-	IsRoot        bool              `json:"isRoot"`
+	Id           uuid.UUID         `json:"id"`
+	ProjectId    uuid.UUID         `json:"projectId"`
+	TaskName     string            `json:"taskName"`
+	Duration     time.Duration     `json:"duration"`
+	RecordedAt   time.Time         `json:"recordedAt"`
+	ClientIP     string            `json:"clientIP"`
+	Attributes   map[string]string `json:"attributes"`
+	AppVersion   string            `json:"appVersion"`
+	ServerName   string            `json:"serverName"`
+	TraceId      string            `json:"traceId"`
+	SpanId       string            `json:"spanId"`
+	ParentSpanId string            `json:"parentSpanId,omitempty"`
+	IsRoot       bool              `json:"isRoot"`
 }
 
 // AiTrace mirrors models.AiTrace — one LLM call/operation.
@@ -102,7 +100,6 @@ type AiTrace struct {
 	TraceId         string            `json:"traceId"`
 	SpanId          string            `json:"spanId"`
 	ParentSpanId    string            `json:"parentSpanId,omitempty"`
-	LinkedTraceId   string            `json:"linkedTraceId,omitempty"`
 	IsRoot          bool              `json:"isRoot"`
 	ConversationId  string            `json:"conversationId"`
 	ToolCallCount   int64             `json:"toolCallCount"`
@@ -113,16 +110,16 @@ type AiTrace struct {
 
 // Session mirrors models.Session — one user session that can be replayed.
 type Session struct {
-	Id                 uuid.UUID         `json:"id"`
-	ProjectId          uuid.UUID         `json:"projectId"`
-	StartedAt          time.Time         `json:"startedAt"`
-	EndedAt            *time.Time        `json:"endedAt,omitempty"`
-	Duration           int64             `json:"duration"`
-	ClientIP           string            `json:"clientIP"`
-	Attributes         map[string]string `json:"attributes"`
-	AppVersion         string            `json:"appVersion"`
-	ServerName         string            `json:"serverName"`
-	DistributedTraceId *uuid.UUID        `json:"distributedTraceId,omitempty"`
+	Id         uuid.UUID         `json:"id"`
+	ProjectId  uuid.UUID         `json:"projectId"`
+	StartedAt  time.Time         `json:"startedAt"`
+	EndedAt    *time.Time        `json:"endedAt,omitempty"`
+	Duration   int64             `json:"duration"`
+	ClientIP   string            `json:"clientIP"`
+	Attributes map[string]string `json:"attributes"`
+	AppVersion string            `json:"appVersion"`
+	ServerName string            `json:"serverName"`
+	TraceId    string            `json:"traceId,omitempty"`
 }
 
 // LinkedException is the exception/message summary attached to endpoint, task,

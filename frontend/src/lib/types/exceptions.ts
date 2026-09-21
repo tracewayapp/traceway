@@ -12,7 +12,6 @@ export type ExceptionOccurrence = {
 	traceId: string;
 	spanId: string;
 	traceType: 'endpoint' | 'task' | 'ai_trace' | '';
-	linkedTraceId?: string;
 	exceptionHash: string;
 	stackTrace: string;
 	recordedAt: string;

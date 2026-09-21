@@ -94,3 +94,25 @@ func TestRunMigrationsOnAnnouncesEachMigrationBeforeRunningIt(t *testing.T) {
 		t.Errorf("re-running applied migrations logged %q, want silence", buf.String())
 	}
 }
+
+func TestMigrationFailureRollsBackSchemaAndVersion(t *testing.T) {
+	target := openMemorySQLite(t)
+	if _, err := target.Exec("CREATE TABLE sessions (distributed_trace_id TEXT); INSERT INTO sessions VALUES ('preserved')"); err != nil {
+		t.Fatal(err)
+	}
+	source := fstest.MapFS{"m/0001_cleanup.up.sql": {Data: []byte("ALTER TABLE sessions RENAME COLUMN distributed_trace_id TO trace_id; INSERT INTO missing_table VALUES (1)")}}
+	if err := runMigrationsOn(target, source, "m", "schema_migrations", sqliteTrackingDDL); err == nil {
+		t.Fatal("expected migration failure")
+	}
+	var id string
+	if err := target.QueryRow("SELECT distributed_trace_id FROM sessions").Scan(&id); err != nil || id != "preserved" {
+		t.Fatalf("failed migration changed the schema/data: %q: %v", id, err)
+	}
+	source["m/0001_cleanup.up.sql"].Data = []byte("ALTER TABLE sessions RENAME COLUMN distributed_trace_id TO trace_id")
+	if err := runMigrationsOn(target, source, "m", "schema_migrations", sqliteTrackingDDL); err != nil {
+		t.Fatal(err)
+	}
+	if err := target.QueryRow("SELECT trace_id FROM sessions").Scan(&id); err != nil || id != "preserved" {
+		t.Fatalf("retry lost the original ID: %q: %v", id, err)
+	}
+}

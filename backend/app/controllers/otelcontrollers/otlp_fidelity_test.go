@@ -24,7 +24,7 @@ import (
 
 func TestOTLPFullSpanRoundTrip(t *testing.T) {
 	dbtest.SetupSQLite(t)
-	trace := uuid.New()
+	trace, linkedTrace := uuid.New(), uuid.New()
 	attrs := []*commonpb.KeyValue{
 		strKV("service.name", "api"), strKV("exception.stacktrace", "keep original stack"),
 		{Key: "int", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_IntValue{IntValue: 9223372036854775807}}},
@@ -40,7 +40,7 @@ func TestOTLPFullSpanRoundTrip(t *testing.T) {
 		StartTimeUnixNano: now, EndTimeUnixNano: now + 123456789, Attributes: attrs, DroppedAttributesCount: 3, DroppedEventsCount: 4, DroppedLinksCount: 5,
 		Status: &tracepb.Status{Code: tracepb.Status_STATUS_CODE_ERROR, Message: "full status detail"},
 		Events: []*tracepb.Span_Event{{TimeUnixNano: now + 1, Name: "event", Attributes: attrs, DroppedAttributesCount: 6}},
-		Links:  []*tracepb.Span_Link{{TraceId: trace[:], SpanId: []byte{1, 2, 3, 4, 5, 6, 7, 8}, TraceState: "other=state", Flags: 0xff000301, Attributes: attrs, DroppedAttributesCount: 7}},
+		Links:  []*tracepb.Span_Link{{TraceId: linkedTrace[:], SpanId: []byte{1, 2, 3, 4, 5, 6, 7, 8}, TraceState: "other=state", Flags: 0xff000301, Attributes: attrs, DroppedAttributesCount: 7}},
 	}
 	resource := &tracepb.ResourceSpans{SchemaUrl: "https://resource/schema", Resource: &resourcepb.Resource{Attributes: attrs, DroppedAttributesCount: 8},
 		ScopeSpans: []*tracepb.ScopeSpans{{SchemaUrl: "https://scope/schema", Scope: &commonpb.InstrumentationScope{Name: "scope", Version: "1.2.3", Attributes: attrs, DroppedAttributesCount: 9}, Spans: []*tracepb.Span{source}}}}

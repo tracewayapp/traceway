@@ -46,14 +46,14 @@ func TestPromotedEntityLogCorrelation(t *testing.T) {
 						t.Fatal("expected one promoted entity")
 					}
 					var id uuid.UUID
-					var traceId, linkedTraceId string
+					var traceId string
 					switch entity.name {
 					case "task":
-						id, traceId, linkedTraceId = tasks[0].Id, tasks[0].TraceId, tasks[0].LinkedTraceId
+						id, traceId = tasks[0].Id, tasks[0].TraceId
 					case "endpoint":
-						id, traceId, linkedTraceId = endpoints[0].Id, endpoints[0].TraceId, endpoints[0].LinkedTraceId
+						id, traceId = endpoints[0].Id, endpoints[0].TraceId
 					case "ai":
-						id, traceId, linkedTraceId = aiTraces[0].Id, aiTraces[0].TraceId, aiTraces[0].LinkedTraceId
+						id, traceId = aiTraces[0].Id, aiTraces[0].TraceId
 					}
 					log := toLogRecord(testProjectId, decodeLogIDs(t, encoding, traceBytes, spanBytes), "worker", "", nil, "", "", "", nil)
 					if traceId != traceHex || traceId != log.TraceId {
@@ -61,13 +61,6 @@ func TestPromotedEntityLogCorrelation(t *testing.T) {
 					}
 					if id != otelOccurrenceID(testProjectId, &tracepb.Span{TraceId: traceBytes, SpanId: spanBytes}) {
 						t.Fatalf("occurrence ID changed: %s", id)
-					}
-					wantLink := ""
-					if override {
-						wantLink = hex.EncodeToString(groupID[:])
-					}
-					if linkedTraceId != wantLink {
-						t.Fatalf("the override links to another trace and never replaces this one: %q", linkedTraceId)
 					}
 				})
 			}

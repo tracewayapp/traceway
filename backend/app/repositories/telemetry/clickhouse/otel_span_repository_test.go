@@ -85,8 +85,10 @@ func TestOtelSpanWireRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	found[0].Attributes = attributes[span.SpanId].Attributes
-	if len(found) != 1 || !reflect.DeepEqual(found[0].Span, span.Span) {
-		t.Fatalf("source IDs/timestamps changed: want %+v; got %+v", span.Span, found)
+	expectedSpan := span.Span
+	expectedSpan.RecordedAt = start.Truncate(time.Second)
+	if !reflect.DeepEqual(found[0].Span, expectedSpan) {
+		t.Fatalf("stored span mismatch: want %+v; got %+v", expectedSpan, found)
 	}
 	payload, err := OtelSpanRepository.FindOTLP(ctx, project, span.TraceId, span.SpanId, span.StartTime)
 	if err != nil {

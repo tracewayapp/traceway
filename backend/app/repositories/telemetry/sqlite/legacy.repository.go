@@ -25,15 +25,15 @@ const legacyIdChunk = 500
 
 const (
 	legacyEndpointColumns = `id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name,
-		COALESCE(distributed_trace_id, '') AS trace_id, COALESCE(span_id, '') AS span_id, '' AS parent_span_id, '' AS linked_trace_id, is_stream, is_root`
+		COALESCE(distributed_trace_id, '') AS trace_id, COALESCE(span_id, '') AS span_id, '' AS parent_span_id, is_stream, is_root`
 	legacyTaskColumns = `id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name,
-		COALESCE(distributed_trace_id, '') AS trace_id, COALESCE(span_id, '') AS span_id, '' AS parent_span_id, '' AS linked_trace_id, is_root`
+		COALESCE(distributed_trace_id, '') AS trace_id, COALESCE(span_id, '') AS span_id, '' AS parent_span_id, is_root`
 	legacyAiTraceColumns = `id, project_id, recorded_at, duration, status_code, model, response_model, provider, operation, input_tokens, output_tokens,
 		total_tokens, cached_tokens, reasoning_tokens, input_cost, output_cost, total_cost, trace_name, user_id, finish_reason, server_name, app_version,
-		storage_key, attributes, COALESCE(distributed_trace_id, '') AS trace_id, '' AS span_id, '' AS parent_span_id, '' AS linked_trace_id, is_root,
+		storage_key, attributes, COALESCE(distributed_trace_id, '') AS trace_id, '' AS span_id, '' AS parent_span_id, is_root,
 		conversation_id, tool_call_count, tool_names, flagged, flagged_terms`
 	legacyExceptionColumns = `id, project_id, COALESCE(trace_id, '') AS trace_id, '' AS span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes,
-		app_version, server_name, is_message, COALESCE(distributed_trace_id, '') AS linked_trace_id, session_id`
+		app_version, server_name, is_message, COALESCE(distributed_trace_id, ''), session_id`
 )
 
 // legacyWindow sorts only overfull one-second slices; see shared.LegacyPageOrder.
@@ -108,17 +108,27 @@ func (legacyRepository) FindAiTraces(ctx context.Context, from, to time.Time, li
 	return legacyAiTraces(ctx, query, params)
 }
 
-func (legacyRepository) FindExceptions(ctx context.Context, from, to time.Time, limit int, offset *int) ([]models.ExceptionStackTrace, error) {
+func (legacyRepository) FindExceptions(ctx context.Context, from, to time.Time, limit int, offset *int) ([]shared.LegacyException, error) {
 	query, params := legacyWindow(legacyExceptionColumns, "exception_stack_traces", from, to, limit, offset)
-	rows, err := shared.SelectLegacy[exceptionRow](ctx, db.TelemetryDB, query, params)
+	query, args, err := lit.ParseNamedQuery(db.Driver, query, params)
 	if err != nil {
 		return nil, err
 	}
-	found := make([]models.ExceptionStackTrace, len(rows))
-	for i, row := range rows {
-		found[i] = row.toModel()
+	rows, err := db.TelemetryDB.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
 	}
-	return found, nil
+	defer rows.Close()
+	var found []shared.LegacyException
+	for rows.Next() {
+		var row exceptionRow
+		var traceId string
+		if err := rows.Scan(&row.Id, &row.ProjectId, &row.TraceId, &row.SpanId, &row.TraceType, &row.ExceptionHash, &row.StackTrace, &row.RecordedAt, &row.Attributes, &row.AppVersion, &row.ServerName, &row.IsMessage, &traceId, &row.SessionId); err != nil {
+			return nil, err
+		}
+		found = append(found, shared.LegacyException{ExceptionStackTrace: row.toModel(), DistributedTraceId: traceId})
+	}
+	return found, rows.Err()
 }
 
 func (legacyRepository) FindSpans(ctx context.Context, from, to time.Time, limit int, offset *int) ([]shared.LegacySpan, error) {

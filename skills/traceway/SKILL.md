@@ -214,7 +214,7 @@ traceway exceptions list --since 7d --search "checkout" --output json \
 traceway exceptions show <hash>
 ```
 
-This is the high-value call: full stack trace, occurrence list with `recordedAt`, `attributes` (user IDs, app versions, request context), and optional `traceId` / `spanId` / `linkedTraceId` / `sessionId` per occurrence. `traceId` is the OpenTelemetry trace id (32 hex characters), the same id the request's logs and spans carry. The response also has `relatedEntity`: the endpoint, task or AI trace the newest occurrence happened in, with the `id` and `recordedAt` that `endpoints show` / `tasks show` / `ai-traces show` take. `firstSeen` correlates with deploys: a group that first appeared right after a release points at that release's diff. A bogus hash exits 5 with `not_found`; fall back to search.
+This is the high-value call: full stack trace, occurrence list with `recordedAt`, `attributes` (user IDs, app versions, request context), and optional `traceId` / `spanId` / `sessionId` per occurrence. `traceId` is the OpenTelemetry trace id (32 hex characters), the same id the request's logs and spans carry. The response also has `relatedEntity`: the endpoint, task or AI trace the newest occurrence happened in, with the `id` and `recordedAt` that `endpoints show` / `tasks show` / `ai-traces show` take. `firstSeen` correlates with deploys: a group that first appeared right after a release points at that release's diff. A bogus hash exits 5 with `not_found`; fall back to search.
 
 **When the user gave an issue URL (or hash), fix the LAST occurrence — not "the group".** A single hash can bundle *several distinct errors*: the hash is computed from a normalized stack trace with the message stripped, so two unrelated failures that share their top frames (e.g. both captured at the same middleware/recovery frame) collapse into one group. The group's representative stack trace and `firstSeen` may belong to a different, now-dormant error than the one the user is looking at. Anchor on the most recent occurrence and fix that specific failure path:
 
@@ -222,7 +222,7 @@ This is the high-value call: full stack trace, occurrence list with `recordedAt`
 # The occurrence the user actually wants: the latest one. Pin its exact message + attributes + trace.
 traceway exceptions show <hash> --output json \
   | jq '.occurrences | sort_by(.recordedAt) | last
-        | {recordedAt, message: (.stackTrace | split("\n")[0]), attributes, traceId, spanId, linkedTraceId}'
+        | {recordedAt, message: (.stackTrace | split("\n")[0]), attributes, traceId, spanId}'
 
 # Then confirm whether the group is homogeneous or mixed — distinct first lines = distinct bugs:
 traceway exceptions show <hash> --output json \

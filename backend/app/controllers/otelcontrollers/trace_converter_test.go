@@ -599,7 +599,7 @@ func TestConvertTraces_ConsumerNonRoot_BecomesTask(t *testing.T) {
 	if tasks[0].Id != wantTaskId {
 		t.Errorf("expected task.Id %s (from span_id), got %s", wantTaskId, tasks[0].Id)
 	}
-	if tasks[0].TraceId != hex.EncodeToString(traceId) || tasks[0].SpanId != hex.EncodeToString(consumerSpanId) || tasks[0].ParentSpanId == "" || tasks[0].LinkedTraceId != "" {
+	if tasks[0].TraceId != hex.EncodeToString(traceId) || tasks[0].SpanId != hex.EncodeToString(consumerSpanId) || tasks[0].ParentSpanId == "" {
 		t.Errorf("expected the task to carry its span's own ids, got %+v", tasks[0])
 	}
 

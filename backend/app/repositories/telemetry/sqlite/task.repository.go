@@ -18,20 +18,19 @@ import (
 )
 
 type task struct {
-	Id            uuid.UUID                 `lit:"id"`
-	ProjectId     uuid.UUID                 `lit:"project_id"`
-	TaskName      string                    `lit:"task_name"`
-	Duration      int64                     `lit:"duration"`
-	RecordedAt    sqlitetypes.SQLiteTime    `lit:"recorded_at"`
-	ClientIP      string                    `lit:"client_ip"`
-	Attributes    sqlitetypes.SQLiteJSONMap `lit:"attributes"`
-	AppVersion    string                    `lit:"app_version"`
-	ServerName    string                    `lit:"server_name"`
-	TraceId       string                    `lit:"trace_id"`
-	SpanId        string                    `lit:"span_id"`
-	ParentSpanId  string                    `lit:"parent_span_id"`
-	LinkedTraceId string                    `lit:"linked_trace_id"`
-	IsRoot        bool                      `lit:"is_root"`
+	Id           uuid.UUID                 `lit:"id"`
+	ProjectId    uuid.UUID                 `lit:"project_id"`
+	TaskName     string                    `lit:"task_name"`
+	Duration     int64                     `lit:"duration"`
+	RecordedAt   sqlitetypes.SQLiteTime    `lit:"recorded_at"`
+	ClientIP     string                    `lit:"client_ip"`
+	Attributes   sqlitetypes.SQLiteJSONMap `lit:"attributes"`
+	AppVersion   string                    `lit:"app_version"`
+	ServerName   string                    `lit:"server_name"`
+	TraceId      string                    `lit:"trace_id"`
+	SpanId       string                    `lit:"span_id"`
+	ParentSpanId string                    `lit:"parent_span_id"`
+	IsRoot       bool                      `lit:"is_root"`
 }
 
 type taskGroupRow struct {
@@ -69,38 +68,36 @@ func init() {
 
 func taskToRow(t models.Task) task {
 	return task{
-		Id:            t.Id,
-		ProjectId:     t.ProjectId,
-		TaskName:      t.TaskName,
-		Duration:      int64(t.Duration),
-		RecordedAt:    sqlitetypes.NewSQLiteTime(t.RecordedAt),
-		ClientIP:      t.ClientIP,
-		Attributes:    sqlitetypes.NewSQLiteJSONMap(t.Attributes),
-		AppVersion:    t.AppVersion,
-		ServerName:    t.ServerName,
-		TraceId:       t.TraceId,
-		SpanId:        t.SpanId,
-		ParentSpanId:  t.ParentSpanId,
-		LinkedTraceId: t.LinkedTraceId,
-		IsRoot:        t.IsRoot,
+		Id:           t.Id,
+		ProjectId:    t.ProjectId,
+		TaskName:     t.TaskName,
+		Duration:     int64(t.Duration),
+		RecordedAt:   sqlitetypes.NewSQLiteTime(t.RecordedAt),
+		ClientIP:     t.ClientIP,
+		Attributes:   sqlitetypes.NewSQLiteJSONMap(t.Attributes),
+		AppVersion:   t.AppVersion,
+		ServerName:   t.ServerName,
+		TraceId:      t.TraceId,
+		SpanId:       t.SpanId,
+		ParentSpanId: t.ParentSpanId,
+		IsRoot:       t.IsRoot,
 	}
 }
 
 func (r *task) toModel() models.Task {
 	t := models.Task{
-		Id:            r.Id,
-		ProjectId:     r.ProjectId,
-		TaskName:      r.TaskName,
-		Duration:      time.Duration(r.Duration),
-		RecordedAt:    r.RecordedAt.Time,
-		ClientIP:      r.ClientIP,
-		AppVersion:    r.AppVersion,
-		ServerName:    r.ServerName,
-		TraceId:       r.TraceId,
-		SpanId:        r.SpanId,
-		ParentSpanId:  r.ParentSpanId,
-		LinkedTraceId: r.LinkedTraceId,
-		IsRoot:        r.IsRoot,
+		Id:           r.Id,
+		ProjectId:    r.ProjectId,
+		TaskName:     r.TaskName,
+		Duration:     time.Duration(r.Duration),
+		RecordedAt:   r.RecordedAt.Time,
+		ClientIP:     r.ClientIP,
+		AppVersion:   r.AppVersion,
+		ServerName:   r.ServerName,
+		TraceId:      r.TraceId,
+		SpanId:       r.SpanId,
+		ParentSpanId: r.ParentSpanId,
+		IsRoot:       r.IsRoot,
 	}
 	if r.Attributes != nil {
 		t.Attributes = map[string]string(r.Attributes)
@@ -164,7 +161,7 @@ func (e *taskRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromD
 	}
 
 	rows, err := lit.SelectNamed[task](db.TelemetryDB,
-		fmt.Sprintf(`SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, linked_trace_id
+		fmt.Sprintf(`SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id
 		FROM tasks_v2 WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
 		ORDER BY %s DESC LIMIT :limit OFFSET :offset`, orderBy),
 		lit.P{"project_id": projectId, "from": sqlitetypes.NewSQLiteTime(fromDate), "to": sqlitetypes.NewSQLiteTime(toDate), "limit": pageSize, "offset": offset})
@@ -329,7 +326,7 @@ func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID
 	}
 
 	rows, err := lit.SelectNamed[task](db.TelemetryDB,
-		fmt.Sprintf(`SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, linked_trace_id
+		fmt.Sprintf(`SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id
 		FROM tasks_v2 WHERE project_id = :project_id AND task_name = :task_name AND recorded_at >= :from AND recorded_at <= :to
 		ORDER BY %s %s LIMIT :limit OFFSET :offset`, orderBy, sortDir),
 		lit.P{"project_id": projectId, "task_name": taskName, "from": sqlitetypes.NewSQLiteTime(fromDate), "to": sqlitetypes.NewSQLiteTime(toDate), "limit": pageSize, "offset": offset})
@@ -346,7 +343,7 @@ func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID
 }
 
 func (e *taskRepository) FindById(ctx context.Context, projectId, taskId uuid.UUID, recordedAt *time.Time) (*models.Task, error) {
-	query := `SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, linked_trace_id, is_root
+	query := `SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, is_root
 		FROM tasks_v2 WHERE project_id = :project_id AND id = :id`
 	params := lit.P{"project_id": projectId, "id": taskId}
 	if recordedAt != nil {
@@ -507,7 +504,7 @@ func (e *taskRepository) FindByTraceIds(ctx context.Context, traceIds []string, 
 		placeholders[i] = ":" + key
 		params[key] = pid
 	}
-	query := `SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, linked_trace_id, is_root
+	query := `SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, is_root
 		FROM tasks_v2 WHERE ` + traceFilter + ` AND project_id IN (` + strings.Join(placeholders, ",") + `)`
 	if recordedAt != nil {
 		from, to := shared.DistributedTraceWindowBounds(*recordedAt)
@@ -531,7 +528,7 @@ func (e *taskRepository) FindByTraceIds(ctx context.Context, traceIds []string, 
 	var tasks []models.Task
 	for sqlRows.Next() {
 		var row task
-		if err := sqlRows.Scan(&row.Id, &row.ProjectId, &row.TaskName, &row.Duration, &row.RecordedAt, &row.ClientIP, &row.Attributes, &row.AppVersion, &row.ServerName, &row.TraceId, &row.SpanId, &row.ParentSpanId, &row.LinkedTraceId, &row.IsRoot); err != nil {
+		if err := sqlRows.Scan(&row.Id, &row.ProjectId, &row.TaskName, &row.Duration, &row.RecordedAt, &row.ClientIP, &row.Attributes, &row.AppVersion, &row.ServerName, &row.TraceId, &row.SpanId, &row.ParentSpanId, &row.IsRoot); err != nil {
 			return nil, err
 		}
 		tasks = append(tasks, row.toModel())

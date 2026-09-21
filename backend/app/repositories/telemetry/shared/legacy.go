@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
+	"github.com/tracewayapp/traceway/backend/app/models"
 )
 
 type legacyReadExecutor struct {
@@ -27,8 +28,13 @@ func SelectLegacy[T any](ctx context.Context, conn *sql.DB, query string, params
 
 // The move-over reads the tables V2 replaced. Endpoints, tasks, AI traces and exceptions come back in their V2 model
 // with the old ids parked in the new fields exactly as they were stored: on an entity TraceId holds the old distributed
-// trace id and SpanId the old span id, on an exception TraceId holds the old owner id and LinkedTraceId the old
+// trace id and SpanId the old span id, on a LegacyException TraceId holds the old owner id and DistributedTraceId the old
 // distributed trace id. The moveover package turns them into V2 ids, in one place for every backend.
+
+type LegacyException struct {
+	models.ExceptionStackTrace
+	DistributedTraceId string
+}
 
 // LegacySpan is a row of the old spans table, where trace_id named the owning endpoint, task or AI trace.
 type LegacySpan struct {

@@ -48,9 +48,14 @@ func TestProfileRepository_InsertAndReadBack(t *testing.T) {
 		Id: profileId, ProjectId: projectId, RecordedAt: now, Duration: 30 * time.Second,
 		ServiceName: "checkout", ProfileType: "cpu",
 		SampleCount: 1, TotalValue: 300, ServerName: "pod-a", AppVersion: "1.2.3",
+		TraceId: "0102030405060708090a0b0c0d0e0f10", SpanId: "0102030405060708",
 	}
 	if err := ProfileRepository.InsertProfilesAsync(ctx, []models.Profile{prof}); err != nil {
 		t.Fatalf("InsertProfilesAsync: %v", err)
+	}
+	var traceID, spanID string
+	if err := db.TelemetryDB.QueryRowContext(ctx, "SELECT trace_id, span_id FROM profiles WHERE id = ?", profileId.String()).Scan(&traceID, &spanID); err != nil || traceID != prof.TraceId || spanID != prof.SpanId {
+		t.Fatalf("profile trace/span identity = %q/%q: %v", traceID, spanID, err)
 	}
 
 	var stackCount int

@@ -33,7 +33,7 @@ const PILLARS = [
   {
     icon: Network,
     title: "Traces",
-    description: "End-to-end span waterfalls across every service",
+    description: "Search OTel spans and follow cross-service waterfalls",
     href: "/product/traces",
   },
   {

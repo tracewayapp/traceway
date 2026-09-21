@@ -244,7 +244,6 @@ Traceway recognizes these non-standard span attributes:
 | Attribute | Type | Purpose |
 |---|---|---|
 | `traceway.is_stream` | boolean | Mark an endpoint span as streaming (SSE/long-poll) so its duration is excluded from latency percentiles. |
-| `traceway.distributed_trace_id` | string (UUID) | Link this span's trace with another one, such as the browser's: set it on the server span to the id from the `traceway-trace-id` header. Traceway stores it as the row's linked trace ID and the row keeps its own OTel trace ID, which is what links entities across services by default. |
 
 ## Verification Checklist
 
@@ -266,3 +265,5 @@ traceway metrics query --name <metric-name> --since 1h
 ```
 
 Canonical span storage is subject to permission and healthcheck filtering and rejected-row handling. Graphs are limited by authorized projects, a lookup time window, row count and UTF-8 attribute byte budgets; arrival order does not remove those limits.
+
+Browser/server correlation uses standard W3C trace context and the same `traceId`. Span links retain their target trace and span IDs without merging traces.

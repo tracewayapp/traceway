@@ -144,7 +144,6 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 			// endpoint/task/span rows or the exception's attribute map.
 			delete(allAttrs, "exception.stacktrace")
 			recordedStart, _, _ := shared.OtelStorageTimes(span.StartTimeUnixNano, ingestedAt)
-			linked := linkedTraceId(span, traceId)
 			id := otelOccurrenceID(projectId, span)
 
 			switch kind {
@@ -153,7 +152,7 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 					id, projectId, span, spanAttrs, allAttrs,
 					recordedStart, duration, serverName, appVersion,
 				)
-				ep.TraceId, ep.SpanId, ep.ParentSpanId, ep.LinkedTraceId = traceId, spanId, parentSpanId, linked
+				ep.TraceId, ep.SpanId, ep.ParentSpanId = traceId, spanId, parentSpanId
 				ep.IsRoot = parentSpanId == ""
 				result.Endpoints = append(result.Endpoints, ep)
 			case entityTask:
@@ -161,7 +160,7 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 					id, projectId, span, allAttrs,
 					recordedStart, duration, serverName, appVersion,
 				)
-				t.TraceId, t.SpanId, t.ParentSpanId, t.LinkedTraceId = traceId, spanId, parentSpanId, linked
+				t.TraceId, t.SpanId, t.ParentSpanId = traceId, spanId, parentSpanId
 				t.IsRoot = parentSpanId == ""
 				result.Tasks = append(result.Tasks, t)
 			case entityAiTrace:
@@ -169,7 +168,7 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 					id, projectId, span, spanAttrs, allAttrs,
 					recordedStart, duration, serverName, appVersion,
 				)
-				aiTrace.TraceId, aiTrace.SpanId, aiTrace.ParentSpanId, aiTrace.LinkedTraceId = traceId, spanId, parentSpanId, linked
+				aiTrace.TraceId, aiTrace.SpanId, aiTrace.ParentSpanId = traceId, spanId, parentSpanId
 				aiTrace.IsRoot = parentSpanId == ""
 				aiTrace.ConversationId = resolveConversationId(spanAttrs, resourceAttrs, traceId)
 				var convInput, convOutput string
@@ -191,7 +190,7 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 					allAttrs, serverName, appVersion, language, proguardUuid, scopeName,
 				)
 				// The kind is stored only when this span says it. An exception further down the request finds its entity at read time.
-				exc.TraceId, exc.SpanId, exc.LinkedTraceId, exc.TraceType = traceId, spanId, linked, kind.traceType()
+				exc.TraceId, exc.SpanId, exc.TraceType = traceId, spanId, kind.traceType()
 				result.Exceptions = append(result.Exceptions, exc)
 			}
 
@@ -248,19 +247,6 @@ func isEntryPoint(span *tracepb.Span, parentOf func(*tracepb.Span) *tracepb.Span
 		current = parent
 	}
 	return true
-}
-
-// linkedTraceId is the other trace a span says it belongs with: the browser or mobile trace whose id the first backend
-// service copied from the traceway-trace-id header.
-func linkedTraceId(span *tracepb.Span, traceId string) string {
-	linked := shared.NormalizeTraceId(getStringAttribute(span.Attributes, "traceway.distributed_trace_id"))
-	if len(linked) != 32 || linked == traceId {
-		return ""
-	}
-	if _, err := hex.DecodeString(linked); err != nil {
-		return ""
-	}
-	return linked
 }
 
 func classifySpan(span *tracepb.Span, parentOf func(*tracepb.Span) *tracepb.Span) entityKind {

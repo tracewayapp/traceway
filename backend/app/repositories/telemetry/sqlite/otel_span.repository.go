@@ -83,8 +83,9 @@ func scanSqliteTopology(rows *sql.Rows, withStatement bool) ([]models.OtelSpan, 
 	for rows.Next() {
 		var span models.OtelSpan
 		var nanos string
+		var recordedAt sqlitetypes.SQLiteTime
 		columns := []any{&span.ProjectId, &span.TraceId, &span.SpanId, &span.ParentSpanId,
-			&span.Name, &span.Duration, &span.SpanKind, &span.StatusCode, &span.ServiceName, &span.ScopeName, &nanos}
+			&span.Name, &span.Duration, &span.SpanKind, &span.StatusCode, &span.ServiceName, &span.ScopeName, &nanos, &recordedAt}
 		if withStatement {
 			columns = append(columns, &span.DbStatement)
 		}
@@ -96,7 +97,7 @@ func scanSqliteTopology(rows *sql.Rows, withStatement bool) ([]models.OtelSpan, 
 			return nil, err
 		}
 		span.StartTime = shared.OtelNanosToTime(nanoValue)
-		span.RecordedAt = span.StartTime
+		span.RecordedAt = recordedAt.Time
 		result = append(result, span)
 	}
 	return result, rows.Err()

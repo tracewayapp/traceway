@@ -65,12 +65,12 @@ func TestCanonicalIdentityIncludesTraceAndProject(t *testing.T) {
 		t.Fatalf("a span keeps the ids it arrived with: %+v", stored.Span)
 	}
 	endpoints := converted.Endpoints
-	if len(endpoints) != 1 || endpoints[0].TraceId != stored.TraceId || endpoints[0].SpanId != stored.SpanId || endpoints[0].LinkedTraceId != hex.EncodeToString(browser[:]) || !endpoints[0].IsRoot {
-		t.Fatalf("the endpoint carries its span's ids and links to the browser's trace: %+v", endpoints)
+	if len(endpoints) != 1 || endpoints[0].TraceId != stored.TraceId || endpoints[0].SpanId != stored.SpanId || !endpoints[0].IsRoot {
+		t.Fatalf("the endpoint must retain its own trace ID without custom linking: %+v", endpoints)
 	}
 	for _, ignored := range []string{"not-a-uuid", otherTrace.String(), ""} {
 		span.Attributes = []*commonpb.KeyValue{strKV("http.request.method", "GET"), strKV("traceway.distributed_trace_id", ignored)}
-		if endpoints := convertTraces(context.Background(), nil, testProjectId, spanRequest(span)).Endpoints; endpoints[0].LinkedTraceId != "" {
+		if endpoints := convertTraces(context.Background(), nil, testProjectId, spanRequest(span)).Endpoints; endpoints[0].TraceId != stored.TraceId {
 			t.Fatalf("%q is no link: %+v", ignored, endpoints[0])
 		}
 	}

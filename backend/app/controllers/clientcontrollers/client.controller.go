@@ -116,6 +116,12 @@ func (e clientController) Report(c *gin.Context) {
 		return
 	}
 	parseSpan.End()
+	for _, frame := range request.CollectionFrames {
+		if err := frame.Validate(); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
 
 	bodyBytes := 0
 	if cb, ok := c.Get(gin.BodyBytesKey); ok {

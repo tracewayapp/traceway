@@ -88,7 +88,6 @@ type ExceptionStackTrace struct {
 	AppVersion    string            `json:"appVersion,omitempty"`
 	IsMessage     bool              `json:"isMessage,omitempty"`
 	Attributes    map[string]string `json:"attributes,omitempty"`
-	LinkedTraceId string            `json:"linkedTraceId,omitempty"`
 	SessionId     *uuid.UUID        `json:"sessionId,omitempty"`
 }
 

@@ -147,12 +147,6 @@ func (r *profileRepository) InsertProfilesAsync(ctx context.Context, profiles []
 				continue
 			}
 
-			var distributedTraceId *string
-			if p.DistributedTraceId != nil {
-				v := p.DistributedTraceId.String()
-				distributedTraceId = &v
-			}
-
 			if err := appender.AppendRow(
 				p.Id.String(),
 				p.ProjectId.String(),
@@ -168,7 +162,6 @@ func (r *profileRepository) InsertProfilesAsync(ctx context.Context, profiles []
 				p.StorageKey,
 				p.TraceId,
 				p.SpanId,
-				nullableString(distributedTraceId),
 				p.Unit,
 				boolToInt(p.IsGauge),
 			); err != nil {

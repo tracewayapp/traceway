@@ -52,7 +52,6 @@ type aiTraceRow struct {
 	TraceId         string                    `lit:"trace_id"`
 	SpanId          string                    `lit:"span_id"`
 	ParentSpanId    string                    `lit:"parent_span_id"`
-	LinkedTraceId   string                    `lit:"linked_trace_id"`
 	IsRoot          bool                      `lit:"is_root"`
 	ConversationId  string                    `lit:"conversation_id"`
 	ToolCallCount   int64                     `lit:"tool_call_count"`
@@ -165,7 +164,6 @@ func (r *aiTraceRow) toModel() models.AiTrace {
 		TraceId:         r.TraceId,
 		SpanId:          r.SpanId,
 		ParentSpanId:    r.ParentSpanId,
-		LinkedTraceId:   r.LinkedTraceId,
 		IsRoot:          r.IsRoot,
 		ConversationId:  r.ConversationId,
 		ToolCallCount:   r.ToolCallCount,
@@ -186,7 +184,7 @@ func (r *aiTraceRepository) InsertAsync(ctx context.Context, lines []models.AiTr
 		return nil
 	}
 
-	return withAppenderColumns(ctx, "ai_traces_v2", strings.Split("id, project_id, recorded_at, duration, status_code, model, response_model, provider, operation, input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens, input_cost, output_cost, total_cost, trace_name, user_id, finish_reason, server_name, app_version, storage_key, attributes, is_root, trace_id, span_id, parent_span_id, linked_trace_id, conversation_id, tool_call_count, tool_names, flagged, flagged_terms", ", "), func(appender *duckdb.Appender) {
+	return withAppenderColumns(ctx, "ai_traces_v2", strings.Split("id, project_id, recorded_at, duration, status_code, model, response_model, provider, operation, input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens, input_cost, output_cost, total_cost, trace_name, user_id, finish_reason, server_name, app_version, storage_key, attributes, is_root, trace_id, span_id, parent_span_id, conversation_id, tool_call_count, tool_names, flagged, flagged_terms", ", "), func(appender *duckdb.Appender) {
 
 		for _, t := range lines {
 			attributesJSON, err := attrJSON(t.Attributes)
@@ -226,7 +224,6 @@ func (r *aiTraceRepository) InsertAsync(ctx context.Context, lines []models.AiTr
 				t.TraceId,
 				t.SpanId,
 				t.ParentSpanId,
-				t.LinkedTraceId,
 				t.ConversationId,
 				t.ToolCallCount,
 				shared.JoinCSV(t.ToolNames),
@@ -364,7 +361,7 @@ func (r *aiTraceRepository) FindByTraceName(ctx context.Context, projectId uuid.
 			input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens,
 			input_cost, output_cost, total_cost,
 			trace_name, user_id, finish_reason, server_name, app_version,
-			storage_key, attributes, trace_id, span_id, parent_span_id, linked_trace_id, is_root,
+			storage_key, attributes, trace_id, span_id, parent_span_id, is_root,
 			conversation_id, tool_call_count, tool_names, flagged, flagged_terms
 		FROM ai_traces_v2
 		WHERE project_id = :project_id AND trace_name = :trace_name AND recorded_at >= :from AND recorded_at <= :to
@@ -428,7 +425,7 @@ func (r *aiTraceRepository) FindById(ctx context.Context, projectId, traceId uui
 			input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens,
 			input_cost, output_cost, total_cost,
 			trace_name, user_id, finish_reason, server_name, app_version,
-			storage_key, attributes, trace_id, span_id, parent_span_id, linked_trace_id, is_root,
+			storage_key, attributes, trace_id, span_id, parent_span_id, is_root,
 			conversation_id, tool_call_count, tool_names, flagged, flagged_terms
 		FROM ai_traces_v2
 		WHERE project_id = :project_id AND id = :id`
@@ -469,7 +466,7 @@ func (r *aiTraceRepository) FindByTraceIds(ctx context.Context, traceIds []strin
 			input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens,
 			input_cost, output_cost, total_cost,
 			trace_name, user_id, finish_reason, server_name, app_version,
-			storage_key, attributes, trace_id, span_id, parent_span_id, linked_trace_id, is_root,
+			storage_key, attributes, trace_id, span_id, parent_span_id, is_root,
 			conversation_id, tool_call_count, tool_names, flagged, flagged_terms
 		FROM ai_traces_v2 WHERE ` + traceFilter + ` AND project_id IN (` + strings.Join(placeholders, ",") + `)`
 	if recordedAt != nil {
@@ -499,7 +496,7 @@ func (r *aiTraceRepository) FindByTraceIds(ctx context.Context, traceIds []strin
 			&row.InputTokens, &row.OutputTokens, &row.TotalTokens, &row.CachedTokens, &row.ReasoningTokens,
 			&row.InputCost, &row.OutputCost, &row.TotalCost,
 			&row.TraceName, &row.UserId, &row.FinishReason, &row.ServerName, &row.AppVersion,
-			&row.StorageKey, &row.Attributes, &row.TraceId, &row.SpanId, &row.ParentSpanId, &row.LinkedTraceId, &row.IsRoot,
+			&row.StorageKey, &row.Attributes, &row.TraceId, &row.SpanId, &row.ParentSpanId, &row.IsRoot,
 			&row.ConversationId, &row.ToolCallCount, &row.ToolNames, &row.Flagged, &row.FlaggedTerms,
 		); err != nil {
 			return nil, err
@@ -597,7 +594,7 @@ func (r *aiTraceRepository) FindByConversationId(ctx context.Context, projectId 
 			input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens,
 			input_cost, output_cost, total_cost,
 			trace_name, user_id, finish_reason, server_name, app_version,
-			storage_key, attributes, trace_id, span_id, parent_span_id, linked_trace_id, is_root,
+			storage_key, attributes, trace_id, span_id, parent_span_id, is_root,
 			conversation_id, tool_call_count, tool_names, flagged, flagged_terms
 		FROM ai_traces_v2
 		WHERE project_id = :project_id AND conversation_id = :conversation_id`

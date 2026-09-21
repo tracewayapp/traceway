@@ -61,7 +61,7 @@ func TestContract_endpointDetail(t *testing.T) {
 		t.Fatalf("endpoint detail: %v", err)
 	}
 	// The waterfall is everything under the endpoint's span, the task's spans included.
-	if resp.Endpoint == nil || resp.Endpoint.TraceId != seedTraceID || resp.Endpoint.SpanId != seedEndpointSpanID || resp.Endpoint.LinkedTraceId != seedLinkedTraceID || len(resp.Spans) != 4 {
+	if resp.Endpoint == nil || resp.Endpoint.TraceId != seedTraceID || resp.Endpoint.SpanId != seedEndpointSpanID || len(resp.Spans) != 4 {
 		t.Errorf("endpoint ids or waterfall wrong: %s", rt.body)
 	}
 	if resp.Exception == nil || resp.Exception.ExceptionHash != seedHash {
@@ -128,7 +128,7 @@ func TestContract_exceptionById(t *testing.T) {
 	if err != nil {
 		t.Fatalf("exception by id: %v", err)
 	}
-	if resp.Exception == nil || resp.Exception.TraceId != seedTraceID || resp.Exception.SpanId != seedChildSpanID || resp.Exception.LinkedTraceId != seedLinkedTraceID {
+	if resp.Exception == nil || resp.Exception.TraceId != seedTraceID || resp.Exception.SpanId != seedChildSpanID {
 		t.Errorf("occurrence lost its trace ids: %s", rt.body)
 	}
 	assertRelatedEndpoint(t, resp.RelatedEntity, rt.body)
@@ -236,12 +236,12 @@ func TestContract_distributedTrace(t *testing.T) {
 	if len(resp.Nodes) != 3 || parents["task"] != seedEndpointSpanID || parents["ai_trace"] != seedEndpointSpanID || parents["endpoint"] != "" {
 		t.Fatalf("expected the task and the AI trace nested under the endpoint: %s", wire)
 	}
-	// The linked id names the same trace.
+	// A different trace ID must not expand through legacy metadata.
 	linked, err := c.GetDistributedTrace(context.Background(), seedLinkedTraceID, seedAt)
 	if err != nil {
 		t.Fatalf("distributed trace by linked id: %v", err)
 	}
-	if len(linked.Nodes) != len(resp.Nodes) {
+	if len(linked.Nodes) != 0 {
 		t.Errorf("the linked trace id returned %d nodes, the trace id %d", len(linked.Nodes), len(resp.Nodes))
 	}
 	goldenAssert(t, "distributed-trace", wire)

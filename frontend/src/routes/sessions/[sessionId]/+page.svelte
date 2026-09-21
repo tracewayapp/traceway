@@ -143,7 +143,7 @@
 			<Card.Header>
 				<Card.Title>Overview</Card.Title>
 			</Card.Header>
-			<Card.Content class="grid grid-cols-2 gap-4 sm:grid-cols-3">
+			<Card.Content class="grid grid-cols-1 gap-4 sm:grid-cols-3">
 				<LabelValue label="Started" value={formatDateTime(session.startedAt, { timezone })} />
 				<LabelValue label="Duration" value={durationLabel(session)} />
 				<LabelValue label="App version" value={session.appVersion || '—'} />

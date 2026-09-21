@@ -66,19 +66,28 @@ func runMigrationsOn(target *sql.DB, fsys fs.FS, dir, trackingTable, createTrack
 		config.Logf("migrations: applying %s/%s", dir, version)
 		started := time.Now()
 
+		tx, err := target.Begin()
+		if err != nil {
+			return fmt.Errorf("failed to begin migration %s: %w", file, err)
+		}
 		statements := splitStatements(string(content))
 		for _, stmt := range statements {
 			stmt = strings.TrimSpace(stmt)
 			if stmt == "" {
 				continue
 			}
-			if _, err := target.Exec(stmt); err != nil {
+			if _, err := tx.Exec(stmt); err != nil {
+				tx.Rollback()
 				return fmt.Errorf("failed to execute migration %s: %w", file, err)
 			}
 		}
 
-		if _, err := target.Exec(fmt.Sprintf("INSERT INTO %s (version) VALUES (?)", trackingTable), version); err != nil {
+		if _, err := tx.Exec(fmt.Sprintf("INSERT INTO %s (version) VALUES (?)", trackingTable), version); err != nil {
+			tx.Rollback()
 			return fmt.Errorf("failed to record migration version %s: %w", version, err)
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("failed to commit migration %s: %w", version, err)
 		}
 
 		config.Logf("migrations: applied %s/%s in %s", dir, version, time.Since(started).Round(time.Millisecond))

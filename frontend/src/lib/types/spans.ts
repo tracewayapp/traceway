@@ -18,13 +18,10 @@ export type Span = {
 	dbStatement?: string;
 };
 
-// The ids every endpoint, task and AI trace carries next to its own row id. linkedTraceId is another trace the row
-// belongs with, such as the browser trace that started the request.
 export type TraceIdentity = {
 	traceId: string;
 	spanId: string;
 	parentSpanId?: string;
-	linkedTraceId?: string;
 };
 
 export type SpanAttributes = {

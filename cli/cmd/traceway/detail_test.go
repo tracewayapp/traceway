@@ -117,7 +117,7 @@ func TestExceptionsOccurrence_postsRecordedAt(t *testing.T) {
 
 func TestExceptionsOccurrence_rendersTraceAndRelatedEntity(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"exception":{"id":"00000000-0000-0000-0000-000000000001","exceptionHash":"abc","stackTrace":"boom","recordedAt":"2026-06-23T14:30:00Z","traceId":"0af7651916cd43dd8448eb211c80319c","spanId":"00f067aa0ba902b7","linkedTraceId":"4bf92f3577b34da6a3ce929d0e0e4736"},"relatedEntity":{"traceType":"endpoint","id":"00000000-0000-0000-0000-0000000000d1","name":"GET /x","statusCode":500,"duration":1000000,"recordedAt":"2026-06-23T14:29:59.5Z","traceId":"0af7651916cd43dd8448eb211c80319c"}}`))
+		_, _ = w.Write([]byte(`{"exception":{"id":"00000000-0000-0000-0000-000000000001","exceptionHash":"abc","stackTrace":"boom","recordedAt":"2026-06-23T14:30:00Z","traceId":"0af7651916cd43dd8448eb211c80319c","spanId":"00f067aa0ba902b7"},"relatedEntity":{"traceType":"endpoint","id":"00000000-0000-0000-0000-0000000000d1","name":"GET /x","statusCode":500,"duration":1000000,"recordedAt":"2026-06-23T14:29:59.5Z","traceId":"0af7651916cd43dd8448eb211c80319c"}}`))
 	}))
 	defer srv.Close()
 	seedSessionFor(t, srv.URL)
@@ -131,7 +131,6 @@ func TestExceptionsOccurrence_rendersTraceAndRelatedEntity(t *testing.T) {
 	out := stdout.String()
 	for _, want := range []string{
 		"TRACE ID:     0af7651916cd43dd8448eb211c80319c",
-		"LINKED TRACE: 4bf92f3577b34da6a3ce929d0e0e4736",
 		"RELATED:      endpoint GET /x (00000000-0000-0000-0000-0000000000d1, recorded 2026-06-23T14:29:59.5Z)",
 	} {
 		if !strings.Contains(out, want) {

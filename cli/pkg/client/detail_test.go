@@ -169,7 +169,7 @@ func TestGetDistributedTrace_noProjectIdQueryParam(t *testing.T) {
 		gotPath = r.URL.Path
 		gotRawQuery = r.URL.RawQuery
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
-		_, _ = w.Write([]byte(`{"traceId":"0af7651916cd43dd8448eb211c80319c","nodes":[{"projectName":"api","traceType":"endpoint","traceId":"0af7651916cd43dd8448eb211c80319c","spanId":"b7ad6b7169203331","parentEntitySpanId":"53995c3f42cd8ad8","endpoint":{"id":"00000000-0000-0000-0000-0000000000d1","endpoint":"GET /x","traceId":"0af7651916cd43dd8448eb211c80319c","spanId":"b7ad6b7169203331","linkedTraceId":"4bf92f3577b34da6a3ce929d0e0e4736"},"spans":[{"traceId":"0af7651916cd43dd8448eb211c80319c","spanId":"00f067aa0ba902b7","parentSpanId":"b7ad6b7169203331","name":"db"}]}]}`))
+		_, _ = w.Write([]byte(`{"traceId":"0af7651916cd43dd8448eb211c80319c","nodes":[{"projectName":"api","traceType":"endpoint","traceId":"0af7651916cd43dd8448eb211c80319c","spanId":"b7ad6b7169203331","parentEntitySpanId":"53995c3f42cd8ad8","endpoint":{"id":"00000000-0000-0000-0000-0000000000d1","endpoint":"GET /x","traceId":"0af7651916cd43dd8448eb211c80319c","spanId":"b7ad6b7169203331"},"spans":[{"traceId":"0af7651916cd43dd8448eb211c80319c","spanId":"00f067aa0ba902b7","parentSpanId":"b7ad6b7169203331","name":"db"}]}]}`))
 	}))
 	defer srv.Close()
 
@@ -194,7 +194,7 @@ func TestGetDistributedTrace_noProjectIdQueryParam(t *testing.T) {
 	if resp.TraceId != "0af7651916cd43dd8448eb211c80319c" || node.SpanId != "b7ad6b7169203331" || node.ParentEntitySpanId != "53995c3f42cd8ad8" {
 		t.Errorf("trace identity wrong: %q %+v", resp.TraceId, node)
 	}
-	if node.Endpoint.TraceId != "0af7651916cd43dd8448eb211c80319c" || node.Endpoint.LinkedTraceId != "4bf92f3577b34da6a3ce929d0e0e4736" {
+	if node.Endpoint.TraceId != "0af7651916cd43dd8448eb211c80319c" {
 		t.Errorf("endpoint ids wrong: %+v", node.Endpoint)
 	}
 	if len(node.Spans) != 1 || node.Spans[0].ParentSpanId != "b7ad6b7169203331" {

@@ -55,7 +55,7 @@
 
 	const wholeTraceHref = $derived.by(() => {
 		if (!linkTraces) return undefined;
-		if (traceId) return spanTraceHref({ traceId, spanId: '', startTime: traceStartTime });
+		if (traceId) return spanTraceHref({ traceId, spanId: '', recordedAt: traceStartTime });
 		return rawSpans.length ? spanTraceHref(rawSpans[0]) : undefined;
 	});
 

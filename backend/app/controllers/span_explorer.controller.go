@@ -75,7 +75,7 @@ const spanSearchTooSlow = "The search took too long. Narrow the time range or ad
 
 func validTraceHex(id string) bool {
 	decoded, err := hex.DecodeString(id)
-	return err == nil && len(decoded) == 16
+	return err == nil && len(decoded) == 16 && strings.Trim(id, "0") != ""
 }
 
 // An OTel span id is 8 bytes. A span of the native protocol keeps its client's 16 byte id.

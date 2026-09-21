@@ -8,7 +8,6 @@ occurrences[].attributes: null
 occurrences[].exceptionHash: string
 occurrences[].id: string
 occurrences[].isMessage: bool
-occurrences[].linkedTraceId: string
 occurrences[].projectId: string
 occurrences[].recordedAt: string
 occurrences[].serverName: string

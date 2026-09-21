@@ -20,23 +20,22 @@ import (
 )
 
 type endpoint struct {
-	Id            uuid.UUID                 `lit:"id"`
-	ProjectId     uuid.UUID                 `lit:"project_id"`
-	Endpoint      string                    `lit:"endpoint"`
-	Duration      int64                     `lit:"duration"`
-	RecordedAt    sqlitetypes.SQLiteTime    `lit:"recorded_at"`
-	StatusCode    int16                     `lit:"status_code"`
-	BodySize      int32                     `lit:"body_size"`
-	ClientIP      string                    `lit:"client_ip"`
-	Attributes    sqlitetypes.SQLiteJSONMap `lit:"attributes"`
-	AppVersion    string                    `lit:"app_version"`
-	ServerName    string                    `lit:"server_name"`
-	TraceId       string                    `lit:"trace_id"`
-	SpanId        string                    `lit:"span_id"`
-	ParentSpanId  string                    `lit:"parent_span_id"`
-	LinkedTraceId string                    `lit:"linked_trace_id"`
-	IsStream      bool                      `lit:"is_stream"`
-	IsRoot        bool                      `lit:"is_root"`
+	Id           uuid.UUID                 `lit:"id"`
+	ProjectId    uuid.UUID                 `lit:"project_id"`
+	Endpoint     string                    `lit:"endpoint"`
+	Duration     int64                     `lit:"duration"`
+	RecordedAt   sqlitetypes.SQLiteTime    `lit:"recorded_at"`
+	StatusCode   int16                     `lit:"status_code"`
+	BodySize     int32                     `lit:"body_size"`
+	ClientIP     string                    `lit:"client_ip"`
+	Attributes   sqlitetypes.SQLiteJSONMap `lit:"attributes"`
+	AppVersion   string                    `lit:"app_version"`
+	ServerName   string                    `lit:"server_name"`
+	TraceId      string                    `lit:"trace_id"`
+	SpanId       string                    `lit:"span_id"`
+	ParentSpanId string                    `lit:"parent_span_id"`
+	IsStream     bool                      `lit:"is_stream"`
+	IsRoot       bool                      `lit:"is_root"`
 }
 
 type groupedEndpointRow struct {
@@ -105,44 +104,42 @@ func init() {
 
 func endpointToRow(e models.Endpoint) endpoint {
 	return endpoint{
-		Id:            e.Id,
-		ProjectId:     e.ProjectId,
-		Endpoint:      e.Endpoint,
-		Duration:      int64(e.Duration),
-		RecordedAt:    sqlitetypes.NewSQLiteTime(e.RecordedAt),
-		StatusCode:    e.StatusCode,
-		BodySize:      e.BodySize,
-		ClientIP:      e.ClientIP,
-		Attributes:    sqlitetypes.NewSQLiteJSONMap(e.Attributes),
-		AppVersion:    e.AppVersion,
-		ServerName:    e.ServerName,
-		TraceId:       e.TraceId,
-		SpanId:        e.SpanId,
-		ParentSpanId:  e.ParentSpanId,
-		LinkedTraceId: e.LinkedTraceId,
-		IsStream:      e.IsStream,
-		IsRoot:        e.IsRoot,
+		Id:           e.Id,
+		ProjectId:    e.ProjectId,
+		Endpoint:     e.Endpoint,
+		Duration:     int64(e.Duration),
+		RecordedAt:   sqlitetypes.NewSQLiteTime(e.RecordedAt),
+		StatusCode:   e.StatusCode,
+		BodySize:     e.BodySize,
+		ClientIP:     e.ClientIP,
+		Attributes:   sqlitetypes.NewSQLiteJSONMap(e.Attributes),
+		AppVersion:   e.AppVersion,
+		ServerName:   e.ServerName,
+		TraceId:      e.TraceId,
+		SpanId:       e.SpanId,
+		ParentSpanId: e.ParentSpanId,
+		IsStream:     e.IsStream,
+		IsRoot:       e.IsRoot,
 	}
 }
 
 func (r *endpoint) toModel() models.Endpoint {
 	e := models.Endpoint{
-		Id:            r.Id,
-		ProjectId:     r.ProjectId,
-		Endpoint:      r.Endpoint,
-		Duration:      time.Duration(r.Duration),
-		RecordedAt:    r.RecordedAt.Time,
-		StatusCode:    r.StatusCode,
-		BodySize:      r.BodySize,
-		ClientIP:      r.ClientIP,
-		AppVersion:    r.AppVersion,
-		ServerName:    r.ServerName,
-		TraceId:       r.TraceId,
-		SpanId:        r.SpanId,
-		ParentSpanId:  r.ParentSpanId,
-		LinkedTraceId: r.LinkedTraceId,
-		IsStream:      r.IsStream,
-		IsRoot:        r.IsRoot,
+		Id:           r.Id,
+		ProjectId:    r.ProjectId,
+		Endpoint:     r.Endpoint,
+		Duration:     time.Duration(r.Duration),
+		RecordedAt:   r.RecordedAt.Time,
+		StatusCode:   r.StatusCode,
+		BodySize:     r.BodySize,
+		ClientIP:     r.ClientIP,
+		AppVersion:   r.AppVersion,
+		ServerName:   r.ServerName,
+		TraceId:      r.TraceId,
+		SpanId:       r.SpanId,
+		ParentSpanId: r.ParentSpanId,
+		IsStream:     r.IsStream,
+		IsRoot:       r.IsRoot,
 	}
 	if r.Attributes != nil {
 		e.Attributes = map[string]string(r.Attributes)
@@ -208,7 +205,7 @@ func (e *endpointRepository) FindAll(ctx context.Context, projectId uuid.UUID, f
 	}
 
 	rows, err := lit.SelectNamed[endpoint](db.TelemetryDB,
-		fmt.Sprintf(`SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, linked_trace_id
+		fmt.Sprintf(`SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id
 		FROM endpoints_v2 WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
 		ORDER BY %s DESC LIMIT :limit OFFSET :offset`, orderBy),
 		lit.P{"project_id": projectId, "from": sqlitetypes.NewSQLiteTime(fromDate), "to": sqlitetypes.NewSQLiteTime(toDate), "limit": pageSize, "offset": offset})
@@ -386,7 +383,7 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.
 	}
 
 	rows, err := lit.SelectNamed[endpoint](db.TelemetryDB,
-		fmt.Sprintf(`SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, linked_trace_id
+		fmt.Sprintf(`SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id
 		FROM endpoints_v2 WHERE project_id = :project_id AND endpoint = :endpoint AND recorded_at >= :from AND recorded_at <= :to
 		ORDER BY %s %s LIMIT :limit OFFSET :offset`, orderBy, sortDir),
 		lit.P{"project_id": projectId, "endpoint": endpointName, "from": sqlitetypes.NewSQLiteTime(fromDate), "to": sqlitetypes.NewSQLiteTime(toDate), "limit": pageSize, "offset": offset})
@@ -403,7 +400,7 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.
 }
 
 func (e *endpointRepository) FindById(ctx context.Context, projectId, endpointId uuid.UUID, recordedAt *time.Time) (*models.Endpoint, error) {
-	query := `SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, linked_trace_id, is_root, is_stream
+	query := `SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, is_root, is_stream
 		FROM endpoints_v2 WHERE project_id = :project_id AND id = :id`
 	params := lit.P{"project_id": projectId, "id": endpointId}
 	if recordedAt != nil {
@@ -973,7 +970,7 @@ func (e *endpointRepository) FindByTraceIds(ctx context.Context, traceIds []stri
 		placeholders[i] = ":" + key
 		params[key] = pid
 	}
-	query := `SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, linked_trace_id, is_root
+	query := `SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, is_root
 		FROM endpoints_v2 WHERE ` + traceFilter + ` AND project_id IN (` + strings.Join(placeholders, ",") + `)`
 	if recordedAt != nil {
 		from, to := shared.DistributedTraceWindowBounds(*recordedAt)
@@ -998,7 +995,7 @@ func (e *endpointRepository) FindByTraceIds(ctx context.Context, traceIds []stri
 	for sqlRows.Next() {
 		var row endpoint
 		if err := sqlRows.Scan(&row.Id, &row.ProjectId, &row.Endpoint, &row.Duration, &row.RecordedAt,
-			&row.StatusCode, &row.BodySize, &row.ClientIP, &row.Attributes, &row.AppVersion, &row.ServerName, &row.TraceId, &row.SpanId, &row.ParentSpanId, &row.LinkedTraceId, &row.IsRoot); err != nil {
+			&row.StatusCode, &row.BodySize, &row.ClientIP, &row.Attributes, &row.AppVersion, &row.ServerName, &row.TraceId, &row.SpanId, &row.ParentSpanId, &row.IsRoot); err != nil {
 			return nil, err
 		}
 		endpoints = append(endpoints, row.toModel())

@@ -169,8 +169,6 @@ func loadDistributedTraceSpans(ctx context.Context, nodes []DistributedTraceNode
 }
 
 const (
-	// A trace links to at most a handful of others (the browser's, today). The cap bounds a malicious chain of links.
-	maxLinkedTraces    = 4
 	maxEntityLinkDepth = 10000
 )
 
@@ -181,16 +179,33 @@ type traceEntities struct {
 	exceptions []models.ExceptionStackTrace
 }
 
-// findTraceEntities gathers everything promoted from one trace, in every project listed. Rows answer to their own
-// trace id and to the trace they say they are linked with, so the browser's trace and the backend trace it started come
-// back together whichever of the two ids was asked for. A second round runs only when a row names an id not yet read.
+// findTraceEntities reads one trace across the projects the caller can access.
 func findTraceEntities(ctx context.Context, traceId string, projectIds []uuid.UUID, recordedAt *time.Time) (*traceEntities, error) {
 	if recordedAt == nil || recordedAt.IsZero() {
 		now := time.Now().UTC()
 		recordedAt = &now
 	}
 	found := &traceEntities{}
-	fetched := map[string]bool{}
+	var err error
+	ids := []string{traceId}
+	found.endpoints, err = telemetry.EndpointRepository.FindByTraceIds(ctx, ids, projectIds, recordedAt)
+	if err != nil {
+		return nil, fmt.Errorf("endpoints: %w", err)
+	}
+	found.tasks, err = telemetry.TaskRepository.FindByTraceIds(ctx, ids, projectIds, recordedAt)
+	if err != nil {
+		return nil, fmt.Errorf("tasks: %w", err)
+	}
+	found.aiTraces, err = telemetry.AiTraceRepository.FindByTraceIds(ctx, ids, projectIds, recordedAt)
+	if err != nil {
+		return nil, fmt.Errorf("ai traces: %w", err)
+	}
+	found.exceptions, err = telemetry.ExceptionStackTraceRepository.FindByTraceIds(ctx, ids, projectIds, recordedAt)
+	if err != nil {
+		return nil, fmt.Errorf("exceptions: %w", err)
+	}
+	endpoints, tasks, aiTraces, exceptions := found.endpoints, found.tasks, found.aiTraces, found.exceptions
+	found = &traceEntities{}
 	seen := map[string]bool{}
 	fresh := func(kind string, projectId, id uuid.UUID, traceId, spanId string) bool {
 		key := kind + ":" + projectId.String() + ":" + id.String() + ":" + traceId + ":" + spanId
@@ -200,59 +215,25 @@ func findTraceEntities(ctx context.Context, traceId string, projectIds []uuid.UU
 		seen[key] = true
 		return true
 	}
-	fetched[traceId] = true
-	pending := []string{traceId}
-	for len(pending) > 0 {
-		var next []string
-		note := func(ids ...string) {
-			for _, id := range ids {
-				if id != "" && !fetched[id] && len(fetched) < maxLinkedTraces {
-					fetched[id] = true
-					next = append(next, id)
-				}
-			}
+	for _, endpoint := range endpoints {
+		if fresh("endpoint", endpoint.ProjectId, endpoint.Id, endpoint.TraceId, endpoint.SpanId) {
+			found.endpoints = append(found.endpoints, endpoint)
 		}
-		endpoints, err := telemetry.EndpointRepository.FindByTraceIds(ctx, pending, projectIds, recordedAt)
-		if err != nil {
-			return nil, fmt.Errorf("endpoints: %w", err)
+	}
+	for _, task := range tasks {
+		if fresh("task", task.ProjectId, task.Id, task.TraceId, task.SpanId) {
+			found.tasks = append(found.tasks, task)
 		}
-		tasks, err := telemetry.TaskRepository.FindByTraceIds(ctx, pending, projectIds, recordedAt)
-		if err != nil {
-			return nil, fmt.Errorf("tasks: %w", err)
+	}
+	for _, aiTrace := range aiTraces {
+		if fresh("ai_trace", aiTrace.ProjectId, aiTrace.Id, aiTrace.TraceId, aiTrace.SpanId) {
+			found.aiTraces = append(found.aiTraces, aiTrace)
 		}
-		aiTraces, err := telemetry.AiTraceRepository.FindByTraceIds(ctx, pending, projectIds, recordedAt)
-		if err != nil {
-			return nil, fmt.Errorf("ai traces: %w", err)
+	}
+	for _, exception := range exceptions {
+		if fresh("exception", exception.ProjectId, exception.Id, exception.TraceId, exception.SpanId) {
+			found.exceptions = append(found.exceptions, exception)
 		}
-		exceptions, err := telemetry.ExceptionStackTraceRepository.FindByTraceIds(ctx, pending, projectIds, recordedAt)
-		if err != nil {
-			return nil, fmt.Errorf("exceptions: %w", err)
-		}
-		for _, endpoint := range endpoints {
-			if fresh("endpoint", endpoint.ProjectId, endpoint.Id, endpoint.TraceId, endpoint.SpanId) {
-				found.endpoints = append(found.endpoints, endpoint)
-				note(endpoint.TraceId, endpoint.LinkedTraceId)
-			}
-		}
-		for _, task := range tasks {
-			if fresh("task", task.ProjectId, task.Id, task.TraceId, task.SpanId) {
-				found.tasks = append(found.tasks, task)
-				note(task.TraceId, task.LinkedTraceId)
-			}
-		}
-		for _, aiTrace := range aiTraces {
-			if fresh("ai_trace", aiTrace.ProjectId, aiTrace.Id, aiTrace.TraceId, aiTrace.SpanId) {
-				found.aiTraces = append(found.aiTraces, aiTrace)
-				note(aiTrace.TraceId, aiTrace.LinkedTraceId)
-			}
-		}
-		for _, exception := range exceptions {
-			if fresh("exception", exception.ProjectId, exception.Id, exception.TraceId, exception.SpanId) {
-				found.exceptions = append(found.exceptions, exception)
-				note(exception.TraceId, exception.LinkedTraceId)
-			}
-		}
-		pending = next
 	}
 	return found, nil
 }
@@ -278,9 +259,6 @@ func findTraceParents(ctx context.Context, nodes []DistributedTraceNode, excepti
 	}
 	parents := map[string]map[string]string{}
 	for traceId, at := range earliest {
-		if len(parents) == maxLinkedTraces {
-			break
-		}
 		traceParents, err := telemetry.SpanRepository.FindTraceParents(ctx, projectIds, traceId, at)
 		if err != nil {
 			traceway.CaptureException(traceway.NewStackTraceErrorf("failed to read the span parents of trace %s: %w", traceId, err))

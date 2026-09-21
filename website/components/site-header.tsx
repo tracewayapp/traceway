@@ -43,7 +43,7 @@ const PILLARS: NavItem[] = [
   },
   {
     title: "Traces",
-    description: "Follow a request across every service.",
+    description: "Search OTel spans. Follow the whole trace.",
     href: "/product/traces",
     icon: Network,
   },

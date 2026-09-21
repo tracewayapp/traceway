@@ -24,7 +24,7 @@ const (
 	otelAttributeChunk       = 4000
 )
 
-const OtelTopologyColumns = `project_id, trace_id, span_id, parent_span_id, name, duration, span_kind, status_code, service_name, scope_name, start_time_unix_nano`
+const OtelTopologyColumns = `project_id, trace_id, span_id, parent_span_id, name, duration, span_kind, status_code, service_name, scope_name, start_time_unix_nano, recorded_at`
 
 type OtelAttributeLimits struct{ PerSpanBytes, BudgetBytes int }
 

@@ -45,7 +45,6 @@ func FindExceptionOwner(ctx context.Context, exception models.ExceptionStackTrac
 	if err != nil {
 		return nil, err
 	}
-	// Rows that only link to this trace belong to another one, and their span ids mean nothing here.
 	for _, ai := range aiTraces {
 		if ai.TraceId == exception.TraceId {
 			owners[ai.SpanId] = &ExceptionOwner{TraceType: "ai_trace", Id: ai.Id, Name: ai.TraceName, Duration: ai.Duration, RecordedAt: ai.RecordedAt, TraceId: ai.TraceId}

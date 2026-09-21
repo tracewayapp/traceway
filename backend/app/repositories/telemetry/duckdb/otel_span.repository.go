@@ -81,7 +81,7 @@ func scanDuckdbTopology(rows *sql.Rows, withStatement bool) ([]models.OtelSpan, 
 		var span models.OtelSpan
 		var nanos uint64
 		columns := []any{&span.ProjectId, &span.TraceId, &span.SpanId, &span.ParentSpanId,
-			&span.Name, &span.Duration, &span.SpanKind, &span.StatusCode, &span.ServiceName, &span.ScopeName, &nanos}
+			&span.Name, &span.Duration, &span.SpanKind, &span.StatusCode, &span.ServiceName, &span.ScopeName, &nanos, &span.RecordedAt}
 		if withStatement {
 			columns = append(columns, &span.DbStatement)
 		}
@@ -89,7 +89,6 @@ func scanDuckdbTopology(rows *sql.Rows, withStatement bool) ([]models.OtelSpan, 
 			return nil, err
 		}
 		span.StartTime = shared.OtelNanosToTime(nanos)
-		span.RecordedAt = span.StartTime
 		result = append(result, span)
 	}
 	return result, rows.Err()

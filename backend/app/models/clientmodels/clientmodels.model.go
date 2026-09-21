@@ -3,23 +3,24 @@ package clientmodels
 import (
 	"encoding/hex"
 	"encoding/json"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/tracewayapp/traceway/backend/app/models"
 )
 
 type ClientExceptionStackTrace struct {
-	TraceId            *string           `json:"traceId"`
-	IsTask             bool              `json:"isTask"`
-	StackTrace         string            `json:"stackTrace"`
-	RecordedAt         time.Time         `json:"recordedAt"`
-	Attributes         map[string]string `json:"attributes"`
-	IsMessage          bool              `json:"isMessage"`
-	SessionRecordingId *string           `json:"sessionRecordingId"`
-	SessionId          *string           `json:"sessionId"`
-	DistributedTraceId *string           `json:"distributedTraceId"`
-	DebugIds           map[string]string `json:"debugIds"`
+	TraceId                  *string           `json:"traceId"`
+	IsTask                   bool              `json:"isTask"`
+	StackTrace               string            `json:"stackTrace"`
+	RecordedAt               time.Time         `json:"recordedAt"`
+	Attributes               map[string]string `json:"attributes"`
+	IsMessage                bool              `json:"isMessage"`
+	SessionRecordingId       *string           `json:"sessionRecordingId"`
+	SessionId                *string           `json:"sessionId"`
+	LegacyDistributedTraceId *string           `json:"distributedTraceId"`
+	DebugIds                 map[string]string `json:"debugIds"`
 }
 
 func (c *ClientExceptionStackTrace) ToExceptionStackTrace(exceptionHash, appVersion, serverName string) models.ExceptionStackTrace {
@@ -32,13 +33,13 @@ func (c *ClientExceptionStackTrace) ToExceptionStackTrace(exceptionHash, appVers
 	// span of a trace, so the exception sits on that span. The trace is the distributed one when the client named one.
 	var traceId, spanId string
 	if c.TraceId != nil {
-		if parsed, err := uuid.Parse(*c.TraceId); err == nil {
+		if parsed, err := uuid.Parse(*c.TraceId); err == nil && parsed != uuid.Nil {
 			spanId = hexId(parsed)
 			traceId = spanId
 		}
 	}
-	if c.DistributedTraceId != nil {
-		if parsed, err := uuid.Parse(*c.DistributedTraceId); err == nil {
+	if c.LegacyDistributedTraceId != nil {
+		if parsed, err := uuid.Parse(*c.LegacyDistributedTraceId); err == nil && parsed != uuid.Nil {
 			traceId = hexId(parsed)
 		}
 	}
@@ -89,24 +90,24 @@ func (c *ClientMetricRecord) ToMetricPoint(serverName string) models.MetricPoint
 }
 
 type ClientTrace struct {
-	Id                 string            `json:"id"`
-	Endpoint           string            `json:"endpoint"`
-	Duration           time.Duration     `json:"duration"`
-	RecordedAt         time.Time         `json:"recordedAt"`
-	StatusCode         int               `json:"statusCode"`
-	BodySize           int               `json:"bodySize"`
-	ClientIP           string            `json:"clientIP"`
-	Attributes         map[string]string `json:"attributes"`
-	Spans              []*ClientSpan     `json:"spans"`
-	IsTask             bool              `json:"isTask"`
-	DistributedTraceId string            `json:"distributedTraceId"`
+	Id                       string            `json:"id"`
+	Endpoint                 string            `json:"endpoint"`
+	Duration                 time.Duration     `json:"duration"`
+	RecordedAt               time.Time         `json:"recordedAt"`
+	StatusCode               int               `json:"statusCode"`
+	BodySize                 int               `json:"bodySize"`
+	ClientIP                 string            `json:"clientIP"`
+	Attributes               map[string]string `json:"attributes"`
+	Spans                    []*ClientSpan     `json:"spans"`
+	IsTask                   bool              `json:"isTask"`
+	LegacyDistributedTraceId string            `json:"distributedTraceId"`
 }
 
 const streamAttributeKey = "traceway.is_stream"
 
 // ParsedId returns the trace ID as uuid.UUID
 func (c *ClientTrace) ParsedId() uuid.UUID {
-	if parsed, err := uuid.Parse(c.Id); err == nil {
+	if parsed, err := uuid.Parse(c.Id); err == nil && parsed != uuid.Nil {
 		return parsed
 	}
 	c.Id = uuid.NewString()
@@ -120,7 +121,7 @@ func (c *ClientTrace) SpanId() string { return hexId(c.ParsedId()) }
 
 // TraceId is the distributed trace the client named, else the run's own id.
 func (c *ClientTrace) TraceId() string {
-	if parsed, err := uuid.Parse(c.DistributedTraceId); err == nil {
+	if parsed, err := uuid.Parse(c.LegacyDistributedTraceId); err == nil && parsed != uuid.Nil {
 		return hexId(parsed)
 	}
 	return c.SpanId()
@@ -172,7 +173,7 @@ type ClientSpan struct {
 
 // ParsedId returns the span ID as uuid.UUID
 func (c *ClientSpan) ParsedId() uuid.UUID {
-	if parsed, err := uuid.Parse(c.Id); err == nil {
+	if parsed, err := uuid.Parse(c.Id); err == nil && parsed != uuid.Nil {
 		return parsed
 	}
 	c.Id = uuid.NewString()
@@ -238,12 +239,12 @@ type ClientSessionRecording struct {
 }
 
 type ClientSession struct {
-	Id                 string            `json:"id"`
-	StartedAt          time.Time         `json:"startedAt"`
-	EndedAt            *time.Time        `json:"endedAt,omitempty"`
-	ClientIP           string            `json:"clientIP"`
-	Attributes         map[string]string `json:"attributes"`
-	DistributedTraceId string            `json:"distributedTraceId,omitempty"`
+	Id                       string            `json:"id"`
+	StartedAt                time.Time         `json:"startedAt"`
+	EndedAt                  *time.Time        `json:"endedAt,omitempty"`
+	ClientIP                 string            `json:"clientIP"`
+	Attributes               map[string]string `json:"attributes"`
+	LegacyDistributedTraceId string            `json:"distributedTraceId,omitempty"`
 }
 
 func (c *ClientSession) ToSession(appVersion, serverName string) models.Session {
@@ -252,10 +253,10 @@ func (c *ClientSession) ToSession(appVersion, serverName string) models.Session 
 		id = uuid.New()
 	}
 
-	var distributedTraceId *uuid.UUID
-	if c.DistributedTraceId != "" {
-		if parsed, err := uuid.Parse(c.DistributedTraceId); err == nil {
-			distributedTraceId = &parsed
+	var traceId string
+	if c.LegacyDistributedTraceId != "" {
+		if parsed, err := uuid.Parse(c.LegacyDistributedTraceId); err == nil && parsed != uuid.Nil {
+			traceId = hex.EncodeToString(parsed[:])
 		}
 	}
 
@@ -268,15 +269,15 @@ func (c *ClientSession) ToSession(appVersion, serverName string) models.Session 
 	}
 
 	return models.Session{
-		Id:                 id,
-		StartedAt:          c.StartedAt,
-		EndedAt:            c.EndedAt,
-		Duration:           duration,
-		ClientIP:           c.ClientIP,
-		Attributes:         c.Attributes,
-		AppVersion:         appVersion,
-		ServerName:         serverName,
-		DistributedTraceId: distributedTraceId,
+		Id:         id,
+		StartedAt:  c.StartedAt,
+		EndedAt:    c.EndedAt,
+		Duration:   duration,
+		ClientIP:   c.ClientIP,
+		Attributes: c.Attributes,
+		AppVersion: appVersion,
+		ServerName: serverName,
+		TraceId:    traceId,
 	}
 }
 
@@ -286,4 +287,21 @@ type CollectionFrame struct {
 	Traces            []*ClientTrace               `json:"traces"`
 	SessionRecordings []*ClientSessionRecording    `json:"sessionRecordings"`
 	Sessions          []*ClientSession             `json:"sessions"`
+}
+
+func (f *CollectionFrame) Validate() error {
+	if f == nil {
+		return fmt.Errorf("collection frame must not be null")
+	}
+	for _, exception := range f.StackTraces {
+		if exception == nil {
+			return fmt.Errorf("exception must not be null")
+		}
+	}
+	for _, session := range f.Sessions {
+		if session == nil {
+			return fmt.Errorf("session must not be null")
+		}
+	}
+	return nil
 }

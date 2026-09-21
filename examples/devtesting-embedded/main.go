@@ -21,6 +21,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	otellog "go.opentelemetry.io/otel/log"
+	"go.opentelemetry.io/otel/propagation"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -201,7 +202,7 @@ func main() {
 		c.Next()
 	})
 
-	router.Use(otelgin.Middleware(backendServiceName, otelgin.WithTracerProvider(backendSvc.tp)))
+	router.Use(otelgin.Middleware(backendServiceName, otelgin.WithTracerProvider(backendSvc.tp), otelgin.WithPropagators(propagation.TraceContext{})))
 
 	router.GET("/", func(c *gin.Context) {
 		c.Data(http.StatusOK, "text/html; charset=utf-8", indexHTML)
@@ -289,20 +290,16 @@ func main() {
 
 	router.GET("/api/test-distributed-logs", func(c *gin.Context) {
 		ctx := c.Request.Context()
-		dtid := uuid.New().String()
-
-		rootSpan := trace.SpanFromContext(ctx)
-		rootSpan.SetAttributes(attribute.String("traceway.distributed_trace_id", dtid))
+		traceId := trace.SpanContextFromContext(ctx).TraceID().String()
 
 		backendSvc.log(ctx, otellog.SeverityInfo, "INFO", "backend: received request, about to call worker",
-			otellog.String("distributed_trace_id", dtid))
+			otellog.String("trace_id", traceId))
 
-		workerCtx, workerSpan := workerSvc.tr.Start(context.Background(), "worker.process-job",
+		workerCtx, workerSpan := workerSvc.tr.Start(ctx, "worker.process-job",
 			trace.WithSpanKind(trace.SpanKindConsumer))
-		workerSpan.SetAttributes(attribute.String("traceway.distributed_trace_id", dtid))
 
 		workerSvc.log(workerCtx, otellog.SeverityInfo, "INFO", "worker: starting job",
-			otellog.String("distributed_trace_id", dtid))
+			otellog.String("trace_id", traceId))
 		time.Sleep(15 * time.Millisecond)
 		workerSvc.log(workerCtx, otellog.SeverityDebug, "DEBUG", "worker: step 1 complete")
 		time.Sleep(15 * time.Millisecond)
@@ -313,8 +310,8 @@ func main() {
 
 		backendSvc.log(ctx, otellog.SeverityInfo, "INFO", "backend: worker reported success, returning 200")
 		c.JSON(http.StatusOK, gin.H{
-			"status":             "ok",
-			"distributedTraceId": dtid,
+			"status":  "ok",
+			"traceId": traceId,
 		})
 	})
 

@@ -263,19 +263,19 @@ func TestDistributedTraceIsWholeUnderEitherOfItsIds(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := telemetry.EndpointRepository.InsertAsync(ctx, []models.Endpoint{
-		{Id: uuid.New(), ProjectId: gateway, Endpoint: "POST /one", RecordedAt: now, TraceId: cardTrace, SpanId: "0101010101010101", LinkedTraceId: cardBrowser, IsRoot: true},
+		{Id: uuid.New(), ProjectId: gateway, Endpoint: "POST /one", RecordedAt: now, TraceId: cardTrace, SpanId: "0101010101010101", Attributes: map[string]string{"traceway.distributed_trace_id": cardBrowser}, IsRoot: true},
 		{Id: uuid.New(), ProjectId: payments, Endpoint: "POST /two", RecordedAt: now, TraceId: cardTrace, SpanId: "0303030303030303", ParentSpanId: "0202020202020202"},
 		{Id: uuid.New(), ProjectId: warehouse, Endpoint: "POST /three", RecordedAt: now, TraceId: cardTrace, SpanId: "0505050505050505", ParentSpanId: "0404040404040404"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := telemetry.ExceptionStackTraceRepository.InsertAsync(ctx, []models.ExceptionStackTrace{
-		{Id: uuid.New(), ProjectId: web, ExceptionHash: "browser-error", RecordedAt: now, TraceId: cardBrowser},
+		{Id: uuid.New(), ProjectId: web, ExceptionHash: "browser-error", RecordedAt: now, TraceId: cardTrace},
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	for opened, id := range map[string]string{"the browser's id, as the browser error carries it": cardBrowser, "the trace id, as every service carries it": cardTrace} {
+	for opened, id := range map[string]string{"the shared W3C trace ID": cardTrace} {
 		response, status, _ := openCard(t, userID, id, `{"recordedAt":"`+now.Format(time.RFC3339Nano)+`"}`)
 		if status != http.StatusOK {
 			t.Fatalf("%s: status %d", opened, status)
@@ -300,7 +300,7 @@ func TestTraceEntityLookupKeepsMigratedIdentitiesAndBoundsMissingTime(t *testing
 	project, id := uuid.New(), uuid.New()
 	now := time.Now().UTC()
 	rows := []models.Endpoint{
-		{Id: id, ProjectId: project, TraceId: cardTrace, LinkedTraceId: cardBrowser, SpanId: "0102030405060708", RecordedAt: now},
+		{Id: id, ProjectId: project, TraceId: cardTrace, Attributes: map[string]string{"traceway.distributed_trace_id": cardBrowser}, SpanId: "0102030405060708", RecordedAt: now},
 		{Id: id, ProjectId: project, TraceId: cardBrowser, SpanId: "0102030405060708", RecordedAt: now},
 		{Id: uuid.New(), ProjectId: project, TraceId: cardTrace, SpanId: "0102030405060709", RecordedAt: now.Add(-7 * 24 * time.Hour)},
 	}
@@ -308,7 +308,7 @@ func TestTraceEntityLookupKeepsMigratedIdentitiesAndBoundsMissingTime(t *testing
 		t.Fatal(err)
 	}
 	found, err := findTraceEntities(ctx, cardBrowser, []uuid.UUID{project}, nil)
-	if err != nil || len(found.endpoints) != 2 {
+	if err != nil || len(found.endpoints) != 1 {
 		t.Fatalf("unanchored lookup lost an identity or scanned old history: %+v, %v", found, err)
 	}
 	old := rows[2].RecordedAt

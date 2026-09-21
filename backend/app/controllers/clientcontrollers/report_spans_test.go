@@ -24,13 +24,17 @@ import (
 
 func TestReportIgnoresLegacyDistributedTraceID(t *testing.T) {
 	dbtest.SetupSQLite(t)
-	project, run, distributed := uuid.New(), uuid.New(), uuid.New()
+	project, run, distributed, session := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	at := time.Now().UTC()
 	traceID, spanID := hex.EncodeToString(run[:]), hex.EncodeToString(run[:])
 	body, err := json.Marshal(map[string]any{
-		"collectionFrames": []any{map[string]any{"stackTraces": []any{map[string]any{
-			"traceId": run, "distributedTraceId": distributed, "stackTrace": "Error: request failed", "recordedAt": at,
-		}}}},
+		"collectionFrames": []any{map[string]any{
+			"traces": []any{map[string]any{"id": run, "endpoint": "GET /native", "distributedTraceId": distributed, "recordedAt": at, "duration": 1000}},
+			"stackTraces": []any{map[string]any{
+				"traceId": run, "distributedTraceId": distributed, "stackTrace": "Error: request failed", "recordedAt": at, "sessionId": session,
+			}},
+			"sessions": []any{map[string]any{"id": session, "distributedTraceId": distributed, "startedAt": at}},
+		}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -51,6 +55,14 @@ func TestReportIgnoresLegacyDistributedTraceID(t *testing.T) {
 	ignored, err := telemetry.ExceptionStackTraceRepository.FindByTraceIds(context.Background(), []string{hex.EncodeToString(distributed[:])}, []uuid.UUID{project}, &at)
 	if err != nil || len(ignored) != 0 {
 		t.Fatalf("legacy field created an association: %+v %v", ignored, err)
+	}
+	owner, err := telemetry.FindExceptionOwner(context.Background(), rows[0])
+	if err != nil || owner == nil || owner.Id != run || rows[0].SessionId == nil || *rows[0].SessionId != session {
+		t.Fatalf("native exception lost its owner or session: %+v %+v %v", owner, rows[0], err)
+	}
+	storedSession, err := telemetry.SessionRepository.FindById(context.Background(), project, session, &at)
+	if err != nil || storedSession == nil || storedSession.TraceId != "" {
+		t.Fatalf("legacy field created a session trace association: %+v %v", storedSession, err)
 	}
 	encoded, err := json.Marshal(rows[0])
 	if err != nil || bytes.Contains(encoded, []byte("linkedTraceId")) || bytes.Contains(encoded, []byte("distributedTraceId")) {

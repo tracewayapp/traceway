@@ -223,3 +223,42 @@ func TestLogRecordRepository_SearchByTraceIdsPastBranchCap(t *testing.T) {
 	bodies, _ = searchBodies(t, params)
 	assertBodies(t, "page 2", bodies, []string{"older"})
 }
+
+func TestLogRecordRepository_WholeTracePaginatesAcrossProjects(t *testing.T) {
+	setupTestDB(t)
+	projects := []uuid.UUID{uuid.New(), uuid.New()}
+	other := uuid.New()
+	now := truncateMs(time.Now().UTC())
+	const trace = "0123456789abcdef0123456789abcdef"
+	var records []models.LogRecord
+	for i := 0; i < 7; i++ {
+		record := makeLogRecord(projects[i%2], 9, fmt.Sprintf("row %d", i), now.Add(time.Duration(i)*time.Second))
+		record.TraceId = trace
+		records = append(records, record)
+	}
+	outside := makeLogRecord(other, 9, "outside", now)
+	outside.TraceId = trace
+	records = append(records, outside, makeLogRecord(projects[0], 9, "another trace", now))
+	if err := LogRecordRepository.InsertAsync(context.Background(), records); err != nil {
+		t.Fatal(err)
+	}
+	params := shared.LogSearchParams{ProjectId: projects[0], ProjectIds: projects, TraceId: trace,
+		FromDate: now.Add(-time.Hour), ToDate: now.Add(time.Hour), OrderBy: "timestamp", SortDirection: "asc", PageSize: 3}
+	var got []string
+	for page := 1; page <= 3; page++ {
+		params.Page = page
+		bodies, total := searchBodies(t, params)
+		if total != 7 {
+			t.Fatalf("page %d: total = %d", page, total)
+		}
+		got = append(got, bodies...)
+	}
+	assertBodies(t, "whole trace", got, []string{"row 0", "row 1", "row 2", "row 3", "row 4", "row 5", "row 6"})
+	params.ProjectIds = nil
+	params.Page, params.PageSize = 1, 10
+	bodies, total := searchBodies(t, params)
+	if total != 4 {
+		t.Fatalf("project scope widened: %d", total)
+	}
+	assertBodies(t, "selected project", bodies, []string{"row 0", "row 2", "row 4", "row 6"})
+}

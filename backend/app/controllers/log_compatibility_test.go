@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -13,10 +14,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/dbtest"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 )
 
 func TestLogTraceFiltersStayScoped(t *testing.T) {
@@ -74,5 +77,71 @@ func TestLogTraceFiltersStayScoped(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestWholeTraceLogsStayInsideSelectedOrganization(t *testing.T) {
+	setupSetupControllerDB(t)
+	tx, err := db.DB.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	user, org := createSetupTestAccount(t, tx, "trace-logs@example.com", "owner")
+	_, otherOrg := createSetupTestAccount(t, tx, "other-trace-logs@example.com", "owner")
+	_, strangerOrg := createSetupTestAccount(t, tx, "stranger-trace-logs@example.com", "owner")
+	if _, err := transactional.OrganizationRepository.AddUser(tx, otherOrg, user, "user"); err != nil {
+		t.Fatal(err)
+	}
+	var projects []*models.Project
+	for i, organization := range []int{org, org, otherOrg, strangerOrg} {
+		project, err := transactional.ProjectRepository.CreateWithOrganization(tx, fmt.Sprintf("service-%d", i), "opentelemetry", organization)
+		if err != nil {
+			t.Fatal(err)
+		}
+		projects = append(projects, project)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	const trace = "0123456789abcdef0123456789abcdef"
+	at := time.Now().UTC().Truncate(time.Second)
+	for _, project := range projects {
+		if err := telemetry.LogRecordRepository.InsertAsync(context.Background(), []models.LogRecord{{
+			Id: uuid.New(), ProjectId: project.Id, TraceId: trace, Timestamp: at, Body: project.Name,
+		}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, selected := range projects[:2] {
+		for _, whole := range []bool{false, true} {
+
+			body := fmt.Sprintf(`{"traceId":%q,"wholeTrace":%t,"fromDate":%q,"toDate":%q,"pagination":{"page":1,"pageSize":100}}`, trace, whole, at.Add(-time.Hour).Format(time.RFC3339Nano), at.Add(time.Hour).Format(time.RFC3339Nano))
+			c, response := newControllerTestContext(t, nil, user, "POST", "/logs", body)
+			c.Set(middleware.ProjectIdContextKey, selected.Id)
+			LogController.List(c)
+			var result PaginatedResponse[models.LogRecord]
+			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || response.Code != 200 {
+				t.Fatalf("%d %s %v", response.Code, response.Body.String(), err)
+			}
+			want := 1
+			if whole {
+				want = 2
+			}
+			if len(result.Data) != want || result.Pagination.Total != int64(want) {
+				t.Fatalf("whole=%t: %+v", whole, result)
+			}
+			for _, log := range result.Data {
+				if log.ProjectId != projects[0].Id && log.ProjectId != projects[1].Id {
+					t.Fatal("whole trace leaked another organization's log")
+				}
+			}
+		}
+	}
+	c, response := newControllerTestContext(t, nil, user, "POST", "/logs", `{"wholeTrace":true,"pagination":{"page":1,"pageSize":100}}`)
+	c.Set(middleware.ProjectIdContextKey, projects[0].Id)
+	LogController.List(c)
+	if response.Code != 400 {
+		t.Fatalf("wholeTrace without traceId must be rejected: %d", response.Code)
 	}
 }

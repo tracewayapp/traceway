@@ -188,6 +188,16 @@ func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.
 func (r *logRecordRepository) buildWhere(params shared.LogSearchParams) (string, []interface{}) {
 	clauses := []string{"project_id = ?", "timestamp >= ?", "timestamp <= ?"}
 	args := []interface{}{params.ProjectId, params.FromDate, params.ToDate}
+	if len(params.ProjectIds) > 0 {
+		placeholders := make([]string, len(params.ProjectIds))
+		args = make([]interface{}, 0, len(params.ProjectIds)+2)
+		for i, id := range params.ProjectIds {
+			placeholders[i] = "?"
+			args = append(args, id)
+		}
+		clauses[0] = "project_id IN (" + strings.Join(placeholders, ", ") + ")"
+		args = append(args, params.FromDate, params.ToDate)
+	}
 
 	if params.MinSeverity > 0 {
 		clauses = append(clauses, "severity_number >= ?")

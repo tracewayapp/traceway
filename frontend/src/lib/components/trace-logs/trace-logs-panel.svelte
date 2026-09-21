@@ -35,12 +35,14 @@
 		traceId,
 		spans,
 		rootSpan,
+		wholeTrace = false,
 		traceRecordedAt
 	}: {
 		projectId: string;
 		traceId: string;
 		spans: Span[];
 		rootSpan?: Pick<Span, 'spanId' | 'name'>;
+		wholeTrace?: boolean;
 		traceRecordedAt: string;
 	} = $props();
 
@@ -56,16 +58,20 @@
 
 	const spanNameByHex = $derived.by(() => {
 		const m = new SvelteMap<string, string>();
-		if (rootSpan) m.set(rootSpan.spanId.toLowerCase(), rootSpan.name);
+		if (rootSpan) m.set(`${projectId}:${traceId}:${rootSpan.spanId.toLowerCase()}`, rootSpan.name);
 		for (const s of spans) {
-			m.set(s.spanId.toLowerCase(), s.name);
+			m.set(`${s.projectId}:${s.traceId}:${s.spanId.toLowerCase()}`, s.name);
 		}
 		return m;
 	});
 
 	function resolveSpanName(log: LogRecord): string | null {
 		if (!log.spanId) return null;
-		return spanNameByHex.get(log.spanId.toLowerCase()) ?? null;
+		return (
+			spanNameByHex.get(
+				`${log.projectId || projectId}:${log.traceId || traceId}:${log.spanId.toLowerCase()}`
+			) ?? null
+		);
 	}
 
 	function timeWindow(): { fromDate: string; toDate: string } {
@@ -91,7 +97,8 @@
 					orderBy: 'timestamp',
 					sortDirection: 'asc',
 					pagination: { page, pageSize: 100 },
-					traceId
+					traceId,
+					...(wholeTrace ? { wholeTrace: true } : {})
 				},
 				{ projectId: projectId || undefined }
 			)) as { data: LogRecord[]; pagination?: { total: number } };
@@ -116,7 +123,7 @@
 
 	$effect(() => {
 		// SvelteKit reuses this component when navigating between trace URLs.
-		const identity = [projectId, traceId, traceRecordedAt];
+		const identity = [projectId, traceId, traceRecordedAt, wholeTrace];
 		untrack(() => {
 			generation++;
 			logs = [];
@@ -179,6 +186,7 @@
 						<Table.Head class="h-8 w-[180px] py-1.5 pl-6">Timestamp</Table.Head>
 						<Table.Head class="h-8 w-[80px] py-1.5">Level</Table.Head>
 						<Table.Head class="h-8 py-1.5">Message</Table.Head>
+						{#if wholeTrace}<Table.Head class="h-8 py-1.5">Service</Table.Head>{/if}
 						<Table.Head class="h-8 w-[220px] py-1.5 pr-6">Span</Table.Head>
 					</Table.Row>
 				</Table.Header>
@@ -198,6 +206,11 @@
 							<Table.Cell class="max-w-[600px] truncate py-1.5 font-mono text-xs">
 								<LogMessage body={log.body} attributes={log.logAttributes} />
 							</Table.Cell>
+							{#if wholeTrace}
+								<Table.Cell class="py-1.5 text-xs text-muted-foreground"
+									>{log.serviceName || '—'}</Table.Cell
+								>
+							{/if}
 							<Table.Cell class="py-1.5 pr-6">
 								{#if spanName}
 									<span
@@ -212,7 +225,7 @@
 							</Table.Cell>
 						</Table.Row>
 						{#if expandedId === log.id}
-							<ExpandedLogRow {log} colspan={4} />
+							<ExpandedLogRow {log} colspan={wholeTrace ? 5 : 4} />
 						{/if}
 					{/each}
 				</Table.Body>

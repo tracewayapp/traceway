@@ -3,7 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { api } from '$lib/api';
 	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
-	import { projectsState, isFrontendFramework } from '$lib/state/projects.svelte';
+	import { projectsState } from '$lib/state/projects.svelte';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import { formatDateTime, formatDuration } from '$lib/utils/formatters';
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
@@ -41,9 +41,6 @@
 	let generation = 0;
 
 	const summary = $derived(summarizeSpanTrace(spans));
-	const showLogs = $derived(
-		!!projectsState.currentProject && !isFrontendFramework(projectsState.currentProject.framework)
-	);
 
 	const truncated = $derived(!!status?.reasons?.includes('most_important'));
 
@@ -169,8 +166,9 @@
 			</Card.Content>
 		</Card.Root>
 
-		{#if showLogs && spans.length > 0}
+		{#if spans.length > 0}
 			<TraceLogsPanel
+				wholeTrace
 				projectId={projectsState.currentProjectId ?? ''}
 				traceId={data.traceId}
 				{spans}

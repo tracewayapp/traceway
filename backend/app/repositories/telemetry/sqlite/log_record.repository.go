@@ -225,6 +225,15 @@ func (r *logRecordRepository) buildWhere(params shared.LogSearchParams) (string,
 		"from":       sqlitetypes.NewSQLiteTime(params.FromDate),
 		"to":         sqlitetypes.NewSQLiteTime(params.ToDate),
 	}
+	if len(params.ProjectIds) > 0 {
+		placeholders := make([]string, len(params.ProjectIds))
+		for i, id := range params.ProjectIds {
+			key := fmt.Sprintf("project%d", i)
+			placeholders[i] = ":" + key
+			args[key] = id
+		}
+		clauses[0] = "project_id IN (" + strings.Join(placeholders, ", ") + ")"
+	}
 
 	if params.MinSeverity > 0 {
 		clauses = append(clauses, "severity_number >= :min_severity")

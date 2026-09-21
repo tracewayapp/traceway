@@ -11,16 +11,15 @@ import (
 )
 
 type ClientExceptionStackTrace struct {
-	TraceId                  *string           `json:"traceId"`
-	IsTask                   bool              `json:"isTask"`
-	StackTrace               string            `json:"stackTrace"`
-	RecordedAt               time.Time         `json:"recordedAt"`
-	Attributes               map[string]string `json:"attributes"`
-	IsMessage                bool              `json:"isMessage"`
-	SessionRecordingId       *string           `json:"sessionRecordingId"`
-	SessionId                *string           `json:"sessionId"`
-	LegacyDistributedTraceId *string           `json:"distributedTraceId"`
-	DebugIds                 map[string]string `json:"debugIds"`
+	TraceId            *string           `json:"traceId"`
+	IsTask             bool              `json:"isTask"`
+	StackTrace         string            `json:"stackTrace"`
+	RecordedAt         time.Time         `json:"recordedAt"`
+	Attributes         map[string]string `json:"attributes"`
+	IsMessage          bool              `json:"isMessage"`
+	SessionRecordingId *string           `json:"sessionRecordingId"`
+	SessionId          *string           `json:"sessionId"`
+	DebugIds           map[string]string `json:"debugIds"`
 }
 
 func (c *ClientExceptionStackTrace) ToExceptionStackTrace(exceptionHash, appVersion, serverName string) models.ExceptionStackTrace {
@@ -30,17 +29,12 @@ func (c *ClientExceptionStackTrace) ToExceptionStackTrace(exceptionHash, appVers
 	}
 
 	// In the native protocol a "trace" is one endpoint or task run, and traceId names it. That run is stored as the root
-	// span of a trace, so the exception sits on that span. The trace is the distributed one when the client named one.
+	// span of a trace, so the exception sits on that span.
 	var traceId, spanId string
 	if c.TraceId != nil {
 		if parsed, err := uuid.Parse(*c.TraceId); err == nil && parsed != uuid.Nil {
 			spanId = hexId(parsed)
 			traceId = spanId
-		}
-	}
-	if c.LegacyDistributedTraceId != nil {
-		if parsed, err := uuid.Parse(*c.LegacyDistributedTraceId); err == nil && parsed != uuid.Nil {
-			traceId = hexId(parsed)
 		}
 	}
 
@@ -90,17 +84,16 @@ func (c *ClientMetricRecord) ToMetricPoint(serverName string) models.MetricPoint
 }
 
 type ClientTrace struct {
-	Id                       string            `json:"id"`
-	Endpoint                 string            `json:"endpoint"`
-	Duration                 time.Duration     `json:"duration"`
-	RecordedAt               time.Time         `json:"recordedAt"`
-	StatusCode               int               `json:"statusCode"`
-	BodySize                 int               `json:"bodySize"`
-	ClientIP                 string            `json:"clientIP"`
-	Attributes               map[string]string `json:"attributes"`
-	Spans                    []*ClientSpan     `json:"spans"`
-	IsTask                   bool              `json:"isTask"`
-	LegacyDistributedTraceId string            `json:"distributedTraceId"`
+	Id         string            `json:"id"`
+	Endpoint   string            `json:"endpoint"`
+	Duration   time.Duration     `json:"duration"`
+	RecordedAt time.Time         `json:"recordedAt"`
+	StatusCode int               `json:"statusCode"`
+	BodySize   int               `json:"bodySize"`
+	ClientIP   string            `json:"clientIP"`
+	Attributes map[string]string `json:"attributes"`
+	Spans      []*ClientSpan     `json:"spans"`
+	IsTask     bool              `json:"isTask"`
 }
 
 const streamAttributeKey = "traceway.is_stream"
@@ -119,13 +112,7 @@ func hexId(id uuid.UUID) string { return hex.EncodeToString(id[:]) }
 // SpanId is the id of the run itself: a native trace is stored as the root span of a trace.
 func (c *ClientTrace) SpanId() string { return hexId(c.ParsedId()) }
 
-// TraceId is the distributed trace the client named, else the run's own id.
-func (c *ClientTrace) TraceId() string {
-	if parsed, err := uuid.Parse(c.LegacyDistributedTraceId); err == nil && parsed != uuid.Nil {
-		return hexId(parsed)
-	}
-	return c.SpanId()
-}
+func (c *ClientTrace) TraceId() string { return c.SpanId() }
 
 func (c *ClientTrace) ToEndpoint(appVersion, serverName string) models.Endpoint {
 	return models.Endpoint{
@@ -239,25 +226,17 @@ type ClientSessionRecording struct {
 }
 
 type ClientSession struct {
-	Id                       string            `json:"id"`
-	StartedAt                time.Time         `json:"startedAt"`
-	EndedAt                  *time.Time        `json:"endedAt,omitempty"`
-	ClientIP                 string            `json:"clientIP"`
-	Attributes               map[string]string `json:"attributes"`
-	LegacyDistributedTraceId string            `json:"distributedTraceId,omitempty"`
+	Id         string            `json:"id"`
+	StartedAt  time.Time         `json:"startedAt"`
+	EndedAt    *time.Time        `json:"endedAt,omitempty"`
+	ClientIP   string            `json:"clientIP"`
+	Attributes map[string]string `json:"attributes"`
 }
 
 func (c *ClientSession) ToSession(appVersion, serverName string) models.Session {
 	id, err := uuid.Parse(c.Id)
 	if err != nil {
 		id = uuid.New()
-	}
-
-	var traceId string
-	if c.LegacyDistributedTraceId != "" {
-		if parsed, err := uuid.Parse(c.LegacyDistributedTraceId); err == nil && parsed != uuid.Nil {
-			traceId = hex.EncodeToString(parsed[:])
-		}
 	}
 
 	var duration int64
@@ -277,7 +256,6 @@ func (c *ClientSession) ToSession(appVersion, serverName string) models.Session 
 		Attributes: c.Attributes,
 		AppVersion: appVersion,
 		ServerName: serverName,
-		TraceId:    traceId,
 	}
 }
 

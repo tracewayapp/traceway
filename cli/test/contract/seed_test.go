@@ -158,7 +158,7 @@ func seedTelemetry(ctx context.Context, projectIDStr string, at time.Time) error
 		Attributes: map[string]string{},
 		AppVersion: "1.0.0",
 		ServerName: "contract-host",
-		TraceId:    &traceUUID,
+		TraceId:    seedTraceID,
 	}
 	if err := telemetry.SessionRepository.Upsert(ctx, []models.Session{session}); err != nil {
 		return fmt.Errorf("session: %w", err)

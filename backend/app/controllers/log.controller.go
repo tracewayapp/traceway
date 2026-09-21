@@ -42,6 +42,7 @@ type LogSearchRequest struct {
 	MinSeverity      uint8                       `json:"minSeverity"`
 	ServiceName      string                      `json:"serviceName"`
 	TraceId          string                      `json:"traceId"`
+	WholeTrace       bool                        `json:"wholeTrace"`
 	SpanId           string                      `json:"spanId"`
 	ScopeName        string                      `json:"scopeName"`
 	Body             string                      `json:"body"`
@@ -132,6 +133,20 @@ func (l logController) List(c *gin.Context) {
 		SortDirection:    request.SortDirection,
 		Page:             request.Pagination.Page,
 		PageSize:         request.Pagination.PageSize,
+	}
+	if request.WholeTrace && request.TraceId == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "wholeTrace requires a traceId"})
+		return
+	}
+	if request.WholeTrace {
+		projects, err := organizationProjects(c, projectId)
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error listing trace projects: %w", err))
+			return
+		}
+		for _, project := range projects {
+			params.ProjectIds = append(params.ProjectIds, project.Id)
+		}
 	}
 
 	span := traceway.StartSpan(c, "loading logs")

@@ -1,6 +1,7 @@
 package clientmodels
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/google/uuid"
@@ -9,7 +10,7 @@ import (
 func TestNativeMissingIDsAreGeneratedOnce(t *testing.T) {
 	for _, input := range []string{"", "invalid", uuid.Nil.String(), hexId(uuid.Nil)} {
 		t.Run(input, func(t *testing.T) {
-			run := &ClientTrace{Id: input, LegacyDistributedTraceId: uuid.Nil.String()}
+			run := &ClientTrace{Id: input}
 			child := &ClientSpan{Id: input, ParentSpanId: uuid.Nil.String()}
 			project := uuid.New()
 			root := run.RootSpan(project, "")
@@ -36,11 +37,18 @@ func TestNativeExceptionIgnoresZeroTraceIDs(t *testing.T) {
 		{"zero IDs", &zero, &zero, "", ""},
 		{"zero distributed", &run, &zero, hexId(uuid.MustParse(run)), hexId(uuid.MustParse(run))},
 		{"missing distributed", &run, nil, hexId(uuid.MustParse(run)), hexId(uuid.MustParse(run))},
-		{"valid distributed", &run, &distributed, hexId(uuid.MustParse(distributed)), hexId(uuid.MustParse(run))},
-		{"zero run", &zero, &distributed, hexId(uuid.MustParse(distributed)), ""},
+		{"valid distributed ignored", &run, &distributed, hexId(uuid.MustParse(run)), hexId(uuid.MustParse(run))},
+		{"zero run", &zero, &distributed, "", ""},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			input := &ClientExceptionStackTrace{TraceId: tt.run, LegacyDistributedTraceId: tt.distributed}
+			body, err := json.Marshal(map[string]any{"traceId": tt.run, "distributedTraceId": tt.distributed})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var input ClientExceptionStackTrace
+			if err := json.Unmarshal(body, &input); err != nil {
+				t.Fatal(err)
+			}
 			got := input.ToExceptionStackTrace("hash", "", "")
 			if got.TraceId != tt.wantTrace || got.SpanId != tt.wantSpan {
 				t.Fatalf("exception identity = %q/%q, want %q/%q", got.TraceId, got.SpanId, tt.wantTrace, tt.wantSpan)

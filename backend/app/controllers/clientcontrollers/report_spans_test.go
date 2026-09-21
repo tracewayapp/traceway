@@ -22,11 +22,11 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func TestReportKeepsNativeExceptionTraceIdentity(t *testing.T) {
+func TestReportIgnoresLegacyDistributedTraceID(t *testing.T) {
 	dbtest.SetupSQLite(t)
 	project, run, distributed := uuid.New(), uuid.New(), uuid.New()
 	at := time.Now().UTC()
-	traceID, spanID := hex.EncodeToString(distributed[:]), hex.EncodeToString(run[:])
+	traceID, spanID := hex.EncodeToString(run[:]), hex.EncodeToString(run[:])
 	body, err := json.Marshal(map[string]any{
 		"collectionFrames": []any{map[string]any{"stackTraces": []any{map[string]any{
 			"traceId": run, "distributedTraceId": distributed, "stackTrace": "Error: request failed", "recordedAt": at,
@@ -48,6 +48,10 @@ func TestReportKeepsNativeExceptionTraceIdentity(t *testing.T) {
 	if err != nil || len(rows) != 1 || rows[0].TraceId != traceID || rows[0].SpanId != spanID || rows[0].TraceType != "endpoint" {
 		t.Fatalf("native report lost its trace or owning run: %+v %v", rows, err)
 	}
+	ignored, err := telemetry.ExceptionStackTraceRepository.FindByTraceIds(context.Background(), []string{hex.EncodeToString(distributed[:])}, []uuid.UUID{project}, &at)
+	if err != nil || len(ignored) != 0 {
+		t.Fatalf("legacy field created an association: %+v %v", ignored, err)
+	}
 	encoded, err := json.Marshal(rows[0])
 	if err != nil || bytes.Contains(encoded, []byte("linkedTraceId")) || bytes.Contains(encoded, []byte("distributedTraceId")) {
 		t.Fatalf("retired identity exposed: %s %v", encoded, err)
@@ -58,7 +62,7 @@ func TestReportKeepsNativeSpanEdgesAndHistoricalTimes(t *testing.T) {
 	dbtest.SetupSQLite(t)
 	project, owner, parent, child := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	recorded := time.Now().UTC().Add(-72 * time.Hour)
-	frame := map[string]any{"traces": []any{map[string]any{"id": owner, "endpoint": "native-task", "isTask": true, "recordedAt": recorded, "duration": 2000000,
+	frame := map[string]any{"traces": []any{map[string]any{"id": owner, "distributedTraceId": uuid.New(), "endpoint": "native-task", "isTask": true, "recordedAt": recorded, "duration": 2000000,
 		"spans": []any{
 			map[string]any{"id": child, "name": "child", "parentSpanId": parent, "attributes": map[string]string{"native": "preserved"}, "startTime": recorded, "duration": 1000},
 			map[string]any{"id": parent, "name": "parent", "parentSpanId": "", "startTime": recorded, "duration": 2000},

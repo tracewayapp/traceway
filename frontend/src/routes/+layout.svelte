@@ -26,6 +26,7 @@
 	import { captureException } from '@tracewayapp/frontend';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import type { Component } from 'svelte';
+	import PublicStatusPage from '$lib/components/traceway/public-status-page.svelte';
 
 	if (__TRACEWAY_URL__) {
 		setupTraceway({
@@ -43,7 +44,7 @@
 
 	function handleGlobalKeydown(e: KeyboardEvent) {
 		if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-			if (!authState.isAuthenticated || isPublicPath(page.url.pathname)) return;
+			if (!authState.isAuthenticated || isPublicPath(page.url.pathname) || vanityStatusSlug) return;
 			if (isMacPlatform && !e.metaKey) return;
 			if (page.url.pathname === '/dashboards' || isOrganizationPath(page.url.pathname)) return;
 			e.preventDefault();
@@ -96,6 +97,10 @@
 		'/oauth/authorize'
 	]);
 
+	const vanityStatusSlug = $derived<string | null>(
+		page.url.pathname === '/' ? (page.data.statusSlug ?? null) : null
+	);
+
 	function isPublicPath(pathname: string): boolean {
 		return (
 			PUBLIC_PATHS.has(pathname) ||
@@ -109,30 +114,8 @@
 	// branch below and would render a blank page; send it to login instead,
 	// carrying the original URL so login can return there.
 	$effect(() => {
-		if (!authState.isAuthenticated && !isPublicPath(page.url.pathname)) {
+		if (!authState.isAuthenticated && !isPublicPath(page.url.pathname) && !vanityStatusSlug) {
 			const returnTo = page.url.pathname + page.url.search;
-			if (page.url.pathname === '/') {
-				// A CNAMEd status-page vanity domain lands here anonymously; ask
-				// the backend whether this Host maps to a status page before
-				// falling back to the login redirect.
-				fetch('/api/status-domains/resolve')
-					.then((response) => (response.ok ? response.json() : null))
-					.then((resolved) => {
-						if (resolved?.slug) {
-							goto(resolve(`/status/${resolved.slug}` as '/'), { replaceState: true });
-						} else {
-							gotoHref(`/login?returnTo=${encodeURIComponent(returnTo)}`, {
-								replaceState: true
-							});
-						}
-					})
-					.catch(() => {
-						gotoHref(`/login?returnTo=${encodeURIComponent(returnTo)}`, {
-							replaceState: true
-						});
-					});
-				return;
-			}
 			gotoHref(`/login?returnTo=${encodeURIComponent(returnTo)}`, {
 				replaceState: true
 			});
@@ -146,7 +129,12 @@
 	const inSetupFlow = $derived(needsSetup || page.url.pathname === '/setup');
 
 	$effect(() => {
-		if (needsSetup && !isPublicPath(page.url.pathname) && page.url.pathname !== '/setup') {
+		if (
+			needsSetup &&
+			!vanityStatusSlug &&
+			!isPublicPath(page.url.pathname) &&
+			page.url.pathname !== '/setup'
+		) {
 			goto(resolve('/setup'), { replaceState: true });
 		}
 	});
@@ -162,6 +150,7 @@
 	$effect(() => {
 		if (
 			!authState.isAuthenticated ||
+			vanityStatusSlug ||
 			page.url.pathname !== '/' ||
 			page.url.searchParams.has('projectId') ||
 			projectsState.projects.length === 0
@@ -203,6 +192,7 @@
 			authState.isAuthenticated &&
 			!isPublicPath(newPathname) &&
 			!isOrganizationPath(newPathname) &&
+			!(newPathname === '/' && vanityStatusSlug) &&
 			!(newPathname === '/' && landingOwnsRoot) &&
 			projectsState.currentProjectId &&
 			!newUrl.searchParams.get('projectId')
@@ -316,7 +306,11 @@
 <Tooltip.Provider delayDuration={0}>
 	<!-- This is not ideal, but because our layout is a top level route it can end up showing sidebar on the login page (after the login before the transition). -->
 	<!-- We could consider moving this to a lower level layout for the actual app, for now it's just a path check -->
-	{#if authState.isAuthenticated && !isPublicPath(page.url.pathname) && inSetupFlow}
+	{#if vanityStatusSlug}
+		<main class="h-screen w-screen">
+			<PublicStatusPage slug={vanityStatusSlug} />
+		</main>
+	{:else if authState.isAuthenticated && !isPublicPath(page.url.pathname) && inSetupFlow}
 		<div class="flex min-h-screen flex-col">
 			<header class="flex h-14 shrink-0 items-center justify-between px-4">
 				{#if themeState.isDark}

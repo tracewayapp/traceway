@@ -32,11 +32,6 @@ type sessionRow struct {
 	LastReceived *sqlitetypes.SQLiteTime `lit:"last_received"`
 }
 
-type sessionActivityRow struct {
-	LastActivity *sqlitetypes.SQLiteTime `lit:"last_activity"`
-	LastReceived *sqlitetypes.SQLiteTime `lit:"last_received"`
-}
-
 type sessionRowNaming struct{ lit.DefaultDbNamingStrategy }
 
 func (sessionRowNaming) GetTableNameFromStructName(string) string {
@@ -46,7 +41,6 @@ func (sessionRowNaming) GetTableNameFromStructName(string) string {
 func init() {
 	models.ExtensionModelRegistrations = append(models.ExtensionModelRegistrations, func(driver lit.Driver) {
 		lit.RegisterModelWithNaming[sessionRow](driver, sessionRowNaming{})
-		lit.RegisterModel[sessionActivityRow](driver)
 	})
 }
 
@@ -87,21 +81,9 @@ func (row *sessionRow) toModel() models.Session {
 	if row.Attributes != nil {
 		s.Attributes = map[string]string(row.Attributes)
 	}
-	shared.ResolveSessionEnd(&s, activityFromRow(row.LastActivity, row.LastReceived), time.Now())
+	activity := sqlitetypes.SessionActivityResult{LastActivity: row.LastActivity, LastReceived: row.LastReceived}
+	shared.ResolveSessionEnd(&s, activity.Activity(), time.Now())
 	return s
-}
-
-func activityFromRow(lastActivity, lastReceived *sqlitetypes.SQLiteTime) shared.SessionActivity {
-	var activity shared.SessionActivity
-	if lastActivity != nil {
-		t := lastActivity.Time
-		activity.LastActivity = &t
-	}
-	if lastReceived != nil {
-		t := lastReceived.Time
-		activity.LastReceived = &t
-	}
-	return activity
 }
 
 const sessionActivityJoin = ` LEFT JOIN (
@@ -114,10 +96,10 @@ const sessionActivityJoin = ` LEFT JOIN (
 ) AS activity ON activity.session_id = sessions.id`
 
 var sessionDurationSortKey = fmt.Sprintf(`CASE WHEN activity.last_activity IS NULL THEN sessions.duration / 1000000
-	ELSE MAX(0, CAST(ROUND((julianday(CASE
-		WHEN sessions.ended_at IS NOT NULL AND sessions.ended_at >= activity.last_activity
-			AND julianday(sessions.ended_at) < julianday(activity.last_activity) + %d / 1440.0
-		THEN sessions.ended_at ELSE activity.last_activity END) - julianday(sessions.started_at)) * 86400000) AS INTEGER)) END`,
+	ELSE CAST(ROUND((julianday(CASE
+		WHEN sessions.ended_at > MAX(activity.last_activity, sessions.started_at)
+			AND julianday(sessions.ended_at) < julianday(MAX(activity.last_activity, sessions.started_at)) + %d / 1440.0
+		THEN sessions.ended_at ELSE MAX(activity.last_activity, sessions.started_at) END) - julianday(sessions.started_at)) * 86400000) AS INTEGER) END`,
 	int(shared.SessionIdleTimeout/time.Minute))
 
 type sessionRepository struct{}
@@ -291,8 +273,8 @@ func (r *sessionRepository) FindById(ctx context.Context, projectId, sessionId u
 		return nil, nil
 	}
 
-	from, to := shared.SessionRecordingWindow(row.StartedAt.Time, row.StartedAt.Time)
-	activity, err := lit.SelectSingleNamed[sessionActivityRow](db.TelemetryDB,
+	from, to := shared.TraceWindowBounds(row.StartedAt.Time)
+	activity, err := lit.SelectSingleNamed[sqlitetypes.SessionActivityResult](db.TelemetryDB,
 		"SELECT MAX(COALESCE(ended_at, recorded_at)) AS last_activity, MAX(recorded_at) AS last_received FROM session_recordings WHERE project_id = :project_id AND session_id = :session_id AND recorded_at >= :from AND recorded_at <= :to",
 		lit.P{"project_id": projectId, "session_id": sessionId, "from": sqlitetypes.NewSQLiteTime(from), "to": sqlitetypes.NewSQLiteTime(to)})
 	if err != nil {

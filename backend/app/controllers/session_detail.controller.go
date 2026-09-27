@@ -118,12 +118,7 @@ func (s sessionDetailController) GetSessionRecording(c *gin.Context) {
 	}
 
 	var startedAt *time.Time
-	if raw := c.Query("startedAt"); raw != "" {
-		t, err := time.Parse(time.RFC3339Nano, raw)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid startedAt"})
-			return
-		}
+	if t, err := time.Parse(time.RFC3339Nano, c.Query("startedAt")); err == nil {
 		startedAt = &t
 	}
 
@@ -197,6 +192,7 @@ func readSegments(ctx context.Context, segments []models.SessionRecording) []*se
 			body.events = decodeArray(body.Events)
 			body.logs = decodeArray(body.Logs)
 			body.actions = decodeArray(body.Actions)
+			body.Events, body.Logs, body.Actions = nil, nil, nil
 			bodies[i] = &body
 			return nil
 		})

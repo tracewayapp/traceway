@@ -32,6 +32,8 @@ func TestResolveSessionEnd(t *testing.T) {
 		{name: "late inactivity-timer end falls back to activity", endedAt: at(125), lastActivity: at(10), now: *at(130), wantEnd: at(10), wantDuration: 10 * time.Minute, wantRecorded: true},
 		{name: "activity after the end record reopens the session", endedAt: at(20), lastActivity: at(50), now: *at(55), wantDuration: 50 * time.Minute, wantRecorded: true},
 		{name: "activity before start on a skewed clock clamps to zero", lastActivity: at(-2), now: *at(30), wantEnd: at(0), wantDuration: 0, wantRecorded: true},
+		{name: "second-precision end just before the last segment still closes", endedAt: at(5), lastActivity: at(5.01), now: *at(6), wantEnd: at(5.01), wantDuration: time.Duration(5.01 * float64(time.Minute)), wantRecorded: true},
+		{name: "explicit end is measured from the clamped activity", endedAt: at(14), lastActivity: at(-2), now: *at(30), wantEnd: at(14), wantDuration: 14 * time.Minute, wantRecorded: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

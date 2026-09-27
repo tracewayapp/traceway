@@ -97,7 +97,11 @@
 			session = detail.session;
 			exceptions = detail.exceptions || [];
 
-			const recording = await (recordingRequest ?? loadRecording(detail.session.startedAt));
+			const sessionStartedAt: string = detail.session.startedAt;
+			const recording =
+				startedAt && recordingRequest && Date.parse(startedAt) === Date.parse(sessionStartedAt)
+					? await recordingRequest
+					: await loadRecording(sessionStartedAt);
 			recordingEvents = recording?.events ?? [];
 			recordingLogs = recording?.logs ?? [];
 			recordingActions = recording?.actions ?? [];

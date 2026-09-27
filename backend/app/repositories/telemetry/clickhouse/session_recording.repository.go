@@ -51,7 +51,7 @@ func (r *sessionRecordingRepository) FindBySessionId(ctx context.Context, projec
 	query := "SELECT id, project_id, exception_id, session_id, segment_index, file_path, recorded_at, ended_at FROM session_recordings WHERE project_id = ? AND session_id = ?"
 	args := []any{projectId, sessionId}
 	if startedAt != nil {
-		from, to := shared.SessionRecordingWindow(*startedAt, *startedAt)
+		from, to := shared.TraceWindowBounds(*startedAt)
 		query += " AND recorded_at >= ? AND recorded_at <= ?"
 		args = append(args, from, to)
 	}

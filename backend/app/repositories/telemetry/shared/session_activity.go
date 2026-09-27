@@ -8,6 +8,8 @@ import (
 
 const SessionIdleTimeout = 15 * time.Minute
 
+const sessionEndTolerance = time.Second
+
 type SessionActivity struct {
 	LastActivity *time.Time
 	LastReceived *time.Time
@@ -30,11 +32,11 @@ func ResolveSessionEnd(s *models.Session, activity SessionActivity, now time.Tim
 		last = s.StartedAt
 	}
 
-	endedByRecord := s.EndedAt != nil && !s.EndedAt.Before(last)
 	end := last
-	if endedByRecord && s.EndedAt.Before(last.Add(SessionIdleTimeout)) {
+	if s.EndedAt != nil && s.EndedAt.After(last) && s.EndedAt.Before(last.Add(SessionIdleTimeout)) {
 		end = *s.EndedAt
 	}
+	endedByRecord := s.EndedAt != nil && !s.EndedAt.Before(last.Add(-sessionEndTolerance))
 
 	lastReceived := last
 	if activity.LastReceived != nil {

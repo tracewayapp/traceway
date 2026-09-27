@@ -86,7 +86,7 @@ func (r *sessionRecordingRepository) FindBySessionId(ctx context.Context, projec
 	query := "SELECT id, project_id, exception_id, session_id, segment_index, file_path, recorded_at, ended_at FROM session_recordings WHERE project_id = :project_id AND session_id = :session_id"
 	params := lit.P{"project_id": projectId, "session_id": sessionId}
 	if startedAt != nil {
-		from, to := shared.SessionRecordingWindow(*startedAt, *startedAt)
+		from, to := shared.TraceWindowBounds(*startedAt)
 		query += " AND recorded_at >= :from AND recorded_at <= :to"
 		params["from"] = sqlitetypes.NewSQLiteTime(from)
 		params["to"] = sqlitetypes.NewSQLiteTime(to)

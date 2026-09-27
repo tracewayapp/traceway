@@ -108,9 +108,11 @@ const sessionActivityQuery = `SELECT assumeNotNull(session_id) AS sid,
 	GROUP BY sid`
 
 var sessionDurationSortKey = fmt.Sprintf(`if(a.last_activity IS NULL, intDiv(s.duration, 1000000),
-	greatest(toInt64(0), toInt64(dateDiff('millisecond', toDateTime64(s.started_at, 3), if(
-		s.ended_at IS NOT NULL AND s.ended_at >= a.last_activity AND s.ended_at < a.last_activity + INTERVAL %d MINUTE,
-		toDateTime64(assumeNotNull(s.ended_at), 3), assumeNotNull(a.last_activity))))))`,
+	toInt64(dateDiff('millisecond', toDateTime64(s.started_at, 3), if(
+		s.ended_at > greatest(assumeNotNull(a.last_activity), toDateTime64(s.started_at, 3))
+			AND s.ended_at < greatest(assumeNotNull(a.last_activity), toDateTime64(s.started_at, 3)) + INTERVAL %d MINUTE,
+		toDateTime64(assumeNotNull(s.ended_at), 3),
+		greatest(assumeNotNull(a.last_activity), toDateTime64(s.started_at, 3))))))`,
 	int(shared.SessionIdleTimeout/time.Minute))
 
 func (r *sessionRepository) FindById(ctx context.Context, projectId, sessionId uuid.UUID, startedAt *time.Time) (*models.Session, error) {
@@ -137,7 +139,7 @@ func (r *sessionRepository) FindById(ctx context.Context, projectId, sessionId u
 		return nil, err
 	}
 
-	from, to := shared.SessionRecordingWindow(s.StartedAt, s.StartedAt)
+	from, to := shared.TraceWindowBounds(s.StartedAt)
 	var segments uint64
 	var lastActivity, lastReceived time.Time
 	err = chdb.Conn.QueryRow(ctx,

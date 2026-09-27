@@ -1,8 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-
-vi.mock('$lib/state/timezone.svelte', () => ({ getTimezone: () => 'UTC' }));
-
-import { sessionDurationLabel } from './session-duration';
+import { describe, expect, it } from 'vitest';
+import { formatSessionDuration, sessionDurationLabel } from './session-duration';
 
 const now = Date.parse('2026-09-26T17:00:00Z');
 const minutesAgo = (m: number) => new Date(now - m * 60_000).toISOString();
@@ -14,7 +11,7 @@ describe('sessionDurationLabel', () => {
 				{ startedAt: minutesAgo(40), endedAt: minutesAgo(38), duration: 120e9 },
 				now
 			)
-		).toBe('120.0s');
+		).toBe('2m 0s');
 	});
 
 	it('keeps a long session with recent activity in progress', () => {
@@ -36,5 +33,19 @@ describe('sessionDurationLabel', () => {
 		expect(sessionDurationLabel({ startedAt: minutesAgo(40), duration: 0 }, now)).toBe(
 			'No recording'
 		);
+	});
+});
+
+describe('formatSessionDuration', () => {
+	it.each([
+		[11.9e9, '11.9s'],
+		[59.94e9, '59.9s'],
+		[60e9, '1m 0s'],
+		[1267e9, '21m 7s'],
+		[3600e9, '1h 0m'],
+		[7514e9, '2h 5m'],
+		[-5e9, '0.0s']
+	])('formats %d ns as %s', (ns, label) => {
+		expect(formatSessionDuration(ns)).toBe(label);
 	});
 });

@@ -509,13 +509,14 @@ func (e *exceptionStackTraceRepository) FindByTraceIds(ctx context.Context, trac
 }
 
 // FindAllBySessionId returns all exceptions/messages stamped with the given session_id, ordered by time.
-func (e *exceptionStackTraceRepository) FindAllBySessionId(ctx context.Context, projectId, sessionId uuid.UUID) ([]models.ExceptionStackTrace, error) {
+func (e *exceptionStackTraceRepository) FindAllBySessionId(ctx context.Context, projectId, sessionId uuid.UUID, startedAt time.Time) ([]models.ExceptionStackTrace, error) {
+	from, to := shared.SessionRecordingWindow(startedAt, startedAt)
 	rows, err := lit.SelectNamed[exceptionRow](db.TelemetryDB,
 		`SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, session_id
 			FROM exceptions_v2
-			WHERE project_id = :project_id AND session_id = :session_id
+			WHERE project_id = :project_id AND session_id = :session_id AND recorded_at >= :from AND recorded_at <= :to
 			ORDER BY recorded_at ASC`,
-		lit.P{"project_id": projectId, "session_id": sessionId})
+		lit.P{"project_id": projectId, "session_id": sessionId, "from": from.UTC(), "to": to.UTC()})
 	if err != nil {
 		return nil, err
 	}

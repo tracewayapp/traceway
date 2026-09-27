@@ -266,6 +266,7 @@ func (e clientController) Report(c *gin.Context) {
 				Key:          key,
 				Body:         body,
 				RecordedAt:   time.Now().UTC(),
+				EndedAt:      sr.EndedAt,
 			})
 		}
 	}

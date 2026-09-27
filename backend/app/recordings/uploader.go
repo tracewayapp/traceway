@@ -35,6 +35,7 @@ type Job struct {
 	Key          string
 	Body         []byte
 	RecordedAt   time.Time
+	EndedAt      *time.Time
 }
 
 type storer interface {
@@ -172,6 +173,7 @@ func (p *pool) handle(ctx context.Context, j Job) {
 		SegmentIndex: j.SegmentIndex,
 		FilePath:     j.Key,
 		RecordedAt:   j.RecordedAt,
+		EndedAt:      j.EndedAt,
 	}
 	select {
 	case p.inserts <- rec:

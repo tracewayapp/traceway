@@ -476,13 +476,14 @@ func (e *exceptionStackTraceRepository) FindByTraceIds(ctx context.Context, trac
 // FindAllBySessionId returns all exceptions/messages stamped with the given session_id, ordered by time.
 // The plain `session_id = ?` is what lets SQLite use the partial idx_exceptions_session_recorded
 // (WHERE session_id IS NOT NULL); an IS, IN or COALESCE rewrite falls back to a whole-project scan.
-func (e *exceptionStackTraceRepository) FindAllBySessionId(ctx context.Context, projectId, sessionId uuid.UUID) ([]models.ExceptionStackTrace, error) {
+func (e *exceptionStackTraceRepository) FindAllBySessionId(ctx context.Context, projectId, sessionId uuid.UUID, startedAt time.Time) ([]models.ExceptionStackTrace, error) {
+	from, to := shared.SessionRecordingWindow(startedAt, startedAt)
 	rows, err := lit.SelectNamed[exceptionRow](db.TelemetryDB,
 		`SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, session_id
 			FROM exceptions_v2
-			WHERE project_id = :project_id AND session_id = :session_id
+			WHERE project_id = :project_id AND session_id = :session_id AND recorded_at >= :from AND recorded_at <= :to
 			ORDER BY recorded_at ASC`,
-		lit.P{"project_id": projectId, "session_id": sessionId})
+		lit.P{"project_id": projectId, "session_id": sessionId, "from": sqlitetypes.NewSQLiteTime(from), "to": sqlitetypes.NewSQLiteTime(to)})
 	if err != nil {
 		return nil, err
 	}

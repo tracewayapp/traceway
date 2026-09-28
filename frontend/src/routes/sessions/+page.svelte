@@ -2,12 +2,8 @@
 	import { getErrorMessage } from '$lib/utils/errors';
 	import { onMount, onDestroy } from 'svelte';
 	import { api } from '$lib/api';
-	import {
-		formatDuration,
-		formatRelativeTimeAgo,
-		toUTCISO,
-		calendarDateTimeToLuxon
-	} from '$lib/utils/formatters';
+	import { formatRelativeTimeAgo, toUTCISO, calendarDateTimeToLuxon } from '$lib/utils/formatters';
+	import { sessionDurationLabel } from '$lib/utils/session-duration';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import * as Table from '$lib/components/ui/table';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
@@ -63,6 +59,7 @@
 		startedAt: string;
 		endedAt?: string | null;
 		duration: number;
+		hasRecording?: boolean;
 		clientIP: string;
 		attributes?: Record<string, string>;
 		appVersion: string;
@@ -262,17 +259,6 @@
 
 	function shortId(id: string): string {
 		return id.split('-')[0] ?? id.slice(0, 8);
-	}
-
-	const ABANDONED_AFTER_MS = 15 * 60_000;
-
-	function durationLabel(s: Session): string {
-		if (s.endedAt) return formatDuration(s.duration);
-		const startedMs = Date.parse(s.startedAt);
-		if (Number.isFinite(startedMs) && Date.now() - startedMs >= ABANDONED_AFTER_MS) {
-			return 'Abandoned';
-		}
-		return 'in progress';
 	}
 
 	async function loadData(pushToHistory = true) {
@@ -591,7 +577,7 @@
 								>{formatRelativeTimeAgo(session.startedAt, timezone)}</Table.Cell
 							>
 							<Table.Cell class="font-mono text-sm tabular-nums">
-								{durationLabel(session)}
+								{sessionDurationLabel(session)}
 							</Table.Cell>
 							<Table.Cell class="font-mono text-sm">{session.appVersion || '—'}</Table.Cell>
 						</Table.Row>

@@ -92,3 +92,85 @@ func TestSessionRepository_SearchAttributes(t *testing.T) {
 		})
 	}
 }
+
+func TestSessionRepository_EndFromRecordingActivity(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	projectID := uuid.New()
+	now := time.Now().UTC().Truncate(time.Second)
+	ago := func(d time.Duration) time.Time { return now.Add(-d) }
+	ptr := func(v time.Time) *time.Time { return &v }
+
+	idle := models.Session{Id: uuid.New(), ProjectId: projectID, StartedAt: ago(60 * time.Minute)}
+	closedByPagehide := models.Session{Id: uuid.New(), ProjectId: projectID, StartedAt: ago(40 * time.Minute), EndedAt: ptr(ago(38 * time.Minute)), Duration: int64(2 * time.Minute)}
+	closedByLateTimer := models.Session{Id: uuid.New(), ProjectId: projectID, StartedAt: ago(90 * time.Minute), EndedAt: ptr(ago(30 * time.Minute)), Duration: int64(60 * time.Minute)}
+	live := models.Session{Id: uuid.New(), ProjectId: projectID, StartedAt: ago(10 * time.Minute)}
+	unrecorded := models.Session{Id: uuid.New(), ProjectId: projectID, StartedAt: ago(70 * time.Minute)}
+	skewedClock := models.Session{Id: uuid.New(), ProjectId: projectID, StartedAt: ago(30 * time.Minute), EndedAt: ptr(ago(16 * time.Minute)), Duration: int64(14 * time.Minute)}
+	if err := SessionRepository.Upsert(ctx, []models.Session{idle, closedByPagehide, closedByLateTimer, live, unrecorded, skewedClock}); err != nil {
+		t.Fatal(err)
+	}
+
+	segment := func(s models.Session, index int32, end time.Time) models.SessionRecording {
+		return models.SessionRecording{Id: uuid.New(), ProjectId: projectID, SessionId: &s.Id, SegmentIndex: index, FilePath: "k", RecordedAt: end, EndedAt: ptr(end)}
+	}
+	if err := SessionRecordingRepository.InsertAsync(ctx, []models.SessionRecording{
+		segment(idle, 0, ago(55*time.Minute)),
+		segment(idle, 1, ago(50*time.Minute)),
+		segment(closedByPagehide, 0, ago(38*time.Minute-400*time.Millisecond)),
+		segment(closedByLateTimer, 0, ago(85*time.Minute)),
+		segment(live, 0, ago(time.Minute)),
+		segment(skewedClock, 0, ago(32*time.Minute)),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []struct {
+		session  models.Session
+		duration time.Duration
+		ended    bool
+		recorded bool
+	}{
+		{skewedClock, 14 * time.Minute, true, true},
+		{idle, 10 * time.Minute, true, true},
+		{live, 9 * time.Minute, false, true},
+		{closedByLateTimer, 5 * time.Minute, true, true},
+		{closedByPagehide, 2 * time.Minute, true, true},
+		{unrecorded, 0, false, false},
+	}
+
+	rows, total, err := SessionRepository.FindAll(ctx, projectID, ago(2*time.Hour), now, 1, 10, "duration", "desc", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != int64(len(want)) || len(rows) != len(want) {
+		t.Fatalf("got %d rows (total %d), want %d", len(rows), total, len(want))
+	}
+	for i, w := range want {
+		got := rows[i]
+		if got.Id != w.session.Id {
+			t.Fatalf("row %d is %s, want %s", i, got.Id, w.session.Id)
+		}
+		if time.Duration(got.Duration).Round(time.Second) != w.duration || (got.EndedAt != nil) != w.ended || got.HasRecording != w.recorded {
+			t.Fatalf("row %d: duration=%v ended=%v recorded=%v, want %v %v %v", i, time.Duration(got.Duration), got.EndedAt != nil, got.HasRecording, w.duration, w.ended, w.recorded)
+		}
+
+		byId, err := SessionRepository.FindById(ctx, projectID, w.session.Id, &w.session.StartedAt)
+		if err != nil || byId == nil {
+			t.Fatalf("FindById(%s): %+v: %v", w.session.Id, byId, err)
+		}
+		if byId.Duration != got.Duration || (byId.EndedAt != nil) != w.ended || byId.HasRecording != w.recorded {
+			t.Fatalf("FindById disagrees with FindAll for row %d: %+v vs %+v", i, byId, got)
+		}
+	}
+
+	asc, _, err := SessionRepository.FindAll(ctx, projectID, ago(2*time.Hour), now, 1, 10, "duration", "asc", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range asc {
+		if asc[i].Id != want[len(want)-1-i].session.Id {
+			t.Fatalf("ascending row %d is %s, want %s", i, asc[i].Id, want[len(want)-1-i].session.Id)
+		}
+	}
+}

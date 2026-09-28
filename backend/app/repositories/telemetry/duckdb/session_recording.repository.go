@@ -6,7 +6,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
 
 	"github.com/duckdb/duckdb-go/v2"
@@ -17,13 +19,14 @@ import (
 )
 
 type sessionRecording struct {
-	Id           uuid.UUID              `lit:"id"`
-	ProjectId    uuid.UUID              `lit:"project_id"`
-	ExceptionId  uuid.UUID              `lit:"exception_id"`
-	SessionId    *uuid.UUID             `lit:"session_id"`
-	SegmentIndex int32                  `lit:"segment_index"`
-	FilePath     string                 `lit:"file_path"`
-	RecordedAt   sqlitetypes.SQLiteTime `lit:"recorded_at"`
+	Id           uuid.UUID               `lit:"id"`
+	ProjectId    uuid.UUID               `lit:"project_id"`
+	ExceptionId  uuid.UUID               `lit:"exception_id"`
+	SessionId    *uuid.UUID              `lit:"session_id"`
+	SegmentIndex int32                   `lit:"segment_index"`
+	FilePath     string                  `lit:"file_path"`
+	RecordedAt   sqlitetypes.SQLiteTime  `lit:"recorded_at"`
+	EndedAt      *sqlitetypes.SQLiteTime `lit:"ended_at"`
 }
 
 func init() {
@@ -50,7 +53,11 @@ func (r *sessionRecordingRepository) InsertAsync(ctx context.Context, recordings
 				s := rec.SessionId.String()
 				sessionId = &s
 			}
-			// DDL column order: id, project_id, exception_id, file_path, recorded_at, session_id, segment_index
+			var endedAt any
+			if rec.EndedAt != nil {
+				endedAt = rec.EndedAt.UTC()
+			}
+			// DDL column order: id, project_id, exception_id, file_path, recorded_at, session_id, segment_index, ended_at
 			if err := appender.AppendRow(
 				rec.Id.String(),
 				rec.ProjectId.String(),
@@ -59,6 +66,7 @@ func (r *sessionRecordingRepository) InsertAsync(ctx context.Context, recordings
 				rec.RecordedAt.UTC(),
 				nullableString(sessionId),
 				int64(rec.SegmentIndex),
+				endedAt,
 			); err != nil {
 				captureDroppedRow("session_recordings", err)
 				dropped++
@@ -88,17 +96,25 @@ func (r *sessionRecordingRepository) FindByExceptionId(ctx context.Context, proj
 }
 
 // FindBySessionId returns all recording segments for a session ordered by segment_index.
-func (r *sessionRecordingRepository) FindBySessionId(ctx context.Context, projectId, sessionId uuid.UUID) ([]models.SessionRecording, error) {
-	rows, err := lit.SelectNamed[sessionRecording](db.TelemetryDB,
-		"SELECT id, project_id, exception_id, session_id, segment_index, file_path, recorded_at FROM session_recordings WHERE project_id = :project_id AND session_id = :session_id ORDER BY segment_index ASC, recorded_at ASC",
-		lit.P{"project_id": projectId, "session_id": sessionId})
+func (r *sessionRecordingRepository) FindBySessionId(ctx context.Context, projectId, sessionId uuid.UUID, startedAt *time.Time) ([]models.SessionRecording, error) {
+	query := "SELECT id, project_id, exception_id, session_id, segment_index, file_path, recorded_at, ended_at FROM session_recordings WHERE project_id = :project_id AND session_id = :session_id"
+	params := lit.P{"project_id": projectId, "session_id": sessionId}
+	if startedAt != nil {
+		from, to := shared.TraceWindowBounds(*startedAt)
+		query += " AND recorded_at >= :from AND recorded_at <= :to"
+		params["from"] = from.UTC()
+		params["to"] = to.UTC()
+	}
+	query += " ORDER BY segment_index ASC, recorded_at ASC"
+
+	rows, err := lit.SelectNamed[sessionRecording](db.TelemetryDB, query, params)
 	if err != nil {
 		return nil, err
 	}
 
 	out := make([]models.SessionRecording, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, models.SessionRecording{
+		rec := models.SessionRecording{
 			Id:           row.Id,
 			ProjectId:    row.ProjectId,
 			ExceptionId:  row.ExceptionId,
@@ -106,7 +122,12 @@ func (r *sessionRecordingRepository) FindBySessionId(ctx context.Context, projec
 			SegmentIndex: row.SegmentIndex,
 			FilePath:     row.FilePath,
 			RecordedAt:   row.RecordedAt.Time,
-		})
+		}
+		if row.EndedAt != nil {
+			t := row.EndedAt.Time
+			rec.EndedAt = &t
+		}
+		out = append(out, rec)
 	}
 	return out, nil
 }

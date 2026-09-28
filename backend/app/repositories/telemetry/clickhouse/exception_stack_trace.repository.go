@@ -44,13 +44,14 @@ func (e *exceptionStackTraceRepository) InsertAsync(ctx context.Context, lines [
 }
 
 // FindAllBySessionId returns all exceptions/messages stamped with the given session_id.
-func (e *exceptionStackTraceRepository) FindAllBySessionId(ctx context.Context, projectId, sessionId uuid.UUID) ([]models.ExceptionStackTrace, error) {
+func (e *exceptionStackTraceRepository) FindAllBySessionId(ctx context.Context, projectId, sessionId uuid.UUID, startedAt time.Time) ([]models.ExceptionStackTrace, error) {
+	from, to := shared.TraceWindowBounds(startedAt)
 	rows, err := chdb.Conn.Query(ctx,
 		`SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, session_id
 			FROM exceptions_v2
-			WHERE project_id = ? AND session_id = ?
+			WHERE project_id = ? AND session_id = ? AND recorded_at >= ? AND recorded_at <= ?
 			ORDER BY recorded_at ASC`,
-		projectId, sessionId)
+		projectId, sessionId, from, to)
 	if err != nil {
 		return nil, err
 	}

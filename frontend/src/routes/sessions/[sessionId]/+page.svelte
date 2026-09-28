@@ -6,7 +6,8 @@
 	import { api } from '$lib/api';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { getTimezone } from '$lib/state/timezone.svelte';
-	import { formatDuration, formatDateTime } from '$lib/utils/formatters';
+	import { formatDateTime } from '$lib/utils/formatters';
+	import { sessionDurationLabel } from '$lib/utils/session-duration';
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { createRowClickHandler } from '$lib/utils/navigation';
 	import * as Card from '$lib/components/ui/card';
@@ -35,6 +36,7 @@
 		startedAt: string;
 		endedAt?: string | null;
 		duration: number;
+		hasRecording?: boolean;
 		clientIP: string;
 		appVersion: string;
 		serverName: string;
@@ -72,34 +74,34 @@
 	const hasActions = $derived(recordingActions.length > 0);
 	const defaultTab = $derived(hasLogs ? 'logs' : 'actions');
 
-	const ABANDONED_AFTER_MS = 15 * 60_000;
-
-	function durationLabel(s: Session | null): string {
-		if (!s) return '—';
-		if (s.endedAt) return formatDuration(s.duration);
-		const startedMs = Date.parse(s.startedAt);
-		if (Number.isFinite(startedMs) && Date.now() - startedMs >= ABANDONED_AFTER_MS) {
-			return 'Abandoned';
-		}
-		return 'in progress';
-	}
-
 	async function loadAll() {
 		loading = true;
 		error = '';
 		notFound = false;
 
 		try {
+			const projectId = projectsState.currentProjectId ?? undefined;
+			const loadRecording = (startedAt: string) =>
+				api.get(`/sessions/${sessionId}/recording?startedAt=${encodeURIComponent(startedAt)}`, {
+					projectId
+				});
+
 			const startedAt = pageState.url.searchParams.get('t');
-			const detail = await api.post(`/sessions/${sessionId}`, startedAt ? { startedAt } : {}, {
-				projectId: projectsState.currentProjectId ?? undefined
+			const detailRequest = api.post(`/sessions/${sessionId}`, startedAt ? { startedAt } : {}, {
+				projectId
 			});
+			const recordingRequest = startedAt ? loadRecording(startedAt) : null;
+			recordingRequest?.catch(() => {});
+
+			const detail = await detailRequest;
 			session = detail.session;
 			exceptions = detail.exceptions || [];
 
-			const recording = await api.get(`/sessions/${sessionId}/recording`, {
-				projectId: projectsState.currentProjectId ?? undefined
-			});
+			const sessionStartedAt: string = detail.session.startedAt;
+			const recording =
+				startedAt && recordingRequest && Date.parse(startedAt) === Date.parse(sessionStartedAt)
+					? await recordingRequest
+					: await loadRecording(sessionStartedAt);
 			recordingEvents = recording?.events ?? [];
 			recordingLogs = recording?.logs ?? [];
 			recordingActions = recording?.actions ?? [];
@@ -145,7 +147,7 @@
 			</Card.Header>
 			<Card.Content class="grid grid-cols-1 gap-4 sm:grid-cols-3">
 				<LabelValue label="Started" value={formatDateTime(session.startedAt, { timezone })} />
-				<LabelValue label="Duration" value={durationLabel(session)} />
+				<LabelValue label="Duration" value={sessionDurationLabel(session)} />
 				<LabelValue label="App version" value={session.appVersion || '—'} />
 			</Card.Content>
 		</Card.Root>

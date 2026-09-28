@@ -10,6 +10,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/storage"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -79,7 +80,7 @@ func (s sessionDetailController) GetSessionDetail(c *gin.Context) {
 	}
 
 	span = traceway.StartSpan(c, "loading session exceptions")
-	exceptions, err := telemetry.ExceptionStackTraceRepository.FindAllBySessionId(c, projectId, sessionId)
+	exceptions, err := telemetry.ExceptionStackTraceRepository.FindAllBySessionId(c, projectId, sessionId, session.StartedAt)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading session exceptions: %w", err))
@@ -116,56 +117,33 @@ func (s sessionDetailController) GetSessionRecording(c *gin.Context) {
 		return
 	}
 
+	var startedAt *time.Time
+	if t, err := time.Parse(time.RFC3339Nano, c.Query("startedAt")); err == nil {
+		startedAt = &t
+	}
+
 	span := traceway.StartSpan(c, "loading session segments")
-	segments, err := telemetry.SessionRecordingRepository.FindBySessionId(c, projectId, sessionId)
+	segments, err := telemetry.SessionRecordingRepository.FindBySessionId(c, projectId, sessionId, startedAt)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading session segments: %w", err))
 		return
 	}
 
+	span = traceway.StartSpan(c, "reading session segments")
+	bodies := readSegments(c.Request.Context(), segments)
+	span.End()
+
 	payload := SessionRecordingPayload{
 		Events: []json.RawMessage{},
 	}
-
-	type segmentBody struct {
-		Events    json.RawMessage `json:"events"`
-		Logs      json.RawMessage `json:"logs"`
-		Actions   json.RawMessage `json:"actions"`
-		StartedAt *time.Time      `json:"startedAt"`
-		EndedAt   *time.Time      `json:"endedAt"`
-	}
-
-	for _, seg := range segments {
-		raw, err := storage.Store.Read(context.Background(), seg.FilePath)
-		if err != nil {
-			traceway.CaptureException(traceway.NewStackTraceErrorf("failed to read session segment (key=%s): %w", seg.FilePath, err))
+	for _, body := range bodies {
+		if body == nil {
 			continue
 		}
-		var body segmentBody
-		if err := json.Unmarshal(raw, &body); err != nil {
-			traceway.CaptureException(traceway.NewStackTraceErrorf("failed to parse session segment (key=%s): %w", seg.FilePath, err))
-			continue
-		}
-
-		if len(body.Events) > 0 {
-			var events []json.RawMessage
-			if err := json.Unmarshal(body.Events, &events); err == nil {
-				payload.Events = append(payload.Events, events...)
-			}
-		}
-		if len(body.Logs) > 0 {
-			var logs []json.RawMessage
-			if err := json.Unmarshal(body.Logs, &logs); err == nil {
-				payload.Logs = append(payload.Logs, logs...)
-			}
-		}
-		if len(body.Actions) > 0 {
-			var actions []json.RawMessage
-			if err := json.Unmarshal(body.Actions, &actions); err == nil {
-				payload.Actions = append(payload.Actions, actions...)
-			}
-		}
+		payload.Events = append(payload.Events, body.events...)
+		payload.Logs = append(payload.Logs, body.logs...)
+		payload.Actions = append(payload.Actions, body.actions...)
 		if body.StartedAt != nil && (payload.StartedAt == nil || body.StartedAt.Before(*payload.StartedAt)) {
 			t := *body.StartedAt
 			payload.StartedAt = &t
@@ -177,6 +155,61 @@ func (s sessionDetailController) GetSessionRecording(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, payload)
+}
+
+const segmentReadConcurrency = 16
+
+type segmentBody struct {
+	Events    json.RawMessage `json:"events"`
+	Logs      json.RawMessage `json:"logs"`
+	Actions   json.RawMessage `json:"actions"`
+	StartedAt *time.Time      `json:"startedAt"`
+	EndedAt   *time.Time      `json:"endedAt"`
+
+	events  []json.RawMessage
+	logs    []json.RawMessage
+	actions []json.RawMessage
+}
+
+func readSegments(ctx context.Context, segments []models.SessionRecording) []*segmentBody {
+	bodies := make([]*segmentBody, len(segments))
+	var group errgroup.Group
+	group.SetLimit(segmentReadConcurrency)
+	for i, seg := range segments {
+		group.Go(func() error {
+			raw, err := storage.Store.Read(ctx, seg.FilePath)
+			if err != nil {
+				if ctx.Err() == nil {
+					traceway.CaptureException(traceway.NewStackTraceErrorf("failed to read session segment (key=%s): %w", seg.FilePath, err))
+				}
+				return nil
+			}
+			var body segmentBody
+			if err := json.Unmarshal(raw, &body); err != nil {
+				traceway.CaptureException(traceway.NewStackTraceErrorf("failed to parse session segment (key=%s): %w", seg.FilePath, err))
+				return nil
+			}
+			body.events = decodeArray(body.Events)
+			body.logs = decodeArray(body.Logs)
+			body.actions = decodeArray(body.Actions)
+			body.Events, body.Logs, body.Actions = nil, nil, nil
+			bodies[i] = &body
+			return nil
+		})
+	}
+	_ = group.Wait()
+	return bodies
+}
+
+func decodeArray(raw json.RawMessage) []json.RawMessage {
+	if len(raw) == 0 {
+		return nil
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil
+	}
+	return items
 }
 
 var SessionDetailController = sessionDetailController{}

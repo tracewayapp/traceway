@@ -43,7 +43,7 @@ It ends on the first of:
 | **Maximum duration** | 60 minutes from session start | Hard cap regardless of activity |
 | **Page unload** | `pagehide` fires (close tab, hard refresh, navigate away) | Final segment is drained, closing payload sent via `fetch keepalive` |
 
-If a session ends without an explicit close (e.g. the browser is force-quit before `pagehide` runs, or the closing flush is dropped), its `ended_at` stays NULL on the backend and the dashboard renders the duration as **Abandoned** once the row has been quiet for ≥ 15 min.
+The closing payload is not guaranteed to arrive: the browser can be force-quit before `pagehide` runs, mobile browsers freeze background tabs without firing it, and the flush itself can be dropped. The backend therefore does not depend on it. Once no replay segment has arrived for 15 minutes, the session ends at the time of its last recorded segment. A close reported more than 15 minutes after the last segment, which is what the inactivity timer sends from a tab that sat frozen in the background, is replaced the same way, so the duration reflects activity rather than time the tab spent unattended. A session with no recorded segments and no close is shown as **No recording**.
 
 ## Attributes
 

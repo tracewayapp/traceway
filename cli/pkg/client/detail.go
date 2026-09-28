@@ -110,16 +110,17 @@ type AiTrace struct {
 
 // Session mirrors models.Session — one user session that can be replayed.
 type Session struct {
-	Id         uuid.UUID         `json:"id"`
-	ProjectId  uuid.UUID         `json:"projectId"`
-	StartedAt  time.Time         `json:"startedAt"`
-	EndedAt    *time.Time        `json:"endedAt,omitempty"`
-	Duration   int64             `json:"duration"`
-	ClientIP   string            `json:"clientIP"`
-	Attributes map[string]string `json:"attributes"`
-	AppVersion string            `json:"appVersion"`
-	ServerName string            `json:"serverName"`
-	TraceId    string            `json:"traceId,omitempty"`
+	Id           uuid.UUID         `json:"id"`
+	ProjectId    uuid.UUID         `json:"projectId"`
+	StartedAt    time.Time         `json:"startedAt"`
+	EndedAt      *time.Time        `json:"endedAt,omitempty"`
+	Duration     int64             `json:"duration"`
+	ClientIP     string            `json:"clientIP"`
+	Attributes   map[string]string `json:"attributes"`
+	AppVersion   string            `json:"appVersion"`
+	ServerName   string            `json:"serverName"`
+	TraceId      string            `json:"traceId,omitempty"`
+	HasRecording bool              `json:"hasRecording"`
 }
 
 // LinkedException is the exception/message summary attached to endpoint, task,

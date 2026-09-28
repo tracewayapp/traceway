@@ -7,6 +7,7 @@ session.appVersion: string
 session.attributes: null
 session.clientIP: string
 session.duration: number
+session.hasRecording: bool
 session.id: string
 session.projectId: string
 session.serverName: string

@@ -107,13 +107,16 @@ const sessionActivityQuery = `SELECT assumeNotNull(session_id) AS sid,
 	WHERE project_id = ? AND session_id IS NOT NULL AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY sid`
 
-var sessionDurationSortKey = fmt.Sprintf(`if(a.last_activity IS NULL, intDiv(s.duration, 1000000),
-	toInt64(dateDiff('millisecond', toDateTime64(s.started_at, 3), if(
+var sessionDurationSortKey = fmt.Sprintf(`multiIf(a.last_activity IS NULL, least(intDiv(s.duration, 1000000), %[2]d),
+	assumeNotNull(a.last_activity) > toDateTime64(s.started_at, 3) + INTERVAL %[3]d MINUTE
+		AND s.ended_at > s.started_at AND s.ended_at <= s.started_at + INTERVAL %[3]d MINUTE,
+	toInt64(dateDiff('millisecond', toDateTime64(s.started_at, 3), toDateTime64(assumeNotNull(s.ended_at), 3))),
+	least(toInt64(dateDiff('millisecond', toDateTime64(s.started_at, 3), if(
 		s.ended_at > greatest(assumeNotNull(a.last_activity), toDateTime64(s.started_at, 3))
-			AND s.ended_at < greatest(assumeNotNull(a.last_activity), toDateTime64(s.started_at, 3)) + INTERVAL %d MINUTE,
+			AND s.ended_at < greatest(assumeNotNull(a.last_activity), toDateTime64(s.started_at, 3)) + INTERVAL %[1]d MINUTE,
 		toDateTime64(assumeNotNull(s.ended_at), 3),
-		greatest(assumeNotNull(a.last_activity), toDateTime64(s.started_at, 3))))))`,
-	int(shared.SessionIdleTimeout/time.Minute))
+		greatest(assumeNotNull(a.last_activity), toDateTime64(s.started_at, 3))))), %[2]d))`,
+	int(shared.SessionIdleTimeout/time.Minute), shared.SessionMaxSpan.Milliseconds(), int(shared.SessionMaxSpan/time.Minute))
 
 func (r *sessionRepository) FindById(ctx context.Context, projectId, sessionId uuid.UUID, startedAt *time.Time) (*models.Session, error) {
 	var s models.Session

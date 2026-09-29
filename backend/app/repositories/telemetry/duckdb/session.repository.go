@@ -77,12 +77,15 @@ const sessionActivityJoin = ` LEFT JOIN (
 	GROUP BY session_id
 ) AS activity ON activity.session_id = sessions.id`
 
-var sessionDurationSortKey = fmt.Sprintf(`CASE WHEN activity.last_activity IS NULL THEN CAST(sessions.duration // 1000000 AS BIGINT)
-	ELSE epoch_ms(CASE
+var sessionDurationSortKey = fmt.Sprintf(`CASE WHEN activity.last_activity IS NULL THEN least(CAST(sessions.duration // 1000000 AS BIGINT), %[2]d)
+	WHEN activity.last_activity > sessions.started_at + INTERVAL %[3]d MINUTE
+		AND sessions.ended_at > sessions.started_at AND sessions.ended_at <= sessions.started_at + INTERVAL %[3]d MINUTE
+	THEN epoch_ms(sessions.ended_at) - epoch_ms(sessions.started_at)
+	ELSE least(epoch_ms(CASE
 		WHEN sessions.ended_at > greatest(activity.last_activity, sessions.started_at)
-			AND sessions.ended_at < greatest(activity.last_activity, sessions.started_at) + INTERVAL %d MINUTE
-		THEN sessions.ended_at ELSE greatest(activity.last_activity, sessions.started_at) END) - epoch_ms(sessions.started_at) END`,
-	int(shared.SessionIdleTimeout/time.Minute))
+			AND sessions.ended_at < greatest(activity.last_activity, sessions.started_at) + INTERVAL %[1]d MINUTE
+		THEN sessions.ended_at ELSE greatest(activity.last_activity, sessions.started_at) END) - epoch_ms(sessions.started_at), %[2]d) END`,
+	int(shared.SessionIdleTimeout/time.Minute), shared.SessionMaxSpan.Milliseconds(), int(shared.SessionMaxSpan/time.Minute))
 
 type sessionRepository struct{}
 

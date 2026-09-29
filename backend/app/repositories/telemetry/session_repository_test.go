@@ -108,7 +108,8 @@ func TestSessionRepository_EndFromRecordingActivity(t *testing.T) {
 	unrecorded := models.Session{Id: uuid.New(), ProjectId: projectID, StartedAt: ago(70 * time.Minute)}
 	skewedClock := models.Session{Id: uuid.New(), ProjectId: projectID, StartedAt: ago(30 * time.Minute), EndedAt: ptr(ago(16 * time.Minute)), Duration: int64(14 * time.Minute)}
 	recordedPastCap := models.Session{Id: uuid.New(), ProjectId: projectID, StartedAt: ago(100 * time.Minute), EndedAt: ptr(ago(40 * time.Minute)), Duration: int64(60 * time.Minute)}
-	if err := SessionRepository.Upsert(ctx, []models.Session{idle, closedByPagehide, closedByLateTimer, live, unrecorded, skewedClock, recordedPastCap}); err != nil {
+	longIdle := models.Session{Id: uuid.New(), ProjectId: projectID, StartedAt: ago(110 * time.Minute)}
+	if err := SessionRepository.Upsert(ctx, []models.Session{idle, closedByPagehide, closedByLateTimer, live, unrecorded, skewedClock, recordedPastCap, longIdle}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -124,6 +125,7 @@ func TestSessionRepository_EndFromRecordingActivity(t *testing.T) {
 		segment(skewedClock, 0, ago(32*time.Minute)),
 		segment(recordedPastCap, 0, ago(90*time.Minute)),
 		segment(recordedPastCap, 1, ago(time.Minute)),
+		segment(longIdle, 0, ago(48*time.Minute)),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +136,8 @@ func TestSessionRepository_EndFromRecordingActivity(t *testing.T) {
 		ended    bool
 		recorded bool
 	}{
-		{recordedPastCap, 65 * time.Minute, true, true},
+		{longIdle, 62 * time.Minute, true, true},
+		{recordedPastCap, 60 * time.Minute, true, true},
 		{skewedClock, 14 * time.Minute, true, true},
 		{idle, 10 * time.Minute, true, true},
 		{live, 9 * time.Minute, false, true},

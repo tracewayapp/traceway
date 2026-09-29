@@ -18,4 +18,5 @@ type Session struct {
 	ServerName   string            `json:"serverName" ch:"server_name"`
 	TraceId      string            `json:"traceId,omitempty" ch:"trace_id"`
 	HasRecording bool              `json:"hasRecording" ch:"-"`
+	CutoffAt     time.Time         `json:"-" ch:"-"`
 }

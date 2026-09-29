@@ -85,10 +85,9 @@ func (s sessionDetailController) GetSessionDetail(c *gin.Context) {
 		return
 	}
 
-	limit := session.StartedAt.Add(shared.SessionMaxSpan)
 	out := make([]SessionExceptionInfo, 0, len(exceptions))
 	for _, e := range exceptions {
-		if e.RecordedAt.After(limit) {
+		if e.RecordedAt.After(session.CutoffAt) {
 			continue
 		}
 		out = append(out, SessionExceptionInfo{
@@ -143,7 +142,7 @@ func (s sessionDetailController) GetSessionRecording(c *gin.Context) {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading session segments: %w", err))
 		return
 	}
-	segments = shared.SegmentsWithinSession(segments, session.StartedAt)
+	segments = shared.SegmentsWithinSession(segments, session.CutoffAt)
 
 	span = traceway.StartSpan(c, "reading session segments")
 	bodies := readSegments(c.Request.Context(), segments)

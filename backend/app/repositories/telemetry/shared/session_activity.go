@@ -26,6 +26,7 @@ func SessionRecordingWindow(from, to time.Time) (time.Time, time.Time) {
 func ResolveSessionEnd(s *models.Session, activity SessionActivity, now time.Time) {
 	s.HasRecording = activity.LastActivity != nil
 	limit := s.StartedAt.Add(SessionMaxSpan)
+	s.CutoffAt = limit
 	if activity.LastActivity == nil {
 		if s.EndedAt != nil && s.EndedAt.After(limit) {
 			s.EndedAt = &limit
@@ -41,6 +42,10 @@ func ResolveSessionEnd(s *models.Session, activity SessionActivity, now time.Tim
 	pastLimit := last.After(limit)
 	if pastLimit {
 		last = limit
+		if s.EndedAt != nil && s.EndedAt.After(s.StartedAt) && !s.EndedAt.After(limit) {
+			last = *s.EndedAt
+			s.CutoffAt = last
+		}
 	}
 
 	end := last
@@ -66,15 +71,14 @@ func ResolveSessionEnd(s *models.Session, activity SessionActivity, now time.Tim
 	}
 }
 
-func SegmentsWithinSession(segments []models.SessionRecording, startedAt time.Time) []models.SessionRecording {
-	limit := startedAt.Add(SessionMaxSpan)
+func SegmentsWithinSession(segments []models.SessionRecording, cutoff time.Time) []models.SessionRecording {
 	kept := segments[:0]
 	for _, seg := range segments {
 		end := seg.RecordedAt
 		if seg.EndedAt != nil {
 			end = *seg.EndedAt
 		}
-		if !end.After(limit) {
+		if !end.After(cutoff) {
 			kept = append(kept, seg)
 		}
 	}

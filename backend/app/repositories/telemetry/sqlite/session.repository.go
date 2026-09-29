@@ -96,11 +96,15 @@ const sessionActivityJoin = ` LEFT JOIN (
 ) AS activity ON activity.session_id = sessions.id`
 
 var sessionDurationSortKey = fmt.Sprintf(`CASE WHEN activity.last_activity IS NULL THEN MIN(sessions.duration / 1000000, %[2]d)
+	WHEN julianday(activity.last_activity) > julianday(sessions.started_at) + %[3]d / 1440.0
+		AND julianday(sessions.ended_at) > julianday(sessions.started_at)
+		AND julianday(sessions.ended_at) <= julianday(sessions.started_at) + %[3]d / 1440.0
+	THEN CAST(ROUND((julianday(sessions.ended_at) - julianday(sessions.started_at)) * 86400000) AS INTEGER)
 	ELSE MIN(CAST(ROUND((julianday(CASE
 		WHEN sessions.ended_at > MAX(activity.last_activity, sessions.started_at)
 			AND julianday(sessions.ended_at) < julianday(MAX(activity.last_activity, sessions.started_at)) + %[1]d / 1440.0
 		THEN sessions.ended_at ELSE MAX(activity.last_activity, sessions.started_at) END) - julianday(sessions.started_at)) * 86400000) AS INTEGER), %[2]d) END`,
-	int(shared.SessionIdleTimeout/time.Minute), shared.SessionMaxSpan.Milliseconds())
+	int(shared.SessionIdleTimeout/time.Minute), shared.SessionMaxSpan.Milliseconds(), int(shared.SessionMaxSpan/time.Minute))
 
 type sessionRepository struct{}
 

@@ -34,6 +34,9 @@ func TestResolveSessionEnd(t *testing.T) {
 		{name: "activity before start on a skewed clock clamps to zero", lastActivity: at(-2), now: *at(30), wantEnd: at(0), wantDuration: 0, wantRecorded: true},
 		{name: "second-precision end just before the last segment still closes", endedAt: at(5), lastActivity: at(5.01), now: *at(6), wantEnd: at(5.01), wantDuration: time.Duration(5.01 * float64(time.Minute)), wantRecorded: true},
 		{name: "explicit end is measured from the clamped activity", endedAt: at(14), lastActivity: at(-2), now: *at(30), wantEnd: at(14), wantDuration: 14 * time.Minute, wantRecorded: true},
+		{name: "segments uploaded past the max span are cut off", endedAt: at(60), lastActivity: at(18 * 60), now: *at(18*60 + 1), wantEnd: at(65), wantDuration: 65 * time.Minute, wantRecorded: true},
+		{name: "a session past the max span is over while segments still arrive", lastActivity: at(300), now: *at(301), wantEnd: at(65), wantDuration: 65 * time.Minute, wantRecorded: true},
+		{name: "explicit end past the max span is capped", endedAt: at(70), lastActivity: at(64), now: *at(71), wantEnd: at(65), wantDuration: 65 * time.Minute, wantRecorded: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -49,5 +52,22 @@ func TestResolveSessionEnd(t *testing.T) {
 				t.Fatalf("Duration = %v, want %v", time.Duration(s.Duration), tc.wantDuration)
 			}
 		})
+	}
+}
+
+func TestSegmentsWithinSession(t *testing.T) {
+	start := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
+	at := func(minutes int) time.Time { return start.Add(time.Duration(minutes) * time.Minute) }
+	ptr := func(v time.Time) *time.Time { return &v }
+	segments := []models.SessionRecording{
+		{SegmentIndex: 0, RecordedAt: at(1), EndedAt: ptr(at(1))},
+		{SegmentIndex: 1, RecordedAt: at(66), EndedAt: ptr(at(65))},
+		{SegmentIndex: 2, RecordedAt: at(64)},
+		{SegmentIndex: 3, RecordedAt: at(70), EndedAt: ptr(at(70))},
+		{SegmentIndex: 4, RecordedAt: at(900)},
+	}
+	kept := SegmentsWithinSession(segments, start)
+	if len(kept) != 3 || kept[0].SegmentIndex != 0 || kept[1].SegmentIndex != 1 || kept[2].SegmentIndex != 2 {
+		t.Fatalf("kept %+v, want segments 0, 1, 2", kept)
 	}
 }

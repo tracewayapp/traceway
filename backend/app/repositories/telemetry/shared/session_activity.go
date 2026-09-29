@@ -8,6 +8,8 @@ import (
 
 const SessionIdleTimeout = 15 * time.Minute
 
+const SessionMaxSpan = 65 * time.Minute
+
 const sessionEndTolerance = time.Second
 
 type SessionActivity struct {
@@ -27,14 +29,21 @@ func ResolveSessionEnd(s *models.Session, activity SessionActivity, now time.Tim
 		return
 	}
 
+	limit := s.StartedAt.Add(SessionMaxSpan)
 	last := *activity.LastActivity
 	if last.Before(s.StartedAt) {
 		last = s.StartedAt
+	}
+	if last.After(limit) {
+		last = limit
 	}
 
 	end := last
 	if s.EndedAt != nil && s.EndedAt.After(last) && s.EndedAt.Before(last.Add(SessionIdleTimeout)) {
 		end = *s.EndedAt
+	}
+	if end.After(limit) {
+		end = limit
 	}
 	endedByRecord := s.EndedAt != nil && !s.EndedAt.Before(last.Add(-sessionEndTolerance))
 
@@ -42,7 +51,7 @@ func ResolveSessionEnd(s *models.Session, activity SessionActivity, now time.Tim
 	if activity.LastReceived != nil {
 		lastReceived = *activity.LastReceived
 	}
-	idle := now.Sub(lastReceived) >= SessionIdleTimeout
+	idle := now.Sub(lastReceived) >= SessionIdleTimeout || !now.Before(limit)
 
 	s.Duration = end.Sub(s.StartedAt).Nanoseconds()
 	if endedByRecord || idle {
@@ -50,4 +59,19 @@ func ResolveSessionEnd(s *models.Session, activity SessionActivity, now time.Tim
 	} else {
 		s.EndedAt = nil
 	}
+}
+
+func SegmentsWithinSession(segments []models.SessionRecording, startedAt time.Time) []models.SessionRecording {
+	limit := startedAt.Add(SessionMaxSpan)
+	kept := segments[:0]
+	for _, seg := range segments {
+		end := seg.RecordedAt
+		if seg.EndedAt != nil {
+			end = *seg.EndedAt
+		}
+		if !end.After(limit) {
+			kept = append(kept, seg)
+		}
+	}
+	return kept
 }

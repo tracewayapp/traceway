@@ -9,6 +9,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	"golang.org/x/sync/errgroup"
 
@@ -128,6 +129,9 @@ func (s sessionDetailController) GetSessionRecording(c *gin.Context) {
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading session segments: %w", err))
 		return
+	}
+	if startedAt != nil {
+		segments = shared.SegmentsWithinSession(segments, *startedAt)
 	}
 
 	span = traceway.StartSpan(c, "reading session segments")

@@ -25,16 +25,21 @@ func SessionRecordingWindow(from, to time.Time) (time.Time, time.Time) {
 
 func ResolveSessionEnd(s *models.Session, activity SessionActivity, now time.Time) {
 	s.HasRecording = activity.LastActivity != nil
+	limit := s.StartedAt.Add(SessionMaxSpan)
 	if activity.LastActivity == nil {
+		if s.EndedAt != nil && s.EndedAt.After(limit) {
+			s.EndedAt = &limit
+		}
+		s.Duration = min(s.Duration, SessionMaxSpan.Nanoseconds())
 		return
 	}
 
-	limit := s.StartedAt.Add(SessionMaxSpan)
 	last := *activity.LastActivity
 	if last.Before(s.StartedAt) {
 		last = s.StartedAt
 	}
-	if last.After(limit) {
+	pastLimit := last.After(limit)
+	if pastLimit {
 		last = limit
 	}
 
@@ -51,7 +56,7 @@ func ResolveSessionEnd(s *models.Session, activity SessionActivity, now time.Tim
 	if activity.LastReceived != nil {
 		lastReceived = *activity.LastReceived
 	}
-	idle := now.Sub(lastReceived) >= SessionIdleTimeout || !now.Before(limit)
+	idle := now.Sub(lastReceived) >= SessionIdleTimeout || pastLimit
 
 	s.Duration = end.Sub(s.StartedAt).Nanoseconds()
 	if endedByRecord || idle {

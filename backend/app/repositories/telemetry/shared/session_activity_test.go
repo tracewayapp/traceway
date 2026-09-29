@@ -16,6 +16,7 @@ func TestResolveSessionEnd(t *testing.T) {
 	cases := []struct {
 		name         string
 		endedAt      *time.Time
+		duration     time.Duration
 		lastActivity *time.Time
 		lastReceived *time.Time
 		now          time.Time
@@ -37,10 +38,12 @@ func TestResolveSessionEnd(t *testing.T) {
 		{name: "segments uploaded past the max span are cut off", endedAt: at(60), lastActivity: at(18 * 60), now: *at(18*60 + 1), wantEnd: at(65), wantDuration: 65 * time.Minute, wantRecorded: true},
 		{name: "a session past the max span is over while segments still arrive", lastActivity: at(300), now: *at(301), wantEnd: at(65), wantDuration: 65 * time.Minute, wantRecorded: true},
 		{name: "explicit end past the max span is capped", endedAt: at(70), lastActivity: at(64), now: *at(71), wantEnd: at(65), wantDuration: 65 * time.Minute, wantRecorded: true},
+		{name: "no segments and an end past the max span is capped", endedAt: at(18 * 60), duration: 18 * time.Hour, now: *at(18*60 + 1), wantEnd: at(65), wantDuration: 65 * time.Minute},
+		{name: "a client clock behind the server keeps a live session open", lastActivity: at(29), lastReceived: at(129), now: *at(130), wantDuration: 29 * time.Minute, wantRecorded: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			s := models.Session{StartedAt: start, EndedAt: tc.endedAt}
+			s := models.Session{StartedAt: start, EndedAt: tc.endedAt, Duration: tc.duration.Nanoseconds()}
 			ResolveSessionEnd(&s, SessionActivity{LastActivity: tc.lastActivity, LastReceived: tc.lastReceived}, tc.now)
 			if s.HasRecording != tc.wantRecorded {
 				t.Fatalf("HasRecording = %v, want %v", s.HasRecording, tc.wantRecorded)

@@ -107,12 +107,12 @@ const sessionActivityQuery = `SELECT assumeNotNull(session_id) AS sid,
 	WHERE project_id = ? AND session_id IS NOT NULL AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY sid`
 
-var sessionDurationSortKey = fmt.Sprintf(`if(a.last_activity IS NULL, intDiv(s.duration, 1000000),
+var sessionDurationSortKey = fmt.Sprintf(`if(a.last_activity IS NULL, least(intDiv(s.duration, 1000000), %[2]d),
 	least(toInt64(dateDiff('millisecond', toDateTime64(s.started_at, 3), if(
 		s.ended_at > greatest(assumeNotNull(a.last_activity), toDateTime64(s.started_at, 3))
-			AND s.ended_at < greatest(assumeNotNull(a.last_activity), toDateTime64(s.started_at, 3)) + INTERVAL %d MINUTE,
+			AND s.ended_at < greatest(assumeNotNull(a.last_activity), toDateTime64(s.started_at, 3)) + INTERVAL %[1]d MINUTE,
 		toDateTime64(assumeNotNull(s.ended_at), 3),
-		greatest(assumeNotNull(a.last_activity), toDateTime64(s.started_at, 3))))), %d))`,
+		greatest(assumeNotNull(a.last_activity), toDateTime64(s.started_at, 3))))), %[2]d))`,
 	int(shared.SessionIdleTimeout/time.Minute), shared.SessionMaxSpan.Milliseconds())
 
 func (r *sessionRepository) FindById(ctx context.Context, projectId, sessionId uuid.UUID, startedAt *time.Time) (*models.Session, error) {

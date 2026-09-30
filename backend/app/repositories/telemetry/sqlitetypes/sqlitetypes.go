@@ -128,6 +128,7 @@ type FilePathResult struct {
 
 type SessionActivityResult struct {
 	LastActivity *SQLiteTime `lit:"last_activity"`
+	SpanActivity *SQLiteTime `lit:"span_activity"`
 	LastReceived *SQLiteTime `lit:"last_received"`
 }
 
@@ -136,6 +137,10 @@ func (r SessionActivityResult) Activity() shared.SessionActivity {
 	if r.LastActivity != nil {
 		t := r.LastActivity.Time
 		activity.LastActivity = &t
+	}
+	if r.SpanActivity != nil {
+		t := r.SpanActivity.Time
+		activity.LastActivityInSpan = &t
 	}
 	if r.LastReceived != nil {
 		t := r.LastReceived.Time

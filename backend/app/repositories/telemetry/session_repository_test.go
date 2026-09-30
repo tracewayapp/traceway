@@ -109,7 +109,8 @@ func TestSessionRepository_EndFromRecordingActivity(t *testing.T) {
 	skewedClock := models.Session{Id: uuid.New(), ProjectId: projectID, StartedAt: ago(30 * time.Minute), EndedAt: ptr(ago(16 * time.Minute)), Duration: int64(14 * time.Minute)}
 	recordedPastCap := models.Session{Id: uuid.New(), ProjectId: projectID, StartedAt: ago(100 * time.Minute), EndedAt: ptr(ago(40 * time.Minute)), Duration: int64(60 * time.Minute)}
 	longIdle := models.Session{Id: uuid.New(), ProjectId: projectID, StartedAt: ago(110 * time.Minute)}
-	if err := SessionRepository.Upsert(ctx, []models.Session{idle, closedByPagehide, closedByLateTimer, live, unrecorded, skewedClock, recordedPastCap, longIdle}); err != nil {
+	idleThenWoken := models.Session{Id: uuid.New(), ProjectId: projectID, StartedAt: ago(105 * time.Minute)}
+	if err := SessionRepository.Upsert(ctx, []models.Session{idle, closedByPagehide, closedByLateTimer, live, unrecorded, skewedClock, recordedPastCap, longIdle, idleThenWoken}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -124,8 +125,11 @@ func TestSessionRepository_EndFromRecordingActivity(t *testing.T) {
 		segment(live, 0, ago(time.Minute)),
 		segment(skewedClock, 0, ago(32*time.Minute)),
 		segment(recordedPastCap, 0, ago(90*time.Minute)),
-		segment(recordedPastCap, 1, ago(time.Minute)),
+		segment(recordedPastCap, 1, ago(41*time.Minute)),
+		segment(recordedPastCap, 2, ago(time.Minute)),
 		segment(longIdle, 0, ago(48*time.Minute)),
+		segment(idleThenWoken, 0, ago(105*time.Minute-8*time.Second)),
+		segment(idleThenWoken, 1, ago(2*time.Minute)),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -143,6 +147,7 @@ func TestSessionRepository_EndFromRecordingActivity(t *testing.T) {
 		{live, 9 * time.Minute, false, true},
 		{closedByLateTimer, 5 * time.Minute, true, true},
 		{closedByPagehide, 2 * time.Minute, true, true},
+		{idleThenWoken, 8 * time.Second, true, true},
 		{unrecorded, 0, false, false},
 	}
 

@@ -68,14 +68,14 @@ func (r *sessionRepository) FindAll(ctx context.Context, projectId uuid.UUID, fr
 	offset := (page - 1) * pageSize
 
 	recFrom, recTo := shared.SessionRecordingWindow(fromDate, toDate)
-	query := "SELECT s.id, s.project_id, s.started_at, s.ended_at, s.duration, s.client_ip, s.attributes, s.app_version, s.server_name, s.trace_id, a.last_activity, a.last_received" +
+	query := "SELECT s.id, s.project_id, s.started_at, s.ended_at, s.duration, s.client_ip, s.attributes, s.app_version, s.server_name, s.trace_id, a.last_activity, a.span_activity, a.last_received" +
 		" FROM (SELECT id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, trace_id FROM sessions FINAL WHERE project_id = ? AND started_at >= ? AND started_at <= ?" + whereExtra + ") AS s" +
 		" LEFT JOIN (" + sessionActivityQuery + ") AS a ON a.sid = s.id" +
 		" ORDER BY " + orderExpr + " " + sortDir + " LIMIT ? OFFSET ?" +
 		" SETTINGS join_use_nulls = 1"
 	queryArgs := []interface{}{projectId, fromDate, toDate}
 	queryArgs = append(queryArgs, extraArgs...)
-	queryArgs = append(queryArgs, projectId, recFrom, recTo)
+	queryArgs = append(queryArgs, projectId, fromDate, toDate, projectId, recFrom, recTo)
 	queryArgs = append(queryArgs, pageSize, offset)
 	rows, err := chdb.Conn.Query(ctx, query, queryArgs...)
 	if err != nil {
@@ -88,7 +88,7 @@ func (r *sessionRepository) FindAll(ctx context.Context, projectId uuid.UUID, fr
 	for rows.Next() {
 		var s models.Session
 		var activity shared.SessionActivity
-		if err := rows.Scan(&s.Id, &s.ProjectId, &s.StartedAt, &s.EndedAt, &s.Duration, &s.ClientIP, &s.Attributes, &s.AppVersion, &s.ServerName, &s.TraceId, &activity.LastActivity, &activity.LastReceived); err != nil {
+		if err := rows.Scan(&s.Id, &s.ProjectId, &s.StartedAt, &s.EndedAt, &s.Duration, &s.ClientIP, &s.Attributes, &s.AppVersion, &s.ServerName, &s.TraceId, &activity.LastActivity, &activity.LastActivityInSpan, &activity.LastReceived); err != nil {
 			return nil, 0, err
 		}
 		shared.ResolveSessionEnd(&s, activity, now)
@@ -100,23 +100,26 @@ func (r *sessionRepository) FindAll(ctx context.Context, projectId uuid.UUID, fr
 	return sessions, int64(count), nil
 }
 
-const sessionActivityQuery = `SELECT assumeNotNull(session_id) AS sid,
-		max(coalesce(ended_at, toDateTime64(recorded_at, 3))) AS last_activity,
-		max(recorded_at) AS last_received
-	FROM session_recordings
-	WHERE project_id = ? AND session_id IS NOT NULL AND recorded_at >= ? AND recorded_at <= ?
-	GROUP BY sid`
+var sessionActivityQuery = fmt.Sprintf(`SELECT assumeNotNull(r.session_id) AS sid,
+		max(coalesce(r.ended_at, toDateTime64(r.recorded_at, 3))) AS last_activity,
+		maxIfOrNull(coalesce(r.ended_at, toDateTime64(r.recorded_at, 3)),
+			coalesce(r.ended_at, toDateTime64(r.recorded_at, 3)) <= toDateTime64(ss.started_at, 3) + INTERVAL %d MINUTE) AS span_activity,
+		max(r.recorded_at) AS last_received
+	FROM session_recordings AS r
+	INNER JOIN (SELECT id, started_at FROM sessions FINAL WHERE project_id = ? AND started_at >= ? AND started_at <= ?) AS ss ON ss.id = assumeNotNull(r.session_id)
+	WHERE r.project_id = ? AND r.session_id IS NOT NULL AND r.recorded_at >= ? AND r.recorded_at <= ?
+	GROUP BY sid`, int(shared.SessionMaxSpan/time.Minute))
 
-var sessionDurationSortKey = fmt.Sprintf(`multiIf(a.last_activity IS NULL, least(intDiv(s.duration, 1000000), %[2]d),
-	assumeNotNull(a.last_activity) > toDateTime64(s.started_at, 3) + INTERVAL %[3]d MINUTE
-		AND s.ended_at > s.started_at AND s.ended_at <= s.started_at + INTERVAL %[3]d MINUTE,
-	toInt64(dateDiff('millisecond', toDateTime64(s.started_at, 3), toDateTime64(assumeNotNull(s.ended_at), 3))),
+var sessionLastActivity = fmt.Sprintf(`if(assumeNotNull(a.last_activity) > toDateTime64(s.started_at, 3) + INTERVAL %d MINUTE,
+	assumeNotNull(coalesce(a.span_activity, toDateTime64(s.started_at, 3))), assumeNotNull(a.last_activity))`, int(shared.SessionMaxSpan/time.Minute))
+
+var sessionDurationSortKey = strings.ReplaceAll(fmt.Sprintf(`if(a.last_activity IS NULL, least(intDiv(s.duration, 1000000), %[2]d),
 	least(toInt64(dateDiff('millisecond', toDateTime64(s.started_at, 3), if(
-		s.ended_at > greatest(assumeNotNull(a.last_activity), toDateTime64(s.started_at, 3))
-			AND s.ended_at < greatest(assumeNotNull(a.last_activity), toDateTime64(s.started_at, 3)) + INTERVAL %[1]d MINUTE,
+		s.ended_at > greatest({last}, toDateTime64(s.started_at, 3))
+			AND s.ended_at < greatest({last}, toDateTime64(s.started_at, 3)) + INTERVAL %[1]d MINUTE,
 		toDateTime64(assumeNotNull(s.ended_at), 3),
-		greatest(assumeNotNull(a.last_activity), toDateTime64(s.started_at, 3))))), %[2]d))`,
-	int(shared.SessionIdleTimeout/time.Minute), shared.SessionMaxSpan.Milliseconds(), int(shared.SessionMaxSpan/time.Minute))
+		greatest({last}, toDateTime64(s.started_at, 3))))), %[2]d))`,
+	int(shared.SessionIdleTimeout/time.Minute), shared.SessionMaxSpan.Milliseconds()), "{last}", sessionLastActivity)
 
 func (r *sessionRepository) FindById(ctx context.Context, projectId, sessionId uuid.UUID, startedAt *time.Time) (*models.Session, error) {
 	var s models.Session
@@ -145,17 +148,20 @@ func (r *sessionRepository) FindById(ctx context.Context, projectId, sessionId u
 	from, to := shared.TraceWindowBounds(s.StartedAt)
 	var segments uint64
 	var lastActivity, lastReceived time.Time
+	var spanActivity *time.Time
 	err = chdb.Conn.QueryRow(ctx,
-		`SELECT count(), max(coalesce(ended_at, toDateTime64(recorded_at, 3))), max(recorded_at)
+		`SELECT count(), max(coalesce(ended_at, toDateTime64(recorded_at, 3))),
+				maxIfOrNull(coalesce(ended_at, toDateTime64(recorded_at, 3)), coalesce(ended_at, toDateTime64(recorded_at, 3)) <= ?),
+				max(recorded_at)
 			FROM session_recordings
 			WHERE project_id = ? AND session_id = ? AND recorded_at >= ? AND recorded_at <= ?`,
-		projectId, sessionId, from, to).Scan(&segments, &lastActivity, &lastReceived)
+		s.StartedAt.Add(shared.SessionMaxSpan), projectId, sessionId, from, to).Scan(&segments, &lastActivity, &spanActivity, &lastReceived)
 	if err != nil {
 		return nil, err
 	}
 	var activity shared.SessionActivity
 	if segments > 0 {
-		activity = shared.SessionActivity{LastActivity: &lastActivity, LastReceived: &lastReceived}
+		activity = shared.SessionActivity{LastActivity: &lastActivity, LastActivityInSpan: spanActivity, LastReceived: &lastReceived}
 	}
 	shared.ResolveSessionEnd(&s, activity, time.Now())
 	return &s, nil

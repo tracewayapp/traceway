@@ -13,8 +13,9 @@ const SessionMaxSpan = 65 * time.Minute
 const sessionEndTolerance = time.Second
 
 type SessionActivity struct {
-	LastActivity *time.Time
-	LastReceived *time.Time
+	LastActivity       *time.Time
+	LastActivityInSpan *time.Time
+	LastReceived       *time.Time
 }
 
 func SessionRecordingWindow(from, to time.Time) (time.Time, time.Time) {
@@ -36,16 +37,15 @@ func ResolveSessionEnd(s *models.Session, activity SessionActivity, now time.Tim
 	}
 
 	last := *activity.LastActivity
-	if last.Before(s.StartedAt) {
-		last = s.StartedAt
-	}
 	pastLimit := last.After(limit)
 	if pastLimit {
-		last = limit
-		if s.EndedAt != nil && s.EndedAt.After(s.StartedAt) && !s.EndedAt.After(limit) {
-			last = *s.EndedAt
-			s.CutoffAt = last
+		last = s.StartedAt
+		if activity.LastActivityInSpan != nil {
+			last = *activity.LastActivityInSpan
 		}
+	}
+	if last.Before(s.StartedAt) {
+		last = s.StartedAt
 	}
 
 	end := last
@@ -64,6 +64,9 @@ func ResolveSessionEnd(s *models.Session, activity SessionActivity, now time.Tim
 	idle := now.Sub(lastReceived) >= SessionIdleTimeout || pastLimit
 
 	s.Duration = end.Sub(s.StartedAt).Nanoseconds()
+	if pastLimit {
+		s.CutoffAt = end
+	}
 	if endedByRecord || idle {
 		s.EndedAt = &end
 	} else {

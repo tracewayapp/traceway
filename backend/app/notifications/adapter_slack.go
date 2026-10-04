@@ -33,6 +33,9 @@ func (a *SlackAdapter) Send(ctx context.Context, msg Message) error {
 	case SeverityCritical:
 		color = "#F44336"
 	}
+	if msg.Recovered {
+		color = "#4CAF50"
+	}
 
 	username := a.Username
 	if username == "" {

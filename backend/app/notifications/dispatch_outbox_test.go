@@ -5,6 +5,7 @@ package notifications
 import (
 	"database/sql"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -201,6 +202,55 @@ func TestDispatchDashboardLinks(t *testing.T) {
 			}
 			if !strings.Contains(msg.Body, "View details: "+tc.want) {
 				t.Errorf("body lacks %q:\n%s", tc.want, msg.Body)
+			}
+		})
+	}
+}
+
+func checkDownRule(fixture *dispatchFixture, severity string) *models.NotificationRuleWithChannel {
+	rule := *fixture.Rule
+	rule.Name, rule.RuleType, rule.Severity = "Monitors", "check_down", severity
+	return &rule
+}
+
+// Issue #383: a recovery went out in the colour of the alert it closes, red
+// under a rule with an explicit severity and blue under Auto.
+func TestDispatchedCheckRecoveryIsGreenInSlack(t *testing.T) {
+	check := &models.SyntheticCheck{Id: 7, Name: "api health"}
+	for _, severity := range []string{"critical", ""} {
+		t.Run("rule severity "+strconv.Quote(severity), func(t *testing.T) {
+			fixture := setupDispatchDB(t)
+
+			if !dispatch(checkDownRule(fixture, severity), buildCheckRecoveredMessage(check, "api")) {
+				t.Fatal("dispatch failed")
+			}
+			if color := sentSlackAttachment(t, queuedMessage(t)).Color; color != "#4CAF50" {
+				t.Errorf("recovery colour = %s, want #4CAF50", color)
+			}
+		})
+	}
+}
+
+func TestDispatchSeverityOverrideSkipsRecoveries(t *testing.T) {
+	check := &models.SyntheticCheck{Id: 7, Name: "api health"}
+	cases := []struct {
+		name         string
+		ruleSeverity string
+		msg          Message
+		want         Severity
+	}{
+		{"recovery under a critical rule", "critical", buildCheckRecoveredMessage(check, "api"), SeverityInfo},
+		{"alert under a warning rule", "warning", buildCheckDownMessage(check, "connection refused", "api"), SeverityWarning},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := setupDispatchDB(t)
+
+			if !dispatch(checkDownRule(fixture, tc.ruleSeverity), tc.msg) {
+				t.Fatal("dispatch failed")
+			}
+			if got := queuedMessage(t).Severity; got != tc.want {
+				t.Errorf("queued severity = %q, want %q", got, tc.want)
 			}
 		})
 	}

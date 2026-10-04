@@ -312,7 +312,7 @@ Fires when an [AI conversation](/learn/ai-tracing#content-flagging) matches a fl
 
 ### Monitor Down
 
-Fires when a [monitor](/learn/monitors) transitions to down, which happens only after its configured number of consecutive failures, and sends a recovery notice when it comes back up. One rule covers every monitor in the project; the alert names the monitor and carries the last probe error.
+Fires when a [monitor](/learn/monitors) transitions to down, which happens only after its configured number of consecutive failures, and sends a recovery notice when it comes back up. One rule covers every monitor in the project; the alert names the monitor and carries the last probe error. The recovery notice is always Info, whatever severity the rule sets, and is green in Slack.
 
 There are no rule-specific options. Pointing the rule at an escalation channel opens an [on-call page](/learn/on-call) instead of sending a message: the page deduplicates per monitor, re-fires never restart its escalation clock, and recovery resolves it automatically.
 
@@ -387,6 +387,7 @@ Each rule has a **Severity** setting that controls the severity attached to its 
 | Task Failure Rate | Warning; Critical at twice the threshold |
 | Metric Threshold | Warning; Critical when the value deviates from the threshold by more than 20% |
 | AI Trace Cost | Warning; Critical at three times the threshold |
+| Monitor Down | Critical; the recovery notice is Info |
 
 You can override the automatic severity by setting it explicitly on a rule to **Critical**, **Warning**, or **Info**. This is useful when you want a normally-warning condition to page as critical, or to downgrade noisy rules to info.
 

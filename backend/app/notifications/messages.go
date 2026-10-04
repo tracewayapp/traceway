@@ -523,6 +523,7 @@ func buildCheckRecoveredMessage(check *models.SyntheticCheck, projectName string
 		Subject:    fmt.Sprintf("[%s] Check %q recovered", projectName, check.Name),
 		Body:       fmt.Sprintf("The synthetic check %q is passing again.", check.Name),
 		Severity:   SeverityInfo,
+		Recovered:  true,
 		URL:        fmt.Sprintf("/monitors/%d", check.Id),
 		DedupToken: fmt.Sprintf("check:%d", check.Id),
 		Email: &models.NotificationEmail{

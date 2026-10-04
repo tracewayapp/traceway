@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/tracewayapp/traceway/backend/app/models"
 )
 
 func sentSlackColor(t *testing.T, msg Message) string {
@@ -33,19 +35,27 @@ func sentSlackColor(t *testing.T, msg Message) string {
 	return got[0].Color
 }
 
-func TestSlackColorBySeverity(t *testing.T) {
+// The recovery rows run on every build tag; the dispatch test that covers the
+// same color end to end only builds on the default tags.
+func TestSlackColor(t *testing.T) {
+	recovered := buildCheckRecoveredMessage(&models.SyntheticCheck{Id: 7, Name: "api health"}, "api")
+	relabelled := recovered
+	relabelled.Severity = SeverityCritical
 	cases := []struct {
-		severity Severity
-		want     string
+		name string
+		msg  Message
+		want string
 	}{
-		{SeverityCritical, "#F44336"},
-		{SeverityWarning, "#FF9800"},
-		{SeverityInfo, "#2196F3"},
-		{"", "#2196F3"},
+		{"critical", Message{Severity: SeverityCritical}, "#F44336"},
+		{"warning", Message{Severity: SeverityWarning}, "#FF9800"},
+		{"info", Message{Severity: SeverityInfo}, "#2196F3"},
+		{"no severity", Message{}, "#2196F3"},
+		{"recovery", recovered, "#4CAF50"},
+		{"recovery with a critical severity", relabelled, "#4CAF50"},
 	}
 	for _, tc := range cases {
-		if got := sentSlackColor(t, Message{Subject: "s", Severity: tc.severity}); got != tc.want {
-			t.Errorf("severity %q: color = %s, want %s", tc.severity, got, tc.want)
+		if got := sentSlackColor(t, tc.msg); got != tc.want {
+			t.Errorf("%s: color = %s, want %s", tc.name, got, tc.want)
 		}
 	}
 }

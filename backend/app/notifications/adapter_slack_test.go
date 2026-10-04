@@ -8,18 +8,15 @@ import (
 	"testing"
 )
 
-type slackAttachment struct {
-	Color string `json:"color"`
-	Title string `json:"title"`
-	Text  string `json:"text"`
-}
-
-func sentSlackAttachment(t *testing.T, msg Message) slackAttachment {
+func sentSlackColor(t *testing.T, msg Message) string {
 	t.Helper()
-	attachments := make(chan []slackAttachment, 1)
+	type attachment struct {
+		Color string `json:"color"`
+	}
+	attachments := make(chan []attachment, 1)
 	receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var payload struct {
-			Attachments []slackAttachment `json:"attachments"`
+			Attachments []attachment `json:"attachments"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&payload)
 		attachments <- payload.Attachments
@@ -33,7 +30,7 @@ func sentSlackAttachment(t *testing.T, msg Message) slackAttachment {
 	if len(got) != 1 {
 		t.Fatalf("expected 1 attachment, got %d", len(got))
 	}
-	return got[0]
+	return got[0].Color
 }
 
 func TestSlackColorBySeverity(t *testing.T) {
@@ -47,8 +44,8 @@ func TestSlackColorBySeverity(t *testing.T) {
 		{"", "#2196F3"},
 	}
 	for _, tc := range cases {
-		if got := sentSlackAttachment(t, Message{Subject: "s", Severity: tc.severity}).Color; got != tc.want {
-			t.Errorf("severity %q: colour = %s, want %s", tc.severity, got, tc.want)
+		if got := sentSlackColor(t, Message{Subject: "s", Severity: tc.severity}); got != tc.want {
+			t.Errorf("severity %q: color = %s, want %s", tc.severity, got, tc.want)
 		}
 	}
 }

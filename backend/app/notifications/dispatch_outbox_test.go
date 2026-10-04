@@ -5,7 +5,6 @@ package notifications
 import (
 	"database/sql"
 	"encoding/json"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -207,50 +206,36 @@ func TestDispatchDashboardLinks(t *testing.T) {
 	}
 }
 
-func checkDownRule(fixture *dispatchFixture, severity string) *models.NotificationRuleWithChannel {
-	rule := *fixture.Rule
-	rule.Name, rule.RuleType, rule.Severity = "Monitors", "check_down", severity
-	return &rule
-}
-
-// Issue #383: a recovery went out in the colour of the alert it closes, red
-// under a rule with an explicit severity and blue under Auto.
-func TestDispatchedCheckRecoveryIsGreenInSlack(t *testing.T) {
+// Issue #383: a recovery took the rule's severity, so it reached Slack in the
+// alert's color; under Auto it was plain info blue.
+func TestDispatchedCheckRecoveryIsInfoAndGreenInSlack(t *testing.T) {
 	check := &models.SyntheticCheck{Id: 7, Name: "api health"}
-	for _, severity := range []string{"critical", ""} {
-		t.Run("rule severity "+strconv.Quote(severity), func(t *testing.T) {
-			fixture := setupDispatchDB(t)
-
-			if !dispatch(checkDownRule(fixture, severity), buildCheckRecoveredMessage(check, "api")) {
-				t.Fatal("dispatch failed")
-			}
-			if color := sentSlackAttachment(t, queuedMessage(t)).Color; color != "#4CAF50" {
-				t.Errorf("recovery colour = %s, want #4CAF50", color)
-			}
-		})
-	}
-}
-
-func TestDispatchSeverityOverrideSkipsRecoveries(t *testing.T) {
-	check := &models.SyntheticCheck{Id: 7, Name: "api health"}
+	recovered := buildCheckRecoveredMessage(check, "api")
 	cases := []struct {
 		name         string
 		ruleSeverity string
 		msg          Message
-		want         Severity
+		wantSeverity Severity
+		wantColor    string
 	}{
-		{"recovery under a critical rule", "critical", buildCheckRecoveredMessage(check, "api"), SeverityInfo},
-		{"alert under a warning rule", "warning", buildCheckDownMessage(check, "connection refused", "api"), SeverityWarning},
+		{"recovery under a critical rule", "critical", recovered, SeverityInfo, "#4CAF50"},
+		{"recovery under an Auto rule", "", recovered, SeverityInfo, "#4CAF50"},
+		{"alert under a warning rule", "warning", buildCheckDownMessage(check, "connection refused", "api"), SeverityWarning, "#FF9800"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			fixture := setupDispatchDB(t)
+			fixture.Rule.RuleType, fixture.Rule.Severity = "check_down", tc.ruleSeverity
 
-			if !dispatch(checkDownRule(fixture, tc.ruleSeverity), tc.msg) {
+			if !dispatch(fixture.Rule, tc.msg) {
 				t.Fatal("dispatch failed")
 			}
-			if got := queuedMessage(t).Severity; got != tc.want {
-				t.Errorf("queued severity = %q, want %q", got, tc.want)
+			msg := queuedMessage(t)
+			if msg.Severity != tc.wantSeverity {
+				t.Errorf("queued severity = %q, want %q", msg.Severity, tc.wantSeverity)
+			}
+			if color := sentSlackColor(t, msg); color != tc.wantColor {
+				t.Errorf("Slack color = %s, want %s", color, tc.wantColor)
 			}
 		})
 	}

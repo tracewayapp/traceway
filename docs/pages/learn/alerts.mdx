@@ -360,10 +360,11 @@ Cost-relevant behavior:
 
 - For polled rules the cooldown is rule-wide: after a notification is delivered, the rule is not evaluated again until the cooldown expires.
 - For on-ingest rules the cooldown is per condition: per error hash for New Issue and Error Regression, per trace name for AI Trace Cost. Different errors can alert back-to-back; the same error cannot.
+- For Monitor Down the cooldown is per monitor and ends when the monitor recovers. Every new outage alerts, however soon it follows the last one; the failure threshold on the monitor is what damps a flapping check.
 
 Rule-level cooldowns are persisted with the notification history, so a server restart does not cause every rule to re-fire. Per-error cooldown state is held in memory and resets on restart, meaning an already-alerted error can alert once more after a restart. Editing a rule resets its cooldown and per-error state so the new configuration takes effect immediately.
 
-**Snooze** temporarily mutes a rule for a set duration from the dashboard. Snoozed rules are not evaluated at all. Use it during deployments, maintenance windows, or known incidents.
+**Snooze** temporarily mutes a rule for a set duration from the dashboard. Snoozed rules are not evaluated at all. It mutes new notifications only: an on-call page that a Monitor Down rule already opened still resolves when the monitor recovers. Use it during deployments, maintenance windows, or known incidents.
 
 ## Severity
 

@@ -29,6 +29,7 @@ type sessionRow struct {
 	TraceId    string                    `lit:"trace_id"`
 
 	LastActivity *sqlitetypes.SQLiteTime `lit:"last_activity"`
+	SpanActivity *sqlitetypes.SQLiteTime `lit:"span_activity"`
 	LastReceived *sqlitetypes.SQLiteTime `lit:"last_received"`
 }
 
@@ -81,26 +82,31 @@ func (row *sessionRow) toModel() models.Session {
 	if row.Attributes != nil {
 		s.Attributes = map[string]string(row.Attributes)
 	}
-	activity := sqlitetypes.SessionActivityResult{LastActivity: row.LastActivity, LastReceived: row.LastReceived}
+	activity := sqlitetypes.SessionActivityResult{LastActivity: row.LastActivity, SpanActivity: row.SpanActivity, LastReceived: row.LastReceived}
 	shared.ResolveSessionEnd(&s, activity.Activity(), time.Now())
 	return s
 }
 
-const sessionActivityJoin = ` LEFT JOIN (
-	SELECT session_id,
-		MAX(COALESCE(ended_at, recorded_at)) AS last_activity,
-		MAX(recorded_at) AS last_received
-	FROM session_recordings
-	WHERE project_id = :project_id AND session_id IS NOT NULL AND recorded_at >= :rec_from AND recorded_at <= :rec_to
-	GROUP BY session_id
-) AS activity ON activity.session_id = sessions.id`
+var sessionActivityJoin = fmt.Sprintf(` LEFT JOIN (
+	SELECT r.session_id,
+		MAX(COALESCE(r.ended_at, r.recorded_at)) AS last_activity,
+		MAX(CASE WHEN julianday(COALESCE(r.ended_at, r.recorded_at)) <= julianday(s.started_at) + %d / 1440.0 THEN COALESCE(r.ended_at, r.recorded_at) END) AS span_activity,
+		MAX(r.recorded_at) AS last_received
+	FROM session_recordings AS r
+	JOIN sessions AS s ON s.id = r.session_id AND s.project_id = r.project_id
+	WHERE r.project_id = :project_id AND r.session_id IS NOT NULL AND r.recorded_at >= :rec_from AND r.recorded_at <= :rec_to
+	GROUP BY r.session_id
+) AS activity ON activity.session_id = sessions.id`, int(shared.SessionMaxSpan/time.Minute))
 
-var sessionDurationSortKey = fmt.Sprintf(`CASE WHEN activity.last_activity IS NULL THEN sessions.duration / 1000000
-	ELSE CAST(ROUND((julianday(CASE
-		WHEN sessions.ended_at > MAX(activity.last_activity, sessions.started_at)
-			AND julianday(sessions.ended_at) < julianday(MAX(activity.last_activity, sessions.started_at)) + %d / 1440.0
-		THEN sessions.ended_at ELSE MAX(activity.last_activity, sessions.started_at) END) - julianday(sessions.started_at)) * 86400000) AS INTEGER) END`,
-	int(shared.SessionIdleTimeout/time.Minute))
+var sessionLastActivity = fmt.Sprintf(`(CASE WHEN julianday(activity.last_activity) > julianday(sessions.started_at) + %d / 1440.0
+	THEN COALESCE(activity.span_activity, sessions.started_at) ELSE activity.last_activity END)`, int(shared.SessionMaxSpan/time.Minute))
+
+var sessionDurationSortKey = strings.ReplaceAll(fmt.Sprintf(`CASE WHEN activity.last_activity IS NULL THEN MIN(sessions.duration / 1000000, %[2]d)
+	ELSE MIN(CAST(ROUND((julianday(CASE
+		WHEN sessions.ended_at > MAX({last}, sessions.started_at)
+			AND julianday(sessions.ended_at) < julianday(MAX({last}, sessions.started_at)) + %[1]d / 1440.0
+		THEN sessions.ended_at ELSE MAX({last}, sessions.started_at) END) - julianday(sessions.started_at)) * 86400000) AS INTEGER), %[2]d) END`,
+	int(shared.SessionIdleTimeout/time.Minute), shared.SessionMaxSpan.Milliseconds()), "{last}", sessionLastActivity)
 
 type sessionRepository struct{}
 
@@ -197,7 +203,7 @@ func (r *sessionRepository) FindAll(ctx context.Context, projectId uuid.UUID, fr
 	}
 
 	offset := (page - 1) * pageSize
-	query := "SELECT sessions.id, sessions.project_id, sessions.started_at, sessions.ended_at, sessions.duration, sessions.client_ip, sessions.attributes, sessions.app_version, sessions.server_name, sessions.trace_id, activity.last_activity, activity.last_received FROM sessions" + sessionActivityJoin +
+	query := "SELECT sessions.id, sessions.project_id, sessions.started_at, sessions.ended_at, sessions.duration, sessions.client_ip, sessions.attributes, sessions.app_version, sessions.server_name, sessions.trace_id, activity.last_activity, activity.span_activity, activity.last_received FROM sessions" + sessionActivityJoin +
 		" WHERE sessions.project_id = :project_id AND sessions.started_at >= :start AND sessions.started_at <= :end" + whereExtra + " ORDER BY " + orderExpr + " " + sortDir + " LIMIT :limit OFFSET :offset"
 
 	recFrom, recTo := shared.SessionRecordingWindow(fromDate, toDate)
@@ -275,13 +281,13 @@ func (r *sessionRepository) FindById(ctx context.Context, projectId, sessionId u
 
 	from, to := shared.TraceWindowBounds(row.StartedAt.Time)
 	activity, err := lit.SelectSingleNamed[sqlitetypes.SessionActivityResult](db.TelemetryDB,
-		"SELECT MAX(COALESCE(ended_at, recorded_at)) AS last_activity, MAX(recorded_at) AS last_received FROM session_recordings WHERE project_id = :project_id AND session_id = :session_id AND recorded_at >= :from AND recorded_at <= :to",
-		lit.P{"project_id": projectId, "session_id": sessionId, "from": sqlitetypes.NewSQLiteTime(from), "to": sqlitetypes.NewSQLiteTime(to)})
+		"SELECT MAX(COALESCE(ended_at, recorded_at)) AS last_activity, MAX(CASE WHEN julianday(COALESCE(ended_at, recorded_at)) <= julianday(:span_end) THEN COALESCE(ended_at, recorded_at) END) AS span_activity, MAX(recorded_at) AS last_received FROM session_recordings WHERE project_id = :project_id AND session_id = :session_id AND recorded_at >= :from AND recorded_at <= :to",
+		lit.P{"project_id": projectId, "session_id": sessionId, "from": sqlitetypes.NewSQLiteTime(from), "to": sqlitetypes.NewSQLiteTime(to), "span_end": sqlitetypes.NewSQLiteTime(row.StartedAt.Time.Add(shared.SessionMaxSpan))})
 	if err != nil {
 		return nil, err
 	}
 	if activity != nil {
-		row.LastActivity, row.LastReceived = activity.LastActivity, activity.LastReceived
+		row.LastActivity, row.SpanActivity, row.LastReceived = activity.LastActivity, activity.SpanActivity, activity.LastReceived
 	}
 	s := row.toModel()
 	return &s, nil

@@ -9,6 +9,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	"golang.org/x/sync/errgroup"
 
@@ -65,10 +66,7 @@ func (s sessionDetailController) GetSessionDetail(c *gin.Context) {
 	_ = c.ShouldBindJSON(&request)
 
 	span := traceway.StartSpan(c, "loading session")
-	session, err := telemetry.SessionRepository.FindById(c, projectId, sessionId, request.StartedAt)
-	if session == nil && err == nil && request.StartedAt != nil {
-		session, err = telemetry.SessionRepository.FindById(c, projectId, sessionId, nil)
-	}
+	session, err := findSession(c, projectId, sessionId, request.StartedAt)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading session: %w", err))
@@ -89,6 +87,9 @@ func (s sessionDetailController) GetSessionDetail(c *gin.Context) {
 
 	out := make([]SessionExceptionInfo, 0, len(exceptions))
 	for _, e := range exceptions {
+		if e.RecordedAt.After(session.CutoffAt) {
+			continue
+		}
 		out = append(out, SessionExceptionInfo{
 			Id:            e.Id,
 			ExceptionHash: e.ExceptionHash,
@@ -122,13 +123,26 @@ func (s sessionDetailController) GetSessionRecording(c *gin.Context) {
 		startedAt = &t
 	}
 
-	span := traceway.StartSpan(c, "loading session segments")
-	segments, err := telemetry.SessionRecordingRepository.FindBySessionId(c, projectId, sessionId, startedAt)
+	span := traceway.StartSpan(c, "loading session")
+	session, err := findSession(c, projectId, sessionId, startedAt)
+	span.End()
+	if err != nil {
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading session: %w", err))
+		return
+	}
+	if session == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
+		return
+	}
+
+	span = traceway.StartSpan(c, "loading session segments")
+	segments, err := telemetry.SessionRecordingRepository.FindBySessionId(c, projectId, sessionId, &session.StartedAt)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading session segments: %w", err))
 		return
 	}
+	segments = shared.SegmentsWithinSession(segments, session.CutoffAt)
 
 	span = traceway.StartSpan(c, "reading session segments")
 	bodies := readSegments(c.Request.Context(), segments)
@@ -155,6 +169,14 @@ func (s sessionDetailController) GetSessionRecording(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, payload)
+}
+
+func findSession(c *gin.Context, projectId, sessionId uuid.UUID, startedAt *time.Time) (*models.Session, error) {
+	session, err := telemetry.SessionRepository.FindById(c, projectId, sessionId, startedAt)
+	if session == nil && err == nil && startedAt != nil {
+		return telemetry.SessionRepository.FindById(c, projectId, sessionId, nil)
+	}
+	return session, err
 }
 
 const segmentReadConcurrency = 16

@@ -59,6 +59,8 @@
 	let recordingEvents = $state<SessionReplayEvent[] | null>(null);
 	let recordingLogs = $state<SessionLogEvent[]>([]);
 	let recordingActions = $state<SessionActionEvent[]>([]);
+	let recordingLoading = $state(false);
+	let recordingError = $state('');
 	let loading = $state(true);
 	let error = $state('');
 	let notFound = $state(false);
@@ -74,46 +76,71 @@
 	const hasActions = $derived(recordingActions.length > 0);
 	const defaultTab = $derived(hasLogs ? 'logs' : 'actions');
 
-	async function loadAll() {
-		loading = true;
-		error = '';
-		notFound = false;
+	let loadGeneration = 0;
 
+	function requestRecording(startedAt: string) {
+		return api.get(`/sessions/${sessionId}/recording?startedAt=${encodeURIComponent(startedAt)}`, {
+			projectId: projectsState.currentProjectId ?? undefined
+		});
+	}
+
+	async function loadRecording(generation: number, request: ReturnType<typeof requestRecording>) {
+		recordingLoading = true;
+		recordingError = '';
 		try {
-			const projectId = projectsState.currentProjectId ?? undefined;
-			const loadRecording = (startedAt: string) =>
-				api.get(`/sessions/${sessionId}/recording?startedAt=${encodeURIComponent(startedAt)}`, {
-					projectId
-				});
-
-			const startedAt = pageState.url.searchParams.get('t');
-			const detailRequest = api.post(`/sessions/${sessionId}`, startedAt ? { startedAt } : {}, {
-				projectId
-			});
-			const recordingRequest = startedAt ? loadRecording(startedAt) : null;
-			recordingRequest?.catch(() => {});
-
-			const detail = await detailRequest;
-			session = detail.session;
-			exceptions = detail.exceptions || [];
-
-			const sessionStartedAt: string = detail.session.startedAt;
-			const recording =
-				startedAt && recordingRequest && Date.parse(startedAt) === Date.parse(sessionStartedAt)
-					? await recordingRequest
-					: await loadRecording(sessionStartedAt);
+			const recording = await request;
+			if (generation !== loadGeneration) return;
 			recordingEvents = recording?.events ?? [];
 			recordingLogs = recording?.logs ?? [];
 			recordingActions = recording?.actions ?? [];
 		} catch (e) {
+			if (generation !== loadGeneration) return;
+			recordingError = getErrorMessage(e) || 'Failed to load the replay';
+		} finally {
+			if (generation === loadGeneration) recordingLoading = false;
+		}
+	}
+
+	function retryRecording() {
+		if (!session) return;
+		loadRecording(++loadGeneration, requestRecording(session.startedAt));
+	}
+
+	async function loadAll() {
+		const generation = ++loadGeneration;
+		loading = true;
+		error = '';
+		notFound = false;
+		recordingEvents = null;
+		recordingLogs = [];
+		recordingActions = [];
+
+		const startedAt = pageState.url.searchParams.get('t');
+		const recordingRequest = startedAt ? requestRecording(startedAt) : null;
+		recordingRequest?.catch(() => {});
+
+		let loaded: Session;
+		try {
+			const detail = await api.post(`/sessions/${sessionId}`, startedAt ? { startedAt } : {}, {
+				projectId: projectsState.currentProjectId ?? undefined
+			});
+			if (generation !== loadGeneration) return;
+			loaded = detail.session;
+			session = loaded;
+			exceptions = detail.exceptions || [];
+		} catch (e) {
+			if (generation !== loadGeneration) return;
 			if (getErrorStatus(e) === 404) {
 				notFound = true;
 			} else {
 				error = getErrorMessage(e) || 'Failed to load session';
 			}
+			return;
 		} finally {
-			loading = false;
+			if (generation === loadGeneration) loading = false;
 		}
+
+		loadRecording(generation, recordingRequest ?? requestRecording(loaded.startedAt));
 	}
 
 	onMount(() => {
@@ -163,7 +190,26 @@
 			</Card.Root>
 		{/if}
 
-		{#if recordingEvents && recordingEvents.length > 0}
+		{#if recordingLoading}
+			<Card.Root>
+				<Card.Header>
+					<Card.Title>Session Replay</Card.Title>
+				</Card.Header>
+				<Card.Content class="flex h-64 items-center justify-center">
+					<LoadingCircle size="lg" />
+				</Card.Content>
+			</Card.Root>
+		{:else if recordingError}
+			<Card.Root>
+				<Card.Header>
+					<Card.Title>Session Replay</Card.Title>
+				</Card.Header>
+				<Card.Content class="flex items-center justify-between gap-4 text-sm text-muted-foreground">
+					<span>{recordingError}</span>
+					<Button variant="outline" size="sm" onclick={retryRecording}>Retry</Button>
+				</Card.Content>
+			</Card.Root>
+		{:else if recordingEvents && recordingEvents.length > 0}
 			<Card.Root class="pb-0">
 				<Card.Header class="gap-0">
 					<Card.Title>Session Replay</Card.Title>

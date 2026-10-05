@@ -205,3 +205,38 @@ func TestDispatchDashboardLinks(t *testing.T) {
 		})
 	}
 }
+
+// Issue #383: a recovery took the rule's severity, so it reached Slack in the
+// alert's color; under Auto it was plain info blue.
+func TestDispatchedCheckRecoveryIsInfoAndGreenInSlack(t *testing.T) {
+	check := &models.SyntheticCheck{Id: 7, Name: "api health"}
+	recovered := buildCheckRecoveredMessage(check, "api")
+	cases := []struct {
+		name         string
+		ruleSeverity string
+		msg          Message
+		wantSeverity Severity
+		wantColor    string
+	}{
+		{"recovery under a critical rule", "critical", recovered, SeverityInfo, "#4CAF50"},
+		{"recovery under an Auto rule", "", recovered, SeverityInfo, "#4CAF50"},
+		{"alert under a warning rule", "warning", buildCheckDownMessage(check, "connection refused", "api"), SeverityWarning, "#FF9800"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := setupDispatchDB(t)
+			fixture.Rule.RuleType, fixture.Rule.Severity = "check_down", tc.ruleSeverity
+
+			if !dispatch(fixture.Rule, tc.msg) {
+				t.Fatal("dispatch failed")
+			}
+			msg := queuedMessage(t)
+			if msg.Severity != tc.wantSeverity {
+				t.Errorf("queued severity = %q, want %q", msg.Severity, tc.wantSeverity)
+			}
+			if color := sentSlackColor(t, msg); color != tc.wantColor {
+				t.Errorf("Slack color = %s, want %s", color, tc.wantColor)
+			}
+		})
+	}
+}

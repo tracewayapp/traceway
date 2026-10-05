@@ -293,13 +293,7 @@ func (a oauthController) FinishSetup(c *gin.Context) {
 			return
 		}
 
-		cache.ProjectCache.AddProject(&models.Project{
-			Id:             project.Id,
-			Name:           project.Name,
-			Token:          project.Token,
-			Framework:      project.Framework,
-			OrganizationId: project.OrganizationId,
-		})
+		middleware.OnCommit(c, func() { cache.ProjectCache.AddProject(project) })
 		projectWithUrl = project.ToProjectWithBackendUrl()
 	}
 

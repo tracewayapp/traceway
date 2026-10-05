@@ -200,13 +200,7 @@ func (a authController) Register(c *gin.Context) {
 
 	var projectWithUrl *models.ProjectWithBackendUrl
 	if project != nil {
-		cache.ProjectCache.AddProject(&models.Project{
-			Id:             project.Id,
-			Name:           project.Name,
-			Token:          project.Token,
-			Framework:      project.Framework,
-			OrganizationId: project.OrganizationId,
-		})
+		middleware.OnCommit(c, func() { cache.ProjectCache.AddProject(project) })
 		projectWithUrl = project.ToProjectWithBackendUrl()
 	}
 

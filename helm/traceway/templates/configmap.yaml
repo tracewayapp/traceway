@@ -14,6 +14,9 @@ data:
   DB_TYPE: "sqlite"
   SQLITE_PATH: {{ .Values.sqlite.path | quote }}
   SQLITE_RETENTION_DAYS: {{ .Values.sqlite.retentionDays | quote }}
+  {{- if .Values.sqlite.cacheSizeMB }}
+  SQLITE_CACHE_SIZE_MB: {{ .Values.sqlite.cacheSizeMB | quote }}
+  {{- end }}
   {{- end }}
 
   {{- if eq .Values.variant "minimal" }}

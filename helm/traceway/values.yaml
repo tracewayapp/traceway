@@ -121,6 +121,10 @@ postgres:
 sqlite:
   path: "/data/traceway.db"
   retentionDays: "30"
+  # Telemetry page cache in MB, per connection. The caches can take up to 8x
+  # this value, so with a memory limit set it to the limit in MB divided by 32
+  # (32 for 1Gi). Empty keeps the backend default of 512.
+  cacheSizeMB: ""
 
 # Session recording storage
 storage:

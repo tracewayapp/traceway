@@ -7,8 +7,23 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/tracewayapp/traceway/backend/app/config"
 	_ "modernc.org/sqlite"
 )
+
+const (
+	defaultTelemetryCacheMB = 512
+	telemetryMaxOpenConns   = 4
+)
+
+func telemetryCacheMB() int64 {
+	value := ""
+	if config.Config != nil {
+		value = config.Config.SQLiteCacheSizeMB
+	}
+	const bytesPerMB = 1024 * 1024
+	return config.SizeMB(value, defaultTelemetryCacheMB) / bytesPerMB
+}
 
 // Pragmas go on the DSN (modernc.org/sqlite supports `_pragma=name(value)`)
 // rather than via db.Exec because Exec only configures the first pooled
@@ -26,7 +41,7 @@ func openSQLite(path string, telemetry bool) (*sql.DB, error) {
 		if telemetry {
 			params = append(params,
 				"_pragma=synchronous(NORMAL)",
-				"_pragma=cache_size(-524288)",
+				fmt.Sprintf("_pragma=cache_size(-%d)", telemetryCacheMB()*1024),
 				"_pragma=temp_store(MEMORY)",
 				"_pragma=mmap_size(1073741824)",
 				"_pragma=wal_autocheckpoint(50000)",
@@ -62,7 +77,7 @@ func openSQLite(path string, telemetry bool) (*sql.DB, error) {
 	} else if telemetry {
 		// WAL allows concurrent readers; SQLite still serializes writes at the
 		// file level and busy_timeout absorbs short contention windows.
-		d.SetMaxOpenConns(4)
+		d.SetMaxOpenConns(telemetryMaxOpenConns)
 	} else {
 		d.SetMaxOpenConns(1)
 	}

@@ -14,6 +14,11 @@ services:
       # TRUSTED_PROXIES: "172.18.0.0/16"
       # TRUSTED_PROXY_HEADER: "X-Real-IP"
 
+      # The telemetry page cache is per connection (up to 4) and costs about twice
+      # its size, so the 512 MB default can take up to 4 GB. On a memory-capped
+      # host set it to the container's memory in MB divided by 32: 32 for 1 GB.
+      # SQLITE_CACHE_SIZE_MB: "32"
+
       # Optional retention knobs. Defaults are 30 days; set to "0" to disable.
       # SQLITE_RETENTION_DAYS prunes telemetry rows; SESSION_RECORDING_RETENTION_DAYS
       # cleans on-disk recordings under STORAGE_PATH/recordings/. Both run hourly

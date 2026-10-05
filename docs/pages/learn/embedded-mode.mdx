@@ -2,11 +2,13 @@
 
 import { Callout, Steps } from "nextra/components";
 
-Embedded mode runs a full Traceway server inside your Go process, using **SQLite** for all storage (relational data and telemetry). No Docker, no infrastructure: just one `tracewaybackend.Run()` call and your app has local observability.
+Embedded mode runs a full Traceway server inside your Go process. Users, projects and settings live in SQLite, and telemetry lives in **DuckDB**. Both run in your process, in memory or as local files. No Docker, no infrastructure: just one `tracewaybackend.Run()` call and your app has local observability.
 
 This is intended for **local development only**. For production, use the [Docker Compose](/server/docker-compose) or [minimal](/server/minimal) deployment.
 
-Telemetry storage follows your build tags: a plain `go build` embeds SQLite, and building your app with `-tags telemetry_duckdb` (CGO required) swaps the embedded telemetry store to DuckDB's columnar engine. See [Build Tags](/learn/build-tags).
+<Callout type="warning">
+  **Build your app with `-tags telemetry_duckdb`.** The tag selects the DuckDB telemetry store, which is the one we recommend and the one this page documents. A build without the tag still works, but it falls back to SQLite telemetry, which is being phased out. See [Builds without the tag](#builds-without-the-tag).
+</Callout>
 
 <Callout type="info">
   **Want to see it in action?** Check out the [full working example on
@@ -51,7 +53,7 @@ go get github.com/tracewayapp/traceway/backend
 
 ### Start Traceway inside your app
 
-Call `tracewaybackend.Run()` in a goroutine during startup. It boots an in-memory SQLite server and seeds a default user and project:
+Call `tracewaybackend.Run()` in a goroutine during startup. It boots an in-memory server and seeds a default user and project:
 
 ```go
 package main
@@ -169,9 +171,25 @@ The key parts:
 - **`otel.SetTextMapPropagator`** is required in Go. The global propagator ships as a no-op, so without this call an HTTP call your app makes to another service shows up as its own separate trace instead of a child span
 - **`defer shutdown()`** flushes the batch processor on exit. Without it the last few seconds of spans never leave the process
 
+### Run your app with the DuckDB tag
+
+```bash
+go run -tags telemetry_duckdb .
+```
+
+The tag needs CGO, so a C compiler has to be installed. [DuckDB telemetry](#duckdb-telemetry) below covers the requirements.
+
+The startup log tells you which store you got. This is the line to look for:
+
+```
+DuckDB telemetry database opened at
+```
+
+A path follows it once you keep data on disk. If the line says `SQLite telemetry database opened` instead, the tag did not reach the build.
+
 ### Open the dashboard
 
-Run your app, then open **[http://localhost:8082](http://localhost:8082)** in your browser.
+Open **[http://localhost:8082](http://localhost:8082)** in your browser.
 
 Log in with the credentials from `WithDefaultUser` (`admin@localhost.com` / `admin`).
 
@@ -179,15 +197,52 @@ Hit your app at `http://localhost:8080/ping` a few times. Traces will appear in 
 
 </Steps>
 
+## DuckDB telemetry
+
+DuckDB is a columnar engine that runs inside your process, the same way SQLite does. Traceway stores traces, issues, logs and metrics in it because dashboard queries stay fast as data grows.
+
+### Build requirements
+
+- **The build tag.** Pass `-tags telemetry_duckdb` to every `go build`, `go run` and `go test` of your app, including the ones your IDE, live-reload tool or Dockerfile run. To set it once, export `GOFLAGS=-tags=telemetry_duckdb`.
+- **CGO and a C compiler.** DuckDB is linked as a native library. CGO is on by default when a compiler is installed: the Xcode command line tools on macOS, `gcc` on Linux. If you turned it off, set `CGO_ENABLED=1`.
+- **A supported platform.** The driver ships prebuilt libraries for macOS (Intel and Apple silicon), Linux with glibc (amd64 and arm64) and Windows (amd64). Alpine and other musl-based images are not supported, so use a Debian or Ubuntu base for a dev container.
+
+There is nothing extra to `go get`: the DuckDB driver is already a dependency of the backend module. Expect the binary to grow by about 50 MB.
+
+If CGO is off, the build stops with an error like this:
+
+```
+build constraints exclude all Go files in .../github.com/duckdb/duckdb-go-bindings/lib/darwin-arm64@v0.10504.0
+```
+
+Install a C compiler, make sure `CGO_ENABLED` is not `0`, and build again. Cross-compiling needs a C toolchain for the target, so the simplest route is to build on the platform you run on.
+
+### Settings
+
+The embedded server reads these from your process environment. Set them before `Run` is called.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `DUCKDB_MEMORY_LIMIT` | *(unset, about 80% of the RAM DuckDB sees)* | Memory budget for the engine, for example `1GB`. A ceiling, not a reservation. |
+| `DUCKDB_THREADS` | *(unset, all cores)* | Caps the engine's thread count, for example `2`. |
+| `DUCKDB_CHECKPOINT_THRESHOLD` | *(unset, 16MB)* | WAL size that triggers a checkpoint, for example `256MB`. Rarely needs changing in development. |
+| `DUCKDB_RETENTION_DAYS` | `30` | Days of telemetry to keep. A cleanup pass runs at startup and then every hour. Set to `0` to keep everything. |
+
+On a laptop the defaults are fine. Inside a memory-capped dev container DuckDB sees the host's RAM, not the container limit, so set `DUCKDB_MEMORY_LIMIT` to about half the container's memory. A value DuckDB cannot parse makes `Run` panic at startup with a message that names the option.
+
+<Callout type="info">
+  Backend v2.0.3 and earlier ignore these four variables in embedded mode and always use the defaults.
+</Callout>
+
 ## Configuration Options
 
-All options are passed to `tracewaybackend.Run()`. When any options are provided, embedded mode is activated automatically (pure SQLite).
+All options are passed to `tracewaybackend.Run()`. When any options are provided, embedded mode is activated automatically.
 
 | Option                                              | Description                                                                                        | Default                   |
 | --------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------- |
 | `WithPort(port)`                                    | HTTP port for the Traceway server                                                                  | `8082`                    |
 | `WithServerURL(url)`                                | Base URL override (used in connection string output)                                               | `http://localhost:{port}` |
-| `WithSQLitePath(path)`                              | SQLite database file path                                                                          | `:memory:` (in-memory)    |
+| `WithSQLitePath(path)`                              | Path of the main SQLite database file. The telemetry file is created next to it                    | `:memory:` (in-memory)    |
 | `WithDefaultUser(email, password)`                  | Create a default admin user on startup                                                             | None                      |
 | `WithDefaultProject(name, framework, token)`        | Create a default project with a fixed token (can be called multiple times)                         | None                      |
 | `DisableLogging()`                                  | Silence the embedded server's startup and request logs so they don't mix with your app's output    | Logging enabled           |
@@ -220,7 +275,7 @@ go tracewaybackend.Run(
 
 ## Data Persistence
 
-By default, the database is **in-memory**, which means all data is lost when your application restarts. This is fine for quick debugging sessions, but if you want data to survive restarts, set a file path:
+By default, both databases are **in-memory**, which means all data is lost when your application restarts. This is fine for quick debugging sessions, but if you want data to survive restarts, set a file path:
 
 Add `WithSQLitePath` to the options you already pass. It does not replace them. Keep the `go` keyword too, otherwise `Run` blocks and your own server never starts.
 
@@ -239,20 +294,35 @@ go tracewaybackend.Run(
 
 | File | Contents |
 | --- | --- |
-| `traceway.db` | Relational data: users, organizations, projects, settings |
-| `traceway_telemetry.db` | Telemetry: traces, endpoints, issues, logs, metrics |
+| `traceway.db` | SQLite. Relational data: users, organizations, projects, settings |
+| `traceway_telemetry.duckdb` | DuckDB. Telemetry: traces, endpoints, issues, logs, metrics |
 
-SQLite also writes `-wal` and `-shm` sidecar files for each database. Back up or ignore all of them, not just the file you named. The server also creates a `storage/` directory in the process working directory for session recordings and synthetics screenshots. That directory appears in the default in-memory mode too.
+Both write sidecar files: `traceway.db-wal` and `traceway.db-shm` for SQLite, `traceway_telemetry.duckdb.wal` for DuckDB. Back up or ignore all of them, not just the file you named. To copy the DuckDB file safely, stop your app first and take the `.wal` file with it.
+
+The server also creates a `storage/` directory in the process working directory for session recordings and synthetics screenshots. That directory appears in the default in-memory mode too.
+
+Only one process can open the DuckDB file at a time. A second copy of your app pointed at the same path panics at startup with `Could not set lock on file`.
 
 Add all of it to `.gitignore`:
 
 ```text
 traceway.db*
-traceway_telemetry.db*
+traceway_telemetry.duckdb*
 storage/
 ```
 
 Seeding is idempotent: if the user from `WithDefaultUser` already exists, it's skipped.
+
+## Builds without the tag
+
+A plain `go build` still works. It stores telemetry in SQLite instead of DuckDB, in `traceway_telemetry.db` with `-wal` and `-shm` sidecar files. SQLite telemetry is being phased out, so use it only where you cannot enable CGO.
+
+Two things to know while you are on it:
+
+- **Memory.** A file-backed SQLite telemetry database keeps a page cache inside your process, and its default can grow to several gigabytes. Set the `SQLITE_CACHE_SIZE_MB` environment variable, for example `16`, before your app starts. [Memory sizing](/server/sqlite#memory-sizing) explains the numbers. The in-memory default is not affected.
+- **Switching to DuckDB.** Add the tag and rebuild. Users, projects and tokens carry over, because the main database is the same file. Telemetry does not: the DuckDB build starts a fresh `traceway_telemetry.duckdb`, and the old `traceway_telemetry.db` files can be deleted.
+
+See [Build Tags](/learn/build-tags) for the full list of storage combinations.
 
 ## Development-Only Guard
 

@@ -27,7 +27,7 @@ func initTelemetryDB() error {
 		return err
 	}
 	TelemetryDB = telDB
-	config.Logf("SQLite telemetry database opened at %s", telemetryPath)
+	config.Logf("SQLite telemetry database opened at %s (page cache: %d MB per connection, up to %d connections)", telemetryPath, telemetryCacheMB(), telemetryMaxOpenConns)
 
 	return nil
 }

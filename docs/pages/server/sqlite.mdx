@@ -4,7 +4,9 @@ import { Callout } from "nextra/components";
 
 Smallest possible Traceway deployment: a single Alpine container that uses SQLite for both the main database and telemetry, with the frontend embedded into the Go binary. No external Postgres or ClickHouse required. Blob storage (source maps, session recordings, AI traces) is written to a local folder by default and can optionally be backed by S3.
 
-If your dashboards slow down as telemetry grows, the [DuckDB deployment](/server/duckdb) keeps this exact single-container setup but swaps the telemetry store for a columnar engine with far more read headroom.
+<Callout type="warning">
+  **SQLite telemetry is not the recommended setup.** For a single-container deployment we recommend the [DuckDB image](/server/duckdb). It has the same shape as this one: one container, the same `/data` volume, and the main database stays SQLite. Only telemetry moves, to a columnar engine that keeps dashboards fast as data grows. SQLite telemetry still works and is fine for trying Traceway out or for a small instance, but we are not planning major work on it. If you run it on a memory-capped host, read [Memory sizing](#memory-sizing) first.
+</Callout>
 
 All persistent state (both SQLite database files and blob storage) lives under `/data`. Bind-mount that single folder to keep your data across restarts.
 
@@ -30,6 +32,8 @@ docker run -d --name traceway \
 Both SQLite files (`traceway.db`, `traceway_telemetry.db`) and uploaded blobs (under `storage/`) land inside the mounted folder.
 
 After starting, open `http://localhost/register` to create your first account.
+
+If the host or container has less than 16 GB of memory, also set `SQLITE_CACHE_SIZE_MB`. The default can use several gigabytes; see [Memory sizing](#memory-sizing).
 
 ## Build from Source
 
@@ -74,6 +78,7 @@ If `STORAGE_TYPE` is unset (or set to `local`), blobs are written to `/data/stor
 | `INGEST_MAX_CONCURRENT` | *(2 x CPU cores, min 4)* | Telemetry ingest requests processed at once (`/api/report`, `/api/profiles/ingest`, `/api/otel/*`). Excess requests wait up to `INGEST_ADMISSION_WAIT_SECONDS` (default 5) and then get `503` with `Retry-After`; past a bounded waiting room (four times the capacity, at least 16) they are turned away immediately. Each admitted request can hold a decoded body, so on a memory-capped container size this from the memory limit rather than the CPU count. |
 | `UPLOAD_MAX_CONCURRENT` | `4` | Source map and symbol uploads processed at once. Each holds a whole file in memory while it is parsed. Excess uploads wait 30 seconds and then get `503`. Separate from the ingest pool so a CI burst cannot starve telemetry. |
 | `SQLITE_PATH` | `/data/traceway.db` | Main SQLite file. Telemetry DB is derived as `<path>_telemetry.db` |
+| `SQLITE_CACHE_SIZE_MB` | `512` | Page cache of the telemetry database in megabytes, per connection. Up to 4 connections are open and each megabyte costs about two, so the caches can take up to 8 times this value: 4 GB at the default. Set it on any memory-capped host, for example `32` for a 1 GB container. A value that is not a positive number falls back to the default. See [Memory sizing](#memory-sizing). |
 | `STORAGE_TYPE` | `local` | Blob storage backend. `local` or `s3` |
 | `STORAGE_PATH` | `/data/storage` | Folder for local blob storage. Ignored when `STORAGE_TYPE=s3` |
 | `S3_BUCKET` | *(unset)* | Required when `STORAGE_TYPE=s3` |
@@ -86,6 +91,57 @@ If `STORAGE_TYPE` is unset (or set to `local`), blobs are written to `/data/stor
 | `SQLITE_RETENTION_DAYS` | `30` | Days to keep telemetry rows (endpoints, exceptions, spans, metrics, logs, sessions, recordings, fired notifications, notification history). A background worker prunes older rows once at startup and then every hour. Set to `0` to disable. |
 | `LOG_RECORDS_MAX_ROWS` | *(unset)* | Optional cap on the number of log rows, independent of `SQLITE_RETENTION_DAYS`. This is not a hard limit: a cleanup task runs every minute and deletes the oldest logs until only the newest N rows remain. Between runs the table can grow past N, and if you ingest more than N rows in a single minute the table (and disk usage) will exceed the cap until the next cleanup. Size it with headroom for your peak ingest rate. Unset or `0` disables the cap. |
 | `SESSION_RECORDING_RETENTION_DAYS` | `30` | Days to keep session recording files on disk under `STORAGE_PATH/recordings/`. Files older than the TTL are deleted hourly and on startup; empty subdirectories are removed. No effect when `STORAGE_TYPE=s3`. Set to `0` to disable. |
+
+## Memory sizing
+
+On a memory-capped host, set `SQLITE_CACHE_SIZE_MB`. The default suits a large dedicated machine, and it will get a small container killed for running out of memory.
+
+The variable sizes SQLite's page cache for the telemetry database. Three things decide what it really costs:
+
+- **It is per connection.** Every connection to the telemetry database keeps its own cache, and Traceway opens up to 4 of them.
+- **It costs about twice its size.** The SQLite driver stores each 4 KB page in an 8 KB slot, so a 32 MB cache takes about 64 MB of memory.
+- **It is kept once filled.** A cache grows as its connection reads or writes pages, and it stays allocated afterwards. Ingest, the hourly retention pass and dashboard queries over recent data all fill it.
+
+So the most the caches can take is:
+
+```
+4 connections x 2 x SQLITE_CACHE_SIZE_MB
+```
+
+With the default of `512` that is 4 GB. One connection alone reaches about 1 GB within seconds of startup once the telemetry file is larger than about 500 MB, because the retention pass reads through it.
+
+A good starting point is the container's memory in MB divided by 32. That keeps the caches within a quarter of the container:
+
+| Container memory | `SQLITE_CACHE_SIZE_MB` | Most the caches can take |
+|------------------|------------------------|--------------------------|
+| 512 MB | `16` | 128 MB |
+| 1 GB | `32` | 256 MB |
+| 2 GB | `64` | 512 MB |
+| 4 GB | `128` | 1 GB |
+| 8 GB | `256` | 2 GB |
+| 16 GB or more | `512` (default) | 4 GB |
+
+```bash
+docker run -d --name traceway \
+  --memory=1g \
+  -p 80:80 \
+  -v "$(pwd)/traceway-data:/data" \
+  -e JWT_SECRET="your-jwt-secret-min-32-characters-long" \
+  -e SQLITE_CACHE_SIZE_MB="32" \
+  ghcr.io/tracewayapp/traceway:sqlite
+```
+
+The rest of the container is not spare. Dashboard queries need about 150 MB of working memory on top of the caches, the source map cache has its own cap (`SOURCEMAP_CACHE_MAX_BYTES_MB`, 500 MB by default), and the operating system uses what is left to cache the database file. That file cache serves every read the SQLite cache does not hold, so a smaller `SQLITE_CACHE_SIZE_MB` changes where pages are cached, not what queries return.
+
+512 MB is only enough while the telemetry file is small. Once it grows to several GB, give the container at least 1 GB, or the first dashboard opened after a restart can take minutes.
+
+The server logs the value it is using at startup:
+
+```
+SQLite telemetry database opened at /data/traceway_telemetry.db (page cache: 32 MB per connection, up to 4 connections)
+```
+
+The sign of a cache that is too large is a container that restarts with exit code 137 (`OOMKilled`) when a dashboard opens or during heavy ingest, with nothing in the application log before the restart.
 
 ## SSO (optional)
 

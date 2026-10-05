@@ -238,6 +238,8 @@ On a laptop the defaults are fine. Inside a memory-capped dev container DuckDB s
 
 All options are passed to `tracewaybackend.Run()`. When any options are provided, embedded mode is activated automatically.
 
+Embedded mode signs dashboard sessions with the key from `WithJWTSecret`, else from the `TRACEWAY_JWT_SECRET` environment variable. It never reads `JWT_SECRET`, because that name usually belongs to your own application. With neither set, each start generates a random signing key and logs a line saying so, and dashboard sessions expire on restart. To keep sessions across restarts with a persistent database, pass a stable, unique secret of at least 32 characters. An empty, short, or former built-in secret stops startup and exits the process.
+
 | Option                                              | Description                                                                                        | Default                   |
 | --------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------- |
 | `WithPort(port)`                                    | HTTP port for the Traceway server                                                                  | `8082`                    |
@@ -248,6 +250,7 @@ All options are passed to `tracewaybackend.Run()`. When any options are provided
 | `DisableLogging()`                                  | Silence the embedded server's startup and request logs so they don't mix with your app's output    | Logging enabled           |
 | `WithDefaultProjectSourceMapToken(name, token)`     | Set a fixed source map upload token on a default project. Call it after the matching `WithDefaultProject`, since it looks the project up by name | None |
 | `WithMonitoringURL(connectionString)`               | Report the embedded server's own telemetry to another Traceway instance. Takes a connection string in the form `<project_token>@<url>/api/report` | None |
+| `WithJWTSecret(secret)`                             | Signing key for dashboard sessions, at least 32 characters. Overrides `TRACEWAY_JWT_SECRET`         | Random key per start      |
 
 If the embedded server's startup lines get in the way of your own output, add `tracewaybackend.DisableLogging()` to the option list:
 

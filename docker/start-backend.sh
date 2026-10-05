@@ -1,16 +1,17 @@
 #!/bin/bash
 set -e
 
-set -a
-source /app/.env
-set +a
+# The backend loads .env without overwriting Docker's environment. Sourcing it
+# here would replace operator-provided secrets before the backend sees them.
+clickhouse_server=${CLICKHOUSE_SERVER:-localhost:9000}
+postgres_host=${POSTGRES_HOST:-localhost}
 
-if [[ "$CLICKHOUSE_SERVER" == localhost* ]] || [[ "$CLICKHOUSE_SERVER" == 127.0.0.1* ]]; then
+if [[ "$clickhouse_server" == localhost* ]] || [[ "$clickhouse_server" == 127.0.0.1* ]]; then
     echo "Waiting for ClickHouse to be ready..."
     /usr/local/bin/wait-for-clickhouse.sh
 fi
 
-if [[ "$POSTGRES_HOST" == "localhost" ]] || [[ "$POSTGRES_HOST" == "127.0.0.1" ]]; then
+if [[ "$postgres_host" == "localhost" ]] || [[ "$postgres_host" == "127.0.0.1" ]]; then
     echo "Waiting for PostgreSQL to be ready..."
     MAX_RETRIES=30
     RETRY_INTERVAL=2

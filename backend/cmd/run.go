@@ -62,7 +62,7 @@ func Run(opts ...Option) {
 			port = 8082
 		}
 		cfg = &config.Cfg{
-			JWTSecret:   "traceway-dev-secret-key-min-32-chars!",
+			JWTSecret:   embeddedJWTSecret(o),
 			DBType:      "sqlite",
 			SQLitePath:  o.sqlitePath,
 			StorageType: "local",

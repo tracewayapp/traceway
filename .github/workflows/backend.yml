@@ -9,12 +9,14 @@ on:
       # imports cli/pkg/{client,mcpserver}, so a cli-only change can break the
       # backend build. cli.yml already lists backend/** for the same reason.
       - "cli/**"
+      - "docker/start-backend.sh"
       - ".github/workflows/backend.yml"
   pull_request:
     types: [labeled]
     paths:
       - "backend/**"
       - "cli/**"
+      - "docker/start-backend.sh"
       - ".github/workflows/backend.yml"
   workflow_dispatch:
 

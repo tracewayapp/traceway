@@ -29,11 +29,11 @@ const ITEMS: Item[] = [
 
 export function ComplianceStrip() {
   return (
-    <div className="grid gap-5 sm:grid-cols-2">
+    <div className="grid gap-4 sm:grid-cols-2">
       {ITEMS.map((item) => (
         <div
           key={item.name}
-          className="flex items-start gap-4 rounded-2xl p-5"
+          className="flex items-start gap-3.5 rounded-2xl p-5"
           style={{
             background: "var(--ink-0)",
             border: "1px solid var(--hair-2)",
@@ -41,29 +41,34 @@ export function ComplianceStrip() {
               "0 1px 2px rgba(10,14,24,0.04), 0 12px 30px -18px rgba(10,14,24,0.14)",
           }}
         >
-          <div className="grid size-10 shrink-0 place-items-center rounded-xl">
+          <div
+            className="grid size-10 shrink-0 place-items-center rounded-[10px]"
+            style={{
+              background: "color-mix(in oklab, var(--a2) 10%, transparent)",
+            }}
+          >
             <item.icon
               className="size-5"
               style={{ color: "var(--a2)" }}
               aria-hidden
             />
           </div>
-          <div className="min-w-0">
-            <div
-              className="text-[15px] font-semibold"
-              style={{ color: "var(--fg-0)" }}
-            >
-              {item.name}
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
+              <div
+                className="text-[15px] font-semibold leading-6"
+                style={{ color: "var(--fg-0)" }}
+              >
+                {item.name}
+              </div>
+              <StatusPill status={item.status} label={item.statusLabel} />
             </div>
             <p
-              className="mt-0.5 text-[12.5px] leading-snug"
+              className="mt-1 text-[13px] leading-snug"
               style={{ color: "var(--fg-2)" }}
             >
               {item.detail}
             </p>
-            <div className="mt-2.5">
-              <StatusPill status={item.status} label={item.statusLabel} />
-            </div>
           </div>
         </div>
       ))}
@@ -73,29 +78,18 @@ export function ComplianceStrip() {
 
 function StatusPill({ status, label }: { status: Status; label: string }) {
   const isReady = status === "ready";
-  const tone = "var(--ok)";
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium"
-      style={{
-        fontFamily: "var(--font-mono)",
-        letterSpacing: "0.04em",
-        color: tone,
-        border: "1px solid var(--ok)",
-      }}
+      className="inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11.5px] font-medium"
+      style={
+        isReady
+          ? {
+              color: "var(--ok)",
+              background: "color-mix(in oklab, var(--ok) 12%, transparent)",
+            }
+          : { color: "var(--fg-2)", background: "var(--ink-2)" }
+      }
     >
-      <span className="relative flex size-1.5">
-        {!isReady && (
-          <span
-            className="absolute inline-flex size-full animate-ping rounded-full opacity-60"
-            style={{ background: tone }}
-          />
-        )}
-        <span
-          className="relative inline-flex size-1.5 rounded-full"
-          style={{ background: tone }}
-        />
-      </span>
       {label}
     </span>
   );

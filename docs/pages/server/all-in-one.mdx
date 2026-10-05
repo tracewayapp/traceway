@@ -10,12 +10,20 @@ Single Docker container with ClickHouse, PostgreSQL, and the Go backend managed 
 
 ## Quick Start
 
-Pull the pre-built image from GitHub Container Registry:
+Generate a signing secret once and save it in a private environment file. Keep this file out of source control and reuse it when recreating the container:
+
+```bash
+umask 077
+printf 'JWT_SECRET=%s\n' "$(openssl rand -hex 32)" > traceway.env
+```
+
+Pull the pre-built image from GitHub Container Registry and pass that file to Docker:
 
 ```bash
 docker pull ghcr.io/tracewayapp/traceway:latest
 
 docker run -d --name traceway \
+  --env-file ./traceway.env \
   -p 80:80 \
   -v traceway-ch:/var/lib/clickhouse \
   -v traceway-pg:/var/lib/postgresql/data \
@@ -29,12 +37,13 @@ The `traceway-storage` volume holds [blob storage](/server/storage): uploaded so
 
 ## Build from Source
 
-Only needed if you want to run a custom or modified build:
+Only needed if you want to run a custom or modified build. Create `traceway.env` as shown above first:
 
 ```bash
 docker build -t traceway:latest .
 
 docker run -d --name traceway \
+  --env-file ./traceway.env \
   -p 80:80 \
   -v traceway-ch:/var/lib/clickhouse \
   -v traceway-pg:/var/lib/postgresql/data \
@@ -44,10 +53,10 @@ docker run -d --name traceway \
 
 ## Environment Variables
 
-All environment variables have working defaults, no configuration required. Override as needed:
+`JWT_SECRET` is required. The other variables below have defaults. Docker environment values (`-e` or `--env-file`) take precedence over values in `/app/.env`.
 
 <Callout type="warning">
-  **Set `JWT_SECRET` before exposing this image to anyone else.** It signs every authentication token (dashboard sessions and CLI/MCP device logins), so the built-in default, which is public, lets anyone forge a token for any account. Generate a strong secret with `openssl rand -hex 32`. See [CLI Authentication](/learn/cli-auth#set-a-strong-jwt_secret).
+  **Upgrading an existing All-in-One installation:** older images replaced Docker-provided `JWT_SECRET` values with a public signing key. Upgrade the image and recreate the container with a strong, unique secret. The backend now refuses to start with a missing, short, or former built-in key, and `docker logs traceway` shows why. Changing the effective key invalidates existing JWTs. If the old instance was accessible to untrusted users, review access logs, account changes, personal access tokens and CLI/OAuth sessions; database-backed credentials survive JWT key rotation. See [CLI Authentication](/learn/cli-auth#set-a-strong-jwt_secret).
 </Callout>
 
 | Variable | Default | Description |
@@ -63,7 +72,7 @@ All environment variables have working defaults, no configuration required. Over
 | `POSTGRES_USERNAME` | `traceway` | PostgreSQL username |
 | `POSTGRES_PASSWORD` | *(empty)* | PostgreSQL password |
 | `POSTGRES_SSLMODE` | `disable` | PostgreSQL SSL mode |
-| `JWT_SECRET` | *(built-in default, **override in production**)* | Signs all authentication tokens: dashboard sessions and CLI/MCP device logins. The built-in default is public; set a strong unique secret (min 32 chars, `openssl rand -hex 32`) and keep it stable. See [CLI Authentication](/learn/cli-auth#set-a-strong-jwt_secret). |
+| `JWT_SECRET` | *(required)* | Signs dashboard sessions and CLI/MCP access tokens. Set a strong unique secret (min 32 chars, `openssl rand -hex 32`) and keep it stable. Former built-in keys are rejected. See [CLI Authentication](/learn/cli-auth#set-a-strong-jwt_secret). |
 | `GIN_MODE` | `release` | Gin framework mode |
 | `APP_BASE_URL` | *(none)* | Public URL of your Traceway instance (e.g. `https://traceway.example.com`). Used for SDK setup instructions, email links, deep links in notifications, OAuth callback URLs, and the CLI/MCP OAuth issuer plus device-login verification URL. If unset, the device-auth and `/.well-known` endpoints derive it per-request from the `Host` / `X-Forwarded-*` headers; set it explicitly behind a proxy that rewrites `Host`. See [CLI Authentication](/learn/cli-auth). |
 | `TRUSTED_PROXIES` | *(loopback)* | Comma-separated CIDRs of the proxies in front of Traceway whose `X-Forwarded-For` / `X-Real-IP` is trusted for the real client IP. Every per-IP rate limit keys on it, and `/api/report` stores it as each session's `client.ip`. Unset trusts loopback only, so a proxy container on a Docker network or an in-cluster ingress has to be listed before its header counts. A value replaces the default, so list every hop between the client and this server, not just the outermost one: naming only a CDN leaves a private ingress untrusted and turns `X-Forwarded-For` off entirely. `*` trusts every peer and lets clients spoof their address. Until the proxy is listed, every visitor shares one rate-limit bucket keyed on the proxy, and the server logs a warning the first time it sees a forwarding header from a peer it does not trust. |

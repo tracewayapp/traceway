@@ -12,6 +12,7 @@ var (
 	WithDefaultUser    = cmd.WithDefaultUser
 	WithDefaultProject = cmd.WithDefaultProject
 	WithMonitoringURL  = cmd.WithMonitoringURL
+	WithJWTSecret      = cmd.WithJWTSecret
 	DisableLogging     = cmd.DisableLogging
 
 	WithDefaultProjectSourceMapToken = cmd.WithDefaultProjectSourceMapToken

@@ -3,7 +3,6 @@ ignore_paths = [
   "*_test.go",
   "backend/app/repositories/transactional/pg/project.repository.go",
   "backend/app/repositories/transactional/sqlite/project.repository.go",
-  "backend/cmd/run.go",
   "backend/static/frontend/*",
   "benchmarks/*",
   "cli/internal/state/state.go",

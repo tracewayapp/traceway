@@ -68,7 +68,7 @@ openssl rand -hex 32   # use the output as JWT_SECRET
 ```
 
 - Minimum length is 32 characters; the server refuses to start with a shorter secret.
-- The **All-in-One image ships a built-in default** so it can boot with zero config. That default is public, so override `JWT_SECRET` before you put the instance on a network anyone else can reach. Every other deployment guide already requires you to set it.
+- **Every server image, including All-in-One, requires `JWT_SECRET`.** Former built-in keys are rejected. Older All-in-One images overwrote Docker-provided secrets; upgrade and recreate those containers with a unique key. See the [All-in-One upgrade note](/server/all-in-one#environment-variables).
 - Keep it **stable**. Rotating it logs out active dashboard sessions (users sign in again). CLI logins and personal access tokens are opaque, database-backed credentials, so those keep working: a CLI simply refreshes into a token signed with the new secret on its next call.
 
 `OAUTH_SESSION_SECRET` falls back to `JWT_SECRET` when unset; set it separately only if you want to rotate the OAuth cookie secret independently.

@@ -23,6 +23,10 @@ type NotificationMessage struct {
 
 	Email *NotificationEmail `json:",omitempty"`
 
+	// Recovered marks the notice that closes an alert. Severity cannot carry
+	// this: info is shared with test messages and info-severity rules.
+	Recovered bool `json:",omitempty"`
+
 	// DedupToken is the stable identity of what fired within the rule
 	// (exception hash, endpoint, task or metric name; empty for rule-level
 	// conditions). Page dedup keys are built from it — never from URL, which

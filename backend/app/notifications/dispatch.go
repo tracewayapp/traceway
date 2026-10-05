@@ -42,7 +42,8 @@ func dispatch(rule *models.NotificationRuleWithChannel, msg Message) bool {
 
 	msg.RuleType = rule.RuleType
 	msg.RuleName = rule.Name
-	if rule.Severity != "" {
+	// The rule's severity grades the alert, not the notice that closes it.
+	if rule.Severity != "" && !msg.Recovered {
 		msg.Severity = Severity(rule.Severity)
 	}
 	msg.URL = dashboardURL(msg.URL)

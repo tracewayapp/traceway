@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/tracewayapp/traceway/backend/app/chdb"
@@ -295,9 +296,12 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 	return stats, int64(count), nil
 }
 
-func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.UUID, endpoint string, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.Endpoint, int64, error) {
+func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.UUID, endpoint string, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string, search string, attributeFilters []shared.SessionAttributeFilter) ([]models.Endpoint, int64, error) {
+	whereExtra, extraArgs := buildEndpointFilterClause(search, attributeFilters)
+	whereArgs := append([]interface{}{projectId, endpoint, fromDate, toDate}, extraArgs...)
+
 	var count uint64
-	err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM endpoints_v2 WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ?", projectId, endpoint, fromDate, toDate).Scan(&count)
+	err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM endpoints_v2 WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ?"+whereExtra, whereArgs...).Scan(&count)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -321,8 +325,8 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.
 		sortDir = "ASC"
 	}
 
-	query := "SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id FROM endpoints_v2 WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ? ORDER BY " + orderBy + " " + sortDir + " LIMIT ? OFFSET ?"
-	rows, err := chdb.Conn.Query(ctx, query, projectId, endpoint, fromDate, toDate, pageSize, offset)
+	query := "SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id FROM endpoints_v2 WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ?" + whereExtra + " ORDER BY " + orderBy + " " + sortDir + " LIMIT ? OFFSET ?"
+	rows, err := chdb.Conn.Query(ctx, query, append(whereArgs, pageSize, offset)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -344,6 +348,34 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.
 	}
 
 	return endpoints, int64(count), nil
+}
+
+func buildEndpointFilterClause(search string, filters []shared.SessionAttributeFilter) (string, []interface{}) {
+	// attributes is a JSON string on endpoints_v2, read as a map so it filters like session attributes.
+	const attributes = "JSONExtract(attributes, 'Map(String, String)')"
+	var sb strings.Builder
+	args := []interface{}{}
+	if s := strings.TrimSpace(search); s != "" {
+		sb.WriteString(" AND arrayExists(v -> positionCaseInsensitiveUTF8(v, ?) > 0, mapValues(" + attributes + "))")
+		args = append(args, s)
+	}
+	for _, f := range filters {
+		if f.Key == "" {
+			continue
+		}
+		sb.WriteString(" AND ")
+		if f.Exclude {
+			sb.WriteString("NOT ")
+		}
+		sb.WriteString("(mapContains(" + attributes + ", ?) AND ")
+		if f.Contains {
+			sb.WriteString("positionCaseInsensitiveUTF8(" + attributes + "[?], ?) > 0)")
+		} else {
+			sb.WriteString(attributes + "[?] = ?)")
+		}
+		args = append(args, f.Key, f.Key, f.Value)
+	}
+	return sb.String(), args
 }
 
 // FindById returns a single endpoint by ID

@@ -339,11 +339,12 @@ func (e *endpointRepository) FindGroupedByEndpoint(ctx context.Context, projectI
 	return stats[start:endIdx], totalEndpoints, nil
 }
 
-func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.UUID, endpointName string, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.Endpoint, int64, error) {
+func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.UUID, endpointName string, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string, search string, attributeFilters []shared.SessionAttributeFilter) ([]models.Endpoint, int64, error) {
 	params := lit.P{"project_id": projectId, "endpoint": endpointName, "from": fromDate.UTC(), "to": toDate.UTC()}
+	whereExtra := buildEndpointFilterClauseDuckDB(search, attributeFilters, params)
 
 	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
-		"SELECT COUNT(*) AS count FROM endpoints_v2 WHERE project_id = :project_id AND endpoint = :endpoint AND recorded_at >= :from AND recorded_at <= :to",
+		"SELECT COUNT(*) AS count FROM endpoints_v2 WHERE project_id = :project_id AND endpoint = :endpoint AND recorded_at >= :from AND recorded_at <= :to"+whereExtra,
 		params)
 	if err != nil {
 		return nil, 0, err
@@ -353,7 +354,8 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.
 		count = int64(countResult.Count)
 	}
 
-	offset := (page - 1) * pageSize
+	params["limit"] = pageSize
+	params["offset"] = (page - 1) * pageSize
 
 	allowedOrderBy := map[string]bool{"recorded_at": true, "duration": true, "status_code": true, "body_size": true}
 	if !allowedOrderBy[orderBy] {
@@ -367,9 +369,9 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.
 
 	rows, err := lit.SelectNamed[endpoint](db.TelemetryDB,
 		fmt.Sprintf(`SELECT id, project_id, endpoint, duration, recorded_at, status_code, body_size, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id
-		FROM endpoints_v2 WHERE project_id = :project_id AND endpoint = :endpoint AND recorded_at >= :from AND recorded_at <= :to
-		ORDER BY %s %s LIMIT :limit OFFSET :offset`, orderBy, sortDir),
-		lit.P{"project_id": projectId, "endpoint": endpointName, "from": fromDate.UTC(), "to": toDate.UTC(), "limit": pageSize, "offset": offset})
+		FROM endpoints_v2 WHERE project_id = :project_id AND endpoint = :endpoint AND recorded_at >= :from AND recorded_at <= :to%s
+		ORDER BY %s %s LIMIT :limit OFFSET :offset`, whereExtra, orderBy, sortDir),
+		params)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -380,6 +382,34 @@ func (e *endpointRepository) FindByEndpoint(ctx context.Context, projectId uuid.
 	}
 
 	return endpoints, count, nil
+}
+
+func buildEndpointFilterClauseDuckDB(search string, filters []shared.SessionAttributeFilter, params lit.P) string {
+	var sb strings.Builder
+	if s := strings.TrimSpace(search); s != "" {
+		sb.WriteString(" AND EXISTS (SELECT 1 FROM json_each(endpoints_v2.attributes) AS attr WHERE instr(lower(json_extract_string(attr.value, '$')), lower(:search)) > 0)")
+		params["search"] = s
+	}
+	for i, f := range filters {
+		if f.Key == "" {
+			continue
+		}
+		keyParam := fmt.Sprintf("attr_k_%d", i)
+		valParam := fmt.Sprintf("attr_v_%d", i)
+		sb.WriteString(" AND ")
+		if f.Exclude {
+			sb.WriteString("NOT ")
+		}
+		sb.WriteString("EXISTS (SELECT 1 FROM json_each(endpoints_v2.attributes) AS attr WHERE attr.key = :" + keyParam + " AND ")
+		if f.Contains {
+			sb.WriteString("instr(lower(json_extract_string(attr.value, '$')), lower(:" + valParam + ")) > 0)")
+		} else {
+			sb.WriteString("json_extract_string(attr.value, '$') = :" + valParam + ")")
+		}
+		params[keyParam] = f.Key
+		params[valParam] = f.Value
+	}
+	return sb.String()
 }
 
 func (e *endpointRepository) FindById(ctx context.Context, projectId, endpointId uuid.UUID, recordedAt *time.Time) (*models.Endpoint, error) {

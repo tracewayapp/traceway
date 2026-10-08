@@ -322,7 +322,7 @@ func TestEndpointRepository_FindByEndpoint(t *testing.T) {
 		t.Fatalf("InsertAsync failed: %v", err)
 	}
 
-	found, total, err := EndpointRepository.FindByEndpoint(ctx, projectId, "GET /api/users", now.Add(-time.Hour), now.Add(time.Hour), 1, 10, "recorded_at", "desc")
+	found, total, err := EndpointRepository.FindByEndpoint(ctx, projectId, "GET /api/users", now.Add(-time.Hour), now.Add(time.Hour), 1, 10, "recorded_at", "desc", "", nil)
 	if err != nil {
 		t.Fatalf("FindByEndpoint failed: %v", err)
 	}
@@ -337,6 +337,58 @@ func TestEndpointRepository_FindByEndpoint(t *testing.T) {
 		if f.Endpoint != "GET /api/users" {
 			t.Errorf("expected endpoint 'GET /api/users', got %q", f.Endpoint)
 		}
+	}
+}
+
+func TestEndpointRepository_FindByEndpoint_FiltersAttributes(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	projectId := uuid.New()
+	now := truncateMs(time.Now().UTC())
+
+	alice := makeEndpoint(projectId, "GET /api/users", 100*time.Millisecond, 200, now)
+	alice.Attributes = map[string]string{"user.id": "u_42", "email": "Alice@Example.com", "tenant": "acme", "empty": ""}
+	bob := makeEndpoint(projectId, "GET /api/users", 100*time.Millisecond, 200, now.Add(time.Minute))
+	bob.Attributes = map[string]string{"user.id": "u_43", "email": "bob@example.com", "tenant": "other"}
+	anonymous := makeEndpoint(projectId, "GET /api/users", 100*time.Millisecond, 200, now.Add(2*time.Minute))
+	otherEndpoint := makeEndpoint(projectId, "POST /api/users", 100*time.Millisecond, 201, now)
+	otherEndpoint.Attributes = alice.Attributes
+	if err := EndpointRepository.InsertAsync(ctx, []models.Endpoint{alice, bob, anonymous, otherEndpoint}); err != nil {
+		t.Fatalf("InsertAsync failed: %v", err)
+	}
+
+	cases := []struct {
+		name, search string
+		filters      []SessionAttributeFilter
+		want         int64
+	}{
+		{name: "unfiltered", want: 3},
+		{name: "search value", search: "u_42", want: 1},
+		{name: "case insensitive search", search: "ALICE@EXAMPLE", want: 1},
+		{name: "search ignores keys", search: "tenant", want: 0},
+		{name: "exact dotted key", filters: []SessionAttributeFilter{{Key: "user.id", Value: "u_42"}}, want: 1},
+		{name: "case sensitive equals", filters: []SessionAttributeFilter{{Key: "email", Value: "alice@example.com"}}, want: 0},
+		{name: "contains", filters: []SessionAttributeFilter{{Key: "email", Value: "ALICE@", Contains: true}}, want: 1},
+		{name: "exclude includes absent", filters: []SessionAttributeFilter{{Key: "user.id", Value: "u_42", Exclude: true}}, want: 2},
+		{name: "not contains", filters: []SessionAttributeFilter{{Key: "email", Value: "EXAMPLE", Contains: true, Exclude: true}}, want: 1},
+		{name: "empty differs from missing", filters: []SessionAttributeFilter{{Key: "empty", Value: ""}}, want: 1},
+		{name: "SQL in key", filters: []SessionAttributeFilter{{Key: `' OR 1=1 --`, Value: ""}}, want: 0},
+		{name: "AND filters", filters: []SessionAttributeFilter{{Key: "user.id", Value: "u_42"}, {Key: "tenant", Value: "other"}}, want: 0},
+		{name: "search AND filter", search: "bob", filters: []SessionAttributeFilter{{Key: "tenant", Value: "acme"}}, want: 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rows, total, err := EndpointRepository.FindByEndpoint(ctx, projectId, "GET /api/users", now.Add(-time.Hour), now.Add(time.Hour), 1, 1, "recorded_at", "desc", tc.search, tc.filters)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if total != tc.want {
+				t.Fatalf("total = %d, want %d", total, tc.want)
+			}
+			if len(rows) != int(min(tc.want, 1)) {
+				t.Fatalf("page length = %d, total = %d", len(rows), total)
+			}
+		})
 	}
 }
 

@@ -30,11 +30,13 @@ type EndpointSearchRequest struct {
 }
 
 type EndpointInstancesRequest struct {
-	FromDate      time.Time        `json:"fromDate"`
-	ToDate        time.Time        `json:"toDate"`
-	OrderBy       string           `json:"orderBy"`
-	SortDirection string           `json:"sortDirection"`
-	Pagination    PaginationParams `json:"pagination"`
+	FromDate         time.Time                `json:"fromDate"`
+	ToDate           time.Time                `json:"toDate"`
+	OrderBy          string                   `json:"orderBy"`
+	SortDirection    string                   `json:"sortDirection"`
+	Search           string                   `json:"search"`
+	AttributeFilters []SessionAttributeFilter `json:"attributeFilters"`
+	Pagination       PaginationParams         `json:"pagination"`
 }
 
 type EndpointInstancesResponse struct {
@@ -163,8 +165,16 @@ func (e endpointController) FindByEndpoint(c *gin.Context) {
 		return
 	}
 
+	filters := make([]telemetry.SessionAttributeFilter, 0, len(request.AttributeFilters))
+	for _, f := range request.AttributeFilters {
+		if f.Key == "" {
+			continue
+		}
+		filters = append(filters, telemetry.SessionAttributeFilter{Key: f.Key, Value: f.Value, Exclude: f.Exclude, Contains: f.Contains})
+	}
+
 	span := traceway.StartSpan(c, "loading endpoint instances")
-	endpoints, total, err := telemetry.EndpointRepository.FindByEndpoint(c, projectId, endpoint, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
+	endpoints, total, err := telemetry.EndpointRepository.FindByEndpoint(c, projectId, endpoint, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection, request.Search, filters)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading endpoints: %w", err))

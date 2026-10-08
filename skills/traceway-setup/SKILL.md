@@ -462,7 +462,7 @@ Resetting `Error.prepareStackTrace` in `instrumentation.node.ts` lets Node apply
     handler := otelhttp.NewHandler(withRoute(mux), "server")
     ```
 
-- **Python**: `pip install opentelemetry-distro opentelemetry-exporter-otlp`, then `opentelemetry-bootstrap -a install`, then run the app under `opentelemetry-instrument` with the env vars above (`opentelemetry-instrument uvicorn app:app`, `opentelemetry-instrument gunicorn wsgi:app`, `opentelemetry-instrument python worker.py`). Starting the server without that prefix sends nothing. FastAPI and Flask instrumentation sets `http.route` correctly with zero application code, in the framework's own syntax (`GET /users/{user_id}`, `GET /orders/<order_id>`), and both frameworks already answer `500` on an unhandled exception, so the endpoint status and the Issue line up without extra work. Three Python-only gotchas:
+- **Python**: `pip install opentelemetry-distro opentelemetry-exporter-otlp`, then `opentelemetry-bootstrap -a install`, then run the app under `opentelemetry-instrument` with the env vars above (`opentelemetry-instrument uvicorn app:app`, `opentelemetry-instrument gunicorn wsgi:app`, `opentelemetry-instrument python worker.py`). Starting the server without that prefix sends nothing. FastAPI and Flask instrumentation sets `http.route` correctly with zero application code, in the framework's own syntax (`GET /users/{user_id}`, `GET /orders/<order_id>`), and both frameworks already answer `500` on an unhandled exception, so the endpoint status and the Issue line up without extra work. On FastAPI 0.142.0 or newer, the next bullet's built-in telemetry is the default; if you still take this path there, you MUST construct the app as `FastAPI(telemetry={"auto_configure": False})`, or FastAPI adds a second exporter and every span reaches Traceway twice. Three Python-only gotchas:
   - **Logs need two more variables.** `OTEL_LOGS_EXPORTER=otlp` attaches the OTel handler to the **root** logger, whose level defaults to `WARNING`, so every `logger.info(...)` is filtered out before the bridge sees it and only WARN and above reach Traceway. Attaching the handler also replaces the root handler list, so the app's own records stop appearing on stdout. Add both:
 
     ```bash
@@ -475,6 +475,29 @@ Resetting `Error.prepareStackTrace` in `instrumentation.node.ts` lets Node apply
   - **Django needs two extra things**: export `DJANGO_SETTINGS_MODULE` or `opentelemetry-instrument` fails to start Django at all, and add the route middleware from the Django guide, because `opentelemetry-instrumentation-django` reports `http.route` as Django's own pattern (`api/users/<int:user_id>/`), which has no leading `/` and is therefore discarded.
 
   Guides: https://docs.tracewayapp.com/client/otel/python and https://docs.tracewayapp.com/client/otel/django
+- **FastAPI 0.142.0 and newer: use FastAPI's built-in telemetry by default** (https://fastapi.tiangolo.com/advanced/opentelemetry/). Read the installed version from the lockfile or `pip show fastapi`. Below 0.142.0 there is no built-in telemetry, so use the generic Python path above; bumping FastAPI just to get it is the user's call. The built-in path needs no agent and no `opentelemetry-instrument` prefix:
+  1. Install `fastapi[standard]` (or `fastapi[opentelemetry]` when the app avoids the standard extra). Plain `fastapi` ships only `opentelemetry-api`, so FastAPI logs the warning `FastAPI automatic telemetry configuration failed: Automatic OpenTelemetry export requires fastapi[opentelemetry] or fastapi[standard]...` at startup and exports nothing.
+  2. Set the same env block from "Exporter configuration" in the process environment. FastAPI reads it at lifespan startup and builds OTLP/HTTP exporters for traces, metrics and logs; the exporters pick up `OTEL_EXPORTER_OTLP_HEADERS` and the resource picks up `OTEL_SERVICE_NAME` and `OTEL_RESOURCE_ATTRIBUTES`. It only speaks `http/protobuf`. Any other protocol logs `FastAPI automatic telemetry configuration failed` and the app runs with no export.
+  3. Start the server as usual (`fastapi run`, `uvicorn app:app`, `gunicorn -k uvicorn.workers.UvicornWorker app:app`).
+  4. **Add an exception handler, or no Issues appear.** Built-in telemetry marks the request span `ERROR` with status `500` and `error.type`, but sends the exception only as a log record (`http.server.request.exception`) with no `exception` event on the span. Traceway builds Issues from span exception events, so you get a failed endpoint row and an empty Issues page. Record the exception on the request span:
+
+     ```python
+     from fastapi import Request
+     from fastapi.responses import JSONResponse
+     from opentelemetry import trace
+     from opentelemetry.trace import Status, StatusCode
+
+     @app.exception_handler(Exception)
+     async def record_unhandled_exception(request: Request, exc: Exception):
+         span = trace.get_current_span()
+         span.record_exception(exc)
+         span.set_status(Status(StatusCode.ERROR, str(exc)))
+         return JSONResponse({"detail": "Internal Server Error"}, status_code=500)
+     ```
+
+     `HTTPException` and validation errors keep their own handlers, so a 404 or 422 is not recorded as an Issue.
+
+  What it covers: SERVER spans with `http.route` in FastAPI syntax (`GET /users/{user_id}`), status codes, `fastapi.dependencies` / `fastapi.endpoint` / `fastapi.serialization` child spans, `traceparent` propagation, HTTP server metrics, and FastAPI's own exception and validation logs. It does **not** cover database queries, outgoing HTTP calls, or the app's own `logging` calls. If the user wants those, and most apps with a database will, use the generic Python path (`opentelemetry-instrument`) and turn off FastAPI's export: `FastAPI(telemetry={"auto_configure": False})`. Leave `auto_configure` on under `opentelemetry-instrument` and FastAPI adds a second exporter to the agent's provider, so every span is sent twice. (FastAPI does notice the contrib middleware and stops creating its own spans, so you never get two request spans, only duplicate exports.) State that trade-off in the setup plan rather than choosing silently.
 - **PHP**: Laravel via `composer require keepsuit/laravel-opentelemetry open-telemetry/exporter-otlp php-http/guzzle7-adapter`; Symfony via `composer require traceway/opentelemetry-symfony open-telemetry/exporter-otlp php-http/guzzle7-adapter` (the stock Symfony auto-instrumentation sets `http.route` to the route NAME, which Traceway discards; see `data-model.md`). PHP does not take `OTEL_PHP_AUTOLOAD_ENABLED` as a plain env var next to the block above. Laravel needs nothing extra, the keepsuit service provider starts the SDK. Symfony starts the SDK through `open_telemetry.sdk.autoload_enabled: true` in `config/packages/open_telemetry.yaml`, or through a real process environment variable set in php-fpm, the Dockerfile, or Apache. Never put `OTEL_PHP_AUTOLOAD_ENABLED` in `.env`: Dotenv reads it after Composer autoload, the bundle then skips starting the SDK, and every signal silently becomes a no-op. PHP also prefers `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`, though `http/protobuf` works too and is only slower without `ext-protobuf`.
   - **Symfony workers: never instrument `messenger:consume`.** The bundle already excludes it. `traces.console.excluded_commands` defaults to `['messenger:consume', 'messenger:consume-messages']`, and that key is a prototyped array node, so setting it in `config/packages/open_telemetry.yaml` REPLACES the default instead of adding to it. If you override it for any reason you MUST re-list both entries. A consumer runs in an endless loop, so its command span never ends, never exports, and swallows every child span for the life of the worker. Excluding the command does not silence the work inside it: the Messenger middleware still emits one CONSUMER span per message, and those are what become Tasks in Traceway. Check what actually resolved with `bin/console debug:config open_telemetry traces.console`.
 - **Java / .NET / anything else**: the standard OTel agent or SDK with the env vars above works as-is.
@@ -537,7 +560,7 @@ router.Use(otelRecovery())
 `OTEL_LOGS_EXPORTER=otlp` wires the exporter only. The application's own log calls still need a bridge, or the Logs page stays empty while traces and metrics look perfectly healthy.
 
 - **Node**: add `@opentelemetry/winston-transport`, or the Pino or Bunyan instrumentation, so each record picks up `trace_id` and `span_id`.
-- **Python, PHP, Java, .NET**: `opentelemetry-instrument` and the language agents bridge the standard logger automatically.
+- **Python, PHP, Java, .NET**: `opentelemetry-instrument` and the language agents bridge the standard logger automatically. FastAPI's built-in telemetry does not: it exports only FastAPI's own records, so an app whose `logging` output should reach Traceway takes the `opentelemetry-instrument` path.
 - **Go**: build an `sdklog.LoggerProvider` with `otlploghttp.WithEndpointURL(...)`, register it with `global.SetLoggerProvider(lp)`, and `defer lp.Shutdown(ctx)` or the last batch is lost on exit.
 
 Emit from the **request** context (`c.Request.Context()` in Gin, `r.Context()` in net/http, the active context in Node). A line emitted from a background context carries no trace id and cannot be opened from the endpoint it belongs to. Traceway reads `severity_text` (or derives it from `severity_number`), the body, `service.name`, and the trace and span ids.

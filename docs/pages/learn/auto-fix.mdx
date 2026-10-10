@@ -32,7 +32,7 @@ The reusable workflow composes the three steps, with Claude Code as the tested a
 
 1. **Create two Traceway bot users** (or one; see [Credentials](#credentials)) and mint a [personal access token](/learn/cli-auth#personal-access-tokens) for each.
 2. **Add repository secrets**: `TRACEWAY_TOKEN` (read-only), `TRACEWAY_PUBLISH_TOKEN` (write, optional: without it the exception is never archived), `GH_PUSH_TOKEN` (a GitHub token that can push branches, open pull requests and comment; the built-in `github.token` cannot open a pull request that triggers other workflows), and `ANTHROPIC_API_KEY`.
-3. **Add a repository variable** `TRACEWAY_PROJECT_ID` with the project's id (`traceway projects list`).
+3. **Add a repository variable** `TRACEWAY_PROJECT_ID` with the project's id (`traceway projects list`). It has to be a variable rather than a secret, and the two fail differently: `with:` cannot reference the `secrets` context at all, so a caller that tries is rejected during workflow validation with no job and no logs, while an undefined `vars.TRACEWAY_PROJECT_ID` quietly resolves to an empty string and the prepare step stops with an error naming this variable.
 4. **Point the GitHub channel at the repository** with a label such as `traceway`, and create the caller workflow:
 
 ```yaml

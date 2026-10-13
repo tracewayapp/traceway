@@ -13,16 +13,30 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/tracewayapp/traceway/backend/app/middleware"
+	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/services/authserver"
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 	"github.com/tracewayapp/traceway/cli/pkg/mcpserver"
 )
 
-const Path = "/mcp"
+const (
+	Path      = "/mcp"
+	WritePath = "/mcp/write"
+)
 
 const patExpiryHorizon = time.Hour
 
-func GinHandler(engine *gin.Engine, version string) gin.HandlerFunc {
+// GinHandler serves the read-only server at Path, or with write set the server
+// at WritePath that also registers the mutating tools and refuses tokens
+// without the write scope.
+func GinHandler(engine *gin.Engine, version string, write bool) gin.HandlerFunc {
+	path := Path
+	var requiredScopes []string
+	if write {
+		path = WritePath
+		requiredScopes = []string{models.ScopeWrite}
+	}
+
 	loopback := client.New(
 		"http://traceway-mcp.internal",
 		client.WithHTTPClient(&http.Client{Transport: engineTransport{engine}, Timeout: 60 * time.Second}),
@@ -34,6 +48,7 @@ func GinHandler(engine *gin.Engine, version string) gin.HandlerFunc {
 			InstanceURL:      authserver.IssuerBaseURLFromHTTPRequest(r),
 			Version:          version,
 			PerRequestBearer: true,
+			AllowWrite:       write,
 			AuthHint:         "the access token was rejected; re-authenticate this MCP connection from your client (OAuth clients refresh automatically; PAT setups need a new token)",
 		})
 	}, nil)
@@ -41,7 +56,8 @@ func GinHandler(engine *gin.Engine, version string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		issuer := authserver.IssuerBaseURLFromRequest(c)
 		requireBearer := auth.RequireBearerToken(verifyBearer, &auth.RequireBearerTokenOptions{
-			ResourceMetadataURL: issuer + "/.well-known/oauth-protected-resource" + Path,
+			ResourceMetadataURL: issuer + "/.well-known/oauth-protected-resource" + path,
+			Scopes:              requiredScopes,
 		})
 		requireBearer(streamable).ServeHTTP(c.Writer, c.Request)
 		c.Abort()
@@ -60,8 +76,13 @@ func verifyBearer(_ context.Context, token string, _ *http.Request) (*auth.Token
 	if expires.IsZero() {
 		expires = time.Now().Add(patExpiryHorizon)
 	}
+	scopes := []string{models.ScopeRead}
+	if identity.CanWrite() {
+		scopes = append(scopes, models.ScopeWrite)
+	}
 	return &auth.TokenInfo{
 		UserID:     strconv.Itoa(identity.UserId),
+		Scopes:     scopes,
 		Expiration: expires,
 		Extra:      map[string]any{"email": identity.Email},
 	}, nil

@@ -66,12 +66,15 @@ Your agent sets up Traceway, queries production telemetry, and finds the root ca
 npx skills add tracewayapp/traceway
 ```
 
-One command installs two skills into Claude Code, Cursor, Codex, or any agent that reads `SKILL.md`:
+One command installs three skills into Claude Code, Cursor, Codex, or any agent that reads `SKILL.md`:
 
 - **`/traceway-setup`** reads your repo and wires it up: OTel for backends, Traceway SDKs for web and mobile. Then it verifies data actually arrives.
 - **`/traceway`** installs the `traceway` CLI and uses it to query exceptions, logs, endpoints, and metrics, from bug report to root cause.
+- **`/traceway-learn`** is the full guide to the product: issues, endpoints, traces, logs, metrics, monitors, status pages, alerts, on-call schedules and paging, and settings. Ask it how anything in Traceway works.
 
-The [CLI](./cli) is designed for agents first: JSON when piped, tables on a TTY, stable error identifiers and exit codes, `--fields` to trim responses. It's read-only apart from archiving exceptions, which needs an explicit `--yes`. Nothing hangs, nothing gets damaged.
+The [CLI](./cli) is designed for agents first: JSON when piped, tables on a TTY, stable error identifiers and exit codes, `--fields` to trim responses. It's read only. Nothing hangs, nothing gets damaged.
+
+Want the agent to act too? Agent write access is opt-in at three levels: a write credential (the separate `traceway-write` CLI, a `tww_` token, or the `/mcp/write` server), an organization admin switch, and the creator's own role. Then an agent can archive issues, acknowledge pages, snooze alerts, run monitors and write post-mortems, and every write lands in an audit log. The `traceway-write` skill ships as its own plugin (`plugins/tw-write`). [Learn more →](https://docs.tracewayapp.com/learn/agent-write-access)
 
 The skills are plain Markdown in [`skills/`](./skills), in the same MIT-licensed repo. No marketplace, no lock-in. [Learn more →](https://tracewayapp.com/product/agent-skills)
 
@@ -240,7 +243,7 @@ A full-stack framework has two halves and two Traceway projects. Next.js and Rem
 | `backend/`  | Go/Gin API server: OTLP ingest, REST API, notifications, migrations                                                                                                                                                                    |
 | `frontend/` | SvelteKit 2 dashboard SPA                                                                                                                                                                                                               |
 | `cli/`      | Agent-first `traceway` command line for querying exceptions, logs, endpoints, and metrics                                                                                                                                              |
-| `skills/`   | Agent skills (`/traceway-setup`, `/traceway`) for Claude Code, Cursor, Codex, and any SKILL.md-compatible agent                                                                                                                         |
+| `skills/`   | Agent skills (`/traceway-setup`, `/traceway`, `/traceway-learn`) for Claude Code, Cursor, Codex, and any SKILL.md-compatible agent                                                                                                                         |
 | `docs/`     | Documentation site (Nextra)                                                                                                                                                                                                             |
 | `examples/` | Working examples: embedded mode ([OTel](./examples/embedded-backend-otel), [Go client](./examples/embedded-backend-go-client)) and OTel-instrumented apps ([Express](./examples/express-otel), [NestJS](./examples/nestjs-otel), [Next.js](./examples/nextjs-otel), [Hono](./examples/hono-otel)) |
 | `website/`  | Landing page                                                                                                                                                                                                                            |

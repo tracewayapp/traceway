@@ -42,7 +42,17 @@ func (c *patController) Create(ctx *gin.Context) {
 		return
 	}
 
-	token := authserver.NewPATToken()
+	scope, ok := parsePATScope(req.Scope)
+	if !ok {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Access must be read or write"})
+		return
+	}
+	if scope == models.ScopeWrite && (req.ExpiresInDays == nil || *req.ExpiresInDays < 1 || *req.ExpiresInDays > maxWritePATDays) {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Write tokens must expire within 90 days"})
+		return
+	}
+
+	token := authserver.NewPATToken(scope)
 	id := uuid.New().String()
 	prefix := patPrefix(token)
 
@@ -52,7 +62,7 @@ func (c *patController) Create(ctx *gin.Context) {
 		expiresAt = &t
 	}
 
-	if err := transactional.PersonalAccessTokenRepository.Create(tx, id, token, prefix, userId, name, expiresAt); err != nil {
+	if err := transactional.PersonalAccessTokenRepository.Create(tx, id, token, prefix, userId, name, scope, expiresAt); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("create pat: %w", err))
 		return
 	}
@@ -62,6 +72,7 @@ func (c *patController) Create(ctx *gin.Context) {
 		Name:      name,
 		Prefix:    prefix,
 		Token:     token,
+		Scope:     scope,
 		CreatedAt: time.Now().UTC(),
 		ExpiresAt: expiresAt,
 	})
@@ -93,6 +104,18 @@ func (c *patController) Revoke(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(http.StatusOK, gin.H{"status": "revoked"})
+}
+
+const maxWritePATDays = 90
+
+func parsePATScope(raw string) (string, bool) {
+	switch strings.TrimSpace(raw) {
+	case "", "read", models.ScopeRead:
+		return models.ScopeRead, true
+	case "write", models.ScopeWrite:
+		return models.ScopeWrite, true
+	}
+	return "", false
 }
 
 func patPrefix(token string) string {

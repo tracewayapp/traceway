@@ -118,6 +118,7 @@ func (c *deviceAuthController) Lookup(ctx *gin.Context) {
 		UserCode:    da.UserCode,
 		Status:      da.Status,
 		ClientName:  clientDisplayName(da.ClientId),
+		Scope:       authserver.DeviceClientScope(da.ClientId),
 		RequestedAt: da.CreatedAt,
 		ExpiresAt:   da.ExpiresAt,
 	})
@@ -202,6 +203,8 @@ func clientDisplayName(clientId string) string {
 		return "Traceway CLI"
 	case "traceway-mcp":
 		return "Traceway MCP"
+	case "traceway-cli-write":
+		return "Traceway Write CLI"
 	default:
 		return "An unrecognized application"
 	}

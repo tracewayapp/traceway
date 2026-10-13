@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tracewayapp/traceway/backend/app/config"
+	"github.com/tracewayapp/traceway/backend/app/middleware"
 )
 
 // Gin panics at registration when a new path conflicts with an existing
@@ -28,5 +29,29 @@ func TestRouteTreeRegistersWithoutConflict(t *testing.T) {
 		return r.Method == "POST" && r.Path == "/api/organizations"
 	}) {
 		t.Error("POST /api/organizations was not registered")
+	}
+}
+
+// A renamed route would silently drop out of the agent allowlist, so every
+// entry must still name a registered route.
+func TestAgentRoutesAreRegistered(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	if config.Config == nil {
+		config.Init(&config.Cfg{})
+		t.Cleanup(func() { config.Init(nil) })
+	}
+
+	engine := gin.New()
+	RegisterControllers(engine.Group("/api"))
+
+	registered := map[string]bool{}
+	for _, r := range engine.Routes() {
+		registered[r.Method+" "+r.Path] = true
+	}
+	for _, key := range middleware.AgentRouteKeys() {
+		if !registered[key] {
+			t.Errorf("agent allowlist names %q, which is not a registered route", key)
+		}
 	}
 }

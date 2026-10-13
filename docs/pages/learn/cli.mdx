@@ -2,7 +2,7 @@
 
 import { Callout } from "nextra/components";
 
-`traceway` is a command-line client for the Traceway HTTP API: exceptions, logs, endpoints, tasks, traces, and metrics from a terminal. It is designed to be first-class for both humans (with `gh`-style ergonomics) and LLM agents invoking it via shell tools: JSON output when piped, stable error identifiers and exit codes, and nothing that hangs waiting for input. For a quick tour, see the [CLI product page](https://tracewayapp.com/product/cli).
+`traceway` is a command-line client for the Traceway HTTP API: exceptions, logs, endpoints, tasks, traces, metrics, monitors, alerts, on-call pages and post-mortems from a terminal. It is read only. Changes go through the separate `traceway-write` CLI described in [Agent Write Access](/learn/agent-write-access). It is designed to be first-class for both humans (with `gh`-style ergonomics) and LLM agents invoking it via shell tools: JSON output when piped, stable error identifiers and exit codes, and nothing that hangs waiting for input. For a quick tour, see the [CLI product page](https://tracewayapp.com/product/cli).
 
 ## Installation
 
@@ -12,7 +12,7 @@ import { Callout } from "nextra/components";
 curl -fsSL https://cli.tracewayapp.com/install.sh | sh
 ```
 
-The installer detects your OS and architecture, downloads the latest CLI release from GitHub, verifies its sha256 checksum, and installs `traceway` to `/usr/local/bin` (when writable) or `~/.local/bin`, without sudo. Two environment variables tweak it: `TRACEWAY_CLI_VERSION` pins a version (e.g. `1.9.3`) and `TRACEWAY_INSTALL_DIR` overrides the target directory.
+Add `-s -- --write` to install `traceway-write` instead (see [Agent Write Access](/learn/agent-write-access)). The installer detects your OS and architecture, downloads the latest CLI release from GitHub, verifies its sha256 checksum, and installs `traceway` to `/usr/local/bin` (when writable) or `~/.local/bin`, without sudo. Two environment variables tweak it: `TRACEWAY_CLI_VERSION` pins a version (e.g. `1.9.3`) and `TRACEWAY_INSTALL_DIR` overrides the target directory.
 
 ### Prebuilt binaries
 
@@ -66,8 +66,6 @@ The default `traceway login` runs a browser device flow with an auto-refreshing 
 | `traceway exceptions list` | Recent grouped exceptions |
 | `traceway exceptions show <hash>` | A single exception group + occurrences |
 | `traceway exceptions occurrence <id> --recorded-at <t>` | A single occurrence by id (+ `sessionId` and recording) |
-| `traceway exceptions archive <hash>...` | Archive one or more groups (mutating; needs `--yes` non-interactively) |
-| `traceway exceptions unarchive <hash>...` | Unarchive (mutating; needs `--yes` non-interactively) |
 | `traceway logs query` | Query logs with severity / service / search filters |
 | `traceway endpoints list` | Per-endpoint p50/p95/p99 stats |
 | `traceway endpoints show <id> --recorded-at <t>` | A single request (transaction) by id: spans + linked errors |
@@ -76,6 +74,10 @@ The default `traceway login` runs a browser device flow with an auto-refreshing 
 | `traceway sessions show <id> --started-at <t>` | A single session by id + the exceptions that fired in it |
 | `traceway traces show <id> --recorded-at <t>` | A distributed trace: every service node sharing the id |
 | `traceway metrics query` | Time-series metric queries |
+| `traceway pages {list,show}` | On-call pages (`--status active\|open\|acknowledged\|resolved`) |
+| `traceway alerts list` | Alert rules with their enabled and snoozed state |
+| `traceway monitors {list,show}` | Uptime monitors and their incidents |
+| `traceway post-mortems {list,show}` | Post-mortem documents (`--search`, `--tag`) |
 | `traceway mcp` | Serve the [MCP server](/learn/mcp) over stdio |
 
 Run `traceway <command> --help` for full per-command flags.
@@ -132,9 +134,15 @@ The `error` field is a stable snake_case identifier that scripts and LLMs can br
 | 6 | Rate limited |
 | 7 | Server (5xx) |
 
-## Mutations require confirmation
+## Write commands
 
-`exceptions archive` and `exceptions unarchive` are the only commands that change server state, and they require explicit consent:
+`traceway` changes nothing. Its write commands (`exceptions archive`, `pages ack`, `alerts snooze` and the rest) exist only in `traceway-write`, a separate binary with its own login. Running one of them in `traceway` fails with `write_required` (exit 2). Install the write CLI with:
+
+```bash
+curl -fsSL https://cli.tracewayapp.com/install.sh | sh -s -- --write
+```
+
+Every `traceway-write` write requires explicit consent:
 
 - Pass `--yes` to skip the prompt.
 - Or set `TRACEWAY_ASSUME_YES=1` in the environment.

@@ -24,16 +24,29 @@ var (
 // Only first-party clients may start the device flow: the approval screen
 // renders the client's display name as a trusted party, so an arbitrary
 // attacker-chosen client_id would make phishing prompts look first-party.
-var knownDeviceClients = map[string]bool{
-	cliClientID: true,
-	mcpClientID: true,
+// The scope a device login receives is fixed by its client: only the separate
+// write CLI can ask for write access, so a read install can never be upgraded.
+var knownDeviceClients = map[string]string{
+	cliClientID:      models.ScopeRead,
+	mcpClientID:      models.ScopeRead,
+	cliWriteClientID: models.ScopeWrite,
+}
+
+func DeviceClientScope(clientId string) string {
+	if clientId == "" {
+		clientId = cliClientID
+	}
+	if scope, ok := knownDeviceClients[clientId]; ok {
+		return scope
+	}
+	return models.ScopeRead
 }
 
 func CreateDeviceAuth(clientId, baseURL string) (*models.DeviceAuthorizeResponse, error) {
 	if clientId == "" {
 		clientId = cliClientID
 	}
-	if !knownDeviceClients[clientId] {
+	if _, ok := knownDeviceClients[clientId]; !ok {
 		return nil, ErrUnknownClient
 	}
 
@@ -103,7 +116,7 @@ func PollDeviceToken(deviceCode string) (*models.TokenSetResponse, error) {
 			if user == nil {
 				return nil, ErrAccessDenied
 			}
-			return IssueTokenSet(tx, *da.UserId, user.Email, da.ClientId)
+			return IssueTokenSet(tx, *da.UserId, user.Email, da.ClientId, DeviceClientScope(da.ClientId))
 		})
 	default:
 		now := time.Now()

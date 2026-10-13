@@ -4,6 +4,8 @@ A Go CLI for the [Traceway](https://github.com/tracewayapp/traceway) observabili
 
 ## Install
 
+Add `-s -- --write` to the install command below for `traceway-write`, the separate build that can change data.
+
 One-line install for macOS and Linux (runs [`install.sh`](install.sh): detects OS/arch, downloads the latest release, verifies its sha256, installs to `/usr/local/bin` or `~/.local/bin` — no sudo; `TRACEWAY_CLI_VERSION` pins a version, `TRACEWAY_INSTALL_DIR` overrides the target):
 
 ```bash
@@ -61,8 +63,6 @@ traceway metrics query --name http.server.duration --aggregation avg --since 1h
 | `traceway exceptions list` | Recent grouped exceptions |
 | `traceway exceptions show <hash>` | A single exception group + occurrences |
 | `traceway exceptions occurrence <id> --recorded-at <t>` | A single occurrence by id (+ `sessionId` and recording) |
-| `traceway exceptions archive <hash>...` | Archive one or more groups (mutating; needs `--yes` non-interactively) |
-| `traceway exceptions unarchive <hash>...` | Unarchive (mutating; needs `--yes` non-interactively) |
 | `traceway logs query` | Query logs with severity / service / search filters |
 | `traceway endpoints list` | Per-endpoint p50/p95/p99 stats |
 | `traceway endpoints show <id> --recorded-at <t>` | A single request (transaction) by id: spans + linked errors |
@@ -71,6 +71,10 @@ traceway metrics query --name http.server.duration --aggregation avg --since 1h
 | `traceway sessions show <id> --started-at <t>` | A single session by id + the exceptions that fired in it |
 | `traceway traces show <id> --recorded-at <t>` | A distributed trace: every service node sharing the id |
 | `traceway metrics query` | Time-series metric queries |
+| `traceway pages {list,show}` | On-call pages and their delivery log |
+| `traceway alerts list` | Alert rules with enabled and snoozed state |
+| `traceway monitors {list,show}` | Uptime monitors and their incidents |
+| `traceway post-mortems {list,show}` | Post-mortem documents |
 | `traceway mcp` | Serve the MCP server over stdio (see "MCP server" below) |
 
 Run `traceway <command> --help` for full per-command flags.
@@ -135,9 +139,30 @@ Envelope shape:
 
 The `error` field is a stable snake_case identifier. LLMs/scripts can branch on it.
 
-## Mutations + confirmation
+## traceway-write
 
-`exceptions archive` and `exceptions unarchive` require explicit consent because they change server state:
+`traceway` is read only. Write commands live in a second build of the same
+source, `traceway-write` (`go build -tags write`, or `just build`), with its own
+config and state directory (`traceway-write`), its own OAuth client id
+(`traceway-cli-write`) and therefore its own login. The edition is chosen by
+`cmd/traceway/edition_read.go` / `edition_write.go`; the write-only commands are
+in `edition_write.go` and `exceptions_write.go`, and the read build answers them
+with a `write_required` error.
+
+| Command | Purpose |
+|---|---|
+| `traceway-write exceptions archive\|unarchive <hash>...` | Archive or unarchive issues |
+| `traceway-write pages ack\|resolve <id>` | Acknowledge or resolve an on-call page (`--archive-issue`) |
+| `traceway-write alerts enable\|disable\|snooze <id>` | Toggle an alert rule (idempotent) or snooze it (`--minutes`, 0 clears) |
+| `traceway-write monitors run <id>` | Queue an immediate monitor run |
+| `traceway-write post-mortems create\|update` | Write post-mortems (`--title`, `--content-file`, `--tag`, `--incident`; update only changes the flags passed) |
+| `traceway-write endpoints mark-slow <endpoint>` | Accepted latency for an endpoint (`--offset-ms`, `--reason`) |
+
+The server decides whether a write goes through: the credential needs the
+`traceway:write` scope and the organization must have Agent Access turned on.
+See the [Agent Write Access docs](https://docs.tracewayapp.com/learn/agent-write-access).
+
+Every write requires explicit consent:
 
 - Pass `--yes` to skip the prompt.
 - Or set `TRACEWAY_ASSUME_YES=1` in the environment.
@@ -161,10 +186,11 @@ headless use set `TRACEWAY_URL` + `TRACEWAY_TOKEN` (a `twp_` personal access
 token), plus optional `TRACEWAY_PROJECT`, and no CLI session is needed.
 
 Each CLI query command maps 1:1 to a tool (`exceptions list` becomes
-`list_exceptions`, and so on); only `archive_exceptions`/`unarchive_exceptions`
-mutate, and they are annotated accordingly. The server also exposes the
-Traceway debugging playbooks as MCP resources (`traceway://knowledge/*`) and
-prompts (`debug_issue`, `investigate_performance`, `whats_broken`,
+`list_exceptions`, and so on). `traceway mcp` has no mutating tools; the ten
+write tools exist only in `traceway-write mcp` and on `/mcp/write`. The server
+also exposes the Traceway playbooks and the product guide as MCP resources
+(`traceway://knowledge/*`, `traceway://knowledge/learn/*`) and prompts
+(`debug_issue`, `investigate_performance`, `whats_broken`,
 `resolve_notification`).
 
 Every tool declares an output schema, so results come back as validated
@@ -175,10 +201,16 @@ as the bearer token) - `claude mcp add --transport http traceway
 https://<instance>/mcp` needs no local install at all.
 
 The implementation lives in `pkg/mcpserver` (importable, transport-agnostic;
-the stdio command is a thin wrapper). The playbook markdown in
+the stdio command is a thin wrapper). `Config.AllowWrite` registers the write
+tools and the write playbook; `traceway-write mcp` and the backend's
+`/mcp/write` set it, `traceway mcp` and `/mcp` never do. The playbook markdown in
 `pkg/mcpserver/knowledge/` is the canonical source for the published
-`skills/traceway` Claude Code skill: edit the chunks, then run
-`just gen-skills` (drift is CI-checked).
+`skills/traceway` skill, the `skills/traceway-learn` product guide (from
+`knowledge/learn/`, one file per area) and the
+`plugins/tw-write/skills/traceway-write` skill: edit the chunks, then run
+`just gen-skills` (drift is CI-checked). A new `learn/` file also needs an
+entry in `knowledgeResources` and in skillgen's `learnTopics`; tests fail
+otherwise.
 
 ## Smoke testing
 

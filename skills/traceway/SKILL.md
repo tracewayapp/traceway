@@ -18,11 +18,13 @@ Drive a Traceway instance from the terminal with the `traceway` CLI. The first w
 
 > The CLI is under active development. If a flag documented here does not appear in `traceway <command> --help`, trust the binary.
 > If a `traceway` MCP server is connected, prefer its tools over shelling out to the CLI: they wrap the same API with the same semantics, and this skill's knowledge is available as its resources. The server is this same binary (`traceway mcp`).
+> This skill only reads. To change anything (archive issues, acknowledge or resolve pages, snooze alerts, run monitors, write post-mortems), the user installs the separate `traceway-write` CLI and the `traceway-write` skill.
+> When the user asks how a part of Traceway works (schedules, escalation, status pages, alert rules, impact score and the rest), use the `traceway-learn` skill. It is the full product guide.
 
 ## Ground Rules (All Flows)
 
 - **Reads are safe**: any `list` / `show` / `query` subcommand may run freely; they never mutate server state.
-- **Writes require explicit user instruction**: `exceptions archive` / `unarchive` are the only mutating data commands; only run them when the user asks by name, with `--yes` in non-interactive contexts. "Look at this error" means read it, not archive it.
+- **This CLI is read only**: `traceway` has no mutating commands, and its login can only read. Changes (archiving issues, acknowledging pages, snoozing alerts, editing post-mortems) need the separate `traceway-write` CLI and the `traceway-write` skill. "Look at this error" means read it, never change it.
 - **Output**: piped output defaults to JSON (table on a TTY). Prefer JSON + `jq`, and `--fields a,b,c` to trim responses. Keep `--page-size` at 10 to 20 for triage.
 - **Time windows**: always bound queries, default `--since 1h` for "now" questions, `--since 24h` otherwise. `--since` accepts `s`, `m`, `h`, lowercase `Nd` (no `1w`, no `7d2h`). Absolute windows via `--from` / `--to` (RFC3339).
 - **Exit codes**: 0 ok, 1 generic/API, 2 usage, 3 connection, 4 auth, 5 not found, 6 rate limited, 7 server 5xx. Errors emit `{"error":"<stable_id>","message":"...","hint":"...","exit_code":N}` on stderr; branch on the `error` field.
@@ -356,7 +358,6 @@ For free-form requests ("what's broken in prod?", "is /api/checkout slow?", "sho
 | `traceway exceptions list` | Grouped exceptions; `--search`, `--search-type text\|regex`, `--order-by lastSeen\|firstSeen\|count`, `--include-archived` |
 | `traceway exceptions show <hash>` | One group: full stack trace + occurrences |
 | `traceway exceptions occurrence <id> --recorded-at <t>` | One occurrence by id (fast): full detail + `sessionId` + recording |
-| `traceway exceptions archive/unarchive <hash>...` | Mutating; explicit user request + `--yes` only |
 | `traceway logs query` | Logs; `--search` (`--search-type body\|attribute`), `--service`, `--min-severity <n>`, `--trace-id` |
 | `traceway endpoints list` | Per-endpoint p50/p95/p99 and counts; `--search`, `--order-by impact\|count\|p95\|lastSeen` |
 | `traceway endpoints chart` | Latency over time for the top endpoints; `--metric-type total_time\|p50\|p95\|p99`, `--interval-minutes`. Use to find when latency changed |
@@ -367,6 +368,10 @@ For free-form requests ("what's broken in prod?", "is /api/checkout slow?", "sho
 | `traceway sessions show <id> --started-at <t>` | One session by id + the exceptions that fired in it |
 | `traceway traces show <id> --recorded-at <t>` | Distributed trace: every service node sharing the id |
 | `traceway metrics query --name <metric>` | Time series; `--aggregation`, `--tag`, `--group-by`, `--interval-minutes` |
+| `traceway pages list` / `pages show <id>` | On-call pages; `--status active\|open\|acknowledged\|resolved` |
+| `traceway alerts list` | Alert rules: type, enabled, snoozed until |
+| `traceway monitors list` / `monitors show <id>` | Uptime monitors, their status and incidents |
+| `traceway post-mortems list` / `post-mortems show <id>` | Post-mortem documents; `--search`, `--tag` |
 | `traceway profiles {list,use}`, `login`, `logout`, `version` | Profile and session management |
 
 The by-id `show`/`occurrence` commands take their id from a dashboard URL, a notification, or an `exceptions show` occurrence — and **require** the record's timestamp (`--recorded-at` / `--started-at`); see "Fast by-id lookups" above.

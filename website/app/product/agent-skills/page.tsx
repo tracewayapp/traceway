@@ -36,6 +36,13 @@ const SKILLS = [
       "Installs the traceway CLI, then uses it: exceptions, logs, endpoints, and metrics, from bug report to root cause.",
     tags: ["CLI install", "Telemetry queries", "Debugging", "Issue triage"],
   },
+  {
+    label: "03 · Learn",
+    name: "/traceway-learn",
+    description:
+      "The full guide to Traceway: issues, endpoints, traces, logs, monitors, status pages, alerts and on-call. Ask how anything works and get the answer.",
+    tags: ["Product guide", "On-call", "Status pages", "Alert rules"],
+  },
 ];
 
 const AGENTS = [
@@ -233,14 +240,15 @@ export default function AgentSkillsPage() {
         <section className="wrap py-8">
           <Eyebrow>The skills</Eyebrow>
           <h2 className="mt-4 max-w-[24ch]">
-            Two skills, <em>one install.</em>
+            Three skills, <em>one install.</em>
           </h2>
           <p className="muted mt-4 max-w-[640px] text-pretty">
             Plain Markdown playbooks your agent loads on demand. One sets up
-            your project, the other queries and debugs it.
+            your project, one queries and debugs it, and one explains how every
+            part of Traceway works.
           </p>
 
-          <dl className="mt-14 grid gap-6 md:grid-cols-2">
+          <dl className="mt-14 grid gap-6 md:grid-cols-3">
             {SKILLS.map((skill) => (
               <div
                 key={skill.name}
@@ -361,7 +369,7 @@ export default function AgentSkillsPage() {
               items={[
                 {
                   q: "What exactly is an agent skill?",
-                  a: "A SKILL.md file: Markdown instructions your agent loads when a task matches. Traceway ships two, one that sets up a project and one that queries and debugs it. Both live in the open-source repo.",
+                  a: "A SKILL.md file: Markdown instructions your agent loads when a task matches. Traceway ships three: one sets up a project, one queries and debugs it, and one explains how every part of Traceway works. Both live in the open-source repo.",
                 },
                 {
                   q: "Which agents are supported?",
@@ -381,7 +389,7 @@ export default function AgentSkillsPage() {
                 },
                 {
                   q: "Can an agent damage my production data?",
-                  a: "No. The CLI is read-only apart from archiving exception groups, and that requires an explicit --yes flag.",
+                  a: "No. The traceway CLI and these skills only read. Writes need the separate traceway-write CLI and skill, a write token, and an organization admin who turned on Agent Access.",
                 },
                 {
                   q: "Does this work with self-hosted Traceway?",

@@ -5,6 +5,7 @@ package transactional
 import sqliterepo "github.com/tracewayapp/traceway/backend/app/repositories/transactional/sqlite"
 
 var (
+	AgentWriteEventRepository      = sqliterepo.AgentWriteEventRepository
 	AuthorizationCodeRepository    = sqliterepo.AuthorizationCodeRepository
 	CheckIncidentRepository        = sqliterepo.CheckIncidentRepository
 	CheckRunRepository             = sqliterepo.CheckRunRepository

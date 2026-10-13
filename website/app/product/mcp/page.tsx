@@ -28,8 +28,6 @@ const TOOL_GROUPS = [
       "list_exceptions",
       "get_exception",
       "get_exception_occurrence",
-      "archive_exceptions",
-      "unarchive_exceptions",
     ],
   },
   {
@@ -53,8 +51,35 @@ const TOOL_GROUPS = [
     ],
   },
   {
+    label: "Operations",
+    tools: [
+      "list_pages",
+      "get_page",
+      "list_notification_rules",
+      "list_checks",
+      "get_check",
+      "list_post_mortems",
+      "get_post_mortem",
+    ],
+  },
+  {
     label: "Projects",
     tools: ["list_projects"],
+  },
+  {
+    label: "Write server, opt-in",
+    tools: [
+      "archive_exceptions",
+      "unarchive_exceptions",
+      "acknowledge_page",
+      "resolve_page",
+      "set_notification_rule_enabled",
+      "snooze_notification_rule",
+      "run_check",
+      "create_post_mortem",
+      "update_post_mortem",
+      "set_slow_endpoint",
+    ],
   },
 ];
 
@@ -248,15 +273,17 @@ export default function McpPage() {
         <section className="wrap py-8">
           <Eyebrow>The tools</Eyebrow>
           <h2 className="mt-4 max-w-[22ch]">
-            Sixteen tools. <em>Read-only by default.</em>
+            Twenty-one read tools. <em>Writes are opt-in.</em>
           </h2>
           <p className="muted mt-4 max-w-[640px] text-pretty">
             Each tool wraps one API call and declares an output schema, so
-            results come back as validated structured content. Only the two
-            archive tools mutate anything, and only when you ask for it by name.
+            results come back as validated structured content.{" "}
+            <code>/mcp</code> only reads. The ten write tools live on a separate
+            server, <code>/mcp/write</code>, for teams that want an agent to
+            acknowledge pages, snooze alerts or write post-mortems.
           </p>
 
-          <dl className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <dl className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {TOOL_GROUPS.map((group) => (
               <div
                 key={group.label}
@@ -293,12 +320,12 @@ export default function McpPage() {
             <FeatureCard
               icon={<ShieldCheck className="h-5 w-5" />}
               title="Safe by default"
-              body="Every read tool is annotated read-only. Archiving needs an explicit request; investigating an error never touches it."
+              body="/mcp never lists a write tool. /mcp/write needs a write token, an organization admin's opt-in and the user's own write role, and every agent write lands in an audit log."
             />
             <FeatureCard
               icon={<Boxes className="h-5 w-5" />}
               title="Prompts and resources"
-              body="The same investigation playbooks the Traceway skill ships, exposed as MCP prompts (debug_issue, investigate_performance) and knowledge resources."
+              body="The same playbooks the Traceway skills ship, exposed as MCP prompts (debug_issue, investigate_performance) and knowledge resources, including a full guide to every part of Traceway."
             />
             <FeatureCard
               icon={<Lock className="h-5 w-5" />}
@@ -392,11 +419,11 @@ export default function McpPage() {
                 },
                 {
                   q: "Can an agent change my production data?",
-                  a: "Only exception groups can be archived, and only with the archive tools, which are marked mutating and instruct agents to call them solely on explicit request. Everything else is read-only.",
+                  a: "Not through /mcp, which only reads. The separate /mcp/write server can archive issues, acknowledge and resolve pages, snooze or toggle alert rules, run monitors, write post-mortems and mark slow endpoints. It needs a write token, an organization admin has to turn on Agent Access, and every write is recorded. Deletes, settings, rules and channels stay in the dashboard.",
                 },
                 {
                   q: "Does it work with self-hosted Traceway?",
-                  a: "Yes. Every backend serves /mcp, and the OAuth issuer is derived from the request, so it works behind a reverse proxy with no extra configuration.",
+                  a: "Yes. Every backend serves /mcp and /mcp/write, and the OAuth issuer is derived from the request, so it works behind a reverse proxy with no extra configuration.",
                 },
                 {
                   q: "Which clients are supported?",

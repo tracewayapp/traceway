@@ -60,7 +60,7 @@ func setupAuthDB(t *testing.T) {
 
 func insertRefresh(t *testing.T, token, family string) {
 	t.Helper()
-	if err := transactional.RefreshTokenRepository.Insert(db.DB, token, family, 1, cliClientID, time.Now().Add(time.Hour)); err != nil {
+	if err := transactional.RefreshTokenRepository.Insert(db.DB, token, family, 1, cliClientID, models.ScopeRead, time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("insert refresh token: %v", err)
 	}
 }
@@ -217,7 +217,7 @@ func TestRefreshTokenRepository_PruneExpired(t *testing.T) {
 	insertRefresh(t, "twr_recent_used", "fam-prune")
 	insertRefresh(t, "twr_old_used", "fam-prune")
 	insertRefresh(t, "twr_revoked", "fam-dead")
-	if err := transactional.RefreshTokenRepository.Insert(db.DB, "twr_expired", "fam-prune", 1, cliClientID, time.Now().Add(-time.Hour)); err != nil {
+	if err := transactional.RefreshTokenRepository.Insert(db.DB, "twr_expired", "fam-prune", 1, cliClientID, models.ScopeRead, time.Now().Add(-time.Hour)); err != nil {
 		t.Fatalf("insert expired: %v", err)
 	}
 
@@ -315,9 +315,9 @@ func TestPersonalAccessTokenRepository_PruneExpired(t *testing.T) {
 			t.Fatalf("pat create: %v", err)
 		}
 	}
-	must(transactional.PersonalAccessTokenRepository.Create(db.DB, "id-active", "twp_active", "twp_active12", 1, "active", nil))
-	must(transactional.PersonalAccessTokenRepository.Create(db.DB, "id-expired", "twp_expired", "twp_expired1", 1, "expired", &expired))
-	must(transactional.PersonalAccessTokenRepository.Create(db.DB, "id-revoked", "twp_revoked", "twp_revoked1", 1, "revoked", nil))
+	must(transactional.PersonalAccessTokenRepository.Create(db.DB, "id-active", "twp_active", "twp_active12", 1, "active", models.ScopeRead, nil))
+	must(transactional.PersonalAccessTokenRepository.Create(db.DB, "id-expired", "twp_expired", "twp_expired1", 1, "expired", models.ScopeRead, &expired))
+	must(transactional.PersonalAccessTokenRepository.Create(db.DB, "id-revoked", "twp_revoked", "twp_revoked1", 1, "revoked", models.ScopeRead, nil))
 	if _, err := transactional.PersonalAccessTokenRepository.Revoke(db.DB, "id-revoked", 1); err != nil {
 		t.Fatalf("revoke: %v", err)
 	}

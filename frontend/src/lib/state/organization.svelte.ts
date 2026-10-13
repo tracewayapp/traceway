@@ -33,6 +33,29 @@ export interface OrganizationSettings {
 	members: OrganizationMember[];
 	invitations: Invitation[];
 	userRole: string;
+	agentWriteEnabled: boolean;
+}
+
+export interface AgentWriteEvent {
+	id: string;
+	organizationId: number;
+	projectId: string;
+	projectName: string;
+	userId: number;
+	userEmail: string;
+	credentialKind: 'pat' | 'oauth';
+	credentialRef: string;
+	credentialName: string;
+	method: string;
+	route: string;
+	path: string;
+	statusCode: number;
+	createdAt: string;
+}
+
+export interface AgentActivityResponse {
+	data: AgentWriteEvent[];
+	pagination: { page: number; pageSize: number; total: number; totalPages: number };
 }
 
 export interface MemberProjectRole {
@@ -54,6 +77,7 @@ class OrganizationState {
 	loading = $state(false);
 	error = $state<string | null>(null);
 	userRole = $state<string | null>(null);
+	agentWriteEnabled = $state(false);
 
 	isOwner = $derived(this.userRole === 'owner');
 	isAdmin = $derived(this.userRole === 'admin');
@@ -79,6 +103,7 @@ class OrganizationState {
 			this.members = response.members;
 			this.invitations = response.invitations;
 			this.userRole = response.userRole;
+			this.agentWriteEnabled = response.agentWriteEnabled ?? false;
 		} catch (e: unknown) {
 			if (seq !== this.loadSeq) return;
 			this.error = e instanceof Error ? e.message : 'Failed to load settings';
@@ -140,11 +165,27 @@ class OrganizationState {
 		}
 	}
 
+	async setAgentWriteEnabled(organizationId: number, enabled: boolean) {
+		await api.put(`/organizations/${organizationId}/agent-access`, { agentWriteEnabled: enabled });
+		this.agentWriteEnabled = enabled;
+	}
+
+	async loadAgentActivity(
+		organizationId: number,
+		page: number,
+		pageSize: number
+	): Promise<AgentActivityResponse> {
+		return (await api.get(
+			`/organizations/${organizationId}/agent-activity?page=${page}&pageSize=${pageSize}`
+		)) as AgentActivityResponse;
+	}
+
 	clear() {
 		this.currentOrganization = null;
 		this.members = [];
 		this.invitations = [];
 		this.userRole = null;
+		this.agentWriteEnabled = false;
 		this.error = null;
 	}
 }

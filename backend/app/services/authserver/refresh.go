@@ -132,7 +132,7 @@ func RotateRefresh(presented string) (*models.TokenSetResponse, error) {
 		if user == nil {
 			return nil, ErrInvalidGrant
 		}
-		return issueTokenSetWithFamily(tx, rt.UserId, user.Email, rt.ClientId, rt.FamilyId)
+		return issueTokenSetWithFamily(tx, rt.UserId, user.Email, rt.ClientId, rt.Scope, rt.FamilyId)
 	})
 	if err != nil {
 		if errors.Is(err, errReplay) {

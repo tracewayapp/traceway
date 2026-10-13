@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/tracewayapp/traceway/cli/internal/appdir"
 	"github.com/tracewayapp/traceway/cli/internal/output"
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
@@ -60,7 +61,7 @@ func runMetricsQuery(cmd *cobra.Command, _ []string) error {
 	agg, _ := cmd.Flags().GetString("aggregation")
 	if err := validateEnumFlag("--aggregation", agg, metricAggregations); err != nil {
 		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
-			enumFlagHint("traceway metrics query", "--aggregation", metricAggregations))
+			enumFlagHint(appdir.Binary+" metrics query", "--aggregation", metricAggregations))
 	}
 	groupBy, _ := cmd.Flags().GetString("group-by")
 	intervalMin, _ := cmd.Flags().GetInt("interval-minutes")

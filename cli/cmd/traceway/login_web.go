@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/tracewayapp/traceway/cli/internal/appdir"
 	"github.com/tracewayapp/traceway/cli/internal/exitcode"
 	"github.com/tracewayapp/traceway/cli/internal/output"
 	"github.com/tracewayapp/traceway/cli/internal/state"
@@ -44,7 +45,7 @@ func runLoginWeb(cmd *cobra.Command) error {
 	}
 
 	c := client.New(url)
-	da, err := c.DeviceAuthorize(ctx, "")
+	da, err := c.DeviceAuthorize(ctx, deviceClientID)
 	if err != nil {
 		// A backend that predates the device flow 404s the authorize endpoint,
 		// or serves the SPA's index.html (a JSON syntax error). Point at the
@@ -54,7 +55,7 @@ func runLoginWeb(cmd *cobra.Command) error {
 			_ = output.RenderError(cmd.ErrOrStderr(), mode, output.ErrorEnvelope{
 				Code:     "device_login_unsupported",
 				Message:  "this server does not support the browser device-login flow (it may be running an older Traceway version)",
-				Hint:     "traceway login --password",
+				Hint:     appdir.Binary + " login --password",
 				ExitCode: exitcode.Auth,
 			})
 			return newCLIError(exitcode.Auth, "device_login_unsupported")
@@ -139,7 +140,7 @@ func renderDeviceError(errOut io.Writer, mode output.Mode, code, msg string) err
 	_ = output.RenderError(errOut, mode, output.ErrorEnvelope{
 		Code:     code,
 		Message:  msg,
-		Hint:     "traceway login",
+		Hint:     appdir.Binary + " login",
 		ExitCode: exitcode.Auth,
 	})
 	return newCLIError(exitcode.Auth, code)

@@ -174,7 +174,7 @@ func ApproveAuthorization(tx *sql.Tx, userId int, req models.AuthorizeApproveReq
 		return "", err
 	}
 	code := newOpaqueToken("twa_")
-	if err := transactional.AuthorizationCodeRepository.Create(tx, code, client.Id, userId, req.RedirectUri, req.CodeChallenge, time.Now().Add(authCodeTTL)); err != nil {
+	if err := transactional.AuthorizationCodeRepository.Create(tx, code, client.Id, userId, req.RedirectUri, req.CodeChallenge, models.ParseRequestedScope(req.Scope), time.Now().Add(authCodeTTL)); err != nil {
 		return "", err
 	}
 	return appendRedirectParams(req.RedirectUri, url.Values{"code": {code}}, req.State), nil
@@ -252,7 +252,7 @@ func RedeemAuthorizationCode(clientId, code, verifier, redirectUri, resource, is
 		if user == nil {
 			return redeemOutcome{grantErr: ErrInvalidGrant}, nil
 		}
-		tokens, err := IssueTokenSet(tx, ac.UserId, user.Email, clientId)
+		tokens, err := IssueTokenSet(tx, ac.UserId, user.Email, clientId, ac.Scope)
 		if err != nil {
 			return redeemOutcome{}, err
 		}

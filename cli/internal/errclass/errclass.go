@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/url"
 
+	"github.com/tracewayapp/traceway/cli/internal/appdir"
 	"github.com/tracewayapp/traceway/cli/internal/exitcode"
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
@@ -29,12 +30,16 @@ func Classify(err error) Classified {
 	case errors.Is(err, client.ErrUnauthorized):
 		return Classified{
 			Code: "token_expired", Message: "session expired or invalid",
-			Hint:     "traceway login",
+			Hint:     appdir.Binary + " login",
 			ExitCode: exitcode.Auth,
 		}
 	case errors.Is(err, client.ErrForbidden):
+		message := "permission denied"
+		if fe, ok := errors.AsType[*client.ForbiddenError](err); ok && fe.Message != "" {
+			message = fe.Message
+		}
 		return Classified{
-			Code: "forbidden", Message: "permission denied",
+			Code: "forbidden", Message: message,
 			ExitCode: exitcode.Auth,
 		}
 	case errors.Is(err, client.ErrNotFound):

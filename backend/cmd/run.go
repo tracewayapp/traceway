@@ -259,11 +259,15 @@ func Run(opts ...Option) {
 	router.Match(wellKnown, "/.well-known/oauth-authorization-server", middleware.WellKnownCors, controllers.WellKnownController.AuthorizationServer)
 	router.Match(wellKnown, "/.well-known/oauth-protected-resource", middleware.WellKnownCors, controllers.WellKnownController.ProtectedResource)
 	router.Match(wellKnown, "/.well-known/oauth-protected-resource"+mcpmount.Path, middleware.WellKnownCors, controllers.WellKnownController.ProtectedResourceMCP)
+	router.Match(wellKnown, "/.well-known/oauth-protected-resource"+mcpmount.WritePath, middleware.WellKnownCors, controllers.WellKnownController.ProtectedResourceMCPWrite)
 
-	mcpHandler := mcpmount.GinHandler(router, "0.0.1")
+	mcpHandler := mcpmount.GinHandler(router, "0.0.1", false)
+	mcpWriteHandler := mcpmount.GinHandler(router, "0.0.1", true)
 	mcpMethods := []string{http.MethodGet, http.MethodPost, http.MethodDelete, http.MethodOptions}
 	router.Match(mcpMethods, mcpmount.Path, middleware.MCPCors, mcpHandler)
 	router.Match(mcpMethods, mcpmount.Path+"/", middleware.MCPCors, mcpHandler)
+	router.Match(mcpMethods, mcpmount.WritePath, middleware.MCPCors, mcpWriteHandler)
+	router.Match(mcpMethods, mcpmount.WritePath+"/", middleware.MCPCors, mcpWriteHandler)
 
 	apiOnly := cfg.APIOnly == "true"
 

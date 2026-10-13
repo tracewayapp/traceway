@@ -15,21 +15,22 @@ import (
 
 type personalAccessTokenRepository struct{}
 
-func (r *personalAccessTokenRepository) Create(ex lit.Executor, id, token, prefix string, userId int, name string, expiresAt *time.Time) error {
+func (r *personalAccessTokenRepository) Create(ex lit.Executor, id, token, prefix string, userId int, name, scope string, expiresAt *time.Time) error {
 	var expires any
 	if expiresAt != nil {
 		expires = shared.FormatAuthTime(*expiresAt)
 	}
 	query, args, err := lit.ParseNamedQuery(
 		db.Driver,
-		`INSERT INTO personal_access_tokens (id, token_hash, prefix, user_id, name, revoked, expires_at, created_at)
-			VALUES (:id, :hash, :prefix, :user_id, :name, :revoked, :expires_at, :created_at)`,
+		`INSERT INTO personal_access_tokens (id, token_hash, prefix, user_id, name, scope, revoked, expires_at, created_at)
+			VALUES (:id, :hash, :prefix, :user_id, :name, :scope, :revoked, :expires_at, :created_at)`,
 		lit.P{
 			"id":         id,
 			"hash":       shared.HashAuthToken(token),
 			"prefix":     prefix,
 			"user_id":    userId,
 			"name":       name,
+			"scope":      scope,
 			"revoked":    false,
 			"expires_at": expires,
 			"created_at": shared.FormatAuthTime(time.Now()),
@@ -45,7 +46,7 @@ func (r *personalAccessTokenRepository) Create(ex lit.Executor, id, token, prefi
 func (r *personalAccessTokenRepository) FindActiveByToken(ex lit.Executor, token string) (*shared.ActivePAT, error) {
 	query, args, err := lit.ParseNamedQuery(
 		db.Driver,
-		`SELECT p.id, p.user_id, p.revoked, p.expires_at, p.last_used_at, u.email
+		`SELECT p.id, p.user_id, p.scope, p.revoked, p.expires_at, p.last_used_at, u.email
 			FROM personal_access_tokens p
 			JOIN users u ON u.id = p.user_id
 			WHERE p.token_hash = :hash`,
@@ -61,7 +62,7 @@ func (r *personalAccessTokenRepository) FindActiveByToken(ex lit.Executor, token
 		expiresAt sql.NullString
 		lastUsed  sql.NullString
 	)
-	err = ex.QueryRow(query, args...).Scan(&pat.Id, &pat.UserId, &revoked, &expiresAt, &lastUsed, &pat.Email)
+	err = ex.QueryRow(query, args...).Scan(&pat.Id, &pat.UserId, &pat.Scope, &revoked, &expiresAt, &lastUsed, &pat.Email)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -88,7 +89,7 @@ func (r *personalAccessTokenRepository) FindActiveByToken(ex lit.Executor, token
 func (r *personalAccessTokenRepository) ListByUser(ex lit.Executor, userId int) ([]*models.PersonalAccessToken, error) {
 	query, args, err := lit.ParseNamedQuery(
 		db.Driver,
-		`SELECT id, prefix, name, last_used_at, expires_at, created_at
+		`SELECT id, prefix, name, scope, last_used_at, expires_at, created_at
 			FROM personal_access_tokens
 			WHERE user_id = :user_id AND revoked = :revoked
 			ORDER BY created_at DESC`,
@@ -112,7 +113,7 @@ func (r *personalAccessTokenRepository) ListByUser(ex lit.Executor, userId int) 
 			expiresAt sql.NullString
 			createdAt string
 		)
-		if err := rows.Scan(&pat.Id, &pat.Prefix, &pat.Name, &lastUsed, &expiresAt, &createdAt); err != nil {
+		if err := rows.Scan(&pat.Id, &pat.Prefix, &pat.Name, &pat.Scope, &lastUsed, &expiresAt, &createdAt); err != nil {
 			return nil, err
 		}
 		if pat.LastUsedAt, err = shared.ParseNullableAuthTime(lastUsed); err != nil {

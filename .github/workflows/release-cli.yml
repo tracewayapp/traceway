@@ -70,22 +70,32 @@ jobs:
             "darwin arm64 arm64"
             "windows amd64 x86_64"
           )
-          for entry in "${PAIRS[@]}"; do
-            read -r OS ARCH LABEL <<< "$entry"
-            STAGE="dist/staging/${OS}_${LABEL}"
-            mkdir -p "$STAGE"
-            BIN="traceway"
-            [[ "$OS" == "windows" ]] && BIN="traceway.exe"
-            echo "Building $OS/$ARCH -> $STAGE/$BIN"
-            GOOS="$OS" GOARCH="$ARCH" go build -trimpath -ldflags "-X main.version=${VERSION}" -o "$STAGE/$BIN" ./cmd/traceway
-            cp README.md "$STAGE/"
-            cp ../LICENSE "$STAGE/"
-            ARCHIVE_BASE="traceway_${VERSION}_${OS}_${LABEL}"
-            if [[ "$OS" == "windows" ]]; then
-              (cd "$STAGE" && zip -q "../../${ARCHIVE_BASE}.zip" *)
-            else
-              tar -C "$STAGE" -czf "dist/${ARCHIVE_BASE}.tar.gz" .
-            fi
+          # NAME TAGS: the read-only traceway and the separate traceway-write
+          # build, each in its own archive so installing one never installs the other.
+          EDITIONS=(
+            "traceway -"
+            "traceway-write write"
+          )
+          for edition in "${EDITIONS[@]}"; do
+            read -r NAME TAGS <<< "$edition"
+            [[ "$TAGS" == "-" ]] && TAGS=""
+            for entry in "${PAIRS[@]}"; do
+              read -r OS ARCH LABEL <<< "$entry"
+              STAGE="dist/staging/${NAME}_${OS}_${LABEL}"
+              mkdir -p "$STAGE"
+              BIN="$NAME"
+              [[ "$OS" == "windows" ]] && BIN="${NAME}.exe"
+              echo "Building $NAME $OS/$ARCH -> $STAGE/$BIN"
+              GOOS="$OS" GOARCH="$ARCH" go build -trimpath -tags "$TAGS" -ldflags "-X main.version=${VERSION}" -o "$STAGE/$BIN" ./cmd/traceway
+              cp README.md "$STAGE/"
+              cp ../LICENSE "$STAGE/"
+              ARCHIVE_BASE="${NAME}_${VERSION}_${OS}_${LABEL}"
+              if [[ "$OS" == "windows" ]]; then
+                (cd "$STAGE" && zip -q "../../${ARCHIVE_BASE}.zip" *)
+              else
+                tar -C "$STAGE" -czf "dist/${ARCHIVE_BASE}.tar.gz" .
+              fi
+            done
           done
           rm -rf dist/staging
           ls -la dist

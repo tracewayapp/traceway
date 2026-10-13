@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/tracewayapp/traceway/cli/internal/appdir"
 	"github.com/tracewayapp/traceway/cli/internal/output"
 )
 
@@ -32,7 +33,7 @@ func runVersion(cmd *cobra.Command, _ []string) error {
 	case output.ModeYAML:
 		return output.RenderYAML(cmd.OutOrStdout(), info, output.ParseFieldsFlag(flagFields))
 	default:
-		_, err := fmt.Fprintf(cmd.OutOrStdout(), "traceway version %s\n", version)
+		_, err := fmt.Fprintf(cmd.OutOrStdout(), "%s version %s\n", appdir.Binary, version)
 		return err
 	}
 }

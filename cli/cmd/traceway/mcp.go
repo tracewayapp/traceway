@@ -95,6 +95,7 @@ func resolveMcpConfig(errOut io.Writer) (mcpserver.Config, error) {
 				DefaultProjectID: projectID,
 				InstanceURL:      url,
 				Version:          version,
+				AllowWrite:       editionWrite,
 				AuthHint:         "the TRACEWAY_TOKEN this server was started with is expired or revoked; rotate it and restart the MCP server",
 			}, nil
 		}
@@ -109,5 +110,6 @@ func resolveMcpConfig(errOut io.Writer) (mcpserver.Config, error) {
 		DefaultProjectID: sess.ProjectID,
 		InstanceURL:      sess.URL,
 		Version:          version,
+		AllowWrite:       editionWrite,
 	}, nil
 }

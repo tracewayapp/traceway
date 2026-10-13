@@ -34,7 +34,7 @@
 
 	let status = $state<Status>('loading');
 	let error = $state('');
-	let info = $state<{ userCode: string; clientName: string } | null>(null);
+	let info = $state<{ userCode: string; clientName: string; write: boolean } | null>(null);
 	let manualCode = $state('');
 
 	const userCode = $derived(page.url.searchParams.get('user_code'));
@@ -88,7 +88,11 @@
 				status = 'expired';
 				return;
 			}
-			info = { userCode: data.user_code, clientName: data.clientName || 'a device' };
+			info = {
+				userCode: data.user_code,
+				clientName: data.clientName || 'a device',
+				write: data.scope === 'traceway:write'
+			};
 			status = 'confirm';
 		} catch {
 			status = 'error';
@@ -190,8 +194,15 @@
 			{:else if status === 'confirm' && info}
 				<div class="space-y-4">
 					<p class="text-center text-muted-foreground">
-						<strong>{info.clientName}</strong> is requesting access to your Traceway account.
+						<strong>{info.clientName}</strong> is requesting
+						{info.write ? 'read and write' : 'read-only'} access to your Traceway account.
 					</p>
+					{#if info.write}
+						<WarningCallout title="This login can change data">
+							It can archive issues, acknowledge and resolve pages, snooze alerts and edit
+							post-mortems as you, in organizations where an admin turned on agent writes.
+						</WarningCallout>
+					{/if}
 					<div class="py-4 text-center font-mono text-4xl font-semibold tracking-[0.3em]">
 						{info.userCode}
 					</div>

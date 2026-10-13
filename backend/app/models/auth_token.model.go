@@ -1,6 +1,23 @@
 package models
 
-import "time"
+import (
+	"strings"
+	"time"
+)
+
+const (
+	ScopeRead  = "traceway:read"
+	ScopeWrite = "traceway:write"
+)
+
+func ParseRequestedScope(raw string) string {
+	for _, s := range strings.Fields(raw) {
+		if s == ScopeWrite {
+			return ScopeWrite
+		}
+	}
+	return ScopeRead
+}
 
 type DeviceAuthorization struct {
 	DeviceCodeHash  string
@@ -19,6 +36,7 @@ type RefreshToken struct {
 	FamilyId  string
 	UserId    int
 	ClientId  string
+	Scope     string
 	Revoked   bool
 	Used      bool
 	UsedAt    *time.Time
@@ -30,6 +48,7 @@ type PersonalAccessToken struct {
 	Id         string     `json:"id"`
 	Prefix     string     `json:"prefix"`
 	Name       string     `json:"name"`
+	Scope      string     `json:"scope"`
 	LastUsedAt *time.Time `json:"lastUsedAt"`
 	ExpiresAt  *time.Time `json:"expiresAt"`
 	CreatedAt  time.Time  `json:"createdAt"`
@@ -57,6 +76,7 @@ type TokenRequest struct {
 	CodeVerifier string `json:"code_verifier" form:"code_verifier"`
 	RedirectUri  string `json:"redirect_uri" form:"redirect_uri"`
 	Resource     string `json:"resource" form:"resource"`
+	Scope        string `json:"scope" form:"scope"`
 }
 
 type TokenSetResponse struct {
@@ -65,6 +85,7 @@ type TokenSetResponse struct {
 	TokenType    string `json:"token_type"`
 	ExpiresIn    int    `json:"expires_in"`
 	Email        string `json:"email,omitempty"`
+	Scope        string `json:"scope,omitempty"`
 }
 
 type DeviceApproveRequest struct {
@@ -75,6 +96,7 @@ type DeviceLookupResponse struct {
 	UserCode    string    `json:"user_code"`
 	Status      string    `json:"status"`
 	ClientName  string    `json:"clientName"`
+	Scope       string    `json:"scope"`
 	RequestedAt time.Time `json:"requestedAt"`
 	ExpiresAt   time.Time `json:"expiresAt"`
 }
@@ -92,6 +114,7 @@ type AuthorizationCode struct {
 	UserId        int
 	RedirectUri   string
 	CodeChallenge string
+	Scope         string
 	ExpiresAt     time.Time
 	CreatedAt     time.Time
 }
@@ -118,6 +141,7 @@ type AuthorizeApproveRequest struct {
 	CodeChallenge       string `json:"code_challenge"`
 	CodeChallengeMethod string `json:"code_challenge_method"`
 	Resource            string `json:"resource"`
+	Scope               string `json:"scope"`
 }
 
 type AuthorizeDenyRequest struct {
@@ -137,6 +161,7 @@ type OauthClientLookupResponse struct {
 type CreatePATRequest struct {
 	Name          string `json:"name"`
 	ExpiresInDays *int   `json:"expiresInDays"`
+	Scope         string `json:"scope"`
 }
 
 type CreatePATResponse struct {
@@ -144,6 +169,7 @@ type CreatePATResponse struct {
 	Name      string     `json:"name"`
 	Prefix    string     `json:"prefix"`
 	Token     string     `json:"token"`
+	Scope     string     `json:"scope"`
 	CreatedAt time.Time  `json:"createdAt"`
 	ExpiresAt *time.Time `json:"expiresAt"`
 }

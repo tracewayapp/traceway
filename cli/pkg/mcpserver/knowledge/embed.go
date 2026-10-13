@@ -7,7 +7,7 @@ package knowledge
 
 import "embed"
 
-//go:embed *.md
+//go:embed *.md learn/*.md
 var FS embed.FS
 
 // MustRead returns the named chunk or panics: chunk names are compile-time

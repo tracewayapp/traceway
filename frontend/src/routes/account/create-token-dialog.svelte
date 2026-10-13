@@ -9,29 +9,50 @@
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { toast } from 'svelte-sonner';
 	import CopyableInline from '$lib/components/setup/copyable-inline.svelte';
-	import { personalAccessTokensState } from '$lib/state/personal-access-tokens.svelte';
+	import { WarningCallout } from '$lib/components/ui/warning-callout';
+	import {
+		personalAccessTokensState,
+		type TokenScope
+	} from '$lib/state/personal-access-tokens.svelte';
 
 	let { open = $bindable() }: { open: boolean } = $props();
 
 	let name = $state('');
 	let expiry = $state('30');
+	let scope = $state<TokenScope>('traceway:read');
 	let loading = $state(false);
 	let error = $state('');
 	let createdToken = $state<string | null>(null);
 
-	const expiryOptions = [
+	const scopeOptions: { value: TokenScope; label: string }[] = [
+		{ value: 'traceway:read', label: 'Read only' },
+		{ value: 'traceway:write', label: 'Read and write' }
+	];
+
+	const expiryOptions = $derived([
+		{ value: '7', label: '7 days' },
 		{ value: '30', label: '30 days' },
 		{ value: '60', label: '60 days' },
 		{ value: '90', label: '90 days' },
-		{ value: '0', label: 'No expiration' }
-	];
+		...(scope === 'traceway:write' ? [] : [{ value: '0', label: 'No expiration' }])
+	]);
+
+	$effect(() => {
+		if (scope === 'traceway:write' && expiry === '0') {
+			expiry = '30';
+		}
+	});
 
 	async function handleCreate() {
 		loading = true;
 		error = '';
 		try {
 			const days = parseInt(expiry, 10);
-			const res = await personalAccessTokensState.create(name.trim(), days > 0 ? days : null);
+			const res = await personalAccessTokensState.create(
+				name.trim(),
+				days > 0 ? days : null,
+				scope
+			);
 			createdToken = res.token;
 			toast.success('Successfully created the Token', { position: 'top-center' });
 		} catch (e: unknown) {
@@ -45,6 +66,7 @@
 		if (!isOpen) {
 			name = '';
 			expiry = '30';
+			scope = 'traceway:read';
 			error = '';
 			createdToken = null;
 		}
@@ -79,7 +101,7 @@
 			<AlertDialog.Header>
 				<AlertDialog.Title>New Token</AlertDialog.Title>
 				<AlertDialog.Description>
-					Use this token to authenticate the Traceway CLI or scripts.
+					Use this token to authenticate the Traceway CLI, an MCP client or scripts.
 				</AlertDialog.Description>
 			</AlertDialog.Header>
 			<form
@@ -94,6 +116,26 @@
 					<Label for="token-name">Name</Label>
 					<Input id="token-name" bind:value={name} placeholder="e.g. laptop CLI" required />
 				</div>
+				<div class="space-y-2">
+					<Label for="token-scope">Access</Label>
+					<Select.Root type="single" bind:value={scope}>
+						<Select.Trigger id="token-scope" class="w-full">
+							{scopeOptions.find((o) => o.value === scope)?.label}
+						</Select.Trigger>
+						<Select.Content>
+							{#each scopeOptions as option (option.value)}
+								<Select.Item value={option.value}>{option.label}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
+				</div>
+				{#if scope === 'traceway:write'}
+					<WarningCallout title="Write tokens change shared data">
+						An agent holding this token can archive issues, resolve pages, snooze alerts and edit
+						post-mortems as you. It only works in organizations where an admin turned on agent
+						writes, and it must expire within 90 days.
+					</WarningCallout>
+				{/if}
 				<div class="space-y-2">
 					<Label for="token-expiry">Expiration</Label>
 					<Select.Root type="single" bind:value={expiry}>

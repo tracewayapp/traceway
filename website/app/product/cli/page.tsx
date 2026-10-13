@@ -133,6 +133,8 @@ export default function CliPage() {
               </p>
               <ul className="feat-bullets">
                 <li>Exceptions, logs, endpoints, tasks, traces, metrics</li>
+                <li>On-call pages, alert rules, monitors, post-mortems</li>
+                <li>Read only. Writes need the separate traceway-write CLI</li>
                 <li>Tables on a TTY, JSON when piped</li>
                 <li>--fields trims responses to what was asked</li>
                 <li>Stable error identifiers and exit codes</li>

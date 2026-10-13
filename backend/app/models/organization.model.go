@@ -30,10 +30,11 @@ type OrganizationMember struct {
 
 // OrganizationSettingsResponse is returned for the settings page
 type OrganizationSettingsResponse struct {
-	Organization *Organization            `json:"organization"`
-	Members      []*OrganizationMember    `json:"members"`
-	Invitations  []*InvitationWithInviter `json:"invitations"`
-	UserRole     string                   `json:"userRole"`
+	Organization      *Organization            `json:"organization"`
+	Members           []*OrganizationMember    `json:"members"`
+	Invitations       []*InvitationWithInviter `json:"invitations"`
+	UserRole          string                   `json:"userRole"`
+	AgentWriteEnabled bool                     `json:"agentWriteEnabled"`
 }
 
 // UpdateMemberRoleRequest is the request body for updating a member's role

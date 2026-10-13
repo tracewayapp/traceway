@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/tracewayapp/traceway/cli/internal/appdir"
 	"github.com/tracewayapp/traceway/cli/internal/config"
 	"github.com/tracewayapp/traceway/cli/internal/exitcode"
 	"github.com/tracewayapp/traceway/cli/internal/output"
@@ -155,7 +156,7 @@ func renderSessionError(errOut io.Writer, mode output.Mode, err error) error {
 		_ = output.RenderError(errOut, mode, output.ErrorEnvelope{
 			Code:     "not_authenticated",
 			Message:  err.Error(),
-			Hint:     "traceway login",
+			Hint:     appdir.Binary + " login",
 			ExitCode: exitcode.Auth,
 		})
 		return newCLIError(exitcode.Auth, "not_authenticated")
@@ -163,7 +164,7 @@ func renderSessionError(errOut io.Writer, mode output.Mode, err error) error {
 		_ = output.RenderError(errOut, mode, output.ErrorEnvelope{
 			Code:     "no_project",
 			Message:  err.Error(),
-			Hint:     "traceway projects use <project-id> (or pass --project)",
+			Hint:     appdir.Binary + " projects use <project-id> (or pass --project)",
 			ExitCode: exitcode.Usage,
 		})
 		return newCLIError(exitcode.Usage, "no_project")

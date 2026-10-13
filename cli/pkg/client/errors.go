@@ -23,6 +23,23 @@ var (
 	ErrInvalidGrant         = errors.New("invalid_grant")
 )
 
+// ForbiddenError is a 403 carrying the server's explanation, such as a
+// read-only credential attempting a write. It matches ErrForbidden.
+type ForbiddenError struct {
+	Message string
+}
+
+func (e *ForbiddenError) Error() string {
+	if e.Message == "" {
+		return ErrForbidden.Error()
+	}
+	return e.Message
+}
+
+func (e *ForbiddenError) Unwrap() error {
+	return ErrForbidden
+}
+
 // APIError is returned for any non-2xx response that isn't covered by a sentinel.
 // Inspect StatusCode and Body for diagnostics.
 type APIError struct {

@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/tracewayapp/traceway/cli/internal/appdir"
 	"github.com/tracewayapp/traceway/cli/internal/envfile"
 	"github.com/tracewayapp/traceway/cli/internal/exitcode"
 	"github.com/tracewayapp/traceway/cli/internal/output"
@@ -137,22 +138,22 @@ func runSetupApply(cmd *cobra.Command, _ []string) error {
 	mode := output.ResolveMode(flagOutput, output.StdoutIsTerminal())
 
 	if setupApplyPlanPath == "" {
-		return renderUsageError(cmd.ErrOrStderr(), mode, "no plan file provided", "traceway setup apply --plan <file> --token-stdin")
+		return renderUsageError(cmd.ErrOrStderr(), mode, "no plan file provided", appdir.Binary+" setup apply --plan <file> --token-stdin")
 	}
 	plan, err := loadSetupPlan(setupApplyPlanPath)
 	if err != nil {
-		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(), "traceway setup apply --help")
+		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(), appdir.Binary+" setup apply --help")
 	}
 	if err := validateSetupPlan(plan); err != nil {
-		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(), "traceway setup apply --help")
+		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(), appdir.Binary+" setup apply --help")
 	}
 
 	token, err := resolveSetupToken(cmd)
 	if err != nil {
-		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(), "traceway setup apply --help")
+		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(), appdir.Binary+" setup apply --help")
 	}
 	if token == "" {
-		return renderUsageError(cmd.ErrOrStderr(), mode, "no setup token provided", "traceway setup apply --plan <file> --token-stdin (or set TRACEWAY_SETUP_TOKEN)")
+		return renderUsageError(cmd.ErrOrStderr(), mode, "no setup token provided", appdir.Binary+" setup apply --plan <file> --token-stdin (or set TRACEWAY_SETUP_TOKEN)")
 	}
 
 	url := strings.TrimSpace(setupApplyURL)

@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/tracewayapp/traceway/cli/internal/appdir"
 	"github.com/tracewayapp/traceway/cli/internal/output"
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 )
@@ -55,19 +56,19 @@ func runEndpointsList(cmd *cobra.Command, _ []string) error {
 	}
 	if err := validatePaginationFlags(cmd); err != nil {
 		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
-			paginationHint("traceway endpoints list"))
+			paginationHint(appdir.Binary+" endpoints list"))
 	}
 	page := resolvePagination(cmd)
 	search, _ := cmd.Flags().GetString("search")
 	orderBy, _ := cmd.Flags().GetString("order-by")
 	if err := validateEnumFlag("--order-by", orderBy, endpointsOrderBy); err != nil {
 		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
-			enumFlagHint("traceway endpoints list", "--order-by", endpointsOrderBy))
+			enumFlagHint(appdir.Binary+" endpoints list", "--order-by", endpointsOrderBy))
 	}
 	sortDir, _ := cmd.Flags().GetString("sort-direction")
 	if err := validateEnumFlag("--sort-direction", sortDir, sortDirections); err != nil {
 		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
-			enumFlagHint("traceway endpoints list", "--sort-direction", sortDirections))
+			enumFlagHint(appdir.Binary+" endpoints list", "--sort-direction", sortDirections))
 	}
 
 	c := sess.Client()
@@ -141,7 +142,7 @@ func runEndpointsChart(cmd *cobra.Command, _ []string) error {
 	metricType, _ := cmd.Flags().GetString("metric-type")
 	if err := validateEnumFlag("--metric-type", metricType, endpointChartMetricTypes); err != nil {
 		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
-			enumFlagHint("traceway endpoints chart", "--metric-type", endpointChartMetricTypes))
+			enumFlagHint(appdir.Binary+" endpoints chart", "--metric-type", endpointChartMetricTypes))
 	}
 	intervalMin, _ := cmd.Flags().GetInt("interval-minutes")
 

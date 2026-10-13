@@ -15,17 +15,18 @@ import (
 
 type authorizationCodeRepository struct{}
 
-func (r *authorizationCodeRepository) Create(ex lit.Executor, code, clientId string, userId int, redirectUri, codeChallenge string, expiresAt time.Time) error {
+func (r *authorizationCodeRepository) Create(ex lit.Executor, code, clientId string, userId int, redirectUri, codeChallenge, scope string, expiresAt time.Time) error {
 	query, args, err := lit.ParseNamedQuery(
 		db.Driver,
-		`INSERT INTO authorization_codes (code_hash, client_id, user_id, redirect_uri, code_challenge, expires_at, created_at)
-			VALUES (:hash, :client_id, :user_id, :redirect_uri, :code_challenge, :expires_at, :created_at)`,
+		`INSERT INTO authorization_codes (code_hash, client_id, user_id, redirect_uri, code_challenge, scope, expires_at, created_at)
+			VALUES (:hash, :client_id, :user_id, :redirect_uri, :code_challenge, :scope, :expires_at, :created_at)`,
 		lit.P{
 			"hash":           shared.HashAuthToken(code),
 			"client_id":      clientId,
 			"user_id":        userId,
 			"redirect_uri":   redirectUri,
 			"code_challenge": codeChallenge,
+			"scope":          scope,
 			"expires_at":     shared.FormatAuthTime(expiresAt),
 			"created_at":     shared.FormatAuthTime(time.Now()),
 		},
@@ -40,7 +41,7 @@ func (r *authorizationCodeRepository) Create(ex lit.Executor, code, clientId str
 func (r *authorizationCodeRepository) FindByCode(ex lit.Executor, code string) (*models.AuthorizationCode, error) {
 	query, args, err := lit.ParseNamedQuery(
 		db.Driver,
-		"SELECT code_hash, client_id, user_id, redirect_uri, code_challenge, expires_at, created_at FROM authorization_codes WHERE code_hash = :hash",
+		"SELECT code_hash, client_id, user_id, redirect_uri, code_challenge, scope, expires_at, created_at FROM authorization_codes WHERE code_hash = :hash",
 		lit.P{"hash": shared.HashAuthToken(code)},
 	)
 	if err != nil {
@@ -52,7 +53,7 @@ func (r *authorizationCodeRepository) FindByCode(ex lit.Executor, code string) (
 		expiresAt string
 		createdAt string
 	)
-	err = ex.QueryRow(query, args...).Scan(&c.CodeHash, &c.ClientId, &c.UserId, &c.RedirectUri, &c.CodeChallenge, &expiresAt, &createdAt)
+	err = ex.QueryRow(query, args...).Scan(&c.CodeHash, &c.ClientId, &c.UserId, &c.RedirectUri, &c.CodeChallenge, &c.Scope, &expiresAt, &createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

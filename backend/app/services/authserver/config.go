@@ -18,6 +18,7 @@ const (
 	authCodeTTL        = 5 * time.Minute
 	cliClientID        = "traceway-cli"
 	mcpClientID        = "traceway-mcp"
+	cliWriteClientID   = "traceway-cli-write"
 
 	// reuseGrace is the window during which re-presenting a just-used refresh
 	// token is treated as a benign concurrent retry (two CLI processes racing,

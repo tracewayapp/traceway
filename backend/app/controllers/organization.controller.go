@@ -28,6 +28,7 @@ func (c *organizationController) GetSettings(ctx *gin.Context) {
 		Organization *models.Organization
 		Members      []*models.OrganizationMember
 		Invitations  []*models.InvitationWithInviter
+		AgentWrite   bool
 	}
 
 	data, err := db.ExecuteTransaction(func(tx *sql.Tx) (*settingsData, error) {
@@ -46,10 +47,16 @@ func (c *organizationController) GetSettings(ctx *gin.Context) {
 			return nil, err
 		}
 
+		agentWrite, err := transactional.OrganizationRepository.GetAgentWriteEnabled(tx, organizationId)
+		if err != nil {
+			return nil, err
+		}
+
 		return &settingsData{
 			Organization: org,
 			Members:      members,
 			Invitations:  invitations,
+			AgentWrite:   agentWrite,
 		}, nil
 	})
 
@@ -64,10 +71,50 @@ func (c *organizationController) GetSettings(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, &models.OrganizationSettingsResponse{
-		Organization: data.Organization,
-		Members:      data.Members,
-		Invitations:  data.Invitations,
-		UserRole:     userRole,
+		Organization:      data.Organization,
+		Members:           data.Members,
+		Invitations:       data.Invitations,
+		UserRole:          userRole,
+		AgentWriteEnabled: data.AgentWrite,
+	})
+}
+
+func (c *organizationController) UpdateAgentAccess(ctx *gin.Context) {
+	organizationId := middleware.GetOrganizationId(ctx)
+	tx := db.GetTx(ctx)
+
+	var req models.UpdateAgentAccessRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		middleware.RejectBindError(ctx, err, "Invalid request")
+		return
+	}
+	if req.AgentWriteEnabled == nil {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "agentWriteEnabled is required"})
+		return
+	}
+
+	if err := transactional.OrganizationRepository.SetAgentWriteEnabled(tx, organizationId, *req.AgentWriteEnabled); err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to update agent access: %w", err))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"agentWriteEnabled": *req.AgentWriteEnabled})
+}
+
+func (c *organizationController) AgentActivity(ctx *gin.Context) {
+	organizationId := middleware.GetOrganizationId(ctx)
+	tx := db.GetTx(ctx)
+	page, pageSize := paginationFromQuery(ctx)
+
+	events, total, err := transactional.AgentWriteEventRepository.ListByOrganization(tx, organizationId, page, pageSize)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to load agent activity: %w", err))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, PaginatedResponse[*models.AgentWriteEvent]{
+		Data:       events,
+		Pagination: buildPagination(page, pageSize, total),
 	})
 }
 

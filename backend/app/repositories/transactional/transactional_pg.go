@@ -5,6 +5,7 @@ package transactional
 import pgrepo "github.com/tracewayapp/traceway/backend/app/repositories/transactional/pg"
 
 var (
+	AgentWriteEventRepository      = pgrepo.AgentWriteEventRepository
 	AuthorizationCodeRepository    = pgrepo.AuthorizationCodeRepository
 	CheckIncidentRepository        = pgrepo.CheckIncidentRepository
 	CheckRunRepository             = pgrepo.CheckRunRepository

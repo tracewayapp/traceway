@@ -108,6 +108,16 @@ func (s *server) addTools(srv *mcp.Server) {
 		Annotations:  readOnly(),
 	}, s.getTrace)
 
+	s.addOperationReadTools(srv)
+	if s.cfg.AllowWrite {
+		s.addWriteTools(srv)
+	}
+}
+
+// addWriteTools registers the mutating tools. They exist only on the write
+// server (traceway-write mcp, or /mcp/write on the backend), so a read
+// session never sees them in its tool list.
+func (s *server) addWriteTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:         "archive_exceptions",
 		OutputSchema: outSchema[archiveResult](),
@@ -121,4 +131,6 @@ func (s *server) addTools(srv *mcp.Server) {
 		Description:  "Unarchive previously archived exception groups by hash. MUTATING. Only call when the user explicitly asked for it.",
 		Annotations:  mutating(),
 	}, s.unarchiveExceptions)
+
+	s.addOperationWriteTools(srv)
 }

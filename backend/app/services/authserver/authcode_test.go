@@ -212,7 +212,7 @@ func TestAuthCode_expiredCodeRejected(t *testing.T) {
 
 	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
 		return struct{}{}, transactional.AuthorizationCodeRepository.Create(
-			tx, "twa_expired", client.Id, 1, "http://127.0.0.1:8123/callback", testChallenge(testVerifier), time.Now().Add(-time.Minute))
+			tx, "twa_expired", client.Id, 1, "http://127.0.0.1:8123/callback", testChallenge(testVerifier), models.ScopeRead, time.Now().Add(-time.Minute))
 	})
 	if err != nil {
 		t.Fatalf("insert expired code: %v", err)
@@ -305,10 +305,10 @@ func TestAuthorizationCodeRepository_PruneExpired(t *testing.T) {
 	client := registerTestClient(t)
 
 	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
-		if err := transactional.AuthorizationCodeRepository.Create(tx, "twa_live", client.Id, 1, "http://127.0.0.1:1/cb", testChallenge(testVerifier), time.Now().Add(time.Minute)); err != nil {
+		if err := transactional.AuthorizationCodeRepository.Create(tx, "twa_live", client.Id, 1, "http://127.0.0.1:1/cb", testChallenge(testVerifier), models.ScopeRead, time.Now().Add(time.Minute)); err != nil {
 			return struct{}{}, err
 		}
-		return struct{}{}, transactional.AuthorizationCodeRepository.Create(tx, "twa_dead", client.Id, 1, "http://127.0.0.1:1/cb", testChallenge(testVerifier), time.Now().Add(-time.Minute))
+		return struct{}{}, transactional.AuthorizationCodeRepository.Create(tx, "twa_dead", client.Id, 1, "http://127.0.0.1:1/cb", testChallenge(testVerifier), models.ScopeRead, time.Now().Add(-time.Minute))
 	})
 	if err != nil {
 		t.Fatalf("seed codes: %v", err)

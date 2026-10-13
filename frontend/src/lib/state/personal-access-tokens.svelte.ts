@@ -1,9 +1,12 @@
 import { api } from '$lib/api';
 
+export type TokenScope = 'traceway:read' | 'traceway:write';
+
 export interface PersonalAccessToken {
 	id: string;
 	prefix: string;
 	name: string;
+	scope: TokenScope;
 	lastUsedAt: string | null;
 	expiresAt: string | null;
 	createdAt: string;
@@ -14,6 +17,7 @@ export interface CreatedToken {
 	name: string;
 	prefix: string;
 	token: string;
+	scope: TokenScope;
 	createdAt: string;
 	expiresAt: string | null;
 }
@@ -35,10 +39,15 @@ class PersonalAccessTokensState {
 		}
 	}
 
-	async create(name: string, expiresInDays: number | null): Promise<CreatedToken> {
+	async create(
+		name: string,
+		expiresInDays: number | null,
+		scope: TokenScope
+	): Promise<CreatedToken> {
 		const res = (await api.post('/personal-access-tokens', {
 			name,
-			expiresInDays
+			expiresInDays,
+			scope
 		})) as CreatedToken;
 		await this.load();
 		return res;

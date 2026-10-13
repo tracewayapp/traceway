@@ -19,6 +19,8 @@ traceway login ──► POST /api/auth/device/authorize
 
 The CLI refreshes the access token automatically when it expires, rotating the refresh token each time. You stay logged in for up to 90 days of inactivity without re-entering anything.
 
+A `traceway login` is always read only. The separate `traceway-write` CLI runs the same flow under its own client id, and the approval page tells you it asks for read and write access. See [Agent Write Access](/learn/agent-write-access).
+
 The device flow needs an interactive terminal (someone has to approve the code). In CI or scripts, use a personal access token or password login instead; on a headless box you can pass `--no-browser` and approve the code from another device.
 
 ## Password login
@@ -29,7 +31,7 @@ traceway login --username you@example.com  # implies --password
 traceway login --password-stdin            # reads the password from stdin
 ```
 
-Password logins are not refreshable: when the token expires you log in again.
+Password logins are not refreshable: when the token expires (after 7 days) you log in again. The CLI asks for a token scoped to itself, so a `traceway --password` login is read only and cannot be used as a dashboard session.
 
 ## Personal access tokens
 
@@ -41,7 +43,14 @@ traceway login --token twp_xxxxxxxxxxxx
 echo "twp_xxxxxxxxxxxx" | traceway login --token-stdin
 ```
 
-PATs are the right choice for CI and long-running automation. They're shown once at creation, carry an optional expiry, and can be revoked at any time from the same dashboard page. The backend accepts a `twp_`-prefixed token anywhere it accepts a dashboard token.
+PATs are the right choice for CI and long-running automation. They're shown once at creation, carry an optional expiry, and can be revoked at any time from the same dashboard page.
+
+A token has an access level:
+
+- **Read only** (`twp_`, the default) reads telemetry, monitors, pages, alerts and post-mortems. It never changes anything.
+- **Read and write** (`tww_`) can also make the changes listed in [Agent Write Access](/learn/agent-write-access), in organizations where an admin turned agent writes on. It must expire within 90 days.
+
+Tokens only reach the API routes the CLI and MCP server use. Account, member, token and settings routes refuse them, so a leaked token cannot mint another token or approve a login.
 
 ## Logging out
 

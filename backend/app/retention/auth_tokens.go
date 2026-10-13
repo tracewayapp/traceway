@@ -10,6 +10,8 @@ import (
 
 const authTokensPruneInterval = 24 * time.Hour
 
+const agentWriteEventRetention = 90 * 24 * time.Hour
+
 func startAuthTokensPrune(ctx context.Context) {
 	startDBPruneWorker(ctx, "auth_tokens", authTokensPruneInterval, func(tx *sql.Tx) (int64, error) {
 		now := time.Now().UTC()
@@ -52,6 +54,12 @@ func startAuthTokensPrune(ctx context.Context) {
 		total += n
 
 		n, err = transactional.SetupPlanRepository.PruneOld(tx, now)
+		if err != nil {
+			return total, err
+		}
+		total += n
+
+		n, err = transactional.AgentWriteEventRepository.PruneOlderThan(tx, now.Add(-agentWriteEventRetention))
 		if err != nil {
 			return total, err
 		}

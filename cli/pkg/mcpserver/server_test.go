@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"encoding/json"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,11 +11,22 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/tracewayapp/traceway/cli/pkg/client"
+	"github.com/tracewayapp/traceway/cli/pkg/mcpserver/knowledge"
 )
 
 // connect stands up the MCP server over in-memory transports against the
 // given fake backend and returns a connected client session.
 func connect(t *testing.T, backend http.Handler, projectID string) *mcp.ClientSession {
+	t.Helper()
+	return connectServer(t, backend, projectID, false)
+}
+
+func connectWrite(t *testing.T, backend http.Handler, projectID string) *mcp.ClientSession {
+	t.Helper()
+	return connectServer(t, backend, projectID, true)
+}
+
+func connectServer(t *testing.T, backend http.Handler, projectID string, allowWrite bool) *mcp.ClientSession {
 	t.Helper()
 	ts := httptest.NewServer(backend)
 	t.Cleanup(ts.Close)
@@ -24,6 +36,7 @@ func connect(t *testing.T, backend http.Handler, projectID string) *mcp.ClientSe
 		DefaultProjectID: projectID,
 		InstanceURL:      ts.URL,
 		Version:          "test",
+		AllowWrite:       allowWrite,
 	})
 
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
@@ -77,11 +90,43 @@ func TestListTools_surfaceAndAnnotations(t *testing.T) {
 		"get_exception_occurrence": true, "query_logs": true, "list_endpoints": true,
 		"get_endpoint_request": true, "endpoints_chart": true, "get_slow_endpoint_config": true,
 		"query_metrics": true, "get_task": true, "get_ai_trace": true, "get_session": true,
-		"get_trace":          true,
-		"archive_exceptions": false, "unarchive_exceptions": false,
+		"get_trace": true, "list_pages": true, "get_page": true,
+		"list_notification_rules": true, "list_checks": true, "get_check": true,
+		"list_post_mortems": true, "get_post_mortem": true,
 	}
+	assertToolSurface(t, res.Tools, wantReadOnly)
+}
+
+func TestListTools_writeServerAddsMutatingTools(t *testing.T) {
+	cs := connectWrite(t, emptyBackend(), "p-1")
+	res, err := cs.ListTools(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{
+		"list_projects": true, "list_exceptions": true, "get_exception": true,
+		"get_exception_occurrence": true, "query_logs": true, "list_endpoints": true,
+		"get_endpoint_request": true, "endpoints_chart": true, "get_slow_endpoint_config": true,
+		"query_metrics": true, "get_task": true, "get_ai_trace": true, "get_session": true,
+		"get_trace": true, "list_pages": true, "get_page": true,
+		"list_notification_rules": true, "list_checks": true, "get_check": true,
+		"list_post_mortems": true, "get_post_mortem": true,
+		"archive_exceptions": false, "unarchive_exceptions": false,
+		"acknowledge_page": false, "resolve_page": false,
+		"set_notification_rule_enabled": false, "snooze_notification_rule": false,
+		"run_check": false, "create_post_mortem": false, "update_post_mortem": false,
+		"set_slow_endpoint": false,
+	}
+	assertToolSurface(t, res.Tools, want)
+	if init := cs.InitializeResult(); init == nil || !strings.Contains(init.Instructions, "Write access") {
+		t.Errorf("write server instructions should carry the write rules")
+	}
+}
+
+func assertToolSurface(t *testing.T, tools []*mcp.Tool, wantReadOnly map[string]bool) {
+	t.Helper()
 	got := map[string]bool{}
-	for _, tool := range res.Tools {
+	for _, tool := range tools {
 		if tool.OutputSchema == nil {
 			t.Errorf("tool %s has no output schema", tool.Name)
 		}
@@ -319,7 +364,7 @@ func TestArchiveExceptions_hitsArchiveRoute(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"success":true}`))
 	})
-	cs := connect(t, backend, "p-1")
+	cs := connectWrite(t, backend, "p-1")
 	res := callTool(t, cs, "archive_exceptions", map[string]any{"hashes": []string{"abc123def4567890"}})
 	if res.IsError {
 		t.Fatalf("unexpected tool error: %s", resultText(t, res))
@@ -395,6 +440,22 @@ func TestResources_listAndRead(t *testing.T) {
 	}
 	if !strings.Contains(res.Contents[0].Text, "get_exception_occurrence") {
 		t.Error("tool map should mention the MCP tool names")
+	}
+}
+
+func TestResources_everyLearnTopicIsServed(t *testing.T) {
+	topics, err := fs.Glob(knowledge.FS, "learn/*.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	served := map[string]bool{}
+	for _, r := range knowledgeResources {
+		served[r.file] = true
+	}
+	for _, topic := range topics {
+		if !served[topic] {
+			t.Errorf("%s has no traceway://knowledge resource", topic)
+		}
 	}
 }
 

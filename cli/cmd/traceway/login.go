@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/tracewayapp/traceway/cli/internal/appdir"
 	"github.com/tracewayapp/traceway/cli/internal/config"
 	"github.com/tracewayapp/traceway/cli/internal/output"
 	"github.com/tracewayapp/traceway/cli/internal/state"
@@ -61,10 +62,10 @@ func runLogin(cmd *cobra.Command, _ []string) error {
 	passwordMode := loginPassword || loginPasswordFile || loginUsername != ""
 
 	if tokenMode && passwordMode {
-		return renderUsageError(cmd.ErrOrStderr(), mode, "choose one of --token or --password/--username, not both", "traceway login --help")
+		return renderUsageError(cmd.ErrOrStderr(), mode, "choose one of --token or --password/--username, not both", appdir.Binary+" login --help")
 	}
 	if loginToken != "" && loginTokenStdin {
-		return renderUsageError(cmd.ErrOrStderr(), mode, "choose one of --token or --token-stdin, not both", "traceway login --help")
+		return renderUsageError(cmd.ErrOrStderr(), mode, "choose one of --token or --token-stdin, not both", appdir.Binary+" login --help")
 	}
 
 	switch {
@@ -107,7 +108,7 @@ func runLoginPassword(cmd *cobra.Command) error {
 		return err
 	}
 
-	jwt, err := client.New(url).Login(ctx, username, password)
+	jwt, err := client.New(url).LoginScoped(ctx, username, password, loginScope)
 	if err != nil {
 		return renderAPIError(cmd.ErrOrStderr(), mode, err, true)
 	}

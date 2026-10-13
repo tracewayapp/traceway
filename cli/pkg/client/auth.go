@@ -10,6 +10,7 @@ import (
 type loginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
+	Scope    string `json:"scope,omitempty"`
 }
 
 type loginResponse struct {
@@ -20,8 +21,15 @@ type loginResponse struct {
 // stored by the caller and passed to subsequent Client constructions via
 // WithJWT.
 func (c *Client) Login(ctx context.Context, email, password string) (string, error) {
+	return c.LoginScoped(ctx, email, password, "")
+}
+
+// LoginScoped is Login for agent credentials: with a scope the server returns
+// a scoped token held to the agent route allowlist instead of a full
+// dashboard session.
+func (c *Client) LoginScoped(ctx context.Context, email, password, scope string) (string, error) {
 	var resp loginResponse
-	if err := c.do(ctx, http.MethodPost, "/api/login", loginRequest{Email: email, Password: password}, &resp); err != nil {
+	if err := c.do(ctx, http.MethodPost, "/api/login", loginRequest{Email: email, Password: password, Scope: scope}, &resp); err != nil {
 		return "", err
 	}
 	if resp.Token == "" {
@@ -133,3 +141,8 @@ func mapOAuthError(err error) error {
 	}
 	return err
 }
+
+const (
+	ScopeRead  = "traceway:read"
+	ScopeWrite = "traceway:write"
+)

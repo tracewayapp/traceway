@@ -39,7 +39,10 @@ func newUserCode() string {
 	return sb.String()
 }
 
-func NewPATToken() string {
+func NewPATToken(scope string) string {
+	if scope == models.ScopeWrite {
+		return newOpaqueToken("tww_")
+	}
 	return newOpaqueToken("twp_")
 }
 
@@ -47,19 +50,22 @@ func NewSetupToken() string {
 	return newOpaqueToken("tws_")
 }
 
-func IssueTokenSet(tx *sql.Tx, userId int, email, clientId string) (*models.TokenSetResponse, error) {
-	return issueTokenSetWithFamily(tx, userId, email, clientId, uuid.New().String())
+func IssueTokenSet(tx *sql.Tx, userId int, email, clientId, scope string) (*models.TokenSetResponse, error) {
+	return issueTokenSetWithFamily(tx, userId, email, clientId, scope, uuid.New().String())
 }
 
-func issueTokenSetWithFamily(tx *sql.Tx, userId int, email, clientId, familyId string) (*models.TokenSetResponse, error) {
+func issueTokenSetWithFamily(tx *sql.Tx, userId int, email, clientId, scope, familyId string) (*models.TokenSetResponse, error) {
+	if scope != models.ScopeWrite {
+		scope = models.ScopeRead
+	}
 	ttl := accessTokenTTL
-	access, err := services.GenerateAccessToken(userId, email, ttl)
+	access, err := services.GenerateAccessToken(userId, email, scope, clientId, ttl)
 	if err != nil {
 		return nil, err
 	}
 
 	refresh := newOpaqueToken("twr_")
-	if err := transactional.RefreshTokenRepository.Insert(tx, refresh, familyId, userId, clientId, time.Now().Add(refreshTokenTTL)); err != nil {
+	if err := transactional.RefreshTokenRepository.Insert(tx, refresh, familyId, userId, clientId, scope, time.Now().Add(refreshTokenTTL)); err != nil {
 		return nil, err
 	}
 
@@ -69,5 +75,6 @@ func issueTokenSetWithFamily(tx *sql.Tx, userId int, email, clientId, familyId s
 		TokenType:    "Bearer",
 		ExpiresIn:    int(ttl.Seconds()),
 		Email:        email,
+		Scope:        scope,
 	}, nil
 }

@@ -1,0 +1,96 @@
+# Agent Write Access
+
+import { Callout } from "nextra/components";
+
+AI agents can do more than read your telemetry. With write access they can make the routine changes an on-call engineer makes: archive an issue once it is fixed, acknowledge and resolve pages, snooze a noisy alert, run a monitor to confirm a fix, write the post-mortem, and mark an endpoint as expected-slow.
+
+Writes are off by default and opt-in at three levels. All three have to agree before an agent can change anything:
+
+| Level | What it means | Who decides |
+|---|---|---|
+| **Credential** | Only write credentials can write: a `tww_` token, a `traceway-write` login, or the `/mcp/write` server. Everything else is read only. | The person creating the token or logging in |
+| **Organization** | An admin turns on **Settings > Agent Access**. Until then every agent write is refused. | Organization owners and admins |
+| **Role** | The write runs as the person who created the credential. A `readonly` member's write token still cannot write. | Existing roles and per-project overrides |
+
+Every agent write, accepted or refused, is recorded in the organization's agent activity log.
+
+## What agents can change
+
+| Action | `traceway-write` command | MCP tool |
+|---|---|---|
+| Archive or unarchive issues | `exceptions archive <hash>...` / `unarchive` | `archive_exceptions` / `unarchive_exceptions` |
+| Acknowledge a page | `pages ack <id>` | `acknowledge_page` |
+| Resolve a page, optionally archiving its issue | `pages resolve <id> [--archive-issue]` | `resolve_page` |
+| Turn an alert rule on or off | `alerts enable <id>` / `alerts disable <id>` | `set_notification_rule_enabled` |
+| Snooze an alert rule | `alerts snooze <id> --minutes N` | `snooze_notification_rule` |
+| Run a monitor now | `monitors run <id>` | `run_check` |
+| Create or edit a post-mortem | `post-mortems create` / `update <id>` | `create_post_mortem` / `update_post_mortem` |
+| Mark an endpoint as expected-slow | `endpoints mark-slow <endpoint> --offset-ms N` | `set_slow_endpoint` |
+
+Everything else stays in the dashboard. Agent credentials are refused outright on every other route, including creating rules and channels, editing schedules and escalation policies, status pages and public incident updates, members and invitations, tokens, project settings, and every delete. A new dashboard route is never reachable by an agent until it is added to the agent allowlist on purpose.
+
+## Turning it on
+
+An organization owner or admin opens **Settings**, finds the **Agent Access** card, and switches on **Allow agent writes**. The same card lists every agent write: when, who, which credential, which project, the action and the result. Turn the switch off at any time and agent writes stop immediately. Read access is not affected.
+
+The log keeps 90 days of history.
+
+## Write credentials
+
+### Write tokens
+
+In **Account > Personal Access Tokens**, choose **Access: Read and write** when creating a token. Write tokens start with `tww_` instead of `twp_`, so they stand out in logs and secret scanners. They must expire within 90 days.
+
+Read tokens (`twp_`) are the default. Tokens created before agent write access existed are read only. Create a new write token where an automation needs to write.
+
+### The traceway-write CLI
+
+`traceway-write` is a separate binary with its own login and its own config directory (`$XDG_CONFIG_HOME/traceway-write`, `$XDG_STATE_HOME/traceway-write`), so a read-only `traceway` install can never be upgraded to write in place.
+
+```bash
+curl -fsSL https://cli.tracewayapp.com/install.sh | sh -s -- --write
+traceway-write login --url https://<your-instance>
+traceway-write projects use <project-id>
+```
+
+Its browser login asks for read and write access, and the approval page says so. `traceway-write` has every read command of `traceway`, plus the write commands in the table above. Each write prints what it is about to change and needs `--yes` (or `TRACEWAY_ASSUME_YES=1`) outside an interactive terminal.
+
+The read-only `traceway` CLI answers the write commands with a `write_required` error pointing here.
+
+### The write MCP server
+
+Every backend serves two MCP endpoints:
+
+- `/mcp` is read only. It never lists a write tool, even for a write token.
+- `/mcp/write` adds the write tools and only accepts write credentials. A read token gets `403` with a `scope="traceway:write"` challenge, which OAuth clients use to ask for the right scope.
+
+```bash
+# Claude Code, remote
+claude mcp add --transport http traceway-write https://<your-instance>/mcp/write
+
+# Claude Code, local (uses the traceway-write login)
+claude mcp add traceway-write -- traceway-write mcp
+```
+
+The OAuth consent page shows a **Read and write access** warning when a client asks for the write scope.
+
+### The traceway-write skill
+
+The `traceway-write` skill teaches an agent the rules for writes (only on request, say the change first, prefer the reversible option) and playbooks for pages, flapping alerts, confirming fixes and writing post-mortems. It ships as its own Claude Code plugin, `tw-write`, so installing the read skills never installs it. For how each part of Traceway works, it relies on the read-only `traceway-learn` skill (see [MCP Server](/learn/mcp#the-product-guide)).
+
+```
+/plugin marketplace add tracewayapp/traceway
+/plugin install tw-write@traceway
+```
+
+Other agents can copy the skill folder from [`plugins/tw-write/skills/traceway-write`](https://github.com/tracewayapp/traceway/tree/main/plugins/tw-write/skills/traceway-write).
+
+<Callout type="info">
+  The binary, the MCP endpoint and the skill make write access an explicit, separate choice. The server is what enforces it: scopes on the credential, the agent route allowlist and the organization switch are all checked on every request, whatever client sent it.
+</Callout>
+
+## Upgrading
+
+Existing personal access tokens become read only, and existing CLI and MCP logins keep working as read only. Dashboard sessions are unaffected. To give an automation write access, create a write token or log in with `traceway-write`, and have an admin turn on Agent Access.
+
+Password logins from the CLI now receive a token scoped like the CLI that asked for it, not a full dashboard session.

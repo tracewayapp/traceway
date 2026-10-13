@@ -10,6 +10,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	traceway "go.tracewayapp.com"
@@ -62,7 +63,16 @@ func (a authController) Login(c *gin.Context) {
 		return
 	}
 
-	token, err := services.GenerateToken(user.Id, user.Email)
+	var token string
+	switch request.Scope {
+	case "":
+		token, err = services.GenerateToken(user.Id, user.Email)
+	case models.ScopeRead, models.ScopeWrite:
+		token, err = services.GenerateAccessToken(user.Id, user.Email, request.Scope, passwordLoginClientID(request.Scope), passwordAgentTokenTTL)
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Unknown scope"})
+		return
+	}
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, err)
 		return
@@ -86,6 +96,15 @@ func (a authController) Login(c *gin.Context) {
 		Projects:      projects,
 		Organizations: organizations,
 	})
+}
+
+const passwordAgentTokenTTL = 7 * 24 * time.Hour
+
+func passwordLoginClientID(scope string) string {
+	if scope == models.ScopeWrite {
+		return "traceway-cli-write"
+	}
+	return "traceway-cli"
 }
 
 func (a authController) Register(c *gin.Context) {

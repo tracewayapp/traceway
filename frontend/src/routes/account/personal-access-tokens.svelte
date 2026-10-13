@@ -58,7 +58,8 @@
 </script>
 
 <InfoCallout>
-	Authenticate the Traceway CLI or scripts without a browser. Treat tokens like passwords.
+	Authenticate the Traceway CLI, MCP clients or scripts without a browser. Tokens are read only
+	unless you create them with write access. Treat tokens like passwords.
 </InfoCallout>
 
 {#if personalAccessTokensState.loading}
@@ -81,6 +82,7 @@
 				<Table.Row class="hover:bg-transparent">
 					<Table.Head>Name</Table.Head>
 					<Table.Head>Prefix</Table.Head>
+					<Table.Head>Access</Table.Head>
 					<Table.Head>Created</Table.Head>
 					<Table.Head>Last used</Table.Head>
 					<Table.Head>Expires</Table.Head>
@@ -93,6 +95,13 @@
 						<Table.Cell class="font-medium">{token.name}</Table.Cell>
 						<Table.Cell>
 							<code class="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{token.prefix}…</code>
+						</Table.Cell>
+						<Table.Cell>
+							{#if token.scope === 'traceway:write'}
+								<StatusPill tone="warning" label="Read and write" />
+							{:else}
+								<Badge variant="outline">Read only</Badge>
+							{/if}
 						</Table.Cell>
 						<Table.Cell>{formatDate(token.createdAt)}</Table.Cell>
 						<Table.Cell>

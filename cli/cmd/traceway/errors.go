@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 
+	"github.com/tracewayapp/traceway/cli/internal/appdir"
 	"github.com/tracewayapp/traceway/cli/internal/errclass"
 	"github.com/tracewayapp/traceway/cli/internal/exitcode"
 	"github.com/tracewayapp/traceway/cli/internal/output"
@@ -50,7 +51,7 @@ func classifyError(err error, loginContext bool) output.ErrorEnvelope {
 	}
 	c := errclass.Classify(err)
 	if c.Code == "token_expired" && flagProfile != "" {
-		c.Hint = "traceway login --profile " + flagProfile
+		c.Hint = appdir.Binary + " login --profile " + flagProfile
 	}
 	return output.ErrorEnvelope{
 		Code:     c.Code,

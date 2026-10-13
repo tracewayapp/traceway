@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/tracewayapp/traceway/cli/internal/appdir"
 	"github.com/tracewayapp/traceway/cli/internal/config"
 	"github.com/tracewayapp/traceway/cli/internal/exitcode"
 	"github.com/tracewayapp/traceway/cli/internal/output"
@@ -123,7 +124,7 @@ func runProfilesUse(cmd *cobra.Command, args []string) error {
 		_ = output.RenderError(cmd.ErrOrStderr(), mode, output.ErrorEnvelope{
 			Code:     "no_profile",
 			Message:  fmt.Sprintf("profile %q does not exist", name),
-			Hint:     "traceway profiles list",
+			Hint:     appdir.Binary + " profiles list",
 			ExitCode: exitcode.Auth,
 		})
 		return newCLIError(exitcode.Auth, "no_profile")

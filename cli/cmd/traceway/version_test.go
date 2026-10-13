@@ -3,6 +3,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/tracewayapp/traceway/cli/internal/appdir"
 )
 
 func TestVersion_table(t *testing.T) {
@@ -10,7 +12,7 @@ func TestVersion_table(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stdout.String(), "traceway version "+version) {
+	if !strings.Contains(stdout.String(), appdir.Binary+" version "+version) {
 		t.Errorf("expected version line, got: %s", stdout.String())
 	}
 }

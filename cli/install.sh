@@ -2,6 +2,10 @@
 # Traceway CLI installer (Linux / macOS).
 #
 #   curl -fsSL https://cli.tracewayapp.com/install.sh | sh
+#   curl -fsSL https://cli.tracewayapp.com/install.sh | sh -s -- --write
+#
+# --write installs traceway-write, the separate build that can change data.
+# It keeps its own login, so the read-only traceway is never upgraded in place.
 #
 # Served from cli.tracewayapp.com (Cloudflare, uploaded manually); this file
 # is the source of truth — re-upload it after changing it. New CLI releases
@@ -14,6 +18,14 @@
 #                          else ~/.local/bin)
 
 set -eu
+
+NAME="traceway"
+for arg in "$@"; do
+  case "$arg" in
+    --write) NAME="traceway-write" ;;
+    *) printf 'traceway-cli-install: error: unknown option %s\n' "$arg" >&2; exit 1 ;;
+  esac
+done
 
 REPO="tracewayapp/traceway"
 API="https://api.github.com/repos/${REPO}/releases"
@@ -48,12 +60,12 @@ if [ -z "$VERSION" ]; then
     | head -1 | sed 's|.*cli/v||; s|"$||')"
   [ -n "$VERSION" ] || err "could not determine the latest CLI release from ${API}"
 fi
-log "installing traceway CLI v${VERSION}"
+log "installing ${NAME} CLI v${VERSION}"
 
 RELEASE_JSON="$(curl -fsSL "${API}/tags/cli%2Fv${VERSION}")" \
   || err "no CLI release found for v${VERSION} (see https://github.com/${REPO}/releases)"
 
-TARBALL="traceway_${VERSION}_${OS}_${ARCH}.tar.gz"
+TARBALL="${NAME}_${VERSION}_${OS}_${ARCH}.tar.gz"
 URL="$(printf '%s' "$RELEASE_JSON" \
   | grep -o "\"browser_download_url\":[[:space:]]*\"[^\"]*/${TARBALL}\"" \
   | head -1 | sed 's|.*"\(https://[^"]*\)"|\1|')"
@@ -87,7 +99,7 @@ fi
 
 log "unpacking"
 tar -xzf "${TMP}/${TARBALL}" -C "$TMP"
-[ -f "${TMP}/traceway" ] || err "binary not found in $TARBALL (malformed release archive)"
+[ -f "${TMP}/${NAME}" ] || err "binary not found in $TARBALL (malformed release archive)"
 
 if [ -n "${TRACEWAY_INSTALL_DIR:-}" ]; then
   BIN_DIR="$TRACEWAY_INSTALL_DIR"
@@ -99,16 +111,16 @@ else
   mkdir -p "$BIN_DIR"
 fi
 
-log "installing → ${BIN_DIR}/traceway"
-install -m 0755 "${TMP}/traceway" "${BIN_DIR}/traceway"
+log "installing → ${BIN_DIR}/${NAME}"
+install -m 0755 "${TMP}/${NAME}" "${BIN_DIR}/${NAME}"
 
-"${BIN_DIR}/traceway" version >/dev/null 2>&1 \
-  || err "installed binary failed to run (${BIN_DIR}/traceway version)"
+"${BIN_DIR}/${NAME}" version >/dev/null 2>&1 \
+  || err "installed binary failed to run (${BIN_DIR}/${NAME} version)"
 
 case ":${PATH}:" in
   *":${BIN_DIR}:"*) ;;
   *) log "note: ${BIN_DIR} is not on your PATH; add it to your shell profile" ;;
 esac
 
-log "done — installed $("${BIN_DIR}/traceway" version --output table)"
-log "next: traceway login --url https://cloud.tracewayapp.com   (or your own instance)"
+log "done: installed $("${BIN_DIR}/${NAME}" version --output table)"
+log "next: ${NAME} login --url https://cloud.tracewayapp.com   (or your own instance)"

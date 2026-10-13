@@ -3,6 +3,9 @@ package models
 type LoginRequest struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required"`
+	// Scope turns the login into an agent credential (the CLI's password
+	// login) instead of a dashboard session.
+	Scope string `json:"scope"`
 }
 
 type UserOrganizationResponse struct {

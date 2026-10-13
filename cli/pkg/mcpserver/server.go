@@ -38,6 +38,10 @@ type Config struct {
 	// CLI-session advice.
 	AuthHint         string
 	PerRequestBearer bool
+	// AllowWrite registers the mutating tools and the write playbook. The
+	// server still enforces scopes: a read token on a write server is refused
+	// by the API on every mutating call.
+	AllowWrite bool
 }
 
 // sharedSchemaCache warms an mcp.SchemaCache once, by registering the full
@@ -49,7 +53,7 @@ var sharedSchemaCache = sync.OnceValue(func() *mcp.SchemaCache {
 		&mcp.Implementation{Name: "traceway", Title: "Traceway", Version: "warmup"},
 		&mcp.ServerOptions{SchemaCache: cache},
 	)
-	(&server{}).addTools(warm)
+	(&server{cfg: Config{AllowWrite: true}}).addTools(warm)
 	return cache
 })
 
@@ -61,6 +65,9 @@ func New(cfg Config) *mcp.Server {
 		version = "dev"
 	}
 	instructions := knowledge.MustRead("instructions.md")
+	if cfg.AllowWrite {
+		instructions += "\n\n" + knowledge.MustRead("write-instructions.md")
+	}
 	if cfg.InstanceURL != "" {
 		instructions += "\n\nThe connected Traceway instance is " + cfg.InstanceURL + ". Dashboard URLs the user pastes should match this origin, and when citing a record for the user, link it there (e.g. " + cfg.InstanceURL + "/issues/<hash>)."
 	}
@@ -71,7 +78,7 @@ func New(cfg Config) *mcp.Server {
 	s := &server{cfg: cfg}
 	s.addTools(srv)
 	addPrompts(srv)
-	addResources(srv)
+	addResources(srv, cfg.AllowWrite)
 	return srv
 }
 

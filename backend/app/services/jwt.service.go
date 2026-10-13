@@ -20,9 +20,13 @@ var retiredJWTSecretDigests = map[string]bool{
 	"e7e45a50bcc0f78bf9cf470d4600937c1eeb0bda41d7eba67e3951a536f39221": true,
 }
 
+// Scope is empty on dashboard sessions; agent access tokens carry
+// models.ScopeRead or models.ScopeWrite plus the OAuth client that minted them.
 type JWTClaims struct {
-	UserId int    `json:"userId"`
-	Email  string `json:"email"`
+	UserId   int    `json:"userId"`
+	Email    string `json:"email"`
+	Scope    string `json:"scope,omitempty"`
+	ClientId string `json:"cid,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -43,17 +47,19 @@ func InitJWT() error {
 }
 
 func GenerateToken(userId int, email string) (string, error) {
-	return generateToken(userId, email, 7*24*time.Hour)
+	return generateToken(userId, email, "", "", 7*24*time.Hour)
 }
 
-func GenerateAccessToken(userId int, email string, ttl time.Duration) (string, error) {
-	return generateToken(userId, email, ttl)
+func GenerateAccessToken(userId int, email, scope, clientId string, ttl time.Duration) (string, error) {
+	return generateToken(userId, email, scope, clientId, ttl)
 }
 
-func generateToken(userId int, email string, ttl time.Duration) (string, error) {
+func generateToken(userId int, email, scope, clientId string, ttl time.Duration) (string, error) {
 	claims := JWTClaims{
-		UserId: userId,
-		Email:  email,
+		UserId:   userId,
+		Email:    email,
+		Scope:    scope,
+		ClientId: clientId,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(ttl)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

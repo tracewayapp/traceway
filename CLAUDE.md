@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Traceway is an error tracking and monitoring platform consisting of:
 - **Frontend**: SvelteKit 2 dashboard application with Svelte 5
 - **Backend**: Go/Gin API server with ClickHouse database
-- **CLI**: Go/Cobra command-line client for the backend HTTP API (`/cli`)
+- **CLI**: Go/Cobra command-line client for the backend HTTP API (`/cli`), built twice from one source: read-only `traceway`, and `traceway-write` (`-tags write`, own config dir and OAuth client, write commands in `cmd/traceway/edition_write.go`). Skills: `skills/traceway` (read), `skills/traceway-learn` (the product guide, one file per area from `knowledge/learn/`, also served as `traceway://knowledge/learn/*`) and `plugins/tw-write/skills/traceway-write` (write, separate plugin), all generated from `cli/pkg/mcpserver/knowledge` by `just gen-skills`
 
 ---
 
@@ -350,6 +350,8 @@ Two-tier system:
 - **Personal access token (PAT)** — opaque `twp_`-prefixed token; looked up by SHA-256 hash in `personal_access_tokens`, resolves to its user. Created/listed/revoked from the account page (`/api/personal-access-tokens*`). Non-expiring or with an optional TTL; `last_used_at` is touched (throttled to 1/min, off the request path).
 - **Device-flow access token** — a short-lived (15-min) JWT minted by the CLI's OAuth device flow.
 
+**Agent scopes and the agent gate.** Every credential except a dashboard session is an *agent* credential with a scope, `traceway:read` or `traceway:write` (`models.ScopeRead/ScopeWrite`). PATs store it (`personal_access_tokens.scope`; read tokens are `twp_`, write tokens `tww_` and must expire within 90 days), refresh tokens and authorization codes store it, and access JWTs carry it as the `scope` claim (plus `cid`, the OAuth client). Device logins take their scope from the client id (`knownDeviceClients`: `traceway-cli` and `traceway-mcp` read, `traceway-cli-write` write); the authorization-code grant takes it from the request's `scope` param (`models.ParseRequestedScope`, default read); a refresh keeps the family's scope; `POST /api/login` with a `scope` field returns a 7-day scoped JWT instead of a session (the CLI's password login always sends one). An unscoped JWT that lives one hour or less predates scopes and is held to read. `UseAppAuth` sends agent credentials through `authorizeAgentRequest` (`middleware/agent_gate.go`): the route must be in the allowlist `agentRoutes` (`middleware/agent_routes.go`, keyed `METHOD /api/path` by `c.FullPath()`, default deny, so new dashboard routes are never agent-reachable by accident; `TestAgentRoutesAreRegistered` keeps entries pointing at real routes); a write route needs the write scope (else 403 with a `scope="traceway:write"` challenge) and the owning organization's opt-in `organizations.agent_write_enabled` (Settings > Agent Access, `PUT /api/organizations/:organizationId/agent-access`, else 403), resolved from `?projectId=` together with membership, which is why every allowlisted write is project-scoped. Accepted and opt-in-refused agent writes are recorded in `agent_write_events` (main DB, pruned after 90 days by the auth-tokens worker, listed at `GET /api/organizations/:organizationId/agent-activity`). The role checks (`RequireWriteAccess` etc.) still apply after the gate. Dashboard sessions skip the gate entirely. Docs: `docs/pages/learn/agent-write-access.mdx`.
+
 **CLI / OAuth device flow** (`backend/app/services/authserver/`, controllers `device_auth.controller.go` / `wellknown.controller.go` / `pat.controller.go`): RFC 8628 device authorization grant plus rotating refresh tokens. `traceway login` (default) → `POST /api/auth/device/authorize` (client_id allowlisted, per-IP rate-limited, opportunistically prunes expired rows) → user approves at `/device` → the CLI polls `POST /api/auth/device/token` (grant `device_code`; `/api/auth/token` is an equivalent alias) which issues a 15-min access token + 90-day rotating refresh token (family-tracked in `refresh_tokens`). Refresh (`grant_type=refresh_token`) rotates the token atomically and revokes the whole family on genuine reuse; within a 30s grace window a benign concurrent retry is answered with the same rotated token set (from an in-memory rotation cache) instead of `invalid_grant`. `POST /api/auth/logout` revokes a family server-side. Tokens are stored SHA-256-hashed. The grant endpoints **self-manage their transactions** via `db.ExecuteTransaction` (not `middleware.Transactional`) because OAuth returns 400 for normal flow control (`authorization_pending`, reuse-revoke) and those side effects must still commit. `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource` are served at the **origin root** (registered in `cmd/run.go`, not the `/api` group) per RFC 8414 / 9728. Beyond the device grant, the server implements the **authorization-code + PKCE grant** (S256 only) with **RFC 7591 dynamic client registration** for MCP clients: `POST /api/oauth/register` (rate-limited, open registration of public clients; https/custom-scheme redirect URIs anywhere, plain http only on loopback with port-flexible matching per RFC 8252) -> the client sends the user to `/oauth/authorize` (an SPA consent page like `/device`) -> the page calls `GET /api/oauth/client` + `POST /api/oauth/approve|deny` (approve mints a single-use 5-min `twa_` code bound to user/client/redirect/challenge; the redirect target is validated server-side) -> the client exchanges it at `POST /api/auth/token` (grant `authorization_code`; the code is consumed even on a failed exchange, wrong verifier/client/redirect are all `invalid_grant`). RFC 8707 `resource` params are validated against the issuer origin (`invalid_target`). Expired codes are pruned by the auth-tokens retention worker and opportunistically at approve time.
 
 ---
@@ -649,12 +651,13 @@ backend/
 | POST | `/api/oauth/deny` | App | Deny an authorization request; returns the error redirect |
 | GET | `/.well-known/oauth-authorization-server` | None | RFC 8414 metadata (served at origin root, not `/api`) |
 | GET | `/.well-known/oauth-protected-resource` | None | RFC 9728 metadata (served at origin root, not `/api`) |
-| GET/POST/DELETE | `/mcp` | Bearer | Streamable HTTP MCP server (origin root); 401s carry a `WWW-Authenticate` resource-metadata challenge |
+| GET/POST/DELETE | `/mcp` | Bearer | Streamable HTTP MCP server (origin root), read tools only for every credential; 401s carry a `WWW-Authenticate` resource-metadata challenge |
+| GET/POST/DELETE | `/mcp/write` | Bearer (write scope) | Same server with `mcpserver.Config.AllowWrite`: adds the mutating tools and the operations playbook. Tokens without `traceway:write` get 403 with a scope challenge; resource metadata at `/.well-known/oauth-protected-resource/mcp/write` |
 
 **Personal Access Tokens**
 | Method | Endpoint | Auth | Purpose |
 |--------|----------|------|---------|
-| POST | `/api/personal-access-tokens` | App | Create a PAT (returns the `twp_` token once) |
+| POST | `/api/personal-access-tokens` | App | Create a PAT (returns the token once). `scope` is `read` (default, `twp_`) or `write` (`tww_`, `expiresInDays` 1-90 required) |
 | GET | `/api/personal-access-tokens` | App | List the current user's active PATs |
 | DELETE | `/api/personal-access-tokens/:id` | App | Revoke a PAT |
 
@@ -768,6 +771,8 @@ Frontend routes: `/ai-traces` (tabs: Traces, Conversations, Users), `/ai-traces/
 | POST | `/api/organizations` | App | Create an organization owned by the caller; the recovery path for a user removed from their last organization (self-hosted: 422 once one exists; cloud: `OrganizationLimitHook`). Runs `PostRegistrationHooks` like register and SSO finish-setup |
 | GET | `/api/organizations/:orgId/settings` | Admin | Get org settings |
 | PUT | `/api/organizations/:orgId/settings` | Admin | Update org settings |
+| PUT | `/api/organizations/:orgId/agent-access` | Admin | `{agentWriteEnabled}`: allow agent write credentials to write in this org (settings GET returns the flag) |
+| GET | `/api/organizations/:orgId/agent-activity` | Admin | Paginated agent write log (who, credential, project, route, status) |
 | GET | `/api/organizations/:orgId/members` | Admin | List members |
 | PUT | `/api/organizations/:orgId/members/:userId` | Admin | Update member role |
 | DELETE | `/api/organizations/:orgId/members/:userId` | Admin | Remove member |

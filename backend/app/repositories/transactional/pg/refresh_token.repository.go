@@ -15,16 +15,17 @@ import (
 
 type refreshTokenRepository struct{}
 
-func (r *refreshTokenRepository) Insert(ex lit.Executor, token, familyId string, userId int, clientId string, expiresAt time.Time) error {
+func (r *refreshTokenRepository) Insert(ex lit.Executor, token, familyId string, userId int, clientId, scope string, expiresAt time.Time) error {
 	query, args, err := lit.ParseNamedQuery(
 		db.Driver,
-		`INSERT INTO refresh_tokens (token_hash, family_id, user_id, client_id, revoked, used, expires_at, created_at)
-			VALUES (:hash, :family, :user_id, :client_id, :revoked, :used, :expires_at, :created_at)`,
+		`INSERT INTO refresh_tokens (token_hash, family_id, user_id, client_id, scope, revoked, used, expires_at, created_at)
+			VALUES (:hash, :family, :user_id, :client_id, :scope, :revoked, :used, :expires_at, :created_at)`,
 		lit.P{
 			"hash":       shared.HashAuthToken(token),
 			"family":     familyId,
 			"user_id":    userId,
 			"client_id":  clientId,
+			"scope":      scope,
 			"revoked":    false,
 			"used":       false,
 			"expires_at": shared.FormatAuthTime(expiresAt),
@@ -41,7 +42,7 @@ func (r *refreshTokenRepository) Insert(ex lit.Executor, token, familyId string,
 func (r *refreshTokenRepository) FindByToken(ex lit.Executor, token string) (*models.RefreshToken, error) {
 	query, args, err := lit.ParseNamedQuery(
 		db.Driver,
-		"SELECT token_hash, family_id, user_id, client_id, revoked, used, used_at, expires_at, created_at FROM refresh_tokens WHERE token_hash = :hash",
+		"SELECT token_hash, family_id, user_id, client_id, scope, revoked, used, used_at, expires_at, created_at FROM refresh_tokens WHERE token_hash = :hash",
 		lit.P{"hash": shared.HashAuthToken(token)},
 	)
 	if err != nil {
@@ -54,7 +55,7 @@ func (r *refreshTokenRepository) FindByToken(ex lit.Executor, token string) (*mo
 		expiresAt string
 		createdAt string
 	)
-	err = ex.QueryRow(query, args...).Scan(&t.TokenHash, &t.FamilyId, &t.UserId, &t.ClientId, &t.Revoked, &t.Used, &usedAt, &expiresAt, &createdAt)
+	err = ex.QueryRow(query, args...).Scan(&t.TokenHash, &t.FamilyId, &t.UserId, &t.ClientId, &t.Scope, &t.Revoked, &t.Used, &usedAt, &expiresAt, &createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

@@ -7,6 +7,8 @@ on:
       - "cli/**"
       - "backend/**"
       - "skills/traceway/**"
+      - "skills/traceway-learn/**"
+      - "plugins/tw-write/**"
       - ".github/workflows/cli.yml"
   pull_request:
     types: [labeled]
@@ -14,6 +16,8 @@ on:
       - "cli/**"
       - "backend/**"
       - "skills/traceway/**"
+      - "skills/traceway-learn/**"
+      - "plugins/tw-write/**"
       - ".github/workflows/cli.yml"
   workflow_dispatch:
 
@@ -38,12 +42,17 @@ jobs:
           cache-dependency-path: cli/go.sum
 
       - name: Build
-        run: go build ./...
+        run: |
+          go build ./...
+          go build -tags write ./...
 
       - name: Test
-        run: go test ./...
+        run: |
+          go test ./...
+          go test -tags write ./cmd/... ./pkg/mcpserver/...
 
       - name: Skill drift check
         run: |
           go run ./tools/skillgen
-          git diff --exit-code ../skills/traceway
+          git diff --exit-code ../skills/traceway ../skills/traceway-learn ../plugins/tw-write
+          test -z "$(git status --porcelain ../skills/traceway-learn ../plugins/tw-write)"

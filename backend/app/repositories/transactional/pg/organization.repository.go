@@ -4,7 +4,10 @@ package pg
 
 import (
 	"database/sql"
+	"errors"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
@@ -207,3 +210,50 @@ func (r *organizationRepository) UpdateTimezone(tx *sql.Tx, organizationId int, 
 }
 
 var OrganizationRepository = organizationRepository{}
+
+func (r *organizationRepository) GetAgentWriteEnabled(ex lit.Executor, organizationId int) (bool, error) {
+	q, a, err := lit.ParseNamedQuery(db.Driver, "SELECT agent_write_enabled FROM organizations WHERE id = :id", lit.P{"id": organizationId})
+	if err != nil {
+		return false, err
+	}
+	var enabled bool
+	err = ex.QueryRow(q, a...).Scan(&enabled)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return enabled, err
+}
+
+func (r *organizationRepository) SetAgentWriteEnabled(tx *sql.Tx, organizationId int, enabled bool) error {
+	q, a, err := lit.ParseNamedQuery(db.Driver, "UPDATE organizations SET agent_write_enabled = :enabled WHERE id = :id", lit.P{"enabled": enabled, "id": organizationId})
+	if err != nil {
+		return err
+	}
+	return lit.UpdateNative(tx, q, a...)
+}
+
+// AgentWritePolicyForProject returns the organization owning the project and
+// whether that organization lets agent credentials write. found is false when
+// the project does not exist or the user is not a member of its organization.
+func (r *organizationRepository) AgentWritePolicyForProject(ex lit.Executor, projectId uuid.UUID, userId int) (organizationId int, enabled bool, found bool, err error) {
+	q, a, err := lit.ParseNamedQuery(
+		db.Driver,
+		`SELECT o.id, o.agent_write_enabled
+		FROM projects p
+		JOIN organizations o ON o.id = p.organization_id
+		JOIN organization_users ou ON ou.organization_id = o.id AND ou.user_id = :user_id
+		WHERE p.id = :project_id`,
+		lit.P{"project_id": projectId, "user_id": userId},
+	)
+	if err != nil {
+		return 0, false, false, err
+	}
+	err = ex.QueryRow(q, a...).Scan(&organizationId, &enabled)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, false, nil
+	}
+	if err != nil {
+		return 0, false, false, err
+	}
+	return organizationId, enabled, true, nil
+}

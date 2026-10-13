@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -78,6 +79,11 @@ func registerOAuthClient(t *testing.T, redirectURI string) string {
 
 func approveAndGetCode(t *testing.T, clientID, redirectURI, challenge, state string) string {
 	t.Helper()
+	return approveScopedCode(t, clientID, redirectURI, challenge, state, "")
+}
+
+func approveScopedCode(t *testing.T, clientID, redirectURI, challenge, state, scope string) string {
+	t.Helper()
 	status, _, body := doJSON(t, http.MethodPost, "/api/oauth/approve", jwtToken, map[string]any{
 		"client_id":             clientID,
 		"redirect_uri":          redirectURI,
@@ -85,6 +91,7 @@ func approveAndGetCode(t *testing.T, clientID, redirectURI, challenge, state str
 		"code_challenge":        challenge,
 		"code_challenge_method": "S256",
 		"resource":              baseURL + "/mcp",
+		"scope":                 scope,
 	})
 	if status != http.StatusOK {
 		t.Fatalf("approve: status %d body %v", status, body)
@@ -119,10 +126,15 @@ func exchangeCode(t *testing.T, clientID, redirectURI, code, verifier string) (i
 
 func oauthAccessToken(t *testing.T) string {
 	t.Helper()
+	return oauthScopedAccessToken(t, "")
+}
+
+func oauthScopedAccessToken(t *testing.T, scope string) string {
+	t.Helper()
 	redirectURI := "http://127.0.0.1:47831/callback"
 	clientID := registerOAuthClient(t, redirectURI)
 	verifier, challenge := pkcePair(t)
-	code := approveAndGetCode(t, clientID, redirectURI, challenge, "mcp-state")
+	code := approveScopedCode(t, clientID, redirectURI, challenge, "mcp-state", scope)
 	status, body := exchangeCode(t, clientID, redirectURI, code, verifier)
 	if status != http.StatusOK {
 		t.Fatalf("exchange: status %d body %v", status, body)
@@ -382,8 +394,13 @@ func TestContract_mcpOverStreamableHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools.Tools) != 16 {
-		t.Errorf("got %d tools, want 16", len(tools.Tools))
+	if len(tools.Tools) != 21 {
+		t.Errorf("got %d tools, want 21", len(tools.Tools))
+	}
+	for _, tool := range tools.Tools {
+		if !tool.Annotations.ReadOnlyHint {
+			t.Errorf("/mcp must only expose read tools, found %s", tool.Name)
+		}
 	}
 	for _, tool := range tools.Tools {
 		if tool.OutputSchema == nil {
@@ -435,5 +452,142 @@ func TestContract_mcpOverStreamableHTTP(t *testing.T) {
 	projects := call("list_projects", nil)
 	if projects.IsError || !strings.Contains(text(projects), projectID) {
 		t.Errorf("list_projects over the mount failed: %s", text(projects))
+	}
+}
+
+func connectRemote(t *testing.T, path, token string) (*mcp.ClientSession, error) {
+	t.Helper()
+	transport := &mcp.StreamableClientTransport{
+		Endpoint:   baseURL + path,
+		HTTPClient: &http.Client{Transport: bearerTransport{token}, Timeout: 60 * time.Second},
+	}
+	return mcp.NewClient(&mcp.Implementation{Name: "contract-remote", Version: "0"}, nil).Connect(t.Context(), transport, nil)
+}
+
+func organizationOfProject(t *testing.T) int {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, baseURL+"/api/projects", nil)
+	req.Header.Set("Authorization", "Bearer "+jwtToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var projects []struct {
+		Id             string `json:"id"`
+		OrganizationId int    `json:"organizationId"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&projects); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range projects {
+		if p.Id == projectID {
+			return p.OrganizationId
+		}
+	}
+	t.Fatalf("seeded project %s not in /api/projects", projectID)
+	return 0
+}
+
+func setAgentWrites(t *testing.T, enabled bool) {
+	t.Helper()
+	path := "/api/organizations/" + strconv.Itoa(organizationOfProject(t)) + "/agent-access"
+	if status, _, body := doJSON(t, http.MethodPut, path, jwtToken, map[string]any{"agentWriteEnabled": enabled}); status != http.StatusOK {
+		t.Fatalf("set agent writes: %d %v", status, body)
+	}
+}
+
+// TestContract_mcpWriteMount walks the three opt-in levels over the real
+// /mcp/write mount: a read token is refused at the door, a write token is
+// refused by the organization until an admin opts in, and then it writes.
+func TestContract_mcpWriteMount(t *testing.T) {
+	status, _, prm := doJSON(t, http.MethodGet, "/.well-known/oauth-protected-resource/mcp/write", "", nil)
+	if status != http.StatusOK || prm["resource"] != baseURL+"/mcp/write" {
+		t.Fatalf("write resource metadata: %d %v", status, prm)
+	}
+	if scopes, _ := prm["scopes_supported"].([]any); !slices.Contains(scopes, any("traceway:write")) {
+		t.Errorf("write resource must advertise traceway:write, got %v", prm["scopes_supported"])
+	}
+
+	readToken := oauthAccessToken(t)
+	req, _ := http.NewRequest(http.MethodPost, baseURL+"/mcp/write", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`))
+	req.Header.Set("Authorization", "Bearer "+readToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden || !strings.Contains(resp.Header.Get("WWW-Authenticate"), `scope="traceway:write"`) {
+		t.Fatalf("read token on /mcp/write = %d %q, want 403 with a traceway:write scope challenge", resp.StatusCode, resp.Header.Get("WWW-Authenticate"))
+	}
+
+	writeToken := oauthScopedAccessToken(t, "traceway:write")
+	cs, err := connectRemote(t, "/mcp/write", writeToken)
+	if err != nil {
+		t.Fatalf("connect /mcp/write: %v", err)
+	}
+	defer func() { _ = cs.Close() }()
+	tools, err := cs.ListTools(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tools.Tools) != 31 {
+		t.Errorf("/mcp/write tools = %d, want 31", len(tools.Tools))
+	}
+
+	archive := func() (*mcp.CallToolResult, string) {
+		res, err := cs.CallTool(t.Context(), &mcp.CallToolParams{Name: "archive_exceptions", Arguments: map[string]any{"project_id": projectID, "hashes": []string{seedHash}}})
+		if err != nil {
+			t.Fatalf("archive: %v", err)
+		}
+		var sb strings.Builder
+		for _, c := range res.Content {
+			if tc, ok := c.(*mcp.TextContent); ok {
+				sb.WriteString(tc.Text)
+			}
+		}
+		return res, sb.String()
+	}
+
+	setAgentWrites(t, false)
+	if res, text := archive(); !res.IsError || !strings.Contains(text, "turned off") {
+		t.Fatalf("write before opt-in should be refused by the organization, got %v %s", res.IsError, text)
+	}
+
+	setAgentWrites(t, true)
+	t.Cleanup(func() { setAgentWrites(t, false) })
+	if res, text := archive(); res.IsError {
+		t.Fatalf("write after opt-in: %s", text)
+	}
+	unarchive, err := cs.CallTool(t.Context(), &mcp.CallToolParams{Name: "unarchive_exceptions", Arguments: map[string]any{"project_id": projectID, "hashes": []string{seedHash}}})
+	if err != nil || unarchive.IsError {
+		t.Fatalf("unarchive after opt-in: %v", err)
+	}
+
+	readSession, err := connectRemote(t, "/mcp", writeToken)
+	if err != nil {
+		t.Fatalf("connect /mcp with a write token: %v", err)
+	}
+	defer func() { _ = readSession.Close() }()
+	readTools, err := readSession.ListTools(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range readTools.Tools {
+		if tool.Name == "archive_exceptions" {
+			t.Error("/mcp must not expose write tools even to a write token")
+		}
+	}
+
+	path := "/api/organizations/" + strconv.Itoa(organizationOfProject(t)) + "/agent-activity"
+	status, _, activity := doJSON(t, http.MethodGet, path, jwtToken, nil)
+	if status != http.StatusOK {
+		t.Fatalf("agent activity: %d %v", status, activity)
+	}
+	pagination, _ := activity["pagination"].(map[string]any)
+	if total, _ := pagination["total"].(float64); total < 3 {
+		t.Errorf("agent activity should hold the refused and the two accepted writes, total = %v", pagination["total"])
 	}
 }

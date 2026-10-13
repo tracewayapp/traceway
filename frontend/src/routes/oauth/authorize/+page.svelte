@@ -12,6 +12,7 @@
 	} from '$lib/components/ui/card';
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
+	import { WarningCallout } from '$lib/components/ui/warning-callout';
 	import { CircleAlert, ShieldCheck } from '@lucide/svelte';
 	import { authState } from '$lib/state/auth.svelte';
 	import { themeState } from '$lib/state/theme.svelte';
@@ -36,8 +37,11 @@
 		state: page.url.searchParams.get('state') ?? '',
 		codeChallenge: page.url.searchParams.get('code_challenge'),
 		codeChallengeMethod: page.url.searchParams.get('code_challenge_method'),
-		resource: page.url.searchParams.get('resource') ?? ''
+		resource: page.url.searchParams.get('resource') ?? '',
+		scope: page.url.searchParams.get('scope') ?? ''
 	});
+
+	const wantsWrite = $derived(params.scope.split(/\s+/).includes('traceway:write'));
 
 	const redirectHost = $derived.by(() => {
 		try {
@@ -96,7 +100,8 @@
 						state: params.state,
 						code_challenge: params.codeChallenge,
 						code_challenge_method: params.codeChallengeMethod,
-						resource: params.resource
+						resource: params.resource,
+						scope: params.scope
 					}
 				: { client_id: params.clientId, redirect_uri: params.redirectUri, state: params.state };
 			const res = await fetch(`/api/oauth/${approve ? 'approve' : 'deny'}`, {
@@ -177,10 +182,19 @@
 					<p class="text-center text-muted-foreground">
 						<strong>{clientName}</strong> is requesting access to your Traceway account.
 					</p>
+					{#if wantsWrite}
+						<WarningCallout title="Read and write access">
+							It will be able to read your projects' telemetry and also archive issues, acknowledge
+							and resolve pages, snooze alerts and edit post-mortems as you, in organizations where
+							an admin turned on agent writes.
+						</WarningCallout>
+					{/if}
 					<p class="text-center text-sm text-muted-foreground">
-						It will be able to read your projects' telemetry and act with your permissions. The
-						application identified itself with this name; only approve if you just started
-						connecting it, and it will send you back to <strong>{redirectHost}</strong>.
+						{wantsWrite
+							? 'Every change it makes is recorded in the organization activity log.'
+							: "It will be able to read your projects' telemetry but not change anything."} The application
+						identified itself with this name; only approve if you just started connecting it, and it will
+						send you back to <strong>{redirectHost}</strong>.
 					</p>
 					<div class="flex gap-2">
 						<Button class="flex-1" onclick={() => resolve(true)}>

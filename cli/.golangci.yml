@@ -11,6 +11,9 @@ run:
   # cannot see it. It is the module's largest end-to-end surface; lint it too.
   build-tags:
     - smoke
+    # The write build (traceway-write) holds most of the mutating commands;
+    # the read build only differs by four constants in edition_read.go.
+    - write
 
 linters:
   settings:

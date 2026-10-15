@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -99,38 +100,82 @@ func TestPagesResolve_archiveIssueFlag(t *testing.T) {
 	}
 }
 
-func TestAlertsEnableDisable_isIdempotent(t *testing.T) {
+func TestAlertsEnableDisable_setsAnExplicitState(t *testing.T) {
 	rec := &recorded{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rec.add(r)
-		if r.Method == http.MethodGet {
-			_, _ = w.Write([]byte(`{"rules":[{"id":4,"name":"P95","ruleType":"endpoint_p95_threshold","enabled":true}]}`))
+		if strings.Contains(r.URL.Path, "/99/") {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":"rule not found"}`))
 			return
 		}
-		_, _ = w.Write([]byte(`{"id":4,"enabled":false}`))
+		rec.mu.Lock()
+		enabled, _ := rec.body["enabled"].(bool)
+		rec.mu.Unlock()
+		_, _ = fmt.Fprintf(w, `{"id":4,"enabled":%t}`, enabled)
 	}))
 	defer srv.Close()
 	seedSessionFor(t, srv.URL)
 	t.Cleanup(func() { flagYes = false })
 
-	if _, stderr, err := runCmd(t, "", "alerts", "enable", "4", "--yes", "--output", "json"); err != nil {
-		t.Fatalf("enable: %v %s", err, stderr.String())
-	}
-	if len(rec.calls) != 1 || rec.calls[0] != "GET /api/notification-rules" {
-		t.Errorf("enabling an enabled rule must not toggle it, calls = %v", rec.calls)
-	}
-
-	rec.calls = nil
-	if _, stderr, err := runCmd(t, "", "alerts", "disable", "4", "--yes", "--output", "json"); err != nil {
-		t.Fatalf("disable: %v %s", err, stderr.String())
-	}
-	if len(rec.calls) != 2 || rec.calls[1] != "POST /api/notification-rules/4/toggle" {
-		t.Errorf("disable calls = %v", rec.calls)
+	for _, tc := range []struct {
+		command string
+		want    bool
+	}{{"enable", true}, {"disable", false}} {
+		rec.calls = nil
+		if _, stderr, err := runCmd(t, "", "alerts", tc.command, "4", "--yes", "--output", "json"); err != nil {
+			t.Fatalf("%s: %v %s", tc.command, err, stderr.String())
+		}
+		if len(rec.calls) != 1 || rec.calls[0] != "POST /api/notification-rules/4/toggle" || rec.body["enabled"] != tc.want {
+			t.Errorf("%s must send one toggle with enabled=%v, calls = %v body = %v", tc.command, tc.want, rec.calls, rec.body)
+		}
 	}
 
-	rec.calls = nil
 	if _, _, err := runCmd(t, "", "alerts", "disable", "99", "--yes", "--output", "json"); err == nil {
 		t.Error("an unknown rule id should fail")
+	}
+}
+
+// A server older than the toggle route's enabled field ignores it and flips the
+// rule. The CLI must notice from the response and undo the flip, so disabling
+// an already-disabled rule leaves it disabled instead of turning it on.
+func TestAlertsEnableDisable_undoesAnOlderServersFlip(t *testing.T) {
+	var mu sync.Mutex
+	ruleEnabled := false
+	rec := &recorded{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec.add(r)
+		mu.Lock()
+		defer mu.Unlock()
+		ruleEnabled = !ruleEnabled
+		_, _ = fmt.Fprintf(w, `{"id":4,"enabled":%t}`, ruleEnabled)
+	}))
+	defer srv.Close()
+	seedSessionFor(t, srv.URL)
+	t.Cleanup(func() { flagYes = false })
+
+	for _, tc := range []struct {
+		command   string
+		startedOn bool
+		wantCalls int
+	}{
+		{"disable", false, 2}, // already off: flipped on, then back off
+		{"disable", true, 1},  // the flip happens to match
+		{"enable", true, 2},
+		{"enable", false, 1},
+	} {
+		mu.Lock()
+		ruleEnabled = tc.startedOn
+		mu.Unlock()
+		rec.calls = nil
+		if _, stderr, err := runCmd(t, "", "alerts", tc.command, "4", "--yes", "--output", "json"); err != nil {
+			t.Fatalf("%s from enabled=%v: %v %s", tc.command, tc.startedOn, err, stderr.String())
+		}
+		mu.Lock()
+		if want := tc.command == "enable"; ruleEnabled != want || len(rec.calls) != tc.wantCalls {
+			t.Errorf("%s from enabled=%v: rule enabled=%v after %d calls, want %v after %d", tc.command, tc.startedOn, ruleEnabled, len(rec.calls), want, tc.wantCalls)
+		}
+		mu.Unlock()
 	}
 }
 
@@ -204,5 +249,10 @@ func TestEndpointsMarkSlow(t *testing.T) {
 	}
 	if rec.calls[0] != "POST /api/endpoints/slow" || rec.body["endpoint"] != "GET /export" || rec.body["offsetMs"] != float64(2000) {
 		t.Errorf("calls = %v body = %v", rec.calls, rec.body)
+	}
+
+	rec.calls = nil
+	if _, _, err := runCmd(t, "", "endpoints", "mark-slow", "GET /export", "--yes", "--output", "json"); err == nil || len(rec.calls) != 0 {
+		t.Errorf("mark-slow without --offset-ms must fail before any request (0 would remove the mark), calls = %v", rec.calls)
 	}
 }

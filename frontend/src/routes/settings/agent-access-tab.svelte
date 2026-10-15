@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import {
 		Card,
 		CardContent,
@@ -23,6 +24,9 @@
 	let { organizationId }: { organizationId: number } = $props();
 
 	let saving = $state(false);
+	// Overridden while a change is saving, and set back if it fails, so the
+	// switch never shows a state the server did not accept.
+	let writeEnabled = $derived(organizationState.agentWriteEnabled);
 	let events = $state<AgentWriteEvent[]>([]);
 	let loading = $state(true);
 	let error = $state('');
@@ -46,10 +50,14 @@
 		}
 	}
 
+	// Only a change of organization reloads from page 1; loadActivity reads
+	// page and pageSize, which must not become dependencies of this effect.
 	$effect(() => {
 		if (organizationId) {
-			page = 1;
-			loadActivity();
+			untrack(() => {
+				page = 1;
+				loadActivity();
+			});
 		}
 	});
 
@@ -61,6 +69,7 @@
 				position: 'top-center'
 			});
 		} catch (e: unknown) {
+			writeEnabled = organizationState.agentWriteEnabled;
 			toast.error(e instanceof Error ? e.message : 'Failed to update agent access');
 		} finally {
 			saving = false;
@@ -76,7 +85,7 @@
 			return event.credentialName ? `Token "${event.credentialName}"` : 'Personal access token';
 		}
 		if (event.credentialRef === 'traceway-cli-write') return 'Write CLI';
-		return 'MCP client';
+		return event.credentialName ? `MCP client "${event.credentialName}"` : 'MCP client';
 	}
 </script>
 
@@ -100,9 +109,12 @@
 			</div>
 			<Switch
 				id="agent-write-toggle"
-				checked={organizationState.agentWriteEnabled}
+				checked={writeEnabled}
 				disabled={saving}
-				onCheckedChange={(checked) => toggle(checked)}
+				onCheckedChange={(checked) => {
+					writeEnabled = checked;
+					toggle(checked);
+				}}
 			/>
 		</div>
 

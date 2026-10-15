@@ -291,20 +291,28 @@ func newPostMortemsUpdateCmd() *cobra.Command {
 func newEndpointsMarkSlowCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "mark-slow <endpoint>",
-		Short: "Mark an endpoint as expected-slow (offset 0 removes the mark)",
+		Short: "Mark an endpoint as expected-slow (--offset-ms 0 removes the mark)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			offset, _ := cmd.Flags().GetUint32("offset-ms")
 			reason, _ := cmd.Flags().GetString("reason")
 			endpoint := args[0]
-			return runWrite(cmd, []string{fmt.Sprintf("About to set the accepted latency of %q to %dms.", endpoint, offset)},
-				map[string]any{"action": "mark-slow", "endpoint": endpoint, "offsetMs": offset, "message": fmt.Sprintf("Set the accepted latency of %s to %dms.", endpoint, offset)},
+			prompt := fmt.Sprintf("About to set the accepted latency of %q to %dms.", endpoint, offset)
+			message := fmt.Sprintf("Set the accepted latency of %s to %dms.", endpoint, offset)
+			if offset == 0 {
+				prompt = fmt.Sprintf("About to remove the expected-slow mark from %q.", endpoint)
+				message = fmt.Sprintf("Removed the expected-slow mark from %s.", endpoint)
+			}
+			return runWrite(cmd, []string{prompt},
+				map[string]any{"action": "mark-slow", "endpoint": endpoint, "offsetMs": offset, "message": message},
 				func(ctx context.Context, c *client.Client, projectID string) (json.RawMessage, error) {
 					return nil, c.SetSlowEndpoint(ctx, projectID, client.SetSlowEndpointRequest{Endpoint: endpoint, OffsetMs: offset, Reason: reason})
 				})
 		},
 	}
-	cmd.Flags().Uint32("offset-ms", 0, "Accepted extra latency in milliseconds")
+	cmd.Flags().Uint32("offset-ms", 0, "Accepted extra latency in milliseconds; 0 removes the mark (required)")
 	cmd.Flags().String("reason", "", "Why this latency is acceptable")
+	// Required because 0 removes the mark: a forgotten flag must not.
+	_ = cmd.MarkFlagRequired("offset-ms")
 	return cmd
 }

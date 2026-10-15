@@ -6,7 +6,7 @@ Write access lets an agent take the routine actions an on-call engineer takes du
 2. **The organization.** An admin has to turn on Settings > Agent Access. Until then every agent write is refused with a 403 that says so.
 3. **The person.** The write runs with the role of the person who created the credential. A `readonly` member's write token still cannot write.
 
-Every agent write, refused or accepted, is recorded in the organization's agent activity log with the person, the credential, the project and the result.
+Every write a write credential makes in the organization, accepted or refused because Agent Access is off, is recorded in the organization's agent activity log with the person, the credential, the project and the result.
 
 ### What an agent can change
 

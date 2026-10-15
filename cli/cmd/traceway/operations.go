@@ -213,6 +213,10 @@ func newPostMortemsCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			search, _ := cmd.Flags().GetString("search")
 			tags, _ := cmd.Flags().GetStringSlice("tag")
+			if err := validatePaginationFlags(cmd); err != nil {
+				mode := output.ResolveMode(flagOutput, output.StdoutIsTerminal())
+				return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(), paginationHint(appdir.Binary+" post-mortems list"))
+			}
 			page := resolvePagination(cmd)
 			return runRaw(cmd, func(ctx context.Context, c *client.Client, projectID string) (json.RawMessage, error) {
 				return c.ListPostMortems(ctx, projectID, client.ListPostMortemsRequest{Search: search, Tags: tags, Page: page.Page, PageSize: page.PageSize})

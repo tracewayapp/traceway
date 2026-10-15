@@ -358,6 +358,124 @@ func TestPATCreation_scopes(t *testing.T) {
 	}
 }
 
+func TestPasswordLogin_scopedLoginIsARevocableTokenSet(t *testing.T) {
+	f := setupAgentFixture(t)
+	hash, err := services.HashPassword("cli-password-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.User, error) {
+		return transactional.UserRepository.Create(tx, "cli@example.com", "CLI User", hash)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := f.do(t, "", http.MethodPost, "/api/login", map[string]any{"email": "cli@example.com", "password": "cli-password-1", "scope": models.ScopeWrite})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("scoped login = %d %s", rec.Code, rec.Body.String())
+	}
+	var res struct {
+		Token        string `json:"token"`
+		RefreshToken string `json:"refreshToken"`
+		ExpiresIn    int    `json:"expiresIn"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &res)
+	claims, err := services.ValidateToken(res.Token)
+	if err != nil {
+		t.Fatalf("scoped login token: %v", err)
+	}
+	if claims.Scope != models.ScopeWrite || claims.ClientId != "traceway-cli-write" {
+		t.Errorf("claims = scope %q cid %q, want the write scope from traceway-cli-write", claims.Scope, claims.ClientId)
+	}
+	if !strings.HasPrefix(res.RefreshToken, "twr_") || res.ExpiresIn <= 0 || res.ExpiresIn > 3600 {
+		t.Errorf("scoped login must be a short access token plus a refresh token, got refresh %q expiresIn %d", res.RefreshToken, res.ExpiresIn)
+	}
+
+	if rec := f.do(t, "", http.MethodPost, "/api/auth/logout", map[string]any{"refresh_token": res.RefreshToken}); rec.Code != http.StatusOK {
+		t.Fatalf("logout = %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := f.do(t, "", http.MethodPost, "/api/auth/token", map[string]any{"grant_type": "refresh_token", "refresh_token": res.RefreshToken}); rec.Code != http.StatusBadRequest {
+		t.Errorf("refresh after logout = %d %s, want 400", rec.Code, rec.Body.String())
+	}
+
+	rec = f.do(t, "", http.MethodPost, "/api/login", map[string]any{"email": "cli@example.com", "password": "cli-password-1"})
+	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "refreshToken") {
+		t.Errorf("an unscoped login stays a dashboard session: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestNotificationRuleToggle_explicitStateIsIdempotent(t *testing.T) {
+	f := setupAgentFixture(t)
+	f.setAgentWrites(t, true)
+	now := time.Now().UTC()
+	ruleId, err := db.ExecuteTransaction(func(tx *sql.Tx) (int, error) {
+		channelId, err := transactional.NotificationChannelRepository.Create(tx, &models.NotificationChannel{ProjectId: f.project.Id, Name: "mail", ChannelType: "email", Config: json.RawMessage(`{}`), Enabled: true, CreatedAt: now, UpdatedAt: now})
+		if err != nil {
+			return 0, err
+		}
+		return transactional.NotificationRuleRepository.Create(tx, &models.NotificationRule{ProjectId: f.project.Id, ChannelId: channelId, Name: "p95", RuleType: "endpoint_p95_threshold", Config: json.RawMessage(`{}`), Enabled: true, Severity: "warning", CreatedAt: now, UpdatedAt: now})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "/api/notification-rules/" + itoa(ruleId) + "/toggle?projectId=" + f.project.Id.String()
+	write := f.pat(t, models.ScopeWrite)
+	session, err := services.GenerateToken(f.userId, "agent@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, step := range []struct {
+		name  string
+		token string
+		body  map[string]any
+		want  string
+	}{
+		{"enable an enabled rule", write, map[string]any{"enabled": true}, `"enabled":true`},
+		{"disable", write, map[string]any{"enabled": false}, `"enabled":false`},
+		{"disable again", write, map[string]any{"enabled": false}, `"enabled":false`},
+		{"dashboard flip", session, map[string]any{}, `"enabled":true`},
+	} {
+		rec := f.do(t, step.token, http.MethodPost, path, step.body)
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), step.want) {
+			t.Errorf("%s = %d %s, want %s", step.name, rec.Code, rec.Body.String(), step.want)
+		}
+	}
+}
+
+func TestPostMortemUpdate_staleExpectedUpdatedAtConflicts(t *testing.T) {
+	f := setupAgentFixture(t)
+	session, err := services.GenerateToken(f.userId, "agent@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pm := createTestPostMortem(t, f.orgId, f.project.Id, "Outage", "draft", nil, nil)
+	path := "/api/post-mortems/" + itoa(pm.Id) + "?projectId=" + f.project.Id.String()
+
+	read := func() time.Time {
+		t.Helper()
+		var doc struct {
+			UpdatedAt time.Time `json:"updatedAt"`
+		}
+		rec := f.do(t, session, http.MethodGet, path, nil)
+		if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil || doc.UpdatedAt.IsZero() {
+			t.Fatalf("get post-mortem = %d %s", rec.Code, rec.Body.String())
+		}
+		return doc.UpdatedAt
+	}
+	seen := read()
+
+	if rec := f.do(t, session, http.MethodPut, path, map[string]any{"title": "Outage", "contentMd": "edited in the dashboard", "tags": []string{}}); rec.Code != http.StatusOK {
+		t.Fatalf("dashboard update = %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := f.do(t, session, http.MethodPut, path, map[string]any{"title": "Outage", "contentMd": "agent edit", "tags": []string{}, "expectedUpdatedAt": seen}); rec.Code != http.StatusConflict {
+		t.Fatalf("update from a stale read = %d %s, want 409", rec.Code, rec.Body.String())
+	}
+	if rec := f.do(t, session, http.MethodPut, path, map[string]any{"title": "Outage", "contentMd": "agent edit", "tags": []string{}, "expectedUpdatedAt": read()}); rec.Code != http.StatusOK {
+		t.Fatalf("update from a fresh read = %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func itoa(n int) string {
 	b, _ := json.Marshal(n)
 	return string(b)

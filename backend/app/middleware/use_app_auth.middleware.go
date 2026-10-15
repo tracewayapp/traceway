@@ -87,8 +87,12 @@ func (b *BearerIdentity) IsAgent() bool {
 	return b.CredentialKind != CredentialSession
 }
 
-func (b *BearerIdentity) CanWrite() bool {
-	return !b.IsAgent() || b.Scope == models.ScopeWrite
+// HasAgentWriteScope reports whether this is an agent credential carrying the
+// write scope. A dashboard session never qualifies: MCP is an agent surface,
+// and a session behind /mcp/write would skip the agent gate's organization
+// opt-in and audit log, since sessions bypass the gate.
+func (b *BearerIdentity) HasAgentWriteScope() bool {
+	return b.IsAgent() && b.Scope == models.ScopeWrite
 }
 
 func AuthenticateBearer(tokenString string) (*BearerIdentity, error) {

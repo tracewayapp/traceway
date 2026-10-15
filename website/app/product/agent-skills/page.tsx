@@ -369,7 +369,7 @@ export default function AgentSkillsPage() {
               items={[
                 {
                   q: "What exactly is an agent skill?",
-                  a: "A SKILL.md file: Markdown instructions your agent loads when a task matches. Traceway ships three: one sets up a project, one queries and debugs it, and one explains how every part of Traceway works. Both live in the open-source repo.",
+                  a: "A SKILL.md file: Markdown instructions your agent loads when a task matches. Traceway ships three: one sets up a project, one queries and debugs it, and one explains how every part of Traceway works. All three live in the open-source repo.",
                 },
                 {
                   q: "Which agents are supported?",

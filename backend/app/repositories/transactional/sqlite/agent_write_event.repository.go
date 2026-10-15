@@ -56,11 +56,12 @@ func (r *agentWriteEventRepository) ListByOrganization(ex lit.Executor, organiza
 	query, args, err := lit.ParseNamedQuery(
 		db.Driver,
 		`SELECT e.id, e.organization_id, e.project_id, COALESCE(p.name, ''), e.user_id, COALESCE(u.email, ''),
-				e.credential_kind, e.credential_ref, COALESCE(t.name, ''), e.method, e.route, e.path, e.status_code, e.created_at
+				e.credential_kind, e.credential_ref, COALESCE(t.name, c.name, ''), e.method, e.route, e.path, e.status_code, e.created_at
 			FROM agent_write_events e
 			LEFT JOIN projects p ON CAST(p.id AS TEXT) = e.project_id
 			LEFT JOIN users u ON u.id = e.user_id
 			LEFT JOIN personal_access_tokens t ON t.id = e.credential_ref AND e.credential_kind = 'pat'
+			LEFT JOIN oauth_clients c ON c.id = e.credential_ref AND e.credential_kind = 'oauth'
 			WHERE e.organization_id = :org_id
 			ORDER BY e.created_at DESC
 			LIMIT :limit OFFSET :offset`,

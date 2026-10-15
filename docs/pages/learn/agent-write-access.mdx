@@ -12,7 +12,7 @@ Writes are off by default and opt-in at three levels. All three have to agree be
 | **Organization** | An admin turns on **Settings > Agent Access**. Until then every agent write is refused. | Organization owners and admins |
 | **Role** | The write runs as the person who created the credential. A `readonly` member's write token still cannot write. | Existing roles and per-project overrides |
 
-Every agent write, accepted or refused, is recorded in the organization's agent activity log.
+Every write a write credential makes in the organization is recorded in its agent activity log, including the writes refused because Agent Access is off.
 
 ## What agents can change
 
@@ -91,6 +91,9 @@ Other agents can copy the skill folder from [`plugins/tw-write/skills/traceway-w
 
 ## Upgrading
 
-Existing personal access tokens become read only, and existing CLI and MCP logins keep working as read only. Dashboard sessions are unaffected. To give an automation write access, create a write token or log in with `traceway-write`, and have an admin turn on Agent Access.
+- **Existing personal access tokens become read only**, and existing CLI and MCP logins keep working as read only. Dashboard sessions are unaffected.
+- **Every token, CLI login and MCP client is limited to the agent routes**, the reads plus the writes listed above, even for reading. A script that used a personal access token for anything else, such as creating projects, managing members, or deleting post-mortems, now gets `403` and has to move to the dashboard.
+- **`traceway exceptions archive` and `unarchive` moved to `traceway-write`.** The read-only CLI answers them with a `write_required` error.
+- **Password logins from the CLI** now receive a token scoped like the CLI that asked for it, not a full dashboard session: a 15-minute access token the CLI refreshes on its own, revoked by `logout`.
 
-Password logins from the CLI now receive a token scoped like the CLI that asked for it, not a full dashboard session.
+To give an automation write access, create a write token or log in with `traceway-write`, and have an admin turn on Agent Access.

@@ -78,15 +78,15 @@ func (s *server) addOperationWriteTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:         "set_notification_rule_enabled",
 		OutputSchema: passThroughSchema,
-		Description:  "Turn an alert rule on or off. Idempotent: a rule already in the requested state is left alone. MUTATING. A disabled rule notifies nobody until re-enabled, so say so to the user.",
+		Description:  "Turn an alert rule on or off. Idempotent: it sets the requested state, so a rule already in it is left alone. MUTATING. A disabled rule notifies nobody until re-enabled, so say so to the user.",
 		Annotations:  mutating(),
 	}, s.setNotificationRuleEnabled)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:         "snooze_notification_rule",
 		OutputSchema: passThroughSchema,
-		Description:  "Snooze an alert rule for duration_minutes (it is skipped entirely and comes back on its own); 0 clears an existing snooze. MUTATING. Prefer this over disabling for a known incident.",
-		Annotations:  mutating(),
+		Description:  "Snooze an alert rule for duration_minutes from now (it is skipped entirely and comes back on its own); calling it again restarts the snooze, and 0 clears it. MUTATING. Prefer this over disabling for a known incident.",
+		Annotations:  mutatingRepeatable(),
 	}, s.snoozeNotificationRule)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -106,7 +106,7 @@ func (s *server) addOperationWriteTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:         "update_post_mortem",
 		OutputSchema: passThroughSchema,
-		Description:  "Update a post-mortem. Only the fields you pass change; content_md replaces the whole body, so read it with get_post_mortem and send the full revised text. Every edit is recorded in the post-mortem's activity log. MUTATING.",
+		Description:  "Update a post-mortem. Only the fields you pass change; content_md replaces the whole body, so read it with get_post_mortem and send the full revised text. If someone edits the document while this call runs it fails with a 409 conflict instead of overwriting their change: read it again and reapply. Every edit is recorded in the post-mortem's activity log. MUTATING.",
 		Annotations:  mutating(),
 	}, s.updatePostMortem)
 

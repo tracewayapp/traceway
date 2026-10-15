@@ -2,6 +2,8 @@ package controllers
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -271,6 +273,10 @@ func (ctrl *notificationRuleController) Delete(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"deleted": true})
 }
 
+type toggleRequest struct {
+	Enabled *bool `json:"enabled"`
+}
+
 func (ctrl *notificationRuleController) Toggle(ctx *gin.Context) {
 	projectId, err := middleware.GetProjectId(ctx)
 	if err != nil {
@@ -296,7 +302,17 @@ func (ctrl *notificationRuleController) Toggle(ctx *gin.Context) {
 		return
 	}
 
+	// An explicit enabled makes the call idempotent (agents set a state);
+	// the dashboard sends an empty body and flips the rule.
+	var req toggleRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		middleware.RejectBindError(ctx, err, "Invalid request body")
+		return
+	}
 	newEnabled := !existing.Enabled
+	if req.Enabled != nil {
+		newEnabled = *req.Enabled
+	}
 	if err := transactional.NotificationRuleRepository.UpdateEnabled(tx, id, newEnabled); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to toggle notification rule: %w", err))
 		return

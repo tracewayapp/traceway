@@ -108,12 +108,16 @@ func runLoginPassword(cmd *cobra.Command) error {
 		return err
 	}
 
-	jwt, err := client.New(url).LoginScoped(ctx, username, password, loginScope)
+	res, err := client.New(url).LoginScoped(ctx, username, password, loginScope)
 	if err != nil {
 		return renderAPIError(cmd.ErrOrStderr(), mode, err, true)
 	}
 
-	if err := saveProfileCredentials(cfg, st, profileName, url, username, credential{Kind: state.KindPassword, AccessToken: jwt}); err != nil {
+	cred := credential{Kind: state.KindPassword, AccessToken: res.Token}
+	if res.RefreshToken != "" {
+		cred = credential{Kind: state.KindDevice, AccessToken: res.Token, RefreshToken: res.RefreshToken, ExpiresAt: expiresAtUnix(res.ExpiresIn)}
+	}
+	if err := saveProfileCredentials(cfg, st, profileName, url, username, cred); err != nil {
 		return err
 	}
 

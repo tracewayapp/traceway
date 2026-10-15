@@ -76,7 +76,6 @@ type TokenRequest struct {
 	CodeVerifier string `json:"code_verifier" form:"code_verifier"`
 	RedirectUri  string `json:"redirect_uri" form:"redirect_uri"`
 	Resource     string `json:"resource" form:"resource"`
-	Scope        string `json:"scope" form:"scope"`
 }
 
 type TokenSetResponse struct {

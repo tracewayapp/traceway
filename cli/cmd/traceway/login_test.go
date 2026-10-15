@@ -72,6 +72,28 @@ func TestLogin_passwordStdin_success(t *testing.T) {
 	}
 }
 
+func TestLogin_passwordWithRefreshToken_isRefreshableAndRevocable(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"token":"access","refreshToken":"twr_refresh","expiresIn":900}`))
+	}))
+	defer srv.Close()
+
+	if _, stderr, err := runCmd(t, "hunter2\n", "login", "--url", srv.URL, "--username", "fred@example.com", "--password-stdin"); err != nil {
+		t.Fatalf("login failed: %v %s", err, stderr.String())
+	}
+	st, err := state.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sp := st.Profiles["default"]
+	if sp.JWT != "access" || sp.RefreshToken != "twr_refresh" || sp.CredentialKind != state.KindDevice || sp.TokenExpiresAt == 0 {
+		t.Errorf("a scoped password login must be stored as a refreshable session, got %+v", sp)
+	}
+}
+
 func TestLogin_namedProfile_secondLogin_doesNotOverrideCurrent(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_STATE_HOME", t.TempDir())

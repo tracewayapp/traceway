@@ -104,34 +104,43 @@ func (s *session) Client(opts ...client.Option) *client.Client {
 // The refresher is lock-free but concurrency-safe: because refresh tokens are
 // single-use and the server revokes a family on genuine replay, two CLI
 // processes racing to refresh the same token must not both call the server. So
-// before (and after a lost race) it re-reads the on-disk token; if another
-// process already rotated it, we adopt that token instead of minting a new one.
-// A failed persist is non-fatal for the current command, and a retry within the
+// before (and after a lost race) it re-reads the on-disk tokens; if another
+// process already rotated them, we adopt that access token instead of minting a
+// new one, and its refresh token too: ours was spent by that rotation, so a
+// long-running process (traceway mcp) presenting it once the adopted access
+// token expires would be a replay. A failed persist is non-fatal for the current command, and a retry within the
 // server's reuse-grace window is answered with the same rotated token set; a
 // later command re-presenting the stale token is treated as a replay, revoking
 // the family, so the warning below tells the user a re-login may be needed.
 func newRefreshingClient(url, profileName, jwt, refreshToken, kind string, opts ...client.Option) *client.Client {
 	rt := refreshToken
 	current := jwt
+	adoptDisk := func() bool {
+		diskJWT, diskRT := loadProfileTokens(profileName)
+		if diskJWT == "" || diskJWT == current {
+			return false
+		}
+		current = diskJWT
+		if diskRT != "" {
+			rt = diskRT
+		}
+		return true
+	}
 	refresher := func(ctx context.Context) (string, error) {
 		if kind != state.KindDevice || rt == "" {
 			return "", errNoRefresh
 		}
 
-		// Another process may have already refreshed; prefer its token.
-		if disk := loadProfileJWT(profileName); disk != "" && disk != current {
-			current = disk
-			return disk, nil
+		// Another process may have already refreshed; prefer its tokens.
+		if adoptDisk() {
+			return current, nil
 		}
 
 		ts, err := client.New(url).Refresh(ctx, rt)
 		if err != nil {
 			// Lost a refresh race: the winner may have just persisted a token.
-			if errors.Is(err, client.ErrInvalidGrant) {
-				if disk := loadProfileJWT(profileName); disk != "" && disk != current {
-					current = disk
-					return disk, nil
-				}
+			if errors.Is(err, client.ErrInvalidGrant) && adoptDisk() {
+				return current, nil
 			}
 			return "", err
 		}

@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -47,61 +48,57 @@ func (c *Client) ResolvePage(ctx context.Context, projectID string, id int, arch
 	return c.do(ctx, http.MethodPost, "/api/pages/"+strconv.Itoa(id)+"/resolve"+projectQuery(projectID), body, nil)
 }
 
-type NotificationRule struct {
-	Id           int     `json:"id"`
-	Name         string  `json:"name"`
-	RuleType     string  `json:"ruleType"`
-	Enabled      bool    `json:"enabled"`
-	SnoozedUntil *string `json:"snoozedUntil"`
-}
-
 func (c *Client) ListNotificationRules(ctx context.Context, projectID string) (json.RawMessage, error) {
 	var resp json.RawMessage
 	err := c.do(ctx, http.MethodGet, "/api/notification-rules"+projectQuery(projectID), nil, &resp)
 	return resp, err
 }
 
-// SetNotificationRuleEnabled is idempotent over the server's toggle route: it
-// reads the rule first and only toggles when the state differs.
+// SetNotificationRuleEnabled sets the rule's state through the toggle route's
+// explicit enabled field, so repeating it, or racing another toggle, still
+// leaves the rule in the requested state. A server older than that field
+// ignores it and flips the rule, so a rule already in the requested state comes
+// back in the other one. The returned state is checked and such a flip undone.
 func (c *Client) SetNotificationRuleEnabled(ctx context.Context, projectID string, id int, enabled bool) (json.RawMessage, error) {
-	raw, err := c.ListNotificationRules(ctx, projectID)
-	if err != nil {
+	path := "/api/notification-rules/" + strconv.Itoa(id) + "/toggle" + projectQuery(projectID)
+	body := struct {
+		Enabled bool `json:"enabled"`
+	}{enabled}
+	var resp json.RawMessage
+	if err := c.do(ctx, http.MethodPost, path, body, &resp); err != nil {
 		return nil, err
 	}
-	rules, err := decodeRules(raw)
-	if err != nil {
-		return nil, err
+	if ruleEnabled(resp, enabled) == enabled {
+		return resp, nil
 	}
-	for _, rule := range rules {
-		if rule.Id != id {
-			continue
-		}
-		if rule.Enabled == enabled {
-			return json.Marshal(rule)
-		}
-		var resp json.RawMessage
-		err := c.do(ctx, http.MethodPost, "/api/notification-rules/"+strconv.Itoa(id)+"/toggle"+projectQuery(projectID), struct{}{}, &resp)
-		return resp, err
+
+	resp = nil
+	if err := c.do(ctx, http.MethodPost, path, body, &resp); err != nil {
+		return nil, fmt.Errorf("the server flipped alert rule %d instead of setting it, and undoing that failed, so it is now %s: %w", id, enabledWord(!enabled), err)
 	}
-	return nil, ErrNotFound
+	if ruleEnabled(resp, enabled) != enabled {
+		return nil, fmt.Errorf("alert rule %d is still %s after a second toggle; it may have been changed at the same time, so check its state", id, enabledWord(!enabled))
+	}
+	return resp, nil
 }
 
-func decodeRules(raw json.RawMessage) ([]NotificationRule, error) {
-	var rules []NotificationRule
-	if err := json.Unmarshal(raw, &rules); err == nil {
-		return rules, nil
+// ruleEnabled reads a toggle response's enabled field, or returns fallback
+// when the response has none to check.
+func ruleEnabled(resp json.RawMessage, fallback bool) bool {
+	var rule struct {
+		Enabled *bool `json:"enabled"`
 	}
-	var wrapped struct {
-		Rules []NotificationRule `json:"rules"`
-		Data  []NotificationRule `json:"data"`
+	if json.Unmarshal(resp, &rule) != nil || rule.Enabled == nil {
+		return fallback
 	}
-	if err := json.Unmarshal(raw, &wrapped); err != nil {
-		return nil, err
+	return *rule.Enabled
+}
+
+func enabledWord(enabled bool) string {
+	if enabled {
+		return "enabled"
 	}
-	if wrapped.Rules != nil {
-		return wrapped.Rules, nil
-	}
-	return wrapped.Data, nil
+	return "disabled"
 }
 
 // SnoozeNotificationRule silences a rule for durationMinutes; 0 clears the
@@ -165,6 +162,7 @@ type PostMortem struct {
 	ContentMd  string   `json:"contentMd"`
 	Tags       []string `json:"tags"`
 	IncidentId *int     `json:"incidentId"`
+	UpdatedAt  string   `json:"updatedAt"`
 }
 
 type PostMortemInput struct {
@@ -172,6 +170,9 @@ type PostMortemInput struct {
 	ContentMd  string   `json:"contentMd"`
 	Tags       []string `json:"tags"`
 	IncidentId *int     `json:"incidentId"`
+	// ExpectedUpdatedAt makes an update fail with 409 when the document
+	// changed after it was read, instead of overwriting that change.
+	ExpectedUpdatedAt string `json:"expectedUpdatedAt,omitempty"`
 }
 
 func (c *Client) GetPostMortem(ctx context.Context, projectID string, id int) (json.RawMessage, error) {
@@ -190,7 +191,8 @@ func (c *Client) CreatePostMortem(ctx context.Context, projectID string, in Post
 }
 
 // PostMortemPatch changes only the fields that are set; the server's update
-// replaces the whole document, so the rest is read back first.
+// replaces the whole document, so the rest is read back first and the update
+// is conditional on the document not changing in between (409 otherwise).
 type PostMortemPatch struct {
 	Title      *string
 	ContentMd  *string
@@ -207,7 +209,7 @@ func (c *Client) UpdatePostMortem(ctx context.Context, projectID string, id int,
 	if err != nil {
 		return nil, err
 	}
-	in := PostMortemInput{Title: current.Title, ContentMd: current.ContentMd, Tags: current.Tags, IncidentId: current.IncidentId}
+	in := PostMortemInput{Title: current.Title, ContentMd: current.ContentMd, Tags: current.Tags, IncidentId: current.IncidentId, ExpectedUpdatedAt: current.UpdatedAt}
 	if patch.Title != nil {
 		in.Title = *patch.Title
 	}

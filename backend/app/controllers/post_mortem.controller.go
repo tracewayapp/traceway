@@ -34,6 +34,10 @@ type postMortemRequest struct {
 	ContentMd  string   `json:"contentMd"`
 	Tags       []string `json:"tags"`
 	IncidentId *int     `json:"incidentId"`
+	// ExpectedUpdatedAt, on update, is the updatedAt the caller read: a
+	// document changed since then answers 409 instead of being overwritten.
+	// The CLI and MCP send it because they merge into a document they read.
+	ExpectedUpdatedAt *time.Time `json:"expectedUpdatedAt"`
 }
 
 func normalizePostMortemTags(tags []string) (models.StringSlice, string) {
@@ -290,6 +294,10 @@ func (ctrl *postMortemController) Update(ctx *gin.Context) {
 	}
 	if postMortem == nil {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": "Post-mortem not found"})
+		return
+	}
+	if req.ExpectedUpdatedAt != nil && !postMortem.UpdatedAt.Equal(*req.ExpectedUpdatedAt) {
+		ctx.JSON(http.StatusConflict, gin.H{"error": "The post-mortem was changed since it was read. Read it again and reapply the change."})
 		return
 	}
 	tags, message := validatePostMortemRequest(&req)

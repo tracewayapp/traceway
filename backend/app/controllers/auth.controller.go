@@ -9,8 +9,8 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/services"
+	"github.com/tracewayapp/traceway/backend/app/services/authserver"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	traceway "go.tracewayapp.com"
@@ -63,12 +63,18 @@ func (a authController) Login(c *gin.Context) {
 		return
 	}
 
-	var token string
+	response := &models.LoginResponse{User: user.ToResponse()}
 	switch request.Scope {
 	case "":
-		token, err = services.GenerateToken(user.Id, user.Email)
+		response.Token, err = services.GenerateToken(user.Id, user.Email)
 	case models.ScopeRead, models.ScopeWrite:
-		token, err = services.GenerateAccessToken(user.Id, user.Email, request.Scope, passwordLoginClientID(request.Scope), passwordAgentTokenTTL)
+		// An agent login gets the device flow's short access token and a
+		// refresh family, so logout revokes it like any CLI session.
+		var set *models.TokenSetResponse
+		set, err = authserver.IssueTokenSet(tx, user.Id, user.Email, passwordLoginClientID(request.Scope), request.Scope)
+		if err == nil {
+			response.Token, response.RefreshToken, response.ExpiresIn = set.AccessToken, set.RefreshToken, set.ExpiresIn
+		}
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Unknown scope"})
 		return
@@ -90,15 +96,10 @@ func (a authController) Login(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, &models.LoginResponse{
-		Token:         token,
-		User:          user.ToResponse(),
-		Projects:      projects,
-		Organizations: organizations,
-	})
+	response.Projects = projects
+	response.Organizations = organizations
+	c.JSON(http.StatusOK, response)
 }
-
-const passwordAgentTokenTTL = 7 * 24 * time.Hour
 
 func passwordLoginClientID(scope string) string {
 	if scope == models.ScopeWrite {

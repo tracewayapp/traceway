@@ -18,6 +18,7 @@ contract-test *args:
 
 lint:
     golangci-lint run
+    golangci-lint run --build-tags write
 
 vulncheck:
     govulncheck ./...

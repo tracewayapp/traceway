@@ -77,7 +77,7 @@ func verifyBearer(_ context.Context, token string, _ *http.Request) (*auth.Token
 		expires = time.Now().Add(patExpiryHorizon)
 	}
 	scopes := []string{models.ScopeRead}
-	if identity.CanWrite() {
+	if identity.HasAgentWriteScope() {
 		scopes = append(scopes, models.ScopeWrite)
 	}
 	return &auth.TokenInfo{

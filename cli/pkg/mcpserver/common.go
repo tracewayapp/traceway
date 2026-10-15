@@ -161,9 +161,16 @@ func readOnly() *mcp.ToolAnnotations {
 	return &mcp.ToolAnnotations{ReadOnlyHint: true}
 }
 
-// mutating marks the archive tools: they write, but reversibly (archive and
-// unarchive undo each other), and repeating a call changes nothing.
+// mutating marks tools that write reversibly (archive and unarchive undo each
+// other, a rule can be turned back on) where repeating a call changes nothing.
 func mutating() *mcp.ToolAnnotations {
 	nonDestructive := false
 	return &mcp.ToolAnnotations{DestructiveHint: &nonDestructive, IdempotentHint: true}
+}
+
+// mutatingRepeatable is mutating for tools whose repeated call has a further
+// effect, such as a snooze restarting from now.
+func mutatingRepeatable() *mcp.ToolAnnotations {
+	nonDestructive := false
+	return &mcp.ToolAnnotations{DestructiveHint: &nonDestructive}
 }

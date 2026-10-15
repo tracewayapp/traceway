@@ -31,7 +31,7 @@ traceway login --username you@example.com  # implies --password
 traceway login --password-stdin            # reads the password from stdin
 ```
 
-Password logins are not refreshable: when the token expires (after 7 days) you log in again. The CLI asks for a token scoped to itself, so a `traceway --password` login is read only and cannot be used as a dashboard session.
+The CLI asks for a token scoped to itself, so a `traceway --password` login is read only and cannot be used as a dashboard session. Like a browser login it is a short-lived access token that the CLI refreshes automatically, and `traceway logout` revokes it on the server. (Against a Traceway server older than agent scopes, a password login is a 7-day token that is not refreshable.)
 
 ## Personal access tokens
 

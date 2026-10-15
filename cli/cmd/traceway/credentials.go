@@ -71,16 +71,17 @@ func updateProfileTokens(profileName string, ts *client.TokenSet) error {
 	return st.Save()
 }
 
-// loadProfileJWT reads just the stored access token for a profile from disk,
-// returning "" if state can't be read. The refresher uses it to adopt a token
-// another concurrent process may have already rotated, avoiding a redundant
-// refresh that would trip server-side reuse detection.
-func loadProfileJWT(profileName string) string {
+// loadProfileTokens reads the stored access and refresh tokens for a profile
+// from disk, returning empty strings if state can't be read. The refresher uses
+// them to adopt a rotation another concurrent process already made, avoiding a
+// redundant refresh that would trip server-side reuse detection.
+func loadProfileTokens(profileName string) (jwt, refreshToken string) {
 	st, err := state.Load()
 	if err != nil {
-		return ""
+		return "", ""
 	}
-	return st.Profiles[profileName].JWT
+	sp := st.Profiles[profileName]
+	return sp.JWT, sp.RefreshToken
 }
 
 func expiresAtUnix(expiresInSeconds int) int64 {

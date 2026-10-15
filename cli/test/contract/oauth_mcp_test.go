@@ -509,18 +509,21 @@ func TestContract_mcpWriteMount(t *testing.T) {
 		t.Errorf("write resource must advertise traceway:write, got %v", prm["scopes_supported"])
 	}
 
-	readToken := oauthAccessToken(t)
-	req, _ := http.NewRequest(http.MethodPost, baseURL+"/mcp/write", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`))
-	req.Header.Set("Authorization", "Bearer "+readToken)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json, text/event-stream")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusForbidden || !strings.Contains(resp.Header.Get("WWW-Authenticate"), `scope="traceway:write"`) {
-		t.Fatalf("read token on /mcp/write = %d %q, want 403 with a traceway:write scope challenge", resp.StatusCode, resp.Header.Get("WWW-Authenticate"))
+	// A dashboard session is refused too: sessions skip the agent gate, so
+	// one behind /mcp/write would write past the opt-in and the audit log.
+	for name, token := range map[string]string{"read token": oauthAccessToken(t), "dashboard session": jwtToken} {
+		req, _ := http.NewRequest(http.MethodPost, baseURL+"/mcp/write", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden || !strings.Contains(resp.Header.Get("WWW-Authenticate"), `scope="traceway:write"`) {
+			t.Fatalf("%s on /mcp/write = %d %q, want 403 with a traceway:write scope challenge", name, resp.StatusCode, resp.Header.Get("WWW-Authenticate"))
+		}
 	}
 
 	writeToken := oauthScopedAccessToken(t, "traceway:write")

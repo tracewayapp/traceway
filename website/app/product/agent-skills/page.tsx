@@ -43,6 +43,13 @@ const SKILLS = [
       "The full guide to Traceway: issues, endpoints, traces, logs, monitors, status pages, alerts and on-call. Ask how anything works and get the answer.",
     tags: ["Product guide", "On-call", "Status pages", "Alert rules"],
   },
+  {
+    label: "04 · Operate",
+    name: "/traceway-write",
+    description:
+      "Lets your agent act, not just read: archive issues, acknowledge pages, snooze rules, run monitors and draft post-mortems. Needs the write CLI and an admin opt-in.",
+    tags: ["Write CLI", "On-call actions", "Post-mortems", "Admin opt-in"],
+  },
 ];
 
 const AGENTS = [
@@ -240,15 +247,15 @@ export default function AgentSkillsPage() {
         <section className="wrap py-8">
           <Eyebrow>The skills</Eyebrow>
           <h2 className="mt-4 max-w-[24ch]">
-            Three skills, <em>one install.</em>
+            Four skills, <em>one install.</em>
           </h2>
           <p className="muted mt-4 max-w-[640px] text-pretty">
             Plain Markdown playbooks your agent loads on demand. One sets up
-            your project, one queries and debugs it, and one explains how every
-            part of Traceway works.
+            your project, one queries and debugs it, one explains how every
+            part of Traceway works, and one lets your agent take action.
           </p>
 
-          <dl className="mt-14 grid gap-6 md:grid-cols-3">
+          <dl className="mt-14 grid gap-6 md:grid-cols-2">
             {SKILLS.map((skill) => (
               <div
                 key={skill.name}
@@ -369,7 +376,7 @@ export default function AgentSkillsPage() {
               items={[
                 {
                   q: "What exactly is an agent skill?",
-                  a: "A SKILL.md file: Markdown instructions your agent loads when a task matches. Traceway ships three: one sets up a project, one queries and debugs it, and one explains how every part of Traceway works. All three live in the open-source repo.",
+                  a: "A SKILL.md file: Markdown instructions your agent loads when a task matches. Traceway ships four: one sets up a project, one queries and debugs it, one explains how every part of Traceway works, and one makes changes once an admin allows it. All four live in the open-source repo.",
                 },
                 {
                   q: "Which agents are supported?",
@@ -380,7 +387,7 @@ export default function AgentSkillsPage() {
                         Codex, OpenCode, Gemini CLI, Copilot, and more.
                       </p>
                       <p>
-                        <code>npx skills add tracewayapp/traceway</code>{" "}
+                        <code>npx skills add tracewayapp/traceway --all</code>{" "}
                         installs the skills for every agent it finds on your
                         machine.
                       </p>
@@ -389,7 +396,7 @@ export default function AgentSkillsPage() {
                 },
                 {
                   q: "Can an agent damage my production data?",
-                  a: "No. The traceway CLI and these skills only read. Writes need the separate traceway-write CLI and skill, a write token, and an organization admin who turned on Agent Access.",
+                  a: "No. The traceway CLI only reads. The install also adds the traceway-write skill, but it changes nothing on its own: writes need the separate traceway-write CLI or a write token, and an organization admin who turned on Agent Access.",
                 },
                 {
                   q: "Does this work with self-hosted Traceway?",

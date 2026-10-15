@@ -63,18 +63,19 @@ Plus: background-task (job) monitoring, configurable alerts (Slack / GitHub / em
 Your agent sets up Traceway, queries production telemetry, and finds the root cause:
 
 ```bash
-npx skills add tracewayapp/traceway
+npx skills add tracewayapp/traceway --all
 ```
 
-One command installs three skills into Claude Code, Cursor, Codex, or any agent that reads `SKILL.md`:
+One command installs all four skills into Claude Code, Cursor, Codex, or any agent that reads `SKILL.md`:
 
 - **`/traceway-setup`** reads your repo and wires it up: OTel for backends, Traceway SDKs for web and mobile. Then it verifies data actually arrives.
 - **`/traceway`** installs the `traceway` CLI and uses it to query exceptions, logs, endpoints, and metrics, from bug report to root cause.
 - **`/traceway-learn`** is the full guide to the product: issues, endpoints, traces, logs, metrics, monitors, status pages, alerts, on-call schedules and paging, and settings. Ask it how anything in Traceway works.
+- **`/traceway-write`** teaches an agent to make routine on-call changes safely. It does nothing until you opt in to agent write access (below).
 
 The [CLI](./cli) is designed for agents first: JSON when piped, tables on a TTY, stable error identifiers and exit codes, `--fields` to trim responses. It's read only. Nothing hangs, nothing gets damaged.
 
-Want the agent to act too? Agent write access is opt-in at three levels: a write credential (the separate `traceway-write` CLI, a `tww_` token, or the `/mcp/write` server), an organization admin switch, and the creator's own role. Then an agent can archive issues, acknowledge pages, snooze alerts, run monitors and write post-mortems, and every write lands in an audit log. The `traceway-write` skill ships as its own plugin (`plugins/tw-write`). [Learn more →](https://docs.tracewayapp.com/learn/agent-write-access)
+Want the agent to act too? Agent write access is opt-in at three levels: a write credential (the separate `traceway-write` CLI, a `tww_` token, or the `/mcp/write` server), an organization admin switch, and the creator's own role. Then an agent can archive issues, acknowledge pages, snooze alerts, run monitors and write post-mortems, and every write lands in an audit log. In Claude Code the `traceway-write` skill is its own plugin (`plugins/tw-write`). [Learn more →](https://docs.tracewayapp.com/learn/agent-write-access)
 
 The skills are plain Markdown in [`skills/`](./skills), in the same MIT-licensed repo. No marketplace, no lock-in. [Learn more →](https://tracewayapp.com/product/agent-skills)
 

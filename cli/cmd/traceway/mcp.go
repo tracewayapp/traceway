@@ -10,6 +10,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 
+	"github.com/tracewayapp/traceway/cli/internal/appdir"
 	"github.com/tracewayapp/traceway/cli/internal/exitcode"
 	"github.com/tracewayapp/traceway/cli/pkg/client"
 	"github.com/tracewayapp/traceway/cli/pkg/mcpserver"
@@ -19,17 +20,17 @@ func newMcpCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "mcp",
 		Short: "Run the Traceway MCP server on stdio",
-		Long: `Serve the Traceway MCP server over stdio for MCP clients like Claude Code:
+		Long: fmt.Sprintf(`Serve the Traceway MCP server over stdio for MCP clients like Claude Code:
 
-  claude mcp add traceway -- traceway mcp
+  claude mcp add %[1]s -- %[1]s mcp
 
-Credentials come from the CLI session (run "traceway login" first) and the
-default project from "traceway projects use". Both can be overridden per call
+Credentials come from the CLI session (run "%[1]s login" first) and the
+default project from "%[1]s projects use". Both can be overridden per call
 via each tool's project_id parameter.
 
 Headless environments can skip the CLI session entirely by setting
 TRACEWAY_URL and TRACEWAY_TOKEN (a personal access token or JWT), plus an
-optional TRACEWAY_PROJECT default project id.`,
+optional TRACEWAY_PROJECT default project id.`, appdir.Binary),
 		Args: cobra.NoArgs,
 		RunE: runMcp,
 	}
@@ -40,14 +41,14 @@ optional TRACEWAY_PROJECT default project id.`,
 func runMcp(cmd *cobra.Command, _ []string) error {
 	cfg, err := resolveMcpConfig(cmd.ErrOrStderr())
 	if err != nil {
-		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "traceway mcp:", err)
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), appdir.Binary+" mcp:", err)
 		return newCLIError(exitcode.Auth, "not_authenticated")
 	}
 
 	srv := mcpserver.New(cfg)
 	err = srv.Run(cmd.Context(), &mcp.StdioTransport{})
 	if err != nil && !errors.Is(err, cmd.Context().Err()) && !isClientDisconnect(err) {
-		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "traceway mcp:", err)
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), appdir.Binary+" mcp:", err)
 		return newCLIError(exitcode.Generic, "mcp_server_failed")
 	}
 	return nil
@@ -81,10 +82,13 @@ func resolveMcpConfig(errOut io.Writer) (mcpserver.Config, error) {
 	url, token := os.Getenv("TRACEWAY_URL"), os.Getenv("TRACEWAY_TOKEN")
 	if url != "" || token != "" {
 		if flagProfile != "" {
-			_, _ = fmt.Fprintln(errOut, "traceway mcp: ignoring TRACEWAY_URL/TRACEWAY_TOKEN because --profile was given")
+			_, _ = fmt.Fprintln(errOut, appdir.Binary+" mcp: ignoring TRACEWAY_URL/TRACEWAY_TOKEN because --profile was given")
 		} else {
 			if url == "" || token == "" {
 				return mcpserver.Config{}, errors.New("TRACEWAY_URL and TRACEWAY_TOKEN must be set together")
+			}
+			if !editionWrite && strings.HasPrefix(token, "tww_") {
+				return mcpserver.Config{}, errors.New("TRACEWAY_TOKEN is a write token (tww_): run 'traceway-write mcp' for write access, or use a Read only token (twp_) here")
 			}
 			projectID := flagProject
 			if projectID == "" {
@@ -103,7 +107,7 @@ func resolveMcpConfig(errOut io.Writer) (mcpserver.Config, error) {
 
 	sess, err := loadSessionOpts(false)
 	if err != nil {
-		return mcpserver.Config{}, fmt.Errorf("not logged in (%w): run 'traceway login --url https://<instance>' in a terminal, then reconnect this MCP server", err)
+		return mcpserver.Config{}, fmt.Errorf("not logged in (%w): run '%s login --url https://<instance>' in a terminal, then reconnect this MCP server", err, appdir.Binary)
 	}
 	return mcpserver.Config{
 		Client:           sess.Client(),

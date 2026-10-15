@@ -75,7 +75,7 @@ Every `traceway` read command works in `traceway-write` (`exceptions list|show|o
 | `traceway-write alerts snooze <id> --minutes N` | `snooze_notification_rule` | Silences a rule for N minutes; 0 clears |
 | `traceway-write monitors run <id>` | `run_check` | Queues an immediate monitor run |
 | `traceway-write post-mortems create --title T [--content-file F] [--tag X] [--incident N]` | `create_post_mortem` | New post-mortem |
-| `traceway-write post-mortems update <id> [--title] [--content-file] [--tag] [--incident]` | `update_post_mortem` | Edits only the flags passed |
+| `traceway-write post-mortems update <id> [--title] [--content-file --expected-updated-at] [--tag] [--incident \| --unlink-incident]` | `update_post_mortem` | Edits only the flags passed. A new body needs the `updatedAt` it was based on |
 | `traceway-write endpoints mark-slow <endpoint> --offset-ms N --reason R` | `set_slow_endpoint` | Accepted latency for an endpoint; 0 removes |
 
 Every write command prints what it is about to do and asks for confirmation on a TTY. In scripts and agents pass `--yes` (or set `TRACEWAY_ASSUME_YES=1`) only after the user asked for that exact change. Output, flags, exit codes and error envelopes are the same as the read CLI: JSON when piped, `--fields` to trim, exit code 4 for auth and permission errors.

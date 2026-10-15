@@ -47,3 +47,24 @@ func TestReadEdition_passwordLoginAsksForReadScope(t *testing.T) {
 		t.Errorf("read build binary name = %q", newRootCmd().Use)
 	}
 }
+
+func TestReadEdition_refusesWriteTokens(t *testing.T) {
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+	seedSessionFor(t, srv.URL)
+
+	_, stderr, err := runCmd(t, "", "login", "--url", srv.URL, "--token", "tww_abc", "--output", "json")
+	if err == nil || !strings.Contains(stderr.String(), "write token") || called {
+		t.Errorf("login --token with a tww_ token must be refused before any request, got err=%v called=%v stderr=%s", err, called, stderr.String())
+	}
+
+	t.Setenv("TRACEWAY_URL", srv.URL)
+	t.Setenv("TRACEWAY_TOKEN", "tww_abc")
+	if _, err := resolveMcpConfig(&strings.Builder{}); err == nil || !strings.Contains(err.Error(), "write token") {
+		t.Errorf("mcp with a tww_ TRACEWAY_TOKEN must be refused, got %v", err)
+	}
+}

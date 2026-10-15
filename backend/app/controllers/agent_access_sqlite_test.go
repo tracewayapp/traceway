@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -23,6 +24,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/services"
+	"github.com/tracewayapp/traceway/backend/app/services/authserver"
 )
 
 const agentTestSecret = "agent-access-test-secret-0123456789abcdef"
@@ -293,6 +295,88 @@ func TestAgentGate_jwtKinds(t *testing.T) {
 	events := f.auditEvents(t)
 	if len(events) != 1 || events[0].CredentialKind != middleware.CredentialOAuth || events[0].CredentialRef != "traceway-cli-write" {
 		t.Errorf("OAuth write audit = %+v", events)
+	}
+}
+
+func (f *agentFixture) member(t *testing.T, email, role string) (userId int, writeToken, session string) {
+	t.Helper()
+	user, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.User, error) {
+		u, err := transactional.UserRepository.Create(tx, email, email, "x")
+		if err != nil {
+			return nil, err
+		}
+		_, err = transactional.OrganizationRepository.AddUser(tx, f.orgId, u.Id, role)
+		return u, err
+	})
+	if err != nil {
+		t.Fatalf("create member: %v", err)
+	}
+	writeToken = "tww_" + uuid.NewString()
+	expires := time.Now().Add(time.Hour)
+	_, err = db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
+		return struct{}{}, transactional.PersonalAccessTokenRepository.Create(tx, uuid.NewString(), writeToken, writeToken[:12], user.Id, "member write", models.ScopeWrite, &expires)
+	})
+	if err != nil {
+		t.Fatalf("create member pat: %v", err)
+	}
+	session, err = services.GenerateToken(user.Id, email)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return user.Id, writeToken, session
+}
+
+func TestAgentGate_readonlyMemberWriteTokenStillNeedsWriteRole(t *testing.T) {
+	f := setupAgentFixture(t)
+	f.setAgentWrites(t, true)
+	_, write, _ := f.member(t, "readonly@example.com", "readonly")
+
+	rec := f.archive(t, write)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("readonly member's write token archive = %d, want 403 from the role check after the gate", rec.Code)
+	}
+	events := f.auditEvents(t)
+	if len(events) != 1 || events[0].StatusCode != http.StatusForbidden || events[0].UserEmail != "readonly@example.com" {
+		t.Errorf("the refused write must be audited with its 403, got %+v", events)
+	}
+}
+
+func TestAgentAccessSettings_adminOnly(t *testing.T) {
+	f := setupAgentFixture(t)
+	_, _, session := f.member(t, "user@example.com", "user")
+	base := "/api/organizations/" + itoa(f.orgId)
+
+	if rec := f.do(t, session, http.MethodPut, base+"/agent-access", map[string]any{"agentWriteEnabled": true}); rec.Code != http.StatusForbidden {
+		t.Errorf("non-admin agent-access toggle = %d, want 403", rec.Code)
+	}
+	if rec := f.do(t, session, http.MethodGet, base+"/agent-activity", nil); rec.Code != http.StatusForbidden {
+		t.Errorf("non-admin agent activity = %d, want 403", rec.Code)
+	}
+	enabled, err := db.ExecuteTransaction(func(tx *sql.Tx) (bool, error) {
+		return transactional.OrganizationRepository.GetAgentWriteEnabled(tx, f.orgId)
+	})
+	if err != nil || enabled {
+		t.Errorf("agent writes enabled = %v (%v), want still off", enabled, err)
+	}
+}
+
+func TestDeviceLookup_reportsRequestedScope(t *testing.T) {
+	f := setupAgentFixture(t)
+	session, err := services.GenerateToken(f.userId, "agent@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for client, want := range map[string]string{"traceway-cli": models.ScopeRead, "traceway-cli-write": models.ScopeWrite} {
+		da, err := authserver.CreateDeviceAuth(client, "http://localhost")
+		if err != nil {
+			t.Fatalf("create device auth for %s: %v", client, err)
+		}
+		rec := f.do(t, session, http.MethodGet, "/api/device?user_code="+url.QueryEscape(da.UserCode), nil)
+		var body models.DeviceLookupResponse
+		_ = json.Unmarshal(rec.Body.Bytes(), &body)
+		if rec.Code != http.StatusOK || body.Scope != want {
+			t.Errorf("%s lookup = %d scope %q, want %q (the approval screen's write warning depends on it)", client, rec.Code, body.Scope, want)
+		}
 	}
 }
 

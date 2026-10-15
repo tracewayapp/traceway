@@ -10,7 +10,7 @@ Writes are off by default and opt-in at three levels. All three have to agree be
 |---|---|---|
 | **Credential** | Only write credentials can write: a `tww_` token, a `traceway-write` login, or the `/mcp/write` server. Everything else is read only. | The person creating the token or logging in |
 | **Organization** | An admin turns on **Settings > Agent Access**. Until then every agent write is refused. | Organization owners and admins |
-| **Role** | The write runs as the person who created the credential. A `readonly` member's write token still cannot write. | Existing roles and per-project overrides |
+| **Role** | The write runs with the role of the person who created the credential, under the same rules as the dashboard. A `readonly` member's write token cannot archive issues, change alerts, run monitors or edit post-mortems. Like in the dashboard, any member can acknowledge and resolve pages. | Existing roles and per-project overrides |
 
 Every write a write credential makes in the organization is recorded in its agent activity log, including the writes refused because Agent Access is off.
 
@@ -76,7 +76,7 @@ The OAuth consent page shows a **Read and write access** warning when a client a
 
 ### The traceway-write skill
 
-The `traceway-write` skill teaches an agent the rules for writes (only on request, say the change first, prefer the reversible option) and playbooks for pages, flapping alerts, confirming fixes and writing post-mortems. It ships as its own Claude Code plugin, `tw-write`, so installing the read skills never installs it. For how each part of Traceway works, it relies on the read-only `traceway-learn` skill (see [MCP Server](/learn/mcp#the-product-guide)).
+The `traceway-write` skill teaches an agent the rules for writes (only on request, say the change first, prefer the reversible option) and playbooks for pages, flapping alerts, confirming fixes and writing post-mortems. `npx skills add tracewayapp/traceway --all` installs it with the other skills. In Claude Code it is its own plugin, `tw-write`, separate from the read-only `tw` plugin. The skill alone changes nothing: writes still need the `traceway-write` CLI or a write token, and an admin who turned on Agent Access. For how each part of Traceway works, it relies on the read-only `traceway-learn` skill (see [MCP Server](/learn/mcp#the-product-guide)).
 
 ```
 /plugin marketplace add tracewayapp/traceway

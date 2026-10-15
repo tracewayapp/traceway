@@ -38,6 +38,10 @@ func runLoginToken(cmd *cobra.Command) error {
 	if token == "" {
 		return renderUsageError(cmd.ErrOrStderr(), mode, "no token provided", appdir.Binary+" login --token <token>")
 	}
+	if !editionWrite && strings.HasPrefix(token, "tww_") {
+		return renderUsageError(cmd.ErrOrStderr(), mode, "this is a write token (tww_), and the read-only traceway CLI does not keep write credentials",
+			"use it with 'traceway-write login --token', or create a Read only token (twp_) under Account > Personal Access Tokens")
+	}
 
 	username := loginUsername
 	if username == "" {

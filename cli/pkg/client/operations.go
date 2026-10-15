@@ -1,6 +1,7 @@
 package client
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -191,13 +192,17 @@ func (c *Client) CreatePostMortem(ctx context.Context, projectID string, in Post
 }
 
 // PostMortemPatch changes only the fields that are set; the server's update
-// replaces the whole document, so the rest is read back first and the update
-// is conditional on the document not changing in between (409 otherwise).
+// replaces the whole document, so the rest is read back first. The update is
+// conditional on the document still being at ExpectedUpdatedAt, the revision
+// the caller based its edit on, or at the one read here when that is empty
+// (409 otherwise).
 type PostMortemPatch struct {
-	Title      *string
-	ContentMd  *string
-	Tags       *[]string
-	IncidentId *int
+	Title             *string
+	ContentMd         *string
+	Tags              *[]string
+	IncidentId        *int
+	UnlinkIncident    bool
+	ExpectedUpdatedAt string
 }
 
 func (c *Client) UpdatePostMortem(ctx context.Context, projectID string, id int, patch PostMortemPatch) (json.RawMessage, error) {
@@ -209,7 +214,7 @@ func (c *Client) UpdatePostMortem(ctx context.Context, projectID string, id int,
 	if err != nil {
 		return nil, err
 	}
-	in := PostMortemInput{Title: current.Title, ContentMd: current.ContentMd, Tags: current.Tags, IncidentId: current.IncidentId, ExpectedUpdatedAt: current.UpdatedAt}
+	in := PostMortemInput{Title: current.Title, ContentMd: current.ContentMd, Tags: current.Tags, IncidentId: current.IncidentId, ExpectedUpdatedAt: cmp.Or(patch.ExpectedUpdatedAt, current.UpdatedAt)}
 	if patch.Title != nil {
 		in.Title = *patch.Title
 	}
@@ -221,6 +226,9 @@ func (c *Client) UpdatePostMortem(ctx context.Context, projectID string, id int,
 	}
 	if patch.IncidentId != nil {
 		in.IncidentId = patch.IncidentId
+	}
+	if patch.UnlinkIncident {
+		in.IncidentId = nil
 	}
 	if in.Tags == nil {
 		in.Tags = []string{}

@@ -271,8 +271,17 @@ func newPostMortemsUpdateCmd() *cobra.Command {
 			if incident, _ := cmd.Flags().GetInt("incident"); incident > 0 {
 				patch.IncidentId = &incident
 			}
-			if patch.Title == nil && patch.ContentMd == nil && patch.Tags == nil && patch.IncidentId == nil {
-				return renderUsageError(cmd.ErrOrStderr(), mode, "nothing to update", appdir.Binary+" post-mortems update <id> --title <title> | --content-file <file> | --tag <tag> | --incident <id>")
+			patch.UnlinkIncident, _ = cmd.Flags().GetBool("unlink-incident")
+			patch.ExpectedUpdatedAt, _ = cmd.Flags().GetString("expected-updated-at")
+			if patch.IncidentId != nil && patch.UnlinkIncident {
+				return renderUsageError(cmd.ErrOrStderr(), mode, "pass --incident or --unlink-incident, not both", "")
+			}
+			if patch.ContentMd != nil && patch.ExpectedUpdatedAt == "" {
+				return renderUsageError(cmd.ErrOrStderr(), mode, "--content-file replaces the whole body, so --expected-updated-at is required",
+					"pass the updatedAt from the '"+appdir.Binary+" post-mortems show <id>' your revision is based on")
+			}
+			if patch.Title == nil && patch.ContentMd == nil && patch.Tags == nil && patch.IncidentId == nil && !patch.UnlinkIncident {
+				return renderUsageError(cmd.ErrOrStderr(), mode, "nothing to update", appdir.Binary+" post-mortems update <id> --title <title> | --content-file <file> --expected-updated-at <t> | --tag <tag> | --incident <id> | --unlink-incident")
 			}
 			return runWrite(cmd, []string{fmt.Sprintf("About to update post-mortem %d.", id)},
 				map[string]any{"action": "update", "id": id, "message": fmt.Sprintf("Updated post-mortem %d.", id)},
@@ -285,6 +294,8 @@ func newPostMortemsUpdateCmd() *cobra.Command {
 	cmd.Flags().String("content-file", "", "Markdown file replacing the body, or - for stdin")
 	cmd.Flags().StringSlice("tag", nil, "Replace the tags (repeatable)")
 	cmd.Flags().Int("incident", 0, "Incident id to link")
+	cmd.Flags().Bool("unlink-incident", false, "Remove the incident link")
+	cmd.Flags().String("expected-updated-at", "", "updatedAt of the version the edit is based on (from post-mortems show); a newer document fails with a conflict instead of being overwritten")
 	return cmd
 }
 

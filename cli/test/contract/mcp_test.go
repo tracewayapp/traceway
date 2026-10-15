@@ -84,10 +84,16 @@ func TestContract_mcpWriteTools(t *testing.T) {
 	if !ok {
 		t.Fatalf("create_post_mortem returned no id: %v", created)
 	}
-	call("update_post_mortem", map[string]any{"id": int(id), "content_md": "revised"}, "revised")
+	call("update_post_mortem", map[string]any{"id": int(id), "content_md": "revised", "expected_updated_at": created["updatedAt"]}, "revised")
 	got := call("get_post_mortem", map[string]any{"id": int(id)}, "revised")
 	if got["title"] != "Contract outage" {
 		t.Errorf("update_post_mortem must keep fields it was not given, title = %v", got["title"])
+	}
+	stale, err := cs.CallTool(t.Context(), &mcp.CallToolParams{Name: "update_post_mortem", Arguments: map[string]any{
+		"project_id": projectID, "id": int(id), "content_md": "based on the first draft", "expected_updated_at": created["updatedAt"],
+	}})
+	if err != nil || !stale.IsError || !strings.Contains(stale.Content[0].(*mcp.TextContent).Text, "changed since it was read") {
+		t.Errorf("an update based on a stale read must be refused with a conflict, got err=%v result=%+v", err, stale)
 	}
 	call("list_post_mortems", map[string]any{"search": "Contract"}, "Contract outage")
 

@@ -1,4 +1,4 @@
-export const SKILL_INSTALL_COMMAND = 'npx skills add tracewayapp/traceway';
+export const SKILL_INSTALL_COMMAND = 'npx skills add tracewayapp/traceway --all';
 
 export type PromptPart = {
 	text: string;

@@ -202,7 +202,7 @@ func TestPostMortemsUpdate_keepsFieldsItWasNotGiven(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rec.add(r)
 		if r.Method == http.MethodGet {
-			_, _ = w.Write([]byte(`{"id":5,"title":"Redis outage","contentMd":"old","tags":["redis"],"incidentId":11}`))
+			_, _ = w.Write([]byte(`{"id":5,"title":"Redis outage","contentMd":"old","tags":["redis"],"incidentId":11,"updatedAt":"2026-10-15T10:05:00Z"}`))
 			return
 		}
 		_, _ = w.Write([]byte(`{"id":5}`))
@@ -211,7 +211,7 @@ func TestPostMortemsUpdate_keepsFieldsItWasNotGiven(t *testing.T) {
 	seedSessionFor(t, srv.URL)
 	t.Cleanup(func() { flagYes = false })
 
-	if _, stderr, err := runCmd(t, "new body", "post-mortems", "update", "5", "--content-file", "-", "--yes", "--output", "json"); err != nil {
+	if _, stderr, err := runCmd(t, "new body", "post-mortems", "update", "5", "--content-file", "-", "--expected-updated-at", "2026-10-15T10:00:00Z", "--yes", "--output", "json"); err != nil {
 		t.Fatalf("update: %v %s", err, stderr.String())
 	}
 	if rec.calls[1] != "PUT /api/post-mortems/5" {
@@ -220,9 +220,42 @@ func TestPostMortemsUpdate_keepsFieldsItWasNotGiven(t *testing.T) {
 	if rec.body["title"] != "Redis outage" || rec.body["contentMd"] != "new body" || rec.body["incidentId"] != float64(11) {
 		t.Errorf("update body = %v", rec.body)
 	}
+	if rec.body["expectedUpdatedAt"] != "2026-10-15T10:00:00Z" {
+		t.Errorf("the revision the edit is based on must be sent, not the one re-read before the PUT: expectedUpdatedAt = %v", rec.body["expectedUpdatedAt"])
+	}
 	tags, _ := rec.body["tags"].([]any)
 	if len(tags) != 1 || tags[0] != "redis" {
 		t.Errorf("tags = %v", rec.body["tags"])
+	}
+}
+
+func TestPostMortemsUpdate_contentNeedsExpectedUpdatedAt(t *testing.T) {
+	seedSessionFor(t, "http://127.0.0.1:1")
+	_, stderr, err := runCmd(t, "new body", "post-mortems", "update", "5", "--content-file", "-", "--yes", "--output", "json")
+	if err == nil || !strings.Contains(stderr.String(), "--expected-updated-at is required") {
+		t.Fatalf("want a usage error, got %v %s", err, stderr.String())
+	}
+}
+
+func TestPostMortemsUpdate_unlinkIncident(t *testing.T) {
+	rec := &recorded{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec.add(r)
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(`{"id":5,"title":"Redis outage","contentMd":"old","tags":[],"incidentId":11,"updatedAt":"2026-10-15T10:05:00Z"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"id":5}`))
+	}))
+	defer srv.Close()
+	seedSessionFor(t, srv.URL)
+	t.Cleanup(func() { flagYes = false })
+
+	if _, stderr, err := runCmd(t, "", "post-mortems", "update", "5", "--unlink-incident", "--yes", "--output", "json"); err != nil {
+		t.Fatalf("update: %v %s", err, stderr.String())
+	}
+	if v, ok := rec.body["incidentId"]; !ok || v != nil {
+		t.Errorf("incidentId = %v (present %v), want null", v, ok)
 	}
 }
 

@@ -146,7 +146,7 @@ func newRefreshingClient(url, profileName, jwt, refreshToken, kind string, opts 
 		}
 
 		if perr := updateProfileTokens(profileName, ts); perr != nil {
-			fmt.Fprintf(os.Stderr, "warning: refreshed access token but could not save it: %v (later commands may require 'traceway login' again)\n", perr)
+			fmt.Fprintf(os.Stderr, "warning: refreshed access token but could not save it: %v (later commands may require '%s login' again)\n", perr, appdir.Binary)
 		}
 		if ts.RefreshToken != "" {
 			rt = ts.RefreshToken

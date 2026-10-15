@@ -62,4 +62,4 @@ An occurrence carries the key-value attributes in scope when it happened. Under 
 | One occurrence | `traceway exceptions occurrence <id> --recorded-at <t>` | `get_exception_occurrence` |
 | Archive or unarchive (write) | `traceway-write exceptions archive\|unarchive <hash>...` | `archive_exceptions` / `unarchive_exceptions` |
 
-Search is always a case-insensitive substring of the stack trace. The list comes back ordered by event count. `--include-archived` is the only way to list archived issues. The `traceway` skill's debug flow walks an issue from hash to root cause.
+Search is always a case-insensitive substring of the stack trace. The list comes back newest activity first (`lastSeen`); `--order-by firstSeen` or `count` changes that. `--include-archived` is the only way to list archived issues. The `traceway` skill's debug flow walks an issue from hash to root cause.

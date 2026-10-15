@@ -320,7 +320,7 @@ export default function McpPage() {
             <FeatureCard
               icon={<ShieldCheck className="h-5 w-5" />}
               title="Safe by default"
-              body="/mcp never lists a write tool. /mcp/write needs a write token, an organization admin's opt-in and the user's own write role, and every agent write lands in an audit log."
+              body="/mcp never lists a write tool. /mcp/write needs a write token, an organization admin's opt-in and the role the change needs, and every agent write lands in an audit log."
             />
             <FeatureCard
               icon={<Boxes className="h-5 w-5" />}

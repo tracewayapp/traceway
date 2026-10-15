@@ -287,6 +287,10 @@ func (ctrl *postMortemController) Update(ctx *gin.Context) {
 		return
 	}
 	tx := db.GetTx(ctx)
+	if err := transactional.PostMortemRepository.LockForUpdate(tx, id, projectId); err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to lock post-mortem: %w", err))
+		return
+	}
 	postMortem, err := transactional.PostMortemRepository.FindByIdForProject(tx, id, projectId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to load post-mortem: %w", err))

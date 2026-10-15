@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-const COMMAND = "npx skills add tracewayapp/traceway";
+const COMMAND = "npx skills add tracewayapp/traceway --all";
 
 export default function AgentSkillsCallout() {
   const [copied, setCopied] = useState(false);

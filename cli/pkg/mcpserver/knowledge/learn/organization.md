@@ -49,7 +49,7 @@ Servers and Monitors are hidden when every project is a browser or mobile app.
 
 The setup guide for the current project: the project token, the OTLP endpoint and the snippet for the chosen language and framework. Two tabs:
 
-- **AI**: install the skills with `npx skills add tracewayapp/traceway` and paste a ready-made prompt with the URL and token. The `traceway-setup` skill instruments the application.
+- **AI**: install the skills with `npx skills add tracewayapp/traceway --all` and paste a ready-made prompt with the URL and token. The `traceway-setup` skill instruments the application.
 - **Manual**: step-by-step setup.
 
 Browser and mobile projects also get **Source Map Upload** (browser and Android) or **Symbol Upload** (Flutter and iOS) with an upload token for CI, hidden from read-only members. Regenerating it invalidates the old one.
@@ -58,7 +58,7 @@ Browser and mobile projects also get **Source Map Upload** (browser and Android)
 
 Per-person settings:
 
-- **Personal Access Tokens**: name, prefix, access, created, last used, expires. Access is **Read only** (`twp_`, the default, can be non-expiring) or **Read and write** (`tww_`, expires in 7 to 90 days, and only writes where an admin turned on Agent Access). A token is shown once.
+- **Personal Access Tokens**: name, prefix, access, created, last used, expires. Access is **Read only** (`twp_`, the default, can be non-expiring) or **Read and write** (`tww_`, expires within 1 to 90 days, and only writes where an admin turned on Agent Access). A token is shown once.
 - **Contact Methods** and **Notification Rules** for on-call (`on-call.md`).
 
 ## Settings (`/settings`, owners and admins)
@@ -77,7 +77,7 @@ Per-project settings open from the project switcher (**Edit Project**), not from
 - **Writes are opt in at three levels**, all of which must agree:
   1. A write credential: a `tww_` token, a `traceway-write` login, or the `/mcp/write` server.
   2. An organization owner or admin turns on **Settings > Agent Access**.
-  3. The person behind the credential has write access to the project.
+  3. The person behind the credential has the role the change needs, as in the dashboard. A `readonly` member can still acknowledge and resolve pages, but not make the other writes.
 - Agent credentials only reach the routes the CLI and MCP use. Account, member, token and settings routes refuse them, as do creating rules, channels, monitors, schedules and status pages, and every delete.
 - Every agent write, accepted or refused by the switch, is in the agent activity log for 90 days.
 

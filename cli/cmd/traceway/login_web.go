@@ -36,7 +36,7 @@ func runLoginWeb(cmd *cobra.Command) error {
 	if !loginNoBrowser && !output.StdoutIsTerminal() {
 		return renderUsageError(cmd.ErrOrStderr(), mode,
 			"the browser device-login flow requires an interactive terminal",
-			"use 'traceway login --token <token>' or 'traceway login --password' for non-interactive login")
+			"use '"+appdir.Binary+" login --token <token>' or '"+appdir.Binary+" login --password' for non-interactive login")
 	}
 
 	cfg, st, profileName, url, err := loadLoginContext()

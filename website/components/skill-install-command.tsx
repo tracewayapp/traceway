@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const COMMAND = "npx skills add tracewayapp/traceway";
+const COMMAND = "npx skills add tracewayapp/traceway --all";
 
 export function SkillInstallCommand({
   className,

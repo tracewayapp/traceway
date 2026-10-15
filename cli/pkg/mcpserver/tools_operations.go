@@ -106,7 +106,7 @@ func (s *server) addOperationWriteTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:         "update_post_mortem",
 		OutputSchema: passThroughSchema,
-		Description:  "Update a post-mortem. Only the fields you pass change; content_md replaces the whole body, so read it with get_post_mortem and send the full revised text. If someone edits the document while this call runs it fails with a 409 conflict instead of overwriting their change: read it again and reapply. Every edit is recorded in the post-mortem's activity log. MUTATING.",
+		Description:  "Update a post-mortem. Only the fields you pass change; content_md replaces the whole body, so read it with get_post_mortem, send the full revised text, and pass that read's updatedAt as expected_updated_at. If someone edited the document since that read, the call fails with a 409 conflict instead of overwriting their change: read it again and reapply. Every edit is recorded in the post-mortem's activity log. MUTATING.",
 		Annotations:  mutating(),
 	}, s.updatePostMortem)
 
@@ -334,11 +334,13 @@ func (s *server) createPostMortem(ctx context.Context, req *mcp.CallToolRequest,
 
 type updatePostMortemIn struct {
 	projectIn
-	ID         int       `json:"id" jsonschema:"The post-mortem's numeric id."`
-	Title      *string   `json:"title,omitempty" jsonschema:"New title."`
-	ContentMd  *string   `json:"content_md,omitempty" jsonschema:"New markdown body, replacing the whole document."`
-	Tags       *[]string `json:"tags,omitempty" jsonschema:"New tag list, replacing the old one."`
-	IncidentID int       `json:"incident_id,omitempty" jsonschema:"Link this incident."`
+	ID                int       `json:"id" jsonschema:"The post-mortem's numeric id."`
+	Title             *string   `json:"title,omitempty" jsonschema:"New title."`
+	ContentMd         *string   `json:"content_md,omitempty" jsonschema:"New markdown body, replacing the whole document. Requires expected_updated_at."`
+	Tags              *[]string `json:"tags,omitempty" jsonschema:"New tag list, replacing the old one."`
+	IncidentID        int       `json:"incident_id,omitempty" jsonschema:"Link this incident."`
+	UnlinkIncident    bool      `json:"unlink_incident,omitempty" jsonschema:"Remove the incident link."`
+	ExpectedUpdatedAt string    `json:"expected_updated_at,omitempty" jsonschema:"The updatedAt of the version your edit is based on, exactly as get_post_mortem returned it. If the document changed since, the update fails with a 409 instead of overwriting that change."`
 }
 
 func (s *server) updatePostMortem(ctx context.Context, req *mcp.CallToolRequest, in updatePostMortemIn) (*mcp.CallToolResult, any, error) {
@@ -349,7 +351,13 @@ func (s *server) updatePostMortem(ctx context.Context, req *mcp.CallToolRequest,
 	if err := positiveID("id", in.ID); err != nil {
 		return nil, nil, err
 	}
-	patch := client.PostMortemPatch{Title: in.Title, ContentMd: in.ContentMd, Tags: in.Tags}
+	if in.ContentMd != nil && in.ExpectedUpdatedAt == "" {
+		return nil, nil, usageErrf("content_md replaces the whole body, so expected_updated_at is required: pass the updatedAt from the get_post_mortem your revision is based on")
+	}
+	if in.IncidentID > 0 && in.UnlinkIncident {
+		return nil, nil, usageErrf("pass incident_id or unlink_incident, not both")
+	}
+	patch := client.PostMortemPatch{Title: in.Title, ContentMd: in.ContentMd, Tags: in.Tags, UnlinkIncident: in.UnlinkIncident, ExpectedUpdatedAt: in.ExpectedUpdatedAt}
 	if in.IncidentID > 0 {
 		patch.IncidentId = &in.IncidentID
 	}

@@ -2,8 +2,8 @@
 // knowledge chunks embedded in pkg/mcpserver/knowledge, so the skills and the
 // MCP server cannot drift. It writes the read-only skill to skills/traceway/,
 // the product guide to skills/traceway-learn/, and the write skill to
-// plugins/tw-write/skills/traceway-write/, a separate plugin so installing the
-// read skills never installs the write one. Run via 'just gen-skills' from cli/.
+// plugins/tw-write/skills/traceway-write/, a separate Claude Code plugin from
+// the read-only tw one. Run via 'just gen-skills' from cli/.
 //
 // Note: skills-lock.json pins an installer-computed hash of the skill; after
 // regenerating, reinstall the skill (or rerun the skill installer) to refresh

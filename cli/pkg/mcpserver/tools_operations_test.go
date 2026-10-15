@@ -48,19 +48,35 @@ func TestUpdatePostMortem_mergesWithCurrent(t *testing.T) {
 	var put map[string]any
 	backend := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
-			_, _ = w.Write([]byte(`{"id":3,"title":"Keep me","contentMd":"old","tags":["a"],"incidentId":null}`))
+			_, _ = w.Write([]byte(`{"id":3,"title":"Keep me","contentMd":"old","tags":["a"],"incidentId":null,"updatedAt":"2026-10-15T10:05:00Z"}`))
 			return
 		}
 		_ = json.NewDecoder(r.Body).Decode(&put)
 		_, _ = w.Write([]byte(`{"id":3,"title":"Keep me","contentMd":"new"}`))
 	})
 	cs := connectWrite(t, backend, "p-1")
-	res := callTool(t, cs, "update_post_mortem", map[string]any{"id": 3, "content_md": "new"})
+	res := callTool(t, cs, "update_post_mortem", map[string]any{"id": 3, "content_md": "new", "expected_updated_at": "2026-10-15T10:00:00Z"})
 	if res.IsError {
 		t.Fatalf("tool error: %s", resultText(t, res))
 	}
 	if put["title"] != "Keep me" || put["contentMd"] != "new" {
 		t.Errorf("PUT body = %v", put)
+	}
+	if put["expectedUpdatedAt"] != "2026-10-15T10:00:00Z" {
+		t.Errorf("expectedUpdatedAt = %v, want the revision the agent read", put["expectedUpdatedAt"])
+	}
+}
+
+func TestUpdatePostMortem_contentNeedsExpectedUpdatedAt(t *testing.T) {
+	called := false
+	backend := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		_, _ = w.Write([]byte(`{}`))
+	})
+	cs := connectWrite(t, backend, "p-1")
+	res := callTool(t, cs, "update_post_mortem", map[string]any{"id": 3, "content_md": "new"})
+	if !res.IsError || !strings.Contains(resultText(t, res), "expected_updated_at") || called {
+		t.Errorf("want an invalid_argument error before any request, got %s (called %v)", resultText(t, res), called)
 	}
 }
 

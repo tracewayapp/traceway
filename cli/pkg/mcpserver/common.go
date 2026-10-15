@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/tracewayapp/traceway/cli/internal/appdir"
 	"github.com/tracewayapp/traceway/cli/internal/errclass"
 	"github.com/tracewayapp/traceway/cli/internal/timerange"
 	"github.com/tracewayapp/traceway/cli/pkg/client"
@@ -36,7 +37,7 @@ func (s *server) apiErr(err error) error {
 	if c.Code == "token_expired" {
 		hint = s.cfg.AuthHint
 		if hint == "" {
-			hint = "run 'traceway login' in a terminal on the host, then reconnect this MCP server"
+			hint = "run '" + appdir.Binary + " login' in a terminal on the host, then reconnect this MCP server"
 		}
 	}
 	if hint != "" {
@@ -69,12 +70,12 @@ func (s *server) project(override string) (string, error) {
 	if s.cfg.DefaultProjectID != "" {
 		return s.cfg.DefaultProjectID, nil
 	}
-	return "", errors.New("error=no_project: no project selected. Hint: pass project_id (find ids with list_projects) or set a default with 'traceway projects use <id>' on the host")
+	return "", errors.New("error=no_project: no project selected. Hint: pass project_id (find ids with list_projects) or set a default with '" + appdir.Binary + " projects use <id>' on the host")
 }
 
 // projectIn is embedded in every project-scoped tool input.
 type projectIn struct {
-	ProjectID string `json:"project_id,omitempty" jsonschema:"Project to query. Optional when a default project is configured on the host (traceway projects use); find ids with list_projects."`
+	ProjectID string `json:"project_id,omitempty" jsonschema:"Project to query. Optional when a default project is configured on the host (the CLI's projects use); find ids with list_projects."`
 }
 
 // timeRangeIn is embedded in every windowed list/query tool input.

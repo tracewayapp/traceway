@@ -138,7 +138,7 @@ Internal write-ups of an incident: what happened, the impact, the timeline, the 
 
 | Task | CLI | MCP tool |
 |---|---|---|
-| List monitors with status and uptime | `traceway monitors list` | `list_checks` |
+| List monitors with their current status | `traceway monitors list` | `list_checks` |
 | One monitor with its incidents | `traceway monitors show <id>` | `get_check` |
 | List post-mortems | `traceway post-mortems list [--search S] [--tag T]` | `list_post_mortems` |
 | Read a post-mortem | `traceway post-mortems show <id>` | `get_post_mortem` |

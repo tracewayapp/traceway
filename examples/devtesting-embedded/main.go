@@ -123,14 +123,14 @@ func initOtelService(ctx context.Context, serviceName, token string, extraResour
 	}, nil
 }
 
-func (s *otelService) log(ctx context.Context, sev otellog.Severity, sevText, body string, attrs ...otellog.KeyValue) {
+func (s *otelService) log(ctx context.Context, sev otellog.Severity, sevText, body string, attrs ...attribute.KeyValue) {
 	rec := otellog.Record{}
 	now := time.Now()
 	rec.SetTimestamp(now)
 	rec.SetObservedTimestamp(now)
 	rec.SetSeverity(sev)
 	rec.SetSeverityText(sevText)
-	rec.SetBody(otellog.StringValue(body))
+	rec.SetBody(attribute.StringValue(body))
 	if len(attrs) > 0 {
 		rec.AddAttributes(attrs...)
 	}
@@ -281,7 +281,7 @@ func main() {
 		cacheSpan.End()
 
 		backendSvc.log(dbCtx, otellog.SeverityWarn, "WARN", "db: query took longer than expected",
-			otellog.String("threshold_ms", "20"))
+			attribute.String("threshold_ms", "20"))
 		dbSpan.End()
 
 		backendSvc.log(ctx, otellog.SeverityInfo, "INFO", "handler: returning 200")
@@ -293,13 +293,13 @@ func main() {
 		traceId := trace.SpanContextFromContext(ctx).TraceID().String()
 
 		backendSvc.log(ctx, otellog.SeverityInfo, "INFO", "backend: received request, about to call worker",
-			otellog.String("trace_id", traceId))
+			attribute.String("trace_id", traceId))
 
 		workerCtx, workerSpan := workerSvc.tr.Start(ctx, "worker.process-job",
 			trace.WithSpanKind(trace.SpanKindConsumer))
 
 		workerSvc.log(workerCtx, otellog.SeverityInfo, "INFO", "worker: starting job",
-			otellog.String("trace_id", traceId))
+			attribute.String("trace_id", traceId))
 		time.Sleep(15 * time.Millisecond)
 		workerSvc.log(workerCtx, otellog.SeverityDebug, "DEBUG", "worker: step 1 complete")
 		time.Sleep(15 * time.Millisecond)
@@ -331,9 +331,9 @@ func main() {
 		longToken := strings.Repeat("0646a849a52752904984ab92b2a39f1c", 12)
 		attrTestSvc.log(ctx, otellog.SeverityDebug, "DEBUG",
 			"log line with long attributes; unbroken debug context: "+longToken,
-			otellog.String("auth.token", longToken),
-			otellog.String("stack.preview", "goroutine 1 [running]:\nmain.handler(0x14000123456)\n\t/app/main.go:42 +0x1f4\nmain.process(0x14000123456)\n\t/app/worker.go:88 +0x2bc"),
-			otellog.String("payload.json", `{"user":{"id":"0646a849a52752904984ab92b2a39f1c","token":"`+longToken+`"}}`),
+			attribute.String("auth.token", longToken),
+			attribute.String("stack.preview", "goroutine 1 [running]:\nmain.handler(0x14000123456)\n\t/app/main.go:42 +0x1f4\nmain.process(0x14000123456)\n\t/app/worker.go:88 +0x2bc"),
+			attribute.String("payload.json", `{"user":{"id":"0646a849a52752904984ab92b2a39f1c","token":"`+longToken+`"}}`),
 		)
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -344,28 +344,28 @@ func main() {
 			requestId := uuid.NewString()
 			backendSvc.log(ctx, otellog.SeverityDebug, "DEBUG",
 				"Incoming call received.ProviderClientId: {ProviderClientId}, CallerId: {CallerId}, Method: {Method}, RequestId: {RequestId}",
-				otellog.String("ProviderClientId", "[Devices, dusan-macbook, 1, rpc]"),
-				otellog.String("CallerId", "[Portal, web-6f2c, 0, rpc]"),
-				otellog.String("Method", "EnterManualMode"),
-				otellog.String("RequestId", requestId),
+				attribute.String("ProviderClientId", "[Devices, dusan-macbook, 1, rpc]"),
+				attribute.String("CallerId", "[Portal, web-6f2c, 0, rpc]"),
+				attribute.String("Method", "EnterManualMode"),
+				attribute.String("RequestId", requestId),
 			)
 			backendSvc.log(ctx, otellog.SeverityDebug, "DEBUG",
 				"Call handled successfully.ProviderClientId: {ProviderClientId},RequestId: {RequestId},Method: {MethodIdentity}",
-				otellog.String("ProviderClientId", "[Devices, dusan-macbook, 1, rpc]"),
-				otellog.String("RequestId", requestId),
-				otellog.String("MethodIdentity", "MethodIdentity { Namespace = MqttComm.Devices, Name = EnterManualMode }"),
+				attribute.String("ProviderClientId", "[Devices, dusan-macbook, 1, rpc]"),
+				attribute.String("RequestId", requestId),
+				attribute.String("MethodIdentity", "MethodIdentity { Namespace = MqttComm.Devices, Name = EnterManualMode }"),
 			)
 		}
 		// Format spec after the name + a non-string attribute value.
 		backendSvc.log(ctx, otellog.SeverityWarn, "WARN",
 			"Slow provider response.Provider: {Provider}, Elapsed: {ElapsedMs:N0}ms",
-			otellog.String("Provider", "Devices"),
-			otellog.Int("ElapsedMs", 1874),
+			attribute.String("Provider", "Devices"),
+			attribute.Int("ElapsedMs", 1874),
 		)
 		// {MaxAttempts} has no matching attribute and must render literally.
 		backendSvc.log(ctx, otellog.SeverityInfo, "INFO",
 			"Retrying delivery.Attempt: {Attempt} of {MaxAttempts}",
-			otellog.String("Attempt", "2"),
+			attribute.String("Attempt", "2"),
 		)
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})

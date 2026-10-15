@@ -2,7 +2,7 @@ module github.com/tracewayapp/traceway/cli
 
 go 1.26.2
 
-toolchain go1.26.6
+toolchain go1.26.9
 
 require (
 	github.com/google/jsonschema-go v0.4.3

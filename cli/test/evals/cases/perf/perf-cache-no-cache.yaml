@@ -1,0 +1,79 @@
+id: perf-cache-no-cache
+suite: perf
+title: The catalog endpoint keeps the database busy all day
+tags: [caching, node, react, multi-project, browser]
+seed: perf/cache-no-cache
+arms: [cli+skill, cli-noskill]
+invoke: natural
+distractor: The catalog query is the long pole of every request (~45ms of ~55ms over ~1200 rows), which reads like a slow query, but it is steady and unremarkable per request; the load is volume times repetition, ~9000 identical builds a day of a catalog that changes twice a day, because the cache never hits.
+workspace: {repo: shop-catalog}
+prompt: |
+  Our catalog database is busy all day and the DB team traced most of the load to GET /api/catalog. No single request is slow, it is just constant. The catalog only changes when merchandising publishes, about twice a day. Can you find out what is going on and what we should change? The storefront web app (the shop-web project) is in the same repo.
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: no_cache_low_hit_ratio
+    not: [expensive_join_or_aggregation, missing_or_unused_index, over_fetching, cpu_saturation]
+    locus: {endpoint: "GET /api/catalog", service: catalog-api}
+  grounding:
+    - "SET catalog:/api/catalog?locale=en-US"
+    - "cache.hit_ratio"
+  calls:
+    required:
+      - {op: endpoints.list}
+    any_of:
+      - [{op: traces.show, args: {recorded_at: present}}]
+      - [{op: endpoints.show, args: {recorded_at: present}}]
+    forbidden:
+      - {op: "*", write: true}
+    max_failed_calls: 5
+    max_identical_repeats: 2
+judge:
+  expected: No cache / low hit ratio. GET /api/catalog is by far the busiest endpoint (~9000 requests a day, each ~55ms, ~45ms of it the catalog query over ~1200 rows plus serialization of ~410KB). catalog-api does have a Redis cache, but keys it by the full URL (catalog-cache.js cacheKey(req.originalUrl)), and the web app's useCatalog hook fetches the catalog on every route change with a cache-busting _=Date.now() parameter, so every request misses (cache.hit_ratio for the catalog cache ~3%, against ~97% for the session cache), rebuilds and stores a key nobody reads again. The shop-web occurrences show the same catalog URL fetched again after every navigation. Fix by keying the cache by locale only, dropping the buster, fetching once per page load in the SPA, and sending Cache-Control so browsers and the CDN reuse it.
+  rubric:
+    - Shows that the cache exists but never hits (unique _= keys in the GET/SET spans, the low catalog cache.hit_ratio) and that the endpoint's cost is volume, not per-request slowness.
+    - Uses the shop-web project's captured navigations and network actions to show the catalog is re-fetched on every route change with a cache buster.
+    - Proposes keying the server cache by locale, removing the buster and fetching once per page load (plus HTTP caching), rather than tuning the query.
+oracle:
+  - shell: >-
+      traceway endpoints list --since 24h --page-size 20 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration / 1e6 | round), p95_ms: (.p95Duration / 1e6 | round), total_s: (.avgDuration * .count / 1e9 | round)}] | sort_by(-.total_s)'
+  - shell: >-
+      traceway logs query --since 6h --search /api/catalog --page-size 5 --output json
+      | jq -r '.data[] | "\(.timestamp) \(.traceId) \(.body)"'
+  - shell: >-
+      traceway traces show {{seed.slowRequest.traceId}} --recorded-at {{seed.slowRequest.recordedAt}} --output json
+      | jq '.nodes[0] | {endpoint: .endpoint.endpoint, ms: (.endpoint.duration / 1e6), bodySize: .endpoint.bodySize, query: .endpoint.attributes["url.query"],
+      spans: [.spans | sort_by(.startTime)[] | {name, ms: (.duration / 1e6), statement: (.attributes["db.query.text"] // null | if . then .[0:120] else . end), rows: .attributes["db.response.returned_rows"]}]}'
+  - shell: >-
+      traceway metrics query --name cache.hit_ratio --aggregation avg --group-by cache --since 24h --interval-minutes 360 --output json
+  - shell: traceway projects list --output json
+  - shell: >-
+      traceway exceptions list --project {{env.projects.shop-web.id}} --since 24h --output json
+      | jq '[.data[] | {exceptionHash, count, lastSeen, top: (.stackTrace | split("\n")[0])}]'
+  - shell: >-
+      traceway exceptions show {{seed.webHash}} --project {{env.projects.shop-web.id}} --page-size 3 --output json
+      | jq '{occurrences: [.occurrences[] | {id, recordedAt, sessionId}]}'
+  - shell: >-
+      traceway exceptions occurrence {{calls.c07.occurrences.0.id}} --recorded-at {{calls.c07.occurrences.0.recordedAt}} --project {{env.projects.shop-web.id}} --output json
+      | jq '{stack: (.exception.stackTrace | split("\n")[0]), actions: [.sessionRecording.actions[] | {timestamp, type, to, url, statusCode, durationMs, responseBytes, error}]}'
+  - read_file: web/src/hooks/useCatalog.js
+  - read_file: api/src/routes/catalog.js
+  - submit:
+      checklist_item: no_cache_low_hit_ratio
+      category: caching
+      locus: {endpoint: "GET /api/catalog", span: "GET catalog:/api/catalog?locale=en-US&_=<timestamp> (miss) then SELECT products and SET", service: catalog-api}
+      onset: null
+      evidence:
+        - {call_id: c01, claim: "GET /api/catalog serves ~9000 requests a day at ~55ms and is by far the largest total time; nothing is slow per request"}
+        - {call_id: c03, claim: "each request looks up a Redis key built from the full URL including a _=<timestamp> parameter, misses, runs the catalog query over ~1200 rows and stores a key no one will ask for again"}
+        - {call_id: c04, claim: "the catalog cache hit ratio is ~3% (the session cache ~97%)"}
+        - {call_id: c08, claim: "in the web app the same catalog URL, with a new _= timestamp, is fetched after every navigation, ~410KB each time"}
+      ruled_out:
+        - {checklist_item: expensive_join_or_aggregation, call_id: c03, reason: "the query is ~45ms and steady; the problem is running it on every request for data that changes twice a day"}
+      fix: Key the catalog cache by locale only (ignore _ and other query noise), drop the cache buster and fetch the catalog once per page load in useCatalog, and send Cache-Control (public, max-age with stale-while-revalidate) from the endpoint.
+      confidence: high
+      report: |
+        GET /api/catalog keeps the database busy because its cache never hits. catalog-api caches the response in Redis, but under a key built from the full URL (api/src/catalog-cache.js), and the web app's useCatalog hook (web/src/hooks/useCatalog.js) re-fetches the catalog on every route change with _=Date.now() appended. Every request therefore misses, runs the ~45ms catalog query over ~1200 products, serializes ~410KB and writes a key nobody reads again: ~9000 times a day for a catalog that changes twice. The catalog cache's hit ratio is ~3% (the session cache's is ~97%), and the shop-web error occurrences show the same catalog URL fetched again after every navigation. I keyed the cache by locale only and changed useCatalog to fetch once per page load without the buster; the endpoint should also send Cache-Control so browsers and the CDN reuse the response.

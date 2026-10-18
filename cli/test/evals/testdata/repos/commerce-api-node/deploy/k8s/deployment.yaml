@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: commerce-api
+  labels: {app: commerce-api}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: commerce-api}
+  template:
+    metadata:
+      labels: {app: commerce-api}
+    spec:
+      containers:
+        - name: commerce-api
+          image: registry.example.com/commerce-api:4.18.2
+          ports: [{containerPort: 8080}]
+          env:
+            - {name: OTEL_SERVICE_NAME, value: commerce-api}
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.observability:4318"}
+          envFrom: [{secretRef: {name: commerce-api}}]
+          resources:
+            requests: {cpu: "1", memory: 512Mi}
+            limits: {cpu: "1", memory: 1Gi}
+          readinessProbe:
+            httpGet: {path: /api/categories, port: 8080}
+            periodSeconds: 10

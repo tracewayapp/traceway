@@ -1,0 +1,81 @@
+id: debug-flutter-null-check
+suite: debug
+title: Flutter product pages fail with a null check on listings without photos
+tags: [mobile, flutter, dart]
+seed: debug/flutter-null-check
+arms: [cli+skill, cli-noskill]
+invoke: slash
+distractor: >-
+  No app release lines up with the crash (it hits 4.2.1 and 4.3.0 alike, and 4.3.0 shipped nine days ago); a steady
+  trickle of "Failed host lookup" ClientExceptions from offline phones is unrelated.
+workspace: {repo: shop-flutter}
+prompt: |
+  /traceway debug {{seed.hash}}
+  For about a day now, some product pages in the app show a grey screen instead of the product. Find the cause and fix it.
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 14000, timeout: 10m}
+user:
+  - default: "I don't know more than that. Please fix it in the app."
+expect:
+  answer:
+    issue_hash: "{{seed.hash}}"
+    category: null_reference
+    culprit: {file: lib/features/product/widgets/product_hero_carousel.dart, symbol: build, line: 24}
+    needs_instrumentation: false
+    mentions_all: ["media", "4\\.2\\.1|both (app )?versions|every (app )?version|no (app )?release|not (an? )?(app )?release|catalog|listing"]
+  grounding:
+    - "product_hero_carousel.dart:24"
+  calls:
+    required:
+      - {op: exceptions.show, args: {hash: "{{seed.hash}}"}}
+    forbidden:
+      - {op: "*", write: true}
+    order:
+      - [exceptions.show, write_file]
+      - [exceptions.show, edit_file]
+    max_failed_calls: 5
+    max_identical_repeats: 2
+  code:
+    static: true
+    touches_culprit: true
+    must_change: [lib/features/product/widgets/product_hero_carousel.dart]
+    must_not_change: [lib/core/api_client.dart]
+judge:
+  expected: >-
+    The group is "_TypeError: Null check operator used on a null value" in ProductHeroCarousel.build
+    (product_hero_carousel.dart:24), building the product page's carousel. It hits app versions 4.2.1 and 4.3.0 alike and
+    began about a day ago, with no app release then: the data changed, not the app. Product.media is documented as
+    omitted when a listing has no media yet, and the carousel null-checks it (product.media!.first). The fix renders a
+    placeholder (or nothing) for products without media instead of the null check. The host-lookup failures are an
+    unrelated, steady background of offline phones.
+  rubric:
+    - Points at the null check on product.media at line 24 and explains that the catalog omits media for some listings.
+    - Notices that both app versions crash and no release lines up, so the trigger is new data rather than an app change.
+    - The diff handles a missing or empty media list in the carousel without changing the API client.
+oracle:
+  - shell: >-
+      traceway exceptions show {{seed.hash}} --page-size 30 --output json
+      | jq '{group: (.group | {exceptionHash, firstSeen, lastSeen, count, stackTrace}), versions: ([.occurrences[].appVersion] | group_by(.) | map({version: .[0], n: length})),
+      occurrences: [.occurrences[0] | {id, recordedAt, appVersion, serverName}]}'
+  - shell: >-
+      traceway exceptions occurrence {{calls.c01.occurrences.0.id}} --recorded-at {{calls.c01.occurrences.0.recordedAt}} --output json
+      | jq '{exception: (.exception | {recordedAt, appVersion}), actions: .sessionRecording.actions}'
+  - shell: git log --format='%h %ad %s' --date=iso -5
+  - read_file: lib/features/product/widgets/product_hero_carousel.dart
+  - read_file: lib/features/product/models/product.dart
+  - write_file: {path: lib/features/product/widgets/product_hero_carousel.dart, from: oracle/debug-flutter-null-check/product_hero_carousel.dart}
+  - submit:
+      issue_hash: "{{seed.hash}}"
+      category: null_reference
+      culprit: {file: lib/features/product/widgets/product_hero_carousel.dart, symbol: build, line: 24}
+      evidence:
+        - {call_id: c01, claim: "_TypeError: Null check operator used on a null value in ProductHeroCarousel.build (product_hero_carousel.dart:24), on both 4.2.1 and 4.3.0, first seen about a day ago"}
+        - {call_id: c02, claim: "it happens right after the product page loads GET /v1/products/{id}"}
+        - {call_id: c03, claim: "the last app release, 4.3.0, shipped nine days ago, so no release lines up with the onset"}
+        - {call_id: c04, claim: "the carousel does product.media!.first"}
+        - {call_id: c05, claim: "Product.media is omitted by the catalog when a listing has no media yet"}
+      fix_summary: The carousel treats a missing media list as empty and shows a placeholder instead of null-checking product.media.
+      files_changed: [lib/features/product/widgets/product_hero_carousel.dart]
+      needs_instrumentation: false
+      confidence: high
+      report: |
+        The grey screen is Flutter's error widget for "_TypeError: Null check operator used on a null value" in ProductHeroCarousel.build (lib/features/product/widgets/product_hero_carousel.dart:24), which does product.media!.first. Product.media is omitted by the catalog for listings that have no photos yet. The crash hits app versions 4.2.1 and 4.3.0 alike and started about a day ago, while the last release shipped nine days ago, so the trigger is new catalog data (listings without media), not an app change. I made the carousel treat a missing media list as empty and show a placeholder. The "Failed host lookup" errors are a steady, unrelated background from phones without connectivity.

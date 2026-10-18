@@ -1,0 +1,78 @@
+id: perf-cache-stampede
+suite: perf
+title: Home page requests stall for seconds in bursts
+tags: [smoke, caching, go, redis]
+seed: perf/cache-stampede
+arms: [cli+skill, cli-noskill]
+invoke: slash
+distractor: The slow requests run all twelve home queries against the database on the request path, which reads like a missing cache, but the cache is there and serves ~98% of requests in ~3ms; the slow requests all land in the seconds after the cached feed expires, when every request in flight rebuilds it at once.
+workspace: {repo: home-api-go}
+prompt: |
+  /traceway perf GET /api/home
+  The home endpoint is usually instant, but every few minutes a batch of customers waits 7 to 10 seconds for the home page, then it is fine again. What is causing it, and how do we fix it?
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: cache_stampede_thundering_herd
+    not: [no_cache_low_hit_ratio, missing_query_result_caching, expensive_join_or_aggregation, connection_pool_exhaustion, cpu_saturation]
+    locus: {endpoint: "GET /api/home", service: home-api}
+  grounding:
+    - "home:feed:v3"
+    - "ex 600"
+  calls:
+    required:
+      - {op: endpoints.list}
+      - {op: logs.query}
+    any_of:
+      - [{op: endpoints.chart}]
+      - [{op: endpoints.list, args: {from: present}}]
+    forbidden:
+      - {op: "*", write: true}
+    max_failed_calls: 4
+    max_identical_repeats: 2
+judge:
+  expected: Cache stampede / thundering herd. GET /api/home serves the feed from Redis (home:feed:v3, set with a 10-minute TTL, "ex 600"); p50 is ~3ms but p99 is ~7s. Every ~10 minutes, at the moment the key expires, every request that arrives before the first rebuild has written the key back misses and rebuilds the feed itself (12 section queries), so 15-25 identical ~7-10s traces start within the same few seconds; the concurrent rebuilds also slow each other down in the database. Between expiries the cache-hit ratio is ~98% and requests take a few ms, so the cache works. Fix with request coalescing (one rebuild per key, others wait for it, e.g. singleflight), plus early/background refresh and TTL jitter.
+  rubric:
+    - Identifies the periodicity (p99 spikes every ~10 minutes, matching the 600s TTL) and the burst of identical rebuild traces within seconds of each other.
+    - Rules out "no cache" with the high hit ratio between bursts and the fast cache hits, and explains why the rebuilds are slow only during the burst.
+    - Proposes coalescing concurrent misses (singleflight/lock), with early refresh or TTL jitter, in home.Service.Feed.
+oracle:
+  - shell: >-
+      traceway endpoints list --since 24h --order-by p95 --page-size 20 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration / 1e6 | round), p95_ms: (.p95Duration / 1e6 | round), p99_ms: (.p99Duration / 1e6 | round)}] | sort_by(-.p99_ms)'
+  - shell: >-
+      traceway endpoints chart --metric-type p99 --since 2h --interval-minutes 5 --output json
+      | jq '[.series[] | select(.endpoint == "GET /api/home") | {t: .timestamp, p99_ms: (.value | round)}]'
+  - shell: >-
+      traceway logs query --from {{seed.spikeFrom}} --to {{seed.spikeTo}} --search /api/home --page-size 40 --output json
+      | jq -r '.data[] | "\(.timestamp) \(.traceId) \(.body)"'
+  - shell: >-
+      traceway traces show {{seed.missRequest.traceId}} --recorded-at {{seed.missRequest.recordedAt}} --output json
+      | jq '.nodes[0] | {endpoint: .endpoint.endpoint, ms: (.endpoint.duration / 1e6),
+      spans: [.spans | sort_by([.startTime, -.duration])[] | {name, ms: (.duration / 1e6 | round), statement: (.attributes["db.query.text"] // null | if . then .[0:90] else . end)}]}'
+  - shell: >-
+      traceway metrics query --name cache.hit_ratio --aggregation min --group-by cache --since 2h --interval-minutes 5 --output json
+      | jq '.results[0].series | map_values(map({t: .timestamp, ratio: (.value * 1000 | round / 1000)}))'
+  - shell: traceway metrics query --name system.cpu.utilization --aggregation max --group-by state --since 2h --interval-minutes 30 --output json
+  - read_file: internal/home/service.go
+  - submit:
+      checklist_item: cache_stampede_thundering_herd
+      category: caching
+      locus: {endpoint: "GET /api/home", span: "get home:feed:v3 miss followed by buildHomeFeed (12 queries) and set home:feed:v3 ex 600, in many concurrent requests", service: home-api}
+      onset: null
+      evidence:
+        - {call_id: c01, claim: "GET /api/home p50 ~3ms, p95 ~5ms, p99 ~7s: a rare but severe tail"}
+        - {call_id: c02, claim: "p99 spikes to 7-10s in every other 5-minute bucket, i.e. every ~10 minutes"}
+        - {call_id: c03, claim: "inside one spike, about twenty 7-10s requests start within the same ~10 seconds"}
+        - {call_id: c04, claim: "each slow request misses home:feed:v3, runs the twelve section queries and sets the key back with ex 600 (a 10-minute TTL)"}
+        - {call_id: c05, claim: "the home-feed cache hits ~98% of the time and dips only in the spike buckets"}
+        - {call_id: c06, claim: "CPU is moderate and flat"}
+      ruled_out:
+        - {checklist_item: no_cache_low_hit_ratio, call_id: c05, reason: "hit ratio ~98% between spikes; hits take a few ms"}
+        - {checklist_item: cpu_saturation, call_id: c06, reason: "CPU flat"}
+      fix: Coalesce misses in home.Service.Feed so one rebuild per key runs and concurrent misses wait for it (singleflight), and add TTL jitter or an early background refresh so the key never expires under load.
+      confidence: high
+      report: |
+        The bursts are a cache stampede on the home feed. GET /api/home serves home:feed:v3 from Redis and is ~3ms; the key is set with a 10-minute TTL (ex 600). When it expires, every request that arrives before the first rebuild finishes misses and rebuilds the feed itself, running the twelve section queries; at ~2.4 requests per second that is about twenty identical rebuilds in a few seconds, and they slow each other down in the database, so each takes 7-10s. That is why p99 spikes every ~10 minutes while the cache-hit ratio stays ~98% in between. I changed home.Service.Feed so concurrent misses share a single rebuild (the others wait for its result) and the TTL gets a little jitter; a background refresh before expiry would remove the wait entirely.

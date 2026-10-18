@@ -1,0 +1,94 @@
+id: perf-xs-android-timeouts
+suite: perf
+title: Android checkout crashes with socket timeouts while the checkout API waits on row locks
+tags: [cross-surface, android, kotlin, java, database]
+seed: perf/xs-android-timeouts
+arms: [cli+skill, cli-noskill]
+invoke: natural
+distractor: An app bug. The crash is an uncaught java.net.SocketTimeoutException from CheckoutRepository (OkHttp's 10s read timeout, no catch in the view model), so catching it or raising the timeout looks like the fix. But each crash's network action is POST /api/checkout giving up at 10s, and on commerce-api that endpoint's p95 went from under a second to about 7s when the sale started; the time is inside update inventory (queued on the sale item's row lock, which every checkout holds through its payment call), not before the first query (no pool wait) and not in the payment call itself, and deadlock errors appear in the same hours.
+workspace: {repo: shop-android-and-api}
+prompt: |
+  The Android app started crashing at checkout this afternoon, right when the autumn sale went live. Here is the crash in Traceway: {{env.url}}/issues/{{seed.hash}}
+  Can you work out why it happens and what we should fix?
+budget: {max_turns: 40, max_tool_calls: 32, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I only have the crash reports. Please find out from the data."
+expect:
+  answer:
+    checklist_item: lock_transaction_contention
+    not: [connection_pool_exhaustion, none_found, slow_third_party_upstream_api, memory_pressure_gc_pauses, cpu_saturation, no_timeouts_aggressive_retries]
+    locus: {endpoint: "POST /api/checkout", span_contains: "inventory"}
+  grounding:
+    - "SocketTimeoutException"
+    - "update inventory set reserved"
+  calls:
+    required:
+      - {op: exceptions.show, args: {hash: "{{seed.hash}}"}}
+    any_of:
+      - [{op: "endpoints.*", args: {project_id: "{{env.projects.commerce-api.id}}"}}]
+      - [{op: "logs.query", args: {project_id: "{{env.projects.commerce-api.id}}"}}]
+      - [{op: projects.use, args: {project_id: "{{env.projects.commerce-api.id}}"}}]
+    forbidden:
+      - {op: "*", write: true}
+    max_failed_calls: 5
+    max_identical_repeats: 2
+judge:
+  expected: >-
+    The crash is an uncaught java.net.SocketTimeoutException: OkHttp's default 10s read timeout fires on POST
+    /api/checkout (the occurrence's network action gives up at ~10s with no status) and the view model does not catch
+    it. The slowness is on commerce-api: since the sale started about three hours ago POST /api/checkout has p50 about
+    1.6s and p95 about 7s (it was under a second before), with traffic up many times. Slow checkouts spend their time
+    inside "update inventory set reserved=reserved+? ...": checkouts of the sale item queue on that inventory row's lock,
+    which CheckoutService.placeOrder holds for the whole transaction, including the payment call. There is no gap before
+    the first query (the pool is fine), the payment call takes its usual ~0.5s, CPU is moderate, and Postgres reports
+    "deadlock detected" for carts that lock two rows in opposite order. Lock / transaction contention. Fix: keep the
+    row lock short (reserve and commit, charge outside the transaction, then confirm or release; or a conditional
+    decrement without holding the lock across the payment), lock SKUs in a fixed order, and on the app catch the
+    timeout and retry the checkout idempotently.
+  rubric:
+    - Follows the Android crash to POST /api/checkout on the backend project by the request URL and the times, and quantifies its latency since the sale.
+    - Shows the time is spent inside the inventory UPDATE under the write peak (not a pool wait before the first query, not the payment call), backed by the deadlock logs.
+    - Proposes shortening the locking transaction (payment outside it, consistent lock order) as the main fix, with crash-proof handling in the app as secondary.
+oracle:
+  - shell: traceway exceptions show {{seed.hash}} --page-size 5 --output json
+  - shell: traceway exceptions occurrence {{calls.c01.occurrences.0.id}} --recorded-at {{calls.c01.occurrences.0.recordedAt}} --output json
+  - shell: traceway projects list --output json
+  - shell: >-
+      traceway endpoints list --project {{env.projects.commerce-api.id}} --search /api/checkout --since 24h --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration/1e6|round), p95_ms: (.p95Duration/1e6|round), p99_ms: (.p99Duration/1e6|round)}]'
+  - shell: >-
+      traceway endpoints chart --project {{env.projects.commerce-api.id}} --metric-type p95 --since 12h --interval-minutes 30 --output json
+      | jq '[.series[] | select(.endpoint == "POST /api/checkout") | {t: .timestamp, p95_ms: (.value|round)}]'
+  - shell: >-
+      traceway logs query --project {{env.projects.commerce-api.id}} --search /api/checkout --since 4h --page-size 50 --output json
+      | jq -r '.data[] | select((.logAttributes.duration_ms // "0" | tonumber) > 8000) | "\(.timestamp) \(.traceId) \(.body)"'
+  - shell: >-
+      traceway traces show {{seed.slowRequest.traceId}} --recorded-at {{seed.slowRequest.recordedAt}} --output json
+      | jq '[.nodes[] | {project: .projectName, endpoint: .endpoint.endpoint, start: .endpoint.recordedAt, duration_ms: (.endpoint.duration/1e6|round),
+      spans: [.spans[] | {name, start: .startTime, ms: (.duration/1e6|round), query: .attributes["db.query.text"], url: .attributes["url.full"]}]}]'
+  - shell: >-
+      traceway logs query --project {{env.projects.commerce-api.id}} --min-severity 13 --since 4h --page-size 20 --output json
+      | jq -r '.data[] | "\(.timestamp) \(.severityText) \(.traceId) \(.body | split("\n")[0])"'
+  - shell: traceway metrics query --project {{env.projects.commerce-api.id}} --name system.cpu.utilization --aggregation max --group-by state --since 12h --interval-minutes 120 --output json
+  - read_file: backend/src/main/java/com/example/shop/checkout/CheckoutService.java
+  - read_file: android/app/src/main/java/com/example/shop/checkout/CheckoutRepository.kt
+  - submit:
+      checklist_item: lock_transaction_contention
+      category: database
+      locus: {endpoint: "POST /api/checkout", span: "update inventory set reserved=reserved+? where sku=? and available-reserved>=?", service: checkout-api}
+      onset: "{{seed.saleAt}}"
+      evidence:
+        - {call_id: c02, claim: "the crash is an uncaught SocketTimeoutException; its network action is POST /api/checkout giving up at ~10s with no response"}
+        - {call_id: c04, claim: "on commerce-api, POST /api/checkout has p95 of several seconds over the last day"}
+        - {call_id: c05, claim: "its p95 jumped from under a second to about 7s when the sale started"}
+        - {call_id: c06, claim: "checkouts finishing in 10-20s at the times the app crashed"}
+        - {call_id: c07, claim: "a slow checkout starts its first query at once and then waits seconds inside update inventory; the payment call takes about half a second"}
+        - {call_id: c08, claim: "deadlock detected errors on the same statement during the sale"}
+        - {call_id: c09, claim: "CPU is moderate, not saturated"}
+      ruled_out:
+        - {checklist_item: connection_pool_exhaustion, call_id: c07, reason: "no gap before the first query; the wait is inside the UPDATE"}
+        - {checklist_item: slow_third_party_upstream_api, call_id: c07, reason: "the payment call is about half a second; the UPDATE takes seconds"}
+      fix: Shorten the locking transaction in CheckoutService.placeOrder (reserve and commit, charge the card outside the transaction, then confirm or release the reservation), take row locks in a fixed SKU order to stop the deadlocks, and in the app catch the timeout and retry the checkout with an idempotency key instead of crashing.
+      confidence: high
+      report: |
+        The Android crashes are the client side of lock waits in the checkout API. The app crashes with an uncaught `java.net.SocketTimeoutException`: OkHttp's 10s read timeout fires on POST /api/checkout (the occurrence's network action gives up after ~10s) and the view model does not catch it. On commerce-api, POST /api/checkout went from p95 under a second to about 7s when the sale started, with traffic up many times. Slow checkouts run their first query immediately (no pool wait) and then sit for seconds inside `update inventory set reserved=reserved+? ...`: every checkout of the sale item needs that row's lock, and CheckoutService.placeOrder holds it for the whole transaction, payment call included, so they queue. Postgres also reports `deadlock detected` for carts that lock two rows in opposite order. Fix the transaction: reserve and commit first, charge outside the transaction, then confirm or release; lock SKUs in a fixed order. In the app, catch the timeout and retry with an idempotency key so a slow checkout does not crash the app or double-charge.

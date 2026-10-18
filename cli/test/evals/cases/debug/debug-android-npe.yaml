@@ -1,0 +1,80 @@
+id: debug-android-npe
+suite: debug
+title: Android feed crashes while scrolling since the 5.8.0 rollout
+tags: [mobile, android, kotlin]
+seed: debug/android-npe
+arms: [cli+skill, cli-noskill]
+invoke: slash
+distractor: An OutOfMemoryError group in the full-size image viewer (FullImageActivity.decodeOriginal) on low-memory phones has been around for weeks on every version; the feed crash is new with 5.8.0 and is an NPE in the adapter.
+workspace: {repo: feed-android}
+prompt: |
+  /traceway debug {{seed.hash}}
+  Android users report the app crashing while they scroll the home feed. Find the cause and fix it.
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 14000, timeout: 10m}
+user:
+  - default: "I don't know more than that. Please fix it in the app."
+expect:
+  answer:
+    issue_hash: "{{seed.hash}}"
+    category: null_reference
+    culprit: {file: app/src/main/java/com/example/pinboard/feed/FeedAdapter.kt, symbol: bindImage, line: 55}
+    needs_instrumentation: false
+    mentions_all: ["text[- ]?(only )?posts?|without (an )?image|no image|null image|image (is|was) null|image (field|object|key) is (missing|absent|omitted)", "5\\.8\\.0"]
+  grounding:
+    - "FeedAdapter.kt:55"
+  calls:
+    required:
+      - {op: exceptions.show, args: {hash: "{{seed.hash}}"}}
+    forbidden:
+      - {op: "*", write: true}
+    order:
+      - [exceptions.show, write_file]
+      - [exceptions.show, edit_file]
+    max_failed_calls: 5
+    max_identical_repeats: 2
+  code:
+    static: true
+    touches_culprit: true
+    must_change: [app/src/main/java/com/example/pinboard/feed/FeedAdapter.kt]
+    must_not_change: [app/src/main/java/com/example/pinboard/media/FullImageActivity.kt]
+judge:
+  expected: >-
+    The group is a NullPointerException ("Attempt to invoke virtual method 'int ...ImageRef.getWidth()' on a null object
+    reference") in FeedAdapter.bindImage (FeedAdapter.kt:55), reached from onBindViewHolder during RecyclerView prefetch
+    while the feed scrolls, only on 5.8.0, first seen with its rollout. 5.8.0 made FeedItem.image non-null and sizes the
+    thumbnail from item.image.width; text posts have no image and Gson ignores Kotlin nullability, so image is null at
+    runtime. The fix declares image nullable and hides the thumbnail for text posts (keeping the aspect-ratio sizing for
+    image posts). The OutOfMemoryError in the full-size viewer is an older, separate issue.
+  rubric:
+    - Reads the deobfuscated trace to the exact line and explains why a non-null Kotlin property is null (Gson, text posts without an image).
+    - Ties the crash to 5.8.0 (only version, first seen at the rollout, the git change that removed the null check).
+    - The diff makes image nullable or otherwise handles a missing image in bindImage, without touching the unrelated image viewer.
+oracle:
+  - shell: >-
+      traceway exceptions show {{seed.hash}} --page-size 30 --output json
+      | jq '{group: (.group | {exceptionHash, firstSeen, lastSeen, count, stackTrace}), versions: ([.occurrences[].appVersion] | unique),
+      devices: ([.occurrences[].serverName] | unique), occurrences: [.occurrences[0] | {id, recordedAt, appVersion, serverName}]}'
+  - shell: >-
+      traceway exceptions occurrence {{calls.c01.occurrences.0.id}} --recorded-at {{calls.c01.occurrences.0.recordedAt}} --output json
+      | jq '{exception: (.exception | {recordedAt, appVersion}), recording: .sessionRecording | {actions, logs}}'
+  - shell: git log --format='%h %ad %s' --date=iso -5
+  - read_file: app/src/main/java/com/example/pinboard/feed/FeedAdapter.kt
+  - read_file: app/src/main/java/com/example/pinboard/feed/FeedItem.kt
+  - write_file: {path: app/src/main/java/com/example/pinboard/feed/FeedItem.kt, from: oracle/debug-android-npe/FeedItem.kt}
+  - write_file: {path: app/src/main/java/com/example/pinboard/feed/FeedAdapter.kt, from: oracle/debug-android-npe/FeedAdapter.kt}
+  - submit:
+      issue_hash: "{{seed.hash}}"
+      category: null_reference
+      culprit: {file: app/src/main/java/com/example/pinboard/feed/FeedAdapter.kt, symbol: bindImage, line: 55}
+      evidence:
+        - {call_id: c01, claim: "NullPointerException on ImageRef.getWidth() in FeedAdapter.bindImage (FeedAdapter.kt:55) from onBindViewHolder during RecyclerView prefetch, only on 5.8.0"}
+        - {call_id: c02, claim: "the crash comes right after a feed page loads while scrolling"}
+        - {call_id: c03, claim: "5.8.0 changed feed images to their own aspect ratio"}
+        - {call_id: c04, claim: "bindImage reads item.image.width with no check for a missing image"}
+        - {call_id: c05, claim: "FeedItem.image is declared non-null, but text posts carry no image and Gson does not enforce Kotlin nullability"}
+      fix_summary: FeedItem.image is nullable; bindImage hides the thumbnail for posts without an image and keeps the aspect-ratio sizing for the others.
+      files_changed: [app/src/main/java/com/example/pinboard/feed/FeedItem.kt, app/src/main/java/com/example/pinboard/feed/FeedAdapter.kt]
+      needs_instrumentation: false
+      confidence: high
+      report: |
+        The feed crash is a NullPointerException in FeedAdapter.bindImage (FeedAdapter.kt:55): "Attempt to invoke virtual method 'int com.example.pinboard.feed.ImageRef.getWidth()' on a null object reference", hit from onBindViewHolder while RecyclerView prefetches the next posts during scrolling. It only happens on 5.8.0 and started with its rollout. 5.8.0 sizes thumbnails from item.image.width and made FeedItem.image non-null, but text posts have no image and Gson fills fields without Kotlin's null checks, so image is null for them. I made image nullable again and bindImage hides the thumbnail when there is no image. The OutOfMemoryError in the full-size image viewer is a separate, older issue on low-memory phones.

@@ -1,0 +1,9 @@
+commits:
+- dir: .history/01
+  message: 'checkout: create payment intents before inserting the order'
+  age: 530h
+  author: Lena Fischer <lena@example.com>
+head:
+  message: 'cart: free shipping from 50 EUR'
+  age: 216h
+  author: Marco Bianchi <marco@example.com>

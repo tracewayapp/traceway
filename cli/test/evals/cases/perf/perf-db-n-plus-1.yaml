@@ -1,0 +1,68 @@
+id: perf-db-n-plus-1
+suite: perf
+title: Orders endpoint slows down as customers accumulate orders
+tags: [smoke, database, go]
+seed: perf/db-n-plus-1
+arms: [cli+skill, cli-noskill]
+invoke: slash
+distractor: The orders query selects every column (over-fetching), but it takes 3-6ms; CPU stays flat and nothing was deployed in the window.
+workspace: {repo: orders-api-go}
+prompt: |
+  /traceway perf GET /api/orders
+  Customers with a long order history say the orders page takes over a second to load, and it has been getting worse for weeks. Find the cause and tell me how to fix it.
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: select_n_plus_1
+    not: [missing_or_unused_index, over_fetching, no_pagination_unbounded_result_set, cpu_saturation]
+    locus: {endpoint: "GET /api/orders", span_contains: "order_items"}
+  grounding:
+    - "FROM order_items WHERE order_id"
+  calls:
+    required:
+      - {op: endpoints.list}
+      - {op: endpoints.show, args: {recorded_at: present}}
+    any_of:
+      - [{op: metrics.query, args: {name: "~system\\.cpu"}}]
+      - [{op: endpoints.chart}]
+    forbidden:
+      - {op: "*", write: true}
+    order:
+      - [endpoints.list, endpoints.show]
+    max_failed_calls: 4
+    max_identical_repeats: 2
+judge:
+  expected: Select N+1. ListOrders loads up to 100 orders and then runs one order_items query per order (60-90 per request in the last day, 6-14ms each). Orders per customer grew over the month, so latency grew without a deploy; CPU is flat around 25%.
+  rubric:
+    - Attributes the latency to one order_items query per order and quantifies it (dozens of queries per request).
+    - Rules out saturation (flat CPU) and a deploy regression (gradual climb, no release in the window).
+    - Proposes a batched load (JOIN, IN (...) or ANY) of the items in ListOrders.
+oracle:
+  - shell: traceway endpoints list --since 24h --order-by p95 --page-size 10 --output json
+  - shell: traceway logs query --since 6h --search "/api/orders " --page-size 5 --output json | jq -r '.data[] | "\(.traceId) \(.body)"'
+  - shell: >-
+      traceway endpoints show {{seed.slowRequest.id}} --recorded-at {{seed.slowRequest.recordedAt}} --output json
+      | jq '{duration: .endpoint.duration, spans: ([.spans[] | {q: (.attributes["db.query.text"] // .name), ms: (.duration / 1e6)}]
+      | group_by(.q) | map({query: .[0].q, count: length, total_ms: (map(.ms) | add)}))}'
+  - shell: traceway metrics query --name system.cpu.utilization --aggregation max --group-by state --since 24h --interval-minutes 360 --output json
+  - shell: traceway endpoints chart --metric-type p95 --since 29d --interval-minutes 10080 --output json | jq '[.series[] | select(.endpoint == "GET /api/orders")]'
+  - read_file: internal/handlers/orders.go
+  - submit:
+      checklist_item: select_n_plus_1
+      category: database
+      locus: {endpoint: "GET /api/orders", span: "SELECT id, sku, qty, unit_price FROM order_items WHERE order_id = $1", service: orders-api}
+      onset: null
+      evidence:
+        - {call_id: c01, claim: "GET /api/orders is the slowest endpoint; p50 and p95 are both high, so every request pays the cost"}
+        - {call_id: c03, claim: "the slowest request of the last day runs one order_items query per order, dozens per request, which make up most of its duration"}
+        - {call_id: c04, claim: "CPU stayed flat all day, so this is not saturation"}
+        - {call_id: c05, claim: "p95 climbed week over week with no step, which is data growth rather than a deploy"}
+      ruled_out:
+        - {checklist_item: over_fetching, call_id: c03, reason: "the SELECT * on orders takes a few milliseconds"}
+        - {checklist_item: cpu_saturation, call_id: c04, reason: "CPU flat"}
+      fix: Load the items of all listed orders in one query (WHERE order_id IN (...) or a JOIN) instead of one query per order in ListOrders.
+      confidence: high
+      report: |
+        GET /api/orders is slow because of a Select N+1 in ListOrders (internal/handlers/orders.go): after loading up to 100 orders it runs one order_items query per order. The slowest request of the last day ran dozens of those queries, which make up most of its time. CPU is flat and nothing shipped in the window; the latency grew as customers accumulated orders. I batched the items into one IN (...) query (store.ItemsByOrders).

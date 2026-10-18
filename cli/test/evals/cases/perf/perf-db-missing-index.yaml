@@ -1,0 +1,80 @@
+id: perf-db-missing-index
+suite: perf
+title: The user lookup gets slower every week as the users table grows
+tags: [database, python, fastapi]
+seed: perf/db-missing-index
+arms: [cli+skill, cli-noskill]
+invoke: slash
+distractor: Release 1.13.0 two weeks ago changed POST /api/invites (two primary-key reads and an email enqueue, a few milliseconds); the lookup's curve climbs steadily through the whole month with no step at the release, and the release did not touch the lookup.
+workspace: {repo: accounts-api-py}
+prompt: |
+  /traceway perf GET /api/users/lookup
+  The member lookup behind the invite dialog and the admin user search has been getting slower for about a month. It's around half a second now for everyone, not only the big orgs. We shipped the invite email change two weeks ago, but nobody touched the lookup itself. What is slowing it down, and what should we change?
+budget: {max_turns: 40, max_tool_calls: 32, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: missing_or_unused_index
+    not: [select_n_plus_1, over_fetching, no_pagination_unbounded_result_set, expensive_join_or_aggregation, cpu_saturation, slow_third_party_upstream_api]
+    locus: {endpoint: "GET /api/users/lookup", span_contains: "users"}
+  grounding:
+    - "WHERE users.email = $1"
+  calls:
+    required:
+      - {op: endpoints.list}
+    any_of:
+      - [{op: endpoints.show, args: {recorded_at: present}}, {op: endpoints.chart}]
+      - [{op: traces.show, args: {recorded_at: present}}, {op: endpoints.chart}]
+      - [{op: endpoints.show, args: {recorded_at: present}}, {op: endpoints.list, args: {from: present}}]
+      - [{op: traces.show, args: {recorded_at: present}}, {op: endpoints.list, args: {from: present}}]
+    forbidden:
+      - {op: "*", write: true}
+    order:
+      - [endpoints.list, traces.show]
+      - [endpoints.list, endpoints.show]
+    max_failed_calls: 4
+    max_identical_repeats: 2
+judge:
+  expected: Missing index on users.email. Every lookup runs one query, SELECT ... FROM users WHERE users.email = $1, that returns one row (or none) yet takes about 500ms in the last day and about 250ms a month ago; it grows smoothly with the users table, so Postgres is reading the whole table. Primary-key reads of users (GET /api/me, the invite flow) stay at 1-2ms, CPU is flat around 20-25%, and the 1.13.0 release two weeks ago only changed POST /api/invites. The model and migrations index org_id but not email. Fix with CREATE INDEX CONCURRENTLY on users(email) (an Alembic migration plus index=True on the model).
+  rubric:
+    - Attributes the latency to the single users-by-email query, which returns at most one row but takes hundreds of milliseconds and grows with the table.
+    - Rules out the 1.13.0 release (no step in the lookup's curve, it only changed POST /api/invites) and saturation (flat CPU).
+    - Proposes an index on users.email, created concurrently (migration and model), and says how to confirm it (the span drops to a few ms).
+oracle:
+  - shell: >-
+      traceway endpoints list --since 24h --order-by p95 --page-size 10 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration / 1e6), p95_ms: (.p95Duration / 1e6), p99_ms: (.p99Duration / 1e6)}]'
+  - shell: >-
+      traceway logs query --since 6h --search /api/users/lookup --page-size 5 --output json
+      | jq '{data: [.data[] | {traceId, timestamp, body}]}'
+  - shell: >-
+      traceway traces show {{calls.c02.data.0.traceId}} --recorded-at {{calls.c02.data.0.timestamp}} --output json
+      | jq '[.nodes[] | {endpoint: .endpoint.endpoint, id: .endpoint.id, recordedAt: .endpoint.recordedAt, version: .endpoint.appVersion, ms: (.endpoint.duration / 1e6),
+      spans: [.spans[] | {name, ms: (.duration / 1e6), query: .attributes["db.query.text"], rows: .attributes["db.response.returned_rows"]}]}]'
+  - shell: >-
+      traceway endpoints chart --metric-type p50 --since 29d --interval-minutes 10080 --output json
+      | jq '[.series[] | select(.endpoint == "GET /api/users/lookup" or .endpoint == "POST /api/invites") | {endpoint, t: .timestamp, p50_ms: .value}]'
+  - shell: traceway metrics query --name system.cpu.utilization --aggregation max --group-by state --since 24h --interval-minutes 360 --output json
+  - shell: git log --format='%h %ad %s' --date=iso --stat -3
+  - read_file: app/users.py
+  - read_file: app/models.py
+  - submit:
+      checklist_item: missing_or_unused_index
+      category: database
+      locus: {endpoint: "GET /api/users/lookup", span: "SELECT users ... WHERE users.email = $1::VARCHAR", service: accounts-api}
+      onset: null
+      evidence:
+        - {call_id: c01, claim: "GET /api/users/lookup has p50 and p95 both around half a second, so every request pays it"}
+        - {call_id: c03, claim: "the request spends almost all its time in one users query filtered by email that returns a single row; the orgs primary-key read next to it takes about a millisecond"}
+        - {call_id: c04, claim: "the lookup's p50 roughly doubled over four weeks, climbing every week with no step at the release; POST /api/invites only moved by a few ms"}
+        - {call_id: c05, claim: "CPU stayed flat all day, so this is not saturation"}
+        - {call_id: c08, claim: "users.email has no index (only org_id is indexed in the model and the migrations)"}
+      ruled_out:
+        - {checklist_item: select_n_plus_1, call_id: c03, reason: "one users query per request"}
+        - {checklist_item: no_pagination_unbounded_result_set, call_id: c03, reason: "the query returns at most one row"}
+        - {checklist_item: cpu_saturation, call_id: c05, reason: "CPU flat"}
+      fix: Add an index on users(email) with CREATE INDEX CONCURRENTLY (Alembic migration 0003, index=True on the model), then confirm the users span drops to a few milliseconds.
+      confidence: high
+      report: |
+        GET /api/users/lookup is slow because users.email has no index. Each lookup runs one query, SELECT ... FROM users WHERE users.email = $1, which returns one row or none but takes about half a second: Postgres reads the whole users table every time. The query got slower every week as the table grew (p50 roughly doubled over the month) with no step at the 1.13.0 release, which only touched POST /api/invites. Primary-key reads of users and orgs take a millisecond or two and CPU is flat. I added migration 0003 that creates ix_users_email concurrently and marked the column indexed in the model.

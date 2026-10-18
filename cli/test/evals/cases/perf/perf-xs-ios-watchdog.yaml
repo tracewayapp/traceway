@@ -1,0 +1,95 @@
+id: perf-xs-ios-watchdog
+suite: perf
+title: iOS launch watchdog kills while the config endpoint waits for database connections
+tags: [cross-surface, ios, swift, go, database]
+seed: perf/xs-ios-watchdog
+arms: [cli+skill, cli-noskill]
+invoke: natural
+distractor: A pure client bug. The crash is a launch watchdog termination (0x8badf00d) with the main thread blocked in ConfigClient.fetchBlocking, a synchronous GET /api/config with a 30s timeout inside didFinishLaunching, and that is a real client defect. But it has shipped for three weeks without crashing; the kills started with two waves of launches today, when GET /api/config on mobile-api began taking 20-30s, all of it waiting before the first query for one of the API's 8 database connections (the feature-flag queries themselves take a few milliseconds), with POST /api/devices and the feed queued in the same waves.
+workspace: {repo: shop-ios-and-api}
+prompt: |
+  Since earlier today a bunch of iOS users say the app freezes on the splash screen and then closes. We haven't shipped an iOS release in three weeks. This is the crash in Traceway: {{env.url}}/issues/{{seed.hash}}
+  What is causing it, and what should we fix?
+budget: {max_turns: 40, max_tool_calls: 32, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "That's all I know from support. Please look at the data."
+expect:
+  answer:
+    checklist_item: connection_pool_exhaustion
+    not: [synchronous_work_that_belongs_in_a_background_task, cold_start_jit_connection_warmup, none_found, cache_stampede_thundering_herd, slow_third_party_upstream_api, cpu_saturation]
+    locus: {endpoint: "GET /api/config"}
+  grounding:
+    - "0x8badf00d"
+    - "FROM feature_flags"
+  calls:
+    required:
+      - {op: exceptions.show, args: {hash: "{{seed.hash}}"}}
+    any_of:
+      - [{op: "endpoints.*", args: {project_id: "{{env.projects.mobile-api.id}}"}}]
+      - [{op: "logs.query", args: {project_id: "{{env.projects.mobile-api.id}}"}}]
+      - [{op: projects.use, args: {project_id: "{{env.projects.mobile-api.id}}"}}]
+    forbidden:
+      - {op: "*", write: true}
+    max_failed_calls: 5
+    max_identical_repeats: 2
+judge:
+  expected: >-
+    The crash is the launch watchdog (0x8badf00d, 20s wall-clock allowance) killing the app while the main thread waits
+    in ConfigClient.fetchBlocking: RemoteConfig.loadAtLaunch calls GET /api/config synchronously from
+    didFinishLaunching with a 30s timeout. That code is three weeks old; the kills started today in two waves (about
+    five hours and about 1.5 hours ago). In those waves mobile-api's GET /api/config, POST /api/devices and GET /api/feed
+    all see far more requests than usual (a burst of app launches, most likely a push campaign) and GET /api/config goes
+    from a few milliseconds to 20-30s: the time is a gap before the first query (waiting for one of the 8 connections
+    database/sql is capped at, which the feed holds for hundreds of milliseconds), while the feature_flags and
+    app_versions queries take milliseconds. Connection-pool exhaustion on the API, made fatal by the blocking launch
+    fetch. Fix both: on the API raise the pool size / give config its own pool or cache the config in memory (it is
+    the same for every user of a platform), and on iOS load the config asynchronously with the cached or bundled
+    flags and a short timeout, never blocking didFinishLaunching.
+  rubric:
+    - Reads the crash as the launch watchdog killing a main thread blocked on the synchronous config fetch, and connects it to GET /api/config on the backend project by the code path and the crash times.
+    - Shows that GET /api/config's time in the crash windows is waiting before its first query (a pool wait), with traffic bursts on the launch endpoints and fast queries, rather than a slow query or a slow dependency.
+    - Recommends fixing the API's pool/config caching and making the iOS launch fetch asynchronous, and explains why it started without an app release.
+oracle:
+  - shell: >-
+      traceway exceptions show {{seed.hash}} --page-size 5 --output json
+      | jq '{group: (.group | {exceptionHash, firstSeen, lastSeen, count, stackTrace}), occurrences: [.occurrences[] | {id, recordedAt, appVersion, serverName}]}'
+  - shell: traceway projects list --output json
+  - shell: >-
+      traceway endpoints list --project {{env.projects.mobile-api.id}} --search /api/config --since 24h --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration/1e6|round), p95_ms: (.p95Duration/1e6|round), p99_ms: (.p99Duration/1e6|round)}]'
+  - shell: >-
+      traceway endpoints chart --project {{env.projects.mobile-api.id}} --metric-type p99 --since 12h --interval-minutes 15 --output json
+      | jq '[.series[] | select(.endpoint == "GET /api/config" and .value > 1000) | {t: .timestamp, p99_ms: (.value|round)}]'
+  - shell: >-
+      traceway endpoints list --project {{env.projects.mobile-api.id}} --from {{seed.wave2From}} --to {{seed.wave2To}} --page-size 10 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration/1e6|round), p95_ms: (.p95Duration/1e6|round)}]'
+  - shell: >-
+      traceway logs query --project {{env.projects.mobile-api.id}} --search /api/config --from {{seed.wave2From}} --to {{seed.wave2To}} --page-size 50 --output json
+      | jq -r '.data[] | select((.logAttributes.duration_ms // "0" | tonumber) > 15000) | "\(.timestamp) \(.traceId) \(.body)"'
+  - shell: >-
+      traceway traces show {{seed.slowRequest.traceId}} --recorded-at {{seed.slowRequest.recordedAt}} --output json
+      | jq '[.nodes[] | {project: .projectName, endpoint: .endpoint.endpoint, start: .endpoint.recordedAt, duration_ms: (.endpoint.duration/1e6|round),
+      spans: [.spans[] | {name, start: .startTime, ms: (.duration/1e6), query: .attributes["db.query.text"]}]}]'
+  - shell: git log --format='%h %ad %s' --date=iso -3
+  - read_file: ios/Shop/Config/ConfigClient.swift
+  - read_file: api/cmd/server/main.go
+  - submit:
+      checklist_item: connection_pool_exhaustion
+      category: database
+      locus: {endpoint: "GET /api/config", span: "wait before SELECT key, value, rollout_pct FROM feature_flags (database/sql pool, 8 connections)", service: mobile-api}
+      onset: "{{seed.push1}}"
+      evidence:
+        - {call_id: c01, claim: "launch watchdog terminations (0x8badf00d) with the main thread blocked in ConfigClient.fetchBlocking under didFinishLaunching, on app 4.12.0, first seen today"}
+        - {call_id: c03, claim: "GET /api/config has p50 of a few milliseconds but p99 above 15s over the last day"}
+        - {call_id: c04, claim: "its p99 spikes to tens of seconds in two short windows, about five hours and about 1.5 hours ago"}
+        - {call_id: c05, claim: "in the second window /api/config, /api/devices and /api/feed all carry far more requests than usual and all are slow"}
+        - {call_id: c06, claim: "config requests taking 20-30s in that window"}
+        - {call_id: c07, claim: "a 20s+ config request spends almost all of it before its first query; the feature_flags and app_versions queries take milliseconds"}
+        - {call_id: c10, claim: "the API caps database/sql at 8 open connections, shared with the feed"}
+      ruled_out:
+        - {checklist_item: synchronous_work_that_belongs_in_a_background_task, call_id: c08, reason: "the blocking launch fetch has shipped for three weeks; it only kills launches since the API started taking 20s+"}
+        - {checklist_item: slow_third_party_upstream_api, call_id: c07, reason: "no outgoing call; the time is a wait before the first query"}
+      fix: On mobile-api, stop the launch endpoints from queuing behind each other for 8 connections (raise MaxOpenConns to what Postgres can take, cache the per-platform config in memory so GET /api/config needs no connection, keep the feed off the same pool); on iOS, load the config asynchronously from the cached or bundled flags with a short timeout instead of blocking didFinishLaunching.
+      confidence: high
+      report: |
+        The iOS crash is the launch watchdog (0x8badf00d, 20s wall-clock allowance) killing the app while its main thread waits in ConfigClient.fetchBlocking: RemoteConfig.loadAtLaunch calls GET /api/config synchronously from didFinishLaunching with a 30s timeout. That code is three weeks old, so what changed is the API. Today, in two waves (about five and about 1.5 hours ago), launches spiked (POST /api/devices, GET /api/config and the feed all jump, most likely a push campaign) and GET /api/config went from a few milliseconds to 20-30s. The slow requests spend nearly all of that before their first query, waiting for one of the 8 database connections the API allows, which the feed holds for hundreds of milliseconds; the feature_flags and app_versions queries themselves take milliseconds. That is connection-pool exhaustion, and the blocking launch fetch turns it into a crash. Fix both sides: on the API, size the pool for launch bursts and cache the per-platform config in memory so GET /api/config does not need a connection at all; on iOS, start from the cached or bundled flags and refresh the config asynchronously with a short timeout.

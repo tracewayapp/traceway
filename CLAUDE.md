@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Traceway is an error tracking and monitoring platform consisting of:
 - **Frontend**: SvelteKit 2 dashboard application with Svelte 5
 - **Backend**: Go/Gin API server with ClickHouse database
-- **CLI**: Go/Cobra command-line client for the backend HTTP API (`/cli`), built twice from one source: read-only `traceway`, and `traceway-write` (`-tags write`, own config dir and OAuth client, write commands in `cmd/traceway/edition_write.go`). Skills: `skills/traceway` (read), `skills/traceway-learn` (the product guide, one file per area from `knowledge/learn/`, also served as `traceway://knowledge/learn/*`) and `plugins/tw-write/skills/traceway-write` (write, separate plugin), all generated from `cli/pkg/mcpserver/knowledge` by `just gen-skills`
+- **CLI**: Go/Cobra command-line client for the backend HTTP API (`/cli`), built twice from one source: read-only `traceway`, and `traceway-write` (`-tags write`, own config dir and OAuth client, write commands in `cmd/traceway/edition_write.go`). Skills: `skills/traceway` (read), `skills/traceway-learn` (the product guide, one file per area from `knowledge/learn/`, also served as `traceway://knowledge/learn/*`) and `plugins/tw-write/skills/traceway-write` (write, separate plugin), all generated from `cli/pkg/mcpserver/knowledge` by `just gen-skills`. The skill and MCP evals live in `cli/test/evals/` (own Go module, see its README), never under `skills/`: anything in a skill directory ships to users and to the agent under test
 
 ---
 

@@ -1,0 +1,79 @@
+id: perf-app-sync-background
+suite: perf
+title: Generating a statement holds the request open while the PDF renders
+tags: [application, go]
+seed: perf/app-sync-background
+arms: [cli+skill, cli-noskill]
+invoke: slash
+distractor: Host CPU jumps to ~80% whenever a statement renders, which reads like saturation, but average CPU is ~20%, the endpoint is just as slow when the host is otherwise idle, and every other endpoint on the host stays fast. The spike is the render itself, not the cause of the latency.
+workspace: {repo: statements-api-go}
+prompt: |
+  /traceway perf POST /api/statements
+  Customers say clicking "Generate statement" in the billing dashboard hangs for ten seconds or more before anything happens, and on flaky connections the request sometimes times out and they click again. Find where the time goes and tell me what we should change.
+budget: {max_turns: 40, max_tool_calls: 32, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: synchronous_work_that_belongs_in_a_background_task
+    not: [cpu_saturation, cpu_bound_serialization, slow_third_party_upstream_api, inefficient_algorithm_o_n2_hot_path]
+    locus: {endpoint: "POST /api/statements", span_contains: "render"}
+  grounding:
+    - "render statement pdf"
+  calls:
+    required:
+      - {op: endpoints.list}
+      - {op: metrics.query, args: {name: "~system\\.cpu"}}
+    any_of:
+      - [{op: endpoints.show, args: {recorded_at: present}}]
+      - [{op: traces.show, args: {recorded_at: present}}]
+    forbidden:
+      - {op: "*", write: true}
+    order:
+      - [endpoints.list, endpoints.show]
+    max_failed_calls: 4
+    max_identical_repeats: 2
+judge:
+  expected: Synchronous work that belongs in a background task. Create renders the statement PDF in the request (a 6-11s "render statement pdf" span, ~9.4s p50), uploads it to S3 (~0.3s) and only then answers 201, although the dashboard already polls GET /api/statements/{id} for the status. Every request pays it (p50 close to p95), it has been the same all week, and the DB and S3 spans are small. CPU reaches ~80% only while a render runs and averages ~20%; other endpoints are fast, so it is not saturation. Fix - insert the statement as queued, enqueue a render job for a worker (a durable queue or job table, with the worker's processing span instrumented as an OTel CONSUMER span so it shows up as a task), answer 202 with the id, and let the existing poll pick up ready/failed.
+  rubric:
+    - Attributes the latency to the in-request PDF render span (6-11s) that runs before the response, and notes the client polls for the result anyway, so the user does not need to wait on it.
+    - Rules out CPU saturation (the CPU spikes are the renders themselves; average CPU is low and other endpoints are fast) and a slow upstream (the S3 PUT is a few hundred ms).
+    - Proposes answering 202 right after inserting the statement and rendering in a worker or queue consumer, with the status endpoint reporting progress; does not suggest the retired Traceway Go SDK's CaptureTask API.
+oracle:
+  - shell: >-
+      traceway endpoints list --since 24h --order-by p95 --page-size 8 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration/1e6|round), p95_ms: (.p95Duration/1e6|round), p99_ms: (.p99Duration/1e6|round)}]'
+  - shell: traceway logs query --since 6h --search /api/statements --page-size 10 --output json | jq -r '.data[] | "\(.timestamp) \(.traceId) \(.body)"'
+  - shell: >-
+      traceway endpoints show {{seed.slowRequest.id}} --recorded-at {{seed.slowRequest.recordedAt}} --output json
+      | jq '{endpoint: .endpoint.endpoint, status: .endpoint.statusCode, total_ms: (.endpoint.duration/1e6|round),
+      spans: [.spans[] | {name, kind: .spanKind, ms: (.duration/1e6|round), detail: (.attributes["db.query.text"] // .attributes["url.full"] // .attributes["statement.pages"])}]}'
+  - shell: >-
+      traceway metrics query --name system.cpu.utilization --aggregation max --group-by state --since 24h --interval-minutes 360 --output json
+      | jq '.results[0].series | map_values(map(.value * 100 | round))'
+  - shell: >-
+      traceway metrics query --name system.cpu.utilization --aggregation avg --group-by state --since 24h --interval-minutes 360 --output json
+      | jq '.results[0].series | map_values(map(.value * 100 | round))'
+  - shell: >-
+      traceway endpoints chart --metric-type p50 --since 7d --interval-minutes 1440 --output json
+      | jq '[.series[] | select(.endpoint == "POST /api/statements") | {t: .timestamp, p50_ms: (.value|round)}]'
+  - read_file: internal/statements/handler.go
+  - read_file: web/statements.js
+  - submit:
+      checklist_item: synchronous_work_that_belongs_in_a_background_task
+      category: application
+      locus: {endpoint: "POST /api/statements", span: "render statement pdf", service: statements-api}
+      onset: null
+      evidence:
+        - {call_id: c01, claim: "POST /api/statements has a ~9s p50 and a p95 close to it, so every request pays the cost; the other endpoints answer in milliseconds"}
+        - {call_id: c03, claim: "the slowest request spends almost all of its time in the in-process 'render statement pdf' span before the S3 PUT and the 201; the DB queries and the upload are small"}
+        - {call_id: c04, claim: "CPU peaks around 80% only at the moments a render runs"}
+        - {call_id: c05, claim: "average CPU is around 20%, so the host is not saturated"}
+        - {call_id: c06, claim: "the p50 has been ~9s every day of the week, so nothing regressed"}
+      ruled_out:
+        - {checklist_item: cpu_saturation, call_id: c05, reason: "average CPU ~20%; the spikes are the renders themselves and the other endpoints stay fast"}
+        - {checklist_item: slow_third_party_upstream_api, call_id: c03, reason: "the S3 PUT takes a few hundred milliseconds"}
+      fix: Insert the statement as queued, hand the render and upload to a bounded worker pool (or a durable queue consumer whose job span is an OTel CONSUMER span), answer 202 with the id right away, and let the dashboard's existing poll of GET /api/statements/{id} pick up ready or failed.
+      confidence: high
+      report: |
+        POST /api/statements is slow because it renders the statement PDF inside the request. The slowest request of the last day spent ~12s of its ~12.1s in the in-process "render statement pdf" span, then ~0.3s uploading to S3, before answering 201. The p50 is ~9.4s and has been the same all week. The dashboard already polls GET /api/statements/{id} for the status (web/statements.js), so nobody needs to wait on the render. CPU reaches ~80% only while a render runs and averages ~20%, and every other endpoint is fast, so this is not saturation. I changed Create to insert the statement, queue the render for two worker goroutines and answer 202 at once; the workers mark the statement ready or failed, which the existing poll picks up. A durable queue would survive restarts; instrument the worker with an OTel CONSUMER span so renders show up as tasks in Traceway.

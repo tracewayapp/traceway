@@ -1,0 +1,84 @@
+id: perf-db-pool-exhaustion
+suite: perf
+title: Checkout stalls for seconds at the lunch and evening rushes
+tags: [smoke, database, python, fastapi]
+seed: perf/db-pool-exhaustion
+arms: [cli+skill, cli-noskill]
+invoke: slash
+distractor: A slow database or the payment provider. The inventory query takes 40-60ms and the payment call 150-260ms at every hour, rushes included; the seconds go to a gap before the first query, and GET /api/cart, which only runs a 3ms query on the same pool, stalls at the same hours.
+workspace: {repo: checkout-api-py}
+prompt: |
+  /traceway perf POST /api/checkout
+  Checkout is fine most of the day, but during the lunch and evening rushes some customers wait 10+ seconds and a few get a 500. The median looks normal, it's the tail. Our payment provider's status page is green the whole time. Here's one of the slow ones from today: {{env.url}}/endpoints/POST%20%2Fapi%2Fcheckout/{{seed.slowRequest.id}}?t={{seed.slowRequest.recordedAt}}
+budget: {max_turns: 40, max_tool_calls: 32, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: connection_pool_exhaustion
+    not: [slow_third_party_upstream_api, missing_or_unused_index, expensive_join_or_aggregation, lock_transaction_contention, cpu_saturation, no_timeouts_aggressive_retries]
+    locus: {endpoint: "POST /api/checkout", service: checkout-api}
+  grounding:
+    - "QueuePool limit of size 10 overflow 5 reached"
+  calls:
+    required:
+      - {op: endpoints.show, args: {id: "{{seed.slowRequest.id}}", recorded_at: present}}
+      - {op: endpoints.list}
+    any_of:
+      - [{op: logs.query}]
+      - [{op: exceptions.list}]
+      - [{op: exceptions.show}]
+    forbidden:
+      - {op: "*", write: true}
+    max_failed_calls: 4
+    max_identical_repeats: 2
+judge:
+  expected: Connection-pool exhaustion. The slow request spends most of its time in a gap before its first query (seconds with no span), then runs its normal work (inventory query 40-60ms, payment call ~200ms). Checkout holds its SQLAlchemy session, and so a pooled connection, for the whole request including the payment provider call, so at the lunch and evening rushes the 15 connections (pool_size 10 + max_overflow 5) are all in use (db.client.connection.count used=15, idle=0) and requests queue for one; the few that wait the whole 30s pool_timeout fail with sqlalchemy.exc.TimeoutError ("QueuePool limit of size 10 overflow 5 reached, connection timed out, timeout 30.00"). p50 stays ~300ms while p99 is many seconds, only in the rush hours; GET /api/cart, whose only query takes 3ms, stalls the same way. CPU is moderate. Fix by releasing the connection before the payment call (short transactions around it), then size the pool (and pool_timeout) for the peak concurrency.
+  rubric:
+    - Points at the gap before the first DB span as time waiting for a connection, not query time, and quantifies it.
+    - Uses the QueuePool timeout logs/TimeoutError issues and the rush-hour-only p99 (or the pool metric at 15 used, 0 idle) to confirm the pool, and rules out the database and the payment provider with their per-span timings.
+    - Proposes not holding the session across the payment call (two short transactions), and only then pool sizing.
+oracle:
+  - shell: >-
+      traceway endpoints show {{seed.slowRequest.id}} --recorded-at {{seed.slowRequest.recordedAt}} --output json
+      | jq 'def secs: .[11:] | rtrimstr("Z") | split(":") | ((.[0] | tonumber) * 3600 + (.[1] | tonumber) * 60 + (.[2] | tonumber));
+      .endpoint.recordedAt as $t0 | {endpoint: .endpoint.endpoint, status: .endpoint.statusCode, ms: (.endpoint.duration / 1e6 | round),
+      spans: [.spans[] | {name, start_ms: (((.startTime | secs) - ($t0 | secs)) * 1000 | round), ms: (.duration / 1e6 | round), query: .attributes["db.query.text"], url: .attributes["url.full"]}]}'
+  - shell: >-
+      traceway endpoints list --since 24h --order-by p95 --page-size 10 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration / 1e6 | round), p95_ms: (.p95Duration / 1e6 | round), p99_ms: (.p99Duration / 1e6 | round)}]'
+  - shell: >-
+      traceway endpoints chart --metric-type p99 --since 2d --interval-minutes 60 --output json
+      | jq '[.series[] | select(.endpoint == "POST /api/checkout" or .endpoint == "GET /api/cart") | {endpoint, t: .timestamp, p99_ms: (.value | round)}]'
+  - shell: >-
+      traceway logs query --since 24h --min-severity 13 --page-size 8 --output json
+      | jq '{data: [.data[] | {timestamp, severityText, traceId, body, exception: .logAttributes["exception.message"]}]}'
+  - shell: >-
+      traceway exceptions list --since 3d --output json
+      | jq '[.data[] | {hash: .exceptionHash, count, firstSeen, lastSeen, top: (.stackTrace | split("\n") | last)}]'
+  - shell: >-
+      traceway metrics query --name db.client.connection.count --group-by db.client.connection.state --aggregation max --since 24h --interval-minutes 60 --output json
+      | jq '.results[0].series | map_values([.[] | {t: .timestamp, v: (.value | round)}])'
+  - read_file: app/checkout.py
+  - read_file: app/db.py
+  - submit:
+      checklist_item: connection_pool_exhaustion
+      category: database
+      locus: {endpoint: "POST /api/checkout", span: "gap before the first SELECT cart_items (QueuePool checkout)", service: checkout-api}
+      onset: null
+      evidence:
+        - {call_id: c01, claim: "the slow request waits seconds before its first query starts; the queries and the payment call after that take their usual few hundred ms"}
+        - {call_id: c02, claim: "checkout p50 is ~300ms while p95 and p99 are many seconds; GET /api/cart, a single 3ms query, has a multi-second p99 too"}
+        - {call_id: c03, claim: "the p99 spikes only in the lunch and evening rush hours, for both endpoints"}
+        - {call_id: c04, claim: "QueuePool limit of size 10 overflow 5 reached, connection timed out, timeout 30.00 in the WARN/ERROR logs at the rushes"}
+        - {call_id: c05, claim: "sqlalchemy.exc.TimeoutError issues on checkout and cart"}
+        - {call_id: c06, claim: "the pool sits at 15 connections used and 0 idle in exactly those hours"}
+        - {call_id: c07, claim: "checkout keeps one session (and its connection) open across payments.charge"}
+      ruled_out:
+        - {checklist_item: slow_third_party_upstream_api, call_id: c01, reason: "the payment call takes ~200ms even in the slow request; the time is before the first query"}
+        - {checklist_item: missing_or_unused_index, call_id: c01, reason: "the inventory query is 40-60ms, and GET /api/cart stalls although its query is 3ms"}
+        - {checklist_item: lock_transaction_contention, call_id: c01, reason: "the DB spans themselves are normal; the wait happens before any query runs"}
+      fix: Release the connection before the payment call (read and check stock in one short session, charge, then write the order in a second short transaction), then size pool_size/max_overflow for the rush concurrency and lower pool_timeout so overload fails fast.
+      confidence: high
+      report: |
+        Checkout's tail is connection-pool exhaustion. The slow request waits several seconds before its first query even starts; after that, the inventory query (~50ms) and the payment call (~200ms) take their usual time. Checkout holds its SQLAlchemy session, and with it a pooled connection, across the payment provider call, so at the lunch and evening rushes all 15 connections (pool_size 10 + max_overflow 5) are checked out and requests queue for one. The ones that wait the full 30s fail with sqlalchemy.exc.TimeoutError ("QueuePool limit of size 10 overflow 5 reached ..."). p50 stays ~300ms while p99 is many seconds only in those hours, GET /api/cart (one 3ms query on the same pool) stalls the same way, and the pool metric shows 15 used, 0 idle. I split checkout into a short read session, the charge with no connection held, and a short write transaction.

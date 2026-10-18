@@ -1,0 +1,75 @@
+id: perf-net-sequential
+suite: perf
+title: Portal dashboard is slow although every service behind it is fast
+tags: [smoke, network, node, nestjs, multi-service]
+seed: perf/net-sequential
+arms: [cli+skill, cli-noskill]
+invoke: slash
+distractor: recommendations-service is the longest single hop, which reads like a slow upstream, but it is an internal service running at its own steady p95 (no spikes in the window) and it is only about a third of the request; the four hops add up.
+workspace: {repo: portal-web-api-nest}
+prompt: |
+  /traceway perf GET /api/dashboard
+  The portal home page is the slowest page we have. The dashboard API takes around 300ms, sometimes 400, and we budgeted 150ms for it. The services behind it all look healthy on their own dashboards. What is making it slow, and how do we fix it?
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: sequential_calls_that_could_run_in_parallel
+    not: [slow_third_party_upstream_api, chatty_ipc_microservice_fan_out, cpu_saturation, expensive_join_or_aggregation]
+    locus: {endpoint: "GET /api/dashboard", service: web-api}
+  grounding:
+    - "GET /internal/notifications/unread"
+    - "GET /internal/recommendations"
+  calls:
+    required:
+      - {op: endpoints.list}
+    any_of:
+      - [{op: traces.show, args: {recorded_at: present}}]
+      - [{op: endpoints.show, args: {recorded_at: present}}]
+    forbidden:
+      - {op: "*", write: true}
+    order:
+      - [endpoints.list, traces.show]
+      - [endpoints.list, endpoints.show]
+    max_failed_calls: 4
+    max_identical_repeats: 2
+judge:
+  expected: Sequential calls that could run in parallel. DashboardService.load (src/dashboard/dashboard.service.ts) awaits four internal reads one after another (accounts profile ~45ms, billing summary ~75ms, unread notifications ~40ms, recommendations ~100ms at p50); each needs only the account id. The waterfall is a staircase where each CLIENT span starts when the previous one ends, so the dashboard pays the sum (~280ms p50) instead of the slowest hop (~100ms). Every downstream endpoint is steady at its own p95 over three days, CPU is flat. Fix with Promise.all over the four calls.
+  rubric:
+    - Shows the staircase (each downstream call starts only when the previous one finished) and that the four calls are independent (all keyed by the account id).
+    - Quantifies it with the downstream services' own latencies (their endpoint percentiles add up to the dashboard's) and rules out a slow upstream (no single hop dominates or spikes) and saturation.
+    - Proposes running the four calls concurrently (Promise.all) in DashboardService.load, with the expected latency of roughly the slowest call.
+oracle:
+  - shell: >-
+      traceway endpoints list --since 24h --order-by p95 --page-size 20 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration / 1e6 | round), p95_ms: (.p95Duration / 1e6 | round), p99_ms: (.p99Duration / 1e6 | round)}] | sort_by(-.p95_ms)'
+  - shell: >-
+      traceway logs query --since 12h --search /api/dashboard --page-size 5 --output json
+      | jq '{data: [.data[] | {traceId, timestamp, body}]}'
+  - shell: >-
+      traceway traces show {{calls.c02.data.0.traceId}} --recorded-at {{calls.c02.data.0.timestamp}} --output json
+      | jq '{nodes: [.nodes[] | {endpoint: .endpoint.endpoint, service: .endpoint.serverName, start: .endpoint.recordedAt, ms: (.endpoint.duration / 1e6)}],
+      calls: [.nodes[0].spans[] | select(.spanKind == 3 and .serviceName == "web-api") | {url: .attributes["url.full"], start: .startTime, ms: (.duration / 1e6)}]}'
+  - shell: >-
+      traceway endpoints chart --metric-type p95 --since 3d --interval-minutes 720 --output json
+      | jq '.series | group_by(.endpoint) | map({endpoint: .[0].endpoint, p95_ms: map(.value | round)})'
+  - shell: traceway metrics query --name system.cpu.utilization --aggregation max --group-by state --since 24h --interval-minutes 360 --output json
+  - read_file: src/dashboard/dashboard.service.ts
+  - submit:
+      checklist_item: sequential_calls_that_could_run_in_parallel
+      category: network
+      locus: {endpoint: "GET /api/dashboard", span: "GET http://recommendations-service.internal:8080/internal/recommendations (fourth of four sequential calls)", service: web-api}
+      onset: null
+      evidence:
+        - {call_id: c01, claim: "the dashboard p50 is about the sum of the four internal endpoints' own p50s (profile, billing summary, unread notifications, recommendations), each of which is fast"}
+        - {call_id: c03, claim: "each of the four CLIENT calls starts only when the previous one has returned: a staircase, and all four take the same account id"}
+        - {call_id: c04, claim: "the dashboard and every downstream endpoint are flat over three days: no upstream spike or regression"}
+        - {call_id: c05, claim: "web-api CPU is flat and low"}
+      ruled_out:
+        - {checklist_item: slow_third_party_upstream_api, call_id: c04, reason: "recommendations is the longest hop but steady at its own p95 and only about a third of the request; no hop dominates"}
+        - {checklist_item: cpu_saturation, call_id: c05, reason: "CPU flat"}
+      fix: Run the four independent reads concurrently with Promise.all in DashboardService.load, so the dashboard waits for the slowest service (~100ms) instead of the sum (~280ms).
+      confidence: high
+      report: |
+        GET /api/dashboard is slow because DashboardService.load (src/dashboard/dashboard.service.ts) awaits its four internal reads one after another. The trace is a staircase: accounts profile, then billing summary, then unread notifications, then recommendations, each starting when the previous one returned, although all four only need the account id. Each service is fast and steady on its own (their endpoint p50s add up to the dashboard's ~280ms), CPU is flat, and nothing changed over three days. I changed load() to issue the four calls with Promise.all; the endpoint should drop to roughly the slowest call, about 100ms.

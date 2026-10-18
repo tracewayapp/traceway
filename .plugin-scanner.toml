@@ -6,6 +6,7 @@ ignore_paths = [
   "backend/static/frontend/*",
   "benchmarks/*",
   "cli/internal/state/state.go",
+  "cli/test/evals/testdata/*",
   "docs/*",
   "examples/*",
   "testing/*",

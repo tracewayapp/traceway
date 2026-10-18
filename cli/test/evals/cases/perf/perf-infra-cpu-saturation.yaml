@@ -1,0 +1,92 @@
+id: perf-infra-cpu-saturation
+suite: perf
+title: Traffic tripled and every endpoint slowed down with the CPU pinned
+tags: [smoke, infrastructure, node]
+seed: perf/infra-cpu-saturation
+arms: [cli+skill, cli-noskill]
+invoke: slash
+distractor: A code regression; but service.version never changed, the last commit is nine days old, and every endpoint got 2-4x slower at the same moment the request rate tripled, with CPU on both instances going from ~25% to ~95% at that time. The waterfalls show the same spans, just stretched, plus wait time between them; no new or longer query.
+workspace: {repo: commerce-api-node}
+prompt: |
+  /traceway perf
+  For about a day now the whole commerce API has been sluggish, every page and not one in particular, and it hasn't recovered on its own. Find out what's going on and what we should do about it.
+budget: {max_turns: 40, max_tool_calls: 32, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: cpu_saturation
+    not: [connection_pool_exhaustion, slow_third_party_upstream_api, memory_pressure_gc_pauses, excessive_logging_telemetry_in_the_hot_path, cold_start_jit_connection_warmup]
+    locus: {service: commerce-api}
+    onset: {at: "{{seed.onsetAt}}", tolerance_minutes: 60}
+  grounding:
+    - "system.cpu.utilization"
+    - "GET /api/products/:id"
+  calls:
+    required:
+      - {op: endpoints.list}
+      - {op: metrics.query, args: {name: "~system\\.cpu"}}
+    any_of:
+      - [{op: endpoints.chart}]
+      - [{op: endpoints.list, args: {from: present}}]
+    forbidden:
+      - {op: "*", write: true}
+    order:
+      - [endpoints.list, metrics.query]
+    max_failed_calls: 4
+    max_identical_repeats: 2
+judge:
+  expected: CPU saturation. At ~14:20 UTC the request rate on every commerce-api endpoint tripled within about 40 minutes and stayed there. In the same window CPU on both instances went from ~25% busy to 90-97% at the daily peak (idle near 0-8%), and every endpoint's p50 and p95 rose 2-4x together (GET /api/products/:id p95 ~14ms to ~40ms), more at peak hours than at night. Waterfalls contain the same spans as before, each a bit longer, with growing wait between them; no span is a new long pole. There was no deploy (same service.version, last commit nine days ago). Fix - add capacity now (more replicas; the deployment is fixed at 2 with 1-CPU limits) and add a CPU-based HorizontalPodAutoscaler so the next traffic jump scales out; then look at per-request CPU cost.
+  rubric:
+    - Shows that the latency rise is broad (every endpoint, p50 and p95 alike) and coincides with both the CPU climbing to ~95% and the request count tripling.
+    - Rules out a code regression (no new version or commit, no new long-pole span) and a single slow dependency.
+    - Recommends scaling out (more replicas / autoscaling on CPU) rather than a code fix to one endpoint.
+oracle:
+  - shell: >-
+      traceway endpoints list --since 24h --order-by p95 --page-size 10 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration/1e6|round), p95_ms: (.p95Duration/1e6|round)}]'
+  - shell: >-
+      traceway endpoints chart --metric-type p95 --since 3d --interval-minutes 180 --output json
+      | jq '.series | group_by(.endpoint) | map({endpoint: .[0].endpoint, p95_ms: map("\(.timestamp[5:16]) \(.value|round)")})'
+  - shell: >-
+      traceway metrics query --name system.cpu.utilization --aggregation avg --group-by state --since 3d --interval-minutes 180 --output json
+      | jq '.results[0].series | map_values(map("\(.timestamp[5:16]) \(.value * 100 | round)%"))'
+  - shell: >-
+      traceway metrics query --name system.cpu.utilization --aggregation min --tag state=idle --group-by host.name --since 24h --interval-minutes 180 --output json
+      | jq '.results[0].series | map_values(map("\(.timestamp[5:16]) \(.value * 100 | round)%"))'
+  - shell: >-
+      traceway endpoints list --from {{seed.beforeFrom}} --to {{seed.beforeTo}} --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration/1e6|round), p95_ms: (.p95Duration/1e6|round)}]'
+  - shell: >-
+      traceway endpoints list --from {{seed.afterFrom}} --to {{seed.afterTo}} --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration/1e6|round), p95_ms: (.p95Duration/1e6|round)}]'
+  - shell: >-
+      traceway endpoints show {{seed.earlierRequest.id}} --recorded-at {{seed.earlierRequest.recordedAt}} --output json
+      | jq '{version: .endpoint.appVersion, total_ms: ((.endpoint.duration/1e5|round)/10), spans: [.spans[] | {name, start: .startTime[11:23], ms: ((.duration/1e5|round)/10)}]}'
+  - shell: >-
+      traceway endpoints show {{seed.slowRequest.id}} --recorded-at {{seed.slowRequest.recordedAt}} --output json
+      | jq '{version: .endpoint.appVersion, total_ms: ((.endpoint.duration/1e5|round)/10), spans: [.spans[] | {name, start: .startTime[11:23], ms: ((.duration/1e5|round)/10)}]}'
+  - shell: git log --date=iso-strict --format='%h %ad %an %s' -n 5
+  - read_file: deploy/k8s/deployment.yaml
+  - submit:
+      checklist_item: cpu_saturation
+      category: infrastructure
+      locus: {service: commerce-api, host: "both instances"}
+      onset: "{{seed.onsetAt}}"
+      evidence:
+        - {call_id: c01, claim: "every endpoint is slower, not one: the rise is broad"}
+        - {call_id: c02, claim: "all top endpoints stepped up in the same bucket and stayed up, peaking each afternoon"}
+        - {call_id: c03, claim: "CPU busy went from ~25% to over 90% in the same bucket"}
+        - {call_id: c04, claim: "both instances are near zero idle at peak, so it is fleet-wide, not one host"}
+        - {call_id: c05, claim: "the day before, the same hours had a third of the requests at the old latency"}
+        - {call_id: c06, claim: "since the step, request counts are about 3x and p50/p95 2-4x on every endpoint"}
+        - {call_id: c07, claim: "before: the same two queries, the request takes ~10-15ms"}
+        - {call_id: c08, claim: "after: the same two queries, a little longer each, plus wait time before and between them; no new long pole and the same version"}
+        - {call_id: c09, claim: "no commit since nine days ago"}
+      ruled_out:
+        - {checklist_item: connection_pool_exhaustion, call_id: c08, reason: "the wait is spread across the whole request and every endpoint, including the ones without database calls, and tracks CPU"}
+        - {checklist_item: slow_third_party_upstream_api, call_id: c06, reason: "endpoints without any upstream call slowed down as much"}
+      fix: Scale out now (raise replicas from 2), and add a CPU-based HorizontalPodAutoscaler (target ~60%) so traffic jumps add pods instead of queueing; afterwards profile per-request CPU.
+      confidence: high
+      report: |
+        commerce-api is CPU-saturated by a traffic increase, not broken by a change. At about 14:20 UTC the request rate on every endpoint tripled within ~40 minutes and has stayed there. In the same window CPU on both instances went from ~25% busy to 90-97% at the daily peak, and every endpoint's p50 and p95 rose 2-4x together (GET /api/products/:id p95 ~14ms to ~40ms), worst in the afternoon and better at night. A request after the step runs the same two queries as before, each a bit longer, with wait time before and between them, which is time spent queued for the CPU. service.version did not change and the last commit is nine days old. The deployment is pinned at 2 replicas with 1-CPU limits; scale it out now and add the HorizontalPodAutoscaler I put in deploy/k8s/hpa.yaml (CPU target 60%, 2-10 replicas).

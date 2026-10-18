@@ -1,0 +1,75 @@
+id: perf-net-large-payload
+suite: perf
+title: The feed is slow, worst on phones
+tags: [network, go]
+seed: perf/net-large-payload
+arms: [cli+skill, cli-noskill]
+invoke: slash
+distractor: The feed query runs on every request with nothing cached in front of it, which reads like a missing cache, but it takes ~15ms; the request time is the ~2.3MB body going out, and it tracks the body size and the client's link, not the database.
+workspace: {repo: feed-api-go}
+prompt: |
+  /traceway perf GET /api/feed
+  The feed is slow to load, and it is worst for people on their phones. The DB team says the feed query only takes a few milliseconds. What is going on, and what should we change?
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: large_request_response_payloads
+    not: [no_cache_low_hit_ratio, missing_query_result_caching, cpu_bound_serialization, cpu_saturation]
+    locus: {endpoint: "GET /api/feed", service: feed-api}
+  grounding:
+    - "http.response.body.size"
+  calls:
+    required:
+      - {op: endpoints.list}
+    any_of:
+      - [{op: traces.show, args: {recorded_at: present}}]
+      - [{op: endpoints.show, args: {recorded_at: present}}]
+    forbidden:
+      - {op: "*", write: true}
+    max_failed_calls: 4
+    max_identical_repeats: 2
+judge:
+  expected: Large request/response payloads. GET /api/feed returns 50 cards with their images inlined as base64 data URIs (feed_cards.image_data and the author avatars), so every response is ~2.3MB (http.response.body.size). The feed query takes ~15ms and ranking a few ms; the rest of the server span, after the last child span, is the body being written, which blocks on the client's link, so phones (okhttp, iPhone) take 1.2-2.5s while desktops take 150-300ms for the same size, and the small card endpoint is fast. Not a cache problem and not CPU (flat). Fix by sending CDN image URLs instead of inline data (and not selecting image_data), which cuts the response to tens of KB.
+  rubric:
+    - Ties the latency to the response size (http.response.body.size ~2.3MB) and shows that it follows the client's bandwidth (phone vs desktop, the small card endpoint), with the DB and handler work small.
+    - Rules out a missing cache or a slow query from the data (the query is ~15ms) and CPU saturation.
+    - Proposes shrinking the payload (CDN image URLs instead of inline base64, thumbnails, paging or compression) in the feed handler/store.
+oracle:
+  - shell: >-
+      traceway endpoints list --since 24h --order-by p95 --page-size 20 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration / 1e6 | round), p95_ms: (.p95Duration / 1e6 | round), p99_ms: (.p99Duration / 1e6 | round)}] | sort_by(-.p95_ms)'
+  - shell: >-
+      traceway logs query --since 6h --search /api/feed --page-size 20 --output json
+      | jq -r '.data[] | "\(.timestamp) \(.traceId) \(.body)"'
+  - shell: >-
+      traceway traces show {{seed.mobileRequest.traceId}} --recorded-at {{seed.mobileRequest.recordedAt}} --output json
+      | jq '.nodes[0] | {endpoint: .endpoint.endpoint, ms: (.endpoint.duration / 1e6), bodySize: .endpoint.bodySize,
+      body_size_attr: .endpoint.attributes["http.response.body.size"], user_agent: .endpoint.attributes["user_agent.original"],
+      spans: [.spans[] | {name, start: .startTime, ms: (.duration / 1e6)}]}'
+  - shell: >-
+      traceway traces show {{seed.desktopRequest.traceId}} --recorded-at {{seed.desktopRequest.recordedAt}} --output json
+      | jq '.nodes[0] | {endpoint: .endpoint.endpoint, ms: (.endpoint.duration / 1e6), bodySize: .endpoint.bodySize,
+      body_size_attr: .endpoint.attributes["http.response.body.size"], user_agent: .endpoint.attributes["user_agent.original"],
+      spans: [.spans[] | {name, start: .startTime, ms: (.duration / 1e6)}]}'
+  - shell: traceway metrics query --name system.cpu.utilization --aggregation max --group-by state --since 24h --interval-minutes 360 --output json
+  - read_file: internal/feed/handler.go
+  - read_file: internal/feed/store.go
+  - submit:
+      checklist_item: large_request_response_payloads
+      category: network
+      locus: {endpoint: "GET /api/feed", span: "GET /api/feed (time after the last child span: writing the ~2.3MB body)", service: feed-api}
+      onset: null
+      evidence:
+        - {call_id: c01, claim: "GET /api/feed p50 ~490ms, p95 ~2.6s; the single-card endpoint is fast"}
+        - {call_id: c03, claim: "a phone request took well over a second with a ~2.3MB body (http.response.body.size); its query and ranking take a few tens of ms, the rest is writing the body"}
+        - {call_id: c04, claim: "a desktop request with a body of the same size took a few hundred ms: latency follows size over the client's bandwidth"}
+        - {call_id: c05, claim: "CPU is flat"}
+      ruled_out:
+        - {checklist_item: no_cache_low_hit_ratio, call_id: c03, reason: "the feed query takes ~15ms; caching it would not move a multi-second request"}
+        - {checklist_item: cpu_saturation, call_id: c05, reason: "CPU flat"}
+      fix: Stop inlining images; send CDN URLs for card images and avatars (and stop selecting image_data/avatar_data), so the feed is tens of KB instead of ~2.3MB.
+      confidence: high
+      report: |
+        GET /api/feed is slow because each response is about 2.3MB: the handler inlines every card image and avatar as a base64 data URI (feed_cards.image_data, authors.avatar_data; internal/feed/handler.go and store.go). The feed query takes ~15ms and ranking a few ms; the remaining time of the request, after the last child span, is the body being written to the client, so it depends on the client's link. A phone request took well over a second and a desktop request a few hundred ms for the same ~2.3MB, which is why mobile users see it most. CPU is flat and the query is fast, so caching would not help. I changed the feed to return CDN URLs for card images and avatars and stopped selecting the inline image columns; the response drops to tens of KB.

@@ -10,7 +10,7 @@ go run .
 
 Then:
 - App: http://localhost:8080/cdn (no build step) or http://localhost:8080 (requires `cd frontend && npm install && npm run build` first)
-- AI chat: http://localhost:8080/chat (needs `ORCAROUTER_API_KEY` or `OPENROUTER_API_KEY` in `.env`)
+- AI chat: http://localhost:8080/chat (needs `ORCAROUTER_API_KEY`, `CHEAPER_INFERENCE_API_KEY` or `OPENROUTER_API_KEY` in `.env`)
 - Dashboard: http://localhost:8082 — login `admin@localhost.com` / `admin`
 
 ## AI chat (conversations, tool calls, sub-agents)
@@ -22,12 +22,16 @@ Then:
 ORCAROUTER_API_KEY=sk-orca-...
 ORCAROUTER_MODEL=orcarouter/auto
 
+# Cheaper Inference (https://cheaperinference.com)
+# CHEAPER_INFERENCE_API_KEY=ci_live_...
+# CHEAPER_INFERENCE_MODEL=gpt-5.4-mini
+
 # OpenRouter — fallback provider
 # OPENROUTER_API_KEY=sk-or-...
 # OPENROUTER_MODEL=anthropic/claude-sonnet-5
 ```
 
-When `ORCAROUTER_API_KEY` is set the chat routes through [OrcaRouter](https://www.orcarouter.ai) (`https://api.orcarouter.ai/v1`); otherwise it falls back to OpenRouter.
+When `ORCAROUTER_API_KEY` is set the chat routes through [OrcaRouter](https://www.orcarouter.ai) (`https://api.orcarouter.ai/v1`). When `CHEAPER_INFERENCE_API_KEY` is set instead, it routes through [Cheaper Inference](https://cheaperinference.com) (`https://api.cheaperinference.com/v1`). Otherwise it falls back to OpenRouter.
 
 How it maps to Traceway:
 

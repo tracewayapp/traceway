@@ -101,8 +101,10 @@ func pctSeedAlertHandoff(s *seed.Scenario) error {
 		sp.Kind, sp.Scope = seed.KindClient, "github.com/exaring/otelpgx"
 	}
 
+	// Shoppers in other time zones keep the night from going quiet.
+	night := seed.RateFunc(func(t time.Time) float64 { return math.Max(1, 0.9/pctDiurnal(t)) })
 	listing := api.Endpoint("GET", "/api/categories/{slug}/products")
-	listing.Traffic(seed.Daily(3600), seed.Diurnal(), seed.Over(window))
+	listing.Traffic(seed.Daily(3600), seed.Diurnal(), night, seed.Over(window))
 	listing.Detail(seed.DetailPolicy{Recent: 70 * time.Minute, Rate: 0.35, Max: 60})
 	listingState := newState()
 	listing.Handler(func(r *seed.Req) {
@@ -119,14 +121,14 @@ func pctSeedAlertHandoff(s *seed.Scenario) error {
 		if !st.cached[cat] && !preloaded {
 			connect(r, st)
 			r.DB("SELECT p.id, p.slug, p.name, p.brand, p.thumbnail_url, pp.amount_cents, pp.currency, i.available FROM products p JOIN product_prices pp ON pp.product_id = p.id AND pp.price_list = $2 JOIN inventory i ON i.product_id = p.id WHERE p.category_id = (SELECT id FROM categories WHERE slug = $1) AND p.active ORDER BY p.rank LIMIT 500",
-				r.LogNormal(1100*time.Millisecond, 1900*time.Millisecond), seed.Rows(380+r.IntN(121)))
+				r.LogNormal(1250*time.Millisecond, 1900*time.Millisecond), seed.Rows(380+r.IntN(121)))
 			st.cached[cat] = true
 		}
 		r.Gap(r.Ms(7.2, 21.6)) // page, badges, encode
 	})
 
 	product := api.Endpoint("GET", "/api/products/{id}")
-	product.Traffic(seed.Daily(1500), seed.Diurnal(), seed.Over(window))
+	product.Traffic(seed.Daily(1500), seed.Diurnal(), night, seed.Over(window))
 	productState := newState()
 	product.Handler(func(r *seed.Req) {
 		st := productState(r)
@@ -144,7 +146,7 @@ func pctSeedAlertHandoff(s *seed.Scenario) error {
 
 	email := p.EmailChannel("Catalog team email")
 	rule := p.Rule(seed.Rule{Name: "Category listing p95 above 1s", Type: "endpoint_p95_threshold", Channel: email, Cooldown: 30,
-		Config: map[string]any{"endpoint": "GET /api/categories/:slug/products", "thresholdMs": 1000, "lookbackMinutes": 10}})
+		Config: map[string]any{"endpoint": "GET /api/categories/{slug}/products", "thresholdMs": 1000, "lookbackMinutes": 10}})
 
 	s.Expose("ruleId", rule)
 	s.Expose("deployAt", pctRFC3339(deployAt))

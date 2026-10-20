@@ -1,0 +1,90 @@
+id: perf-infra-noisy-neighbor
+suite: perf
+title: One of three VMs loses a third of its CPU to steal and serves every request slowly
+tags: [infrastructure, go]
+seed: perf/infra-noisy-neighbor
+arms: [cli+skill, cli-noskill, mcp]
+invoke: slash
+distractor: Fleet-wide CPU saturation (every endpoint's p95 doubled, so add servers); but traffic is flat, tickets-node-a and tickets-node-b are ~70% idle with unchanged latency, and only tickets-node-c is slow, where ~30% of the CPU time goes to steal while its own user and system time did not grow.
+workspace: {repo: tickets-api-go}
+prompt: |
+  /traceway perf tickets-api
+  For the last half day or so the p95 of every tickets-api endpoint has been up. Some people say the seat map takes ages, others say it's fine for them, and the CPU graph doesn't look alarming. Do we need more servers?
+budget: {max_turns: 40, max_tool_calls: 34, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: undersized_noisy_neighbor_instance
+    not: [cpu_saturation, memory_pressure_gc_pauses, connection_pool_exhaustion, slow_third_party_upstream_api]
+    locus: {host: node-c}
+    onset: {at: "{{seed.onsetAt}}", tolerance_minutes: 60}
+  grounding:
+    - "tickets-node-c"
+    - "system.cpu.utilization"
+  calls:
+    required:
+      - {op: endpoints.list}
+      - {op: metrics.query, args: {name: "~system\\.cpu", group_by: "~host"}}
+    any_of:
+      - [{op: metrics.query, args: {name: "~http\\.server\\.request\\.duration", group_by: "~host"}}]
+      - [{op: logs.query}]
+    forbidden:
+      - {op: "*", write: true}
+    max_failed_calls: 5
+    max_identical_repeats: 2
+judge:
+  expected: Undersized / noisy-neighbour instance - tickets-node-c. Since the onset about 14 hours ago, only requests served by tickets-node-c are slow (http.server.request.duration around 43ms there against ~17ms on node-a and node-b, and in the access logs every slow request comes from node-c); because the load balancer spreads requests evenly, a third of every endpoint's requests are slow, which lifted p95 everywhere while p50 barely moved. At the same moment node-c started losing 25-35% of its CPU time to steal (system.cpu.utilization state=steal), its idle fell from ~69% to ~39%, and its user and system time stayed where they were, like the other two hosts. Traffic is flat and nothing was deployed, so this is not saturation - more servers would not help node-c. Fix - replace or migrate tickets-node-c (stop/start onto another host, or let the ASG replace it), take it out of the target group meanwhile, and consider dedicated tenancy or alerting on steal.
+  rubric:
+    - Separates the latency by host (request-duration metric by host.name or the access logs) and finds that only tickets-node-c is slow.
+    - Identifies CPU steal on tickets-node-c, with its user/system time and the other hosts normal, and rules out fleet-wide saturation and a code change.
+    - Recommends draining and replacing or migrating that one instance instead of adding servers.
+oracle:
+  - shell: >-
+      traceway endpoints list --since 24h --order-by p95 --page-size 8 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration/1e6|round), p95_ms: (.p95Duration/1e6|round)}]'
+  - shell: >-
+      traceway endpoints chart --metric-type p95 --since 24h --interval-minutes 120 --output json
+      | jq '.series | group_by(.endpoint) | map({endpoint: .[0].endpoint, p95_ms: map("\(.timestamp[11:16]) \(.value|round)")})'
+  - shell: >-
+      traceway metrics query --name http.server.request.duration.avg --aggregation avg --group-by host.name --since 24h --interval-minutes 120 --output json
+      | jq '.results[0].series | map_values(map("\(.timestamp[11:16]) \(.value * 1000 | round)ms"))'
+  - shell: >-
+      traceway metrics query --name system.cpu.utilization --aggregation avg --tag state=idle --group-by host.name --since 24h --interval-minutes 120 --output json
+      | jq '.results[0].series | map_values(map("\(.timestamp[11:16]) \(.value * 100 | round)%"))'
+  - shell: >-
+      traceway metrics query --name system.cpu.utilization --aggregation avg --tag state=steal --group-by host.name --since 24h --interval-minutes 120 --output json
+      | jq '.results[0].series | map_values(map("\(.timestamp[11:16]) \(.value * 100 | round)%"))'
+  - shell: >-
+      traceway metrics query --name system.cpu.utilization --aggregation avg --tag state=user --group-by host.name --since 24h --interval-minutes 120 --output json
+      | jq '.results[0].series | map_values(map("\(.timestamp[11:16]) \(.value * 100 | round)%"))'
+  - shell: traceway logs query --since 3h --search /api/events/ --page-size 20 --output json | jq -r '.data[] | "\(.timestamp) \(.resourceAttributes["host.name"]) \(.traceId) \(.body)"'
+  - shell: >-
+      traceway endpoints show {{seed.slowRequest.id}} --recorded-at {{seed.slowRequest.recordedAt}} --output json
+      | jq '{endpoint: .endpoint.endpoint, total_ms: ((.endpoint.duration/1e5|round)/10), spans: [.spans[] | {name, ms: ((.duration/1e5|round)/10)}]}'
+  - shell: >-
+      traceway endpoints show {{seed.fastRequest.id}} --recorded-at {{seed.fastRequest.recordedAt}} --output json
+      | jq '{endpoint: .endpoint.endpoint, total_ms: ((.endpoint.duration/1e5|round)/10), spans: [.spans[] | {name, ms: ((.duration/1e5|round)/10)}]}'
+  - read_file: deploy/terraform/instances.tf
+  - submit:
+      checklist_item: undersized_noisy_neighbor_instance
+      category: infrastructure
+      locus: {service: tickets-api, host: tickets-node-c}
+      onset: "{{seed.onsetAt}}"
+      evidence:
+        - {call_id: c01, claim: "every endpoint's p95 is up while p50 moved much less: a share of requests is slow on every route"}
+        - {call_id: c02, claim: "the p95 of all endpoints stepped up in the same bucket"}
+        - {call_id: c03, claim: "per host, only tickets-node-c's request duration rose (~43ms against ~17ms on node-a and node-b), from that same bucket"}
+        - {call_id: c04, claim: "node-a and node-b stay ~69% idle; node-c fell to ~39% at the step"}
+        - {call_id: c05, claim: "the lost idle on node-c is steal: ~30% from the step on, zero on the other hosts"}
+        - {call_id: c06, claim: "user CPU is the same on all three hosts, so node-c is not doing more work"}
+        - {call_id: c07, claim: "in the access logs the slow requests all come from tickets-node-c"}
+        - {call_id: c08, claim: "a slow request on node-c has the same spans as a fast one, each stretched; no single long pole"}
+        - {call_id: c09, claim: "the same endpoint on node-a takes under 20ms"}
+      ruled_out:
+        - {checklist_item: cpu_saturation, call_id: c04, reason: "two of three hosts are ~70% idle and traffic is flat; only node-c, and only through steal"}
+        - {checklist_item: connection_pool_exhaustion, call_id: c08, reason: "the slow requests are slow throughout on one host, not waiting before their queries"}
+      fix: Take tickets-node-c out of the target group and replace it (stop/start the instance so it lands on another host, or terminate it and let it be recreated); more servers are not needed. Alert on CPU steal per host so the next one is caught quickly; consider dedicated tenancy if it recurs.
+      confidence: high
+      report: |
+        No, more servers would not help: one of the three VMs is being starved by its hypervisor. Since about 14 hours ago every request served by tickets-node-c takes ~2.5-3x longer (http.server.request.duration ~43ms there against ~17ms on node-a and node-b; in the access logs the 40-65ms requests all come from node-c). The load balancer sends it a third of the traffic, which is why every endpoint's p95 rose while p50 barely moved and some users see no problem. From the same moment node-c loses ~30% of its CPU time to steal, so its idle fell from ~69% to ~39% although its own user and system time did not change; node-a and node-b have no steal and stay ~69% idle, and traffic is flat. Drain tickets-node-c from the target group and replace it (a stop/start moves it to another host), and add an alert on per-host CPU steal.

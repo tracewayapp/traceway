@@ -1,0 +1,9 @@
+commits:
+- dir: .history/01
+  message: 'v4.7.3: load the export''s invoices and lines in one query'
+  age: 520h
+  author: Priya Raman <priya@example.com>
+head:
+  message: 'v4.8.0: tax breakdown per invoice in the monthly export'
+  age: 26h25m
+  author: Tomás Ortega <tomas@example.com>

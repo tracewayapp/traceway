@@ -1,0 +1,86 @@
+id: perf-db-unbounded-result
+suite: perf
+title: The admin audit log gets slower every week as organizations accumulate events
+tags: [database, java, spring]
+seed: perf/db-unbounded-result
+arms: [cli+skill, cli-noskill, mcp]
+invoke: natural
+distractor: A missing index on audit_events (the user's guess). The dashboard widget reads the same table through the same (org_id, created_at) index with LIMIT 20 in about 2ms, and the audit-log query's cost per returned row stays flat (~20µs) while the rows it returns grow every week.
+workspace: {repo: admin-api-java}
+prompt: |
+  Org admins keep telling us the Audit log page in the admin console gets slower every week. It was snappy when we launched it in the spring; now it's a few hundred ms for most orgs and several seconds for the biggest ones. My guess is that audit_events needs another index, it has grown a lot. Can you check what Traceway shows for GET /api/admin/audit-log and tell me what to change?
+budget: {max_turns: 40, max_tool_calls: 32, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: no_pagination_unbounded_result_set
+    not: [missing_or_unused_index, over_fetching, select_n_plus_1, expensive_join_or_aggregation, large_request_response_payloads, cpu_bound_serialization, cpu_saturation]
+    locus: {endpoint: "GET /api/admin/audit-log", span_contains: "audit_events"}
+  grounding:
+    - "e.user_agent, e.created_at FROM audit_events e WHERE e.org_id = ?"
+  calls:
+    required:
+      - {op: endpoints.list}
+    any_of:
+      - [{op: endpoints.show, args: {recorded_at: present}}, {op: endpoints.chart}]
+      - [{op: traces.show, args: {recorded_at: present}}, {op: endpoints.chart}]
+      - [{op: endpoints.show, args: {recorded_at: present}}, {op: endpoints.list, args: {from: present}}]
+      - [{op: traces.show, args: {recorded_at: present}}, {op: endpoints.list, args: {from: present}}]
+    forbidden:
+      - {op: "*", write: true}
+    order:
+      - [endpoints.list, traces.show]
+      - [endpoints.list, endpoints.show]
+    max_failed_calls: 4
+    max_identical_repeats: 2
+judge:
+  expected: No pagination / unbounded result set. GET /api/admin/audit-log runs SELECT ... FROM audit_events e WHERE e.org_id = ? ORDER BY e.created_at DESC with no LIMIT, so every request returns the organization's whole history (thousands to over a hundred thousand rows, db.response.returned_rows) and then serializes all of it. Events accrue daily, so the rows per request and p50 grow week over week (roughly 175ms in the first week to ~380ms now, p95 in the seconds for the biggest orgs) with no deploy and flat CPU. It is not an index problem; the time per returned row is constant, and the dashboard widget's LIMIT 20 query on the same index takes ~2ms. Fix with keyset pagination on (created_at, id) and a page size (for example 100, max 500), with the UI loading further pages on demand.
+  rubric:
+    - Shows the query has no LIMIT and returns a growing number of rows (returned_rows in the thousands and up), and ties the weekly p50 creep to the event history growing.
+    - Rules out the user's index theory with evidence (cost per row constant, the LIMIT 20 query on the same index is fast, the migration already indexes (org_id, created_at)).
+    - Proposes pagination (keyset/cursor on created_at, id, with a page size) instead of an index.
+oracle:
+  - shell: >-
+      traceway endpoints list --since 24h --order-by p95 --page-size 10 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration / 1e6), p95_ms: (.p95Duration / 1e6), p99_ms: (.p99Duration / 1e6)}]'
+  - shell: >-
+      traceway logs query --since 12h --search /api/admin/audit-log --page-size 20 --output json
+      | jq '{data: ([.data[] | {traceId, timestamp, body, ms: (.logAttributes.duration_ms | tonumber)}] | sort_by(-.ms))}'
+  - shell: >-
+      traceway traces show {{calls.c02.data.0.traceId}} --recorded-at {{calls.c02.data.0.timestamp}} --output json
+      | jq '[.nodes[] | {endpoint: .endpoint.endpoint, id: .endpoint.id, recordedAt: .endpoint.recordedAt, ms: (.endpoint.duration / 1e6),
+      spans: [.spans[] | {name, ms: (.duration / 1e6), query: .attributes["db.query.text"], rows: .attributes["db.response.returned_rows"]}]}]'
+  - shell: >-
+      traceway endpoints chart --metric-type p50 --since 29d --interval-minutes 10080 --output json
+      | jq '[.series[] | select(.endpoint == "GET /api/admin/audit-log" or .endpoint == "GET /api/admin/dashboard/activity") | {endpoint, t: .timestamp, p50_ms: .value}]'
+  - shell: >-
+      traceway logs query --since 6h --search /api/admin/dashboard/activity --page-size 3 --output json
+      | jq '{data: [.data[] | {traceId, timestamp, body}]}'
+  - shell: >-
+      traceway traces show {{calls.c05.data.0.traceId}} --recorded-at {{calls.c05.data.0.timestamp}} --output json
+      | jq '[.nodes[] | {endpoint: .endpoint.endpoint, ms: (.endpoint.duration / 1e6), spans: [.spans[] | {name, ms: (.duration / 1e6), query: .attributes["db.query.text"], rows: .attributes["db.response.returned_rows"]}]}]'
+  - shell: traceway metrics query --name system.cpu.utilization --aggregation max --group-by state --since 24h --interval-minutes 360 --output json
+  - shell: git log --format='%h %ad %s' --date=iso -5
+  - read_file: src/main/java/com/ledgerly/admin/audit/AuditEventRepository.java
+  - read_file: src/main/resources/db/migration/V14__audit_events.sql
+  - submit:
+      checklist_item: no_pagination_unbounded_result_set
+      category: database
+      locus: {endpoint: "GET /api/admin/audit-log", span: "SELECT audit_events (WHERE e.org_id = ? ORDER BY e.created_at DESC, no LIMIT)", service: admin-api}
+      onset: null
+      evidence:
+        - {call_id: c01, claim: "GET /api/admin/audit-log has a p50 of a few hundred ms and a p95 of several seconds"}
+        - {call_id: c03, claim: "the request spends its time in one audit_events query that has no LIMIT and returns thousands of rows (db.response.returned_rows), then serializing them inside the controller span"}
+        - {call_id: c04, claim: "p50 climbed every week over the month with no step, while the dashboard widget stayed flat"}
+        - {call_id: c06, claim: "the widget's LIMIT 20 query on the same table and index returns in about 2ms"}
+        - {call_id: c07, claim: "CPU is flat around 25%"}
+        - {call_id: c10, claim: "audit_events is already indexed on (org_id, created_at DESC)"}
+      ruled_out:
+        - {checklist_item: missing_or_unused_index, call_id: c06, reason: "the same index serves the LIMIT 20 query in ~2ms; the big query's time is proportional to the rows it returns"}
+        - {checklist_item: over_fetching, call_id: c03, reason: "explicit column list; the cost is the number of rows, not their width"}
+        - {checklist_item: cpu_saturation, call_id: c07, reason: "CPU flat"}
+      fix: Paginate the audit log with a keyset cursor on (created_at, id) and a page size (default 100, max 500) instead of returning the whole history; the UI loads more pages on demand. No new index is needed.
+      confidence: high
+      report: |
+        The Audit log page is slow because GET /api/admin/audit-log has no pagination. AuditEventRepository.findByOrg runs SELECT ... FROM audit_events e WHERE e.org_id = ? ORDER BY e.created_at DESC with no LIMIT, so each request returns the organization's entire history (thousands to over a hundred thousand rows) and serializes it. Events pile up every day, so p50 has climbed week over week with no deploy and flat CPU. An index would not help: audit_events is already indexed on (org_id, created_at), the dashboard widget's LIMIT 20 query on it takes ~2ms, and the big query's time is proportional to the rows it returns. I changed the endpoint to keyset pagination on (created_at, id) with a 100-row default page.

@@ -1,0 +1,75 @@
+id: perf-db-lock-contention
+suite: perf
+title: Stock reservations stall and fail during the evening product drop
+tags: [database, go, pgx]
+seed: perf/db-lock-contention
+arms: [cli+skill, cli-noskill, mcp]
+invoke: natural
+distractor: Connection-pool exhaustion. Release 1.32.0 a week ago raised the pgx pool from 20 to 40 connections and the evening spikes look the same before and after; in the slow requests BEGIN starts within a millisecond (no wait for a connection) and the time is inside the UPDATE inventory spans.
+workspace: {repo: inventory-api-go}
+prompt: |
+  Stock reservations (POST /api/reservations on inventory-api) get really slow every evening during the 18:00 product drop, and some carts fail with 500s or 503s. Last week we raised the pgx pool from 20 to 40 connections and it didn't change anything. Can you use Traceway to figure out what's actually going on and what we should fix in the code?
+budget: {max_turns: 40, max_tool_calls: 32, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: lock_transaction_contention
+    not: [connection_pool_exhaustion, cpu_saturation, missing_or_unused_index, slow_third_party_upstream_api, no_timeouts_aggressive_retries, select_n_plus_1]
+    locus: {endpoint: "POST /api/reservations", span_contains: "inventory"}
+  grounding:
+    - "deadlock detected (SQLSTATE 40P01)"
+  calls:
+    required:
+      - {op: endpoints.list}
+      - {op: logs.query}
+    any_of:
+      - [{op: traces.show, args: {recorded_at: present}}]
+      - [{op: endpoints.show, args: {recorded_at: present}}]
+    forbidden:
+      - {op: "*", write: true}
+    max_failed_calls: 4
+    max_identical_repeats: 2
+judge:
+  expected: Lock / transaction contention. During the 18:00 drop many reservations update the same few hot inventory rows. Reserve updates each cart line in cart order inside one transaction, so concurrent carts queue on the row locks (the UPDATE inventory spans run for hundreds of ms to seconds, while BEGIN starts immediately), and carts that lock two hot SKUs in opposite orders deadlock (ERROR deadlock detected, SQLSTATE 40P01, after ~1s) or hit lock_timeout (55P03 after 5s). p50 stays ~8ms; p99 is seconds only in the drop window, every evening before and after the pool change, which therefore did not help. Fix by locking rows in a consistent order (sort the lines by warehouse and SKU, or one UPDATE ... FROM unnest for all lines), keeping the transaction short, and retrying 40P01 once.
+  rubric:
+    - Locates the time inside the UPDATE inventory spans (lock waits in the database) and cites the deadlock / lock timeout errors from the logs.
+    - Rules out pool exhaustion with evidence (no gap before BEGIN, spikes unchanged after the pool was doubled).
+    - Proposes a consistent lock order (sorted SKUs or a single statement) and short transactions, not a bigger pool.
+oracle:
+  - shell: >-
+      traceway endpoints list --since 24h --order-by p95 --page-size 10 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration / 1e6 | round), p95_ms: (.p95Duration / 1e6 | round), p99_ms: (.p99Duration / 1e6 | round)}]'
+  - shell: >-
+      traceway logs query --since 24h --min-severity 13 --page-size 6 --output json
+      | jq '{data: [.data[] | {timestamp, severityText, traceId, body, detail: .logAttributes.pg_detail, where: .logAttributes.pg_where}]}'
+  - shell: >-
+      traceway traces show {{calls.c02.data.0.traceId}} --recorded-at {{calls.c02.data.0.timestamp}} --output json
+      | jq 'def secs: .[11:] | rtrimstr("Z") | split(":") | ((.[0] | tonumber) * 3600 + (.[1] | tonumber) * 60 + (.[2] | tonumber));
+      [.nodes[] | .endpoint.recordedAt as $t0 | {endpoint: .endpoint.endpoint, status: .endpoint.statusCode, ms: (.endpoint.duration / 1e6 | round),
+      spans: [.spans[] | {name, start_ms: (((.startTime | secs) - ($t0 | secs)) * 1000 | round), ms: (.duration / 1e6 | round), status: .statusCode, query: .attributes["db.query.text"]}]}]'
+  - shell: >-
+      traceway endpoints chart --metric-type p99 --since 8d --interval-minutes 360 --output json
+      | jq '[.series[] | select(.endpoint == "POST /api/reservations") | {t: .timestamp, p99_ms: (.value | round)}]'
+  - shell: traceway metrics query --name system.cpu.utilization --aggregation max --group-by state --since 24h --interval-minutes 360 --output json
+  - shell: git log --format='%h %ad %s' --date=iso --stat -3
+  - read_file: internal/reserve/reserve.go
+  - submit:
+      checklist_item: lock_transaction_contention
+      category: database
+      locus: {endpoint: "POST /api/reservations", span: "UPDATE inventory SET reserved = reserved + $1 ... WHERE sku = $2 AND warehouse_id = $3", service: inventory-api}
+      onset: null
+      evidence:
+        - {call_id: c01, claim: "POST /api/reservations has p50 ~8ms but p99 in the seconds"}
+        - {call_id: c02, claim: "the drop produces deadlock detected (40P01) and lock timeout (55P03) errors on inventory rows, with Postgres naming the blocked processes"}
+        - {call_id: c03, claim: "in a failing request BEGIN starts right away; the UPDATE inventory statements take hundreds of ms to seconds inside the database"}
+        - {call_id: c04, claim: "p99 spikes in the evening bucket every day, before and after the pool was raised to 40"}
+        - {call_id: c05, claim: "CPU is flat"}
+        - {call_id: c07, claim: "Reserve updates the cart lines in cart order inside one transaction, so two carts can lock the same SKUs in opposite orders"}
+      ruled_out:
+        - {checklist_item: connection_pool_exhaustion, call_id: c03, reason: "no wait before BEGIN; doubling the pool (c06) left the evening spikes unchanged (c04)"}
+        - {checklist_item: cpu_saturation, call_id: c05, reason: "CPU flat during the drop"}
+      fix: Lock inventory rows in one global order (sort the lines by warehouse and SKU before updating, or update them all in one UPDATE ... FROM unnest statement), keep the reservation transaction short, and retry a 40P01 once. A bigger pool does not help.
+      confidence: high
+      report: |
+        Reservations stall on row locks, not on the pool. During the 18:00 drop many carts reserve the same few SKUs. Reserve updates each cart line in cart order inside one transaction, so concurrent carts queue on the hot inventory rows: the UPDATE inventory spans run for hundreds of ms to seconds while BEGIN starts immediately, and carts that hold two hot SKUs in opposite orders deadlock (40P01, after deadlock_timeout) or hit the 5s lock_timeout (55P03). p50 is ~8ms; p99 jumps only in the evening window, and it did the same before and after the pool was doubled. I changed Reserve to lock lines in warehouse/SKU order so carts queue behind each other instead of deadlocking.

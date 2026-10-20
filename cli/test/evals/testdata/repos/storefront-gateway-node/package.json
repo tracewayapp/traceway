@@ -1,0 +1,18 @@
+{
+  "name": "storefront-gateway",
+  "version": "4.18.2",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node --require ./src/tracing.js src/server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@opentelemetry/auto-instrumentations-node": "^0.62.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "^0.203.0",
+    "@opentelemetry/sdk-node": "^0.203.0",
+    "express": "^5.1.0",
+    "ioredis": "^5.7.0",
+    "pg": "^8.16.3"
+  }
+}

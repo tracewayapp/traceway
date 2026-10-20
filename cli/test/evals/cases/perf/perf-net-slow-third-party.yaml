@@ -1,0 +1,79 @@
+id: perf-net-slow-third-party
+suite: perf
+title: Checkout hangs a few times a day, then recovers
+tags: [network, go]
+seed: perf/net-slow-third-party
+arms: [cli+skill, cli-noskill, mcp]
+invoke: natural
+distractor: During the spikes goroutines pile up (go.goroutine.count ~50 to ~380), which reads like requests queueing for database connections, but the DB spans start right away and stay at a few ms; the wait is inside the POST to api.payments.example, and only the routes that call the provider spike.
+workspace: {repo: checkout-api-go}
+prompt: |
+  A few times a day checkout hangs for several seconds and some customers get an error instead of their order confirmation; a while later everything is fine again. Can you figure out what is going on with POST /api/checkout and what we should do about it?
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: slow_third_party_upstream_api
+    not: [connection_pool_exhaustion, no_timeouts_aggressive_retries, cpu_saturation, memory_pressure_gc_pauses]
+    locus: {endpoint: "POST /api/checkout", span_contains: "api.payments.example"}
+  grounding:
+    - "api.payments.example/v1/charges"
+    - "POST /api/refunds"
+  calls:
+    required:
+      - {op: endpoints.list}
+    any_of:
+      - [{op: endpoints.chart}, {op: traces.show, args: {recorded_at: present}}]
+      - [{op: endpoints.chart}, {op: endpoints.show, args: {recorded_at: present}}]
+      - [{op: endpoints.list, args: {from: present}}, {op: traces.show, args: {recorded_at: present}}]
+      - [{op: endpoints.list, args: {from: present}}, {op: endpoints.show, args: {recorded_at: present}}]
+    forbidden:
+      - {op: "*", write: true}
+    max_failed_calls: 4
+    max_identical_repeats: 2
+judge:
+  expected: Slow third-party / upstream API. Three times in three days (25-40 minutes each) the payment provider slowed down; the charge CLIENT span (POST https://api.payments.example/v1/charges) went from ~230ms to several seconds, and some calls hit the client's 10s timeout (the *url.Error "context deadline exceeded (Client.Timeout exceeded while awaiting headers)" group, answered 502). POST /api/checkout and POST /api/refunds, the two routes that call the provider, spike together in the same hours while GET /api/orders/:id and the rest stay flat; inside a slow checkout the DB spans start immediately and take a few ms, CPU is flat. Goroutines rise during the windows because requests are waiting on the provider, not on the pool. Mitigations on our side are a tighter timeout for the charge call, a circuit breaker, an asynchronous "payment pending" flow with the idempotency key, and raising it with the provider.
+  rubric:
+    - Localizes the time to the external charge span and correlates the spikes with the provider (checkout and refunds spike together, routes that do not call it stay flat; the timeouts are on that call).
+    - Rules out connection-pool exhaustion and saturation from the data (no gap before the DB spans, fast DB spans, flat CPU; goroutines are a symptom).
+    - Proposes upstream-dependency mitigations (timeout budget, circuit breaker, async/pending payment with idempotency, provider follow-up) rather than DB or code tuning.
+oracle:
+  - shell: >-
+      traceway endpoints list --since 3d --order-by p95 --page-size 20 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration / 1e6 | round), p95_ms: (.p95Duration / 1e6 | round), p99_ms: (.p99Duration / 1e6 | round)}] | sort_by(-.p99_ms)'
+  - shell: >-
+      traceway endpoints chart --metric-type p99 --since 3d --interval-minutes 60 --output json
+      | jq '.series | group_by(.endpoint) | map({endpoint: .[0].endpoint, over_1s: [.[] | select(.value > 1000) | {t: .timestamp, p99_ms: (.value | round)}]})'
+  - shell: >-
+      traceway exceptions list --since 3d --output json
+      | jq '[.data[] | {exceptionHash, count, firstSeen, lastSeen, top: (.stackTrace | split("\n")[0])}]'
+  - shell: >-
+      traceway logs query --from {{seed.incidentFrom}} --to {{seed.incidentTo}} --search /api/checkout --page-size 20 --output json
+      | jq -r '.data[] | "\(.timestamp) \(.traceId) \(.body)"'
+  - shell: >-
+      traceway traces show {{seed.incidentRequest.traceId}} --recorded-at {{seed.incidentRequest.recordedAt}} --output json
+      | jq '.nodes[0] | {endpoint: .endpoint.endpoint, ms: (.endpoint.duration / 1e6), status: .endpoint.statusCode,
+      spans: [.spans | sort_by(.startTime)[] | {name, url: .attributes["url.full"], start: .startTime, ms: (.duration / 1e6)}]}'
+  - shell: traceway metrics query --name go.goroutine.count --aggregation max --since 3d --interval-minutes 60 --output json | jq '[.results[0].series[][] | select(.value > 150) | .timestamp]'
+  - shell: traceway metrics query --name system.cpu.utilization --aggregation max --group-by state --since 3d --interval-minutes 720 --output json
+  - read_file: internal/payments/client.go
+  - submit:
+      checklist_item: slow_third_party_upstream_api
+      category: network
+      locus: {endpoint: "POST /api/checkout", span: "POST https://api.payments.example/v1/charges", service: checkout-api}
+      onset: null
+      evidence:
+        - {call_id: c01, claim: "POST /api/checkout and POST /api/refunds have p50 ~240ms but p99 of several seconds; the other routes are fast"}
+        - {call_id: c02, claim: "checkout and refunds spike in the same three windows in three days; routes that do not call the provider stay flat"}
+        - {call_id: c03, claim: "the new error group of the period is the charge call to api.payments.example hitting the 10s client timeout (the other group is an unrelated malformed-JSON 400)"}
+        - {call_id: c05, claim: "a slow checkout spends nearly all its time in POST https://api.payments.example/v1/charges; its DB spans start immediately and take a few ms"}
+        - {call_id: c06, claim: "goroutines rise only during the same windows, as requests wait on the provider"}
+        - {call_id: c07, claim: "CPU is flat"}
+      ruled_out:
+        - {checklist_item: connection_pool_exhaustion, call_id: c05, reason: "no gap before the first DB span and the DB spans are fast; the wait is in the provider call"}
+        - {checklist_item: cpu_saturation, call_id: c07, reason: "CPU flat"}
+      fix: Not our code, so contain it. Give the charge call a tighter timeout budget with a circuit breaker, move to an asynchronous 'payment pending' confirmation using the existing idempotency key when the provider is slow, and raise the incidents with the provider.
+      confidence: high
+      report: |
+        The checkout hangs are the payment provider. Three times in the last three days, for 25-40 minutes, the charge call (POST https://api.payments.example/v1/charges) went from ~230ms to several seconds, and some calls hit our 10s client timeout, which is the "context deadline exceeded (Client.Timeout exceeded while awaiting headers)" error customers got as a 502. POST /api/refunds, the other route that calls the provider, spiked in exactly the same hours, while every route that does not call it stayed flat. Inside a slow checkout the database work starts immediately and takes a few milliseconds; the goroutine count rises only because requests are waiting on the provider, and CPU is flat. There is nothing to fix in our queries. We should contain it: a shorter timeout for the charge with a circuit breaker, a "payment pending" path that confirms asynchronously with the idempotency key we already send, and a ticket with the provider for those three windows.

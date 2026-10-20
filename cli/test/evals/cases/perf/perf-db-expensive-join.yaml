@@ -1,0 +1,76 @@
+id: perf-db-expensive-join
+suite: perf
+title: The revenue report takes two seconds every time, busy or quiet
+tags: [database, php, laravel]
+seed: perf/db-expensive-join
+arms: [cli+skill, cli-noskill, mcp]
+invoke: slash
+distractor: Saturation (ops wants more PHP-FPM workers). CPU follows the daily traffic gently and stays under 40%, every other endpoint answers in a few ms at the same moments, and the report takes ~1.8s at the quietest hour exactly as at the peak.
+workspace: {repo: merchant-api-php}
+prompt: |
+  /traceway perf GET /api/stores/{store}/reports/revenue
+  The revenue chart on the merchant dashboard takes about two seconds to load, every single time, morning or night. Ops thinks the API servers are overloaded and wants to add more PHP-FPM workers. Here is one of the slow requests: {{env.url}}/endpoints/GET%20%2Fapi%2Fstores%2F%7Bstore%7D%2Freports%2Frevenue/{{seed.slowRequest.id}}?t={{seed.slowRequest.recordedAt}}
+  Would more workers fix it?
+budget: {max_turns: 40, max_tool_calls: 32, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: expensive_join_or_aggregation
+    not: [cpu_saturation, undersized_noisy_neighbor_instance, missing_or_unused_index, select_n_plus_1, no_pagination_unbounded_result_set, missing_query_result_caching, connection_pool_exhaustion]
+    locus: {endpoint: "GET /api/stores/{store}/reports/revenue", span_contains: "orders"}
+  grounding:
+    - "inner join order_items on order_items.order_id = orders.id"
+  calls:
+    required:
+      - {op: endpoints.show, args: {id: "{{seed.slowRequest.id}}", recorded_at: present}}
+      - {op: endpoints.list}
+    any_of:
+      - [{op: endpoints.chart}]
+      - [{op: metrics.query, args: {name: "~system\\.cpu"}}]
+    forbidden:
+      - {op: "*", write: true}
+    max_failed_calls: 4
+    max_identical_repeats: 2
+judge:
+  expected: Expensive JOIN/aggregation. The report runs one query that joins 90 days of the store's orders to order_items and products and groups by day and category (count distinct buyers, sum of revenue); it takes ~1.8s in every request, p50 ~1.84s and p95 ~1.98s, at night and at the daily peak alike, and has for the whole two weeks. The other queries in the request take about a millisecond. CPU follows the daily traffic gently and stays under 40%, other endpoints stay at a few ms, so more PHP-FPM workers would not help. Fix by pre-aggregating (a store/day/category rollup table refreshed by a scheduled job, or a summary table updated as orders are paid) and reading that, or by caching the computed report per store per day.
+  rubric:
+    - Identifies the single aggregate query (orders joined to order_items and products, grouped by day and category) as ~all of the request's time, and shows it is the same at low and high traffic.
+    - Rules out saturation with data (CPU well below capacity, other endpoints fast at the same time, latency flat across the day) and answers the workers question.
+    - Proposes precomputing the aggregate (rollup or summary table, materialized result) or caching it per store and day, rather than scaling the servers.
+oracle:
+  - shell: >-
+      traceway endpoints show {{seed.slowRequest.id}} --recorded-at {{seed.slowRequest.recordedAt}} --output json
+      | jq '{endpoint: .endpoint.endpoint, path: .endpoint.attributes["url.path"], ms: (.endpoint.duration / 1e6),
+      spans: [.spans[] | {name, ms: (.duration / 1e6), query: .attributes["db.query.text"], rows: .attributes["db.response.returned_rows"]}]}'
+  - shell: >-
+      traceway endpoints list --since 24h --order-by p95 --page-size 10 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration / 1e6), p95_ms: (.p95Duration / 1e6), p99_ms: (.p99Duration / 1e6)}]'
+  - shell: >-
+      traceway endpoints chart --metric-type p50 --since 2d --interval-minutes 120 --output json
+      | jq '[.series[] | select(.endpoint == "GET /api/stores/{store}/reports/revenue" or .endpoint == "GET /api/stores/{store}/orders") | {endpoint, t: .timestamp, p50_ms: .value}]'
+  - shell: >-
+      traceway metrics query --name system.cpu.utilization --aggregation max --group-by state --since 2d --interval-minutes 120 --output json
+      | jq '.results[0].series | {user: [.user[] | {t: .timestamp, v: (.value * 1000 | round / 1000)}], idle: [.idle[] | {t: .timestamp, v: (.value * 1000 | round / 1000)}]}'
+  - shell: git log --format='%h %ad %s' --date=iso -5
+  - read_file: app/Http/Controllers/RevenueReportController.php
+  - read_file: database/migrations/2025_01_14_101500_create_orders_tables.php
+  - submit:
+      checklist_item: expensive_join_or_aggregation
+      category: database
+      locus: {endpoint: "GET /api/stores/{store}/reports/revenue", span: "SELECT orders (orders join order_items join products, group by day, category_id)", service: merchant-api}
+      onset: null
+      evidence:
+        - {call_id: c01, claim: "the request is ~1.8s, almost all of it one query joining orders, order_items and products and grouping by day and category; the token and store lookups take about a millisecond each"}
+        - {call_id: c02, claim: "p50 and p95 are both ~1.8-2.0s, so every request pays it; every other endpoint is a few ms"}
+        - {call_id: c03, claim: "the report's p50 is flat at ~1.8s in every two-hour bucket, night and peak, while the order list stays at a few ms"}
+        - {call_id: c04, claim: "CPU moves with the daily traffic but stays well under 40% busy"}
+        - {call_id: c06, claim: "the controller aggregates 90 days of raw orders on every request"}
+      ruled_out:
+        - {checklist_item: cpu_saturation, call_id: c04, reason: "CPU well below capacity and latency independent of the time of day"}
+        - {checklist_item: missing_or_unused_index, call_id: c03, reason: "latency has been flat for the whole window rather than growing with the tables, and orders is indexed on (store_id, status, created_at)"}
+        - {checklist_item: select_n_plus_1, call_id: c01, reason: "three queries per request"}
+      fix: Pre-aggregate revenue into a store/day/category rollup table refreshed by a scheduled command (reports:roll-up-revenue every 10 minutes) and read that in the controller, or cache the computed report per store and day. More PHP-FPM workers would not change the per-request time.
+      confidence: high
+      report: |
+        More workers would not help: the revenue report is slow because of one expensive aggregate query, not load. Every request runs a query that joins 90 days of the store's orders to order_items and products and groups by day and category; it takes ~1.8s every time (p50 1.8s, p95 2.0s), at night and at the daily peak alike, and has for the whole two weeks. CPU stays under 40% and other endpoints answer in a few ms at the same moments. I added a store_daily_revenue rollup table, a reports:roll-up-revenue command to refresh it every 10 minutes, and changed the controller to read the rollup, so the request reads at most a few hundred pre-computed rows.

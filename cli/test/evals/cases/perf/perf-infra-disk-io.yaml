@@ -1,0 +1,94 @@
+id: perf-infra-disk-io
+suite: perf
+title: Every query got several times slower while the database host's disk queue filled up
+tags: [infrastructure, database, node]
+seed: perf/infra-disk-io
+arms: [cli+skill, cli-noskill, mcp]
+invoke: slash
+distractor: The availability search is the slowest query and the user suspects a missing index, but every query slowed by the same factor at the same minute, primary-key lookups included, nothing was deployed to the API and its tables did not grow; at that minute the database host's disk queue went from ~1 to ~36 operations and iowait from ~2% to ~35%, with its CPU still mostly idle.
+workspace: {repo: bookings-api-node}
+prompt: |
+  /traceway perf bookings-api
+  Since earlier today every query from bookings-api is slow. Availability search is the worst, but even looking a booking up by id takes several times longer than usual. We haven't deployed the API. I'm guessing the availability table needs a new index, can you confirm and tell me which one?
+budget: {max_turns: 40, max_tool_calls: 34, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: disk_io_bottleneck
+    not: [missing_or_unused_index, lock_transaction_contention, connection_pool_exhaustion, cpu_saturation, expensive_join_or_aggregation]
+    locus: {host: pg-bookings-1}
+    onset: {at: "{{seed.onsetAt}}", tolerance_minutes: 30}
+  grounding:
+    - "system.disk"
+    - "pg-bookings-1"
+  calls:
+    required:
+      - {op: endpoints.list}
+      - {op: metrics.query, args: {name: "~system\\.(disk|cpu)"}}
+    any_of:
+      - [{op: endpoints.show, args: {recorded_at: present}}]
+      - [{op: traces.show, args: {recorded_at: present}}]
+    forbidden:
+      - {op: "*", write: true}
+    max_failed_calls: 5
+    max_identical_repeats: 2
+judge:
+  expected: Disk / IO bottleneck on the database host pg-bookings-1. At the onset every bookings-api query became 5-8x slower at once (availability search p50 ~15ms to ~70ms, primary-key booking lookups ~1-3ms to ~10-20ms, writes worse), while request counts only followed the normal daily curve and the API's CPU stayed flat. At the same minute the database host's disk read throughput went from ~15MB/s to ~110MB/s and writes from ~8 to ~55MB/s, the disk queue (system.disk.pending_operations) from ~1 to ~36 and iowait (system.cpu.utilization state=wait) from ~2% to ~35%, with user CPU still ~13%. Nothing was deployed to the API; twelve minutes before the onset a commit added the rebuild-search-documents Job, which bulk-reads and writes 50,000 listings per statement with no pause. Not a missing index - indexed point lookups slowed just as much. Fix - stop or throttle the rebuild (small batches with pauses, off-peak, or on a replica) and give the volume IOPS headroom.
+  rubric:
+    - Shows that all queries, including primary-key lookups, slowed together at one moment, which an index cannot explain.
+    - Finds the database host's disk saturation (queue depth, iowait, throughput) with its CPU still low, and the onset time.
+    - Connects it to the rebuild job that started then and proposes throttling, rescheduling or moving it, or more disk IOPS, instead of adding an index.
+oracle:
+  - shell: >-
+      traceway endpoints list --since 24h --order-by p95 --page-size 8 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration/1e6|round), p95_ms: (.p95Duration/1e6|round)}]'
+  - shell: >-
+      traceway endpoints chart --metric-type p50 --since 24h --interval-minutes 60 --output json
+      | jq '.series | group_by(.endpoint) | map({endpoint: .[0].endpoint, p50_ms: map("\(.timestamp[11:16]) \(.value|round)")})'
+  - shell: >-
+      traceway endpoints show {{seed.earlierBooking.id}} --recorded-at {{seed.earlierBooking.recordedAt}} --output json
+      | jq '{endpoint: .endpoint.endpoint, total_ms: ((.endpoint.duration/1e5|round)/10), spans: [.spans[] | {name, ms: ((.duration/1e5|round)/10), query: .attributes["db.query.text"]}]}'
+  - shell: >-
+      traceway endpoints show {{seed.slowBooking.id}} --recorded-at {{seed.slowBooking.recordedAt}} --output json
+      | jq '{endpoint: .endpoint.endpoint, total_ms: ((.endpoint.duration/1e5|round)/10), spans: [.spans[] | {name, ms: ((.duration/1e5|round)/10), query: .attributes["db.query.text"]}]}'
+  - shell: >-
+      traceway endpoints show {{seed.slowAvailability.id}} --recorded-at {{seed.slowAvailability.recordedAt}} --output json
+      | jq '{endpoint: .endpoint.endpoint, total_ms: ((.endpoint.duration/1e5|round)/10), spans: [.spans[] | {name, ms: ((.duration/1e5|round)/10), rows: .attributes["db.response.returned_rows"]}]}'
+  - shell: >-
+      traceway metrics query --name system.cpu.utilization --aggregation avg --group-by host.name --tag state=user --since 24h --interval-minutes 120 --output json
+      | jq '.results[0].series | map_values(map("\(.timestamp[11:16]) \(.value * 100 | round)%"))'
+  - shell: >-
+      traceway metrics query --name system.cpu.utilization --aggregation avg --group-by state --tag host.name=pg-bookings-1 --since 24h --interval-minutes 120 --output json
+      | jq '.results[0].series | map_values(map("\(.timestamp[11:16]) \(.value * 100 | round)%"))'
+  - shell: >-
+      traceway metrics query --name system.disk.pending_operations --aggregation avg --group-by host.name --since 24h --interval-minutes 60 --output json
+      | jq '.results[0].series | map_values(map("\(.timestamp[11:16]) \(.value * 10 | round / 10)"))'
+  - shell: >-
+      traceway metrics query --name system.disk.io --aggregation max --group-by direction --since 24h --interval-minutes 120 --output json
+      | jq '.results[0].series | map_values(map("\(.timestamp[11:16]) \(.value / 1e9 | round)GB"))'
+  - shell: git log --date=iso-strict --format='%h %ad %an %s' --stat -n 3
+  - read_file: jobs/rebuild-search-documents.js
+  - submit:
+      checklist_item: disk_io_bottleneck
+      category: infrastructure
+      locus: {service: bookings-db, host: pg-bookings-1, span: "every database query of bookings-api"}
+      onset: "{{seed.onsetAt}}"
+      evidence:
+        - {call_id: c02, claim: "every endpoint's p50 stepped up 4-6x in the same hour and stayed up"}
+        - {call_id: c03, claim: "before that, a booking lookup's two primary-key queries took 1-3ms each"}
+        - {call_id: c04, claim: "after it, the same two primary-key queries take 10-20ms each: indexed point lookups slowed as much as anything"}
+        - {call_id: c05, claim: "the availability search slowed by the same factor; its plan did not change"}
+        - {call_id: c06, claim: "user CPU on the API host is flat and on the database host only rose from ~10% to ~13%"}
+        - {call_id: c07, claim: "on pg-bookings-1 iowait went from ~2% to ~35% at the step"}
+        - {call_id: c08, claim: "its disk queue went from about 1 to over 30 operations at the same time"}
+        - {call_id: c09, claim: "disk reads and writes went up about 7x from then on"}
+        - {call_id: c10, claim: "nothing changed in the API; minutes before the step a commit added the rebuild-search-documents Job"}
+      ruled_out:
+        - {checklist_item: missing_or_unused_index, call_id: c04, reason: "primary-key lookups slowed as much as the availability search, all at the same moment, without any table growth"}
+        - {checklist_item: cpu_saturation, call_id: c07, reason: "the database host's CPU is mostly idle; it is waiting on the disk"}
+        - {checklist_item: lock_transaction_contention, call_id: c04, reason: "plain reads slowed too, and the rebuild writes to a separate table"}
+      fix: Stop the rebuild-search-documents Job, then rerun it throttled (small batches with pauses, off-peak, or against a replica) so it cannot take the primary's whole disk; check the volume has IOPS headroom for both.
+      confidence: high
+      report: |
+        This is not an index problem. Every query bookings-api runs got 4-8x slower in the same minute about ten hours ago, including primary-key lookups (a booking by id went from 1-3ms per query to 10-20ms), and the API's CPU and traffic did not change. At that minute the database host pg-bookings-1 went from ~2% to ~35% iowait with its CPU otherwise idle, its disk queue from ~1 to over 30 operations, and its disk reads and writes up about 7x: the database is waiting on its disk. Twelve minutes earlier a commit added the rebuild-search-documents Job, which reads and rewrites 50,000 listings per statement with no pause on the primary. Stop it, then rerun it throttled; I changed it to work in batches of 2,000 with a pause between them (REBUILD_BATCH / REBUILD_PAUSE_MS) and a single connection. Run it off-peak or on a replica, and make sure the volume has IOPS headroom.

@@ -1,0 +1,9 @@
+commits:
+- dir: .history/01
+  message: 'v5.0.4: brand on product pages'
+  age: 30h12m
+  author: Mira Holm <mira@example.com>
+head:
+  message: 'v5.1.0: low-stock badge in category listings'
+  age: 58m
+  author: Jonas Becker <jonas@example.com>

@@ -1,0 +1,87 @@
+id: perf-app-large-alloc
+suite: perf
+title: The retention report loads every event of the range into the JVM heap
+tags: [application, java]
+seed: perf/app-large-alloc
+arms: [cli+skill, cli-noskill, mcp]
+invoke: slash
+distractor: The JVM looks like the culprit (old generation jumping from ~0.6GB to 3GB+ and young collections running back to back with ~40ms average pauses), but that only happens while a retention request runs, the collections add up to under a second of a multi-second request, the heap falls back to ~0.6GB after each one (no leak), and every other endpoint on the same JVM keeps its normal p99. The allocation is the endpoint's own work.
+workspace: {repo: insights-api-java}
+prompt: |
+  /traceway perf GET /api/insights/retention
+  The retention report in the insights dashboard takes anywhere from one to ten seconds. Ops thinks it's the JVM: the insights-api graphs show the old generation filling up and GC time spiking whenever it's slow, and they want to double the heap. Is that the right fix, or is something else going on?
+budget: {max_turns: 40, max_tool_calls: 32, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: unbounded_in_memory_work_large_allocations
+    not: [memory_pressure_gc_pauses, no_pagination_unbounded_result_set, expensive_join_or_aggregation, inefficient_algorithm_o_n2_hot_path, cpu_bound_serialization]
+    locus: {endpoint: "GET /api/insights/retention", span_contains: "buildCohorts"}
+  grounding:
+    - "RetentionService.buildCohorts"
+    - "G1 Old Gen"
+  calls:
+    required:
+      - {op: endpoints.list}
+      - {op: metrics.query, args: {name: "~^jvm\\."}}
+    any_of:
+      - [{op: endpoints.show, args: {recorded_at: present}}]
+      - [{op: traces.show, args: {recorded_at: present}}]
+    forbidden:
+      - {op: "*", write: true}
+    order:
+      - [endpoints.list, endpoints.show]
+    max_failed_calls: 5
+    max_identical_repeats: 2
+judge:
+  expected: Unbounded in-memory work / large allocations. GET /api/insights/retention (p50 ~1.5s, p99 ~9s) spends its time in the RetentionService.buildCohorts span; only ~20-25% of it is the events SELECT, the rest is the JVM grouping, sorting and bucketing every event of the requested range (0.1-2.5M rows; the 180-day ranges are the slow ones). While a request runs the G1 old generation jumps from ~0.6GB to 3GB+ and young collections spike to ~20/min at ~40ms, then everything returns to baseline; used-after-GC falls back to ~0.6GB, so there is no leak, and the other endpoints' p99 is unaffected. GC is a symptom, and doubling the heap would only delay it. Fix - compute the cohort x period counts in PostgreSQL (DISTINCT user/period + GROUP BY) so the JVM receives a few hundred rows, or at least stream with a fetch size and aggregate incrementally.
+  rubric:
+    - Locates the time in the retention endpoint's own buildCohorts work over the full event range, with heap and GC activity rising only while it runs.
+    - Rules out GC or memory pressure as the root cause (no leak, heap returns to baseline, other endpoints unaffected, the pauses are a small share) and explains why more heap would not fix it.
+    - Proposes moving the cohort aggregation into SQL (or streaming with incremental aggregation) instead of materializing every event as Java objects.
+oracle:
+  - shell: >-
+      traceway endpoints list --since 24h --order-by p95 --page-size 8 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration/1e6|round), p95_ms: (.p95Duration/1e6|round), p99_ms: (.p99Duration/1e6|round)}]'
+  - shell: traceway logs query --since 24h --search /api/insights/retention --page-size 10 --output json | jq -r '.data[] | "\(.timestamp) \(.traceId) \(.body)"'
+  - shell: >-
+      traceway endpoints show {{seed.slowRequest.id}} --recorded-at {{seed.slowRequest.recordedAt}} --output json
+      | jq '{query: .endpoint.attributes["url.query"], total_ms: (.endpoint.duration/1e6|round),
+      spans: [.spans[] | {name, ms: (.duration/1e6|round), start: .startTime[11:23], span: .spanId, parent: .parentSpanId}]}'
+  - shell: >-
+      traceway endpoints show {{seed.fastRequest.id}} --recorded-at {{seed.fastRequest.recordedAt}} --output json
+      | jq '{query: .endpoint.attributes["url.query"], total_ms: (.endpoint.duration/1e6|round), spans: [.spans[] | {name, ms: (.duration/1e6|round)}]}'
+  - shell: >-
+      traceway metrics query --name jvm.memory.used --aggregation max --group-by jvm.memory.pool.name --from {{seed.slowFrom}} --to {{seed.slowTo}} --interval-minutes 1 --output json
+      | jq '.results[0].series | map_values(map("\(.timestamp[11:16]) \(.value/1e6|round)MB"))'
+  - shell: >-
+      traceway metrics query --name jvm.gc.duration.count --aggregation sum --group-by jvm.gc.name --from {{seed.slowFrom}} --to {{seed.slowTo}} --interval-minutes 1 --output json
+      | jq '.results[0].series | map_values(map("\(.timestamp[11:16]) \(.value|round)"))'
+  - shell: >-
+      traceway metrics query --name jvm.gc.duration.avg --aggregation max --group-by jvm.gc.name --from {{seed.slowFrom}} --to {{seed.slowTo}} --interval-minutes 1 --output json
+      | jq '.results[0].series | map_values(map("\(.timestamp[11:16]) \(.value*1000|round)ms"))'
+  - shell: >-
+      traceway metrics query --name jvm.memory.used_after_last_gc --aggregation min --since 24h --interval-minutes 180 --output json
+      | jq '.results[0].series | map_values(map(.value/1e6|round))'
+  - read_file: src/main/java/com/acme/insights/retention/RetentionService.java
+  - submit:
+      checklist_item: unbounded_in_memory_work_large_allocations
+      category: application
+      locus: {endpoint: "GET /api/insights/retention", span: "RetentionService.buildCohorts", service: insights-api}
+      onset: null
+      evidence:
+        - {call_id: c01, claim: "only the retention endpoint is slow (p99 several seconds); funnels and dashboards on the same JVM keep their usual p99"}
+        - {call_id: c03, claim: "the slowest sampled request over a 180-day range spends most of its time inside RetentionService.buildCohorts after the events SELECT returned, i.e. in Java over the loaded rows"}
+        - {call_id: c04, claim: "a 30-day request on a small workspace finishes in well under a second: the cost follows the number of events loaded"}
+        - {call_id: c05, claim: "the G1 old generation jumps from ~0.6GB to over 3GB in the minute that request ran, then drops straight back"}
+        - {call_id: c06, claim: "young collections spike only in the minutes a retention request runs"}
+        - {call_id: c07, claim: "their average pause stays around 40ms, a small share of a multi-second request"}
+        - {call_id: c08, claim: "heap after GC returns to ~0.6GB, so nothing leaks"}
+      ruled_out:
+        - {checklist_item: memory_pressure_gc_pauses, call_id: c08, reason: "no leak and no fleet-wide pauses; GC activity is a consequence of this endpoint loading every event, and the other endpoints are unaffected"}
+        - {checklist_item: expensive_join_or_aggregation, call_id: c03, reason: "the SQL is a plain range scan that returns in a fraction of the request; the aggregation happens in Java"}
+      fix: Compute the cohort x period distinct-user counts in PostgreSQL (DISTINCT user/period, first period per user, GROUP BY) so buildCohorts receives a few hundred rows instead of every event; a bigger heap would only postpone the collections.
+      confidence: high
+      report: |
+        Doubling the heap would not fix this. The retention endpoint materializes every event of the requested range as Java objects (up to millions of rows for 180-day ranges) and groups them in RetentionService.buildCohorts. In the slowest sampled request the events SELECT took about 1.9s and the remaining ~6.6s of the 8.5s were spent in Java inside buildCohorts. In that minute the G1 old generation jumped from ~0.6GB to ~3.4GB and young collections went from 3 to ~20 per minute at ~40ms, then everything dropped back; heap after GC sits at ~0.6GB, so there is no leak, and funnels and dashboards on the same JVM keep their normal p99. The GC activity is caused by this endpoint's allocation. I moved the aggregation into PostgreSQL: one query returns the distinct users per cohort and period, so the JVM handles a few hundred rows instead of every event.

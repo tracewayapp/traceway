@@ -1,0 +1,30 @@
+"""Database engine and table definitions (SQLAlchemy Core)."""
+
+import os
+
+from sqlalchemy import BigInteger, Column, DateTime, Integer, MetaData, String, Table, create_engine
+
+metadata = MetaData()
+
+accounts = Table(
+    "accounts", metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column("email", String), Column("display_name", String), Column("plan", String),
+    Column("password_hash", String), Column("avatar_key", String), Column("created_at", DateTime),
+)
+
+orders = Table(
+    "orders", metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column("account_id", BigInteger, index=True),
+    Column("status", String), Column("total_cents", BigInteger), Column("created_at", DateTime),
+)
+
+order_items = Table(
+    "order_items", metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column("order_id", BigInteger, index=True),
+    Column("sku", String), Column("qty", Integer), Column("unit_price_cents", BigInteger),
+)
+
+engine = create_engine(os.environ.get("DATABASE_URL", "postgresql+psycopg2://members@localhost/members"), pool_size=10)

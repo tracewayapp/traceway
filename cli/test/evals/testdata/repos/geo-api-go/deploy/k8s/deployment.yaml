@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: geo-api
+  labels: {app: geo-api}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: geo-api}
+  template:
+    metadata:
+      labels: {app: geo-api}
+    spec:
+      containers:
+        - name: geo-api
+          image: registry.example.com/geo-api:2.9.4
+          ports: [{containerPort: 8080}]
+          env:
+            - {name: GOMEMLIMIT, value: 900MiB}
+            - {name: OTEL_SERVICE_NAME, value: geo-api}
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.observability:4318"}
+          envFrom: [{secretRef: {name: geo-api}}]
+          resources:
+            requests: {cpu: 500m, memory: 1Gi}
+            limits: {cpu: "2", memory: 1Gi}

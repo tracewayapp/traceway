@@ -1,0 +1,105 @@
+id: perf-ctl-alert-handoff
+suite: perf
+title: A pasted p95 alert that fired right after a release restarted the catalog
+tags: [control, go, alert, caching]
+seed: perf/ctl-alert-handoff
+arms: [cli+skill, cli-noskill, mcp]
+invoke: natural
+distractor: A code regression in v5.1.0, which shipped minutes before the alert. But v5.1.0 serves the listing as fast as v5.0.4 once warm (p95 about 20ms before and after), the slow requests all ran in the first minutes after the restart, each on an instance's first request for a category (the listing query plus new pool connections), and the same transient followed the v5.0.4 restart 30 hours earlier.
+workspace: {repo: catalog-api-go}
+prompt: |
+  Got this alert by email about 40 minutes ago while I was in a meeting. Can you check what happened and whether we need to do something?
+
+  [WARNING] [catalog] P95 latency {{seed.alertP95}}ms on GET /api/categories/:slug/products
+
+  The P95 latency for GET /api/categories/:slug/products has reached {{seed.alertP95}}ms over the last 10 minutes (threshold: 1000ms).
+
+  {{env.url}}/endpoints?from={{seed.linkFrom}}&to={{seed.linkTo}}
+
+  You are receiving this because the notification rule "Category listing p95 above 1s" fired.
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I only have the email. Please look into it."
+expect:
+  answer:
+    checklist_item: cold_start_jit_connection_warmup
+    not: [none_found, insufficient_evidence, cache_stampede_thundering_herd, no_cache_low_hit_ratio, expensive_join_or_aggregation, missing_or_unused_index]
+    locus: {endpoint: "GET /api/categories/:slug/products"}
+    onset: {at: "{{seed.deployAt}}", tolerance_minutes: 30}
+  grounding:
+    - "SELECT id FROM categories WHERE slug"
+  calls:
+    required:
+      - {op: endpoints.slow, args: {endpoint: "GET /api/categories/:slug/products"}}
+    any_of:
+      - [{op: traces.show, args: {recorded_at: present}}]
+      - [{op: endpoints.show, args: {recorded_at: present}}]
+    forbidden:
+      - {op: "*", write: true}
+    max_failed_calls: 4
+    max_identical_repeats: 2
+judge:
+  expected: >-
+    The endpoint is not marked slow (offsetMs 0), so the 1000ms rule applies. v5.1.0 restarted all three catalog instances
+    five minutes before the alert. Each instance starts with an empty in-process category cache (a background preload fills
+    one category every ~25s) and an empty pgx pool, so for several minutes an instance's first request for a category runs
+    the listing query (about a second, products JOIN prices JOIN inventory) and the first requests open connections (connect
+    spans). p95 spiked to over a second for about ten minutes and was back to ~20ms well before the user looked; warm v5.1.0
+    is as fast as v5.0.4, and the v5.0.4 restart 30 hours earlier shows the same transient. Cold start / connection warmup,
+    not a regression. Fix: do not report the instance ready (health check, load balancer) until the preload has filled the
+    cache, or load the cache synchronously before serving, and warm the pool (pool_min_conns); a shared cache would also
+    survive restarts.
+  rubric:
+    - Checks whether the endpoint is marked slow and anchors the investigation on the alert's fire time rather than only on the current, healthy window.
+    - Shows the latency normalized after the restart (warm v5.1.0 matches v5.0.4) and ties the slow requests to first-request-per-instance cache misses and connection setup.
+    - Recommends gating readiness on the cache preload or warming the cache and pool before taking traffic, not reverting v5.1.0.
+oracle:
+  - shell: >-
+      traceway endpoints list --search /api/categories/ --since 1h --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration/1e6|round), p95_ms: (.p95Duration/1e6|round), p99_ms: (.p99Duration/1e6|round), impactReason}]'
+  - op: endpoints.slow
+    args: {endpoint: "GET /api/categories/:slug/products"}
+  - shell: >-
+      traceway endpoints chart --metric-type p95 --since 3h --interval-minutes 5 --output json
+      | jq '[.series[] | select(.endpoint == "GET /api/categories/:slug/products") | {t: .timestamp, p95_ms: (.value|round)}]'
+  - shell: >-
+      traceway endpoints list --search /api/categories/ --from {{seed.deployMinus60m}} --to {{seed.deployAt}} --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration/1e6|round), p95_ms: (.p95Duration/1e6|round)}]'
+  - shell: >-
+      traceway endpoints list --search /api/categories/ --since 30m --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration/1e6|round), p95_ms: (.p95Duration/1e6|round)}]'
+  - shell: >-
+      traceway logs query --search /api/categories/ --from {{seed.deployAt}} --to {{seed.deployPlus15m}} --page-size 30 --output json
+      | jq -r '.data[] | "\(.timestamp) \(.traceId) \(.resourceAttributes["host.name"]) \(.resourceAttributes["service.version"]) \(.body)"'
+  - shell: >-
+      traceway traces show {{seed.slowRequest.traceId}} --recorded-at {{seed.slowRequest.recordedAt}} --output json
+      | jq '[.nodes[] | {endpoint: .endpoint.endpoint, path: .endpoint.attributes["url.path"], version: .endpoint.appVersion, duration_ms: (.endpoint.duration/1e6|round),
+      spans: [.spans[] | {name, ms: (.duration/1e6|round), scope: .scopeName, query: .attributes["db.query.text"]}]}]'
+  - shell: >-
+      traceway traces show {{seed.warmRequest.traceId}} --recorded-at {{seed.warmRequest.recordedAt}} --output json
+      | jq '[.nodes[] | {endpoint: .endpoint.endpoint, version: .endpoint.appVersion, duration_ms: (.endpoint.duration/1e6|round), spans: [.spans[] | {name, ms: (.duration/1e6|round)}]}]'
+  - shell: >-
+      traceway endpoints chart --metric-type p95 --since 48h --interval-minutes 30 --output json
+      | jq '[.series[] | select(.endpoint == "GET /api/categories/:slug/products" and .value > 200) | {t: .timestamp, p95_ms: (.value|round)}]'
+  - shell: git log --format='%h %ad %s' --date=iso -3
+  - read_file: cmd/server/main.go
+  - submit:
+      checklist_item: cold_start_jit_connection_warmup
+      category: caching
+      locus: {endpoint: "GET /api/categories/:slug/products", span: "category listing query on a cold instance (products JOIN product_prices JOIN inventory) plus connect", service: catalog-api}
+      onset: "{{seed.deployAt}}"
+      evidence:
+        - {call_id: c02, claim: "the endpoint is not marked slow (offsetMs 0), so the 1000ms alert applies as is"}
+        - {call_id: c03, claim: "p95 spiked above a second for about ten minutes right after the v5.1.0 restart and went back to ~20ms"}
+        - {call_id: c04, claim: "in the hour before the release p95 was about 20ms"}
+        - {call_id: c05, claim: "on v5.1.0, warm, p95 is again about 20ms: no regression"}
+        - {call_id: c07, claim: "a slow request right after the restart opened a pool connection and ran the full category listing query, about a second"}
+        - {call_id: c08, claim: "a warm request is served from the in-process cache in a few milliseconds"}
+        - {call_id: c09, claim: "the v5.0.4 restart 30 hours earlier produced the same short spike"}
+      ruled_out:
+        - {checklist_item: none_found, call_id: c03, reason: "users did get second-long listings for ten minutes after each release"}
+        - {checklist_item: cache_stampede_thundering_herd, call_id: c09, reason: "the spikes follow restarts only, not cache expiry; refreshes run off the request path"}
+      fix: Gate readiness on the cache preload (have /healthz answer 503 until Preload has filled every category, or preload before ListenAndServe), and warm the pgx pool (pool_min_conns) so a restarted instance takes traffic only when it is warm.
+      confidence: high
+      report: |
+        The alert was a warmup spike from the v5.1.0 release, not a regression. GET /api/categories/:slug/products is not marked slow (offsetMs 0), so the 1000ms rule applied. v5.1.0 restarted all three catalog instances about five minutes before the alert. A restarted instance starts with an empty in-process category cache, which a background preload fills one category at a time, and an empty pgx pool; meanwhile an instance's first request for a category runs the full listing query (about a second) and the first requests open connections. p95 went over a second for about ten minutes and has been back at ~20ms since; warm v5.1.0 is as fast as v5.0.4 was, and the v5.0.4 restart 30 hours earlier shows the same spike. Nothing needs reverting. To stop it recurring on every release, keep /healthz failing until the preload has filled the cache (or preload before serving) and set pool_min_conns so connections are open before traffic arrives.

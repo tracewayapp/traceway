@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: pricing-service
+  main:
+    # Beans are created on first use, so a new pod starts in a few seconds
+    # and passes its startup probe quickly.
+    lazy-initialization: true
+  datasource:
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USER}
+    password: ${DATABASE_PASSWORD}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+
+server:
+  port: 8080
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true

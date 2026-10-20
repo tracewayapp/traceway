@@ -1,0 +1,71 @@
+id: perf-net-retries
+suite: perf
+title: Shipping quotes occasionally take 6 to 13 seconds
+tags: [network, python, fastapi]
+seed: perf/net-retries
+arms: [cli+skill, cli-noskill, mcp]
+invoke: slash
+distractor: The carrier's rate API is the long pole of the slow requests, which reads like a slow upstream, but its successful answers take ~150ms and the slow requests are the client waiting out httpx's default 5s timeout and backing off, one or two times, before the same call succeeds.
+workspace: {repo: shipping-quotes-py}
+prompt: |
+  /traceway perf POST /api/shipping/quotes
+  Most shipping quotes come back quickly, but every now and then checkout sits on the shipping step for 6 to 13 seconds. The carrier's status page shows no incidents. What is going on, and what should we change?
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: no_timeouts_aggressive_retries
+    not: [slow_third_party_upstream_api, connection_pool_exhaustion, cpu_saturation]
+    locus: {endpoint: "POST /api/shipping/quotes", span_contains: "rates.carrier.example"}
+  grounding:
+    - "Retrying app.carriers.client.CarrierClient.fetch_rates"
+    - "ReadTimeout"
+  calls:
+    required:
+      - {op: endpoints.list}
+      - {op: logs.query}
+    any_of:
+      - [{op: traces.show, args: {recorded_at: present}}]
+      - [{op: endpoints.show, args: {recorded_at: present}}]
+    forbidden:
+      - {op: "*", write: true}
+    max_failed_calls: 4
+    max_identical_repeats: 2
+judge:
+  expected: No timeouts / aggressive retries. CarrierClient.fetch_rates (app/carriers/client.py) uses an httpx client with no explicit timeout, so httpx's default 5s applies, inside a tenacity retry of 3 attempts with exponential waits of 1s and 2s. A few percent of attempts hang until the 5s read timeout (or get a quick 503); the request then sleeps and calls the same endpoint again, so a slow request shows the same POST to rates.carrier.example two or three times with 1s/2s gaps, and takes ~6s (one retry) or ~13s (two). p50 is ~160ms and a successful carrier call takes ~150ms, so the carrier is not slow in general; the tail is the client's timeout and retry policy, and the WARN logs show the retries all day. Fix with a tight explicit timeout (sub-second read), at most one quick retry with jitter and an overall deadline.
+  rubric:
+    - Shows the same carrier span repeated within one trace, with the 5s timeouts and the backoff gaps, and ties it to the tenacity retry WARN lines.
+    - Rules out a slow upstream from the data (successful attempts take ~150ms, p50 is low, the slow requests are timeouts plus sleeps, spread through the day).
+    - Proposes an explicit short httpx timeout plus a bounded retry (fewer attempts, jittered short backoff, total deadline) in CarrierClient.
+oracle:
+  - shell: >-
+      traceway endpoints list --since 24h --order-by p95 --page-size 20 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration / 1e6 | round), p95_ms: (.p95Duration / 1e6 | round), p99_ms: (.p99Duration / 1e6 | round)}] | sort_by(-.p99_ms)'
+  - shell: >-
+      traceway logs query --since 24h --search Retrying --page-size 30 --output json
+      | jq -r '.data[] | "\(.timestamp) \(.traceId) \(.severityText) \(.body | split("\n")[0])"'
+  - shell: >-
+      traceway traces show {{seed.retriedRequest.traceId}} --recorded-at {{seed.retriedRequest.recordedAt}} --output json
+      | jq '.nodes[0] | {endpoint: .endpoint.endpoint, ms: (.endpoint.duration / 1e6), status: .endpoint.statusCode,
+      spans: [.spans[] | {name, url: .attributes["url.full"], start: .startTime, ms: (.duration / 1e6), status: .attributes["http.response.status_code"], error: .attributes["error.type"]}]}'
+  - shell: >-
+      traceway endpoints chart --metric-type p99 --since 24h --interval-minutes 180 --output json
+      | jq '.series | map(select(.endpoint == "POST /api/shipping/quotes")) | map({t: .timestamp, p99_ms: (.value | round)})'
+  - read_file: app/carriers/client.py
+  - submit:
+      checklist_item: no_timeouts_aggressive_retries
+      category: network
+      locus: {endpoint: "POST /api/shipping/quotes", span: "POST https://rates.carrier.example/v2/rates (retried after ReadTimeout)", service: quotes-api}
+      onset: null
+      evidence:
+        - {call_id: c01, claim: "p50 is ~160ms but p99 is over 6s: a long tail on an otherwise fast endpoint"}
+        - {call_id: c02, claim: "tenacity WARN lines all day: 'Retrying app.carriers.client.CarrierClient.fetch_rates in 1.0 seconds as it raised ReadTimeout', and some 'in 2.0 seconds' second retries"}
+        - {call_id: c03, claim: "a 13s request: two 5s POSTs to rates.carrier.example ending in ReadTimeout, 1s and 2s gaps, then the same call succeeds in a fraction of a second"}
+        - {call_id: c04, claim: "the tail is spread across the whole day, not a provider incident window"}
+      ruled_out:
+        - {checklist_item: slow_third_party_upstream_api, call_id: c03, reason: "successful carrier calls take ~150ms; the time is spent waiting out 5s timeouts and backoff sleeps"}
+      fix: Give the carrier client an explicit short timeout (connect 0.5s, read 1s) instead of httpx's 5s default, and bound the retry to two attempts with a short jittered backoff and a 2.5s total deadline.
+      confidence: high
+      report: |
+        The slow shipping quotes are the client's timeout and retry policy, not a slow carrier. CarrierClient.fetch_rates (app/carriers/client.py) posts to rates.carrier.example with an httpx client that sets no timeout, so each attempt can hang for httpx's default 5s, and tenacity retries up to three times with 1s and 2s waits. A few percent of attempts hang; those requests show the same carrier POST two or three times in one trace (5s ReadTimeout, 1s sleep, 5s ReadTimeout, 2s sleep, then a quick success), which is the 6s and 13s you see. The WARN logs show these retries all day, and successful carrier calls take about 150ms. I set an explicit timeout (0.5s connect, 1s read) and limited the retry to two attempts with a short jittered backoff and a 2.5s overall deadline.

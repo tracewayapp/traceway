@@ -312,7 +312,10 @@ Backend facts that bite (each one cost a case author an afternoon):
 - Rare events confined to a short window can come out empty at some hours of
   the day (the arrival process follows the wall-clock hour). Use `Burst`, or
   seed the case at every hour of the day into `seed.NewDrySink()` and check
-  the event is there before relying on it.
+  the event is there before relying on it. The same goes for a `DetailPolicy`
+  sample: overnight it can leave the last few hours with no detailed request,
+  so a trace (or access log) an oracle step reaches through a log or list
+  query must be forced with `Pick` or `Slowest`.
 
 - Numeric OTel attributes must be integers, which the DSL does for you.
 - Projects with a browser framework never get endpoints from OTLP.

@@ -1,0 +1,86 @@
+id: perf-infra-memory-gc
+suite: perf
+title: The heap climbs to its limit every seven hours and every endpoint stalls until the pod restarts
+tags: [infrastructure, go]
+seed: perf/infra-memory-gc
+arms: [cli+skill, cli-noskill, mcp]
+invoke: slash
+distractor: The batch geocode endpoint is the slowest route and allocates the most per request, so it looks like the culprit, but it runs ~60 times a day, its latency is its own work and does not follow the cycle, the heap climbs at the same steady rate day and night whether or not it is called and only drops at restarts, and the stalls hit every endpoint, including the one-query place lookup.
+workspace: {repo: geo-api-go}
+prompt: |
+  /traceway perf geo-api
+  Every few hours geo-api gets slow on every endpoint until Kubernetes restarts the pod (OOMKilled), and right after the restart everything is fast again. The batch geocoding endpoint is by far the heaviest thing it runs, so I suspect that. What's going on and how do we fix it?
+budget: {max_turns: 40, max_tool_calls: 34, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: memory_pressure_gc_pauses
+    not: [unbounded_in_memory_work_large_allocations, connection_pool_exhaustion, cache_stampede_thundering_herd, cpu_saturation]
+    locus: {service: geo-api}
+  grounding:
+    - "go.memory.used"
+    - "starting geo-api"
+  calls:
+    required:
+      - {op: endpoints.list}
+      - {op: metrics.query, args: {name: "~memory"}}
+    any_of:
+      - [{op: endpoints.show, args: {recorded_at: present}}]
+      - [{op: traces.show, args: {recorded_at: present}}]
+    forbidden:
+      - {op: "*", write: true}
+    max_failed_calls: 5
+    max_identical_repeats: 2
+judge:
+  expected: Memory pressure / GC pauses. go.memory.used climbs steadily from ~0.3GB to ~0.9GB over seven hours, reaching the 900MiB GOMEMLIMIT with the GC goal pinned at the limit; each time it drops back the startup log "starting geo-api" shows the restart (every seven hours). As the heap fills, requests on every endpoint stall in gaps with no span (up to ~0.4s, including after their query has returned), so p50 stays at a few ms while p95/p99 build up through the cycle and reset at each restart. The batch endpoint is slow because of its own bounded work and is rare; it is not what fills the heap. The cause is the autocomplete memo (internal/memo) - expired entries are only ignored on read and never deleted, and its locale|prefix key space is unbounded, so it retains everything. Fix - bound the memo (delete expired entries, cap its size or use an LRU), then confirm the heap stays flat.
+  rubric:
+    - Connects the latency cycle to the heap climbing to the memory limit and the restarts (memory metric sawtooth plus startup logs), with stalls as gaps in otherwise fast requests on every endpoint.
+    - Rules out the batch endpoint's allocations as the cause (rare, bounded, heap growth independent of it) and a connection pool problem (stalls also after the query, tracking heap rather than load).
+    - Finds the never-evicting memo and proposes bounding it (expiry sweep, size cap or LRU) rather than only raising the memory limit.
+oracle:
+  - shell: >-
+      traceway endpoints list --since 24h --order-by p95 --page-size 10 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration/1e6|round), p95_ms: (.p95Duration/1e6|round), p99_ms: (.p99Duration/1e6|round)}]'
+  - shell: >-
+      traceway endpoints chart --metric-type p99 --since 24h --interval-minutes 60 --output json
+      | jq '.series | group_by(.endpoint) | map({endpoint: .[0].endpoint, p99_ms: map("\(.timestamp[11:16]) \(.value|round)")})'
+  - shell: >-
+      traceway metrics query --name go.memory.used --aggregation max --group-by go.memory.type --since 24h --interval-minutes 60 --output json
+      | jq '.results[0].series | map_values(map("\(.timestamp[11:16]) \(.value/1e6|round)MB"))'
+  - shell: >-
+      traceway metrics query --name go.memory.gc.goal --aggregation max --since 24h --interval-minutes 60 --output json
+      | jq '.results[0].series | map_values(map("\(.timestamp[11:16]) \(.value/1e6|round)MB"))'
+  - shell: traceway logs query --since 24h --search starting --output json | jq -r '.data[] | "\(.timestamp) \(.body) \(.logAttributes)"'
+  - shell: >-
+      traceway endpoints show {{seed.pausedRequest.id}} --recorded-at {{seed.pausedRequest.recordedAt}} --output json
+      | jq '{endpoint: .endpoint.endpoint, started: .endpoint.recordedAt[11:23], total_ms: ((.endpoint.duration/1e5|round)/10), spans: [.spans[] | {name, start: .startTime[11:23], ms: ((.duration/1e5|round)/10)}]}'
+  - shell: >-
+      traceway endpoints show {{seed.calmRequest.id}} --recorded-at {{seed.calmRequest.recordedAt}} --output json
+      | jq '{endpoint: .endpoint.endpoint, started: .endpoint.recordedAt[11:23], total_ms: ((.endpoint.duration/1e5|round)/10), spans: [.spans[] | {name, start: .startTime[11:23], ms: ((.duration/1e5|round)/10)}]}'
+  - shell: >-
+      traceway endpoints show {{seed.batchRequest.id}} --recorded-at {{seed.batchRequest.recordedAt}} --output json
+      | jq '{endpoint: .endpoint.endpoint, total_ms: (.endpoint.duration/1e6|round), spans: [.spans[] | {name, ms: (.duration/1e6|round), size: .attributes["batch.size"]}]}'
+  - read_file: internal/places/places.go
+  - read_file: internal/memo/memo.go
+  - submit:
+      checklist_item: memory_pressure_gc_pauses
+      category: infrastructure
+      locus: {service: geo-api, host: geo-api-5d8c7b9f4-hq2mz, span: "untraced pauses in requests on every endpoint"}
+      onset: null
+      evidence:
+        - {call_id: c01, claim: "every endpoint has a p50 of a few ms but a p95/p99 of hundreds: a minority of requests stall everywhere"}
+        - {call_id: c02, claim: "p99 builds up over several hours on all endpoints and collapses at the same moments"}
+        - {call_id: c03, claim: "the heap climbs steadily from ~0.3GB to ~0.9GB and drops back at those moments"}
+        - {call_id: c04, claim: "the GC goal sits at the 900MiB limit for the last hours of each cycle"}
+        - {call_id: c05, claim: "each drop is a process restart (startup log)"}
+        - {call_id: c06, claim: "a one-query place lookup near the top of the cycle stalls for hundreds of ms after its 2ms query returned, with no span"}
+        - {call_id: c07, claim: "the same lookup right after a restart takes a few ms"}
+        - {call_id: c08, claim: "the batch endpoint's time is its own decode, query and matching work"}
+      ruled_out:
+        - {checklist_item: unbounded_in_memory_work_large_allocations, call_id: c03, reason: "the heap grows at a steady rate day and night and only drops at restarts; the batch endpoint is rare and its work is bounded"}
+        - {checklist_item: connection_pool_exhaustion, call_id: c06, reason: "the stall comes after the query returned and follows the heap, not the load"}
+      fix: Bound the autocomplete memo - delete expired entries as it writes and cap its size (or use an LRU), so the heap stays flat; keep GOMEMLIMIT below the container limit.
+      confidence: high
+      report: |
+        geo-api is running out of memory, and the slowdown is the Go GC fighting the 900MiB GOMEMLIMIT. go.memory.used climbs steadily from ~0.3GB to ~0.9GB over seven hours, with the GC goal pinned at the limit near the end; then the pod is killed and "starting geo-api" shows the restart, after which the cycle repeats. As the heap fills, requests on every endpoint stall in pauses with no span (a one-query place lookup took ~0.3s, nearly all of it after its 2ms query returned) and p95/p99 build up until the restart, while p50 stays at a few ms. The batch geocode endpoint is not the cause: it runs about 60 times a day, its latency is its own bounded work, and the heap grows just as fast when it is idle. The heap is retained by the autocomplete memo (internal/memo): expired entries are ignored on read but never deleted, and its locale|prefix keys are unbounded. I changed the memo to drop expired entries as it writes and to cap its size.

@@ -1,0 +1,7 @@
+commits:
+- dir: .history/01
+  message: 'inventory: stock levels and cart reservations'
+  age: 2900h
+head:
+  message: 'db: raise the pgx pool to 40 connections (evening drop latency)'
+  age: 175h

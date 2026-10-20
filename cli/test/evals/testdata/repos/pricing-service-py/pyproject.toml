@@ -1,0 +1,14 @@
+[project]
+name = "pricing-service"
+version = "3.8.1"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi==0.118.0",
+    "uvicorn[standard]==0.37.0",
+    "psycopg[binary,pool]==3.2.10",
+    "opentelemetry-distro==0.58b0",
+    "opentelemetry-exporter-otlp==1.37.0",
+    "opentelemetry-instrumentation-fastapi==0.58b0",
+    "opentelemetry-instrumentation-psycopg==0.58b0",
+    "opentelemetry-instrumentation-system-metrics==0.58b0",
+]

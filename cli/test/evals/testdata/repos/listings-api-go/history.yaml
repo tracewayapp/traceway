@@ -1,0 +1,9 @@
+commits:
+- dir: .history/01
+  message: 'release 5.3.0: rank search results by seller rating'
+  age: 310h
+  author: Priya Raman <priya@example.com>
+head:
+  message: 'release 5.3.1: debug logs on to chase the ranking complaints'
+  age: 26h
+  author: Tomás Herrera <tomas@example.com>

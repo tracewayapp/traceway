@@ -1,0 +1,19 @@
+[project]
+name = "quotes-api"
+version = "2.3.0"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi==0.118.0",
+  "uvicorn[standard]==0.37.0",
+  "httpx==0.28.1",
+  "tenacity==9.1.2",
+  "psycopg[binary,pool]==3.2.10",
+  "opentelemetry-distro==0.58b0",
+  "opentelemetry-exporter-otlp-proto-http==1.37.0",
+  "opentelemetry-instrumentation-fastapi==0.58b0",
+  "opentelemetry-instrumentation-httpx==0.58b0",
+  "opentelemetry-instrumentation-psycopg==0.58b0",
+]
+
+[tool.uv]
+dev-dependencies = []

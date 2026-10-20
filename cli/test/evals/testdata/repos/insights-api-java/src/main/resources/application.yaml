@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: insights-api
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/insights}
+    username: ${DATABASE_USER:insights}
+    password: ${DATABASE_PASSWORD:}
+    hikari:
+      maximum-pool-size: 20
+server:
+  port: 8080

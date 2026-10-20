@@ -52,14 +52,14 @@ func wrSeedMarkSlow(s *seed.Scenario) error {
 
 	s.Expose("endpoint", export.Name())
 	s.Expose("otherEndpoint", list.Name())
-	// The export's p95 is 3.3-3.9 s in every window an agent might read
+	// The export's p95 is 3.4-3.8 s in every window an agent might read
 	// (last hour, day or two days, at any time of day), which is what the
 	// case's fixed offset_ms range is built on.
 	s.Expose("p95", func() any {
 		ms := func(d time.Duration) float64 { return math.Round(float64(d) / float64(time.Millisecond)) }
-		p1, p24, p48 := ms(export.Percentile(0.95, time.Hour)), ms(export.Percentile(0.95, 24*time.Hour)), ms(export.Percentile(0.95, 48*time.Hour))
+		p1, p24 := ms(export.Percentile(0.95, time.Hour)), ms(export.Percentile(0.95, 24*time.Hour))
 		return map[string]any{
-			"lastHourMs": p1, "lastDayMs": p24, "last2dMs": p48,
+			"lastHourMs": p1, "lastDayMs": p24,
 			"suggestedOffsetMs": math.Ceil(p24*1.15/100) * 100,
 		}
 	})

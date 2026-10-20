@@ -59,11 +59,11 @@ oracle:
       culprit: {file: internal/invoices/render.go, symbol: formatAddress, line: 37}
       evidence:
         - {call_id: c01, claim: "nil pointer dereference in formatAddress at render.go:37, first seen after the v1.8.2 deploy, on app version 1.8.2"}
-        - {call_id: c02, claim: "v1.8.2 (yesterday) added the billing address to the invoice page"}
+        - {call_id: c02, claim: "v1.8.2, released about 30 hours ago, added the billing address to the invoice page"}
         - {call_id: c04, claim: "formatAddress reads a.Line1 without checking for a nil address"}
       fix_summary: formatAddress returns an empty string when the customer has no billing address.
       files_changed: [internal/invoices/render.go]
       needs_instrumentation: false
       confidence: high
       report: |
-        The panic (runtime error: invalid memory address or nil pointer dereference) is in formatAddress, internal/invoices/render.go:37. v1.8.2, released yesterday, added the billing address to the invoice view; customers who never entered a billing address have a nil BillingAddress, so rendering their invoice panics and the page answers 500. The group's firstSeen matches the release. I made formatAddress return an empty string for a nil address.
+        The panic (runtime error: invalid memory address or nil pointer dereference) is in formatAddress, internal/invoices/render.go:37. v1.8.2, released about 30 hours ago, added the billing address to the invoice view; customers who never entered a billing address have a nil BillingAddress, so rendering their invoice panics and the page answers 500. The group's firstSeen matches the release. I made formatAddress return an empty string for a nil address.

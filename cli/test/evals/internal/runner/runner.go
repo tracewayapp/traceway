@@ -466,6 +466,7 @@ func runOne(ctx context.Context, opt Options, j Job, hold *agent.Hold) (res *Res
 		Pristine: pristine,
 	}
 	if resolved.Setup != nil && resolved.Setup.Verify != nil {
+		in.VerifyStart = time.Now()
 		if v := verifySetup(ctx, opt, resolved, work, inst, projects, surf); v != nil {
 			res.Graders = append(res.Graders, v)
 		}

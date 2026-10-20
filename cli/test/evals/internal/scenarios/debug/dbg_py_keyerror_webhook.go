@@ -13,6 +13,8 @@ func init() { scenarios.Register("debug/py-keyerror-webhook", dbgSeedPyKeyErrorW
 const dbgStarletteFrames = `Traceback (most recent call last):
   File "/usr/local/lib/python3.12/site-packages/opentelemetry/instrumentation/fastapi/__init__.py", line 307, in __call__
     await self.app(scope, receive, send)
+  File "/app/app/access_log.py", line 27, in __call__
+    await self.app(scope, receive, send_status)
   File "/usr/local/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
     await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
   File "/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
@@ -52,7 +54,7 @@ func dbgSeedPyKeyErrorWebhook(s *seed.Scenario) error {
 	stack := dbgStarletteFrames + `  File "/usr/local/lib/python3.12/site-packages/fastapi/routing.py", line 213, in run_endpoint_function
     return await dependant.call(**values)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/app/app/main.py", line 34, in payments_webhook
+  File "/app/app/main.py", line 36, in payments_webhook
     result = handle_event(event, store)
              ^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/app/app/webhooks.py", line 37, in handle_event
@@ -86,7 +88,6 @@ KeyError: 'customer'
 			if r.Version() == "2.6.0" {
 				if guest {
 					r.Error(seed.Exc{Type: "KeyError", Message: "'customer'", Stack: stack, Escaped: true})
-					r.Log(seed.SevError, "Exception in ASGI application", seed.A("exception.type", "KeyError"), seed.A("exception.message", "'customer'"))
 					r.Status(500)
 					r.Gap(r.Ms(0.3, 0.8))
 					return

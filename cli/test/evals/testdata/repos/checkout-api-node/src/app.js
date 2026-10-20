@@ -1,10 +1,12 @@
 const express = require('express');
 const logger = require('./logger');
 const telemetry = require('./telemetry');
+const { accessLog } = require('./access-log');
 const { createOrderHandler, getOrderHandler } = require('./orders/routes');
 
 function createApp(deps) {
   const app = express();
+  app.use(accessLog);
   app.use(express.json());
   app.post('/api/orders', createOrderHandler(deps));
   app.get('/api/orders/:orderId', getOrderHandler(deps));

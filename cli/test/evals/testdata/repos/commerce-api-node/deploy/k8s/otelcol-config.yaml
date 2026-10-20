@@ -25,4 +25,5 @@ data:
     service:
       pipelines:
         traces: {receivers: [otlp], processors: [batch], exporters: [otlphttp]}
+        logs: {receivers: [otlp], processors: [batch], exporters: [otlphttp]}
         metrics: {receivers: [otlp, hostmetrics], processors: [resourcedetection, batch], exporters: [otlphttp]}

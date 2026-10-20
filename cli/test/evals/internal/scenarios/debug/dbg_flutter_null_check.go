@@ -67,7 +67,7 @@ func dbgSeedFlutterNullCheck(s *seed.Scenario) error {
 	for _, at := range dbgTimes(s, s.Ago(7*24*time.Hour), s.Ago(50*time.Minute), 22, false) {
 		id := 40000 + s.RNG.IntN(50000)
 		v := "4.3.0"
-		if at.Before(s.Ago(9*24*time.Hour)) || s.RNG.Float64() < 0.3 {
+		if s.RNG.Float64() < 0.3 {
 			v = "4.2.1"
 		}
 		stack := fmt.Sprintf("_ClientSocketException: ClientException with SocketException: Failed host lookup: 'api.shop.example' (OS Error: No address associated with hostname, errno = 7), uri=https://api.shop.example/v1/products/%d\n", id) +

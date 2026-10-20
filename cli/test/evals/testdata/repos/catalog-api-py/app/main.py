@@ -7,12 +7,14 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from sqlalchemy import create_engine, text
 
+from app.access_log import AccessLog
 from app.config import load_settings
 
 log = logging.getLogger("app.main")
 settings = load_settings()
 engine = create_engine(os.environ["DATABASE_URL"], pool_size=settings.pool_size, pool_timeout=settings.pool_timeout_seconds, hide_parameters=True)
 app = FastAPI()
+app.add_middleware(AccessLog)
 
 recs = None
 if settings.recommendations is not None:

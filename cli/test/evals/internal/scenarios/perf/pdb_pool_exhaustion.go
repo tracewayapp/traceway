@@ -95,7 +95,6 @@ func pdbSeedPoolExhaustion(s *seed.Scenario) error {
 			"  File \"/usr/local/lib/python3.12/site-packages/sqlalchemy/pool/base.py\", line 449, in connect\n    return _ConnectionFairy._checkout(self)\n" +
 			"  File \"/usr/local/lib/python3.12/site-packages/sqlalchemy/pool/impl.py\", line 167, in _do_get\n    raise exc.TimeoutError(\n" +
 			"sqlalchemy.exc.TimeoutError: " + pdbPoolTimeout})
-		r.Log(seed.SevError, "Exception in ASGI application", seed.A("exception.type", "sqlalchemy.exc.TimeoutError"), seed.A("exception.message", pdbPoolTimeout))
 		r.Status(500)
 	}
 
@@ -147,8 +146,8 @@ func pdbSeedPoolExhaustion(s *seed.Scenario) error {
 	shipping.Detail(seed.DetailPolicy{Recent: 10 * time.Hour, Rate: 0.01, Max: 3})
 	shipping.Handler(func(r *seed.Req) { r.Gap(r.Ms(0.6, 1.8)) })
 
-	// opentelemetry-instrumentation-sqlalchemy's pool usage metric.
-	pool := map[string]any{"db.client.connection.pool.name": "checkout-db.internal:5432/checkout"}
+	// opentelemetry-instrumentation-sqlalchemy's pool usage metric; the pool
+	// is named after the engine URL.
 	used := func(t time.Time) float64 {
 		if over(t) > 0 {
 			return 15
@@ -157,14 +156,10 @@ func pdbSeedPoolExhaustion(s *seed.Scenario) error {
 		return math.Min(14, math.Round(busy))
 	}
 	withState := func(state string) map[string]any {
-		m := map[string]any{"db.client.connection.state": state}
-		for k, v := range pool {
-			m[k] = v
-		}
-		return m
+		return map[string]any{"state": state, "pool.name": "postgresql+psycopg://checkout-db.internal:5432/checkout"}
 	}
-	api.Gauge("db.client.connection.count", "{connection}", withState("used"), used)
-	api.Gauge("db.client.connection.count", "{connection}", withState("idle"), func(t time.Time) float64 { return math.Max(0, 10-used(t)) })
+	api.Gauge("db.client.connections.usage", "connections", withState("used"), used)
+	api.Gauge("db.client.connections.usage", "connections", withState("idle"), func(t time.Time) float64 { return math.Max(0, 10-used(t)) })
 
 	api.Host().CPU(seed.Plus(seed.Flat(0.27, 0.34), func(t time.Time) float64 { return 0.05 * bump(t) }))
 	api.Host().Memory(seed.Flat(0.49, 0.55))

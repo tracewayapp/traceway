@@ -35,7 +35,7 @@ func init() {
 	OpenDB = func(driver, dsn string) (*sql.DB, error) {
 		return otelsql.Open(driver, dsn,
 			otelsql.WithAttributes(semconv.DBSystemNamePostgreSQL),
-			otelsql.WithSpanNameFormatter(func(_ context.Context, _ otelsql.Method, query string) string { return querySpanName(query) }),
+			otelsql.WithSpanNameFormatter(dbSpanName),
 			otelsql.WithSpanOptions(otelsql.SpanOptions{OmitConnResetSession: true, OmitConnPrepare: true, OmitRows: true}))
 	}
 	Transport = otelhttp.NewTransport(http.DefaultTransport)
@@ -113,4 +113,13 @@ func querySpanName(query string) string {
 		}
 	}
 	return op
+}
+
+// dbSpanName names a query span after its statement and any other call
+// (connect, begin) after the otelsql method, as in "sql.connector.connect".
+func dbSpanName(_ context.Context, m otelsql.Method, query string) string {
+	if query == "" {
+		return string(m)
+	}
+	return querySpanName(query)
 }

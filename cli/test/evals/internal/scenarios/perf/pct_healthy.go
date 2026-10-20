@@ -10,7 +10,7 @@ import (
 func init() { scenarios.Register("perf/ctl-healthy", pctSeedHealthy) }
 
 // pctSeedHealthy: GET /api/search is healthy and has been for eight days
-// (p50 ~25ms, p95 ~45ms, no errors, no growth, flat CPU). Expected:
+// (p50 ~23ms, p95 ~50ms, no errors, no growth, flat CPU). Expected:
 // none_found. Distractors: the search query uses ILIKE on name/brand, which
 // looks like it wants a trigram index but takes ~15ms; checkout is the
 // slowest endpoint (a payment call), unrelated to search.

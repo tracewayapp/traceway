@@ -68,9 +68,9 @@ oracle:
       category: missing_key
       culprit: {file: app/webhooks.py, symbol: _invoice_paid, line: 41}
       evidence:
-        - {call_id: c01, claim: "a KeyError group, first seen about 22 hours ago"}
+        - {call_id: c01, claim: "the only exception group of the last day is a KeyError, first seen less than a day ago"}
         - {call_id: c02, claim: "KeyError: 'customer' at app/webhooks.py line 41 in _invoice_paid, only for invoice.paid events, on 2.6.0"}
-        - {call_id: c03, claim: "the ERROR 'Exception in ASGI application' stream matches the KeyError count; the WARN signature failures are a separate stream of rejected deliveries"}
+        - {call_id: c03, claim: "the only WARN or ERROR logs are the signature failures, a separate stream of rejected (401) deliveries; the failing invoice.paid requests log no error of their own"}
         - {call_id: c04, claim: "v2.6.0 linked paid invoices to customer accounts"}
         - {call_id: c05, claim: "_invoice_paid reads invoice['customer'] unconditionally before recording the payment"}
       fix_summary: _invoice_paid reads the customer with invoice.get and records the payment without an account when there is none (guest payments).

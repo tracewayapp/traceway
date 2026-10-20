@@ -18,7 +18,6 @@ func init() { scenarios.Register("debug/log-only-error", dbgSeedLogOnlyError) }
 // on the product route.
 func dbgSeedLogOnlyError(s *seed.Scenario) error {
 	deployAt := s.Ago(9 * time.Hour).Truncate(time.Minute).Add(-2 * time.Minute)
-	restartAt := s.Ago(3*24*time.Hour + 7*time.Hour).Truncate(time.Minute)
 	dbDownFrom := s.Ago(3*24*time.Hour + 2*time.Hour).Truncate(time.Minute)
 	dbDownTo := dbDownFrom.Add(4 * time.Minute)
 	p := s.Project("catalog", seed.OTel)
@@ -26,21 +25,11 @@ func dbgSeedLogOnlyError(s *seed.Scenario) error {
 	hosts := []string{"catalog-api-6c9f7d8b4-2xkqp", "catalog-api-6c9f7d8b4-q7mzt"}
 	api.Instances(hosts...)
 
-	// The settings load when uvicorn imports the app, before it logs
-	// "Started server process".
-	startup := func(at time.Time, host string, bad bool) {
-		if bad {
-			api.LogOn(host, at, seed.SevError, "invalid config: recommendations.timeout_ms must be an integer, got '800'; recommendations are disabled")
-		}
-		api.LogOn(host, at.Add(38*time.Millisecond), seed.SevInfo, "Started server process [1]")
-		api.LogOn(host, at.Add(39*time.Millisecond), seed.SevInfo, "Waiting for application startup.")
-		api.LogOn(host, at.Add(40*time.Millisecond), seed.SevInfo, "Application startup complete.")
-		api.LogOn(host, at.Add(41*time.Millisecond), seed.SevInfo, "Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)")
-	}
+	// The settings load when uvicorn imports the app; uvicorn's own startup
+	// lines go to its non-propagating loggers, not to the OTel handler.
 	rolled := deployAt.Add(52 * time.Second)
 	for i, h := range hosts {
-		startup(restartAt.Add(time.Duration(i)*47*time.Second), h, false)
-		startup(deployAt.Add(time.Duration(i)*rolled.Sub(deployAt)), h, true)
+		api.LogOn(h, deployAt.Add(time.Duration(i)*rolled.Sub(deployAt)), seed.SevError, "invalid config: recommendations.timeout_ms must be an integer, got '800'; recommendations are disabled")
 	}
 	// Until the second pod restarts, only the first one serves 3.4.0.
 	pin := func(r *seed.Req) {
@@ -77,7 +66,7 @@ The above exception was the direct cause of the following exception:
   File "/usr/local/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 1100, in run
     result = context.run(func, *args)
              ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/app/app/main.py", line 27, in product
+  File "/app/app/main.py", line 29, in product
     row = conn.execute(text("SELECT id, name, price_cents, currency FROM products WHERE id = :id"), {"id": product_id}).mappings().first()
           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1419, in execute
@@ -150,8 +139,6 @@ sqlalchemy.exc.OperationalError: (psycopg.OperationalError) consuming input fail
 	}
 
 	s.Expose("deployAt", deployAt.Format(time.RFC3339))
-	s.Expose("deployWindowFrom", deployAt.Add(-10*time.Minute).Format(time.RFC3339))
-	s.Expose("deployWindowTo", deployAt.Add(10*time.Minute).Format(time.RFC3339))
 	s.AfterFlush(func() error {
 		hash, err := p.GroupMatching(8*24*time.Hour, "server closed the connection")
 		if err != nil {

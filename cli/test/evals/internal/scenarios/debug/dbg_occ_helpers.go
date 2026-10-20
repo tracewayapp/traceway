@@ -22,7 +22,6 @@ type dbgOcc struct {
 	AppVersion string            `json:"appVersion"`
 	ServerName string            `json:"serverName"`
 	TraceID    string            `json:"traceId"`
-	SpanID     string            `json:"spanId"`
 }
 
 // dbgOccurrences returns up to n occurrences of a group, newest first. In a
@@ -67,7 +66,8 @@ func dbgOccRef(o dbgOcc) map[string]any {
 
 // dbgOtelStack is the exception.stacktrace the Go SDK records for
 // span.RecordError(err, trace.WithStackTrace(true)): runtime.Stack from
-// inside the SDK, so the SDK's own frames come first, then the caller's.
+// inside the SDK, so the SDK's own frames come first, then the caller's,
+// into a 2048-byte buffer that cuts the stack off.
 func dbgOtelStack(goroutine int, frames ...string) string {
 	s := fmt.Sprintf("goroutine %d [running]:\n", goroutine)
 	s += "go.opentelemetry.io/otel/sdk/trace.recordStackTrace(...)\n\t/go/pkg/mod/go.opentelemetry.io/otel/sdk@v1.38.0/trace/span.go:570\n"
@@ -75,19 +75,7 @@ func dbgOtelStack(goroutine int, frames ...string) string {
 	for _, f := range frames {
 		s += f + "\n"
 	}
-	return s
-}
-
-// dbgGoPanic is the stack a recover wrapper records for a panic
-// (debug.Stack() called inside the deferred recover).
-func dbgGoPanic(goroutine int, recoverFrame string, frames ...string) string {
-	s := fmt.Sprintf("goroutine %d [running]:\nruntime/debug.Stack()\n\t/usr/local/go/src/runtime/debug/stack.go:26 +0x5e\n", goroutine)
-	s += recoverFrame + "\n"
-	s += "panic({0x1a2b3c0?, 0x2a4f8b0?})\n\t/usr/local/go/src/runtime/panic.go:860 +0x13a\n"
-	for _, f := range frames {
-		s += f + "\n"
-	}
-	return s
+	return s[:min(len(s), 2048)]
 }
 
 // dbgRandID fills a span id from the scenario's RNG, the way the DSL does,
@@ -114,19 +102,15 @@ func dbgDownstream(s *seed.Scenario, client *seed.Span, target *seed.Service, me
 	return sp
 }
 
-// dbgSpanError records an exception event on a child span the way a
-// client instrumentation does (span.RecordError without a stack trace),
-// marks it failed and keeps the request's full tree.
+// dbgSpanError records an exception event on a database span the way
+// otelsql does (span.RecordError without a stack trace, an error status
+// without a description) and keeps the request's full tree.
 func dbgSpanError(r *seed.Req, sp *seed.Span, e seed.Exc) {
 	attrs := map[string]any{"exception.type": e.Type, "exception.message": e.Message}
-	if e.Stack != "" {
-		attrs["exception.stacktrace"] = e.Stack
-	}
 	sp.Events = append(sp.Events, seed.Event{Name: "exception", At: sp.Dur, Attrs: attrs})
 	sp.Status = seed.StatusError
-	sp.StatusMsg = e.Message
 	r.KeepDetail()
-	dbgRecord(r, e.Type, e.Message, e.Stack)
+	dbgRecord(r, e.Type, e.Message)
 }
 
 // dbgRecord hands strings a seed builds by hand to the leakage lint (the

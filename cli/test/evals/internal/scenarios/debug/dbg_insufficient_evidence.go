@@ -24,17 +24,17 @@ func dbgSeedInsufficientEvidence(s *seed.Scenario) error {
 	api := p.Service("reports-api", seed.Go("nethttp", "pgx")).Versions("2.11.0")
 	const mod = "example.com/reports-api/internal"
 	stack := dbgOtelStack(9022,
-		mod+"/telemetry.init.0.func1({0x1d4c3a8, 0xc0004e60e0}, {0x1b6e0a0, 0xc000112f80})\n\t/app/internal/telemetry/otel.go:21 +0x8e",
-		mod+"/httpx.Error({0x1d4f2c0, 0xc0004d2380}, 0xc0004c8780, {0x1b6e0a0, 0xc000112f80})\n\t/app/internal/httpx/errors.go:22 +0x9c",
-		mod+"/reports.(*Handler).Export(0xc0001a4b40, {0x1d4f2c0, 0xc0004d2380}, 0xc0004c8780)\n\t/app/internal/reports/handler.go:44 +0x3c5",
-		"net/http.HandlerFunc.ServeHTTP(0xc000189480, {0x1d4f2c0, 0xc0004d2380}, 0xc0004c8780)\n\t/usr/local/go/src/net/http/server.go:2306 +0x29",
-		"net/http.(*ServeMux).ServeHTTP(0xc00012a0e0, {0x1d4f2c0, 0xc0004d2380}, 0xc0004c8500)\n\t/usr/local/go/src/net/http/server.go:2848 +0x1c4",
-		mod+"/telemetry.init.0.func3.routeAttr.1({0x1d4f2c0?, 0xc0004d2380?}, 0xc0004c8500)\n\t/app/internal/telemetry/otel_http.go:29 +0x4c",
-		"net/http.HandlerFunc.ServeHTTP(0xc0001c8a80?, {0x1d4f2c0?, 0xc0004d2380?}, 0x1b2a4e0?)\n\t/usr/local/go/src/net/http/server.go:2306 +0x29",
-		"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp.(*middleware).serveHTTP(0xc0001c6000, {0x1d4e1a0, 0xc0004c6000}, 0xc0004c8280, {0x1d3b5a0, 0xc00012a0e0})\n\t/go/pkg/mod/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp@v0.63.0/handler.go:180 +0x1a4c",
-		"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp.NewMiddleware.func1.1({0x1d4e1a0?, 0xc0004c6000?}, 0x0?)\n\t/go/pkg/mod/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp@v0.63.0/handler.go:67 +0x35",
-		"net/http.HandlerFunc.ServeHTTP(0xc0001c8000?, {0x1d4e1a0?, 0xc0004c6000?}, 0xc0004c6001?)\n\t/usr/local/go/src/net/http/server.go:2306 +0x29",
-		"net/http.serverHandler.ServeHTTP({0xc000180d20?}, {0x1d4e1a0?, 0xc0004c6000?}, 0x6?)\n\t/usr/local/go/src/net/http/server.go:3331 +0x8e",
+		mod+"/telemetry.init.0.func1({0xe7d0c8?, 0x5e0a0eec4b0?}, {0xe70560, 0x1622840})\n\t/app/internal/telemetry/otel.go:28 +0xe5",
+		mod+"/httpx.Error({0xe7a850, 0x5e0a0eac078}, 0x5e0a0ef2140, {0xe70560, 0x1622840})\n\t/app/internal/httpx/errors.go:22 +0xcf",
+		mod+"/reports.(*Handler).Export(0x5e0a0f21390, {0xe7a850, 0x5e0a0eac078}, 0x5e0a0ef2140)\n\t/app/internal/reports/handler.go:44 +0x4d7",
+		"net/http.HandlerFunc.ServeHTTP(0x5e0a0f543c0?, {0xe7a850?, 0x5e0a0eac078?}, 0x5e0a0dc13f0?)\n\t/usr/local/go/src/net/http/server.go:2306 +0x29",
+		"net/http.(*ServeMux).ServeHTTP(0x5e0a0e84f00?, {0xe7a850, 0x5e0a0eac078}, 0x5e0a0ef2140)\n\t/usr/local/go/src/net/http/server.go:2848 +0x1c7",
+		"main.main.AccessLog.func1({0xe7be90, 0x5e0a0ea00c0}, 0x5e0a0ef2140)\n\t/app/internal/telemetry/access.go:26 +0xd5",
+		"net/http.HandlerFunc.ServeHTTP(0x5e0a0dc1630?, {0xe7be90?, 0x5e0a0ea00c0?}, 0x5e0a0ebc1e0?)\n\t/usr/local/go/src/net/http/server.go:2306 +0x29",
+		mod+"/telemetry.init.0.func3.routeAttr.1({0xe7be90?, 0x5e0a0ea00c0?}, 0x5e0a0ef2140)\n\t/app/internal/telemetry/otel_http.go:29 +0x4c",
+		"net/http.HandlerFunc.ServeHTTP(0xe7d0c8?, {0xe7be90?, 0x5e0a0ea00c0?}, 0xe6bc38?)\n\t/usr/local/go/src/net/http/server.go:2306 +0x29",
+		"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp.(*middleware).serveHTTP(0x5e0a0feab60, {0xe7a940, 0x5e0a0ee60f0}, 0x5e0a0ef2000, {0xe70540, 0x5e0a0f24d68})\n\t/go/pkg/mod/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp@v0.63.0/handler.go:180 +0x1258",
+		"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp.NewMiddleware.func1.1({0xe7a940?, 0x5e0a0ee60f0?}, 0x4bbc53?)\n\t/go/pkg/mod/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp@v0.63.0/handler.go:67 +0x35",
 	)
 	formats := []string{"csv", "csv", "xlsx", "xlsx", "json"}
 	perRow := map[string]float64{"csv": 0.004, "json": 0.006, "xlsx": 0.02} // ms per row

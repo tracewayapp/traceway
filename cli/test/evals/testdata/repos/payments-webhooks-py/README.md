@@ -11,7 +11,7 @@ tests run with the standard library only:
 
 ```
 python3 -m unittest
-opentelemetry-instrument uvicorn app.main:app
+OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true opentelemetry-instrument uvicorn app.main:app
 ```
 
 Releases are tagged in the commit message (`v2.6.0: ...`) and deployed from `main`.

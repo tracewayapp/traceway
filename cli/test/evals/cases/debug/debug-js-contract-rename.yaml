@@ -61,7 +61,7 @@ oracle:
       | jq '{group: (.group | {exceptionHash, firstSeen, lastSeen, count}), versions: ([.occurrences[].appVersion] | unique)}'
   - shell: >-
       traceway endpoints list --project {{env.projects.storefront-api.id}} --since 24h --search /api/orders --output json
-      | jq '[.data[] | {endpoint, count, p95ms: (.p95Duration / 1e6)}]'
+      | jq '[.data[] | {endpoint, count, p95ms: (.p95Duration / 1e6), impactReason}]'
   - shell: git log --format='%h %ad %s' --date=iso -5
   - shell: git show HEAD -- api/src/orders/serialize.js
   - read_file: web/src/lib/orders.js

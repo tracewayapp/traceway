@@ -33,7 +33,7 @@ var pncHomeSections = []struct {
 // (home:feed:v3, 10-minute TTL). When the key expires, every request that
 // arrives before the first rebuild has written it back misses and rebuilds
 // the feed itself: ~2.4 req/s times a ~7s rebuild under that contention is
-// 15-25 identical rebuild traces per expiry, every ~10 minutes. Between
+// 15-30 identical rebuild traces per expiry, every ~10 minutes. Between
 // expiries the hit ratio is ~98%. Distractor: the misses run 12 queries
 // against the DB on the request path, which reads like a missing cache, but
 // the cache is there and hits ~98% of the time.

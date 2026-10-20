@@ -31,17 +31,17 @@ func dbgSeedMixedGroup(s *seed.Scenario) error {
 	api := p.Service("shipping-api", seed.Go("nethttp", "pgx")).Versions("3.7.4", seed.Deploy{At: deployAt, Version: "3.8.0"})
 	const mod = "example.com/shipping-api/internal"
 	stack := dbgOtelStack(3317,
-		mod+"/telemetry.init.0.func1({0x1d4c3a8, 0xc0004e60e0}, {0x1b6e0a0, 0xc0003f81e0})\n\t/app/internal/telemetry/otel.go:17 +0x8e",
-		mod+"/httpx.Error({0x1d4f2c0, 0xc0004d2380}, 0xc0004c8780, {0x1b6e0a0, 0xc0003f81e0})\n\t/app/internal/httpx/errors.go:21 +0x6c",
-		mod+"/shipments.(*Handler).Create(0xc0001a4b40, {0x1d4f2c0, 0xc0004d2380}, 0xc0004c8780)\n\t/app/internal/shipments/handler.go:26 +0x1f8",
-		"net/http.HandlerFunc.ServeHTTP(0xc000189480, {0x1d4f2c0, 0xc0004d2380}, 0xc0004c8780)\n\t/usr/local/go/src/net/http/server.go:2306 +0x29",
-		"net/http.(*ServeMux).ServeHTTP(0xc00012a0e0, {0x1d4f2c0, 0xc0004d2380}, 0xc0004c8500)\n\t/usr/local/go/src/net/http/server.go:2848 +0x1c4",
-		mod+"/telemetry.init.0.func2.routeAttr.1({0x1d4f2c0?, 0xc0004d2380?}, 0xc0004c8500)\n\t/app/internal/telemetry/otel_http.go:25 +0x4c",
-		"net/http.HandlerFunc.ServeHTTP(0xc0001c8a80?, {0x1d4f2c0?, 0xc0004d2380?}, 0x1b2a4e0?)\n\t/usr/local/go/src/net/http/server.go:2306 +0x29",
-		"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp.(*middleware).serveHTTP(0xc0001c6000, {0x1d4e1a0, 0xc0004c6000}, 0xc0004c8280, {0x1d3b5a0, 0xc00012a0e0})\n\t/go/pkg/mod/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp@v0.63.0/handler.go:180 +0x1a4c",
-		"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp.NewMiddleware.func1.1({0x1d4e1a0?, 0xc0004c6000?}, 0x0?)\n\t/go/pkg/mod/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp@v0.63.0/handler.go:67 +0x35",
-		"net/http.HandlerFunc.ServeHTTP(0xc0001c8000?, {0x1d4e1a0?, 0xc0004c6000?}, 0xc0004c6001?)\n\t/usr/local/go/src/net/http/server.go:2306 +0x29",
-		"net/http.serverHandler.ServeHTTP({0xc000180d20?}, {0x1d4e1a0?, 0xc0004c6000?}, 0x6?)\n\t/usr/local/go/src/net/http/server.go:3331 +0x8e",
+		mod+"/telemetry.init.0.func1({0xe714c8?, 0x348199aae4e0?}, {0xe656e0, 0x348199a0c1a0})\n\t/app/internal/telemetry/otel.go:26 +0xe5",
+		mod+"/httpx.Error({0xe6ec50, 0x3481998620f0}, 0x348199922000, {0xe656e0, 0x348199a0c1a0})\n\t/app/internal/httpx/errors.go:21 +0xc3",
+		mod+"/shipments.(*Handler).Create(0x3481998521d8, {0xe6ec50, 0x3481998620f0}, 0x348199922000)\n\t/app/internal/shipments/handler.go:26 +0x274",
+		"net/http.HandlerFunc.ServeHTTP(0x3481999a4180?, {0xe6ec50?, 0x3481998620f0?}, 0x34819991f3f0?)\n\t/usr/local/go/src/net/http/server.go:2306 +0x29",
+		"net/http.(*ServeMux).ServeHTTP(0x348199c8e780?, {0xe6ec50, 0x3481998620f0}, 0x348199922000)\n\t/usr/local/go/src/net/http/server.go:2848 +0x1c7",
+		"main.main.AccessLog.func1({0xe70280, 0x348199a26060}, 0x348199922000)\n\t/app/internal/telemetry/access.go:26 +0xd5",
+		"net/http.HandlerFunc.ServeHTTP(0x34819991f608?, {0xe70280?, 0x348199a26060?}, 0x348199a340a0?)\n\t/usr/local/go/src/net/http/server.go:2306 +0x29",
+		mod+"/telemetry.init.0.func2.routeAttr.1({0xe70280?, 0x348199a26060?}, 0x348199922000)\n\t/app/internal/telemetry/otel_http.go:25 +0x4c",
+		"net/http.HandlerFunc.ServeHTTP(0xe714c8?, {0xe70280?, 0x348199a26060?}, 0xe60168?)\n\t/usr/local/go/src/net/http/server.go:2306 +0x29",
+		"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp.(*middleware).serveHTTP(0x348199995930, {0xe6ed40, 0x3481999c2000}, 0x3481999ca000, {0xe64a20, 0x3481998629a8})\n\t/go/pkg/mod/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp@v0.63.0/handler.go:180 +0x1258",
+		"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp.NewMiddleware.func1.1({0xe6ed40?, 0x3481999c2000?}, 0x4bbc53?)\n\t/go/pkg/mod/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp@v0.63.0/handler.go:67 +0x35",
 	)
 
 	dests := []dbgDest{
@@ -102,7 +102,7 @@ func dbgSeedMixedGroup(s *seed.Scenario) error {
 		r.Gap(r.Ms(0.4, 1.0))
 		if r.Version() == "3.8.0" && !usFormat(postal) {
 			msg := fmt.Sprintf("validate address: invalid request: postal code %q is not valid for %s", postal, d.country)
-			r.Compute("validate address", r.Ms(0.05, 0.2))
+			r.Gap(r.Ms(0.05, 0.2))
 			r.Error(seed.Exc{Type: "*fmt.wrapError", Message: msg, Stack: stack})
 			r.Status(422)
 			r.Gap(r.Ms(0.2, 0.5))

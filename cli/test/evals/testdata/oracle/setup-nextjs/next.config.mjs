@@ -2,6 +2,7 @@
 const nextConfig = {
   poweredByHeader: false,
   serverExternalPackages: ["@opentelemetry/auto-instrumentations-node"],
+  experimental: { serverSourceMaps: true },
 };
 
 export default nextConfig;

@@ -43,11 +43,11 @@ expect:
       - [post_mortems.show, post_mortems.update]
     max_failed_calls: 3
 judge:
-  expected: The agent reads post-mortem {{seed.postMortemId}}, writes the revised body with the new follow-up and the updatedAt it read as expected_updated_at, gets a 409 because a teammate added a timeline entry (INC-20931) in the meantime, reads the document again, reapplies only its follow-up on top of the teammate's version and saves it. The final document keeps the teammate's line and everything else, plus the new follow-up. It tells the user someone else had edited it and that both changes are in.
+  expected: The agent reads post-mortem {{seed.postMortemId}} and writes the revised body with the new follow-up, passing the updatedAt of the read the body is based on as expected_updated_at. A teammate adds a timeline entry (INC-20931) right after the agent's first read, so an update based on that read gets a 409; the agent then reads the document again, reapplies only its follow-up on top of the teammate's version and saves it. An agent that read the document again before writing, or read and wrote in one call, sees no conflict, which is fine. The final document keeps the teammate's line and everything else, plus the new follow-up. After a conflict, it tells the user someone else had edited it and that both changes are in.
   rubric:
     - Sends expected_updated_at with the full-body update instead of overwriting blindly.
-    - After the conflict, re-reads and reapplies the follow-up on the current version, keeping the teammate's edit.
-    - Tells the user about the concurrent edit and what the document now contains.
+    - On a conflict, re-reads and reapplies the follow-up on the current version, keeping the teammate's edit, instead of retrying the stale body.
+    - Tells the user what the document now contains, and about the concurrent edit if it hit one.
 oracle:
   - shell: traceway-write post-mortems show {{seed.postMortemId}} --output json
   - op: post_mortems.update

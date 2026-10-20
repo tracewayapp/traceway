@@ -26,9 +26,9 @@ var Handler = func(h http.Handler) http.Handler { return h }
 // query is a CLIENT span).
 var OpenDB = func(dsn string) (*sql.DB, error) { return sql.Open("pgx", dsn) }
 
-// Start starts a span named name under ctx, with kv as attribute pairs, and
-// returns the function that ends it.
-var Start = func(ctx context.Context, name string, kv ...any) (context.Context, func()) {
+// Start starts a span named name under ctx and returns the function that
+// ends it.
+var Start = func(ctx context.Context, name string) (context.Context, func()) {
 	return ctx, func() {}
 }
 

@@ -28,11 +28,11 @@ func dbgSeedJSContractRename(s *seed.Scenario) error {
 		"formatCents()\n    ../../src/lib/money.js:5:24\n" +
 		"orderTotalLabel()\n    ../../src/lib/orders.js:5:10\n" +
 		"OrderRow()\n    ../../src/components/OrderHistory.jsx:10:12\n" +
-		"renderWithHooks()\n    ../../node_modules/react-dom/cjs/react-dom-client.production.js:5529:22\n" +
-		"updateFunctionComponent()\n    ../../node_modules/react-dom/cjs/react-dom-client.production.js:7987:19\n" +
-		"beginWork()\n    ../../node_modules/react-dom/cjs/react-dom-client.production.js:9653:18\n" +
-		"performUnitOfWork()\n    ../../node_modules/react-dom/cjs/react-dom-client.production.js:14622:22\n" +
-		"workLoopSync()\n    ../../node_modules/react-dom/cjs/react-dom-client.production.js:14453:41\n"
+		"renderWithHooks()\n    ../../../node_modules/react-dom/cjs/react-dom-client.production.js:4645:21\n" +
+		"updateFunctionComponent()\n    ../../../node_modules/react-dom/cjs/react-dom-client.production.js:6799:15\n" +
+		"beginWork()\n    ../../../node_modules/react-dom/cjs/react-dom-client.production.js:7858:14\n" +
+		"performUnitOfWork()\n    ../../../node_modules/react-dom/cjs/react-dom-client.production.js:12707:14\n" +
+		"workLoopSync()\n    ../../../node_modules/react-dom/cjs/react-dom-client.production.js:12584:37\n"
 
 	list := api.Endpoint("GET", "/api/orders")
 	list.Traffic(seed.Daily(420), seed.Diurnal(), seed.Over(7*24*time.Hour))
@@ -42,8 +42,7 @@ func dbgSeedJSContractRename(s *seed.Scenario) error {
 		r.DB("SELECT account_id FROM sessions WHERE id = $1 AND expires_at > now()", r.Ms(0.8, 2))
 		n := r.IntN(21)
 		r.DB("SELECT id, created_at, status, item_count, total_cents, currency FROM orders WHERE account_id = $1 ORDER BY created_at DESC LIMIT 20 OFFSET $2", r.Ms(2, 6), seed.Rows(n))
-		r.Compute("json", r.Ms(0.1, 0.5))
-		r.Gap(r.Ms(0.2, 0.5))
+		r.Gap(r.Ms(0.3, 1.0))
 		r.RootAttr("http.response.body.size", 40+n*148)
 		if r.Version() != "5.9.0" || n == 0 {
 			return
@@ -55,10 +54,12 @@ func dbgSeedJSContractRename(s *seed.Scenario) error {
 		at := resp.Add(r.Ms(8, 40))
 		started := resp.Add(-time.Duration(30+r.IntN(400)) * time.Second)
 		web.Session(sid, started, at.Add(time.Duration(5+r.IntN(60))*time.Second), map[string]string{}, webVersion)
+		nav := r.Start().Add(-r.Ms(150, 900))
+		sent := r.Start().Add(-r.Ms(20, 60))
 		web.Crash(seed.Crash{At: at, Stack: crashStack, AppVersion: webVersion, SessionID: sid,
 			Actions: []seed.Action{
-				{Type: "navigation", At: r.Start().Add(-r.Ms(150, 900)), From: "/account", To: "/account/orders"},
-				{Type: "network", At: r.Start().Add(-r.Ms(20, 60)), Method: "GET", URL: "https://shop.example.com/api/orders?page=1", DurationMs: float64(resp.Sub(r.Start()).Microseconds()) / 1000, Status: 200, RespBytes: 40 + n*148},
+				{Type: "navigation", At: nav, From: "/account", To: "/account/orders"},
+				{Type: "network", At: sent, Method: "GET", URL: "https://shop.example.com/api/orders?page=1", DurationMs: float64(resp.Sub(sent).Microseconds()) / 1000, Status: 200, RespBytes: 40 + n*148},
 			}})
 	})
 	detail := api.Endpoint("GET", "/api/orders/:id")

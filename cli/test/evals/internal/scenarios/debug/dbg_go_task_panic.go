@@ -98,12 +98,8 @@ func dbgSeedGoTaskPanic(s *seed.Scenario) error {
 		}
 		for i := 1; i <= labels; i++ {
 			if peak && r.Chance(0.25) {
-				sp := r.HTTP("POST", labelsURL, r.Ms(40, 120), 429)
-				sp.Name, sp.Status = "HTTP POST", seed.StatusError
-				msg := "create label for order " + orderID + ": POST " + labelsURL + ": 429 Too Many Requests"
-				if r.Version() == "2.3.2" {
-					msg = fmt.Sprintf("create label %d for order %s: POST %s: 429 Too Many Requests", i, orderID, labelsURL)
-				}
+				r.HTTP("POST", labelsURL, r.Ms(40, 120), 429).Name = "HTTP POST"
+				msg := fmt.Sprintf("create label %d for order %s: POST %s: 429 Too Many Requests", i, orderID, labelsURL)
 				r.Error(seed.Exc{Type: "*fmt.wrapError", Message: msg, Stack: dbgLabelErrorStack})
 				r.Log(seed.SevError, "message failed", seed.A("topic", "fulfillment.orders"), seed.A("offset", offset), seed.A("err", msg))
 				return

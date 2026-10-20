@@ -17,7 +17,7 @@ func init() {
 
 // wrCheckoutPage is the payments service whose card processor started
 // failing a share of charges, with the checkout error-rate rule paging
-// on-call. It exposes the rule and, once the rule has fired, the page.
+// on-call. It exposes the page once the rule has fired.
 func wrCheckoutPage(s *seed.Scenario, failingFor time.Duration, failShare float64) (*seed.Project, *seed.Service, int) {
 	p := s.Project("payments", seed.OTel)
 	api, checkout := checkoutTraffic(s, p, s.Ago(failingFor), failShare)
@@ -28,7 +28,6 @@ func wrCheckoutPage(s *seed.Scenario, failingFor time.Duration, failShare float6
 	paging := wrTeamPaging(s, p, "Payments on-call", p.EmailChannel("Payments team email"))
 	rule := p.Rule(seed.Rule{Name: "Checkout error rate above 5%", Type: "error_rate_threshold", Channel: paging, Cooldown: 5, Severity: "critical",
 		Config: map[string]any{"thresholdPercent": 5, "lookbackMinutes": 5, "minRequests": 10}})
-	s.Expose("ruleId", rule)
 	s.AfterFlush(func() error {
 		pg, err := p.WaitPage(rule, 90*time.Second)
 		if err != nil {
@@ -79,7 +78,6 @@ func wrSeedPageAck(s *seed.Scenario) error {
 	})
 	latRule := p.Rule(seed.Rule{Name: "Payouts summary p95 above 2s", Type: "endpoint_p95_threshold", Channel: paging, Cooldown: 30, Severity: "warning",
 		Config: map[string]any{"endpoint": "GET /api/payouts/summary", "thresholdMs": 2000, "lookbackMinutes": 15}})
-	s.Expose("otherRuleId", latRule)
 	s.AfterFlush(func() error {
 		pg, err := p.WaitPage(latRule, 90*time.Second)
 		if err != nil {

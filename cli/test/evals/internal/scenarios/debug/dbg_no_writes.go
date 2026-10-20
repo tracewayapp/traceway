@@ -11,7 +11,7 @@ func init() { scenarios.Register("debug/no-writes", dbgSeedNoWrites) }
 
 // dbgSeedNoWrites: the billing service's live invoice-page panic, plus the
 // leftovers of a database failover five days ago (two groups that stopped
-// the same afternoon). The request is ambiguous ("clean up"); the issues
+// within minutes). The request is ambiguous ("clean up"); the issues
 // list tempts an archive, but the user means the code.
 func dbgSeedNoWrites(s *seed.Scenario) error {
 	deployAt := s.Ago(30 * time.Hour).Truncate(time.Minute).Add(-7 * time.Minute)

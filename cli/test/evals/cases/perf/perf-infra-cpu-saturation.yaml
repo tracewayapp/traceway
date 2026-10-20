@@ -5,7 +5,7 @@ tags: [smoke, infrastructure, node]
 seed: perf/infra-cpu-saturation
 arms: [cli+skill, cli-noskill, mcp]
 invoke: slash
-distractor: A code regression; but service.version never changed, the last commit is nine days old, and every endpoint without an outside call got 3-8x slower at the same moment the request rate tripled, with CPU on both instances going from ~25% to ~95% at that time. The waterfalls show the same spans, just stretched, plus wait time around them; no new or longer query.
+distractor: A code regression; but service.version never changed, the last commit is nine days old, and every endpoint without an outside call got about 3-8x slower at the same moment the request rate tripled, with CPU on both instances going from ~25% to ~95% at that time. The waterfalls show the same spans, just stretched, plus wait time around them; no new or longer query.
 workspace: {repo: commerce-api-node}
 prompt: |
   /traceway perf
@@ -34,7 +34,7 @@ expect:
     max_failed_calls: 4
     max_identical_repeats: 2
 judge:
-  expected: CPU saturation. At ~14:20 UTC the request rate on every commerce-api endpoint tripled within about 40 minutes and stayed there. In the same window CPU on both instances went from ~25% busy to 90-97% at the daily peak (idle near 0-8%), and every endpoint's p50 and p95 rose several-fold together (p95 3-8x, GET /api/products/:id ~14ms to ~55ms; POST /api/checkout, which mostly waits on its ~200ms payment call, much less), more at peak hours than at night. Waterfalls contain the same spans as before, each a bit longer, with growing wait before and after them; no span is a new long pole. There was no deploy (same service.version, last commit nine days ago). Fix - add capacity now (more replicas; the deployment is fixed at 2 with 1-CPU limits) and add a CPU-based HorizontalPodAutoscaler so the next traffic jump scales out; then look at per-request CPU cost.
+  expected: CPU saturation. At ~14:20 UTC the request rate on every commerce-api endpoint tripled within about 40 minutes and stayed there. In the same window CPU on both instances went from ~25% busy to 90-97% at the daily peak (idle near 0-8%), and every endpoint's p50 and p95 rose several-fold together (p95 about 3-8x, GET /api/products/:id ~14ms to ~55ms; POST /api/checkout, which mostly waits on its ~200ms payment call, much less), more at peak hours than at night. Waterfalls contain the same spans as before, each a bit longer, with growing wait before and after them; no span is a new long pole. There was no deploy (same service.version, last commit nine days ago). Fix - add capacity now (more replicas; the deployment is fixed at 2 with 1-CPU limits) and add a CPU-based HorizontalPodAutoscaler so the next traffic jump scales out; then look at per-request CPU cost.
   rubric:
     - Shows that the latency rise is broad (every endpoint, p50 and p95 alike) and coincides with both the CPU climbing to ~95% and the request count tripling.
     - Rules out a code regression (no new version or commit, no new long-pole span) and a single slow dependency.
@@ -77,7 +77,7 @@ oracle:
         - {call_id: c03, claim: "CPU busy went from ~25% to over 90% in the same bucket"}
         - {call_id: c04, claim: "both instances are near zero idle at peak, so it is fleet-wide, not one host"}
         - {call_id: c05, claim: "the day before, the same hours had a third of the requests at the old latency"}
-        - {call_id: c06, claim: "since the step, request counts are about 3x and p95 3-8x on every endpoint but checkout, which mostly waits on its payment call"}
+        - {call_id: c06, claim: "since the step, request counts are about 3x and p95 about 3-8x on every endpoint but checkout, which mostly waits on its payment call"}
         - {call_id: c07, claim: "before: the same two queries, the request takes ~10-15ms"}
         - {call_id: c08, claim: "after: the same two queries, a little longer each, plus tens of ms of wait before and after them; no new long pole and the same version"}
         - {call_id: c09, claim: "no commit since nine days ago"}

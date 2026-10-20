@@ -129,7 +129,6 @@ func wrSeedStaleWebhookIssue(s *seed.Scenario) error {
 		}
 		return 0
 	}))
-	hook.Detail(seed.DetailPolicy{Recent: 6 * time.Hour, Rate: 0.02, Max: 5})
 	hook.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.2, 0.6))
 		if r.Chance(0.06) {

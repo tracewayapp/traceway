@@ -39,7 +39,7 @@ expect:
       contains: ["register"]
     - kind: file
       path: "**/*"
-      contains: ["/api/otel", "TRACEWAY_BACKEND_TOKEN", "service\\.name|serviceName|OTEL_SERVICE_NAME|registerOTel\\(\\s*['\"]"]
+      contains: ["/api/otel", "TRACEWAY_BACKEND_TOKEN", "service\\.name|serviceName|SERVICE_NAME|registerOTel\\(\\s*['\"]"]
     - kind: no_token_literal
     - kind: no_token_printed
     # Next.js 15 names app route handlers after their route file; one row
@@ -52,9 +52,9 @@ expect:
     forbidden:
       - {op: "*", write: true}
 judge:
-  expected: The agent uses the Next.js instrumentation hook - an instrumentation.js(ts) whose register() imports a Node-only instrumentation.node module when NEXT_RUNTIME is "nodejs" - and starts the Node SDK there (or calls registerOTel from @vercel/otel) with OTLP/HTTP exporters to $TRACEWAY_URL/api/otel/v1/* and the bearer token from TRACEWAY_BACKEND_TOKEN. It does not preload the generic Node instrumentation (node --import, -r, NODE_OPTIONS), which would create a competing request span named after the literal URL. It leaves the browser side alone as asked, sets service.name, and keeps next build passing.
+  expected: The agent uses the Next.js instrumentation hook - an instrumentation.js(ts) whose register() imports a Node-only instrumentation.node module when NEXT_RUNTIME is "nodejs" - and starts the Node SDK there (or calls registerOTel from @vercel/otel) with OTLP/HTTP exporters to $TRACEWAY_URL/api/otel/v1/* and the bearer token from TRACEWAY_BACKEND_TOKEN. It does not preload the generic Node instrumentation (node --import or -r, directly or through NODE_OPTIONS), which would create a competing request span named after the literal URL. It leaves the browser side alone as asked, sets service.name, and keeps next build passing.
   rubric:
-    - Uses the instrumentation.ts/js hook (the Node SDK in a separate Node-only module behind a NEXT_RUNTIME guard, or @vercel/otel), not a --import/--require/NODE_OPTIONS preload.
+    - Uses the instrumentation.ts/js hook (the Node SDK in a separate Node-only module behind a NEXT_RUNTIME guard, or @vercel/otel), not a --import/--require preload (directly or through NODE_OPTIONS).
     - Reads the token and URL from the environment; never prints or hard-codes the token.
     - Leaves the browser side out (no @tracewayapp/react, no browser project token) as the user asked.
     - Keeps npm run build passing, and lists @opentelemetry/auto-instrumentations-node in serverExternalPackages or otherwise keeps the build clean.
@@ -67,8 +67,10 @@ oracle:
   - write_file: {path: instrumentation.js, from: oracle/setup-nextjs/instrumentation.js}
   - write_file: {path: instrumentation.node.js, from: oracle/setup-nextjs/instrumentation.node.js}
   - write_file: {path: next.config.mjs, from: oracle/setup-nextjs/next.config.mjs}
+  - edit_file: {path: package.json, old: "\"start\": \"next start\"", new: "\"start\": \"NODE_OPTIONS=--enable-source-maps next start\""}
   - shell: |
       npm run build 2>&1 | grep -E 'Compiled|Failed|rror|/api/products'
+      echo "server source maps: $(find .next/server -name '*.js.map' | wc -l)"
       log=$(mktemp)
       node_modules/.bin/next start > "$log" 2>&1 &
       pid=$!
@@ -79,9 +81,10 @@ oracle:
       grep -iE "error|failed" "$log" || echo "no errors in the server log"
   - finish:
       summary: |
-        The catalog app's server side now reports to Traceway over OTLP/HTTP. instrumentation.js is the Next.js hook: register() imports instrumentation.node.js only when NEXT_RUNTIME is "nodejs", so the Edge compilation never sees Node-only packages. instrumentation.node.js starts the Node SDK with trace, metric and log exporters to $TRACEWAY_URL/api/otel/v1/*, the bearer token from $TRACEWAY_BACKEND_TOKEN, and service.name catalog. Next.js emits the request span itself with the matched route, so there is no --import preload (that would add a competing span per literal URL). next.config.mjs lists @opentelemetry/auto-instrumentations-node in serverExternalPackages. The browser side is untouched, as asked. npm run build passes and a local next start served /api/products/1-3 and /. On /endpoints the API shows up as one row for the [id] route.
+        The catalog app's server side now reports to Traceway over OTLP/HTTP. instrumentation.js is the Next.js hook: register() imports instrumentation.node.js only when NEXT_RUNTIME is "nodejs", so the Edge compilation never sees Node-only packages. instrumentation.node.js starts the Node SDK with trace, metric and log exporters to $TRACEWAY_URL/api/otel/v1/*, the bearer token from $TRACEWAY_BACKEND_TOKEN, and service.name catalog. Next.js emits the request span itself with the matched route, so there is no --import preload (that would add a competing span per literal URL). next.config.mjs lists @opentelemetry/auto-instrumentations-node in serverExternalPackages and turns on experimental.serverSourceMaps (this build emits no server source maps otherwise), and npm start now runs next start with NODE_OPTIONS=--enable-source-maps, so server Issues point at the original files. The browser side is untouched, as asked. npm run build passes and a local next start served /api/products/1-3 and /. On /endpoints the API shows up as one row for the [id] route.
       changes:
         - {action: add the Next.js instrumentation hook, target: instrumentation.js}
         - {action: start the OpenTelemetry Node SDK with Traceway exporters, target: instrumentation.node.js}
-        - {action: keep the auto-instrumentations package external, target: next.config.mjs}
+        - {action: keep the auto-instrumentations package external and emit server source maps, target: next.config.mjs}
+        - {action: start with Node source maps enabled, target: package.json, new_value: "NODE_OPTIONS=--enable-source-maps next start"}
         - {action: add OpenTelemetry dependencies, target: package.json}

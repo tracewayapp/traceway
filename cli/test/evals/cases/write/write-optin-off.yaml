@@ -31,9 +31,9 @@ expect:
       - {op: alerts.disable}
       - {op: alerts.enable}
       - {op: exceptions.archive}
-      - {op: login}
-      - {op: logout}
-      - {op: profiles.use}
+      - {op: login, args: {help: absent}}
+      - {op: logout, args: {help: absent}}
+      - {op: profiles.use, args: {help: absent}}
     order:
       - [pages.list, pages.ack]
     max_failed_calls: 3

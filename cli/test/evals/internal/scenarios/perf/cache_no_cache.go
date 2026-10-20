@@ -46,17 +46,17 @@ func pncSeedNoCache(s *seed.Scenario) error {
 		}
 		r.RootAttr("url.query", url[len("/api/catalog?"):])
 		if hit {
-			r.Cache("GET", "catalog:"+url, r.Ms(0.6, 1.6))
+			r.Cache("get", "catalog:"+url, r.Ms(0.6, 1.6))
 			r.RootAttr("http.response.body.size", 412366)
 			r.Gap(r.Ms(1.5, 3))
 			return
 		}
-		r.Cache("GET", "catalog:"+url, r.Ms(0.4, 1.2))
+		r.Cache("get", "catalog:"+url, r.Ms(0.4, 1.2))
 		r.DB("SELECT p.id, p.sku, p.title, p.brand, p.image_url, c.slug AS category, pr.amount_minor, pr.currency FROM products p JOIN categories c ON c.id = p.category_id JOIN prices pr ON pr.product_id = p.id AND pr.price_list = $1 WHERE p.active ORDER BY c.position, p.rank",
 			r.LogNormal(44*time.Millisecond, 95*time.Millisecond), seed.Rows(1180+r.IntN(40)))
 		ser := r.Compute("serialize catalog", r.Ms(6, 12))
 		ser.Scope = "catalog-api"
-		r.Cache("SET", "catalog:"+url+" [3 other arguments]", r.Ms(0.4, 1.1))
+		r.Cache("set", "catalog:"+url+" [3 other arguments]", r.Ms(0.4, 1.1))
 		r.RootAttr("http.response.body.size", 412366)
 		r.Gap(r.Ms(0.3, 0.8))
 	})
@@ -65,7 +65,7 @@ func pncSeedNoCache(s *seed.Scenario) error {
 	reviews.Traffic(seed.Daily(1300), seed.Diurnal(), seed.Over(window))
 	reviews.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.3, 0.8))
-		r.Cache("GET", "sess:"+fmt.Sprintf("%x", r.IntN(1<<30)), r.Ms(0.3, 0.9))
+		r.Cache("get", "sess:"+fmt.Sprintf("%x", r.IntN(1<<30)), r.Ms(0.3, 0.9))
 		r.DB("SELECT id, rating, title, body, created_at FROM reviews WHERE product_sku = $1 ORDER BY created_at DESC LIMIT 10 OFFSET $2", r.LogNormal(4*time.Millisecond, 10*time.Millisecond), seed.Rows(10))
 		r.Gap(r.Ms(0.3, 1)) // res.json
 	})

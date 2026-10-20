@@ -58,7 +58,7 @@ func main() {
 }
 
 // tracing wraps the mux in otelhttp, naming each server span after the
-// pattern the mux matched ("GET /api/events/{id}") and recording it as
+// pattern the mux matched ("GET /api/places/{id}") and recording it as
 // http.route, which otelhttp cannot see before the mux has run.
 func tracing(service string, mux http.Handler) http.Handler {
 	routed := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -38,7 +38,7 @@ expect:
       - "(duplicate|payments_cart_id_key|unique constraint|23505|{{seed.duplicateHash}})"
 judge:
   expected: |
-    The agent lists the checkout issues over the last week and finds three: {{seed.gatewayHash}} (*payments.GatewayError, processor 502) and {{seed.timeoutHash}} (*url.Error, charge timeouts) only occurred during the processor incident six days ago and stopped, while {{seed.duplicateHash}} (*pgconn.PgError, duplicate key on payments_cart_id_key) is a separate bug still occurring today. It asks the user before archiving, then archives only the two incident issues, leaving the duplicate-key issue and the unrelated refunds statement timeout ({{seed.refundHash}}) alone, and says how to unarchive.
+    The agent lists the checkout issues over the last week and finds three: {{seed.gatewayHash}} (*payments.GatewayError, processor 502) and {{seed.timeoutHash}} (*url.Error, charge timeouts) only occurred during the processor incident six days ago and stopped, while {{seed.duplicateHash}} (*pgconn.PgError, duplicate key on payments_cart_id_key) is a separate bug that is still occurring (last seen within the last few hours). It asks the user before archiving, then archives only the two incident issues, leaving the duplicate-key issue and the unrelated refunds statement timeout ({{seed.refundHash}}) alone, and says how to unarchive.
   rubric:
     - Notices that one of the checkout issues is still occurring and is not from the processor incident, and asks before archiving.
     - Archives exactly the two incident issues and nothing else.
@@ -50,12 +50,12 @@ oracle:
   - ask_user: |
       I found three checkout issues from the last week:
       - {{seed.gatewayHash}} *payments.GatewayError (processor returned 502) and {{seed.timeoutHash}} *url.Error (charge call timed out): both only occurred during the processor incident six days ago and have not happened since.
-      - {{seed.duplicateHash}} *pgconn.PgError duplicate key on payments_cart_id_key: a different bug in the payment insert, and it is still occurring today.
+      - {{seed.duplicateHash}} *pgconn.PgError duplicate key on payments_cart_id_key: a different bug in the payment insert, and it is still occurring.
       Shall I archive just the first two and leave the duplicate-key one open?
   - op: exceptions.archive
     args: {hashes: ["{{seed.gatewayHash}}", "{{seed.timeoutHash}}"]}
   - finish:
       summary: |
-        Archived the two checkout issues from last week's processor incident: {{seed.gatewayHash}} (GatewayError, processor 502s) and {{seed.timeoutHash}} (charge timeouts). Neither has occurred since the incident ended. As you asked, I left {{seed.duplicateHash}} (duplicate key on payments_cart_id_key) open: it is a separate bug and still occurring today. Undo: exceptions unarchive {{seed.gatewayHash}} {{seed.timeoutHash}}. If either comes back it reappears in the list on its own.
+        Archived the two checkout issues from last week's processor incident: {{seed.gatewayHash}} (GatewayError, processor 502s) and {{seed.timeoutHash}} (charge timeouts). Neither has occurred since the incident ended. As you asked, I left {{seed.duplicateHash}} (duplicate key on payments_cart_id_key) open: it is a separate bug and still occurring. Undo: exceptions unarchive {{seed.gatewayHash}} {{seed.timeoutHash}}. If either comes back it reappears in the list on its own.
       changes:
         - {action: archive issues, target: "{{seed.gatewayHash}}, {{seed.timeoutHash}}", new_value: archived, undo: "exceptions unarchive {{seed.gatewayHash}} {{seed.timeoutHash}}"}

@@ -47,11 +47,15 @@ func pdbSeedMissingQueryCache(s *seed.Scenario) error {
 			r.DB("SELECT id, email, first_name, last_name, loyalty_tier FROM customers WHERE id = $1", r.Ms(0.8, 2.2), seed.Rows(1))
 		}},
 		{"GET", "/api/products/:id", "ProductsController", "findOne", 1100, func(r *seed.Req) {
-			cached(r, fmt.Sprintf("product:%d", 10000+r.IntN(50000)),
+			id := 10000 + r.IntN(50000)
+			r.RootAttr("url.path", fmt.Sprintf("/api/products/%d", id))
+			cached(r, fmt.Sprintf("product:%d", id),
 				"SELECT id, slug, name, price_cents, currency, images, attributes FROM products WHERE id = $1", [2]float64{3, 7}, 1)
 		}},
 		{"GET", "/api/categories/:slug/products", "ProductsController", "byCategory", 700, func(r *seed.Req) {
-			cached(r, "category:"+pdbCategorySlugs[r.IntN(len(pdbCategorySlugs))]+":page:1",
+			slug := pdbCategorySlugs[r.IntN(len(pdbCategorySlugs))]
+			r.RootAttr("url.path", "/api/categories/"+slug+"/products")
+			cached(r, "category:"+slug+":page:1",
 				"SELECT p.id, p.slug, p.name, p.price_cents, p.currency, p.thumbnail_url FROM products p JOIN categories c ON c.id = p.category_id WHERE c.slug = $1 ORDER BY p.rank LIMIT 48", [2]float64{6, 14}, 48)
 		}},
 		{"GET", "/api/cart", "CartController", "get", 650, func(r *seed.Req) {

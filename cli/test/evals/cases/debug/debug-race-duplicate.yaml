@@ -5,7 +5,7 @@ tags: [node, express, concurrency]
 seed: debug/race-duplicate
 arms: [cli+skill, cli-noskill, mcp]
 invoke: natural
-distractor: A six-minute burst of "Connection terminated due to connection timeout" on GET /api/orders/:orderId three days ago looks like a database problem, but it stopped by itself and is not on the checkout route.
+distractor: A burst of a few minutes of "Connection terminated due to connection timeout" on GET /api/orders/:orderId three days ago looks like a database problem, but it stopped by itself and is not on the checkout route.
 workspace: {repo: checkout-api-node}
 prompt: |
   Customers keep telling support that checkout showed "Something went wrong" even though their order went through and they got the confirmation e-mail. Can you look into it and fix it?
@@ -74,7 +74,7 @@ oracle:
         - {call_id: c01, claim: "the checkout's only live group is the orders_cart_id_key unique violation; the connection-timeout group is a short burst three days ago on another route"}
         - {call_id: c02, claim: "duplicate key value violates unique constraint orders_cart_id_key at the INSERT in placeOrder (service.js:20), on POST /api/orders"}
         - {call_id: c03, claim: "the same cart became an order in another request (its own trace), which logged 'order ... placed for cart ...' shortly after the failing request: that first submit was still charging the card when the duplicate arrived"}
-        - {call_id: c04, claim: "the failing request itself only logged the unique violation"}
+        - {call_id: c04, claim: "the failing request itself logged only the unique violation and its 500"}
         - {call_id: c05, claim: "placeOrder inserts unconditionally, so a second submit of a cart fails instead of returning its order"}
       fix_summary: placeOrder treats the cart id as the idempotency key; on the orders_cart_id_key violation it returns the order the first submit created, without charging again.
       files_changed: [src/orders/service.js]

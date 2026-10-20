@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/tracewayapp/traceway/cli/test/evals/internal/agent"
 	"github.com/tracewayapp/traceway/cli/test/evals/internal/catalog"
@@ -72,6 +73,10 @@ type Input struct {
 	// Hold is the run's reservation of the cost cap; the judge's spending
 	// goes there (nil: straight to the judge's ledger).
 	Hold *agent.Hold
+	// VerifyStart is when the setup verify step started. endpoint_seen
+	// counts only telemetry from then on, so the agent's own test runs
+	// cannot stand in for the production start command.
+	VerifyStart time.Time
 }
 
 // All runs every applicable grader in a fixed order.

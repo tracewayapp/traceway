@@ -364,7 +364,7 @@ func (m *metricSeries) render(times []time.Time, origin time.Time) *metricspb.Me
 		carry := m.histCarry
 		for _, t := range times {
 			per := math.Max(0, m.count(t)*t.Sub(prev).Minutes()) + carry
-			cnt := uint64(math.Round(per))
+			cnt := uint64(math.Max(0, math.Round(per)))
 			carry = per - float64(cnt)
 			mean := m.value(t)
 			s := mean * float64(cnt)

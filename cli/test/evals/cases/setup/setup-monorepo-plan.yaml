@@ -63,7 +63,6 @@ setup:
     start: cd api && ./.twevals-app
     hit: [/api/products, /api/products/1, /api/products/2]
     env_files: [api/.env]
-    wait: 2s
 prompt: |
   Can you set up Traceway monitoring for this repo? We self-host it at {{env.url}} and haven't created any projects yet. Here's the setup token from the /setup page: {{env.setupToken}}. I have that page open, so I can approve your proposal there.
 budget: {max_turns: 55, max_tool_calls: 50, max_output_tokens: 24000, timeout: 30m}
@@ -156,7 +155,7 @@ oracle:
   - shell: cd web && npm run build 2>&1 | tail -n 4 && echo "bundles with a debug ID:" $(grep -lE '//# debugId=' dist/assets/*.js | wc -l)
   - finish:
       summary: |
-        Traceway is set up for both components. You approved the plan, which created two projects: "Shop API" (OpenTelemetry) for api/ and "Shop Web" (React) for web/. The apply step wrote TRACEWAY_API_TOKEN into api/.env and VITE_TRACEWAY_CONNECTION_STRING into web/.env.local (both gitignored; I never printed or read the values), and I added TRACEWAY_URL to api/.env. api/ exports traces over OTLP/HTTP to $TRACEWAY_URL/api/otel/v1/traces with the token from TRACEWAY_API_TOKEN, service.name shop-api, the W3C propagator, and otelhttp around each handler so endpoints group by route (GET /api/products/{id}). web/ wraps the app in TracewayProvider with the connection string from VITE_TRACEWAY_CONNECTION_STRING and emits debug IDs and source maps. Both build, and the API tests pass. For production: run the API container with --env-file api/.env, and build web/ where web/.env.local (or the same variable) is present; upload web/dist source maps with a Shop Web upload token as TRACEWAY_SOURCEMAP_TOKEN. Check /endpoints in Shop API and /issues in Shop Web for the last 15 minutes.
+        Traceway is set up for both components. You approved the plan, which created two projects: "Shop API" (OpenTelemetry) for api/ and "Shop Web" (React) for web/. The apply step wrote TRACEWAY_API_TOKEN into api/.env and VITE_TRACEWAY_CONNECTION_STRING into web/.env.local (both gitignored; I never printed the values), and I added TRACEWAY_URL to api/.env. api/ exports traces over OTLP/HTTP to $TRACEWAY_URL/api/otel/v1/traces with the token from TRACEWAY_API_TOKEN, service.name shop-api, the W3C propagator, and otelhttp around each handler so endpoints group by route (GET /api/products/{id}). web/ wraps the app in TracewayProvider with the connection string from VITE_TRACEWAY_CONNECTION_STRING and emits debug IDs and source maps. Both build, and the API tests pass. For production: run the API container with --env-file api/.env, and build web/ where web/.env.local (or the same variable) is present; upload web/dist source maps with a Shop Web upload token as TRACEWAY_SOURCEMAP_TOKEN. Check /endpoints in Shop API and /issues in Shop Web for the last 15 minutes.
       changes:
         - {action: create projects through an approved setup plan, target: "Shop API, Shop Web"}
         - {action: add OpenTelemetry tracing, target: api/telemetry.go}

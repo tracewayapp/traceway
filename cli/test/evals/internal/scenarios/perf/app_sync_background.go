@@ -13,7 +13,7 @@ import (
 func init() { scenarios.Register("perf/app-sync-background", papSeedSyncBackground) }
 
 // papSeedSyncBackground: POST /api/statements renders the statement PDF in
-// the request (6-11s) and uploads it before answering, although the
+// the request (6-12s) and uploads it before answering, although the
 // dashboard only polls GET /api/statements/{id} for the result. Distractor:
 // host CPU jumps to 65-95% while a render runs, which looks like saturation,
 // but the average is ~20%, the endpoint is just as slow when the host is
@@ -44,7 +44,7 @@ func papSeedSyncBackground(s *seed.Scenario) error {
 		sorted = false
 		key := "statements/" + r.Start().Format("2006") + "/" + papStatementID(r) + ".pdf"
 		r.HTTP("PUT", "https://acme-billing-statements.s3.eu-west-1.amazonaws.com/"+key, r.Ms(160, 420), 200,
-			seed.A("http.request.body.size", 90000+pages*38000))
+			seed.A("http.request.body.size", 90000+pages*38000)).Name = "HTTP PUT"
 		r.DB("UPDATE statements SET status = 'ready', object_key = $2, rendered_at = now() WHERE id = $1", r.Ms(2, 4))
 		r.Gap(r.Ms(0.3, 0.9))
 		r.Status(201)

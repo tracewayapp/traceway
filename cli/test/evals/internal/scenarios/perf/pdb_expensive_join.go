@@ -61,23 +61,18 @@ func pdbSeedExpensiveJoin(s *seed.Scenario) error {
 		r.Gap(r.Ms(1.5, 4))
 	})
 
-	for _, rt := range []struct {
-		method, route string
-		perDay        int
-		queries       []string
-		dbMedianMs    float64
-	}{
-		{"GET", "/api/user", 90, nil, 0},
-		{"GET", "/api/stores/{store}/orders/{order}", 80, []string{
+	for _, rt := range []pdbRoute{
+		{method: "GET", route: "/api/user", perDay: 90},
+		{method: "GET", route: "/api/stores/{store}/orders/{order}", perDay: 80, queries: []string{
 			"select `orders`.`id`, `orders`.`number`, `orders`.`status`, `orders`.`total`, `orders`.`customer_id`, `orders`.`created_at` from `orders` where `orders`.`id` = ? and `orders`.`store_id` = ? limit 1",
 			"select `order_items`.`id`, `order_items`.`product_id`, `order_items`.`quantity`, `order_items`.`unit_price` from `order_items` where `order_items`.`order_id` = ?",
-		}, 1.2},
-		{"GET", "/api/stores/{store}/products", 60, []string{
+		}, dbMedianMs: 1.2},
+		{method: "GET", route: "/api/stores/{store}/products", perDay: 60, queries: []string{
 			"select `products`.`id`, `products`.`sku`, `products`.`name`, `products`.`price`, `products`.`category_id` from `products` where `products`.`store_id` = ? order by `products`.`name` asc limit 50 offset 0",
-		}, 2.5},
-		{"PUT", "/api/stores/{store}/products/{product}", 15, []string{
+		}, dbMedianMs: 2.5},
+		{method: "PUT", route: "/api/stores/{store}/products/{product}", perDay: 15, queries: []string{
 			"update `products` set `name` = ?, `price` = ?, `updated_at` = ? where `id` = ?",
-		}, 1.6},
+		}, dbMedianMs: 1.6},
 	} {
 		rt := rt
 		e := api.Endpoint(rt.method, rt.route)

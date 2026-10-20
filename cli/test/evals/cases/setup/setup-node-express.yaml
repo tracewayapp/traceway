@@ -35,7 +35,7 @@ expect:
       not_contains: ["exporter-trace-otlp-grpc"]
     - kind: file
       path: "**/*"
-      contains: ["/api/otel", "TRACEWAY_TOKEN", "service\\.name|serviceName|OTEL_SERVICE_NAME"]
+      contains: ["/api/otel", "TRACEWAY_TOKEN", "service\\.name|serviceName|SERVICE_NAME"]
     - kind: no_token_literal
     - kind: no_token_printed
     - kind: endpoint_seen

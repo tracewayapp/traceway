@@ -59,6 +59,19 @@ func TestHistogramLowRateKeepsCount(t *testing.T) {
 	if total < 29 || total > 31 {
 		t.Fatalf("100 minutes at 0.3/min reported %d observations, want 30", total)
 	}
+
+	m.histPrev, m.histCarry = time.Time{}, 0
+	m.count = func(t time.Time) float64 {
+		if t.Equal(base) {
+			return 0.5
+		}
+		return 0
+	}
+	for _, dp := range m.render(times[:3], base).GetHistogram().DataPoints {
+		if dp.Count > 1 {
+			t.Fatalf("a rate that stops after half an observation reported %d at %d", dp.Count, dp.TimeUnixNano)
+		}
+	}
 }
 
 // TestRatioGaugeStaysInRange: the jitter never pushes a ratio past 1.

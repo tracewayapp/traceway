@@ -112,8 +112,6 @@ func wrSeedPageResolveArchive(s *seed.Scenario) error {
 		Config: map[string]any{"endpoint": "GET /api/recommendations", "thresholdMs": 1500, "lookbackMinutes": 15}})
 
 	s.Background(api, seed.TrafficOpts{Endpoints: 6, PerDay: 150, NoErrors: true})
-	s.Expose("ruleId", errRule)
-	s.Expose("badDeployAt", badDeploy.Format(time.RFC3339))
 	s.Expose("rollbackAt", rollback.Format(time.RFC3339))
 
 	s.AfterFlush(func() error {
@@ -137,7 +135,6 @@ func wrSeedPageResolveArchive(s *seed.Scenario) error {
 			return fmt.Errorf("page %d is for issue %q, want %q", pg.ID, pg.IssueHash, hash)
 		}
 		s.Expose("pageId", pg.ID)
-		s.Expose("pageOpenedAt", pg.CreatedAt)
 		s.Expose("otherPageId", other.ID)
 		s.Expose("hash", hash)
 		s.Expose("otherHash", beacon)

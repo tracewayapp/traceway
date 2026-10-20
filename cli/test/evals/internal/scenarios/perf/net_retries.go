@@ -17,27 +17,37 @@ const (
 	pncRetryErrType = "tenacity.RetryError"
 )
 
-const pncRetryErrorStack = `Traceback (most recent call last):
+// What the FastAPI instrumentation records on the server span when all three
+// attempts fail: the last attempt's exception, then the RetryError raised
+// through the access-log middleware.
+const pncReadTimeoutCause = `Traceback (most recent call last):
   File "/usr/local/lib/python3.12/site-packages/httpx/_transports/default.py", line 101, in map_httpcore_exceptions
     yield
   File "/usr/local/lib/python3.12/site-packages/httpx/_transports/default.py", line 394, in handle_async_request
     resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/usr/local/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 256, in handle_async_request
     raise exc from None
   File "/usr/local/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 236, in handle_async_request
     response = await connection.handle_async_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/usr/local/lib/python3.12/site-packages/httpcore/_async/connection.py", line 103, in handle_async_request
     return await self._connection.handle_async_request(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/usr/local/lib/python3.12/site-packages/httpcore/_async/http11.py", line 136, in handle_async_request
     raise exc
   File "/usr/local/lib/python3.12/site-packages/httpcore/_async/http11.py", line 106, in handle_async_request
     ) = await self._receive_response_headers(**kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/usr/local/lib/python3.12/site-packages/httpcore/_async/http11.py", line 177, in _receive_response_headers
     event = await self._receive_event(timeout=timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/usr/local/lib/python3.12/site-packages/httpcore/_async/http11.py", line 217, in _receive_event
     data = await self._network_stream.read(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/usr/local/lib/python3.12/site-packages/httpcore/_backends/anyio.py", line 32, in read
     with map_exceptions(exc_map):
+         ^^^^^^^^^^^^^^^^^^^^^^^
   File "/usr/local/lib/python3.12/contextlib.py", line 158, in __exit__
     self.gen.throw(value)
   File "/usr/local/lib/python3.12/site-packages/httpcore/_exceptions.py", line 14, in map_exceptions
@@ -49,50 +59,124 @@ The above exception was the direct cause of the following exception:
 Traceback (most recent call last):
   File "/usr/local/lib/python3.12/site-packages/tenacity/asyncio/__init__.py", line 114, in __call__
     result = await fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/app/app/carriers/client.py", line 36, in fetch_rates
     response = await self._http.post(RATES_URL, json=payload)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 1859, in post
     return await self.request(
+           ^^^^^^^^^^^^^^^^^^^
   File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 1540, in request
     return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 1629, in send
     response = await self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 1657, in _send_handling_auth
     response = await self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 1694, in _send_handling_redirects
     response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 1730, in _send_single_request
     response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/opentelemetry/instrumentation/httpx/__init__.py", line 1175, in _handle_async_request_wrapper
+    raise exception.with_traceback(exception.__traceback__)
+  File "/usr/local/lib/python3.12/site-packages/opentelemetry/instrumentation/httpx/__init__.py", line 1133, in _handle_async_request_wrapper
+    response = await wrapped(*args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/usr/local/lib/python3.12/site-packages/httpx/_transports/default.py", line 393, in handle_async_request
     with map_httpcore_exceptions():
+         ^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/usr/local/lib/python3.12/contextlib.py", line 158, in __exit__
     self.gen.throw(value)
   File "/usr/local/lib/python3.12/site-packages/httpx/_transports/default.py", line 118, in map_httpcore_exceptions
     raise mapped_exc(message) from exc
-httpx.ReadTimeout
+httpx.ReadTimeout`
+
+const pnc503Cause = `Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/site-packages/tenacity/asyncio/__init__.py", line 114, in __call__
+    result = await fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/app/carriers/client.py", line 37, in fetch_rates
+    response.raise_for_status()
+  File "/usr/local/lib/python3.12/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Server error '503 Service Unavailable' for url 'https://rates.carrier.example/v2/rates'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/503`
+
+const pncRetryErrorFrames = `
 
 The above exception was the direct cause of the following exception:
 
 Traceback (most recent call last):
-  File "/usr/local/lib/python3.12/site-packages/starlette/routing.py", line 75, in app
+  File "/usr/local/lib/python3.12/site-packages/opentelemetry/instrumentation/fastapi/__init__.py", line 307, in __call__
+    await self.app(scope, receive, send)
+  File "/usr/local/lib/python3.12/site-packages/starlette/middleware/base.py", line 182, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+                                   ^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "/usr/local/lib/python3.12/site-packages/starlette/_utils.py", line 85, in collapse_excgroups
+    raise exc
+  File "/usr/local/lib/python3.12/site-packages/starlette/middleware/base.py", line 184, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/app/access_log.py", line 17, in access_log
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/starlette/middleware/base.py", line 159, in call_next
+    raise app_exc
+  File "/usr/local/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/usr/local/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/usr/local/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/usr/local/lib/python3.12/site-packages/starlette/routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/usr/local/lib/python3.12/site-packages/starlette/routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "/usr/local/lib/python3.12/site-packages/starlette/routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "/usr/local/lib/python3.12/site-packages/fastapi/routing.py", line 123, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/usr/local/lib/python3.12/site-packages/fastapi/routing.py", line 109, in app
     response = await f(request)
+               ^^^^^^^^^^^^^^^^
   File "/usr/local/lib/python3.12/site-packages/fastapi/routing.py", line 387, in app
     raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/usr/local/lib/python3.12/site-packages/fastapi/routing.py", line 288, in run_endpoint_function
     return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/app/app/routes/quotes.py", line 27, in create_quote
     rates = await carrier.fetch_rates(parcel)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/usr/local/lib/python3.12/site-packages/tenacity/asyncio/__init__.py", line 189, in async_wrapped
     return await copy(fn, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/usr/local/lib/python3.12/site-packages/tenacity/asyncio/__init__.py", line 111, in __call__
     do = await self.iter(retry_state=retry_state)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/usr/local/lib/python3.12/site-packages/tenacity/asyncio/__init__.py", line 153, in iter
     result = await action(retry_state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/usr/local/lib/python3.12/site-packages/tenacity/_utils.py", line 99, in inner
     return call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
   File "/usr/local/lib/python3.12/site-packages/tenacity/__init__.py", line 421, in exc_check
     raise retry_exc from fut.exception()
-tenacity.RetryError: RetryError[<Future at 0x7f3a2c1b9d50 state=finished raised ReadTimeout>]`
+`
 
 // pncSeedRetries: the shipping quote endpoint asks a carrier's rate API
 // through httpx with no explicit timeout (httpx's default 5s) inside a
@@ -118,6 +202,7 @@ func pncSeedRetries(s *seed.Scenario) error {
 		r.DB("SELECT id, weight_grams, length_mm, width_mm, height_mm, origin_postcode, destination_postcode, destination_country FROM parcels WHERE id = %s", r.LogNormal(2*time.Millisecond, 6*time.Millisecond))
 		ok := false
 		force := false
+		failure := ""
 		if forced == nil && !r.Start().Before(forceFrom) && r.Start().Before(forceTo) {
 			forced, force = r.Request(), true
 		}
@@ -133,10 +218,10 @@ func pncSeedRetries(s *seed.Scenario) error {
 				delete(sp.Attrs, "http.response.status_code")
 				sp.Attrs["error.type"] = "ReadTimeout"
 				sp.Status, sp.StatusMsg = seed.StatusError, "ReadTimeout: "
-				cause = "ReadTimeout: "
+				cause, failure = "ReadTimeout: ", "ReadTimeout"
 			case x < 0.05:
 				r.HTTP("POST", pncRatesURL, r.LogNormal(35*time.Millisecond, 90*time.Millisecond), 503, seed.A("error.type", "503"))
-				cause = "HTTPStatusError: " + pnc503Message
+				cause, failure = "HTTPStatusError: "+pnc503Message, "HTTPStatusError"
 			default:
 				r.HTTP("POST", pncRatesURL, r.LogNormal(150*time.Millisecond, 400*time.Millisecond), 200)
 				ok = true
@@ -147,12 +232,17 @@ func pncSeedRetries(s *seed.Scenario) error {
 			if attempt < 3 {
 				wait := float64(int(1) << (attempt - 1))
 				r.Log(seed.SevWarn, fmt.Sprintf("Retrying %s in %.1f seconds as it raised %s.", pncRetryFn, wait, cause),
-					seed.A("code.filepath", "/usr/local/lib/python3.12/site-packages/tenacity/before_sleep.py"), seed.A("code.function", "log_it"), seed.A("code.lineno", 65))
+					seed.A("code.file.path", "/usr/local/lib/python3.12/site-packages/tenacity/before_sleep.py"), seed.A("code.function.name", "log_it"), seed.A("code.line.number", 65))
 				r.Gap(time.Duration(wait * float64(time.Second)))
 			}
 		}
 		if !ok {
-			r.Error(seed.Exc{Type: pncRetryErrType, Message: "RetryError[<Future at 0x7f3a2c1b9d50 state=finished raised ReadTimeout>]", Stack: pncRetryErrorStack, Escaped: true})
+			stack := pncReadTimeoutCause
+			if failure == "HTTPStatusError" {
+				stack = pnc503Cause
+			}
+			msg := "RetryError[<Future at 0x7f3a2c1b9d50 state=finished raised " + failure + ">]"
+			r.Error(seed.Exc{Type: pncRetryErrType, Message: msg, Stack: stack + pncRetryErrorFrames + pncRetryErrType + ": " + msg, Escaped: true})
 			r.Status(500)
 			r.Compute(route+" http send", r.Ms(0.05, 0.2))
 			return

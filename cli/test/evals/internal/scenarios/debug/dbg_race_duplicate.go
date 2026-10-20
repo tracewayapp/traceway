@@ -13,7 +13,6 @@ func init() { scenarios.Register("debug/race-duplicate", dbgSeedRaceDuplicate) }
 type dbgSubmit struct {
 	req      *seed.Request
 	cartID   string
-	orderID  string
 	insertAt time.Duration // offset of the order INSERT in the first request
 	endAt    time.Duration
 	client   string
@@ -25,8 +24,8 @@ type dbgSubmit struct {
 // creates the order, charges the card and queues the confirmation; the
 // second arrives while the charge is running, hits the orders_cart_id_key
 // unique constraint and answers 500, which is the page the shopper sees.
-// Distractor: a short connection-timeout burst on GET /api/orders/:id three
-// days ago.
+// Distractor: a short connection-timeout burst on GET /api/orders/:orderId
+// three days ago.
 func dbgSeedRaceDuplicate(s *seed.Scenario) error {
 	p := s.Project("storefront", seed.OTel)
 	api := p.Service("checkout-api", seed.Node("express", "pg")).Versions("4.2.0")
@@ -77,7 +76,7 @@ func dbgSeedRaceDuplicate(s *seed.Scenario) error {
 		finish(r, cartID, orderID, double || r.Chance(0.01))
 		if double {
 			rq := r.Request()
-			submits = append(submits, &dbgSubmit{req: rq, cartID: cartID, orderID: orderID, insertAt: insertAt, endAt: r.At().Sub(r.Start()),
+			submits = append(submits, &dbgSubmit{req: rq, cartID: cartID, insertAt: insertAt, endAt: r.At().Sub(r.Start()),
 				client: rq.Root.Attrs["client.address"].(string), ua: rq.Root.Attrs["user_agent.original"].(string)})
 		}
 	})
@@ -135,11 +134,7 @@ func dbgSeedRaceDuplicate(s *seed.Scenario) error {
 	s.Background(api, seed.TypicalTraffic(3))
 	api.Host().CPU(seed.Flat(0.18, 0.3))
 
-	s.Expose("pairs", func() any {
-		place.Requests()
-		again.Requests()
-		return len(submits)
-	})
+	s.Expose("pairs", func() any { return len(submits) })
 	s.AfterFlush(func() error {
 		hash, err := p.GroupMatching(8*24*time.Hour, "orders_cart_id_key")
 		if err != nil {

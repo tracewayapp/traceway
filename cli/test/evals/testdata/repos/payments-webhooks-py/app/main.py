@@ -8,11 +8,13 @@ import psycopg
 from fastapi import FastAPI, HTTPException, Request
 from opentelemetry import trace
 
+from app.access_log import AccessLog
 from app.store import Store
 from app.webhooks import SignatureError, handle_event, verify_signature
 
 log = logging.getLogger("app.webhooks")
 app = FastAPI()
+app.add_middleware(AccessLog)
 conn = psycopg.connect(os.environ["DATABASE_URL"], autocommit=True)
 store = Store(conn)
 SECRET = os.environ["WEBHOOK_SECRET"]

@@ -1,8 +1,12 @@
 import express from 'express';
+import { accessLog } from './access-log.js';
 import { pool, redis } from './db.js';
 import { priceCart } from './pricing.js';
 
 const app = express();
+// Ahead of the access log, so readiness probes stay out of it.
+app.get('/healthz', (_req, res) => res.sendStatus(204));
+app.use(accessLog);
 app.use(express.json({ limit: '100kb' }));
 
 app.get('/api/products', async (req, res) => {
@@ -28,8 +32,6 @@ app.get('/api/search', async (req, res) => {
   const body = await r.json();
   res.json(body.hits.hits.map((h) => ({ id: h._id, ...h._source })));
 });
-
-app.get('/healthz', (_req, res) => res.sendStatus(204));
 
 app.get('/api/cart', async (req, res) => {
   const { rows } = await pool.query(

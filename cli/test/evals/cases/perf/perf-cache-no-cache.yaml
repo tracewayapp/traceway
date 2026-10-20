@@ -18,7 +18,7 @@ expect:
     not: [expensive_join_or_aggregation, missing_or_unused_index, over_fetching, cpu_saturation]
     locus: {endpoint: "GET /api/catalog", service: catalog-api}
   grounding:
-    - "SET catalog:/api/catalog?locale=en-US"
+    - "set catalog:/api/catalog?locale=en-US"
     - "cache.hit_ratio"
   calls:
     required:
@@ -33,7 +33,7 @@ expect:
 judge:
   expected: No cache / low hit ratio. GET /api/catalog is by far the busiest endpoint (~9000 requests a day, each ~55ms, ~45ms of it the catalog query over ~1200 rows plus serialization of ~410KB). catalog-api does have a Redis cache, but keys it by the full URL (catalog-cache.js cacheKey(req.originalUrl)), and the web app's useCatalog hook fetches the catalog on every route change with a cache-busting _=Date.now() parameter, so every request misses (cache.hit_ratio for the catalog cache ~3%, against ~97% for the session cache), rebuilds and stores a key nobody reads again. The shop-web occurrences show the same catalog URL fetched again after every navigation. Fix by keying the cache by locale only, dropping the buster, fetching once per page load in the SPA, and sending Cache-Control so browsers and the CDN reuse it.
   rubric:
-    - Shows that the cache exists but never hits (unique _= keys in the GET/SET spans, the low catalog cache.hit_ratio) and that the endpoint's cost is volume, not per-request slowness.
+    - Shows that the cache exists but never hits (unique _= keys in the get/set spans, the low catalog cache.hit_ratio) and that the endpoint's cost is volume, not per-request slowness.
     - Uses the shop-web project's captured navigations and network actions to show the catalog is re-fetched on every route change with a cache buster.
     - Proposes keying the server cache by locale, removing the buster and fetching once per page load (plus HTTP caching), rather than tuning the query.
 oracle:
@@ -64,7 +64,7 @@ oracle:
   - submit:
       checklist_item: no_cache_low_hit_ratio
       category: caching
-      locus: {endpoint: "GET /api/catalog", span: "GET catalog:/api/catalog?locale=en-US&_=<timestamp> (miss) then SELECT products and SET", service: catalog-api}
+      locus: {endpoint: "GET /api/catalog", span: "get catalog:/api/catalog?locale=en-US&_=<timestamp> (miss) then SELECT products and set", service: catalog-api}
       onset: null
       evidence:
         - {call_id: c01, claim: "GET /api/catalog serves ~9000 requests a day at ~55ms and is by far the largest total time; nothing is slow per request"}

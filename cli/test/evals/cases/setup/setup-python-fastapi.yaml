@@ -13,9 +13,9 @@ setup:
     TRACEWAY_URL: "@url"
     TRACEWAY_PROJECT_TOKEN: "@token:inventory-api"
     PORT: "@port"
-  # The image installs requirements.txt (plus whatever its Dockerfile runs)
-  # into a clean environment, so the check does too: a package that only
-  # reached the agent's .venv never reaches production.
+  # The image installs requirements.txt into a clean environment (and runs
+  # opentelemetry-bootstrap if its Dockerfile does), so the check does too: a
+  # package that only reached the agent's .venv never reaches production.
   verify:
     build: |
       set -e
@@ -42,7 +42,7 @@ expect:
       contains: ["(?i)^opentelemetry-", "^fastapi==0\\.115\\.12"]
     - kind: file
       path: "**/*"
-      contains: ["/api/otel", "TRACEWAY_PROJECT_TOKEN", "OTEL_SERVICE_NAME|service\\.name|service_name"]
+      contains: ["/api/otel", "TRACEWAY_PROJECT_TOKEN", "SERVICE_NAME|service\\.name|service_name"]
     - kind: no_token_literal
     - kind: no_token_printed
     - kind: endpoint_seen
@@ -55,9 +55,9 @@ expect:
     forbidden:
       - {op: "*", write: true}
 judge:
-  expected: FastAPI is pinned below 0.142.0, so there is no built-in telemetry. The agent takes the generic Python path - opentelemetry-distro, the OTLP/HTTP exporter and the FastAPI instrumentation declared in requirements.txt - and changes start.sh to run uvicorn under opentelemetry-instrument with OTEL_EXPORTER_OTLP_ENDPOINT=$TRACEWAY_URL/api/otel, OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf (Python otherwise defaults to gRPC and silently exports nothing), the Authorization header built from TRACEWAY_PROJECT_TOKEN at runtime, and OTEL_SERVICE_NAME. It does not upgrade FastAPI without asking.
+  expected: FastAPI is pinned below 0.142.0, so there is no built-in telemetry. The agent takes the generic Python path - opentelemetry-distro, the OTLP/HTTP exporter and the FastAPI instrumentation declared in requirements.txt - and changes start.sh to run uvicorn under opentelemetry-instrument with OTEL_EXPORTER_OTLP_ENDPOINT=$TRACEWAY_URL/api/otel, OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf (Python otherwise defaults to gRPC and exports nothing), the Authorization header built from TRACEWAY_PROJECT_TOKEN at runtime, and OTEL_SERVICE_NAME. It does not upgrade FastAPI without asking.
   rubric:
-    - Sets OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf (or configures an HTTP exporter explicitly) and points the base endpoint at <instance>/api/otel without a /v1/traces suffix.
+    - Sets OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf (or configures an HTTP exporter explicitly) and points OTEL_EXPORTER_OTLP_ENDPOINT at <instance>/api/otel without a /v1/traces suffix (a signal-specific endpoint or an exporter built in code takes the full /api/otel/v1/traces URL).
     - Runs the production entry point (start.sh) under opentelemetry-instrument, or instruments the app in code, so the container exports too.
     - Declares the new packages in requirements.txt so the image build installs them, and keeps FastAPI at the pinned version.
     - Never prints or hard-codes the token, and sets service.name.

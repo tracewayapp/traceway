@@ -6,7 +6,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -16,7 +15,6 @@ import (
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/log/global"
@@ -46,8 +44,8 @@ func init() {
 			otelsql.WithSpanOptions(otelsql.SpanOptions{OmitConnResetSession: true, OmitConnPrepare: true, OmitRows: true, OmitConnectorConnect: true}))
 	}
 	tracer := otel.Tracer(service)
-	Start = func(ctx context.Context, name string, kv ...any) (context.Context, func()) {
-		ctx, span := tracer.Start(ctx, name, trace.WithAttributes(attrs(kv)...))
+	Start = func(ctx context.Context, name string) (context.Context, func()) {
+		ctx, span := tracer.Start(ctx, name)
 		return ctx, func() { span.End() }
 	}
 }
@@ -98,18 +96,4 @@ func querySpanName(query string) string {
 		}
 	}
 	return op
-}
-
-func attrs(kv []any) []attribute.KeyValue {
-	out := make([]attribute.KeyValue, 0, len(kv)/2)
-	for i := 0; i+1 < len(kv); i += 2 {
-		k := fmt.Sprint(kv[i])
-		switch v := kv[i+1].(type) {
-		case int:
-			out = append(out, attribute.Int(k, v))
-		default:
-			out = append(out, attribute.String(k, fmt.Sprint(v)))
-		}
-	}
-	return out
 }

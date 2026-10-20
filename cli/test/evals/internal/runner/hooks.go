@@ -72,12 +72,11 @@ func (h *hookRunner) run(ctx context.Context, hk catalog.Hook) error {
 	arg := func(k string) string { return fmt.Sprint(hk.Args[k]) }
 	switch hk.Action {
 	case "edit_post_mortem":
-		// A teammate edits the document between the agent's read and write.
+		// A teammate inserts text after insert_after between the agent's
+		// read and write. It edits the current body rather than replacing it,
+		// so an agent that read and wrote in one shell call keeps its edit.
 		// The PUT replaces the whole document (title required), so the
 		// title, tags and incident link are carried over from a fresh read.
-		// insert_after + text adds a line to the current body instead of
-		// replacing it, so an agent that read and wrote in one shell call
-		// keeps its edit.
 		path := "/api/post-mortems/" + arg("id")
 		cur, err := api.Do(ctx, http.MethodGet, path, env.ProjectQuery(h.pid), nil)
 		if err != nil {
@@ -87,15 +86,12 @@ func (h *hookRunner) run(ctx context.Context, hk catalog.Hook) error {
 			return fmt.Errorf("GET %s: HTTP %d", path, cur.Status)
 		}
 		m := cur.Map()
-		content := arg("content")
-		if anchor, ok := hk.Args["insert_after"].(string); ok {
-			doc, _ := m["contentMd"].(string)
-			if !strings.Contains(doc, anchor) {
-				return fmt.Errorf("post-mortem %s has no %q", arg("id"), anchor)
-			}
-			content = strings.Replace(doc, anchor, anchor+arg("text"), 1)
+		doc, _ := m["contentMd"].(string)
+		anchor := arg("insert_after")
+		if !strings.Contains(doc, anchor) {
+			return fmt.Errorf("post-mortem %s has no %q", arg("id"), anchor)
 		}
-		body := map[string]any{"contentMd": content, "title": m["title"], "tags": m["tags"], "incidentId": m["incidentId"]}
+		body := map[string]any{"contentMd": strings.Replace(doc, anchor, anchor+arg("text"), 1), "title": m["title"], "tags": m["tags"], "incidentId": m["incidentId"]}
 		res, err := api.Do(ctx, http.MethodPut, path, env.ProjectQuery(h.pid), body)
 		if err != nil {
 			return err

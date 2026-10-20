@@ -13,7 +13,7 @@ func init() { scenarios.Register("debug/timeout-downstream", dbgSeedTimeoutDowns
 // dbgSeedTimeoutDownstream: the cart page's quote calls the pricing service,
 // which has always taken 0.25-4.2s (p50 1.1s, p95 2.4s, p99 3.1-3.4s, no release
 // all week). cart-api v1.14.0 (26h ago) lowered its default upstream timeout
-// from 5s to 2s, so about one quote in nine now fails with context deadline
+// from 5s to 2s, so about one quote in ten now fails with context deadline
 // exceeded. Distractor: the pricing service looks slow, but it is unchanged.
 func dbgSeedTimeoutDownstream(s *seed.Scenario) error {
 	deployAt := s.Ago(26 * time.Hour).Truncate(time.Minute).Add(-3 * time.Minute)
@@ -23,15 +23,17 @@ func dbgSeedTimeoutDownstream(s *seed.Scenario) error {
 	pricing := p.Service("pricing-service", seed.Python("fastapi", "psycopg")).Versions("4.2.1")
 	const mod = "example.com/cart-api/internal"
 	stack := dbgOtelStack(6152,
-		mod+"/telemetry.init.0.func1({0x1d4c3a8, 0xc0004e60e0}, {0x1b6e0a0, 0xc0003f81e0})\n\t/app/internal/telemetry/otel.go:17 +0x8e",
-		mod+"/quote.(*Handler).ServeHTTP(0xc0001a4b40, {0x1d4f2c0, 0xc0004d2380}, 0xc0004c8780)\n\t/app/internal/quote/handler.go:33 +0x1f8",
-		"net/http.(*ServeMux).ServeHTTP(0xc00012a0e0, {0x1d4f2c0, 0xc0004d2380}, 0xc0004c8500)\n\t/usr/local/go/src/net/http/server.go:2848 +0x1c4",
-		mod+"/telemetry.init.0.func2.routeAttr.1({0x1d4f2c0?, 0xc0004d2380?}, 0xc0004c8500)\n\t/app/internal/telemetry/otel_http.go:29 +0x4c",
-		"net/http.HandlerFunc.ServeHTTP(0xc0001c8a80?, {0x1d4f2c0?, 0xc0004d2380?}, 0x1b2a4e0?)\n\t/usr/local/go/src/net/http/server.go:2306 +0x29",
-		"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp.(*middleware).serveHTTP(0xc0001c6000, {0x1d4e1a0, 0xc0004c6000}, 0xc0004c8280, {0x1d3b5a0, 0xc00012a0e0})\n\t/go/pkg/mod/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp@v0.63.0/handler.go:180 +0x1a4c",
-		"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp.NewMiddleware.func1.1({0x1d4e1a0?, 0xc0004c6000?}, 0x0?)\n\t/go/pkg/mod/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp@v0.63.0/handler.go:67 +0x35",
-		"net/http.HandlerFunc.ServeHTTP(0xc0001c8000?, {0x1d4e1a0?, 0xc0004c6000?}, 0xc0004c6001?)\n\t/usr/local/go/src/net/http/server.go:2306 +0x29",
-		"net/http.serverHandler.ServeHTTP({0xc000180d20?}, {0x1d4e1a0?, 0xc0004c6000?}, 0x6?)\n\t/usr/local/go/src/net/http/server.go:3331 +0x8e",
+		mod+"/telemetry.init.0.func1({0xc27dd8?, 0xeaa8c27500?}, {0xc20260, 0xeaa8c26120})\n\t/app/internal/telemetry/otel.go:26 +0xe5",
+		mod+"/quote.(*Handler).ServeHTTP(0xeaa88f3170, {0xc261d0, 0xeaa88cf4e8}, 0xeaa89d7cc0)\n\t/app/internal/quote/handler.go:33 +0x10d",
+		"net/http.(*ServeMux).ServeHTTP(0xeaa8aa6000?, {0xc261d0, 0xeaa88cf4e8}, 0xeaa89d7cc0)\n\t/usr/local/go/src/net/http/server.go:2848 +0x1c7",
+		"main.main.AccessLog.func1({0xc27740, 0xeaa8957aa0}, 0xeaa89d7cc0)\n\t/app/internal/telemetry/access.go:26 +0xd5",
+		"net/http.HandlerFunc.ServeHTTP(0xeaa89b7630?, {0xc27740?, 0xeaa8957aa0?}, 0xeaa899dcc0?)\n\t/usr/local/go/src/net/http/server.go:2306 +0x29",
+		mod+"/telemetry.init.0.func2.routeAttr.1({0xc27740?, 0xeaa8957aa0?}, 0xeaa89d7cc0)\n\t/app/internal/telemetry/otel_http.go:29 +0x4c",
+		"net/http.HandlerFunc.ServeHTTP(0xc27dd8?, {0xc27740?, 0xeaa8957aa0?}, 0xc1b478?)\n\t/usr/local/go/src/net/http/server.go:2306 +0x29",
+		"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp.(*middleware).serveHTTP(0xeaa89dc680, {0xc262c0, 0xeaa89aca50}, 0xeaa8ab0000, {0xc1f980, 0xeaa88cecc0})\n\t/go/pkg/mod/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp@v0.63.0/handler.go:180 +0x1258",
+		"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp.NewMiddleware.func1.1({0xc262c0?, 0xeaa89aca50?}, 0x4bc453?)\n\t/go/pkg/mod/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp@v0.63.0/handler.go:67 +0x35",
+		"net/http.HandlerFunc.ServeHTTP(0x4869d9?, {0xc262c0?, 0xeaa89aca50?}, 0xeaa8932b30?)\n\t/usr/local/go/src/net/http/server.go:2306 +0x29",
+		"net/http.serverHandler.ServeHTTP({0xeaa8aa8000?}, {0xc262c0?, 0xeaa89aca50?}, 0x1?)\n\t/usr/local/go/src/net/http/server.go:3331 +0x8e",
 	)
 
 	quote := cart.Endpoint("GET", "/api/cart/quote")
@@ -81,7 +83,7 @@ func dbgSeedTimeoutDownstream(s *seed.Scenario) error {
 			r.Gap(r.Ms(0.2, 0.5))
 			return
 		}
-		r.Compute("encode response", r.Ms(0.2, 0.6))
+		r.Gap(r.Ms(0.2, 0.6))
 	})
 
 	s.Background(cart, seed.TypicalTraffic(4))

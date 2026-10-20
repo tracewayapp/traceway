@@ -61,7 +61,10 @@ func wrSeedPostMortemCreate(s *seed.Scenario) error {
 	s.Expose("existingPostMortems", []int{older})
 
 	paging := p.PagingChannel("Payments on-call")
-	rule := p.Rule(seed.Rule{Name: "Checkout error rate above 5%", Type: "error_rate_threshold", Channel: paging, Cooldown: 5, Severity: "critical",
+	// A 5-minute cooldown would let the rule fire again while its lookback
+	// still holds the failures, opening a second page after the owner
+	// resolved the first, in the middle of the agent's run.
+	rule := p.Rule(seed.Rule{Name: "Checkout error rate above 5%", Type: "error_rate_threshold", Channel: paging, Cooldown: 60, Severity: "critical",
 		Config: map[string]any{"thresholdPercent": 5, "lookbackMinutes": 5, "minRequests": 10}})
 
 	stub := s.Sink.Stub()
@@ -133,7 +136,6 @@ func wrSeedPostMortemCreate(s *seed.Scenario) error {
 	s.Expose("incidentStartedAt", t0.Format(time.RFC3339))
 	s.Expose("badDeployAt", badDeploy.Format(time.RFC3339))
 	s.Expose("rollbackAt", rollback.Format(time.RFC3339))
-	s.Expose("endAt", end.Add(time.Minute).Format(time.RFC3339))
 
 	s.AfterFlush(func() error {
 		pg, err := p.WaitPage(rule, 90*time.Second)
@@ -225,7 +227,6 @@ func wrSeedPostMortemConflict(s *seed.Scenario) error {
 	const anchor = "- 14:47 502s stopped.\n"
 	teammate := strings.Replace(wrConflictPostMortem, anchor, anchor+wrTeammateLine, 1)
 	s.Expose("postMortemId", id)
-	s.Expose("existingPostMortems", []int{id})
 	s.Expose("teammateAnchor", anchor)
 	s.Expose("teammateLine", wrTeammateLine)
 	s.Expose("staleContent", wrConflictPostMortem+wrAgentLine)

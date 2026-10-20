@@ -33,7 +33,7 @@ expect:
     max_failed_calls: 4
     max_identical_repeats: 2
 judge:
-  expected: Connection-pool exhaustion. The slow request spends most of its time in a gap before its first query (seconds with no span), then runs its normal work (inventory query 40-60ms, payment call ~200ms). Checkout holds its SQLAlchemy session, and so a pooled connection, for the whole request including the payment provider call, so at the lunch and evening rushes the 15 connections (pool_size 10 + max_overflow 5) are all in use (db.client.connection.count used=15, idle=0) and requests queue for one; the few that wait the whole 30s pool_timeout fail with sqlalchemy.exc.TimeoutError ("QueuePool limit of size 10 overflow 5 reached, connection timed out, timeout 30.00"). p50 stays ~300ms while p99 is many seconds, only in the rush hours; GET /api/cart, whose only query takes 3ms, stalls the same way. CPU is moderate. Fix by releasing the connection before the payment call (short transactions around it), then size the pool (and pool_timeout) for the peak concurrency.
+  expected: Connection-pool exhaustion. The slow request spends most of its time in a gap before its first query (seconds with no span), then runs its normal work (inventory query 40-60ms, payment call ~200ms). Checkout holds its SQLAlchemy session, and so a pooled connection, for the whole request including the payment provider call, so at the lunch and evening rushes the 15 connections (pool_size 10 + max_overflow 5) are all in use (db.client.connections.usage used=15, idle=0) and requests queue for one; the few that wait the whole 30s pool_timeout fail with sqlalchemy.exc.TimeoutError ("QueuePool limit of size 10 overflow 5 reached, connection timed out, timeout 30.00"). p50 stays ~300ms while p99 is many seconds, only in the rush hours; GET /api/cart, whose only query takes 3ms, stalls the same way. CPU is moderate. Fix by releasing the connection before the payment call (short transactions around it), then size the pool (and pool_timeout) for the peak concurrency.
   rubric:
     - Points at the gap before the first DB span as time waiting for a connection, not query time, and quantifies it.
     - Uses the QueuePool timeout logs/TimeoutError issues and the rush-hour-only p99 (or the pool metric at 15 used, 0 idle) to confirm the pool, and rules out the database and the payment provider with their per-span timings.
@@ -57,7 +57,7 @@ oracle:
       traceway exceptions list --since 3d --output json
       | jq '[.data[] | {hash: .exceptionHash, count, firstSeen, lastSeen, top: (.stackTrace | split("\n") | last)}]'
   - shell: >-
-      traceway metrics query --name db.client.connection.count --group-by db.client.connection.state --aggregation max --since 24h --interval-minutes 60 --output json
+      traceway metrics query --name db.client.connections.usage --group-by state --aggregation max --since 24h --interval-minutes 60 --output json
       | jq '.results[0].series | map_values([.[] | {t: .timestamp, v: (.value | round)}])'
   - read_file: app/checkout.py
   - read_file: app/db.py
@@ -70,7 +70,7 @@ oracle:
         - {call_id: c01, claim: "the slow request waits seconds before its first query starts; the queries and the payment call after that take their usual few hundred ms"}
         - {call_id: c02, claim: "checkout p50 is ~300ms while p95 and p99 are many seconds; GET /api/cart, a single 3ms query, has a multi-second p99 too"}
         - {call_id: c03, claim: "the p99 spikes only in the lunch and evening rush hours, for both endpoints"}
-        - {call_id: c04, claim: "QueuePool limit of size 10 overflow 5 reached, connection timed out, timeout 30.00 in the WARN/ERROR logs at the rushes"}
+        - {call_id: c04, claim: "QueuePool limit of size 10 overflow 5 reached, connection timed out, timeout 30.00 in the WARN logs at the rushes"}
         - {call_id: c05, claim: "sqlalchemy.exc.TimeoutError issues on checkout and cart"}
         - {call_id: c06, claim: "the pool sits at 15 connections used and 0 idle in exactly those hours"}
         - {call_id: c07, claim: "checkout keeps one session (and its connection) open across payments.charge"}

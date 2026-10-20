@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,6 +12,13 @@ import (
 )
 
 func main() {
+	ctx := context.Background()
+	shutdown, err := telemetry.Setup(ctx)
+	if err != nil {
+		slog.Error("telemetry setup", "err", err)
+		os.Exit(1)
+	}
+	defer shutdown(ctx)
 	db, err := telemetry.OpenDB(os.Getenv("DATABASE_URL"))
 	if err != nil {
 		slog.Error("open database", "err", err)
@@ -25,7 +33,7 @@ func main() {
 		addr = ":8080"
 	}
 	slog.Info("listening", "addr", addr)
-	if err := http.ListenAndServe(addr, telemetry.Handler(mux)); err != nil {
+	if err := http.ListenAndServe(addr, telemetry.Handler(telemetry.AccessLog(mux))); err != nil {
 		slog.Error("serve", "err", err)
 		os.Exit(1)
 	}

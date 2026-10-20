@@ -10,7 +10,7 @@ validated at startup by `app/config.py`.
 
 ```
 python3 -m unittest
-opentelemetry-instrument uvicorn app.main:app
+OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true opentelemetry-instrument uvicorn app.main:app
 ```
 
 Releases are tagged in the commit message (`v3.4.0: ...`) and deployed from `main`.

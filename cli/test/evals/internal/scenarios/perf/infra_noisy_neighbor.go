@@ -118,7 +118,7 @@ func papSeedNoisyNeighbor(s *seed.Scenario) error {
 	for _, h := range hosts {
 		for _, method := range []string{"GET", "POST"} {
 			k := h + "|" + method
-			attrs := map[string]any{"http.request.method": method, "http.response.status_code": 200, "url.scheme": "https", "network.protocol.version": "1.1"}
+			attrs := map[string]any{"http.request.method": method, "http.response.status_code": 200, "url.scheme": "http", "network.protocol.version": "1.1"}
 			if method == "POST" {
 				attrs["http.response.status_code"] = 201
 			}

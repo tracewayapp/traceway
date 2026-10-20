@@ -35,6 +35,7 @@ expect:
       incident_id: "{{seed.incidentId}}"
     - kind: agent_writes
       route: "POST /api/post-mortems"
+      http_status: {min: 200, max: 299}
       count: 1
   calls:
     required:

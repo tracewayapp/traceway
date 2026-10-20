@@ -12,8 +12,8 @@ func init() { scenarios.Register("perf/infra-cpu-saturation", papSeedCPUSaturati
 
 // papSeedCPUSaturation: 16-40h ago (14:20 UTC) a campaign tripled commerce-api's traffic
 // (ramping over 40 minutes) and it has stayed there. Both instances went
-// from ~30% to ~95% CPU and every endpoint got 2-4x slower at once: each
-// span is stretched and run-queue gaps appear, with no single long pole.
+// from ~25% to ~95% CPU and every endpoint got several times slower at once:
+// each span is stretched and run-queue gaps appear, with no single long pole.
 // Nothing was deployed. Distractor: a code regression; but service.version
 // never changed, no commit landed, and the slowdown follows the request rate
 // on every endpoint alike.

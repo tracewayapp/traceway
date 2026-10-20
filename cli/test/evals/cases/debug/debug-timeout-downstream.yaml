@@ -38,7 +38,7 @@ expect:
     touches_culprit: true
 judge:
   expected: >-
-    GET /api/cart/quote answers 502 for about one request in nine since cart-api v1.14.0 (about 26 hours ago): the pricing call fails with
+    GET /api/cart/quote answers 502 for about one request in ten since cart-api v1.14.0 (about 26 hours ago): the pricing call fails with
     "context deadline exceeded (Client.Timeout exceeded while awaiting headers)" at exactly 2s. The pricing service (GET /v1/quotes) takes
     about 1.1s at the median, 2.4s at p95 and 3.1-3.4s at p99, unchanged all week; the trace shows it still working after cart-api gave
     up. v1.14.0 lowered the default PRICING_TIMEOUT in internal/config/config.go (Load, line 28) from 5s to 2s. The fix restores a
@@ -80,4 +80,4 @@ oracle:
       needs_instrumentation: false
       confidence: high
       report: |
-        The cart quote fails because cart-api gives up on the pricing service too early. Since v1.14.0 (deployed about 26 hours ago) the pricing call times out at 2s ("context deadline exceeded (Client.Timeout exceeded while awaiting headers)") and the endpoint answers 502. The pricing service itself has not changed: GET /v1/quotes takes about 1.1s at the median and about 2.4s at p95, the same as last week, so roughly one quote in nine runs past 2s, which is also why a retry usually works. v1.14.0 lowered the default PRICING_TIMEOUT in internal/config/config.go from 5s to 2s. I restored it to 5s, which is above the pricing service's slowest responses and still bounded.
+        The cart quote fails because cart-api gives up on the pricing service too early. Since v1.14.0 (deployed about 26 hours ago) the pricing call times out at 2s ("context deadline exceeded (Client.Timeout exceeded while awaiting headers)") and the endpoint answers 502. The pricing service itself has not changed: GET /v1/quotes takes about 1.1s at the median and about 2.4s at p95, the same as last week, so roughly one quote in ten runs past 2s, which is also why a retry usually works. v1.14.0 lowered the default PRICING_TIMEOUT in internal/config/config.go from 5s to 2s. I restored it to 5s, which is above the pricing service's slowest responses and still bounded.

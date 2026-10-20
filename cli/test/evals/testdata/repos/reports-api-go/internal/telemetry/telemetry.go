@@ -10,6 +10,11 @@ import (
 	"net/http"
 )
 
+// Setup installs the trace and log pipelines and returns their shutdown.
+var Setup = func(ctx context.Context) (func(context.Context) error, error) {
+	return func(context.Context) error { return nil }, nil
+}
+
 // Handler wraps the server's handler (otelhttp in production builds).
 var Handler = func(h http.Handler) http.Handler { return h }
 

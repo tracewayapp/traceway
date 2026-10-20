@@ -18,8 +18,10 @@ func main() {
 	cache := catalog.NewCache(store, 10*time.Minute)
 
 	// Fill the cache in the background so the instance can take traffic
-	// straight away; categories not loaded yet are fetched on demand.
-	go cache.Preload(ctx, catalog.Categories)
+	// straight away; categories not loaded yet are fetched on demand. One
+	// category every 25s, so the three instances a release restarts together
+	// do not all load the whole catalog at the same moment.
+	go cache.Preload(ctx, catalog.Categories, 25*time.Second)
 	go cache.RefreshLoop(ctx, catalog.Categories)
 
 	h := catalog.NewHandlers(store, cache)

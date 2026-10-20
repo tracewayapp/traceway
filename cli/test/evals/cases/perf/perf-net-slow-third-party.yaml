@@ -1,14 +1,14 @@
 id: perf-net-slow-third-party
 suite: perf
-title: Checkout hangs a few times a day, then recovers
+title: Checkout hangs every day or so, then recovers
 tags: [network, go]
 seed: perf/net-slow-third-party
 arms: [cli+skill, cli-noskill, mcp]
 invoke: natural
-distractor: During the spikes goroutines pile up (go.goroutine.count ~50 to ~380), which reads like requests queueing for database connections, but the DB spans start right away and stay at a few ms; the wait is inside the POST to api.payments.example, and only the routes that call the provider spike.
+distractor: During the spikes goroutines pile up (go.goroutine.count from under 100 to ~400), which reads like requests queueing for database connections, but the DB spans start right away and stay at a few ms; the wait is inside the POST to api.payments.example, and only the routes that call the provider spike.
 workspace: {repo: checkout-api-go}
 prompt: |
-  A few times a day checkout hangs for several seconds and some customers get an error instead of their order confirmation; a while later everything is fine again. Can you figure out what is going on with POST /api/checkout and what we should do about it?
+  Every day or so checkout hangs for several seconds and some customers get an error instead of their order confirmation; a while later everything is fine again. Can you figure out what is going on with POST /api/checkout and what we should do about it?
 budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 12000, timeout: 10m}
 user:
   - default: "I don't know more than that, please investigate."
@@ -66,7 +66,7 @@ oracle:
       evidence:
         - {call_id: c01, claim: "POST /api/checkout and POST /api/refunds have p50 ~240ms but p99 of several seconds; the other routes are fast"}
         - {call_id: c02, claim: "checkout and refunds spike in the same three windows in three days; routes that do not call the provider stay flat"}
-        - {call_id: c03, claim: "the new error group of the period is the charge call to api.payments.example hitting the 10s client timeout (the other group is an unrelated malformed-JSON 400)"}
+        - {call_id: c03, claim: "the timeout error group is the charge call to api.payments.example hitting the 10s client timeout, first and last seen inside the slow windows; any other group is unrelated"}
         - {call_id: c05, claim: "a slow checkout spends nearly all its time in POST https://api.payments.example/v1/charges; its DB spans start immediately and take a few ms"}
         - {call_id: c06, claim: "goroutines rise only during the same windows, as requests wait on the provider"}
         - {call_id: c07, claim: "CPU is flat"}

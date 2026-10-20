@@ -23,24 +23,25 @@ var pctCategories = []string{
 // starts with an empty in-process category cache, which a background preload
 // fills one category every 25s, and an empty pgx pool; until a category is
 // preloaded, the first request for it on that instance runs the listing
-// query (about a second), and the first few requests open connections. Within the hour the
-// listing is back to ~25ms on v5.1.0; v5.0.4, 30h earlier, shows the same
-// transient. Expected: cold_start_jit_connection_warmup. Distractor: a code
-// regression in v5.1.0 (steady-state latency is unchanged).
+// query (one to two seconds), and the first few requests open connections.
+// Ten minutes after the restart the listing is back to ~20ms on v5.1.0;
+// v5.0.4, 30h earlier, shows the same transient. Expected:
+// cold_start_jit_connection_warmup. Distractor: a code regression in v5.1.0
+// (steady-state latency is unchanged).
 func pctSeedAlertHandoff(s *seed.Scenario) error {
 	p := s.Project("catalog", seed.OTel)
 	window := 48 * time.Hour
 	prevDeploy := s.Ago(30 * time.Hour)
 	deployAt := s.Ago(48 * time.Minute)
 	fireAt := deployAt.Add(5 * time.Minute)
-	api := p.Service("catalog-api", seed.Go("chi", "pgx")).
+	api := p.Service("catalog-api", seed.Go("nethttp", "pgx")).
 		Instances("catalog-api-a", "catalog-api-b", "catalog-api-c").
 		Versions("5.0.3", seed.Deploy{At: prevDeploy, Version: "5.0.4"}, seed.Deploy{At: deployAt, Version: "5.1.0"})
 
 	// Per-instance process state: the version it runs (a change means the
 	// process restarted), the categories it has cached, the connections
-	// its pool has opened. Each endpoint generates its requests in time
-	// order on its own, so each keeps its own view of the processes.
+	// its pool has opened. Each endpoint generates its requests minute by
+	// minute on its own, so each keeps its own view of the processes.
 	type proc struct {
 		version string
 		started time.Time

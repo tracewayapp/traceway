@@ -79,30 +79,41 @@ func papSeedNoisyNeighbor(s *seed.Scenario) error {
 	})
 
 	// otelhttp's http.server.request.duration, per host and method: the
-	// mean and count of each 10-minute window, from the generated requests.
+	// mean and count of the requests since the previous point, from the
+	// generated requests. Points come every minute in the last day and every
+	// ten before that (seed.MetricStep), so each point covers one step; a
+	// per-minute share of a longer window would round to no count at night
+	// and drop the point.
 	type agg struct {
 		sum time.Duration
 		n   int
 	}
-	var buckets map[string]map[time.Time]*agg
+	var perMin map[string]map[time.Time]*agg
 	build := func() {
-		buckets = map[string]map[time.Time]*agg{}
+		perMin = map[string]map[time.Time]*agg{}
 		for _, e := range []*seed.Endpoint{events, event, reserve, order} {
 			for _, rq := range e.Requests() {
 				k := rq.Host + "|" + e.Method
-				if buckets[k] == nil {
-					buckets[k] = map[time.Time]*agg{}
+				if perMin[k] == nil {
+					perMin[k] = map[time.Time]*agg{}
 				}
-				w := rq.Start.Truncate(10 * time.Minute)
-				a := buckets[k][w]
+				m := rq.Start.Truncate(time.Minute)
+				a := perMin[k][m]
 				if a == nil {
 					a = &agg{}
-					buckets[k][w] = a
+					perMin[k][m] = a
 				}
 				a.sum += rq.Duration()
 				a.n++
 			}
 		}
+	}
+	recentCut := s.Now.Add(-time.Minute - 24*time.Hour)
+	step := func(t time.Time) time.Duration {
+		if t.Before(recentCut) {
+			return seed.MetricStep.Old
+		}
+		return seed.MetricStep.Recent
 	}
 	for _, h := range hosts {
 		for _, method := range []string{"GET", "POST"} {
@@ -111,23 +122,27 @@ func papSeedNoisyNeighbor(s *seed.Scenario) error {
 			if method == "POST" {
 				attrs["http.response.status_code"] = 201
 			}
-			bucketAt := func(t time.Time) *agg {
-				if buckets == nil {
+			windowAt := func(t time.Time) agg {
+				if perMin == nil {
 					build()
 				}
-				return buckets[k][t.Add(-time.Minute).Truncate(10*time.Minute)]
+				var out agg
+				for m := t.Add(-step(t)); m.Before(t); m = m.Add(time.Minute) {
+					if a := perMin[k][m]; a != nil {
+						out.sum += a.sum
+						out.n += a.n
+					}
+				}
+				return out
 			}
 			mean := func(t time.Time) float64 {
-				if a := bucketAt(t); a != nil && a.n > 0 {
+				if a := windowAt(t); a.n > 0 {
 					return (a.sum / time.Duration(a.n)).Seconds()
 				}
 				return 0
 			}
 			perMinute := func(t time.Time) float64 {
-				if a := bucketAt(t); a != nil {
-					return float64(a.n) / 10
-				}
-				return 0
+				return float64(windowAt(t).n) / step(t).Minutes()
 			}
 			api.HistogramOn(h, "http.server.request.duration", "s", attrs, mean, perMinute)
 		}

@@ -55,8 +55,7 @@ func pncSeedRetries(s *seed.Scenario) error {
 	p := s.Project("logistics", seed.OTel)
 	api := p.Service("quotes-api", seed.Python("fastapi", "psycopg")).Versions("2.3.0")
 
-	attempts := map[*seed.Request]int{}
-	forced := false
+	var forced *seed.Request
 	forceFrom, forceTo := s.Ago(110*time.Minute), s.Ago(95*time.Minute)
 	quotes := api.Endpoint("POST", "/api/shipping/quotes")
 	quotes.Traffic(seed.Daily(2000), seed.Diurnal(), seed.Over(window))
@@ -64,14 +63,13 @@ func pncSeedRetries(s *seed.Scenario) error {
 	quotes.Handler(func(r *seed.Req) {
 		route := "POST /api/shipping/quotes"
 		r.Compute(route+" http receive", r.Ms(0.05, 0.3))
-		r.DB("SELECT id, weight_grams, length_mm, width_mm, height_mm, destination_postcode, destination_country FROM parcels WHERE id = %s", r.LogNormal(2*time.Millisecond, 6*time.Millisecond))
+		r.DB("SELECT id, weight_grams, length_mm, width_mm, height_mm, origin_postcode, destination_postcode, destination_country FROM parcels WHERE id = %s", r.LogNormal(2*time.Millisecond, 6*time.Millisecond))
 		ok := false
 		force := false
-		if !forced && !r.Start().Before(forceFrom) && r.Start().Before(forceTo) {
-			forced, force = true, true
+		if forced == nil && !r.Start().Before(forceFrom) && r.Start().Before(forceTo) {
+			forced, force = r.Request(), true
 		}
 		for attempt := 1; attempt <= 3; attempt++ {
-			attempts[r.Request()] = attempt
 			x := r.Float()
 			if force {
 				x = map[bool]float64{true: 0.01, false: 0.5}[attempt < 3]
@@ -103,7 +101,7 @@ func pncSeedRetries(s *seed.Scenario) error {
 		}
 		if !ok {
 			r.Error(seed.Exc{Type: pncRetryErrType, Message: "RetryError[<Future at 0x7f3a2c1b9d50 state=finished raised ReadTimeout>]", Stack: pncRetryErrorStack, Escaped: true})
-			r.Status(502)
+			r.Status(500)
 			r.Compute(route+" http send", r.Ms(0.05, 0.2))
 			return
 		}
@@ -122,9 +120,7 @@ func pncSeedRetries(s *seed.Scenario) error {
 	api.Host().CPU(seed.Flat(0.15, 0.24))
 	api.Host().Memory(seed.Flat(0.5, 0.57))
 
-	s.Expose("retriedRequest", quotes.Pick(func(r *seed.Request) bool {
-		return attempts[r] == 3 && r.Status == 200 && r.Start.After(s.Ago(2*time.Hour))
-	}))
+	s.Expose("retriedRequest", quotes.Pick(func(r *seed.Request) bool { return r == forced }))
 	s.Expose("p50Ms24h", func() any { return quotes.Percentile(0.5, 24*time.Hour).Seconds() * 1000 })
 	s.Expose("p95Ms24h", func() any { return quotes.Percentile(0.95, 24*time.Hour).Seconds() * 1000 })
 	s.Expose("p99Ms24h", func() any { return quotes.Percentile(0.99, 24*time.Hour).Seconds() * 1000 })

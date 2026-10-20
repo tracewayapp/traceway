@@ -10,9 +10,9 @@ import (
 func init() { scenarios.Register("perf/ctl-marked-slow-regressed", pctSeedMarkedSlowRegressed) }
 
 // pctSeedMarkedSlowRegressed: the monthly invoice export is marked slow with
-// a 2000ms allowance and sat at p95 ~1.6s until v4.8.0 (26h ago) added a tax
+// a 2000ms allowance and sat at p95 ~1.5s until v4.8.0 (26h ago) added a tax
 // breakdown that loads each invoice's tax lines with its own query. Since
-// the deploy p95 is ~4.2s, well past the allowance. Distractors: the marking
+// the deploy p95 is ~4s, well past the allowance. Distractors: the marking
 // itself (the latency looks "accepted"), and the big invoices/lines JOIN,
 // which is unchanged by the deploy.
 func pctSeedMarkedSlowRegressed(s *seed.Scenario) error {

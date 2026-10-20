@@ -39,7 +39,7 @@ func papSeedQuadratic(s *seed.Scenario) error {
 		r.Gap(r.Ms(0.4, 1.2) + time.Duration(n*0.006*float64(time.Millisecond))) // response model
 	})
 
-	carts := api.Endpoint("GET", "/api/price-lists/:id")
+	carts := api.Endpoint("GET", "/api/price-lists/{price_list_id}")
 	carts.Traffic(seed.Daily(700), seed.Diurnal(), seed.Over(window))
 	carts.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.5, 1.2))

@@ -2,7 +2,8 @@
 
 Places search for the maps frontend: autocomplete, place details, reverse
 geocoding and batch geocoding for imports. Go, `net/http`, PostgreSQL with
-PostGIS through pgx. Traces and the Go runtime metrics
+PostGIS through pgx. Traces, logs (`log/slog` through the OpenTelemetry
+bridge) and the Go runtime metrics
 (`go.opentelemetry.io/contrib/instrumentation/runtime`) go to Traceway over
 OTLP; host metrics come from the collector DaemonSet.
 

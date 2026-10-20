@@ -65,4 +65,4 @@ oracle:
       fix: Load the items of all listed orders in one query (WHERE order_id IN (...) or a JOIN) instead of one query per order in ListOrders.
       confidence: high
       report: |
-        GET /api/orders is slow because of a Select N+1 in ListOrders (internal/handlers/orders.go): after loading up to 100 orders it runs one order_items query per order. The slowest request of the last day ran dozens of those queries, which make up most of its time. CPU is flat and nothing shipped in the window; the latency grew as customers accumulated orders. I batched the items into one IN (...) query (store.ItemsByOrders).
+        GET /api/orders is slow because of a Select N+1 in ListOrders (internal/handlers/orders.go): after loading up to 100 orders it runs one order_items query per order. The slowest request of the last day ran dozens of those queries, which make up most of its time. CPU is flat and nothing shipped in the window; the latency grew as customers accumulated orders. Fix: load the items of all listed orders in one query (WHERE order_id IN (...) or a JOIN) instead of one query per order.

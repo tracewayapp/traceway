@@ -1,6 +1,7 @@
 using Accounts.Api.Accounts;
 using Accounts.Api.Data;
 using Accounts.Api.Exports;
+using Dapper;
 using Npgsql;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Resources;
@@ -8,6 +9,7 @@ using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
 
+DefaultTypeMap.MatchNamesWithUnderscores = true;
 builder.Services.AddSingleton(_ => NpgsqlDataSource.Create(builder.Configuration.GetConnectionString("Ledger")!));
 builder.Services.AddScoped<TransactionRepository>();
 builder.Services.AddScoped<AccountRepository>();

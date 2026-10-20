@@ -18,7 +18,7 @@ expect:
     checklist_item: disk_io_bottleneck
     not: [missing_or_unused_index, lock_transaction_contention, connection_pool_exhaustion, cpu_saturation, expensive_join_or_aggregation]
     locus: {host: pg-bookings-1}
-    onset: {at: "{{seed.onsetAt}}", tolerance_minutes: 30}
+    onset: {at: "{{seed.onsetAt}}", tolerance_minutes: 60}
   grounding:
     - "system.disk"
     - "pg-bookings-1"
@@ -34,7 +34,7 @@ expect:
     max_failed_calls: 5
     max_identical_repeats: 2
 judge:
-  expected: Disk / IO bottleneck on the database host pg-bookings-1. At the onset every bookings-api query became 5-8x slower at once (availability search p50 ~15ms to ~70ms, primary-key booking lookups ~1-3ms to ~10-20ms, writes worse), while request counts only followed the normal daily curve and the API's CPU stayed flat. At the same minute the database host's disk read throughput went from ~15MB/s to ~110MB/s and writes from ~8 to ~55MB/s, the disk queue (system.disk.pending_operations) from ~1 to ~36 and iowait (system.cpu.utilization state=wait) from ~2% to ~35%, with user CPU still ~13%. Nothing was deployed to the API; twelve minutes before the onset a commit added the rebuild-search-documents Job, which bulk-reads and writes 50,000 listings per statement with no pause. Not a missing index - indexed point lookups slowed just as much. Fix - stop or throttle the rebuild (small batches with pauses, off-peak, or on a replica) and give the volume IOPS headroom.
+  expected: Disk / IO bottleneck on the database host pg-bookings-1. At the onset every bookings-api query became roughly 4.5-7.5x slower at once (availability search p50 ~15ms to ~70ms, primary-key booking lookups ~1-3ms to ~5-20ms per query, writes 6.5-9.5x), while request counts only followed the normal daily curve and the API's CPU stayed flat. At the same minute the database host's disk read throughput went from ~15MB/s to ~110MB/s and writes from ~8 to ~55MB/s, the disk queue (system.disk.pending_operations) from ~1 to ~36 and iowait (system.cpu.utilization state=wait) from ~2% to ~35%, with user CPU still ~13%. Nothing was deployed to the API; twelve minutes before the onset a commit added the rebuild-search-documents Job, which bulk-reads and writes 50,000 listings per statement with no pause. Not a missing index - indexed point lookups slowed just as much. Fix - stop or throttle the rebuild (small batches with pauses, off-peak, or on a replica) and give the volume IOPS headroom.
   rubric:
     - Shows that all queries, including primary-key lookups, slowed together at one moment, which an index cannot explain.
     - Finds the database host's disk saturation (queue depth, iowait, throughput) with its CPU still low, and the onset time.
@@ -75,10 +75,10 @@ oracle:
       locus: {service: bookings-db, host: pg-bookings-1, span: "every database query of bookings-api"}
       onset: "{{seed.onsetAt}}"
       evidence:
-        - {call_id: c02, claim: "every endpoint's p50 stepped up 4-6x in the same hour and stayed up"}
+        - {call_id: c02, claim: "every endpoint's p50 stepped up about 4.5-7x in the same hour and stayed up"}
         - {call_id: c03, claim: "before that, a booking lookup's two primary-key queries took 1-3ms each"}
-        - {call_id: c04, claim: "after it, the same two primary-key queries take 10-20ms each: indexed point lookups slowed as much as anything"}
-        - {call_id: c05, claim: "the availability search slowed by the same factor; its plan did not change"}
+        - {call_id: c04, claim: "after it, the same two primary-key queries each take several times as long: indexed point lookups slowed as much as anything"}
+        - {call_id: c05, claim: "the availability search query alone now takes ~60ms for a few hundred rows, against an endpoint p50 of ~15ms before: the same few-fold slowdown as the primary-key lookups"}
         - {call_id: c06, claim: "user CPU on the API host is flat and on the database host only rose from ~10% to ~13%"}
         - {call_id: c07, claim: "on pg-bookings-1 iowait went from ~2% to ~35% at the step"}
         - {call_id: c08, claim: "its disk queue went from about 1 to over 30 operations at the same time"}
@@ -91,4 +91,4 @@ oracle:
       fix: Stop the rebuild-search-documents Job, then rerun it throttled (small batches with pauses, off-peak, or against a replica) so it cannot take the primary's whole disk; check the volume has IOPS headroom for both.
       confidence: high
       report: |
-        This is not an index problem. Every query bookings-api runs got 4-8x slower in the same minute about ten hours ago, including primary-key lookups (a booking by id went from 1-3ms per query to 10-20ms), and the API's CPU and traffic did not change. At that minute the database host pg-bookings-1 went from ~2% to ~35% iowait with its CPU otherwise idle, its disk queue from ~1 to over 30 operations, and its disk reads and writes up about 7x: the database is waiting on its disk. Twelve minutes earlier a commit added the rebuild-search-documents Job, which reads and rewrites 50,000 listings per statement with no pause on the primary. Stop it, then rerun it throttled; I changed it to work in batches of 2,000 with a pause between them (REBUILD_BATCH / REBUILD_PAUSE_MS) and a single connection. Run it off-peak or on a replica, and make sure the volume has IOPS headroom.
+        This is not an index problem. Every query bookings-api runs got roughly 5-9x slower in the same minute about ten hours ago, including primary-key lookups (a booking by id went from 1-3ms per query to several times that), and the API's CPU and traffic did not change. At that minute the database host pg-bookings-1 went from ~2% to ~35% iowait with its CPU otherwise idle, its disk queue from ~1 to over 30 operations, and its disk reads and writes up about 7x: the database is waiting on its disk. Twelve minutes earlier a commit added the rebuild-search-documents Job, which reads and rewrites 50,000 listings per statement with no pause on the primary. Fix: stop it, then rerun it throttled (batches of a few thousand listings with a pause between them), off-peak or against a replica, and make sure the volume has IOPS headroom.

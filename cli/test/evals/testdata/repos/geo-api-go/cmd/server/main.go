@@ -9,6 +9,7 @@ import (
 
 	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/contrib/instrumentation/runtime"
 
@@ -25,6 +26,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer shutdown(ctx)
+	slog.SetDefault(otelslog.NewLogger("geo-api"))
 	// go.memory.*, go.goroutine.count, go.processor.limit, ...
 	if err := runtime.Start(runtime.WithMinimumReadMemStatsInterval(15 * time.Second)); err != nil {
 		slog.Error("runtime metrics", "err", err)

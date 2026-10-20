@@ -43,8 +43,8 @@ judge:
     The endpoint is not marked slow (offsetMs 0), so the 1000ms rule applies. v5.1.0 restarted all three catalog instances
     five minutes before the alert. Each instance starts with an empty in-process category cache (a background preload fills
     one category every ~25s) and an empty pgx pool, so for several minutes an instance's first request for a category runs
-    the listing query (about a second, products JOIN prices JOIN inventory) and the first requests open connections (connect
-    spans). p95 spiked to over a second for about ten minutes and was back to ~20ms well before the user looked; warm v5.1.0
+    the listing query (one to two seconds, products JOIN prices JOIN inventory) and the first requests open connections (connect
+    spans). p95 jumped to over a second right after the restart and was back to ~20ms about ten minutes later, well before the user looked; warm v5.1.0
     is as fast as v5.0.4, and the v5.0.4 restart 30 hours earlier shows the same transient. Cold start / connection warmup,
     not a regression. Fix: do not report the instance ready (health check, load balancer) until the preload has filled the
     cache, or load the cache synchronously before serving, and warm the pool (pool_min_conns); a shared cache would also
@@ -90,16 +90,16 @@ oracle:
       onset: "{{seed.deployAt}}"
       evidence:
         - {call_id: c02, claim: "the endpoint is not marked slow (offsetMs 0), so the 1000ms alert applies as is"}
-        - {call_id: c03, claim: "p95 spiked above a second for about ten minutes right after the v5.1.0 restart and went back to ~20ms"}
+        - {call_id: c03, claim: "p95 jumped above a second in the minutes right after the v5.1.0 restart and was back at ~20ms about ten minutes later"}
         - {call_id: c04, claim: "in the hour before the release p95 was about 20ms"}
         - {call_id: c05, claim: "on v5.1.0, warm, p95 is again about 20ms: no regression"}
-        - {call_id: c07, claim: "a slow request right after the restart opened a pool connection and ran the full category listing query, about a second"}
-        - {call_id: c08, claim: "a warm request is served from the in-process cache in a few milliseconds"}
+        - {call_id: c07, claim: "a slow request right after the restart ran the full category listing query (products JOIN product_prices JOIN inventory), over a second and nearly all of its time"}
+        - {call_id: c08, claim: "a warm request is served from the in-process cache in about 15ms, with no database span"}
         - {call_id: c09, claim: "the v5.0.4 restart 30 hours earlier produced the same short spike"}
       ruled_out:
-        - {checklist_item: none_found, call_id: c03, reason: "users did get second-long listings for ten minutes after each release"}
+        - {checklist_item: none_found, call_id: c03, reason: "users did get second-long listings for several minutes after the release"}
         - {checklist_item: cache_stampede_thundering_herd, call_id: c09, reason: "the spikes follow restarts only, not cache expiry; refreshes run off the request path"}
       fix: Gate readiness on the cache preload (have /healthz answer 503 until Preload has filled every category, or preload before ListenAndServe), and warm the pgx pool (pool_min_conns) so a restarted instance takes traffic only when it is warm.
       confidence: high
       report: |
-        The alert was a warmup spike from the v5.1.0 release, not a regression. GET /api/categories/:slug/products is not marked slow (offsetMs 0), so the 1000ms rule applied. v5.1.0 restarted all three catalog instances about five minutes before the alert. A restarted instance starts with an empty in-process category cache, which a background preload fills one category at a time, and an empty pgx pool; meanwhile an instance's first request for a category runs the full listing query (about a second) and the first requests open connections. p95 went over a second for about ten minutes and has been back at ~20ms since; warm v5.1.0 is as fast as v5.0.4 was, and the v5.0.4 restart 30 hours earlier shows the same spike. Nothing needs reverting. To stop it recurring on every release, keep /healthz failing until the preload has filled the cache (or preload before serving) and set pool_min_conns so connections are open before traffic arrives.
+        The alert was a warmup spike from the v5.1.0 release, not a regression. GET /api/categories/:slug/products is not marked slow (offsetMs 0), so the 1000ms rule applied. v5.1.0 restarted all three catalog instances about five minutes before the alert. A restarted instance starts with an empty in-process category cache, which a background preload fills one category at a time, and an empty pgx pool; meanwhile an instance's first request for a category runs the full listing query (one to two seconds) and the first requests open connections. p95 went over a second right after the restart, was back at ~20ms about ten minutes later and has stayed there; warm v5.1.0 is as fast as v5.0.4 was, and the v5.0.4 restart 30 hours earlier shows the same spike. Nothing needs reverting. To stop it recurring on every release, keep /healthz failing until the preload has filled the cache (or preload before serving) and set pool_min_conns so connections are open before traffic arrives.

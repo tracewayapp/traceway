@@ -10,7 +10,7 @@ import (
 func init() { scenarios.Register("perf/ctl-healthy", pctSeedHealthy) }
 
 // pctSeedHealthy: GET /api/search is healthy and has been for eight days
-// (p50 ~25ms, p95 ~50ms, no errors, no growth, flat CPU). Expected:
+// (p50 ~25ms, p95 ~45ms, no errors, no growth, flat CPU). Expected:
 // none_found. Distractors: the search query uses ILIKE on name/brand, which
 // looks like it wants a trigram index but takes ~15ms; checkout is the
 // slowest endpoint (a payment call), unrelated to search.
@@ -25,7 +25,7 @@ func pctSeedHealthy(s *seed.Scenario) error {
 	search.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.6, 1.6))
 		r.DB("SELECT id, name, slug, brand, price_cents, thumbnail_url FROM products WHERE active AND (name ILIKE $1 OR brand ILIKE $1) ORDER BY popularity DESC LIMIT 24",
-			r.LogNormal(14*time.Millisecond, 55*time.Millisecond), seed.Rows(r.IntN(25)))
+			r.LogNormal(14*time.Millisecond, 55*time.Millisecond), seed.Rows(1+r.IntN(24)))
 		r.DB("SELECT facet, value, count(*) AS n FROM product_facets WHERE product_id = ANY($1) GROUP BY facet, value",
 			r.LogNormal(4*time.Millisecond, 15*time.Millisecond), seed.Rows(6+r.IntN(30)))
 		r.Compute("serialize results", r.Ms(1, 4))

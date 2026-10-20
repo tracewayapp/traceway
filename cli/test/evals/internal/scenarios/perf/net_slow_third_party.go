@@ -40,10 +40,13 @@ func pncSeedSlowThirdParty(s *seed.Scenario) error {
 	p := s.Project("shop", seed.OTel)
 	api := p.Service("checkout-api", seed.Go("nethttp", "pgx")).Versions("5.2.0")
 
-	providerCall := func(r *seed.Req, path string) (time.Duration, bool) {
+	providerCall := func(r *seed.Req, path string, timeout bool) (time.Duration, bool) {
 		d := r.LogNormal(230*time.Millisecond, 560*time.Millisecond)
 		if pncInAny(incidents, r.At()) {
 			d = r.LogNormal(4*time.Second, 16*time.Second)
+		}
+		if timeout {
+			d = 12 * time.Second
 		}
 		url := "https://api.payments.example" + path
 		if d >= 10*time.Second {
@@ -61,11 +64,15 @@ func pncSeedSlowThirdParty(s *seed.Scenario) error {
 	checkout := api.Endpoint("POST", "/api/checkout")
 	checkout.Traffic(seed.Daily(1500), seed.Diurnal(), seed.Over(window))
 	checkout.Detail(seed.DetailPolicy{Recent: 8 * time.Hour, Rate: 0.03, Max: 20})
+	forcedTimeout := false
 	checkout.Handler(func(r *seed.Req) {
+		// At least one charge in the latest window runs into the client timeout.
+		timeout := !forcedTimeout && incidents[2].has(r.Start()) && !r.Start().Before(incidents[2].from.Add(10*time.Minute))
+		forcedTimeout = forcedTimeout || timeout
 		r.Gap(r.Ms(0.4, 1.0))
 		r.DB("SELECT id, status, total_cents, currency FROM orders WHERE id = $1 AND customer_id = $2", r.LogNormal(2500*time.Microsecond, 7*time.Millisecond))
 		r.DB("SELECT sku, qty, unit_price_cents FROM order_lines WHERE order_id = $1", r.LogNormal(2*time.Millisecond, 5*time.Millisecond), seed.Rows(1+r.IntN(6)))
-		if _, ok := providerCall(r, "/v1/charges"); !ok {
+		if _, ok := providerCall(r, "/v1/charges", timeout); !ok {
 			r.Error(seed.Exc{Type: "*url.Error", Message: `Post "https://api.payments.example/v1/charges": context deadline exceeded (Client.Timeout exceeded while awaiting headers)`})
 			r.Log(seed.SevError, "charge failed", seed.A("error", `Post "https://api.payments.example/v1/charges": context deadline exceeded (Client.Timeout exceeded while awaiting headers)`))
 			r.Status(502)
@@ -78,11 +85,11 @@ func pncSeedSlowThirdParty(s *seed.Scenario) error {
 	})
 
 	refunds := api.Endpoint("POST", "/api/refunds")
-	refunds.Traffic(seed.Daily(140), seed.Diurnal(), seed.Over(window))
+	refunds.Traffic(seed.Daily(320), seed.Diurnal(), seed.Over(window))
 	refunds.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.4, 1.0))
 		r.DB("SELECT id, status, charge_id, total_cents FROM orders WHERE id = $1", r.LogNormal(2500*time.Microsecond, 7*time.Millisecond))
-		if _, ok := providerCall(r, "/v1/refunds"); !ok {
+		if _, ok := providerCall(r, "/v1/refunds", false); !ok {
 			r.Status(502)
 			return
 		}

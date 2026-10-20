@@ -51,9 +51,17 @@ func (c *Cache) put(slug string, ps []Product) {
 	c.mu.Unlock()
 }
 
-// Preload loads every category once, one after the other.
-func (c *Cache) Preload(ctx context.Context, slugs []string) {
+// Preload loads every category once, one after the other, waiting pause
+// before each one.
+func (c *Cache) Preload(ctx context.Context, slugs []string, pause time.Duration) {
 	for _, slug := range slugs {
+		if pause > 0 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(pause):
+			}
+		}
 		c.mu.RLock()
 		_, ok := c.items[slug]
 		c.mu.RUnlock()

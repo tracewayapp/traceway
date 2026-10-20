@@ -14,6 +14,7 @@ func main() {
 	h := &stores.Handler{
 		Maps:      maps.New(envOr("MAPS_URL", "https://maps.geo.example"), os.Getenv("MAPS_API_KEY")),
 		Inventory: inventory.New(envOr("INVENTORY_URL", "http://inventory.internal:8080"), maps.Instrument(http.DefaultTransport)),
+		Stores:    newFinder(os.Getenv("DATABASE_URL")),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/stores/nearby", h.Nearby)

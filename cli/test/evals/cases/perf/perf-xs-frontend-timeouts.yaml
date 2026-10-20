@@ -37,7 +37,8 @@ judge:
     The browser TimeoutError ("signal timed out") is the web app's own 8-second AbortSignal.timeout on the search
     fetch; the network action on each occurrence is GET /api/search taking 8000ms with no response. On the shop-api
     project, GET /api/search has been slow for about ten hours: p95 around 7-8s (it was a few hundred ms before), with
-    a tail well past 8 seconds, and the access logs show searches finishing in 9-15s at the moments the browser gave up.
+    a tail well past 8 seconds, and every browser timeout lines up with an API access log for a search that started 8s
+    earlier and ran longer than that (often 10-15s, some 20-30s).
     Those requests spend nearly all their time in the outgoing POST to the hosted search index
     (shop-prod.search-cloud.example); the product_stock query and the merge take a few milliseconds and CPU is flat.
     The provider is slow, not the frontend and not our code. Fix: put a timeout under 8s on the index call in the API
@@ -75,7 +76,7 @@ oracle:
         - {call_id: c02, claim: "the browser occurrence is a TimeoutError (signal timed out): the GET /api/search network action ran 8000ms with no response before the app gave up"}
         - {call_id: c04, claim: "on shop-api, GET /api/search has p95 in the seconds over the last day, with a tail past 8s"}
         - {call_id: c05, claim: "the endpoint's hourly p95 went from a few hundred ms to seconds about ten hours ago"}
-        - {call_id: c06, claim: "the API logs searches that took 9-15s at the times the browser gave up"}
+        - {call_id: c06, claim: "the browser timeouts line up with API searches that started 8s earlier and took longer than that, often 10s or more"}
         - {call_id: c07, claim: "a search that ran past 8s spent nearly all of it in the POST to shop-prod.search-cloud.example; the stock query and merge took milliseconds"}
         - {call_id: c08, claim: "CPU on the API host is flat"}
       ruled_out:
@@ -84,4 +85,4 @@ oracle:
       fix: Put a client timeout below the browser's 8s on the search-index call in api/src/search.js with a fallback (cached or degraded results), escalate the latency to the search provider, and keep the browser timeout as it is.
       confidence: high
       report: |
-        The browser timeouts are the symptom; the slowness is the hosted search provider behind the API. The web app aborts a search after 8 seconds (AbortSignal.timeout in web/src/api/search.ts) and reports the TimeoutError ("signal timed out"); each occurrence's network action is GET /api/search taking 8000ms with no response. On shop-api, GET /api/search got slow about ten hours ago (hourly p95 from a few hundred ms to seconds, tail past 8s), and the access logs show searches finishing in 9-15s at exactly those moments. Those requests spend nearly all their time in the POST to shop-prod.search-cloud.example; the product_stock query and the merge take milliseconds and CPU is flat. Fix it on the server: give the index call a timeout below 8s with a fallback (cached or degraded results) in api/src/search.js, and take the latency up with the provider. Raising the browser timeout would only make shoppers wait longer.
+        The browser timeouts are the symptom; the slowness is the hosted search provider behind the API. The web app aborts a search after 8 seconds (AbortSignal.timeout in web/src/api/search.ts) and reports the TimeoutError ("signal timed out"); each occurrence's network action is GET /api/search taking 8000ms with no response. On shop-api, GET /api/search got slow about ten hours ago (hourly p95 from a few hundred ms to seconds, tail past 8s), and each browser timeout lines up with an access log for a search that started 8 seconds earlier and took longer than that, often 10-15s. Those requests spend nearly all their time in the POST to shop-prod.search-cloud.example; the product_stock query and the merge take milliseconds and CPU is flat. Fix it on the server: give the index call a timeout below 8s with a fallback (cached or degraded results) in api/src/search.js, and take the latency up with the provider. Raising the browser timeout would only make shoppers wait longer.

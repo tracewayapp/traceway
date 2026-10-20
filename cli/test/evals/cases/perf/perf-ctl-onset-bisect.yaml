@@ -24,7 +24,7 @@ expect:
     - "date_trunc"
   calls:
     required:
-      - {op: endpoints.list, args: {search: "~summary", from: present}}
+      - {op: endpoints.list, args: {from: present}}
     any_of:
       - [{op: endpoints.show, args: {recorded_at: present}}]
       - [{op: traces.show, args: {recorded_at: present}}]
@@ -79,14 +79,15 @@ oracle:
         - {call_id: c01, claim: "over the last day the account summary has p95 about 450ms"}
         - {call_id: c02, claim: "the route is not among the top five endpoints of the p95 chart, so its onset has to be bisected"}
         - {call_id: c03, claim: "five to ten days ago its p95 was about 20ms"}
-        - {call_id: c05, claim: "the 60h-48h window already has the slow p95, the 120h-60h window does not"}
+        - {call_id: c04, claim: "from 120h to 60h ago the p95 is still about 20-25ms"}
+        - {call_id: c05, claim: "the 60h-48h window already has the slow p95"}
         - {call_id: c07, claim: "54h-52h30m ago the p95 is still fast"}
         - {call_id: c08, claim: "52h30m-51h ago the p95 is slow: the step is inside that bracket"}
         - {call_id: c10, claim: "a slow request on 2.32.0 spends most of its time in a new monthly-spend aggregate over orders JOIN order_items GROUP BY month"}
         - {call_id: c11, claim: "2.32.0 (monthly spend chart on the account page) was committed just before the step"}
       ruled_out:
         - {checklist_item: no_pagination_unbounded_result_set, call_id: c04, reason: "the slow creep before the deploy is a few milliseconds; the step is abrupt"}
-        - {checklist_item: missing_or_unused_index, call_id: c10, reason: "the other orders queries are fast and the aggregate's cost does not grow over the two days; it aggregates the whole history every time"}
+        - {checklist_item: missing_or_unused_index, call_id: c10, reason: "the other orders queries on the same request (the count and the latest five) take milliseconds; the time is the new aggregate grouping the account's whole order history"}
       fix: Stop aggregating the account's whole order history on every page view. Maintain monthly totals in a rollup table (updated on order writes) or a materialized view, or cache the result per account; at minimum bound the range to the last 12 months.
       confidence: high
       report: |

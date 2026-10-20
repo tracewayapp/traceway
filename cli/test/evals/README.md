@@ -315,7 +315,8 @@ Backend facts that bite (each one cost a case author an afternoon):
   the event is there before relying on it. The same goes for a `DetailPolicy`
   sample: overnight it can leave the last few hours with no detailed request,
   so a trace (or access log) an oracle step reaches through a log or list
-  query must be forced with `Pick` or `Slowest`.
+  query must be forced by exposing it, `s.Expose(key, e.Pick(...))` or
+  `e.Slowest(...)`, which keeps that request's detail.
 
 - Numeric OTel attributes must be integers, which the DSL does for you.
 - Projects with a browser framework never get endpoints from OTLP.

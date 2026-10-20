@@ -90,9 +90,7 @@ func pncSeedChattyFanout(s *seed.Scenario) error {
 			pncCall(r, price, rtt(r), "/prices/"+sku, "currency=EUR")
 			pncCall(r, stock, rtt(r), "/stock/"+sku, "")
 		}
-		v := r.Compute("buildCartView", r.Ms(1.5, 4))
-		v.Scope = "storefront-gateway"
-		r.Gap(r.Ms(0.2, 0.6))
+		r.Gap(r.Ms(1.7, 4.6)) // build the view
 	})
 
 	wish := gw.Endpoint("GET", "/api/wishlist")
@@ -102,8 +100,7 @@ func pncSeedChattyFanout(s *seed.Scenario) error {
 		r.Cache("GET", "sess:"+fmt.Sprintf("%x", r.IntN(1<<30)), r.Ms(0.4, 1.2))
 		r.DB("SELECT sku FROM wishlist_items WHERE customer_id = $1 ORDER BY added_at DESC LIMIT 50", r.LogNormal(3*time.Millisecond, 8*time.Millisecond), seed.Rows(5+r.IntN(30)))
 		pncCall(r, productsBatch, rtt(r), "/products/batch", "")
-		v := r.Compute("buildWishlistView", r.Ms(0.8, 2))
-		v.Scope = "storefront-gateway"
+		r.Gap(r.Ms(0.8, 2))
 	})
 
 	s.Background(gw, seed.TrafficOpts{Endpoints: 4, PerDay: 150})

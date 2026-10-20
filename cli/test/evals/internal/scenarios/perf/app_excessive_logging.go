@@ -51,17 +51,20 @@ func papSeedExcessiveLogging(s *seed.Scenario) error {
 			logLine(r, "decoded listing", seed.A("listing.id", 300000+r.IntN(600000)), seed.A("seller.id", 1000+r.IntN(90000)))
 		}
 		logLine(r, "query executed", seed.A("db.table", "listings"), seed.A("rows", rows))
-		r.Gap(r.Ms(0.8, 2.4)) // cache fill and JSON encode
+		r.Gap(r.Ms(0.3, 0.9)) // marshal the page for the cache
+		r.Cache("SET", key, r.Ms(0.3, 0.9))
 		r.Log(seed.SevInfo, "search served", seed.A("category.id", category), seed.A("results", rows))
-		r.Gap(r.Ms(0.5, 1.5))
+		r.Gap(r.Ms(0.5, 1.5)) // JSON encode
 	})
 
-	show := api.Endpoint("GET", "/api/listings/:id")
+	show := api.Endpoint("GET", "/api/listings/{id}")
 	show.Traffic(papJitter("show", 0.07), seed.Daily(600), seed.Diurnal(), seed.Over(window))
 	show.Handler(func(r *seed.Req) {
 		r.KeepDetail()
 		r.Gap(r.Ms(0.4, 1.0))
-		id := 300000 + r.IntN(600000)
+		var id int
+		path, _ := r.Request().Root.Attrs["url.path"].(string)
+		fmt.Sscanf(path, "/api/listings/%d", &id)
 		logLine(r, "cache lookup", seed.A("cache.key", fmt.Sprintf("listing:%d", id)))
 		r.Cache("GET", fmt.Sprintf("listing:%d", id), r.Ms(0.3, 0.9))
 		r.DB("SELECT id, seller_id, title, description, price_cents, currency, status, ranked_at FROM listings WHERE id = $1", r.Ms(1.5, 4), seed.Rows(1))
@@ -76,7 +79,7 @@ func papSeedExcessiveLogging(s *seed.Scenario) error {
 		r.Gap(r.Ms(0.5, 1.5))
 	})
 
-	views := api.Endpoint("POST", "/api/listings/:id/views")
+	views := api.Endpoint("POST", "/api/listings/{id}/views")
 	views.Traffic(papJitter("views", 0.07), seed.Daily(350), seed.Diurnal(), seed.Over(window))
 	views.Handler(func(r *seed.Req) {
 		r.KeepDetail()

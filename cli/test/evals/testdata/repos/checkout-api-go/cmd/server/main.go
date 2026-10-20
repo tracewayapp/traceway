@@ -16,6 +16,8 @@ func main() {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/checkout", h.Checkout)
+	mux.HandleFunc("POST /api/refunds", h.Refund)
+	mux.HandleFunc("GET /api/orders/{id}", h.Get)
 	addr := ":" + envOr("PORT", "8080")
 	slog.Info("listening", "addr", addr)
 	if err := http.ListenAndServe(addr, mux); err != nil {

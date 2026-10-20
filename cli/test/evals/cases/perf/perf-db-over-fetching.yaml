@@ -36,7 +36,7 @@ expect:
     max_failed_calls: 4
     max_identical_repeats: 2
 judge:
-  expected: Over-fetching. The grid runs SELECT * FROM products ... LIMIT 48. Release 4.8.0 (about ten days ago) added products.supplier_payload, the supplier's raw record (~120KB a row), and the importer filled it over the next day and a half; the query still returns 48 rows, but its span went from ~12ms to ~400ms and Node heap and host memory rose in step. GET /api/search reads the same table and 48 rows with an explicit column list and stays at ~12ms. The response is 48 small cards; encoding takes ~2ms and CPU rose only a few points, so a faster serializer would not help. Fix by selecting only the card columns (id, name, slug, price_cents, currency, thumbnail_url) in categoryProducts (and an explicit list on the product page).
+  expected: Over-fetching. The grid runs SELECT * FROM products ... LIMIT 48. Release 4.8.0 (about ten days ago) added products.supplier_payload, the supplier's raw record (~120KB a row), and the importer filled it over the next day and a half; the query still returns 48 rows, but its span went from ~12ms to ~400ms and Node heap and host memory rose in step. GET /api/search reads the same table and 48 rows with an explicit column list and stays at ~13ms. The response is 48 small cards; encoding takes ~2ms and CPU rose only a few points, so a faster serializer would not help. Fix by selecting only the card columns (id, name, slug, price_cents, currency, thumbnail_url) in categoryProducts (and an explicit list on the product page).
   rubric:
     - Puts the time in the SELECT * products span (same 48 rows, much wider rows) and ties the onset to the 4.8.0 release that added supplier_payload, not to a change in the listing code.
     - Rules out JSON encoding (a few ms after the query, small response, CPU only slightly up) and contrasts with the fast explicit-column search query.
@@ -66,7 +66,7 @@ oracle:
       locus: {endpoint: "GET /api/categories/:categoryId/products", span: "SELECT * FROM products WHERE category_id = $1 AND is_active = true ORDER BY sort_rank DESC LIMIT 48", service: catalog-api}
       onset: "{{seed.deployAt}}"
       evidence:
-        - {call_id: c01, claim: "the grid endpoint's p50 is around 400ms while GET /api/search, which reads the same products table, is around 12ms"}
+        - {call_id: c01, claim: "the grid endpoint's p50 is around 400ms while GET /api/search, which reads the same products table, is around 13ms"}
         - {call_id: c03, claim: "almost all of the request is the SELECT * FROM products span, which returns 48 rows; encoding the response after it takes about 2ms"}
         - {call_id: c04, claim: "the grid went from ~15ms to ~400ms over a day and a half starting at the 4.8.0 release, while search stayed flat"}
         - {call_id: c05, claim: "host memory rose by the same step"}
@@ -79,4 +79,4 @@ oracle:
       fix: Select only the card columns in categoryProducts (id, name, slug, price_cents, currency, thumbnail_url) and use an explicit list on the product page, so supplier_payload is never read for listings. A faster JSON serializer would not change anything.
       confidence: high
       report: |
-        The grid is slow because its query over-fetches. categoryProducts runs SELECT * FROM products ... LIMIT 48. Release 4.8.0 added products.supplier_payload (the supplier's raw record) and the importer filled it over the next day and a half; the query still returns 48 rows, but each row now carries that payload, so the span went from ~12ms to ~400ms and memory went up with it. GET /api/search reads the same table and 48 rows with an explicit column list and stays at ~12ms. Encoding the response takes about 2ms and CPU is near 30%, so swapping res.json would not help. I changed categoryProducts (and the product page) to select only the columns they use.
+        The grid is slow because its query over-fetches. categoryProducts runs SELECT * FROM products ... LIMIT 48. Release 4.8.0 added products.supplier_payload (the supplier's raw record) and the importer filled it over the next day and a half; the query still returns 48 rows, but each row now carries that payload, so the span went from ~12ms to ~400ms and memory went up with it. GET /api/search reads the same table and 48 rows with an explicit column list and stays at ~13ms. Encoding the response takes about 2ms and CPU is near 30%, so swapping res.json would not help. Fix: have categoryProducts select only the card columns (id, name, slug, price_cents, currency, thumbnail_url), and give the product page an explicit column list too.

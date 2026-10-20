@@ -11,10 +11,10 @@ func init() { scenarios.Register("perf/ctl-onset-bisect", pctSeedOnsetBisect) }
 
 // pctSeedOnsetBisect: GET /api/account/summary picked up a monthly-spend
 // aggregate (orders JOIN order_items GROUP BY month) in 2.32.0, deployed 52h
-// ago, and its p95 stepped from ~50ms to ~450ms. Six heavier endpoints
+// ago, and its p95 stepped from ~20-25ms to ~450ms. Six heavier endpoints
 // (imports, reports, avatar uploads, recommendations, search, login) keep it
-// out of the top 5 of endpoints chart for p95, p50 and total time, so the
-// onset has to be found by comparing `endpoints list --search` windows.
+// out of the top 5 of endpoints chart for p95 and p50, so the onset has to be
+// found by comparing `endpoints list --search` windows.
 // Distractor: data growth; the orders count query has been creeping up all
 // along, so a coarse before/after comparison looks like gradual growth.
 func pctSeedOnsetBisect(s *seed.Scenario) error {

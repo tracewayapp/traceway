@@ -49,7 +49,7 @@ oracle:
       [.nodes[] | .endpoint.recordedAt as $t0 | {endpoint: .endpoint.endpoint, status: .endpoint.statusCode, ms: (.endpoint.duration / 1e6 | round),
       spans: [.spans[] | {name, start_ms: (((.startTime | secs) - ($t0 | secs)) * 1000 | round), ms: (.duration / 1e6 | round), status: .statusCode, query: .attributes["db.query.text"]}]}]'
   - shell: >-
-      traceway endpoints chart --metric-type p99 --since 8d --interval-minutes 360 --output json
+      traceway endpoints chart --metric-type p99 --since 9d --interval-minutes 360 --output json
       | jq '[.series[] | select(.endpoint == "POST /api/reservations") | {t: .timestamp, p99_ms: (.value | round)}]'
   - shell: traceway metrics query --name system.cpu.utilization --aggregation max --group-by state --since 24h --interval-minutes 360 --output json
   - shell: git log --format='%h %ad %s' --date=iso --stat -3
@@ -61,8 +61,8 @@ oracle:
       onset: null
       evidence:
         - {call_id: c01, claim: "POST /api/reservations has p50 ~8ms but p99 in the seconds"}
-        - {call_id: c02, claim: "the drop produces deadlock detected (40P01) and lock timeout (55P03) errors on inventory rows, with Postgres naming the blocked processes"}
-        - {call_id: c03, claim: "in a failing request BEGIN starts right away; the UPDATE inventory statements take hundreds of ms to seconds inside the database"}
+        - {call_id: c02, claim: "the drop produces ERROR deadlock detected (40P01) while updating inventory rows, with Postgres naming two processes that each wait for the other"}
+        - {call_id: c03, claim: "in a failing request BEGIN starts within a millisecond, and the time is inside the UPDATE inventory statements: the one that fails waits on a row lock for about a second before Postgres reports the deadlock"}
         - {call_id: c04, claim: "p99 spikes in the evening bucket every day, before and after the pool was raised to 40"}
         - {call_id: c05, claim: "CPU is flat"}
         - {call_id: c07, claim: "Reserve updates the cart lines in cart order inside one transaction, so two carts can lock the same SKUs in opposite orders"}
@@ -72,4 +72,4 @@ oracle:
       fix: Lock inventory rows in one global order (sort the lines by warehouse and SKU before updating, or update them all in one UPDATE ... FROM unnest statement), keep the reservation transaction short, and retry a 40P01 once. A bigger pool does not help.
       confidence: high
       report: |
-        Reservations stall on row locks, not on the pool. During the 18:00 drop many carts reserve the same few SKUs. Reserve updates each cart line in cart order inside one transaction, so concurrent carts queue on the hot inventory rows: the UPDATE inventory spans run for hundreds of ms to seconds while BEGIN starts immediately, and carts that hold two hot SKUs in opposite orders deadlock (40P01, after deadlock_timeout) or hit the 5s lock_timeout (55P03). p50 is ~8ms; p99 jumps only in the evening window, and it did the same before and after the pool was doubled. I changed Reserve to lock lines in warehouse/SKU order so carts queue behind each other instead of deadlocking.
+        Reservations stall on row locks, not on the pool. During the 18:00 drop many carts reserve the same few SKUs. Reserve updates each cart line in cart order inside one transaction, so concurrent carts queue on the hot inventory rows: the UPDATE inventory spans run for hundreds of ms to seconds while BEGIN starts immediately, and carts that hold two hot SKUs in opposite orders deadlock (40P01, after deadlock_timeout); a statement that waits past the 5s lock_timeout (55P03) is what Reserve answers with a 503. p50 is ~8ms; p99 jumps only in the evening window, and it did the same before and after the pool was doubled. Fix: have Reserve lock the lines in one global order (sort by warehouse and SKU, or one UPDATE ... FROM unnest), so carts queue behind each other instead of deadlocking, keep the transaction short, and retry a 40P01 once; a bigger pool does not help.

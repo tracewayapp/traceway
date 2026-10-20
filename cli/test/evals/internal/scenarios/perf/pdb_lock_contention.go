@@ -22,7 +22,9 @@ func init() { scenarios.Register("perf/db-lock-contention", pdbSeedLockContentio
 // 1.32.0 a week ago raised the pgx pool from 20 to 40 connections and the
 // evening spikes did not change; there is no wait before BEGIN.
 func pdbSeedLockContention(s *seed.Scenario) error {
-	window := 8 * 24 * time.Hour
+	// Nine days, so the 42 hours before the deploy hold a full evening drop
+	// whatever the hour of the run.
+	window := 9 * 24 * time.Hour
 	deployAt := s.Ago(7*24*time.Hour + 6*time.Hour)
 	p := s.Project("fulfillment", seed.OTel)
 	api := p.Service("inventory-api", seed.Go("nethttp", "pgx")).

@@ -5,14 +5,14 @@ tags: [control, go, database, marked-slow, regression]
 seed: perf/ctl-marked-slow-regressed
 arms: [cli+skill, cli-noskill, mcp]
 invoke: slash
-distractor: The export is marked slow with a 2000ms allowance, so its high latency can be waved through as accepted; and its big invoices/lines JOIN (about a second) looks like an expensive query. But the JOIN did not change; p95 sat near 1.5s until v4.8.0, which added one invoice_tax_lines query per invoice and took p95 to about 4.1s, twice the allowance.
+distractor: The export is marked slow with a 2000ms allowance, so its high latency can be waved through as accepted; and its big invoices/lines JOIN (about a second) looks like an expensive query. But the JOIN did not change; p95 sat near 1.5s until v4.8.0, which added one invoice_tax_lines query per invoice and took p95 to about 4s, twice the allowance.
 workspace: {repo: invoicing-api-go}
 prompt: |
   /traceway perf GET /api/exports/invoices
-  Accounting says the monthly invoice export got a lot slower recently; they are seeing four seconds or more. Can you find out why and fix it?
+  Accounting says the monthly invoice export got a lot slower recently; they are seeing four seconds or more. Can you find out why and how to fix it?
 budget: {max_turns: 40, max_tool_calls: 32, max_output_tokens: 14000, timeout: 10m}
 user:
-  - default: "I don't know more than that. Please go ahead and fix it in the code."
+  - default: "I don't know more than that, please investigate."
 expect:
   answer:
     checklist_item: select_n_plus_1
@@ -37,11 +37,11 @@ expect:
       - "allowance|offset|marked (as )?slow"
       - "2(\\.0+)?\\s*s|2,?000\\s*ms"
 judge:
-  expected: Select N+1 introduced by v4.8.0. The export is marked slow with a 2000ms allowance and its p95 sat around 1.5s, inside it, until the v4.8.0 deploy about 26 hours ago; since then p95 is about 4.1s (p50 about 2.9s), double the allowance. Slow requests after the deploy run one "SELECT rate_code, rate_bps, amount_cents FROM invoice_tax_lines WHERE invoice_id = $1" per invoice (60-125 per export, about 20ms each) after the unchanged invoices/lines JOIN; requests before the deploy have no tax-line queries. The fix loads every invoice's tax lines in one query (WHERE invoice_id = ANY($1) or a JOIN) in the export handler.
+  expected: Select N+1 introduced by v4.8.0. The export is marked slow with a 2000ms allowance and its p95 sat around 1.5s, inside it, until the v4.8.0 deploy about 26 hours ago; since then p95 is about 4s (p50 about 2.9s), double the allowance. Slow requests after the deploy run one "SELECT rate_code, rate_bps, amount_cents FROM invoice_tax_lines WHERE invoice_id = $1" per invoice (60-125 per export, about 20ms each) after the unchanged invoices/lines JOIN; requests before the deploy have no tax-line queries. The fix loads every invoice's tax lines in one query (WHERE invoice_id = ANY($1) or a JOIN) in the export handler.
   rubric:
-    - Checks the marked-slow allowance and states that the latency (p95 about 4.1s) is past the 2000ms allowance, so it is a real regression, not the accepted baseline.
+    - Checks the marked-slow allowance and states that the latency (p95 about 4s) is past the 2000ms allowance, so it is a real regression, not the accepted baseline.
     - Dates the onset to the v4.8.0 deploy (endpoints chart or window bisection plus git history) and contrasts a request from before the deploy with one after.
-    - Attributes the extra time to one tax-line query per invoice and fixes it with a batched load, leaving the existing JOIN alone.
+    - Attributes the extra time to one tax-line query per invoice and proposes a batched load, leaving the existing JOIN alone.
 oracle:
   - shell: >-
       traceway endpoints list --search /api/exports/invoices --since 24h --output json
@@ -73,9 +73,9 @@ oracle:
       locus: {endpoint: "GET /api/exports/invoices", span: "SELECT rate_code, rate_bps, amount_cents FROM invoice_tax_lines WHERE invoice_id = $1", service: invoicing-api}
       onset: "{{seed.deployAt}}"
       evidence:
-        - {call_id: c01, claim: "over the last day the export's p95 is about 4.1s and p50 about 2.9s"}
+        - {call_id: c01, claim: "over the last day the export's p95 is around 4s and p50 near 3s"}
         - {call_id: c02, claim: "the endpoint is marked slow with offsetMs 2000 (Monthly invoice CSV for accounting ... Up to 2s is expected), so p95 is double the allowance"}
-        - {call_id: c04, claim: "hourly p95 steps from about 1.5s to about 4s at the hour v4.8.0 shipped"}
+        - {call_id: c04, claim: "hourly p95 sits around 1.5s, below the 2s allowance, until about 26 hours ago, then steps well past it (mostly 3-4s) within one hour"}
         - {call_id: c06, claim: "a slow export on 4.8.0 runs one invoice_tax_lines query per invoice, over a hundred per request, which add seconds after the unchanged JOIN"}
         - {call_id: c07, claim: "an export on 4.7.3 runs only the invoices/lines JOIN and the CSV encode"}
         - {call_id: c08, claim: "v4.8.0 (tax breakdown per invoice in the monthly export) was committed right before the step"}
@@ -85,4 +85,4 @@ oracle:
       fix: Load the tax lines of all exported invoices in one query (WHERE invoice_id = ANY($1)) instead of one query per invoice in the export handler.
       confidence: high
       report: |
-        GET /api/exports/invoices regressed past its allowance. It is marked slow with a 2000ms offset ("Monthly invoice CSV for accounting ... Up to 2s is expected") and sat around 1.5s at p95 until the v4.8.0 deploy about 26 hours ago; since then p95 is about 4.1s, twice the allowance. v4.8.0 added the tax breakdown, and the export now runs one `SELECT ... FROM invoice_tax_lines WHERE invoice_id = $1` per invoice (60-125 per export, about 20ms each) after the unchanged invoices/lines JOIN: a Select N+1. Requests from before the deploy have no tax-line queries. I changed the export to load all tax lines with one `WHERE invoice_id = ANY($1)` query (store.TaxLinesFor), which brings it back to one extra statement per export.
+        GET /api/exports/invoices regressed past its allowance. It is marked slow with a 2000ms offset ("Monthly invoice CSV for accounting ... Up to 2s is expected") and sat around 1.5s at p95 until the v4.8.0 deploy about 26 hours ago; since then p95 is about 4s, twice the allowance. v4.8.0 added the tax breakdown, and the export now runs one `SELECT ... FROM invoice_tax_lines WHERE invoice_id = $1` per invoice (60-125 per export, about 20ms each) after the unchanged invoices/lines JOIN: a Select N+1. Requests from before the deploy have no tax-line queries. The fix is to load the tax lines of all exported invoices with one `WHERE invoice_id = ANY($1)` query (a batched store method instead of the per-invoice TaxLines loop in the Invoices handler, internal/exports/invoices.go), which brings it back to one extra statement per export.

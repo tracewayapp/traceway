@@ -41,7 +41,7 @@ func TestPreloadSkipsLoadedCategories(t *testing.T) {
 	if _, err := c.Get(context.Background(), "bags"); err != nil {
 		t.Fatal(err)
 	}
-	c.Preload(context.Background(), []string{"bags", "hats"})
+	c.Preload(context.Background(), []string{"bags", "hats"}, 0)
 	if n := st.listings.Load(); n != 2 {
 		t.Fatalf("listing query ran %d times, want 2", n)
 	}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -52,7 +53,7 @@ func main() {
 
 	addr := os.Getenv("LISTEN_ADDR")
 	log.Info("starting listings-api", "version", version, "log.level", os.Getenv("LOG_LEVEL"), "addr", addr)
-	srv := &http.Server{Addr: addr, Handler: otelhttp.NewHandler(mux, "listings-api"), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Addr: addr, Handler: otelhttp.NewHandler(accessLog(log, mux), "listings-api"), ReadHeaderTimeout: 10 * time.Second}
 	if err := srv.ListenAndServe(); err != nil {
 		log.Error("serve", "err", err)
 		os.Exit(1)
@@ -60,6 +61,28 @@ func main() {
 }
 
 var version = "dev"
+
+// accessLog writes one line per request, inside the request's trace.
+func accessLog(log *slog.Logger, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
+		ms := time.Since(start).Milliseconds()
+		log.InfoContext(r.Context(), fmt.Sprintf("%s %s %d %dms", r.Method, r.URL.Path, rec.status, ms),
+			"http.request.method", r.Method, "url.path", r.URL.Path, "http.response.status_code", rec.status, "duration_ms", ms)
+	})
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (s *statusRecorder) WriteHeader(code int) {
+	s.status = code
+	s.ResponseWriter.WriteHeader(code)
+}
 
 func envInt(name string, def int) int {
 	if v, err := strconv.Atoi(os.Getenv(name)); err == nil {

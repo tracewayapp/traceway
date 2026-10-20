@@ -9,9 +9,9 @@ import (
 
 func init() { scenarios.Register("perf/ctl-marked-slow-ok", pctSeedMarkedSlowOK) }
 
-// pctLedgerExport is the ledger export handler shared by the marked-slow
-// controls: one range query over a quarter of ledger entries, a CSV encode
-// and the streamed write, all proportional to the row count.
+// pctLedgerExport is the ledger export handler: one range query over a
+// quarter of ledger entries, a CSV encode and the streamed write, all
+// proportional to the row count (at most ~1.98s for 54k rows).
 func pctLedgerExport(r *seed.Req, rows int) {
 	n := float64(rows)
 	jit := func(lo, hi float64) float64 { return lo + (hi-lo)*r.Float() }
@@ -32,8 +32,8 @@ func pctLedgerRows(r *seed.Req) int {
 }
 
 // pctLedgerService declares the ledger API with its everyday endpoints.
-func pctLedgerService(s *seed.Scenario, p *seed.Project, window time.Duration, versions ...seed.Deploy) *seed.Service {
-	api := p.Service("ledger-api", seed.Go("nethttp", "sql")).Versions("3.9.2", versions...)
+func pctLedgerService(s *seed.Scenario, p *seed.Project, window time.Duration) *seed.Service {
+	api := p.Service("ledger-api", seed.Go("nethttp", "sql")).Versions("3.9.2")
 	bal := api.Endpoint("GET", "/api/accounts/:id/balance")
 	bal.Traffic(seed.Daily(200), seed.Diurnal(), seed.Over(window))
 	bal.Handler(func(r *seed.Req) {
@@ -60,10 +60,11 @@ func pctLedgerService(s *seed.Scenario, p *seed.Project, window time.Duration, v
 }
 
 // pctSeedMarkedSlowOK: the ledger export is the slowest endpoint (p95 about
-// 1.85s), but an operator marked it slow with a 2000ms allowance and it has
-// held that level for the whole month. Expected: none_found. Distractor: the
-// export's one big range query and CSV encode look like an expensive query
-// or an unbounded result set if the allowance is ignored.
+// 1.8s, no request over 2s), but an operator marked it slow with a 2000ms
+// allowance and it has held that level for the whole month. Expected:
+// none_found. Distractor: the export's one big range query and CSV encode
+// look like an expensive query or an unbounded result set if the allowance
+// is ignored.
 func pctSeedMarkedSlowOK(s *seed.Scenario) error {
 	p := s.Project("ledger", seed.OTel)
 	window := 30 * 24 * time.Hour

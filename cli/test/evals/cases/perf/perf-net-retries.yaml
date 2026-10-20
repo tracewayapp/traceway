@@ -60,12 +60,12 @@ oracle:
       onset: null
       evidence:
         - {call_id: c01, claim: "p50 is ~160ms but p99 is over 6s: a long tail on an otherwise fast endpoint"}
-        - {call_id: c02, claim: "tenacity WARN lines all day: 'Retrying app.carriers.client.CarrierClient.fetch_rates in 1.0 seconds as it raised ReadTimeout', and some 'in 2.0 seconds' second retries"}
+        - {call_id: c02, claim: "tenacity WARN lines every few minutes: 'Retrying app.carriers.client.CarrierClient.fetch_rates in 1.0 seconds as it raised ReadTimeout', and some 'in 2.0 seconds' second retries"}
         - {call_id: c03, claim: "a 13s request: two 5s POSTs to rates.carrier.example ending in ReadTimeout, 1s and 2s gaps, then the same call succeeds in a fraction of a second"}
-        - {call_id: c04, claim: "the tail is spread across the whole day, not a provider incident window"}
+        - {call_id: c04, claim: "p99 is over 6s in most 3-hour buckets of the day: the tail is spread across the day, not a provider incident window"}
       ruled_out:
         - {checklist_item: slow_third_party_upstream_api, call_id: c03, reason: "successful carrier calls take ~150ms; the time is spent waiting out 5s timeouts and backoff sleeps"}
       fix: Give the carrier client an explicit short timeout (connect 0.5s, read 1s) instead of httpx's 5s default, and bound the retry to two attempts with a short jittered backoff and a 2.5s total deadline.
       confidence: high
       report: |
-        The slow shipping quotes are the client's timeout and retry policy, not a slow carrier. CarrierClient.fetch_rates (app/carriers/client.py) posts to rates.carrier.example with an httpx client that sets no timeout, so each attempt can hang for httpx's default 5s, and tenacity retries up to three times with 1s and 2s waits. A few percent of attempts hang; those requests show the same carrier POST two or three times in one trace (5s ReadTimeout, 1s sleep, 5s ReadTimeout, 2s sleep, then a quick success), which is the 6s and 13s you see. The WARN logs show these retries all day, and successful carrier calls take about 150ms. I set an explicit timeout (0.5s connect, 1s read) and limited the retry to two attempts with a short jittered backoff and a 2.5s overall deadline.
+        The slow shipping quotes are the client's timeout and retry policy, not a slow carrier. CarrierClient.fetch_rates (app/carriers/client.py) posts to rates.carrier.example with an httpx client that sets no timeout, so each attempt can hang for httpx's default 5s, and tenacity retries up to three times with 1s and 2s waits. A few percent of attempts hang; those requests show the same carrier POST two or three times in one trace (5s ReadTimeout, 1s sleep, 5s ReadTimeout, 2s sleep, then a quick success), which is the 6s and 13s you see. The WARN logs show these retries every few minutes, the p99 tail is there all day, and successful carrier calls take about 150ms. Fix: set an explicit timeout (0.5s connect, 1s read) and limit the retry to two attempts with a short jittered backoff and a 2.5s overall deadline.

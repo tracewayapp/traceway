@@ -15,7 +15,7 @@ func init() { scenarios.Register("perf/db-missing-query-cache", pdbSeedMissingQu
 // same 214 rows, before any handler runs. It costs ~15-30ms per request and
 // is most of the time of the cheap endpoints (GET /api/me reads one customer
 // row in ~1.5ms). Distractor: no cache / a low hit ratio. Product data is
-// already behind Redis and the app's cache.hit_ratio gauge sits at 97-99%;
+// already behind Redis and the app's cache.hit_ratio gauge sits at 96-99%;
 // the uncached thing is one specific query.
 func pdbSeedMissingQueryCache(s *seed.Scenario) error {
 	window := 3 * 24 * time.Hour
@@ -80,7 +80,8 @@ func pdbSeedMissingQueryCache(s *seed.Scenario) error {
 		}
 	}
 
-	api.Gauge("cache.hit_ratio", "1", map[string]any{"cache.name": "product"}, seed.Flat(0.972, 0.989))
+	// Gauge adds +-1.5% jitter, so this reads about 96-99.9% and never above 1.
+	api.Gauge("cache.hit_ratio", "1", map[string]any{"cache.name": "product"}, seed.Flat(0.972, 0.984))
 	api.Host().CPU(seed.DiurnalSeries(seed.Flat(0.24, 0.3), 0.25))
 	api.Host().Memory(seed.Flat(0.47, 0.52))
 

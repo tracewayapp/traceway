@@ -15,9 +15,9 @@ func init() { scenarios.Register("perf/infra-memory-gc", papSeedMemoryGC) }
 // limit the GC runs back to back and requests on every endpoint stall in
 // pauses (gaps with no span, up to ~0.4s), until the container is OOM killed
 // and restarts with an empty heap. Distractor: the batch geocode endpoint,
-// which allocates a lot per request; but its traffic is flat and small, the
-// heap climbs at the same rate whether or not it is called, the allocation
-// rate is flat, and the pauses hit every endpoint.
+// which allocates a lot per request; but its traffic is flat and small, its
+// time is its own bounded work, the heap climbs smoothly with no step at its
+// calls, and the pauses hit every endpoint.
 func papSeedMemoryGC(s *seed.Scenario) error {
 	p := s.Project("maps", seed.OTel)
 	host := "geo-api-5d8c7b9f4-hq2mz"
@@ -123,6 +123,23 @@ func papSeedMemoryGC(s *seed.Scenario) error {
 	s.Expose("lastRestart", lastRestart.Format(time.RFC3339))
 	s.Expose("restartFrom", lastRestart.Add(-2*time.Hour).Format(time.RFC3339))
 	s.Expose("restartTo", lastRestart.Add(30*time.Minute).Format(time.RFC3339))
-	s.Expose("batchRequest", batch.Slowest(24*time.Hour))
+	// The heaviest batch of the day while the heap was still low, so its
+	// spans account for its time: the pauses near the limit hit it too.
+	s.Expose("batchRequest", func() any {
+		var best *seed.Request
+		for _, rq := range batch.Requests() {
+			if rq.Start.Before(s.Ago(24*time.Hour)) || fill(rq.Start) >= 0.4 {
+				continue
+			}
+			if best == nil || rq.Duration() > best.Duration() {
+				best = rq
+			}
+		}
+		if best == nil {
+			return nil
+		}
+		best.KeepDetail()
+		return best.Ref()
+	})
 	return nil
 }

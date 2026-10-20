@@ -2,6 +2,7 @@ package perf
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/tracewayapp/traceway/cli/test/evals/internal/scenarios"
@@ -18,20 +19,25 @@ const pncHTTPTraceScope = "go.opentelemetry.io/contrib/instrumentation/net/http/
 // http.receive as children. server is the time from the request being sent
 // to the first response byte.
 func pncTracedGet(r *seed.Req, url, host, remote string, fresh bool, server time.Duration) *seed.Span {
+	port := 443
+	if strings.HasPrefix(url, "http://") {
+		port = 8080
+	}
+	addr := fmt.Sprintf("%s:%d", remote, port)
 	var client *seed.Span
 	client = r.Span("GET", func(r *seed.Req) {
 		gc := r.Span("http.getconn", func(r *seed.Req) {
 			if fresh {
 				dns := r.Compute("http.dns", r.LogNormal(16*time.Millisecond, 42*time.Millisecond), seed.A("net.host.name", host), seed.A("http.dns.addrs", remote))
 				dns.Scope = pncHTTPTraceScope
-				conn := r.Compute("http.connect", r.LogNormal(26*time.Millisecond, 58*time.Millisecond), seed.A("http.remote", remote+":443"), seed.A("http.conn.start.network", "tcp"))
+				conn := r.Compute("http.connect", r.LogNormal(26*time.Millisecond, 58*time.Millisecond), seed.A("http.remote", addr), seed.A("http.conn.start.network", "tcp"))
 				conn.Scope = pncHTTPTraceScope
 				tls := r.Compute("http.tls", r.LogNormal(48*time.Millisecond, 105*time.Millisecond))
 				tls.Scope = pncHTTPTraceScope
 			} else {
 				r.Gap(r.Ms(0.01, 0.06))
 			}
-		}, seed.A("net.host.name", host), seed.A("http.remote", remote+":443"), seed.A("http.local", fmt.Sprintf("10.4.%d.%d:%d", r.IntN(8), 10+r.IntN(200), 40000+r.IntN(20000))),
+		}, seed.A("net.host.name", host), seed.A("http.remote", addr), seed.A("http.local", fmt.Sprintf("10.4.%d.%d:%d", r.IntN(8), 10+r.IntN(200), 40000+r.IntN(20000))),
 			seed.A("http.conn.reused", !fresh), seed.A("http.conn.wasidle", !fresh))
 		gc.Scope = pncHTTPTraceScope
 		send := r.Compute("http.send", r.Ms(0.02, 0.12))
@@ -39,7 +45,7 @@ func pncTracedGet(r *seed.Req, url, host, remote string, fresh bool, server time
 		r.Gap(server)
 		recv := r.Compute("http.receive", r.Ms(0.3, 1.8))
 		recv.Scope = pncHTTPTraceScope
-	}, seed.A("http.request.method", "GET"), seed.A("url.full", url), seed.A("server.address", host), seed.A("server.port", 443),
+	}, seed.A("http.request.method", "GET"), seed.A("url.full", url), seed.A("server.address", host), seed.A("server.port", port),
 		seed.A("http.response.status_code", 200), seed.A("network.protocol.version", "1.1"))
 	client.Kind = seed.KindClient
 	client.Scope = "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -61,7 +67,7 @@ var pncPlaces = []struct{ q, ll string }{
 func pncSeedNoConnReuse(s *seed.Scenario) error {
 	window := 2 * 24 * time.Hour
 	p := s.Project("stores", seed.OTel)
-	api := p.Service("store-locator-api", seed.Go("chi", "pgx")).Versions("1.14.0")
+	api := p.Service("store-locator-api", seed.Go("nethttp", "pgx")).Versions("1.14.0")
 	const mapsHost = "maps.geo.example"
 
 	nearby := api.Endpoint("GET", "/api/stores/nearby")
@@ -74,7 +80,11 @@ func pncSeedNoConnReuse(s *seed.Scenario) error {
 		pncTracedGet(r, "https://"+mapsHost+"/v1/geocode?q="+place.q+"&region=de", mapsHost, remote, true, r.LogNormal(19*time.Millisecond, 45*time.Millisecond))
 		r.DB("SELECT id, name, address, lat, lng FROM stores WHERE ST_DWithin(location, ST_MakePoint($1, $2)::geography, $3) ORDER BY location <-> ST_MakePoint($1, $2)::geography LIMIT 10",
 			r.LogNormal(4*time.Millisecond, 10*time.Millisecond), seed.Rows(10))
-		pncTracedGet(r, "https://"+mapsHost+"/v1/distancematrix?origins="+place.ll+"&destinations=store%3A1204%7Cstore%3A1188%7Cstore%3A1310&mode=driving", mapsHost, remote, true, r.LogNormal(24*time.Millisecond, 55*time.Millisecond))
+		dest := make([]string, 10)
+		for i := range dest {
+			dest[i] = fmt.Sprintf("store%%3A%d", 1000+r.IntN(400))
+		}
+		pncTracedGet(r, "https://"+mapsHost+"/v1/distancematrix?origins="+place.ll+"&destinations="+strings.Join(dest, "%7C")+"&mode=driving", mapsHost, remote, true, r.LogNormal(24*time.Millisecond, 55*time.Millisecond))
 		r.Compute("encode response", r.Ms(0.4, 1.2))
 	})
 

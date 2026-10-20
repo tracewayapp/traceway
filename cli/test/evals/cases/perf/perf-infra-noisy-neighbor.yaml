@@ -25,10 +25,11 @@ expect:
   calls:
     required:
       - {op: endpoints.list}
-      - {op: metrics.query, args: {name: "~system\\.cpu", group_by: "~host"}}
     any_of:
-      - [{op: metrics.query, args: {name: "~http\\.server\\.request\\.duration", group_by: "~host"}}]
-      - [{op: logs.query}]
+      - [{op: metrics.query, args: {name: "~system\\.cpu", group_by: "~host"}}, {op: metrics.query, args: {name: "~http\\.server\\.request\\.duration", group_by: "~host"}}]
+      - [{op: metrics.query, args: {name: "~system\\.cpu", group_by: "~host"}}, {op: logs.query}]
+      - [{op: metrics.query, args: {name: "~system\\.cpu", tag_filters: "~host"}}, {op: metrics.query, args: {name: "~http\\.server\\.request\\.duration", group_by: "~host"}}]
+      - [{op: metrics.query, args: {name: "~system\\.cpu", tag_filters: "~host"}}, {op: logs.query}]
     forbidden:
       - {op: "*", write: true}
     max_failed_calls: 5
@@ -72,15 +73,15 @@ oracle:
       locus: {service: tickets-api, host: tickets-node-c}
       onset: "{{seed.onsetAt}}"
       evidence:
-        - {call_id: c01, claim: "every endpoint's p95 is up while p50 moved much less: a share of requests is slow on every route"}
+        - {call_id: c01, claim: "every endpoint's p95 is 2-3x its p50 over the last day: a share of requests is slow on every route"}
         - {call_id: c02, claim: "the p95 of all endpoints stepped up in the same bucket"}
         - {call_id: c03, claim: "per host, only tickets-node-c's request duration rose (~43ms against ~17ms on node-a and node-b), from that same bucket"}
         - {call_id: c04, claim: "node-a and node-b stay ~69% idle; node-c fell to ~39% at the step"}
         - {call_id: c05, claim: "the lost idle on node-c is steal: ~30% from the step on, zero on the other hosts"}
         - {call_id: c06, claim: "user CPU is the same on all three hosts, so node-c is not doing more work"}
         - {call_id: c07, claim: "in the access logs the slow requests all come from tickets-node-c"}
-        - {call_id: c08, claim: "a slow request on node-c has the same spans as a fast one, each stretched; no single long pole"}
-        - {call_id: c09, claim: "the same endpoint on node-a takes under 20ms"}
+        - {call_id: c08, claim: "a slow request on node-c runs the same two queries as a fast one, only a little longer; most of its time is the untraced CPU work around them, several times what it takes on node-a; no single long pole"}
+        - {call_id: c09, claim: "the same endpoint on node-a takes about 20ms"}
       ruled_out:
         - {checklist_item: cpu_saturation, call_id: c04, reason: "two of three hosts are ~70% idle and traffic is flat; only node-c, and only through steal"}
         - {checklist_item: connection_pool_exhaustion, call_id: c08, reason: "the slow requests are slow throughout on one host, not waiting before their queries"}

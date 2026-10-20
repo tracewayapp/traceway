@@ -43,49 +43,60 @@ func pncSeedColdStart(s *seed.Scenario) error {
 		}
 		return i
 	}
-	served := map[string]int{} // deploy|host -> requests served since the pod started
+	served := map[string]int{}        // deploy|host -> requests served since the pod became ready
+	readyAt := map[string]time.Time{} // deploy|host -> when the new pod reported started
 	ordinal := map[*seed.Request]int{}
 
 	quote := svc.Endpoint("POST", "/api/prices/quote")
 	quote.Traffic(seed.Daily(1500), seed.Diurnal(), seed.Over(window))
 	quote.Detail(seed.DetailPolicy{Recent: 2 * time.Hour, Rate: 0.03, Max: 8})
 	quote.Handler(func(r *seed.Req) {
-		n := 1000 // pods that were already running when the window opened
+		// Pods that were already running when the window opened, and old pods
+		// still serving while their replacement starts, are warm.
+		n := 1000
 		if di := deployIndex(r.Start()); di >= 0 {
 			key := fmt.Sprintf("%d|%s", di, r.Host())
-			served[key]++
-			n = served[key]
+			if !r.Start().Before(readyAt[key]) {
+				served[key]++
+				n = served[key]
+			}
 		}
 		ordinal[r.Request()] = n
 		lines := 1 + r.IntN(8)
 		engine := r.LogNormal(9*time.Millisecond, 22*time.Millisecond)
 		dbScale := 1.0
-		switch {
-		case n == 1:
+		thread := seed.A("thread.name", "http-nio-8080-exec-1")
+		if n == 1 {
 			r.KeepDetail()
-			r.Log(seed.SevInfo, "Initializing Spring DispatcherServlet 'dispatcherServlet'", seed.A("thread.name", "http-nio-8080-exec-1"))
-			r.Log(seed.SevInfo, "Initializing Servlet 'dispatcherServlet'", seed.A("thread.name", "http-nio-8080-exec-1"))
-			r.Gap(r.Ms(900, 1400))
-			r.Log(seed.SevInfo, fmt.Sprintf("Completed initialization in %d ms", 900+r.IntN(500)), seed.A("thread.name", "http-nio-8080-exec-1"))
-			r.Gap(r.Ms(2000, 3200))
-			r.Log(seed.SevInfo, "HikariPool-1 - Starting...", seed.A("thread.name", "http-nio-8080-exec-1"))
-			r.Gap(r.Ms(600, 1100))
-			r.Log(seed.SevInfo, fmt.Sprintf("HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@%x", 0x10000000+r.IntN(0x6fffffff)), seed.A("thread.name", "http-nio-8080-exec-1"))
-			r.Log(seed.SevInfo, "HikariPool-1 - Start completed.", seed.A("thread.name", "http-nio-8080-exec-1"))
+			r.Log(seed.SevInfo, "Initializing Spring DispatcherServlet 'dispatcherServlet'", thread)
+			r.Log(seed.SevInfo, "Initializing Servlet 'dispatcherServlet'", thread)
+			d := r.Ms(900, 1400)
+			r.Gap(d)
+			r.Log(seed.SevInfo, fmt.Sprintf("Completed initialization in %d ms", d.Milliseconds()), thread)
+			r.Gap(r.Ms(2000, 3200)) // lazy bean creation for the quote path
 			engine = r.Ms(700, 1300)
 			dbScale = 6
-		case n <= 3:
+		} else if n <= 3 {
 			engine += r.Ms(350, 800)
 			dbScale = 2.5
-		case n <= 8:
+		} else if n <= 8 {
 			engine += time.Duration(float64(r.Ms(60, 160)) * float64(9-n) / 5)
 		}
 		r.Gap(r.Ms(0.5, 1.5))
-		r.DB("SELECT sku, list_price_minor FROM price_list_items WHERE price_list_id = ? AND sku IN ("+strings.TrimSuffix(strings.Repeat("?, ", lines), ", ")+")",
-			time.Duration(float64(r.LogNormal(4*time.Millisecond, 11*time.Millisecond))*dbScale), seed.Rows(lines))
-		r.DB("SELECT id, kind, priority, conditions, effect FROM promotion_rules WHERE active AND ? BETWEEN starts_at AND ends_at ORDER BY priority",
-			time.Duration(float64(r.LogNormal(3*time.Millisecond, 8*time.Millisecond))*dbScale), seed.Rows(30+r.IntN(20)))
-		eng := r.Compute("PricingEngine.quote", engine, seed.A("code.function", "quote"), seed.A("code.namespace", "com.example.pricing.engine.PricingEngine"))
+		eng := r.Span("PricingEngine.quote", func(r *seed.Req) {
+			if n == 1 {
+				// The pool starts on the first getConnection, inside quote().
+				r.Log(seed.SevInfo, "HikariPool-1 - Starting...", thread)
+				r.Gap(r.Ms(600, 1100))
+				r.Log(seed.SevInfo, fmt.Sprintf("HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@%x", 0x10000000+r.IntN(0x6fffffff)), thread)
+				r.Log(seed.SevInfo, "HikariPool-1 - Start completed.", thread)
+			}
+			r.DB("SELECT sku, list_price_minor FROM price_list_items WHERE price_list_id = ? AND sku IN ("+strings.TrimSuffix(strings.Repeat("?, ", lines), ", ")+")",
+				time.Duration(float64(r.LogNormal(4*time.Millisecond, 11*time.Millisecond))*dbScale), seed.Rows(lines))
+			r.DB("SELECT id, kind, priority, conditions, effect FROM promotion_rules WHERE active AND ? BETWEEN starts_at AND ends_at ORDER BY priority",
+				time.Duration(float64(r.LogNormal(3*time.Millisecond, 8*time.Millisecond))*dbScale), seed.Rows(30+r.IntN(20)))
+			r.Gap(engine)
+		}, seed.A("code.function", "quote"), seed.A("code.namespace", "com.example.pricing.engine.PricingEngine"))
 		eng.Scope = pncAnnotationsScope
 		r.Gap(r.Ms(0.5, 1.5))
 	})
@@ -100,10 +111,11 @@ func pncSeedColdStart(s *seed.Scenario) error {
 
 	// Startup lines of every pod at every release (no request context);
 	// the new pods take traffic as soon as they report started.
-	for _, d := range append([]seed.Deploy{{At: s.Ago(window + time.Hour), Version: "2.14.0"}}, deploys...) {
+	for i, d := range append([]seed.Deploy{{At: s.Ago(window + time.Hour), Version: "2.14.0"}}, deploys...) {
 		for k, h := range svc.Hosts {
 			at := d.At.Add(time.Duration(k*3) * time.Second)
 			secs := 6.4 + 0.9*s.RNG.Float64()
+			readyAt[fmt.Sprintf("%d|%s", i-1, h)] = at.Add(time.Duration(secs * float64(time.Second)))
 			svc.LogOn(h, at, seed.SevInfo, fmt.Sprintf("Starting PricingServiceApplication v%s using Java 21.0.4 with PID 1 (/app/app.jar started by app in /app)", d.Version), seed.A("thread.name", "main"))
 			svc.LogOn(h, at.Add(1200*time.Millisecond), seed.SevInfo, "Tomcat initialized with port 8080 (http)", seed.A("thread.name", "main"))
 			svc.LogOn(h, at.Add(time.Duration(secs*float64(time.Second))), seed.SevInfo, fmt.Sprintf("Started PricingServiceApplication in %.3f seconds (process running for %.3f)", secs, secs+0.7), seed.A("thread.name", "main"))

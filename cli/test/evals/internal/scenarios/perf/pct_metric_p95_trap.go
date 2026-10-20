@@ -40,7 +40,7 @@ func pctSlowdown(busy float64) float64 {
 }
 
 // pctSeedMetricP95Trap: every afternoon traffic triples and the two query
-// hosts run at 97-99% CPU, stretching every endpoint (no single long pole).
+// hosts run at 97-100% CPU, stretching every endpoint (no single long pole).
 // The user relays ops' "p95 CPU around 45%", which is what metrics query
 // returns for --aggregation p95 over a day: the server has no quantiles for
 // metric points and silently averages. Expected: cpu_saturation, reported
@@ -48,7 +48,7 @@ func pctSlowdown(busy float64) float64 {
 func pctSeedMetricP95Trap(s *seed.Scenario) error {
 	p := s.Project("search", seed.OTel)
 	window := 3 * 24 * time.Hour
-	api := p.Service("query-api", seed.Go("gin", "pgx")).Instances("query-api-1", "query-api-2").Versions("8.2.1")
+	api := p.Service("query-api", seed.Go("nethttp", "pgx")).Instances("query-api-1", "query-api-2").Versions("8.2.1")
 
 	load := func(t time.Time) float64 { return pctDiurnal(t) * pctAfternoon(t) }
 	stretch := func(r *seed.Req) (cpu, db float64) {

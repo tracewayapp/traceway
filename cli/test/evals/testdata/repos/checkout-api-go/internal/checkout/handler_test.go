@@ -17,6 +17,8 @@ type fakeStore struct {
 }
 
 func (f *fakeStore) Order(context.Context, int64, int64) (*Order, error) { return f.order, nil }
+func (f *fakeStore) OrderByID(context.Context, int64) (*Order, error)    { return f.order, nil }
+func (f *fakeStore) RecordRefund(context.Context, int64) error           { return nil }
 func (f *fakeStore) MarkPaid(_ context.Context, _ int64, chargeID string) error {
 	f.paid = chargeID
 	return nil
@@ -30,6 +32,8 @@ func (f fakePayments) Charge(context.Context, payments.ChargeRequest) (*payments
 	}
 	return &payments.Charge{ID: "ch_1", Status: "succeeded"}, nil
 }
+
+func (f fakePayments) Refund(context.Context, string, string) error { return f.err }
 
 func TestCheckoutMarksOrderPaid(t *testing.T) {
 	st := &fakeStore{order: &Order{ID: 7, Status: "pending", TotalCents: 4200, Currency: "EUR"}}

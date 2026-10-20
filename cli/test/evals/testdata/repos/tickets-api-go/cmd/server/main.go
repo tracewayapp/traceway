@@ -32,7 +32,14 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	mux.HandleFunc("GET /api/events/{id}", func(w http.ResponseWriter, r *http.Request) {
-		rows, err := db.Query(r.Context(), `SELECT section, row_label, seat_count, price_cents, available FROM seat_blocks WHERE event_id = $1`, r.PathValue("id"))
+		var ev tickets.Event
+		err := db.QueryRow(r.Context(), `SELECT id, title, description, venue_id, starts_at FROM events WHERE id = $1`, r.PathValue("id")).
+			Scan(&ev.ID, &ev.Title, &ev.Description, &ev.VenueID, &ev.StartsAt)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		rows, err := db.Query(r.Context(), `SELECT section, row_label, seat_count, price_cents, available FROM seat_blocks WHERE event_id = $1`, ev.ID)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
@@ -47,8 +54,9 @@ func main() {
 			}
 			blocks = append(blocks, b)
 		}
+		ev.Sections = tickets.SeatMap(blocks)
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(tickets.SeatMap(blocks))
+		_ = json.NewEncoder(w).Encode(ev)
 	})
 	// The other routes are registered in internal/tickets (omitted here).
 

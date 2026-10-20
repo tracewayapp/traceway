@@ -19,7 +19,7 @@ class QuoteRequest(BaseModel):
 async def create_quote(body: QuoteRequest):
     async with pool.connection() as conn:
         parcel = await (await conn.execute(
-            "SELECT id, weight_grams, length_mm, width_mm, height_mm, destination_postcode, destination_country FROM parcels WHERE id = %s",
+            "SELECT id, weight_grams, length_mm, width_mm, height_mm, origin_postcode, destination_postcode, destination_country FROM parcels WHERE id = %s",
             (body.parcel_id,),
         )).fetchone()
     if parcel is None:

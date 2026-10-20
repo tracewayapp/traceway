@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Client is the inventory client. It shares one transport for all calls.
+// Client is the inventory client.
 type Client struct {
 	baseURL string
 	http    *http.Client

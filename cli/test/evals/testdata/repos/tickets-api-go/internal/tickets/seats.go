@@ -1,6 +1,18 @@
 // Package tickets serves events, seat maps and orders.
 package tickets
 
+import "time"
+
+// Event is one event with its seat map.
+type Event struct {
+	ID          int64            `json:"id"`
+	Title       string           `json:"title"`
+	Description string           `json:"description"`
+	VenueID     int64            `json:"venueId"`
+	StartsAt    time.Time        `json:"startsAt"`
+	Sections    []SectionSummary `json:"sections"`
+}
+
 // SeatBlock is a run of seats in one row of a section.
 type SeatBlock struct {
 	Section    string `json:"section"`
@@ -19,7 +31,7 @@ type SectionSummary struct {
 }
 
 // SeatMap groups an event's seat blocks into sections, keeping the order the
-// blocks arrive in (the query orders them by section and row).
+// blocks arrive in.
 func SeatMap(blocks []SeatBlock) []SectionSummary {
 	var out []SectionSummary
 	index := map[string]int{}
